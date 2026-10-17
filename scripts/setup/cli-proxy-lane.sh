@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/setup/cli-proxy-lane.sh — Linux bring-up for the claudex lane
-# Twin of scripts/setup/cli-proxy-lane.ps1 (Windows). bash
-# 3.2-safe.
+# bash 3.2-safe.
 #
 # The proxy is a HOST process on 127.0.0.1:8317, backed by CLIProxyAPI
 # (router-for-me/CLIProxyAPI), exposing an Anthropic-compatible API over an

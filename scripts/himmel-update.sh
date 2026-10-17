@@ -1444,7 +1444,7 @@ update_qmd_fork() {
         STATUS_qmd_fork="updated"; DETAIL_qmd_fork="$(qmd_cmd --version 2>/dev/null)"
         # installing the new build does NOT reload the RUNNING
         # daemon. The shared qmd HTTP MCP daemon on :8181 is a long-lived
-        # process; ensure-qmd-daemon.{sh,ps1} only START one when nothing is
+        # process; ensure-qmd-daemon.sh only STARTs one when nothing is
         # serving — neither ever restarts one. So after a fork-ref bump the new
         # code is on disk while every MCP call still hits the old build
         # resident in memory, silently, with a green status line.
@@ -1517,14 +1517,11 @@ report_qmd_daemon_restart() {
     # also runs as a per-session STDIO MCP server that the looser pattern
     # matches just as well, and stopping those kills other sessions' servers.
     echo "      # 1. LOOK — confirm these are the daemon, and only the daemon:"
-    echo "      pwsh -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='bun.exe'\\\" | Where-Object { \$_.CommandLine -match 'qmd.*mcp.*--http' } | Select-Object ProcessId, CommandLine | Format-List\""
+    echo "      pgrep -af 'qmd.*mcp.*--http'"
     echo "      # 2. STOP — same filter, once the list above looks right:"
-    echo "      pwsh -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='bun.exe'\\\" | Where-Object { \$_.CommandLine -match 'qmd.*mcp.*--http' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }\""
+    echo "      pkill -f 'qmd.*mcp.*--http'"
     echo "      # 3. RESTART:"
-    echo "      pwsh -NoProfile -File \"$ROOT/scripts/qmd/ensure-qmd-daemon.ps1\""
-    echo ""
-    echo "    (POSIX: stop the 'qmd mcp --http --daemon' process, then re-run"
-    echo "     bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh)"
+    echo "      bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
 }
 
 # Advisory (#2591): hook-integrity pins these paths at SessionStart and refuses
@@ -2134,7 +2131,7 @@ sync_graphify() {
 # The Axis-B twin of sync_graphify, and the gap scripts/upstreams.json's own
 # cli-proxy-api note names outright: "NOTHING here restarts the running proxy --
 # bumping the pin does NOT swap a live instance ... the operator runs
-# cli-proxy-lane.ps1 -Install + -Restart to actually roll the host."
+# cli-proxy-lane.sh --roll to actually roll the host."
 #
 # So a merged pin bump reached this machine's REPO and never reached the proxy
 # serving 127.0.0.1:8317. That staleness is invisible to check-plugin-drift.sh:
@@ -2143,9 +2140,9 @@ sync_graphify() {
 # installed artifact — so the row reads CURRENT the instant the bump merges,
 # while the host runs the old binary indefinitely.
 #
-# Unattended-safe because cli-proxy-lane.ps1 owns the dangerous parts itself:
+# Unattended-safe because cli-proxy-lane.sh owns the dangerous parts itself:
 # it is pin-aware (a version stamp, so a no-op run downloads nothing), its
-# Assert-BounceSafe claudex-live guard REFUSES to bounce the proxy while a
+# claudex-live guard REFUSES to bounce the proxy while a
 # client is actively connected (an in-flight codex-lane render would die), it
 # stages the swap with a rollback copy, and it health-gates on /v1/models
 # before declaring success. That set of properties is exactly what the qmd
@@ -2252,53 +2249,33 @@ _vm_proof_gate() {
 
 sync_cli_proxy() {
     local mode="${1:-apply}"   # check | apply
-    local lane_ps="$ROOT/scripts/setup/cli-proxy-lane.ps1"
-    local lane_sh="$ROOT/scripts/setup/cli-proxy-lane.sh"
-    local lane pin stamp_file installed ps cmp_rc lane_native
+    local lane="$ROOT/scripts/setup/cli-proxy-lane.sh"
+    local pin stamp_file installed cmp_rc
     echo "==> cli-proxy-api host roll (HIMMEL-2134)"
-    ps="$(command -v pwsh 2>/dev/null || true)"
-    # Linux only: the shell twin ships a linux_amd64 asset + a systemd user
-    # unit, so a pwsh-less Git-Bash or macOS host keeps the old skip.
-    if [ -z "$ps" ] && [ "$(uname -s 2>/dev/null)" = "Linux" ] && [ -f "$lane_sh" ]; then
-        lane="$lane_sh"
-    else
-        lane="$lane_ps"
+    # Linux only: the lane script ships a linux_amd64 asset + a systemd user
+    # unit, so a macOS host keeps the skip.
+    if [ "$(uname -s 2>/dev/null)" != "Linux" ]; then
+        echo "    skip: the cli-proxy lane script is Linux-only."
+        _ver_row cli_proxy - - n/a "lane script not found"
+        return 0
     fi
     if [ ! -f "$lane" ]; then
         echo "    skip: $(basename "$lane") not found ($lane)."
         _ver_row cli_proxy - - n/a "lane script not found"
         return 0
     fi
-    # PowerShell's pin literal is the spot scripts/upstreams.json's version_pin
-    # template names ("$Version = '{version}'"). On Linux without pwsh, read the
-    # shell twin's hand-maintained VERSION instead (parity tested).
-    if [ "$lane" = "$lane_sh" ]; then
-        pin="$(grep -oE '^VERSION="[0-9][0-9A-Za-z.+-]*"' "$lane" 2>/dev/null | head -1 | sed -E 's/.*"([^"]*)".*/\1/')"
-    else
-        pin="$(grep -oE "^\\\$Version *= *'[0-9][0-9A-Za-z.+-]*'" "$lane" 2>/dev/null | head -1 | sed -E "s/.*'([^']*)'.*/\1/")"
-    fi
+    # The pin is the VERSION literal scripts/upstreams.json's version_pin names.
+    pin="$(grep -oE '^VERSION="[0-9][0-9A-Za-z.+-]*"' "$lane" 2>/dev/null | head -1 | sed -E 's/.*"([^"]*)".*/\1/')"
     if [ -z "$pin" ]; then
-        if [ "$lane" = "$lane_sh" ]; then
-            echo "    skip: could not read the VERSION pin from cli-proxy-lane.sh."
-        else
-            echo "    skip: could not read the \$Version pin from cli-proxy-lane.ps1."
-        fi
+        echo "    skip: could not read the VERSION pin from cli-proxy-lane.sh."
         _ver_row cli_proxy - - unknown "could not read the pin from $(basename "$lane")"
         return 0
     fi
-    # cadence_user_home (lib/cadence-format.sh, already sourced): USERPROFILE via
-    # cygpath before $HOME on Windows Git-Bash — the same resolution PowerShell's
-    # own $HOME uses, which is what cli-proxy-lane.ps1 joins $Dir from. A bare
-    # $HOME would probe the MSYS dir and always report "not installed".
     stamp_file="$(cadence_user_home)/.cli-proxy-api/cli-proxy-api.version"
     if [ ! -f "$stamp_file" ]; then
         echo "    skip: no cli-proxy-api install on this machine (no $stamp_file)."
         _ver_row cli_proxy - "v$pin" n/a "not installed on this machine"
-        if [ "$lane" = "$lane_sh" ]; then
-            echo "          first install is deliberate operator setup: bash \"$lane\" --install"
-        else
-            echo "          first install is deliberate operator setup: pwsh -File \"$lane\" -Install -Start"
-        fi
+        echo "          first install is deliberate operator setup: bash \"$lane\" --install"
         return 0
     fi
     installed="$(head -1 "$stamp_file" 2>/dev/null | tr -d '\r')"
@@ -2329,11 +2306,7 @@ sync_cli_proxy() {
         echo "    cannot verify: host v${installed:-?} vs pin v$pin could not be compared" >&2
         echo "                   (no python3, or the version stamp is not a version) — NOT rolling." >&2
         echo "                   Roll it yourself if the pin is what you want:" >&2
-        if [ "$lane" = "$lane_sh" ]; then
-            echo "                   bash \"$lane\" --roll" >&2
-        else
-            echo "                   pwsh -NoProfile -File \"$lane\" -Install -Restart" >&2
-        fi
+        echo "                   bash \"$lane\" --roll" >&2
         return 0
     fi
     if [ "$mode" = "check" ]; then
@@ -2351,55 +2324,23 @@ sync_cli_proxy() {
         [ "$gate_rc" -eq 1 ] && return 0
         return 1
     fi
-    # Prefer the existing Windows path whenever pwsh is present. Without pwsh,
-    # delegate the whole stop -> install -> restart -> verify sequence to the
+    # Delegate the whole stop -> install -> restart -> verify sequence to the
     # lane's own --roll: chaining separate --stop/--install/
     # --restart calls here left a silent-success trap where a refused
     # --install (unit still running) meant --restart relaunched the OLD
     # binary while printing a clean "back up" — --roll's own verify step
     # catches that instead of this caller having to re-implement it.
-    if [ -z "$ps" ]; then
-        if [ "$lane" != "$lane_sh" ]; then
-            echo "    skip: pwsh not on PATH — cli-proxy-lane.ps1 is a Windows-native host script."
-            echo "          host is v${installed:-?}, pin is v$pin — roll it by hand when you are on the host."
-            return 0
-        fi
-        echo "    rolling host v${installed:-?} -> v$pin (--roll; stop -> install -> restart -> verify the pin)"
-        if bash "$lane" --roll; then
-            echo "    cli-proxy-api rolled to v$pin."
-            return 0
-        fi
-        echo "    warn: cli-proxy roll did not complete (host stays on v${installed:-?}) — see the message above." >&2
-        echo "          if it refused a bounce, a codex-lane client was connected; re-run when idle:" >&2
-        echo "          bash \"$lane\" --roll" >&2
-        # Return NON-ZERO so the caller decides what it means -- see the
-        # matching comment at the end of the pwsh branch below.
-        return 1
-    fi
-    # cygpath -m before handing the path to a WINDOWS pwsh — the repo's standing
-    # convention (setup-hooks.sh, propagate-public.sh). $lane is built from
-    # $ROOT, which under Git-Bash is the MSYS `/c/...` form; MSYS argument
-    # conversion is not guaranteed (MSYS_NO_PATHCONV, or an argument shape it
-    # does not rewrite), and PowerShell cannot resolve `/c/...` — so every roll
-    # would fail to even find the lane script. `-m` yields the C:/… form pwsh
-    # accepts. Falls back to the original path where cygpath is absent (POSIX,
-    # where $lane is already native).
-    lane_native="$lane"
-    if command -v cygpath >/dev/null 2>&1; then
-        lane_native=$(cygpath -m "$lane" 2>/dev/null || printf '%s' "$lane")
-    fi
-    echo "    rolling host v${installed:-?} -> v$pin (-Install -Restart; health-gated, rolls back on failure)"
-    if "$ps" -NoProfile -File "$lane_native" -Install -Restart; then
+    echo "    rolling host v${installed:-?} -> v$pin (--roll; stop -> install -> restart -> verify the pin)"
+    if bash "$lane" --roll; then
         echo "    cli-proxy-api rolled to v$pin."
         return 0
     fi
-    # A refusal here is usually Assert-BounceSafe declining to kill an in-flight
+    # A refusal here is usually the lane declining to kill an in-flight
     # codex-lane render — a correct refusal, not a breakage. Say so instead of
-    # implying the host is broken, and never retry with -Force from here: that
-    # override is an operator judgement call about their own live work.
+    # implying the host is broken.
     echo "    warn: cli-proxy roll did not complete (host stays on v${installed:-?}) — see the message above." >&2
     echo "          if it refused a bounce, a codex-lane client was connected; re-run when idle:" >&2
-    echo "          pwsh -NoProfile -File \"$lane\" -Install -Restart" >&2
+    echo "          bash \"$lane\" --roll" >&2
     # Return NON-ZERO so the caller decides what it means. The advisory block
     # calls this with `|| true` — a failed roll must never abort a himmel
     # update — but `--only cli_proxy` propagates it, because an operator who

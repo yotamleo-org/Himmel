@@ -18,7 +18,6 @@ FOLLOW_UPS = (
     "scripts/hooks/test-hook-chain-latency.sh",
     "scripts/hooks/test-block-chokepoint-env-prefix.sh",
     "scripts/codex/hook-smoke-demo.sh",
-    "scripts/codex/probe-codex-hooks.ps1",
     "scripts/hooks/bench-hook-stack.mjs",
 )
 
@@ -124,7 +123,7 @@ def main(root):
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
-            if (path.suffix not in (".sh", ".py", ".mjs", ".ps1") or not path.is_file()
+            if (path.suffix not in (".sh", ".py", ".mjs") or not path.is_file()
                     or not re.search(r'test|bench|smoke|probe|replay', path.name, re.I)):
                 continue
             text = path.read_text(errors="replace")

@@ -669,54 +669,27 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 13 — capability-conditional suites / SUITE_REQUIRE_TOOL.
-#   a. the REAL table entry (test-claude-openrouter-pwsh.sh / pwsh) against
-#      this host's actual pwsh availability: RUNS where pwsh exists (the point
-#      of the ticket — the suite must not be a never-run), loud [SKIP] with the
-#      capability reason where it does not. Host-conditional by design: the
-#      runner's contract IS per-host capability.
-#   b. env override with a guaranteed-absent tool: the skip branch asserted
+#   a. env override with a guaranteed-absent tool: the skip branch asserted
 #      deterministically on EVERY host, including ones that have pwsh.
-#   c. --list reflects the same disposition in the plan.
+#   b. --list reflects the same disposition in the plan.
 # --------------------------------------------------------------------------
 echo "== Case 13: capability-conditional suites (SUITE_REQUIRE_TOOL) =="
 
 # Same scripts/ layer as mk_cond_sandbox, and for the same reason: the built-in
 # SUITE_REQUIRE_TOOL entry is repo-root-relative.
-mk_cap_sandbox() {  # $1 = sandbox dir; test-pass.sh + the pwsh-suite stub
+mk_cap_sandbox() {  # $1 = sandbox dir; test-pass.sh + the capability-suite stub
   mkdir -p "$1/scripts"
   cat > "$1/scripts/test-pass.sh" <<'SHEOF'
 #!/usr/bin/env bash
 exit 0
 SHEOF
-  cat > "$1/scripts/test-claude-openrouter-pwsh.sh" <<'SHEOF'
+  cat > "$1/scripts/test-cap-tool.sh" <<'SHEOF'
 #!/usr/bin/env bash
 touch "$(dirname "$0")/cap-ran.sentinel"
 exit 0
 SHEOF
-  chmod +x "$1/scripts/test-pass.sh" "$1/scripts/test-claude-openrouter-pwsh.sh"
+  chmod +x "$1/scripts/test-pass.sh" "$1/scripts/test-cap-tool.sh"
 }
-
-# 13a — the real table entry; both branches must stay loud and attributed.
-sb13a=$(mktemp -d "${TMPDIR:-/tmp}/rst-case13a.XXXXXX") || { fail "13a: mktemp failed"; sb13a=""; }
-if [ -n "$sb13a" ]; then
-mk_cap_sandbox "$sb13a"
-sentinel13a="$sb13a/scripts/cap-ran.sentinel"
-out13a=$(bash "$RUNNER" "$sb13a/scripts" 2>&1); rc13a=$?
-if command -v pwsh >/dev/null 2>&1; then
-  if [ "$rc13a" -eq 0 ] && [ -f "$sentinel13a" ] && ! grepq "$out13a" -F '[SKIP]'; then
-    pass "13a: pwsh present -> capability suite RUNS (not SKIP_LIST dead weight)"
-  else
-    fail "13a: pwsh present -> expected the suite to run; rc=$rc13a sentinel=$([ -f "$sentinel13a" ] && echo yes || echo no); out: $out13a"
-  fi
-else
-  if [ "$rc13a" -eq 0 ] && [ ! -f "$sentinel13a" ] && grepq "$out13a" "capability: pwsh not on PATH"; then
-    pass "13a: pwsh absent -> capability suite SKIPped loudly with reason"
-  else
-    fail "13a: pwsh absent -> expected loud capability skip; rc=$rc13a sentinel=$([ -f "$sentinel13a" ] && echo yes || echo no); out: $out13a"
-  fi
-fi
-rm -rf "$sb13a"
-fi
 
 # 13b — deterministic skip branch: a tool that cannot exist, injected via the
 # env override the runner exposes for exactly this.
@@ -724,7 +697,7 @@ sb13b=$(mktemp -d "${TMPDIR:-/tmp}/rst-case13b.XXXXXX") || { fail "13b: mktemp f
 if [ -n "$sb13b" ]; then
 mk_cap_sandbox "$sb13b"
 sentinel13b="$sb13b/scripts/cap-ran.sentinel"
-out13b=$(SUITE_REQUIRE_TOOL="test-claude-openrouter-pwsh.sh  himmel-no-such-tool-1792  # deterministic absent-tool stub" \
+out13b=$(SUITE_REQUIRE_TOOL="test-cap-tool.sh  himmel-no-such-tool-1792  # deterministic absent-tool stub" \
   bash "$RUNNER" "$sb13b/scripts" 2>&1); rc13b=$?
 if [ "$rc13b" -eq 0 ] && [ ! -f "$sentinel13b" ] && grepq "$out13b" "capability: himmel-no-such-tool-1792 not on PATH"; then
   pass "13b: absent tool -> capability suite SKIPped loudly, not executed"
@@ -733,7 +706,7 @@ else
 fi
 
 # 13c — --list shows the capability skip in the plan (inspection without run).
-out13c=$(SUITE_REQUIRE_TOOL="test-claude-openrouter-pwsh.sh  himmel-no-such-tool-1792  # deterministic absent-tool stub" \
+out13c=$(SUITE_REQUIRE_TOOL="test-cap-tool.sh  himmel-no-such-tool-1792  # deterministic absent-tool stub" \
   bash "$RUNNER" --list "$sb13b/scripts" 2>&1); rc13c=$?
 if [ "$rc13c" -eq 0 ] && grepq "$out13c" "capability:"; then
   pass "13c: --list shows the capability skip in the plan"

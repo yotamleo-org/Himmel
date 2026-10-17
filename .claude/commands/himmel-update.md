@@ -71,17 +71,17 @@ pin — never the installed artifact, so the row reads `CURRENT` the instant the
 bump merges while the host still runs the old build.
 
 - **cli-proxy-api host roll** — compares the machine's version stamp against the
-  `$Version` pin in `scripts/setup/cli-proxy-lane.ps1` and runs
-  `-Install -Restart` **only when the stamp is strictly OLDER than the pin**. A
+  `VERSION` pin in `scripts/setup/cli-proxy-lane.sh` and runs
+  `--roll` **only when the stamp is strictly OLDER than the pin**. A
   host at or ahead of the pin is left alone (himmel-update never downgrades), and
   a version that cannot be compared at all — no `python3`, or a stamp like
   `custom` that is not a version — is also left alone, with the manual roll
   command printed instead. The only path to a roll is a positively established
   "behind". Semver-aware: a prerelease (`7.2.142-rc1`) sorts below the same
   stable core, so it IS behind a stable pin and rolls forward; build metadata
-  (`+build17`) carries no ordering and reads as equal. When it does roll, `cli-proxy-lane.ps1` owns the dangerous parts: it
+  (`+build17`) carries no ordering and reads as equal. When it does roll, `cli-proxy-lane.sh` owns the dangerous parts: it
   is pin-aware, refuses to bounce the proxy while a codex-lane client is actively
-  connected (`Assert-BounceSafe`), stages the swap with a rollback copy, and
+  connected, stages the swap with a rollback copy, and
   health-gates on `/v1/models`. A refused bounce is a correct refusal, not a
   failure — re-run when idle.
 - **installed-marketplaces catch-up** —
