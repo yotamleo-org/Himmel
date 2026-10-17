@@ -4209,8 +4209,9 @@ def cpscan($a):
       elif $t == "--" then go($i + 1; $s + {dd: true})
       elif ($t | startswith("-")) and $t != "-" then
         opt_scan($t) as $f
+        # jq-alt-ok: an absent flag and a false one both mean unset
         | ($s + {bigt: ($s.bigt or ($f.bigt // false)), smalln: ($s.smalln or ($f.smalln // false)),
-                  rmdest: ($s.rmdest or ($f.rmdest // false)), force: ($s.force or ($f.force // false))}) as $s2
+                  rmdest: ($s.rmdest or ($f.rmdest // false)), force: ($s.force or ($f.force // false))}) as $s2 # jq-alt-ok: an absent flag and a false one both mean unset
         | if $f.tdirs then go($i + 1; $s2 + {tdir: ($o | tail_op($f.tdirs))})
           elif $f.twant then go($i + 2; $s2 + {tdir: $a[$i + 1]})
           else go($i + 1; $s2) end

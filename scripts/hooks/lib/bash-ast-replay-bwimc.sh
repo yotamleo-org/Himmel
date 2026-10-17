@@ -92,7 +92,7 @@ _table() {
 
 case "${1:-}" in
     --sync)
-        tmp=$(mktemp) || exit 1
+        tmp=$(mktemp "${TMPDIR:-/tmp}/bash-ast-sync.XXXXXX") || exit 1
         _block > "$tmp.b" || exit 1
         awk -v b="$BEGIN_MARK" -v e="$END_MARK" -v f="$tmp.b" '
             $0 == "#@@BWIMC_AST_PROG@@" || $0 == b { while ((getline l < f) > 0) print l; skip = ($0 == b); next }
