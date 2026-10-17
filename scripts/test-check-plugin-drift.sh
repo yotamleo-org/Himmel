@@ -71,7 +71,7 @@ for p in json.load(open(sys.argv[1])).get("plugins", []):
         print(p["source"].get("sha", ""))
 PY
 )"
-if [ "$osb_sha" = "d0581201a468622c71ef4dedb20650c733e1d328" ]; then ok "obsidian-second-brain pinned past upstream #338"; else bad "obsidian-second-brain pin is $osb_sha, expected d0581201a468622c71ef4dedb20650c733e1d328 (carries upstream #338, ffmpeg 9 -fps_mode); update this row if re-pinned"; fi
+if [ "$osb_sha" = "6eccc4d0a2e546be3f62d8881f72208bf43ad2b4" ]; then ok "obsidian-second-brain pinned past upstream #338"; else bad "obsidian-second-brain pin is $osb_sha, expected 6eccc4d0a2e546be3f62d8881f72208bf43ad2b4 (carries upstream #338, ffmpeg 9 -fps_mode); update this row if re-pinned"; fi
 
 # 3. Every fork UPSTREAM_PIN carries the generic fields the checker reads.
 for pin in "$ROOT"/marketplace/plugins/*/UPSTREAM_PIN; do

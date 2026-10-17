@@ -41,6 +41,15 @@ Install Node.js LTS (`winget install OpenJS.NodeJS.LTS`), restart your shell, an
 
 </details>
 
+**Updates:** Claude Code doesn't auto-update third-party plugins by default. To turn it on, run `/plugin`, open **Marketplaces**, select **claude-hud**, and choose **Enable auto-update**. If that option isn't there, or updates don't arrive, update by hand from the terminal:
+
+```bash
+claude plugin marketplace update claude-hud
+claude plugin update claude-hud@claude-hud
+```
+
+Then run `/reload-plugins` in any open session. You don't need to run setup again.
+
 ## What You See
 
 The default is two lines:

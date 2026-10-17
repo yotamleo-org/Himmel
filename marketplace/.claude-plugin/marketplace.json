@@ -352,9 +352,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "252b560bbed0a11dfcb10749d0ab28d3efea553c"
+        "sha": "7c2ce42b6b555fc3eacbd74eeae890bfa6422e15"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 252b560bbed0a11dfcb10749d0ab28d3efea553c per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 7c2ce42b6b555fc3eacbd74eeae890bfa6422e15 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
       "strict": false,
       "skills": [
         "./"
@@ -385,9 +385,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "b46c9701f035844a20b13ab0551315977188933b"
+        "sha": "550fd66edff058bc73056c3416b76d69cfe865ba"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha b46c9701f035844a20b13ab0551315977188933b per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 550fd66edff058bc73056c3416b76d69cfe865ba per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"
@@ -510,9 +510,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/eugeniughelbur/obsidian-second-brain.git",
-        "sha": "d0581201a468622c71ef4dedb20650c733e1d328"
+        "sha": "6eccc4d0a2e546be3f62d8881f72208bf43ad2b4"
       },
-      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution only, no carried delta] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to upstream commit d0581201a468622c71ef4dedb20650c733e1d328 (upstream main, 9 commits past release tag v0.17.0, carries upstream #338 -fps_mode for ffmpeg 9; no newer tag) per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
+      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution only, no carried delta] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to upstream commit 6eccc4d0a2e546be3f62d8881f72208bf43ad2b4 (upstream main, 9 commits past release tag v0.17.0, carries upstream #338 -fps_mode for ffmpeg 9; no newer tag) per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
       "strict": true,
       "author": {
         "name": "Eugeniu Ghelbur",
