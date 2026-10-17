@@ -80,6 +80,7 @@ cmd_run() {
     [[ "$jobs" =~ ^[0-9]+$ && "$fail" =~ ^[0-9]+$ && "$jobs" -gt 0 ]] && pct="$(awk -v f="$fail" -v j="$jobs" 'BEGIN { printf "%.2f", f * 100 / j }')"
 
     red="$(src SCORECARD_RED_MAIN_CMD gh run list --repo "$REPO" --branch main --workflow CI --status failure --created ">=$since" --limit 100 --json databaseId --jq length 2>/dev/null)" || red=""
+    [[ "$red" =~ ^[0-9]+$ && "$red" -ge 100 ]] && red=""
 
     den=""
     if [ -f "${SCORECARD_DENIALS_FILE:-${HOME:-}/.himmel/state/classifier-denials.jsonl}" ]; then
@@ -97,8 +98,16 @@ cmd_run() {
     row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\tn/a\t%s\t%s\t%s\tdaily, 24h window ending %s' \
         "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$ts")"
     mkdir -p "$(dirname "$tsv")" || return 1
-    [ -f "$tsv" ] || printf '%s\n' "$HEADER" >"$tsv" || return 1
-    printf '%s\n' "$row" >>"$tsv" || return 1
+    # ponytail: mkdir lock, 30s wait; a kill -9 mid-append leaves tsv.lock to remove by hand, upgrade to flock if it recurs
+    for _ in $(seq 1 30); do mkdir "$tsv.lock" 2>/dev/null && break; sleep 1; done
+    [ -d "$tsv.lock" ] || { echo "ERR scorecard: cannot take $tsv.lock" >&2; return 1; }
+    if [ -f "$tsv" ] && cut -f1 "$tsv" | grep -qx "$date_arg"; then
+        rmdir "$tsv.lock"; echo "scorecard: $date_arg already recorded"; return 0
+    fi
+    if ! { [ -f "$tsv" ] || printf '%s\n' "$HEADER" >"$tsv"; } || ! printf '%s\n' "$row" >>"$tsv"; then
+        rmdir "$tsv.lock"; return 1
+    fi
+    rmdir "$tsv.lock"
     echo "scorecard: wrote $date_arg to $tsv"
     [ "$bad" -eq 0 ] || { echo "ERR scorecard: a source failed, its cell reads unknown" >&2; return 1; }
 }

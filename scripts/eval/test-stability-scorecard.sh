@@ -51,6 +51,12 @@ SCORECARD_DENIALS_FILE="$td/bad.jsonl" bash "$tool" run --date 2026-10-22 >/dev/
 check "malformed denial ledger exits 1" "$rc" 1
 check "malformed denial ledger reads unknown" "$(sed -n 5p "$td/s.tsv" | cut -f7)" unknown
 
+printf '%s\n' '#!/usr/bin/env bash' 'echo 100' >"$td/sat.sh"
+SCORECARD_RED_MAIN_CMD="bash $td/sat.sh" bash "$tool" run --date 2026-10-23 >/dev/null 2>&1; rc=$?
+check "red main at the 100-run cap exits 1" "$rc" 1
+check "red main at the cap reads unknown, never 100" "$(sed -n 6p "$td/s.tsv" | cut -f6)" unknown
+[ ! -d "$td/s.tsv.lock" ] && ok "no lock left behind" || bad "no lock left behind"
+
 printf 'wrong\theader\n' >"$td/bad.tsv"
 SCORECARD_TSV="$td/bad.tsv" bash "$tool" run --date 2026-10-21 >/dev/null 2>&1; rc=$?
 check "foreign header is refused" "$rc" 1
