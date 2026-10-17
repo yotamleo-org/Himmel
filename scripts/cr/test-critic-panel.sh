@@ -2382,6 +2382,67 @@ m5830_rc=$?
 check "HIMMEL-5830: failed diff temp mktemp exits 2" "$m5830_rc" "2"
 check_contains "HIMMEL-5830: failed diff temp mktemp names the failure" "$m5830_err" "critic-panel: mktemp failed"
 
+# The remaining mktemp sites (check prompt, fallback out/err, sequential out/err,
+# parallel outdir) stop with the same clear message and exit 2. One PATH-shadowed
+# stub per site fails ONLY that site's template and delegates the rest to the real
+# binary; the pass-through stub is the negative control.
+m5866_stub() {
+    local glob="$2" bin="$tmp/m5866-$1-bin"
+    mkdir -p "$bin"
+    cat > "$bin/mktemp" <<STUBEOF
+#!/usr/bin/env bash
+case "\$*" in $glob) exit 1 ;; esac
+exec "$M3492_REAL" "\$@"
+STUBEOF
+    chmod +x "$bin/mktemp"
+    printf '%s' "$bin"
+}
+m5866_assert() {
+    local label="$1" rc="$2" err="$3"
+    check "HIMMEL-5866: failed $label mktemp exits 2" "$rc" "2"
+    check_contains "HIMMEL-5866: failed $label mktemp names the failure" "$err" "critic-panel: mktemp failed"
+}
+
+m5866_bin="$(m5866_stub check '*critic-panel-check.*')"
+m5866_err="$(PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-check.json" CRITIC_INVOKE="$tmp/chk-invoke.sh" \
+    bash "$PANEL" --check </dev/null 2>&1 >/dev/null)"
+m5866_assert "check prompt" "$?" "$m5866_err"
+
+m5866_bin="$(m5866_stub seq '*critic-panel-seq.*')"
+m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
+    CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
+m5866_assert "sequential out" "$?" "$m5866_err"
+
+m5866_bin="$(m5866_stub seqerr '*critic-panel-seq-err.*')"
+m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
+    CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
+m5866_assert "sequential err" "$?" "$m5866_err"
+
+m5866_bin="$(m5866_stub par '*critic-panel-par.*')"
+m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
+    CRITIC_FIRST_PASS="$STUB" CRITIC_PARALLEL=1 bash "$PANEL" 2>&1 >/dev/null)"
+m5866_assert "parallel outdir" "$?" "$m5866_err"
+
+# The fallback chain only runs after the primary fails: reuse the rc-4 fixture,
+# whose first call fails quota-shaped.
+printf '0' > "$FBD_COUNT"
+m5866_bin="$(m5866_stub fb '*critic-panel-fb.*')"
+m5866_err="$(PATH="$m5866_bin:$PATH" HERMES_PY="$FBD_STUB" CRITICS_JSON="$FBD_JSON" \
+    CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" bash "$PANEL" <<< "$DIFF" 2>&1 >/dev/null)"
+m5866_assert "fallback out" "$?" "$m5866_err"
+
+printf '0' > "$FBD_COUNT"
+m5866_bin="$(m5866_stub fberr '*critic-panel-fb-err.*')"
+m5866_err="$(PATH="$m5866_bin:$PATH" HERMES_PY="$FBD_STUB" CRITICS_JSON="$FBD_JSON" \
+    CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" bash "$PANEL" <<< "$DIFF" 2>&1 >/dev/null)"
+m5866_assert "fallback err" "$?" "$m5866_err"
+
+# Negative control: a stub that matches no template changes nothing.
+m5866_bin="$(m5866_stub none '*no-such-template*')"
+m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
+    CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
+check "HIMMEL-5866: pass-through mktemp leaves the panel running (rc 0)" "$?" "0"
+
 # The ledger helper runs inside `while read ... < spool` loops; a helper
 # that reads stdin must not consume the remaining spool lines. Two
 # slugs (a/b, a_b) share one avail bucket, so the bucket holds two rows; a stub
