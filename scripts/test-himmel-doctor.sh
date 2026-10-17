@@ -3813,15 +3813,15 @@ rm -rf "$t"
 # C33: graphify graph staleness
 # =============================================================================
 
-echo "== C33: no handover root resolvable -> OK, never WARN =="
+echo "== C33: HANDOVER_DIR set but unresolvable -> WARN (the runner refuses with rc=2; broken is not healthy) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 no-root: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 # A HANDOVER_DIR pointed at a non-existent path fails handover_root() closed
-# (rc=2) — the exact "no handover root" case this row must not WARN on.
+# (rc=2) — graph-cadence.sh refuses the same state, so C33 must not call it OK.
 out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/does-not-exist" bash "$DOC" --no-color 2>&1)"
 c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
-if grepq "$c33_line" 'OK   C33-graph-stale' && grepq "$c33_line" -F 'no handover root'; then
-    pass "C33 -> OK (no handover root resolvable)"
+if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'handover root is broken' && grepq "$c33_line" -F 'NOT the same as healthy'; then
+    pass "C33 -> WARN (handover root unresolvable)"
 else
     fail "C33 no-root -> $c33_line"
 fi
@@ -3946,6 +3946,38 @@ else
     else
         fail "C33 stale-age -> $c33_line"
     fi
+fi
+rm -rf "$t"
+
+echo "== C33: BSD date fallback (no GNU -d) reads a Z timestamp as UTC, not local time =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 bsd-date: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/handover/.graph-cadence" "$t/shim"; write_settings "$t/claude" "$WRAPPER"
+REAL_DATE="$(command -v date)"
+# Emulates BSD date: rejects GNU -d; `date -j [-u] -f FMT TS +%s` parses TS as
+# UTC only under -u, else as the zone in $TZ. Anything else passes through.
+cat > "$t/shim/date" <<SHIM
+#!/usr/bin/env bash
+case "\$1" in
+    -d) exit 1 ;;
+    -j)
+        utc=0; shift
+        [ "\$1" = "-u" ] && { utc=1; shift; }
+        [ "\$1" = "-f" ] || exit 1
+        ts="\$3"; ts="\${ts%Z}"
+        if [ "\$utc" = 1 ]; then TZ=UTC "$REAL_DATE" -d "\$ts" +%s; else "$REAL_DATE" -d "\$ts" +%s; fi ;;
+    *) exec "$REAL_DATE" "\$@" ;;
+esac
+SHIM
+chmod +x "$t/shim/date"
+# Row stamped one hour ago; with local time at UTC+14 a local-time read puts it 15h back.
+printf '{"ts":"%s","head":"aaa","graph_head":"bbb","merges_behind":2,"action":"skipped","pr":null,"duration_s":1,"error":null}\n' \
+    "$("$REAL_DATE" -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" > "$t/handover/.graph-cadence/ledger.jsonl"
+out="$(PATH="$t/shim:$PATH" TZ=Etc/GMT-14 CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" bash "$DOC" --no-color 2>&1)"
+c33_line="$(printf '%s' "$out" | grep 'C33-graph-stale')"
+if grepq "$c33_line" 'OK   C33-graph-stale' && grepq "$c33_line" -F 'run 1h ago'; then
+    pass "C33 -> BSD date fallback parses the Z timestamp as UTC (age 1h)"
+else
+    fail "C33 bsd-date -> $c33_line"
 fi
 rm -rf "$t"
 
