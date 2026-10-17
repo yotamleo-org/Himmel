@@ -15,7 +15,7 @@ step 3 has something to validate against; if the policy changes, change both)
 |---|---|---|
 | `judgement` — taste calls, IRREVERSIBLE or destructive operations | Fable | escalation target |
 | `reasoning` — multi-step reasoning, orchestration | Opus | default parent |
-| `implementation` — well-specified implementation | Sonnet (default) or a caller-named claude-tier lane (e.g. Opus for a harder task) | impl routes to native Claude subagents only — HIMMEL-1967; an impl-class lane (claudex, hermes-oneshot, codex-exec/wsl, openrouter-claude) is ALWAYS refused as a /fanout destination, dormant or not — it isn't dispatchable via the `Agent` tool's `model` param |
+| `implementation` — well-specified implementation | Sonnet (default) or a caller-named claude-tier lane (e.g. Opus for a harder task) | impl routes to native Claude subagents only — HIMMEL-1967; an impl-class lane (claudex, hermes-oneshot, codex-exec/wsl, openrouter-claude) is ALWAYS refused as a /fanout destination, dormant or not — it isn't dispatchable via the `Agent` tool's `model` param. Mark `mechanical: true` (a specified edit list, rename sweep, fixture regeneration — the brief names the exact check) and, with no `lane`, it routes to Haiku instead (HIMMEL-2660); never mark behavioral code mechanical |
 | `research` — scoped, read-only | Sonnet | |
 | `bulk` — bulk mechanical | Haiku | **never spawns further** |
 

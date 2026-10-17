@@ -241,7 +241,15 @@ while IFS= read -r item; do
             cat "$TMP/ci.err" >&2 2>/dev/null || true
             exit 2
         fi
-        ci_conclusion=$(printf '%s' "$ci_raw" | ci_conclusion_from_runs)
+        # Classic Status API contexts never appear as check-runs; fold them in
+        # as synthetic runs so a PR gated on one cannot read as none/success.
+        if ! status_raw=$("$GH_BIN" api --paginate "repos/$nwo/commits/$head_sha/status" \
+                --jq '.statuses[] | {name: .context, status: (if .state == "pending" then "in_progress" else "completed" end), conclusion: (if .state == "success" then "success" elif .state == "pending" then null else "failure" end)}' 2>"$TMP/ci.err"); then
+            echo "ERR upstream-watch: gh api commit status for $nwo@$head_sha failed — instrument failure:" >&2
+            cat "$TMP/ci.err" >&2 2>/dev/null || true
+            exit 2
+        fi
+        ci_conclusion=$(printf '%s\n%s' "$ci_raw" "$status_raw" | ci_conclusion_from_runs)
 
         last_comment=$(printf '%s' "$pr_json" | last_comment_fields)
         last_comment_author="${last_comment%%$'\t'*}"

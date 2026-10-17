@@ -3,7 +3,7 @@
 # Run it on the station; the runner itself only ever runs inside
 # the himmel-ci-1 test VM, a linked clone of ubuntu_new@suite-ready-v4.
 #
-#   bash scripts/vm/ci-runner.sh build         bake the ci-runner-v1 snapshot (unregistered)
+#   bash scripts/vm/ci-runner.sh build         bake the ci-runner-v3 snapshot (unregistered)
 #   bash scripts/vm/ci-runner.sh run [--once]  the job loop (registers with GitHub)
 #
 # One loop iteration = one job, from a clean VM:
@@ -11,7 +11,7 @@
 #      the local stop file is absent;
 #   2. preflight: the repo's fork-PR approval policy must still be
 #      all_external_contributors (a weaker policy refuses, exit 3);
-#   3. restore ci-runner-v1, hide the station loopback, turn the VirtualBox
+#   3. restore ci-runner-v3, hide the station loopback, turn the VirtualBox
 #      clipboard and drag-and-drop off (each asserted, fail closed), boot, and
 #      check the guest's himmel_egress nft table is loaded (else refuse);
 #   4. mint a single-use, repo-level JIT runner config (labels self-hosted,
@@ -43,7 +43,7 @@ REPO="${HIMMEL_CI_RUNNER_REPO:-yotamleo/Himmel}"
 CLONE_NAME="${HIMMEL_CI_RUNNER_VM:-himmel-ci-1}"
 SOURCE_VM="ubuntu_new"
 BASE_SNAPSHOT="suite-ready-v4"
-RUNNER_SNAPSHOT="ci-runner-v1"
+RUNNER_SNAPSHOT="ci-runner-v3"
 GUEST_USER="himmel"
 JOB_MAX="${HIMMEL_CI_RUNNER_JOB_MAX:-4500}"
 WATCH="${HIMMEL_CI_RUNNER_WATCH_SECS:-30}"
@@ -77,7 +77,7 @@ else
         (cd "$HOME" && "$VBOXMANAGE" showvminfo "$CLONE_NAME" --machinereadable) | grep -qx 'localhostReachable="0"'
     }
     # Clipboard and drag-and-drop are MACHINE CONFIG a restore reverts to the
-    # snapshot's value; the ci-runner-v1 snapshot is baked with both off, and
+    # snapshot's value; the ci-runner-v3 snapshot is baked with both off, and
     # this sets and asserts them again after every restore, powered off.
     clipboard_dnd_off() {
         (cd "$HOME" && "$VBOXMANAGE" modifyvm "$CLONE_NAME" --clipboard-mode disabled --drag-and-drop disabled)
@@ -157,7 +157,12 @@ one_job() {
     # Per boot, not per image: a guest whose egress filter did not load would
     # reach the station LAN.
     # Every private-range reject must be loaded, not just the LAN one.
+    # The allow-list sets start empty each boot: fill them first, fail closed.
+    vm_ssh "sudo /usr/local/sbin/himmel-ci-egress-refresh" \
+        || die "the egress allow-list could not be loaded in $CLONE_NAME — not minting a runner"
     local r chk="sudo nft list table inet himmel_egress | grep -q 'hook output'"
+    chk="$chk && sudo nft list table inet himmel_egress | grep -q 'policy drop'"
+    chk="$chk && sudo nft list set inet himmel_egress allowed4 | grep -q 'elements'"
     for r in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do  # leak-allow: private-lan-ip egress filter ranges
         # Anchored on the set delimiters so a range cannot match a longer one it is a suffix of.
         chk="$chk && sudo nft list table inet himmel_egress | grep -qE '[{ ,]${r//./\\.}[ ,}].*reject'"
@@ -212,7 +217,7 @@ build() {
     clipboard_dnd_off || die "could not turn the clipboard and drag-and-drop off on $CLONE_NAME"
     vm_boot
     vm_ssh "rm -rf $stage && mkdir -p $stage" || die "could not stage in the guest"
-    for f in guest-provision.sh job-started-hook.sh; do
+    for f in guest-provision.sh job-started-hook.sh egress-refresh.sh; do
         vm_ssh "cat > $stage/$f" < "$REPO_ROOT/scripts/vm/ci-runner/$f" || die "staging $f failed"
     done
     vm_ssh "sudo bash $stage/guest-provision.sh $REPO" || die "guest provisioning failed"
@@ -220,6 +225,12 @@ build() {
     for f in /home /opt /root /tmp; do
         vm_guest_assert_clean vm_ssh_root "$f" full || die "the guest holds a secret-bearing file under $f — not snapshotting"
     done
+    # The power-off below is a hard one: flush the guest's page cache first, and
+    # refuse an image whose installed wrappers did not land (a bake once shipped
+    # them as 0-byte files). Nothing is snapshotted unless both are non-empty.
+    vm_ssh "sync" || die "could not sync the guest — not snapshotting"
+    vm_ssh "test -s /usr/local/sbin/himmel-ci-egress-refresh && test -s /usr/local/sbin/himmel-ci-run-job" \
+        || die "a provisioned wrapper is empty in $CLONE_NAME — not snapshotting"
     vm_poweroff || die "$CLONE_NAME did not power off — not snapshotting a running VM"
     (cd "$HOME" && "$VBOXMANAGE" snapshot "$CLONE_NAME" take "$RUNNER_SNAPSHOT" \
         --description "HIMMEL-5037: ephemeral Actions runner image, unregistered") \

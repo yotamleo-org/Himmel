@@ -79,6 +79,48 @@ else
     _fail "$NAME" "rc=$rc err=[$(cat "$TMPBASE/err")]"
 fi
 
+# PATH shim around git: GIT_SHIM_SLOW_ADD=<sec> delays `worktree add` (widens
+# the count-then-create window); GIT_SHIM_FAIL_LIST=1 fails `worktree list`.
+REAL_GIT=$(command -v git)
+SHIMDIR="$TMPBASE/shim"
+mkdir -p "$SHIMDIR"
+cat > "$SHIMDIR/git" <<SHIM
+#!/bin/sh
+case " \$* " in
+    *" worktree add "*) [ -n "\${GIT_SHIM_SLOW_ADD:-}" ] && sleep "\$GIT_SHIM_SLOW_ADD" ;;
+    *" worktree list "*) [ "\${GIT_SHIM_FAIL_LIST:-}" = 1 ] && { echo "fatal: shim" >&2; exit 128; } ;;
+esac
+exec "$REAL_GIT" "\$@"
+SHIM
+chmod +x "$SHIMDIR/git"
+
+NAME="unreadable worktree list: creation is refused (fail closed), nothing created"
+rc=0; GIT_SHIM_FAIL_LIST=1 PATH="$SHIMDIR:$PATH" mk fix/nwc-failclosed || rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$REPO/.claude/worktrees/fix+nwc-failclosed" ] \
+    && grep -Fq "cannot read worktree list" "$TMPBASE/err"; then
+    _pass "$NAME"
+else
+    _fail "$NAME" "rc=$rc err=[$(cat "$TMPBASE/err")]"
+fi
+
+NAME="two concurrent creators at ceiling-1: exactly one succeeds"
+if ! command -v flock >/dev/null 2>&1; then
+    printf 'SKIP  %s (no flock: creation is unlocked by design)\n' "$NAME"
+else
+LIVE_BEFORE=$(git -C "$REPO" worktree list --porcelain | grep -c '^worktree .*/\.claude/worktrees/' || true)
+CEIL=$(( LIVE_BEFORE + 1 ))
+( cd "$REPO" && GIT_SHIM_SLOW_ADD=2 HIMMEL_WORKTREE_CEILING=$CEIL PATH="$SHIMDIR:$PATH" bash "$NEW_WT" fix/nwc-raceA --no-install >/dev/null 2>"$TMPBASE/errA" ) & PA=$!
+( cd "$REPO" && GIT_SHIM_SLOW_ADD=2 HIMMEL_WORKTREE_CEILING=$CEIL PATH="$SHIMDIR:$PATH" bash "$NEW_WT" fix/nwc-raceB --no-install >/dev/null 2>"$TMPBASE/errB" ) & PB=$!
+rcA=0; wait "$PA" || rcA=$?
+rcB=0; wait "$PB" || rcB=$?
+LIVE_AFTER=$(git -C "$REPO" worktree list --porcelain | grep -c '^worktree .*/\.claude/worktrees/' || true)
+if [ "$LIVE_AFTER" -eq "$CEIL" ] && { [ "$rcA" -eq 0 ] || [ "$rcB" -eq 0 ]; } && { [ "$rcA" -ne 0 ] || [ "$rcB" -ne 0 ]; }; then
+    _pass "$NAME"
+else
+    _fail "$NAME" "rcA=$rcA rcB=$rcB live_after=$LIVE_AFTER ceiling=$CEIL errA=[$(cat "$TMPBASE/errA")] errB=[$(cat "$TMPBASE/errB")]"
+fi
+fi
+
 echo ""
 printf 'Results: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -11,11 +11,11 @@
 #                                powers its VM off on the way out)
 #   vm-runner.sh status          units up/idle/busy, current job, last error
 #   vm-runner.sh status --tick   the one tick token (tick.sh's vmrun= field):
-#                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK
+#                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING
 #   vm-runner.sh doctor          `<OK|WARN|FAIL><TAB><id><TAB><message>` rows
 #                                for himmel-doctor's C64 check
 #
-# VM i is `himmel-ci-<i>`: VM 1 is the baked himmel-ci-1@ci-runner-v1
+# VM i is `himmel-ci-<i>`: VM 1 is the baked himmel-ci-1@ci-runner-v3
 # (`ci-runner.sh build`), every other VM a linked clone of that snapshot.
 # Nothing here boots a VM itself; the unit's ci-runner.sh loop does, one job per
 # clean restore. The raw `ci-runner.sh run` is deliberately NOT in any allow rule.
@@ -26,6 +26,18 @@
 # hand); a drain mode that waits for in-flight jobs is the upgrade if lost jobs
 # ever cost more than a stuck kill switch.
 set -u
+
+# Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
+# what is sourced before the seam guard.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "vm-runner.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/handover/console-kit/vm-runner.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -38,7 +50,7 @@ STATE_DIR="${HIMMEL_VM_RUNNER_STATE_DIR:-$HOME/.himmel/state}"
 STOP_FILE="${HIMMEL_CI_RUNNER_STOP_FILE:-$HOME/.himmel/ci-runner.stop}"
 JOB_MAX="${HIMMEL_CI_RUNNER_JOB_MAX:-4500}"
 BASE_VM=himmel-ci-1
-SNAPSHOT=ci-runner-v1
+SNAPSHOT=ci-runner-v3
 CACHE_TTL=45
 
 die() { echo "vm-runner: $1" >&2; exit "${2:-1}"; }
@@ -93,10 +105,13 @@ ensure_clone() {
     vm_lock_release "$name"
 }
 
+# sed_esc <text> — text safe as a sed replacement with the # delimiter.
+sed_esc() { printf '%s' "$1" | sed -e 's/[\\&#]/\\&/g'; }
+
 install_unit() {
     mkdir -p "$UNIT_DIR" || die "cannot create $UNIT_DIR"
     # The units get the controller's repo and stop file, so on/off and the loops agree.
-    sed -e "s#@REPO_ROOT@#$REPO_ROOT#g" -e "s#@REPO@#$REPO#g" -e "s#@STOP_FILE@#$STOP_FILE#g" -e "s#@JOB_MAX@#$JOB_MAX#g" \
+    sed -e "s#@REPO_ROOT@#$(sed_esc "$REPO_ROOT")#g" -e "s#@REPO@#$(sed_esc "$REPO")#g" -e "s#@STOP_FILE@#$(sed_esc "$STOP_FILE")#g" -e "s#@JOB_MAX@#$(sed_esc "$JOB_MAX")#g" \
         "$REPO_ROOT/scripts/vm/ci-runner/$UNIT_PREFIX@.service" \
         > "$UNIT_DIR/$UNIT_PREFIX@.service" || die "cannot write the unit template"
     systemctl --user daemon-reload || die "systemctl --user unit reload failed"
@@ -193,6 +208,15 @@ unit_last_error() {
     unit_journal "$1" | grep -E 'ci-runner: ' | grep -vE 'registered on|done \(rc=0|deregistered' | tail -n 1 | cut -d' ' -f2-
 }
 
+# unit_failing <i> — true when the newest `ci-runner:` line is an error, so the
+# loop is up but minting nothing. Ephemeral runners register only while a job
+# runs, so GitHub's runner count cannot say this; the journal can.
+unit_failing() {
+    local last
+    last="$(unit_journal "$1" | grep -E 'ci-runner: ' | tail -n 1)"
+    [ -n "$last" ] && ! printf '%s\n' "$last" | grep -qE 'registered on|done \(rc=0|deregistered'
+}
+
 # runners_busy — how many himmel-vm runners GitHub reports busy, cached.
 runners_busy() {
     local f="$STATE_DIR/tick-vmrun-cache" now ts val
@@ -206,9 +230,9 @@ runners_busy() {
     printf '%s\n' "$val"
 }
 
-# tick_token — off | ok:<up>/<want>,busy=<n> | DEAD | STUCK
+# tick_token — off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING
 tick_token() {
-    local var up=0 want i=1 stuck=0 j
+    local var up=0 want i=1 stuck=0 failing=0 j
     # Never set up on this station: no gh call, nothing to report.
     [ -e "$UNIT_DIR/$UNIT_PREFIX@.service" ] || { echo off; return; }
     var="$(vmrun_var)" || var=""
@@ -216,6 +240,7 @@ tick_token() {
     while [ "$i" -le "$MAX_VMS" ]; do
         if unit_active "$i"; then
             up=$((up + 1))
+            ! unit_failing "$i" || failing=1
             j="$(unit_job "$i")"
             case "$j" in idle) ;; *) [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
         fi
@@ -233,6 +258,7 @@ tick_token() {
     fi
     if [ "$up" -eq 0 ]; then echo DEAD; return; fi
     if [ "$stuck" -eq 1 ]; then echo STUCK; return; fi
+    if [ "$failing" -eq 1 ]; then echo FAILING; return; fi
     echo "ok:$up/$want,busy=$(runners_busy)"
 }
 

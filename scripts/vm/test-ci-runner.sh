@@ -92,9 +92,17 @@ case "$*" in
 esac
 EOF
 chmod +x "$TMP/bin/gh"
+cat > "$TMP/bin/VBoxManage" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = snapshot ] && [ "$3" = take ] && echo "snapshot-take $4" >> "$STUB_LOG/vm.calls"
+exit 0
+EOF
+chmod +x "$TMP/bin/VBoxManage"
 # VM lib stub: records which primitives ran; vm_ssh logs its argv and stdin.
 cat > "$TMP/vmlib.sh" <<'EOF'
-vm_env_init()  { :; }
+vm_env_init()  { VBOXMANAGE="$STUB_LOG/../bin/VBoxManage"; }
+vm_clone_ensure() { :; }
+vm_guest_assert_clean() { :; }
 vm_lock_acquire_waiting() { :; }
 vm_lock_release() { echo "release" >> "$STUB_LOG/vm.calls"; }
 vm_restore()   { echo "restore $1" >> "$STUB_LOG/vm.calls"; PORT=2299; }
@@ -106,6 +114,11 @@ clipboard_dnd_disabled() { [ -z "${STUB_CLIPBOARD_ON:-}" ]; }
 localhost_unreachable() { [ -z "${STUB_LOCALHOST_REACHABLE:-}" ]; }
 vm_ssh() {
     printf '%s\n' "$*" >> "$STUB_LOG/ssh.argv"; cat >> "$STUB_LOG/ssh.stdin"
+    case "$*" in
+        sync) echo "sync" >> "$STUB_LOG/vm.calls"; return ;;
+        *"test -s"*) echo "test-s" >> "$STUB_LOG/vm.calls"; [ -z "${STUB_EMPTY_WRAPPER:-}" ]; return ;;
+    esac
+    case "$*" in *himmel-ci-egress-refresh*) [ -z "${STUB_NO_REFRESH:-}" ]; return ;; esac
     case "$*" in *"nft list table inet himmel_egress"*) [ -z "${STUB_NO_EGRESS:-}" ]; return ;; esac
     [ -n "${STUB_SSH_HARD_SLEEP:-}" ] && case "$*" in *himmel-ci-run-job*) sleep "$STUB_SSH_HARD_SLEEP" ;; esac
     if [ -n "${STUB_SSH_SLEEP:-}" ]; then
@@ -159,8 +172,8 @@ reset_log
 GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then ok "run --once exits 0"; else bad "run --once rc=$rc: $(cat "$TMP/out")"; fi
-if [ "$(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)" = "restore ci-runner-v1|nat-localhost-off|clipboard-dnd-off|boot|poweroff|release|" ]; then
-    ok "restored ci-runner-v1, hid the station loopback, turned clipboard and drag-and-drop off, booted, powered off, released the lock"
+if [ "$(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)" = "restore ci-runner-v3|nat-localhost-off|clipboard-dnd-off|boot|poweroff|release|" ]; then
+    ok "restored ci-runner-v3, hid the station loopback, turned clipboard and drag-and-drop off, booted, powered off, released the lock"
 else
     bad "vm calls: $(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)"
 fi
@@ -347,6 +360,116 @@ if ! printf '%s\n' "$wrapper" | grep -v '^#' | grep -q -- '--jitconfig' && print
 else
     bad "run-job wrapper still passes --jitconfig in argv"
 fi
+
+# --- the egress allow-list --------------------------------------------------
+echo "T16 the guest egress is an allow-list, not a deny-private list"
+nftconf=$(sed -n "/^cat > \/etc\/nftables.conf/,/^EOF/p" "$PROVISION")
+if printf '%s\n' "$nftconf" | grep -q 'chain output' && printf '%s\n' "$nftconf" | grep -q 'policy drop' \
+    && ! printf '%s\n' "$nftconf" | grep -q 'policy accept' \
+    && printf '%s\n' "$nftconf" | grep -q 'ip daddr @allowed4 accept' && printf '%s\n' "$nftconf" | grep -q 'ip6 daddr @allowed6 accept'; then
+    ok "nftables.conf: output policy drop, accept only the allowed4/allowed6 sets"
+else
+    bad "nftables.conf is still a deny list: $(printf '%s' "$nftconf" | grep -E 'policy|allowed')"
+fi
+if printf '%s\n' "$nftconf" | grep -q 'set allowed4' && printf '%s\n' "$nftconf" | grep -q 'set allowed6'; then ok "nftables.conf declares both sets"; else bad "nftables.conf has no allowed4/allowed6 set"; fi
+
+reset_log
+GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
+refresh_line=$(grep -n 'himmel-ci-egress-refresh' "$TMP/log/ssh.argv" 2>/dev/null | head -n 1 | cut -d: -f1)
+check_line=$(grep -n 'nft list table inet himmel_egress' "$TMP/log/ssh.argv" 2>/dev/null | head -n 1 | cut -d: -f1)
+if [ -n "$refresh_line" ] && [ -n "$check_line" ] && [ "$refresh_line" -lt "$check_line" ]; then ok "the loop refreshes the allow-list before it checks the table"; else bad "refresh before check (refresh=$refresh_line check=$check_line)"; fi
+if grep -q "policy drop" "$TMP/log/ssh.argv" 2>/dev/null && grep -q "allowed4" "$TMP/log/ssh.argv" 2>/dev/null; then ok "the per-boot check requires policy drop and a filled allowed4 set"; else bad "per-boot check ignores policy drop / allowed4"; fi
+
+reset_log
+STUB_NO_REFRESH=1 GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ] && ! grep -q generate-jitconfig "$TMP/log/gh.argv" && grep -qx poweroff "$TMP/log/vm.calls"; then
+    ok "a failed allow-list refresh: refused before mint, VM powered off (rc=$rc)"
+else
+    bad "failed refresh: rc=$rc, gh=$(tr '\n' '|' < "$TMP/log/gh.argv")"
+fi
+
+echo "T16b build stages every file guest-provision installs"
+if sed -n '/^build()/,/^}/p' "$LOOP" | grep -q 'for f in .*egress-refresh.sh'; then ok "build stages egress-refresh.sh into the guest"; else bad "build never stages egress-refresh.sh (guest-provision's install would fail)"; fi
+
+echo "T16c build syncs the guest and refuses an empty wrapper before the hard power-off (the v2 image shipped 0-byte scripts)"
+reset_log
+run_loop build >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$(tr '\n' '|' < "$TMP/log/vm.calls")" = "restore suite-ready-v4|clipboard-dnd-off|boot|sync|test-s|poweroff|snapshot-take ci-runner-v3|poweroff|release|" ]; then
+    ok "build: sync, then the wrapper size check, then power-off, then the ci-runner-v3 snapshot"
+else
+    bad "build call order (rc=$rc): $(tr '\n' '|' < "$TMP/log/vm.calls")"
+fi
+reset_log
+STUB_EMPTY_WRAPPER=1 run_loop build >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ] && ! grep -q '^snapshot-take' "$TMP/log/vm.calls" && grep -qx poweroff "$TMP/log/vm.calls" && grep -q 'empty' "$TMP/out"; then
+    ok "build: an empty wrapper in the guest fails the bake, no snapshot taken, VM powered off (rc=$rc)"
+else
+    bad "empty wrapper: rc=$rc, calls=$(tr '\n' '|' < "$TMP/log/vm.calls"), out=$(cat "$TMP/out")"
+fi
+
+echo "T17 egress-refresh fills the sets from /meta and the mirror hosts"
+REFRESH="$REPO_ROOT/scripts/vm/ci-runner/egress-refresh.sh"
+mkdir -p "$TMP/rbin"
+cat > "$TMP/rbin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_LOG/curl.argv"
+[ -z "${STUB_CURL_FAIL:-}" ] || exit 22
+cat "${STUB_META:?}"
+EOF
+cat > "$TMP/rbin/getent" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$2" >> "$STUB_LOG/getent.hosts"
+[ "$2" != "${STUB_NO_RESOLVE:-}" ] || exit 2
+case "$2" in
+    api.github.com) printf '%s STREAM api.github.com\n' 140.82.112.5 ;;
+    archive.ubuntu.com) printf '%s STREAM archive.ubuntu.com\n%s STREAM archive.ubuntu.com\n' 185.125.190.82 2620:2d:4000:1::1a ;;
+    *) printf '%s STREAM %s\n' 198.51.100.7 "$2" ;;
+esac
+EOF
+cat > "$TMP/rbin/nft" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_LOG/nft.argv"
+EOF
+chmod +x "$TMP/rbin/curl" "$TMP/rbin/getent" "$TMP/rbin/nft"
+run_refresh() {
+    STUB_LOG="$TMP/log" PATH="$TMP/rbin:$PATH" STUB_META="${META:-$REPO_ROOT/scripts/vm/fixtures/github-meta-sample.json}" bash "$REFRESH"
+}
+reset_log
+run_refresh >"$TMP/out" 2>&1
+rc=$?
+nftlog=$(cat "$TMP/log/nft.argv" 2>/dev/null)
+if [ "$rc" -eq 0 ]; then ok "refresh exits 0 on a real /meta sample"; else bad "refresh rc=$rc: $(cat "$TMP/out")"; fi
+for want in '192.30.252.0/22' '185.199.108.0/22' '4.148.0.0/16' '140.82.121.33/32' '140.82.112.5' '185.125.190.82'; do
+    if printf '%s\n' "$nftlog" | grep 'allowed4' | grep -qF -- "$want"; then ok "allowed4 gets $want"; else bad "allowed4 lacks $want"; fi
+done
+for want in '2a0a:a440::/29' '2602:fd5e:1::/63' '2620:2d:4000:1::1a'; do
+    if printf '%s\n' "$nftlog" | grep 'allowed6' | grep -qF -- "$want"; then ok "allowed6 gets $want"; else bad "allowed6 lacks $want"; fi
+done
+for h in api.github.com archive.ubuntu.com security.ubuntu.com pypi.org files.pythonhosted.org registry.npmjs.org; do
+    if grep -qx "$h" "$TMP/log/getent.hosts" 2>/dev/null; then ok "mirror host $h resolved"; else bad "mirror host $h never resolved"; fi
+done
+if printf '%s\n' "$nftlog" | grep -qF '8.8.8.8'; then bad "a non-allow-listed address reached a set"; else ok "no non-allow-listed address in the sets"; fi
+reset_log
+STUB_CURL_FAIL=1 run_refresh >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "an unreachable /meta fails closed (rc=$rc)"; else bad "unreachable /meta exited 0"; fi
+printf '{}' > "$TMP/empty-meta.json"
+reset_log
+META="$TMP/empty-meta.json" run_refresh >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "an empty /meta fails closed (rc=$rc)"; else bad "empty /meta exited 0"; fi
+reset_log
+STUB_NO_RESOLVE=pypi.org run_refresh >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "a mirror host that does not resolve fails closed (rc=$rc)"; else bad "unresolvable mirror host exited 0"; fi
+printf 'not json' > "$TMP/bad-meta.json"
+reset_log
+META="$TMP/bad-meta.json" run_refresh >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "an unparseable /meta fails closed (rc=$rc)"; else bad "unparseable /meta exited 0"; fi
 
 echo
 echo "test-ci-runner: $pass passed, $fail failed"

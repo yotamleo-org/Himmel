@@ -21,3 +21,11 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   stays on the 5-minute cache TTL (prediction table:
   `docs/internals/prompt-cache.md`). After each judge, append its ledger row:
   `bash scripts/eval/judge-cache-row.sh --ledger <ledger> <agent-*.jsonl>`.
+- **Convene at the cheapest tier that can rule** (HIMMEL-1864): start a judge call at
+  Sonnet or Opus and escalate only when it returns above-my-tier
+  (`bash scripts/handover/console-kit/judge-ladder.sh next-tier <tier>`; Fable's next
+  rung is the operator). Spend each convening with `judge-ladder.sh convene <seat>
+  <tier>` first: a per-seat, per-window budget refuses (rc 3) once spent, because a
+  dispute that triggers a convening mints work on the scarcest bank. A finding class of
+  `guard-no-fire` or `invariant-regression` skips the ladder and the budget:
+  `judge-ladder.sh breakglass <class>` routes it to the operator at once.

@@ -25,8 +25,15 @@ groups:
       # a run mid-batch. Fires within one evaluation cycle of the end row
       # landing (short window, no `for` grace — a truncated run is already a
       # completed, terminal fact by the time it's observed).
+      # HIMMEL-1634: alerts on RECENCY of the last failure, not on increase()
+      # over flow_run_outcome_total — that series is a sliding 14d fold that
+      # decreases as rows expire, which increase() reads as a counter reset
+      # (spurious page) and which can mask a new failure when an expiry offsets
+      # the addition. flow_run_last_failure_timestamp only moves forward when a
+      # new failure lands, so an expiring old failure cannot page and a new one
+      # pages once, until it ages past the 15m window.
       - alert: HimmelFlowRunTruncated
-        expr: increase(flow_run_outcome_total{outcome="truncated"}[15m]) > 0
+        expr: (time() - flow_run_last_failure_timestamp{outcome="truncated"}) < 900
         for: 0m
         labels:
           severity: page
@@ -34,9 +41,10 @@ groups:
           summary: 'Flow {{ $labels.flow }} run truncated in the last 15m'
 
       # HIMMEL-918 failure mode: transient CLI/API death reporting a nonzero
-      # exit.
+      # exit. Same event-time recency shape as HimmelFlowRunTruncated above
+      # (HIMMEL-1634).
       - alert: HimmelFlowRunError
-        expr: increase(flow_run_outcome_total{outcome="error"}[15m]) > 0
+        expr: (time() - flow_run_last_failure_timestamp{outcome="error"}) < 900
         for: 0m
         labels:
           severity: page
@@ -58,17 +66,15 @@ groups:
       # has no severity routing.
       # HIMMEL-1695: this stays a LEVEL check, NOT increase(). The alert-fatigue
       # fix is the `flow!="armed-resume"` exclusion above — that alone stops the
-      # 11 standing armed-resume stalls from paging. Switching to increase() is a
-      # SEPARABLE change and is unsound here: flow_run_outcome_total is declared
-      # a counter but is rebuilt from a sliding 14d ledger window
-      # (flow-exporter.ts:305-339), so its value DECREASES when rows age out or
-      # the exporter restarts. Prometheus reads that decrease as a counter reset,
-      # which can page with no new stall AND can hide a new stall when an
-      # expiration offsets the increment. Same reasoning HimmelSessionDead states
-      # below for its own gauge: a terminal fact observed after the fact is a
-      # level, not a rate. Revisit only once HIMMEL-1695 lands a durable
-      # monotonic stall-event counter — and do not substitute delta() without
-      # testing simultaneous expiration and new-stall cases.
+      # 11 standing armed-resume stalls from paging. HIMMEL-1634: the level now
+      # reads flow_run_stalled_current, a gauge of the unpaired starts past their
+      # deadline RIGHT NOW (flow-exporter.ts), not the stalled bucket of
+      # flow_run_outcome_total, which is a sliding-window fold declared a counter.
+      # The gauge drops to 0 when the run ends or ages out of the stalled TTL,
+      # so the alert clears instead of riding a total. Do not substitute
+      # increase() or delta() over flow_run_outcome_total: its value DECREASES
+      # when rows age out or the exporter restarts, which Prometheus reads as a
+      # counter reset.
       #
       # HIMMEL-2211: this alert sent 53 Telegram pages in one night for ZERO
       # real incidents, from two compounding defects, both now fixed:
@@ -94,7 +100,7 @@ groups:
       # resolves the alert, which is what turned one stall into 51 resolve/
       # fire pairs a night.
       - alert: HimmelFlowRunStalled
-        expr: flow_run_outcome_total{outcome="stalled",flow!="armed-resume"} > 0
+        expr: flow_run_stalled_current{flow!="armed-resume"} > 0
         for: 10m
         keep_firing_for: 30m
         labels:
@@ -435,6 +441,30 @@ groups:
           severity: warn
         annotations:
           summary: '{{ $value }} hook-chain skip log(s) unreadable — hook_chain_budget_events_recent may be under-counting'
+
+      # ---- HIMMEL-6036: per-guard denial friction -----------------------------
+      # himmel_tool_denial_sessions / himmel_tool_sessions come from the same
+      # 24h tool-call census fold as himmel_tool_denials_total, but count
+      # DISTINCT sessions, so a guard that fires thousands of times on a few
+      # sessions reads differently from one that hits most of them. The
+      # `and on(project) ... > 0` clause keeps the division off a zero
+      # denominator. Both rules are filters (empty = healthy), so the Grafana
+      # twins use noDataState: OK.
+      - alert: HimmelGuardDenialShareHigh
+        expr: himmel_tool_denial_sessions / on(project) group_left() himmel_tool_sessions > 0.25 and on(project) himmel_tool_sessions > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'guard {{ $labels.guard }} denied {{ $value | humanizePercentage }} of {{ $labels.project }} sessions in the last day'
+
+      - alert: HimmelGuardDenialRepeat
+        expr: himmel_tool_denial_max_per_session >= 3
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'one {{ $labels.project }} session was denied {{ $value }} times by guard {{ $labels.guard }} in the last day'
 
       # ---- HIMMEL-4652: eval drift ------------------------------------------
       # himmel_eval_* come from flow-exporter.ts reading the eval-runs ledger

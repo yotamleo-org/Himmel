@@ -100,6 +100,19 @@ if [ "$1" = "api" ]; then
       jq -c --arg k "$key" '(.check_runs[$k] // [])[]' "$world" 2>/dev/null
       exit 0
       ;;
+    repos/*/commits/*/status)
+      rest="${path#repos/}"
+      nwo="${rest%%/commits/*}"
+      sha="${rest#*/commits/}"; sha="${sha%%/status}"
+      key="$nwo@$sha"
+      [ -f "$state/fail_status" ] && fail_call status
+      # real gh applies --jq to the combined-status body; do the same so the
+      # script's state -> status/conclusion mapping is what the test exercises.
+      expr=""; prev=""
+      for a in "$@"; do [ "$prev" = "--jq" ] && expr="$a"; prev="$a"; done
+      jq -c --arg k "$key" '{statuses: (.statuses[$k] // [] | map({context: .name, state}))}' "$world" | jq -c "$expr"
+      exit 0
+      ;;
   esac
   fail_call "unhandled api $path"
 fi
@@ -299,6 +312,32 @@ out=$(run_watch "$state" 2>&1); rc=$?
 assert_eq 10 "$rc" "CI-flip delta: exit code"
 report="$(report_path "$state")"
 assert_has "$(cat "$report" 2>/dev/null)" "CI: success -> failure" "CI-flip delta: report shows CI change"
+
+echo "== test: legacy commit-status folds into the CI conclusion =="
+for case in "failure:failure" "error:failure" "pending:pending" "success:success"; do
+  st="${case%%:*}"; want="${case##*:}"
+  state=$(new_scratch)
+  base_world | jq --arg st "$st" '.statuses["acme/widget@deadbeef"] = [{name:"legacy-ci", state:$st}]' > "$state/world.json"
+  out=$(run_watch "$state" 2>&1); rc=$?
+  assert_eq 10 "$rc" "legacy status $st: exit code"
+  got=$(jq -r '.items["acme/widget#12"].ci_conclusion' "$state/himmel-state/last_seen.json" 2>/dev/null)
+  assert_eq "$want" "$got" "legacy status $st with green check-runs: ci_conclusion"
+done
+
+echo "== test: legacy status alone (no check-runs) is not 'none' =="
+state=$(new_scratch)
+base_world | jq '.check_runs = {} | .statuses["acme/widget@deadbeef"] = [{name:"legacy-ci", state:"failure"}]' > "$state/world.json"
+out=$(run_watch "$state" 2>&1); rc=$?
+got=$(jq -r '.items["acme/widget#12"].ci_conclusion' "$state/himmel-state/last_seen.json" 2>/dev/null)
+assert_eq "failure" "$got" "status-only failure: ci_conclusion"
+
+echo "== test: status API failure => instrument-failure exit 2 =="
+state=$(new_scratch)
+base_world > "$state/world.json"
+: > "$state/fail_status"
+out=$(run_watch "$state" 2>&1); rc=$?
+assert_eq 2 "$rc" "status API failure: exit code"
+assert_has "$out" "commit status" "status API failure: error names the status call"
 
 echo "== test: vanished-item delta (merged) =="
 state=$(new_scratch)

@@ -23,15 +23,11 @@
 # healthy query still returns a PRESENT series valued 0 — so an EMPTY result
 # means the underlying data is genuinely missing (dark data), and that
 # absence is itself the alarm, distinct from "nothing happened".
-# himmel_flow_truncated is the example:
-# `increase(flow_run_outcome_total{outcome="truncated"}[15m])` returns a
-# series, valued 0, for every flow with observed runs — it goes empty only
-# when no flow_run_outcome_total series exists at all, i.e. the exporter is
-# reporting no flow data whatsoever. THAT is the alarm; "nothing was
-# truncated" is what the 0 value means, and is not what absence signals here.
-# (refId A here is an `increase()` over a window, not a bare selector —
-# bare-selector-ness was never the real criterion, just a proxy that happens
-# to hold for some rules and visibly fails for this one.)
+# An `increase()` over a window was the example here (the old
+# himmel_flow_truncated: it returned a series valued 0 for every flow with
+# observed runs, so its absence meant no flow data whatsoever). HIMMEL-1634
+# moved himmel_flow_truncated / himmel_flow_error to a recency filter, so both
+# are now noDataState: OK by the comparison rule below.
 # When refId A instead embeds a comparison (`== 0`, `> N`, an `unless`/set
 # operation, etc.), that comparison is a PromQL FILTER: the query returns an
 # EMPTY vector in the HEALTHY case, and noDataState: NoData then turns
@@ -41,8 +37,8 @@
 # filtering, so `gt -1` on refId B marks a rule that must NEVER use
 # noDataState: NoData.
 #
-# Known design residual (HIMMEL-2485): all seven NoData rules below
-# (himmel_flow_truncated, himmel_flow_error, himmel_orphan_processes,
+# Known design residual (HIMMEL-2485): all five NoData rules below
+# (himmel_orphan_processes,
 # himmel_session_dead, himmel_hook_chain_budget_pressure,
 # himmel_hook_chain_budget_denials, himmel_hook_chain_log_unreadable) fire
 # independently on that same one dark-data condition — a dead exporter —
@@ -115,7 +111,7 @@ groups:
             relativeTimeRange: { from: 900, to: 0 }
             datasourceUid: prometheus
             model:
-              expr: increase(flow_run_outcome_total{outcome="truncated"}[15m])
+              expr: (time() - flow_run_last_failure_timestamp{outcome="truncated"}) < 900
               instant: true
               refId: A
           - refId: B
@@ -124,10 +120,12 @@ groups:
               type: threshold
               expression: A
               conditions:
-                - evaluator: { type: gt, params: [0] }
+                - evaluator: { type: gt, params: [-1] }
               datasource: { type: __expr__, uid: __expr__ }
               refId: B
-        noDataState: NoData
+        # HIMMEL-1634: refId A filters in PromQL (`< 900`) — an empty vector
+        # is the healthy case (no recent failure), not absence. See file header.
+        noDataState: OK
         execErrState: Alerting
         for: 0m
         labels:
@@ -143,7 +141,7 @@ groups:
             relativeTimeRange: { from: 900, to: 0 }
             datasourceUid: prometheus
             model:
-              expr: increase(flow_run_outcome_total{outcome="error"}[15m])
+              expr: (time() - flow_run_last_failure_timestamp{outcome="error"}) < 900
               instant: true
               refId: A
           - refId: B
@@ -152,10 +150,12 @@ groups:
               type: threshold
               expression: A
               conditions:
-                - evaluator: { type: gt, params: [0] }
+                - evaluator: { type: gt, params: [-1] }
               datasource: { type: __expr__, uid: __expr__ }
               refId: B
-        noDataState: NoData
+        # HIMMEL-1634: refId A filters in PromQL (`< 900`) — an empty vector
+        # is the healthy case (no recent failure), not absence. See file header.
+        noDataState: OK
         execErrState: Alerting
         for: 0m
         labels:
@@ -216,11 +216,11 @@ groups:
             model:
               # HIMMEL-1695: LEVEL check, not increase() — must stay in lockstep
               # with alerts.rules.yml's HimmelFlowRunStalled. The alert-fatigue
-              # fix is the `flow!="armed-resume"` exclusion; increase() over
-              # flow_run_outcome_total is unsound because that series is rebuilt
-              # from a sliding 14d ledger window and decreases as rows age out,
-              # which Prometheus reads as a counter reset.
-              expr: flow_run_outcome_total{outcome="stalled",flow!="armed-resume"}
+              # fix is the `flow!="armed-resume"` exclusion. HIMMEL-1634: reads
+              # the flow_run_stalled_current gauge (stalls current NOW), not the
+              # sliding-window flow_run_outcome_total, which decreases as rows
+              # age out and which Prometheus reads as a counter reset.
+              expr: flow_run_stalled_current{flow!="armed-resume"}
               instant: true
               refId: A
           - refId: B
@@ -768,6 +768,65 @@ groups:
           severity: warn
         annotations:
           summary: '{{ $values.A.Value }} hook-chain skip log(s) unreadable — hook_chain_budget_events_recent may be under-counting'
+
+      # HIMMEL-6036: twins of alerts.rules.yml's HimmelGuardDenialShareHigh and
+      # HimmelGuardDenialRepeat. Same expressions. Both filter in PromQL, so an
+      # empty vector is the healthy case: noDataState OK.
+      - uid: himmel_guard_denial_share_high
+        title: "Guard denies a large share of sessions"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: himmel_tool_denial_sessions / on(project) group_left() himmel_tool_sessions > 0.25 and on(project) himmel_tool_sessions > 0
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              datasource: { type: __expr__, uid: __expr__ }
+              refId: B
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'guard {{ $labels.guard }} denied {{ $values.A.Value }} of {{ $labels.project }} sessions in the last day'
+
+      - uid: himmel_guard_denial_repeat
+        title: "One session repeatedly denied by one guard"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: himmel_tool_denial_max_per_session >= 3
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              datasource: { type: __expr__, uid: __expr__ }
+              refId: B
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'one {{ $labels.project }} session was denied {{ $values.A.Value }} times by guard {{ $labels.guard }} in the last day'
 
       # HIMMEL-4652: eval drift. Twin of alerts.rules.yml's HimmelEvalRegression.
       # refId A filters in PromQL (`== 1`), so an empty vector is the healthy

@@ -4175,6 +4175,23 @@ check "45s opted-out: HEADED_ARM_BUS is absent from the target env" "$(sed -n 's
 check "45u opted-out: an ambient HIMMEL_BUS_EXTRA is dropped" "$(sed -n 's/^EXTRA=//p' "$bus45/seen")" "<unset>"
 check "45v opted-out: no bind flag or HIMMEL_BUS_* in the launched env" "$(sed -n 's/^LAUNCHER_ENV=//p' "$bus45/seen" | tr ' ' '\n' | grep -c '^HIMMEL_BUS_\|^HEADED_ARM_BUS' || true)" "0"
 
+# --- leg-vm: the brief must name a registered, non-station test VM.
+vm_json="$tmp/vms-fixture.json"
+printf '%s\n' '{"ubuntu_new":{"os":"ubuntu","ssh_port":2222,"user":"himmel"},"win2":{"os":"windows","kind":"station","host":"win2"}}' > "$vm_json"
+vm_novm="$tmp/vm-brief-none.md"; fx_brief '# fixture brief' 'no machine named here' > "$vm_novm"
+vm_ok="$tmp/vm-brief-ok.md"; fx_brief '# fixture brief' 'Live proof on ubuntu_new.' > "$vm_ok"
+vm_station="$tmp/vm-brief-station.md"; fx_brief '# fixture brief' 'Run it on win2.' > "$vm_station"
+vm_sub="$tmp/vm-brief-sub.md"; fx_brief '# fixture brief' 'Run it on my_ubuntu_new_x.' > "$vm_sub"
+for pair in "none:$vm_novm" "station:$vm_station" "substring:$vm_sub"; do
+  rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-vm HIMMEL-9999-leg "${pair#*:}" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  check "leg-vm brief naming ${pair%%:*} test VM: refused" "$rc" "2"
+  contains "leg-vm brief naming ${pair%%:*} test VM: refusal text" "$out" "names no registered test VM"
+done
+rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-vm HIMMEL-9999-leg "$vm_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "leg-vm brief naming ubuntu_new: accepted" "$rc" "0"
+rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "leg-impl is not subject to the VM-name check" "$rc" "0"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-leg.sh"

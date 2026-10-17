@@ -33,6 +33,8 @@
 #   0  report written (or printed under --dry-run)
 #   1  usage / input error (no rows, missing columns, bad status)
 #   2  env unusable (output path unresolvable)
+# The sec_* section functions are dispatched by name from the template loop.
+# shellcheck disable=SC2329
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,6 +79,11 @@ Optional:
 
 Environment overrides:
   HANDOVER_DIR       External handover root (Mode B).
+  MORNING_REPORT_TEMPLATE  Section-order template (one id per line: header,
+                     decisions, tickets, operator-actions, unlanded,
+                     changelog). Default: <handover-root>/morning-report.tmpl,
+                     else morning-report.default.tmpl next to this script.
+                     Operator actions are always appended if not listed.
   UNLANDED_TSV       Path to a pre-computed unlanded-work.sh --tsv file (test
                      seam) — when set, scripts/unlanded-work.sh is never
                      shelled out to.
@@ -213,7 +220,7 @@ n_decisions=$(printf '%s\n' "$sorted" | awk -F'\t' '$6!=""' | grep -c . || true)
 
 # Template --------------------------------------------------------------
 
-report=$(
+sec_header() {
     cat <<EOF
 # Overnight shift report — $(date -u +%F)
 
@@ -222,10 +229,11 @@ report=$(
 > decisions block first, then review PRs in table order (\`/pr-check\`).
 
 **$total tickets**: $n_done done, $n_partial partial, $n_blocked blocked — decisions needed: **$n_decisions**.
-
-## Decisions needed ($n_decisions)
-
 EOF
+}
+
+sec_decisions() {
+    printf '## Decisions needed (%s)\n\n' "$n_decisions"
     if [ "$n_decisions" -gt 0 ]; then
         printf '%s\n' "$sorted" | awk -F'\t' '$6 != "" {
             pr = ($3 != "") ? $3 : "—"
@@ -234,19 +242,24 @@ EOF
     else
         printf '_None — no ticket needs a human decision._\n'
     fi
-    printf '\n## Tickets (%s)\n\n' "$total"
+}
+
+sec_tickets() {
+    printf '## Tickets (%s)\n\n' "$total"
     printf '| Ticket | Branch | PR | Status | Outcome |\n|---|---|---|---|---|\n'
     printf '%s\n' "$sorted" | awk -F'\t' 'NF {
         for (i = 1; i <= NF; i++) gsub(/\|/, "\\|", $i)
         pr = ($3 != "") ? $3 : "—"
         printf "| %s | `%s` | %s | %s | %s |\n", $1, $2, pr, $4, $5
     }'
-)
+}
 
-# Append standing operator actions verbatim (durable — survives regeneration).
-if [ -n "$actions_body" ]; then
-    report="$report"$'\n\n'"## Standing operator actions"$'\n\n'"$actions_body"
-fi
+# Standing operator actions verbatim (durable — survives regeneration).
+sec_actions() {
+    if [ -n "$actions_body" ]; then
+        printf '## Standing operator actions\n\n%s' "$actions_body"
+    fi
+}
 
 # Append "## Unlanded work": AGED UNLANDED-LIVE branches — work
 # committed but never opened as a PR. Advisory: a detector failure must not
@@ -254,6 +267,7 @@ fi
 # would look identical to a genuinely clean scan) — it gets its own explicit
 # "unavailable" line instead. UNLANDED_TSV is a test seam: when set, a
 # pre-computed --tsv file is read instead of shelling out to the live repo.
+sec_unlanded() {
 if [ "$NO_UNLANDED" -eq 0 ]; then
     unlanded_tsv=""
     unlanded_ok=1
@@ -291,7 +305,7 @@ if [ "$NO_UNLANDED" -eq 0 ]; then
             unlanded_ok=0
         fi
     fi
-    unlanded_section=$'\n\n## Unlanded work\n\n'
+    unlanded_section=$'## Unlanded work\n\n'
     if [ "$unlanded_ok" -eq 0 ]; then
         unlanded_section="${unlanded_section}_unlanded-work scan unavailable._"
     else
@@ -302,8 +316,9 @@ if [ "$NO_UNLANDED" -eq 0 ]; then
             unlanded_section="${unlanded_section}$(printf '%s\n' "$aged_rows" | awk -F'\t' '{ printf "- **%s** — +%s commits, age %sh (%s)\n", $2, $3, $4, $6 }')"
         fi
     fi
-    report="$report$unlanded_section"
+    printf '%s' "$unlanded_section"
 fi
+}
 
 # Append "## Changelog freshness": CHANGELOG.md is 100%
 # derived from git log, so regenerating it per-commit/per-worktree across
@@ -343,7 +358,8 @@ changelog_script_dir="$(cd "$(dirname "$changelog_script")" 2>/dev/null && pwd)"
 if [ -n "$changelog_script_dir" ]; then
     changelog_script="$changelog_script_dir/$(basename "$changelog_script")"
 fi
-changelog_section=$'\n\n## Changelog freshness\n\n'
+sec_changelog() {
+changelog_section=$'## Changelog freshness\n\n'
 changelog_rc=0
 if [ -f "$changelog_script" ]; then
     changelog_check_out="$(cd "$SCRIPT_DIR/.." && bash "$changelog_script" --check 2>&1)" || changelog_rc=$?
@@ -374,7 +390,46 @@ case "$changelog_rc" in
         ;;
     *) changelog_section="${changelog_section}_changelog freshness check unavailable._" ;;
 esac
-report="$report$changelog_section"
+printf '%s' "$changelog_section"
+}
+
+# Assemble from the template ---------------------------------------------
+# Resolution: $MORNING_REPORT_TEMPLATE > <handover-root>/morning-report.tmpl >
+# the shipped default next to this script. One section id per line; blank
+# lines and #-comments are skipped; an unknown id warns on stderr and is
+# skipped (rc unchanged). Standing operator actions are appended verbatim
+# at the end when the template does not place them, so no template can drop them.
+
+template_file=""
+if [ -n "${MORNING_REPORT_TEMPLATE:-}" ]; then
+    template_file="$MORNING_REPORT_TEMPLATE"
+    if [ ! -f "$template_file" ]; then
+        echo "ERR morning-report: MORNING_REPORT_TEMPLATE not found: $template_file" >&2
+        exit 1
+    fi
+elif tmpl_root=$(handover_root 2>/dev/null) && [ -f "$tmpl_root/morning-report.tmpl" ]; then
+    template_file="$tmpl_root/morning-report.tmpl"
+else
+    template_file="$SCRIPT_DIR/morning-report.default.tmpl"
+fi
+
+report=""
+actions_placed=0
+while IFS= read -r section_id || [ -n "$section_id" ]; do
+    section_id=$(printf '%s' "$section_id" | tr -d '\r')
+    case "$section_id" in ''|'#'*) continue ;; esac
+    case "$section_id" in
+        header|decisions|tickets|unlanded|changelog) section=$("sec_$section_id") ;;
+        operator-actions) section=$(sec_actions); actions_placed=1 ;;
+        *) echo "WARN morning-report: unknown template section '$section_id' — skipped" >&2; continue ;;
+    esac
+    [ -n "$section" ] || continue
+    if [ -n "$report" ]; then report="$report"$'\n\n'"$section"; else report="$section"; fi
+done < "$template_file"
+if [ "$actions_placed" -eq 0 ] && [ -n "$actions_body" ]; then
+    section=$(sec_actions)
+    if [ -n "$report" ]; then report="$report"$'\n\n'"$section"; else report="$section"; fi
+fi
 
 # Write / print ----------------------------------------------------------
 

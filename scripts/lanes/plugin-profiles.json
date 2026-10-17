@@ -45,6 +45,10 @@
     "Bash(SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- bash scripts/ci/test-*.sh)",
     "Bash(SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- bash templates/luna-second-brain/scripts/test-*.sh)"
   ],
+  "_comment_vmLaunchAllow": "HIMMEL-5997: the ONE rule only the leg-vm profile adds (profile field vmLaunch). It names a station-side script, not ssh: scripts/vm/launch-guest.sh refuses any VM absent from scripts/lib/vms.json, any kind=station entry (win2) and any non-ubuntu guest before it opens a connection, then runs claude on the guest with an explicit --permission-mode acceptEdits and an --allowedTools list, never a skip-permissions flag. A claude launch on this station, a wildcard ssh, or another script does not match the rule. The auto-mode classifier refused every leg that started a claude agent by hand (HIMMEL-5973, [Create Unsafe Agents]); an allow rule is checked before the classifier (HIMMEL-2959), so this is the sanctioned path.",
+  "vmLaunchAllow": [
+    "Bash(bash scripts/vm/launch-guest.sh:*)"
+  ],
   "floor": [
     "handover@himmel",
     "himmel-ops@himmel",
@@ -308,6 +312,18 @@
         "pr-review-toolkit-himmel@himmel"
       ],
       "mcpServers": ["qmd", "himmel-bus"],
+      "contextBudget": 35000,
+      "contextMode": "standard",
+      "autocompact": 200000
+    },
+    "leg-vm": {
+      "gateAllow": true,
+      "vmLaunch": true,
+      "_comment": "HIMMEL-5997: leg-impl plus vmLaunchAllow, the one rule that lets a leg start claude sessions on a registered himmel test VM through scripts/vm/launch-guest.sh. headed-arm-leg.sh refuses this profile for a brief that names no VM from scripts/lib/vms.json. Every other profile stays without the rule.",
+      "enable": [
+        "pr-review-toolkit-himmel@himmel"
+      ],
+      "mcpServers": ["qmd"],
       "contextBudget": 35000,
       "contextMode": "standard",
       "autocompact": 200000

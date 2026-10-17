@@ -89,3 +89,7 @@ set the `Bash` chain does not (`*` on every tool; `Bash|Monitor` also on
 matcher (changing what else it fires on) or split the difference some other
 way — a decision this doc does not make. That consolidation needs its own
 design ticket.
+
+## Measuring the burst a command causes
+
+`scripts/eval/burst-cost.sh [--idle SECS] -- CMD...` samples `/proc` (Linux) before and after an idle window and again after `CMD`, and prints forks/s, context switches/s, CPU busy % and CPU pressure stall for each window. Use it to put numbers on a process-creation burst, such as the hook chain above. It does not sample Defender or conhost.

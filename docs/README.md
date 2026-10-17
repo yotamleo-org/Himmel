@@ -105,8 +105,8 @@ The public repo serves this folder as a static site at
   returns 404 — `adoption-trail.html` is the entry point.
 - **Preview locally.** The same static serving, no account needed:
   `python3 -m http.server 8000 --directory docs`, then open
-  `http://localhost:8000/adoption-trail.html`. (The page loads its fonts from
-  Google Fonts; offline it falls back to system fonts.)
+  `http://localhost:8000/adoption-trail.html`. (The page makes no third-party
+  request; it uses system fonts.)
 - **Check before you merge.** `bash scripts/docs/test-adoption-trail.sh`
   resolves every link on the trail page, confirms every detail chip has its
   panel, and pins the claims that have drifted before (cadence count, lanes

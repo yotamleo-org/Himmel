@@ -51,7 +51,7 @@ printf '%s\n' "$*" >> "$STUB/vbox.argv"
 case "$*" in
     "showvminfo himmel-ci-1 --machinereadable") echo 'VMState="poweroff"'; echo 'localhostReachable="0"' ;;
     "showvminfo himmel-ci-2 --machinereadable") echo 'VMState="running"'; echo "localhostReachable=\"${STUB_REACH:-0}\"" ;;
-    "snapshot himmel-ci-1 list --machinereadable") [ -n "${STUB_NO_SNAP:-}" ] || echo 'SnapshotName="ci-runner-v1"' ;;
+    "snapshot himmel-ci-1 list --machinereadable") [ -n "${STUB_NO_SNAP:-}" ] || echo 'SnapshotName="ci-runner-v3"' ;;
     *) exit 1 ;;
 esac
 EOF
@@ -93,7 +93,7 @@ if [ "$rc" -eq 0 ]; then ok "on exits 0"; else bad "on rc=$rc: $(cat "$TMP/out")
 [ "$(cat "$TMP/stub/var" 2>/dev/null)" = on ] && ok "variable set on" || bad "variable not on"
 [ ! -e "$TMP/stop" ] && ok "stop file removed" || bad "stop file still present"
 if [ -e "$TMP/stub/active-1" ] && [ -e "$TMP/stub/active-2" ]; then ok "units 1 and 2 started"; else bad "units not both started"; fi
-if grep -q "clone himmel-ci-2 from himmel-ci-1@ci-runner-v1" "$TMP/stub/vm.calls"; then ok "VM 2 cloned from himmel-ci-1@ci-runner-v1"; else bad "clone call: $(cat "$TMP/stub/vm.calls" 2>/dev/null)"; fi
+if grep -q "clone himmel-ci-2 from himmel-ci-1@ci-runner-v3" "$TMP/stub/vm.calls"; then ok "VM 2 cloned from himmel-ci-1@ci-runner-v3"; else bad "clone call: $(cat "$TMP/stub/vm.calls" 2>/dev/null)"; fi
 if grep -qF "ExecStart=/bin/bash \"$REPO_ROOT/scripts/vm/ci-runner.sh\" run" "$TMP/units/himmel-ci-runner@.service" 2>/dev/null; then ok "unit installed with the repo root filled in"; else bad "unit file missing or unsubstituted"; fi
 
 echo "T3 --vms bounds"
@@ -139,6 +139,15 @@ journal 1 7000 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm)
 journal 1 100 "ci-runner: runner 4242 done (rc=0)"
 rm -f "$TMP/state/tick-vmrun-cache"
 case "$(run status --tick)" in ok:*) ok "a done line clears STUCK" ;; *) bad "done -> $(run status --tick)" ;; esac
+# A unit that is up but whose newest ci-runner line is an error mints nothing:
+# ephemeral runners register only while a job runs, so zero registered runners
+# is normal when idle and the journal is the only honest signal.
+journal 1 50 "ci-runner: the egress allow-list could not be loaded in himmel-ci-1 — not minting a runner"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(run status --tick)" = FAILING ] && ok "FAILING: newest ci-runner line is an error" || bad "failing -> $(run status --tick)"
+journal 1 10 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+rm -f "$TMP/state/tick-vmrun-cache"
+case "$(run status --tick)" in ok:*) ok "a later registered line clears FAILING" ;; *) bad "recovered -> $(run status --tick)" ;; esac
 
 echo "T7 status prints the units and the last error"
 reset
@@ -151,8 +160,8 @@ if grep -q '^himmel-ci-1: up idle' "$TMP/out" && grep -q '^himmel-ci-2: down las
 echo "T8 doctor rows"
 reset
 run doctor >"$TMP/out" 2>&1
-if ! grep -q '^FAIL' "$TMP/out" && grep -q 'ci-runner-v1 present' "$TMP/out" && grep -q 'all_external_contributors' "$TMP/out"; then ok "healthy: snapshot present, policy ok, no FAIL"; else bad "healthy: $(cat "$TMP/out")"; fi
-STUB_NO_SNAP=1 run doctor 2>&1 | grep -q '^FAIL.*no ci-runner-v1 snapshot' && ok "missing snapshot FAILs" || bad "missing snapshot not flagged"
+if ! grep -q '^FAIL' "$TMP/out" && grep -q 'ci-runner-v3 present' "$TMP/out" && grep -q 'all_external_contributors' "$TMP/out"; then ok "healthy: snapshot present, policy ok, no FAIL"; else bad "healthy: $(cat "$TMP/out")"; fi
+STUB_NO_SNAP=1 run doctor 2>&1 | grep -q '^FAIL.*no ci-runner-v3 snapshot' && ok "missing snapshot FAILs" || bad "missing snapshot not flagged"
 GH_APPROVAL=first_time_contributors run doctor 2>&1 | grep -q '^FAIL.*first_time_contributors' && ok "weaker policy FAILs" || bad "weaker policy not flagged"
 STUB_REACH=1 run doctor 2>&1 | grep -q '^FAIL.*loopback reachable' && ok "running VM that reaches the loopback FAILs" || bad "NAT assert not flagged"
 echo on > "$TMP/stub/var"; : > "$TMP/units/himmel-ci-runner@.service"
@@ -216,6 +225,16 @@ if [ "$rc" -ne 0 ] && [ "$(cat "$TMP/stub/var" 2>/dev/null)" = off ] && [ -e "$T
 echo "T9 usage"
 run bogus >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "unknown subcommand: rc=2" || bad "usage rc=$rc"
+
+echo "T15 review notes (HIMMEL-5641, j2574f)"
+reset
+HIMMEL_CI_RUNNER_JOB_MAX='45&0#x' run on >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -qxF 'Environment="HIMMEL_CI_RUNNER_JOB_MAX=45&0#x"' "$TMP/units/himmel-ci-runner@.service"; then ok "install_unit writes sed-special characters literally"; else bad "install_unit escape: rc=$rc $(grep JOB_MAX "$TMP/units/himmel-ci-runner@.service" 2>/dev/null)"; fi
+CHOKE="$REPO_ROOT/scripts/chokepoints.json"
+for pair in "scripts/handover/console-kit/vm-runner.sh HIMMEL_VM_RUNNER_VM_LIB" "scripts/handover/console-kit/tick.sh HIMMEL_VMRUN_PROBE"; do
+    key="${pair% *}"; seam="${pair#* }"
+    if jq -e --arg k "$key" --arg v "$seam" '.[$k].seam_env_vars | index($v)' "$CHOKE" >/dev/null 2>&1; then ok "chokepoints registers $seam on ${key##*/}"; else bad "chokepoints lacks $seam on ${key##*/}"; fi
+done
 
 echo
 echo "vm-runner: $pass passed, $fail failed"

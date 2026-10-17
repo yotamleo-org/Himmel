@@ -789,6 +789,62 @@ class TestSecretBoundary(unittest.TestCase):
         self.assertIn("REFUSING", str(cm.exception))
         snap.assert_not_called()
 
+    def _audit(self, hits=None):
+        """Run audit_base against a stubbed guest; returns (restore, down, exc)."""
+        vm = self._vm()
+        hits = hits or {}
+        def fake_run(cmd, *a, **k):
+            if cmd.startswith("test -d "):
+                return (1, "")
+            for root, out in hits.items():
+                if cmd.endswith(f"; _s {root}"):
+                    return (0, out)
+            return (0, "")
+        exc = None
+        with mock.patch.object(vm, "restore") as rest, \
+             mock.patch.object(vm, "up") as up, \
+             mock.patch.object(vm, "down") as down, \
+             mock.patch.object(vm, "run", side_effect=fake_run):
+            try:
+                vm.audit_base("base")
+            except vmsdk.VMError as e:
+                exc = e
+        return rest, up, down, exc
+
+    def test_audit_base_clean_image_passes_and_powers_off(self):
+        rest, up, down, exc = self._audit()
+        self.assertIsNone(exc)
+        rest.assert_called_once_with("base")
+        up.assert_called_once_with()
+        down.assert_called_once_with()
+
+    def test_audit_base_refuses_an_image_carrying_a_host_env(self):
+        rest, up, down, exc = self._audit(hits={"~": "/home/u/himmel-rc/.env\n"})
+        up.assert_called_once_with()
+        self.assertIsNotNone(exc)
+        self.assertIn("REFUSING", str(exc))
+        down.assert_called_once_with()
+
+    def test_audit_base_keeps_the_refusal_when_power_off_also_fails(self):
+        vm = self._vm()
+        with mock.patch.object(vm, "restore"), \
+             mock.patch.object(vm, "up"), \
+             mock.patch.object(vm, "run", return_value=(0, "/home/u/.env\n")), \
+             mock.patch.object(vm, "down", side_effect=vmsdk.VMError("poweroff failed")):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.audit_base("base")
+        self.assertIn("REFUSING", str(cm.exception))
+
+    def test_audit_base_main_exit_codes(self):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False), \
+             mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+            with mock.patch.object(vmsdk.VM, "audit_base", return_value=None):
+                self.assertEqual(vmsdk.main(["ubuntu_new", "audit-base", "base"]), 0)
+            with mock.patch.object(vmsdk.VM, "audit_base",
+                                   side_effect=vmsdk.VMError("REFUSING: x")):
+                self.assertEqual(vmsdk.main(["ubuntu_new", "audit-base", "base"]), 1)
+
     def test_assert_guest_clean_clean_and_dirty_and_unscannable(self):
         vm = self._vm()
         with mock.patch.object(vm, "run", return_value=(0, "")):

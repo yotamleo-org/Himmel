@@ -9,7 +9,14 @@ Read on demand from `console-template.md` `## Wrapping a leg`. Moved verbatim fr
 `bash scripts/handover/console-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`.
 It finds the leg doc by the message's `N<k>` label and runs
 `console-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
-means done; `ESCALATE <reason>` means do the steps below by hand. You can run
+means done; `ESCALATE <reason>` means do the steps below by hand. After a `MERGED` it
+also starts `console-kit/station-sync.sh --pr <n>` detached (HIMMEL-5945): the
+`himmel-update.sh --only` steps for the paths the PR touched, then `--versions`. The line
+ends `station=pending log=<file>` at once; the tick carries the verdict as `station=`
+(`BEHIND:pending` while it runs, `BEHIND:<components>` when behind, nothing when current)
+until the next sync. A station-local edit against the shipped version is printed in the
+log as `LOCAL-DIFF <component> <file>` and the template apply is refused for it:
+upstream the edit or drop it, never discard it silently. You can run
 `wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]`
 directly when you already hold the leg doc. The hand sequence below is the
 fallback, not the default: a measured console spent 7 to 9 full-context turns

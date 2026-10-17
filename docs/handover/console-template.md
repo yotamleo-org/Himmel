@@ -78,13 +78,12 @@ Run these, in order, and write the result as the first bullet under
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
 11. **Open your Telegram inbox.** The operator writes `/console {{SESSION_NAME}} <text>`;
     the bridge appends to your inbox file only if it already exists. The waiter
-    (step 10) creates it (`: >> "{{INBOX}}"` opens it earlier; the bridge root's
-    `consoles/{{SESSION_NAME}}.md`). The waiter reads it through
-    `inbox-follow.sh --once` with a persisted cursor, so a repeated line is a
-    duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
-    operator's authority** (a ruling, a halt, new work); it never changes
-    permissions or settings, never widens a leg's tool permissions, and never
-    replaces `merge-on-green.sh`'s GO verification. Reply with
+    (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
+    The waiter reads it through `inbox-follow.sh --once` with a persisted
+    cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
+    operator's authority** but never changes
+    permissions or settings, widens a leg's tool permissions, or replaces
+    `merge-on-green.sh`'s GO verification. Reply with
     `bun "{{REPO}}/scripts/telegram/console-route.ts" reply <chat_id> "<text>"`.
 12. **Render and publish the console board:**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
@@ -205,23 +204,23 @@ bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand s
 
 ## Standing rules
 
-- **Operator messages are additive**; pivot only on a halt or redirect.
+- **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Idle capacity is your duty.** On `WAKE underfilled`, take the wake's
   `next-dispatchable.sh` list, write briefs with `gen-briefs.py`, launch up to
-  `<slack>` legs; `capacity=unknown` means the census failed.
+  `<slack>` legs; `capacity=unknown` means the census failed. [prose]
 - **A leg's BLOCKED, permission prompt, or question comes to the console first** —
-  say so in every brief. **One session = one worktree.**
+  say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
-  *referencing* a changed file, with a verdict per suite.
-- **Agent consent needs quote-back**; silence is non-consent.
-- **Shape refused:** `console-sections/refused-shapes.md`.
-- **Never assume a lane is down:** diagnose local credential/config first.
+  *referencing* a changed file, with a verdict per suite. [prose]
+- **Agent consent needs quote-back**; silence is non-consent. [prose]
+- **Shape refused:** `console-sections/refused-shapes.md`. [prose]
+- **Never assume a lane is down:** diagnose local credential/config first. [prose]
 - **With a relay live, ack every escalation** (`ack <id>`), keep
-  ids on `acked:`, reply `duplicate <id>` to a repeat.
+  ids on `acked:`, reply `duplicate <id>` to a repeat. [prose]
 - **Keep board and tracker current** on every dispatch, GO, MERGED and
-  WRAPPED (step 12); `board=STALE` is a skipped step.
+  WRAPPED (step 12); `board=STALE` is a skipped step. [prose]
 - **Every judge question leaves four fields and persists its verdict**, and a judge
-  call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`.
+  call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`. [prose]
 
 ## Handing over
 

@@ -54,6 +54,7 @@ const contributorProfileLib = require('./lib/contributor-profile.js');
 // cadence-emit.js is the pure config->CLI-flag mapping for pipeline-cadence.sh.
 const lunaConfigLib = require('./lib/luna-config.js');
 const bridgePersistenceLib = require('./lib/bridge-persistence.js');
+const uiServiceLib = require('./lib/ui-service.js');
 const cadenceEmitLib = require('./lib/cadence-emit.js');
 const SECRETS_MANIFEST = require('./lib/secrets-manifest.json');
 // per-cadence wizard registry (pipeline/qmd/graphmap/codex-sweep
@@ -255,6 +256,9 @@ commands:
                           URL for that session instead (latest: the newest
                           ~/.claude/projects transcript); with no id, the fleet
                           page itself
+                          --service install|uninstall|status|url runs it as an
+                          always-on systemd user unit (himmel-ui.service) on a fixed
+                          port with a stable token; url prints the bookmarkable URL
   gaps                    read-only report: what does THIS setup not get from
                           the reference machine? Diffs the saved install
                           profile against a reference profile (default
@@ -332,7 +336,7 @@ const ALLOWED_OPTIONS = {
   // never a `status` mode — status --json is a golden-tested contract.
   report: ['items', 'json', 'deep'],
   // the read-only config UI server.
-  ui: ['port', 'allowAgentSession', 'agui'],
+  ui: ['port', 'allowAgentSession', 'agui', 'service', 'dryRun'],
   ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
   // project|user for set) — parsed in parseArgs's scope cases, not as --flags.
@@ -377,6 +381,7 @@ const OPTION_FLAGS = {
   port: '--port',
   allowAgentSession: '--allow-agent-session',
   agui: '--agui',
+  service: '--service',
 };
 const OPTION_DEFAULTS = {
   fromProfile: null, defaultScope: null, scope: null, contribute: false, dryRun: false, items: null, json: false, profile: null, yes: false,
@@ -388,6 +393,7 @@ const OPTION_DEFAULTS = {
   port: null,
   allowAgentSession: false,
   agui: null,
+  service: null,
 };
 // A Claude Code session id, the same shape config-ui's /api/agui/<run> accepts (agui/sse.ts RUN_ID).
 const AGUI_RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -423,6 +429,7 @@ function parseArgs(argv) {
     port: null,        // ui: --port N (null = ephemeral, HIMMEL-4254)
     allowAgentSession: false, // ui: --allow-agent-session (operator override of the agent-session refusal, HIMMEL-4350)
     agui: null,        // ui: --agui [<session-id>|latest] (also print the AG-UI page URL, HIMMEL-4480; 'fleet' = no id, HIMMEL-4712)
+    service: null,     // ui: --service install|uninstall|status|url (the always-on systemd user unit)
   };
   // the last process.exit(2) sites in
   // this parser, converted to the process.exitCode + return pattern the
@@ -507,6 +514,16 @@ function parseArgs(argv) {
       // --agui [<session-id>|latest]; the value is optional, so only
       // 'latest' or a session UUID is consumed. With neither, the URL is the fleet
       // landing.
+      case '--service': {
+        const v = argv[++i];
+        if (!['install', 'uninstall', 'status', 'url'].includes(v)) {
+          console.error('himmelctl: --service requires install, uninstall, status or url');
+          process.exitCode = 2;
+          return args;
+        }
+        args.service = v;
+        break;
+      }
       case '--agui': {
         const next = argv[i + 1];
         args.agui = next !== undefined && (next === 'latest' || AGUI_RUN_ID.test(next)) ? argv[++i] : 'fleet';
@@ -5513,6 +5530,12 @@ function cmdUi(args) {
   if (!args.allowAgentSession && Object.keys(process.env).some((k) => (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) && process.env[k])) {
     console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal, or pass --allow-agent-session to override.');
     return 2;
+  }
+  if (args.service) {
+    const r = args.service === 'install' ? uiServiceLib.install({ repoRoot: repoRoot(), port: args.port, dryRun: args.dryRun })
+      : args.service === 'uninstall' ? uiServiceLib.uninstall({ dryRun: args.dryRun }) : uiServiceLib[args.service]();
+    for (const l of r.lines) (r.ok ? console.log : console.error)(r.ok ? l : `himmelctl: ui: ${l}`);
+    return r.ok ? 0 : 1;
   }
   const server = path.join(repoRoot(), 'scripts', 'config-ui', 'server.ts');
   if (!fs.existsSync(server)) {

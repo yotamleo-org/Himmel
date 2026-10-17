@@ -675,6 +675,26 @@ if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ]; then
     exit 2
 fi
 
+# the leg-vm profile exists to start sessions on a test VM, so its
+# brief must name one: a key of scripts/lib/vms.json that is an ubuntu guest and
+# not kind=station, the same set the guest launcher accepts.
+case ",$PROFILE," in
+    *,leg-vm,*)
+        if ! node -e '
+const fs = require("fs");
+const [regFile, doc] = process.argv.slice(1);
+const reg = JSON.parse(fs.readFileSync(regFile, "utf8"));
+const text = fs.readFileSync(doc, "utf8");
+const named = Object.entries(reg).some(([vm, e]) => e.os === "ubuntu" && e.kind !== "station"
+    && new RegExp("(^|[^A-Za-z0-9_-])" + vm + "($|[^A-Za-z0-9_-])").test(text));
+process.exit(named ? 0 : 1);
+' "${HEADED_ARM_LEG_VMS_JSON:-$(dirname "$0")/../../lib/vms.json}" "$DOC" 2>/dev/null; then
+            echo "headed-arm-leg: refusing a leg-vm launch: $DOC names no registered test VM (a key of scripts/lib/vms.json that is an ubuntu guest and not a station, e.g. ubuntu_new). Name the VM in the brief." >&2
+            exit 2
+        fi
+        ;;
+esac
+
 # a fresh leg or judge brief carries a front-matter `description:`
 # line (scripts/lib/leg-identity.sh resolves it), so every surface can say what
 # the leg is doing next to its label. Same template-shaped gate as the Prior art

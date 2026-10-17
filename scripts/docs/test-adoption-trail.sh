@@ -236,6 +236,35 @@ else
   bad "internal ticket key(s) in reader-facing text" "$ticket_hits"
 fi
 
+# --- 5. NO THIRD-PARTY REQUEST ---------------------------------------------------
+
+# Opening the page must not contact any other host: a stylesheet, script, font or
+# image on an external origin discloses the visit to it (the page used to pull
+# Google Fonts). Anchor hrefs are navigation, not loads, so they are not checked.
+# The font-family rules carry local fallback stacks, so nothing needs fetching.
+find_ext_loads() {
+  perl -0777 -ne 'print "$&\n" while /<(?:link|script|img|source|iframe)\b[^>]*\b(?:href|src|srcset)\s*=\s*["\x27]?(?:https?:)?\/\/[^\s>]*|<(?:img|source)\b[^>]*\bsrcset\s*=\s*["\x27]?[^"\x27>]*?[\s,](?:https?:)?\/\/[^\s>]*|\burl\(\s*["\x27]?(?:https?:)?\/\/[^)]*\)|\@import\s+(?:url\()?["\x27]?(?:https?:)?\/\/[^;]*/gi' | cut -c1-120
+}
+# Positive controls: each attribute quoting form must be caught, so the scan
+# cannot go blind to a form the real page does not currently use.
+ctl_missed=""
+for ctl in '<link rel="stylesheet" href="https://x.example/a.css">' \
+           "<script src='https://x.example/a.js'></script>" \
+           '<img src=https://x.example/a.png>' \
+           '<img srcset="/a.png 1x, https://x.example/b.png 2x">' \
+           '<style>@import url(//x.example/a.css);</style>'; do
+  [ -n "$(printf '%s' "$ctl" | find_ext_loads)" ] || ctl_missed="$ctl_missed $ctl"
+done
+if [ -n "$ctl_missed" ]; then
+  bad "the third-party-request scan missed a control form" "$ctl_missed"
+fi
+ext_loads="$(find_ext_loads <"$PAGE")"
+if [ -z "$ext_loads" ]; then
+  ok "the page loads no stylesheet, script, font or image from an external host"
+else
+  bad "the page requests a third-party resource when opened (fonts.googleapis.com, gstatic, a CDN)" "$ext_loads"
+fi
+
 echo
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -13,6 +13,18 @@
 # Bash 3.2-compatible; no associative arrays or mapfile.
 set -uo pipefail
 
+# Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
+# what is sourced before the seam guard.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "tick.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/handover/console-kit/tick.sh || exit 96
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
@@ -160,6 +172,10 @@ which every Results bullet bumps. STALE:<age> = the board shows an older state
 embeds -- one derivation, so the generator and this field cannot disagree.
 ponytail: board=ok says the LOCAL file matches the state; tick cannot see
 whether the artifact was republished from it -- that stays the console's step.
+
+station=BEHIND:<component>,... (HIMMEL-5945) appears only when the last station-sync.sh
+run left a component behind main (state file TICK_STATION_STATE, default
+~/.himmel/state/station-sync.state); it clears on the next sync. Follows parked=.
 
 vault=<ok|STALL:<age>,<n>|PUSH-LAG:<age>|skip|unknown> (HIMMEL-4911) is the luna
 vault's commit health, from vault-status.sh (git plumbing only, fail-soft): STALL =
@@ -1325,6 +1341,15 @@ if [ "${#parked_docs[@]}" -gt 0 ]; then
     case "$parked_out" in ''|parked=none|'parked=?') ;; *[!A-Za-z0-9._:,=+@-]*) ;; parked=*) parked_tail=" $parked_out" ;; esac
 fi
 
+# station=BEHIND:<component>,...: the last station-sync.sh run (after a merge) left a
+# component behind main. ABSENT when the station was current or no sync has run; it
+# clears on the next sync. A file read only, so a quiet fleet changes no line.
+station_tail=""
+station_state="${TICK_STATION_STATE:-$HOME/.himmel/state/station-sync.state}"
+if [ -r "$station_state" ]; then
+    station_val="$(head -n 1 "$station_state" 2>/dev/null)" || station_val=""
+    case "$station_val" in BEHIND:*[!A-Za-z0-9._,:-]*) ;; BEHIND:*) station_tail=" station=$station_val" ;; esac
+fi
 # closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
 # ABSENT when 0; run `close-wrapped-leg.sh --sweep --fleet <manifest>`.
 closable_tail=""
@@ -1558,9 +1583,10 @@ if [ -f "$ciq_probe" ]; then
     fi
 fi
 
-# vmrun=off|ok:<up>/<want>,busy=<n>|DEAD|STUCK: the himmel-vm
+# vmrun=off|ok:<up>/<want>,busy=<n>|DEAD|STUCK|FAILING: the himmel-vm
 # self-hosted runner, one bounded `vm-runner.sh status --tick` call. DEAD = the
-# repo variable is on but no unit is up; STUCK = a job past JOB_MAX+600 s.
+# repo variable is on but no unit is up; STUCK = a job past JOB_MAX+600 s;
+# FAILING = a unit is up but its newest ci-runner journal line is an error.
 # console-wait.sh wakes only on those two. unknown = the probe is missing,
 # failed or timed out.
 vmrun_summary=unknown
@@ -1570,7 +1596,7 @@ if [ -f "$vmrun_probe" ]; then
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
     vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
     case "$vmrun_out" in
-        off|DEAD|STUCK|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
+        off|DEAD|STUCK|FAILING|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
     esac
 fi
 
@@ -1669,6 +1695,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
+    [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
     # `tick=` is always appended; `burn=` stays APPENDED only
@@ -1683,10 +1710,10 @@ else
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$station_tail$spare_tail"
     else
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$station_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

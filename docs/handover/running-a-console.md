@@ -380,6 +380,9 @@ PR that is already `MERGED`, GitHub reports `mergeStateStatus: UNKNOWN`
 permanently, so check 1 always fails there — that is expected, not a bug;
 the script's domain is a PR that has not yet merged.
 
+`scripts/handover/console-kit/ready-go.sh [--to <leg> --token <nonce>] [--ledger <console doc>] <pr> <sha>`
+is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
+
 The automated review ledger is keyed by head sha, so **every push needs its own review
 round**, even a one-line fix after a judge's NO-GO. A ruling of "no new
 `/pr-check` panel" leaves check 4 with no row to find, and the marker-clear
@@ -584,7 +587,7 @@ switch and record the result (and the cache-probe verdict from step 1) in the PR
 ## Controlling the VM CI runner
 
 Two VirtualBox VMs (`himmel-ci-1`, `himmel-ci-2`, cloned from the
-`ci-runner-v1` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
+`ci-runner-v3` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
 shell-unit shards. The console drives them with one script, each form a bare
 relative literal pre-approved in `.claude/settings.json`:
 

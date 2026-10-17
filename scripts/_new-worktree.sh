@@ -82,6 +82,7 @@ COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null) || { echo "ERR new-work
 # `git rev-parse --git-common-dir` may return relative path on Windows Git Bash;
 # resolve to absolute via `cd`-and-`pwd` so PRIMARY_WORKTREE is reliable.
 PRIMARY_WORKTREE=$(cd "$(dirname "$COMMON_DIR")" && pwd)
+COMMON_DIR_ABS=$(cd "$COMMON_DIR" && pwd)
 
 # Resolve the repo's default integration branch
 # so the fetch + worktree-add below target the real default.
@@ -114,11 +115,24 @@ fi
 # ponytail: static default, not yet derived from measured git latency vs count; HIMMEL-1860 slice 3.
 WT_CEILING="${HIMMEL_WORKTREE_CEILING:-100}"
 case "$WT_CEILING" in ''|*[!0-9]*) WT_CEILING=100 ;; esac
-WT_LIVE=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain -z | tr '\0' '\n' | grep -cF "worktree $PRIMARY_WORKTREE/.claude/worktrees/" || true)
-if [ "$WT_LIVE" -ge "$WT_CEILING" ]; then
-    echo "ERR new-worktree: worktree ceiling reached ($WT_LIVE live >= $WT_CEILING) — reclaim with /clean, or raise HIMMEL_WORKTREE_CEILING" >&2
-    exit 1
-fi
+# Fails closed: an unreadable worktree list is a refusal, never a count of 0.
+wt_live_count() {
+    local list
+    if ! list=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain -z | tr '\0' '\n'); then
+        echo "ERR new-worktree: cannot read worktree list — refusing to create (cannot verify the ceiling)" >&2
+        exit 1
+    fi
+    printf '%s\n' "$list" | grep -cF "worktree $PRIMARY_WORKTREE/.claude/worktrees/" || true
+}
+wt_ceiling_check() {
+    WT_LIVE=$(wt_live_count) || exit 1
+    if [ "$WT_LIVE" -ge "$WT_CEILING" ]; then
+        echo "ERR new-worktree: worktree ceiling reached ($WT_LIVE live >= $WT_CEILING) — reclaim with /clean, or raise HIMMEL_WORKTREE_CEILING" >&2
+        exit 1
+    fi
+}
+# Early cheap refusal; re-checked under the creation lock before `worktree add`.
+wt_ceiling_check
 
 # refuse creating a worktree for a branch that maps to a merged PR.
 # Run BEFORE the network fetch so the refusal is cheap and early.
@@ -172,10 +186,22 @@ if ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
         exit 1
     fi
 fi
+# Count-then-create must be atomic: serialize concurrent creators on a lock in
+# the git common dir so two of them cannot both pass at ceiling-1.
+# ponytail: no flock (e.g. stock macOS) creates unlocked and the race stays open, install util-linux flock; HIMMEL-1860.
+if command -v flock >/dev/null 2>&1; then
+    exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"
+    if ! flock -w "${HIMMEL_WORKTREE_LOCK_TIMEOUT:-120}" 9; then
+        echo "ERR new-worktree: timed out waiting for the worktree creation lock — refusing" >&2
+        exit 1
+    fi
+fi
+wt_ceiling_check
 if ! run git -C "$PRIMARY_WORKTREE" worktree add "$WORKTREE_RELATIVE" -b "$BRANCH" "origin/$DEFAULT_BRANCH"; then
     echo "ERR new-worktree: worktree add failed (log: $LOG)" >&2
     exit 1
 fi
+exec 9>&-
 
 # `-b <branch> origin/<default>` leaves the new branch tracking
 # origin/<default> (branch.autoSetupMerge), not a same-named remote branch

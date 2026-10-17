@@ -71,7 +71,17 @@ const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-g
 // so this literal carries no ':*' tail at all.
 const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh")';
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT]);
-const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'lane-review', 'lane-content', 'console-relay']);
+const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
+
+// The one rule only leg-vm adds: the sanctioned guest-launch script, relative,
+// with a tail for its args. Never ssh, claude, an absolute path or another script.
+const VM_LAUNCH_RULE_RE = /^Bash\(bash scripts\/vm\/launch-guest\.sh:\*\)$/;
+function validateVmLaunchAllow(errors, rules) {
+  if (rules === undefined) return;
+  if (!Array.isArray(rules) || rules.length === 0 || !rules.every((r) => typeof r === 'string' && VM_LAUNCH_RULE_RE.test(r))) {
+    errors.push('vmLaunchAllow must be a non-empty array holding only the launch-guest script rule');
+  }
+}
 
 function validateGateAllow(errors, rules) {
   if (rules === undefined) return; // older custom registries do not opt in
@@ -221,6 +231,9 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {
     errors.push(`profile "${name}" gateAllow must be a boolean`);
   }
+  if (spec.vmLaunch !== undefined && (typeof spec.vmLaunch !== 'boolean' || (spec.vmLaunch && (name !== 'leg-vm' || spec.gateAllow !== true)))) {
+    errors.push(`profile "${name}" vmLaunch must be a boolean, true only on leg-vm with gateAllow`);
+  }
   if (spec.gateAllow === true && !LEG_PROFILES.has(name)) {
     errors.push(`profile "${name}" gateAllow is restricted to leg-shaped profiles`);
   }
@@ -366,6 +379,9 @@ function validateProfiles(errors, registry, profiles, catalogSet, floorSet) {
     if (spec?.gateAllow === true && registry.gateAllow === undefined) {
       errors.push(`profile "${name}" gateAllow requires the registry gateAllow list`);
     }
+    if (spec?.vmLaunch === true && registry.vmLaunchAllow === undefined) {
+      errors.push(`profile "${name}" vmLaunch requires the registry vmLaunchAllow list`);
+    }
   }
 }
 
@@ -375,6 +391,7 @@ function validateProfiles(errors, registry, profiles, catalogSet, floorSet) {
 export function validateRegistry(registry) {
   const errors = [];
   validateGateAllow(errors, registry?.gateAllow);
+  validateVmLaunchAllow(errors, registry?.vmLaunchAllow);
   const floor = registry?.floor;
   const catalog = registry?.catalog;
   const profiles = registry?.profiles;
@@ -484,6 +501,7 @@ export function resolveProfile(registry, name, opts = {}) {
   }
   if (spec?.gateAllow === true) {
     const allow = [...registry.gateAllow];
+    if (spec.vmLaunch === true) allow.push(...registry.vmLaunchAllow);
     if (opts.anchor !== undefined) {
       for (const rule of anchorShipStepRules(registry, opts.anchor)) {
         if (rule && !allow.includes(rule)) allow.push(rule);

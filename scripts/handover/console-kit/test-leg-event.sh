@@ -44,7 +44,7 @@ echo "live $*" >> "$LE_LIVE_CALLS"
 exit "${LE_LIVE_RC:-0}"
 EOF2
 chmod +x "$W/wrap" "$W/list" "$W/live"
-export LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls"
+export LE_STATION_LOG="$W/station.log" LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_STATION="$W/station" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls"
 : > "$W/doc"
 run() { : > "$LE_CALLS"; : > "$LE_LIVE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
 
@@ -98,6 +98,56 @@ contains "7 step surfaced" "$out" "step pr-state failed"
 printf -- '- MERGED #2566 N2088\n' | bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" - >"$W/o" 2>&1; rc=$?
 check "8 stdin bullet rc" "$rc" 0
 contains "8 handled" "$(cat "$W/o")" "HANDLED wrap-merged N2088"
+
+# 12. the station sync after a MERGED
+cat > "$W/station" <<'EOF'
+#!/usr/bin/env bash
+echo "station $*" >> "$LE_CALLS"
+echo "STEP marketplace rc=0"
+echo "STATION=${LE_STATION_VAL:-OK}"
+exit "${LE_STATION_RC:-0}"
+EOF
+chmod +x "$W/station"
+
+# The sync runs detached (its --versions fetches and rebuilds are unbounded): the
+# line comes back at once with station=pending, the sync's output lands in the log
+# and its verdict in the state file tick.sh reads.
+export LE_STATION_LOG="$W/station.log"
+await() { local i=0; while [ "$i" -lt 50 ]; do grep -qF -- "$2" "$1" 2>/dev/null && return 0; sleep 0.1; i=$((i+1)); done; return 1; }
+
+: > "$LE_STATION_LOG"
+run "MERGED #2566 → abcdef01 (N2088)"
+await "$LE_CALLS" "station --pr 2566"; check "12 station sync gets the PR" "$?" 0
+contains "12 line says pending and names the log" "$out" "HANDLED wrap-merged N2088 station=pending log=$LE_STATION_LOG"
+await "$LE_STATION_LOG" "STATION=OK"; check "12 sync output lands in the log" "$?" 0
+
+cat > "$W/station-ld" <<'EOF'
+#!/usr/bin/env bash
+echo "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"
+echo "STATION=BEHIND:luna_template"
+EOF
+chmod +x "$W/station-ld"
+: > "$LE_STATION_LOG"
+LE_STATION="$W/station-ld" run "MERGED #2566 N2088"
+await "$LE_STATION_LOG" "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"; check "12 local-diff hunk reaches the log" "$?" 0
+
+cat > "$W/station-hang" <<'EOF'
+#!/usr/bin/env bash
+sleep 6
+EOF
+chmod +x "$W/station-hang"
+t0=$SECONDS
+LE_STATION="$W/station-hang" run "MERGED #2566 N2088"
+check "12 a hanging sync does not delay the handling" "$(( SECONDS - t0 < 4 ))" 1
+check "12 hanging sync handled rc" "$rc" 0
+contains "12 hanging sync still prints HANDLED" "$out" "HANDLED wrap-merged N2088 station=pending"
+pkill -f "$W/station-hang" 2>/dev/null || true
+
+run "WRAPPED N2078"
+lacks "12 WRAPPED runs no station sync" "$calls" "station"
+
+LE_WRAP_RC=3 run "MERGED #2566 N2088"
+lacks "12 failed wrap runs no station sync" "$calls" "station"
 
 # 9. the leg named only by its session name (the leg doc's stem) routes
 run "WRAPPED HIMMEL-2-N2088-bar-2026-10-14 lock released"

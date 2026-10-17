@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, existsSync, writeFileSync, readFileSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sessionDir, ensureSession, readMeta, writeMeta, atomicWrite } from "./bus";
@@ -219,6 +219,27 @@ test("repairCursorBeyondEof: a stale cursor over a MISSING inbox file is still r
   expect(await Bun.file(cur).text()).toBe("0");
   expect(logs.some(l => l.includes("[bus] cursor") && l.includes("beyond EOF"))).toBe(true);
   expect(seen).toEqual([{ file: f, cursor: 5000, size: 0 }]);
+});
+
+// The EOF check needs the inbox's byte length, not its contents. A sparse
+// inbox past readFile's 2 GiB ceiling cannot be loaded at all, so only a stat
+// can repair a cursor beyond it.
+test("repairCursorBeyondEof: sizes the inbox with stat, never loading it", async () => {
+  const r = root();
+  const f = join(r, "inbound.jsonl"); const cur = f + ".cursor";
+  const big = 2.5 * 1024 * 1024 * 1024;
+  writeFileSync(f, ""); truncateSync(f, big);
+  await atomicWrite(cur, String(big + 1000));
+  const seen: any[] = [];
+  const origErr = console.error;
+  console.error = () => {};
+  let repaired: boolean;
+  try { repaired = await repairCursorBeyondEof(f, cur, (info) => { seen.push(info); }); }
+  finally { console.error = origErr; }
+
+  expect(repaired).toBe(true);
+  expect(await Bun.file(cur).text()).toBe(String(big));
+  expect(seen).toEqual([{ file: f, cursor: big + 1000, size: big }]);
 });
 
 // Repairing a beyond-EOF cursor AFTER the

@@ -90,7 +90,9 @@ for pair in \
     "himmel_quiet_run_orphans|- uid: himmel_quiet_run_orphans|HimmelQuietRunOrphans|- alert: HimmelQuietRunOrphans" \
     "himmel_eval_regression|- uid: himmel_eval_regression|HimmelEvalRegression|- alert: HimmelEvalRegression" \
     "himmel_eval_stale|- uid: himmel_eval_stale|HimmelEvalStale|- alert: HimmelEvalStale" \
-    "himmel_eval_absent|- uid: himmel_eval_absent|HimmelEvalAbsent|- alert: HimmelEvalAbsent"
+    "himmel_eval_absent|- uid: himmel_eval_absent|HimmelEvalAbsent|- alert: HimmelEvalAbsent" \
+    "himmel_guard_denial_share_high|- uid: himmel_guard_denial_share_high|HimmelGuardDenialShareHigh|- alert: HimmelGuardDenialShareHigh" \
+    "himmel_guard_denial_repeat|- uid: himmel_guard_denial_repeat|HimmelGuardDenialRepeat|- alert: HimmelGuardDenialRepeat"
 do
     IFS='|' read -r label grafana_marker _name prom_marker <<<"$pair"
     grafana_for="$(extract_for "$SCRIPT_DIR/provisioning/alerting/rules.yaml" "$grafana_marker")"
@@ -150,8 +152,8 @@ RULES_FILE="$SCRIPT_DIR/provisioning/alerting/rules.yaml"
 PRIVATE_REPO_METRIC_UID="example-ws_inbox_backlog_rising"  # leak-allow: hostname sole rule uid embedding this project's private repo name; kept out of the literal list below so that list's source stays token-free
 nodatastate_table() {
     for pair in \
-        "himmel_flow_truncated|NoData" \
-        "himmel_flow_error|NoData" \
+        "himmel_flow_truncated|OK" \
+        "himmel_flow_error|OK" \
         "himmel_flow_stalled|KeepLast" \
         "himmel_flow_last_success_age|OK" \
         "himmel_scheduled_task_disabled|OK" \
@@ -170,7 +172,9 @@ nodatastate_table() {
         "himmel_hook_chain_log_unreadable|NoData" \
         "himmel_eval_regression|OK" \
         "himmel_eval_stale|OK" \
-        "himmel_eval_absent|OK"
+        "himmel_eval_absent|OK" \
+        "himmel_guard_denial_share_high|OK" \
+        "himmel_guard_denial_repeat|OK"
     do
         echo "$pair"
     done

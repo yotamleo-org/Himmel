@@ -299,6 +299,7 @@ type FlowStats = {
   observed: boolean;
   lastSuccessTimestamp?: number;
   outcomes: Record<"complete" | "truncated" | "error" | "stalled" | "abandoned", number>;
+  lastFailureTimestamp: Partial<Record<"truncated" | "error", number>>;
   latestEndMs?: number;
   latestItemsProcessed?: number | null;
   itemsProcessedTotal: number;
@@ -347,6 +348,7 @@ function emptyStats(flow: string): FlowStats {
     flow,
     observed: false,
     outcomes: { complete: 0, truncated: 0, error: 0, stalled: 0, abandoned: 0 },
+    lastFailureTimestamp: {},
     itemsProcessedTotal: 0,
     hasItemsProcessedTotal: false,
     inFlight: 0,
@@ -413,6 +415,11 @@ function foldFlowLedger(
     if (end.outcome === "complete" || end.outcome === "truncated" || end.outcome === "error") {
       s.outcomes[end.outcome]++;
       const endedMs = Date.parse(end.ended_at);
+      if ((end.outcome === "truncated" || end.outcome === "error") && Number.isFinite(endedMs)) {
+        const epoch = Math.floor(endedMs / 1000);
+        const prev = s.lastFailureTimestamp[end.outcome];
+        if (prev === undefined || epoch > prev) s.lastFailureTimestamp[end.outcome] = epoch;
+      }
       if (end.outcome === "complete" && Number.isFinite(endedMs)) {
         const epoch = Math.floor(endedMs / 1000);
         if (s.lastSuccessTimestamp === undefined || epoch > s.lastSuccessTimestamp) {
@@ -500,6 +507,16 @@ function buildFlowMetrics(
   const outcomes: Array<"complete" | "truncated" | "error" | "stalled" | "abandoned"> = ["complete", "truncated", "error", "stalled", "abandoned"];
   addFamily(lines, "flow_run_outcome_total", "Runs by outcome in the sliding 14d ledger window; exporter restarts and window slides can reset this counter. `stalled` = an unpaired start past its deadline whose process is alive or unprobeable; `abandoned` = the same, but the pid was confirmed dead on this host (HIMMEL-2211).", "counter",
     stats.flatMap((s) => s.observed ? outcomes.map((outcome) => sample("flow_run_outcome_total", { flow: s.flow, outcome }, s.outcomes[outcome])) : []));
+
+  // Event-time / currently-true families the truncated, error and
+  // stalled alerts read instead of flow_run_outcome_total, whose sliding-window
+  // total decreases as rows expire (which increase() reads as a counter reset).
+  addFamily(lines, "flow_run_last_failure_timestamp", "Epoch seconds of the most recent truncated or error run end row per flow in the 14d ledger window; alert on recency, not on flow_run_outcome_total. Omitted when the window holds no such row.", "gauge",
+    stats.flatMap((s) => (["truncated", "error"] as const).flatMap((outcome) =>
+      s.lastFailureTimestamp[outcome] === undefined ? [] : [sample("flow_run_last_failure_timestamp", { flow: s.flow, outcome }, s.lastFailureTimestamp[outcome]!)])));
+
+  addFamily(lines, "flow_run_stalled_current", "Unpaired starts past their stall deadline right now (pid alive or unprobeable, inside the stalled alert TTL); drops to 0 when the run ends or ages out.", "gauge",
+    stats.flatMap((s) => s.observed ? [sample("flow_run_stalled_current", { flow: s.flow }, s.outcomes.stalled)] : []));
 
   addFamily(lines, "flow_run_items_processed", "Last ended run items_processed value; null is omitted.", "gauge",
     stats.flatMap((s) => typeof s.latestItemsProcessed === "number" ? [sample("flow_run_items_processed", { flow: s.flow }, s.latestItemsProcessed)] : []));
@@ -1014,6 +1031,11 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
   const calls = new Map<string, Map<string, number>>();
   const errors = new Map<string, Map<string, number>>();
   const denials = new Map<string, Map<string, number>>();
+  // One census row is one session: sessions hit per guard, the worst single
+  // session per guard, and the session denominator, all in the same window.
+  const denialSessions = new Map<string, Map<string, number>>();
+  const denialMax = new Map<string, Map<string, number>>();
+  const sessions = new Map<string, Map<string, number>>();
   const cutoffMs = nowMs - TOOL_CENSUS_WINDOW_MS;
   let skipped = 0;
 
@@ -1038,6 +1060,7 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
     if (!Number.isFinite(endedAt) || endedAt < cutoffMs || endedAt > nowMs + TOOL_CENSUS_FUTURE_GRACE_MS) continue;
 
     const project = sanitizeLabelValue(row.project);
+    bump(sessions, project, "", 1);
     const toolCalls = row.tool_calls;
     if (toolCalls && typeof toolCalls === "object" && !Array.isArray(toolCalls)) {
       for (const [rawTool, value] of Object.entries(toolCalls as Record<string, unknown>)) {
@@ -1052,7 +1075,15 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
     const rowDenials = row.denials;
     if (rowDenials && typeof rowDenials === "object" && !Array.isArray(rowDenials)) {
       for (const [rawClass, value] of Object.entries(rowDenials as Record<string, unknown>)) {
-        bump(denials, project, sanitizeLabelValue(rawClass), nonNegativeInt(value));
+        const guard = sanitizeLabelValue(rawClass);
+        const n = nonNegativeInt(value);
+        bump(denials, project, guard, n);
+        if (n > 0) {
+          bump(denialSessions, project, guard, 1);
+          const byGuard = denialMax.get(project) ?? new Map<string, number>();
+          denialMax.set(project, byGuard);
+          byGuard.set(guard, Math.max(byGuard.get(guard) ?? 0, n));
+        }
       }
     }
   }
@@ -1072,6 +1103,13 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
     flatten(errors, "himmel_tool_errors_total", "tool"));
   addFamily(lines, "himmel_tool_denials_total", "Guardrail denials by class (hook name, `auto-mode-classifier`, `user-rejected`, or `hook-unclassified`) over the same 24h census window.", "counter",
     flatten(denials, "himmel_tool_denials_total", "class"));
+  addFamily(lines, "himmel_tool_denial_sessions", "Distinct census sessions with at least one denial by a guard, per guard and project, over the same 24h census window; divide by himmel_tool_sessions for the share of sessions the guard hit.", "gauge",
+    flatten(denialSessions, "himmel_tool_denial_sessions", "guard"));
+  addFamily(lines, "himmel_tool_denial_max_per_session", "Most denials one session took from a guard, per guard and project, over the same 24h census window.", "gauge",
+    flatten(denialMax, "himmel_tool_denial_max_per_session", "guard"));
+  addFamily(lines, "himmel_tool_sessions", "Census sessions per project in the same 24h window: the denominator for himmel_tool_denial_sessions.", "gauge",
+    [...sessions.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([project, byKey]) =>
+      sample("himmel_tool_sessions", { project }, byKey.get("") ?? 0)));
 
   const comments = skipped > 0 ? [`# himmel_tool_* partial: ${skipped} unparseable census row(s) skipped`] : [];
   return { lines, comments };

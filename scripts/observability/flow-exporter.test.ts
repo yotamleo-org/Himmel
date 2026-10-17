@@ -158,6 +158,14 @@ flow_run_outcome_total{flow="pipeline-synthesize",outcome="truncated"} 1
 flow_run_outcome_total{flow="pipeline-synthesize",outcome="error"} 0
 flow_run_outcome_total{flow="pipeline-synthesize",outcome="stalled"} 0
 flow_run_outcome_total{flow="pipeline-synthesize",outcome="abandoned"} 0
+# HELP flow_run_last_failure_timestamp Epoch seconds of the most recent truncated or error run end row per flow in the 14d ledger window; alert on recency, not on flow_run_outcome_total. Omitted when the window holds no such row.
+# TYPE flow_run_last_failure_timestamp gauge
+flow_run_last_failure_timestamp{flow="pipeline-harvest",outcome="error"} ${epoch("2026-07-13T08:15:00Z")}
+flow_run_last_failure_timestamp{flow="pipeline-synthesize",outcome="truncated"} ${epoch("2026-07-12T11:05:00Z")}
+# HELP flow_run_stalled_current Unpaired starts past their stall deadline right now (pid alive or unprobeable, inside the stalled alert TTL); drops to 0 when the run ends or ages out.
+# TYPE flow_run_stalled_current gauge
+flow_run_stalled_current{flow="pipeline-harvest"} 0
+flow_run_stalled_current{flow="pipeline-synthesize"} 0
 # HELP flow_run_items_processed Last ended run items_processed value; null is omitted.
 # TYPE flow_run_items_processed gauge
 flow_run_items_processed{flow="pipeline-harvest"} 3
@@ -304,6 +312,42 @@ test("fetch-health state is passive and fail-soft", async () => {
     fetchHealthStatePath: join(tmp, "absent.json"),
   });
   expect(missing).not.toContain("clip_fetch_source_");
+});
+
+test("tool-call census exports per-guard distinct-session denial series (HIMMEL-6036)", async () => {
+  const ledger = join(tmp, "flow-runs.jsonl");
+  const census = join(tmp, "tool-call-census.jsonl");
+  writeLines(ledger, []);
+  const session = (id: string, project: string, endedAt: string, denials: Record<string, number>) =>
+    JSON.stringify({
+      session_id: id, project, started_at: "2026-07-13T09:00:00.000Z", ended_at: endedAt,
+      tool_calls: { Bash: { calls: 1, errors: 0 } }, total_calls: 1, total_errors: 0, denials,
+    });
+  writeLines(census, [
+    session("s1", "himmel", "2026-07-13T11:00:00.000Z", { guardA: 1 }),
+    session("s2", "himmel", "2026-07-13T11:10:00.000Z", { guardA: 3 }),
+    session("s3", "himmel", "2026-07-13T11:20:00.000Z", { guardB: 1 }),
+    // Outside the 24h window: counts toward neither numerator nor denominator.
+    session("s4", "himmel", "2026-07-09T11:00:00.000Z", { guardA: 9 }),
+  ]);
+
+  const body = await renderMetrics({
+    nowMs: NOW,
+    configPath: join(tmp, "missing-observability.json"),
+    flowLedgerPath: ledger,
+    quotaLedgerPath: join(tmp, "none"),
+    lanesPath: join(tmp, "no-lanes.json"),
+    platform: "linux",
+    toolCensusPath: census,
+  });
+
+  expect(body).toContain('himmel_tool_denial_sessions{guard="guardA",project="himmel"} 2');
+  expect(body).toContain('himmel_tool_denial_sessions{guard="guardB",project="himmel"} 1');
+  expect(body).toContain('himmel_tool_denial_max_per_session{guard="guardA",project="himmel"} 3');
+  expect(body).toContain('himmel_tool_denial_max_per_session{guard="guardB",project="himmel"} 1');
+  expect(body).toContain('himmel_tool_sessions{project="himmel"} 3');
+  // The event counter is untouched.
+  expect(body).toContain('himmel_tool_denials_total{class="guardA",project="himmel"} 4');
 });
 
 test("tool-call census exports per-tool call/error and per-class denial counters (HIMMEL-1462)", async () => {
@@ -649,6 +693,43 @@ test("HIMMEL-2149: the stall alert TTL is measured from when a run BECAME stalle
 // directions: a confirmed-dead pid must go silent (abandoned), and a
 // confirmed-alive pid must still page (stalled) — the fail-safe fallbacks
 // (foreign host, no pid) must never downgrade a row on their own.
+
+test("HIMMEL-1634: last-failure timestamp keeps the newest truncated/error end per flow and outcome", async () => {
+  const ledger = join(tmp, "flow-runs.jsonl");
+  writeLines(ledger, [
+    serializeFlowRunEnd(flowEnd("f", "a", "2026-07-13T09:00:00Z", "error", null)),
+    serializeFlowRunEnd(flowEnd("f", "b", "2026-07-13T10:00:00Z", "error", null)),
+    serializeFlowRunEnd(flowEnd("f", "c", "2026-07-13T09:30:00Z", "error", null)),
+    serializeFlowRunEnd(flowEnd("f", "d", "2026-07-13T08:00:00Z", "truncated", null)),
+    serializeFlowRunEnd(flowEnd("f", "e", "2026-07-13T11:00:00Z", "complete", null)),
+    serializeFlowRunEnd(flowEnd("ok-only", "g", "2026-07-13T11:00:00Z", "complete", null)),
+  ]);
+  const body = await renderMetrics({ nowMs: NOW, configPath: join(tmp, "missing-observability.json"), flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json") });
+  expect(body).toContain(`flow_run_last_failure_timestamp{flow="f",outcome="error"} ${epoch("2026-07-13T10:00:00Z")}`);
+  expect(body).toContain(`flow_run_last_failure_timestamp{flow="f",outcome="truncated"} ${epoch("2026-07-13T08:00:00Z")}`);
+  expect(body).not.toContain('flow_run_last_failure_timestamp{flow="ok-only"');
+});
+
+test("HIMMEL-1634: a failure that aged out of the ledger window leaves no last-failure series", async () => {
+  const ledger = join(tmp, "flow-runs.jsonl");
+  writeLines(ledger, [serializeFlowRunEnd(flowEnd("f", "old", "2026-06-01T09:00:00Z", "error", null))]);
+  const body = await renderMetrics({ nowMs: NOW, configPath: join(tmp, "missing-observability.json"), flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json") });
+  expect(body).not.toContain("flow_run_last_failure_timestamp{");
+});
+
+test("HIMMEL-1634: stalled-current counts expired unpaired starts and falls to 0 once the run ends", async () => {
+  const ledger = join(tmp, "flow-runs.jsonl");
+  const config = join(tmp, "observability.json");
+  writeFileSync(config, JSON.stringify({ flows: [{ name: "short-flow", cadence_seconds: 100 }] }));
+  writeLines(ledger, [serializeFlowRunStart(flowStart("short-flow", "old", "2026-07-13T11:55:00Z"))]);
+  const args = { nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json") };
+  expect(await renderMetrics(args)).toContain('flow_run_stalled_current{flow="short-flow"} 1');
+  writeLines(ledger, [
+    serializeFlowRunStart(flowStart("short-flow", "old", "2026-07-13T11:55:00Z")),
+    serializeFlowRunEnd(flowEnd("short-flow", "old", "2026-07-13T11:59:00Z", "complete", null)),
+  ]);
+  expect(await renderMetrics(args)).toContain('flow_run_stalled_current{flow="short-flow"} 0');
+});
 
 test("HIMMEL-2211: a ghost row (confirmed-dead pid, same host) becomes abandoned, not stalled", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");

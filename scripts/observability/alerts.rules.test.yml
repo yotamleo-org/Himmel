@@ -18,17 +18,40 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
-  # HimmelFlowRunTruncated: fires the evaluation after a truncated row lands,
-  # stays silent while the counter is flat.
+  # HIMMEL-1634: HimmelFlowRunTruncated/Error alert on RECENCY of the last
+  # failure (flow_run_last_failure_timestamp, epoch seconds), not on increase()
+  # over the sliding-window flow_run_outcome_total. promtool's synthetic clock
+  # starts near zero, so an "old" failure is a large negative timestamp (same
+  # trick as HimmelFlowLastSuccessAgeExceeded below) and a "new" one is a value
+  # a few seconds behind the evaluation time.
+  #
+  # (a) expiry of an old failure does not page: a stale timestamp stays silent,
+  # and when the ledger row ages out the series just disappears.
   - interval: 1m
     input_series:
-      - series: 'flow_run_outcome_total{flow="pipeline-harvest",outcome="truncated"}'
-        values: '0x4 1x4'
+      - series: 'flow_run_last_failure_timestamp{flow="pipeline-harvest",outcome="truncated"}'
+        values: '-100000x5 _x10'
     alert_rule_test:
       - eval_time: 3m
         alertname: HimmelFlowRunTruncated
         exp_alerts: []
-      - eval_time: 5m
+      - eval_time: 12m
+        alertname: HimmelFlowRunTruncated
+        exp_alerts: []
+
+  # (b) a new failure pages exactly once: the timestamp jumps at t=5m (value
+  # 290 = 10s before the t=5m sample), pages while the failure is inside the
+  # 15m recency window, and resolves once it ages out; the unchanged timestamp
+  # never re-triggers it.
+  - interval: 1m
+    input_series:
+      - series: 'flow_run_last_failure_timestamp{flow="pipeline-harvest",outcome="truncated"}'
+        values: '-100000x4 290x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HimmelFlowRunTruncated
+        exp_alerts: []
+      - eval_time: 6m
         alertname: HimmelFlowRunTruncated
         exp_alerts:
           - exp_labels:
@@ -37,17 +60,52 @@ tests:
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-harvest run truncated in the last 15m'
+      - eval_time: 14m
+        alertname: HimmelFlowRunTruncated
+        exp_alerts:
+          - exp_labels:
+              flow: pipeline-harvest
+              outcome: truncated
+              severity: page
+            exp_annotations:
+              summary: 'Flow pipeline-harvest run truncated in the last 15m'
+      - eval_time: 20m
+        alertname: HimmelFlowRunTruncated
+        exp_alerts: []
+
+  # The expiry-masking defect: an old failure ages out of the ledger (series
+  # drops) while a different flow's new failure lands — the new one still pages.
+  - interval: 1m
+    input_series:
+      - series: 'flow_run_last_failure_timestamp{flow="old-flow",outcome="truncated"}'
+        values: '-100000x3 _x10'
+      - series: 'flow_run_last_failure_timestamp{flow="new-flow",outcome="truncated"}'
+        values: '-100000x3 170x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HimmelFlowRunTruncated
+        exp_alerts:
+          - exp_labels:
+              flow: new-flow
+              outcome: truncated
+              severity: page
+            exp_annotations:
+              summary: 'Flow new-flow run truncated in the last 15m'
 
   # HimmelFlowRunError: same shape, outcome=error.
   - interval: 1m
     input_series:
-      - series: 'flow_run_outcome_total{flow="pipeline-synthesize",outcome="error"}'
-        values: '0x4 1x4'
+      - series: 'flow_run_last_failure_timestamp{flow="pipeline-old",outcome="error"}'
+        values: '-100000x10'
+      - series: 'flow_run_last_failure_timestamp{flow="pipeline-synthesize",outcome="error"}'
+        values: '-100000x4 290x30'
+      - series: 'flow_run_last_failure_timestamp{flow="pipeline-harvest",outcome="truncated"}'
+        values: '290x30'
     alert_rule_test:
       - eval_time: 3m
         alertname: HimmelFlowRunError
         exp_alerts: []
-      - eval_time: 5m
+      - eval_time: 6m
         alertname: HimmelFlowRunError
         exp_alerts:
           - exp_labels:
@@ -56,6 +114,9 @@ tests:
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-synthesize run errored in the last 15m'
+      - eval_time: 20m
+        alertname: HimmelFlowRunError
+        exp_alerts: []
 
   # HimmelFlowRunStalled is a LEVEL check, not increase() (HIMMEL-1695), so a
   # persistent stall is NOT silent: once its `for` pending window elapses, any
@@ -76,11 +137,11 @@ tests:
   # what pins the alert-fatigue fix.
   - interval: 1m
     input_series:
-      - series: 'flow_run_outcome_total{flow="pipeline-vitals",outcome="stalled"}'
+      - series: 'flow_run_stalled_current{flow="pipeline-vitals"}'
         values: '1x30'
-      - series: 'flow_run_outcome_total{flow="pipeline-harvest",outcome="stalled"}'
+      - series: 'flow_run_stalled_current{flow="pipeline-harvest"}'
         values: '0x4 1x26'
-      - series: 'flow_run_outcome_total{flow="armed-resume",outcome="stalled"}'
+      - series: 'flow_run_stalled_current{flow="armed-resume"}'
         values: '0x4 1x26'
     alert_rule_test:
       - eval_time: 5m
@@ -91,7 +152,6 @@ tests:
         exp_alerts:
           - exp_labels:
               flow: pipeline-vitals
-              outcome: stalled
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-vitals has a run stalled past its deadline'
@@ -100,13 +160,11 @@ tests:
         exp_alerts:
           - exp_labels:
               flow: pipeline-harvest
-              outcome: stalled
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-harvest has a run stalled past its deadline'
           - exp_labels:
               flow: pipeline-vitals
-              outcome: stalled
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-vitals has a run stalled past its deadline'
@@ -124,7 +182,7 @@ tests:
   # must still be firing throughout, and after the series resumes.
   - interval: 1m
     input_series:
-      - series: 'flow_run_outcome_total{flow="pipeline-ghost-gap",outcome="stalled"}'
+      - series: 'flow_run_stalled_current{flow="pipeline-ghost-gap"}'
         values: '1x20 _x10 1x10'
     alert_rule_test:
       - eval_time: 11m
@@ -132,7 +190,6 @@ tests:
         exp_alerts:
           - exp_labels:
               flow: pipeline-ghost-gap
-              outcome: stalled
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-ghost-gap has a run stalled past its deadline'
@@ -145,7 +202,6 @@ tests:
         exp_alerts:
           - exp_labels:
               flow: pipeline-ghost-gap
-              outcome: stalled
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-ghost-gap has a run stalled past its deadline'
@@ -154,10 +210,37 @@ tests:
         exp_alerts:
           - exp_labels:
               flow: pipeline-ghost-gap
-              outcome: stalled
               severity: page
             exp_annotations:
               summary: 'Flow pipeline-ghost-gap has a run stalled past its deadline'
+
+  # HIMMEL-1634 (c): the stalled alert clears once the stall is no longer
+  # current — the run completed (gauge drops to 0) or the row aged out of the
+  # exporter's stalled TTL (series absent). keep_firing_for 30m holds the page
+  # past the last 1, so the clear is asserted at t=50m, past that grace.
+  - interval: 1m
+    input_series:
+      - series: 'flow_run_stalled_current{flow="completed-later"}'
+        values: '1x15 0x45'
+      - series: 'flow_run_stalled_current{flow="aged-out"}'
+        values: '1x15 _x45'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: HimmelFlowRunStalled
+        exp_alerts:
+          - exp_labels:
+              flow: aged-out
+              severity: page
+            exp_annotations:
+              summary: 'Flow aged-out has a run stalled past its deadline'
+          - exp_labels:
+              flow: completed-later
+              severity: page
+            exp_annotations:
+              summary: 'Flow completed-later has a run stalled past its deadline'
+      - eval_time: 50m
+        alertname: HimmelFlowRunStalled
+        exp_alerts: []
 
   # HimmelFlowLastSuccessAgeExceeded: last_success_timestamp held at a fixed
   # value far enough in the past (relative to promtool's own synthetic
@@ -933,3 +1016,64 @@ tests:
       - eval_time: 150m
         alertname: HimmelEvalAbsent
         exp_alerts: []
+
+  # HIMMEL-6036: HimmelGuardDenialShareHigh fires when a guard's distinct-session
+  # share exceeds 0.25 for the 10m grace: 3 of 10 sessions = 0.3.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_sessions{guard="guard-x",project="himmel"}'
+        values: '3x30'
+      - series: 'himmel_tool_sessions{project="himmel"}'
+        values: '10x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialShareHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              guard: guard-x
+              project: himmel
+            exp_annotations:
+              summary: 'guard guard-x denied 30% of himmel sessions in the last day'
+
+  # Exactly 0.25 and below stay silent.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_sessions{guard="guard-x",project="himmel"}'
+        values: '5x30'
+      - series: 'himmel_tool_sessions{project="himmel"}'
+        values: '20x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialShareHigh
+        exp_alerts: []
+
+  # A zero denominator never divides: silent.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_sessions{guard="guard-x",project="himmel"}'
+        values: '1x30'
+      - series: 'himmel_tool_sessions{project="himmel"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialShareHigh
+        exp_alerts: []
+
+  # HimmelGuardDenialRepeat: one session denied 3 times by one guard fires, 2 does not.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_max_per_session{guard="guard-x",project="himmel"}'
+        values: '3x30'
+      - series: 'himmel_tool_denial_max_per_session{guard="guard-y",project="himmel"}'
+        values: '2x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialRepeat
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              guard: guard-x
+              project: himmel
+            exp_annotations:
+              summary: 'one himmel session was denied 3 times by guard guard-x in the last day'

@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { capabilityShape, escalationId, readEscalations } from "../aggregator/escalations";
+import { capabilityShape, escalationId, findByResumeToken, readEscalations, resumeToken } from "../aggregator/escalations";
 import { startServer } from "../server";
 
 function fixture() {
@@ -60,4 +60,25 @@ test("GET /escalations returns open escalations", async () => {
     expect(body.escalations.some((e: any) => e.capability === "fs.write")).toBe(true);
     expect(typeof body.parseErrors).toBe("number");
   } finally { server.stop(); }
+});
+
+test("open escalations carry a deterministic resume_token distinct from escalation_id", () => {
+  const { root } = fixture();
+  const [open] = readEscalations(root).escalations;
+  expect(open.resume_token).toMatch(/^[0-9a-f]{16}$/);
+  expect(open.resume_token).toBe(resumeToken(open.escalation_id));
+  expect(open.resume_token).not.toContain(open.escalation_id);
+  expect(readEscalations(root).escalations[0].resume_token).toBe(open.resume_token);
+});
+
+test("findByResumeToken resolves an open escalation and its adjudicated twin to the same step", () => {
+  const { root, id } = fixture();
+  const open = readEscalations(root).escalations[0];
+  const hit = findByResumeToken(root, open.resume_token);
+  expect(hit?.state).toBe("open");
+  expect(hit?.escalation.step).toBe("ship");
+  const granted = findByResumeToken(root, resumeToken(id));
+  expect(granted?.state).toBe("closed");
+  expect(granted?.escalation.step).toBe(3);
+  expect(findByResumeToken(root, "0000000000000000")).toBeUndefined();
 });
