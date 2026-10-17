@@ -393,6 +393,35 @@ esac
 printf '%s' "$changelog_section"
 }
 
+# "## READY claims contradicted": READY claims a judge verdict or the PR's own
+# diff contradicts, from tick.sh --ready-mismatch (one scan, shared with the tick field).
+# Bucket: MORNING_REPORT_READY_DIR, else the handover root. A scan that cannot run renders
+# "unavailable", never "None". ponytail: the default bucket is the handover root, which on a
+# global state root is the parent of the <user>/<repo> bucket, so set MORNING_REPORT_READY_DIR
+# there; upgrade path is resolving the bucket like tick.sh does from a console doc.
+sec_ready_mismatch() {
+    local dir="${MORNING_REPORT_READY_DIR:-}" repo="${MORNING_REPORT_READY_REPO:-$SCRIPT_DIR/../..}" out="" body
+    [ -n "$dir" ] || dir="$(handover_root 2>/dev/null)" || dir=""
+    body=$'## READY claims contradicted\n\n'
+    if [ -n "$dir" ] && out="$(bash "$SCRIPT_DIR/../handover/console-kit/tick.sh" --ready-mismatch --ready-dir "$dir" --repo "$repo" 2>/dev/null)"; then
+        body="$body$(printf '%s\n' "$out" | awk -F'\t' '
+            $1 == "ALERT" { printf "- **ALERT** %s\n", $2 }
+            $1 ~ /^M1[abc]$/ {
+                why = ($1 == "M1a") ? "a judge NO-GO-ed this head" : ($1 == "M1b") ? "READY claimed no trust path, the diff hits one" : "READY never mentioned the trust path the diff hits"
+                printf "- **%s** PR %s head %s (%s): %s\n", $1, $2, $3, $4, why; rows++ }
+            $1 == "COUNT" { ready = $2; judged = $4; nogo = $5; unchecked = $6 }
+            $1 == "MODEL" { models = models (models == "" ? "" : "; ") $2 " " $4 " of " $3 }
+            END {
+                if (rows == 0) printf "_None — every READY in the window matches its judge verdict and diff._\n"
+                printf "\nNO-GO at head: %d of %d judged (%d READY, %d unchecked)", nogo, judged, ready, unchecked
+                if (models != "") printf "; per model: %s", models
+            }')"
+    else
+        body="${body}_ready-mismatch scan unavailable._"
+    fi
+    printf '%s' "$body"
+}
+
 # Assemble from the template ---------------------------------------------
 # Resolution: $MORNING_REPORT_TEMPLATE > <handover-root>/morning-report.tmpl >
 # the shipped default next to this script. One section id per line; blank
@@ -419,7 +448,7 @@ while IFS= read -r section_id || [ -n "$section_id" ]; do
     section_id=$(printf '%s' "$section_id" | tr -d '\r')
     case "$section_id" in ''|'#'*) continue ;; esac
     case "$section_id" in
-        header|decisions|tickets|unlanded|changelog) section=$("sec_$section_id") ;;
+        header|decisions|tickets|unlanded|changelog|ready_mismatch) section=$("sec_$section_id") ;;
         operator-actions) section=$(sec_actions); actions_placed=1 ;;
         *) echo "WARN morning-report: unknown template section '$section_id' — skipped" >&2; continue ;;
     esac

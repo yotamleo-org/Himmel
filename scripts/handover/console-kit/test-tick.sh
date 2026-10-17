@@ -2250,6 +2250,53 @@ owe="$(ow_of "$(ow_tick)")"
 [ "$owe" = "6" ] && pass 'orphans-wip= names no keys above five' || fail "orphans-wip= with six is '$owe'"
 contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
 
+# --- ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] ---
+# A READY claim a judge or the diff contradicts. Fixtures only: the changed-file lists are
+# pre-recorded in the ready-files cache and the gh stub fails, so no live gh runs.
+RMD="$W/rm"
+mkdir -p "$RMD/verdicts" "$W/repo/scripts/ci" "$TICK_STATE_DIR/ready-files"
+printf '# trust paths\n^scripts/ci/\n^scripts/lib/\n' > "$W/repo/scripts/ci/ci-trust-paths.txt"
+printf '#!/bin/sh\necho x >> "%s/rm-gh.calls"\nexit 1\n' "$W" > "$W/rm-gh"
+chmod +x "$W/rm-gh"
+export TICK_GH_CMD="$W/rm-gh"
+rm_head() { printf '%040d' "$1"; }
+rm_leg() { printf '# T - leg N%s (%s, native)\n\n## Results\n\n- 10:00 READY %s %s GREEN %s\n' "$1" "$2" "$3" "$(rm_head "$3")" "$4" > "$RMD/leg$1.md"; }
+rm_files() { local pr="$1"; shift; printf '%s\n' "$@" > "$TICK_STATE_DIR/ready-files/$pr-$(rm_head "$pr")"; }
+# shellcheck disable=SC2016  # the backticks are literal verdict text
+rm_verdict() { mkdir -p "$RMD/verdicts/$1"; printf '# VERDICT %s - judge\n\n## Verdict\n\n**%s** for head `%s`.\n' "$1" "$2" "$(rm_head "$1")" > "$RMD/verdicts/$1/judge.md"; }
+rm_leg 1 claude-sonnet-5-5 101 '- trust path: none'
+rm_files 101 docs/a.md scripts/ci/x.sh
+rm_leg 2 claude-opus-5-5 102 '- CI green, marker cleared'
+rm_files 102 scripts/lib/y.sh
+rm_leg 3 claude-sonnet-5-5 103 '- no trust path touched'
+rm_files 103 docs/a.md
+rm_verdict 103 GO
+rm_leg 4 claude-sonnet-5-5 104 '- trust path: none'
+rm_files 104 docs/b.md
+rm_verdict 104 NO-GO
+rm_leg 5 claude-opus-5-5 105 '- touches scripts/ci/, trust-reviewed GO needed'
+rm_files 105 scripts/ci/z.sh
+printf '# console\n' > "$RMD/console.md"
+rm_of() { TOKEN='' bash "$SUT" --doc "$RMD/console.md" 2>/dev/null | sed -n -E 's/.* ready-mismatch=([^ ]*).*/\1/p'; }
+same 'ready-mismatch= flags a claimed-none, a silent and a NO-GO-at-head READY, not the GO control or the named-trust one (HIMMEL-6032)' "$(rm_of)" '3/5,nogo=1/2,ALERT'
+rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
+contains 'detail flags the claimed-none READY on a trust-path diff as M1b' "$rm_det" "M1b	101	"
+contains 'detail flags the silent READY on a trust-path diff as M1c' "$rm_det" "M1c	102	"
+contains 'detail flags the READY whose head a judge NO-GO-ed as M1a' "$rm_det" "M1a	104	"
+not_contains 'a clean READY with a GO verdict is not flagged' "$rm_det" "	103	"
+not_contains 'a READY that names its trust-path touch is not flagged' "$rm_det" "	105	"
+contains 'detail breaks the NO-GO rate out per model' "$rm_det" "MODEL	claude-sonnet-5-5	"
+contains 'verbose labels the field' "$(TOKEN='' bash "$SUT" --doc "$RMD/console.md" --verbose 2>/dev/null)" 'ready-mismatch: 3/5,nogo=1/2,ALERT'
+[ ! -e "$W/rm-gh.calls" ] && pass 'cached file lists mean no gh call' || fail 'a cached PR still called gh'
+rm -f "$RMD"/leg[1245].md
+same 'ready-mismatch= is absent when every READY is clean' "$(rm_of)" ''
+rm -f "$RMD/leg3.md"
+for n in $(seq 201 224); do rm_leg "$n" claude-sonnet-5-5 "$n" '- trust path: none'; done
+rm_of >/dev/null
+[ "$(wc -l < "$W/rm-gh.calls" | tr -d ' ')" -le 20 ] && pass 'at most 20 uncached gh calls per tick' || fail "gh was called $(wc -l < "$W/rm-gh.calls" | tr -d ' ') times"
+unset TICK_GH_CMD
+rm -rf "$RMD" "$W/rm-gh.calls"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

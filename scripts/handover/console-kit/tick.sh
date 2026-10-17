@@ -205,6 +205,15 @@ approaching the auto-mode pause threshold; REPEAT = 2+ in the window with
 neither. denials=none when the window is empty or the log does not exist yet;
 denials=skip when jq is missing or the log is unreadable.
 
+ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] (HIMMEL-6032) sits with
+flakes= and is ABSENT unless a READY (leg docs under the console doc's directory, touched
+within TICK_READY_WINDOW_DAYS, default 1) is flagged: a judge NO-GO'd its exact head, or the
+PR's files hit scripts/ci/ci-trust-paths.txt while the READY claimed no trust path or said
+nothing. ALERT = any trust-path claim mismatch, a NO-GO-at-head rate over 40 percent (5+
+judged) or one model at 2x the fleet rate (10+ judged). Changed-file lists are cached under
+$TICK_STATE_DIR/ready-files, at most 20 uncached gh calls per tick (TICK_GH_CMD seam).
+--ready-mismatch [--ready-dir DIR] prints the per-READY TSV rows instead of a tick line.
+
 ciq=<in_progress>/<cap>,mac=<n>/<cap>,q=<queued>,wait=<m>m[,SATURATED]
 (HIMMEL-3840) is the GitHub Actions queue, from one scripts/ci/queue-latency.sh
 probe per tick (bounded by TICK_CIQ_TIMEOUT seconds, default 45). SATURATED =
@@ -223,6 +232,8 @@ USAGE
 verbose=0
 burn=0
 emit_fp=0
+ready_mode=0
+ready_dir=""
 DOC="${DOC:-}"
 TOKEN="${TOKEN:-}"
 LEGS="${LEGS:-}"
@@ -234,7 +245,8 @@ while [ "$#" -gt 0 ]; do
         --verbose) verbose=1; shift ;;
         --burn) burn=1; shift ;;
         --emit-fp) emit_fp=1; shift ;;
-        --doc|--token|--legs|--legs-from|--handover-dir|--repo)
+        --ready-mismatch) ready_mode=1; shift ;;
+        --doc|--token|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
                 --doc) DOC="$2" ;;
@@ -243,6 +255,7 @@ while [ "$#" -gt 0 ]; do
                 --legs-from) LEGS_FROM="$2" ;;
                 --handover-dir) HANDOVER_DIR="$2" ;;
                 --repo) REPO="$2" ;;
+                --ready-dir) ready_dir="$2" ;;
             esac
             shift 2
             ;;
@@ -302,11 +315,92 @@ csv_add() {
 # shellcheck source=../../lib/leg-tail-status.sh
 . "$HERE/../../lib/leg-tail-status.sh"
 
+# ready_mismatch_scan <bucket-dir> -- READY claims a judge or the diff contradicts
+# Prints TSV: one `M1a|M1b|M1c <pr> <head12> <model>` row per flag,
+# `COUNT <ready> <flagged> <judged> <nogo> <unchecked>`, one `MODEL <m> <judged> <nogo>`
+# row per model, and `ALERT <reason>` rows. rc 1 = nothing to read (no bucket, no list).
+#   M1a  the READY head is the head <bucket>/verdicts/<pr>/judge.md NO-GO'd
+#   M1b  the READY says it touches no trust path, the PR's files hit ci-trust-paths.txt
+#   M1c  the PR's files hit ci-trust-paths.txt, the READY never mentions trust
+# Changed-file lists come from the ready-files cache under TICK_STATE_DIR (keyed
+# <pr>-<head>, so a re-pushed head is a fresh row); a miss costs one `gh pr view`,
+# at most 20 per scan, and past that the READY is counted unchecked, never clean.
+# ponytail: window is the leg doc's mtime (TICK_READY_WINDOW_DAYS, default 1), a READY
+# head repeated across docs counts once but a reworded one twice, the no-trust regex
+# reads a docs-only claim as "no trust path", and the model is the doc title's (claude-...)
+# token; a structured READY record would replace the regexes.
+ready_mismatch_scan() {
+    local dir="$1" tp="$REPO/scripts/ci/ci-trust-paths.txt" days="${TICK_READY_WINDOW_DAYS:-1}"
+    local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-gh}"
+    local budget=20 pats rec doc model line pr head claim files hit jv vh
+    [ -d "$dir" ] && [ -r "$tp" ] || return 1
+    case "$days" in ''|*[!0-9]*) days=1 ;; esac
+    local window_min=$((days * 1440))
+    pats="$(mktemp)" && rec="$(mktemp)" || return 1
+    grep -vE '^[[:space:]]*(#|$)' "$tp" > "$pats"
+    mkdir -p "$cache" 2>/dev/null
+    while read -r doc; do
+        model="$(sed -nE 's/^# .*\((claude-[A-Za-z0-9.-]+)[,)].*/\1/p' "$doc" | head -n 1)"
+        [ -n "$model" ] || model=unknown
+        while read -r line; do
+            pr="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\1/p')"
+            head="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\2/p')"
+            [ -n "$pr" ] && [ -n "$head" ] || continue
+            grep -q "^$pr	$head	" "$rec" && continue
+            if printf '%s\n' "$line" | grep -qiE 'no (ci[- ])?trust[- ]paths?|trust[- ]paths?: (none|no)\b|not a trust path|docs[- ]only|touch(es)? no trust'; then claim=none
+            elif printf '%s\n' "$line" | grep -qi 'trust'; then claim=named
+            else claim=silent; fi
+            files=""
+            if [ -r "$cache/$pr-$head" ]; then
+                files="$(cat "$cache/$pr-$head")"
+            elif [ "$budget" -gt 0 ]; then
+                budget=$((budget - 1))
+                if files="$("$ghcmd" pr view "$pr" --json files -q '.files[].path' 2>/dev/null)" && [ -n "$files" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
+                    printf '%s\n' "$files" > "$cache/$pr-$head" 2>/dev/null
+                else
+                    files=""
+                fi
+            fi
+            if [ -z "$files" ]; then hit="?"
+            elif printf '%s\n' "$files" | grep -Eq -f "$pats"; then hit=1
+            else hit=0; fi
+            jv=none
+            if [ -r "$dir/verdicts/$pr/judge.md" ]; then
+                # shellcheck disable=SC2016  # the backticks are literal verdict text
+                vh="$(sed -nE 's/^\*\*(NO-GO|GO)\*\* for head `([0-9a-f]{40})`.*$/\1 \2/p' "$dir/verdicts/$pr/judge.md" | head -n 1)"
+                [ "${vh#* }" != "$head" ] || jv="${vh%% *}"
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$pr" "$head" "$model" "$claim" "$hit" "$jv" >> "$rec"
+        done < <(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?READY[^A-Za-z0-9_]' "$doc" 2>/dev/null)
+    done < <(find "$dir" -maxdepth 1 -name '*.md' -mmin "-$window_min" 2>/dev/null | sort)
+    awk -F'\t' '
+        { r++; m[$3]++; if ($5 == "?") unc++
+          if ($6 != "none") { j++; mj[$3]++ }
+          if ($6 == "NO-GO") { n++; mn[$3]++ }
+          f = 0
+          if ($6 == "NO-GO") { f = 1; printf "M1a\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3 }
+          if ($5 == "1" && $4 == "none") { f = 1; printf "M1b\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3; tm++ }
+          if ($5 == "1" && $4 == "silent") { f = 1; printf "M1c\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3; tm++ }
+          flagged += f }
+        END { printf "COUNT\t%d\t%d\t%d\t%d\t%d\n", r, flagged, j, n, unc
+              for (k in m) printf "MODEL\t%s\t%d\t%d\n", k, mj[k], mn[k]
+              if (tm > 0) printf "ALERT\ttrust-path claim mismatch x%d\n", tm
+              if (j >= 5 && n * 100 > j * 40) printf "ALERT\tNO-GO-at-head rate %d%% over 40%%\n", n * 100 / j
+              for (k in m) if (mj[k] >= 10 && n > 0 && mn[k] * j >= 2 * n * mj[k]) printf "ALERT\t%s NO-GO rate at 2x the fleet\n", k }
+    ' "$rec"
+    rm -f "$pats" "$rec"
+}
+
 clock="$(date +%H:%M 2>/dev/null)" || clock="??:??"
 
-hb=skip
 console_doc=""
 [ -n "$DOC" ] && console_doc="$(resolve_doc "$DOC")"
+if [ "$ready_mode" -eq 1 ]; then
+    [ -n "$ready_dir" ] || ready_dir="${console_doc%/*}"
+    ready_mismatch_scan "$ready_dir" || { echo "tick: no READY data under '$ready_dir'" >&2; exit 1; }
+    exit 0
+fi
+hb=skip
 if [ -n "$console_doc" ] && [ -n "$TOKEN" ]; then
     if bash "$REPO/scripts/handover/queue-lock.sh" heartbeat "$console_doc" "$TOKEN" >/dev/null 2>&1; then
         hb=ok
@@ -1328,6 +1422,23 @@ if [ -n "$console_doc" ] && [ -n "${fails_start:-}" ] && command -v jq >/dev/nul
     fi
 fi
 
+# ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT]: READY claims a judge or
+# the diff contradicts (ready_mismatch_scan above). ABSENT unless something is flagged or
+# alerting, so a clean shift changes no line. Advisory: not in console-wait's action key.
+ready_tail=""
+if [ -n "$console_doc" ]; then
+    rm_out="$(ready_mismatch_scan "${console_doc%/*}" 2>/dev/null)" || rm_out=""  # swallow-ok: no readable data omits the advisory field
+    rm_count="$(printf '%s\n' "$rm_out" | awk -F'\t' '$1 == "COUNT" { print $2, $3, $4, $5 }')"
+    if [ -n "$rm_count" ]; then
+        read -r rm_r rm_f rm_j rm_n <<< "$rm_count"
+        rm_alert=""
+        printf '%s\n' "$rm_out" | grep -q '^ALERT' && rm_alert=",ALERT"
+        if [ "$rm_f" -gt 0 ] || [ -n "$rm_alert" ]; then
+            ready_tail=" ready-mismatch=$rm_f/$rm_r,nogo=$rm_n/$rm_j$rm_alert"
+        fi
+    fi
+fi
+
 # parked=<leg>:<age>m,...: a headed leg whose newest trust-ledger row is a
 # permission prompt nobody answered for TICK_PARKED_MIN minutes (default 5), i.e. it
 # is sitting on the auto-mode confirmation dialog while its lock heartbeat stays
@@ -1690,6 +1801,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session failures: %s\n' "$fails_summary"
     printf 'vm runner: %s\n' "$vmrun_summary"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
+    [ -z "$ready_tail" ] || printf 'ready-mismatch: %s\n' "${ready_tail# ready-mismatch=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     printf 'vault: %s\n' "$vault_summary"
@@ -1710,10 +1822,10 @@ else
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$station_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$station_tail$spare_tail"
     else
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$station_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$station_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then
