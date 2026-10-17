@@ -244,5 +244,16 @@ assert_eq "quote-token row: exit 2" 2 "$RC"
 assert_has "quote-token row: names the token file" "QMD_HTTP_AUTH_FILE" "$OUT"
 assert_lacks "quote-token row: token not echoed" 'bad"token' "$OUT"
 
+# 16: a URL without a leading http(s):// scheme is refused, even when a later :// names localhost.
+run_probe "evil.invalid/?://localhost/mcp" 2
+assert_eq "no-scheme row: exit 2" 2 "$RC"
+assert_has "no-scheme row: names the scheme rule" "http:// or https://" "$OUT"
+start_stub capture
+CAP="$TMP/port.capture"
+rm -f "$CAP.auth"
+run_probe "127.0.0.1:$(cat "$CAP")/?://localhost/" 5
+assert_eq "no-scheme capture row: exit 2" 2 "$RC"
+assert_eq "no-scheme capture row: no Authorization header reached the stub" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "$FAILED FAILED"; exit 1; fi

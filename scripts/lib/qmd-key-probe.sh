@@ -48,9 +48,13 @@ payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query",
 token="$(bash "$LIB_DIR/../../marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" || token=""
 auth=()
 if [ -n "$token" ]; then
+  # a scheme-less URL could hide a later :// (host:port/?://localhost/) from the host parse below
+  case "$url" in
+    http://* | https://*) ;;
+    *) fail 2 "refusing to send the bearer token: QMD_MCP_URL must start with http:// or https://" ;;
+  esac
   # authority = between :// and the first / ? #; host = after the last @, before :port
   hostport="${url#*://}"
-  [ "$hostport" = "$url" ] && hostport=""
   hostport="${hostport%%[/?#]*}"
   host="${hostport##*@}"
   case "$host" in
