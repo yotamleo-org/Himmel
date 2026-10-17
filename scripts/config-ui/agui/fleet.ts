@@ -87,9 +87,12 @@ export function graphOf(role: FleetRow["role"], doc: string): { parent: string |
   return { parent, predecessor: null };
 }
 
-// A console's own wrap is the line console.sh wrap writes (`WRAPPED — <text>`); `WRAPPED N2470 (#2951 → …)` in a
-// console's doc is a note about a leg, not the console wrapping.
-const ownWrap = (doc: string) => /^- (?:[\d:]+ )?WRAPPED —/m.test(doc);
+// A console's own wrap is the line console.sh wrap writes (`WRAPPED — <text>`) under `## Results`, as the shell
+// reader scopes it; `WRAPPED N2470 (#2951 → …)` is a note about a leg, and a quoted wrap above Results is prose.
+const ownWrap = (doc: string) => {
+  const at = doc.search(/^## Results/m);
+  return at >= 0 && /^- (?:[\d:]+ )?WRAPPED —/m.test(doc.slice(at));
+};
 
 const WINDOW_1M = 1_000_000, WINDOW = 200_000;
 type Tally = Omit<Usage, "costEq" | "ceiling" | "ceilingFrom" | "fill">;
@@ -309,8 +312,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   } catch { /* no probe cache: unmeasured */ }
   const banks = { codex };
   if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts), banks };
-  const lockOf = (file: string, doc: string, wrapped: boolean): Promise<FleetRow["lock"]> => {
-    if (wrapped) return Promise.resolve("released");
+  const lockOf = (file: string, doc: string): Promise<FleetRow["lock"]> => {
     if (!/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m.test(doc)) return Promise.resolve("unknown");
     return new Promise((ok) => {
       // The lock owner resolves legacy keys and distinguishes free from corrupt or unreadable.
@@ -373,20 +375,23 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     // A wrapped leg's window is closed: its codex price must not grow with later account usage (priced only while live).
     const ids = { session: run ?? `pid ${c.pid}`, leg: name, ticket, model: backendModel };
     const graph = graphOf(role, doc);
-    // a console's state is its lock and its own wrap line; every other role's is the last bullet's marker
-    const wrapped = role === "console" ? ownWrap(doc) : c.status === "WRAPPED";
-    const status = role === "console" ? (wrapped ? "WRAPPED" : c.status === "WRAPPED" ? "" : c.status) : c.status;
+    // a console is live only while its lock is held and wrapped only by its own wrap line once the lock is free (an
+    // unreadable lock is neither); every other role's state is the last bullet's marker
+    const lock = role === "console" ? await lockOf(c.doc, doc) : "unknown";
+    const wrapped = role === "console" ? ownWrap(doc) && lock === "released" : c.status === "WRAPPED";
+    const live = role === "console" ? lock === "held" : !wrapped;
+    const status = role === "console" ? (wrapped ? "WRAPPED" : live && c.status !== "WRAPPED" ? c.status : "") : c.status;
     // Accepted succession in the doc overrides the original launch environment.
     const parent = role === "console" ? null : graph.parent ?? plain(launch.HIMMEL_CONSOLE_NAME) ?? edges.get(c.doc)?.console ?? null;
     return {
       run, pid: Number(c.pid), name, role, model: c.model || null,
       ticket, pr: role === "leg" ? prOf(doc) : null,
-      state: stateOf(status, rec.status === "busy"),
+      state: role === "console" && !live && !wrapped ? "unknown" : stateOf(status, rec.status === "busy"),
       activity: tools[0] && t0 !== undefined ? { tool: tools[0].name, summary: opts.redact(summarize(tools[0].args)).slice(0, 120), at: t0 + tools[0].start } : null,
       lastEventAt: view && t0 !== undefined ? t0 + view.elapsed : null,
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
       failures: view?.failures.length ?? 0,
-      ...graph, parent, console: role === "console" ? name : parent, live: !wrapped, lock: role === "console" ? await lockOf(c.doc, doc, wrapped) : "unknown",
+      ...graph, parent, console: role === "console" ? name : parent, live, lock,
       lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
@@ -402,13 +407,14 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       const s = await stat(file);
       if (opts.now - s.mtimeMs > 72 * RECENT_MS) continue;
       const doc = await readFile(file, "utf8");
-      const wrapped = ownWrap(doc);
+      const lock = await lockOf(file, doc);
+      const wrapped = ownWrap(doc) && lock === "released";
       rows.push({
         name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
         state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
         agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
-        lock: await lockOf(file, doc, wrapped), lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
+        lock, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
         marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS,
       });
     } catch { /* archived console moved or unreadable */ }
