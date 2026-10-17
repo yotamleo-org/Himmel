@@ -553,7 +553,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     [ -n "$pred" ] || return 1
     pdoc="$(dirname "$console_doc")/$pred"
     [ -f "$pdoc" ] || return 1
-    [ "$(cat "$pred_file" 2>/dev/null | sed 's/^[a-z]*://')" = "$pdoc" ] && return 1
+    [ "$(sed 's/^[a-z]*://' "$pred_file" 2>/dev/null)" = "$pdoc" ] && return 1
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
     timeout -k 5 "${CONSOLE_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --console "$pdoc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
     case "$rc" in
