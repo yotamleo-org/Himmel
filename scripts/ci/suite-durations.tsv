@@ -532,7 +532,6 @@ scripts/lib/test-leg-identity.sh	0
 scripts/lib/test-load-dotenv.sh	1
 scripts/lib/test-mcp-gate.sh	0
 scripts/lib/test-merge-block-alert.sh	1
-scripts/lib/test-native-auth-pin-pwsh.sh	13
 scripts/lib/test-native-auth-pin.sh	1
 scripts/lib/test-observability-registry.sh	0
 scripts/lib/test-orphan-branches.sh	6
@@ -666,7 +665,6 @@ scripts/test-check-marketplace-source-hermetic.sh	1
 scripts/test-check-plugin-drift.sh	31
 scripts/test-claude-codex.sh	1
 scripts/test-claude-glm.sh	8
-scripts/test-claude-openrouter-pwsh.sh	11
 scripts/test-claude-openrouter.sh	2
 scripts/test-clean-fresh-lock.sh	4
 scripts/test-clean-garden-accounting.sh	10
