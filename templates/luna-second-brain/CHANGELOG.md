@@ -8,6 +8,17 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.78] — 2026-10-17
+
+### Fixed
+- `scripts/hooks/install-nostash-hooks.sh`: a foreign pre-existing `pre-commit`
+  or `commit-msg` hook is still backed up to `.bak-preinstall` and now also
+  chained, so it keeps running (and can fail the commit) like stock
+  `pre-commit install` does with a legacy hook. The generated hooks fall back
+  to `pre-commit` on PATH, then `python -m pre_commit`, when the path baked in
+  at install time has gone stale (Python or pipx moved). A re-install is
+  byte-identical.
+
 ## [0.4.77] — 2026-10-16
 
 ### Changed
