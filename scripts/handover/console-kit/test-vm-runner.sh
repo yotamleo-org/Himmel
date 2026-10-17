@@ -158,6 +158,8 @@ echo "T6b the tick token cross-checks GitHub's online runners and fails closed (
 reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+# unit 1 has a registered, unfinished runner: GitHub must show it online
+journal 1 60 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
 [ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "2 units up, 1 runner online -> ok:2/2" || bad "agree -> $(run status --tick)"
 rm -f "$TMP/state/tick-vmrun-cache"
 [ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "2 units up, 0 runners online -> DISAGREE" || bad "disagree -> $(GH_ONLINE=0 run status --tick)"
@@ -181,6 +183,14 @@ rm -f "$TMP/state/tick-vmrun-cache"
 # a cache left by the old two-field format must be refetched, not read as ok
 printf '%s 3\n' "$(date +%s)" > "$TMP/state/tick-vmrun-cache"
 [ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "a two-field cache from before the upgrade is refetched" || bad "old cache -> $(GH_ONLINE=0 run status --tick)"
+# a healthy runner between jobs mints its JIT runner late and deletes it after each job:
+# units up, journal idle, 0 online is normal and must not read DISAGREE
+rm -f "$TMP/state/tick-vmrun-cache" "$TMP/stub/journal-1"
+[ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "units up, journal idle, 0 online -> not DISAGREE" || bad "idle between jobs -> $(GH_ONLINE=0 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+journal 1 100 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+journal 1 50 "ci-runner: runner 4242 done (rc=0)"
+[ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "a finished runner with 0 online -> not DISAGREE" || bad "finished runner -> $(GH_ONLINE=0 run status --tick)"
 
 echo "T7 status prints the units and the last error"
 reset

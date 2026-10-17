@@ -12,6 +12,9 @@
 #   vm-runner.sh status          units up/idle/busy, current job, last error
 #   vm-runner.sh status --tick   the one tick token (tick.sh's vmrun= field):
 #                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING
+#                                | DISAGREE:<up>/<want>,online=0 (a unit has a
+#                                registered, unfinished runner but GitHub shows
+#                                no himmel-vm runner online)
 #   vm-runner.sh doctor          `<OK|WARN|FAIL><TAB><id><TAB><message>` rows
 #                                for himmel-doctor's C64 check
 #
@@ -221,7 +224,8 @@ unit_failing() {
 # runners GitHub reports busy, and the himmel-vm runners it reports online
 # (the ground truth the unit count is checked against; an unrelated runner
 # must not mask them). Prints nothing and caches nothing when GitHub is
-# unreadable, so the caller fails closed.
+# unreadable, so the caller fails closed. One page of 100: the repo registers
+# at most MAX_VMS ephemeral himmel-vm runners, so a second page cannot hold them.
 runner_counts() {
     local f="$STATE_DIR/tick-vmrun-cache" now ts busy online val
     now="$(date +%s)"
@@ -237,7 +241,7 @@ runner_counts() {
 
 # tick_token — off | ok:<up>/<want>,busy=<n> | DISAGREE:<up>/<want>,online=0 | DEAD | STUCK | FAILING
 tick_token() {
-    local var up=0 want i=1 stuck=0 failing=0 j counts busy online
+    local var up=0 want i=1 stuck=0 failing=0 inflight=0 j counts busy online
     # Never set up on this station: no gh call, nothing to report.
     [ -e "$UNIT_DIR/$UNIT_PREFIX@.service" ] || { echo off; return; }
     var="$(vmrun_var)" || var=""
@@ -247,7 +251,7 @@ tick_token() {
             up=$((up + 1))
             ! unit_failing "$i" || failing=1
             j="$(unit_job "$i")"
-            case "$j" in idle) ;; *) [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
+            case "$j" in idle) ;; *) inflight=1; [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
         fi
         i=$((i + 1))
     done
@@ -265,12 +269,13 @@ tick_token() {
     if [ "$stuck" -eq 1 ]; then echo STUCK; return; fi
     if [ "$failing" -eq 1 ]; then echo FAILING; return; fi
     # The unit count is this station's claim; GitHub's online-runner count is
-    # the check. An unreadable count is never ok, and units up with no runner
-    # online disagree.
+    # the check. An unreadable count is never ok. A loop mints its JIT runner
+    # late and deletes it after each job, so zero online is normal between jobs:
+    # it disagrees only while a unit has a registered, unfinished runner.
     counts="$(runner_counts)"
     if [ -z "$counts" ]; then echo FAILING; return; fi
     read -r busy online <<< "$counts"
-    if [ "$online" -eq 0 ]; then echo "DISAGREE:$up/$want,online=0"; return; fi
+    if [ "$online" -eq 0 ] && [ "$inflight" -eq 1 ]; then echo "DISAGREE:$up/$want,online=0"; return; fi
     echo "ok:$up/$want,busy=$busy"
 }
 
