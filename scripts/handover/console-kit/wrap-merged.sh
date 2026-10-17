@@ -168,7 +168,7 @@ tracker_refresh
 
 # 5b. remaining-only board - best effort, never fails the wrap. The console doc's `remaining-board: <version>`
 # line opts in; the priority line comes from `remaining-plan:` (a plan file), else the newest
-# <doc dir>/specs/plans/*approved-plan*.md. Reads the mirror step 5 just refreshed (no fresh mirror, no render).
+# <doc dir>/specs/plans/<version>-approved-plan*.md (none: every ticket lands in the rest group). Reads the mirror step 5 just refreshed (no fresh mirror, no render).
 # Writes <doc dir>/roadmap-remaining-<version>.md. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
 remaining_refresh() {
     local ver dir plan out tmp tmo rc
@@ -178,7 +178,7 @@ remaining_refresh() {
     dir="${DOC%/*}"
     plan="$(sed -n 's/^remaining-plan:[[:space:]]*//p' "$DOC" | head -n 1)"
     if [ -z "$plan" ]; then  # plan files are dated, so the last glob match is the newest
-        for f in "$dir"/specs/plans/*approved-plan*.md; do [ -f "$f" ] && plan="$f"; done
+        for f in "$dir/specs/plans/$ver"-approved-plan*.md; do [ -f "$f" ] && plan="$f"; done
     fi
     out="$dir/roadmap-remaining-$ver.md"
     tmp="$out.tmp.$$"
