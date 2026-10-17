@@ -6,14 +6,14 @@ MIT, (c) 2026 Lauren Tan. Never installed from the `michael-denyer/pstack-claude
 fork.
 
 Each `SKILL.md` is the upstream file plus one HTML-comment line under the
-frontmatter naming source, sha and deviations. The reference files are verbatim.
+frontmatter naming source, sha and deviations. The reference files are verbatim except `feature-map-example/search.md` (see the table).
 
 | path | upstream path | deviation |
 |---|---|---|
 | `skills/correct/SKILL.md` | `pstack/skills/correct/SKILL.md` | none |
-| `skills/blast-radius/SKILL.md` | `pstack/skills/blast-radius/SKILL.md` | none |
+| `skills/blast-radius/SKILL.md` | `pstack/skills/blast-radius/SKILL.md` | references to unshipped how, why, arena, unslop replaced by standalone sentences (HIMMEL-5815) |
 | `skills/create-verification-skill/SKILL.md` | `pstack/skills/create-verification-skill/SKILL.md` | `.cursor/skills/` paths are `.claude/skills/` |
-| `skills/create-verification-skill/references/**` | `pstack/skills/create-verification-skill/references/**` | none (verbatim) |
+| `skills/create-verification-skill/references/**` | `pstack/skills/create-verification-skill/references/**` | `feature-map-example/search.md` Proof bullet reruns the title-match query before capturing (HIMMEL-5815); every other reference file verbatim |
 | `skills/maintain-verification-skill/SKILL.md` | `pstack/skills/maintain-verification-skill/SKILL.md` | `.cursor/skills/` path is `.claude/skills/` |
 | `skills/benchmark-checklist/SKILL.md` | `pstack/skills/benchmark-checklist/SKILL.md` | none |
 | `skills/principle-explain-the-number/SKILL.md` | `pstack/skills/principle-explain-the-number/SKILL.md` | link to unshipped `principle-prove-it-works` made plain text |

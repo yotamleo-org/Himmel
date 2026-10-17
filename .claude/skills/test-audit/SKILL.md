@@ -243,3 +243,5 @@ Report:
 - production versus test LOC;
 - PR and merge state;
 - named follow-ups.
+
+See also: [test-behavior-not-implementation](../../../docs/tool-adoption/pstack-principles-digest.md#test-behavior-not-implementation).

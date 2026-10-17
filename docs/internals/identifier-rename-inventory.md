@@ -8,6 +8,10 @@ Counts are `git grep -l` file hits at `239670d87`, excluding `docs/glossary.md`
 and `handovers/`. Re-run the recipe at the bottom before starting any PR: the
 tree moves.
 
+The per-old-name table (counts, new names, alias plan, risk, freeze, and the
+approve / change / drop decision list) is in
+[`identifier-rename-proposal.md`](identifier-rename-proposal.md).
+
 Operator rulings (HIMMEL-5689 comments, 2026-10-15): the rename overrides the
 glossary's never-rename rule for repo identifiers; every old name stays a
 **read-both alias for one release**, pinned by a test; the short name for

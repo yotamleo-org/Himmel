@@ -46,6 +46,7 @@ result. (Reviewing a diff you did not author is independent review, not
 self-verification.) Brief every child fully — it inherits nothing.
 
 **Every dispatch names an explicit model** (an unnamed one burns the scarcer parent quota); raise *effort* before tier. Tier semantics, effort and cost: `docs/internals/lane-calibration.md`; live inventory: `/lanes`.
+A brief that is a specified edit list, comment or rename sweep, fixture regeneration or scoped extraction, ending in a named machine check (gate script, test, schema validator), names haiku at medium effort, not sonnet.
 
 **Escalation over top-down:** an Opus parent spawns a Fable child for the one
 hard call; using the top-tier lane AS parent is an operator choice, and it then
