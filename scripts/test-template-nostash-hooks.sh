@@ -676,7 +676,8 @@ if [ -n "${M2:-}" ]; then
   printf '%s\n' "$m2_bin" >>"$FIXTURE_LIST"
   mkdir -p "$m2_bin"
   real_pc=$(command -v pre-commit)
-  printf '#!/bin/sh\nexec %s "$@"\n' "$real_pc" > "$m2_bin/pre-commit"
+  printf -v real_pc_q '%q' "$real_pc"
+  printf '#!/bin/sh\nexec %s "$@"\n' "$real_pc_q" > "$m2_bin/pre-commit"
   chmod +x "$m2_bin/pre-commit"
   (cd "$M2" && PATH="$m2_bin:$PATH" bash "$M2/scripts/hooks/install-nostash-hooks.sh" >/dev/null 2>&1)
   check "M2: installer succeeds with pre-commit resolved to the fixture path" "$?" "0"
@@ -687,6 +688,16 @@ if [ -n "${M2:-}" ]; then
   m2_rc=$?
   check "M2: commit succeeds after the baked pre-commit path is gone (PATH fallback)" "$m2_rc" "0"
   [ "$m2_rc" -ne 0 ] && echo "  M2 output: $m2_out"
+
+  # Baked launcher still present and executable, but its shebang interpreter moved.
+  printf '#!/nonexistent/moved/python\n' > "$m2_bin/pre-commit"
+  chmod +x "$m2_bin/pre-commit"
+  printf 'staged-again\n' > "$M2/commit-file.txt"
+  git -C "$M2" add commit-file.txt
+  m2b_out=$(cd "$M2" && git commit -qm "feat: broken baked launcher" 2>&1)
+  m2b_rc=$?
+  check "M2: commit succeeds when the baked launcher exists but its interpreter moved" "$m2b_rc" "0"
+  [ "$m2b_rc" -ne 0 ] && echo "  M2b output: $m2b_out"
 fi
 
 # ---------------------------------------------------------------------------
