@@ -38,15 +38,16 @@ EOF
 cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
-echo "lane \$* | stdin=\$(cat) | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+echo "lane \$* | stdin=\$(cat | tr '\\n' ' ') | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
 if [ -n "\${LANE_STUB_FAIL:-}" ]; then
   echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
   echo "lane-stub-stderr-banner" >&2
   exit 1
 fi
-echo '{"result":"{}","usage":{"input_tokens":1,"output_tokens":1}}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total_cost_usd":'"\${LANE_STUB_COST:-0.25}"',"usage":{"input_tokens":1,"output_tokens":1}}'
 EOF
 chmod +x "$REPO/scripts/api-lane/claude-api.sh"
+cp "$REAL_REPO/scripts/api-lane/outcome.mjs" "$REPO/scripts/api-lane/outcome.mjs"
 # graphify stub: `extract <scratch> ...` writes one semantic concept node per
 # copied .md (label = first line), plus an AST heading node, plus an edge to
 # the existing AST node "code_a". GRAPHIFY_STUB_RC fails it; GRAPHIFY_STUB_LEAK
@@ -64,9 +65,12 @@ echo "CLAUDE_BIN=\$(command -v claude || echo none)" >> "$WS/env.log"
 echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
   claude --help > "$WS/claude-help.out" 2>&1
-  printf 'extract this' | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
-    || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
+  for _ in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
+    printf 'extract this' | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+      || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
+  done
 fi
+[ "\$1" = extract ] && ls "\$2/graphify-out/cache/semantic" > "$WS/seeded.log" 2>&1
 [ "\$1" = extract ] || exit 0
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 # GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
@@ -98,6 +102,10 @@ for dp, dn, fn in os.walk(root):
         nodes.append(node)
         nodes.append({"id": "head_" + rel, "label": "h", "file_type": "document", "_origin": "ast", "source_file": rel})
         links.append({"source": nid, "target": "code_a", "relation": "references", "_origin": "semantic", "source_file": src})
+        if os.environ.get("GRAPHIFY_STUB_DOCEDGES"):
+            node["rationale"] = "because " + label
+            for rel_kind in ("documents", "explains", "rationale_for"):
+                links.append({"source": nid, "target": "code_a", "relation": rel_kind, "_origin": "semantic", "source_file": src})
 os.makedirs(os.path.join(root, "graphify-out", "cache", "semantic"), exist_ok=True)
 open(os.path.join(root, "graphify-out", "cache", "semantic", "new.json"), "w").write("{}")
 json.dump({"directed": False, "multigraph": False, "graph": {}, "nodes": nodes, "links": links, "hyperedges": []},
@@ -435,7 +443,7 @@ lane=$(grep '^lane ' "$WS/calls.log" | head -1)
 [ "$rc" -eq 0 ] && pass "T37 exit 0" || fail "T37 exit 0 (got $rc): $out"
 case "$lane" in
   *"graphify-semantic-"*) fail "T37 lane still sees the shim on PATH: $lane" ;;
-  "lane -p --model sonnet --permission-mode default --max-budget-usd 1.00 --effort high | stdin=extract this | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
+  "lane -p --model sonnet --permission-mode default --max-budget-usd 1.00 --effort high | stdin=extract this"*" | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
   *) fail "T37 lane call: $lane" ;;
 esac
 grep -qx 'lane-tools=' "$WS/calls.log"; g37t=$?
@@ -522,6 +530,55 @@ echo "T46: a normal re-extract (nodes not under half) still replaces the file's 
 C46="$WS/c46"; new_corpus "$C46"; rm -f "$C46/b.md" "$C46/sub/c.md"
 out=$(run --name t46 --corpus-root "$C46" --corpus-class himmel-code); rc=$?
 case " $(ids "$C46") " in *" stale_a "*) fail "T46 stale node kept" ;; *" sem_a.md_alpha "*) pass "T46 stale replaced by the new extraction" ;; *) fail "T46 (rc=$rc): $(ids "$C46")" ;; esac
+
+echo "T47: the claude-api prompt demands a rationale on every node and the three doc-to-code edge types"
+# FIXTURE: the relation enumeration of graphify's real extraction schema (installed llm.py _EXTRACTION_SYSTEM, copied verbatim)
+REAL_SCHEMA_RELATIONS='"relation":"calls|implements|references|cites|conceptually_related_to|shares_data_with|semantically_similar_to"'
+C47="$WS/c47"; new_corpus "$C47"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t47 --corpus-root "$C47" --corpus-class himmel-code --backend claude-api); rc=$?
+lane=$(grep '^lane ' "$WS/calls.log" | head -1)
+for want in "rationale" "documents" "explains" "rationale_for"; do
+  case "$lane" in *"$want"*) pass "T47 prompt names $want" ;; *) fail "T47 prompt lacks $want (rc=$rc): $lane" ;; esac
+done
+case "$lane" in "lane "*"stdin=extract this"*) pass "T47 the original prompt stays first" ;; *) fail "T47 prompt order: $lane" ;; esac
+for rel in documents explains rationale_for; do
+  case "$REAL_SCHEMA_RELATIONS" in *"$rel"*) fail "T47 fixture already lists $rel" ;; *) pass "T47 real schema lacks $rel, so the addendum is needed" ;; esac
+done
+
+echo "T48: --max-run-usd stops further lane calls once the summed cost reaches it"
+C48="$WS/c48"; new_corpus "$C48"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_CALL_N=4 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48 --corpus-root "$C48" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T48 two calls ran, the third was refused" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'run spend cap' "$WS/claude.out" && pass "T48 shim states the cap" || fail "T48 no cap message: $(cat "$WS/claude.out")"
+
+echo "T49: the run row carries the summed lane cost, the backend and the cap"
+[ "$(lastrun "$C48" cost_usd)" = "1.2" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
+  && pass "T49 cost_usd 1.2, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C46" cost_usd)" = "0.0" ] && pass "T49 a non-api run row has cost_usd 0.0" || fail "T49b row: $(tail -1 "$C46/graphify-out/semantic-runs.jsonl")"
+
+echo "T50: rationale and documents/explains/rationale_for edges survive the merge"
+C50="$WS/c50"; new_corpus "$C50"
+out=$(GRAPHIFY_STUB_DOCEDGES=1 run_api --name t50 --corpus-root "$C50" --corpus-class himmel-code --backend claude-api); rc=$?
+python3 - "$C50/graphify-out/graph.json" <<'PY' && pass "T50 rationale + three relations merged" || fail "T50 (rc=$rc): $out"
+import json, sys
+g = json.load(open(sys.argv[1]))
+rels = {e["relation"] for e in g["links"]}
+sys.exit(0 if {"documents", "explains", "rationale_for"} <= rels and any(n.get("rationale") for n in g["nodes"]) else 1)
+PY
+
+echo "T51: claude-api keeps its extraction cache apart (cache/semantic-r1) so old-prompt chunks are never replayed"
+C51="$WS/c51"; new_corpus "$C51"; printf '{}' > "$C51/graphify-out/cache/semantic/old.json"
+out=$(run_api --name t51 --corpus-root "$C51" --corpus-class himmel-code --backend claude-api); rc=$?
+! grep -q 'old.json' "$WS/seeded.log" && [ -f "$C51/graphify-out/cache/semantic-r1/new.json" ] && [ ! -f "$C51/graphify-out/cache/semantic/new.json" ] \
+  && pass "T51 old cache not seeded, new entries land in semantic-r1" || fail "T51 (rc=$rc) seeded=$(cat "$WS/seeded.log") $(ls "$C51/graphify-out/cache/semantic" "$C51/graphify-out/cache/semantic-r1" 2>&1)"
+C51B="$WS/c51b"; new_corpus "$C51B"; printf '{}' > "$C51B/graphify-out/cache/semantic/old.json"
+out=$(run --name t51b --corpus-root "$C51B" --corpus-class himmel-code); rc=$?
+grep -qx 'old.json' "$WS/seeded.log" && pass "T51 claude-cli still seeds cache/semantic" || fail "T51b (rc=$rc) seeded=$(cat "$WS/seeded.log")"
+
+echo "T52: a non-positive --max-run-usd exits 1 with nothing invoked"
+C52="$WS/c52"; new_corpus "$C52"; : > "$WS/calls.log"
+out=$(run_api --name t52 --corpus-root "$C52" --corpus-class himmel-code --backend claude-api --max-run-usd 0 --dry-run); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"--max-run-usd"* ]] && [ ! -s "$WS/calls.log" ] && pass "T52 refused" || fail "T52 (rc=$rc): $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
