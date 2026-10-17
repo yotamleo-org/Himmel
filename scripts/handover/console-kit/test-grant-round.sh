@@ -253,13 +253,13 @@ check "consumed qid adds no consumption line" "$(wc -l < "$state/$BRANCH.verdict
 : "$after"
 
 # --- 7. the round-4 policy ------------------------------------------------------
-ledger="$common/cr-critic-scores.jsonl"
+scores_f="$common/cr-critic-scores.jsonl"
 frow() { # <head> <severity> <verdict> [model]
     printf '{"kind":"finding","branch":"%s","head":"%s","model":"%s","finding_id":"c-1","severity":"%s","verdict":"%s","artifact":"diff","perspective":"off"}\n' \
-        "$BRANCH" "$1" "${4:-codex}" "$2" "$3" >> "$ledger"
+        "$BRANCH" "$1" "${4:-codex}" "$2" "$3" >> "$scores_f"
 }
 arow() { # the critic reviewed <head> and raised nothing
-    printf '{"kind":"avail","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$BRANCH" "$1" > "$ledger"
+    printf '{"kind":"avail","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$BRANCH" "$1" > "$scores_f"
 }
 policy() { # <label> <qid> <GO|NO-GO> <name> <expected rc>
     reset_state 3
@@ -270,8 +270,8 @@ policy() { # <label> <qid> <GO|NO-GO> <name> <expected rc>
     if [ "$5" = 0 ]; then check "$1 drops the round" "$(cat "$state/$BRANCH.round")" 2
     else check "$1 changes nothing" "$(cat "$state/$BRANCH.round")" 3; fi
 }
-rm -f "$ledger"
-policy "GO record with no ledger rows refuses" qpolnone GO judge 16
+rm -f "$scores_f"
+policy "GO record with no scores_f rows refuses" qpolnone GO judge 16
 arow "$SHA_B"
 policy "GO record after a clean head refuses" qpolclean GO judge 16
 frow "$SHA_B" sug ""
@@ -284,15 +284,15 @@ frow "$SHA_A" imp ""
 policy "GO record, Important standing on another head refuses" qpolother GO judge 16
 frow "$SHA_B" imp agreed
 policy "GO record with a standing Important grants" qpolimp GO judge 0
-rm -f "$ledger"
+rm -f "$scores_f"
 frow "$SHA_B" crit ""
 policy "GO record with a standing Critical grants" qpolcrit GO judge 0
-rm -f "$ledger"
-policy "NO-GO judge record grants with no ledger rows" qpolnogo NO-GO judge 0
-policy "operator record grants with no ledger rows" qpolop GO operator 0
+rm -f "$scores_f"
+policy "NO-GO judge record grants with no scores_f rows" qpolnogo NO-GO judge 0
+policy "operator record grants with no scores_f rows" qpolop GO operator 0
 arow "$SHA_B"
 policy "operator record grants after a clean head" qpolop2 GO operator 0
-rm -f "$ledger"
+rm -f "$scores_f"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi
