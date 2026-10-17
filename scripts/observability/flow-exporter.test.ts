@@ -314,6 +314,42 @@ test("fetch-health state is passive and fail-soft", async () => {
   expect(missing).not.toContain("clip_fetch_source_");
 });
 
+test("tool-call census exports per-guard distinct-session denial series (HIMMEL-6036)", async () => {
+  const ledger = join(tmp, "flow-runs.jsonl");
+  const census = join(tmp, "tool-call-census.jsonl");
+  writeLines(ledger, []);
+  const session = (id: string, project: string, endedAt: string, denials: Record<string, number>) =>
+    JSON.stringify({
+      session_id: id, project, started_at: "2026-07-13T09:00:00.000Z", ended_at: endedAt,
+      tool_calls: { Bash: { calls: 1, errors: 0 } }, total_calls: 1, total_errors: 0, denials,
+    });
+  writeLines(census, [
+    session("s1", "himmel", "2026-07-13T11:00:00.000Z", { guardA: 1 }),
+    session("s2", "himmel", "2026-07-13T11:10:00.000Z", { guardA: 3 }),
+    session("s3", "himmel", "2026-07-13T11:20:00.000Z", { guardB: 1 }),
+    // Outside the 24h window: counts toward neither numerator nor denominator.
+    session("s4", "himmel", "2026-07-09T11:00:00.000Z", { guardA: 9 }),
+  ]);
+
+  const body = await renderMetrics({
+    nowMs: NOW,
+    configPath: join(tmp, "missing-observability.json"),
+    flowLedgerPath: ledger,
+    quotaLedgerPath: join(tmp, "none"),
+    lanesPath: join(tmp, "no-lanes.json"),
+    platform: "linux",
+    toolCensusPath: census,
+  });
+
+  expect(body).toContain('himmel_tool_denial_sessions{guard="guardA",project="himmel"} 2');
+  expect(body).toContain('himmel_tool_denial_sessions{guard="guardB",project="himmel"} 1');
+  expect(body).toContain('himmel_tool_denial_max_per_session{guard="guardA",project="himmel"} 3');
+  expect(body).toContain('himmel_tool_denial_max_per_session{guard="guardB",project="himmel"} 1');
+  expect(body).toContain('himmel_tool_sessions{project="himmel"} 3');
+  // The event counter is untouched.
+  expect(body).toContain('himmel_tool_denials_total{class="guardA",project="himmel"} 4');
+});
+
 test("tool-call census exports per-tool call/error and per-class denial counters (HIMMEL-1462)", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   const census = join(tmp, "tool-call-census.jsonl");

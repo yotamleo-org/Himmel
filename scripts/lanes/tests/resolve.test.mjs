@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { BASH_BIN } from './lib/resolve-bash.mjs';
 import { resolveLanes, resolveLaneInventory, formatCodexHealth, buildCtx, fmtCtx, formatContextAnnotation, formatQuotaAnnotation, mergeLocalOverlay, unknownOverlayKeys } from '../resolve.mjs';
 import { applyLaneOverride, applyProfileAllowlist, writeProfileAllowlist } from '../set-lane-override.mjs';
 
@@ -461,6 +462,20 @@ test('context annotations derive from structured window + overflow (no prose dri
   );
   assert.equal(formatContextAnnotation(undefined), '');
 });
+test('context annotation names the tier a dispatch gets and the closed enum (HIMMEL-1907)', () => {
+  assert.equal(
+    formatContextAnnotation({ windowTokens: 900000, overflow: 'compact-continue', tiers: ['272k', '353k', '900k'] }),
+    '[ctx: 900k; compacts+continues past window (cost penalty); tier: 272k unless --context-tier 272k|353k|900k]',
+  );
+});
+test('the codex dispatcher lanes declare the tiers the shell filter accepts (HIMMEL-1907)', () => {
+  const filter = join(TEST_DIR, '..', '..', 'codex', 'codex-arg-filter.sh');
+  const shellTiers = execFileSync(BASH_BIN, ['-c', '. "$1"; echo $CAF_CONTEXT_TIERS', '_', filter], { encoding: 'utf8' }).trim().split(' ');
+  for (const id of ['claudex', 'codex-exec']) {
+    const lane = REG.lanes.find((l) => l.id === id);
+    assert.deepEqual(lane.context.tiers, shellTiers, `${id} context.tiers must equal CAF_CONTEXT_TIERS`);
+  }
+});
 test('every structured context in the registry is valid and carries no legacy descriptor', () => {
   for (const l of REG.lanes) {
     assert.equal(l.contextWindow, undefined, `${l.id} must not carry legacy contextWindow prose-adjacent data`);
@@ -474,7 +489,10 @@ test('every structured context in the registry is valid and carries no legacy de
   // Haiku 5.5 has a 1M window (Haiku 4.5 was 200k).
   assert.deepEqual(REG.lanes.find((l) => l.id === 'haiku').context, { windowTokens: 1000000, overflow: 'hard-limit' });
   for (const id of ['claudex', 'codex', 'codex-exec', 'codex-wsl', 'hermes-oneshot']) {
-    assert.deepEqual(REG.lanes.find((l) => l.id === id).context, { windowTokens: 900000, overflow: 'compact-continue' });
+    const { tiers, ...window } = REG.lanes.find((l) => l.id === id).context;
+    assert.deepEqual(window, { windowTokens: 900000, overflow: 'compact-continue' });
+    // tiers are the dispatcher --context-tier enum: only the lanes that take the flag declare them.
+    assert.equal(tiers !== undefined, ['claudex', 'codex-exec'].includes(id), `${id} tiers declaration`);
   }
 });
 

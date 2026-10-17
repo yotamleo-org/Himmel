@@ -25,7 +25,24 @@
 #     from the public repo's branch-protection required checks (it would
 #     otherwise be an unsatisfiable required context with auto-review off).
 #   - Jira integration deliberately NOT connected: the jira CLI owns that loop.
+#   - learnings scope local (HIMMEL-6045): explicit, so the rule is visible.
+#     `auto` already resolves to local on a public repo; the archived private
+#     repo's rows must NOT flow back via `global` (stale, and they carry
+#     propagation rules). Durable rules live in path_instructions below
+#     or in scripts/cr/known-findings.json, never only in CR memory.
+#     approval_delay 3: a learning is reviewable for three days before it
+#     applies, so cr-learnings-refresh can prune it in that window.
 language: "en-US"
+knowledge_base:
+  learnings:
+    scope: "local"
+    approval_delay: 3
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - "scripts/handover/CLAUDE.md"
+      - "docs/internals/ponytail-convention.md"
 reviews:
   profile: "chill"
   request_changes_workflow: false
@@ -71,12 +88,54 @@ reviews:
       - ".*"
   path_filters:
     - "!**/package-lock.json"
+  tools:
+    # On by default; listed so the choice is explicit. Off = not our stack.
+    shellcheck:
+      enabled: true     # reads .shellcheckrc
+    gitleaks:
+      enabled: true     # reads .gitleaks.toml
+    actionlint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    biome:
+      enabled: false    # oxlint is our JS linter (pre-commit)
+    eslint:
+      enabled: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"       # shell repo; coverage % is noise
+    title:
+      mode: "warning"
+      requirements: >-
+        Conventional commit form `type(scope): [HIMMEL-n] summary`.
+    issue_assessment:
+      mode: "off"       # Jira not connected; the judge owns ticket coverage
+    custom_checks:
+      - name: "No new learning-only rule"
+        mode: "warning"
+        instructions: >-
+          If a review comment in this PR would rest on a repository-specific
+          rule that is not stated in .coderabbit.yaml path_instructions, a
+          CLAUDE.md, or scripts/cr/known-findings.json, say so explicitly in
+          the summary ("rule not codified: …") so it is codified instead of
+          learned.
   path_instructions:
     - path: "scripts/**/*.sh"
       instructions: >-
         Shell must stay bash 3.2-compatible (macOS default): no associative
-        arrays, no mapfile, no ${var,,}. Scripts run on macOS and Linux — flag GNU-only flags and non-portable
-        constructs. Guardrail hooks are fail-closed by design; critic and
+        arrays, no mapfile, no ${var,,}. Scripts run on macOS and Linux — flag
+        GNU-only flags and non-portable constructs, EXCEPT in files whose header
+        declares `Linux-only` (station, VM and systemd tooling), where GNU forms
+        are intended. Windows/PowerShell/Git Bash/WSL portability is out of
+        scope (Windows support is parked): do not raise it.
+        Not GNU-only (do not flag): `find -mindepth/-maxdepth`, bare
+        `mktemp -d` (macOS treats it as `-t tmp`; templates are house style,
+        not a correctness bug). DO flag `\s`/`\d` inside `grep -E`/`sed -E`
+        (BSD reads them as literals; use [[:space:]]/[[:digit:]]).
+        Guardrail hooks are fail-closed by design; critic and
         availability wrappers are fail-open — check the file header's exit
         contract before flagging exit semantics as a bug.
     # ── Disproved-class scope narrowings (CR-learnings tuning, 2026-07-28) ──
@@ -97,8 +156,8 @@ reviews:
         instead of a redirected fixture.
     - path: "scripts/**/*.sh"
       instructions: >-
-        House style is `set -uo pipefail` WITHOUT errexit; the repo's shell-lint
-        gate flags `set -e` itself as a defect (errexit leaks into sourcing
+        House style is `set -uo pipefail` WITHOUT errexit; scripts/lint/shell-lint.sh
+        flags `set -e` itself as a defect, advisory (errexit leaks into sourcing
         shells). In a file whose prologue does not enable errexit, never raise
         errexit-interaction findings — claims that an `&&` list, `a && b || c`,
         or an unguarded command "aborts the script" or "silently bypasses set
@@ -114,12 +173,15 @@ reviews:
         octal interpretation there. Raise octal-interpretation findings only in
         arithmetic contexts ($(( )), (( )), let) where a leading-zero-capable
         operand is not already normalized via the repo's $((10#$var)) idiom.
-    - path: "scripts/**/test-*.sh"
+        In those arithmetic contexts DO raise it: a validated "08"/"09" from
+        date, cut or user input is an error ("value too great for base"), the
+        single most common real shell finding in this repo.
+    - path: "scripts/**/*.sh"
       instructions: >-
-        Bare `wait` (no PID) in these test harnesses is deliberate: they spawn
-        background stubs and assert outcomes via marker files and captured
-        output, not via wait's exit status. Do not flag bare `wait` here for
-        discarding per-job exit codes or waiting on unintended jobs.
+        Bare `wait` (no PID) is deliberate, in test harnesses especially: they
+        spawn background stubs and assert outcomes via marker files and
+        captured output, not via wait's exit status. Do not flag bare `wait`
+        for discarding per-job exit codes or waiting on unintended jobs.
     - path: "scripts/**/*.sh"
       instructions: >-
         `rm -f` on a quoted single-file temp/marker/lock path — typically in a
@@ -128,7 +190,28 @@ reviews:
         it for missing existence checks or suppressed failures. Still flag:
         recursive deletion of any variable-built path that could be empty or
         unset, unquoted expansions in rm arguments, or deletion targets outside
-        the script's own temp/marker files.
+        the script's own temp/marker files. A missing-operand `rm -f` (empty
+        argument list) stays covered by this rule.
+    - path: "scripts/**/*.sh"
+      instructions: >-
+        A line comment `# intentional: …` or `# ponytail: <ceiling>, HIMMEL-n`
+        at or above the flagged line records an accepted design choice or a
+        tracked limitation. Do not re-raise the same concern unless the change
+        under review invalidates the stated reason; if it does, say which part.
+    - path: "scripts/hooks/**"
+      instructions: >-
+        Guard hooks parse shell command text. Prioritize: (1) a command shape
+        the guard should deny but does not (wrapper, env prefix, quoting,
+        redirection, command position); (2) an over-deny of a read-only
+        command. Each finding must name a concrete command string (for example
+        `timeout bash scripts/cr/x.sh`). Do not raise generic "regex parsing is
+        fragile" comments without one.
+    - path: "scripts/**/test-*.sh"
+      instructions: >-
+        Flag a test that cannot fail: setup whose exit status is unchecked
+        before assertions, an assertion only on presence, a stub that accepts
+        any input, or a fixture under the real $HOME rather than a temp HOME.
+        Each such finding should name the mutation that would still pass.
     - path: "docs/**/*.md"
       instructions: >-
         Paths like <state-repo>/handovers/…, $HANDOVER_DIR, <handover-root>/…,

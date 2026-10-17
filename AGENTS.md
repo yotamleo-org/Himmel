@@ -76,18 +76,16 @@ Positioning → `README.md`; reference detail → `docs/internals/`.
 ## RULES
 
 ### Git workflow
-- Feature work in git worktrees; never edit or commit on main
-  (`block-edit-on-main`, `check-worktree-isolation`).
-- All changes via PR, ≥1 approval, no direct push (`check-push-target`).
-- Conventional commits; **every commit and every PR carries a ticket ID**
-  (`check-commit-msg` and the CI range gate). Retro-filing is fine;
-  search Jira and extend an existing ticket before re-filing.
-- Attestation trailers (`Platforms tested: <os>` on shell/script diffs,
-  `Security reviewed: <token>` on non-docs code) belong in the **FIRST commit**,
-  written after genuinely testing and reviewing — the pre-push gate fires too
-  late to teach this. Never recover with a reactive `git commit --amend`
-  (HARD-blocked in auto-mode); recovery: `himmel-ops:stuck-playbook` /
-  [`docs/internals/stuck-playbook.md`](docs/internals/stuck-playbook.md).
+- Feature work in git worktrees; never edit or commit on main. [enforced: block-edit-on-main]
+- All changes via PR, ≥1 approval, no direct push. [enforced: no-push-to-main]
+- Conventional commits; **every commit and every PR carries a ticket ID**.
+  Retro-filing is fine; search Jira and extend an existing ticket before
+  re-filing. [enforced: conventional-commit-msg]
+- Attestation trailers (`Platforms tested: <os>`, `Security reviewed: <token>`)
+  belong in the **FIRST commit**, written after genuinely testing and reviewing
+  (the pre-push gate fires too late to teach this). Never recover with a
+  reactive `git commit --amend`; recovery:
+  [`docs/internals/stuck-playbook.md`](docs/internals/stuck-playbook.md). [enforced: security-reviewed]
 
 ### Jira — prefer plugin over MCP
 Invoke by ABSOLUTE path from the primary checkout —
@@ -119,9 +117,7 @@ self-verification.) Brief every child fully — it inherits nothing.
 **Escalation over top-down:** an Opus parent spawns a top-model child for the one
 hard call; using the top-tier lane AS parent is an operator choice, and it then
 delegates every implementation chunk downward. Work above your tier? Return it. **Inline implementation on a
-top-tier parent is the anti-pattern** (`orchestrator-inline-guard`) — sole
-exception: ONE trivial review-fix per PR; from the second review round on, batch the
-rest to a worker lane in shared-branch mode.
+top-tier parent is the anti-pattern** — exception and budget in the hook header. [enforced: orchestrator-inline-guard]
 
 Invariants (not model-tuned): spawn depth and concurrency are capped by
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
@@ -152,11 +148,11 @@ Other code comments: keep list only, never ticket/review history (gate: `check-h
 ### Where artifacts land
 - **Reference docs operators consume** → the owning repo's `docs/` (plugin specs
   → `plugins/<plugin>/README.md`). `templates/luna-second-brain/` is
-  OSS-quality — it ships publicly as part of the public Himmel repo.
+  OSS-quality — it ships publicly as part of the public Himmel repo. [prose]
 - **Internal specs, plans, decision records** → the state repo bucket
   `<state-repo>/handovers/<USER_SLUG>/<repo-bucket>/specs/<type>/`, **never**
-  himmel `docs/` (reference + OSS-public only).
-- **Vault content** (clips, notes, daily entries) → stays in luna.
+  himmel `docs/` (reference + OSS-public only). [prose]
+- **Vault content** (clips, notes, daily entries) → stays in luna. [prose]
 
 ### Retrieval routing
 Three organs, in order. **`MEMORY.md` routes, it does not store** — on a

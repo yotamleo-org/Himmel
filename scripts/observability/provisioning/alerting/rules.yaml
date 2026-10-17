@@ -769,6 +769,65 @@ groups:
         annotations:
           summary: '{{ $values.A.Value }} hook-chain skip log(s) unreadable — hook_chain_budget_events_recent may be under-counting'
 
+      # HIMMEL-6036: twins of alerts.rules.yml's HimmelGuardDenialShareHigh and
+      # HimmelGuardDenialRepeat. Same expressions. Both filter in PromQL, so an
+      # empty vector is the healthy case: noDataState OK.
+      - uid: himmel_guard_denial_share_high
+        title: "Guard denies a large share of sessions"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: himmel_tool_denial_sessions / on(project) group_left() himmel_tool_sessions > 0.25 and on(project) himmel_tool_sessions > 0
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              datasource: { type: __expr__, uid: __expr__ }
+              refId: B
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'guard {{ $labels.guard }} denied {{ $values.A.Value }} of {{ $labels.project }} sessions in the last day'
+
+      - uid: himmel_guard_denial_repeat
+        title: "One session repeatedly denied by one guard"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: himmel_tool_denial_max_per_session >= 3
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              datasource: { type: __expr__, uid: __expr__ }
+              refId: B
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'one {{ $labels.project }} session was denied {{ $values.A.Value }} times by guard {{ $labels.guard }} in the last day'
+
       # HIMMEL-4652: eval drift. Twin of alerts.rules.yml's HimmelEvalRegression.
       # refId A filters in PromQL (`== 1`), so an empty vector is the healthy
       # case (no regression, or no eval ledger on this host): noDataState OK.

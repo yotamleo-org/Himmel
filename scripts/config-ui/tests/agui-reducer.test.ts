@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { join } from "node:path";
 import { mapFile } from "../agui/journal-mapper.ts";
-import { initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningCount, liveness, turnEnded, type View } from "../agui-web/src/reducer";
+import { initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningAgents, runningCount, liveness, turnEnded, type View } from "../agui-web/src/reducer";
 import fixture from "../agui-web/src/fixture.json";
 
 // the page is a pure fold of AG-UI events into view state; these cases pin it on the
@@ -305,6 +305,18 @@ describe("agent live state", () => {
     expect(agentState(between, "q")).toBe("running");
     expect(currentCall(between, "q")).toBeUndefined();
     expect(between.agents.q.last).toBe(500);
+  });
+
+  test("runningAgents lists the agents with an open call, newest call first, and drops one once its call ends", () => {
+    expect(runningAgents(initialView())).toEqual([]);
+    expect(runningAgents(opened).map((r) => [r.id, r.call.id])).toEqual([["q", "s"], ["main", "a"]]);
+    const between = reduceAll([{ type: "TOOL_CALL_RESULT", toolCallId: "s", content: "ok", timestamp: 1500 }], opened);
+    expect(runningAgents(between).map((r) => r.id)).toEqual(["main"]); // q is still running, but holds no call
+    const fixtureMid = upTo((e) => e.type === "TOOL_CALL_START" && e.toolCallId === "c1a");
+    const ids = runningAgents(fixtureMid).map((r) => r.id);
+    expect(ids).toEqual(expect.arrayContaining(["a7c1e0", "a7c3b9"]));
+    expect(ids[0]).toBe("a7c1e0"); // c1a started after c3a
+    expect(runningAgents(end)).toEqual([]);
   });
 
   test("the parent's result flips the subagent to done; a failed parent call marks it failed", () => {

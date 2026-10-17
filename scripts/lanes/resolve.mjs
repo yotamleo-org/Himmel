@@ -318,9 +318,14 @@ export function fmtCtx(n) {
 export function formatContextAnnotation(context) {
   const window = fmtCtx(context?.windowTokens);
   if (!window) return '';
-  if (context?.overflow === 'compact-continue') return `[ctx: ${window}; compacts+continues past window (cost penalty)]`;
-  if (context?.overflow === 'hard-limit') return `[ctx: ${window}; hard limit]`;
-  return `[ctx: ${window}; overflow unknown]`;
+  // tiers is the dispatcher's closed --context-tier enum, cheapest first: the
+  // first entry is what an unflagged dispatch is pinned to.
+  const tiers = Array.isArray(context?.tiers) && context.tiers.length > 0
+    ? `; tier: ${context.tiers[0]} unless --context-tier ${context.tiers.join('|')}`
+    : '';
+  if (context?.overflow === 'compact-continue') return `[ctx: ${window}; compacts+continues past window (cost penalty)${tiers}]`;
+  if (context?.overflow === 'hard-limit') return `[ctx: ${window}; hard limit${tiers}]`;
+  return `[ctx: ${window}; overflow unknown${tiers}]`;
 }
 
 // resolveActiveAccessPath(quota) -> { ok: true, path, index } | { ok: false, reason }

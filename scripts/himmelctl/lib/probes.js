@@ -492,13 +492,31 @@ function isHudRendererScript(scriptPath) {
     && /(^|[\\/])marketplace[\\/]plugins[\\/]claude-hud[\\/]dist[\\/]index\.js$/.test(scriptPath);
 }
 
-// A candidate that EXISTS but fails to parse is the active config, broken —
-// never silently skipped in favor of the next candidate
-// codex-1: that used to mask a malformed new-path config behind a healthy
-// legacy one). Only an absent file (ENOENT) falls through.
+// The renderer (claude-hud config.ts loadConfig) reads the legacy
+// plugins/claude-hud/config.json as the base and merges claude-hud.json over
+// it: plain-object sections merge key by key, arrays and scalars replace.
+// A file that EXISTS but fails to parse is the active config, broken —
+// never silently skipped in favor of the other file (that would mask a
+// malformed new-path config behind a healthy legacy one). Only an absent
+// file (ENOENT) is skipped. `path` names the override when present, else the
+// legacy file.
+function isHudPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function mergeHudConfig(base, override) {
+  const result = Object.assign({}, base);
+  for (const [key, value] of Object.entries(override)) {
+    result[key] = isHudPlainObject(result[key]) && isHudPlainObject(value) ? mergeHudConfig(result[key], value) : value;
+  }
+  return result;
+}
+
 function readHudConfig(ctx) {
   const dir = getClaudeConfigDirForHud(ctx);
-  const candidates = [path.join(dir, 'claude-hud.json'), path.join(dir, 'plugins', 'claude-hud', 'config.json')];
+  const candidates = [path.join(dir, 'plugins', 'claude-hud', 'config.json'), path.join(dir, 'claude-hud.json')];
+  let merged = null;
+  let foundPath = null;
   for (const p of candidates) {
     let raw;
     try {
@@ -507,13 +525,16 @@ function readHudConfig(ctx) {
       if (e && e.code === 'ENOENT') continue;
       return { path: p, data: null };
     }
+    let data;
     try {
-      return { path: p, data: JSON.parse(raw) };
+      data = JSON.parse(raw);
     } catch (_e) {
       return { path: p, data: null };
     }
+    foundPath = p;
+    merged = isHudPlainObject(merged) && isHudPlainObject(data) ? mergeHudConfig(merged, data) : data;
   }
-  return null;
+  return foundPath === null ? null : { path: foundPath, data: merged };
 }
 
 // a hud-wired statusLine with no config, or a config missing

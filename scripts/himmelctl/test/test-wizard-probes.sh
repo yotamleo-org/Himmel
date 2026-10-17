@@ -707,6 +707,57 @@ echo "$outSK1hMalformed" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "settings-key verifyHudConfig: malformed new-path hud config must degrade, not fall through to a valid legacy config (got: $outSK1hMalformed)"
 echo "ok: settings-key verifyHudConfig (HIMMEL-3334 codex-1) — malformed new-path config degrades even when a valid legacy-path config exists"
 
+# The renderer merges the legacy plugins/claude-hud/config.json
+# (base) under claude-hud.json (override); the probe must read the same merged view.
+sk1h_probe() {
+  CLAUDE_CONFIG_DIR="$(winpath "$1")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'wiring-statusline');
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$(winpath "$sk1h_settings_dir")', scope: 'project', env: process.env };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+
+# A: new-path file has other keys only, legacy file carries customLineCommand -> present.
+sk1h_cfgdir_a="$work/sk1h-cfg-a"; mkdir -p "$sk1h_cfgdir_a/plugins/claude-hud"
+printf '{"display":{"showPromptCache":true}}' > "$sk1h_cfgdir_a/claude-hud.json"
+printf '{"display":{"customLineCommand":"echo legacy"}}' > "$sk1h_cfgdir_a/plugins/claude-hud/config.json"
+outSK1hA=$(sk1h_probe "$sk1h_cfgdir_a")
+echo "$outSK1hA" | jq -e '.actual == "present"' >/dev/null \
+  || fail "settings-key verifyHudConfig (HIMMEL-3739): customLineCommand only in the legacy file must read present, the renderer merges both (got: $outSK1hA)"
+
+# B: both files carry customLineCommand; merged view = override value wins, nested keys from both survive.
+sk1h_cfgdir_b="$work/sk1h-cfg-b"; mkdir -p "$sk1h_cfgdir_b/plugins/claude-hud"
+printf '{"display":{"customLineCommand":"","showPromptCache":true}}' > "$sk1h_cfgdir_b/plugins/claude-hud/config.json"
+printf '{"display":{"customLineCommand":"echo override"}}' > "$sk1h_cfgdir_b/claude-hud.json"
+outSK1hB=$(sk1h_probe "$sk1h_cfgdir_b")
+echo "$outSK1hB" | jq -e '.actual == "present"' >/dev/null \
+  || fail "settings-key verifyHudConfig (HIMMEL-3739): override customLineCommand must win over an empty legacy value (got: $outSK1hB)"
+# Reverse: a blank override value replaces a healthy legacy one, exactly as the renderer does -> degraded.
+sk1h_cfgdir_b2="$work/sk1h-cfg-b2"; mkdir -p "$sk1h_cfgdir_b2/plugins/claude-hud"
+printf '{"display":{"customLineCommand":"echo legacy"}}' > "$sk1h_cfgdir_b2/plugins/claude-hud/config.json"
+printf '{"display":{"customLineCommand":""}}' > "$sk1h_cfgdir_b2/claude-hud.json"
+outSK1hB2=$(sk1h_probe "$sk1h_cfgdir_b2")
+echo "$outSK1hB2" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyHudConfig (HIMMEL-3739): a blank override value replaces the legacy one (got: $outSK1hB2)"
+
+# C: unparsable new-path file + healthy legacy file stays degraded (regression guard, true before the merge too).
+sk1h_cfgdir_c="$work/sk1h-cfg-c"; mkdir -p "$sk1h_cfgdir_c/plugins/claude-hud"
+printf '{not valid json' > "$sk1h_cfgdir_c/claude-hud.json"
+printf '{"display":{"customLineCommand":"echo legacy"}}' > "$sk1h_cfgdir_c/plugins/claude-hud/config.json"
+outSK1hC=$(sk1h_probe "$sk1h_cfgdir_c")
+echo "$outSK1hC" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyHudConfig (HIMMEL-3739): unparsable new-path file must stay degraded (got: $outSK1hC)"
+# C2: the legacy file unparsable under a healthy new-path file is just as broken.
+sk1h_cfgdir_c2="$work/sk1h-cfg-c2"; mkdir -p "$sk1h_cfgdir_c2/plugins/claude-hud"
+printf '{"display":{"customLineCommand":"echo new"}}' > "$sk1h_cfgdir_c2/claude-hud.json"
+printf '{not valid json' > "$sk1h_cfgdir_c2/plugins/claude-hud/config.json"
+outSK1hC2=$(sk1h_probe "$sk1h_cfgdir_c2")
+echo "$outSK1hC2" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyHudConfig (HIMMEL-3739): unparsable legacy file must degrade too (got: $outSK1hC2)"
+echo "ok: settings-key verifyHudConfig (HIMMEL-3739) — legacy base merged under the new-path override, broken file never masked"
+
 # ── settings-key: simple non-dotted key + verifyPluginSet (claude-plugins-pluginSet) ──
 # a non-empty enabledPlugins map used to read green regardless
 # of whether it matched the recorded pluginSet or was actually installed.
