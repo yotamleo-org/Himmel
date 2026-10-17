@@ -174,6 +174,8 @@ not_contains "prompt: fix classes excluded" "$p" "[mktemp-no-template]"
 l="$(bash "$SCRIPT" --list 2>&1)"
 contains "list: table header" "$l" "| id | kind | rung | source | detector | title |"
 contains "list: has gnu-only-utility row" "$l" '`gnu-only-utility`'
+contains "list: has octal-arith-unnormalized row" "$l" '`octal-arith-unnormalized`'
+contains "list: octal-leading-zero rebuttal kept" "$l" '`octal-leading-zero`'
 # a pipe (or newline) in any cell must not split the markdown row.
 cat > "$tmp/pipe-kf.json" <<'KFJSON'
 {"classes":[{"id":"pipe-title","kind":"checklist","rung":"human","title":"a|b\nc","source":"s|t","globs":[],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}

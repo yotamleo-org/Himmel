@@ -70,6 +70,7 @@ prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
 |---|---|---|---|---|---|
 | `errexit-false-positive` | rebuttal | advisory | coderabbit-learning | added-line-regex | errexit hazards claimed in scripts that do not (or do not relevantly) use set -e |
 | `octal-leading-zero` | rebuttal | advisory | coderabbit-learning | added-line-regex | leading-zero operands: decimal in `[ ]`, octal only in arithmetic contexts |
+| `octal-arith-unnormalized` | fix | advisory | ledger | — | leading-zero operand (date +%m/%d/%H/%M/%S/%j) used in arithmetic without 10# normalization |
 | `handover-root-bootstrap` | rebuttal | advisory | coderabbit-learning | added-line-regex | handover-path.sh / handover_root demanded of a script that touches no handover path |
 | `mktemp-no-template` | fix | advisory | coderabbit-learning | added-line-regex | bare `mktemp` / `mktemp -d` without a template (BSD/macOS portability) |
 | `gnu-only-utility` | fix | advisory | cr-app-comments | added-line-regex | GNU-only command or flag in cross-platform shell (timeout, find -maxdepth, sed -i, date -d, readlink -f, grep -P, \s, hardcoded /usr/bin/cat) |

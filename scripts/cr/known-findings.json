@@ -91,6 +91,24 @@
       }
     },
     {
+      "id": "octal-arith-unnormalized",
+      "kind": "fix",
+      "rung": "advisory",
+      "title": "leading-zero operand (date +%m/%d/%H/%M/%S/%j) used in arithmetic without 10# normalization",
+      "source": "ledger",
+      "globs": [
+        "scripts/**/*.sh",
+        "templates/**/*.sh"
+      ],
+      "detector": null,
+      "learning_match": null,
+      "match": "octal.*(arith|unnormali[sz]ed|date|10#)|(arith|10#).*octal|08.*09.*(invalid|too great)|value too great for base",
+      "canonical": "A leading-zero-capable operand (a date field such as `date +%m`, env or user input) inside `$(( ))`, `(( ))` or `let` is octal: `08` and `09` abort with `value too great for base`. Normalize it with `$((10#$var))` before the arithmetic. This is the real counterpart of the octal-leading-zero rebuttal: a single-bracket `[ \"$m\" -gt 5 ]` is decimal and needs nothing.",
+      "coverage": "shell-lint [octal-arith] (same-file only; advisory, not yet wired into pre-commit or CI) flags a variable assigned from date +%m/%d/%H/%M/%S/%j/%U/%V/%W that later sits in arithmetic without 10#; exempt a line with `# octal-ok: reason`. The portable-primitives helper is HIMMEL-6020, not built.",
+      "prompt": false,
+      "evidence": {}
+    },
+    {
       "id": "handover-root-bootstrap",
       "kind": "rebuttal",
       "rung": "advisory",

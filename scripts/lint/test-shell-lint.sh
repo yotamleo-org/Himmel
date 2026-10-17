@@ -993,6 +993,91 @@ if [ "$EC19R" -eq 0 ]; then pass "19r exits 0 on a concatenated operand past a p
 assert_not_contains "19r no [quote-break] past a program-syntax # mistaken for a comment (codex-3 round 3)" "[quote-break]" "$OUT19R"
 
 # ---------------------------------------------------------------------------
+# Case 20: [octal-arith] — a variable assigned from a leading-zero date field
+# (date +%m/%d/%H/%M/%S/%j/%U/%V/%W, or cut of one) that later sits inside
+# $(( )) / (( )) / let without 10# is octal in that context (08 and 09 error).
+# Fixtures are written with quoted heredocs; Case 18 exempts this file.
+# ---------------------------------------------------------------------------
+printf '\nCase 20: octal-arith detection\n'
+OA_BAD="$TMP_ROOT/oa_bad.sh"
+cat > "$OA_BAD" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m)
+echo $((m+1))
+EOF
+OUT20="$(bash "$LINT" "$OA_BAD" 2>&1)"; EC20=$?
+if [ "$EC20" -eq 1 ]; then pass "20a exit 1 on unnormalized date field in \$(( ))"; else fail "20a expected exit 1, got $EC20" "$OUT20"; fi
+assert_contains "20a [octal-arith] fires" "[octal-arith]" "$OUT20"
+assert_contains "20a cites the arithmetic line" "line 4" "$OUT20"
+
+OA_OK="$TMP_ROOT/oa_ok.sh"
+cat > "$OA_OK" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m)
+echo $((10#$m+1))
+EOF
+OUT20B="$(bash "$LINT" "$OA_OK" 2>&1)"
+assert_not_contains "20b 10# normalized operand is clean" "[octal-arith]" "$OUT20B"
+
+OA_YEAR="$TMP_ROOT/oa_year.sh"
+cat > "$OA_YEAR" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+y=$(date +%Y)
+echo $((y+1))
+EOF
+OUT20C="$(bash "$LINT" "$OA_YEAR" 2>&1)"
+assert_not_contains "20c date +%Y (no leading zero) is clean" "[octal-arith]" "$OUT20C"
+
+OA_BRACKET="$TMP_ROOT/oa_bracket.sh"
+cat > "$OA_BRACKET" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m)
+[ "$m" -gt 5 ] && echo late
+EOF
+OUT20D="$(bash "$LINT" "$OA_BRACKET" 2>&1)"
+assert_not_contains "20d single-bracket test is decimal, clean" "[octal-arith]" "$OUT20D"
+
+OA_ESC="$TMP_ROOT/oa_esc.sh"
+cat > "$OA_ESC" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m)
+echo $((m+1)) # octal-ok: m is checked to be 1-7 above
+EOF
+OUT20E="$(bash "$LINT" "$OA_ESC" 2>&1)"
+assert_not_contains "20e same-line # octal-ok suppresses" "[octal-arith]" "$OUT20E"
+
+OA_FORMS="$TMP_ROOT/oa_forms.sh"
+cat > "$OA_FORMS" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+d=$(date +%d)
+h=$(date +%H | cut -c1-2)
+(( d > 3 )) && echo a
+let h2=h+1
+EOF
+OUT20F="$(bash "$LINT" "$OA_FORMS" 2>&1)"
+assert_contains "20f (( )) form flagged" "[octal-arith] line 5" "$OUT20F"
+assert_contains "20f let form flagged" "[octal-arith] line 6" "$OUT20F"
+
+OA_EPOCH="$TMP_ROOT/oa_epoch.sh"
+cat > "$OA_EPOCH" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+t=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$at" +%s)
+echo $((t+1))
+EOF
+OUT20G="$(bash "$LINT" "$OA_EPOCH" 2>&1)"
+assert_not_contains "20g epoch output (+%s) with a %m input format is clean" "[octal-arith]" "$OUT20G"
+
+OUT20H="$(bash "$LINT" --help 2>&1)"
+assert_contains "20g --help documents [octal-arith]" "[octal-arith]" "$OUT20H"
+
+# ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
 printf '====================================\n'
