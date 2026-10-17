@@ -334,7 +334,8 @@ gathering, per the rule below.>
 > A same-uid file-access claim goes to the OS layer, not another text round.
 > Every bullet under a Non-blocking, Follow-ups or Residuals heading in GO or
 > NO-GO evidence carries a `HIMMEL-<n>` key or `no-ticket: <reason>`, or the
-> writer refuses it.
+> writer refuses it. So does any standalone `residual: <text>` line (bulleted
+> or not, any case, with or without a heading).
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through

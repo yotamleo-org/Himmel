@@ -672,6 +672,25 @@ check "22: a keyed NO-GO residual is written rc 0" "$rc" 0
 printf '## Evidence\n\n- a follow-up is mentioned in prose here\n- residual risk is low\n' > "$evd/r-other-heading.md"
 rc=0; wv q22j GO "$SHA_A" --evidence-file "$evd/r-other-heading.md" >/dev/null 2>&1 || rc=$?
 check "22: a follow-up bullet under another heading is not refused" "$rc" 0
+printf 'Evidence read.\n\nresidual: x\n' > "$evd/r-line-bad.md"
+rej "a plain residual: line with no key" q22m GO "$evd/r-line-bad.md"
+printf 'Evidence read.\n\n- Residual: x\n' > "$evd/r-line-bullet-bad.md"
+rej "a bulleted Residual: line with no key" q22n GO "$evd/r-line-bullet-bad.md"
+printf 'Evidence read.\r\n\r\nresidual: x\r\n' > "$evd/r-line-crlf-bad.md"
+rej "a CRLF residual: line with no key" q22o GO "$evd/r-line-crlf-bad.md"
+printf 'residual: x -- no-ticket:\n' > "$evd/r-line-empty.md"
+rej "a residual: line with an empty no-ticket reason" q22p GO "$evd/r-line-empty.md"
+printf 'residual: x — ticket: HIMMEL-1.\n' > "$evd/r-line-ok1.md"
+rc=0; wv q22q GO "$SHA_A" --evidence-file "$evd/r-line-ok1.md" >/dev/null 2>&1 || rc=$?
+check "22: a keyed residual: line is written rc 0" "$rc" 0
+printf 'residual: x -- no-ticket: y\n' > "$evd/r-line-ok2.md"
+rc=0; wv q22r GO "$SHA_A" --evidence-file "$evd/r-line-ok2.md" >/dev/null 2>&1 || rc=$?
+check "22: a no-ticket residual: line is written rc 0" "$rc" 0
+printf '## Residuals:\n\nresidual: keyed HIMMEL-2\n' > "$evd/r-line-heading-ok.md"
+rc=0; wv q22s GO "$SHA_A" --evidence-file "$evd/r-line-heading-ok.md" >/dev/null 2>&1 || rc=$?
+check "22: a keyed residual: line under a Residuals heading is written rc 0" "$rc" 0
+printf '## Residuals:\n\nresidual: unkeyed under heading\n' > "$evd/r-line-heading-bad.md"
+rej "an unkeyed residual: line under a Residuals heading" q22t GO "$evd/r-line-heading-bad.md"
 printf '## Non-blocking\n\n- HIMMEL-9 filed\n\n- loose item with no key\n' > "$evd/r-loose-bad.md"
 rej "an unkeyed bullet after a blank line in a loose list" q22l GO "$evd/r-loose-bad.md"
 printf '## Non-blocking\n\n- HIMMEL-9 filed\n\nThe next paragraph is plain prose.\n- stray bullet after a blank-terminated block\n' > "$evd/r-block-end.md"

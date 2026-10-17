@@ -276,6 +276,10 @@ fi
 unfiled=$(awk '
     { sub(/\r$/, "") }
     function lead(s) { gsub(/^[ \t]*(#+[ \t]+)?(\*\*)?/, "", s); gsub(/(\*\*)?[ \t]*:?(\*\*)?[ \t]*$/, "", s); return tolower(s) }
+    tolower($0) ~ /^[ \t]*([-*+][ \t]+)?residuals?:[ \t]*[^ \t]/ {
+        if ($0 !~ /HIMMEL-[0-9]+/ && $0 !~ /no-ticket:[ \t]*[^ \t]/) print
+        next
+    }
     /^#+[ \t]/ || /^\*\*.*\*\*:?[ \t]*$/ || /^[A-Za-z-]+:[ \t]*$/ {
         l = lead($0); sec = (l ~ /^(non-blocking|follow-ups?|residuals?)$/); items = 0; next
     }
