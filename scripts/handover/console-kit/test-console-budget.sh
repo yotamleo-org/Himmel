@@ -64,6 +64,9 @@ run "$tmp/cr2.jsonl"
 check    "3: 29.0M still OK (rc 0)" "$rc" 0
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=20 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: CONSOLE_CACHE_READ_BUDGET_M overrides (rc 3)" "$rc" 3
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=08 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "3: leading-zero budget 08 is decimal (rc 3, no octal abort)" "$rc" 3
+contains "3: leading-zero budget still prints the line" "$out" "verdict=HANDOVER"
 
 # --- 4. duplicate requestIds ---------------------------------------------------
 { row a 1000000; row a 1000000; row b 2000000; row b 2000000; row a 1000000; } > "$tmp/dup.jsonl"
@@ -107,6 +110,11 @@ mk "$tmp/body" 4 1000000
 { printf '{"type":"custom-title","customTitle":"HIMMEL-nextleg-x-roadmap-console"}\n'; cat "$tmp/body"; } > "$cfg/projects/-slug/sid-2.jsonl"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title HIMMEL-nextleg-x-roadmap-console 2>&1)" || rc=$?
 check    "6: --title resolves by customTitle" "$out" "budget turns=4 cache_read=4.0M verdict=OK"
+mk "$tmp/late" 300 1000
+{ cat "$tmp/late"; printf '{"type":"custom-title","customTitle":"late-titled-console"}\n'; } > "$cfg/projects/-slug/sid-3.jsonl"
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title late-titled-console 2>&1)" || rc=$?
+check    "6: a customTitle written late in the transcript still resolves" "$rc" 3
+contains "6: late-title transcript measured" "$out" "turns=300"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title no-such-console 2>&1)" || rc=$?
 check    "6: unknown --title rc 2" "$rc" 2
 rc=0; out="$(bash "$SCRIPT" --bogus 2>&1)" || rc=$?
