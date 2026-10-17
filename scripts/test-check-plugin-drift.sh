@@ -396,7 +396,13 @@ if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required
 bump_fixture "$W_REN/d" "plügin"
 (cd "$W_REN/d" && printf '# edited\n' > "$P/plügin/skill.md" && git add -A)
 bump_run "$W_REN/d"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (staged):RED — unbumped edit to a non-ASCII-named plugin fails"; else bad "--bump-required (staged): non-ASCII plugin edit passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "plügin changed under marketplace/plugins/plügin/ but"; then ok "--bump-required (staged):RED — unbumped edit to a non-ASCII-named plugin fails"; else bad "--bump-required (staged): non-ASCII plugin edit passed: $br_out"; fi
+
+# Control: the same edit with a version bump passes, so the quote fix stays pinned.
+bump_fixture "$W_REN/dc" "plügin"
+(cd "$W_REN/dc" && printf '# edited\n' > "$P/plügin/skill.md" && printf '{"name": "plügin", "version": "0.1.1"}\n' > "$P/plügin/.claude-plugin/plugin.json" && git add -A)
+bump_run "$W_REN/dc"
+if [ "$br_rc" -eq 0 ]; then ok "--bump-required (staged): control — bumped edit to a non-ASCII-named plugin passes"; else bad "--bump-required (staged): bumped non-ASCII plugin failed: $br_out"; fi
 
 # (e) symlink swap with the marketplace entry removed is still not a removal.
 bump_fixture "$W_REN/e" foo
@@ -440,18 +446,36 @@ if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required
 bump_fixture "$W_REN/rd" "plügin"
 (cd "$W_REN/rd" && printf '# edited\n' > "$P/plügin/skill.md" && git add -A)
 bump_range_run "$W_REN/rd"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (range):RED — unbumped edit to a non-ASCII-named plugin fails"; else bad "--bump-required (range): non-ASCII plugin edit passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "plügin changed under marketplace/plugins/plügin/ but"; then ok "--bump-required (range):RED — unbumped edit to a non-ASCII-named plugin fails"; else bad "--bump-required (range): non-ASCII plugin edit passed: $br_out"; fi
+
+bump_fixture "$W_REN/rdc" "plügin"
+(cd "$W_REN/rdc" && printf '# edited\n' > "$P/plügin/skill.md" && printf '{"name": "plügin", "version": "0.1.1"}\n' > "$P/plügin/.claude-plugin/plugin.json" && git add -A)
+bump_range_run "$W_REN/rdc"
+if [ "$br_rc" -eq 0 ]; then ok "--bump-required (range): control — bumped edit to a non-ASCII-named plugin passes"; else bad "--bump-required (range): bumped non-ASCII plugin failed: $br_out"; fi
 
 # (i) a changed path git still C-quotes (a double quote in the name) cannot be
-# attributed to a plugin, so the gate fails closed in both modes.
+# attributed to a plugin, so the gate fails closed in both modes. The manifest
+# is bumped so only the quoted-path guard can fail these rows.
+bump_quoted_edit() { # <dir> -> a bumped foo plus a file whose name holds a double quote
+  (cd "$1" && printf '# edited\n' > "$P/foo/a\"b.md" && printf '{"name": "foo", "version": "0.1.1"}\n' > "$P/foo/.claude-plugin/plugin.json" && git add -A)
+}
 bump_fixture "$W_REN/q" foo
-(cd "$W_REN/q" && printf '# edited\n' > "$P/foo/a\"b.md" && git add -A)
+bump_quoted_edit "$W_REN/q"
 bump_run "$W_REN/q"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (staged):RED — a git-quoted changed path fails closed"; else bad "--bump-required (staged): quoted path passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (staged):RED — a git-quoted changed path fails closed"; else bad "--bump-required (staged): quoted path passed: $br_out"; fi
 bump_fixture "$W_REN/rq" foo
-(cd "$W_REN/rq" && printf '# edited\n' > "$P/foo/a\"b.md" && git add -A)
+bump_quoted_edit "$W_REN/rq"
 bump_range_run "$W_REN/rq"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (range):RED — a git-quoted changed path fails closed"; else bad "--bump-required (range): quoted path passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (range):RED — a git-quoted changed path fails closed"; else bad "--bump-required (range): quoted path passed: $br_out"; fi
+
+# (j) the same quoted path first in a changed list over 64 KiB: the guard must
+# not depend on a pipe reader that can exit early and SIGPIPE the writer.
+bump_fixture "$W_REN/big" foo
+bump_quoted_edit "$W_REN/big"
+for i in $(seq 1 1100); do : > "$W_REN/big/$P/foo/$(printf 'z%070d' "$i").md"; done
+(cd "$W_REN/big" && git add -A)
+bump_run "$W_REN/big"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (staged):RED — a quoted path ahead of a changed list over 64 KiB still fails closed"; else bad "--bump-required (staged): quoted path in a big list passed: $br_out"; fi
 rm -rf -- "$W_REN"
 
 # replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.

@@ -226,10 +226,12 @@ check_bump_required() {
   fi
   # quotePath=false still C-quotes names holding a quote, backslash, TAB or LF;
   # the name sed cannot attribute such a line to a plugin, so refuse it.
-  if printf '%s\n' "$changed" | grep -q '^"'; then
-    echo "ERR check-plugin-drift --bump-required: a changed path under $rel/ is quoted by git and cannot be attributed to a plugin — rename it (HIMMEL-3551)" >&2
-    return 1
-  fi
+  case $'\n'"$changed" in
+    *$'\n"'*)
+      echo "ERR check-plugin-drift --bump-required: a changed path under $rel/ is quoted by git and cannot be attributed to a plugin — rename it (HIMMEL-3551)" >&2
+      return 1
+      ;;
+  esac
   if [ -z "$changed" ]; then
     echo "check-plugin-drift --bump-required: no plugin files changed"
     return 0
@@ -265,7 +267,7 @@ except Exception:
       echo "check-plugin-drift --bump-required: $name removed — no version bump needed"
       continue
     fi
-    if ! printf '%s\n' "$changed" | grep -qx "$manifest"; then
+    if ! grep -qxF -e "$manifest" <<<"$changed"; then
       echo "ERR check-plugin-drift --bump-required: $name changed under $rel/$name/ but $manifest was not bumped (HIMMEL-3551)" >&2
       bad=1
       continue
