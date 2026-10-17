@@ -282,6 +282,7 @@ WITH_PUBLISH=0
 # (default 6) and the claude-api semantic pass on top of it.
 PUBLISH_EVERY_HOURS=6
 PUBLISH_SEMANTIC=0
+SEMANTIC_ACTIVE=0
 
 # Fixed per-corpus map identity (titles/slugs/tags). ASCII-only: the .bat is
 # parsed by cmd.exe under the OEM codepage where UTF-8 punctuation mojibakes.
@@ -364,7 +365,10 @@ Flags (arm only, except --dry-run):
                          default 6). Cron only.
   --publish-semantic     With --with-publish: the publish leg also runs the
                          claude-api semantic pass (graph-cadence --semantic).
-                         Cron only.
+                         Cron only. Arms PAUSED: arm writes the
+                         semantic.paused marker; rm it to resume.
+  --semantic-active      With --publish-semantic: arm without the marker, so
+                         the semantic pass runs from the first fire.
 
 The structural (AST) pair's offsets (luna daily 00:05, himmel hourly at :15)
 are NOT flags — see WEEKLY_DAY_*/AST_*_TIME in this script.
@@ -412,6 +416,7 @@ while [ $# -gt 0 ]; do
         --publish-every-hours)   PUBLISH_EVERY_HOURS="${2:-}"; shift 2 ;;
         --publish-every-hours=*) PUBLISH_EVERY_HOURS="${1#--publish-every-hours=}"; shift ;;
         --publish-semantic)      PUBLISH_SEMANTIC=1; shift ;;
+        --semantic-active)       SEMANTIC_ACTIVE=1; shift ;;
         -h|--help)       usage; exit 0 ;;
         *)
             echo "ERR graphmap-cadence: unknown arg: $1" >&2
@@ -2183,6 +2188,12 @@ cron_arm() {
     fi
 
     mkdir -p "$BAT_DIR"
+    # Arm --publish-semantic PAUSED: the marker exists before the first fire, so
+    # billed semantic never starts on its own; resume is a manual rm.
+    if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$SEMANTIC_ACTIVE" -ne 1 ]; then
+        : > "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
+        echo "graphmap-cadence: semantic armed PAUSED ($BAT_DIR/$SEMANTIC_PAUSE_MARKER); rm it to resume"
+    fi
     # Stage the runners at temp paths and promote (mv) them only after the
     # crontab install succeeds: writing them in place first would let a failed
     # install (exit 4) leave the OLD crontab live while the runner files already
