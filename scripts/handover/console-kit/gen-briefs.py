@@ -27,8 +27,10 @@ design|unverified-finding|tier-return|operator-ruling, reason is non-blank singl
 text; the brief gets that line, and nothing is written for a leg without it), lane (the manifest
 lane the printed add line passes as --lane; default native, the lane of the
 launchers written here; a non-native lane's text may not name a path under the handover root,
-that worker cannot read it). The brief follows
-the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
+that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
+the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; no line when it
+states neither), which the merge script reads through --leg-doc to bind the merge (HIMMEL-5843).
+The brief follows the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
 leg preface and are not repeated.
 
 Worktrees: `scripts/clean-garden.sh <branch> --no-prune` from --repo
@@ -55,6 +57,7 @@ ENV_LINE = ("This ticket touches CI, infra or the environment: one test row's fi
             "(this PR's CI log, the upstream image config), not hand-written, and RED before the fix.")
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-sonnet-5-5'
+COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
@@ -115,6 +118,13 @@ def check_lane_reads(l, hroot):
             die('leg %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
 
 
+def completes_line(scope):
+    # The LAST completes-ticket value in the scope, as the one line the merge script
+    # reads from the leg doc (--leg-doc / HIMMEL_LEG_DOC); none when the scope states neither.
+    found = COMPLETES_RE.findall(scope)
+    return '\n> **Completes ticket:** %s\n' % found[-1].lower() if found else ''
+
+
 def render_brief(l, ctx):
     n, keys = l['label'], l['keys']
     gets = ' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['repo'], k) for k in keys)
@@ -135,7 +145,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the console first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once.
-{abline}{tierline}
+{abline}{tierline}{ctline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -159,6 +169,7 @@ template_version: 3
            scope=l['scope'], others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
+           ctline=completes_line(l['scope']),
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 

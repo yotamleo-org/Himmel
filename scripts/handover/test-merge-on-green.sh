@@ -3436,6 +3436,42 @@ HIMMEL_CONSOLE_DOC="$mog_doc2" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIM
 assert_err_lacks "jira: an opted-in merge prints no PARTIAL line" "PARTIAL"
 if grep -q 'PARTIAL' "$mog_doc2"; then fail "jira: an opted-in merge appends no PARTIAL bullet"; else pass; fi
 
+# The brief's dedicated `Completes ticket` line binds the merge. The
+# leg doc is supplied by the caller (--leg-doc, else HIMMEL_LEG_DOC).
+leg_no="$LAST_TMP/leg-no.md"; leg_yes="$LAST_TMP/leg-yes.md"
+printf '# leg\n\n> **Completes ticket:** no\n\n## Results\n' > "$leg_no"
+printf '# leg\n\n> **Completes ticket:** yes\n\n## Results\n' > "$leg_yes"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'slice 1\nRemaining: slice 2\n' \
+    run_mog 0 "5843: brief says no, --jira-transition given" -- --jira-transition --leg-doc "$leg_no"
+assert_err_has "5843: the ignored flag is announced" "merge-on-green: brief says completes-ticket: no; --jira-transition ignored"
+assert_jira_log_lacks "5843: brief no never transitions to Done" "transition HIMMEL-374 Done"
+assert_jira_log_has "5843: brief no returns the ticket to To Do" "transition HIMMEL-374 To Do"
+assert_jira_log_has "5843: brief no comments the Remaining line" "comment-body: Remaining: slice 2"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_LEG_DOC="$leg_no" \
+    run_mog 0 "5843: brief no via HIMMEL_LEG_DOC" -- --jira-transition
+assert_jira_log_lacks "5843: HIMMEL_LEG_DOC binds the same way" "transition HIMMEL-374 Done"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_LEG_DOC="$leg_no" \
+    run_mog 0 "5843: --leg-doc beats HIMMEL_LEG_DOC" -- --jira-transition --leg-doc "$leg_yes"
+assert_jira_log_has "5843: the flag value wins over the env var" "transition HIMMEL-374 Done"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "5843: brief yes, flag missing" -- --leg-doc "$leg_yes"
+assert_err_has "5843: the missing flag is warned" "brief expects the ticket to close"
+assert_jira_log_lacks "5843: brief yes never transitions on its own" "transition HIMMEL-374 Done"
+assert_jira_log_has "5843: brief yes without the flag stays partial" "transition HIMMEL-374 To Do"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "5843: brief yes, flag given" -- --jira-transition --leg-doc "$leg_yes"
+assert_jira_log_has "5843: brief yes with the flag transitions" "transition HIMMEL-374 Done"
+assert_err_lacks "5843: brief yes with the flag warns nothing" "brief says completes-ticket"
+printf '# leg\n\nno such line\n' > "$LAST_TMP/leg-none.md"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "5843: leg doc without the line" -- --jira-transition --leg-doc "$LAST_TMP/leg-none.md"
+assert_jira_log_has "5843: no line leaves --jira-transition working" "transition HIMMEL-374 Done"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "5843: unreadable leg doc is a warning" -- --jira-transition --leg-doc "$LAST_TMP/absent.md"
+assert_err_has "5843: unreadable leg doc is named" "cannot read leg doc"
+assert_jira_log_has "5843: unreadable leg doc leaves --jira-transition working" "transition HIMMEL-374 Done"
+
 
 # The Remaining text is the PR body's own `Remaining:` line(s).
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \

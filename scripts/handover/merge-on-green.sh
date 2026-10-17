@@ -50,7 +50,7 @@
 # by design: this wrapper IS the sanctioned gated path and embeds the same
 # (stronger, because it WATCHES) predicates via check-ci.sh.
 #
-# Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition]
+# Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--leg-doc PATH]
 #   selector           optional PR number / branch / url; defaults to the
 #                      current branch
 #   --dry-run          run every gate, print the intended merge, then STOP
@@ -59,6 +59,11 @@
 #                      (see "Jira auto-transition is opt-in"
 #                      below; default is a PARTIAL merge: the ticket goes back
 #                      to To Do with the PR body's `Remaining:` line, never Done)
+#   --leg-doc PATH     the leg's brief doc (else $HIMMEL_LEG_DOC); its
+#                      `> **Completes ticket:** yes|no` line binds the merge:
+#                      no ignores --jira-transition with a warning, yes without
+#                      the flag warns; either way a transition happens only on
+#                      the flag. No line or an unreadable doc: no effect.
 #   A PR found CLOSED unmerged sends its In Review ticket back to To Do too.
 #
 # After a CONFIRMED merge it best-effort prunes the local worktree checked out
@@ -296,10 +301,15 @@ HIMMEL_PUBLIC_ORIGIN_NWO="yotamleo/Himmel"
 selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
+# ponytail: the leg doc is supplied by the caller (--leg-doc, else HIMMEL_LEG_DOC); the console must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
+LEG_DOC="${HIMMEL_LEG_DOC:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --jira-transition) JIRA_TRANSITION_OPT_IN=1; shift ;;
+        --leg-doc)
+            if [ $# -lt 2 ]; then echo "merge-on-green: --leg-doc needs a path" >&2; exit 10; fi
+            LEG_DOC="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,/^set -uo pipefail/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'
             exit 0 ;;
@@ -1900,7 +1910,24 @@ jira_auto_transition_on_merge() {
     # Opt-in per merge, not a heuristic (see the file header).
     # Report what WOULD have happened and stop short of Done, so a sliced
     # ticket is never closed by a merge that did not ask for it.
-    if ! _truthy "$JIRA_TRANSITION_OPT_IN"; then
+    # The brief's `Completes ticket` line binds the merge: a leg cannot widen what the
+    # console scoped. The doc is read only when the caller names it; it never adds a transition.
+    local opt_in="$JIRA_TRANSITION_OPT_IN" brief_completes=""
+    if [ -n "$LEG_DOC" ]; then
+        if [ -r "$LEG_DOC" ]; then
+            brief_completes=$(sed -nE 's/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$LEG_DOC" | tail -n 1)
+        else
+            echo "merge-on-green: cannot read leg doc '$LEG_DOC'; the brief's completes-ticket line is not applied" >&2
+        fi
+    fi
+    if [ "$brief_completes" = "no" ] && _truthy "$opt_in"; then
+        echo "merge-on-green: brief says completes-ticket: no; --jira-transition ignored" >&2
+        opt_in=0
+    elif [ "$brief_completes" = "yes" ] && ! _truthy "$opt_in"; then
+        echo "merge-on-green: brief expects the ticket to close (completes-ticket: yes) but --jira-transition is missing; taking the partial path" >&2
+    fi
+
+    if ! _truthy "$opt_in"; then
         JIRA_AUTO_TRANSITION_RESULT="would-transition key=$key status=$target_status"
         # A bare merge leaves the ticket open: say so, so a sliced ticket's next
         # slice is dispatched instead of sitting orphaned.
