@@ -36,6 +36,8 @@ _ast_row "ast7 a stepped brace range expands" block "touch ast7-{1..3..2}/x"
 _ast_row "ast24 a reassigned PWD is not the cwd" block "PWD=$_PR; touch \"\$PWD/ast24.txt\""
 _ast_row "ast25 tar -x with no -C extracts into the cwd" block "cd $_PR && tar -xf $_WR/ast25.tar"
 _ast_row "ast26 tar -c writes its -f archive" block "tar -cf $_PR/ast26.tar $_WR"
+ln -s "$_PR" "$_WR/ast29-1000000"
+_ast_row "ast29 a brace range with long numbers denies" block "touch ast29-{1000000..1000001}/x"
 
 if [ "$BWIMC_ENGINE" = ast ]; then
     echo "== HIMMEL-6014: the AST engine fails closed =="

@@ -153,6 +153,8 @@ def _seq($in):
   elif ($in | test("^[A-Za-z]\\.\\.[A-Za-z](\\.\\.-?[0-9]{1,6})?$")) then
     ($in | explode) as $c
     | [_terms($c[0]; $c[3]; ($in[6:] | if . == "" then 1 else tonumber end))[] | [.] | implode | _protect]
+  # a longer number is still a range in bash, but past what tonumber keeps exact
+  elif ($in | test("^(-?[0-9]+\\.\\.-?[0-9]+|[A-Za-z]\\.\\.[A-Za-z])(\\.\\.-?[0-9]+)?$")) then error("bash-ast: brace cap")
   else null end;
 
 def _brace:
