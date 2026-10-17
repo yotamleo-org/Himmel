@@ -230,7 +230,7 @@ PY
 fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
-  [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ] \
+  { [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
     || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- nothing copied, no claude-cli fallback" >&2; exit 2; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] \
     || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
