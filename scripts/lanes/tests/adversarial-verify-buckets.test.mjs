@@ -26,12 +26,13 @@ const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)));
 // reviews: { <dimension key>: [finding] }; verdict(finding, callIndex) -> verdict;
 // judge(prompt, opts) -> { judgments: [{ key, bucket, rationale }] }
 async function exec({ reviews = {}, verdict = () => ({ refuted: false, reason: 'holds' }), judge = () => ({ judgments: [] }) }) {
-  const calls = { judge: [] };
+  const calls = { judge: [], review: [], verify: [] };
   const seen = {};
   const agent = async (prompt, opts = {}) => {
     const label = opts.label || '';
-    if (label.startsWith('review:')) return { findings: reviews[label.slice(7)] ?? [] };
+    if (label.startsWith('review:')) { calls.review.push({ prompt, opts }); return { findings: reviews[label.slice(7)] ?? [] }; }
     if (label.startsWith('verify:')) {
+      calls.verify.push({ prompt, opts });
       const n = seen[prompt] = (seen[prompt] ?? 0) + 1;
       return verdict(prompt, n);
     }
@@ -85,12 +86,14 @@ test('(b2) a lone finding the judge puts in noted stays in noted', async () => {
   assert.equal(out.buckets.noted[0].rationale, 'low impact');
 });
 
-test('(b3) a lone critical finding may stay in act', async () => {
+test('(b3) a lone critical finding is still capped at consider', async () => {
   const { out } = await exec({
     reviews: { correctness: [F('c.js', 3, 'critical')] },
     judge: () => ({ judgments: [act('c.js:3')] }),
   });
-  assert.equal(out.buckets.act.length, 1);
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 1);
+  assert.deepEqual(out.agreement, {});
 });
 
 test('(c) a refuted finding lands in dismissed with the verifier reason, not dropped', async () => {
@@ -140,7 +143,7 @@ test('a verifier that returns no verdict is dismissed, not dropped and not confi
   assert.equal(out.buckets.dismissed.length, 1);
 });
 
-test('verifiers disagreeing on a merged finding: consider, never act', async () => {
+test('verifiers disagreeing on one report: the refuted raiser is dismissed, the survivor is a lone raiser capped at consider', async () => {
   const shared = F('h.js', 8);
   const { out } = await exec({
     reviews: { correctness: [shared], 'silent-failure': [shared] },
@@ -149,6 +152,40 @@ test('verifiers disagreeing on a merged finding: consider, never act', async () 
   });
   assert.equal(out.buckets.act.length, 0);
   assert.equal(out.buckets.consider.length, 1);
+  assert.equal(out.buckets.consider[0].raisedBy.length, 1);
+  assert.equal(out.buckets.dismissed.length, 1);
+  assert.deepEqual(out.agreement, {});
+});
+
+test('two different findings on one line, one refuted and one confirmed critical: no borrowed agreement, each keeps its own title', async () => {
+  const refutedOne = F('k.js', 4, 'important', 'swallowed error');
+  const critical = F('k.js', 4, 'critical', 'unbounded loop');
+  const { out, calls } = await exec({
+    reviews: { correctness: [refutedOne], 'silent-failure': [critical] },
+    verdict: p => (p.includes('swallowed error') ? { refuted: true, reason: 'caller handles it' } : { refuted: false, reason: 'holds' }),
+    judge: () => ({ judgments: [act('k.js:4')] }),
+  });
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 1);
+  assert.equal(out.buckets.consider[0].title, 'unbounded loop');
+  assert.deepEqual(out.buckets.consider[0].raisedBy, ['silent-failure']);
+  assert.equal(out.buckets.dismissed.length, 1);
+  assert.equal(out.buckets.dismissed[0].title, 'swallowed error');
+  assert.deepEqual(out.buckets.dismissed[0].raisedBy, ['correctness']);
+  assert.deepEqual(out.agreement, {});
+  assert.doesNotMatch(calls.judge[0].prompt, /swallowed error/);
+});
+
+test('two confirmed reports on one line the judge says are different defects: capped at consider, not in agreement, both titles reach the judge', async () => {
+  const { out, calls } = await exec({
+    reviews: { correctness: [F('m.js', 2, 'important', 'off by one')], 'silent-failure': [F('m.js', 2, 'important', 'error dropped')] },
+    judge: () => ({ judgments: [{ key: 'm.js:2', bucket: 'act', rationale: 'real', sameDefect: false }] }),
+  });
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 1);
+  assert.deepEqual(out.agreement, {});
+  assert.match(calls.judge[0].prompt, /off by one/);
+  assert.match(calls.judge[0].prompt, /error dropped/);
 });
 
 test('a confirmed finding the judge leaves out falls to consider, not dropped', async () => {

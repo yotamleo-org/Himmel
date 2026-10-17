@@ -22,7 +22,7 @@ const JUDGMENTS = { type: 'object', required: ['judgments'],
   properties: { judgments: { type: 'array', items: { type: 'object',
     required: ['key', 'bucket', 'rationale'],
     properties: { key: {type:'string'}, bucket: {enum:['act','consider','noted','dismissed']},
-      rationale: {type:'string'} } } } } }
+      rationale: {type:'string'}, sameDefect: {type:'boolean'} } } } } }
 
 const REVIEW_RUBRIC = [
   'Review the current branch diff vs main as an adversarial reviewer. Find real problems; do not praise the code. Assume the goal of the change is right and challenge how it is carried out.',
@@ -52,33 +52,36 @@ const results = await pipeline(
 const raw = results.flat().filter(Boolean)
 const confirmed = raw.map(r => r.finding).filter(f => f.verdict && !f.verdict.refuted)
 
-// The same file:line raised by two dimensions is one finding with two raisers.
-const merged = new Map()
+const buckets = { act: [], consider: [], noted: [], dismissed: [] }
+const entry = (m, rationale, agreed = false) => ({ key: m.key, title: m.title, file: m.file, line: m.line, severity: m.severity, raisedBy: m.raisedBy, agreed, reports: m.reports, rationale })
+
+// Reports sharing a file:line are grouped, but a refuted or verdict-less report is dismissed on its
+// own and never counts as a raiser, so it cannot lend agreement to, or retitle, a confirmed one.
+// Every confirmed report keeps its own title and severity.
+const groups = new Map()
 for (const { dim, finding: f } of raw) {
   const key = `${f.file}:${f.line}`
-  const m = merged.get(key) ?? { key, title: f.title, file: f.file, line: f.line, severity: f.severity, raisedBy: [], verdicts: [] }
-  if (!m.raisedBy.includes(dim)) m.raisedBy.push(dim)
-  if (SEVERITY_RANK[f.severity] < SEVERITY_RANK[m.severity]) m.severity = f.severity
-  m.verdicts.push(f.verdict ?? null)
-  merged.set(key, m)
-}
-
-const buckets = { act: [], consider: [], noted: [], dismissed: [] }
-const entry = (m, rationale) => ({ key: m.key, title: m.title, file: m.file, line: m.line, severity: m.severity, raisedBy: m.raisedBy, rationale })
-const toJudge = []
-for (const m of merged.values()) {
-  const refuted = m.verdicts.filter(v => !v || v.refuted)
-  if (refuted.length === m.verdicts.length) {
-    const reason = m.verdicts.find(v => v?.reason)?.reason
-    buckets.dismissed.push(entry(m, reason ? `refuted: ${reason}` : 'refuted: verifier returned no verdict'))
+  const report = { dim, title: f.title, severity: f.severity }
+  if (!f.verdict || f.verdict.refuted) {
+    const reason = f.verdict?.reason
+    buckets.dismissed.push(entry({ key, title: f.title, file: f.file, line: f.line, severity: f.severity, raisedBy: [dim], reports: [report] },
+      reason ? `refuted: ${reason}` : 'refuted: verifier returned no verdict'))
     continue
   }
-  if (refuted.length) buckets.consider.push(entry(m, 'verifiers disagreed on this finding'))
-  else toJudge.push(m)
+  const m = groups.get(key) ?? { key, file: f.file, line: f.line, severity: f.severity, raisedBy: [], reports: [] }
+  m.reports.push({ ...report, reason: f.verdict.reason })
+  if (!m.raisedBy.includes(dim)) m.raisedBy.push(dim)
+  if (SEVERITY_RANK[f.severity] < SEVERITY_RANK[m.severity]) m.severity = f.severity
+  groups.set(key, m)
 }
+const toJudge = [...groups.values()]
+for (const m of toJudge) m.title = [...new Set(m.reports.map(r => r.title))].join(' / ')
 
 if (toJudge.length) {
-  const list = toJudge.map(m => `- ${m.key} [${m.severity}] raised by ${m.raisedBy.join(', ')}: ${m.title} (verifier: ${m.verdicts[0].reason ?? 'could not refute'})`).join('\n')
+  const list = toJudge.map(m => [
+    `- ${m.key} [${m.severity}], raised by ${m.raisedBy.join(', ')}:`,
+    ...m.reports.map(r => `    - ${r.dim} [${r.severity}]: ${r.title} (verifier: ${r.reason ?? 'could not refute'})`),
+  ].join('\n')).join('\n')
   const judged = await agent(
     [
       'You are the lead reviewer, a pragmatic senior engineer, not a neutral aggregator. Each finding below survived an independent refutation attempt. Put every one in exactly one bucket and give a one-line rationale; echo each key exactly.',
@@ -88,31 +91,33 @@ if (toJudge.length) {
       '- dismissed: wrong, a nitpick, or missing context; say which.',
       'Filters: reviewers inflate nits to fill the space, so a pile of nits means the code is probably fine. A hypothetical is a finding only if a caller can reach it, so trace the call site. Suggesting an abstraction is premature unless the code must change a second way. "I would do it differently" is not a defect without a concrete problem. A finding about code the author did not touch, or about a pattern the rest of the codebase shares, is missing context.',
       'Keep findings that name a concrete execution path, that two reviewers raised independently (the strongest signal), or that expose a gap in your own model of the code. Be slow to dismiss security and correctness findings even from one reviewer.',
+      'Reports listed under one key share a file and line but may describe different defects. Set sameDefect to false when they do; two reviewers only agree when they describe one defect.',
       `Read the code at each location before judging.\n${list}`,
     ].join('\n'),
     { label: 'judge', phase: 'Judge', model: 'opus', effort: 'high', schema: JUDGMENTS })
   const byKey = new Map((judged?.judgments ?? []).map(j => [j.key, j]))
   for (const m of toJudge) {
     const j = byKey.get(m.key)
+    const agreed = m.raisedBy.length >= 2 && j?.sameDefect !== false
     let bucket = j?.bucket ?? 'consider'
     let rationale = j?.rationale ?? 'not judged; defaulted to consider'
-    // One reviewer's non-critical finding never blocks on its own: agreement or severity carries act.
-    if (bucket === 'act' && m.raisedBy.length < 2 && m.severity !== 'critical') {
+    // A finding no second reviewer agreed on never reaches act, whatever its severity.
+    if (bucket === 'act' && !agreed) {
       bucket = 'consider'
-      rationale = `${rationale} (single reviewer, not critical: capped at consider)`
+      rationale = `${rationale} (no second reviewer agreed: capped at consider)`
     }
-    buckets[bucket].push(entry(m, rationale))
+    buckets[bucket].push(entry(m, rationale, agreed))
   }
 }
 
 for (const list of Object.values(buckets))
-  list.sort((a, b) => b.raisedBy.length - a.raisedBy.length || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
+  list.sort((a, b) => Number(b.agreed) - Number(a.agreed) || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
 
-// Listed in the same order as the buckets: act first, then by raiser count.
+// Listed in bucket order, act first, agreed findings ahead of the rest.
 const agreement = {}
 const bucketOrder = ['act', 'consider', 'noted']
 for (const name of bucketOrder)
   for (const e of buckets[name])
-    if (e.raisedBy.length >= 2) agreement[e.key] = { title: e.title, raisedBy: e.raisedBy }
+    if (e.agreed) agreement[e.key] = { title: e.title, raisedBy: e.raisedBy }
 
 return { confirmed, buckets, agreement }
