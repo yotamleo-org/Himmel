@@ -84,7 +84,10 @@ else
     trap 'rm -rf "$stub"' EXIT
     cat > "$stub/gh" <<'STUB'
 #!/usr/bin/env bash
-if [ "$1" = "api" ]; then jq -c '.jobs[]' "$JOBS_FIXTURE"; exit 0; fi
+if [ "$1" = "api" ]; then
+  [ "$3" = "repos/o/r/actions/runs/4242/jobs?per_page=100" ] || exit 1
+  jq -c '.jobs[]' "$JOBS_FIXTURE"; exit 0
+fi
 if [ "$1" = "run" ] && [ "$2" = "cancel" ]; then echo "$3" >> "$CANCEL_LOG"; exit 0; fi
 exit 1
 STUB
@@ -92,7 +95,7 @@ STUB
     for case in failed green; do
       : > "$stub/cancel.log"
       PATH="$stub:$PATH" JOBS_FIXTURE="$ROOT/scripts/ci/fixtures/pr-fail-fast-jobs-$case.json" \
-        CANCEL_LOG="$stub/cancel.log" RUN_ID=4242 REPO=o/r POLL_SECS=0 \
+        CANCEL_LOG="$stub/cancel.log" RUN_ID=4242 GH_REPO=o/r POLL_SECS=0 \
         timeout 20 bash -c "$wbody" >/dev/null 2>&1; rc=$?
       n="$(wc -l < "$stub/cancel.log")"
       if [ "$case" = failed ]; then
