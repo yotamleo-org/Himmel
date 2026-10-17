@@ -2677,10 +2677,12 @@ judges their body as raw text. The residuals are a file written by the
 Write/Edit tools (this is a Bash matcher) and text that never spells a target;
 the backstop's `ponytail:` names them. Running either matches no allow rule,
 so the classifier decides. One git exception: a single git command with no
-quotes, substitution or heredoc, whose words are pathspec-only and that
-redirects into a file not named like a target (`git show HEAD:<target> >
-/tmp/x`), is allowed. git's output is not the quoted-text channel the
-backstop guards.
+quotes, substitution or heredoc, with no word starting with `-`, whose words
+are pathspec-only and that redirects into a file not named like a target
+(`git show HEAD:<target> > /tmp/x`), is allowed: it writes only git's own
+output. Options are refused because `--format`/`--pretty` (`%xNN`),
+`--src-prefix`, `--dst-prefix` and `--line-prefix` put command bytes into
+that output.
 
 **Command position and the dispatcher (HIMMEL-6015).** Before the text scan,
 a command whose every command word provably runs no gate directly is allowed:

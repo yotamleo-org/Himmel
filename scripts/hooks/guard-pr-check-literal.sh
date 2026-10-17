@@ -790,10 +790,12 @@ prlit_backstop() { # prlit_backstop <raw command> - true when the raw text names
 }
 # The backstop's channel is quoted, inert text that leaves the run analysis
 # and lands in a file. One plain git read (`git show HEAD:<path> > f`) writes
-# git's own output, not any quoted text of the command, so it is no such
-# channel: one segment, every word literal and unquoted, git as the command
-# word with only pathspec-mention options, and a redirect target that names
-# no guarded script. Copying a committed file is already allowed (cp).
+# git's own output, not any text of the command, so it is no such channel:
+# one segment, every word literal and unquoted, git as the command word, no
+# word starting with `-`, and a redirect target that names no guarded script.
+# An option can carry command bytes into the output (--format/--pretty with
+# %xNN, --src-prefix, --dst-prefix, --line-prefix), so none is allowed.
+# Copying a committed file is already allowed (cp).
 git_read_to_file() {
     local k
     [[ $cmd == *'<<<'* || $cmd =~ $PRLIT_TEE_RE || $cmd =~ $PRLIT_SHADOW_RE ]] && return 1
@@ -803,6 +805,7 @@ git_read_to_file() {
     k=0
     while [ "$k" -lt "$ST_N" ]; do
         [ "${ST_A[k]}${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 0000 ] || return 1
+        [ -z "${ST_RO[k]}" ] && [[ ${ST_W[k]} == -* ]] && return 1
         if [ -n "${ST_RO[k]}" ] && names_target "${ST_W[k]}"; then return 1; fi
         k=$((k + 1))
     done
