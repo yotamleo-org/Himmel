@@ -1507,20 +1507,22 @@ cat > "$W17/bin/gh" <<'GH'
 case "$*" in
   'repo list yotamleo --fork '*)
     [ "${FORK_LIST_FAIL:-0}" = 1 ] && exit 1
-    printf '[{"nameWithOwner":"yotamleo/fast"},{"nameWithOwner":"yotamleo/carried"},{"nameWithOwner":"yotamleo/held"},{"nameWithOwner":"yotamleo/current"}]\n' ;;
+    printf '[{"nameWithOwner":"yotamleo/fast"},{"nameWithOwner":"yotamleo/carried"},{"nameWithOwner":"yotamleo/held"},{"nameWithOwner":"yotamleo/current"},{"nameWithOwner":"yotamleo/renamed"}]\n' ;;
   'api repos/yotamleo/'*)
     printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
   'api repos/upstream/'*/compare/*)
     case "$2" in
+      repos/upstream/fast/compare/main...yotamleo:main)
+        printf '{"behind_by":5,"ahead_by":0}\n' ;;
       */compare/trunk...yotamleo:main)
         case "$2" in
-          repos/upstream/fast/*) printf '{"behind_by":5,"ahead_by":0}\n' ;;
+          repos/upstream/renamed/*) printf '{"behind_by":6,"ahead_by":0}\n' ;;
           repos/upstream/carried/*) printf '{"behind_by":3,"ahead_by":2}\n' ;;
           repos/upstream/held/*) printf '{"behind_by":9,"ahead_by":0}\n' ;;
           repos/upstream/current/*) printf '{"behind_by":0,"ahead_by":4}\n' ;;
           *) exit 1 ;;
         esac ;;
-      */compare/trunk...yotamleo:himmel%2Fpin|*/compare/trunk...yotamleo:himmel%2Fregistry)
+      */compare/main...yotamleo:himmel%2Fpin|*/compare/main...yotamleo:himmel%2Fregistry|*/compare/trunk...yotamleo:himmel%2Fpin)
         [ "${FORK_COMPARE_FAIL:-0}" = 1 ] && exit 1
         if [ "${FORK_BAD_COUNTS:-0}" = 1 ]; then
           printf '{"behind_by":"7","ahead_by":1}\n'
@@ -1530,6 +1532,7 @@ case "$*" in
       *) exit 1 ;;
     esac ;;
   'api repos/upstream/'*/tags*) printf 'v1.0.0\n' ;;
+  'api repos/upstream/fast') printf '{"default_branch":"main"}\n' ;;
   'api repos/upstream/'*) printf '{"default_branch":"trunk"}\n' ;;
   *) exit 1 ;;
 esac
@@ -1553,6 +1556,7 @@ fork_run() {
 fork_out="$(fork_run)"; fork_rc=$?
 if grepq "$fork_out" 'yotamleo/fast@main: BEHIND.*fork-behind.*behind=5 ahead=0.*gh repo sync yotamleo/fast'; then ok "fork-behind: five behind and zero ahead recommends gh repo sync"; else bad "fork-behind: missing five-behind fast-forward action; $fork_out"; fi
 if grepq "$fork_out" 'yotamleo/carried@main: BEHIND.*behind=3 ahead=2.*/fork-resync'; then ok "fork-behind: carried commits recommend /fork-resync"; else bad "fork-behind: missing carried-commit action"; fi
+if grepq "$fork_out" 'yotamleo/renamed@main: BEHIND.*upstream=upstream/renamed@trunk behind=6 ahead=0 action=/fork-resync'; then ok "fork-behind: differing branch names require /fork-resync even without carried commits"; else bad "fork-behind: differing branch names offered an unsafe sync action"; fi
 if grepq "$fork_out" 'yotamleo/fast@himmel/pin: BEHIND.*behind=7 ahead=1'; then ok "fork-behind: pinned branch checked separately from default"; else bad "fork-behind: pinned branch was skipped"; fi
 if grepq "$fork_out" 'yotamleo/held@main: BEHIND'; then bad "fork-behind: hold-reason did not suppress drift row"; else ok "fork-behind: hold-reason suppresses drift row"; fi
 if grepq "$fork_out" 'yotamleo/current@main: BEHIND'; then bad "fork-behind: ahead-only fork reported behind"; else ok "fork-behind: ahead-only fork is not behind"; fi

@@ -1008,7 +1008,8 @@ for (repo, branch), reason in sorted(targets.items()):
             raise ValueError('invalid comparison counts')
         detail = f'fork-behind upstream={parent}@{base} behind={behind} ahead={ahead}'
         if behind:
-            action = '/fork-resync' if ahead else f'gh repo sync {shlex.quote(repo)} --branch {shlex.quote(branch)}'
+            # gh repo sync cannot map differently named source/target branches.
+            action = '/fork-resync' if ahead or branch != base else f'gh repo sync {shlex.quote(repo)} --branch {shlex.quote(branch)}'
             print(f'  {name}: BEHIND   ({detail} action={action})')
             status |= 1
         else:
