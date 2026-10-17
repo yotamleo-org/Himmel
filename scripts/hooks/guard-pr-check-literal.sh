@@ -1530,21 +1530,50 @@ edhook_deny() {
 # a quoted "python3"), or a command with a trailing comment or a leading
 # `true;`, falls through to the text scan, which allows a python list argv
 # and a non-canonical path literal inside the python text, as on main.
-# norm <path> - drop empty and . segments. A .. is kept, so the path no longer
-# reads as scripts/cr/<script> and denies: the kernel resolves .. after
-# following symlinks, so scripts/x/../cr can land outside the root.
-norm() {
-    local -a parts out=()
-    local p
-    IFS=/ read -r -a parts <<<"$1"
-    for p in ${parts[@]+"${parts[@]}"}; do
-        case "$p" in
-            ''|.) ;;
-            *) out+=("$p") ;;
+is_target() { # is_target <basename> - names, or globs onto, a guarded script, in any case
+    local t rc=1
+    shopt -s nocasematch
+    for t in $TARGETS; do
+        case "$1" in "$t") rc=0 ;; esac
+        # shellcheck disable=SC2254 # $1 IS the pattern: a glob operand
+        case "$1" in
+            *[][*?]*) case "$t" in $1) rc=0 ;; esac ;;
         esac
     done
-    local IFS=/
-    printf '%s' "${out[*]-}"
+    shopt -u nocasematch
+    return "$rc"
+}
+
+is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
+    # basename, in any case. Basename-only, like is_target above: this is a
+    # coarse candidate test, not the exact full-path match the classify loop
+    # below makes before trusting it.
+    local p t rc=1
+    shopt -s nocasematch
+    for p in $HTARGETS; do
+        t=${p##*/}
+        case "$1" in "$t") rc=0 ;; esac
+        # shellcheck disable=SC2254 # $1 IS the pattern: a glob operand
+        case "$1" in
+            *[][*?]*) case "$t" in $1) rc=0 ;; esac ;;
+        esac
+    done
+    shopt -u nocasematch
+    return "$rc"
+}
+
+# py_norm <text> - norm's empty and . segment drop, into REPLY without a fork.
+py_norm() {
+    local t=/$1/
+    while :; do
+        case "$t" in
+            *//*) t=${t//\/\//\/} ;;
+            */./*) t=${t//\/.\//\/} ;;
+            *) break ;;
+        esac
+    done
+    t=${t#/}
+    REPLY=${t%/}
 }
 
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh
@@ -1568,7 +1597,7 @@ cmdpos_git() {
     return "$rc"
 }
 cmdpos_clean() { # true when no segment of $cmd executes a script but the dispatcher
-    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw
+    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw hit
     # shellcheck disable=SC2016 # the literal anchored spellings, never expanded
     local s1="\"\$HIMMEL_REPO/$GATE_REL\"" s2="\"\${HIMMEL_REPO}/$GATE_REL\""
     st_tokenize "$cmd" || return 1
@@ -1619,23 +1648,22 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                 python | python3)
                     shown=${cmd//$'\n'/ }
                     shown=${shown:0:200}
-                    # The raw text with empty and . segments collapsed (a
-                    # heredoc body is no word), plus every word of the
-                    # segment dequoted and normalised (scripts/c""r//x.sh).
-                    t=$cmd
-                    while :; do
-                        case "$t" in
-                            *//*) t=${t//\/\//\/} ;;
-                            */./*) t=${t//\/.\//\/} ;;
-                            *) break ;;
-                        esac
-                    done
-                    j=$((k + 1))
-                    while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
-                        t="$t $(norm "${ST_W[j]}")"
+                    # The raw text normalised (a heredoc body is no word),
+                    # plus every word of every segment dequoted and
+                    # normalised (scripts/c""r//x.sh piped in), and each
+                    # word's basename (cd scripts/cr && python3 … x.sh).
+                    py_norm "$cmd"
+                    t=$REPLY
+                    hit=0
+                    j=0
+                    while [ "$j" -lt "$ST_N" ]; do
+                        py_norm "${ST_W[j]}"
+                        t="$t $REPLY"
+                        if is_target "${REPLY##*/}" || is_htarget "${REPLY##*/}"; then hit=1; fi
                         j=$((j + 1))
                     done
-                    ! names_target "$t" || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
+                    names_target "$t" && hit=1
+                    [ "$hit" = 0 ] || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
                     [[ ! $cmd =~ $PY_SPAWN_RE ]] || return 1
                     kind=strict
                     ;;
@@ -1678,36 +1706,21 @@ if cmdpos_clean || git_read_to_file; then
     exit 0
 fi
 
-is_target() { # is_target <basename> - names, or globs onto, a guarded script, in any case
-    local t rc=1
-    shopt -s nocasematch
-    for t in $TARGETS; do
-        case "$1" in "$t") rc=0 ;; esac
-        # shellcheck disable=SC2254 # $1 IS the pattern: a glob operand
-        case "$1" in
-            *[][*?]*) case "$t" in $1) rc=0 ;; esac ;;
+# norm <path> - drop empty and . segments. A .. is kept, so the path no longer
+# reads as scripts/cr/<script> and denies: the kernel resolves .. after
+# following symlinks, so scripts/x/../cr can land outside the root.
+norm() {
+    local -a parts out=()
+    local p
+    IFS=/ read -r -a parts <<<"$1"
+    for p in ${parts[@]+"${parts[@]}"}; do
+        case "$p" in
+            ''|.) ;;
+            *) out+=("$p") ;;
         esac
     done
-    shopt -u nocasematch
-    return "$rc"
-}
-
-is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
-    # basename, in any case. Basename-only, like is_target above: this is a
-    # coarse candidate test, not the exact full-path match the classify loop
-    # below makes before trusting it.
-    local p t rc=1
-    shopt -s nocasematch
-    for p in $HTARGETS; do
-        t=${p##*/}
-        case "$1" in "$t") rc=0 ;; esac
-        # shellcheck disable=SC2254 # $1 IS the pattern: a glob operand
-        case "$1" in
-            *[][*?]*) case "$t" in $1) rc=0 ;; esac ;;
-        esac
-    done
-    shopt -u nocasematch
-    return "$rc"
+    local IFS=/
+    printf '%s' "${out[*]-}"
 }
 
 # Anything that runs a named file: an interpreter, `source`/`.`, `eval`, or
