@@ -235,11 +235,38 @@ git clone -q "$ORIGIN2" "$HANDOVER2" 2>/dev/null
 mkdir -p "$HANDOVER2/handovers/$SLUG"
 out=$(
     cd "$HIMMEL"
-    # shellcheck disable=SC2031
+    # shellcheck disable=SC2030,SC2031
     export HANDOVER_DIR="$HANDOVER2/handovers"
     FORGE=github GH_CMD="$FAKE_GH" bash "$FLUSH" 2>&1
 )
 assert_contains "empty repo says nothing to do" "no local handover/* branches" "$out"
+
+# Test 8: a failed ahead-count is never reported as in-sync -------------
+
+echo "TEST: rev-list --count failing is not rendered as in-sync"
+(
+    cd "$HANDOVER2"
+    git checkout -q -b handover/HIMMEL-908-unknown
+    mkdir -p "handovers/$SLUG"
+    printf 'eight\n' > "handovers/$SLUG/eight.md"
+    git -c user.email=t@test.com -c user.name=test add "handovers/$SLUG/eight.md"
+    git -c user.email=t@test.com -c user.name=test commit -q -m "handover: seed 908"
+    git push -q -u origin handover/HIMMEL-908-unknown 2>/dev/null
+)
+BADGIT="$TMP_ROOT/badgit.sh"
+# shellcheck disable=SC2016  # the wrapper body is literal text for the stub
+printf '%s\n' '#!/usr/bin/env bash' \
+    'for a in "$@"; do [ "$a" = "--count" ] && exit 128; done' \
+    'exec git "$@"' > "$BADGIT"
+chmod +x "$BADGIT"
+out=$(
+    cd "$HIMMEL"
+    # shellcheck disable=SC2031
+    export HANDOVER_DIR="$HANDOVER2/handovers"
+    GIT_CMD="$BADGIT" FORGE=github GH_CMD="$FAKE_GH" bash "$FLUSH" --dry-run 2>&1
+)
+assert_contains "unknown count is treated as unpushed" "WOULD-push" "$out"
+if grepq "$out" -F -- "in-sync          : 1"; then fail "unknown count rendered as in-sync"; else pass "unknown count is not in-sync"; fi
 
 # Summary --------------------------------------------------------------
 

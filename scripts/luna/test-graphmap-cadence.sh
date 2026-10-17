@@ -1248,6 +1248,10 @@ assert_not_contains "publish runner has no shared alert block" "cadence-alert.sh
 # payload/publish_cron_payload exist specifically because ast_bat_payload's
 # shape does NOT fit this script).
 assert_contains "publish runner passes --corpus-root explicitly" "--corpus-root" "$publish_sh"
+# The registered flow name is handed down, so the runner can never emit ledger
+# rows under a different name than the registry entry.
+_armed_slug="$(basename "$HIMMEL_ROOT_EXP" | tr -c 'A-Za-z0-9._-' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-//' -e 's/-$//')"
+assert_contains "publish runner passes the armed flow name" "--flow-name graph-publish-$_armed_slug" "$publish_sh"
 assert_contains "publish runner format stamp present" "# himmel-cadence-runner-format: $FMT" "$publish_sh"
 # The registered flow name must be DERIVED from the
 # SAME corpus-slug computation the runner itself uses (basename(HIMMEL_ROOT),
@@ -1634,6 +1638,8 @@ assert_contains "himmel bat uses the claude-cli backend" "--backend claude-cli -
 assert_contains     "luna bat corpus-root is the vault"       "--corpus-root \"$VAULT_MIXED\"" "$luna_bat"
 assert_not_contains "himmel bat corpus-root is not the vault" "--corpus-root \"$VAULT_MIXED\"" "$himmel_bat"
 assert_contains     "himmel bat carries a corpus-root"        "--corpus-root"            "$himmel_bat"
+publish_bat=$(cat "$BAT_DIR/graphmap-publish-himmel.bat" 2>/dev/null || echo MISSING)
+assert_contains     "publish bat passes the armed flow name"  "--flow-name graph-publish-$_armed_slug" "$publish_bat"
 assert_contains "himmel bat sets the himmel title"      "Graphify Himmel Map"  "$himmel_bat"
 assert_contains "himmel bat appends run log" 'graphmap-himmel.log" 2>&1' "$himmel_bat"
 for what in luna himmel; do

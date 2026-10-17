@@ -742,7 +742,7 @@ ast_bat_payload() {
 # only editing that script's DEFAULT, never a re-arm of this cadence.
 publish_bat_payload() {
     local script_esc="$1" corpus_esc="$2"
-    printf '"%s" --corpus-root "%s"' "$script_esc" "$corpus_esc"
+    printf '"%s" --corpus-root "%s" --flow-name %s' "$script_esc" "$corpus_esc" "$PUBLISH_FLOW_NAME"
 }
 
 # Emit the .bat body for one cadence task: stamp the format version, rotate the
@@ -1866,7 +1866,7 @@ ast_cron_payload() {
 # not a bare positional -- see publish_bat_payload's identical note.
 publish_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3"
-    printf '%s %s --corpus-root %s' "$q_bash" "$q_script" "$q_corpus"
+    printf '%s %s --corpus-root %s --flow-name %q' "$q_bash" "$q_script" "$q_corpus" "$PUBLISH_FLOW_NAME"
 }
 
 # Emit the runner .sh body for one cadence task: stamp the format version,

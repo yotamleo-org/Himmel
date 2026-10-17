@@ -244,6 +244,14 @@ read = off), in the status colours; on the console it is read on load and on
 each page change, never polled, so an open console still idles out. A leg's
 fleet row also links to the Health page (its legs and bank cards).
 
+**Service mode.** `server.ts --service` (what `himmelctl ui --service install` runs under
+systemd) takes its token from `~/.himmel/state/ui-token` (`token-file.ts`: created once,
+a symlink or a file that is not mode 600 is refused), never idles out, and rebuilds
+`agui-web/dist` at start when it is missing or older than its sources. The board route serves
+`<console doc>.board.json` (re-read when its mtime moves) before falling back to running
+`board.mjs`. Tests: `tests/service-mode.test.ts` (real server), `tests/service-verb.test.ts`
+(the verb against a stub `systemctl`).
+
 ![The AG-UI page streaming a /pr-check round: a leg and its critic subagent in their own colours and bands, the review panel filling with three findings and their verdicts, and four failures marked by kind](docs/agui-live-run.gif)
 
 *A live stream over the real SSE path, not a mock: a fixture session journal and

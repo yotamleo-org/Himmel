@@ -92,9 +92,17 @@ case "$*" in
 esac
 EOF
 chmod +x "$TMP/bin/gh"
+cat > "$TMP/bin/VBoxManage" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = snapshot ] && [ "$3" = take ] && echo "snapshot-take $4" >> "$STUB_LOG/vm.calls"
+exit 0
+EOF
+chmod +x "$TMP/bin/VBoxManage"
 # VM lib stub: records which primitives ran; vm_ssh logs its argv and stdin.
 cat > "$TMP/vmlib.sh" <<'EOF'
-vm_env_init()  { :; }
+vm_env_init()  { VBOXMANAGE="$STUB_LOG/../bin/VBoxManage"; }
+vm_clone_ensure() { :; }
+vm_guest_assert_clean() { :; }
 vm_lock_acquire_waiting() { :; }
 vm_lock_release() { echo "release" >> "$STUB_LOG/vm.calls"; }
 vm_restore()   { echo "restore $1" >> "$STUB_LOG/vm.calls"; PORT=2299; }
@@ -106,6 +114,10 @@ clipboard_dnd_disabled() { [ -z "${STUB_CLIPBOARD_ON:-}" ]; }
 localhost_unreachable() { [ -z "${STUB_LOCALHOST_REACHABLE:-}" ]; }
 vm_ssh() {
     printf '%s\n' "$*" >> "$STUB_LOG/ssh.argv"; cat >> "$STUB_LOG/ssh.stdin"
+    case "$*" in
+        sync) echo "sync" >> "$STUB_LOG/vm.calls"; return ;;
+        *"test -s"*) echo "test-s" >> "$STUB_LOG/vm.calls"; [ -z "${STUB_EMPTY_WRAPPER:-}" ]; return ;;
+    esac
     case "$*" in *himmel-ci-egress-refresh*) [ -z "${STUB_NO_REFRESH:-}" ]; return ;; esac
     case "$*" in *"nft list table inet himmel_egress"*) [ -z "${STUB_NO_EGRESS:-}" ]; return ;; esac
     [ -n "${STUB_SSH_HARD_SLEEP:-}" ] && case "$*" in *himmel-ci-run-job*) sleep "$STUB_SSH_HARD_SLEEP" ;; esac
@@ -160,8 +172,8 @@ reset_log
 GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then ok "run --once exits 0"; else bad "run --once rc=$rc: $(cat "$TMP/out")"; fi
-if [ "$(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)" = "restore ci-runner-v2|nat-localhost-off|clipboard-dnd-off|boot|poweroff|release|" ]; then
-    ok "restored ci-runner-v2, hid the station loopback, turned clipboard and drag-and-drop off, booted, powered off, released the lock"
+if [ "$(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)" = "restore ci-runner-v3|nat-localhost-off|clipboard-dnd-off|boot|poweroff|release|" ]; then
+    ok "restored ci-runner-v3, hid the station loopback, turned clipboard and drag-and-drop off, booted, powered off, released the lock"
 else
     bad "vm calls: $(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)"
 fi
@@ -379,6 +391,24 @@ fi
 
 echo "T16b build stages every file guest-provision installs"
 if sed -n '/^build()/,/^}/p' "$LOOP" | grep -q 'for f in .*egress-refresh.sh'; then ok "build stages egress-refresh.sh into the guest"; else bad "build never stages egress-refresh.sh (guest-provision's install would fail)"; fi
+
+echo "T16c build syncs the guest and refuses an empty wrapper before the hard power-off (the v2 image shipped 0-byte scripts)"
+reset_log
+run_loop build >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$(tr '\n' '|' < "$TMP/log/vm.calls")" = "restore suite-ready-v4|clipboard-dnd-off|boot|sync|test-s|poweroff|snapshot-take ci-runner-v3|poweroff|release|" ]; then
+    ok "build: sync, then the wrapper size check, then power-off, then the ci-runner-v3 snapshot"
+else
+    bad "build call order (rc=$rc): $(tr '\n' '|' < "$TMP/log/vm.calls")"
+fi
+reset_log
+STUB_EMPTY_WRAPPER=1 run_loop build >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ] && ! grep -q '^snapshot-take' "$TMP/log/vm.calls" && grep -qx poweroff "$TMP/log/vm.calls" && grep -q 'empty' "$TMP/out"; then
+    ok "build: an empty wrapper in the guest fails the bake, no snapshot taken, VM powered off (rc=$rc)"
+else
+    bad "empty wrapper: rc=$rc, calls=$(tr '\n' '|' < "$TMP/log/vm.calls"), out=$(cat "$TMP/out")"
+fi
 
 echo "T17 egress-refresh fills the sets from /meta and the mirror hosts"
 REFRESH="$REPO_ROOT/scripts/vm/ci-runner/egress-refresh.sh"

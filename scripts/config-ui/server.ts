@@ -20,7 +20,8 @@ import { readQuota } from "./quota-sources";
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
-import { findDoc, readBoard, scrub, validName } from "./agui/board";
+import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
+import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
 import { readVm, writeVm } from "./vm-config";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
@@ -152,7 +153,7 @@ type Env = Record<string, string | undefined>;
 export type ServerOpts = {
   port?: number; token?: string; hostname?: string; env?: Env; onIdle?: () => void;
   root?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number;
-  backgroundFeed?: boolean; feedRefreshMs?: number;
+  backgroundFeed?: boolean; feedRefreshMs?: number; noIdle?: boolean;
   legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
 type Preview = Resolved & { expires: number };
@@ -352,6 +353,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // timer re-arms once the last in-flight request ends.
   let active = 0, deferred = false;
   const bump = () => {
+    if (opts.noIdle) return; // service mode: the server stays up until it is stopped
     clearTimeout(idle);
     idle = setTimeout(() => {
       if (active > 0) { deferred = true; return; }
@@ -460,7 +462,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const doc = await findDoc(env.HANDOVER_DIR || "", name);
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-        const r = await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/console-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
+        const r = (await readBoardFile(doc)) ?? await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/console-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
         return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error)) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
       }
       if (path.startsWith("/api/agui/")) {
@@ -535,11 +537,31 @@ export function launchUrl(base: string, token: string, o: { landing: "fleet" | "
   return o.agui === "fleet" || (o.landing === "fleet" && o.built) ? `${base}/agui/#t=${token}` : `${base}/#t=${token}`;
 }
 
+// Service mode starts with the page built from the current sources: a missing, old or source-orphaned dist is rebuilt.
+export function rebuildAguiIfStale(log: (m: string) => void, dist = AGUI_DIST, web = AGUI_WEB): void {
+  if (existsSync(join(dist, "index.html")) && !aguiStale(dist, web)) return;
+  log("himmelctl: ui: rebuilding the AG-UI page");
+  if (!existsSync(join(web, "node_modules"))) execFileSync("bun", ["install"], { cwd: web, stdio: ["ignore", 2, 2] });
+  execFileSync("bun", ["run", "build"], { cwd: web, stdio: ["ignore", 2, 2] });
+}
+
 if (import.meta.main) {
   const i = process.argv.indexOf("--port");
   const a = process.argv.indexOf("--agui");
+  // --service (himmelctl ui --service, a systemd user unit): a token that outlives the process, no idle exit.
+  const service = process.argv.includes("--service");
+  let fixed: string | undefined;
+  if (service) {
+    try {
+      fixed = readOrCreateToken(join(process.env.HOME || homedir(), ".himmel", "state", "ui-token"), newToken);
+      rebuildAguiIfStale((m) => console.error(m));
+    } catch (e) {
+      console.error(`himmelctl: ui: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  }
   // the operator lands on Fleet (another page); the config report loads meanwhile.
-  const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true });
+  const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true, noIdle: service, token: fixed });
   // himmelctl ui --agui [<run>]: the launcher has already resolved and validated the run id; with none, the
   // fleet landing.
   const run = a > 0 ? process.argv[a + 1] : undefined;

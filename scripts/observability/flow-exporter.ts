@@ -1031,6 +1031,11 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
   const calls = new Map<string, Map<string, number>>();
   const errors = new Map<string, Map<string, number>>();
   const denials = new Map<string, Map<string, number>>();
+  // One census row is one session: sessions hit per guard, the worst single
+  // session per guard, and the session denominator, all in the same window.
+  const denialSessions = new Map<string, Map<string, number>>();
+  const denialMax = new Map<string, Map<string, number>>();
+  const sessions = new Map<string, Map<string, number>>();
   const cutoffMs = nowMs - TOOL_CENSUS_WINDOW_MS;
   let skipped = 0;
 
@@ -1055,6 +1060,7 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
     if (!Number.isFinite(endedAt) || endedAt < cutoffMs || endedAt > nowMs + TOOL_CENSUS_FUTURE_GRACE_MS) continue;
 
     const project = sanitizeLabelValue(row.project);
+    bump(sessions, project, "", 1);
     const toolCalls = row.tool_calls;
     if (toolCalls && typeof toolCalls === "object" && !Array.isArray(toolCalls)) {
       for (const [rawTool, value] of Object.entries(toolCalls as Record<string, unknown>)) {
@@ -1069,7 +1075,15 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
     const rowDenials = row.denials;
     if (rowDenials && typeof rowDenials === "object" && !Array.isArray(rowDenials)) {
       for (const [rawClass, value] of Object.entries(rowDenials as Record<string, unknown>)) {
-        bump(denials, project, sanitizeLabelValue(rawClass), nonNegativeInt(value));
+        const guard = sanitizeLabelValue(rawClass);
+        const n = nonNegativeInt(value);
+        bump(denials, project, guard, n);
+        if (n > 0) {
+          bump(denialSessions, project, guard, 1);
+          const byGuard = denialMax.get(project) ?? new Map<string, number>();
+          denialMax.set(project, byGuard);
+          byGuard.set(guard, Math.max(byGuard.get(guard) ?? 0, n));
+        }
       }
     }
   }
@@ -1089,6 +1103,13 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
     flatten(errors, "himmel_tool_errors_total", "tool"));
   addFamily(lines, "himmel_tool_denials_total", "Guardrail denials by class (hook name, `auto-mode-classifier`, `user-rejected`, or `hook-unclassified`) over the same 24h census window.", "counter",
     flatten(denials, "himmel_tool_denials_total", "class"));
+  addFamily(lines, "himmel_tool_denial_sessions", "Distinct census sessions with at least one denial by a guard, per guard and project, over the same 24h census window; divide by himmel_tool_sessions for the share of sessions the guard hit.", "gauge",
+    flatten(denialSessions, "himmel_tool_denial_sessions", "guard"));
+  addFamily(lines, "himmel_tool_denial_max_per_session", "Most denials one session took from a guard, per guard and project, over the same 24h census window.", "gauge",
+    flatten(denialMax, "himmel_tool_denial_max_per_session", "guard"));
+  addFamily(lines, "himmel_tool_sessions", "Census sessions per project in the same 24h window: the denominator for himmel_tool_denial_sessions.", "gauge",
+    [...sessions.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([project, byKey]) =>
+      sample("himmel_tool_sessions", { project }, byKey.get("") ?? 0)));
 
   const comments = skipped > 0 ? [`# himmel_tool_* partial: ${skipped} unparseable census row(s) skipped`] : [];
   return { lines, comments };

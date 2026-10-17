@@ -289,6 +289,17 @@ n12="$(calls create)"
 python3 "$FR" route --ledger "$F12/l.jsonl" --state "$F12/s.json" --log "$F12/log" --inbox "$F12/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 check "a colliding class known only from the state file also files nothing" '[ "$(calls create)" = "$n12" ] && [ "$(decs "$F12/log" | jq -r .decision | sort -u)" = skipped:slug-collision ]'
 
+echo "distinct-leg share route (HIMMEL-6036): a guard that denies many legs files, regardless of retry or recovery"
+F13="$TMP/f13"; mkdir -p "$F13"
+SAVE="$LED"; LED="$F13/l.jsonl"
+for n in 1 2 3 4 5 6 7 8 9 10; do row "N$n" denied/guard-wide; done
+for n in 1 2 3 4 5 6 7 8 9; do row "N$n" denied/guard-narrow; done
+LED="$SAVE"
+n13="$(calls create)"
+python3 "$FR" route --ledger "$F13/l.jsonl" --state "$F13/s.json" --log "$F13/log" --inbox "$F13/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "10 distinct legs of one denied/<hook> file exactly one ticket" '[ "$(calls create)" = "$((n13 + 1))" ] && [ "$(decs "$F13/log" | jq -r "select(.class == \"denied/guard-wide\") | .decision")" = filed ]'
+check "9 distinct legs of another denied/<hook> file nothing" '[ -z "$(decs "$F13/log" | jq -r "select(.class == \"denied/guard-narrow\") | .decision")" ]'
+
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
 check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'

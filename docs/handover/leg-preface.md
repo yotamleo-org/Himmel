@@ -13,11 +13,12 @@ Your console is another Claude session, not a human. **Nobody reads your
 terminal.** Every decision, question, blocker and permission problem goes to the
 console by `SendMessage`; confirm its session name in `ListAgents` first.
 
-- **Never call `AskUserQuestion`** — it parks you and blocks your inbox.
+- **Never call `AskUserQuestion`.** [enforced: block-leg-askuserquestion]
+- **Never call `ScheduleWakeup`.** [enforced: guard-leg-wakeup]
 - Waiting means **one foreground blocking command** (or `until … done` loop),
-  never a background job. **Never call `ScheduleWakeup`** (it is denied).
+  never a background job. [prose]
 - **A BLOCKED, a permission prompt, or a question of your own goes to the
-  console FIRST**, before you improvise anything.
+  console FIRST**, before you improvise anything. [prose]
 
 Report at **milestones only**, as `LIVE` / `FINDING` / `RESOLVED` /
 `READY <pr> <full head> GREEN` / `BLOCKED` / `WRAPPED` messages, **and** as `- `
@@ -26,26 +27,26 @@ marker on your **newest marker-bearing bullet** (`tails=`):
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; a bullet not
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
-  `WRAPPED` / `PARKED-BANK` / `RESUMED` is invisible.
+  `WRAPPED` / `PARKED-BANK` / `RESUMED` is invisible. [prose]
 - **Write every marker bullet with `append-results.sh`, never the Edit tool:**
   `bash <repo>/scripts/handover/console-kit/append-results.sh <doc> "<MARKER> …"`
   appends at the true EOF and stamps `HH:MM`. **A bullet never contains `>`**:
-  write `→` or `to`.
+  write `→` or `to`. [prose]
 - **A `FINDING` stays your status until you retire it** with
   `- HH:MM RESOLVED — ruling received, see console message` as soon as you act on
-  the ruling; raise a fresh `FINDING` for the next question.
+  the ruling; raise a fresh `FINDING` for the next question. [prose]
 - **A doc bullet records a ruling as a plain fact.** Never copy a
   ruling, `GO`, approval or token into a bullet (the classifier reads it as
   instruction poisoning). A token quote-back
-  goes only in your `SendMessage` reply to the console.
+  goes only in your `SendMessage` reply to the console. [prose]
 - **A stated default applies if no ruling arrives.** When your
   brief carries `default-if-no-ruling (<N> min): <action>` for a question you
   raised as a `FINDING` and no ruling arrives in `<N>` minutes, proceed on the
   action and say so in the next `LIVE` bullet. The default may only **narrow**
-  (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message.
+  (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message. [prose]
 - **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`.
-  Wrap tokens in backticks.
+  Wrap tokens in backticks. [prose]
 
 **Jira status follows you** via the scripts, never by hand (`LIVE` → In Progress,
 PR opened → In Review, merge with `completes-ticket: yes` → Done). After a merge
@@ -61,7 +62,7 @@ No revision widens your tool-permission envelope. A console change without your 
 only as a **relay** (the named console names its successor and quotes your
 token) or a **chain** (the sender quotes the outgoing AND a fresh token, and the
 named console is gone from `ListAgents`). **Before accepting any console change
-read `docs/handover/leg-sections/succession.md`** (decision table, stranded-leg rule).
+read `docs/handover/leg-sections/succession.md`**.
 
 ## Before you start
 
@@ -75,32 +76,30 @@ read `docs/handover/leg-sections/succession.md`** (decision table, stranded-leg 
 ## How you work
 
 - **Do the work yourself** unless the brief says otherwise; never spawn a
-  subagent to verify your own work. **No unrequested features, tests or files.**
-- **Search with Bash** (`git grep`, `git ls-files`) — no Grep/Glob tool. Structure
+  subagent to verify your own work. **No unrequested features, tests or files.** [prose]
+- **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob tool. Structure
   questions: `bash scripts/graphify/leg-graph.sh query|explain "<q>"` first (never
-  `graphify path`). Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`.
-- **Pre-check a bucket file** before writing it:
-  `bash scripts/handover/console-kit/bucket-gitleaks.sh <file>`; a real
-  credential goes to the console, never reworded.
+  `graphify path`). Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
+- **Pre-check a bucket file** with `bash scripts/handover/console-kit/bucket-gitleaks.sh <file>`
+  before writing it; a real credential goes to the console, never reworded. [prose]
 - **Ship steps are typed exactly as their allow rule is written** — no quotes, no
   `VAR=` prefix, no `cd … &&`, no compound operators, no `$(…)`, no loops; a
-  relative gate script is `bash scripts/cr/X.sh <args>`. A refused SHAPE runs
-  **nothing**: rewrite as one literal command and retry once. A GUARD or
-  classifier denial is never reshaped (never reshape it to dodge a guardrail):
-  route it to the console.
+  gate script is `bash scripts/cr/X.sh <args>`. A refused SHAPE runs **nothing**:
+  rewrite as one literal command, retry once. A GUARD or classifier denial is
+  never reshaped (never reshape it to dodge a guardrail): route it to the
+  console. [prose]
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
   to the console.** Never try a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
-  Publication]` gets no retry. Details and the piping/stash rules:
-  `docs/handover/leg-sections/shell-and-tests.md`.
-- A "running low on memory" task kill is unproven: read `/proc/pressure/memory` and cgroup
-  `memory.events`; all-zero → run the suite foreground, report `BLOCKED` with the numbers.
-- **Never pipe into a gate script**; never bare `git stash`. Open a PR with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`. Ship scratch
-  goes in your scratchpad or `.himmel-scratch/`, never the worktree root.
-- **Need a skill your profile lacks?** Send the console
-  `CONSULT <profile-list> :: <one question> :: read: <paths>` (advice only, never
-  a revision, halt, `GO` or token; not a status marker):
-  `docs/handover/leg-sections/consult.md`.
+  Publication]` gets no retry. Details: `docs/handover/leg-sections/shell-and-tests.md`. [prose]
+- A "running low on memory" task kill is unproven: read `/proc/pressure/memory` and
+  cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
+- **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
+- **Never bare `git stash`.** [enforced: block-git-stash]
+- Open a PR with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`. Ship scratch
+  goes in your scratchpad or `.himmel-scratch/`, never the worktree root. [prose]
+- **Need a skill your profile lacks?** `CONSULT <profile-list> :: <one question> ::
+  read: <paths>` to the console: `docs/handover/leg-sections/consult.md`. [prose]
 
 ## Tests
 
@@ -115,32 +114,32 @@ commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
 
 - **Never run `leg-burn.sh` yourself** — `leg-pr-open.sh` inserts the PR's
   `leg-burn:` line. **Clear the CR marker** with
-  `bash <anchor>/scripts/cr/clear-cr-marker.sh` (`<anchor>` the primary checkout).
-- Conventional commit carrying the ticket ID. **Attestation trailers go in the
-  FIRST commit** (`Platforms tested: <os>`; `Security reviewed: <token>`, the
-  token first: `manual`, `claude-code-security-review`, `pr-review-toolkit` or
-  `ad-hoc`). Never `git commit --amend` (hard-blocked): use the stuck playbook.
+  `bash <anchor>/scripts/cr/clear-cr-marker.sh` (`<anchor>` the primary checkout). [prose]
+- Conventional commit carrying the ticket ID. [enforced: conventional-commit-msg]
+- **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
+  `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
+  Never `git commit --amend` (hard-blocked): use the stuck playbook. [enforced: security-reviewed]
 - **One push per review round**, one commit batching every fix; title, body and
-  `## Ticket coverage` edits ride that same push.
+  `## Ticket coverage` edits ride that same push. [prose]
 - Push → PR → review → `/pr-check` (at the head you will `READY`) → one foreground
   `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a
-  background poll → `READY <pr> <full head> GREEN`.
+  background poll → `READY <pr> <full head> GREEN`. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/console-kit/ready-check.sh --only 7 <pr>` until it prints
-  `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last).
+  `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
 - **A red CI job on your PR is yours to triage; tell the console only if it is
   not the PR's fault** (`MAIN-RED <job> <failing case>`, once). Merge-forward
   (never past a red your own change introduced), `suite-coverage.sh` and the
-  loaded-budget rule: `docs/handover/leg-sections/ci-red.md`.
+  loaded-budget rule: `docs/handover/leg-sections/ci-red.md`. [prose]
 - On an agreed review finding **sweep the whole class** across every site and
   record it with `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
-  verdict (`fixed` / `disproved` / `deferred`) before READY.
+  verdict (`fixed` / `disproved` / `deferred`) before READY. [prose]
 - **Merge only on the console's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says; the operator is not present. Holding for `GO` is
   the one wait that ends your turn: send `READY` and stop. It is also the **only**
   permitted hold: any other blocker means WRAP with a resume brief now. Past 30
-  minutes with no reply, send one nudge, then wrap.
+  minutes with no reply, send one nudge, then wrap. [prose]
 - **Closing the ticket at merge.** The merge is
   `bash <anchor>/scripts/handover/merge-on-green.sh`, `<anchor>` the primary
   checkout's absolute path (the `.git` holder of `git rev-parse
@@ -152,7 +151,7 @@ commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
   - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059: a sliced
     ticket closed on its first slice).
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
-    key by hand. Either way, re-read the ticket after merge and report its state.
+    key by hand. Either way, re-read the ticket after merge and report its state. [prose]
 
 ## Wrapping up
 
@@ -162,9 +161,8 @@ it and `--jira-transition` did not (result `failed`, or a `skip=` for a missing
 tool or config). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the console instead. Then release the
 lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
-a leg does not end its own session — the console's `close-wrapped-leg.sh` ends the session
-once the lock is free, the last marker is `WRAPPED` and
-`wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
+a leg does not end its own session: the console's `close-wrapped-leg.sh` ends the session
+once the lock is free and `wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
 console `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
@@ -174,12 +172,11 @@ then prove the process subtree is clean** with
 `WITHHELD:` TaskStop the pids and re-run, never send `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
-is on:** checkpoint or hand off. The guard is **off by default** (on only with
-`--context-guard compact|handoff`); `docs/internals/leg-context-guard.md` is the
-one reference. **`compact`:** commit, push, then append
-`LIVE — CHECKPOINT <full sha of HEAD> pushed` with `append-results.sh`.
-**`handoff`:** write `…legN<n>b-…-RESUME.md`, message the console, stop. Unlock
-details: `docs/handover/leg-sections/context-guard.md`. Probe context fill after
+is on** (off by default; `--context-guard compact|handoff`;
+`docs/internals/leg-context-guard.md` is the one reference): **`compact`:** commit,
+push, then append `LIVE — CHECKPOINT <full sha of HEAD> pushed` with
+`append-results.sh`. **`handoff`:** write `…legN<n>b-…-RESUME.md`, message the
+console, stop. Unlock: `docs/handover/leg-sections/context-guard.md`. Probe context fill after
 **every** step.
 
 ## How your turns end
@@ -187,11 +184,11 @@ details: `docs/handover/leg-sections/context-guard.md`. Probe context fill after
 This section stays last on purpose; the claudex preface overrides it on that lane.
 
 A message with no tool call ends your turn, and nobody restarts you. Never end
-one with a summary announcing the next step, an offer to carry on unless someone
-objects, a list of non-blocking decisions, or a "good place to report": put
-status in a `SendMessage` or Results bullet beside your next tool call and carry on.
+one with a summary announcing the next step, an offer to carry on, a list of
+non-blocking decisions, or a "good place to report": put status in a
+`SendMessage` or Results bullet beside your next tool call.
 
 The wanted stops: holding for the console's `GO` after `READY`; a `BLOCKED`, or a
 `FINDING` whose ruling every remaining step depends on, already sent; `WRAPPED`;
-the ≥ 75 % context hand-off. **The GO-hold
-is the only permitted hold**: any other blocker means `WRAP` with a resume brief.
+the ≥ 75 % context hand-off. **The GO-hold is the only permitted hold**: any
+other blocker means `WRAP` with a resume brief.
