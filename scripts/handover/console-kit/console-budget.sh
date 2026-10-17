@@ -61,7 +61,7 @@ resolve_transcript() {
 }
 
 transcript="$(resolve_transcript)" || { echo "console-budget: cannot resolve the console session (set CONTEXT_FILL_TRANSCRIPT, --title, or CLAUDE_CODE_SESSION_ID)" >&2; exit 2; }
-[ -r "$transcript" ] && [ -f "$transcript" ] || { echo "console-budget: cannot read transcript $transcript" >&2; exit 2; }
+if [ ! -r "$transcript" ] || [ ! -f "$transcript" ]; then echo "console-budget: cannot read transcript $transcript" >&2; exit 2; fi
 command -v node >/dev/null 2>&1 || { echo "console-budget: node not found" >&2; exit 2; }
 
 # <turns> <cache_read tokens>, last row per request wins (streamed rows repeat the id)
