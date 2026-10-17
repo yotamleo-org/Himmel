@@ -29,7 +29,8 @@ export async function findDoc(root: string, name: string): Promise<string | null
         if (!bucket.isDirectory()) continue;
         const p = join(root, user.name, bucket.name, `${name}.md`);
         if (!(await stat(p).catch(() => null))?.isFile()) continue;
-        if ((await realpath(p)).startsWith(real + sep)) return p;
+        const canon = await realpath(p);
+        if (canon.startsWith(real + sep)) return canon;
       }
     }
   } catch { /* no handover root */ }

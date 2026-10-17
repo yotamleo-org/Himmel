@@ -1,7 +1,7 @@
 // GET /api/agui/board (the himmel.board/1 JSON from board.mjs --json) and GET /api/agui/brief (a leg doc, read-only).
 // board.mjs is replaced by a stub through the `boardScript` seam; the real one needs gh and Jira.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findDoc } from "../agui/board";
@@ -114,6 +114,6 @@ test("findDoc: a doc symlinked outside the handover root is null; one that resol
     symlinkSync(join(dir, "secret.md"), join(bucket, "escape.md"));
     symlinkSync(join(bucket, "real.md"), join(bucket, "alias.md"));
     expect(await findDoc(root, "escape")).toBeNull();
-    expect(await findDoc(root, "alias")).toBe(join(bucket, "alias.md"));
+    expect(await findDoc(root, "alias")).toBe(realpathSync(join(bucket, "real.md"))); // the validated target, not the symlink
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
