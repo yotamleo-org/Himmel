@@ -165,7 +165,7 @@ one_job() {
     chk="$chk && sudo nft list set inet himmel_egress allowed4 | grep -q 'elements'"
     # The chain must still end in the catch-all reject: a bare accept after the
     # private rejects would open egress while 'policy drop' still matched above.
-    chk="$chk && sudo nft list chain inet himmel_egress output | grep -vE '^[[:space:]]*}' | tail -n 1 | grep -qE '^[[:space:]]+counter .*reject'"
+    chk="$chk && sudo nft list chain inet himmel_egress output | grep -vE '^[[:space:]]*}' | tail -n 1 | grep -qE '^[[:space:]]+counter( packets [0-9]+ bytes [0-9]+)? reject[[:space:]]*$'"
     for r in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do  # leak-allow: private-lan-ip egress filter ranges
         # Anchored on the set delimiters so a range cannot match a longer one it is a suffix of.
         chk="$chk && sudo nft list table inet himmel_egress | grep -qE '[{ ,]${r//./\\.}[ ,}].*reject'"

@@ -386,7 +386,7 @@ refresh_line=$(grep -n 'himmel-ci-egress-refresh' "$TMP/log/ssh.argv" 2>/dev/nul
 check_line=$(grep -n 'nft list table inet himmel_egress' "$TMP/log/ssh.argv" 2>/dev/null | head -n 1 | cut -d: -f1)
 if [ -n "$refresh_line" ] && [ -n "$check_line" ] && [ "$refresh_line" -lt "$check_line" ]; then ok "the loop refreshes the allow-list before it checks the table"; else bad "refresh before check (refresh=$refresh_line check=$check_line)"; fi
 if grep -q "policy drop" "$TMP/log/ssh.argv" 2>/dev/null && grep -q "allowed4" "$TMP/log/ssh.argv" 2>/dev/null; then ok "the per-boot check requires policy drop and a filled allowed4 set"; else bad "per-boot check ignores policy drop / allowed4"; fi
-if grep -q "nft list chain inet himmel_egress output" "$TMP/log/ssh.argv" 2>/dev/null && grep -q "counter .\*reject" "$TMP/log/ssh.argv" 2>/dev/null; then ok "the per-boot check requires the output chain to end in counter reject"; else bad "per-boot check never inspects the last rule of the output chain"; fi
+if grep -q "nft list chain inet himmel_egress output" "$TMP/log/ssh.argv" 2>/dev/null && grep -qF "counter( packets [0-9]+ bytes [0-9]+)? reject" "$TMP/log/ssh.argv" 2>/dev/null; then ok "the per-boot check requires the output chain to end in counter reject"; else bad "per-boot check never inspects the last rule of the output chain"; fi
 # Run the recorded last-rule probe against nft listings: a trailing bare accept
 # (or any rule after the reject) must fail it, a chain ending in the reject must pass.
 lastrule=$(sed -n 's/.*\(sudo nft list chain inet himmel_egress output [^&]*\).*/\1/p' "$TMP/log/ssh.argv" | head -n 1)
@@ -399,7 +399,8 @@ printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook outpu
 printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook output priority filter; policy drop;\n\t\toifname "lo" accept\n\t\tcounter packets 0 bytes 0 reject\n\t\taccept\n\t}\n}\n' > "$TMP/listing-bare-accept"
 printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook output priority filter; policy drop;\n\t\toifname "lo" accept\n\t\tcounter packets 0 bytes 0 reject\n\t\tip daddr @allowed4 accept\n\t}\n}\n' > "$TMP/listing-accept-after"
 if [ -n "$lastrule" ] && STUB_NFT_LISTING="$TMP/listing-good" PATH="$TMP/nftbin:$PATH" bash -c "$lastrule"; then ok "the last-rule probe passes a chain that ends in counter reject"; else bad "last-rule probe rejects a good chain: $lastrule"; fi
-for l in listing-bare-accept listing-accept-after; do
+printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook output priority filter; policy drop;\n\t\toifname "lo" accept\n\t\tcounter packets 0 bytes 0 ip daddr 203.0.113.1 reject\n\t}\n}\n' > "$TMP/listing-conditional-reject"
+for l in listing-bare-accept listing-accept-after listing-conditional-reject; do
     if [ -n "$lastrule" ] && ! STUB_NFT_LISTING="$TMP/$l" PATH="$TMP/nftbin:$PATH" bash -c "$lastrule"; then ok "the last-rule probe fails $l"; else bad "last-rule probe passes $l"; fi
 done
 
