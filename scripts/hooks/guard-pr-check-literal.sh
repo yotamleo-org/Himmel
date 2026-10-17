@@ -1525,6 +1525,28 @@ edhook_deny() {
 # one. Only a python naming no target and no spawn name is exempt, so the
 # residual is a target path it assembles at run time or reads from a file it
 # is handed (`python3 runner.py <target>`), plus any spawn the name list misses.
+# Only a bare python/python3 command word reaches this case. A python spelled
+# any other way (/usr/bin/python3, python3.14, env python3, command python3,
+# a quoted "python3"), or a command with a trailing comment or a leading
+# `true;`, falls through to the text scan, which allows a python list argv
+# and a non-canonical path literal inside the python text, as on main.
+# norm <path> - drop empty and . segments. A .. is kept, so the path no longer
+# reads as scripts/cr/<script> and denies: the kernel resolves .. after
+# following symlinks, so scripts/x/../cr can land outside the root.
+norm() {
+    local -a parts out=()
+    local p
+    IFS=/ read -r -a parts <<<"$1"
+    for p in ${parts[@]+"${parts[@]}"}; do
+        case "$p" in
+            ''|.) ;;
+            *) out+=("$p") ;;
+        esac
+    done
+    local IFS=/
+    printf '%s' "${out[*]-}"
+}
+
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh
 PY_SPAWN_RE='subprocess|os\.|popen|pty\.|runpy|exec[[:space:]]*\(|eval[[:space:]]*\(|compile[[:space:]]*\(|__import__|importlib|ctypes|system'
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
@@ -1597,7 +1619,23 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                 python | python3)
                     shown=${cmd//$'\n'/ }
                     shown=${shown:0:200}
-                    ! names_target "$cmd" || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
+                    # The raw text with empty and . segments collapsed (a
+                    # heredoc body is no word), plus every word of the
+                    # segment dequoted and normalised (scripts/c""r//x.sh).
+                    t=$cmd
+                    while :; do
+                        case "$t" in
+                            *//*) t=${t//\/\//\/} ;;
+                            */./*) t=${t//\/.\//\/} ;;
+                            *) break ;;
+                        esac
+                    done
+                    j=$((k + 1))
+                    while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
+                        t="$t $(norm "${ST_W[j]}")"
+                        j=$((j + 1))
+                    done
+                    ! names_target "$t" || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
                     [[ ! $cmd =~ $PY_SPAWN_RE ]] || return 1
                     kind=strict
                     ;;
@@ -1639,23 +1677,6 @@ if cmdpos_clean || git_read_to_file; then
     [ "${edhook_pending:-0}" = 1 ] && edhook_deny
     exit 0
 fi
-
-# norm <path> - drop empty and . segments. A .. is kept, so the path no longer
-# reads as scripts/cr/<script> and denies: the kernel resolves .. after
-# following symlinks, so scripts/x/../cr can land outside the root.
-norm() {
-    local -a parts out=()
-    local p
-    IFS=/ read -r -a parts <<<"$1"
-    for p in ${parts[@]+"${parts[@]}"}; do
-        case "$p" in
-            ''|.) ;;
-            *) out+=("$p") ;;
-        esac
-    done
-    local IFS=/
-    printf '%s' "${out[*]-}"
-}
 
 is_target() { # is_target <basename> - names, or globs onto, a guarded script, in any case
     local t rc=1
