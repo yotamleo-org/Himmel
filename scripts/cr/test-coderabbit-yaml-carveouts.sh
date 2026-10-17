@@ -17,7 +17,7 @@ d = yaml.safe_load(open(".coderabbit.yaml"))
 for e in d["reviews"]["path_instructions"]:
     if e["path"] == "scripts/**/*.sh":
         print(re.sub(r"\s+", " ", e["instructions"]))
-')
+') || { echo "FAIL: yaml extraction errored"; exit 1; }
 
 # expect_one <label> <fixed-string> — exactly one entry contains the string.
 expect_one() {
