@@ -300,10 +300,11 @@ if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
     # Capture git's exit code explicitly — a git failure must NOT read as
     # "no changed files" (that would be a false all-clear).
     if [ "$STAGED" -eq 1 ]; then
-        _list="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACMR)" \
+        # -z: git would otherwise quote a non-ASCII name and the -f test below would skip it
+        _list="$(cd "$_root" || exit 2; git diff --cached -z --name-only --diff-filter=ACMR | tr '\0' '\n'; exit "${PIPESTATUS[0]}")" \
             || { printf 'shell-lint: --staged: git diff --cached failed\n' >&2; exit 2; }
     else
-        _list="$(cd "$_root" && git diff --name-only --diff-filter=ACMR "$CHANGED" --)" \
+        _list="$(cd "$_root" || exit 2; git diff -z --name-only --diff-filter=ACMR "$CHANGED" -- | tr '\0' '\n'; exit "${PIPESTATUS[0]}")" \
             || { printf 'shell-lint: --changed: git diff %s failed\n' "$CHANGED" >&2; exit 2; }
     fi
     while IFS= read -r _f; do
@@ -586,6 +587,7 @@ EOF
 
     if [ "$file_issues" -gt 0 ] && [ -n "$BASELINE" ]; then
         _key="${f#"$_root"/}"
+        _key="${_key#./}"   # ponytail: only a leading ./ is normalised, a subdirectory-relative path misses its row; resolve against the toplevel if that bites
         # write mode records the baselinable counts and keeps only the findings no baseline can accept
         [ "$WRITE_BASELINE" -eq 1 ] && WB_OUT="$WB_OUT$(printf '%s' "$file_report" | _baseline_counts "$_key")"$'\n'
         file_report="$(printf '%s' "$file_report" | _baseline_filter "$_key")"

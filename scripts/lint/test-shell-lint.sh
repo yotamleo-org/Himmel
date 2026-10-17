@@ -1262,6 +1262,20 @@ assert_contains "21n reports [BOM]" "[BOM]" "$OUT21N"
 OUT21O="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/no-such-dir/wb.txt" --write-baseline good.sh 2>&1)"; EC21O=$?
 if [ "$EC21O" -eq 2 ]; then pass "21o --write-baseline to an unwritable path exits 2"; else fail "21o expected exit 2, got $EC21O" "$OUT21O"; fi
 
+# a non-ASCII filename is linted (git quotes it under the default core.quotePath), and a ./ path matches its baseline row
+(cd "$GATE" && cat > "é.sh" <<'EOF'
+y=$(mktemp)
+EOF
+git add "é.sh") >/dev/null 2>&1
+OUT21P="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"
+assert_contains "21p --staged lints a non-ASCII filename" "é.sh" "$OUT21P"
+cat > "$GATE/dot.sh" <<'EOF'
+y=$(mktemp)
+EOF
+printf 'dot.sh\tmktemp\t9\ndot.sh\tshellcheck\t9\n' > "$TMP_ROOT/dot.txt"
+OUT21Q="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/dot.txt" ./dot.sh 2>&1)"; EC21Q=$?
+if [ "$EC21Q" -eq 0 ]; then pass "21q a ./ path matches its baseline row"; else fail "21q expected exit 0, got $EC21Q" "$OUT21Q"; fi
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
