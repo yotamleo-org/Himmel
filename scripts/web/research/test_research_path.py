@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import socket
 import sys
 import unittest
 import urllib.request
@@ -251,6 +253,11 @@ class RedditFetchLane(unittest.TestCase):
                 '<shreddit-comment><div slot="comment"><p>first</p><p>second<br>third</p></div></shreddit-comment>')
         self.assertEqual(rp.parse_reddit_thread_html(page)["comments"], ["first second third"])
 
+    def test_comment_text_keeps_inline_tags_joined(self):
+        page = ('<shreddit-post score="1" comment-count="1"></shreddit-post>'
+                '<shreddit-comment><div slot="comment"><p>hel<b>lo</b> <a href="/x">wor</a>ld</p><p>next</p></div></shreddit-comment>')
+        self.assertEqual(rp.parse_reddit_thread_html(page)["comments"], ["hello world next"])
+
     def test_thread_page_parses(self):
         info = rp.parse_reddit_thread_html(self.thread)
         self.assertEqual(info["score"], 17634)
@@ -353,6 +360,60 @@ class RedditFetchLane(unittest.TestCase):
         with patched:
             with self.assertRaises(ValueError):
                 rp.fetch_reddit_html("https://www.reddit.com/search/?q=x")
+
+    def test_browser_launch_args_carry_the_map_all_notfound_rule(self):
+        calls, patched = self._fake_scrapling("https://www.reddit.com/search/?q=x")
+        with patched:
+            rp.fetch_reddit_html("https://www.reddit.com/search/?q=x")
+        rules = [f for f in calls[0][1]["extra_flags"] if f.startswith("--host-resolver-rules=")]
+        self.assertEqual(len(rules), 1)
+        self.assertIn("MAP * ~NOTFOUND", rules[0])
+
+    @unittest.skipUnless(shutil.which("chromium") or shutil.which("google-chrome-stable"), "no chromium")
+    def test_real_chromium_refuses_every_ip_literal_form(self):
+        import functools
+        import http.server
+        import subprocess
+        import tempfile
+        import threading
+        exe = shutil.which("chromium") or shutil.which("google-chrome-stable")
+        quiet = type("H", (http.server.SimpleHTTPRequestHandler,), {"log_message": lambda *a: None})
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "index.html").write_text("hello-from-local")
+            handler = functools.partial(quiet, directory=root)
+            v4 = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            servers = [v4]
+            try:
+                class V6(http.server.ThreadingHTTPServer):
+                    address_family = socket.AF_INET6
+                servers.append(V6(("::1", 0), handler))
+            except OSError:
+                pass
+            for srv in servers:
+                threading.Thread(target=srv.serve_forever, daemon=True).start()
+            port = v4.server_address[1]
+            urls = [f"http://127.0.0.1:{port}/", f"http://2130706433:{port}/",
+                    f"http://0x7f.1:{port}/", f"http://0177.0.0.1:{port}/"]
+            if len(servers) == 2:
+                urls.append(f"http://[::1]:{servers[1].server_address[1]}/")
+
+            def dump(url, *flags):
+                with tempfile.TemporaryDirectory() as prof:
+                    r = subprocess.run([exe, "--headless=new", "--no-sandbox", "--disable-gpu",
+                                        f"--user-data-dir={prof}", *flags, "--dump-dom", url],
+                                       capture_output=True, text=True, timeout=60)
+                return r.stdout + r.stderr
+            try:
+                self.assertIn("hello-from-local", dump(urls[0]))  # control: reachable without the rule
+                for url in urls:
+                    with self.subTest(url=url):
+                        out = dump(url, rp.reddit_resolver_rules())
+                        self.assertNotIn("hello-from-local", out)
+                        self.assertIn("ERR_NAME_NOT_RESOLVED", out)
+            finally:
+                for srv in servers:
+                    srv.shutdown()
+                    srv.server_close()
 
     def test_arctic_fetch_uses_the_same_host_redirect_handler(self):
         seen = []

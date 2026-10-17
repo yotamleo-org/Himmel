@@ -249,6 +249,9 @@ def parse_reddit_search_html(page_html):
     return items
 
 
+_INLINE_TAGS = frozenset("a abbr b bdi bdo cite code del em i ins kbd mark q s samp small span strong sub sup u var".split())
+
+
 class _ThreadScan(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -266,7 +269,7 @@ class _ThreadScan(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
-        if self._tag:
+        if self._tag and tag not in _INLINE_TAGS:
             self._buf.append(" ")
         if tag == "shreddit-post" and self.post is None:
             self.post = a
@@ -278,7 +281,7 @@ class _ThreadScan(HTMLParser):
             self._depth += 1
 
     def handle_endtag(self, tag):
-        if self._tag:
+        if self._tag and tag not in _INLINE_TAGS:
             self._buf.append(" ")
         if self._tag == tag:
             self._depth -= 1
