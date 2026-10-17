@@ -188,6 +188,27 @@ for key in 'models :' '? models' '&a models:' '!!str models:'; do
   grep -q 'unrecognised top-level key syntax' "$work/err" || fail "(10n) '$key': the refusal must carry the unrecognised-syntax message: $(cat "$work/err")"
 done
 
+# (10o) file-shape normalisation: CRLF endings, a leading BOM and an indented root mapping must not hide the models block.
+printf 'collections:\r\n  himmel:\r\n    path: /x\r\nmodels: # c\r\n  embed: "openai\\x3ajina-embeddings-v3"\r\n  openai_base_url: https://api.jina.ai/v1\r\n' > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10o) CRLF models block with a trailing comment: expected rc 3, got $rc"
+printf '\357\273\277models:\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\ncollections:\n  himmel:\n    path: /x\n' > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10o) BOM before a models block: expected rc 3, got $rc"
+printf '  collections:\n    himmel:\n      path: /x\n  models:\n    embed: "openai\\x3ajina-embeddings-v3"\n    openai_base_url: https://api.jina.ai/v1\n' > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10o) indented root mapping: expected rc 3, got $rc"
+# (10o) the literal openai: backstop also counts YAML colon escapes outside a role.
+for esc in 'openai\x3ajina' 'openai:jina' 'openai\U0000003ajina'; do
+  printf 'collections:\n  himmel:\n    path: /x\nextra:\n  x: "%s"\n' "$esc" > "$work/sh.yml"
+  run_gate "$work/sh.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(10o) escaped colon $esc outside a role: expected rc 3, got $rc"
+done
+# (10o) positive control: an ordinary config with comments, blank lines and CRLF still passes.
+printf '# qmd config\r\n\r\ncollections:\r\n  himmel:\r\n    path: /x # note\r\n\r\nmodels:\r\n  embed: %s\r\n' "$LOCAL_EMBED" > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(10o) ordinary CRLF config with comments and blank lines: expected rc 0, got $rc: $(cat "$work/err")"
+
 # ---- OpenRouter: host maps to provider openrouter, models pinned ----
 OR_EMBED='openai:qwen/qwen3-embedding-8b'
 OR_RERANK='openai:cohere/rerank-4-fast'
