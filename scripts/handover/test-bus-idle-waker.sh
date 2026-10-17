@@ -35,23 +35,24 @@ run() { # run <polls> <grace> [extra args]; env BUS_N / inbox decide the count
   BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" \
     bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
     --poll 0.2 --grace "$grace" --rewake 100 --max-polls "$polls" "$@" >/dev/null 2>&1
+  RUN_RC=$?
 }
 
 echo "== waker =="
 BUS_N=0 run 4 0
-[ ! -s "$QLOG" ] && pass "nothing unread: nothing sent" || fail "nothing unread but sent: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "nothing unread: nothing sent" || fail "nothing unread but sent: $(cat "$QLOG")"
 
 BUS_N=2 run 3 60
-[ ! -s "$QLOG" ] && pass "unread inside the grace window (hook may still deliver): nothing sent" || fail "sent inside grace"
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "unread inside the grace window (hook may still deliver): nothing sent" || fail "sent inside grace"
 
 BUS_N=2 run 8 0.5
 n=$(grep -c sendText "$QLOG")
-[ "$n" -eq 1 ] && pass "unread past grace: exactly one prompt (rewake holds the next)" || fail "wanted 1 sendText, got $n"
+[ "$RUN_RC" -eq 0 ] && [ "$n" -eq 1 ] && pass "unread past grace: exactly one prompt (rewake holds the next)" || fail "wanted 1 sendText, got $n"
 grep -qF "org.kde.konsole-1 /Sessions/3 org.kde.konsole.Session.sendText ${FIXED}"$'\r' "$QLOG" \
   && pass "the injected text is the fixed sentence plus Enter" || fail "text differs: $(cat -A "$QLOG")"
 
 BUS_N=abc run 6 0
-[ ! -s "$QLOG" ] && pass "a non-numeric count sends nothing" || fail "non-numeric count sent"
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a non-numeric count sends nothing" || fail "non-numeric count sent"
 
 # Content never travels: an inbox line carrying a command is counted, not typed.
 printf 'from=con $(touch %s/pwned); rm -rf ~\n' "$tmp" > "$HANDOVER_DIR/inbox/legX.md"
@@ -79,6 +80,10 @@ rc=$?
 bash "$WAKER" --name legX --service s --session >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 64 ] && pass "an option with no value is refused (rc=64)" || fail "valueless option: expected rc=64, got rc=$rc"
+
+bash "$WAKER" --name legX --service s --session /S --poll abc >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "a non-numeric --poll is refused (rc=64)" || fail "bad --poll: expected rc=64, got rc=$rc"
 
 echo "== succession doc =="
 if grep -q 'bus adopt' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt"; else fail "succession.md has no bus adopt step"; fi
