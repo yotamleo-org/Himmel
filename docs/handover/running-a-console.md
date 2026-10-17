@@ -585,7 +585,7 @@ switch and record the result (and the cache-probe verdict from step 1) in the PR
 ## Controlling the VM CI runner
 
 Two VirtualBox VMs (`himmel-ci-1`, `himmel-ci-2`, cloned from the
-`ci-runner-v2` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
+`ci-runner-v3` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
 shell-unit shards. The console drives them with one script, each form a bare
 relative literal pre-approved in `.claude/settings.json`:
 

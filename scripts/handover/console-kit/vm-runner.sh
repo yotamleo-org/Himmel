@@ -15,7 +15,7 @@
 #   vm-runner.sh doctor          `<OK|WARN|FAIL><TAB><id><TAB><message>` rows
 #                                for himmel-doctor's C64 check
 #
-# VM i is `himmel-ci-<i>`: VM 1 is the baked himmel-ci-1@ci-runner-v2
+# VM i is `himmel-ci-<i>`: VM 1 is the baked himmel-ci-1@ci-runner-v3
 # (`ci-runner.sh build`), every other VM a linked clone of that snapshot.
 # Nothing here boots a VM itself; the unit's ci-runner.sh loop does, one job per
 # clean restore. The raw `ci-runner.sh run` is deliberately NOT in any allow rule.
@@ -50,7 +50,7 @@ STATE_DIR="${HIMMEL_VM_RUNNER_STATE_DIR:-$HOME/.himmel/state}"
 STOP_FILE="${HIMMEL_CI_RUNNER_STOP_FILE:-$HOME/.himmel/ci-runner.stop}"
 JOB_MAX="${HIMMEL_CI_RUNNER_JOB_MAX:-4500}"
 BASE_VM=himmel-ci-1
-SNAPSHOT=ci-runner-v2
+SNAPSHOT=ci-runner-v3
 CACHE_TTL=45
 
 die() { echo "vm-runner: $1" >&2; exit "${2:-1}"; }
