@@ -146,6 +146,15 @@ exposes:
   hook name for a `PreToolUse:… hook error:` result, plus
   `auto-mode-classifier`, `user-rejected`, and `hook-unclassified` for a
   denial whose reason carries no nameable token.
+- `himmel_tool_denial_sessions{guard,project}`,
+  `himmel_tool_denial_max_per_session{guard,project}` and
+  `himmel_tool_sessions{project}` (HIMMEL-6036) — the distinct-session view of
+  the same denials: sessions with at least one denial by the guard, the most
+  denials one session took from it, and the census sessions in the window
+  (the denominator). `guard` carries the same value as `class` above.
+  `HimmelGuardDenialShareHigh` fires when a guard hit more than 25 % of
+  sessions; `HimmelGuardDenialRepeat` when one session took 3 or more denials
+  from one guard. These three are plain gauges re-folded each scrape.
 
 Like `flow_run_outcome_total`, these three are WINDOW-FOLDED counters: values
 drop as sessions age out of the 24h window, which Prometheus reads as a

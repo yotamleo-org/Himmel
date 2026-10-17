@@ -1016,3 +1016,64 @@ tests:
       - eval_time: 150m
         alertname: HimmelEvalAbsent
         exp_alerts: []
+
+  # HIMMEL-6036: HimmelGuardDenialShareHigh fires when a guard's distinct-session
+  # share exceeds 0.25 for the 10m grace: 3 of 10 sessions = 0.3.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_sessions{guard="guard-x",project="himmel"}'
+        values: '3x30'
+      - series: 'himmel_tool_sessions{project="himmel"}'
+        values: '10x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialShareHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              guard: guard-x
+              project: himmel
+            exp_annotations:
+              summary: 'guard guard-x denied 30% of himmel sessions in the last day'
+
+  # Exactly 0.25 and below stay silent.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_sessions{guard="guard-x",project="himmel"}'
+        values: '5x30'
+      - series: 'himmel_tool_sessions{project="himmel"}'
+        values: '20x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialShareHigh
+        exp_alerts: []
+
+  # A zero denominator never divides: silent.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_sessions{guard="guard-x",project="himmel"}'
+        values: '1x30'
+      - series: 'himmel_tool_sessions{project="himmel"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialShareHigh
+        exp_alerts: []
+
+  # HimmelGuardDenialRepeat: one session denied 3 times by one guard fires, 2 does not.
+  - interval: 1m
+    input_series:
+      - series: 'himmel_tool_denial_max_per_session{guard="guard-x",project="himmel"}'
+        values: '3x30'
+      - series: 'himmel_tool_denial_max_per_session{guard="guard-y",project="himmel"}'
+        values: '2x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HimmelGuardDenialRepeat
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              guard: guard-x
+              project: himmel
+            exp_annotations:
+              summary: 'one himmel session was denied 3 times by guard guard-x in the last day'

@@ -1705,6 +1705,64 @@
       }
     },
     {
+      "type": "bargauge",
+      "id": 35,
+      "title": "Guard hit share of sessions (24 h)",
+      "description": "The five guardrails that denied the largest share of sessions in the last 24 hours. A session counts once per guard however often it was denied.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(5, himmel_tool_denial_sessions / on(project) group_left() himmel_tool_sessions)",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{guard}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0,
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#8a8f98"
+          },
+          "noValue": "No denials"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
       "type": "row",
       "id": 21,
       "title": "Search and graph freshness",
@@ -1713,7 +1771,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 50
       },
       "panels": []
     },
@@ -1730,7 +1788,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 51
       },
       "targets": [
         {
@@ -1812,7 +1870,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 49
+        "y": 55
       },
       "panels": []
     },
@@ -1829,7 +1887,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 50
+        "y": 56
       },
       "targets": [
         {
@@ -1886,7 +1944,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 50
+        "y": 56
       },
       "targets": [
         {
@@ -1967,7 +2025,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 50
+        "y": 56
       },
       "targets": [
         {
@@ -2048,7 +2106,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 50
+        "y": 56
       },
       "targets": [
         {
@@ -2125,7 +2183,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 61
       },
       "panels": []
     },
@@ -2142,7 +2200,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 56
+        "y": 62
       },
       "targets": [
         {
@@ -2252,7 +2310,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 56
+        "y": 62
       },
       "targets": [
         {
@@ -2325,7 +2383,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 64
+        "y": 70
       },
       "panels": []
     },
@@ -2342,7 +2400,7 @@
         "h": 10,
         "w": 16,
         "x": 0,
-        "y": 65
+        "y": 71
       },
       "targets": [
         {
@@ -2501,7 +2559,7 @@
         "h": 10,
         "w": 8,
         "x": 16,
-        "y": 65
+        "y": 71
       },
       "targets": [
         {
@@ -2582,7 +2640,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 75
+        "y": 81
       },
       "options": {
         "mode": "markdown",
