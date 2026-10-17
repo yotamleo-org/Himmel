@@ -231,6 +231,19 @@ has "the LAST completes-ticket value wins" "$ct_last" "> **Completes ticket:** n
 lacks "an earlier, overridden value writes no yes line" "$ct_last" "> **Completes ticket:** yes"
 ct_none="$(ct_brief 'one PR, nothing stated' "$WORK/ct4")"
 [ "$(ct_count "$ct_none")" = 0 ] && pass "a scope stating neither writes no Completes ticket line" || fail "Completes ticket line written without a stated value"
+# The Ship step states the same value and the matching merge command (one value per brief).
+lacks "a completes-ticket: no brief states no 'completes-ticket: yes' anywhere" "$ct_no" "completes-ticket: yes"
+ship_no="$(printf '%s\n' "$ct_no" | grep '^> 4\. Ship:')"
+lacks "a completes-ticket: no Ship step has no --jira-transition" "$ship_no" "--jira-transition"
+has "a completes-ticket: no Ship step merges bare" "$ship_no" 'merge-on-green.sh`'
+has "a completes-ticket: no Ship step leaves the ticket In Progress" "$ship_no" "In Progress"
+ship_yes="$(printf '%s\n' "$ct_yes" | grep '^> 4\. Ship:')"
+has "a completes-ticket: yes Ship step keeps --jira-transition" "$ship_yes" "merge-on-green.sh --jira-transition"
+has "a completes-ticket: yes Ship step states yes" "$ship_yes" "completes-ticket: yes"
+ship_last="$(printf '%s\n' "$ct_last" | grep '^> 4\. Ship:')"
+lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-transition"
+ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
+has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
 
