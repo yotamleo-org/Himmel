@@ -120,13 +120,15 @@ const isClosed = (s) => /^(done|closed|resolved|won.?t do|cancel+ed|rejected)/i.
 function learningsFeed(rows) {
   let tracked = null;
   try { tracked = new Set(require("child_process").execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28 }).split("\n").filter(Boolean)); } catch (e) { tracked = null; }
+  let repoName = ""; // a row from another repository is never judged against the file list of this checkout
+  try { repoName = require("child_process").execFileSync("git", ["remote", "get-url", "origin"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().replace(/\.git$/, "").split(/[/:]/).pop().toLowerCase(); } catch (e) { repoName = ""; }
   const lines = [], stale = [], live = [], short = (t) => t.slice(0, 80);
   for (const r of rows) {
     let reason = null;
     if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
     else if (/\bglm\b/i.test(r.text)) reason = "glm";
     else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
-    else if (tracked && tracked.size && r.file && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
+    else if (tracked && tracked.size && r.file && (!r.repo || !repoName || r.repo.split("/").pop().toLowerCase() === repoName) &&!/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
     if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
       const st = ticketStatus(key);
@@ -158,7 +160,7 @@ function learningsFeed(rows) {
     const uses = c.rows.reduce((s, r) => s + r.uses, 0);
     const id = c.gram.replace(/ /g, "-").replace(/[^a-z0-9_-]/g, "") || "cluster";
     const kind = c.rows.some((r) => /false positive|by design|intentional|not a bug|do not flag|should not (be )?flag/i.test(r.text)) ? "rebuttal" : "fix";
-    lines.push(`PROPOSE-CLASS id=${id} rows=${c.rows.length} uses=${uses} globs=${c.area === "." ? "*" : c.area + "/**"} match=${c.gram.replace(/ /g, "\\s+")} kind=${kind} canonical=${short(c.rows[0].text)} (rows ${c.rows.map((r) => r.n).join(",")})`); }
+    lines.push(`PROPOSE-CLASS id=${id} rows=${c.rows.length} uses=${uses} globs=${c.area === "." ? "*" : c.area + "/**"} match=${c.gram.replace(/ /g, "[\\s\\S]{1,30}?")} kind=${kind} canonical=${short(c.rows[0].text)} (rows ${c.rows.map((r) => r.n).join(",")})`); }
   return { lines, stale, live };
 }
 // `rung` is the top rung of the correction ladder the class has

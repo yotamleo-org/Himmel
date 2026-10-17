@@ -48,10 +48,10 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 
    | Line | Meaning |
    |---|---|
-   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
+   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`; rows from another repository are skipped), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
    | `PONYTAIL row=N … ticket=HIMMEL-n status=<s>` | the row defers to a still-open ticket: keep it, it is a `ponytail:` marker |
    | `STATUS-UNKNOWN row=N ticket=HIMMEL-n` | Jira status unreachable: the row is NOT stale on that rule |
-   | `DUPLICATE rows=a,b uses=U …` | live rows with the same file and the same normalized 12-token rule head; keep one |
+   | `DUPLICATE rows=a,b uses=U …` | live rows with the same file and the same normalized 12-token rule head; read the group, keep one only if the rows state the same rule |
    | `PROMOTE-HINT row=N uses=U near-duplicates=k …` | a live unmatched row with 100+ uses or 3+ near-duplicates |
    | `PROPOSE-CLASS id=… rows=N uses=U globs=… match=… kind=… canonical=…` | live unmatched rows sharing a file area (first two directories) and a rule 3-gram, with 2+ rows or 25+ uses: a draft class to review |
 

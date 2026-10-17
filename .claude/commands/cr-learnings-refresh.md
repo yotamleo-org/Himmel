@@ -19,7 +19,8 @@ cheap enough to run on demand.
    [`docs/internals/known-findings.md`](../../docs/internals/known-findings.md)),
    one item per line, in this order:
    - `STALE` — the CodeRabbit learning must be deleted in the CodeRabbit UI.
-   - `DUPLICATE` — keep one row of the group, delete the rest.
+   - `DUPLICATE` — read the group (it matches on the first 12 words only); if
+     the rows state the same rule keep one and delete the rest, else keep all.
    - `PONYTAIL` — keep; confirm the row's ticket still matches its text.
    - `PROPOSE-CLASS` / `PROMOTE-HINT` — judgment layer (step 3).
    - `STATUS-UNKNOWN` — re-run once Jira is reachable; never delete on it.

@@ -409,7 +409,9 @@ lrun() { # <name> <csv> [status-tsv]; prints the refresh output
 { echo "$LHDR"; lrow 'Always frobnicate the zorble widget quickly.' "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; } > "$tmp/l-cluster.csv"
 lc="$(lrun cluster "$tmp/l-cluster.csv")"
 check "feed: two unmatched rows sharing a rule give exactly one PROPOSE-CLASS" "$(printf '%s\n' "$lc" | grep -c '^PROPOSE-CLASS ')" "1"
-contains "feed: PROPOSE-CLASS names id, rows, uses and globs" "$lc" "PROPOSE-CLASS id=frobnicate-zorble-widget rows=2 uses=7 globs=scripts/cr/** match=frobnicate\\s+zorble\\s+widget kind=fix canonical="
+contains "feed: PROPOSE-CLASS names id, rows, uses and globs" "$lc" "PROPOSE-CLASS id=frobnicate-zorble-widget rows=2 uses=7 globs=scripts/cr/** match=frobnicate[\\s\\S]{1,30}?zorble[\\s\\S]{1,30}?widget kind=fix canonical="
+lcm="$(printf '%s\n' "$lc" | sed -n 's/^PROPOSE-CLASS .* match=\(.*\) kind=.*/\1/p')"
+check "feed: the proposed match regex matches its own source learning" "$(node -e 'console.log(new RegExp(process.argv[1],"i").test("Always frobnicate the zorble widget quickly."))' "$lcm")" "true"
 
 { echo "$LHDR"; lrow 'On Windows the pwsh launcher needs a quuxbar wrapper.' "$LFILE" 1; lrow 'A perfectly live frobnitz remark.' "$LFILE" 2; } > "$tmp/l-win.csv"
 lw="$(lrun win "$tmp/l-win.csv")"
@@ -423,6 +425,8 @@ lg="$(lrun gone "$tmp/l-gone.csv")"
 contains "feed: a GLM row is STALE" "$lg" "STALE row=1 uses=1 reason=glm"
 contains "feed: a row citing a file absent from git ls-files is STALE file-gone" "$lg" "STALE row=2 uses=2 reason=file-gone"
 contains "feed: a private-repo propagation row is STALE" "$lg" "STALE row=3 uses=1 reason=private-repo-propagation"
+{ echo "$LHDR"; printf '"Check the zonkdrift wrapper handles empty input.",other-repo,scripts/no-such-file-zz.sh,1,,u,"2","x","y","z"\n'; } > "$tmp/l-other.csv"  # leak-allow: fixture row from another repository
+not_contains "feed: a missing file in ANOTHER repository is not file-gone" "$(lrun other "$tmp/l-other.csv")" "reason=file-gone"
 
 printf 'HIMMEL-7001\tIn Progress\nHIMMEL-7002\tDone\n' > "$tmp/status.tsv"
 { echo "$LHDR"; lrow 'Defer the snarfle cache fix to HIMMEL-7001 until later.' "$LFILE" 2; lrow 'Defer the gizmo rewrite to HIMMEL-7002 for now.' "$LFILE" 2; } > "$tmp/l-defer.csv"
