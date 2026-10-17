@@ -1970,7 +1970,8 @@ $remaining")
         JIRA_AUTO_TRANSITION_RESULT="ok key=$key status=$target_status"
         # A closed ticket holds no future version: move it to the
         # current one (earliest unreleased by release date) when it sits in a
-        # later unreleased version. Best-effort, like the transition itself.
+        # later unreleased version, and a ticket with no version gets the
+        # current one. Best-effort, like the transition itself.
         local versions_out fold_to
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
@@ -1982,7 +1983,7 @@ $remaining")
                 const dated = vs.filter(v => v[1] === "false" && v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
                 const unrel = vs.filter(v => v[1] === "false");
                 const cur = dated.length ? dated[0][0] : unrel.length ? unrel[0][0] : "";
-                if (cur && have.some(n => open.has(n) && n !== cur)) {
+                if (cur && (!have.length || have.some(n => open.has(n) && n !== cur))) {
                     const keep = have.filter(n => !open.has(n));
                     process.stdout.write([cur].concat(keep).join("\n"));
                 }
