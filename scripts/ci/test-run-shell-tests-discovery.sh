@@ -557,22 +557,22 @@ rm -f "$sb18/scripts/test-cap-collide.sh" "$sb18/scripts/nested/test-cap-collide
 # where an UNQUOTED expansion would be glob-expanded and a '*' entry would
 # wildcard the whole corpus away — reported as a clean green run.
 #
-# This must go through SUITE_TIER, not --skip-extra. --skip-extra is compared
-# with a literal `[ "$_path" = "$relneedle" ]` and does not touch the predicate
-# at all, so asserting glob-safety through it would pass no matter
-# how the predicate behaved — vacuous with respect to the property named. That
-# was this case's own bug in an earlier version. SUITE_TIER is env-overridable
-# AND routes through suite_entry_matches, so it is a real probe: under
-# SUITE_TIER_MODE=fast a tier-listed suite is skipped, so if '*' expanded,
-# EVERY suite would be skipped and the all-skipped root would fail the run.
+# Two tables look like probes and are not. --skip-extra is compared with a
+# literal `[ "$_path" = "$relneedle" ]`, and tier_lookup matches EXACTLY too, so
+# SUITE_TIER never reaches the predicate: a '*' entry in either passes no matter
+# how the predicate behaves. The tables that still call suite_entry_matches are
+# SKIP_LIST (is_skipped) and SUITE_REQUIRE_TOOL (capability_lookup). SKIP_LIST
+# has no env seam, so this goes through SUITE_REQUIRE_TOOL with a guaranteed-
+# absent tool, like 18j: if '*' expanded, EVERY suite would be capability-
+# skipped and the control suite would never run.
 echo "== Case 18f: a glob in a suite table is matched literally, not expanded =="
 rm -f "$sb18/ran-skiplisted" "$sb18/ran-control" "$sb18/ran-boundary"
-out18f=$(SUITE_TIER='*  extended  # glob probe' SUITE_TIER_MODE=fast \
-         bash "$RUNNER" "$sb18/scripts/handover" 2>&1)
+out18f=$(SUITE_REQUIRE_TOOL='*  himmel-absent-tool-2260  # glob probe' \
+         env -u SUITE_TIER_MODE bash "$RUNNER" "$sb18/scripts/handover" 2>&1)
 rc18f=$?
 if [ "$rc18f" -eq 0 ] && [ -e "$sb18/ran-control" ] \
-   && ! grepq "$out18f" -F 'tier: extended'; then
-  pass "2260/18f: a '*' SUITE_TIER entry matched nothing — suite_entry_matches compares literally"
+   && ! grepq "$out18f" -F 'himmel-absent-tool-2260'; then
+  pass "2260/18f: a '*' SUITE_REQUIRE_TOOL entry matched nothing — suite_entry_matches compares literally"
 else
   fail "2260/18f: a '*' table entry behaved as a wildcard through suite_entry_matches (rc=$rc18f); output: $out18f"
 fi
