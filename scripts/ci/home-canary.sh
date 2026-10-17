@@ -36,7 +36,8 @@ fi
 [ -f "$RUNNER" ] || { echo "home-canary: runner not found: $RUNNER" >&2; exit 2; }
 
 TIMEOUT_S="${HOME_CANARY_TIMEOUT:-1500}"
-case "$TIMEOUT_S" in ''|*[!0-9]*|0) echo "home-canary: HOME_CANARY_TIMEOUT must be a positive integer" >&2; exit 2 ;; esac
+case "$TIMEOUT_S" in ''|*[!0-9]*) echo "home-canary: HOME_CANARY_TIMEOUT must be a positive integer" >&2; exit 2 ;; esac
+[ "$((10#$TIMEOUT_S))" -gt 0 ] || { echo "home-canary: HOME_CANARY_TIMEOUT must be a positive integer" >&2; exit 2; }
 
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/home-canary.XXXXXX")" || { echo "home-canary: cannot allocate sandbox" >&2; exit 2; }
 : "${SANDBOX:?}"
@@ -73,9 +74,14 @@ fi
 env_atime_before="$(atime_of "$FAKE_HOME/.env")"
 
 timeout "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" bash "$RUNNER" "$@" 2>&1 | tee "$LOG" | sed -u "s/$TOKEN/<honeytoken>/g"
-rc="${PIPESTATUS[0]}"
+ps=("${PIPESTATUS[@]}")
+rc="${ps[0]}"
 
 fail=0
+if [ "${ps[1]}" -ne 0 ] || [ "${ps[2]}" -ne 0 ]; then
+  fail=1
+  echo "home-canary: FAIL log capture or redaction broke (tee rc=${ps[1]}, sed rc=${ps[2]})" >&2
+fi
 if grep -qF "$TOKEN" "$LOG"; then
   fail=1
   echo "home-canary: FAIL honeytoken reached the runner output (a suite printed the sandbox .env); lines:" >&2

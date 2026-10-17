@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+prompt_file="$1"
+body="$(cat "$prompt_file")"
