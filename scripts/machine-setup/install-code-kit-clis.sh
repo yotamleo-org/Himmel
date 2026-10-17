@@ -10,7 +10,7 @@
 # Usage: install-code-kit-clis.sh [--dry-run]
 set -euo pipefail
 
-AST_GREP_VERSION="${AST_GREP_VERSION:-0.50.0}"
+AST_GREP_VERSION="${AST_GREP_VERSION:-0.51.0}"
 DRY=0
 INCOMPLETE=0
 case "${1:-}" in

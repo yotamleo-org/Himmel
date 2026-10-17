@@ -494,6 +494,21 @@ test("dispatch creates session, enqueues, sets chat_id; running session only enq
   expect(ran).toEqual(["HIMMEL-5"]);   // no 2nd RUN while in-flight
 });
 
+test("stop <KEY>: a non-operator sender is refused and the session keeps running; the operator's stop lands (HIMMEL-5820)", async () => {
+  const r = root(); const notes: string[] = [];
+  const isOperator = (from: number) => from === 5;
+  const notifyChat = async (_chat: number, text: string) => { notes.push(text); };
+  await ensureSession(r, "HIMMEL-5");
+  const stopFile = join(sessionDir(r, "HIMMEL-5"), "stop");
+  const noRun = async () => {};
+  await handleInbound(r, { from:9, chat_id:-50, text:"stop HIMMEL-5" }, noRun, undefined, undefined, isOperator, notifyChat);
+  expect(readdirSync(sessionDir(r, "HIMMEL-5"))).not.toContain("stop");   // member's stop leaves the session alone
+  expect(notes).toEqual(["stop is operator-only"]);                       // plain refusal reply
+  await handleInbound(r, { from:5, chat_id:-50, text:"stop HIMMEL-5", ts: 42 }, noRun, undefined, undefined, isOperator, notifyChat);
+  expect(readFileSync(stopFile, "utf8").trim()).toBe("42");               // operator stop still halts it
+  expect(notes.length).toBe(1);
+});
+
 test("chat routes to __chat__ session", async () => {
   const r = root(); const ran: string[] = [];
   await handleInbound(r, { from:1, chat_id:7, text:"hello" }, async (s:string)=>{ran.push(s);});

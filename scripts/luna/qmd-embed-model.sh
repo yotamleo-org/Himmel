@@ -115,6 +115,10 @@ write_yml_embed() {
             /^[^[:space:]#]/ {
                 if (inmodels && !done) emit()
                 inmodels = ($0 ~ /^models:[[:space:]]*(#.*)?$/)
+                if ($0 ~ /^models:[[:space:]]*(null|~|\{\})[[:space:]]*(#.*)?$/) {
+                    sub(/^models:[[:space:]]*(null|~|\{\})/, "models:")
+                    print; emit(); inmodels = 0; next
+                }
                 print; next
             }
             inmodels && /^[[:space:]]+embed:/ { if (!done) emit(); next }

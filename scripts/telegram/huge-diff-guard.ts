@@ -21,9 +21,10 @@
 // WARN-ONLY and FAIL-OPEN by design: a legitimately large branch must still
 // dispatch (unattended runs fail LOUD, never block); the guard
 // only makes the hazard visible. A probe that cannot evaluate (no default-
-// branch ref, broken git, a synthetic test repo) stays SILENT — a missing
-// base ref is an expected condition in a fresh clone, and a guard that cries
-// wolf on every normal dispatch gets ignored.
+// branch ref, broken git, a timed-out probe, git's rename-limit overflow, a
+// synthetic test repo) still dispatches, but logs exactly ONE stderr line per
+// fail-open path — a silent fail-open cannot be told apart from "no hazard".
+// The happy paths (hazard found, clean diff) log nothing.
 //
 // Shared seam (the defect class this repo keeps re-learning): ONE predicate
 // in this module, imported by both spawn-glm.ts and spawn-claudex.ts — never
@@ -46,9 +47,25 @@ export const HUGE_DIFF_MIN_BYTES = 1 << 20; // 1 MiB
 // is a plain spawnSync (mirrors planSharedSpawn's git probes).
 export type GitProbe = (args: string[], cwd: string) => { code: number; stdout: string; stderr: string };
 
+// Upper bound on any ONE git probe. A branch with thousands of deleted and
+// added files can make `git diff` crawl, and the guard is warn-only: it must
+// never cost the dispatch more than it saves. HUGE_DIFF_PROBE_TIMEOUT_MS
+// overrides it (read per call so tests can shrink it).
+export const HUGE_DIFF_PROBE_TIMEOUT_MS = 15_000;
+export const PROBE_TIMED_OUT = "timed out";
+
 export function gitProbe(args: string[], cwd: string): { code: number; stdout: string; stderr: string } {
-  const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
-  return { code: r.exitCode ?? -1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+  const env = Number(process.env.HUGE_DIFF_PROBE_TIMEOUT_MS);
+  const timeout = Number.isFinite(env) && env > 0 ? env : HUGE_DIFF_PROBE_TIMEOUT_MS;
+  const t0 = Date.now();
+  const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe", env: process.env, timeout, killSignal: "SIGKILL" });
+  const stderr = r.stderr.toString();
+  // A killed child has no exit code (or a signal-derived one): any failure that
+  // ran the full bound was the kill, reported as a nonzero (fail-open) result.
+  if (r.exitCode !== 0 && Date.now() - t0 >= timeout) {
+    return { code: -1, stdout: "", stderr: `git ${args[0] ?? ""} ${PROBE_TIMED_OUT} after ${timeout}ms${stderr ? `: ${stderr}` : ""}` };
+  }
+  return { code: r.exitCode ?? -1, stdout: r.stdout.toString(), stderr };
 }
 
 // The metric is changed-path BYTES (ls-tree blob sizes), not diff LINE
@@ -294,16 +311,39 @@ export function resolveDefaultBranch(probe: GitProbe, cwd: string): string {
 // worker launches, after the branch exists — it covers own-branch AND shared
 // modes from one call site). Returns at most a `note` for the caller to
 // console.error; it NEVER refuses, and it never throws (a probe that throws —
-// Bun.spawnSync does on an unresolvable binary — is caught and silenced).
+// Bun.spawnSync does on an unresolvable binary — is caught and logged).
 export function checkHugeDiff(
   lane: string,
   args: { cwd: string; branch: string; base?: string },
-  probe: GitProbe = gitProbe,
+  rawProbe: GitProbe = gitProbe,
 ): { note?: string } {
+  // One stderr line per fail-open KIND, never per probe.
+  const logged = new Set<string>();
+  const failOpen = (kind: string, detail: string) => {
+    if (logged.has(kind)) return;
+    logged.add(kind);
+    console.error(`${lane}: huge-diff guard fail-open (${kind}): ${detail.trim().split("\n")[0]} — dispatching without the check`);
+  };
+  // After the first timeout every later probe short-circuits, so a hung git
+  // costs ONE bound, not one per probe.
+  let timedOut = false;
+  const probe: GitProbe = (a, cwd) => {
+    if (timedOut) return { code: -1, stdout: "", stderr: `git ${a[0]} skipped: ${PROBE_TIMED_OUT}` };
+    const r = rawProbe(a, cwd);
+    if (r.code !== 0 && r.stderr.includes(PROBE_TIMED_OUT)) {
+      timedOut = true;
+      failOpen("timeout", r.stderr);
+    }
+    return r;
+  };
+  const renameLimit = (stderr: string) => /exhaustive rename detection was skipped|renameLimit/i.test(stderr);
   try {
     const base = args.base ?? resolveDefaultBranch(probe, args.cwd);
     const res = changedPathBytes(probe, args.cwd, base, args.branch);
-    if (!res.ok) return {}; // fail-open + silent (header rationale)
+    if (!res.ok) {
+      if (!timedOut) failOpen("probe failure", res.error);
+      return {};
+    }
     // Worker-side attribution is MEASURED, not inferred from config: run the
     // worker's own `git diff --name-status` (same cwd, no overrides, so
     // diff.renames, the 50% similarity floor and the rename limit all apply
@@ -318,6 +358,8 @@ export function checkHugeDiff(
     let paths = res.paths;
     const range = `${res.mergeBase}...${args.branch}`;
     const worker = probe(["diff", "--name-status", "-z", range], args.cwd);
+    if (worker.code !== 0 && !timedOut) failOpen("worker probe failure", `git diff --name-status ${range}: ${worker.stderr}`);
+    if (renameLimit(worker.stderr)) failOpen("rename-limit overflow", worker.stderr);
     if (worker.code === 0) {
       const rows = parseNameStatusRows(worker.stdout);
       const attributedPairs = rows
@@ -330,6 +372,8 @@ export function checkHugeDiff(
       const hasAdd = rows.some((r) => r.status === "A");
       if (hasDelete && hasAdd) {
         const loose = probe(["diff", "--name-status", "-z", "-M1%", "-l2000", range], args.cwd);
+        if (loose.code !== 0 && !timedOut) failOpen("loose probe failure", `git diff --name-status -M1% ${range}: ${loose.stderr}`);
+        if (renameLimit(loose.stderr)) failOpen("rename-limit overflow", loose.stderr);
         if (loose.code === 0) {
           const unattributed = parseNameStatusRenames(loose.stdout).filter((p) => !attributed.has(p.oldPath) && !attributed.has(p.newPath));
           pairs = [...attributedPairs, ...unattributed];
@@ -358,7 +402,8 @@ export function checkHugeDiff(
     return {
       note: `${lane}: WARNING (huge-diff guard, HIMMEL-1778): ${b}...${br} is dominated by ONE file — ${printable(dom.path)} is ${mib(dom.bytes)}, ${(dom.share * 100).toFixed(1)}% of the ${mib(dom.totalBytes)} across ${dom.pathCount} changed path(s). A worker that orients itself with \`git diff ${b}...${br}\` can blow its context window on this one file (two claudex dispatches died exactly this way — "prompt is too long", and nothing in the error named the file). Dispatching anyway (fail-open): scope diffs by path (\`git diff ${b}...${br} -- <path>\`), never ingest the whole branch diff.`,
     };
-  } catch {
-    return {}; // probe threw — fail-open, silent
+  } catch (e) {
+    failOpen("probe threw", e instanceof Error ? e.message : String(e));
+    return {};
   }
 }

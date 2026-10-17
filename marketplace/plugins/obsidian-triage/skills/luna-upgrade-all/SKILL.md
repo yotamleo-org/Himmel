@@ -1,6 +1,6 @@
 ---
 name: luna-upgrade-all
-description: Use to bring MULTIPLE luna vaults to the current himmel template — dry-run, per-vault confirm. /luna-upgrade-all.
+description: Discover and upgrade multiple luna-second-brain vaults to the current himmel template.
 ---
 
 # luna-upgrade-all — multi-vault upgrade sweep (HIMMEL-462)

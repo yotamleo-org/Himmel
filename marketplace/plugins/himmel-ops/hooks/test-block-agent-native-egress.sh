@@ -259,6 +259,36 @@ EGRESS_HOOK_BUDGET_S=99 expect 0 "a budget override above 10 s is ignored (canno
 # canonicalized only the parent directory).
 expect 2 "payload names a LEAF symlink to a file in a phi-roots root -> denied" \
     "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md")"
+expect 2 "payload names a leaf symlink by its ABSOLUTE path -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise $HIMMEL/public/alias.md")"
+expect 2 "bare leaf symlink token (no slash) in a cwd holding it -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md")"
+expect 2 "bare leaf symlink token wrapped in punctuation -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise (alias.md), please")"
+expect 2 "leaf symlink token with a trailing slash -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md/")"
+expect 2 "bare leaf symlink token with a trailing slash -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/")"
+expect 2 "leaf symlink token with a doubled trailing slash -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md//")"
+expect 2 "bare leaf symlink token with a doubled trailing slash -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md//")"
+expect 2 "bare leaf symlink token with more trailing slashes than the strip cap -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md//////////////")"
+expect 2 "bare leaf symlink token with a long /./ run -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/./././././.")"
+expect 2 "leaf symlink token with /. then more slashes than the strip cap -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md/.////////")"
+expect 2 "bare leaf symlink token with a trailing /./ -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/./")"
+expect 2 "leaf symlink token with a trailing /. -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md/.")"
+expect 0 "plain file token with a doubled trailing slash -> allowed" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise plain.md//")"
+expect 0 "bare token naming a plain file in the cwd -> allowed" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise plain.md")"
+expect 0 "bare token naming a benign leaf symlink -> allowed" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise benign-link.md")"
 expect 0 "payload names a leaf symlink to a benign file outside every root -> allowed" \
     "$(payload "$TOOL" "$HIMMEL" "summarise public/benign-link.md")"
 expect 0 "payload names a plain file outside every root -> allowed" \

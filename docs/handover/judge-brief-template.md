@@ -332,6 +332,10 @@ gathering, per the rule below.>
 > the earlier class of a repeated finding; do not relabel it to buy another
 > round. A repeat across heads stops this PR for a console layer decision.
 > A same-uid file-access claim goes to the OS layer, not another text round.
+> Every bullet under a Non-blocking, Follow-ups or Residuals heading in GO or
+> NO-GO evidence carries a `HIMMEL-<n>` key or `no-ticket: <reason>`, or the
+> writer refuses it. So does any standalone `residual: <text>` line (bulleted
+> or not, any case, with or without a heading).
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through

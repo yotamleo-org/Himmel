@@ -579,9 +579,13 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
     }
     const target = norm(e.HROOT);
     // A path that does not exist here (or any stat error) means "not this
-    // entry", never a fatal error.
+    // entry", never a fatal error. An inode of 0n is no identity (a file
+    // system that reports none), so two unrelated paths can never match on it.
     function ident(p) {
-        try { const st = fs.statSync(p, { bigint: true }); return st.dev + ":" + st.ino; }
+        try {
+            const st = fs.statSync(p, { bigint: true });
+            return st.ino === 0n ? null : st.dev + ":" + st.ino;
+        }
         catch (err) { return null; }
     }
     const targetId = ident(e.HROOT);

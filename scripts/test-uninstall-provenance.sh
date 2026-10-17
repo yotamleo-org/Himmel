@@ -647,6 +647,35 @@ check "RED17 HIMMEL-3490 precondition: the wire populated the env container" \
 run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
 check "RED17 HIMMEL-3490: an explicit env null is restored to null after uninstall" \
   "$(jq -c 'if has("env") then .env else "ABSENT" end' "$CASE_SETTINGS")" 'null'
+# The null restore verifies the /env backup like the sibling restores.
+# env23_ledger <jq-filter> -- rewrite the governed /env row of the case ledger.
+env23_ledger() {
+  local led="$HIMMEL_PROVENANCE_DIR/provenance.jsonl"
+  jq -c "$1" "$led" > "$led.new" && mv "$led.new" "$led"
+}
+env23_backup() { jq -r 'select(.unit=="/env" and .pre.backup != null) | .pre.backup' "$HIMMEL_PROVENANCE_DIR/provenance.jsonl" | head -n1; }
+env23_case() {
+  new_case "$1"
+  printf '{"env":null}\n' > "$CASE_SETTINGS"
+  bash "$lib/wire-himmel-repo.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+}
+env23_state() { jq -c 'if has("env") then .env else "ABSENT" end' "$CASE_SETTINGS"; }
+env23_case red17m
+rm -f "$(env23_backup)"
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 HIMMEL-6096: a missing /env backup leaves the empty env container untouched" "$(env23_state)" '"ABSENT"'
+env23_case red17b
+printf '{bad' > "$(env23_backup)"
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 HIMMEL-6096: a corrupt /env backup leaves the empty env container untouched" "$(env23_state)" '"ABSENT"'
+env23_case red17s
+env23_ledger 'if .unit=="/env" and .pre.backup != null then .pre.sha = "0000000000000000000000000000000000000000000000000000000000000000" else . end'
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 HIMMEL-6096: a /env backup that fails its recorded sha leaves the empty env container untouched" "$(env23_state)" '"ABSENT"'
+env23_case red17l
+env23_ledger 'if .unit=="/env" and .pre.backup != null then del(.pre.sha) else . end'
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 HIMMEL-6096 control: a legacy /env row with no recorded sha still restores null" "$(env23_state)" 'null'
 new_case red17a
 printf '{}\n' > "$CASE_SETTINGS"
 bash "$lib/wire-himmel-repo.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
@@ -660,7 +689,7 @@ run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hoo
 check "RED17 control: a non-empty pre-existing env object is restored as it was" \
   "$(jq -c '.env' "$CASE_SETTINGS")" '{"OPERATOR_KEY":"keep"}'
 
-echo "==== RED18(HIMMEL-3398): a protected /statusLineX or /env/HIMMEL_REPOX never masks /statusLine or /env/HIMMEL_REPO ===="
+echo "==== RED18 (HIMMEL-3398): a protected /statusLineX or /env/HIMMEL_REPOX never masks /statusLine or /env/HIMMEL_REPO ===="
 # /statusLineX and /env/HIMMEL_REPOX are kept (noop-preexisted), so they land in
 # _LEDGER_PROTECTED. /statusLine is a heuristic unit (noop, not preexisted) and
 # env.HIMMEL_REPO has no unit at all, so only today's helpers remove them --

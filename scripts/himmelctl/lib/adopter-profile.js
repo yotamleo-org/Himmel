@@ -342,8 +342,9 @@ function resolveLaneAllowlistFile(repoRoot) {
 
 // Validate the profile-overlay conditions that are predictable before the core
 // installer runs. The real write repeats the same checks after the install so a
-// change during the run still fails closed; interruption inside the core
-// installer remains outside this bounded preflight.
+// change during the run still fails closed. Interruption inside the core
+// installer is handled by the install path, which restores the prior bytes on
+// any non-success exit (see restoreProfileLaneAllowlist).
 async function preflightProfileLaneAllowlist(repoRoot) {
   // LANES_REGISTRY is a wholesale resolver override: resolve.mjs deliberately
   // skips lanes.local.json while it is set. Writing the default overlay here
@@ -376,19 +377,32 @@ async function persistProfileLaneAllowlist(selected, repoRoot) {
     if (!e || e.code !== 'ENOENT') throw e;
   }
   const preservedLegacyGlobal = writer.writeProfileAllowlist(file, ids, PROFILE_LANE_REGISTRY_IDS);
-  return { ids, preservedLegacyGlobal, file, scope, prior };
+  return { ids, preservedLegacyGlobal, file, scope, prior, writer };
 }
 
 // Undo persistProfileLaneAllowlist: put the prior overlay bytes back atomically
-// (tmp + rename), or remove the overlay when there was none.
-function restoreProfileLaneAllowlist(file, prior) {
-  if (prior === null) {
-    fs.rmSync(file, { force: true });
-    return;
+// (tmp + rename), or remove the overlay when there was none. Takes the writer's
+// own lock (`writer` is the set-lane-override module persist returned) so a
+// concurrent writer cannot interleave, and removes its temp if the write or
+// rename fails.
+function restoreProfileLaneAllowlist(file, prior, writer) {
+  writer.acquireLock(file);
+  try {
+    if (prior === null) {
+      fs.rmSync(file, { force: true });
+      return;
+    }
+    const tmp = `${file}.restore.${process.pid}`;
+    try {
+      fs.writeFileSync(tmp, prior);
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      try { fs.rmSync(tmp, { force: true }); } catch { /* the original failure is what surfaces */ }
+      throw e;
+    }
+  } finally {
+    writer.releaseLock(file);
   }
-  const tmp = `${file}.restore.${process.pid}`;
-  fs.writeFileSync(tmp, prior);
-  fs.renameSync(tmp, file);
 }
 
 // ── probing ─────────────────────────────────────────────────────────────────

@@ -30,9 +30,9 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "jarrodwatts/claude-hud",
-      "pinned_commit": "02d73c416b52b4e510a9be004fca469f961cd5bc",
+      "pinned_commit": "5621429b84ea2503185221244c43a06797bfd05e",
       "tier": "A",
-      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = v0.11.2 commit 02d73c4 (HIMMEL-5505; previously v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
+      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = v0.11.3 commit 5621429 (HIMMEL-5929; previously v0.11.2 02d73c4, HIMMEL-5505; v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
     },
     {
       "name": "hermes-agent",
@@ -78,7 +78,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "ast-grep/ast-grep",
-      "synced_base": "0.50.0",
+      "synced_base": "0.51.0",
       "version_pin": {
         "file": "scripts/machine-setup/install-code-kit-clis.sh",
         "template": "AST_GREP_VERSION:-{version}"
@@ -147,7 +147,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "coddingtonbear/obsidian-local-rest-api",
-      "synced_base": "5.4.0",
+      "synced_base": "5.5.0",
       "tier": "A",
       "note": "Bundled third-party asset at templates/luna-second-brain/.obsidian/plugins/obsidian-local-rest-api. synced_base must match manifest.json version. No version_pin: updates require a reviewed re-vendor; data.json is intentionally never shipped. MAJOR 4.x -> 5.x re-vendored under HIMMEL-1652: markdown-patch 1.x targeting is deprecated (old Operation/Target-Type/Target header requests now 400 without `Markdown-Patch-Version: 1`, sunset in 6.0) and the /periodic/ endpoints were removed in 5.0.2. himmel's only first-party consumer, scripts/hooks/end-session-wiki.sh, does a whole-file PUT /vault/<path> and is unaffected; the third-party `uvx mcp-obsidian` server IS affected — see HIMMEL-1660. minAppVersion rises to 1.13.1 (public Obsidian is 1.13.4). 5.1.0 -> 5.2.0 re-vendored HIMMEL-3501: fixes a path-traversal in MCP vault_write (GHSA-j9qv-qgpv-345g) and a vault_read data-loss bug on binary files; adds vault_read_binary/signed URLs/Content-Location, none of which touch the whole-file PUT path end-session-wiki.sh uses. No new breaking change for either first- or third-party consumer beyond what 4.x->5.x already introduced. 5.2.0 -> 5.4.0 re-vendored HIMMEL-3952: 5.4.0 blocks API access to the vault configuration directory by default (GHSA-66m9-r757-qvq7; 403/40321, opt back in under Advanced settings) and throttles repeated failed auth with 429; 5.3.x adds event streams and extension APIs. end-session-wiki.sh's whole-file PUT /vault/<path> targets notes, never .obsidian/, so it is unaffected."
     },
@@ -165,7 +165,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "Graphify-Labs/graphify",
-      "synced_base": "0.9.91",
+      "synced_base": "0.9.92",
       "latest_source": "release",
       "version_pin": { "file": "scripts/lib/graphify-bin.sh", "template": "GRAPHIFY_VERSION:-{version}" },
       "tier": "A",
@@ -176,7 +176,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.29",
+      "synced_base": "8.0.32",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.ps1", "template": "$Version    = '{version}'" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },

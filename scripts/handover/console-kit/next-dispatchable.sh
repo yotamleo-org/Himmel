@@ -136,11 +136,27 @@ def rank(i):
     vers = [vorder[v] for v in i['ver'] if v in vorder]
     return (min(vers) if vers else 10**6, PRIO.get(i['prio'], 5), int(i['key'].split('-')[1]))
 
+def load_platform_re():
+    # The one pattern file gen-briefs.py reads too: its first non-blank, non-# line.
+    path = os.path.join(repo, 'scripts/handover/console-kit/platform-dropped.re')
+    try:
+        for line in open(path):
+            if line.strip() and not line.startswith('#'):
+                return re.compile(line.strip(), re.I)
+    except OSError:
+        pass
+    print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
+
+platform_re = load_platform_re()
+skipped_platform = []
 cands = []
 for i in issues.values():
     if i['status'] != 'To Do' or i['type'] in ('Epic', 'Story', 'Sub-task'):
         continue
     if i['labels'] & excl:
+        continue
+    if platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
+        skipped_platform.append(i['key'])
         continue
     if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
@@ -235,6 +251,8 @@ def classify(batch):
     return cls
 
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else ''))
+if skipped_platform:
+    print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
 picked = []
 for i in resume:

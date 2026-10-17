@@ -594,12 +594,14 @@ sha=${_rest%%|*}; _rest=${_rest#*|}
 # rather than truncating it — base branches here are the repo default and never
 # contain one.
 pr_base=${_rest%%|*}; head_branch=${_rest#*|}
-# Return an open ticket to To Do after a partial merge or a PR closed
-# unmerged: comment first, then transition (no comment means no breadcrumb, so
-# no move). Prints ok | skip=already-done | skip=comment-failed | failed.
-# Never touches a ticket already Done/Closed; callers screen Epics.
+# Comment on a ticket and, for a PR closed unmerged, return it to To Do:
+# comment first, then transition (no comment means no breadcrumb, so no move).
+# Prints ok | skip=already-done | skip=comment-failed | failed.
+# Never touches a ticket already Done/Closed; callers screen Epics. A sixth
+# argument of comment-only is the partial-merge mode: it posts the breadcrumb
+# and never transitions.
 _jira_return_to_todo() {
-    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" status
+    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" mode="${6:-}" status
     status=$(printf '%s' "$issue_json" | node -e '
         try {
             const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -623,7 +625,7 @@ _jira_return_to_todo() {
     rm -f "$tmp"
     [ "$rc" -eq 0 ] || { echo "skip=comment-failed"; return 0; }
     # The breadcrumb is posted; a ticket already in To Do needs no move.
-    [ "$status" != "To Do" ] || { echo "ok"; return 0; }
+    if [ "$status" = "To Do" ] || [ "$mode" = "comment-only" ]; then echo "ok"; return 0; fi
     if ( cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "To Do" ) >/dev/null 2>&1; then
         echo "ok"
     else
@@ -1909,7 +1911,7 @@ jira_auto_transition_on_merge() {
     esac
 
     # Opt-in per merge, not a heuristic (see the file header).
-    # Report what WOULD have happened and stop short of Done, so a sliced
+    # Without the opt-in the ticket's status is left alone, so a sliced
     # ticket is never closed by a merge that did not ask for it.
     # The brief's `Completes ticket` line binds the merge: a leg cannot widen what the
     # console scoped. The doc is read only when the caller names it; it never adds a transition.
@@ -1931,7 +1933,7 @@ jira_auto_transition_on_merge() {
     fi
 
     if ! _truthy "$opt_in"; then
-        JIRA_AUTO_TRANSITION_RESULT="would-transition key=$key status=$target_status"
+        JIRA_AUTO_TRANSITION_RESULT="skip=partial key=$key status-unchanged"
         # A bare merge leaves the ticket open: say so, so a sliced ticket's next
         # slice is dispatched instead of sitting orphaned.
         local partial="PARTIAL $key: next slice not dispatched"
@@ -1939,16 +1941,16 @@ jira_auto_transition_on_merge() {
         if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/console-kit/append-results.sh" ]; then
             bash "$_csg_dir/console-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$partial" >/dev/null 2>&1 || true
         fi
-        # Back to To Do with the PR body's `Remaining:` line, so the ticket is
-        # dispatchable instead of sitting In Review.
+        # The ticket keeps whatever status it has; the PR body's `Remaining:` line
+        # is posted as a comment so the next slice is findable.
         local remaining todo
         remaining=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null \
             | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
         todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_type_json" \
             "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.
-$remaining")
-        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT todo=$todo"
+$remaining" "" comment-only)
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT comment=$todo"
         return 0
     fi
 
@@ -1970,7 +1972,8 @@ $remaining")
         JIRA_AUTO_TRANSITION_RESULT="ok key=$key status=$target_status"
         # A closed ticket holds no future version: move it to the
         # current one (earliest unreleased by release date) when it sits in a
-        # later unreleased version. Best-effort, like the transition itself.
+        # later unreleased version, and a ticket with no version gets the
+        # current one. Best-effort, like the transition itself.
         local versions_out fold_to
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
@@ -1982,7 +1985,8 @@ $remaining")
                 const dated = vs.filter(v => v[1] === "false" && v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
                 const unrel = vs.filter(v => v[1] === "false");
                 const cur = dated.length ? dated[0][0] : unrel.length ? unrel[0][0] : "";
-                if (cur && have.some(n => open.has(n) && n !== cur)) {
+                const known = d.fields && Array.isArray(d.fields.fixVersions);
+                if (cur && known && (!have.length || have.some(n => open.has(n) && n !== cur))) {
                     const keep = have.filter(n => !open.has(n));
                     process.stdout.write([cur].concat(keep).join("\n"));
                 }

@@ -77,7 +77,11 @@ the brief handed it.>
 <anything the question touched but the verdict does not rule on — a related
 finding, a second question folded into the same evidence, a limitation the
 judge could not resolve with what it was given. This is where a judge says
-"I cannot tell" rather than guessing past its evidence.>
+"I cannot tell" rather than guessing past its evidence. Every bullet under a
+Non-blocking, Follow-ups or Residuals heading carries a `HIMMEL-<n>` key or
+`no-ticket: <reason>`, or the writer refuses the verdict. So does any
+standalone `residual: <text>` line, bulleted or not, with or without a
+heading.>
 ```
 
 ---

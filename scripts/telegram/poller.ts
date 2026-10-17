@@ -544,6 +544,21 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
   return false;
 }
 
+// OPERATOR-ONLY: an allow-listed group without a per-group allowFrom admits every
+// member, and `stop` halts a running ticket session. status/sessions stay open:
+// they are no-ops in handleInbound and reply with nothing.
+async function handleStop(root: string, msg: DeliveredMsg, ticket: string, fromOperator: boolean, notifyChat?: NotifyChatFn): Promise<void> {
+  if (!fromOperator) {
+    if (notifyChat) {
+      try { await notifyChat(msg.chat_id, "stop is operator-only"); }
+      catch (e) { logRedacted(`[poller] stop refusal could not be delivered for chat ${redactChatId(msg.chat_id)}: ${e}`); }
+    }
+    return;
+  }
+  await ensureSession(root, ticket);
+  await appendLine(join(sessionDir(root, ticket), "stop"), String(msg.ts ?? 0));
+}
+
 export async function handleInbound(root: string, msg: DeliveredMsg, run: InboundRunFn, auto?: AutoGate, triage: TriageFn = (text, sessionLabel, fromOperator) => classifyForSpawn(text, { sessionLabel, fromOperator }), isOperator: OperatorFn = () => false, notifyChat?: NotifyChatFn, requireMention: RequireMentionFn = () => false, botUsername?: string | null, consoleRoute?: ConsoleRouteGate): Promise<void> {
   // OPERATOR-ONLY (CR codex-adv-3). The tag is an operator instruction, and the
   // surrounding code treats it as one — but an allow-listed group WITHOUT a
@@ -590,8 +605,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // control verbs act directly; minimal handling for v2.2 (status/sessions/stop)
   if (route.kind === "control") {
     if (route.verb === "stop" && "ticket" in route) {
-      await ensureSession(root, route.ticket);
-      await appendLine(join(sessionDir(root, route.ticket), "stop"), String(msg.ts ?? 0));
+      await handleStop(root, msg, route.ticket, fromOperator, notifyChat);
     }
     return; // status/sessions reporting is wired in the main loop (replies via outbox)
   }

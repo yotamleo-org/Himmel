@@ -146,6 +146,69 @@ printf 'collections:\n  salus:\n    path: /x\nmodels: {embed: "openai\\x3ajina-e
 run_gate "$work/fe.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10k) flow-style models with an escaped URI and salus: expected rc 3, got $rc"
 
+# (10l) qmd's own saveConfig can write `models: null`; an empty `models: {}` is the same empty block. Both pass over a salus-free config.
+for empty in 'null' '{}' 'null # none'; do
+  printf 'collections:\n  himmel:\n    path: /x\nmodels: %s\n' "$empty" > "$work/em.yml"
+  run_gate "$work/em.yml"; rc=$?
+  [ "$rc" -eq 0 ] || fail "(10l) models: $empty over a salus-free config: expected rc 0, got $rc: $(cat "$work/err")"
+done
+# (10l) negative controls: any other inline models value is still refused, and a plain remote block still is.
+for inl in '{embed: openai:jina-embeddings-v3}' 'nullx' '[]'; do
+  printf 'collections:\n  himmel:\n    path: /x\nmodels: %s\n' "$inl" > "$work/em.yml"
+  run_gate "$work/em.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(10l) models: $inl must stay refused: expected rc 3, got $rc"
+done
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: https://api.jina.ai/v1\n' > "$work/em.yml"
+run_gate "$work/em.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10l) plain remote models block with salus: expected rc 3, got $rc"
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: %s\n  rerank: %s\n' "$LOCAL_EMBED" "$LOCAL_EMBED" > "$work/em.yml"
+run_gate "$work/em.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(10l) local hf: models with salus: expected rc 0, got $rc: $(cat "$work/err")"
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: /m/e.gguf\n  rerank: /m/r.gguf\n' > "$work/em.yml"
+run_gate "$work/em.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(10l) local .gguf models with salus: expected rc 0, got $rc: $(cat "$work/err")"
+
+# (10m) a quoted top-level key with a YAML escape hides the models block from the line reader: refuse it with its own message.
+for key in '"mo\x64els"' '"\x6dodels"' "'mod\\x65ls'" '"coll\x65ctions"'; do
+  printf 'collections:\n  salus:\n    path: /x\n%s:\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\n' "$key" > "$work/ek.yml"
+  run_gate "$work/ek.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(10m) escaped top-level key $key: expected rc 3, got $rc"
+  grep -q 'escaped quoted top-level key' "$work/err" || fail "(10m) $key: the refusal must carry the escaped-key message: $(cat "$work/err")"
+done
+# (10m) a quoted key with an escape is refused even with no remote model anywhere.
+printf 'collections:\n  himmel:\n    path: /x\n"mo\\x64els":\n  embed: %s\n' "$LOCAL_EMBED" > "$work/ek.yml"
+run_gate "$work/ek.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10m) escaped key over local models: expected rc 3, got $rc"
+
+# (10n) qmd's yaml parser reads these spellings as the models map; the line reader must refuse any top-level line it cannot recognise.
+for key in 'models :' '? models' '&a models:' '!!str models:'; do
+  printf 'collections:\n  himmel:\n    path: /x\n%s\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\n' "$key" > "$work/ak.yml"
+  run_gate "$work/ak.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(10n) top-level key '$key': expected rc 3, got $rc"
+  grep -q 'unrecognised top-level key syntax' "$work/err" || fail "(10n) '$key': the refusal must carry the unrecognised-syntax message: $(cat "$work/err")"
+done
+
+# (10o) file-shape normalisation: CRLF endings, a leading BOM and an indented root mapping must not hide the models block.
+printf 'collections:\r\n  himmel:\r\n    path: /x\r\nmodels: # c\r\n  embed: "openai\\x3ajina-embeddings-v3"\r\n  openai_base_url: https://api.jina.ai/v1\r\n' > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10o) CRLF models block with a trailing comment: expected rc 3, got $rc"
+printf '\357\273\277models:\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\ncollections:\n  himmel:\n    path: /x\n' > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10o) BOM before a models block: expected rc 3, got $rc"
+printf '  collections:\n    himmel:\n      path: /x\n  models:\n    embed: "openai\\x3ajina-embeddings-v3"\n    openai_base_url: https://api.jina.ai/v1\n' > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10o) indented root mapping: expected rc 3, got $rc"
+# (10o) the literal openai: backstop also counts YAML colon escapes outside a role.
+for esc in 'openai\x3ajina' 'openai:jina' 'openai\U0000003ajina'; do
+  printf 'collections:\n  himmel:\n    path: /x\nextra:\n  x: "%s"\n' "$esc" > "$work/sh.yml"
+  run_gate "$work/sh.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(10o) escaped colon $esc outside a role: expected rc 3, got $rc"
+done
+# (10o) positive control: an ordinary config with comments, blank lines and CRLF still passes.
+printf '# qmd config\r\n\r\ncollections:\r\n  himmel:\r\n    path: /x # note\r\n\r\nmodels:\r\n  embed: %s\r\n' "$LOCAL_EMBED" > "$work/sh.yml"
+run_gate "$work/sh.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(10o) ordinary CRLF config with comments and blank lines: expected rc 0, got $rc: $(cat "$work/err")"
+
 # ---- OpenRouter: host maps to provider openrouter, models pinned ----
 OR_EMBED='openai:qwen/qwen3-embedding-8b'
 OR_RERANK='openai:cohere/rerank-4-fast'

@@ -148,7 +148,7 @@ function _lockIsStale(lockPath) {
   catch { return false; }
 }
 
-function acquireLock(file, opts = {}) {
+export function acquireLock(file, opts = {}) {
   const { timeoutMs = 10000, backoffMs = 20 } = opts;
   const lockPath = `${file}.lock`;
   const deadline = Date.now() + timeoutMs;
@@ -189,7 +189,7 @@ function acquireLock(file, opts = {}) {
   }
 }
 
-function releaseLock(file) {
+export function releaseLock(file) {
   const lockPath = `${file}.lock`;
   // Release only a lock we still own. If a waiter reclaimed us as stale (we
   // exceeded LOCK_STALE_MS while alive), the dir now records the NEW holder's

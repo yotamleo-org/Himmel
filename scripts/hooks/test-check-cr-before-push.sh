@@ -856,6 +856,55 @@ else
     fail "gitfile-vs-sibling push: expected exit 0 + marker at $pm_gfb (got rc=$rc)" "out: $out"
 fi
 
+echo "TEST: HIMMEL-6085 -- a gitfile with a RELATIVE gitdir: joins against the gitfile's directory, not the cwd"
+mkdir -p "$TMP_ROOT/sub/deep"
+printf 'gitdir: ../../gfreal.git\n' > "$TMP_ROOT/sub/deep/gfrel"
+git -C "$PB" update-ref refs/remotes/gfrel/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" gfrel "../sub/deep/gfrel" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_gfrel="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_gfrel" ]; then
+    pm_gfrel_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfrel" 2>/dev/null || true)
+    case "${pm_gfrel_endpoint}" in
+        /*gfreal.git) pass "relative gitdir joined against the gitfile directory (HIMMEL-6085)" ;;
+        *) fail "relative gitdir resolved against the wrong directory: '${pm_gfrel_endpoint}'" "out: $out" ;;
+    esac
+else
+    fail "gfrel push: expected exit 0 + marker at $pm_gfrel (got rc=$rc)" "out: $out"
+fi
+
+echo "TEST: HIMMEL-6085 -- a symlinked parent plus .. resolves physically (cd -P), as git does"
+mkdir -p "$TMP_ROOT/symreal/a/b"
+git init -q --bare "$TMP_ROOT/symreal/a/symrepo.git" >/dev/null
+git init -q --bare "$TMP_ROOT/symrepo.git" >/dev/null
+ln -sfn symreal/a/b "$TMP_ROOT/symlink"
+git -C "$PB" update-ref refs/remotes/symremote/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" symremote "../symlink/../symrepo.git" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_sym="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_sym" ]; then
+    pm_sym_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_sym" 2>/dev/null || true)
+    case "${pm_sym_endpoint}" in
+        /*symreal/a/symrepo.git) pass "symlink + .. resolved physically (HIMMEL-6085)" ;;
+        *) fail "logical resolution diverged from git's physical resolution: '${pm_sym_endpoint}'" "out: $out" ;;
+    esac
+else
+    fail "symremote push: expected exit 0 + marker at $pm_sym (got rc=$rc)" "out: $out"
+fi
+
+echo "TEST: HIMMEL-6085 -- a gitfile at <path>.git is followed like a gitfile at <path>"
+printf 'gitdir: %s\n' "$TMP_ROOT/gfreal.git" > "$TMP_ROOT/gfsuf.git"
+git -C "$PB" update-ref refs/remotes/gfsufremote/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" gfsufremote "../gfsuf" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_gfsuf="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_gfsuf" ]; then
+    pm_gfsuf_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfsuf" 2>/dev/null || true)
+    case "${pm_gfsuf_endpoint}" in
+        /*gfreal.git) pass "gitfile at <path>.git followed (HIMMEL-6085)" ;;
+        *) fail "gitfile at <path>.git not followed: '${pm_gfsuf_endpoint}'" "out: $out" ;;
+    esac
+else
+    fail "gfsufremote push: expected exit 0 + marker at $pm_gfsuf (got rc=$rc)" "out: $out"
+fi
+
 echo "TEST: HIMMEL-3737 -- a relative file that is not a gitfile still fails closed"
 printf 'not a gitfile\n' > "$TMP_ROOT/plainfile"
 rc=0; out=$(cd "$PB" && bash "$HOOK" relremote "../plainfile" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?

@@ -278,6 +278,20 @@ describe("a session with no agent-name record is named from its branch, cwd or f
     expect(mainName([user({ gitBranch, cwd: "/work/my-repo/" })]).name).toBe("my-repo");
   });
 
+  test.each([
+    ["C:\\work\\repo", "repo"],
+    ["C:\\work\\repo\\", "repo"],
+    ["C:/work\\repo", "repo"],
+    ["/work/my-repo", "my-repo"],
+  ])("cwd %s names the session %s", (cwd, expected) => {
+    expect(mainName([user({ cwd })]).name).toBe(expected);
+  });
+
+  test("a root or empty cwd falls through to the first prompt", () => {
+    expect(mainName([user({ cwd: "/" }, "root prompt")]).name).toBe("root prompt");
+    expect(mainName([user({ cwd: "" }, "empty prompt")]).name).toBe("empty prompt");
+  });
+
   test("no branch and no cwd falls through to the first prompt cut to 40 characters", () => {
     expect(mainName([user({}, "x".repeat(60))]).name).toBe("x".repeat(40));
     expect(mainName([user({}, "short  prompt\n  here")]).name).toBe("short prompt here");

@@ -542,6 +542,39 @@ jq -n --arg root "$state/empty-root" --arg gone "$state/does-not-exist" \
 out=$(run_watch "$state" 2>&1); rc=$?
 assert_eq 10 "$rc" "nonexistent registry path: skipped, no fatal error, next entry matches"
 
+echo "== test: an unstattable checkout root never matches an unstattable registry path (HIMMEL-6093) =="
+state=$(new_scratch)
+base_world > "$state/world.json"
+seed_baseline "$state"
+base_world | jq '.pr_views["acme/widget#12"].comments += [{author:{login:"other"}, createdAt:"2026-08-02T00:00:00Z"}]' > "$state/world.json"
+jq -n --arg gone "$state/does-not-exist" '{repos: {himmel: {path: $gone, user: "testuser", bucket_name: "himmel"}}}' > "$state/registry.json"
+out=$(UPSTREAM_WATCH_GH="$state/gh" UPSTREAM_WATCH_STATE_DIR="$state/himmel-state" \
+  UPSTREAM_WATCH_HIMMEL_ROOT="$state/root-gone" HANDOVER_DIR="$state/handover" \
+  HANDOVER_REGISTRY="$state/registry.json" bash "$WATCH" 2>&1); rc=$?
+assert_eq 2 "$rc" "unstattable root + nonexistent registry path: two failed stats are not an identity match"
+assert_has "$out" "no handover registry entry" "unstattable root: reported as unmatched"
+
+echo "== test: two stat results with inode 0 are no identity, never a match (HIMMEL-6093) =="
+state=$(new_scratch)
+base_world > "$state/world.json"
+seed_baseline "$state"
+base_world | jq '.pr_views["acme/widget#12"].comments += [{author:{login:"other"}, createdAt:"2026-08-02T00:00:00Z"}]' > "$state/world.json"
+mkdir -p "$state/other-root"
+jq -n --arg other "$state/other-root" '{repos: {himmel: {path: $other, user: "testuser", bucket_name: "himmel"}}}' > "$state/registry.json"
+# Node-side stub: every bigint stat answers dev 1n, ino 0n (a file system that
+# reports no inode numbers), so two UNRELATED directories look identical.
+cat > "$state/zero-ino.js" <<'EOF'
+const fs = require("fs");
+const real = fs.statSync;
+fs.statSync = function (p, o) {
+  if (o && o.bigint) return { dev: 1n, ino: 0n };
+  return real.apply(this, arguments);
+};
+EOF
+out=$(NODE_OPTIONS="--require $state/zero-ino.js" run_watch "$state" 2>&1); rc=$?
+assert_eq 2 "$rc" "inode 0 on both sides: no identity match"
+assert_has "$out" "no handover registry entry" "inode 0: reported as unmatched"
+
 echo "== test: malformed registry entry (null) is a validation error, NOT a non-match (HIMMEL-2426) =="
 state=$(new_scratch)
 base_world > "$state/world.json"

@@ -23,8 +23,7 @@
 #       Prints OK, FAIL or UNKNOWN for the last result. unknown is never OK.
 #
 # shellcheck disable=SC2034  # RESULT_* are the caller-facing outputs
-# ponytail: shell only; a node twin is deferred (no gate needs it yet) — add one
-# beside scripts/lib/ when the first node gate adopts the tri-state.
+# Node twin: scripts/lib/result.mjs (runOrUnknown, requireOk, resultRender).
 
 RESULT_STATE="unknown"
 RESULT_RC=""

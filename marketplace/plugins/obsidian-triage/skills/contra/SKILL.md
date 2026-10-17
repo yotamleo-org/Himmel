@@ -1,6 +1,6 @@
 ---
 name: contra
-description: CONTRA passes over the luna vault — ghost-self (past-you reacts to current-you) or --bridge analogy. Fires on /contra.
+description: Use to contrast recent luna notes with past views, or explore analogies between technical and personal notes.
 ---
 
 # /contra — ghost-self + bridge passes (LUNA-96, LUNA-97)

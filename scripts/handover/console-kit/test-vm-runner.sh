@@ -26,7 +26,12 @@ case "$*" in
     *fork-pr-contributor-approval*) echo "${GH_APPROVAL-all_external_contributors}"; [ -n "${GH_APPROVAL-x}" ] ;;
     "variable set"*) [ -z "${GH_SET_FAIL:-}" ] || exit 1; a="$*"; echo "${a##* }" > "$STUB/var" ;;
     *actions/variables/HIMMEL_VM_RUNNER*) [ -e "$STUB/var" ] && cat "$STUB/var" || exit 1 ;;
-    *actions/runners*) echo "${GH_BUSY:-0}" ;;
+    *actions/runners*)
+        [ -z "${GH_RUNNERS_FAIL:-}" ] || exit 1
+        if [ -n "${GH_RUNNERS_JSON:-}" ]; then
+            for a in "$@"; do [ "$prev" = --jq ] && expr="$a"; prev="$a"; done
+            printf '%s' "$GH_RUNNERS_JSON" | jq -r "$expr"
+        else echo "${GH_BUSY:-0} ${GH_ONLINE:-1}"; fi ;;
 esac
 EOF
 cat > "$TMP/bin/systemctl" <<'EOF'
@@ -42,6 +47,7 @@ EOF
 cat > "$TMP/bin/journalctl" <<'EOF'
 #!/usr/bin/env bash
 for a in "$@"; do case "$a" in himmel-ci-runner@*) n="${a##*@}"; n="${n%.service}" ;; esac; done
+[ ! -e "$STUB/journal-fail-$n" ] || exit 1
 cat "$STUB/journal-$n" 2>/dev/null
 exit 0
 EOF
@@ -148,6 +154,65 @@ rm -f "$TMP/state/tick-vmrun-cache"
 journal 1 10 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
 rm -f "$TMP/state/tick-vmrun-cache"
 case "$(run status --tick)" in ok:*) ok "a later registered line clears FAILING" ;; *) bad "recovered -> $(run status --tick)" ;; esac
+
+echo "T6b the tick token cross-checks GitHub's online runners and fails closed (HIMMEL-6034)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+# unit 1 has a registered, unfinished runner: GitHub must show it online
+journal 1 200 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "2 units up, 1 runner online -> ok:2/2" || bad "agree -> $(run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "2 units up, 0 runners online -> DISAGREE" || bad "disagree -> $(GH_ONLINE=0 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_RUNNERS_FAIL=1 run status --tick)" = FAILING ] && ok "runner count unreadable (gh error) -> FAILING, not ok" || bad "gh error -> $(GH_RUNNERS_FAIL=1 run status --tick)"
+[ ! -e "$TMP/state/tick-vmrun-cache" ] && ok "an unreadable count is not cached" || bad "unreadable count was cached"
+rm -f "$TMP/state/tick-vmrun-cache"
+rm -f "$TMP/stub/gh.argv"
+run status --tick >/dev/null; run status --tick >/dev/null
+[ "$(grep -c 'actions/runners' "$TMP/stub/gh.argv")" = 1 ] && ok "one runners call per window (cached)" || bad "runners calls: $(grep -c 'actions/runners' "$TMP/stub/gh.argv")"
+rm -f "$TMP/state/tick-vmrun-cache"
+GH_ONLINE=0 run doctor 2>&1 | grep -q '^FAIL.*DISAGREE' && ok "doctor FAILs a DISAGREE" || bad "doctor DISAGREE not flagged"
+rm -f "$TMP/state/tick-vmrun-cache"
+GH_RUNNERS_FAIL=1 run doctor 2>&1 | grep -q '^FAIL.*runner FAILING' && ok "doctor FAILs an unreadable count" || bad "doctor unreadable count not flagged"
+
+rm -f "$TMP/state/tick-vmrun-cache"
+# the real jq filter: an unrelated online runner must not mask offline himmel-vm runners
+[ "$(GH_RUNNERS_JSON='{"runners":[{"name":"other-box","status":"online","busy":false},{"name":"himmel-vm-1","status":"offline","busy":false}]}' run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "an unrelated online runner does not mask offline himmel-vm runners" || bad "masked -> $(GH_RUNNERS_JSON='{"runners":[{"name":"other-box","status":"online","busy":false},{"name":"himmel-vm-1","status":"offline","busy":false}]}' run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_RUNNERS_JSON='{"runners":[{"name":"himmel-vm-1","status":"online","busy":true}]}' run status --tick)" = "ok:2/2,busy=1" ] && ok "real filter: one himmel-vm runner online and busy -> ok:2/2,busy=1" || bad "real filter -> $(GH_RUNNERS_JSON='{"runners":[{"name":"himmel-vm-1","status":"online","busy":true}]}' run status --tick)"
+# a cache left by the old two-field format must be refetched, not read as ok
+printf '%s 3\n' "$(date +%s)" > "$TMP/state/tick-vmrun-cache"
+[ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "a two-field cache from before the upgrade is refetched" || bad "old cache -> $(GH_ONLINE=0 run status --tick)"
+# a healthy runner between jobs mints its JIT runner late and deletes it after each job:
+# units up, journal idle, 0 online is normal and must not read DISAGREE
+rm -f "$TMP/state/tick-vmrun-cache" "$TMP/stub/journal-1"
+[ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "units up, journal idle, 0 online -> not DISAGREE" || bad "idle between jobs -> $(GH_ONLINE=0 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+journal 1 100 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+journal 1 50 "ci-runner: runner 4242 done (rc=0)"
+[ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "a finished runner with 0 online -> not DISAGREE" || bad "finished runner -> $(GH_ONLINE=0 run status --tick)"
+
+echo "T6c registration grace and an unreadable journal (HIMMEL-6034 slice 2)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+journal 1 20 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "a runner registered 20 s ago with 0 online -> ok (still connecting)" || bad "fresh registration -> $(GH_ONLINE=0 run status --tick)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+journal 1 106 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "registered past CACHE_TTL+60 s with 0 online -> DISAGREE" || bad "old registration -> $(GH_ONLINE=0 run status --tick)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+: > "$TMP/stub/journal-fail-1"
+[ "$(run status --tick)" = FAILING ] && ok "an active unit whose journalctl exits non-zero -> FAILING" || bad "unreadable journal -> $(run status --tick)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+[ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "journalctl ok with no ci-runner lines yet -> not FAILING" || bad "empty journal -> $(run status --tick)"
 
 echo "T7 status prints the units and the last error"
 reset

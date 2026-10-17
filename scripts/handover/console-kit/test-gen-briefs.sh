@@ -242,10 +242,86 @@ has "a completes-ticket: yes Ship step keeps --jira-transition" "$ship_yes" "mer
 has "a completes-ticket: yes Ship step states yes" "$ship_yes" "completes-ticket: yes"
 ship_last="$(printf '%s\n' "$ct_last" | grep '^> 4\. Ship:')"
 lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-transition"
+has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after MERGED)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
+
+# A completes-ticket value other than yes or no is refused (it used to fall through to the closing
+# merge): nothing is written, and the message names the leg label and the value. Case is ignored.
+# shellcheck disable=SC2016  # the backticks are literal characters in the value under test
+for bad in partial maybe yess '"no"' '`yes`'; do
+    rm -rf "$WORK/ctb-out"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json" "$bad"
+    python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
+    [ "$rc" = 1 ] && grep -q "N901" "$WORK/ctb.err" && grep -qF -- "$bad" "$WORK/ctb.err" && pass "completes-ticket: $bad is refused naming the leg and the value" || fail "completes-ticket: $bad rc=$rc: $(cat "$WORK/ctb.err")"
+    [ ! -e "$WORK/ctb-out/launch-N901.sh" ] && ! ls "$WORK/ctb-out"/*.md >/dev/null 2>&1 && pass "and nothing is written for $bad" || fail "files written for completes-ticket: $bad"
+done
+ct_mixed="$(ct_brief 'one PR. completes-ticket: YES' "$WORK/ct5")"
+has "an upper-case YES still writes the yes line" "$ct_mixed" "> **Completes ticket:** yes"
+ct_mixed="$(ct_brief 'one PR. completes-ticket: No' "$WORK/ct6")"
+has "a mixed-case No still writes the no line" "$ct_mixed" "> **Completes ticket:** no"
+ct_nl="$(ct_brief "one PR. completes-ticket:
+no" "$WORK/ct7")"
+has "a value on the next line is read, not refused as empty" "$ct_nl" "> **Completes ticket:** no"
+# A bad value earlier in the scope is refused even when a good one comes last.
+rm -rf "$WORK/ctb-early"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="completes-ticket: partial, later completes-ticket: no"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json"
+python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-early" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
+[ "$rc" = 1 ] && pass "an earlier bad value is refused even when the last value is no" || fail "early bad value rc=$rc"
+
+# Windows and WSL are dropped: a leg whose title, desc, why or scope names them is refused (rc 1,
+# nothing written) unless it sets platform_removal AND its title says it removes something.
+# pl_gen <title> <field> <value> [platform_removal]: one leg with <field> set to <value>.
+pl_gen() {
+    rm -rf "$WORK/pl-out"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0][sys.argv[3]]=sys.argv[4]
+if len(sys.argv)>5: l[0]["platform_removal"]=True if sys.argv[5]=="yes" else sys.argv[5]
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/pl.json" "$@"
+    python3 "$SUT" "$WORK/pl.json" --base 4ccb59d --console BZ --bucket "$WORK/pl-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pl.err"
+}
+pl_written() { [ -n "$(find "$WORK/pl-out" -type f -print -quit 2>/dev/null)" ]; }
+pl_complete() { ls "$WORK/pl-out"/*.md >/dev/null 2>&1 && ls "$WORK/pl-out"/launch-*.sh >/dev/null 2>&1; }
+pl_gen title 'AG-UI session name handles Windows cwd separators'; rc=$?
+[ "$rc" = 1 ] && grep -q "N901" "$WORK/pl.err" && grep -qi "windows" "$WORK/pl.err" && ! pl_written && pass "a leg titled with Windows is refused, naming the leg, nothing written" || fail "windows title rc=$rc: $(cat "$WORK/pl.err")"
+pl_gen desc 'run the WSL codex lane'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "a desc naming WSL is refused" || fail "wsl desc rc=$rc"
+pl_gen scope 'the .ps1 twin'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "a scope naming a .ps1 file is refused" || fail "ps1 scope rc=$rc"
+pl_gen why 'it breaks under Git Bash'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "a why naming Git Bash is refused" || fail "git bash why rc=$rc"
+pl_gen title 'Remove Windows leftovers' yes; rc=$?
+[ "$rc" = 0 ] && pl_complete && pass "a Windows removal leg with platform_removal true is accepted" || fail "removal leg rc=$rc: $(cat "$WORK/pl.err")"
+pl_gen title 'Fix Windows leftovers' yes; rc=$?
+[ "$rc" = 1 ] && grep -q "platform_removal" "$WORK/pl.err" && ! pl_written && pass "platform_removal true on a non-removal title is refused" || fail "non-removal platform_removal rc=$rc: $(cat "$WORK/pl.err")"
+for bad in false yes 1; do
+    pl_gen title 'Remove Windows leftovers' "$bad"; rc=$?
+    case "$bad" in yes) want=0 ;; *) want=1 ;; esac
+    [ "$rc" = "$want" ] && pass "platform_removal $bad on a removal title exits $want (only boolean true is the exemption)" || fail "platform_removal $bad rc=$rc"
+done
+for bad in 'Fix Windows dropdown rendering' 'Fix the Windows cleanroom'; do
+    pl_gen title "$bad" yes; rc=$?
+    [ "$rc" = 1 ] && ! pl_written && pass "platform_removal true on '$bad' is refused (no removal verb)" || fail "'$bad' with platform_removal rc=$rc"
+done
+for good in 'Drop Windows support' 'Sweep Windows leftovers' 'Retire the WSL lane' 'Delete the .ps1 twins' 'Clean up Windows paths' 'Removing Windows code'; do
+    pl_gen title "$good" yes; rc=$?
+    [ "$rc" = 0 ] && pl_complete && pass "platform_removal true on '$good' is accepted" || fail "'$good' with platform_removal rc=$rc: $(cat "$WORK/pl.err")"
+done
+for ok in 'Close WRAPPED console windows' 'Stop leg windows piling up' 'Spread work over 5-hour windows' 'Trim the context-windows report'; do
+    pl_gen title "$ok"; rc=$?
+    [ "$rc" = 0 ] && pl_complete && pass "'$ok' is console wording, not the OS" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
+done
+# Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
+NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"
+python3 "$NF/gen-briefs.py" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
+pl_gen title 'Remove runtime Windows compatibility'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "'runtime Windows' is not excused by the time-window qualifier" || fail "runtime Windows rc=$rc"
+for ok in 'cap the context window' 'widen the time window' 'Windowed rate limit' 'the context windows budget'; do
+    pl_gen title "$ok"; rc=$?
+    [ "$rc" = 0 ] && pl_complete && pass "'$ok' is not a platform mention" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
+done
 
 # Every leg and console pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).
@@ -255,6 +331,10 @@ for budget in "leg-preface.md:12288" "console-template.md:16384"; do
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
 done
+
+tr '\n' ' ' < "$HANDOVER_DOCS/leg-preface.md" | grep -Eq 'ONE +turn.*text-only turn' \
+    && pass "leg-preface.md tells a leg to batch tool calls into ONE turn and skip text-only turns" \
+    || fail "leg-preface.md lacks the batch-tool-calls / no text-only turn rule"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"

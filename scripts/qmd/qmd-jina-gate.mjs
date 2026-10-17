@@ -63,7 +63,7 @@ if (!cfgPath) {
 
 let text, map;
 try {
-  text = readFileSync(cfgPath, "utf8");
+  text = readFileSync(cfgPath, "utf8").replace(/^﻿/, "");
   map = JSON.parse(readFileSync(join(here, "qmd-collection-corpus.json"), "utf8")).collections;
 } catch (e) {
   process.stderr.write(`qmd-jina-gate: cannot read ${e?.path ?? cfgPath}: ${e?.message ?? e}\n`);
@@ -121,10 +121,14 @@ const unsupported = [];
 const modelsUnreadable = []; // a models line we cannot attribute may hide a remote role: refuse always
 let section = "";
 let childIndent = 0;
-for (const line of text.split("\n")) {
+let seenTop = false;
+for (const line of text.split(/\r?\n/)) {
   if (/^\s*(#.*)?$/.test(line)) continue;
   const inline = line.match(/^(collections|models):\s*([^#\s].*)$/);
+  // `models: null` (what qmd's saveConfig can write) and `models: {}` are an empty block, not a hidden one
+  if (inline && inline[1] === "models" && /^(null|\{\})\s*(#.*)?$/.test(inline[2])) { section = ""; seenTop = true; continue; }
   if (inline) {
+    seenTop = true;
     unsupported.push(`"${inline[1]}:" uses a flow/inline value`);
     // an inline models value can name a remote role the line reader never sees, even through a YAML escape
     if (inline[1] === "models") modelsUnreadable.push("inline models value (text withheld)");
@@ -132,13 +136,21 @@ for (const line of text.split("\n")) {
     continue;
   }
   const top = line.match(/^([A-Za-z_][\w-]*):\s*(#.*)?$/);
-  if (top) { section = top[1]; childIndent = 0; continue; }
+  if (top) { section = top[1]; childIndent = 0; seenTop = true; continue; }
   if (/^\S/.test(line)) {
+    seenTop = true;
     if (/^["']\s*(collections|models)\s*["']\s*:/.test(line)) modelsUnreadable.push("quoted top-level key (text withheld)");
+    // a double-quoted YAML key can spell collections/models through an escape, so any quoted key holding a backslash is refused
+    else if (/^(["'])(?:(?!\1).)*\\(?:(?!\1).)*\1\s*:/.test(line)) modelsUnreadable.push("escaped quoted top-level key (text withheld)");
+    // a collections:/models: line that is not a plain block key (and was not caught inline) was not parsed
+    else if (/^(collections|models):/.test(line)) modelsUnreadable.push("unparsed collections/models key line (text withheld)");
+    // qmd's saveConfig writes plain keys; `models :`, `? models`, `&a models:` and `!!str models:` all parse as the models map in qmd, so anything else is refused
+    else if (!/^[A-Za-z_][\w-]*:(\s|$)/.test(line)) modelsUnreadable.push("unrecognised top-level key syntax (text withheld)");
     section = "";
     continue;
   }
   const indent = line.length - line.trimStart().length;
+  if (!seenTop) { modelsUnreadable.push("indented line before the first top-level key (text withheld)"); continue; }
   if (section !== "collections" && section !== "models") continue;
   if (!childIndent) childIndent = indent;
   if (indent !== childIndent) continue; // deeper levels (collection fields) are not names
@@ -312,7 +324,7 @@ if (collections.some((c) => (map[c] ?? []).includes("salus"))) {
 // Fail closed on a layout this reader does not understand: an `openai:` URI it
 // did not attribute to a role, an unreadable collections/models block, or a
 // remote role with no collection list to check.
-const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
+const fileRemote = (text.replace(/#.*$/gm, "").match(/openai(?::|\\x3a|\\u003a|\\U0000003a)/gi) ?? []).length;
 const fileRoleRemote = Object.keys(PURPOSE).filter((r) => !isLocalModel(models[r] ?? "")).length;
 if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
 if (remoteRoles > 0 && models.openai_api_key) refusals.push("models.openai_api_key is set in the config: the provider key belongs only in the launching shell's environment (QMD_OPENAI_API_KEY)");

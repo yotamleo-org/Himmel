@@ -80,7 +80,8 @@ GUARDED=$FULL_GUARDED
 # mode-equal the anchor's. Full relative paths, not bare basenames: "go.sh" is
 # too common a stem to key on alone, and matching the full path is exact
 # rather than relying on a directory-marker substring.
-HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh'
+HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
+scripts/handover/console-kit/himmel-gate.sh'
 # shellcheck disable=SC2016 # printed verbatim as the remedy, never expanded
 FENCE='if himmel_repo=$(printenv HIMMEL_REPO | grep .); then
     bash "$himmel_repo/scripts/cr/pr-check-context.sh"
@@ -723,6 +724,7 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     # console-kit/ for go.sh) rather than a fixed "cr/" marker.
     case "$1" in *[hH]andover/merge-on-green*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
 }
@@ -786,11 +788,33 @@ prlit_backstop() { # prlit_backstop <raw command> - true when the raw text names
     done
     [[ $t == *'>'* ]]
 }
-if prlit_backstop "$cmd"; then
-    shown=${cmd//$'\n'/ }
-    shown=${shown:0:200}
-    deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe (HIMMEL-3917, HIMMEL-3913). If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
-fi
+# The backstop's channel is quoted, inert text that leaves the run analysis
+# and lands in a file. One plain git read (`git show HEAD:<path> > f`) writes
+# git's own output, not any text of the command, so it is no such channel:
+# one segment, every word literal and unquoted, git as the command word, no
+# word starting with `-`, and a redirect target that names no guarded script.
+# An option can carry command bytes into the output (--format/--pretty with
+# %xNN, --src-prefix, --dst-prefix, --line-prefix), so none is allowed.
+# Copying a committed file is already allowed (cp).
+git_read_to_file() {
+    local k
+    [[ $cmd == *'<<<'* || $cmd =~ $PRLIT_TEE_RE || $cmd =~ $PRLIT_SHADOW_RE ]] && return 1
+    st_tokenize "$cmd" || return 1
+    [ "$ST_NSEG" -eq 1 ] && [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ] || return 1
+    [ -z "${ST_RO[0]}" ] && [ "${ST_W[0]}" = git ] || return 1
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        [ "${ST_A[k]}${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 0000 ] || return 1
+        [ -z "${ST_RO[k]}" ] && [[ ${ST_W[k]} == -* ]] && return 1
+        if [ -n "${ST_RO[k]}" ] && names_target "${ST_W[k]}"; then return 1; fi
+        k=$((k + 1))
+    done
+    # Only the verdict is used: the scan below sets the git flags itself.
+    local unsafe=$PR_GIT_UNSAFE gexec=$PR_GIT_EXEC rc=0
+    git_mentions_only 0 || rc=1
+    PR_GIT_UNSAFE=$unsafe PR_GIT_EXEC=$gexec
+    return "$rc"
+}
 # A heredoc body is stdin, not a command line. When the
 # tokenizer proves the command has no live substitution, no runner word
 # outside the bodies (an interpreter, a wrapper, find -exec, ssh), no write to
@@ -1063,6 +1087,12 @@ git_mentions_only() { # git_mentions_only <command-word index>
     [ "$bad" = 0 ] && [ "$xp" = 0 ] && [ -n "$sub" ] && [ "$dir" = 0 ] || return 1
     [ "$sub" != rm ] || [ "$cached" = 1 ]
 }
+# Called here, not beside prlit_backstop: git_read_to_file needs git_mentions_only.
+if prlit_backstop "$cmd" && ! git_read_to_file; then
+    shown=${cmd//$'\n'/ }
+    shown=${shown:0:200}
+    deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe (HIMMEL-3917, HIMMEL-3913). If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
+fi
 readers_only() { # true when every command the command line runs is a reader
     local k sg=-1 cw=-1 w
     # a `${…}` the tokenizer cannot parse (zsh `${=IFS}`) on a git
@@ -1480,23 +1510,18 @@ edhook_deny() {
     deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command (HIMMEL-5170)."
 }
 
-# norm <path> - drop empty and . segments. A .. is kept, so the path no longer
-# reads as scripts/cr/<script> and denies: the kernel resolves .. after
-# following symlinks, so scripts/x/../cr can land outside the root.
-norm() {
-    local -a parts out=()
-    local p
-    IFS=/ read -r -a parts <<<"$1"
-    for p in ${parts[@]+"${parts[@]}"}; do
-        case "$p" in
-            ''|.) ;;
-            *) out+=("$p") ;;
-        esac
-    done
-    local IFS=/
-    printf '%s' "${out[*]-}"
-}
-
+# Command position. The rule here is "a registered gate runs unmodified with
+# an honest rc", which is a property of how a script is EXECUTED, so a command
+# whose every segment provably executes none directly is allowed before the
+# text classification below: each command word is a reader (PR_READERS), an
+# inert sed, a pathspec-only git, echo, printf without -v, cd, or
+# `bash` running the dispatcher by its exact anchored spelling - the
+# dispatcher owns the byte and no-pipe checks, so only an rc-masking separator
+# anywhere after it (`;`, `||`, `&`, a newline) and a pipe straight after it
+# (but for a lone --help) are refused here. No VAR= word, no substitution,
+# no $'…', no comment, no write redirect but an fd dup or /dev/null, and a
+# live `$` only as a plain $NAME / ${NAME} reference. A heredoc body is not a
+# word and is allowed. Anything else falls through unchanged.
 is_target() { # is_target <basename> - names, or globs onto, a guarded script, in any case
     local t rc=1
     shopt -s nocasematch
@@ -1527,6 +1552,130 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     done
     shopt -u nocasematch
     return "$rc"
+}
+
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh
+# shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
+CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
+# cmdpos_git <git word index> - a pathspec-only git, or one that names no
+# guarded script and raises neither git flag (an exec, config or helper option
+# sets them: `git fetch -q origin`, never `git fetch --upload-pack=...`).
+cmdpos_git() {
+    local unsafe=$PR_GIT_UNSAFE gexec=$PR_GIT_EXEC j=$1 rc=0
+    PR_GIT_UNSAFE=0 PR_GIT_EXEC=0
+    if ! git_mentions_only "$1"; then
+        [ "$PR_GIT_UNSAFE$PR_GIT_EXEC" = 00 ] || rc=1
+        while [ "$rc" = 0 ] && [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "${ST_S[$1]}" ]; do
+            ! edword_names "${ST_W[j]}" || rc=1
+            j=$((j + 1))
+        done
+    fi
+    PR_GIT_UNSAFE=$unsafe PR_GIT_EXEC=$gexec
+    return "$rc"
+}
+cmdpos_clean() { # true when no segment of $cmd executes a script but the dispatcher
+    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw hit
+    # shellcheck disable=SC2016 # the literal anchored spellings, never expanded
+    local s1="\"\$HIMMEL_REPO/$GATE_REL\"" s2="\"\${HIMMEL_REPO}/$GATE_REL\""
+    st_tokenize "$cmd" || return 1
+    [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        [ "${ST_A[k]}" = 0 ] || return 1
+        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; cw=-1; kind=''; fi
+        w=${ST_W[k]}
+        case "${ST_RO[k]}" in
+            *'>&') case "$w" in *[!0-9-]* | '') return 1 ;; esac ;;
+            *'>' | *'>|') [ "$w" = /dev/null ] || return 1 ;;
+        esac
+        case "$kind" in
+            strict) [ "${ST_X[k]}${ST_G[k]}" = 00 ] || return 1 ;;
+            printf) case "$w" in -v*) return 1 ;; esac ;;
+        esac
+        if [ "${ST_X[k]}" = 1 ] && [ "$k" != "$dk" ]; then
+            t=$w
+            while [[ $t =~ $CMDPOS_REF_RE ]]; do t="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"; done
+            case "$t" in *'$'*) return 1 ;; esac
+        fi
+        if [ -z "${ST_RO[k]}" ] && [ "$cw" -lt 0 ]; then
+            cw=$k
+            [ "${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 000 ] || return 1
+            case "$w" in
+                bash)
+                    j=$((k + 1))
+                    while [ "$j" -lt "$ST_N" ] && [ -n "${ST_RO[j]}" ]; do j=$((j + 1)); done
+                    [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
+                    [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 110 ] || return 1
+                    # shellcheck disable=SC2016 # literal text, never expanded
+                    case "${ST_W[j]}" in '$HIMMEL_REPO/'"$GATE_REL" | '${HIMMEL_REPO}/'"$GATE_REL") ;; *) return 1 ;; esac
+                    # A pipe only after a lone --help: an fd dup (1>&2, 1>&-)
+                    # hides the pipe from the dispatcher's own check.
+                    if [ "${ST_SEP[sg]}" = '|' ]; then
+                        [ "$((j + 3))" -le "$ST_N" ] && [ "${ST_S[j + 2]}" = "$sg" ] || return 1
+                        [ "$((j + 3))" = "$ST_N" ] || [ "${ST_S[j + 3]}" != "$sg" ] || return 1
+                        case "${ST_W[j + 2]}" in --help | -h) ;; *) return 1 ;; esac
+                        case "${ST_RO[j + 1]}${ST_RO[j + 2]}" in '') ;; *) return 1 ;; esac
+                    fi
+                    [ "$gseg" -ge 0 ] || gseg=$sg
+                    dk=$j
+                    gates=$((gates + 1))
+                    ;;
+                sed) st_sed_args "$k" 0 || return 1 ;;
+                git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
+                printf) kind='printf' ;;
+                echo | cd) ;;
+                *) case "$PR_READERS" in *" $w "*) ;; *) return 1 ;; esac ;;
+            esac
+        fi
+        k=$((k + 1))
+    done
+    [ "$gates" -gt 0 ] || return 0
+    # From the first dispatcher on, only && or a pipe joins segments, so no
+    # later command replaces a failed gate's rc.
+    k=$gseg
+    while [ "$k" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[k]}" in '' | '&&' | '|') ;; *) return 1 ;; esac
+        k=$((k + 1))
+    done
+    # Every dispatcher word is one of the two raw spellings above (a `"$"`
+    # or quoted-away `$` reads the same once tokenized), the command names
+    # HIMMEL_REPO nowhere else, and this hook's own value is an anchor that
+    # carries the dispatcher.
+    case "${HIMMEL_REPO:-}" in /*) [ -f "$HIMMEL_REPO/$GATE_REL" ] || return 1 ;; *) return 1 ;; esac
+    raw=$cmd
+    k=0
+    while :; do
+        case "$raw" in
+            *"$s1"*) raw=${raw/"$s1"/ } ;;
+            *"$s2"*) raw=${raw/"$s2"/ } ;;
+            *) break ;;
+        esac
+        k=$((k + 1))
+    done
+    [ "$k" = "$gates" ] || return 1
+    case "$raw" in *HIMMEL_REPO*) return 1 ;; esac
+    return 0
+}
+if cmdpos_clean || git_read_to_file; then
+    [ "${edhook_pending:-0}" = 1 ] && edhook_deny
+    exit 0
+fi
+
+# norm <path> - drop empty and . segments. A .. is kept, so the path no longer
+# reads as scripts/cr/<script> and denies: the kernel resolves .. after
+# following symlinks, so scripts/x/../cr can land outside the root.
+norm() {
+    local -a parts out=()
+    local p
+    IFS=/ read -r -a parts <<<"$1"
+    for p in ${parts[@]+"${parts[@]}"}; do
+        case "$p" in
+            ''|.) ;;
+            *) out+=("$p") ;;
+        esac
+    done
+    local IFS=/
+    printf '%s' "${out[*]-}"
 }
 
 # Anything that runs a named file: an interpreter, `source`/`.`, `eval`, or
@@ -2272,7 +2421,7 @@ manifest() { # manifest <root> - "<mode> <blob-id> <path>" per regular file, sor
     # and an unconditional check here would deny those runs on a missing path.
     prune_dirs='scripts scripts/cr'
     case " $GUARDED " in
-        *' scripts/handover/console-kit/go.sh '*) prune_dirs="$prune_dirs scripts/handover scripts/handover/console-kit" ;;
+        *' scripts/handover/console-kit/go.sh '* | *' scripts/handover/console-kit/himmel-gate.sh '*) prune_dirs="$prune_dirs scripts/handover scripts/handover/console-kit" ;;
         *' scripts/handover/merge-on-green.sh '*) prune_dirs="$prune_dirs scripts/handover" ;;
     esac
     # shellcheck disable=SC2086 # prune_dirs is a fixed, space-free word list
