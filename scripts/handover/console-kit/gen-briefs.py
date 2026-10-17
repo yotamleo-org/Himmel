@@ -30,6 +30,8 @@ launchers written here; a non-native lane's text may not name a path under the h
 that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
 the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; no line when it
 states neither), which the merge script reads through --leg-doc to bind the merge (HIMMEL-5843).
+The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
+is refused, since it would otherwise fall through to the closing merge (HIMMEL-6091).
 The brief follows the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
 leg preface and are not repeated.
 
@@ -58,6 +60,7 @@ ENV_LINE = ("This ticket touches CI, infra or the environment: one test row's fi
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
+COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([\w-]+)', re.I)
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
@@ -100,6 +103,9 @@ def validate(leg, i):
         reason = tier.get('reason')
         if not isinstance(reason, str) or not reason.strip() or '\n' in reason or '\r' in reason:
             die('leg %s: tier.reason must be non-blank single-line text' % leg['label'])
+    for v in COMPLETES_ANY_RE.findall(leg['scope']):
+        if v.lower() not in ('yes', 'no'):
+            die('leg %s: scope states completes-ticket: %s; the value must be yes or no' % (leg['label'], v))
     if re.search(r'<[^<>\s]+>', leg['prior']) or leg['prior'].strip().lower().rstrip('.') == 'none':
         die('leg %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % leg['label'])
 

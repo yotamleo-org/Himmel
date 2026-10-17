@@ -242,10 +242,30 @@ has "a completes-ticket: yes Ship step keeps --jira-transition" "$ship_yes" "mer
 has "a completes-ticket: yes Ship step states yes" "$ship_yes" "completes-ticket: yes"
 ship_last="$(printf '%s\n' "$ct_last" | grep '^> 4\. Ship:')"
 lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-transition"
+has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after MERGED)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
+
+# A completes-ticket value other than yes or no is refused (it used to fall through to the closing
+# merge): nothing is written, and the message names the leg label and the value. Case is ignored.
+for bad in partial maybe yess; do
+    rm -rf "$WORK/ctb-$bad"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json" "$bad"
+    python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-$bad" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
+    [ "$rc" = 1 ] && grep -q "N901" "$WORK/ctb.err" && grep -q "$bad" "$WORK/ctb.err" && pass "completes-ticket: $bad is refused naming the leg and the value" || fail "completes-ticket: $bad rc=$rc: $(cat "$WORK/ctb.err")"
+    [ ! -e "$WORK/ctb-$bad/launch-N901.sh" ] && ! ls "$WORK/ctb-$bad"/*.md >/dev/null 2>&1 && pass "and nothing is written for $bad" || fail "files written for completes-ticket: $bad"
+done
+ct_mixed="$(ct_brief 'one PR. completes-ticket: YES' "$WORK/ct5")"
+has "an upper-case YES still writes the yes line" "$ct_mixed" "> **Completes ticket:** yes"
+ct_mixed="$(ct_brief 'one PR. completes-ticket: No' "$WORK/ct6")"
+has "a mixed-case No still writes the no line" "$ct_mixed" "> **Completes ticket:** no"
+# A bad value earlier in the scope is refused even when a good one comes last.
+rm -rf "$WORK/ctb-early"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="completes-ticket: partial, later completes-ticket: no"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json"
+python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-early" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
+[ "$rc" = 1 ] && pass "an earlier bad value is refused even when the last value is no" || fail "early bad value rc=$rc"
 
 # Every leg and console pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).
