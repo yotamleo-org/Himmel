@@ -627,7 +627,7 @@ unset HANDOVER_DIR
 echo "TEST: READY claims a judge or the diff contradicts are flagged, a clean READY is not"
 RMB="$TMP_ROOT/rm-bucket"
 RMS="$TMP_ROOT/rm-state"
-mkdir -p "$RMB/verdicts/104" "$RMB/verdicts/103" "$RMS/ready-files"
+mkdir -p "$RMB/verdicts/j104" "$RMB/verdicts/j103" "$RMS/ready-files"
 printf '#!/bin/sh\nexit 1\n' > "$TMP_ROOT/rm-gh"
 chmod +x "$TMP_ROOT/rm-gh"
 rm_head() { printf '%040d' "$1"; }
@@ -639,11 +639,11 @@ printf 'scripts/lib/y.sh\n' > "$RMS/ready-files/102-$(rm_head 102)"
 rm_leg 3 103 '- no trust path touched'
 printf 'docs/a.md\n' > "$RMS/ready-files/103-$(rm_head 103)"
 # shellcheck disable=SC2016  # the backticks are literal verdict text
-printf '**GO** for head `%s`.\n' "$(rm_head 103)" > "$RMB/verdicts/103/judge.md"
+printf '## Verdict\n\n**GO** for head `%s`.\n\npr: 103\n' "$(rm_head 103)" > "$RMB/verdicts/j103/judge.md"
 rm_leg 4 104 '- trust path: none'
 printf 'docs/b.md\n' > "$RMS/ready-files/104-$(rm_head 104)"
 # shellcheck disable=SC2016  # the backticks are literal verdict text
-printf '**NO-GO** for head `%s`.\n' "$(rm_head 104)" > "$RMB/verdicts/104/judge.md"
+printf '## Verdict\n\n**NO-GO** for head `%s`.\n\npr: 104\n' "$(rm_head 104)" > "$RMB/verdicts/j104/judge.md"
 mkdir -p "$TMP_ROOT/rm-repo/scripts/ci"
 printf '^scripts/ci/\n^scripts/lib/\n' > "$TMP_ROOT/rm-repo/scripts/ci/ci-trust-paths.txt"
 report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
@@ -655,9 +655,18 @@ if grepq "$report" -F "PR 103"; then fail "clean READY with a GO verdict was fla
 assert_contains "NO-GO rate line is rendered" "NO-GO at head: 1 of 2 judged" "$report"
 assert_contains "trust mismatch raises the alert" "ALERT" "$report"
 rm -f "$RMB/leg1.md" "$RMB/leg2.md" "$RMB/leg4.md"
-rm -rf "$RMB/verdicts/104"
+rm -rf "$RMB/verdicts/j104"
 report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "a clean window renders None" "every READY in the window matches" "$report"
+rm -f "$RMB/leg3.md"
+report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "a window with no READY renders no READYs found" "no READYs found" "$report"
+if grepq "$report" -F "every READY in the window matches"; then fail "zero READYs rendered the vacuous clean line" "$report"; else pass "zero READYs is not the clean line"; fi
+mkdir -p "$TMP_ROOT/rm-root/slug/himmel"
+rm_leg 3 103 '- no trust path touched'
+mv "$RMB/leg3.md" "$TMP_ROOT/rm-root/slug/himmel/leg3.md"
+report=$(HANDOVER_DIR="$TMP_ROOT/rm-root" USER_SLUG=slug MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "the default bucket is the handover root's user/himmel folder" "NO-GO at head: 0 of 0 judged (1 READY" "$report"
 report=$(MORNING_REPORT_READY_DIR="$TMP_ROOT/no-such-bucket" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "an unreadable bucket renders unavailable, not None" "ready-mismatch scan unavailable" "$report"
 

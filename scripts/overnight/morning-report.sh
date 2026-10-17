@@ -40,7 +40,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
-if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
+if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR USER_SLUG 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
@@ -395,13 +395,13 @@ printf '%s' "$changelog_section"
 
 # "## READY claims contradicted": READY claims a judge verdict or the PR's own
 # diff contradicts, from tick.sh --ready-mismatch (one scan, shared with the tick field).
-# Bucket: MORNING_REPORT_READY_DIR, else the handover root. A scan that cannot run renders
-# "unavailable", never "None". ponytail: the default bucket is the handover root, which on a
-# global state root is the parent of the <user>/<repo> bucket, so set MORNING_REPORT_READY_DIR
-# there; upgrade path is resolving the bucket like tick.sh does from a console doc.
+# Bucket: MORNING_REPORT_READY_DIR, else <handover root>/<USER_SLUG>/himmel. A scan that
+# cannot run renders "unavailable", never "None". ponytail: the repo bucket is fixed to
+# himmel and USER_SLUG must be set (env or .env); upgrade path is resolving the bucket
+# like tick.sh does from a console doc.
 sec_ready_mismatch() {
-    local dir="${MORNING_REPORT_READY_DIR:-}" repo="${MORNING_REPORT_READY_REPO:-$SCRIPT_DIR/../..}" out="" body
-    [ -n "$dir" ] || dir="$(handover_root 2>/dev/null)" || dir=""
+    local dir="${MORNING_REPORT_READY_DIR:-}" repo="${MORNING_REPORT_READY_REPO:-$SCRIPT_DIR/../..}" out="" body root
+    if [ -z "$dir" ] && root="$(handover_root 2>/dev/null)" && [ -n "${USER_SLUG:-}" ]; then dir="$root/$USER_SLUG/himmel"; fi
     body=$'## READY claims contradicted\n\n'
     if [ -n "$dir" ] && out="$(bash "$SCRIPT_DIR/../handover/console-kit/tick.sh" --ready-mismatch --ready-dir "$dir" --repo "$repo" 2>/dev/null)"; then
         body="$body$(printf '%s\n' "$out" | awk -F'\t' '
@@ -410,8 +410,11 @@ sec_ready_mismatch() {
                 why = ($1 == "M1a") ? "a judge NO-GO-ed this head" : ($1 == "M1b") ? "READY claimed no trust path, the diff hits one" : "READY never mentioned the trust path the diff hits"
                 printf "- **%s** PR %s head %s (%s): %s\n", $1, $2, $3, $4, why; rows++ }
             $1 == "COUNT" { ready = $2; judged = $4; nogo = $5; unchecked = $6 }
+            $1 == "PARTIAL" { partial = $2 }
             $1 == "MODEL" { models = models (models == "" ? "" : "; ") $2 " " $4 " of " $3 }
             END {
+                if (ready == 0) { printf "_no READYs found in the window._\n"; exit }
+                if (partial != "") printf "_Partial scan: the %ss wall-clock budget ran out, the remaining READYs are unchecked._\n", partial
                 if (rows == 0 && (unchecked > 0 || judged < ready)) printf "_None flagged among the READYs that could be checked; one without a diff read or a judge verdict is unverified._\n"
                 else if (rows == 0) printf "_None — every READY in the window matches its judge verdict and diff._\n"
                 printf "\nNO-GO at head: %d of %d judged (%d READY, %d unchecked)", nogo, judged, ready, unchecked

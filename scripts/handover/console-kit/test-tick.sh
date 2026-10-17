@@ -2263,7 +2263,7 @@ rm_head() { printf '%040d' "$1"; }
 rm_leg() { printf '# T - leg N%s (%s, native)\n\n## Results\n\n- 10:00 READY %s %s GREEN %s\n' "$1" "$2" "$3" "$(rm_head "$3")" "$4" > "$RMD/leg$1.md"; }
 rm_files() { local pr="$1"; shift; printf '%s\n' "$@" > "$TICK_STATE_DIR/ready-files/$pr-$(rm_head "$pr")"; }
 # shellcheck disable=SC2016  # the backticks are literal verdict text
-rm_verdict() { mkdir -p "$RMD/verdicts/$1"; printf '# VERDICT %s - judge\n\n## Verdict\n\n**%s** for head `%s`.\n' "$1" "$2" "$(rm_head "$1")" > "$RMD/verdicts/$1/judge.md"; }
+rm_verdict() { mkdir -p "$RMD/verdicts/j$1"; printf '# VERDICT j%s - judge\n\nwriter-session: x\nwritten-at: t\n\n## Verdict\n\n**%s** for head `%s`.\n\npr: %s\nprior: GO\n\nevidence\nmac: 0\n' "$1" "$2" "$(rm_head "$1")" "$1" > "$RMD/verdicts/j$1/judge.md"; }
 rm_leg 1 claude-sonnet-5-5 101 '- trust path: none'
 rm_files 101 docs/a.md scripts/ci/x.sh
 rm_leg 2 claude-opus-5-5 102 '- CI green, marker cleared'
@@ -2274,6 +2274,9 @@ rm_verdict 103 GO
 rm_leg 4 claude-sonnet-5-5 104 '- trust path: none'
 rm_files 104 docs/b.md
 rm_verdict 104 NO-GO
+mkdir -p "$RMD/verdicts/jdecoy"
+# shellcheck disable=SC2016  # the backticks are literal verdict text
+printf '## Verdict\n\n**NO-GO** for head `%s`.\n\npr: 777\n' "$(rm_head 103)" > "$RMD/verdicts/jdecoy/judge.md"
 rm_leg 5 claude-opus-5-5 105 '- touches scripts/ci/, trust-reviewed GO needed'
 rm_files 105 scripts/ci/z.sh
 printf '# console\n' > "$RMD/console.md"
@@ -2311,6 +2314,27 @@ same 'a leading-zero TICK_READY_WINDOW_DAYS is read as decimal' "$(RM_GH_OID="$(
 rm -f "$TICK_STATE_DIR"/ready-files/*.fail "$TICK_STATE_DIR/ready-files/301-$(rm_head 301)"
 same 'a matching-head read flags the claimed-none READY' "$(RM_GH_OID="$(rm_head 301)" rm_of)" '1/1,nogo=0/0,ALERT'
 [ "$(sort -u "$W/rm-gh.pwd")" = "$W/repo" ] && pass 'gh runs in the --repo checkout' || fail "gh ran in $(sort -u "$W/rm-gh.pwd")"
+rm -f "$RMD"/leg*.md "$TICK_STATE_DIR"/ready-files/*
+printf '#!/bin/sh\nexec sleep 30\n' > "$W/rm-gh"
+for n in 311 312 313; do rm_leg "$n" claude-sonnet-5-5 "$n" '- trust path: none'; done
+rm_t0=$SECONDS
+rm_det="$(TICK_READY_BUDGET_SEC=2 bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
+[ $((SECONDS - rm_t0)) -lt 8 ] && pass 'a hanging gh cannot hold the scan past its wall-clock budget' || fail "the scan took $((SECONDS - rm_t0))s against a 2s budget"
+contains 'a spent budget is reported as PARTIAL' "$rm_det" "PARTIAL"
+contains 'a spent budget leaves the remaining READYs unchecked' "$rm_det" "COUNT	3	0	0	0	3"
+same 'the tick field reads partial when the budget was spent' "$(TICK_READY_BUDGET_SEC=2 rm_of)" '0/3,nogo=0/0,partial'
+rm -f "$RMD"/leg*.md
+printf '#!/bin/sh\nexit 1\n' > "$W/rm-gh"
+rm_leg 321 claude-sonnet-5-5 321 '- trust path: not touched'
+rm_leg 322 claude-sonnet-5-5 322 '- this PR does not touch a trust path'
+rm_files 321 scripts/ci/a.sh
+rm_files 322 scripts/ci/b.sh
+rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
+contains 'a not-touched claim on a trust-path diff is M1b' "$rm_det" "M1b	321	"
+contains 'a does-not-touch claim on a trust-path diff is M1b' "$rm_det" "M1b	322	"
+rm -f "$RMD"/leg*.md
+rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
+contains 'a window with no READY reports a zero count' "$rm_det" "COUNT	0	0	0	0	0"
 unset TICK_GH_CMD
 rm -rf "$RMD" "$W/rm-gh.calls" "$W/rm-gh.pwd"
 

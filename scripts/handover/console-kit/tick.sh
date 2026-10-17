@@ -211,7 +211,8 @@ within TICK_READY_WINDOW_DAYS, default 1) is flagged: a judge NO-GO'd its exact 
 PR's files hit scripts/ci/ci-trust-paths.txt while the READY claimed no trust path or said
 nothing. ALERT = any trust-path claim mismatch, a NO-GO-at-head rate over 40 percent (5+
 judged) or one model at 2x the fleet rate (10+ judged). Changed-file lists are cached under
-$TICK_STATE_DIR/ready-files, at most 20 uncached gh calls per tick (TICK_GH_CMD seam).
+$TICK_STATE_DIR/ready-files, at most 20 uncached gh calls per tick (TICK_GH_CMD seam) and
+TICK_READY_BUDGET_SEC (default 30) of wall clock; a scan that ran out reads ,partial.
 --ready-mismatch [--ready-dir DIR] prints the per-READY TSV rows instead of a tick line.
 
 ciq=<in_progress>/<cap>,mac=<n>/<cap>,q=<queued>,wait=<m>m[,SATURATED]
@@ -319,7 +320,10 @@ csv_add() {
 # Prints TSV: one `M1a|M1b|M1c <pr> <head12> <model>` row per flag,
 # `COUNT <ready> <flagged> <judged> <nogo> <unchecked>`, one `MODEL <m> <judged> <nogo>`
 # row per model, and `ALERT <reason>` rows. rc 1 = nothing to read (no bucket, no list).
-#   M1a  the READY head is the head <bucket>/verdicts/<pr>/judge.md NO-GO'd
+#   M1a  the READY head is the head a judge record NO-GO'd: any <bucket>/verdicts/<qid>/*.md
+#        carrying a `pr: <n>` line and a `**NO-GO** for head` line at the full head
+# A scan past TICK_READY_BUDGET_SEC (default 30) stops reading gh, counts the rest
+# unchecked and prints a `PARTIAL` row.
 #   M1b  the READY says it touches no trust path, the PR's files hit ci-trust-paths.txt
 #   M1c  the PR's files hit ci-trust-paths.txt, the READY never mentions trust
 # Changed-file lists come from the ready-files cache under TICK_STATE_DIR (keyed
@@ -332,12 +336,25 @@ csv_add() {
 ready_mismatch_scan() {
     local dir="$1" tp="$REPO/scripts/ci/ci-trust-paths.txt" days="${TICK_READY_WINDOW_DAYS:-1}"
     local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-gh}"
-    local budget=20 pats rec doc model line pr head claim files hit jv vh
+    local budget=20 pats rec vidx cap t0 partial=0 left doc model line pr head claim files hit jv
     [ -d "$dir" ] && [ -r "$tp" ] || return 1
     case "$days" in ''|*[!0-9]*) days=1 ;; esac
     local window_min=$((10#$days * 1440))
-    pats="$(mktemp)" && rec="$(mktemp)" || return 1
+    pats="$(mktemp)" && rec="$(mktemp)" && vidx="$(mktemp)" || return 1
     grep -vE '^[[:space:]]*(#|$)' "$tp" > "$pats"
+    cap="${TICK_READY_BUDGET_SEC:-30}"
+    case "$cap" in ''|*[!0-9]*) cap=30 ;; esac
+    t0=$SECONDS
+    # verdict index, one `<pr> <head> GO|NO-GO` row per record: judges file by qid
+    # (verdicts/<qid>/<name>.md) and name the PR on a `pr:` line inside
+    # shellcheck disable=SC2016  # the backticks are literal verdict text
+    find "$dir/verdicts" -mindepth 2 -maxdepth 2 -name '*.md' -print0 2>/dev/null | xargs -0 -r awk '
+        FNR == 1 { v = ""; h = ""; p = ""; emitted = 0 }
+        v == "" && match($0, /^\*\*(NO-GO|GO)\*\* for head `/) {
+            h = substr($0, RLENGTH + 1, 40)
+            if (h ~ /^[0-9a-f]+$/ && length(h) == 40) v = ($0 ~ /^\*\*NO-GO/) ? "NO-GO" : "GO" }
+        p == "" && /^pr: [0-9]+[ \t]*$/ { p = $2 }
+        v != "" && p != "" && !emitted { print p, h, v; emitted = 1 }' > "$vidx"  # swallow-ok: no verdict files leaves the judge column at none
     mkdir -p "$cache" 2>/dev/null
     while read -r doc; do
         model="$(sed -nE 's/^# .*\((claude-[A-Za-z0-9.-]+)[,)].*/\1/p' "$doc" | head -n 1)"
@@ -347,7 +364,7 @@ ready_mismatch_scan() {
             head="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\2/p')"
             [ -n "$pr" ] && [ -n "$head" ] || continue
             grep -q "^$pr	$head	" "$rec" && continue
-            if printf '%s\n' "$line" | grep -qiE 'no (ci[- ])?trust[- ]paths?|trust[- ]paths?: (none|no)\b|not a trust path|docs[- ]only|touch(es)? no trust'; then claim=none
+            if printf '%s\n' "$line" | grep -qiE 'no (ci[- ])?trust[- ]paths?|trust[- ]paths?: (none|no)\b|not a trust path|docs[- ]only|touch(es)? no trust|trust[- ]paths?:? (not touched|untouched)|not touch(es)? (a |any )?(ci[- ])?trust'; then claim=none
             elif printf '%s\n' "$line" | grep -qi 'trust'; then claim=named
             else claim=silent; fi
             files=""
@@ -355,10 +372,15 @@ ready_mismatch_scan() {
                 files="$(cat "$cache/$pr-$head")"
             elif [ -n "$(find "$cache" -maxdepth 1 -name "$pr-$head.fail" -mmin -15 2>/dev/null)" ]; then  # swallow-ok: an unreadable cache means no backoff, the budget still bounds the calls
                 :  # a lookup that failed in the last 15 minutes is not retried, so it cannot starve later READYs
+            elif [ "$budget" -gt 0 ] && [ $((SECONDS - t0)) -ge "$cap" ]; then
+                partial=1  # the wall-clock budget is spent: this READY stays unchecked
             elif [ "$budget" -gt 0 ]; then
                 budget=$((budget - 1))
+                left=$((cap - (SECONDS - t0)))
+                [ "$left" -gt 10 ] && left=10
+                [ "$left" -ge 1 ] || left=1
                 # the first line is the PR's current head: a list read after a later push is not this READY's diff
-                if files="$(cd "$REPO" && timeout -k 2 10 "$ghcmd" pr view "$pr" --json headRefOid,files -q '.headRefOid, .files[].path' 2>/dev/null)" && [ "${files%%$'\n'*}" = "$head" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
+                if files="$(cd "$REPO" && timeout -k 2 "$left" "$ghcmd" pr view "$pr" --json headRefOid,files -q '.headRefOid, .files[].path' 2>/dev/null)" && [ "${files%%$'\n'*}" = "$head" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
                     files="${files#*$'\n'}"
                     printf '%s\n' "$files" > "$cache/$pr-$head" 2>/dev/null
                 else
@@ -370,11 +392,8 @@ ready_mismatch_scan() {
             elif printf '%s\n' "$files" | grep -Eq -f "$pats"; then hit=1
             else hit=0; fi
             jv=none
-            if [ -r "$dir/verdicts/$pr/judge.md" ]; then
-                # shellcheck disable=SC2016  # the backticks are literal verdict text
-                vh="$(sed -nE 's/^\*\*(NO-GO|GO)\*\* for head `([0-9a-f]{40})`.*$/\1 \2/p' "$dir/verdicts/$pr/judge.md" | head -n 1)"
-                [ "${vh#* }" != "$head" ] || jv="${vh%% *}"
-            fi
+            if grep -qx "$pr $head NO-GO" "$vidx"; then jv=NO-GO
+            elif grep -qx "$pr $head GO" "$vidx"; then jv=GO; fi
             printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$pr" "$head" "$model" "$claim" "$hit" "$jv" >> "$rec"
         done < <(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?READY[^A-Za-z0-9_]' "$doc" 2>/dev/null)
     done < <(find "$dir" -maxdepth 1 -name '*.md' -mmin "-$window_min" 2>/dev/null | sort)
@@ -393,7 +412,8 @@ ready_mismatch_scan() {
               if (j >= 5 && n * 100 > j * 40) printf "ALERT\tNO-GO-at-head rate %d%% over 40%%\n", n * 100 / j
               for (k in m) if (mj[k] >= 10 && n > 0 && mn[k] * j >= 2 * n * mj[k]) printf "ALERT\t%s NO-GO rate at 2x the fleet\n", k }
     ' "$rec"
-    rm -f "$pats" "$rec"
+    [ "$partial" -eq 0 ] || printf 'PARTIAL\t%s\n' "$cap"
+    rm -f "$pats" "$rec" "$vidx"
 }
 
 clock="$(date +%H:%M 2>/dev/null)" || clock="??:??"
@@ -1438,6 +1458,7 @@ if [ -n "$console_doc" ]; then
         read -r rm_r rm_f rm_j rm_n <<< "$rm_count"
         rm_alert=""
         printf '%s\n' "$rm_out" | grep -q '^ALERT' && rm_alert=",ALERT"
+        printf '%s\n' "$rm_out" | grep -q '^PARTIAL' && rm_alert="$rm_alert,partial"
         if [ "$rm_f" -gt 0 ] || [ -n "$rm_alert" ]; then
             ready_tail=" ready-mismatch=$rm_f/$rm_r,nogo=$rm_n/$rm_j$rm_alert"
         fi
