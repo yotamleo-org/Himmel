@@ -153,8 +153,8 @@ chokepoint_seam_guard scripts/cr/clear-cr-marker.sh || exit 96
 # always uses the real object.
 export GIT_NO_REPLACE_OBJECTS=1
 # Grafts (.git/info/grafts or an exported GIT_GRAFT_FILE) rewrite parentage
-# the same way; point git at a file that cannot exist so none is ever read.
-export GIT_GRAFT_FILE=/nonexistent/himmel-no-grafts
+# the same way; point git at an always-empty file so none is ever read.
+export GIT_GRAFT_FILE=/dev/null
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECK_CI="$SCRIPT_DIR/../check-ci.sh"

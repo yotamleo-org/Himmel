@@ -2031,6 +2031,7 @@ gf_check() {
 }
 GF_A_ROOT=1
 gf_mk_pusher gf-pusher-info
+mkdir -p "$TMP_ROOT/gf-pusher-info/.git/info"
 echo "$gf_X $gf_A" > "$TMP_ROOT/gf-pusher-info/.git/info/grafts"
 gf_check "graft-info" "$TMP_ROOT/gf-pusher-info"
 gf_mk_pusher gf-pusher-env
