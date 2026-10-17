@@ -143,6 +143,41 @@ never let it settle on a quick task or a small change, and never take its
 skip-the-questions opt-out. Those end with no document, and the Stage-2 gate
 and the terminal lint both read the written spec.
 
+**Optional, non-trivial designs only: base and graft.** Use it when the 1a grill
+left two or more architectures open, or the design adds a surface or contract
+that would be hard to undo; skip it when 1a settled one obvious shape. Taken from
+pstack's `arena` skill (cursor/plugins@99743e9c151c8537cbbf1f98bb38f34ef3368453,
+MIT, Lauren Tan); re-stated here, not vendored.
+
+- **Rubric, then fan out.** Write 3-6 gradeable criteria for this design (for
+  example: smallest surface, each fact owned once, reuses an existing mechanism,
+  cheapest to undo) and keep them to yourself. Dispatch N=3 (cap 4) READ-ONLY
+  candidates in one round, each given the question, the 1a outcome and a different
+  design direction, not the rubric: `himmel-ops:fanout` `research` items, or
+  scoped subagents with an explicit `model`. Each returns a sketch plus the
+  alternatives it rejected. A candidate that returns nothing is dropped and noted.
+- **Pick the base, then graft.** Read every candidate in full and score each
+  criterion by criterion, not by feel. The base is the one a maintainer can extend
+  most easily without breaking an invariant; a tie goes to the smaller surface.
+  From each other candidate, port in by hand only what beats the base on a named
+  criterion (usually one or two items), so the result stays one coherent design.
+  Candidates that converge: keep the shared shape, graft nothing. Candidates that
+  diverge at the root: the question was under-specified, so tighten it and re-run
+  once, never average them.
+- **Single writer.** Candidates write nothing; you, the minerva parent, are the
+  one writer and draft the spec through `lean-skills:brainstorming`.
+- **Record it in `## Alternatives considered`** (no new section, so the Stage-2
+  gate and the terminal lint are unchanged): `Base: <candidate> - <criteria it won
+  on>`; one `Graft: <what> <- <candidate>` line per item taken, naming the `I<n>`
+  or Fact-ownership row it landed in; one `Rejected: <what> (<candidate>) - <why>`
+  line per notable discard; any dropout or convergence. The Stage-2 critic
+  challenges the base pick and each graft like any other alternative.
+- **Mode.** `interactive`: ask "design looks non-trivial, fan out N=3?" and let
+  the operator decline or change N. `autonomous`: run it only when the 1a answers
+  themselves recorded a non-trivial signal, else skip; record `base-and-graft: ran
+  N=3` or `base-and-graft: skipped, <reason>` as one ASSUMPTIONS line. It is an
+  option, not a grant, and a critic fix never re-opens it.
+
 **HALT it before its auto-handoff to writing-plans.** When brainstorming has
 written the spec, run its brainstorming step "Builder check", and the document
 is approved, return HERE
