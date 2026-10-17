@@ -183,20 +183,8 @@ _octal_arith_hits() {
     /^[[:space:]]*#/ { next }
     {
         line = $0
-        if (match(line, /^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?[A-Za-z_][A-Za-z0-9_]*=/)) {
-            lhs = substr(line, RSTART, RLENGTH - 1)
-            sub(/^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?/, "", lhs)
-            isdate = (line ~ /date[^#]*[+][^[:space:]]*%[mdHMSjUVW]/)
-            if (!isdate) {
-                derived = 0
-                if (line ~ /(^|[^[:alnum:]_])cut[[:space:]]/) {
-                    for (v in tracked) if (line ~ ("[$][{]?" v "([^[:alnum:]_]|$)")) derived = 1
-                }
-                isdate = derived
-            }
-            if (isdate) tracked[lhs] = 1; else delete tracked[lhs]
-        }
-        if (line ~ /octal-ok/) next
+        # arithmetic uses are judged against the tracking BEFORE this line reassigns anything
+        hit = 0
         segs = ""
         rest = line
         while (match(rest, /\(\([^)]*\)\)/)) {
@@ -204,8 +192,23 @@ _octal_arith_hits() {
             rest = substr(rest, RSTART + RLENGTH)
         }
         if (match(line, /(^|[;&|[:space:]])let[[:space:]]+/)) segs = segs " " substr(line, RSTART)
-        if (segs == "") next
-        for (v in tracked) if (uses(segs, v)) { print NR ":" line; break }
+        if (segs != "") for (v in tracked) if (uses(segs, v)) { hit = 1; break }
+        if (match(line, /^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?[A-Za-z_][A-Za-z0-9_]*=/)) {
+            lhs = substr(line, RSTART, RLENGTH - 1)
+            sub(/^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?/, "", lhs)
+            isdate = (line ~ /date[^#]*[+][^[:alnum:]%]?%[mdHMSjUVW][^[:alnum:]%]?([)`;[:space:]]|$)/ && line !~ /10#/)
+            if (!isdate && line !~ /10#/) {
+                derived = 0
+                # derived only when the tracked value itself is piped into cut (or fed by here-string)
+                for (v in tracked) {
+                    if (line ~ ("(^|[[:space:]\"])[$][{]?" v "[}\"]*[[:space:]]*[|][[:space:]]*cut[[:space:]]")) derived = 1
+                    if (line ~ ("cut[[:space:]][^|;]*<<<[[:space:]]*\"?[$][{]?" v "([^[:alnum:]_]|$)")) derived = 1
+                }
+                isdate = derived
+            }
+            if (isdate) tracked[lhs] = 1; else delete tracked[lhs]
+        }
+        if (hit && line !~ /octal-ok/) print NR ":" line
     }' "$1"
 }
 

@@ -1074,6 +1074,59 @@ EOF
 OUT20G="$(bash "$LINT" "$OA_EPOCH" 2>&1)"
 assert_not_contains "20g epoch output (+%s) with a %m input format is clean" "[octal-arith]" "$OUT20G"
 
+OA_SELF="$TMP_ROOT/oa_self.sh"
+cat > "$OA_SELF" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m)
+m=$((m+1))
+EOF
+OUT20I="$(bash "$LINT" "$OA_SELF" 2>&1)"
+assert_contains "20i reassignment from its own unnormalized value is flagged" "[octal-arith] line 4" "$OUT20I"
+
+OA_NORM="$TMP_ROOT/oa_norm.sh"
+cat > "$OA_NORM" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$((10#$(date +%m)))
+echo $((m+1))
+EOF
+OUT20J="$(bash "$LINT" "$OA_NORM" 2>&1)"
+assert_not_contains "20j initializer already normalized with 10# is clean" "[octal-arith]" "$OUT20J"
+
+OA_CUTFP="$TMP_ROOT/oa_cutfp.sh"
+cat > "$OA_CUTFP" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+n=$(date +%d)
+want=$(du -sk "x.$n" | cut -f1)
+echo $((want+1))
+EOF
+OUT20K="$(bash "$LINT" "$OA_CUTFP" 2>&1)"
+assert_not_contains "20k a cut that only mentions the tracked var in a path is clean" "[octal-arith]" "$OUT20K"
+
+OA_CUTTP="$TMP_ROOT/oa_cuttp.sh"
+cat > "$OA_CUTTP" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+d=$(date +%d)
+x=$(echo "$d" | cut -c1-2)
+echo $((x+1))
+EOF
+OUT20L="$(bash "$LINT" "$OA_CUTTP" 2>&1)"
+assert_contains "20l cut of a tracked value stays tracked" "[octal-arith] line 5" "$OUT20L"
+
+OA_PATHFP="$TMP_ROOT/oa_pathfp.sh"
+cat > "$OA_PATHFP" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+pre="a/$(date +%Y-%m)/f"
+want="$(sha256sum "$pre" | cut -d' ' -f1)"
+echo $((want+1))
+EOF
+OUT20M="$(bash "$LINT" "$OA_PATHFP" 2>&1)"
+assert_not_contains "20m a multi-field date format in a path is not a tracked field" "[octal-arith]" "$OUT20M"
+
 OUT20H="$(bash "$LINT" --help 2>&1)"
 assert_contains "20g --help documents [octal-arith]" "[octal-arith]" "$OUT20H"
 
