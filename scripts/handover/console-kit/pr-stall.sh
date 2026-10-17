@@ -64,9 +64,9 @@ while [ "$#" -gt 0 ]; do
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
         --manifest) [ "$#" -ge 2 ] || usage; manifest="$2"; shift 2 ;;
         --conflict-min) [ "$#" -ge 2 ] || usage; num "$2"; shift 2 ;;
-        --noci-min) [ "$#" -ge 2 ] || usage; num "$2"; noci_min="$2"; shift 2 ;;
-        --slow-min) [ "$#" -ge 2 ] || usage; num "$2"; slow_min="$2"; shift 2 ;;
-        --idle-h) [ "$#" -ge 2 ] || usage; num "$2"; idle_h="$2"; shift 2 ;;
+        --noci-min) [ "$#" -ge 2 ] || usage; num "$2"; noci_min=$((10#$2)); shift 2 ;;
+        --slow-min) [ "$#" -ge 2 ] || usage; num "$2"; slow_min=$((10#$2)); shift 2 ;;
+        --idle-h) [ "$#" -ge 2 ] || usage; num "$2"; idle_h=$((10#$2)); shift 2 ;;
         --notify) notify=1; shift ;;
         *) usage ;;
     esac
@@ -81,7 +81,7 @@ fi
 unknown() { printf 'STALL-UNKNOWN gh failed\n'; exit 3; }
 
 fields="number,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,updatedAt,createdAt"
-list="$(gh pr list -R "$repo" --state open --limit 100 --json number,headRefName 2>/dev/null)" || unknown
+list="$(gh pr list -R "$repo" --state open --limit 1000 --json number,headRefName 2>/dev/null)" || unknown
 runs="$(gh run list -R "$repo" --limit 50 --json status 2>/dev/null)" || unknown
 queue="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length' 2>/dev/null)" || unknown
 numbers="$(printf '%s' "$list" | jq -r '.[].number' 2>/dev/null)" || unknown
@@ -126,6 +126,8 @@ stuck=0
 sent_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-console"
 sent_file="$sent_dir/pr-stall.sent"
 send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
+# one notifying run at a time, so check-send-record below cannot double-send
+if [ "$notify" = 1 ]; then mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && flock 9; fi
 
 for n in $numbers; do
     pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown

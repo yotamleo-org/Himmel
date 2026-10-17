@@ -83,6 +83,10 @@ hasnt "ci-slow not flagged before its threshold" '^STALL 2869' "$out"
 out="$(run --idle-h 24)"
 hasnt "idle not flagged before its threshold" '^STALL 9004' "$out"
 
+out="$(run --noci-min 08 --idle-h 03)"; rc=$?
+check "leading-zero thresholds are decimal, not a gh failure" "0" "$rc"
+has "leading-zero run still classifies" '^STALL-SUMMARY ' "$out"
+
 out="$(STUB_GH_FAIL=1 run)"; rc=$?
 check "gh failure exits 3" "3" "$rc"
 has "gh failure prints STALL-UNKNOWN" '^STALL-UNKNOWN gh failed' "$out"
