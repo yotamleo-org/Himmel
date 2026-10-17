@@ -188,6 +188,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash scripts/ci/check-no-secrets.sh
+      - run: exit 1
 
   # HIMMEL-3653: HIMMEL-3624 fixed a bracket-expression bug in
   # scripts/lib/unchecked-mktemp.sh that only failed under a real BWK
