@@ -403,10 +403,12 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
 # `$(` inside its body, which the tokenizer reads as body text, so such a
 # command is not clean either. Nor is a printf with a %n conversion: bash's
 # printf assigns through it (`printf '%n' PATH` sets PATH), which can repoint
-# the `bash` a later dispatcher segment runs.
+# the `bash` a later dispatcher segment runs. An option or format word with a
+# live `$` or a glob can expand to such a conversion, so it is not clean
+# either; a `%%` prints a literal `%` and is skipped.
 cmdpos_clean_for() { # cmdpos_clean_for <names-fn> <command>
-    local cmd=$2 k ek cw w rc=0 unsafe=$PR_GIT_UNSAFE gexec=$PR_GIT_EXEC nof=0
-    local pn_re='%[^A-Za-z%]*n'
+    local cmd=$2 k ek cw w fmt rc=0 unsafe=$PR_GIT_UNSAFE gexec=$PR_GIT_EXEC nof=0
+    local pn_re='%[^A-Za-z%]*n' pp='%%'
     case $- in *f*) ;; *) nof=1; set -f ;; esac
     case $cmd in *'<<'*\\$'\n'* | *\\$'\n'*'<<'*) rc=1 ;; esac
     [ "$rc" = 1 ] || cmdpos_clean || rc=1
@@ -431,9 +433,11 @@ cmdpos_clean_for() { # cmdpos_clean_for <names-fn> <command>
                         done
                     fi ;;
                 printf)
-                    w=$((cw + 1))
+                    w=$((cw + 1)) fmt=0
                     while [ "$w" -lt "$ek" ]; do
-                        [[ ! ${ST_W[w]} =~ $pn_re ]] || rc=1
+                        [ "$fmt" = 1 ] || [ "${ST_X[w]}${ST_G[w]}" = 00 ] || rc=1
+                        [[ ! ${ST_W[w]//"$pp"/} =~ $pn_re ]] || rc=1
+                        case "$fmt${ST_W[w]}" in 0-?*) ;; 0*) fmt=1 ;; esac
                         w=$((w + 1))
                     done ;;
             esac
