@@ -26,6 +26,7 @@ QDBUS="${BUS_WAKER_QDBUS:-qdbus6}"
 BUS="${BUS_WAKER_BUS:-$HERE/../../marketplace/plugins/himmel-bus/bin/bus}"
 NAME="" SERVICE="" SESSION="" POLL=2 GRACE=20 REWAKE=120 MAX=0
 while [ $# -gt 0 ]; do
+    [ $# -ge 2 ] || { echo "bus-idle-waker: $1 needs a value" >&2; exit 64; }
     case "$1" in
         --name) NAME="${2:-}"; shift 2 ;;
         --service) SERVICE="${2:-}"; shift 2 ;;

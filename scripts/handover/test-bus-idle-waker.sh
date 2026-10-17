@@ -74,7 +74,11 @@ EOF
 chmod +x "$tmp/qdbus-dead"
 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-dead" BUS_WAKER_BUS="$tmp/bus" timeout 20 bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 >/dev/null 2>&1
 rc=$?
-[ "$rc" -ne 124 ] && pass "a dead session ends the waker (rc=$rc)" || fail "waker looped past timeout on a dead session"
+[ "$rc" -eq 1 ] && pass "a dead session ends the waker with rc=1" || fail "dead session: expected rc=1, got rc=$rc"
+
+bash "$WAKER" --name legX --service s --session >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "an option with no value is refused (rc=64)" || fail "valueless option: expected rc=64, got rc=$rc"
 
 echo "== succession doc =="
 if grep -q 'bus adopt' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt"; else fail "succession.md has no bus adopt step"; fi
