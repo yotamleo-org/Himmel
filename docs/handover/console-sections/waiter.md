@@ -14,8 +14,9 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     printing one block: `WAKE telegram` plus the operator's line(s), or
     `WAKE tick changed=<fields> bank=<verdict>` plus the tick line, or
     `WAKE underfilled capacity=UNDERFILLED:<slack>` (once per
-    streak, plus the tick line and `next-dispatchable.sh`'s ranked LOCAL/CLOUD
-    list; dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `console-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the leg sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
+    streak, plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
+    ranked list (the pool: the `priority:` line in Live state, labels `ps3-blocker` / `must-v1.1.3` / `operator-directed`, High+ bugs, security and data-integrity;
+    `POOL-EMPTY` when it has nothing: free slots fill ONLY from the pool, so then unblock collisions, draft specs for the next priority items, else idle); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `console-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the leg sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
     the bank read is broken: fix it, then restart the waiter; it wakes once per
     failure streak), or, on a successor's first arm only (ACTION ZERO step 9,

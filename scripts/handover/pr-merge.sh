@@ -325,7 +325,7 @@ jira_auto_transition_on_merge() {
     # opt-in per merge, not a heuristic (see the file header).
     # Report what WOULD have happened and stop — no comment, no transition.
     if [ "$JIRA_TRANSITION_OPT_IN" != "1" ]; then
-        echo "pr-merge: PR #$pr merged; would auto-transition $key to '$target_status' (pass --jira-transition to do it — opt-in per HIMMEL-3143)." >&2
+        echo "pr-merge: PR #$pr merged; skip=partial key=$key status-unchanged (pass --jira-transition to transition it — opt-in per HIMMEL-3143)." >&2
         return 0
     fi
 

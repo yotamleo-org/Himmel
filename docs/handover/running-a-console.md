@@ -226,7 +226,9 @@ and `capacity=`. On `capacity=UNDERFILLED:<slack>` — live below cap and no wor
 launched for `TICK_UNDERFILL_MIN` minutes (default 10) — pull dispatchable work
 from the Jira backlog, not only the held queue, and launch up to `<slack>` worker sessions.
 `console-wait.sh` wakes on it once per streak (`WAKE underfilled`) and prints
-`console-kit/next-dispatchable.sh`'s ranked, collision-checked LOCAL/CLOUD list;
+`console-kit/next-dispatchable.sh --priority-pool-only`'s ranked, collision-checked
+list (free slots fill only from the priority pool; `POOL-EMPTY` means unblock
+collisions, draft specs for the next priority items, else idle);
 `console-kit/gen-briefs.py` writes the briefs and launchers (nothing launches
 itself).
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that

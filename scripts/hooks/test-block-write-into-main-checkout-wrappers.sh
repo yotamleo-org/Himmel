@@ -68,8 +68,12 @@ _run() {
         2) got=block ;;
         *) got="?(rc=$rc)" ;;
     esac
+    # BWIMC_REPLAY=<log>: also log this payload under both engines
+    [ -z "${BWIMC_REPLAY:-}" ] || ( cd "${hookpwd:-.}" && bwimc_replay_row "${0##*/}" "-" "$script" "$json" )
     printf '%s' "$got"
 }
+# shellcheck source=lib/bash-ast-replay-bwimc.sh
+[ -z "${BWIMC_REPLAY:-}" ] || . "$HOOKS/lib/bash-ast-replay-bwimc.sh"
 
 # check_both <label> <block|allow> <json> — both entry modes must agree.
 check_both() {

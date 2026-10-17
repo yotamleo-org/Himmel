@@ -1039,7 +1039,7 @@ if [ "$(cat "$cfg")" = "$before" ]; then
 
 echo "== wire_parity_guard: ensure (universal guard, HIMMEL-744) =="
 # branch 1: already on parity_guard -> idempotent no-op
-printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/parity_guard.py\n' > "$cfg"
+printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/parity_guard.py\n    fail_closed: true\n' > "$cfg"
 before="$(cat "$cfg")"
 "$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
 if [ "$(cat "$cfg")" = "$before" ]; then
@@ -1148,12 +1148,38 @@ if [ "$(grep -c -F "matcher: $OLD_MATCHER" "$cfg")" = 1 ] && [ "$(grep -c -xF " 
    && grep -B1 -F "other-hook.sh" "$cfg" | grep -qF "matcher: $OLD_MATCHER"; then
   echo "  ok: only the parity_guard entry's matcher is migrated"; else
   echo "  FAIL: migration touched a hook it does not own" >&2; fails=$((fails + 1)); fi
-printf 'hooks:\n  pre_tool_call:\n  - matcher: terminal|write_file\n    command: /x/agent-hooks/parity_guard.py\n    timeout: 10\n' > "$cfg"
+printf 'hooks:\n  pre_tool_call:\n  - matcher: terminal|write_file\n    command: /x/agent-hooks/parity_guard.py\n    timeout: 10\n    fail_closed: true\n' > "$cfg"
 before="$(cat "$cfg")"
 "$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
 if [ "$(cat "$cfg")" = "$before" ]; then
   echo "  ok: an operator-chosen matcher is left alone"; else
   echo "  FAIL: ensure rewrote a matcher it did not own" >&2; fails=$((fails + 1)); fi
+
+echo "== wire_parity_guard: ensure makes the parity_guard entry fail closed =="
+# hermes registers a hook fail-open unless the entry says otherwise, so a guard
+# that crashes or cannot start would let the call through.
+printf 'hooks:\n  pre_tool_call:\n  - matcher: .*\n    command: /x/agent-hooks/parity_guard.py\n    fail_closed: false\n  - matcher: .*\n    command: /x/other-hook.sh\n    fail_closed: false\n' > "$cfg"
+"$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
+other="$(grep -A1 -F "other-hook.sh" "$cfg" || true)"
+if [ "$(grep -c -xF "    fail_closed: true" "$cfg")" = 1 ] && grep -qF "fail_closed: false" <<< "$other"; then
+  echo "  ok: an explicit fail_closed: false on parity_guard is flipped, another hook kept"; else
+  echo "  FAIL: ensure did not make only the parity_guard entry fail closed" >&2; fails=$((fails + 1)); fi
+printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/parity_guard.py' > "$cfg"
+"$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
+if grep -qxF "  - command: /x/agent-hooks/parity_guard.py" "$cfg" && grep -qxF "    fail_closed: true" "$cfg"; then
+  echo "  ok: fail_closed added after an entry with no trailing newline"; else
+  echo "  FAIL: fail_closed insertion broke an entry with no trailing newline" >&2; fails=$((fails + 1)); fi
+# YAML allows blank and comment lines between an entry's keys
+printf 'hooks:\n  pre_tool_call:\n  - matcher: .*\n\n    # the guard\n    command: /x/agent-hooks/parity_guard.py\n\n    fail_closed: false\n' > "$cfg"
+"$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
+if [ "$(grep -c "fail_closed:" "$cfg")" = 1 ] && grep -qxF "    fail_closed: true" "$cfg"; then
+  echo "  ok: blank and comment lines inside the entry do not hide parity_guard or duplicate fail_closed"; else
+  echo "  FAIL: a blank or comment line inside the entry broke the fail_closed migration" >&2; fails=$((fails + 1)); fi
+printf 'hooks:\n  pre_tool_call:\n  - matcher: %s\n\n    command: /x/agent-hooks/parity_guard.py\n' "$OLD_MATCHER" > "$cfg"
+"$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
+if grep -qxF "  - matcher: .*" "$cfg" && grep -qxF "    fail_closed: true" "$cfg"; then
+  echo "  ok: a blank line inside the entry does not hide the legacy matcher"; else
+  echo "  FAIL: a blank line inside the entry kept the legacy matcher or skipped fail_closed" >&2; fails=$((fails + 1)); fi
 
 echo ""
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED" >&2; exit 1; fi

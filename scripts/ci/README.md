@@ -98,8 +98,8 @@ host that has the tool** and is `[SKIP]`ped loudly with its reason where the
 tool is absent — a SKIP_LIST entry would make it dead weight on exactly the
 hosts whose coverage it exists to add. Entries are repo-root-relative, one per
 line, `<repo-root-relative suite path>  <tool>  # <reason>` — e.g.
-`scripts/test-claude-openrouter-pwsh.sh  pwsh` (the PowerShell twin smoke
-suite). The suite's own runtime guard remains as the second layer for direct
+`scripts/telegram/test-phi-egress-guard-parity.sh  bun` (the cross-language
+parity check). The suite's own runtime guard remains as the second layer for direct
 invocation. Env-overridable (`SUITE_REQUIRE_TOOL`) so the runner self-test can
 drive the skip branch deterministically.
 

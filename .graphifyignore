@@ -1,0 +1,3 @@
+# Windows is dropped from himmel: keep it out of the knowledge graph.
+archive/windows/
+*.ps1

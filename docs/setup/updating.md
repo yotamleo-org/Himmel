@@ -325,7 +325,7 @@ still need doing:
 
 A merged pin bump reaches this checkout's **repo**. It does not reach the
 **machine**. `git pull` updates `scripts/lib/graphify-bin.sh` and
-`scripts/setup/cli-proxy-lane.ps1`; it does not reinstall graphify, swap the
+`scripts/setup/cli-proxy-lane.sh`; it does not reinstall graphify, swap the
 running cli-proxy binary, or reload the qmd daemon.
 
 That staleness is invisible to `scripts/check-plugin-drift.sh`. For a
@@ -340,11 +340,11 @@ unconditional rather than drift-driven:
   live `graphify-mcp` processes hold the `uv` tool dir it refuses to force and
   prints the exact reinstall command instead.
 - **cli-proxy-api host roll** — rolls the proxy only when the
-  machine's version stamp is **strictly older** than the `$Version` pin. A host
+  machine's version stamp is **strictly older** than the `VERSION` pin. A host
   at or ahead of the pin is left alone (never a downgrade), and a version that
   cannot be compared — no `python3`, or a stamp that is not a version — is left
   alone too, with the manual roll command printed instead.
-  `cli-proxy-lane.ps1` owns the risk when it does roll: pin-aware, refuses to
+  `cli-proxy-lane.sh` owns the risk when it does roll: pin-aware, refuses to
   bounce under a live codex-lane client, staged rollback, health-gated on
   `/v1/models`.
 - **installed-marketplaces catch-up** —
@@ -475,8 +475,7 @@ otherwise the teardown script's own code is returned. For `uninstall.sh`,
 later steps), and `3` means the live-HOME safety fence refused a wet run.
 
 Under the hood it derives + confirms, then execs
-[`scripts/uninstall.sh`](../../scripts/uninstall.sh) (`scripts\uninstall.ps1`
-on Windows) — a symmetric eight-step teardown of what `setup.sh`/`adopt` onboard:
+[`scripts/uninstall.sh`](../../scripts/uninstall.sh) — a symmetric eight-step teardown of what `setup.sh`/`adopt` onboard:
 stops the Telegram bridge, removes its pairing + bridge state (only with
 `--purge-state`, and never while the bridge is still running), deletes the
 `HIMMEL-Resume-*` scheduled jobs, uninstalls the installed Claude plugins at

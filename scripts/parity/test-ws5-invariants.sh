@@ -810,19 +810,18 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# T15 -- Windows is dropped: no tracked .ps1/.cmd/.bat outside
-# archive/windows/, except a vendored upstream copy held verbatim.
+# T15 -- Windows is dropped: no tracked .ps1/.cmd/.bat anywhere (test fixtures
+# excepted), and no archive/windows/ tree.
 # ----------------------------------------------------------------------------
-t15_held='marketplace/plugins/i-have-adhd/hooks/always-on.ps1'
-if t15_all="$(git ls-files '*.ps1' '*.cmd' '*.bat')"; then
-    t15_stray="$(printf '%s\n' "$t15_all" | grep -v '^archive/windows/' | grep -v '/fixtures/' | grep -vxF "$t15_held" || true)"
+if t15_all="$(git ls-files '*.ps1' '*.cmd' '*.bat' 'archive/windows')"; then
+    t15_stray="$(printf '%s\n' "$t15_all" | grep -v '/fixtures/' || true)"
 else
     t15_stray="git ls-files failed"
 fi
 if [ -z "$t15_stray" ]; then
-    echo "PASS T15 no-windows: no tracked .ps1/.cmd/.bat outside archive/windows/."
+    echo "PASS T15 no-windows: no tracked .ps1/.cmd/.bat and no archive/windows/."
 else
-    echo "FAIL T15 no-windows: tracked Windows files outside archive/windows/:" >&2
+    echo "FAIL T15 no-windows: tracked Windows files:" >&2
     printf '%s\n' "$t15_stray" | head -10 >&2
     FAIL=$((FAIL + 1))
 fi
