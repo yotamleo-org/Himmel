@@ -3950,6 +3950,10 @@ fi
 rm -rf "$t"
 
 echo "== C33: BSD date fallback (no GNU -d) reads a Z timestamp as UTC, not local time =="
+# The shim emulates BSD date on top of GNU date, so a host without GNU -d cannot build it.
+if ! date -u -d '1 hour ago' +%s >/dev/null 2>&1; then
+    echo "  SKIP: C33 bsd-date — host date lacks GNU -d, the BSD emulation shim cannot be built"
+else
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 bsd-date: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/handover/.graph-cadence" "$t/shim"; write_settings "$t/claude" "$WRAPPER"
 REAL_DATE="$(command -v date)"
@@ -3980,6 +3984,7 @@ else
     fail "C33 bsd-date -> $c33_line"
 fi
 rm -rf "$t"
+fi
 
 echo "== C33: jq not on PATH -> WARN, never falls through to OK (codex-8: 'cannot tell' is not 'healthy') =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 no-jq: mktemp -d failed"; exit 1; }
