@@ -60,9 +60,18 @@ mkdir -p "$DIR" 2>/dev/null && [ -d "$DIR" ] || die "cannot create $DIR"
 [ -O "$DIR" ] && [ ! -L "$DIR" ] && [ ! -L "$DIR/.holder" ] || die "refusing $DIR: not ours or a symlink"
 # the holder check and the holder write below are one critical section: two judges
 # starting together on one PR and suffix must not both pass the check
-command -v flock >/dev/null 2>&1 || die "flock not found (util-linux); cannot take the holder lock safely"
-[ ! -L "$DIR/.lock" ] || die "refusing $DIR: .lock is a symlink"
-exec 9>"$DIR/.lock" && flock -x -w 10 9 || die "cannot lock $DIR"
+if command -v flock >/dev/null 2>&1; then
+    [ ! -L "$DIR/.lock" ] || die "refusing $DIR: .lock is a symlink"
+    exec 9>"$DIR/.lock" && flock -x -w 10 9 || die "cannot lock $DIR"
+else # no flock (macOS): an atomic mkdir is the lock, removed on every exit path
+    n=0
+    until mkdir "$DIR/.lock.d" 2>/dev/null; do
+        n=$((n+1))
+        [ "$n" -lt 100 ] || die "cannot lock $DIR: $DIR/.lock.d still held after 10 s (remove it if no judge is running)"
+        sleep 0.1
+    done
+    trap 'rmdir "$DIR/.lock.d" 2>/dev/null' EXIT
+fi
 # a live judge of another process already holds this dir: pick another suffix
 if [ -s "$DIR/.holder" ]; then
     read -r op os < "$DIR/.holder" 2>/dev/null
@@ -76,7 +85,7 @@ if [ -s "$DIR/.holder" ]; then
     if [ "$op" = "$holder" ] && [ "$os" != "-" ] && [ "$os" = "$start" ]; then
         for f in "$DIR"/* "$DIR"/.[!.]* "$DIR"/..?*; do
             [ -e "$f" ] || [ -L "$f" ] || continue
-            case "${f##*/}" in .holder|.lock) continue ;; esac
+            case "${f##*/}" in .holder|.lock|.lock.d) continue ;; esac
             die "$DIR is already in use by this holder (has contents); use another suffix"
         done
     fi

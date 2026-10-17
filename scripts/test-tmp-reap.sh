@@ -396,7 +396,7 @@ d="$(TMP_REAP_TMP_ROOT="$ROOT" TMP_REAP_SESSIONS_DIR="$ROOT/no-sessions" bash "$
 out="$(reap --apply --judge 9303)"; exists "14. ... and tmp-reap keeps the fresh dir (unknown holder, 6 h floor)" "$JD/j9303"
 # two judges (distinct session wrappers) starting at the same instant with the
 # check-to-write gap forced open: exactly one may win a shared PR+suffix
-conc() { # <judge-dir.sh> <PR> <sufA> <sufB>: rc per worker lands in $ROOT/cc/rc{A,B}
+conc() { # <judge-dir.sh> <PR> <sufA> <sufB> [PATH for the judge]: rc per worker lands in $ROOT/cc/rc{A,B}
     rm -rf "$JD" "$ROOT/cc"; build_tree; mkdir -p "$ROOT/cc"
     local w suf pids=""
     for w in A B; do
@@ -404,8 +404,10 @@ conc() { # <judge-dir.sh> <PR> <sufA> <sufB>: rc per worker lands in $ROOT/cc/rc
         # shellcheck disable=SC2016  # the worker's own $1..$5 expand in the child
         TMP_REAP_TMP_ROOT="$ROOT" TMP_REAP_SESSIONS_DIR="$SESS" JUDGE_DIR_TEST_SLEEP=1 \
             timeout 20 bash -c 'while [ ! -f "$1/go" ]; do sleep 0.05; done
+                [ -z "$6" ] || PATH="$6"
                 bash "$2" "$3" "$4" > /dev/null 2>&1; echo $? > "$1/rc$5"
-                while [ ! -f "$1/rel" ]; do sleep 0.05; done' _ "$ROOT/cc" "$1" "$2" "$suf" "$w" &
+                PATH="$7"
+                while [ ! -f "$1/rel" ]; do sleep 0.05; done' _ "$ROOT/cc" "$1" "$2" "$suf" "$w" "${5:-}" "$PATH" &
         printf '{"pid":%s,"sessionId":"cc-%s","procStart":"%s"}\n' "$!" "$w" "$(pstart "$!")" > "$SESS/$!.json"
         pids="$pids $!"
     done
@@ -413,10 +415,22 @@ conc() { # <judge-dir.sh> <PR> <sufA> <sufB>: rc per worker lands in $ROOT/cc/rc
     for _ in $(seq 1 100); do [ -f "$ROOT/cc/rcA" ] && [ -f "$ROOT/cc/rcB" ] && break; sleep 0.1; done
     : > "$ROOT/cc/rel"; wait $pids 2>/dev/null
 }
-conc "${JDS_UNDER_TEST:-$JDS}" 9601 "" ""
+conc "$JDS" 9601 "" ""
 check "14. simultaneous same PR+suffix: exactly one wins" "$(printf '%s\n' "$(cat "$ROOT/cc/rcA" 2>/dev/null)" "$(cat "$ROOT/cc/rcB" 2>/dev/null)" | sort | tr '\n' ' ')" "0 1 "
-conc "${JDS_UNDER_TEST:-$JDS}" 9602 a b
+conc "$JDS" 9602 a b
 check "14. simultaneous, different suffixes: both win (negative control)" "$(cat "$ROOT/cc/rcA" 2>/dev/null)$(cat "$ROOT/cc/rcB" 2>/dev/null)" 00
+# no flock on PATH (macOS): the mkdir lock must give the same one-winner result
+NOFLOCK="$T/noflock-bin"; mkdir -p "$NOFLOCK"
+for t in bash cat id mkdir rmdir sleep; do ln -sf "$(command -v "$t")" "$NOFLOCK/$t"; done
+conc "$JDS" 9603 "" "" "$NOFLOCK"
+check "14. no flock, simultaneous same PR+suffix: exactly one wins" "$(printf '%s\n' "$(cat "$ROOT/cc/rcA" 2>/dev/null)" "$(cat "$ROOT/cc/rcB" 2>/dev/null)" | sort | tr '\n' ' ')" "0 1 "
+check "14. ... via the mkdir lock (no .lock file), released on exit" "$([ ! -e "$JD/j9603/.lock" ] && [ ! -e "$JD/j9603/.lock.d" ] && echo clean)" clean
+conc "$JDS" 9604 a b "$NOFLOCK"
+check "14. no flock, different suffixes: both win (negative control)" "$(cat "$ROOT/cc/rcA" 2>/dev/null)$(cat "$ROOT/cc/rcB" 2>/dev/null)" 00
+mkdir -p "$JD/j9605/.lock.d"; : > "$JD/j9605/.holder"
+d="$(PATH="$NOFLOCK" TMP_REAP_TMP_ROOT="$ROOT" TMP_REAP_SESSIONS_DIR="$SESS" "$NOFLOCK/bash" "$JDS" 9605 2>&1)"; rc=$?
+check "14. no flock, stuck lock dir: bounded refusal, never an unlocked write" "$rc" 1
+contains "14. ... and the refusal names the lock" "$d" ".lock.d still held"
 rm -rf "$JD"; chmod 555 "$ROOT"
 if [ -w "$ROOT" ]; then echo "ok - 14. (writable despite chmod, e.g. root: unwritable-root case skipped)"; else
     d="$(jd 9202 2>/dev/null)"; rc=$?; check "14. mkdir failure fails loudly" "$([ "$rc" -ne 0 ] && echo nonzero)" nonzero; check "14. ... and prints no dir" "$d" ""
