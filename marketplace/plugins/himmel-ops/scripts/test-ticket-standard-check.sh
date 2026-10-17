@@ -72,6 +72,19 @@ run Task "$td/ph.md" "$q" --sector X
 check "placeholder Proof exits 1" "$rc" 1
 has "placeholder Proof named" "$out" "Proof"
 
+# --- empty Proof followed by an unrelated heading must not borrow its lines ---
+q="$td/q-notes"; mkdraft "$td/notes.md" Proof "Agent detail"
+printf '## Proof\n\n## Notes\nsome unrelated line\n\n## Agent detail\nfiles\n' >>"$td/notes.md"
+run Task "$td/notes.md" "$q" --sector X
+check "empty Proof before ## Notes exits 1" "$rc" 1
+has "empty Proof before ## Notes named" "$out" "Proof"
+
+# --- a failing awk fails closed, never reports success ---
+mkdir "$td/fakebin"; printf '#!/bin/sh\nexit 3\n' >"$td/fakebin/awk"; chmod +x "$td/fakebin/awk"
+mkdraft "$td/awk.md" Proof
+out="$(PATH="$td/fakebin:$PATH" TICKET_STANDARD_QUEUE_DIR="$td/q-awk" bash "$tool" --type Task --draft "$td/awk.md" --sector X 2>&1)"; rc=$?
+check "failing awk exits 2" "$rc" 2
+
 # --- complete Task passes, queue empty ---
 q="$td/q-ok"; mkdraft "$td/ok.md"
 run Task "$td/ok.md" "$q" --sector X
