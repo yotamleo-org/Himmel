@@ -18,7 +18,12 @@ has() { # file, ERE, label
     if grep -Eqi -- "$2" "$1"; then pass "$3"; else fail "$3"; fi
 }
 lacks() { # file, ERE, label
-    if grep -Eqi -- "$2" "$1"; then fail "$3"; else pass "$3"; fi
+    grep -Eqi -- "$2" "$1"
+    case $? in
+        0) fail "$3" ;;
+        1) pass "$3" ;;
+        *) fail "$3 (grep error)" ;;
+    esac
 }
 
 has "$DOC" 'bus-deliver-hook[^.]*only[^.]*(bus )?authority path|only[^.]*bus authority path[^.]*bus-deliver-hook' \
