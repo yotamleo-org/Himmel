@@ -4314,7 +4314,8 @@ async function preflightLaneProfileStep(answers) {
 // transactional with the install: this runs BEFORE the core installer, so a
 // write failure aborts with nothing installed (null). The returned undo puts
 // the prior overlay bytes back; the install path calls it on any non-success
-// exit (failed step, throw, interrupting signal) via holdSignalsDuringInstall.
+// exit (failed step, throw, interrupting signal); the caller holds the signal
+// handlers (holdSignalsDuringInstall) before calling this.
 async function applyLaneProfileStep(answers) {
   const noUndo = () => {};
   if (lanesAnswerNeverAsked(answers)) {
@@ -4549,15 +4550,15 @@ async function runPlan(answers, args) {
 
   // T4: execute the derived command VERBATIM; propagate its rc (skip the
   // post-install enable step if the core install itself failed).
-  provStep = 'lane-profile';
-  const undoLaneProfile = await applyLaneProfileStep(answers);
-  if (!undoLaneProfile) return 1;
-
-  // The staged allowlist stays only if every step below succeeds: the finally
-  // restores the prior bytes on a non-zero rc, a throw, or a signal-killed child.
-  // The no-op handlers stop SIGINT/SIGTERM/SIGHUP from killing Node before the
-  // synchronous child returns, so the finally still runs.
+  // The handlers go up BEFORE the allowlist is staged, so no signal can land
+  // between the staged write and the hold. Staging, every install step and the
+  // restore all run inside one try/finally; the staged allowlist stays only if
+  // every step succeeds, and the finally restores the prior bytes on a non-zero
+  // rc, a throw, a cancellation or a signal-killed child. The no-op handlers stop
+  // SIGINT/SIGTERM/SIGHUP from killing Node before a synchronous child or the
+  // restore's lock wait returns, so the finally still runs.
   const signals = holdSignalsDuringInstall();
+  let undoLaneProfile = () => {};
   let installed = false;
   let shimOk = false;
   // spawnSync blocks the event loop, so a signal that arrived during a step is
@@ -4569,6 +4570,11 @@ async function runPlan(answers, args) {
     return true;
   };
   try {
+    provStep = 'lane-profile';
+    const undo = await applyLaneProfileStep(answers);
+    if (!undo) return 1;
+    undoLaneProfile = undo;
+    if (await interrupted()) return 130;
     provStep = 'adopt';
     const rc = runSpawn(cmd);
     // write the PATH shim BEFORE checking adopt.sh's rc — a failed
@@ -4605,8 +4611,10 @@ async function runPlan(answers, args) {
     if (await interrupted()) return 130;
     installed = true;
   } finally {
-    signals.release();
+    // restore first, release after: a second signal during the restore's lock
+    // wait must still meet a handler
     if (!installed) undoLaneProfile();
+    signals.release();
   }
 
   // T4.5: pluginSet=full → the documented per-plugin enable step. lean → no-op
