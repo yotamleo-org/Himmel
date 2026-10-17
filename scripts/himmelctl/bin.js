@@ -4560,6 +4560,14 @@ async function runPlan(answers, args) {
   const signals = holdSignalsDuringInstall();
   let installed = false;
   let shimOk = false;
+  // spawnSync blocks the event loop, so a signal that arrived during a step is
+  // only delivered to the handler once the loop turns; let it before checking.
+  const interrupted = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (!signals.received()) return false;
+    console.error(`himmelctl: install interrupted by ${signals.received()} — restoring the previous lane profile allowlist`);
+    return true;
+  };
   try {
     provStep = 'adopt';
     const rc = runSpawn(cmd);
@@ -4574,15 +4582,18 @@ async function runPlan(answers, args) {
       if (shimOk) console.error('himmelctl: install failed (see above), but the himmelctl launcher is on PATH — resolve the error, then run `himmelctl ensure` to resume.');
       return rc;
     }
+    if (await interrupted()) return 130;
     // the T5b wire/apply plan runs AFTER adopt.sh succeeds, as an
     // additional step — never instead of it.
     if (existingVaultPlan) {
       provStep = 'wire';
       const wireRc = runSpawn(existingVaultPlan.wire);
       if (wireRc !== 0) return wireRc;
+      if (await interrupted()) return 130;
       provStep = 'apply';
       const applyRc = runSpawn(existingVaultPlan.apply);
       if (applyRc !== 0) return applyRc;
+      if (await interrupted()) return 130;
     }
     // the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
     // succeeds, as an additional idempotent mutation step — never instead of it.
@@ -4591,13 +4602,7 @@ async function runPlan(answers, args) {
       const overlayRc = runSpawn(overlayCmd);
       if (overlayRc !== 0) return overlayRc;
     }
-    // spawnSync blocks the event loop, so a signal that arrived during a step is
-    // only delivered to the handler once the loop turns; let it before checking.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    if (signals.received()) {
-      console.error(`himmelctl: install interrupted by ${signals.received()} — restoring the previous lane profile allowlist`);
-      return 130;
-    }
+    if (await interrupted()) return 130;
     installed = true;
   } finally {
     signals.release();

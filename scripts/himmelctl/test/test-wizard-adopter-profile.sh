@@ -1898,7 +1898,7 @@ ab3_run() { # name, prior(yes|no), mode(signal:<SIG>|throw|ok|killed)
   rm -f "$ab3_marker" "$ab3_pidfile" "$ab3_counts".*
   case "$mode" in
     signal:*) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nexec sleep 20\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
-    sigparent) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nsleep 3\nexit 0\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
+    sigparent|sigparentwire) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nsleep 3\nexit 0\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
     killed)   printf '#!/usr/bin/env bash\nprintf ran > "%s"\nkill -KILL $$\n' "$ab3_marker" > "$f/scripts/adopt.sh" ;;
     *)        printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit 0\n' "$ab3_marker" > "$f/scripts/adopt.sh" ;;
   esac
@@ -1909,12 +1909,13 @@ ab3_run() { # name, prior(yes|no), mode(signal:<SIG>|throw|ok|killed)
   local prof="$work/ab3-$n-profile.json"
   printf '{\n  "role": "adopter",\n  "tier": "standard",\n  "scope": "project",\n  "vault": { "mode": "none", "path": "" },\n  "handover": { "mode": "inline", "path": "" },\n  "pluginSet": "lean",\n  "lanes": ["codex"],\n  "lanesMeaningful": true,\n  "alwaysOn": false\n}\n' > "$prof"
   case "$mode" in
-    step:*)
+    step:*|sigparentwire)
       # wire / apply / dev-overlay run AFTER adopt.sh succeeds; the named one fails.
       local vault="$work/ab3-$n-vault" st="${mode#step:}"
+      ab3_wire_marker="$work/ab3-$n-wire-ran"; rm -f "$ab3_wire_marker"
       mkdir -p "$vault" "$f/scripts/lib"
       printf '{"template":"luna-second-brain"}\n' > "$vault/.vault-template.json"
-      printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$st" = wire ] && echo 5 || echo 0)" > "$f/scripts/lib/wire-luna-vault.sh"
+      printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit %s\n' "$ab3_wire_marker" "$([ "$st" = wire ] && echo 5 || echo 0)" > "$f/scripts/lib/wire-luna-vault.sh"
       printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$st" = apply ] && echo 5 || echo 0)" > "$f/scripts/luna-upgrade-all.sh"
       printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$st" = overlay ] && echo 5 || echo 0)" > "$f/scripts/setup.sh"
       chmod +x "$f/scripts/lib/wire-luna-vault.sh" "$f/scripts/luna-upgrade-all.sh" "$f/scripts/setup.sh"
@@ -1934,13 +1935,13 @@ ab3_run() { # name, prior(yes|no), mode(signal:<SIG>|throw|ok|killed)
   pid=$!
   set +m
   case "$mode" in
-    signal:*|sigparent)
+    signal:*|sigparent|sigparentwire)
       local sig="${mode#signal:}" i=0
-      [ "$mode" = sigparent ] && sig=SIGTERM
+      case "$mode" in sigparent*) sig=SIGTERM ;; esac
       while [ ! -s "$ab3_pidfile" ] && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
       if [ ! -s "$ab3_pidfile" ]; then kill -KILL "$pid" 2>/dev/null; set -e; fail "caseAB3 $n: stub adopt.sh never started: $(cat "$out")"; fi
-      if [ "$mode" = sigparent ]; then kill "-$sig" "$(pgrep -P "$pid" | head -n 1)" 2>/dev/null; else kill "-$sig" "$pid" 2>/dev/null; fi
-      [ "$mode" = sigparent ] || kill "-$sig" "$(cat "$ab3_pidfile")" 2>/dev/null ;;
+      case "$mode" in sigparent*) kill "-$sig" "$(pgrep -P "$pid" | head -n 1)" 2>/dev/null ;; *) kill "-$sig" "$pid" 2>/dev/null ;; esac
+      case "$mode" in sigparent*) ;; *) kill "-$sig" "$(cat "$ab3_pidfile")" 2>/dev/null ;; esac ;;
   esac
   wait "$pid"; ab3_rc=$?
   [ -s "$ab3_pidfile" ] && kill -KILL "$(cat "$ab3_pidfile")" 2>/dev/null
@@ -1967,6 +1968,11 @@ ab3_run throwno no throw
 ab3_run sigparent yes sigparent
 [ "$ab3_rc" -ne 0 ] || fail "caseAB3g: a cancelled install whose child succeeded must still exit nonzero: $ab3_out"
 cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3g: a cancelled install must restore the prior overlay bytes"
+# AB3h: a cancellation seen after adopt.sh stops the install before the wire step runs.
+ab3_run sigparentwire yes sigparentwire
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3h: a cancelled install must exit nonzero: $ab3_out"
+[ -e "$ab3_wire_marker" ] && fail "caseAB3h: the wire step must not start after a cancellation"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3h: a cancelled install must restore the prior overlay bytes"
 # AB3d: a SIGKILLed core step (spawnSync status null) restores too.
 ab3_run killed yes killed
 [ "$ab3_rc" -ne 0 ] || fail "caseAB3d: a signal-killed core step must exit nonzero: $ab3_out"
