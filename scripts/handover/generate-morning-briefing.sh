@@ -208,7 +208,7 @@ if [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&
         if command -v jq >/dev/null 2>&1; then
             pr_table=$(printf '%s' "$pr_json" | jq -r '
                 .[] | "| #\(.number) | \(.title | capture("(?<key>[A-Z][A-Z0-9]+-[0-9]+)").key // "—") | \(.title | sub("^[a-z]+(\\([^)]+\\))?:[[:space:]]*"; "")) |"' 2>/dev/null || true)
-            if run_or_unknown jq 'length' <<< "$pr_json" 2>/dev/null; then pr_count="$RESULT_OUT"; else pr_count="unknown"; fi
+            if run_or_unknown jq -e 'if type == "array" then length else error("not an array") end' <<< "$pr_json" 2>/dev/null; then pr_count="$RESULT_OUT"; else pr_count="unknown"; fi
         else
             pr_table=$(printf '%s' "$pr_json" \
                 | grep -oE '"number":[0-9]+' \

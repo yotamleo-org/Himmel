@@ -445,6 +445,13 @@ file=$(cat "$OUT_PRU")
 assert_contains "pr count rendered unknown" "Completed (unknown PRs merged" "$file"
 if grepq "$file" -F -- "Completed (0 PRs merged"; then fail "unparseable list rendered as 0 PRs"; else pass "unparseable list not rendered as 0 PRs"; fi
 
+echo "TEST: valid JSON that is not an array → count unknown, never 0"
+OUT_PRO="$TMP_ROOT/probject.md"
+out=$( cd "$REPO"; FAKE_GH_PR_JSON="{}" GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_PRO" )
+file=$(cat "$OUT_PRO")
+assert_contains "non-array rendered unknown" "Completed (unknown PRs merged" "$file"
+
 # BSD awk (macOS) rejects a newline inside `-v`; the catch-all
 # must not hand awk the raw newline-joined branch list.
 echo "TEST: no awk -v carries the raw multi-line annotated_branches"
