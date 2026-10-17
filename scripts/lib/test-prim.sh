@@ -41,7 +41,7 @@ atomic_workers() {
     while [ "$j" -lt 16 ]; do
         j=$((j + 1))
         snapshot="$root/snapshot"
-        cp "$root/shared" "$snapshot" || { rc=1; break; }
+        cat "$root/shared" > "$snapshot" || { rc=1; break; }
         if ! cmp -s "$snapshot" "$root/payload-1" &&
            ! cmp -s "$snapshot" "$root/payload-2" &&
            ! cmp -s "$snapshot" "$root/payload-3" &&
@@ -65,7 +65,31 @@ lock_workers() {
     [ "$rc" -eq 0 ] && [ "$(< "$root/counter")" = 4 ]
 }
 
+lock_churn() {
+    local root="$1" i pid pids='' rc=0
+    printf '0\n' > "$root/churn-counter" || return 1
+    # shellcheck disable=SC2329 # Invoked indirectly by with_lock.
+    fast_increment() {
+        local n
+        IFS= read -r n < "$root/churn-counter" || return 1
+        printf '%s\n' "$((n + 1))" > "$root/churn-counter"
+    }
+    for i in 1 2 3 4; do
+        (
+            i=0
+            while [ "$i" -lt 100 ]; do
+                with_lock "$root/churn.lock" fast_increment || exit 1
+                i=$((i + 1))
+            done
+        ) &
+        pids="$pids $!"
+    done
+    for pid in $pids; do wait "$pid" || rc=1; done
+    [ "$rc" -eq 0 ] && [ "$(< "$root/churn-counter")" = 400 ]
+}
+
 case "${1-}" in
+    --churn-workers) lock_churn "$2"; exit $? ;;
     --atomic-workers) atomic_workers "$2"; exit $? ;;
     --lock-workers) lock_workers "$2"; exit $? ;;
 esac
@@ -175,6 +199,16 @@ fallback_dead_owner() {
     [ "$rc" -eq 1 ] && [ ! -e "$T/entered" ] && [ "$(< "$T/dead.lock")" = "$pid" ]
 }
 
+fallback_changed_directory() {
+    mkdir "$T/elsewhere" || return 1
+    printf 'unrelated\n' > "$T/elsewhere/cwd.lock" || return 1
+    # shellcheck disable=SC2329 # Invoked indirectly by with_lock.
+    change_directory() { cd "$T/elsewhere" || return 1; }
+    cd "$T" || return 1
+    PATH="$T/bin" with_lock cwd.lock change_directory || return 1
+    [ ! -e "$T/cwd.lock" ] && [ "$(< "$T/elsewhere/cwd.lock")" = unrelated ]
+}
+
 fallback_missing_parent() {
     local rc
     # shellcheck disable=SC2016 # Expansion belongs to the child shell.
@@ -231,6 +265,8 @@ mkdir "$T/fallback" || exit 1
 check 'fallback serializes four counter increments without flock' env PATH="$T/bin" "$TIMEOUT" 15 "$BASH_BIN" "$0" --lock-workers "$T/fallback"
 check 'fallback refuses dead PID without deleting its lock' fallback_dead_owner
 check 'fallback fails promptly when lock parent is missing' fallback_missing_parent
+check 'fallback releases correct lock when command changes directory' fallback_changed_directory
+check 'fallback tolerates rapid lock release and reacquisition' env PATH="$T/bin" "$TIMEOUT" 20 "$BASH_BIN" "$0" --churn-workers "$T"
 check 'canon_path resolves symlink and spaces' canonical_directory
 check 'canon_path rejects nonexistent directory' canonical_missing
 check 'tmpdir honors TMPDIR and strips trailing slashes' temp_directory

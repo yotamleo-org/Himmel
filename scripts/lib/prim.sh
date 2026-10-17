@@ -35,9 +35,9 @@ atomic_write() (
 # Commands must not daemonize; SIGKILL can leave a fallback file for recovery.
 with_lock() (
     [ "$#" -ge 2 ] && [ -n "$1" ] || exit 2
-    local prim_lock="$1" prim_pid prim_owner
+    local prim_lock="$1" prim_pid prim_owner prim_probe
     shift
-    case "$prim_lock" in /*) ;; *) prim_lock="./$prim_lock" ;; esac
+    case "$prim_lock" in /*) ;; *) prim_lock="$(pwd -P)/$prim_lock" || exit 1 ;; esac
     if command -v flock >/dev/null 2>&1; then
         exec 9>> "$prim_lock" || exit 1
         flock -x 9 || exit "$?"
@@ -48,15 +48,16 @@ with_lock() (
     # $$ does not change in a bash subshell; a child's PPID does, even on 3.2.
     prim_pid=$(sh -c 'printf "%s\n" "$PPID"') || exit 1
     while ! ( set -C; printf '%s\n' "$prim_pid" > "$prim_lock" ) 2>/dev/null; do
-        if [ ! -e "$prim_lock" ]; then
-            # A holder may have released between create and inspection. Retry
-            # once, but do not spin on missing parents or other creation errors.
-            ( set -C; printf '%s\n' "$prim_pid" > "$prim_lock" ) 2>/dev/null && break
-            [ -e "$prim_lock" ] || exit 1
+        if [ ! -f "$prim_lock" ]; then
+            [ ! -d "$prim_lock" ] && [ ! -L "$prim_lock" ] || exit 1
+            # Release may race inspection. Probe the parent to distinguish that
+            # harmless disappearance from inability to create any file there.
+            prim_probe=$(mktemp "${prim_lock%/*}/.prim-lock.XXXXXX") || exit 1
+            rm -f -- "$prim_probe" || exit 1
+            continue
         fi
-        [ -f "$prim_lock" ] && [ ! -L "$prim_lock" ] || exit 1
         prim_owner=''
-        IFS= read -r prim_owner < "$prim_lock" || prim_owner=''
+        IFS= read -r prim_owner 2>/dev/null < "$prim_lock" || prim_owner=''
         case "$prim_owner" in
             '') sleep 0.1 || exit 1; continue ;;
             *[!0-9]*|0) printf 'with_lock: invalid owner in %s\n' "$prim_lock" >&2; exit 1 ;;
