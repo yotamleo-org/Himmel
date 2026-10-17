@@ -151,7 +151,7 @@ describe('MCP tool happy-path routing', () => {
   it('create → POST /issue with project/summary/issuetype + markdown desc', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     const out = await tool('create').handler(
-      { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC' },
+      { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'Ship loop', parent: 'ABC-1' },
       deps,
     );
     expect(request).toHaveBeenCalledWith('POST', '/issue', {
@@ -160,6 +160,8 @@ describe('MCP tool happy-path routing', () => {
         summary: 'New',
         issuetype: { name: 'Task' },
         description: markdownToAdf(PLAIN_FILLED),
+        parent: { key: 'ABC-1' },
+        customfield_10212: { value: 'Ship loop' },
       },
     });
     expect(out).toBe('Created HIMMEL-9');
@@ -171,6 +173,27 @@ describe('MCP tool happy-path routing', () => {
       tool('create').handler({ type: 'Task', title: 'New', desc: 'agent notes', project: 'ABC' }, deps),
     ).rejects.toThrow(/missing "## Impact"/);
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('create refuses a Task with no Sector or no epic/standalone marker (HIMMEL-6223)', async () => {
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await expect(
+      tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps),
+    ).rejects.toThrow(/no Sector/);
+    await expect(
+      tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'Ship loop' }, deps),
+    ).rejects.toThrow(/--parent.*--labels standalone/s);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('create with a Sector and a parent or the standalone label writes the Sector field (HIMMEL-6223)', async () => {
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await tool('create').handler(
+      { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'ship loop', labels: 'standalone' },
+      deps,
+    );
+    const fields = (request.mock.calls[0] as unknown[])[2] as { fields: Record<string, unknown> };
+    expect(fields.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
   });
 
   it('create only warns-exempts an Epic with no body (HIMMEL-5226)', async () => {
@@ -186,7 +209,7 @@ describe('MCP tool happy-path routing', () => {
     vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
     const { deps, uploadAttachment } = mockDeps({ key: 'HIMMEL-10', id: '2' });
     const out = await tool('create').handler(
-      { type: 'Task', title: 'T', desc: PLAIN_FILLED, attach: ['a.png', 'b.png'] },
+      { type: 'Task', title: 'T', desc: PLAIN_FILLED, attach: ['a.png', 'b.png'], sector: 'Ship loop', parent: 'ABC-1' },
       deps,
     );
     expect(uploadAttachment).toHaveBeenCalledTimes(2);

@@ -1616,7 +1616,7 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
     echo "review-round: $round_label has deferrable findings only, but no valid defer ticket was supplied." >&2
-    printf "node '%s/scripts/jira/dist/index.js' create --type Task --title 'Track deferred /pr-check round 4+ suggestions' --desc-file '%s/scripts/cr/deferred-ticket-body.md'\n" "$primary_root" "$primary_root" >&2
+    printf "node '%s/scripts/jira/dist/index.js' create --type Task --title 'Track deferred /pr-check round 4+ suggestions' --sector 'Ship loop' --labels standalone --desc-file '%s/scripts/cr/deferred-ticket-body.md'\n" "$primary_root" "$primary_root" >&2
     printf "Then resume without rerunning the panel:\nCR_DEFER_TO=HIMMEL-NNNN bash '%s/review-round.sh' defer --head '%s' --branch '%s'\n" "$SCRIPT_DIR" "$full_head" "$branch" >&2
     exit 6
 fi
