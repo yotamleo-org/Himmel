@@ -41,6 +41,15 @@ claude plugin install claude-hud@claude-hud
 
 </details>
 
+**更新：** 默认情况下，Claude Code 不会自动更新第三方插件。要开启自动更新，运行 `/plugin`，打开 **Marketplaces**，选择 **claude-hud**，然后选择 **Enable auto-update**。如果没有这个选项，或者收不到更新，可以在终端中手动更新：
+
+```bash
+claude plugin marketplace update claude-hud
+claude plugin update claude-hud@claude-hud
+```
+
+然后在已打开的会话中运行 `/reload-plugins`。无需再次运行 setup。
+
 ## 显示效果
 
 默认显示两行：

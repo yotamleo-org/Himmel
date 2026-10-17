@@ -14,10 +14,10 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        02d73c416b52b4e510a9be004fca469f961cd5bc  # v0.11.2, 3 commits past 45b5885 (HIMMEL-5505)
-pinned_upstream_tree: 20f04e5c9de07b3a64daae8515d50433a13c7d11  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   4a892a4c88928915749c2f762da5358d2f5ff0799c71bde628fb5627ec9da0e2  # sha256 over VENDORED.manifest
-vendored_at:          2026-10-13
+pinned_commit:        5621429b84ea2503185221244c43a06797bfd05e  # v0.11.3, 4 commits past 02d73c4 (HIMMEL-5929)
+pinned_upstream_tree: a9a2abdf0c93bcfa26b998428ff70656d1d760ac  # git tree of pinned_commit (provenance)
+vendored_tree_hash:   c00b91d7c8246db28956aac733430ae9fff0baffc6c7063ebc5c47a550f0acf5  # sha256 over VENDORED.manifest
+vendored_at:          2026-10-17
 ```
 
 `pinned_commit` points at the **upstream** base `02d73c4` (v0.11.2:
@@ -65,6 +65,16 @@ protected: editing it without bumping the pin trips the guard.
 > makes the drift guard protect *more* upstream files, not fewer.
 
 ## Fork delta
+
+- **Re-vendored to upstream v0.11.3 `5621429` (HIMMEL-5929, 2026-10-17, fork-drift
+  issue #2809):** +4 commits past `02d73c4`. Upstream work: background agents
+  whose completion notice arrives as a `queued_command` attachment are now
+  completed in the transcript parser (`src/transcript.ts`, with a test row), an
+  auto-update README note, and the release prep with compiled `dist/`. Applied as
+  the upstream `02d73c4..5621429` diff onto the vendored tree (clean, no hunk
+  touched the himmel delta); every file outside the himmel delta and the
+  brace-expansion lockfile floor is byte-identical to upstream `5621429`, built
+  `dist/` included.
 
 - **Re-vendored to upstream v0.11.2 `02d73c4` (HIMMEL-5505, 2026-10-13, fork-drift
   issue #767):** +3 commits past `45b5885`. Upstream work: the transcript parser

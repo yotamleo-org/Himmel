@@ -45,7 +45,7 @@ interface Entry {
   message?: { id?: unknown; model?: unknown; content?: Block[] | string; usage?: Usage };
   toolUseResult?: { resolvedModel?: unknown; isAsync?: unknown; status?: unknown };
   compactMetadata?: { postTokens?: unknown };
-  attachment?: { type?: string };
+  attachment?: { type?: string; prompt?: unknown };
 }
 
 const emptyTranscript = (): TranscriptData => ({ tools: [], skills: [], mcpServers: [], mcpErrors: [], agents: [], todos: [] });
@@ -172,13 +172,20 @@ class Parser {
       const post = entry.compactMetadata?.postTokens;
       this.data.contextTokens = typeof post === 'number' && Number.isFinite(post) && post >= 0 ? Math.trunc(post) : undefined;
     }
-    // A background agent's tool_result lands at launch; its completion is this enqueue.
-    if (entry.type === 'queue-operation' && entry.operation === 'enqueue' && typeof entry.content === 'string' && at) {
-      const taskId = /<task-id>([^<]+)<\/task-id>/.exec(entry.content)?.[1];
+    // A background agent's tool_result lands at launch; its completion is this enqueue,
+    // or (forked/resumed sessions) a queued_command attachment carrying the same notice.
+    const notice =
+      entry.type === 'queue-operation' && entry.operation === 'enqueue' ? entry.content
+      : entry.type === 'attachment' && entry.attachment?.type === 'queued_command' ? entry.attachment.prompt
+      : undefined;
+    if (typeof notice === 'string' && at) {
+      const taskId = /<task-id>([^<]+)<\/task-id>/.exec(notice)?.[1];
       const toolUseId =
-        /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(entry.content)?.[1] ??
+        /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(notice)?.[1] ??
         (taskId ? this.agentIdToToolUseId.get(taskId) : undefined);
-      if (toolUseId && taskId) this.agentCompletions.set(toolUseId, at);
+      // Both carriers can log the same notice; the earliest is when the agent finished.
+      const prev = toolUseId && this.agentCompletions.get(toolUseId);
+      if (toolUseId && taskId && !(prev && prev <= at)) this.agentCompletions.set(toolUseId, at);
     }
 
     if (Array.isArray(entry.message?.content)) {

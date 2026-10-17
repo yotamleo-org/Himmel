@@ -154,6 +154,10 @@ DRY_RUN=0
 # --hourly: fire every hour instead of once daily. See the
 # header for the Windows Repetition / POSIX cron-line mechanics.
 HOURLY=0
+# --every-hours N (cron only): fire every N hours (N divides 24). Every fire is
+# incremental (--no-cleanup) except the one at --time's hour: the full run with
+# cleanup, so one task covers both the frequent and the nightly refresh.
+EVERY_HOURS=0
 # Set when a --force arm has actually DELETED a previously armed task, so a
 # subsequent create failure can tell the operator the machine is now unarmed.
 REPLACED_EXISTING=0
@@ -191,6 +195,10 @@ Flags (arm only, except --dry-run):
                   fragment re-fires every hour for 24h, the same idiom
                   graphmap-cadence uses for its AST-himmel task; POSIX: an
                   hourly crontab line `MM * * * *`).
+  --every-hours N Fire every N hours (N divides 24; cron only). Each fire is
+                  incremental (`qmd-reindex.sh --no-cleanup`) except the one
+                  at --time's hour, the full run with cleanup. Not with
+                  --hourly.
   --force         Replace an existing HIMMEL-Qmd-* task
   --dry-run       Print what would happen, touch nothing
                   (honored by arm AND disarm)
@@ -240,7 +248,15 @@ while [ $# -gt 0 ]; do
             REINDEX_TIME="$2"; shift 2 ;;
         --time=*)   REINDEX_TIME="${1#--time=}"; shift ;;
         --hourly)   HOURLY=1; shift ;;
-        --force)    FORCE=1; shift ;;
+        --every-hours)
+            if [ $# -lt 2 ]; then
+                echo "ERR qmd-cadence: --every-hours requires a value (hours, divides 24)" >&2
+                usage >&2
+                exit 1
+            fi
+            EVERY_HOURS="$2"; shift 2 ;;
+        --every-hours=*) EVERY_HOURS="${1#--every-hours=}"; shift ;;
+        --force)   FORCE=1; shift ;;
         --dry-run)  DRY_RUN=1; shift ;;
         -h|--help)  usage; exit 0 ;;
         *)
@@ -259,6 +275,20 @@ CADENCE_DESC="daily $REINDEX_TIME"
 if [ "$HOURLY" -eq 1 ]; then
     CADENCE_DESC="hourly, :${REINDEX_TIME#*:} past the hour"
 fi
+case "$EVERY_HOURS" in
+    0) ;;
+    1|2|3|4|6|8|12)
+        if [ "$HOURLY" -eq 1 ]; then
+            echo "ERR qmd-cadence: --every-hours and --hourly are mutually exclusive" >&2
+            exit 1
+        fi
+        CADENCE_DESC="every $EVERY_HOURS h, :${REINDEX_TIME#*:} past the hour (full run at ${REINDEX_TIME%:*}:${REINDEX_TIME#*:})"
+        ;;
+    *)
+        echo "ERR qmd-cadence: --every-hours must be one of 1 2 3 4 6 8 12 (divides 24), got: $EVERY_HOURS" >&2
+        exit 1
+        ;;
+esac
 
 # Platform detect (same matrix as the sibling cadences).
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
@@ -602,6 +632,10 @@ schtasks_create_xml() {
 
 # Input validation shared by the schtasks and cron arm paths.
 validate_arm_inputs() {
+    if [ "$EVERY_HOURS" -ne 0 ] && [ "$PLATFORM" = "windows" ]; then
+        echo "ERR qmd-cadence: --every-hours is cron only (Windows schtasks has --hourly)" >&2
+        exit 1
+    fi
     if ! [[ "$REINDEX_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
         echo "ERR qmd-cadence: --time must be HH:MM (24h), got: $REINDEX_TIME" >&2
         exit 1
@@ -1228,7 +1262,12 @@ cron_arm() {
     hh="${REINDEX_TIME%:*}"; mm="${REINDEX_TIME#*:}"
     local q_runner entry
     q_runner=$(cron_escape "$CRON_RUNNER")
-    if [ "$HOURLY" -eq 1 ]; then
+    if [ "$EVERY_HOURS" -ne 0 ]; then
+        # Hours start at the anchor hour's remainder, so the anchor hour is
+        # always a fire: the one that runs the full reindex + cleanup.
+        entry="$mm $((10#$hh % EVERY_HOURS))-23/$EVERY_HOURS * * * $q_runner # $TASK_REINDEX"
+        payload="if [ \"\$(date +%H)\" = $hh ]; then $payload; else $payload --no-cleanup; fi"
+    elif [ "$HOURLY" -eq 1 ]; then
         # Hourly forever: fixed minute, every hour — mirrors graphmap-cadence's
         # AST-himmel cron entry, the cron(5) idiom for "hourly"
         # since cron has no repetition construct to layer on top like schtasks.
