@@ -3,7 +3,7 @@
 #
 # Source it, then: qmd_daemon_key_load <index.yml>
 #   rc 0   a key from the file is exported as QMD_OPENAI_API_KEY, or nothing needed one
-#   rc 10  the env file exists but is readable by others (QMD_DAEMON_ENV_FILE_RESOLVED names it)
+#   rc 10  the env file exists but is readable by others (QMD_KEY_FILE_PATH names it)
 #   rc 11  an OpenRouter config has no key; the session key was dropped
 # The caller prints its own message. The key is never printed or logged.
 
@@ -23,16 +23,16 @@ qmd_daemon_key_load() {  # t13b-ok: reads the daemon env file, starts nothing
     set +x
     case "${QMD_OPENAI_BASE_URL:-}" in *openrouter.ai*) key_openrouter=1 ;; esac
     if grep -qs '^[^#]*openrouter\.ai' "$cfg"; then key_openrouter=1; fi
-    QMD_DAEMON_ENV_FILE_RESOLVED="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}"  # t13b-ok: path of the daemon env file, starts nothing
-    if [ -f "$QMD_DAEMON_ENV_FILE_RESOLVED" ]; then
+    QMD_KEY_FILE_PATH="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}"  # t13b-ok: path of the daemon env file, starts nothing
+    if [ -f "$QMD_KEY_FILE_PATH" ]; then
         # shellcheck disable=SC2012  # the mode string is the point; the path is fixed
-        case "$(ls -ld "$QMD_DAEMON_ENV_FILE_RESOLVED" 2>/dev/null | cut -c1-10)" in
+        case "$(ls -ld "$QMD_KEY_FILE_PATH" 2>/dev/null | cut -c1-10)" in
             -rw-------|-r--------) ;;
             *)
                 if [ "$key_trace" -eq 1 ]; then set -x; fi
                 return 10 ;;
         esac
-        file_key="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$QMD_DAEMON_ENV_FILE_RESOLVED" | head -n 1)"
+        file_key="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$QMD_KEY_FILE_PATH" | head -n 1)"
     fi
     if [ -n "$file_key" ]; then
         QMD_OPENAI_API_KEY="$file_key"

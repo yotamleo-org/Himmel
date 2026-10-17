@@ -421,12 +421,12 @@ if [ "$remote_model" -eq 1 ]; then
     key_rc=0
     qmd_daemon_key_load "$QMD_CFG_FILE" || key_rc=$?  # t13b-ok: calls the key loader, starts nothing
     if [ "$key_rc" -eq 10 ]; then
-        echo "ERR qmd-reindex: $QMD_DAEMON_ENV_FILE_RESOLVED holds the provider key but is readable by others - index NOT refreshed (chmod 600 it)." >&2
+        echo "ERR qmd-reindex: $QMD_KEY_FILE_PATH holds the provider key but is readable by others - index NOT refreshed (chmod 600 it)." >&2
         exit 10
     fi
     if [ "$key_rc" -eq 11 ]; then
         echo "ERR qmd-reindex: a remote model is configured but no provider key was found - index NOT refreshed." >&2
-        echo "    Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_DAEMON_ENV_FILE_RESOLVED." >&2
+        echo "    Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_KEY_FILE_PATH." >&2
         exit 10
     fi
     if ! node "$GATE_JS" "$QMD_CFG_FILE" "$QMD_INDEX_PATH" >&2; then

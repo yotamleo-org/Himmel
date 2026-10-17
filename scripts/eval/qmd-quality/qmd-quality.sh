@@ -148,8 +148,8 @@ done
 . "$HERE/../../lib/qmd-daemon-env.sh"  # t13b-ok: sources the key loader, starts nothing
 key_rc=0
 qmd_daemon_key_load "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" || key_rc=$?  # t13b-ok: calls the key loader, starts nothing
-[ "$key_rc" -ne 10 ] || { echo "qmd-quality: $QMD_DAEMON_ENV_FILE_RESOLVED holds the provider key but is readable by others (chmod 600 it)" >&2; exit 2; }
-[ "$key_rc" -ne 11 ] || { echo "qmd-quality: an OpenRouter config but no provider key in $QMD_DAEMON_ENV_FILE_RESOLVED" >&2; exit 2; }
+[ "$key_rc" -ne 10 ] || { echo "qmd-quality: $QMD_KEY_FILE_PATH holds the provider key but is readable by others (chmod 600 it)" >&2; exit 2; }
+[ "$key_rc" -ne 11 ] || { echo "qmd-quality: an OpenRouter config but no provider key in $QMD_KEY_FILE_PATH" >&2; exit 2; }
 
 command -v bun >/dev/null 2>&1 || { echo "qmd-quality: bun not on PATH" >&2; exit 2; }
 mkdir -p "$OUT" || exit 2
