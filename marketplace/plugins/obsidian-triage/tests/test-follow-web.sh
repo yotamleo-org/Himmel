@@ -673,6 +673,15 @@ r = await w("q phi");
 console.log("SALUS_PHIROOTS_REFUSED=" + (hits.deepseek.length === 0));
 fs.rmSync(process.env.T_GLM + "/phi-roots");
 
+// an unmarked vault whose Clippings is a symlink into a salus root is refused
+reset();
+const symVault = process.env.T_HOME + "/symvault";
+fs.mkdirSync(symVault, { recursive: true });
+fs.symlinkSync(process.env.T_SALUS + "/Clippings", symVault + "/Clippings");
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: symVault });
+r = await w("q symlink");
+console.log("SYMLINK_CLIPPINGS_REFUSED=" + (hits.deepseek.length === 0));
+
 // unmapped content (no vault root) is denied
 reset();
 w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1" });
@@ -701,7 +710,7 @@ console.log("NO_SECRET_LOGGED=" + (!JSON.stringify(rows).includes("ds-secret-key
 srv.close();
 EOF
 out13="$(T_HOME="$tmpdir/home13" T_LEDGER="$tmpdir/ledger13.jsonl" T_PARKED="$tmpdir/parked13.jsonl" T_GLM="$tmpdir/glm" T_VAULT="$tmpdir/vault" T_SALUS="$tmpdir/salusvault" T_GOODCLI="$tmpdir/good-cli.sh" T_BADCLI="$tmpdir/garbage-cli.sh" node "$tmpdir/deepseek.mjs" 2>&1)"
-for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER FREE_HIT_SKIPS_DEEPSEEK FREE_MISS_TO_DEEPSEEK MISS_FALLS_TO_FIRECRAWL EMPTY_SEARCH_PRICED FETCH_429_DISABLES SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
+for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER FREE_HIT_SKIPS_DEEPSEEK FREE_MISS_TO_DEEPSEEK MISS_FALLS_TO_FIRECRAWL EMPTY_SEARCH_PRICED FETCH_429_DISABLES SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED SYMLINK_CLIPPINGS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
     grep -q "^$k=true" <<<"$out13" && r=yes || r=no
     assert "deepseek: $k" yes "$r"
 done

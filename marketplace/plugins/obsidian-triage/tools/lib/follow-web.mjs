@@ -423,15 +423,22 @@ export function classifyVaultCorpus(root, env = process.env) {
     real = realpathSync(root);
     if (!statSync(real).isDirectory()) return null;
   } catch { return null; }
-  for (let d = real, prev = ""; d !== prev; prev = d, d = dirname(d)) {
-    if (existsSync(join(d, ".salus")) || existsSync(join(d, ".salus-profile"))) return "salus";
-  }
   const listed = listedPhiRoots(env);
   if (listed === null) return "salus";
-  for (const lr of listed) {
-    if (lr === sep || real === lr || real.startsWith(lr + sep) || lr.startsWith(real + sep)) return "salus";
+  let clip;
+  try {
+    clip = realpathSync(join(real, "Clippings"));
+    if (!statSync(clip).isDirectory()) return null;
+  } catch { return null; }
+  // Clippings may be a symlink out of the vault: both resolved paths must be clear.
+  for (const p of [real, clip]) {
+    for (let d = p, prev = ""; d !== prev; prev = d, d = dirname(d)) {
+      if (existsSync(join(d, ".salus")) || existsSync(join(d, ".salus-profile"))) return "salus";
+    }
+    for (const lr of listed) {
+      if (lr === sep || p === lr || p.startsWith(lr + sep) || lr.startsWith(p + sep)) return "salus";
+    }
   }
-  try { if (!statSync(join(real, "Clippings")).isDirectory()) return null; } catch { return null; }
   return "luna-clippings";
 }
 
