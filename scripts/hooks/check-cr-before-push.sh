@@ -247,8 +247,32 @@ canonicalize_endpoint() {
             esac
             ;;
     esac
-    abs=$(cd "$ep" 2>/dev/null && pwd -P) && [ -n "$abs" ] || return 1
-    printf '%s\n' "$abs"
+    # Resolve the way git does: the path itself, then with a .git suffix; a
+    # plain file whose first line is "gitdir: <path>" (a gitfile) names the
+    # directory it points to, relative to the gitfile's own directory.
+    if abs=$(cd "$ep" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd falls through to the next git resolution rule, then fails closed
+        printf '%s\n' "$abs"; return 0
+    fi
+    if abs=$(cd "$ep.git" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd falls through to the next git resolution rule, then fails closed
+        printf '%s\n' "$abs"; return 0
+    fi
+    if [ -f "$ep" ]; then
+        local line gdir
+        IFS= read -r line < "$ep" || true # swallow-ok: an unreadable file leaves line empty, which matches no gitdir: case and fails closed
+        case "$line" in
+            "gitdir: "?*)
+                gdir="${line#gitdir: }"
+                case "$gdir" in
+                    /*) ;;
+                    *) gdir="$(dirname "$ep")/$gdir" ;;
+                esac
+                if abs=$(cd "$gdir" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a gitdir that does not resolve falls to return 1 (fail closed)
+                    printf '%s\n' "$abs"; return 0
+                fi
+                ;;
+        esac
+    fi
+    return 1
 }
 
 resolve_diff_base() {

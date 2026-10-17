@@ -794,6 +794,42 @@ case "$out" in
         fail "uncanonicalizable relative endpoint: refusal must quote the original endpoint (../does-not-exist.git), not whatever the failed canonicalize_endpoint call left behind" "out: $out" ;;
 esac
 
+echo "TEST: HIMMEL-3737 -- a bare relative endpoint that only exists with git's .git suffix is canonicalized, not refused"
+git init -q --bare "$TMP_ROOT/sufremote.git" >/dev/null
+git -C "$PB" update-ref refs/remotes/sufremote/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" sufremote "../sufremote" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_suf="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_suf" ]; then
+    pm_suf_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_suf" 2>/dev/null || true)
+    case "$pm_suf_endpoint" in
+        /*sufremote.git) pass "../sufremote resolved to the absolute sufremote.git (HIMMEL-3737)" ;;
+        *) fail "suffix endpoint not canonicalized to the .git directory: '$pm_suf_endpoint'" "out: $out" ;;
+    esac
+else
+    fail "sufremote push: expected exit 0 + marker at $pm_suf (got rc=$rc)" "out: $out"
+fi
+
+echo "TEST: HIMMEL-3737 -- a relative gitfile endpoint is followed to the directory it names"
+git init -q --bare "$TMP_ROOT/gfreal.git" >/dev/null
+printf 'gitdir: %s\n' "$TMP_ROOT/gfreal.git" > "$TMP_ROOT/gfremote"
+git -C "$PB" update-ref refs/remotes/gfremote/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" gfremote "../gfremote" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_gf="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_gf" ]; then
+    pm_gf_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gf" 2>/dev/null || true)
+    case "$pm_gf_endpoint" in
+        /*gfreal.git) pass "gitfile endpoint resolved to the directory it names (HIMMEL-3737)" ;;
+        *) fail "gitfile endpoint not followed: '$pm_gf_endpoint'" "out: $out" ;;
+    esac
+else
+    fail "gitfile push: expected exit 0 + marker at $pm_gf (got rc=$rc)" "out: $out"
+fi
+
+echo "TEST: HIMMEL-3737 -- a relative file that is not a gitfile still fails closed"
+printf 'not a gitfile\n' > "$TMP_ROOT/plainfile"
+rc=0; out=$(cd "$PB" && bash "$HOOK" relremote "../plainfile" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then pass "non-gitfile relative file -> exit 2 (HIMMEL-3737)"; else fail "non-gitfile relative file -> expected exit 2 got $rc" "out: $out"; fi
+
 echo "TEST: push to a remote with NO local tracking ref -> fail CLOSED naming the missing ref"
 rc=0; out=$(cd "$PB" && bash "$HOOK" nowhere "file:///nowhere.git" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
 if [ "$rc" -eq 2 ]; then pass "unfetched pushed remote -> exit 2 (fail closed)"; else fail "unfetched pushed remote -> expected exit 2 got $rc" "out: $out"; fi
