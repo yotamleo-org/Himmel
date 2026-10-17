@@ -351,7 +351,7 @@ if [ -d "$SCRATCH/graphify-out/cache/semantic" ]; then
   mkdir -p "$OUT_DIR/cache/semantic"
   cp -R "$SCRATCH/graphify-out/cache/semantic/." "$OUT_DIR/cache/semantic/"
 fi
-python3 "$HERE/harden-graph.py" --out "$OUT_DIR" >&2 \
+python3 "$HERE/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
   || echo "semantic-update: WARN harden-graph.py failed; the merged graph stands, the next refresh re-hardens it" >&2
 # The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a
 # loop on the exit code stops instead of re-billing the same failure.
