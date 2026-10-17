@@ -126,6 +126,8 @@ def validate(leg, i):
         if v.lower() not in ('yes', 'no'):
             die('leg %s: scope states completes-ticket: %s; the value must be yes or no' % (leg['label'], v))
     removal = leg.get('platform_removal')
+    if removal is not None and not isinstance(removal, bool):
+        die('leg %s: platform_removal must be the JSON boolean true or false, not %r' % (leg['label'], removal))
     if removal and not REMOVAL_RE.search(leg['title']):
         die('leg %s: platform_removal needs a title that says remove/drop/delete/retire/sweep/clean' % leg['label'])
     for k in (() if removal else ('title', 'desc', 'why', 'scope')):

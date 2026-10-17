@@ -277,7 +277,7 @@ python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-
 pl_gen() {
     rm -rf "$WORK/pl-out"
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0][sys.argv[3]]=sys.argv[4]
-if len(sys.argv)>5: l[0]["platform_removal"]=True
+if len(sys.argv)>5: l[0]["platform_removal"]=True if sys.argv[5]=="yes" else sys.argv[5]
 json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/pl.json" "$@"
     python3 "$SUT" "$WORK/pl.json" --base 4ccb59d --console BZ --bucket "$WORK/pl-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pl.err"
 }
@@ -294,6 +294,13 @@ pl_gen title 'Remove Windows leftovers' yes; rc=$?
 [ "$rc" = 0 ] && pl_written && pass "a Windows removal leg with platform_removal true is accepted" || fail "removal leg rc=$rc: $(cat "$WORK/pl.err")"
 pl_gen title 'Fix Windows leftovers' yes; rc=$?
 [ "$rc" = 1 ] && grep -q "platform_removal" "$WORK/pl.err" && ! pl_written && pass "platform_removal true on a non-removal title is refused" || fail "non-removal platform_removal rc=$rc: $(cat "$WORK/pl.err")"
+for bad in false yes 1; do
+    pl_gen title 'Remove Windows leftovers' "$bad"; rc=$?
+    case "$bad" in yes) want=0 ;; *) want=1 ;; esac
+    [ "$rc" = "$want" ] && pass "platform_removal $bad on a removal title exits $want (only boolean true is the exemption)" || fail "platform_removal $bad rc=$rc"
+done
+pl_gen title 'Remove runtime Windows compatibility'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "'runtime Windows' is not excused by the time-window qualifier" || fail "runtime Windows rc=$rc"
 for ok in 'cap the context window' 'widen the time window' 'Windowed rate limit' 'the context windows budget'; do
     pl_gen title "$ok"; rc=$?
     [ "$rc" = 0 ] && pl_written && pass "'$ok' is not a platform mention" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
