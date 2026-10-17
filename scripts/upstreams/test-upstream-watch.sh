@@ -505,11 +505,42 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     assert_eq 10 "$rc" "case-only path difference: Windows still matches (case-insensitive FS)" ;;
   *)
-    assert_eq 2 "$rc" "case-only path difference: refused off Windows (case-sensitive FS)"
-    assert_has "$out" "no handover registry entry" "case-only path difference: names the mismatch"
-    after=$(cat "$state/himmel-state/last_seen.json")
-    assert_eq "$before" "$after" "case-only path difference: state file untouched" ;;
+    # Measure the scratch filesystem rather than infer it from the OS: a
+    # case-insensitive volume (default macOS APFS) resolves EMPTY-ROOT to the
+    # real directory, so the identity compare must match it there.
+    if [ -d "$state/EMPTY-ROOT" ]; then
+      assert_eq 10 "$rc" "case-only path difference: matched on a case-insensitive FS (identity compare)"
+    else
+      assert_eq 2 "$rc" "case-only path difference: refused on a case-sensitive FS"
+      assert_has "$out" "no handover registry entry" "case-only path difference: names the mismatch"
+      after=$(cat "$state/himmel-state/last_seen.json")
+      assert_eq "$before" "$after" "case-only path difference: state file untouched"
+    fi ;;
 esac
+
+echo "== test: registry entry that is a symlink to the checkout matches by identity (HIMMEL-2449) =="
+state=$(new_scratch)
+base_world > "$state/world.json"
+seed_baseline "$state"
+base_world | jq '.pr_views["acme/widget#12"].comments += [{author:{login:"other"}, createdAt:"2026-08-02T00:00:00Z"}]' > "$state/world.json"
+if ln -s "$state/empty-root" "$state/link-root" 2>/dev/null; then
+  jq -n --arg path "$state/link-root" '{repos: {himmel: {path: $path, user: "testuser", bucket_name: "himmel"}}}' > "$state/registry.json"
+  out=$(run_watch "$state" 2>&1); rc=$?
+  assert_eq 10 "$rc" "symlinked registry path: matches the checkout by dev+ino"
+  assert_not_has "$out" "no handover registry entry" "symlinked registry path: not reported as unmatched"
+else
+  echo "  SKIP — cannot create a symlink on this host"
+fi
+
+echo "== test: registry entry naming a nonexistent path is skipped, later entry still matches (HIMMEL-2449) =="
+state=$(new_scratch)
+base_world > "$state/world.json"
+seed_baseline "$state"
+base_world | jq '.pr_views["acme/widget#12"].comments += [{author:{login:"other"}, createdAt:"2026-08-02T00:00:00Z"}]' > "$state/world.json"
+jq -n --arg root "$state/empty-root" --arg gone "$state/does-not-exist" \
+  '{repos: {"aaa-gone": {path: $gone, user: "nobody", bucket_name: "aaa-gone"}, himmel: {path: $root, user: "testuser", bucket_name: "himmel"}}}' > "$state/registry.json"
+out=$(run_watch "$state" 2>&1); rc=$?
+assert_eq 10 "$rc" "nonexistent registry path: skipped, no fatal error, next entry matches"
 
 echo "== test: malformed registry entry (null) is a validation error, NOT a non-match (HIMMEL-2426) =="
 state=$(new_scratch)

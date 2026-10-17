@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+prompt="$(cat /etc/hostname)"
+. "$(dirname "$0")/lib.sh"

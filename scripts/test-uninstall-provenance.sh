@@ -631,8 +631,36 @@ bash "$lib/wire-pretooluse-hooks.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/nul
 run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
 check "RED17 control: a pre-existing empty hooks object survives uninstall" \
   "$(jq -c '.hooks // "ABSENT"' "$CASE_SETTINGS")" '{}'
+new_case red17n
+printf '{"hooks":null}\n' > "$CASE_SETTINGS"
+bash "$lib/wire-pretooluse-hooks.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+check "RED17 HIMMEL-3490 precondition: the wire populated the hooks container" \
+  "$(jq -r '.hooks | type' "$CASE_SETTINGS")" 'object'
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 HIMMEL-3490: an explicit hooks null is restored to null after uninstall" \
+  "$(jq -c 'if has("hooks") then .hooks else "ABSENT" end' "$CASE_SETTINGS")" 'null'
+new_case red17e
+printf '{"env":null}\n' > "$CASE_SETTINGS"
+bash "$lib/wire-himmel-repo.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+check "RED17 HIMMEL-3490 precondition: the wire populated the env container" \
+  "$(jq -r '.env.HIMMEL_REPO // "ABSENT"' "$CASE_SETTINGS")" 'C:/fake/himmel'
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 HIMMEL-3490: an explicit env null is restored to null after uninstall" \
+  "$(jq -c 'if has("env") then .env else "ABSENT" end' "$CASE_SETTINGS")" 'null'
+new_case red17a
+printf '{}\n' > "$CASE_SETTINGS"
+bash "$lib/wire-himmel-repo.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 control: an absent env stays absent after uninstall" \
+  "$(jq -c 'if has("env") then .env else "ABSENT" end' "$CASE_SETTINGS")" '"ABSENT"'
+new_case red17o
+printf '{"env":{"OPERATOR_KEY":"keep"}}\n' > "$CASE_SETTINGS"
+bash "$lib/wire-himmel-repo.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
+check "RED17 control: a non-empty pre-existing env object is restored as it was" \
+  "$(jq -c '.env' "$CASE_SETTINGS")" '{"OPERATOR_KEY":"keep"}'
 
-echo "==== RED18 (HIMMEL-3398): a protected /statusLineX or /env/HIMMEL_REPOX never masks /statusLine or /env/HIMMEL_REPO ===="
+echo "==== RED18(HIMMEL-3398): a protected /statusLineX or /env/HIMMEL_REPOX never masks /statusLine or /env/HIMMEL_REPO ===="
 # /statusLineX and /env/HIMMEL_REPOX are kept (noop-preexisted), so they land in
 # _LEDGER_PROTECTED. /statusLine is a heuristic unit (noop, not preexisted) and
 # env.HIMMEL_REPO has no unit at all, so only today's helpers remove them --

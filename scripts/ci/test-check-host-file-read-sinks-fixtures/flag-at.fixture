@@ -1,0 +1,3 @@
+# fixture, not executable
+echo hi
+head -n 5 "$@"

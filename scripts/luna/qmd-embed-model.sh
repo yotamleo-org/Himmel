@@ -130,11 +130,13 @@ write_yml_embed() {
     mv -f "$tmp" "$file"
 }
 
-# A config naming a remote (openai:) model must pass the egress gate for every
-# collection it holds. Fails closed when the gate or node is missing.
+# A config or an environment variable naming a remote (openai:) model must pass
+# the egress gate for every collection the config holds. Fails closed when the gate or node is missing.
 jina_gate_ok() {
     # intentional: the \\ alternative is conservative fail-closed detection (a config backslash only requires node and the gate); narrowing it is a security-logic change needing its own review
-    grep -Eqs '^[^#]*(openai:|\\)' "$1" || return 0
+    local remote=0
+    case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote=1 ;; esac
+    if [ "$remote" -eq 0 ] && ! grep -Eqs '^[^#]*(openai:|\\)' "$1"; then return 0; fi
     command -v node >/dev/null 2>&1 || { warn "node is missing; cannot check the egress gate for $1"; return 1; }
     [ -f "$HERE/../qmd/qmd-jina-gate.mjs" ] || { warn "qmd-jina-gate.mjs is missing; refusing to write a remote model"; return 1; }
     node "$HERE/../qmd/qmd-jina-gate.mjs" "$1" "$2" >&2
@@ -426,7 +428,9 @@ cmd_reembed() {
     SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/qmd-reembed.XXXXXX")" || die 5 "mktemp -d failed; cannot stage the qmd config copy"
     trap 'rm -rf "$SCRATCH"' EXIT
     local scratch="$SCRATCH"
-    [ -f "$(config_file)" ] && cp "$(config_file)" "$scratch/index.yml"
+    if [ -f "$(config_file)" ]; then
+        cp "$(config_file)" "$scratch/index.yml" || die 2 "could not copy the qmd config to $scratch; nothing was re-embedded"
+    fi
     write_yml_embed "$scratch/index.yml" "$uri" || die 2 "the egress gate refused the config copy; nothing was re-embedded"
 
     local force="--force"

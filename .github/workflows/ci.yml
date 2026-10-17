@@ -189,6 +189,62 @@ jobs:
       - name: No unchecked mktemp capture added anywhere in the PR range
         run: bash scripts/hooks/check-unchecked-mktemp.sh --range --merge-ref "${{ github.event.pull_request.base.sha }}"
 
+  # HIMMEL-6037: a suite that reads the real $HOME/.env (the PR 2883 shape) was
+  # caught only by a judge. This job reruns the impacted suites with HOME and
+  # USERPROFILE pointed at a sandbox holding a honeytoken .env and fails when
+  # the token reaches the output or the file is read (scripts/ci/home-canary.sh),
+  # and flags newly added code that reads an argv/env-named file with no
+  # allowlist (check-host-file-read-sinks.sh, the PR 2878 class). Always runs,
+  # no plan group. No secrets; the checkout does not persist the token.
+  home-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 8 shards ~6-12m each, but loaded hosted runners took 25m+ and hit a 1500s bound twice; canary bound 2700s plus the log print; confirm p95 after first runs
+    strategy:
+      # Every shard reports its own leak; one red must not hide another.
+      fail-fast: false
+      matrix:
+        # The 8 ids here and the /8 in the run step are one number.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: No host-file read sink added without an allowlist
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            bash scripts/ci/check-host-file-read-sinks.sh --range --merge-ref "$BASE_SHA"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            bash scripts/ci/check-host-file-read-sinks.sh --range "$BEFORE_SHA"
+          else
+            bash scripts/ci/check-host-file-read-sinks.sh --range "origin/$DEFAULT_BRANCH"
+          fi
+      - name: Impacted suites under a honeytoken HOME
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HOME_CANARY_REQUIRE_ATIME: "1"
+          # The shard job installs bun, bwrap, at and ffmpeg; this bare job does not,
+          # so suite results stay with the shards and only a leak, read or timeout fails here.
+          HOME_CANARY_RUNNER_FAIL_OK: "1"
+          HOME_CANARY_TIMEOUT: "2700"
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            range="$BASE_SHA..HEAD"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            range="$BEFORE_SHA..HEAD"
+          else
+            range="origin/$DEFAULT_BRANCH..HEAD"
+          fi
+          bash scripts/ci/home-canary.sh --impacted "$range" --shard "${{ matrix.shard }}/8"
+
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
   # hook (a --no-verify commit, a merge, a stale clone) by re-scanning the

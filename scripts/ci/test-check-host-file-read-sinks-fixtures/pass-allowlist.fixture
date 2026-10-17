@@ -1,0 +1,5 @@
+# fixture, not executable
+echo hi
+real="$(realpath "$1")"
+case "$real" in "$REPO_ROOT"/*) ;; *) exit 2 ;; esac
+prompt="$(cat "$real")"

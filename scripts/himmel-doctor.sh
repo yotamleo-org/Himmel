@@ -2666,7 +2666,7 @@ DOCTOR_C33_CADENCE_INTERVAL_S=$((6 * 3600))
 # Linux), then BSD date -j (macOS). Echoes nothing (rc=1) on an unparsable
 # timestamp; callers treat that as "can't determine age", never crash.
 _c33_epoch() {
-    date -d "$1" +%s 2>/dev/null || date -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null  # gnu-ok: GNU date -d is paired with the BSD date -j fallback on this same line
+    date -d "$1" +%s 2>/dev/null || date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null  # gnu-ok: GNU date -d is paired with the BSD date -j fallback on this same line
 }
 
 # human-readable age from a second count: Nd / Nh / Nm, coarsest unit that
@@ -2686,7 +2686,7 @@ check_c33_graph_stale() {
     # diagnostic pass.
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
     if ! root="$(handover_root 2>/dev/null)" || [ -z "$root" ]; then
-        emit OK C33-graph-stale "graph-cadence: no handover root resolvable — cadence has not run here"
+        emit WARN C33-graph-stale "graph-cadence: handover root is broken (HANDOVER_DIR unresolvable) — graph-cadence.sh refuses to run against it, so no ledger can be written and staleness cannot be determined (this is NOT the same as healthy, nor the same as not yet armed)" "fix HANDOVER_DIR (see /handover-setup), then: bash scripts/graphify/graph-cadence.sh"
         return
     fi
     ledger="$root/.graph-cadence/ledger.jsonl"

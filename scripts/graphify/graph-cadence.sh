@@ -507,7 +507,12 @@ else
     exit 2
 fi
 LEDGER_DIR="$LEDGER_ROOT/.graph-cadence"
-mkdir -p "$LEDGER_DIR" || { echo "ERR graph-cadence: could not create $LEDGER_DIR" >&2; exit 2; }
+if ! mkdir -p "$LEDGER_DIR"; then
+    _msg="could not create $LEDGER_DIR"
+    echo "ERR graph-cadence: $_msg" >&2
+    _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 2 error "" "$_msg"
+    exit 2
+fi
 LEDGER_FILE="$LEDGER_DIR/ledger.jsonl"
 
 ACTION="failed"
