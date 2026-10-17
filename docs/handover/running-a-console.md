@@ -460,7 +460,9 @@ that `next --arm` printed and hand your live worker sessions over by name.
 worker session's brief names *you* as its supervisor session, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
 you send each worker session — from your own session — a message naming the successor and
-quoting the worker session's current token, and each worker session answers with a quote-back. A fresh
+quoting the worker session's current token. The worker session's quote-back is the `SUCCESSION
+accepted` Results bullet in its own doc (the successor's waiter tallies it); it sends a
+`SendMessage` only on a timeout or a decline. A fresh
 token is optional: a successor MAY issue one per worker session (then quote it too, and the
 worker session quotes it back); a relay with none is complete and the worker session keeps its own.
 A successor that arrives after you have left can prove itself only with the

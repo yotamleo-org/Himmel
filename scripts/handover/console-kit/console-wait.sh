@@ -240,6 +240,7 @@ for a in "$@"; do
 done
 set -- ${rest_args[@]+"${rest_args[@]}"}
 case "$prev_arg" in --succession|--silent-min) echo "console-wait: $prev_arg needs a value" >&2; exit 2 ;; esac
+case "$succession" in -*) echo "console-wait: --succession needs a session name, got a flag" >&2; exit 2 ;; esac
 if [ -n "$succession" ]; then
     case "$succession" in *[!A-Za-z0-9_.-]*) echo "console-wait: --succession must be a session name" >&2; exit 2 ;; esac
     case "$silent_min" in ''|*[!0-9]*) echo "console-wait: --silent-min must be whole minutes" >&2; exit 2 ;; esac
@@ -609,14 +610,17 @@ while :; do
     # --succession: the successor's one wake. Tally the inherited legs' quote-backs
     # (succession-tracker.sh); wake once when all are in, or once when the tally has
     # sat short for --silent-min minutes, naming the legs still out.
-    if [ -n "$succession" ] && [ "$(date +%s)" -ge "${next_succ:-0}" ]; then
+    # A COMPLETE wake leaves $succ_file.woke naming the successor, so a re-arm with the same
+    # --succession (the console forgot to drop it) does not wake again at once.
+    if [ -n "$succession" ] && [ "$(sed -n 1p "$succ_file.woke" 2>/dev/null)" != "$succession" ] && [ "$(date +%s)" -ge "${next_succ:-0}" ]; then
         next_succ=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
         [ -s "$succ_file" ] || date +%s > "$succ_file" 2>/dev/null
-        succ_out="$(bash "${CONSOLE_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"
+        succ_out="$(timeout -k 2 30 bash "${CONSOLE_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit
         succ_sum="$(printf '%s\n' "$succ_out" | grep -E '^(COMPLETE|INCOMPLETE) ' | head -n 1)"
         case "$succ_sum" in
             COMPLETE*)
                 printf 'WAKE succession complete %s\n%s\n' "${succ_sum#COMPLETE }" "$succ_out"
+                printf '%s\n' "$succession" > "$succ_file.woke" 2>/dev/null
                 rm -f "$succ_file"; exit_reason='wake-succession'; exit 0 ;;
             *)  # INCOMPLETE, or a tracker that printed no summary: both age toward the silence wake
                 succ_since="$(sed -n 1p "$succ_file" 2>/dev/null)"
@@ -642,7 +646,7 @@ while :; do
             if [ "$rol_rc" -eq 11 ]; then
                 # relay-batch may deliver a claudex leg by inbox-send (never re-run it: a retry
                 # would resend), so a failure still wakes, carrying its rc and output for the console.
-                rol_out="$(bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?
+                rol_out="$(timeout -k 2 60 bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?  # gnu-ok: Linux-only kit
                 if [ "$rol_brc" -eq 0 ]; then
                     printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
                 else

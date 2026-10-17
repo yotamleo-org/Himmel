@@ -304,6 +304,27 @@ absent '## Monitors telegram row no longer re-arms on expiry (HIMMEL-3509)' "$(f
 contains '## Monitors telegram row runs inside the step-10 waiter (HIMMEL-3509)' "$(flat "$mons")" 'Runs inside the step-10 waiter.'
 absent 'console template no longer says Four monitors' "$(cat "$CONSOLE")" 'Four, and no more'
 
+# --- wake-once wiring: the console docs run the waiter's --succession ----
+step10="$(awk '/^10\. \*\*/ { f = 1 } /^11\. \*\*/ { f = 0 } f' "$CONSOLE")"
+waiter_doc="$(cat "$DOCS/handover/console-sections/waiter.md")"
+contains 'ACTION ZERO step 9 starts the waiter with --succession' "$step9" '--succession'
+before 'ACTION ZERO step 9: --succession is armed BEFORE LIVE is sent' "$step9" '--succession' '{{LETTER}} LIVE'
+contains 'ACTION ZERO step 9 acts on the complete wake' "$step9" 'WAKE succession complete'
+contains 'ACTION ZERO step 9 acts on the partial wake' "$step9" 'WAKE succession partial'
+contains 'ACTION ZERO step 9: the leg Results bullet is the quote-back' "$(flat "$step9")" 'Results bullet'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'ACTION ZERO step 9 re-arms the waiter without --succession' "$(flat "$step9")" 'without `--succession`'
+contains 'ACTION ZERO step 10 waiter line names --succession' "$step10" '--succession'
+contains 'waiter section lists WAKE succession complete' "$waiter_doc" 'WAKE succession complete'
+contains 'waiter section lists WAKE succession partial' "$waiter_doc" 'WAKE succession partial'
+contains 'waiter section names --succession' "$waiter_doc" '--succession'
+contains 'handoff "How starts": the successor arms the waiter with --succession' "$starts" '--succession'
+contains 'running-a-console Handing over: the Results bullet is the quote-back' "$(flat "$running")" 'Results bullet'
+contains 'leg-preface: a console change is quoted back by its SUCCESSION bullet' "$(flat "$(cat "$PREFACE")")" "quote-back is its \`SUCCESSION\` bullet"
+absent 'ACTION ZERO step 9 no longer waits on a SendMessage quote-back' "$(flat "$step9")" "Wait for each leg's quote-back"
+absent 'handoff no longer waits on a SendMessage quote-back' "$(flat "$starts")" "wait for each leg's quote-back"
+absent 'running-a-console no longer has the leg answer with a SendMessage quote-back' "$(flat "$running")" 'answers with a quote-back'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'
     exit 0

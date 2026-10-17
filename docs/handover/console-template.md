@@ -59,16 +59,16 @@ Run these, in order, and write the result as the first bullet under
    predecessor is gone, send the chain form yourself — **both** the leg's current
    token and a fresh one (the chain always rotates).
    `leg-preface.md` (`leg-sections/succession.md`) is the authority.
-   **Wait for each leg's quote-back**, then write that leg's nonce into
-   `## Live state` (the fresh one if issued, else the unchanged one). When every
-   leg has quoted back — or you have named the ones that did not, and why — send
-   **`{{LETTER}} LIVE`** to the predecessor so it can release and wrap; sending it
-   first reads `nonces=UNCONFIRMED:<leg>`. Then close its window and re-ask only
-   judge qids with no verdict file: `console-sections/successor-start.md`.
+   A leg's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
+   waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**: on
+   `WAKE succession complete` or `WAKE succession partial` write the nonces into
+   `## Live state`, send **`{{LETTER}} LIVE`** (naming legs that did not
+   quote back), then re-arm **without `--succession`**.
+   Then close its window, re-ask judges: `console-sections/successor-start.md`.
 10. **Start the event waiter now.** Run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
     re-invokes you when it exits (never a `Monitor` arm, capped at 30 min):
-    `bash "{{KIT}}/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>"`
+    `bash "{{KIT}}/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>" [--succession {{SESSION_NAME}}]`
     It exits on the first real event (`WAKE telegram | tick | underfilled |
     tick-fail`), so an idle console takes **zero** turns. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the

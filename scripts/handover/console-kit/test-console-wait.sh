@@ -1130,6 +1130,18 @@ bash "$WAIT" "$I" --doc "$SUCD" --succession >/dev/null 2>&1; rc=$?
 check "(su4) a trailing --succession with no value is a usage error (rc 2)" "2" "$rc"
 bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --silent-min >/dev/null 2>&1; rc=$?
 check "(su4) a trailing --silent-min with no value is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession --silent-min 5 >/dev/null 2>&1; rc=$?
+check "(su4) --succession followed by a flag is a usage error (rc 2)" "2" "$rc"
+
+# a COMPLETE wake leaves a woke-record: a re-arm with the same --succession stays quiet
+printf 'N1 quoted-back\nN2 quoted-back\nCOMPLETE 2/2\nbash append-results.sh doc "LIVE - done"\n' > "$STUB/su.out"
+I="$(new_inbox su5)"
+start "$I" "$WORK/su5a.out" --doc "$SUCD" --succession S2 --legs "N1.md"
+wait_exit "$WPID"
+check "(su5) first arm wakes once, rc 0" "0" "$rc"
+timeout 4 bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --legs "N1.md" > "$WORK/su5b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(su5) a re-arm with the same --succession does not re-wake at once" "124" "$rc"
+check "(su5) and prints no second wake" "" "$(cat "$WORK/su5b.out")"
 unset CONSOLE_WAIT_TRACKER CONSOLE_WAIT_SUCCESSION_SEC
 
 # --- (rol) <inbox>.relay-on-live: the outgoing console's one wake ------------------

@@ -18,7 +18,15 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     list; dispatch it with `gen-briefs.py`), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
     the bank read is broken: fix it, then restart the waiter; it wakes once per
-    failure streak). It runs `tick.sh` every
+    failure streak), or, on a successor's first arm only (ACTION ZERO step 9,
+    `--succession <your session> [--silent-min T]`), `WAKE succession complete
+    <k/n>` plus the printed LIVE command when every inherited leg's `SUCCESSION
+    accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
+    naming the legs still out. Each fires once; **re-arm without `--succession`**
+    (a re-arm that keeps it after a complete wake stays quiet). An outgoing
+    console started with `console.sh next --relay-on-live` gets `WAKE relay-on-live
+    successor=<session>` plus `relay-batch.sh`'s SENDMESSAGE lines once the
+    successor's lock is held fresh; send each line. It runs `tick.sh` every
     180 s and wakes only when two consecutive samples differ from the action
     key you last saw: `legs=` (a leg FRESH → STALE / FREE / WRAPPED …),
     `livestate=` (DRIFT / MALFORMED), `prs=` (the repo's open-PR set — any
