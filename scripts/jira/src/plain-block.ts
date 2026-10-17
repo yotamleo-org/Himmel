@@ -116,7 +116,7 @@ export function lintPlainBlockAdf(doc: unknown): string[] {
       // text() joins node text without newlines, so each list item becomes its own markdown-style line.
       if (n.type === 'bulletList' || n.type === 'orderedList')
         for (const item of n.content ?? []) cur.body += '- ' + text(item) + '\n';
-      else cur.body += text(n) + '\n';
+      else cur.body += '> ' + text(n) + '\n'; // a quote marker keeps prose that reads "- x" from passing as a list item
     }
   }
   return problems(ps);

@@ -113,6 +113,14 @@ describe('lintPlainBlockAdf', () => {
     expect(lintPlainBlockAdf(doc([ol('<step>', 'real')], [ul('ok')]))).toEqual([]);
     expect(lintPlainBlockAdf(doc([], [ul('ok')]))).toEqual(['"## Plan" is empty']);
   });
+
+  it('a paragraph or code block that merely reads like a list line is not a list item (HIMMEL-5643)', () => {
+    const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('step'), h('Agent detail'), p('d')];
+    const code = { type: 'codeBlock', content: [{ type: 'text', text: '- fake' }] };
+    const dodBad = [`"## DoD" ${NO_BULLET}`];
+    expect(lintPlainBlockAdf({ type: 'doc', content: [...base, h('DoD'), p('- fake')] })).toEqual(dodBad);
+    expect(lintPlainBlockAdf({ type: 'doc', content: [...base, h('DoD'), code] })).toEqual(dodBad);
+  });
 });
 
 describe('plainBlockVerdict', () => {
