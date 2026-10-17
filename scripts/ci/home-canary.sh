@@ -60,8 +60,10 @@ age "$FAKE_HOME/.env" || { echo "home-canary: cannot age the honeytoken .env" >&
 
 # Does this filesystem move atime on a read?
 probe="$SANDBOX/atime-probe"
-: > "$probe" && age "$probe" && cat "$probe" > /dev/null
-if [ "$(atime_of "$probe")" = 0 ]; then
+{ : > "$probe" && age "$probe" && cat "$probe" > /dev/null; } || { echo "home-canary: cannot create the atime probe" >&2; exit 2; }
+probe_atime="$(atime_of "$probe")"
+case "$probe_atime" in ''|*[!0-9]*) echo "home-canary: cannot read the atime probe" >&2; exit 2 ;; esac
+if [ "$probe_atime" = 0 ]; then
   ATIME_TRACKED=0
   echo "home-canary: NOTE this filesystem does not track atime; a silent read of .env is invisible, only the log scan applies"
   if [ "${HOME_CANARY_REQUIRE_ATIME:-}" = 1 ]; then
@@ -73,7 +75,7 @@ else
 fi
 env_atime_before="$(atime_of "$FAKE_HOME/.env")"
 
-timeout "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" bash "$RUNNER" "$@" 2>&1 | tee "$LOG" | sed -u "s/$TOKEN/<honeytoken>/g"
+timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" bash "$RUNNER" "$@" 2>&1 | tee "$LOG" | sed -u "s/$TOKEN/<honeytoken>/g"
 ps=("${PIPESTATUS[@]}")
 rc="${ps[0]}"
 

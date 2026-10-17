@@ -208,10 +208,13 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [ "$EVENT" = pull_request ]; then
             bash scripts/ci/check-host-file-read-sinks.sh --range --merge-ref "$BASE_SHA"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            bash scripts/ci/check-host-file-read-sinks.sh --range "$BEFORE_SHA"
           else
             bash scripts/ci/check-host-file-read-sinks.sh --range "origin/$DEFAULT_BRANCH"
           fi
@@ -219,11 +222,14 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HOME_CANARY_REQUIRE_ATIME: "1"
         run: |
           if [ "$EVENT" = pull_request ]; then
             range="$BASE_SHA..HEAD"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            range="$BEFORE_SHA..HEAD"
           else
             range="origin/$DEFAULT_BRANCH..HEAD"
           fi
