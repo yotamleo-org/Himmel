@@ -77,6 +77,7 @@ lift=false  # HIMMEL-4423: never inherit an env value into the ledger row
 emit() {
   [ -d "$LEDGER_DIR" ] || mkdir -p "$LEDGER_DIR" 2>/dev/null
   degraded=false; [ "$usable" -eq 1 ] && degraded=true
+  [ "$usable" -eq 0 ] && [ "$1" = BANK-UNKNOWN ] && degraded=true
   # $LEG is caller-controlled and lands inside a JSON string — a
   # newline would split the record and a control character, quote or backslash
   # would make it invalid JSONL. Control characters become `?` (the ps view's own

@@ -8,7 +8,7 @@ W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 # All bank reads prune reservations, so isolate even bank-only cases.
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
 # a launching shell that exports the 95 workaround must not move the ceiling under test.
-export CADENCE_BANK_MAX_PCT=85
+export CADENCE_BANK_MAX_PCT=85 CADENCE_BANK_MAX_AGE=600
 
 # NO_FLEET: an empty-output ps stub, isolating every bank-only case below
 # from this machine's OWN running fleet (a real `ps -eo args` would count
@@ -131,6 +131,13 @@ if [ "$single_degraded" = true ] && [ "$two_healthy" = true ]; then
 else
   FAIL=$((FAIL+1)); echo "FAIL - ledger does not record degraded state"
 fi
+
+# Zero usable primaries is total blindness: the row must say degraded:true, not look healthy.
+rm -f "$W/ledger.jsonl"
+blind_out="$(verdict "$(fx null null "$NOW" "")")"
+check "zero usable primaries -> BANK-UNKNOWN" BANK-UNKNOWN "$blind_out"
+blind_degraded=false; grep -q '"verdict":"BANK-UNKNOWN".*"degraded":true' "$W/ledger.jsonl" && blind_degraded=true
+check "zero-usable BANK-UNKNOWN row logs degraded:true" true "$blind_degraded"
 
 # A non-numeric primary must not reach the ledger row raw (a quote or brace in
 # the cache JSON would make the line invalid JSONL for every ledger reader).
