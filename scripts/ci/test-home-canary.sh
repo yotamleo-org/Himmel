@@ -78,6 +78,11 @@ fi
 mkfx red 'echo boom; exit 3'
 run_canary red
 [ "$RC" -ne 0 ] && ok "runner failure propagates" || bad "runner failure swallowed"
+OUT="$(HOME_CANARY_RUNNER_FAIL_OK=1 TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/red.sh" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && ok "RUNNER_FAIL_OK=1 downgrades a runner failure to a note" || bad "RUNNER_FAIL_OK=1 still failed rc=$RC: $OUT"
+mkfx red-leak 'cat "$HOME/.env"; exit 3'
+OUT="$(HOME_CANARY_RUNNER_FAIL_OK=1 TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/red-leak.sh" 2>&1)"; RC=$?
+[ "$RC" -ne 0 ] && ok "RUNNER_FAIL_OK=1 still fails a leak" || bad "RUNNER_FAIL_OK=1 hid a leak"
 
 # --- 6. bounded runtime ----------------------------------------------------------
 mkfx slow 'sleep 30; exit 0'

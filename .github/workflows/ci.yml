@@ -198,7 +198,7 @@ jobs:
   # no plan group. No secrets; the checkout does not persist the token.
   home-canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 40 # estimate: impacted suites ~3-10m, canary bound 1500s (25m) plus the log print; confirm p95 after first runs
+    timeout-minutes: 55 # estimate: impacted suites ~3-10m, ~25m for a PR touching ci.yml; canary bound 2700s (45m) plus the log print; confirm p95 after first runs
     steps:
       - uses: actions/checkout@v7
         with:
@@ -225,6 +225,10 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HOME_CANARY_REQUIRE_ATIME: "1"
+          # The shard job installs bun, bwrap, at and ffmpeg; this bare job does not,
+          # so suite results stay with the shards and only a leak, read or timeout fails here.
+          HOME_CANARY_RUNNER_FAIL_OK: "1"
+          HOME_CANARY_TIMEOUT: "2700"
         run: |
           if [ "$EVENT" = pull_request ]; then
             range="$BASE_SHA..HEAD"

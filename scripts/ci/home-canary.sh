@@ -15,7 +15,9 @@
 # Usage: home-canary.sh [--runner <script>] [runner args...]
 #   default runner: scripts/ci/run-shell-tests.sh (args pass through, e.g.
 #   --impacted <base>..<head>). HOME_CANARY_TIMEOUT bounds the runner (seconds,
-#   default 1500). The sandbox is removed on every exit path.
+#   default 1500). HOME_CANARY_RUNNER_FAIL_OK=1 downgrades a nonzero runner exit
+#   to a note, for a job that lacks the tools the real shard job installs.
+#   The sandbox is removed on every exit path.
 # Exit: 0 clean; 1 leak, runner failure or timeout; 2 usage / setup error.
 #
 # ponytail: only $HOME and $USERPROFILE are redirected, so a suite that reads a
@@ -95,8 +97,12 @@ if [ "$rc" -eq 124 ]; then
   fail=1
   echo "home-canary: FAIL runner timed out after ${TIMEOUT_S}s" >&2
 elif [ "$rc" -ne 0 ]; then
-  fail=1
-  echo "home-canary: FAIL runner exited rc=$rc" >&2
+  if [ "${HOME_CANARY_RUNNER_FAIL_OK:-}" = 1 ]; then
+    echo "home-canary: NOTE runner exited rc=$rc; suite results are gated by the shell-unit shards, only a leak, a read or a timeout fails here"
+  else
+    fail=1
+    echo "home-canary: FAIL runner exited rc=$rc" >&2
+  fi
 fi
 
 if [ "$fail" -eq 0 ]; then
