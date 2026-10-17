@@ -2685,8 +2685,7 @@ backstop guards.
 **Command position and the dispatcher (HIMMEL-6015).** Before the text scan,
 a command whose every command word provably runs no gate directly is allowed:
 an inert reader, an inert `sed`, a pathspec-only `git`, `echo`, `printf`
-without `-v`, `cd`, a `python` whose text names no target and holds no
-process-spawning name, or
+without `-v`, `cd`, or
 `bash` running `scripts/handover/console-kit/himmel-gate.sh` by its exact
 anchored spelling (`bash "$HIMMEL_REPO/…/himmel-gate.sh" <name> <args>`, with
 `HIMMEL_REPO` absolute and every other `HIMMEL_REPO` reference refused). Such a
@@ -2696,31 +2695,15 @@ redirect other than an fd dup or `/dev/null`, and a live `$` only as a plain
 `|`, never `;`, `||`, `&` or a newline, and a pipe straight after the
 dispatcher needs a lone `--help` (an fd dup such as `1>&2` hides the pipe from
 the dispatcher's own check). So a target named in a commit message, `git grep`, `sed -n`
-or a `cat` heredoc no longer denies. A `python` whose text names a target
-denies outright: its argv is python list items (`['bash', 'scripts/cr/x.sh']`),
-which the shell-word text scan cannot resolve. The check reads the text with
-empty and `.` path segments dropped, plus every word of the command dequoted
-and normalised, so `scripts/cr//x.sh`, `scripts/c""r/x.sh` and
-`scripts/cr/./x.sh` deny too, as does such a path piped in from another
-segment. A python carrying anything the text scan weighs (a token whose
-basename names or globs onto a target, a `cr/`, `handover/` or `pr-check`
-word, a `$` or a brace) falls through to that scan, so it is denied wherever
-main denies it (`cd scripts/cr && python3 … x.sh`). The dispatcher runs a registered
+or a `cat` heredoc no longer denies. A `python` command is not on that list:
+it goes to the text scan unchanged, and its body parse is HIMMEL-6014. The dispatcher runs a registered
 gate or ledger writer by name from the anchor. Before the exec it refuses an
 unknown name, a relative `HIMMEL_REPO`, an anchor off `refs/heads/main` or
 whose copy of the script, the dispatcher or `anchor-handoff.sh` differs from
 main's committed bytes, and so for what the script runs or sources (all of
 `scripts/cr/`, `scripts/guardrails/lib.sh` and `scripts/lib/load-dotenv.sh`
 for `pr-check-context` / `pr-check-env`; `go-gate.sh` and `handover-path.sh`
-for `go`, the set the guard holds them to), and a piped stdout (a lone `--help` is exempt). The
-python check reads names, not code, so a target path python assembles from
-pieces no token names or reads from a file it is handed (`python3 runner.py <target>`) passes,
-as does a spawn the name list misses. Only a bare `python`/`python3` command
-word gets this check: `/usr/bin/python3`, `python3.14`, `env python3`,
-`command python3`, a quoted `"python3"`, a trailing comment or a leading
-`true;` fall through to the text scan, which allows a python list argv and a
-non-canonical path literal inside the python text, as on main. The hook's
-`ponytail:` names this; the structural parser in HIMMEL-6014 is the upgrade.
+for `go`, the set the guard holds them to), and a piped stdout (a lone `--help` is exempt).
 
 **Why the anchor, not a ref.** The compare base is the anchor's working-tree
 bytes, never `refs/remotes/origin/main`. Refs live in the common git dir, which

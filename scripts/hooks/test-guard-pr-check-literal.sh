@@ -1465,9 +1465,7 @@ print(glob.glob('*/node_modules/*'))
 PY
 ENVELOPE
 )
-# A glob that can spell a target leaves python to the text scan, which
-# denies it after a cd, as on main.
-run "HIMMEL-6015 cd + python3 heredoc with a */ glob -> deny, as on main" 2 "$(payload "$H4367_CD_PY" "$WT")" "$HR"
+run "HIMMEL-4367 cd + python3 heredoc with a */ glob stays judged (python runs its body) -> deny" 2 "$(payload "$H4367_CD_PY" "$WT")" "$HR"
 H4367_CAT=$(cat <<'ENVELOPE'
 cat > /tmp/rows.txt <<'EOF'
 echo x | xargs -I{} sh -c 'y {}'
@@ -1604,15 +1602,8 @@ done
 # ... but the same text piped or substituted into an interpreter, a real
 # separator outside the quotes, a non-message gh/node, a VAR= prefix, a write
 # and git commit's message (it lands in .git/COMMIT_EDITMSG; -F is the remedy)
-# all stay denied.
-# A python heredoc naming no target and no process-spawning name (PY_SPAWN_RE)
-# is allowed; one whose text names a gate is denied, even one that only prints it.
-v="python3 - <<'EOF'${NL}print(len('abc'))${NL}EOF"
-run "HIMMEL-6015 python3 heredoc naming no gate -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
-v="python3 - <<'EOF'${NL}print('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF"
-run "HIMMEL-6015 python3 heredoc printing a gate path -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
-v="python3 - <<'EOF'${NL}import os; os.system('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF"
-run "HIMMEL-6015 python3 heredoc os.system on go.sh -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
+# all stay denied. The python3 heredoc is a deliberate keep: python runs its
+# body as code.
 # shellcheck disable=SC2016 # the literal `$(...)` text, never expanded here
 for v in \
     "cat <<'EOF' | bash${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
@@ -1621,6 +1612,7 @@ for v in \
     "bash -c \"\$(cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF${NL})\"" \
     "eval \"\$(cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF${NL})\"" \
     "cat <<'EOF'; bash scripts/cr/write-verdicts.sh sweep${NL}x${NL}EOF" \
+    "python3 - <<'EOF'${NL}print('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF" \
     "cat > /tmp/x.md <<'EOF'${NL}then run bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
     'gh pr comment 1 --body "x"; bash scripts/cr/write-verdicts.sh sweep' \
     'gh pr comment 1 --body "x" | bash scripts/cr/write-verdicts.sh sweep' \
@@ -2217,7 +2209,9 @@ g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*
 # must pass (a mention, or a himmel-gate run from the anchor), deny-* must stay
-# refused (the intended catches). Two rows need a dirty worktree copy first.
+# refused (the intended catches). Python is left to the text scan below, so a
+# python row pins main's verdict; allow-asmain-* are python spellings main
+# allows too. Some rows need a dirty worktree copy first.
 FX_CMDPOS="$(cd "$(dirname "$0")" && pwd)/fixtures/guard-pr-check-literal-cmdpos"
 for f in "$FX_CMDPOS"/*.cmd; do
     name="${f##*/}"
@@ -2225,7 +2219,7 @@ for f in "$FX_CMDPOS"/*.cmd; do
     case "$name" in
     deny-catch-anchor-mismatch.cmd) echo changed >>"$WT/scripts/cr/ledger-append.sh" ;;
     deny-gate-relative-dirty.cmd) echo changed >>"$WT/scripts/handover/console-kit/himmel-gate.sh" ;;
-    deny-python-*-execv.cmd) echo changed >>"$WT/scripts/cr/write-verdicts.sh" ;;
+    deny-python-*-execv.cmd | allow-asmain-python-*-execv.cmd) echo changed >>"$WT/scripts/cr/write-verdicts.sh" ;;
     esac
     run "6015: [$name]" "$want" "$(payload "$(cat "$f")" "$WT")" "$HR"
     g -C "$WT" checkout -q -- .

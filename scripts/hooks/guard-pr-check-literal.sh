@@ -1511,7 +1511,7 @@ edhook_deny() {
 # an honest rc", which is a property of how a script is EXECUTED, so a command
 # whose every segment provably executes none directly is allowed before the
 # text classification below: each command word is a reader (PR_READERS), an
-# inert sed, a pathspec-only git, echo, printf without -v, cd, python, or
+# inert sed, a pathspec-only git, echo, printf without -v, cd, or
 # `bash` running the dispatcher by its exact anchored spelling - the
 # dispatcher owns the byte and no-pipe checks, so only an rc-masking separator
 # anywhere after it (`;`, `||`, `&`, a newline) and a pipe straight after it
@@ -1519,19 +1519,6 @@ edhook_deny() {
 # no $'…', no comment, no write redirect but an fd dup or /dev/null, and a
 # live `$` only as a plain $NAME / ${NAME} reference. A heredoc body is not a
 # word and is allowed. Anything else falls through unchanged.
-# ponytail: python body unparsed, upgrade via the structural parser HIMMEL-6014.
-# A python whose text names a target denies here: the text scan below reads
-# shell words, and a quoted list item ('scripts/cr/x.sh',) never resolves to
-# one. A python carrying any candidate the text scan weighs falls through to
-# that scan, so it is denied wherever main denies it. Only a python naming no
-# target, no candidate and no spawn name is exempt, so the residual is a
-# target path it assembles from pieces no token names or reads from a file it
-# is handed (`python3 runner.py <target>`), plus any spawn the name list misses.
-# Only a bare python/python3 command word reaches this case. A python spelled
-# any other way (/usr/bin/python3, python3.14, env python3, command python3,
-# a quoted "python3"), or a command with a trailing comment or a leading
-# `true;`, falls through to the text scan, which allows a python list argv
-# and a non-canonical path literal inside the python text, as on main.
 is_target() { # is_target <basename> - names, or globs onto, a guarded script, in any case
     local t rc=1
     shopt -s nocasematch
@@ -1564,22 +1551,7 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     return "$rc"
 }
 
-# py_norm <text> - norm's empty and . segment drop, into REPLY without a fork.
-py_norm() {
-    local t=/$1/
-    while :; do
-        case "$t" in
-            *//*) t=${t//\/\//\/} ;;
-            */./*) t=${t//\/.\//\/} ;;
-            *) break ;;
-        esac
-    done
-    t=${t#/}
-    REPLY=${t%/}
-}
-
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh
-PY_SPAWN_RE='subprocess|os\.|popen|pty\.|runpy|exec[[:space:]]*\(|eval[[:space:]]*\(|compile[[:space:]]*\(|__import__|importlib|ctypes|system'
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 # cmdpos_git <git word index> - a pathspec-only git, or one that names no
@@ -1647,35 +1619,6 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                     ;;
                 sed) st_sed_args "$k" 0 || return 1 ;;
                 git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
-                python | python3)
-                    shown=${cmd//$'\n'/ }
-                    shown=${shown:0:200}
-                    # The raw text normalised (a heredoc body is no word),
-                    # plus every word of every segment dequoted and
-                    # normalised (scripts/c""r//x.sh piped in).
-                    py_norm "$cmd"
-                    t=$REPLY
-                    j=0
-                    while [ "$j" -lt "$ST_N" ]; do
-                        py_norm "${ST_W[j]}"
-                        t="$t $REPLY"
-                        j=$((j + 1))
-                    done
-                    ! names_target "$t" || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
-                    # Any candidate the text scan below would weigh (a token
-                    # whose basename names or globs onto a target, a cr/,
-                    # handover/ or pr-check word, a $ or brace word) leaves
-                    # the verdict to that scan, so this case allows nothing
-                    # main's scan denies.
-                    case "$flat" in *[cC][rR]/* | *[hH][aA][nN][dD][oO][vV][eE][rR]/* | *[pP][rR]-[cC][hH][eE][cC][kK]* | *HIMMEL_REPO* | *'$'* | *'{'* | *'}'*) return 1 ;; esac
-                    _c_ops_eq_to_nl "$flat"
-                    for t in $REPLY; do
-                        py_norm "$t"
-                        if is_target "${REPLY##*/}" || is_htarget "${REPLY##*/}"; then return 1; fi
-                    done
-                    [[ ! $cmd =~ $PY_SPAWN_RE ]] || return 1
-                    kind=strict
-                    ;;
                 printf) kind='printf' ;;
                 echo | cd) ;;
                 *) case "$PR_READERS" in *" $w "*) ;; *) return 1 ;; esac ;;
