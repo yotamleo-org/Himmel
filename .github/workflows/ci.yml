@@ -198,13 +198,13 @@ jobs:
   # no plan group. No secrets; the checkout does not persist the token.
   home-canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 4 shards ~12m each; canary bound 1500s plus the log print; confirm p95 after first runs
+    timeout-minutes: 30 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 8 shards ~6-12m each (4 shards measured 15-23m on hosted runners and one hit the bound); canary bound 1500s plus the log print; confirm p95 after first runs
     strategy:
       # Every shard reports its own leak; one red must not hide another.
       fail-fast: false
       matrix:
-        # The 4 here and the /4 in the run step are one number.
-        shard: [1, 2, 3, 4]
+        # The 8 ids here and the /8 in the run step are one number.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -242,7 +242,7 @@ jobs:
           else
             range="origin/$DEFAULT_BRANCH..HEAD"
           fi
-          bash scripts/ci/home-canary.sh --impacted "$range" --shard "${{ matrix.shard }}/4"
+          bash scripts/ci/home-canary.sh --impacted "$range" --shard "${{ matrix.shard }}/8"
 
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
