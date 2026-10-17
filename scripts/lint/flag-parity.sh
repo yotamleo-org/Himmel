@@ -123,7 +123,7 @@ awk '
 ' $(cat "$tmp/cited") 2>/dev/null | sort -u > "$tmp/carried"
 
 awk -F'\t' '
-  NR == FNR { have[$1 "\t" $2] = 1; next }
+  FILENAME == ARGV[1] { have[$1 "\t" $2] = 1; next }
   !(($2 "\t" $3) in have) { print }
 ' "$tmp/carried" "$tmp/mentions" > "$tmp/drift"
 
@@ -133,7 +133,7 @@ case "$mode" in
   changed) git diff --name-only --diff-filter=ACMR "$range" > "$tmp/touched" || { echo "flag-parity: cannot diff $range" >&2; exit 2; } ;;
 esac
 if [ "$mode" != all ]; then
-  awk -F'\t' 'NR == FNR { t[$0] = 1; next } ($1 in t) || ($2 in t)' "$tmp/touched" "$tmp/drift" > "$tmp/scoped"
+  awk -F'\t' 'FILENAME == ARGV[1] { t[$0] = 1; next } ($1 in t) || ($2 in t)' "$tmp/touched" "$tmp/drift" > "$tmp/scoped"
   mv "$tmp/scoped" "$tmp/drift"
 fi
 
@@ -145,7 +145,7 @@ if [ "$write_baseline" = 1 ]; then
 fi
 
 if [ -n "$baseline" ] && [ -f "$baseline" ]; then
-  awk 'NR == FNR { ok[$0] = 1; next } !($0 in ok)' "$baseline" "$tmp/drift" > "$tmp/new"
+  awk 'FILENAME == ARGV[1] { ok[$0] = 1; next } !($0 in ok)' "$baseline" "$tmp/drift" > "$tmp/new"
 else
   cp "$tmp/drift" "$tmp/new"
 fi

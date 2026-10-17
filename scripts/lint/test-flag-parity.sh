@@ -91,6 +91,16 @@ git add -A
 out=$(bash "$lint" --advisory 2>&1); rc=$?
 if [ "$rc" = 0 ] && [[ "$out" == *"advisory"*"--beta"* ]]; then ok "8 --advisory lists undocumented --beta"; else bad "8 advisory (rc=$rc: $out)"; fi
 
+mkdir -p scripts
+printf '#!/usr/bin/env bash\necho no flags here\n' > scripts/bare.sh
+echo 'Run `scripts/bare.sh --ghost`.' > docs/a.md
+git add -A
+out=$(bash "$lint" 2>&1); rc=$?
+if [ "$rc" = 1 ] && [[ "$out" == *"--ghost"* ]]; then ok "10 script with no flag tokens still fails a documented flag"; else bad "10 empty carried (rc=$rc: $out)"; fi
+: > empty.tsv
+out=$(bash "$lint" --baseline empty.tsv 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "11 empty baseline file does not swallow drift" || bad "11 empty baseline (rc=$rc: $out)"
+
 cd "$repo_root" || exit 1
 out=$(bash "$lint" --baseline scripts/lint/flag-parity-baseline.tsv 2>&1); rc=$?
 [ "$rc" = 0 ] && ok "9 real tree passes with the baseline" || bad "9 real tree (rc=$rc: $out)"
