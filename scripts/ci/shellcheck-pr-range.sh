@@ -135,10 +135,11 @@ trap 'rm -f "$dz" "$list" "$list.n"' EXIT
 # string spanning lines is not blanked, upgrade path is a real shell tokenizer.
 cmd_pos() {
   local l b
-  # a double-quoted span holding $( or a backtick is executable, so it is not blanked
-  local dq='s/"([^"\\$`]|\\.|\$[^("\\])*"/""/g'
+  # one left-to-right scan, so an apostrophe inside a double-quoted span opens nothing; a
+  # double-quoted span holding $( or a backtick is executable, so the scan stops there
+  local prog=':a; s/^([^"\x27]*)("([^"\\$`]|\\.|\$[^("\\])*"|\x27[^\x27]*\x27)/\1_/; ta'
   while IFS= read -r l; do
-    b=$(printf '%s\n' "$l" | sed -E "s/'[^']*'/''/g; $dq")
+    b=$(printf '%s\n' "$l" | sed -E "$prog")
     printf '%s\n' "$b" | grep -qE -e "$src_re" && printf '%s\n' "$l"
   done
   return 0

@@ -182,6 +182,12 @@ out="$(. "$lib")"
 '; commit_case dyn_cmdsub
 verdict dyn_cmdsub ALL
 
+# dyn_mixq: apostrophes inside a double-quoted span do not open a single-quoted span
+reset; w scripts/zzm.sh '#!/usr/bin/env bash
+out="'"'"'$(. "$lib")'"'"'"
+'; commit_case dyn_mixq
+verdict dyn_mixq ALL
+
 # sweep_*: the non-dry fallback shards the full sweep in parallel through a stub pre-commit.
 # A stub shard fails when handed a file named *bad*; it records every invocation's file list.
 mkdir -p "$T/bin"
