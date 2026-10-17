@@ -76,6 +76,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -n "${PR_STALL_NOW:-}" ]; then
+    # swallow-ok: stderr only; a failed date exits through usage
     now="$(date -u -d "$PR_STALL_NOW" +%s 2>/dev/null)" || usage
 else
     now="$(date -u +%s)"
@@ -84,15 +85,21 @@ fi
 unknown() { printf 'STALL-UNKNOWN gh failed\n'; exit 3; }
 
 fields="number,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,updatedAt,createdAt"
+# swallow-ok: stderr only; every failed read below exits 3 through unknown
 list="$(gh pr list -R "$repo" --state open --limit 1000 --json number,headRefName 2>/dev/null)" || unknown
+# swallow-ok: stderr only; a failed read exits 3 through unknown
 runs="$(gh run list -R "$repo" --limit 50 --json status 2>/dev/null)" || unknown
+# swallow-ok: stderr only; a failed read exits 3 through unknown
 queue="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length' 2>/dev/null)" || unknown
+# swallow-ok: stderr only; a failed read exits 3 through unknown
 numbers="$(printf '%s' "$list" | jq -r '.[].number' 2>/dev/null)" || unknown
 
 # leg_for <pr> <branch> -> "<label>\t<session>" or empty
 leg_for() {
     [ -n "$manifest" ] && [ -r "$manifest" ] || return 0
-    local doc label
+    local doc label rows
+    # swallow-ok: an unreadable manifest leaves the PR unmapped (leg -), never mapped wrongly
+    rows="$(jq -r '.legs[]? | [.doc, (.label // "-")] | @tsv' "$manifest" 2>/dev/null)"
     while IFS="$TAB" read -r doc label; do
         [ -r "$doc" ] || continue
         # whole branch token only: feat/foo must not match a doc naming feat/foo-extra
@@ -101,7 +108,7 @@ leg_for() {
             return 0
         fi
     done <<EOF
-$(jq -r '.legs[]? | [.doc, (.label // "-")] | @tsv' "$manifest" 2>/dev/null)
+$rows
 EOF
 }
 
@@ -139,10 +146,14 @@ if [ "$notify" = 1 ]; then
 fi
 
 for n in $numbers; do
+    # swallow-ok: stderr only; a failed read exits 3 through unknown
     pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown
+    # swallow-ok: a failed mergeable read skips the re-read; the classify step below fails closed
     if [ "$(printf '%s' "$pr" | jq -r '.mergeable' 2>/dev/null)" = "UNKNOWN" ]; then
+        # swallow-ok: stderr only; a failed read exits 3 through unknown
         pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown
     fi
+    # swallow-ok: stderr only; a failed classify exits 3 through unknown
     res="$(printf '%s' "$pr" | jq -r --argjson now "$now" --argjson noci "$noci_min" --argjson slow "$slow_min" --argjson idle "$idle_h" --argjson queue "$queue" "$JQ_CLASSIFY" 2>/dev/null)" || unknown
     [ -n "$res" ] || continue
     classes="${res%%"$TAB"*}"; detail="${res#*"$TAB"}"
