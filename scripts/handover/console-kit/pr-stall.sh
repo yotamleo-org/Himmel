@@ -40,6 +40,9 @@
 #
 # Test seams: PR_STALL_NOW (ISO-8601 clock), PR_STALL_INBOX_SEND (sender).
 #
+# ponytail: updatedAt stands in for the push time, so a comment resets the
+# no-ci clock and delays detection; upgrade: read the head's push event from
+# the PR timeline.
 # ponytail: standalone, run by hand or by a leg; wiring a stall= field into
 # tick.sh and a wake key into console-wait.sh waits for PR 2887 (both files are
 # in flight there), the follow-up slice.
@@ -92,7 +95,8 @@ leg_for() {
     local doc label
     while IFS="$TAB" read -r doc label; do
         [ -r "$doc" ] || continue
-        if grep -qF -- "$2" "$doc" 2>/dev/null || grep -Eq -- "(PR |pull/)#?$1([^0-9]|$)" "$doc" 2>/dev/null; then
+        # whole branch token only: feat/foo must not match a doc naming feat/foo-extra
+        if grep -oE '[A-Za-z0-9._/+-]+' "$doc" 2>/dev/null | grep -qxF -- "$2" || grep -Eq -- "(PR |pull/)#?$1([^0-9]|$)" "$doc" 2>/dev/null; then
             printf '%s\t%s\n' "$label" "$(leg_identity "$doc" | cut -f2 | cut -d, -f1)"
             return 0
         fi

@@ -97,6 +97,12 @@ run --notify > /dev/null
 check "--notify twice sends once (2887 only; 9003 has no leg)" "1" "$(wc -l < "$WORK/sent.log" | tr -d ' ')"
 has "notify targets the leg session and names the action" '^HIMMEL-5969-N2362-succession-wake-once-2026-10-16 .*merge' "$(cat "$WORK/sent.log")"
 
+printf '# leg\n- PR: feat/himmel-5969-succession-wake-once-b-extra\n' > "$DOC"
+out="$(run)"
+hasnt "a doc naming a longer branch does not own 2887" '^STALL 2887 conflict N2362 ' "$out"
+has "the unowned 2887 is listed with leg -" '^STALL 2887 conflict - ' "$out"
+printf '# leg\n- PR: feat/himmel-5969-succession-wake-once-b\n' > "$DOC"
+
 : > "$WORK/sent.log"
 out="$(XDG_RUNTIME_DIR=/proc/no-such-dir run --notify)"; rc=$?
 check "unwritable notify state lists without sending, exit 0" "0:0" "$rc:$(wc -l < "$WORK/sent.log" | tr -d ' ')"
