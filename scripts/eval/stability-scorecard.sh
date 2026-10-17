@@ -148,8 +148,10 @@ cmd_arm() {
     [[ "$hour" =~ ^([0-9]|1[0-9]|2[0-3])$ ]] || { echo "ERR scorecard: --hour must be 0-23, got: $hour" >&2; return 1; }
     [[ "$minute" =~ ^([0-9]|[1-5][0-9])$ ]] || { echo "ERR scorecard: --minute must be 0-59, got: $minute" >&2; return 1; }
     slug="${USER_SLUG:-${USER:-}}"
-    [ -n "${HANDOVER_DIR:-}" ] && [ -n "$slug" ] \
-        || { echo "ERR scorecard: arm needs HANDOVER_DIR and USER_SLUG (the cron would write its row to the wrong TSV)" >&2; return 1; }
+    if [ -z "${HANDOVER_DIR:-}" ] || [ -z "$slug" ]; then
+        echo "ERR scorecard: arm needs HANDOVER_DIR and USER_SLUG (the cron would write its row to the wrong TSV)" >&2
+        return 1
+    fi
     root="$(resolve_primary)" || { echo "ERR scorecard: cannot resolve the primary checkout" >&2; return 2; }
     cron_read || return 4
     if [ -n "$(cron_entry)" ] && [ "$force" -eq 0 ]; then
