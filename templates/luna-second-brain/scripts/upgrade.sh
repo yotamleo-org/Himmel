@@ -988,7 +988,15 @@ claude_threeway() {
     # No recorded base => use pristine template as base (=> ours wins, safe).
     local base_use="$base"
     [ -f "$base" ] || base_use="$theirs"
-    local merged mf_err rc resolved="" report=""
+    local merged mf_err rc resolved="" report="" ours_in="$ours" migrated=""
+    # With no base that merge has a zero delta, so a section the vault lacks
+    # would never arrive while the stamp still advanced. Insert it into the
+    # merge input instead; a vault that already has the heading is untouched.
+    if [ ! -f "$base" ] && ! grep -q '^## Retrieval Routing' "$ours" \
+        && grep -q '^## Retrieval Routing' "$theirs" && migrated="$(mktemp)" \
+        && migrate_routing_section "$ours" "$theirs" "$migrated"; then
+        ours_in="$migrated"
+    fi
     # Preflight the git launcher itself: `git merge-file` exits with the
     # conflict-hunk count TRUNCATED TO 127, so 126/127 from the merge are
     # legitimate high-conflict results — indistinguishable from the shell's
@@ -1001,7 +1009,7 @@ claude_threeway() {
         return 0
     fi
     merged="$(mktemp)"; mf_err="$(mktemp)"
-    git merge-file -p "$ours" "$base_use" "$theirs" > "$merged" 2>"$mf_err"; rc=$?
+    git merge-file -p "$ours_in" "$base_use" "$theirs" > "$merged" 2>"$mf_err"; rc=$?
     if [ "$rc" -eq 0 ]; then
         CLAUDE_MERGE_RESULT="clean"
         if [ "$execute" = 1 ]; then
@@ -1052,7 +1060,28 @@ claude_threeway() {
             echo "    (git produced no diagnostic output)" >&2
         fi
     fi
-    rm -f "$merged" "$mf_err" "${resolved:-}" "${report:-}"
+    rm -f "$merged" "$mf_err" "${resolved:-}" "${report:-}" "${migrated:-}"
+}
+
+# Copy <theirs>'s Retrieval Routing section (heading up to the next `---`
+# rule) into <ours> just before its "## Vault Identity" heading, else at the
+# end. Args: <ours> <theirs> <out>; exit 1 = no section in <theirs>.
+migrate_routing_section() {
+    local ours="$1" theirs="$2" out="$3" sec
+    sec="$(mktemp)" || return 1
+    awk '/^## Retrieval Routing/ {on=1} on && /^---[ \t]*$/ {exit} on {print}' "$theirs" > "$sec"
+    if [ ! -s "$sec" ]; then rm -f "$sec"; return 1; fi
+    if grep -q '^## Vault Identity' "$ours"; then
+        awk -v secf="$sec" '
+            /^## Vault Identity/ && !done {
+                while ((getline l < secf) > 0) buf = buf l "\n"
+                sub(/\n+$/, "\n", buf); printf "%s\n---\n\n", buf; done=1
+            }
+            {print}' "$ours" > "$out"
+    else
+        { cat "$ours"; printf '\n---\n\n'; cat "$sec"; } > "$out"
+    fi
+    rm -f "$sec"
 }
 
 # A conflict hunk whose vault ("ours") side is EMPTY while the base
