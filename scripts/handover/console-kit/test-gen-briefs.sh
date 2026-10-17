@@ -281,7 +281,8 @@ if len(sys.argv)>5: l[0]["platform_removal"]=True if sys.argv[5]=="yes" else sys
 json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/pl.json" "$@"
     python3 "$SUT" "$WORK/pl.json" --base 4ccb59d --console BZ --bucket "$WORK/pl-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pl.err"
 }
-pl_written() { ls "$WORK/pl-out"/*.md "$WORK/pl-out"/launch-*.sh >/dev/null 2>&1; }
+pl_written() { [ -n "$(find "$WORK/pl-out" -type f -print -quit 2>/dev/null)" ]; }
+pl_complete() { ls "$WORK/pl-out"/*.md >/dev/null 2>&1 && ls "$WORK/pl-out"/launch-*.sh >/dev/null 2>&1; }
 pl_gen title 'AG-UI session name handles Windows cwd separators'; rc=$?
 [ "$rc" = 1 ] && grep -q "N901" "$WORK/pl.err" && grep -qi "windows" "$WORK/pl.err" && ! pl_written && pass "a leg titled with Windows is refused, naming the leg, nothing written" || fail "windows title rc=$rc: $(cat "$WORK/pl.err")"
 pl_gen desc 'run the WSL codex lane'; rc=$?
@@ -291,7 +292,7 @@ pl_gen scope 'the .ps1 twin'; rc=$?
 pl_gen why 'it breaks under Git Bash'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "a why naming Git Bash is refused" || fail "git bash why rc=$rc"
 pl_gen title 'Remove Windows leftovers' yes; rc=$?
-[ "$rc" = 0 ] && pl_written && pass "a Windows removal leg with platform_removal true is accepted" || fail "removal leg rc=$rc: $(cat "$WORK/pl.err")"
+[ "$rc" = 0 ] && pl_complete && pass "a Windows removal leg with platform_removal true is accepted" || fail "removal leg rc=$rc: $(cat "$WORK/pl.err")"
 pl_gen title 'Fix Windows leftovers' yes; rc=$?
 [ "$rc" = 1 ] && grep -q "platform_removal" "$WORK/pl.err" && ! pl_written && pass "platform_removal true on a non-removal title is refused" || fail "non-removal platform_removal rc=$rc: $(cat "$WORK/pl.err")"
 for bad in false yes 1; do
@@ -305,13 +306,13 @@ for bad in 'Fix Windows dropdown rendering' 'Fix the Windows cleanroom'; do
 done
 for good in 'Drop Windows support' 'Sweep Windows leftovers' 'Retire the WSL lane' 'Delete the .ps1 twins' 'Clean up Windows paths' 'Removing Windows code'; do
     pl_gen title "$good" yes; rc=$?
-    [ "$rc" = 0 ] && pl_written && pass "platform_removal true on '$good' is accepted" || fail "'$good' with platform_removal rc=$rc: $(cat "$WORK/pl.err")"
+    [ "$rc" = 0 ] && pl_complete && pass "platform_removal true on '$good' is accepted" || fail "'$good' with platform_removal rc=$rc: $(cat "$WORK/pl.err")"
 done
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "'runtime Windows' is not excused by the time-window qualifier" || fail "runtime Windows rc=$rc"
 for ok in 'cap the context window' 'widen the time window' 'Windowed rate limit' 'the context windows budget'; do
     pl_gen title "$ok"; rc=$?
-    [ "$rc" = 0 ] && pl_written && pass "'$ok' is not a platform mention" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
+    [ "$rc" = 0 ] && pl_complete && pass "'$ok' is not a platform mention" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
 done
 
 # Every leg and console pays these two files on every turn: keep the always-on core small

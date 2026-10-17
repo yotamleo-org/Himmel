@@ -227,14 +227,16 @@ mk HIMMEL-72 "To Do" High '[]' '[]' '[]' "Handle Windows cwd separators" "Edit s
 mk HIMMEL-73 "To Do" High '[]' '[]' '[]' "cap the context window" "Edit scripts/lib/p73.sh only."
 mk HIMMEL-74 "To Do" High '[]' '[]' '[]' "Windowed rate limit" "Edit scripts/lib/p74.sh only."
 M="$M_SAVE"
-pw="$(NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"
+pw="$(NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"; pw_rc=$?
+[ "$pw_rc" = 0 ] && pass "the platform-filter run exits 0" || fail "platform-filter run rc=$pw_rc"
 lacks "a WSL candidate is omitted" "$pw" "HIMMEL-70	"
 lacks "a Windows candidate is omitted" "$pw" "HIMMEL-72	"
 has "a windows-removal labelled candidate is kept" "$pw" "HIMMEL-71	"
 has "a 'context window' title is kept" "$pw" "HIMMEL-73	"
 has "a 'Windowed' title is kept" "$pw" "HIMMEL-74	"
 has "the skipped count line is printed" "$pw" "# skipped 2 windows/wsl ticket(s)"
-pw0="$(run --legs-from "$WORK/fleet.json")"
+pw0="$(run --legs-from "$WORK/fleet.json")"; pw0_rc=$?
+[ "$pw0_rc" = 0 ] && pass "the unrelated run exits 0" || fail "unrelated run rc=$pw0_rc"
 lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 printf '\n%d failure(s)\n' "$fails"
