@@ -85,8 +85,9 @@ if command -v graphify >/dev/null 2>&1; then
   rm -f "$T/bin/graphify"
   carried=0
   while IFS='|' read -r q text want; do
-    out="$(run query "$text")"
+    out="$(run query "$text")"; rc=$?
     n_nodes="$(grep -c '^NODE ' <<<"$out")"
+    if [ "$rc" != 0 ] || [ "$n_nodes" = 0 ]; then fail "T5 $q graphify answered rc=$rc with $n_nodes nodes"; continue; fi
     if [ -n "$want" ]; then
       if grep -F 'RATIONALE:' <<<"$out" | grep -qF "$want"; then carried=$((carried+1)); pass "T5 $q answer carries the reason text ($n_nodes nodes)"
       else fail "T5 $q answer lacks the reason text"; fi
