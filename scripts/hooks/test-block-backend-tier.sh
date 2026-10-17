@@ -222,6 +222,13 @@ for prefix in mcp__plugin_atlassian_atlassian__ mcp__claude_ai_Atlassian_MCP__; 
     assert_rc "block ${prefix}createJiraIssue" 2 "$rc"
     assert_stderr_contains "${prefix} write names CLI replacement" "$input" \
         'jira/dist/index.js create'
+    assert_stderr_contains "${prefix} create hint points at --desc-file" "$input" \
+        '--desc-file'
+    out=$(printf '%s' "$input" | env "JIRA_CLI=$STUB_FULL" "CONFLUENCE_CLI=$STUB_CONF" bash "$HOOK" 2>&1 >/dev/null || true)
+    case "$out" in
+        *'--desc "'*) echo "FAIL ${prefix} create hint still shows inline --desc"; FAILED=$((FAILED + 1)) ;;
+        *) echo "PASS ${prefix} create hint has no inline --desc" ;;
+    esac
     rc=$(run_case "{\"tool_name\":\"${prefix}lookupJiraAccountId\",\"tool_input\":{}}")
     assert_rc "allow ${prefix}lookupJiraAccountId (no CLI equivalent)" 0 "$rc"
     rc=$(run_case "$input" "$STUB_REDUCED")
