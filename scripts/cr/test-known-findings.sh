@@ -397,6 +397,49 @@ aev="$(node -e 'const j=require(process.argv[1]);const c=j.classes.find(c=>c.id=
 # that tells critics never to re-raise it.
 check "anchor rebuttal: ONLY the real escalation-claim learning attributes (9 uses, 1 row, not 13/2)" "$aev" "9 1"
 
+# learnings feed: PROPOSE-CLASS / STALE / PONYTAIL / DUPLICATE / PROMOTE-HINT lines and the re-measure counts.
+# Every case runs --refresh on a COPY of the shipped catalogue with its own tiny CSV and an absent ledger.
+LHDR='Learning,Repository,File,Pull Request,URL,Created By,Usage,Last Used,Created At,Updated At'
+LFILE='scripts/cr/known-findings.sh'
+lrow() { printf '"%s",himmel,%s,1,,u,"%s","x","y","z"\n' "$1" "$2" "$3"; }  # leak-allow: hostname test fixture CR-learnings CSV row's repository field
+lrun() { # <name> <csv> [status-tsv]; prints the refresh output
+  cp "$HERE/known-findings.json" "$tmp/kf-$1.json"
+  KNOWN_FINDINGS_FILE="$tmp/kf-$1.json" CR_LEDGER="$tmp/absent-ledger.jsonl" KNOWN_FINDINGS_TICKET_STATUS="${3:-$tmp/no-such-status.tsv}" bash "$SCRIPT" --refresh --learnings "$2" 2>&1
+}
+{ echo "$LHDR"; lrow 'Always frobnicate the zorble widget quickly.' "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; } > "$tmp/l-cluster.csv"
+lc="$(lrun cluster "$tmp/l-cluster.csv")"
+check "feed: two unmatched rows sharing a rule give exactly one PROPOSE-CLASS" "$(printf '%s\n' "$lc" | grep -c '^PROPOSE-CLASS ')" "1"
+contains "feed: PROPOSE-CLASS names id, rows, uses and globs" "$lc" "PROPOSE-CLASS id=frobnicate-zorble-widget rows=2 uses=7 globs=scripts/cr/** match=frobnicate\\s+zorble\\s+widget kind=fix canonical="
+
+{ echo "$LHDR"; lrow 'On Windows the pwsh launcher needs a quuxbar wrapper.' "$LFILE" 1; lrow 'A perfectly live frobnitz remark.' "$LFILE" 2; } > "$tmp/l-win.csv"
+lw="$(lrun win "$tmp/l-win.csv")"
+contains "feed: a Windows row is STALE with the reason" "$lw" "STALE row=1 uses=1 reason=windows"
+not_contains "feed: a live row is not STALE" "$lw" "STALE row=2"
+contains "feed: summary carries the four counts" "$lw" "learnings_export: rows=2 live_rows=1 stale_rows=1 unmatched_rows=2"
+check "feed: counts persist in the JSON summary" "$(node -e 'const e=require(process.argv[1]).learnings_export;console.log(e.rows,e.live_rows,e.stale_rows,e.unmatched_rows)' "$tmp/kf-win.json")" "2 1 1 2"
+
+{ echo "$LHDR"; lrow 'GLM glitch handling for the blorptag wrapper.' "$LFILE" 1; lrow 'Check the zonkdrift wrapper handles empty input.' 'scripts/cr/no-such-file-zz.sh' 2; lrow 'Private repo propagation must skip the vaultish dir.' "$LFILE" 1; } > "$tmp/l-gone.csv"
+lg="$(lrun gone "$tmp/l-gone.csv")"
+contains "feed: a GLM row is STALE" "$lg" "STALE row=1 uses=1 reason=glm"
+contains "feed: a row citing a file absent from git ls-files is STALE file-gone" "$lg" "STALE row=2 uses=2 reason=file-gone"
+contains "feed: a private-repo propagation row is STALE" "$lg" "STALE row=3 uses=1 reason=private-repo-propagation"
+
+printf 'HIMMEL-7001\tIn Progress\nHIMMEL-7002\tDone\n' > "$tmp/status.tsv"
+{ echo "$LHDR"; lrow 'Defer the snarfle cache fix to HIMMEL-7001 until later.' "$LFILE" 2; lrow 'Defer the gizmo rewrite to HIMMEL-7002 for now.' "$LFILE" 2; } > "$tmp/l-defer.csv"
+ld="$(lrun defer "$tmp/l-defer.csv" "$tmp/status.tsv")"
+contains "feed: a row deferring to an open ticket is PONYTAIL" "$ld" "PONYTAIL row=1 uses=2 ticket=HIMMEL-7001 status=In Progress"
+contains "feed: a row deferring to a Done ticket is STALE" "$ld" "STALE row=2 uses=2 reason=closed-deferral HIMMEL-7002 (Done)"
+lu="$(lrun deferu "$tmp/l-defer.csv")"
+not_contains "feed: unavailable Jira status never makes a row STALE" "$lu" "reason=closed-deferral"
+contains "feed: unavailable Jira status is reported as unknown" "$lu" "STATUS-UNKNOWN row=2 ticket=HIMMEL-7002"
+
+{ echo "$LHDR"; lrow 'Identical wibblefrotz remark about the same rule head here.' "$LFILE" 1; lrow 'Identical wibblefrotz remark about the same rule head here.' "$LFILE" 1; } > "$tmp/l-dup.csv"
+lp="$(lrun dup "$tmp/l-dup.csv")"
+check "feed: two rows with the same file and rule head are one DUPLICATE group" "$(printf '%s\n' "$lp" | grep -c '^DUPLICATE ')" "1"
+contains "feed: DUPLICATE lists the rows" "$lp" "DUPLICATE rows=1,2 uses=2"
+{ echo "$LHDR"; lrow 'A very popular quuzmarker rule.' "$LFILE" 120; } > "$tmp/l-hot.csv"
+contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-hot.csv")" "PROMOTE-HINT row=1 uses=120"
+
 # usage contract
 bash "$SCRIPT" >/dev/null 2>&1; check "no mode → exit 2" "$?" "2"
 # bare --diff defaults to <default-branch>...HEAD (the fixture HEAD IS its default branch → empty diff → clean)

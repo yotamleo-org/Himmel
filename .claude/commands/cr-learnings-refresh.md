@@ -15,14 +15,25 @@ cheap enough to run on demand.
    `evidence` block, `refreshed_at`, and (with `--learnings`) the top-level
    `learnings_export` summary; titles, globs, detectors and canonical
    texts are hand-curated and untouched.
-2. Judgment layer (the session): read the "Top unmatched" list. A learning with
-   ≥ 50 uses, or any class the step-2.8 hit counter keeps naming, becomes a new
-   entry in `scripts/cr/known-findings.json` — pick `kind` (fix / rebuttal /
-   checklist), a deterministic `detector` where one exists, and a `learning_match`
-   regex so the next refresh attributes it. A learning that merely restates a
-   rule a shell-lint check or `.coderabbit.yaml` instruction already enforces is
-   NOT a new class — note the coverage instead.
-3. `bash scripts/cr/test-known-findings.sh` must stay green; if ids changed,
+2. Build ONE checklist from the feed lines it printed (field meanings:
+   [`docs/internals/known-findings.md`](../../docs/internals/known-findings.md)),
+   one item per line, in this order:
+   - `STALE` — the CodeRabbit learning must be deleted in the CodeRabbit UI.
+   - `DUPLICATE` — keep one row of the group, delete the rest.
+   - `PONYTAIL` — keep; confirm the row's ticket still matches its text.
+   - `PROPOSE-CLASS` / `PROMOTE-HINT` — judgment layer (step 3).
+   - `STATUS-UNKNOWN` — re-run once Jira is reachable; never delete on it.
+3. Judgment layer (the session): a `PROPOSE-CLASS` draft, a `PROMOTE-HINT` row,
+   a "Top unmatched" learning with ≥ 50 uses, or any class the step-2.8 hit
+   counter keeps naming, becomes a new entry in `scripts/cr/known-findings.json`
+   — pick `kind` (fix / rebuttal / checklist), a deterministic `detector` where
+   one exists, and a `learning_match` regex so the next refresh attributes it. A
+   learning that merely restates a rule a shell-lint check or `.coderabbit.yaml`
+   instruction already enforces is NOT a new class — note the coverage instead.
+4. Do not finish while any `STALE` row is undeleted. Record each row's decision
+   (deleted / kept with reason / new class id) in the leg doc, not in the CSV or
+   the JSON; the re-run's `stale_rows` count must have dropped to what you kept.
+5. `bash scripts/cr/test-known-findings.sh` must stay green; if ids changed,
    paste the output of `bash scripts/cr/known-findings.sh --list` over the class
    table in [`docs/internals/known-findings.md`](../../docs/internals/known-findings.md)
    (it prints the table; nothing edits the doc for you). Land it as a normal
