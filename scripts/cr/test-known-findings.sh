@@ -409,7 +409,7 @@ lrun() { # <name> <csv> [status-tsv]; prints the refresh output
 { echo "$LHDR"; lrow 'Always frobnicate the zorble widget quickly.' "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; } > "$tmp/l-cluster.csv"
 lc="$(lrun cluster "$tmp/l-cluster.csv")"
 check "feed: two unmatched rows sharing a rule give exactly one PROPOSE-CLASS" "$(printf '%s\n' "$lc" | grep -c '^PROPOSE-CLASS ')" "1"
-contains "feed: PROPOSE-CLASS names id, rows, uses and globs" "$lc" "PROPOSE-CLASS id=frobnicate-zorble-widget rows=2 uses=7 globs=scripts/cr/** match=frobnicate[\\s\\S]{1,30}?zorble[\\s\\S]{1,30}?widget kind=fix canonical="
+contains "feed: PROPOSE-CLASS names id, rows, uses and globs" "$lc" "PROPOSE-CLASS id=frobnicate-zorble-widget rows=2 uses=7 globs=scripts/cr/** match=frobnicate[\\s\\S]{1,120}?zorble[\\s\\S]{1,120}?widget kind=fix canonical="
 lcm="$(printf '%s\n' "$lc" | sed -n 's/^PROPOSE-CLASS .* match=\(.*\) kind=.*/\1/p')"
 check "feed: the proposed match regex matches its own source learning" "$(node -e 'console.log(new RegExp(process.argv[1],"i").test("Always frobnicate the zorble widget quickly."))' "$lcm")" "true"
 
@@ -441,6 +441,12 @@ contains "feed: unavailable Jira status is reported as unknown" "$lu" "STATUS-UN
 lp="$(lrun dup "$tmp/l-dup.csv")"
 check "feed: two rows with the same file and rule head are one DUPLICATE group" "$(printf '%s\n' "$lp" | grep -c '^DUPLICATE ')" "1"
 contains "feed: DUPLICATE lists the rows" "$lp" "DUPLICATE rows=1,2 uses=2"
+{ echo "$LHDR"; lrow 'Identical wibblefrotz remark about the same rule head here.' "$LFILE" 1; printf '"Identical wibblefrotz remark about the same rule head here.",other-repo,%s,1,,u,"1","x","y","z"\n' "$LFILE"; } > "$tmp/l-dupr.csv"  # leak-allow: fixture row from another repository
+not_contains "feed: same file and head in different repositories is not a DUPLICATE" "$(lrun dupr "$tmp/l-dupr.csv")" "DUPLICATE "
+fill="$(printf 'the %.0s' $(seq 1 60))"
+{ echo "$LHDR"; lrow "Always frobnicate $fill zorble widget quickly." "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; } > "$tmp/l-mc.csv"
+contains "feed: a proposal that misses a source row is flagged match-check=failed" "$(lrun mc "$tmp/l-mc.csv")" "match-check=failed"
+not_contains "feed: a proposal matching every source row carries no match-check flag" "$lc" "match-check=failed"
 { echo "$LHDR"; lrow 'A very popular quuzmarker rule.' "$LFILE" 120; } > "$tmp/l-hot.csv"
 contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-hot.csv")" "PROMOTE-HINT row=1 uses=120"
 

@@ -140,7 +140,7 @@ function learningsFeed(rows) {
   }
   // duplicates: same file + normalized 12-token rule head
   const groups = {};
-  for (const r of live) { const h = toks(r.text).slice(0, 12).join(" "); if (h) (groups[r.file + "\u0000" + h] = groups[r.file + "\u0000" + h] || []).push(r); }
+  for (const r of live) { const h = toks(r.text).slice(0, 12).join(" "), k = r.repo.toLowerCase() + "\u0000" + r.file + "\u0000" + h; if (h) (groups[k] = groups[k] || []).push(r); }
   const dupGroups = Object.values(groups).filter((g) => g.length > 1);
   for (const g of dupGroups) lines.push(`DUPLICATE rows=${g.map((r) => r.n).join(",")} uses=${g.reduce((s, r) => s + r.uses, 0)} ${g[0].file} ${short(g[0].text)}`);
   const dupOf = new Map(); for (const g of dupGroups) for (const r of g) dupOf.set(r.n, g.length);
@@ -160,7 +160,9 @@ function learningsFeed(rows) {
     const uses = c.rows.reduce((s, r) => s + r.uses, 0);
     const id = c.gram.replace(/ /g, "-").replace(/[^a-z0-9_-]/g, "") || "cluster";
     const kind = c.rows.some((r) => /false positive|by design|intentional|not a bug|do not flag|should not (be )?flag/i.test(r.text)) ? "rebuttal" : "fix";
-    lines.push(`PROPOSE-CLASS id=${id} rows=${c.rows.length} uses=${uses} globs=${c.area === "." ? "*" : c.area + "/**"} match=${c.gram.replace(/ /g, "[\\s\\S]{1,30}?")} kind=${kind} canonical=${short(c.rows[0].text)} (rows ${c.rows.map((r) => r.n).join(",")})`); }
+    const match = c.gram.replace(/ /g, "[\\s\\S]{1,120}?");
+    const verified = c.rows.every((r) => new RegExp(match, "i").test(r.text)) ? "" : " match-check=failed";
+    lines.push(`PROPOSE-CLASS id=${id} rows=${c.rows.length} uses=${uses} globs=${c.area === "." ? "*" : c.area + "/**"} match=${match} kind=${kind} canonical=${short(c.rows[0].text)} (rows ${c.rows.map((r) => r.n).join(",")})${verified}`); }
   return { lines, stale, live };
 }
 // `rung` is the top rung of the correction ladder the class has
