@@ -1970,5 +1970,51 @@ run_upgrade --yes >/dev/null 2>&1; t70_rc=$?
 assert_eq "T70 apply exits 0" "0" "$t70_rc"
 assert_eq "T70 apply overwrites the bare-CR file with the template's" "$(sha_of "$T/.env.example")" "$(sha_of "$V/.env.example")"
 
+# ---------------------------------------------------------------------------
+# T71: a vault with NO base snapshot (upgraded before the snapshot existed) must
+# still receive a template section it lacks. With no base the merge used the new
+# template as base AND incoming — a zero delta — so the section never arrived
+# and the stamp advanced anyway. Controls: a second run changes nothing, a vault
+# that already has the section is not duplicated or rewritten, and a vault that
+# has a real base still takes the normal three-way merge.
+rr_tmpl() {  # $1 = template _CLAUDE.md path
+    printf '# Operating Manual\n\nline-a\n\n---\n\n## Retrieval Routing — which organ answers what\n\nroute-body-1\nroute-body-2\n\n---\n\n## Vault Identity\n\nidentity-body\n' > "$1"
+}
+rr_old() {  # $1 = vault _CLAUDE.md path: the pre-section template, retitled
+    printf '# My Own Vault Title\n\nline-a\n\n---\n\n## Vault Identity\n\nidentity-body\n' > "$1"
+}
+rr_count() { grep -c '^## Retrieval Routing' "$1" 2>/dev/null; }
+T="$TMP/t71-tmpl"; V="$TMP/t71-vault"; make_template "$T" "1.0.0"; rr_tmpl "$T/_CLAUDE.md"
+mkdir -p "$V"; stamp_vault "$V" "0.3.6"; rr_old "$V/_CLAUDE.md"
+run_upgrade --yes >/dev/null 2>&1; rc=$?
+assert_eq "T71 base-less upgrade rc" "0" "$rc"
+assert_eq "T71 base-less vault receives the Retrieval Routing section" "1" "$(rr_count "$V/_CLAUDE.md")"
+case "$(cat "$V/_CLAUDE.md")" in *route-body-2*) pass "T71 the section body arrived" ;; *) fail "T71 the section body arrived" "body missing" ;; esac
+assert_eq "T71 the vault's own title line survives" "# My Own Vault Title" "$(head -n 1 "$V/_CLAUDE.md")"
+case "$(cat "$V/_CLAUDE.md")" in *identity-body*) pass "T71 existing vault sections survive" ;; *) fail "T71 existing vault sections survive" "identity section lost" ;; esac
+got_ver=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$V/.vault-template.json" 2>/dev/null)
+assert_eq "T71 stamp advances once the section is in" "1.0.0" "$got_ver"
+t71_once=$(find "$V" -type f ! -name .vault-template.json -exec "${SHA256[@]}" {} \; | sort)
+# Second run: stamp rolled back so the upgrade really executes again.
+stamp_vault "$V" "0.3.6"
+run_upgrade --yes >/dev/null 2>&1
+assert_eq "T71 control: a second run adds no second copy" "1" "$(rr_count "$V/_CLAUDE.md")"
+assert_eq "T71 control: a second run changes nothing" "$t71_once" "$(find "$V" -type f ! -name .vault-template.json -exec "${SHA256[@]}" {} \; | sort)"
+# Vault already carries the section (its own wording): left byte-identical.
+T="$TMP/t71b-tmpl"; V="$TMP/t71b-vault"; make_template "$T" "1.0.0"; rr_tmpl "$T/_CLAUDE.md"
+mkdir -p "$V"; stamp_vault "$V" "0.3.6"
+printf '# My Own Vault Title\n\n## Retrieval Routing — my wording\n\nmine-only\n\n## Vault Identity\n\nidentity-body\n' > "$V/_CLAUDE.md"
+t71b_before=$(sha_of "$V/_CLAUDE.md")
+run_upgrade --yes >/dev/null 2>&1
+assert_eq "T71 control: an existing section is not duplicated" "1" "$(rr_count "$V/_CLAUDE.md")"
+assert_eq "T71 control: an existing section leaves _CLAUDE.md untouched" "$t71b_before" "$(sha_of "$V/_CLAUDE.md")"
+# Vault with a real base keeps the normal three-way merge (section added once).
+T="$TMP/t71c-tmpl"; V="$TMP/t71c-vault"; make_template "$T" "1.0.0"; rr_tmpl "$T/_CLAUDE.md"
+mkdir -p "$V/.vault-template.base"; stamp_vault "$V" "0.3.6"
+rr_old "$V/_CLAUDE.md"; rr_old "$V/.vault-template.base/_CLAUDE.md"
+run_upgrade --yes >/dev/null 2>&1
+assert_eq "T71 control: a vault with a base still gets the section once" "1" "$(rr_count "$V/_CLAUDE.md")"
+assert_eq "T71 control: the base snapshot advances to the template" "$(sha_of "$T/_CLAUDE.md")" "$(sha_of "$V/.vault-template.base/_CLAUDE.md")"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All upgrade tests passed."; else echo "$FAILED test(s) failed."; exit 1; fi

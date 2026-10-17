@@ -157,20 +157,20 @@ export function findDominatingPath(paths: { path: string; bytes: number }[]):
 // The pinned --no-renames name set splits ONE logical rename into a delete
 // path and an add path, each weighing ~N of the pair's 2N — so the per-path
 // dominance test above reads ~50% and stays silent. That silence models the
-// worker's ingest only when the worker's OWN `git diff` will attribute the
-// rename (diff.renames on, git's default since 2.9) and print a similarity
-// header instead of the blobs. With diff.renames=false — a real repo/user
-// setting — the worker ingests the FULL deletion plus the FULL addition, a
-// multi-MiB un-attributed text rename blows its context window, and a silent
-// guard is exactly the failure this guard exists to prevent. So the verdict
-// is CONDITIONED on the worker-side guarantee (read from the same cwd the
-// worker will run in), and only the un-guaranteed case groups a detected
-// delete/add pair into ONE logical hazard at the SUM of both blobs.
+// worker's ingest only when the worker's OWN `git diff` attributes the rename
+// and prints a similarity header instead of the blobs. Whether it does is not
+// a config question: git attributes only at >=50% similarity and only while
+// the rename limit holds, so a large file moved while most of it changes
+// reaches the worker as the FULL deletion plus the FULL addition under ANY
+// diff.renames. checkHugeDiff therefore MEASURES what the worker's own
+// `git diff --name-status` attributes and groups every delete/add pair it left
+// un-attributed into ONE logical hazard at the SUM of both blobs.
 //
-// Attribution comes from a probe that forces `-M` — the explicit flag
-// overrides diff.renames, so the pairing itself stays config-independent and
-// deterministic, exactly like the pinned name set; the config decides only
-// whether the grouping models the worker's actual ingest.
+// The pair itself comes from a probe that forces `-M1% -l2000` — explicit
+// flags beat config, so the pairing stays deterministic, exactly like the
+// pinned name set; the worker's own diff decides only which pairs are
+// un-attributed. An attributed partial rename still prints its changed hunks,
+// so it weighs (old+new) x (1 - similarity).
 
 // `git diff --name-status -z` rows are NUL-delimited as
 // `<status>\0<path>\0` — and `<status>\0<old>\0<new>\0` for R rows, the only
@@ -187,13 +187,27 @@ export function parseNameStatusRenames(out: string): { oldPath: string; newPath:
   return pairs;
 }
 
+// Every `--name-status -z` row as `{status, paths}` (R rows carry two paths).
+export function parseNameStatusRows(out: string): { status: string; paths: string[] }[] {
+  const rows: { status: string; paths: string[] }[] = [];
+  const fields = out.split("\0").filter(Boolean);
+  for (let i = 0; i < fields.length;) {
+    const n = fields[i].startsWith("R") || fields[i].startsWith("C") ? 2 : 1;
+    rows.push({ status: fields[i], paths: fields.slice(i + 1, i + 1 + n) });
+    i += 1 + n;
+  }
+  return rows;
+}
+
 // Fold each detected pair into ONE logical entry at old+new bytes — the text
 // a worker whose diff does NOT attribute the rename actually ingests — and
-// pass everything else through untouched. The TOTAL is unchanged (a pair's
+// pass everything else through untouched. A pair's optional `scale` is the
+// share of that text the worker still prints: an attributed partial rename
+// shows only its changed hunks. Unscaled, the TOTAL is unchanged (a pair's
 // sum equals its members'), so only the dominance GRANULARITY moves.
 export function mergeRenamePairs(
   paths: { path: string; bytes: number }[],
-  pairs: { oldPath: string; newPath: string }[],
+  pairs: { oldPath: string; newPath: string; scale?: number }[],
 ): { path: string; bytes: number }[] {
   const byPath = new Map(paths.map((p) => [p.path, p]));
   const grouped: { path: string; bytes: number }[] = [];
@@ -204,7 +218,7 @@ export function mergeRenamePairs(
     if (!oldSide || !newSide) continue; // a pair member outside the --no-renames name set cannot happen; skip, never guess
     consumed.add(pair.oldPath);
     consumed.add(pair.newPath);
-    grouped.push({ path: `${pair.oldPath} -> ${pair.newPath}`, bytes: oldSide.bytes + newSide.bytes });
+    grouped.push({ path: `${pair.oldPath} -> ${pair.newPath}`, bytes: (oldSide.bytes + newSide.bytes) * (pair.scale ?? 1) });
   }
   for (const p of paths) if (!consumed.has(p.path)) grouped.push(p);
   return grouped;
@@ -290,24 +304,38 @@ export function checkHugeDiff(
     const base = args.base ?? resolveDefaultBranch(probe, args.cwd);
     const res = changedPathBytes(probe, args.cwd, base, args.branch);
     if (!res.ok) return {}; // fail-open + silent (header rationale)
-    // Worker-side rename attribution: the per-path
-    // verdict below is the worker's ingest ONLY when its own `git diff`
-    // will attribute renames (a similarity header, not the blobs). The
-    // guarantee is read from the SAME cwd the worker will run in — repo
-    // config wins over user config, exactly as the worker's git would see
-    // it. Anything but an explicit `false` (unset = git's default since
-    // 2.9, and any probe weirdness) keeps the round-1 verdict: a config
-    // read that cannot be trusted must not manufacture a warning class.
-    const renames = probe(["config", "--type=bool", "diff.renames"], args.cwd);
-    const workerAttributesRenames = !(renames.code === 0 && renames.stdout.trim() === "false");
+    // Worker-side attribution is MEASURED, not inferred from config: run the
+    // worker's own `git diff --name-status` (same cwd, no overrides, so
+    // diff.renames, the 50% similarity floor and the rename limit all apply
+    // as the worker's git applies them) and read which renames it attributes.
+    // Those print a similarity header, not the blobs, and stay per-path. Every
+    // other delete/add the worker ingests in full, so a delete/add pair that
+    // one loose probe (-M1%, bounded -l: flags beat config) ties to the same
+    // logical file is grouped into ONE hazard at the sum of both blobs. An
+    // attributed partial rename still prints its changed hunks, so it weighs
+    // (old+new) x (1 - similarity). A failed probe reads as no pairs —
+    // fail-open back to the per-path verdict.
     let paths = res.paths;
-    if (!workerAttributesRenames) {
-      // Un-guaranteed: model the dump — group each detected delete/add pair
-      // into ONE logical hazard at the sum of both blobs. The pairing probe
-      // forces -M (flag beats config, so it stays deterministic); a failed
-      // probe reads as no pairs — fail-open back to the round-1 verdict.
-      const pairs = probe(["diff", "--name-status", "-z", "-M", `${res.mergeBase}...${args.branch}`], args.cwd);
-      if (pairs.code === 0) paths = mergeRenamePairs(paths, parseNameStatusRenames(pairs.stdout));
+    const range = `${res.mergeBase}...${args.branch}`;
+    const worker = probe(["diff", "--name-status", "-z", range], args.cwd);
+    if (worker.code === 0) {
+      const rows = parseNameStatusRows(worker.stdout);
+      const attributedPairs = rows
+        .filter((r) => r.status.startsWith("R") && r.paths.length === 2)
+        .map((r) => ({ oldPath: r.paths[0], newPath: r.paths[1], scale: 1 - Math.min(100, Number(r.status.slice(1)) || 0) / 100 }));
+      const attributed = new Set(attributedPairs.flatMap((p) => [p.oldPath, p.newPath]));
+      let pairs = attributedPairs;
+      // a pair needs one un-attributed delete AND one un-attributed add
+      const hasDelete = rows.some((r) => r.status === "D");
+      const hasAdd = rows.some((r) => r.status === "A");
+      if (hasDelete && hasAdd) {
+        const loose = probe(["diff", "--name-status", "-z", "-M1%", "-l2000", range], args.cwd);
+        if (loose.code === 0) {
+          const unattributed = parseNameStatusRenames(loose.stdout).filter((p) => !attributed.has(p.oldPath) && !attributed.has(p.newPath));
+          pairs = [...attributedPairs, ...unattributed];
+        }
+      }
+      paths = mergeRenamePairs(paths, pairs);
     }
     const dom = findDominatingPath(paths);
     if (!dom) return {};

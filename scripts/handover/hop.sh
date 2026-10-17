@@ -32,13 +32,20 @@
 #   prompts for this). If --message <text> is passed, the text is
 #   embedded into the snapshot body.
 #
+# --handover <path> skips the snapshot: the relaunch loads that existing
+# named handover directly (arm-resume keeps the delay, dedup, --force and
+# cd contract). Use it when a real handover already exists; the snapshot
+# path stays for the no-handover-yet case. Not combinable with --message.
+#
 # Usage:
 #   bash scripts/handover/hop.sh [--message "what to pick up"] [--delay 2] [--print] [--dry-run]
+#   bash scripts/handover/hop.sh --handover <path> [--delay 2] [--print] [--dry-run]
 #
 # Optional:
 #   --handover-root <dir>  Override snapshot destination. Default: the shared
 #                          resolver (HANDOVER_DIR Mode B, else <repo>/handovers)
 #                          joined to your USER_SLUG.
+#   --handover <path>      Arm at this existing handover; write no snapshot.
 #   --message <text>       Text embedded into the snapshot body.
 #                          Use this for "load this todo list" handoffs.
 #   --delay <minutes>      Schedule mode only. Default 2.
@@ -82,6 +89,8 @@ DRY_RUN=0
 FORCE=0
 HANDOVER_ROOT=""
 HOP_DOC=""
+NAMED_HANDOVER=""
+HANDOVER_GIVEN=0
 
 # Capture ORIGIN repo BEFORE any work — this is the repo claude should
 # run from in the relaunched session. The snapshot lives under the
@@ -95,7 +104,7 @@ fi
 usage() {
     cat <<'EOF'
 Usage: hop.sh [--message <text>] [--delay <minutes>] [--print] [--dry-run] [--force]
-              [--handover-root <dir>] [--doc <handover doc>]
+              [--handover-root <dir>] [--doc <handover doc>] [--handover <file>]
 
 Mid-session jump to a fresh claude session. Writes a context-hop
 snapshot then either schedules a relaunch via arm-resume.sh (default)
@@ -104,6 +113,9 @@ or prints the command to run manually (--print).
 Default: writes the snapshot under the resolved handover root
 (<HANDOVER_DIR or repo/handovers>/<USER_SLUG>/context-hop-<ts>.md), then
 schedules a relaunch in 2 minutes via arm-resume.sh.
+
+--handover <file> skips the snapshot and relaunches straight at that existing
+handover (not combinable with --message).
 
 --doc <file> names the hopping session's own handover doc; the hopped-to
 session's plugin profile is derived from it (scripts/lanes/role-profile.sh).
@@ -123,6 +135,8 @@ while [ $# -gt 0 ]; do
         --force)           FORCE=1; shift ;;
         --handover-root)   HANDOVER_ROOT="${2:-}"; shift 2 ;;
         --handover-root=*) HANDOVER_ROOT="${1#--handover-root=}"; shift ;;
+        --handover)        NAMED_HANDOVER="${2:-}"; HANDOVER_GIVEN=1; shift; [ $# -gt 0 ] && shift ;;
+        --handover=*)      NAMED_HANDOVER="${1#--handover=}"; HANDOVER_GIVEN=1; shift ;;
         --doc)             HOP_DOC="${2:-}"; shift 2 ;;
         --doc=*)           HOP_DOC="${1#--doc=}"; shift ;;
         -h|--help)         usage; exit 0 ;;
@@ -133,6 +147,17 @@ done
 if ! [[ "$DELAY_MINUTES" =~ ^[0-9]+$ ]] || [ "$DELAY_MINUTES" -lt 1 ] || [ "$DELAY_MINUTES" -gt 60 ]; then
     echo "ERR hop: --delay must be an integer in [1, 60], got: $DELAY_MINUTES" >&2
     exit 1
+fi
+
+if [ "$HANDOVER_GIVEN" -eq 1 ]; then
+    if [ ! -f "$NAMED_HANDOVER" ]; then
+        echo "ERR hop: --handover is not a file: $NAMED_HANDOVER" >&2
+        exit 1
+    fi
+    if [ -n "$MESSAGE" ]; then
+        echo "ERR hop: --handover and --message are mutually exclusive (no snapshot carries the text)" >&2
+        exit 1
+    fi
 fi
 
 # Resolve handover root. Priority:
@@ -192,6 +217,10 @@ hop_settings=$(bash "$(dirname "${BASH_SOURCE[0]}")/../lanes/profile-settings.sh
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 SNAPSHOT="$HANDOVER_ROOT/context-hop-$TS.md"
 RESUME_PROMPT="load $SNAPSHOT context-hop mode"
+if [ -n "$NAMED_HANDOVER" ]; then
+    SNAPSHOT="$NAMED_HANDOVER"
+    RESUME_PROMPT="load $NAMED_HANDOVER"
+fi
 
 write_snapshot() {
     local target="$1"
@@ -233,9 +262,11 @@ write_snapshot() {
 }
 
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "DRY hop: would write snapshot to $SNAPSHOT"
-    echo "DRY hop: snapshot body:"
-    write_snapshot /dev/stdout | sed 's/^/    /'
+    if [ -z "$NAMED_HANDOVER" ]; then
+        echo "DRY hop: would write snapshot to $SNAPSHOT"
+        echo "DRY hop: snapshot body:"
+        write_snapshot /dev/stdout | sed 's/^/    /'
+    fi
     case "$MODE" in
         schedule)
             local_hh_mm=$(date -d "+$DELAY_MINUTES minutes" +%H:%M 2>/dev/null \
@@ -266,8 +297,10 @@ if [ -f "$flush_script" ]; then
     bash "$flush_script" 2>&1 | sed 's/^/hop (flush): /' || true
 fi
 
-write_snapshot "$SNAPSHOT"
-echo "hop: wrote snapshot: $SNAPSHOT"
+if [ -z "$NAMED_HANDOVER" ]; then
+    write_snapshot "$SNAPSHOT"
+    echo "hop: wrote snapshot: $SNAPSHOT"
+fi
 
 case "$MODE" in
     schedule)

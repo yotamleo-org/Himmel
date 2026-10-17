@@ -204,6 +204,42 @@ dr_rc=$?
 after_sha="$(sha256sum "$fake_vault/Clippings/sample.md" | cut -d' ' -f1)"
 assert "--dry-run exit 0" "0" "$dr_rc"
 assert "--dry-run leaves clip byte-identical" "$before_sha" "$after_sha"
+dr_out="$(node "$SCRIPT" --vault "$fake_vault" --limit 1 --dry-run 2>/dev/null)"
+grep -q 'dry-run' <<<"$dr_out" && has_dr_txt=yes || has_dr_txt=no
+assert "--dry-run valid clip reports dry-run text" "yes" "$has_dr_txt"
+
+# --dry-run must run the write path's YAML validation, so a clip
+# whose frontmatter fails the parse-validate in a real run fails in a dry-run
+# too (and still writes nothing).
+bad_vault="$tmpdir/badvault"
+mkdir -p "$bad_vault/Clippings"
+cat >"$bad_vault/Clippings/bad.md" <<'EOF'
+---
+source: https://x.com/jack/status/20
+processed: true
+broken: [unclosed
+---
+# Sample
+body
+EOF
+bad_before="$(sha256sum "$bad_vault/Clippings/bad.md" | cut -d' ' -f1)"
+node "$SCRIPT" --vault "$bad_vault" --limit 1 --dry-run >"$tmpdir/bad.out" 2>"$tmpdir/bad.err"
+bad_rc=$?
+bad_after="$(sha256sum "$bad_vault/Clippings/bad.md" | cut -d' ' -f1)"
+assert "--dry-run bad-YAML clip exits 3 (failed)" "3" "$bad_rc"
+grep -q 'failed (yaml parse' "$tmpdir/bad.err" && bad_msg=yes || bad_msg=no
+assert "--dry-run bad-YAML clip reports yaml parse failure" "yes" "$bad_msg"
+assert "--dry-run bad-YAML clip left byte-identical" "$bad_before" "$bad_after"
+
+# js-yaml missing: a copy of the script with no node_modules in reach must
+# fail --dry-run the way a real run would.
+mkdir -p "$tmpdir/noyaml"
+cp "$SCRIPT" "$tmpdir/noyaml/fxtwitter-enrich.mjs"
+node "$tmpdir/noyaml/fxtwitter-enrich.mjs" --vault "$fake_vault" --limit 1 --dry-run >/dev/null 2>"$tmpdir/ny.err"
+ny_rc=$?
+assert "--dry-run without js-yaml exits 3 (failed)" "3" "$ny_rc"
+grep -q 'failed (yaml' "$tmpdir/ny.err" && ny_msg=yes || ny_msg=no
+assert "--dry-run without js-yaml reports the import failure" "yes" "$ny_msg"
 
 # -- Test 8: YAML parse-validate via js-yaml present -------------------
 echo "Test 8: js-yaml import + parse-validate present"

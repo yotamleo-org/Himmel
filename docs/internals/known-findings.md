@@ -42,6 +42,23 @@ three places it feeds. The JSON is the source of truth; this page is the map.
    rewriting only `evidence` + `refreshed_at`, and lists the unmatched
    high-usage learnings as new-class candidates. Lean-invoke, no cadence.
 
+   With `--learnings` it also prints a feed, one line per finding, after the
+   `learnings_export: rows=… live_rows=… stale_rows=… unmatched_rows=…` summary
+   (`unmatched_rows` counts every row that matched no class, stale or not):
+
+   | Line | Meaning |
+   |---|---|
+   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`; rows from another repository, or with no repository, are skipped), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
+   | `PONYTAIL row=N … ticket=HIMMEL-n status=<s>` | the row defers to a still-open ticket: keep it, it is a `ponytail:` marker |
+   | `STATUS-UNKNOWN row=N ticket=HIMMEL-n` | Jira status unreachable: the row is NOT stale on that rule |
+   | `DUPLICATE rows=a,b uses=U …` | live rows with the same file and the same normalized 12-token rule head; read the group, keep one only if the rows state the same rule |
+   | `PROMOTE-HINT row=N uses=U near-duplicates=k …` | a live unmatched row with 100+ uses or 3+ near-duplicates |
+   | `PROPOSE-CLASS id=… rows=N uses=U globs=… match=… kind=… canonical=…` | live unmatched rows sharing a file area (first two directories) and a rule 3-gram, with 2+ rows or 25+ uses: a draft class to review |
+
+   Ticket status comes from the jira CLI; `KNOWN_FINDINGS_TICKET_STATUS=<file>`
+   injects a `key<TAB>status` TSV instead (an unreadable file means all unknown).
+   Nothing is deleted or written beyond the summary counts.
+
 `known-findings.sh --list` prints the class table; `--json` on `--diff` gives
 machine output. `known-findings.sh --ladder` prints the class count per rung,
 then the promotion queue: `prompt`/`advisory` classes that carry a `match` and have

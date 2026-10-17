@@ -1,0 +1,3 @@
+# fixture, not executable
+echo hi
+prompt="$(cat "$1")" # read-sink-ok: operator-supplied brief path, console-only entry point

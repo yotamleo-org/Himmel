@@ -553,7 +553,11 @@ if [ "$CHECK_MODE" = "1" ]; then
         check_rows="${ANCHOR_SLUG}	${ANCHOR_MODEL}	paid	${ANCHOR_PROVIDER}"
     fi
 
-    check_prompt="$(mktemp -t critic-panel-check.XXXXXX)"
+    check_prompt="$(mktemp -t critic-panel-check.XXXXXX)" || {
+        [ -n "$_MERGED_REG" ] && rm -f "$_MERGED_REG"
+        echo "critic-panel: mktemp failed" >&2
+        exit 2
+    }
     trap 'rm -f "$check_prompt"; [ -n "$_MERGED_REG" ] && rm -f "$_MERGED_REG"' EXIT
     printf '%s' 'Reply with exactly: ok' > "$check_prompt"
 
@@ -1551,8 +1555,15 @@ process_member() {
                 fi
                 _fb_remaining="$(_clamp_to_panel_budget "$_fb_remaining")"
                 _RM_TIMEOUT_SECS="$_fb_remaining"
-                _fb_out="$(mktemp -t critic-panel-fb.XXXXXX)"
-                _fb_err="$(mktemp -t critic-panel-fb-err.XXXXXX)"
+                _fb_out="$(mktemp -t critic-panel-fb.XXXXXX)" || {
+                    echo "critic-panel: mktemp failed" >&2
+                    exit 2
+                }
+                _fb_err="$(mktemp -t critic-panel-fb-err.XXXXXX)" || {
+                    rm -f "$_fb_out"
+                    echo "critic-panel: mktemp failed" >&2
+                    exit 2
+                }
                 _fb_start="$(date +%s)"
                 _run_cfp_member "$_fb_model" "$_pm_slug" "$_pm_perspective" "$_fb_out" "$_fb_err" "$_pm_fb_provider"
                 _fb_rc=$_rm_rc
@@ -1829,8 +1840,14 @@ if [ "$CRITIC_PARALLEL" = "0" ]; then
     # Use a temp file per member so process_member can read from a path.
     # _seq_err captures each member's stderr so the quota-exhaustion signature
     # can be detected in sequential mode too (previously discarded).
-    _seq_out="$(mktemp -t critic-panel-seq.XXXXXX)"
-    _seq_err="$(mktemp -t critic-panel-seq-err.XXXXXX)"
+    _seq_out="$(mktemp -t critic-panel-seq.XXXXXX)" || {
+        echo "critic-panel: mktemp failed" >&2
+        exit 2
+    }
+    _seq_err="$(mktemp -t critic-panel-seq-err.XXXXXX)" || {
+        echo "critic-panel: mktemp failed" >&2
+        exit 2
+    }
 
     while IFS="	" read -r slug model perspective fallback_chain row_provider fallback_trigger fb_provider row_timeout; do
         [ -n "$slug" ] || continue
@@ -1906,7 +1923,10 @@ ROWSEOF
 # Parallel path (CRITIC_PARALLEL=1)
 # ---------------------------------------------------------------------------
 else
-    outdir="$(mktemp -d -t critic-panel-par.XXXXXX)"
+    outdir="$(mktemp -d -t critic-panel-par.XXXXXX)" || {
+        echo "critic-panel: mktemp failed" >&2
+        exit 2
+    }
 
     # Launch each member indexed by position i (i=0,1,2,...)
     i=0

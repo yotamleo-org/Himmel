@@ -116,6 +116,24 @@ git checkout -q main
 git merge -q --squash feat/renames >/dev/null 2>&1
 git commit -qm "squash: the rename"
 
+# --- branch re-introduces content that main had and then REVERTED before the
+# branch was cut. The blob exists in main's history, but only before the
+# merge-base, so it proves nothing about this branch landing: UNKNOWN.
+git checkout -q main
+seed rev.txt "v2"; git commit -qm "rev v2"
+seed rev.txt "v1"; git commit -qm "revert rev back to v1"
+git checkout -q -b feat/reverted main
+seed rev.txt "v2"; git commit -qm "branch re-adds v2"
+
+# --- control: content squash-merged AFTER the merge-base, then changed again
+# on main. The blob is still in main's history past the merge-base: LANDED.
+git checkout -q -b feat/landed-then-changed main
+seed chg.txt "v2"; git commit -qm "chg v2"
+git checkout -q main
+git merge -q --squash feat/landed-then-changed >/dev/null 2>&1
+git commit -qm "squash: chg v2"
+seed chg.txt "v3"; git commit -qm "chg v3 on main"
+
 git checkout -q main
 
 PRMAP="$TMP/prmap.tsv"
@@ -133,6 +151,16 @@ assert_line "unlanded DELETION is AHEAD"            AHEAD  feat/delete-not-lande
 assert_line "landed EMPTY file is LANDED"           LANDED feat/empty               "$out"
 assert_line "unlanded EMPTY file is AHEAD"          AHEAD  feat/empty-unlanded      "$out"
 assert_line "landed branch with a RENAME is LANDED" LANDED feat/renames             "$out"
+assert_line "blob only before the merge-base is UNKNOWN" UNKNOWN feat/reverted      "$out"
+assert_line "blob landed after merge-base, changed later is LANDED" LANDED feat/landed-then-changed "$out"
+
+# --base given as a full ref must still skip the base branch itself.
+out5=$(bash "$SUT" --base refs/heads/main --pr-map "$PRMAP" 2>&1)
+if grep -qE '^[A-Z]+ +main$' <<<"$out5"; then
+    echo "FAIL --base refs/heads/main still classified main itself"; FAILED=$((FAILED + 1))
+else
+    echo "PASS --base refs/heads/main skips the base branch"
+fi
 
 # A merged PR short-circuits content comparison entirely.
 printf 'feat/ahead\tMERGED\n' > "$TMP/prmap2.tsv"

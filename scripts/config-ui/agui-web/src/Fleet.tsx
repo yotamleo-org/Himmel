@@ -14,7 +14,7 @@ import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { chainKey, cloudPhase, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
 import { BoardContext, cardOf, DrawerView, Legend, StageDots, StateChip, Swatch, Trends, useBoard, useBoardCtx, useDrawerKeys, type BoardCtx, type Panel } from "./Board";
-import { joinBoard, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
+import { joinBoard, needsShown, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
 type Node = { row: Row; kids: Node[] };
 
@@ -138,6 +138,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const boardConsole = selected ?? all.filter((r) => r.role === "console" && r.live !== false && r.state !== "wrapped").sort((a, b) => (b.runtime?.startedAt ?? 0) - (a.runtime?.startedAt ?? 0))[0]?.name ?? null;
   const { board, error: boardError } = useBoard(token, boardConsole);
   const joined = useMemo(() => (board ? joinBoard(all, board) : []), [all, board]);
+  const needs = useMemo(() => needsShown(joined, all, filters), [joined, all, filters]);
   const [tab, setTab] = useState(() => parseView(location.hash).tab);
   const initial = parseView(location.hash).k;
   const [drawer, setDrawer] = useState<Drawer | null>(initial ? openAt(null, initial.leg, initial.stage) : null);
@@ -188,8 +189,8 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && !board && <p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
-        {(s.attention.length > 0 || joined.some((j) => j.need)) && <Section id="attention" title="Needs attention" count={counts.attention + joined.filter((j) => j.need).length} initial={true} className="fleet-attention">
-          <Attention items={s.attention} needs={joined.filter((j) => j.need)} token={token} now={now} />
+        {(s.attention.length > 0 || needs.length > 0) && <Section id="attention" title="Needs attention" count={counts.attention + needs.length} initial={true} className="fleet-attention">
+          <Attention items={s.attention} needs={needs} token={token} now={now} />
         </Section>}
         {fleet && (s.orphans.length > 0 || s.processOrphans.length > 0 || fleet.processOrphans === null) &&
           <Section id="orphans" title="Orphans" count={counts.orphaned} initial={true} className="fleet-orphans">

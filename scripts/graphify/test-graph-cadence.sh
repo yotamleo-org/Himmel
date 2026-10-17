@@ -574,6 +574,28 @@ assert_contains "flow-run start row" '"ev":"start"' "$flow_content"
 assert_contains "flow-run end row"   '"ev":"end"'   "$flow_content"
 assert_contains "flow-run flow name is graph-publish-<slug>" "graph-publish-" "$flow_content"
 
+# --- Test 5b: ledger dir cannot be created -> start row AND error end row ---
+# A regular file where the directory must be makes mkdir -p fail with ENOTDIR
+# at any privilege level.
+echo "TEST: LEDGER_DIR uncreatable -> rc=2 and the flow-run start row is paired with an error end row"
+FLOW_LEDGER5b="$TMP_ROOT/t5b-flow-runs.jsonl"
+REPO5b="$TMP_ROOT/t5b-primary"; BARE5b="$TMP_ROOT/t5b-origin.git"
+HOME5b="$TMP_ROOT/t5b-home"; LEDGER5b="$TMP_ROOT/t5b-ledger-root"
+mkdir -p "$HOME5b"
+: > "$LEDGER5b"
+seed_repo "$REPO5b" "$BARE5b" 3
+: > "$FLOW_LEDGER5b"
+rc=0
+out=$(HOME="$HOME5b" GRAPH_CADENCE_HIMMEL_ROOT="$REPO5b" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER5b" \
+    HIMMEL_FLOW_RUNS_LEDGER="$FLOW_LEDGER5b" \
+    run_gc --threshold 10 2>&1) || rc=$?
+assert_eq "uncreatable ledger dir rc=2" "2" "$rc"
+assert_contains "uncreatable ledger dir names the path" "could not create" "$out"
+flow_content=$(cat "$FLOW_LEDGER5b" 2>/dev/null || echo MISSING)
+assert_contains "uncreatable ledger dir: flow-run start row" '"ev":"start"' "$flow_content"
+assert_contains "uncreatable ledger dir: flow-run end row"   '"ev":"end"'   "$flow_content"
+assert_contains "uncreatable ledger dir: end row is outcome error" '"outcome":"error"' "$flow_content"
+
 # =============================================================================
 # Test 6: primary checkout provably untouched by a full run
 # =============================================================================

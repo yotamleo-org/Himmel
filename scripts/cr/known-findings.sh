@@ -19,7 +19,10 @@
 #                                               real ledger recurrences (agreed, confirmed or fixed), most
 #                                               first, then PROMOTION PROPOSALS: PROPOSE lines for classes
 #                                               whose real recurrences since the rung was set reach N across M branches
-#   known-findings.sh --refresh [--learnings <export.csv>]   (also prints the promotion proposals)
+#   known-findings.sh --refresh [--learnings <export.csv>]   (also prints the promotion proposals; with
+#                                               --learnings also the feed: STALE / PONYTAIL / STATUS-UNKNOWN /
+#                                               DUPLICATE / PROMOTE-HINT / PROPOSE-CLASS lines and a
+#                                               learnings_export rows/live_rows/stale_rows/unmatched_rows line)
 #   Proposal thresholds (--ladder, --refresh): --min-recurrences N, --min-branches M. Defaults: 3 and 2
 #   for a move to prompt or advisory; 10 and 5, counting only the last 30 days, for a move to the gate rung.
 #   A class counts real findings (verdict agreed, confirmed or fixed) dated at/after its optional `rung_since`
@@ -96,6 +99,77 @@ const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON 
 const ROOT = process.env.REPO_ROOT;
 const db = JSON.parse(fs.readFileSync(KF, "utf8"));
 const classes = db.classes || [];
+
+// The learnings feed for /cr-learnings-refresh: STALE / PONYTAIL / STATUS-UNKNOWN per row, DUPLICATE groups,
+// PROMOTE-HINT and PROPOSE-CLASS clusters over the live unmatched rows. Printed only; nothing is deleted or edited.
+const STOP = new Set("the and for with that this when are not but you use its from into any all can has have been will should must only also than then them they their there which what each such via per".split(" "));
+const toks = (t) => (String(t).toLowerCase().match(/[a-z0-9_]{3,}/g) || []).filter((w) => !STOP.has(w));
+const ticketStatus = (() => { // key -> status string, or null when unknown; a TSV (key<TAB>status) is injectable so tests stay offline
+  const cache = {}; let tsv = null;
+  const inj = process.env.KNOWN_FINDINGS_TICKET_STATUS;
+  if (inj !== undefined) { tsv = {}; try { for (const l of fs.readFileSync(inj, "utf8").split("\n")) { const [k, s] = l.split("\t"); if (k && s) tsv[k.trim()] = s.trim(); } } catch (e) { tsv = {}; } }
+  return (key) => { if (tsv) return tsv[key] || null; if (key in cache) return cache[key];
+    let st = null;
+    try { const cp = require("child_process");
+      const common = cp.execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: ROOT, encoding: "utf8" }).trim();
+      const out = cp.execFileSync("node", [path.join(path.dirname(common), "scripts/jira/dist/index.js"), "get", key], { encoding: "utf8", timeout: 15000, env: Object.assign({ JIRA_PROJECT_KEY: "HIMMEL" }, process.env), stdio: ["ignore", "pipe", "ignore"] });
+      st = (out.split("\n")[0].split("\t")[2] || "").trim() || null; } catch (e) { st = null; }
+    return (cache[key] = st); };
+})();
+const isClosed = (s) => /^(done|closed|resolved|won.?t do|cancel+ed|rejected)/i.test(s);
+function learningsFeed(rows) {
+  let tracked = null;
+  try { tracked = new Set(require("child_process").execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28 }).split("\n").filter(Boolean)); } catch (e) { tracked = null; }
+  let repoFull = ""; // a row is judged against this checkout only when its repository is known and is this one
+  try { repoFull = require("child_process").execFileSync("git", ["remote", "get-url", "origin"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().replace(/\.git$/, "").split(/[/:]/).slice(-2).join("/").toLowerCase(); } catch (e) { repoFull = ""; }
+  const sameRepo = (repo) => { const r = repo.toLowerCase(); return !!repoFull && !!r && (r.includes("/") ? r === repoFull : r === repoFull.split("/").pop()); };
+  const lines = [], stale = [], live = [], short = (t) => t.slice(0, 80);
+  for (const r of rows) {
+    let reason = null;
+    if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
+    else if (/\bglm\b/i.test(r.text)) reason = "glm";
+    else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
+    else if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
+    const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
+    if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
+      const st = ticketStatus(key);
+      if (st === null) lines.push(`STATUS-UNKNOWN row=${r.n} ticket=${key} (Jira status unreachable; not STALE)`);
+      else if (isClosed(st)) reason = `closed-deferral ${key} (${st})`;
+      else lines.push(`PONYTAIL row=${r.n} uses=${r.uses} ticket=${key} status=${st} ${r.file} ${short(r.text)}`);
+    }
+    if (reason) { stale.push(r); lines.push(`STALE row=${r.n} uses=${r.uses} reason=${reason} ${r.file} ${short(r.text)}`); } else live.push(r);
+  }
+  // duplicates: same file + normalized 12-token rule head
+  const groups = {};
+  for (const r of live) { const h = toks(r.text).slice(0, 12).join(" "), k = r.repo.toLowerCase() + "\u0000" + r.file + "\u0000" + h; if (h) (groups[k] = groups[k] || []).push(r); }
+  const dupGroups = Object.values(groups).filter((g) => g.length > 1);
+  for (const g of dupGroups) lines.push(`DUPLICATE rows=${g.map((r) => r.n).join(",")} uses=${g.reduce((s, r) => s + r.uses, 0)} ${g[0].file} ${short(g[0].text)}`);
+  const dupOf = new Map(); for (const g of dupGroups) for (const r of g) dupOf.set(r.n, g.length);
+  // promotion hint: a live unmatched row with 100+ uses or 3+ near-duplicates
+  const um = live.filter((r) => !r.hit);
+  for (const r of um) { const d = dupOf.get(r.n) || 1; if (r.uses >= 100 || d >= 3) lines.push(`PROMOTE-HINT row=${r.n} uses=${r.uses} near-duplicates=${d} ${r.file} ${short(r.text)}`); }
+  // clusters of live unmatched rows: same file area (first two dirs) + a shared rule 3-gram; 2+ rows or 25+ uses
+  const area = (f) => f.split("/").slice(0, -1).slice(0, 2).join("/") || ".";
+  const idx = {};
+  for (const r of um) { const t = toks(r.text); for (let i = 0; i + 3 <= t.length; i++) { const k = r.repo.toLowerCase() + "\u0000" + area(r.file) + "\u0000" + t.slice(i, i + 3).join(" "); (idx[k] = idx[k] || []); if (!idx[k].includes(r)) idx[k].push(r); } }
+  const taken = new Set(), clusters = [];
+  for (const [k, rs] of Object.entries(idx).sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1))) {
+    const free = rs.filter((r) => !taken.has(r.n)); if (free.length < 2) continue;
+    free.forEach((r) => taken.add(r.n)); clusters.push({ area: k.split("\u0000")[1], gram: k.split("\u0000")[2], rows: free }); }
+  for (const r of um) if (!taken.has(r.n) && r.uses >= 25) { taken.add(r.n); clusters.push({ area: area(r.file), gram: toks(r.text).slice(0, 3).join(" "), rows: [r] }); }
+  const usedIds = new Set();
+  for (const c of clusters) {
+    const uses = c.rows.reduce((s, r) => s + r.uses, 0);
+    let id = c.gram.replace(/ /g, "-").replace(/[^a-z0-9_-]/g, "") || "cluster";
+    if (usedIds.has(id)) id += "-" + (c.area.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "root");
+    for (let n = 2; usedIds.has(id); n++) id = id.replace(/-\d+$/, "") + "-" + n;
+    usedIds.add(id);
+    const kind = c.rows.some((r) => /false positive|by design|intentional|not a bug|do not flag|should not (be )?flag/i.test(r.text)) ? "rebuttal" : "fix";
+    const match = c.gram.replace(/ /g, "[\\s\\S]{1,120}?");
+    const verified = c.rows.every((r) => new RegExp(match, "i").test(r.text)) ? "" : " match-check=failed";
+    lines.push(`PROPOSE-CLASS id=${id} rows=${c.rows.length} uses=${uses} globs=${c.area === "." ? "*" : c.area + "/**"} match=${match} kind=${kind} canonical=${short(c.rows[0].text)} (rows ${c.rows.map((r) => r.n).join(",")})${verified}`); }
+  return { lines, stale, live };
+}
 // `rung` is the top rung of the correction ladder the class has
 // reached (see the `_schema` note). A class without a valid one is a schema
 // error, never a silent miss in the --ladder count. Checked in the catalogue-
@@ -369,7 +443,7 @@ if (MODE === "refresh") {
     c.evidence = c.evidence || {}; c.evidence.ledger = agg;
   }
   // 2) learnings export (CodeRabbit CSV): attribute rows to classes by learning_match; report the unmatched top-10.
-  let unmatched = [];
+  let unmatched = [], feed = null;
   if (process.env.LEARNINGS) {
     const csv = fs.readFileSync(process.env.LEARNINGS, "utf8").replace(/^﻿/, ""); // CodeRabbit exports start with a UTF-8 BOM
     const recs = []; let f = "", row = [], q = false; // RFC-4180 state machine (quotes, doubled quotes, embedded newlines)
@@ -383,13 +457,15 @@ if (MODE === "refresh") {
     const iL = col("Learning"), iU = col("Usage"), iR = col("Repository"), iF = col("File");
     if (iL < 0 || iU < 0) { console.error("known-findings.sh: learnings csv lacks Learning/Usage columns"); process.exit(2); }
     for (const c of classes) { c.evidence = c.evidence || {}; c.evidence.learnings_uses = 0; c.evidence.learnings_rows = 0; }
-    for (const r of recs) { const text = r[iL] || "", uses = parseInt(r[iU] || "0", 10) || 0; let hit = false;
+    // printable-only: the export is untrusted input, so no control chars / ANSI reach the terminal (r12 codex-3)
+    const clean = (s) => String(s || "").replace(/[\x00-\x1f\x7f]/g, " ");
+    const rows = recs.map((r, i) => { const text = r[iL] || "", uses = parseInt(r[iU] || "0", 10) || 0; let hit = false;
       for (const c of classes) { if (!c.learning_match) continue; if (new RegExp(c.learning_match, "i").test(text)) { c.evidence.learnings_uses += uses; c.evidence.learnings_rows++; hit = true; } }
-      // printable-only: the export is untrusted input, so no control chars / ANSI reach the terminal (r12 codex-3)
-      const clean = (s) => String(s || "").replace(/[\x00-\x1f\x7f]/g, " ");
-      if (!hit) unmatched.push({ uses, repo: clean(r[iR]), file: clean(r[iF]), text: clean(text.slice(0, 160)) }); }
+      return { n: i + 1, uses, hit, repo: clean(r[iR]), file: clean(r[iF]).trim(), text: clean(text) }; });
+    for (const r of rows) if (!r.hit) unmatched.push({ uses: r.uses, repo: r.repo, file: r.file, text: r.text.slice(0, 160) });
     unmatched.sort((a, b) => b.uses - a.uses);
-    db.learnings_export = { rows: recs.length, total_uses: recs.reduce((s, r) => s + (parseInt(r[iU] || "0", 10) || 0), 0), unmatched_rows: unmatched.length };
+    feed = learningsFeed(rows);
+    db.learnings_export = { rows: recs.length, total_uses: rows.reduce((s, r) => s + r.uses, 0), live_rows: recs.length - feed.stale.length, stale_rows: feed.stale.length, unmatched_rows: unmatched.length };
   }
   // refreshed_at advances only when something WAS refreshed; an unreadable
   // ledger with no export leaves the file untouched (r11 codex-2).
@@ -402,7 +478,9 @@ if (MODE === "refresh") {
   console.log(`known-findings: refreshed ${classes.length} classes → ${KF}`);
   for (const c of classes) { const l = c.evidence.ledger || {}; console.log(`  ${c.id}: ledger findings=${l.findings} agreed=${l.agreed} disproved=${l.disproved} (${l.disproved_pct == null ? "-" : l.disproved_pct + "%"}) deferred=${l.deferred} unadjudicated=${l.unadjudicated}` + (process.env.LEARNINGS ? ` | learnings rows=${c.evidence.learnings_rows} uses=${c.evidence.learnings_uses}` : "")); }
   if (process.env.LEARNINGS) { console.log(`\nlearnings export: ${db.learnings_export.rows} rows, ${db.learnings_export.total_uses} uses, ${unmatched.length} rows matched no class. Top unmatched (new class candidates):`);
-    for (const u of unmatched.slice(0, 10)) console.log(`  ${u.uses}\t${u.repo}\t${u.file}\t${u.text}`); }
+    for (const u of unmatched.slice(0, 10)) console.log(`  ${u.uses}\t${u.repo}\t${u.file}\t${u.text}`);
+    const e = db.learnings_export; console.log(`learnings_export: rows=${e.rows} live_rows=${e.live_rows} stale_rows=${e.stale_rows} unmatched_rows=${e.unmatched_rows}`);
+    for (const l of feed.lines) console.log(l); }
   printProposals();
   process.exit(0);
 }
