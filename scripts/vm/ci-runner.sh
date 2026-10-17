@@ -163,6 +163,10 @@ one_job() {
     local r chk="sudo nft list table inet himmel_egress | grep -q 'hook output'"
     chk="$chk && sudo nft list table inet himmel_egress | grep -q 'policy drop'"
     chk="$chk && sudo nft list set inet himmel_egress allowed4 | grep -q 'elements'"
+    # No accept beyond lo, conntrack, the NAT DNS and the two allowed sets may sit
+    # anywhere in the live chain (a conditional accept ahead of the private
+    # rejects would open the LAN while the last rule still matches below).
+    chk="$chk && ! sudo nft list chain inet himmel_egress output | grep accept | grep -vE '^[[:space:]]+(oifname \"lo\" accept|ct state established,related accept|ip daddr 10\\.0\\.2\\.3 (udp|tcp) dport 53 accept|ip6? daddr @allowed[46] accept)[[:space:]]*\$' | grep -q ."  # leak-allow: private-lan-ip egress filter ranges
     # The chain must still end in the catch-all reject: a bare accept after the
     # private rejects would open egress while 'policy drop' still matched above.
     chk="$chk && sudo nft list chain inet himmel_egress output | grep -vE '^[[:space:]]*}' | tail -n 1 | grep -qE '^[[:space:]]+counter( packets [0-9]+ bytes [0-9]+)? reject[[:space:]]*$'"

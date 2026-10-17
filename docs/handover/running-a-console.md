@@ -614,7 +614,12 @@ bash scripts/handover/console-kit/vm-runner.sh status
   accounts; everything else (fork PRs, other authors, push, schedule, dispatch)
   and the variable `off` or unset run on `ubuntu-latest`, with the required
   check names unchanged. `scripts/ci/test-ci-vm-routing.sh` pins that
-  expression.
+  expression. The routed shard's apt, sudo and pip steps run on GitHub-hosted
+  runners only (`runner.environment == 'github-hosted'`); the guest must carry
+  the tools instead (`guest-provision.sh`). **Keep the variable `off`** until the
+  guest image has been rebaked with those packages (`ci-runner-v4`) and a
+  `vm-runner-probe.yml` dispatch has passed with no operator PR CI running:
+  until then every routed shard would fail and fail-fast blocks the PRs.
 - A classifier denial of one of these commands means the allow rule is missing
   or mismatched; see the stuck playbook, never reshape the command.
 

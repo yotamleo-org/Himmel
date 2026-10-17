@@ -380,6 +380,16 @@ rej_line=$(printf '%s\n' "$chain_rules" | grep -n '10\.0\.0\.0/8.*reject' | head
 acc_line=$(printf '%s\n' "$chain_rules" | grep -n '@allowed4 accept' | head -n 1 | cut -d: -f1)
 if [ -n "$rej_line" ] && [ -n "$acc_line" ] && [ "$rej_line" -lt "$acc_line" ]; then ok "the private-range reject comes before the allowed4 accept"; else bad "private reject (line ${rej_line:-none}) is not before allowed4 accept (line ${acc_line:-none})"; fi
 
+v6rej_line=$(printf '%s\n' "$chain_rules" | grep -n 'ip6 daddr {.*reject' | head -n 1 | cut -d: -f1)
+acc6_line=$(printf '%s\n' "$chain_rules" | grep -n '@allowed6 accept' | head -n 1 | cut -d: -f1)
+if [ -n "$v6rej_line" ] && [ -n "$acc6_line" ] && [ "$v6rej_line" -lt "$acc6_line" ]; then ok "the IPv6 private reject comes before the allowed6 accept"; else bad "ip6 reject (line ${v6rej_line:-none}) is not before allowed6 accept (line ${acc6_line:-none})"; fi
+
+# Guest tools the hosted-only ci.yml steps no longer install.
+for pkg in bubblewrap socat nodejs npm python-is-python3; do
+    if sed -n '/^apt-get install/,/^systemctl enable atd/p' "$PROVISION" | grep -qw -- "$pkg"; then ok "guest-provision installs $pkg"; else bad "guest-provision does not install $pkg"; fi
+done
+if grep -q 'apparmor_restrict_unprivileged_userns *= *0' "$PROVISION"; then ok "guest-provision persists the unprivileged-userns sysctl"; else bad "guest-provision never sets apparmor_restrict_unprivileged_userns"; fi
+
 reset_log
 GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
 refresh_line=$(grep -n 'himmel-ci-egress-refresh' "$TMP/log/ssh.argv" 2>/dev/null | head -n 1 | cut -d: -f1)
@@ -403,6 +413,13 @@ printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook outpu
 for l in listing-bare-accept listing-accept-after listing-conditional-reject; do
     if [ -n "$lastrule" ] && ! STUB_NFT_LISTING="$TMP/$l" PATH="$TMP/nftbin:$PATH" bash -c "$lastrule"; then ok "the last-rule probe fails $l"; else bad "last-rule probe passes $l"; fi
 done
+# The live-chain accept-set probe: only lo/ct/NAT DNS/allowed-set accepts may exist
+# anywhere in the chain, not just after the reject.
+strayprobe=$(sed -n 's/.*\(! sudo nft list chain inet himmel_egress output [^&]*\).*/\1/p' "$TMP/log/ssh.argv" | head -n 1)
+printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook output priority filter; policy drop;\n\t\toifname "lo" accept\n\t\tct state established,related accept\n\t\tip daddr 10.0.2.3 udp dport 53 accept\n\t\tip daddr @allowed4 accept\n\t\tip6 daddr @allowed6 accept\n\t\tcounter packets 0 bytes 0 reject\n\t}\n}\n' > "$TMP/listing-full-good"  # leak-allow: private-lan-ip egress filter ranges
+printf 'table inet himmel_egress {\n\tchain output {\n\t\ttype filter hook output priority filter; policy drop;\n\t\toifname "lo" accept\n\t\tip daddr 192.168.1.5 tcp dport 22 accept\n\t\tip daddr @allowed4 accept\n\t\tcounter packets 0 bytes 0 reject\n\t}\n}\n' > "$TMP/listing-cond-accept"  # leak-allow: private-lan-ip egress filter ranges
+if [ -n "$strayprobe" ] && STUB_NFT_LISTING="$TMP/listing-full-good" PATH="$TMP/nftbin:$PATH" bash -c "$strayprobe"; then ok "the accept-set probe passes lo/ct/DNS/allowed-set accepts only"; else bad "accept-set probe rejects a good chain or is missing: $strayprobe"; fi
+if [ -n "$strayprobe" ] && ! STUB_NFT_LISTING="$TMP/listing-cond-accept" PATH="$TMP/nftbin:$PATH" bash -c "$strayprobe"; then ok "the accept-set probe fails a conditional accept ahead of the reject"; else bad "accept-set probe passes a stray conditional accept"; fi
 
 reset_log
 STUB_NO_REFRESH=1 GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
