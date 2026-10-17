@@ -175,6 +175,21 @@ GH_CALL_LOG="$glog" PATH="$fakebin:$PATH" bash "$SCRIPT" 2 "$REP" >/dev/null 2>&
 if grep '^issue comment' "$glog" | grep -q 'change since last run unavailable'; then ok "failed body read reports unavailable history"; else bad "failed body read must say history unavailable: $(grep '^issue comment' "$glog")"; fi
 rm -rf "$fakebin"
 
+# Default-branch and pinned-branch fork drift must keep counts and repair actions
+# in the nightly table, rather than falling through as an installed tool.
+forks="$(mktemp "${TMPDIR:-/tmp}/fork-drift-report.XXXXXX")" || exit 1
+cat > "$forks" <<'RPT'
+== fork branches (upstream default-branch comparison) ==
+  yotamleo/fast@main: BEHIND   (fork-behind upstream=owner/fast@trunk behind=5 ahead=0 action=gh repo sync yotamleo/fast --branch main)
+  yotamleo/carried@himmel/pin: BEHIND   (fork-behind upstream=owner/carried@main behind=3 ahead=2 action=/fork-resync)
+  yotamleo/held@main: HELD (reviewed compatibility hold)
+RPT
+b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$forks" 2>&1)")"
+has '^| yotamleo/fast@main | fork-behind | behind=5 ahead=0 | owner/fast@trunk | gh repo sync yotamleo/fast --branch main |' "$b" "fork-behind: zero carried commits keeps gh repo sync action"
+has '^| yotamleo/carried@himmel/pin | fork-behind | behind=3 ahead=2 | owner/carried@main | /fork-resync |' "$b" "fork-behind: pinned branch keeps carried-commit repair and both counts"
+has '^### Needs update (2)' "$b" "fork-behind: held row is not actionable"
+rm -f "$forks"
+
 rm -f "$REP"
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
