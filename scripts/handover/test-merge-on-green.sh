@@ -918,6 +918,7 @@ fi
 # one bare merge leaves no PARTIAL bullet anywhere. Prints what it saw for the guard.
 if [ "${HIMMEL_6079_SELF:-0}" = "1" ]; then
     export ARMAUTOMERGE=1
+    _probe_fail_before=$FAIL
     STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
         run_mog 0 "console-doc probe: bare merge"
     if [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then
@@ -925,7 +926,7 @@ if [ "${HIMMEL_6079_SELF:-0}" = "1" ]; then
     else
         echo "console-doc-partial=unset"
     fi
-    exit 0
+    [ "$FAIL" = "$_probe_fail_before" ] && exit 0 || exit 1
 fi
 
 # 1. No opt-in → refuse (exit 10). Unset in the PARENT shell (no subshell) so
