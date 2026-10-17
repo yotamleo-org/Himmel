@@ -825,6 +825,21 @@ else
     fail "gitfile push: expected exit 0 + marker at $pm_gf (got rc=$rc)" "out: $out"
 fi
 
+echo "TEST: HIMMEL-3737 -- a CRLF gitfile endpoint is followed like git does (trailing CR stripped)"
+printf 'gitdir: %s\r\n' "$TMP_ROOT/gfreal.git" > "$TMP_ROOT/gfremotecr"
+git -C "$PB" update-ref refs/remotes/gfremotecr/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" gfremotecr "../gfremotecr" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_gfcr="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_gfcr" ]; then
+    pm_gfcr_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfcr" 2>/dev/null || true)
+    case "$pm_gfcr_endpoint" in
+        /*gfreal.git) pass "CRLF gitfile endpoint resolved to the directory it names (HIMMEL-3737)" ;;
+        *) fail "CRLF gitfile endpoint not followed: '$pm_gfcr_endpoint'" "out: $out" ;;
+    esac
+else
+    fail "CRLF gitfile push: expected exit 0 + marker at $pm_gfcr (got rc=$rc)" "out: $out"
+fi
+
 echo "TEST: HIMMEL-3737 -- a relative file that is not a gitfile still fails closed"
 printf 'not a gitfile\n' > "$TMP_ROOT/plainfile"
 rc=0; out=$(cd "$PB" && bash "$HOOK" relremote "../plainfile" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?

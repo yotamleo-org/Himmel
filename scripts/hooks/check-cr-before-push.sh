@@ -259,6 +259,7 @@ canonicalize_endpoint() {
     if [ -f "$ep" ]; then
         local line gdir
         IFS= read -r line < "$ep" || true # swallow-ok: an unreadable file leaves line empty, which matches no gitdir: case and fails closed
+        line="${line%$'\r'}"
         case "$line" in
             "gitdir: "?*)
                 gdir="${line#gitdir: }"
