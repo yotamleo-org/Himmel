@@ -374,12 +374,15 @@ direct store writes are another matter.
   undelivered tail records leaves a valid chain and is not detected. A same-uid
   process that recomputes the chain is undetected; only a dedicated uid
   (phase 2) closes it.
-- **No store guard today; when one lands it is a soft block (speed bump), not a fence.** The
-  PreToolUse guard on the bus root is pending (HIMMEL-4818 T6) and does not
-  exist yet, so a same-uid process meets no guard at all. Once it lands it will
-  match text, so an interpreter one-liner or a renamed copy of the CLI will get
-  past it: it slows a same-uid attacker and does not stop one. Do not reason
-  from it as if it did.
+- **The store guard is a soft block (speed bump), not a fence.**
+  `scripts/hooks/guard-bus-store.sh` is wired as a PreToolUse hook on the Bash
+  chain and on the file-edit tools (HIMMEL-4818 T6). It denies a Bash command
+  that names the bus root, calls `bus register|bind|rebind`, or assigns a
+  `HIMMEL_BUS_*` variable, and a file edit whose path names or resolves to the
+  bus root. It matches text, so an interpreter one-liner or a renamed copy of
+  the CLI gets past it, and the Read and Grep tools are not wired to it: it
+  slows a same-uid attacker and does not stop one. Do not reason from it as if
+  it did.
 
 ## 5. Honest fallback — discipline until (and after) the guard exists
 
