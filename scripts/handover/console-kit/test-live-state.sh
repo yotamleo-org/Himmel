@@ -225,6 +225,10 @@ lock: own-lock
 - [x] Resolved slice
 ### Lane choice
 PRIVATE body
+- PRIVATE body list
+* PRIVATE second body list
++ PRIVATE third body list
+1. PRIVATE numbered body list
 
 ## Results
 legs: `N99:not:a:leg`
@@ -243,7 +247,7 @@ open rulings: 2
 - Lane choice'
 check '17. digest keeps wrapped legs and only open ruling titles' "$want_digest" "$digest_out"
 check '17. digest does not write the document' "$before_digest" "$(cat "$digest_doc")"
-check '17. digest creates no sibling files' 1 "$(find "$tmp" -maxdepth 1 -name 'digest*' | wc -l | tr -d ' ')"
+check '17. digest creates no sibling files' 1 "$(find "$tmp" -name 'digest*' | wc -l | tr -d ' ')"
 awk '/^## Results$/ {for (i=1;i<=200;i++) print "- [ ] Ruling " i} {print}' "$digest_doc" > "$tmp/long.md"
 long_digest="$(bash "$SCRIPT" "$tmp/long.md" --digest 2>/dev/null)"
 case "$long_digest" in *'open rulings: 202'*'additional ruling titles omitted'*) r=yes ;; *) r=no ;; esac

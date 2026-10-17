@@ -121,6 +121,7 @@ lock: console-lock
 - [x] Closed decision
 ### Choose a lane
 PRIVATE heading body
+- PRIVATE ruling body list
 
 ## Results
 PRIVATE result history

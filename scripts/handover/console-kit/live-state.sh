@@ -9,6 +9,7 @@
 #
 # --digest is read-only, needs no manifest, and prints status, head, legs,
 # queue, lock and open ruling titles (at most 55 lines, never ruling bodies).
+# Open rulings are ### headings or unchecked top-level checklist entries.
 #
 # An entry is `<label>:<nonce>:<lock-token>:<pid>` (console-template.md). Where
 # each field comes from:
@@ -76,7 +77,7 @@ if [ "$digest" -eq 1 ] && { [ "$print_only" -ne 0 ] || [ -n "$nonces$pids" ]; };
 block_awk='
     digest && !status && tolower($0) ~ /^(status:|\*\*status:\*\*)/ { status = $0 }
     digest && /^## / { rulings = (tolower($0) == "## open rulings") }
-    digest && rulings && (/^### / || /^[-*+] /) {
+    digest && rulings && (/^### / || /^[-*+] \[ \] /) {
         title = $0
         sub(/^(###[[:space:]]+|[-*+][[:space:]]+)/, "", title)
         if (title !~ /^\[[xX]\]/) {
