@@ -469,7 +469,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
   function nameFromRecord(rec: Rec): void {
     if (named || rec.isSidechain === true) return;
     const branch = str(rec.gitBranch)?.trim();
-    const cwd = str(rec.cwd)?.replace(/\/+$/, "").split("/").pop();
+    const cwd = str(rec.cwd)?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
     let prompt: string | undefined;
     if (rec.type === "user" && rec.isMeta !== true && isObject(rec.message)) {
       const c = rec.message.content;
