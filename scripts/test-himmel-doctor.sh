@@ -6731,6 +6731,11 @@ cp "$REPO_ROOT/scripts/hermes/fixtures/profile-hooks-nested-key-fail-closed.yaml
 out="$(c67_run)"
 if grepq "$out" -F 'OK   C67-hermes-fail-open'; then pass "C67 fail_closed after nested key -> OK"; else fail "C67 fail_closed after nested key -> $(printf '%s' "$out" | grep -A1 C67)"; fi
 
+echo "== C67: a fail_closed: true inside a nested mapping does not fence the entry -> WARN =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/profile-hooks-nested-fail-closed-fail-open.yaml" "$c67_t/hermes/profiles/station/config.yaml"
+out="$(c67_run)"
+if grepq "$out" -F 'WARN C67-hermes-fail-open'; then pass "C67 nested fail_closed -> WARN"; else fail "C67 nested fail_closed -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+
 echo "== C67: no hermes install -> INFO =="
 out="$(DOCTOR_HERMES_HOME="$c67_t/none" CLAUDE_DIR="$c67_t/home/claude" HOME="$c67_t/home" bash "$DOC" --no-color --only C67 2>&1)"
 if grepq "$out" -F 'INFO C67-hermes-fail-open'; then pass "C67 missing -> INFO"; else fail "C67 missing -> $(printf '%s' "$out" | grep -A1 C67)"; fi

@@ -155,10 +155,10 @@ fail_closed_entries() {
     /^[ \t]+- / {
       match($0, /^[ \t]+/)
       if (di == "") di = RLENGTH
-      if (RLENGTH == di) { flush(); cur = 1 }
+      if (RLENGTH == di) { flush(); cur = 1; match($0, /^[ \t]*- +/); ek = RLENGTH }
     }
     cur && index($0, needle) { hit = 1 }
-    cur && /^[ \t-]*fail_closed:[ \t]*true[ \t]*$/ { fc = 1 }
+    cur && /^[ \t-]*fail_closed:[ \t]*true[ \t]*$/ { match($0, /^[ \t]*(- +)?/); if (RLENGTH == ek) fc = 1 }
     END { flush(); printf "%d/%d\n", ok, tot }' "$1"
 }
 for p in himmel_agent research legacy station; do
@@ -178,8 +178,8 @@ run >/dev/null
 if [ "$(cat "$HOME_DIR/profiles/station/config.yaml")" = "$before" ]; then pass "(I) fail_closed wiring is idempotent"
 else fail "(I) a re-run changed an already fail-closed profile"; fi
 
-for f in fail-open:0/1 fail-closed:1/1; do
-  cp "$SCRIPT_DIR/fixtures/profile-hooks-nested-key-${f%:*}.yaml" "$TMP/nested.yaml"
+for f in nested-key-fail-open:0/1 nested-key-fail-closed:1/1 nested-fail-closed-fail-open:0/1; do
+  cp "$SCRIPT_DIR/fixtures/profile-hooks-${f%:*}.yaml" "$TMP/nested.yaml"
   got="$(fail_closed_entries "$TMP/nested.yaml" parity_guard.py)"
   if [ "$got" = "${f#*:}" ]; then pass "(I) nested secret_env mapping stays inside its entry (${f%:*})"
   else fail "(I) nested secret_env mapping (${f%:*}): parity_guard fail_closed = $got, want ${f#*:}"; fi

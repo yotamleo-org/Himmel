@@ -4099,10 +4099,10 @@ check_c67_hermes_fail_open() {
             /^[ \t]+- / {
                 match($0, /^[ \t]+/)
                 if (di == "") di = RLENGTH
-                if (RLENGTH == di) { flush(); cur = 1 }
+                if (RLENGTH == di) { flush(); cur = 1; match($0, /^[ \t]*- +/); ek = RLENGTH }
             }
             cur && /parity_guard\.py/ { pg = 1 }
-            cur && /^[ \t-]*(fail_closed|failClosed):[ \t]*[Tt]rue[ \t]*(#.*)?$/ { fc = 1 }
+            cur && /^[ \t-]*(fail_closed|failClosed):[ \t]*[Tt]rue[ \t]*(#.*)?$/ { match($0, /^[ \t]*(- +)?/); if (RLENGTH == ek) fc = 1 }
             END { flush(); print bad + 0 }' "$cfg" 2>/dev/null)"
         [ "${n:-0}" -gt 0 ] && open="$open ${cfg#"$hermes_home"/}"
     done
