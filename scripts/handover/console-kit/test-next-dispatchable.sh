@@ -289,6 +289,12 @@ e8="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_C
 [ "$e8_rc" = 0 ] && pass "an empty pool exits 0" || fail "empty pool rc=$e8_rc"
 has "an empty pool prints POOL-EMPTY" "$e8" "POOL-EMPTY"
 lacks "an empty pool prints no ticket row" "$e8" "HIMMEL-160"
+M9="$WORK/jira-mirror9/HIMMEL"; mkdir -p "$M9"
+M_SAVE="$M"; M="$M9"
+mk HIMMEL-20 "To Do" Low '["operator-directed"]' '[]' '[]' "pool ticket the classifier blocks" "Edit scripts/lib/w2.sh only."
+M="$M_SAVE"
+e9="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"
+has "a pool whose tickets are all classified BLOCKED prints POOL-EMPTY" "$e9" "POOL-EMPTY"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

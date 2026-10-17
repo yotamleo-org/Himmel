@@ -349,4 +349,6 @@ for start in range(0, len(free) if n < top else 0, top * 3):
             break
     if n >= top:
         break
+if pool_only and n == 0:  # every pool ticket was classified BLOCKED or collided with a printed one
+    print('POOL-EMPTY')
 PY
