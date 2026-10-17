@@ -630,4 +630,7 @@ def go($st):
   | {r: ($sr + $rr + $o.r), st: (if $S.bg then $st else $o.st end)}
   end;
 
-ba::model($E) | go($E.st) | .r[] | map(tostring) | join("\u001f") + "\u001e"
+# a field holding a separator byte would split into forged records
+ba::model($E) | go($E.st) | .r[] | map(tostring)
+| if any(.[]; test("[\u001e\u001f]")) then ["deny", "ast-unresolved", "(shell body)", "(a raw 0x1e or 0x1f byte, the engine's record separators)"] else . end
+| join("\u001f") + "\u001e"

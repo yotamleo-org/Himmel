@@ -36,8 +36,15 @@ _current() {
     awk -v b="$BEGIN_MARK" -v e="$END_MARK" '$0 == b {on = 1} on {print} $0 == e {on = 0}' "$GUARD"
 }
 
-# ms since the epoch
-_now() { date +%s%3N; }
+# ms since the epoch; BSD date has no %N, so bash 5's EPOCHREALTIME first and
+# whole seconds last
+_now() {
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        local s="${EPOCHREALTIME/[.,]/}"; echo "$((10#$s / 1000))"
+    else
+        echo "$(($(date +%s) * 1000))"
+    fi
+}
 
 # _verdict SCRIPT JSON ENGINE: allow | block | ?(rc=N)
 _verdict() {
