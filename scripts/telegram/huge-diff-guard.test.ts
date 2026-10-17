@@ -928,6 +928,148 @@ test("(REAL GIT): a normal small diff stays SILENT and a git error stays fail-op
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
+// ── bounded probes + a log line on every fail-open path ──────────────────────
+
+// Capture console.error for the duration of fn (the guard's fail-open lines go
+// to stderr; callers print the returned note themselves).
+function captureStderr<T>(fn: () => T): { out: T; lines: string[] } {
+  const lines: string[] = [];
+  const orig = console.error;
+  console.error = (...a: unknown[]) => { lines.push(a.join(" ")); };
+  try { return { out: fn(), lines }; } finally { console.error = orig; }
+}
+
+type ProbeResult = ReturnType<typeof gitProbe>;
+const MB_SHA = "0123456789abcdef0123456789abcdef01234567\n";
+// A stub probe keyed on the git subcommand shape, so tests need not count calls.
+const stubProbe = (over: { worker?: ProbeResult; loose?: ProbeResult; names?: string; ls?: string } = {}): typeof gitProbe =>
+  (args) => {
+    if (args[0] === "merge-base") return { code: 0, stdout: MB_SHA, stderr: "" };
+    if (args[0] === "ls-tree") return { code: 0, stdout: over.ls ?? "", stderr: "" };
+    if (args.includes("--name-only")) return { code: 0, stdout: over.names ?? "", stderr: "" };
+    if (args.includes("-M1%")) return over.loose ?? { code: 0, stdout: "", stderr: "" };
+    return over.worker ?? { code: 0, stdout: "", stderr: "" };
+  };
+const HUGE_LS = "100644 blob aa 16000000\tgraphify-out/graph.json\u0000100644 blob bb 2000\tsrc/a.ts\u0000";
+const HUGE_NAMES = "graphify-out/graph.json\0src/a.ts\0";
+
+// Run fn with a stub `git` that sleeps first on PATH and a 300 ms probe timeout.
+function withSlowGit<T>(fn: (dir: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), "hdg-stub-"));
+  const oldPath = process.env.PATH, oldT = process.env.HUGE_DIFF_PROBE_TIMEOUT_MS;
+  try {
+    writeFileSync(join(dir, "git"), "#!/bin/sh\nsleep 30\n", { mode: 0o755 });
+    process.env.PATH = `${dir}:${oldPath}`;
+    process.env.HUGE_DIFF_PROBE_TIMEOUT_MS = "300";
+    return fn(dir);
+  } finally {
+    process.env.PATH = oldPath;
+    if (oldT === undefined) delete process.env.HUGE_DIFF_PROBE_TIMEOUT_MS; else process.env.HUGE_DIFF_PROBE_TIMEOUT_MS = oldT;
+    rmQuiet(dir);
+  }
+}
+
+test("mergeRenamePairs at scale: thousands of pairs fold linearly and pass the rest through", () => {
+  const n = 5000;
+  const paths: { path: string; bytes: number }[] = [];
+  const pairs: { oldPath: string; newPath: string }[] = [];
+  for (let i = 0; i < n; i++) {
+    paths.push({ path: `old/${i}`, bytes: 3 }, { path: `new/${i}`, bytes: 4 });
+    pairs.push({ oldPath: `old/${i}`, newPath: `new/${i}` });
+  }
+  paths.push({ path: "keep.txt", bytes: 1 });
+  const t0 = Date.now();
+  const merged = mergeRenamePairs(paths, pairs);
+  expect(Date.now() - t0).toBeLessThan(2000);
+  expect(merged.length).toBe(n + 1);
+  expect(merged[0]).toEqual({ path: "old/0 -> new/0", bytes: 7 });
+  expect(merged[n]).toEqual({ path: "keep.txt", bytes: 1 });
+});
+
+test("gitProbe: a git that outlives the timeout is killed and reads as a nonzero timed-out result within the bound", () => {
+  withSlowGit((dir) => {
+    const t0 = Date.now();
+    const r = gitProbe(["status"], dir);
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain("timed out");
+  });
+}, GIT_TEST_TIMEOUT_MS);
+
+test("checkHugeDiff: a stub git that sleeps past the timeout fails open {} within the bound with exactly ONE timeout line (later probes short-circuit)", () => {
+  withSlowGit((dir) => {
+    const t0 = Date.now();
+    const { out, lines } = captureStderr(() => checkHugeDiff("spawn-glm", { cwd: dir, branch: "b" }));
+    expect(Date.now() - t0).toBeLessThan(5000); // ~1 timeout, not one per probe
+    expect(out).toEqual({});
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toContain("spawn-glm");
+    expect(lines[0]).toContain("timed out");
+  });
+}, GIT_TEST_TIMEOUT_MS);
+
+test("checkHugeDiff: a failed merge-base/diff probe logs exactly ONE fail-open line and still returns {}", () => {
+  const { out, lines } = captureStderr(() =>
+    checkHugeDiff("spawn-glm", { cwd: "/nowhere", branch: "b", base: "no-such-ref" }, () => ({ code: 128, stdout: "", stderr: "fatal: ambiguous argument" })));
+  expect(out).toEqual({});
+  expect(lines.length).toBe(1);
+  expect(lines[0]).toContain("spawn-glm");
+  expect(lines[0]).toContain("fail-open");
+  expect(lines[0]).toContain("fatal: ambiguous argument");
+});
+
+test("checkHugeDiff: a THROWING probe logs exactly ONE fail-open line and returns {}", () => {
+  const { out, lines } = captureStderr(() =>
+    checkHugeDiff("spawn-glm", { cwd: "/nowhere", branch: "b" }, (() => { throw new Error("spawn ENOENT"); }) as typeof gitProbe));
+  expect(out).toEqual({});
+  expect(lines.length).toBe(1);
+  expect(lines[0]).toContain("spawn ENOENT");
+});
+
+test("checkHugeDiff: the worker-probe failure falls back to the per-path verdict (still warns) and logs ONE line", () => {
+  const probe = stubProbe({ names: HUGE_NAMES, ls: HUGE_LS, worker: { code: 129, stdout: "", stderr: "fatal: worker probe broke" } });
+  const { out, lines } = captureStderr(() => checkHugeDiff("spawn-glm", { cwd: "/n", branch: "b", base: "main" }, probe));
+  expect(out.note).toContain("graphify-out/graph.json");
+  expect(lines.length).toBe(1);
+  expect(lines[0]).toContain("worker");
+  expect(lines[0]).toContain("fatal: worker probe broke");
+});
+
+test("checkHugeDiff: the loose-probe failure falls back to the attributed pairs (still warns) and logs ONE line", () => {
+  const probe = stubProbe({
+    names: HUGE_NAMES, ls: HUGE_LS,
+    worker: { code: 0, stdout: "D\0graphify-out/graph.json\0A\0src/a.ts\0", stderr: "" },
+    loose: { code: 129, stdout: "", stderr: "fatal: loose probe broke" },
+  });
+  const { out, lines } = captureStderr(() => checkHugeDiff("spawn-glm", { cwd: "/n", branch: "b", base: "main" }, probe));
+  expect(out.note).toContain("graphify-out/graph.json");
+  expect(lines.length).toBe(1);
+  expect(lines[0]).toContain("loose");
+  expect(lines[0]).toContain("fatal: loose probe broke");
+});
+
+test("checkHugeDiff: git's rename-limit overflow warning on the name-status probes logs exactly ONE line (not one per probe)", () => {
+  const warn = "warning: exhaustive rename detection was skipped due to too many files.\nwarning: you may want to set your diff.renameLimit variable to at least 5001\n";
+  const probe = stubProbe({
+    names: HUGE_NAMES, ls: HUGE_LS,
+    worker: { code: 0, stdout: "D\0graphify-out/graph.json\0A\0src/a.ts\0", stderr: warn },
+    loose: { code: 0, stdout: "", stderr: warn },
+  });
+  const { out, lines } = captureStderr(() => checkHugeDiff("spawn-glm", { cwd: "/n", branch: "b", base: "main" }, probe));
+  expect(out.note).toBeDefined();
+  expect(lines.length).toBe(1);
+  expect(lines[0]).toContain("rename");
+});
+
+test("checkHugeDiff: silent happy paths — a found hazard and a clean no-diff both log NOTHING", () => {
+  const hazard = captureStderr(() => checkHugeDiff("spawn-glm", { cwd: "/n", branch: "b", base: "main" }, stubProbe({ names: HUGE_NAMES, ls: HUGE_LS })));
+  expect(hazard.out.note).toBeDefined();
+  expect(hazard.lines).toEqual([]);
+  const clean = captureStderr(() => checkHugeDiff("spawn-glm", { cwd: "/n", branch: "b", base: "main" }, stubProbe()));
+  expect(clean.out).toEqual({});
+  expect(clean.lines).toEqual([]);
+});
+
 // ── shared-seam pin ───────────────────────────────────────────────────────────
 
 test("the predicate lives ONCE, in the shared module — both spawners import it, neither re-defines it (copy-paste drift: PR #1680, #1691)", () => {
