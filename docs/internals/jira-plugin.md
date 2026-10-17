@@ -47,7 +47,7 @@ For Jira ops in this repo, default to the local CLI at
 | Worklog     | `... worklog add HIMMEL-N --time 1h [--comment ...]` / `... worklog list HIMMEL-N` | `addWorklogToJiraIssue` (no list) |
 | Watchers    | `... watch HIMMEL-N [user]` / `... unwatch HIMMEL-N [user]` / `... watchers HIMMEL-N` | (none) |
 | Sprint      | `... boards` / `... sprints [--board N]` / `... sprint HIMMEL-N <sprintId\|backlog>` (Agile API `/rest/agile/1.0`; `JIRA_BOARD_ID` default) | (none — MCP has no Agile-board ops) |
-| Sector      | `... edit HIMMEL-N --sector "Ship loop"` (single-select custom field `customfield_10212`; case-insensitive, unknown option refused, value read back after the PUT) / `... edit-batch --file <tsv>` (columns `key`, `sector`; prints one `key<TAB>sector<TAB>set\|unchanged\|failed[<TAB>reason]` row per input row; a failed row never aborts, exit 1 if any failed; re-running is idempotent). `get` prints a `Sector:` line. | (none) |
+| Sector      | `... edit HIMMEL-N --sector "Ship loop"` (single-select custom field named by `jira.sectorField` in `~/.himmel/config.json`, opt-in via `... sector setup`; case-insensitive against the live option list, unknown option refused, value read back after the PUT) / `... edit-batch --file <tsv>` (columns `key`, `sector`; prints one `key<TAB>sector<TAB>set\|unchanged\|failed[<TAB>reason]` row per input row; a failed row never aborts, exit 1 if any failed; re-running is idempotent). `get` prints a `Sector:` line. | (none) |
 | Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... fix-version HIMMEL-N --add\|--remove <name>` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
 | Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
@@ -219,14 +219,27 @@ The sync reads reachability from the tags of the clone it runs in, so it must
 run from a clone of the repo whose releases it lists (`--repo` must match), and
 `--apply` refuses when a published tag is missing locally (`git fetch --tags`).
 
-**Ticket home (HIMMEL-6223).** `create` refuses a Task, Story or Bug with no
-`--sector` (one of the nine Sector options, matched case-insensitively), or with
-neither `--parent <epic>` nor `--labels standalone`; the refusal names the
-missing field and the flag that fixes it. An Epic or Subtask only warns. The
-MCP `create` takes the same `sector` argument. The check is `homeVerdict` in
-`scripts/jira/src/plain-block.ts`. Rollout: the rule goes live on a station when
-`himmel-update` rebuilds `scripts/jira/dist`; until then a stale `dist/` still
-files without a Sector.
+**Ticket home (HIMMEL-6223, HIMMEL-6277).** `create` refuses a Task, Story or
+Bug with neither `--parent <epic>` nor `--labels standalone`, and, when Sector is
+configured, with no `--sector` (matched case-insensitively against the field's
+live option list); the refusal names the missing field, the valid options and
+the opt-out. An Epic or Subtask only warns. The MCP `create` takes the same
+`sector` argument. The check is `homeVerdict` in `scripts/jira/src/plain-block.ts`.
+Rollout: the rule goes live on a station when `himmel-update` rebuilds
+`scripts/jira/dist`; until then a stale `dist/` still files without a Sector.
+
+**Sector is opt-in (HIMMEL-6277).** The field is a custom Jira field, so its id
+is config, not code: `jira.sectorField` in `~/.himmel/config.json` (the
+`JIRA_SECTOR_FIELD` env var overrides it). Absent or `none` means no
+Sector check and no Sector field sent (a stray `--sector` on `create` warns and
+is ignored; `edit --sector` and `edit-batch` refuse). Set, the options come live
+from the field's contexts (`GET /field/<id>/context`, then `.../option`; cached
+five minutes), not from a list in code. `jira sector setup [--dry-run] [--yes]
+[--sectors "A,B,C"]` explains what a sector is, proposes a default nine, creates
+the single-select field with its options, adds it to the default screen and
+prints the `jira.sectorField` config.json snippet (it never writes the file;
+config.json writes are operator-only); `--opt-out` prints the `none` snippet. Code:
+`scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
 **Bug default fixVersion.** `create --type Bug` without
 `--fix-version` sets the earliest unreleased, unarchived version from the project's

@@ -13,6 +13,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 import { resolveTitle, registerCreate } from './create.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
+import { SECTORS, resetSectorCache } from './sector.js';
 
 // A body that satisfies the plain-block rule.
 const PLAIN = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
@@ -347,15 +348,25 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
 });
 
 // create refuses a ticket with no Sector and no epic / standalone marker.
-describe('create — Sector and home rule (HIMMEL-6223)', () => {
+describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSectorCache();
+    process.env.JIRA_SECTOR_FIELD = 'customfield_10212';
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(process, 'exit').mockImplementation(((c?: number) => {
       throw new Error(`exit ${c}`);
     }) as never);
-    mockRequest.mockResolvedValue({ key: 'HIMMEL-1' });
+    // The field's context and options are read live from Jira.
+    mockRequest.mockImplementation(async (_m: string, path: string) => {
+      if (path.endsWith('/context')) return { values: [{ id: '1' }] };
+      if (path.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
+      return { key: 'HIMMEL-1' };
+    });
+  });
+  afterEach(() => {
+    delete process.env.JIRA_SECTOR_FIELD;
   });
 
   async function run(args: string[]) {
@@ -367,10 +378,44 @@ describe('create — Sector and home rule (HIMMEL-6223)', () => {
   const posted = () => mockRequest.mock.calls.find((c) => c[0] === 'POST');
   const errText = () => (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
 
-  it('refuses a Task with no Sector and names the missing field', async () => {
+  it('refuses a Task with no Sector, naming the field, the valid options and the opt-out', async () => {
     await expect(run(['--type', 'Task', '--parent', 'HIMMEL-9'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBeUndefined();
-    expect(errText()).toMatch(/no Sector.*--sector/s);
+    expect(errText()).toMatch(/no Sector.*--sector.*Ship loop.*sector setup --opt-out/s);
+  });
+
+  it('with JIRA_SECTOR_FIELD unset, files a Task without --sector and sends no Sector field', async () => {
+    delete process.env.JIRA_SECTOR_FIELD;
+    await run(['--type', 'Task', '--parent', 'HIMMEL-9']);
+    const body = posted()![2] as { fields: Record<string, unknown> };
+    expect(Object.keys(body.fields).filter((k) => k.startsWith('customfield_'))).toEqual([]);
+    expect(mockRequest.mock.calls.some((c) => String(c[1]).startsWith('/field/'))).toBe(false);
+  });
+
+  it('with JIRA_SECTOR_FIELD=none, behaves as unset; an explicit --sector is ignored with a warning', async () => {
+    process.env.JIRA_SECTOR_FIELD = 'none';
+    await run(['--type', 'Task', '--sector', 'Ship loop', '--parent', 'HIMMEL-9']);
+    const body = posted()![2] as { fields: Record<string, unknown> };
+    expect(body.fields['customfield_10212']).toBeUndefined();
+    expect(errText()).toMatch(/--sector ignored.*sector setup/);
+  });
+
+  it('with the field unset, still refuses a Task with neither --parent nor the standalone label', async () => {
+    delete process.env.JIRA_SECTOR_FIELD;
+    await expect(run(['--type', 'Task'])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBeUndefined();
+    expect(errText()).toMatch(/--parent.*--labels standalone/s);
+  });
+
+  it('accepts an option that exists only in the live list, not in the default set', async () => {
+    mockRequest.mockImplementation(async (_m: string, path: string) => {
+      if (path.endsWith('/context')) return { values: [{ id: '1' }] };
+      if (path.includes('/option')) return { values: [{ value: 'Billing' }] };
+      return { key: 'HIMMEL-1' };
+    });
+    await run(['--type', 'Task', '--sector', 'billing', '--parent', 'HIMMEL-9']);
+    const body = posted()![2] as { fields: Record<string, unknown> };
+    expect(body.fields['customfield_10212']).toEqual({ value: 'Billing' });
   });
 
   it('refuses a Task with a Sector but neither --parent nor the standalone label', async () => {

@@ -7,8 +7,6 @@
 // Headings are matched by their words, not their level, so the same check runs
 // on markdown (`## Impact`) and on a pre-built ADF doc (heading nodes).
 
-import { SECTORS } from './commands/sector.js';
-
 export const PLAIN_SECTIONS = ['Impact', 'What', 'Why', 'Plan', 'DoD', 'Agent detail'] as const;
 
 /** Sections that must hold at least one bullet or numbered line beyond the template hint. */
@@ -146,13 +144,19 @@ export const STANDALONE_LABEL = 'standalone';
 /**
  * The home rule: a ticket carries a Sector and either a parent epic or the
  * `standalone` label. Epic and Subtask only warn, as in plainBlockVerdict.
+ * `sectors` is the configured field's option list; undefined means sectors are
+ * not in use (JIRA_SECTOR_FIELD unset), so only the epic-or-standalone check runs.
  */
 export function homeVerdict(
   type: string,
   home: { sector?: string; parent?: string; labels?: string[] },
+  sectors?: readonly string[],
 ): PlainVerdict {
   const missing: string[] = [];
-  if (!home.sector) missing.push(`no Sector (pass --sector "<${SECTORS.join(' | ')}>")`);
+  if (sectors && !home.sector)
+    missing.push(
+      `no Sector (pass --sector "<${sectors.join(' | ')}>", or run \`jira sector setup --opt-out\` to stop using sectors)`,
+    );
   const standalone = (home.labels ?? []).includes(STANDALONE_LABEL);
   if (!home.parent && !standalone)
     missing.push(
