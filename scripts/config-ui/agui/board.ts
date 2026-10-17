@@ -7,9 +7,9 @@
 // ponytail: with no such file the board is built by running board.mjs, cached BOARD_TTL_MS and shared by every poller
 // (it reads gh, Jira and transcripts: seconds); retire this fallback once every console has written the file.
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { redact } from "../../handover/console-kit/redact.mjs";
 
 export const BOARD_TTL_MS = 30_000;
@@ -17,16 +17,19 @@ export const BOARD_TIMEOUT_MS = 90_000;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/;
 export const validName = (s: string | null): s is string => !!s && NAME.test(s) && !s.includes("..");
 
-// <root>/<user>/<repo bucket>/<name>.md — the handover layout. A name that matches no doc is null.
+// <root>/<user>/<repo bucket>/<name>.md — the handover layout. A name that matches no doc is null,
+// and so is a doc whose symlink resolves outside the root.
 export async function findDoc(root: string, name: string): Promise<string | null> {
   if (!root || !validName(name)) return null;
   try {
+    const real = await realpath(root);
     for (const user of await readdir(root, { withFileTypes: true })) {
       if (!user.isDirectory()) continue;
       for (const bucket of await readdir(join(root, user.name), { withFileTypes: true })) {
         if (!bucket.isDirectory()) continue;
         const p = join(root, user.name, bucket.name, `${name}.md`);
-        if ((await stat(p).catch(() => null))?.isFile()) return p;
+        if (!(await stat(p).catch(() => null))?.isFile()) continue;
+        if ((await realpath(p)).startsWith(real + sep)) return p;
       }
     }
   } catch { /* no handover root */ }

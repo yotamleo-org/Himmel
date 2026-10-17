@@ -1,7 +1,7 @@
 // The Fleet page's board model: the join of himmel.board/1 legs to /api/agui/fleet rows, the drawer's keyboard
 // reducer, the deep-link fragment, and the stage segments the drill-in strip draws.
 import { test, expect } from "bun:test";
-import { applyKey, joinBoard, openAt, parseView, STAGES, stageSegments, viewHash, type Board, type BoardLeg, type Drawer } from "../agui-web/src/board-model";
+import { applyKey, briefNext, BRIEF_IDLE, joinBoard, needsShown, openAt, parseView, STAGES, stageSegments, viewHash, type Board, type BoardLeg, type Drawer } from "../agui-web/src/board-model";
 import type { Row } from "../agui-web/src/fleet-model";
 
 const leg = (name: string, o: Partial<BoardLeg> = {}): BoardLeg => ({
@@ -75,4 +75,30 @@ test("stageSegments: one band per stage reached, each ending where the next stag
   expect(s.map((x) => x.stage)).toEqual(["live", "pr", "ready"]);
   expect(s.map((x) => Math.round((x.to - x.from) / 60000))).toEqual([30, 30, 30]); // the last runs to now
   expect(STAGES).toEqual(["dispatch", "live", "pr", "ready", "go", "merged"]);
+});
+
+test("joinBoard: of several live hops sharing a leg label the newest start wins, whatever the input order", () => {
+  const hop = (name: string, startedAt: number) => ({ ...row(name), runtime: { startedAt, endedAt: null, elapsedMs: 0 } }) as Row;
+  const newer = hop("HIMMEL-1-N7b-x-RESUME", 2000), older = hop("HIMMEL-1-N7-x", 1000);
+  expect(joinBoard([newer, older], board([leg("N7")]))[0].row?.name).toBe(newer.name);
+  expect(joinBoard([older, newer], board([leg("N7")]))[0].row?.name).toBe(newer.name);
+  const dead = { ...hop("HIMMEL-1-N7c-x-RESUME", 3000), live: false } as Row; // a finished hop never beats a live one
+  expect(joinBoard([older, dead], board([leg("N7")]))[0].row?.name).toBe(older.name);
+});
+
+test("needsShown: the needs-you list honours the rail's filters; with none every needing leg stays", () => {
+  const need = (l: string) => ({ leg: l, verb: "go", action: "GO", detail: "", command: null, since: null });
+  const rows = [{ ...row("HIMMEL-1-N1-a"), lane: "claudex" } as Row, row("HIMMEL-2-N2-b")];
+  const j = joinBoard(rows, board([leg("N1"), leg("N2"), leg("N3")], [need("N1"), need("N2"), need("N3")]));
+  const none = { lanes: [], states: [], text: "" };
+  expect(needsShown(j, rows, none).map((x) => x.leg.leg)).toEqual(["N1", "N2", "N3"]);
+  expect(needsShown(j, rows, { ...none, lanes: ["native"] }).map((x) => x.leg.leg)).toEqual(["N2"]);
+});
+
+test("briefNext: a new request clears the previous text and error", () => {
+  const withText = briefNext(BRIEF_IDLE, { kind: "text", text: "old" });
+  expect(withText.text).toBe("old");
+  expect(briefNext(withText, { kind: "start" })).toEqual(BRIEF_IDLE);
+  const withErr = briefNext(withText, { kind: "error", err: "boom" });
+  expect(briefNext(withErr, { kind: "start" })).toEqual(BRIEF_IDLE);
 });

@@ -1,6 +1,6 @@
 // The console board on the Fleet page: himmel.board/1 (board.mjs --json, served by /api/agui/board) joined to the
 // fleet rows by leg label, the drawer's keyboard reducer and the deep-link fragment. Dependency-free, like fleet-model.
-import type { Row } from "./fleet-model";
+import { fleetSections, type Filters, type Row } from "./fleet-model";
 
 export const STAGES = ["dispatch", "live", "pr", "ready", "go", "merged"] as const;
 export type Stage = (typeof STAGES)[number];
@@ -42,9 +42,31 @@ export function joinBoard(rows: Row[], board: Board): Joined[] {
   // the board labels a leg by its number (N2339); a fleet row is its doc stem, whose -N2339[b]- names the same leg.
   const label = (name: string) => /-(N\d+)[a-z]?-/.exec(name)?.[1] ?? name;
   const byLabel = new Map<string, Row>();
-  for (const r of rows) if (!byLabel.has(label(r.name)) || r.live !== false) byLabel.set(label(r.name), r);
+  // a live hop beats a finished one; of several live hops the newest start wins, whatever the input order.
+  const start = (r: Row) => r.runtime?.startedAt ?? 0;
+  for (const r of rows) {
+    const cur = byLabel.get(label(r.name));
+    if (!cur || (r.live !== false && (cur.live === false || start(r) >= start(cur)))) byLabel.set(label(r.name), r);
+  }
   const need = new Map(board.needs_you.map((n) => [n.leg, n]));
   return board.legs.map((leg) => ({ leg, row: byLabel.get(leg.leg) ?? null, need: need.get(leg.leg) ?? null }));
+}
+
+// The needs-you cards the rail's filters leave: a leg shows when its fleet row is on the page (a leg with no row
+// hides once any filter is on, as it cannot match one).
+export function needsShown(joined: Joined[], rows: Row[], filters: Filters): Joined[] {
+  const needing = joined.filter((j) => j.need);
+  if (!filters.lanes.length && !filters.states.length && !filters.text.trim()) return needing;
+  const s = fleetSections(rows, null, filters);
+  const on = new Set([...s.running.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]), ...s.attention.map((a) => a.row), ...s.orphans.map((a) => a.row)].map((r) => r.name));
+  return needing.filter((j) => j.row && on.has(j.row.name));
+}
+
+// The Brief panel's text and error: a new request starts from neither, so a changed token or row never shows the last one's.
+export type BriefState = { text: string | null; err: string | null };
+export const BRIEF_IDLE: BriefState = { text: null, err: null };
+export function briefNext(s: BriefState, a: { kind: "start" } | { kind: "text"; text: string } | { kind: "error"; err: string }): BriefState {
+  return a.kind === "start" ? BRIEF_IDLE : a.kind === "text" ? { ...s, text: a.text } : { ...s, err: a.err };
 }
 
 const ms = (iso: string | null) => (iso ? Date.parse(iso) : NaN);

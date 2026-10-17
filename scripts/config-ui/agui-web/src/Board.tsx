@@ -1,8 +1,8 @@
 // The console board inside the Fleet page: the legend, a leg's stage dots, the Trends tab (four cards, each opening
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { applyKey, BOARD_URL, BRIEF_URL, openAt, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Stage } from "./board-model";
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, openAt, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
 const POLL_MS = 5_000;
@@ -168,12 +168,13 @@ export function useDrawerKeys(drawer: Drawer | null, panel: Panel | null, legs: 
 }
 
 function Brief({ token, row }: { token: string; row: string }) {
-  const [text, setText] = useState<string | null>(null), [err, setErr] = useState<string | null>(null);
+  const [{ text, err }, dispatch] = useReducer(briefNext, BRIEF_IDLE);
   useEffect(() => {
     let live = true;
+    dispatch({ kind: "start" });
     fetch(BRIEF_URL(row), { headers: { "X-Himmel-Token": token }, cache: "no-store" })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`the server answered ${r.status}`))))
-      .then((t) => live && setText(t), (e) => live && setErr(String(e.message ?? e)));
+      .then((t) => live && dispatch({ kind: "text", text: t }), (e) => live && dispatch({ kind: "error", err: String(e.message ?? e) }));
     return () => { live = false; };
   }, [token, row]);
   return err ? <p className="run-error" role="alert">{err}</p> : <pre className="bd-brief">{text ?? "loading…"}</pre>;
