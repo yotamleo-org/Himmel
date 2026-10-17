@@ -43,6 +43,13 @@ need "an operator PR author" "github.event.pull_request.user.login"
 need "an operator actor" "github.actor"
 need "the kill switch on" "vars.HIMMEL_VM_RUNNER == 'on'"
 
+# 2b. The conditions are mandatory conjunctions, not just present: pin the whole
+#     expression, so turning one `&&` into `||` (a route open to any fork PR or
+#     any author) fails here. A deliberate routing change edits this line too.
+want_expr="\${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('[\"self-hosted\",\"himmel-vm\"]') || matrix.os }}"
+if [ "$runs_on" = "$want_expr" ]; then ok "the routing expression is exactly the reviewed all-conditions-and form"; else bad "runs-on differs from the reviewed expression: $runs_on"; fi
+if [ "$(grep -o '||' <<< "$runs_on" | wc -l)" -eq 1 ]; then ok "the only || is the matrix.os fallback"; else bad "runs-on carries an extra ||: $runs_on"; fi
+
 # 3. The operator list matches the runner-side hook's, so the two cannot drift.
 for who in yotamleo yotamleo11-test; do
     if grep -qF "\"$who\"" <<< "$runs_on" && grep -qE "(^|[[:space:]|])$who(\||\))" "$HOOK"; then ok "operator $who is in both ci.yml and the runner-side hook"; else bad "operator $who differs between ci.yml and job-started-hook.sh"; fi
