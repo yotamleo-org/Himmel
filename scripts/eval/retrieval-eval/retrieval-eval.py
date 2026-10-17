@@ -159,7 +159,7 @@ def _mcp_post(url, body, headers, timeout):
     return msg, sid
 
 
-def qmd_daemon(args, timeout):
+def qmd_server(args, timeout):
     """One MCP query against the qmd server -> list of {file, snippet}. The whole exchange shares one deadline."""
     end = time.time() + timeout
     left = lambda: max(0.1, end - time.time())  # noqa: E731
@@ -219,7 +219,7 @@ def arm_qmd(q, hybrid, timeout, k, collection):
             return [], "", False, True
     else:
         try:
-            rows = qmd_daemon(args, timeout)
+            rows = qmd_server(args, timeout)
         except Exception as e:  # a timeout or a dead server is a scored miss, not a crash
             to = "timed out" in str(e).lower() or isinstance(e, TimeoutError)
             return [], "", to, not to
