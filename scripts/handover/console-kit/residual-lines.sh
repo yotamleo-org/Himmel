@@ -38,8 +38,11 @@ unfiled_residual_section_lines() {
 unfiled_residual_mention_lines() {
     awk '
     { sub(/\r$/, "") }
-    tolower($0) ~ /(deferred|follow-?ups?|residuals?)/ {
-        if (tolower($0) ~ /(^|[^a-z])(no|none|nothing|without|zero)[ \t]+([a-z-]+[ \t]+)?(deferred|follow-?ups?|residuals?)/) next
+    {
+        l = tolower($0)
+        gsub(/(^|[^a-z])(no|none|nothing|without|zero)[ \t]+([a-z-]+[ \t]+)?(deferred|follow-?ups?|residuals?)/, " ", l)
+    }
+    l ~ /(deferred|follow-?ups?|residuals?)/ {
         if ($0 !~ /HIMMEL-[0-9]+/ && $0 !~ /no-ticket:[ \t]*[^ \t]/) print
     }' "$1"
 }
