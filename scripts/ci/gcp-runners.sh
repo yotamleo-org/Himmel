@@ -38,8 +38,8 @@ die() { echo "gcp-runners: $1" >&2; exit "${2:-1}"; }
 
 gc() { "$GCLOUD" "$@" --project="$PROJECT" --impersonate-service-account="$SA"; }
 
-# pool_vms -> "name status" per pool VM
-pool_vms() { gc compute instances list --filter="labels.himmel-ci-runner=gcp" --format="value(name,status)"; }
+# pool_vms -> "name status zone" per pool VM (zone falls back to $ZONE when empty)
+pool_vms() { gc compute instances list --filter="labels.himmel-ci-runner=gcp" --format="value(name,status,zone.basename())"; }
 
 cmd_up() {
     local n="${1:-2}"
@@ -47,14 +47,15 @@ cmd_up() {
     [ "$n" -ge 1 ] || die "up: N must be at least 1" 2
     [ "$n" -le "$MAX_N" ] || die "up: N=$n exceeds the hard max $MAX_N (the trial caps 8 vCPUs)" 2
 
-    local live=0 name status
-    while read -r name status; do
+    local live=0 name status zone vms
+    vms="$(pool_vms)" || die "pool discovery failed, refusing to create VMs for an unknown pool"
+    while read -r name status zone; do
         [ -n "$name" ] || continue
         case "$status" in
-            TERMINATED|STOPPED|SUSPENDED) gc compute instances delete "$name" --zone="$ZONE" --quiet ;;
+            TERMINATED|STOPPED|SUSPENDED) gc compute instances delete "$name" --zone="${zone:-$ZONE}" --quiet || die "could not delete stopped VM $name" ;;
             *) live=$((live + 1)) ;;
         esac
-    done < <(pool_vms)
+    done <<< "$vms"
 
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
@@ -85,15 +86,18 @@ cmd_up() {
 
 cmd_down() {
     local name status
-    while read -r name status; do
+    local zone vms ids id failed=0
+    vms="$(pool_vms)" || die "pool discovery failed"
+    while read -r name status zone; do
         [ -n "$name" ] || continue
-        gc compute instances delete "$name" --zone="$ZONE" --quiet
-    done < <(pool_vms)
-    local id
+        gc compute instances delete "$name" --zone="${zone:-$ZONE}" --quiet || failed=1
+    done <<< "$vms"
+    ids="$("$GH" api "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="offline" and any(.labels[]; .name=="gcp")) | .id')" || die "runner listing failed"
     while read -r id; do
         [ -n "$id" ] || continue
-        "$GH" api -X DELETE "repos/$REPO/actions/runners/$id"
-    done < <("$GH" api "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="offline" and any(.labels[]; .name=="gcp")) | .id')
+        "$GH" api -X DELETE "repos/$REPO/actions/runners/$id" || failed=1
+    done <<< "$ids"
+    [ "$failed" -eq 0 ] || die "down: at least one delete failed, the pool is not clean"
     echo "gcp-runners: pool deleted"
 }
 

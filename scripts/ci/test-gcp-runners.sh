@@ -36,7 +36,8 @@ for a in "$@"; do
     esac
 done
 case "$*" in
-    *"instances list"*) cat "$STUB_INSTANCES" ;;
+    *"instances list"*) [ "${STUB_FAIL:-}" = list ] && exit 1; cat "$STUB_INSTANCES" ;;
+    *"instances delete"*) [ "${STUB_FAIL:-}" = delete ] && exit 1 ;;
 esac
 exit 0
 STUB
@@ -97,6 +98,14 @@ rc="$(run down)"
 if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 0 ]; then ok "down exits 0 and creates nothing"; else bad "down: rc=$rc creates=$(creates)"; fi
 if grep 'instances delete' "$STUB_LOG" | grep -q 'vm-a' && grep 'instances delete' "$STUB_LOG" | grep -q 'vm-b'; then ok "down deletes every pool VM"; else bad "down did not delete vm-a and vm-b"; fi
 if grep -q 'GH api -X DELETE repos/yotamleo/Himmel/actions/runners/4242' "$STUB_LOG"; then ok "down deregisters the offline gcp runner"; else bad "down did not deregister the offline runner"; fi
+
+# 6b. a failed pool listing is an error, never an empty pool; a failed delete fails down.
+export STUB_FAIL=list
+rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses to create when pool discovery fails"; else bad "discovery failure: rc=$rc creates=$(creates)"; fi
+export STUB_FAIL=delete
+printf 'vm-a\n' > "$STUB_INSTANCES"
+rc="$(run down)"; if [ "$rc" -ne 0 ] && ! grep -q 'pool deleted' "$T/out"; then ok "down fails when a delete fails"; else bad "down after failed delete: rc=$rc"; fi
+unset STUB_FAIL
 
 # 7. unknown subcommand is refused.
 rc="$(run frobnicate)"; if [ "$rc" -ne 0 ]; then ok "unknown subcommand is refused"; else bad "unknown subcommand accepted"; fi
