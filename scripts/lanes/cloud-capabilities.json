@@ -150,7 +150,7 @@
       "capability": "gitleaks binary for the pre-push secret scan",
       "state": "does",
       "local_split": "if the setup-env.sh gitleaks step reports failed, the local shepherd runs the secret scan",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): gitleaks not installed by setup (before HIMMEL-6135); setup-env.sh step 3a now installs gitleaks 8.30.1, sha256-pinned to the CI release",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): gitleaks not installed by setup (before HIMMEL-6135); setup-env.sh step 3a now installs gitleaks 8.30.1, sha256-pinned to the CI release; cse_014jSqhdQMC6HYFeB2y2vBpc (PR 3037 CLOUD-DONE probe): setup-env.sh rc 0, step=gitleaks action=install v8.30.1, gitleaks version 8.30.1",
       "source": "scripts/cloud/setup-env.sh (gitleaks step); docs/setup/cloud-environment.md (parity table)"
     },
     {
@@ -207,6 +207,14 @@
       "local_split": "send a stop follow-up and wait for CLOUD-ACK",
       "evidence": "session_013KTA4ZC9nxtrGz6SDZvH7q (PR 1752): stopping needed a follow-up message; no CLI stop exists",
       "source": "PR 1752"
+    },
+    {
+      "id": "gh-graphql",
+      "capability": "gh commands that use GraphQL (gh pr list, gh pr view)",
+      "state": "cannot",
+      "local_split": "use gh api REST endpoints (repos/{owner}/{repo}/...) in the cloud",
+      "evidence": "cse_014jSqhdQMC6HYFeB2y2vBpc (PR 3037 CLOUD-DONE probe): gh pr list rc 1, HTTP 403 GraphQL is not available from Claude Code sessions; gh api repos/yotamleo/Himmel/pulls rc 0",
+      "source": "PR 3037"
     },
     {
       "id": "long-commands",
