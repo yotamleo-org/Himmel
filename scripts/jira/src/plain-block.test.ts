@@ -114,6 +114,11 @@ describe('lintPlainBlockAdf', () => {
     expect(lintPlainBlockAdf(doc([], [ul('ok')]))).toEqual(['"## Plan" is empty']);
   });
 
+  it('an empty paragraph under a section still leaves it empty (HIMMEL-5643)', () => {
+    const doc = { type: 'doc', content: [h('Impact'), p(''), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('s'), h('DoD'), ul('d'), h('Agent detail'), p('e')] };
+    expect(lintPlainBlockAdf(doc)).toEqual(['"## Impact" is empty']);
+  });
+
   it('a paragraph or code block that merely reads like a list line is not a list item (HIMMEL-5643)', () => {
     const base = [h('Impact'), p('a'), h('What'), p('b'), h('Why'), p('c'), h('Plan'), ol('step'), h('Agent detail'), p('d')];
     const code = { type: 'codeBlock', content: [{ type: 'text', text: '- fake' }] };
