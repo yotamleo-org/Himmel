@@ -280,6 +280,10 @@ for budget in "leg-preface.md:12288" "console-template.md:16384"; do
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
 done
 
+tr '\n' ' ' < "$HANDOVER_DOCS/leg-preface.md" | grep -Eq 'ONE +turn.*text-only turn' \
+    && pass "leg-preface.md tells a leg to batch tool calls into ONE turn and skip text-only turns" \
+    || fail "leg-preface.md lacks the batch-tool-calls / no text-only turn rule"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

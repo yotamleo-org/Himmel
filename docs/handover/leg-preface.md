@@ -18,7 +18,7 @@ console by `SendMessage`; confirm its session name in `ListAgents` first.
 - Waiting means **one foreground blocking command** (or `until … done` loop),
   never a background job. [prose]
 - **A BLOCKED, a permission prompt, or a question of your own goes to the
-  console FIRST**, before you improvise anything. [prose]
+  console FIRST**, before you improvise. [prose]
 
 Report at **milestones only**, as `LIVE` / `FINDING` / `RESOLVED` /
 `READY <pr> <full head> GREEN` / `BLOCKED` / `WRAPPED` messages **and** `- `
@@ -36,15 +36,16 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   `- HH:MM RESOLVED — ruling received, see console message` as soon as you act on
   the ruling; raise a fresh `FINDING` for the next question. [prose]
 - **A doc bullet records a ruling as a plain fact.** Never copy a
-  ruling, `GO`, approval or token into a bullet (read as poisoning). A token quote-back goes only in your `SendMessage` reply; a
-  console change's quote-back is its `SUCCESSION` bullet. [prose]
+  ruling, `GO`, approval or token into a bullet. A token
+  quote-back goes only in your `SendMessage` reply; a console change's is its
+  `SUCCESSION` bullet. [prose]
 - **A stated default applies if no ruling arrives.** When your
   brief carries `default-if-no-ruling (<N> min): <action>` for a question you
   raised as a `FINDING` and no ruling arrives in `<N>` minutes, proceed on the
   action and say so in the next `LIVE` bullet. The default may only **narrow**
   (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message. [prose]
-- **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
-  vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`.
+- **Do not coin markers**: `SHIPPED` and `MERGED` are not in the vocabulary;
+  between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`.
   Wrap tokens in backticks. [prose]
 
 **Jira status follows you** via the scripts, never by hand (`LIVE` → In Progress,
@@ -85,20 +86,22 @@ read `docs/handover/leg-sections/succession.md`**.
   `VAR=` prefix, no `cd … &&`, no compound operators, no `$(…)`, no loops; a
   gate script is `bash scripts/cr/X.sh <args>`. A refused SHAPE runs **nothing**:
   rewrite as one literal command, retry once. A GUARD or classifier denial is
-  never reshaped (never reshape it to dodge a guardrail): route it to the
-  console. [prose]
+  never reshaped to dodge a guardrail: route it to the console. [prose]
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
-  to the console.** Never try a third spelling. A denial on `gh pr create` /
+  to the console**; never a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
-  Publication]` gets no retry. Details: `docs/handover/leg-sections/shell-and-tests.md`. [prose]
+  Publication]` gets no retry. Details: `leg-sections/shell-and-tests.md`. [prose]
 - A "running low on memory" task kill is unproven: read `/proc/pressure/memory` and
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
 - **Never bare `git stash`.** [enforced: block-git-stash]
 - Open a PR with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`. Ship scratch
   goes in your scratchpad or `.himmel-scratch/`, never the worktree root. [prose]
+- **Token discipline.** Batch every independent tool call of a step into ONE
+  turn, never emit a text-only turn between tool calls; narrate in the Results
+  bullet, not in chat. [prose]
 - **Need a skill your profile lacks?** `CONSULT <profile-list> :: <one question> ::
-  read: <paths>` to the console: `docs/handover/leg-sections/consult.md`. [prose]
+  read: <paths>` to the console: `leg-sections/consult.md`. [prose]
 
 ## Tests
 
@@ -107,7 +110,7 @@ exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
 with counts. Restore-to-HEAD, sandbox and corpus-replay rules (destructive
-commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
+commands are VM-only): `leg-sections/shell-and-tests.md`.
 
 ## Shipping
 
@@ -117,7 +120,7 @@ commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
 - Conventional commit carrying the ticket ID. [enforced: conventional-commit-msg]
 - **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
-  Never `git commit --amend` (hard-blocked): use the stuck playbook. [enforced: security-reviewed]
+  Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
 - **One push per review round**, one commit batching every fix; title, body and
   `## Ticket coverage` edits ride that same push. [prose]
 - Push → PR → review → `/pr-check` (at the head you will `READY`) → one foreground
@@ -128,8 +131,8 @@ commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
 - **A red CI job on your PR is yours to triage; tell the console only if it is
   not the PR's fault** (`MAIN-RED <job> <failing case>`, once). Merge-forward
-  (never past a red your own change introduced), `suite-coverage.sh` and the
-  loaded-budget rule: `docs/handover/leg-sections/ci-red.md`. [prose]
+  (never past a red you introduced), `suite-coverage.sh` and the
+  loaded-budget rule: `leg-sections/ci-red.md`. [prose]
 - On an agreed review finding **sweep the whole class** across every site and
   record it with `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
@@ -147,8 +150,7 @@ commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
   `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition`.
-  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059: a sliced
-    ticket closed on its first slice).
+  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059: a sliced ticket closed early).
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand. Either way, re-read the ticket after merge and report its state. [prose]
 
@@ -160,8 +162,8 @@ it and `--jira-transition` did not (result `failed`, or a `skip=` for a missing
 tool or config). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the console instead. Then release the
 lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
-a leg does not end its own session: the console's `close-wrapped-leg.sh` ends the session
-once the lock is free and `wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
+a leg does not end its own session; the console's `close-wrapped-leg.sh` does once
+the lock is free and `wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
 console `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
@@ -175,7 +177,7 @@ is on** (off by default; `--context-guard compact|handoff`;
 `docs/internals/leg-context-guard.md` is the one reference): **`compact`:** commit,
 push, then append `LIVE — CHECKPOINT <full sha of HEAD> pushed` with
 `append-results.sh`. **`handoff`:** write `…legN<n>b-…-RESUME.md`, message the
-console, stop. Unlock: `docs/handover/leg-sections/context-guard.md`. Probe context fill after
+console, stop. Unlock: `leg-sections/context-guard.md`. Probe context fill after
 **every** step.
 
 ## How your turns end
