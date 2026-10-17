@@ -64,3 +64,11 @@ local=skills/context7-mcp
 himmel-authored, no upstream. Lived in ~/.claude/skills (always-on, and
 per-skill enable/disable does not exist in Claude Code settings) — moved
 here so a plugin profile can scope it.
+
+deviation=skills/systematic-debugging/SKILL.md,skills/writing-plans/SKILL.md
+
+HIMMEL-5810 (0.2.7): one trailing `See also:` line appended to each of these two
+otherwise-verbatim files, linking docs/tool-adoption/pstack-principles-digest.md.
+A re-vendor copies the upstream file over it, so re-add the line (the
+digest's owning-skill links are checked by that file's PR body, not by a
+suite). This is the only carried delta in this plugin.
