@@ -68,6 +68,10 @@ check    "3: CONSOLE_CACHE_READ_BUDGET_M overrides (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=08 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: leading-zero budget 08 is decimal (rc 3, no octal abort)" "$rc" 3
 contains "3: leading-zero budget still prints the line" "$out" "verdict=HANDOVER"
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=008 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "3: 008 reads as decimal eight (rc 3)" "$rc" 3
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "3: 000 is zero, falls back to the default (rc 0 at 29M)" "$rc" 0
 
 # --- 4. duplicate requestIds ---------------------------------------------------
 { row a 1000000; row a 1000000; row b 2000000; row b 2000000; row a 1000000; } > "$tmp/dup.jsonl"
@@ -125,8 +129,15 @@ rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_
 check    "6: an oversized budget falls back to the default (rc 0 at 29M)" "$rc" 0
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title no-such-console 2>&1)" || rc=$?
 check    "6: unknown --title rc 2" "$rc" 2
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_SESSION_ID=sid-1 bash "$SCRIPT" --title '' 2>&1)" || rc=$?
+check    "6: empty --title rc 2, never the session-id transcript" "$rc" 2
 rc=0; out="$(bash "$SCRIPT" --bogus 2>&1)" || rc=$?
 check    "6: unknown flag rc 2" "$rc" 2
+
+printf '%s\n' '{"type":"assistant","requestId":"n1","message":{"usage":{"cache_read_input_tokens":null}}}' \
+              '{"type":"assistant","requestId":"n2","message":{"usage":{"input_tokens":3}}}' > "$tmp/nullcr.jsonl"
+run "$tmp/nullcr.jsonl"
+check    "4: a turn without cache_read still counts" "$out" "budget turns=2 cache_read=0.0M verdict=OK"
 
 # --- 7. sidechains and non-assistant rows --------------------------------------
 { row s1 1000000; row s2 1000000 ',"isSidechain":true'; printf '{"type":"user","requestId":"u1"}\n'; } > "$tmp/side.jsonl"

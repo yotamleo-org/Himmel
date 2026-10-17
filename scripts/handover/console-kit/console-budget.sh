@@ -20,9 +20,13 @@ set -uo pipefail
 num_env() { # <name> <default> - a bad value warns and falls back, never disables the budget
   local v="${!1:-$2}"
   case "$v" in
-    ''|*[!0-9]*|0|00*|???????*) printf 'console-budget: ignoring %s=%s - using %s\n' "$1" "$v" "$2" >&2; v="$2" ;;
+    ''|*[!0-9]*|???????*) v="" ;;
+    *) v="$((10#$v))" ;;  # 10#: a leading zero (08) is not octal
   esac
-  printf '%s\n' "$((10#$v))"  # 10#: a leading zero (08) is not octal
+  if [ -z "$v" ] || [ "$v" -eq 0 ]; then
+    printf 'console-budget: ignoring %s=%s - using %s\n' "$1" "${!1:-$2}" "$2" >&2; v="$2"
+  fi
+  printf '%s\n' "$v"
 }
 TURN_BUDGET="$(num_env CONSOLE_TURN_BUDGET 150)"
 CR_BUDGET_M="$(num_env CONSOLE_CACHE_READ_BUDGET_M 30)"
@@ -30,7 +34,7 @@ CR_BUDGET_M="$(num_env CONSOLE_CACHE_READ_BUDGET_M 30)"
 title=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --title) [ "$#" -ge 2 ] || { echo "console-budget: --title needs a value" >&2; exit 2; }; title="$2"; shift 2 ;;
+    --title) [ "$#" -ge 2 ] && [ -n "$2" ] || { echo "console-budget: --title needs a non-empty value" >&2; exit 2; }; title="$2"; shift 2 ;;
     *) echo "usage: console-budget.sh [--title <console session name>]" >&2; exit 2 ;;
   esac
 done
@@ -75,9 +79,9 @@ for (const line of fs.readFileSync(process.argv[2], 'utf8').split('\n')) {
   if (!row || row.type !== 'assistant' || row.isSidechain) continue;
   const usage = row.message && row.message.usage;
   const id = row.requestId || (row.message && row.message.id);
-  const cr = usage && usage.cache_read_input_tokens;
-  if (!id || !Number.isSafeInteger(cr) || cr < 0) continue;
-  seen.set(id, cr);
+  if (!id || !usage || typeof usage !== 'object') continue;
+  const cr = usage.cache_read_input_tokens;
+  seen.set(id, Number.isSafeInteger(cr) && cr >= 0 ? cr : 0);
 }
 let sum = 0;
 for (const v of seen.values()) sum += v;
