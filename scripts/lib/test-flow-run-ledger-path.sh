@@ -197,6 +197,15 @@ else
     fail "not-yet-existing path under /tmp counted as outside"
 fi
 
+# A ledger under /tmp that is a symlink to a path outside both roots is outside.
+mkdir -p "$out/link-target"
+ln -s "$out/link-target/prod.jsonl" "$z_dir/linked-ledger.jsonl"
+if TMPDIR="$z_tmp" root_check "$z_dir/linked-ledger.jsonl"; then
+    fail "symlinked ledger under /tmp pointing outside both roots counted as inside"
+else
+    pass "symlinked ledger pointing outside both roots is outside"
+fi
+
 # Control: a default ledger inside the temp root is the suite's own scratch
 # HOME and is not quarantined.
 i_tmp="$tmp/i-tmp"; mkdir -p "$i_tmp/home"
@@ -210,7 +219,7 @@ fi
 
 # Control: a genuine non-suite run. setsid -f reparents the wrapper to init, so
 # no test-*.sh sits in its ancestry; no marker, no override -> HOME default.
-g_tmp="$tmp/g-tmp"; g_home="$tmp/g-home"; mkdir -p "$g_tmp" "$g_home"
+g_tmp="$tmp/g-tmp"; g_home="$out/g-home"; mkdir -p "$g_tmp" "$g_home"
 if command -v setsid >/dev/null 2>&1; then
     # shellcheck disable=SC2016
     env -u HIMMEL_FLOW_RUNS_LEDGER -u HIMMEL_SUITE_LOCK_HELD HOME="$g_home" TMPDIR="$g_tmp" \

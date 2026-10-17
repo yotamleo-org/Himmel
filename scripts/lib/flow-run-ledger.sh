@@ -171,8 +171,20 @@ flow_run_is_transient() {
 # resolved with cd -P, the rest appended), so a symlink or a /tmpfoo lookalike
 # cannot pass the prefix test. A '..' component fails (never trusted).
 _fr_resolve() {
-    local d="${1:-}" rest=""
+    local d="${1:-}" rest="" hops=0 t
     case "$d" in */../*|*/..) return 1 ;; esac
+    # An existing ledger that is itself a symlink: follow it, or a link under
+    # /tmp could carry the append out to a production ledger.
+    while [ -L "$d" ]; do
+        hops=$((hops + 1))
+        [ "$hops" -le 8 ] || return 1
+        t=$(readlink "$d" 2>/dev/null) || return 1
+        case "$t" in
+            */../*|*/..|../*) return 1 ;;
+            /*) d="$t" ;;
+            *) case "$d" in */*) d="${d%/*}/$t" ;; *) d="$t" ;; esac ;;
+        esac
+    done
     while [ ! -d "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
         rest="/${d##*/}$rest"
         case "$d" in */*) d="${d%/*}" ;; *) d="." ;; esac
