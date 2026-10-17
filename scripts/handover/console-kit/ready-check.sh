@@ -629,6 +629,7 @@ else
     # shellcheck source=scripts/lib/go-gate.sh
     # shellcheck disable=SC1091
     if . "$tp_anchor/scripts/lib/go-gate.sh" 2>/dev/null && declare -F trust_path_check >/dev/null 2>&1; then
+        # shellcheck disable=SC2031  # tp_branch is set in the main shell, not a subshell
         tp_out=$(GH="$GH" trust_path_check "$nwo" "$PR" "$SHA" "$tp_branch" "$tp_anchor") || tp_rc=$?
     else
         tp_rc=2; tp_out="cannot load trust_path_check from $tp_anchor/scripts/lib/go-gate.sh"
