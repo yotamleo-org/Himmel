@@ -267,4 +267,29 @@ grepq "$out" -F 'himmelctl update' && fail "caseI: a flat (non-versioned) tree w
 grepq "$out" -F 'package manager' || fail "caseI: a flat tree lost the package-manager route: $out"
 echo "ok: caseI himmel-update.sh routes the layout to himmelctl update, a flat tree to its package manager"
 
+# ── J: versionedLayout compares dev+ino as bigint ───────────────────────────
+# Number inodes above 2**53 collapse: 2**53 and 2**53+1 are the same Number, so
+# two distinct directories looked identical. The stub honours {bigint: true}
+# and answers Number(ino) otherwise, as a real stat does.
+td="$work/caseJ"
+mkdir -p "$td/base/1.0.0"
+ln -s 1.0.0 "$td/base/current"
+cat > "$td/probe.js" <<'EOF2'
+const fs = require("fs");
+const [, , lib, root, curIno, rootIno] = process.argv;
+fs.statSync = function (p, o) {
+  const big = p === root ? BigInt(rootIno) : BigInt(curIno);
+  if (o && o.bigint) return { dev: 1n, ino: big };
+  return { dev: 1, ino: Number(big) };
+};
+const { versionedLayout } = require(lib);
+process.stdout.write(versionedLayout(root) ? "layout" : "null");
+EOF2
+lib="$tree_src/scripts/himmelctl/lib/tarball-update.js"
+out=$("$node_bin" "$td/probe.js" "$lib" "$td/base/1.0.0" 9007199254740992 9007199254740993)
+[ "$out" = null ] || fail "caseJ: inodes 2**53 and 2**53+1 collapsed to one Number and matched: $out"
+out=$("$node_bin" "$td/probe.js" "$lib" "$td/base/1.0.0" 9007199254740993 9007199254740993)
+[ "$out" = layout ] || fail "caseJ: two identical inodes no longer match: $out"
+echo "ok: caseJ versionedLayout tells 2**53 from 2**53+1 and still matches identical inodes"
+
 echo "PASS: test-versioned-layout.sh"

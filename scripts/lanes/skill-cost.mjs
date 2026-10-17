@@ -67,9 +67,9 @@ function directoryEntries(path, scope, skipped) {
   }
 }
 
-function statThroughLink(path, scope, skipped) {
+function statThroughLink(path, scope, skipped, options) {
   try {
-    return statSync(path);
+    return statSync(path, options);
   } catch (error) {
     // A broken user-skill link is common enough to be an invalid entry, not a
     // reason to lose the rest of the measurement.
@@ -215,7 +215,9 @@ function findPluginSkillDirectories(root, skipped) {
   const visited = new Set();
 
   function walk(path, depth) {
-    const pathStat = statThroughLink(path, PLUGIN_SKILLS_SCOPE, skipped);
+    // bigint: a Number inode loses precision above 2**53 and two distinct
+    // directories would then share an identity.
+    const pathStat = statThroughLink(path, PLUGIN_SKILLS_SCOPE, skipped, { bigint: true });
     if (!pathStat?.isDirectory()) return;
     const identity = `${pathStat.dev}:${pathStat.ino}`;
     if (visited.has(identity)) return;

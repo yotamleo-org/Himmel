@@ -44,8 +44,10 @@ function versionedLayout(root) {
   const current = path.join(base, 'current');
   try {
     if (!fs.lstatSync(current).isSymbolicLink()) return null;
-    const a = fs.statSync(current);
-    const b = fs.statSync(root);
+    // bigint: a Number inode loses precision above 2**53, so two distinct
+    // directories could compare equal.
+    const a = fs.statSync(current, { bigint: true });
+    const b = fs.statSync(root, { bigint: true });
     if (a.dev !== b.dev || a.ino !== b.ino) return null;
     return { base, current, dir: fs.realpathSync(current) };
   } catch (_e) {

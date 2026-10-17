@@ -3,6 +3,8 @@
 // measurement, especially Windows junctions (the common user-skill shape).
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import {
   chmodSync,
   mkdirSync,
@@ -697,4 +699,49 @@ test('CLI exits 3 (not 0, not 2) when a path is skipped, in all three modes', (t
   assert.equal(parsed.skipped.length, 1);
   assert.equal(parsed.skipped[0].code, 'ELOOP');
   assert.equal(parsed.summary.total.skipped, 1);
+});
+
+test('plugin walk tells apart two directories whose inodes collapse to one Number (HIMMEL-6093)', (t) => {
+  const root = makeTmpDir('skill-cost-ino-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const configDir = join(root, 'config');
+  for (const plugin of ['a', 'b']) {
+    write(join(configDir, 'plugins', plugin, 'skills', `${plugin}-skill`, 'SKILL.md'), skill(`name: ${plugin}-skill\ndescription: ${plugin}`));
+  }
+  const inodes = new Map([
+    [join(configDir, 'plugins', 'a'), 2n ** 53n],
+    [join(configDir, 'plugins', 'b'), 2n ** 53n + 1n],
+  ]);
+  const realStat = fs.statSync;
+  // Honour {bigint: true} as a real stat does: exact BigInt inodes there, and
+  // the lossy Number otherwise, which collapses 2**53 and 2**53+1 to one value.
+  fs.statSync = (path, options) => {
+    const ino = inodes.get(path);
+    const stat = realStat(path, options);
+    if (ino === undefined) return stat;
+    const dev = options?.bigint ? 1n : 1;
+    return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { dev, ino: options?.bigint ? ino : Number(ino) });
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.statSync = realStat;
+    syncBuiltinESMExports();
+  });
+  const names = scanSkillCosts({ cwd: join(root, 'repo'), configDir }).entries.map((entry) => entry.name).sort();
+  assert.deepEqual(names, ['a-skill', 'b-skill']);
+});
+
+test('plugin walk still visits a directory reached twice once (HIMMEL-6093 control)', (t) => {
+  const root = makeTmpDir('skill-cost-ino-same-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const configDir = join(root, 'config');
+  write(join(configDir, 'plugins', 'a', 'skills', 'a-skill', 'SKILL.md'), skill('name: a-skill\ndescription: a'));
+  try {
+    symlinkSync(join(configDir, 'plugins', 'a'), join(configDir, 'plugins', 'alias'), 'dir');
+  } catch (error) {
+    t.skip(`cannot create a symlink: ${error.code}`);
+    return;
+  }
+  const names = scanSkillCosts({ cwd: join(root, 'repo'), configDir }).entries.map((entry) => entry.name);
+  assert.deepEqual(names, ['a-skill']);
 });
