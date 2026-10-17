@@ -4,7 +4,7 @@
 # himmelctl qmd install flow, so install and `himmelctl ensure` (which the
 # update drift pass runs) both leave doctor C44-skill-index green.
 #
-# Registers the collection only; never runs `qmd embed` (no model download).
+# Registers or refreshes the collection; never runs `qmd embed` (no model download).
 # qmd absent, or an index dir with no items, is a clean skip (rc 0): /skill-find
 # is optional on a host without qmd.
 set -uo pipefail
@@ -28,5 +28,9 @@ if [ -z "$first_item" ]; then
     exit 0
 fi
 
-# qmd_register_collection skips when 'skills' is already listed.
-qmd_register_collection "$out_dir" skills
+collections=$(qmd_cmd collection list) || exit $?
+if printf '%s\n' "$collections" | grep -q '^skills\b'; then
+    qmd_cmd update -c skills
+else
+    qmd_register_collection "$out_dir" skills
+fi

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/skill-index/test-ensure-skill-index.sh
-# ensure-skill-index.sh registers the 'skills' collection when absent, never
-# registers twice, and skips cleanly with no qmd or an empty/missing index dir.
+# ensure-skill-index.sh registers the 'skills' collection when absent, refreshes
+# it when present, and skips cleanly with no qmd or an empty source.
 # Stub qmd on PATH (BUN_INSTALL pointed at nothing), as test-skill-find.sh does.
 set -uo pipefail
 
@@ -20,13 +20,17 @@ printf -- '---\ndescription: a test command\n---\nbody\n' > "$td/home/.claude/co
 
 cat > "$td/bin/qmd" <<'STUB'
 #!/usr/bin/env bash
+echo "$*" >> "$QMD_STUB_LOG"
 if [ "$1 $2" = "collection list" ]; then
     printf 'Collections:\n\nhimmel (qmd://himmel/)\n  Files:    5\n'
     [ -f "$QMD_STUB_STATE" ] && printf 'skills (qmd://skills/)\n  Files:    1\n'
     exit 0
 fi
 if [ "$1 $2" = "collection add" ]; then
-    echo "$*" >> "$QMD_STUB_LOG"; : > "$QMD_STUB_STATE"; exit 0
+    : > "$QMD_STUB_STATE"; exit 0
+fi
+if [ "$*" = "update -c skills" ]; then
+    exit 0
 fi
 exit 2
 STUB
@@ -40,10 +44,16 @@ bash "$TARGET" >/dev/null 2>&1; rc=$?
 check "absent collection: rc" "$rc" "0"
 check "absent collection: registered once" "$(grep -c -- '--name skills' "$td/log" 2>/dev/null)" "1"
 
-# Already registered -> no second registration.
+check "absent collection: no embed" "$(grep -cw embed "$td/log")" "0"
+check "absent collection: no explicit update" "$(grep -cw update "$td/log")" "0"
+
+# Already registered -> one scoped refresh, no second registration or embedding.
 bash "$TARGET" >/dev/null 2>&1; rc=$?
 check "already registered: rc" "$rc" "0"
 check "already registered: still one add" "$(grep -c -- '--name skills' "$td/log")" "1"
+check "already registered: exactly one update" "$(grep -cw update "$td/log")" "1"
+check "already registered: update scoped to skills" "$(grep -cx 'update -c skills' "$td/log")" "1"
+check "already registered: no embed" "$(grep -cw embed "$td/log")" "0"
 
 # Missing SKILL_INDEX_DIR (parent absent too) -> created, rc 0, registered.
 rm -f "$td/log" "$td/state"; rm -rf "$td/idx"
