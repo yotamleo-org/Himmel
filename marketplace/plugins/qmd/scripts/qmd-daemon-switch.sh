@@ -34,7 +34,15 @@ case "${1:-}" in
       holder="$(cat "$launch_lock/pid" 2>/dev/null)"
       case "$holder" in
         ''|*[!0-9]*) ;;
-        *) kill -0 "$holder" 2>/dev/null || rm -rf "$launch_lock" ;;
+        *)
+          # Clearing is serialized by a second mkdir lock and the holder is
+          # re-read inside it, as ensure's swap_lock_reclaim does: two waiters
+          # that both saw a dead holder must not delete a fresh lock.
+          if ! kill -0 "$holder" 2>/dev/null && mkdir "$launch_lock.reclaim" 2>/dev/null; then
+            [ "$(cat "$launch_lock/pid" 2>/dev/null)" != "$holder" ] || rm -rf "$launch_lock"
+            rmdir "$launch_lock.reclaim" 2>/dev/null
+          fi
+          ;;
       esac
       lock_i=$((lock_i + 1))
       sleep 1
@@ -42,8 +50,7 @@ case "${1:-}" in
     if [ "$have_lock" -eq 1 ]; then
       echo off > "$launch_lock/role"
       echo "$$" > "$launch_lock/pid"
-      # shellcheck disable=SC2064 # expand now: the lock path is fixed for this run
-      trap "rm -rf '$launch_lock'" EXIT
+      trap 'rm -rf "$launch_lock"' EXIT
     else
       echo "qmd-daemon-switch: could not take $launch_lock in 65s; a launch may still be in flight - run off again to be sure" >&2
     fi
