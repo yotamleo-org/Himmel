@@ -133,7 +133,7 @@ echo "NODE Need [src=scripts/board-model.ts loc=L16 community=]"
 STUB
 out="$(run query "why does the jira transition at merge need an explicit flag")"
 first="$(grep -m1 '^NODE ' <<<"$out")"
-if [ "${first%% \[src=*}" = "NODE completes-ticket line and Ticket coverage" ] && grep -A1 '^NODE completes-ticket' <<<"$out" | grep -q 'RATIONALE: The merge script closes the ticket only on --jira-transition' && [ "$(grep -c '^NODE ' <<<"$out")" -le 5 ]; then pass "T9 the reason node missing from the answer is added first"
+if [ "${first%% \[src=*}" = "NODE completes-ticket line and Ticket coverage" ] && grep -A1 '^NODE completes-ticket' <<<"$out" | grep -q 'RATIONALE: The merge script closes the ticket only on --jira-transition' && [ "$(grep -c '^NODE ' <<<"$out")" -le 5 ] && grep -q '| 2 nodes found (+[1-3] doc/rationale nodes added for a why/how question)$' <<<"$out"; then pass "T9 the reason node missing from the answer is added first, and the header says so"
 else fail "T9 out='$out'"; fi
 
 # T5: the five spot-check questions against the fixture, real graphify.

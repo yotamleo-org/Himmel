@@ -130,9 +130,12 @@ def rank(lines, graph, question):
         return 2
 
     ordered = sorted(added + blocks, key=tier)
+    head = lines[:start]
     if added:
+        note = f" (+{len(added)} doc/rationale nodes added for a why/how question)"
+        head = [re.sub(r"(\| \d+ nodes found)$", r"\1" + note, line) for line in head]
         print(f"rank-why-how: added {len(added)} doc/rationale node(s) matching the question's words", file=sys.stderr)
-    return lines[:start] + [line for block in ordered for line in block] + lines[end:]
+    return head + [line for block in ordered for line in block] + lines[end:]
 
 
 def main():
