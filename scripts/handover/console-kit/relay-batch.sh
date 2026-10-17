@@ -145,7 +145,7 @@ EOC
         echo "UNRESOLVED $label (candidates: ${cands#,}; $hits live match(es), nothing sent) — relay by hand"
         continue
     fi
-    text="SUCCESSION relay from $sender: your console is now $successor. Your current token \`$nonce\`. Verify this relay, write your SUCCESSION accepted Results bullet (that is the quote-back; no reply needed), and keep working your sealed scope."
+    text="SUCCESSION relay from $sender: your console is now $successor. Your current token \`$nonce\`. Verify this relay and keep working your sealed scope. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: $successor replaces $sender"
     case "$lane" in
         claudex)
             if bash "$send" "$lsession" "$text" --token "$nonce" --doc "$ldoc" >/dev/null; then
