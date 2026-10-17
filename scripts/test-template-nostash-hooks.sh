@@ -701,12 +701,22 @@ if [ -n "${M2:-}" ]; then
 
   # The same broken launcher is also first on PATH: the fallback must probe
   # it and move on to python -m pre_commit.
-  printf 'staged-third\n' > "$M2/commit-file.txt"
-  git -C "$M2" add commit-file.txt
-  m2c_out=$(cd "$M2" && PATH="$m2_bin:$PATH" git commit -qm "feat: broken launcher on PATH" 2>&1)
-  m2c_rc=$?
-  check "M2: commit succeeds when the broken launcher is also first on PATH" "$m2c_rc" "0"
-  [ "$m2c_rc" -ne 0 ] && echo "  M2c output: $m2c_out"
+  # Needs a python that can import pre_commit; an isolated (pipx) install may
+  # expose only the launcher, so skip rather than fail there.
+  m2c_py=0
+  for py in python python3; do
+    command -v "$py" >/dev/null 2>&1 && "$py" -m pre_commit --version >/dev/null 2>&1 && m2c_py=1
+  done
+  if [ "$m2c_py" -eq 1 ]; then
+    printf 'staged-third\n' > "$M2/commit-file.txt"
+    git -C "$M2" add commit-file.txt
+    m2c_out=$(cd "$M2" && PATH="$m2_bin:$PATH" git commit -qm "feat: broken launcher on PATH" 2>&1)
+    m2c_rc=$?
+    check "M2: commit succeeds when the broken launcher is also first on PATH" "$m2c_rc" "0"
+    [ "$m2c_rc" -ne 0 ] && echo "  M2c output: $m2c_out"
+  else
+    echo "SKIP - M2c: no python/python3 can import pre_commit (isolated install)"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
