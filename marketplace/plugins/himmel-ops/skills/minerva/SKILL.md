@@ -154,7 +154,7 @@ MIT, Lauren Tan); re-stated here, not vendored.
   cheapest to undo) and keep them to yourself. Dispatch N=3 (cap 4) READ-ONLY
   candidates in one round, each given the question, the 1a outcome and a different
   design direction, not the rubric: `himmel-ops:fanout` `research` items, or
-  scoped subagents with an explicit `model`. Each returns a sketch plus the
+  scoped subagents with `model: sonnet` at medium effort. Each returns a sketch plus the
   alternatives it rejected. A candidate that returns nothing is dropped and noted.
 - **Pick the base, then graft.** Read every candidate in full and score each
   criterion by criterion, not by feel. The base is the one a maintainer can extend
@@ -163,12 +163,16 @@ MIT, Lauren Tan); re-stated here, not vendored.
   criterion (usually one or two items), so the result stays one coherent design.
   Candidates that converge: keep the shared shape, graft nothing. Candidates that
   diverge at the root: the question was under-specified, so tighten it and re-run
-  once, never average them.
+  once, never average them. If the re-run still diverges at the root, pick the
+  base by the rubric score alone (tie: smaller surface), graft nothing, and
+  record `divergent after re-run` in the section; `interactive` mode instead asks
+  the operator which shape to take.
 - **Single writer.** Candidates write nothing; you, the minerva parent, are the
   one writer and draft the spec through `lean-skills:brainstorming`.
 - **Record it in `## Alternatives considered`** (no new section, so the Stage-2
-  gate and the terminal lint are unchanged): `Base: <candidate> - <criteria it won
-  on>`; one `Graft: <what> <- <candidate>` line per item taken, naming the `I<n>`
+  gate and the terminal lint are unchanged): the rubric (one line per criterion)
+  and a score table, one row per candidate and one column per criterion, so the
+  critic can audit the pick; `Base: <candidate> - <criteria it won on>`; one `Graft: <what> <- <candidate>` line per item taken, naming the `I<n>`
   or Fact-ownership row it landed in; one `Rejected: <what> (<candidate>) - <why>`
   line per notable discard; any dropout or convergence. The Stage-2 critic
   challenges the base pick and each graft like any other alternative.
