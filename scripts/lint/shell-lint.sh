@@ -300,10 +300,10 @@ if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
     # Capture git's exit code explicitly — a git failure must NOT read as
     # "no changed files" (that would be a false all-clear).
     if [ "$STAGED" -eq 1 ]; then
-        _list="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACM)" \
+        _list="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACMR)" \
             || { printf 'shell-lint: --staged: git diff --cached failed\n' >&2; exit 2; }
     else
-        _list="$(cd "$_root" && git diff --name-only --diff-filter=ACM "$CHANGED" --)" \
+        _list="$(cd "$_root" && git diff --name-only --diff-filter=ACMR "$CHANGED" --)" \
             || { printf 'shell-lint: --changed: git diff %s failed\n' "$CHANGED" >&2; exit 2; }
     fi
     while IFS= read -r _f; do
@@ -319,7 +319,7 @@ fi
 # _baseline_filter KEY — stdin: a file's report. Drops each tag whose count is
 # within its baseline row; the rest print unchanged.
 _baseline_filter() {
-    awk -v key="$1" -v base="$BASE_TEXT" '
+    awk -v key="$1" -v base="$BASE_TEXT" -v wr="$WRITE_BASELINE" '
     BEGIN {
         n = split(base, bl, "\n")
         for (i = 1; i <= n; i++) { m = split(bl[i], p, "\t"); if (m == 3 && p[1] == key) allow[p[2]] = p[3] + 0 }
@@ -331,7 +331,7 @@ _baseline_filter() {
     END {
         for (i = 1; i <= NR; i++) {
             t = tag[i]
-            if (t == "" || (t in never) || cnt[t] > allow[t]) print line[i]
+            if (t == "" || (t in never) || (!wr && cnt[t] > allow[t])) print line[i]
         }
     }'
 }
@@ -586,13 +586,10 @@ EOF
 
     if [ "$file_issues" -gt 0 ] && [ -n "$BASELINE" ]; then
         _key="${f#"$_root"/}"
-        if [ "$WRITE_BASELINE" -eq 1 ]; then
-            WB_OUT="$WB_OUT$(printf '%s' "$file_report" | _baseline_counts "$_key")"$'\n'
-            file_issues=0
-        else
-            file_report="$(printf '%s' "$file_report" | _baseline_filter "$_key")"
-            if [ -n "$file_report" ]; then file_report="$file_report"$'\n'; else file_issues=0; fi
-        fi
+        # write mode records the baselinable counts and keeps only the findings no baseline can accept
+        [ "$WRITE_BASELINE" -eq 1 ] && WB_OUT="$WB_OUT$(printf '%s' "$file_report" | _baseline_counts "$_key")"$'\n'
+        file_report="$(printf '%s' "$file_report" | _baseline_filter "$_key")"
+        if [ -n "$file_report" ]; then file_report="$file_report"$'\n'; else file_issues=0; fi
     fi
 
     if [ "$file_issues" -gt 0 ]; then
@@ -612,9 +609,10 @@ if [ "$EXPLICIT" -eq 1 ] && [ "$CHECKED" -eq 0 ] && [ "$MISSING" -gt 0 ]; then
 fi
 
 if [ "$WRITE_BASELINE" -eq 1 ]; then
-    printf '%s' "$WB_OUT" | grep -v '^$' | LC_ALL=C sort > "$BASELINE" || true
-    printf 'shell-lint: wrote %d baseline row(s) to %s\n' "$(grep -c . "$BASELINE")" "$BASELINE"
-    exit 0
+    if ! printf '%s' "$WB_OUT" | awk 'NF' | LC_ALL=C sort > "$BASELINE"; then
+        printf 'shell-lint: could not write baseline: %s\n' "$BASELINE" >&2; exit 2
+    fi
+    printf 'shell-lint: wrote %d baseline row(s) to %s\n' "$(awk 'END{print NR}' "$BASELINE")" "$BASELINE"
 fi
 
 if [ "$ISSUE_FILES" -gt 0 ]; then

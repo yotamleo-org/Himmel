@@ -1234,6 +1234,34 @@ else
     fail "21k ci.yml has no shell-lint --changed step"
 fi
 
+# a renamed file is linted at its new path (--changed and --staged)
+(
+    cd "$GATE" || exit 1
+    git add bad.sh good.sh && git commit -q -m seed2
+    git mv bad.sh moved.sh
+    cat >> moved.sh <<'EOF'
+y=$(mktemp)
+EOF
+    git add moved.sh && git commit -q -m rename
+) >/dev/null 2>&1
+printf '' > "$GATE/scripts/lint/shell-lint-baseline.txt"
+OUT21L="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --changed HEAD~1..HEAD --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21L=$?
+if [ "$EC21L" -eq 1 ]; then pass "21l --changed lints a renamed file"; else fail "21l expected exit 1, got $EC21L" "$OUT21L"; fi
+assert_contains "21l names the new path" "moved.sh" "$OUT21L"
+(cd "$GATE" && git reset -q --hard HEAD~1 && git mv bad.sh moved.sh && cat >> moved.sh <<'EOF'
+y=$(mktemp)
+EOF
+git add moved.sh) >/dev/null 2>&1
+OUT21M="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21M=$?
+if [ "$EC21M" -eq 1 ]; then pass "21m --staged lints a renamed file"; else fail "21m expected exit 1, got $EC21M" "$OUT21M"; fi
+
+# --write-baseline never launders a finding no baseline can accept, and fails loudly when it cannot write
+OUT21N="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/wb.txt" --write-baseline bom.sh 2>&1)"; EC21N=$?
+if [ "$EC21N" -eq 1 ]; then pass "21n --write-baseline still reports a [BOM] finding"; else fail "21n expected exit 1, got $EC21N" "$OUT21N"; fi
+assert_contains "21n reports [BOM]" "[BOM]" "$OUT21N"
+OUT21O="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/no-such-dir/wb.txt" --write-baseline good.sh 2>&1)"; EC21O=$?
+if [ "$EC21O" -eq 2 ]; then pass "21o --write-baseline to an unwritable path exits 2"; else fail "21o expected exit 2, got $EC21O" "$OUT21O"; fi
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
