@@ -54,6 +54,7 @@ git -C "$ANCHOR" remote add origin "$tmp/origin.git"
 git -C "$ANCHOR" push -q origin HEAD:refs/heads/main 2>/dev/null
 git -C "$tmp/origin.git" symbolic-ref HEAD refs/heads/main
 export READY_GO_ANCHOR="$ANCHOR"
+export READY_CHECK_ANCHOR="$ANCHOR"
 
 # A gh in front of the ready-pass one: the queries ready-go adds (repo name and
 # default branch, PR title, trust list and file listing). Everything else falls
