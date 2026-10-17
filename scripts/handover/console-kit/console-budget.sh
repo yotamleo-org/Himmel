@@ -34,7 +34,9 @@ CR_BUDGET_M="$(num_env CONSOLE_CACHE_READ_BUDGET_M 30)"
 title=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --title) [ "$#" -ge 2 ] && [ -n "$2" ] || { echo "console-budget: --title needs a non-empty value" >&2; exit 2; }; title="$2"; shift 2 ;;
+    --title)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then echo "console-budget: --title needs a non-empty value" >&2; exit 2; fi
+      title="$2"; shift 2 ;;
     *) echo "usage: console-budget.sh [--title <console session name>]" >&2; exit 2 ;;
   esac
 done
