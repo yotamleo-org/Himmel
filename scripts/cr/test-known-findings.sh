@@ -44,8 +44,6 @@ contains "diff: octal on UPPERCASE arith"      "$out" "[octal-leading-zero]"
 contains "diff: octal cites line 9"            "$out" "scripts/foo.sh:9"
 not_contains "diff: 10# excluded"              "$out" "scripts/foo.sh:10"
 contains "diff: handover literal path"         "$out" "[handover-root-bootstrap]"
-contains "diff: twin parity"                   "$out" "[ps1-twin-parity]"
-contains "diff: twin names the unchanged ps1"  "$out" "twin foo.ps1 unchanged"
 contains "diff: test-coverage-gap"             "$out" "[test-coverage-gap]"
 contains "diff: docs-flag-drift"               "$out" "[docs-flag-drift]"
 contains "diff: removed flag still in docs"    "$out" "--old-flag still in docs/x.md"
@@ -208,42 +206,45 @@ KNOWN_FINDINGS_FILE="$tmp/norung-kf.json" bash "$SCRIPT" --ladder >/dev/null 2>&
 sed 's/"kind":"checklist"/"kind":"checklist","rung":"bogus"/' "$tmp/norung-kf.json" > "$tmp/badrung-kf.json"
 KNOWN_FINDINGS_FILE="$tmp/badrung-kf.json" bash "$SCRIPT" --ladder >/dev/null 2>&1; check "schema: class with an invalid rung fails" "$?" "2"
 
-# promotion proposals: agreed recurrences since the rung was set (optional
+# promotion proposals: real recurrences since the rung was set (optional
 # `rung_since`, else the whole ledger) across distinct branches; PROPOSE when >= N and >= M.
+# Dates are relative to now: the gate rung only counts the last 30 days.
+rd() { node -e 'console.log(new Date(Date.now()-process.argv[1]*864e5).toISOString().slice(0,19)+"Z")' "$1"; }
 cat > "$tmp/promo-kf.json" <<'KFJSON'
 {"classes":[
-{"id":"spread","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["spread/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"shell-lint [x] (advisory)","prompt":false,"evidence":{}},
-{"id":"one-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["onebranch/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
-{"id":"stale","kind":"fix","rung":"advisory","rung_since":"2026-09-01","title":"t","source":"s","globs":["stale/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
-{"id":"prompt-only","kind":"rebuttal","rung":"prompt","title":"t","source":"s","globs":["ponly/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
-{"id":"no-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["nobranch/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
-{"id":"already-gated","kind":"fix","rung":"gate","title":"t","source":"s","globs":["gated/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}
+{"id":"spread","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["spread/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"shell-lint [x] (advisory)","prompt":false,"evidence":{}},
+{"id":"one-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["onebranch/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
+{"id":"stale","kind":"fix","rung":"advisory","rung_since":"@SINCE@","title":"t","source":"s","globs":["stale/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
+{"id":"prompt-only","kind":"fix","rung":"prompt","title":"t","source":"s","globs":["ponly/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"no-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["nobranch/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
+{"id":"already-gated","kind":"fix","rung":"gate","title":"t","source":"s","globs":["gated/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}
 ]}
 KFJSON
-pf() { printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"codex","finding_id":"%s","severity":"imp","file":"%s","line":1,"verdict":"agreed"}\n' "$@"; }
+sed -i.bak "s/@SINCE@/$(rd 15 | cut -c1-10)/" "$tmp/promo-kf.json"
+pf() { printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"codex","finding_id":"%s","severity":"imp","file":"%s","line":1,"verdict":"agreed","text":"a needle here"}\n' "$@"; }
 {
-  pf 2026-09-10T00:00:00Z b1 aaaaaaa f1 spread/a.sh
-  pf 2026-09-11T00:00:00Z b2 bbbbbbb f2 spread/b.sh
-  pf 2026-09-12T00:00:00Z b2 ccccccc f3 spread/c.sh
-  pf 2026-09-10T00:00:00Z b1 ddddddd f4 onebranch/a.sh
-  pf 2026-09-11T00:00:00Z b1 eeeeeee f5 onebranch/b.sh
-  pf 2026-09-12T00:00:00Z b1 fffffff f6 onebranch/c.sh
-  pf 2026-08-10T00:00:00Z b1 1111111 f7 stale/a.sh
-  pf 2026-08-11T00:00:00Z b2 2222222 f8 stale/b.sh
-  pf 2026-08-12T00:00:00Z b3 3333333 f9 stale/c.sh
-  pf 2026-09-10T00:00:00Z b1 4444444 f10 ponly/a.md
-  pf 2026-09-11T00:00:00Z b2 5555555 f11 ponly/b.md
-  pf 2026-09-12T00:00:00Z b3 6666666 f12 ponly/c.md
-  pf 2026-09-10T00:00:00Z b1 abababa f16 nobranch/a.sh
-  pf 2026-09-11T00:00:00Z b1 bcbcbcb f17 nobranch/b.sh
-  pf 2026-09-12T00:00:00Z "" cdcdcdc f18 nobranch/c.sh
-  pf 2026-09-10T00:00:00Z b1 7777777 f13 gated/a.sh
-  pf 2026-09-11T00:00:00Z b2 8888888 f14 gated/b.sh
-  pf 2026-09-12T00:00:00Z b3 9999999 f15 gated/c.sh
+  pf "$(rd 12)" b1 aaaaaaa f1 spread/a.sh
+  pf "$(rd 11)" b2 bbbbbbb f2 spread/b.sh
+  pf "$(rd 10)" b2 ccccccc f3 spread/c.sh
+  pf "$(rd 12)" b1 ddddddd f4 onebranch/a.sh
+  pf "$(rd 11)" b1 eeeeeee f5 onebranch/b.sh
+  pf "$(rd 10)" b1 fffffff f6 onebranch/c.sh
+  pf "$(rd 22)" b1 1111111 f7 stale/a.sh
+  pf "$(rd 21)" b2 2222222 f8 stale/b.sh
+  pf "$(rd 20)" b3 3333333 f9 stale/c.sh
+  pf "$(rd 12)" b1 4444444 f10 ponly/a.md
+  pf "$(rd 11)" b2 5555555 f11 ponly/b.md
+  pf "$(rd 10)" b3 6666666 f12 ponly/c.md
+  pf "$(rd 12)" b1 abababa f16 nobranch/a.sh
+  pf "$(rd 11)" b1 bcbcbcb f17 nobranch/b.sh
+  pf "$(rd 10)" "" cdcdcdc f18 nobranch/c.sh
+  pf "$(rd 12)" b1 7777777 f13 gated/a.sh
+  pf "$(rd 11)" b2 8888888 f14 gated/b.sh
+  pf "$(rd 10)" b3 9999999 f15 gated/c.sh
 } > "$tmp/promo-ledger.jsonl"
-pl="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"; plrc=$?
+pl="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder --min-recurrences 3 --min-branches 2 2>&1)"; plrc=$?
 check "promote: --ladder exit 0" "$plrc" "0"
-contains "promote: section header names N and M" "$pl" "promotion proposals (agreed recurrences >= 3 across >= 2 branches"
+contains "promote: section header names N and M" "$pl" "promotion proposals (real recurrences, verdict agreed/confirmed/fixed, attributed by globs and match; >= 3 across >= 2 branches"
 contains "promote: crossing class proposed with rung, counts, host" "$pl" "PROPOSE [spread] advisory -> gate recurrences=3 branches=2 host=scripts/lint/shell-lint.sh"
 not_contains "promote: one-branch class not proposed" "$pl" "PROPOSE [one-branch]"
 not_contains "promote: recurrences before rung_since do not count" "$pl" "PROPOSE [stale]"
@@ -256,18 +257,77 @@ pl3="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jso
 not_contains "promote: env N=4 raises the bar" "$pl3" "PROPOSE [spread]"
 KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder --min-recurrences x >/dev/null 2>&1; check "promote: non-numeric N exits 2" "$?" "2"
 cp "$tmp/promo-kf.json" "$tmp/promo-kf-copy.json"
-pr="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf-copy.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --refresh 2>&1)"
+pr="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf-copy.json" CR_LEDGER="$tmp/promo-ledger.jsonl" KNOWN_FINDINGS_PROMOTE_N=3 KNOWN_FINDINGS_PROMOTE_M=2 bash "$SCRIPT" --refresh 2>&1)"
 contains "promote: --refresh prints the proposals" "$pr" "PROPOSE [spread] advisory -> gate"
 check "promote: refresh never changes a rung" "$(node -e 'console.log(require(process.argv[1]).classes.map(c=>c.rung).join())' "$tmp/promo-kf-copy.json")" "advisory,advisory,advisory,prompt,advisory,gate"
 pn="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/absent-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"
 contains "promote: unreadable ledger says so, no proposals" "$pn" "proposals unavailable"
 
+# ladder v2: a fixed verdict is a real verdict; a finding is attributed to a class only when its
+# globs AND the class `match` regex (over the finding text) hit; rebuttal classes never climb above
+# prompt (retire instead); platform windows is never proposed; the gate rung needs N=10 M=5 within 30 days.
+cat > "$tmp/v2-kf.json" <<'KFJSON'
+{"classes":[
+{"id":"fx","kind":"fix","rung":"prompt","title":"t","source":"s","globs":["fx/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"glob-only","kind":"fix","rung":"prompt","title":"t","source":"s","globs":["go/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"no-match","kind":"fix","rung":"prompt","title":"t","source":"s","globs":["nm/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"reb","kind":"rebuttal","rung":"prompt","title":"t","source":"s","globs":["reb/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"reb-dead","kind":"rebuttal","rung":"prompt","title":"t","source":"s","globs":["rd/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"win","kind":"fix","rung":"prompt","platform":"windows","title":"t","source":"s","globs":["win/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"adv3","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["adv3/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
+{"id":"adv10","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["adv10/**"],"match":"needle","detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}
+]}
+KFJSON
+vf() { printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"codex","finding_id":"%s","severity":"imp","file":"%s","line":1,"verdict":"%s","text":"%s"}\n' "$@"; }
+{
+  vf "$(rd 2)" b1 a000001 f1 fx/a.sh fixed "a needle here"
+  vf "$(rd 3)" b1 a000002 f2 fx/b.sh fixed "a needle here"
+  vf "$(rd 4)" b2 a000003 f3 fx/c.sh "" "a needle here"
+  printf '{"kind":"amend","ts":"%s","branch":"b2","target_head":"a000003","finding_id":"f3","set":{"verdict":"fixed"},"reason":"r"}\n' "$(rd 4)"
+  vf "$(rd 2)" b1 a000011 g1 go/a.sh fixed "something else"
+  vf "$(rd 3)" b1 a000012 g2 go/b.sh fixed "something else"
+  vf "$(rd 4)" b2 a000013 g3 go/c.sh fixed "something else"
+  vf "$(rd 2)" b1 a000021 n1 nm/a.sh fixed "a needle here"
+  vf "$(rd 3)" b1 a000022 n2 nm/b.sh fixed "a needle here"
+  vf "$(rd 4)" b2 a000023 n3 nm/c.sh fixed "a needle here"
+  for i in 1 2 3 4 5 6 7 8 9 10; do vf "$(rd 2)" "rb$((i % 5))" "a0001$i" "r$i" reb/a.sh fixed "a needle here"; done
+  for i in 1 2 3 4 5 6 7 8 9 10; do vf "$(rd 90)" "rd$i" "a0002$i" "d$i" rd/a.sh disproved "a needle here"; done
+  vf "$(rd 2)" b1 a000031 w1 win/a.sh fixed "a needle here"
+  vf "$(rd 3)" b1 a000032 w2 win/b.sh fixed "a needle here"
+  vf "$(rd 4)" b2 a000033 w3 win/c.sh fixed "a needle here"
+  vf "$(rd 2)" b1 a000041 x1 adv3/a.sh fixed "a needle here"
+  vf "$(rd 3)" b1 a000042 x2 adv3/b.sh fixed "a needle here"
+  vf "$(rd 4)" b2 a000043 x3 adv3/c.sh fixed "a needle here"
+  for i in 1 2 3 4 5 6 7 8 9 10; do vf "$(rd 5)" "ab$((i % 5))" "a0005$i" "y$i" adv10/a.sh fixed "a needle here"; done
+} > "$tmp/v2-ledger.jsonl"
+v2="$(KNOWN_FINDINGS_FILE="$tmp/v2-kf.json" CR_LEDGER="$tmp/v2-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"
+contains "v2: 3 fixed findings across 2 branches propose prompt -> advisory" "$v2" "PROPOSE [fx] prompt -> advisory recurrences=3 branches=2"
+not_contains "v2: glob hit without a text match is not attributed" "$v2" "PROPOSE [glob-only]"
+not_contains "v2: a class with no match is skipped by the proposals" "$v2" "PROPOSE [no-match]"
+not_contains "v2: a rebuttal class is never proposed above prompt" "$v2" "PROPOSE [reb] prompt -> advisory"
+contains "v2: a rebuttal class that is mostly disproved with no real finding in 30 days is proposed for retire" "$v2" "PROPOSE [reb-dead] retire"
+not_contains "v2: a rebuttal class with real findings in 30 days is not retired" "$v2" "PROPOSE [reb] retire"
+not_contains "v2: platform windows is never proposed" "$v2" "PROPOSE [win]"
+not_contains "v2: the gate rung needs more than 3 recurrences across 2 branches" "$v2" "PROPOSE [adv3]"
+contains "v2: the gate rung is proposed at 10 recurrences across 5 branches within 30 days" "$v2" "PROPOSE [adv10] advisory -> gate recurrences=10 branches=5"
+cp "$tmp/v2-kf.json" "$tmp/v2-kf-copy.json"
+KNOWN_FINDINGS_FILE="$tmp/v2-kf-copy.json" CR_LEDGER="$tmp/v2-ledger.jsonl" bash "$SCRIPT" --refresh >/dev/null 2>&1
+v2q="$(KNOWN_FINDINGS_FILE="$tmp/v2-kf-copy.json" CR_LEDGER="$tmp/v2-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"
+contains "v2: the queue counts a fixed-only class" "$v2q" "[fx] rung=prompt kind=fix agreed=3"
+not_contains "v2: the queue skips a class with no match" "$v2q" "[no-match] rung="
+check "v2: --refresh stats count fixed as a real verdict, attributed by match" "$(node -e 'const c=require(process.argv[1]).classes;console.log(c.find(x=>x.id==="fx").evidence.ledger.agreed+","+c.find(x=>x.id==="glob-only").evidence.ledger.findings)' "$tmp/v2-kf-copy.json")" "3,0"
+lst="$(bash "$SCRIPT" --list 2>&1)"
+for rid in ps1-twin-parity ps1-bom-policy scheduler-task-xml-encoding worker-worktree-plugin-profile; do
+  not_contains "retired: $rid is gone from --list" "$lst" "\`$rid\`"
+done
+check "retired: gnu-only-utility canonical text has no Git Bash" "$(node -e 'console.log(/Git Bash/.test(require(process.argv[1]).classes.find(x=>x.id==="gnu-only-utility").canonical))' "$HERE/known-findings.json")" "false"
+
 # --refresh on a COPY: ledger + learnings evidence rewritten; shipped JSON untouched
 cp "$HERE/known-findings.json" "$tmp/kf.json"
 before_sum="$(cksum < "$HERE/known-findings.json")"
 {
-  echo '{"kind":"finding","ts":"2026-08-01T00:00:00Z","branch":"b","head":"aaaa111","model":"codex","finding_id":"codex-1","severity":"imp","file":"scripts/hooks/x.sh","line":1,"verdict":"disproved"}'
-  echo '{"kind":"finding","ts":"2026-08-01T00:00:01Z","branch":"b","head":"aaaa111","model":"codex","finding_id":"codex-2","severity":"imp","file":"scripts/hooks/x.sh","line":2,"verdict":""}'
+  echo '{"kind":"finding","ts":"2026-08-01T00:00:00Z","branch":"b","head":"aaaa111","model":"codex","finding_id":"codex-1","severity":"imp","file":"scripts/hooks/x.sh","line":1,"verdict":"disproved","text":"fail-open errexit"}'
+  echo '{"kind":"finding","ts":"2026-08-01T00:00:01Z","branch":"b","head":"aaaa111","model":"codex","finding_id":"codex-2","severity":"imp","file":"scripts/hooks/x.sh","line":2,"verdict":"","text":"fail-open errexit"}'
   echo '{"kind":"amend","ts":"2026-08-01T00:01:00Z","branch":"b","target_head":"aaaa111","finding_id":"codex-2","set":{"verdict":"agreed"},"reason":"t"}'
   echo '{"kind":"finding","ts":"2026-08-01T00:00:02Z","branch":"b","head":"aaaa111","model":"glm","finding_id":"glm-1","severity":"sug","file":"docs/a.md","line":3,"verdict":"agreed"}'
   # Append-order = last write wins: an amend to codex-1 (disproved→agreed) that
