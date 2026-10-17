@@ -158,6 +158,7 @@ check block-himmel-config-writes  Bash 2 "$D_HCFG"  "deny a redirect onto the hi
 check block-himmel-config-writes  Bash 0 "$A_OK"     "allow git status"
 check guard-bus-store             Bash 2 "$D_BUS"    "deny bus register"
 check guard-bus-store             Bash 0 "$A_OK"     "allow git status"
+check guard-identical-denied-retry Bash 0 "$A_OK"    "allow git status (byte-exact match, so a CR-tail command is a different command)"
 
 # A multi-line command is where the class actually bites: with CRLF endings the
 # LAST character of every record is a CR, so any check anchored at end-of-record

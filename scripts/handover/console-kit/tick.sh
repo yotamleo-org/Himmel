@@ -113,6 +113,13 @@ wrapper here left a background loop running -- tell the leg to TaskStop it.
 orphans= lists only wrappers older than that, so a live leg without one never
 shows here: procs=...,unwatched= (below) is what names a live leg the arm omits.
 
+deadwin=<label>:closed|held[,...] (HIMMEL-6118) follows closable= and is ABSENT
+unless a leg konsole (tabtitle HIMMEL-<n>-N<k>-...) has no child process and is
+older than TICK_DEADWIN_GRACE seconds (default 30): its session died. :closed =
+tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n>
+window exists); :held = reported only. console-wait.sh wakes when it appears or
+changes. Env seam: TICK_KILL_BIN.
+
 legs= reads a leg's lock as FRESH or STALE (held; an idle-warned lock still reads
 FRESH/STALE here -- the IDLE-HELD? flag belongs to the sweep and the exit code),
 CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED, AND the leg's own
@@ -1487,6 +1494,77 @@ if [ -r "$station_state" ]; then
     station_val="$(head -n 1 "$station_state" 2>/dev/null)" || station_val=""
     case "$station_val" in BEHIND:*[!A-Za-z0-9._,:-]*) ;; BEHIND:*) station_tail=" station=$station_val" ;; esac
 fi
+# deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
+# HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)
+# and the window sits on "program crashed". ONE ps read, no per-window probe.
+# It is TERMed (:closed) only when the leg's lock is free (FREE/WRAPPED) or a
+# newer <tabtitle>-r<n> window with a live child is up; else :held (report only).
+# A konsole younger than TICK_DEADWIN_GRACE seconds (default 30) has not spawned
+# its child yet. ABSENT when none.
+deadwin_tail=""; dw_closed=""
+dw_grace="${TICK_DEADWIN_GRACE:-30}"
+case "$dw_grace" in ""|*[!0-9]*) dw_grace=30 ;; esac
+dw_ps="$(ps -eo pid=,ppid=,etimes=,args= 2>/dev/null)" || dw_ps=""  # swallow-ok: an unreadable table reports no dead window, never a false one
+if [ -n "$dw_ps" ]; then
+    # one awk pass: per konsole leg window "<pid> <etimes> <tabtitle> <haschild>"
+    dw_rows="$(printf '%s\n' "$dw_ps" | awk '
+        { ppid_seen[$2] = 1 }
+        $4 ~ /(^|\/)konsole$/ {
+            tt = ""
+            for (i = 5; i <= NF; i++) if ($i ~ /^tabtitle=/) { tt = substr($i, 10); break }
+            if (tt ~ /^HIMMEL-[0-9]+-N[0-9]+[a-z]*-/) { pid[++n] = $1; et[n] = $3; ttl[n] = tt }
+        }
+        END { for (j = 1; j <= n; j++) print pid[j], et[j], ttl[j], (pid[j] in ppid_seen) ? 1 : 0 }')"
+    while read -r dw_pid dw_et dw_tt dw_alive; do
+        [ -n "$dw_pid" ] && [ "$dw_alive" = 0 ] || continue
+        case "$dw_et" in ""|*[!0-9]*) continue ;; esac
+        [ "$dw_et" -ge "$dw_grace" ] || continue
+        dw_label="${dw_tt#HIMMEL-*-}"; dw_label="${dw_label%%-*}"
+        dw_free=0
+        while IFS=$'\t' read -r dw_l dw_s _; do
+            [ "$dw_l" = "$dw_label" ] || continue
+            case "$dw_s" in FREE|WRAPPED) dw_free=1 ;; esac
+        done <<< "$leg_candmap"
+        if [ "$dw_free" -eq 0 ]; then
+            # a live relaunch: another leg window titled <tabtitle>-r<n> that has a child
+            dw_base="$dw_tt"; dw_n=0
+            if [[ "$dw_tt" =~ ^(.*)-r([0-9]+)$ ]]; then dw_base="${BASH_REMATCH[1]}"; dw_n="${BASH_REMATCH[2]}"; fi
+            while read -r _ _ dw_rt dw_ra; do
+                [ "$dw_ra" = 1 ] || continue
+                if [[ "$dw_rt" =~ ^"$dw_base"-r([0-9]+)$ ]] && [ "${BASH_REMATCH[1]}" -gt "$dw_n" ]; then dw_free=1; fi
+            done <<< "$dw_rows"
+        fi
+        if [ "$dw_free" -eq 1 ] && "${TICK_KILL_BIN:-kill}" -TERM "$dw_pid" 2>/dev/null; then
+            dw_closed="$(csv_add "$dw_closed" "$dw_label")"
+        else
+            deadwin_tail="$(csv_add "$deadwin_tail" "$dw_label:held")"
+        fi
+    done <<< "$dw_rows"
+fi
+# A closed window leaves ps at once, so :closed is kept in a state file and
+# re-reported for TICK_DEADWIN_KEEP seconds (default 300): console-wait needs two
+# consecutive samples off its saved key, and a one-tick report would be dropped.
+dw_state="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-deadwin-closed"
+dw_keep="${TICK_DEADWIN_KEEP:-300}"
+case "$dw_keep" in ""|*[!0-9]*) dw_keep=300 ;; esac
+dw_now="$(date +%s)"; dw_new_state=""
+for dw_l in ${dw_closed//,/ }; do dw_new_state="$dw_new_state$dw_l $dw_now"$'\n'; done
+if [ -r "$dw_state" ]; then
+    while read -r dw_l dw_t; do
+        case "$dw_t" in ""|*[!0-9]*) continue ;; esac
+        [ $((dw_now - dw_t)) -lt "$dw_keep" ] || continue
+        case ",$dw_closed," in *",$dw_l,"*) continue ;; esac
+        dw_new_state="$dw_new_state$dw_l $dw_t"$'\n'
+    done < "$dw_state"
+fi
+if [ -n "$dw_new_state" ]; then
+    mkdir -p "${dw_state%/*}" 2>/dev/null && printf '%s' "$dw_new_state" > "$dw_state" 2>/dev/null  # swallow-ok: a failed state write only drops the closed re-report
+    while read -r dw_l _; do [ -n "$dw_l" ] && deadwin_tail="$(csv_add "$deadwin_tail" "$dw_l:closed")"; done <<< "$dw_new_state"
+elif [ -e "$dw_state" ]; then
+    rm -f "$dw_state" 2>/dev/null  # swallow-ok: a stale state file is re-pruned next tick
+fi
+[ -z "$deadwin_tail" ] || deadwin_tail=" deadwin=$deadwin_tail"
+
 # closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
 # ABSENT when 0; run `close-wrapped-leg.sh --sweep --fleet <manifest>`.
 closable_tail=""
@@ -1835,6 +1913,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$ready_tail" ] || printf 'ready-mismatch: %s\n' "${ready_tail# ready-mismatch=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
+    [ -z "$deadwin_tail" ] || printf 'dead windows: %s\n' "${deadwin_tail# deadwin=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
@@ -1853,10 +1932,10 @@ else
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$station_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
     else
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$station_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

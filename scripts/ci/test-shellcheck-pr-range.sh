@@ -159,6 +159,99 @@ reset; w scripts/zzg.sh '#!/usr/bin/env bash
 '; commit_case slash_var
 verdict slash_var FILES scripts/zzg.sh scripts/zzj/zzjlib.sh
 
+# quoted_dot: a `.` inside a quoted jq program is not a source command (filter copied verbatim
+# from scripts/handover/merge-on-green.sh, whose false "dynamic source line" forced ALL FILES)
+reset; w scripts/zzq.sh '#!/usr/bin/env bash
+. scripts/zzj/zzjlib.sh
+rules=$("$GH" api "repos/$nwo/rules/branches/$branch" \
+        --jq '"'"'(if type == "array" then . else [] end) | [.[] | select(.type == "required_status_checks")] as $r | "\([$r[] | .parameters.required_status_checks | if type == "array" then length else 0 end] | add | if . == null then 0 else . end)|\([$r[] | .ruleset_id] | unique | join(","))"'"'"' 2>/dev/null || true)
+'; commit_case quoted_dot
+verdict quoted_dot FILES scripts/zzq.sh scripts/zzj/zzjlib.sh
+
+# dyn_real: the genuine dynamic source line from merge-on-green.sh still forces the fallback
+reset; w scripts/zzd.sh '#!/usr/bin/env bash
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo refuse >&2
+fi
+'; commit_case dyn_real
+verdict dyn_real ALL
+
+# dyn_cmdsub: a dynamic source inside a double-quoted command substitution is executable, not text
+reset; w scripts/zzc.sh '#!/usr/bin/env bash
+out="$(. "$lib")"
+'; commit_case dyn_cmdsub
+verdict dyn_cmdsub ALL
+
+# dyn_mixq: apostrophes inside a double-quoted span do not open a single-quoted span
+reset; w scripts/zzm.sh '#!/usr/bin/env bash
+out="'"'"'$(. "$lib")'"'"'"
+'; commit_case dyn_mixq
+verdict dyn_mixq ALL
+# dyn_escq: an escaped quote outside a span opens nothing, so the real source after it counts
+reset; w scripts/zze.sh '#!/usr/bin/env bash
+echo \" ; . "$lib"
+'; commit_case dyn_escq
+verdict dyn_escq ALL
+
+# sweep_*: the non-dry fallback shards the full sweep in parallel through a stub pre-commit.
+# A stub shard fails when handed a file named *bad*; it records every invocation's file list.
+mkdir -p "$T/bin"
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+# stub: pre-commit run shellcheck [--show-diff-on-failure] [--all-files | --files f...]
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then
+  echo "STUB serial"; exit 0
+fi
+shift 3
+[ "${1:-}" = "--files" ] && shift
+printf '%s\n' "$*" >> "$STUB_LOG"
+echo "STUB shard: $#"
+case "$*" in *bad*) exit 1 ;; esac
+exit 0
+STUB
+chmod +x "$T/bin/pre-commit"
+sweep() { STUB_LOG="$T/stub.log" PATH="$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; commit_case sweep_ok; : > "$T/stub.log"
+sweep; rc=$?
+[ "$rc" -eq 0 ] && ok "sweep_ok: rc 0 when every shard passes" || bad "sweep_ok: want rc 0, got $rc"
+grep -q 'STUB shard' "$T/sweep.out" && ok "sweep_ok: shard output is preserved" || bad "sweep_ok: no shard output: $(head -3 "$T/sweep.out" | tr '\n' '|')"
+grep -E 'gh-ci-cache.sh' "$T/stub.log" | grep -q 'check-ci-watch.sh' \
+  && ok "sweep_ok: a lib and its consumer share one shard" || bad "sweep_ok: lib and consumer split: $(tr '\n' '|' < "$T/stub.log")"
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzbad.sh '#!/usr/bin/env bash
+echo $x
+'; commit_case sweep_fail; : > "$T/stub.log"
+sweep; rc=$?
+[ "$rc" -ne 0 ] && ok "sweep_fail: non-zero when one shard fails" || bad "sweep_fail: a failing shard was swallowed (rc 0)"
+
+# sweep_E: a tracked root file named E (the planner's old in-band sentinel) must still be linted,
+# and the shards must cover exactly git ls-files
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w E '#!/usr/bin/env bash
+echo e
+'; w T '#!/usr/bin/env bash
+echo t
+'; commit_case sweep_E; : > "$T/stub.log"
+sweep; rc=$?
+[ "$rc" -eq 0 ] && ok "sweep_E: rc 0" || bad "sweep_E: want rc 0, got $rc"
+tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort > "$T/shards.txt"
+git ls-files | sort > "$T/tracked.txt"
+cmp -s "$T/shards.txt" "$T/tracked.txt" \
+  && ok "sweep_E: union of shard file lists equals git ls-files" || bad "sweep_E: shards differ from git ls-files: $(diff "$T/shards.txt" "$T/tracked.txt" | head -4 | tr '\n' '|')"
+# sweep_norc: a shard that dies before writing its rc is a failure, not a pass
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+kill -9 "$(ps -o ppid= -p $PPID)"
+STUB
+chmod +x "$T/bin/pre-commit"
+sweep; rc=$?
+[ "$rc" -ne 0 ] && ok "sweep_norc: a signalled shard fails the sweep" || bad "sweep_norc: signalled shard passed (rc 0)"
+
 # script-absent-at-base: the workflow runs `git show <base>:<script>`; at a base
 # that predates the script it must fail, which drives the --all-files branch
 pre=$(git commit-tree "$(git rev-parse "$BASE^{tree}")" -m pre)

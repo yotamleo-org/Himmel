@@ -153,6 +153,22 @@ else
 fi
 rm -rf "$BUN_REPO"
 
+# Case 6: the allowlist admits PSF-2.0 (argparse 3.x relabels the same PSF text
+# Python-2.0 -> PSF-2.0 in SPDX) and still rejects a copyleft license.
+allowed=$(sed -n 's/^ALLOWED="\(.*\)"$/\1/p' "$SCRIPT")
+if grepq ";$allowed;" -F ";PSF-2.0;"; then
+    echo "PASS allowlist admits PSF-2.0"
+else
+    echo "FAIL allowlist admits PSF-2.0 (ALLOWED=$allowed)"
+    FAILED=$((FAILED + 1))
+fi
+if grepq ";$allowed;" -F ";GPL-3.0;"; then
+    echo "FAIL allowlist rejects GPL-3.0"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS allowlist rejects GPL-3.0"
+fi
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
