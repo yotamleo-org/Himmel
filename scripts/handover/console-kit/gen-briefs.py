@@ -116,7 +116,8 @@ def resolve_bucket(bucket, hroot, repo):
 
 def refuse_git_bucket(bucket, hroot):
     # The handover root is itself a git repo (the state repo), so only a checkout outside it is a stray.
-    root = os.path.abspath(hroot)
+    root = os.path.realpath(hroot)
+    bucket = os.path.realpath(bucket)
     if bucket == root or bucket.startswith(root.rstrip('/') + '/'):
         return
     anc = bucket
