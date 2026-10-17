@@ -171,7 +171,7 @@ wired=$(jq -r '.hooks.PreToolUse[]? | select(.matcher=="Bash" or .matcher=="*" o
   | grep -o 'scripts/hooks/[A-Za-z0-9_.-]*\.sh' | sed 's|scripts/hooks/||' | sort -u)
 # Hooks whose own header documents them as watchdogs / context nudges that never
 # deny a command shape; they are wired for Bash but have no protected action.
-NOT_COMMAND_GUARDS=" auto-arm-on-cap.sh guard-leg-context-handoff.sh block-subagent-park.sh run-hook-with-bash.js "
+NOT_COMMAND_GUARDS=" auto-arm-on-cap.sh guard-leg-context-handoff.sh block-subagent-park.sh guard-identical-denied-retry.sh run-hook-with-bash.js "
 missing=""
 for h in $wired; do
   case "$NOT_COMMAND_GUARDS" in *" $h "*) continue ;; esac

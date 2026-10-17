@@ -202,3 +202,5 @@ them to review the plan and choose an execution method before implementation.
 
 **If Native chosen:**
 - **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
+
+See also: [build-the-lever](https://github.com/yotamleo/Himmel/blob/main/docs/tool-adoption/pstack-principles-digest.md#build-the-lever), [migrate-callers-then-delete-legacy-apis](https://github.com/yotamleo/Himmel/blob/main/docs/tool-adoption/pstack-principles-digest.md#migrate-callers-then-delete-legacy-apis), [make-operations-idempotent](https://github.com/yotamleo/Himmel/blob/main/docs/tool-adoption/pstack-principles-digest.md#make-operations-idempotent).

@@ -7,10 +7,11 @@
 # Uses npx license-checker (downloaded on first run, cached afterwards).
 set -euo pipefail
 
-# Python-2.0 (the PSF License) is permissive + GPL-compatible; added when the
+# Python-2.0 / PSF-2.0 (the PSF License; argparse 3.x relabels the SPDX id) is
+# permissive + GPL-compatible; Python-2.0 added when the
 # broadened enumeration surfaced argparse@2.0.1 (transitive via js-yaml) in
 # marketplace/plugins/obsidian-triage/tools.
-ALLOWED="MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;Unlicense;0BSD;Python-2.0"
+ALLOWED="MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;Unlicense;0BSD;Python-2.0;PSF-2.0"
 
 # Bench FIXTURES excluded — fixture packages are benchmark
 # inputs, not shipped dependencies; see check-npm-audit.sh for the rationale.
