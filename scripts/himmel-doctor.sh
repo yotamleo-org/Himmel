@@ -1347,8 +1347,10 @@ check_c23() {
 # Test seam: HIMMEL_DOCTOR_SYSTEMCTL (shared with C30's check below)
 # overrides the systemctl binary; default "systemctl" (PATH-resolved).
 #
-# _systemd_user_unit_state <systemctl_bin> <unit> — echoes "enabled",
-# "disabled", "notfound" or "unknown". Shared by C24 (this check) and C30
+# _systemd_user_unit_state <systemctl_bin> <unit> [--reason] — echoes "enabled",
+# "disabled", "notfound" or "unknown". --reason appends ": <cause>" to unknown,
+# including the first output line for unrecognised answers; without it, C24
+# keeps its state-only contract. Shared by C24 (this check) and C30
 # below — named check-neutral on purpose (an earlier draft called this
 # _c24_systemd_enabled, which read as C24-owned to a reviewer despite C30
 # calling it too, and invited deleting it if C24 is ever retired/rewritten).
@@ -1390,7 +1392,11 @@ _systemd_user_unit_state() {
             # through to the `*)` default below and silently reproduced the
             # exact false-absent bug this ticket exists to fix. This looser
             # two-part glob matches either wording.
-            printf 'unknown' ;;
+            printf 'unknown'
+            if [ "${3:-}" = "--reason" ]; then
+                printf ': systemd user bus unreachable'
+            fi
+            ;;
         enabled|enabled-runtime)
             # Both mean systemd WILL start this unit on its own — the only
             # difference is where the enablement symlink lives.
@@ -1435,7 +1441,11 @@ _systemd_user_unit_state() {
             # to guess and emits INFO — folding an unrecognised/failed answer
             # into "disabled" instead skips both of those and asserts a fact
             # the probe never proved.
-            printf 'unknown' ;;
+            printf 'unknown'
+            if [ "${3:-}" = "--reason" ]; then
+                printf ': probe output unrecognised (%s)' "${out%%$'\n'*}"
+            fi
+            ;;
     esac
 }
 
@@ -2165,10 +2175,12 @@ check_c30() {
     # bridge and then intentionally disabled it, reading "not installed",
     # concludes the check is broken -- the same trust-erosion this ticket
     # exists to fix, arriving via the message instead of the verdict.
-    case "$(_systemd_user_unit_state "$systemctl_bin" "$unit")" in
+    local unit_state
+    unit_state="$(_systemd_user_unit_state "$systemctl_bin" "$unit" --reason)"
+    case "$unit_state" in
         enabled) : ;;
-        unknown)
-            emit INFO C30-bridge-liveness "systemd user bus unreachable — bridge-liveness check skipped (not evidence the unit is absent, HIMMEL-2515)" "verify manually: $systemctl_bin --user is-enabled $unit"
+        unknown:*)
+            emit INFO C30-bridge-liveness "${unit_state#unknown: } — bridge-liveness check skipped (not evidence the unit is absent, HIMMEL-2515)" "verify manually: $systemctl_bin --user is-enabled $unit"
             return
             ;;
         notfound)

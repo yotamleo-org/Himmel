@@ -1976,6 +1976,7 @@ if [ "$1" = "--user" ] && [ "$2" = "is-enabled" ]; then
         busfail) echo "Failed to connect to user scope bus via local transport: No such file or directory" >&2; exit 1 ;;
         busfailold) echo "Failed to connect to bus: No such file or directory" >&2; exit 1 ;;
         permdenied) echo "Failed to get unit file state for telegram-bridge.service: Permission denied" >&2; exit 1 ;;
+        unrecognised) printf 'invented future state\nsecond diagnostic line\n'; exit 1 ;;
     esac
 elif [ "$1" = "--user" ] && [ "$2" = "show" ]; then
     shift 2; shift # drop --user show <unit>
@@ -2318,10 +2319,19 @@ t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c30.XXXXXX")" || { fail "C30 findi
 mkdir -p "$t/claude" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 fake_systemctl "$t/probe" permdenied
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'INFO C30-bridge-liveness' && ! grepq "$out" 'WARN C30-bridge-liveness' && ! grepq "$out" -F 'installed but not enabled'; then
-    pass "C30 -> INFO (unrecognized is-enabled output never asserted as installed-but-disabled)"
+c30_line="$(printf '%s' "$out" | grep 'INFO C30-bridge-liveness')"
+if grepq "$c30_line" -F 'probe output unrecognised' && grepq "$c30_line" -F 'Failed to get unit file state for telegram-bridge.service: Permission denied' && ! grepq "$c30_line" -F 'bus unreachable' && ! grepq "$out" 'WARN C30-bridge-liveness' && ! grepq "$out" -F 'installed but not enabled'; then
+    pass "C30 -> INFO (unrecognized probe output reported without claiming the bus is unreachable)"
 else
-    fail "C30 finding-2 -> $(printf '%s' "$out" | grep C30)"
+    fail "C30 permission-denied cause -> $(printf '%s' "$out" | grep C30)"
+fi
+fake_systemctl "$t/probe" unrecognised
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+c30_line="$(printf '%s' "$out" | grep 'INFO C30-bridge-liveness')"
+if grepq "$c30_line" -F 'probe output unrecognised (invented future state)' && ! grepq "$c30_line" -F 'bus unreachable' && ! grepq "$out" -F 'second diagnostic line' && ! grepq "$out" 'WARN C30-bridge-liveness' && ! grepq "$out" -F 'installed but not enabled'; then
+    pass "C30 -> INFO (unrecognised output reports only its first line, without inventing a bus failure)"
+else
+    fail "C30 unrecognised-output cause -> $(printf '%s' "$out" | grep -A1 C30)"
 fi
 rm -rf "$t"
 
