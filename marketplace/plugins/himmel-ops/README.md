@@ -156,6 +156,10 @@ shows the validated plan and confirms before dispatching, one `Agent` call per
 item, each brief carrying the context/why/done-looks-like triple, a RETASK
 block, the concurrency discipline, and the attestation-trailer requirement.
 
+## ticket-standard — refuse a draft without Plan, DoD and named proof (`himmel-ops:ticket-standard`)
+
+Lean-invoke skill (HIMMEL-5702): `scripts/ticket-standard-check.sh --type <T> --draft <file>` refuses a Task, Story or Bug missing Impact, What, Why, Plan, DoD, Proof or Agent detail and parks the draft in an intake queue (never discarded); Epic, Subtask and a missing Sector only warn. Tests: `bash marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh`.
+
 ## cloud-route — classify tickets for the cloud lane (`/cloud-route`)
 
 `/cloud-route HIMMEL-<n> ...` labels each ticket CLOUD-OK / LOCAL-NATIVE /
