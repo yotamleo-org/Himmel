@@ -61,8 +61,8 @@ if grepq "$pins" -x "obsidian"; then bad "obsidian pin still present — should 
 # mirror feeds, even though the production parser (check-plugin-drift.sh)
 # already accepts `ref or sha`.
 if grepq "$pins" -x "plannotator-effective-html"; then ok "parser finds plannotator-effective-html SHA-only pin"; else bad "parser missing plannotator-effective-html (SHA-only pin)"; fi
-# Exact-pin consistency: obsidian-second-brain is pinned to d0581201, the first
-# commit carrying upstream #338 (-fps_mode for ffmpeg 9); v0.17.0 (87fe5437)
+# Exact-pin consistency: obsidian-second-brain is pinned to 6eccc4d0 (v0.18.0),
+# which carries upstream #338 (-fps_mode for ffmpeg 9); v0.17.0 (87fe5437)
 # still emits the removed -vsync. Update this row when re-pinning.
 osb_sha="$(python3 - "$MJSON" <<'PY' | tr -d '\r'
 import json, sys
