@@ -46,7 +46,7 @@ done
 if [ "$MERGE_REF" = 1 ]; then
   OLD="$(git rev-parse --verify -q 'HEAD^1')" || OLD=""
 else
-  OLD="$(git merge-base "$BASE" HEAD 2>/dev/null)" || OLD=""
+  OLD="$(git merge-base "$BASE" HEAD)" || OLD=""
 fi
 if [ -z "$OLD" ]; then
   echo "FAIL: check-host-file-read-sinks: cannot resolve the range base '${BASE:-HEAD^1}' (fail-closed)" >&2

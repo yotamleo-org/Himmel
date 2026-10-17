@@ -198,7 +198,7 @@ jobs:
   # no plan group. No secrets; the checkout does not persist the token.
   home-canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 8 shards ~6-12m each (4 shards measured 15-23m on hosted runners and one hit the bound); canary bound 1500s plus the log print; confirm p95 after first runs
+    timeout-minutes: 50 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 8 shards ~6-12m each, but loaded hosted runners took 25m+ and hit a 1500s bound twice; canary bound 2700s plus the log print; confirm p95 after first runs
     strategy:
       # Every shard reports its own leak; one red must not hide another.
       fail-fast: false
@@ -234,6 +234,7 @@ jobs:
           # The shard job installs bun, bwrap, at and ffmpeg; this bare job does not,
           # so suite results stay with the shards and only a leak, read or timeout fails here.
           HOME_CANARY_RUNNER_FAIL_OK: "1"
+          HOME_CANARY_TIMEOUT: "2700"
         run: |
           if [ "$EVENT" = pull_request ]; then
             range="$BASE_SHA..HEAD"
