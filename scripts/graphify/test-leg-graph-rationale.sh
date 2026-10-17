@@ -80,6 +80,22 @@ if [ -n "$line" ] && ! grep -q "$(printf '\033')" <<<"$line" && [ "${#line}" -le
 else fail "T4 line='$line'"; fi
 cp "$T/graph.good" "$P/graphify-out/graph.json"
 
+# T6: two nodes sharing label and file cannot be told apart in the output, so neither gets text.
+python3 -I - "$P/graphify-out/graph.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+g = json.load(open(p))
+twin = next(dict(n) for n in g["nodes"] if n["id"] == "retask_halt")
+twin["id"] = "retask_halt_twin"
+twin["rationale"] = "a different reason"
+g["nodes"].append(twin)
+json.dump(g, open(p, "w"))
+PY
+out="$(run query "q")"
+if ! grep -q 'RATIONALE:' <<<"$out" && grep -q "^NODE $HALT" <<<"$out"; then pass "T6 ambiguous label+file gets no rationale"
+else fail "T6 out='$out'"; fi
+cp "$T/graph.good" "$P/graphify-out/graph.json"
+
 # T5: the five spot-check questions against the fixture, real graphify.
 if command -v graphify >/dev/null 2>&1; then
   rm -f "$T/bin/graphify"

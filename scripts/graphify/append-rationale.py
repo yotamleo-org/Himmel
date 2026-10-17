@@ -24,18 +24,24 @@ def load_rationales(path):
     with open(path, encoding="utf-8") as fh:
         graph = json.load(fh)
     found = {}
+    ambiguous = set()
     for node in graph.get("nodes", []):
+        key = (node.get("label"), node.get("source_file"))
         text = node.get("rationale")
         if isinstance(text, list):
             text = " ".join(str(t) for t in text)
         if not isinstance(text, str) or not text.strip():
-            continue
-        text = CONTROL.sub(" ", text)
-        text = " ".join(text.split())
-        if len(text) > MAX_LEN:
-            text = text[: MAX_LEN - 3] + "..."
-        found.setdefault((node.get("label"), node.get("source_file")), text)
-    return found
+            text = None
+        else:
+            text = CONTROL.sub(" ", text)
+            text = " ".join(text.split())
+            if len(text) > MAX_LEN:
+                text = text[: MAX_LEN - 3] + "..."
+        # Output carries no node id, so two nodes sharing label and file cannot be told apart.
+        if key in found and found[key] != text:
+            ambiguous.add(key)
+        found.setdefault(key, text)
+    return {k: v for k, v in found.items() if v is not None and k not in ambiguous}
 
 
 def annotate(lines, found):
