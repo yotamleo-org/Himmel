@@ -43,6 +43,14 @@ cp "$SRC/scripts/hooks/lib/anchor-bytes.sh" "$ORIGIN/scripts/hooks/lib/"
 # A stand-in gate: says whose copy ran, with what argv, from which cwd.
 # shellcheck disable=SC2016 # written verbatim into the fixture
 printf '%s\n' '#!/usr/bin/env bash' 'echo "copy=anchor argv=$* cwd=$PWD"' 'exit "${GATE_RC:-0}"' >"$ORIGIN/scripts/cr/orphan-check.sh"
+# Gates that run or source more than themselves, and what they reach.
+mkdir -p "$ORIGIN/scripts/guardrails"
+for f in scripts/cr/pr-check-context.sh scripts/cr/pr-check-env.sh scripts/handover/console-kit/go.sh; do
+    cp "$ORIGIN/scripts/cr/orphan-check.sh" "$ORIGIN/$f"
+done
+for f in scripts/cr/sibling.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh scripts/lib/go-gate.sh scripts/lib/handover-path.sh; do
+    echo ': dependency' >"$ORIGIN/$f"
+done
 g -C "$ORIGIN" add -A
 g -C "$ORIGIN" commit -qm base
 g clone -q "$ORIGIN" "$ANCHOR"
@@ -105,6 +113,21 @@ runf "$WT" env HIMMEL_REPO="$ANCHOR" bash scripts/handover/console-kit/himmel-ga
 check "6. relative entry runs" 0 "$rc"
 contains "6. relative entry runs the anchor's gate" "$out" "copy=anchor argv=3"
 case "$out" in *copy=branch*) echo "FAIL 6. the branch's gate ran"; FAILED=$((FAILED + 1)) ;; esac
+
+# 7. a dirty file the gate runs or sources refuses, as the guard's set has it.
+for row in pr-check-context:scripts/guardrails/lib.sh pr-check-context:scripts/cr/sibling.sh \
+    pr-check-env:scripts/lib/load-dotenv.sh go:scripts/lib/go-gate.sh go:scripts/lib/handover-path.sh; do
+    echo ': tampered' >>"$ANCHOR/${row#*:}"
+    runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" "${row%%:*}"
+    check "7. ${row%%:*} with a dirty ${row#*:} refuses" 2 "$rc"
+    g -C "$ANCHOR" checkout -q -- "${row#*:}"
+done
+runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" pr-check-context
+check "7. pr-check-context on a clean anchor runs" 0 "$rc"
+echo ': tampered' >>"$ANCHOR/scripts/lib/load-dotenv.sh"
+runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" orphan-check
+check "7. orphan-check is held to itself, not the pr-check set" 0 "$rc"
+g -C "$ANCHOR" checkout -q -- scripts/lib/load-dotenv.sh
 
 echo
 if [ "$FAILED" -eq 0 ]; then

@@ -2699,7 +2699,10 @@ a python or `cat` heredoc no longer denies. The dispatcher runs a registered
 gate or ledger writer by name from the anchor. Before the exec it refuses an
 unknown name, a relative `HIMMEL_REPO`, an anchor off `refs/heads/main` or
 whose copy of the script, the dispatcher or `anchor-handoff.sh` differs from
-main's committed bytes, and a piped stdout (a lone `--help` is exempt). The
+main's committed bytes, and so for what the script runs or sources (all of
+`scripts/cr/`, `scripts/guardrails/lib.sh` and `scripts/lib/load-dotenv.sh`
+for `pr-check-context` / `pr-check-env`; `go-gate.sh` and `handover-path.sh`
+for `go`, the set the guard holds them to), and a piped stdout (a lone `--help` is exempt). The
 python check reads names, not code, so an obfuscated spawn passes. The hook's
 `ponytail:` names this.
 

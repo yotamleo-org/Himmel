@@ -15,7 +15,10 @@
 #   - HIMMEL_REPO is set and absolute.
 #   - the anchor is on refs/heads/main and its copy of the script, this file
 #     and scripts/cr/anchor-handoff.sh equal main's committed bytes and modes
-#     (scripts/hooks/lib/anchor-bytes.sh).
+#     (scripts/hooks/lib/anchor-bytes.sh), and so do the files the script
+#     runs or sources: all of scripts/cr, scripts/guardrails/lib.sh and
+#     scripts/lib/load-dotenv.sh for pr-check-context / pr-check-env, and
+#     scripts/lib/go-gate.sh and handover-path.sh for go.
 #   - stdout is not a pipe: `| tail` would hide the rc and part of the output.
 #     A lone --help / -h is exempt (a read-only usage print).
 # Then it execs the anchor's copy with argv from the caller's cwd, so the
@@ -66,10 +69,23 @@ fi
 # The scrub stays inside the subshell: the gate itself gets the caller's env.
 if ! (
     # shellcheck source=/dev/null # the anchor's copies, not this tree's
-    . "$gitclean" && git_env_scrub && . "$lib" &&
-        anchor_bytes_match "$repo" "$repo" "$rel" scripts/handover/console-kit/himmel-gate.sh scripts/cr/anchor-handoff.sh
+    . "$gitclean" && git_env_scrub && . "$lib" || exit 1
+    # What the gate runs or sources beyond itself, as guard-pr-check-literal.sh
+    # holds it: the pr-check pair execs other scripts/cr files and sources
+    # lib.sh / load-dotenv.sh; go.sh sources two scripts/lib siblings.
+    deps=
+    case "$name" in
+        pr-check-context | pr-check-env)
+            # git-env-ok: git_env_scrub from the anchor's git-clean.sh ran above, in this subshell
+            deps=$(git -C "$repo" ls-tree -r --name-only --full-tree refs/heads/main -- scripts/cr) || exit 1
+            deps="$deps scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh"
+            ;;
+        go) deps='scripts/lib/go-gate.sh scripts/lib/handover-path.sh' ;;
+    esac
+    # shellcheck disable=SC2086 # deps is a space-free path list
+    anchor_bytes_match "$repo" "$repo" "$rel" scripts/handover/console-kit/himmel-gate.sh scripts/cr/anchor-handoff.sh $deps
 ); then
-    echo "himmel-gate: the anchor's $rel (or this dispatcher, or scripts/cr/anchor-handoff.sh) is not main's committed copy, or $repo is not on main - refusing" >&2
+    echo "himmel-gate: the anchor's $rel (or this dispatcher, scripts/cr/anchor-handoff.sh, or a file $rel runs or sources) is not main's committed copy, or $repo is not on main - refusing" >&2
     exit 2
 fi
 
