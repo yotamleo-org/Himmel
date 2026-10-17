@@ -831,7 +831,7 @@ prov_read_drop_empty_if_ours() {
     is_empty=$(jq -r --arg k "$key" '(.[$k] // null) as $e | ($e != null and ($e|type)=="object" and ($e|length)==0)' "$file" 2>/dev/null)
     is_absent=$(jq -r --arg k "$key" 'has($k) | not' "$file" 2>/dev/null)
     [ "$is_empty" = "true" ] || [ "$is_absent" = "true" ] || return 0
-    local cpath unit_row="" backup
+    local cpath unit_row="" backup eff_sha
     cpath=$(_prov_abs_path "$file" 2>/dev/null || printf '%s' "$file")
     if [ -n "${PROV_READ_FOLD:-}" ] && [ -f "$PROV_READ_FOLD" ]; then
         unit_row=$(jq -c --arg path "$cpath" --arg unit "/$key" \
@@ -848,6 +848,13 @@ prov_read_drop_empty_if_ours() {
     # explicit null pre-state: the recorded backup holds the JSON `null`
     backup=$(printf '%s' "$unit_row" | jq -r '.eff_pre.backup // empty')
     [ -n "$backup" ] && [ -f "$backup" ] && [ "$(jq -c . "$backup" 2>/dev/null)" = "null" ] || return 0
+    # same sha check as the json-key/json-elem restores; leaves the container
+    # as found (rc 0, like the guard above) so unrelated uninstall steps still run
+    eff_sha=$(printf '%s' "$unit_row" | jq -r '.eff_pre.sha // empty')
+    if [ -n "$eff_sha" ] && [ "$(prov_sha_json null 2>/dev/null)" != "$eff_sha" ]; then
+        _provread_err "backup for /$key in $file does not match its recorded sha -- leaving it as found"
+        return 0
+    fi
     if [ "$dry" = 1 ]; then printf 'DRY: would restore /%s to null in %s\n' "$key" "$file"; return 0; fi
     jq --arg k "$key" '.[$k] = null' "$file" | _provread_atomic_write "$file" || { _provread_err "cannot write $file"; return 1; }
 }
