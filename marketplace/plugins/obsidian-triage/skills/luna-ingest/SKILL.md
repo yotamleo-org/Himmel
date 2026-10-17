@@ -1,6 +1,6 @@
 ---
 name: luna-ingest
-description: Save GitHub repositories or issues, or Bitbucket repositories, issues or PRs, as structured luna notes.
+description: Use when saving GitHub repos or issues, or bitbucket.org repos, issues or PRs, as structured luna notes.
 ---
 
 # luna-ingest — chain-following triage (LUNA-5 Wedge B, MVP; skill conversion LUNA-9)
