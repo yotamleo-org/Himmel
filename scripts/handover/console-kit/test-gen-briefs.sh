@@ -262,6 +262,9 @@ ct_mixed="$(ct_brief 'one PR. completes-ticket: YES' "$WORK/ct5")"
 has "an upper-case YES still writes the yes line" "$ct_mixed" "> **Completes ticket:** yes"
 ct_mixed="$(ct_brief 'one PR. completes-ticket: No' "$WORK/ct6")"
 has "a mixed-case No still writes the no line" "$ct_mixed" "> **Completes ticket:** no"
+ct_nl="$(ct_brief "one PR. completes-ticket:
+no" "$WORK/ct7")"
+has "a value on the next line is read, not refused as empty" "$ct_nl" "> **Completes ticket:** no"
 # A bad value earlier in the scope is refused even when a good one comes last.
 rm -rf "$WORK/ctb-early"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="completes-ticket: partial, later completes-ticket: no"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json"

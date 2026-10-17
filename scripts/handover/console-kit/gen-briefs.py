@@ -60,7 +60,7 @@ ENV_LINE = ("This ticket touches CI, infra or the environment: one test row's fi
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
-COMPLETES_ANY_RE = re.compile(r'completes-ticket:[ \t]*([^\s,.;)]*)', re.I)
+COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
