@@ -82,13 +82,13 @@ run "$f" "$C"; expect_allow "a success after the denials resets the count"
 
 f="$TMP/t5b.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "Exit code 1
-boom" >>"$f"
+permission denied" >>"$f"
 run "$f" "$C"; expect_allow "a run that failed (Exit code) counts as RAN, resets"
 
 f="$TMP/t5d.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "
   Exit code 1
-boom" >>"$f"
+permission denied" >>"$f"
 run "$f" "$C"; expect_allow "an Exit code result behind leading whitespace still counts as RAN, resets"
 
 f="$TMP/t5c.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
