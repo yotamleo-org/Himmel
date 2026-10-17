@@ -95,7 +95,7 @@ assert_grep "$TMP/handovers/$SLUG/standalones/#3-legacy-item/brief.md" "pending_
 assert_dir_exists "$TMP/handovers/$SLUG/epics/HIMMEL-15-rename-himmel-and-jira"
 assert_dir_absent "$TMP/handovers/$SLUG/epics/#15-rename-himmel-and-jira"
 
-# Case 4: jira create sends the plain Impact/What/Why/Agent detail block
+# Case 4: jira create sends the Impact/What/Why/Plan/DoD/Agent detail shape
 TMP4="$(mktemp -d)" || exit 1
 trap 'rm -rf "$TMP" "$TMP4"' EXIT
 fixture_setup "$TMP4/root"
@@ -128,7 +128,7 @@ ANCHOR="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/de
 LINT="$ANCHOR/scripts/jira/dist/plain-block.js"
 for b in "$TMP4"/bodies/*.body; do
   [ -f "$b" ] || continue
-  for h in '## Impact' '## What' '## Why' '## Agent detail'; do
+  for h in '## Impact' '## What' '## Why' '## Plan' '## DoD' '## Agent detail'; do
     assert_grep "$b" "^$h\$"
   done
   if [ -f "$LINT" ] && command -v node >/dev/null 2>&1; then
