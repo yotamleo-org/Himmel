@@ -2430,4 +2430,49 @@ check "80 lookalike argv: process left running" "$(kill -0 "$foreign80" 2>/dev/n
 kill "$foreign80" 2>/dev/null; wait "$foreign80" 2>/dev/null
 HANDOVER_DIR="$root" bash "$QL" release "$doc80" "$tok80" >/dev/null 2>&1
 
+# --- 81. next refuses a HANDOFF that drops the predecessor's decisions line --
+# The outgoing console (letter B) succeeded A. `next` compares B's `decisions:`
+# Live-state line with A's and refuses a missing, placeholder or shorter one
+# unless B's Results carry a `DECISIONS-DROP: <reason>` bullet.
+# mk81 <bucket> <pred-decisions|-> <out-decisions|-> [extra-bullet]; "-" = no line.
+mk81() {
+    local d="$root/tester/$1" pd="$2" od="$3" extra="${4:-}"
+    mkdir -p "$d"
+    {
+        printf '# A — CONSOLE — successor to none (fill signal 70 %%)\n\n## Live state\n'
+        [ "$pd" = "-" ] || printf 'decisions: %s\n' "$pd"
+    } > "$d/DEMO-nextleg-${today}A-console.md"
+    {
+        printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\n' "$today"
+        [ "$od" = "-" ] || printf 'decisions: %s\n' "$od"
+        printf '\n## Results\n'
+        [ -z "$extra" ] || printf '%s\n' "$extra"
+    } > "$d/DEMO-nextleg-${today}B-console.md"
+}
+run81() { rc81=0; out81="$(console next --bucket "$1" --doc "$root/tester/$1/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc81=$?; }
+mk81 dec81a "rename ruling 00:05; keep N2" "rename ruling 00:05; keep N2"; run81 dec81a
+check "81 equal decisions line passes" "$rc81" "0"
+mk81 dec81b "rename ruling 00:05" "rename ruling 00:05; keep N2"; run81 dec81b
+check "81 longer decisions line passes" "$rc81" "0"
+mk81 dec81c "rename ruling 00:05; keep N2" "keep N2"; run81 dec81c
+check "81 shorter decisions line refuses" "$rc81" "1"
+check "81 refusal quotes the predecessor's line" "$(printf '%s\n' "$out81" | grep -cF 'rename ruling 00:05; keep N2')" "1"
+check "81 refusal writes no HANDOFF" "$([ -f "$root/tester/dec81c/DEMO-nextleg-${today}B-console-HANDOFF.md" ] && echo yes || echo no)" "no"
+mk81 dec81d "rename ruling 00:05; keep N2" "keep N2" "- 10:00 FINDING — DECISIONS-DROP: rename ruling superseded by the 10:00 ruling"; run81 dec81d
+check "81 shorter line plus DECISIONS-DROP bullet passes" "$rc81" "0"
+mk81 dec81e "rename ruling 00:05" "-"; run81 dec81e
+check "81 missing line when predecessor had one refuses" "$rc81" "1"
+mk81 dec81f "rename ruling 00:05" "none"; run81 dec81f
+check "81 placeholder none refuses" "$rc81" "1"
+mk81 dec81g "rename ruling 00:05" "<fill in>"; run81 dec81g
+check "81 angle-bracket placeholder refuses" "$rc81" "1"
+mk81 dec81h "none" "-"; run81 dec81h
+check "81 predecessor with placeholder decisions passes" "$rc81" "0"
+mk81 dec81i "-" "-"; run81 dec81i
+check "81 predecessor without a decisions line passes" "$rc81" "0"
+mk81 dec81j "rename ruling 00:05" "-"; sed -i '1s/successor to .*/successor to none (fill signal 70 %)/' "$root/tester/dec81j/DEMO-nextleg-${today}B-console.md"; run81 dec81j
+check "81 doc with no predecessor passes" "$rc81" "0"
+mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-console.md"; run81 dec81k
+check "81 predecessor doc absent passes" "$rc81" "0"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -1440,6 +1440,35 @@ resolve_predecessor() {
     printf '%s' "$newest"
 }
 
+# Refuse a handover whose `decisions:` Live-state line is missing, a
+# placeholder or shorter than the line of the doc the outgoing console itself
+# succeeded (named on its first line), unless its Results carry a
+# `DECISIONS-DROP: <reason>` bullet. No predecessor, or one without a real
+# decisions line, passes. Args: outgoing doc, outgoing Live state.
+check_decisions_kept() {
+    local outgoing="$1" live="$2" prev_name prev_doc prev_line out_line
+    prev_name="$(sed -n '1s/^.* successor to \([^ ]*\.md\).*$/\1/p' "$outgoing")"
+    [ -n "$prev_name" ] || return 0
+    prev_doc="$(dirname "$outgoing")/$prev_name"
+    [ -f "$prev_doc" ] || return 0
+    prev_line="$(awk '
+        $0 == "## Live state" { f = 1; next }
+        f && /^## / { exit }
+        f && /^decisions:/ { sub(/^decisions:[[:space:]]*/, ""); print; exit }
+    ' "$prev_doc")"
+    case "$prev_line" in ""|none|"none "*|"<"*) return 0 ;; esac
+    out_line="$(printf '%s\n' "$live" | sed -n 's/^decisions:[[:space:]]*//p' | head -n 1)"
+    case "$out_line" in
+        ""|none|"none "*|"<"*) ;;
+        *) [ "${#out_line}" -ge "${#prev_line}" ] && return 0 ;;
+    esac
+    grep -Eq '^- .*DECISIONS-DROP:[[:space:]]*[^[:space:]]' "$outgoing" && return 0
+    err "refusing to hand over: the decisions: line in $outgoing is missing, a placeholder or shorter than its predecessor's ($prev_name):"
+    err "  predecessor: decisions: $prev_line"
+    err "  restore it, or record a Results bullet 'DECISIONS-DROP: <reason>' and retry"
+    return 1
+}
+
 cmd_next() {
     [ -f "$console_template" ] || { err "missing template $console_template"; exit 2; }
     [ -f "$handoff_template" ] || { err "missing template $handoff_template"; exit 2; }
@@ -1466,6 +1495,7 @@ cmd_next() {
         f && /^## / { exit }
         f { print }
     ' "$predecessor_doc")"
+    check_decisions_kept "$predecessor_doc" "$predecessor_live_state" || exit 1
     # The console board's artifact URL rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
     # updates the same artifact instead of minting a new one.
