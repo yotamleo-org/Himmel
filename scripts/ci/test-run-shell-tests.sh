@@ -1039,6 +1039,36 @@ fi
 rm -rf "$sb14h"
 fi
 
+# 14i — shared tail: an UNLISTED suite whose path merely ends in
+# a listed entry ("b/a/test-tier-extended.sh" vs entry "a/test-tier-extended.sh")
+# must not inherit the listed suite's tier. Only the exact scan-root-relative
+# spelling matches; a suffix match would skip the namesake in fast mode.
+sb14i=$(mktemp -d "${TMPDIR:-/tmp}/himmel-tier-14i.XXXXXX") || { fail "14i: mktemp failed"; sb14i=""; }
+if [ -n "$sb14i" ]; then
+mkdir -p "$sb14i/a" "$sb14i/b/a"; mk_tier_sandbox "$sb14i/a"; mk_tier_sandbox "$sb14i/b/a"
+tier14i='a/test-tier-extended.sh  extended  # fixture: HIMMEL-2164 shared-tail tier test'
+out14i=$(SUITE_TIER="$tier14i" SUITE_TIER_MODE=fast bash "$RUNNER" "$sb14i" 2>&1); rc14i=$?
+if [ "$rc14i" -eq 0 ] && [ ! -f "$sb14i/a/tier-ran.sentinel" ] && [ -f "$sb14i/b/a/tier-ran.sentinel" ]; then
+  pass "14i: only the exactly-listed suite is extended-tier; a namesake sharing the path tail still runs in fast mode"
+else
+  fail "14i: expected a/ skipped and b/a/ run; rc=$rc14i listed-ran=$([ -f "$sb14i/a/tier-ran.sentinel" ] && echo yes || echo no) namesake-ran=$([ -f "$sb14i/b/a/tier-ran.sentinel" ] && echo yes || echo no); out: $out14i"
+fi
+rm -rf "$sb14i"
+fi
+
+# 14j — control: the production table still classifies its three
+# extended-listed suites, in a full scan and in a subtree scan, and a listed
+# basename elsewhere is not swept in.
+out14j=$(env -u SUITE_TIER SUITE_TIER_MODE=fast bash "$RUNNER" --list scripts 2>&1); rc14j=$?
+out14k=$(env -u SUITE_TIER SUITE_TIER_MODE=fast bash "$RUNNER" --list scripts/handover 2>&1); rc14k=$?
+n14j=$(printf '%s\n' "$out14j" | grep -c 'tier: extended (SUITE_TIER_MODE=fast)')
+n14k=$(printf '%s\n' "$out14k" | grep -c 'tier: extended (SUITE_TIER_MODE=fast)')
+if [ "$rc14j" -eq 0 ] && [ "$rc14k" -eq 0 ] && [ "$n14j" -eq 3 ] && [ "$n14k" -eq 2 ]; then
+  pass "14j: production SUITE_TIER table classifies 3 suites in a full scan and 2 in a scripts/handover subtree scan"
+else
+  fail "14j: expected 3 full / 2 subtree tier skips; rc=$rc14j/$rc14k got $n14j/$n14k"
+fi
+
 # --------------------------------------------------------------------------
 # Case 15 — docs-only fast lane.
 #   a. docs-only diff (every changed path *.md or under docs/) -> every suite

@@ -826,6 +826,7 @@ scripts/handover/test-arm-resume-identity.sh  extended  # measured 814s idle 202
 scripts/handover/test-arm-resume-1879.sh  extended  # HIMMEL-3132: measured 843s idle 2026-09-18, real wall-clock wait loops with no shortcut (>300s rule)
 "
 SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
+tier_repo_root=$(pwd -P)
 SUITE_TIER_MODE="${SUITE_TIER_MODE:-all}"
 case "$SUITE_TIER_MODE" in
   fast|extended|all) ;;
@@ -1041,20 +1042,24 @@ EOF
 # table entry, not a suite to silently run as extended — same fail-loud
 # convention as the SUITE_TIER_MODE case above: exit 2 immediately.
 #
-# Matching is suite_entry_matches, like every other table. This
-# lookup used to hand-roll a bidirectional version of it against the scan-root-
-# relative path, because the production table's entries are repo-root-relative
-# ("scripts/handover/...") while the old caller passed a path missing that
-# prefix -- an exact-only match NEVER hit for any listed suite, in a full scan
-# OR a subtree one (verified: SUITE_TIER_MODE=fast on a default full scan ran
-# all three extended-listed suites instead of skipping them). The caller now
-# passes the full discovered path, so the shared predicate covers both entry
-# spellings and the hand-rolled arms are gone. A miss must stay impossible for
-# listed suites, since it fails open to the fast tier.
+# Matching is EXACT against the suite's repo-root-relative path (scan root
+# re-prefixed), not suite_entry_matches' suffix: a suffix match let an unlisted
+# suite whose path merely ENDS in a listed entry ("vendor/scripts/test-x.sh" vs
+# "scripts/test-x.sh") inherit that suite's tier. A scan root under the repo
+# root (the production case, full or subtree) yields the path by stripping the
+# repo root off the full discovered path. A root outside it (a fixture tree)
+# has no repo-relative spelling, so it accepts the scan-root-relative path
+# <relpath> or the root's own name re-prefixed (<root-name>/<relpath>), which is
+# how a fixture lists a suite under a subtree scan. A miss must stay impossible
+# for listed suites, since it fails open to the fast tier.
 tier_lookup() {
   _tier_value=''
   _tier_reason=''
-  local needle="$1" _line _path
+  local needle="$1" relpath="$2" _line _path _alt=''
+  case "$needle" in
+    "$tier_repo_root"/*) relpath=${needle#"$tier_repo_root"/} ;;
+    *) _alt="${scan_resolved##*/}/${relpath}" ;;
+  esac
   while IFS= read -r _line; do
     [ -n "$_line" ] || continue
     read -r _path _tier_value <<< "${_line%%#*}"
@@ -1067,7 +1072,7 @@ tier_lookup() {
         exit 2
         ;;
     esac
-    suite_entry_matches "$_path" "$needle" || continue
+    [ "$_path" = "$relpath" ] || { [ -n "$_alt" ] && [ "$_path" = "$_alt" ]; } || continue
     _tier_reason=${_line#*# }
     return 0
   done <<EOF
@@ -3755,7 +3760,7 @@ ${_key#"$impacted_repo_root"/}
   # extended mode (this check only ever runs a suite forward to that check,
   # never around it). Inert when SUITE_TIER_MODE=all (the default), matching
   # a full run exactly regardless of table contents.
-  if tier_lookup "$_key"; then
+  if tier_lookup "$_key" "$_relpath"; then
     if [ "$SUITE_TIER_MODE" = "fast" ]; then
       _filter_reason="tier: extended (SUITE_TIER_MODE=fast) — ${_tier_reason}"
       return 0
