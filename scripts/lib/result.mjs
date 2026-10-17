@@ -10,7 +10,7 @@
 //
 //   runOrUnknown(cmd, args, opts) -> { state, rc, out }
 //       spawnSync, stdout captured with trailing newlines stripped, stderr left
-//       on the terminal. rc is the real exit code, or null when the child never
+//       on the terminal. opts passes through timeout, cwd and env only. rc is the real exit code, or null when the child never
 //       exited normally (killed by a signal, timed out, could not spawn).
 //   requireOk(label, cmd, args, opts) -> { state, rc, out }
 //       runOrUnknown, then writes "<label>: FAIL|UNKNOWN (rc=N)" to stderr
@@ -19,11 +19,14 @@
 import { spawnSync } from 'node:child_process';
 
 export function runOrUnknown(cmd, args = [], opts = {}) {
-  const { stderr: _sink, ...spawnOpts } = opts;
+  // Only these pass through: stdio and encoding are the capture contract.
+  const { timeout, cwd, env } = opts;
   const p = spawnSync(cmd, args, {
     stdio: ['ignore', 'pipe', 'inherit'],
-    ...spawnOpts,
-    encoding: 'utf8', // after the spread: a caller encoding must not turn out into a Buffer
+    encoding: 'utf8',
+    timeout,
+    cwd,
+    env,
   });
   const out = (p.stdout ?? '').replace(/\n+$/, '');
   // p.error is set for ENOENT and for a timeout; p.status is null for a signal.

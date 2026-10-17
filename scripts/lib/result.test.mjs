@@ -60,6 +60,11 @@ test('a caller encoding of null cannot turn stdout into a Buffer', () => {
   assert.equal(r.out, 'hi');
 });
 
+test('a caller stdio cannot silence the stdout capture', () => {
+  const r = run("process.stdout.write('hi\\n')", { stdio: 'inherit' });
+  assert.equal(r.out, 'hi');
+});
+
 test('true/false map to ok/fail', () => {
   assert.equal(runOrUnknown('true', []).state, 'ok');
   assert.equal(runOrUnknown('false', []).state, 'fail');
