@@ -59,7 +59,7 @@ else
     fail "helper lacks exactly one BEGIN/END marker pair"
 fi
 
-if names | grep -qx cmdpos_clean; then
+if names | grep -x cmdpos_clean >/dev/null; then
     pass "block defines cmdpos_clean"
 else
     fail "block does not define cmdpos_clean"
