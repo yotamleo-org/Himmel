@@ -98,7 +98,7 @@ case "${1:-}" in
             $0 == "#@@BWIMC_AST_PROG@@" || $0 == b { while ((getline l < f) > 0) print l; skip = ($0 == b); next }
             skip { if ($0 == e) skip = 0; next }
             { print }' "$GUARD" > "$tmp" || exit 1
-        cat "$tmp" > "$GUARD"
+        cat "$tmp" > "$GUARD" || exit 1
         rm -f "$tmp" "$tmp.b" ;;
     --check)
         [ "$(_block)" = "$(_current)" ] || { echo "bash-ast-replay-bwimc: the guard's inlined bash-ast program differs from scripts/hooks/lib — run: bash scripts/hooks/lib/bash-ast-replay-bwimc.sh --sync" >&2; exit 1; } ;;

@@ -29,6 +29,10 @@ _ast_row "ast2 xargs runs its command" block "printf x | xargs touch $_PR/ast2.t
 _ast_row "ast3 a dynamic name under the primary" block "touch $_PR/ast3-\$RANDOM.txt"
 _ast_row "ast4 script -c runs its string as a command" block "script -qc 'touch $_PR/ast4.txt' /dev/null"
 _ast_row "ast5 a verb spelled by absolute path" block "/usr/bin/touch $_PR/ast5.txt"
+ln -s "$_PR" "$_WR/ast6-01"
+_ast_row "ast6 a zero-padded brace range keeps its padding" block "touch ast6-{01..02}/x"
+ln -s "$_PR" "$_WR/ast7-3"
+_ast_row "ast7 a stepped brace range expands" block "touch ast7-{1..3..2}/x"
 
 if [ "$BWIMC_ENGINE" = ast ]; then
     echo "== HIMMEL-6014: the AST engine fails closed =="
@@ -42,13 +46,18 @@ if [ "$BWIMC_ENGINE" = ast ]; then
     _ast_row "ast20 sudo -nu bundles the user" block "sudo -nu root touch $_PR/ast20.txt"
     _ast_row "ast21 sudo -i starts in an unknown home" block "sudo -i touch ast21.txt" /tmp
     _ast_row "ast22 an unknown sudo option denies" block "sudo -Z v touch $_PR/ast22.txt"
+    _ast_row "ast23 a brace range past the cap denies" block "touch ast23-{1..65}"
 
     # a PATH holding every tool but shfmt
     _nosh="$FIX/no-shfmt-bin"; mkdir -p "$_nosh"
-    _shdir=$(dirname "$(command -v shfmt)")
-    for _t in "$_shdir"/*; do
-        case "${_t##*/}" in shfmt) ;; *) ln -s "$_t" "$_nosh/${_t##*/}" 2>/dev/null ;; esac
+    # every PATH dir, first hit wins, so bash and jq resolve wherever they live
+    _oifs=$IFS; IFS=:
+    for _d in $PATH; do
+        for _t in "$_d"/*; do
+            case "${_t##*/}" in shfmt) ;; *) [ -e "$_nosh/${_t##*/}" ] || ln -s "$_t" "$_nosh/${_t##*/}" 2>/dev/null ;; esac
+        done
     done
+    IFS=$_oifs
     _got=$(PATH="$_nosh" _run "$DIRECT" \
         "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > $_WR/ast15.txt\",\"cwd\":\"$_WR\"}}")
     if [ "$_got" = block ]; then ok "ast15 shfmt missing denies"; else bad "ast15 shfmt missing denies — got $_got"; fi

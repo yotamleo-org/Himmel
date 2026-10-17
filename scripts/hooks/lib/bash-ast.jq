@@ -133,15 +133,25 @@ def _bclose($a; $i):
     else go($j + 1; $d; $c) end;
   go($i + 1; 0; []);
 
+# {x..y} and {x..y..step}: bash takes the step's magnitude and the endpoints'
+# direction; a step of 0 counts as 1
+def _terms($x; $y; $z):
+  ((if $z == 0 then 1 else ($z | fabs) end) * (if $y >= $x then 1 else -1 end)) as $s
+  | if ((($x - $y) | fabs) / ($s | fabs)) >= 64 then error("bash-ast: brace cap")
+    else [range($x; $y + (if $s > 0 then 1 else -1 end); $s)] end;
+
 def _seq($in):
-  if ($in | test("^-?[0-9]{1,6}\\.\\.-?[0-9]{1,6}$")) then
-    ($in | split("..") | map(tonumber)) as [$x, $y]
-    | if (($x - $y) | fabs) > 64 then null
-      else [range($x; $y + (if $y >= $x then 1 else -1 end); if $y >= $x then 1 else -1 end) | tostring] end
-  elif ($in | test("^[A-Za-z]\\.\\.[A-Za-z]$")) then
+  if ($in | test("^-?[0-9]{1,6}\\.\\.-?[0-9]{1,6}(\\.\\.-?[0-9]{1,6})?$")) then
+    ($in | split("..")) as $e
+    | ($e | map(tonumber)) as $n
+    # a zero-padded endpoint pads every term to the wider endpoint, as bash does
+    | (if any($e[:2][]; test("^-?0[0-9]")) then ($e[:2] | map(length) | max) else 0 end) as $w
+    | [_terms($n[0]; $n[1]; $n[2] // 1)[]
+       | (if . < 0 then "-" else "" end) as $sg | (fabs | tostring) as $d
+       | $sg + ([range(0; $w - ($sg | length) - ($d | length))] | map("0") | join("")) + $d]
+  elif ($in | test("^[A-Za-z]\\.\\.[A-Za-z](\\.\\.-?[0-9]{1,6})?$")) then
     ($in | explode) as $c
-    | [range($c[0]; $c[3] + (if $c[3] >= $c[0] then 1 else -1 end); if $c[3] >= $c[0] then 1 else -1 end)
-       | [.] | implode | _protect]
+    | [_terms($c[0]; $c[3]; ($in[6:] | if . == "" then 1 else tonumber end))[] | [.] | implode | _protect]
   else null end;
 
 def _brace:
