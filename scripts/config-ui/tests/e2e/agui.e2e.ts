@@ -203,6 +203,8 @@ test("8b. a running subagent is listed in the Now panel; once finished its block
   await expect(page.locator(".block.sub .msg")).toHaveCount(0); // finished: folded
   await fold.click();
   await expect(page.locator(".block.sub .msg").last()).toContainText("Looks right.");
+  await fold.click(); // the same control folds it again
+  await expect(page.locator(".block.sub .msg")).toHaveCount(0);
 });
 
 // `himmelctl ui --agui` with no session id opens the fleet landing over the fixture fleet (3 live +

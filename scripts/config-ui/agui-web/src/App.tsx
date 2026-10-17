@@ -231,7 +231,7 @@ function Transcript({ view, now, only, open, onToggle }: {
     else blocks.push({ agent: a, entries: [en] });
   }
   // A finished subagent's block is one header line until opened; a running or failed one is always open.
-  const folded = (id: string) => !!view.agents[id]?.parentToolCallId && agentState(view, id) === "done" && !open[`fold-${id}`];
+  const foldable = (id: string) => !!view.agents[id]?.parentToolCallId && agentState(view, id) === "done";
   return (
     <>
       {blocks.map((b, i) => b.agent === null
@@ -240,8 +240,9 @@ function Transcript({ view, now, only, open, onToggle }: {
           <section key={`${b.agent}-${i}`} className={`block${view.agents[b.agent]?.parentToolCallId ? " sub" : ""}`}
             style={agentStyle(view, b.agent)} aria-label={`${view.agents[b.agent]?.name ?? "agent"}`}>
             <AgentHead agent={view.agents[b.agent]} />
-            {folded(b.agent) ? <FoldHead agent={view.agents[b.agent]} parent={view.tools[view.agents[b.agent].parentToolCallId!]}
-              count={b.entries.length} onToggle={() => onToggle(`fold-${b.agent}`)} /> : b.entries.map((en) =>
+            {foldable(b.agent) && <FoldHead parent={view.tools[view.agents[b.agent].parentToolCallId!]} count={b.entries.length}
+              open={!!open[`fold-${b.agent}`]} onToggle={() => onToggle(`fold-${b.agent}`)} />}
+            {foldable(b.agent) && !open[`fold-${b.agent}`] ? null : b.entries.map((en) =>
               en.kind === "text" ? <Message key={en.id} t={view.texts[en.id]} sub={!!view.agents[b.agent!]?.parentToolCallId} />
               : en.kind === "tools" ? <CallGroup key={en.ids[0]} tools={en.ids.map((id) => view.tools[id])} now={now} open={open} onToggle={onToggle} />
               : null)}
@@ -258,10 +259,10 @@ const AgentHead = ({ agent }: { agent?: Agent }) => agent ? (
     <span>{[ROLE[agent.role], model(agent.model)].filter(Boolean).join(" · ")}</span></p>
 ) : null;
 
-function FoldHead({ agent, parent, count, onToggle }: { agent: Agent; parent?: Tool; count: number; onToggle: () => void }) {
+function FoldHead({ parent, count, open, onToggle }: { parent?: Tool; count: number; open: boolean; onToggle: () => void }) {
   return (
-    <button className="fold-head" aria-expanded={false} onClick={onToggle}>
-      <span>Show {plural(count, "entry", "entries")}</span>
+    <button className="fold-head" aria-expanded={open} onClick={onToggle}>
+      <span>{open ? "Fold" : `Show ${plural(count, "entry", "entries")}`}</span>
       {parent && <span className="fold-from">from {parent.name} {summarize(parent)}</span>}
     </button>
   );
