@@ -820,4 +820,63 @@ set -e
 unset XDG_CACHE_HOME
 echo "ok (x): switch off creates flag + stops daemon; on removes flag + runs ensure"
 
+# ---- (x2) `off` landing after ensure's opt-out check must still win -----------
+# The first probe stalls (pause curl) AFTER the early flag check; `off` runs in
+# that window; the daemon must not launch. Control: no `off`, ensure launches.
+pause_curl="$bin/pause-curl"
+cat > "$pause_curl" <<'EOF'
+#!/usr/bin/env bash
+if [ ! -f "$QMD_MOCK_STATE/probed" ]; then
+  touch "$QMD_MOCK_STATE/probed" "$QMD_MOCK_STATE/in-probe"
+  w=0
+  while [ ! -f "$QMD_MOCK_STATE/release" ] && [ "$w" -lt 100 ]; do sleep 0.1; w=$((w + 1)); done
+fi
+exec "$QMD_MOCK_REAL_CURL" "$@"
+EOF
+chmod +x "$pause_curl"
+race_ensure() {  # race_ensure <do-off:0|1> -> launched iff $state/alive exists
+  rm -f "$off_flag" "$state/alive" "$state/qmd-argv.log" "$state/probed" "$state/in-probe" "$state/release"
+  HOME="$home" PATH="$bin:$safe" QMD_CURL="$pause_curl" QMD_MOCK_REAL_CURL="$mock_curl" \
+    QMD_MOCK_CURL_MODE=sentinel QMD_MOCK_STATE="$state" QMD_MCP_URL="$test_url" \
+    bash "$script" >/dev/null 2>&1 &
+  race_pid=$!
+  STUB_PIDS+=("$race_pid")
+  race_i=0
+  while [ ! -f "$state/in-probe" ] && [ "$race_i" -lt 100 ]; do sleep 0.1; race_i=$((race_i + 1)); done
+  [ -f "$state/in-probe" ] || fail "(x2) ensure never reached its first probe"
+  if [ "$1" = 1 ]; then
+    HOME="$home" PATH="$bin:$safe" timeout 20 bash "$switch" off >/dev/null 2>&1 || fail "(x2) off failed or hung"
+  fi
+  touch "$state/release"
+  wait "$race_pid" 2>/dev/null || true
+}
+race_ensure 0
+[ -f "$state/alive" ] || fail "(x2) control: no opt-out, ensure should launch"
+race_ensure 1
+[ ! -f "$state/alive" ] || fail "(x2) off during the probe window: daemon still launched"
+[ -f "$off_flag" ] || fail "(x2) off did not set the flag"
+rm -f "$off_flag"
+echo "ok (x2): off between ensure's early check and the launch stops the launch; control launches"
+
+# ---- (x3) off waits for a launch holding the lock, then stops the daemon it made
+swap_lock="$home/.cache/qmd/embed-swap.lock"
+rm -rf "$swap_lock"; rm -f "$off_flag"
+mkdir -p "$swap_lock"
+echo ensure > "$swap_lock/role"
+sleep 30 &
+holder_pid=$!
+STUB_PIDS+=("$holder_pid")
+echo "$holder_pid" > "$swap_lock/pid"
+bash "$fake_script" &
+late_daemon=$!
+STUB_PIDS+=("$late_daemon")
+( sleep 2; echo "$late_daemon" > "$home/.cache/qmd/mcp.pid"; rm -rf "$swap_lock" ) &
+STUB_PIDS+=("$!")
+HOME="$home" PATH="$bin:$safe" QMD_PS="$real_ps" timeout 20 bash "$switch" off >/dev/null 2>&1 || fail "(x3) off failed or hung"
+sleep 1
+if kill -0 "$late_daemon" 2>/dev/null; then fail "(x3) off did not wait for the lock holder and missed its daemon"; fi
+[ ! -d "$swap_lock" ] || fail "(x3) off left the lock behind"
+rm -f "$off_flag"
+echo "ok (x3): off waits for a launch holding the lock, then stops the daemon it started"
+
 echo "PASS: all ensure-qmd-daemon cases"
