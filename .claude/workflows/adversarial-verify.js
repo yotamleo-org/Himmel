@@ -1,6 +1,6 @@
 export const meta = {
   name: 'adversarial-verify',
-  description: 'Review a diff across dimensions, adversarially verify each finding, sort the survivors into act / consider / noted / dismissed with an agreement map',
+  description: 'Review a diff across dimensions, adversarially verify each finding, sort the verified findings into act / consider / noted / dismissed with an agreement map',
   whenToUse: 'CR-shaped fan-out: findings must survive independent refutation',
   phases: [{ title: 'Review' }, { title: 'Verify' }, { title: 'Judge' }],
 }
