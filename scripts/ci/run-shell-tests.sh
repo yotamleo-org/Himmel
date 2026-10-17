@@ -3006,7 +3006,8 @@ if [ -n "$impacted_range" ]; then
          && _imp_hs=$(git rev-parse --verify --quiet --end-of-options "${_imp_h}^{commit}") \
          && git rev-parse --verify --quiet --end-of-options "${_imp_main}^{commit}" >/dev/null \
          && ! git merge-base --is-ancestor "$_imp_bs" "$_imp_main" \
-         && [ "$(git rev-list --merges --count "$_imp_bs..$_imp_hs" 2>/dev/null)" != 0 ] \
+         && _imp_mc=$(git rev-list --merges --count "$_imp_bs..$_imp_hs" 2>/dev/null) \
+         && case "$_imp_mc" in ''|*[!0-9]*) false ;; *) [ "$_imp_mc" -gt 0 ] ;; esac \
          && _imp_mb=$(git merge-base "$_imp_main" "$_imp_hs"); then
         echo "run-shell-tests.sh: --impacted ${impacted_range} holds a merge-forward; using ${_imp_mb}..${_imp_hs} (the PR's own changes)" >&2
         impacted_range="${_imp_mb}..${_imp_hs}"
