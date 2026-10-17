@@ -1285,6 +1285,15 @@ OUT21R="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scri
 if [ "$EC21R" -eq 2 ]; then pass "21r --staged refuses a filename with a newline"; else fail "21r expected exit 2, got $EC21R" "$OUT21R"; fi
 assert_contains "21r says why" "newline" "$OUT21R"
 
+# a control byte in a name does not split it either
+(cd "$GATE" && git rm -q -f --cached -- ':(glob)nl*' && rm -f nl*
+cat > "$(printf 'ctl\001x.sh')" <<'EOF'
+y=$(mktemp)
+EOF
+git add -A -- ':(glob)ctl*') >/dev/null 2>&1
+OUT21S="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"
+assert_contains "21s --staged lints a name holding a control byte" "ctl" "$OUT21S"
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"

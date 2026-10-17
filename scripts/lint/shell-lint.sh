@@ -297,27 +297,28 @@ if [ -n "$BASELINE" ] && [ "$WRITE_BASELINE" -eq 0 ]; then
 fi
 
 if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
-    # Capture git's exit code explicitly — a git failure must NOT read as
-    # "no changed files" (that would be a false all-clear).
-    if [ "$STAGED" -eq 1 ]; then
-        # -z: git would otherwise quote a non-ASCII name and the -f test below would skip it;
-        # the NULs become \001 because a command substitution cannot carry NUL and a name may hold a newline
-        _list="$(cd "$_root" || exit 2; git diff --cached -z --name-only --diff-filter=ACMR | tr '\0' '\001'; exit "${PIPESTATUS[0]}")" \
-            || { printf 'shell-lint: --staged: git diff --cached failed\n' >&2; exit 2; }
-    else
-        _list="$(cd "$_root" || exit 2; git diff -z --name-only --diff-filter=ACMR "$CHANGED" -- | tr '\0' '\001'; exit "${PIPESTATUS[0]}")" \
-            || { printf 'shell-lint: --changed: git diff %s failed\n' "$CHANGED" >&2; exit 2; }
-    fi
-    while IFS= read -r -d $'\001' _f; do
+    # -z: git would otherwise quote a non-ASCII name and the -f test below would skip it.
+    # The stream ends in an un-terminated "rc=<git exit>" so a git failure must NOT
+    # read as "no changed files" (that would be a false all-clear).
+    _git_changed() {
+        cd "$_root" || return 2
+        if [ "$STAGED" -eq 1 ]; then
+            git diff --cached -z --name-only --diff-filter=ACMR
+        else
+            git diff -z --name-only --diff-filter=ACMR "$CHANGED" --
+        fi
+        printf 'rc=%s' "$?"
+    }
+    _rc=""
+    while IFS= read -r -d '' _f || { _rc="$_f"; false; }; do
         [ -n "$_f" ] || continue
         # ponytail: the file list is newline-separated, so a newline in a name is refused, not linted; carry NUL-separated lists through if one is ever real
         case "$_f" in *$'\n'*) printf 'shell-lint: a path containing a newline cannot be linted; rename it\n' >&2; exit 2 ;; esac
         _abs="$_root/$_f"
         [ -f "$_abs" ] || continue
         _is_lint_target "$_abs" && FILES="$FILES$_abs"$'\n'
-    done <<EOF
-$_list
-EOF
+    done < <(_git_changed)
+    [ "$_rc" = "rc=0" ] || { printf 'shell-lint: git diff failed (--staged or --changed %s)\n' "$CHANGED" >&2; exit 2; }
 fi
 
 # _baseline_filter KEY — stdin: a file's report. Drops each tag whose count is
