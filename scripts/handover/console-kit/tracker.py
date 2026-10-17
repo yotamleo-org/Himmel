@@ -571,6 +571,60 @@ def jira_view(mir, legs, vers, prows, vnames):
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
     return tk, cur, nxt, [a for a in al if a[1]]
 
+GROUP_NAMES = ['0 critical', '1K knowledge retrieval', '1 data freshness', '2 rules, truth and eval', '3 CI throughput',
+               '4 PS3 blockers', '5 structural guards', '6 stability bugs', '7 console offload', '8 cost']
+PRIO_KEY_RE = re.compile(r'(?<![\w.])(?:HIMMEL-)?(\d{2,5})(?![\d.])')
+
+
+def priority_groups(path):
+    """[(group name, [ticket numbers in dispatch order])] from the plan's `priority:` line, or [] without one.
+
+    The line is the first non-blank line after the one naming "`priority:` line", or a line starting `priority:`; `|`
+    separates groups. The last two segments are the rest-of-version marker and the bottom pair; tokens with no number
+    (K1, SCORECARD) hold no key."""
+    try:
+        lines = open(path, encoding='utf-8').read().splitlines()
+    except OSError:
+        return []
+    line = ''
+    for i, l in enumerate(lines):
+        if l.startswith('priority:'):
+            line = l[len('priority:'):]
+            break
+        if l.startswith('`priority:` line'):
+            line = next((x for x in lines[i + 1:] if x.strip()), '')
+            break
+    segs = [x for x in line.split('|')]
+    if len(segs) < 3:
+        return []
+    names = GROUP_NAMES[:len(segs) - 2] + ['rest of version'] + ['bottom']
+    return [(n, [int(k) for k in PRIO_KEY_RE.findall(sg)]) for n, sg in zip(names, segs)]
+
+
+def remaining_board(mir, version, groups):
+    """Markdown of the open tickets whose fixVersion includes `version`, grouped by the plan's priority groups.
+
+    Done, Closed, In Public and wont do/fix tickets are left out. A ticket on no group line goes to 'rest of version'
+    (and in the rest group, ahead of the bottom group); a ticket named in two groups stays in the first."""
+    opn = {num(k): m for k, m in mir.items()
+           if version in m['fv'] and bucket(m) not in ('done', 'wont')}
+    placed, out = set(), []
+    names = [g[0] for g in groups] or ['rest of version']
+    rows = {n: [] for n in names}
+    for n, keys in groups:
+        for k in keys:
+            if k in opn and k not in placed:
+                placed.add(k)
+                rows[n].append(k)
+    rest = 'rest of version' if 'rest of version' in rows else names[0]
+    rows[rest] += sorted(k for k in opn if k not in placed)
+    out.append('# %s remaining board: %d open' % (version, len(opn)))
+    for n in names:
+        if rows[n]:
+            out.append('\n## %s (%d)' % (n, len(rows[n])))
+            out += ['- HIMMEL-%d [%s] %s' % (k, opn[k]['sn'] or opn[k]['cat'], clip(opn[k]['title'], 90)) for k in rows[n]]
+    return '\n'.join(out) + '\n'
+
 
 def first_sentence(s):
     """HIMMEL-5381: the first sentence of a plain Impact block ('' for none), clipped for a card."""
@@ -909,9 +963,13 @@ def write_bench(path, out, opr, unr):
 def main():
     global MIRROR, LUNA, HANDOVERS, ROOT, OUT, LUNA_MAP, VERSIONS
     ap = argparse.ArgumentParser(description='Render the HIMMEL-3882 roadmap tracker page.')
-    ap.add_argument('--plan-dir', required=True, help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
-    ap.add_argument('--out', required=True, help='tracker.html to write')
-    ap.add_argument('--luna-map', required=True, help='luna-map.json cache path')
+    ap.add_argument('--remaining', metavar='VERSION', default=None,
+                    help='write the open tickets of one version grouped by the plan priority line (--priority-file) to '
+                         '--out (else stdout), then exit; needs only --mirror-dir')
+    ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining)')
+    ap.add_argument('--plan-dir', help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
+    ap.add_argument('--out', help='tracker.html to write')
+    ap.add_argument('--luna-map', help='luna-map.json cache path')
     ap.add_argument('--mirror-dir', default=MIRROR)
     ap.add_argument('--versions-file', default=None,
                     help="a `jira versions` snapshot: name<TAB>released<TAB>releaseDate (default <mirror-dir>.versions.tsv)")
@@ -927,6 +985,16 @@ def main():
     ap.add_argument('--refresh-luna', action='store_true')
     ap.add_argument('--emit-fp', action='store_true')
     a = ap.parse_args()
+    if a.remaining:
+        MIRROR = os.path.abspath(a.mirror_dir)
+        text = remaining_board(read_mirror(), a.remaining, priority_groups(a.priority_file) if a.priority_file else [])
+        if a.out:
+            open(a.out, 'w', encoding='utf-8').write(text)
+        else:
+            print(text, end='')
+        return
+    if not (a.plan_dir and a.out and a.luna_map):
+        ap.error('--plan-dir, --out and --luna-map are required unless --remaining is given')
     ROOT, OUT, LUNA_MAP, MIRROR, LUNA = (os.path.abspath(a.plan_dir), os.path.abspath(a.out),
                                          os.path.abspath(a.luna_map), os.path.abspath(a.mirror_dir),
                                          os.path.abspath(a.luna_root))
@@ -1079,7 +1147,7 @@ def main():
     unp = sum(1 for r in rows if r[7] == 2 and r[2] != 2)  # open only
     drift = sum(1 for r in rows if r[7] == 1)
     dif = done_in_future(mir, jv, ru)
-    cov =sum(1 for r in rows[:n_plan] if r[8])
+    cov = sum(1 for r in rows[:n_plan] if r[8])
     print('wrote %s.bench.tsv: %d planned items, operator bundle %d, unattributed %d'
           % (outp, len(bn), bop[8], bun[8]))
     print('wrote %s (%.1f KB): %d planned, %d unplanned, %d drift, %d unthemed, %d unplaced, %d done-in-future; mirror %d issues'

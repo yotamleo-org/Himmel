@@ -34,6 +34,9 @@
 #                 mirror) + tracker.py render, each under WM_TRACKER_TIMEOUT (120 s).
 #                 Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip. Publishing the
 #                 artifact stays the console's job. Seam: WM_TRACKER_PY.
+#   5b. remaining the console doc's `remaining-board: <version>` line renders that version's open tickets,
+#                 grouped by the plan's priority line, to <doc dir>/roadmap-remaining-<version>.md from the
+#                 mirror step 5 just refreshed. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
 #   6. board      (as above)
 # A re-run therefore finishes whatever an earlier run stopped before, and writes
 # nothing twice. Calls the existing console-kit scripts and modifies none.
@@ -150,6 +153,7 @@ tracker_refresh() {
     JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
     mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
+    MIRROR_FRESH="$mir"
     set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
     want="$(timeout -k 5 "$tmo" "${TRACKER[@]}" --emit-fp "$@" 2>/dev/null)" || want=""  # gnu-ok: Linux-only kit
     if [ -n "$want" ] && [ -f "$out" ] && [ "$(cat "$out.fp" 2>/dev/null)" = "$want" ]; then
@@ -159,7 +163,33 @@ tracker_refresh() {
     if [ "$rc" -eq 0 ]; then echo "tracker=CHANGED"; else echo "tracker=failed:render-rc$rc"; fi
     return 0
 }
+MIRROR_FRESH=""
 tracker_refresh
+
+# 5b. remaining-only board - best effort, never fails the wrap. The console doc's `remaining-board: <version>`
+# line opts in; the priority line comes from `remaining-plan:` (a plan file), else the newest
+# <doc dir>/specs/plans/*approved-plan*.md. Reads the mirror step 5 just refreshed (no fresh mirror, no render).
+# Writes <doc dir>/roadmap-remaining-<version>.md. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
+remaining_refresh() {
+    local ver dir plan out tmp tmo rc
+    ver="$(sed -n 's/^remaining-board:[[:space:]]*//p' "$DOC" | head -n 1)"
+    case "$ver" in ''|none*) echo "remaining=skip"; return 0 ;; esac
+    [ -n "$MIRROR_FRESH" ] || { echo "remaining=skip:no-fresh-mirror"; return 0; }
+    dir="${DOC%/*}"
+    plan="$(sed -n 's/^remaining-plan:[[:space:]]*//p' "$DOC" | head -n 1)"
+    if [ -z "$plan" ]; then  # plan files are dated, so the last glob match is the newest
+        for f in "$dir"/specs/plans/*approved-plan*.md; do [ -f "$f" ] && plan="$f"; done
+    fi
+    out="$dir/roadmap-remaining-$ver.md"
+    tmp="$out.tmp.$$"
+    tmo="${WM_TRACKER_TIMEOUT:-120}"
+    timeout -k 5 "$tmo" "${TRACKER[@]}" --remaining "$ver" --mirror-dir "$MIRROR_FRESH" ${plan:+--priority-file "$plan"} --out "$tmp" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+    if [ "$rc" -ne 0 ]; then rm -f "$tmp"; echo "remaining=failed:render-rc$rc"; return 0; fi
+    if [ -f "$out" ] && cmp -s "$tmp" "$out"; then rm -f "$tmp"; echo "remaining=UNCHANGED"; return 0; fi
+    mv -f "$tmp" "$out" && echo "remaining=CHANGED" || echo "remaining=failed:write"
+    return 0
+}
+remaining_refresh
 
 # 6. board
 "${BOARD[@]}" --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7

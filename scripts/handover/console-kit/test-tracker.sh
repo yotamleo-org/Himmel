@@ -616,5 +616,43 @@ printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t2026-10-20\n' > "$dfm.versions.
 dfout="$(render --mirror-dir "$dfm")"
 contains 'no Done ticket past the current version counts zero (HIMMEL-5801)' "$dfout" ', 0 done-in-future;'
 
+# --- remaining-only board (--remaining): open tickets of one version, grouped by the plan's priority line.
+rb="$W/rb"
+mkdir -p "$rb"
+mdir="$rb"
+mk 70 'Done' '["v1.1.3"]' 'done in version' 'Done'
+mk 71 'To Do' '["v1.1.3"]' 'first group open' 'To Do'
+mk 72 'In Progress' '["v1.1.3"]' 'second group open' 'In Progress'
+mk 73 'To Do' '["v1.1.3"]' 'on no group line' 'To Do'
+mk 74 'To Do' '["v1.1.4"]' 'other version' 'To Do'
+mk 75 'Done' '["v1.1.3"]' 'wont do in version' 'Wont Do'
+mdir="$mir"
+pf="$W/rb-plan.md"
+# shellcheck disable=SC2016  # the backticks are literal plan text
+printf '%s\n' '`priority:` line for the console:' '' '71 K1 | 72 (5000 71) | rest of v1.1.3 | 6100' > "$pf"
+rbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" 2>&1)"
+contains 'the remaining board lists an open ticket of the version' "$rbout" 'HIMMEL-71 [To Do] first group open'
+not_contains 'the remaining board drops a Done ticket' "$rbout" 'HIMMEL-70'
+not_contains 'the remaining board drops a wont-do ticket' "$rbout" 'HIMMEL-75'
+not_contains 'the remaining board drops another version' "$rbout" 'HIMMEL-74'
+contains 'the first priority segment is group 0' "$rbout" '## 0 critical (1)'
+contains 'the second priority segment is group 1K' "$rbout" '## 1K knowledge retrieval (1)'
+contains 'a ticket on no group line goes to the rest group' "$rbout" '## rest of version (1)'
+contains 'the heading counts the open tickets' "$rbout" '# v1.1.3 remaining board: 3 open'
+rbfile="$W/rb-out.md"
+python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" --out "$rbfile" >/dev/null 2>&1
+contains '--out writes the board to a file' "$(cat "$rbfile" 2>/dev/null)" 'HIMMEL-72 [In Progress] second group open'
+
+# --- done-in-future counts every unreleased version, not only v1.0.x.
+dfm="$W/dfm2"
+mkdir -p "$dfm"
+mdir="$dfm"
+mk 80 'Done' '["v1.1.3"]' 'done in current' 'Done'
+mk 81 'Done' '["v1.1.4"]' 'done in future v1.1.4' 'Done'
+mdir="$mir"
+printf 'v1.1.3\tfalse\t2026-10-20\nv1.1.4\tfalse\t\n' > "$dfm.versions.tsv"
+dfout="$(render --mirror-dir "$dfm")"
+contains 'a Done ticket in a future v1.1.x counts as done-in-future (HIMMEL-5826)' "$dfout" ', 1 done-in-future;'
+
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

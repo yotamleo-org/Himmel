@@ -1975,7 +1975,7 @@ $remaining" "" comment-only)
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
         local versions_out fold_to
-        versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions 2>/dev/null)
+        versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
             try {
                 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
