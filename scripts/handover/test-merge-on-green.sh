@@ -679,6 +679,10 @@ case "\$1" in
         if [ "\$2" = "comment" ] && [ "\$4" = "--comment-file" ] && [ -f "\$5" ]; then
             sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
         fi
+        if [ "\$2" = "get" ] && [ "\${STUB_JIRA_NO_FIXVERSIONS:-0}" = "1" ]; then
+            printf '{"fields":{"issuetype":{"name":"%s"},"status":{"name":"%s"}}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_STATUS-In Review}"
+            exit 0
+        fi
         if [ "\$2" = "get" ]; then
             printf '{"fields":{"issuetype":{"name":"%s"},"status":{"name":"%s"},"fixVersions":[%s]}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_STATUS-In Review}" "\${STUB_JIRA_FIXVERSIONS:-}"
             exit 0
@@ -3643,6 +3647,16 @@ assert_audit_has "jira: failed unversioned stamp is recorded" "jira-transition=o
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: unversioned stamp with no dated version uses the first unreleased one" -- --jira-transition
 assert_jira_log_has "jira: undated unversioned stamp uses the first unreleased version" "edit HIMMEL-374 --fix-version v1.1.3"
+
+# A get reply with no fixVersions key is unknown, not empty: a full-replace
+# stamp could drop versions the ticket holds.
+STUB_JIRA_BUILD=1 STUB_JIRA_NO_FIXVERSIONS=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a get reply without a fixVersions field is not stamped" -- --jira-transition
+assert_jira_log_lacks "jira: no fixVersion edit when the field is missing from the reply" "edit "
+
+STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.2\ttrue\t2026-10-11\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: an unversioned ticket with no unreleased version is not edited" -- --jira-transition
+assert_jira_log_lacks "jira: no fixVersion edit when no unreleased version exists" "edit "
 
 STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: bare merge (no --jira-transition) never edits fixVersion"
