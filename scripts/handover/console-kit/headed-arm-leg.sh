@@ -2110,16 +2110,18 @@ if [ -n "$PROFILE" ]; then
     # graphify-out/graph.json) at the HEAD of the preface, so the preface's
     # turn-ending section stays last. LEG_REPO_MAP_TOKENS sets the cap (default
     # 2000). Advisory: no graph, a generator failure or a generator still
-    # running after LEG_REPO_MAP_TIMEOUT seconds (default 30) launches without it.
+    # running after LEG_REPO_MAP_TIMEOUT seconds (default 30) launches without
+    # it; so does a host with no GNU timeout, since the generator never runs unbounded.
     if [ "${LEG_REPO_MAP:-0}" = 1 ]; then
         REPO_MAP_CMD="${HEADED_ARM_LEG_REPO_MAP:-$HERE/../../graphify/repo-map.py}"
         _rm_timeout="${LEG_REPO_MAP_TIMEOUT:-30}"
         # shellcheck source=scripts/lib/timeout-bin.sh
         . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
         _rm_graph="<no git repo>"
-        if _rm_common="$(git -C "${HEADED_ARM_REPO:-$HERE/../../..}" rev-parse --path-format=absolute --git-common-dir)" \
+        if [ -n "${_TIMEOUT_BIN:-}" ] \
+            && _rm_common="$(git -C "${HEADED_ARM_REPO:-$HERE/../../..}" rev-parse --path-format=absolute --git-common-dir)" \
             && _rm_graph="$(dirname "$_rm_common")/graphify-out/graph.json" \
-            && _rm_map="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$_rm_timeout"} "$REPO_MAP_CMD" --graph "$_rm_graph" --max-tokens "${LEG_REPO_MAP_TOKENS:-2000}")" \
+            && _rm_map="$("$_TIMEOUT_BIN" -k 5 "$_rm_timeout" "$REPO_MAP_CMD" --graph "$_rm_graph" --max-tokens "${LEG_REPO_MAP_TOKENS:-2000}")" \
             && { printf '%s\n\n' "$_rm_map"; cat "$LEG_PROFILE_PREFACE"; } > "$LEG_PROFILE_PREFACE.map" \
             && mv "$LEG_PROFILE_PREFACE.map" "$LEG_PROFILE_PREFACE"; then
             echo "$(date +%F_%T) headed-arm-leg: repo-map=on graph=$_rm_graph tokens=${LEG_REPO_MAP_TOKENS:-2000}" >> "$LOG"
@@ -2127,6 +2129,7 @@ if [ -n "$PROFILE" ]; then
             _rm_rc=$?
             _rm_why="rc=$_rm_rc"
             [ "$_rm_rc" = 124 ] && _rm_why="timed out after ${_rm_timeout}s"
+            [ -n "${_TIMEOUT_BIN:-}" ] || _rm_why="no GNU timeout to bound the generator"
             rm -f "$LEG_PROFILE_PREFACE.map"
             echo "$(date +%F_%T) headed-arm-leg: WARN repo-map not injected (graph=$_rm_graph, $_rm_why); launching without it" >> "$LOG"
         fi
