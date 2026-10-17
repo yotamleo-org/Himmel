@@ -193,14 +193,6 @@ repos:
         files: (package\.json|package-lock\.json|npm-shrinkwrap\.json|bun\.lock|yarn\.lock|pnpm-lock\.yaml|\.(ts|tsx|js|jsx|mjs|cjs|mts|cts))$
         pass_filenames: false
 
-      - id: no-graphify-path-advice
-        name: instruction files carry no graphify installer `graphify path` advice (himmel-dev only)
-        # HIMMEL-5303
-        entry: bash scripts/lint/check-graphify-path-advice.sh
-        language: system
-        files: ^(CLAUDE|AGENTS|GEMINI)\.md$
-        pass_filenames: false
-
       - id: no-history-comments
         name: no new code comment narrates history (ticket, review round, judge qid; ponytail exempt) (himmel-dev only)
         entry: bash scripts/lint/check-history-comments.sh --staged

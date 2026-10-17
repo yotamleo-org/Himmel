@@ -95,8 +95,8 @@ before improvising; that read is the primary path. **qmd finds content** —
 second hop (cross-repo, historic), scoped via `-c <name>` (`--collections` is
 NOT a qmd flag — silently ignored, searching everything while looking scoped);
 a qmd miss is NOT evidence a fact is absent. **graphify explains structure** (`graphify query` /
-`graphify explain`) — but **never `graphify path`**: node IDs are file-scoped,
-so cross-file traversal is structurally broken (join query results in-head).
+`graphify explain` / `graphify path`) — one entity named in several files is one
+node, but same-name code symbols defined in 2+ files stay separate (pick one with `path::symbol`).
 Luna's hot cache
 `~/Documents/luna/hot.md` comes before crawling luna `index.md`. Extraction runs
 on scratchpad copies, **never live vaults**. A live external URL is none of the three organs' job — `WebFetch` it directly.
@@ -159,7 +159,7 @@ Docs not already linked from a rule above (relative to `docs/`):
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

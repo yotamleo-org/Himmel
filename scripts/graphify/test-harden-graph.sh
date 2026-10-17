@@ -439,5 +439,95 @@ cp "$D15/graph.json" "$D15/graph.json.before"
 python3 "$SCRIPT" --out "$D15" --root "$C15" >/dev/null
 cmp -s "$D15/graph.json.before" "$D15/graph.json" && pass "T15 re-run adds no shell edge twice" || fail "T15 re-run changed graph.json"
 
+# --- T16: a semantic node naming the same entity as a node in another file
+# (code-file token, name() symbol, glossary term, /command) is merged into one
+# canonical node, its edges redirected; same-name AST symbols, an ambiguous
+# token and a prose label outside the glossary stay separate ---
+echo "T16: same entity across files merges into one canonical node"
+D16="$WS/t16"; mkdir -p "$D16"
+cat > "$D16/graph.json" <<'JSON'
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {"id": "scripts_check", "label": "check.sh", "source_file": "scripts/check.sh", "file_type": "code", "source_location": "L1", "_origin": "ast"},
+    {"id": "scripts_check_run", "label": "run()", "source_file": "scripts/check.sh", "file_type": "code", "source_location": "L4", "_origin": "ast"},
+    {"id": "docs_a", "label": "a.md", "source_file": "docs/a.md", "file_type": "document", "source_location": "L1", "_origin": "ast"},
+    {"id": "docs_a_check", "label": "check.sh", "source_file": "docs/a.md", "file_type": "code", "_origin": "semantic"},
+    {"id": "docs_b_check", "label": "scripts/check.sh", "source_file": "docs/b.md", "file_type": "code", "_origin": "semantic"},
+    {"id": "docs_b_gate", "label": "Gate", "source_file": "docs/b.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "scripts_lib_do_thing", "label": "do_thing()", "source_file": "scripts/lib.sh", "file_type": "code", "source_location": "L9", "_origin": "ast"},
+    {"id": "docs_e_do_thing", "label": "do_thing()", "source_file": "docs/e.md", "file_type": "code", "_origin": "semantic"},
+    {"id": "docs_glossary_cr_ledger", "label": "CR ledger", "source_file": "docs/glossary.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "skill_cr_ledger", "label": "CR ledger", "source_file": "skills/pr-check/SKILL.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "docs_f_matrix", "label": "matrix.json", "source_file": "docs/f.md", "file_type": "code", "_origin": "semantic"},
+    {"id": "docs_g_matrix", "label": "matrix.json", "source_file": "docs/g.md", "file_type": "code", "_origin": "semantic"},
+    {"id": "t1_assert", "label": "assert_contains()", "source_file": "tests/t1.sh", "file_type": "code", "source_location": "L3", "_origin": "ast"},
+    {"id": "t2_assert", "label": "assert_contains()", "source_file": "tests/t2.sh", "file_type": "code", "source_location": "L3", "_origin": "ast"},
+    {"id": "docs_h_assert", "label": "assert_contains()", "source_file": "docs/h.md", "file_type": "code", "_origin": "semantic"},
+    {"id": "docs_i_checklist", "label": "Verification checklist", "source_file": "docs/i.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "docs_j_checklist", "label": "Verification checklist", "source_file": "docs/j.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "docs_k_pr_check", "label": "/pr-check", "source_file": "docs/k.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "docs_l_pr_check", "label": "/pr-check", "source_file": "docs/l.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "agents_ladder", "label": "Precedence ladder", "source_file": "AGENTS.md", "file_type": "concept", "_origin": "semantic"},
+    {"id": "soul_ladder", "label": "Precedence ladder", "source_file": "scripts/hermes/SOUL.md", "file_type": "concept", "_origin": "semantic"}
+  ],
+  "links": [
+    {"source": "scripts_check", "target": "scripts_check_run", "relation": "contains", "_origin": "ast"},
+    {"source": "docs_a", "target": "docs_a_check", "relation": "contains", "source_file": "docs/a.md", "_origin": "semantic"},
+    {"source": "docs_b_gate", "target": "docs_b_check", "relation": "references", "source_file": "docs/b.md", "_origin": "semantic"},
+    {"source": "docs_a_check", "target": "docs_b_check", "relation": "references", "source_file": "docs/a.md", "_origin": "semantic"},
+    {"source": "docs_e_do_thing", "target": "docs_b_gate", "relation": "references", "source_file": "docs/e.md", "_origin": "semantic"},
+    {"source": "skill_cr_ledger", "target": "docs_b_gate", "relation": "references", "source_file": "skills/pr-check/SKILL.md", "_origin": "semantic"},
+    {"source": "docs_g_matrix", "target": "docs_b_gate", "relation": "references", "source_file": "docs/g.md", "_origin": "semantic"}
+  ],
+  "hyperedges": [
+    {"id": "h1", "nodes": ["docs_a_check", "docs_b_check", "docs_b_gate"], "source_file": "docs/b.md", "_origin": "semantic"}
+  ]
+}
+JSON
+out16=$( python3 "$SCRIPT" --out "$D16" ); rc16=$?
+[ "$rc16" -eq 0 ] || fail "T16 exit 0 (got $rc16): $out16"
+echo "$out16" | grep -qF "identity-merged=6 identity-ambiguous=1" \
+  && pass "T16 summary counts merged and ambiguous identities" \
+  || fail "T16 summary wrong: $out16"
+if python3 - "$D16/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+ids = {n["id"] for n in g["nodes"]}
+gone = {"docs_a_check", "docs_b_check", "docs_e_do_thing", "skill_cr_ledger", "docs_g_matrix", "docs_l_pr_check"}
+kept = {"scripts_check", "scripts_lib_do_thing", "docs_glossary_cr_ledger", "docs_f_matrix",
+        "t1_assert", "t2_assert", "docs_h_assert", "docs_i_checklist", "docs_j_checklist",
+        "docs_k_pr_check", "agents_ladder", "soul_ladder"}
+errs = [f"not merged: {i}" for i in gone & ids] + [f"wrongly removed: {i}" for i in kept - ids]
+edges = {(e["source"], e["target"], e["relation"]) for e in g["links"]}
+for want in [("docs_a", "scripts_check", "contains"), ("docs_b_gate", "scripts_check", "references"),
+             ("scripts_lib_do_thing", "docs_b_gate", "references"),
+             ("docs_glossary_cr_ledger", "docs_b_gate", "references"),
+             ("docs_f_matrix", "docs_b_gate", "references")]:
+    if want not in edges:
+        errs.append(f"missing redirected edge {want}")
+errs += [f"self-loop {e}" for e in edges if e[0] == e[1]]
+errs += [f"dangling {e}" for e in edges if e[0] not in ids or e[1] not in ids]
+canon = {n["id"]: n for n in g["nodes"]}["scripts_check"]
+if canon.get("merged_ids") != ["docs_a_check", "docs_b_check"]:
+    errs.append(f"merged_ids wrong: {canon.get('merged_ids')}")
+if g["hyperedges"][0]["nodes"] != ["scripts_check", "docs_b_gate"]:
+    errs.append(f"hyperedge members wrong: {g['hyperedges'][0]['nodes']}")
+for e in errs:
+    print("  " + e)
+sys.exit(1 if errs else 0)
+PY
+then
+  pass "T16 duplicates merged, edges redirected, distinct same-name entities kept apart"
+else
+  fail "T16 canonical identity merge wrong"
+fi
+cp "$D16/graph.json" "$D16/graph.json.before"
+out16b=$( python3 "$SCRIPT" --out "$D16" )
+echo "$out16b" | grep -qF "unchanged=1" && cmp -s "$D16/graph.json.before" "$D16/graph.json" \
+  && pass "T16 re-run merges nothing twice" || fail "T16 re-run changed graph.json: $out16b"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
