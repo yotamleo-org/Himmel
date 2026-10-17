@@ -197,6 +197,7 @@ if ! mkdir -p "$(dirname "$inbox")" || ! exec 9>>"$inbox.wait.lock"; then
     exit 1
 fi
 if ! flock -n 9; then  # gnu-ok: Linux-only kit (util-linux flock, PLATFORM GUARD)
+    # swallow-ok: the pid only decorates the refusal message below; exit 3 does not depend on it
     other="$(sed -n 's/.* pid=\([0-9][0-9]*\) .*/\1/p' "$hb_file" 2>/dev/null | head -n 1)"
     echo "console-wait: a waiter is already live on $inbox (pid ${other:-?}) — not starting a second" >&2
     exit 3
@@ -612,10 +613,11 @@ while :; do
     # sat short for --silent-min minutes, naming the legs still out.
     # A COMPLETE wake leaves $succ_file.woke naming the successor, so a re-arm with the same
     # --succession (the console forgot to drop it) does not wake again at once.
+    # swallow-ok: a missing .woke marker reads empty, so the wake is simply not suppressed
     if [ -n "$succession" ] && [ "$(sed -n 1p "$succ_file.woke" 2>/dev/null)" != "$succession" ] && [ "$(date +%s)" -ge "${next_succ:-0}" ]; then
         next_succ=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
         [ -s "$succ_file" ] || date +%s > "$succ_file" 2>/dev/null
-        succ_out="$(timeout -k 2 30 bash "${CONSOLE_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit
+        succ_out="$(timeout -k 2 30 bash "${CONSOLE_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit; swallow-ok: a tracker failure prints no summary and takes the INCOMPLETE branch below
         succ_sum="$(printf '%s\n' "$succ_out" | grep -E '^(COMPLETE|INCOMPLETE) ' | head -n 1)"
         case "$succ_sum" in
             COMPLETE*)
@@ -623,7 +625,7 @@ while :; do
                 printf '%s\n' "$succession" > "$succ_file.woke" 2>/dev/null
                 rm -f "$succ_file"; exit_reason='wake-succession'; exit 0 ;;
             *)  # INCOMPLETE, or a tracker that printed no summary: both age toward the silence wake
-                succ_since="$(sed -n 1p "$succ_file" 2>/dev/null)"
+                succ_since="$(sed -n 1p "$succ_file" 2>/dev/null)"  # swallow-ok: empty or non-numeric falls back to now on the next line
                 case "$succ_since" in ''|*[!0-9]*) succ_since="$(date +%s)" ;; esac
                 if [ $(( $(date +%s) - succ_since )) -ge $(( 10#$silent_min * 60 )) ]; then
                     succ_tally="$(printf '%s' "$succ_sum" | sed -nE 's/^INCOMPLETE ([0-9]+\/[0-9]+).*/\1/p')"
@@ -639,8 +641,8 @@ while :; do
     # does when the console runs it); the console sends each SENDMESSAGE line.
     if [ -n "$console_doc" ] && [ -s "$inbox.relay-on-live" ] && [ "$(date +%s)" -ge "${next_rol:-0}" ]; then
         next_rol=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
-        rol_succ="$(sed -n 1p "$inbox.relay-on-live" 2>/dev/null)"
-        rol_doc="$(sed -n 2p "$inbox.relay-on-live" 2>/dev/null)"
+        rol_succ="$(sed -n 1p "$inbox.relay-on-live" 2>/dev/null)"  # swallow-ok: an empty value skips the relay below
+        rol_doc="$(sed -n 2p "$inbox.relay-on-live" 2>/dev/null)"  # swallow-ok: an empty value skips the relay below
         if [ -n "$rol_succ" ] && [ -n "$rol_doc" ]; then
             bash "${CONSOLE_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$rol_doc" </dev/null >/dev/null 2>&1 9>&-; rol_rc=$?
             if [ "$rol_rc" -eq 11 ]; then
