@@ -170,7 +170,7 @@ reviews:
         consequence. Even in such a file, a failing command in a NON-FINAL
         position of an `&&` list is exempt from errexit (bash ignores it
         there; only the status of the FINAL command of the list decides), so
-        do not flag it as an aborting or masked failure.
+        do not claim it aborts the script under errexit.
     - path: "scripts/**/*.sh"
       instructions: >-
         Bash test brackets ([ x -gt y ], [ x -eq y ]) parse operands as
