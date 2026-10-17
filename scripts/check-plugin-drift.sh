@@ -224,6 +224,12 @@ check_bump_required() {
     echo "ERR check-plugin-drift --bump-required: git diff failed (rc=$diff_rc) — cannot determine changed plugin files" >&2
     return 1
   fi
+  # quotePath=false still C-quotes names holding a quote, backslash, TAB or LF;
+  # the name sed cannot attribute such a line to a plugin, so refuse it.
+  if printf '%s\n' "$changed" | grep -q '^"'; then
+    echo "ERR check-plugin-drift --bump-required: a changed path under $rel/ is quoted by git and cannot be attributed to a plugin — rename it (HIMMEL-3551)" >&2
+    return 1
+  fi
   if [ -z "$changed" ]; then
     echo "check-plugin-drift --bump-required: no plugin files changed"
     return 0

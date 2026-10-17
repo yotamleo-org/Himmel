@@ -419,6 +419,39 @@ bump_fixture "$W_REN/h" foo
 (cd "$W_REN/h" && git mv "$P/foo" "$P/bar" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf '{"plugins": [{"name": "bar", "source": "./plugins/bar"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
 bump_run "$W_REN/h"
 if [ "$br_rc" -eq 0 ]; then ok "--bump-required (staged): control — rename with the entry repointed passes"; else bad "--bump-required (staged): proper rename failed: $br_out"; fi
+
+# Range mode (the CI and merge-on-green call): commit the mutation, then run
+# the gate against the seed commit.
+bump_range_run() { # <dir> -> sets br_out / br_rc
+  local seed
+  seed="$(git -C "$1" rev-parse -q --verify HEAD)" || { bad "--bump-required range fixture $1: no seed commit"; return; }
+  if git -C "$1" diff --cached --quiet; then
+    bad "--bump-required range fixture $1: mutation did not stage a change"
+  fi
+  git -C "$1" commit -q -m mutate
+  br_out="$(cd "$1" && bash "$SCRIPT" --bump-required "$seed" 2>&1)"; br_rc=$?
+}
+
+bump_fixture "$W_REN/ra" foo
+(cd "$W_REN/ra" && git mv "$P/foo" "$P/bar" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/bar/skill.md" && git add -A)
+bump_range_run "$W_REN/ra"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (range):RED — rename foo to bar with an edit and no bump fails"; else bad "--bump-required (range): rename with edit passed: $br_out"; fi
+
+bump_fixture "$W_REN/rd" "plügin"
+(cd "$W_REN/rd" && printf '# edited\n' > "$P/plügin/skill.md" && git add -A)
+bump_range_run "$W_REN/rd"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (range):RED — unbumped edit to a non-ASCII-named plugin fails"; else bad "--bump-required (range): non-ASCII plugin edit passed: $br_out"; fi
+
+# (i) a changed path git still C-quotes (a double quote in the name) cannot be
+# attributed to a plugin, so the gate fails closed in both modes.
+bump_fixture "$W_REN/q" foo
+(cd "$W_REN/q" && printf '# edited\n' > "$P/foo/a\"b.md" && git add -A)
+bump_run "$W_REN/q"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (staged):RED — a git-quoted changed path fails closed"; else bad "--bump-required (staged): quoted path passed: $br_out"; fi
+bump_fixture "$W_REN/rq" foo
+(cd "$W_REN/rq" && printf '# edited\n' > "$P/foo/a\"b.md" && git add -A)
+bump_range_run "$W_REN/rq"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "HIMMEL-3551"; then ok "--bump-required (range):RED — a git-quoted changed path fails closed"; else bad "--bump-required (range): quoted path passed: $br_out"; fi
 rm -rf -- "$W_REN"
 
 # replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.
