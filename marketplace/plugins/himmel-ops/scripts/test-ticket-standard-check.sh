@@ -175,4 +175,21 @@ mkdraft "$td/f6.md" Plan Proof; printf '## Proof\n%s\ncmd\n%s\n## Plan\n\n' "$fn
 run Task "$td/f6.md" "$q" --sector X; check "empty Plan after fence still ends Proof, exits 1" "$rc" 1
 has "empty Plan named" "$out" "Plan"
 
+# --- stability metric rule: a CI/guard/stability ticket names the scorecard metric it moves ---
+q="$td/q-metric"
+mkdraft "$td/m1.md"; printf 'Labels: audit-6022, ci-red\n' >>"$td/m1.md"
+run Task "$td/m1.md" "$q" --sector X
+check "CI-labelled draft with no Metric exits 1" "$rc" 1
+has "names Metric" "$out" "Metric"
+check "metric-less draft is parked" "$(qcount "$q")" 1
+mkdraft "$td/m2.md"; printf 'Labels: Guard\nMetric: TBD\n' >>"$td/m2.md"
+run Task "$td/m2.md" "$q" --sector X; check "placeholder Metric exits 1" "$rc" 1
+mkdraft "$td/m3.md"; printf 'Labels: stability\nMetric: red_main_count falls from 2 to 0\n' >>"$td/m3.md"
+run Task "$td/m3.md" "$q" --sector X; check "named Metric exits 0" "$rc" 0
+mkdraft "$td/m4.md"; printf 'Labels: operator-directed, theme-ship-loop-gates\n' >>"$td/m4.md"
+run Task "$td/m4.md" "$q" --sector X; check "unrelated labels need no Metric" "$rc" 0
+mkdraft "$td/m5.md"; printf 'Labels: ci\n' >>"$td/m5.md"
+run Epic "$td/m5.md" "$q" --sector X; check "Epic without Metric only warns" "$rc" 0
+has "Epic warns about Metric" "$out" "Metric"
+
 [ "$fails" -eq 0 ] && { echo "PASS"; exit 0; } || { echo "FAILED: $fails"; exit 1; }

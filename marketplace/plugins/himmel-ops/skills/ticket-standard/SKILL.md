@@ -27,6 +27,11 @@ Also give a primary **Sector**: `--sector NAME` or a `Sector: <name>` line.
 Each section needs at least one real line; `TBD`, `TODO`, `N/A`, `none`, `...`
 and `<placeholder>` count as empty.
 
+A draft whose `Labels:` line carries `ci`, `guard`, `stability` or `flake` (or a
+`ci-…` / `guard-…` variant) also needs a `Metric: <scorecard column>` line naming
+the stability-scorecard metric it moves (columns: `specs/research/stability-scorecard.tsv`).
+Without one it is refused like a missing section.
+
 ## Proof rule per kind
 
 | Kind | Proof names |
