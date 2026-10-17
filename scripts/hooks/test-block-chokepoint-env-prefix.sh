@@ -1189,7 +1189,7 @@ assert_deny "4572 eval after a separator still counts" "$(j "true;eval bash scri
 assert_allow "4933 grep -l export over a scripts glob" "$(j "grep -l export scripts/hooks/*.sh | sort")"
 assert_allow "4933 git grep read over a scripts glob" "$(j "git grep -n read -- 'scripts/*/x.sh'")"
 assert_allow "4933 cat piped to grep eval over a scripts glob" "$(j "cat scripts/hooks/g*.sh | grep eval")"
-# A plain sed script executes nothing (cmdpos-clean.sh).
+# A plain sed script executes nothing (lib-cmdpos-clean.sh).
 assert_allow "6015 command position, no execution (was deny): 4933 sed beside a scripts glob" "$(j "sed 1d scripts/hooks/g*.sh | grep eval")"
 assert_allow "4933 grep printf over a scripts glob" "$(j "grep printf scripts/hooks/*.sh | sort")"
 assert_deny "4933 control: real env prefix, quoted glob path" "$(j "BASH_ENV=x bash 'scripts/hooks/g*.sh'")"
@@ -2460,7 +2460,7 @@ mut_row "5210 mutant: rg shape glob clause dropped" \
 rm -rf "$MUT5210"
 
 # 6015: the rule is about how a chokepoint is executed. A command that executes
-# no script (cmdpos-clean.sh) only mentions one; a real execution still denies.
+# no script (lib-cmdpos-clean.sh) only mentions one; a real execution still denies.
 assert_allow "6015 mention in a commit message" "$(j "git commit -m \"fix: drop the ${SW_VAR}=0 prefix on bash $STOP_WORKER\"")"
 assert_allow "6015 mention in a grep pattern" "$(j "grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 assert_allow "6015 mention in a quoted heredoc body" "$(j "cat <<'EOF'"$'\n'"HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN"$'\n'"EOF")"

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034,SC2016 # the verbatim block: HTARGETS, PR_TOKFAIL and hit are used in the guard only; CMDPOS_REF_RE matches a literal $
 # git-env-ok: the word git appears only as a parsed command word; this file runs no git
-# cmdpos-clean.sh - the command-position predicate of guard-pr-check-literal.sh,
+# lib-cmdpos-clean.sh - the command-position predicate of guard-pr-check-literal.sh,
 # shared with the guards that source it (block-chokepoint-env-prefix.sh,
 # block-tail-pipe-on-gates.sh). Sourced, never run.
 #

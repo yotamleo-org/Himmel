@@ -3215,7 +3215,7 @@ while IFS=$'\t' read -r _reg_path _reg_vars; do
 done <<<"$REG_LINES"
 
 # Command position: the rule is about how a chokepoint is EXECUTED, so a Bash
-# command that executes no script but the himmel-gate dispatcher (cmdpos-clean.sh)
+# command that executes no script but the himmel-gate dispatcher (lib-cmdpos-clean.sh)
 # only mentions one - a commit message, grep, sed -n, a quoted heredoc body -
 # and the text scans below do not judge it. A helper that cannot load relieves
 # nothing.
@@ -3230,7 +3230,7 @@ cp_names_chokepoint() { # cp_names_chokepoint <word> - names a registered chokep
     return "$rc"
 }
 if [ "$tool" = Bash ] \
-    && { [ -r "$SCRIPT_DIR/cmdpos-clean.sh" ] && . "$SCRIPT_DIR/cmdpos-clean.sh"; } 2>/dev/null \
+    && { [ -r "$SCRIPT_DIR/lib-cmdpos-clean.sh" ] && . "$SCRIPT_DIR/lib-cmdpos-clean.sh"; } 2>/dev/null \
     && cmdpos_clean_for cp_names_chokepoint "$raw_cmd"; then
     exit 0
 fi

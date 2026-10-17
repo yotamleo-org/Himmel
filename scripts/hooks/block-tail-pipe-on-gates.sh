@@ -240,12 +240,12 @@ GATE_ANY=${GATE_RE#'(^|/)'}
 GATE_ANY=${GATE_ANY%'$'}
 
 # Command position: a command that executes no script but the himmel-gate
-# dispatcher (cmdpos-clean.sh), which refuses a piped stdout itself, runs no
+# dispatcher (lib-cmdpos-clean.sh), which refuses a piped stdout itself, runs no
 # gate whose rc a pipe or later segment could hide. A helper that cannot load
 # relieves nothing.
 # shellcheck disable=SC2329 # called by cmdpos_clean_for as its <names-fn>
 tp_names_gate() { [[ $1 =~ $GATE_ANY ]]; } # tp_names_gate <word> - names a registered gate
-if { [ -r "$SCRIPT_DIR/cmdpos-clean.sh" ] && . "$SCRIPT_DIR/cmdpos-clean.sh"; } 2>/dev/null \
+if { [ -r "$SCRIPT_DIR/lib-cmdpos-clean.sh" ] && . "$SCRIPT_DIR/lib-cmdpos-clean.sh"; } 2>/dev/null \
     && cmdpos_clean_for tp_names_gate "$cmd"; then
     exit 0
 fi

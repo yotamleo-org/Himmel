@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-cmdpos-clean.sh — cmdpos-clean.sh's marker block is guard-pr-check-literal.sh's
+# test-cmdpos-clean.sh — lib-cmdpos-clean.sh's marker block is guard-pr-check-literal.sh's
 # command-position predicate byte for byte. guard-pr-check-literal.sh stays
 # self-contained, so its copy is the canonical one: every function or variable
 # assignment the block defines must equal the same-named definition there, in
@@ -9,7 +9,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-HELPER="$HERE/cmdpos-clean.sh"
+HELPER="$HERE/lib-cmdpos-clean.sh"
 GUARD="$HERE/guard-pr-check-literal.sh"
 BEGIN_RE='^# >>> BEGIN cmdpos '
 END_RE='^# <<< END cmdpos <<<$'

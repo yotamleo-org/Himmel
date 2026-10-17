@@ -1219,7 +1219,7 @@ else
     fail "2082 10 KB chains scan in linear time: rc=$perf_rc/$perf_gate_rc after ${perf_secs}s"
 fi
 
-# 6015: a command that executes no gate (cmdpos-clean.sh) only mentions one.
+# 6015: a command that executes no gate (lib-cmdpos-clean.sh) only mentions one.
 allow "6015 mention in a commit message" 'git commit -m "never run bash scripts/check-ci.sh 1 | tail"'
 allow "6015 mention in a quoted heredoc body" 'cat <<'"'"'EOF'"'"'
 bash scripts/check-ci.sh 1 | tail -3
