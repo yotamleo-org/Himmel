@@ -1444,7 +1444,7 @@ update_qmd_fork() {
         STATUS_qmd_fork="updated"; DETAIL_qmd_fork="$(qmd_cmd --version 2>/dev/null)"
         # installing the new build does NOT reload the RUNNING
         # daemon. The shared qmd HTTP MCP daemon on :8181 is a long-lived
-        # process; ensure-qmd-daemon.sh only STARTs one when nothing is
+        # process; the qmd ensure script only STARTs one when nothing is
         # serving — neither ever restarts one. So after a fork-ref bump the new
         # code is on disk while every MCP call still hits the old build
         # resident in memory, silently, with a green status line.
@@ -1521,7 +1521,7 @@ report_qmd_daemon_restart() {
     echo "      # 2. STOP — same filter, once the list above looks right:"
     echo "      pkill -f 'qmd.*mcp.*--http'"
     echo "      # 3. RESTART:"
-    echo "      bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
+    echo "      bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" # t13b-ok: printed restart hint naming the existing script
 }
 
 # Advisory (#2591): hook-integrity pins these paths at SessionStart and refuses
