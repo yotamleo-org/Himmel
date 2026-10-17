@@ -758,6 +758,27 @@ echo "$outSK1hC2" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "settings-key verifyHudConfig (HIMMEL-3739): unparsable legacy file must degrade too (got: $outSK1hC2)"
 echo "ok: settings-key verifyHudConfig (HIMMEL-3739) — legacy base merged under the new-path override, broken file never masked"
 
+# Unsafe own keys invalidate the whole file, including unknown sections and arrays.
+for sk1h_unsafe_key in __proto__ prototype constructor; do
+  for sk1h_unsafe_shape in top display array; do
+    for sk1h_unsafe_file in claude-hud.json plugins/claude-hud/config.json; do
+      sk1h_cfgdir_unsafe="$work/sk1h-unsafe-$sk1h_unsafe_key-$sk1h_unsafe_shape-${sk1h_unsafe_file%%/*}"
+      mkdir -p "$sk1h_cfgdir_unsafe/plugins/claude-hud"
+      printf '{"display":{"customLineCommand":"echo safe"}}' > "$sk1h_cfgdir_unsafe/claude-hud.json"
+      printf '{"display":{"customLineCommand":"echo safe"}}' > "$sk1h_cfgdir_unsafe/plugins/claude-hud/config.json"
+      case "$sk1h_unsafe_shape" in
+        top) printf '{"%s":{},"display":{"customLineCommand":"echo unsafe"}}' "$sk1h_unsafe_key" ;;
+        display) printf '{"display":{"%s":{},"customLineCommand":"echo unsafe"}}' "$sk1h_unsafe_key" ;;
+        array) printf '{"extra":[{"%s":{}}],"display":{"customLineCommand":"echo unsafe"}}' "$sk1h_unsafe_key" ;;
+      esac > "$sk1h_cfgdir_unsafe/$sk1h_unsafe_file"
+      outSK1hUnsafe=$(sk1h_probe "$sk1h_cfgdir_unsafe")
+      echo "$outSK1hUnsafe" | jq -e '.actual == "degraded"' >/dev/null \
+        || fail "settings-key verifyHudConfig: $sk1h_unsafe_key in $sk1h_unsafe_shape of $sk1h_unsafe_file must degrade (got: $outSK1hUnsafe)"
+    done
+  done
+done
+echo "ok: settings-key verifyHudConfig — 18 unsafe-key cases degrade in either config file"
+
 # ── settings-key: simple non-dotted key + verifyPluginSet (claude-plugins-pluginSet) ──
 # a non-empty enabledPlugins map used to read green regardless
 # of whether it matched the recorded pluginSet or was actually installed.

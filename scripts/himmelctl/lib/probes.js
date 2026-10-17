@@ -504,6 +504,17 @@ function isHudPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
+const UNSAFE_HUD_CONFIG_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function hasSafeHudConfigShape(value, depth = 0) {
+  if (depth > 8) return false;
+  if (Array.isArray(value)) return value.every(item => hasSafeHudConfigShape(item, depth + 1));
+  if (!isHudPlainObject(value)) return true;
+  return Object.entries(value).every(([key, child]) => (
+    !UNSAFE_HUD_CONFIG_KEYS.has(key) && hasSafeHudConfigShape(child, depth + 1)
+  ));
+}
+
 function mergeHudConfig(base, override) {
   const result = Object.assign({}, base);
   for (const [key, value] of Object.entries(override)) {
@@ -529,6 +540,9 @@ function readHudConfig(ctx) {
     try {
       data = JSON.parse(raw);
     } catch (_e) {
+      return { path: p, data: null };
+    }
+    if (!isHudPlainObject(data) || !hasSafeHudConfigShape(data)) {
       return { path: p, data: null };
     }
     foundPath = p;
