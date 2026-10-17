@@ -147,8 +147,8 @@ pr_state_for() { # <branch> -> MERGED|CLOSED|OPEN|"" on stdout
 # THE PATH the branch put it, not merely somewhere. The same reasoning applies
 # to any duplicated content (LICENSE copies, empty __init__.py, fixtures).
 # ---------------------------------------------------------------------------
-blob_at_path_in_base() { # <path> <blob-sha> -> rc 0 if base ever had this blob here
-    local _path="$1" _blob="$2" _tip _hit
+blob_at_path_in_base() { # <path> <blob-sha> <merge-base> -> rc 0 landed, 1 absent, 2 only before the merge-base
+    local _path="$1" _blob="$2" _mb="$3" _tip _hit
     # Cheap path first: base's CURRENT tree. Covers everything still present
     # unchanged, which is the overwhelming majority, with no history walk.
     _tip=$(git ls-tree "$BASE" -- "$_path" 2>/dev/null | awk '{print $3}')
@@ -156,12 +156,18 @@ blob_at_path_in_base() { # <path> <blob-sha> -> rc 0 if base ever had this blob 
     # Otherwise the content may have landed and then been changed again on
     # base. Restrict --find-object with the pathspec so a same-blob hit at a
     # DIFFERENT path cannot satisfy this path's check.
+    # Only a hit AFTER the merge-base shows this branch's work landed. A hit
+    # that predates it is content base already had and later reverted, so it
+    # says nothing about the branch (rc 2, reported UNKNOWN, not LANDED).
+    _hit=$(git log "$_mb..$BASE" --find-object="$_blob" --format=%H --max-count=1 -- "$_path" 2>/dev/null)
+    [ -n "$_hit" ] && return 0
     _hit=$(git log "$BASE" --find-object="$_blob" --format=%H --max-count=1 -- "$_path" 2>/dev/null)
-    [ -n "$_hit" ]
+    [ -n "$_hit" ] && return 2
+    return 1
 }
 
 classify_by_content() { # <branch> -> sets VERDICT + EVIDENCE
-    local _b="$1" _mb _status _path _blob _missing=0 _checked=0 _firstmiss="" _diff
+    local _b="$1" _mb _status _path _blob _rc _missing=0 _premb=0 _checked=0 _firstmiss="" _diff
 
     _mb=$(git merge-base "$BASE" "$_b" 2>/dev/null) || _mb=""
     if [ -z "$_mb" ]; then
@@ -203,9 +209,14 @@ classify_by_content() { # <branch> -> sets VERDICT + EVIDENCE
                     # rather than guessing.
                     _missing=$((_missing + 1))
                     [ -z "$_firstmiss" ] && _firstmiss="could not read blob for '$_path'"
-                elif ! blob_at_path_in_base "$_path" "$_blob"; then
-                    _missing=$((_missing + 1))
-                    [ -z "$_firstmiss" ] && _firstmiss="blob for '$_path' absent from $BASE history"
+                else
+                    blob_at_path_in_base "$_path" "$_blob" "$_mb"; _rc=$?
+                    if [ "$_rc" -eq 1 ]; then
+                        _missing=$((_missing + 1))
+                        [ -z "$_firstmiss" ] && _firstmiss="blob for '$_path' absent from $BASE history"
+                    elif [ "$_rc" -eq 2 ]; then
+                        _premb=$((_premb + 1))
+                    fi
                 fi
                 ;;
         esac
@@ -213,6 +224,8 @@ classify_by_content() { # <branch> -> sets VERDICT + EVIDENCE
 
     if [ "$_checked" -eq 0 ]; then
         VERDICT="LANDED"; EVIDENCE="no diff against $BASE"
+    elif [ "$_missing" -eq 0 ] && [ "$_premb" -gt 0 ]; then
+        VERDICT="UNKNOWN"; EVIDENCE="$_premb of $_checked path(s) match $BASE only before the merge-base (reverted?)"
     elif [ "$_missing" -eq 0 ]; then
         VERDICT="LANDED"; EVIDENCE="all $_checked path(s) present in $BASE history"
     else
@@ -224,6 +237,8 @@ classify_by_content() { # <branch> -> sets VERDICT + EVIDENCE
 # Report
 # ---------------------------------------------------------------------------
 BASE_TIP=$(git rev-parse --short "$BASE" 2>/dev/null)
+# --base may be a full ref (refs/heads/main); the loop compares short names.
+BASE_SHORT=$(git rev-parse --abbrev-ref "$BASE" 2>/dev/null) || BASE_SHORT="$BASE"
 echo "# classify-branches: base=$BASE ($BASE_TIP)  pr-data=$PR_SOURCE"
 echo "# REPORT ONLY -- no branch is modified or deleted."
 echo
@@ -232,7 +247,7 @@ n_landed=0; n_ahead=0; n_unknown=0
 
 while IFS= read -r branch; do
     [ -n "$branch" ] || continue
-    [ "$branch" = "$BASE" ] && continue
+    [ "$branch" = "$BASE" ] || [ "$branch" = "$BASE_SHORT" ] && continue
     if [ -n "$PATTERN" ]; then
         # shellcheck disable=SC2254  # --pattern is DOCUMENTED as a glob; quoting
         # it would turn 'feat/*' into a literal and match nothing.
