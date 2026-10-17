@@ -252,6 +252,9 @@ flow_run_append() {
         if [ -n "$signal" ]; then
             target="${TMPDIR:-/tmp}/flow-runs-unredirected.jsonl"
             printf '[flow-run-ledger] HIMMEL-2241 WARN: shell suite running (%s) and the ledger %s is outside the suite temp root; row quarantined in %s instead of the production ledger. Export HIMMEL_FLOW_RUNS_LEDGER to a scratch path under TMPDIR in the fixture that spawned this wrapper.\n' "$signal" "$path" "$target" >&2
+            # A quarantine file that is itself a link out of the roots would
+            # carry the row to the ledger it exists to protect: drop it.
+            _fr_under_tmp_root "$target" || return 0
             path="$target"
         fi
     fi

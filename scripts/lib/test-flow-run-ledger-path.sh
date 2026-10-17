@@ -130,6 +130,20 @@ else
     fail "marker set + override outside the temp root: no quarantine/WARN; stderr: $(cat "$a_err")"
 fi
 
+# The quarantine file itself being a symlink to an outside ledger must not
+# carry the row there: the row is dropped instead.
+s_tmp="$tmp/s-tmp"; mkdir -p "$s_tmp" "$out/s-prod"
+s_prod="$out/s-prod/flow-runs.jsonl"
+ln -s "$s_prod" "$s_tmp/flow-runs-unredirected.jsonl"
+env HOME="$a_home" TMPDIR="$s_tmp" HIMMEL_SUITE_LOCK_HELD="$s_tmp/fake-suite-lock" \
+    HIMMEL_FLOW_RUNS_LEDGER="$a_out" \
+    bash "$LEDGER_SH" --append-start "test-flow" "" "testhost" "" "" "" "" 4247 >/dev/null 2>&1
+if [ -e "$s_prod" ]; then
+    fail "symlinked quarantine file carried the row to an outside ledger"
+else
+    pass "symlinked quarantine file: row dropped, outside ledger untouched"
+fi
+
 # A '..' hop must not smuggle an outside path past the prefix test.
 d_tmp="$tmp/d-tmp"; mkdir -p "$d_tmp"
 d_out="$tmp/d-escaped.jsonl"
