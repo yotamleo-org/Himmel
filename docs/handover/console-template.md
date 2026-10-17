@@ -199,7 +199,10 @@ file and run
 `HANDLED ...` is done, `ESCALATE <reason>` means by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/console-kit/close-wrapped-leg.sh <leg-doc>`. Never run the
-bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand sequence and the `digest=` line:
+bare `clean.sh` sweep for one leg. long-running.txt scripts: a bounded script
+(`ready-check.sh`, `verdict-go.sh`, `board.mjs`) runs in the foreground as
+`timeout 90 bash <script>` (`timeout` outermost, N at most 90, no chaining or `-k`);
+`console-wait.sh` and suites stay `run_in_background`. Hand sequence and the `digest=` line:
 `console-sections/wrapping.md`.
 
 ## Standing rules
