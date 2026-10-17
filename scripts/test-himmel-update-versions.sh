@@ -196,10 +196,9 @@ printf '{"name":"jira"}\n' > "$CHECKOUT_DIR/scripts/jira/package.json"
 printf 'x\n' > "$CHECKOUT_DIR/scripts/jira/src/index.ts"
 # toolchain: a pin far above any real node
 printf '999\n' > "$CHECKOUT_DIR/.nvmrc"
-# cli-proxy: both twins carry the pin (the script picks by pwsh availability)
+# cli-proxy: the lane script carries the pin
 mkdir -p "$CHECKOUT_DIR/scripts/setup"
 printf 'VERSION="1.2.3"\n' > "$CHECKOUT_DIR/scripts/setup/cli-proxy-lane.sh"
-printf "\$Version = '1.2.3'\n" > "$CHECKOUT_DIR/scripts/setup/cli-proxy-lane.ps1"
 # qmd fork: a stub qmd-bin.sh that is NOT served
 cat > "$CHECKOUT_DIR/scripts/lib/qmd-bin.sh" <<'EOF'
 qmd_fork_served() { return 1; }

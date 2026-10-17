@@ -96,6 +96,46 @@ if ! grep -q 'RATIONALE:' <<<"$out" && grep -q "^NODE $HALT" <<<"$out"; then pas
 else fail "T6 out='$out'"; fi
 cp "$T/graph.good" "$P/graphify-out/graph.json"
 
+# Stub graphify for the ranking rows: name-matched code nodes come first, as on the live graph.
+cat > "$T/bin/graphify" <<'STUB'
+#!/bin/sh
+echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start: ['Need', 'Token'] | 4 nodes found"
+echo ""
+echo "NODE Need [src=scripts/board-model.ts loc=L16 community=]"
+echo "NODE Token [src=scripts/ansi.ts loc=L11 community=]"
+echo "NODE RETASK channel [src=AGENTS.md loc=Subagent policy community=]"
+echo "NODE Halt/narrowing needs no token (fail-safe asymmetry) [src=docs/internals/retask-channel.md loc=None community=]"
+echo "EDGE Need --calls [EXTRACTED]--> Need"
+STUB
+chmod +x "$T/bin/graphify"
+
+# T7: a why question lists the rationale node first, then the doc node, then code.
+out="$(run query "why does a halt need no token")"
+order="$(grep "^NODE " <<<"$out" | sed "s/^NODE //; s/ \[src=.*//" | tr "\n" "|")"
+if [ "$order" = "$HALT|RETASK channel|Need|Token|" ] && grep -A1 "^NODE $HALT" <<<"$out" | grep -q "RATIONALE: $REASON" && [ "$(tail -1 <<<"$out")" = "EDGE Need --calls [EXTRACTED]--> Need" ]; then pass "T7 why question ranks rationale, then doc, then code nodes"
+else fail "T7 order='$order' out='$out'"; fi
+
+# T8: a question that is not why/how keeps graphify's order byte for byte.
+want="$(PATH="$T/bin:$PATH" graphify query x | python3 -I "$HERE/append-rationale.py" "$P/graphify-out/graph.json")"
+for q in "what is the RETASK channel" "Token" "show me how-to docs"; do
+  out="$(run query "$q")"
+  if [ "$out" = "$want" ]; then pass "T8 '$q' keeps graphify's order"
+  else fail "T8 '$q' out='$out'"; fi
+done
+
+# T9: a why question whose answer misses the reason node gets it added, from the words of the question.
+cat > "$T/bin/graphify" <<'STUB'
+#!/bin/sh
+echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start: ['Transition'] | 2 nodes found"
+echo ""
+echo "NODE Transition [src=scripts/jira/resolution.test.ts loc=L5 community=]"
+echo "NODE Need [src=scripts/board-model.ts loc=L16 community=]"
+STUB
+out="$(run query "why does the jira transition at merge need an explicit flag")"
+first="$(grep -m1 '^NODE ' <<<"$out")"
+if [ "${first%% \[src=*}" = "NODE completes-ticket line and Ticket coverage" ] && grep -A1 '^NODE completes-ticket' <<<"$out" | grep -q 'RATIONALE: The merge script closes the ticket only on --jira-transition' && [ "$(grep -c '^NODE ' <<<"$out")" -le 5 ] && grep -q '| 2 nodes found (+[1-3] doc/rationale nodes added for a why/how question)$' <<<"$out"; then pass "T9 the reason node missing from the answer is added first, and the header says so"
+else fail "T9 out='$out'"; fi
+
 # T5: the five spot-check questions against the fixture, real graphify.
 if command -v graphify >/dev/null 2>&1; then
   rm -f "$T/bin/graphify"

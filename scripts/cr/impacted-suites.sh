@@ -884,8 +884,6 @@ scripts/cr/* scripts/cr/test-cr-guarded-closure.sh
 !*/node_modules/* scripts/hooks/test-check-npm-licenses.sh
 !scripts/lanes/bench/fixtures/* scripts/hooks/test-check-npm-licenses.sh
 marketplace/plugins/*/UPSTREAM_PIN scripts/test-check-plugin-drift.sh
-*.ps1 scripts/parity/test-ps-twin-oem-encoding.sh
-scripts/claude-*.ps1 scripts/parity/test-launcher-twin-parity.sh
 scripts/handover/*.sh scripts/guardrails/test-check-git-env-scrub.sh
 scripts/handover/*.mjs scripts/guardrails/test-check-git-env-scrub.sh
 scripts/handover/*.js scripts/guardrails/test-check-git-env-scrub.sh
@@ -913,7 +911,6 @@ scripts/*.sh scripts/lanes/test-launch-site-profiles.sh
 scripts/*.ts scripts/lanes/test-launch-site-profiles.sh
 scripts/*.mjs scripts/lanes/test-launch-site-profiles.sh
 scripts/*.js scripts/lanes/test-launch-site-profiles.sh
-scripts/*.ps1 scripts/lanes/test-launch-site-profiles.sh
 !test-* scripts/lanes/test-launch-site-profiles.sh
 !*.test.* scripts/lanes/test-launch-site-profiles.sh
 !*/node_modules/* scripts/lanes/test-launch-site-profiles.sh

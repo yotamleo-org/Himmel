@@ -1753,6 +1753,12 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   arm --golden <golden.jsonl>` (default Sunday 06:00, after the 05:00 reindex;
   `--day` / `--time` / `--index` / `--force` / `--dry-run`). Cron only; not in
   the wizard registry. Test: `test-qmd-quality-cadence.sh`.
+- `scripts/eval/qmd-quality/qmd-burst-proof.sh` — an on-demand proof, not a
+  cadence: fires 10 parallel `vec` queries at the qmd daemon MCP endpoint and
+  prints a table plus `BURST-PASS` (every call a result within
+  `QMD_BURST_LIMIT` seconds or a `Busy` reply within `QMD_BURST_BUSY_MAX`) or
+  `BURST-FAIL`. Exit 2 for no daemon or an unreadable reply. Run it once after a
+  daemon or pin change. Test: `test-qmd-burst-proof.sh`.
 
 ---
 
