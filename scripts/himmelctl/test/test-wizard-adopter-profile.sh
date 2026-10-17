@@ -1898,6 +1898,7 @@ ab3_run() { # name, prior(yes|no), mode(signal:<SIG>|throw|ok|killed)
   rm -f "$ab3_marker" "$ab3_pidfile" "$ab3_counts".*
   case "$mode" in
     signal:*) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nexec sleep 20\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
+    sigparent) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nsleep 3\nexit 0\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
     killed)   printf '#!/usr/bin/env bash\nprintf ran > "%s"\nkill -KILL $$\n' "$ab3_marker" > "$f/scripts/adopt.sh" ;;
     *)        printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit 0\n' "$ab3_marker" > "$f/scripts/adopt.sh" ;;
   esac
@@ -1933,12 +1934,13 @@ ab3_run() { # name, prior(yes|no), mode(signal:<SIG>|throw|ok|killed)
   pid=$!
   set +m
   case "$mode" in
-    signal:*)
+    signal:*|sigparent)
       local sig="${mode#signal:}" i=0
+      [ "$mode" = sigparent ] && sig=SIGTERM
       while [ ! -s "$ab3_pidfile" ] && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
       if [ ! -s "$ab3_pidfile" ]; then kill -KILL "$pid" 2>/dev/null; set -e; fail "caseAB3 $n: stub adopt.sh never started: $(cat "$out")"; fi
-      kill "-$sig" "$pid" 2>/dev/null
-      kill "-$sig" "$(cat "$ab3_pidfile")" 2>/dev/null ;;
+      if [ "$mode" = sigparent ]; then kill "-$sig" "$(pgrep -P "$pid" | head -n 1)" 2>/dev/null; else kill "-$sig" "$pid" 2>/dev/null; fi
+      [ "$mode" = sigparent ] || kill "-$sig" "$(cat "$ab3_pidfile")" 2>/dev/null ;;
   esac
   wait "$pid"; ab3_rc=$?
   [ -s "$ab3_pidfile" ] && kill -KILL "$(cat "$ab3_pidfile")" 2>/dev/null
@@ -1960,6 +1962,11 @@ ab3_run throw yes throw
 cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3c: a throwing install must restore the prior overlay bytes"
 ab3_run throwno no throw
 [ -e "$ab3_overlay" ] && fail "caseAB3c: no prior overlay -> a throwing install must remove the staged overlay"
+# AB3g: a signal delivered ONLY to the installer (the child outlives it and exits 0)
+# still fails the install and restores the prior bytes.
+ab3_run sigparent yes sigparent
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3g: a cancelled install whose child succeeded must still exit nonzero: $ab3_out"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3g: a cancelled install must restore the prior overlay bytes"
 # AB3d: a SIGKILLed core step (spawnSync status null) restores too.
 ab3_run killed yes killed
 [ "$ab3_rc" -ne 0 ] || fail "caseAB3d: a signal-killed core step must exit nonzero: $ab3_out"

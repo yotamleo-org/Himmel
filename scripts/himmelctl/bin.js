@@ -4557,7 +4557,7 @@ async function runPlan(answers, args) {
   // restores the prior bytes on a non-zero rc, a throw, or a signal-killed child.
   // The no-op handlers stop SIGINT/SIGTERM/SIGHUP from killing Node before the
   // synchronous child returns, so the finally still runs.
-  const releaseSignals = holdSignalsDuringInstall();
+  const signals = holdSignalsDuringInstall();
   let installed = false;
   let shimOk = false;
   try {
@@ -4591,9 +4591,16 @@ async function runPlan(answers, args) {
       const overlayRc = runSpawn(overlayCmd);
       if (overlayRc !== 0) return overlayRc;
     }
+    // spawnSync blocks the event loop, so a signal that arrived during a step is
+    // only delivered to the handler once the loop turns; let it before checking.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (signals.received()) {
+      console.error(`himmelctl: install interrupted by ${signals.received()} — restoring the previous lane profile allowlist`);
+      return 130;
+    }
     installed = true;
   } finally {
-    releaseSignals();
+    signals.release();
     if (!installed) undoLaneProfile();
   }
 
@@ -4611,12 +4618,18 @@ async function runPlan(answers, args) {
 
 // While a staged lane allowlist is live, SIGINT/SIGTERM/SIGHUP get a no-op
 // handler so Node does not die before the synchronous child (spawnSync) returns
-// and the caller's finally can restore the prior allowlist. Returns the remover.
+// and the caller's finally can restore the prior allowlist. The handler records
+// the signal: a cancellation the child outlived still fails the install. Returns
+// { release, received() } where received() is the first signal seen, or null.
 function holdSignalsDuringInstall() {
   const sigs = ['SIGINT', 'SIGTERM', 'SIGHUP'];
-  const hold = () => {};
+  let received = null;
+  const hold = (sig) => { if (!received) received = sig; };
   for (const sig of sigs) process.on(sig, hold);
-  return () => { for (const sig of sigs) process.removeListener(sig, hold); };
+  return {
+    release: () => { for (const sig of sigs) process.removeListener(sig, hold); },
+    received: () => received,
+  };
 }
 
 // `install` subcommand handler. T1: the preflight-first gate runs BEFORE any
