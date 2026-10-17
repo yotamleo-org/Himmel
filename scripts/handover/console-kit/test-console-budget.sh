@@ -19,7 +19,8 @@ SCRIPT="$HERE/console-budget.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/console-budget-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 fails=0
-check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
+unset CONSOLE_TURN_BUDGET CONSOLE_CACHE_READ_BUDGET_M
+check()   { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
 lacks()    { printf '%s' "$2" | grep -qF -e "$3" && { echo "FAIL - $1: output unexpectedly contains [$3]"; fails=$((fails+1)); } || echo "ok - $1"; }
 
@@ -115,6 +116,13 @@ mk "$tmp/late" 300 1000
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title late-titled-console 2>&1)" || rc=$?
 check    "6: a customTitle written late in the transcript still resolves" "$rc" 3
 contains "6: late-title transcript measured" "$out" "turns=300"
+{ printf '{"type":"custom-title","customTitle":"old-name-console"}\n'; cat "$tmp/body"; printf '{"type":"custom-title","customTitle":"new-name-console"}\n'; } > "$cfg/projects/-slug/sid-4.jsonl"
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title old-name-console 2>&1)" || rc=$?
+check    "6: a renamed session no longer answers to its old title (rc 2)" "$rc" 2
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title new-name-console 2>&1)" || rc=$?
+check    "6: a renamed session answers to its latest title" "$out" "budget turns=4 cache_read=4.0M verdict=OK"
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=99999999999999999999 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "6: an oversized budget falls back to the default (rc 0 at 29M)" "$rc" 0
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title no-such-console 2>&1)" || rc=$?
 check    "6: unknown --title rc 2" "$rc" 2
 rc=0; out="$(bash "$SCRIPT" --bogus 2>&1)" || rc=$?

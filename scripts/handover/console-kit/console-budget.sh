@@ -20,7 +20,7 @@ set -uo pipefail
 num_env() { # <name> <default> - a bad value warns and falls back, never disables the budget
   local v="${!1:-$2}"
   case "$v" in
-    ''|*[!0-9]*|0|00*) printf 'console-budget: ignoring %s=%s - using %s\n' "$1" "$v" "$2" >&2; v="$2" ;;
+    ''|*[!0-9]*|0|00*|???????*) printf 'console-budget: ignoring %s=%s - using %s\n' "$1" "$v" "$2" >&2; v="$2" ;;
   esac
   printf '%s\n' "$((10#$v))"  # 10#: a leading zero (08) is not octal
 }
@@ -43,9 +43,11 @@ resolve_transcript() {
     printf '%s\n' "$CONTEXT_FILL_TRANSCRIPT"; return 0
   fi
   if [ -n "$title" ]; then
-    # the title sits in the first rows of the transcript; a reused name keeps the newest
+    # a renamed session keeps its old title rows: only the LAST customTitle counts;
+    # a reused name keeps the newest transcript
     local best=""
     while IFS= read -r f; do
+      [ "$(grep -o '"customTitle":"[^"]*"' "$f" | tail -n 1)" = "\"customTitle\":\"$title\"" ] || continue
       if [ -z "$best" ] || [ "$f" -nt "$best" ]; then best="$f"; fi
     done < <(find "$config_dir/projects" -name '*.jsonl' -mtime -3 -exec grep -lF "\"customTitle\":\"$title\"" {} + 2>/dev/null)
     [ -n "$best" ] || return 1
