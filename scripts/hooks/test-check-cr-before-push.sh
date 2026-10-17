@@ -2043,10 +2043,12 @@ GF_A_ROOT=0
 gf_mk_pusher gf-pusher-clean
 rc=0
 out=$(cd "$TMP_ROOT/gf-pusher-clean" && bash "$HOOK" origin "$GF_ORIGIN" <<< "refs/heads/feat/gf $gf_B refs/heads/feat/gf $Z40" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] && [ -f "$TMP_ROOT/gf-pusher-clean/.git/cr-pending/feat/gf" ]; then
-    pass "graft-control: a clean push with no graft passes the gate and is marked for review"
+gf_clean_lane=""
+[ -f "$TMP_ROOT/gf-pusher-clean/.git/cr-pending/feat/gf" ] && gf_clean_lane=$(cut -d'|' -f3 "$TMP_ROOT/gf-pusher-clean/.git/cr-pending/feat/gf" | tr -d ' ')
+if [ "$rc" -eq 0 ] && [ "$gf_clean_lane" = "full" ]; then
+    pass "graft-control: a clean push with no graft passes the gate and is marked for full review"
 else
-    fail "graft-control: expected rc=0 and a marker" "rc=$rc out: $out"
+    fail "graft-control: expected rc=0 and a full-lane marker" "rc=$rc lane=$gf_clean_lane out: $out"
 fi
 
 # - base-skew guard (both directions). A branch whose merge-base is
