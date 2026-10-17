@@ -34,6 +34,14 @@
 # loses the race against Claude Code's SessionEnd teardown — so the ENTIRE
 # body (payload parse, dotenv load, transcript scan, relay) runs in a detached
 # child; the parent returns ~instantly.
+#
+# Test seams:
+#   TELEGRAM_SESSION_END_TEST_DELAY  sleep N seconds at the START of the
+#                           detached child body. Proves the full-body detach
+#                           keeps the PARENT fast: a regression that un-detaches
+#                           the body would make this delay block teardown.
+#                           Used by test-telegram-session-end.sh and
+#                           test-session-end-timeout-budget.sh.
 
 set +e
 set -u 2>/dev/null || true
@@ -60,6 +68,12 @@ if [ "${1:-}" != "__himmel_detached" ]; then
 fi
 
 # === Detached child: the real work (parent already returned 0) ==============
+
+# Test-only child-latency seam (see header). if-guarded so an unset value is a
+# clean no-op.
+if [ -n "${TELEGRAM_SESSION_END_TEST_DELAY:-}" ]; then
+    sleep "$TELEGRAM_SESSION_END_TEST_DELAY"
+fi
 
 PAYLOAD="$(cat "${2:-}" 2>/dev/null || true)"
 rm -f "${2:-}" 2>/dev/null || true

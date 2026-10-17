@@ -233,6 +233,7 @@ else
                     TELEGRAM_GROUP_CHAT_ID="" \
                     HIMMEL_WHERE_ARE_WE_TEST_DELAY="$CHILD_DELAY" \
                     JIRA_NUDGE_TEST_DELAY="$CHILD_DELAY" \
+                    TELEGRAM_SESSION_END_TEST_DELAY="$CHILD_DELAY" \
                     bash -c "$command" >/dev/null 2>&1
                 rc=$?
                 if [ "$ns_supported" -eq 1 ]; then

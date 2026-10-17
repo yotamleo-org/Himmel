@@ -138,6 +138,37 @@ else
     fail "salus repo: TG_LAST_ASSISTANT never populated (got: $(cat "$BUN_ARGS" 2>/dev/null))"
 fi
 
+# 4. Full-body detach keeps the PARENT fast. TELEGRAM_SESSION_END_TEST_DELAY
+#    sleeps at the START of the detached child body, so the relay (stub bun)
+#    cannot fire until the delay elapses. The parent must return well inside the
+#    3 s codex SessionEnd clamp while the child is still sleeping (bun not yet
+#    called), and the child must still complete async afterwards. A regression
+#    that un-detaches the body would run the delay in the foreground and blow
+#    the elapsed bound. Skipped where GNU coreutils `timeout` is absent.
+. "$HOOK_DIR/../lib/timeout-bin.sh"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    build_case "himmel"
+    rm -f "$BUN_LOG" "$BUN_ARGS"
+    _t0=$(date +%s)
+    printf '%s' "$CASE_PAYLOAD" | "$_TIMEOUT_BIN" 20 env PATH="$STUB_DIR:$PATH" \
+        TMPDIR="$ROOT_TMP" HIMMEL_STOP_QUEUE_OFF=1 \
+        TELEGRAM_GROUP_CHAT_ID="-1001234" TELEGRAM_SESSION_END_TEST_DELAY=5 \
+        bash "$HOOK" >/dev/null 2>&1; rc4=$?
+    _elapsed=$(( $(date +%s) - _t0 ))
+    # Settle: an un-delayed child relays within this window, so sampling it
+    # immediately would read "not yet" for the wrong reason.
+    sleep 2
+    child_early=no; [ -f "$BUN_LOG" ] && child_early=yes
+    w=0; while [ ! -f "$BUN_LOG" ] && [ "$w" -lt 150 ]; do sleep 0.1; w=$((w + 1)); done
+    if [ "$rc4" = 0 ] && [ "$_elapsed" -lt 3 ] && [ "$child_early" = no ] && [ -f "$BUN_LOG" ]; then
+        pass "slow child body: parent returns fast AND child relays async after the delay"
+    else
+        fail "slow child body: rc=$rc4 elapsed=${_elapsed}s bun-before-delay=$child_early bun-after=$([ -f "$BUN_LOG" ] && echo yes || echo no)"
+    fi
+else
+    echo "SKIP slow-child-fast-parent (no GNU coreutils timeout on this runner)"
+fi
+
 echo "---"
 echo "PASSED=$PASSED FAILED=$FAILED"
 [ "$FAILED" -eq 0 ]
