@@ -84,11 +84,12 @@ test("4. each agent is named with its role and model, its work under its name, a
   const agents = page.locator(".agents .agent");
   await expect(agents).toHaveCount(2);
   await expect(agents.nth(0)).toContainText("HIMMEL-1957-N1290-check-ci-cap");
-  await expect(agents.nth(0)).toContainText("leg · opus 5.5");
+  await expect(agents.nth(0)).toContainText("worker session · opus 5.5");
   await expect(agents.nth(1)).toContainText("correctness critic");
   await expect(agents.nth(1)).toContainText("critic · code-reviewer · sonnet 5.5");
   // the critic's Read sits in a block headed by the critic, one step in; the leg's calls do not
   const critic = page.locator(".block.sub", { hasText: "correctness critic" });
+  await critic.locator(".fold-head").click();
   await expect(critic.locator(".call", { hasText: "Read" })).toBeVisible();
   await expect(critic.locator(".call", { hasText: "Push the fix" })).toHaveCount(0);
   await expect(page.locator(".band")).toHaveCount(2);
@@ -408,7 +409,7 @@ test("12. two-console side menu, deep-linked page, and identical menu/row drill-
   await expect(page.locator(".fleet-console h2")).toHaveText(other);
   await expect(page.locator(".fleet")).toContainText(FLEET.idle.name);
   await expect(page.locator(".fleet")).not.toContainText(FLEET.leg.name);
-  const menu = page.getByRole("navigation", { name: "Consoles" });
+  const menu = page.getByRole("navigation", { name: "Supervisor sessions" });
   await expect(menu.locator("a.console-page")).toHaveCount(2);
   await menu.locator("a.console-page", { hasText: FLEET.console.name }).click();
   await expect(page.locator(".fleet-console h2")).toHaveText(FLEET.console.name);
@@ -437,7 +438,7 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   await expect(done.locator("> .fleet-line a.fleet-head")).toHaveAttribute("href", CLOUD.url);
   await expand(page, "cloud-HIMMEL-905");
   await expand(page, "cloud-HIMMEL-906");
-  await expect(done.locator(".fleet-role")).toHaveText("cloud · cloud bank");
+  await expect(done.locator(".fleet-role")).toHaveText("cloud · cloud usage budget");
   await expect(done.locator(".fleet-cloud-phase")).toHaveText("PR 1905 · CLOUD-DONE, shepherd's turn · cloud session");
   await expect(done.locator("a.fleet-cloud")).toHaveAttribute("href", CLOUD.url);
   await expect(done.locator(".fleet-context")).toHaveText("tokens not measured (cloud)");
