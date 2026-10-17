@@ -1,0 +1,14 @@
+# The hooks block of a live station profile (grow_agent config.yaml, 2026-10-17),
+# home path anonymised. hermes logged both guards as fail_closed=False.
+model:
+  default: gpt-5.5
+hooks:
+  pre_tool_call:
+    - matcher: write_file|patch|read_file|search_files|terminal|delete_file|remove_file|move_file|rename_file
+      command: python3 /home/user/.hermes/agent-hooks/parity_guard.py
+      timeout: 10
+    - matcher: .*
+      command: python3 /home/user/.hermes/agent-hooks/grow_guard.py
+      timeout: 10
+security:
+  redact_secrets: true

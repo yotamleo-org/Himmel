@@ -66,14 +66,34 @@ while IFS= read -r name; do
     case "$name" in ''|'#'*) continue ;; esac
     esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
     tail='($|[[:space:];&|)])'
-    via_interp="(^|[;&|(])[[:space:]]*(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
-    via_path="(^|[;&|(])[[:space:]]*[^[:space:]]*/${esc}${tail}"
+    tok='[^[:space:];&|()]+'
+    wrap="(((timeout|nohup)([[:space:]]+${tok})*)[[:space:]]+)?"
+    via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
+    via_path="(^|[;&|(])[[:space:]]*${wrap}[^[:space:]]*/${esc}${tail}"
     if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
         hit="$name"
         break
     fi
 done < "$list"
 [ -n "$hit" ] || exit 0
+
+# A bounded run is allowed in the foreground: `timeout N` (a whole 1..90 seconds, an `s`
+# suffix, or 1m / 1.5m) as the OUTERMOST command, wrapping the interpreter or script path
+# directly, with no chain, pipe, substitution or newline anywhere. Anything else (-k, nohup,
+# a chain before or after, N > 90 or 0) stays denied.
+# ponytail: a textual check; an argument holding one of ;&|`$( denies a bounded run and the
+# console re-issues it in the background — revisit if that is observed.
+case "$hit:$cmd" in
+    console-wait.sh:*|run-suite.sh:*) ;;
+    *[\;\&\|\`\$\(]*|*"
+"*) ;;
+    *)
+        dur=$(printf '%s' "$cmd" | sed -nE 's/^[[:space:]]*timeout[[:space:]]+([0-9.]+[sm]?)[[:space:]]+((bash|sh|node|bun|python3?)[[:space:]]+|[^[:space:]]*\/).*/\1/p')
+        case "$dur" in
+            1m|1.5m) exit 0 ;;
+            [1-9]|[1-9][0-9]|[1-9]s|[1-9][0-9]s) [ "${dur%s}" -le 90 ] && exit 0 ;;
+        esac ;;
+esac
 
 deny_msg="You are a CONSOLE session running a long console-kit script (${hit}) in the foreground — DENIED (HIMMEL-5821).
 
@@ -85,8 +105,10 @@ Re-issue the SAME command with the Bash tool's run_in_background set to true:
 The completion arrives as a task notification; do not poll its output file or sleep on it. Keep
 handling leg messages meanwhile and read the result when the notification lands.
 
-Short scripts (append-results.sh, go.sh, write-verdict.sh, fleet-manifest.sh) are not on the list and
-stay foreground. The list is scripts/handover/console-kit/long-running.txt.
+A bounded run is allowed in the foreground: make \`timeout 90\` (1 to 90 s) the outermost command, e.g.
+  timeout 90 bash scripts/handover/console-kit/ready-check.sh <args>
+console-wait.sh and suites stay background. Short scripts (append-results.sh, go.sh, write-verdict.sh,
+fleet-manifest.sh, leg-event.sh) are not on the list and stay foreground. The list is scripts/handover/console-kit/long-running.txt.
 
 Bypass for one session: relaunch with CONSOLE_FG_OK=1 in the launching shell (a per-call prefix
 does not reach this hook)."

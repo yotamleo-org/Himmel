@@ -212,6 +212,7 @@ run_gate "$work/sh.yml"; rc=$?
 # ---- OpenRouter: host maps to provider openrouter, models pinned ----
 OR_EMBED='openai:qwen/qwen3-embedding-8b'
 OR_RERANK='openai:cohere/rerank-4-fast'
+OR_GENERATE='openai:google/gemini-2.5-flash-lite'
 OR_BASE=https://openrouter.ai/api/v1
 
 # (22) the non-salus index on the pinned OpenRouter models is allowed.
@@ -257,11 +258,31 @@ cfg "$work/or8.yml" "$OR_EMBED" "$OR_RERANK" https://openrouter.ai.evil.example/
 run_gate "$work/or8.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(27) lookalike OpenRouter host: expected rc 3, got $rc"
 
-# (28) the generate role has no pinned OpenRouter model, so the pin check refuses it.
+# (28) a generate role on OpenRouter is allowed only as the pinned model.
 cfg "$work/or9.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
-printf '  generate: openai:qwen/qwen3-embedding-8b\n' >> "$work/or9.yml"
+printf '  generate: %s\n' "$OR_GENERATE" >> "$work/or9.yml"
 run_gate "$work/or9.yml"; rc=$?
-[ "$rc" -eq 3 ] || fail "(28) OpenRouter generate role: expected rc 3, got $rc"
+[ "$rc" -eq 0 ] || fail "(28) pinned OpenRouter generate model: expected rc 0, got $rc: $(cat "$work/err")"
+cfg "$work/or9b.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+printf '  generate: openai:qwen/qwen3-embedding-8b\n' >> "$work/or9b.yml"
+run_gate "$work/or9b.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(28b) unpinned OpenRouter generate model: expected rc 3, got $rc"
+grep -q 'pinned' "$work/err" || fail "(28b) the refusal must say the model is not pinned: $(cat "$work/err")"
+# (28c) an unpinned generate model named only by the environment is refused too.
+QMD_GENERATE_MODEL='openai:openai/gpt-4o-mini' node "$gate" "$work/or9.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(28c) unpinned env generate model over a pinned file: expected rc 3, got $rc"
+grep -q 'pinned' "$work/err" || fail "(28c) the refusal must say the model is not pinned: $(cat "$work/err")"
+# (28d) the pinned generate model does not make a salus index pass: query text would reach OpenRouter.
+cfg "$work/or9c.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" "$OR_BASE" himmel salus
+printf '  generate: %s\n' "$OR_GENERATE" >> "$work/or9c.yml"
+run_gate "$work/or9c.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(28d) salus with a pinned OpenRouter generate model: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(28d) the refusal must name salus: $(cat "$work/err")"
+# (28e) a pinned-model name in the wrong role is not pinned for generate.
+cfg "$work/or9d.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+printf '  generate: %s\n' "$OR_RERANK" >> "$work/or9d.yml"
+run_gate "$work/or9d.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(28e) rerank model in the generate role: expected rc 3, got $rc"
 
 # (29) an active salus document in the database refuses an OpenRouter index.
 sqlite3 "$work/db3.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"

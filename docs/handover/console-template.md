@@ -174,20 +174,20 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A leg reports `READY <pr> <head> GREEN`. Verify independently with
-`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
+`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `console-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
-cannot get a GO. The leg merges, reports `MERGED #<n> → <sha>`; you pull the
+gets no GO. The leg merges, reports `MERGED #<n> → <sha>`; you pull the
 primary and the leg wraps.
 
-The Jira close is the leg's call from the brief's `completes-ticket: yes|no` line
-(`--jira-transition` for `yes`, omitted for `no`): fill it in when you write the
+The leg closes Jira per the brief's `completes-ticket: yes|no` line
+(`--jira-transition` for `yes`, omitted for `no`): fill it in when writing the
 brief. After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
-of the PR title, so check a second key by hand. Never merge with open review
+of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. **A PR whose diff
-matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs an adversarial review and
+matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review and
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `console-sections/merges.md`.
 
@@ -199,7 +199,7 @@ file and run
 `HANDLED ...` is done, `ESCALATE <reason>` means by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/console-kit/close-wrapped-leg.sh <leg-doc>`. Never run the
-bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand sequence and the `digest=` line:
+bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence and the `digest=` line:
 `console-sections/wrapping.md`.
 
 ## Standing rules

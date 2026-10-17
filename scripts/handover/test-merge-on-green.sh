@@ -2712,7 +2712,7 @@ fi
 # copy instead reads ARMAUTOMERGE=1 as opted-in and exits non-zero.
 # Recursion-safe: the sentinel suppresses the guard in the reinvoked copy.
 if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
-    _armed_log="$(mktemp)"
+    _armed_log="$(mktemp "${TMPDIR:-/tmp}/mog-armed.XXXXXX")" || exit 1
     if CR_MERGE_GATE_OK=1 ARMAUTOMERGE=1 HIMMEL_1495_SELF=1 bash "$SCRIPT_DIR/test-merge-on-green.sh" >"$_armed_log" 2>&1; then
         pass; echo "  hermetic-to-armed-env (self-reinvoke exits 0)"
     else
@@ -3105,7 +3105,7 @@ printf '## Verdict\n\n**GO** for head `%s`.\n\npr: 77\n' "$GO_OLD" > "$TP_ROOT/$
 mkdir -p "$HOME/.config/himmel"
 [ -s "$HOME/.config/himmel/go-hmac.key" ] || printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
 for tp_v in a b; do
-    tp_mac="$(cat "$TP_ROOT/$TP_SCOPE/verdicts/judge-N9/$tp_v.md" | bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$(dirname "$0")/../lib/go-gate.sh" "$TP_SCOPE" judge-N9 "$tp_v")" || echo "FAIL: cannot sign verdict $tp_v" >&2
+    tp_mac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$(dirname "$0")/../lib/go-gate.sh" "$TP_SCOPE" judge-N9 "$tp_v" < "$TP_ROOT/$TP_SCOPE/verdicts/judge-N9/$tp_v.md")" || echo "FAIL: cannot sign verdict $tp_v" >&2
     printf 'mac: %s\n' "$tp_mac" >> "$TP_ROOT/$TP_SCOPE/verdicts/judge-N9/$tp_v.md"
 done
 tp_run() {
@@ -3690,6 +3690,8 @@ STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(
     run_mog 0 "jira: closed ticket in a later unreleased version is folded to the current one" -- --jira-transition
 assert_jira_log_has "jira: fold sets fixVersion to the current unreleased version" "edit HIMMEL-374 --fix-version v1.1.3"
 assert_audit_has "jira: fold is recorded on the audit line" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
+
+assert_jira_log_has "jira: the versions lookup names the ticket's project" "versions --project HIMMEL"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.2"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: fold keeps a released version the ticket already holds" -- --jira-transition
