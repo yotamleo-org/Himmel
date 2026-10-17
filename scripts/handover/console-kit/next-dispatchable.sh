@@ -148,7 +148,7 @@ def load_platform_re():
     print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
 
 platform_re = load_platform_re()
-skipped_platform = 0
+skipped_platform = []
 cands = []
 for i in issues.values():
     if i['status'] != 'To Do' or i['type'] in ('Epic', 'Story', 'Sub-task'):
@@ -156,7 +156,7 @@ for i in issues.values():
     if i['labels'] & excl:
         continue
     if platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
-        skipped_platform += 1
+        skipped_platform.append(i['key'])
         continue
     if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
@@ -252,7 +252,7 @@ def classify(batch):
 
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else ''))
 if skipped_platform:
-    print('# skipped %d windows/wsl ticket(s)' % skipped_platform)
+    print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
 picked = []
 for i in resume:

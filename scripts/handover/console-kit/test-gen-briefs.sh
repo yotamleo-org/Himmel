@@ -308,6 +308,14 @@ for good in 'Drop Windows support' 'Sweep Windows leftovers' 'Retire the WSL lan
     pl_gen title "$good" yes; rc=$?
     [ "$rc" = 0 ] && pl_complete && pass "platform_removal true on '$good' is accepted" || fail "'$good' with platform_removal rc=$rc: $(cat "$WORK/pl.err")"
 done
+for ok in 'Close WRAPPED console windows' 'Stop leg windows piling up' 'Spread work over 5-hour windows' 'Trim the context-windows report'; do
+    pl_gen title "$ok"; rc=$?
+    [ "$rc" = 0 ] && pl_complete && pass "'$ok' is console wording, not the OS" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
+done
+# Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
+NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"
+python3 "$NF/gen-briefs.py" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "'runtime Windows' is not excused by the time-window qualifier" || fail "runtime Windows rc=$rc"
 for ok in 'cap the context window' 'widen the time window' 'Windowed rate limit' 'the context windows budget'; do
