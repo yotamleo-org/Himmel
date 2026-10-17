@@ -26,7 +26,12 @@ case "$*" in
     *fork-pr-contributor-approval*) echo "${GH_APPROVAL-all_external_contributors}"; [ -n "${GH_APPROVAL-x}" ] ;;
     "variable set"*) [ -z "${GH_SET_FAIL:-}" ] || exit 1; a="$*"; echo "${a##* }" > "$STUB/var" ;;
     *actions/variables/HIMMEL_VM_RUNNER*) [ -e "$STUB/var" ] && cat "$STUB/var" || exit 1 ;;
-    *actions/runners*) [ -z "${GH_RUNNERS_FAIL:-}" ] || exit 1; echo "${GH_BUSY:-0} ${GH_ONLINE:-1}" ;;
+    *actions/runners*)
+        [ -z "${GH_RUNNERS_FAIL:-}" ] || exit 1
+        if [ -n "${GH_RUNNERS_JSON:-}" ]; then
+            for a in "$@"; do [ "$prev" = --jq ] && expr="$a"; prev="$a"; done
+            printf '%s' "$GH_RUNNERS_JSON" | jq -r "$expr"
+        else echo "${GH_BUSY:-0} ${GH_ONLINE:-1}"; fi ;;
 esac
 EOF
 cat > "$TMP/bin/systemctl" <<'EOF'
@@ -167,6 +172,15 @@ rm -f "$TMP/state/tick-vmrun-cache"
 GH_ONLINE=0 run doctor 2>&1 | grep -q '^FAIL.*DISAGREE' && ok "doctor FAILs a DISAGREE" || bad "doctor DISAGREE not flagged"
 rm -f "$TMP/state/tick-vmrun-cache"
 GH_RUNNERS_FAIL=1 run doctor 2>&1 | grep -q '^FAIL.*runner FAILING' && ok "doctor FAILs an unreadable count" || bad "doctor unreadable count not flagged"
+
+rm -f "$TMP/state/tick-vmrun-cache"
+# the real jq filter: an unrelated online runner must not mask offline himmel-vm runners
+[ "$(GH_RUNNERS_JSON='{"runners":[{"name":"other-box","status":"online","busy":false},{"name":"himmel-vm-1","status":"offline","busy":false}]}' run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "an unrelated online runner does not mask offline himmel-vm runners" || bad "masked -> $(GH_RUNNERS_JSON='{"runners":[{"name":"other-box","status":"online","busy":false},{"name":"himmel-vm-1","status":"offline","busy":false}]}' run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_RUNNERS_JSON='{"runners":[{"name":"himmel-vm-1","status":"online","busy":true}]}' run status --tick)" = "ok:2/2,busy=1" ] && ok "real filter: one himmel-vm runner online and busy -> ok:2/2,busy=1" || bad "real filter -> $(GH_RUNNERS_JSON='{"runners":[{"name":"himmel-vm-1","status":"online","busy":true}]}' run status --tick)"
+# a cache left by the old two-field format must be refetched, not read as ok
+printf '%s 3\n' "$(date +%s)" > "$TMP/state/tick-vmrun-cache"
+[ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "a two-field cache from before the upgrade is refetched" || bad "old cache -> $(GH_ONLINE=0 run status --tick)"
 
 echo "T7 status prints the units and the last error"
 reset
