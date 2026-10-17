@@ -17,7 +17,7 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/flow-ledger-path-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
 # $out sits OUTSIDE /tmp: the net accepts ${TMPDIR:-/tmp} and literal /tmp only.
-out="$(mktemp -d -p /var/tmp flow-ledger-out.XXXXXX)" || { echo "FAIL: mktemp /var/tmp"; exit 1; }
+out="$(mktemp -d /var/tmp/flow-ledger-out.XXXXXX)" || { echo "FAIL: mktemp /var/tmp"; exit 1; }
 z_dir="$(mktemp -d /tmp/flow-ledger-z.XXXXXX)" || { echo "FAIL: mktemp /tmp"; exit 1; }
 trap 'rm -rf "$tmp" "$out" "$z_dir"' EXIT
 
