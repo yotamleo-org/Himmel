@@ -672,6 +672,8 @@ check "22: a keyed NO-GO residual is written rc 0" "$rc" 0
 printf '## Evidence\n\n- a follow-up is mentioned in prose here\n- residual risk is low\n' > "$evd/r-other-heading.md"
 rc=0; wv q22j GO "$SHA_A" --evidence-file "$evd/r-other-heading.md" >/dev/null 2>&1 || rc=$?
 check "22: a follow-up bullet under another heading is not refused" "$rc" 0
+printf '## Non-blocking\n\n- HIMMEL-9 filed\n\n- loose item with no key\n' > "$evd/r-loose-bad.md"
+rej "an unkeyed bullet after a blank line in a loose list" q22l GO "$evd/r-loose-bad.md"
 printf '## Non-blocking\n\n- HIMMEL-9 filed\n\nThe next paragraph is plain prose.\n- stray bullet after a blank-terminated block\n' > "$evd/r-block-end.md"
 rc=0; wv q22k GO "$SHA_A" --evidence-file "$evd/r-block-end.md" >/dev/null 2>&1 || rc=$?
 check "22: a bullet after the residual block ended is not refused" "$rc" 0

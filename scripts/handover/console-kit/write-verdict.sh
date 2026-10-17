@@ -279,11 +279,13 @@ unfiled=$(awk '
     /^#+[ \t]/ || /^\*\*.*\*\*:?[ \t]*$/ || /^[A-Za-z-]+:[ \t]*$/ {
         l = lead($0); sec = (l ~ /^(non-blocking|follow-ups?|residuals?)$/); items = 0; next
     }
-    sec && /^[ \t]*$/ { if (items) sec = 0; next }
+    sec && /^[ \t]*$/ { next }
     sec && /^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/ {
         items = 1
         if ($0 !~ /HIMMEL-[0-9]+/ && $0 !~ /no-ticket:[ \t]*[^ \t]/) print
-    }' "$EVIDENCE")
+        next
+    }
+    sec && items && /^[^ \t]/ { sec = 0 }' "$EVIDENCE")
 if [ -n "$unfiled" ]; then
     while IFS= read -r unfiled_line; do
         echo "write-verdict: unfiled residual: $unfiled_line" >&2
