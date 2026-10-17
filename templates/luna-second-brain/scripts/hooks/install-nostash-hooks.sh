@@ -177,11 +177,12 @@ printf -v xargs_q '%q' "$xargs_bin"
 
 # Shared by both generated hooks. Commit-time fallback when the baked path is
 # gone or broken (a launcher whose shebang interpreter moved is still
-# executable, so probe it, not just its mode): pre-commit on PATH, else python -m pre_commit, else a clear error.
+# executable, so probe it, not just its mode): pre-commit on PATH, else
+# python -m pre_commit, each probed too, else a clear error.
 fallback_block=$(cat <<'FALLBACK'
 if ! "${pc[@]}" --version >/dev/null 2>&1; then
   pc=()
-  if candidate=$(command -v pre-commit 2>/dev/null); then
+  if candidate=$(command -v pre-commit 2>/dev/null) && "$candidate" --version >/dev/null 2>&1; then
     pc=("$candidate")
   else
     for py in python python3; do

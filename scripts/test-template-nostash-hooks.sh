@@ -698,6 +698,15 @@ if [ -n "${M2:-}" ]; then
   m2b_rc=$?
   check "M2: commit succeeds when the baked launcher exists but its interpreter moved" "$m2b_rc" "0"
   [ "$m2b_rc" -ne 0 ] && echo "  M2b output: $m2b_out"
+
+  # The same broken launcher is also first on PATH: the fallback must probe
+  # it and move on to python -m pre_commit.
+  printf 'staged-third\n' > "$M2/commit-file.txt"
+  git -C "$M2" add commit-file.txt
+  m2c_out=$(cd "$M2" && PATH="$m2_bin:$PATH" git commit -qm "feat: broken launcher on PATH" 2>&1)
+  m2c_rc=$?
+  check "M2: commit succeeds when the broken launcher is also first on PATH" "$m2c_rc" "0"
+  [ "$m2c_rc" -ne 0 ] && echo "  M2c output: $m2c_out"
 fi
 
 # ---------------------------------------------------------------------------

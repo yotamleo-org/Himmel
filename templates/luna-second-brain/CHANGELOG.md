@@ -8,7 +8,7 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.79] — 2026-10-17
+## [0.4.80] — 2026-10-17
 
 ### Fixed
 - `scripts/hooks/install-nostash-hooks.sh`: a foreign pre-existing `pre-commit`
