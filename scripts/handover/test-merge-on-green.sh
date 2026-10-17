@@ -21,6 +21,10 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # arms the console-GO gate — ambient, it would refuse every merge case below.
 # Its own line: RC-2 below mutates the line above by exact match.
 unset HIMMEL_CONSOLE_LEG HIMMEL_LEG_DOC
+# A bare merge appends a PARTIAL bullet to $HIMMEL_CONSOLE_DOC when it is set; a leg launched
+# from a console carries it, so every bare-merge row would write the live console doc.
+# The one row that wants a console doc sets its own temp file explicitly.
+unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME
 # An operator/leg launching shell carries HIMMEL_REPO (the
 # harness-wide anchor) — ambient, it would point every case's gate at a real
 # checkout instead of the fixture's own stub. run_mog always passes its own
@@ -3424,10 +3428,11 @@ assert_jira_log_lacks "jira: no-tag case makes no jira transition call" "transit
 # against the pre-fix tree (it transitioned unasked; post-fix it must not).
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: default (no --jira-transition) only reports what it would do"
-assert_audit_has "jira: default case records the would-transition report" "jira-transition=would-transition key=HIMMEL-374 status=Done"
-# A bare (partial) merge returns the ticket to To Do with a
-# structured Remaining comment taken from the PR body; it is never Done.
-assert_jira_log_has "jira: partial merge returns the ticket to To Do" "transition HIMMEL-374 To Do"
+assert_audit_has "jira: default case records the partial skip" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
+assert_audit_lacks "jira: default case no longer reports would-transition" "would-transition"
+# A bare (partial) merge leaves the ticket's status as it is and comments the
+# Remaining line taken from the PR body; it never transitions at all.
+assert_jira_log_lacks "jira: partial merge makes no transition call" "index.js transition"
 assert_jira_log_lacks "jira: partial merge never transitions to Done" "transition HIMMEL-374 Done"
 assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
 # A bare merge leaves the ticket open, so say so (stderr) and tell the console doc.
@@ -3444,6 +3449,14 @@ HIMMEL_CONSOLE_DOC="$mog_doc2" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIM
 assert_err_lacks "jira: an opted-in merge prints no PARTIAL line" "PARTIAL"
 if grep -q 'PARTIAL' "$mog_doc2"; then fail "jira: an opted-in merge appends no PARTIAL bullet"; else pass; fi
 
+# A bare merge on a ticket sitting In Progress leaves it In Progress.
+STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="In Progress" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 0 "6094: bare merge on an In Progress ticket"
+assert_jira_log_lacks "6094: In Progress ticket gets no transition call" "index.js transition"
+assert_jira_log_has "6094: In Progress ticket still gets the Remaining comment" "comment-body: Remaining: slice 2"
+assert_audit_lacks "6094: audit never says would-transition" "would-transition"
+assert_audit_has "6094: audit says the status is unchanged" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
+
 # The brief's dedicated `Completes ticket` line binds the merge. The
 # leg doc is supplied by the caller (--leg-doc, else HIMMEL_LEG_DOC).
 leg_no="$LAST_TMP/leg-no.md"; leg_yes="$LAST_TMP/leg-yes.md"
@@ -3454,7 +3467,7 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "5843: brief says no, --jira-transition given" -- --jira-transition --leg-doc "$leg_no"
 assert_err_has "5843: the ignored flag is announced" "merge-on-green: brief says completes-ticket: no; --jira-transition ignored"
 assert_jira_log_lacks "5843: brief no never transitions to Done" "transition HIMMEL-374 Done"
-assert_jira_log_has "5843: brief no returns the ticket to To Do" "transition HIMMEL-374 To Do"
+assert_jira_log_lacks "5843: brief no leaves the ticket status alone" "index.js transition"
 assert_jira_log_has "5843: brief no comments the Remaining line" "comment-body: Remaining: slice 2"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_LEG_DOC="$leg_no" \
     run_mog 0 "5843: brief no via HIMMEL_LEG_DOC" -- --jira-transition
@@ -3466,7 +3479,7 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "5843: brief yes, flag missing" -- --leg-doc "$leg_yes"
 assert_err_has "5843: the missing flag is warned" "brief expects the ticket to close"
 assert_jira_log_lacks "5843: brief yes never transitions on its own" "transition HIMMEL-374 Done"
-assert_jira_log_has "5843: brief yes without the flag stays partial" "transition HIMMEL-374 To Do"
+assert_jira_log_lacks "5843: brief yes without the flag stays partial, status untouched" "index.js transition"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "5843: brief yes, flag given" -- --jira-transition --leg-doc "$leg_yes"
 assert_jira_log_has "5843: brief yes with the flag transitions" "transition HIMMEL-374 Done"
@@ -3501,13 +3514,13 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     STUB_PR_BODY=$'## Summary\nslice 1\nRemaining: slice 2 (the closed-unmerged handler)\n' \
     run_mog 0 "jira: partial merge quotes the PR body Remaining line"
 assert_jira_log_has "jira: Remaining text is quoted in the comment" "comment-body: Remaining: slice 2 (the closed-unmerged handler)"
-assert_jira_log_has "jira: partial merge To Do on a Remaining body" "transition HIMMEL-374 To Do"
-assert_audit_has "jira: partial merge audit records the To Do return" "jira-transition=would-transition key=HIMMEL-374 status=Done todo=ok"
+assert_jira_log_lacks "jira: partial merge on a Remaining body makes no transition" "index.js transition"
+assert_audit_has "jira: partial merge audit records the unchanged status and comment" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged comment=ok"
 
 # No Remaining line in the body: still dispatchable, and the comment says so.
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
     run_mog 0 "jira: partial merge with no Remaining line in the body"
-assert_jira_log_has "jira: no-note partial merge still goes To Do" "transition HIMMEL-374 To Do"
+assert_jira_log_lacks "jira: no-note partial merge makes no transition" "index.js transition"
 assert_jira_log_has "jira: no-note comment names the gap" "comment-body: Remaining: not recorded"
 
 # A ticket already Done is left alone by a partial merge; an Epic never moves.
@@ -3596,7 +3609,7 @@ assert_jira_log_has "jira: Story case transitions" "transition HIMMEL-374 Done"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: Story without --jira-transition only reports would-transition"
-assert_audit_has "jira: Story bare merge records would-transition" "jira-transition=would-transition key=HIMMEL-374 status=Done"
+assert_audit_has "jira: Story bare merge records the partial skip" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
 assert_jira_log_lacks "jira: Story bare merge never transitions to Done" "transition HIMMEL-374 Done"
 
 # A comment that fails to post leaves no evidence breadcrumb — skip the
