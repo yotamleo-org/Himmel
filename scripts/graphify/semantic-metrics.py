@@ -3,7 +3,9 @@
 #
 # Definitions (the DoD bar for the semantic re-extraction is coverage >= 80):
 #   semantic node  = file_type document, concept, rationale or paper
-#   coverage       = semantic nodes with a non-empty `rationale` / semantic nodes, in percent
+#   coverage       = semantic nodes with a non-empty `rationale` / semantic nodes, in percent (all nodes)
+#   model_made_coverage_pct = the same over concept, rationale and paper nodes only: file-level document nodes
+#                     are made by graphify itself and carry no rationale, so this is the DoD metric
 #   cross-file edge = an edge not from the AST pass whose relation is one of SEMANTIC_RELATIONS and whose two
 #                     ends have different source_file values
 # --files a.md,b.md restricts both numbers to nodes (and edges starting at nodes) from those source files.
@@ -33,9 +35,13 @@ def measure(graph, files=None):
              if e.get("_origin") != "ast" and e.get("relation") in SEMANTIC_RELATIONS
              and in_scope(byid.get(e.get("source"), {}))
              and byid.get(e.get("source"), {}).get("source_file") != byid.get(e.get("target"), {}).get("source_file")]
+    made = [n for n in sem if n.get("file_type") != "document"]
+    made_rat = [n for n in made if n in rat]
     return {
         "semantic_nodes": len(sem), "with_rationale": len(rat),
         "coverage_pct": round(100 * len(rat) / max(1, len(sem)), 1),
+        "model_made_nodes": len(made), "model_made_with_rationale": len(made_rat),
+        "model_made_coverage_pct": round(100 * len(made_rat) / max(1, len(made)), 1),
         "cross_file_semantic_edges": len(cross),
         "doc_to_code_edges": sum(1 for e in cross if e["relation"] in ("documents", "explains", "rationale_for")),
     }

@@ -595,6 +595,8 @@ EOF
 all53=$(python3 "$HERE/semantic-metrics.py" "$M53"); a53=$(python3 "$HERE/semantic-metrics.py" "$M53" --files a.md)
 [[ "$all53" == *'"coverage_pct": 33.3'* ]] && [[ "$all53" == *'"cross_file_semantic_edges": 2'* ]] && [[ "$all53" == *'"doc_to_code_edges": 1'* ]] \
   && pass "T53 whole graph" || fail "T53 whole: $all53"
+[[ "$all53" == *'"model_made_coverage_pct": 50.0'* ]] && [[ "$all53" == *'"model_made_nodes": 2'* ]] \
+  && [[ "$a53" == *'"model_made_coverage_pct": 100.0'* ]] && pass "T53 model-made metric" || fail "T53 model-made: $all53 $a53"
 [[ "$a53" == *'"coverage_pct": 50.0'* ]] && [[ "$a53" == *'"semantic_nodes": 2'* ]] && pass "T53 --files scope" || fail "T53 scoped: $a53"
 
 echo
