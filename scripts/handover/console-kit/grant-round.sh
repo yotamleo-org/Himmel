@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2015  # `[ test ] && [ test ] || { echo >&2; exit N; }` is the file's fail-closed guard shape
 # scripts/handover/console-kit/grant-round.sh - the console grants
 # ONE more /pr-check review round itself, on a persisted judge record, so the
 # operator no longer hand-pastes `printf '2\n' > .git/cr-review-rounds/<b>.round`.
