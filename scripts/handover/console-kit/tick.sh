@@ -355,7 +355,9 @@ ready_mismatch_scan() {
                 files="$(cat "$cache/$pr-$head")"
             elif [ "$budget" -gt 0 ]; then
                 budget=$((budget - 1))
-                if files="$("$ghcmd" pr view "$pr" --json files -q '.files[].path' 2>/dev/null)" && [ -n "$files" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
+                # the first line is the PR's current head: a list read after a later push is not this READY's diff
+                if files="$(cd "$REPO" && "$ghcmd" pr view "$pr" --json headRefOid,files -q '.headRefOid, .files[].path' 2>/dev/null)" && [ "${files%%$'\n'*}" = "$head" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
+                    files="${files#*$'\n'}"
                     printf '%s\n' "$files" > "$cache/$pr-$head" 2>/dev/null
                 else
                     files=""

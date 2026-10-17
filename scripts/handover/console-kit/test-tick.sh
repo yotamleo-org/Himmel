@@ -2294,8 +2294,19 @@ rm -f "$RMD/leg3.md"
 for n in $(seq 201 224); do rm_leg "$n" claude-sonnet-5-5 "$n" '- trust path: none'; done
 rm_of >/dev/null
 [ "$(wc -l < "$W/rm-gh.calls" | tr -d ' ')" -le 20 ] && pass 'at most 20 uncached gh calls per tick' || fail "gh was called $(wc -l < "$W/rm-gh.calls" | tr -d ' ') times"
+rm -f "$RMD"/leg2*.md "$W/rm-gh.calls"
+rm -rf "$TICK_STATE_DIR/ready-files"
+mkdir -p "$TICK_STATE_DIR/ready-files"
+# shellcheck disable=SC2016  # $RM_GH_OID expands in the generated stub, not here
+printf '#!/bin/sh\npwd >> "%s/rm-gh.pwd"\nprintf "%%s\\nscripts/ci/x.sh\\n" "$RM_GH_OID"\n' "$W" > "$W/rm-gh"
+rm_leg 301 claude-sonnet-5-5 301 '- trust path: none'
+RM_GH_OID="$(rm_head 999)" rm_of >/dev/null
+[ ! -e "$TICK_STATE_DIR/ready-files/301-$(rm_head 301)" ] && pass 'a PR whose current head is not the READY head is not cached or trusted' || fail 'a stale-head file list was cached'
+same 'a stale-head read is unchecked, not flagged' "$(RM_GH_OID="$(rm_head 999)" rm_of)" ''
+same 'a matching-head read flags the claimed-none READY' "$(RM_GH_OID="$(rm_head 301)" rm_of)" '1/1,nogo=0/0,ALERT'
+[ "$(sort -u "$W/rm-gh.pwd")" = "$W/repo" ] && pass 'gh runs in the --repo checkout' || fail "gh ran in $(sort -u "$W/rm-gh.pwd")"
 unset TICK_GH_CMD
-rm -rf "$RMD" "$W/rm-gh.calls"
+rm -rf "$RMD" "$W/rm-gh.calls" "$W/rm-gh.pwd"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
