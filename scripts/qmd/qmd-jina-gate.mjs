@@ -137,8 +137,10 @@ for (const line of text.split("\n")) {
   if (top) { section = top[1]; childIndent = 0; continue; }
   if (/^\S/.test(line)) {
     if (/^["']\s*(collections|models)\s*["']\s*:/.test(line)) modelsUnreadable.push("quoted top-level key (text withheld)");
-    // a YAML escape can spell collections/models without the literal word, so any escaped quoted key is refused
+    // a double-quoted YAML key can spell collections/models through an escape, so any quoted key holding a backslash is refused
     else if (/^(["'])(?:(?!\1).)*\\(?:(?!\1).)*\1\s*:/.test(line)) modelsUnreadable.push("escaped quoted top-level key (text withheld)");
+    // qmd's saveConfig writes plain keys; `models :`, `? models`, `&a models:` and `!!str models:` all parse as the models map in qmd, so anything else is refused
+    else if (!/^[A-Za-z_][\w-]*:(\s|$)/.test(line)) modelsUnreadable.push("unrecognised top-level key syntax (text withheld)");
     section = "";
     continue;
   }

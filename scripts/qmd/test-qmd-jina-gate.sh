@@ -180,6 +180,14 @@ printf 'collections:\n  himmel:\n    path: /x\n"mo\\x64els":\n  embed: %s\n' "$L
 run_gate "$work/ek.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10m) escaped key over local models: expected rc 3, got $rc"
 
+# (10n) qmd's yaml parser reads these spellings as the models map; the line reader must refuse any top-level line it cannot recognise.
+for key in 'models :' '? models' '&a models:' '!!str models:'; do
+  printf 'collections:\n  himmel:\n    path: /x\n%s\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\n' "$key" > "$work/ak.yml"
+  run_gate "$work/ak.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(10n) top-level key '$key': expected rc 3, got $rc"
+  grep -q 'unrecognised top-level key syntax' "$work/err" || fail "(10n) '$key': the refusal must carry the unrecognised-syntax message: $(cat "$work/err")"
+done
+
 # ---- OpenRouter: host maps to provider openrouter, models pinned ----
 OR_EMBED='openai:qwen/qwen3-embedding-8b'
 OR_RERANK='openai:cohere/rerank-4-fast'
