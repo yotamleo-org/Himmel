@@ -4,7 +4,8 @@
 # Hermetic: a python3 stub HTTP server on a throwaway loopback port stands in for
 # the qmd daemon (it arms its own alarm and is killed by pid on exit); the live
 # daemon is never touched. The stub plays a PLAN, one entry per arriving request:
-# B = the daemon's Busy refusal at once, D<secs> = a result after that delay,
+# B = the daemon's Busy refusal at once, BD<secs> = Busy after that delay,
+# D<secs> = a result after that delay,
 # H = never answers (sleeps past the curl cap).
 # Platform guard (gitbash-only): POSIX bash 3.2+; a test fixture needs no .ps1 twin.
 set -uo pipefail
@@ -48,9 +49,11 @@ class H(http.server.BaseHTTPRequestHandler):
         open(portfile + '.auth', 'w').write(self.headers.get('Authorization', ''))
         if step == 'H':
             time.sleep(60)
-        if step.startswith('D'):
+        if step.startswith('BD'):
+            time.sleep(float(step[2:]))
+        elif step.startswith('D'):
             time.sleep(float(step[1:]))
-        if step == 'B':
+        if step.startswith('B'):
             res = {"content": [{"type": "text", "text": "Busy: 3 queries are already queued (~30 s each). Retry shortly, or use a lex-only search."}], "isError": True}
         else:
             res = {"content": [{"type": "text", "text": "ok"}]}
@@ -107,6 +110,13 @@ assert_has "(b) names the limit breach" "over the 2 s limit" "$OUT"
 start_stub b2 "D0.1,D3"
 run_proof "$URL" QMD_BURST_N=1 QMD_BURST_BUSY_MAX=2
 assert_eq "(b2) N=1 plain result passes" 0 "$RC"
+
+# (b3) a Busy reply slower than QMD_BURST_BUSY_MAX is a failure naming the call.
+start_stub b3 "B,BD3"
+run_proof "$URL" QMD_BURST_N=2 QMD_BURST_BUSY_MAX=2
+assert_eq "(b3) slow Busy reply: exit 1" 1 "$RC"
+assert_has "(b3) verdict line" "BURST-FAIL" "$OUT"
+assert_has "(b3) names the busy window" "busy window" "$OUT"
 
 # (c) a call that never answers is cut at the curl cap: FAIL, not a hang.
 start_stub c "D0.2,H"
