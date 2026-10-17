@@ -227,6 +227,45 @@ rc=$?
 assert_rc "T20 arm-resume rc=0 → hop rc=0" 0 "$rc"
 assert_contains "T20 banner on success" "CONTEXT-HOP ARMED" "$out"
 
+# --handover <file>: arm directly at an existing named handover, no snapshot.
+printf '# real handover\n' > "$TMP/real-handover.md"
+snap_before=$(find "$TMP/handovers/$SLUG" -name 'context-hop-*.md' | wc -l)
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/real-handover.md" --dry-run 2>&1)
+rc=$?
+assert_rc "T21 --handover dry-run rc=0" 0 "$rc"
+arm_line=$(printf '%s\n' "$out" | grep -E '^DRY hop: would invoke' | head -1)
+assert_contains "T21 arm command carries the exact handover path" "--handover '$TMP/real-handover.md'" "$arm_line"
+assert_not_contains "T21 no snapshot path in the output" "context-hop-" "$out"
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/real-handover.md" --print --dry-run 2>&1)
+assert_contains "T21 print mode loads the named handover" "load $TMP/real-handover.md" "$out"
+assert_not_contains "T21 print mode names no snapshot" "context-hop-" "$out"
+
+# T22: live --print with --handover writes NO snapshot.
+bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/real-handover.md" --print >/dev/null 2>&1
+snap_after=$(find "$TMP/handovers/$SLUG" -name 'context-hop-*.md' | wc -l)
+if [ "$snap_after" = "$snap_before" ]; then echo "PASS T22 live --handover wrote no snapshot"
+else echo "FAIL T22 snapshot count $snap_before -> $snap_after"; FAILED=$((FAILED + 1)); fi
+
+# T23: a nonexistent path is a usage error with ERR.
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/nope.md" --dry-run 2>&1)
+rc=$?
+assert_rc "T23 missing --handover file rc=1" 1 "$rc"
+assert_contains "T23 ERR names the flag" "ERR hop: --handover is not a file" "$out"
+
+# T24: --handover plus --message is rejected (no snapshot to carry the text).
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/real-handover.md" --message m --dry-run 2>&1)
+rc=$?
+assert_rc "T24 --handover with --message rc=1" 1 "$rc"
+assert_contains "T24 ERR explains" "ERR hop: --handover and --message are mutually exclusive" "$out"
+
+# T25: live schedule forwards the path to arm-resume (stub records argv).
+# shellcheck disable=SC2016 # the stub must expand its own vars
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "$STUB_ARGV"\n' > "$stubrepo/scripts/handover/arm-resume.sh"
+out=$(cd "$stubrepo" && STUB_ARGV="$TMP/argv.txt" bash "$HOP" --handover-root "$TMP/handovers/stub" --handover "$TMP/real-handover.md" 2>&1)
+rc=$?
+assert_rc "T25 --handover schedule rc=0" 0 "$rc"
+assert_contains "T25 arm-resume received the path" "$TMP/real-handover.md" "$(cat "$TMP/argv.txt" 2>/dev/null)"
+
 if [ "$FAILED" -gt 0 ]; then
     echo "---"
     echo "FAIL $FAILED case(s)"
