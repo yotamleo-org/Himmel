@@ -84,7 +84,7 @@ else
     trap 'rm -rf "$stub"' EXIT
     cat > "$stub/gh" <<'STUB'
 #!/usr/bin/env bash
-if [ "$1" = "api" ]; then cat "$JOBS_FIXTURE"; exit 0; fi
+if [ "$1" = "api" ]; then jq -c '.jobs[]' "$JOBS_FIXTURE"; exit 0; fi
 if [ "$1" = "run" ] && [ "$2" = "cancel" ]; then echo "$3" >> "$CANCEL_LOG"; exit 0; fi
 exit 1
 STUB

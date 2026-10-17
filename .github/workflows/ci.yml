@@ -169,14 +169,14 @@ jobs:
         run: |
           deadline=$((SECONDS + 5400))
           while [ "$SECONDS" -lt "$deadline" ]; do
-            if jobs="$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100")"; then
-              failed="$(jq '[.jobs[] | select(.conclusion == "failure")] | length' <<< "$jobs")"
+            if jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[]')"; then
+              failed="$(jq -s '[.[] | select(.conclusion == "failure" or .conclusion == "timed_out")] | length' <<< "$jobs")"
               if [ "$failed" -gt 0 ]; then
                 echo "a job failed; cancelling run $RUN_ID"
                 gh run cancel "$RUN_ID" || true
                 exit 0
               fi
-              pending="$(jq '[.jobs[] | select(.name != "pr-fail-fast" and .status != "completed")] | length' <<< "$jobs")"
+              pending="$(jq -s '[.[] | select(.name != "pr-fail-fast" and .status != "completed")] | length' <<< "$jobs")"
               [ "$pending" -eq 0 ] && exit 0
             fi
             sleep "${POLL_SECS:-15}"
