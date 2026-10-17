@@ -425,6 +425,47 @@ printf 'collections:\n  salus:\n    path: /x\nmodels:\n  openai_base_url: https:
 rc=0; out=$(run bash "$SCRIPT" set remote 2>&1) || rc=$?
 assert_rc "set remote on a config holding salus is refused by the egress gate" 2 "$rc"
 
+echo "== env-named remote model runs the gate (HIMMEL-5711)"
+# A recording node shim stands in for the gate: it logs its argv and exits $FAKE_GATE_RC.
+GSTUBS="$TMP_ROOT/gstubs"
+mkdir -p "$GSTUBS"
+cat >"$GSTUBS/node" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_GATE_LOG"
+exit "${FAKE_GATE_RC:-0}"
+EOF
+chmod +x "$GSTUBS/node"
+LOCAL_CFG="$(printf 'collections:\n  luna:\n    path: /x\nmodels:\n  embed: %s\n  rerank: r\n' "$GEMMA")"
+grun() { run env PATH="$GSTUBS:$STUBS:$PATH" FAKE_GATE_LOG="$H/gate.log" "$@"; }
+
+new_home 50
+printf '%s\n' "$LOCAL_CFG" >"$(CFG)"; before="$(cksum <"$(CFG)")"
+rc=0; out=$(grun env QMD_RERANK_MODEL=openai:x FAKE_GATE_RC=1 FAKE_VRAM=24564 bash "$SCRIPT" set qwen 2>&1) || rc=$?
+assert_rc "env remote model + gate refusal aborts the write" 2 "$rc"
+assert_rc "the gate ran for a local-only config" 1 "$(wc -l <"$H/gate.log" 2>/dev/null || echo 0)"
+assert_rc "the live config is byte-identical after the refusal" 0 "$([ "$before" = "$(cksum <"$(CFG)")" ] && echo 0 || echo 1)"
+for v in QMD_EMBED_MODEL QMD_GENERATE_MODEL; do
+    new_home "50$v"
+    printf '%s\n' "$LOCAL_CFG" >"$(CFG)"
+    rc=0; out=$(grun env "$v=openai:x" FAKE_GATE_RC=1 FAKE_VRAM=24564 bash "$SCRIPT" set qwen 2>&1) || rc=$?
+    assert_rc "$v naming openai: also runs the gate" 2 "$rc"
+done
+
+new_home 51
+printf '%s\n' "$LOCAL_CFG" >"$(CFG)"
+rc=0; out=$(grun env FAKE_GATE_RC=1 FAKE_VRAM=24564 bash "$SCRIPT" set qwen 2>&1) || rc=$?
+assert_rc "local config + clean environment skips the gate" 0 "$rc"
+if [ ! -s "$H/gate.log" ]; then pass "the gate shim was never called"; else fail "the gate shim was never called"; fi
+
+new_home 52
+make_index "$(IDX)" 768 "$GEMMA"
+printf '%s\n' "$LOCAL_CFG" >"$(CFG)"; chmod 000 "$(CFG)"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+chmod 600 "$(CFG)"
+assert_rc "reembed aborts when the config copy fails" 2 "$rc"
+assert_contains "the abort names the config copy" "could not copy the qmd config" "$out"
+assert_rc "the live config is untouched by the failed copy" 0 "$([ "$(cat "$(CFG)")" = "$LOCAL_CFG" ] && echo 0 || echo 1)"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
