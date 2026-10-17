@@ -619,3 +619,8 @@ test('matrix: cloud-route routes from the matrix it is given, not from code', ()
   assert.equal(two.class, 'LOCAL-NATIVE');
   assert.match(two.reason, /2 asks \(more than 1\)/);
 });
+
+test('matrix: a matrix with no match rows has no run-time need', () => {
+  const matrix = { rows: [{ id: 'note', state: 'does', evidence: 'x' }], max_asks: 3 };
+  assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh. It reads the luna vault.' }), ctx({ matrix })).class, 'CLOUD-OK');
+});

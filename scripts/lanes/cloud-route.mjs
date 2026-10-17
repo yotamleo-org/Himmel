@@ -49,7 +49,9 @@ let defaultMatrix;
 function needsOf(matrix) {
   if (!compiled.has(matrix)) {
     const rows = matrix.rows.filter((r) => r.match).map((r) => ({ ...r, re: new RegExp(r.match, 'iy') }));
-    compiled.set(matrix, { rows, re: new RegExp(rows.map((r) => r.match).join('|'), 'i'), max: matrix.max_asks });
+    // no match rows: a pattern that never matches, not the empty one that matches everything
+    const re = rows.length ? new RegExp(rows.map((r) => r.match).join('|'), 'i') : /(?!)/;
+    compiled.set(matrix, { rows, re, max: matrix.max_asks });
   }
   return compiled.get(matrix);
 }
