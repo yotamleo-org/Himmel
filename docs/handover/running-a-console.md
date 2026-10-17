@@ -609,6 +609,12 @@ bash scripts/handover/console-kit/vm-runner.sh status
   `DEAD` is variable on with no unit up; `STUCK` is a job running past its
   budget plus ten minutes. `console-wait.sh` wakes only on a move to `DEAD` or
   `STUCK`; answer with `status`, then `off` and a note to the operator.
+- With the variable `on`, `ci.yml` runs the `shell-unit-shard` matrix on the VM
+  runner for a same-repo `pull_request` whose author and actor are the operator
+  accounts; everything else (fork PRs, other authors, push, schedule, dispatch)
+  and the variable `off` or unset run on `ubuntu-latest`, with the required
+  check names unchanged. `scripts/ci/test-ci-vm-routing.sh` pins that
+  expression.
 - A classifier denial of one of these commands means the allow rule is missing
   or mismatched; see the stuck playbook, never reshape the command.
 

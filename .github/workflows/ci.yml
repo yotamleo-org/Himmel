@@ -1002,7 +1002,14 @@ jobs:
         # more shards isn't monotonically better — a duration-aware split is
         # the real fix (follow-up).
         shard: ${{ fromJSON(needs.plan.outputs.shards || '[1,2,3,4,5,6,7,8]') }}
-    runs-on: ${{ matrix.os }}
+    # HIMMEL-5641: a same-repo pull_request opened by an operator account runs on
+    # the himmel-vm self-hosted runner while the kill switch (repo variable
+    # HIMMEL_VM_RUNNER, set by vm-runner.sh on/off) is 'on'; everything else — a
+    # fork PR, any other author, push, schedule, dispatch, the switch off or
+    # unset — runs on matrix.os. Never pull_request_target. The accounts mirror
+    # scripts/vm/ci-runner/job-started-hook.sh, which refuses the rest anyway, so
+    # a job this expression would misroute fails there instead of running code.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('["self-hosted","himmel-vm"]') || matrix.os }}
     # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
     # non-cancelling concurrency group, so one hung shard queued every later
     # main run). The nightly SUITE_TIER_MODE=all legs are far slower than the
