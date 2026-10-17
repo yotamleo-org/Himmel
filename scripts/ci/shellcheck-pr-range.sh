@@ -81,6 +81,10 @@ sweep_all() {
   set -- "$sd"/bin.*
   [ -f "$1" ] || { rm -rf "$sd"; serial_sweep; }
   echo "shellcheck-pr-range: parallel full sweep over $# shards" >&2
+  # xargs splits past ~128 KB of arguments, which would cut a component across runs
+  for i in "$sd"/bin.*; do
+    [ "$(wc -c < "$i")" -le 100000 ] || { rm -rf "$sd"; serial_sweep; }
+  done
   for i in "$sd"/bin.*; do
     ( tr '\n' '\0' < "$i" | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
   done
@@ -131,8 +135,10 @@ trap 'rm -f "$dz" "$list" "$list.n"' EXIT
 # string spanning lines is not blanked, upgrade path is a real shell tokenizer.
 cmd_pos() {
   local l b
+  # a double-quoted span holding $( or a backtick is executable, so it is not blanked
+  local dq='s/"([^"\\$`]|\\.|\$[^("\\])*"/""/g'
   while IFS= read -r l; do
-    b=$(printf '%s\n' "$l" | sed -E "s/'[^']*'/''/g; s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g")
+    b=$(printf '%s\n' "$l" | sed -E "s/'[^']*'/''/g; $dq")
     printf '%s\n' "$b" | grep -qE -e "$src_re" && printf '%s\n' "$l"
   done
   return 0

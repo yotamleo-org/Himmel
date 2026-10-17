@@ -176,6 +176,12 @@ fi
 '; commit_case dyn_real
 verdict dyn_real ALL
 
+# dyn_cmdsub: a dynamic source inside a double-quoted command substitution is executable, not text
+reset; w scripts/zzc.sh '#!/usr/bin/env bash
+out="$(. "$lib")"
+'; commit_case dyn_cmdsub
+verdict dyn_cmdsub ALL
+
 # sweep_*: the non-dry fallback shards the full sweep in parallel through a stub pre-commit.
 # A stub shard fails when handed a file named *bad*; it records every invocation's file list.
 mkdir -p "$T/bin"
