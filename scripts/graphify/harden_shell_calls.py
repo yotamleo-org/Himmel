@@ -13,7 +13,8 @@
 #   $VAR / ${VAR} (incl. for VAR in ...)          -> every resolvable in-file
 #                                                   value of VAR (one edge each)
 #   a literal relative path                      -> corpus-root relative
-#   <unresolved>/a/b.sh (a sandbox copy)         -> the root's a/b.sh
+#   <unresolved>/a/b.sh (a sandbox copy)         -> the root's a/b.sh, as an
+#                                                   INFERRED edge
 # Anything else ($1, an env var, a path outside the root or with no file
 # node) is skipped and counted unresolved.
 # Comments and heredoc bodies are never read as commands, and a quoted
@@ -23,6 +24,7 @@ import posixpath
 import re
 
 ROOT = "/@root"
+TAIL = "/@tail"
 MAX_VALUES = 32
 CALL_WORDS = {"bash": "calls", "sh": "calls", "exec": "calls", "source": "sources", ".": "sources"}
 BASH_WORDS = {'"$BASH"': "bash", "$BASH": "bash", '"${BASH}"': "bash", "${BASH}": "bash"}
@@ -322,8 +324,8 @@ class _Resolver:
                 return set()
         res = set()
         for o in outs:
-            o = posixpath.normpath(o) if o.startswith(ROOT) else ""
-            if o == ROOT or o.startswith(ROOT + "/"):
+            o = posixpath.normpath(o) if o.startswith((ROOT, TAIL)) else ""
+            if o == ROOT or o.startswith((ROOT + "/", TAIL + "/")):
                 res.add(o)
         return res
 
@@ -367,7 +369,7 @@ def _repo_tail(tail):
     parts = tail.split("/")
     if not tail.startswith("/") or "$" in tail or "`" in tail or len(parts) < 3 or ".." in parts or "" in parts[1:]:
         return set()
-    return {ROOT + tail}
+    return {TAIL + tail}
 
 
 def _match_pair(text, i, opener, closer):
@@ -428,8 +430,8 @@ def scan_file(src):
                     calls.append(("calls", rest[0], line))
                 break
             args = rest[1:]
-            while args and args[0].startswith("-") and args[0] not in ("-c",):
-                args = args[1:]
+            while args and args[0][:1] in "-+" and args[0] != "-c":
+                args = args[2 if args[0] in ("-o", "+o", "-O", "+O", "-a") else 1:]
             if not args or args[0] == "-c":
                 break
             if rest[0] == "exec" and args[0] in CALL_WORDS:
@@ -458,17 +460,22 @@ def find_shell_edges(nodes, root):
         assigns, calls = scan_file(src)
         resolver = _Resolver(sf, assigns)
         for relation, word, line in calls:
-            tgt_ids = {by_path.get(t[len(ROOT) + 1:]) for t in resolver.word(word)} - {None}
-            if not tgt_ids:
+            targets = {}
+            for t in resolver.word(word):
+                tgt_id = by_path.get(t[len(ROOT) + 1:])
+                if tgt_id is not None:
+                    targets[tgt_id] = targets.get(tgt_id) or t.startswith(ROOT + "/")
+            if not targets:
                 unresolved += 1
-            for tgt_id in sorted(tgt_ids - {src_id}):
+            for tgt_id in sorted(set(targets) - {src_id}):
+                extracted = targets[tgt_id]
                 edges.append(
                     {
                         "source": src_id,
                         "target": tgt_id,
                         "relation": relation,
-                        "confidence": "EXTRACTED",
-                        "confidence_score": 1.0,
+                        "confidence": "EXTRACTED" if extracted else "INFERRED",
+                        "confidence_score": 1.0 if extracted else 0.8,
                         "source_file": sf,
                         "source_location": f"L{line}",
                         "weight": 1.0,
