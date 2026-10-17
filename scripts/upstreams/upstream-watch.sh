@@ -581,7 +581,7 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
     // A path that does not exist here (or any stat error) means "not this
     // entry", never a fatal error.
     function ident(p) {
-        try { const st = fs.statSync(p); return st.dev + ":" + st.ino; }
+        try { const st = fs.statSync(p, { bigint: true }); return st.dev + ":" + st.ino; }
         catch (err) { return null; }
     }
     const targetId = ident(e.HROOT);
