@@ -153,7 +153,7 @@ export function homeVerdict(
 ): PlainVerdict {
   const missing: string[] = [];
   if (!home.sector) missing.push(`no Sector (pass --sector "<${SECTORS.join(' | ')}>")`);
-  const standalone = (home.labels ?? []).some((l) => l.toLowerCase() === STANDALONE_LABEL);
+  const standalone = (home.labels ?? []).includes(STANDALONE_LABEL);
   if (!home.parent && !standalone)
     missing.push(
       `neither a parent epic nor the ${STANDALONE_LABEL} label (pass --parent <EPIC-KEY> or --labels ${STANDALONE_LABEL})`,

@@ -166,7 +166,9 @@ describe('homeVerdict (HIMMEL-6223)', () => {
 
   it('passes with a Sector and a parent, or with a Sector and the standalone label', () => {
     expect(homeVerdict('Task', home).action).toBe('ok');
-    expect(homeVerdict('Task', { sector: 'Ship loop', labels: ['a', 'Standalone'] }).action).toBe('ok');
+    expect(homeVerdict('Task', { sector: 'Ship loop', labels: ['a', 'standalone'] }).action).toBe('ok');
+    // Jira labels are case-sensitive, so a differently cased label is a different label.
+    expect(homeVerdict('Task', { sector: 'Ship loop', labels: ['Standalone'] }).action).toBe('refuse');
   });
 
   it('only warns for an Epic or Subtask with neither', () => {
