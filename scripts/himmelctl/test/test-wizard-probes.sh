@@ -758,6 +758,27 @@ echo "$outSK1hC2" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "settings-key verifyHudConfig (HIMMEL-3739): unparsable legacy file must degrade too (got: $outSK1hC2)"
 echo "ok: settings-key verifyHudConfig (HIMMEL-3739) — legacy base merged under the new-path override, broken file never masked"
 
+# A safe-key-only config beyond the renderer's nesting bound still degrades.
+sk1h_cfgdir_deep="$work/sk1h-cfg-deep"; mkdir -p "$sk1h_cfgdir_deep"
+sk1h_nested='true'
+for _sk1h_level in 1 2 3 4 5 6 7 8; do
+  sk1h_nested=$(printf '{"nested":%s}' "$sk1h_nested")
+done
+printf '{"extra":%s,"display":{"customLineCommand":"echo deep"}}' "$sk1h_nested" > "$sk1h_cfgdir_deep/claude-hud.json"
+outSK1hDeep=$(sk1h_probe "$sk1h_cfgdir_deep")
+echo "$outSK1hDeep" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyHudConfig: config nested nine levels deep must degrade (got: $outSK1hDeep)"
+echo "ok: settings-key verifyHudConfig — nesting beyond the renderer bound degrades"
+
+# A non-object legacy config must not be masked by a valid override.
+sk1h_cfgdir_array="$work/sk1h-cfg-array"; mkdir -p "$sk1h_cfgdir_array/plugins/claude-hud"
+printf '[]' > "$sk1h_cfgdir_array/plugins/claude-hud/config.json"
+printf '{"display":{"customLineCommand":"echo override"}}' > "$sk1h_cfgdir_array/claude-hud.json"
+outSK1hArray=$(sk1h_probe "$sk1h_cfgdir_array")
+echo "$outSK1hArray" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyHudConfig: array legacy config under a valid override must degrade (got: $outSK1hArray)"
+echo "ok: settings-key verifyHudConfig — non-object legacy config degrades despite valid override"
+
 # Unsafe own keys invalidate the whole file, including unknown sections and arrays.
 for sk1h_unsafe_key in __proto__ prototype constructor; do
   for sk1h_unsafe_shape in top display array; do
