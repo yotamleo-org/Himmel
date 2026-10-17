@@ -297,9 +297,9 @@ want=$(printf 'himmel-verdict-v1|a|b' | openssl dgst -sha256 -mac HMAC -macopt "
 [ "$(pin_mac go_msg_mac himmel-verdict-v1 'a|b')" = "$want" ] || fail "6b: go_msg_mac is not HMAC-SHA256 over <domain>|<msg>"
 # 6c. Domains are separate: a verdict mac never equals a GO mac, whatever the message.
 v=$(pin_mac go_msg_mac himmel-verdict-v1 "o/r|92|$PINSHA")
-[ -n "$v" ] && [ "$v" != "$(pin_mac go_mac 92 "$PINSHA" o/r)" ] || fail "6c: a verdict mac equals a GO mac"
+if ! { [ -n "$v" ] && [ "$v" != "$(pin_mac go_mac 92 "$PINSHA" o/r)" ]; }; then fail "6c: a verdict mac equals a GO mac"; fi
 g=$(pin_mac go_msg_mac himmel-go-v2 "o/r|92|$PINSHA")
-[ "$g" = "$(pin_mac go_mac 92 "$PINSHA" o/r)" ] && [ "$g" != "$v" ] || fail "6c: the GO domain via go_msg_mac does not stay distinct from the verdict domain"
+if ! { [ "$g" = "$(pin_mac go_mac 92 "$PINSHA" o/r)" ] && [ "$g" != "$v" ]; }; then fail "6c: the GO domain via go_msg_mac does not stay distinct from the verdict domain"; fi
 # 6d. Only the verdict domain is accepted for a verdict mac; empty domain or msg refuses; no key fails closed.
 rc=0; pin_mac go_msg_mac '' x >/dev/null 2>&1 || rc=$?; [ "$rc" -ne 0 ] || fail "6d: an empty domain was signed"
 rc=0; pin_mac go_msg_mac himmel-verdict-v1 '' >/dev/null 2>&1 || rc=$?; [ "$rc" -ne 0 ] || fail "6d: an empty message was signed"
