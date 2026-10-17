@@ -22,9 +22,9 @@ reason_carried (every reason phrase appears in the arm's output; only questions
 with a reason count), tokens (output chars / 4: what the caller has to read),
 ms (wall time). A question row is {id, kind, q, gold: [paths], reason: [phrases]}.
 
-qmd is reached the way agents reach it: the MCP daemon (QMD_URL, default
+qmd is reached the way agents reach it: the MCP server (QMD_URL, default
 http://localhost:8181/mcp, bearer token from the qmd plugin's helper). The
-CLI is not used for the vec arm because it runs without the daemon's API key.
+CLI is not used for the vec arm because it runs without the server's API key.
 Seams: RETRIEVAL_EVAL_QMD_CMD (stdin: the query arguments as JSON; stdout: a
 JSON list of {file, snippet}) and RETRIEVAL_EVAL_GRAPH_CMD (called with
 `query <q>`, prints graphify's NODE lines).
@@ -132,7 +132,7 @@ def arm_grep(q, repo, timeout, k):
 
 @functools.lru_cache(maxsize=None)
 def qmd_token():
-    """The daemon's bearer token, read once per run."""
+    """The qmd bearer token, read once per run."""
     helper = os.path.join(HERE, "..", "..", "..", "marketplace", "plugins", "qmd", "scripts", "qmd-auth-headers.sh")
     try:
         return subprocess.run(["bash", helper, "--token"], capture_output=True, text=True, timeout=10).stdout.strip()
@@ -160,7 +160,7 @@ def _mcp_post(url, body, headers, timeout):
 
 
 def qmd_daemon(args, timeout):
-    """One MCP query against the daemon -> list of {file, snippet}. The whole exchange shares one deadline."""
+    """One MCP query against the qmd server -> list of {file, snippet}. The whole exchange shares one deadline."""
     end = time.time() + timeout
     left = lambda: max(0.1, end - time.time())  # noqa: E731
     url = os.environ.get("QMD_URL", "http://localhost:8181/mcp")
@@ -220,7 +220,7 @@ def arm_qmd(q, hybrid, timeout, k, collection):
     else:
         try:
             rows = qmd_daemon(args, timeout)
-        except Exception as e:  # a timeout or a dead daemon is a scored miss, not a crash
+        except Exception as e:  # a timeout or a dead server is a scored miss, not a crash
             to = "timed out" in str(e).lower() or isinstance(e, TimeoutError)
             return [], "", to, not to
     files, text = [], []
