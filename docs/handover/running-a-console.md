@@ -212,7 +212,8 @@ a profiled worker session's system prompt starts with a repo map: the files of
 the leg's repo ranked by PageRank over its primary checkout's
 `graphify-out/graph.json`, each with its most-referenced symbols, capped at
 `LEG_REPO_MAP_TOKENS` (default 2000) tokens. It is built by
-`scripts/graphify/repo-map.py`; with no graph the worker session launches without it and
+`scripts/graphify/repo-map.py`; with no graph, or a generator still running after
+`LEG_REPO_MAP_TIMEOUT` (default 30) seconds, the worker session launches without it and
 the launch log says so. It stays off because the A/B on the K7 questions
 (HIMMEL-6142) showed no gain: 15/15 answers found with and without it, at the
 same token cost.
