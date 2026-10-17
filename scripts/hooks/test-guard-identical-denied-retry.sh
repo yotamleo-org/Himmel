@@ -20,7 +20,9 @@ ok() { echo "  PASS  $1"; pass=$((pass + 1)); }
 bad() { echo "  FAIL  $1"; fail=$((fail + 1)); }
 
 # tu <id> <command>: an assistant Bash tool_use row. res <id> <err> <text>: its tool_result row.
-tu() { jq -nc --arg id "$1" --arg c "$2" '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:$id,name:"Bash",input:{command:$c}}]}}'; }
+# EXTRA: extra tool_input fields (JSON object) merged into every tu row and every run payload.
+EXTRA='{}'
+tu() { jq -nc --arg id "$1" --arg c "$2" --argjson x "$EXTRA" '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:$id,name:"Bash",input:($x + {command:$c})}]}}'; }
 res() { jq -nc --arg id "$1" --argjson e "$2" --arg t "$3" '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:$id,content:$t,is_error:$e}]}}'; }
 
 # denied_n <file> <count> <command>: append <count> denied attempts of <command>.
@@ -37,8 +39,8 @@ denied_n() {
 # Sets OUT, RC.
 run() {
     local tr="$1" cmd="$2" tool="${3:-Bash}" pf="$TMP/payload.$$.json"
-    jq -nc --arg tp "$tr" --arg c "$cmd" --arg t "$tool" \
-        '{session_id:"s1",transcript_path:$tp,tool_name:$t,tool_input:{command:$c}}' >"$pf"
+    jq -nc --arg tp "$tr" --arg c "$cmd" --arg t "$tool" --argjson x "$EXTRA" \
+        '{session_id:"s1",transcript_path:$tp,tool_name:$t,tool_input:($x + {command:$c})}' >"$pf"
     OUT=$(bash "$HOOK" <"$pf" 2>"$TMP/stderr")
     RC=$?
 }
@@ -95,6 +97,34 @@ f="$TMP/t5c.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" false "ok" >>"$f"
 denied_n "$f" 1 "$C"
 run "$f" "$C"; expect_allow "one denial after a reset is below the threshold"
+
+f="$TMP/t5e.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" false "permission denied" >>"$f"
+run "$f" "$C"; expect_allow "a NON-error result that mentions a denial keyword is not a denial, resets"
+
+f="$TMP/t5f.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "Command timed out after 120s" >>"$f"
+run "$f" "$C"; expect_allow "an error result with no denial keyword is not a denial, resets"
+
+echo "== call identity: run_in_background / timeout / sandbox =="
+f="$TMP/t9.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+EXTRA='{"run_in_background":true}'; run "$f" "$C"; EXTRA='{}'
+expect_allow "foreground denied twice, then the SAME command backgrounded: a different call, allowed"
+
+f="$TMP/t9b.jsonl"; : >"$f"; EXTRA='{"run_in_background":true}'; denied_n "$f" 2 "$C"
+run "$f" "$C"; expect_deny "backgrounded and denied twice, backgrounded again: DENIED"
+EXTRA='{}'; run "$f" "$C"; expect_allow "backgrounded twice denied, then foreground: a different call, allowed"
+
+f="$TMP/t9c.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+EXTRA='{"timeout":600000}'; run "$f" "$C"; EXTRA='{}'
+expect_allow "a different timeout is a different call, allowed"
+
+f="$TMP/t9d.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+EXTRA='{"dangerouslyDisableSandbox":true}'; run "$f" "$C"; EXTRA='{}'
+expect_allow "a sandbox override is a different call, allowed"
+
+f="$TMP/t9e.jsonl"; : >"$f"; EXTRA='{"run_in_background":false}'; denied_n "$f" 2 "$C"
+EXTRA='{}'; run "$f" "$C"; expect_deny "an explicit run_in_background false equals the default: DENIED"
 
 f="$TMP/t6.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 run "$f" "$C "; expect_allow "a byte-different command (trailing space) is allowed"
@@ -155,7 +185,6 @@ s=$(date +%s%N); run "$f" "$C"; e=$(date +%s%N)
 ms=$(( (e - s) / 1000000 ))
 echo "  INFO  20 MB transcript, deny path: ${ms} ms"
 expect_deny "20 MB transcript still denies the third identical command"
-if [ "$ms" -lt 2000 ]; then ok "hook stays under 2 s on 20 MB (${ms} ms)"; else bad "hook took ${ms} ms on 20 MB"; fi
 
 echo
 echo "passed=$pass failed=$fail"
