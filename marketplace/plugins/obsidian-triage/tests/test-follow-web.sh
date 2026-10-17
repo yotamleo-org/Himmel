@@ -633,6 +633,20 @@ r = await w("q miss");
 console.log("MISS_FALLS_TO_FIRECRAWL=" + (hits.deepseek.length === 1 && hits.firecrawl === 1 && r.url === "https://fc.example/acme"));
 dsMode = "hit";
 
+// a free rung that hits keeps DeepSeek and Firecrawl untouched
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT,
+  FOLLOW_WEB_CLI: "bash", FOLLOW_WEB_CLI_ARGS: process.env.T_GOODCLI });
+r = await w("q free hit");
+console.log("FREE_HIT_SKIPS_DEEPSEEK=" + (hits.deepseek.length === 0 && hits.firecrawl === 0 && r.found === true));
+
+// a free rung that misses: DeepSeek next, Firecrawl untouched on a DeepSeek hit
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT,
+  FOLLOW_WEB_CLI: "bash", FOLLOW_WEB_CLI_ARGS: process.env.T_BADCLI });
+r = await w("q free miss");
+console.log("FREE_MISS_TO_DEEPSEEK=" + (hits.deepseek.length === 1 && hits.firecrawl === 0 && r.url === "https://acme.dev"));
+
 // salus vault (.salus marker): refused even when opted in; no DeepSeek traffic
 reset();
 w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_SALUS });
@@ -674,8 +688,8 @@ console.log("LEDGER_ROW=" + (rows.length >= 1 && rows[0].endpoint === "/v1/tools
 console.log("NO_SECRET_LOGGED=" + (!JSON.stringify(rows).includes("ds-secret-key") && !errs.join("\n").includes("ds-secret-key") && !JSON.stringify(rows).includes("q optin")));
 srv.close();
 EOF
-out13="$(T_HOME="$tmpdir/home13" T_LEDGER="$tmpdir/ledger13.jsonl" T_PARKED="$tmpdir/parked13.jsonl" T_GLM="$tmpdir/glm" T_VAULT="$tmpdir/vault" T_SALUS="$tmpdir/salusvault" node "$tmpdir/deepseek.mjs" 2>&1)"
-for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER MISS_FALLS_TO_FIRECRAWL SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
+out13="$(T_HOME="$tmpdir/home13" T_LEDGER="$tmpdir/ledger13.jsonl" T_PARKED="$tmpdir/parked13.jsonl" T_GLM="$tmpdir/glm" T_VAULT="$tmpdir/vault" T_SALUS="$tmpdir/salusvault" T_GOODCLI="$tmpdir/good-cli.sh" T_BADCLI="$tmpdir/garbage-cli.sh" node "$tmpdir/deepseek.mjs" 2>&1)"
+for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER FREE_HIT_SKIPS_DEEPSEEK FREE_MISS_TO_DEEPSEEK MISS_FALLS_TO_FIRECRAWL SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
     grep -q "^$k=true" <<<"$out13" && r=yes || r=no
     assert "deepseek: $k" yes "$r"
 done
