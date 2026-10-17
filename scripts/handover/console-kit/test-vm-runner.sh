@@ -47,6 +47,7 @@ EOF
 cat > "$TMP/bin/journalctl" <<'EOF'
 #!/usr/bin/env bash
 for a in "$@"; do case "$a" in himmel-ci-runner@*) n="${a##*@}"; n="${n%.service}" ;; esac; done
+[ ! -e "$STUB/journal-fail-$n" ] || exit 1
 cat "$STUB/journal-$n" 2>/dev/null
 exit 0
 EOF
@@ -159,7 +160,7 @@ reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
 # unit 1 has a registered, unfinished runner: GitHub must show it online
-journal 1 60 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+journal 1 200 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
 [ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "2 units up, 1 runner online -> ok:2/2" || bad "agree -> $(run status --tick)"
 rm -f "$TMP/state/tick-vmrun-cache"
 [ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "2 units up, 0 runners online -> DISAGREE" || bad "disagree -> $(GH_ONLINE=0 run status --tick)"
@@ -191,6 +192,27 @@ rm -f "$TMP/state/tick-vmrun-cache"
 journal 1 100 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
 journal 1 50 "ci-runner: runner 4242 done (rc=0)"
 [ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "a finished runner with 0 online -> not DISAGREE" || bad "finished runner -> $(GH_ONLINE=0 run status --tick)"
+
+echo "T6c registration grace and an unreadable journal (HIMMEL-6034 slice 2)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+journal 1 20 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(GH_ONLINE=0 run status --tick)" = "ok:2/2,busy=0" ] && ok "a runner registered 20 s ago with 0 online -> ok (still connecting)" || bad "fresh registration -> $(GH_ONLINE=0 run status --tick)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+journal 1 106 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "registered past CACHE_TTL+60 s with 0 online -> DISAGREE" || bad "old registration -> $(GH_ONLINE=0 run status --tick)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+: > "$TMP/stub/journal-fail-1"
+[ "$(run status --tick)" = FAILING ] && ok "an active unit whose journalctl exits non-zero -> FAILING" || bad "unreadable journal -> $(run status --tick)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+[ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "journalctl ok with no ci-runner lines yet -> not FAILING" || bad "empty journal -> $(run status --tick)"
 
 echo "T7 status prints the units and the last error"
 reset
