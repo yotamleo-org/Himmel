@@ -634,12 +634,16 @@ check "RED17 control: a pre-existing empty hooks object survives uninstall" \
 new_case red17n
 printf '{"hooks":null}\n' > "$CASE_SETTINGS"
 bash "$lib/wire-pretooluse-hooks.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+check "RED17 HIMMEL-3490 precondition: the wire populated the hooks container" \
+  "$(jq -r '.hooks | type' "$CASE_SETTINGS")" 'object'
 run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
 check "RED17 HIMMEL-3490: an explicit hooks null is restored to null after uninstall" \
   "$(jq -c 'if has("hooks") then .hooks else "ABSENT" end' "$CASE_SETTINGS")" 'null'
 new_case red17e
 printf '{"env":null}\n' > "$CASE_SETTINGS"
 bash "$lib/wire-himmel-repo.sh" "$CASE_SETTINGS" "C:/fake/himmel" >/dev/null
+check "RED17 HIMMEL-3490 precondition: the wire populated the env container" \
+  "$(jq -r '.env.HIMMEL_REPO // "ABSENT"' "$CASE_SETTINGS")" 'C:/fake/himmel'
 run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks >/dev/null
 check "RED17 HIMMEL-3490: an explicit env null is restored to null after uninstall" \
   "$(jq -c 'if has("env") then .env else "ABSENT" end' "$CASE_SETTINGS")" 'null'
