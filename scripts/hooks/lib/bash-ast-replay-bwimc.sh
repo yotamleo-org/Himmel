@@ -111,6 +111,6 @@ case "${1:-}" in
             cwd=$(printf '%s' "$line" | jq -r '.cwd // empty')
             [ -d "$cwd" ] || cwd=/
             ( cd "$cwd" && bwimc_replay_row corpus "$(printf '%s' "$line" | jq -r '.label // "-"')" "$GUARD" "$line" )
-        done < "$2" ;;
+        done < "$2" ;; # read-sink-ok: an operator-run replay of a corpus file it names; rows only feed the guard
     *) echo "usage: bash-ast-replay-bwimc.sh --sync | --check | --table LOG | --corpus FILE" >&2; exit 64 ;;
 esac
