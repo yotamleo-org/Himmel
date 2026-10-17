@@ -49,9 +49,9 @@ missing="$(awk '
   END { for (i = 1; i <= n; i++) if (!(w[i] in have)) { d = disp[i]; sub(/_/, " ", d); printf "%s%s", (c++ ? ", " : ""), d } }
 ' "$draft")" || { echo "ticket-standard-check: could not parse '$draft' (awk failed); draft not checked" >&2; exit 2; }
 
-# A CI/guard/stability ticket (by label) must name the scorecard metric it moves: a real "Metric:" line.
-if grep -Eiq '^[[:space:]]*Labels:.*(^|[:,[:space:]])(ci|guard|stability|flake)(-[a-z0-9-]+)?([,[:space:]]|$)' "$draft"; then
-  metric="$(sed -n 's/^[[:space:]]*[Mm]etric:[[:space:]]*//p' "$draft" | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:].]*$//')"
+# A CI/guard/guardrail/stability ticket (by label) must name the scorecard metric it moves: a real "Metric:" line (bare, bulleted, bold, any case).
+if grep -Eiq '^[[:space:]]*Labels:.*(^|[:,[:space:]])(ci|guard|guardrail|stability|flake)(-[a-z0-9-]+)?([,[:space:]]|$)' "$draft"; then
+  metric="$(sed -nE 's/^[[:space:]]*([-*+][[:space:]]+)?(\*\*|__)?[Mm][Ee][Tt][Rr][Ii][Cc](\*\*|__)?:(\*\*|__)?[[:space:]]*//p' "$draft" | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:].]*$//')"
   case "$metric" in
     ''|tbd|tbc|todo|n/a|na|none|...|'?'*|-*|'<'*'>') missing="${missing:+$missing, }Metric (name the stability-scorecard metric this ticket moves)" ;;
   esac

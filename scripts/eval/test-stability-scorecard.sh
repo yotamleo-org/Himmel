@@ -67,8 +67,37 @@ check "foreign header is refused" "$rc" 1
 
 printf '#!/usr/bin/env bash\ncase "$1" in -l) [ -f "%s/tab" ] && cat "%s/tab" || { echo "no crontab for x" >&2; exit 1; };; -) cat >"%s/tab";; esac\n' "$td" "$td" "$td" >"$td/crontab"
 export SCORECARD_CRONTAB="bash $td/crontab" SCORECARD_RUNNER_DIR="$td/runner"
-bash "$tool" arm --dry-run | grep -q "HIMMEL-StabilityScorecard" && ok "arm --dry-run names the task" || bad "arm --dry-run names the task"
+HANDOVER_DIR="$td/ho" USER_SLUG=tester bash "$tool" arm --dry-run | grep -q "HIMMEL-StabilityScorecard" && ok "arm --dry-run names the task" || bad "arm --dry-run names the task"
 [ ! -f "$td/tab" ] && ok "dry-run installs nothing" || bad "dry-run installs nothing"
+
+printf 'MAILTO=x\n\n0 1 * * * other-job\n' >"$td/tab"
+HANDOVER_DIR="" USER_SLUG=tester bash "$tool" arm >/dev/null 2>&1; rc=$?
+check "arm refuses an empty HANDOVER_DIR" "$rc" 1
+HANDOVER_DIR="$td/ho" USER_SLUG="" USER="" bash "$tool" arm >/dev/null 2>&1; rc=$?
+check "arm refuses an empty USER_SLUG" "$rc" 1
+check "refused arm leaves the crontab alone" "$(wc -l <"$td/tab" | tr -d ' ')" 3
+[ ! -f "$td/runner/stability-scorecard.sh" ] && ok "refused arm writes no runner" || bad "refused arm writes no runner"
+
+HANDOVER_DIR="$td/ho" USER_SLUG=tester bash "$tool" arm >/dev/null 2>&1; rc=$?
+check "arm exits 0" "$rc" 0
+grep -q '^USER_SLUG=tester$' "$td/runner/stability-scorecard.sh" && ok "runner freezes USER_SLUG" || bad "runner freezes USER_SLUG"
+grep -q '^HANDOVER_DIR=' "$td/runner/stability-scorecard.sh" && ok "runner freezes HANDOVER_DIR" || bad "runner freezes HANDOVER_DIR"
+check "arm installs one entry" "$(grep -c 'HIMMEL-StabilityScorecard' "$td/tab")" 1
+check "arm keeps the other job and the blank line" "$(grep -c -e 'other-job' -e '^$' "$td/tab")" 2
+bash "$tool" status | grep -q '^ARMED' && ok "status reads ARMED" || bad "status reads ARMED"
+HANDOVER_DIR="$td/ho" USER_SLUG=tester bash "$tool" arm >/dev/null 2>&1; rc=$?
+check "arm twice refuses" "$rc" 3
+HANDOVER_DIR="$td/ho" USER_SLUG=tester bash "$tool" arm --force --hour 7 >/dev/null 2>&1; rc=$?
+check "arm --force exits 0" "$rc" 0
+check "arm --force replaces, never duplicates" "$(grep -c 'HIMMEL-StabilityScorecard' "$td/tab")" 1
+grep -q '^20 7 ' "$td/tab" && ok "arm --force takes the new hour" || bad "arm --force takes the new hour"
+check "arm --force keeps the blank line" "$(grep -c '^$' "$td/tab")" 1
+bash "$tool" disarm >/dev/null 2>&1; rc=$?
+check "disarm exits 0" "$rc" 0
+check "disarm removes the entry" "$(grep -c 'HIMMEL-StabilityScorecard' "$td/tab")" 0
+check "disarm keeps the other job" "$(grep -c 'other-job' "$td/tab")" 1
+[ ! -f "$td/runner/stability-scorecard.sh" ] && ok "disarm removes the runner" || bad "disarm removes the runner"
+bash "$tool" status | grep -q '^not armed' && ok "status reads not armed" || bad "status reads not armed"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1
