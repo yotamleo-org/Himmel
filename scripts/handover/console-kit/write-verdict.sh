@@ -249,6 +249,7 @@ if [ "$ANSWER" = NO-GO ]; then
     fi
 fi
 # a class set naming other must say why: exactly one non-empty class-reason line.
+classes=${classes//$'\n'/,}
 if [[ ,$classes, =~ [,[:blank:]]other[,[:blank:]] ]]; then
     cr_byte=$(printf '\r')
     if [ "$(grep -c '^class-reason:' "$EVIDENCE")" != 1 ] || ! grep -q "^class-reason:[[:blank:]]*[^[:blank:]$cr_byte]" "$EVIDENCE"; then
