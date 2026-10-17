@@ -37,7 +37,8 @@ transcript=${fields#*$'\t'}
 [ "$tool" = "Bash" ] || exit 0
 [ -n "$transcript" ] && [ -r "$transcript" ] && [ -f "$transcript" ] || exit 0
 
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0 # swallow-ok: fail-open hook, an unparseable payload allows
+cmd=$(printf '%s' "$input" | jq -j '(.tool_input.command // empty), "x"' 2>/dev/null) || exit 0 # swallow-ok: fail-open hook, an unparseable payload allows
+cmd=${cmd%x}
 [ -n "$cmd" ] || exit 0
 
 count=$(

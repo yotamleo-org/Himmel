@@ -93,6 +93,15 @@ run "$f" "$C"; expect_allow "one denial after a reset is below the threshold"
 f="$TMP/t6.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 run "$f" "$C "; expect_allow "a byte-different command (trailing space) is allowed"
 
+f="$TMP/t6b.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+run "$f" "$C
+"; expect_allow "a byte-different command (trailing newline) is allowed"
+
+f="$TMP/t6c.jsonl"; : >"$f"; denied_n "$f" 2 "$C
+"
+run "$f" "$C
+"; expect_deny "a repeated command that ends in a newline still matches itself"
+
 f="$TMP/t7.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 run "$f" "$C" Read; expect_allow "a non-Bash tool is allowed"
 
