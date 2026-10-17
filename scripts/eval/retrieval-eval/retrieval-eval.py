@@ -36,6 +36,7 @@ Stdlib only.
 """
 import argparse
 import datetime
+import functools
 import glob
 import json
 import os
@@ -129,7 +130,9 @@ def arm_grep(q, repo, timeout, k):
     return files, "\n".join(text), to, err
 
 
+@functools.lru_cache(maxsize=None)
 def qmd_token():
+    """The daemon's bearer token, read once per run."""
     helper = os.path.join(HERE, "..", "..", "..", "marketplace", "plugins", "qmd", "scripts", "qmd-auth-headers.sh")
     try:
         return subprocess.run(["bash", helper, "--token"], capture_output=True, text=True, timeout=10).stdout.strip()
@@ -249,7 +252,9 @@ def fuse(lists, k):
 
 
 def is_hit(files, gold):
-    return any(f == g or f.endswith("/" + g) for f in files for g in gold)
+    """qmd lowercases its paths, so compare case-insensitively."""
+    fl, gl = [f.lower() for f in files], [g.lower() for g in gold]
+    return any(f == g or f.endswith("/" + g) for f in fl for g in gl)
 
 
 def carried(text, reason):
@@ -334,7 +339,7 @@ def cmd_run(a):
                                 error=bool(err))
         for arm in arms:
             g = got[arm]
-            row = dict(id=q["id"], kind=q.get("kind"), arm=arm, files=g["files"],
+            row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), arm=arm, files=g["files"],
                        hit=is_hit(g["files"], q["gold"]), reason=carried(g["_text"], q.get("reason", [])),
                        tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"])
             rows.append(row)

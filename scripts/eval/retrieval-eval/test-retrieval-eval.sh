@@ -51,6 +51,7 @@ case "$in" in
 *sleep*) sleep 5 ;;
 *orphan*) sleep 30 & echo $! > "$(dirname "$0")/child.pid"; wait ;;
 *broken*) echo 'backend down' >&2; exit 3 ;;
+*casefold*) printf '[{"file":"qmd://himmel/claude.md","snippet":"rules"}]\n' ;;
 *) printf '[{"file":"qmd://himmel/bin/run.sh","snippet":"relay_batch"}]\n' ;;
 esac
 EOF
@@ -120,6 +121,18 @@ eq "MCP results parse" "ok" "$(mcp '{"result":{"structuredContent":{"results":[]
 # 8f. the recall column names the --k cutoff.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/out6" --arms grep --k 3 > /dev/null 2>&1
 eq "recall column follows --k" "recall@3" "$(head -1 "$W/out6/scores.tsv" | cut -f3)"
+
+# 8g. qmd lowercases paths: qmd://himmel/claude.md is a hit for gold CLAUDE.md; the row keeps the question's src.
+printf '{"id":"q7","kind":"where","src":"selfq","q":"casefold rules","gold":["CLAUDE.md"],"reason":[]}\n' > "$W/q7.jsonl"
+py "$EV" run --repo "$R" --questions "$W/q7.jsonl" --out "$W/out7" --arms qmd-lex > /dev/null 2>&1
+eq "lowercased qmd path hits a mixed-case gold" "True selfq" "$(py -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(r["hit"], r.get("src"))' "$W/out7/results.jsonl")"
+
+# 8h. the qmd token helper runs once per run, not once per query.
+eq "qmd token fetched once" "1" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+n = []
+m.subprocess.run = lambda *a, **k: n.append(1) or type("R", (), {"stdout": "t"})()
+m.qmd_token(); m.qmd_token(); print(len(n))' "$EV")"
 
 # 9. usage errors.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/o9" --arms nosuch > /dev/null 2>&1
