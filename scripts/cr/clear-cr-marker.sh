@@ -152,6 +152,9 @@ chokepoint_seam_guard scripts/cr/clear-cr-marker.sh || exit 96
 # clean verdict from the fake's content. Disable replacement so resolution
 # always uses the real object.
 export GIT_NO_REPLACE_OBJECTS=1
+# Grafts (.git/info/grafts or an exported GIT_GRAFT_FILE) rewrite parentage
+# the same way; point git at a file that cannot exist so none is ever read.
+export GIT_GRAFT_FILE=/nonexistent/himmel-no-grafts
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECK_CI="$SCRIPT_DIR/../check-ci.sh"

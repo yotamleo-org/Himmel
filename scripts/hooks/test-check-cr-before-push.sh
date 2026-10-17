@@ -1979,6 +1979,75 @@ else
     fail "replace-ref: expected rc=2 or a 'full' marker" "rc=$rc marker-exists=$([ -f "$rr_marker" ] && echo yes || echo no) lane=$rr_lane out: $out"
 fi
 
+# graft forgery -- like refs/replace, but through
+# .git/info/grafts or an exported GIT_GRAFT_FILE. The pusher grafts origin's
+# real tip X onto an unrelated root A that holds the unreviewed code, so the
+# merge-base of X and the pushed tip B becomes A and the diff shows only B's
+# handover-only tail. No ref is forged and no object is replaced.
+echo "TEST: HIMMEL-3736 -- a graft on the origin tip cannot hide code from the diff (info/grafts and GIT_GRAFT_FILE)"
+GF_ORIGIN="$TMP_ROOT/gf-origin.git"
+git init -q --bare -b main "$GF_ORIGIN"
+GF_SEED="$TMP_ROOT/gf-seed"
+git init -q -b main "$GF_SEED"
+echo base > "$GF_SEED/README.txt"
+git -C "$GF_SEED" add -A
+git -C "$GF_SEED" -c user.email=a@t -c user.name=a commit -q -m base
+git -C "$GF_SEED" push -q "$GF_ORIGIN" main
+gf_X=$(git -C "$GF_SEED" rev-parse HEAD)
+# gf_mk_pusher NAME: a clone on feat/gf whose HEAD is the handover-only tail B
+# above the code commit A (A is an unrelated root when GF_A_ROOT=1).
+gf_mk_pusher() {
+    local dir="$TMP_ROOT/$1" tree
+    git clone -q "$GF_ORIGIN" "$dir"
+    git -C "$dir" checkout -qb feat/gf main
+    mkdir -p "$dir/scripts"
+    echo 'rm -rf / # unreviewed' > "$dir/scripts/evil.sh"
+    git -C "$dir" add -A
+    if [ "$GF_A_ROOT" = 1 ]; then
+        tree=$(git -C "$dir" write-tree)
+        gf_A=$(git -C "$dir" -c user.email=b@t -c user.name=b commit-tree "$tree" -m "A: code")
+        git -C "$dir" reset -q --hard "$gf_A"
+    else
+        git -C "$dir" -c user.email=b@t -c user.name=b commit -q -m "A: code"
+        gf_A=$(git -C "$dir" rev-parse HEAD)
+    fi
+    mkdir -p "$dir/handovers"
+    echo note > "$dir/handovers/n.md"
+    git -C "$dir" add handovers/n.md
+    git -C "$dir" -c user.email=b@t -c user.name=b commit -q -m "B: handover-only tail"
+    gf_B=$(git -C "$dir" rev-parse HEAD)
+}
+# gf_check LABEL DIR: pass when the hook refuses or upgrades the push to a full lane.
+gf_check() {
+    local label="$1" dir="$2" lane="" marker="$2/.git/cr-pending/feat/gf"
+    rc=0
+    out=$(cd "$dir" && bash "$HOOK" origin "$GF_ORIGIN" <<< "refs/heads/feat/gf $gf_B refs/heads/feat/gf $Z40" 2>&1) || rc=$?
+    [ -f "$marker" ] && lane=$(cut -d'|' -f3 "$marker" | tr -d ' ')
+    if [ "$rc" -eq 2 ] || [ "$lane" = "full" ]; then
+        pass "$label: a grafted origin tip cannot hide scripts/evil.sh from the diff (refused or upgraded to full)"
+    else
+        fail "$label: expected rc=2 or a 'full' marker" "rc=$rc marker-exists=$([ -f "$marker" ] && echo yes || echo no) lane=$lane out: $out"
+    fi
+}
+GF_A_ROOT=1
+gf_mk_pusher gf-pusher-info
+echo "$gf_X $gf_A" > "$TMP_ROOT/gf-pusher-info/.git/info/grafts"
+gf_check "graft-info" "$TMP_ROOT/gf-pusher-info"
+gf_mk_pusher gf-pusher-env
+echo "$gf_X $gf_A" > "$TMP_ROOT/gf-grafts-env"
+GIT_GRAFT_FILE="$TMP_ROOT/gf-grafts-env" gf_check "graft-env" "$TMP_ROOT/gf-pusher-env"
+# negative control: the same push with no graft anywhere still passes the gate
+# (the genuine diff carries scripts/evil.sh, so it is marked for review, rc 0).
+GF_A_ROOT=0
+gf_mk_pusher gf-pusher-clean
+rc=0
+out=$(cd "$TMP_ROOT/gf-pusher-clean" && bash "$HOOK" origin "$GF_ORIGIN" <<< "refs/heads/feat/gf $gf_B refs/heads/feat/gf $Z40" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$TMP_ROOT/gf-pusher-clean/.git/cr-pending/feat/gf" ]; then
+    pass "graft-control: a clean push with no graft passes the gate and is marked for review"
+else
+    fail "graft-control: expected rc=0 and a marker" "rc=$rc out: $out"
+fi
+
 # - base-skew guard (both directions). A branch whose merge-base is
 # far behind the diff base only warns (never refuses: refusing enforces
 # update-branch at push time), naming the recovery command; a local main ahead
