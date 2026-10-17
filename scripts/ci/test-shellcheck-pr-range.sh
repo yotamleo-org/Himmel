@@ -223,7 +223,7 @@ verdict dyn_nodir ALL
 # absent <name> <file>: the dry-run list must NOT carry <file>
 absent() {
   local out
-  out=$(bash "$SPR" --dry-run "$BASE" 2>/dev/null)
+  out=$(bash "$SPR" --dry-run "$BASE" 2>/dev/null) || { bad "$1: dry-run failed"; return; }
   if printf '%s\n' "$out" | grep -Fxq -- "$2"; then bad "$1: list wrongly carries $2"; else ok "$1: list omits $2"; fi
 }
 

@@ -178,7 +178,7 @@ cmd_pos() {
   return 0
 }
 # consumers of $1: a source/. line or a `# shellcheck source=` directive naming it
-consumers() { awk -v n="$1" '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, n)) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n"; }
+consumers() { N="$1" awk '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, ENVIRON["N"])) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n"; }
 
 printf '%s\n' "$changed" > "$list"
 while IFS= read -r f; do
