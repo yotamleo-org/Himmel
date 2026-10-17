@@ -85,7 +85,7 @@ new_home() {
     printf 'MemTotal:       16000000 kB\n' >"$H/meminfo"
 }
 run() {
-    env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u INDEX_PATH -u QMD_EMBED_MODEL \
+    env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u INDEX_PATH -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL \
         HOME="$H" PATH="$STUBS:$PATH" QMD_EMBED_NVIDIA_SMI="$STUBS/fake-smi" \
         QMD_EMBED_MEMINFO="$H/meminfo" FAKE_QMD_LOG="$H/qmd.log" "$@"
 }
