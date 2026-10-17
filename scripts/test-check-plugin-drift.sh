@@ -347,6 +347,77 @@ del_part_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; del_part_
 if [ "$del_part_rc" -ne 0 ]; then ok "--bump-required (staged): manifest-only deletion still fails"; else bad "--bump-required (staged): manifest-only deletion passed: $del_part_out"; fi
 rm -rf -- "$W_BUMP"
 
+# 3i-2. --bump-required: renamed, swapped and non-ASCII-named plugins must hit
+#       the gate. Each case seeds a throwaway repo with plugin `foo` (0.1.0),
+#       applies <mutation> and stages it, then runs the staged gate.
+bump_fixture() { # <dir> <plugin-dir-name>
+  (
+    set -e
+    mkdir -p "$1" && cd "$1"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    mkdir -p "marketplace/plugins/$2/.claude-plugin" marketplace/.claude-plugin
+    printf '{"name": "%s", "version": "0.1.0"}\n' "$2" > "marketplace/plugins/$2/.claude-plugin/plugin.json"
+    printf '# skill body line one\n# skill body line two\n# skill body line three\n' > "marketplace/plugins/$2/skill.md"
+    printf '{"plugins": [{"name": "%s", "source": "./plugins/%s"}]}\n' "$2" "$2" > marketplace/.claude-plugin/marketplace.json
+    git add -A
+    git commit -q -m seed
+  )
+}
+bump_run() { # <dir> -> sets br_out / br_rc
+  br_out="$(cd "$1" && bash "$SCRIPT" --bump-required 2>&1)"; br_rc=$?
+}
+W_REN="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-ren.XXXXXX")" || { bad "rename fixtures: mktemp -d failed"; exit 1; }
+P="marketplace/plugins"
+
+# (a) git mv foo bar + small edit, marketplace entry still names foo, no bump.
+bump_fixture "$W_REN/a" foo
+(cd "$W_REN/a" && git mv "$P/foo" "$P/bar" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/bar/skill.md" && git add -A)
+bump_run "$W_REN/a"
+if [ "$br_rc" -ne 0 ]; then ok "--bump-required (staged): RED — rename foo to bar with an edit and no bump fails"; else bad "--bump-required (staged): rename with edit passed: $br_out"; fi
+
+# (b) case-only rename foo -> Foo with an edit (two-step mv: portable to case-insensitive fs).
+bump_fixture "$W_REN/b" foo
+(cd "$W_REN/b" && git mv "$P/foo" "$P/foo-tmp" && git mv "$P/foo-tmp" "$P/Foo" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/Foo/skill.md" && git add -A)
+bump_run "$W_REN/b"
+if [ "$br_rc" -ne 0 ]; then ok "--bump-required (staged): RED — case-only rename with an edit and no bump fails"; else bad "--bump-required (staged): case-only rename passed: $br_out"; fi
+
+# (c) foo replaced by a symlink to an edited copy at foo-copy.
+bump_fixture "$W_REN/c" foo
+(cd "$W_REN/c" && mkdir "$P/foo-copy" && cp -R "$P/foo/." "$P/foo-copy/" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/foo-copy/skill.md" && git rm -rq "$P/foo" && ln -s foo-copy "$P/foo" && git add -A)
+bump_run "$W_REN/c"
+if [ "$br_rc" -ne 0 ]; then ok "--bump-required (staged): RED — foo swapped for a symlink to an edited copy fails"; else bad "--bump-required (staged): symlink-to-copy swap passed: $br_out"; fi
+
+# (d) non-ASCII plugin directory: an unbumped edit must fail (git quotes the path by default).
+bump_fixture "$W_REN/d" "plügin"
+(cd "$W_REN/d" && printf '# edited\n' > "$P/plügin/skill.md" && git add -A)
+bump_run "$W_REN/d"
+if [ "$br_rc" -ne 0 ]; then ok "--bump-required (staged): RED — unbumped edit to a non-ASCII-named plugin fails"; else bad "--bump-required (staged): non-ASCII plugin edit passed: $br_out"; fi
+
+# (e) symlink swap with the marketplace entry removed is still not a removal.
+bump_fixture "$W_REN/e" foo
+(cd "$W_REN/e" && mkdir elsewhere && cp -R "$P/foo/." elsewhere/ && printf '# edited\n' > elsewhere/skill.md && git rm -rq "$P/foo" && ln -s ../../elsewhere "$P/foo" && printf '{"plugins": []}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
+bump_run "$W_REN/e"
+if [ "$br_rc" -ne 0 ]; then ok "--bump-required (staged): symlink swap with the marketplace entry removed is not a removal"; else bad "--bump-required (staged): symlink swap with entry removed passed: $br_out"; fi
+
+# (f) marketplace.json missing during a whole-plugin deletion fails closed.
+bump_fixture "$W_REN/f" foo
+(cd "$W_REN/f" && git rm -rq "$P/foo" marketplace/.claude-plugin/marketplace.json)
+bump_run "$W_REN/f"
+if [ "$br_rc" -ne 0 ]; then ok "--bump-required (staged): whole-plugin deletion with marketplace.json missing fails closed"; else bad "--bump-required (staged): deletion with no marketplace.json passed: $br_out"; fi
+
+# Controls: a genuine whole-plugin deletion and a properly bumped rename pass.
+bump_fixture "$W_REN/g" foo
+(cd "$W_REN/g" && git rm -rq "$P/foo" && printf '{"plugins": []}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
+bump_run "$W_REN/g"
+if [ "$br_rc" -eq 0 ]; then ok "--bump-required (staged): control — genuine whole-plugin deletion passes"; else bad "--bump-required (staged): genuine deletion failed: $br_out"; fi
+bump_fixture "$W_REN/h" foo
+(cd "$W_REN/h" && git mv "$P/foo" "$P/bar" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf '{"plugins": [{"name": "bar", "source": "./plugins/bar"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
+bump_run "$W_REN/h"
+if [ "$br_rc" -eq 0 ]; then ok "--bump-required (staged): control — rename with the entry repointed passes"; else bad "--bump-required (staged): proper rename failed: $br_out"; fi
+rm -rf -- "$W_REN"
+
 # replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.
 # Manifest copied from e65befe4^:marketplace/plugins/himmel-ops/.claude-plugin/plugin.json;
 # e65befe4 (#2331) changed only its version to 0.4.61, also used by #2334.
