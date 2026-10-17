@@ -158,7 +158,7 @@ printf '%s\n' "$*" >> "$JIRA_LOG"
 case "$1" in
     list) cat "$JIRA_LIST_OUT" 2>/dev/null ;;
     create)
-        for heading in '## Impact' '## What' '## Why' '## Agent detail'; do
+        for heading in '## Impact' '## What' '## Why' '## Plan' '## DoD' '## Agent detail'; do
             case "$*" in *"$heading"*) ;; *) exit 1 ;; esac
         done
         echo "HIMMEL-9001" ;;

@@ -375,7 +375,7 @@ if [ "$TRACKER_MODE" = jira ]; then
     fi
 
     # printf, not a heredoc: the findings are review text and must not be
-    # expanded. The body carries the plain Impact/What/Why/Agent detail shape
+    # expanded. The body carries the Impact/What/Why/Plan/DoD/Agent detail shape
     # the Jira CLI's ticket-shape check requires.
     jira_body_file=$(mktemp -t fdi-jira.body.XXXXXX) || exit 1
     printf '%s\n' \
@@ -387,6 +387,12 @@ if [ "$TRACKER_MODE" = jira ]; then
         "" \
         "## Why" \
         "They were flagged NIT / LOW / SUGGESTION / IMPROVEMENT / DEFERRED during pre-merge review and did not block the merge." \
+        "" \
+        "## Plan" \
+        "1. Read the findings below and fix each one, or close it as won't-fix with a one-line reason." \
+        "" \
+        "## DoD" \
+        "- Every finding below is fixed or closed with a reason, and this ticket is moved to Done." \
         "" \
         "## Agent detail" \
         "Origin: PR #${PR_NUMBER} (HEAD ${HEAD_SHA}) in ${batch_repo}." \

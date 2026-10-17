@@ -4,6 +4,8 @@ import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js
 import { markdownToAdf } from './adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 
+const PLAIN_FILLED = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
+
 // Unit coverage for the MCP surface. We mock the underlying
 // client (`request` / `uploadAttachment`) and assert that every one of the
 // tools (a) is registered, (b) carries an input schema, and (c) on a
@@ -149,7 +151,7 @@ describe('MCP tool happy-path routing', () => {
   it('create → POST /issue with project/summary/issuetype + markdown desc', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     const out = await tool('create').handler(
-      { type: 'Task', title: 'New', desc: PLAIN_BLOCK_TEMPLATE, project: 'ABC' },
+      { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC' },
       deps,
     );
     expect(request).toHaveBeenCalledWith('POST', '/issue', {
@@ -157,7 +159,7 @@ describe('MCP tool happy-path routing', () => {
         project: { key: 'ABC' },
         summary: 'New',
         issuetype: { name: 'Task' },
-        description: markdownToAdf(PLAIN_BLOCK_TEMPLATE),
+        description: markdownToAdf(PLAIN_FILLED),
       },
     });
     expect(out).toBe('Created HIMMEL-9');
@@ -184,7 +186,7 @@ describe('MCP tool happy-path routing', () => {
     vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
     const { deps, uploadAttachment } = mockDeps({ key: 'HIMMEL-10', id: '2' });
     const out = await tool('create').handler(
-      { type: 'Task', title: 'T', desc: PLAIN_BLOCK_TEMPLATE, attach: ['a.png', 'b.png'] },
+      { type: 'Task', title: 'T', desc: PLAIN_FILLED, attach: ['a.png', 'b.png'] },
       deps,
     );
     expect(uploadAttachment).toHaveBeenCalledTimes(2);

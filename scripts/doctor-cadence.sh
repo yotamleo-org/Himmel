@@ -92,8 +92,14 @@ Resolve the warning or correct the doctor check if it is inaccurate.
 ## Why
 The warning was present in two consecutive daily runs; leaving it unresolved teaches operators to ignore tool health.
 
+## Plan
+1. Check scripts/himmel-doctor.sh ($id), then fix the cause or correct the check.
+
+## DoD
+- Running scripts/himmel-doctor.sh no longer prints WARN $id, or the check reports it with an accurate paste-ready remedy.
+
 ## Agent detail
-Check scripts/himmel-doctor.sh ($id) and its regression suite scripts/test-himmel-doctor.sh. Done when the warning is resolved or accurately classified with a paste-ready remedy.
+Regression suite: scripts/test-himmel-doctor.sh.
 $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
         if [ -n "$found" ]; then
             JIRA_PROJECT_KEY="$proj" "${J[@]}" comment "$found" "$desc" >/dev/null 2>&1 || continue

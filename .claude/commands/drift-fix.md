@@ -305,11 +305,12 @@ heredoc/`$( )` shape gets refused by `block-jira-compound-write.sh`):
 node <repo-root>/scripts/jira/dist/index.js create --type Task --title "Bump <name> pin <old> -> <new> (fork-drift)" --desc-file <path>
 ```
 
-`create` refuses a body without the plain `## Impact` / `## What` / `## Why`
-block and an `## Agent detail` section (HIMMEL-5226). Put the plain block first
-(what a user would notice, in plain words); the Agent detail section should name:
-the drift guard line, the two files moved, the tracking issue number, and that
-this was applied by the nightly cadence.
+`create` refuses a body without the six sections `## Impact` / `## What` /
+`## Why` / `## Plan` / `## DoD` / `## Agent detail`, where Plan and DoD each hold
+a real bullet or numbered line (HIMMEL-5226, HIMMEL-5643). Put the plain block
+first (what a user would notice, in plain words); the Agent detail section should
+name: the drift guard line, the two files moved, the tracking issue number, and
+that this was applied by the nightly cadence.
 
 ## 7. Commit
 

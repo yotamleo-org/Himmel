@@ -15,7 +15,7 @@ import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 
 // A body that satisfies the plain-block rule.
-const PLAIN = PLAIN_BLOCK_TEMPLATE;
+const PLAIN = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
@@ -272,6 +272,21 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(msg).toContain('## Agent detail');
   });
 
+  it('refuses a Task with every section but no DoD, naming DoD (HIMMEL-5643)', async () => {
+    const noDod = PLAIN.replace(/## DoD\n[^\n]*\n\n/, '');
+    await expect(run(['--type', 'Task', '--desc', noDod])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBe(false);
+    const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
+    expect(msg).toMatch(/missing "## DoD"/);
+  });
+
+  it('refuses a Task whose Plan and DoD are only the skeleton placeholders (HIMMEL-5643)', async () => {
+    await expect(run(['--type', 'Task', '--desc', PLAIN_BLOCK_TEMPLATE])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBe(false);
+    const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
+    expect(msg).toMatch(/"## Plan" has no bullet.*"## DoD" has no bullet/s);
+  });
+
   it('refuses a body-less Task', async () => {
     await expect(run(['--type', 'Task'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBe(false);
@@ -288,7 +303,7 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(posted()).toBe(true);
   });
 
-  it('--skeleton prints the four-heading body to fill and creates nothing', async () => {
+  it('--skeleton prints the six-heading body to fill and creates nothing', async () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
@@ -301,6 +316,13 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     await run(['--type', 'Epic']);
     expect(posted()).toBe(true);
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning.*Impact.*Epic is exempt/s));
+  });
+
+  it('only warns for an Epic that lacks Plan and DoD (HIMMEL-5643)', async () => {
+    const noPlanDod = PLAIN.replace(/## Plan\n[^\n]*\n\n## DoD\n[^\n]*\n\n/, '');
+    await run(['--type', 'Epic', '--desc', noPlanDod]);
+    expect(posted()).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning.*Plan.*DoD.*Epic is exempt/s));
   });
 
   it('refuses a pre-built --adf-file with no plain block', async () => {

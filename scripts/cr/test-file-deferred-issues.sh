@@ -272,6 +272,8 @@ assert_eq "jira creates exactly one ticket" "1" "$(grep -c '^create' "$JLOG")"
 assert_contains "jira create labels cr-deferred" "$(cat "$JLOG")" "--labels cr-deferred"
 desc=$(cat "$JDESC" 2>/dev/null || true)
 assert_contains "jira body has Impact" "$desc" "## Impact"
+assert_contains "jira body has Plan" "$desc" "## Plan"
+assert_contains "jira body has DoD" "$desc" "## DoD"
 assert_contains "jira body has Agent detail" "$desc" "## Agent detail"
 assert_contains "jira body numbers finding 1" "$desc" "1. "
 assert_contains "jira body numbers finding 2" "$desc" "2. "
