@@ -109,6 +109,7 @@ case "${1:-}" in
     embed)
         # Records that the request would carry a provider key (never its value).
         if [ -n "${QMD_OPENAI_API_KEY:-}" ]; then echo key >> "$STATE/embed-key"; else echo nokey >> "$STATE/embed-key"; fi
+        echo "${QMD_OPENAI_API_KEY:-}" >> "$STATE/embed-keyval"
         # `grep -c` PRINTS "0" and exits 1 when there are no matches, so a
         # `|| echo 0` fallback would emit a SECOND zero and make n="0\n0" —
         # which then blows up the numeric tests below with "integer expression
@@ -706,6 +707,36 @@ if command -v node >/dev/null 2>&1; then
     assert_rc "readable-by-others rc 10" 10 "$rc"
     assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
     assert_not_contains "the key value is never printed" "sk-test-fixture" "$out"
+
+    echo "TEST: the key assignment is hidden from bash -x"
+    reset_state
+    printf 'QMD_OPENAI_API_KEY=sk-test-fixture\n' > "$HOME/.himmel/state/qmd-daemon.env"
+    chmod 600 "$HOME/.himmel/state/qmd-daemon.env"
+    rc=0; out=$(bash -x "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "traced run rc 0" 0 "$rc"
+    assert_not_contains "the key value never reaches the trace" "sk-test-fixture" "$out"
+
+    echo "TEST: a non-OpenRouter remote config takes the daemon env file key too"
+    reset_state
+    printf 'collections:\n  himmel:\n    path: /x\nmodels:\n  embed: openai:text-embedding-3-small\n  openai_base_url: https://api.jina.ai/v1\n' > "$HOME/.config/qmd/index.yml"
+    rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "non-OpenRouter remote rc 0" 0 "$rc"
+    assert_not_contains "every embed call carried a key" "nokey" "$(cat "$STATE/embed-key" 2>/dev/null)"
+
+    echo "TEST: an exported session key never replaces the daemon env file key"
+    reset_state
+    printf '%b' "$OR_CFG" > "$HOME/.config/qmd/index.yml"
+    rc=0; out=$(QMD_OPENAI_API_KEY=sk-stale-session bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "stale session key rc 0" 0 "$rc"
+    assert_not_contains "the stale session key is not the one embedded with" "sk-stale-session" "$(cat "$STATE/embed-keyval" 2>/dev/null)"
+    assert_contains "the daemon env file key is" "sk-test-fixture" "$(cat "$STATE/embed-keyval" 2>/dev/null)"
+
+    echo "TEST: an exported session key does not stand in for a missing env file"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-daemon.env"
+    rc=0; out=$(QMD_OPENAI_API_KEY=sk-stale-session bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "session key alone rc 10" 10 "$rc"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
 else
     pass "provider-key check skipped: node not installed"
