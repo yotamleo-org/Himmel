@@ -242,6 +242,7 @@ assert_not_contains "T21 print mode names no snapshot" "context-hop-" "$out"
 
 # T22: live --print with --handover writes NO snapshot.
 bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/real-handover.md" --print >/dev/null 2>&1
+assert_rc "T22 live --handover --print rc=0" 0 "$?"
 snap_after=$(find "$TMP/handovers/$SLUG" -name 'context-hop-*.md' | wc -l)
 if [ "$snap_after" = "$snap_before" ]; then echo "PASS T22 live --handover wrote no snapshot"
 else echo "FAIL T22 snapshot count $snap_before -> $snap_after"; FAILED=$((FAILED + 1)); fi
@@ -251,6 +252,13 @@ out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/nope.m
 rc=$?
 assert_rc "T23 missing --handover file rc=1" 1 "$rc"
 assert_contains "T23 ERR names the flag" "ERR hop: --handover is not a file" "$out"
+
+# T23b: an empty or trailing --handover is a usage error, never a silent snapshot.
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover= --dry-run 2>&1)
+assert_rc "T23b --handover= rc=1" 1 "$?"
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --dry-run --handover 2>&1)
+assert_rc "T23b trailing --handover rc=1" 1 "$?"
+assert_contains "T23b trailing flag ERR" "ERR hop: --handover is not a file" "$out"
 
 # T24: --handover plus --message is rejected (no snapshot to carry the text).
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --handover "$TMP/real-handover.md" --message m --dry-run 2>&1)

@@ -90,6 +90,7 @@ FORCE=0
 HANDOVER_ROOT=""
 HOP_DOC=""
 NAMED_HANDOVER=""
+HANDOVER_GIVEN=0
 
 # Capture ORIGIN repo BEFORE any work — this is the repo claude should
 # run from in the relaunched session. The snapshot lives under the
@@ -134,8 +135,8 @@ while [ $# -gt 0 ]; do
         --force)           FORCE=1; shift ;;
         --handover-root)   HANDOVER_ROOT="${2:-}"; shift 2 ;;
         --handover-root=*) HANDOVER_ROOT="${1#--handover-root=}"; shift ;;
-        --handover)        NAMED_HANDOVER="${2:-}"; shift 2 ;;
-        --handover=*)      NAMED_HANDOVER="${1#--handover=}"; shift ;;
+        --handover)        NAMED_HANDOVER="${2:-}"; HANDOVER_GIVEN=1; shift; [ $# -gt 0 ] && shift ;;
+        --handover=*)      NAMED_HANDOVER="${1#--handover=}"; HANDOVER_GIVEN=1; shift ;;
         --doc)             HOP_DOC="${2:-}"; shift 2 ;;
         --doc=*)           HOP_DOC="${1#--doc=}"; shift ;;
         -h|--help)         usage; exit 0 ;;
@@ -148,7 +149,7 @@ if ! [[ "$DELAY_MINUTES" =~ ^[0-9]+$ ]] || [ "$DELAY_MINUTES" -lt 1 ] || [ "$DEL
     exit 1
 fi
 
-if [ -n "$NAMED_HANDOVER" ]; then
+if [ "$HANDOVER_GIVEN" -eq 1 ]; then
     if [ ! -f "$NAMED_HANDOVER" ]; then
         echo "ERR hop: --handover is not a file: $NAMED_HANDOVER" >&2
         exit 1
