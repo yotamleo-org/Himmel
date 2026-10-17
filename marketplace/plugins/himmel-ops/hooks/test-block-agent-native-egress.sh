@@ -269,6 +269,18 @@ expect 2 "leaf symlink token with a trailing slash -> denied" \
     "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md/")"
 expect 2 "bare leaf symlink token with a trailing slash -> denied" \
     "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/")"
+expect 2 "leaf symlink token with a doubled trailing slash -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md//")"
+expect 2 "bare leaf symlink token with a doubled trailing slash -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md//")"
+expect 2 "bare leaf symlink token with more trailing slashes than the strip cap -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md//////////////")"
+expect 2 "bare leaf symlink token with a trailing /./ -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/./")"
+expect 2 "leaf symlink token with a trailing /. -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md/.")"
+expect 0 "plain file token with a doubled trailing slash -> allowed" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise plain.md//")"
 expect 0 "bare token naming a plain file in the cwd -> allowed" \
     "$(payload "$TOOL" "$HIMMEL/public" "summarise plain.md")"
 expect 0 "bare token naming a benign leaf symlink -> allowed" \

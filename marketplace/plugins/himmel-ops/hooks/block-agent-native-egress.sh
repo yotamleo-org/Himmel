@@ -302,11 +302,18 @@ for tok in $payload_text; do
     done
     k=0
     while [ "$k" -lt "$strip_cap" ]; do
-        case "$tok" in *\"|*\'|*\`|*\)|*\>|*\]|*,|*.|*\;|*:) tok="${tok%?}" ;; *) break ;; esac
+        # alias.md/, alias.md// and alias.md/./ all name the symlink too; keep
+        # a lone "/" (the root).
+        case "$tok" in
+            */) [ "${#tok}" -gt 1 ] || break; tok="${tok%?}" ;;
+            *\"|*\'|*\`|*\)|*\>|*\]|*,|*.|*\;|*:) tok="${tok%?}" ;;
+            *) break ;;
+        esac
         k=$((k + 1))
     done
-    # alias.md/ names the symlink too; keep a lone "/" (the root).
-    [ "${#tok}" -gt 1 ] && tok="${tok%/}"
+    case "$tok" in
+        ?*/) deny "a path token ends in more than $strip_cap trailing slashes or dots; cannot inspect it" ;;
+    esac
     [ -n "$tok" ] || continue
     if [ "$bare" = 1 ]; then
         case "$tok" in */*) ;; *) [ -L "$cwd/$tok" ] || continue ;; esac
