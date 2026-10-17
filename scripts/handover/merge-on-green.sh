@@ -60,7 +60,8 @@
 #                      below; default is a PARTIAL merge: the ticket goes back
 #                      to To Do with the PR body's `Remaining:` line, never Done)
 #   --leg-doc PATH     the leg's brief doc (else $HIMMEL_LEG_DOC); its
-#                      `> **Completes ticket:** yes|no` line binds the merge:
+#                      `> **Completes ticket:** yes|no` line above `## Results`
+#                      (any no wins; lines below Results are ignored) binds the merge:
 #                      no ignores --jira-transition with a warning, yes without
 #                      the flag warns; either way a transition happens only on
 #                      the flag. No line or an unreadable doc: no effect.
@@ -308,7 +309,7 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY_RUN=1; shift ;;
         --jira-transition) JIRA_TRANSITION_OPT_IN=1; shift ;;
         --leg-doc)
-            if [ $# -lt 2 ]; then echo "merge-on-green: --leg-doc needs a path" >&2; exit 10; fi
+            if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --leg-doc needs a path" >&2; exit 10; fi
             LEG_DOC="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,/^set -uo pipefail/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'
@@ -1915,7 +1916,9 @@ jira_auto_transition_on_merge() {
     local opt_in="$JIRA_TRANSITION_OPT_IN" brief_completes=""
     if [ -n "$LEG_DOC" ]; then
         if [ -r "$LEG_DOC" ]; then
-            brief_completes=$(sed -nE 's/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$LEG_DOC" | tail -n 1)
+            # Only the console's region above `## Results` binds, and any `no` there wins (sort puts
+            # `no` first): a leg appending its own line below Results cannot widen what the console scoped.
+            brief_completes=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$LEG_DOC" | sort | head -n 1)
         else
             echo "merge-on-green: cannot read leg doc '$LEG_DOC'; the brief's completes-ticket line is not applied" >&2
         fi
