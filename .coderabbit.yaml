@@ -148,7 +148,9 @@ reviews:
         included. Do not flag: scripts/lib/handover-path.sh itself (it is the
         resolver and legitimately constructs "$repo_root/handovers"), a
         test-*.sh file that redirects HANDOVER_DIR (or equivalent) to a temp
-        fixture before touching handover state, hooks/guards that merely
+        fixture before touching handover state, a test-*.sh that neither
+        reads, writes, resolves nor hardcodes any handover path (do not ask it
+        to add a handover bootstrap or HANDOVER_DIR redirect), hooks/guards that merely
         pattern-match the string "handovers/" in paths, or comments/prose. DO
         flag a runtime read or write of a literal ./handovers/ or
         "$repo_root/handovers" path in a script that bypasses the resolver —
@@ -165,7 +167,10 @@ reviews:
         `|| { …; exit N; }` handling are the intended error style. Errexit
         findings are valid only in a file that itself sets -e/-o errexit, and
         only where a non-zero exit is genuinely masked with a behavioral
-        consequence.
+        consequence. Even in such a file, a failing command in a NON-FINAL
+        position of an `&&` list is exempt from errexit (bash ignores it
+        there; only the status of the FINAL command of the list decides), so
+        do not flag it as an aborting or masked failure.
     - path: "scripts/**/*.sh"
       instructions: >-
         Bash test brackets ([ x -gt y ], [ x -eq y ]) parse operands as
