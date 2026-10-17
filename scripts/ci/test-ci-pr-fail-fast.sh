@@ -55,6 +55,57 @@ else
   else bad "rollup 'success' exited $rc (expected 0)"; fi
 fi
 
+# The pr-fail-fast watcher: on pull_request the first red job cancels the rest of
+# the run (the matrix fail-fast above only reaches sibling legs). Fixtures are the
+# real jobs-API payloads of two CI runs (name/status/conclusion kept):
+# pr-fail-fast-jobs-failed.json = run 39045466700 (plugin-version-bump red),
+# pr-fail-fast-jobs-green.json = run 39034533470 (every job finished green).
+watcher_block="$(awk '/^  pr-fail-fast:/ { j = 1; print; next } j && /^  [A-Za-z0-9_-]+:/ { exit } j { print }' "$CI_YML")"
+
+if [ -z "$watcher_block" ]; then
+  bad "no pr-fail-fast job in ci.yml"
+else
+  if printf '%s\n' "$watcher_block" | grep -qE "^    if: github\.event_name == 'pull_request'[[:space:]]*$"; then
+    ok "pr-fail-fast runs on pull_request only"
+  else bad "pr-fail-fast is not gated to pull_request"; fi
+  if printf '%s\n' "$watcher_block" | grep -qE '^      actions: write[[:space:]]*$'; then
+    ok "pr-fail-fast holds actions: write"
+  else bad "pr-fail-fast lacks actions: write"; fi
+
+  wbody="$(printf '%s\n' "$watcher_block" | awk '
+    /^      - name: Cancel the run on the first failed job/ { s = 1; next }
+    s && /^        run: \|/ { r = 1; next }
+    s && r && /^          / { sub(/^          /, ""); print; next }
+    s && r { exit }')"
+  if [ -z "$wbody" ]; then
+    bad "could not extract the pr-fail-fast cancel step"
+  else
+    stub="$(mktemp -d -t prfailfast.XXXXXX)" || exit 1
+    trap 'rm -rf "$stub"' EXIT
+    cat > "$stub/gh" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "api" ]; then cat "$JOBS_FIXTURE"; exit 0; fi
+if [ "$1" = "run" ] && [ "$2" = "cancel" ]; then echo "$3" >> "$CANCEL_LOG"; exit 0; fi
+exit 1
+STUB
+    chmod +x "$stub/gh"
+    for case in failed green; do
+      : > "$stub/cancel.log"
+      PATH="$stub:$PATH" JOBS_FIXTURE="$ROOT/scripts/ci/fixtures/pr-fail-fast-jobs-$case.json" \
+        CANCEL_LOG="$stub/cancel.log" RUN_ID=4242 REPO=o/r POLL_SECS=0 \
+        timeout 20 bash -c "$wbody" >/dev/null 2>&1; rc=$?
+      n="$(wc -l < "$stub/cancel.log")"
+      if [ "$case" = failed ]; then
+        if [ "$rc" -eq 0 ] && [ "$n" -eq 1 ] && grep -qx 4242 "$stub/cancel.log"; then ok "a red job cancels run 4242"
+        else bad "red-job fixture: rc=$rc cancels=$n (expected 0 and one cancel of 4242)"; fi
+      else
+        if [ "$rc" -eq 0 ] && [ "$n" -eq 0 ]; then ok "an all-green run is left alone"
+        else bad "green fixture: rc=$rc cancels=$n (expected 0 and no cancel)"; fi
+      fi
+    done
+  fi
+fi
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1
