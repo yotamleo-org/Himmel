@@ -6693,7 +6693,7 @@ if grepq "$out" -F 'WARN C66-hermes-cron-hooks' && ! grepq "$out" -F 'INFO C66-h
 
 echo "== C66: fenced worker older than the running gateway -> OK; newer than it -> WARN stale gateway =="
 cp "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-fenced.py" "$c66_t/hermes/cron/scheduler.py"
-touch -d @1000000000 "$c66_t/hermes/cron/scheduler.py"
+TZ=UTC touch -t 200109090146.40 "$c66_t/hermes/cron/scheduler.py" || fail "C66 could not backdate scheduler.py"
 out="$(DOCTOR_HERMES_GATEWAY_START=1000000100 c66_run)"
 if grepq "$out" -F 'OK   C66-hermes-cron-hooks'; then pass "C66 gateway newer than scheduler -> OK"; else fail "C66 gateway newer -> $(printf '%s' "$out" | grep -A1 C66)"; fi
 out="$(DOCTOR_HERMES_GATEWAY_START=999999900 c66_run)"

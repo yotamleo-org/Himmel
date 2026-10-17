@@ -4027,7 +4027,7 @@ check_c60_hermes_origin() {
 # while `hermes hooks doctor` reported them healthy. Read-only: scans the
 # worker function in cron/scheduler.py, ignoring comment lines.
 check_c66_hermes_cron_hooks() {
-    local co="${DOCTOR_HERMES_CHECKOUT:-}" f body gw_pid gw_start mtime
+    local co="${DOCTOR_HERMES_CHECKOUT:-}" f body gw_pid gw_age gw_start mtime
     if [ -z "$co" ]; then
         if [ -n "${HERMES_HOME:-}" ]; then co="$HERMES_HOME/hermes-agent"
         elif [ -n "${LOCALAPPDATA:-}" ]; then co="$LOCALAPPDATA/hermes/hermes-agent"
@@ -4049,7 +4049,9 @@ check_c66_hermes_cron_hooks() {
         # the source on disk is fenced; the running gateway only has it if it started after the file last changed
         gw_pid="$(systemctl --user show -p MainPID --value hermes-gateway.service 2>/dev/null)" || gw_pid=""
         if [ -n "${DOCTOR_HERMES_GATEWAY_START:-}" ]; then gw_start="$DOCTOR_HERMES_GATEWAY_START"
-        elif [ -n "$gw_pid" ] && [ "$gw_pid" != 0 ] && [ -d "/proc/$gw_pid" ]; then gw_start="$(stat -c %Y "/proc/$gw_pid" 2>/dev/null)" # gnu-ok: /proc exists on Linux only
+        elif [ -n "$gw_pid" ] && [ "$gw_pid" != 0 ]; then
+            gw_age="$(ps -o etimes= -p "$gw_pid" 2>/dev/null | tr -d ' ')"
+            case "$gw_age" in ''|*[!0-9]*) gw_start="" ;; *) gw_start=$(( $(date +%s) - gw_age )) ;; esac
         else gw_start=""
         fi
         mtime="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)" || mtime=""
