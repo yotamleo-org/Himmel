@@ -829,8 +829,8 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a branch NAME may legally carry 
 
 const bigLines = (tag: string, n: number) => Array.from({ length: n }, (_, i) => `${tag}-line-${i}-${"x".repeat(40)}`).join("\n") + "\n";
 
-// ~1.4 MiB: lines x ~60 bytes
-const MOVE_LINES = 24_000;
+// ~2.1 MiB: lines x ~56 bytes
+const MOVE_LINES = 40_000;
 
 function makeMoveRepo(movedContent: (old: string) => string): { repo: string; git: (args: string[]) => { code: number; stdout: string; stderr: string } } {
   const repo = mkdtempSync(join(tmpdir(), "hugediff-move-"));
@@ -850,11 +850,26 @@ function makeMoveRepo(movedContent: (old: string) => string): { repo: string; gi
 }
 
 // keeps the first ~20% of the lines, rewrites the rest: similarity well under 50%
-const mostlyRewritten = (old: string) => {
+const rewritten = (keepRatio: number) => (old: string) => {
   const lines = old.split("\n");
-  const keep = Math.floor(lines.length * 0.2);
-  return lines.map((l, i) => (i < keep ? l : l.replace(/^old/, "new"))).join("\n");
+  const keep = Math.floor(lines.length * keepRatio);
+  return lines.map((l, i) => (i < keep || l === "" ? l : `new-${(i * 2654435761) % 1000000007}-${"y".repeat(30)}`)).join("\n");
 };
+
+const mostlyRewritten = rewritten(0.2);
+
+test("(REAL GIT): a partial rename the worker's diff DOES attribute still prints its changed hunks and is NOTICED", () => {
+  const { repo, git } = makeMoveRepo(rewritten(0.6));
+  try {
+    git(["add", "."]);
+    git(["commit", "-m", "move + rewrite 45%"]);
+    git(["config", "diff.renames", "true"]);
+    expect(git(["diff", "--name-status", "main...feat/move"]).stdout).toMatch(/^R0[5-8]\d/m);
+    const res = checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/move" });
+    expect(res.note).toBeDefined();
+    expect(res.note).toContain("big-old.txt -> big-new.txt");
+  } finally { rmQuiet(repo); }
+}, GIT_TEST_TIMEOUT_MS);
 
 for (const renames of ["true", "false"]) {
   test(`(REAL GIT): a >1 MiB file moved below 50% similarity is NOTICED under diff.renames=${renames}`, () => {

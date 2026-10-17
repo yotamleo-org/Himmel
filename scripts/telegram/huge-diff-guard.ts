@@ -166,9 +166,11 @@ export function findDominatingPath(paths: { path: string; bytes: number }[]):
 // `git diff --name-status` attributes and groups every delete/add pair it left
 // un-attributed into ONE logical hazard at the SUM of both blobs.
 //
-// The pair itself comes from a probe that forces `-M1% -l0` — explicit flags
-// beat config, so the pairing stays deterministic, exactly like the pinned
-// name set; the worker's own diff decides only which pairs are un-attributed.
+// The pair itself comes from a probe that forces `-M1% -l2000` — explicit
+// flags beat config, so the pairing stays deterministic, exactly like the
+// pinned name set; the worker's own diff decides only which pairs are
+// un-attributed. An attributed partial rename still prints its changed hunks,
+// so it weighs (old+new) x (1 - similarity).
 
 // `git diff --name-status -z` rows are NUL-delimited as
 // `<status>\0<path>\0` — and `<status>\0<old>\0<new>\0` for R rows, the only
@@ -185,13 +187,27 @@ export function parseNameStatusRenames(out: string): { oldPath: string; newPath:
   return pairs;
 }
 
+// Every `--name-status -z` row as `{status, paths}` (R rows carry two paths).
+export function parseNameStatusRows(out: string): { status: string; paths: string[] }[] {
+  const rows: { status: string; paths: string[] }[] = [];
+  const fields = out.split("\0").filter(Boolean);
+  for (let i = 0; i < fields.length;) {
+    const n = fields[i].startsWith("R") || fields[i].startsWith("C") ? 2 : 1;
+    rows.push({ status: fields[i], paths: fields.slice(i + 1, i + 1 + n) });
+    i += 1 + n;
+  }
+  return rows;
+}
+
 // Fold each detected pair into ONE logical entry at old+new bytes — the text
 // a worker whose diff does NOT attribute the rename actually ingests — and
-// pass everything else through untouched. The TOTAL is unchanged (a pair's
+// pass everything else through untouched. A pair's optional `scale` is the
+// share of that text the worker still prints: an attributed partial rename
+// shows only its changed hunks. Unscaled, the TOTAL is unchanged (a pair's
 // sum equals its members'), so only the dominance GRANULARITY moves.
 export function mergeRenamePairs(
   paths: { path: string; bytes: number }[],
-  pairs: { oldPath: string; newPath: string }[],
+  pairs: { oldPath: string; newPath: string; scale?: number }[],
 ): { path: string; bytes: number }[] {
   const byPath = new Map(paths.map((p) => [p.path, p]));
   const grouped: { path: string; bytes: number }[] = [];
@@ -202,7 +218,7 @@ export function mergeRenamePairs(
     if (!oldSide || !newSide) continue; // a pair member outside the --no-renames name set cannot happen; skip, never guess
     consumed.add(pair.oldPath);
     consumed.add(pair.newPath);
-    grouped.push({ path: `${pair.oldPath} -> ${pair.newPath}`, bytes: oldSide.bytes + newSide.bytes });
+    grouped.push({ path: `${pair.oldPath} -> ${pair.newPath}`, bytes: (oldSide.bytes + newSide.bytes) * (pair.scale ?? 1) });
   }
   for (const p of paths) if (!consumed.has(p.path)) grouped.push(p);
   return grouped;
@@ -294,17 +310,32 @@ export function checkHugeDiff(
     // as the worker's git applies them) and read which renames it attributes.
     // Those print a similarity header, not the blobs, and stay per-path. Every
     // other delete/add the worker ingests in full, so a delete/add pair that
-    // one loose probe (-M1%, no limit: flags beat config) ties to the same
-    // logical file is grouped into ONE hazard at the sum of both blobs. A
-    // failed probe reads as no pairs — fail-open back to the per-path verdict.
+    // one loose probe (-M1%, bounded -l: flags beat config) ties to the same
+    // logical file is grouped into ONE hazard at the sum of both blobs. An
+    // attributed partial rename still prints its changed hunks, so it weighs
+    // (old+new) x (1 - similarity). A failed probe reads as no pairs —
+    // fail-open back to the per-path verdict.
     let paths = res.paths;
     const range = `${res.mergeBase}...${args.branch}`;
     const worker = probe(["diff", "--name-status", "-z", range], args.cwd);
-    const loose = worker.code === 0 ? probe(["diff", "--name-status", "-z", "-M1%", "-l0", range], args.cwd) : worker;
-    if (worker.code === 0 && loose.code === 0) {
-      const attributed = new Set(parseNameStatusRenames(worker.stdout).flatMap((p) => [p.oldPath, p.newPath]));
-      const unattributed = parseNameStatusRenames(loose.stdout).filter((p) => !attributed.has(p.oldPath) && !attributed.has(p.newPath));
-      paths = mergeRenamePairs(paths, unattributed);
+    if (worker.code === 0) {
+      const rows = parseNameStatusRows(worker.stdout);
+      const attributedPairs = rows
+        .filter((r) => r.status.startsWith("R") && r.paths.length === 2)
+        .map((r) => ({ oldPath: r.paths[0], newPath: r.paths[1], scale: 1 - Math.min(100, Number(r.status.slice(1)) || 0) / 100 }));
+      const attributed = new Set(attributedPairs.flatMap((p) => [p.oldPath, p.newPath]));
+      let pairs = attributedPairs;
+      // a pair needs one un-attributed delete AND one un-attributed add
+      const hasDelete = rows.some((r) => r.status === "D");
+      const hasAdd = rows.some((r) => r.status === "A");
+      if (hasDelete && hasAdd) {
+        const loose = probe(["diff", "--name-status", "-z", "-M1%", "-l2000", range], args.cwd);
+        if (loose.code === 0) {
+          const unattributed = parseNameStatusRenames(loose.stdout).filter((p) => !attributed.has(p.oldPath) && !attributed.has(p.newPath));
+          pairs = [...attributedPairs, ...unattributed];
+        }
+      }
+      paths = mergeRenamePairs(paths, pairs);
     }
     const dom = findDominatingPath(paths);
     if (!dom) return {};
