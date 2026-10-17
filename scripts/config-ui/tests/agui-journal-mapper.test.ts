@@ -260,3 +260,56 @@ describe("bus delivery", () => {
     }
   });
 });
+
+describe("a session with no agent-name record is named from its branch, cwd or first prompt", () => {
+  const user = (extra: Record<string, unknown>, text = "hello there", uuid = "u1") =>
+    JSON.stringify({ type: "user", uuid, sessionId: "s", timestamp: "2026-10-06T10:00:00.000Z", message: { role: "user", content: text }, ...extra });
+  const nameRec = (agentName: string) => JSON.stringify({ type: "agent-name", agentName, sessionId: "s" });
+  const mainName = (lines: string[]) => {
+    const evs = mapJournal(lines.join("\n") + "\n").events as any[];
+    return evs.find((e) => e.agent?.id === "main")?.agent;
+  };
+
+  test("a feature branch names the main agent", () => {
+    expect(mainName([user({ gitBranch: "fix/himmel-1-foo", cwd: "/work/repo" })])).toEqual({ id: "main", name: "fix/himmel-1-foo", role: "agent" });
+  });
+
+  test.each(["main", "master", "HEAD"])("branch %s falls through to the cwd basename", (gitBranch) => {
+    expect(mainName([user({ gitBranch, cwd: "/work/my-repo/" })]).name).toBe("my-repo");
+  });
+
+  test("no branch and no cwd falls through to the first prompt cut to 40 characters", () => {
+    expect(mainName([user({}, "x".repeat(60))]).name).toBe("x".repeat(40));
+    expect(mainName([user({}, "short  prompt\n  here")]).name).toBe("short prompt here");
+  });
+
+  test("nothing usable stays 'session'", () => {
+    const rec = JSON.stringify({ type: "assistant", uuid: "a1", sessionId: "s", message: { id: "m", role: "assistant", content: [{ type: "text", text: "hi" }] } });
+    expect(mainName([rec])).toEqual({ id: "main", name: "session", role: "agent" });
+  });
+
+  test("control characters in a prompt do not reach the name", () => {
+    expect(mainName([user({}, "a\u0000b\u001b[31mc\u0007d")]).name).toBe("ab[31mcd");
+  });
+
+  test("an agent-name record wins whether it comes before or after, and still sets the role", () => {
+    const rec = user({ gitBranch: "fix/x", cwd: "/w/r" });
+    expect(mainName([nameRec("HIMMEL-1-roadmap-console"), rec])).toMatchObject({ name: "HIMMEL-1-roadmap-console", role: "console" });
+    const evs = mapJournal([rec, nameRec("HIMMEL-1-N2-leg"), user({ gitBranch: "fix/y" }, "later", "u2")].join("\n") + "\n").events as any[];
+    expect(evs.filter((e) => e.agent?.id === "main").at(-1).agent).toMatchObject({ name: "HIMMEL-1-N2-leg", role: "leg" });
+  });
+
+  test("the name is stable: later records do not rename, and a second pass agrees", () => {
+    const lines = [user({ gitBranch: "fix/first" }), user({ gitBranch: "fix/second", cwd: "/w/other" }, "second", "u2")];
+    const names = (mapJournal(lines.join("\n") + "\n").events as any[]).filter((e) => e.agent?.id === "main").map((e) => e.agent.name);
+    expect(new Set(names)).toEqual(new Set(["fix/first"]));
+    expect(mapJournal(lines.join("\n") + "\n").events).toEqual(mapJournal(lines.join("\n") + "\n").events);
+  });
+
+  test("a sidechain record's cwd and branch never name the main agent", () => {
+    const side = JSON.stringify({ type: "assistant", isSidechain: true, agentId: "zz9", uuid: "s1", sessionId: "s", cwd: "/w/side", gitBranch: "fix/side", message: { id: "m", role: "assistant", content: [{ type: "text", text: "hi" }] } });
+    const evs = mapJournal([side, user({}, "real prompt")].join("\n") + "\n").events as any[];
+    expect(evs.find((e) => e.agent?.id === "zz9").agent).toEqual({ id: "zz9", name: "agent zz9", role: "subagent" });
+    expect(evs.find((e) => e.agent?.id === "main").agent.name).toBe("real prompt");
+  });
+});

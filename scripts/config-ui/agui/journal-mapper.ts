@@ -196,6 +196,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
   const verdictFiles = new Map<string, string>(); // path → text with VERDICT lines a successful Write left there
   const firstText = new Map<string, string>(); // API message.id → messageId of its first emitted text
   let main: AgentInfo = { id: "main", name: "session", role: "agent" };
+  let named = false; // an agent-name record, or a fallback name, has fixed main's name
   const agents = new Map<string, AgentInfo>(); // sidechain agentId → identity
   const spawns = new Map<string, AgentInfo & { prompt?: string }>(); // Agent toolCallId → the subagent it asked for
 
@@ -463,8 +464,29 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
     return true;
   }
 
+  // The name of a session with no agent-name record: the first main-thread record to
+  // supply a branch, a cwd or a prompt fixes it, so replays agree.
+  function nameFromRecord(rec: Rec): void {
+    if (named || rec.isSidechain === true) return;
+    const branch = str(rec.gitBranch)?.trim();
+    const cwd = str(rec.cwd)?.replace(/\/+$/, "").split("/").pop();
+    let prompt: string | undefined;
+    if (rec.type === "user" && rec.isMeta !== true && isObject(rec.message)) {
+      const c = rec.message.content;
+      prompt = typeof c === "string" ? c : Array.isArray(c) && !c.some((b) => isObject(b) && b.type === "tool_result")
+        ? c.filter(isObject).filter((b) => b.type === "text").map((b) => str(b.text) ?? "").join(" ") : undefined;
+      if (prompt && INTERRUPT.test(prompt)) prompt = undefined;
+    }
+    const tidy = (t: string | undefined, max = 80) => t?.replace(/[\u0000-\u001f\u007f-\u009f]+/g, (m) => (/\s/.test(m) ? " " : "")).replace(/\s+/g, " ").trim().slice(0, max);
+    const name = [branch && !/^(main|master|HEAD)$/.test(branch) ? tidy(branch) : undefined, tidy(cwd), tidy(prompt, 40)].find(Boolean);
+    if (!name) return;
+    named = true;
+    main = { ...main, name };
+  }
+
   function mapRecord(rec: Rec, out: AguiEvent[]): void {
     const type = str(rec.type);
+    nameFromRecord(rec);
     const uuid = str(rec.uuid);
     if (uuid && seen.has(uuid)) {
       stats.ignored++;
@@ -477,7 +499,10 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
       if (rec.subtype === "turn_duration" && rec.isSidechain !== true) finishRun(rec, out, "success");
       else stats.ignored++;
     } else if (type && SILENT_TYPES.has(type)) {
-      if (type === "agent-name" && str(rec.agentName)) main = { ...main, name: str(rec.agentName)!, role: roleOfName(str(rec.agentName)!) };
+      if (type === "agent-name" && str(rec.agentName)) {
+        named = true;
+        main = { ...main, name: str(rec.agentName)!, role: roleOfName(str(rec.agentName)!) };
+      }
       stats.ignored++;
     }
     else if (type) stats.unknown++;
