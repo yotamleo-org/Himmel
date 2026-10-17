@@ -1184,5 +1184,17 @@ unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
 bash "$WAIT" >/dev/null 2>&1; rc=$?
 check "(k) no inbox argument is a usage error (rc 2)" "2" "$rc"
 
+# an option-shaped first argument is refused before any path is derived from it
+mkdir -p "$WORK/kopt"
+(cd "$WORK/kopt" && bash "$WAIT" --help >"$WORK/kopt.out" 2>&1); rc=$?
+check "(k) an option-shaped inbox argument is a usage error (rc 2)" "2" "$rc"
+check "(k) and it writes no stray file into the cwd" "" "$(ls -A "$WORK/kopt")"
+check "(k) and it prints the usage text" "yes" "$(grep -q '^usage: console-wait.sh' "$WORK/kopt.out" && echo yes)"
+# control: an absolute inbox path still starts the waiter
+reset_stub
+I="$(new_inbox kctl)"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(k) an absolute inbox path still starts the waiter (rc 124)" "124" "$rc"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

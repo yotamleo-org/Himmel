@@ -173,7 +173,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
-if [ "$#" -lt 1 ] || [ -z "$1" ]; then
+if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     echo "usage: console-wait.sh <inbox-file> [tick.sh args...]" >&2
     exit 2
 fi
