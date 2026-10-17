@@ -6,7 +6,7 @@ unset QMD_OPENAI_API_KEY QMD_OPENAI_BASE_URL
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$HERE/qmd-daemon-env.sh"
-work="$(mktemp -d)" || exit 1
+work="$(mktemp -d -t qmd-daemon-env.XXXXXX)" || exit 1
 trap 'rm -rf "$work"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
