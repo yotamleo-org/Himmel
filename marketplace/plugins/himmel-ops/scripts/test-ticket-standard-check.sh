@@ -88,6 +88,15 @@ q="$td/q-boldph"; mkdraft "$td/boldph.md" Proof; printf '## Proof\n**TBD**\n' >>
 run Task "$td/boldph.md" "$q" --sector X
 check "bold-wrapped TBD Proof exits 1" "$rc" 1
 
+# --- indented heading ends a section; closing hashes still name the section ---
+q="$td/q-indent"; mkdraft "$td/indent.md" Proof "Agent detail"
+printf '## Proof\n\n  ## Notes\nsome unrelated line\n\n## Agent detail\nfiles\n' >>"$td/indent.md"
+run Task "$td/indent.md" "$q" --sector X
+check "empty Proof before indented heading exits 1" "$rc" 1
+q="$td/q-closing"; mkdraft "$td/closing.md" Proof; printf '## Proof ##\nRun it on a real draft.\n' >>"$td/closing.md"
+run Task "$td/closing.md" "$q" --sector X
+check "heading with closing hashes exits 0" "$rc" 0
+
 # --- a failing awk fails closed, never reports success ---
 mkdir "$td/fakebin"; printf '#!/bin/sh\nexit 3\n' >"$td/fakebin/awk"; chmod +x "$td/fakebin/awk"
 mkdraft "$td/awk.md" Proof
