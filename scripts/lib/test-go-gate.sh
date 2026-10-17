@@ -575,7 +575,7 @@ rc=0; out=$(fr '[{"status":"COMPLETED","conclusion":"SUCCESS"}]') || rc=$?
 [ "$rc" = 0 ] || fail "10f: a completed passing check must be ready (rc=$rc, out=[$out])"
 rc=0; out=$(fr '[{"state":"SUCCESS"}]') || rc=$?
 [ "$rc" = 0 ] || fail "10f: a SUCCESS status context must be ready (rc=$rc, out=[$out])"
-for chk in '[]' 'null' '[{"status":"IN_PROGRESS"}]' '[{"status":"QUEUED"}]' '[{"state":"PENDING"}]' '[{"state":"EXPECTED"}]' '[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"IN_PROGRESS"}]'; do
+for chk in '[]' 'null' '[{"status":"IN_PROGRESS"}]' '[{"status":"QUEUED"}]' '[{"state":"PENDING"}]' '[{"state":"EXPECTED"}]' '[{}]' '[{"status":null}]' '{"a":1}' '["SUCCESS"]' '[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"IN_PROGRESS"}]'; do
     rc=0; out=$(fr "$chk") || rc=$?
     { [ "$rc" = 2 ] && printf '%s' "$out" | grep -qi 'check'; } || fail "10f: checks [$chk] must refuse naming the checks (rc=$rc, out=[$out])"
 done

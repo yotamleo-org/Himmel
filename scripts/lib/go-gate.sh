@@ -802,7 +802,9 @@ go_fork_ready() {
     fi
     # GitHub can report CLEAN on a fresh push before any workflow registered:
     # no check yet is not green. A fork with no CI at all is refused too.
-    chk=$(printf '%s' "$view" | jq -r '(.statusCheckRollup // []) | "\(length) \([.[] | select((.status? // "COMPLETED") != "COMPLETED" or (.state? // "SUCCESS") == "PENDING" or (.state? // "SUCCESS") == "EXPECTED")] | length)"' 2>/dev/null) || chk=""
+    # an entry settles only as a CheckRun (status COMPLETED) or a StatusContext (state not PENDING/EXPECTED);
+    # a record carrying neither field, or a non-array rollup, counts as unsettled
+    chk=$(printf '%s' "$view" | jq -r '(.statusCheckRollup // []) as $r | if ($r | type) != "array" then "x x" else "\($r | length) \([$r[] | select((type == "object" and (((.status | type) == "string" and .status == "COMPLETED") or ((.state | type) == "string" and .state != "PENDING" and .state != "EXPECTED"))) | not)] | length)" end' 2>/dev/null) || chk=""
     case "$chk" in
         "0 0") printf 'it is not ready to merge: the PR has no registered check yet, so CLEAN does not prove a green build (a fork with no CI is refused).\n'; return 2 ;;
         *" 0") ;;
