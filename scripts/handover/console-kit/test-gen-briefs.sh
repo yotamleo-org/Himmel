@@ -250,12 +250,13 @@ bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/
 
 # A completes-ticket value other than yes or no is refused (it used to fall through to the closing
 # merge): nothing is written, and the message names the leg label and the value. Case is ignored.
-for bad in partial maybe yess; do
-    rm -rf "$WORK/ctb-$bad"
+# shellcheck disable=SC2016  # the backticks are literal characters in the value under test
+for bad in partial maybe yess '"no"' '`yes`'; do
+    rm -rf "$WORK/ctb-out"
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json" "$bad"
-    python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-$bad" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
-    [ "$rc" = 1 ] && grep -q "N901" "$WORK/ctb.err" && grep -q "$bad" "$WORK/ctb.err" && pass "completes-ticket: $bad is refused naming the leg and the value" || fail "completes-ticket: $bad rc=$rc: $(cat "$WORK/ctb.err")"
-    [ ! -e "$WORK/ctb-$bad/launch-N901.sh" ] && ! ls "$WORK/ctb-$bad"/*.md >/dev/null 2>&1 && pass "and nothing is written for $bad" || fail "files written for completes-ticket: $bad"
+    python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
+    [ "$rc" = 1 ] && grep -q "N901" "$WORK/ctb.err" && grep -qF -- "$bad" "$WORK/ctb.err" && pass "completes-ticket: $bad is refused naming the leg and the value" || fail "completes-ticket: $bad rc=$rc: $(cat "$WORK/ctb.err")"
+    [ ! -e "$WORK/ctb-out/launch-N901.sh" ] && ! ls "$WORK/ctb-out"/*.md >/dev/null 2>&1 && pass "and nothing is written for $bad" || fail "files written for completes-ticket: $bad"
 done
 ct_mixed="$(ct_brief 'one PR. completes-ticket: YES' "$WORK/ct5")"
 has "an upper-case YES still writes the yes line" "$ct_mixed" "> **Completes ticket:** yes"
