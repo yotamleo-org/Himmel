@@ -77,6 +77,19 @@ BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-dead" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER"
 rc=$?
 [ "$rc" -eq 1 ] && pass "a dead session ends the waker with rc=1" || fail "dead session: expected rc=1, got rc=$rc"
 
+# A window started before EnableSecuritySensitiveDBusAPI refuses sendText: named, rc=3.
+cat > "$tmp/qdbus-denied" <<'EOF'
+#!/usr/bin/env bash
+printf 'Error: org.freedesktop.DBus.Error.AccessDenied\nSecurity sensitive DBus API is disabled in the settings.\n' >&2
+exit 2
+EOF
+chmod +x "$tmp/qdbus-denied"
+BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-denied" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>"$tmp/denied-err"
+rc=$?
+if [ "$rc" -eq 3 ] && grep -qxF 'bus-idle-waker: sendText denied (window predates the konsole D-Bus setting; relaunch it): legX' "$tmp/denied-err" && ! grep -q 'session gone' "$tmp/denied-err"; then
+  pass "an AccessDenied sendText ends with rc=3 and names the denial, not a gone session"
+else fail "denied: expected rc=3, got rc=$rc: $(cat "$tmp/denied-err")"; fi
+
 bash "$WAKER" --name legX --service s --session >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 64 ] && pass "an option with no value is refused (rc=64)" || fail "valueless option: expected rc=64, got rc=$rc"
