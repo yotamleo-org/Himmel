@@ -2090,9 +2090,11 @@ queue_lock_self_heartbeat() {
 # shifted into the handover-path slot (`release <token>`, `status <token>`):
 # no path separator, shaped like a generated `<host>-pid<N>` token or a UUID
 # session id, and naming no existing doc. Nothing else is rejected, so every
-# bare doc name keeps resolving under the known roots.
+# bare doc name keeps resolving under the known roots. The backticked form
+# `acquire` prints is classified by its stripped value.
 _ql_operand_is_token() {
-    local op="$1"
+    local op
+    op="$(_ql_strip_backticks "$1")"
     case "$op" in */*|*\\*|*.md) return 1 ;; esac
     case "$op" in
         *-pid[0-9]*) case "${op##*-pid}" in *[!0-9]*) return 1 ;; esac ;;

@@ -3147,6 +3147,14 @@ if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
 else
     fail "T6038g: bare token-shaped doc (rc=$rc out=$out)"
 fi
+for tv in release status; do
+    out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" "$tv" "\`$T6_TOK\`" 2>/dev/null)"; rc=$?
+    if [ "$rc" -eq 1 ] && [ -z "$out" ]; then
+        pass "T6038h: $tv <backticked token-only> exits 1, stdout empty"
+    else
+        fail "T6038h: $tv <backticked token-only> (rc=$rc out='$out')"
+    fi
+done
 out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" release "$T6_DOC" "$T6_TOK" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then
     pass "T6038f: release <doc> <token> still releases"
