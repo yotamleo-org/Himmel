@@ -95,9 +95,10 @@ while IFS= read -r -d '' path; do
         a = substr($0, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", a); assigned[a] = 1
       }
     }
+    # ponytail: any assignment clears an UPPER_CASE name (X="${X:-}" then cat "$X" passes), upgrade by tracking env-preserving assignments if it matters
     END {
       OPER = "\"?\\$(\\{[^}]*\\}|[A-Za-z0-9_@*]+)\"?"
-      CMD  = "(^|[;&|({`]|[ \t](then|do|else))[ \t]*(cat|head|tail|less|more|source|\\.)([ \t]+-[A-Za-z0-9]+([ \t]+[0-9]+)?)*[ \t]+"
+      CMD  = "(^|[;&|({`]|[ \t](then|do|else))[ \t]*(cat|head|tail|less|more|source|\\.)([ \t]+(-[A-Za-z0-9]+([ \t]+[0-9]+)?|--))*[ \t]+"
       RED  = "(^|[^<0-9&>])<[ \t]*"
       for (n = 1; n <= total; n++) {
         if (!is_added(n)) continue

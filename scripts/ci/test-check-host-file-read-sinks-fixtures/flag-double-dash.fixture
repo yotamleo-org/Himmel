@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+body="$(cat -- "$1")"
+source -- "$CONFIG_FILE"

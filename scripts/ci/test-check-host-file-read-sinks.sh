@@ -31,13 +31,14 @@ n=0
 case_repo() {
   n=$((n + 1))
   local d="$SCRATCH/r$n"
-  mkdir -p "$d" || return 1
-  cd "$d" || return 1
-  git init -q . && git config user.email t@t && git config user.name t && git config commit.gpgsign false
-  cp "$FIX/$1.fixture" launch.sh
-  git add launch.sh && git commit -q -m base
-  cp "$FIX/$2.fixture" launch.sh
-  git add launch.sh && git commit -q -m change
+  {
+    mkdir -p "$d" && cd "$d" &&
+    git init -q . && git config user.email t@t && git config user.name t && git config commit.gpgsign false &&
+    cp "$FIX/$1.fixture" launch.sh &&
+    git add launch.sh && git commit -q -m base &&
+    cp "$FIX/$2.fixture" launch.sh &&
+    git add launch.sh && git commit -q -m change
+  } || { echo "FAIL - fixture repo setup failed ($1, $2)" >&2; exit 1; }
 }
 
 run_check() { OUT="$(bash "$CHECK" --range HEAD~1 2>&1)"; RC=$?; }
@@ -63,6 +64,10 @@ run_check
 case_repo base flag-at
 run_check
 [ "$RC" -eq 1 ] && ok "head \"\$@\" is flagged" || bad "head \"\$@\" not flagged (rc=$RC): $OUT"
+
+case_repo base flag-double-dash
+run_check
+[ "$RC" -eq 1 ] && ok "cat -- \"\$1\" is flagged" || bad "-- terminator not flagged (rc=$RC): $OUT"
 
 # --- must-pass --------------------------------------------------------------------
 case_repo base pass-allowlist
