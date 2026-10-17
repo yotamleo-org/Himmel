@@ -1127,6 +1127,25 @@ EOF
 OUT20M="$(bash "$LINT" "$OA_PATHFP" 2>&1)"
 assert_not_contains "20m a multi-field date format in a path is not a tracked field" "[octal-arith]" "$OUT20M"
 
+OA_CMT="$TMP_ROOT/oa_cmt.sh"
+cat > "$OA_CMT" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m) # normalize with 10# later
+echo $((m+1))
+EOF
+OUT20N="$(bash "$LINT" "$OA_CMT" 2>&1)"
+assert_contains "20n a 10# inside a trailing comment does not normalize" "[octal-arith] line 4" "$OUT20N"
+
+OA_SAMELINE="$TMP_ROOT/oa_sameline.sh"
+cat > "$OA_SAMELINE" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+m=$(date +%m); echo $((m+1))
+EOF
+OUT20O="$(bash "$LINT" "$OA_SAMELINE" 2>&1)"
+assert_contains "20o assignment then arithmetic on one line is flagged" "[octal-arith] line 3" "$OUT20O"
+
 OUT20H="$(bash "$LINT" --help 2>&1)"
 assert_contains "20g --help documents [octal-arith]" "[octal-arith]" "$OUT20H"
 

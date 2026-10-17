@@ -196,8 +196,15 @@ _octal_arith_hits() {
         if (match(line, /^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?[A-Za-z_][A-Za-z0-9_]*=/)) {
             lhs = substr(line, RSTART, RLENGTH - 1)
             sub(/^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?/, "", lhs)
-            isdate = (line ~ /date[^#]*[+][^[:alnum:]%]?%[mdHMSjUVW][^[:alnum:]%]?([)`;[:space:]]|$)/ && line !~ /10#/)
-            if (!isdate && line !~ /10#/) {
+            code = line
+            sub(/[[:space:]]#.*$/, "", code)
+            isdate = (line ~ /date[^#]*[+][^[:alnum:]%]?%[mdHMSjUVW][^[:alnum:]%]?([)`;[:space:]]|$)/ && code !~ /10#/)
+            if (isdate && segs != "") {
+                pa = index(line, "((")
+                if (pa == 0) pa = index(line, "let")
+                if (index(line, "date") < pa && uses(segs, lhs)) hit = 1
+            }
+            if (!isdate && code !~ /10#/) {
                 derived = 0
                 # derived only when the tracked value itself is piped into cut (or fed by here-string)
                 for (v in tracked) {
