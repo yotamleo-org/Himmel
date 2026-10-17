@@ -1161,7 +1161,7 @@ if [ -n "$HOOK_ENTRY" ]; then pass "21a shell-lint hook is registered in .pre-co
 GATE="$TMP_ROOT/gate"
 mkdir -p "$GATE/scripts/lint"
 cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GATE/scripts/lint/"
-printf '' > "$GATE/scripts/lint/shell-lint-baseline.txt"
+printf '' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
 (
     cd "$GATE" || exit 1
     git init -q
@@ -1191,26 +1191,26 @@ OUT21C="$(cd "$GATE" && git reset -q bad.sh && git add good.sh && bash -c "${HOO
 if [ "$EC21C" -eq 0 ]; then pass "21c hook entry passes a clean staged file"; else fail "21c expected exit 0, got $EC21C" "$OUT21C"; fi
 
 # baseline: a count within its row passes; one more finding in the file fails
-printf 'bad.sh\tmktemp\t1\n' > "$GATE/scripts/lint/shell-lint-baseline.txt"
-OUT21D="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.txt bad.sh 2>&1)"; EC21D=$?
+printf 'bad.sh\tmktemp\t1\n' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
+OUT21D="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv bad.sh 2>&1)"; EC21D=$?
 if [ "$EC21D" -eq 0 ]; then pass "21d finding within its baseline count is accepted"; else fail "21d expected exit 0, got $EC21D" "$OUT21D"; fi
 cat >> "$GATE/bad.sh" <<'EOF'
 x=$(mktemp)
 EOF
-OUT21E="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.txt bad.sh 2>&1)"; EC21E=$?
+OUT21E="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv bad.sh 2>&1)"; EC21E=$?
 if [ "$EC21E" -eq 1 ]; then pass "21e a finding above its baseline count fails"; else fail "21e expected exit 1, got $EC21E" "$OUT21E"; fi
 _write_bom_file "$GATE/bom.sh" <<'EOF'
 #!/usr/bin/env bash
 set -uo pipefail
 EOF
-printf 'bom.sh\tBOM\t1\n' > "$GATE/scripts/lint/shell-lint-baseline.txt"
-OUT21F="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.txt bom.sh 2>&1)"; EC21F=$?
+printf 'bom.sh\tBOM\t1\n' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
+OUT21F="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv bom.sh 2>&1)"; EC21F=$?
 if [ "$EC21F" -eq 1 ]; then pass "21f a [BOM] row in the baseline is never honoured"; else fail "21f expected exit 1, got $EC21F" "$OUT21F"; fi
 
 # --changed BASE..HEAD lints only files changed in the range
 (cd "$GATE" && git add bad.sh good.sh && git commit -q -m add) >/dev/null 2>&1
-printf '' > "$GATE/scripts/lint/shell-lint-baseline.txt"
-OUT21G="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --changed HEAD~1..HEAD --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21G=$?
+printf '' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
+OUT21G="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --changed HEAD~1..HEAD --baseline scripts/lint/shell-lint-baseline.tsv 2>&1)"; EC21G=$?
 if [ "$EC21G" -eq 1 ]; then pass "21g --changed fails on a violating file in the range"; else fail "21g expected exit 1, got $EC21G" "$OUT21G"; fi
 assert_contains "21g names the violating file" "bad.sh" "$OUT21G"
 assert_not_contains "21g does not lint a file outside the range" "shell-lint.sh:" "$OUT21G"
@@ -1218,15 +1218,15 @@ OUT21H="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --changed no-such-ref..H
 if [ "$EC21H" -eq 2 ]; then pass "21h --changed with an unresolvable range exits 2 (fail closed)"; else fail "21h expected exit 2, got $EC21H" "$OUT21H"; fi
 
 # --write-baseline round trip
-OUT21I="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.txt --write-baseline bad.sh 2>&1)"; EC21I=$?
-if [ "$EC21I" -eq 0 ] && grepq "$(cat "$GATE/scripts/lint/shell-lint-baseline.txt")" -F "bad.sh	mktemp	2"; then
+OUT21I="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv --write-baseline bad.sh 2>&1)"; EC21I=$?
+if [ "$EC21I" -eq 0 ] && grepq "$(cat "$GATE/scripts/lint/shell-lint-baseline.tsv")" -F "bad.sh	mktemp	2"; then
     pass "21i --write-baseline records the per-file tag count"
 else
     fail "21i baseline not written as expected (rc $EC21I)" "$OUT21I"
 fi
 
 # the committed baseline accepts the real linter and CI runs the changed-files step
-OUT21J="$(cd "$REPO_ROOT" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.txt scripts/lint/shell-lint.sh scripts/lint/test-shell-lint.sh 2>&1)"; EC21J=$?
+OUT21J="$(cd "$REPO_ROOT" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv scripts/lint/shell-lint.sh scripts/lint/test-shell-lint.sh 2>&1)"; EC21J=$?
 if [ "$EC21J" -eq 0 ]; then pass "21j committed baseline: the lint's own files are clean"; else fail "21j expected exit 0, got $EC21J" "$OUT21J"; fi
 if grepq "$(cat "$REPO_ROOT/.github/workflows/ci.yml")" -F "shell-lint.sh --changed"; then
     pass "21k ci.yml runs shell-lint over the PR's changed files"
@@ -1250,15 +1250,15 @@ y=$(mktemp)
 EOF
     git add moved.sh && git commit -q -m rename
 ) >/dev/null 2>&1
-printf '' > "$GATE/scripts/lint/shell-lint-baseline.txt"
-OUT21L="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --changed HEAD~1..HEAD --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21L=$?
+printf '' > "$GATE/scripts/lint/shell-lint-baseline.tsv"
+OUT21L="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --changed HEAD~1..HEAD --baseline scripts/lint/shell-lint-baseline.tsv 2>&1)"; EC21L=$?
 if [ "$EC21L" -eq 1 ]; then pass "21l --changed lints a renamed file"; else fail "21l expected exit 1, got $EC21L" "$OUT21L"; fi
 assert_contains "21l names the new path" "moved.sh" "$OUT21L"
 (cd "$GATE" && git reset -q --hard HEAD~1 && git mv bad.sh moved.sh && cat >> moved.sh <<'EOF'
 y=$(mktemp)
 EOF
 git add moved.sh) >/dev/null 2>&1
-OUT21M="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21M=$?
+OUT21M="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.tsv 2>&1)"; EC21M=$?
 if [ "$EC21M" -eq 1 ]; then pass "21m --staged lints a renamed file"; else fail "21m expected exit 1, got $EC21M" "$OUT21M"; fi
 
 # --write-baseline never launders a finding no baseline can accept, and fails loudly when it cannot write
@@ -1273,7 +1273,7 @@ if [ "$EC21O" -eq 2 ]; then pass "21o --write-baseline to an unwritable path exi
 y=$(mktemp)
 EOF
 git add "é.sh") >/dev/null 2>&1
-OUT21P="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"
+OUT21P="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.tsv 2>&1)"
 assert_contains "21p --staged lints a non-ASCII filename" "é.sh" "$OUT21P"
 cat > "$GATE/dot.sh" <<'EOF'
 y=$(mktemp)
@@ -1287,7 +1287,7 @@ if [ "$EC21Q" -eq 0 ]; then pass "21q a ./ path matches its baseline row"; else 
 y=$(mktemp)
 EOF
 git add -A -- ':(glob)nl*') >/dev/null 2>&1
-OUT21R="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21R=$?
+OUT21R="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.tsv 2>&1)"; EC21R=$?
 if [ "$EC21R" -eq 2 ]; then pass "21r --staged refuses a filename with a newline"; else fail "21r expected exit 2, got $EC21R" "$OUT21R"; fi
 assert_contains "21r says why" "newline" "$OUT21R"
 
@@ -1297,7 +1297,7 @@ cat > "$(printf 'ctl\001x.sh')" <<'EOF'
 y=$(mktemp)
 EOF
 git add -A -- ':(glob)ctl*') >/dev/null 2>&1
-OUT21S="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"
+OUT21S="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.tsv 2>&1)"
 assert_contains "21s --staged lints a name holding a control byte" "ctl" "$OUT21S"
 
 # ---------------------------------------------------------------------------

@@ -562,11 +562,11 @@ repos:
 
       - id: shell-lint
         name: shell portability lint (mktemp template, GNU flags, errexit leak, POSIX ERE, bash 3.2; baseline-first)
-        # HIMMEL-6043. Existing findings sit in scripts/lint/shell-lint-baseline.txt
+        # HIMMEL-6043. Existing findings sit in scripts/lint/shell-lint-baseline.tsv
         # (path, tag, count); only a count above its row fails. The hook reads the
         # index itself (--staged), so pass_filenames is off.
         language: system
-        entry: bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt
+        entry: bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.tsv
         pass_filenames: false
         files: '\.sh$'
         stages: [pre-commit]

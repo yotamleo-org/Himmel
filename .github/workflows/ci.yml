@@ -518,7 +518,7 @@ jobs:
       # current base tip; event base.sha can lag it and would lint main's own files.
       - name: shell-lint changed files
         if: github.event_name == 'pull_request'
-        run: bash scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.txt
+        run: bash scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
 
   node-suites:
     needs: plan
