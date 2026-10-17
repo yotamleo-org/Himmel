@@ -35,11 +35,13 @@ scripts/eval/README.md). Exit: 0 scored, 1 check found problems, 64 usage error.
 Stdlib only.
 """
 import argparse
+import datetime
 import glob
 import json
 import os
 import re
 import shlex
+import signal
 import statistics
 import subprocess
 import sys
@@ -52,6 +54,8 @@ import eval_runs  # noqa: E402
 
 ARMS = ["grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
+# The question set holds every question and reason phrase verbatim.
+GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/"]
 STOP = set("""a an and are as at be by can do does for from has have how i in is it its
 of on or that the this to was what when where which who whom why will with without
 while into than then them there their not no my me we our you your does do did
@@ -81,14 +85,19 @@ def tok(text):
 
 
 def run_cmd(argv, timeout, cwd=None, stdin=None):
-    """(stdout, timed_out). stderr is dropped: the caller reads stdout only."""
+    """(stdout, timed_out, rc). A timeout kills the command's whole process group."""
+    p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True, start_new_session=True)
     try:
-        p = subprocess.run(argv, cwd=cwd, input=stdin, capture_output=True, text=True,
-                           timeout=timeout, start_new_session=True)
-        return p.stdout, False
-    except subprocess.TimeoutExpired as e:
-        out = e.stdout or ""
-        return out if isinstance(out, str) else out.decode(errors="replace"), True
+        out, _ = p.communicate(stdin, timeout=timeout)
+        return out, False, p.returncode
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        out, _ = p.communicate()
+        return out or "", True, None
 
 
 def arm_grep(q, repo, timeout, k):
@@ -97,11 +106,13 @@ def arm_grep(q, repo, timeout, k):
     t0 = time.time()
     for w in kws:
         if time.time() - t0 > timeout:
-            return [], "", True
-        out, to = run_cmd(["git", "-C", repo, "grep", "-I", "-i", "-c", "-F", "-e", w],
-                          max(1, timeout - (time.time() - t0)))
+            return [], "", True, False
+        out, to, rc = run_cmd(["git", "-C", repo, "grep", "-I", "-i", "-c", "-F", "-e", w, "--"] + GREP_SCOPE,
+                              max(1, timeout - (time.time() - t0)))
         if to:
-            return [], "", True
+            return [], "", True, False
+        if rc not in (0, 1):
+            return [], "", False, True
         for line in out.splitlines():
             f, _, n = line.rpartition(":")
             d, c = score.get(f, (0, 0))
@@ -112,9 +123,9 @@ def arm_grep(q, repo, timeout, k):
         argv = ["git", "-C", repo, "grep", "-n", "-I", "-i", "-F"]
         for w in kws:
             argv += ["-e", w]
-        out, _ = run_cmd(argv + ["--", f], timeout)
+        out, _, _ = run_cmd(argv + ["--", f], timeout)
         text += out.splitlines()[:8]
-    return files, "\n".join(text), False
+    return files, "\n".join(text), False, False
 
 
 def qmd_token():
@@ -182,36 +193,39 @@ def arm_qmd(q, hybrid, timeout, k, collection):
         args["rerank"] = False
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
-        out, to = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))
+        out, to, rc = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))
         if to:
-            return [], "", True
+            return [], "", True, False
+        if rc != 0:
+            return [], "", False, True
         try:
             rows = json.loads(out or "[]")
         except ValueError:
-            rows = []
+            return [], "", False, True
     else:
         try:
             rows = qmd_daemon(args, timeout)
-        except Exception as e:  # a timeout or a dead daemon is a miss, not a crash
-            return [], "", "timed out" in str(e).lower() or isinstance(e, TimeoutError)
+        except Exception as e:  # a timeout or a dead daemon is a scored miss, not a crash
+            to = "timed out" in str(e).lower() or isinstance(e, TimeoutError)
+            return [], "", to, not to
     files, text = [], []
     for r in rows:
         f = re.sub(r"^qmd://[^/]+/", "", str(r.get("file", "")))
         if f and f not in files:
             files.append(f)
         text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
-    return files[:k], "\n".join(text), False
+    return files[:k], "\n".join(text), False, False
 
 
 def arm_graphify(q, repo, timeout, k):
     cmd = os.environ.get("RETRIEVAL_EVAL_GRAPH_CMD")
     argv = shlex.split(cmd) if cmd else ["bash", os.path.join(repo, "scripts", "graphify", "leg-graph.sh")]
-    out, to = run_cmd(argv + ["query", q], timeout, cwd=repo)
+    out, to, rc = run_cmd(argv + ["query", q], timeout, cwd=repo)
     files = []
     for f in re.findall(r"\[src=([^\s\]]+)", out):
         if f not in files:
             files.append(f)
-    return files[:k], out, to
+    return files[:k], out, to, not to and rc != 0
 
 
 def fuse(lists, k):
@@ -295,28 +309,30 @@ def cmd_run(a):
                 files = fuse([p["files"] for p in parts], a.k)
                 text = "\n".join(p["_text"] for p in parts)
                 got[arm] = dict(files=files, _text=text, ms=sum(p["ms"] for p in parts),
-                                timeout=any(p["timeout"] for p in parts))
+                                timeout=any(p["timeout"] for p in parts), error=any(p["error"] for p in parts))
             else:
                 t0 = time.time()
                 if arm == "grep":
-                    files, text, to = arm_grep(q["q"], repo, a.timeout, a.k)
+                    files, text, to, err = arm_grep(q["q"], repo, a.timeout, a.k)
                 elif arm == "graphify":
-                    files, text, to = arm_graphify(q["q"], repo, a.timeout, a.k)
+                    files, text, to, err = arm_graphify(q["q"], repo, a.timeout, a.k)
                 else:
-                    files, text, to = arm_qmd(q["q"], arm == "qmd-hybrid", a.timeout, a.k, a.collection)
-                got[arm] = dict(files=files, _text=text, ms=int((time.time() - t0) * 1000), timeout=bool(to))
+                    files, text, to, err = arm_qmd(q["q"], arm == "qmd-hybrid", a.timeout, a.k, a.collection)
+                got[arm] = dict(files=files, _text=text, ms=int((time.time() - t0) * 1000), timeout=bool(to),
+                                error=bool(err))
         for arm in arms:
             g = got[arm]
             row = dict(id=q["id"], kind=q.get("kind"), arm=arm, files=g["files"],
                        hit=is_hit(g["files"], q["gold"]), reason=carried(g["_text"], q.get("reason", [])),
-                       tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"])
+                       tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"])
             rows.append(row)
         print("%s %s" % (q["id"], " ".join("%s=%s" % (r["arm"], int(r["hit"])) for r in rows[-len(arms):])),
               file=sys.stderr)
     with open(os.path.join(a.out, "results.jsonl"), "w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")
-    cols = ["arm", "n", "recall@5", "reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts"]
+    cols = ["arm", "n", "recall@5", "reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts",
+            "errors"]
     lines = ["\t".join(cols)]
     metrics, cases = {}, {}
     for arm in arms:
@@ -328,10 +344,11 @@ def cmd_run(a):
         msm = statistics.median(r["ms"] for r in rs) if rs else 0
         mst = sum(r["ms"] for r in rs)
         to = sum(r["timeout"] for r in rs)
+        er = sum(r["error"] for r in rs)
         lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, "%.2f" % rea, str(len(rr)),
-                                "%d" % tk, "%d" % msm, "%d" % mst, str(to)]))
+                                "%d" % tk, "%d" % msm, "%d" % mst, str(to), str(er)]))
         metrics.update({arm + ".recall@5": rec, arm + ".reason_carried": rea, arm + ".tokens_mean": tk,
-                        arm + ".ms_median": msm, arm + ".timeouts": to})
+                        arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
         for r in rs:
             cases.setdefault(r["id"], {})[arm + ".hit"] = r["hit"]
     with open(os.path.join(a.out, "scores.tsv"), "w") as fh:
@@ -404,7 +421,8 @@ def session_calls(path):
                 if not isinstance(b, dict):
                     continue
                 if t == "assistant" and b.get("type") == "tool_use":
-                    calls.append(dict(id=b.get("id"), name=b.get("name", ""), input=b.get("input") or {}))
+                    calls.append(dict(id=b.get("id"), name=b.get("name", ""), input=b.get("input") or {},
+                                      ts=d.get("timestamp")))
                 elif t == "user" and b.get("type") == "tool_result":
                     r = b.get("content")
                     if isinstance(r, list):
@@ -450,6 +468,14 @@ def used(cl, later):
     return False
 
 
+def call_time(cl):
+    """Epoch seconds of the call's timestamp, or None when it has none."""
+    try:
+        return datetime.datetime.fromisoformat(cl["ts"].replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
 def cmd_census(a):
     cut = time.time() - a.days * 86400 if a.days > 0 else 0
     files = glob.glob(os.path.join(a.projects, "*", "*.jsonl")) + \
@@ -464,6 +490,8 @@ def cmd_census(a):
         except OSError:
             continue
         title, side, calls = session_calls(f)
+        # The mtime check only skips whole files; a long session also holds older calls.
+        calls = [cl for cl in calls if (call_time(cl) or cut) >= cut]
         role = role_of(title, f, side)
         for book, include in ((roles, True), (organic, not FEATURE.search(title or ""))):
             if not include:
