@@ -16,7 +16,12 @@ Three modes:
            parity_guard -> no-op; carries luna_vault_guard -> swap it; has NO
            guard hook -> ADD the canonical parity_guard pre_tool_call entry
            WITHOUT clobbering any other hooks the profile already has. Also
-           rewrites the one legacy hand-listed matcher to `.*` (HIMMEL-2637).
+           rewrites the one legacy hand-listed matcher to `.*` (HIMMEL-2637),
+           and sets `fail_closed: true` on every parity_guard entry.
+
+Every parity_guard entry this writes carries `fail_closed: true`: hermes
+defaults a shell hook to fail open, so a guard that crashed or could not start
+would let the tool call through.
 
 `set` optionally also wires the END-side hook (HIMMEL-2021): pass
 <node_bin> <repo_root> and the block gains an `on_session_finalize` entry
@@ -62,6 +67,7 @@ def _hook_body(interp: str, guard: str) -> str:
         f"  - matcher: {MATCHER}\n"
         f"    command: '\"{interp}\" \"{guard}\"'\n"
         "    timeout: 10\n"
+        "    fail_closed: true\n"
     )
 
 
@@ -71,6 +77,7 @@ def _list_item(interp: str, guard: str) -> str:
         f"  - matcher: {MATCHER}\n"
         f"    command: '\"{interp}\" \"{guard}\"'\n"
         "    timeout: 10\n"
+        "    fail_closed: true\n"
     )
 
 
@@ -234,6 +241,62 @@ def migrate_matcher(cfg_path: str) -> None:
     print(f"migrated the legacy parity_guard matcher to {MATCHER} in {cfg_path}")
 
 
+def migrate_fail_closed(cfg_path: str) -> None:
+    """Make every parity_guard pre_tool_call entry fail closed (idempotent).
+
+    hermes registers a shell hook with fail_closed=False unless told otherwise,
+    so a guard that crashes, times out or cannot start ALLOWS the call. Only an
+    entry whose own keys run parity_guard.py is touched: a hook himmel does not
+    own keeps its own setting."""
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    hooks = event_pre = False
+    changed = False
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        indent = len(ln) - len(ln.lstrip())
+        if ln.strip() and not ln[:1].isspace():
+            hooks, event_pre = ln.startswith("hooks:"), False
+            i += 1
+            continue
+        stripped = ln.strip()
+        if hooks and stripped.endswith(":") and not stripped.startswith("- "):
+            event_pre = stripped == "pre_tool_call:"
+            i += 1
+            continue
+        if not (hooks and event_pre and stripped.startswith("- ")):
+            i += 1
+            continue
+        # the entry: this list item plus its deeper-indented keys
+        key_indent = indent + 2
+        j = i + 1
+        while j < len(lines) and lines[j].strip() \
+                and len(lines[j]) - len(lines[j].lstrip()) >= key_indent:
+            j += 1
+        if any("parity_guard.py" in body for body in lines[i:j]):
+            fc = [k for k in range(i, j)
+                  if lines[k].strip().lstrip("- ").startswith(("fail_closed:", "failClosed:"))]
+            if not fc:
+                if not lines[j - 1].endswith("\n"):
+                    lines[j - 1] += "\n"
+                lines.insert(j, " " * key_indent + "fail_closed: true\n")
+                j += 1
+                changed = True
+            else:
+                for k in fc:
+                    key, _, value = lines[k].partition(":")
+                    if value.strip() != "true":
+                        lines[k] = f"{key}: true\n"
+                        changed = True
+        i = j
+    if not changed:
+        return
+    with open(cfg_path, "w", encoding="utf-8", newline="\n") as f:
+        f.writelines(lines)
+    print(f"set fail_closed: true on the parity_guard hook in {cfg_path}")
+
+
 def do_ensure(cfg_path: str, guard: str, interp: str) -> None:
     migrate_matcher(cfg_path)
     with open(cfg_path, "r", encoding="utf-8") as f:
@@ -242,8 +305,9 @@ def do_ensure(cfg_path: str, guard: str, interp: str) -> None:
     # (no-op when already parity; converts luna_vault_guard in place otherwise).
     if "luna_vault_guard.py" in text or "parity_guard.py" in text:
         do_swap(cfg_path)
-        return
-    do_add(cfg_path, guard, interp)
+    else:
+        do_add(cfg_path, guard, interp)
+    migrate_fail_closed(cfg_path)
 
 
 def main() -> int:
