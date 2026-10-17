@@ -140,6 +140,22 @@ check "non-numeric seven_day -> BANK-UNKNOWN (malformed primary refuses)" BANK-U
 check "non-numeric seven_day -> ledger row is valid JSON" true "$(tail -1 "$W/ledger.jsonl" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
 check "non-numeric seven_day -> numeric five_hour kept" 55 "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
 
+# The mirror case: a hostile FIVE_HOUR with a numeric seven_day. emit() blanks a
+# non-numeric fh; without that the quote or brace lands raw in the row.
+rm -f "$W/ledger.jsonl"
+fh_bad_out=$(verdict "{\"five_hour\":{\"utilization\":\"5\\\"}x\"},\"seven_day\":{\"utilization\":30},\"primaries_refreshed_at\":$NOW}")
+check "quote+brace five_hour -> BANK-UNKNOWN (malformed primary refuses)" BANK-UNKNOWN "$fh_bad_out"
+check "quote+brace five_hour -> ledger row is valid JSON" true "$(tail -1 "$W/ledger.jsonl" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
+check "quote+brace five_hour -> five_hour blanked in the row" "" "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
+check "quote+brace five_hour -> numeric seven_day kept" 30 "$(tail -1 "$W/ledger.jsonl" | jq -r '.seven_day' 2>/dev/null)"
+# Numeric-looking with trailing junk must be blanked too, not passed through.
+rm -f "$W/ledger.jsonl"
+fh_junk_out=$(verdict "{\"five_hour\":{\"utilization\":\"55abc\"},\"seven_day\":{\"utilization\":30},\"primaries_refreshed_at\":$NOW}")
+check "numeric five_hour with trailing junk -> BANK-UNKNOWN" BANK-UNKNOWN "$fh_junk_out"
+check "numeric five_hour with trailing junk -> ledger row is valid JSON" true "$(tail -1 "$W/ledger.jsonl" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
+check "numeric five_hour with trailing junk -> five_hour blanked in the row" "" "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
+check "numeric five_hour with trailing junk -> numeric seven_day kept" 30 "$(tail -1 "$W/ledger.jsonl" | jq -r '.seven_day' 2>/dev/null)"
+
 # A newline inside a utilization STRING must not shift later
 # lines into sd/xu/stamp. five_hour "10\n10" would otherwise forge sd=10 and
 # hide the real, spent seven_day=95.
