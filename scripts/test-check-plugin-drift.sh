@@ -290,6 +290,8 @@ W_BUMP="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-bump.XXXXXX")" || { bad "--bump-requ
   mkdir -p marketplace/plugins/plugin-a/.claude-plugin marketplace/plugins/plugin-a/skills
   printf '{"name": "plugin-a", "version": "0.1.0"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json
   printf '# skill\n' > marketplace/plugins/plugin-a/skills/one.md
+  mkdir -p marketplace/.claude-plugin
+  printf '{"plugins": [{"name": "plugin-a", "source": "./plugins/plugin-a"}]}\n' > marketplace/.claude-plugin/marketplace.json
   git add -A
   git commit -q -m 'chore: seed plugin-a'
 )
@@ -315,7 +317,7 @@ if [ "$range_red_rc" -ne 0 ]; then ok "--bump-required (range): RED — unbumped
 range_green_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required "$base_sha" 2>&1)"; range_green_rc=$?
 if [ "$range_green_rc" -eq 0 ]; then ok "--bump-required (range): GREEN — version bumped within the range"; else bad "--bump-required (range): GREEN fixture failed (rc=$range_green_rc): $range_green_out"; fi
 # A new plugin's first commit needs no bump — there's nothing to bump FROM.
-(cd "$W_BUMP" && mkdir -p marketplace/plugins/plugin-b/.claude-plugin && printf '{"name": "plugin-b", "version": "0.1.0"}\n' > marketplace/plugins/plugin-b/.claude-plugin/plugin.json && git add -A)
+(cd "$W_BUMP" && mkdir -p marketplace/plugins/plugin-b/.claude-plugin && printf '{"name": "plugin-b", "version": "0.1.0"}\n' > marketplace/plugins/plugin-b/.claude-plugin/plugin.json && printf '{"plugins": [{"name": "plugin-a", "source": "./plugins/plugin-a"}, {"name": "plugin-b", "source": "./plugins/plugin-b"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
 new_plugin_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; new_plugin_rc=$?
 if [ "$new_plugin_rc" -eq 0 ]; then ok "--bump-required (staged): a brand-new plugin needs no bump"; else bad "--bump-required (staged): new plugin wrongly required a bump (rc=$new_plugin_rc): $new_plugin_out"; fi
 (cd "$W_BUMP" && git commit -q -m 'feat: add plugin-b')
@@ -324,13 +326,23 @@ noop_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; noop_rc=$?
 if [ "$noop_rc" -eq 0 ]; then ok "--bump-required (staged): no plugin changes -> pass"; else bad "--bump-required (staged): no-op case failed (rc=$noop_rc): $noop_out"; fi
 # Deleting a whole plugin (plugin.json included) needs no bump: the plugin is
 # gone, there is nothing left to version. Passes with an explicit message.
-(cd "$W_BUMP" && git rm -rq marketplace/plugins/plugin-b)
+(cd "$W_BUMP" && git rm -rq marketplace/plugins/plugin-b && printf '{"plugins": [{"name": "plugin-a", "source": "./plugins/plugin-a"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
 del_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; del_rc=$?
 if [ "$del_rc" -eq 0 ]; then ok "--bump-required (staged): whole-plugin deletion needs no bump"; else bad "--bump-required (staged): whole-plugin deletion failed (rc=$del_rc): $del_out"; fi
 if grepq "$del_out" "plugin-b removed"; then ok "--bump-required (staged): whole-plugin deletion names the removed plugin"; else bad "--bump-required (staged): deletion output lacks 'plugin-b removed': $del_out"; fi
 if grepq "$del_out" "Traceback"; then bad "--bump-required (staged): deletion leaked a traceback: $del_out"; else ok "--bump-required (staged): deletion leaks no traceback"; fi
+# Bypass (a): the plugin dir replaced by a symlink to an edited copy that keeps
+# the same version leaves no entry UNDER the dir, but the path is still tracked.
+(cd "$W_BUMP" && git restore --source=HEAD --staged --worktree -- marketplace && mkdir -p elsewhere/.claude-plugin && printf '{"name": "plugin-b", "version": "0.1.0"}\n' > elsewhere/.claude-plugin/plugin.json && printf '# edited\n' > elsewhere/extra.md && git rm -rq marketplace/plugins/plugin-b && ln -s ../../elsewhere marketplace/plugins/plugin-b && git add -A)
+sym_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; sym_rc=$?
+if [ "$sym_rc" -ne 0 ]; then ok "--bump-required (staged): plugin dir swapped for a symlink is not a removal"; else bad "--bump-required (staged): symlink swap passed: $sym_out"; fi
+# Bypass (b): the plugin moved out of marketplace/plugins/ with marketplace.json
+# repointed is still listed, so it is not a removal either.
+(cd "$W_BUMP" && git rm -q --cached marketplace/plugins/plugin-b elsewhere -r -f && rm -f marketplace/plugins/plugin-b && git restore --source=HEAD --staged --worktree -- marketplace && git mv marketplace/plugins/plugin-b moved-b && printf '{"plugins": [{"name": "plugin-a", "source": "./plugins/plugin-a"}, {"name": "plugin-b", "source": "../moved-b"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
+mv_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; mv_rc=$?
+if [ "$mv_rc" -ne 0 ]; then ok "--bump-required (staged): plugin moved out with marketplace.json repointed is not a removal"; else bad "--bump-required (staged): move-out passed: $mv_out"; fi
 # Control: deleting only the manifest while other plugin files remain is not a removal.
-(cd "$W_BUMP" && git restore --staged --worktree . && git rm -q marketplace/plugins/plugin-a/.claude-plugin/plugin.json)
+(cd "$W_BUMP" && git rm -q -r -f --cached moved-b elsewhere && git restore --source=HEAD --staged --worktree -- marketplace && git rm -q marketplace/plugins/plugin-a/.claude-plugin/plugin.json)
 del_part_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; del_part_rc=$?
 if [ "$del_part_rc" -ne 0 ]; then ok "--bump-required (staged): manifest-only deletion still fails"; else bad "--bump-required (staged): manifest-only deletion passed: $del_part_out"; fi
 rm -rf -- "$W_BUMP"
