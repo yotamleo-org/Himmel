@@ -4312,8 +4312,10 @@ async function preflightLaneProfileStep(answers) {
 // with an honest message instead of writing anything.
 //
 // transactional with the install: this runs BEFORE the core installer, so a
-// write failure aborts with nothing installed (null), and a later failed step
-// calls the returned undo to put the prior overlay bytes back.
+// write failure aborts with nothing installed (null). The returned undo puts
+// the prior overlay bytes back; the install path calls it on any non-success
+// exit (failed step, throw, interrupting signal); the caller holds the signal
+// handlers (holdSignalsDuringInstall) before calling this.
 async function applyLaneProfileStep(answers) {
   const noUndo = () => {};
   if (lanesAnswerNeverAsked(answers)) {
@@ -4327,13 +4329,13 @@ async function applyLaneProfileStep(answers) {
     // `himmelctl uninstall` reverses the wrong path.
     const { file: laneAllowlistFile, scope: laneAllowlistScope } = adopterProfileLib.resolveLaneAllowlistFile(repoRoot());
     const recorded = provBefore(laneAllowlistFile, { scope: laneAllowlistScope, cls: 'keep' });
-    const { ids, preservedLegacyGlobal, file, prior } = await adopterProfileLib.persistProfileLaneAllowlist(answers.lanes || [], repoRoot());
+    const { ids, preservedLegacyGlobal, file, prior, writer } = await adopterProfileLib.persistProfileLaneAllowlist(answers.lanes || [], repoRoot());
     recorded();
     console.log(`lane profile: allowlisted ${ids.length > 0 ? ids.join(', ') : '(none)'}; unselected adopter-profile lanes are suppressed-by-profile`);
     if (preservedLegacyGlobal) console.log('lane profile: preserved legacy global allowlist semantics');
     return () => {
       try {
-        adopterProfileLib.restoreProfileLaneAllowlist(file, prior);
+        adopterProfileLib.restoreProfileLaneAllowlist(file, prior, writer);
         console.error('himmelctl: install did not complete — restored the previous lane profile allowlist');
       } catch (e) {
         console.error(`himmelctl: could not restore the previous lane profile allowlist at ${file}: ${e && e.message ? e.message : e}`);
@@ -4548,40 +4550,71 @@ async function runPlan(answers, args) {
 
   // T4: execute the derived command VERBATIM; propagate its rc (skip the
   // post-install enable step if the core install itself failed).
-  provStep = 'lane-profile';
-  const undoLaneProfile = await applyLaneProfileStep(answers);
-  if (!undoLaneProfile) return 1;
-
-  provStep = 'adopt';
-  const rc = runSpawn(cmd);
-  // write the PATH shim BEFORE checking adopt.sh's rc — a failed
-  // core install (e.g. a plugin SSH-clone failure)
-  // must not leave the adopter with no `himmelctl` on PATH to run
-  // `himmelctl ensure` and resume. Best-effort, same posture as adopt.sh's own
-  // git-hook placement: never blocks on or masks adopt.sh's rc.
-  const shimOk = applyHimmelctlPathShim(args);
-  ensureBusStateDirs();
-  if (rc !== 0) {
-    undoLaneProfile();
-    if (shimOk) console.error('himmelctl: install failed (see above), but the himmelctl launcher is on PATH — resolve the error, then run `himmelctl ensure` to resume.');
-    return rc;
-  }
-  // the T5b wire/apply plan runs AFTER adopt.sh succeeds, as an
-  // additional step — never instead of it.
-  if (existingVaultPlan) {
-    provStep = 'wire';
-    const wireRc = runSpawn(existingVaultPlan.wire);
-    if (wireRc !== 0) { undoLaneProfile(); return wireRc; }
-    provStep = 'apply';
-    const applyRc = runSpawn(existingVaultPlan.apply);
-    if (applyRc !== 0) { undoLaneProfile(); return applyRc; }
-  }
-  // the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
-  // succeeds, as an additional idempotent mutation step — never instead of it.
-  if (overlayCmd) {
-    provStep = 'overlay';
-    const overlayRc = runSpawn(overlayCmd);
-    if (overlayRc !== 0) { undoLaneProfile(); return overlayRc; }
+  // The handlers go up BEFORE the allowlist is staged, so no signal can land
+  // between the staged write and the hold. Staging, every install step and the
+  // restore all run inside one try/finally; the staged allowlist stays only if
+  // every step succeeds, and the finally restores the prior bytes on a non-zero
+  // rc, a throw, a cancellation or a signal-killed child. The no-op handlers stop
+  // SIGINT/SIGTERM/SIGHUP from killing Node before a synchronous child or the
+  // restore's lock wait returns, so the finally still runs.
+  const signals = holdSignalsDuringInstall();
+  let undoLaneProfile = () => {};
+  let installed = false;
+  let shimOk = false;
+  // spawnSync blocks the event loop, so a signal that arrived during a step is
+  // only delivered to the handler once the loop turns; let it before checking.
+  const interrupted = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (!signals.received()) return false;
+    console.error(`himmelctl: install interrupted by ${signals.received()} — restoring the previous lane profile allowlist`);
+    return true;
+  };
+  try {
+    provStep = 'lane-profile';
+    const undo = await applyLaneProfileStep(answers);
+    if (!undo) return 1;
+    undoLaneProfile = undo;
+    if (await interrupted()) return 130;
+    provStep = 'adopt';
+    const rc = runSpawn(cmd);
+    // write the PATH shim BEFORE checking adopt.sh's rc — a failed
+    // core install (e.g. a plugin SSH-clone failure)
+    // must not leave the adopter with no `himmelctl` on PATH to run
+    // `himmelctl ensure` and resume. Best-effort, same posture as adopt.sh's own
+    // git-hook placement: never blocks on or masks adopt.sh's rc.
+    shimOk = applyHimmelctlPathShim(args);
+    ensureBusStateDirs();
+    if (rc !== 0) {
+      if (shimOk) console.error('himmelctl: install failed (see above), but the himmelctl launcher is on PATH — resolve the error, then run `himmelctl ensure` to resume.');
+      return rc;
+    }
+    if (await interrupted()) return 130;
+    // the T5b wire/apply plan runs AFTER adopt.sh succeeds, as an
+    // additional step — never instead of it.
+    if (existingVaultPlan) {
+      provStep = 'wire';
+      const wireRc = runSpawn(existingVaultPlan.wire);
+      if (wireRc !== 0) return wireRc;
+      if (await interrupted()) return 130;
+      provStep = 'apply';
+      const applyRc = runSpawn(existingVaultPlan.apply);
+      if (applyRc !== 0) return applyRc;
+      if (await interrupted()) return 130;
+    }
+    // the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
+    // succeeds, as an additional idempotent mutation step — never instead of it.
+    if (overlayCmd) {
+      provStep = 'overlay';
+      const overlayRc = runSpawn(overlayCmd);
+      if (overlayRc !== 0) return overlayRc;
+    }
+    if (await interrupted()) return 130;
+    installed = true;
+  } finally {
+    // restore first, release after: a second signal during the restore's lock
+    // wait must still meet a handler
+    if (!installed) undoLaneProfile();
+    signals.release();
   }
 
   // T4.5: pluginSet=full → the documented per-plugin enable step. lean → no-op
@@ -4594,6 +4627,22 @@ async function runPlan(answers, args) {
   const finalRc = pluginResult.rc || lunaResult.rc || (shimOk ? 0 : 1);
   if (finalRc !== 0) provStep = pluginResult.rc ? 'plugins' : lunaResult.rc ? 'luna' : 'shim';
   return finalRc;
+}
+
+// While a staged lane allowlist is live, SIGINT/SIGTERM/SIGHUP get a no-op
+// handler so Node does not die before the synchronous child (spawnSync) returns
+// and the caller's finally can restore the prior allowlist. The handler records
+// the signal: a cancellation the child outlived still fails the install. Returns
+// { release, received() } where received() is the first signal seen, or null.
+function holdSignalsDuringInstall() {
+  const sigs = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  let received = null;
+  const hold = (sig) => { if (!received) received = sig; };
+  for (const sig of sigs) process.on(sig, hold);
+  return {
+    release: () => { for (const sig of sigs) process.removeListener(sig, hold); },
+    received: () => received,
+  };
 }
 
 // `install` subcommand handler. T1: the preflight-first gate runs BEFORE any

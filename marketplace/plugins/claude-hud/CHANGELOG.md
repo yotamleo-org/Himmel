@@ -4,6 +4,11 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-10-16
+
+### Fixed
+- Background agents whose completion notice is logged as a queued command (seen in forked or resumed sessions) no longer stay `◐` running after they finish (#810).
+
 ## [0.11.2] - 2026-10-13
 
 ### Fixed

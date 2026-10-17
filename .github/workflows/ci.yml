@@ -511,6 +511,14 @@ jobs:
             bash scripts/hooks/check-oxlint-hardening.sh || rc=1
           fi
           exit "$rc"
+      # HIMMEL-6043: shell-lint (mktemp template, GNU flags, errexit leak, POSIX ERE,
+      # bash 3.2) ran only on a committer's machine. A PR lints the shell files it
+      # CHANGED against the baseline; a diff that cannot be computed fails closed
+      # (shell-lint exits 2). The checkout is the PR merge ref, so HEAD^1 is the
+      # current base tip; event base.sha can lag it and would lint main's own files.
+      - name: shell-lint changed files
+        if: github.event_name == 'pull_request'
+        run: bash scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
 
   node-suites:
     needs: plan

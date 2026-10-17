@@ -201,7 +201,7 @@ check_bump_required() {
       echo "ERR check-plugin-drift --bump-required: cannot resolve base ref '$base_ref'" >&2
       return 1
     fi
-    changed="$(git diff --name-only --diff-filter=ACMRD "${base_ref}...HEAD" -- "$rel")"; diff_rc=$?
+    changed="$(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=ACMRD "${base_ref}...HEAD" -- "$rel")"; diff_rc=$?
   else
     # Mid-merge (GH #2205): the staged diff against HEAD carries everything the
     # merged-in parent brought, so count only what the merge result adds over
@@ -218,12 +218,20 @@ check_bump_required() {
         fi
       done
     fi
-    changed="$(git diff --cached --name-only --diff-filter=ACMRD "$old_ref" -- "$rel")"; diff_rc=$?
+    changed="$(git -c core.quotePath=false diff --cached --no-renames --name-only --diff-filter=ACMRD "$old_ref" -- "$rel")"; diff_rc=$?
   fi
   if [ "$diff_rc" -ne 0 ]; then
     echo "ERR check-plugin-drift --bump-required: git diff failed (rc=$diff_rc) — cannot determine changed plugin files" >&2
     return 1
   fi
+  # quotePath=false still C-quotes names holding a quote, backslash, TAB or LF;
+  # the name sed cannot attribute such a line to a plugin, so refuse it.
+  case $'\n'"$changed" in
+    *$'\n"'*)
+      echo "ERR check-plugin-drift --bump-required: a changed path under $rel/ is quoted by git and cannot be attributed to a plugin — rename it (HIMMEL-3551)" >&2
+      return 1
+      ;;
+  esac
   if [ -z "$changed" ]; then
     echo "check-plugin-drift --bump-required: no plugin files changed"
     return 0
@@ -259,7 +267,7 @@ except Exception:
       echo "check-plugin-drift --bump-required: $name removed — no version bump needed"
       continue
     fi
-    if ! printf '%s\n' "$changed" | grep -qx "$manifest"; then
+    if ! grep -qxF -e "$manifest" <<<"$changed"; then
       echo "ERR check-plugin-drift --bump-required: $name changed under $rel/$name/ but $manifest was not bumped (HIMMEL-3551)" >&2
       bad=1
       continue

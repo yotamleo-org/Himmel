@@ -306,6 +306,19 @@ else
     fail "wrong call sequence" "got: $got_calls"
 fi
 
+echo "TEST: --no-cleanup (incremental) runs update + embed + verify and skips cleanup"
+reset_state
+touch "$STATE/did-work"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --no-cleanup 2>&1) || rc=$?
+assert_rc "--no-cleanup rc 0" 0 "$rc"
+assert_contains "--no-cleanup still reports success" "index refreshed, all content hashes embedded" "$out"
+got_calls=$(calls | tr '\n' ',')
+if [ "$got_calls" = "update,embed,embed," ]; then
+    pass "--no-cleanup call sequence is update -> embed -> embed(verify), no cleanup"
+else
+    fail "--no-cleanup call sequence" "got: $got_calls"
+fi
+
 echo "TEST: a successful reindex writes a refresh stamp (HIMMEL-1307)"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true

@@ -904,6 +904,21 @@ out2=$(run_gc_env4i 2>&1) || rc=$?
 assert_eq "second run against the SAME worktree also succeeds (marker survived)" "0" "$rc"
 assert_not_contains "second run is not refused as foreign" "no graph-cadence ownership marker" "$out2"
 
+# A fire without --semantic (the pause marker drops it) must keep the semantic
+# manifest + cache, or every resume re-extracts the whole corpus.
+echo "TEST: a run without --semantic keeps an existing graphify-out/semantic-manifest.json through clean -fdx"
+WT4i="$HOME4i/.claude/graph-cadence/$(corpus_slug_of "$REPO4i")"
+mkdir -p "$WT4i/graphify-out"
+printf '{"files":{}}' > "$WT4i/graphify-out/semantic-manifest.json"
+rc=0
+out3=$(run_gc_env4i 2>&1) || rc=$?
+assert_eq "run with a planted manifest succeeds" "0" "$rc"
+if [ -f "$WT4i/graphify-out/semantic-manifest.json" ]; then
+    pass "semantic-manifest.json survives a fire without --semantic"
+else
+    fail "semantic-manifest.json was deleted by clean -fdx on a non-semantic fire" "$out3"
+fi
+
 # --- codex-1: pipeline lock serializes overlapping runs ---------------------
 echo "TEST: a held pipeline lock makes an overlapping run skip cleanly, never touching the worktree"
 REPO4d="$TMP_ROOT/t4d-primary"; BARE4d="$TMP_ROOT/t4d-origin.git"

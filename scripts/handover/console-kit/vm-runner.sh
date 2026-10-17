@@ -191,9 +191,11 @@ cmd_off() {
 }
 
 # unit_journal <i> — the unit's recent log, one `<epoch> <message>` per line.
+# Returns 1 when journalctl itself fails, so "unreadable" is not read as "no lines yet".
 unit_journal() {
-    journalctl --user -u "$UNIT_PREFIX@$1.service" -o short-unix --no-pager -n 2000 2>/dev/null \
-        | sed -n 's/^\([0-9][0-9]*\)\.[0-9]* [^ ]* [^ ]*: \(.*\)$/\1 \2/p'
+    local raw
+    raw="$(journalctl --user -u "$UNIT_PREFIX@$1.service" -o short-unix --no-pager -n 2000 2>/dev/null)" || return 1  # swallow-ok: only stderr text is dropped; the exit status is returned, callers fail closed
+    printf '%s\n' "$raw" | sed -n 's/^\([0-9][0-9]*\)\.[0-9]* [^ ]* [^ ]*: \(.*\)$/\1 \2/p'
 }
 
 # unit_job <i> — `idle`, or `<age seconds>` since the in-flight job's runner registered.
@@ -213,10 +215,12 @@ unit_last_error() {
 
 # unit_failing <i> — true when the newest `ci-runner:` line is an error, so the
 # loop is up but minting nothing. Ephemeral runners register only while a job
-# runs, so GitHub's runner count cannot say this; the journal can.
+# runs, so GitHub's runner count cannot say this; the journal can. An
+# unreadable journal is failing too: nothing can be vouched for.
 unit_failing() {
-    local last
-    last="$(unit_journal "$1" | grep -E 'ci-runner: ' | tail -n 1)"
+    local last jr
+    jr="$(unit_journal "$1")" || return 0
+    last="$(printf '%s\n' "$jr" | grep -E 'ci-runner: ' | tail -n 1)"
     [ -n "$last" ] && ! printf '%s\n' "$last" | grep -qE 'registered on|done \(rc=0|deregistered'
 }
 
@@ -241,7 +245,7 @@ runner_counts() {
 
 # tick_token — off | ok:<up>/<want>,busy=<n> | DISAGREE:<up>/<want>,online=0 | DEAD | STUCK | FAILING
 tick_token() {
-    local var up=0 want i=1 stuck=0 failing=0 inflight=0 j counts busy online
+    local var up=0 want i=1 stuck=0 failing=0 inflight=-1 j counts busy online
     # Never set up on this station: no gh call, nothing to report.
     [ -e "$UNIT_DIR/$UNIT_PREFIX@.service" ] || { echo off; return; }
     var="$(vmrun_var)" || var=""
@@ -251,7 +255,7 @@ tick_token() {
             up=$((up + 1))
             ! unit_failing "$i" || failing=1
             j="$(unit_job "$i")"
-            case "$j" in idle) ;; *) inflight=1; [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
+            case "$j" in idle) ;; *) [ "$j" -le "$inflight" ] || inflight="$j"; [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
         fi
         i=$((i + 1))
     done
@@ -271,11 +275,12 @@ tick_token() {
     # The unit count is this station's claim; GitHub's online-runner count is
     # the check. An unreadable count is never ok. A loop mints its JIT runner
     # late and deletes it after each job, so zero online is normal between jobs:
-    # it disagrees only while a unit has a registered, unfinished runner.
+    # it disagrees only while a unit has a registered, unfinished runner that
+    # has had CACHE_TTL + 60 s to connect: inflight is the oldest such age, -1 if none.
     counts="$(runner_counts)"
     if [ -z "$counts" ]; then echo FAILING; return; fi
     read -r busy online <<< "$counts"
-    if [ "$online" -eq 0 ] && [ "$inflight" -eq 1 ]; then echo "DISAGREE:$up/$want,online=0"; return; fi
+    if [ "$online" -eq 0 ] && [ "$inflight" -gt $((CACHE_TTL + 60)) ]; then echo "DISAGREE:$up/$want,online=0"; return; fi
     echo "ok:$up/$want,busy=$busy"
 }
 

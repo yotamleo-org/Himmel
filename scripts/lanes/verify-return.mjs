@@ -158,6 +158,7 @@ function appendLedger(result) {
 // exists to emit (CR round, PR #1608).
 function main() {
   const args = process.argv.slice(2);
+  // ponytail: branch argv is not validated for whitespace or control chars; callers pass existing local branches, which git ref rules already constrain, so validate direct CLI argv, HIMMEL-1632
   let branch = '', ticket = '', ledger = true;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];

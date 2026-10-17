@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/run-hook.sh --sandbox auto-approve-safe-bash.sh+check-cr-marker-on-pr-create.sh+block-read-secrets.sh+read-clamp.sh+block-destructive-commands.sh+block-git-stash.sh+block-bare-qmd-query.sh+block-rogue-claude-schedule.sh+require-quiet-run.sh+block-edit-live-settings.sh+block-docker-privesc.sh+block-infra-destroy.sh+block-merged-pr-commit.sh+block-terminal-write-fence.sh+block-lesson-enforcement-writes.sh+block-bank-lift-writes.sh+block-himmel-config-writes.sh+guard-pr-check-literal.sh",
+            "command": ".codex/run-hook.sh --sandbox guard-identical-denied-retry.sh+auto-approve-safe-bash.sh+check-cr-marker-on-pr-create.sh+block-read-secrets.sh+read-clamp.sh+block-destructive-commands.sh+block-git-stash.sh+block-bare-qmd-query.sh+block-rogue-claude-schedule.sh+require-quiet-run.sh+block-edit-live-settings.sh+block-docker-privesc.sh+block-infra-destroy.sh+block-merged-pr-commit.sh+block-terminal-write-fence.sh+block-lesson-enforcement-writes.sh+block-bank-lift-writes.sh+block-himmel-config-writes.sh+guard-pr-check-literal.sh",
             "timeout": 60
           }
         ]

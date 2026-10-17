@@ -11,7 +11,6 @@ vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=.
 vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=hooks/hooks.json
 vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=hooks/always-on.mjs
 vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=hooks/always-on.sh
-vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=hooks/always-on.ps1
 vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=skills/i-have-adhd/SKILL.md
 vendored_from=ayghri/i-have-adhd@723af7d9afaf43eb871dbcce6129e2bf80de90d5 path=LICENSE
 
