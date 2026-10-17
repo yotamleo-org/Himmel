@@ -1,0 +1,378 @@
+{
+  "createdAt": "2026-10-16T20:40:48Z",
+  "headRefName": "feat/stall-fixture-clean",
+  "headRefOid": "c1ea0000000000000000000000000000000000c1",
+  "mergeStateStatus": "BLOCKED",
+  "mergeable": "MERGEABLE",
+  "number": 9001,
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:23:53Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376785",
+      "name": "plan",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:13Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648390/job/117256377066",
+      "name": "pr-title-lint",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Title Lint"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:23Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985656745/job/117256415449",
+      "name": "pr-title-lint",
+      "startedAt": "2026-10-17T00:17:16Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Title Lint"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648429/job/117256376949",
+      "name": "codeowner-review-gate",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "codeowner-review-gate"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:16Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985656741/job/117256402641",
+      "name": "codeowner-review-gate",
+      "startedAt": "2026-10-17T00:17:12Z",
+      "status": "COMPLETED",
+      "workflowName": "codeowner-review-gate"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376487",
+      "name": "secret-scan",
+      "startedAt": "2026-10-17T00:17:07Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376623",
+      "name": "unchecked-mktemp-range",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:25:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376734",
+      "name": "leak-classes",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:16Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376664",
+      "name": "commit-lint",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:30:41Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376762",
+      "name": "lint",
+      "startedAt": "2026-10-17T00:17:06Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376733",
+      "name": "claude-startup",
+      "startedAt": "2026-10-17T00:17:07Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:23:26Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376756",
+      "name": "lanes-and-trust-suites",
+      "startedAt": "2026-10-17T00:17:07Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:21:31Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376830",
+      "name": "bun-suites (ubuntu-latest)",
+      "startedAt": "2026-10-17T00:17:07Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:33Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256376703",
+      "name": "doc-invariants",
+      "startedAt": "2026-10-17T00:17:07Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:17:04Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117256377654",
+      "name": "guard-corpus-full",
+      "startedAt": "2026-10-17T00:17:05Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258067991",
+      "name": "bwk-awk-mktemp-gate",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:09Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068014",
+      "name": "git-env-scrub",
+      "startedAt": "2026-10-17T00:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:03Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068013",
+      "name": "plugin-version-bump",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068021",
+      "name": "node-suites (jira)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068086",
+      "name": "node-suites (bitbucket)",
+      "startedAt": "2026-10-17T00:24:05Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:08Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068097",
+      "name": "node-suites (himmel-run)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068067",
+      "name": "node-suites (ci-orchestrator)",
+      "startedAt": "2026-10-17T00:24:10Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068005",
+      "name": "node-suites (himmel-gh, plugins/himmel-gh)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068025",
+      "name": "node-suites (himmel-jira, plugins/himmel-jira)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068030",
+      "name": "node-suites (himmel-bus, marketplace/plugins/himmel-bus, 24)",
+      "startedAt": "2026-10-17T00:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258067984",
+      "name": "jira-cli-smoke",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068085",
+      "name": "guardrail-matrices",
+      "startedAt": "2026-10-17T00:24:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:24:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258067952",
+      "name": "security-scan",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T01:02:29Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068205",
+      "name": "shell-unit-shard (ubuntu-latest, 1)",
+      "startedAt": "2026-10-17T00:24:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:40:53Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068142",
+      "name": "shell-unit-shard (ubuntu-latest, 2)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:45:51Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068177",
+      "name": "shell-unit-shard (ubuntu-latest, 3)",
+      "startedAt": "2026-10-17T00:24:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:56:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068134",
+      "name": "shell-unit-shard (ubuntu-latest, 4)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:47:31Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068145",
+      "name": "shell-unit-shard (ubuntu-latest, 5)",
+      "startedAt": "2026-10-17T00:24:10Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T00:52:46Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068163",
+      "name": "shell-unit-shard (ubuntu-latest, 6)",
+      "startedAt": "2026-10-17T00:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T01:03:48Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068123",
+      "name": "shell-unit-shard (ubuntu-latest, 7)",
+      "startedAt": "2026-10-17T00:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/yotamleo/Himmel/actions/runs/38985648268/job/117258068107",
+      "name": "shell-unit-shard (ubuntu-latest, 8)",
+      "startedAt": "2026-10-17T00:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "CodeRabbit",
+      "startedAt": "2026-10-17T00:17:11Z",
+      "state": "SUCCESS",
+      "targetUrl": ""
+    }
+  ],
+  "updatedAt": "2026-10-17T00:17:11Z"
+}
