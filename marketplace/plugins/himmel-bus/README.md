@@ -68,7 +68,7 @@ first use (`npm ci`) and then execs `server/index.mjs`.
 pid-reused claude is `identity unbound`. Names are single-use once bound (re-registering a never-bound name with the same role, console, pair and predecessor is adopted, so a re-armed launch is not burned); `bind` is once;
 `rebind` only when the bound pid is gone; `adopt <new console>` (run as the leg)
 only when the old console is `gone` or its own record names the new one;
-`status <name>` prints `live|gone|unbound`; `peers` prints the caller's own edges.
+`adopt` prints `adopted: <leg> console <old> -> <new>` (a leg with no bus binding gets `identity unbound`, expected: only legs launched on the `leg-bus` profile are registered); `unread <name>` prints the undelivered record count without consuming it (read-only; the idle waker `bus-idle-waker.sh` under `scripts/handover/` uses it and types one fixed `You have N unread himmel messages: read them now.` line into an idle headed leg's konsole, never message content); `status <name>` prints `live|gone|unbound`; `peers` prints the caller's own edges.
 `lib/edges.mjs` is the single edge table the server and CLI share.
 
 ## Tests

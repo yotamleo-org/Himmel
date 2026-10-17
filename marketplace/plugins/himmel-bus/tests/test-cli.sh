@@ -196,5 +196,24 @@ if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'positive number of seconds' <<
 out=$(as waiter wait --timeout 99999999999999999999999999 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'at most 86400 seconds' <<< "$out"; then pass "wait refuses a --timeout beyond the cap"; else fail "huge timeout (rc=$rc): $out"; fi
 
+echo "== succession adopt + unread (HIMMEL-6127) =="
+"$BUS" register con2 --role console --predecessor con >/dev/null 2>&1
+printf 'your console is now con2\n' > "$tmp/relay"
+as con send legA "$tmp/relay" >/dev/null 2>&1
+out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'no edge to legA' <<< "$out"; then pass "without adopt the successor has no edge to the leg"; else fail "pre-adopt send (rc=$rc): $out"; fi
+out=$(as legA adopt con2 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA console con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
+out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the leg"; else fail "post-adopt send (rc=$rc): $out"; fi
+out=$(as legA peers 2>&1)
+if grep -qx con2 <<< "$out" && ! grep -qx con <<< "$out"; then pass "the leg's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
+out=$(as con2 peers 2>&1)
+if grep -qx legA <<< "$out"; then pass "the successor's peers lists the leg"; else fail "successor peers: $out"; fi
+"$BUS" register idler --role leg --console con >/dev/null 2>&1
+as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
+if [ "$("$BUS" unread idler 2>&1)" = 2 ]; then pass "unread counts undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi
+if [ "$("$BUS" unread idler 2>&1)" = 2 ]; then pass "unread is read-only"; else fail "unread consumed"; fi
+
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"
