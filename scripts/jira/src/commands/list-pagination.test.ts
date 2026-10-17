@@ -100,7 +100,7 @@ describe('searchAllIssues', () => {
 
   it('falls back to the default for a limit that is not a plain positive integer', async () => {
     const req = vi.fn().mockResolvedValue({ issues: pageOf(25), total: 25 });
-    for (const bad of ['abc', '0', '-5', '', '25junk', '1.5', '2e1', '+5', ' 7x']) {
+    for (const bad of ['abc', '0', '-5', '', '25junk', '1.5', '2e1', '+5', ' 7x', '9'.repeat(400)]) {
       req.mockClear();
       await searchAllIssues('x', bad, req as never);
       expect(req.mock.calls[0][1]).toContain('maxResults=25');

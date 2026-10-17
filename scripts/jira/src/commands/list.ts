@@ -104,7 +104,7 @@ export async function searchAllIssues(
 ): Promise<JiraIssue[]> {
   const trimmed = limit.trim();
   const want = /^[0-9]+$/.test(trimmed) ? Number(trimmed) : 0;
-  const target = want > 0 ? want : 25;
+  const target = Number.isFinite(want) && want > 0 ? want : 25;
   const fields = includeLabels ? 'summary,status,issuetype,labels' : 'summary,status,issuetype';
 
   const issues: JiraIssue[] = [];
