@@ -573,7 +573,7 @@ task_summary() {
         "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)" ;;
         "$TASK_AST_LUNA")   printf ' -> graphify update luna (daily, structural, free)' ;;
         "$TASK_AST_HIMMEL") printf ' -> graphify update himmel (hourly, structural, free)' ;;
-        "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (free, auto-merge; interval = cron schedule)' ;;
+        "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (auto-merge; interval = cron schedule; --publish-semantic adds a billed claude-api pass)' ;;
     esac
 }
 
