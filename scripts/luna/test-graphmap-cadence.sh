@@ -1298,6 +1298,14 @@ assert_contains "publish runner adds --semantic" "--semantic" "$publish_sh"
 assert_contains "publish runner sets the api lane" "HIMMEL_API_LANE=on" "$publish_sh"
 assert_contains "publish runner sets the api account" "HIMMEL_API_ACCOUNT=auto" "$publish_sh"
 assert_contains "publish runner pins the claude-api backend" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$publish_sh"
+assert_contains "publish runner reads the pause marker" "semantic.paused" "$publish_sh"
+assert_contains "publish runner logs the paused fire" "[semantic paused: marker present]" "$publish_sh"
+assert_contains "publish runner logs the active fire" "[semantic active]" "$publish_sh"
+# Marker present: the branch that runs must carry neither --semantic nor the api-lane env.
+paused_branch=$(printf '%s\n' "$publish_sh" | sed -n 's/.*semantic paused: marker present\]"; \(.*\); else echo.*/\1/p')
+assert_contains "paused branch still runs the publish leg" "graph-cadence.sh" "$paused_branch"
+assert_not_contains "paused branch passes no --semantic" "--semantic" "$paused_branch"
+assert_not_contains "paused branch sets no api lane" "HIMMEL_API_LANE" "$paused_branch"
 assert_registry "publish flow registers a 2h cadence" \
     ".flows[] | select(.name == \"graph-publish-${EXPECTED_PUBLISH_SLUG}\" and .cadence_seconds == 7200)"
 out=$(run_cron3 status)

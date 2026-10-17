@@ -162,6 +162,8 @@ resolve_user_home() {
 # tasks recur daily and %TEMP% / /tmp are subject to cleanup sweeps that would
 # silently kill the cadence (same rationale as pipeline-cadence's BAT_DIR).
 BAT_DIR="${GRAPHMAP_BAT_DIR:-$(resolve_user_home)/.claude/graphmap-cadence}"
+# touch "$BAT_DIR/$SEMANTIC_PAUSE_MARKER" pauses the publish leg's semantic pass; rm resumes it.
+SEMANTIC_PAUSE_MARKER="semantic.paused"
 
 # Resolve the himmel root from this script's own location (scripts/luna/..),
 # so the runner fires the shipped refresh-graph-map.sh by absolute path.
@@ -1889,11 +1891,17 @@ ast_cron_payload() {
 # not a bare positional -- see publish_bat_payload's identical note.
 publish_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3"
-    if [ "$PUBLISH_SEMANTIC" -eq 1 ]; then
-        printf 'HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api '
+    local base
+    base=$(printf '%s %s --corpus-root %s --flow-name %q' "$q_bash" "$q_script" "$q_corpus" "$PUBLISH_FLOW_NAME")
+    if [ "$PUBLISH_SEMANTIC" -ne 1 ]; then
+        printf '%s' "$base"
+        return 0
     fi
-    printf '%s %s --corpus-root %s --flow-name %q' "$q_bash" "$q_script" "$q_corpus" "$PUBLISH_FLOW_NAME"
-    if [ "$PUBLISH_SEMANTIC" -eq 1 ]; then printf ' --semantic'; fi
+    # The pause marker is read at fire time: while it exists the fire runs the
+    # publish leg without --semantic and without the api-lane env.
+    local q_pause
+    q_pause=$(printf '%q' "$BAT_DIR/$SEMANTIC_PAUSE_MARKER")
+    printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; %s; else echo "[semantic active]"; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api %s --semantic; fi' "$q_pause" "$base" "$base"
 }
 
 # Emit the runner .sh body for one cadence task: stamp the format version,
