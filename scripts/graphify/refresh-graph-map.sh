@@ -75,6 +75,12 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # default, not a billing guarantee.
 NAME="" CORPUS_ROOT="" BACKEND="claude-cli" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
 SCRATCH="" DO_UPDATE=1 CORPUS_CLASS="luna-personal"
+# --merge-into-live: a corpus whose live graph is AST-heavy (himmel). The markdown-only
+# extraction is merged INTO the live graph.json (semantic-merge.py merge, the step
+# semantic-update.sh runs) instead of replacing it, so the promote shrink guard compares
+# the merged graph, not an md-only one, with the live graph. Default 0: the vault, whose
+# graph is md-only, keeps the plain promote.
+MERGE_INTO_LIVE=0 MERGED=0
 # OPTIONAL out-of-corpus promote destination. Empty (default)
 # keeps every existing in-corpus behaviour byte-for-byte. See the OUT_ROOT
 # validation block below (next to the GRAPHIFY_OUT_NAME resolution) for why
@@ -94,7 +100,7 @@ CORPUS_ID="" MAPS_ID="" MAPS_PARENT_ID=""
 # the promote half of that region on an existing workdir instead.
 PROMOTE_ONLY="" PUBLISH=0 FORCE=0 ALLOW_UNVERIFIED=0 DO_EXTRACT=1
 PROMOTE_ONLY_DIR="" PROMOTE_ONLY_SHAPE=""   # shape: workdir | quarantine
-usage() { echo "usage: refresh-graph-map.sh --name N --corpus-root P --maps-dir D --title T --slug S [--backend B] [--corpus-tag T] [--corpus-class C] [--corpus-id DEV:INODE] [--maps-id DEV:INODE] [--maps-parent-id DEV:INODE] [--out-root DIR] [--scratch DIR] [--no-update] [--promote-only WORKDIR [--publish] [--force] [--allow-unverified-corpus]]" >&2; exit 1; }
+usage() { echo "usage: refresh-graph-map.sh --name N --corpus-root P --maps-dir D --title T --slug S [--backend B] [--corpus-tag T] [--corpus-class C] [--corpus-id DEV:INODE] [--maps-id DEV:INODE] [--maps-parent-id DEV:INODE] [--out-root DIR] [--merge-into-live] [--scratch DIR] [--no-update] [--promote-only WORKDIR [--publish] [--force] [--allow-unverified-corpus]]" >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --name) NAME="${2:-}"; shift 2 ;;
@@ -135,6 +141,7 @@ while [ $# -gt 0 ]; do
     --corpus-tag) CORPUS_TAG="${2:-}"; shift 2 ;;
     --corpus-class) CORPUS_CLASS="${2:-}"; shift 2 ;;
     --out-root) OUT_ROOT="${2:-}"; shift 2 ;;
+    --merge-into-live) MERGE_INTO_LIVE=1; shift ;;
     --scratch) SCRATCH="${2:-}"; shift 2 ;;
     --no-update) DO_UPDATE=0; shift ;;
     # recover an orphaned finished extraction (see the header).
@@ -2722,6 +2729,48 @@ PYEOF
     _graphify_version="$("$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
   fi
   printf '%s\n' "$_graphify_version" > "$PROMOTE_STAGE/.graphify_promoted_version"
+  # --merge-into-live: fold the markdown-only extraction into the live graph
+  # (semantic-merge.py merge, the step semantic-update.sh runs) so the AST
+  # nodes survive and the guard below sees a merged graph. Runs on a copy in the
+  # stage; the live graph is untouched until the promote renames. No live graph
+  # yet = nothing to merge into, plain promote.
+  if [ "$MERGE_INTO_LIVE" -eq 1 ] && [ -f "$OUT_DIR/graph.json" ]; then
+    if [ "$SCRATCH_GRAPH" != "$SCRATCH/graphify-out/graph.json" ]; then
+      echo "refresh-graph-map: REFUSING to merge -- --merge-into-live needs the extraction at graphify-out/graph.json (got $SCRATCH_GRAPH)" >&2
+      exit 2
+    fi
+    MERGE_WORK="$PROMOTE_STAGE/merge-out"
+    mkdir "$MERGE_WORK" "$PROMOTE_STAGE/merge-empty"
+    cp "$OUT_DIR/graph.json" "$MERGE_WORK/graph.json"
+    for _merge_state in semantic-manifest.json semantic-runs.jsonl; do
+      if [ -f "$OUT_DIR/$_merge_state" ]; then cp "$OUT_DIR/$_merge_state" "$MERGE_WORK/$_merge_state"; fi
+    done
+    # An empty manifest makes every markdown file of the copy a changed file: a refresh
+    # re-extracted all of them. Files the live manifest knows but the corpus no longer has are deleted.
+    _merge_rc=0
+    python3 "$HERE/semantic-merge.py" plan --root "$SCRATCH" --out "$PROMOTE_STAGE/merge-empty" --max-files 1000000 --plan "$MERGE_WORK/plan.json" >/dev/null || _merge_rc=$?
+    if [ "$_merge_rc" -eq 0 ]; then
+      python3 - "$MERGE_WORK" <<'MERGEPLANEOF' || _merge_rc=$?
+import json, os, sys
+work = sys.argv[1]
+plan_path = os.path.join(work, "plan.json")
+plan = json.load(open(plan_path))
+manifest = os.path.join(work, "semantic-manifest.json")
+known = json.load(open(manifest)).get("files", {}) if os.path.exists(manifest) else {}
+plan["deleted"] = sorted(set(known) - set(plan["batch"]))
+json.dump(plan, open(plan_path, "w"))
+MERGEPLANEOF
+    fi
+    if [ "$_merge_rc" -eq 0 ]; then
+      python3 "$HERE/semantic-merge.py" merge --name "$NAME" --out "$MERGE_WORK" --scratch "$SCRATCH" --plan "$MERGE_WORK/plan.json" >&2 || _merge_rc=$?
+    fi
+    if [ "$_merge_rc" -ne 0 ]; then
+      echo "refresh-graph-map: REFUSING to promote -- merging the extraction into the live graph failed (rc=$_merge_rc, reason above); the existing graph at $OUT_DIR/graph.json was left in place" >&2
+      exit 2
+    fi
+    mv "$MERGE_WORK/graph.json" "$PROMOTE_STAGE/graph.json"
+    MERGED=1
+  fi
   # 1b. PROMOTE SHRINK GUARD (see GRAPHIFY_PROMOTE_MIN_RETAIN_PCT
   #     above for the WHY). Must run here: both graph.json files exist and are
   #     countable (staged just landed in $PROMOTE_STAGE above; the prior one is
@@ -2854,8 +2903,17 @@ PYEOF
   #    remove the backup. The EXIT cleanup restores the prior cache if the
   #    second rename fails; at no point is a partially copied cache final.
   mv "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json"
-  mv "$PROMOTE_STAGE/GRAPH_REPORT.md" "$REPORT"
-  if [ -d "$PROMOTE_STAGE/cache" ]; then
+  # A merged graph keeps the live report and analysis: the staged ones describe only
+  # the markdown extraction, and the next AST pass reclusters the merged graph.
+  # ponytail: the report/MOC keeps the last full-graph counts until that pass; revisit if the MOC must show the merged totals at once.
+  if [ "$MERGED" -eq 1 ] && [ -f "$REPORT" ]; then :; else mv "$PROMOTE_STAGE/GRAPH_REPORT.md" "$REPORT"; fi
+  if [ "$MERGED" -eq 1 ]; then
+    rm -f "$PROMOTE_STAGE/.graphify_analysis.json"
+    if [ -d "$PROMOTE_STAGE/cache" ]; then
+      mkdir -p "$OUT_DIR/cache"
+      cp -R "$PROMOTE_STAGE/cache/." "$OUT_DIR/cache/"
+    fi
+  elif [ -d "$PROMOTE_STAGE/cache" ]; then
     CACHE_BACKUP="$OUT_DIR/.cache.previous.$$.$RANDOM"
     rm -rf "$CACHE_BACKUP"
     if [ -e "$OUT_DIR/cache" ] || [ -L "$OUT_DIR/cache" ]; then
@@ -2889,10 +2947,15 @@ PYEOF
   for semantic_artifact in .graphify_semantic_marker .graphify_analysis.json; do
     if [ -f "$PROMOTE_STAGE/$semantic_artifact" ]; then
       mv "$PROMOTE_STAGE/$semantic_artifact" "$OUT_DIR/$semantic_artifact"
-    else
+    elif [ "$MERGED" -eq 0 ]; then
       rm -f "$OUT_DIR/$semantic_artifact"
     fi
   done
+  if [ "$MERGED" -eq 1 ]; then
+    for _merge_state in semantic-manifest.json semantic-runs.jsonl; do
+      if [ -f "$MERGE_WORK/$_merge_state" ]; then mv "$MERGE_WORK/$_merge_state" "$OUT_DIR/$_merge_state"; fi
+    done
+  fi
   # 4. STAMP: same-dir renames atomically install the synthesized manifest,
   #    marker, and version stamp. The guard joins the corpus-relative manifest
   #    keys against the resolved corpus root.

@@ -651,6 +651,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
         if [ -n "$PREFLIGHT_MAPS_ID" ]; then RUNNER_ARGV+=(--maps-id "$PREFLIGHT_MAPS_ID"); fi
         if [ -n "$PREFLIGHT_VAULT_ID" ]; then RUNNER_ARGV+=(--maps-parent-id "$PREFLIGHT_VAULT_ID"); fi
         if [ "$c" = "luna" ]; then RUNNER_ARGV+=(--corpus-class luna-personal); fi
+        # himmel's live graph is AST-heavy: merge the markdown extraction into it, never promote over it
+        if [ "$c" = "himmel" ]; then RUNNER_ARGV+=(--merge-into-live); fi
         R_OUT_ROOT="$(graphify_out_root_for "$c")"
         if [ -n "$R_OUT_ROOT" ]; then RUNNER_ARGV+=(--out-root "$R_OUT_ROOT"); fi
         # mirror the real run's conditional `env -u GRAPHIFY_OUT_ROOT`
@@ -697,6 +699,7 @@ for c in "${CORPORA[@]}"; do
     if [ -n "$PREFLIGHT_MAPS_ID" ]; then RUNNER_ARGV+=(--maps-id "$PREFLIGHT_MAPS_ID"); fi
     if [ -n "$PREFLIGHT_VAULT_ID" ]; then RUNNER_ARGV+=(--maps-parent-id "$PREFLIGHT_VAULT_ID"); fi
     if [ "$c" = "luna" ]; then RUNNER_ARGV+=(--corpus-class luna-personal); fi
+    if [ "$c" = "himmel" ]; then RUNNER_ARGV+=(--merge-into-live); fi
     R_OUT_ROOT="$(graphify_out_root_for "$c")"
     if [ -n "$R_OUT_ROOT" ]; then RUNNER_ARGV+=(--out-root "$R_OUT_ROOT"); fi
     echo "graph-refresh: [$c] refreshing (corpus-root $R_CORPUS_ROOT -> $VAULT/60-Maps/$R_SLUG.md)" >&2

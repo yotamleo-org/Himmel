@@ -4285,5 +4285,95 @@ got=$(cat "$GL_LISTING" 2>/dev/null)
 [ "$got" = "$want" ] && pass "T-gitcorpus non-git corpus still copies its markdown" \
   || fail "T-gitcorpus non-git expected a.md and sub/b.md, got: $got"
 
+# --- T-merge: a himmel-shaped refresh (--merge-into-live) merges the md-only
+# semantic extraction INTO the live AST-heavy graph instead of promoting it over
+# the graph; the vault shape (no flag) keeps its plain promote; a merge result
+# that still shrinks trips the shrink guard. The stub emits one semantic node
+# per markdown file it is handed. ---
+MGBIN="$WS/mg-bin"; mkdir -p "$MGBIN"
+cat > "$MGBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in --version) echo "0.9.0"; exit 0 ;; esac
+target=""
+if [ "$1" = "cluster-only" ]; then target="$2"; else target="$1"; fi
+mkdir -p "$target/graphify-out"
+python3 - "$target" <<'PY'
+import json, os, sys
+root = sys.argv[1]
+nodes = []
+for d, ds, fs in os.walk(root):
+    ds[:] = [x for x in ds if x != "graphify-out"]
+    for f in sorted(fs):
+        if f.endswith(".md"):
+            rel = os.path.relpath(os.path.join(d, f), root).replace(os.sep, "/")
+            nodes.append({"id": "sem-%s" % rel, "label": "sem %s" % rel, "source_file": rel})
+json.dump({"nodes": nodes, "links": []}, open(os.path.join(root, "graphify-out", "graph.json"), "w"))
+PY
+cp "$GL_REPORT" "$target/graphify-out/GRAPH_REPORT.md"
+exit 0
+STUB
+chmod +x "$MGBIN/graphify"
+mg_corpus() { # <dir> <ast-nodes> <semantic-nodes of tracked.md> — git corpus with a live graph
+  git_corpus "$1"
+  mkdir -p "$1/graphify-out"
+  python3 - "$1/graphify-out/graph.json" "$2" "$3" <<'PY'
+import json, sys
+na, ns = int(sys.argv[2]), int(sys.argv[3])
+nodes = [{"id": "ast-%d" % i, "label": "fn%d" % i, "source_file": "code.py", "_origin": "ast"} for i in range(na)]
+nodes += [{"id": "old-sem-%d" % i, "label": "old %d" % i, "source_file": "tracked.md", "_origin": "semantic"} for i in range(ns)]
+json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
+PY
+}
+mg_count() { python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["nodes"]))' "$1" 2>/dev/null; }
+mg_has() { python3 -c 'import json,sys; print(int(sys.argv[2] in {n["id"] for n in json.load(open(sys.argv[1]))["nodes"]}))' "$1" "$2" 2>/dev/null; }
+mg_run() { # <name> <corpus> [extra flags] — runs the runner with the stub
+  local name="$1" corpus="$2"; shift 2
+  GRAPHIFY_MAP_BIN="$MGBIN/graphify" PATH="$MGBIN:$PATH" \
+    bash "$SCRIPT" --name "$name" --corpus-root "$corpus" --backend claude-cli "$@" \
+    --maps-dir "$MGMAPS" --title "$name Map" --slug "$name-map" --corpus-tag "$name" 2>&1
+}
+MGMAPS="$WS/mg-maps"; mkdir -p "$MGMAPS"
+MGC="$WS/mg-corpus"; mg_corpus "$MGC" 30 2
+printf '# two\n' > "$MGC/two.md"; git -C "$MGC" add two.md >/dev/null 2>&1
+git -C "$MGC" -c core.hooksPath=/dev/null commit -qm two >/dev/null 2>&1
+out=$(mg_run mgt "$MGC" --merge-into-live); rc=$?
+n=$(mg_count "$MGC/graphify-out/graph.json")
+{ [ "$rc" -eq 0 ] && [ "${n:-0}" -ge 32 ]; } \
+  && pass "T-merge himmel shape merges into the live graph (rc 0, nodes 32 -> $n)" \
+  || fail "T-merge expected rc 0 and nodes >= 32 (rc=$rc nodes=${n:-?}): $out"
+[ "$(mg_has "$MGC/graphify-out/graph.json" ast-0)" = 1 ] && pass "T-merge AST nodes survive" || fail "T-merge AST node ast-0 lost"
+[ "$(mg_has "$MGC/graphify-out/graph.json" sem-two.md)" = 1 ] && pass "T-merge new semantic node for two.md is present" || fail "T-merge sem-two.md missing"
+[ "$(mg_has "$MGC/graphify-out/graph.json" old-sem-0)" = 0 ] && pass "T-merge re-extracted file's stale semantic node is replaced" || fail "T-merge old-sem-0 still present"
+[ -f "$MGC/graphify-out/semantic-manifest.json" ] && pass "T-merge semantic manifest stamped" || fail "T-merge semantic-manifest.json missing"
+
+# control: the vault shape (no flag, no AST graph) still promotes the extraction as before
+MGV="$WS/mg-vault"; mkdir -p "$MGV/notes"; printf '# n\n' > "$MGV/notes/a.md"
+out=$(mg_run mgv "$MGV"); rc=$?
+{ [ "$rc" -eq 0 ] && [ "$(mg_count "$MGV/graphify-out/graph.json")" = 1 ] && [ ! -f "$MGV/graphify-out/semantic-manifest.json" ]; } \
+  && pass "T-merge control: vault shape still plain-promotes (1 node, no semantic manifest)" \
+  || fail "T-merge control vault promote (rc=$rc): $out"
+
+# the pre-fix defect, pinned: WITHOUT the flag the himmel shape is refused by the shrink guard
+MGR="$WS/mg-refused"; mg_corpus "$MGR" 30 2
+out=$(mg_run mgr "$MGR"); rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$MGR/graphify-out/graph.json")" = 32 ]; } \
+  && pass "T-merge without the flag the shrink guard refuses an md-only graph and keeps the live one" \
+  || fail "T-merge no-flag expected the shrink-guard refusal (rc=$rc): $out"
+
+# a merge result that still shrinks trips the guard: gone.md is in the semantic manifest but no longer in
+# the corpus, so the merge drops its 60 semantic nodes (65 -> about 7, under the 90 percent floor)
+MGS="$WS/mg-shrunk"; mg_corpus "$MGS" 5 0
+python3 - "$MGS/graphify-out" <<'PY2'
+import json, os, sys
+d = sys.argv[1]; p = os.path.join(d, "graph.json"); g = json.load(open(p))
+g["nodes"] += [{"id": "gone-%d" % i, "label": "g", "source_file": "gone.md", "_origin": "semantic"} for i in range(60)]
+json.dump(g, open(p, "w"))
+json.dump({"version": 1, "files": {"gone.md": "x"}}, open(os.path.join(d, "semantic-manifest.json"), "w"))
+PY2
+out=$(mg_run mgs "$MGS" --merge-into-live); rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$MGS/graphify-out/graph.json")" = 65 ]; } \
+  && pass "T-merge a genuinely shrunken merge result still trips the shrink guard" \
+  || fail "T-merge shrunk expected the shrink-guard refusal with the live graph kept (rc=$rc nodes=$(mg_count "$MGS/graphify-out/graph.json")): $out"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 if [ "$SKIPS" -ne 0 ]; then echo "ALL PASS ($SKIPS skipped)"; else echo "ALL PASS"; fi

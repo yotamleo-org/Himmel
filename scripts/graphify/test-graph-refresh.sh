@@ -222,6 +222,7 @@ assert_contains "dry-run plan has himmel tag" "--corpus-tag himmel" "$out"
 assert_contains "dry-run luna leg has explicit corpus-class" "--corpus-class luna-personal" "$out"
 himmel_dry=$(printf '%s\n' "$out" | grep '\[himmel\]' || true)
 assert_not_contains "dry-run himmel leg has no corpus-class" "--corpus-class" "$himmel_dry"
+assert_contains "dry-run himmel leg merges into the live graph" "--merge-into-live" "$himmel_dry"
 # printf %q-escapes spaces in the title -> strip backslashes before asserting.
 out_plain=${out//\\/}
 assert_contains "dry-run plan has luna title" "Graphify Luna Map" "$out_plain"
@@ -317,6 +318,8 @@ assert_contains "himmel corpus-tag"                      "--corpus-tag himmel"  
 assert_contains "himmel fixed claude-cli backend"        "--backend claude-cli"       "$line2"
 assert_contains "himmel title"                           "Graphify Himmel Map"        "$line2"
 assert_not_contains "himmel leg passes no corpus-class"  "--corpus-class"             "$line2"
+assert_contains "himmel leg merges into the live graph"  "--merge-into-live"          "$line2"
+assert_not_contains "luna leg promotes plainly"          "--merge-into-live"          "$line1"
 # Summary + next-step hint + cadence status delegation.
 assert_contains "luna OK summary"   "[luna] OK"   "$out"
 assert_contains "himmel OK summary" "[himmel] OK" "$out"
