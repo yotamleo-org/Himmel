@@ -67,7 +67,7 @@ while IFS= read -r name; do
     esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
     tail='($|[[:space:];&|)])'
     tok='[^[:space:];&|()]+'
-    wrap="(((timeout|nohup)([[:space:]]+((-s|--signal)[[:space:]]+${tok}|-${tok}|['\"]?[0-9.]+[smhd]?['\"]?|[A-Z]+))*)[[:space:]]+)*"
+    wrap="(((timeout|nohup)([[:space:]]+${tok})*)[[:space:]]+)?"
     via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
     via_path="(^|[;&|(])[[:space:]]*${wrap}[^[:space:]]*/${esc}${tail}"
     if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
