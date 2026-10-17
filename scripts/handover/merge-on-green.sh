@@ -1983,7 +1983,8 @@ $remaining")
                 const dated = vs.filter(v => v[1] === "false" && v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
                 const unrel = vs.filter(v => v[1] === "false");
                 const cur = dated.length ? dated[0][0] : unrel.length ? unrel[0][0] : "";
-                if (cur && (!have.length || have.some(n => open.has(n) && n !== cur))) {
+                const known = d.fields && Array.isArray(d.fields.fixVersions);
+                if (cur && known && (!have.length || have.some(n => open.has(n) && n !== cur))) {
                     const keep = have.filter(n => !open.has(n));
                     process.stdout.write([cur].concat(keep).join("\n"));
                 }
