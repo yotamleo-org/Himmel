@@ -132,6 +132,7 @@ if [ -n "${SKIP_REFRESH:-}" ] && [ "$name" = "$SKIP_REFRESH" ]; then
 fi
 if [ -n "${FAIL_REFRESH:-}" ] && [ "$name" = "$FAIL_REFRESH" ]; then
     echo "fake-runner: failing on $name (FAIL_REFRESH)" >&2
+    if [ -n "${FAIL_REASON:-}" ]; then echo "refresh-graph-map: $FAIL_REASON" >&2; fi
     exit 1
 fi
 exit 0
@@ -385,6 +386,25 @@ assert_eq "both legs still ran (serial continues)" "2" "$(wc -l < "$RUNNER_LOG" 
 assert_contains "summary names the failure count" "1 failed (of 2 corpus(corpora)) -- FAILED" "$out"
 # A failed himmel leg must NOT print the publish hint (nothing to publish).
 assert_not_contains "no publish hint on failed himmel leg" "[himmel] NEXT" "$out"
+
+# ============================================================================
+# Test 9a: a failed leg prints the runner's last 'refresh-graph-map:' reason
+# line and a log path that exists; the end summary lists the failed corpus.
+# ============================================================================
+echo "TEST: failed leg carries its reason and an existing log path"
+reset_runner_log
+rc=0; out=$(FAIL_REFRESH=himmel FAIL_REASON="promote shrink guard: 2734 nodes < 90 percent of live 34907" run_refresh both --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "reason: rc 3" 3 "$rc"
+fail_line=$(printf '%s\n' "$out" | grep -F '[himmel] FAIL' | head -1)
+assert_contains "FAIL line carries the reason" "promote shrink guard: 2734 nodes" "$fail_line"
+assert_contains "FAIL line names a log" "(log: " "$fail_line"
+log_path=$(printf '%s\n' "$fail_line" | sed -n 's/.*(log: \(.*\))$/\1/p')
+if [ -n "$log_path" ] && [ -f "$log_path" ]; then pass "FAIL log path exists"; else fail "FAIL log path exists" "path='$log_path'"; fi
+if [ -n "$log_path" ] && grep -qF 'fake-runner: failing on himmel' "$log_path" 2>/dev/null; then pass "log holds the runner output"; else fail "log holds the runner output" "path='$log_path'"; fi
+summary_fail=$(printf '%s\n' "$out" | grep -F 'failed corpus: himmel' | head -1)
+assert_contains "end summary lists the failed corpus with its log" "$log_path" "$summary_fail"
+ok_line=$(printf '%s\n' "$out" | grep -F '[luna] OK' | head -1)
+assert_not_contains "OK line unchanged (no log noise)" "(log:" "$ok_line"
 
 # ============================================================================
 # Test 9b: bank-skip only (no failures) -> exit 4, summary carries no OK token

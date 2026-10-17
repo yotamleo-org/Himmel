@@ -85,7 +85,7 @@
 #      CODEX_BIN script naming it is refused too.
 #
 # Usage:
-#   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
+#   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [--context-tier <272k|353k|900k>] [codex exec args...]
 #
 # Exit: codex rc, or stdout-relay rc if codex succeeded; watchdog timeout wins.
 # Wrapper codes: 2 usage/refusal | 4 lock held | 124 watchdog timeout | 127 no codex
@@ -323,12 +323,18 @@ if [ -n "$SHARED_BRANCH" ]; then
     fi
 fi
 
+# shellcheck disable=SC2034 # read by the sourced arg filter.
+CAF_ACCEPT_CONTEXT_TIER=1
 if ! codex_filter_passthrough_args "$@"; then
     exit 2
 fi
 have_model="$CAF_HAVE_MODEL"
 have_sandbox="$CAF_HAVE_SANDBOX"
 reasoning_effort="$CAF_REASONING_EFFORT"
+# Invariant 10: the context tier is ALWAYS pinned (unstated = 272k, the cheapest),
+# so an ambient CODEX_CONTEXT_WINDOW can never buy a pricier tier.
+context_window="$CAF_CONTEXT_WINDOW"
+export CODEX_CONTEXT_WINDOW="$context_window"
 NEW_ARGS=()
 if [ "${#CAF_NEW_ARGS[@]}" -gt 0 ]; then
     NEW_ARGS=("${CAF_NEW_ARGS[@]}")
@@ -897,6 +903,10 @@ if [ -n "$reasoning_effort" ]; then
     # shellcheck disable=SC2089  # the embedded quotes are intentional TOML string syntax for the -c override; see SC2090 note below where pin_args is expanded
     pin_args="$pin_args -c model_reasoning_effort=\"$reasoning_effort\""
 fi
+# Invariant 10: the tier also reaches codex itself as the trusted
+# model_context_window override, unstated included (272k): native codex ignores
+# CODEX_CONTEXT_WINDOW and would otherwise use its configured window.
+pin_args="$pin_args -c model_context_window=$context_window"
 # the argv codex is finally launched with never carries a refused
 # trust/sandbox bypass flag, whatever built it (the caller args were already
 # filtered; this covers the pin args and any later change to either).

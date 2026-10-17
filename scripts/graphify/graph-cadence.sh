@@ -146,7 +146,14 @@
 #   merged    -- the full pipeline landed: refreshed, published, merged.
 #
 # Usage:
-#   graph-cadence.sh [--threshold N] [--corpus-root <path>] [--semantic]
+#   graph-cadence.sh [--threshold N] [--corpus-root <path>] [--flow-name <name>] [--semantic]
+#
+# --flow-name <name>: the flow-run ledger identity every row of this run is
+# emitted under. graphmap-cadence.sh OWNS that name (it registers the
+# observability entry under it) and hands it down in the armed runner, so the
+# registry entry and the ledger rows join by construction. Absent (a hand run),
+# the name is derived as graph-publish-<corpus-slug>. Characters outside
+# A-Za-z0-9._- are refused rc=2.
 #
 # --semantic (OFF by default): after the structural refresh, run
 # semantic-update.sh on the dedicated worktree with GRAPH_CADENCE_SEMANTIC_BACKEND
@@ -236,7 +243,7 @@ export PATH
 
 usage() {
     cat <<'EOF'
-usage: graph-cadence.sh [--threshold N] [--corpus-root <path>] [--semantic]
+usage: graph-cadence.sh [--threshold N] [--corpus-root <path>] [--flow-name <name>] [--semantic]
 
 Refresh + publish himmel's graphify graph on a cadence: measures how many
 commits origin/main is ahead of the shipped graph.json's built_at_commit,
@@ -257,6 +264,8 @@ Optional:
                        corpus. himmel is the only corpus wired for v1; a real
                        second corpus needs this flag made genuinely end-to-end
                        first (see docs).
+  --flow-name <name>  Flow-run ledger name for this run (A-Za-z0-9._- only,
+                       else rc=2). Default: graph-publish-<corpus-slug>.
   --semantic          Also run the incremental semantic step (backend from
                        GRAPH_CADENCE_SEMANTIC_BACKEND, default claude-cli)
                        after the structural refresh. OFF by default.
@@ -266,6 +275,8 @@ EOF
 THRESHOLD=15
 CORPUS_ROOT_OVERRIDE=""
 SEMANTIC=0
+FLOW_NAME_OVERRIDE=""
+FLOW_NAME_GIVEN=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --threshold)
@@ -276,6 +287,10 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "ERR graph-cadence: --corpus-root requires a value" >&2; exit 1; }
             CORPUS_ROOT_OVERRIDE="$2"; shift 2 ;;
         --corpus-root=*) CORPUS_ROOT_OVERRIDE="${1#--corpus-root=}"; shift ;;
+        --flow-name)
+            [ $# -ge 2 ] || { echo "ERR graph-cadence: --flow-name requires a value" >&2; exit 1; }
+            FLOW_NAME_OVERRIDE="$2"; FLOW_NAME_GIVEN=1; shift 2 ;;
+        --flow-name=*) FLOW_NAME_OVERRIDE="${1#--flow-name=}"; FLOW_NAME_GIVEN=1; shift ;;
         --semantic) SEMANTIC=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "ERR graph-cadence: unknown arg: $1" >&2; usage >&2; exit 1 ;;
@@ -284,6 +299,12 @@ done
 case "$THRESHOLD" in
     ''|*[!0-9]*) echo "ERR graph-cadence: --threshold must be a non-negative integer, got: $THRESHOLD" >&2; exit 1 ;;
 esac
+
+if [ "$FLOW_NAME_GIVEN" = 1 ]; then
+    case "$FLOW_NAME_OVERRIDE" in
+        ''|*[!A-Za-z0-9._-]*) echo "ERR graph-cadence: --flow-name must be a non-empty name of A-Za-z0-9._- only" >&2; exit 2 ;;
+    esac
+fi
 
 command -v git >/dev/null 2>&1 || { echo "ERR graph-cadence: 'git' not on PATH" >&2; exit 2; }
 
@@ -402,7 +423,7 @@ CORPUS_SLUG="$(printf '%s' "$_corpus_basename" | tr -c 'A-Za-z0-9._-' '-' | sed 
 WORKTREE_DIR="${GRAPH_CADENCE_WORKTREE_DIR:-$HOME/.claude/graph-cadence/$CORPUS_SLUG}"
 PUBLISH_BRANCH="chore/graph-publish-${CORPUS_SLUG}"
 LOG_FILE="$WORKTREE_DIR.log"
-FLOW_NAME="graph-publish-${CORPUS_SLUG}"
+FLOW_NAME="${FLOW_NAME_OVERRIDE:-graph-publish-${CORPUS_SLUG}}"
 
 # --- flow-run-ledger.sh (~/.himmel/flow-runs.jsonl by default) --------------
 # Sourced early, deliberately BEFORE HANDOVER_DIR resolution: its default

@@ -2153,10 +2153,25 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     SLUG_ESC="$(_find_glob_escape "$SLUG")"
     CORPUS_FIND_EXCLUDES+=(-not -path "$MAPS_EXCL_PREFIX_ESC/graph/*" -not -path "$MAPS_EXCL_PREFIX_ESC/$SLUG_ESC.md")
   fi
+  # A git corpus is copied from its TRACKED files only: the same find (so the
+  # same *.md rule and exclusions) is intersected with `git ls-files`, so
+  # untracked and gitignored content never reaches the extraction. A non-git
+  # corpus (the luna vault) keeps the plain find.
+  TRACKED_LIST=""
+  if git -C "$CORPUS_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    TRACKED_LIST="$SCRATCH/.graphify-tracked-list"
+    git -C "$CORPUS_ROOT" ls-files -z > "$TRACKED_LIST" \
+      || { echo "refresh-graph-map: git ls-files failed in $CORPUS_ROOT" >&2; exit 1; }
+  fi
   ( cd "$CORPUS_ROOT" && _verify_fs_id "corpus-root" "." "$CORPUS_ID" \
       && find . -type f -name '*.md' "${CORPUS_FIND_EXCLUDES[@]}" -print0 \
+      | if [ -n "$TRACKED_LIST" ]; then
+          awk -v RS='\0' -v ORS='\0' -v list="$TRACKED_LIST" \
+            'BEGIN { while ((getline p < list) > 0) t[p] = 1 } (substr($0, 3) in t)'
+        else cat; fi \
       | tar --null -T - -cf - ) | ( cd "$SCRATCH" && tar -xf - ) \
     || { echo "refresh-graph-map: corpus scan/copy failed or refused (see output above)" >&2; exit 1; }
+  if [ -n "$TRACKED_LIST" ]; then rm -f "$TRACKED_LIST"; fi
   # graphify's semantic cache is corpus-relative and content-keyed,
   # but it lives under graphify-out/. Seed only the cache artifacts into the
   # fresh scratch path BEFORE --update so unchanged files are cache hits instead
