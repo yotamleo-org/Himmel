@@ -238,12 +238,26 @@ fi
 
 # --- 5. NO THIRD-PARTY REQUEST ---------------------------------------------------
 
-# Opening the page must not contact any other host: a stylesheet, script, font or
-# image on an external origin discloses the visit to it (the page used to pull
-# Google Fonts). Anchor hrefs are navigation, not loads, so they are not checked.
+# Opening the page must not contact any other host: a stylesheet, script, font,
+# image, media or object on an external origin discloses the visit (the page used
+# to pull Google Fonts). Anchor hrefs are navigation, not loads, so they are not checked.
 # The font-family rules carry local fallback stacks, so nothing needs fetching.
 find_ext_loads() {
-  perl -0777 -ne 'print "$&\n" while /<(?:link|script|img|source|iframe)\b[^>]*\b(?:href|src|srcset)\s*=\s*["\x27]?(?:https?:)?\/\/[^\s>]*|<(?:img|source)\b[^>]*\bsrcset\s*=\s*["\x27]?[^"\x27>]*?[\s,](?:https?:)?\/\/[^\s>]*|\burl\(\s*["\x27]?(?:https?:)?\/\/[^)]*\)|\@import\s+(?:url\()?["\x27]?(?:https?:)?\/\/[^;]*/gi' | cut -c1-120
+  perl -0777 -ne '
+    while (/<([a-z][a-z0-9:-]*)\b((?:[^>"\x27]|"[^"]*"|\x27[^\x27]*\x27)*)>/gi) {
+      my ($tag, $attrs, $markup) = (lc($1), $2, $&);
+      while ($attrs =~ /(?:^|\s)([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s>]+))/g) {
+        my ($attr, $value) = (lc($1), $2 // $3 // $4);
+        next unless $attr =~ /^(?:src|poster|data|srcset)$/ || ($tag eq "link" && $attr eq "href");
+        my @urls = $attr eq "srcset" ? split(/,/, $value) : ($value);
+        if (grep { /^\s*(?:https?:|\/\/)/i } @urls) {
+          print "$markup\n";
+          last;
+        }
+      }
+    }
+    print "$&\n" while /\burl\(\s*["\x27]?(?:https?:)?\/\/[^)]*\)|\@import\s+(?:url\()?["\x27]?(?:https?:)?\/\/[^;]*/gi;
+  ' | cut -c1-120
 }
 # Positive controls: each attribute quoting form must be caught, so the scan
 # cannot go blind to a form the real page does not currently use.
@@ -252,11 +266,30 @@ for ctl in '<link rel="stylesheet" href="https://x.example/a.css">' \
            "<script src='https://x.example/a.js'></script>" \
            '<img src=https://x.example/a.png>' \
            '<img srcset="/a.png 1x, https://x.example/b.png 2x">' \
+           '<video src="https://x.example/a.mp4"></video>' \
+           "<video poster='//x.example/a.png'></video>" \
+           '<audio src=http://x.example/a.mp3></audio>' \
+           '<video><source src="//x.example/a.mp4"></video>' \
+           '<audio><source src="https://x.example/a.mp3"></audio>' \
+           '<object data="https://x.example/a.pdf"></object>' \
+           '<video srcset="/a.png 320w, /b.png 640w, //x.example/c.png 960w"></video>' \
            '<style>@import url(//x.example/a.css);</style>'; do
   [ -n "$(printf '%s' "$ctl" | find_ext_loads)" ] || ctl_missed="$ctl_missed $ctl"
 done
 if [ -n "$ctl_missed" ]; then
   bad "the third-party-request scan missed a control form" "$ctl_missed"
+else
+  ok "the third-party-request scan catches every external resource control"
+fi
+ctl_false_hits=""
+for ctl in '<img srcset="/a.png 1x, /b.png 2x">' \
+           '<a href="https://x.example/">external navigation</a>'; do
+  [ -z "$(printf '%s' "$ctl" | find_ext_loads)" ] || ctl_false_hits="$ctl_false_hits $ctl"
+done
+if [ -n "$ctl_false_hits" ]; then
+  bad "the third-party-request scan flagged a non-loading control" "$ctl_false_hits"
+else
+  ok "local-only srcset and external anchor href are not third-party loads"
 fi
 ext_loads="$(find_ext_loads <"$PAGE")"
 if [ -z "$ext_loads" ]; then
