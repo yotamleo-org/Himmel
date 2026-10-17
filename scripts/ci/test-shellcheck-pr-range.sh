@@ -187,6 +187,11 @@ reset; w scripts/zzm.sh '#!/usr/bin/env bash
 out="'"'"'$(. "$lib")'"'"'"
 '; commit_case dyn_mixq
 verdict dyn_mixq ALL
+# dyn_escq: an escaped quote outside a span opens nothing, so the real source after it counts
+reset; w scripts/zze.sh '#!/usr/bin/env bash
+echo \" ; . "$lib"
+'; commit_case dyn_escq
+verdict dyn_escq ALL
 
 # sweep_*: the non-dry fallback shards the full sweep in parallel through a stub pre-commit.
 # A stub shard fails when handed a file named *bad*; it records every invocation's file list.
@@ -221,6 +226,31 @@ echo $x
 '; commit_case sweep_fail; : > "$T/stub.log"
 sweep; rc=$?
 [ "$rc" -ne 0 ] && ok "sweep_fail: non-zero when one shard fails" || bad "sweep_fail: a failing shard was swallowed (rc 0)"
+
+# sweep_E: a tracked root file named E (the planner's old in-band sentinel) must still be linted,
+# and the shards must cover exactly git ls-files
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w E '#!/usr/bin/env bash
+echo e
+'; w T '#!/usr/bin/env bash
+echo t
+'; commit_case sweep_E; : > "$T/stub.log"
+sweep; rc=$?
+[ "$rc" -eq 0 ] && ok "sweep_E: rc 0" || bad "sweep_E: want rc 0, got $rc"
+tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort > "$T/shards.txt"
+git ls-files | sort > "$T/tracked.txt"
+cmp -s "$T/shards.txt" "$T/tracked.txt" \
+  && ok "sweep_E: union of shard file lists equals git ls-files" || bad "sweep_E: shards differ from git ls-files: $(diff "$T/shards.txt" "$T/tracked.txt" | head -4 | tr '\n' '|')"
+# sweep_norc: a shard that dies before writing its rc is a failure, not a pass
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+kill -9 "$(ps -o ppid= -p $PPID)"
+STUB
+chmod +x "$T/bin/pre-commit"
+sweep; rc=$?
+[ "$rc" -ne 0 ] && ok "sweep_norc: a signalled shard fails the sweep" || bad "sweep_norc: signalled shard passed (rc 0)"
 
 # script-absent-at-base: the workflow runs `git show <base>:<script>`; at a base
 # that predates the script it must fail, which drives the --all-files branch

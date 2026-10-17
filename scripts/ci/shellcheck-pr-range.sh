@@ -45,20 +45,20 @@ run_all() {
 # per bin; the exit status is the first non-zero bin's. Anything unplannable -> serial.
 serial_sweep() { exec pre-commit run shellcheck --all-files --show-diff-on-failure; }
 sweep_all() {
-  local n sd i rc=0 plan
+  local n sd i r rc=0 plan
   n=$(nproc 2>/dev/null) || n=1 # swallow-ok: no nproc means no parallelism, the serial sweep runs
   [ "${n:-1}" -gt 1 ] 2>/dev/null || serial_sweep
   sd=$(mktemp -d "${TMPDIR:-/tmp}/shellcheck-pr-range.XXXXXX") || serial_sweep
   plan=$(git ls-files) || serial_sweep
   case "$plan" in '"'* | *'
 "'*) rm -rf "$sd"; serial_sweep ;; esac
-  { printf 'T\n%s\nE\n' "$plan"; git grep -n -I -E -e "$src_re" -e "$dir_re" -- . 2>/dev/null || true; } | awk '
+  printf '%s\n' "$plan" > "$sd/files" || { rm -rf "$sd"; serial_sweep; }
+  git grep -n -I -E -e "$src_re" -e "$dir_re" -- . > "$sd/grep" 2>/dev/null || [ "$?" -eq 1 ] || { rm -rf "$sd"; serial_sweep; }
+  awk '
     function find(x) { while (p[x] != x) { p[x] = p[p[x]]; x = p[x] } return x }
     function join(a, b) { a = find(a); b = find(b); if (a != b) p[a] = b }
-    mode == 0 && $0 == "T" { mode = 1; next }
-    mode == 1 && $0 == "E" { mode = 2; next }
-    mode == 1 { n++; f[n] = $0; p[$0] = $0; k = split($0, q, "/"); byname[q[k]] = byname[q[k]] "\n" $0; next }
-    mode == 2 {
+    FNR == NR { n++; f[n] = $0; p[$0] = $0; k = split($0, q, "/"); byname[q[k]] = byname[q[k]] "\n" $0; next }
+    {
       i = index($0, ":"); file = substr($0, 1, i - 1); rest = substr($0, i + 1); sub(/^[0-9]+:/, "", rest)
       if (!(file in p)) next
       if (rest ~ /^[[:space:]]*#/ && rest !~ /shellcheck[[:space:]]+source=/) next
@@ -75,11 +75,13 @@ sweep_all() {
     END {
       for (i = 1; i <= n; i++) size[find(f[i])]++
       for (i = 1; i <= n; i++) { r = find(f[i]); printf "%d\t%s\t%s\n", size[r], r, f[i] }
-    }' | sort -t "$(printf '\t')" -k1,1nr -k2,2 | awk -F '\t' -v P="$n" -v sd="$sd" '
+    }' "$sd/files" "$sd/grep" | sort -t "$(printf '\t')" -k1,1nr -k2,2 | awk -F '\t' -v P="$n" -v sd="$sd" '
     $2 != last { last = $2; b = 1; for (i = 2; i <= P; i++) if (load[i] < load[b]) b = i }
     { load[b]++; print $3 >> (sd "/bin." b) }' || { rm -rf "$sd"; serial_sweep; }
   set -- "$sd"/bin.*
   [ -f "$1" ] || { rm -rf "$sd"; serial_sweep; }
+  # every tracked file must land in exactly one shard, else a pass would be vacuous
+  [ "$(cat "$sd"/bin.* | wc -l)" -eq "$(wc -l < "$sd/files")" ] || { rm -rf "$sd"; serial_sweep; }
   echo "shellcheck-pr-range: parallel full sweep over $# shards" >&2
   # xargs splits past ~128 KB of arguments, which would cut a component across runs
   for i in "$sd"/bin.*; do
@@ -89,9 +91,13 @@ sweep_all() {
     ( tr '\n' '\0' < "$i" | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
   done
   wait
-  for i in "$sd"/bin.*.out; do
-    cat "$i"
-    [ "$rc" -ne 0 ] || rc=$(cat "${i%.out}.rc")
+  # iterate the bins, not their outputs: a bin with no rc (its subshell died) is a failure
+  for i in "$sd"/bin.[0-9]*; do
+    case "$i" in *.out | *.rc) continue ;; esac
+    cat "$i.out" 2>/dev/null || rc=1 # swallow-ok: a missing output means the bin never ran
+    r=$(cat "$i.rc" 2>/dev/null) || r=1 # swallow-ok: a missing rc is a failed bin
+    case "$r" in '' | *[!0-9]*) r=1 ;; esac
+    [ "$rc" -ne 0 ] || rc=$r
   done
   rm -rf "$sd"
   exit "$rc"
@@ -137,7 +143,7 @@ cmd_pos() {
   local l b
   # one left-to-right scan, so an apostrophe inside a double-quoted span opens nothing; a
   # double-quoted span holding $( or a backtick is executable, so the scan stops there
-  local prog=':a; s/^([^"\x27]*)("([^"\\$`]|\\.|\$[^("\\])*"|\x27[^\x27]*\x27)/\1_/; ta'
+  local prog=':a; s/^(([^"\x27\\]|\\.)*)("([^"\\$`]|\\.|\$[^("\\])*"|\x27[^\x27]*\x27)/\1_/; ta'
   while IFS= read -r l; do
     b=$(printf '%s\n' "$l" | sed -E "$prog")
     printf '%s\n' "$b" | grep -qE -e "$src_re" && printf '%s\n' "$l"
