@@ -210,6 +210,8 @@ run "WRAPPED N2078. No residuals, nothing deferred."
 check "12g a negated mention rc" "$rc" 0
 run "WRAPPED N2078. No residuals; follow-up: fix the retry path"
 check "12g2 a negated mention does not hide an affirmative one on the same line rc" "$rc" 10
+run "WRAPPED N2078. No residuals or follow-ups."
+check "12g3 a coordinated negation rc" "$rc" 0
 run "WRAPPED N2078. Lock released."
 check "12h a plain wrap rc" "$rc" 0
 run "MERGED #2566 → abcdef01 N2088. Follow-up: x"

@@ -40,7 +40,7 @@ unfiled_residual_mention_lines() {
     { sub(/\r$/, "") }
     {
         l = tolower($0)
-        gsub(/(^|[^a-z])(no|none|nothing|without|zero)[ \t]+([a-z-]+[ \t]+)?(deferred|follow-?ups?|residuals?)/, " ", l)
+        gsub(/(^|[^a-z])(no|none|nothing|without|zero)[ \t]+([a-z-]+[ \t]+)?(deferred|follow-?ups?|residuals?)([ \t,]+(or|and)[ \t]+(deferred|follow-?ups?|residuals?))*/, " ", l)
     }
     l ~ /(deferred|follow-?ups?|residuals?)/ {
         if ($0 !~ /HIMMEL-[0-9]+/ && $0 !~ /no-ticket:[ \t]*[^ \t]/) print
