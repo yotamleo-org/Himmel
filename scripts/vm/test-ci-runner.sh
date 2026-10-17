@@ -372,7 +372,7 @@ else
     bad "nftables.conf is still a deny list: $(printf '%s' "$nftconf" | grep -E 'policy|allowed')"
 fi
 if printf '%s\n' "$nftconf" | grep -q 'set allowed4' && printf '%s\n' "$nftconf" | grep -q 'set allowed6'; then ok "nftables.conf declares both sets"; else bad "nftables.conf has no allowed4/allowed6 set"; fi
-chain_rules=$(printf '%s\n' "$nftconf" | sed -n '/chain output/,/^    }/p' | grep -E '^[[:space:]]+(counter|ip|ip6|oifname|ct) ')
+chain_rules=$(printf '%s\n' "$nftconf" | sed -n '/chain output/,/^    }/p' | grep -vE '^[[:space:]]*(chain output|type filter|\}|$)')
 if [ "$(printf '%s\n' "$chain_rules" | tail -n 1 | sed 's/^[[:space:]]*//')" = "counter reject" ]; then ok "the output chain ends in the catch-all counter reject"; else bad "the output chain does not end in counter reject: $(printf '%s' "$chain_rules" | tail -n 1)"; fi
 stray=$(printf '%s\n' "$chain_rules" | grep 'accept' | grep -vE '^[[:space:]]+(oifname "lo" accept|ct state established,related accept|ip daddr 10\.0\.2\.3 (udp|tcp) dport 53 accept|ip6? daddr @allowed[46] accept)')  # leak-allow: private-lan-ip egress filter ranges
 if [ -z "$stray" ]; then ok "every accept is lo, conntrack, NAT DNS or an allowed set"; else bad "a rule accepts beyond lo/ct/DNS/allowed sets: $stray"; fi
