@@ -33,6 +33,9 @@ ln -s "$_PR" "$_WR/ast6-01"
 _ast_row "ast6 a zero-padded brace range keeps its padding" block "touch ast6-{01..02}/x"
 ln -s "$_PR" "$_WR/ast7-3"
 _ast_row "ast7 a stepped brace range expands" block "touch ast7-{1..3..2}/x"
+_ast_row "ast24 a reassigned PWD is not the cwd" block "PWD=$_PR; touch \"\$PWD/ast24.txt\""
+_ast_row "ast25 tar -x with no -C extracts into the cwd" block "cd $_PR && tar -xf $_WR/ast25.tar"
+_ast_row "ast26 tar -c writes its -f archive" block "tar -cf $_PR/ast26.tar $_WR"
 
 if [ "$BWIMC_ENGINE" = ast ]; then
     echo "== HIMMEL-6014: the AST engine fails closed =="
@@ -47,6 +50,8 @@ if [ "$BWIMC_ENGINE" = ast ]; then
     _ast_row "ast21 sudo -i starts in an unknown home" block "sudo -i touch ast21.txt" /tmp
     _ast_row "ast22 an unknown sudo option denies" block "sudo -Z v touch $_PR/ast22.txt"
     _ast_row "ast23 a brace range past the cap denies" block "touch ast23-{1..65}"
+    _ast_row "ast27 tar -x in the worktree allows" allow "tar -xf $_WR/ast25.tar"
+    _ast_row "ast28 tar -t from the primary allows" allow "tar -tf $_WR/ast25.tar" "$_PR"
 
     # a PATH holding every tool but shfmt
     _nosh="$FIX/no-shfmt-bin"; mkdir -p "$_nosh"

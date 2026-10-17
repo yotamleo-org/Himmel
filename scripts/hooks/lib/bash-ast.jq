@@ -114,7 +114,8 @@ def _segs($env; $dq):
     if _simple_pe and .Param.Value == "HOME" then
       if $env.home_taint then [{d: "amb", why: "HOME is reassigned in this command", ak: "home-reassigned"}]
       else [{s: ($env.home | _protect)}] end
-    elif _simple_pe and .Param.Value == "PWD" then [{d: "pwd"}]
+    elif _simple_pe and .Param.Value == "PWD" then
+      if $env.pwd_taint then [{d: "amb", why: "PWD is reassigned in this command"}] else [{d: "pwd"}] end
     else [{d: "param"}] end
   elif .Type == "CmdSubst" then if _is_pwd_subst then [{d: "pwd"}] else [{d: "subst"}] end
   elif .Type == "ProcSubst" then [{d: "psub"}]
@@ -285,7 +286,12 @@ def stmts($env):
   _stmts($env) | ((.. | objects | select(has("subs")) | .subs) |= map(stmts($env)));
 
 # The model of a whole File node.
-def model($env): assert_known | .Stmts | stmts($env);
+# PWD is tainted when the text names it anywhere but a $PWD expansion's own
+# parameter (an assignment, export, read, for-loop name, nameref …).
+def model($env):
+  assert_known
+  | ([walk(if type == "object" and .Type? == "ParamExp" then del(.Param) else . end) | .. | strings | select(test("PWD"))] | length > 0) as $pt
+  | .Stmts | stmts($env + {pwd_taint: $pt});
 
 # The flat view: every simple command anywhere (inside substitutions and
 # heredoc bodies too), with the redirects of the statement that holds it.

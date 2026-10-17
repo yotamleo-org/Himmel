@@ -3783,7 +3783,8 @@ def _segs($env; $dq):
     if _simple_pe and .Param.Value == "HOME" then
       if $env.home_taint then [{d: "amb", why: "HOME is reassigned in this command", ak: "home-reassigned"}]
       else [{s: ($env.home | _protect)}] end
-    elif _simple_pe and .Param.Value == "PWD" then [{d: "pwd"}]
+    elif _simple_pe and .Param.Value == "PWD" then
+      if $env.pwd_taint then [{d: "amb", why: "PWD is reassigned in this command"}] else [{d: "pwd"}] end
     else [{d: "param"}] end
   elif .Type == "CmdSubst" then if _is_pwd_subst then [{d: "pwd"}] else [{d: "subst"}] end
   elif .Type == "ProcSubst" then [{d: "psub"}]
@@ -3954,7 +3955,12 @@ def stmts($env):
   _stmts($env) | ((.. | objects | select(has("subs")) | .subs) |= map(stmts($env)));
 
 # The model of a whole File node.
-def model($env): assert_known | .Stmts | stmts($env);
+# PWD is tainted when the text names it anywhere but a $PWD expansion's own
+# parameter (an assignment, export, read, for-loop name, nameref …).
+def model($env):
+  assert_known
+  | ([walk(if type == "object" and .Type? == "ParamExp" then del(.Param) else . end) | .. | strings | select(test("PWD"))] | length > 0) as $pt
+  | .Stmts | stmts($env + {pwd_taint: $pt});
 
 # The flat view: every simple command anywhere (inside substitutions and
 # heredoc bodies too), with the redirects of the statement that holds it.
@@ -4315,28 +4321,37 @@ def v_tar($a; $st):
     else $a[$i] as $o | ($o | tv) as $t
     | if $t == "--directory" then go($i + 2; $s + {dirs: ($s.dirs + [$a[$i + 1] | select(. != null)])})
       elif ($t | startswith("--directory=")) then go($i + 1; $s + {dirs: ($s.dirs + [$o | tail_op(12)])})
-      elif $t == "--file" then go($i + 2; $s)
+      elif $t == "--file" then go($i + 2; $s + {f: $a[$i + 1]})
+      elif ($t | startswith("--file=")) then go($i + 1; $s + {f: ($o | tail_op(7))})
       elif $t == "--extract" or $t == "--get" then go($i + 1; $s + {x: true})
+      elif any(("--create","--append","--update","--catenate","--concatenate","--delete"); . == $t) then go($i + 1; $s + {w: true})
       elif ($t | startswith("--")) then go($i + 1; $s)
       elif ($t | test("^-.")) then
         ($t[1:] | explode | map([.] | implode)) as $b
         | (first(range(0; $b | length) | select($b[.] | test("^[fCbLNTXFHIKVg]$"))) // null) as $k
-        | ($s + {x: ($s.x or any($b[: ($k // ($b | length))][]; . == "x"))}) as $s2
+        | ($b[: ($k // ($b | length))]) as $fl
+        | ($s + {x: ($s.x or any($fl[]; . == "x")), w: ($s.w or any($fl[]; IN("c", "r", "u", "A")))}) as $s2
         | if $k == null then go($i + 1; $s2)
           elif $k < ($b | length) - 1 then
-            go($i + 1; $s2 + (if $b[$k] == "C" then {dirs: ($s2.dirs + [$o | tail_op($k + 2)])} else {} end))
-          else go($i + 2; $s2 + (if $b[$k] == "C" and $a[$i + 1] != null then {dirs: ($s2.dirs + [$a[$i + 1]])} else {} end)) end
+            go($i + 1; $s2 + (if $b[$k] == "C" then {dirs: ($s2.dirs + [$o | tail_op($k + 2)])}
+                              elif $b[$k] == "f" then {f: ($o | tail_op($k + 2))} else {} end))
+          else go($i + 2; $s2 + (if $a[$i + 1] == null then {}
+                                 elif $b[$k] == "C" then {dirs: ($s2.dirs + [$a[$i + 1]])}
+                                 elif $b[$k] == "f" then {f: $a[$i + 1]} else {} end)) end
       elif $i == 0 and ($t | test("^[a-zA-Z]+$")) then
         ($t | explode | map([.] | implode)) as $b
-        | reduce $b[] as $c ({s: ($s + {x: ($s.x or any($b[]; . == "x"))}), j: ($i + 1)};
+        | reduce $b[] as $c ({s: ($s + {x: ($s.x or any($b[]; . == "x")), w: ($s.w or any($b[]; IN("c", "r", "u", "A")))}), j: ($i + 1)};
             if ($c | test("^[fCbLNTXFHIKVg]$")) then
-              (if $c == "C" and $a[.j] != null then .s.dirs += [$a[.j]] else . end) | .j += 1
+              (if $a[.j] == null then . elif $c == "C" then .s.dirs += [$a[.j]] elif $c == "f" then .s.f = $a[.j] else . end) | .j += 1
             else . end)
         | go(.j; .s)
       else go($i + 1; $s) end end;
-  go(0; {x: false, dirs: []}) as $s
-  | if $s.x | not then []
-    else reduce $s.dirs[] as $d ({c: null, r: []};
+  go(0; {x: false, w: false, f: null, dirs: []}) as $s
+  # create, append, update and delete write the -f archive
+  | (if $s.w and $s.f != null and ($s.f | tv) != "-" then target($s.f; "follow"; $st) else [] end)
+  + if $s.x | not then []
+    # an extract with no -C lands in the cwd
+    else reduce ($s.dirs | if length == 0 then [mkop("."; false)] else . end)[] as $d ({c: null, r: []};
         (if $d.k == "lit" and ($d.g | not) and ($d.v | isabs | not) and .c != null and .c.k == "lit" and (.c.g | not)
          then mkop(.c.v + "/" + $d.v; false) + {raw: (.c.raw + "/" + $d.raw)} else $d end) as $c
         | {c: $c, r: (.r + target($c; "follow"; $st))})
