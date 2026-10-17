@@ -198,8 +198,9 @@ describe('MCP tool happy-path routing', () => {
 
   it('create only warns-exempts an Epic with no body (HIMMEL-5226)', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
-    await tool('create').handler({ type: 'Epic', title: 'E', project: 'ABC' }, deps);
+    const out = await tool('create').handler({ type: 'Epic', title: 'E', project: 'ABC' }, deps);
     expect(request).toHaveBeenCalledTimes(1);
+    expect(out).toMatch(/warning: .*no home/);
   });
 
   it('create with attach uploads each file via the injected uploadAttachment', async () => {

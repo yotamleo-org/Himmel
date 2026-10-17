@@ -162,6 +162,7 @@ export function createTools(): JiraTool[] {
           fields,
         });
         let out = `Created ${result.key}`;
+        if (home.action === 'warn') out += `\n  ${home.message}`;
 
         const attachments = (args.attach as string[] | undefined) ?? [];
         if (attachments.length > 0) {
