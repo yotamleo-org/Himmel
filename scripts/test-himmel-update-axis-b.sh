@@ -762,6 +762,21 @@ assert_contains "--graphify-only runs only the graphify step" "graphify  *skippe
 assert_not_contains "--graphify-only does not run the chain" "git pull --ff-only" "$OUT"
 assert_contains "graphify step names --graphify-only as the way to clear a held skip" "himmel-update.sh --graphify-only" "$OUT"
 
+# A held-guard skip must leave a non-OK table row (never an empty one that
+# reads as up to date) naming the count, versions and the clearing command.
+HELD_BIN="$TMP/held-bin"; mkdir -p "$HELD_BIN" "$TMP/held-tools/graphifyy"
+printf 'requirements = [{ name = "graphifyy", extras = [] }]\n' > "$TMP/held-tools/graphifyy/uv-receipt.toml"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\ncase "$1 $2" in "tool list") echo "graphifyy v0.0.1" ;; "tool dir") echo "%s" ;; esac\nexit 0\n' "$TMP/held-tools" > "$HELD_BIN/uv"
+chmod +x "$HELD_BIN/uv"; printf '#!/bin/sh\necho x\n' > "$HELD_BIN/graphify"; chmod +x "$HELD_BIN/graphify"
+FH15H="$TMP/home15h"
+OUT="$(PATH="$HELD_BIN:$NO_UV_BIN" GRAPHIFY_MCP_HOLDERS=2 UV_TOOL_DIR="$TMP/held-tools" run_update "$CLONE15" "$FH15H" "$STUB15" --graphify-only)"; RC=$?
+assert_eq "held guard: --graphify-only still exits 0 (advisory)" "0" "$RC"
+assert_contains "held guard: status row is skipped with count + versions" "graphify  *skipped  *1 consecutive skip(s): installed v0.0.1" "$OUT"
+assert_contains "held guard: status row names the clearing command" "pin NOT advanced; clear: bash scripts/himmel-update.sh --graphify-only" "$OUT"
+OUT="$(PATH="$HELD_BIN:$NO_UV_BIN" GRAPHIFY_MCP_HOLDERS=2 UV_TOOL_DIR="$TMP/held-tools" run_update "$CLONE15" "$FH15H" "$STUB15" --graphify-only)"
+assert_contains "held guard: second run reads 2 consecutive" "graphify  *skipped  *2 consecutive skip(s)" "$OUT"
+
 echo ""
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

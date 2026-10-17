@@ -875,6 +875,16 @@ _graphify_pin_skip_marker() {
   printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/graphify/.graphify_pin_skip_count"
 }
 
+# graphify_pin_skip_summary -- one line for the himmel-update status row: the
+# persisted consecutive-skip count plus installed vs pinned version. Empty when
+# the last pin-sync run did not skip (the marker is removed on any non-skip).
+graphify_pin_skip_summary() {
+  local n
+  n=$(cat "$(_graphify_pin_skip_marker)" 2>/dev/null)
+  case "$n" in ''|*[!0-9]*|0) return 0 ;; esac
+  printf '%s consecutive skip(s): installed v%s, pinned v%s\n' "$n" "$(_graphify_installed_version)" "$(_graphify_version)"
+}
+
 _graphify_pin_skip_track() {  # $1 = short reason (e.g. "N holders" / "unprobeable")
   local marker n write_rc=0
   marker="$(_graphify_pin_skip_marker)"
@@ -923,6 +933,8 @@ _graphify_pin_skip_track() {  # $1 = short reason (e.g. "N holders" / "unprobeab
     echo "        This cannot clear itself while every himmel-update runs from inside a live Claude Code session --"
     echo "        each one spawns a graphify-mcp that holds the guard closed. Close every session and install by"
     echo "        hand (command above), or run himmel-update from a slot with none live (e.g. a scheduled cadence)."
+    echo "        Versions: installed v$(_graphify_installed_version), pinned v$(_graphify_version)."
+    echo "        Clear it: bash scripts/himmel-update.sh --graphify-only   (from a slot with no live session)"
   } >&2
 }
 
