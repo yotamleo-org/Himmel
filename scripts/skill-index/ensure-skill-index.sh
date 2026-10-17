@@ -29,7 +29,7 @@ if [ -z "$first_item" ]; then
 fi
 
 collections=$(qmd_cmd collection list) || exit $?
-if printf '%s\n' "$collections" | grep -q '^skills\b'; then
+if printf '%s\n' "$collections" | grep -q '^skills[[:space:]]'; then
     qmd_cmd update -c skills
 else
     qmd_register_collection "$out_dir" skills

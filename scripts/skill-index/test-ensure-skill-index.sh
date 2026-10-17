@@ -24,6 +24,7 @@ echo "$*" >> "$QMD_STUB_LOG"
 if [ "$1 $2" = "collection list" ]; then
     printf 'Collections:\n\nhimmel (qmd://himmel/)\n  Files:    5\n'
     [ -f "$QMD_STUB_STATE" ] && printf 'skills (qmd://skills/)\n  Files:    1\n'
+    [ "${QMD_STUB_DECOY:-0}" = 1 ] && printf 'skills-backup (qmd://skills-backup/)\n  Files:    1\n'
     exit 0
 fi
 if [ "$1 $2" = "collection add" ]; then
@@ -54,6 +55,15 @@ check "already registered: still one add" "$(grep -c -- '--name skills' "$td/log
 check "already registered: exactly one update" "$(grep -cw update "$td/log")" "1"
 check "already registered: update scoped to skills" "$(grep -cx 'update -c skills' "$td/log")" "1"
 check "already registered: no embed" "$(grep -cw embed "$td/log")" "0"
+
+# A similarly named collection must not select the registered refresh path.
+rm -f "$td/log" "$td/state"
+export QMD_STUB_DECOY=1
+bash "$TARGET" >/dev/null 2>&1; rc=$?
+check "decoy collection: rc" "$rc" "0"
+check "decoy collection: no update of absent skills" "$(grep -cw update "$td/log")" "0"
+check "decoy collection: no embed" "$(grep -cw embed "$td/log")" "0"
+unset QMD_STUB_DECOY
 
 # Missing SKILL_INDEX_DIR (parent absent too) -> created, rc 0, registered.
 rm -f "$td/log" "$td/state"; rm -rf "$td/idx"
