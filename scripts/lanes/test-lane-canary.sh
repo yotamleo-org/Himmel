@@ -125,5 +125,13 @@ FAKE_MODE=liveonly LC_T="$T" CANARY_LAUNCHER="$T/launcher.sh" CANARY_CLOSER="$T/
 doc="$(ls "$T/root"/lane-canary-native-*.md 2>/dev/null | head -1)"
 if [ -n "$doc" ] && grep -qF "resume_cwd: $T/a&b|c" "$doc"; then ok "T16 sed metacharacters in the repo path are escaped"; else bad "T16 doc=$doc"; fi
 
+# T17: with no CANARY_ROOT and no --out, the default report lands under the handover root.
+mkdir -p "$T/hd"
+FAKE_MODE=ok LC_T="$T" CANARY_LAUNCHER="$T/launcher.sh" CANARY_CLOSER="$T/closer.sh" \
+    CANARY_LOCK="$T/lock.sh" CANARY_APPEND="$T/append.sh" HANDOVER_DIR="$T/hd" \
+    CANARY_REPO="$T" CANARY_DOTENV="$T/dotenv" CANARY_POLL_SEC=1 CANARY_LOCK_WAIT=2 \
+    bash "$RUNNER" --timeout 10 --lanes native >/dev/null 2>&1
+if [ -s "$T/hd/.canary/latest.json" ]; then ok "T17 default report lands under HANDOVER_DIR/.canary"; else bad "T17 no $T/hd/.canary/latest.json"; fi
+
 echo "RESULT: pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

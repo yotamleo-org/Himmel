@@ -182,12 +182,14 @@ def render_launcher(l, ctx, doc):
         lines.append('export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1  # %s edits pinned hooks; the ticket requires a bypass launch' % l['keys'][0])
     if l.get('ab_arm'):
         lines.append('export LEG_AUTOCOMPACT_AB=%s  # HIMMEL-5193 A/B arm %s' % ('400000' if l['ab_arm'] == '400k' else '200000', l['ab_arm']))
+    lane = l.get('lane', 'native')
+    lane_arg = '' if lane == 'native' else ' --lane ' + q(lane)
     w = ctx['work_dir']
     lines += [
         'W=%s' % q(w),
         'mkdir -p "$W"',
-        'setsid nohup bash %s --profile leg-impl --console %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (
-            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-leg.sh'), q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
+        'setsid nohup bash %s%s --profile leg-impl --console %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (
+            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-leg.sh'), lane_arg, q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
