@@ -153,4 +153,20 @@ run Task "$td/nc.md" "$q" --sector X; check "control complete exits 0" "$rc" 0
 mkdraft "$td/nc2.md" Proof; printf '## Proof\n\n' >>"$td/nc2.md"
 run Task "$td/nc2.md" "$q" --sector X; check "control emptied Proof exits 1" "$rc" 1
 
+# --- code inside a section: heading-shaped lines in a fence or indented code are content ---
+q="$td/q-fence"; fn=$'\x60\x60\x60'
+mkdraft "$td/f1.md" Proof "Agent detail"; printf '## Proof\n%sbash\n# run the checker\nbash tool.sh --type Task\n%s\n\n## Agent detail\nx\n' "$fn" "$fn" >>"$td/f1.md"
+run Task "$td/f1.md" "$q" --sector X; check "fenced Proof with # comment exits 0" "$rc" 0
+mkdraft "$td/f2.md" Proof "Agent detail"; printf '## Proof\n\n    # run the checker\n    bash tool.sh --type Task\n\n## Agent detail\nx\n' >>"$td/f2.md"
+run Task "$td/f2.md" "$q" --sector X; check "indented-code Proof with # comment exits 0" "$rc" 0
+mkdraft "$td/f3.md" Proof "Agent detail"; printf '## Proof\n~~~\n## Plan\nbash tool.sh\n~~~\n\n## Agent detail\nx\n' >>"$td/f3.md"
+run Task "$td/f3.md" "$q" --sector X; check "~~~ fence with ## heading line exits 0" "$rc" 0
+mkdraft "$td/f4.md" Proof; printf '## Proof\n%s\n%s\n' "$fn" "$fn" >>"$td/f4.md"
+run Task "$td/f4.md" "$q" --sector X; check "empty fence pair Proof exits 1" "$rc" 1
+mkdraft "$td/f5.md" Proof "Agent detail"; printf '## Proof\n\n## Agent detail\nx\n' >>"$td/f5.md"
+run Task "$td/f5.md" "$q" --sector X; check "heading-only Proof exits 1" "$rc" 1
+mkdraft "$td/f6.md" Plan Proof; printf '## Proof\n%s\ncmd\n%s\n## Plan\n\n' "$fn" "$fn" >>"$td/f6.md"
+run Task "$td/f6.md" "$q" --sector X; check "empty Plan after fence still ends Proof, exits 1" "$rc" 1
+has "empty Plan named" "$out" "Plan"
+
 [ "$fails" -eq 0 ] && { echo "PASS"; exit 0; } || { echo "FAILED: $fails"; exit 1; }
