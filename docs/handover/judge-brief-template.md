@@ -326,7 +326,9 @@ gathering, per the rule below.>
 
 > **NO-GO class.** Every new NO-GO evidence file carries exactly
 > one `class:` field: a value or comma set from `option-parsing, cwd-indirection,
-> shell-parsing, tool-defaults, reader-allowlist, other`. In a delta brief, keep
+> shell-parsing, tool-defaults, reader-allowlist, other`. A class set naming
+> `other` also needs exactly one non-empty `class-reason:` line, or the writer
+> refuses it. In a delta brief, keep
 > the earlier class of a repeated finding; do not relabel it to buy another
 > round. A repeat across heads stops this PR for a console layer decision.
 > A same-uid file-access claim goes to the OS layer, not another text round.
