@@ -913,6 +913,21 @@ if [ "${HIMMEL_1495_SELF:-0}" = "1" ]; then
     [ "$FAIL" = "$_probe_fail_before" ] && exit 0 || exit 1
 fi
 
+# Console-doc probe — the reinvoked copy (see the guard at the end) has the
+# caller's HIMMEL_CONSOLE_DOC exported; the startup unset must have scrubbed it, so
+# one bare merge leaves no PARTIAL bullet anywhere. Prints what it saw for the guard.
+if [ "${HIMMEL_6079_SELF:-0}" = "1" ]; then
+    export ARMAUTOMERGE=1
+    STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        run_mog 0 "console-doc probe: bare merge"
+    if [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then
+        echo "console-doc-partial=$(grep -c 'PARTIAL HIMMEL-374' "$HIMMEL_CONSOLE_DOC")"
+    else
+        echo "console-doc-partial=unset"
+    fi
+    exit 0
+fi
+
 # 1. No opt-in → refuse (exit 10). Unset in the PARENT shell (no subshell) so
 # pass()/fail() land in the top-level tally.
 unset ARMAUTOMERGE
@@ -2775,6 +2790,52 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
     rm -f "$rc2_mutant"
 fi
 
+# Live-console-doc guard — a launching shell that carries HIMMEL_CONSOLE_DOC must not
+# have a bare merge write it. Re-run the suite's one-merge probe (above) with a
+# sentinel doc exported; the sentinel must stay byte-identical. The sentinel lives
+# outside the run tree, as the live console doc does.
+if [ "${HIMMEL_1495_SELF:-0}" != "1" ] && [ "${HIMMEL_6079_SELF:-0}" != "1" ]; then
+    _cd_dir="$(mktemp -d)" || exit 1
+    printf '# console\n\n## Results\n- 00:00 LIVE — sentinel\n' > "$_cd_dir/sentinel.md"
+    cp "$_cd_dir/sentinel.md" "$_cd_dir/sentinel.orig"
+    _cd_out="$(HIMMEL_CONSOLE_DOC="$_cd_dir/sentinel.md" HIMMEL_CONSOLE_NAME="live-console" HIMMEL_6079_SELF=1 bash "$SCRIPT_DIR/test-merge-on-green.sh" 2>&1)"; _cd_rc=$?
+    if [ "$_cd_rc" -eq 0 ] && cmp -s "$_cd_dir/sentinel.md" "$_cd_dir/sentinel.orig" \
+        && printf '%s\n' "$_cd_out" | grep -qF 'console-doc-partial=unset'; then
+        pass; echo "  console-doc hermetic (sentinel byte-identical after a bare merge)"
+    else
+        fail "bare merge touched the caller's HIMMEL_CONSOLE_DOC (rc=$_cd_rc): $(cat "$_cd_dir/sentinel.md")"
+    fi
+
+    # RC-6079 — drop the startup unset and the same probe must write the sentinel.
+    cd_unset_line='unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME'
+    cd_mutant="$SCRIPT_DIR/.test-merge-on-green.cd-mutant.$$.sh"
+    awk -v line="$cd_unset_line" '$0 != line' "$SCRIPT_DIR/test-merge-on-green.sh" > "$cd_mutant"
+    cd_pre=$(grep -Fxc -- "$cd_unset_line" "$SCRIPT_DIR/test-merge-on-green.sh")
+    cd_post=$(grep -Fxc -- "$cd_unset_line" "$cd_mutant")
+    cd_diff=$(diff "$SCRIPT_DIR/test-merge-on-green.sh" "$cd_mutant" | grep -c '^[<>]')
+    if [ "$cd_pre" -ge 1 ] && [ "$cd_post" -eq 0 ] && [ "$cd_diff" -eq 1 ]; then
+        cp "$_cd_dir/sentinel.orig" "$_cd_dir/sentinel.md"
+        # shellcheck disable=SC2016  # the inner `$1` is bash -c's own positional parameter.
+        red_control_run --env HIMMEL_CONSOLE_DOC="$_cd_dir/sentinel.md" --env HIMMEL_CONSOLE_NAME=live-console --env HIMMEL_6079_SELF=1 \
+            -- bash -c 'exec bash "$1" 2>&1' _ "$cd_mutant"
+        cd_seen=$(printf '%s\n' "$RED_CONTROL_OUT" | grep -o 'console-doc-partial=[a-z0-9]*' | tail -n 1)
+        if red_control_assert --label "RC-6079" --expect-rc 0 \
+            --observed     "$cd_seen" \
+            --expect-wrong "console-doc-partial=1" \
+            --correct      "console-doc-partial=unset" \
+            --note "without the startup 'unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME' a launching console's doc leaks in and a bare merge appends PARTIAL HIMMEL-374 to it, and the suite certifies a hermeticity it does not have"
+        then
+            pass
+        else
+            fail "RC-6079 mutant: RED control did not hold (see the RED-control diagnostic above)"
+        fi
+    else
+        fail "RC-6079 setup: mutation of the console-doc unset line was not reproduced cleanly (pre=$cd_pre post=$cd_post diff_lines=$cd_diff)"
+    fi
+    rm -f "$cd_mutant"
+    rm -rf "$_cd_dir"
+fi
+
 # RC-4 — the guard-2b widening ("&& ! public_origin_merge_allowed
 # ...") is a single conditional line; prove it is load-bearing rather than
 # vacuously present. Revert JUST that line to the pre-2869 private-only form
@@ -3422,12 +3483,12 @@ assert_jira_log_lacks "jira: no-tag case makes no jira comment call" "comment"
 assert_jira_log_lacks "jira: no-tag case makes no jira transition call" "transition"
 
 # The transition is opt-in per merge. Default (no
-# --jira-transition) => report what WOULD have happened; no comment, no
-# transition call at all. This is the case that used to close an unrelated ticket
-# out from under sibling in-flight work — reproduced here as the RED case
+# --jira-transition) => the ticket's status is left alone: a Remaining comment
+# and no transition call at all. This is the case that used to close an unrelated
+# ticket out from under sibling in-flight work — reproduced here as the RED case
 # against the pre-fix tree (it transitioned unasked; post-fix it must not).
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "jira: default (no --jira-transition) only reports what it would do"
+    run_mog 0 "jira: default (no --jira-transition) leaves the ticket status unchanged"
 assert_audit_has "jira: default case records the partial skip" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
 assert_audit_lacks "jira: default case no longer reports would-transition" "would-transition"
 # A bare (partial) merge leaves the ticket's status as it is and comments the
@@ -3524,6 +3585,8 @@ assert_jira_log_lacks "jira: no-note partial merge makes no transition" "index.j
 assert_jira_log_has "jira: no-note comment names the gap" "comment-body: Remaining: not recorded"
 
 # A ticket already Done is left alone by a partial merge; an Epic never moves.
+# A bare merge never transitions, so the next three rows (Done, Epic, failed
+# comment) pass trivially now; they stay as guards against a transition coming back.
 STUB_JIRA_BUILD=1 STUB_JIRA_STATUS=Done STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: partial merge leaves an already-Done ticket alone"
 assert_jira_log_lacks "jira: Done ticket gets no transition" "transition"
@@ -3608,7 +3671,7 @@ assert_jira_log_has "jira: Story case comments" "comment HIMMEL-374"
 assert_jira_log_has "jira: Story case transitions" "transition HIMMEL-374 Done"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "jira: Story without --jira-transition only reports would-transition"
+    run_mog 0 "jira: Story without --jira-transition leaves the status unchanged"
 assert_audit_has "jira: Story bare merge records the partial skip" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
 assert_jira_log_lacks "jira: Story bare merge never transitions to Done" "transition HIMMEL-374 Done"
 

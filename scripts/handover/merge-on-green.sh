@@ -594,11 +594,12 @@ sha=${_rest%%|*}; _rest=${_rest#*|}
 # rather than truncating it — base branches here are the repo default and never
 # contain one.
 pr_base=${_rest%%|*}; head_branch=${_rest#*|}
-# Return an open ticket to To Do after a partial merge or a PR closed
-# unmerged: comment first, then transition (no comment means no breadcrumb, so
-# no move). Prints ok | skip=already-done | skip=comment-failed | failed.
+# Comment on a ticket and, for a PR closed unmerged, return it to To Do:
+# comment first, then transition (no comment means no breadcrumb, so no move).
+# Prints ok | skip=already-done | skip=comment-failed | failed.
 # Never touches a ticket already Done/Closed; callers screen Epics. A sixth
-# argument of comment-only posts the breadcrumb and never transitions.
+# argument of comment-only is the partial-merge mode: it posts the breadcrumb
+# and never transitions.
 _jira_return_to_todo() {
     local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" mode="${6:-}" status
     status=$(printf '%s' "$issue_json" | node -e '
@@ -1910,7 +1911,7 @@ jira_auto_transition_on_merge() {
     esac
 
     # Opt-in per merge, not a heuristic (see the file header).
-    # Report what WOULD have happened and stop short of Done, so a sliced
+    # Without the opt-in the ticket's status is left alone, so a sliced
     # ticket is never closed by a merge that did not ask for it.
     # The brief's `Completes ticket` line binds the merge: a leg cannot widen what the
     # console scoped. The doc is read only when the caller names it; it never adds a transition.
