@@ -129,6 +129,7 @@ set -euo pipefail
 QMD_BIN=""
 QMD_JS=""
 DRY_RUN=0
+NO_CLEANUP=0
 # A durable timestamp written ONLY on the verified-success path
 # below, next to the index data qmd-staleness.sh already reads.
 QMD_INDEX_PATH="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
@@ -172,6 +173,8 @@ Flags:
                     to --qmd-bin, making the invocation `<bin> <js> update`.
                     This is how a bun-served qmd is pinned (`bun .../qmd.js`).
                     Requires --qmd-bin.
+  --no-cleanup      Incremental run: skip the final `qmd cleanup` (the 2-hourly
+                    cadence; the nightly full run keeps it).
   --dry-run         Print what would run; execute nothing.
 
 Exit: 0 ok | 1 usage | 2 qmd unusable | 3 update failed | 4 embed failed
@@ -265,6 +268,7 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             shift ;;
+        --no-cleanup) NO_CLEANUP=1; shift ;;
         --dry-run)   DRY_RUN=1; shift ;;
         -h|--help)   usage; exit 0 ;;
         *)
@@ -374,7 +378,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc) update"
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc) embed"
     echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc) embed   (completeness assert, one retry if it did work)"
-    echo "DRY qmd-reindex: would run: $(qmd_bin_desc) cleanup"
+    [ "$NO_CLEANUP" -eq 1 ] || echo "DRY qmd-reindex: would run: $(qmd_bin_desc) cleanup"
     echo "qmd-reindex: dry-run complete (no changes made)"
     exit 0
 fi
@@ -571,5 +575,5 @@ stamp_then_cleanup() {
         exit 8
     fi
 }
-stamp_then_cleanup
+if [ "$NO_CLEANUP" -eq 1 ]; then write_refresh_stamp; else stamp_then_cleanup; fi
 echo "qmd-reindex: OK $(stamp) — index refreshed, all content hashes embedded"
