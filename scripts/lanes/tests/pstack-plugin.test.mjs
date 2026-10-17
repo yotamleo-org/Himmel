@@ -71,3 +71,37 @@ test('the plugin carries upstream LICENSE and a README documenting one-step remo
   assert.match(readme, /plugin disable pstack@himmel/);
   assert.match(readme, /plugin uninstall pstack@himmel/);
 });
+
+test('no SKILL.md names a backticked skill the plugin does not ship', () => {
+  const unshipped = ['how', 'why', 'arena', 'unslop', 'poteto-mode'];
+  for (const s of SKILLS) {
+    const text = readFileSync(join(PLUGIN, 'skills', s, 'SKILL.md'), 'utf8');
+    for (const name of unshipped) assert.ok(!text.includes(`\`${name}\``), `${s}: names unshipped \`${name}\``);
+  }
+});
+
+test('search.md reruns the title-match query before the Proof bullet captures the result', () => {
+  const lines = readFileSync(join(PLUGIN, 'skills', 'create-verification-skill', 'references', 'feature-map-example', 'search.md'), 'utf8').split('\n');
+  const proof = lines.findIndex((l) => l.startsWith('- **Proof.**'));
+  const lastCli = lines.findIndex((l) => l.startsWith('- **CLI miss.**'));
+  assert.ok(proof > lastCli && lastCli > 0, 'Proof must follow CLI miss');
+  const fill = 'control-notes browser fill --role searchbox --name "Search notes" --value "quarterly"';
+  const p = lines[proof];
+  assert.ok(p.includes(fill), 'Proof bullet reruns the title-match query');
+  const snap = p.indexOf('browser snapshot --aria --path artifacts/search/results.aria.txt');
+  const shot = p.indexOf('browser screenshot --path artifacts/search/results.png');
+  assert.ok(snap !== -1 && shot !== -1, 'Proof keeps both capture commands');
+  assert.ok(p.indexOf(fill) < snap, 'rerun precedes the snapshot');
+});
+
+test('both deviations are recorded in VENDORED.md and the blast-radius header', () => {
+  const vendored = readFileSync(join(PLUGIN, 'VENDORED.md'), 'utf8');
+  assert.ok(!/references\/\*\*`[^\n]*none \(verbatim\)/.test(vendored), 'references row must name the search.md deviation');
+  assert.ok(!/skills\/blast-radius\/SKILL\.md`[^\n]*\| none \|/.test(vendored), 'blast-radius row must name its deviation');
+  const br = readFileSync(join(PLUGIN, 'skills', 'blast-radius', 'SKILL.md'), 'utf8');
+  assert.ok(!br.includes('Deviations: none'), 'blast-radius header must record deviations');
+});
+
+test('plugin.json is bumped to 0.1.2', () => {
+  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.2');
+});
