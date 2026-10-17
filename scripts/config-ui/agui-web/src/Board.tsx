@@ -198,7 +198,7 @@ export function DrawerView({ token, board, joined, drawer, panel, now, set, setP
       <button type="button" className="btn" onClick={close} aria-label="Close (Esc)">✕</button>
     </div>
     {panel.kind === "card" && <CardTable board={board} card={panel.card} />}
-    {panel.kind === "brief" && <><h3>Brief · {panel.leg}</h3><Brief token={token} row={panel.row} /></>}
+    {panel.kind === "brief" && <><h3>Brief · {panel.leg}</h3><Brief key={`${token}|${panel.row}`} token={token} row={panel.row} /></>}
     {panel.kind === "leg" && cur && drawer && <>
       <h3>{cur.leg.leg} <small>{cur.leg.ticket}</small></h3>
       <p className="bd-goal">{cur.leg.goal}</p>
