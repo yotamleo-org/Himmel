@@ -39,7 +39,11 @@ missing="$(awk '
     return !(s == "" || s ~ /^(tbd|tbc|todo|n\/a|na|none|\.\.\.|…|\?+|-+)$/ || s ~ /^<[^>]*>$/)
   }
   BEGIN { n = split("impact|what|why|plan|dod|proof|agent detail", w, "|"); for (i = 1; i <= n; i++) want[w[i]] = ""; split("Impact What Why Plan DoD Proof Agent_detail", disp, " ") }
-  /^[ \t]*(```|~~~)/ { fence = !fence; next }
+  match($0, /^[ \t]*(```+|~~~+)/) {
+    run = substr($0, RSTART, RLENGTH); sub(/^[ \t]*/, "", run)
+    if (!fence) { fence = 1; fch = substr(run, 1, 1); flen = length(run); next }
+    if (substr(run, 1, 1) == fch && length(run) >= flen && substr($0, RSTART + RLENGTH) ~ /^[ \t]*$/) { fence = 0; next }
+  }
   fence || /^(    |\t)/ { if (cur != "" && real($0)) have[cur] = 1; next }
   { k = norm($0); if (k in want) { cur = k; seen[k] = 1; next } if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { cur = ""; next } if (cur != "" && real($0)) have[cur] = 1 }
   END { for (i = 1; i <= n; i++) if (!(w[i] in have)) { d = disp[i]; sub(/_/, " ", d); printf "%s%s", (c++ ? ", " : ""), d } }

@@ -163,6 +163,10 @@ mkdraft "$td/f3.md" Proof "Agent detail"; printf '## Proof\n~~~\n## Plan\nbash t
 run Task "$td/f3.md" "$q" --sector X; check "~~~ fence with ## heading line exits 0" "$rc" 0
 mkdraft "$td/f4.md" Proof; printf '## Proof\n%s\n%s\n' "$fn" "$fn" >>"$td/f4.md"
 run Task "$td/f4.md" "$q" --sector X; check "empty fence pair Proof exits 1" "$rc" 1
+mkdraft "$td/f7.md" Proof "Agent detail"; printf '## Proof\n%s\n~~~\n# note\n## Plan\nbash tool.sh\n%s\n\n## Agent detail\nx\n' "$fn" "$fn" >>"$td/f7.md"
+run Task "$td/f7.md" "$q" --sector X; check "~~~ inside a backtick fence does not close it" "$rc" 0
+mkdraft "$td/f8.md" Proof "Agent detail"; bt="${fn%??}"; printf '## Proof\n%s%s\n%s\n# note\n## Plan\nbash tool.sh\n%s%s\n\n## Agent detail\nx\n' "$fn" "$bt" "$fn" "$fn" "$bt" >>"$td/f8.md"
+run Task "$td/f8.md" "$q" --sector X; check "triple fence inside a four-backtick fence does not close it" "$rc" 0
 mkdraft "$td/f5.md" Proof "Agent detail"; printf '## Proof\n\n## Agent detail\nx\n' >>"$td/f5.md"
 run Task "$td/f5.md" "$q" --sector X; check "heading-only Proof exits 1" "$rc" 1
 mkdraft "$td/f6.md" Plan Proof; printf '## Proof\n%s\ncmd\n%s\n## Plan\n\n' "$fn" "$fn" >>"$td/f6.md"
