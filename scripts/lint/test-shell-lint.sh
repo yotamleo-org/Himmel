@@ -1233,6 +1233,12 @@ if grepq "$(cat "$REPO_ROOT/.github/workflows/ci.yml")" -F "shell-lint.sh --chan
 else
     fail "21k ci.yml has no shell-lint --changed step"
 fi
+# the PR checkout is a merge ref: HEAD^1 is the current base tip, so only the PR's own files are linted
+if grepq "$(cat "$REPO_ROOT/.github/workflows/ci.yml")" -F 'shell-lint.sh --changed "HEAD^1..HEAD"'; then
+    pass "21t ci.yml lints HEAD^1..HEAD, not a stale base sha range"
+else
+    fail "21t ci.yml shell-lint step does not use the merge-ref range HEAD^1..HEAD"
+fi
 
 # a renamed file is linted at its new path (--changed and --staged)
 (
