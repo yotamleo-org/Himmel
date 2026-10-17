@@ -250,7 +250,8 @@ if [ "$ANSWER" = NO-GO ]; then
 fi
 # a class set naming other must say why: exactly one non-empty class-reason line.
 if [[ ,$classes, =~ [,[:blank:]]other[,[:blank:]] ]]; then
-    if [ "$(grep -c '^class-reason:' "$EVIDENCE")" != 1 ] || ! grep -q '^class-reason:[[:blank:]]*[^[:blank:]]' "$EVIDENCE"; then
+    cr_byte=$(printf '\r')
+    if [ "$(grep -c '^class-reason:' "$EVIDENCE")" != 1 ] || ! grep -q "^class-reason:[[:blank:]]*[^[:blank:]$cr_byte]" "$EVIDENCE"; then
         echo "write-verdict: class other needs exactly one non-empty class-reason: line in the evidence" >&2
         exit 2
     fi
