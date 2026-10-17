@@ -817,28 +817,39 @@ prov_read_apply() {
     esac
 }
 
-# prov_read_drop_empty_if_ours <settings-file> <key> [--dry-run] -- drop the
-# now-empty top-level object <key> (`env`, `hooks`), but ONLY when the fold shows
-# a governed /<key> unit himmel itself created (eff_pre absent).
+# prov_read_drop_empty_if_ours <settings-file> <key> [--dry-run] -- settle the
+# now-empty top-level object <key> (`env`, `hooks`) against its governed /<key>
+# unit: drop it when himmel itself created it (eff_pre absent), or write the
+# operator's explicit null back when that was the recorded pre-state (an unwire
+# helper may already have deleted the empty key, so an absent key counts too).
 prov_read_drop_empty_if_ours() {
     local file="$1" key="$2" dry=0
     shift 2
     while [ $# -gt 0 ]; do case "$1" in --dry-run) dry=1; shift ;; *) shift ;; esac; done
     [ -f "$file" ] && jq -e . "$file" >/dev/null 2>&1 || return 0
-    local is_empty
+    local is_empty is_absent
     is_empty=$(jq -r --arg k "$key" '(.[$k] // null) as $e | ($e != null and ($e|type)=="object" and ($e|length)==0)' "$file" 2>/dev/null)
-    [ "$is_empty" = "true" ] || return 0
-    local cpath created=no
+    is_absent=$(jq -r --arg k "$key" 'has($k) | not' "$file" 2>/dev/null)
+    [ "$is_empty" = "true" ] || [ "$is_absent" = "true" ] || return 0
+    local cpath unit_row="" backup
     cpath=$(_prov_abs_path "$file" 2>/dev/null || printf '%s' "$file")
     if [ -n "${PROV_READ_FOLD:-}" ] && [ -f "$PROV_READ_FOLD" ]; then
-        created=$(jq -r --arg path "$cpath" --arg unit "/$key" \
-            'select(.path==$path and .unit==$unit and .governed==true and (.eff_pre != null) and (.eff_pre.state=="absent")) | "yes"' \
+        unit_row=$(jq -c --arg path "$cpath" --arg unit "/$key" \
+            'select(.path==$path and .unit==$unit and .governed==true and (.eff_pre != null))' \
             "$PROV_READ_FOLD" | head -n1)
-        [ -n "$created" ] || created=no
     fi
-    [ "$created" = "yes" ] || return 0
-    if [ "$dry" = 1 ]; then printf 'DRY: would remove now-empty /%s from %s\n' "$key" "$file"; return 0; fi
-    jq --arg k "$key" 'del(.[$k])' "$file" | _provread_atomic_write "$file" || { _provread_err "cannot write $file"; return 1; }
+    [ -n "$unit_row" ] || return 0
+    if [ "$(printf '%s' "$unit_row" | jq -r '.eff_pre.state')" = "absent" ]; then
+        [ "$is_empty" = "true" ] || return 0
+        if [ "$dry" = 1 ]; then printf 'DRY: would remove now-empty /%s from %s\n' "$key" "$file"; return 0; fi
+        jq --arg k "$key" 'del(.[$k])' "$file" | _provread_atomic_write "$file" || { _provread_err "cannot write $file"; return 1; }
+        return 0
+    fi
+    # explicit null pre-state: the recorded backup holds the JSON `null`
+    backup=$(printf '%s' "$unit_row" | jq -r '.eff_pre.backup // empty')
+    [ -n "$backup" ] && [ -f "$backup" ] && [ "$(jq -c . "$backup" 2>/dev/null)" = "null" ] || return 0
+    if [ "$dry" = 1 ]; then printf 'DRY: would restore /%s to null in %s\n' "$key" "$file"; return 0; fi
+    jq --arg k "$key" '.[$k] = null' "$file" | _provread_atomic_write "$file" || { _provread_err "cannot write $file"; return 1; }
 }
 
 # prov_read_drop_env_if_ours <settings-file> [--dry-run] -- the /env case.
