@@ -98,12 +98,21 @@ describe('searchAllIssues', () => {
     expect(req).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back to the default for a non-numeric or non-positive limit', async () => {
+  it('falls back to the default for a limit that is not a plain positive integer', async () => {
     const req = vi.fn().mockResolvedValue({ issues: pageOf(25), total: 25 });
-    for (const bad of ['abc', '0', '-5', '']) {
+    for (const bad of ['abc', '0', '-5', '', '25junk', '1.5', '2e1', '+5', ' 7x']) {
       req.mockClear();
       await searchAllIssues('x', bad, req as never);
       expect(req.mock.calls[0][1]).toContain('maxResults=25');
+    }
+  });
+
+  it('accepts a plain positive integer, trimming surrounding whitespace', async () => {
+    const req = vi.fn().mockResolvedValue({ issues: pageOf(100), total: 500 });
+    for (const [good, max] of [['7', 7], [' 7 ', 7], ['100', 100]] as const) {
+      req.mockClear();
+      await searchAllIssues('x', good, req as never);
+      expect(req.mock.calls[0][1]).toContain(`maxResults=${max}`);
     }
   });
 });

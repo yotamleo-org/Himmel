@@ -92,8 +92,9 @@ const PAGE_MAX = 100;
  * so every count taken through this CLI was quietly truncated. A consolidation
  * pass read "100 open tickets" when the real figure was 389.
  *
- * A non-numeric or non-positive `--limit` falls back to the default rather
- * than sending garbage to Jira or looping forever.
+ * A `--limit` is valid only when its trimmed text is plain digits and greater
+ * than zero; anything else ('abc', '0', '-5', '25junk', '1.5') falls back to
+ * the default rather than sending garbage to Jira or looping forever.
  */
 export async function searchAllIssues(
   jql: string,
@@ -101,8 +102,9 @@ export async function searchAllIssues(
   req: typeof request,
   includeLabels = false,
 ): Promise<JiraIssue[]> {
-  const want = Number.parseInt(limit, 10);
-  const target = Number.isFinite(want) && want > 0 ? want : 25;
+  const trimmed = limit.trim();
+  const want = /^[0-9]+$/.test(trimmed) ? Number(trimmed) : 0;
+  const target = want > 0 ? want : 25;
   const fields = includeLabels ? 'summary,status,issuetype,labels' : 'summary,status,issuetype';
 
   const issues: JiraIssue[] = [];
