@@ -506,11 +506,14 @@ def num(key):
 
 # the Jira-first view. Buckets come from the status NAME (statusCategory only for a name not listed).
 BUCKETS = {'to do': 'todo', 'backlog': 'todo', 'in progress': 'prog', 'in review': 'rev', 'ci': 'ci', 'in ci': 'ci',
-           'done': 'done', 'closed': 'done', 'in public': 'done', 'wont do': 'wont', 'wont fix': 'wont'}
+           'done': 'done', 'closed': 'wont', 'in public': 'done', 'wont do': 'wont', 'wont fix': 'wont'}
+SHIPPED = ('', 'done', 'fixed')
 
 
 def bucket(m):
-    return BUCKETS.get(m['sn'].strip().lower()) or {'Done': 'done', 'In Progress': 'prog'}.get(m['cat'], 'todo')
+    """'wont' is every closed-without-shipping state: Closed, wont do/fix, or Done with a resolution other than Done/Fixed."""
+    b = BUCKETS.get(m['sn'].strip().lower()) or {'Done': 'done', 'In Progress': 'prog'}.get(m['cat'], 'todo')
+    return 'wont' if b == 'done' and m['res'].strip().lower() not in SHIPPED else b
 
 
 def read_versions(path, mir):
@@ -549,7 +552,7 @@ def jira_view(mir, legs, vers, prows, vnames):
     prows are the plan's placed rows (user impact is col 9, plan version col 3), vnames the plan's version names."""
     vi = {v['n']: i for i, v in enumerate(vers)}
     plan = {r[0]: r for r in prows}
-    tk = []
+    tk, wont = [], {}
     for k, m in mir.items():
         hit = [v for v in m['fv'] if v in vi]
         if not hit:
@@ -557,6 +560,9 @@ def jira_view(mir, legs, vers, prows, vnames):
         un = [v for v in hit if not vers[vi[v]]['rel']]
         v = min(un, key=vi.get) if un else max(hit, key=vi.get)
         b, p = bucket(m), plan.get(num(k))
+        if b == 'wont':
+            wont[vi[v]] = wont.get(vi[v], 0) + 1
+            continue
         lg = legs.get(num(k))
         tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
                        ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
@@ -567,9 +573,12 @@ def jira_view(mir, legs, vers, prows, vnames):
         return t['b'] not in ('done', 'wont')
 
     cur = next((i for i in range(len(vers)) if not vers[i]['rel'] and any(t['v'] == i and open_(t) for t in tk)), -1)
+    for t in tk:
+        if t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']:
+            t['v'] = cur
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
-    return tk, cur, nxt, [a for a in al if a[1]]
+    return tk, cur, nxt, [a for a in al if a[1]], sorted([i, n] for i, n in wont.items())
 
 GROUP_NAMES = ['0 critical', '1K knowledge retrieval', '1 data freshness', '2 rules, truth and eval', '3 CI throughput',
                '4 PS3 blockers', '5 structural guards', '6 stability bugs', '7 console offload', '8 cost']
@@ -633,19 +642,19 @@ def first_sentence(s):
 
 
 KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('done', 'Done'))
-KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done', 'wont': 'done'}
+KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done'}
 
 
-def kanban(tk, vers, cur, base):
+def kanban(tk, vers, cur, base, wont=()):
     """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
-    one-line user-facing description. IN CI reads as In Review; wont do/fix as Done; a To Do ticket a live leg works reads
+    one-line user-facing description. IN CI reads as In Review; closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
     In Progress, as the main board does. The release being worked on (cur) opens expanded."""
     base = base.strip().rstrip('/')
     if not re.match(r'^https?://', base):
         base = ''
-    out = []
+    out, wn = [], dict(wont)
     for i, v in enumerate(vers):
         a = [t for t in tk if t['v'] == i]
         if not a:
@@ -655,9 +664,10 @@ def kanban(tk, vers, cur, base):
             cols[KCOL_OF['prog' if t['live'] else t['b']]].append(t)
         n_open = len(a) - len(cols['done'])
         parts = ['<details class="krel"%s data-v="%s"><summary><span class="vn">%s</span> '
-                 '<span class="kmeta">%d open of %d%s</span></summary><div class="kboard">'
+                 '<span class="kmeta">%d open of %d%s%s</span></summary><div class="kboard">'
                  % (' open' if i == cur else '', esc(v['n']), esc(v['n']), n_open, len(a),
-                    ' · released ' + esc(v['date']) if v['rel'] else '')]
+                    ' · released ' + esc(v['date']) if v['rel'] else '',
+                    ' · %d closed without shipping' % wn[i] if wn.get(i) else '')]
         for c, title in KCOLS:
             parts.append('<div class="kcol" data-col="%s"><h3>%s <span class="kn">%d</span></h3>' % (c, title, len(cols[c])))
             for t in cols[c]:
@@ -716,7 +726,7 @@ def plain_impact(body):
 
 def read_mirror():
     """{key: dict(st, sn, cat, fv, upd, title, type, impact, labels, parent, rel, otext)} from the mirror; sn is the Jira
-    status name, cat its category; rel the relates-linked ticket numbers, otext the title and description (HIMMEL-5453)."""
+    status name, cat its category, res its resolution ('' when none); rel the relates-linked ticket numbers, otext the title and description (HIMMEL-5453)."""
     out = {}
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         txt = open(p, encoding='utf-8', errors='replace').read()
@@ -756,7 +766,12 @@ def read_mirror():
             sn = json.loads(fm.get('status', '""'))
         except ValueError:
             sn = ''
+        try:
+            res = json.loads(fm.get('resolution', 'null'))
+        except ValueError:
+            res = None
         out[key] = dict(st=2 if cat == 'Done' else 1 if cat == 'In Progress' else 0, sn=sn if isinstance(sn, str) else '', cat=cat, fv=fv,
+                        res=res if isinstance(res, str) else '',
                         upd=fm.get('updated', '').strip('"'), title=m.group(1) if m else '',
                         type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]),
                         labels=lab if isinstance(lab, list) else [], parent=par if isinstance(par, str) and KEY_RE.fullmatch(par) else '',
@@ -1118,8 +1133,8 @@ def main():
     dt = drift_log(a.drift_log, sum(1 for r in rows if r[7] == 1), sum(1 for r in rows if r[7] == 2 and r[2] != 2), nothm)
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
-    jt, jc, jn, ja = jira_view(mir, legs, jv, rows[:n_plan], vers)
-    kb = kanban(jt, jv, jc, a.jira_base_url)
+    jt, jc, jn, ja, jw = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    kb = kanban(jt, jv, jc, a.jira_base_url, jw)
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}
@@ -1130,7 +1145,7 @@ def main():
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
                 LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes, P=rows,
-                U=unpl, DR=dirs, N=notes, LG=lg, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, RU=ru,
+                U=unpl, DR=dirs, N=notes, LG=lg, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, RU=ru,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
                                             [v for v in vers if trail_parent(v)])),
@@ -1410,7 +1425,7 @@ a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
 }
 </style>
 <header class="mast"><div class="in"><b class="brand">himmel · roadmap</b><span class="stamp" id="stamp"></span>
-<button class="jsw" id="hide" type="button" role="switch" aria-checked="true" title="Hides Done, Closed, In Public, wont do and wont fix from the boards and lists; the counts in the hero sentence and the table still include them."><span class="jt"></span>Hide done work</button>
+<button class="jsw" id="hide" type="button" role="switch" aria-checked="true" title="Hides Done and In Public from the boards and lists; the counts in the hero sentence and the table still include them. Closed and wont do tickets are in no count."><span class="jt"></span>Hide done work</button>
 <button class="tbtn" id="theme" type="button">Theme</button></div></header>
 <div class="shell" id="main">
 <main>
@@ -1786,8 +1801,8 @@ function renderPvj(){var a=M.inTrain(REM),dr=a.filter(function(p){return p[7]==1
 var JV=D.JV,JT=D.JT,JB=[["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]],
  RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JC>=0?D.JC:JV.length-1;
 var HIDE=true;try{var hs=localStorage.getItem("hide3990");if(hs!==null)HIDE=hs==="1"}catch(e){}
-// jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins; wont do/fix count as done.
-function jb(t){return t.live?"prog":t.b=="wont"?"done":t.b}
+// jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins. Tickets closed without shipping are not in JT (D.JW counts them).
+function jb(t){return t.live?"prog":t.b}
 function jin(i){return JT.filter(function(t){return t.v===i})}
 function jtally(a){var r={n:a.length};JB.forEach(function(s){r[s[0]]=[]});a.forEach(function(t){r[jb(t)].push(t)});r.open=a.length-r.done.length;return r}
 function jdot(b,x){return el("span","jst jc-"+b,x)}
@@ -1825,7 +1840,8 @@ function jboard(){var b=$("board"),f=$("donefold");b.textContent="";f.textConten
  if(JSEL<0){$("bh").textContent="No versions";$("bsub").textContent="";return}
  var v=JV[JSEL],a=jin(JSEL),t=jtally(a);
  $("bh").textContent=v.n+(JSEL===JCUR?" — the board":" — board");
- $("bsub").textContent=(v.rel?"Released "+v.date+". ":JSEL===JCUR?"The version being worked on. ":"Not released. ")+t.open+" open of "+t.n+".";
+ var wn=(D.JW.filter(function(x){return x[0]===JSEL})[0]||[0,0])[1];
+ $("bsub").textContent=(v.rel?"Released "+v.date+". ":JSEL===JCUR?"The version being worked on. ":"Not released. ")+t.open+" open of "+t.n+"."+(wn?" "+wn+" closed without shipping.":"");
  var cols=JB.filter(function(s){return !HIDE||s[0]!="done"});b.style.setProperty("--cols",cols.length);
  cols.forEach(function(s,ci){var c=el("div","jcol enter"),h=el("h3");c.style.animationDelay=ci*40+"ms";
   add(h,jdot(s[0],s[1]),jnum(t[s[0]].length,v.n+": "+s[1],t[s[0]]));c.appendChild(h);
@@ -1895,7 +1911,7 @@ $("prov").textContent="Versions and statuses are read from Jira (fixVersion and 
   ["Ready to build",["0 no plan yet · 1 problem stated · 2 fix named, not yet checked · 3 plan audited · 4 spec ready. Below 3 a version schedules only a planning slice."]],
   ["Budget",[capBar({used:.45,cap:.6,kinds:[]})," used of the version's cap; the tick is the cap, orange is over it."]],
   ["No cap",[capBar({deferred:true})," ","no cap — deferred bucket"]],
-  ["Hide done work",["Hides Done, Closed, In Public, wont do and wont fix from the version board and its lists. The counts in the sentence and the table still include them."]]
+  ["Hide done work",["Hides Done and In Public from the version board and its lists. The counts in the sentence and the table still include them. Closed, wont do and wont fix tickets, and Done tickets resolved as anything but Done or Fixed, are in no count: each version notes how many closed without shipping."]]
  ].forEach(function(x){t.appendChild(el("dt",null,x[0]));var d=el("dd");x[1].forEach(function(c){add(d,c)});t.appendChild(d)})})();
 D.CAP.text.forEach(function(x){$("rules").appendChild(el("p",null,x))});
 render();

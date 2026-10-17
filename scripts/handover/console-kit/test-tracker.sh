@@ -59,13 +59,14 @@ printf '%s\t%s\t%s\n' key close_flag close_evidence \
 printf '%s\t%s\n' key reason HIMMEL-4 'unplaced reason text' > "$plan/stage3/unplaced.tsv"
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-1 tooling 4 > "$plan/stage1/C01.tsv"
 
-# mk <n> <statusCategory> <fixVersions json> <title> [status name]; writes into $mdir. A status name is the Jira status
+# mk <n> <statusCategory> <fixVersions json> <title> [status name] [resolution]; writes into $mdir. A status name is the Jira status
 # without one the frontmatter has no `status:` line and the page falls back to the category.
 mdir="$mir"
 mk() {
     {
         printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$2\""
         [ -n "${5:-}" ] && printf 'status: "%s"\n' "$5"
+        [ -n "${6:-}" ] && printf 'resolution: "%s"\n' "$6"
         printf '%s\n' "fixVersions: $3" 'type: "Bug"' '---' "# HIMMEL-$1: $4"
     } > "$mdir/HIMMEL-$1.md"
 }
@@ -370,6 +371,9 @@ mk 34 'To Do' '["v1.0.3"]' 'next one' 'To Do'
 mk 35 'Done' '["v1.0.2"]' 'wont one' 'wont do'
 mk 36 'In Progress' '["v1.0.2"]' 'category fallback one'
 mk 37 'To Do' '["v1.0.0"]' 'zero version one' 'To Do'
+mk 38 'Done' '["v1.0.2"]' 'closed one' 'Closed'
+mk 39 'Done' '["v1.0.3"]' 'duplicate one' 'Done' 'Duplicate'
+mk 40 'Done' '["v1.0.3"]' 'done in future one' 'Done' 'Done'
 mdir="$mir"
 printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\n' > "$W/jm.versions.tsv"
 render --mirror-dir "$jm" >/dev/null
@@ -387,7 +391,14 @@ contains 'the released-but-open alert still renders when no unreleased version i
     's.textContent="Every unreleased version is done.";jalerts(-1);return}'
 contains 'In Review is counted from the status name (HIMMEL-3990)' "$jhtml" '"k":32,"t":"review one","s":"In Review","b":"rev","v":1,'
 contains 'IN CI is counted from the status name (HIMMEL-3990)' "$jhtml" '"k":33,"t":"ci one","s":"IN CI","b":"ci","v":1,'
-contains 'wont do counts as done (HIMMEL-3990)' "$jhtml" '"s":"wont do","b":"wont"'
+not_contains 'a wont-do ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"wont one"'
+not_contains 'a Closed ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"closed one"'
+not_contains 'a Done ticket with a Duplicate resolution is in no count (HIMMEL-6241)' "$jhtml" '"t":"duplicate one"'
+contains 'closed without shipping is one count per version, not a Done count (HIMMEL-6241)' "$jhtml" '"JW":[[1,2],[2,1]]'
+contains 'a Done ticket in a future version is counted in the current one (HIMMEL-6241)' "$jhtml" \
+    '"k":40,"t":"done in future one","s":"Done","b":"done","v":1,'
+contains 'the footnote says closed without shipping (HIMMEL-6241)' "$jhtml" 'closed without shipping'
+not_contains 'the legend no longer calls Closed or wont do work done (HIMMEL-6241)' "$jhtml" 'Hides Done, Closed, In Public, wont do'
 contains 'an unknown status falls back to the status category (HIMMEL-3990)' "$jhtml" '"t":"category fallback one","s":"In Progress","b":"prog"'
 contains 'a released-only ticket keeps its released version (HIMMEL-3990)' "$jhtml" '"k":30,"t":"released done one","s":"Done","b":"done","v":0,'
 contains 'hide done work is ON by default (HIMMEL-3990)' "$jhtml" 'var HIDE=true;try{var hs=localStorage.getItem("hide3990")'

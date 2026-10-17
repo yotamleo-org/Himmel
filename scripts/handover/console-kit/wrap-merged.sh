@@ -69,8 +69,8 @@ while [ "$#" -gt 0 ]; do
         *) [ -z "$LEG" ] || usage; LEG="$1"; shift ;;
     esac
 done
-[ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$LEG" ] || usage
-[ -f "$DOC" ] && [ -f "$LEG" ] || { echo "wrap-merged: console doc or leg doc is not a file" >&2; exit 2; }
+{ [ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$LEG" ]; } || usage
+{ [ -f "$DOC" ] && [ -f "$LEG" ]; } || { echo "wrap-merged: console doc or leg doc is not a file" >&2; exit 2; }
 # the manifest holds absolute physical paths: match on the same form (rel path, symlink, .., // all collapse)
 LEG="$(cd "$(dirname "$LEG")" && pwd -P)/${LEG##*/}"
 
@@ -91,7 +91,7 @@ if [ -n "${WM_JIRA:-}" ]; then jira=("$WM_JIRA"); else jira=(node "$PRIMARY/scri
 view="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
 state="$(printf '%s' "$view" | jq -r '.state // empty' 2>/dev/null)"
 sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
-[ "$state" = MERGED ] && [ -n "$sha" ] || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
+{ [ "$state" = MERGED ] && [ -n "$sha" ]; } || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
 sha8="${sha:0:8}"
 
 base="${LEG##*/}"
