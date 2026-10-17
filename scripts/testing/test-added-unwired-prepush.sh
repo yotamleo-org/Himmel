@@ -19,8 +19,8 @@ ok() { echo "  PASS  $1"; pass=$((pass+1)); }
 no() { echo "  FAIL  $1"; fail=$((fail+1)); }
 
 # The command the gate really runs: read out of the committed pre-commit config.
-ENTRY=$(awk '/^ *- id: added-unwired-check$/ {f=1} f && /entry:/ {sub(/^ *entry: */, ""); print; exit}' "$REPO/.pre-commit-config.yaml")
-STAGE=$(awk '/^ *- id: added-unwired-check$/ {f=1} f && /stages:/ {print; exit}' "$REPO/.pre-commit-config.yaml")
+ENTRY=$(awk '/^ *- id: added-unwired-check$/ {f=1; next} f && /^ *- id:/ {exit} f && /entry:/ {sub(/^ *entry: */, ""); print; exit}' "$REPO/.pre-commit-config.yaml")
+STAGE=$(awk '/^ *- id: added-unwired-check$/ {f=1; next} f && /^ *- id:/ {exit} f && /stages:/ {print; exit}' "$REPO/.pre-commit-config.yaml")
 
 echo "== P config =="
 [ -n "$ENTRY" ] && ok "P1 .pre-commit-config.yaml has an added-unwired-check entry" || no "P1 no added-unwired-check entry"
@@ -32,12 +32,13 @@ R="$T/repo"
 mkdir -p "$R/scripts/testing" "$R/scripts/ci" "$R/scripts/handover" "$R/scripts/tools"
 cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
 : > "$R/scripts/ci/run-shell-tests.sh"
-git init -q -b main "$R"
-git -C "$R" config user.email t@t; git -C "$R" config user.name t
-git -C "$R" add -A && git -C "$R" commit -q -m "chore: base"
-git -C "$R" checkout -q -b feat/x
+git init -q -b main "$R" || exit 1
+git -C "$R" config user.email t@t || exit 1
+git -C "$R" config user.name t || exit 1
+git -C "$R" add -A && git -C "$R" commit -q -m "chore: base" || exit 1
+git -C "$R" checkout -q -b feat/x || exit 1
 printf '#!/usr/bin/env bash\n' > "$R/scripts/tools/newtool.sh"
-git -C "$R" add -A && git -C "$R" commit -q -m "feat: add newtool"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add newtool" || exit 1
 
 echo "== B branch-diff behaviour =="
 rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
@@ -45,28 +46,37 @@ rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
   && ok "B1 RED: an unwired added script fails with the item 11 message and is named" || no "B1 not caught (rc=$rc): $out"
 
 printf 'bash scripts/tools/newtool.sh\n' > "$R/scripts/handover/caller.sh"
-git -C "$R" add -A && git -C "$R" commit -q -m "feat: reference newtool from an unwired script"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: reference newtool from an unwired script" || exit 1
 rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
 { [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/handover/caller.sh' <<<"$out"; } \
   && ok "B2 a referencer that is itself an unwired added script does not count" || no "B2 (rc=$rc): $out"
 
 printf 'bash scripts/handover/caller.sh\n' > "$R/scripts/ci/run-shell-tests.sh"
-git -C "$R" add -A && git -C "$R" commit -q -m "feat: wire the caller"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: wire the caller" || exit 1
 rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
 [ "$rc" -eq 0 ] && ok "B3 wired in the same branch: passes" || no "B3 wired branch failed (rc=$rc): $out"
 
-git -C "$R" checkout -q main
+git -C "$R" checkout -q main || exit 1
 rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
 { [ "$rc" -eq 0 ] && grep -q 'adds no files' <<<"$out"; } && ok "B4 a branch adding nothing passes" || no "B4 (rc=$rc): $out"
 
-git -C "$R" checkout -q -b feat/y main
+git -C "$R" checkout -q -b feat/y main || exit 1
 mkdir -p "$R/scripts/tools"
 printf '#!/usr/bin/env bash\n' > "$R/scripts/tools/othertool.sh"
-git -C "$R" add -A && git -C "$R" commit -q -m "feat: add othertool"
-git -C "$R" checkout -q main
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add othertool" || exit 1
+git -C "$R" checkout -q main || exit 1
 rc=0; out=$(cd "$R" && PRE_COMMIT_TO_REF=feat/y eval "$ENTRY" 2>&1) || rc=$?
 { [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/tools/othertool.sh' <<<"$out"; } \
   && ok "B6 the pushed tip, not the checked-out HEAD, is judged" || no "B6 (rc=$rc): $out"
+
+git -C "$R" checkout -q -b feat/z main || exit 1
+mkdir -p "$R/scripts/tools"
+printf '#!/usr/bin/env bash\n' > "$R/scripts/tools/my tool.sh"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add a spaced name" || exit 1
+rc=0; out=$(cd "$R" && PRE_COMMIT_TO_REF=feat/z eval "$ENTRY" 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/tools/my tool.sh' <<<"$out"; } \
+  && ok "B7 a path with a space reaches the check as one argument" || no "B7 (rc=$rc): $out"
+git -C "$R" checkout -q main || exit 1
 
 R2="$T/nobase"; git init -q -b topic "$R2"; git -C "$R2" config user.email t@t; git -C "$R2" config user.name t
 git -C "$R2" commit -q --allow-empty -m "chore: x"

@@ -58,11 +58,14 @@ if [ "${1:-}" = "--branch-diff" ] && [ "$#" -eq 1 ]; then
     bd_base=""
   done
   [ -n "$bd_base" ] || { echo "ADDED-UNWIRED SKIPPED (no base to diff against)"; exit 0; }
-  bd_added=$(git diff --name-only --diff-filter=A "$bd_base" "$bd_tip") || exit 2
-  [ -n "$bd_added" ] || { echo "ADDED-UNWIRED OK (the branch adds no files)"; exit 0; }
+  bd_list=$(mktemp "${TMPDIR:-/tmp}/added-unwired-bd.XXXXXX") || exit 2
+  git diff -z --name-only --diff-filter=A "$bd_base" "$bd_tip" > "$bd_list" || { rm -f "$bd_list"; exit 2; }
+  bd_args=()
+  while IFS= read -r -d '' bd_f; do bd_args+=("$bd_f"); done < "$bd_list"
+  rm -f "$bd_list"
+  [ "${#bd_args[@]}" -gt 0 ] || { echo "ADDED-UNWIRED OK (the branch adds no files)"; exit 0; }
   bd_rc=0
-  # shellcheck disable=SC2086  # word-splitting the added paths IS the point (repo paths carry no whitespace)
-  bd_out=$(bash "${BASH_SOURCE[0]}" "$bd_tip" $bd_added 2>&1) || bd_rc=$?
+  bd_out=$(bash "${BASH_SOURCE[0]}" "$bd_tip" "${bd_args[@]}" 2>&1) || bd_rc=$?
   [ "$bd_rc" -eq 0 ] && { printf '%s\n' "$bd_out"; exit 0; }
   echo "added but unwired (wire it, or allowlist it in the diff):"
   printf '%s\n' "$bd_out" | sed 's/^/       /'
