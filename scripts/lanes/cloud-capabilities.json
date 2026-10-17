@@ -148,10 +148,10 @@
     {
       "id": "gitleaks",
       "capability": "gitleaks binary for the pre-push secret scan",
-      "state": "cannot",
-      "local_split": "the local shepherd runs the secret scan",
-      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): gitleaks not installed by setup",
-      "source": "docs/setup/cloud-environment.md (parity table)"
+      "state": "does",
+      "local_split": "if the setup-env.sh gitleaks step reports failed, the local shepherd runs the secret scan",
+      "evidence": "session_01TpA3C48Z3WXun4uaXa9yMs (PR 2493, HIMMEL-5442 parity probe: setup-env.sh, parity-probe.sh, check-env.sh all rc 0): gitleaks not installed by setup (before HIMMEL-6135); setup-env.sh step 3a now installs gitleaks 8.30.1, sha256-pinned to the CI release",
+      "source": "scripts/cloud/setup-env.sh (gitleaks step); docs/setup/cloud-environment.md (parity table)"
     },
     {
       "id": "repo-hooks",
