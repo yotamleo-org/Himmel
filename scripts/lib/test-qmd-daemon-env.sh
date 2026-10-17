@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tests for scripts/lib/qmd-daemon-env.sh: the daemon-env key loader.
 set -u
+# a session's own key or base URL must not leak into the cases
+unset QMD_OPENAI_API_KEY QMD_OPENAI_BASE_URL
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$HERE/qmd-daemon-env.sh"
