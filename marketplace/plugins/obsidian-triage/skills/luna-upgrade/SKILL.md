@@ -1,6 +1,6 @@
 ---
 name: luna-upgrade
-description: Use when a luna-second-brain vault needs newer himmel template updates, user content untouched. /luna-upgrade.
+description: Check or upgrade one luna-second-brain vault to the current himmel template.
 ---
 
 # luna-upgrade — content-preserving vault/template upgrade (HIMMEL-389)

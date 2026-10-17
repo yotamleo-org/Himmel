@@ -1,6 +1,6 @@
 ---
 name: telegram-clip
-description: Use when a Telegram message (text, URL, or forward) is worth saving — file it as a LUNA-2 clip in luna's Clippings/.
+description: Save Telegram text, links or forwards as general luna clips; use grow-feed-log for feeding records.
 ---
 
 # telegram-clip — Telegram → Clippings/ ingestion entry point (LUNA-58)

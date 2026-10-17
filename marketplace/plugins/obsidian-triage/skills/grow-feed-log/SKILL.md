@@ -1,6 +1,6 @@
 ---
 name: grow-feed-log
-description: Use when a grow-tent Telegram message describes a feed/watering or carries a nutrient-label photo — append it to luna.
+description: Record grow-tent feeding, watering or nutrient-label details from Telegram in the feeding log.
 ---
 
 # grow-feed-log — grow-tent feed/watering log entry point (LUNA-130)
