@@ -848,7 +848,11 @@ race_ensure() {  # race_ensure <do-off:0|1> -> launched iff $state/alive exists
     HOME="$home" PATH="$bin:$safe" timeout 20 bash "$switch" off >/dev/null 2>&1 || fail "(x2) off failed or hung"
   fi
   touch "$state/release"
-  wait "$race_pid" 2>/dev/null || true
+  set +e
+  wait "$race_pid" 2>/dev/null
+  race_rc=$?
+  set -e
+  [ "$race_rc" -eq 0 ] || fail "(x2) ensure exited $race_rc"
 }
 race_ensure 0
 [ -f "$state/alive" ] || fail "(x2) control: no opt-out, ensure should launch"
