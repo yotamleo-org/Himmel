@@ -185,6 +185,25 @@ runs SessionEnd hooks, so this is the clean shutdown path; never `kill -9`.
 This does not apply to a subagent (only the top-level session carries the
 grant), and Windows sessions are not covered.
 
+## Operator-Gated Wrap
+
+If your only remaining dependency is an operator action, **wrap at once** — do
+not idle-wait. Append a RESUME BRIEF to this file (worktree, branch, base SHA,
+dirty paths, the verbatim operator block, the ordered remaining steps), release
+the queue lock, message the console `OPERATOR-GATED, wrapped, safe to close`,
+and end the turn. **Never idle-wait for the operator** — an idle leg holds the
+queue lock, burns its prompt cache and emits no signal, so it is
+indistinguishable from a crashed one. The console resumes it from that brief
+(`bash scripts/handover/leg-resume-brief.sh <this file>` regenerates the
+skeleton from git) instead of waking a cold session to ask.
+
+"End the turn" means the session actually **ends** — the harness exits. A
+message announcing that you are closing is not closing: a leg that says
+"safe to close" and stays resident holds its RAM, keeps its queue lock, and
+still reads as live in `ListAgents`. If you cannot end your own session,
+say exactly that in your final message so the console can list you for the
+operator instead of assuming you are gone.
+
 ## Suite evidence — scope the run, and never wait invisibly
 
 **A worker session opens its PR on the SCOPED suite covering its diff, and reports the

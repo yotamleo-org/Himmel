@@ -126,6 +126,15 @@ for t in "${templates[@]}"; do
   fi
 done
 
+# The launch preamble is the single copy every armed run reads, so it carries
+# the same operator-gated wrap clause.
+OVERNIGHT_DOC="$ROOT/docs/handover/overnight-mode.md"
+if carries_clause "$OVERNIGHT_DOC"; then
+  ok "docs/handover/overnight-mode.md carries the operator-gated wrap clause"
+else
+  ko "docs/handover/overnight-mode.md is MISSING the clause (or it has drifted from the canonical text in this suite)"
+fi
+
 # Negative control: prove the check can actually fail.
 tmp=$(mktemp "${TMPDIR:-/tmp}/clause-negctrl.XXXXXX") || { ko "negative control: mktemp failed"; echo "Total: pass=$pass fail=$fail"; exit 1; }
 printf 'no clause here\n' > "$tmp"
@@ -139,6 +148,15 @@ if carries_clause2 "$tmp"; then
 else
   ok "negative control: clause-free file correctly reported as missing the Console Rulings clause"
 fi
+# Mutation control: one word changed in a copy of the clause must fail the check.
+mut=$(mktemp "${TMPDIR:-/tmp}/clause-mutctrl.XXXXXX") || { ko "mutation control: mktemp failed"; echo "Total: pass=$pass fail=$fail"; exit 1; }
+printf '%s\n' "$CLAUSE" | sed 's/at once/eventually/' > "$mut"
+if carries_clause "$mut"; then
+  ko "mutation control: a one-word-mutated clause was reported as carrying the clause"
+else
+  ok "mutation control: a one-word-mutated clause correctly reported as drifted"
+fi
+rm -f "$mut"
 rm -f "$tmp"
 
 echo "Total: pass=$pass fail=$fail"
