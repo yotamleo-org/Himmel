@@ -43,6 +43,8 @@ if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/forge.sh"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/result.sh"
 
 GH_CMD="${GH_CMD:-gh}"
 GIT_CMD="${GIT_CMD:-git}"
@@ -164,7 +166,13 @@ for branch in "${branches[@]}"; do
 
     # 1. Push state -----------------------------------------------------
     if $GIT_CMD -C "$handover_repo" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1; then
-        ahead=$($GIT_CMD -C "$handover_repo" rev-list --count "origin/$branch..$branch" 2>/dev/null || echo "0")
+        # an unanswered count must not read as in-sync: "unknown" falls through to a push attempt
+        # shellcheck disable=SC2086  # GIT_CMD may carry leading args, as on every other call here
+        if run_or_unknown $GIT_CMD -C "$handover_repo" rev-list --count "origin/$branch..$branch"; then
+            ahead="$RESULT_OUT"
+        else
+            ahead="unknown"
+        fi
     else
         ahead="new"
     fi
