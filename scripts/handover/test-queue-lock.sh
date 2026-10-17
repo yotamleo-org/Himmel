@@ -3139,6 +3139,14 @@ if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
 else
     fail "T6038e: path operand (rc=$rc out=$out)"
 fi
+# The bare spelling of that same doc resolves under the known roots, so it is a doc.
+: > "$T6_ROOT/q/host-pid4242.md"
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status host-pid4242 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
+    pass "T6038g: a token-shaped bare name that resolves to a doc is a doc"
+else
+    fail "T6038g: bare token-shaped doc (rc=$rc out=$out)"
+fi
 out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" release "$T6_DOC" "$T6_TOK" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then
     pass "T6038f: release <doc> <token> still releases"
