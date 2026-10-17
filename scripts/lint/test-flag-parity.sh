@@ -101,6 +101,14 @@ if [ "$rc" = 1 ] && [[ "$out" == *"--ghost"* ]]; then ok "10 script with no flag
 out=$(bash "$lint" --baseline empty.tsv 2>&1); rc=$?
 [ "$rc" = 1 ] && ok "11 empty baseline file does not swallow drift" || bad "11 empty baseline (rc=$rc: $out)"
 
+echo 'Run `scripts/bare.sh --ghost`.' > "docs/with space.md"
+git add -A
+out=$(bash "$lint" 2>&1); rc=$?
+if [ "$rc" = 1 ] && [[ "$out" == *"with space.md"* ]]; then ok "12 a doc filename with a space is scanned"; else bad "12 space name (rc=$rc: $out)"; fi
+rm docs/a.md
+out=$(bash "$lint" 2>&1); rc=$?
+[ "$rc" = 2 ] && ok "13 a tracked doc missing from disk refuses to report clean" || bad "13 missing doc (rc=$rc: $out)"
+
 cd "$repo_root" || exit 1
 out=$(bash "$lint" --baseline scripts/lint/flag-parity-baseline.tsv 2>&1); rc=$?
 [ "$rc" = 0 ] && ok "9 real tree passes with the baseline" || bad "9 real tree (rc=$rc: $out)"

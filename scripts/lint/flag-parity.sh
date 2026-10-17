@@ -64,9 +64,10 @@ git ls-files -- 'docs/*.md' '.claude/commands/*.md' 'marketplace/plugins/*/skill
 [ -s "$tmp/docs" ] || { echo "flag-parity: clean (no docs in scope)"; exit 0; }
 
 # 1. doc mentions: doc<TAB>script<TAB>flag
-# shellcheck disable=SC2046
-awk -v scriptlist="$tmp/scripts" '
+awk -v scriptlist="$tmp/scripts" -v flist="$tmp/docs" '
   BEGIN {
+    while ((getline p < flist) > 0) ARGV[ARGC++] = p
+    close(flist)
     while ((getline p < scriptlist) > 0) {
       full[p] = 1
       n = split(p, parts, "/"); b = parts[n]
@@ -105,13 +106,15 @@ awk -v scriptlist="$tmp/scripts" '
       }
     }
   }
-' $(cat "$tmp/docs") 2>/dev/null | sort -u > "$tmp/mentions"
+' > "$tmp/mentions.raw" || { echo "flag-parity: cannot read a tracked doc; refusing to report clean" >&2; exit 2; }
+sort -u "$tmp/mentions.raw" > "$tmp/mentions"
 
 # 2. keep the mentions whose flag the script does not carry
 cut -f2 "$tmp/mentions" | sort -u > "$tmp/cited"
+[ -s "$tmp/cited" ] || { echo "flag-parity: clean (no doc flags beside a script name)"; exit 0; }
 # one pass over the cited scripts: print script<TAB>flag for every flag token a script carries
-# shellcheck disable=SC2046
-awk '
+awk -v flist="$tmp/cited" '
+  BEGIN { while ((getline p < flist) > 0) ARGV[ARGC++] = p; close(flist) }
   {
     line = $0
     while (match(line, /--[A-Za-z][A-Za-z0-9-]*/)) {
@@ -120,7 +123,8 @@ awk '
       line = substr(line, RSTART + RLENGTH)
     }
   }
-' $(cat "$tmp/cited") 2>/dev/null | sort -u > "$tmp/carried"
+' > "$tmp/carried.raw" || { echo "flag-parity: cannot read a cited script; refusing to report clean" >&2; exit 2; }
+sort -u "$tmp/carried.raw" > "$tmp/carried"
 
 awk -F'\t' '
   FILENAME == ARGV[1] { have[$1 "\t" $2] = 1; next }
@@ -152,8 +156,8 @@ fi
 
 if [ "$advisory" = 1 ]; then
   # usage-header flags (leading comment block) that no doc mentions beside the script
-  # shellcheck disable=SC2046
-  awk '
+  awk -v flist="$tmp/cited" '
+    BEGIN { while ((getline p < flist) > 0) ARGV[ARGC++] = p; close(flist) }
     FNR == 1 { inhdr = 1 }
     inhdr && /^#/ {
       line = $0
@@ -165,7 +169,8 @@ if [ "$advisory" = 1 ]; then
       next
     }
     inhdr && FNR > 1 && !/^#/ { inhdr = 0 }
-  ' $(cat "$tmp/cited") 2>/dev/null | sort -u > "$tmp/declared"
+  ' > "$tmp/declared.raw" || { echo "flag-parity: cannot read a cited script; refusing to report clean" >&2; exit 2; }
+  sort -u "$tmp/declared.raw" > "$tmp/declared"
   cut -f2,3 "$tmp/mentions" | sort -u > "$tmp/documented"
   comm -23 "$tmp/declared" "$tmp/documented" | sed 's/^/advisory: undocumented in any doc: /' | tr '\t' ' '
 fi
