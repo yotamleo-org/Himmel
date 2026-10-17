@@ -79,6 +79,15 @@ run Task "$td/notes.md" "$q" --sector X
 check "empty Proof before ## Notes exits 1" "$rc" 1
 has "empty Proof before ## Notes named" "$out" "Proof"
 
+# --- bold heading ends a section; bold-wrapped placeholder is not content ---
+q="$td/q-bold"; mkdraft "$td/bold.md" Proof "Agent detail"
+printf '## Proof\n\n**Notes**\nsome unrelated line\n\n## Agent detail\nfiles\n' >>"$td/bold.md"
+run Task "$td/bold.md" "$q" --sector X
+check "empty Proof before **Notes** exits 1" "$rc" 1
+q="$td/q-boldph"; mkdraft "$td/boldph.md" Proof; printf '## Proof\n**TBD**\n' >>"$td/boldph.md"
+run Task "$td/boldph.md" "$q" --sector X
+check "bold-wrapped TBD Proof exits 1" "$rc" 1
+
 # --- a failing awk fails closed, never reports success ---
 mkdir "$td/fakebin"; printf '#!/bin/sh\nexit 3\n' >"$td/fakebin/awk"; chmod +x "$td/fakebin/awk"
 mkdraft "$td/awk.md" Proof
