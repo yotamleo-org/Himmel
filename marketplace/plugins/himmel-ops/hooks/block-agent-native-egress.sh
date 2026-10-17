@@ -282,9 +282,16 @@ payload_bytes=$(printf '%s' "$payload_text" | wc -c | tr -d ' ')
 n=0
 set -f
 for tok in $payload_text; do
-    case "$tok" in */*) ;; *) continue ;; esac
-    n=$((n + 1))
-    [ "$n" -le "$path_cap" ] || deny "the tool payload has more than $path_cap path-like tokens; cannot inspect all"
+    # A token with no "/" is a path only when it names a symlink in the cwd
+    # (alias.md); it takes one lstat below and does not count toward path_cap.
+    bare=1
+    case "$tok" in
+        */*)
+            bare=0
+            n=$((n + 1))
+            [ "$n" -le "$path_cap" ] || deny "the tool payload has more than $path_cap path-like tokens; cannot inspect all"
+            ;;
+    esac
     _over_budget
     # Strip at most strip_cap wrapping characters per side: each strip copies
     # the token, so an unbounded loop is quadratic on a punctuation run.
@@ -298,6 +305,12 @@ for tok in $payload_text; do
         case "$tok" in *\"|*\'|*\`|*\)|*\>|*\]|*,|*.|*\;|*:) tok="${tok%?}" ;; *) break ;; esac
         k=$((k + 1))
     done
+    # alias.md/ names the symlink too; keep a lone "/" (the root).
+    [ "${#tok}" -gt 1 ] && tok="${tok%/}"
+    [ -n "$tok" ] || continue
+    if [ "$bare" = 1 ]; then
+        case "$tok" in */*) ;; *) [ -L "$cwd/$tok" ] || continue ;; esac
+    fi
     case "$tok" in
         \~/*) p="${HOME:-}/${tok#\~/}" ;;
         /*) p="$tok" ;;
