@@ -99,6 +99,9 @@ function usage(code = 1) {
   out("          tweet_has_quote: true but NO `## The Idea` — the pre-HIMMEL-2621");
   out("          chooser dropped the clipped author's own text. Re-fetches, adds");
   out("          `## The Idea`, and replaces the stale quote-context section.");
+  out("--dry-run: no network, no writes. Runs the js-yaml import and YAML parse-validate");
+  out("          on the frontmatter a real run would write, and reports their failures;");
+  out("          the G-3 body checks and the fetched content are NOT exercised.");
   out("Only clips with `processed: true` are enriched.");
   process.exit(code);
 }
@@ -878,6 +881,31 @@ function rescreenInjection(clipPath) {
 // Per-clip processing
 // ---------------------------------------------------------------------------
 
+// --dry-run runs the write path's js-yaml import and YAML parse-validate on the
+// frontmatter a real run would produce, minus the write. It cannot run the G-3
+// body checks or see fetch-dependent content: no network, so no section.
+const DRY_RUN_LIMIT = "js-yaml + frontmatter YAML checked; G-3 body checks and fetch not run";
+const DRY_RUN_MARKERS = {
+  enriched_at: TODAY,
+  enrichment_source: "fxtwitter",
+  enrichment_status: "ok",
+  tweet_stats: { replies: 0, retweets: 0, quotes: 0, likes: 0, views: 0 },
+  tweet_is_note: false,
+  tweet_is_article: false,
+  tweet_has_quote: false,
+  last_error: null,
+};
+
+async function dryRunYamlCheck(rel, fmRaw, markers) {
+  try {
+    const yaml = await import("js-yaml");
+    yaml.load(upsertEnrichMarkers(fmRaw, markers));
+  } catch (e) {
+    return { glyph: "x", message: `${rel} -- failed (yaml parse; dry-run): ${e.message}` };
+  }
+  return null;
+}
+
 export async function processClip(clipPath, vault, dryRun, opts = {}) {
   const rel = relative(vault, clipPath).split(sep).join("/");
   let text;
@@ -906,7 +934,10 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
     const canon = canonicalXUrl(fm.harvest_url_canonical || src) || canonicalXUrl(src);
     const fxtUrl = canon && fxtUrlFor(canon);
     if (!fxtUrl) return { glyph: "x", message: `${rel} -- failed (reflag canonicalize): ${src}` };
-    if (dryRun) return { glyph: "v", message: `${rel} -- would reflag via ${fxtUrl} [dry-run]` };
+    if (dryRun) {
+      const bad = await dryRunYamlCheck(rel, fmRaw, { needs_thread: true });
+      return bad || { glyph: "v", message: `${rel} -- would reflag via ${fxtUrl} [dry-run; ${DRY_RUN_LIMIT}]` };
+    }
     if (!opts.skipRateLimit) await sleep(RATE_LIMIT_MS);
     const fxt = await fetchFxt(fxtUrl);
     if (!fxt.ok) return { glyph: "~", message: `${rel} -- partial (reflag fetch): ${fxt.error}` };
@@ -947,7 +978,8 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
 
   if (dryRun) {
     const what = quoteBackfill ? "would re-enrich (quote-only)" : "would enrich";
-    return { glyph: "v", message: `${rel} -- ${what} via ${fxtUrl} [dry-run]` };
+    const bad = await dryRunYamlCheck(rel, fmRaw, DRY_RUN_MARKERS);
+    return bad || { glyph: "v", message: `${rel} -- ${what} via ${fxtUrl} [dry-run; ${DRY_RUN_LIMIT}]` };
   }
 
   // Rate-limit BEFORE the network call. The single inline telegram-clip call
