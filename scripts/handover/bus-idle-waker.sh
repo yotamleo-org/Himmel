@@ -2,7 +2,7 @@
 # bus-idle-waker.sh — wake an idle headed session that has unread himmel mail.
 #
 #   bus-idle-waker.sh --name <session> --service <konsole dbus service>
-#       --session </Sessions/n> [--poll 2] [--grace 20] [--rewake 120] [--max-polls 0]
+#       --session </Sessions/n> [--pid <konsole pid>] [--poll 2] [--grace 20] [--rewake 120] [--max-polls 0]
 #
 # Bus and inbox delivery ride hooks, so a session with no tool call and no prompt
 # never sees a message. This watches the session's unread count (bus log via
@@ -14,6 +14,8 @@
 # One wake per streak, again every --rewake seconds while mail stays unread.
 # A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (konsole
 # reads EnableSecuritySensitiveDBusAPI only at startup, so an older window refuses).
+# --pid ends it with rc=0 once that konsole process is gone, so an armed waker
+# never outlives its window.
 #
 # Seams: BUS_WAKER_QDBUS (default qdbus6), BUS_WAKER_BUS (default the himmel-bus CLI).
 set -uo pipefail
@@ -25,13 +27,14 @@ if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>
 
 QDBUS="${BUS_WAKER_QDBUS:-qdbus6}"
 BUS="${BUS_WAKER_BUS:-$HERE/../../marketplace/plugins/himmel-bus/bin/bus}"
-NAME="" SERVICE="" SESSION="" POLL=2 GRACE=20 REWAKE=120 MAX=0
+NAME="" SERVICE="" SESSION="" PID="" POLL=2 GRACE=20 REWAKE=120 MAX=0
 while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || { echo "bus-idle-waker: $1 needs a value" >&2; exit 64; }
     case "$1" in
         --name) NAME="${2:-}"; shift 2 ;;
         --service) SERVICE="${2:-}"; shift 2 ;;
         --session) SESSION="${2:-}"; shift 2 ;;
+        --pid) PID="${2:-}"; shift 2 ;;
         --poll) POLL="${2:-}"; shift 2 ;;
         --grace) GRACE="${2:-}"; shift 2 ;;
         --rewake) REWAKE="${2:-}"; shift 2 ;;
@@ -48,6 +51,7 @@ case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exi
 [ "$(awk -v p="$POLL" 'BEGIN{print (p > 0)}')" = 1 ] || { echo "bus-idle-waker: --poll must be above 0" >&2; exit 64; }
 
 num() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
+[ -z "$PID" ] || num "$PID" || { echo "bus-idle-waker: --pid takes a process id" >&2; exit 64; }
 
 unread() { # prints the unread total, or nothing when a count is unreadable
     local b i=0 root off size
@@ -67,6 +71,10 @@ unread() { # prints the unread total, or nothing when a count is unreadable
 since=0 last=0 polls=0
 while :; do
     polls=$((polls + 1))
+    if [ -n "$PID" ] && ! kill -0 "$PID" 2>/dev/null; then
+        echo "bus-idle-waker: konsole pid $PID gone, stopping: $NAME" >&2
+        exit 0
+    fi
     n="$(unread)"
     now="$(date +%s.%N)"
     if [ "${n:-0}" -gt 0 ]; then
