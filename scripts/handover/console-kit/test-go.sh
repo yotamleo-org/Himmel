@@ -553,6 +553,41 @@ rc=0; HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$ROOT20B" _as_claude bash "$SCRIPT" --f
 check "5134: a console-spawned leg cannot write a fix-GO -> exit 3" "$rc" "3"
 check "5134: nothing written by the refused leg" "$(find "$ROOT20B" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 
+# --- 21. a plain GO on a computed trust path is refused ------------
+# ready-check prints TRUST-PATH: yes from the PR diff and the default branch's list;
+# the leg's READY prose is never read. A plain GO then exits 8 with nothing written;
+# --trust-reviewed with the judge's GO verdict still writes it. A fixture anchor with
+# a local origin keeps trust_path_check's anchor-is-current test offline.
+# not $tmp: section 13 sourced go-gate.sh, which reassigns it
+ROOT21="${ROOT%/*}/root21"; mkdir -p "$ROOT21"
+TP21_ORIGIN="${ROOT%/*}/tp21-origin.git"; TP21_ANCHOR="${ROOT%/*}/tp21-anchor"
+git init -q --bare "$TP21_ORIGIN"
+git init -q "$TP21_ANCHOR"
+mkdir -p "$TP21_ANCHOR/scripts/lib"
+cp "$HERE/../../lib/go-gate.sh" "$TP21_ANCHOR/scripts/lib/go-gate.sh"
+git -C "$TP21_ANCHOR" add -A
+git -C "$TP21_ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
+git -C "$TP21_ANCHOR" remote add origin "$TP21_ORIGIN"
+git -C "$TP21_ANCHOR" push -q origin HEAD:refs/heads/main 2>/dev/null
+git -C "$TP21_ORIGIN" symbolic-ref HEAD refs/heads/main
+export READY_CHECK_ANCHOR="$TP21_ANCHOR"
+for shape in scripts/lib/fixtures/anything.txt scripts/lib/env-alias.sh; do
+  rc=0; out="$(READY_STUB_TRUST_FILE="$shape" HANDOVER_DIR="$ROOT21" bash "$SCRIPT" 85 "$SHA" 2>&1)" || rc=$?
+  check    "6033: plain GO on $shape -> exit 8" "$rc" "8"
+  contains "6033: $shape refusal names the judge route" "$out" "go.sh --trust-reviewed <judge qid>"
+  check    "6033: $shape refusal -> nothing written" "$(find "$ROOT21" -type f | wc -l | tr -d ' ')" "0"
+done
+VPR=85 verdict "$ROOT21" T1 "**GO** for head \`$SHA\`."
+rc=0; READY_STUB_TRUST_FILE=scripts/lib/env-alias.sh HANDOVER_DIR="$ROOT21" bash "$SCRIPT" --trust-reviewed T1 85 "$SHA" >/dev/null 2>&1 || rc=$?
+check    "6033: --trust-reviewed GO on a trust path -> exit 0" "$rc" "0"
+contains "6033: --trust-reviewed GO is written and signed" "$(cat "$ROOT21/.locks/go/85.$SHA" 2>/dev/null)" "trust-reviewed=T1"
+rc=0; READY_STUB_TRUST_FILE=docs/a.md HANDOVER_DIR="$ROOT21" bash "$SCRIPT" 86 "$SHA" >/dev/null 2>&1 || rc=$?
+check    "6033: plain GO on a non-trust diff -> exit 0" "$rc" "0"
+rc=0; out="$(READY_STUB_TRUST_LIST_FAIL=1 HANDOVER_DIR="$ROOT21" bash "$SCRIPT" 87 "$SHA" 2>&1)" || rc=$?
+check    "6033: unreadable trust list -> ready-check refuses, exit 4" "$rc" "4"
+check    "6033: unreadable trust list -> nothing written for 87" "$(compgen -G "$ROOT21/.locks/go/87.*" | wc -l | tr -d ' ')" "0"
+unset READY_CHECK_ANCHOR
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-go.sh"

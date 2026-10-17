@@ -13,12 +13,47 @@ set -u
 
 QMD_DAEMON_OFF_FLAG="${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}"
 pidfile="${XDG_CACHE_HOME:-$HOME/.cache}/qmd/mcp.pid"
+# The lock ensure-qmd-daemon.sh holds around the daemon launch (shared with the
+# embed-model swap; its role file says who holds it).
+launch_lock="${XDG_CACHE_HOME:-$HOME/.cache}/qmd/embed-swap.lock"
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 case "${1:-}" in
   off)
     mkdir -p "$(dirname -- "$QMD_DAEMON_OFF_FLAG")" || exit 1
     : > "$QMD_DAEMON_OFF_FLAG" || exit 1
+    # Flag first, then wait out a launch already past its own flag check: ensure
+    # holds the lock until its start returns, so the pidfile read below sees the
+    # daemon it started. Bounded (ensure's worst case is ~59s); a dead holder's
+    # lock is cleared.
+    mkdir -p "$(dirname -- "$launch_lock")" 2>/dev/null
+    have_lock=0
+    lock_i=0
+    while [ "$lock_i" -lt 65 ]; do
+      if mkdir "$launch_lock" 2>/dev/null; then have_lock=1; break; fi
+      holder="$(cat "$launch_lock/pid" 2>/dev/null)"
+      case "$holder" in
+        ''|*[!0-9]*) ;;
+        *)
+          # Clearing is serialized by a second mkdir lock and the holder is
+          # re-read inside it, as ensure's swap_lock_reclaim does: two waiters
+          # that both saw a dead holder must not delete a fresh lock.
+          if ! kill -0 "$holder" 2>/dev/null && mkdir "$launch_lock.reclaim" 2>/dev/null; then
+            [ "$(cat "$launch_lock/pid" 2>/dev/null)" != "$holder" ] || rm -rf "$launch_lock"
+            rmdir "$launch_lock.reclaim" 2>/dev/null
+          fi
+          ;;
+      esac
+      lock_i=$((lock_i + 1))
+      sleep 1
+    done
+    if [ "$have_lock" -eq 1 ]; then
+      echo off > "$launch_lock/role"
+      echo "$$" > "$launch_lock/pid"
+      trap 'rm -rf "$launch_lock"' EXIT
+    else
+      echo "qmd-daemon-switch: could not take $launch_lock in 65s; a launch may still be in flight - run off again to be sure" >&2
+    fi
     pid="$(cat "$pidfile" 2>/dev/null || true)"
     case "$pid" in
       ''|*[!0-9]*|0) echo "qmd-daemon-switch: flag set; no running daemon found (no pid in $pidfile)" ;;

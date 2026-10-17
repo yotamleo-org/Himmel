@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guest-provision.sh — runs ONCE, as root, INSIDE the himmel-ci-1 test VM
-# while scripts/vm/ci-runner.sh build bakes the ci-runner-v2
+# while scripts/vm/ci-runner.sh build bakes the ci-runner-v3
 # snapshot. Never run it on a station host: it refuses anything
 # systemd-detect-virt does not call a VM.
 #
@@ -28,7 +28,10 @@
 #     job must not have a channel through; nothing the shell-unit shards run
 #     needs it. The host also sets both off as machine config.
 #   - the packages the ubuntu shell-unit shard otherwise installs with sudo
-#     (at/atd, ffmpeg 6.1, pre-commit 4.7.0), since `runner` has no sudo.
+#     (at/atd, bubblewrap, socat, ffmpeg 6.1, pre-commit 4.7.0), the node/npm and
+#     python the shard's tool steps call, and the userns sysctl the hosted
+#     shard flips with sudo, since `runner` has no sudo. ci.yml gates its own
+#     apt/sudo/pip steps on runner.environment == 'github-hosted'.
 set -eu
 
 virt=$(systemd-detect-virt --vm 2>/dev/null || true)
@@ -53,8 +56,13 @@ RUNNER_DIR=/opt/actions-runner
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -o Acquire::Retries=3
 apt-get install -y --no-install-recommends ca-certificates curl git jq unzip rsync \
-    nftables at 'ffmpeg=7:6.1.*' python3-venv
+    nftables at 'ffmpeg=7:6.1.*' python3-venv \
+    bubblewrap socat nodejs npm python-is-python3
 systemctl enable atd
+# ubuntu 24.04 refuses unprivileged user namespaces (AppArmor); the hosted
+# shard flips it with sudo, which `runner` lacks, so it is set at boot here.
+printf 'kernel.apparmor_restrict_unprivileged_userns = 0\n' > /etc/sysctl.d/60-himmel-ci-userns.conf
+sysctl --system >/dev/null 2>&1 || true
 if dpkg -s virtualbox-guest-utils >/dev/null 2>&1 || dpkg -s virtualbox-guest-x11 >/dev/null 2>&1; then
     apt-get purge -y virtualbox-guest-utils virtualbox-guest-x11
 fi

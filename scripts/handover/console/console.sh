@@ -94,7 +94,7 @@ usage: console.sh new  [--name <slug>] [--arm] [--dry-run] [--model <m>]
        console.sh next [--doc <path>] [--date <YYYY-MM-DD>] [--name <slug>]
                        [--arm] [--dry-run] [--model <m>] [--bucket <b>]
                        [--prefix <P>] [--project <dir>] [--deadline-min <n>]
-                       [--context <1m|standard>]
+                       [--context <1m|standard>] [--relay-on-live]
        console.sh wrap <console-doc> <release-token> [<text>]
        console.sh -h|--help
 
@@ -105,6 +105,10 @@ while this session has a live in-process subagent (HIMMEL-5071).
 Supervisor sessions (consoles) default to 1m. --context overrides CONSOLE_CONTEXT and the default;
 --context standard or CONSOLE_CONTEXT=standard opts down to 200000.
 
+--relay-on-live (next only) leaves a marker beside the outgoing console's inbox; its
+console-wait.sh waiter then wakes the outgoing console ONCE, when the successor holds
+its queue lock, with relay-batch.sh's SENDMESSAGE lines, so the outgoing console need
+not ask before relaying. It sends nothing itself.
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "console".
@@ -500,6 +504,7 @@ esac
 NAME="console"
 NAME_GIVEN=0
 ARM=0
+RELAY_ON_LIVE=0
 DRY_RUN=0
 MODEL=""
 CONTEXT=""
@@ -534,6 +539,9 @@ while [ "$#" -gt 0 ]; do
             [ "$CMD" = next ] || { err "--date is only valid for 'next'"; usage >&2; exit 1; }
             DATE_ARG="${1#--date=}"; DATE_GIVEN=1; shift ;;
         --arm) ARM=1; shift ;;
+        --relay-on-live)
+            [ "$CMD" = next ] || { err "--relay-on-live is only valid for 'next'"; usage >&2; exit 1; }
+            RELAY_ON_LIVE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --model) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; MODEL="$2"; shift 2 ;;
         --model=*) MODEL="${1#--model=}"; shift ;;
@@ -1681,6 +1689,13 @@ cmd_next() {
     pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
     if mkdir -p "$(dirname "$pred_inbox")" 2>/dev/null && printf '%s\n' "$session" > "$pred_inbox.handover" 2>/dev/null; then
         echo "handover-mode: $pred_inbox.handover"
+        # --relay-on-live: the outgoing waiter wakes its console once, when the successor
+        # holds its lock, with the relay lines (line 1 successor session, line 2 its doc).
+        # Written to a temp name then renamed, so the waiter never reads half a marker.
+        if [ "$RELAY_ON_LIVE" -eq 1 ] && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
+            && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
+            echo "relay-on-live: $pred_inbox.relay-on-live"
+        fi
     fi
 
     if [ "$ARM" -eq 1 ]; then

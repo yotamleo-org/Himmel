@@ -386,7 +386,7 @@ if ! mkdir "$swap_lock" 2>/dev/null; then
   while :; do
     swap_role="$(cat "$swap_lock/role" 2>/dev/null)"
     case "$swap_role" in
-      ensure) exit 0 ;;
+      ensure|off) exit 0 ;;
       swap) break ;;
     esac
     if mkdir "$swap_lock" 2>/dev/null; then swap_role=mine; break; fi
@@ -469,6 +469,13 @@ case "$tune_batch" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_BATCH_SIZE="
 case "$tune_conc" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_CONCURRENCY="$tune_conc" ;; esac
 case "$tune_queue" in ''|*[!0-9]*|0*) ;; *) export QMD_QUERY_MAX_QUEUED="$tune_queue" ;; esac
 start_rc=0
+# Recheck the opt-out under the held lock, right before the launch: an `off` that
+# landed after the early check has set the flag by now, and an `off` after this
+# point waits on the lock (qmd-daemon-switch.sh) and then stops what was started.
+if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "$QMD_DAEMON_OFF_FLAG" ]; then
+  echo "ensure-qmd-daemon: INFO - qmd was turned OFF while this start was in progress; not launching."
+  exit 0
+fi
 # A named index starts its own daemon on the port in QMD_MCP_URL.
 idx_flag=""
 [ "$QMD_INDEX_NAME" = index ] || idx_flag="$QMD_INDEX_NAME"

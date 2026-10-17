@@ -222,6 +222,12 @@ rm -f "$LEG_PRETRUST_HOME/.claude-deepseek/.claude.json"
 rc=0; LEG_PRETRUST_CONFIG="$LEG_PRETRUST_HOME/.claude-deepseek/.claude.json" LEG_PRETRUST_KEY="$jkey" bash "$SCRIPT" deepseek "$ewt" >/dev/null 2>&1 || rc=$?
 check "11e config is a real lane config: exit 3" "$rc" "3"
 check "11e real lane config not created" "$([ -e "$LEG_PRETRUST_HOME/.claude-deepseek/.claude.json" ] && echo yes || echo no)" "no"
+mkdir -p "$LEG_PRETRUST_HOME/.claude-routed"
+printf '%s' '{"keep":"me"}' > "$LEG_PRETRUST_HOME/.claude-routed/.claude.json"
+before="$(cksum < "$LEG_PRETRUST_HOME/.claude-routed/.claude.json")"
+rc=0; LEG_PRETRUST_CONFIG="$LEG_PRETRUST_HOME/.claude-routed/.claude.json" LEG_PRETRUST_KEY="$jkey" bash "$SCRIPT" deepseek "$ewt" >/dev/null 2>&1 || rc=$?
+check "11e stale routed config: exit 3" "$rc" "3"
+check "11e stale routed config: byte-identical" "$(cksum < "$LEG_PRETRUST_HOME/.claude-routed/.claude.json")" "$before"
 for badkey in "/../x/.claude/worktrees/lq-p20" "//x/.claude/worktrees/lq-p20" "/./x/.claude/worktrees/lq-p20" "/x/./.claude/worktrees/lq-p20" "/x/.claude/worktrees/lq-p20/" "$LEG_PRETRUST_HOME/lq-p20"; do
   rc=0; LEG_PRETRUST_CONFIG="$jc/.claude.json" LEG_PRETRUST_KEY="$badkey" bash "$SCRIPT" deepseek "$ewt" >/dev/null 2>&1 || rc=$?
   check "11f bad key $badkey: exit 3" "$rc" "3"

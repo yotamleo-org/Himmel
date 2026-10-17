@@ -82,6 +82,11 @@ set -euo pipefail
 # ref is forged, so the ancestry/freshness hardening above never sees it.
 # Disabling replacement makes every resolution below use the real object.
 export GIT_NO_REPLACE_OBJECTS=1
+# Grafts (.git/info/grafts or an exported GIT_GRAFT_FILE) rewrite parentage
+# the same way: a pusher grafting origin's tip onto the unreviewed code makes
+# the merge-base read as that code. Point git at an always-empty file so no
+# graft is ever read.
+export GIT_GRAFT_FILE=/dev/null
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # default_branch() resolves the repo's protected default (main OR master)

@@ -140,6 +140,12 @@ python3 "$SUT" "$WORK/dupbr.json" --base 4ccb59d --console BZ --bucket "$WORK/b4
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
 lout="$(python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b5" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5.json" 2>&1)"
 has "a leg's lane key is printed as --lane" "$lout" "--lane claudex"
+# The launcher itself carries the lane, so a claudex leg needs no hand edit that breaks the sidecar sha.
+has "a claudex leg's launcher passes --lane claudex" "$(cat "$WORK/b5/launch-N901.sh")" "--lane claudex "
+has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5/launch-N901.sh")  $WORK/b5/launch-N901.sh"
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1
+lacks "a native leg's launcher has no --lane" "$(cat "$WORK/b5n/launch-N901.sh")" "--lane"
+has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5n.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5n/launch-N901.sh")  $WORK/b5n/launch-N901.sh"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="Bad Lane"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-bad.json"
 python3 "$SUT" "$WORK/lane-bad.json" --base 4ccb59d --console BZ --bucket "$WORK/b6" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lane-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-bad.err" && [ ! -e "$WORK/b6/launch-N901.sh" ] && pass "an invalid lane is refused before anything is written" || fail "bad lane rc=$rc"
@@ -205,6 +211,28 @@ python3 "$SUT" "$WORK/native-spec.json" --base 4ccb59d --console BZ --bucket "$W
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
 python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b17" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "a lane-worker leg with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
+
+# The scope's LAST completes-ticket value becomes one dedicated machine-readable
+# line (merge-on-green.sh reads it from the leg doc); a scope stating neither writes no line.
+ct_brief() { # <scope text> <bucket>
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]=sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ct.json" "$1"
+    python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
+    cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
+}
+ct_count() { printf '%s\n' "$1" | grep -c '^> \*\*Completes ticket:\*\* '; }
+ct_no="$(ct_brief 'one PR. completes-ticket: no' "$WORK/ct1")"
+has "scope ending completes-ticket: no writes the no line" "$ct_no" "> **Completes ticket:** no"
+[ "$(ct_count "$ct_no")" = 1 ] && pass "exactly one Completes ticket line (no)" || fail "Completes ticket line count (no) = $(ct_count "$ct_no")"
+ct_yes="$(ct_brief 'one PR. completes-ticket: yes' "$WORK/ct2")"
+has "scope ending completes-ticket: yes writes the yes line" "$ct_yes" "> **Completes ticket:** yes"
+[ "$(ct_count "$ct_yes")" = 1 ] && pass "exactly one Completes ticket line (yes)" || fail "Completes ticket line count (yes) = $(ct_count "$ct_yes")"
+ct_last="$(ct_brief 'completes-ticket: yes in the middle, but later completes-ticket: no' "$WORK/ct3")"
+has "the LAST completes-ticket value wins" "$ct_last" "> **Completes ticket:** no"
+lacks "an earlier, overridden value writes no yes line" "$ct_last" "> **Completes ticket:** yes"
+ct_none="$(ct_brief 'one PR, nothing stated' "$WORK/ct4")"
+[ "$(ct_count "$ct_none")" = 0 ] && pass "a scope stating neither writes no Completes ticket line" || fail "Completes ticket line written without a stated value"
+bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
+[ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
 
 # Every leg and console pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).

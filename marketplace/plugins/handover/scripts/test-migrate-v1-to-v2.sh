@@ -95,5 +95,49 @@ assert_grep "$TMP/handovers/$SLUG/standalones/#3-legacy-item/brief.md" "pending_
 assert_dir_exists "$TMP/handovers/$SLUG/epics/HIMMEL-15-rename-himmel-and-jira"
 assert_dir_absent "$TMP/handovers/$SLUG/epics/#15-rename-himmel-and-jira"
 
+# Case 4: jira create sends the Impact/What/Why/Plan/DoD/Agent detail shape
+TMP4="$(mktemp -d)" || exit 1
+trap 'rm -rf "$TMP" "$TMP4"' EXIT
+fixture_setup "$TMP4/root"
+mkdir -p "$TMP4/root/handovers/$SLUG/epics/#15-rename-himmel-and-jira/tasks/#16-unkeyed-task" "$TMP4/bin" "$TMP4/bodies"
+printf -- '---\ntemplate_version: 1\n---\n# #16 — unkeyed-task\n\n**Status:** open\n' \
+  > "$TMP4/root/handovers/$SLUG/epics/#15-rename-himmel-and-jira/tasks/#16-unkeyed-task/brief.md"
+# Stub jira: records each create's args and the body it was handed (--desc-file content, else --desc text).
+cat > "$TMP4/bin/jira" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "create" ] || exit 0
+n=$(ls "$STUB_DIR/bodies" | wc -l | tr -d ' ')
+body=""; prev=""
+for a in "$@"; do
+  case "$prev" in
+    --desc-file) body="$(cat "$a")" ;;
+    --desc) body="$a" ;;
+  esac
+  prev="$a"
+done
+printf '%s\n' "$*" > "$STUB_DIR/bodies/$n.args"
+printf '%s\n' "$body" > "$STUB_DIR/bodies/$n.body"
+echo "Created HIMMEL-90$n"
+EOF
+chmod +x "$TMP4/bin/jira"
+if STUB_DIR="$TMP4" PATH="$TMP4/bin:$PATH" "$MIGRATE" --root "$TMP4/root" --quiet >/dev/null 2>&1; then pass=$((pass+1)); else echo "FAIL: migration exited non-zero"; fail=$((fail+1)); fi
+bodies="$(find "$TMP4/bodies" -name '*.body' | wc -l | tr -d ' ')"
+if [ "$bodies" -eq 2 ]; then pass=$((pass+1)); else echo "FAIL: expected 2 create calls, saw $bodies"; fail=$((fail+1)); fi
+# The CLI's own linter, when the primary checkout has a built dist (offline, no network).
+ANCHOR="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")"
+LINT="$ANCHOR/scripts/jira/dist/plain-block.js"
+for b in "$TMP4"/bodies/*.body; do
+  [ -f "$b" ] || continue
+  for h in '## Impact' '## What' '## Why' '## Plan' '## DoD' '## Agent detail'; do
+    assert_grep "$b" "^$h\$"
+  done
+  if [ -f "$LINT" ] && command -v node >/dev/null 2>&1; then
+    lint="$(node --input-type=module -e "const {lintPlainBlock} = await import('file://' + process.argv[1]); const fs = await import('node:fs'); console.log(lintPlainBlock(fs.readFileSync(process.argv[2],'utf8')).join('; '))" "$LINT" "$b" 2>&1)"
+    if [ -z "$lint" ]; then pass=$((pass+1)); else echo "FAIL: plain-block lint on $b: $lint"; fail=$((fail+1)); fi
+  fi
+done
+# Both call sites ran (parented task, unparented standalone) and left no temp body behind.
+if grep -q -e '--parent HIMMEL-15' "$TMP4"/bodies/*.args; then pass=$((pass+1)); else echo "FAIL: no parented create"; fail=$((fail+1)); fi
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

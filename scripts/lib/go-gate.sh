@@ -22,7 +22,7 @@
 # spellings every call site used before this helper, case-insensitive,
 # whitespace-stripped: empty, 0, false, off, no — anything else is truthy.
 console_leg() {
-    case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+    case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) return 1 ;;
         *) return 0 ;;
     esac
@@ -63,6 +63,8 @@ go_gate() {
 # one file and take the trust id from another swapped in between (judge NO-GO
 # on PR 1479). go_trust_gate takes the id from here, never from the file.
 _go_gate_verify() {
+    # bracket ranges and case mapping must not follow the caller's locale
+    local LC_ALL=C
     local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4"
     local go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$head_sha"
     local body="" want="" got="" trust="" what="PR #$1"
@@ -104,6 +106,8 @@ _go_gate_verify() {
 # 1-128 of [A-Za-z0-9._:-]. Shared by go.sh (what it will sign) and
 # go_trust_gate (what it will accept), so the two cannot drift.
 go_trust_id_ok() {
+    # bracket ranges and case mapping must not follow the caller's locale
+    local LC_ALL=C
     case "$1" in ''|*[!A-Za-z0-9._:-]*) return 1 ;; esac
     [ "${#1}" -le 128 ]
 }
@@ -183,6 +187,8 @@ go_fixred_gate() {
 # ([A-Za-z0-9][A-Za-z0-9._-]*, no `..`); anything unresolved prints nothing and
 # returns 1 (fail closed — never a glob over every bucket). Read-only.
 go_verdict_scope() (
+    # bracket ranges and case mapping must not follow the caller's locale
+    LC_ALL=C
     unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_CEILING_DIRECTORIES
     local here slug common reponame bucket seg
     here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
@@ -198,7 +204,7 @@ go_verdict_scope() (
     slug=$(cd "$1" 2>/dev/null && user_slug 2>/dev/null) || exit 1
     common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
     reponame=$(basename "$(dirname "$common")")
-    bucket=$(printf '%s' "$reponame" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+    bucket=$(printf '%s' "$reponame" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
     for seg in "$slug" "$bucket"; do
         case "$seg" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*|*..*) exit 1 ;; esac
     done
@@ -228,6 +234,8 @@ go_verdict_scope() (
 # vetoes whatever PR it names (it only narrows). An empty <pr> refuses.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 go_trust_verdict() {
+    # bracket ranges and case mapping must not follow the caller's locale
+    local LC_ALL=C
     local root="$1" qid="$2" sha="$3" anchor="${4:-}" pr="${5:-}" f line word head go=0 scope vpr name snap
     case "$qid" in
         [A-Za-z0-9]*) ;;
@@ -353,7 +361,7 @@ trust_path_check() (
             *) return 1 ;;
         esac
         case "$url" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
-        [ "$(printf '%s' "$url" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$tp_nwo" | tr '[:upper:]' '[:lower:]')" ]
+        [ "$(printf '%s' "$url" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$tp_nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]
     }
     tmp=$(mktemp "${TMPDIR:-/tmp}/mog-trust.XXXXXX") || refuse tmp "cannot create a temp file"
     trap 'rm -f "$tmp"' EXIT
@@ -709,6 +717,8 @@ go_resolve_root() {
 # rc 0 prints `<READY|MERGED><TAB><id without #><TAB><sha, empty for MERGED>`;
 # rc 1 (nothing printed) when the line is neither. Pure, bash 3.2-safe.
 parse_ready_line() {
+    # bracket ranges and case mapping must not follow the caller's locale
+    local LC_ALL=C
     local line="${1%$'\r'}" pre id end kind="" cid="" sha=""
     pre='^(- )?([0-9]{1,2}:[0-9]{2}[[:blank:]]+)?'
     id='#?([0-9]{2,}|br-[a-z0-9._-]+)'
@@ -729,13 +739,16 @@ parse_ready_line() {
 # go_adapter_entry <anchor> <target-nwo>. rc 0 prints the one branch a console
 # merge into <target-nwo> may land on (its himmel_branch); rc 2 prints the
 # reason. The allowlist scripts/guardrails/himmel-adapters.json is read from the
-# DEFAULT branch of the harness repo the anchor is a checkout of, through the
+# DEFAULT branch of the harness repo the anchor's origin remote names (never gh's
+# default-repo setting), through the
 # API - never a worktree, a PR head or a local ref - so a leg cannot widen it by
 # editing its own copy. An entry counts only with merge_allowed true; a repo
 # listed twice, an unreadable file or an unreadable branch name refuses. gh is
 # ${GH:-gh}. Read-only.
 go_adapter_entry() {
-    local anchor="$1" target="$2" gh_bin=${GH:-gh} meta nwo dbranch raw br
+    # bracket ranges and case mapping must not follow the caller's locale
+    local LC_ALL=C
+    local anchor="$1" target="$2" gh_bin=${GH:-gh} url nwo dbranch raw br
     case "$target" in
         */*/*|/*|*/|*[!A-Za-z0-9._/-]*|'') target="" ;;
         */*) ;;
@@ -745,14 +758,20 @@ go_adapter_entry() {
         printf 'the repo '"'"'%s'"'"' is not an owner/name.\n' "$2"
         return 2
     fi
-    meta=$(cd "$anchor" 2>/dev/null && "$gh_bin" repo view --json nameWithOwner,defaultBranchRef \
-        --jq '"\(.nameWithOwner)|\(.defaultBranchRef.name // "")"' 2>/dev/null) || meta=""
-    nwo=${meta%%|*}; dbranch=${meta#*|}
-    if [ -z "$meta" ] || [ -z "$nwo" ] || [ -z "$dbranch" ]; then
-        printf 'cannot resolve the harness repo and its default branch from %s, so the himmel-adapters allowlist cannot be read.\n' "$anchor"
+    url=$(git -C "$anchor" remote get-url origin 2>/dev/null) || url=""
+    nwo=$(printf '%s' "$url" | sed -nE 's#^(https?://([^/@]+@)?[^/]+/|ssh://([^/@]+@)?[^/]+/|[^/@:]+@[^/:]+:)([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$#\4#p')
+    nwo=${nwo%.git}
+    case "$nwo" in
+        ''|*[!A-Za-z0-9._/-]*|*/*/*) nwo="" ;;
+    esac
+    if [ -n "$nwo" ]; then
+        dbranch=$("$gh_bin" repo view "$nwo" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || dbranch=""
+    fi
+    if [ -z "$nwo" ] || [ -z "$dbranch" ]; then
+        printf 'cannot resolve the harness repo from the origin remote of %s and its default branch, so the himmel-adapters allowlist cannot be read.\n' "$anchor"
         return 2
     fi
-    if [ "$(printf '%s' "$target" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$nwo" | tr '[:upper:]' '[:lower:]')" ]; then
+    if [ "$(printf '%s' "$target" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]; then
         printf '%s is the harness repo itself, not a fork - its PRs go through go.sh and merge-on-green.sh.\n' "$target"
         return 2
     fi
@@ -770,16 +789,27 @@ go_adapter_entry() {
 
 # go_fork_ready <target-nwo> <pr-number>. rc 0 iff the fork PR is ready to
 # merge: GitHub reports mergeStateStatus CLEAN (no conflicts, up to date, every
-# check at the head passed - UNSTABLE, BLOCKED, BEHIND and the rest refuse) AND
-# it has no unresolved review thread (more than one page of threads refuses).
+# check at the head passed - UNSTABLE, BLOCKED, BEHIND and the rest refuse), it
+# has at least one registered check and none pending, AND it has no unresolved review thread (more than one page of threads refuses).
 # rc 2 prints the reason. Fail closed on any unreadable answer. Read-only.
 go_fork_ready() {
-    local target="$1" pr="$2" gh_bin=${GH:-gh} mss th
-    mss=$("$gh_bin" pr view "$pr" --repo "$target" --json mergeStateStatus 2>/dev/null | jq -r '.mergeStateStatus // ""' 2>/dev/null) || mss=""
+    local target="$1" pr="$2" gh_bin=${GH:-gh} view mss chk th
+    view=$("$gh_bin" pr view "$pr" --repo "$target" --json mergeStateStatus,statusCheckRollup 2>/dev/null) || view=""
+    mss=$(printf '%s' "$view" | jq -r '.mergeStateStatus // ""' 2>/dev/null) || mss=""
     if [ "$mss" != "CLEAN" ]; then
         printf 'it is not ready to merge: mergeStateStatus is '"'"'%s'"'"', not CLEAN (checks pending or red, conflicts, behind base or blocked).\n' "$mss"
         return 2
     fi
+    # GitHub can report CLEAN on a fresh push before any workflow registered:
+    # no check yet is not green. A fork with no CI at all is refused too.
+    # an entry settles only as a CheckRun (status COMPLETED) or a StatusContext (state not PENDING/EXPECTED);
+    # a record carrying neither field, or a non-array rollup, counts as unsettled
+    chk=$(printf '%s' "$view" | jq -r '(.statusCheckRollup // []) as $r | if ($r | type) != "array" then "x x" else "\($r | length) \([$r[] | select((type == "object" and (((.status | type) == "string" and .status == "COMPLETED") or ((.state | type) == "string" and .state != "PENDING" and .state != "EXPECTED"))) | not)] | length)" end' 2>/dev/null) || chk=""
+    case "$chk" in
+        "0 0") printf 'it is not ready to merge: the PR has no registered check yet, so CLEAN does not prove a green build (a fork with no CI is refused).\n'; return 2 ;;
+        *" 0") ;;
+        *) printf 'it is not ready to merge: its checks are pending or unreadable (check count and pending count read: '"'"'%s'"'"').\n' "$chk"; return 2 ;;
+    esac
     # shellcheck disable=SC2016  # a GraphQL query, not a shell expansion
     th=$("$gh_bin" api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}' \
         -f o="${target%%/*}" -f r="${target#*/}" -F n="$pr" 2>/dev/null \

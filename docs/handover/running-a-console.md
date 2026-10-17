@@ -463,7 +463,9 @@ that `next --arm` printed and hand your live worker sessions over by name.
 worker session's brief names *you* as its supervisor session, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
 you send each worker session — from your own session — a message naming the successor and
-quoting the worker session's current token, and each worker session answers with a quote-back. A fresh
+quoting the worker session's current token. The worker session's quote-back is the `SUCCESSION
+accepted` Results bullet in its own doc (the successor's waiter tallies it); it sends a
+`SendMessage` only on a timeout or a decline. A fresh
 token is optional: a successor MAY issue one per worker session (then quote it too, and the
 worker session quotes it back); a relay with none is complete and the worker session keeps its own.
 A successor that arrives after you have left can prove itself only with the
@@ -585,7 +587,7 @@ switch and record the result (and the cache-probe verdict from step 1) in the PR
 ## Controlling the VM CI runner
 
 Two VirtualBox VMs (`himmel-ci-1`, `himmel-ci-2`, cloned from the
-`ci-runner-v2` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
+`ci-runner-v3` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
 shell-unit shards. The console drives them with one script, each form a bare
 relative literal pre-approved in `.claude/settings.json`:
 
@@ -609,6 +611,17 @@ bash scripts/handover/console-kit/vm-runner.sh status
   `DEAD` is variable on with no unit up; `STUCK` is a job running past its
   budget plus ten minutes. `console-wait.sh` wakes only on a move to `DEAD` or
   `STUCK`; answer with `status`, then `off` and a note to the operator.
+- With the variable `on`, `ci.yml` runs the `shell-unit-shard` matrix on the VM
+  runner for a same-repo `pull_request` whose author and actor are the operator
+  accounts; everything else (fork PRs, other authors, push, schedule, dispatch)
+  and the variable `off` or unset run on `ubuntu-latest`, with the required
+  check names unchanged. `scripts/ci/test-ci-vm-routing.sh` pins that
+  expression. The routed shard's apt, sudo and pip steps run on GitHub-hosted
+  runners only (`runner.environment == 'github-hosted'`); the guest must carry
+  the tools instead (`guest-provision.sh`). **Keep the variable `off`** until the
+  guest image has been rebaked with those packages (`ci-runner-v4`) and a
+  `vm-runner-probe.yml` dispatch has passed with no operator PR CI running:
+  until then every routed shard would fail and fail-fast blocks the PRs.
 - A classifier denial of one of these commands means the allow rule is missing
   or mismatched; see the stuck playbook, never reshape the command.
 

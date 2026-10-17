@@ -1,0 +1,31 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {"built_at_commit": "0000000000000000000000000000000000000000"},
+  "nodes": [
+    {"id": "retask_halt", "label": "Halt/narrowing needs no token (fail-safe asymmetry)", "norm_label": "halt/narrowing needs no token (fail-safe asymmetry)", "file_type": "concept", "source_file": "docs/internals/retask-channel.md", "source_location": null, "_origin": "semantic", "rationale": "An attacker who can only make the child do less has a mild DoS, not a compromise; a stood-down worker must not reason a halt away as 'not genuine user input'."},
+    {"id": "retask_channel", "label": "RETASK channel", "norm_label": "retask channel", "file_type": "concept", "source_file": "AGENTS.md", "source_location": "Subagent policy", "_origin": "semantic"},
+    {"id": "need_ts", "label": "Need", "norm_label": "need", "file_type": "code", "source_file": "scripts/board-model.ts", "source_location": "L16", "_origin": "ast"},
+    {"id": "need_sh", "label": "need()", "norm_label": "need()", "file_type": "code", "source_file": "scripts/plan-index.sh", "source_location": "L25", "_origin": "ast"},
+    {"id": "token_ts", "label": "Token", "norm_label": "token", "file_type": "code", "source_file": "scripts/ansi.ts", "source_location": "L11", "_origin": "ast"},
+    {"id": "completes_ticket", "label": "completes-ticket line and Ticket coverage", "norm_label": "completes-ticket line and ticket coverage", "file_type": "concept", "source_file": "docs/handover/leg-brief-template.md", "source_location": null, "_origin": "semantic", "rationale": "The merge script closes the ticket only on --jira-transition because a default closes multi-PR tickets early (HIMMEL-3059)."},
+    {"id": "transition_ts", "label": "Transition", "norm_label": "transition", "file_type": "code", "source_file": "scripts/jira/resolution.test.ts", "source_location": "L5", "_origin": "ast"},
+    {"id": "merge_sh", "label": "merge-script", "norm_label": "merge-script", "file_type": "code", "source_file": "scripts/handover/merge.sh", "source_location": "L1", "_origin": "ast"},
+    {"id": "egress_hook", "label": "egress-hook.sh", "norm_label": "egress-hook.sh", "file_type": "code", "source_file": "scripts/hooks/egress-hook.sh", "source_location": "L1", "_origin": "ast"},
+    {"id": "egress_fn", "label": "egress()", "norm_label": "egress()", "file_type": "code", "source_file": "scripts/lib/test-claude-lane.sh", "source_location": "L45", "_origin": "ast"},
+    {"id": "console_fn", "label": "console()", "norm_label": "console()", "file_type": "code", "source_file": "scripts/nav.js", "source_location": "L9", "_origin": "ast"},
+    {"id": "leg_fn", "label": "leg()", "norm_label": "leg()", "file_type": "code", "source_file": "scripts/nav.js", "source_location": "L20", "_origin": "ast"},
+    {"id": "graphify_usage", "label": "graphify usage rules", "norm_label": "graphify usage rules", "file_type": "concept", "source_file": "CLAUDE.md", "source_location": null, "_origin": "semantic"},
+    {"id": "path_const", "label": "PATH", "norm_label": "path", "file_type": "code", "source_file": "scripts/env.sh", "source_location": "L3", "_origin": "ast"}
+  ],
+  "links": [
+    {"source": "retask_halt", "target": "retask_channel", "relation": "references", "confidence": "EXTRACTED", "_origin": "semantic"},
+    {"source": "retask_channel", "target": "token_ts", "relation": "conceptually_related_to", "confidence": "INFERRED", "_origin": "semantic"},
+    {"source": "need_ts", "target": "need_sh", "relation": "semantically_similar_to", "confidence": "INFERRED", "_origin": "ast"},
+    {"source": "completes_ticket", "target": "merge_sh", "relation": "references", "confidence": "EXTRACTED", "_origin": "semantic"},
+    {"source": "transition_ts", "target": "need_ts", "relation": "calls", "confidence": "EXTRACTED", "_origin": "ast"},
+    {"source": "egress_hook", "target": "egress_fn", "relation": "calls", "confidence": "EXTRACTED", "_origin": "ast"},
+    {"source": "console_fn", "target": "leg_fn", "relation": "calls", "confidence": "EXTRACTED", "_origin": "ast"},
+    {"source": "graphify_usage", "target": "path_const", "relation": "conceptually_related_to", "confidence": "INFERRED", "_origin": "semantic"}
+  ]
+}

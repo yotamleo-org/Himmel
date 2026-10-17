@@ -17,9 +17,10 @@ run_filter() {  # run_filter <args...> — runs in a subshell, prints RC + globa
   (
     # shellcheck disable=SC1090
     . "$LIB"
+    CAF_ACCEPT_CONTEXT_TIER="${TIER_OK:-1}"
     if codex_filter_passthrough_args "$@" 2>"$TMP/err"; then
       echo "rc=0"
-      echo "model=$CAF_HAVE_MODEL sandbox=$CAF_HAVE_SANDBOX effort=$CAF_REASONING_EFFORT"
+      echo "model=$CAF_HAVE_MODEL sandbox=$CAF_HAVE_SANDBOX effort=$CAF_REASONING_EFFORT tier=$CAF_CONTEXT_TIER window=$CAF_CONTEXT_WINDOW"
       if [ "${#CAF_NEW_ARGS[@]}" -gt 0 ]; then printf 'arg:%s\n' "${CAF_NEW_ARGS[@]}"; fi
     else
       echo "rc=1"
@@ -55,6 +56,30 @@ case "$OUT" in *"rc=1"*) pass "danger sandbox refused";; *) fail "danger sandbox
 echo "test: --model detected"
 OUT="$(run_filter --model gpt-5.5-codex hi)"
 case "$OUT" in *"model=1"*) pass "model detected";; *) fail "model not detected: $OUT";; esac
+
+echo "test: --context-tier validated + stripped, unstated = 272k (HIMMEL-1907)"
+OUT="$(run_filter hi)"
+case "$OUT" in *"tier=272k window=272000"*) pass "unstated tier = 272k/272000";; *) fail "default tier: $OUT";; esac
+OUT="$(run_filter --context-tier 353k hi)"
+case "$OUT" in *"tier=353k window=353000"*) pass "two-word tier";; *) fail "two-word tier: $OUT";; esac
+case "$OUT" in *"arg:--context-tier"*|*"arg:353k"*) fail "tier flag leaked into args";; *) pass "tier flag stripped";; esac
+OUT="$(run_filter --context-tier=900k hi)"
+case "$OUT" in *"tier=900k window=900000"*) pass "equals-form tier";; *) fail "equals tier: $OUT";; esac
+OUT="$(run_filter --context-tier 1m hi)"
+case "$OUT" in *"rc=1"*) pass "bad tier refused";; *) fail "bad tier accepted";; esac
+grep -q -- '--context-tier must be one of 272k|353k|900k (got "1m")' "$TMP/err" || fail "bad-tier message missing"
+OUT="$(run_filter hi --context-tier)"
+case "$OUT" in *"rc=1"*) pass "trailing bare --context-tier refused";; *) fail "trailing tier accepted";; esac
+OUT="$(TIER_OK=0 run_filter --context-tier 353k hi)"
+case "$OUT" in *"rc=1"*) pass "tier flag refused when the caller does not opt in";; *) fail "tier flag accepted without opt-in: $OUT";; esac
+OUT="$(TIER_OK=0 run_filter --context-tier=353k hi)"
+case "$OUT" in *"rc=1"*) pass "equals-form tier refused without opt-in";; *) fail "equals tier accepted without opt-in: $OUT";; esac
+
+echo "test: shell tier map agrees with spawn-claudex.ts (HIMMEL-1907)"
+TS_MAP="$(grep -o 'CODEX_CONTEXT_TIER_WINDOW: Record<CodexContextTier, string> = {[^}]*}' "$SCRIPT_DIR/../telegram/spawn-claudex.ts" | grep -o '"[0-9]*k": "[0-9]*"' | tr -d '" ' | tr '\n' ' ')"
+# shellcheck disable=SC1090
+SH_MAP="$( . "$LIB"; for t in $CAF_CONTEXT_TIERS; do printf '%s:%s ' "$t" "$(caf_context_window "$t")"; done )"
+if [ "$TS_MAP" = "$SH_MAP" ]; then pass "tier map matches ($SH_MAP)"; else fail "tier map drift: ts=[$TS_MAP] sh=[$SH_MAP]"; fi
 
 echo "test: --reasoning-effort validated + stripped"
 OUT="$(run_filter --reasoning-effort xhigh "do" it)"

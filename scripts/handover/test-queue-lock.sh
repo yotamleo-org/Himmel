@@ -3096,6 +3096,72 @@ else
     fail "T104c: preflight self-collision (rc=$rc out=$out)"
 fi
 
+# A release or status call whose only operand is a session token
+# (the doc operand shifted away) must fail loudly -- rc 1, usage on stderr,
+# nothing on stdout -- never `free` and never a success line.
+T6_ROOT="$TMPDIR_ROOT/t6038"; mkdir -p "$T6_ROOT/q"
+T6_DOC="$T6_ROOT/q/held-leg.md"; : > "$T6_DOC"
+T6_TOK="$(_tq_bare_token "$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" acquire "$T6_DOC" 2>/dev/null | sed -n 's/^release-token: //p')")"
+for tv in release status; do
+    out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" "$tv" "$T6_TOK" 2>/dev/null)"; rc=$?
+    err="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" "$tv" "$T6_TOK" 2>&1 >/dev/null)"
+    if [ "$rc" -eq 1 ] && [ -z "$out" ] && grepq "$err" -i "usage"; then
+        pass "T6038a: $tv <token-only> exits 1, usage on stderr, stdout empty"
+    else
+        fail "T6038a: $tv <token-only> (rc=$rc out='$out' err='$err')"
+    fi
+done
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status "$T6_DOC" 2>&1)"; rc=$?
+if [ "$rc" -eq 11 ] && grepq "$out" "FRESH"; then
+    pass "T6038b: the token-only release left the lock held; status <doc> still reports it"
+else
+    fail "T6038b: held doc status (rc=$rc out=$out)"
+fi
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status "$T6_ROOT/q/never-locked.md" 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
+    pass "T6038c: status <never-locked doc path> still answers free"
+else
+    fail "T6038c: never-locked status (rc=$rc out=$out)"
+fi
+# A bare doc name resolves under the known roots and is not a token.
+: > "$T6_ROOT/q/leg-6038-bare.md"
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status leg-6038-bare.md 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
+    pass "T6038d: status <bare doc name> still resolves and answers free"
+else
+    fail "T6038d: bare doc name status (rc=$rc out=$out)"
+fi
+# Token-looking operand that IS an existing doc name keeps today's behaviour.
+: > "$T6_ROOT/q/host-pid4242"
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status "$T6_ROOT/q/host-pid4242" 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
+    pass "T6038e: a path operand is never read as a token"
+else
+    fail "T6038e: path operand (rc=$rc out=$out)"
+fi
+# The bare spelling of that same doc resolves under the known roots, so it is a doc.
+: > "$T6_ROOT/q/host-pid4242.md"
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status host-pid4242 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
+    pass "T6038g: a token-shaped bare name that resolves to a doc is a doc"
+else
+    fail "T6038g: bare token-shaped doc (rc=$rc out=$out)"
+fi
+for tv in release status; do
+    out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" "$tv" "\`$T6_TOK\`" 2>/dev/null)"; rc=$?
+    if [ "$rc" -eq 1 ] && [ -z "$out" ]; then
+        pass "T6038h: $tv <backticked token-only> exits 1, stdout empty"
+    else
+        fail "T6038h: $tv <backticked token-only> (rc=$rc out='$out')"
+    fi
+done
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" release "$T6_DOC" "$T6_TOK" 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then
+    pass "T6038f: release <doc> <token> still releases"
+else
+    fail "T6038f: normal release (rc=$rc out=$out)"
+fi
+
 echo "---"
 echo "PASSED=$PASSED FAILED=$FAILED"
 [ "$FAILED" = 0 ]

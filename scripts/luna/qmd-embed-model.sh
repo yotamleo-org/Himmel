@@ -133,6 +133,7 @@ write_yml_embed() {
 # A config naming a remote (openai:) model must pass the egress gate for every
 # collection it holds. Fails closed when the gate or node is missing.
 jina_gate_ok() {
+    # intentional: the \\ alternative is conservative fail-closed detection (a config backslash only requires node and the gate); narrowing it is a security-logic change needing its own review
     grep -Eqs '^[^#]*(openai:|\\)' "$1" || return 0
     command -v node >/dev/null 2>&1 || { warn "node is missing; cannot check the egress gate for $1"; return 1; }
     [ -f "$HERE/../qmd/qmd-jina-gate.mjs" ] || { warn "qmd-jina-gate.mjs is missing; refusing to write a remote model"; return 1; }

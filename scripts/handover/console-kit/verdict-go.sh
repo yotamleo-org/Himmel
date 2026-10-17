@@ -6,9 +6,9 @@
 # steps in order and prints the message to send the leg.
 #
 # Usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path>
-#                      [--trust] [--leg <label>] [--doc <console doc>]
+#                      [--trust] [--leg <label>] [--doc <console doc>] [--prior <GO|NO-GO>]
 #
-#   1. write-verdict.sh <qid> <answer> <head> --pr <n> --evidence-file <path>
+#   1. write-verdict.sh <qid> <answer> <head> --pr <n> --evidence-file <path> [--prior <GO|NO-GO>]
 #   2. GO only: go.sh [--trust-reviewed <qid>] <n> <head>   (--trust adds the flag;
 #      go.sh's own ready-check is never bypassed)
 #   3. with --doc: append-results.sh <doc> "<qid> answer: <answer> · GO <n> <head8>"
@@ -34,19 +34,20 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
-    echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--leg <label>] [--doc <console doc>]" >&2
+    echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--leg <label>] [--doc <console doc>] [--prior <GO|NO-GO>]" >&2
     exit 2
 }
 
 [ "$#" -ge 3 ] || usage
 QID="$1"; ANSWER="$2"; HEAD_SHA="$3"; shift 3
-PR=""; EVIDENCE=""; TRUST=0; LEG=""; DOC=""
+PR=""; EVIDENCE=""; TRUST=0; LEG=""; DOC=""; PRIOR=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --pr)            [ "$#" -ge 2 ] || usage; PR="$2"; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE="$2"; shift 2 ;;
         --leg)           [ "$#" -ge 2 ] || usage; LEG="$2"; shift 2 ;;
         --doc)           [ "$#" -ge 2 ] || usage; DOC="$2"; shift 2 ;;
+        --prior)         [ "$#" -ge 2 ] || usage; PRIOR="$2"; shift 2 ;;
         --trust)         TRUST=1; shift ;;
         *)               usage ;;
     esac
@@ -67,7 +68,7 @@ step_fail() { # step_fail <script> <rc>
 }
 
 bash "$HERE/write-verdict.sh" "$QID" "$ANSWER" "$HEAD_SHA" --pr "$PR" --evidence-file "$EVIDENCE" \
-    || step_fail write-verdict.sh $?
+    ${PRIOR:+--prior "$PRIOR"} || step_fail write-verdict.sh $?
 
 if [ "$ANSWER" = "GO" ]; then
     if [ "$TRUST" -eq 1 ]; then

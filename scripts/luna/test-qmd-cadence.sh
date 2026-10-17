@@ -646,6 +646,7 @@ else
     for _i in 1 2 3; do
         "$REAL_BASH" "$lock_dir/runner.sh" >/dev/null 2>&1 &
     done
+    # intentional: bare wait returns 0 under set -e whatever the jobs exit; the PAYLOAD-RAN count below is the assertion
     wait
     race_body=$(cat "$lock_log" 2>/dev/null || echo MISSING)
     race_ran=$(printf '%s\n' "$race_body" | grep -c 'PAYLOAD-RAN' || true)

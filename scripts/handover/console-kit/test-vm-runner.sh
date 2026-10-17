@@ -51,7 +51,7 @@ printf '%s\n' "$*" >> "$STUB/vbox.argv"
 case "$*" in
     "showvminfo himmel-ci-1 --machinereadable") echo 'VMState="poweroff"'; echo 'localhostReachable="0"' ;;
     "showvminfo himmel-ci-2 --machinereadable") echo 'VMState="running"'; echo "localhostReachable=\"${STUB_REACH:-0}\"" ;;
-    "snapshot himmel-ci-1 list --machinereadable") [ -n "${STUB_NO_SNAP:-}" ] || echo 'SnapshotName="ci-runner-v2"' ;;
+    "snapshot himmel-ci-1 list --machinereadable") [ -n "${STUB_NO_SNAP:-}" ] || echo 'SnapshotName="ci-runner-v3"' ;;
     *) exit 1 ;;
 esac
 EOF
@@ -93,7 +93,7 @@ if [ "$rc" -eq 0 ]; then ok "on exits 0"; else bad "on rc=$rc: $(cat "$TMP/out")
 [ "$(cat "$TMP/stub/var" 2>/dev/null)" = on ] && ok "variable set on" || bad "variable not on"
 [ ! -e "$TMP/stop" ] && ok "stop file removed" || bad "stop file still present"
 if [ -e "$TMP/stub/active-1" ] && [ -e "$TMP/stub/active-2" ]; then ok "units 1 and 2 started"; else bad "units not both started"; fi
-if grep -q "clone himmel-ci-2 from himmel-ci-1@ci-runner-v2" "$TMP/stub/vm.calls"; then ok "VM 2 cloned from himmel-ci-1@ci-runner-v2"; else bad "clone call: $(cat "$TMP/stub/vm.calls" 2>/dev/null)"; fi
+if grep -q "clone himmel-ci-2 from himmel-ci-1@ci-runner-v3" "$TMP/stub/vm.calls"; then ok "VM 2 cloned from himmel-ci-1@ci-runner-v3"; else bad "clone call: $(cat "$TMP/stub/vm.calls" 2>/dev/null)"; fi
 if grep -qF "ExecStart=/bin/bash \"$REPO_ROOT/scripts/vm/ci-runner.sh\" run" "$TMP/units/himmel-ci-runner@.service" 2>/dev/null; then ok "unit installed with the repo root filled in"; else bad "unit file missing or unsubstituted"; fi
 
 echo "T3 --vms bounds"
@@ -160,8 +160,8 @@ if grep -q '^himmel-ci-1: up idle' "$TMP/out" && grep -q '^himmel-ci-2: down las
 echo "T8 doctor rows"
 reset
 run doctor >"$TMP/out" 2>&1
-if ! grep -q '^FAIL' "$TMP/out" && grep -q 'ci-runner-v2 present' "$TMP/out" && grep -q 'all_external_contributors' "$TMP/out"; then ok "healthy: snapshot present, policy ok, no FAIL"; else bad "healthy: $(cat "$TMP/out")"; fi
-STUB_NO_SNAP=1 run doctor 2>&1 | grep -q '^FAIL.*no ci-runner-v2 snapshot' && ok "missing snapshot FAILs" || bad "missing snapshot not flagged"
+if ! grep -q '^FAIL' "$TMP/out" && grep -q 'ci-runner-v3 present' "$TMP/out" && grep -q 'all_external_contributors' "$TMP/out"; then ok "healthy: snapshot present, policy ok, no FAIL"; else bad "healthy: $(cat "$TMP/out")"; fi
+STUB_NO_SNAP=1 run doctor 2>&1 | grep -q '^FAIL.*no ci-runner-v3 snapshot' && ok "missing snapshot FAILs" || bad "missing snapshot not flagged"
 GH_APPROVAL=first_time_contributors run doctor 2>&1 | grep -q '^FAIL.*first_time_contributors' && ok "weaker policy FAILs" || bad "weaker policy not flagged"
 STUB_REACH=1 run doctor 2>&1 | grep -q '^FAIL.*loopback reachable' && ok "running VM that reaches the loopback FAILs" || bad "NAT assert not flagged"
 echo on > "$TMP/stub/var"; : > "$TMP/units/himmel-ci-runner@.service"

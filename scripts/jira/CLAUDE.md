@@ -21,10 +21,11 @@ helpers (HIMMEL-437).
 - `create --summary` is an alias for `create --title` (Jira's own field name
   is `summary`, so it's the natural reach). If both are given, `--title`
   wins; one of the two is required (HIMMEL-1188).
-- `create` refuses a body without the plain Impact/What/Why block + Agent
-  detail section (Epic and Subtask only warn; `create --type Task --skeleton`
-  prints the four headings to fill); the rule lives in
-  `src/plain-block.ts`, shared by the CLI and MCP `create` (HIMMEL-5226).
+- `create` refuses a body without the Impact/What/Why/Plan/DoD/Agent detail
+  sections, Plan and DoD each needing a real bullet or numbered line (Epic and
+  Subtask only warn; `create --type Task --skeleton` prints the six headings
+  to fill); the rule lives in `src/plain-block.ts`, shared by the CLI and MCP
+  `create` (HIMMEL-5226, HIMMEL-5643).
 - Verify every `create`/`move` by checking the printed `Created HIMMEL-N`.
 - `JIRA_PROJECT_KEY` is required at runtime — no `HIMMEL` fallback.
 

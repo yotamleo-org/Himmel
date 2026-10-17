@@ -7,6 +7,9 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   `answer: <verdict line>` · `flipped: y|n`. Write `prior:` before you ask —
   a prior recorded afterwards measures nothing. This makes M3 (judge flip
   rate) countable by `grep`; keep the field names exactly as written here.
+  `flipped` is computed, never typed: pass `--prior <GO|NO-GO>` to
+  `write-verdict.sh` (or `verdict-go.sh`) and the signed verdict file gets
+  `prior:` and `flipped: y|n` lines; evidence carrying either line is refused.
 - **Every judge call persists its verdict, trust path or not**:
   `bash scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
   --pr <n> --evidence-file <path>` writes `verdicts/<qid>/`. A verdict that

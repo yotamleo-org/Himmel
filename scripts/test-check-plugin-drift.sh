@@ -134,6 +134,7 @@ TAG_RE='^v?[0-9]+\.[0-9]+(\.[0-9]+)?$'
 # the function body is extracted verbatim from the script under test,
 # so a divergence in the real selector cannot pass silently here. (The script
 # executes on source, so a plain `source` is not an option.)
+# ponytail: eval of the extracted helper is deliberate (the script under test runs next anyway) so the selector cannot drift; a side-effect-free shared lib would replace it, HIMMEL-1632
 eval "$(sed -n '/^highest_version() {/,/^}/p' "$SCRIPT")"
 pick() { printf '%s\n' "$1" | grep -E "$TAG_RE" | highest_version; }
 if [ "$(pick "$(printf 'v1.9.1\nv1.9.2\nv1.9.2-alpha\nv1.8.1\n')")" = "v1.9.2" ]; then ok "stable-tag select: prerelease of current version ignored"; else bad "prerelease leaked into latest"; fi

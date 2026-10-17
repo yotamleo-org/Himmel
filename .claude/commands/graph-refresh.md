@@ -32,6 +32,15 @@ Common invocations:
 - `/graph-refresh both --dry-run` — preview the exact `refresh-graph-map.sh` invocations without running them.
 - `/graph-refresh --vault /path/to/vault` — override the vault root (default: `$LUNA_VAULT_PATH` if set, else `<user-profile>/Documents/luna`). On the luna leg the override must resolve at/under the configured luna root; set `LUNA_VAULT_PATH` to ratify a different location.
 
+The himmel leg passes `--merge-into-live`: himmel's live graph is mostly AST nodes
+from the hourly `ast-update.sh`, so the markdown extraction is merged INTO it
+(`semantic-merge.py merge`, the step `semantic-update.sh` runs) rather than
+promoted over it, and the promote shrink guard compares the merged graph with the
+live one (HIMMEL-6008). A bare `graphify update .` refuses for the same shape;
+`ast-update.sh` is the structural-refresh path. The luna vault graph is
+markdown-only and keeps the plain promote. A failed leg prints its reason and
+log path.
+
 After the refresh legs, the command prints `graphmap-cadence.sh status` so
 cadence drift is visible alongside the ad-hoc refresh (advisory — a cadence
 query failure never fails this command). On a successful **himmel** leg it

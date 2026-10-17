@@ -1085,9 +1085,116 @@ check "(pc8) and it is marked woke, so it wakes once" "woke:$WORK/pc8/AS.md" "$(
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CONSOLE_WAIT_CLOSE
 
+# --- (su) --succession: the successor's one wake -----------------------------
+# The tracker is stubbed (CONSOLE_WAIT_TRACKER): it prints $STUB/su.out. The waiter
+# itself only reads the COMPLETE / INCOMPLETE line and the clock.
+reset_stub
+# shellcheck disable=SC2016  # the stub body expands when the stub runs
+printf '#!/usr/bin/env bash\ncat "$STUB/su.out"\n' > "$STUB/su-tracker.sh"
+SUCD="$WORK/su-console.md"; : > "$SUCD"
+export CONSOLE_WAIT_TRACKER="$STUB/su-tracker.sh" CONSOLE_WAIT_SUCCESSION_SEC=1
+printf 'N1 quoted-back\nN2 quoted-back\nCOMPLETE 2/2\nbash append-results.sh doc "LIVE - done"\n' > "$STUB/su.out"
+I="$(new_inbox su1)"
+start "$I" "$WORK/su1.out" --doc "$SUCD" --succession S2 --legs "N1.md"
+wait_exit "$WPID"
+check "(su1) every leg quoted back wakes once, rc 0" "0" "$rc"
+check "(su1) the wake names the tally" "WAKE succession complete 2/2" "$(head -n1 "$WORK/su1.out")"
+check "(su1) the block carries the printed LIVE command" "yes" "$(grep -q '^bash append-results.sh' "$WORK/su1.out" && echo yes)"
+check "(su1) the exit reason is logged" "yes" "$(grep -q 'exit=wake-succession' "$I.wait" && echo yes)"
+
+printf 'N1 quoted-back\nN2 missing\nINCOMPLETE 1/2 (waiting on: N2)\n' > "$STUB/su.out"
+I="$(new_inbox su2)"
+timeout 4 bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --silent-min 5 --legs "N1.md" > "$WORK/su2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(su2) a short tally inside the silent window stays quiet" "" "$(cat "$WORK/su2.out")"
+check "(su2) and keeps waiting (rc 124)" "124" "$rc"
+
+I="$(new_inbox su3)"
+start "$I" "$WORK/su3.out" --doc "$SUCD" --succession S2 --silent-min 0 --legs "N1.md"
+wait_exit "$WPID"
+check "(su3) a tally silent past --silent-min wakes once, rc 0" "0" "$rc"
+check "(su3) the partial wake names k/n and the window" "WAKE succession partial 1/2 silent 0 min" "$(head -n1 "$WORK/su3.out")"
+check "(su3) the block names the leg still out" "yes" "$(grep -q 'waiting on: N2' "$WORK/su3.out" && echo yes)"
+
+printf 'tracker blew up\n' > "$STUB/su.out"
+I="$(new_inbox su3b)"
+start "$I" "$WORK/su3b.out" --doc "$SUCD" --succession S2 --silent-min 0 --legs "N1.md"
+wait_exit "$WPID"
+check "(su3b) a tracker with no summary still wakes at the silence limit" "WAKE succession partial tracker-error silent 0 min" "$(head -n1 "$WORK/su3b.out")"
+
+I="$(new_inbox su4)"
+bash "$WAIT" "$I" --succession S2 >/dev/null 2>&1; rc=$?
+check "(su4) --succession without --doc is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession 'bad name' >/dev/null 2>&1; rc=$?
+check "(su4) a --succession that is not a session name is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession >/dev/null 2>&1; rc=$?
+check "(su4) a trailing --succession with no value is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --silent-min >/dev/null 2>&1; rc=$?
+check "(su4) a trailing --silent-min with no value is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession --silent-min 5 >/dev/null 2>&1; rc=$?
+check "(su4) --succession followed by a flag is a usage error (rc 2)" "2" "$rc"
+
+# a COMPLETE wake leaves a woke-record: a re-arm with the same --succession stays quiet
+printf 'N1 quoted-back\nN2 quoted-back\nCOMPLETE 2/2\nbash append-results.sh doc "LIVE - done"\n' > "$STUB/su.out"
+I="$(new_inbox su5)"
+start "$I" "$WORK/su5a.out" --doc "$SUCD" --succession S2 --legs "N1.md"
+wait_exit "$WPID"
+check "(su5) first arm wakes once, rc 0" "0" "$rc"
+timeout 4 bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --legs "N1.md" > "$WORK/su5b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(su5) a re-arm with the same --succession does not re-wake at once" "124" "$rc"
+check "(su5) and prints no second wake" "" "$(cat "$WORK/su5b.out")"
+unset CONSOLE_WAIT_TRACKER CONSOLE_WAIT_SUCCESSION_SEC
+
+# --- (rol) <inbox>.relay-on-live: the outgoing console's one wake ------------------
+# Lock status and relay-batch are stubbed; the waiter reads only the lock rc (11 = held fresh).
+reset_stub
+# shellcheck disable=SC2016  # the stub bodies expand when the stub runs
+printf '#!/usr/bin/env bash\nexit "$(cat "$STUB/rol.rc")"\n' > "$STUB/rol-lock.sh"
+# shellcheck disable=SC2016  # as above
+printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay to $3"\n' > "$STUB/rol-relay.sh"
+export CONSOLE_WAIT_LOCK_STATUS="$STUB/rol-lock.sh" CONSOLE_WAIT_RELAY="$STUB/rol-relay.sh" CONSOLE_WAIT_SUCCESSION_SEC=1
+ROLD="$WORK/rol-console.md"; : > "$ROLD"
+echo 0 > "$STUB/rol.rc"
+I="$(new_inbox rol1)"
+printf 'S2\n%s\n' "$WORK/rol-succ.md" > "$I.relay-on-live"
+timeout 4 bash "$WAIT" "$I" --doc "$ROLD" --legs "N1.md" > "$WORK/rol1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(rol1) a successor with no held lock yields no wake (rc 124)" "124" "$rc"
+check "(rol1) and the marker stays for the next sample" "yes" "$([ -s "$I.relay-on-live" ] && echo yes)"
+
+echo 11 > "$STUB/rol.rc"
+touch "$I.handover"
+start "$I" "$WORK/rol2.out" --doc "$ROLD" --legs "N1.md"
+wait_exit "$WPID"
+check "(rol2) a held successor lock wakes once in handover mode, rc 0" "0" "$rc"
+check "(rol2) the wake names the successor" "WAKE relay-on-live successor=S2" "$(head -n1 "$WORK/rol2.out")"
+check "(rol2) the block carries the relay lines" "yes" "$(grep -q '^SENDMESSAGE to=N1' "$WORK/rol2.out" && echo yes)"
+check "(rol2) the marker is consumed" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
+check "(rol2) the exit reason is logged" "yes" "$(grep -q 'exit=wake-relay-on-live' "$I.wait" && echo yes)"
+
+# a failing relay-batch wakes once with its rc and consumes the marker (no resend)
+printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB/rol-relay.sh"
+I="$(new_inbox rol3)"
+printf 'S2\n%s\n' "$WORK/rol-succ.md" > "$I.relay-on-live"
+timeout 4 bash "$WAIT" "$I" --doc "$ROLD" --legs "N1.md" > "$WORK/rol3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(rol3) a failing relay still wakes once, rc 0" "0" "$rc"
+check "(rol3) the wake carries the relay rc" "WAKE relay-on-live successor=S2 relay-failed rc=1" "$(head -n1 "$WORK/rol3.out")"
+check "(rol3) and the marker is consumed, so nothing is resent" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
+unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
+
 # --- (k) usage ---------------------------------------------------------------
 bash "$WAIT" >/dev/null 2>&1; rc=$?
 check "(k) no inbox argument is a usage error (rc 2)" "2" "$rc"
+
+# an option-shaped first argument is refused before any path is derived from it
+mkdir -p "$WORK/kopt"
+(cd "$WORK/kopt" && bash "$WAIT" --help >"$WORK/kopt.out" 2>&1); rc=$?
+check "(k) an option-shaped inbox argument is a usage error (rc 2)" "2" "$rc"
+check "(k) and it writes no stray file into the cwd" "" "$(ls -A "$WORK/kopt")"
+check "(k) and it prints the usage text" "yes" "$(grep -q '^usage: console-wait.sh' "$WORK/kopt.out" && echo yes)"
+# control: an absolute inbox path still starts the waiter
+reset_stub
+I="$(new_inbox kctl)"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(k) an absolute inbox path still starts the waiter (rc 124)" "124" "$rc"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

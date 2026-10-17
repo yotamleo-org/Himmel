@@ -846,6 +846,12 @@ assert "skip-track 2nd: rc 0" grep -q '^RC=0$' <<<"$out2"
 assert "skip-track 2nd: counter reads 2 consecutive" grep -q 'SKIPPED 2 consecutive' <<<"$out2"
 assert "skip-track 2nd: counter file persisted at 2" test "$(cat "$psc_marker" 2>/dev/null)" = "2"
 
+assert "skip-track 2nd: action names the exact clearing command" grep -q 'bash scripts/himmel-update.sh --graphify-only' <<<"$out2"
+assert "skip-track 2nd: action names installed vs pinned version" grep -q "installed v0.0.1, pinned v$pinned_ver" <<<"$out2"
+sum=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_LIST_FILE="$psc_list" UV_LOG="$psc_log" \
+      bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_pin_skip_summary' 2>&1)
+assert "skip-summary: reports the 2 consecutive skips + versions" grep -q "2 consecutive skip.*installed v0.0.1.*pinned v$pinned_ver" <<<"$sum"
+
 # A non-skip outcome (already at pin) resets the counter.
 psc_list_at_pin="$tmpdir/gup-skiptrack-list-atpin"; printf 'graphifyy v%s\n' "$pinned_ver" > "$psc_list_at_pin"
 out3=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list_at_pin" \
@@ -854,6 +860,9 @@ out3=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$p
 assert "skip-track reset: rc 0" grep -q '^RC=0$' <<<"$out3"
 assert "skip-track reset: counter file removed once the pin is no longer being skipped" \
   test ! -e "$psc_marker"
+sum=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" \
+      bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_pin_skip_summary' 2>&1)
+assert "skip-summary after reset: empty" test -z "$sum"
 
 # The next SKIP after a reset starts back at 1, not 3.
 out4=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \

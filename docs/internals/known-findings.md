@@ -16,6 +16,8 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 | `kind` | `fix` = real defect with a canonical fix · `rebuttal` = false-premise class with a canonical rebuttal · `checklist` = judgment question the self-review asks |
 | `rung` | required: the top rung of the correction ladder the class has reached — `design` (structure removes the defect) · `gate` (hook / pre-commit / CI blocks it) · `advisory` (detector or lint reports, nothing blocks) · `prompt` (critic-prompt text only) · `human` (judgment, no automation). A missing or unknown value exits 2 in `--list`, `--ladder` and `--refresh` (`--diff`/`--prompt` stay fail-soft on the critic path) |
 | `globs` | which changed files the class applies to |
+| `match` | optional: case-insensitive JS regex over the ledger finding text; with `globs` it decides which ledger findings the ladder attributes to the class (no `match` = skipped by the ladder proposals) |
+| `platform` | optional: `"windows"` = never proposed for promotion |
 | `detector` | deterministic matcher for `--diff` (added-line ERE, twin-missing, no-test-change, removed-flag-in-docs, md-fence-no-lang, hook-header-no-fail-direction); `null` = prompt-only class |
 | `canonical` | the fix, or the rebuttal to paste, in one paragraph |
 | `coverage` | what already enforces it structurally (shell-lint rule, `.coderabbit.yaml` instruction, hook) and the gap, with ticket ids |
@@ -42,11 +44,23 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 
 `known-findings.sh --list` prints the class table; `--json` on `--diff` gives
 machine output. `known-findings.sh --ladder` prints the class count per rung,
-then the promotion queue: `prompt`/`advisory` classes with agreed recurrences in
-the `evidence.ledger` verdict history, most first. The count is per file bucket
-(see `evidence` above), so classes sharing a glob share a number — read the queue
-as "which rungs carry the most agreed findings", then promote the class whose
-detector is cheapest to make blocking. Tests: `scripts/cr/test-known-findings.sh` (detectors on a
+then the promotion queue: `prompt`/`advisory` classes that carry a `match` and have
+real recurrences (verdict `agreed`, `confirmed` or `fixed`) in the `evidence.ledger`
+verdict history, most first, then the `PROPOSE` lines.
+
+Attribution and proposal rules (print-only; no rung is ever changed):
+
+- A ledger finding counts toward a class only when its file hits the class `globs`
+  AND its ledger `text` hits the class `match` (a case-insensitive JS regex). A class
+  with no `match` is skipped by the queue and the proposals; `--refresh` stats fall
+  back to the globs alone for it.
+- Move to `advisory` or `prompt`: 3 recurrences across 2 branches. Move to the
+  `gate` rung: 10 recurrences across 5 branches, counting only the last 30 days.
+  `--min-recurrences` / `--min-branches` override both bars.
+- A `rebuttal` class is never proposed above `prompt`. At 80 percent or more disproved
+  of its adjudicated findings, with none real in the last 30 days, it gets
+  `PROPOSE [id] retire`.
+- A class with `platform: "windows"` is never proposed. Tests: `scripts/cr/test-known-findings.sh` (detectors on a
 fixture repo, prompt/list/json shapes, refresh on a copy, usage contract) and the
 prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
 
@@ -56,12 +70,11 @@ prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
 |---|---|---|---|---|---|
 | `errexit-false-positive` | rebuttal | advisory | coderabbit-learning | added-line-regex | errexit hazards claimed in scripts that do not (or do not relevantly) use set -e |
 | `octal-leading-zero` | rebuttal | advisory | coderabbit-learning | added-line-regex | leading-zero operands: decimal in `[ ]`, octal only in arithmetic contexts |
+| `octal-arith-unnormalized` | fix | advisory | ledger | — | leading-zero operand (date +%m/%d/%H/%M/%S/%j) used in arithmetic without 10# normalization |
 | `handover-root-bootstrap` | rebuttal | advisory | coderabbit-learning | added-line-regex | handover-path.sh / handover_root demanded of a script that touches no handover path |
 | `mktemp-no-template` | fix | advisory | coderabbit-learning | added-line-regex | bare `mktemp` / `mktemp -d` without a template (BSD/macOS portability) |
 | `gnu-only-utility` | fix | advisory | cr-app-comments | added-line-regex | GNU-only command or flag in cross-platform shell (timeout, find -maxdepth, sed -i, date -d, readlink -f, grep -P, \s, hardcoded /usr/bin/cat) |
 | `bash32-portability` | fix | advisory | coderabbit-learning | added-line-regex | bash 4+ construct (mapfile/readarray, declare -A, ${v,,}, \|&, &>>) |
-| `ps1-twin-parity` | checklist | advisory | coderabbit-learning | twin-missing | a .sh/.ps1 twin changed without its counterpart |
-| `ps1-bom-policy` | rebuttal | prompt | coderabbit-learning | — | UTF-8 BOM: required on a non-ASCII .ps1, an error on any .sh |
 | `test-coverage-gap` | checklist | advisory | cr-app-comments | no-test-change | source changed, no test changed |
 | `docs-flag-drift` | checklist | advisory | cr-app-comments | removed-flag-in-docs | a removed/renamed `--flag` is still documented |
 | `grep-q-pipe-under-pipefail` | fix | advisory | ledger | added-line-regex | `<producer> \| grep -q` under `set -o pipefail` (early exit SIGPIPEs the producer; a negated guard inverts) |
@@ -71,8 +84,6 @@ prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
 | `hook-fail-direction` | checklist | advisory | ledger | hook-header-no-fail-direction | new hook without a stated fail-open/fail-closed direction + bypass |
 | `test-fixture-stub-fidelity` | rebuttal | prompt | ledger | — | stub-fidelity / over-verification findings against a test fixture |
 | `docs-prose-relitigation` | rebuttal | prompt | ledger | — | doc-wording findings that contradict the implementing script |
-| `worker-worktree-plugin-profile` | fix | prompt | coderabbit-learning | — | spawn-glm/spawn-claudex: plugin-profile resolution and failure teardown target the worker worktree, never the dispatcher |
-| `scheduler-task-xml-encoding` | rebuttal | prompt | ledger | — | UTF-16 / BOM claims about scheduled-task XML in the schtasks emitter family |
 | `pr-check-anchor-handshake-escalation` | rebuttal | prompt | coderabbit-learning | — | PR_CHECK_ANCHOR_DELEGATED handshake called forgeable => privilege escalation |
 | `cr-avail-artifact-perspective-scoping` | rebuttal | prompt | critic-panel | — | CR-ledger availability rows claimed to need artifact/perspective scoping |
 | `test-setup-unchecked-vacuous-green` | checklist | prompt | cr-app-comments | — | test setup or child-process status unchecked — the suite cannot fail (vacuous green) |

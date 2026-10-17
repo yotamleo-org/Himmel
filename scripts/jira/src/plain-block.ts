@@ -1,12 +1,16 @@
 // The ticket shape. Every ticket body opens with a plain-language
-// Impact / What / Why block (readable without knowing the code), then an
-// "Agent detail" section (files, contract, done-when, suites). `create` refuses
-// a body without it; the roadmap tracker reads the Impact section.
+// Impact / What / Why block (readable without knowing the code), then a Plan
+// and a DoD (each needs a real bullet or numbered line, not the template hint),
+// then an "Agent detail" section (files, contract, suites). `create` refuses a
+// body without it; the roadmap tracker reads the Impact section.
 //
 // Headings are matched by their words, not their level, so the same check runs
 // on markdown (`## Impact`) and on a pre-built ADF doc (heading nodes).
 
-export const PLAIN_SECTIONS = ['Impact', 'What', 'Why', 'Agent detail'] as const;
+export const PLAIN_SECTIONS = ['Impact', 'What', 'Why', 'Plan', 'DoD', 'Agent detail'] as const;
+
+/** Sections that must hold at least one bullet or numbered line beyond the template hint. */
+const LIST_SECTIONS = new Set<string>(['Plan', 'DoD']);
 
 export const PLAIN_BLOCK_TEMPLATE = `## Impact
 <who notices, and what they see today — plain words, no file paths>
@@ -17,8 +21,14 @@ export const PLAIN_BLOCK_TEMPLATE = `## Impact
 ## Why
 <why it is worth doing now>
 
+## Plan
+1. <one to five bounded steps, each naming the surface it touches>
+
+## DoD
+- <one to five checkable results: a test, a command and its output, a doc section, a Jira state>
+
 ## Agent detail
-<files, contract, done-when, suites>`;
+<files, contract, suites>`;
 
 /** Types that only warn: an Epic is a container, a Subtask inherits its parent's framing. */
 const WARN_ONLY_TYPES = new Set(['epic', 'subtask', 'sub-task']);
@@ -61,12 +71,25 @@ function parts(md: string): Part[] {
   return out;
 }
 
+const LIST_LINE = /^\s*(?:[-*+]|\d+[.)])\s+(\S.*?)\s*$/;
+const PLACEHOLDER = /^<[^>]*>$/;
+
+/** A bullet or numbered line whose whole content is not an angle-bracket hint. */
+function hasRealLine(body: string): boolean {
+  return body.split(/\r?\n/).some((l) => {
+    const m = LIST_LINE.exec(l);
+    return m !== null && !PLACEHOLDER.test(m[1]!);
+  });
+}
+
 function problems(ps: Part[]): string[] {
   const out: string[] = [];
   for (const want of PLAIN_SECTIONS) {
     const hit = ps.filter((p) => canonical(p.heading) === want);
     if (hit.length === 0) out.push(`missing "## ${want}"`);
     else if (!hit.some((p) => p.body.trim() !== '')) out.push(`"## ${want}" is empty`);
+    else if (LIST_SECTIONS.has(want) && !hit.some((p) => hasRealLine(p.body)))
+      out.push(`"## ${want}" has no bullet or numbered line beyond the placeholder`);
   }
   return out;
 }
@@ -88,14 +111,22 @@ export function lintPlainBlockAdf(doc: unknown): string[] {
   const ps: Part[] = [];
   for (const n of nodes) {
     if (n.type === 'heading') ps.push({ heading: text(n), body: '' });
-    else if (ps.length) ps[ps.length - 1]!.body += text(n) + '\n';
+    else if (ps.length) {
+      const cur = ps[ps.length - 1]!;
+      // text() joins node text without newlines, so each list item becomes its own markdown-style line.
+      if (n.type === 'bulletList' || n.type === 'orderedList')
+        for (const item of n.content ?? []) cur.body += '- ' + text(item) + '\n';
+      else
+        // a quote marker keeps prose that reads "- x" from passing as a list item; blank lines stay blank
+        cur.body += text(n).split('\n').map((l) => (l.trim() ? '> ' + l : l)).join('\n') + '\n';
+    }
   }
   return problems(ps);
 }
 
 export function plainBlockVerdict(type: string, found: string[]): PlainVerdict {
   if (found.length === 0) return { action: 'ok', message: '' };
-  const why = `ticket body lacks the plain Impact/What/Why block: ${found.join('; ')}`;
+  const why = `ticket body lacks the ticket shape (Impact, What, Why, Plan, DoD, Agent detail): ${found.join('; ')}`;
   if (WARN_ONLY_TYPES.has(type.trim().toLowerCase())) {
     return { action: 'warn', message: `jira: warning: ${why} (${type} is exempt, filing anyway)` };
   }

@@ -1,0 +1,18 @@
+{
+  "createdAt": "2026-10-16T22:28:04Z",
+  "headRefName": "feat/stall-fixture-noci",
+  "headRefOid": "00c10000000000000000000000000000000000c3",
+  "mergeStateStatus": "BLOCKED",
+  "mergeable": "MERGEABLE",
+  "number": 9003,
+  "statusCheckRollup": [
+    {
+      "__typename": "StatusContext",
+      "context": "CodeRabbit",
+      "startedAt": "2026-10-17T00:48:33Z",
+      "state": "SUCCESS",
+      "targetUrl": ""
+    }
+  ],
+  "updatedAt": "2026-10-17T00:48:32Z"
+}

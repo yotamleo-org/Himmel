@@ -119,7 +119,9 @@
 #      refresh stamp is written; only the orphaned chunks remain
 #  10  EGRESS REFUSED — a remote (openai:) model is configured and the egress
 #      gate (scripts/qmd/qmd-jina-gate.mjs) denies a collection the config or
-#      the index database holds; nothing was run
+#      the index database holds, or an OpenRouter config has no provider key
+#      in the daemon env file (absent or empty), or that file is readable by
+#      others; nothing was run
 #   9  BUSY — another embed process holds the lock after one retry;
 #      completeness is not verified and no refresh stamp is written
 set -euo pipefail
@@ -413,27 +415,48 @@ if [ "$remote_model" -eq 1 ]; then
         echo "ERR qmd-reindex: a remote model is configured but the egress gate or node is missing — index NOT refreshed." >&2
         exit 10
     fi
-    # The provider key is the daemon's: take it from the same env file the
-    # daemon launcher reads (one line, mode 0600/0400, never sourced), else
-    # `qmd embed` sends no Authorization header and the provider answers 401.
-    if [ -z "${QMD_OPENAI_API_KEY:-}" ] && { case "${QMD_OPENAI_BASE_URL:-}" in *openrouter.ai*) true ;; *) false ;; esac || grep -qs '^[^#]*openrouter\.ai' "$QMD_CFG_FILE"; }; then
-        key_env_file="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}"
-        if [ -f "$key_env_file" ]; then
-            # shellcheck disable=SC2012  # the mode string is the point; the path is fixed
-            case "$(ls -ld "$key_env_file" 2>/dev/null | cut -c1-10)" in
-                -rw-------|-r--------) ;;
-                *)
-                    echo "ERR qmd-reindex: $key_env_file holds the provider key but is readable by others - index NOT refreshed (chmod 600 it)." >&2
-                    exit 10 ;;
-            esac
-            QMD_OPENAI_API_KEY="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$key_env_file" | head -n 1)"
-            [ -n "$QMD_OPENAI_API_KEY" ] && export QMD_OPENAI_API_KEY
-        fi
-        if [ -z "${QMD_OPENAI_API_KEY:-}" ]; then
-            echo "ERR qmd-reindex: a remote model is configured but no provider key was found - index NOT refreshed." >&2
-            echo "    Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $key_env_file, or export QMD_OPENAI_API_KEY for this run." >&2
-            exit 10
-        fi
+    # The provider key is the daemon's, never a session's: take it from the env
+    # file the daemon launcher reads (one line, mode 0600/0400, never sourced)
+    # for any remote model, else `qmd embed` sends no Authorization header and
+    # the provider answers 401. A key from the file replaces whatever this
+    # session carries. Without one, an OpenRouter config drops the session key
+    # and refuses, as the daemon does.
+    # ponytail: other remote providers keep a session key and are not refused
+    # for a missing one (the egress gate owns that), the daemon requires one
+    # for all; unify once the Jina flow is confirmed to use the file key.
+    # The read runs with tracing off so `bash -x` never prints the key.
+    key_trace=0
+    case "$-" in *x*) key_trace=1 ;; esac
+    set +x
+    key_openrouter=0
+    case "${QMD_OPENAI_BASE_URL:-}" in *openrouter.ai*) key_openrouter=1 ;; esac
+    if grep -qs '^[^#]*openrouter\.ai' "$QMD_CFG_FILE"; then key_openrouter=1; fi
+    file_key=""
+    key_env_file="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}"
+    if [ -f "$key_env_file" ]; then
+        # shellcheck disable=SC2012  # the mode string is the point; the path is fixed
+        case "$(ls -ld "$key_env_file" 2>/dev/null | cut -c1-10)" in
+            -rw-------|-r--------) ;;
+            *)
+                echo "ERR qmd-reindex: $key_env_file holds the provider key but is readable by others - index NOT refreshed (chmod 600 it)." >&2
+                exit 10 ;;
+        esac
+        file_key="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$key_env_file" | head -n 1)"
+    fi
+    key_missing=0
+    if [ -n "$file_key" ]; then
+        QMD_OPENAI_API_KEY="$file_key"
+        export QMD_OPENAI_API_KEY
+    elif [ "$key_openrouter" -eq 1 ]; then
+        unset QMD_OPENAI_API_KEY
+        key_missing=1
+    fi
+    file_key=""
+    if [ "$key_trace" -eq 1 ]; then set -x; fi
+    if [ "$key_missing" -eq 1 ]; then
+        echo "ERR qmd-reindex: a remote model is configured but no provider key was found - index NOT refreshed." >&2
+        echo "    Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $key_env_file." >&2
+        exit 10
     fi
     if ! node "$GATE_JS" "$QMD_CFG_FILE" "$QMD_INDEX_PATH" >&2; then
         echo "ERR qmd-reindex: EGRESS REFUSED — index NOT refreshed; see docs/internals/egress-matrix.md." >&2

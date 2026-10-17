@@ -24,7 +24,10 @@ stamp and the `## Verdict` line itself, and appends the evidence file verbatim
 must be an absolute path under `/tmp/claude-<uid>/` reached without a symlink.
 Every new NO-GO evidence file must carry exactly one `class:` field: a value
 or comma set from `option-parsing, cwd-indirection, shell-parsing, tool-defaults,
-reader-allowlist, other`. A classless NO-GO is refused (exit 2);
+reader-allowlist, other`. A class set naming `other` also needs exactly one
+non-empty `class-reason:` line. Evidence must not carry its own `## Verdict`
+heading, bold verdict line, `prior:` or `flipped:` line (exit 2; `--prior`
+makes the writer compute them). A classless NO-GO is refused (exit 2);
 add the required class to the evidence and retry the writer. Keep the earlier
 class of a repeated finding rather than relabeling it to buy another round.
 `--pr <n>` is required: the writer records `pr: <n>` (and

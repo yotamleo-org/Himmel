@@ -209,6 +209,12 @@ test('a NO-GO without the class field is UNRECORDED; one with it is recorded', (
   assert.equal(ok.art.verdict, 'NO-GO');
 });
 
+test('the prompt tells the judge a class other needs a class-reason line', () => {
+  const f = fixture();
+  f.run(f.args);
+  assert.match(readFileSync(f.p.env, 'utf8'), /class-reason: <why>/);
+});
+
 test('a refused launch is final: REFUSED, claude never called, no subscription fallback', () => {
   const f = fixture();
   const r = f.run(f.args, { HIMMEL_API_LANE: 'off' });

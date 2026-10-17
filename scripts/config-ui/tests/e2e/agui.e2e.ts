@@ -84,11 +84,12 @@ test("4. each agent is named with its role and model, its work under its name, a
   const agents = page.locator(".agents .agent");
   await expect(agents).toHaveCount(2);
   await expect(agents.nth(0)).toContainText("HIMMEL-1957-N1290-check-ci-cap");
-  await expect(agents.nth(0)).toContainText("leg · opus 5.5");
+  await expect(agents.nth(0)).toContainText("worker session · opus 5.5");
   await expect(agents.nth(1)).toContainText("correctness critic");
   await expect(agents.nth(1)).toContainText("critic · code-reviewer · sonnet 5.5");
   // the critic's Read sits in a block headed by the critic, one step in; the leg's calls do not
   const critic = page.locator(".block.sub", { hasText: "correctness critic" });
+  await critic.locator(".fold-head").click();
   await expect(critic.locator(".call", { hasText: "Read" })).toBeVisible();
   await expect(critic.locator(".call", { hasText: "Push the fix" })).toHaveCount(0);
   await expect(page.locator(".band")).toHaveCount(2);
@@ -133,6 +134,7 @@ test("6. long tool output shows its head with a control for the rest", async ({ 
   await spaced(h);
   await page.goto(h.url);
   await expect(page.getByRole("status")).toHaveText(IDLE);
+  await page.locator(".block.sub .fold-head").click(); // the finished subagent's block is folded
   const read = page.locator(".call", { hasText: "Read" });
   await read.locator(".call-head").click();
   await expect(read.locator(".call-body pre").last()).not.toContainText("line 40");
@@ -179,6 +181,31 @@ test("8. a running subagent shows running with its current call, then flips to d
   h.append(J.end());
   await expect(page.locator(".agents-running")).toHaveText("0 running");
   await expect(page.getByRole("status")).toHaveText(IDLE);
+});
+
+test("8b. a running subagent is listed in the Now panel; once finished its block folds and opens on click", async ({ page }) => {
+  h = await bootAgui();
+  await page.goto(h.url);
+  const sub = { sub: "b4d2f1", model: "claude-sonnet-5-5" };
+  h.append(J.prompt("Check the diff with a critic."));
+  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", prompt: "Read check-ci.sh" }));
+  h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
+  h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
+  const row = page.locator(".now li", { has: page.locator(".agent-name", { hasText: "diff critic" }) });
+  await expect(row.locator(".agent-now")).toContainText("Read scripts/check-ci.sh");
+  await expect(page.locator(".block.sub .msg")).toBeVisible(); // running: open
+
+  h.appendSub("b4d2f1", J.result("toolu_r", "ok", sub));
+  h.appendSub("b4d2f1", J.text("Looks right.", "end_turn", sub));
+  h.append(J.result("toolu_agent", "Looks right.", { use: { status: "completed", agentId: "b4d2f1" } }));
+  await expect(row).toHaveCount(0);
+  const fold = page.locator(".block.sub .fold-head");
+  await expect(fold).toContainText("from Agent");
+  await expect(page.locator(".block.sub .msg")).toHaveCount(0); // finished: folded
+  await fold.click();
+  await expect(page.locator(".block.sub .msg").last()).toContainText("Looks right.");
+  await fold.click(); // the same control folds it again
+  await expect(page.locator(".block.sub .msg")).toHaveCount(0);
 });
 
 // `himmelctl ui --agui` with no session id opens the fleet landing over the fixture fleet (3 live +
@@ -382,7 +409,7 @@ test("12. two-console side menu, deep-linked page, and identical menu/row drill-
   await expect(page.locator(".fleet-console h2")).toHaveText(other);
   await expect(page.locator(".fleet")).toContainText(FLEET.idle.name);
   await expect(page.locator(".fleet")).not.toContainText(FLEET.leg.name);
-  const menu = page.getByRole("navigation", { name: "Consoles" });
+  const menu = page.getByRole("navigation", { name: "Supervisor sessions" });
   await expect(menu.locator("a.console-page")).toHaveCount(2);
   await menu.locator("a.console-page", { hasText: FLEET.console.name }).click();
   await expect(page.locator(".fleet-console h2")).toHaveText(FLEET.console.name);
@@ -411,7 +438,7 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   await expect(done.locator("> .fleet-line a.fleet-head")).toHaveAttribute("href", CLOUD.url);
   await expand(page, "cloud-HIMMEL-905");
   await expand(page, "cloud-HIMMEL-906");
-  await expect(done.locator(".fleet-role")).toHaveText("cloud · cloud bank");
+  await expect(done.locator(".fleet-role")).toHaveText("cloud · cloud usage budget");
   await expect(done.locator(".fleet-cloud-phase")).toHaveText("PR 1905 · CLOUD-DONE, shepherd's turn · cloud session");
   await expect(done.locator("a.fleet-cloud")).toHaveAttribute("href", CLOUD.url);
   await expect(done.locator(".fleet-context")).toHaveText("tokens not measured (cloud)");

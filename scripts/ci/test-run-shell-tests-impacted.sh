@@ -299,4 +299,37 @@ else
 fi
 git -C "$SB" update-ref refs/remotes/origin/main "$MAIN_TIP"
 
+# 24t: a merge count that is empty (rev-list failed) or non-numeric is not "has
+# merges": the range stays as passed. A git wrapper fakes the rev-list answer.
+REAL_GIT=$(command -v git)
+mkdir -p "$SB/fakegit"
+printf '#!/bin/sh\ncase "$*" in *"rev-list --merges --count"*) [ -n "$RL_ANS" ] || exit 128; echo "$RL_ANS"; exit 0;; esac\nexec %s "$@"\n' "$REAL_GIT" > "$SB/fakegit/git"
+chmod +x "$SB/fakegit/git"
+git -C "$SB" checkout -q -f pr
+for ans in "" "garbage"; do
+  : > "$IMP_LOG"
+  out=$(PATH="$SB/fakegit:$PATH" RL_ANS="$ans" bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+  ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+  if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing " ] && ! grepq "$out" 'holds a merge-forward'; then
+    pass "24t: merge count '${ans:-<empty>}' leaves the range as passed"
+  else
+    fail "24t: count='$ans' rc=$rc ran='$ran' output: $out"
+  fi
+done
+
+# 24u: a shallow clone (history below the tip missing) leaves the range as passed.
+SH="$SB/shallow"
+if shout=$(git clone -q --depth 1 --branch pr "file://$SB" "$SH" 2>&1 \
+   && git -C "$SH" update-ref refs/remotes/origin/main HEAD 2>&1); then
+  out=$(bash "$SH/scripts/ci/run-shell-tests.sh" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+  # The base commit is missing, so the untouched range cannot resolve: a refusal, not a clamp.
+  if [ "$rc" -eq 2 ] && grepq "$out" "could not be resolved" && ! grepq "$out" 'holds a merge-forward'; then
+    pass "24u: a shallow clone leaves the range as passed and refuses it"
+  else
+    fail "24u: rc=$rc output: $out"
+  fi
+else
+  fail "24u: shallow clone setup failed: $shout"
+fi
+
 rst_tally

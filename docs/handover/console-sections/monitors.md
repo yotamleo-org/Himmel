@@ -25,6 +25,13 @@ write them in the session scratchpad, not in the repo. The context-fill probe
 (`scripts/context-fill.sh --percent`) **fails inside a Monitor** — run it in an
 ordinary Bash call.
 
+**Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a leg
+waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR
+sits for hours, run `<kit>/pr-stall.sh --manifest <fleet manifest>` by hand: one
+`STALL <pr> <class> <leg> <detail>` line per stuck PR (conflict, no-ci, ci-slow,
+idle). Add `--notify` to send the owning leg the action once per (pr, class,
+head). Not yet wired into the tick (HIMMEL-6049 slice 2).
+
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads
 `OPERATOR: <ask>. Filed HIMMEL-n`. The roadmap tracker builds the

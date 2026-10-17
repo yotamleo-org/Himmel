@@ -39,11 +39,16 @@ token if one came. If none did (a relay may omit it), keep the one you hold and
 you are fully authenticated to the new console: a fresh token adds no
 authentication, so its absence is not a gap and needs no rotation. Write
 `- SUCCESSION accepted: <new console session> replaces <old>` under
-`## Results` (names and grammar only, no token), and quote your token back in
-your `SendMessage` reply to the new console — the fresh one, or the unchanged
-one you kept; its `LIVE` waits on that reply. Tokens go in backticks, never in
-prose. A chain (2) always carries a fresh token, so it
-always rotates.
+`## Results` (names and grammar only, no token). **That bullet is the
+quote-back:** the new console's `succession-tracker.sh` tallies it and its
+`LIVE` waits on every leg's bullet, so send **no** `SendMessage` to accept. The
+one `SendMessage` you send is on a timeout or a decline: a leg that cannot
+write the bullet, or that declines the change, says so in one line to the
+claiming session (no tokens in it). The bullet carries no token, so it proves
+only that the leg read the relay; the relay or chain check above is what
+authenticated the change. A fresh token, when one came, you adopt as your token
+and never write into the bullet or a message. A chain (2)
+always carries a fresh token, so it always rotates.
 
 | # | Sender (`from`) | Quotes | Named console | Verdict |
 |---|---|---|---|---|

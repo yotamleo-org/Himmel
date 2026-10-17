@@ -12,6 +12,8 @@
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
+#   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
+#   under its NODE line (query) or as a Rationale line (explain).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
@@ -47,6 +49,11 @@ for a in "$@"; do case "$a" in --budget|--budget=*) has_budget=1 ;; esac; done
 [ "$has_budget" = 1 ] || set -- "$@" --budget 8000
 
 ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
+# graphify stores a semantic node's WHY as `rationale` but neither verb prints it, so a "why"
+# question got a pointer to a doc section; append-rationale.py adds the stored text.
+if command -v python3 >/dev/null 2>&1; then
+  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$out/graph.json")" && ans="$withwhy"
+fi
 printf '%s\n' "$ans"
 need="$(printf '%s\n' "$ans" | grep -m1 'TRUNCATED: showing' | sed -n 's/.*--budget \([0-9][0-9]*\).*/\1/p')"
 if [ -n "$need" ]; then

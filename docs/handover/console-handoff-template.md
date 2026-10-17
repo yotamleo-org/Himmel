@@ -18,13 +18,16 @@ leg's token, so rotating it to `{{LETTER}}-<leg>-<hex>` is optional, not a
 precondition of succession. Ask the {{PREDECESSOR_LETTER}} console session
 (`{{PREDECESSOR}}` minus the `.md`) to re-brief each inherited leg from its own
 socket, naming you and quoting the leg's current token (plus your fresh one only
-if you chose to issue one), and wait for each leg's quote-back — **the tokens in
+if you chose to issue one). A leg's quote-back is its `SUCCESSION accepted`
+Results bullet: arm `console-wait.sh` with `--succession <your session name>` before
+you wait (ACTION ZERO step 9) and it wakes you once. **The tokens in
 the list below are the predecessor's, and a leg is yours only once it has quoted
-back**; until then do not treat them as yours. Only then send **`{{LETTER}} LIVE`** to that
-session so it releases its lock and wraps — or, for a leg that stays silent,
-send it with that leg named as one that did not quote back, and why (ACTION
+back**; until then do not treat them as yours. Only on `WAKE succession complete`
+send **`{{LETTER}} LIVE`** to that
+session so it releases its lock and wraps — or, on `WAKE succession partial`, send
+it with each leg named as one that did not quote back, and why (ACTION
 ZERO step 9), rather than waiting on it indefinitely. `LIVE` first strands
-every leg that has not been re-briefed.
+every leg that has not been re-briefed. Then re-arm without `--succession`.
 
 ## In flight
 

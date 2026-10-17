@@ -7,7 +7,7 @@
 # generates that line itself; the judge's prose comes from a file it wrote to
 # its scratch, so the command a judge types names nothing the guards key on.
 #
-# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>]
+# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>]
 #
 # Writes <root>/<user>/<bucket>/verdicts/<qid>/<name>.md (name defaults to
 # `judge`; <name>-<head>.md beside a NO-GO for another head), where <root>
@@ -26,6 +26,8 @@
 #
 #     pr: <n>
 #     branch: <name>            (only when --branch is given)
+#     prior: <GO|NO-GO>         (only when --prior is given)
+#     flipped: <y|n>            (with prior: y when it differs from the answer)
 #
 #     <the evidence file, verbatim>
 #     mac: <64 hex>
@@ -66,6 +68,12 @@
 # a new NO-GO evidence file must carry exactly one class: field,
 # one value or a comma set from option-parsing, cwd-indirection, shell-parsing,
 # tool-defaults, reader-allowlist, other; missing or invalid classes exit 2.
+# A class set naming `other` (NO-GO or GO) also needs exactly one non-empty
+# `class-reason:` line, so a free class is never recorded without its why.
+# The record keeps one canonical header: evidence carrying a `## Verdict`
+# heading, a bold **GO** / **NO-GO** verdict line, or a typed `prior:` /
+# `flipped:` line exits 2. `flipped` is never typed: --prior <GO|NO-GO> makes
+# the writer compute it (y when the prior differs from the answer).
 # A valid NO-GO is always written past those last two: go.sh treats
 # any NO-GO as a veto, so it only narrows, and refusing it would leave a
 # forged or mistaken GO alone on disk. The same answer again, or a verdict
@@ -103,7 +111,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>]" >&2
     exit 2
 }
 seg_ok() {
@@ -113,7 +121,7 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge PR="" BRANCH="" BIND=""
+EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --bind-reviewed)
@@ -122,6 +130,7 @@ while [ "$#" -gt 0 ]; do
             BIND=$2; shift 2 ;;
         --pr) [ "$#" -ge 2 ] || usage; PR=$2; shift 2 ;;
         --branch) [ "$#" -ge 2 ] || usage; BRANCH=$2; shift 2 ;;
+        --prior) [ "$#" -ge 2 ] || usage; PRIOR=$2; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE=$2; shift 2 ;;
         --judge) [ "$#" -ge 2 ] || usage; NAME=$2; shift 2 ;;
         *) usage ;;
@@ -153,6 +162,10 @@ if [ -n "$BIND" ]; then
     fi
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
+case "$PRIOR" in
+    ''|GO|NO-GO) ;;
+    *) echo "write-verdict: --prior must be GO or NO-GO (got '$PRIOR')" >&2; exit 2 ;;
+esac
 # the verdict names its PR, as go.sh's PR argument is spelled
 # (no leading zero), so two PRs on one head are told apart.
 case "$PR" in
@@ -225,6 +238,7 @@ fi
 # every new NO-GO names the finding class before it can buy
 # a delta round. GO evidence need not carry a class. Keep one unambiguous
 # field; unknown labels and empty members cannot become a fresh class.
+classes=$(awk '/^class:/ { sub(/^class:[ \t]*/, ""); sub(/[ \t\r]+$/, ""); print }' "$EVIDENCE")
 if [ "$ANSWER" = NO-GO ]; then
     classes=$(awk '/^class:/ { sub(/^class:[ \t]*/, ""); sub(/[ \t\r]+$/, ""); print }' "$EVIDENCE")
     class_word='(option-parsing|cwd-indirection|shell-parsing|tool-defaults|reader-allowlist|other)'
@@ -233,6 +247,28 @@ if [ "$ANSWER" = NO-GO ]; then
         echo "write-verdict: NO-GO requires one class: field, a comma set from option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other" >&2
         exit 2
     fi
+fi
+# a class set naming other must say why: exactly one non-empty class-reason line.
+classes=${classes//$'\n'/,}
+if [[ ,$classes, =~ [,[:blank:]]other[,[:blank:]] ]]; then
+    cr_byte=$(printf '\r')
+    if [ "$(grep -c '^class-reason:' "$EVIDENCE")" != 1 ] || ! grep -q "^class-reason:[[:blank:]]*[^[:blank:]$cr_byte]" "$EVIDENCE"; then
+        echo "write-verdict: class other needs exactly one non-empty class-reason: line in the evidence" >&2
+        exit 2
+    fi
+fi
+# one canonical header and verdict line per record, and flipped is computed, never typed.
+if grep -Eq '^## Verdict[[:space:]]*$' "$EVIDENCE"; then
+    echo "write-verdict: the evidence carries a '## Verdict' heading; the writer emits the one canonical header" >&2
+    exit 2
+fi
+if grep -Eq '^\*\*(GO|NO-GO)\*\*' "$EVIDENCE"; then
+    echo "write-verdict: the evidence carries a bold **GO** / **NO-GO** verdict line; the writer emits the one verdict line" >&2
+    exit 2
+fi
+if grep -Eq '^(flipped|prior):' "$EVIDENCE"; then
+    echo "write-verdict: the evidence carries a prior: or flipped: line; pass --prior <GO|NO-GO> and the writer computes both" >&2
+    exit 2
 fi
 # review-round.sh honours a layer-decision line only as
 # `layer-decision: text|os|classifier|accept <reason>`; one without the keyword
@@ -391,6 +427,7 @@ if ! {
     printf '## Verdict\n\n**%s** for head `%s`.\n\n' "$ANSWER" "$HEAD" &&
     printf 'pr: %s\n' "$PR" &&
     { [ -z "$BRANCH" ] || printf 'branch: %s\n' "$BRANCH"; } &&
+    { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
     printf '\n' &&
     { [ -z "$REVIEWED" ] || printf 'reviewed-head: %s\nbound-by: write-verdict --bind-reviewed; the delta from the reviewed head is test-path-only or comment-only\n\n' "$REVIEWED"; } &&
     cat "$EVIDENCE" &&

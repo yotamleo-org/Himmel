@@ -115,6 +115,16 @@ contains "6b: failing step named" "$out" "append-results.sh failed"
 lacks "6b: no board after a bullet failure" "$log" "board"
 lacks "6b: no leg message after a bullet failure" "$out" "merge-on-green.sh"
 
+# --- 6c. --prior passes through to write-verdict only when given ----------------
+run q6c NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --prior GO
+check "6c: rc 0" "$rc" 0
+contains "6c: write-verdict gets --prior GO" "$log" "[--evidence-file] [$EV] [--prior] [GO]"
+run q6c NO-GO "$HEAD40" --pr 77 --evidence-file "$EV"
+lacks "6c: without --prior the flag is absent" "$log" "--prior"
+run q6c NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --prior
+check "6c: --prior with no value rc 2" "$rc" 2
+check "6c: --prior with no value ran nothing" "$(cat "$LOG")" ""
+
 # --- 7. usage ----------------------------------------------------------------
 run q7 MAYBE "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "7: bad answer rc 2" "$rc" 2

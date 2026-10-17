@@ -530,6 +530,7 @@ judge_nogo_record() (
                     local_scan=0
                     grep -qsF " $qid/" "$verdict_state" 2>/dev/null || local_scan=$?
                 fi
+                # intentional: class history is scoped to this branch's consumed qids plus current candidates; a qid consumed elsewhere and absent from verdict_state is skipped
                 [ "$local_scan" -ne 1 ] || continue
                 if [ "$local_scan" -ne 0 ]; then
                     echo "review-round: cannot read $verdict_state for class history - delta round refused" >&2

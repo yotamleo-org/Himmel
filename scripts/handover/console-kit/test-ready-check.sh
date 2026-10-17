@@ -46,7 +46,8 @@ echo "$*" >> "$GH_LOG"
 args="$*"
 case "$args" in
     "repo view --json owner,name"*)
-        printf '%s\n' "${STUB_NWO:-acme/repo}" ;;
+        [ -z "${STUB_DEFAULT_BRANCH_FAIL:-}" ] || { printf '%s\n' "${STUB_NWO:-acme/repo}"; exit 0; }
+        printf '%s main\n' "${STUB_NWO:-acme/repo}" ;;
     *"--json headRefOid,mergeStateStatus"*)
         printf '%s %s\n' "${STUB_HEAD:-}" "${STUB_MSS:-CLEAN}" ;;
     *"--json statusCheckRollup"*)
@@ -55,6 +56,13 @@ case "$args" in
         printf '%s' "${STUB_COMMITS:-[]}" ;;
     *"--json body"*)
         printf '%b' "${STUB_BODY:-}" ;;
+    *"contents/scripts/ci/ci-trust-paths.txt"*)
+        [ -z "${STUB_TRUST_LIST_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
+        cat "$STUB_TRUST_LIST_FILE" ;;
+    "api repos/"*"/pulls/"*"/files --paginate"*)
+        printf '%s\n' "${STUB_FILES:-README.md}" | while IFS= read -r f; do printf '%s\t\n' "$f"; done ;;
+    "api repos/"*"/pulls/"*"changed_files"*)
+        printf '%s|%s\n' "${STUB_HEAD:-}" "$(printf '%s\n' "${STUB_FILES:-README.md}" | wc -l | tr -d ' ')" ;;
     'api repos/'*'/pulls/'*) printf '%s\n' "${STUB_HEAD:-}" ;;
     *'p77:pullRequest'*)
         [ -z "${STUB_SNAPSHOT_FAIL:-}" ] || exit 1
@@ -109,6 +117,20 @@ fi
 printf '%s\tTask\t%s\tsummary\n' "$2" "$st"
 STUB
 chmod +x "$tmp/bin/jira-stub"
+# ── trust-path fixtures: the REAL trust list, served as the default branch's; an
+# anchor repo (carrying the real go-gate.sh) whose origin is at the same commit,
+# so a trust-path hit passes trust_path_check's anchor-is-current test offline ──
+TRUST_LIST_FILE="$HERE/../../ci/ci-trust-paths.txt"
+TP_ANCHOR="$tmp/tp-anchor"
+git init -q --bare "$tmp/tp-origin.git"
+git init -q "$TP_ANCHOR"
+mkdir -p "$TP_ANCHOR/scripts/lib"
+cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
+git -C "$TP_ANCHOR" add -A
+git -C "$TP_ANCHOR" -c user.name=t -c user.email=t@t commit -q -m init
+git -C "$TP_ANCHOR" remote add origin "$tmp/tp-origin.git"
+git -C "$TP_ANCHOR" push -q origin HEAD:refs/heads/main 2>/dev/null
+git -C "$tmp/tp-origin.git" symbolic-ref HEAD refs/heads/main
 export GH_LOG
 PATH="$tmp/bin:$PATH"
 export PATH
@@ -147,10 +169,14 @@ run() {
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
+        STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
+        STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
+        READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR:-$TP_ANCHOR}" \
         bash "$SCRIPT" "$PR" "$SHA")
 }
 
 reset_stubs() {
+    unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
     unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL
     seed_ledger_ok
 }
@@ -539,6 +565,7 @@ mkdir -p "$own/scripts/handover/console-kit" "$own/scripts/lib"
 cp "$SCRIPT" "$own/scripts/handover/console-kit/ready-check.sh"
 cp "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$own/scripts/lib/load-dotenv.sh"
 cp "$REPO_ROOT/scripts/lib/gh-pr-snapshot.sh" "$own/scripts/lib/gh-pr-snapshot.sh"
+cp "$REPO_ROOT/scripts/lib/go-gate.sh" "$own/scripts/lib/go-gate.sh"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
 reset_stubs
@@ -549,6 +576,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/console-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
 check "own-checkout .env: exit 0" "$rc" "0"
@@ -1056,6 +1084,51 @@ STUB_HEAD="$SHA"; STUB_FILES="scripts/hooks/old-hook.sh"; STUB_FILE_STATUS="modi
 rc=0; out="$(run)" || rc=$?
 SHA="$UNW_REAL_SHA"
 contains "modified (not added) unwired hook is not judged: check 11 passes" "$out" "[PASS] 11."
+reset_stubs
+
+# --- 12. computed TRUST-PATH line: from the PR diff against the default
+# branch's list, never from any READY text ---------------------------------------
+reset_stubs
+rc=0; out="$(run)" || rc=$?
+check "trust: docs/script-only diff exit 0" "$rc" "0"
+contains "trust: a non-trust diff prints no" "$out" "TRUST-PATH: no"
+notcontains "trust: a non-trust diff never prints yes" "$out" "TRUST-PATH: yes"
+trust_line_pos=$(printf '%s\n' "$out" | grep -n '^TRUST-PATH:' | cut -d: -f1)
+verdict_pos=$(printf '%s\n' "$out" | grep -n '^READY-CHECK ' | cut -d: -f1)
+check "trust: the line comes before the verdict" "$((trust_line_pos < verdict_pos))" "1"
+
+reset_stubs
+STUB_FILES="scripts/lib/fixtures/anything.txt"
+rc=0; out="$(run)" || rc=$?
+contains "trust: scripts/lib/fixtures diff (PR 2475 shape) prints yes" "$out" "TRUST-PATH: yes"
+notcontains "trust: fixtures diff never prints no" "$out" "TRUST-PATH: no"
+contains "trust: a yes line is not a failure of the check" "$out" "[PASS] 12."
+
+reset_stubs
+STUB_FILES="scripts/lib/env-alias.sh"
+STUB_BODY='## Ticket coverage\n- ask: done\n\nTRUST PATH: none touched\n'
+rc=0; out="$(run)" || rc=$?
+contains "trust: scripts/lib/env-alias.sh diff (PR 2885 shape) prints yes whatever the body claims" "$out" "TRUST-PATH: yes"
+
+reset_stubs
+STUB_TRUST_LIST_FAIL=1
+rc=0; out="$(run)" || rc=$?
+check "trust: unreadable list exits 1" "$rc" "1"
+contains "trust: unreadable list fails check 12" "$out" "[FAIL] 12."
+notcontains "trust: unreadable list never prints no" "$out" "TRUST-PATH: no"
+contains "trust: unreadable list ends in FAIL" "$out" "READY-CHECK FAIL"
+
+reset_stubs
+STUB_DEFAULT_BRANCH_FAIL=1
+rc=0; out="$(run)" || rc=$?
+check "trust: unresolvable default branch exits 1" "$rc" "1"
+contains "trust: unresolvable default branch fails check 12" "$out" "[FAIL] 12."
+notcontains "trust: unresolvable default branch never prints no" "$out" "TRUST-PATH: no"
+
+# --only 7 stays a coverage-only lint: no trust check
+reset_stubs
+rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
+notcontains "trust: --only 7 prints no TRUST-PATH line" "$out" "TRUST-PATH:"
 reset_stubs
 
 echo "---"

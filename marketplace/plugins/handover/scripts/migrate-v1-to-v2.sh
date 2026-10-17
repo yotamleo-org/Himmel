@@ -211,18 +211,42 @@ process_item() {
 
       log "  jira create --type $jtype ${parent:+--parent $parent} --title '$slug'"
       if [ "$DRY_RUN" -eq 0 ]; then
-        local out
+        local out body
+        body="$(mktemp)" || { echo "ERR: mktemp failed for $dir" >&2; return 2; }
+        # jira create refuses a body without the Impact/What/Why/Plan/DoD/Agent detail shape.
+        cat > "$body" <<BODY
+## Impact
+Retro ticket for the handover item "$slug" ($jtype), filed by the v1 to v2 handover migration so the item gets a Jira key.
+
+## What
+Link the migrated handover item "$slug" to this ticket.
+
+## Why
+The v2 handover layout names every item after its Jira key.
+
+## Plan
+1. Rename the migrated handover item "$slug" to carry this ticket's key.
+
+## DoD
+- The handover item directory is named after this ticket's key and its brief links back to it.
+
+## Agent detail
+Created by migrate-v1-to-v2.sh from $dir. No further work is expected beyond the rename.
+BODY
         if [ -n "$parent" ]; then
-          out="$(jira create --type "$jtype" --parent "$parent" --title "$slug" --desc "retro for handover migration v2" 2>&1)" || {
+          out="$(jira create --type "$jtype" --parent "$parent" --title "$slug" --desc-file "$body" 2>&1)" || {
+            rm -f "$body"
             echo "ERR: jira create failed for $dir: $out" >&2
             return 2
           }
         else
-          out="$(jira create --type "$jtype" --title "$slug" --desc "retro for handover migration v2" 2>&1)" || {
+          out="$(jira create --type "$jtype" --title "$slug" --desc-file "$body" 2>&1)" || {
+            rm -f "$body"
             echo "ERR: jira create failed for $dir: $out" >&2
             return 2
           }
         fi
+        rm -f "$body"
         jira="$(echo "$out" | grep -oE '[A-Z]+-[0-9]+' | head -1)"
         if [ "$status" = "done" ]; then
           jira transition "$jira" Done >/dev/null 2>&1 || true

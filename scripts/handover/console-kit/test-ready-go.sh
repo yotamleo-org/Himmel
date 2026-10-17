@@ -54,6 +54,7 @@ git -C "$ANCHOR" remote add origin "$tmp/origin.git"
 git -C "$ANCHOR" push -q origin HEAD:refs/heads/main 2>/dev/null
 git -C "$tmp/origin.git" symbolic-ref HEAD refs/heads/main
 export READY_GO_ANCHOR="$ANCHOR"
+export READY_CHECK_ANCHOR="$ANCHOR"
 
 # A gh in front of the ready-pass one: the queries ready-go adds (repo name and
 # default branch, PR title, trust list and file listing). Everything else falls
@@ -146,11 +147,11 @@ lacks "trust hit: no plain GO line" "$OUT" "SENDMESSAGE"
 contains "trust hit: routes through the judge" "$OUT" "go.sh --trust-reviewed <judge qid> 77 $SHA"
 unset STUB_FILE
 
-# --- 6. trust list unreadable --------------------------------------------------
+# --- 6. trust list unreadable: ready-check fails it before the trust step --------------------------------------------------
 export STUB_TRUST_LIST_FAIL=1
 run --to leg --token tok 77 "$SHA"
-check "trust refused: exit 5" "$RC" "5"
-contains "trust refused: TRUST: refused" "$OUT" "TRUST: refused list"
+check "trust refused: exit 4" "$RC" "4"
+contains "trust refused: ready-check names check 12" "$OUT" "[FAIL] 12."
 lacks "trust refused: no GO line" "$OUT" "SENDMESSAGE"
 unset STUB_TRUST_LIST_FAIL
 

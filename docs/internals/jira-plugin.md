@@ -102,10 +102,11 @@ re-`get` and check the underscores explicitly — this is an artifact check,
 not a formatting preference. `edit --desc-file` repairs a corrupted body in
 place.
 
-**Ticket shape: a plain block, then Agent detail.** Every ticket
-body carries three short sections anyone can read without knowing the code,
-then one section for the agent doing the work (the lint checks that all four
-are present and non-empty, not their order):
+**Ticket shape: a plain block, a Plan, a DoD, then Agent detail.** Every
+ticket body carries six headed sections: three short ones anyone can read
+without knowing the code, a Plan, a DoD, and one section for the agent doing
+the work (the lint checks that all six are present and non-empty, and that Plan
+and DoD each hold a real line, not their order):
 
 ```markdown
 ## Impact
@@ -117,13 +118,33 @@ are present and non-empty, not their order):
 ## Why
 <why it is worth doing now>
 
+## Plan
+1. <one to five bounded steps, each naming the surface it touches>
+
+## DoD
+- <one to five checkable results: a test, a command and its output, a doc section, a Jira state>
+
 ## Agent detail
-<files, contract, done-when, suites>
+<files, contract, suites>
 ```
 
+- **Impact / What / Why:** the plain block.
+- **Plan:** one to five bounded steps, each naming the surface it touches. A
+  spike's plan starts with "Investigate", and its DoD is a written finding.
+- **DoD:** one to five checkable results, each observable: a test that fails
+  before and passes after, a command and its expected output, a doc section that
+  exists, or a Jira state. "Works", "fixed" or "better" alone does not count.
+- **Agent detail:** files, contract, suites.
+
+A follow-up ticket (from a review, a deferral or a leg) names its source PR or
+ticket in Why, and its DoD must differ from the parent's.
+
 `create` enforces it in code (CLI and the MCP `create` tool share
-`scripts/jira/src/plain-block.ts`): a body missing any of the four headings, or
-with one empty, is refused with the missing names and this template. Headings
+`scripts/jira/src/plain-block.ts`): a body missing any of the six headings, or
+with one empty, is refused with the missing names and this template. Plan and
+DoD each also need at least one bullet or numbered line that is not template
+placeholder text (a line whose whole content is an angle-bracket hint counts as
+placeholder), so the printed skeleton never files as is. Headings
 match by their words (`## Impact`, or an ADF heading node for `--adf-file`),
 and a heading inside a code fence does not count. Explicit exemptions: an
 `Epic` and a `Subtask` only **warn** (the CLI on stderr; the MCP tool files

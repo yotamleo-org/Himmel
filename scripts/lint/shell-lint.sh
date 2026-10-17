@@ -54,6 +54,12 @@
 #                 stat -c) without a same-line BSD fallback; exempt via
 #                 `# gnu-ok: <reason>`.
 #   [echo-e]      `echo -e` / `echo -n` — non-portable; use printf.
+#   [octal-arith] a variable assigned from `date +%m|%d|%H|%M|%S|%j|%U|%V|%W`
+#                 (or a `cut` of such a value) that later appears inside
+#                 $(( )), (( )) or `let` without 10# normalization — a leading
+#                 zero (08, 09) is octal there and errors. Normalize with
+#                 $((10#$var)). A single-bracket [ "$m" -gt 5 ] is decimal and
+#                 never flagged. Exempt via a same-line `# octal-ok: <reason>`.
 #
 # Exit: 0 = clean, 1 = findings, 2 = usage error.
 # bash 3.2-safe; shellcheck-clean; cross-platform (Git Bash / macOS / Linux).
@@ -151,6 +157,66 @@ _has_gnu_ok() {
         sed -n "$((line_no - 1))p" "$file" 2>/dev/null | grep -q 'gnu-ok' && return 0
     fi
     return 1
+}
+
+# Print "lineno:line" for every arithmetic use ($(( )), (( )), let) of a variable
+# that was assigned from a leading-zero date field (see [octal-arith] above) and
+# is not 10#-normalized there. A same-line `octal-ok` marker exempts the line.
+# ponytail: same-file single-pass scan, nesting-blind, cross-file values unseen; upgrade path HIMMEL-6020 portable primitives lib
+_octal_arith_hits() {
+    awk '
+    function isname(c) { return c ~ /[A-Za-z0-9_]/ }
+    # true if segment s holds v as a bare operand (not behind 10#)
+    function uses(s, v,   rest, p, pre, post, skip) {
+        rest = s
+        while ((p = index(rest, v)) > 0) {
+            pre = (p > 1) ? substr(rest, p - 1, 1) : ""
+            post = substr(rest, p + length(v), 1)
+            if (!isname(pre) && !isname(post)) {
+                skip = substr(rest, 1, p - 1)
+                if (skip !~ /10#[$]?[{]?$/) return 1
+            }
+            rest = substr(rest, p + length(v))
+        }
+        return 0
+    }
+    /^[[:space:]]*#/ { next }
+    {
+        line = $0
+        # arithmetic uses are judged against the tracking BEFORE this line reassigns anything
+        hit = 0
+        segs = ""
+        rest = line
+        while (match(rest, /\(\([^)]*\)\)/)) {
+            segs = segs " " substr(rest, RSTART, RLENGTH)
+            rest = substr(rest, RSTART + RLENGTH)
+        }
+        if (match(line, /(^|[;&|[:space:]])let[[:space:]]+/)) segs = segs " " substr(line, RSTART)
+        if (segs != "") for (v in tracked) if (uses(segs, v)) { hit = 1; break }
+        if (match(line, /^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?[A-Za-z_][A-Za-z0-9_]*=/)) {
+            lhs = substr(line, RSTART, RLENGTH - 1)
+            sub(/^[[:space:]]*(local[[:space:]]+|export[[:space:]]+|declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)?)?/, "", lhs)
+            code = line
+            sub(/[[:space:]]#.*$/, "", code)
+            isdate = (line ~ /date[^#]*[+][^[:alnum:]%]?%[mdHMSjUVW][^[:alnum:]%]?([)`;[:space:]]|$)/ && code !~ /10#/)
+            if (isdate && segs != "") {
+                pa = index(line, "((")
+                if (pa == 0) pa = index(line, "let")
+                if (index(line, "date") < pa && uses(segs, lhs)) hit = 1
+            }
+            if (!isdate && code !~ /10#/) {
+                derived = 0
+                # derived only when the tracked value itself is piped into cut (or fed by here-string)
+                for (v in tracked) {
+                    if (line ~ ("(^|[[:space:]\"])[$][{]?" v "[}\"]*[[:space:]]*[|][[:space:]]*cut[[:space:]]")) derived = 1
+                    if (line ~ ("cut[[:space:]][^|;]*<<<[[:space:]]*\"?[$][{]?" v "([^[:alnum:]_]|$)")) derived = 1
+                }
+                isdate = derived
+            }
+            if (isdate) tracked[lhs] = 1; else delete tracked[lhs]
+        }
+        if (hit && line !~ /octal-ok/) print NR ":" line
+    }' "$1"
 }
 
 # ── Advisory portability patterns (CR-learnings tuning)
@@ -423,6 +489,11 @@ EOF
     _echo="$(_grep_hits "$f" "$ECHO_FLAG")"
     _report_hits echo-e "$_echo" \
         "echo -e/-n is non-portable; use printf"
+
+    # [octal-arith] — a leading-zero date field used in arithmetic without 10#.
+    _oa="$(_octal_arith_hits "$f")"
+    _report_hits octal-arith "$_oa" \
+        "leading-zero operand is octal in arithmetic (08/09 error); normalize with \$((10#\$var)) or '# octal-ok: <reason>'"
 
     # [gnu-flag] — GNU-only flags (sed -i no-suffix, date -d, readlink -f, grep
     # -P, stat -c). Lines that already pair the GNU form with its BSD alternative

@@ -143,8 +143,10 @@
 #              2  session token missing, no lock held for this queue, OR
 #                 held by a DIFFERENT session than the token -- refused
 #   release:   0  released
-#              1  usage error / environment failure / rm failed to clear
-#                 an existing lock dir (e.g. an open handle on Windows)
+#              1  usage error (incl. a lone session token in the
+#                 handover-path slot: `release <token>`) / environment
+#                 failure / rm failed to clear an existing lock dir (e.g.
+#                 an open handle on Windows)
 #              2  session token missing or does not match the current
 #                 holder -- refused (QUEUE_LOCK_FORCE_RELEASE=1 overrides)
 #              3  no lock for this queue in ANY known handover root --
@@ -155,7 +157,9 @@
 #                 already be gone.
 #   status:    0  free
 #              1  usage error / environment failure (incl. more
-#                 than one operand -- an unquoted path with a space)
+#                 than one operand -- an unquoted path with a space -- and
+#                 a session token in the handover-path slot: nothing on
+#                 stdout, never `free`)
 #              11 held, FRESH (owner.json printed to stdout; a CORRUPT
 #                 lock dir -- owner.json missing/unreadable -- also
 #                 reports 11, fail-closed, and SAYS it is corrupt)
@@ -2082,9 +2086,34 @@ queue_lock_self_heartbeat() {
     return 0
 }
 
+# _ql_operand_is_token <operand> -- rc 0 when the operand is a session token
+# shifted into the handover-path slot (`release <token>`, `status <token>`):
+# no path separator, shaped like a generated `<host>-pid<N>` token or a UUID
+# session id, and naming no existing doc. Nothing else is rejected, so every
+# bare doc name keeps resolving under the known roots. The backticked form
+# `acquire` prints is classified by its stripped value.
+_ql_operand_is_token() {
+    local op
+    op="$(_ql_strip_backticks "$1")"
+    case "$op" in */*|*\\*|*.md) return 1 ;; esac
+    case "$op" in
+        *-pid[0-9]*) case "${op##*-pid}" in *[!0-9]*) return 1 ;; esac ;;
+        ????????-????-????-????-????????????) case "$op" in *[!0-9a-fA-F-]*) return 1 ;; esac ;;
+        *) return 1 ;;
+    esac
+    [ -e "$op" ] && return 1
+    [ -e "$op.md" ] && return 1
+    [ -z "$(_ql_find_doc "$op")" ]
+}
+
 queue_lock_release() {
     local ho="${1:-}" session="${2:-}"
     if [ -z "$ho" ]; then
+        _ql_usage >&2
+        return 1
+    fi
+    if _ql_operand_is_token "$ho"; then
+        echo "queue-lock: release takes <handover-path> <session-token>; '$ho' is a session token, not a handover path" >&2
         _ql_usage >&2
         return 1
     fi
@@ -2260,6 +2289,11 @@ queue_lock_status() {
         return 1
     fi
     if [ -z "$ho" ]; then
+        _ql_usage >&2
+        return 1
+    fi
+    if _ql_operand_is_token "$ho"; then
+        echo "queue-lock: status takes a <handover-path>; '$ho' is a session token, not a handover path" >&2
         _ql_usage >&2
         return 1
     fi

@@ -651,6 +651,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
         if [ -n "$PREFLIGHT_MAPS_ID" ]; then RUNNER_ARGV+=(--maps-id "$PREFLIGHT_MAPS_ID"); fi
         if [ -n "$PREFLIGHT_VAULT_ID" ]; then RUNNER_ARGV+=(--maps-parent-id "$PREFLIGHT_VAULT_ID"); fi
         if [ "$c" = "luna" ]; then RUNNER_ARGV+=(--corpus-class luna-personal); fi
+        # himmel's live graph is AST-heavy: merge the markdown extraction into it, never promote over it
+        if [ "$c" = "himmel" ]; then RUNNER_ARGV+=(--merge-into-live); fi
         R_OUT_ROOT="$(graphify_out_root_for "$c")"
         if [ -n "$R_OUT_ROOT" ]; then RUNNER_ARGV+=(--out-root "$R_OUT_ROOT"); fi
         # mirror the real run's conditional `env -u GRAPHIFY_OUT_ROOT`
@@ -675,6 +677,11 @@ fi
 echo "graph-refresh: refreshing $CORPUS serially on backend $BACKEND (vault: $VAULT)" >&2
 FAILURES=0
 SKIPPED=0
+# Each runner's output is kept in a per-corpus log (printed on FAIL) so an
+# operator can see WHY a paid run failed. Outside the repo and the vault; the
+# directory persists on purpose -- the log is the evidence.
+LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/graph-refresh-logs.XXXXXX")" || { echo "ERR graph-refresh: could not create the per-corpus log directory" >&2; exit 2; }
+FAILED_LEGS=()
 for c in "${CORPORA[@]}"; do
     resolve_corpus_args "$c"
     # corpus-class is luna-leg-only (see the dry-run loop for the rationale);
@@ -692,6 +699,7 @@ for c in "${CORPORA[@]}"; do
     if [ -n "$PREFLIGHT_MAPS_ID" ]; then RUNNER_ARGV+=(--maps-id "$PREFLIGHT_MAPS_ID"); fi
     if [ -n "$PREFLIGHT_VAULT_ID" ]; then RUNNER_ARGV+=(--maps-parent-id "$PREFLIGHT_VAULT_ID"); fi
     if [ "$c" = "luna" ]; then RUNNER_ARGV+=(--corpus-class luna-personal); fi
+    if [ "$c" = "himmel" ]; then RUNNER_ARGV+=(--merge-into-live); fi
     R_OUT_ROOT="$(graphify_out_root_for "$c")"
     if [ -n "$R_OUT_ROOT" ]; then RUNNER_ARGV+=(--out-root "$R_OUT_ROOT"); fi
     echo "graph-refresh: [$c] refreshing (corpus-root $R_CORPUS_ROOT -> $VAULT/60-Maps/$R_SLUG.md)" >&2
@@ -709,7 +717,10 @@ for c in "${CORPORA[@]}"; do
     else
         RUNNER_CMD=("${RUNNER_ARGV[@]}")
     fi
-    if "${RUNNER_CMD[@]}"; then
+    LEG_LOG="$LOG_DIR/$c.log"
+    # tee keeps the live terminal output; the subshell+PIPESTATUS keeps the
+    # runner's own rc (a bare pipe would report tee's).
+    if ( "${RUNNER_CMD[@]}" 2>&1 | tee "$LEG_LOG"; exit "${PIPESTATUS[0]}" ); then
         echo "graph-refresh: [$c] OK -- published $VAULT/60-Maps/$R_SLUG.md"
         # Himmel's graphify-out/ is TRACKED; the refresh regenerates
         # it on disk but does NOT ship it. The operator must publish it separately
@@ -725,8 +736,10 @@ for c in "${CORPORA[@]}"; do
             echo "graph-refresh: [$c] SKIPPED -- bank at/over threshold, extraction skipped for corpus '$c' (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
             SKIPPED=$((SKIPPED + 1))
         else
-            echo "graph-refresh: [$c] FAIL -- refresh-graph-map.sh exited $leg_rc" >&2
+            leg_reason="$(grep '^refresh-graph-map:' "$LEG_LOG" | tail -n 1 || true)"
+            echo "graph-refresh: [$c] FAIL -- ${leg_reason:-refresh-graph-map.sh exited $leg_rc} (log: $LEG_LOG)" >&2
             FAILURES=$((FAILURES + 1))
+            FAILED_LEGS+=("$c $LEG_LOG")
         fi
     fi
 done
@@ -767,6 +780,9 @@ SUMMARY=""
 [ "$FAILURES" -gt 0 ] && SUMMARY="${SUMMARY:+$SUMMARY, }$FAILURES failed"
 if [ "$FAILURES" -gt 0 ]; then
     echo "graph-refresh: $SUMMARY (of ${#CORPORA[@]} corpus(corpora)) -- FAILED" >&2
+    for leg in "${FAILED_LEGS[@]}"; do
+        echo "graph-refresh: failed corpus: ${leg%% *} (log: ${leg#* })" >&2
+    done
     exit 3
 fi
 # A skip-only outcome (no failures, but at least one leg skipped for the bank)

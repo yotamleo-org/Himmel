@@ -2114,6 +2114,15 @@ sync_graphify() {
     # advisory to the CHAIN (return 0) — himmel-update does not abort on it —
     # but the operator-visible text comes from the step itself.
     graphify_update || echo "    warn: graphify pin sync did not complete — see the message above for the resulting state." >&2
+    # A held-guard skip never clears itself from inside a live session; give it a
+    # non-OK table row so it cannot read as up to date (the counter is cleared on
+    # any non-skip outcome, so a summary means THIS run skipped).
+    local skip_summary
+    skip_summary="$(graphify_pin_skip_summary)"
+    if [ -n "$skip_summary" ]; then
+        STATUS_graphify="skipped"
+        DETAIL_graphify="$skip_summary — pin NOT advanced; clear: bash scripts/himmel-update.sh --graphify-only (no live session)"
+    fi
     # re-apply the priced hooks — a hand-run `graphify install`
     # (which the operator is told to do in several places) re-adds the stock,
     # unpriced entries; this recurring sweep heals that.

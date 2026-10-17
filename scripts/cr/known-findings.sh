@@ -16,14 +16,20 @@
 #   known-findings.sh --list                    markdown table (human index)
 #   known-findings.sh --ladder                  class count per rung (design|gate|advisory|prompt|human),
 #                                               then the promotion queue: prompt/advisory classes with
-#                                               agreed ledger recurrences, most first, then PROMOTION
-#                                               PROPOSALS: PROPOSE lines for classes whose agreed
-#                                               recurrences since the rung was set reach N across M branches
+#                                               real ledger recurrences (agreed, confirmed or fixed), most
+#                                               first, then PROMOTION PROPOSALS: PROPOSE lines for classes
+#                                               whose real recurrences since the rung was set reach N across M branches
 #   known-findings.sh --refresh [--learnings <export.csv>]   (also prints the promotion proposals)
-#   Proposal thresholds (--ladder, --refresh): --min-recurrences N (default 3), --min-branches M (default 2).
-#   A class counts agreed findings dated at/after its optional `rung_since` (YYYY-MM-DD; absent = the whole
-#   ledger). The target is one rung up (human->prompt, prompt->advisory, advisory->gate) with a hosting
-#   suggestion. Proposals are printed only; no rung, gate, hook or setting is ever changed.
+#   Proposal thresholds (--ladder, --refresh): --min-recurrences N, --min-branches M. Defaults: 3 and 2
+#   for a move to prompt or advisory; 10 and 5, counting only the last 30 days, for a move to the gate rung.
+#   A class counts real findings (verdict agreed, confirmed or fixed) dated at/after its optional `rung_since`
+#   (YYYY-MM-DD; absent = the whole ledger). A finding is attributed to a class only when its file hits the
+#   class `globs` AND its ledger `text` hits the class `match` (a JS regex, case-insensitive); a class with
+#   no `match` is skipped. A class with `platform: "windows"` is never proposed. A `rebuttal` class is never
+#   proposed above prompt: when at least 80 percent of its adjudicated findings were disproved and none was
+#   real in the last 30 days it gets `PROPOSE [id] retire` instead. The target is one rung up
+#   (human->prompt, prompt->advisory, advisory->gate) with a hosting suggestion. Proposals are printed
+#   only; no rung, gate, hook or setting is ever changed.
 # Env: KNOWN_FINDINGS_PROMOTE_N / KNOWN_FINDINGS_PROMOTE_M (defaults for the flags above),
 #      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
@@ -36,7 +42,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KF="${KNOWN_FINDINGS_FILE:-$SCRIPT_DIR/known-findings.json}"
 MODE="" RANGE="" JSON=0 LEARNINGS=""
-PROMO_N="${KNOWN_FINDINGS_PROMOTE_N:-3}" PROMO_M="${KNOWN_FINDINGS_PROMOTE_M:-2}"
+PROMO_N="${KNOWN_FINDINGS_PROMOTE_N:-}" PROMO_M="${KNOWN_FINDINGS_PROMOTE_M:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --diff)      MODE="diff"
@@ -58,8 +64,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$MODE" ] || { echo "known-findings.sh: one of --diff <range> | --prompt | --list | --ladder | --refresh is required" >&2; exit 2; }
-case "$PROMO_N" in ''|*[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
-case "$PROMO_M" in ''|*[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
+case "$PROMO_N" in *[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
+case "$PROMO_M" in *[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
 [ -f "$KF" ] || { echo "known-findings.sh: not found: $KF" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || { echo "known-findings.sh: node is required" >&2; exit 2; }
 
@@ -114,6 +120,16 @@ const matchesAny = (globs, f) => (globs || []).some(g => globRe(g).test(f));
 const ere = (p) => new RegExp(p.replace(/\[:space:\]/g, "\\s").replace(/\[:alnum:\]/g, "A-Za-z0-9").replace(/\[:alpha:\]/g, "A-Za-z").replace(/\[:digit:\]/g, "0-9"));
 const isTestFile = (f) => /(^|\/)test-[^/]*\.(sh|ps1)$|\.test\.[a-z]+$|(^|\/)tests?\/|(^|\/)testdata\//.test(f);
 const baseName = (f) => f.split("/").pop();
+// A real verdict is one the finding was acted on: agreed, confirmed or fixed.
+const isReal = (v) => v === "agreed" || v === "confirmed" || v === "fixed";
+// A ledger finding belongs to a class when its file hits the globs AND (when the class has a `match`) its text hits
+// the regex. requireMatch (the ladder proposals) skips a class that has no `match`.
+const attributed = (c, r, requireMatch) => {
+  if (!r.file || !matchesAny(c.globs, r.file)) return false;
+  if (!c.match) return !requireMatch;
+  return typeof r.text === "string" && new RegExp(c.match, "i").test(r.text);
+};
+const DAY = 864e5;
 
 if (MODE === "list") {
   // Paste-safe markdown cells: escape | and collapse newlines.
@@ -139,7 +155,7 @@ const readLedger = () => {
   return out;
 };
 
-// Promotion proposals: per non-gate class, agreed findings (file matches globs, dated at/after the optional
+// Promotion proposals: per non-gate class, real findings (attributed by globs and match, dated at/after the optional
 // `rung_since`) and the distinct branches they came from. N recurrences across M branches => a PROPOSE line
 // with the next rung up and a hosting suggestion. Print-only.
 const NEXT_RUNG = { human: "prompt", prompt: "advisory", advisory: "gate" };
@@ -151,23 +167,35 @@ const hostFor = (c) => {
   return c.rung === "prompt" ? "a `detector` entry in known-findings.json (run by --diff)" : "critic-prompt text (set `prompt: true`)";
 };
 const printProposals = () => {
-  const N = +process.env.PROMO_N, M = +process.env.PROMO_M;
-  console.log(`\npromotion proposals (agreed recurrences >= ${N} across >= ${M} branches since the rung was set; printed only, nothing is changed):`);
+  const envN = process.env.PROMO_N, envM = process.env.PROMO_M;
+  console.log(`\npromotion proposals (real recurrences, verdict agreed/confirmed/fixed, attributed by globs and match; >= ${envN || 3} across >= ${envM || 2} branches, gate rung >= ${envN || 10} across >= ${envM || 5} within 30 days; printed only, nothing is changed):`);
   const L = readLedger();
   if (!L.ok) { console.log(`  proposals unavailable: ledger not readable (${process.env.LEDGER})`); return; }
   let n = 0;
+  const now = Date.now();
   for (const c of classes) {
-    if (!NEXT_RUNG[c.rung]) continue;
+    if (!NEXT_RUNG[c.rung] || c.platform === "windows" || !c.match) continue;
     const since = c.rung_since ? Date.parse(c.rung_since) : null;
-    const branches = new Set(); let rec = 0;
+    const target = NEXT_RUNG[c.rung], gate = target === "gate";
+    const N = envN ? +envN : gate ? 10 : 3, M = envM ? +envM : gate ? 5 : 2;
+    const branches = new Set(); let rec = 0, real30 = 0, disproved = 0, adjudicated = 0;
     for (const k of Object.keys(L.first)) {
       const r = L.first[k], v = L.verdict[k];
-      if (v !== "agreed" && v !== "confirmed") continue;
-      if (!r.file || !matchesAny(c.globs, r.file)) continue;
+      if (!attributed(c, r, true)) continue;
       if (since !== null && !(Date.parse(r.ts) >= since)) continue;
+      const recent = Date.parse(r.ts) >= now - 30 * DAY;
+      if (v) { adjudicated++; if (v === "disproved") disproved++; }
+      if (!isReal(v)) continue;
+      if (recent) real30++;
+      if (gate && !recent) continue;
       rec++; if (r.branch) branches.add(r.branch);
     }
-    if (rec >= N && branches.size >= M) { n++; console.log(`  PROPOSE [${c.id}] ${c.rung} -> ${NEXT_RUNG[c.rung]} recurrences=${rec} branches=${branches.size} host=${hostFor(c)}`); }
+    // a rebuttal class never climbs above prompt: it is retired once its rebuttals stop being needed
+    if (c.kind === "rebuttal" && c.rung !== "human") {
+      if (adjudicated && disproved / adjudicated >= 0.8 && real30 === 0) { n++; console.log(`  PROPOSE [${c.id}] retire disproved=${disproved}/${adjudicated} real_in_30d=0`); }
+      continue;
+    }
+    if (rec >= N && branches.size >= M) { n++; console.log(`  PROPOSE [${c.id}] ${c.rung} -> ${target} recurrences=${rec} branches=${branches.size} host=${hostFor(c)}`); }
   }
   if (!n) console.log("  none");
 };
@@ -181,9 +209,9 @@ if (MODE === "ladder") {
   console.log(`known-findings ladder: ${classes.length} class(es)`);
   console.log("rung counts: " + RUNGS.map(r => `${r}=${counts[r]}`).join(" "));
   const agreedOf = (c) => ((c.evidence || {}).ledger || {}).agreed || 0;
-  const queue = classes.filter(c => (c.rung === "prompt" || c.rung === "advisory") && agreedOf(c) > 0)
+  const queue = classes.filter(c => (c.rung === "prompt" || c.rung === "advisory") && c.match && agreedOf(c) > 0)
     .sort((a, b) => agreedOf(b) - agreedOf(a));
-  console.log(`\npromotion queue (prompt/advisory classes with agreed ledger recurrences, most first): ${queue.length}`);
+  console.log(`\npromotion queue (prompt/advisory classes with a match and real ledger recurrences, most first): ${queue.length}`);
   for (const c of queue) console.log(`  [${c.id}] rung=${c.rung} kind=${c.kind} agreed=${agreedOf(c)}`);
   printProposals();
   process.exit(0);
@@ -333,8 +361,8 @@ if (MODE === "refresh") {
   // follow-up.
   for (const c of (ledgerOk ? classes : [])) {
     const agg = { findings: 0, agreed: 0, disproved: 0, deferred: 0, other: 0, unadjudicated: 0, models: {} };
-    for (const k of Object.keys(first)) { const r = first[k]; if (!r.file || !matchesAny(c.globs, r.file)) continue;
-      agg.findings++; const v = verdict[k]; if (!v) agg.unadjudicated++; else if (v === "agreed" || v === "confirmed") agg.agreed++; else if (v === "disproved") agg.disproved++; else if (v === "deferred") agg.deferred++; else agg.other++;
+    for (const k of Object.keys(first)) { const r = first[k]; if (!attributed(c, r, false)) continue;
+      agg.findings++; const v = verdict[k]; if (!v) agg.unadjudicated++; else if (isReal(v)) agg.agreed++; else if (v === "disproved") agg.disproved++; else if (v === "deferred") agg.deferred++; else agg.other++;
       agg.models[r.model] = (agg.models[r.model] || 0) + 1; }
     const adj = agg.agreed + agg.disproved + agg.deferred + agg.other;
     agg.disproved_pct = adj ? Math.round(100 * agg.disproved / adj) : null;

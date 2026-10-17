@@ -27,6 +27,15 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   the foreground and exits on Ctrl-C or after 30 minutes idle.
 - **The token** rides the URL fragment (`#t=<hex>`), so it is never sent in a
   request line. Open the printed URL as is; a new launch means a new token.
+- **Always on.** `himmelctl ui --service install` installs `himmel-ui.service`, a systemd
+  user unit that serves the same pages on a fixed `127.0.0.1` port (47391, or `--port N`)
+  with no idle exit, restarts on failure and rebuilds `agui-web/dist` at start when its
+  sources are newer. The token is a mode-600 file, `~/.himmel/state/ui-token`, created once,
+  so the URL survives restarts: `--service url` prints the bookmark, `status` and
+  `uninstall` do what they say (uninstall also deletes the token file). It needs
+  `HANDOVER_DIR` in the shell that runs `install`. The board on the Fleet page is read from
+  `<console doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
+  reaches the page within about 5 s; with no such file the server builds it as before.
 - **Pages** (the left rail): `#/config` (install items, doctor checks, scheduled
   jobs, lanes, flags and secrets by presence), `#/health` (one verdict:
   All clear / Needs a look / Act now), `#/toolhealth` (tool-call failure and
@@ -42,7 +51,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
 - **Console board on the Fleet page.** Start `himmelctl ui` with `HANDOVER_DIR` set and open
   `/agui/#t=<token>&console=<console doc name>`. The page then shows the supervisor
   session's board (the `board.mjs --json` output, served read-only and redacted at the
-  token-gated `GET /api/agui/board?console=<name>`, cached 30 s). **Fleet** tab: verb-led
+  token-gated `GET /api/agui/board?console=<name>`; built from the board JSON file when present, else cached 30 s). **Fleet** tab: verb-led
   rows for what needs you, and on each running row its goal, six stage dots (dispatch,
   live, PR, ready, go, merged) and a state chip. **Trends** tab (`&tab=trends`): four cards
   (Fleet velocity, Fleet health, Tool health, Roadmap reality), each with a recommendation

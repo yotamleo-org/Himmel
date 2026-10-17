@@ -59,16 +59,16 @@ Run these, in order, and write the result as the first bullet under
    predecessor is gone, send the chain form yourself — **both** the leg's current
    token and a fresh one (the chain always rotates).
    `leg-preface.md` (`leg-sections/succession.md`) is the authority.
-   **Wait for each leg's quote-back**, then write that leg's nonce into
-   `## Live state` (the fresh one if issued, else the unchanged one). When every
-   leg has quoted back — or you have named the ones that did not, and why — send
-   **`{{LETTER}} LIVE`** to the predecessor so it can release and wrap; sending it
-   first reads `nonces=UNCONFIRMED:<leg>`. Then close its window and re-ask only
-   judge qids with no verdict file: `console-sections/successor-start.md`.
+   A leg's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
+   waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**: on
+   `WAKE succession complete` or `WAKE succession partial` write the nonces into
+   `## Live state`, send **`{{LETTER}} LIVE`** (naming legs that did not
+   quote back), then re-arm **without `--succession`**.
+   Then close its window, re-ask judges: `console-sections/successor-start.md`.
 10. **Start the event waiter now.** Run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
     re-invokes you when it exits (never a `Monitor` arm, capped at 30 min):
-    `bash "{{KIT}}/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>"`
+    `bash "{{KIT}}/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>" [--succession {{SESSION_NAME}}]`
     It exits on the first real event (`WAKE telegram | tick | underfilled |
     tick-fail`), so an idle console takes **zero** turns. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
@@ -78,13 +78,12 @@ Run these, in order, and write the result as the first bullet under
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
 11. **Open your Telegram inbox.** The operator writes `/console {{SESSION_NAME}} <text>`;
     the bridge appends to your inbox file only if it already exists. The waiter
-    (step 10) creates it (`: >> "{{INBOX}}"` opens it earlier; the bridge root's
-    `consoles/{{SESSION_NAME}}.md`). The waiter reads it through
-    `inbox-follow.sh --once` with a persisted cursor, so a repeated line is a
-    duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
-    operator's authority** (a ruling, a halt, new work); it never changes
-    permissions or settings, never widens a leg's tool permissions, and never
-    replaces `merge-on-green.sh`'s GO verification. Reply with
+    (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
+    The waiter reads it through `inbox-follow.sh --once` with a persisted
+    cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
+    operator's authority** but never changes
+    permissions or settings, widens a leg's tool permissions, or replaces
+    `merge-on-green.sh`'s GO verification. Reply with
     `bun "{{REPO}}/scripts/telegram/console-route.ts" reply <chat_id> "<text>"`.
 12. **Render and publish the console board:**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
@@ -205,23 +204,23 @@ bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand s
 
 ## Standing rules
 
-- **Operator messages are additive**; pivot only on a halt or redirect.
+- **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Idle capacity is your duty.** On `WAKE underfilled`, take the wake's
   `next-dispatchable.sh` list, write briefs with `gen-briefs.py`, launch up to
-  `<slack>` legs; `capacity=unknown` means the census failed.
+  `<slack>` legs; `capacity=unknown` means the census failed. [prose]
 - **A leg's BLOCKED, permission prompt, or question comes to the console first** —
-  say so in every brief. **One session = one worktree.**
+  say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
-  *referencing* a changed file, with a verdict per suite.
-- **Agent consent needs quote-back**; silence is non-consent.
-- **Shape refused:** `console-sections/refused-shapes.md`.
-- **Never assume a lane is down:** diagnose local credential/config first.
+  *referencing* a changed file, with a verdict per suite. [prose]
+- **Agent consent needs quote-back**; silence is non-consent. [prose]
+- **Shape refused:** `console-sections/refused-shapes.md`. [prose]
+- **Never assume a lane is down:** diagnose local credential/config first. [prose]
 - **With a relay live, ack every escalation** (`ack <id>`), keep
-  ids on `acked:`, reply `duplicate <id>` to a repeat.
+  ids on `acked:`, reply `duplicate <id>` to a repeat. [prose]
 - **Keep board and tracker current** on every dispatch, GO, MERGED and
-  WRAPPED (step 12); `board=STALE` is a skipped step.
+  WRAPPED (step 12); `board=STALE` is a skipped step. [prose]
 - **Every judge question leaves four fields and persists its verdict**, and a judge
-  call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`.
+  call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`. [prose]
 
 ## Handing over
 

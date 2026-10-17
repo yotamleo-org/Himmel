@@ -387,7 +387,7 @@ printf 'class: other\nclass: option-parsing\n' > "$evd/classes.md"
 rc=0; wv badclass NO-GO "$SHA_A" --evidence-file "$evd/classes.md" >/dev/null 2>&1 || rc=$?
 check "duplicate class fields refused" "$rc" 2
 check "invalid class sets write nothing" "$([ -e "$scope_dir/badclass" ] && echo yes || echo no)" no
-printf 'class: option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other\n' > "$evd/classes.md"
+printf 'class: option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other\nclass-reason: full-list fixture\n' > "$evd/classes.md"
 rc=0; wv allclasses NO-GO "$SHA_A" --evidence-file "$evd/classes.md" >/dev/null 2>&1 || rc=$?
 check "comma set from the full closed list accepted" "$rc" 0
 rc=0; wv classless GO "$SHA_A" --evidence-file "$evd/classless.md" >/dev/null 2>&1 || rc=$?
@@ -582,12 +582,108 @@ mkjd "j${PR20}c"; ln -s "$evd/marker-target" "$scratch/j${PR20}c/.verdict-writte
 rc=0; out=$(WV_NOPR="--pr $PR20" wv q40 GO "$SHA_A" --evidence-file "$scratch/j${PR20}c/evidence.md" 2>&1) || rc=$?
 check "20: a pre-existing symlinked marker: verdict rc 0" "$rc" 0
 check "20: ... the symlink target is not created" "$([ -e "$evd/marker-target" ] && echo yes || echo no)" no
-mkjd "j${PR20}d"; printf 'class: other\n' > "$evd/ng.md"
+mkjd "j${PR20}d"; printf 'class: other\nclass-reason: fixture\n' > "$evd/ng.md"
 rc=0; out=$(WV_NOPR="--pr $PR20" wv q41 NO-GO "$SHA_A" --evidence-file "$evd/ng.md" 2>&1) || rc=$?
 rc=0; out=$(WV_NOPR="--pr $PR20" wv q41 GO "$SHA_A" --evidence-file "$scratch/j${PR20}d/evidence.md" 2>&1) || rc=$?
 check "20: a GO refused over a NO-GO for the same head is rc 4" "$rc" 4
 check "20: ... and no marker follows a failed verdict write" "$([ -e "$scratch/j${PR20}d/.verdict-written" ] && echo yes || echo no)" no
 rm -rf "$scratch/j$PR20" "$scratch/j${PR20}a" "$scratch/j${PR20}ab" "$scratch/j${PR20}a.b" "$scratch/j${PR20}c" "$scratch/j${PR20}d" "$scratch/j8$$"
+
+# --- 21. one canonical header, class other needs a reason, flipped is computed ---
+rej() { # rej <label> <qid> <answer> <evidence> [writer args...]: rc 2 and nothing written
+    local lbl=$1 q=$2 a=$3 e=$4; shift 4
+    rc=0; wv "$q" "$a" "$SHA_A" --evidence-file "$e" "$@" >/dev/null 2>&1 || rc=$?
+    check "21: $lbl refused rc 2" "$rc" 2
+    check "21: $lbl writes nothing" "$([ -e "$scope_dir/$q" ] && echo yes || echo no)" no
+}
+printf 'class: other\n\nfinding\n' > "$evd/o-noreason.md"
+rej "class other without class-reason" q21a NO-GO "$evd/o-noreason.md"
+printf 'class: other\nclass-reason: a one-off no listed class covers\n\nfinding\n' > "$evd/o-reason.md"
+rc=0; wv q21b NO-GO "$SHA_A" --evidence-file "$evd/o-reason.md" >/dev/null 2>&1 || rc=$?
+check "21: class other with one class-reason writes rc 0" "$rc" 0
+printf 'class: other\nclass-reason: one\nclass-reason: two\n' > "$evd/o-two.md"
+rej "two class-reason lines" q21c NO-GO "$evd/o-two.md"
+printf 'class: other\nclass-reason:   \n' > "$evd/o-empty.md"
+rej "an empty class-reason" q21d NO-GO "$evd/o-empty.md"
+printf 'class: other\r\nclass-reason:  \r\n' > "$evd/o-crlf.md"
+rej "a CRLF whitespace-only class-reason" q21crlf NO-GO "$evd/o-crlf.md"
+printf 'class: other\nclass: option-parsing\n' > "$evd/o-two-class.md"
+rej "a GO whose second class line hides other" q21twoclass GO "$evd/o-two-class.md"
+printf 'class: option-parsing, other\n\nfinding\n' > "$evd/o-set.md"
+rej "a comma set with other and no reason" q21e NO-GO "$evd/o-set.md"
+printf 'class: option-parsing\n\nfinding\nflipped: n\n' > "$evd/typed-flipped.md"
+rej "a typed flipped line" q21f NO-GO "$evd/typed-flipped.md"
+printf 'class: option-parsing\n\nfinding\nprior: GO\n' > "$evd/typed-prior.md"
+rej "a typed prior line" q21g NO-GO "$evd/typed-prior.md"
+printf 'class: option-parsing\n\n## Verdict\n\nfinding\n' > "$evd/dup-header.md"
+rej "evidence with a Verdict heading" q21h NO-GO "$evd/dup-header.md"
+# shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+printf 'class: option-parsing\n\n**NO-GO** for head `%s`.\n' "$SHA_B" > "$evd/dup-verdict.md"
+rej "evidence with a bold NO-GO verdict line" q21i NO-GO "$evd/dup-verdict.md"
+# shellcheck disable=SC2016
+printf '**GO** for head `%s`.\n' "$SHA_B" > "$evd/dup-go.md"
+rej "evidence with a bold GO verdict line" q21j GO "$evd/dup-go.md"
+printf 'class: option-parsing\n\nfinding\n' > "$evd/plain-ng.md"
+rej "--prior with a bad value" q21k NO-GO "$evd/plain-ng.md" --prior maybe
+
+rc=0; wv q21m NO-GO "$SHA_A" --evidence-file "$evd/plain-ng.md" --prior GO >/dev/null 2>&1 || rc=$?
+check "21: --prior GO on a NO-GO writes rc 0" "$rc" 0
+f21m="$scope_dir/q21m/judge.md"
+check "21: --prior GO then NO-GO records prior: GO" "$(grep -c '^prior: GO$' "$f21m")" 1
+check "21: --prior GO then NO-GO computes flipped: y" "$(grep -c '^flipped: y$' "$f21m")" 1
+check "21: pr, prior, flipped sit together after the verdict line" "$(sed -n 10,12p "$f21m" | tr '\n' ' ')" "pr: 501 prior: GO flipped: y "
+rc=0; wv q21n NO-GO "$SHA_A" --evidence-file "$evd/plain-ng.md" --prior NO-GO >/dev/null 2>&1 || rc=$?
+check "21: --prior NO-GO on a NO-GO writes rc 0" "$rc" 0
+check "21: --prior NO-GO then NO-GO computes flipped: n" "$(grep -c '^flipped: n$' "$scope_dir/q21n/judge.md")" 1
+rc=0; wv q21o GO "$SHA_A" --evidence-file "$evd/plain-ng.md" --prior NO-GO --branch fix/x >/dev/null 2>&1 || rc=$?
+check "21: --prior NO-GO on a GO writes rc 0" "$rc" 0
+check "21: --prior NO-GO then GO computes flipped: y after the branch line" "$(sed -n 10,13p "$scope_dir/q21o/judge.md" | tr '\n' ' ')" "pr: 501 branch: fix/x prior: NO-GO flipped: y "
+rc=0; verdict_rc q21o "$SHA_A" || rc=$?
+check "21: go_trust_verdict still accepts a GO carrying prior and flipped" "$rc" 0
+rc=0; wv q21p NO-GO "$SHA_A" --evidence-file "$evd/plain-ng.md" >/dev/null 2>&1 || rc=$?
+check "21: no --prior writes no prior or flipped line" "$(grep -c '^\(prior\|flipped\):' "$scope_dir/q21p/judge.md")" 0
+
+# strict parse of every file this suite wrote through the writer (hand-built fixtures excluded)
+strict_bad=0 strict_n=0
+for sf in "$scope_dir"/*/*.md; do
+    [ -L "$sf" ] && continue
+    case "$sf" in */q7/*|*/q14d/*|*/q14e/*|*/q21legacy/*) continue ;; esac
+    strict_n=$((strict_n + 1))
+    awk 'BEGIN { bad = 0; h = 0; v = 0; m = 0 }
+        NR == 1 && $0 !~ /^# VERDICT [A-Za-z0-9][A-Za-z0-9._-]* - [A-Za-z0-9][A-Za-z0-9._-]*$/ { bad = 1 }
+        NR == 2 && $0 != "" { bad = 1 }
+        NR == 3 && $0 !~ /^writer-session: [A-Za-z0-9-]+$/ { bad = 1 }
+        NR == 4 && $0 !~ /^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/ { bad = 1 }
+        NR == 5 && $0 != "" { bad = 1 }
+        NR == 6 && $0 != "## Verdict" { bad = 1 }
+        NR == 7 && $0 != "" { bad = 1 }
+        NR == 8 && $0 !~ /^\*\*(GO|NO-GO)\*\* for head `[0-9a-f]{40}`\.$/ { bad = 1 }
+        NR == 9 && $0 != "" { bad = 1 }
+        NR == 10 && $0 !~ /^pr: [1-9][0-9]*$/ { bad = 1 }
+        /^## Verdict[ \t]*$/ { h++ }
+        /^\*\*(GO|NO-GO)\*\* for head/ { v++ }
+        /^mac: [0-9a-f]{64}$/ { m++; lastmac = NR }
+        { last = NR }
+        END { if (h != 1 || v != 1 || m != 1 || lastmac != last) bad = 1; exit bad }' "$sf" || { strict_bad=$((strict_bad + 1)); echo "strict-parse miss: $sf"; }
+done
+check "21: every writer-made file strict-parses (one header, one verdict line, one trailing mac)" "$strict_bad" 0
+[ "$strict_n" -gt 20 ] && echo "ok - 21: strict parse covered $strict_n files" || { echo "FAIL - 21: strict parse covered only $strict_n files"; fails=$((fails+1)); }
+
+# a legacy file (no prior/flipped, no trailing period on the verdict line) stays accepted
+mkdir -p "$scope_dir/q21legacy"
+{
+    printf '# VERDICT q21legacy - judge\n\nwriter-session: s\nwritten-at: 2026-10-08T00:00:00Z\n\n## Verdict\n\n'
+    # shellcheck disable=SC2016
+    printf '**GO** for head `%s`\n\npr: 501\n\nold evidence\n' "$SHA_A"
+} > "$tmp/legacy.body"
+legacy_mac=$(
+    # shellcheck source=scripts/lib/go-gate.sh
+    # shellcheck disable=SC1091
+    . "$REPO/scripts/lib/go-gate.sh" && go_verdict_mac "$scope" q21legacy judge < "$tmp/legacy.body"
+)
+{ cat "$tmp/legacy.body"; printf 'mac: %s\n' "$legacy_mac"; } > "$scope_dir/q21legacy/judge.md"
+rc=0; verdict_rc q21legacy "$SHA_A" || rc=$?
+check "21: a legacy signed GO (no prior, no flipped, no trailing period) is still accepted" "$rc" 0
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"

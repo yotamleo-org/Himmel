@@ -1058,7 +1058,14 @@ jobs:
         # more shards isn't monotonically better — a duration-aware split is
         # the real fix (follow-up).
         shard: ${{ fromJSON(needs.plan.outputs.shards || '[1,2,3,4,5,6,7,8]') }}
-    runs-on: ${{ matrix.os }}
+    # HIMMEL-5641: a same-repo pull_request opened by an operator account runs on
+    # the himmel-vm self-hosted runner while the kill switch (repo variable
+    # HIMMEL_VM_RUNNER, set by vm-runner.sh on/off) is 'on'; everything else — a
+    # fork PR, any other author, push, schedule, dispatch, the switch off or
+    # unset — runs on matrix.os. Never pull_request_target. The accounts mirror
+    # scripts/vm/ci-runner/job-started-hook.sh, which refuses the rest anyway, so
+    # a job this expression would misroute fails there instead of running code.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('["self-hosted","himmel-vm"]') || matrix.os }}
     # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
     # non-cancelling concurrency group, so one hung shard queued every later
     # main run). The nightly SUITE_TIER_MODE=all legs are far slower than the
@@ -1094,17 +1101,20 @@ jobs:
       # HIMMEL-4912: install bubblewrap (and socat, which the live pilot-4869
       # jail checks drive) here too so Linux corpus/replay suites exercise the
       # real containment boundary rather than capability-skip.
+      # HIMMEL-5641: the apt, sudo and pip steps below run on a GitHub-hosted
+      # runner only. The himmel-vm guest's `runner` user has no sudo and carries
+      # at/atd, bubblewrap, socat, ffmpeg and pre-commit from guest-provision.sh.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (at/atd)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-at-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install + enable at/atd (Linux — arm-resume scheduler backend)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         # HIMMEL-3919: a hung dpkg/apt lock held this step ~1.5 h. HIMMEL-2872:
         # apt-install.sh bounds every apt call with a `timeout` and a dpkg-lock
         # wait, and tries cached debs, then the runner's mirror, then an
@@ -1121,7 +1131,7 @@ jobs:
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
       - name: Allow unprivileged user namespaces (Linux — bwrap sandbox)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       # HIMMEL-2742: same shape as HIMMEL-2587 (lanes-and-trust-suites) — a
       # suite in this corpus (test-wizard-luna-sections.sh) shells out to bun
@@ -1146,19 +1156,25 @@ jobs:
       # runner image that drops the 6.1 package fails this step loudly; re-pin
       # deliberately. Linux only: the nightly windows leg keeps the SKIP.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (ffmpeg)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-ffmpeg-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install pinned ffmpeg (Linux — obsidian-triage HLS suite)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
         timeout-minutes: 13
         run: |
           bash .github/scripts/apt-install.sh 'ffmpeg=7:6.1.*'
+          ffmpeg -version | head -n 1
+          echo "HIMMEL_REQUIRE_FFMPEG=1" >> "$GITHUB_ENV"
+      # The guest bakes the same ffmpeg 6.1; the require flag still applies.
+      - name: Require the guest's baked ffmpeg (self-hosted himmel-vm)
+        if: runner.os == 'Linux' && runner.environment != 'github-hosted'
+        run: |
           ffmpeg -version | head -n 1
           echo "HIMMEL_REQUIRE_FFMPEG=1" >> "$GITHUB_ENV"
       # HIMMEL-5120(b): scripts/guardrails/test-gitleaks-retired-org.sh SKIPs
@@ -1186,6 +1202,7 @@ jobs:
       # real fixer hooks. `shell: bash` matches the Windows install pattern
       # above: python -m pip works identically on every OS in this matrix.
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,

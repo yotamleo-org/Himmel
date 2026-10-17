@@ -118,8 +118,11 @@ profile, the `all` master switch runs four auto-ship steps, in order:
 > means before enabling it: **the auto-ship step itself authorizes an autonomous private
 > merge** — `ARMAUTOMERGE` only selects *which* merge path it takes (the
 > CI-certified sanctioned script vs a plain squash-merge), it is not an extra on/off
-> gate. The off switch is simply not enabling the step. The `public` auto-ship step stops
-> at PR-ready; the public merge always stays a human action. See
+> gate. The off switch is simply not enabling the step. With `ARMAUTOMERGE=1` that
+> script can also merge the one configured public origin, but only after a live read
+> shows branch protection with `enforce_admins` and a non-empty required-status-checks
+> list; any other public repo, or an unreadable protection read, is refused. The
+> `public` auto-ship step is retired and does nothing. See
 > [configuration.md](configuration.md) for the complete grammar and gate
 > conditions. The directive also can't relax any safety rail — every gate in
 > [configuration.md](configuration.md) still applies: the review-owed marker

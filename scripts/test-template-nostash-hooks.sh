@@ -617,6 +617,109 @@ if [ -n "${R11C2:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# M1: a foreign pre-existing pre-commit / commit-msg hook is backed up AND
+# chained (stock `pre-commit install` does the same with a legacy hook): it
+# still runs on commit, receives the hook's arguments, and its failure fails
+# the commit.
+# ---------------------------------------------------------------------------
+M1=$(tracked_fixture_dir) || { echo "FAIL - could not allocate M1 fixture dir"; fails=$((fails+1)); }
+if [ -n "${M1:-}" ]; then
+  mk_seed_repo "$M1"
+  # shellcheck disable=SC2016  # literal hook source; the hook's own shell expands $1
+  printf '#!/bin/sh\ntouch "$(git rev-parse --show-toplevel)/foreign-pre-commit-ran"\n' > "$M1/.git/hooks/pre-commit"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\ncp "$1" "$(git rev-parse --show-toplevel)/foreign-commit-msg-arg"\n' > "$M1/.git/hooks/commit-msg"
+  chmod +x "$M1/.git/hooks/pre-commit" "$M1/.git/hooks/commit-msg"
+  bash "$M1/scripts/hooks/install-nostash-hooks.sh" >/dev/null 2>&1
+  check "M1: installer succeeds over foreign pre-commit + commit-msg hooks" "$?" "0"
+  printf 'staged-change\n' > "$M1/commit-file.txt"
+  git -C "$M1" add commit-file.txt
+  m1_commit_out=$(cd "$M1" && git commit -qm "feat: m1 chained" 2>&1)
+  m1_rc=$?
+  check "M1: commit succeeds with the foreign hooks chained" "$m1_rc" "0"
+  [ "$m1_rc" -ne 0 ] && echo "  M1 output: $m1_commit_out"
+  if [ -e "$M1/foreign-pre-commit-ran" ]; then
+    check "M1: the foreign pre-commit hook still runs on commit" ran ran
+  else
+    check "M1: the foreign pre-commit hook still runs on commit" "did not run" ran
+  fi
+  m1_arg=$(cat "$M1/foreign-commit-msg-arg" 2>/dev/null | head -n 1)
+  check "M1: the foreign commit-msg hook still runs and receives the message file" "$m1_arg" "feat: m1 chained"
+
+  # Idempotence control: a second install changes nothing and never chains its own hook.
+  m1_sha_before=$(git hash-object --no-filters "$M1/.git/hooks/pre-commit")$(git hash-object --no-filters "$M1/.git/hooks/commit-msg")
+  m1_bak_before=$(find "$M1/.git/hooks" -maxdepth 1 -name '*pre*' -o -maxdepth 1 -name 'commit-msg*' | sort | tr '\n' ' ')
+  bash "$M1/scripts/hooks/install-nostash-hooks.sh" >/dev/null 2>&1
+  check "M1: a second install succeeds" "$?" "0"
+  m1_sha_after=$(git hash-object --no-filters "$M1/.git/hooks/pre-commit")$(git hash-object --no-filters "$M1/.git/hooks/commit-msg")
+  m1_bak_after=$(find "$M1/.git/hooks" -maxdepth 1 -name '*pre*' -o -maxdepth 1 -name 'commit-msg*' | sort | tr '\n' ' ')
+  check "M1: a second install leaves both hooks byte-identical" "$m1_sha_after" "$m1_sha_before"
+  check "M1: a second install makes no second backup" "$m1_bak_after" "$m1_bak_before"
+
+  # A failing foreign hook fails the commit.
+  printf '#!/bin/sh\nexit 1\n' > "$M1/.git/hooks/pre-commit.bak-preinstall"
+  printf 'staged-again\n' > "$M1/commit-file.txt"
+  git -C "$M1" add commit-file.txt
+  (cd "$M1" && git commit -qm "feat: m1 blocked" >/dev/null 2>&1)
+  m1_blocked_rc=$?
+  check "M1: a failing foreign pre-commit hook fails the commit" "$([ "$m1_blocked_rc" -ne 0 ] && echo failed || echo passed)" "failed"
+fi
+
+# ---------------------------------------------------------------------------
+# M2: the baked pre-commit path can go stale (Python/pipx moved). The generated
+# hook falls back to pre-commit on PATH at commit time instead of failing.
+# ---------------------------------------------------------------------------
+M2=$(tracked_fixture_dir) || { echo "FAIL - could not allocate M2 fixture dir"; fails=$((fails+1)); }
+if [ -n "${M2:-}" ]; then
+  mk_seed_repo "$M2"
+  m2_bin="$M2.bin"
+  printf '%s\n' "$m2_bin" >>"$FIXTURE_LIST"
+  mkdir -p "$m2_bin"
+  real_pc=$(command -v pre-commit)
+  printf -v real_pc_q '%q' "$real_pc"
+  printf '#!/bin/sh\nexec %s "$@"\n' "$real_pc_q" > "$m2_bin/pre-commit"
+  chmod +x "$m2_bin/pre-commit"
+  (cd "$M2" && PATH="$m2_bin:$PATH" bash "$M2/scripts/hooks/install-nostash-hooks.sh" >/dev/null 2>&1)
+  check "M2: installer succeeds with pre-commit resolved to the fixture path" "$?" "0"
+  rm -f "$m2_bin/pre-commit"
+  printf 'staged-change\n' > "$M2/commit-file.txt"
+  git -C "$M2" add commit-file.txt
+  m2_out=$(cd "$M2" && git commit -qm "feat: moved baked path" 2>&1)
+  m2_rc=$?
+  check "M2: commit succeeds after the baked pre-commit path is gone (PATH fallback)" "$m2_rc" "0"
+  [ "$m2_rc" -ne 0 ] && echo "  M2 output: $m2_out"
+
+  # Baked launcher still present and executable, but its shebang interpreter moved.
+  printf '#!/nonexistent/moved/python\n' > "$m2_bin/pre-commit"
+  chmod +x "$m2_bin/pre-commit"
+  printf 'staged-again\n' > "$M2/commit-file.txt"
+  git -C "$M2" add commit-file.txt
+  m2b_out=$(cd "$M2" && git commit -qm "feat: broken baked launcher" 2>&1)
+  m2b_rc=$?
+  check "M2: commit succeeds when the baked launcher exists but its interpreter moved" "$m2b_rc" "0"
+  [ "$m2b_rc" -ne 0 ] && echo "  M2b output: $m2b_out"
+
+  # The same broken launcher is also first on PATH: the fallback must probe
+  # it and move on to python -m pre_commit.
+  # Needs a python that can import pre_commit; an isolated (pipx) install may
+  # expose only the launcher, so skip rather than fail there.
+  m2c_py=0
+  for py in python python3; do
+    command -v "$py" >/dev/null 2>&1 && "$py" -m pre_commit --version >/dev/null 2>&1 && m2c_py=1
+  done
+  if [ "$m2c_py" -eq 1 ]; then
+    printf 'staged-third\n' > "$M2/commit-file.txt"
+    git -C "$M2" add commit-file.txt
+    m2c_out=$(cd "$M2" && PATH="$m2_bin:$PATH" git commit -qm "feat: broken launcher on PATH" 2>&1)
+    m2c_rc=$?
+    check "M2: commit succeeds when the broken launcher is also first on PATH" "$m2c_rc" "0"
+    [ "$m2c_rc" -ne 0 ] && echo "  M2c output: $m2c_out"
+  else
+    echo "SKIP - M2c: no python/python3 can import pre_commit (isolated install)"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # 2. Wiring: a fresh scaffold from the template must get the wrapper.
 # ---------------------------------------------------------------------------
 if [ -x "$INSTALLER" ]; then

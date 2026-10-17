@@ -1420,7 +1420,7 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
         legacy-classless-nogo-never-matches) cc_want=0 ;;
         unreadable-sibling-fails-closed) cc_next_class=cwd-indirection ;;
     esac
-    printf 'class: %s\n\nfirst finding\n' "$cc_first_class" > "$jev/judge-evidence.md"
+    printf 'class: %s\nclass-reason: fixture\n\nfirst finding\n' "$cc_first_class" > "$jev/judge-evidence.md"
     judge "$class_case-first" NO-GO "$cc_first"
     if [ "$class_case" = candidate-class-history-retained ]; then
         printf 'class: cwd-indirection\n\nfirst candidate\n' > "$jev/judge-evidence.md"
@@ -1437,7 +1437,7 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
     printf 'next fix\n' >> "$repo/$class_case.txt"
     git -C "$repo" commit -q -am "$class_case next fix"
     cc_third="$(git -C "$repo" rev-parse "$class_case")"
-    printf 'class: %s\n%s\n\nnext finding\n' "$cc_next_class" "$cc_layer" > "$jev/judge-evidence.md"
+    printf 'class: %s\nclass-reason: fixture\n%s\n\nnext finding\n' "$cc_next_class" "$cc_layer" > "$jev/judge-evidence.md"
     judge "$class_case-next" NO-GO "$cc_second"
     if [ "$class_case" = second-candidate-repeat-refused ]; then
         printf 'class: cwd-indirection\n\nanother current candidate\n' > "$jev/judge-evidence.md"

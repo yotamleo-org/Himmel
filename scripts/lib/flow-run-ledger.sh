@@ -3,6 +3,12 @@
 # scripts/telegram/flow-run-ledger.ts. Emits byte-identical canonical JSONL
 # lifecycle rows and appends them to ~/.himmel/flow-runs.jsonl by default.
 # bash 3.2-safe (no associative arrays, no mapfile).
+#
+# Suite quarantine net: while a shell suite is
+# running (HIMMEL_SUITE_LOCK_HELD set, or a test-*.sh script among this
+# process's ancestors) a row may only land under one of two roots: ${TMPDIR:-/tmp}
+# or literal /tmp. A ledger outside both (a set override or the HOME default)
+# is quarantined in ${TMPDIR:-/tmp}/flow-runs-unredirected.jsonl with a WARN.
 
 # PATH self-heal: emitted .bat runners invoke this lib via the bare
 # usr\bin\bash.exe (the arm-time `command -v bash` resolution), which does
@@ -161,21 +167,132 @@ flow_run_is_transient() {
     ' "$log_path" 2>/dev/null | grep -Eq "$FLOW_RUN_TRANSIENT_SIGNATURE_RE"
 }
 
+# _fr_resolve <path> -- physical path of <path> (its nearest existing ancestor
+# resolved with cd -P, the rest appended), so a symlink or a /tmpfoo lookalike
+# cannot pass the prefix test. A '..' component fails (never trusted).
+_fr_resolve() {
+    local d="${1:-}" rest="" hops=0 t
+    case "$d" in */../*|*/..) return 1 ;; esac
+    # An existing ledger that is itself a symlink: follow it, or a link under
+    # /tmp could carry the append out to a production ledger.
+    while [ -L "$d" ]; do
+        hops=$((hops + 1))
+        [ "$hops" -le 8 ] || return 1
+        t=$(readlink "$d" 2>/dev/null) || return 1
+        case "$t" in
+            */../*|*/..|../*) return 1 ;;
+            /*) d="$t" ;;
+            *) case "$d" in */*) d="${d%/*}/$t" ;; *) d="$t" ;; esac ;;
+        esac
+    done
+    while [ ! -d "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
+        rest="/${d##*/}$rest"
+        case "$d" in */*) d="${d%/*}" ;; *) d="." ;; esac
+        [ -n "$d" ] || d="/"
+    done
+    d=$(cd -P "$d" 2>/dev/null && pwd -P) || return 1
+    printf '%s%s\n' "${d%/}" "$rest"
+}
+
+# _fr_under_tmp_root <path> -- 0 when <path> sits inside one of the two roots a
+# suite may legitimately point a ledger at: ${TMPDIR:-/tmp} (its own temp root)
+# and literal /tmp (run-shell-tests anchors the suite temp there, and a fixture
+# may narrow TMPDIR below it). The prefix match needs "<root>/", so /tmpfoo is
+# outside. The HOME default is never under either unless HOME is scratch.
+_fr_under_tmp_root() {
+    local res root r
+    res=$(_fr_resolve "${1:-}") || return 1
+    for root in "${TMPDIR:-/tmp}" /tmp; do
+        r=$(cd -P "$root" 2>/dev/null && pwd -P) || continue
+        case "$res" in "${r%/}"/*) return 0 ;; esac
+    done
+    return 1
+}
+
+# _fr_argv <pid> -- fill _fr_av with that process's argv: NUL-split from
+# /proc/<pid>/cmdline where it exists (exact, never cut to a column width),
+# else the whitespace-split of ps -ww output.
+_fr_argv() {
+    local w a
+    _fr_av=()
+    if [ -r "/proc/$1/cmdline" ]; then
+        while IFS= read -r -d '' w; do _fr_av+=("$w"); done < "/proc/$1/cmdline"
+    else
+        a=$(ps -ww -o args= -p "$1" 2>/dev/null) || return 1
+        read -r -a _fr_av <<< "$a"
+    fi
+}
+
+# _fr_script_operand -- 0 when _fr_av is a shell running a script file whose
+# basename is test-*.sh. Only that operand counts: a word elsewhere in argv (a
+# prompt, a -c body, a path argument) names a suite without running one.
+_fr_script_operand() {
+    local i=1 w=""
+    case "${_fr_av[0]:-}" in
+        bash|sh|dash|zsh|ksh|*/bash|*/sh|*/dash|*/zsh|*/ksh) ;;
+        *) return 1 ;;
+    esac
+    while [ "$i" -lt "${#_fr_av[@]}" ]; do
+        w="${_fr_av[$i]}"
+        case "$w" in
+            --) w="${_fr_av[$((i + 1))]:-}"; break ;;
+            -o|-O|+o|+O) i=$((i + 2)); w=""; continue ;;
+            -*c*) return 1 ;;
+            -*|+*) i=$((i + 1)); w=""; continue ;;
+            *) break ;;
+        esac
+    done
+    case "${w##*/}" in test-*.sh) return 0 ;; esac
+    return 1
+}
+
+# _fr_suite_ancestor -- 0 when a shell running a test-*.sh script is among this
+# process's ancestors, i.e. a suite run directly (no HIMMEL_SUITE_LOCK_HELD) is
+# spawning this wrapper. ponytail: only a shell's script operand counts (a
+# suite run through another interpreter is missed), argv is whitespace-split
+# where /proc is absent (a script path with spaces is missed), a suite
+# re-parented away from its fixture (a double fork) is not seen, depth is
+# capped at 16; upgrade is a marker the suite helpers export, if direct runs
+# keep leaking.
+_fr_suite_ancestor() {
+    local pid="$$" depth=0 ppid
+    local -a _fr_av
+    while [ "$depth" -lt 16 ] && [ "${pid:-0}" -gt 1 ] 2>/dev/null; do
+        _fr_argv "$pid" || return 1
+        _fr_script_operand && return 0
+        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null) || return 1
+        pid="${ppid//[[:space:]]/}"
+        depth=$((depth + 1))
+    done
+    return 1
+}
+
 flow_run_append() {
-    local line="${1:-}" path dir size
+    local line="${1:-}" path dir size signal="" target
     path=$(flow_run_ledger_path)
-    # A MISSED test redirect must fail LOUD, never silently
-    # pollute production telemetry. run-shell-tests.sh exports
-    # HIMMEL_SUITE_LOCK_HELD for the whole suite run, so a write reaching here
-    # with the marker set and NO explicit override is a fixture spawning a real
-    # wrapper that fell back to ~/.himmel/flow-runs.jsonl -- the shape that
-    # paged HimmelFlowRunError for runs that never happened. Quarantine the row
-    # in the suite's own temp root and say so on stderr. A genuine flow outside
-    # any suite has the marker unset and is untouched, and a fixture that DID
-    # redirect never reaches this branch.
-    if [ -n "${HIMMEL_SUITE_LOCK_HELD:-}" ] && [ -z "${HIMMEL_FLOW_RUNS_LEDGER:-}" ]; then
-        path="${TMPDIR:-/tmp}/flow-runs-unredirected.jsonl"
-        printf '[flow-run-ledger] HIMMEL-2241 WARN: shell suite running (HIMMEL_SUITE_LOCK_HELD set) with no HIMMEL_FLOW_RUNS_LEDGER override; row quarantined in %s instead of the production ledger. Export HIMMEL_FLOW_RUNS_LEDGER to a scratch path in the fixture that spawned this wrapper.\n' "$path" >&2
+    # A MISSED test redirect must fail LOUD, never silently pollute production
+    # telemetry. A suite is running when run-shell-tests.sh exported
+    # HIMMEL_SUITE_LOCK_HELD, or (a suite run directly leaves the marker unset)
+    # when a test-*.sh script is an ancestor of this process. A suite's row may
+    # only land inside its own temp root: a SET override that points elsewhere
+    # (an exported operator ledger) and the HOME default are both rows for runs
+    # that never happened, so quarantine them in the temp root and say so on
+    # stderr. A genuine flow outside any suite is untouched, and a fixture that
+    # redirected inside the temp root never reaches this branch.
+    if ! _fr_under_tmp_root "$path"; then
+        if [ -n "${HIMMEL_SUITE_LOCK_HELD:-}" ]; then
+            signal="HIMMEL_SUITE_LOCK_HELD set"
+        elif _fr_suite_ancestor; then
+            signal="a test-*.sh ancestor"
+        fi
+        if [ -n "$signal" ]; then
+            target="${TMPDIR:-/tmp}/flow-runs-unredirected.jsonl"
+            printf '[flow-run-ledger] HIMMEL-2241 WARN: shell suite running (%s) and the ledger %s is outside the suite temp root; row quarantined in %s instead of the production ledger. Export HIMMEL_FLOW_RUNS_LEDGER to a scratch path under TMPDIR in the fixture that spawned this wrapper.\n' "$signal" "$path" "$target" >&2
+            # A quarantine file that is itself a link out of the roots would
+            # carry the row to the ledger it exists to protect: drop it.
+            _fr_under_tmp_root "$target" || return 0
+            path="$target"
+        fi
     fi
     dir=$(dirname "$path")
     [ -d "$dir" ] || mkdir -p "$dir" 2>/dev/null || true
