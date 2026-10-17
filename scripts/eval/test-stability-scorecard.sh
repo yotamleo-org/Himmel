@@ -55,6 +55,10 @@ printf '%s\n' '#!/usr/bin/env bash' 'echo 100' >"$td/sat.sh"
 SCORECARD_RED_MAIN_CMD="bash $td/sat.sh" bash "$tool" run --date 2026-10-23 >/dev/null 2>&1; rc=$?
 check "red main at the 100-run cap exits 1" "$rc" 1
 check "red main at the cap reads unknown, never 100" "$(sed -n 6p "$td/s.tsv" | cut -f6)" unknown
+printf '%s\n' '#!/usr/bin/env bash' 'seq 1 500' >"$td/jsat.sh"
+SCORECARD_JIRA_CMD="bash $td/jsat.sh" bash "$tool" run --date 2026-10-24 >/dev/null 2>&1; rc=$?
+check "jira list at the 500-row cap exits 1" "$rc" 1
+check "jira list at the cap reads unknown" "$(sed -n 7p "$td/s.tsv" | cut -f9)" unknown
 [ ! -d "$td/s.tsv.lock" ] && ok "no lock left behind" || bad "no lock left behind"
 
 printf 'wrong\theader\n' >"$td/bad.tsv"

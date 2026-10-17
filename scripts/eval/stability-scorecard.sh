@@ -49,10 +49,16 @@ tsv_path() {
 # src <seam-var> <default command...>: run the seam command if set, else the default.
 src() { local v="$1"; shift; if [ -n "${!v:-}" ]; then bash -c "${!v} \"\$@\"" _ "$@"; else "$@"; fi; }
 # count_rows <seam-var> <cmd...>: rows the command prints; fails (cell reads unknown) when the command fails.
-count_rows() { local out; out="$(src "$@" 2>/dev/null)" || return 1; printf '%s\n' "$out" | grep -c . || true; }
+count_rows() {
+    local out n
+    out="$(src "$@" 2>/dev/null)" || return 1
+    n="$(printf '%s\n' "$out" | grep -c . || true)"
+    [ "$n" -lt 500 ] || return 1
+    printf '%s\n' "$n"
+}
 
 cmd_run() {
-    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira row
+    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira row locked
     while [ $# -gt 0 ]; do
         case "$1" in
             --date) [ $# -ge 2 ] || { echo "ERR scorecard: --date needs a value" >&2; return 64; }; date_arg="$2"; shift 2 ;;
@@ -99,8 +105,9 @@ cmd_run() {
         "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$ts")"
     mkdir -p "$(dirname "$tsv")" || return 1
     # ponytail: mkdir lock, 30s wait; a kill -9 mid-append leaves tsv.lock to remove by hand, upgrade to flock if it recurs
-    for _ in $(seq 1 30); do mkdir "$tsv.lock" 2>/dev/null && break; sleep 1; done
-    [ -d "$tsv.lock" ] || { echo "ERR scorecard: cannot take $tsv.lock" >&2; return 1; }
+    locked=0
+    for _ in $(seq 1 30); do mkdir "$tsv.lock" 2>/dev/null && { locked=1; break; }; sleep 1; done
+    [ "$locked" -eq 1 ] || { echo "ERR scorecard: cannot take $tsv.lock" >&2; return 1; }
     if [ -f "$tsv" ] && cut -f1 "$tsv" | grep -qx "$date_arg"; then
         rmdir "$tsv.lock"; echo "scorecard: $date_arg already recorded"; return 0
     fi
