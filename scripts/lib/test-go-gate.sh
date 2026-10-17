@@ -522,6 +522,67 @@ else
     fail "9j: node is missing, so fleet.mjs's parser cannot be checked"
 fi
 
+# 10. The fork gate: go_adapter_entry reads the harness repo from the
+# anchor's origin remote (never gh's default-repo answer), go_fork_ready needs a
+# registered, settled check, and the case mapping is pinned to the C locale.
+FG="$ROOT/fg"; mkdir -p "$FG/bin"
+cat > "$FG/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+# default repo = the fork (what gh's default-repo setting could resolve to)
+case "$1 $2" in
+    "repo view") case "$*" in *defaultBranchRef*) printf 'main' ;; *) printf 'yotamleo/qmd' ;; esac ;;
+    "api repos/"*) case "$2" in "repos/$FG_ORIGIN/contents/"*) printf '%s' '[{"nwo":"yotamleo/qmd","himmel_branch":"himmel/pin","merge_allowed":true}]' ;; *) exit 1 ;; esac ;;
+    "pr view") cat "$FG_PRVIEW" ;;
+    "api graphql") printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}\n' ;;
+    *) exit 91 ;;
+esac
+STUB
+chmod +x "$FG/bin/gh"
+export FG_ORIGIN="owner/Himmel" FG_PRVIEW="$FG/prview.json"
+fg_anchor() {  # <name> <origin url or ''> -> a git checkout whose origin is that url
+    git init -q "$FG/$1" && { [ -z "$2" ] || git -C "$FG/$1" remote add origin "$2"; }
+}
+fg_anchor https  https://github.com/owner/Himmel.git
+fg_anchor ssh    git@github.com:owner/Himmel.git
+fg_anchor sshurl ssh://git@github.com/owner/Himmel
+fg_anchor junk   'not a url'
+fg_anchor none   ''
+for a in https ssh sshurl; do
+    got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo/qmd' _ "$GO_GATE_SRC" "$FG/$a") || got="rc"
+    [ "$got" = himmel/pin ] || fail "10a: origin form [$a] with gh defaulting to the fork: expected the fork's branch, got [$got]"
+done
+for tgt in owner/Himmel owner/himmel OWNER/HIMMEL; do
+    rc=0; got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" "$3"' _ "$GO_GATE_SRC" "$FG/https" "$tgt") || rc=$?
+    { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'harness repo itself'; } || fail "10b: the harness repo [$tgt] must refuse as itself (rc=$rc, out=[$got])"
+done
+for a in junk none; do
+    rc=0; got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo/qmd' _ "$GO_GATE_SRC" "$FG/$a") || rc=$?
+    { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'origin remote'; } || fail "10c: anchor origin [$a] must refuse fail-closed (rc=$rc, out=[$got])"
+done
+# 10d. the case mapping holds under a non-C locale (the Turkish dotless-i trap needs tr_TR, which is
+# not installed here; the structural row below pins every call site, this one proves a real
+# non-C locale still compares equal).
+if locale -a 2>/dev/null | grep -qi '^de_DE\.utf-\?8$'; then
+    rc=0; LC_ALL=de_DE.utf8 GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" OWNER/HIMMEL' _ "$GO_GATE_SRC" "$FG/https" >/dev/null || rc=$?
+    [ "$rc" = 2 ] || fail "10d: an uppercase nwo must compare equal to the lowercase origin under de_DE (rc=$rc)"
+fi
+# 10e. structural: no tr case mapping or lowercase-bucket sed in go-gate.sh runs without the C-locale prefix.
+unpinned=$(grep -nE "(^|[^_A-Za-z=])tr '\[:(upper|lower):\]'" "$GO_GATE_SRC" | grep -v 'LC_ALL=C tr' || true)
+[ -z "$unpinned" ] || fail "10e: tr case mapping without LC_ALL=C: $unpinned"
+# 10f. go_fork_ready: a registered, settled check is required on top of CLEAN.
+fr() { printf '{"mergeStateStatus":"CLEAN","statusCheckRollup":%s}\n' "$1" > "$FG_PRVIEW"; GH="$FG/bin/gh" bash -c '. "$1"; go_fork_ready o/r 5' _ "$GO_GATE_SRC"; }
+rc=0; out=$(fr '[{"status":"COMPLETED","conclusion":"SUCCESS"}]') || rc=$?
+[ "$rc" = 0 ] || fail "10f: a completed passing check must be ready (rc=$rc, out=[$out])"
+rc=0; out=$(fr '[{"state":"SUCCESS"}]') || rc=$?
+[ "$rc" = 0 ] || fail "10f: a SUCCESS status context must be ready (rc=$rc, out=[$out])"
+for chk in '[]' 'null' '[{"status":"IN_PROGRESS"}]' '[{"status":"QUEUED"}]' '[{"state":"PENDING"}]' '[{"state":"EXPECTED"}]' '[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"IN_PROGRESS"}]'; do
+    rc=0; out=$(fr "$chk") || rc=$?
+    { [ "$rc" = 2 ] && printf '%s' "$out" | grep -qi 'check'; } || fail "10f: checks [$chk] must refuse naming the checks (rc=$rc, out=[$out])"
+done
+printf '{"mergeStateStatus":"CLEAN"}\n' > "$FG_PRVIEW"
+rc=0; out=$(GH="$FG/bin/gh" bash -c '. "$1"; go_fork_ready o/r 5' _ "$GO_GATE_SRC") || rc=$?
+[ "$rc" = 2 ] || fail "10f: an answer with no statusCheckRollup field must refuse (rc=$rc)"
+
 if [ "$FAIL" -eq 0 ]; then
     echo "PASS: test-go-gate.sh"
     exit 0

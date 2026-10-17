@@ -28,6 +28,10 @@ SHA=0123456789abcdef0123456789abcdef01234567
 OLD=89abcdef0123456789abcdef0123456789abcdef
 FORK=yotamleo/qmd
 BASE=himmel/pin-http-auth
+# The harness repo is whatever the checkout under test names as origin; the stub's
+# gh repo view answers the FORK as the default repo to prove nothing reads that.
+ORIGIN_NWO=$(git -C "$HERE" remote get-url origin | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##')
+export STUB_ORIGIN_NWO="$ORIGIN_NWO"
 export STUB_ALLOW="$tmp/allow.json" STUB_PRVIEW="$tmp/prview.json" STUB_LOG="$tmp/gh.log" STUB_THREADS="$tmp/threads.txt"
 printf '0 false\n' > "$STUB_THREADS"
 : > "$STUB_LOG"
@@ -38,11 +42,11 @@ cat > "$tmp/bin/gh" <<'STUB'
 case "$1 $2" in
     "repo view")
         case "$*" in
-            *defaultBranchRef*) printf 'o/himmel|main' ;;
-            *) printf 'o/himmel' ;;
+            *defaultBranchRef*) printf 'main' ;;
+            *) printf 'yotamleo/qmd' ;;
         esac ;;
-    "api repos/o/himmel/contents/scripts/guardrails/himmel-adapters.json?ref=main")
-        cat "$STUB_ALLOW" 2>/dev/null || exit 1 ;;
+    "api repos/"*"/contents/scripts/guardrails/himmel-adapters.json?ref=main")
+        case "$2" in "repos/$STUB_ORIGIN_NWO/contents/"*) cat "$STUB_ALLOW" 2>/dev/null || exit 1 ;; *) exit 1 ;; esac ;;
     "pr view") cat "$STUB_PRVIEW" 2>/dev/null || exit 1 ;;
     "api graphql")
         read -r n h < "$STUB_THREADS" 2>/dev/null || exit 1
@@ -59,7 +63,8 @@ chmod +x "$tmp/bin/gh"
 export PATH="$tmp/bin:$PATH"
 
 printf '%s\n' '[{"nwo":"yotamleo/qmd","upstream":"tobi/qmd","himmel_branch":"himmel/pin-http-auth","pin_site":"scripts/lib/qmd-bin.sh","role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo/off","upstream":"x/off","himmel_branch":"himmel/x","pin_site":null,"role":"dormant","merge_allowed":false}]' > "$STUB_ALLOW"
-prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s","mergeStateStatus":"%s"}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" "${5:-CLEAN}" > "$STUB_PRVIEW"; }
+GOODCHK='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]'
+prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s","mergeStateStatus":"%s","statusCheckRollup":%s}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" "${5:-CLEAN}" "${6:-$GOODCHK}" > "$STUB_PRVIEW"; }
 prview
 
 fails=0
@@ -128,8 +133,8 @@ for th in "1 false" "0 true" "garbage" ""; do
   check "go --repo review threads [$th] -> exit 7" "$rc" 7
 done
 printf '0 false\n' > "$STUB_THREADS"
-printf '%s\n' '[{"nwo":"o/himmel","upstream":"x/y","himmel_branch":"main","pin_site":null,"role":"self","merge_allowed":true}]' > "$tmp/self.json"
-rc=0; STUB_ALLOW="$tmp/self.json" go --repo o/himmel --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
+printf '%s\n' '[{"nwo":"'"$ORIGIN_NWO"'","upstream":"x/y","himmel_branch":"main","pin_site":null,"role":"self","merge_allowed":true}]' > "$tmp/self.json"
+rc=0; STUB_ALLOW="$tmp/self.json" go --repo "$ORIGIN_NWO" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo the anchor's own repo -> exit 6" "$rc" 6
 rc=0; go --repo "$FORK" --trust-reviewed nojudge 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo no judge verdict -> exit 5" "$rc" 5
@@ -148,7 +153,7 @@ contains "go --repo valid GO is trust-reviewed" "$(cat "$ROOT/.locks/go/18.$SHA"
 # same file fails the himmel repo's own verifier (the mac binds the fork nwo).
 rc=0; bash -c '. "$1"; go_trust_gate 18 "$2" "$3" "$4" >/dev/null' _ "$HERE/../lib/go-gate.sh" "$SHA" "$ROOT" "$FORK" || rc=$?
 check "e2e: go.sh GO verifies for the fork repo" "$rc" 0
-rc=0; bash -c '. "$1"; go_trust_gate 18 "$2" "$3" "$4" >/dev/null' _ "$HERE/../lib/go-gate.sh" "$SHA" "$ROOT" o/himmel || rc=$?
+rc=0; bash -c '. "$1"; go_trust_gate 18 "$2" "$3" "$4" >/dev/null' _ "$HERE/../lib/go-gate.sh" "$SHA" "$ROOT" "$ORIGIN_NWO" || rc=$?
 check "e2e: the same GO fails against the himmel repo" "$rc" 2
 rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "e2e: merge-fork-pr.sh accepts the GO go.sh wrote" "$rc" 0
@@ -186,7 +191,7 @@ prview OPEN "$SHA"
 rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge stale GO (GO is for an older head) -> exit 8" "$rc" 8
 rm -f "$ROOT/.locks/go/18.$OLD"
-write_go o/himmel 18 "$SHA" j1
+write_go "$ORIGIN_NWO" 18 "$SHA" j1
 rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge GO signed for another repo -> exit 8" "$rc" 8
 write_go "$FORK" 18 "$SHA"
@@ -218,8 +223,19 @@ for th in "1 false" "0 true" "garbage" ""; do
   check "merge review threads [$th] -> exit 7" "$rc" 7
 done
 printf '0 false\n' > "$STUB_THREADS"
-rc=0; STUB_ALLOW="$tmp/self.json" merge o/himmel 18 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; STUB_ALLOW="$tmp/self.json" merge "$ORIGIN_NWO" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge the anchor's own repo -> exit 6" "$rc" 6
+# a CLEAN fork PR with no registered check yet, or one still pending, is not ready
+for chk in '[]' 'null' '[{"name":"ci","status":"IN_PROGRESS","conclusion":null}]' '[{"context":"ci","state":"PENDING"}]'; do
+  prview OPEN "$SHA" MERGEABLE "$BASE" CLEAN "$chk"
+  rc=0; out="$(go --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
+  check "go --repo CLEAN with checks [$chk] -> exit 7" "$rc" 7
+  contains "go --repo CLEAN with checks [$chk] names the checks" "$out" "check"
+  rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+  check "merge CLEAN with checks [$chk] -> exit 7" "$rc" 7
+done
+check "merge check refusals merged nothing" "$(merged)" 0
+prview
 check "merge readiness refusals merged nothing" "$(merged)" 0
 prview
 rc=0; STUB_NOFLIP=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
