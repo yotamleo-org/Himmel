@@ -5,6 +5,23 @@ set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$LIB_DIR/prim.sh"
+source_contract() {
+    local before='' after='' rc=0 variables_before='' variables_after=''
+    variables_before=$(compgen -A variable | grep -v '^prim_')
+    before=$(set +o)
+    # shellcheck disable=SC1090
+    . "$LIB"
+    rc=$?
+    after=$(set +o)
+    variables_after=$(compgen -A variable | grep -v '^prim_')
+    [ "$rc" -eq 0 ] && [ "$before" = "$after" ] &&
+        [ "$variables_before" = "$variables_after" ]
+}
+if [ "${1-}" = --source-contract ]; then
+    source_contract
+    exit $?
+fi
+
 if [ -r "$LIB" ]; then
     # shellcheck source=prim.sh
     . "$LIB" || exit 1
@@ -118,19 +135,6 @@ check() {
     fi
 }
 
-source_contract() {
-    local before='' after='' rc=0 variables_before='' variables_after=''
-    variables_before=$(compgen -A variable | grep -v '^prim_')
-    before=$(set +o)
-    # shellcheck disable=SC1090
-    . "$LIB"
-    rc=$?
-    after=$(set +o)
-    variables_after=$(compgen -A variable | grep -v '^prim_')
-    [ "$rc" -eq 0 ] && [ "$before" = "$after" ] &&
-        [ "$variables_before" = "$variables_after" ]
-}
-
 atomic_bytes() {
     local rc
     printf 'old\n' > "$T/with space/target" || return 1
@@ -199,6 +203,22 @@ fallback_dead_owner() {
     [ "$rc" -eq 1 ] && [ ! -e "$T/entered" ] && [ "$(< "$T/dead.lock")" = "$pid" ]
 }
 
+fallback_owner_exited() {
+    local pid
+    "$BASH_BIN" -c 'exit 0' &
+    pid=$!
+    wait "$pid" || return 1
+    printf '%s\n' "$pid" > "$T/exiting.lock" || return 1
+    # Schedule release at the liveness-probe boundary; retain real kill status.
+    # shellcheck disable=SC2329 # The sourced helper calls this liveness probe.
+    kill() {
+        rm -f "$T/exiting.lock" || return 1
+        builtin kill "$@"
+    }
+    PATH="$T/bin" with_lock "$T/exiting.lock" printf 'acquired\n' > "$T/acquired" 2>/dev/null || return 1
+    [ "$(< "$T/acquired")" = acquired ] && [ ! -e "$T/exiting.lock" ]
+}
+
 fallback_changed_directory() {
     mkdir "$T/elsewhere" || return 1
     printf 'unrelated\n' > "$T/elsewhere/cwd.lock" || return 1
@@ -251,7 +271,7 @@ temp_failure() {
     [ "$rc" -eq 1 ] && [ -z "$path" ]
 }
 
-check 'source preserves shell options' source_contract
+check 'source preserves shell options and prefixed state' "$BASH_BIN" "$0" --source-contract
 check 'atomic_write replaces exact bytes in a spaced path' atomic_bytes
 check 'atomic_write allocates beside target, not TMPDIR' atomic_same_directory
 check 'atomic_write cleans up after input failure' atomic_failure cat
@@ -264,6 +284,7 @@ check 'fallback preserves status and releases exclusive file' fallback_status
 mkdir "$T/fallback" || exit 1
 check 'fallback serializes four counter increments without flock' env PATH="$T/bin" "$TIMEOUT" 15 "$BASH_BIN" "$0" --lock-workers "$T/fallback"
 check 'fallback refuses dead PID without deleting its lock' fallback_dead_owner
+check 'fallback retries if owner exited after releasing its record' fallback_owner_exited
 check 'fallback fails promptly when lock parent is missing' fallback_missing_parent
 check 'fallback releases correct lock when command changes directory' fallback_changed_directory
 check 'fallback tolerates rapid lock release and reacquisition' env PATH="$T/bin" "$TIMEOUT" 20 "$BASH_BIN" "$0" --churn-workers "$T"

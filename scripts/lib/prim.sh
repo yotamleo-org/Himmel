@@ -35,7 +35,7 @@ atomic_write() (
 # Commands must not daemonize; SIGKILL can leave a fallback file for recovery.
 with_lock() (
     [ "$#" -ge 2 ] && [ -n "$1" ] || exit 2
-    local prim_lock="$1" prim_pid prim_owner prim_probe
+    local prim_lock="$1" prim_pid prim_owner prim_probe prim_current
     shift
     case "$prim_lock" in /*) ;; *) prim_lock="$(pwd -P)/$prim_lock" || exit 1 ;; esac
     if command -v flock >/dev/null 2>&1; then
@@ -63,6 +63,12 @@ with_lock() (
             *[!0-9]*|0) printf 'with_lock: invalid owner in %s\n' "$prim_lock" >&2; exit 1 ;;
         esac
         if ! kill -0 "$prim_owner" 2>/dev/null; then
+            # A normal release removes the file before the owner exits. Only a
+            # record still naming that dead PID is stale; a new owner or absent
+            # record means retry, not an acquisition failure.
+            prim_current=''
+            IFS= read -r prim_current 2>/dev/null < "$prim_lock" || continue
+            [ "$prim_current" = "$prim_owner" ] || continue
             printf 'with_lock: dead or inaccessible owner in %s; explicit recovery required\n' "$prim_lock" >&2
             exit 1
         fi
