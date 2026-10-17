@@ -195,6 +195,36 @@ cfg="$(cat "$(CFG)")"
 assert_contains "set rewrites embed under a commented models: line" "embed: $GEMMA" "$cfg"
 assert_rc "set leaves one models block" 1 "$(grep -c '^models:' "$(CFG)")"
 
+# An inline-scalar models: line must be replaced, not shadowed by an appended second block.
+# YAML parse uses python3 yaml when importable; otherwise the strict ^models: count stands alone.
+yaml_loads() {
+    if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import yaml' >/dev/null 2>&1; then return 0; fi
+    python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$1"
+}
+n=0
+for inline in 'models: null' 'models: ~' 'models: {}' 'models: null # per machine'; do
+    n=$((n+1))
+    new_home "12-$n"
+    printf 'collections:\n  luna:\n    path: /x\n%s\nother: keep\n' "$inline" >"$(CFG)"
+    rc=0; run bash "$SCRIPT" set gemma >/dev/null 2>&1 || rc=$?
+    cfg="$(cat "$(CFG)")"
+    assert_rc "set over '$inline' succeeds" 0 "$rc"
+    assert_rc "'$inline': exactly one models: key" 1 "$(grep -c '^models:' "$(CFG)")"
+    tail_comment=""
+    case "$inline" in *'#'*) tail_comment=" #${inline#*#}" ;; esac
+    want="$(printf 'collections:\n  luna:\n    path: /x\nmodels:%s\n  embed: %s\nother: keep' "$tail_comment" "$GEMMA")"
+    if [ "$cfg" = "$want" ]; then pass "'$inline': embed written in place, other lines preserved"; else fail "'$inline': embed written in place, other lines preserved" "$cfg"; fi
+    rc=0; yaml_loads "$(CFG)" 2>/dev/null || rc=$?
+    assert_rc "'$inline': result loads as YAML" 0 "$rc"
+done
+
+new_home 12n
+printf 'collections:\n  luna:\n    path: /x\n    models: null\n' >"$(CFG)"
+run bash "$SCRIPT" set gemma >/dev/null 2>&1
+cfg="$(cat "$(CFG)")"
+assert_contains "an indented models: null is left alone" "    models: null" "$cfg"
+assert_rc "an indented models: null still gets one top-level block appended" 1 "$(grep -c '^models:' "$(CFG)")"
+
 echo "== reembed"
 # retired collection filtering must fail before creating a copy.
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --collections luna --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
