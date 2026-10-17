@@ -77,6 +77,13 @@
 #      scripts/testing/check-added-unwired.sh, which this item calls. Fixture
 #      paths are standalone by design.
 #
+# 12. Trust path: trust_path_check (scripts/lib/go-gate.sh, shared with
+#      merge-on-green and ready-go) against the PR's files and the default
+#      branch's scripts/ci/ci-trust-paths.txt. Prints `TRUST-PATH: yes|no` just
+#      before the READY-CHECK line; go.sh refuses a plain GO on `yes`. A refusal
+#      (unreadable list, unresolvable default branch, moved head) FAILs and prints
+#      no TRUST-PATH line. READY_CHECK_ANCHOR (tests) replaces the harness anchor.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
 # ledger rows, no GO files, no PR comments.
@@ -136,7 +143,11 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-nwo=$("$GH" repo view --json owner,name --jq '"\(.owner.login)/\(.name)"' 2>/dev/null)
+# one call carries the default branch too (check 12), so the GraphQL budget holds
+nwo=$("$GH" repo view --json owner,name,defaultBranchRef --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)
+tp_branch=""
+case "$nwo" in *" "*) tp_branch="${nwo#* }" ;; esac
+nwo="${nwo%% *}"
 if [ -z "$nwo" ]; then
     echo "ready-check: cannot resolve owner/repo (gh repo view --json owner,name failed)" >&2
     exit 2
@@ -602,6 +613,39 @@ else
 fi
 fi  # ONLY7 == 0: check 11
 
+TRUST_PATH=""
+if [ "$ONLY7" -eq 0 ]; then
+# ── 12. trust path, computed from the PR diff ──
+# The same question merge-on-green asks (trust_path_check in scripts/lib/go-gate.sh:
+# the default branch's list against the PR's REST file listing). The leg's READY
+# text is never consulted. A refusal (unreadable list, head moved, listing cut
+# short, stale anchor) FAILs and prints no TRUST-PATH line: it never reads as "no".
+tp_anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+tp_rc=0; tp_out=""
+if [ -z "$tp_branch" ]; then
+    tp_rc=2; tp_out="cannot resolve the default branch (gh repo view --json defaultBranchRef gave none)"
+else
+    unset -f trust_path_check 2>/dev/null || true
+    # shellcheck source=scripts/lib/go-gate.sh
+    # shellcheck disable=SC1091
+    if . "$tp_anchor/scripts/lib/go-gate.sh" 2>/dev/null && declare -F trust_path_check >/dev/null 2>&1; then
+        tp_out=$(GH="$GH" trust_path_check "$nwo" "$PR" "$SHA" "$tp_branch" "$tp_anchor") || tp_rc=$?
+    else
+        tp_rc=2; tp_out="cannot load trust_path_check from $tp_anchor/scripts/lib/go-gate.sh"
+    fi
+fi
+if [ "$tp_rc" -ne 0 ]; then
+    echo "[FAIL] 12. trust path: refused ${tp_out:-trust_path_check exited $tp_rc with no reason}"
+    mark_fail
+else
+    echo "[PASS] 12. trust path: $tp_out"
+    case "$tp_out" in
+        hit\ *) TRUST_PATH=yes ;;
+        *) TRUST_PATH=no ;;
+    esac
+fi
+fi  # ONLY7 == 0: check 12
+
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi
     echo "COVERAGE-LINT FAIL"
@@ -610,6 +654,7 @@ fi
 
 echo "---"
 echo "The three-dot diff read (git diff origin/main...HEAD) stays the console's own judgement — this script does not read it."
+[ -z "$TRUST_PATH" ] || echo "TRUST-PATH: $TRUST_PATH"
 if [ "$RESULT" -eq 0 ]; then
     echo "READY-CHECK PASS"
     exit 0

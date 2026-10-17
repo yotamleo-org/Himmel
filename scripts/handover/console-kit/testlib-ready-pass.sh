@@ -17,7 +17,14 @@ ready_pass_bin() {
     cat > "$1/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-    "repo view --json owner,name"*) printf '%s\n' "${READY_STUB_NWO:-o/r}"; exit 0 ;;
+    "repo view --json owner,name"*) printf '%s main\n' "${READY_STUB_NWO:-o/r}"; exit 0 ;;
+    # trust_path_check (ready-check check 12): the default branch's list, then the
+    # PR's head + file count and its file listing. Default = no trust path.
+    *"contents/scripts/ci/ci-trust-paths.txt"*)
+        [ "${READY_STUB_TRUST_LIST_FAIL:-0}" = 1 ] && { echo "boom" >&2; exit 1; }
+        printf '^scripts/ci/\n^scripts/lib/\n'; exit 0 ;;
+    "api repos/"*"/pulls/"*"/files --paginate"*) printf '%s\t\n' "${READY_STUB_TRUST_FILE:-scripts/x.sh}"; exit 0 ;;
+    "api repos/"*"/pulls/"*"changed_files"*) printf '%s|1\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *"--json headRefOid,mergeStateStatus"*) printf '%s CLEAN\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *"--json statusCheckRollup"*) printf '%s' '[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]'; exit 0 ;;
     *"--json commits"*)

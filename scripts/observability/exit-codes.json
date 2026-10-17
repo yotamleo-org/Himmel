@@ -32,7 +32,8 @@
     "scripts/handover/console-kit/go.sh": {
       "codes": {
         "4": { "class": "result", "meaning": "ready-check did not PASS at this head: no GO written" },
-        "5": { "class": "result", "meaning": "trust-reviewed GO refused: no GO written" }
+        "5": { "class": "result", "meaning": "trust-reviewed GO refused: no GO written" },
+        "8": { "class": "result", "meaning": "plain GO refused: ready-check computed TRUST-PATH yes, only --trust-reviewed may write it" }
       }
     },
     "scripts/handover/merge-on-green.sh": {

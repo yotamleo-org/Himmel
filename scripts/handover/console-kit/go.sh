@@ -67,6 +67,9 @@
 #   6  refused: --repo names no himmel adapter with merge_allowed true
 #   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch,
 #      or is not CLEAN (checks green) with every review thread resolved
+#   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
+#      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
+#      only --trust-reviewed <judge qid> may write it. The leg's READY text is never read.
 #
 # A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -262,6 +265,15 @@ if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SH
     printf '%s\n' "$READY_OUT" >&2
     echo "go: refusing - ready-check.sh did not PASS for PR #$PR at $SHA (above); fix what it names, re-run /pr-check for a new head, then re-run go.sh. No GO written." >&2
     exit 4
+fi
+
+# ready-check COMPUTES the trust path from the PR diff and the default branch's
+# list (its TRUST-PATH line); the leg's READY prose is never read. A plain GO on
+# a yes line is refused: a trust path merges only on a trust-reviewed GO.
+if [ "$FORK_SET" -eq 0 ] && [ "$TRUST_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ] \
+   && printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes'; then
+    echo "go: refusing the plain GO for PR #$PR at $SHA - ready-check computed TRUST-PATH: yes (the diff touches a CI trust path). Have an independent judge rule GO on this head, then run: go.sh --trust-reviewed <judge qid> $PR $SHA. No GO written." >&2
+    exit 8
 fi
 
 # the mac binds the repo (himmel-go-v2|<nwo>|<pr>|<sha>) - a GO
