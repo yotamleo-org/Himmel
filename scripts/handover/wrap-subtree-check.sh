@@ -15,7 +15,12 @@
 # anchor on, never prints CLOSABLE. On WITHHELD, TaskStop EVERY background task
 # and every agent you spawned, then re-run until it prints CLOSABLE.
 #
-# usage: wrap-subtree-check.sh [<claude-pid>]
+# usage: wrap-subtree-check.sh [--queue-doc <handover-path>] [<claude-pid>]
+# --queue-doc: once the subtree is clean, also require that
+# `queue-lock.sh status <handover-path>` answers `free`; a still-held lock
+# (status rc 11/12) is `WITHHELD: queue lock still held for <doc>` rc 1, any
+# other answer or a status error is `WITHHELD: cannot read the queue lock` rc 2
+# (fail-closed). Without the flag nothing about the queue lock is read.
 # Without a pid the session is the nearest ancestor of this script whose argv0
 # is `claude`. The subtree is every descendant of that session EXCEPT this
 # script's own chain (its tool-call wrapper, itself, and its own children) and
@@ -87,17 +92,30 @@
 # PLATFORM GUARD: no .ps1 twin, by design — Linux-only (procps ps).
 set -uo pipefail
 
+usage='usage: wrap-subtree-check.sh [--queue-doc <handover-path>] [<claude-pid>]'
 case "${1:-}" in
     -h|--help)
-        printf 'usage: wrap-subtree-check.sh [<claude-pid>]\n'
+        printf '%s\n' "$usage"
         exit 0 ;;
 esac
-root="${1:-}"
+root=""
+qdoc=""
+have_root=0
+have_qdoc=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --queue-doc)
+            [ "$have_qdoc" -eq 0 ] && [ "$#" -ge 2 ] && [ -n "$2" ] || { printf '%s\n' "$usage" >&2; exit 2; }
+            qdoc="$2"; have_qdoc=1; shift 2 ;;
+        *)
+            [ "$have_root" -eq 0 ] || { printf '%s\n' "$usage" >&2; exit 2; }
+            root="$1"; have_root=1; shift ;;
+    esac
+done
 case "$root" in
     '') ;;
-    *[!0-9]*) printf 'usage: wrap-subtree-check.sh [<claude-pid>]\n' >&2; exit 2 ;;
+    *[!0-9]*) printf '%s\n' "$usage" >&2; exit 2 ;;
 esac
-[ "$#" -le 1 ] || { printf 'usage: wrap-subtree-check.sh [<claude-pid>]\n' >&2; exit 2; }
 
 self="${WRAP_SUBTREE_SELF:-$$}"
 # No backslashes: the value crosses awk -v, which processes escape sequences.
@@ -268,6 +286,19 @@ ignored="$(printf '%s\n' "$result" | sed -n 's/^IGNORED //p')"
 if [ -z "$found" ] || [ -z "$count" ] || [ -z "$ignored" ]; then
     printf 'WITHHELD: cannot parse the process table — not declaring CLOSABLE\n'
     exit 2
+fi
+if [ "$count" -eq 0 ] && [ -n "$qdoc" ]; then
+    ql="${WRAP_SUBTREE_QUEUE_LOCK:-$(dirname "${BASH_SOURCE[0]}")/queue-lock.sh}"
+    qout="$(bash "$ql" status "$qdoc" 2>/dev/null)"; qrc=$?
+    if [ "$qrc" -eq 0 ] && [ "$qout" = "free" ]; then
+        :
+    elif [ "$qrc" -ge 11 ] && [ "$qrc" -le 12 ]; then
+        printf 'WITHHELD: queue lock still held for %s — release it with queue-lock.sh release <doc> <token>, then re-run; not declaring CLOSABLE\n' "$qdoc"
+        exit 1
+    else
+        printf 'WITHHELD: cannot read the queue lock for %s (status rc=%s) — not declaring CLOSABLE\n' "$qdoc" "$qrc"
+        exit 2
+    fi
 fi
 if [ "$count" -eq 0 ]; then
     if [ "$ignored" -eq 0 ]; then

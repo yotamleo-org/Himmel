@@ -579,6 +579,45 @@ for dp in 510 511 512 514 515 516 517 518; do
 done
 lacks 'the exact-shape fetch beside the decoys is still ignored, not withheld (HIMMEL-5923)' "$out" '  pid=513 ppid='
 
+# --queue-doc <doc> withholds CLOSABLE while the leg's queue lock
+# is still held. Real queue-lock.sh over a scratch handover root.
+QL="$HERE/queue-lock.sh"
+Q6_ROOT="$W/q6038"; mkdir -p "$Q6_ROOT/q" "$W/xdg"; chmod 700 "$W/xdg"
+Q6_DOC="$Q6_ROOT/q/leg-6038.md"; : > "$Q6_DOC"
+qenv() { HANDOVER_DIR="$Q6_ROOT" XDG_RUNTIME_DIR="$W/xdg" HANDOVER_REGISTRY="$W/none.json" "$@"; }
+Q6_TOK="$(qenv bash "$QL" acquire "$Q6_DOC" 2>/dev/null | sed -n 's/^release-token: //p')"
+Q6_TOK="${Q6_TOK#\`}"; Q6_TOK="${Q6_TOK%\`}"
+out="$(qenv run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
+eq '--queue-doc with the lock held: rc 1 (HIMMEL-6038)' 1 "$rc"
+contains '--queue-doc held: WITHHELD names the doc' "$out" "WITHHELD: queue lock still held for $Q6_DOC"
+lacks '--queue-doc held: no CLOSABLE banner' "$out" 'CLOSABLE:'
+qenv bash "$QL" release "$Q6_DOC" "$Q6_TOK" >/dev/null 2>&1
+out="$(qenv run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
+eq '--queue-doc after release: rc 0 (HIMMEL-6038)' 0 "$rc"
+contains '--queue-doc after release: CLOSABLE' "$out" 'CLOSABLE: no non-harness process under claude pid 101'
+out="$(qenv run "$W/clean.txt" --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
+eq '--queue-doc before the pid operand is order-independent' 0 "$rc"
+cat > "$W/ql-err.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "boom" >&2; exit 1
+STUB
+out="$(WRAP_SUBTREE_QUEUE_LOCK="$W/ql-err.sh" run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
+eq '--queue-doc with a status error: rc 2 fail-closed (HIMMEL-6038)' 2 "$rc"
+contains '--queue-doc status error: WITHHELD' "$out" 'WITHHELD: cannot read the queue lock'
+cat > "$W/ql-junk.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "gibberish"; exit 0
+STUB
+out="$(WRAP_SUBTREE_QUEUE_LOCK="$W/ql-junk.sh" run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
+eq '--queue-doc with an unparsable status answer: rc 2' 2 "$rc"
+out="$(qenv run "$W/dirty.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
+eq '--queue-doc with a dirty subtree: rc 1 from the subtree check' 1 "$rc"
+lacks '--queue-doc with a dirty subtree: queue lock never consulted' "$out" 'queue lock'
+out="$(run "$W/clean.txt" 101 2>&1)"; rc=$?
+eq 'no flag: unchanged rc 0' 0 "$rc"
+out="$(run "$W/clean.txt" 101 --queue-doc 2>&1)"; rc=$?
+eq '--queue-doc without a value: usage rc 2' 2 "$rc"
+
 kill_hits="$(grep -v '^[[:space:]]*#' "$SUT" | grep -E '(^|[[:space:];&|(])(kill|pkill|killall)[[:space:]]')"
 if [ -n "$kill_hits" ]; then
     fail 'wrap-subtree-check.sh must be read-only (found a kill)'
