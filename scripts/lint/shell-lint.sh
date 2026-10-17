@@ -12,6 +12,9 @@
 # Usage:
 #   bash scripts/lint/shell-lint.sh [FILE...]   # lint the named shell files
 #   bash scripts/lint/shell-lint.sh --staged    # lint staged shell files (git)
+#   bash scripts/lint/shell-lint.sh --changed BASE..HEAD   # lint shell files changed in a git range
+#   bash scripts/lint/shell-lint.sh --baseline FILE [...]  # accept findings up to FILE's per-file counts
+#   bash scripts/lint/shell-lint.sh --baseline FILE --write-baseline [...]  # (re)write FILE from the findings
 #   bash scripts/lint/shell-lint.sh --help
 #
 # Checks:
@@ -60,6 +63,12 @@
 #                 zero (08, 09) is octal there and errors. Normalize with
 #                 $((10#$var)). A single-bracket [ "$m" -gt 5 ] is decimal and
 #                 never flagged. Exempt via a same-line `# octal-ok: <reason>`.
+#
+# Baseline: rows of `path<TAB>tag<TAB>count`. A (file, tag) with at most `count`
+# findings is accepted; one above it reports every finding of that tag in the
+# file, so the gate lands green and refuses only NEW findings. [BOM], [PS1-*]
+# and [parse] are never baselined.
+# ponytail: a count cannot tell WHICH line of an over-budget tag is new; upgrade to per-line fingerprints if that bites.
 #
 # Exit: 0 = clean, 1 = findings, 2 = usage error.
 # bash 3.2-safe; shellcheck-clean; cross-platform (Git Bash / macOS / Linux).
@@ -249,11 +258,21 @@ GNU_FLAG_PAT='(^|[^[:alnum:]_-])(sed[[:space:]]+-i([[:space:]]|$)|date[[:space:]
 ECHO_FLAG='(^|[^[:alnum:]_-])echo[[:space:]]+-[A-Za-z]*[en][A-Za-z]*'
 
 STAGED=0
+CHANGED=""
+BASELINE=""
+WRITE_BASELINE=0
+BASE_TEXT=""
+WB_OUT=""
 EXPLICIT=0         # 1 once any explicit file path is given
 FILES=""           # newline-separated (bash 3.2-safe; avoids array edge cases)
 while [ $# -gt 0 ]; do
     case "$1" in
         --staged) STAGED=1; shift ;;
+        --changed) [ $# -ge 2 ] || { printf 'shell-lint: --changed needs a git range\n' >&2; exit 2; }
+                   CHANGED="$2"; shift 2 ;;
+        --baseline) [ $# -ge 2 ] || { printf 'shell-lint: --baseline needs a file\n' >&2; exit 2; }
+                    BASELINE="$2"; shift 2 ;;
+        --write-baseline) WRITE_BASELINE=1; shift ;;
         --help|-h) usage; exit 0 ;;
         --) shift; while [ $# -gt 0 ]; do FILES="$FILES$1"$'\n'; EXPLICIT=1; shift; done ;;
         -*) printf 'shell-lint: unknown option: %s\n' "$1" >&2; exit 2 ;;
@@ -261,17 +280,31 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ "$STAGED" -eq 1 ]; then
-    command -v git >/dev/null 2>&1 || { printf 'shell-lint: --staged needs git on PATH\n' >&2; exit 2; }
-    # git diff --cached yields REPO-ROOT-relative paths; resolve them against the
+if [ "$WRITE_BASELINE" -eq 1 ] && [ -z "$BASELINE" ]; then
+    printf 'shell-lint: --write-baseline needs --baseline FILE\n' >&2; exit 2
+fi
+if [ -n "$BASELINE" ] || [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
+    command -v git >/dev/null 2>&1 || { printf 'shell-lint: --staged/--changed/--baseline need git on PATH\n' >&2; exit 2; }
+    # git diff yields REPO-ROOT-relative paths; resolve them against the
     # toplevel so --staged works from any subdirectory (a worktree-relative cwd
     # would otherwise silently drop every path → a false "clean" before a commit).
     _root="$(git rev-parse --show-toplevel 2>/dev/null)"
-    [ -n "$_root" ] || { printf 'shell-lint: --staged: not inside a git work tree\n' >&2; exit 2; }
+    [ -n "$_root" ] || { printf 'shell-lint: not inside a git work tree\n' >&2; exit 2; }
+fi
+if [ -n "$BASELINE" ] && [ "$WRITE_BASELINE" -eq 0 ]; then
+    [ -f "$BASELINE" ] || { printf 'shell-lint: baseline file not found: %s\n' "$BASELINE" >&2; exit 2; }
+    BASE_TEXT="$(cat "$BASELINE")" || { printf 'shell-lint: cannot read baseline: %s\n' "$BASELINE" >&2; exit 2; }
+fi
+
+if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
     # Capture git's exit code explicitly — a git failure must NOT read as
-    # "no staged files" (that would be a false all-clear).
-    if ! _staged="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACM)"; then
-        printf 'shell-lint: --staged: git diff --cached failed\n' >&2; exit 2
+    # "no changed files" (that would be a false all-clear).
+    if [ "$STAGED" -eq 1 ]; then
+        _list="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACM)" \
+            || { printf 'shell-lint: --staged: git diff --cached failed\n' >&2; exit 2; }
+    else
+        _list="$(cd "$_root" && git diff --name-only --diff-filter=ACM "$CHANGED" --)" \
+            || { printf 'shell-lint: --changed: git diff %s failed\n' "$CHANGED" >&2; exit 2; }
     fi
     while IFS= read -r _f; do
         [ -n "$_f" ] || continue
@@ -279,9 +312,37 @@ if [ "$STAGED" -eq 1 ]; then
         [ -f "$_abs" ] || continue
         _is_lint_target "$_abs" && FILES="$FILES$_abs"$'\n'
     done <<EOF
-$_staged
+$_list
 EOF
 fi
+
+# _baseline_filter KEY — stdin: a file's report. Drops each tag whose count is
+# within its baseline row; the rest print unchanged.
+_baseline_filter() {
+    awk -v key="$1" -v base="$BASE_TEXT" '
+    BEGIN {
+        n = split(base, bl, "\n")
+        for (i = 1; i <= n; i++) { m = split(bl[i], p, "\t"); if (m == 3 && p[1] == key) allow[p[2]] = p[3] + 0 }
+        never["BOM"] = never["PS1-NO-BOM"] = never["PS1-ENCODING"] = never["parse"] = 1
+    }
+    { line[NR] = $0
+      if (match($0, /^  \[[A-Za-z0-9-]+\]/)) { cur = substr($0, 4, RLENGTH - 4); cnt[cur]++ }
+      tag[NR] = cur }
+    END {
+        for (i = 1; i <= NR; i++) {
+            t = tag[i]
+            if (t == "" || (t in never) || cnt[t] > allow[t]) print line[i]
+        }
+    }'
+}
+
+# _baseline_counts KEY — stdin: a file's report. Prints one baseline row per baselinable tag.
+_baseline_counts() {
+    awk -v key="$1" '
+    BEGIN { never["BOM"] = never["PS1-NO-BOM"] = never["PS1-ENCODING"] = never["parse"] = 1 }
+    match($0, /^  \[[A-Za-z0-9-]+\]/) { t = substr($0, 4, RLENGTH - 4); if (!(t in never)) c[t]++ }
+    END { for (t in c) printf "%s\t%s\t%d\n", key, t, c[t] }'
+}
 
 command -v shellcheck >/dev/null 2>&1 && HAVE_SHELLCHECK=1 || HAVE_SHELLCHECK=0
 [ "$HAVE_SHELLCHECK" -eq 1 ] || printf 'shell-lint: shellcheck not installed — running BOM + errexit checks only\n' >&2
@@ -523,6 +584,17 @@ EOF
 
     fi   # end shell-specific checks (gate on _is_shell_file; .ps1 hit BOM policy only)
 
+    if [ "$file_issues" -gt 0 ] && [ -n "$BASELINE" ]; then
+        _key="${f#"$_root"/}"
+        if [ "$WRITE_BASELINE" -eq 1 ]; then
+            WB_OUT="$WB_OUT$(printf '%s' "$file_report" | _baseline_counts "$_key")"$'\n'
+            file_issues=0
+        else
+            file_report="$(printf '%s' "$file_report" | _baseline_filter "$_key")"
+            if [ -n "$file_report" ]; then file_report="$file_report"$'\n'; else file_issues=0; fi
+        fi
+    fi
+
     if [ "$file_issues" -gt 0 ]; then
         ISSUE_FILES=$((ISSUE_FILES + 1))
         printf '%s:\n' "$f"
@@ -537,6 +609,12 @@ EOF
 if [ "$EXPLICIT" -eq 1 ] && [ "$CHECKED" -eq 0 ] && [ "$MISSING" -gt 0 ]; then
     printf 'shell-lint: none of the named files exist (%d missing) — checked nothing\n' "$MISSING" >&2
     exit 2
+fi
+
+if [ "$WRITE_BASELINE" -eq 1 ]; then
+    printf '%s' "$WB_OUT" | grep -v '^$' | LC_ALL=C sort > "$BASELINE" || true
+    printf 'shell-lint: wrote %d baseline row(s) to %s\n' "$(grep -c . "$BASELINE")" "$BASELINE"
+    exit 0
 fi
 
 if [ "$ISSUE_FILES" -gt 0 ]; then

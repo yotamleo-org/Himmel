@@ -560,6 +560,17 @@ repos:
         files: '^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md|\.claude/commands/[^/]+\.md)$'
         stages: [pre-commit]
 
+      - id: shell-lint
+        name: shell portability lint (mktemp template, GNU flags, errexit leak, POSIX ERE, bash 3.2; baseline-first)
+        # HIMMEL-6043. Existing findings sit in scripts/lint/shell-lint-baseline.txt
+        # (path, tag, count); only a count above its row fails. The hook reads the
+        # index itself (--staged), so pass_filenames is off.
+        language: system
+        entry: bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt
+        pass_filenames: false
+        files: '\.sh$'
+        stages: [pre-commit]
+
       - id: command-positional-args
         name: no bare $<digit> in a command's fenced code
         # HIMMEL-2051
