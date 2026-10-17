@@ -3584,7 +3584,7 @@ fi
 # because hook-integrity pins this file and never a file it reads (the
 # shell-tokenize precedent). test-block-write-into-main-checkout.sh fails
 # when the copy drifts; regenerate it with
-# `bash scripts/hooks/replay-bwimc-engines.sh --sync`.
+# `bash scripts/hooks/lib/bash-ast-replay-bwimc.sh --sync`.
 _bwimc_engine="${BWIMC_ENGINE:-regex}"
 case "$_bwimc_engine" in
     regex|ast|both) ;;

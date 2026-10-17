@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# replay-bwimc-engines.sh — the engine equivalence tool for
+# bash-ast-replay-bwimc.sh — the engine equivalence tool for
 # block-write-into-main-checkout.sh's two engines (BWIMC_ENGINE=regex|ast).
 #
 #   --sync            rewrite the guard's inlined jq program from
@@ -19,7 +19,7 @@
 # fixtures; a sourced call has no ast engine and is logged out-of-scope.
 set -uo pipefail
 
-HOOKS="$(cd "$(dirname "$0")" && pwd)"
+HOOKS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUARD="$HOOKS/block-write-into-main-checkout.sh"
 BEGIN_MARK='# >>> BEGIN bash-ast (canonical: scripts/hooks/lib/bash-ast.jq + bash-ast-bwimc.jq) >>>'
 END_MARK='# <<< END bash-ast <<<'
@@ -101,7 +101,7 @@ case "${1:-}" in
         cat "$tmp" > "$GUARD"
         rm -f "$tmp" "$tmp.b" ;;
     --check)
-        [ "$(_block)" = "$(_current)" ] || { echo "replay-bwimc-engines: the guard's inlined bash-ast program differs from scripts/hooks/lib — run: bash scripts/hooks/replay-bwimc-engines.sh --sync" >&2; exit 1; } ;;
+        [ "$(_block)" = "$(_current)" ] || { echo "bash-ast-replay-bwimc: the guard's inlined bash-ast program differs from scripts/hooks/lib — run: bash scripts/hooks/lib/bash-ast-replay-bwimc.sh --sync" >&2; exit 1; } ;;
     --table)
         _table "$2" ;;
     --corpus)
@@ -112,5 +112,5 @@ case "${1:-}" in
             [ -d "$cwd" ] || cwd=/
             ( cd "$cwd" && bwimc_replay_row corpus "$(printf '%s' "$line" | jq -r '.label // "-"')" "$GUARD" "$line" )
         done < "$2" ;;
-    *) echo "usage: replay-bwimc-engines.sh --sync | --check | --table LOG | --corpus FILE" >&2; exit 64 ;;
+    *) echo "usage: bash-ast-replay-bwimc.sh --sync | --check | --table LOG | --corpus FILE" >&2; exit 64 ;;
 esac

@@ -55,7 +55,7 @@ if [ "$BWIMC_ENGINE" = ast ]; then
     _got=$(BWIMC_ENGINE=bogus _run "$DIRECT" \
         "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > $_WR/ast16.txt\",\"cwd\":\"$_WR\"}}")
     if [ "$_got" = block ]; then ok "ast16 an unknown BWIMC_ENGINE denies"; else bad "ast16 an unknown BWIMC_ENGINE denies — got $_got"; fi
-    if bash "$HOOKS/replay-bwimc-engines.sh" --check; then ok "ast17 the inlined jq program matches lib/bash-ast*.jq"
+    if bash "$HOOKS/lib/bash-ast-replay-bwimc.sh" --check; then ok "ast17 the inlined jq program matches lib/bash-ast*.jq"
     else bad "ast17 the inlined jq program matches lib/bash-ast*.jq"; fi
 fi
 

@@ -154,8 +154,8 @@ _run() {
     [ -z "${BWIMC_REPLAY:-}" ] || ( cd "${hookpwd:-.}" && bwimc_replay_row "${0##*/}" "-" "$script" "$json" )
     printf '%s' "$got"
 }
-# shellcheck source=replay-bwimc-engines.sh
-[ -z "${BWIMC_REPLAY:-}" ] || . "$HOOKS/replay-bwimc-engines.sh"
+# shellcheck source=lib/bash-ast-replay-bwimc.sh
+[ -z "${BWIMC_REPLAY:-}" ] || . "$HOOKS/lib/bash-ast-replay-bwimc.sh"
 
 # check_both <label> <block|allow> <json> [hookpwd] — asserts BOTH entry
 # modes (direct-exec via $DIRECT, sourced via $FENCE) agree with EXPECT.
