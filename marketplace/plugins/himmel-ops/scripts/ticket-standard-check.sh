@@ -39,8 +39,8 @@ missing="$(awk '
     return !(s == "" || s ~ /^(tbd|tbc|todo|n\/a|na|none|\.\.\.|…|\?+|-+)$/ || s ~ /^<[^>]*>$/)
   }
   BEGIN { n = split("impact|what|why|plan|dod|proof|agent detail", w, "|"); for (i = 1; i <= n; i++) want[w[i]] = ""; split("Impact What Why Plan DoD Proof Agent_detail", disp, " ") }
-  match($0, /^[ \t]*(```+|~~~+)/) {
-    run = substr($0, RSTART, RLENGTH); sub(/^[ \t]*/, "", run)
+  match($0, /^( |  |   )?(```+|~~~+)/) {
+    run = substr($0, RSTART, RLENGTH); sub(/^ */, "", run)
     if (!fence) { fence = 1; fch = substr(run, 1, 1); flen = length(run); next }
     if (substr(run, 1, 1) == fch && length(run) >= flen && substr($0, RSTART + RLENGTH) ~ /^[ \t]*$/) { fence = 0; next }
   }
