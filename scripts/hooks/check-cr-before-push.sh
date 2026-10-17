@@ -247,13 +247,10 @@ canonicalize_endpoint() {
             esac
             ;;
     esac
-    # Resolve the way git does: the path itself, then with a .git suffix; a
-    # plain file whose first line is "gitdir: <path>" (a gitfile) names the
-    # directory it points to, relative to the gitfile's own directory.
+    # Resolve in git's own order: the path itself (a directory, or a gitfile
+    # whose first line "gitdir: <path>" names a directory relative to the
+    # gitfile's own directory), and only then the path with a .git suffix.
     if abs=$(cd "$ep" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd falls through to the next git resolution rule, then fails closed
-        printf '%s\n' "$abs"; return 0
-    fi
-    if abs=$(cd "$ep.git" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd falls through to the next git resolution rule, then fails closed
         printf '%s\n' "$abs"; return 0
     fi
     if [ -f "$ep" ]; then
@@ -272,6 +269,9 @@ canonicalize_endpoint() {
                 fi
                 ;;
         esac
+    fi
+    if abs=$(cd "$ep.git" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd means no .git sibling, so the endpoint fails closed
+        printf '%s\n' "$abs"; return 0
     fi
     return 1
 }

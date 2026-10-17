@@ -840,6 +840,22 @@ else
     fail "CRLF gitfile push: expected exit 0 + marker at $pm_gfcr (got rc=$rc)" "out: $out"
 fi
 
+echo "TEST: HIMMEL-3737 -- a gitfile wins over a sibling .git directory, as git resolves it"
+git init -q --bare "$TMP_ROOT/gfboth.git" >/dev/null
+printf 'gitdir: %s\n' "$TMP_ROOT/gfreal.git" > "$TMP_ROOT/gfboth"
+git -C "$PB" update-ref refs/remotes/gfboth/main "$pb_init"
+rc=0; out=$(cd "$PB" && bash "$HOOK" gfboth "../gfboth" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
+pm_gfb="$PB/.git/cr-pending/feat/pub"
+if [ "$rc" -eq 0 ] && [ -f "$pm_gfb" ]; then
+    pm_gfb_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfb" 2>/dev/null || true)
+    case "$pm_gfb_endpoint" in
+        /*gfreal.git) pass "gitfile endpoint beats the sibling .git directory (HIMMEL-3737)" ;;
+        *) fail "sibling .git directory chosen over the gitfile: '$pm_gfb_endpoint'" "out: $out" ;;
+    esac
+else
+    fail "gitfile-vs-sibling push: expected exit 0 + marker at $pm_gfb (got rc=$rc)" "out: $out"
+fi
+
 echo "TEST: HIMMEL-3737 -- a relative file that is not a gitfile still fails closed"
 printf 'not a gitfile\n' > "$TMP_ROOT/plainfile"
 rc=0; out=$(cd "$PB" && bash "$HOOK" relremote "../plainfile" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
