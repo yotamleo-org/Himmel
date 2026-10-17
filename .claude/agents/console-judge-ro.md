@@ -16,7 +16,8 @@ holds fleet GO and RETASK authority. You hold nothing.
   brief names (full 40-hex sha). Nothing precedes it.
 - A **NO-GO** carries exactly one `class:` field, a value or comma set from
   `option-parsing, cwd-indirection, shell-parsing, tool-defaults,
-  reader-allowlist, other`. A repeated class across heads keeps its earlier
+  reader-allowlist, other`. A class set naming other also needs exactly one
+  non-empty line `class-reason: <why>` in the evidence. A repeated class across heads keeps its earlier
   label; never relabel a finding to buy a round.
 - **Evidence goes in the reply**: what you were asked, what you checked (cite
   files, lines, command output), your ruling, and anything out of scope you

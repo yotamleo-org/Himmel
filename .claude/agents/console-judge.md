@@ -73,7 +73,9 @@ by hand, so use the sanctioned writer (HIMMEL-4689):
    an absolute path under `/tmp/claude-<uid>/` reached without a symlink.
    For a NO-GO, include exactly one `class:` field: a value or comma set from
    `option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other`.
-   The writer refuses a new NO-GO without it (HIMMEL-4885). For a delta brief,
+   The writer refuses a new NO-GO without it (HIMMEL-4885). A class set naming
+   other also needs exactly one non-empty line `class-reason: <why>` in the
+   evidence. For a delta brief,
    keep the earlier class of a repeated finding, never relabel it to buy a
    round. A class repeated across heads stops the PR for a console layer
    decision; a same-uid file-access claim belongs at the OS layer.
