@@ -10,11 +10,15 @@
 //
 //   runOrUnknown(cmd, args, opts) -> { state, rc, out }
 //       spawnSync, stdout captured with trailing newlines stripped, stderr left
-//       on the terminal. opts passes through timeout, cwd and env only. rc is the real exit code, or null when the child never
+//       on the terminal. opts passes through timeout, cwd and env only.
+//       Output past the 1 MiB default maxBuffer kills the child: unknown.
+//       rc is the real exit code, or null when the child never
 //       exited normally (killed by a signal, timed out, could not spawn).
-//   requireOk(label, cmd, args, opts) -> { state, rc, out }
+//   requireOk(label, cmd, args, opts) -> boolean
 //       runOrUnknown, then writes "<label>: FAIL|UNKNOWN (rc=N)" to stderr
 //       unless ok. opts.stderr replaces the sink (a function taking a string).
+//       True only for a definite ok, like require_ok in result.sh, so a
+//       fail or unknown result is never truthy. Use runOrUnknown for the detail.
 //   resultRender(r) -> 'OK' | 'FAIL' | 'UNKNOWN'; unknown is never OK.
 import { spawnSync } from 'node:child_process';
 
@@ -42,7 +46,7 @@ export function requireOk(label, cmd, args = [], opts = {}) {
     const write = opts.stderr ?? ((s) => process.stderr.write(s));
     write(`${label}: ${resultRender(r)} (rc=${r.rc ?? ''})\n`);
   }
-  return r;
+  return r.state === 'ok';
 }
 
 export function resultRender(r) {

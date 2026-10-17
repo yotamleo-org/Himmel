@@ -73,11 +73,31 @@ test('true/false map to ok/fail', () => {
 test('requireOk writes the label line to stderr only when not ok', () => {
   const lines = [];
   const sink = (s) => lines.push(s);
-  assert.equal(requireOk('good', ...node('process.exit(0)'), { stderr: sink }).state, 'ok');
+  assert.equal(requireOk('good', ...node('process.exit(0)'), { stderr: sink }), true);
   assert.deepEqual(lines, []);
-  assert.equal(requireOk('bad', ...node('process.exit(1)'), { stderr: sink }).state, 'fail');
-  assert.equal(requireOk('odd', ...node('process.exit(3)'), { stderr: sink }).state, 'unknown');
+  assert.equal(requireOk('bad', ...node('process.exit(1)'), { stderr: sink }), false);
+  assert.equal(requireOk('odd', ...node('process.exit(3)'), { stderr: sink }), false);
   assert.deepEqual(lines, ['bad: FAIL (rc=1)\n', 'odd: UNKNOWN (rc=3)\n']);
+});
+
+test('requireOk is true only for a definite ok, like require_ok in result.sh', () => {
+  const sink = () => {};
+  for (const [code, want] of [[0, true], [1, false], [2, false], [127, false]]) {
+    assert.strictEqual(requireOk('x', ...node(`process.exit(${code})`), { stderr: sink }), want);
+  }
+  assert.strictEqual(requireOk('x', '/nonexistent/himmel-result-cmd', [], { stderr: sink }), false);
+});
+
+test('a child that traps SIGTERM and exits 0 under a timeout -> unknown', () => {
+  const r = run("process.on('SIGTERM', () => process.exit(0)); setTimeout(() => {}, 30000)", { timeout: 300 });
+  assert.equal(r.state, 'unknown');
+  assert.equal(resultRender(r), 'UNKNOWN');
+});
+
+test('output past the default 1 MiB maxBuffer, exit 0 -> unknown', () => {
+  const r = run("process.stdout.write('x'.repeat(2 * 1024 * 1024))");
+  assert.equal(r.state, 'unknown');
+  assert.equal(resultRender(r), 'UNKNOWN');
 });
 
 test('resultRender: unknown or missing state is never OK', () => {
