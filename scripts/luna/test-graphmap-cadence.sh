@@ -1287,11 +1287,12 @@ assert_rc "second --ast-only arm without --force blocked" 3 "$rc"
 assert_contains "dedup message can name the publish task" "HIMMEL-GraphPublish-Himmel" "$out"
 run_cron3 disarm >/dev/null 2>&1
 
-echo "TEST: cron arm --with-publish --publish-every-hours 2 --publish-semantic (HIMMEL-6123)"
+echo "TEST: cron arm --with-publish --publish-every-hours 2 --publish-semantic"
 out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-every-hours 2 --publish-semantic 2>&1)
 tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
 assert_contains "publish entry fires every 2h" "35 */2 * * *" "$tab3"
 assert_not_contains "publish entry no longer every 6h" "*/6" "$tab3"
+assert_not_contains "no luna semantic task is armed" "GraphSemantic" "$tab3"
 publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
 assert_contains "publish runner adds --semantic" "--semantic" "$publish_sh"
 assert_contains "publish runner sets the api lane" "HIMMEL_API_LANE=on" "$publish_sh"
@@ -1299,25 +1300,9 @@ assert_contains "publish runner sets the api account" "HIMMEL_API_ACCOUNT=auto" 
 assert_contains "publish runner pins the claude-api backend" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$publish_sh"
 assert_registry "publish flow registers a 2h cadence" \
     ".flows[] | select(.name == \"graph-publish-${EXPECTED_PUBLISH_SLUG}\" and .cadence_seconds == 7200)"
-assert_contains "luna semantic entry fires every 2h" "50 */2 * * *" "$tab3"
-assert_contains "luna semantic entry is tagged" "# HIMMEL-GraphSemantic-Luna" "$tab3"
-luna_sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
-assert_contains "luna semantic runner fires semantic-update.sh" "semantic-update.sh" "$luna_sem_sh"
-assert_contains "luna semantic runner names the luna corpus" "--name luna" "$luna_sem_sh"
-assert_contains "luna semantic runner declares luna-personal" "--corpus-class luna-personal" "$luna_sem_sh"
-assert_contains "luna semantic runner uses claude-api" "--backend claude-api" "$luna_sem_sh"
-assert_contains "luna semantic runner sets the api lane" "HIMMEL_API_LANE=on" "$luna_sem_sh"
 out=$(run_cron3 status)
 assert_contains "status shows the 2h publish schedule" "ARMED      HIMMEL-GraphPublish-Himmel (cron: 35 */2 * * *)" "$out"
-assert_contains "status shows the luna semantic task" "ARMED      HIMMEL-GraphSemantic-Luna (cron: 50 */2 * * *)" "$out"
 run_cron3 disarm >/dev/null 2>&1
-tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
-assert_not_contains "disarm removes the luna semantic entry" "HIMMEL-GraphSemantic-Luna" "$tab3"
-if [ ! -f "$CRON_DIR3/graphmap-semantic-luna.sh" ]; then
-    pass "disarm removes the luna semantic runner"
-else
-    fail "luna semantic runner survived disarm"
-fi
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-every-hours 5 2>&1) || rc=$?
 assert_rc "--publish-every-hours rejects a non-divisor of 24" 1 "$rc"
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --publish-semantic 2>&1) || rc=$?
