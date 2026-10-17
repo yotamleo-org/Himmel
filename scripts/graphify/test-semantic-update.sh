@@ -580,5 +580,22 @@ C52="$WS/c52"; new_corpus "$C52"; : > "$WS/calls.log"
 out=$(run_api --name t52 --corpus-root "$C52" --corpus-class himmel-code --backend claude-api --max-run-usd 0 --dry-run); rc=$?
 [ "$rc" -eq 1 ] && [[ "$out" == *"--max-run-usd"* ]] && [ ! -s "$WS/calls.log" ] && pass "T52 refused" || fail "T52 (rc=$rc): $out"
 
+echo "T53: semantic-metrics.py counts coverage and cross-file semantic edges, whole graph and per --files"
+M53="$WS/m53.json"
+cat > "$M53" <<'EOF'
+{"nodes": [{"id": "c1", "file_type": "concept", "source_file": "a.md", "rationale": "because"},
+           {"id": "c2", "file_type": "document", "source_file": "a.md", "rationale": " "},
+           {"id": "c3", "file_type": "concept", "source_file": "b.md"},
+           {"id": "k1", "file_type": "code", "source_file": "x.sh"}],
+ "links": [{"source": "c1", "target": "k1", "relation": "documents", "_origin": "semantic"},
+           {"source": "c2", "target": "c3", "relation": "references", "_origin": "semantic"},
+           {"source": "c2", "target": "c1", "relation": "references", "_origin": "semantic"},
+           {"source": "c1", "target": "k1", "relation": "calls", "_origin": "ast"}]}
+EOF
+all53=$(python3 "$HERE/semantic-metrics.py" "$M53"); a53=$(python3 "$HERE/semantic-metrics.py" "$M53" --files a.md)
+[[ "$all53" == *'"coverage_pct": 33.3'* ]] && [[ "$all53" == *'"cross_file_semantic_edges": 2'* ]] && [[ "$all53" == *'"doc_to_code_edges": 1'* ]] \
+  && pass "T53 whole graph" || fail "T53 whole: $all53"
+[[ "$a53" == *'"coverage_pct": 50.0'* ]] && [[ "$a53" == *'"semantic_nodes": 2'* ]] && pass "T53 --files scope" || fail "T53 scoped: $a53"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
