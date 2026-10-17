@@ -85,6 +85,12 @@ n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "Exit code 1
 boom" >>"$f"
 run "$f" "$C"; expect_allow "a run that failed (Exit code) counts as RAN, resets"
 
+f="$TMP/t5d.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" true "
+  Exit code 1
+boom" >>"$f"
+run "$f" "$C"; expect_allow "an Exit code result behind leading whitespace still counts as RAN, resets"
+
 f="$TMP/t5c.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"; res "t$n" false "ok" >>"$f"
 denied_n "$f" 1 "$C"

@@ -49,7 +49,7 @@ count=$(
                else "" end;
       def denied:
         (.is_error == true)
-        and ((txt | ltrimstr(" ") | startswith("Exit code")) | not)
+        and ((txt | sub("^\\s+"; "") | startswith("Exit code")) | not)
         and (txt | test("requires? approval|needs approval|hook error|PreToolUse|permission|denied|refus|blocked|can'"'"'t be checked before it runs|did not consume"; "i"));
       [ split("\n")[] | (try fromjson catch empty) | .message.content? | arrays | .[] ] as $items
       | reduce $items[] as $it ({ids: {}, n: 0};
