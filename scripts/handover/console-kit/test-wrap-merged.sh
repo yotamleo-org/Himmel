@@ -316,6 +316,7 @@ if command -v python3 >/dev/null 2>&1; then
     mkdir -p "$W/specs/plans"
     printf '%s\n' '`priority:` line for the console:' '' '40 | 2 | rest of v1.1.3' > "$W/specs/plans/v1.1.3-approved-plan.md"
     printf '%s\n' '`priority:` line for the console:' '' '3 | 40 | x' > "$W/specs/plans/v1.1.4-approved-plan.md"
+    printf '%s\n' '`priority:` line for the console:' '' '41 | 2 | rest of v1.1.3' > "$W/specs/plans/v1.1.3-approved-plan-2026-10-01.md"
     remaining_fixture() {  # remaining_fixture [tracker: value]
         tracker_fixture "$@"
         printf 'remaining-board: v1.1.3\n' >> "$CONSOLE"
@@ -324,7 +325,8 @@ if command -v python3 >/dev/null 2>&1; then
     remaining_fixture 'https://claude.ai/artifact/x'
     run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
     contains "19: a wrap renders the remaining board, remaining=CHANGED" "$out" "remaining=CHANGED"
-    contains "19: the plan is the one named for the version, not the newest of another" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "## 0 critical (1)"
+    contains "19: the plan is the one named for the version, not the newest of another" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "## rest of version (2)"
+    contains "19: the dated plan wins over the undated one" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" $'## rest of version (2)\n- HIMMEL-2 [To Do] an open ticket\n- HIMMEL-40 '
     contains "19: the board lists the open ticket" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "HIMMEL-2 [To Do] an open ticket"
     lacks "19: the board has no Done ticket" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "HIMMEL-3"
 

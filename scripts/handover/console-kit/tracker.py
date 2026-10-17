@@ -543,7 +543,7 @@ def done_in_future(mir, vers, unknown):
     if cur is None:
         return 0
     fut = {v['n'] for v in unrel} - {cur['n']}
-    return sum(1 for m in mir.values() if m['st'] == 2 and any(f in fut for f in m['fv']))
+    return sum(1 for m in mir.values() if bucket(m) == 'done' and any(f in fut for f in m['fv']))
 
 
 def jira_view(mir, legs, vers, prows, vnames):
@@ -910,6 +910,9 @@ def bench(mir, rows, n_plan, act, seqm, erange):
         s = dict(n=len(ns), open=0, done=0, legs=0, dated=0, wall=0, active=0, first=None, end=None)
         for n in ns:
             m = mir.get('HIMMEL-%d' % n)
+            if m and bucket(m) == 'wont':
+                s['n'] -= 1  # closed without shipping: out of every count
+                continue
             s['done' if m and m['st'] == 2 else 'open'] += 1
             a = act.get(n)
             if a:
@@ -1002,7 +1005,10 @@ def main():
     a = ap.parse_args()
     if a.remaining:
         MIRROR = os.path.abspath(a.mirror_dir)
-        text = remaining_board(read_mirror(), a.remaining, priority_groups(a.priority_file) if a.priority_file else [])
+        grp = priority_groups(a.priority_file) if a.priority_file else []
+        if a.priority_file and not grp:
+            raise SystemExit('tracker:--priority-file %s is unreadable or has no priority: line' % a.priority_file)
+        text = remaining_board(read_mirror(), a.remaining, grp)
         if a.out:
             open(a.out, 'w', encoding='utf-8').write(text)
         else:
@@ -1095,6 +1101,8 @@ def main():
     for r in placed:
         k, m = r['key'], mir.get(r['key'])
         planned.add(k)
+        if m and bucket(m) == 'wont':
+            continue
         lay = r.get('layer') or 'misc'
         fl = 1 if (m and m['fv'] and r['version'] not in m['fv']) else 0  # drift
         rows.append([num(k), clip(m['title'] if m else '(not in mirror)', 62),
@@ -1105,7 +1113,7 @@ def main():
                            float(r['effort_mid'] or 0)))
     n_plan = len(rows)
     for k, m in mir.items():
-        if k in planned:
+        if k in planned or bucket(m) == 'wont':
             continue
         hit = [v for v in m['fv'] if TRAIN_RE.match(v) and v in vidx]
         if hit:
@@ -1115,6 +1123,8 @@ def main():
     unpl = []
     for r in read_tsv(os.path.join(S, 'unplaced.tsv'))[1]:
         m = mir.get(r['key'])
+        if m and bucket(m) == 'wont':
+            continue
         unpl.append([num(r['key']), clip(m['title'] if m else '', 60), m['st'] if m else 0,
                      clip(r['reason'], 60)])
     # parked closures stay visible (evidence = the reason); other closure flags are not shown.
@@ -1122,6 +1132,8 @@ def main():
         if r['close_flag'] != 'park-ns':
             continue
         m = mir.get(r['key'])
+        if m and bucket(m) == 'wont':
+            continue
         unpl.append([num(r['key']), clip(m['title'] if m else '', 60), m['st'] if m else 0,
                      clip(r.get('close_evidence', ''), 70)])
 

@@ -394,6 +394,7 @@ contains 'IN CI is counted from the status name (HIMMEL-3990)' "$jhtml" '"k":33,
 not_contains 'a wont-do ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"wont one"'
 not_contains 'a Closed ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"closed one"'
 not_contains 'a Done ticket with a Duplicate resolution is in no count (HIMMEL-6241)' "$jhtml" '"t":"duplicate one"'
+not_contains 'a closed-without-shipping ticket is in no plan row either (HIMMEL-6241)' "$jhtml" '"closed one"'
 contains 'closed without shipping is one count per version, not a Done count (HIMMEL-6241)' "$jhtml" '"JW":[[1,2],[2,1]]'
 contains 'a Done ticket in a future version is counted in the current one (HIMMEL-6241)' "$jhtml" \
     '"k":40,"t":"done in future one","s":"Done","b":"done","v":1,'
@@ -648,6 +649,14 @@ not_contains 'the remaining board drops a wont-do ticket' "$rbout" 'HIMMEL-75'
 not_contains 'the remaining board drops another version' "$rbout" 'HIMMEL-74'
 contains 'the first priority segment is group 0' "$rbout" '## 0 critical (1)'
 contains 'the second priority segment is group 1K' "$rbout" '## 1K knowledge retrieval (1)'
+contains 'the first group holds ticket 71' "$rbout" "## 0 critical (1)"$'\n- HIMMEL-71 '
+contains 'the second group holds ticket 72' "$rbout" "## 1K knowledge retrieval (1)"$'\n- HIMMEL-72 '
+contains 'the rest group holds ticket 73' "$rbout" "## rest of version (1)"$'\n- HIMMEL-73 '
+if python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$W/no-such-plan.md" >/dev/null 2>&1; then
+    fail 'an explicit priority file that cannot be read fails the render'
+else
+    pass 'an explicit priority file that cannot be read fails the render'
+fi
 contains 'a ticket on no group line goes to the rest group' "$rbout" '## rest of version (1)'
 contains 'the heading counts the open tickets' "$rbout" '# v1.1.3 remaining board: 3 open'
 rbfile="$W/rb-out.md"
