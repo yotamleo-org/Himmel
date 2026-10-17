@@ -13,6 +13,7 @@ CHECK="$HERE/check-added-unwired.sh"
 T="$(mktemp -d "${TMPDIR:-/tmp}/added-unwired-prepush.XXXXXX")" || exit 1
 [ -d "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
+unset PRE_COMMIT_TO_REF  # a pre-push run names a real-repo commit the fixture lacks
 pass=0; fail=0
 ok() { echo "  PASS  $1"; pass=$((pass+1)); }
 no() { echo "  FAIL  $1"; fail=$((fail+1)); }
