@@ -579,6 +579,107 @@ for k in FETCHES_ONE MISS ONE_STDERR PARKED3 NO_QUERY_TEXT UNAVAIL_ROW LEDGER_RE
     assert "unavailable: $k" yes "$r"
 done
 
+# -- Test 13: DeepSeek opt-in rung — stub servers, no live calls ----
+echo "Test 13: makeWebFn — DeepSeek is opt-in, runs before Firecrawl, salus/unmapped refused"
+mkdir -p "$tmpdir/vault/Clippings" "$tmpdir/salusvault/Clippings" "$tmpdir/glm"
+: > "$tmpdir/salusvault/.salus"
+cat > "$tmpdir/deepseek.mjs" <<EOF
+import http from "node:http";
+import fs from "node:fs";
+import { makeWebFn } from "$lib_url";
+
+const hits = { deepseek: [], firecrawl: 0 };
+let dsMode = "hit";
+const srv = http.createServer((req, res) => {
+  req.on("data", () => {});
+  req.on("end", () => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/v1/tools/search") {
+      hits.deepseek.push({ url: req.url, auth: req.headers.authorization });
+      const results = dsMode === "hit" ? [{ title: "Acme Labs", url: "https://acme.dev", snippet: "founder of Acme" }] : [];
+      res.end(JSON.stringify({ results }));
+    } else if (req.url === "/v2/search") {
+      hits.firecrawl += 1;
+      res.end(JSON.stringify({ success: true, data: [{ url: "https://fc.example/acme", title: "Acme", description: "founder of Acme" }] }));
+    } else { res.statusCode = 404; res.end("{}"); }
+  });
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const base = "http://127.0.0.1:" + srv.address().port;
+const env0 = { HOME: process.env.T_HOME, HIMMEL_FIRECRAWL_LEDGER: process.env.T_LEDGER, HIMMEL_FIRECRAWL_PARKED: process.env.T_PARKED,
+  CLAUDE_GLM_CONFIG_DIR: process.env.T_GLM,
+  DEEPSEEK_API_KEY: "ds-secret-key", DEEPSEEK_BASE_URL: base, FIRECRAWL_API_KEY: "fc-key", FIRECRAWL_BASE_URL: base };
+const reset = () => { hits.deepseek.length = 0; hits.firecrawl = 0; };
+const errs = [];
+console.error = (...a) => { errs.push(a.join(" ")); };
+
+// default install: a DeepSeek key alone never calls DeepSeek
+reset();
+let w = makeWebFn({ ...env0, FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT });
+let r = await w("q default");
+console.log("DEFAULT_NO_DEEPSEEK=" + (hits.deepseek.length === 0 && hits.firecrawl === 1 && r.found === true));
+
+// opted in: DeepSeek first, Firecrawl untouched on a hit
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT });
+r = await w("q optin");
+console.log("OPTIN_DEEPSEEK_FIRST=" + (hits.deepseek.length === 1 && hits.firecrawl === 0 && r.found && r.url === "https://acme.dev"));
+console.log("OPTIN_BEARER=" + (hits.deepseek.length === 1 && hits.deepseek[0].auth === "Bearer ds-secret-key"));
+
+// opted in, DeepSeek misses: Firecrawl covers the miss
+reset(); dsMode = "miss";
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT });
+r = await w("q miss");
+console.log("MISS_FALLS_TO_FIRECRAWL=" + (hits.deepseek.length === 1 && hits.firecrawl === 1 && r.url === "https://fc.example/acme"));
+dsMode = "hit";
+
+// salus vault (.salus marker): refused even when opted in; no DeepSeek traffic
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_SALUS });
+r = await w("q salus");
+console.log("SALUS_MARKER_REFUSED=" + (hits.deepseek.length === 0 && hits.firecrawl === 1));
+
+// salus via a phi-roots entry
+reset();
+fs.writeFileSync(process.env.T_GLM + "/phi-roots", process.env.T_VAULT + "\n");
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT });
+r = await w("q phi");
+console.log("SALUS_PHIROOTS_REFUSED=" + (hits.deepseek.length === 0));
+fs.rmSync(process.env.T_GLM + "/phi-roots");
+
+// unmapped content (no vault root) is denied
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1" });
+r = await w("q unmapped");
+console.log("UNMAPPED_REFUSED=" + (hits.deepseek.length === 0));
+
+// vault root passed through the options argument (follow-list-score path), no env root
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1" }, { vaultRoot: process.env.T_VAULT });
+r = await w("q opts");
+console.log("OPTS_ROOT_REACHES_RUNG=" + (hits.deepseek.length === 1 && hits.firecrawl === 0));
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1" }, { vaultRoot: process.env.T_SALUS });
+r = await w("q opts salus");
+console.log("OPTS_SALUS_REFUSED=" + (hits.deepseek.length === 0));
+reset();
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1" }, { vaultRoot: process.env.T_HOME });
+r = await w("q opts unmapped");
+console.log("OPTS_UNMAPPED_REFUSED=" + (hits.deepseek.length === 0));
+
+// ledger: a deepseek row, never the key or the query
+let rows = [];
+try { rows = fs.readFileSync(process.env.T_LEDGER, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((x) => x.source === "deepseek"); } catch {}
+console.log("LEDGER_ROW=" + (rows.length >= 1 && rows[0].endpoint === "/v1/tools/search" && rows[0].usd > 0));
+console.log("NO_SECRET_LOGGED=" + (!JSON.stringify(rows).includes("ds-secret-key") && !errs.join("\n").includes("ds-secret-key") && !JSON.stringify(rows).includes("q optin")));
+srv.close();
+EOF
+out13="$(T_HOME="$tmpdir/home13" T_LEDGER="$tmpdir/ledger13.jsonl" T_PARKED="$tmpdir/parked13.jsonl" T_GLM="$tmpdir/glm" T_VAULT="$tmpdir/vault" T_SALUS="$tmpdir/salusvault" node "$tmpdir/deepseek.mjs" 2>&1)"
+for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER MISS_FALLS_TO_FIRECRAWL SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
+    grep -q "^$k=true" <<<"$out13" && r=yes || r=no
+    assert "deepseek: $k" yes "$r"
+done
+
 # -- Results summary -----------------------------------------------------
 total=$((pass + fail))
 echo ""

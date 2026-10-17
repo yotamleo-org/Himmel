@@ -25,11 +25,11 @@
 // github/headFn/account rungs are passed through untouched (no downgrade),
 // and repo/followers claims (owned by other rungs) are never web-checked.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { homedir, hostname } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -51,6 +51,14 @@ export const FIRECRAWL_DEFAULT_MAX_CREDITS = 5; // per-call ceiling; above it fi
 // tools/harvest-clip-body-batch.py (BACKEND_REGISTRY), which owns the list.
 export const SCRAPE_BACKEND_NAMES = ["local-headless", "jina", "firecrawl"];
 const FIRECRAWL_TIMEOUT_MS = 20000;
+
+// DeepSeek Search/Fetch rung: OPT-IN, off for every install.
+export const DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com";
+export const DEEPSEEK_DEFAULT_BUDGET = 20; // max searches per run
+const DEEPSEEK_TIMEOUT_MS = 20000;
+const DEEPSEEK_CALL_USD = 0.00075; // per successful Search or Fetch (published price)
+const DEEPSEEK_QUERY_MAX = 128; // /v1/tools/search accepts 1..128 chars
+const DEEPSEEK_FETCH_CHARS = 2000;
 
 // qmd local-vault rung (FREE — a BM25 lookup against the operator's already-
 // indexed luna vault, no external call, no credits). Generous budget since
@@ -374,6 +382,156 @@ export function makeFirecrawlWebFn({ apiKey, baseUrl, budget = FIRECRAWL_DEFAULT
 }
 
 // ---------------------------------------------------------------------------
+// Concrete backend: DeepSeek Search (+ Fetch on a snippetless top hit).
+//
+// OPT-IN: DeepSeek stores data in the PRC, may train on queries and offers no
+// DPA, so the rung exists only when FOLLOW_WEB_DEEPSEEK=1 AND DEEPSEEK_API_KEY
+// is set AND the egress matrix allows the content's corpus. The corpus comes
+// from the vault root the claims were gathered from: a salus root (a .salus
+// marker on it or an ancestor, or overlap with a phi-roots / egress-denylist
+// root) or a root with no Clippings/ dir is refused before any request.
+// Runs before Firecrawl so its credits cover only DeepSeek misses.
+// ---------------------------------------------------------------------------
+
+// Fail closed: a listed-roots file that exists but cannot be read returns null (treated as salus).
+function listedPhiRoots(env) {
+  const dir = (env.CLAUDE_GLM_CONFIG_DIR || "").trim() || join(env.HOME || homedir(), ".config", "claude-glm");
+  const roots = [];
+  for (const name of ["phi-roots", "egress-denylist"]) {
+    let text;
+    try { text = readFileSync(join(dir, name), "utf8"); } catch (e) {
+      if (e && e.code === "ENOENT") continue;
+      return null;
+    }
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      try { roots.push(realpathSync(t)); } catch { roots.push(t); }
+    }
+  }
+  return roots;
+}
+
+/**
+ * Egress-matrix corpus of a vault root: "salus", "luna-clippings", or null
+ * (unmapped: no root, not a directory, or no Clippings/ dir inside it).
+ */
+export function classifyVaultCorpus(root, env = process.env) {
+  if (!root) return null;
+  let real;
+  try {
+    real = realpathSync(root);
+    if (!statSync(real).isDirectory()) return null;
+  } catch { return null; }
+  for (let d = real, prev = ""; d !== prev; prev = d, d = dirname(d)) {
+    if (existsSync(join(d, ".salus")) || existsSync(join(d, ".salus-profile"))) return "salus";
+  }
+  const listed = listedPhiRoots(env);
+  if (listed === null) return "salus";
+  for (const lr of listed) {
+    if (lr === sep || real === lr || real.startsWith(lr + sep) || lr.startsWith(real + sep)) return "salus";
+  }
+  try { if (!statSync(join(real, "Clippings")).isDirectory()) return null; } catch { return null; }
+  return "luna-clippings";
+}
+
+// The shared evaluator decides; a conditional verdict holds only with the literal opt-in flag.
+function deepseekEgressVerdict(corpus, env) {
+  if (!corpus) return { ok: false, why: "content is not mapped to an egress-matrix corpus" };
+  const evalCli = fileURLToPath(new URL("../../../../../scripts/guardrails/egress-matrix-eval.mjs", import.meta.url));
+  const res = spawnSync(process.execPath, [evalCli, corpus, "deepseek", "enrichment"], { encoding: "utf8", timeout: 10000 });
+  if (res.error || res.status !== 0) return { ok: false, why: "egress matrix unreadable" };
+  const verdict = String(res.stdout || "").split("\t")[0];
+  if (verdict === "allow" || verdict === "allow+log") return { ok: true };
+  if (verdict === "conditional" && env.FOLLOW_WEB_DEEPSEEK === "1") return { ok: true };
+  return { ok: false, why: `egress matrix verdict for ${corpus} is ${verdict}` };
+}
+
+// Same JSONL file and envelope as the Firecrawl ledger (as jina-reader rows do); source tells them apart.
+// Never the key, the query or any result text.
+function deepseekLedgerAppend(endpoint, usd, ok, env) {
+  try {
+    const lp = (env.HIMMEL_FIRECRAWL_LEDGER || "").trim() ||
+      join(env.HOME || homedir(), ".himmel", "state", "firecrawl-ledger.jsonl");
+    mkdirSync(dirname(lp), { recursive: true });
+    const ts = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+    appendFileSync(lp, JSON.stringify({
+      v: 1, ts, host: hostname(), source: "deepseek", kind: "call",
+      call_site: "follow-web", endpoint, credits: 0, usd, ok,
+    }) + "\n");
+  } catch { /* ledger is best-effort */ }
+}
+
+/**
+ * Build a DeepSeek-backed `webFn(query) -> {found,url,title,snippet}`. Returns
+ * null unless FOLLOW_WEB_DEEPSEEK=1, DEEPSEEK_API_KEY is set and the egress
+ * matrix allows the root's corpus. Budget-capped; a 401/402/403/429 disables
+ * the rung for the rest of the run. Fetch (top hit, first 2000 chars) is used
+ * only when the search hit carries no snippet or summary. Never throws.
+ */
+export function makeDeepseekWebFn(env = process.env, { vaultRoot } = {}) {
+  if (env.FOLLOW_WEB_DEEPSEEK !== "1") return null;
+  const apiKey = (env.DEEPSEEK_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const verdict = deepseekEgressVerdict(classifyVaultCorpus(vaultRoot || (env.FOLLOW_WEB_VAULT_ROOT || "").trim(), env), env);
+  if (!verdict.ok) {
+    console.error(`follow-web: deepseek refused: ${verdict.why}`);
+    return null;
+  }
+  const base = ((env.DEEPSEEK_BASE_URL || "").trim() || DEEPSEEK_DEFAULT_BASE_URL).replace(/\/+$/, "");
+  let remaining = envNonNegInt(env, "FOLLOW_WEB_DEEPSEEK_BUDGET", DEEPSEEK_DEFAULT_BUDGET);
+  let disabled = false;
+
+  // One POST; resolves to { status, data } or null on a transport failure.
+  const post = async (path, body) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), DEEPSEEK_TIMEOUT_MS);
+    try {
+      const r = await fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      let data = null;
+      if (r.ok) { try { data = await r.json(); } catch { data = null; } }
+      return { status: r.status, data };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  return async function deepseekWebFn(query) {
+    if (disabled || remaining <= 0) return { found: false };
+    remaining -= 1;
+    const res = await post("/v1/tools/search", { query: String(query).slice(0, DEEPSEEK_QUERY_MAX), count: 3 });
+    if (!res) { deepseekLedgerAppend("/v1/tools/search", 0, false, env); return { found: false }; }
+    if (res.status < 200 || res.status >= 300) {
+      deepseekLedgerAppend("/v1/tools/search", 0, false, env);
+      if ([401, 402, 403, 429].includes(res.status)) {
+        disabled = true;
+        console.error(`follow-web: deepseek unavailable (HTTP ${res.status}); search disabled for the rest of this run`);
+      }
+      return { found: false };
+    }
+    const results = res.data && Array.isArray(res.data.results) ? res.data.results : [];
+    const top = results[0];
+    deepseekLedgerAppend("/v1/tools/search", top ? DEEPSEEK_CALL_USD : 0, true, env);
+    if (!top || !top.url) return { found: false };
+    let snippet = top.snippet || top.summary || "";
+    if (!snippet) {
+      const f = await post("/v1/tools/fetch", { url: top.url });
+      const content = f && f.data && typeof f.data.content === "string" ? f.data.content : "";
+      deepseekLedgerAppend("/v1/tools/fetch", content ? DEEPSEEK_CALL_USD : 0, !!f && f.status >= 200 && f.status < 300, env);
+      snippet = content.slice(0, DEEPSEEK_FETCH_CHARS);
+    }
+    return { found: true, url: top.url, title: top.title || "", snippet };
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Concrete backend: qmd local-vault corroboration (FREE, no external call).
 //
 // The FIRST rung of the chain: a BM25 (`qmd search`, no LLM/GPU) lookup of the
@@ -618,13 +776,14 @@ function scrapeDenyList(env) {
  *     1. qmd    (FREE local vault BM25)     — gated on FOLLOW_WEB_QMD
  *     2. cli    (external prompt-in/JSON CLI) — gated on FOLLOW_WEB_CLI
  *     3. hermes (multi-provider agent)       — gated on FOLLOW_WEB_HERMES
- *     4. firecrawl (metered, LAST)           — gated on FIRECRAWL_API_KEY
+ *     4. deepseek (OPT-IN, PRC-hosted)       — gated on FOLLOW_WEB_DEEPSEEK=1 + DEEPSEEK_API_KEY
+ *     5. firecrawl (metered, LAST)           — gated on FIRECRAWL_API_KEY
  *   Each backend is independently budget-capped; the chain returns the first
  *   `{found:true}` and only reaches firecrawl when the free rungs miss.
  *   If NO backend is enabled -> null (web rung OFF; verifyWebClaims no-ops).
  * The parent passes the result straight to verifyWebClaims(dossier,{webFn}).
  */
-export function makeWebFn(env = process.env) {
+export function makeWebFn(env = process.env, { vaultRoot } = {}) {
   const fixtureRaw = readFixtureEnv("FOLLOW_WEB_FIXTURE", env);
   if (fixtureRaw != null) return makeFixtureWebFn(fixtureRaw);
 
@@ -655,6 +814,7 @@ export function makeWebFn(env = process.env) {
     makeQmdWebFn(env),
     makeCliWebFn(env),
     hermesDenied ? null : makeHermesWebFn(env),
+    hermesDenied ? null : makeDeepseekWebFn(env, { vaultRoot }),
     fcDenied ? null : makeFirecrawlWebFn({ apiKey, baseUrl, budget: fcBudget, maxCredits }),
   ].filter(Boolean);
 
