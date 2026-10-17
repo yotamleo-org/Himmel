@@ -140,6 +140,18 @@ expect "console, wrapper after timeout (nohup): denied" 2 \
 # A timeout that wraps a non-run (grep naming the script) is a mention, not a run: allowed.
 expect "console, timeout 30 grep naming ready-check.sh (a mention): allowed" 0 \
     "$(run_hook yes "timeout 30 grep -n x $K/ready-check.sh" absent)"
+expect "console, timeout -s kill 0 (lowercase signal, no limit): denied" 2 \
+    "$(run_hook yes "timeout -s kill 0 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout '0' (quoted duration): denied" 2 \
+    "$(run_hook yes "timeout '0' $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout \"600\" (double-quoted duration): denied" 2 \
+    "$(run_hook yes "timeout \"600\" $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout --signal=term 600: denied" 2 \
+    "$(run_hook yes "timeout --signal=term 600 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout -sKILL 600 (attached signal): denied" 2 \
+    "$(run_hook yes "timeout -sKILL 600 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout --signal term 600 (separate value): denied" 2 \
+    "$(run_hook yes "timeout --signal term 600 $K/ready-check.sh 12 abc" absent)"
 expect "console, timeout -s KILL 600 (signal word before the bound): denied" 2 \
     "$(run_hook yes "timeout -s KILL 600 $K/ready-check.sh 12 abc" absent)"
 
