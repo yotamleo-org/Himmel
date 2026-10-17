@@ -26,7 +26,7 @@ case "$*" in
     *fork-pr-contributor-approval*) echo "${GH_APPROVAL-all_external_contributors}"; [ -n "${GH_APPROVAL-x}" ] ;;
     "variable set"*) [ -z "${GH_SET_FAIL:-}" ] || exit 1; a="$*"; echo "${a##* }" > "$STUB/var" ;;
     *actions/variables/HIMMEL_VM_RUNNER*) [ -e "$STUB/var" ] && cat "$STUB/var" || exit 1 ;;
-    *actions/runners*) echo "${GH_BUSY:-0}" ;;
+    *actions/runners*) [ -z "${GH_RUNNERS_FAIL:-}" ] || exit 1; echo "${GH_BUSY:-0} ${GH_ONLINE:-1}" ;;
 esac
 EOF
 cat > "$TMP/bin/systemctl" <<'EOF'
@@ -148,6 +148,25 @@ rm -f "$TMP/state/tick-vmrun-cache"
 journal 1 10 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
 rm -f "$TMP/state/tick-vmrun-cache"
 case "$(run status --tick)" in ok:*) ok "a later registered line clears FAILING" ;; *) bad "recovered -> $(run status --tick)" ;; esac
+
+echo "T6b the tick token cross-checks GitHub's online runners and fails closed (HIMMEL-6034)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+[ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "2 units up, 1 runner online -> ok:2/2" || bad "agree -> $(run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_ONLINE=0 run status --tick)" = "DISAGREE:2/2,online=0" ] && ok "2 units up, 0 runners online -> DISAGREE" || bad "disagree -> $(GH_ONLINE=0 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_RUNNERS_FAIL=1 run status --tick)" = FAILING ] && ok "runner count unreadable (gh error) -> FAILING, not ok" || bad "gh error -> $(GH_RUNNERS_FAIL=1 run status --tick)"
+[ ! -e "$TMP/state/tick-vmrun-cache" ] && ok "an unreadable count is not cached" || bad "unreadable count was cached"
+rm -f "$TMP/state/tick-vmrun-cache"
+rm -f "$TMP/stub/gh.argv"
+run status --tick >/dev/null; run status --tick >/dev/null
+[ "$(grep -c 'actions/runners' "$TMP/stub/gh.argv")" = 1 ] && ok "one runners call per window (cached)" || bad "runners calls: $(grep -c 'actions/runners' "$TMP/stub/gh.argv")"
+rm -f "$TMP/state/tick-vmrun-cache"
+GH_ONLINE=0 run doctor 2>&1 | grep -q '^FAIL.*DISAGREE' && ok "doctor FAILs a DISAGREE" || bad "doctor DISAGREE not flagged"
+rm -f "$TMP/state/tick-vmrun-cache"
+GH_RUNNERS_FAIL=1 run doctor 2>&1 | grep -q '^FAIL.*runner FAILING' && ok "doctor FAILs an unreadable count" || bad "doctor unreadable count not flagged"
 
 echo "T7 status prints the units and the last error"
 reset
