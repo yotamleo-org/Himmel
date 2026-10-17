@@ -659,6 +659,7 @@ contains "retry recovers a failed holder: log says launched" "$log13" "konsole l
 d14="$tmp/c14"; mk_stub "$d14" 1  # konsole stub unused either way; the real assertion is on pgrep's late flip
 mkdir -p "$d14/locks/HIMMEL-donedeal.lock"
 date +%s > "$d14/locks/HIMMEL-donedeal.lock/acquired"
+# intentional: the fixture sets comm=claude and the NUL-separated -n pair itself, so mk_stub needs no name arg here
 _fake_claude_proc "$d14" "HIMMEL-donedeal"
 # A SEPARATE background releaser that
 # reacts to a sync file still races the very check it exists to

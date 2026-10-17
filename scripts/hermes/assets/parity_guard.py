@@ -124,6 +124,7 @@ def _transcript_tree(p: str) -> bool:
     or anything below it, except one slug's `memory/` subtree (block-read-secrets
     is_transcript_tree parity). A `..` anywhere in such a path denies."""
     p = p.rstrip("/")
+    # ponytail: roots above .claude/projects (home, filesystem root) stay allowed, the same limit as the Claude hook; residual coverage, HIMMEL-5940
     m = re.search(r"(?:^|/)\.claude/projects(?:/(.*))?$", p)
     if not m:
         return False
