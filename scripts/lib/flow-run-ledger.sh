@@ -209,23 +209,59 @@ _fr_under_tmp_root() {
     return 1
 }
 
-# _fr_suite_ancestor -- 0 when a test-*.sh script is among this process's
-# ancestors, i.e. a suite run directly (no HIMMEL_SUITE_LOCK_HELD) is spawning
-# this wrapper. ponytail: a suite re-parented away from its fixture (a double
-# fork) is not seen, depth is capped at 16, and ps is the only probe; upgrade
-# is a marker the suite helpers export, if direct runs keep leaking.
+# _fr_argv <pid> -- fill _fr_av with that process's argv: NUL-split from
+# /proc/<pid>/cmdline where it exists (exact, never cut to a column width),
+# else the whitespace-split of ps -ww output.
+_fr_argv() {
+    local w a
+    _fr_av=()
+    if [ -r "/proc/$1/cmdline" ]; then
+        while IFS= read -r -d '' w; do _fr_av+=("$w"); done < "/proc/$1/cmdline"
+    else
+        a=$(ps -ww -o args= -p "$1" 2>/dev/null) || return 1
+        read -r -a _fr_av <<< "$a"
+    fi
+}
+
+# _fr_script_operand -- 0 when _fr_av is a shell running a script file whose
+# basename is test-*.sh. Only that operand counts: a word elsewhere in argv (a
+# prompt, a -c body, a path argument) names a suite without running one.
+_fr_script_operand() {
+    local i=1 w=""
+    case "${_fr_av[0]:-}" in
+        bash|sh|dash|zsh|ksh|*/bash|*/sh|*/dash|*/zsh|*/ksh) ;;
+        *) return 1 ;;
+    esac
+    while [ "$i" -lt "${#_fr_av[@]}" ]; do
+        w="${_fr_av[$i]}"
+        case "$w" in
+            --) w="${_fr_av[$((i + 1))]:-}"; break ;;
+            -o|-O|+o|+O) i=$((i + 2)); w=""; continue ;;
+            -*c*) return 1 ;;
+            -*|+*) i=$((i + 1)); w=""; continue ;;
+            *) break ;;
+        esac
+    done
+    case "${w##*/}" in test-*.sh) return 0 ;; esac
+    return 1
+}
+
+# _fr_suite_ancestor -- 0 when a shell running a test-*.sh script is among this
+# process's ancestors, i.e. a suite run directly (no HIMMEL_SUITE_LOCK_HELD) is
+# spawning this wrapper. ponytail: only a shell's script operand counts (a
+# suite run through another interpreter is missed), argv is whitespace-split
+# where /proc is absent (a script path with spaces is missed), a suite
+# re-parented away from its fixture (a double fork) is not seen, depth is
+# capped at 16; upgrade is a marker the suite helpers export, if direct runs
+# keep leaking.
 _fr_suite_ancestor() {
-    local pid="$$" depth=0 line args word
-    local -a words
+    local pid="$$" depth=0 ppid
+    local -a _fr_av
     while [ "$depth" -lt 16 ] && [ "${pid:-0}" -gt 1 ] 2>/dev/null; do
-        line=$(ps -o ppid=,args= -p "$pid" 2>/dev/null) || return 1
-        line="${line#"${line%%[![:space:]]*}"}"
-        args="${line#* }"
-        read -r -a words <<< "$args"
-        for word in ${words[@]+"${words[@]}"}; do
-            case "${word##*/}" in test-*.sh) return 0 ;; esac
-        done
-        pid="${line%% *}"
+        _fr_argv "$pid" || return 1
+        _fr_script_operand && return 0
+        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null) || return 1
+        pid="${ppid//[[:space:]]/}"
         depth=$((depth + 1))
     done
     return 1

@@ -14,6 +14,7 @@ LEDGER_SH="$REPO_ROOT/scripts/lib/flow-run-ledger.sh"
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
+skip() { printf '  SKIP  %s\n' "$1"; }
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/flow-ledger-path-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
 # $out sits OUTSIDE /tmp: the net accepts ${TMPDIR:-/tmp} and literal /tmp only.
@@ -245,7 +246,55 @@ if command -v setsid >/dev/null 2>&1; then
         fail "genuine non-suite run: default missing or quarantined (done=$([ -e "$g_tmp/done" ] && echo y || echo n))"
     fi
 else
-    pass "setsid absent: genuine non-suite control skipped"
+    skip "setsid absent: genuine non-suite control"
+fi
+
+# Control: a non-suite ancestor whose argv merely MENTIONS a test-*.sh word (a
+# dispatch prompt, a wrapper command text) is not a suite: the row must reach
+# the real ledger, not the quarantine.
+m_tmp="$tmp/m-tmp"; m_home="$out/m-home"; mkdir -p "$m_tmp" "$m_home"
+if command -v setsid >/dev/null 2>&1; then
+    # shellcheck disable=SC2016
+    env -u HIMMEL_FLOW_RUNS_LEDGER -u HIMMEL_SUITE_LOCK_HELD HOME="$m_home" TMPDIR="$m_tmp" \
+        setsid -f bash -c 'bash "$1" --append-start test-flow "" testhost "" "" "" "" 4247 >/dev/null 2>&1; : > "$2"' scripts/lib/test-foo.sh "$LEDGER_SH" "$m_tmp/done" scripts/lib/test-foo.sh
+    for _ in $(seq 1 50); do [ -e "$m_tmp/done" ] && break; sleep 0.1; done
+    if [ -f "$m_home/.himmel/flow-runs.jsonl" ] && [ ! -e "$m_tmp/flow-runs-unredirected.jsonl" ]; then
+        pass "non-suite ancestor mentioning a test-*.sh word: HOME default still gets the row"
+    else
+        fail "non-suite ancestor mentioning a test-*.sh word was quarantined (done=$([ -e "$m_tmp/done" ] && echo y || echo n))"
+    fi
+else
+    skip "setsid absent: mentions-a-suite-word control"
+fi
+
+# A suite whose path is longer than any ps column width is still seen.
+p_tmp="$tmp/p-tmp"; p_home="$out/p-home"
+p_deep="$tmp/$(printf 'd%.0s' $(seq 1 120))/$(printf 'e%.0s' $(seq 1 120))/$(printf 'f%.0s' $(seq 1 120))"
+mkdir -p "$p_tmp" "$p_home" "$p_deep"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nbash "$1" --append-start test-flow "" testhost "" "" "" "" 4247 >/dev/null 2>&1\n' > "$p_deep/test-deep.sh"
+env -u HIMMEL_FLOW_RUNS_LEDGER -u HIMMEL_SUITE_LOCK_HELD COLUMNS=40 HOME="$p_home" TMPDIR="$p_tmp" \
+    bash "$p_deep/test-deep.sh" "$LEDGER_SH"
+if [ ! -e "$p_home/.himmel/flow-runs.jsonl" ] && [ -f "$p_tmp/flow-runs-unredirected.jsonl" ]; then
+    pass "directly-run suite at a path longer than COLUMNS is quarantined"
+else
+    fail "deep-path direct suite: default written or quarantine missing"
+fi
+
+# A symlink chain past the 8-hop cap, and a link loop, are outside.
+for n in 1 2 3 4 5 6 7 8 9; do
+    if [ "$n" -lt 9 ]; then ln -s "$z_dir/hop$((n + 1))" "$z_dir/hop$n"; else ln -s "$z_dir/hop-end.jsonl" "$z_dir/hop9"; fi
+done
+if TMPDIR="$z_tmp" root_check "$z_dir/hop1"; then
+    fail "9-hop symlink chain counted as inside (cap is 8)"
+else
+    pass "symlink chain past the 8-hop cap is outside"
+fi
+ln -s "$z_dir/loop-b" "$z_dir/loop-a"; ln -s "$z_dir/loop-a" "$z_dir/loop-b"
+if TMPDIR="$z_tmp" root_check "$z_dir/loop-a"; then
+    fail "symlink loop counted as inside"
+else
+    pass "symlink loop is outside"
 fi
 
 echo
