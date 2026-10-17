@@ -139,6 +139,15 @@ journal 1 7000 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm)
 journal 1 100 "ci-runner: runner 4242 done (rc=0)"
 rm -f "$TMP/state/tick-vmrun-cache"
 case "$(run status --tick)" in ok:*) ok "a done line clears STUCK" ;; *) bad "done -> $(run status --tick)" ;; esac
+# A unit that is up but whose newest ci-runner line is an error mints nothing:
+# ephemeral runners register only while a job runs, so zero registered runners
+# is normal when idle and the journal is the only honest signal.
+journal 1 50 "ci-runner: the egress allow-list could not be loaded in himmel-ci-1 — not minting a runner"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(run status --tick)" = FAILING ] && ok "FAILING: newest ci-runner line is an error" || bad "failing -> $(run status --tick)"
+journal 1 10 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+rm -f "$TMP/state/tick-vmrun-cache"
+case "$(run status --tick)" in ok:*) ok "a later registered line clears FAILING" ;; *) bad "recovered -> $(run status --tick)" ;; esac
 
 echo "T7 status prints the units and the last error"
 reset

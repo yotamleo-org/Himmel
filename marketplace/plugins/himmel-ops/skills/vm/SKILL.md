@@ -88,7 +88,7 @@ pass as a clean base run.
 Full usage line from the script:
 
 ```
-usage: vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|baseline NAME|clone [REF]|provision|e2e|push FILE [DEST]|trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>
+usage: vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|baseline NAME|clone [REF]|provision|e2e|push FILE [DEST]|trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>
 ```
 
 | Verb | What it does |
@@ -97,6 +97,7 @@ usage: vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|base
 | `down` | Graceful power-off (pass `graceful=False` in code for hard power-off) |
 | `snapshot NAME [--no-secret-scan]` | Take a named VirtualBox snapshot. REFUSES (HIMMEL-2540) if the guest holds a `.env` / `.env.*` (fail-closed: a powered-off or unscannable guest is refused too); `--no-secret-scan` is the explicit, loud override |
 | `restore NAME` | Restore to a named snapshot (powers off + restores) |
+| `audit-base NAME` | Restore snapshot `NAME`, run the snapshot secret scan on it (HIMMEL-2540), power off. Exits 1 (REFUSING) if the image holds a `.env`; use it before trusting or sharing an old base. Overwrites the VM's current state. If a matrix base is wanted later, rebuild it by staging the RC with `vm_stage_tree` (excludes the secret set) and snapshotting; `snapshot` runs the same scan. |
 | `baseline NAME` | Restore `NAME` if it exists, else provision from scratch and snapshot it — idempotent clean-state shortcut |
 | `clone [REF]` | Shallow-clone the private himmel repo onto the guest (`REF` defaults to `main`) |
 | `provision` | Run the per-OS provisioner (`ubuntu-vm-setup.py` or `windows-vm-setup.py`) |

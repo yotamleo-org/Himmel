@@ -299,6 +299,7 @@ type FlowStats = {
   observed: boolean;
   lastSuccessTimestamp?: number;
   outcomes: Record<"complete" | "truncated" | "error" | "stalled" | "abandoned", number>;
+  lastFailureTimestamp: Partial<Record<"truncated" | "error", number>>;
   latestEndMs?: number;
   latestItemsProcessed?: number | null;
   itemsProcessedTotal: number;
@@ -347,6 +348,7 @@ function emptyStats(flow: string): FlowStats {
     flow,
     observed: false,
     outcomes: { complete: 0, truncated: 0, error: 0, stalled: 0, abandoned: 0 },
+    lastFailureTimestamp: {},
     itemsProcessedTotal: 0,
     hasItemsProcessedTotal: false,
     inFlight: 0,
@@ -413,6 +415,11 @@ function foldFlowLedger(
     if (end.outcome === "complete" || end.outcome === "truncated" || end.outcome === "error") {
       s.outcomes[end.outcome]++;
       const endedMs = Date.parse(end.ended_at);
+      if ((end.outcome === "truncated" || end.outcome === "error") && Number.isFinite(endedMs)) {
+        const epoch = Math.floor(endedMs / 1000);
+        const prev = s.lastFailureTimestamp[end.outcome];
+        if (prev === undefined || epoch > prev) s.lastFailureTimestamp[end.outcome] = epoch;
+      }
       if (end.outcome === "complete" && Number.isFinite(endedMs)) {
         const epoch = Math.floor(endedMs / 1000);
         if (s.lastSuccessTimestamp === undefined || epoch > s.lastSuccessTimestamp) {
@@ -500,6 +507,16 @@ function buildFlowMetrics(
   const outcomes: Array<"complete" | "truncated" | "error" | "stalled" | "abandoned"> = ["complete", "truncated", "error", "stalled", "abandoned"];
   addFamily(lines, "flow_run_outcome_total", "Runs by outcome in the sliding 14d ledger window; exporter restarts and window slides can reset this counter. `stalled` = an unpaired start past its deadline whose process is alive or unprobeable; `abandoned` = the same, but the pid was confirmed dead on this host (HIMMEL-2211).", "counter",
     stats.flatMap((s) => s.observed ? outcomes.map((outcome) => sample("flow_run_outcome_total", { flow: s.flow, outcome }, s.outcomes[outcome])) : []));
+
+  // Event-time / currently-true families the truncated, error and
+  // stalled alerts read instead of flow_run_outcome_total, whose sliding-window
+  // total decreases as rows expire (which increase() reads as a counter reset).
+  addFamily(lines, "flow_run_last_failure_timestamp", "Epoch seconds of the most recent truncated or error run end row per flow in the 14d ledger window; alert on recency, not on flow_run_outcome_total. Omitted when the window holds no such row.", "gauge",
+    stats.flatMap((s) => (["truncated", "error"] as const).flatMap((outcome) =>
+      s.lastFailureTimestamp[outcome] === undefined ? [] : [sample("flow_run_last_failure_timestamp", { flow: s.flow, outcome }, s.lastFailureTimestamp[outcome]!)])));
+
+  addFamily(lines, "flow_run_stalled_current", "Unpaired starts past their stall deadline right now (pid alive or unprobeable, inside the stalled alert TTL); drops to 0 when the run ends or ages out.", "gauge",
+    stats.flatMap((s) => s.observed ? [sample("flow_run_stalled_current", { flow: s.flow }, s.outcomes.stalled)] : []));
 
   addFamily(lines, "flow_run_items_processed", "Last ended run items_processed value; null is omitted.", "gauge",
     stats.flatMap((s) => typeof s.latestItemsProcessed === "number" ? [sample("flow_run_items_processed", { flow: s.flow }, s.latestItemsProcessed)] : []));

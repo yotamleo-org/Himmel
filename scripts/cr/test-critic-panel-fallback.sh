@@ -707,19 +707,9 @@ STUBEOF
     # detector: reproduced 25-34s on an idle-extracted repro of this one case.
     check "16: exactly primary + one fallback attempted (no chain stacking)" \
         "$(grep -c . "$tmp/cap16")" "2"
-    # RESIDUAL, stated rather than papered over: the
-    # count proves at most primary+one fallback were ATTEMPTED, which catches
-    # the documented regression (a fresh full timeout per candidate lets the
-    # chain reach FB2, giving three lines). It does NOT by itself prove the
-    # budget was SHARED — a hypothetical regression that hands FB1 a fresh
-    # timeout but still stops the chain at two candidates would pass both this
-    # count and the ceiling below. Discriminating that needs per-candidate
-    # durations, and the wall clock cannot supply them here: with
-    # CRITIC_TIMEOUT_SECS=2 the shared-vs-fresh difference is ~2s, dwarfed by
-    # the 25-34s of ambient scheduling noise measured on this box — which is
-    # exactly why the old fixed 8s bound was flaky rather than diagnostic. That
-    # shape would also require a second, unrelated bug in the chain-length
-    # logic, so it is recorded here rather than chased.
+    # The count proves at most primary+one fallback were ATTEMPTED; that the
+    # budget is SHARED (not a fresh timeout per candidate) is proven by 16b
+    # below, from the timeout each candidate is actually handed.
     #
     # Coarse LIVENESS guard, deliberately not a performance assertion. It fires
     # only if the hung candidate is never reaped at all — the one failure the
@@ -734,6 +724,41 @@ STUBEOF
 else
     # was "ok - " (a silently-credited pass).
     skip "16: no timeout binary"
+fi
+
+# --- Case 16b: the budget is SHARED, not merely the attempt count. FB1 burns
+# >=1s then fails (a large CRITIC_TIMEOUT_SECS leaves slack so a loaded box still
+# reaches FB2); FB2 must then be handed LESS than the full member timeout.
+# The stub reads the timeout it was given off its parent's command line
+# (`timeout -k <grace> <secs> bash ...`) — a structural check, not wall clock:
+# load can only shrink the remaining budget, never grow it past the full one. ---
+if command -v timeout >/dev/null 2>&1 && command -v ps >/dev/null 2>&1; then
+    JSON_SHARE="$tmp/critics-share.json"
+    printf '{"panel":[{"slug":"qwen3coder","model":"%s","provider":"alibaba-coding-plan","tier":"free","fallback_models":["%s","%s"],"fallback_trigger":"any"}]}' \
+        "$PRI" "$FB" "$FB2" > "$JSON_SHARE"
+    STUB_SHARE="$tmp/stub-share.sh"
+    cat > "$STUB_SHARE" <<STUBEOF
+#!/usr/bin/env bash
+model=""
+while [ \$# -gt 0 ]; do [ "\$1" = "--model" ] && model="\$2"; shift; done
+cat >/dev/null
+given="\$(ps -o args= -p "\$PPID" | awk '{for(i=1;i<=NF;i++) if(\$i=="-k"){print \$(i+2); exit}}')"
+printf '%s %s\n' "\$model" "\$given" >> "$tmp/cap16b"
+[ "\$model" = "$PRI" ] && exit 1
+[ "\$model" = "$FB" ] && { sleep 1; exit 1; }
+exit 1
+STUBEOF
+    chmod +x "$STUB_SHARE"
+    : > "$tmp/cap16b"
+    printf '%s' "$DIFF" | CRITICS_JSON="$JSON_SHARE" CRITIC_FIRST_PASS="$STUB_SHARE" \
+        CRITIC_TIMEOUT_SECS=60 bash "$PANEL" >"$tmp/out16b" 2>"$tmp/err16b"
+    _t16b_fb2="$(awk -v m="$FB2" '$1==m{print $2}' "$tmp/cap16b")"
+    check "16b: last candidate was reached after FB1 failed" \
+        "$(grep -cF -- "$FB2" "$tmp/cap16b")" "1"
+    check "16b: last candidate handed less than the full member timeout (shared budget)" \
+        "$([ -n "$_t16b_fb2" ] && [ "$_t16b_fb2" -ge 1 ] && [ "$_t16b_fb2" -lt 60 ] && echo yes)" "yes"
+else
+    skip "16b: no timeout/ps binary"
 fi
 
 # --- Case 17: fallback attempts PRESERVE the row's

@@ -150,8 +150,8 @@ RULES_FILE="$SCRIPT_DIR/provisioning/alerting/rules.yaml"
 PRIVATE_REPO_METRIC_UID="example-ws_inbox_backlog_rising"  # leak-allow: hostname sole rule uid embedding this project's private repo name; kept out of the literal list below so that list's source stays token-free
 nodatastate_table() {
     for pair in \
-        "himmel_flow_truncated|NoData" \
-        "himmel_flow_error|NoData" \
+        "himmel_flow_truncated|OK" \
+        "himmel_flow_error|OK" \
         "himmel_flow_stalled|KeepLast" \
         "himmel_flow_last_success_age|OK" \
         "himmel_scheduled_task_disabled|OK" \

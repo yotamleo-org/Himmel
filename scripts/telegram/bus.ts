@@ -240,8 +240,8 @@ export type OnCursorReset = (info: CursorResetInfo) => void | Promise<void>;
 export async function repairCursorBeyondEof(file: string, cursorFile: string, onCursorReset?: OnCursorReset): Promise<boolean> {
   let start = 0;
   try { start = Number(await readFile(cursorFile, "utf8")) || 0; } catch {}
-  let buf = "";
-  try { buf = await readFile(file, "utf8"); }
+  let total = 0;
+  try { total = (await stat(file)).size; }
   catch (e) {
     // ENOENT means an EMPTY inbox, not "can't tell" — and it is exactly the
     // restore/shadow-copy class that caused the original incident: inbound.jsonl itself
@@ -258,7 +258,6 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
     // would destroy state instead of repairing it — so still bail out.
     if ((e as any)?.code !== "ENOENT") return false;
   }
-  const total = Buffer.byteLength(buf, "utf8");
   // start > total is NOT "nothing new" — the file shrank under the cursor, so
   // the cursor is INVALID and every subsequent read would return [] forever
   // (a restore dropped an older inbound.jsonl next to a newer

@@ -24,4 +24,6 @@ Run:
 bash scripts/handover/generate-morning-briefing.sh $ARGUMENTS
 ```
 
+The separate overnight report (`scripts/overnight/morning-report.sh`) takes an operator template: one section id per line (`header decisions tickets operator-actions unlanded changelog`) in `$MORNING_REPORT_TEMPLATE`, else `<handover-root>/morning-report.tmpl`, else the shipped `morning-report.default.tmpl`. Operator actions are always appended.
+
 Common: `/morning-report` · `/morning-report --llm` · `/morning-report --dry-run`

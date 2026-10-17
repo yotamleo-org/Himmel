@@ -165,9 +165,8 @@ function probePresence(dep, ctx) {
 // unrecognized flag prints usage instead of a version and exits 1 — that
 // output is never parsed for a version-shaped token, it's just discarded),
 // or no version-shaped token is found (e.g. a corrupt install) — callers
-// treat null as "can't verify", never as a crash. A present-but-degraded
-// tool (version probe fails) still reports severity:"degraded" in
-// depStatus, not a crash. Always routed through `bash -c` (never a raw
+// treat null as "can't verify", never as a crash. depStatus reports
+// "degraded" for it only when a minVersion floor is declared. Always routed through `bash -c` (never a raw
 // spawnSync(dep.cmd, ...)) — same reason bin.js's installMissing()/
 // runPluginEnable() all do the same: Node's non-shell
 // spawnSync does its own PATH resolution on win32 and can silently prefer
@@ -201,18 +200,14 @@ function probeVersion(dep, ctx) {
 }
 
 // depStatus(dep, ctx) -> {id, cmd, present, version, severity, detail}
-// severity: "red" (absent), "degraded" (present but version UNVERIFIABLE —
-// the probe ran but produced no parseable x.y(.z) token — OR a declared
-// minVersion floor is not met), "green" (present with a known version, and
-// version-ok whenever a minVersion is declared). Note the asymmetry the
-// CodeRabbit fix calls out: a present binary whose version can't be
-// verified is degraded (an unverifiable install is not a healthy one, and
-// must not be reported green), REGARDLESS of whether a minVersion floor is
-// declared — so the version-unverifiable check fires BEFORE the
-// no-minVersion branch. "version simply isn't compared" (version known,
-// no floor) is fine/green; "version probe failed" is degraded. Every dep
-// in deps.json today has minVersion:null, yet degraded-for-version can
-// still fire when a real install is present but its --version probe fails.
+// severity: "red" (absent), "degraded" (present but a declared minVersion
+// floor is not met, or is declared and the version is UNVERIFIABLE — the
+// probe ran but produced no parseable x.y(.z) token), "green" (present, and
+// version-ok whenever a minVersion is declared). With no minVersion there is
+// nothing to verify, so a present dep whose version can't be read (e.g.
+// Ubuntu's apt gitleaks: "version is set by build process", no --version) is
+// green with version:null — the version-unverifiable check only matters when
+// a floor is declared.
 function depStatus(dep, ctx) {
   const present = probePresence(dep, ctx);
   if (!present) {
@@ -221,14 +216,13 @@ function depStatus(dep, ctx) {
   }
   const version = probeVersion(dep, ctx);
   // Present but the version probe failed (ran but no parseable x.y(.z)
-  // token, or nonzero/error) -> degraded, NOT green, even when no minVersion
-  // floor is declared. MUST precede the no-minVersion branch: a version-known
-  // dep with no floor is green (its version simply isn't compared), but a
-  // version-unverifiable one is degraded regardless.
+  // token, or nonzero/error): with no minVersion floor there is nothing to
+  // check, so green; with a floor it can't be proven met, so degraded.
   if (!version) {
-    const detail = dep.minVersion
-      ? `present but version could not be determined (required >= ${dep.minVersion})`
-      : 'present but version could not be determined';
+    if (!dep.minVersion) {
+      return { id: dep.id, cmd: dep.cmd, present: true, version: null, severity: 'green', detail: 'present (version not reported)' };
+    }
+    const detail = `present but version could not be determined (required >= ${dep.minVersion})`;
     return { id: dep.id, cmd: dep.cmd, present: true, version: null, severity: 'degraded', detail };
   }
   if (!dep.minVersion) {
