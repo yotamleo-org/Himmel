@@ -1,6 +1,5 @@
 .github/scripts/apt-install.sh	gnu-flag	1
 .github/scripts/apt-install.sh	mktemp	1
-archive/windows/scripts/parity/test-ps-twin-oem-encoding-projection.sh	errexit	1
 marketplace/plugins/handover/scripts/migrate-v1-to-v2.sh	mktemp	4
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	mktemp	2
 marketplace/plugins/himmel-guard/hooks/block-destructive-commands.sh	errexit	1
@@ -246,6 +245,7 @@ scripts/handover/console-kit/test-next-dispatchable.sh	gnu-flag	1
 scripts/handover/console-kit/test-ops-run.sh	gnu-flag	1
 scripts/handover/console-kit/tick.sh	mktemp	1
 scripts/handover/console/console.sh	errexit	1
+scripts/handover/console/test-console.sh	gnu-flag	2
 scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
 scripts/handover/hop.sh	errexit	1
@@ -501,6 +501,7 @@ scripts/hooks/test-end-session-wiki.sh	mktemp	2
 scripts/hooks/test-fork-precommit-core.sh	mktemp	1
 scripts/hooks/test-guard-agent-model.sh	mktemp	1
 scripts/hooks/test-guard-bus-store.sh	mktemp	1
+scripts/hooks/test-guard-identical-denied-retry.sh	mktemp	1
 scripts/hooks/test-guard-memory-capture.sh	mktemp	1
 scripts/hooks/test-guard-pr-check-literal.sh	bash32	2
 scripts/hooks/test-guard-pr-check-literal.sh	gnu-flag	2

@@ -1398,7 +1398,7 @@ _promote_only_post_lock() {
   fi
   # harden-graph is idempotent (a re-run on a hardened graph adds 0 edges), so
   # an orphan that stopped before or after this step both end up hardened.
-  python3 "$HERE/harden-graph.py" --out "$SCRATCH_OUT" >&2 \
+  python3 "$HERE/harden-graph.py" --out "$SCRATCH_OUT" --root "$CORPUS_ROOT" >&2 \
     || { echo "refresh-graph-map: harden-graph failed -- $PROMOTE_ONLY_DIR left unpromoted (and untouched)" >&2; exit 2; }
 }
 
@@ -2372,7 +2372,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # adds 0 edges. A non-zero exit here means a well-formed but unreadable
   # graph.json -- treated the same as an --update/cluster-only failure.
   _rc=0
-  python3 "$HERE/harden-graph.py" --out "$SCRATCH_OUT" >&2 || _rc=$?
+  python3 "$HERE/harden-graph.py" --out "$SCRATCH_OUT" --root "$CORPUS_ROOT" >&2 || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     echo "refresh-graph-map: harden-graph failed -- graphify-out left unpromoted" >&2
     exit 2

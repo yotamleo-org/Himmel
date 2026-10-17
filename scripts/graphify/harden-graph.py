@@ -2,7 +2,8 @@
 # harden-graph.py -- idempotent post-update step that bridges
 # doc-extracted concept nodes whose label literally names a code file to that
 # file's AST node (relation "references"), and adds allowlisted subprocess-exec
-# code-fact edges (relation "calls"). Operates only on <out>/graph.json;
+# code-fact edges (relation "calls"). With --root, also resolves shell
+# calls/sources between shell files (harden_shell_calls.py). Writes only <out>/graph.json;
 # stdlib only -- never imports the `graphify` package (not importable from
 # system python3; see refresh-graph-map.sh's own venv note).
 #
@@ -22,6 +23,8 @@ import os
 import re
 import sys
 from collections import defaultdict
+
+from harden_shell_calls import find_shell_edges
 
 CODE_EXT = r"[\w./-]+\.(?:mjs|js|ts|sh|py|json|yaml|yml|ps1|toml)\b"
 GHOST_LABEL_RE = re.compile(r"(" + CODE_EXT + r")(?: script| file| router| module)?")
@@ -181,6 +184,7 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="graphify-out directory containing graph.json")
     ap.add_argument("--allowlist", default=None, help="defaults to harden-allowlist.json next to this script")
+    ap.add_argument("--root", default=None, help="corpus root the graph's source_file paths are relative to; enables shell call resolution")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -210,6 +214,7 @@ def main(argv):
         os.path.dirname(os.path.abspath(__file__)), "harden-allowlist.json"
     )
     facts = find_code_facts(by_path, load_allowlist(allowlist_path))
+    shell_edges, shell_unresolved = find_shell_edges(nodes, args.root) if args.root else ([], 0)
 
     # graph.json is "directed": false, "multigraph": false -- (u, v) and (v, u)
     # are the SAME edge, so dedup keys must be order-independent or a pre-existing reverse-order edge between the
@@ -217,7 +222,7 @@ def main(argv):
     existing_pairs = {frozenset((e.get("source"), e.get("target"))) for e in edges}
     seen = set()
     new_edges = []
-    for e in bridges + facts:
+    for e in bridges + facts + shell_edges:
         pair = frozenset((e["source"], e["target"]))
         if pair in existing_pairs or pair in seen:
             continue
@@ -228,11 +233,14 @@ def main(argv):
 
     bridge_count = sum(1 for e in new_edges if e["hardened"] == "doc-label-names-code-file")
     fact_count = sum(1 for e in new_edges if e["hardened"] == "subprocess-exec")
+    shell_calls = sum(1 for e in new_edges if e["hardened"] == "shell-call" and e["relation"] == "calls")
+    shell_sources = sum(1 for e in new_edges if e["hardened"] == "shell-call" and e["relation"] == "sources")
     unchanged = 0 if new_edges else 1
     summary = (
         f"harden-graph: bridges={bridge_count} code-facts={fact_count} "
         f"skipped-ambiguous={skipped_ambiguous} skipped-path-mismatch={skipped_path_mismatch} "
-        f"unchanged={unchanged}"
+        f"unchanged={unchanged} shell-calls={shell_calls} shell-sources={shell_sources} "
+        f"shell-unresolved={shell_unresolved}"
     )
     print(summary)
 
