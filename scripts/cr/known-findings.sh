@@ -120,15 +120,16 @@ const isClosed = (s) => /^(done|closed|resolved|won.?t do|cancel+ed|rejected)/i.
 function learningsFeed(rows) {
   let tracked = null;
   try { tracked = new Set(require("child_process").execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28 }).split("\n").filter(Boolean)); } catch (e) { tracked = null; }
-  let repoName = ""; // a row from another repository is never judged against the file list of this checkout
-  try { repoName = require("child_process").execFileSync("git", ["remote", "get-url", "origin"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().replace(/\.git$/, "").split(/[/:]/).pop().toLowerCase(); } catch (e) { repoName = ""; }
+  let repoFull = ""; // a row is judged against this checkout only when its repository is known and is this one
+  try { repoFull = require("child_process").execFileSync("git", ["remote", "get-url", "origin"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().replace(/\.git$/, "").split(/[/:]/).slice(-2).join("/").toLowerCase(); } catch (e) { repoFull = ""; }
+  const sameRepo = (repo) => { const r = repo.toLowerCase(); return !!repoFull && !!r && (r.includes("/") ? r === repoFull : r === repoFull.split("/").pop()); };
   const lines = [], stale = [], live = [], short = (t) => t.slice(0, 80);
   for (const r of rows) {
     let reason = null;
     if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
     else if (/\bglm\b/i.test(r.text)) reason = "glm";
     else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
-    else if (tracked && tracked.size && r.file && (!r.repo || (repoName && r.repo.split("/").pop().toLowerCase() === repoName)) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
+    else if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
     if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
       const st = ticketStatus(key);

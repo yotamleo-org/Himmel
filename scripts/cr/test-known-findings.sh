@@ -405,6 +405,7 @@ lrow() { printf '"%s",himmel,%s,1,,u,"%s","x","y","z"\n' "$1" "$2" "$3"; }  # le
 lrun() { # <name> <csv> [status-tsv]; prints the refresh output
   cp "$HERE/known-findings.json" "$tmp/kf-$1.json"
   KNOWN_FINDINGS_FILE="$tmp/kf-$1.json" CR_LEDGER="$tmp/absent-ledger.jsonl" KNOWN_FINDINGS_TICKET_STATUS="${3:-$tmp/no-such-status.tsv}" bash "$SCRIPT" --refresh --learnings "$2" 2>&1
+  echo "$?" > "$tmp/rc-$1"
 }
 { echo "$LHDR"; lrow 'Always frobnicate the zorble widget quickly.' "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; } > "$tmp/l-cluster.csv"
 lc="$(lrun cluster "$tmp/l-cluster.csv")"
@@ -427,6 +428,8 @@ contains "feed: a row citing a file absent from git ls-files is STALE file-gone"
 contains "feed: a private-repo propagation row is STALE" "$lg" "STALE row=3 uses=1 reason=private-repo-propagation"
 { echo "$LHDR"; printf '"Check the zonkdrift wrapper handles empty input.",other-repo,scripts/no-such-file-zz.sh,1,,u,"2","x","y","z"\n'; } > "$tmp/l-other.csv"  # leak-allow: fixture row from another repository
 not_contains "feed: a missing file in ANOTHER repository is not file-gone" "$(lrun other "$tmp/l-other.csv")" "reason=file-gone"
+{ echo "$LHDR"; printf '"Check the zonkdrift wrapper handles empty input.",someone/Himmel,scripts/no-such-file-zz.sh,1,,u,"2","x","y","z"\n'; printf '"Check the quuxfold wrapper handles empty input.",,scripts/no-such-file-zz.sh,1,,u,"2","x","y","z"\n'; } > "$tmp/l-ident.csv"  # leak-allow: fixture rows with a foreign owner and an unknown repository
+not_contains "feed: a same-basename repository under another owner or an unknown repository is not file-gone" "$(lrun ident "$tmp/l-ident.csv")" "reason=file-gone"
 
 printf 'HIMMEL-7001\tIn Progress\nHIMMEL-7002\tDone\n' > "$tmp/status.tsv"
 { echo "$LHDR"; lrow 'Defer the snarfle cache fix to HIMMEL-7001 until later.' "$LFILE" 2; lrow 'Defer the gizmo rewrite to HIMMEL-7002 for now.' "$LFILE" 2; } > "$tmp/l-defer.csv"
@@ -453,6 +456,8 @@ not_contains "feed: rows from different repositories never form one cluster" "$(
 check "feed: two clusters sharing a phrase get distinct ids" "$(lrun id "$tmp/l-id.csv" | sed -n 's/^PROPOSE-CLASS id=\([^ ]*\) .*/\1/p' | sort -u | wc -l | tr -d ' ')" "2"
 { echo "$LHDR"; lrow 'A very popular quuzmarker rule.' "$LFILE" 120; } > "$tmp/l-hot.csv"
 contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-hot.csv")" "PROMOTE-HINT row=1 uses=120"
+
+for rcf in "$tmp"/rc-*; do check "feed: refresh exits 0 ($(basename "$rcf"))" "$(cat "$rcf")" "0"; done
 
 # usage contract
 bash "$SCRIPT" >/dev/null 2>&1; check "no mode → exit 2" "$?" "2"

@@ -48,7 +48,7 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 
    | Line | Meaning |
    |---|---|
-   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`; rows from another repository are skipped), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
+   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`; rows from another repository, or with no repository, are skipped), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
    | `PONYTAIL row=N … ticket=HIMMEL-n status=<s>` | the row defers to a still-open ticket: keep it, it is a `ponytail:` marker |
    | `STATUS-UNKNOWN row=N ticket=HIMMEL-n` | Jira status unreachable: the row is NOT stale on that rule |
    | `DUPLICATE rows=a,b uses=U …` | live rows with the same file and the same normalized 12-token rule head; read the group, keep one only if the rows state the same rule |
