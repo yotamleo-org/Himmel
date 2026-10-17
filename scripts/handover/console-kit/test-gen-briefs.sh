@@ -271,6 +271,34 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="c
 python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --console BZ --bucket "$WORK/ctb-early" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
 [ "$rc" = 1 ] && pass "an earlier bad value is refused even when the last value is no" || fail "early bad value rc=$rc"
 
+# Windows and WSL are dropped: a leg whose title, desc, why or scope names them is refused (rc 1,
+# nothing written) unless it sets platform_removal AND its title says it removes something.
+# pl_gen <title> <field> <value> [platform_removal]: one leg with <field> set to <value>.
+pl_gen() {
+    rm -rf "$WORK/pl-out"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0][sys.argv[3]]=sys.argv[4]
+if len(sys.argv)>5: l[0]["platform_removal"]=True
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/pl.json" "$@"
+    python3 "$SUT" "$WORK/pl.json" --base 4ccb59d --console BZ --bucket "$WORK/pl-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pl.err"
+}
+pl_written() { ls "$WORK/pl-out"/*.md "$WORK/pl-out"/launch-*.sh >/dev/null 2>&1; }
+pl_gen title 'AG-UI session name handles Windows cwd separators'; rc=$?
+[ "$rc" = 1 ] && grep -q "N901" "$WORK/pl.err" && grep -qi "windows" "$WORK/pl.err" && ! pl_written && pass "a leg titled with Windows is refused, naming the leg, nothing written" || fail "windows title rc=$rc: $(cat "$WORK/pl.err")"
+pl_gen desc 'run the WSL codex lane'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "a desc naming WSL is refused" || fail "wsl desc rc=$rc"
+pl_gen scope 'the .ps1 twin'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "a scope naming a .ps1 file is refused" || fail "ps1 scope rc=$rc"
+pl_gen why 'it breaks under Git Bash'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "a why naming Git Bash is refused" || fail "git bash why rc=$rc"
+pl_gen title 'Remove Windows leftovers' yes; rc=$?
+[ "$rc" = 0 ] && pl_written && pass "a Windows removal leg with platform_removal true is accepted" || fail "removal leg rc=$rc: $(cat "$WORK/pl.err")"
+pl_gen title 'Fix Windows leftovers' yes; rc=$?
+[ "$rc" = 1 ] && grep -q "platform_removal" "$WORK/pl.err" && ! pl_written && pass "platform_removal true on a non-removal title is refused" || fail "non-removal platform_removal rc=$rc: $(cat "$WORK/pl.err")"
+for ok in 'cap the context window' 'widen the time window' 'Windowed rate limit' 'the context windows budget'; do
+    pl_gen title "$ok"; rc=$?
+    [ "$rc" = 0 ] && pl_written && pass "'$ok' is not a platform mention" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
+done
+
 # Every leg and console pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"

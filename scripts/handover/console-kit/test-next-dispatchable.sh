@@ -217,5 +217,25 @@ rm -f "$GH_FAIL"
 has "a failed open-PR read is reported on the RESUME read" "$rf" "open PRs unknown"
 lacks "a failed open-PR read lists no RESUME row" "$rf" "RESUME	"
 
+# Windows and WSL are dropped: a To Do candidate whose summary names them is skipped (one counted
+# line) unless it carries the windows-removal label; 'context window' style titles are untouched.
+M6="$WORK/jira-mirror6/HIMMEL"; mkdir -p "$M6"
+M_SAVE="$M"; M="$M6"
+mk HIMMEL-70 "To Do" High '[]' '[]' '[]' "WSL station triage" "Edit scripts/lib/p70.sh only."
+mk HIMMEL-71 "To Do" High '["windows-removal"]' '[]' '[]' "WSL station triage removal" "Edit scripts/lib/p71.sh only."
+mk HIMMEL-72 "To Do" High '[]' '[]' '[]' "Handle Windows cwd separators" "Edit scripts/lib/p72.sh only."
+mk HIMMEL-73 "To Do" High '[]' '[]' '[]' "cap the context window" "Edit scripts/lib/p73.sh only."
+mk HIMMEL-74 "To Do" High '[]' '[]' '[]' "Windowed rate limit" "Edit scripts/lib/p74.sh only."
+M="$M_SAVE"
+pw="$(NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"
+lacks "a WSL candidate is omitted" "$pw" "HIMMEL-70	"
+lacks "a Windows candidate is omitted" "$pw" "HIMMEL-72	"
+has "a windows-removal labelled candidate is kept" "$pw" "HIMMEL-71	"
+has "a 'context window' title is kept" "$pw" "HIMMEL-73	"
+has "a 'Windowed' title is kept" "$pw" "HIMMEL-74	"
+has "the skipped count line is printed" "$pw" "# skipped 2 windows/wsl ticket(s)"
+pw0="$(run --legs-from "$WORK/fleet.json")"
+lacks "no skipped line when nothing matched" "$pw0" "# skipped"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

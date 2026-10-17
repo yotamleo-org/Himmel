@@ -20,6 +20,8 @@ false), extra (appended to the
 RED-first contract line), ab_arm (200k|400k, HIMMEL-5193: the autocompact A/B arm;
 the brief gets the `> **Context:** ab-<arm> — operator-ruling: HIMMEL-5193` line, the
 launcher exports LEG_AUTOCOMPACT_AB, the printed manifest add line passes --arm),
+platform_removal (true: the leg removes Windows/WSL code and its title says remove/drop/delete/retire/sweep/clean; without
+it a title, desc, why or scope naming a dropped platform, per platform-dropped.re, is refused),
 model (default claude-sonnet-5-5), tier (HIMMEL-5457: {category, reason}; REQUIRED when model is an
 opus or fable model, because headed-arm-leg.sh refuses such a launch without a
 `> **Tier:** <opus|fable> — <category>: <reason>` line; category is one of
@@ -61,6 +63,23 @@ TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruli
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
+REMOVAL_RE = re.compile(r'\b(?:remov|drop|delet|retir|sweep|clean)', re.I)
+
+
+def load_platform_re():
+    # The one pattern file next-dispatchable.sh reads too: its first non-blank, non-# line.
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'platform-dropped.re')
+    try:
+        for line in open(path):
+            if line.strip() and not line.startswith('#'):
+                return re.compile(line.strip(), re.I)
+    except OSError:
+        pass
+    print('gen-briefs: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr)
+    sys.exit(2)
+
+
+PLATFORM_RE = load_platform_re()
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
@@ -106,6 +125,13 @@ def validate(leg, i):
     for v in COMPLETES_ANY_RE.findall(leg['scope']):
         if v.lower() not in ('yes', 'no'):
             die('leg %s: scope states completes-ticket: %s; the value must be yes or no' % (leg['label'], v))
+    removal = leg.get('platform_removal')
+    if removal and not REMOVAL_RE.search(leg['title']):
+        die('leg %s: platform_removal needs a title that says remove/drop/delete/retire/sweep/clean' % leg['label'])
+    for k in (() if removal else ('title', 'desc', 'why', 'scope')):
+        m = PLATFORM_RE.search(str(leg[k]))
+        if m:
+            die('leg %s: %s names a dropped platform (%r); Windows and WSL are dropped, so only a removal leg may touch them (platform_removal true plus a remove/drop/delete/retire/sweep/clean title)' % (leg['label'], k, m.group(0)))
     if re.search(r'<[^<>\s]+>', leg['prior']) or leg['prior'].strip().lower().rstrip('.') == 'none':
         die('leg %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % leg['label'])
 
