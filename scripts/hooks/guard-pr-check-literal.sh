@@ -1520,9 +1520,11 @@ edhook_deny() {
 # live `$` only as a plain $NAME / ${NAME} reference. A heredoc body is not a
 # word and is allowed. Anything else falls through unchanged.
 # ponytail: python body unparsed, upgrade via the structural parser HIMMEL-6014.
-# Only its obvious process-spawning names are refused, so an obfuscated spawn
-# (getattr(os, 'sys'+'tem')) passes - the ceiling every shell-free path
-# builder already has.
+# A python whose text names a target denies here: the text scan below reads
+# shell words, and a quoted list item ('scripts/cr/x.sh',) never resolves to
+# one. Only a python naming no target and no spawn name is exempt, so the
+# residual is a target path it assembles at run time or reads from a file it
+# is handed (`python3 runner.py <target>`), plus any spawn the name list misses.
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh
 PY_SPAWN_RE='subprocess|os\.|popen|pty\.|runpy|exec[[:space:]]*\(|eval[[:space:]]*\(|compile[[:space:]]*\(|__import__|importlib|ctypes|system'
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
@@ -1592,7 +1594,13 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                     ;;
                 sed) st_sed_args "$k" 0 || return 1 ;;
                 git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
-                python | python3) [[ ! $cmd =~ $PY_SPAWN_RE ]] || return 1; kind=strict ;;
+                python | python3)
+                    shown=${cmd//$'\n'/ }
+                    shown=${shown:0:200}
+                    ! names_target "$cmd" || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
+                    [[ ! $cmd =~ $PY_SPAWN_RE ]] || return 1
+                    kind=strict
+                    ;;
                 printf) kind='printf' ;;
                 echo | cd) ;;
                 *) case "$PR_READERS" in *" $w "*) ;; *) return 1 ;; esac ;;

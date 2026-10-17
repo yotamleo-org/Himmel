@@ -2685,7 +2685,8 @@ backstop guards.
 **Command position and the dispatcher (HIMMEL-6015).** Before the text scan,
 a command whose every command word provably runs no gate directly is allowed:
 an inert reader, an inert `sed`, a pathspec-only `git`, `echo`, `printf`
-without `-v`, `cd`, a `python` whose text holds no process-spawning name, or
+without `-v`, `cd`, a `python` whose text names no target and holds no
+process-spawning name, or
 `bash` running `scripts/handover/console-kit/himmel-gate.sh` by its exact
 anchored spelling (`bash "$HIMMEL_REPO/…/himmel-gate.sh" <name> <args>`, with
 `HIMMEL_REPO` absolute and every other `HIMMEL_REPO` reference refused). Such a
@@ -2694,8 +2695,10 @@ redirect other than an fd dup or `/dev/null`, and a live `$` only as a plain
 `$NAME` reference. From a dispatcher run on, segments join only by `&&` or
 `|`, never `;`, `||`, `&` or a newline, and a pipe straight after the
 dispatcher needs a lone `--help` (an fd dup such as `1>&2` hides the pipe from
-the dispatcher's own check). So a target named in a commit message, `git grep`, `sed -n`,
-a python or `cat` heredoc no longer denies. The dispatcher runs a registered
+the dispatcher's own check). So a target named in a commit message, `git grep`, `sed -n`
+or a `cat` heredoc no longer denies. A `python` whose text names a target
+denies outright: its argv is python list items (`['bash', 'scripts/cr/x.sh']`),
+which the shell-word text scan cannot resolve. The dispatcher runs a registered
 gate or ledger writer by name from the anchor. Before the exec it refuses an
 unknown name, a relative `HIMMEL_REPO`, an anchor off `refs/heads/main` or
 whose copy of the script, the dispatcher or `anchor-handoff.sh` differs from
@@ -2703,8 +2706,9 @@ main's committed bytes, and so for what the script runs or sources (all of
 `scripts/cr/`, `scripts/guardrails/lib.sh` and `scripts/lib/load-dotenv.sh`
 for `pr-check-context` / `pr-check-env`; `go-gate.sh` and `handover-path.sh`
 for `go`, the set the guard holds them to), and a piped stdout (a lone `--help` is exempt). The
-python check reads names, not code, so an obfuscated spawn passes. The hook's
-`ponytail:` names this.
+python check reads names, not code, so a target path python assembles at run
+time or reads from a file it is handed (`python3 runner.py <target>`) passes,
+as does a spawn the name list misses. The hook's `ponytail:` names this.
 
 **Why the anchor, not a ref.** The compare base is the anchor's working-tree
 bytes, never `refs/remotes/origin/main`. Refs live in the common git dir, which

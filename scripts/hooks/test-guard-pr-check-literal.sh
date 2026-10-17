@@ -1605,10 +1605,12 @@ done
 # separator outside the quotes, a non-message gh/node, a VAR= prefix, a write
 # and git commit's message (it lands in .git/COMMIT_EDITMSG; -F is the remedy)
 # all stay denied.
-# A python heredoc with no process-spawning name (PY_SPAWN_RE)
-# runs no gate and is allowed; one that calls os.system on a gate is denied.
+# A python heredoc naming no target and no process-spawning name (PY_SPAWN_RE)
+# is allowed; one whose text names a gate is denied, even one that only prints it.
+v="python3 - <<'EOF'${NL}print(len('abc'))${NL}EOF"
+run "HIMMEL-6015 python3 heredoc naming no gate -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 v="python3 - <<'EOF'${NL}print('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF"
-run "HIMMEL-6015 python3 heredoc printing a gate path -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
+run "HIMMEL-6015 python3 heredoc printing a gate path -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
 v="python3 - <<'EOF'${NL}import os; os.system('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF"
 run "HIMMEL-6015 python3 heredoc os.system on go.sh -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
 # shellcheck disable=SC2016 # the literal `$(...)` text, never expanded here
@@ -2223,6 +2225,7 @@ for f in "$FX_CMDPOS"/*.cmd; do
     case "$name" in
     deny-catch-anchor-mismatch.cmd) echo changed >>"$WT/scripts/cr/ledger-append.sh" ;;
     deny-gate-relative-dirty.cmd) echo changed >>"$WT/scripts/handover/console-kit/himmel-gate.sh" ;;
+    deny-python-*-execv.cmd) echo changed >>"$WT/scripts/cr/write-verdicts.sh" ;;
     esac
     run "6015: [$name]" "$want" "$(payload "$(cat "$f")" "$WT")" "$HR"
     g -C "$WT" checkout -q -- .
