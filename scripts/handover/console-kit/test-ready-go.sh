@@ -146,11 +146,11 @@ lacks "trust hit: no plain GO line" "$OUT" "SENDMESSAGE"
 contains "trust hit: routes through the judge" "$OUT" "go.sh --trust-reviewed <judge qid> 77 $SHA"
 unset STUB_FILE
 
-# --- 6. trust list unreadable --------------------------------------------------
+# --- 6. trust list unreadable: ready-check fails it before the trust step --------------------------------------------------
 export STUB_TRUST_LIST_FAIL=1
 run --to leg --token tok 77 "$SHA"
-check "trust refused: exit 5" "$RC" "5"
-contains "trust refused: TRUST: refused" "$OUT" "TRUST: refused list"
+check "trust refused: exit 4" "$RC" "4"
+contains "trust refused: ready-check names check 12" "$OUT" "[FAIL] 12."
 lacks "trust refused: no GO line" "$OUT" "SENDMESSAGE"
 unset STUB_TRUST_LIST_FAIL
 
