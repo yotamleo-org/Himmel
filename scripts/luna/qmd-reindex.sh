@@ -417,9 +417,9 @@ if [ "$remote_model" -eq 1 ]; then
     fi
     # The provider key is the daemon's, never a session's (scripts/lib/qmd-daemon-env.sh).
     # shellcheck source=../lib/qmd-daemon-env.sh
-    . "$(dirname "${BASH_SOURCE[0]}")/../lib/qmd-daemon-env.sh"
+    . "$(dirname "${BASH_SOURCE[0]}")/../lib/qmd-daemon-env.sh"  # t13b-ok: sources the key loader, starts nothing
     key_rc=0
-    qmd_daemon_key_load "$QMD_CFG_FILE" || key_rc=$?
+    qmd_daemon_key_load "$QMD_CFG_FILE" || key_rc=$?  # t13b-ok: calls the key loader, starts nothing
     if [ "$key_rc" -eq 10 ]; then
         echo "ERR qmd-reindex: $QMD_DAEMON_ENV_FILE_RESOLVED holds the provider key but is readable by others - index NOT refreshed (chmod 600 it)." >&2
         exit 10

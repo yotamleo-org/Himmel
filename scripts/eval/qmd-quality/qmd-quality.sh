@@ -145,9 +145,9 @@ done
 
 # A remote role needs the provider key the qmd daemon uses (never printed).
 # shellcheck source=scripts/lib/qmd-daemon-env.sh
-. "$HERE/../../lib/qmd-daemon-env.sh"
+. "$HERE/../../lib/qmd-daemon-env.sh"  # t13b-ok: sources the key loader, starts nothing
 key_rc=0
-qmd_daemon_key_load "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" || key_rc=$?
+qmd_daemon_key_load "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" || key_rc=$?  # t13b-ok: calls the key loader, starts nothing
 [ "$key_rc" -ne 10 ] || { echo "qmd-quality: $QMD_DAEMON_ENV_FILE_RESOLVED holds the provider key but is readable by others (chmod 600 it)" >&2; exit 2; }
 [ "$key_rc" -ne 11 ] || { echo "qmd-quality: an OpenRouter config but no provider key in $QMD_DAEMON_ENV_FILE_RESOLVED" >&2; exit 2; }
 
