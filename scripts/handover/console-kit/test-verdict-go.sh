@@ -145,11 +145,11 @@ run q8a GO "$HEAD40" --pr 77 --evidence-file "$EVR" --doc "$DOC"
 check "8a: an unkeyed Non-blocking bullet rc 2" "$rc" 2
 contains "8a: the offending line is printed" "$out" "unfiled residual: - tighten the regex"
 contains "8a: the hint names no-ticket" "$out" "no-ticket: <reason>"
-check "8a: nothing ran" "$(cat "$LOG")" ""
+check "8a: nothing ran" "$(cat "$LOG")" ""  # read-sink-ok: the test's own sandbox log
 printf 'Evidence read.\n\nresidual: x\n' > "$EVR"
 run q8b NO-GO "$HEAD40" --pr 77 --evidence-file "$EVR"
 check "8b: an unkeyed residual: line on a NO-GO rc 2" "$rc" 2
-check "8b: nothing ran" "$(cat "$LOG")" ""
+check "8b: nothing ran" "$(cat "$LOG")" ""  # read-sink-ok: the test's own sandbox log
 printf '## Follow-ups\n\n- keyed HIMMEL-123 item\n- other item, no-ticket: operator accepted\n' > "$EVR"
 run q8c GO "$HEAD40" --pr 77 --evidence-file "$EVR"
 check "8c: keyed and no-ticket residuals rc 0" "$rc" 0
