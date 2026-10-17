@@ -78,7 +78,7 @@ start_stub() {
     python3 -I "$TMP/stub.py" "$2" "$pf" >/dev/null 2>&1 &
     SRV_PIDS+=("$!")
     while [ ! -s "$pf" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-    URL="http://127.0.0.1:$(cat "$pf")/mcp"
+    URL="http://127.0.0.1:$(cat "$pf")/mcp" # read-sink-ok: $pf is this suite's own mktemp port file
     AUTHFILE="$pf.auth"
 }
 
