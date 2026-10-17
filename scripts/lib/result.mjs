@@ -21,9 +21,9 @@ import { spawnSync } from 'node:child_process';
 export function runOrUnknown(cmd, args = [], opts = {}) {
   const { stderr: _sink, ...spawnOpts } = opts;
   const p = spawnSync(cmd, args, {
-    encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
     ...spawnOpts,
+    encoding: 'utf8', // after the spread: a caller encoding must not turn out into a Buffer
   });
   const out = (p.stdout ?? '').replace(/\n+$/, '');
   // p.error is set for ENOENT and for a timeout; p.status is null for a signal.

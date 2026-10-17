@@ -54,6 +54,12 @@ test('stdout captured, trailing newlines stripped', () => {
   assert.equal(r.out, 'hello');
 });
 
+test('a caller encoding of null cannot turn stdout into a Buffer', () => {
+  const r = run("process.stdout.write('hi\\n')", { encoding: null });
+  assert.equal(r.state, 'ok');
+  assert.equal(r.out, 'hi');
+});
+
 test('true/false map to ok/fail', () => {
   assert.equal(runOrUnknown('true', []).state, 'ok');
   assert.equal(runOrUnknown('false', []).state, 'fail');
