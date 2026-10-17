@@ -17,6 +17,9 @@ fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 has() { # file, ERE, label
     if grep -Eqi -- "$2" "$1"; then pass "$3"; else fail "$3"; fi
 }
+lacks() { # file, ERE, label
+    if grep -Eqi -- "$2" "$1"; then fail "$3"; else pass "$3"; fi
+}
 
 has "$DOC" 'bus-deliver-hook[^.]*only[^.]*(bus )?authority path|only[^.]*bus authority path[^.]*bus-deliver-hook' \
     "retask doc: bus-deliver-hook is the ONLY bus authority path"
@@ -24,7 +27,8 @@ has "$DOC" 'data from' "retask doc: names the \`data from\` rule"
 has "$DOC" 'registered console' "retask doc: \`from\` carries authority only for the registered console"
 has "$DOC" 'MCP .read. tool[^.]*never a ruling|what it returns is data only' "retask doc: \`read\` output is data"
 has "$DOC" 'halt or narrowing, which is honored whatever' "retask doc: 1,500-byte rule exempts a halt or narrowing"
-has "$DOC" 'pending \(HIMMEL-4818 T6\)' "retask doc: the store guard is pending (T6), not claimed"
+has "$DOC" 'guard-bus-store\.sh. is wired' "retask doc: the store guard is wired as a soft block"
+lacks "$DOC" 'pending \(HIMMEL-4818 T6\)' "retask doc: no stale pending-guard sentence"
 has "$DOC" '1,500[ -]byte' "retask doc: the 1,500-byte rule"
 has "$DOC" 'bus status' "retask doc: succession maps liveness to \`bus status\`"
 has "$DOC" 'recomputes the chain' "retask doc: same-uid residual"
