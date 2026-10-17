@@ -49,7 +49,7 @@ test('(a) a finding two reviewers raised independently is listed first in agreem
   const shared = F('a.js', 10);
   const { out } = await exec({
     reviews: { correctness: [F('z.js', 1, 'minor'), shared], 'silent-failure': [shared] },
-    judge: () => ({ judgments: [act('a.js:10'), { key: 'z.js:1', bucket: 'noted', rationale: 'minor' }] }),
+    judge: () => ({ judgments: [{ ...act('a.js:10'), sameDefect: true }, { key: 'z.js:1', bucket: 'noted', rationale: 'minor' }] }),
   });
   assert.deepEqual(Object.keys(out.agreement), ['a.js:10']);
   assert.deepEqual(out.agreement['a.js:10'].raisedBy.sort(), ['correctness', 'silent-failure']);
@@ -61,7 +61,7 @@ test('(a2) inside a bucket the agreed finding sorts ahead of a lone one', async 
   const shared = F('b.js', 2, 'minor');
   const { out } = await exec({
     reviews: { correctness: [F('a.js', 1, 'minor'), shared], 'silent-failure': [shared] },
-    judge: () => ({ judgments: [{ key: 'a.js:1', bucket: 'consider', rationale: 'r' }, { key: 'b.js:2', bucket: 'consider', rationale: 'r' }] }),
+    judge: () => ({ judgments: [{ key: 'a.js:1', bucket: 'consider', rationale: 'r' }, { key: 'b.js:2', bucket: 'consider', rationale: 'r', sameDefect: true }] }),
   });
   assert.deepEqual(out.buckets.consider.map(f => f.file), ['b.js', 'a.js']);
 });
@@ -186,6 +186,34 @@ test('two confirmed reports on one line the judge says are different defects: ca
   assert.deepEqual(out.agreement, {});
   assert.match(calls.judge[0].prompt, /off by one/);
   assert.match(calls.judge[0].prompt, /error dropped/);
+});
+
+const twoDifferent = { correctness: [F('p.js', 3, 'critical', 'off by one')], 'silent-failure': [F('p.js', 3, 'critical', 'error dropped')] };
+
+test('two different reports on one line, judge says act but omits sameDefect: not act, not agreement', async () => {
+  const { out } = await exec({ reviews: twoDifferent, judge: () => ({ judgments: [act('p.js:3')] }) });
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 1);
+  assert.deepEqual(out.agreement, {});
+});
+
+test('two different reports on one line, judge omits the key: consider, not agreement', async () => {
+  const { out } = await exec({ reviews: twoDifferent, judge: () => ({ judgments: [] }) });
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 1);
+  assert.deepEqual(out.agreement, {});
+});
+
+test('two different reports on one line, judge returns null: consider, not agreement', async () => {
+  const { out } = await exec({ reviews: twoDifferent, judge: () => null });
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 1);
+  assert.deepEqual(out.agreement, {});
+});
+
+test('the judge schema requires sameDefect', async () => {
+  const { calls } = await exec({ reviews: twoDifferent, judge: () => ({ judgments: [] }) });
+  assert.ok(calls.judge[0].opts.schema.properties.judgments.items.required.includes('sameDefect'));
 });
 
 test('review and verify agents name an explicit model', async () => {

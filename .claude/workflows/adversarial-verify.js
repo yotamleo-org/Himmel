@@ -20,7 +20,7 @@ const VERDICT = { type: 'object', required: ['refuted'],
   properties: { refuted: {type:'boolean'}, reason: {type:'string'} } }
 const JUDGMENTS = { type: 'object', required: ['judgments'],
   properties: { judgments: { type: 'array', items: { type: 'object',
-    required: ['key', 'bucket', 'rationale'],
+    required: ['key', 'bucket', 'rationale', 'sameDefect'],
     properties: { key: {type:'string'}, bucket: {enum:['act','consider','noted','dismissed']},
       rationale: {type:'string'}, sameDefect: {type:'boolean'} } } } } }
 
@@ -91,14 +91,14 @@ if (toJudge.length) {
       '- dismissed: wrong, a nitpick, or missing context; say which.',
       'Filters: reviewers inflate nits to fill the space, so a pile of nits means the code is probably fine. A hypothetical is a finding only if a caller can reach it, so trace the call site. Suggesting an abstraction is premature unless the code must change a second way. "I would do it differently" is not a defect without a concrete problem. A finding about code the author did not touch, or about a pattern the rest of the codebase shares, is missing context.',
       'Keep findings that name a concrete execution path, that two reviewers raised independently (the strongest signal), or that expose a gap in your own model of the code. Be slow to dismiss security and correctness findings even from one reviewer.',
-      'Reports listed under one key share a file and line but may describe different defects. Set sameDefect to false when they do; two reviewers only agree when they describe one defect.',
+      'Reports listed under one key share a file and line but may describe different defects. Set sameDefect on every key: true only when all reports under it describe one defect (a key with one report is true), false when they describe different defects. Two reviewers agree only on a sameDefect of true.',
       `Read the code at each location before judging.\n${list}`,
     ].join('\n'),
     { label: 'judge', phase: 'Judge', model: 'opus', effort: 'high', schema: JUDGMENTS })
   const byKey = new Map((judged?.judgments ?? []).map(j => [j.key, j]))
   for (const m of toJudge) {
     const j = byKey.get(m.key)
-    const agreed = m.raisedBy.length >= 2 && j?.sameDefect !== false
+    const agreed = m.raisedBy.length >= 2 && j?.sameDefect === true
     let bucket = j?.bucket ?? 'consider'
     let rationale = j?.rationale ?? 'not judged; defaulted to consider'
     // A finding no second reviewer agreed on never reaches act, whatever its severity.
