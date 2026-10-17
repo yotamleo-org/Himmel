@@ -63,7 +63,7 @@ TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruli
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
-REMOVAL_RE = re.compile(r'\b(?:remov|drop|delet|retir|sweep|clean)', re.I)
+REMOVAL_RE = re.compile(r'\b(?:remov(?:e|es|ed|ing|al)|drop(?:s|ped|ping)?|delet(?:e|es|ed|ing)|retir(?:e|es|ed|ing)|sweep(?:s|ing)?|clean(?:s|ed|ing)?)\b', re.I)
 
 
 def load_platform_re():

@@ -299,6 +299,14 @@ for bad in false yes 1; do
     case "$bad" in yes) want=0 ;; *) want=1 ;; esac
     [ "$rc" = "$want" ] && pass "platform_removal $bad on a removal title exits $want (only boolean true is the exemption)" || fail "platform_removal $bad rc=$rc"
 done
+for bad in 'Fix Windows dropdown rendering' 'Fix the Windows cleanroom'; do
+    pl_gen title "$bad" yes; rc=$?
+    [ "$rc" = 1 ] && ! pl_written && pass "platform_removal true on '$bad' is refused (no removal verb)" || fail "'$bad' with platform_removal rc=$rc"
+done
+for good in 'Drop Windows support' 'Sweep Windows leftovers' 'Retire the WSL lane' 'Delete the .ps1 twins' 'Clean up Windows paths' 'Removing Windows code'; do
+    pl_gen title "$good" yes; rc=$?
+    [ "$rc" = 0 ] && pl_written && pass "platform_removal true on '$good' is accepted" || fail "'$good' with platform_removal rc=$rc: $(cat "$WORK/pl.err")"
+done
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "'runtime Windows' is not excused by the time-window qualifier" || fail "runtime Windows rc=$rc"
 for ok in 'cap the context window' 'widen the time window' 'Windowed rate limit' 'the context windows budget'; do
