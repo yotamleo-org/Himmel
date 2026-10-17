@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$type" in Task|Story|Bug|Epic|Subtask) ;; *) echo "ticket-standard-check: unknown --type '$type'" >&2; usage;; esac
-[ -n "$draft" ] && [ -f "$draft" ] && [ -r "$draft" ] || { echo "ticket-standard-check: cannot read draft '$draft'" >&2; exit 2; }
+if ! { [ -n "$draft" ] && [ -f "$draft" ] && [ -r "$draft" ]; }; then echo "ticket-standard-check: cannot read draft '$draft'" >&2; exit 2; fi
 
 # Sections whose heading is present but whose body has no real line; or whose heading is absent.
 missing="$(awk '
@@ -77,7 +77,7 @@ if [ -n "$missing" ]; then
       # shellcheck disable=SC1090
       . "$lib"; root="$(handover_root)" || root=""
     else root="${HANDOVER_DIR:-}"; fi
-    [ -n "$root" ] && [ -d "$root" ] || { echo "NOT PARKED: no queue (set HANDOVER_DIR or TICKET_STANDARD_QUEUE_DIR)" >&2; exit 1; }
+    if ! { [ -n "$root" ] && [ -d "$root" ]; }; then echo "NOT PARKED: no queue (set HANDOVER_DIR or TICKET_STANDARD_QUEUE_DIR)" >&2; exit 1; fi
     q="$root/${USER_SLUG:-${USER:-unknown}}/himmel/intake"
   fi
   dest=""
