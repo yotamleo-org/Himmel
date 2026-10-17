@@ -1522,8 +1522,10 @@ edhook_deny() {
 # ponytail: python body unparsed, upgrade via the structural parser HIMMEL-6014.
 # A python whose text names a target denies here: the text scan below reads
 # shell words, and a quoted list item ('scripts/cr/x.sh',) never resolves to
-# one. Only a python naming no target and no spawn name is exempt, so the
-# residual is a target path it assembles at run time or reads from a file it
+# one. A python carrying any candidate the text scan weighs falls through to
+# that scan, so it is denied wherever main denies it. Only a python naming no
+# target, no candidate and no spawn name is exempt, so the residual is a
+# target path it assembles from pieces no token names or reads from a file it
 # is handed (`python3 runner.py <target>`), plus any spawn the name list misses.
 # Only a bare python/python3 command word reaches this case. A python spelled
 # any other way (/usr/bin/python3, python3.14, env python3, command python3,
@@ -1650,20 +1652,27 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                     shown=${shown:0:200}
                     # The raw text normalised (a heredoc body is no word),
                     # plus every word of every segment dequoted and
-                    # normalised (scripts/c""r//x.sh piped in), and each
-                    # word's basename (cd scripts/cr && python3 … x.sh).
+                    # normalised (scripts/c""r//x.sh piped in).
                     py_norm "$cmd"
                     t=$REPLY
-                    hit=0
                     j=0
                     while [ "$j" -lt "$ST_N" ]; do
                         py_norm "${ST_W[j]}"
                         t="$t $REPLY"
-                        if is_target "${REPLY##*/}" || is_htarget "${REPLY##*/}"; then hit=1; fi
                         j=$((j + 1))
                     done
-                    names_target "$t" && hit=1
-                    [ "$hit" = 0 ] || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
+                    ! names_target "$t" || deny "a python command whose text names a guarded script: its argv is python list items ('bash', 'scripts/cr/x.sh',), which this hook cannot resolve, so the bytes it runs cannot be checked. Run the gate through himmel-gate, or pass the path from a file."
+                    # Any candidate the text scan below would weigh (a token
+                    # whose basename names or globs onto a target, a cr/,
+                    # handover/ or pr-check word, a $ or brace word) leaves
+                    # the verdict to that scan, so this case allows nothing
+                    # main's scan denies.
+                    case "$flat" in *[cC][rR]/* | *[hH][aA][nN][dD][oO][vV][eE][rR]/* | *[pP][rR]-[cC][hH][eE][cC][kK]* | *HIMMEL_REPO* | *'$'* | *'{'* | *'}'*) return 1 ;; esac
+                    _c_ops_eq_to_nl "$flat"
+                    for t in $REPLY; do
+                        py_norm "$t"
+                        if is_target "${REPLY##*/}" || is_htarget "${REPLY##*/}"; then return 1; fi
+                    done
                     [[ ! $cmd =~ $PY_SPAWN_RE ]] || return 1
                     kind=strict
                     ;;

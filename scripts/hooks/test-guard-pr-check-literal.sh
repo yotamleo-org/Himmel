@@ -1465,9 +1465,9 @@ print(glob.glob('*/node_modules/*'))
 PY
 ENVELOPE
 )
-# Allowed by command position: cd and a python whose text holds
-# no process-spawning name (the PY_SPAWN_RE denylist) run no gate.
-run "HIMMEL-6015 cd + python3 heredoc with a */ glob, no spawn name -> allow" 0 "$(payload "$H4367_CD_PY" "$WT")" "$HR"
+# A glob that can spell a target leaves python to the text scan, which
+# denies it after a cd, as on main.
+run "HIMMEL-6015 cd + python3 heredoc with a */ glob -> deny, as on main" 2 "$(payload "$H4367_CD_PY" "$WT")" "$HR"
 H4367_CAT=$(cat <<'ENVELOPE'
 cat > /tmp/rows.txt <<'EOF'
 echo x | xargs -I{} sh -c 'y {}'

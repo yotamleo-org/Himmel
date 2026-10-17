@@ -2700,9 +2700,12 @@ or a `cat` heredoc no longer denies. A `python` whose text names a target
 denies outright: its argv is python list items (`['bash', 'scripts/cr/x.sh']`),
 which the shell-word text scan cannot resolve. The check reads the text with
 empty and `.` path segments dropped, plus every word of the command dequoted
-and normalised, and each word's basename, so `scripts/cr//x.sh`,
-`scripts/c""r/x.sh` and `scripts/cr/./x.sh` deny too, as does such a path
-piped in from another segment or a bare `x.sh` after `cd scripts/cr`. The dispatcher runs a registered
+and normalised, so `scripts/cr//x.sh`, `scripts/c""r/x.sh` and
+`scripts/cr/./x.sh` deny too, as does such a path piped in from another
+segment. A python carrying anything the text scan weighs (a token whose
+basename names or globs onto a target, a `cr/`, `handover/` or `pr-check`
+word, a `$` or a brace) falls through to that scan, so it is denied wherever
+main denies it (`cd scripts/cr && python3 … x.sh`). The dispatcher runs a registered
 gate or ledger writer by name from the anchor. Before the exec it refuses an
 unknown name, a relative `HIMMEL_REPO`, an anchor off `refs/heads/main` or
 whose copy of the script, the dispatcher or `anchor-handoff.sh` differs from
@@ -2710,8 +2713,8 @@ main's committed bytes, and so for what the script runs or sources (all of
 `scripts/cr/`, `scripts/guardrails/lib.sh` and `scripts/lib/load-dotenv.sh`
 for `pr-check-context` / `pr-check-env`; `go-gate.sh` and `handover-path.sh`
 for `go`, the set the guard holds them to), and a piped stdout (a lone `--help` is exempt). The
-python check reads names, not code, so a target path python assembles at run
-time or reads from a file it is handed (`python3 runner.py <target>`) passes,
+python check reads names, not code, so a target path python assembles from
+pieces no token names or reads from a file it is handed (`python3 runner.py <target>`) passes,
 as does a spawn the name list misses. Only a bare `python`/`python3` command
 word gets this check: `/usr/bin/python3`, `python3.14`, `env python3`,
 `command python3`, a quoted `"python3"`, a trailing comment or a leading
