@@ -938,6 +938,9 @@ fi
 # semantic manifest + merged graph the next incremental pass builds on.
 _clean_keep=()
 [ "$SEMANTIC" -eq 1 ] && _clean_keep=(-e /graphify-out/)
+# A paused semantic fire (--semantic dropped by the runner) must not delete the
+# manifest + cache a later resume depends on.
+[ -e "$WORKTREE_DIR/graphify-out/semantic-manifest.json" ] && _clean_keep=(-e /graphify-out/)
 if ! git -C "$WORKTREE_DIR" clean -fdx ${_clean_keep[@]+"${_clean_keep[@]}"} >/dev/null 2>&1; then
     _fail "could not clean dedicated worktree $WORKTREE_DIR (git clean -fdx failed) -- refusing to refresh/publish from a tree that may carry leftover untracked files from a prior run"
 fi

@@ -88,13 +88,13 @@ sweep_all() {
     [ "$(wc -c < "$i")" -le 100000 ] || { rm -rf "$sd"; serial_sweep; }
   done
   for i in "$sd"/bin.*; do
-    ( tr '\n' '\0' < "$i" | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
+    ( set -o pipefail; tr '\n' '\0' < "$i" | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
   done
   wait
   # iterate the bins, not their outputs: a bin with no rc (its subshell died) is a failure
   for i in "$sd"/bin.[0-9]*; do
     case "$i" in *.out | *.rc) continue ;; esac
-    cat "$i.out" 2>/dev/null || rc=1 # swallow-ok: a missing output means the bin never ran
+    cat "$i.out" 2>/dev/null || [ "$rc" -ne 0 ] || rc=1 # swallow-ok: a missing output means the bin never ran
     r=$(cat "$i.rc" 2>/dev/null) || r=1 # swallow-ok: a missing rc is a failed bin
     case "$r" in '' | *[!0-9]*) r=1 ;; esac
     [ "$rc" -ne 0 ] || rc=$r
@@ -170,7 +170,11 @@ while IFS= read -r f; do
     d=${d##*/}
     [ -n "$d" ] && printf '%s\n' "$tracked" | awk -v n="$d" '{ k=split($0,p,"/"); if (p[k]==n) print }'
   done >> "$list"
-  lines=$(grep -E -e "$src_re" "$f" 2>/dev/null | grep -v '^[[:space:]]*#' | sed 's/[[:space:]]#.*$//' | cmd_pos)
+  # a source line under a `# shellcheck source=<x>.sh` directive is static: the directive names its
+  # target (the directive loop above added that edge); comment lines in between, such as a stacked
+  # `# shellcheck disable=`, do not break the cover, a blank or code line does
+  mark=$(printf '\001')
+  lines=$(sed -E "/^[[:space:]]*#[[:space:]]*shellcheck[[:space:]].*source=[^[:space:]]+\.(sh|bash)([[:space:]]|\$)/{:a;n;/^[[:space:]]*#/ba;s/^/$mark/;}" "$f" 2>/dev/null | grep -E -e "$src_re" | grep -v "^$mark" | grep -v '^[[:space:]]*#' | sed 's/[[:space:]]#.*$//' | cmd_pos)
   [ -n "$lines" ] || continue
   # every source line must name a *.sh/*.bash, else the neighbour set is uncertain
   printf '%s\n' "$lines" | grep -qvE '[A-Za-z0-9_.+-]+\.(sh|bash)' && run_all "dynamic source line in $f"

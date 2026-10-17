@@ -193,6 +193,33 @@ echo \" ; . "$lib"
 '; commit_case dyn_escq
 verdict dyn_escq ALL
 
+# dyn_dir: a dynamic source directly under a `# shellcheck source=<x>.sh` directive is static
+reset; w scripts/zzy.sh '#!/usr/bin/env bash
+# shellcheck source=scripts/zzj/zzjlib.sh
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo refuse >&2
+fi
+'; commit_case dyn_dir
+verdict dyn_dir FILES scripts/zzy.sh scripts/zzj/zzjlib.sh
+# dyn_stack: a stacked `# shellcheck disable=` between directive and source keeps the cover
+reset; w scripts/zzy.sh '#!/usr/bin/env bash
+# shellcheck source=scripts/zzj/zzjlib.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo refuse >&2
+fi
+'; commit_case dyn_stack
+verdict dyn_stack FILES scripts/zzy.sh scripts/zzj/zzjlib.sh
+# dyn_nodir: the same line with a blank line between directive and source still forces the fallback
+reset; w scripts/zzy.sh '#!/usr/bin/env bash
+# shellcheck source=scripts/zzj/zzjlib.sh
+
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo refuse >&2
+fi
+'; commit_case dyn_nodir
+verdict dyn_nodir ALL
+
 # sweep_*: the non-dry fallback shards the full sweep in parallel through a stub pre-commit.
 # A stub shard fails when handed a file named *bad*; it records every invocation's file list.
 mkdir -p "$T/bin"
@@ -251,6 +278,44 @@ STUB
 chmod +x "$T/bin/pre-commit"
 sweep; rc=$?
 [ "$rc" -ne 0 ] && ok "sweep_norc: a signalled shard fails the sweep" || bad "sweep_norc: signalled shard passed (rc 0)"
+
+# The next rows break one inner tool through a shim dir ahead on PATH; the shim defers to the
+# real tool for every other call, so only the shard path under test sees the fault.
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+echo "STUB shard"
+exit 0
+STUB
+RTR=$(command -v tr); RCAT=$(command -v cat); RAWK=$(command -v awk)
+mkdir -p "$T/shim"
+shimsweep() { STUB_LOG="$T/stub.log" PATH="$T/shim:$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; commit_case sweep_shim
+
+# sweep_pipefail: the shard's tr dies, xargs still sees empty input and the stub passes; the shard
+# must fail on the pipeline status, not on xargs alone
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = "\\0" ] && exit 1; done\nexec %s "$@"\n' "$RTR" > "$T/shim/tr"
+chmod +x "$T/shim/tr"; : > "$T/stub.log"
+shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "sweep_pipefail: a failing tr fails the shard" || bad "sweep_pipefail: failing tr passed (rc 0)"
+rm -f "$T/shim/tr"
+
+# sweep_short: a packer that drops a file would let a pass cover less than the tree; the
+# count check must send the run to the serial sweep
+printf '#!/bin/sh\nfor a in "$@"; do case "$a" in sd=*) sd=${a#sd=} ;; esac; done\n%s "$@"; r=$?\n[ -n "$sd" ] && [ -f "$sd/bin.1" ] && sed "$ d" "$sd/bin.1" > "$sd/bin.1.t" && mv "$sd/bin.1.t" "$sd/bin.1"\nexit $r\n' "$RAWK" > "$T/shim/awk"
+chmod +x "$T/shim/awk"
+shimsweep; rc=$?
+grep -q 'STUB serial' "$T/sweep.out" && ok "sweep_short: a short shard set falls back to the serial sweep" || bad "sweep_short: ran sharded over a short plan: $(head -3 "$T/sweep.out" | tr '\n' '|')"
+rm -f "$T/shim/awk"
+
+# sweep_badrc: a non-numeric rc must not become the exit status (exit -0 would be a pass)
+printf '#!/bin/sh\ncase "$1" in *.rc) echo -0; exit 0 ;; esac\nexec %s "$@"\n' "$RCAT" > "$T/shim/cat"
+chmod +x "$T/shim/cat"
+shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "sweep_badrc: a non-numeric rc fails the sweep" || bad "sweep_badrc: non-numeric rc passed (rc 0)"
+rm -f "$T/shim/cat"
 
 # script-absent-at-base: the workflow runs `git show <base>:<script>`; at a base
 # that predates the script it must fail, which drives the --all-files branch
