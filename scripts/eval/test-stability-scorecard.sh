@@ -46,6 +46,11 @@ SCORECARD_RED_MAIN_CMD="bash $td/fail.sh" bash "$tool" run --date 2026-10-20 >/d
 check "failed source exits 1" "$rc" 1
 check "failed source reads unknown, never 0" "$(sed -n 4p "$td/s.tsv" | cut -f6)" unknown
 
+printf 'not json\n' >"$td/bad.jsonl"
+SCORECARD_DENIALS_FILE="$td/bad.jsonl" bash "$tool" run --date 2026-10-22 >/dev/null 2>&1; rc=$?
+check "malformed denial ledger exits 1" "$rc" 1
+check "malformed denial ledger reads unknown" "$(sed -n 5p "$td/s.tsv" | cut -f7)" unknown
+
 printf 'wrong\theader\n' >"$td/bad.tsv"
 SCORECARD_TSV="$td/bad.tsv" bash "$tool" run --date 2026-10-21 >/dev/null 2>&1; rc=$?
 check "foreign header is refused" "$rc" 1

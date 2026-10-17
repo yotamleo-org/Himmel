@@ -67,7 +67,8 @@ cmd_run() {
         [ "$(head -n 1 "$tsv")" = "$HEADER" ] || { echo "ERR scorecard: $tsv has a foreign header, refusing to append" >&2; return 1; }
         if cut -f1 "$tsv" | grep -qx "$date_arg"; then echo "scorecard: $date_arg already recorded"; return 0; fi
     fi
-    since="$(date -u -d '24 hours ago' +%FT%TZ)"
+    since="$(date -u -d '24 hours ago' +%FT%TZ 2>/dev/null || date -u -v-24H +%FT%TZ 2>/dev/null)" \
+        || { echo "ERR scorecard: cannot compute the 24h window start" >&2; return 1; }
 
     ci="$(src SCORECARD_CI_METRICS_CMD bash "$SCRIPT_DIR/ci-metrics.sh" --days 1 --top 1)" || ci=""
     q50="$(printf '%s\n' "$ci" | awk -F'|' '/^\| job queue wait p50/ { split($3, a, "/"); gsub(/ /, "", a[1]); print a[1] }')"
@@ -82,7 +83,8 @@ cmd_run() {
 
     den=""
     if [ -f "${SCORECARD_DENIALS_FILE:-${HOME:-}/.himmel/state/classifier-denials.jsonl}" ]; then
-        den="$(jq -r --arg s "$since" 'select(.ts >= $s) | .ts' "${SCORECARD_DENIALS_FILE:-${HOME:-}/.himmel/state/classifier-denials.jsonl}" 2>/dev/null | wc -l | tr -d ' ')"
+        den="$(jq -r --arg s "$since" 'select(.ts >= $s) | .ts' "${SCORECARD_DENIALS_FILE:-${HOME:-}/.himmel/state/classifier-denials.jsonl}" 2>/dev/null)" \
+            && den="$(printf '%s' "$den" | grep -c . || true)" || den=""
     fi
 
     jira=(node "$(resolve_primary)/scripts/jira/dist/index.js")
