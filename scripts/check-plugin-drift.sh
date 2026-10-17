@@ -236,6 +236,18 @@ check_bump_required() {
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     local manifest="$rel/$name/.claude-plugin/plugin.json"
+    # A plugin whose every file is gone on the new side was deleted whole:
+    # nothing is left to version, so no bump is owed.
+    local remaining
+    if [ -n "$base_ref" ]; then
+      remaining="$(git ls-tree -r --name-only HEAD -- "$rel/$name/")"
+    else
+      remaining="$(git ls-files -- "$rel/$name/")"
+    fi
+    if [ -z "$remaining" ]; then
+      echo "check-plugin-drift --bump-required: $name removed — no version bump needed"
+      continue
+    fi
     if ! printf '%s\n' "$changed" | grep -qx "$manifest"; then
       echo "ERR check-plugin-drift --bump-required: $name changed under $rel/$name/ but $manifest was not bumped (HIMMEL-3551)" >&2
       bad=1

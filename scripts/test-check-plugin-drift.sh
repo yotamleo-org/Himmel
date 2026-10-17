@@ -322,6 +322,17 @@ if [ "$new_plugin_rc" -eq 0 ]; then ok "--bump-required (staged): a brand-new pl
 # Nothing staged/changed under marketplace/plugins/ at all -> pass trivially.
 noop_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; noop_rc=$?
 if [ "$noop_rc" -eq 0 ]; then ok "--bump-required (staged): no plugin changes -> pass"; else bad "--bump-required (staged): no-op case failed (rc=$noop_rc): $noop_out"; fi
+# Deleting a whole plugin (plugin.json included) needs no bump: the plugin is
+# gone, there is nothing left to version. Passes with an explicit message.
+(cd "$W_BUMP" && git rm -rq marketplace/plugins/plugin-b)
+del_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; del_rc=$?
+if [ "$del_rc" -eq 0 ]; then ok "--bump-required (staged): whole-plugin deletion needs no bump"; else bad "--bump-required (staged): whole-plugin deletion failed (rc=$del_rc): $del_out"; fi
+if grepq "$del_out" "plugin-b removed"; then ok "--bump-required (staged): whole-plugin deletion names the removed plugin"; else bad "--bump-required (staged): deletion output lacks 'plugin-b removed': $del_out"; fi
+if grepq "$del_out" "Traceback"; then bad "--bump-required (staged): deletion leaked a traceback: $del_out"; else ok "--bump-required (staged): deletion leaks no traceback"; fi
+# Control: deleting only the manifest while other plugin files remain is not a removal.
+(cd "$W_BUMP" && git restore --staged --worktree . && git rm -q marketplace/plugins/plugin-a/.claude-plugin/plugin.json)
+del_part_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; del_part_rc=$?
+if [ "$del_part_rc" -ne 0 ]; then ok "--bump-required (staged): manifest-only deletion still fails"; else bad "--bump-required (staged): manifest-only deletion passed: $del_part_out"; fi
 rm -rf -- "$W_BUMP"
 
 # replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.

@@ -113,6 +113,17 @@ EOF
     chmod +x "$1"
 }
 
+# Like make_claude_logging_stub, but `plugin update <fail-spec>` exits 1.
+make_claude_failing_stub() {   # <path> <log-file> <fail-spec>
+    cat > "$1" <<EOF
+#!/bin/sh
+echo "\$@" >> "$2"
+[ "\$*" = "plugin update $3" ] && exit 1
+exit 0
+EOF
+    chmod +x "$1"
+}
+
 echo "Test: update_installed_plugins updates every non-@himmel installed plugin, before the reconcile"
 make_mock_clone
 fake_home="$TMP/fake-home"
@@ -487,6 +498,37 @@ out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$clau
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
 log_inst_content="$(cat "$log_inst")"
 assert_not_contains "empty installed state installs nothing" "plugin install i-have-adhd@himmel" "$log_inst_content"
+
+echo "Test: one failing plugin update is reported and does not stop the others (HIMMEL-3563)"
+make_mock_clone
+fake_home_fail="$TMP/fake-home-fail"
+mkdir -p "$fake_home_fail/.claude"
+cat > "$fake_home_fail/.claude/settings.json" <<'EOF'
+{
+  "enabledPlugins": {
+    "codex@openai-codex": false,
+    "ponytail@ponytail": true
+  }
+}
+EOF
+log_fail="$TMP/claude-invocations-fail.log"
+: > "$log_fail"
+claude_stub_fail="$TMP/claude-failing-stub"
+make_claude_failing_stub "$claude_stub_fail" "$log_fail" "codex@openai-codex"
+rc=0
+out_fail=$(USERPROFILE='' HOME="$fake_home_fail" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_fail" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_fail/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc=$?
+log_fail_content="$(cat "$log_fail")"
+assert_contains "failing spec was attempted" "plugin update codex@openai-codex" "$log_fail_content"
+assert_contains "spec after the failure still updates" "plugin update ponytail@ponytail" "$log_fail_content"
+assert_contains "failed spec is reported" "warn: failed to update: codex@openai-codex" "$out_fail"
+assert_not_contains "succeeding spec is not reported as failed" "failed to update:.*ponytail@ponytail" "$out_fail"
+if [ "$rc" -eq 0 ]; then
+    assert_pass "a failed plugin update does not fail the run (rc=$rc)"
+else
+    assert_fail "a failed plugin update failed the run (rc=$rc) — out: $out_fail"
+fi
 
 echo ""
 echo "=== $pass passed, $fail failed ==="
