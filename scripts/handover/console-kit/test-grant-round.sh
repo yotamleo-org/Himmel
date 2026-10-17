@@ -85,7 +85,7 @@ run() { env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELA
     HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-5058 \
     GRANT_ROUND_GH="$tmp/gh" GRANT_ROUND_PRIMARY="$prim" "$@" bash "$SCRIPT" "${GR_ARGS[@]}"; }
 
-printf 'class: other\n\n## Evidence checked\n\n- read the diff\n' > "$evd/ev.md"
+printf 'class: other\nclass-reason: fixture\n\n## Evidence checked\n\n- read the diff\n' > "$evd/ev.md"
 wv() {
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY \
         HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-judge \
