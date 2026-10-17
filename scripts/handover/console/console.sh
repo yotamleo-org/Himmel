@@ -1462,7 +1462,8 @@ check_decisions_kept() {
         ""|none|"none "*|"<"*) ;;
         *) [ "${#out_line}" -ge "${#prev_line}" ] && return 0 ;;
     esac
-    grep -Eq '^- .*DECISIONS-DROP:[[:space:]]*[^[:space:]]' "$outgoing" && return 0
+    awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing" \
+        | grep -Eq '^- .*DECISIONS-DROP:[[:space:]]*[^[:space:]]' && return 0
     err "refusing to hand over: the decisions: line in $outgoing is missing, a placeholder or shorter than its predecessor's ($prev_name):"
     err "  predecessor: decisions: $prev_line"
     err "  restore it, or record a Results bullet 'DECISIONS-DROP: <reason>' and retry"
