@@ -67,7 +67,7 @@ here so a plugin profile can scope it.
 
 deviation=skills/systematic-debugging/SKILL.md,skills/writing-plans/SKILL.md
 
-HIMMEL-5810 (0.2.7): one trailing `See also:` line appended to each of these two
+HIMMEL-5810 (0.2.8): one trailing `See also:` line appended to each of these two
 otherwise-verbatim files, linking docs/tool-adoption/pstack-principles-digest.md.
 A re-vendor copies the upstream file over it, so re-add the line (the
 digest's owning-skill links are checked by that file's PR body, not by a

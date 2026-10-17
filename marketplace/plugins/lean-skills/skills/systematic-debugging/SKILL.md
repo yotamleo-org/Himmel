@@ -282,4 +282,4 @@ These techniques are part of systematic debugging and available in this director
 - **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
 - **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
 
-See also: [attack-the-premise](../../../../../docs/tool-adoption/pstack-principles-digest.md#attack-the-premise), [outcome-oriented-execution](../../../../../docs/tool-adoption/pstack-principles-digest.md#outcome-oriented-execution).
+See also: [attack-the-premise](https://github.com/yotamleo/Himmel/blob/main/docs/tool-adoption/pstack-principles-digest.md#attack-the-premise), [outcome-oriented-execution](https://github.com/yotamleo/Himmel/blob/main/docs/tool-adoption/pstack-principles-digest.md#outcome-oriented-execution).
