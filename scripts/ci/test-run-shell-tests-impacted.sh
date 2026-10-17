@@ -319,13 +319,17 @@ done
 
 # 24u: a shallow clone (history below the tip missing) leaves the range as passed.
 SH="$SB/shallow"
-git clone -q --depth 1 --branch pr "file://$SB" "$SH"
-git -C "$SH" update-ref refs/remotes/origin/main "$MAIN_TIP"
-out=$(bash "$SH/scripts/ci/run-shell-tests.sh" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
-if ! grepq "$out" 'holds a merge-forward'; then
-  pass "24u: a shallow clone leaves the range as passed (rc $rc)"
+if shout=$(git clone -q --depth 1 --branch pr "file://$SB" "$SH" 2>&1 \
+   && git -C "$SH" update-ref refs/remotes/origin/main HEAD 2>&1); then
+  out=$(bash "$SH/scripts/ci/run-shell-tests.sh" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+  # The base commit is missing, so the untouched range cannot resolve: a refusal, not a clamp.
+  if [ "$rc" -eq 2 ] && grepq "$out" "could not be resolved" && ! grepq "$out" 'holds a merge-forward'; then
+    pass "24u: a shallow clone leaves the range as passed and refuses it"
+  else
+    fail "24u: rc=$rc output: $out"
+  fi
 else
-  fail "24u: rc=$rc output: $out"
+  fail "24u: shallow clone setup failed: $shout"
 fi
 
 rst_tally
