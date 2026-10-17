@@ -6664,4 +6664,58 @@ c68_env bash "$DOC" --no-color --only C999 >/dev/null 2>&1; rc2=$?; c68_env bash
 if [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ]; then pass "--only validates its value"; else fail "--only validation -> rc=$rc1/$rc2/$rc3"; fi
 rm -rf "$c68_t"
 
+# --- C66-hermes-cron-hooks: the external cron worker registers config hooks ---
+# Fixtures are the real upstream function before and after 946eafdf2fe (scripts/hermes/fixtures/).
+c66_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c66.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c66_t/home" "$c66_t/hermes/.git" "$c66_t/hermes/cron"
+c66_run() { DOCTOR_HERMES_CHECKOUT="$c66_t/hermes" CLAUDE_DIR="$c66_t/home/claude" HOME="$c66_t/home" bash "$DOC" --no-color --only C66 2>&1; }
+
+echo "== C66: worker without hook registration (pre-946eafdf2fe) -> FAIL (RED) =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-unfenced.py" "$c66_t/hermes/cron/scheduler.py"
+out="$(c66_run)"
+if grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 unfenced -> FAIL"; else fail "C66 unfenced -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+
+echo "== C66: a comment naming register_from_config is not a registration -> FAIL =="
+sed '/^def _run_external_worker_payload/a\    # register_from_config(load_config(), accept_hooks=False)' \
+    "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-unfenced.py" > "$c66_t/hermes/cron/scheduler.py"
+out="$(c66_run)"
+if grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 comment-only -> FAIL"; else fail "C66 comment-only -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+
+echo "== C66: worker registers the config hooks (521f4dc) -> OK =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-fenced.py" "$c66_t/hermes/cron/scheduler.py"
+out="$(c66_run)"
+if grepq "$out" -F 'OK   C66-hermes-cron-hooks'; then pass "C66 fenced -> OK"; else fail "C66 fenced -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+
+echo "== C66: no external worker entrypoint -> INFO, not a FAIL =="
+printf 'def run_job():\n    pass\n' > "$c66_t/hermes/cron/scheduler.py"
+out="$(c66_run)"
+if grepq "$out" -F 'INFO C66-hermes-cron-hooks' && ! grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 no worker -> INFO"; else fail "C66 no worker -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+
+echo "== C66: no hermes checkout -> INFO =="
+out="$(DOCTOR_HERMES_CHECKOUT="$c66_t/none" CLAUDE_DIR="$c66_t/home/claude" HOME="$c66_t/home" bash "$DOC" --no-color --only C66 2>&1)"
+if grepq "$out" -F 'INFO C66-hermes-cron-hooks' && ! grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 missing -> INFO"; else fail "C66 missing -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+rm -rf "$c66_t"
+
+# --- C67-hermes-fail-open: a parity_guard hook registered fail-open ---
+# Fixture: a live station profile's hooks block (scripts/hermes/fixtures/).
+c67_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c67.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c67_t/home" "$c67_t/hermes/profiles/station"
+c67_run() { DOCTOR_HERMES_HOME="$c67_t/hermes" CLAUDE_DIR="$c67_t/home/claude" HOME="$c67_t/home" bash "$DOC" --no-color --only C67 2>&1; }
+
+echo "== C67: a station profile wired fail-open -> WARN naming it =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/profile-hooks-fail-open.yaml" "$c67_t/hermes/profiles/station/config.yaml"
+printf 'model:\n  default: gpt-5.5\n' > "$c67_t/hermes/config.yaml"
+out="$(c67_run)"
+if grepq "$out" -F 'WARN C67-hermes-fail-open' && grepq "$out" -F 'fail-open in: profiles/station/config.yaml — '; then pass "C67 fail-open -> WARN names only the station profile"; else fail "C67 fail-open -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+
+echo "== C67: the same profile after the installer's ensure pass -> OK =="
+python3 "$REPO_ROOT/scripts/hermes/assets/wire_parity_guard.py" ensure "$c67_t/hermes/profiles/station/config.yaml" /x/parity_guard.py python3 >/dev/null
+out="$(c67_run)"
+if grepq "$out" -F 'OK   C67-hermes-fail-open'; then pass "C67 re-wired -> OK"; else fail "C67 re-wired -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+
+echo "== C67: no hermes install -> INFO =="
+out="$(DOCTOR_HERMES_HOME="$c67_t/none" CLAUDE_DIR="$c67_t/home/claude" HOME="$c67_t/home" bash "$DOC" --no-color --only C67 2>&1)"
+if grepq "$out" -F 'INFO C67-hermes-fail-open'; then pass "C67 missing -> INFO"; else fail "C67 missing -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+rm -rf "$c67_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

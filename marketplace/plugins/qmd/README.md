@@ -111,8 +111,8 @@ shipped always-on. Design: `docs/internals/egress-matrix.md`.
 The fork pin carries the `openai:` provider (yotamleo/qmd, added in cecc32a9; the pin is now 44fd0609). The gate
 maps `https://openrouter.ai/...` to provider `openrouter` and accepts only the
 pinned models, `openai:qwen/qwen3-embedding-8b` (embed) and
-`openai:cohere/rerank-4-fast` (rerank); any other model, a `generate` role, an
-unrecognised host, a missing or unparseable base URL, or a `models.openai_api_key`
+`openai:cohere/rerank-4-fast` (rerank) and `openai:google/gemini-2.5-flash-lite`
+(generate, HIMMEL-6125); any other model, an unrecognised host, a missing or unparseable base URL, or a `models.openai_api_key`
 line is refused (the refusal never prints the key). A collection is also refused
 by its path, not only its name: a path equal to, inside or containing a PHI root
 (`phi-roots` / `egress-denylist` under `~/.config/claude-glm`, the path of a salus

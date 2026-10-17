@@ -22,7 +22,9 @@
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
-#                               ranked dispatchable list (CONSOLE_WAIT_DISPATCH
+#                               priority-pool list (--priority-pool-only, plus
+#                               --doc when given; POOL-EMPTY when nothing is in
+#                               the pool) (CONSOLE_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CONSOLE_WAIT_TRACKER_STALE_MIN (default 30); once
@@ -99,6 +101,8 @@
 # waiter saw rise: a denial that lands while no waiter runs is not paged.
 # closable=<n> (tick.sh: finished windows still open past
 # TICK_CLOSABLE_MIN minutes) wakes when it appears or changes; absent means none.
+# deadwin=<label>:closed|held (tick.sh: a leg window whose session died) wakes
+# when it appears or changes; absent means none.
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a console act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -296,12 +300,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails legset board tracker vault cloud orphans-wip vmrun parked denials closable; do
+    for f in legs livestate prs tails legset board tracker vault cloud orphans-wip vmrun parked denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = closable ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
@@ -468,9 +472,10 @@ dispatch_cmd="${CONSOLE_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
     [ -r "$dispatch_cmd" ] || return 0
-    local lf=()
-    [ -z "$legs_from" ] || lf=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" ${lf[@]+"${lf[@]}"} </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
+    local lf=(--priority-pool-only)  # free slots fill only from the operator's priority pool
+    [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
+    [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
+    timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
 }
 
 # unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is
@@ -548,7 +553,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     [ -n "$pred" ] || return 1
     pdoc="$(dirname "$console_doc")/$pred"
     [ -f "$pdoc" ] || return 1
-    [ "$(cat "$pred_file" 2>/dev/null | sed 's/^[a-z]*://')" = "$pdoc" ] && return 1
+    [ "$(sed 's/^[a-z]*://' "$pred_file" 2>/dev/null)" = "$pdoc" ] && return 1
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
     timeout -k 5 "${CONSOLE_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --console "$pdoc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
     case "$rc" in

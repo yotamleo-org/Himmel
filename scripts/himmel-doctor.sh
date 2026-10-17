@@ -4019,9 +4019,83 @@ check_c60_hermes_origin() {
     esac
 }
 
+# --- C66-hermes-cron-hooks: scheduled jobs run without the profile's hooks ---
+# Under a managed systemd gateway each cron job runs in its own
+# `python -m cron.scheduler --external-worker-file` process. Before upstream
+# 946eafdf2fe that entrypoint never registered the profile's `hooks:` block, so
+# every pre_tool_call guard (parity_guard.py) was absent for scheduled jobs
+# while `hermes hooks doctor` reported them healthy. Read-only: scans the
+# worker function in cron/scheduler.py, ignoring comment lines.
+check_c66_hermes_cron_hooks() {
+    local co="${DOCTOR_HERMES_CHECKOUT:-}" f body
+    if [ -z "$co" ]; then
+        if [ -n "${HERMES_HOME:-}" ]; then co="$HERMES_HOME/hermes-agent"
+        elif [ -n "${LOCALAPPDATA:-}" ]; then co="$LOCALAPPDATA/hermes/hermes-agent"
+        else co="${HOME:-}/.hermes/hermes-agent"
+        fi
+    fi
+    f="$co/cron/scheduler.py"
+    if [ ! -f "$f" ]; then
+        emit INFO C66-hermes-cron-hooks "no hermes cron scheduler at $f — cron hook registration not checked"
+        return
+    fi
+    body="$(awk '/^def _run_external_worker_payload\(/ { f = 1; next } f && /^[^ \t#]/ { exit } f && !/^[ \t]*#/ { print }' "$f" 2>/dev/null)"
+    if [ -z "$body" ]; then
+        emit INFO C66-hermes-cron-hooks "no external cron worker entrypoint in $f — cron jobs run in-process in the gateway, not checked"
+        return
+    fi
+    if grep -qE 'register_from_config|_register_config_hooks' <<< "$body"; then
+        emit OK C66-hermes-cron-hooks "hermes external cron worker registers the profile's config hooks"
+    else
+        emit FAIL C66-hermes-cron-hooks "hermes external cron worker at $f never registers the profile's config hooks — scheduled jobs run with no pre_tool_call guard" \
+            "hermes update (upstream 946eafdf2fe adds the registration), then systemctl --user restart hermes-gateway.service"
+    fi
+}
+
 # --- C61-codex-cli: codex CLI older than the latest release ------
 # Latest comes from DOCTOR_CODEX_LATEST (tests) else `npm view` (10 s cap); an
 # unreachable registry is INFO, never a WARN. Read-only: it never upgrades.
+# --- C67-hermes-fail-open: a parity_guard hook registered fail-open ---
+# hermes registers a shell hook with fail_closed=False unless the entry says
+# otherwise, so a parity_guard that crashes, times out or cannot start ALLOWS
+# the tool call. install-himmel-profile.sh writes `fail_closed: true`; a profile
+# wired before that still runs fail-open. Read-only: scans every profile's
+# config.yaml (default + profiles/*), never runs hermes.
+check_c67_hermes_fail_open() {
+    local hermes_home cfg open="" n
+    if [ -n "${DOCTOR_HERMES_HOME:-}" ]; then hermes_home="$DOCTOR_HERMES_HOME"
+    elif [ -n "${HERMES_HOME:-}" ]; then hermes_home="$HERMES_HOME"
+    elif [ -n "${LOCALAPPDATA:-}" ]; then hermes_home="$LOCALAPPDATA/hermes"
+    else hermes_home="${HOME:-}/.hermes"
+    fi
+    if [ ! -d "$hermes_home" ]; then
+        emit INFO C67-hermes-fail-open "no hermes install found ($hermes_home) — hook fail_closed not checked"
+        return
+    fi
+    for cfg in "$hermes_home/config.yaml" "$hermes_home"/profiles/*/config.yaml; do
+        [ -f "$cfg" ] || continue
+        # count parity_guard pre_tool_call entries without `fail_closed: true`
+        n="$(awk '
+            function flush() { if (cur && pg && !fc) bad++; cur = pg = fc = 0 }
+            { sub(/\r$/, "") }
+            /^[^ \t#]/ { flush(); hooks = ($0 ~ /^hooks:/); ev = ""; next }
+            !hooks { next }
+            /^[ \t]+[A-Za-z_]+:[ \t]*$/ { flush(); ev = $1; next }
+            ev != "pre_tool_call:" { next }
+            /^[ \t]+- / { flush(); cur = 1 }
+            cur && /parity_guard\.py/ { pg = 1 }
+            cur && /^[ \t-]*(fail_closed|failClosed):[ \t]*[Tt]rue[ \t]*(#.*)?$/ { fc = 1 }
+            END { flush(); print bad + 0 }' "$cfg" 2>/dev/null)"
+        [ "${n:-0}" -gt 0 ] && open="$open ${cfg#"$hermes_home"/}"
+    done
+    if [ -n "$open" ]; then
+        emit WARN C67-hermes-fail-open "parity_guard hook registered fail-open in:$open — a crashed or missing guard lets the tool call through" \
+            "re-run bash $REPO_ROOT/scripts/hermes/install-himmel-profile.sh (writes fail_closed: true), then systemctl --user restart hermes-gateway.service"
+    else
+        emit OK C67-hermes-fail-open "every hermes parity_guard hook fails closed (or none is wired)"
+    fi
+}
+
 check_c61_codex_cli() {
     local bin="${DOCTOR_CODEX_BIN:-codex}" cur latest older timeout_bin="" t
     if ! command -v "$bin" >/dev/null 2>&1; then
@@ -4345,6 +4419,8 @@ run_check C62 check_c62_oxlint_runner
 run_check C63 check_c63_claude_cli
 run_check C64 check_c64_vm_runner
 run_check C65 check_c65_git_gates
+run_check C66 check_c66_hermes_cron_hooks
+run_check C67 check_c67_hermes_fail_open
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

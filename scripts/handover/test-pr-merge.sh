@@ -325,6 +325,9 @@ assert_out_lacks() {
 assert_err_has() {
     if grep -qF -- "$1" "$LAST_ERR"; then pass; else fail "$2 (err: $(cat "$LAST_ERR"))"; fi
 }
+assert_err_lacks() {
+    if grep -qF -- "$1" "$LAST_ERR"; then fail "$2 (err: $(cat "$LAST_ERR"))"; else pass; fi
+}
 assert_jira_log_has() {
     if grep -qF -- "$1" "$LAST_JIRA_LOG"; then pass; else fail "$2 (jira log: $(cat "$LAST_JIRA_LOG"))"; fi
 }
@@ -521,7 +524,8 @@ if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_case "handover/HIMMEL-374-jira-transition" 0 "jira: default (no --jira-transition) only reports what it would do"; then
     assert_jira_log_lacks "comment" "default case makes no jira comment call"
     assert_jira_log_lacks "transition" "default case makes no jira transition call"
-    assert_err_has "would auto-transition HIMMEL-374 to 'Done'" "default case reports the would-transition on stderr"
+    assert_err_has "skip=partial key=HIMMEL-374 status-unchanged" "default case reports the ticket status unchanged on stderr"
+    assert_err_lacks "would auto-transition" "default case no longer claims the ticket would transition"
 fi
 
 # Ticket tag present + a built Jira CLI + matching config + --jira-transition

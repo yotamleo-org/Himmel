@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$type" in Task|Story|Bug|Epic|Subtask) ;; *) echo "ticket-standard-check: unknown --type '$type'" >&2; usage;; esac
-[ -n "$draft" ] && [ -f "$draft" ] && [ -r "$draft" ] || { echo "ticket-standard-check: cannot read draft '$draft'" >&2; exit 2; }
+if ! { [ -n "$draft" ] && [ -f "$draft" ] && [ -r "$draft" ]; }; then echo "ticket-standard-check: cannot read draft '$draft'" >&2; exit 2; fi
 
 # Sections whose heading is present but whose body has no real line; or whose heading is absent.
 missing="$(awk '
@@ -48,6 +48,14 @@ missing="$(awk '
   { k = norm($0); if (k in want) { cur = k; seen[k] = 1; next } if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { cur = ""; next } if (cur != "" && real($0)) have[cur] = 1 }
   END { for (i = 1; i <= n; i++) if (!(w[i] in have)) { d = disp[i]; sub(/_/, " ", d); printf "%s%s", (c++ ? ", " : ""), d } }
 ' "$draft")" || { echo "ticket-standard-check: could not parse '$draft' (awk failed); draft not checked" >&2; exit 2; }
+
+# A CI/guard/guardrail/stability ticket (by label) must name the scorecard metric it moves: a real "Metric:" line (bare, bulleted, bold, any case).
+if grep -Eiq '^[[:space:]]*Labels:.*(^|[:,[:space:]])(ci|guard|guardrail|stability|flake)(-[a-z0-9-]+)?([,[:space:]]|$)' "$draft"; then
+  metric="$(sed -nE 's/^[[:space:]]*([-*+][[:space:]]+)?(\*\*|__)?[Mm][Ee][Tt][Rr][Ii][Cc](\*\*|__)?:(\*\*|__)?[[:space:]]*//p' "$draft" | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:].]*$//')"
+  case "$metric" in
+    ''|tbd|tbc|todo|n/a|na|none|...|'?'*|-*|'<'*'>') missing="${missing:+$missing, }Metric (name the stability-scorecard metric this ticket moves)" ;;
+  esac
+fi
 
 warns=()
 grep -Eiq '^[[:space:]]*Sector:[[:space:]]*[^[:space:]]' "$draft" && sector="${sector:-from-draft}"
@@ -69,7 +77,7 @@ if [ -n "$missing" ]; then
       # shellcheck disable=SC1090
       . "$lib"; root="$(handover_root)" || root=""
     else root="${HANDOVER_DIR:-}"; fi
-    [ -n "$root" ] && [ -d "$root" ] || { echo "NOT PARKED: no queue (set HANDOVER_DIR or TICKET_STANDARD_QUEUE_DIR)" >&2; exit 1; }
+    if ! { [ -n "$root" ] && [ -d "$root" ]; }; then echo "NOT PARKED: no queue (set HANDOVER_DIR or TICKET_STANDARD_QUEUE_DIR)" >&2; exit 1; fi
     q="$root/${USER_SLUG:-${USER:-unknown}}/himmel/intake"
   fi
   dest=""

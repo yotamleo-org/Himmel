@@ -1826,6 +1826,7 @@ ab2_run() { # name, prior-overlay(yes|no), adopt-rc, fail-rename(0|1)
   printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit %s\n' "$ab2_marker" "$arc" > "$f/scripts/adopt.sh"
   chmod +x "$f/scripts/adopt.sh"
   ab2_prior='{"lanes":[],"profileAllowlist":["hermes-oneshot"],"profileAllowlistScope":["codex-exec","hermes-oneshot"]}'
+  ab2_prior_file="$work/ab2-$n-prior"; printf '%s\n' "$ab2_prior" > "$ab2_prior_file"
   if [ "$prior" = yes ]; then printf '%s\n' "$ab2_prior" > "$ab2_overlay"; else rm -f "$ab2_overlay"; fi
   local prof="$work/ab2-$n-profile.json"
   printf '{\n  "role": "adopter",\n  "tier": "standard",\n  "scope": "project",\n  "vault": { "mode": "none", "path": "" },\n  "handover": { "mode": "inline", "path": "" },\n  "pluginSet": "lean",\n  "lanes": ["codex"],\n  "lanesMeaningful": true,\n  "alwaysOn": false\n}\n' > "$prof"
@@ -1843,7 +1844,7 @@ ab2_run() { # name, prior-overlay(yes|no), adopt-rc, fail-rename(0|1)
 ab2_run a yes 0 1
 [ "$ab2_rc" -ne 0 ] || fail "caseAB2a: a failed overlay write must exit nonzero: $ab2_out"
 [ -f "$ab2_marker" ] && fail "caseAB2a: overlay write failure must abort BEFORE adopt.sh mutates the machine"
-[ "$(cat "$ab2_overlay")" = "$ab2_prior" ] || fail "caseAB2a: prior overlay bytes must be intact: $(cat "$ab2_overlay")"
+cmp -s "$ab2_overlay" "$ab2_prior_file" || fail "caseAB2a: prior overlay bytes must be intact"
 # AB2b: same with NO prior overlay -> nothing installed, no overlay left behind.
 ab2_run b no 0 1
 [ "$ab2_rc" -ne 0 ] || fail "caseAB2b: a failed overlay write must exit nonzero: $ab2_out"
@@ -1853,7 +1854,7 @@ ab2_run b no 0 1
 ab2_run c yes 3 0
 [ "$ab2_rc" -ne 0 ] || fail "caseAB2c: a failed core install must exit nonzero: $ab2_out"
 [ -f "$ab2_marker" ] || fail "caseAB2c: adopt.sh must have run, else the restore is untested: $ab2_out"
-[ "$(cat "$ab2_overlay")" = "$ab2_prior" ] || fail "caseAB2c: failed install must restore the prior overlay bytes: $(cat "$ab2_overlay")"
+cmp -s "$ab2_overlay" "$ab2_prior_file" || fail "caseAB2c: failed install must restore the prior overlay bytes"
 # AB2d: same with NO prior overlay -> the staged overlay is removed.
 ab2_run d no 3 0
 [ "$ab2_rc" -ne 0 ] || fail "caseAB2d: a failed core install must exit nonzero: $ab2_out"
@@ -1865,6 +1866,220 @@ ab2_run e no 0 0
 grepq "$ab2_out" 'lane profile: allowlisted codex-exec' || fail "caseAB2e: success must report the allowlist: $ab2_out"
 grep -q '"codex-exec"' "$ab2_overlay" || fail "caseAB2e: allowlist must be persisted on success"
 echo "ok: caseAB2 lane allowlist is staged before the core install and restored if the install fails"
+
+# ── Case AB3: an INTERRUPTED or THROWING install restores the prior allowlist ──
+# The staged allowlist is a trust path: a Ctrl-C/kill/throw between the staged
+# write and the end of the install must put the prior bytes back, not keep the
+# wider staged ones. Signal rows deliver the signal to the himmelctl pid while a
+# stub adopt.sh sleeps (and to the stub, as a terminal's group delivery would).
+ab3Preload="$work/ab3-preload.js"
+cat > "$ab3Preload" <<'JS'
+const fs = require('fs');
+const cp = require('child_process');
+const realSpawnSync = cp.spawnSync;
+const sigs = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+const counts = () => sigs.map((s) => process.listenerCount(s)).join(',');
+cp.spawnSync = function (cmd, args, opts) {
+  const isStep = String(cmd).endsWith('adopt.sh') || String((args || [])[0] || '').endsWith('adopt.sh');
+  if (isStep) {
+    if (process.env.AB3_COUNTS_FILE) fs.writeFileSync(process.env.AB3_COUNTS_FILE + '.during', counts());
+    if (process.env.AB3_THROW_STEP === '1') throw new Error('simulated core-step throw');
+  }
+  return realSpawnSync.apply(cp, arguments);
+};
+if (process.env.AB3_SIGNAL_AFTER_STAGE === '1') {
+  const realLog = console.log;
+  console.log = function (msg) {
+    const r = realLog.apply(console, arguments);
+    if (String(msg).startsWith('lane profile: allowlisted')) process.kill(process.pid, 'SIGTERM');
+    return r;
+  };
+}
+process.on('exit', () => { if (process.env.AB3_COUNTS_FILE) fs.writeFileSync(process.env.AB3_COUNTS_FILE + '.exit', counts()); });
+JS
+ab3_run() { # name, prior(yes|no), mode(signal:<SIG>|throw|ok|killed)
+  local n="$1" prior="$2" mode="$3"
+  local s="$work/ab3-$n" h="$work/ab3-$n-home" f="$work/ab3-$n-fix"
+  mkdir -p "$s" "$h"; make_fixture "$f"
+  ab3_marker="$work/ab3-$n-ran"; ab3_pidfile="$work/ab3-$n-pid"; ab3_counts="$work/ab3-$n-counts"
+  ab3_overlay="$f/scripts/lanes/lanes.local.json"
+  rm -f "$ab3_marker" "$ab3_pidfile" "$ab3_counts".*
+  case "$mode" in
+    signal:*) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nexec sleep 20\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
+    sigparent|sigparentwire) printf '#!/usr/bin/env bash\necho $$ > "%s"\nprintf ran > "%s"\nsleep 3\nexit 0\n' "$ab3_pidfile" "$ab3_marker" > "$f/scripts/adopt.sh" ;;
+    killed)   printf '#!/usr/bin/env bash\nprintf ran > "%s"\nkill -KILL $$\n' "$ab3_marker" > "$f/scripts/adopt.sh" ;;
+    lockwait) printf '#!/usr/bin/env bash\nprintf ran > "%s"\nmkdir "%s.lock"\nprintf %%s %s > "%s.lock/owner"\nexit 3\n' "$ab3_marker" "$ab3_overlay" "$$" "$ab3_overlay" > "$f/scripts/adopt.sh" ;;
+    *)        printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit 0\n' "$ab3_marker" > "$f/scripts/adopt.sh" ;;
+  esac
+  chmod +x "$f/scripts/adopt.sh"
+  ab3_prior='{"lanes":[],"profileAllowlist":["hermes-oneshot"],"profileAllowlistScope":["codex-exec","hermes-oneshot"]}'
+  ab3_prior_file="$work/ab3-$n-prior"; printf '%s\n' "$ab3_prior" > "$ab3_prior_file"
+  if [ "$prior" = yes ]; then printf '%s\n' "$ab3_prior" > "$ab3_overlay"; else rm -f "$ab3_overlay"; fi
+  local prof="$work/ab3-$n-profile.json"
+  printf '{\n  "role": "adopter",\n  "tier": "standard",\n  "scope": "project",\n  "vault": { "mode": "none", "path": "" },\n  "handover": { "mode": "inline", "path": "" },\n  "pluginSet": "lean",\n  "lanes": ["codex"],\n  "lanesMeaningful": true,\n  "alwaysOn": false\n}\n' > "$prof"
+  case "$mode" in
+    step:*|sigparentwire)
+      # wire / apply / dev-overlay run AFTER adopt.sh succeeds; the named one fails.
+      local vault="$work/ab3-$n-vault" st="${mode#step:}"
+      ab3_wire_marker="$work/ab3-$n-wire-ran"; rm -f "$ab3_wire_marker"
+      mkdir -p "$vault" "$f/scripts/lib"
+      printf '{"template":"luna-second-brain"}\n' > "$vault/.vault-template.json"
+      printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit %s\n' "$ab3_wire_marker" "$([ "$st" = wire ] && echo 5 || echo 0)" > "$f/scripts/lib/wire-luna-vault.sh"
+      printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$st" = apply ] && echo 5 || echo 0)" > "$f/scripts/luna-upgrade-all.sh"
+      printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$st" = overlay ] && echo 5 || echo 0)" > "$f/scripts/setup.sh"
+      chmod +x "$f/scripts/lib/wire-luna-vault.sh" "$f/scripts/luna-upgrade-all.sh" "$f/scripts/setup.sh"
+      printf '{\n  "schemaVersion": 2,\n  "profile": "custom",\n  "tier": "standard",\n  "scope": "project",\n  "vault": { "mode": "existing", "path": "%s" },\n  "handover": { "mode": "inline", "path": "" },\n  "pluginSet": "lean",\n  "lanes": ["codex"],\n  "lanesMeaningful": true,\n  "alwaysOn": false,\n  "devOverlay": true\n}\n' "$vault" > "$prof" ;;
+  esac
+  local p; p=$(build_path "$s" bash jq python3 npm sleep -- "${LANE_TOOLS[@]}")
+  make_git_stub "$s" "https://github.com/someone/other-repo.git"
+  local out="$work/ab3-$n-out" throw=0 stagesig=0
+  [ "$mode" = throw ] && throw=1
+  [ "$mode" = stagesig ] && stagesig=1
+  local pid=""
+  set +e
+  set -m  # job control: a background job keeps the default SIGINT disposition instead of inheriting SIG_IGN
+  PATH="$p" HOME="$h" USERPROFILE="$(winpath "$h")" HIMMELCTL_CACHE_DIR="$(winpath "$h.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
+    HIMMELCTL_REPO_ROOT="$(winpath "$f")" AB3_COUNTS_FILE="$ab3_counts" AB3_THROW_STEP="$throw" AB3_SIGNAL_AFTER_STAGE="$stagesig" \
+    NODE_OPTIONS="--require=$(winpath "$ab3Preload")" \
+    timeout 20 "$node_bin" "$wizard" install --from-profile "$(winpath "$prof")" </dev/null >"$out" 2>&1 &
+  pid=$!
+  set +m
+  case "$mode" in
+    signal:*|sigparent|sigparentwire)
+      local sig="${mode#signal:}" i=0
+      case "$mode" in sigparent*) sig=SIGTERM ;; esac
+      while [ ! -s "$ab3_pidfile" ] && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
+      if [ ! -s "$ab3_pidfile" ]; then kill -KILL "$pid" 2>/dev/null; set -e; fail "caseAB3 $n: stub adopt.sh never started: $(cat "$out")"; fi
+      case "$mode" in sigparent*) kill "-$sig" "$(pgrep -P "$pid" | head -n 1)" 2>/dev/null ;; *) kill "-$sig" "$pid" 2>/dev/null ;; esac
+      case "$mode" in sigparent*) ;; *) kill "-$sig" "$(cat "$ab3_pidfile")" 2>/dev/null ;; esac ;;
+  esac
+  case "$mode" in
+    lockwait)
+      # the failed core step leaves a LIVE-owned writer lock; a second signal lands
+      # while the restore waits on it, then the lock is freed
+      local j=0
+      while [ ! -d "$ab3_overlay.lock" ] && [ "$j" -lt 150 ]; do sleep 0.1; j=$((j + 1)); done
+      [ -d "$ab3_overlay.lock" ] || { kill -KILL "$pid" 2>/dev/null; set -e; fail "caseAB3 $n: stub never took the lock: $(cat "$out")"; }
+      sleep 0.5; kill -TERM "$(pgrep -P "$pid" | head -n 1)" 2>/dev/null
+      sleep 1; rm -rf "$ab3_overlay.lock" ;;
+  esac
+  wait "$pid"; ab3_rc=$?
+  [ -s "$ab3_pidfile" ] && kill -KILL "$(cat "$ab3_pidfile")" 2>/dev/null
+  set -e
+  ab3_out=$(cat "$out")
+}
+# AB3a/b: SIGINT and SIGTERM during the core step restore the PRIOR bytes.
+for ab3_sig in INT TERM; do
+  ab3_run "sig$ab3_sig" yes "signal:SIG$ab3_sig"
+  [ -f "$ab3_marker" ] || fail "caseAB3 $ab3_sig: stub core step must have started: $ab3_out"
+  cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3 $ab3_sig: an interrupted install must restore the prior overlay bytes"
+  [ "$ab3_rc" -ne 0 ] || fail "caseAB3 $ab3_sig: an interrupted install must exit nonzero (rc=$ab3_rc)"
+  ab3_run "sig${ab3_sig}n" no "signal:SIG$ab3_sig"
+  [ -e "$ab3_overlay" ] && fail "caseAB3 $ab3_sig: no prior overlay -> the staged overlay must be removed after an interrupt"
+done
+# AB3c: a THROW from the core step restores the prior bytes (and removes with none).
+ab3_run throw yes throw
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3c: a throwing core step must exit nonzero: $ab3_out"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3c: a throwing install must restore the prior overlay bytes"
+ab3_run throwno no throw
+[ -e "$ab3_overlay" ] && fail "caseAB3c: no prior overlay -> a throwing install must remove the staged overlay"
+# AB3g: a signal delivered ONLY to the installer (the child outlives it and exits 0)
+# still fails the install and restores the prior bytes.
+ab3_run sigparent yes sigparent
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3g: a cancelled install whose child succeeded must still exit nonzero: $ab3_out"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3g: a cancelled install must restore the prior overlay bytes"
+# AB3h: a cancellation seen after adopt.sh stops the install before the wire step runs.
+ab3_run sigparentwire yes sigparentwire
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3h: a cancelled install must exit nonzero: $ab3_out"
+[ -e "$ab3_wire_marker" ] && fail "caseAB3h: the wire step must not start after a cancellation"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3h: a cancelled install must restore the prior overlay bytes"
+# AB3i: a signal landing right after the allowlist is staged (before any step) is
+# held, not fatal: the install stops and the prior bytes are back, adopt.sh never runs.
+ab3_run stagesig yes stagesig
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3i: an install cancelled right after staging must exit nonzero: $ab3_out"
+[ -f "$ab3_marker" ] && fail "caseAB3i: adopt.sh must not run after a cancellation at staging"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3i: a signal right after staging must restore the prior overlay bytes"
+ab3_run stagesigno no stagesig
+[ -e "$ab3_overlay" ] && fail "caseAB3i: no prior overlay -> a signal right after staging must remove the staged overlay"
+# AB3j: a SECOND signal while the restore waits on the writer's lock must not kill
+# the restore: the prior bytes land once the lock is free.
+ab3_run lockwait yes lockwait
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3j: a failed install must exit nonzero: $ab3_out"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3j: a signal during the restore's lock wait must still restore the prior bytes"
+# AB3d: a SIGKILLed core step (spawnSync status null) restores too.
+ab3_run killed yes killed
+[ "$ab3_rc" -ne 0 ] || fail "caseAB3d: a signal-killed core step must exit nonzero: $ab3_out"
+cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3d: a signal-killed core step must restore the prior bytes"
+# AB3f: a failing wire / apply / dev-overlay step (each runs after adopt.sh
+# succeeds) restores the prior bytes, or removes the overlay when there was none.
+for ab3_step in wire apply overlay; do
+  ab3_run "step$ab3_step" yes "step:$ab3_step"
+  [ "$ab3_rc" -eq 5 ] || fail "caseAB3f $ab3_step: the failing step's rc must propagate (rc=$ab3_rc): $ab3_out"
+  cmp -s "$ab3_overlay" "$ab3_prior_file" || fail "caseAB3f $ab3_step: a failed $ab3_step step must restore the prior overlay bytes"
+  ab3_run "step${ab3_step}n" no "step:$ab3_step"
+  [ -e "$ab3_overlay" ] && fail "caseAB3f $ab3_step: no prior overlay -> a failed $ab3_step step must remove the staged overlay"
+done
+# AB3e: controls — success keeps the NEW allowlist, leaves no .restore.* temp,
+# holds all three signal handlers DURING the step and none after it.
+ab3_run ok yes ok
+[ "$ab3_rc" -eq 0 ] || fail "caseAB3e: successful install should exit 0 (rc=$ab3_rc): $ab3_out"
+grep -q '"codex-exec"' "$ab3_overlay" || fail "caseAB3e: success must keep the NEW allowlist: $(cat "$ab3_overlay")"
+ls "$ab3_overlay".restore.* >/dev/null 2>&1 && fail "caseAB3e: a successful install must leave no .restore.* file"
+[ "$(cat "$ab3_counts.during")" = "1,1,1" ] || fail "caseAB3e: SIGINT/SIGTERM/SIGHUP must each be held during the step (got $(cat "$ab3_counts.during"))"
+[ "$(cat "$ab3_counts.exit")" = "0,0,0" ] || fail "caseAB3e: the signal handlers must be removed after the install (got $(cat "$ab3_counts.exit"))"
+echo "ok: caseAB3 an interrupted, throwing or signal-killed install restores the previous lane allowlist; success keeps the new one and drops the handlers"
+
+# ── Case AB4: restoreProfileLaneAllowlist cleans its temp and takes the writer's lock ──
+# (a) a rename that fails leaves no .restore.* file behind and still throws;
+# (b) the restore waits on the SAME `${file}.lock` the writer holds, then runs
+#     and releases it (restore and writer serialize on one lock).
+ab4_dir="$work/ab4"; mkdir -p "$ab4_dir"
+ab4_js="$work/ab4-restore.js"
+cat > "$ab4_js" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const [libPath, writerPath, dir] = process.argv.slice(2);
+const fail = (m) => { console.error(m); process.exit(1); };
+const lib = require(libPath);
+(async () => {
+  const writer = await import(require('url').pathToFileURL(writerPath).href);
+  const file = path.join(dir, 'lanes.local.json');
+  const prior = Buffer.from('{"lanes":[],"prior":true}\n');
+  fs.writeFileSync(file, '{"lanes":[],"staged":true}\n');
+  if (process.argv[5] === 'child') {
+    lib.restoreProfileLaneAllowlist(file, prior, writer);
+    return;
+  }
+  // (a) failing rename: no .restore.* left, error surfaces, lock released
+  const realRename = fs.renameSync;
+  fs.renameSync = () => { const e = new Error('simulated rename failure'); e.code = 'ENOSPC'; throw e; };
+  let threw = false;
+  try { lib.restoreProfileLaneAllowlist(file, prior, writer); } catch (e) { threw = e.code === 'ENOSPC'; }
+  fs.renameSync = realRename;
+  if (!threw) fail('a failing rename must surface its error');
+  const left = fs.readdirSync(dir).filter((n) => n.includes('.restore.'));
+  if (left.length) fail('restore left a temp behind: ' + left.join(','));
+  if (fs.existsSync(file + '.lock')) fail('a failed restore must release the lock');
+  // (b) hold the writer's lock; a restore in another process must wait for it
+  writer.acquireLock(file);
+  const child = spawn(process.execPath, [__filename, libPath, writerPath, dir, 'child'], { stdio: 'inherit' });
+  let exited = false;
+  child.on('exit', (code) => { exited = true; if (code !== 0) fail('child restore failed rc=' + code); });
+  await new Promise((r) => setTimeout(r, 600));
+  if (exited) fail('restore ran while the writer held the lock');
+  if (fs.readFileSync(file, 'utf8').includes('prior')) fail('restore wrote while the writer held the lock');
+  writer.releaseLock(file);
+  await new Promise((r) => child.on('exit', r));
+  if (!fs.readFileSync(file, 'utf8').includes('prior')) fail('restore must write the prior bytes once the lock is free');
+  if (fs.existsSync(file + '.lock')) fail('restore must release the lock it took');
+  if (fs.readdirSync(dir).some((n) => n.includes('.restore.'))) fail('a successful restore left a temp behind');
+  process.exit(0);
+})().catch((e) => fail(String(e && e.stack || e)));
+JS
+timeout 20 "$node_bin" "$ab4_js" "$(winpath "$repo_root/scripts/himmelctl/lib/adopter-profile.js")" "$(winpath "$repo_root/scripts/lanes/set-lane-override.mjs")" "$(winpath "$ab4_dir")" \
+  || fail "caseAB4: restoreProfileLaneAllowlist must remove its temp on failure and serialize on the writer's lock"
+echo "ok: caseAB4 restore removes its temp on a failed rename and waits on the writer's lock"
 
 # ── Case AC: resolveActiveFeatures — the ONE selection ->
 # feature mapping shared by the secrets walk (bin.js's runSecretsWalk) and

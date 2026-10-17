@@ -27,6 +27,12 @@ Also give a primary **Sector**: `--sector NAME` or a `Sector: <name>` line.
 Each section needs at least one real line; `TBD`, `TODO`, `N/A`, `none`, `...`
 and `<placeholder>` count as empty.
 
+A draft whose `Labels:` line carries `ci`, `guard`, `guardrail`, `stability` or `flake` (or a
+`ci-…` / `guard-…` variant) also needs a `Metric: <scorecard column>` line naming
+the stability-scorecard metric it moves (columns: `specs/research/stability-scorecard.tsv`).
+`Metric:` may be bare, bulleted (`- Metric:`) or bold (`**Metric:**`), in any case.
+Without one it is refused like a missing section.
+
 ## Proof rule per kind
 
 | Kind | Proof names |
@@ -73,8 +79,14 @@ Use the Jira CLI by absolute path from the primary checkout, with the draft as
 the description file; see `docs/internals/jira-plugin.md` for the ops.
 
 ```bash
-JIRA_PROJECT_KEY=HIMMEL node <repo-root>/scripts/jira/dist/index.js create --type Task --title "<title>" --desc-file draft.md
+JIRA_PROJECT_KEY=HIMMEL node <repo-root>/scripts/jira/dist/index.js create --type Task --title "<title>" --sector "<Sector>" --parent <EPIC-KEY> --desc-file draft.md
 ```
+
+`create` also refuses a Task, Story or Bug with no `--sector`, or with neither
+`--parent <EPIC-KEY>` nor `--labels standalone` (HIMMEL-6223); an Epic or Subtask
+only warns. Sectors: Fleet orchestration, Ship loop, Safety & enforcement, Cost &
+efficiency, Visibility, Quality & proof, Deployment, Knowledge & steering,
+Planning & tracking.
 
 HIMMEL-5643 enforces Plan and DoD inside `jira create` as well; this skill is the
 earlier step that also checks the named Proof and keeps what it refuses.

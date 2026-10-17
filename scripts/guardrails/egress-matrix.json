@@ -46,7 +46,7 @@
     "jira": { "region": "US", "note": "HIMMEL-4670 P5: the Atlassian Jira Cloud project the himmel Jira CLI (scripts/jira/dist/index.js, by absolute path) writes; the failure router is its only automated caller" },
     "atlassian-mcp": { "region": "US", "note": "HIMMEL-4938: the hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" }
   },
-  "purposes": ["extraction", "embedding", "rerank", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch"],
+  "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch"],
   "rules": [
     {
       "corpus": "salus", "provider": "local-ollama", "purpose": "*",
@@ -63,6 +63,11 @@
       "corpus": "salus", "provider": "openrouter", "purpose": "rerank",
       "verdict": "deny", "hard": true,
       "why": "HIMMEL-5756: salus content never reaches OpenRouter for qmd rerank (query plus candidate text). HARD, same reasoning as the embedding cell above"
+    },
+    {
+      "corpus": "salus", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "deny", "hard": true,
+      "why": "HIMMEL-6125: salus content never reaches OpenRouter for qmd query expansion (the generate role sends the raw query, which can name PHI). HARD and ahead of every openrouter allow row, same reasoning as the embedding and rerank cells above"
     },
     {
       "corpus": "salus", "provider": "openrouter", "purpose": "*",
@@ -286,6 +291,41 @@
       "corpus": "skill-index", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
       "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "himmel-code", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the himmel-code corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "luna-personal", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the luna-personal corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "luna-clippings", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the luna-clippings corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "operator-repos", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the operator-repos corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "jira-mirror", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the jira-mirror corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the roadmap-plan corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "skill-index", "provider": "openrouter", "purpose": "query-expansion",
+      "verdict": "allow",
+      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the skill-index corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "himmel-code", "provider": "*", "purpose": "*",

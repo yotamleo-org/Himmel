@@ -14,6 +14,7 @@
 #   re-run line naming this wrapper on stderr.
 #   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
 #   under its NODE line (query) or as a Rationale line (explain).
+#   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
@@ -53,6 +54,11 @@ ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
 # question got a pointer to a doc section; append-rationale.py adds the stored text.
 if command -v python3 >/dev/null 2>&1; then
   withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$out/graph.json")" && ans="$withwhy"
+  # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
+  # doc and rationale nodes first for those questions and leaves any other question untouched.
+  if [ "$sub" = query ]; then
+    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$out/graph.json" "${2:-}")" && ans="$ranked"
+  fi
 fi
 printf '%s\n' "$ans"
 need="$(printf '%s\n' "$ans" | grep -m1 'TRUNCATED: showing' | sed -n 's/.*--budget \([0-9][0-9]*\).*/\1/p')"

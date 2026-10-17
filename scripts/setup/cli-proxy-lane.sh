@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/setup/cli-proxy-lane.sh — Linux bring-up for the claudex lane
-# Twin of scripts/setup/cli-proxy-lane.ps1 (Windows). bash
-# 3.2-safe.
+# bash 3.2-safe.
 #
 # The proxy is a HOST process on 127.0.0.1:8317, backed by CLIProxyAPI
 # (router-for-me/CLIProxyAPI), exposing an Anthropic-compatible API over an
@@ -51,7 +50,7 @@ PORT=8317
 # operator-set value in config.yaml is never overwritten.
 RETRY_COUNT=3
 RETRY_INTERVAL=30
-VERSION="8.0.29"
+VERSION="8.0.32"
 # Station-target override: the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
 # pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
@@ -75,11 +74,11 @@ fi
 RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${VERSION}"
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
-# Pinned sha256 of the linux_amd64 asset at v8.0.29, verified against the
+# Pinned sha256 of the linux_amd64 asset at v8.0.32, verified against the
 # release's own checksums.txt. Upstream DOES publish per-asset
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
-ASSET_SHA256="78a277a5e74495103147a138d530c33d72c17b213d2538e474b1860eb3c4bc34"
+ASSET_SHA256="082a4a38d9470c070ac85ab2d9c4a2aa51f9a7ee19831c3b811e26fe5b7480a7"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
 UNIT_NAME="cli-proxy-api.service"

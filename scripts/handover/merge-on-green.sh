@@ -594,12 +594,14 @@ sha=${_rest%%|*}; _rest=${_rest#*|}
 # rather than truncating it — base branches here are the repo default and never
 # contain one.
 pr_base=${_rest%%|*}; head_branch=${_rest#*|}
-# Return an open ticket to To Do after a partial merge or a PR closed
-# unmerged: comment first, then transition (no comment means no breadcrumb, so
-# no move). Prints ok | skip=already-done | skip=comment-failed | failed.
-# Never touches a ticket already Done/Closed; callers screen Epics.
+# Comment on a ticket and, for a PR closed unmerged, return it to To Do:
+# comment first, then transition (no comment means no breadcrumb, so no move).
+# Prints ok | skip=already-done | skip=comment-failed | failed.
+# Never touches a ticket already Done/Closed; callers screen Epics. A sixth
+# argument of comment-only is the partial-merge mode: it posts the breadcrumb
+# and never transitions.
 _jira_return_to_todo() {
-    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" status
+    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" mode="${6:-}" status
     status=$(printf '%s' "$issue_json" | node -e '
         try {
             const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -623,7 +625,7 @@ _jira_return_to_todo() {
     rm -f "$tmp"
     [ "$rc" -eq 0 ] || { echo "skip=comment-failed"; return 0; }
     # The breadcrumb is posted; a ticket already in To Do needs no move.
-    [ "$status" != "To Do" ] || { echo "ok"; return 0; }
+    if [ "$status" = "To Do" ] || [ "$mode" = "comment-only" ]; then echo "ok"; return 0; fi
     if ( cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "To Do" ) >/dev/null 2>&1; then
         echo "ok"
     else
@@ -1167,14 +1169,14 @@ esac
 bp_nlines=$(printf '%s\n' "$bp_files" | wc -l | tr -d ' ')
 if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     bp_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-bump.XXXXXX" 2>/dev/null) || bp_tmp=""
-    [ -n "$bp_tmp" ] && [ -d "$bp_tmp" ] || bump_refuse "cannot create a scratch directory for the recheck" "phase=scratch"
+    { [ -n "$bp_tmp" ] && [ -d "$bp_tmp" ]; } || bump_refuse "cannot create a scratch directory for the recheck" "phase=scratch"
     bp_fetch_rc=0
     git -C "$himmel_repo" fetch --no-tags --quiet origin \
         "+refs/heads/$default_branch:$bp_ns/base" "+refs/pull/$pr_num/head:$bp_ns/head" >/dev/null 2>"$bp_tmp/fetch.err" || bp_fetch_rc=$?
     [ "$bp_fetch_rc" -eq 0 ] || bump_refuse "cannot fetch $default_branch and PR #$pr_num's head from the anchor's origin (exit $bp_fetch_rc)" "phase=fetch rc=$bp_fetch_rc"
     bp_base=$(git -C "$himmel_repo" rev-parse --verify --quiet "$bp_ns/base^{commit}" 2>/dev/null) || bp_base=""
     bp_head=$(git -C "$himmel_repo" rev-parse --verify --quiet "$bp_ns/head^{commit}" 2>/dev/null) || bp_head=""
-    [ -n "$bp_base" ] && [ -n "$bp_head" ] || bump_refuse "the fetched base or PR head does not resolve to a commit" "phase=resolve"
+    { [ -n "$bp_base" ] && [ -n "$bp_head" ]; } || bump_refuse "the fetched base or PR head does not resolve to a commit" "phase=resolve"
     [ "$bp_head" = "$sha" ] || bump_refuse "PR #$pr_num's head on origin is ${bp_head:0:12}, not the certified ${sha:0:12}, so the recheck would not judge the head being merged" "phase=head-moved fetched=$bp_head"
     mkdir -p "$bp_tmp/checker/scripts/lib" "$bp_tmp/work" || bump_refuse "cannot lay out the scratch checker" "phase=scratch"
     for bp_blob in scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh; do
@@ -1909,7 +1911,7 @@ jira_auto_transition_on_merge() {
     esac
 
     # Opt-in per merge, not a heuristic (see the file header).
-    # Report what WOULD have happened and stop short of Done, so a sliced
+    # Without the opt-in the ticket's status is left alone, so a sliced
     # ticket is never closed by a merge that did not ask for it.
     # The brief's `Completes ticket` line binds the merge: a leg cannot widen what the
     # console scoped. The doc is read only when the caller names it; it never adds a transition.
@@ -1931,7 +1933,7 @@ jira_auto_transition_on_merge() {
     fi
 
     if ! _truthy "$opt_in"; then
-        JIRA_AUTO_TRANSITION_RESULT="would-transition key=$key status=$target_status"
+        JIRA_AUTO_TRANSITION_RESULT="skip=partial key=$key status-unchanged"
         # A bare merge leaves the ticket open: say so, so a sliced ticket's next
         # slice is dispatched instead of sitting orphaned.
         local partial="PARTIAL $key: next slice not dispatched"
@@ -1939,16 +1941,16 @@ jira_auto_transition_on_merge() {
         if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/console-kit/append-results.sh" ]; then
             bash "$_csg_dir/console-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$partial" >/dev/null 2>&1 || true
         fi
-        # Back to To Do with the PR body's `Remaining:` line, so the ticket is
-        # dispatchable instead of sitting In Review.
+        # The ticket keeps whatever status it has; the PR body's `Remaining:` line
+        # is posted as a comment so the next slice is findable.
         local remaining todo
         remaining=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null \
             | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
         todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_type_json" \
             "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.
-$remaining")
-        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT todo=$todo"
+$remaining" "" comment-only)
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT comment=$todo"
         return 0
     fi
 
@@ -1973,7 +1975,7 @@ $remaining")
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
         local versions_out fold_to
-        versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions 2>/dev/null)
+        versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
             try {
                 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));

@@ -103,6 +103,66 @@ expect "console, longer name sharing a prefix: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh.bak" absent)"
 expect "console, unrelated command: allowed" 0 "$(run_hook yes "ls -la" absent)"
 
+# --- bounded foreground: `timeout <=90` as the outermost command
+expect "console, timeout 90 ready-check.sh: allowed" 0 \
+    "$(run_hook yes "timeout 90 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout 90 node board.mjs: allowed" 0 \
+    "$(run_hook yes "timeout 90 node scripts/handover/console-kit/board.mjs" absent)"
+expect "console, timeout 90s: allowed" 0 \
+    "$(run_hook yes "timeout 90s $K/verdict-go.sh a b" absent)"
+expect "console, timeout 1.5m: allowed" 0 \
+    "$(run_hook yes "timeout 1.5m $K/verdict-go.sh a b" absent)"
+expect "console, timeout 600: denied" 2 \
+    "$(run_hook yes "timeout 600 $K/ready-check.sh 12 abc" absent)" "run_in_background"
+expect "console, timeout 91: denied" 2 \
+    "$(run_hook yes "timeout 91 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout 0 (no limit): denied" 2 \
+    "$(run_hook yes "timeout 0 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout 2m: denied" 2 \
+    "$(run_hook yes "timeout 2m $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout 90 console-wait.sh (unbounded waiter): denied" 2 \
+    "$(run_hook yes "timeout 90 $K/console-wait.sh --doc x" absent)"
+expect "console, timeout 90 run-suite.sh (suite): denied" 2 \
+    "$(run_hook yes "timeout 90 $K/run-suite.sh x" absent)"
+expect "console, timeout -k 999 90: denied" 2 \
+    "$(run_hook yes "timeout -k 999 90 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout not outermost (chained before): denied" 2 \
+    "$(run_hook yes "true; timeout 90 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout 90 then a chained command: denied" 2 \
+    "$(run_hook yes "timeout 90 $K/ready-check.sh 12 abc; sleep 600" absent)"
+expect "console, timeout 90 piped: denied" 2 \
+    "$(run_hook yes "timeout 90 $K/ready-check.sh 12 abc | cat" absent)"
+expect "console, timeout 90 with command substitution: denied" 2 \
+    "$(run_hook yes "timeout 90 $K/ready-check.sh \$(sleep 600)" absent)"
+expect "console, wrapper after timeout (nohup): denied" 2 \
+    "$(run_hook yes "timeout 90 nohup $K/ready-check.sh 12 abc" absent)"
+
+# Any token after timeout is a timeout argument, so a timeout around a grep that names the script is denied too (accepted false deny).
+expect "console, timeout 30 grep naming ready-check.sh (accepted false deny): denied" 2 \
+    "$(run_hook yes "timeout 30 grep -n x $K/ready-check.sh" absent)"
+expect "console, timeout \"\$T\" (variable duration): denied" 2 \
+    "$(run_hook yes "timeout \"\$T\" $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout inf: denied" 2 \
+    "$(run_hook yes "timeout inf $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout 1e9 (exponent): denied" 2 \
+    "$(run_hook yes "timeout 1e9 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout +600 (signed): denied" 2 \
+    "$(run_hook yes "timeout +600 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout -s kill 0 (lowercase signal, no limit): denied" 2 \
+    "$(run_hook yes "timeout -s kill 0 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout '0' (quoted duration): denied" 2 \
+    "$(run_hook yes "timeout '0' $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout \"600\" (double-quoted duration): denied" 2 \
+    "$(run_hook yes "timeout \"600\" $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout --signal=term 600: denied" 2 \
+    "$(run_hook yes "timeout --signal=term 600 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout -sKILL 600 (attached signal): denied" 2 \
+    "$(run_hook yes "timeout -sKILL 600 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout --signal term 600 (separate value): denied" 2 \
+    "$(run_hook yes "timeout --signal term 600 $K/ready-check.sh 12 abc" absent)"
+expect "console, timeout -s KILL 600 (signal word before the bound): denied" 2 \
+    "$(run_hook yes "timeout -s KILL 600 $K/ready-check.sh 12 abc" absent)"
+
 # --- not a Bash call / unusable payload: fail open
 nonbash=$(jq -nc '{tool_name:"Edit",tool_input:{file_path:"/x/wrap-merged.sh"}}')
 out=$(printf '%s' "$nonbash" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?

@@ -1287,6 +1287,67 @@ assert_rc "second --ast-only arm without --force blocked" 3 "$rc"
 assert_contains "dedup message can name the publish task" "HIMMEL-GraphPublish-Himmel" "$out"
 run_cron3 disarm >/dev/null 2>&1
 
+echo "TEST: cron arm --with-publish --publish-every-hours 2 --publish-semantic"
+out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-every-hours 2 --publish-semantic 2>&1)
+tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_contains "publish entry fires every 2h" "35 */2 * * *" "$tab3"
+assert_not_contains "publish entry no longer every 6h" "*/6" "$tab3"
+assert_not_contains "no luna semantic task is armed" "GraphSemantic" "$tab3"
+publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
+assert_contains "publish runner adds --semantic" "--semantic" "$publish_sh"
+assert_contains "publish runner sets the api lane" "HIMMEL_API_LANE=on" "$publish_sh"
+assert_contains "publish runner sets the api account" "HIMMEL_API_ACCOUNT=auto" "$publish_sh"
+assert_contains "publish runner pins the claude-api backend" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$publish_sh"
+assert_contains "publish runner reads the pause marker" "semantic.paused" "$publish_sh"
+assert_contains "publish runner logs the paused fire" "[semantic paused: marker present]" "$publish_sh"
+assert_contains "publish runner logs the active fire" "[semantic active]" "$publish_sh"
+# Marker present: the branch that runs must carry neither --semantic nor the api-lane env.
+paused_branch=$(printf '%s\n' "$publish_sh" | sed -n 's/.*semantic paused: marker present\]"; \(.*\); else echo.*/\1/p')
+assert_contains "paused branch still runs the publish leg" "graph-cadence.sh" "$paused_branch"
+assert_not_contains "paused branch passes no --semantic" "--semantic" "$paused_branch"
+assert_not_contains "paused branch sets no api lane" "HIMMEL_API_LANE" "$paused_branch"
+if [ -e "$CRON_DIR3/semantic.paused" ]; then
+    pass "arm --publish-semantic writes the pause marker itself"
+else
+    fail "arm --publish-semantic left no semantic.paused marker" "$(ls "$CRON_DIR3" 2>/dev/null)"
+fi
+assert_contains "arm banner says semantic is armed paused" "semantic armed PAUSED" "$out"
+# Behavioural: run the generated runner against a stub graph-cadence.sh, marker present then absent.
+stub_gc="$TMP_ROOT/stub-graph-cadence.sh"
+stub_out="$TMP_ROOT/stub-graph-cadence.out"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "ARGV: $*" >> "%s"\necho "LANE: ${HIMMEL_API_LANE:-unset}" >> "%s"\n' "$stub_out" "$stub_out" > "$stub_gc"
+sed "s#[^ ]* [^ ]*scripts/graphify/graph-cadence.sh#sh $stub_gc#g" "$CRON_DIR3/graphmap-publish-himmel.sh" > "$TMP_ROOT/publish-stubbed.sh"
+rm -f "$stub_out"
+sh "$TMP_ROOT/publish-stubbed.sh" >/dev/null 2>&1 || true
+stub_paused=$(cat "$stub_out" 2>/dev/null || echo MISSING)
+assert_contains "paused fire still runs the publish leg" "ARGV: --corpus-root" "$stub_paused"
+assert_not_contains "paused fire passes no --semantic" "--semantic" "$stub_paused"
+assert_contains "paused fire sets no api lane" "LANE: unset" "$stub_paused"
+rm -f "$CRON_DIR3/semantic.paused" "$stub_out"
+sh "$TMP_ROOT/publish-stubbed.sh" >/dev/null 2>&1 || true
+stub_active=$(cat "$stub_out" 2>/dev/null || echo MISSING)
+assert_contains "active fire passes --semantic" "--semantic" "$stub_active"
+assert_contains "active fire sets the api lane" "LANE: on" "$stub_active"
+assert_registry "publish flow registers a 2h cadence" \
+    ".flows[] | select(.name == \"graph-publish-${EXPECTED_PUBLISH_SLUG}\" and .cadence_seconds == 7200)"
+out=$(run_cron3 status)
+assert_contains "status shows the 2h publish schedule" "ARMED      HIMMEL-GraphPublish-Himmel (cron: 35 */2 * * *)" "$out"
+run_cron3 disarm >/dev/null 2>&1
+rm -f "$CRON_DIR3/semantic.paused"
+out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-every-hours 2 --publish-semantic --semantic-active 2>&1)
+if [ -e "$CRON_DIR3/semantic.paused" ]; then
+    fail "--semantic-active still wrote the pause marker" "$(ls "$CRON_DIR3" 2>/dev/null)"
+else
+    pass "--semantic-active arms without the pause marker"
+fi
+run_cron3 disarm >/dev/null 2>&1
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish --publish-every-hours 5 2>&1) || rc=$?
+assert_rc "--publish-every-hours rejects a non-divisor of 24" 1 "$rc"
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --publish-semantic 2>&1) || rc=$?
+assert_rc "--publish-semantic without --with-publish is rejected" 1 "$rc"
+run_cron3 disarm >/dev/null 2>&1
+
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/
 # cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
