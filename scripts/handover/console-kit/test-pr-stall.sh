@@ -97,5 +97,10 @@ run --notify > /dev/null
 check "--notify twice sends once (2887 only; 9003 has no leg)" "1" "$(wc -l < "$WORK/sent.log" | tr -d ' ')"
 has "notify targets the leg session and names the action" '^HIMMEL-5969-N2362-succession-wake-once-2026-10-16 .*merge' "$(cat "$WORK/sent.log")"
 
+: > "$WORK/sent.log"
+out="$(XDG_RUNTIME_DIR=/proc/no-such-dir run --notify)"; rc=$?
+check "unwritable notify state lists without sending, exit 0" "0:0" "$rc:$(wc -l < "$WORK/sent.log" | tr -d ' ')"
+has "unwritable notify state says so" 'cannot take the notify lock' "$out"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; }
 echo "$fails FAILED"; exit 1

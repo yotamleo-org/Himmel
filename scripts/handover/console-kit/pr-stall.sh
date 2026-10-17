@@ -127,7 +127,12 @@ sent_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-console"
 sent_file="$sent_dir/pr-stall.sent"
 send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
 # one notifying run at a time, so check-send-record below cannot double-send
-if [ "$notify" = 1 ]; then mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && flock 9; fi
+if [ "$notify" = 1 ]; then
+    if ! { mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && flock 9; }; then
+        printf 'pr-stall: cannot take the notify lock, listing without --notify\n' >&2
+        notify=0
+    fi
+fi
 
 for n in $numbers; do
     pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown
@@ -148,7 +153,7 @@ for n in $numbers; do
 
     [ "$notify" = 1 ] && [ -n "$session" ] || continue
     case "$class" in conflict|no-ci) ;; *) continue ;; esac
-    key="$n $class $head"
+    key="$repo $n $class $head"
     grep -qxF -- "$key" "$sent_file" 2>/dev/null && continue
     action="${detail#*action=}"
     if "$send" "$session" "PR $n is stuck ($class): $action" >/dev/null 2>&1; then
