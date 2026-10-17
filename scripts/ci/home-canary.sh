@@ -15,8 +15,10 @@
 # Usage: home-canary.sh [--runner <script>] [runner args...]
 #   default runner: scripts/ci/run-shell-tests.sh (args pass through, e.g.
 #   --impacted <base>..<head>). HOME_CANARY_TIMEOUT bounds the runner (seconds,
-#   default 1500). HOME_CANARY_RUNNER_FAIL_OK=1 downgrades a nonzero runner exit
-#   to a note, for a job that lacks the tools the real shard job installs.
+#   default 1500). HOME_CANARY_RUNNER_FAIL_OK=1 downgrades only a suite-failure
+#   exit (rc 1) to a note, for a job that lacks the tools the real shard job
+#   installs; a timeout (124, or 137 after timeout -k) and the runner's refused
+#   or aborted codes (2-6, 96) still fail.
 #   The sandbox is removed on every exit path.
 # Exit: 0 clean; 1 leak, runner failure or timeout; 2 usage / setup error.
 #
@@ -93,12 +95,12 @@ if [ "$(atime_of "$FAKE_HOME/.env")" != "$env_atime_before" ]; then
   fail=1
   echo "home-canary: FAIL honeytoken .env was read (access time moved) -- a suite opened \$HOME/.env" >&2
 fi
-if [ "$rc" -eq 124 ]; then
+if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
   fail=1
-  echo "home-canary: FAIL runner timed out after ${TIMEOUT_S}s" >&2
+  echo "home-canary: FAIL runner timed out after ${TIMEOUT_S}s (rc=$rc)" >&2
 elif [ "$rc" -ne 0 ]; then
-  if [ "${HOME_CANARY_RUNNER_FAIL_OK:-}" = 1 ]; then
-    echo "home-canary: NOTE runner exited rc=$rc; suite results are gated by the shell-unit shards, only a leak, a read or a timeout fails here"
+  if [ "$rc" -eq 1 ] && [ "${HOME_CANARY_RUNNER_FAIL_OK:-}" = 1 ]; then
+    echo "home-canary: NOTE runner exited rc=$rc; suite results are gated by the shell-unit shards, only a leak, a read, a timeout or an aborted runner fails here"
   else
     fail=1
     echo "home-canary: FAIL runner exited rc=$rc" >&2

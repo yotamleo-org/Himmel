@@ -75,12 +75,12 @@ else
 fi
 
 # --- 5. a runner failure is a canary failure -----------------------------------
-mkfx red 'echo boom; exit 3'
+mkfx red 'echo boom; exit 1'
 run_canary red
 [ "$RC" -ne 0 ] && ok "runner failure propagates" || bad "runner failure swallowed"
 OUT="$(HOME_CANARY_RUNNER_FAIL_OK=1 TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/red.sh" 2>&1)"; RC=$?
 [ "$RC" -eq 0 ] && ok "RUNNER_FAIL_OK=1 downgrades a runner failure to a note" || bad "RUNNER_FAIL_OK=1 still failed rc=$RC: $OUT"
-mkfx red-leak 'cat "$HOME/.env"; exit 3'
+mkfx red-leak 'cat "$HOME/.env"; exit 1'
 OUT="$(HOME_CANARY_RUNNER_FAIL_OK=1 TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/red-leak.sh" 2>&1)"; RC=$?
 [ "$RC" -ne 0 ] && ok "RUNNER_FAIL_OK=1 still fails a leak" || bad "RUNNER_FAIL_OK=1 hid a leak"
 
@@ -121,6 +121,45 @@ else
   OUT="$(HOME_CANARY_REQUIRE_ATIME=1 TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/clean.sh" 2>&1)"; RC=$?
   [ "$RC" -eq 0 ] && ok "REQUIRE_ATIME=1 passes where atime is tracked" || bad "REQUIRE_ATIME=1 failed on an atime fs: $OUT"
 fi
+
+# --- 12. RUNNER_FAIL_OK=1 downgrades only a suite-failure exit (rc 1) ---------------
+fail_ok() { OUT="$(HOME_CANARY_RUNNER_FAIL_OK=1 TMPDIR="$SCRATCH/tmp" timeout 60 bash "$CANARY" --runner "$SCRATCH/fx/$1.sh" 2>&1)"; RC=$?; }
+
+mkfx rc1 'echo "suite red"; exit 1'
+fail_ok rc1
+[ "$RC" -eq 0 ] && ok "FAIL_OK=1 downgrades rc 1 to a note" || bad "FAIL_OK=1 rc 1 failed rc=$RC: $OUT"
+case "$OUT" in *"NOTE runner exited rc=1"*) ok "rc 1 note names the exit code" ;; *) bad "rc 1 note missing: $OUT" ;; esac
+
+for code in 2 3 4 5 6 96; do
+  mkfx "rc$code" "echo aborted; exit $code"
+  fail_ok "rc$code"
+  [ "$RC" -ne 0 ] && ok "FAIL_OK=1 still fails runner rc $code" || bad "FAIL_OK=1 hid runner rc $code: $OUT"
+done
+
+mkfx rc137 'echo killed; exit 137'
+fail_ok rc137
+[ "$RC" -ne 0 ] && ok "FAIL_OK=1 still fails runner rc 137" || bad "FAIL_OK=1 hid runner rc 137: $OUT"
+case "$OUT" in *"timed out"*) ok "rc 137 is named a timeout" ;; *) bad "rc 137 not named a timeout: $OUT" ;; esac
+
+# Plain (no FAIL_OK) rc 1 still fails.
+mkfx rc1-plain 'exit 1'
+run_canary rc1-plain
+[ "$RC" -ne 0 ] && ok "rc 1 without FAIL_OK fails" || bad "rc 1 without FAIL_OK passed"
+
+# A real timeout under FAIL_OK=1: the runner ignores TERM, so timeout -k sends KILL (rc 137).
+mkfx stubborn 'trap "" TERM; while :; do sleep 1; done'
+OUT="$(HOME_CANARY_RUNNER_FAIL_OK=1 HOME_CANARY_TIMEOUT=1 TMPDIR="$SCRATCH/tmp" timeout 60 bash "$CANARY" --runner "$SCRATCH/fx/stubborn.sh" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && ok "FAIL_OK=1 plus a TERM-ignoring hang fails (exit 1)" || bad "FAIL_OK=1 plus a hang gave rc=$RC: $OUT"
+case "$OUT" in *"timed out"*) ok "TERM-ignoring hang is named a timeout" ;; *) bad "TERM-ignoring hang not named a timeout: $OUT" ;; esac
+
+# --- 13. runner output goes to a file, not a pipe -------------------------------------
+# A backgrounded child keeps the runner's stdout open; a pipe would hold the canary
+# until the child exits, a file does not.
+mkfx orphan 'sleep 20 & exit 0'
+start=$SECONDS
+OUT="$(TMPDIR="$SCRATCH/tmp" timeout 15 bash "$CANARY" --runner "$SCRATCH/fx/orphan.sh" 2>&1)"; RC=$?
+elapsed=$((SECONDS - start))
+[ "$RC" -eq 0 ] && [ "$elapsed" -lt 15 ] && ok "an orphan holding stdout does not hold the canary (${elapsed}s)" || bad "orphan stdout held the canary (rc=$RC, ${elapsed}s): $OUT"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
