@@ -128,7 +128,7 @@ function learningsFeed(rows) {
     if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
     else if (/\bglm\b/i.test(r.text)) reason = "glm";
     else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
-    else if (tracked && tracked.size && r.file && (!r.repo || !repoName || r.repo.split("/").pop().toLowerCase() === repoName) &&!/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
+    else if (tracked && tracked.size && r.file && (!r.repo || (repoName && r.repo.split("/").pop().toLowerCase() === repoName)) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
     if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
       const st = ticketStatus(key);
@@ -150,15 +150,19 @@ function learningsFeed(rows) {
   // clusters of live unmatched rows: same file area (first two dirs) + a shared rule 3-gram; 2+ rows or 25+ uses
   const area = (f) => f.split("/").slice(0, -1).slice(0, 2).join("/") || ".";
   const idx = {};
-  for (const r of um) { const t = toks(r.text); for (let i = 0; i + 3 <= t.length; i++) { const k = area(r.file) + "\u0000" + t.slice(i, i + 3).join(" "); (idx[k] = idx[k] || []); if (!idx[k].includes(r)) idx[k].push(r); } }
+  for (const r of um) { const t = toks(r.text); for (let i = 0; i + 3 <= t.length; i++) { const k = r.repo.toLowerCase() + "\u0000" + area(r.file) + "\u0000" + t.slice(i, i + 3).join(" "); (idx[k] = idx[k] || []); if (!idx[k].includes(r)) idx[k].push(r); } }
   const taken = new Set(), clusters = [];
   for (const [k, rs] of Object.entries(idx).sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1))) {
     const free = rs.filter((r) => !taken.has(r.n)); if (free.length < 2) continue;
-    free.forEach((r) => taken.add(r.n)); clusters.push({ area: k.split("\u0000")[0], gram: k.split("\u0000")[1], rows: free }); }
+    free.forEach((r) => taken.add(r.n)); clusters.push({ area: k.split("\u0000")[1], gram: k.split("\u0000")[2], rows: free }); }
   for (const r of um) if (!taken.has(r.n) && r.uses >= 25) { taken.add(r.n); clusters.push({ area: area(r.file), gram: toks(r.text).slice(0, 3).join(" "), rows: [r] }); }
+  const usedIds = new Set();
   for (const c of clusters) {
     const uses = c.rows.reduce((s, r) => s + r.uses, 0);
-    const id = c.gram.replace(/ /g, "-").replace(/[^a-z0-9_-]/g, "") || "cluster";
+    let id = c.gram.replace(/ /g, "-").replace(/[^a-z0-9_-]/g, "") || "cluster";
+    if (usedIds.has(id)) id += "-" + (c.area.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "root");
+    for (let n = 2; usedIds.has(id); n++) id = id.replace(/-\d+$/, "") + "-" + n;
+    usedIds.add(id);
     const kind = c.rows.some((r) => /false positive|by design|intentional|not a bug|do not flag|should not (be )?flag/i.test(r.text)) ? "rebuttal" : "fix";
     const match = c.gram.replace(/ /g, "[\\s\\S]{1,120}?");
     const verified = c.rows.every((r) => new RegExp(match, "i").test(r.text)) ? "" : " match-check=failed";

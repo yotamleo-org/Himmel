@@ -447,6 +447,10 @@ fill="$(printf 'the %.0s' $(seq 1 60))"
 { echo "$LHDR"; lrow "Always frobnicate $fill zorble widget quickly." "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; } > "$tmp/l-mc.csv"
 contains "feed: a proposal that misses a source row is flagged match-check=failed" "$(lrun mc "$tmp/l-mc.csv")" "match-check=failed"
 not_contains "feed: a proposal matching every source row carries no match-check flag" "$lc" "match-check=failed"
+{ echo "$LHDR"; lrow 'Always frobnicate the zorble widget quickly.' "$LFILE" 3; printf '"Never forget to frobnicate the zorble widget slowly.",other-repo,%s,1,,u,"4","x","y","z"\n' "$LFILE"; } > "$tmp/l-clr.csv"  # leak-allow: fixture row from another repository
+not_contains "feed: rows from different repositories never form one cluster" "$(lrun clr "$tmp/l-clr.csv")" "PROPOSE-CLASS "
+{ echo "$LHDR"; lrow 'Always frobnicate the zorble widget quickly.' "$LFILE" 3; lrow 'Never forget to frobnicate the zorble widget slowly.' "$LFILE" 4; lrow 'Always frobnicate the zorble widget quickly.' 'docs/internals/known-findings.md' 3; lrow 'Never forget to frobnicate the zorble widget slowly.' 'docs/internals/testing.md' 4; } > "$tmp/l-id.csv"
+check "feed: two clusters sharing a phrase get distinct ids" "$(lrun id "$tmp/l-id.csv" | sed -n 's/^PROPOSE-CLASS id=\([^ ]*\) .*/\1/p' | sort -u | wc -l | tr -d ' ')" "2"
 { echo "$LHDR"; lrow 'A very popular quuzmarker rule.' "$LFILE" 120; } > "$tmp/l-hot.csv"
 contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-hot.csv")" "PROMOTE-HINT row=1 uses=120"
 
