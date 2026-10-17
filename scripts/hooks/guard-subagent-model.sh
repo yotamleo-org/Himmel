@@ -64,11 +64,14 @@ fi
 [ "$tool" = "Agent" ] || exit 0
 
 # a missing/non-object tool_input, or a model/subagent_type
-# field present with the WRONG JSON type, must fail open like any other
-# unparseable payload — it must NOT be treated as the field being genuinely
-# omitted (which trips the guard). `select(type == "string") // empty` alone
-# cannot tell those two apart: both a truly-absent field and a present-but-
-# wrong-type field collapse to the empty string. That collapse is exactly
+# field present with a non-null, non-string JSON type (number, object, array,
+# boolean), must fail open like any other unparseable payload — it must NOT be
+# treated as the field being genuinely omitted (which trips the guard). An
+# explicit JSON null is NOT wrong-typed: it means "names no model" and trips
+# exactly like an absent field (the case arms below admit `null`). A null
+# model that failed open would be a real hole. `select(type == "string") //
+# empty` alone cannot tell those apart: a truly-absent field, a null and a
+# present-but-wrong-type field all collapse to the empty string. That collapse is exactly
 # what let a payload with no `tool_input` at all read as empty model + empty
 # subagent_type and get DENIED instead of failing open. So check .tool_input's
 # type first, then each field's type, before ever reading a value.

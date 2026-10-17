@@ -87,6 +87,18 @@ payload_no_subagent_field() {
         '{tool_name:"Agent",session_id:"sess-test",tool_input:{description:"d",prompt:"p",model:$m}}'
 }
 
+payload_model_null() {
+    # payload_model_null <subagent_type> — model is a genuine JSON null
+    jq -nc --arg st "$1" \
+        '{tool_name:"Agent",session_id:"sess-test",tool_input:{subagent_type:$st,description:"d",prompt:"p",model:null}}'
+}
+
+payload_subagent_null() {
+    # payload_subagent_null <model> — subagent_type is a genuine JSON null
+    jq -nc --arg m "$1" \
+        '{tool_name:"Agent",session_id:"sess-test",tool_input:{subagent_type:null,description:"d",prompt:"p",model:$m}}'
+}
+
 run_hook() {
     local name="$1" json="$2"; shift 2
     # env without -i inherits the operator's ambient environment.
@@ -134,6 +146,37 @@ assert_rc "plugin-namespaced agent with no model is DENIED (rc=2)" 2 "$RC1G"
 NULL_MODEL=$(jq -nc '{tool_name:"Agent",session_id:"s",tool_input:{subagent_type:"Explore",model:null}}')
 RC1H=$(run_hook null-model "$NULL_MODEL")
 assert_rc "explicit null model is DENIED like an omitted one (rc=2)" 2 "$RC1H"
+
+echo ""
+echo "=== explicit JSON null counts as no model (trips, not fail-open) ==="
+
+RC1I=$(run_hook gp-model-null "$(payload_model_null general-purpose)")
+assert_rc "general-purpose with model null is DENIED (rc=2)" 2 "$RC1I"
+assert_contains "model-null deny names general-purpose" "general-purpose" "$(cat "$TMP/err-gp-model-null")"
+assert_contains "model-null deny emits a structured deny decision" '"permissionDecision":"deny"' "$(cat "$TMP/out-gp-model-null")"
+
+RC1J=$(run_hook subagent-null-no-model "$(payload_subagent_null '')")
+assert_rc "subagent_type null + empty model is DENIED (rc=2)" 2 "$RC1J"
+assert_contains "subagent_type-null deny names the no-type shape" "<no-subagent_type>" "$(cat "$TMP/err-subagent-null-no-model")"
+
+SUBAGENT_NULL_NO_MODEL_FIELD=$(jq -nc '{tool_name:"Agent",session_id:"s",tool_input:{subagent_type:null,description:"d",prompt:"p"}}')
+RC1K=$(run_hook subagent-null-model-absent "$SUBAGENT_NULL_NO_MODEL_FIELD")
+assert_rc "subagent_type null + model absent is DENIED (rc=2)" 2 "$RC1K"
+
+BOTH_NULL=$(jq -nc '{tool_name:"Agent",session_id:"s",tool_input:{subagent_type:null,model:null}}')
+RC1L=$(run_hook both-null "$BOTH_NULL")
+assert_rc "both subagent_type and model null is DENIED (rc=2)" 2 "$RC1L"
+
+RC1M=$(run_hook fork-model-null "$(payload_model_null fork)")
+assert_rc "fork with model null is allowed (rc=0)" 0 "$RC1M"
+assert_empty "fork with model null: no output" "$(combined_output fork-model-null)"
+
+RC1N=$(run_hook gp-model-null-override "$(payload_model_null general-purpose)" SUBAGENT_MODEL_OK=1)
+assert_rc "SUBAGENT_MODEL_OK=1 lets a model-null dispatch through (rc=0)" 0 "$RC1N"
+
+RC1O=$(run_hook subagent-null-with-model "$(payload_subagent_null sonnet)")
+assert_rc "subagent_type null WITH a model is silent (rc=0)" 0 "$RC1O"
+assert_empty "subagent_type null with model: no output" "$(combined_output subagent-null-with-model)"
 
 echo ""
 echo "=== no-deny cases ==="
