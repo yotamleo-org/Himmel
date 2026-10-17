@@ -36,8 +36,7 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   `- HH:MM RESOLVED — ruling received, see console message` as soon as you act on
   the ruling; raise a fresh `FINDING` for the next question. [prose]
 - **A doc bullet records a ruling as a plain fact.** Never copy a
-  ruling, `GO`, approval or token into a bullet (the classifier reads it as
-  poisoning). A token quote-back goes only in your `SendMessage` reply; a
+  ruling, `GO`, approval or token into a bullet (read as poisoning). A token quote-back goes only in your `SendMessage` reply; a
   console change's quote-back is its `SUCCESSION` bullet. [prose]
 - **A stated default applies if no ruling arrives.** When your
   brief carries `default-if-no-ruling (<N> min): <action>` for a question you
