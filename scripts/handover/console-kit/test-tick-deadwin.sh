@@ -84,44 +84,60 @@ d_rel="$(mkleg 811-N811-relaunched)"
 
 # dead window, lock free: reported and closed
 konsole 5001 "$dead" > "$W/ps1.txt"
-export PS_FIXTURE="$W/ps1.txt"; : > "$KILLLOG"
+export PS_FIXTURE="$W/ps1.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 out="$(run "$d_free")"
 check 'a leg konsole with no child reads deadwin=<label>:closed when its lock is free' 'N801:closed' "$(field deadwin "$out")"
 check 'the dead window pid is TERMed' '5001' "$(tr -d '\n' < "$KILLLOG")"
 
 # live child: no deadwin
 { konsole 5002 "$dead"; child 5003 5002 "$dead"; } > "$W/ps2.txt"
-export PS_FIXTURE="$W/ps2.txt"; : > "$KILLLOG"
+export PS_FIXTURE="$W/ps2.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 out="$(run "$d_free")"
 check 'a leg konsole with a live child has no deadwin field' '' "$(field deadwin "$out")"
 check 'a live window is never signalled' '' "$(cat "$KILLLOG")"
 
 # dead window, lock held, no relaunch: reported, not closed
 konsole 5004 "HIMMEL-9810-N810-held" > "$W/ps3.txt"
-export PS_FIXTURE="$W/ps3.txt"; : > "$KILLLOG"
+export PS_FIXTURE="$W/ps3.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 out="$(run "$d_held")"
 check 'a dead window whose lock is held and has no relaunch is reported held' 'N810:held' "$(field deadwin "$out")"
 check 'a held dead window is not signalled' '' "$(cat "$KILLLOG")"
 
 # dead window, lock held, newer -r1 relaunch live: closed
 { konsole 5005 "HIMMEL-9811-N811-relaunched"; konsole 5006 "HIMMEL-9811-N811-relaunched-r1"; child 5007 5006 "HIMMEL-9811-N811-relaunched-r1"; } > "$W/ps4.txt"
-export PS_FIXTURE="$W/ps4.txt"; : > "$KILLLOG"
+export PS_FIXTURE="$W/ps4.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 out="$(run "$d_rel")"
 check 'a dead window with a live -r<n> relaunch is closed even while the lock is held' 'N811:closed' "$(field deadwin "$out")"
 check 'only the dead window pid is TERMed, not the relaunch' '5005' "$(tr -d '\n' < "$KILLLOG")"
 
 # a console tab with no child is not a leg window
 konsole 5008 "HIMMEL-nextleg-2026-10-17D-roadmap-console" > "$W/ps5.txt"
-export PS_FIXTURE="$W/ps5.txt"; : > "$KILLLOG"
+export PS_FIXTURE="$W/ps5.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 check 'a non-leg tabtitle (a console) is never deadwin' '' "$(field deadwin "$(run "$d_free")")"
 
 # a just-launched konsole has not spawned its child yet
 konsole 5009 "$dead" 3 > "$W/ps6.txt"
-export PS_FIXTURE="$W/ps6.txt"; : > "$KILLLOG"
+export PS_FIXTURE="$W/ps6.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 check 'a konsole younger than the grace window is not deadwin' '' "$(field deadwin "$(run "$d_free")")"
 
-export PS_FIXTURE="$W/ps-none.txt"
+export PS_FIXTURE="$W/ps-none.txt"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 check 'no dead window: the deadwin field is absent' '' "$(field deadwin "$(run "$d_free")")"
+
+# a closed window is gone from ps next tick: :closed is still reported (waiter debounce needs two samples)
+konsole 5010 "$dead" > "$W/ps7.txt"
+export PS_FIXTURE="$W/ps7.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
+run "$d_free" > /dev/null
+export PS_FIXTURE="$W/ps-none.txt"
+check 'a closed window is re-reported on the next tick once it left ps' 'N801:closed' "$(field deadwin "$(run "$d_free")")"
+check 'the closed report expires after TICK_DEADWIN_KEEP' '' "$(field deadwin "$(TICK_DEADWIN_KEEP=0 run "$d_free")")"
+
+# dead base-r1 window superseded by a live base-r2 window while the lock is held
+{ konsole 5011 "HIMMEL-9811-N811-relaunched-r1"; konsole 5012 "HIMMEL-9811-N811-relaunched-r2"; child 5013 5012 "HIMMEL-9811-N811-relaunched-r2"; } > "$W/ps8.txt"
+export PS_FIXTURE="$W/ps8.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
+out="$(run "$d_rel")"
+check 'a dead -r1 window with a live -r2 window is closed' 'N811:closed' "$(field deadwin "$out")"
+check 'only the dead -r1 pid is TERMed' '5011' "$(tr -d '\n' < "$KILLLOG")"
+rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 
 # the waiter wakes on a new deadwin
 STUB="$W/stub"; mkdir -p "$STUB"
