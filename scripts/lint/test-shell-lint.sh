@@ -1276,6 +1276,15 @@ printf 'dot.sh\tmktemp\t9\ndot.sh\tshellcheck\t9\n' > "$TMP_ROOT/dot.txt"
 OUT21Q="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --baseline "$TMP_ROOT/dot.txt" ./dot.sh 2>&1)"; EC21Q=$?
 if [ "$EC21Q" -eq 0 ]; then pass "21q a ./ path matches its baseline row"; else fail "21q expected exit 0, got $EC21Q" "$OUT21Q"; fi
 
+# a filename holding a newline is refused (exit 2), never skipped as two paths that both miss the file test
+(cd "$GATE" && cat > "$(printf 'nl\nname.sh')" <<'EOF'
+y=$(mktemp)
+EOF
+git add -A -- ':(glob)nl*') >/dev/null 2>&1
+OUT21R="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scripts/lint/shell-lint-baseline.txt 2>&1)"; EC21R=$?
+if [ "$EC21R" -eq 2 ]; then pass "21r --staged refuses a filename with a newline"; else fail "21r expected exit 2, got $EC21R" "$OUT21R"; fi
+assert_contains "21r says why" "newline" "$OUT21R"
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
