@@ -643,6 +643,39 @@ check "21: go_trust_verdict still accepts a GO carrying prior and flipped" "$rc"
 rc=0; wv q21p NO-GO "$SHA_A" --evidence-file "$evd/plain-ng.md" >/dev/null 2>&1 || rc=$?
 check "21: no --prior writes no prior or flipped line" "$(grep -c '^\(prior\|flipped\):' "$scope_dir/q21p/judge.md")" 0
 
+# --- 22. residual lines must name a ticket or a no-ticket reason ----------
+before_ls=$(ls "$scope_dir" | tr '\n' ' ')
+printf 'Evidence read.\n\n## Non-blocking\n\n- the parser misses a tab\n- HIMMEL-123 covers the rest\n' > "$evd/r-go-bad.md"
+rej "a GO with an unkeyed Non-blocking bullet" q22a GO "$evd/r-go-bad.md"
+printf 'class: option-parsing\n\nFollow-ups:\n1. tighten the regex\n' > "$evd/r-ng-bad.md"
+rej "a NO-GO with an unkeyed Follow-ups line" q22b NO-GO "$evd/r-ng-bad.md"
+rc=0; out=$(wv q22b NO-GO "$SHA_A" --evidence-file "$evd/r-ng-bad.md" 2>&1) || rc=$?
+contains "22: the refusal names the offending line" "$out" "write-verdict: unfiled residual: 1. tighten the regex"
+contains "22: the refusal carries the hint" "$out" "no-ticket: <reason>"
+check "22: nothing written on refusal (listing identical)" "$(ls "$scope_dir" | tr '\n' ' ')" "$before_ls"
+printf '**Residuals**\n- a loose end\n' > "$evd/r-bold-bad.md"
+rej "a bold-lead Residuals bullet" q22c GO "$evd/r-bold-bad.md"
+printf '## Follow-up\n\n- one thing\n' > "$evd/r-singular-bad.md"
+rej "a singular Follow-up heading" q22d GO "$evd/r-singular-bad.md"
+printf '## Non-blocking\r\n\r\n- unkeyed with crlf\r\n' > "$evd/r-crlf-bad.md"
+rej "a CRLF residual line without a key" q22e GO "$evd/r-crlf-bad.md"
+printf '## Non-blocking\n\n- thing; no-ticket:\n' > "$evd/r-empty-reason.md"
+rej "an empty no-ticket reason" q22f GO "$evd/r-empty-reason.md"
+printf '## Non-blocking\n\n- thing; no-ticket:   \r\n' > "$evd/r-empty-reason-crlf.md"
+rej "a whitespace-only CRLF no-ticket reason" q22g GO "$evd/r-empty-reason-crlf.md"
+printf '## Non-blocking\n\n- keyed HIMMEL-123 item\n- other item, no-ticket: operator accepted\n' > "$evd/r-ok.md"
+rc=0; wv q22h GO "$SHA_A" --evidence-file "$evd/r-ok.md" >/dev/null 2>&1 || rc=$?
+check "22: keyed and no-ticket residuals are written rc 0" "$rc" 0
+printf 'class: option-parsing\n\n**Follow-ups:**\n- HIMMEL-77 later\n' > "$evd/r-ng-ok.md"
+rc=0; wv q22i NO-GO "$SHA_A" --evidence-file "$evd/r-ng-ok.md" >/dev/null 2>&1 || rc=$?
+check "22: a keyed NO-GO residual is written rc 0" "$rc" 0
+printf '## Evidence\n\n- a follow-up is mentioned in prose here\n- residual risk is low\n' > "$evd/r-other-heading.md"
+rc=0; wv q22j GO "$SHA_A" --evidence-file "$evd/r-other-heading.md" >/dev/null 2>&1 || rc=$?
+check "22: a follow-up bullet under another heading is not refused" "$rc" 0
+printf '## Non-blocking\n\n- HIMMEL-9 filed\n\nThe next paragraph is plain prose.\n- stray bullet after a blank-terminated block\n' > "$evd/r-block-end.md"
+rc=0; wv q22k GO "$SHA_A" --evidence-file "$evd/r-block-end.md" >/dev/null 2>&1 || rc=$?
+check "22: a bullet after the residual block ended is not refused" "$rc" 0
+
 # strict parse of every file this suite wrote through the writer (hand-built fixtures excluded)
 strict_bad=0 strict_n=0
 for sf in "$scope_dir"/*/*.md; do

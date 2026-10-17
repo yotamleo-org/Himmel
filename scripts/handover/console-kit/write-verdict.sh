@@ -270,6 +270,27 @@ if grep -Eq '^(flipped|prior):' "$EVIDENCE"; then
     echo "write-verdict: the evidence carries a prior: or flipped: line; pass --prior <GO|NO-GO> and the writer computes both" >&2
     exit 2
 fi
+# every bullet under a Non-blocking / Follow-ups / Residuals heading names a
+# HIMMEL-<n> ticket or carries `no-ticket: <reason>`; an unticketed residual is
+# refused so it cannot live only as verdict prose.
+unfiled=$(awk '
+    { sub(/\r$/, "") }
+    function lead(s) { gsub(/^[ \t]*(#+[ \t]+)?(\*\*)?/, "", s); gsub(/(\*\*)?[ \t]*:?(\*\*)?[ \t]*$/, "", s); return tolower(s) }
+    /^#+[ \t]/ || /^\*\*.*\*\*:?[ \t]*$/ || /^[A-Za-z-]+:[ \t]*$/ {
+        l = lead($0); sec = (l ~ /^(non-blocking|follow-ups?|residuals?)$/); items = 0; next
+    }
+    sec && /^[ \t]*$/ { if (items) sec = 0; next }
+    sec && /^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/ {
+        items = 1
+        if ($0 !~ /HIMMEL-[0-9]+/ && $0 !~ /no-ticket:[ \t]*[^ \t]/) print
+    }' "$EVIDENCE")
+if [ -n "$unfiled" ]; then
+    while IFS= read -r unfiled_line; do
+        echo "write-verdict: unfiled residual: $unfiled_line" >&2
+    done <<< "$unfiled"
+    echo "write-verdict: file each residual (HIMMEL-<n> on the line) or mark it 'no-ticket: <reason>' - nothing was written" >&2
+    exit 2
+fi
 # review-round.sh honours a layer-decision line only as
 # `layer-decision: text|os|classifier|accept <reason>`; one without the keyword
 # is silently dropped and the repeated-class stop stays. Warn at write time
