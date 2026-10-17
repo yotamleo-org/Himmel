@@ -2303,6 +2303,12 @@ rm_leg 301 claude-sonnet-5-5 301 '- trust path: none'
 RM_GH_OID="$(rm_head 999)" rm_of >/dev/null
 [ ! -e "$TICK_STATE_DIR/ready-files/301-$(rm_head 301)" ] && pass 'a PR whose current head is not the READY head is not cached or trusted' || fail 'a stale-head file list was cached'
 same 'a stale-head read is unchecked, not flagged' "$(RM_GH_OID="$(rm_head 999)" rm_of)" ''
+rm_n1="$(wc -l < "$W/rm-gh.pwd" | tr -d ' ')"
+RM_GH_OID="$(rm_head 999)" rm_of >/dev/null
+[ "$(wc -l < "$W/rm-gh.pwd" | tr -d ' ')" = "$rm_n1" ] && pass 'a failed lookup backs off instead of retrying every tick' || fail 'a failed lookup was retried inside the backoff window'
+rm -f "$TICK_STATE_DIR"/ready-files/*.fail
+same 'a leading-zero TICK_READY_WINDOW_DAYS is read as decimal' "$(RM_GH_OID="$(rm_head 301)" TICK_READY_WINDOW_DAYS=08 rm_of)" '1/1,nogo=0/0,ALERT'
+rm -f "$TICK_STATE_DIR"/ready-files/*.fail "$TICK_STATE_DIR/ready-files/301-$(rm_head 301)"
 same 'a matching-head read flags the claimed-none READY' "$(RM_GH_OID="$(rm_head 301)" rm_of)" '1/1,nogo=0/0,ALERT'
 [ "$(sort -u "$W/rm-gh.pwd")" = "$W/repo" ] && pass 'gh runs in the --repo checkout' || fail "gh ran in $(sort -u "$W/rm-gh.pwd")"
 unset TICK_GH_CMD

@@ -335,7 +335,7 @@ ready_mismatch_scan() {
     local budget=20 pats rec doc model line pr head claim files hit jv vh
     [ -d "$dir" ] && [ -r "$tp" ] || return 1
     case "$days" in ''|*[!0-9]*) days=1 ;; esac
-    local window_min=$((days * 1440))
+    local window_min=$((10#$days * 1440))
     pats="$(mktemp)" && rec="$(mktemp)" || return 1
     grep -vE '^[[:space:]]*(#|$)' "$tp" > "$pats"
     mkdir -p "$cache" 2>/dev/null
@@ -353,14 +353,17 @@ ready_mismatch_scan() {
             files=""
             if [ -r "$cache/$pr-$head" ]; then
                 files="$(cat "$cache/$pr-$head")"
+            elif [ -n "$(find "$cache" -maxdepth 1 -name "$pr-$head.fail" -mmin -15 2>/dev/null)" ]; then  # swallow-ok: an unreadable cache means no backoff, the budget still bounds the calls
+                :  # a lookup that failed in the last 15 minutes is not retried, so it cannot starve later READYs
             elif [ "$budget" -gt 0 ]; then
                 budget=$((budget - 1))
                 # the first line is the PR's current head: a list read after a later push is not this READY's diff
-                if files="$(cd "$REPO" && "$ghcmd" pr view "$pr" --json headRefOid,files -q '.headRefOid, .files[].path' 2>/dev/null)" && [ "${files%%$'\n'*}" = "$head" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
+                if files="$(cd "$REPO" && timeout -k 2 10 "$ghcmd" pr view "$pr" --json headRefOid,files -q '.headRefOid, .files[].path' 2>/dev/null)" && [ "${files%%$'\n'*}" = "$head" ]; then  # swallow-ok: a failed gh read leaves hit="?", counted unchecked, never clean
                     files="${files#*$'\n'}"
                     printf '%s\n' "$files" > "$cache/$pr-$head" 2>/dev/null
                 else
                     files=""
+                    : > "$cache/$pr-$head.fail"
                 fi
             fi
             if [ -z "$files" ]; then hit="?"

@@ -412,7 +412,7 @@ sec_ready_mismatch() {
             $1 == "COUNT" { ready = $2; judged = $4; nogo = $5; unchecked = $6 }
             $1 == "MODEL" { models = models (models == "" ? "" : "; ") $2 " " $4 " of " $3 }
             END {
-                if (rows == 0 && unchecked > 0) printf "_None flagged among the READYs that could be checked; the unchecked ones are unverified._\n"
+                if (rows == 0 && (unchecked > 0 || judged < ready)) printf "_None flagged among the READYs that could be checked; one without a diff read or a judge verdict is unverified._\n"
                 else if (rows == 0) printf "_None — every READY in the window matches its judge verdict and diff._\n"
                 printf "\nNO-GO at head: %d of %d judged (%d READY, %d unchecked)", nogo, judged, ready, unchecked
                 if (models != "") printf "; per model: %s", models
