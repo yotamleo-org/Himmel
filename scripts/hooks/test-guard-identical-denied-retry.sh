@@ -147,7 +147,7 @@ head -c 20000000 /dev/zero | tr '\0' 'y' | fold -w 4000 | jq -Rc '{type:"user",m
 denied_n "$f" 2 "$C"
 s=$(date +%s%N); run "$f" "$C"; e=$(date +%s%N)
 ms=$(( (e - s) / 1000000 ))
-echo "  INFO  20 MB transcript, deny path: ${ms} ms (size $(wc -c <"$f") bytes)"
+echo "  INFO  20 MB transcript, deny path: ${ms} ms"
 expect_deny "20 MB transcript still denies the third identical command"
 if [ "$ms" -lt 2000 ]; then ok "hook stays under 2 s on 20 MB (${ms} ms)"; else bad "hook took ${ms} ms on 20 MB"; fi
 
