@@ -95,8 +95,7 @@ projection from one to the other:
   `spawn-glm --context big|small` preset (`docs/glm-offload.md`): `big` =
   `glm-5.2[1m]` + `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000`; `small` =
   `glm-5.2` + 200000; the codex lane's twin, `CODEX_CONTEXT_WINDOW`
-  (`docs/tooling-catalog.md` `claude-codex` section); and the routed lane's
-  `ROUTED_CONTEXT_WINDOW`.
+  (`docs/tooling-catalog.md` `claude-codex` section).
 
 Configure both for a new lane — the registry value and the launcher env
 knob — since neither derives the other; setting only one leaves the other
