@@ -120,7 +120,7 @@ printf '%s\n' "$body" > "$STUB_DIR/bodies/$n.body"
 echo "Created HIMMEL-90$n"
 EOF
 chmod +x "$TMP4/bin/jira"
-STUB_DIR="$TMP4" PATH="$TMP4/bin:$PATH" "$MIGRATE" --root "$TMP4/root" --quiet >/dev/null 2>&1 || true
+if STUB_DIR="$TMP4" PATH="$TMP4/bin:$PATH" "$MIGRATE" --root "$TMP4/root" --quiet >/dev/null 2>&1; then pass=$((pass+1)); else echo "FAIL: migration exited non-zero"; fail=$((fail+1)); fi
 bodies="$(find "$TMP4/bodies" -name '*.body' | wc -l | tr -d ' ')"
 if [ "$bodies" -eq 2 ]; then pass=$((pass+1)); else echo "FAIL: expected 2 create calls, saw $bodies"; fail=$((fail+1)); fi
 # The CLI's own linter, when the primary checkout has a built dist (offline, no network).
