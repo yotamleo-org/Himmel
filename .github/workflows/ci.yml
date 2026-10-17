@@ -145,6 +145,43 @@ jobs:
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
 
+  # HIMMEL-6121: matrix fail-fast only stops sibling legs of one matrix; the
+  # other jobs keep their runners after the run is already red. On pull_request
+  # this watcher polls the run's jobs and cancels the whole run at the first
+  # failed one. No checkout and no `needs:` (it must run from the start). It
+  # fails open: an API error or a timeout leaves the run uncancelled, and it
+  # never reddens the run itself. Schedule and dispatch runs have no watcher,
+  # so a red there stays attributable. A cancelled run still reads red: the
+  # failed job keeps its `failure` conclusion and the required `shell-unit`
+  # check never reports success.
+  pr-fail-fast:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100 # outlives the 90 min poll deadline below
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run on the first failed job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          deadline=$((SECONDS + 5400))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[]')"; then
+              failed="$(jq -s '[.[] | select(.conclusion == "failure" or .conclusion == "timed_out")] | length' <<< "$jobs")"
+              if [ "$failed" -gt 0 ]; then
+                echo "a job failed; cancelling run $RUN_ID"
+                gh run cancel "$RUN_ID" || true
+                exit 0
+              fi
+              pending="$(jq -s '[.[] | select(.name != "pr-fail-fast" and .status != "completed")] | length' <<< "$jobs")"
+              [ "$pending" -eq 0 ] && exit 0
+            fi
+            sleep "${POLL_SECS:-15}"
+          done
+
   secret-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 8s over 10 green PR runs; 2x, floor 10

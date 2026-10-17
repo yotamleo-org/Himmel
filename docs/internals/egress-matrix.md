@@ -330,15 +330,19 @@ review, not a code edit.
   rows, on every non-salus qmd corpus (`himmel-code`, `luna-personal`,
   `luna-clippings`, `operator-repos`, `jira-mirror`, `roadmap-plan`,
   `skill-index`). Every other purpose keeps its prior verdict.
-  `salus × openrouter × embedding|rerank` are explicit HARD denies placed
+  Query expansion (qmd's `generate` role, HIMMEL-6125, operator ruling
+  2026-10-17) is its own purpose, `query-expansion`, so the `inference` cells
+  (`himmel-code`, `handover-state`) are not widened: the same seven corpora get
+  explicit allow rows and the raw query is the content sent.
+  `salus × openrouter × embedding|rerank|query-expansion` are explicit HARD denies placed
   ahead of every openrouter allow and of the non-hard `salus × openrouter × *`
   cell; the test pins both the verdict and the row order. Salus stays on its
   own local-only qmd index and daemon. The qmd gate maps the host
   `openrouter.ai` (exact) to provider `openrouter`, accepts only the pinned
   models (`openai:qwen/qwen3-embedding-8b` embed, `openai:cohere/rerank-4-fast`
-  rerank; the matrix is per provider, so the consumer pins the model), refuses
-  a `generate` role, an unrecognised host and `models.openai_api_key` in the
-  yaml; a missing or unparseable base URL is refused like an unrecognised one.
+  rerank, `openai:google/gemini-2.5-flash-lite` generate; the matrix is per
+  provider, so the consumer pins the model), refuses an unpinned model in any
+  role, an unrecognised host and `models.openai_api_key` in the yaml; a missing or unparseable base URL is refused like an unrecognised one.
   The gate also refuses by path: a collection whose path overlaps a PHI root
   (graphify fence lists, a sibling salus config's paths, a `.salus` vault) is
   PHI whatever it is called. The gate also refuses a collection that exists
