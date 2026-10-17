@@ -17,6 +17,7 @@ run_filter() {  # run_filter <args...> — runs in a subshell, prints RC + globa
   (
     # shellcheck disable=SC1090
     . "$LIB"
+    CAF_ACCEPT_CONTEXT_TIER="${TIER_OK:-1}"
     if codex_filter_passthrough_args "$@" 2>"$TMP/err"; then
       echo "rc=0"
       echo "model=$CAF_HAVE_MODEL sandbox=$CAF_HAVE_SANDBOX effort=$CAF_REASONING_EFFORT tier=$CAF_CONTEXT_TIER window=$CAF_CONTEXT_WINDOW"
@@ -69,6 +70,10 @@ case "$OUT" in *"rc=1"*) pass "bad tier refused";; *) fail "bad tier accepted";;
 grep -q -- '--context-tier must be one of 272k|353k|900k (got "1m")' "$TMP/err" || fail "bad-tier message missing"
 OUT="$(run_filter hi --context-tier)"
 case "$OUT" in *"rc=1"*) pass "trailing bare --context-tier refused";; *) fail "trailing tier accepted";; esac
+OUT="$(TIER_OK=0 run_filter --context-tier 353k hi)"
+case "$OUT" in *"rc=1"*) pass "tier flag refused when the caller does not opt in";; *) fail "tier flag accepted without opt-in: $OUT";; esac
+OUT="$(TIER_OK=0 run_filter --context-tier=353k hi)"
+case "$OUT" in *"rc=1"*) pass "equals-form tier refused without opt-in";; *) fail "equals tier accepted without opt-in: $OUT";; esac
 
 echo "test: shell tier map agrees with spawn-claudex.ts (HIMMEL-1907)"
 TS_MAP="$(grep -o 'CODEX_CONTEXT_TIER_WINDOW: Record<CodexContextTier, string> = {[^}]*}' "$SCRIPT_DIR/../telegram/spawn-claudex.ts" | grep -o '"[0-9]*k": "[0-9]*"' | tr -d '" ' | tr '\n' ' ')"

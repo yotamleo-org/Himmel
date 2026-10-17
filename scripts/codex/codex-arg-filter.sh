@@ -11,6 +11,7 @@
 #     CAF_SCOPE_NOUN      "worktree" | "clone" (default worktree)
 #     CAF_CONTAINER_FLAG  "--worktree" | "--clone" (default --worktree)
 #     CAF_ADDDIR_HINT     --add-dir refusal hint (default names the ACL preflight)
+#     CAF_ACCEPT_CONTEXT_TIER  1 = take --context-tier (default 0 = refused)
 #   codex_filter_passthrough_args "$@"
 #     rc=0: CAF_NEW_ARGS (array), CAF_HAVE_MODEL, CAF_HAVE_SANDBOX,
 #           CAF_REASONING_EFFORT, CAF_CONTEXT_TIER (default 272k),
@@ -49,6 +50,7 @@ codex_filter_passthrough_args() {
     local noun="${CAF_SCOPE_NOUN:-worktree}"
     local cflag="${CAF_CONTAINER_FLAG:---worktree}"
     local adddir_hint="${CAF_ADDDIR_HINT:-the ACL preflight covers only the dispatched worktree}"
+    local accept_tier="${CAF_ACCEPT_CONTEXT_TIER:-0}"
 
     CAF_HAVE_MODEL=0
     CAF_HAVE_SANDBOX=0
@@ -101,9 +103,14 @@ codex_filter_passthrough_args() {
                 prev="$a"
                 continue
                 ;;
-            --context-tier) prev="$a"; continue ;;
-            --context-tier=*)
-                caf_set_context_tier "$self" "${a#--context-tier=}" || return 1
+            --context-tier|--context-tier=*)
+                if [ "$accept_tier" != 1 ]; then
+                    echo "$self: flag '$a' is not in the lane allow-list - refused" >&2
+                    return 1
+                fi
+                if [ "$a" != "--context-tier" ]; then
+                    caf_set_context_tier "$self" "${a#--context-tier=}" || return 1
+                fi
                 prev="$a"
                 continue
                 ;;

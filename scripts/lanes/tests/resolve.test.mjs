@@ -471,7 +471,7 @@ test('context annotation names the tier a dispatch gets and the closed enum (HIM
 test('the codex dispatcher lanes declare the tiers the shell filter accepts (HIMMEL-1907)', () => {
   const filter = join(TEST_DIR, '..', '..', 'codex', 'codex-arg-filter.sh');
   const shellTiers = execFileSync(BASH_BIN, ['-c', '. "$1"; echo $CAF_CONTEXT_TIERS', '_', filter], { encoding: 'utf8' }).trim().split(' ');
-  for (const id of ['claudex', 'codex-exec', 'codex-wsl']) {
+  for (const id of ['claudex', 'codex-exec']) {
     const lane = REG.lanes.find((l) => l.id === id);
     assert.deepEqual(lane.context.tiers, shellTiers, `${id} context.tiers must equal CAF_CONTEXT_TIERS`);
   }
@@ -492,7 +492,7 @@ test('every structured context in the registry is valid and carries no legacy de
     const { tiers, ...window } = REG.lanes.find((l) => l.id === id).context;
     assert.deepEqual(window, { windowTokens: 900000, overflow: 'compact-continue' });
     // tiers are the dispatcher --context-tier enum: only the lanes that take the flag declare them.
-    assert.equal(tiers !== undefined, ['claudex', 'codex-exec', 'codex-wsl'].includes(id), `${id} tiers declaration`);
+    assert.equal(tiers !== undefined, ['claudex', 'codex-exec'].includes(id), `${id} tiers declaration`);
   }
 });
 

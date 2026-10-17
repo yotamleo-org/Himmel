@@ -323,6 +323,8 @@ if [ -n "$SHARED_BRANCH" ]; then
     fi
 fi
 
+# shellcheck disable=SC2034 # read by the sourced arg filter.
+CAF_ACCEPT_CONTEXT_TIER=1
 if ! codex_filter_passthrough_args "$@"; then
     exit 2
 fi
