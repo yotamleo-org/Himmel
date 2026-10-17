@@ -12,6 +12,8 @@
 //       spawnSync, stdout captured with trailing newlines stripped, stderr left
 //       on the terminal. opts passes through timeout, cwd and env only.
 //       Output past the 1 MiB default maxBuffer kills the child: unknown.
+//       The returned object is always truthy: never use it as a boolean, test
+//       r.state, or use requireOk, which is true only for a definite ok.
 //       rc is the real exit code, or null when the child never
 //       exited normally (killed by a signal, timed out, could not spawn).
 //   requireOk(label, cmd, args, opts) -> boolean

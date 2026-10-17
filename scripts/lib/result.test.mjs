@@ -89,14 +89,17 @@ test('requireOk is true only for a definite ok, like require_ok in result.sh', (
 });
 
 test('a child that traps SIGTERM and exits 0 under a timeout -> unknown', () => {
-  const r = run("process.on('SIGTERM', () => process.exit(0)); setTimeout(() => {}, 30000)", { timeout: 300 });
+  // 2 s leaves the child time to install its handler before the kill arrives.
+  const r = run("process.on('SIGTERM', () => process.exit(0)); setTimeout(() => {}, 30000)", { timeout: 2000 });
   assert.equal(r.state, 'unknown');
   assert.equal(resultRender(r), 'UNKNOWN');
 });
 
 test('output past the default 1 MiB maxBuffer, exit 0 -> unknown', () => {
-  const r = run("process.stdout.write('x'.repeat(2 * 1024 * 1024))");
+  // The child traps the maxBuffer SIGTERM and exits 0, so only p.error says unknown.
+  const r = run("process.on('SIGTERM', () => process.exit(0)); process.stdout.on('error', () => {}); process.stdout.write('x'.repeat(2 * 1024 * 1024))");
   assert.equal(r.state, 'unknown');
+  assert.equal(r.rc, 0);
   assert.equal(resultRender(r), 'UNKNOWN');
 });
 
