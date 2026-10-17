@@ -1331,6 +1331,40 @@ assert_eq "non-numeric --threshold rc=1" "1" "$rc"
 rc=0; out=$(GRAPH_CADENCE_HIMMEL_ROOT="$TMP_ROOT" run_gc --bogus-flag 2>&1) || rc=$?
 assert_eq "unknown flag rc=1" "1" "$rc"
 
+# =============================================================================
+# Test 9: --flow-name is the ONE owner of the flow-run identity
+# =============================================================================
+echo "TEST: --flow-name names every flow-run row; absent, the derivation is unchanged; bad values refuse rc 2"
+REPO9="$TMP_ROOT/t9-primary"; BARE9="$TMP_ROOT/t9-origin.git"
+HOME9="$TMP_ROOT/t9-home"; LEDGER9="$TMP_ROOT/t9-ledger"
+mkdir -p "$HOME9" "$LEDGER9"
+seed_repo "$REPO9" "$BARE9" 3
+# The armed name deliberately differs from the slug of REPO9's own basename:
+# registry entry and ledger rows must still join on the armed name.
+FLOW_LEDGER9="$TMP_ROOT/t9-flow-runs.jsonl"
+rc=0
+HOME="$HOME9" GRAPH_CADENCE_HIMMEL_ROOT="$REPO9" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER9" \
+    HIMMEL_FLOW_RUNS_LEDGER="$FLOW_LEDGER9" \
+    run_gc --threshold 10 --flow-name graph-publish-armed-root >/dev/null 2>&1 || rc=$?
+assert_eq "--flow-name run rc=0" "0" "$rc"
+flow9=$(cat "$FLOW_LEDGER9" 2>/dev/null || echo MISSING)
+assert_contains "start row carries the armed flow name" '"flow":"graph-publish-armed-root"' "$flow9"
+assert_not_contains "no row carries the derived flow name" "graph-publish-$(corpus_slug_of "$REPO9")\"" "$flow9"
+
+FLOW_LEDGER9b="$TMP_ROOT/t9b-flow-runs.jsonl"
+rc=0
+HOME="$HOME9" GRAPH_CADENCE_HIMMEL_ROOT="$REPO9" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER9" \
+    HIMMEL_FLOW_RUNS_LEDGER="$FLOW_LEDGER9b" \
+    run_gc --threshold 10 >/dev/null 2>&1 || rc=$?
+assert_eq "no --flow-name run rc=0" "0" "$rc"
+assert_contains "without --flow-name the derived name is unchanged" "\"graph-publish-$(corpus_slug_of "$REPO9")\"" "$(cat "$FLOW_LEDGER9b" 2>/dev/null || echo MISSING)"
+
+for bad in "has space" "a/b" "$(printf 'a\nb')" ""; do
+    rc=0; out=$(HOME="$HOME9" GRAPH_CADENCE_HIMMEL_ROOT="$REPO9" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER9" \
+        run_gc --threshold 10 --flow-name "$bad" 2>&1) || rc=$?
+    assert_eq "--flow-name '$(printf '%s' "$bad" | tr '\n' '~')' refused rc=2" "2" "$rc"
+done
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

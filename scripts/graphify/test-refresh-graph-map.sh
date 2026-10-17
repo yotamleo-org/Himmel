@@ -4237,5 +4237,53 @@ else
   fi
 fi
 
+# --- T-gitcorpus: a git work tree's scratch copy holds ONLY tracked markdown
+# untracked and gitignored files never enter the corpus; a
+# non-git corpus keeps the find path. The stub graphify records the markdown
+# files it is handed in the scratch dir. ---
+GLBIN="$WS/gl-bin"; mkdir -p "$GLBIN"
+cat > "$GLBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+target=""
+if [ "$1" = "cluster-only" ]; then target="$2"; else target="$1"; fi
+if [ "$2" = "--update" ]; then
+  ( cd "$target" && find . -type f -name '*.md' | sort ) > "$GL_LISTING"
+fi
+mkdir -p "$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "$target/graphify-out/graph.json"
+cp "$GL_REPORT" "$target/graphify-out/GRAPH_REPORT.md"
+exit 0
+STUB
+chmod +x "$GLBIN/graphify"
+export GL_REPORT="$WS/gl-report.md"; printf '%s\n' "$REPORT_FIXTURE" > "$GL_REPORT"
+GLCORPUS="$WS/glcorpus"; GLMAPS="$WS/glmaps"; mkdir -p "$GLMAPS"
+git_corpus "$GLCORPUS"
+mkdir -p "$GLCORPUS/docs"
+printf '# two\n' > "$GLCORPUS/docs/two.md"
+printf 'ignored/\n' > "$GLCORPUS/.gitignore"
+git -C "$GLCORPUS" add -A >/dev/null 2>&1
+git -C "$GLCORPUS" commit -qm two >/dev/null 2>&1
+printf '# untracked\n' > "$GLCORPUS/untracked.md"
+mkdir -p "$GLCORPUS/ignored"; printf '# ignored\n' > "$GLCORPUS/ignored/ig.md"
+export GL_LISTING="$WS/gl-listing.txt"
+out=$( GRAPHIFY_MAP_BIN="$GLBIN/graphify" PATH="$GLBIN:$PATH" \
+  bash "$SCRIPT" --name glt --corpus-root "$GLCORPUS" --backend claude-cli \
+  --maps-dir "$GLMAPS" --title "GL Map" --slug gl-map --corpus-tag gl 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T-gitcorpus run exit 0 (got $rc): $out"
+want=$(printf './docs/two.md\n./tracked.md\n')
+got=$(cat "$GL_LISTING" 2>/dev/null)
+[ "$got" = "$want" ] && pass "T-gitcorpus git corpus copies only tracked markdown" \
+  || fail "T-gitcorpus expected only tracked files, got: $got"
+GNCORPUS="$WS/gncorpus"; GNMAPS="$WS/gnmaps"; mkdir -p "$GNCORPUS/sub" "$GNMAPS"
+printf '# a\n' > "$GNCORPUS/a.md"; printf '# b\n' > "$GNCORPUS/sub/b.md"
+out=$( GRAPHIFY_MAP_BIN="$GLBIN/graphify" PATH="$GLBIN:$PATH" \
+  bash "$SCRIPT" --name gnt --corpus-root "$GNCORPUS" --backend claude-cli \
+  --maps-dir "$GNMAPS" --title "GN Map" --slug gn-map --corpus-tag gn 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T-gitcorpus non-git run exit 0 (got $rc): $out"
+want=$(printf './a.md\n./sub/b.md\n')
+got=$(cat "$GL_LISTING" 2>/dev/null)
+[ "$got" = "$want" ] && pass "T-gitcorpus non-git corpus still copies its markdown" \
+  || fail "T-gitcorpus non-git expected a.md and sub/b.md, got: $got"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 if [ "$SKIPS" -ne 0 ]; then echo "ALL PASS ($SKIPS skipped)"; else echo "ALL PASS"; fi
