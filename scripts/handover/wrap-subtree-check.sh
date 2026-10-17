@@ -289,6 +289,7 @@ if [ -z "$found" ] || [ -z "$count" ] || [ -z "$ignored" ]; then
 fi
 if [ "$count" -eq 0 ] && [ -n "$qdoc" ]; then
     ql="${WRAP_SUBTREE_QUEUE_LOCK:-$(dirname "${BASH_SOURCE[0]}")/queue-lock.sh}"
+    # swallow-ok: qrc is captured and any status other than rc 0 + "free" withholds
     qout="$(bash "$ql" status "$qdoc" 2>/dev/null)"; qrc=$?
     if [ "$qrc" -eq 0 ] && [ "$qout" = "free" ]; then
         :
