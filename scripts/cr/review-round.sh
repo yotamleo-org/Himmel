@@ -681,7 +681,7 @@ judge_scope_record() (
     # or not - a NO-GO only narrows), blocks the scope round: a GO beside it is
     # not the judges' last word.
     for nf in "$dir"/*/*.md; do
-        [ -f "$nf" ] && [ ! -L "$nf" ] || continue
+        if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
         # A record that cannot be read whole may be a NO-GO: it vetoes, never skips.
         if ! go_verdict_snapshot "$nf"; then
             echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused (HIMMEL-4984)" >&2
