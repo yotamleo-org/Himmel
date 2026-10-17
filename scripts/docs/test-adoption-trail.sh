@@ -246,7 +246,7 @@ find_ext_loads() {
   perl -0777 -ne '
     while (/<([a-z][a-z0-9:-]*)\b((?:[^>"\x27]|"[^"]*"|\x27[^\x27]*\x27)*)>/gi) {
       my ($tag, $attrs, $markup) = (lc($1), $2, $&);
-      while ($attrs =~ /(?:^|\s)([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s>]+))/g) {
+      while ($attrs =~ /([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s>]+))/g) {
         my ($attr, $value) = (lc($1), $2 // $3 // $4);
         next unless $attr =~ /^(?:src|poster|data|srcset)$/ || ($tag eq "link" && $attr eq "href");
         my @urls = $attr eq "srcset" ? split(/,/, $value) : ($value);
@@ -265,6 +265,8 @@ ctl_missed=""
 for ctl in '<link rel="stylesheet" href="https://x.example/a.css">' \
            "<script src='https://x.example/a.js'></script>" \
            '<img src=https://x.example/a.png>' \
+           '<img/src="https://x.example/a.png">' \
+           '<video preload=""poster="https://x.example/a.png"></video>' \
            '<img srcset="/a.png 1x, https://x.example/b.png 2x">' \
            '<video src="https://x.example/a.mp4"></video>' \
            "<video poster='//x.example/a.png'></video>" \
@@ -283,7 +285,9 @@ else
 fi
 ctl_false_hits=""
 for ctl in '<img srcset="/a.png 1x, /b.png 2x">' \
-           '<a href="https://x.example/">external navigation</a>'; do
+           '<a href="https://x.example/">external navigation</a>' \
+           '<img data-src="https://x.example/a.png" src="/a.png">' \
+           "<img title=' src=\"https://x.example/a.png\"' src='/a.png'>"; do
   [ -z "$(printf '%s' "$ctl" | find_ext_loads)" ] || ctl_false_hits="$ctl_false_hits $ctl"
 done
 if [ -n "$ctl_false_hits" ]; then
