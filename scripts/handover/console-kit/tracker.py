@@ -504,7 +504,7 @@ def ledger_lines(rows, vers, unthemed=0, released=()):
             label, t[2], len(a), int(100.0 * t[2] / len(a) + 0.5) if a else 0, t[1], t[0])
     cur = next((i for i in train if vers[i] not in released and any(r[3] == i and r[2] != 2 for r in rows)), None)
     out = [line('Running now: %s — ' % vlabel(vers[cur]), {cur}) if cur is not None
-           else 'Running now: nothing — every v1.0.x ticket is done.', line('Whole v1.0.x train: ', set(train))]
+           else 'Running now: nothing — no unreleased v1.0.x version has open work.', line('Whole v1.0.x train: ', set(train))]
     dr = sum(1 for r in rows if r[3] in train and r[7] == 1)
     un = sum(1 for r in rows if r[3] in train and r[7] == 2 and r[2] != 2)
     att = []
@@ -577,7 +577,7 @@ def jira_view(mir, legs, vers, prows, vnames):
     for k, m in mir.items():
         hit = [v for v in m['fv'] if v in vi]
         b, p = bucket(m), plan.get(num(k))
-        if not hit and b in ('prog', 'rev', 'ci'):
+        if not m['fv'] and b in ('prog', 'rev', 'ci'):
             fl.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], ln=first_sentence(m['impact']) or clip(m['title'], 160)))
         for v in hit:
             if b == 'wont':
