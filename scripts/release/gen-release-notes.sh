@@ -4,7 +4,7 @@
 # Usage:
 #   gen-release-notes.sh --prs <prs.json> --version <vX.Y.Z> [--date <YYYY-MM-DD>]
 #       Render notes from merged PRs. <prs.json> is the output of
-#         gh pr list --state merged --search 'merged:>=<date>' --json number,title,body
+#         gh pr list --state merged --limit 2000 --search 'merged:>=<date>' --json number,title,body
 #       A PR is user-facing when its body has a `## Release note` block of
 #       `- new|changed|update|known: <text>` lines; every other PR is internal
 #       and is folded into one count line, never listed.
