@@ -4,6 +4,8 @@ The full text of every rule that root `CLAUDE.md` now carries condensed (HIMMEL-
 Root `CLAUDE.md` keeps each rule's directive and its enforcer; the prose below is
 the prior wording, verbatim, kept for reference. It is not preloaded.
 
+## RULES
+
 ### Git workflow
 - Feature work in git worktrees; never edit or commit on main. [enforced: block-edit-on-main]
 - All changes via PR, ≥1 approval, no direct push. [enforced: no-push-to-main]

@@ -139,6 +139,10 @@ jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_us
   rule's directive inline (not its detail), re-run the budget gate, and re-bench
   that one probe.
 
+A run may narrow this (fewer repeats, a probe that cannot discriminate); its
+Results entry then states the N used, which metrics were read and which probes
+count as evidence.
+
 ## Results
 
 ### 2026-10-19 — HIMMEL-5512 (current 10,427 B vs lean 5,681 B)
