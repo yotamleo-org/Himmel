@@ -87,7 +87,13 @@ case "$field" in
             n=$((n + 1))
             marker="$(leg_tail_status "$ldoc")"
             last="$(sed -nE '/^- /p' "$ldoc" 2>/dev/null | tail -n 1 | sed 's/`[^`]*`/`…`/g' | cut -c1-200)"
-            printf -- '- %s: %s — %s (%s)\n' "$label" "${marker:-no marker}" "$last" "$(basename "$ldoc")"
+            # a READY or BLOCKED a later LIVE / SUCCESSION bullet buries stays in the list
+            act="$(leg_actionable_bullet "$ldoc" | sed 's/`[^`]*`/`…`/g' | cut -c1-200)"
+            note=""
+            if [ -n "$act" ] && [ "$act" != "$last" ]; then
+                note=" [actionable: $(printf '%s' "$act" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?//')]"
+            fi
+            printf -- '- %s: %s — %s%s (%s)\n' "$label" "${marker:-no marker}" "$last" "$note" "$(basename "$ldoc")"
         done <<EOF_ROWS
 $rows
 EOF_ROWS

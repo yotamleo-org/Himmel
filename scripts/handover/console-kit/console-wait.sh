@@ -58,7 +58,8 @@
 #                               until a sample succeeds.
 #
 # The action key is the tick fields a console acts on: legs=, livestate=,
-# prs=, tails=, legset=, board= and tracker= (class only, the STALE
+# prs=, tails=, acts= (a leg's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
+# a repeat or a later LIVE bullet cannot hide it; absent when a leg has none), legset=, board= and tracker= (class only, the STALE
 # age is dropped; tracker= is absent from an older tick line, never a failure),
 # vault= (class only, wakes ONLY on a move to STALL or PUSH-LAG --
 # never on a change of its age or count, nor a move back to ok/skip/unknown --
@@ -304,12 +305,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails legset board tracker vault cloud orphans-wip vmrun parked denials closable deadwin; do
+    for f in legs livestate prs tails acts legset board tracker vault cloud orphans-wip vmrun parked denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi

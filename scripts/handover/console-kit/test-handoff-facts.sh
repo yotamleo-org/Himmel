@@ -73,6 +73,18 @@ legs="$(run legs)"
 has "legs lists N7 with its last marker" "N7: READY" "$legs"
 has "legs lists N8 with its last marker" "N8: LIVE" "$legs"
 check "legs strips backtick spans" "0" "$(printf '%s' "$legs" | grep -c 'secret-token-value')"
+
+# a SUCCESSION bullet after a READY must not hide the READY from the successor.
+# RED control (pre-fix handoff-facts.sh): the line shows only the SUCCESSION bullet.
+LEG3="$WORK/DEMO-3-N9-gamma.md"
+printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — started' '- 10:30 READY 12 abc GREEN — pr is up' '- 10:40 SUCCESSION accepted — relay' > "$LEG3"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N9","added":"x"}]}\n' "$LEG3" > "${DOC%.md}.fleet.json"
+has "legs names a READY a later SUCCESSION bullet buries (6292)" "actionable: READY 12 abc GREEN" "$(run legs)"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG2" > "${DOC%.md}.fleet.json"
+check "legs adds no actionable note for a leg with none (6292)" "0" "$(run legs | grep -c 'actionable:')"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N7","added":"x"}]}\n' "$LEG1" > "${DOC%.md}.fleet.json"
+check "legs adds no actionable note when the last bullet is it (6292)" "0" "$(run legs | grep -c 'actionable:')"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N7","added":"x"},{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
 has "prs prints the open PR" "#5 [HIMMEL-1]" "$(run prs)"
 has "summary carries the newest bullet" "three" "$(run summary)"
 has "queue copies the Live state line" "HIMMEL-9, HIMMEL-10" "$(run queue)"

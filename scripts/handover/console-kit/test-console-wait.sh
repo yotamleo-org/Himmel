@@ -892,6 +892,19 @@ wait_exit "$WPID"
 check "(l4568) a READY going stale wakes the console (rc 0)" "0" "$rc"
 check "(l4568) the wake names tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n1 "$WORK/l4568.out")"
 
+# --- acts= moving (a new READY, a second BLOCKED) wakes, though tails= did not move
+# RED control (pre-fix console-wait.sh): acts= is not in the key, so the waiter stays asleep.
+reset_stub
+sed 's/ tails=N1:LIVE/ tails=N1:LIVE acts=N1:READY#1/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+I="$(new_inbox a6292)"
+start "$I" "$WORK/a6292.out" --legs "N1.md"
+wait_hb "$I" || fail "(a6292) no baseline heartbeat"
+sed 's/ acts=N1:READY#1/ acts=N1:BLOCKED#2/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+wait_exit "$WPID"
+check "(a6292) a new actionable bullet wakes the console (rc 0)" "0" "$rc"
+check "(a6292) the wake names acts" "WAKE tick changed=acts bank=PROCEED" "$(head -n1 "$WORK/a6292.out")"
+check "(a6292) and the tick line names the leg and marker" "1" "$(grep -c 'acts=N1:BLOCKED#2' "$WORK/a6292.out")"
+
 # --- (u4959) a sustained capacity=UNDERFILLED wakes, once per streak
 # tick.sh already folds TICK_UNDERFILL_MIN into capacity=; the waiter wakes on the
 # first UNDERFILLED sample, prints the dispatchable list (stubbed here), and a

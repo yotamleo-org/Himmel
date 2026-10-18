@@ -57,3 +57,25 @@ leg_tail_status() {  # leg_tail_status <leg doc> -- prints the marker, or nothin
     fi
     sed -nE "s/$marker_re/\\3/p" "$1" 2>/dev/null | tail -n 1 | tr -d '\n'
 }
+
+# leg_actionable_status <leg doc> -- prints `<MARKER>#<n>`, or nothing: the marker of the
+# newest READY / BLOCKED / FINDING / MERGED bullet and how many such bullets the doc holds.
+# leg_tail_status above names only the newest marker, so a READY that a later LIVE, RESOLVED
+# or SUCCESSION bullet buries reads as that later one, and a second BLOCKED after a first
+# reads the same as the first. The count moves on every new actionable bullet, which is what
+# the console waiter keys on (tick.sh acts=). Same leading-token rule as the regex above.
+leg_actionable_status() {
+    sed -nE '/^- /p' "$1" 2>/dev/null | awk '
+        match($0, /^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(READY|BLOCKED|FINDING|MERGED)([^A-Za-z0-9_]|$)/) {
+            s = substr($0, RSTART, RLENGTH)
+            sub(/^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?/, "", s)
+            sub(/[^A-Za-z0-9_]$/, "", s)
+            m = s; n++
+        }
+        END { if (n) printf "%s#%d", m, n }'
+}
+
+# leg_actionable_bullet <leg doc> -- prints the newest actionable bullet's whole line, or nothing.
+leg_actionable_bullet() {
+    sed -nE '/^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(READY|BLOCKED|FINDING|MERGED)([^A-Za-z0-9_].*)?$/p' "$1" 2>/dev/null | tail -n 1
+}

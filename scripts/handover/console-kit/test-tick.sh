@@ -2058,6 +2058,24 @@ printf '%s\n' '# leg' "- 10:40 READY 4568 $head4568 GREEN" '- 10:41 LIVE — fix
 touch -d '31 minutes ago' "$d4568"
 [ "$(tail4568)" = N568:LIVE ] && printf 'ok - an old LIVE tail is never marked stale (HIMMEL-4568)\n' || { fails=$((fails+1)); printf 'FAIL - old LIVE went stale\n'; }
 
+# --- acts= is the leg's newest actionable bullet (READY, BLOCKED, FINDING, MERGED)
+# plus a count, so a READY a later LIVE/RESOLVED/SUCCESSION bullet buries, and a second
+# BLOCKED after a first, still move the wake key. RED control (pre-fix tick.sh): no acts= field.
+same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+d6292="$W/handover/HIMMEL-6292-N6292-acts-2026-10-19.md"
+head6292=0123456789abcdef0123456789abcdef01234567
+acts6292() { bash "$SUT" --legs "$d6292" 2>/dev/null | sed -n -E 's/.* acts=([^ ]*).*/\1/p'; }
+printf '%s\n' '# leg' '- 10:00 LIVE — working' "- 10:40 READY 6292 $head6292 GREEN" > "$d6292"
+same 'acts= names a READY bullet (HIMMEL-6292)' "$(acts6292)" 'N6292:READY#1'
+printf '%s\n' '# leg' "- 10:40 READY 6292 $head6292 GREEN" '- 10:41 LIVE — fixing a review finding' > "$d6292"
+same 'acts= keeps a READY a later LIVE bullet buries (HIMMEL-6292)' "$(acts6292)" 'N6292:READY#1'
+printf '%s\n' '# leg' "- 10:40 READY 6292 $head6292 GREEN" '- 10:41 SUCCESSION accepted — relay from the old console' > "$d6292"
+same 'acts= keeps a READY a later SUCCESSION bullet buries (HIMMEL-6292)' "$(acts6292)" 'N6292:READY#1'
+printf '%s\n' '# leg' '- 10:00 BLOCKED — q1' '- 10:05 RESOLVED — ruling received' '- 10:20 BLOCKED — q2' > "$d6292"
+same 'acts= counts a second BLOCKED so it wakes again (HIMMEL-6292)' "$(acts6292)" 'N6292:BLOCKED#2'
+printf '%s\n' '# leg' '- 10:00 LIVE — working' > "$d6292"
+same 'acts= is absent for a leg with no actionable bullet (HIMMEL-6292)' "$(acts6292)" ''
+
 # --- fails=<n>/<legs>[@<top-class>*<k>][!<recur>] -----------------
 # This shift = leg-failures rows with ts >= the console lock's `started`. The stub
 # queue-lock prints an owner.json for a *console-fails* doc (started 03:00Z) and

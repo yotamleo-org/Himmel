@@ -538,6 +538,7 @@ leg_forked() {
 
 legs_summary=""
 tails_summary=""
+acts_summary=""
 leg_docmap=""
 # label<TAB>lock status<TAB>candidate session names, one line per leg (procs= below).
 leg_candmap=""
@@ -585,6 +586,10 @@ for leg in $LEGS_SPLIT; do
         fi
         tail_status="$(leg_tail_status "$leg_doc")"
         [ -n "$tail_status" ] || tail_status="?"
+        # the newest READY / BLOCKED / FINDING / MERGED bullet + a count: a later LIVE,
+        # RESOLVED or SUCCESSION bullet cannot bury it, and a repeat of the same marker moves it
+        act_status="$(leg_actionable_status "$leg_doc")"
+        [ -z "$act_status" ] || acts_summary="$(csv_add "$acts_summary" "$label:$act_status")"
         # a LIVE bullet that says the leg is holding at READY (`holding at READY`, or
         # `READY <pr> <full head>`) is a READY: a claudex leg cannot SendMessage, so
         # this bullet is its only channel. Only LIVE is promoted; any other leading
@@ -659,6 +664,7 @@ done
 # the census (below) says whether it can back that up -- see the comment
 # there.
 [ -n "$tails_summary" ] || tails_summary=none
+[ -n "$acts_summary" ] || acts_summary=none
 
 # cross-reference the console doc's own `## Live state`
 # `legs:` line against the lock status just computed above (legs_summary),
@@ -1935,6 +1941,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'subscription usage budget: %s\n' "$bank"
     printf 'fill: %s\n' "$fill"
     printf 'worker-session tails: %s\n' "$tails_summary"
+    printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
     printf 'inbox size/cursor: %s\n' "$inbox_summary"
     printf 'tick monitor: %s\n' "$tick_status"
     # Printed only under --burn, so a plain --verbose tick is unchanged. An if,
@@ -1975,7 +1982,7 @@ else
     compact_field() {
         case "$1=$2" in
             *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
-            ext-prs=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
+            ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip) return ;;
         esac
@@ -1996,6 +2003,7 @@ else
     compact_field bank "$bank"
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
+    compact_field acts "$acts_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"
     [ "$burn" -eq 0 ] || compact_field burn "$burn_summary"
