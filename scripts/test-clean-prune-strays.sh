@@ -15,7 +15,7 @@ set -euo pipefail
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEAN_GARDEN="$SCRIPT_DIR/clean-garden.sh"
+CLEAN_GARDEN="$SCRIPT_DIR/worktree.sh"
 
 PASS=0
 FAIL=0
@@ -186,7 +186,7 @@ run_clean() {
     (
         export PATH="${STUB_DIR}:${PATH}"
         cd "$REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
+        bash "$CLEAN_GARDEN" prune "$@" 2>&1
     )
 }
 

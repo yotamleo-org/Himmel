@@ -248,7 +248,7 @@ the primary checkout (`git status` there must stay clean — the on-main-write
 guard blocks it, and step 1 already promised not to disturb anyone's work):
 
 ```bash
-bash scripts/clean-garden.sh --no-prune chore/drift-bump-<name>-<YYYYMMDD>
+bash scripts/worktree.sh new --no-prune chore/drift-bump-<name>-<YYYYMMDD>
 ```
 
 **Every remaining step runs from that worktree**, including the bumper and the
@@ -279,7 +279,7 @@ Handle the exit code — do not paper over any of them:
 | 4 | bump failed, both files restored | **abort** and report — the registry's `version_pin.template` no longer matches the file |
 
 If every entry came back rc 1 or rc 3, nothing changed: report why, remove the
-worktree (`bash scripts/clean-garden.sh --prune-only` or `git worktree remove`),
+worktree (`bash scripts/worktree.sh prune` or `git worktree remove`),
 and stop. **Do not open an empty PR.** With `--dry-run`, add `--dry-run` to each
 call and stop after this step.
 

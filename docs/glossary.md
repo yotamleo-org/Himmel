@@ -37,7 +37,7 @@ In prose, say the plain name, and the old name once in brackets the first time.
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
 top-tier parent must not implement inline), not a session role; the word also
-names a script (`scripts/clean-garden.sh`) and CI components. *Conductor* is
+names a script (`scripts/worktree.sh`) and CI components. *Conductor* is
 the cross-project layer, not a role in this fleet.
 
 ## Plain names for harness terms

@@ -159,7 +159,7 @@ Two edits that must move together, same discipline as `/drift-fix`:
   (for qmd, `_qmd_fork_ref()` in `scripts/lib/qmd-bin.sh`) → the new rebased SHA from step 4;
 - `synced_base` in `scripts/upstreams.json` → the upstream tag just rebased onto.
 
-Do this in a worktree (`bash scripts/clean-garden.sh --no-prune chore/fork-resync-<name>-<YYYYMMDD>`),
+Do this in a worktree (`bash scripts/worktree.sh new --no-prune chore/fork-resync-<name>-<YYYYMMDD>`),
 never in the primary checkout.
 
 Then re-run `bash scripts/check-plugin-drift.sh` from the worktree — the entry

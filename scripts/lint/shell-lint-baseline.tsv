@@ -104,8 +104,8 @@ scripts/ci/test-run-shell-tests-flake.sh	mktemp	1
 scripts/ci/test-tmp-sweep.sh	gnu-flag	1
 scripts/ci/tmp-sweep.sh	mktemp	1
 scripts/claude-glm-seed-check.sh	mktemp	1
+scripts/worktree.sh	mktemp	2
 scripts/clean-garden.sh	errexit	1
-scripts/clean-garden.sh	mktemp	2
 scripts/clean.sh	errexit	1
 scripts/cleanup/codex-sweep-cadence.sh	errexit	1
 scripts/cleanup/codex-sweep-cadence.sh	gnu-flag	1

@@ -46,7 +46,7 @@ by `new-epic`, `new-task`, `new-standalone`, `end-session`, and
 Default: `handover/` (changed from `feat/`). This
 is NOT the general feature-branch prefix used by `/worktree.sh` for
 ticket-driven feature development; those follow the `type/slug`
-convention enforced by `scripts/clean-garden.sh` (`feat|fix|chore|docs|refactor|test`).
+convention enforced by `scripts/worktree.sh` (`feat|fix|chore|docs|refactor|test`).
 
 **Auto-branch + commit + push:**
 `scripts/handover/auto-commit.sh` no longer commits on whatever branch
