@@ -362,6 +362,22 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" --
 [ "$(git -C "$tq" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in an edit made after a declined install"
 echo "ok: HIMMEL-6326 edit after a declined install blocks the auto-commit"
 
+# A change staged after the declined run still counts when the working tree
+# was put back to the recorded content.
+tr="$work/trial-staged"; mkdir -p "$tr"
+git -C "$tr" init -q -b main
+git -C "$tr" config user.email t@t; git -C "$tr" config user.name t
+git -C "$tr" config commit.gpgsign false
+git -C "$tr" commit -q --allow-empty -m "chore: initial commit"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tr" >/dev/null
+cp "$tr/.gitignore" "$work/trial-staged.gitignore"
+printf 'my-private-notes/\n' >> "$tr/.gitignore"
+git -C "$tr" add .gitignore
+cp "$work/trial-staged.gitignore" "$tr/.gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tr" --commit-install >/dev/null
+[ "$(git -C "$tr" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a staged .gitignore change"
+echo "ok: HIMMEL-6326 staged edit after a declined install blocks the auto-commit"
+
 # ── 1b. self-copy guard ─────────────────────────────────────────
 # A brand-new adopter clones himmel and runs the installer FROM INSIDE that
 # clone (TARGET == HIMMEL_ROOT). do_core() mutates its TARGET, so this can't

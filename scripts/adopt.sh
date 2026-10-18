@@ -354,7 +354,8 @@ snapshot_user_edits() {
   [[ -e "$TARGET/.git" ]] || return 0
   [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json | wc -l)" -gt 0 ]] || return 0
   local marker; marker="$(install_marker)"
-  if [[ -f "$marker" && "$(shared_file_hashes)" == "$(cat "$marker")" ]]; then
+  if [[ -f "$marker" && "$(shared_file_hashes)" == "$(cat "$marker")" ]] \
+     && git -C "$TARGET" diff --cached --quiet -- .gitignore .claude/settings.json; then
     return 0
   fi
   PRE_EDITED=1
