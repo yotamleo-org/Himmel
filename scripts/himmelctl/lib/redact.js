@@ -14,6 +14,9 @@
 // ponytail: shape-based, so a short or low-entropy secret is caught only
 // through the .env-value literals; the config UI must keep passing envValues.
 
+const fs = require('fs');
+const path = require('path');
+
 const REDACTED = '‹redacted›';
 
 const TOKEN_SHAPES = [
@@ -83,6 +86,26 @@ function envValues(raw, parseDotEnv, extraEnv) {
   return secretValues(parsed).concat(multilineValues(raw), secretValues(extraEnv));
 }
 
+// The wizard's stores (secret-store.js storePaths) as literals: each file store's
+// secret-named values, plus every file under the MCP secrets dir (one 0600 file
+// per key, so the content is the secret whatever its name).
+function storeLiterals(files, parseDotEnv, mcpDir) {
+  const out = [];
+  for (const f of files || []) {
+    try { out.push(...envValues(fs.readFileSync(f, 'utf8'), parseDotEnv)); } catch { /* absent store */ }
+  }
+  let servers = [];
+  try { servers = fs.readdirSync(mcpDir); } catch { /* no MCP store */ }
+  for (const server of servers) {
+    let keys = [];
+    try { keys = fs.readdirSync(path.join(mcpDir, server)); } catch { continue; /* not a server dir */ }
+    for (const key of keys) {
+      try { const v = fs.readFileSync(path.join(mcpDir, server, key), 'utf8').trim(); if (v.length >= MIN_LITERAL) out.push(v); } catch { /* unreadable */ }
+    }
+  }
+  return out;
+}
+
 function redact(input, opts) {
   if (typeof input !== 'string' || input === '') return input;
   let s = input;
@@ -113,4 +136,4 @@ function redactDeep(v, opts) {
   return v;
 }
 
-module.exports = { redact, redactDeep, envValues, REDACTED };
+module.exports = { redact, redactDeep, envValues, storeLiterals, REDACTED };

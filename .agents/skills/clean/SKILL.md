@@ -7,7 +7,7 @@ description: Prune merged-PR worktrees (no create). Use when the user asks to cl
 
 When the user asks to prune merged worktrees, run:
 
-    bash scripts/clean-garden.sh --prune-only
+    bash scripts/worktree.sh prune
 
 Summarize which worktrees were pruned and which were kept (and why). This only
 prunes worktrees whose PR is merged; it never creates.

@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEAN_GARDEN="$SCRIPT_DIR/clean-garden.sh"
+CLEAN_GARDEN="$SCRIPT_DIR/worktree.sh"
 # shellcheck source=lib/canon-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/canon-path.sh"
@@ -66,7 +66,7 @@ run_clean() {
     local repo="$1"; shift
     (
         cd "$repo" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
+        bash "$CLEAN_GARDEN" prune "$@" 2>&1
     )
 }
 

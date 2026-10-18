@@ -7,7 +7,7 @@
 {"id":"q07","kind":"how","src":"graphify","q":"how does the RETASK channel nonce work","gold":["docs/internals/retask-channel.md"],"reason":["nonce"]}
 {"id":"q08","kind":"where","src":"graphify","q":"where is the stale index rule defined","gold":["CLAUDE.md","AGENTS.md","scripts/luna/qmd-staleness.sh"],"reason":["not evidence"]}
 {"id":"q09","kind":"how","src":"qmd","q":"how does console succession relay work","gold":["docs/handover/leg-sections/succession.md"],"reason":["relay"]}
-{"id":"q10","kind":"what","src":"graphify","q":"which hook scripts are in MUST_RUN_CHAIN_MEMBERS","gold":["marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js","docs/internals/enforcement.md"],"reason":[]}
+{"id":"q10","kind":"what","src":"graphify","q":"which hook scripts are in MUST_RUN_CHAIN_MEMBERS","gold":["scripts/hooks/run-hook-with-bash.js","marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js","docs/internals/enforcement.md"],"reason":[]}
 {"id":"q11","kind":"how","src":"graphify","q":"console-kit go.sh GO file","gold":["scripts/handover/console-kit/go.sh"],"reason":[]}
 {"id":"q12","kind":"how","src":"qmd","q":"how is the qmd fork pinned and installed on the station","gold":["scripts/lib/qmd-bin.sh","docs/setup/updating.md"],"reason":["fork"]}
 {"id":"q13","kind":"where","src":"qmd","q":"how to mark a deliberate simplification in code with its upgrade path","gold":["docs/internals/ponytail-convention.md"],"reason":["ponytail"]}

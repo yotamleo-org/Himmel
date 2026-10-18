@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEAN_GARDEN="$SCRIPT_DIR/clean-garden.sh"
+CLEAN_GARDEN="$SCRIPT_DIR/worktree.sh"
 
 PASS=0
 FAIL=0
@@ -117,7 +117,7 @@ run_sweep_only() {
         # shellcheck disable=SC2030  # PATH override scoped to this subshell on purpose
         export PATH="${stub_bin_dir}:${PATH}"
         cd "$REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only 2>&1
+        bash "$CLEAN_GARDEN" prune 2>&1
     )
 }
 
@@ -209,7 +209,7 @@ dry_out=$(
     # shellcheck disable=SC2031  # subshell-scoped PATH override, intentional
     export PATH="${STUB_BIN}:${PATH}"
     cd "$REPO" || exit 1
-    bash "$CLEAN_GARDEN" --prune-only --dry-run 2>&1
+    bash "$CLEAN_GARDEN" prune --dry-run 2>&1
 )
 
 if [ -f "${CR_DIR}/fix/dry-run-test" ]; then

@@ -454,6 +454,8 @@ write_v100 3
 {
     printf 'HIMMEL-9101%sTask%sDone%sfirst%s\n' "$T" "$T" "$T" "$T"
     printf 'HIMMEL-9102%sTask%sTo Do%ssecond%sv1-blocker\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9103%sTask%sClosed%sclosed one%s\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9104%sTask%swont do%swont one%s\n' "$T" "$T" "$T" "$T"
 } > "$JD/v1.0.1.tsv"
 DOCV="$B/HIMMEL-nextleg-2026-09-21V-console-v.md"
 sed 's/^epics: .*/&\nversions: v1.0.0, v1.0.1/' "$DOC" > "$DOCV"  # gnu-ok: console kit is Linux-only
@@ -470,7 +472,7 @@ vhtml="$(cat "$W/v-board.html" 2>/dev/null)"
 jargv="$(cat "$W/jira-argv.log" 2>/dev/null)"
 contains 'a versions: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'each version renders done/total' "$vhtml" 'data-release="v1.0.0" data-done="3" data-total="6"'
-contains 'the second version renders its own counts' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
+contains 'the second version renders its own counts, Closed and won'"'"'t do left out of done and total' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
 contains 'the panel is titled Release <version>' "$vhtml" '<h2>Release v1.0.0</h2>'
 contains 'an open v1-blocker ticket is listed with its key' "$vhtml" 'data-blocker="HIMMEL-9001"'
 contains 'a listed blocker shows its status' "$vhtml" '<span class="pr">In Progress</span>'
@@ -966,9 +968,9 @@ printf '[{"number":3001,"title":"a","mergedAt":"%s","headRefName":"feat/a"},{"nu
     printf '{"kind":"preflight","ts":"%s","branch":"feat/a","head":"h1","classes":[{"class":"x","state":"fixed"},{"class":"y","state":"waived"}]}\n' "$(ago 1)"
     printf '{"kind":"preflight","ts":"%s","branch":"feat/b","head":"h4","classes":[]}\n' "$(ago 2)"
 } > "$CL/ledger.jsonl"
-mirror_issue() {  # mirror_issue <key> <labels json> <versions json> <status> <days old> [resolved days ago]
+mirror_issue() {  # mirror_issue <key> <labels json> <versions json> <status> <days old> [resolved days ago] [statusCategory]
     {
-        printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\nlabels: %s\nfixVersions: %s\n' "$1" "$4" "$4" "$2" "$3"
+        printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\nlabels: %s\nfixVersions: %s\n' "$1" "$4" "${7:-$4}" "$2" "$3"
         printf 'created: "%s"\nupdated: "%s"\nresolution: null\n' "$(ago "$5")" "$(ago 0)"
         [ -z "${6:-}" ] || printf 'resolved: "%s"\n' "$(ago "$6")"
         printf -- '---\n\n# %s: t\n' "$1"
@@ -978,6 +980,7 @@ mirror_issue HIMMEL-9101 '["residual"]' '["v1.1.3"]' 'To Do' 2
 mirror_issue HIMMEL-9102 '["residual-depth-1"]' '["v1.1.3"]' 'To Do' 3
 mirror_issue HIMMEL-9103 '["residual"]' '["v1.1.3"]' 'Done' 20
 mirror_issue HIMMEL-9104 '["restructure-class-x"]' '[]' 'To Do' 20
+mirror_issue HIMMEL-9106 '["residual"]' '["v1.1.3"]' 'Closed' 20 1 Done
 mirror_issue HIMMEL-9105 '["theme"]' '["v1.1.3"]' 'To Do' 1
 for n in $(seq 9110 9125); do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"]' 'To Do' 30; done
 crrun() {

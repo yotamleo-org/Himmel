@@ -243,7 +243,7 @@ collisions, draft specs for the next priority items, else idle);
 `console-kit/gen-briefs.py` writes the briefs and launchers (nothing launches
 itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 `--no-worktree` refuses a leg whose worktree does not exist and prints the
-`clean-garden.sh` line to run.
+`worktree.sh new` line to run.
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
 

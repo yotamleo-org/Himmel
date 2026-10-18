@@ -230,6 +230,10 @@ clears. ciq=unknown = the probe failed, timed out or is missing; it neither
 sets nor clears the saturation state ($TICK_STATE_DIR/tick-ciq-last, default
 ~/.himmel/state). Not part of console-wait's wake key.
 
+versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
+from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
+mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.
+
 --burn adds a per-leg context-burn field (first-turn/avg-ctx, via
 scripts/lanes/leg-burn.sh) for every doc in --legs. OPT-IN because it scans
 the Claude Code transcript root, which a plain tick must never do: a tick runs
@@ -1302,6 +1306,19 @@ if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
     fi
 fi
 
+# versionless-done=<n|unknown|skip>: Done tickets with no fixVersion, from one
+# bounded versionless-done.sh read. skip = no Jira mirror on this
+# machine, so no Jira is called; unknown = the read failed. Not in console-wait's wake key.
+vdone_summary=skip
+vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
+if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" ]; then
+    vdone_out="$(timeout -k 2 30 bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
+    case "${vdone_out%+}" in
+        ''|*[!0-9]*) vdone_summary=unknown ;;
+        *) vdone_summary="$vdone_out" ;;
+    esac
+fi
+
 # the luna vault's commit health. vault-status.sh owns the derivation
 # (and is fail-soft); a missing or failing helper reads unknown, never a failed tick.
 vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.sh" 2>/dev/null)" || vault_summary=unknown
@@ -1940,6 +1957,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'OpenRouter: %s\n' "$openrouter"
     printf 'worker-session failures: %s\n' "$fails_summary"
     printf 'vm runner: %s\n' "$vmrun_summary"
+    printf 'versionless-done: %s\n' "$vdone_summary"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ -z "$ready_tail" ] || printf 'ready-mismatch: %s\n' "${ready_tail# ready-mismatch=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
@@ -1958,7 +1976,8 @@ else
         case "$1=$2" in
             *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
-            plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip) return ;;
+            plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
+            versionless-done=0|versionless-done=skip) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -1997,6 +2016,7 @@ else
     compact_field or "$openrouter"
     compact_field fails "$fails_summary"
     compact_field vmrun "$vmrun_summary"
+    compact_field versionless-done "$vdone_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
 fi
 if [ "$emit_fp" -eq 1 ]; then

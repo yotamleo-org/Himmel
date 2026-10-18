@@ -52,13 +52,13 @@ export GH="$T/gh" GCP_AUTOSCALE_RUNNERS="$T/runners" STUB_LOG="$T/log" STUB_VAR=
 # and `.../actions/runs/<id>/jobs` responses.
 mkruns() { # ids... -> queued runs (in-progress runs: mkruns_ip)
     local first=1 id out='{"total_count":'"$#"',"workflow_runs":['
-    for id in "$@"; do [ "$first" -eq 1 ] || out="$out,"; first=0; out="$out{\"id\":$id,\"status\":\"queued\"}"; done
+    for id in "$@"; do [ "$first" -eq 1 ] || out="$out,"; first=0; out="$out{\"id\":$id,\"status\":\"queued\",\"head_repository\":{\"full_name\":\"${RUN_HEAD_REPO:-yotamleo/Himmel}\",\"fork\":${RUN_HEAD_FORK:-false}}}"; done
     printf '%s]}\n' "$out" > "$T/runs.json"
     printf '{"total_count":0,"workflow_runs":[]}\n' > "$T/runs-ip.json"
 }
 mkruns_ip() { # ids... -> in-progress runs on top of the queued set
     local first=1 id out='{"total_count":'"$#"',"workflow_runs":['
-    for id in "$@"; do [ "$first" -eq 1 ] || out="$out,"; first=0; out="$out{\"id\":$id,\"status\":\"in_progress\"}"; done
+    for id in "$@"; do [ "$first" -eq 1 ] || out="$out,"; first=0; out="$out{\"id\":$id,\"status\":\"in_progress\",\"head_repository\":{\"full_name\":\"${RUN_HEAD_REPO:-yotamleo/Himmel}\",\"fork\":${RUN_HEAD_FORK:-false}}}"; done
     printf '%s]}\n' "$out" > "$T/runs-ip.json"
 }
 mkjobs() { # run-id status label... one job per status:label pair
@@ -97,6 +97,12 @@ rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 2' "$STUB_LOG"; then ok 
 # 3c. a run seen in both listings (it moved between the reads) counts once.
 mkruns 10; mkjobs 10 queued:gcp; mkruns_ip 10
 rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 1' "$STUB_LOG"; then ok "a run in both listings counts once"; else bad "dup run: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
+
+# 3d. fork-PR runs (head_repository is the fork) never count, queued or in progress.
+RUN_HEAD_REPO=evil/Himmel RUN_HEAD_FORK=true mkruns 50; mkjobs 50 queued:gcp queued:gcp queued:gcp
+rc="$(run)"; if [ "$rc" -eq 0 ] && [ "$(ups)" -eq 0 ]; then ok "a fork run's queued gcp jobs create no VM"; else bad "fork run: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
+mkruns 10; mkjobs 10 queued:gcp; RUN_HEAD_REPO=evil/Himmel RUN_HEAD_FORK=true mkruns_ip 51; mkjobs 51 queued:gcp queued:gcp
+rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 1' "$STUB_LOG"; then ok "a fork run in progress does not add to the depth"; else bad "fork in-progress: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
 
 # 4. queue depth 7: capped at 4.
 mkruns 30; mkjobs 30 queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp

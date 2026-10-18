@@ -43,7 +43,7 @@ readable by any local user via `ps` or `/proc/<pid>/cmdline`. It scans `~/.claud
 **name and flag only, never the value**. Remedy: move the key into the server's `env` block
 (or a file it reads) and rotate the exposed key.
 
-**C42-sweep-health** (HIMMEL-3405, WARN only) runs `bash scripts/clean-garden.sh --health`
+**C42-sweep-health** (HIMMEL-3405, WARN only) runs `bash scripts/worktree.sh prune --health`
 (read-only; prints only alarm lines, nothing when healthy) and WARNs once per line:
 `LOST-COMMITS <branch> pr#<n> ahead=<k>` (commits pushed after the PR merged that never
 shipped), `STUCK <path> <reason> since <ts>` (a worktree/branch the prune sweep keeps

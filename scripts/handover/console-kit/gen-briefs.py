@@ -40,10 +40,10 @@ is refused, since it would otherwise fall through to the closing merge (HIMMEL-6
 The brief follows the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
 leg preface and are not repeated.
 
-Worktrees: `scripts/clean-garden.sh <branch> --no-prune` from --repo
+Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
 --no-worktree skips it, but refuses a leg whose worktree does not exist yet and prints the
-clean-garden line to run; it never creates one, HIMMEL-5517).
+worktree.sh line to run; it never creates one, HIMMEL-5517).
 --bucket: a bare name (no slash, e.g. `himmel`) resolves to <handover-root>/<user>/<name>, like
 console.sh --bucket; a path is made absolute. A bucket inside a git checkout that is not under
 the handover root is refused (HIMMEL-5517). Output files, in the bucket: the brief
@@ -367,12 +367,12 @@ def main():
             # headed-arm-leg.sh refuses a resume_cwd that is not a git worktree; never create it here.
             top = subprocess.run(['git', '-C', l['wt'], 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
             if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(l['wt']):
-                die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the legs after it. Create it from %s first: bash scripts/clean-garden.sh %s --no-prune' % (l['wt'], l['label'], a.repo, l['branch']))
+                die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the legs after it. Create it from %s first: bash scripts/worktree.sh new %s --no-prune' % (l['wt'], l['label'], a.repo, l['branch']))
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
     for l in legs:
         if not a.no_worktree:
-            argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/clean-garden.sh', l['branch'], '--no-prune']
+            argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
             r = subprocess.run(argv, cwd=a.repo, capture_output=True, text=True)
             tail = (r.stdout + r.stderr).strip().splitlines()
             print('%s worktree: %s' % (l['label'], tail[-1][:90] if tail else 'rc=%d' % r.returncode))

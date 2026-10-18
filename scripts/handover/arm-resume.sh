@@ -2803,7 +2803,7 @@ if [ -n "$WORKTREE_BRANCH" ]; then
         echo "ERR arm-resume: --worktree branch must be type/slug (type in feat|fix|chore|docs|refactor|test): '$WORKTREE_BRANCH'" >&2
         exit 1
     fi
-    # clean-garden.sh (which worktree.sh wraps) creates the worktree under the
+    # worktree.sh creates the worktree under the
     # checkout's own .claude/worktrees/<type>+<slug>/. Compute that path so the
     # dry-run can report it and the pre-trust below can target it. SCRIPT_DIR is
     # scripts/handover, so ../.. is the repo root of THIS checkout (run from the

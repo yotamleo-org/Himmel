@@ -335,7 +335,9 @@ const primaryRoot = () => {
 const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length ? join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
 // the legs' Jira ladder, in the order a Release panel shows it.
 const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
-const DONE_STATUS =/^(done|closed|resolved)$/i;
+const DONE_STATUS = /^(done|resolved)$/i;
+// Closed and won't do are out of every count, as the tracker has it.
+const OUT_STATUS = /^(closed|wont do|won't do|wont fix|won't fix)$/i;
 const releaseOf = (version) => {
     const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', '1000'];
     let out;
@@ -349,9 +351,10 @@ const releaseOf = (version) => {
     const rows = lines.filter((f) => f.length >= 5 && /^[A-Z][A-Z0-9]*-\d+$/.test(f[0]))
         .map((f) => ({ key: f[0], status: f[2].trim(), title: f[3], labels: (f[4] || '').split(',').map((x) => x.trim()) }));
     if (rows.length !== lines.length) return { version, unavailable: true };
-    const open = rows.filter((r) => !DONE_STATUS.test(r.status));
+    const counted = rows.filter((r) => !OUT_STATUS.test(r.status));
+    const open = counted.filter((r) => !DONE_STATUS.test(r.status));
     const byStatus = Object.fromEntries(LEG_STATUSES.map((st) => [st, rows.filter((r) => r.status === st).length]));
-    return { version, done: rows.length - open.length, total: rows.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
+    return { version, done: counted.length - open.length, total: counted.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
 };
 const releases = versionsDeclared.map(releaseOf);
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
@@ -767,14 +770,15 @@ const crLoopSection = (() => {
             const head = readFileSync(join(dir, name), 'utf8').slice(0, 3000).split('\n---')[0];
             const val = (k) => { const m = new RegExp(`^${k}: (.*)$`, 'm').exec(head); if (!m) return null; try { return JSON.parse(m[1]); } catch { return m[1]; } };
             const labels = val('labels') || [], status = String(val('status') || ''), cat = String(val('statusCategory') || '');
-            const done = DONE_STATUS.test(status) || DONE_STATUS.test(cat);
-            if (labels.some((x) => /^restructure-class-/.test(x)) && !done) restructure += 1;
+            const out = OUT_STATUS.test(status) || OUT_STATUS.test(cat);
+            const done = !out && (DONE_STATUS.test(status) || DONE_STATUS.test(cat));
+            if (labels.some((x) => /^restructure-class-/.test(x)) && !done && !out) restructure += 1;
             if (!labels.some((x) => /(^|-)residual(-|$)/.test(x))) continue;
             if (Date.parse(val('created')) >= since) inflow += 1;
             if (done) {
                 const res = Date.parse(val('resolved'));
                 if (Number.isNaN(res)) doneMissing += 1; else if (res >= since) outflow += 1;
-            } else {
+            } else if (!out) {
                 for (const v of val('fixVersions') || []) slots.set(v, (slots.get(v) || 0) + 1);
             }
         }

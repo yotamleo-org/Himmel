@@ -104,3 +104,8 @@ Read on demand: `leg-preface.md` names this file when a required CI job goes red
   defect: measure it alone and as concurrent runs, set the budget to the
   loaded figure x2 (the `run-shell-tests.sh` rule), and record the numbers in
   a Results bullet. Never retry it until it passes.
+- **After the review-round cap, only a priority finding earns a commit.** A Critical, Important or priority-pool finding is
+  fixed and run through the delta round. Anything else is deferred to a ticket
+  with no commit and no round. A change that does land after the cap is cleared
+  by a signed judge GO at the exact head (`review-round.sh judge-go`,
+  HIMMEL-6303): ask the console for it in a `FINDING`, never for a new full round.

@@ -399,6 +399,10 @@ const PRESENCE_SOURCES = {
   BITBUCKET_EMAIL: { kind: 'repo-env' },
   FIRECRAWL_API_KEY: { kind: 'process-env' },
   FIRECRAWL_BASE_URL: { kind: 'process-env' },
+  JIRA_API_TOKEN: { kind: 'repo-env' },
+  JIRA_BASE_URL: { kind: 'repo-env' },
+  JIRA_EMAIL: { kind: 'repo-env' },
+  JIRA_PROJECT_KEY: { kind: 'repo-env' },
   TELEGRAM_BOT_TOKEN: { kind: 'bridge-env' },
   WHISPER_MODEL: { kind: 'file', home: '.himmel/whisper/ggml-small.bin', override: 'WHISPER_MODEL', dirVar: 'WHISPER_DIR', name: 'ggml-small.bin' },
 };
