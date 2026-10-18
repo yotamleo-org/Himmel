@@ -2,36 +2,40 @@
 # gcp-net.sh -- the locked-down network for the ephemeral GCP CI runners.
 # Run it on the station.
 #
-#   bash scripts/ci/gcp-net.sh net-up      create the VPC, subnet, NAT and firewall policy (idempotent)
+#   bash scripts/ci/gcp-net.sh net-up      create the VPC, subnet, NAT, proxy VM and firewall policy (idempotent)
 #   bash scripts/ci/gcp-net.sh net-down    delete all of it, in reverse order
 #   bash scripts/ci/gcp-net.sh status      what exists, and whether the IAP debug rule is on
 #   bash scripts/ci/gcp-net.sh debug-on    allow IAP-only SSH (35.235.240.0/20, tcp:22) into the runners
 #   bash scripts/ci/gcp-net.sh debug-off   remove that rule (the default state)
+#   bash scripts/ci/gcp-net.sh proxy-env   print the HTTPS_PROXY/HTTP_PROXY/NO_PROXY a runner exports
 #
 # gcp-runners.sh places its VMs on the subnet named himmel-ci-net with no
 # external IP; that name is the only coupling between the two scripts.
 #
-# The model: a custom-mode VPC (no default allow rules), no external IPs, Cloud
-# NAT for egress, and ONE global network firewall policy that is the whole rule
-# set. Ingress is denied outright. Egress is denied by default and opened only
-# to FQDNs: GitHub's self-hosted runner hosts, the package hosts ci.yml and the
-# runner startup fetch, and the Google APIs the VM uses. No allow rule names
-# 0.0.0.0/0. Both deny rules log, so a blocked connection is visible in Cloud
-# Logging. FQDN objects need no extra API on the Standard tier; a rule that the
-# project refuses fails net-up loudly, there is no fallback to IP ranges.
+# The model: a custom-mode VPC (no default allow rules), no external IPs, and ONE
+# global network firewall policy that is the whole rule set. Ingress is denied
+# outright. A runner's only way out is tcp:3128 to ONE squid proxy VM on the same
+# subnet (fixed internal address, no external IP, egress through Cloud NAT); the
+# proxy allows the hosts in PROXY_HOSTS and refuses everything else, which is how
+# wildcard hosts such as .githubusercontent.com are allowed (Standard-tier FQDN
+# firewall objects reject wildcards). The one FQDN rule left is the exact Google
+# API hosts, reached over Private Google Access. Both deny rules log, so a blocked
+# connection is visible in Cloud Logging.
 #
-# Sources of the allowlist (edit the three lists below, nothing else):
-#   GITHUB_HOSTS  docs.github.com "Communication requirements for self-hosted runners"
-#   PKG_HOSTS     .github/workflows/ci.yml (npm ci, pip, setup-bun/-node, gitleaks) and
-#                 gcp-runner-startup.sh (apt-get, pip)
-#   GCP_HOSTS     Google APIs a runner VM or the ops tooling talks to
+# The allowlist is data: edit PROXY_HOSTS (a leading dot means the domain and its
+# subdomains; sources: docs.github.com "Communication requirements for
+# self-hosted runners", .github/workflows/ci.yml and gcp-runner-startup.sh) or
+# GCP_HOSTS, then re-run net-up.
 #
 # No service-account key exists (org policy): every gcloud call impersonates
 # the runner SA from the operator's own gcloud login.
 #
-# ponytail: the allowlist is a static host list, so a new package source needs a
-# net-up re-run; upgrade to a per-job proxy that logs the observed hosts
-# (follow-up if the list churns).
+# ponytail: the allowlist is a static host list and a changed one reaches an
+# existing proxy only at its next boot (net-up refreshes the startup script, it
+# does not reset the VM); upgrade to a reset-on-change step if the list churns.
+# ponytail: one e2-micro proxy is a single point of failure with limited
+# throughput; upgrade to a larger machine type or a managed instance group if
+# runner traffic outgrows it.
 set -u
 
 PROJECT="${GCP_NET_PROJECT:-himmel-ci}"
@@ -45,27 +49,27 @@ NAT="himmel-ci-nat"
 POLICY="himmel-ci-net-policy"
 ASSOC="himmel-ci-net-assoc"
 IAP_RANGE="35.235.240.0/20"
+PROXY_VM="himmel-ci-proxy"
+PROXY_ZONE="${REGION}-a"
+PROXY_IP="10.10.0.10"  # leak-allow: private-lan-ip the proxy's fixed address inside the dedicated runner VPC
+PROXY_PORT=3128
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
 
 # Rule priorities: lower wins. Allows sit below the denies.
 PRIO_IAP=500
-PRIO_GITHUB=1000
-PRIO_PKG=1010
+PRIO_RUNNER_PROXY=1000
+PRIO_PROXY_IN=1010
+PRIO_PROXY_OUT=1015
 PRIO_GCP=1020
 PRIO_DENY_IN=60000
 PRIO_DENY_OUT=60001
 
-GITHUB_HOSTS=(
-    github.com api.github.com codeload.github.com
-    '*.actions.githubusercontent.com' results-receiver.actions.githubusercontent.com
-    objects.githubusercontent.com objects-origin.githubusercontent.com
-    github-releases.githubusercontent.com github-registry-files.githubusercontent.com
-    release-assets.githubusercontent.com github-cloud.githubusercontent.com
-    pkg-containers.githubusercontent.com '*.pkg.github.com' ghcr.io
+# Squid dstdomain entries: a leading dot is the domain and every subdomain. Never
+# list a name and a dot-suffix that covers it (squid rejects the overlap).
+PROXY_HOSTS=(
+    github.com api.github.com codeload.github.com ghcr.io
     github-cloud.s3.amazonaws.com dependabot-actions.githubapp.com api.snapcraft.io
-    '*.blob.core.windows.net' '*.core.windows.net'
-)
-PKG_HOSTS=(
+    .githubusercontent.com .pkg.github.com .core.windows.net
     registry.npmjs.org pypi.org files.pythonhosted.org nodejs.org
     archive.ubuntu.com security.ubuntu.com "$REGION.gce.archive.ubuntu.com"
 )
@@ -141,7 +145,57 @@ rule() {
     esac
 }
 
+# startup_script <file>: the proxy VM's boot script, which installs squid and
+# writes a config that allows only PROXY_HOSTS on ports 80/443.
+startup_script() {
+    local h
+    {
+        echo '#!/bin/bash'
+        echo 'set -e'
+        echo 'export DEBIAN_FRONTEND=noninteractive'
+        echo 'apt-get update -qq'
+        echo 'apt-get install -y -qq squid'
+        echo "cat > /etc/squid/squid.conf <<'SQUIDCONF'"
+        echo "http_port $PROXY_PORT"
+        echo 'acl safe_ports port 80 443'
+        echo 'http_access deny !safe_ports'
+        for h in "${PROXY_HOSTS[@]}"; do echo "acl allowed_hosts dstdomain $h"; done
+        echo 'http_access allow allowed_hosts'
+        echo 'http_access deny all'
+        echo 'cache deny all'
+        echo 'SQUIDCONF'
+        echo 'systemctl enable squid'
+        echo 'systemctl restart squid'
+    } > "$1"
+}
+
+# proxy_vm <script file>: create the squid VM when confirmed absent, else refresh
+# its startup script in place.
+proxy_vm() {
+    present compute instances describe "$PROXY_VM" --zone="$PROXY_ZONE"
+    case $? in
+        0) gc compute instances add-metadata "$PROXY_VM" --zone="$PROXY_ZONE" \
+               --metadata-from-file=startup-script="$1" || die "refreshing the proxy startup script failed"
+           echo "gcp-net: proxy $PROXY_VM exists; startup script refreshed (applies at its next boot)" ;;
+        1) gc compute instances create "$PROXY_VM" --zone="$PROXY_ZONE" --machine-type=e2-micro \
+               --subnet="$SUBNET" --private-network-ip="$PROXY_IP" --no-address \
+               --boot-disk-type=pd-standard --image-family=debian-12 --image-project=debian-cloud \
+               --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring \
+               --no-service-account --no-scopes \
+               --metadata=block-project-ssh-keys=TRUE --metadata-from-file=startup-script="$1" \
+               || die "creating proxy $PROXY_VM failed"
+           echo "gcp-net: proxy $PROXY_VM created" ;;
+        *) die "checking proxy $PROXY_VM failed" ;;
+    esac
+}
+
 cmd_net_up() {
+    local startup
+    startup="$(mktemp -t gcp-net-startup.XXXXXX)" || die "mktemp failed"
+    # shellcheck disable=SC2064
+    trap "rm -f '$startup'" EXIT
+    startup_script "$startup"
+
     ensure "network $NET" compute networks describe "$NET" -- \
         compute networks create "$NET" --subnet-mode=custom --bgp-routing-mode=regional \
         --network-firewall-policy-enforcement-order=BEFORE_CLASSIC_FIREWALL
@@ -154,19 +208,23 @@ cmd_net_up() {
         compute routers nats create "$NAT" --router="$ROUTER" --region="$REGION" \
         --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges \
         --enable-logging --log-filter=ERRORS_ONLY
+    proxy_vm "$startup"
     ensure "firewall policy $POLICY" compute network-firewall-policies describe "$POLICY" --global -- \
         compute network-firewall-policies create "$POLICY" --global \
-        --description="himmel-ci runners: deny all ingress, FQDN-allowlisted egress"
+        --description="himmel-ci runners: deny all ingress, egress only to the allowlisting proxy"
 
-    rule "$PRIO_GITHUB" "github egress" --direction=EGRESS --action=allow \
-        --layer4-configs=tcp:443 --dest-fqdns="$(join_csv "${GITHUB_HOSTS[@]}")" \
-        --description="GitHub self-hosted runner hosts"
-    rule "$PRIO_PKG" "package egress" --direction=EGRESS --action=allow \
-        --layer4-configs=tcp:80,tcp:443 --dest-fqdns="$(join_csv "${PKG_HOSTS[@]}")" \
-        --description="package hosts ci.yml and the runner startup fetch"
+    rule "$PRIO_RUNNER_PROXY" "runners to proxy" --direction=EGRESS --action=allow \
+        --layer4-configs=tcp:"$PROXY_PORT" --src-ip-ranges="$RANGE" --dest-ip-ranges="$PROXY_IP/32" \
+        --description="the only runner egress: the allowlisting proxy"
+    rule "$PRIO_PROXY_IN" "proxy ingress" --direction=INGRESS --action=allow \
+        --layer4-configs=tcp:"$PROXY_PORT" --src-ip-ranges="$RANGE" --dest-ip-ranges="$PROXY_IP/32" \
+        --description="runners reach the proxy port"
+    rule "$PRIO_PROXY_OUT" "proxy to the web" --direction=EGRESS --action=allow \
+        --layer4-configs=tcp:80,tcp:443 --src-ip-ranges="$PROXY_IP/32" --dest-ip-ranges=0.0.0.0/0 \
+        --description="the proxy host's own egress (squid filters by hostname)"
     rule "$PRIO_GCP" "google apis egress" --direction=EGRESS --action=allow \
         --layer4-configs=tcp:443 --dest-fqdns="$(join_csv "${GCP_HOSTS[@]}")" \
-        --description="Google APIs"
+        --description="Google APIs, exact hosts, via Private Google Access"
     rule "$PRIO_DENY_IN" "deny all ingress" --direction=INGRESS --action=deny \
         --layer4-configs=all --src-ip-ranges=0.0.0.0/0 --enable-logging \
         --description="deny all ingress"
@@ -178,7 +236,7 @@ cmd_net_up() {
     ensure "policy association $ASSOC" \
         compute network-firewall-policies associations describe --name="$ASSOC" "${POL[@]}" -- \
         compute network-firewall-policies associations create --name="$ASSOC" "${POL[@]}" --network="$NET"
-    echo "gcp-net: net-up done; runners belong on subnet $SUBNET ($REGION) with --no-address"
+    echo "gcp-net: net-up done; runners belong on subnet $SUBNET ($REGION) with --no-address and the output of: bash scripts/ci/gcp-net.sh proxy-env"
 }
 
 cmd_net_down() {
@@ -187,6 +245,8 @@ cmd_net_down() {
         compute network-firewall-policies associations delete "$ASSOC" "${POL[@]}"
     drop "firewall policy $POLICY" compute network-firewall-policies describe "$POLICY" --global -- \
         compute network-firewall-policies delete "$POLICY" --global --quiet
+    drop "proxy $PROXY_VM" compute instances describe "$PROXY_VM" --zone="$PROXY_ZONE" -- \
+        compute instances delete "$PROXY_VM" --zone="$PROXY_ZONE" --quiet
     drop "nat $NAT" compute routers nats describe "$NAT" --router="$ROUTER" --region="$REGION" -- \
         compute routers nats delete "$NAT" --router="$ROUTER" --region="$REGION" --quiet
     drop "router $ROUTER" compute routers describe "$ROUTER" --region="$REGION" -- \
@@ -206,6 +266,7 @@ cmd_status() {
     echo "subnet $SUBNET ($REGION): $(probe compute networks subnets describe "$SUBNET" --region="$REGION")"
     echo "router $ROUTER: $(probe compute routers describe "$ROUTER" --region="$REGION")"
     echo "nat $NAT: $(probe compute routers nats describe "$NAT" --router="$ROUTER" --region="$REGION")"
+    echo "proxy $PROXY_VM ($PROXY_IP:$PROXY_PORT): $(probe compute instances describe "$PROXY_VM" --zone="$PROXY_ZONE")"
     echo "policy $POLICY: $(probe compute network-firewall-policies describe "$POLICY" --global)"
     echo "association $ASSOC: $(probe compute network-firewall-policies associations describe --name="$ASSOC" "${POL[@]}")"
     echo "IAP debug rule $PRIO_IAP: $(probe compute network-firewall-policies rules describe "$PRIO_IAP" "${POL[@]}")"
@@ -223,11 +284,18 @@ cmd_debug_off() {
         compute network-firewall-policies rules delete "$PRIO_IAP" "${POL[@]}"
 }
 
+cmd_proxy_env() {
+    echo "HTTPS_PROXY=http://$PROXY_IP:$PROXY_PORT"
+    echo "HTTP_PROXY=http://$PROXY_IP:$PROXY_PORT"
+    echo "NO_PROXY=169.254.169.254,metadata.google.internal,.googleapis.com"
+}
+
 case "${1:-}" in
     net-up) cmd_net_up ;;
     net-down) cmd_net_down ;;
     status) cmd_status ;;
     debug-on) cmd_debug_on ;;
     debug-off) cmd_debug_off ;;
-    *) die "usage: gcp-net.sh net-up | net-down | status | debug-on | debug-off" 2 ;;
+    proxy-env) cmd_proxy_env ;;
+    *) die "usage: gcp-net.sh net-up | net-down | status | debug-on | debug-off | proxy-env" 2 ;;
 esac

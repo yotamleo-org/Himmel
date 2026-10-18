@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # scripts/ci/test-gcp-net.sh -- regression suite for scripts/ci/gcp-net.sh, the
-# zero-ingress VPC and FQDN egress allowlist under the GCP CI runners. gcloud is
-# a stub on $GCLOUD; no live call is made. Pins: net-up builds the custom-mode
-# VPC, the Private-Google-Access subnet, the NAT and the firewall policy with a
-# deny-all ingress and a deny-all egress rule, every allow rule carries FQDNs
-# (never a 0.0.0.0/0 allow), the allowlist covers the hosts ci.yml fetches,
-# debug-on/off touch only the IAP rule, net-up is idempotent, and every gcloud
-# call is impersonated and never touches the default VPC.
+# zero-ingress VPC and allowlisting egress proxy under the GCP CI runners. gcloud
+# is a stub on $GCLOUD; no live call is made. Pins: net-up builds the custom-mode
+# VPC, the Private-Google-Access subnet, the NAT, one shielded squid proxy VM
+# with no external IP, and a firewall policy whose only runner egress is the
+# proxy port (plus the Google APIs by exact FQDN) under a deny-all ingress and a
+# deny-all egress rule; the proxy allowlist covers the hosts ci.yml fetches and
+# denies the rest; debug-on/off touch only the IAP rule; net-up is idempotent;
+# a failed lookup is never read as absence; every gcloud call is impersonated and
+# never touches the default VPC.
 #
 # Usage: bash scripts/ci/test-gcp-net.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -16,6 +18,8 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$ROOT/scripts/ci/gcp-net.sh"
 SA="himmel-ci-runner@himmel-ci.iam.gserviceaccount.com"
+RANGE="10.10.0.0/24"  # leak-allow: private-lan-ip the runner subnet's own CIDR in the dedicated runner VPC
+PROXY_IP="10.10.0.10"  # leak-allow: private-lan-ip the proxy's fixed address inside the dedicated runner VPC
 fails=0
 ok()  { echo "ok - $1"; }
 bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
@@ -25,10 +29,15 @@ trap 'rm -rf "$T"' EXIT
 
 # describe exits 1 with gcloud's "was not found" (resource absent) unless
 # $STUB_EXISTS is set, or with a PERMISSION_DENIED error when $STUB_DESCRIBE_ERR
-# is set; STUB_FAIL=<word> makes any call whose text contains the word fail.
+# is set; STUB_FAIL=<word> makes any call whose text contains the word fail. A
+# --metadata-from-file=startup-script=<file> is copied to $STUB_LOG.startup, as
+# net-up deletes its temp file.
 cat > "$T/gcloud" <<'STUB'
 #!/usr/bin/env bash
 printf 'GCLOUD %s\n' "$*" >> "$STUB_LOG"
+for a in "$@"; do
+    case "$a" in --metadata-from-file=startup-script=*) cp "${a#*=startup-script=}" "$STUB_LOG.startup" ;; esac
+done
 [ -n "${STUB_FAIL:-}" ] && case "$*" in *"$STUB_FAIL"*) exit 1 ;; esac
 case "$*" in
     *" describe "*)
@@ -40,11 +49,21 @@ STUB
 chmod +x "$T/gcloud"
 
 export GCLOUD="$T/gcloud" STUB_LOG="$T/log"
-run() { : > "$STUB_LOG"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
+run() { : > "$STUB_LOG"; rm -f "$STUB_LOG.startup"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
 # rules_create -> the logged `rules create` lines
 rules_create() { grep 'network-firewall-policies rules create' "$STUB_LOG"; }
-# rule_for <priority> -> the one rules-create line with that priority
-rule_for() { rules_create | grep -E "rules create $1( |\$)"; }
+# covered <host> <squid conf>: 0 when a dstdomain entry matches the host (exact, or
+# a leading-dot entry for the domain and its subdomains).
+covered() {
+    local h="$1" f="$2" d
+    while read -r d; do
+        case "$d" in
+            .*) [ "$h" = "${d#.}" ] && return 0; case "$h" in *"$d") return 0 ;; esac ;;
+            *) [ "$h" = "$d" ] && return 0 ;;
+        esac
+    done < <(sed -n 's/^acl allowed_hosts dstdomain //p' "$f")
+    return 1
+}
 
 # 1. no subcommand and an unknown subcommand are usage errors that call gcloud never.
 for a in "" bogus; do
@@ -63,9 +82,19 @@ grep -q 'compute routers nats create himmel-ci-nat .*--router=himmel-ci-router' 
 grep -q 'compute network-firewall-policies create himmel-ci-net-policy .*--global' "$STUB_LOG" && ok "global firewall policy created" || bad "no firewall policy create"
 grep -q 'network-firewall-policies associations create .*--firewall-policy=himmel-ci-net-policy .*--network=himmel-ci-net' "$STUB_LOG" \
     && ok "policy is associated with the VPC" || bad "no policy association"
-order="$(grep -o -E 'networks create|subnets create|routers create|nats create|network-firewall-policies create|associations create' "$STUB_LOG" | tr '\n' ',')"
-want="networks create,subnets create,routers create,nats create,network-firewall-policies create,associations create,"
-if [ "$order" = "$want" ]; then ok "pieces are created in dependency order"; else bad "create order: $order"; fi
+order="$(grep -o -E 'networks create|subnets create|routers create|nats create|instances create|network-firewall-policies create|associations create' "$STUB_LOG" | tr '\n' ',')"
+want="networks create,subnets create,routers create,nats create,instances create,network-firewall-policies create,associations create,"
+if [ "$order" = "$want" ]; then ok "pieces are created in dependency order, association last"; else bad "create order: $order"; fi
+
+# 2b. the proxy VM: one squid host, no external IP, shielded, minimal identity, no SSH.
+pvm="$(grep 'compute instances create' "$STUB_LOG")"
+if [ "$(echo "$pvm" | grep -c .)" -eq 1 ]; then ok "exactly one VM is created by net-up"; else bad "net-up creates $(echo "$pvm" | grep -c .) VMs"; fi
+for f in --no-address --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring --no-service-account --no-scopes \
+    --machine-type=e2-micro --boot-disk-type=pd-standard --zone=us-central1-a --subnet=himmel-ci-net "--private-network-ip=$PROXY_IP" \
+    --metadata=block-project-ssh-keys=TRUE; do
+    if echo "$pvm" | grep -q -F -- "$f"; then ok "proxy VM carries $f"; else bad "proxy VM lacks $f"; fi
+done
+if echo "$pvm" | grep -q -E -- '--address|--network-interface|access-config'; then bad "proxy VM may get an external address"; else ok "proxy VM has no external address flag"; fi
 
 # 3. deny-all ingress and deny-all egress exist, log, and are the lowest-precedence rules.
 ing="$(rules_create | grep -- '--direction=INGRESS' | grep -- '--action=deny')"
@@ -76,24 +105,44 @@ maxallow="$(rules_create | grep -- '--action=allow' | sed -E 's/.*rules create (
 mindeny="$(rules_create | grep -- '--action=deny' | sed -E 's/.*rules create ([0-9]+) .*/\1/' | sort -n | head -1)"
 if [ -n "$maxallow" ] && [ -n "$mindeny" ] && [ "$maxallow" -lt "$mindeny" ]; then ok "every allow outranks every deny"; else bad "allow max=$maxallow deny min=$mindeny"; fi
 
-# 4. no allow rule opens to 0.0.0.0/0 (or ::/0), and every allow egress rule is FQDN-scoped.
-if rules_create | grep -- '--action=allow' | grep -q -E '0\.0\.0\.0/0|::/0'; then bad "an allow rule is open to the world"; else ok "no allow rule uses 0.0.0.0/0"; fi
+# 4. the allow rules: runners reach only the proxy port (and the Google APIs by exact
+#    FQDN); only the proxy host may open to the world, and only on web ports.
 allow_egress="$(rules_create | grep -- '--action=allow' | grep -- '--direction=EGRESS')"
-n_allow="$(echo "$allow_egress" | grep -c .)"
-n_fqdn="$(echo "$allow_egress" | grep -c -- '--dest-fqdns=')"
-if [ "$n_allow" -ge 1 ] && [ "$n_allow" -eq "$n_fqdn" ]; then ok "all $n_allow allow-egress rules carry --dest-fqdns"; else bad "allow-egress rules=$n_allow with FQDNs=$n_fqdn"; fi
-if rules_create | grep -- '--action=allow' | grep -q -- '--direction=INGRESS'; then bad "net-up created an allow ingress rule (debug is off by default)"; else ok "no allow ingress rule by default"; fi
+allow_ingress="$(rules_create | grep -- '--action=allow' | grep -- '--direction=INGRESS')"
+world="$(rules_create | grep -- '--action=allow' | grep -E -- '0\.0\.0\.0/0|::/0')"
+if [ "$(echo "$world" | grep -c .)" -eq 1 ] && echo "$world" | grep -q -- "--src-ip-ranges=$PROXY_IP/32" && echo "$world" | grep -q -- '--layer4-configs=tcp:80,tcp:443'; then
+    ok "the one allow rule open to the world is sourced from the proxy IP, tcp:80/443 only"
+else bad "world-open allow rules: $world"; fi
+bad_egress="$(echo "$allow_egress" | grep -v -- "--dest-ip-ranges=$PROXY_IP/32" | grep -v -- '--dest-fqdns=' | grep -v -- "--src-ip-ranges=$PROXY_IP/32")"
+if [ -z "$bad_egress" ]; then ok "every allow-egress rule is proxy-bound, proxy-sourced or FQDN-scoped"; else bad "unscoped allow-egress: $bad_egress"; fi
+runner_to_proxy="$(echo "$allow_egress" | grep -- "--dest-ip-ranges=$PROXY_IP/32")"
+if [ "$(echo "$runner_to_proxy" | grep -c .)" -eq 1 ] && echo "$runner_to_proxy" | grep -q -- '--layer4-configs=tcp:3128 '; then ok "runners' only proxy egress is tcp:3128"; else bad "runner->proxy egress: $runner_to_proxy"; fi
+if echo "$allow_egress" | grep -- '--dest-fqdns=' | grep -q -F '*'; then bad "an FQDN rule carries a wildcard (Standard-tier FQDN objects reject them)"; else ok "no FQDN rule carries a wildcard"; fi
+n_fq="$(echo "$allow_egress" | grep -c -- '--dest-fqdns=')"
+if [ "$n_fq" -eq 1 ] && echo "$allow_egress" | grep -- '--dest-fqdns=' | grep -q 'storage.googleapis.com'; then ok "one FQDN rule remains: the Google APIs"; else bad "FQDN rules: $n_fq"; fi
+if [ "$(echo "$allow_ingress" | grep -c .)" -eq 1 ] && echo "$allow_ingress" | grep -q -- "--src-ip-ranges=$RANGE" && echo "$allow_ingress" | grep -q -- "--dest-ip-ranges=$PROXY_IP/32" \
+    && echo "$allow_ingress" | grep -q -- '--layer4-configs=tcp:3128'; then
+    ok "the only allow ingress is runners to the proxy on tcp:3128 (debug is off by default)"
+else bad "allow ingress by default: $allow_ingress"; fi
 
-# 5. fixture copied from the real environment: every https host ci.yml fetches is allowed.
-#    (the gitleaks release download and the actions the shard setup uses).
+# 5. the proxy allowlist (squid conf shipped in the startup script): the fixture is
+#    every https host ci.yml fetches; GitHub's documented runner hosts too.
+conf="$STUB_LOG.startup"
+[ -s "$conf" ] && ok "net-up ships a startup script with the squid config" || bad "no startup script captured"
+if grep -q -E '^http_port 3128$' "$conf" && grep -q -E '^http_access deny all$' "$conf" && ! grep -q -E '^http_access allow all$' "$conf" \
+    && [ "$(grep '^http_access' "$conf" | tail -1)" = "http_access deny all" ]; then ok "squid listens on 3128 and ends with http_access deny all"; else bad "squid access rules"; fi
+grep -q -E '^acl safe_ports port 80 443$' "$conf" && grep -q -E '^http_access deny !safe_ports$' "$conf" && ok "squid allows only ports 80 and 443" || bad "squid port restriction missing"
 hosts="$(grep -o -E 'https://[a-zA-Z0-9.-]+' "$ROOT/.github/workflows/ci.yml" | sed 's#https://##' | sort -u)"
 [ -n "$hosts" ] || bad "fixture: ci.yml yielded no https hosts"
 for h in $hosts; do
-    if echo "$allow_egress" | grep -q -E -- "--dest-fqdns=([^ ]*,)?$h(,| |\$)"; then ok "ci.yml host $h is on the allowlist"; else bad "ci.yml host $h is not allowed"; fi
+    if covered "$h" "$conf"; then ok "ci.yml host $h is on the proxy allowlist"; else bad "ci.yml host $h is not allowed"; fi
 done
-# GitHub's documented self-hosted runner hosts (docs.github.com, Communication requirements).
-for h in github.com api.github.com codeload.github.com objects.githubusercontent.com '*.actions.githubusercontent.com' ghcr.io; do
-    if echo "$allow_egress" | grep -q -F -- "$h"; then ok "GitHub runner host $h is on the allowlist"; else bad "GitHub runner host $h missing"; fi
+for h in github.com api.github.com codeload.github.com objects.githubusercontent.com results-receiver.actions.githubusercontent.com \
+    pipelines.actions.githubusercontent.com ghcr.io npm.pkg.github.com acct123.blob.core.windows.net registry.npmjs.org pypi.org; do
+    if covered "$h" "$conf"; then ok "runner host $h is on the proxy allowlist"; else bad "runner host $h missing"; fi
+done
+for h in example.com evil.githubusercontent.com.attacker.net core.windows.net.attacker.net; do
+    if covered "$h" "$conf"; then bad "$h must not be on the proxy allowlist"; else ok "$h is not on the proxy allowlist"; fi
 done
 
 # 6. every gcloud call is impersonated, in project himmel-ci, never the default VPC.
@@ -103,19 +152,25 @@ prj="$(grep '^GCLOUD ' "$STUB_LOG" | grep -c -- '--project=himmel-ci')"
 if [ "$total" -gt 0 ] && [ "$total" -eq "$imp" ] && [ "$total" -eq "$prj" ]; then ok "all $total gcloud calls impersonate the runner SA in himmel-ci"; else bad "calls=$total impersonated=$imp project=$prj"; fi
 if grep '^GCLOUD ' "$STUB_LOG" | grep -q -E '(network|networks|--network)[= ]default( |$)'; then bad "a call targets the default VPC"; else ok "no call targets the default VPC"; fi
 
-# 7. net-up is idempotent: with everything present it creates nothing.
+# 7. net-up is idempotent: with everything present it creates nothing, updates every
+#    rule, and refreshes the proxy's startup script without recreating the VM.
 export STUB_EXISTS=1
 rc="$(run net-up)"
 if [ "$rc" -eq 0 ] && ! grep -q -E ' create ' "$STUB_LOG"; then ok "net-up on an existing network creates nothing"; else bad "idempotency: rc=$rc creates=$(grep -c ' create ' "$STUB_LOG")"; fi
 n_upd="$(grep -c 'network-firewall-policies rules update' "$STUB_LOG")"
-n_fq="$(grep 'network-firewall-policies rules update' "$STUB_LOG" | grep -c -- '--action=allow .*--dest-fqdns=\|--dest-fqdns=.*--action=allow')"
-if [ "$n_upd" -eq 5 ] && [ "$n_fq" -eq 3 ]; then ok "net-up on existing rules updates all 5 in place (3 FQDN allows), so an edited allowlist is deployed"; else bad "rules update: total=$n_upd fqdn-allows=$n_fq"; fi
+if [ "$n_upd" -eq 6 ]; then ok "net-up on existing rules updates all 6 in place, so an edited allowlist is deployed"; else bad "rules update count: $n_upd"; fi
+if grep -q 'instances add-metadata himmel-ci-proxy .*--metadata-from-file=startup-script=' "$STUB_LOG" && grep -q -E '^acl allowed_hosts dstdomain' "$STUB_LOG.startup" \
+    && ! grep -q 'instances reset' "$STUB_LOG"; then ok "net-up refreshes the proxy startup script in place and does not reset the VM"; else bad "no startup-script refresh on an existing proxy"; fi
 unset STUB_EXISTS
 
 # 8. a failing create fails net-up (no silent half-built network).
 export STUB_FAIL="routers create"
 rc="$(run net-up)"
 if [ "$rc" -ne 0 ] && ! grep -q 'network-firewall-policies' "$STUB_LOG"; then ok "net-up stops at the first failed create"; else bad "failed router create: rc=$rc"; fi
+unset STUB_FAIL
+export STUB_FAIL="instances create"
+rc="$(run net-up)"
+if [ "$rc" -ne 0 ] && ! grep -q 'network-firewall-policies create' "$STUB_LOG"; then ok "net-up never builds the policy when the proxy VM fails"; else bad "failed proxy create: rc=$rc"; fi
 unset STUB_FAIL
 
 # 9. debug-on adds ONLY the IAP rule; debug-off removes ONLY it.
@@ -124,10 +179,10 @@ n_calls="$(grep -c '^GCLOUD ' "$STUB_LOG")"
 iap="$(rules_create)"
 if [ "$rc" -eq 0 ] && echo "$iap" | grep -q -- '--src-ip-ranges=35.235.240.0/20' && echo "$iap" | grep -q -- '--layer4-configs=tcp:22' \
     && echo "$iap" | grep -q -- '--direction=INGRESS' && echo "$iap" | grep -q -- '--action=allow'; then ok "debug-on creates the IAP-only tcp:22 allow rule"; else bad "debug-on: rc=$rc rule=$iap"; fi
-if [ "$(echo "$iap" | grep -c .)" -eq 1 ] && ! grep -q -E 'networks|routers|associations|rules delete|rules update' "$STUB_LOG"; then ok "debug-on touches nothing but that rule ($n_calls calls)"; else bad "debug-on touched more than the IAP rule"; fi
+if [ "$(echo "$iap" | grep -c .)" -eq 1 ] && ! grep -q -E 'networks|routers|associations|instances|rules delete|rules update' "$STUB_LOG"; then ok "debug-on touches nothing but that rule ($n_calls calls)"; else bad "debug-on touched more than the IAP rule"; fi
 export STUB_EXISTS=1
 rc="$(run debug-off)"
-if [ "$rc" -eq 0 ] && [ "$(grep -c 'network-firewall-policies rules delete' "$STUB_LOG")" -eq 1 ] && ! grep -q -E ' create |networks|routers' "$STUB_LOG"; then ok "debug-off deletes exactly one rule and creates nothing"; else bad "debug-off: rc=$rc"; fi
+if [ "$rc" -eq 0 ] && [ "$(grep -c 'network-firewall-policies rules delete' "$STUB_LOG")" -eq 1 ] && ! grep -q -E ' create |networks|routers|instances' "$STUB_LOG"; then ok "debug-off deletes exactly one rule and creates nothing"; else bad "debug-off: rc=$rc"; fi
 prio_off="$(grep 'rules delete' "$STUB_LOG" | sed -E 's/.*rules delete ([0-9]+) .*/\1/')"
 unset STUB_EXISTS
 run debug-on > /dev/null
@@ -145,16 +200,17 @@ if [ "$rc" -eq 0 ]; then ok "debug-off with no IAP rule exits 0"; else bad "debu
 export STUB_EXISTS=1
 rc="$(run net-down)"
 if [ "$rc" -eq 0 ]; then ok "net-down exits 0"; else bad "net-down rc=$rc: $(cat "$T/out")"; fi
-order="$(grep -o -E 'associations delete|network-firewall-policies delete|nats delete|routers delete|subnets delete|networks delete' "$STUB_LOG" | tr '\n' ',')"
-want="associations delete,network-firewall-policies delete,nats delete,routers delete,subnets delete,networks delete,"
-if [ "$order" = "$want" ]; then ok "net-down deletes in reverse dependency order"; else bad "net-down order: $order"; fi
+order="$(grep -o -E 'associations delete|network-firewall-policies delete|instances delete|nats delete|routers delete|subnets delete|networks delete' "$STUB_LOG" | tr '\n' ',')"
+want="associations delete,network-firewall-policies delete,instances delete,nats delete,routers delete,subnets delete,networks delete,"
+if [ "$order" = "$want" ]; then ok "net-down deletes in reverse dependency order, proxy VM included"; else bad "net-down order: $order"; fi
 grep '^GCLOUD ' "$STUB_LOG" | grep -q -E ' (delete|create) .*default' && bad "net-down touched a default resource" || ok "net-down never touches default"
 unset STUB_EXISTS
 
-# 11. status reads and never writes.
+# 11. status reads and never writes, and shows the proxy.
 export STUB_EXISTS=1
 rc="$(run status)"
 if [ "$rc" -eq 0 ] && ! grep -q -E ' (create|delete|update) ' "$STUB_LOG" && grep -q 'describe' "$STUB_LOG"; then ok "status only reads"; else bad "status: rc=$rc"; fi
+if grep -q -E '^proxy himmel-ci-proxy.*present' "$T/out"; then ok "status shows the proxy VM"; else bad "status lacks the proxy line: $(cat "$T/out")"; fi
 unset STUB_EXISTS
 
 # 12. a failed lookup (permission, auth, API) is not "absent": nothing is created
@@ -163,12 +219,20 @@ export STUB_DESCRIBE_ERR=1
 rc="$(run debug-off)"
 if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update) ' "$STUB_LOG"; then ok "debug-off fails on a lookup error instead of reporting the rule absent"; else bad "debug-off lookup error: rc=$rc"; fi
 rc="$(run net-up)"
-if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update) ' "$STUB_LOG"; then ok "net-up creates nothing on a lookup error"; else bad "net-up lookup error: rc=$rc"; fi
+if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update|add-metadata) ' "$STUB_LOG"; then ok "net-up creates nothing on a lookup error"; else bad "net-up lookup error: rc=$rc"; fi
 rc="$(run net-down)"
 if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update) ' "$STUB_LOG"; then ok "net-down deletes nothing on a lookup error"; else bad "net-down lookup error: rc=$rc"; fi
 rc="$(run status)"
 if [ "$rc" -eq 0 ] && grep -q 'unknown' "$T/out" && ! grep -q 'absent' "$T/out"; then ok "status reports a failed lookup as unknown"; else bad "status lookup error: rc=$rc out=$(cat "$T/out")"; fi
 unset STUB_DESCRIBE_ERR
+
+# 13. proxy-env prints what a runner exports to reach the proxy; no gcloud call.
+rc="$(run proxy-env)"
+env_out="$(cat "$T/out")"
+if [ "$rc" -eq 0 ] && [ ! -s "$STUB_LOG" ] && echo "$env_out" | grep -q -F "HTTPS_PROXY=http://$PROXY_IP:3128" && echo "$env_out" | grep -q -F "HTTP_PROXY=http://$PROXY_IP:3128" \
+    && echo "$env_out" | grep -E '^NO_PROXY=' | grep -q -F '169.254.169.254' && echo "$env_out" | grep -E '^NO_PROXY=' | grep -q -F '.googleapis.com'; then
+    ok "proxy-env prints HTTP(S)_PROXY and a NO_PROXY for the metadata server and googleapis"
+else bad "proxy-env: rc=$rc out=$env_out"; fi
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed" >&2; exit 1; }
 echo "all cases passed"
