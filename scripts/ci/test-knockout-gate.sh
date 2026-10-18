@@ -132,11 +132,16 @@ verdict root-tests 0 detected
 
 new_repo
 w value.txt fixed
-# The suite runs under timeout, so TERM goes to every ancestor that is the gate
-# (its suite subshell shares the gate's command line).
+# The suite runs under timeout, so TERM goes to the contiguous run of ancestors
+# whose command line begins with the gate's (its suite subshell shares it) and
+# stops at the first other process, so the test and its launcher survive.
 w test-signal.sh "p=\$PPID
+seen=0
 while [ \"\$p\" -gt 1 ]; do
-    case \"\$(ps -o args= -p \"\$p\")\" in *'$GATE'*) kill -TERM \"\$p\" ;; esac
+    case \"\$(ps -o args= -p \"\$p\")\" in
+        'bash $GATE '*) seen=1; kill -TERM \"\$p\" ;;
+        *) [ \"\$seen\" -eq 1 ] && break ;;
+    esac
     p=\$(ps -o ppid= -p \"\$p\" | tr -d ' ')
 done
 exit 0 # value.txt"
@@ -160,6 +165,13 @@ commit baseline-hang
 start=$SECONDS
 SUITE_TIMEOUT=2 verdict baseline-hang 1 baseline-red
 if [ $((SECONDS - start)) -lt 30 ]; then ok 'baseline-hang: gate returned within the deadline'; else bad 'baseline-hang: gate outlived the deadline'; fi
+
+# An all-zero cap would disable the timeout, so it is refused like a bare 0.
+new_repo
+w value.txt fixed
+w test-value.sh '[ "$(cat value.txt)" = fixed ]'
+commit zero-cap
+SUITE_TIMEOUT=00 verdict zero-cap 1 'bad SUITE_TIMEOUT'
 
 rc=0
 bash "$GATE" > "$T/usage" 2>&1 || rc=$?

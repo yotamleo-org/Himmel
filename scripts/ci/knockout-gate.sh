@@ -86,7 +86,8 @@ done < "$work/suites"
 # process group and signals all of it, so a hung suite's children die too; a
 # knocked-out hang (124/137) is a failing suite, a baseline hang is baseline-red.
 suite_timeout="${SUITE_TIMEOUT:-600}"
-case "$suite_timeout" in ''|*[!0-9]*|0) fail "bad SUITE_TIMEOUT '$suite_timeout'" ;; esac
+case "$suite_timeout" in ''|*[!0-9]*) fail "bad SUITE_TIMEOUT '$suite_timeout'" ;; esac
+[ "$((10#$suite_timeout))" -ge 1 ] || fail "bad SUITE_TIMEOUT '$suite_timeout'"
 command -v timeout >/dev/null 2>&1 || fail 'runner-unavailable timeout'
 run_suites() {
     local phase="$1" suite command rc
