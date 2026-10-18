@@ -487,7 +487,8 @@ check "area: a class recorded fixed that still hits stays open" "$frc" "3"
 cp "$AL.cur" "$AL"
 AL2="$tmp/e2e-ledger.jsonl"; : > "$AL2"
 e2e_hits=(); while IFS= read -r e2e_id; do e2e_hits+=(--hit "$e2e_id=checked"); done < <(AJ="$ajson" node -e 'for (const h of JSON.parse(process.env.AJ).hits) console.log(h.id)')
-( cd "$repo" && CR_LEDGER="$AL2" bash "$HERE/ledger-append.sh" preflight --head "$(git rev-parse HEAD)" "${e2e_hits[@]}" >/dev/null 2>&1 )
+( cd "$repo" && CR_LEDGER="$AL2" bash "$HERE/ledger-append.sh" preflight --head "$(git rev-parse HEAD)" "${e2e_hits[@]}" >/dev/null 2>&1 ); e2wrc=$?
+check "area: the preflight writer without --branch exits 0" "$e2wrc" "0"
 ( cd "$repo" && CR_LEDGER="$AL2" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); e2rc=$?
 check "area: a pass written by ledger-append without --branch closes the hits" "$e2rc" "0"
 ( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); drc=$?

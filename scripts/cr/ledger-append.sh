@@ -410,11 +410,14 @@ if [ "$kind" = "preflight" ]; then
   if [ -n "$duration_secs" ] && ! [[ "$duration_secs" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
     echo "ledger-append.sh: preflight --duration-secs must be a non-negative number (got '$duration_secs')" >&2; exit 2
   fi
+  _seen_hits=""
   while IFS= read -r _hit; do
     [ -n "$_hit" ] || continue
     case "$_hit" in *=*) ;; *) echo "ledger-append.sh: --hit expects <class>=<state> (got '$_hit')" >&2; exit 2;; esac
     _hc="${_hit%%=*}"; _hs="${_hit#*=}"
     valid_class "$_hc" || { echo "ledger-append.sh: --hit class must be a class id or new:<slug> (got '$_hc')" >&2; exit 2; }
+    case " $_seen_hits " in *" $_hc "*) echo "ledger-append.sh: --hit class '$_hc' given twice; one state per class" >&2; exit 2;; esac
+    _seen_hits="$_seen_hits $_hc"
     case "$_hs" in
       fixed|checked) ;;
       waived:?*) ;;

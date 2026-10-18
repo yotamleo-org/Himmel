@@ -1646,9 +1646,13 @@ check "HIMMEL-6376: a supplied class=new:<slug> is kept" "$(cls_of cl-own)" "new
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-ok --set verdict=fixed --set 'class=Bad Class' --reason 'fixed in follow-up' 2>/dev/null
 check "HIMMEL-6376: a malformed class= is refused" "$?" "2"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit hook-fail-direction=fixed --hit exit-contract-drift=waived:false-positive-out-of-scope --hit docs-flag-drift=checked --duration-secs 3 2>/dev/null
+check "HIMMEL-6376: the three-hit preflight write exits 0" "$?" "0"
 check "HIMMEL-6376: a preflight row records per-hit state and counts" "$(L="$CLS" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="preflight");console.log([r.hits.map(h=>h.class+":"+h.state).join("|"),r.hit_n,r.fixed,r.waived,r.checked,r.duration_secs,r.hits[1].ref].join(","))')" "hook-fail-direction:fixed|exit-contract-drift:waived|docs-flag-drift:checked,3,1,1,1,3,false-positive-out-of-scope"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=waived 2>/dev/null
 check "HIMMEL-6376: a waived hit with no reason is refused" "$?" "2"
+CR_LEDGER="$tmp/dup.jsonl" bash "$LA" preflight --branch b --head CL1 --hit docs-flag-drift=fixed --hit docs-flag-drift=checked 2>/dev/null
+check "HIMMEL-6376: a class given twice in one preflight is refused" "$?" "2"
+check "HIMMEL-6376: a refused duplicate-class preflight writes no row" "$(test -s "$tmp/dup.jsonl" && echo wrote || echo none)" "none"
 CR_LEDGER="$tmp/frac.jsonl" bash "$LA" preflight --branch b --head CL2 --duration-secs 0.1 >/dev/null 2>&1
 check "HIMMEL-6376: a preflight accepts the scanner fractional seconds" "$?" "0"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=open 2>/dev/null
