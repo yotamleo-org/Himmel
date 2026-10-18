@@ -650,7 +650,10 @@ sleep "$(awk -v n="$n" -v q="$STAND_IN_QUAD" 'BEGIN { print (q ? n * n / 4000000
 SI
 _si_time() { # _si_time <quad 0|1> <bytes> -> whole seconds
     local t0=$SECONDS
-    head -c "$2" /dev/zero | STAND_IN_QUAD="$1" bash "$_stand_in"
+    if ! head -c "$2" /dev/zero | STAND_IN_QUAD="$1" bash "$_stand_in"; then
+        echo 999 # a failed stand-in must read as a regression, never as a fast run
+        return
+    fi
     echo $((SECONDS - t0))
 }
 _si_ctl=$(_si_time 0 20000)
