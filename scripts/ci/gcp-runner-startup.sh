@@ -2,10 +2,11 @@
 # gcp-runner-startup.sh -- the GCE startup script of one ephemeral CI runner VM.
 # gcp-runners.sh up hands it to the VM as metadata; it runs once
 # as root at boot: install the tools ci.yml's github-hosted-gated steps would
-# install, register ONE --ephemeral runner labelled gcp with the short-lived
-# registration token from the `reg-token` metadata file, run one job as the
-# non-root, sudo-less `runner` user, then power off. The VM holds no PAT and no
-# long-lived secret: the token can only register runners and expires in 1 h.
+# install, start ONE just-in-time (always ephemeral) runner labelled gcp from the
+# per-VM `jit-config` metadata, run one job as the non-root, sudo-less `runner`
+# user behind the root-owned fork guard (`job-started-hook`, wired as
+# ACTIONS_RUNNER_HOOK_JOB_STARTED), then power off. The VM holds no PAT, no
+# registration token and no shared secret: the JIT config is good for this one runner.
 #
 # ponytail: the runner tarball is the latest release without a checksum pin,
 # upgrade by pinning version + sha256 in gcp-runners.sh metadata (hardening review follow-up).
@@ -31,7 +32,12 @@ curl -fsSL "https://github.com/actions/runner/releases/download/${tag}/actions-r
 /opt/runner/bin/installdependencies.sh || exit 1
 chown -R runner:runner /opt/runner
 
-token="$(md reg-token)" || exit 1
-url="$(md runner-url)" || exit 1
-su runner -c "cd /opt/runner && ./config.sh --unattended --ephemeral --url '$url' --token '$token' --labels gcp --name \"\$(hostname)\" --replace" || exit 1
-su runner -c "cd /opt/runner && ./run.sh"
+jit="$(md jit-config)" || exit 1
+repo="$(md runner-repo)" || exit 1
+install -d -m 755 -o root -g root /usr/local/lib/himmel
+md job-started-hook > /usr/local/lib/himmel/job-started-hook.sh || exit 1
+chown root:root /usr/local/lib/himmel/job-started-hook.sh
+chmod 755 /usr/local/lib/himmel/job-started-hook.sh
+printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh\nHIMMEL_CI_RUNNER_REPO=%s\n' "$repo" > /opt/runner/.env
+chown runner:runner /opt/runner/.env
+su runner -c "cd /opt/runner && ./run.sh --jitconfig '$jit'"

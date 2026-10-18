@@ -16,8 +16,9 @@
 #
 # No service-account key exists (org policy): every gcloud call impersonates
 # the runner SA from the operator's own gcloud login. The runner VMs get no SA
-# and no scopes. The 1 h registration token reaches a VM as a metadata FILE,
-# never an argv.
+# and no scopes. Each VM gets its OWN just-in-time runner config (one runner,
+# one job, no shared token) as a metadata FILE, never an argv, plus the runner-side
+# fork guard scripts/vm/ci-runner/job-started-hook.sh (ACTIONS_RUNNER_HOOK_JOB_STARTED).
 #
 # ponytail: pool size is whatever `up` was last told, topped up by hand; upgrade
 # to an autoscaling timer, a budget kill switch and a regional CPU quota pin
@@ -29,7 +30,7 @@ PROJECT="${GCP_RUNNERS_PROJECT:-himmel-ci}"
 SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
 MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
-MAX_RUN="30m"
+MAX_RUN="45m"
 POOL_LABEL="himmel-ci-runner=gcp"
 MAX_N=4
 NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
@@ -48,7 +49,7 @@ pool_vms() { gc compute instances list --filter="labels.himmel-ci-runner=gcp" --
 # need_net: runner VMs never use the default VPC; refuse until the dedicated subnet exists.
 need_net() {
     gc compute networks subnets describe "$NET" --region="${ZONE%-*}" > /dev/null 2>&1 \
-        || die "subnet $NET does not exist; run 'gcp-runners.sh net-up' first (never the default VPC)"
+        || die "subnet $NET does not exist; create it with scripts/ci/gcp-net.sh first (never the default VPC)"
 }
 
 cmd_up() {
@@ -74,18 +75,18 @@ cmd_up() {
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
-    tokfile="$(mktemp -t gcp-runners.XXXXXX)" || die "mktemp failed"
-    urlfile="$tokfile.url"
-    trap 'rm -f "$tokfile" "$urlfile"' EXIT
-    chmod 600 "$tokfile"
-    "$GH" api -X POST "repos/$REPO/actions/runners/registration-token" --jq .token > "$tokfile" || die "registration token request failed"
-    [ -s "$tokfile" ] || die "empty registration token"
-    printf 'https://github.com/%s' "$REPO" > "$urlfile"
-
-    local i stamp
+    local tmpd i stamp vm
+    tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
+    trap 'rm -rf "$tmpd"' EXIT
+    chmod 700 "$tmpd"
     stamp="$(date +%m%d%H%M%S)"
     for i in $(seq 1 "$need"); do
-        gc compute instances create "himmel-ci-$stamp-$i" \
+        vm="himmel-ci-$stamp-$i"
+        "$GH" api -X POST "repos/$REPO/actions/runners/generate-jitconfig" \
+            -f "name=$vm" -F runner_group_id=1 -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
+            || die "JIT config request failed for $vm"
+        [ -s "$tmpd/$vm.jit" ] || die "empty JIT config for $vm"
+        gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
             --boot-disk-size=50GB \
@@ -93,8 +94,9 @@ cmd_up() {
             --labels="$POOL_LABEL" \
             --network-interface="subnet=$NET,no-address" \
             --no-service-account --no-scopes \
-            --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,reg-token=$tokfile,runner-url=$urlfile" \
-            || die "instances create failed for himmel-ci-$stamp-$i"
+            --metadata="runner-repo=$REPO" \
+            --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,jit-config=$tmpd/$vm.jit" \
+            || die "instances create failed for $vm"
     done
     echo "gcp-runners: created $need VM(s); pool target $n"
 }

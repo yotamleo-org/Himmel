@@ -3,7 +3,7 @@
 # the ephemeral GCP spot runner pool. gcloud and gh are stubs on
 # $GCLOUD / $GH; no live call is made. Pins: `up` refuses N above 4, every
 # create is SPOT + max-run-duration + DELETE + labelled + impersonated and
-# carries the registration token in a metadata FILE (never argv), `up` tops the
+# carries its own JIT config in a metadata FILE (never argv), `up` tops the
 # pool up, `down` deletes every pool VM and deregisters offline gcp runners.
 #
 # Usage: bash scripts/ci/test-gcp-runners.sh
@@ -47,7 +47,7 @@ cat > "$T/gh" <<'STUB'
 #!/usr/bin/env bash
 printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
-    *registration-token*) echo "REGTOKEN-abc123" ;;
+    *generate-jitconfig*) echo "JITCFG-abc123" ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
     *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
 esac
@@ -72,7 +72,7 @@ rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up defa
 
 # 3. every create carries the safety flags; every gcloud call is impersonated.
 rc="$(run up 2)"
-for f in '--provisioning-model=SPOT' '--max-run-duration=30m' '--instance-termination-action=DELETE' \
+for f in '--provisioning-model=SPOT' '--max-run-duration=45m' '--instance-termination-action=DELETE' \
          '--labels=himmel-ci-runner=gcp' '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com' \
          '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network-interface=subnet=himmel-ci-net,no-address'; do
     n="$(grep 'instances create' "$STUB_LOG" | grep -cF -- "$f")"
@@ -82,11 +82,15 @@ total="$(grep -c '^GCLOUD ' "$STUB_LOG")"
 imp="$(grep '^GCLOUD ' "$STUB_LOG" | grep -c -- '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com')"
 if [ "$total" -gt 0 ] && [ "$total" -eq "$imp" ]; then ok "all $total gcloud calls impersonate the runner SA"; else bad "impersonated $imp of $total gcloud calls"; fi
 
-# 4. the registration token reaches the VM through a metadata file, never argv;
-#    the startup script registers one --ephemeral runner labelled gcp.
-if grep '^GCLOUD ' "$STUB_LOG" | grep -q 'REGTOKEN-abc123'; then bad "registration token leaked into a gcloud argv"; else ok "registration token is not in any gcloud argv"; fi
-if grep -q '^FILE reg-token <<' "$STUB_LOG" && grep -q 'REGTOKEN-abc123' "$STUB_LOG"; then ok "registration token is passed as a metadata file"; else bad "registration token metadata file missing"; fi
-if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q -- '--ephemeral' "$STUB_LOG" && grep -q -- '--labels gcp' "$STUB_LOG"; then ok "startup script registers an --ephemeral runner labelled gcp"; else bad "startup script lacks --ephemeral / --labels gcp"; fi
+# 4. each VM gets its own JIT config through a metadata file, never argv; the
+#    startup script runs it behind the runner-side fork guard, then powers off.
+if grep '^GCLOUD ' "$STUB_LOG" | grep -q 'JITCFG-abc123'; then bad "JIT config leaked into a gcloud argv"; else ok "JIT config is not in any gcloud argv"; fi
+if grep -q '^FILE jit-config <<' "$STUB_LOG" && grep -q 'JITCFG-abc123' "$STUB_LOG"; then ok "JIT config is passed as a metadata file"; else bad "JIT config metadata file missing"; fi
+if ! grep -q 'registration-token' "$STUB_LOG"; then ok "no shared registration token is requested"; else bad "registration token still requested"; fi
+n="$(grep -c 'generate-jitconfig' "$STUB_LOG")"; if [ "$n" -eq 2 ]; then ok "one JIT config per VM"; else bad "JIT configs requested: $n of 2"; fi
+if grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=gcp' && grep 'generate-jitconfig' "$STUB_LOG" | grep -q 'name=himmel-ci-'; then ok "JIT config carries the gcp label and a unique name"; else bad "JIT config lacks gcp label / name"; fi
+if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q -- '--jitconfig' "$STUB_LOG"; then ok "startup script starts the runner with --jitconfig"; else bad "startup script lacks --jitconfig"; fi
+if grep -q 'ACTIONS_RUNNER_HOOK_JOB_STARTED' "$STUB_LOG" && grep -q '^FILE job-started-hook <<' "$STUB_LOG" && grep -q 'fork guard' "$STUB_LOG"; then ok "fork guard hook is installed and wired as the job-started hook"; else bad "fork guard hook not wired"; fi
 if grep -q 'poweroff' "$STUB_LOG"; then ok "startup script powers the VM off after the one job"; else bad "startup script never powers off"; fi
 
 # 5. up tops the pool back to N: one existing VM means one create for up 2.
@@ -135,10 +139,10 @@ rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refu
 wait "$holder"
 rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
 
-# 6e. up and watch refuse while the dedicated subnet is missing, naming net-up.
+# 6e. up and watch refuse while the dedicated subnet is missing, naming gcp-net.sh.
 export STUB_FAIL=subnet
 : > "$STUB_INSTANCES"
-rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'net-up' "$T/out"; then ok "up refuses without the dedicated subnet"; else bad "no-subnet up: rc=$rc creates=$(creates)"; fi
+rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'gcp-net.sh' "$T/out"; then ok "up refuses without the dedicated subnet"; else bad "no-subnet up: rc=$rc creates=$(creates)"; fi
 rc="$(run watch 2 --interval 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch refuses without the dedicated subnet"; else bad "no-subnet watch: rc=$rc"; fi
 unset STUB_FAIL
 
