@@ -20,7 +20,7 @@ trap 'poweroff' EXIT
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq || exit 1
 apt-get install -y -qq at bubblewrap socat ffmpeg git jq curl unzip shellcheck python3-pip nodejs npm || exit 1
-systemctl enable --now atd || true
+systemctl enable --now atd || true  # t13b-ok: stock at daemon on a throwaway CI VM, not a himmel service
 sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 python3 -m pip install --break-system-packages --disable-pip-version-check pre-commit==4.7.0 || exit 1
 
