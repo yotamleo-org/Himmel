@@ -128,7 +128,7 @@ case "${QMD_MOCK_CURL_MODE:-dead}" in
     code=401
     if [ "$route" = health ]; then code="${QMD_MOCK_HEALTH:-200}"; fi
     [ "$code" = 000 ] && exit 7
-    if [ "$wcode" = 1 ]; then printf '%s' "$code"; elif [ "$route" = health ]; then printf '%s' '{"status":"ok"}'; fi
+    if [ "$wcode" = 1 ]; then printf '%s' "$code"; elif [ "$route" = health ]; then hb='{"status":"ok","uptime":3}'; printf '%s' "${QMD_MOCK_HEALTH_BODY-$hb}"; fi
     exit 0 ;;
   *) exit 7 ;;
 esac
@@ -913,5 +913,12 @@ QMD_MOCK_HEALTH=000 run_ensure auth401 "$bin:$safe"
 printf '%s' "$out" | grep -q "nothing came alive" || \
   fail "(y2) auth401+dead health: missing 'nothing came alive' message (got: $out)"
 echo "ok (y2): MCP route 401 with /health dead -> still reported not alive"
+
+# ---- (y3) control: 401 + a 200 /health that is not qmd's -> not alive --------
+# A foreign auth-gated service on the port must still hit the not-qmd path.
+rm -f "$state/alive"
+QMD_MOCK_HEALTH_BODY='OK' run_ensure auth401 "$bin:$safe"
+[ "$rc" -ne 0 ] || fail "(y3) auth401+foreign health: expected nonzero rc"
+echo "ok (y3): MCP route 401 with a non-qmd /health body -> not reported alive"
 
 echo "PASS: all ensure-qmd-daemon cases"

@@ -110,14 +110,20 @@ http_code() {
 
 # True when the daemon is up but refuses this probe's token (none readable, or
 # a stale one): the MCP route answers 401 while the unauthenticated /health on
-# the same host:port answers 200. Alive, auth required - never dead.
+# the same host:port answers with qmd's own {"status":"ok","uptime":N} body.
+# Alive, auth required - never dead. The body is matched, not just a 200, so a
+# foreign auth-gated service on the port still reaches the not-qmd error.
 alive_auth_required() {
-  local hostport="${QMD_MCP_URL#*://}"
+  local hostport="${QMD_MCP_URL#*://}" health
   hostport="${hostport%%/*}"
   [ "$(http_code -X POST -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
-    -d "$INIT_PAYLOAD" "$QMD_MCP_URL")" = 401 ] &&
-    [ "$(http_code "${QMD_MCP_URL%%://*}://$hostport/health")" = 200 ]
+    -d "$INIT_PAYLOAD" "$QMD_MCP_URL")" = 401 ] || return 1
+  health="$("$QMD_CURL" -s -m "$PROBE_TIMEOUT" "${QMD_MCP_URL%%://*}://$hostport/health" 2>/dev/null)"
+  case "$health" in
+    *'"status":"ok"'*'"uptime":'*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # True when the body carries a qmd-shaped MCP initialize reply: the match is
