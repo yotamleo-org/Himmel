@@ -40,7 +40,7 @@ case "$1" in
               git diff --cached "$base" -U0 --text --no-color --no-ext-diff --no-renames --diff-filter=ACMR > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
     --range)  [ $# -eq 2 ] || usage
               git diff -U0 --text --no-color --no-ext-diff --no-renames --diff-filter=ACMR "$2" HEAD > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
-    --diff)   [ $# -eq 2 ] && [ -f "$2" ] || usage
+    --diff)   if [ $# -ne 2 ] || [ ! -f "$2" ]; then usage; fi
               cp "$2" "$DIFF" ;;
     *)        usage ;;
 esac
