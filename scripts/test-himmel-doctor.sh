@@ -4958,8 +4958,8 @@ c40_setup
 mkdir -p "$c40_t/home/.cache/qmd" "$c40_t/home/.himmel/qmd-fork"
 echo 4242 > "$c40_t/home/.cache/qmd/mcp.pid"
 echo c3b84dd > "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
-touch -d '2026-10-18 00:48' "$c40_t/home/.cache/qmd/mcp.pid"
-touch -d '2026-10-18 04:05' "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
+touch -t 202610180048 "$c40_t/home/.cache/qmd/mcp.pid"
+touch -t 202610180405 "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
 if ! c40_precond novec; then fail "C40 stale daemon: precondition — stub did not answer init"
 else
     out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
@@ -4968,7 +4968,7 @@ else
     else
         fail "C40 daemon older than the build -> $(printf '%s' "$out" | grep -A1 C40)"
     fi
-    touch -d '2026-10-18 05:00' "$c40_t/home/.cache/qmd/mcp.pid"
+    touch -t 202610180500 "$c40_t/home/.cache/qmd/mcp.pid"
     out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
     if grepq "$out" 'WARN C40-qmd-vec' && grepq "$out" -F 'no vector index' && ! grepq "$out" -F 'older than the installed'; then
         pass "C40 daemon started after the build -> the no-vector-index WARN stands"
