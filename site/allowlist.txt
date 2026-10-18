@@ -1,0 +1,13 @@
+# Pages built from docs/ (paths relative to docs/). DS1 proof-of-concept scope:
+# the Get-started IA plus one mermaid page. The three standalone HTML pages are
+# passed through byte-identical (see HTML_PASSTHROUGH in astro.config.mjs).
+README.md
+why-himmel.md
+getting-started.md
+setup/install.md
+setup/profiles/README.md
+setup/new-machine.md
+setup/updating.md
+setup/migrating.md
+architecture.md
+telegram-bridge.md

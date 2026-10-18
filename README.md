@@ -418,6 +418,12 @@ build on itself across sessions without re-explaining the context each time.
 - **Security review** before shipping code changes:
   [`docs/security-review.md`](docs/security-review.md).
 
+## Docs site (local preview)
+
+`bash scripts/docs-site/serve.sh` builds `docs/` with Starlight and serves it on
+loopback only: open `http://127.0.0.1:4321/Himmel/`. Needs Node 22.22+ and
+network on first run (`npm ci` in `site/`). `--dev` serves with live reload.
+
 ## Contributing
 
 The workflow is in [`docs/contributing.md`](docs/contributing.md). In short:

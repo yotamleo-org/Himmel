@@ -157,3 +157,7 @@ __pycache__/
 # commit.
 scripts/bitbucket/bun.lock
 .claude/plugins/claude-hud/config.json
+# HIMMEL-6286: docs site build output
+site/dist/
+site/node_modules/
+site/.astro/
