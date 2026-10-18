@@ -50,17 +50,33 @@ export async function sectorOptions(req: typeof request = request): Promise<stri
   const field = sectorField();
   if (!field) return [];
   if (cache && cache.field === field && Date.now() - cache.at < OPTIONS_TTL_MS) return cache.options;
-  const ctxs = await req<{ values?: Array<{ id: string }> }>('GET', `/field/${field}/context`);
   const options = new Set<string>();
-  for (const c of ctxs.values ?? []) {
-    const opts = await req<{ values?: Array<{ value: string; disabled?: boolean }> }>(
-      'GET',
-      `/field/${field}/context/${c.id}/option?maxResults=100`,
-    );
-    for (const o of opts.values ?? []) if (!o.disabled) options.add(o.value);
+  try {
+    for (const c of await pages<{ id: string }>(req, `/field/${field}/context`)) {
+      for (const o of await pages<{ value: string; disabled?: boolean }>(req, `/field/${field}/context/${c.id}/option`)) {
+        if (!o.disabled) options.add(o.value);
+      }
+    }
+  } catch {
+    // The context API needs Administer Jira. Without it the list is unknown, so
+    // return it empty and uncached: resolveSector passes the typed name through
+    // and Jira itself validates it.
+    return [];
   }
   cache = { field, at: Date.now(), options: [...options] };
   return cache.options;
+}
+
+/** Every value of a paginated Jira list endpoint. */
+async function pages<T>(req: typeof request, path: string): Promise<T[]> {
+  const out: T[] = [];
+  for (let startAt = 0; ; ) {
+    const page = await req<{ values?: T[]; isLast?: boolean }>('GET', `${path}?startAt=${startAt}&maxResults=100`);
+    const values = page.values ?? [];
+    out.push(...values);
+    if (page.isLast !== false || values.length === 0) return out;
+    startAt += values.length;
+  }
 }
 
 /** Drops the cached option list (tests). */
@@ -78,6 +94,7 @@ export function sectorHint(options: readonly string[]): string {
 // Case-insensitive match to the canonical option label; an unknown option is
 // refused here so a typo never reaches Jira (which would answer a bare 400).
 export function resolveSector(name: string, options: readonly string[]): string {
+  if (options.length === 0) return name.trim(); // option list unreadable: Jira validates
   const want = name.trim().toLowerCase();
   const hit = options.find((s) => s.toLowerCase() === want);
   if (!hit) {

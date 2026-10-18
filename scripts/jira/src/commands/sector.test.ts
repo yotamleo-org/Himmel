@@ -14,7 +14,7 @@ const FIELD = 'customfield_10212';
 
 // The field's context and options are read live from Jira.
 function fieldReply(path: string): unknown {
-  if (path.endsWith('/context')) return { values: [{ id: '1' }] };
+  if (path.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
   if (path.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
   return undefined;
 }
@@ -100,12 +100,36 @@ describe('Sector field (HIMMEL-5710)', () => {
       const { sectorOptions } = await import('./sector.js');
       expect(await sectorOptions()).toEqual([...SECTORS]);
       expect(mockRequest.mock.calls.map((c) => c[1])).toEqual([
-        `/field/${FIELD}/context`,
-        `/field/${FIELD}/context/1/option?maxResults=100`,
+        `/field/${FIELD}/context?startAt=0&maxResults=100`,
+        `/field/${FIELD}/context/1/option?startAt=0&maxResults=100`,
       ]);
       mockRequest.mockClear();
       expect(await sectorOptions()).toEqual([...SECTORS]);
       expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it('follows pagination across contexts and options', async () => {
+      const { sectorOptions } = await import('./sector.js');
+      mockRequest.mockImplementation(async (_m: string, path: string) => {
+        const at = Number(/startAt=(\d+)/.exec(path)![1]);
+        if (path.split('?')[0].endsWith('/context')) {
+          return at === 0 ? { isLast: false, values: [{ id: '1' }] } : { isLast: true, values: [{ id: '2' }] };
+        }
+        const ctx = /context\/(\d)\//.exec(path)![1];
+        return at === 0
+          ? { isLast: false, values: [{ value: `A${ctx}` }] }
+          : { isLast: true, values: [{ value: `B${ctx}` }] };
+      });
+      expect(await sectorOptions()).toEqual(['A1', 'B1', 'A2', 'B2']);
+    });
+
+    it('returns no options, uncached, when the context API is refused, so Jira validates', async () => {
+      const { sectorOptions, resolveSector } = await import('./sector.js');
+      mockRequest.mockRejectedValue(new Error('403 Forbidden'));
+      expect(await sectorOptions()).toEqual([]);
+      expect(resolveSector(' Ship loop ', [])).toBe('Ship loop');
+      mockRequest.mockImplementation(async (_m: string, path: string) => fieldReply(path) ?? {});
+      expect(await sectorOptions()).toEqual([...SECTORS]);
     });
   });
 

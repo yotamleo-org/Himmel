@@ -17,7 +17,7 @@ afterEach(() => {
 // The field's context and options are read live from Jira.
 function fieldReply(path: unknown): unknown {
   const p = String(path);
-  if (p.endsWith('/context')) return { values: [{ id: '1' }] };
+  if (p.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
   if (p.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
   return undefined;
 }

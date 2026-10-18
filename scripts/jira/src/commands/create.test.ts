@@ -360,7 +360,7 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
     }) as never);
     // The field's context and options are read live from Jira.
     mockRequest.mockImplementation(async (_m: string, path: string) => {
-      if (path.endsWith('/context')) return { values: [{ id: '1' }] };
+      if (path.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
       if (path.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
       return { key: 'HIMMEL-1' };
     });
@@ -409,7 +409,7 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
 
   it('accepts an option that exists only in the live list, not in the default set', async () => {
     mockRequest.mockImplementation(async (_m: string, path: string) => {
-      if (path.endsWith('/context')) return { values: [{ id: '1' }] };
+      if (path.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
       if (path.includes('/option')) return { values: [{ value: 'Billing' }] };
       return { key: 'HIMMEL-1' };
     });
