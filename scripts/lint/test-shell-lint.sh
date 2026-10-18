@@ -1353,7 +1353,8 @@ _old_ifs="$IFS"; IFS=:
 for _d in $PATH; do
     [ -d "$_d" ] || continue
     for _t in "$_d"/*; do
-        [ -x "$_t" ] && [ ! -d "$_t" ] || continue
+        [ -x "$_t" ] || continue
+        [ -d "$_t" ] && continue
         _n="${_t##*/}"
         [ "$_n" = shellcheck ] && continue
         [ -e "$NOSC_BIN/$_n" ] || ln -s "$_t" "$NOSC_BIN/$_n" 2>/dev/null
