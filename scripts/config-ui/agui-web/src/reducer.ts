@@ -221,6 +221,11 @@ export function agentState(v: View, id: string): AgentState {
   if (v.status === "error") return "failed";
   return id === "main" && v.status === "running" && !v.sideRun ? "running" : "done";
 }
+// Finished subagents fold in the strip; running and failed work stays visible.
+export const bandCollapsed = (v: View, id: string): boolean =>
+  !!v.agents[id]?.parentToolCallId && agentState(v, id) === "done";
+export const agentBadge = (index: number): string => String(index + 1);
+
 export const runningCount = (v: View) => v.agentOrder.filter((id) => agentState(v, id) === "running").length;
 // The agent's newest call still open, if any.
 export const currentCall = (v: View, id: string): Tool | undefined =>

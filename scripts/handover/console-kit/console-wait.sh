@@ -73,8 +73,8 @@
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
 # line without the field is skipped.
-# vmrun= (class only, wakes ONLY on a move to DEAD or STUCK -- never
-# on the busy count, nor a move back to ok/off; absent from an older tick line,
+# vmrun= (class only, wakes ONLY on a move to DEAD, STUCK or DISAGREE -- never
+# on the busy count, nor a move to ok/off/FAILING; absent from an older tick line,
 # never a failure),
 # parked= (the legs sitting on an unanswered permission prompt, names only so the
 # growing age never re-wakes; absent from the tick line when none is parked, never
@@ -310,7 +310,7 @@ sample() {
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
-        # vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
+        # vmrun= keeps its class only, not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
@@ -360,9 +360,9 @@ drop_board_ok() {
         fi
         # cloud= wakes only on a class move TO STALL, never back to ok/skip.
         [ "$f" = cloud ] && [ "$cloud_new" != STALL ] && continue
-        # vmrun= wakes only on a class move TO DEAD / STUCK.
+        # vmrun= wakes only on a class move TO DEAD / STUCK / DISAGREE.
         if [ "$f" = vmrun ]; then
-            case "$vmrun_new" in DEAD|STUCK) ;; *) continue ;; esac
+            case "$vmrun_new" in DEAD|STUCK|DISAGREE) ;; *) continue ;; esac
         fi
         printf '%s\n' "$f"
     done | paste -sd, -

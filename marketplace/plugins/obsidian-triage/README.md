@@ -419,6 +419,28 @@ manual Claude judge pass → `assemble` pipeline that scores/tiers the X/Twitter
 follow list. See `tools/README.md` ("Follow-list scorer" section) for the
 full runbook.
 
+### Opt-in web search: DeepSeek (HIMMEL-6269)
+
+The claim-check web rung (`tools/lib/follow-web.mjs`) can search with DeepSeek
+Search, plus DeepSeek Fetch on the top hit when it has no snippet. **Off for
+every install.** A key alone never enables it.
+
+| Switch | Meaning |
+|---|---|
+| `FOLLOW_WEB_DEEPSEEK=1` | the one opt-in (set it in your own shell or local config, never in the repo) |
+| `DEEPSEEK_API_KEY` | the key, read from env only; never printed, logged or ledgered |
+| `FOLLOW_WEB_DEEPSEEK_BUDGET` | searches per run (default 20) |
+
+**Privacy terms, plainly:** DeepSeek is PRC-hosted. Queries are stored in the
+PRC, may be used to train models, are retained for the account lifetime, and
+there is no zero-retention option and no DPA. Opt in only for content you are
+content to send there.
+
+- **Order:** the free rungs (local qmd, CLI, hermes) stay first and unchanged. DeepSeek, when opted in, runs only after they miss, and is never called when a free rung already returned a result. Firecrawl stays the last fallback, so its credits cover only DeepSeek misses.
+- **salus/PHI never:** the egress matrix (`scripts/guardrails/egress-matrix.json`) hard-denies salus x deepseek for every purpose. The rung checks the vault root before any request and refuses a salus root (a `.salus` marker, or a `phi-roots` / `egress-denylist` overlap), and a root it cannot map to the `luna-clippings` corpus (including no root at all). A refusal prints one stderr line naming the reason.
+- **Spend:** $0.00075 per successful call, one row per call in the Firecrawl ledger (`~/.himmel/state/firecrawl-ledger.jsonl`, override `HIMMEL_FIRECRAWL_LEDGER`) with `source: "deepseek"`, `credits: 0` and a `usd` field. `HARVEST_SCRAPE_DENY=all` also drops this rung.
+- **Vault root:** `follow-list-score.mjs` passes its vault root; outside it set `FOLLOW_WEB_VAULT_ROOT`.
+
 ## Cross-refs
 
 - Sibling ticket (install pipeline): [LUNA-2](https://yotamleo.atlassian.net/browse/LUNA-2) — done

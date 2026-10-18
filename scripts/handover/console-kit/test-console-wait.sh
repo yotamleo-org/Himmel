@@ -736,7 +736,7 @@ wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (v) vmrun= wakes only on a class move TO DEAD / STUCK; the
+# --- (v) vmrun= wakes only on a class move TO DEAD / STUCK / DISAGREE; the
 # busy count moving, a move back to ok/off and an absent field never wake. ----
 vmrun_line() { sed "s#  *denials=none# vmrun=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub
@@ -764,6 +764,32 @@ vmrun_line ok:1/2,busy=0
 wait_exit "$WPID"
 check "(vm2) a vmrun move back to ok alone does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+vmrun_line ok:2/2,busy=0
+I="$(new_inbox vm3)"
+start "$I" "$WORK/vm3.out" --legs "N1.md"
+wait_hb "$I" || fail "(vm3) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+vmrun_line DISAGREE:2/2,online=0
+wait_exit "$WPID"
+check "(vm3) a vmrun move to DISAGREE ends the wait" "0" "$rc"
+check "(vm3) the DISAGREE wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm3.out")"
+[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+
+for recovery in ok:2/2,busy=0 off FAILING; do
+    reset_stub
+    vmrun_line DISAGREE:2/2,online=0
+    I="$(new_inbox "vm-recover-$recovery")"
+    start "$I" "$WORK/vm-recover.out" --legs "N1.md"
+    wait_hb "$I" || fail "(vm-recover) no baseline heartbeat"
+    tick_line "N1:FRESH" "ok"
+    vmrun_line "$recovery"
+    wait_exit "$WPID"
+    check "(vm-recover) DISAGREE to $recovery alone does not wake" "running" "$rc"
+    check "(vm-recover) DISAGREE to $recovery emits nothing" "" "$(cat "$WORK/vm-recover.out")"
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+done
 
 # --- (pk) parked= wakes when a leg joins the parked set; the growing age alone
 # never wakes; a tick line with no parked= field stays a valid sample. ---------
