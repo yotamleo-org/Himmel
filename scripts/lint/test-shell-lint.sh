@@ -83,6 +83,17 @@ command -v iconv >/dev/null 2>&1 && HAVE_ICONV=1
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/shell-lint.XXXXXX")" || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 [ -n "$TMP_ROOT" ] || { echo "FATAL: mktemp -d returned empty" >&2; exit 1; }
 
+# --staged/--changed refuse to run without a shellcheck, so on a host with none (the macOS
+# cadence) a no-op stub keeps the non-shellcheck cases running. HAVE_SHELLCHECK stays 0, so
+# every assertion that needs a real finding is still skipped; 22e builds its own PATH without one.
+if [ "$HAVE_SHELLCHECK" -eq 0 ]; then
+    STUB_SC_BIN="$TMP_ROOT/stub-shellcheck-bin"
+    mkdir -p "$STUB_SC_BIN"
+    printf '#!/bin/sh\nexit 0\n' > "$STUB_SC_BIN/shellcheck"
+    chmod +x "$STUB_SC_BIN/shellcheck"
+    PATH="$STUB_SC_BIN:$PATH"
+fi
+
 # Write a UTF-8 BOM (EF BB BF) then the given body to $1.
 _write_bom_file() {
     local path="$1"; shift
@@ -1370,6 +1381,28 @@ if [ "$EC22E" -ne 0 ]; then pass "22e --staged without shellcheck exits non-zero
 assert_contains "22e says shellcheck is required" "shellcheck is required" "$OUT22E"
 OUT22F="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" ok.sh 2>&1)"; EC22F=$?
 if [ "$EC22F" -eq 0 ]; then pass "22f explicit FILE mode without shellcheck still runs BOM + errexit checks (exit 0)"; else fail "22f expected exit 0, got $EC22F" "$OUT22F"; fi
+(cd "$NOSC_REPO" && git commit -q -m init) >/dev/null 2>&1
+OUT22G="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" --changed "HEAD..HEAD" 2>&1)"; EC22G=$?
+if [ "$EC22G" -ne 0 ]; then pass "22g --changed without shellcheck exits non-zero ($EC22G)"; else fail "22g expected non-zero exit with no shellcheck, got 0" "$OUT22G"; fi
+assert_contains "22g says shellcheck is required" "shellcheck is required" "$OUT22G"
+
+# 22h: the shell-lint step refuses a shellcheck that is not the pinned one. Run the step's own
+# run: block with a fake shell-lint.sh and a stub shellcheck printing each version.
+STEP22H="$TMP_ROOT/step22h.sh"
+awk '/- name: shell-lint changed files/ {f=1; next} f && /run: \|/ {g=1; next} g && /^      - name:/ {exit} g {sub(/^          /, ""); print}' <<< "$LINT_JOB" > "$STEP22H"
+STUB22H="$TMP_ROOT/stub22h"
+mkdir -p "$STUB22H/scripts/lint" "$STUB22H/bin"
+printf 'exit 0\n' > "$STUB22H/scripts/lint/shell-lint.sh"
+for _v in 0.9.0 0.11.0; do
+    printf '#!/bin/sh\nprintf "ShellCheck - shell script analysis tool\\nversion: %s\\nlicense: GNU GPL, version 3\\n"\n' "$_v" > "$STUB22H/bin/shellcheck"
+    chmod +x "$STUB22H/bin/shellcheck"
+    OUT22H="$(cd "$STUB22H" && PATH="$STUB22H/bin:$PATH" SHELLCHECK_PIN=0.11.0.1 bash "$STEP22H" 2>&1)"; EC22H=$?
+    if [ "$_v" = 0.9.0 ]; then
+        if [ "$EC22H" -ne 0 ]; then pass "22h step fails when shellcheck $_v is not the pinned 0.11.0.1"; else fail "22h step passed with the wrong shellcheck" "$OUT22H"; fi
+    else
+        if [ "$EC22H" -eq 0 ]; then pass "22h step passes when shellcheck $_v is the pinned 0.11.0.1"; else fail "22h step failed with the pinned shellcheck" "$OUT22H"; fi
+    fi
+done
 
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
