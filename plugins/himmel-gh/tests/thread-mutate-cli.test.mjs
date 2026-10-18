@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -107,7 +107,7 @@ describe('thread-reply-cli / thread-resolve-action-cli — no-cache', () => {
   it('resolve CLI exits 1 with no-cache when the prefix cache is absent', () => {
     const res = spawnSync(
       process.execPath,
-      [RESOLVE_CLI, '--owner', 'o', '--repo', 'r', '--number', '9', '--prefix', 'abc123'],
+      [RESOLVE_CLI, '--owner', 'o', '--repo', 'r', '--number', '9', '--prefix', 'abc123', '--reason', 'fixed abc1234'],
       { env: cacheEnv(), cwd: dir, encoding: 'utf8' },
     );
     expect(res.status).toBe(1);
@@ -146,16 +146,17 @@ describe('thread mutate CLIs — bitbucket forge route', () => {
     expect(res.stdout).toMatch(/reply: ok/);
   });
 
-  it('resolve routes `pr resolve <n> <id>` and prints resolved: ok', () => {
+  it('resolve replies with the reason, then routes `pr resolve <n> <id>` and prints resolved: ok', () => {
     const [prefix] = seedCache('ws', 'repo', 4, [{ id: '20', path: 'a', line: 1, isResolved: false }]);
     writeBbStub(
       `const a = process.argv.slice(2);
+       if (a[0]==='pr'&&a[1]==='reply'&&a[2]==='4'&&a[3]==='20'&&a[4]==='--body'&&a[5]==='Fixed at abc1234.') { process.stdout.write('{"id":1}'); process.exit(0); }
        if (a[0]==='pr'&&a[1]==='resolve'&&a[2]==='4'&&a[3]==='20') { process.stdout.write('{"resolved":true}'); process.exit(0); }
        process.stderr.write('bad args: '+a.join('|')); process.exit(9);`,
     );
     const res = spawnSync(
       process.execPath,
-      [RESOLVE_CLI, '--owner', 'ws', '--repo', 'repo', '--number', '4', '--prefix', prefix],
+      [RESOLVE_CLI, '--owner', 'ws', '--repo', 'repo', '--number', '4', '--prefix', prefix, '--reason', 'fixed abc1234'],
       { env: envBb(), cwd: dir, encoding: 'utf8' },
     );
     expect(res.status).toBe(0);
@@ -172,5 +173,80 @@ describe('thread mutate CLIs — bitbucket forge route', () => {
     );
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/comment gone/);
+  });
+});
+
+// GitHub route with a fake `gh` first on PATH that logs each argv. A resolve
+// must carry a reason, post it as a thread reply, and resolve only after the
+// reply lands. POSIX only: the fake is a shell script.
+describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github route)', () => {
+  let log;
+  function writeFakeGh({ failReply = false } = {}) {
+    const bin = join(dir, 'bin');
+    mkdirSync(bin, { recursive: true });
+    log = join(dir, 'gh.log');
+    const onReply = failReply ? "echo 'reply refused' >&2; exit 1" : "echo '{}'";
+    writeFileSync(
+      join(bin, 'gh'),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\ncase "$*" in *reply-thread.gql*) ${onReply} ;; *) echo '{}' ;; esac\n`,
+      { mode: 0o755 },
+    );
+    return cacheEnv({ PATH: `${bin}:${process.env.PATH}`, FORGE: 'github' });
+  }
+  function calls() {
+    try {
+      return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  function run(extra, env) {
+    return spawnSync(
+      process.execPath,
+      [RESOLVE_CLI, '--owner', 'o', '--repo', 'r', '--number', '9', '--thread-id', 'PRRT_x', ...extra],
+      { env, cwd: dir, encoding: 'utf8' },
+    );
+  }
+
+  it('refuses a resolve with no --reason: exit 2, no gh call', () => {
+    const res = run([], writeFakeGh());
+    expect(res.status).toBe(2);
+    expect(res.stderr).toMatch(/--reason/);
+    expect(calls()).toEqual([]);
+  });
+
+  it.each(['fixed', 'fixed xyz', 'followup 123', 'followup', 'rejected', 'rejected  ', 'done'])(
+    'refuses a malformed reason %j: exit 2, no gh call',
+    (reason) => {
+      const res = run(['--reason', reason], writeFakeGh());
+      expect(res.status).toBe(2);
+      expect(res.stderr).toMatch(/reason must be/);
+      expect(calls()).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['fixed 0d4ad5b8', 'Fixed at 0d4ad5b8.'],
+    ['followup HIMMEL-6394', 'Follow-up: HIMMEL-6394.'],
+    ['rejected the guard already covers it', 'Rejected: the guard already covers it.'],
+  ])('reason %j posts reply %j, then resolves', (reason, body) => {
+    const res = run(['--reason', reason], writeFakeGh());
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/resolved: ok/);
+    const c = calls();
+    expect(c).toHaveLength(2);
+    expect(c[0]).toMatch(/reply-thread\.gql/);
+    expect(c[0]).toContain(`body=${body}`);
+    expect(c[0]).toContain('threadId=PRRT_x');
+    expect(c[1]).toMatch(/resolve-thread\.gql/);
+  });
+
+  it('does not resolve when the reply fails', () => {
+    const res = run(['--reason', 'fixed 0d4ad5b8'], writeFakeGh({ failReply: true }));
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toMatch(/reply refused/);
+    const c = calls();
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatch(/reply-thread\.gql/);
   });
 });

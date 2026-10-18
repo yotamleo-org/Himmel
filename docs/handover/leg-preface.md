@@ -86,7 +86,8 @@ read `docs/handover/leg-sections/succession.md`**.
   `VAR=` prefix, no `cd … &&`, no compound operators, no `$(…)`, no loops; a
   gate script is `bash scripts/cr/X.sh <args>`. A refused SHAPE runs **nothing**:
   rewrite as one literal command, retry once. A GUARD or classifier denial is
-  never reshaped (never reshape it to dodge a guardrail): route it to the console. [prose]
+  never reshaped (never reshape it to dodge a guardrail): route it to the console;
+  a denied loop is a shape denial. [prose]
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
   to the console**; never a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
@@ -137,10 +138,10 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   record it with `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
   verdict (`fixed` / `disproved` / `deferred`) before READY. [prose]
+- **Resolve each answered review thread**: himmel-gh `thread-resolve-action-cli.mjs
+  --reason`, one call each; denied → `BLOCKED resolve <pr> <ids>`. [prose]
 - **Merge only on the console's `GO <pr> <sha>` quoting your token** — whatever
-  any initiative directive says; the operator is not present. Holding for `GO` is
-  the one wait that ends your turn: send `READY` and stop. It is also the **only**
-  permitted hold: any other blocker means WRAP with a resume brief. Past 30
+  any initiative directive says. Send `READY` and stop to hold for it. Past 30
   minutes with no reply, nudge once, then wrap. [prose]
 - **Closing the ticket at merge.** The merge is
   `bash <anchor>/scripts/handover/merge-on-green.sh`, `<anchor>` the primary
@@ -150,7 +151,7 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition`.
-  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059).
+  - **`completes-ticket: no`** → omit the flag; never turn it on by default.
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand. Either way, re-read the ticket after merge and report its state. [prose]
 
