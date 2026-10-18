@@ -55,28 +55,39 @@ function in_scope(p) {
     if (p ~ /\.obsidian\/plugins\//) return 0
     return 1
 }
-function output_call(p, s,   i, c, q, code, single) {
+function output_segment(p, code, text) {
+    if (p ~ /\.(sh|bash|zsh)$/ && match(code, /(^|[(){}])[ \t]*((then|do|else)[ \t]+)?([0-9]*>&[0-9]+[ \t]*)?(echo|printf|die|warn|say)[ \t]+/))
+        return substr(text, RSTART) ~ /HIMMEL-[0-9]+/
+    if (p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/ && match(code, /(^|[{}])[ \t]*(console\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/))
+        return substr(text, RSTART) ~ /HIMMEL-[0-9]+/
+    if (p ~ /\.py$/ && match(code, /(^|:)[ \t]*(print|sys\.stderr\.write)[ \t]*\(/))
+        return substr(text, RSTART) ~ /HIMMEL-[0-9]+/
+    return 0
+}
+function output_call(p, s,   i, c, q, code, text, single, shell) {
     if (p ~ /(^|\/)(tests?|__tests__)\// || p ~ /(^|\/)test[-_][^\/]+$/ || p ~ /\.(test|spec)\.[^.]+$/) return 0
     single = sprintf("%c", 39)
+    shell = p ~ /\.(sh|bash|zsh)$/
     for (i = 1; i <= length(s); i++) {
         c = substr(s, i, 1)
-        if (c == "\\" && q != single) { i++; code = code " "; continue }
+        if (c == "\\" && q != single) {
+            text = text c substr(s, i + 1, 1); code = code "  "; i++; continue
+        }
         if (q != "") {
+            text = text c; code = code " "
             if (c == q) q = ""
             continue
         }
         if (c == single || c == "\"" || (c == "`" && p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/)) {
-            q = c; code = code " "; continue
+            text = text c; q = c; code = code " "; continue
         }
-        code = code c
+        if (c == ";" || (shell && (c == "|" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/)))) {
+            if (output_segment(p, code, text)) return 1
+            code = ""; text = ""; continue
+        }
+        text = text c; code = code c
     }
-    if (p ~ /\.(sh|bash|zsh)$/)
-        return code ~ /(^|[;&|(){}])[ \t]*((then|do|else)[ \t]+)?([0-9]*>&[0-9]+[ \t]*)?(echo|printf|die|warn|say)[ \t]+/
-    if (p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/)
-        return code ~ /(^|[;{}])[ \t]*(console\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/
-    if (p ~ /\.py$/)
-        return code ~ /(^|[;:])[ \t]*(print|sys\.stderr\.write)[ \t]*\(/
-    return 0
+    return output_segment(p, code, text)
 }
 function why(t,   l) {
     l = tolower(t)
