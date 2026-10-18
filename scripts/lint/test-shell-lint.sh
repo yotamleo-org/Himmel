@@ -1301,6 +1301,76 @@ OUT21S="$(cd "$GATE" && bash scripts/lint/shell-lint.sh --staged --baseline scri
 assert_contains "21s --staged lints a name holding a control byte" "ctl" "$OUT21S"
 
 # ---------------------------------------------------------------------------
+# 22: CI and the local gate lint with the SAME shellcheck, and
+# --staged/--changed fail closed when there is none.
+# ---------------------------------------------------------------------------
+printf '\nCase 22: pinned shellcheck + fail-closed without shellcheck\n'
+
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
+PC_YAML="$REPO_ROOT/.pre-commit-config.yaml"
+
+# 22a-c: the pinned and the older shellcheck disagree on `[ a ] && [ b ] || continue`
+# (SC2015: the older one reports it, the pinned one does not). The fixture is the
+# shape PR 3049 failed CI on in scripts/handover/console-kit/tick.sh.
+PIN_REV="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$PC_YAML")"
+if [ -n "$PIN_REV" ]; then pass "22a pinned shellcheck-py rev read from .pre-commit-config.yaml ($PIN_REV)"; else fail "22a no shellcheck-py rev in .pre-commit-config.yaml"; fi
+SC15="$TMP_ROOT/sc2015.sh"
+cat > "$SC15" <<'FIXEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+for x in 1 2; do
+    [ "$x" = 1 ] && [ -n "$x" ] || continue
+    echo "$x"
+done
+FIXEOF
+if command -v uv >/dev/null 2>&1 && [ -n "$PIN_REV" ] \
+   && uv pip install -q --target "$TMP_ROOT/sc-old" shellcheck-py==0.9.0.6 >/dev/null 2>&1 \
+   && uv pip install -q --target "$TMP_ROOT/sc-pin" "shellcheck-py==$PIN_REV" >/dev/null 2>&1; then
+    OUT22B="$(PATH="$TMP_ROOT/sc-old/bin:$PATH" bash "$LINT" "$SC15" 2>&1)"; EC22B=$?
+    if [ "$EC22B" -eq 1 ]; then pass "22b shellcheck 0.9 first on PATH: shell-lint exits 1"; else fail "22b expected exit 1, got $EC22B" "$OUT22B"; fi
+    assert_contains "22b names SC2015" "SC2015" "$OUT22B"
+    OUT22C="$(PATH="$TMP_ROOT/sc-pin/bin:$PATH" bash "$LINT" "$SC15" 2>&1)"; EC22C=$?
+    if [ "$EC22C" -eq 0 ]; then pass "22c pinned shellcheck first on PATH: shell-lint exits 0"; else fail "22c expected exit 0, got $EC22C" "$OUT22C"; fi
+else
+    printf '  SKIP: uv or network unavailable — 22b/22c (0.9 vs pinned shellcheck) skipped\n'
+fi
+
+# 22d: the CI lint job installs that pinned rev (read from the pre-commit config,
+# never hand-copied) BEFORE the shell-lint step.
+LINT_JOB="$(awk '/^  lint:/ {f=1; print; next} f && /^  [a-z]/ {exit} f {print}' "$CI_YML")"
+PIN_LN="$(grep -n 'shellcheck-py==' <<< "$LINT_JOB" | head -1 | cut -d: -f1)"
+SL_LN="$(grep -n 'shell-lint.sh --changed' <<< "$LINT_JOB" | head -1 | cut -d: -f1)"
+if [ -n "$PIN_LN" ] && [ -n "$SL_LN" ] && [ "$PIN_LN" -lt "$SL_LN" ]; then pass "22d lint job installs the pinned shellcheck before the shell-lint step"; else fail "22d pinned shellcheck install not before shell-lint step in ci.yml" "pin line=${PIN_LN:-none} shell-lint line=${SL_LN:-none}"; fi
+assert_contains "22d rev is read from .pre-commit-config.yaml" "pre-commit-config.yaml" "$LINT_JOB"
+assert_not_contains "22d no hand-copied rev in the lint job" "shellcheck-py==0." "$LINT_JOB"
+assert_contains "22d prints the shellcheck version" "shellcheck --version" "$LINT_JOB"
+
+# 22e-f: no shellcheck on PATH. A PATH of symlinks to every tool except shellcheck.
+NOSC_BIN="$TMP_ROOT/nosc-bin"
+mkdir -p "$NOSC_BIN"
+_old_ifs="$IFS"; IFS=:
+for _d in $PATH; do
+    [ -d "$_d" ] || continue
+    for _t in "$_d"/*; do
+        [ -x "$_t" ] && [ ! -d "$_t" ] || continue
+        _n="${_t##*/}"
+        [ "$_n" = shellcheck ] && continue
+        [ -e "$NOSC_BIN/$_n" ] || ln -s "$_t" "$NOSC_BIN/$_n" 2>/dev/null
+    done
+done
+IFS="$_old_ifs"
+NOSC_REPO="$TMP_ROOT/nosc-repo"
+mkdir -p "$NOSC_REPO"
+(cd "$NOSC_REPO" && git init -q . && git config user.email t@t && git config user.name t \
+  && printf '#!/usr/bin/env bash\nset -uo pipefail\necho hi\n' > ok.sh && git add ok.sh) >/dev/null 2>&1
+OUT22E="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" --staged 2>&1)"; EC22E=$?
+if [ "$EC22E" -ne 0 ]; then pass "22e --staged without shellcheck exits non-zero ($EC22E)"; else fail "22e expected non-zero exit with no shellcheck, got 0" "$OUT22E"; fi
+assert_contains "22e says shellcheck is required" "shellcheck is required" "$OUT22E"
+OUT22F="$(cd "$NOSC_REPO" && PATH="$NOSC_BIN" bash "$LINT" ok.sh 2>&1)"; EC22F=$?
+if [ "$EC22F" -eq 0 ]; then pass "22f explicit FILE mode without shellcheck still runs BOM + errexit checks (exit 0)"; else fail "22f expected exit 0, got $EC22F" "$OUT22F"; fi
+
+# ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
 printf '====================================\n'
