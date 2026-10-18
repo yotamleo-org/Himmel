@@ -145,6 +145,8 @@ def manifest_docs():
             legs = json.load(open(m, encoding='utf-8')).get('legs') or []
         except (OSError, ValueError, AttributeError):
             continue
+        if not isinstance(legs, list):
+            continue
         for lg in legs:
             d = lg.get('doc') if isinstance(lg, dict) else None
             if isinstance(d, str) and LEG_RE.match(os.path.basename(d)) and os.path.isfile(d):
@@ -160,16 +162,13 @@ def live_legs():
         if os.path.realpath(p) not in held:
             continue
         mk, pr = leg_marker(p)
-        if mk in ('WRAPPED', 'HALTED'):
-            continue
         n, lab = LEG_RE.match(os.path.basename(p)).groups()
         out[int(n)] = [lab, mk, pr]
     for p in reversed(manifest_docs()):
         mk, pr = leg_marker(p)
-        if mk not in ('WRAPPED', 'HALTED'):
-            n, lab = LEG_RE.match(os.path.basename(p)).groups()
-            out.setdefault(int(n), [lab, mk, pr])
-    return out
+        n, lab = LEG_RE.match(os.path.basename(p)).groups()
+        out.setdefault(int(n), [lab, mk, pr])
+    return {n: v for n, v in out.items() if v[1] not in ('WRAPPED', 'HALTED')}
 
 
 TS_RE = re.compile(r'^- (\d{1,2}):(\d{2})\b')
