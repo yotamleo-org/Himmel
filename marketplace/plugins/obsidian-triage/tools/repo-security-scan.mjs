@@ -186,7 +186,9 @@ function listFiles(fullName, ghFn, errors) {
     for (const e of tryList(dir).filter((x) => x.type === "dir").slice(0, 5)) wanted.push(`${dir}/${e.name}/SKILL.md`);
   }
   // root docs go last so the file cap never crowds out package.json, setup scripts, commands or skills
-  return [...new Set([...wanted, ...rootDocs])].slice(0, MAX_FILES);
+  const all = [...new Set([...wanted, ...rootDocs])];
+  if (all.length > MAX_FILES) errors.push("truncated");
+  return all.slice(0, MAX_FILES);
 }
 
 /**

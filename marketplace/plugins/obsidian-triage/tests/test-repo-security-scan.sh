@@ -105,9 +105,11 @@ const many = Array.from({ length: 15 }, (_, i) => ({ name: "DOC" + i + ".md", ty
 const crowd = scanRepo("o/r", { ghFn: (args) => {
   const k = args.join(" ");
   if (k === "api repos/o/r/contents") return [...many, { name: "package.json", type: "file", size: 40 }];
+  if (/^api repos\/o\/r\/contents\/DOC\d+\.md$/.test(k)) return b64("fine");
   return mk("fine")(args);
 }, scanFn });
 console.log("CROWD_PKG=" + crowd.scanned.includes("package.json"));
+console.log("CROWD_STATUS=" + crowd.status);
 EOF
 out2="$(node "$tmpdir/repo.mjs" 2>&1)"
 grep -q '^BAD_FLAGGED=true$' <<<"$out2" && r=yes || r=no; assert "scanRepo flags the seeded README" yes "$r"
@@ -119,6 +121,7 @@ grep -q '^SUMMARY=flagged: ' <<<"$out2" && r=yes || r=no; assert "summary line s
 grep -q '^GAP_STATUS=partial$' <<<"$out2" && r=yes || r=no; assert "unreadable file makes the scan partial" yes "$r"
 grep -q '^GAP_SUMMARY=incomplete: ' <<<"$out2" && r=yes || r=no; assert "finding-free partial scan is incomplete, not clean" yes "$r"
 grep -q '^DIRFAIL_STATUS=partial$' <<<"$out2" && r=yes || r=no; assert "non-404 directory listing failure makes the scan partial" yes "$r"
+grep -q '^CROWD_STATUS=partial$' <<<"$out2" && r=yes || r=no; assert "a repo over the file cap is partial, not clean" yes "$r"
 grep -q '^CROWD_PKG=true$' <<<"$out2" && r=yes || r=no; assert "package.json survives the file cap behind many root docs" yes "$r"
 
 # -- Test 3: gather puts the scan in the dossier -----------------------------
