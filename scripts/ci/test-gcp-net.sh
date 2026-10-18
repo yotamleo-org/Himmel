@@ -230,8 +230,10 @@ unset STUB_DESCRIBE_ERR
 rc="$(run proxy-env)"
 env_out="$(cat "$T/out")"
 if [ "$rc" -eq 0 ] && [ ! -s "$STUB_LOG" ] && echo "$env_out" | grep -q -F "HTTPS_PROXY=http://$PROXY_IP:3128" && echo "$env_out" | grep -q -F "HTTP_PROXY=http://$PROXY_IP:3128" \
-    && echo "$env_out" | grep -E '^NO_PROXY=' | grep -q -F '169.254.169.254' && echo "$env_out" | grep -E '^NO_PROXY=' | grep -q -F '.googleapis.com'; then
-    ok "proxy-env prints HTTP(S)_PROXY and a NO_PROXY for the metadata server and googleapis"
+    && echo "$env_out" | grep -E '^NO_PROXY=' | grep -q -F '169.254.169.254' && echo "$env_out" | grep -E '^NO_PROXY=' | grep -q -F '.googleapis.com' \
+    && echo "$env_out" | grep -q -F "https_proxy=http://$PROXY_IP:3128" && echo "$env_out" | grep -q -F "http_proxy=http://$PROXY_IP:3128" \
+    && echo "$env_out" | grep -E '^no_proxy=' | grep -q -F '169.254.169.254' && echo "$env_out" | grep -E '^no_proxy=' | grep -q -F '.googleapis.com'; then
+    ok "proxy-env prints upper- and lowercase http(s)_proxy and a no_proxy for the metadata server and googleapis"
 else bad "proxy-env: rc=$rc out=$env_out"; fi
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed" >&2; exit 1; }

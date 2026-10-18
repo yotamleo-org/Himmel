@@ -7,7 +7,7 @@
 #   bash scripts/ci/gcp-net.sh status      what exists, and whether the IAP debug rule is on
 #   bash scripts/ci/gcp-net.sh debug-on    allow IAP-only SSH (35.235.240.0/20, tcp:22) into the runners
 #   bash scripts/ci/gcp-net.sh debug-off   remove that rule (the default state)
-#   bash scripts/ci/gcp-net.sh proxy-env   print the HTTPS_PROXY/HTTP_PROXY/NO_PROXY a runner exports
+#   bash scripts/ci/gcp-net.sh proxy-env   print the HTTPS_PROXY/HTTP_PROXY/NO_PROXY (and lowercase) a runner exports
 #
 # gcp-runners.sh places its VMs on the subnet named himmel-ci-net with no
 # external IP; that name is the only coupling between the two scripts.
@@ -222,6 +222,7 @@ cmd_net_up() {
     rule "$PRIO_PROXY_OUT" "proxy to the web" --direction=EGRESS --action=allow \
         --layer4-configs=tcp:80,tcp:443 --src-ip-ranges="$PROXY_IP/32" --dest-ip-ranges=0.0.0.0/0 \
         --description="the proxy host's own egress (squid filters by hostname)"
+    # ponytail: an FQDN rule matches the hosts' resolved IPs, which Google shares across *.googleapis.com, so it can admit a sibling API host; move these hosts behind the proxy if that matters
     rule "$PRIO_GCP" "google apis egress" --direction=EGRESS --action=allow \
         --layer4-configs=tcp:443 --dest-fqdns="$(join_csv "${GCP_HOSTS[@]}")" \
         --description="Google APIs, exact hosts, via Private Google Access"
@@ -285,9 +286,14 @@ cmd_debug_off() {
 }
 
 cmd_proxy_env() {
+    # Both cases: the Linux runner, apt and curl read the lowercase names.
+    local no_proxy="169.254.169.254,metadata.google.internal,.googleapis.com"
     echo "HTTPS_PROXY=http://$PROXY_IP:$PROXY_PORT"
     echo "HTTP_PROXY=http://$PROXY_IP:$PROXY_PORT"
-    echo "NO_PROXY=169.254.169.254,metadata.google.internal,.googleapis.com"
+    echo "NO_PROXY=$no_proxy"
+    echo "https_proxy=http://$PROXY_IP:$PROXY_PORT"
+    echo "http_proxy=http://$PROXY_IP:$PROXY_PORT"
+    echo "no_proxy=$no_proxy"
 }
 
 case "${1:-}" in
