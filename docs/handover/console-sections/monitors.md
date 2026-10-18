@@ -52,8 +52,8 @@ ordinary Bash call.
 `budget turns=<n> cache_read=<M>M verdict=OK|HANDOVER` (exit 3 on HANDOVER, 2 when
 the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M cumulative
 cache-read (`CONSOLE_TURN_BUDGET`, `CONSOLE_CACHE_READ_BUDGET_M`), the same duty as
-the 45 % fill and 90k input triggers. Run it in an ordinary Bash call. Not yet
-wired into the waiter (HIMMEL-6258 step 2).
+the 45 % fill and 90k input triggers. The waiter runs it each sample (with `--doc`) and
+raises `WAKE handover-budget` once per streak; run it by hand in an ordinary Bash call.
 
 **Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a leg
 waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR

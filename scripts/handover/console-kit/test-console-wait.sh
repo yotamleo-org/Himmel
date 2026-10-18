@@ -1218,6 +1218,35 @@ unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
 bash "$WAIT" >/dev/null 2>&1; rc=$?
 check "(k) no inbox argument is a usage error (rc 2)" "2" "$rc"
 
+# --- (hb): console-budget.sh HANDOVER wakes the console once per streak ------
+# Needs --doc (the console's name is the doc basename, passed as --title). A
+# marker <inbox>.wait.budget outlives the waiter; verdict OK clears it.
+cat > "$STUB/budget.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB/budget.calls"
+cat "$STUB/budget.out"; exit "$(cat "$STUB/budget.rc")"
+EOF
+export CONSOLE_WAIT_BUDGET="$STUB/budget.sh"
+printf 'budget turns=151 cache_read=12.0M verdict=HANDOVER\n' > "$STUB/budget.out"; printf '3\n' > "$STUB/budget.rc"
+reset_stub; : > "$STUB/budget.calls"; I="$(new_inbox hb1)"
+start "$I" "$WORK/hb1.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+wait_exit "$WPID"
+check "(hb1) HANDOVER wakes with the budget line" "WAKE handover-budget budget turns=151 cache_read=12.0M verdict=HANDOVER" "$(head -n1 "$WORK/hb1.out")"
+check "(hb1) and the waiter exits 0" "0" "$rc"
+check "(hb1) the console is named by the doc basename" "--title HB" "$(head -n1 "$STUB/budget.calls")"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/hb1b.out")"
+printf 'budget turns=3 cache_read=0.1M verdict=OK\n' > "$STUB/budget.out"; printf '0\n' > "$STUB/budget.rc"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb3) verdict OK clears the streak marker" "absent" "$([ -e "$I.wait.budget" ] && echo present || echo absent)"
+printf '2\n' > "$STUB/budget.rc"; : > "$I.wait.budget"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1d.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb4) an unreadable transcript (rc 2) neither wakes nor clears the marker" "present:" "$([ -e "$I.wait.budget" ] && echo present):$(cat "$WORK/hb1d.out")"
+printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
+unset CONSOLE_WAIT_BUDGET
+
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"
 (cd "$WORK/kopt" && bash "$WAIT" --help >"$WORK/kopt.out" 2>&1); rc=$?

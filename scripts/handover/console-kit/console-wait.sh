@@ -48,6 +48,10 @@
 #                               the legs still out. Once. CONSOLE_WAIT_SUCCESSION_SEC
 #                               (default 15) paces the tally; CONSOLE_WAIT_TRACKER
 #                               replaces the tracker (tests).
+#   WAKE handover-budget <line>  with --doc <console doc>: console-budget.sh --title
+#                               <the doc's basename> says HANDOVER (150 turns or 30M
+#                               cache-read); once per streak, the marker clears on OK
+#                               (CONSOLE_WAIT_BUDGET replaces the command, tests).
 #   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -511,6 +515,17 @@ unowned_wake() {
 # marker holds the epoch the streak was first seen and the wake fires once the
 # streak passes CONSOLE_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
+budget_file="$inbox.wait.budget"
+budget_cmd="${CONSOLE_WAIT_BUDGET:-$HERE/console-budget.sh}"
+budget_wake() { # prints the WAKE block and returns 0 once per HANDOVER streak; the marker outlives the waiter
+    local out rc
+    [ -n "$console_doc" ] || return 1
+    out="$(timeout -k 2 30 bash "$budget_cmd" --title "$(basename "$console_doc" .md)" 2>/dev/null 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+    if [ "$rc" -ne 3 ]; then [ "$rc" -ne 0 ] || rm -f "$budget_file"; return 1; fi
+    [ ! -e "$budget_file" ] || return 1
+    : > "$budget_file" 2>/dev/null
+    printf 'WAKE handover-budget %s\n' "$out"
+}
 tracker_stale_file="$inbox.wait.trackerstale"
 tracker_stale_wake() {
     local since
@@ -716,6 +731,7 @@ while :; do
                 exit_reason='wake-tracker-stale'; exit 0
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
+            if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then
                 saved="$key"; save_key "$key"
