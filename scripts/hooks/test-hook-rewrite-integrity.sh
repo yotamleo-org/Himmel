@@ -1871,12 +1871,9 @@ expect_pin "$FX_OUT/s65.json" "$REL" "$BLOB_CB" "row 65: the pin moved to the ta
 expect_anchor "$FX_OUT/s65.json" "$CC" "row 65: the anchor advanced to the tip, as for any re-pin"
 
 chan_fixture r66
-chan_tag v1.0.0 "$CB"
+chan_tag v1.0.0 "$CA"
 write_record "$FX_OUT" s66 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
-guard_write "$FX_PROJ/$REL" X
-git -C "$FX_PROJ" add -A; git -C "$FX_PROJ" commit -q -m local-only
-CX="$(git -C "$FX_PROJ" rev-parse HEAD)"
-git -C "$FX_PROJ" tag v9.9.9 "$CX"       # local-only, higher, never pushed
+git -C "$FX_PROJ" tag v9.9.9 "$CB"       # local-only, higher, never pushed; CB is an ancestor of the tip and matches the disk bytes
 HIMMEL_UPDATE_CHANNEL=stable launch "$FX_PROJ" "$FX_OUT" s66 "$LAUNCHER" --optional "$FX_PROJ/$REL"
 expect_deny "row 66: bytes of a local-only higher tag are denied" 'not the anchor tip'
 
