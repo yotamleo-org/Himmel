@@ -165,7 +165,21 @@ row('h validate: rule names only, never the input', () => {
   eq(store.validate('JIRA_PROJECT_KEY', 'HIMMEL').ok, true);
   eq(store.validate('TELEGRAM_BOT_TOKEN', '123456789:' + 'A'.repeat(35)).ok, true);
   eq(store.validate('JIRA_API_TOKEN', fake()).ok, true);
-  for (const v of ['a\nb', 'a\rb', '"quoted']) eq(store.validate('JIRA_API_TOKEN', v).ok, false, JSON.stringify(v));
+  for (const v of ['a\nb', 'a\rb', '"quoted', 'abc#' + fake()]) eq(store.validate('JIRA_API_TOKEN', v).ok, false, JSON.stringify(v));
+});
+
+row('h3 detect: a model-file card entry defers to its probe, not the live env', () => {
+  const ctx = mk(); ctx.env = { WHISPER_MODEL: '/nonexistent/model.bin' };
+  const d = store.detect('WHISPER_MODEL', ctx);
+  eq(d.status, 'probe'); eq(d.source, 'cmd:whisper_ready');
+});
+
+row('h4 redactor: a bad entry in the MCP dir does not drop later servers', () => {
+  const ctx = mk(); const v = fake(); const m = path.join(ctx.home, '.config/himmel/mcp-secrets');
+  fs.mkdirSync(m, { recursive: true }); fs.writeFileSync(path.join(m, 'a-not-a-dir'), 'x');
+  fs.mkdirSync(path.join(m, 'z-srv')); fs.writeFileSync(path.join(m, 'z-srv', 'K'), v);
+  const lits = redact.storeLiterals([], require(path.join(lib, 'probes.js')).parseDotEnv, store.mcpDir(ctx));
+  ok(lits.includes(v), 'later server dropped');
 });
 
 row('h2 card entries are not writable', () => {

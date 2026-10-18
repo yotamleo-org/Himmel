@@ -94,13 +94,15 @@ function storeLiterals(files, parseDotEnv, mcpDir) {
   for (const f of files || []) {
     try { out.push(...envValues(fs.readFileSync(f, 'utf8'), parseDotEnv)); } catch { /* absent store */ }
   }
-  try {
-    for (const server of fs.readdirSync(mcpDir)) {
-      for (const key of fs.readdirSync(path.join(mcpDir, server))) {
-        try { const v = fs.readFileSync(path.join(mcpDir, server, key), 'utf8').trim(); if (v.length >= MIN_LITERAL) out.push(v); } catch { /* unreadable */ }
-      }
+  let servers = [];
+  try { servers = fs.readdirSync(mcpDir); } catch { /* no MCP store */ }
+  for (const server of servers) {
+    let keys = [];
+    try { keys = fs.readdirSync(path.join(mcpDir, server)); } catch { continue; /* not a server dir */ }
+    for (const key of keys) {
+      try { const v = fs.readFileSync(path.join(mcpDir, server, key), 'utf8').trim(); if (v.length >= MIN_LITERAL) out.push(v); } catch { /* unreadable */ }
     }
-  } catch { /* no MCP store */ }
+  }
   return out;
 }
 

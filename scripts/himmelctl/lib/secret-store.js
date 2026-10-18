@@ -41,7 +41,7 @@ const RULES = {
 
 // A value the .env line format cannot carry faithfully, whatever its rule.
 function unwritable(v) {
-  return /[\r\n\0]/.test(v) || /^["']/.test(v) || v !== v.trim();
+  return /[\r\n\0#]/.test(v) || /^["']/.test(v) || v !== v.trim();
 }
 
 function validate(name, value) {
@@ -92,6 +92,8 @@ function mcpHas(name, ctx) {
 
 // Presence only; the value is never part of a result.
 function fileDetect(name, ctx) {
+  // A model file is not an env value: its presence is the cmd:whisper_ready probe's to judge.
+  if ((entryOf(name) || {}).store === 'model-file') return { status: 'probe', source: 'cmd:whisper_ready' };
   const live = (ctx.env || {})[name];
   if (usable(live)) return { status: 'set', source: 'live-env' };
   const e = entryOf(name);
