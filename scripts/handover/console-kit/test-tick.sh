@@ -1440,6 +1440,8 @@ contains 'a LIVE bullet naming READY <pr> <full head> reads READY (HIMMEL-6154)'
 contains 'a plain LIVE fix-pushed bullet stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — fix pushed')" 'N393:LIVE'
 contains 'a WRAPPED bullet naming READY <pr> <head> stays WRAPPED (HIMMEL-6154)' "$(tail3393 "- 23:47 WRAPPED — merged after READY 3002 $sha6154")" 'N393:WRAPPED'
 contains 'a LIVE bullet "no longer holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — no longer holding at READY; fixing review findings')" 'N393:LIVE'
+contains 'a LIVE bullet "not currently holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — not currently holding at READY; fixing findings')" 'N393:LIVE'
+contains 'a LIVE bullet "no longer READY <pr> <head>" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — no longer READY 3002 $sha6154; fixing findings")" 'N393:LIVE'
 contains 'a newer prose-leading bullet naming holding at READY does not promote the earlier LIVE (HIMMEL-6154)' "$(tail3393 '- 23:48 Still holding at READY, waiting on the console')" 'N393:LIVE'
 contains 'READY held then a newer plain LIVE bullet reads LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
 
