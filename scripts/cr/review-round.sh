@@ -1157,6 +1157,11 @@ if [ "$verb" = "judge-go" ]; then
         echo "review-round: --head $head_sha does not resolve to a commit" >&2
         exit 2
     fi
+    case "$branch" in
+        *[\"\\]*|*[[:cntrl:]]*)
+            echo "review-round: branch name $branch cannot be written into a ledger row - the judge GO is refused" >&2
+            exit 2 ;;
+    esac
     read_round || exit 5
     if [ "$round" -lt 3 ]; then
         echo "review-round: $branch has run $round of 3 full rounds - run /pr-check, a judge GO does not replace an available round" >&2

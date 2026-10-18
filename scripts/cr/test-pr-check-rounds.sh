@@ -2511,6 +2511,8 @@ for jgx_case in unsigned forgedmac otherpr otherbranch symlinkrec symlinkqid; do
     assert_eq "$jgo_vrc" "1" "6303 (h) a judge GO that is $jgx_case buys nothing ($jgo_out)"
     rm -rf "${vscope:?}/$jgx_q"
 done
+jgo_out="$(jgo_verb 'jg"q' "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "2" "6303 (i) a branch name that breaks the JSON row is refused ($jgo_out)"
 jgo_rec jgx-ok GO "$jgo_head" 1 ""
 jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "0" "6303 (h) control: the same GO written properly is accepted ($jgo_out)"
