@@ -80,6 +80,9 @@ ERR luna-ingest: only github.com and bitbucket.org URLs supported. Twitter + art
 ## Phase 1.5 — Safety pre-filter (LUNA-43)
 **Read on demand:** After Phase 1, before Phase 2, on every github run; the matching algorithm and rc=6 behaviour live there. Read `<plugin>/references/luna-ingest/phase-1-5-safety-prefilter.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
+## Phase 1.6 — Advisory repo security scan (HIMMEL-5816)
+**Read on demand:** After Phase 1.5, before Phase 2, on every github run; the command, finding kinds and the note fields live there. Read `<plugin>/references/luna-ingest/phase-1-6-repo-scan.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
+
 ## Phase 2 — Reference extraction
 **Read on demand:** When extracting refs from the README (Phase 2) and applying the `--limit` cap and the README-size warning. Read `<plugin>/references/luna-ingest/phase-2-reference-extraction.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
@@ -147,6 +150,7 @@ tags:                       # HIMMEL-247: REQUIRED — never omit. Derivation ru
 trust_tier: <tier>          # LUNA-43: anthropic-official | known-author | community-active | community-thin | unknown-risk
 trust_tier_reason: <text>   # LUNA-43: 1-line justification (e.g. "owner=anthropics → anthropic-official"; "owner=kepano in allowlist → known-author"; "stargazers_count=12, pushed_at=2025-04-01 → community-thin"). Field name is `owner=` (the lowercased value extracted in trust-tier rule logic), matching the trust-tier rule wording — NOT `owner_org=`.
 safety_flag: <term-or-blank> # LUNA-43: blank if Phase 1.5 found no red-flag terms; matched term otherwise. NON-BLANK forces trust_tier=unknown-risk via rule 0 short-circuit in trust-tier classification.
+repo_scan: <clean|flagged|unavailable>   # HIMMEL-5816: Phase 1.6 advisory scan result; never gates trust_tier.
 research_enriched: <true-or-omit>  # LUNA-64: set true ONLY when --research ran (Phase 3.6) AND produced real findings. Omit the field entirely when --research was not passed OR enrichment degraded (dry-run short-circuit / web-failure placeholder) — a degraded note must not advertise itself as enriched to downstream readers (/synthesize-clips, revalidation tooling).
 ---
 
@@ -176,6 +180,10 @@ research_enriched: <true-or-omit>  # LUNA-64: set true ONLY when --research ran 
 <if verdict == take-parts>
 - **What to lift:** <file/path/area to inspect first>
 </if>
+
+## Security scan (advisory)
+
+<Phase 1.6: the scan `summary` line, then one bullet per finding. Always present on a github run.>
 
 ## Research enrichment
 
