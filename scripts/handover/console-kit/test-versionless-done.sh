@@ -22,7 +22,7 @@ case "$1" in
     versions) [ "${STUB_VERSIONS_FAIL:-0}" = 1 ] && exit 1
               printf 'v1.0.0\ttrue\t2026-09-01\nv1.1.4\tfalse\t2026-11-01\nv1.1.3\tfalse\t2026-10-20\n' ;;
     list) [ "${STUB_LIST_FAIL:-0}" = 1 ] && exit 1
-          cat "$STUB_ROWS" ;;
+          cat "$STUB_ROWS" ;;  # read-sink-ok: the fixture file this test itself writes
     edit) [ "$2" = "${STUB_EDIT_FAIL:-}" ] && exit 1 || exit 0 ;;
 esac
 STUB
