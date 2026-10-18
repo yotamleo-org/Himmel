@@ -337,7 +337,7 @@ const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length ? join(prima
 const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
 const DONE_STATUS = /^(done|resolved)$/i;
 // Closed and won't do are out of every count, as the tracker has it.
-const OUT_STATUS = /^(closed|wont do|won't do|wont fix)$/i;
+const OUT_STATUS = /^(closed|wont do|won't do|wont fix|won't fix)$/i;
 const releaseOf = (version) => {
     const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', '1000'];
     let out;
