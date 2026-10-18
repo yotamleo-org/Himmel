@@ -6,6 +6,8 @@
 # Exit: 0 detected / test-only not applicable, 1 failed gate, 2 usage.
 # Env: SUITE_TIMEOUT per-suite cap in seconds (default 600).
 # Platform: bash 3.2+, git, timeout; suite runtimes must already be installed.
+# JS suite deps are installed per scratch tree by the selector's --run
+# (lockfile-pinned, --ignore-scripts), never fetched by a bare npx or bun.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 TOOLS="$(cd "$(dirname "$0")/../cr" && pwd)" || exit 1
@@ -72,13 +74,17 @@ fi
 # outside the scratch tree so restoring a changed selector cannot narrow it.
 bash "$TOOLS/impacted-suites.sh" "$base..$head" > "$work/suites" || fail selector
 [ -s "$work/suites" ] || fail no-suites
+# The commands live in memory so a suite cannot rewrite them between phases.
+cmds=()
 n=0
 while IFS= read -r suite; do
     [ -n "$suite" ] || continue
     n=$((n + 1))
     case "${suite##*/}" in
-        test-*.sh) printf 'bash %q\n' "$suite" > "$work/command-$n" || fail scratch-write ;;
-        *) bash "$TOOLS/impacted-suites.sh" --runner "$suite" > "$work/command-$n" || fail "runner-unmapped $suite" ;;
+        test-*.sh) cmds[n]=$(printf 'bash %q' "$suite") ;;
+        *)
+            bash "$TOOLS/impacted-suites.sh" --runner "$suite" > /dev/null || fail "runner-unmapped $suite"
+            cmds[n]=$(printf 'bash %q --run %q' "$TOOLS/impacted-suites.sh" "$suite") ;;
     esac
 done < "$work/suites"
 [ "$n" -gt 0 ] || fail no-suites
@@ -95,9 +101,14 @@ run_suites() {
     while IFS= read -r suite; do
         [ -n "$suite" ] || continue
         n=$((n + 1))
-        command=$(< "$work/command-$n")
+        command="${cmds[$n]}"
         rc=0
-        (cd "$tree" && timeout -k 5 "$suite_timeout" bash -c "$command") || rc=$?
+        (cd "$tree" && timeout -k 5 "$suite_timeout" bash -c "$command") 2> "$work/stderr" || rc=$?
+        cat "$work/stderr" >&2
+        # A failed install is not a failing suite: never count it as detection.
+        if grep -q 'impacted-suites: FAIL_INSTALL' "$work/stderr"; then
+            fail "deps-install-failed $suite"
+        fi
         printf 'knockout-gate: %s suite %s exit=%s\n' "$phase" "$suite" "$rc"
         if [ "$phase" = baseline ] && [ "$rc" -ne 0 ]; then
             fail "baseline-red $suite (exit=$rc, 124/137 = timed out after ${suite_timeout}s; not knockout evidence)"

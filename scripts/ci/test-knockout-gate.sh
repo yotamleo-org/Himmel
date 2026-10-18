@@ -166,6 +166,39 @@ start=$SECONDS
 SUITE_TIMEOUT=2 verdict baseline-hang 1 baseline-red
 if [ $((SECONDS - start)) -lt 30 ]; then ok 'baseline-hang: gate returned within the deadline'; else bad 'baseline-hang: gate outlived the deadline'; fi
 
+# A JS suite runs in a fresh scratch tree with no node_modules. Its deps must be
+# installed lockfile-pinned first; a bare npx would fetch unpinned packages.
+# PATH stubs keep both rows offline: npx fails unless npm ci ran.
+mkdir -p "$T/stubs"
+w "$T/stubs/npm" '#!/usr/bin/env bash
+case " $* " in *" ci "*"--ignore-scripts"*) ;; *) exit 97 ;; esac
+[ -z "${KO_NPM_FAIL:-}" ] || exit 1
+mkdir -p node_modules'
+w "$T/stubs/npx" '#!/usr/bin/env bash
+[ -d node_modules ] || { echo "bare npx: no installed deps" >&2; exit 99; }
+[ "$(cat ../../value.txt)" = fixed ]'
+chmod +x "$T/stubs/npm" "$T/stubs/npx"
+
+new_repo
+w scripts/jira/package.json '{"name":"j"}'
+w scripts/jira/package-lock.json '{"lockfileVersion":3}'
+commit js-base
+BASE=$(git rev-parse HEAD)
+w value.txt fixed
+w scripts/jira/value.test.ts '// value.txt'
+commit js-deps
+PATH="$T/stubs:$PATH" verdict js-suite-deps 0 detected
+
+new_repo
+w scripts/jira/package.json '{"name":"j"}'
+w scripts/jira/package-lock.json '{"lockfileVersion":3}'
+commit js-base
+BASE=$(git rev-parse HEAD)
+w value.txt fixed
+w scripts/jira/value.test.ts '// value.txt'
+commit js-install-fails
+KO_NPM_FAIL=1 PATH="$T/stubs:$PATH" verdict js-install-fails 1 deps-install-failed
+
 # An all-zero cap would disable the timeout, so it is refused like a bare 0.
 new_repo
 w value.txt fixed
