@@ -401,7 +401,9 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
 # caller's own scripts, named by <names-fn> <word>, such a git segment is not
 # clean. A backslash-newline beside a heredoc can split its terminator or a
 # `$(` inside its body, which the tokenizer reads as body text, so such a
-# command is not clean either. Nor is a printf with a %n conversion, under any
+# command is not clean either, and nor is an unquoted heredoc with any `$`
+# from its first body line on: `${_@P}` or an arithmetic subscript re-expands
+# a substitution an earlier word only quoted. Nor is a printf with a %n conversion, under any
 # flags, width, precision or length modifier (`%ln`): bash's printf assigns
 # through it (`printf '%n' PATH` sets PATH), which can repoint
 # the `bash` a later dispatcher segment runs. An option or format word with a
@@ -413,6 +415,16 @@ cmdpos_clean_for() { # cmdpos_clean_for <names-fn> <command>
     case $- in *f*) ;; *) nof=1; set -f ;; esac
     case $cmd in *'<<'*\\$'\n'* | *\\$'\n'*'<<'*) rc=1 ;; esac
     [ "$rc" = 1 ] || cmdpos_clean || rc=1
+    k=0
+    while [ "$rc" = 0 ] && [ "$k" -lt "$ST_N" ]; do
+        case "${ST_RO[k]}${ST_Q[k]}" in
+            *'<<<'?) ;;
+            *'<<0' | *'<<-0')
+                w=${cmd#*'<<'}
+                case ${w#*$'\n'} in *'$'*) rc=1 ;; esac ;;
+        esac
+        k=$((k + 1))
+    done
     k=0
     while [ "$rc" = 0 ] && [ "$k" -lt "$ST_N" ]; do
         ek=$k cw=-1

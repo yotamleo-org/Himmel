@@ -2469,6 +2469,13 @@ assert_deny "6015 control: a real env prefix still denies" "$(j "${SW_VAR}=0 bas
 assert_deny "6015 control: unset before the chokepoint still denies" "$(j "unset HIMMEL_REPO; bash $MERGE_ON_GREEN")"
 assert_deny "6015 control: git submodule foreach running it still denies" "$(j "git submodule foreach '${SW_VAR}=0 bash $STOP_WORKER'")"
 assert_deny "6015 control: an unquoted heredoc substitution still denies" "$(j "cat <<EOF"$'\n'"\$(${SW_VAR}=0 bash $STOP_WORKER)"$'\n'"EOF")"
+# A live $ in an unquoted heredoc body can re-expand a single-quoted chokepoint
+# an earlier word carried: ${_@P} and ${x@P} prompt-expand it, an arithmetic
+# subscript evaluates $_ again. A quoted heredoc keeps the body data.
+assert_deny "6015 control: \${_@P} in an unquoted heredoc body re-expands a chokepoint" "$(j "echo '\$(${SW_VAR}=0 bash $STOP_WORKER)'"$'\n'"cat <<EOF"$'\n'"\${_@P}"$'\n'"EOF")"
+assert_deny "6015 control: \${x@P} in an unquoted heredoc body re-expands a chokepoint" "$(j "echo '\$(${SW_VAR}=0 bash $STOP_WORKER)'"$'\n'"cat <<EOF"$'\n'"\${x@P}"$'\n'"EOF")"
+assert_deny "6015 control: an arithmetic subscript in an unquoted heredoc body re-expands a chokepoint" "$(j "echo '\$(${SW_VAR}=0 bash $STOP_WORKER)'"$'\n'"cat <<EOF"$'\n'"\$[a[\$_]]"$'\n'"EOF")"
+assert_allow "6015 \${_@P} in a QUOTED heredoc body is data" "$(j "echo '\$(${SW_VAR}=0 bash $STOP_WORKER)'"$'\n'"cat <<'EOF'"$'\n'"\${_@P}"$'\n'"EOF")"
 assert_deny "6015 control: printf %n assigns a variable, so no relief" "$(j "printf '%n' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 assert_deny "6015 control: printf %5n assigns a variable too" "$(j "printf -- '%5n' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 assert_deny "6015 control: a length-modified %ln assigns a variable too" "$(j "printf '%ln' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
