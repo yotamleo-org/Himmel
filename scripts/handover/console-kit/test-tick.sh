@@ -1439,6 +1439,7 @@ contains 'a LIVE bullet "holding at READY" reads READY (HIMMEL-6154)' "$(tail339
 contains 'a LIVE bullet naming READY <pr> <full head> reads READY (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — sent READY 3002 $sha6154 GREEN, waiting")" 'N393:READY'
 contains 'a plain LIVE fix-pushed bullet stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — fix pushed')" 'N393:LIVE'
 contains 'a WRAPPED bullet naming READY <pr> <head> stays WRAPPED (HIMMEL-6154)' "$(tail3393 "- 23:47 WRAPPED — merged after READY 3002 $sha6154")" 'N393:WRAPPED'
+contains 'a LIVE bullet "no longer holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — no longer holding at READY; fixing review findings')" 'N393:LIVE'
 contains 'READY held then a newer plain LIVE bullet reads LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
 
 # --- a lock queue-lock can neither attribute to this doc nor rule
