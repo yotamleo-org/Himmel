@@ -1844,6 +1844,71 @@ else
   bad "row 46: dispatched closure gaps: $(cat "$T/closure.out")"
 fi
 
+# --- rows 65-70: a release tag of the configured update channel re-pins ----
+# A channel update detaches HEAD onto a release tag that is BEHIND the anchor
+# tip, so the on-disk bytes are the tag's, not the tip's. The tag must be one
+# origin advertises on the active channel; a local-only tag or an off-channel
+# tag refuses like any other non-tip bytes.
+unset HIMMEL_UPDATE_CHANNEL   # the rows set it per call; an ambient value must not leak in
+chan_fixture() {   # <name> -> sets CA (pinned), CB (the tagged release), CC (the tip)
+  fixture "$1"
+  CA="$(fx_commit A c1)"; BLOB_CA="$(fx_blob)"
+  CB="$(fx_commit B c2)"; BLOB_CB="$(fx_blob)"
+  CC="$(fx_commit C c3)"; fx_publish "$CC"
+  guard_write "$FX_PROJ/$REL" B          # disk = the release tag's bytes
+}
+chan_tag() {   # <tag> <commit> — a tag origin advertises
+  git -C "$FX_PROJ" tag "$1" "$2"
+  git -C "$FX_PROJ" push -q origin "refs/tags/$1"
+}
+
+chan_fixture r65
+chan_tag v1.0.0 "$CB"
+write_record "$FX_OUT" s65 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
+HIMMEL_UPDATE_CHANNEL=stable launch "$FX_PROJ" "$FX_OUT" s65 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_allow "row 65: a stable-channel release tag whose bytes are on disk re-pins"
+expect_pin "$FX_OUT/s65.json" "$REL" "$BLOB_CB" "row 65: the pin moved to the tag's blob"
+expect_anchor "$FX_OUT/s65.json" "$CC" "row 65: the anchor advanced to the tip, as for any re-pin"
+
+chan_fixture r66
+chan_tag v1.0.0 "$CB"
+write_record "$FX_OUT" s66 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
+guard_write "$FX_PROJ/$REL" X
+git -C "$FX_PROJ" add -A; git -C "$FX_PROJ" commit -q -m local-only
+CX="$(git -C "$FX_PROJ" rev-parse HEAD)"
+git -C "$FX_PROJ" tag v9.9.9 "$CX"       # local-only, higher, never pushed
+HIMMEL_UPDATE_CHANNEL=stable launch "$FX_PROJ" "$FX_OUT" s66 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_deny "row 66: bytes of a local-only higher tag are denied" 'not the anchor tip'
+
+chan_fixture r67
+chan_tag v1.0.0-pre.1 "$CB"
+write_record "$FX_OUT" s67 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
+HIMMEL_UPDATE_CHANNEL=stable launch "$FX_PROJ" "$FX_OUT" s67 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_deny "row 67: a -pre tag is off the stable channel and is denied" 'not the anchor tip'
+HIMMEL_UPDATE_CHANNEL=pre launch "$FX_PROJ" "$FX_OUT" s67 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_allow "row 67: the same -pre tag re-pins on the pre channel"
+
+chan_fixture r68
+chan_tag v1.0.0 "$CB"
+write_record "$FX_OUT" s68 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
+mkdir -p "$FX/empty-cache"
+HIMMELCTL_CACHE_DIR="$FX/empty-cache" launch "$FX_PROJ" "$FX_OUT" s68 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_deny "row 68: no channel configured, a release tag does not re-pin" 'not the anchor tip'
+
+chan_fixture r69
+chan_tag v1.0.0 "$CB"
+mkdir -p "$FX/cache"; printf '{"channel":"stable"}\n' > "$FX/cache/install-profile.json"
+write_record "$FX_OUT" s69 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
+HIMMELCTL_CACHE_DIR="$FX/cache" launch "$FX_PROJ" "$FX_OUT" s69 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_allow "row 69: the channel read from the install profile re-pins"
+
+chan_fixture r70
+chan_tag v1.0.0 "$CB"
+chan_tag v2.0.0 "$CC"                    # a higher stable release exists
+write_record "$FX_OUT" s70 "$CA" "$FX_REF" "$FX_GIT" "$REL" "$BLOB_CA"
+HIMMEL_UPDATE_CHANNEL=stable launch "$FX_PROJ" "$FX_OUT" s70 "$LAUNCHER" --optional "$FX_PROJ/$REL"
+expect_deny "row 70: only the channel's highest release re-pins; an older tag's bytes are denied" 'not the anchor tip'
+
 # A sourced path resolves only through the ref's real value.
 # Only the fail-closed half is implemented: the source scan reads quoted
 # spans and heredoc bodies as code, exactly as before, so a `source` inside
