@@ -31,7 +31,7 @@ const SCREENER = join(TOOLS_DIR, "harvest-clip-body-batch.py");
 
 const MAX_FILES = 12;
 const MAX_FILE_BYTES = 200 * 1024;
-const MAX_LINE = 4000; // per-line cap keeps every regex below linear on bounded input
+const MAX_LINE = 4000; // cap the shell-rule input per line
 const SAFE_PATH_RE = /^[A-Za-z0-9_.@+\/-]{1,120}$/;
 const REPO_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
@@ -54,8 +54,6 @@ export function defaultScanFn(tmpFile) {
 const INSTALL_HOOKS = ["preinstall", "install", "postinstall", "prepare"];
 const SHELL_RULES = [
   ["setup-exfil", "pipe-to-shell", /\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z|da)?sh\b/i],
-  ["setup-exfil", "posts-secrets",
-    /\b(curl|wget)\b[^\n]*(\s-d\b|--data|--upload-file|\s-F\b|\s-T\b|--post)[^\n]*(\.ssh|\.aws|\.env\b|\/etc\/passwd|\$\{?[A-Z_]*(TOKEN|SECRET|KEY|PASSWORD)\b)/i],
   ["setup-exfil", "posts-secrets", /\b(env|printenv)\b[^\n]*\|\s*(curl|wget|nc)\b/i],
   ["obfuscated-payload", "base64-exec", /\bbase64\s+(-d|--decode)\b[^\n]*\|\s*(sudo\s+)?(ba|z|da)?sh\b/i],
   ["obfuscated-payload", "eval-decode", /\beval\s*\(\s*(atob|Buffer\.from|String\.fromCharCode)\b/i],
@@ -69,6 +67,15 @@ function matchShellRules(text, path, findings) {
   const seen = new Set();
   for (const raw of String(text).split("\n")) {
     const line = raw.slice(0, MAX_LINE);
+    // Ordered token searches avoid retrying every command/upload combination.
+    const command = /\b(curl|wget)\b/i.exec(line);
+    const rest = command ? line.slice(command.index + command[0].length) : "";
+    const upload = /(\s-d\b|--data|--upload-file|\s-F\b|\s-T\b|--post)/i.exec(rest);
+    if (!seen.has("setup-exfil:posts-secrets") && upload &&
+        /(\.ssh|\.aws|\.env\b|\/etc\/passwd|\$\{?[A-Z_]*(TOKEN|SECRET|KEY|PASSWORD)\b)/i.test(rest.slice(upload.index + upload[0].length))) {
+      seen.add("setup-exfil:posts-secrets");
+      findings.push({ kind: "setup-exfil", detail: "posts-secrets", path });
+    }
     for (const [kind, detail, re] of SHELL_RULES) {
       const key = `${kind}:${detail}`;
       if (!seen.has(key) && re.test(line)) {
@@ -95,9 +102,9 @@ function scanPackageJson(text, path, findings) {
   }
   for (const section of ["dependencies", "optionalDependencies", "devDependencies"]) {
     const deps = pkg && typeof pkg[section] === "object" && pkg[section] ? pkg[section] : {};
-    for (const [name, spec] of Object.entries(deps)) {
+    for (const spec of Object.values(deps)) {
       if (typeof spec === "string" && SUSPICIOUS_DEP_RE.test(spec)) {
-        findings.push({ kind: "suspicious-dependency", detail: SAFE_PATH_RE.test(name) ? name : "[odd-name]", path });
+        findings.push({ kind: "suspicious-dependency", detail: "non-registry-source", path });
       }
     }
   }
@@ -224,8 +231,8 @@ export function scanRepo(fullName, { ghFn, scanFn } = {}) {
   return { repo: fullName, status: errors.length ? "partial" : "ok", scanned, findings, summary };
 }
 
-function makeGhFn() {
-  const raw = process.env.REPO_SCAN_GH_FIXTURE;
+export function makeGhFn({ fixture = process.env.REPO_SCAN_GH_FIXTURE } = {}) {
+  const raw = fixture;
   if (raw) {
     const map = JSON.parse(existsSync(raw) ? readFileSync(raw, "utf8") : raw);
     return (args) => {
