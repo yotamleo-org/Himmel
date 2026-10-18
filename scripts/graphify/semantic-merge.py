@@ -319,7 +319,7 @@ def cmd_failrow(a):
 
 
 def main():
-    ap =argparse.ArgumentParser()
+    ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("plan")
     p.add_argument("--root", required=True)
@@ -346,7 +346,7 @@ def main():
     f.add_argument("--backend", default="")
     f.add_argument("--cost-usd", type=float, default=0.0)
     f.add_argument("--rc", type=int, default=0)
-    r =sub.add_parser("restore")
+    r = sub.add_parser("restore")
     r.add_argument("--out", required=True)
     r.add_argument("--before", required=True)
     a = ap.parse_args()

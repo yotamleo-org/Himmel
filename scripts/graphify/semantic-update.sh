@@ -17,6 +17,8 @@
 # Clustering is left to the next AST pass, which reclusters and keeps semantic
 # nodes. Each run appends one line to <out>/semantic-runs.jsonl (nodes/edges
 # added and removed, backlog, runtime, tokens, cost equivalent).
+# Measure the result with semantic-metrics.py <graph.json> [--files a.md,b.md]
+# (rationale coverage, cross-file and doc-to-code edges).
 #
 # BILLING: --backend claude-cli makes graphify shell `claude -p` once per chunk,
 # which draws the SAME subscription 5h/weekly bank as interactive use
