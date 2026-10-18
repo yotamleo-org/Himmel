@@ -124,20 +124,28 @@ function fileWrite(name, value, ctx) {
   if (!file) refuse('secret has no writable file store (card entry)');
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  if (!ownedByMe(fs.statSync(dir), ctx)) refuse('store directory is owned by another user');
+  const dst = fs.statSync(dir);
+  if (!ownedByMe(dst, ctx)) refuse('store directory is owned by another user');
+  if (dst.mode & 0o022) refuse('store directory is group or world writable');
   if (inWorkTree(dir)) {
     if (typeof ctx.gitCheckIgnore !== 'function') refuse('store sits in a git work tree and no gitignore check was supplied');
     if (ctx.gitCheckIgnore(file) !== true) refuse('store file is not ignored by git (add it to .gitignore first)');
   }
   let existing = '', tightened = false;
-  let st = null;
-  try { st = fs.lstatSync(file); } catch (err) { if (err.code !== 'ENOENT') throw err; }
-  if (st) {
-    if (st.isSymbolicLink()) refuse('store file is a symlink');
-    if (!st.isFile()) refuse('store file is not a regular file');
-    if (!ownedByMe(st, ctx)) refuse('store file is owned by another user');
-    tightened = (st.mode & 0o077) !== 0;
-    existing = fs.readFileSync(file, 'utf8');
+  let rfd = null;
+  try { rfd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)); } catch (err) {
+    if (err.code === 'ELOOP') refuse('store file is a symlink');
+    if (err.code !== 'ENOENT') throw err;
+  }
+  if (rfd !== null) {
+    try {
+      const st = fs.fstatSync(rfd);
+      if (!st.isFile()) refuse('store file is not a regular file');
+      if (!ownedByMe(st, ctx)) refuse('store file is owned by another user');
+      tightened = (st.mode & 0o077) !== 0;
+      existing = fs.readFileSync(rfd, 'utf8');
+    } finally { fs.closeSync(rfd); }
+    if (existing.includes('�')) refuse('store file is not valid UTF-8, refusing to rewrite it');
   }
   const eol = existing.includes('\r\n') ? '\r\n' : '\n';
   const lines = existing === '' ? [] : existing.split('\n');

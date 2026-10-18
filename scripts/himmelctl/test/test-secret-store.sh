@@ -182,6 +182,34 @@ row('h4 redactor: a bad entry in the MCP dir does not drop later servers', () =>
   ok(lits.includes(v), 'later server dropped');
 });
 
+row('h5 unwritable guard: a value new URL() or a lax rule would pass is refused as single-line, and never reaches the file', () => {
+  const host = 'https://a.atlassian.net';
+  const cases = [host + '\nEVIL=1', host + '\rEVIL=1', host + '\0', host + ' ', ' ' + host];
+  for (const v of cases) {
+    const r = store.validate('JIRA_BASE_URL', v);
+    eq(r.ok, false, JSON.stringify(v)); eq(r.rule, 'single-line', JSON.stringify(v));
+    const ctx = mk(); let msg = ''; try { store.write('JIRA_BASE_URL', v, ctx); } catch (e) { msg = e.message; }
+    ok(/single-line/.test(msg), 'write refused: ' + msg);
+    ok(!fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'nothing written for ' + JSON.stringify(v));
+  }
+});
+
+row('h6 write never rewrites bytes it cannot decode: refused, file untouched', () => {
+  const ctx = mk(); const f = path.join(ctx.himmelRoot, '.env');
+  const before = Buffer.concat([Buffer.from('# caf'), Buffer.from([0xe9]), Buffer.from('\nOTHER_KEY=ab'), Buffer.from([0xe9]), Buffer.from('cd\nJIRA_EMAIL=old@example.com\n')]);
+  fs.writeFileSync(f, before);
+  let msg = ''; try { store.write('JIRA_EMAIL', 'new@example.com', ctx); } catch (e) { msg = e.message; }
+  ok(/utf-?8/i.test(msg), 'refused: ' + msg);
+  ok(fs.readFileSync(f).equals(before), 'bytes changed');
+});
+
+row('h7 write refuses a store directory other users can write to', () => {
+  const ctx = mk(); fs.chmodSync(ctx.himmelRoot, 0o777);
+  let msg = ''; try { store.write('JIRA_EMAIL', 'a@example.com', ctx); } catch (e) { msg = e.message; }
+  ok(/writable/.test(msg), 'refused: ' + msg);
+  ok(!fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'nothing written');
+});
+
 row('h2 card entries are not writable', () => {
   let msg = ''; try { store.write('FIRECRAWL_API_KEY', fake(), mk()); } catch (e) { msg = e.message; }
   ok(/card/.test(msg), msg);
