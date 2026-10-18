@@ -431,15 +431,34 @@ export function classifyVaultCorpus(root, env = process.env) {
     if (!statSync(clip).isDirectory()) return null;
   } catch { return null; }
   // Clippings may be a symlink out of the vault: both resolved paths must be clear.
-  for (const p of [real, clip]) {
-    for (let d = p, prev = ""; d !== prev; prev = d, d = dirname(d)) {
-      if (existsSync(join(d, ".salus")) || existsSync(join(d, ".salus-profile"))) return "salus";
-    }
-    for (const lr of listed) {
-      if (lr === sep || p === lr || p.startsWith(lr + sep) || lr.startsWith(p + sep)) return "salus";
-    }
-  }
+  for (const p of [real, clip]) if (isSalusPath(p, listed)) return "salus";
   return "luna-clippings";
+}
+
+// A resolved path is salus when it or an ancestor carries a salus marker, or it overlaps a listed root.
+export function isSalusPath(p, listed) {
+  for (let d = p, prev = ""; d !== prev; prev = d, d = dirname(d)) {
+    if (existsSync(join(d, ".salus")) || existsSync(join(d, ".salus-profile"))) return true;
+  }
+  for (const lr of listed) {
+    if (lr === sep || p === lr || p.startsWith(lr + sep) || lr.startsWith(p + sep)) return true;
+  }
+  return false;
+}
+
+/**
+ * True when a clip file may be read and sent to a search rung: its realpath
+ * stays under the realpath of Clippings/ and is not a salus path. A symlinked
+ * .md can point anywhere, so the directory-level check in classifyVaultCorpus
+ * does not cover it. Fails closed (false) on any resolution error.
+ */
+export function clipFileEgressClear(file, clipRootReal, env = process.env) {
+  let real;
+  try { real = realpathSync(file); } catch { return false; }
+  if (real !== clipRootReal && !real.startsWith(clipRootReal + sep)) return false;
+  const listed = listedPhiRoots(env);
+  if (listed === null) return false;
+  return !isSalusPath(real, listed);
 }
 
 // The shared evaluator decides; a conditional verdict holds only with the literal opt-in flag.
