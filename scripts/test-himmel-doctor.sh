@@ -5449,7 +5449,7 @@ c42_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c42.XXXXXX")" || { fail "C42 s
 c42_stub() { # $1 exit code, $2.. stdout lines
     local rc="$1" l; shift
     # shellcheck disable=SC2016  # $1/$* belong to the generated stub, not to this shell
-    { printf '#!/bin/sh\n[ "$1" = "--health" ] || { echo "stub: wrong args: $*" >&2; exit 9; }\n'
+    { printf '#!/bin/sh\n[ "$1 $2" = "prune --health" ] || { echo "stub: wrong args: $*" >&2; exit 9; }\n'
       for l in "$@"; do printf 'echo %s\n' "'$l'"; done
       printf 'exit %s\n' "$rc"; } > "$c42_t/stub.sh"
 }
