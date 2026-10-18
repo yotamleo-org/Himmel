@@ -16,6 +16,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tracker-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
+# the parity check's Jira CLI: every render here reads a CLI that fails, unless a row names another.
+printf '#!/bin/sh\nexit 1\n' > "$W/nojira"
+chmod +x "$W/nojira"
+export TRACKER_JIRA="$W/nojira"
 
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
@@ -147,13 +151,13 @@ done
 contains 'the size scale comes from the plan (HIMMEL-3957)' "$html" 'XS 0.44 · S 1 · M 2.2 · L 5 · XL 11.1'
 # Ask 3: the ledger wording, built in Python (Done unplanned HIMMEL-5 counts in v1.0.1: ask 5).
 contains 'the ledger names the running version with its progress; Done unplanned counts (HIMMEL-3957)' "$stdout" \
-    'Running now: v1.0.1 — 1 of 4 done (25 %), 1 in progress, 2 to do.'
+    'Plan rows placed in v1.0.1 (not Jira progress): 1 of 4 done (25 %), 1 in progress, 2 to do.'
 contains 'the ledger gives whole-train progress (HIMMEL-3957)' "$stdout" \
-    'Whole v1.0.x train: 1 of 4 done (25 %), 1 in progress, 2 to do.'
+    'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 4 done (25 %), 1 in progress, 2 to do.'
 contains 'the ledger names open unplanned work when non-zero (HIMMEL-3957)' "$stdout" \
     'Needs attention: 2 open tickets sit in a version but not in the plan; 2 open tickets have no theme.'
 not_contains 'the ledger omits drift when it is zero (HIMMEL-3957)' "$stdout" 'drifted'
-contains 'the page data carries the same ledger (HIMMEL-3957)' "$html" 'Running now: v1.0.1 — 1 of 4 done (25 %)'
+not_contains 'the page data carries no plan ledger: it is not Jira progress (HIMMEL-6401)' "$html" '"LG":'
 # Ask 5: a Done off-plan ticket still counts in its version; off-plan work adds no budget.
 contains 'off-plan tickets add no budget (HIMMEL-3990)' "$html" 'function ld(p){return p[7]==2?0:(p[15]||0)}'
 contains 'off-plan tickets are named in words (HIMMEL-3990)' "$html" '"Not in the plan: Jira puts it in "'
@@ -328,7 +332,7 @@ thtml="$(cat "$out" 2>/dev/null)"
 contains 'a v1.0.1a ticket renders (HIMMEL-4026)' "$thtml" '"trail a ticket"'
 contains 'a v1.0.2b ticket renders (HIMMEL-4026)' "$thtml" '"trail b ticket"'
 contains 'trail versions sit in train order (HIMMEL-4026)' "$thtml" '"v1.0.1","v1.0.1a","v1.0.1b","v1.0.2","v1.0.2b"'
-contains 'the whole-train ledger counts trail tickets (HIMMEL-4026)' "$tstdout" 'Whole v1.0.x train: 1 of 8 done'
+contains 'the whole-train ledger counts trail tickets (HIMMEL-4026)' "$tstdout" 'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 8 done'
 contains 'the JS train test accepts a trail suffix (HIMMEL-4026)' "$thtml" '\d+[a-z]?$/.test(V[i])'
 
 # --- the v1.1.x line (ex v1.0.2b..h) is train, sorted right after v1.0.2 and before v1.0.3.
@@ -340,7 +344,7 @@ tstdout="$(render)"
 thtml="$(cat "$out" 2>/dev/null)"
 contains 'a v1.1.0 ticket renders (HIMMEL-4872)' "$thtml" '"minor line ticket"'
 contains 'v1.1.x sits between v1.0.2 and v1.0.3 (HIMMEL-4872)' "$thtml" '"v1.0.2","v1.1.0","v1.0.3"'
-contains 'the whole-train ledger counts v1.1.x (HIMMEL-4872)' "$tstdout" 'Whole v1.0.x train: 1 of 8 done'
+contains 'the whole-train ledger counts v1.1.x (HIMMEL-4872)' "$tstdout" 'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 8 done'
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-14.md"
 
 # --- the milestone minors v1.2.0..v1.7.0 are train too, in numeric order after the v1.1.x line.
@@ -351,7 +355,7 @@ tstdout="$(render)"
 thtml="$(cat "$out" 2>/dev/null)"
 contains 'a v1.2.0 ticket renders (HIMMEL-4873)' "$thtml" '"milestone minor ticket"'
 contains 'minors sort numerically after the v1.1.x line (HIMMEL-4873)' "$thtml" '"v1.1.0","v1.2.0","v1.2.0a","v1.2.999999","v1.2.1000000","v1.7.0","v1.10.0"'
-contains 'the whole-train ledger counts a minor (HIMMEL-4873)' "$tstdout" 'Whole v1.0.x train: 1 of 9 done'
+contains 'the whole-train ledger counts a minor (HIMMEL-4873)' "$tstdout" 'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 9 done'
 contains 'the JS train test accepts every v1.N.x (HIMMEL-4873)' "$thtml" '/^v1\.\d+\.\d+[a-z]?$/'
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-15.md"
 
@@ -718,6 +722,43 @@ render >/dev/null
 fmhtml="$(cat "$out" 2>/dev/null)"
 rm -f "$bk/test-console.fleet.json"
 contains 'a leg in the fleet manifest is live with its label and phase (HIMMEL-5217)' "$fmhtml" '"7":["N57","LIVE"'
+
+# --- parity: the hero's per-bucket counts for the version worked on equal a live JQL count.
+# The fixture is copied from the real environment on 2026-10-18: four mirror frontmatters, the `jira list` rows for
+# fixVersion = "v1.1.3" and the versions snapshot. One ticket is Done in v1.1.4 (moved into v1.1.3 by the page), one
+# carries v1.1.0 and v1.1.3, one moved to In Review after the mirror sync, and one is Closed.
+pf="$HERE/fixtures/tracker-parity"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s"\ncat "%s"\n' "$W/jira-args" "$pf/jira-list-v1.1.3.tsv" > "$W/fakejira"
+chmod +x "$W/fakejira"
+pstdout="$(TRACKER_JIRA="$W/fakejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+prc=$?
+phtml="$(cat "$out" 2>/dev/null)"
+contains 'the parity check asks Jira for the version worked on (HIMMEL-6401)' "$(cat "$W/jira-args" 2>/dev/null)" \
+    'list --jql project = HIMMEL AND fixVersion = "v1.1.3"'
+contains 'a page count that differs from Jira is a parity DRIFT (HIMMEL-6401)' "$pstdout" \
+    'parity: v1.1.3 DRIFT page 2/1/0/0 jira 1/0/1/0 (done/in progress/in review/to do)'
+contains 'the hero note carries the parity line (HIMMEL-6401)' "$phtml" '"PAR":"parity: v1.1.3 DRIFT page 2/1/0/0'
+# the same mirror against a Jira that agrees with it: ok.
+printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-5860\tTask\tDone\tx\nHIMMEL-6143\tTask\tIn Progress\tx\nHIMMEL-5574\tTask\tClosed\tx\n' > "$W/agree.tsv"
+printf '#!/bin/sh\ncat "%s"\n' "$W/agree.tsv" > "$W/agreejira"
+chmod +x "$W/agreejira"
+pstdout="$(TRACKER_JIRA="$W/agreejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'equal counts are parity ok (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 ok 2/1/0/0 (done/in progress/in review/to do)'
+# a status the tracker has no bucket for is a garbled answer, never a guessed To Do.
+printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-6143\tTask\tSomething New\tx\n' > "$W/odd.tsv"
+printf '#!/bin/sh\ncat "%s"\n' "$W/odd.tsv" > "$W/oddjira"
+chmod +x "$W/oddjira"
+pstdout="$(TRACKER_JIRA="$W/oddjira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'an unknown Jira status reads parity unavailable (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 unavailable'
+# a failing CLI never fails the render.
+pstdout="$(render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+prc=$?
+if [ "$prc" -eq 0 ]; then pass 'a failing Jira CLI does not fail the render (HIMMEL-6401)'; else fail "a failing Jira CLI failed the render: rc $prc"; fi
+contains 'a failing Jira CLI reads parity unavailable (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 unavailable'
+# the hero counts the Jira status (t.b), not the live-leg display; the boards keep the display (jb).
+contains 'the hero tallies by Jira status, not the live-leg display (HIMMEL-6401)' "$phtml" 't=jtally(jin(JCUR),1)'
+contains 'the up-next line tallies by Jira status (HIMMEL-6401)' "$phtml" 'var u=jtally(jin(JNXT),1)'
+contains 'a board tally keeps the live-leg display (HIMMEL-6401)' "$phtml" 'r[raw?t.b:jb(t)].push(t)'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

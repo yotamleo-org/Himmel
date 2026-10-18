@@ -717,6 +717,83 @@ const flakesSection = (() => {
     } catch { return `<section data-flakes="?">${title}<p class="none">suite flakes unavailable</p></section>`; }
 })();
 
+// CR loop, last 7 days: rounds per merged PR (distinct ledger `score` heads per merged
+// branch), preflight hits per PR (`preflight` rows; n/a until the pre-round pass writes them),
+// residual inflow/outflow from the Jira mirror, each version's residual slots against the
+// soft cap (a warning colour, never a refusal), open restructure tickets, and the plan's
+// "before" row. CR_LEDGER and BOARD_MIRROR are the seams. Anything unreadable is n/a (null),
+// never a failure; not part of the fingerprint. The mirror's `updated` is no proxy for Done.
+// ponytail: outflow and net read n/a while any Done residual lacks a `resolved:` mirror date, upgrade path: HIMMEL-6390 (mirror writer emits it).
+const CR_SOFT_CAP = 15;
+const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
+const crLoopSection = (() => {
+    const out = { window_days: 7, soft_cap: CR_SOFT_CAP, rounds: { prs: 0, mean: null, p90: null }, preflight: { hits: null, per_pr: null },
+        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, outflow_note: 'outflow needs a resolved date in the mirror (HIMMEL-6390)' },
+        versions: [], restructure_open: null, before: CR_BEFORE };
+    trend.cr_loop = out;
+    const since = Date.now() - 7 * 86400e3;
+    const round2 = (v) => Math.round(v * 100) / 100;
+    const merged = ghJson(['pr', 'list', '--state', 'merged', '--limit', '1000', '--search', `merged:>=${new Date(since).toISOString().slice(0, 10)}`, '--json', 'number,headRefName,mergedAt']);
+    const mergedWin = Array.isArray(merged) ? merged.filter((p) => Date.parse(p.mergedAt) >= since) : null;
+    const branches = new Set((mergedWin || []).map((p) => p.headRefName));
+    try {
+        const ledger = process.env.CR_LEDGER || join(primaryRoot(), '.git', 'cr-critic-scores.jsonl');
+        const heads = new Map(), pre = new Map();
+        for (const line of readFileSync(ledger, 'utf8').split('\n')) {
+            if (!line.includes('"kind":"score"') && !line.includes('"kind":"preflight"')) continue;
+            let r;
+            try { r = JSON.parse(line); } catch { continue; }
+            if (!r || !branches.has(r.branch)) continue;
+            if (r.kind === 'score') (heads.get(r.branch) || heads.set(r.branch, new Set()).get(r.branch)).add(r.head);
+            else if (r.kind === 'preflight') pre.set(r.branch, Array.isArray(r.classes) ? r.classes.length : 0);
+        }
+        const rounds = [...heads.values()].map((s) => s.size).sort((a, b) => a - b);
+        if (rounds.length) out.rounds = { prs: rounds.length, mean: round2(rounds.reduce((s, n) => s + n, 0) / rounds.length), p90: rounds[Math.ceil(0.9 * rounds.length) - 1] };
+        if (pre.size) { const hits = [...pre.values()].reduce((s, n) => s + n, 0); out.preflight = { hits, per_pr: round2(hits / pre.size) }; }
+    } catch { /* no readable ledger: rounds and preflight stay n/a */ }
+    try {
+        const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+        const released = new Set();
+        try {
+            for (const l of readFileSync(join(dirname(dir), 'HIMMEL.versions.tsv'), 'utf8').split('\n')) {
+                const f = l.split('\t');
+                if (f[1] === 'true') released.add(f[0]);
+            }
+        } catch { /* no version list: every version with residual slots shows */ }
+        let inflow = 0, restructure = 0, doneMissing = 0, outflow = 0;
+        const slots = new Map();
+        for (const name of readdirSync(dir)) {
+            if (!name.endsWith('.md')) continue;
+            const head = readFileSync(join(dir, name), 'utf8').slice(0, 3000).split('\n---')[0];
+            const val = (k) => { const m = new RegExp(`^${k}: (.*)$`, 'm').exec(head); if (!m) return null; try { return JSON.parse(m[1]); } catch { return m[1]; } };
+            const labels = val('labels') || [], status = String(val('status') || ''), cat = String(val('statusCategory') || '');
+            const done = DONE_STATUS.test(status) || DONE_STATUS.test(cat);
+            if (labels.some((x) => /^restructure-class-/.test(x)) && !done) restructure += 1;
+            if (!labels.some((x) => /(^|-)residual(-|$)/.test(x))) continue;
+            if (Date.parse(val('created')) >= since) inflow += 1;
+            if (done) {
+                const res = Date.parse(val('resolved'));
+                if (Number.isNaN(res)) doneMissing += 1; else if (res >= since) outflow += 1;
+            } else {
+                for (const v of val('fixVersions') || []) slots.set(v, (slots.get(v) || 0) + 1);
+            }
+        }
+        const nMerged = mergedWin ? mergedWin.length : 0;
+        out.residual.inflow = inflow;
+        if (!doneMissing) { out.residual.outflow = outflow; out.residual.net = inflow - outflow; }
+        if (nMerged) out.residual.per_merged_pr = round2(inflow / nMerged);
+        out.restructure_open = restructure;
+        out.versions = [...slots].filter(([v]) => !released.has(v)).sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
+            .map(([version, n]) => ({ version: redact(version), slots: n, over: n > CR_SOFT_CAP }));
+    } catch { /* no readable mirror: residual fields stay n/a */ }
+    const na = (v, f) => (v === null ? 'n/a' : f(v));
+    const r = out.residual;
+    const dark = out.rounds.mean === null && out.preflight.per_pr === null && r.inflow === null;
+    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight hits ${na(out.preflight.per_pr, (v) => v.toFixed(1))}/PR · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs HIMMEL-6390)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
+    const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
+    return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
+})();
+
 const archiveHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Supervisor Session Board — archive</title></head>
 <body>
@@ -765,6 +842,7 @@ li[data-phase="BLOCKED"] .ph, li[data-phase="WRAPPED, window still open"] .ph, l
 .wide { grid-column:1 / -1; }
 table { width:100%; border-collapse:collapse; font-size:.85rem; } th, td { text-align:left; padding:4px 6px; border-top:1px solid var(--line); } th { color:var(--muted); font-weight:500; }
 .tscroll { overflow-x:auto; } .tscroll table { width:max-content; min-width:100%; }
+li[data-over="1"] { color:var(--warn); font-weight:600; }
 [data-failures] td:first-child { word-break:normal; overflow-wrap:normal; }
 [data-failures] th:nth-child(n+2):nth-child(-n+5), [data-failures] td:nth-child(n+2):nth-child(-n+5) { text-align:right; white-space:nowrap; }
 </style>
@@ -793,6 +871,7 @@ ${costSection}
 ${explorationSection}
 ${failuresSection}
 ${flakesSection}
+${crLoopSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
@@ -1045,7 +1124,7 @@ const boardModel = {
     milestones,
     needs_you: needsYou,
     legs: legsOut,
-    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, tools: succession },
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, tools: succession },
     legend,
     cards,
 };

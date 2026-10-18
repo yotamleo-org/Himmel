@@ -58,14 +58,6 @@
       "remedy": "CODEX_EXTERNAL_WRITES_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
-      "name": "CODEX_WSL_RAW_OK",
-      "hooks": [
-        "scripts/hooks/block-rogue-codex-wsl.sh"
-      ],
-      "bypasses": "Skips the \"block rogue codex wsl\" guard (scripts/hooks/block-rogue-codex-wsl.sh).",
-      "remedy": "CODEX_WSL_RAW_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
-    },
-    {
       "name": "CONSOLE_DISPATCH_OK",
       "hooks": [
         "scripts/hooks/guard-console-dispatch.sh"

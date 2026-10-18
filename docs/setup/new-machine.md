@@ -330,7 +330,7 @@ Then it goes through. The attestation gates ("Cross-platform attestation",
 the FIRST commit — do not try to add them with `git commit --amend` after a
 refusal.
 
-**`clean-garden.sh` leaves the new worktree dirty.** It installs the Jira CLI
+**`worktree.sh new` leaves the new worktree dirty.** It installs the Jira CLI
 dependencies, which rewrites `scripts/jira/package-lock.json`. Revert that file
 rather than committing it: `git checkout -- scripts/jira/package-lock.json`.
 

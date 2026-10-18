@@ -3466,7 +3466,7 @@ check_c41_mcp_argv_key() {
 }
 
 # --- C42: sweep health alarms (read-only advisory) -------------------
-# scripts/clean-garden.sh --health prints ONLY alarm lines -- LOST-COMMITS (work
+# scripts/worktree.sh prune --health prints ONLY alarm lines -- LOST-COMMITS (work
 # pushed after its PR merged, never shipped), STUCK (a worktree/branch the sweep
 # keeps skipping), SWEEP-ERROR (the sweep could not classify a branch) -- and
 # prints nothing when the sweep is healthy. Delegates entirely to it; one WARN
@@ -3475,17 +3475,17 @@ check_c41_mcp_argv_key() {
 # is INFO, never a false-clean OK.
 # Test seam: DOCTOR_SWEEP_HEALTH_SCRIPT replaces the script (hermetic suite).
 check_c42_sweep_health() {
-    local script="${DOCTOR_SWEEP_HEALTH_SCRIPT:-$REPO_ROOT/scripts/clean-garden.sh}"
+    local script="${DOCTOR_SWEEP_HEALTH_SCRIPT:-$REPO_ROOT/scripts/worktree.sh}"
     [ -f "$script" ] || { emit OK C42-sweep-health "sweep-health script not found (skipped)"; return; }
     local out rc n=0 line remedy
-    out="$(cd "$REPO_ROOT" 2>/dev/null && bash "$script" --health 2>/dev/null)"; rc=$?
+    out="$(cd "$REPO_ROOT" 2>/dev/null && bash "$script" prune --health 2>/dev/null)"; rc=$?
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
-        emit INFO C42-sweep-health "sweep health check could not run (exit $rc)" "bash scripts/clean-garden.sh --health   # investigate directly"
+        emit INFO C42-sweep-health "sweep health check could not run (exit $rc)" "bash scripts/worktree.sh prune --health   # investigate directly"
         return
     fi
     if [ -z "$out" ]; then
         if [ "$rc" -ne 0 ]; then
-            emit INFO C42-sweep-health "sweep health check exited $rc with no alarm lines" "bash scripts/clean-garden.sh --health   # investigate directly"
+            emit INFO C42-sweep-health "sweep health check exited $rc with no alarm lines" "bash scripts/worktree.sh prune --health   # investigate directly"
         else
             emit OK C42-sweep-health "sweep healthy (no lost commits, stuck deletions or sweep errors)"
         fi
@@ -3496,7 +3496,7 @@ check_c42_sweep_health() {
         n=$((n+1))
         case "$line" in
             LOST-COMMITS*) remedy="git log <branch> --not origin/main   # then open a PR or cherry-pick the commits" ;;
-            STUCK*)        remedy="bash scripts/clean-garden.sh --dry-run   # fix the named reason, then re-run /clean" ;;
+            STUCK*)        remedy="bash scripts/worktree.sh prune --dry-run   # fix the named reason, then re-run /clean" ;;
             *)             remedy="bash scripts/unlanded-work.sh --health   # investigate directly" ;;
         esac
         emit WARN C42-sweep-health "$line" "$remedy"

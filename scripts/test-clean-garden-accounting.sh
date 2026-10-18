@@ -14,7 +14,7 @@ set -uo pipefail
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEAN_GARDEN="$SCRIPT_DIR/clean-garden.sh"
+CLEAN_GARDEN="$SCRIPT_DIR/worktree.sh"
 
 PASS=0
 FAIL=0
@@ -162,7 +162,7 @@ run_clean() {
         export PATH="${STUB_DIR}:${PATH}"
         export GH_ROWS_ORIGIN GH_CALLS GH_PULLS_JSON
         cd "$REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
+        bash "$CLEAN_GARDEN" prune "$@" 2>&1
     )
 }
 
@@ -263,7 +263,7 @@ run_clean_ttl() {
         export GH_ROWS_ORIGIN GH_CALLS
         if [ -n "$ttl" ]; then export CHECKPOINT_TTL_DAYS="$ttl"; else unset CHECKPOINT_TTL_DAYS; fi
         cd "$REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only 2>&1
+        bash "$CLEAN_GARDEN" prune 2>&1
     )
 }
 
@@ -372,7 +372,7 @@ run_clean_race() {
         export GH_ROWS_ORIGIN GH_CALLS
         export RACE_REAL_GIT RACE_WT RACE_FRESH_OID
         cd "$REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only 2>&1
+        bash "$CLEAN_GARDEN" prune 2>&1
     )
 }
 
@@ -934,7 +934,7 @@ run_clean_g() {
         export GH_ROWS_ORIGIN="$G_ROWS" GH_CALLS
         export FORGE=github   # origin is a local path, not a github URL
         cd "$G_REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
+        bash "$CLEAN_GARDEN" prune "$@" 2>&1
     )
 }
 g_ref_exists() { git -C "$G_REPO" rev-parse --quiet --verify refs/remotes/origin/chore/g-gone >/dev/null 2>&1; }

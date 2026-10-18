@@ -790,7 +790,7 @@ scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
 scripts/handover/merge-on-green.sh scripts/handover/queue-lock.sh
 scripts/hooks/check-commit-msg.sh
-scripts/clean-garden.sh scripts/clean.sh scripts/_new-worktree.sh scripts/unlanded-work.sh
+scripts/clean-garden.sh scripts/worktree.sh scripts/clean.sh scripts/_new-worktree.sh scripts/unlanded-work.sh
 scripts/observability/session-run-hook.ts scripts/observability/session-run-ledger.ts
 scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh
 scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json
@@ -815,7 +815,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/guardrails
     ':(top)scripts/handover/append-cr-findings.sh' ':(top)scripts/handover/append-cr-bugs.sh' ':(top)scripts/handover/bug.sh'
     ':(top)scripts/handover/merge-on-green.sh' ':(top)scripts/handover/queue-lock.sh'
     ':(top)scripts/hooks/check-commit-msg.sh'
-    ':(top)scripts/clean-garden.sh' ':(top)scripts/clean.sh' ':(top)scripts/_new-worktree.sh' ':(top)scripts/unlanded-work.sh'
+    ':(top)scripts/clean-garden.sh' ':(top)scripts/worktree.sh' ':(top)scripts/clean.sh' ':(top)scripts/_new-worktree.sh' ':(top)scripts/unlanded-work.sh'
     ':(top)scripts/observability/session-run-hook.ts' ':(top)scripts/observability/session-run-ledger.ts'
     ':(top)scripts/hermes/invoke.sh' ':(top)scripts/hermes/egress-gate.sh'
     ':(top)scripts/guardrails/egress-matrix-eval.mjs' ':(top)scripts/guardrails/egress-matrix.json'

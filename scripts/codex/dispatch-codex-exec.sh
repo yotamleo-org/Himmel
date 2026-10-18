@@ -51,7 +51,7 @@
 #      caller-named model) run at a non-default reasoning effort.
 #   8. Watchdog + ledger: the wait below
 #      used to be UNBOUNDED, so a wedged headless run was invisible - no
-#      timeout, no kill, and (unlike the codex-wsl twin) no flow-run-ledger
+#      timeout, no kill, and (unlike the other dispatchers) no flow-run-ledger
 #      row to show it had even started. Now:
 #        - the run is timeboxed to CODEX_EXEC_TIMEOUT (default 1800s, the
 #          codex-exec lane's own `timeoutSeconds` in scripts/lanes/lanes.json
@@ -62,7 +62,7 @@
 #          exits 124 - the code GNU `timeout` and run-shell-tests.sh already
 #          use - and says so on stderr;
 #        - start/end rows land in ~/.himmel/flow-runs.jsonl exactly as
-#          dispatch-codex-wsl.sh writes them, outcome complete|timeout|error;
+#          the ledger helper writes them, outcome complete|timeout|error;
 #        - the job-registry JSON is PRESERVED under $CODEX_JOBS_DIR/failed/
 #          on a timeout or a nonzero exit instead of being deleted by the
 #          EXIT trap, so the forensic trace outlives the failure. It leaves
@@ -135,11 +135,11 @@ REAP_HELPER="${CODEX_REAP_HELPER:-$SCRIPT_DIR/reap-mcp-fleet.sh}"
 # asserts the two match, which is what actually prevents the drift.
 EXEC_TIMEOUT="${CODEX_EXEC_TIMEOUT:-1800}"
 
-# the passthrough-args filter is shared with dispatch-codex-wsl.sh.
+# the passthrough-args filter lives in codex-arg-filter.sh.
 # shellcheck source=codex-arg-filter.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/codex-arg-filter.sh"
-# Invariant 8: the ledger the codex-wsl twin already writes, and the ONE
+# Invariant 8: the flow-run ledger, and the ONE
 # process-tree kill - never a hand-rolled taskkill here.
 # shellcheck source=../lib/flow-run-ledger.sh
 # shellcheck disable=SC1091
@@ -183,7 +183,7 @@ STDIN_BRIEF=0
 
 # Invariant 8: one end row per started run, emitted exactly once. `outcome`
 # is explicit for the timeout path; otherwise derived from the exit code the
-# same way the codex-wsl twin derives it.
+# same way the ledger helper derives it.
 _emit_end_row() {
     local rc="$1" outcome="${2:-}"
     if [ -z "$outcome" ]; then

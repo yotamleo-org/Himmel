@@ -8,6 +8,21 @@
 # Darwin confines writes to private scratch; outputs use stdout/stderr only.
 set -uo pipefail
 
+# Namespace/profile rules do not revoke an already-open host file or socket.
+# Close caller descriptors in a child, preserving this shell's script/trap fds.
+closed_fds_exec() (
+    [ -d /dev/fd ] && [ -r /dev/fd ] || exit 125
+    for fd in /dev/fd/*; do
+        fd=${fd##*/}
+        case "$fd" in
+            0|1|2) continue ;;
+            ''|*[!0-9]*) exit 125 ;;
+        esac
+        eval "exec ${fd}>&-" || exit 125
+    done
+    exec "$@"
+)
+
 platform=$(uname -s) || exit 125
 case "$platform" in
     Darwin)
@@ -98,11 +113,11 @@ PROFILE
     darwin_env=(/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin LANG=C.UTF-8
         "HOME=$writable_root/home" "TMPDIR=$writable_root/tmp" "SANDBOX_CANARY=$canary")
     # Profile/setup errors must be rc125, not confused with a hook's denial.
-    if ! "${darwin_env[@]}" "$sandbox_exec" -f "$profile" -D "SCRATCH=$writable_root" -- /usr/bin/true; then
+    if ! closed_fds_exec "${darwin_env[@]}" "$sandbox_exec" -f "$profile" -D "SCRATCH=$writable_root" -- /usr/bin/true; then
         printf 'sandbox-run: sandbox-exec profile unusable; refusing execution\n' >&2
         exit 125
     fi
-    "${darwin_env[@]}" "$sandbox_exec" -f "$profile" -D "SCRATCH=$writable_root" -- "$@"
+    closed_fds_exec "${darwin_env[@]}" "$sandbox_exec" -f "$profile" -D "SCRATCH=$writable_root" -- "$@"
     rc=$?
     if [ -e "$canary" ] || [ -L "$canary" ]; then
         printf 'sandbox-run: CANARY CHANGED; replay escaped containment\n' >&2
@@ -204,7 +219,7 @@ done
 # before bwrap it counts the station UID's fleet and can prevent even setup.
 # No host root bind: filesystem Unix sockets are absent, and abstract sockets
 # are cut off by the network namespace. proc/dev are private pseudo-filesystems.
-prlimit --as=1073741824 --cpu=60 -- \
+closed_fds_exec prlimit --as=1073741824 --cpu=60 -- \
     bwrap "${runtime[@]}" --unshare-all --unshare-user --unshare-net \
     --die-with-parent --new-session --cap-drop ALL --disable-userns \
     --proc /proc --remount-ro /proc --dev /dev --remount-ro /dev \

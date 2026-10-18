@@ -202,8 +202,6 @@ scripts/hooks/block-rogue-claude-schedule.sh	cmdsub-devnull	1
 scripts/hooks/block-rogue-claude-schedule.sh	true-after-read	2
 scripts/hooks/block-rogue-codex-exec.sh	cmdsub-devnull	2
 scripts/hooks/block-rogue-codex-exec.sh	true-after-read	1
-scripts/hooks/block-rogue-codex-wsl.sh	cmdsub-devnull	2
-scripts/hooks/block-rogue-codex-wsl.sh	true-after-read	1
 scripts/hooks/block-subagent-park.sh	cmdsub-devnull	3
 scripts/hooks/block-subagent-park.sh	true-after-read	2
 scripts/hooks/block-tail-pipe-on-gates.sh	cmdsub-devnull	2

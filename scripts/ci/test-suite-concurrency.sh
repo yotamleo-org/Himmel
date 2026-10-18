@@ -634,7 +634,7 @@ fi
 # This script only ever creates real directories, so a symlink is always wrong.
 #
 # Skipped where symlinks cannot be created (Windows without the privilege) —
-# the same guard scripts/codex/test-dispatch-codex-wsl.sh uses.
+# the same guard the other symlink-using suites use.
 # --------------------------------------------------------------------------
 echo "== Case 2d3: a symlinked lock path is refused =="
 sb2d3=$(new_sandbox)

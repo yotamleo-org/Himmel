@@ -64,11 +64,11 @@ test('bank detail formatting makes measured and unmeasurable states explicit', (
   const statuses = parseBankStatusOutput([
     'claudex funded measured weekly used=14% free=86%',
     'glm unknown unmeasurable reason="missing weekly window"',
-    'codex-wsl unknown unmeasurable reason="I/O timeout"',
+    'codex-exec unknown unmeasurable reason="I/O timeout"',
   ].join('\n'));
   assert.equal(formatBankAnnotation(statuses.get('claudex')), '[bank: weekly 14% used / 86% free]');
   assert.equal(formatBankAnnotation(statuses.get('glm')), '[bank: unmeasurable — missing weekly window]');
-  assert.equal(formatBankAnnotation(statuses.get('codex-wsl')), '[bank: unmeasurable — I/O timeout]');
+  assert.equal(formatBankAnnotation(statuses.get('codex-exec')), '[bank: unmeasurable — I/O timeout]');
 });
 
 test('bank annotation keeps "free" attached to its window across MULTI-reading details', () => {
@@ -480,12 +480,12 @@ test('the SHIPPED lanes.json stays guardable end-to-end against the reader contr
   // The GLM lane declares 5h and the ledger reader emits exactly that.
   assert.match(out, /^glm funded measured 5h used=2% free=98%$/m);
   // codex-bank lanes declare weekly and the probe-cache reader emits exactly that.
-  for (const lane of ['claudex', 'codex-exec', 'codex-wsl']) {
+  for (const lane of ['claudex', 'codex-exec']) {
     assert.match(out, new RegExp(`^${lane} funded measured weekly used=14% free=86% resets=${CODEX_RESETS_ISO}$`, 'm'));
   }
   // No quota lane in the shipped registry may be left ungoverned or spent by
   // these healthy fixtures.
-  assert.doesNotMatch(out, /^(haiku|sonnet|opus|fable|glm|claudex|codex-exec|codex-wsl) (unknown|spent) /m);
+  assert.doesNotMatch(out, /^(haiku|sonnet|opus|fable|glm|claudex|codex-exec) (unknown|spent) /m);
 });
 
 // A cache the producer stamped with account/derived_at/

@@ -219,8 +219,8 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 # `dest` itself is left untouched until the rename, so a failure at any point
 # up to and including the write leaves a previously-saved profile intact.
 writes=$(grep -c 'fs\.writeFileSync' "$wizard")
-[ "$writes" -eq 5 ] \
-  || fail "caseC: expected exactly 5 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1), got $writes"
+[ "$writes" -eq 6 ] \
+  || fail "caseC: expected exactly 6 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe + the ~/.himmel/himmel.conf commit-rules write, HIMMEL-6362; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1), got $writes"
 # vmProofRoute writes the doc-with-answer to a
 # mkdtemp dir under os.tmpdir() so scripts/lib/vm-mode.sh can resolve it,
 # and removes the dir in finally -- a probe, never an install write.

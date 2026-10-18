@@ -545,4 +545,20 @@ out=$(run_guard --help) && rc=0 || rc=$?
 assert_rc "--help -> rc 0" 0 "$rc"
 assert_contains "--help shows the exit codes" "Exit codes" "$out"
 
+echo "== the configured embed model is shown =="
+CFG_DIR="$TMP_ROOT/qmd-config"
+mkdir -p "$CFG_DIR"
+printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n' >"$CFG_DIR/index.yml"
+set_fixture "$HOST_FRESH"
+out=$(QMD_CONFIG_DIR="$CFG_DIR" run_guard) && rc=0 || rc=$?
+assert_rc "healthy index with a configured model -> rc 0" 0 "$rc"
+assert_contains "all-clear names the configured embed model" "embed-model=openai:qwen/qwen3-embedding-8b" "$out"
+set_fixture "$(mk_docs '2h ago' "1193 need embedding (run 'qmd embed')")"
+out=$(QMD_CONFIG_DIR="$CFG_DIR" run_guard) && rc=0 || rc=$?
+assert_contains "the incomplete notice names it too" "embed-model=openai:qwen/qwen3-embedding-8b" "$out"
+rm -f "$CFG_DIR/index.yml"
+set_fixture "$HOST_FRESH"
+out=$(unset QMD_EMBED_MODEL; QMD_CONFIG_DIR="$CFG_DIR" run_guard) && rc=0 || rc=$?
+assert_contains "no config falls back to the default model" "embed-model=hf:ggml-org/embeddinggemma-300M-GGUF" "$out"
+
 summary

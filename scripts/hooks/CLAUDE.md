@@ -34,7 +34,7 @@ one that matches how the hook is delivered — never assume there is only one:
 | wirer | inventory | target | entries (2026-09-25) |
 |---|---|---|---|
 | `scripts/hooks/wire-hook-bash.mjs` | `EXPECTED_SCRIPT_ORDER` | `.claude/settings.json` | 46 |
-| `scripts/hooks/wire-plugin-hook-bash.mjs` | `EXPECTED_HOOKS` (frozen; length-checked against `EXPECTED_COUNTS`) | `marketplace/plugins/himmel-ops/hooks/hooks.json` | 24 |
+| `scripts/hooks/wire-plugin-hook-bash.mjs` | `EXPECTED_HOOKS` (frozen; length-checked against `EXPECTED_COUNTS`) | `marketplace/plugins/himmel-ops/hooks/hooks.json` | 23 |
 
 A `scripts/hooks/*.sh` file may also belong to **neither** inventory — a
 support library sourced by a hook rather than dispatched as one (e.g.

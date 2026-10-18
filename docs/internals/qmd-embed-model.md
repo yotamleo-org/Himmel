@@ -1,15 +1,23 @@
 # qmd embed model — a per-machine option
 
-qmd embeds documents with **embeddinggemma-300M** by default. **Qwen3-Embedding-0.6B**
-retrieves better on our golden set, but it is about twice the size and
-needs a GPU to build a whole index in reasonable time. So the model is a
-**per-machine option**: gemma stays the default, and a machine opts into Qwen with
-`scripts/luna/qmd-embed-model.sh`.
+The embed model is a **per-machine option**, and the model a machine runs is
+**not necessarily local**. Never infer it: run
+`bash scripts/luna/qmd-embed-model.sh check` (or `show`) to read the configured
+model; the SessionStart qmd advisory prints it as `embed-model=`. The station
+embeds with `openai:qwen/qwen3-embedding-8b` on **OpenRouter** (operator ruling
+2026-10-15, HIMMEL-5756/5712), so its documents and queries leave the machine
+under the egress matrix.
 
-| Model | URI | Dimensions |
-|---|---|---|
-| gemma (default) | `hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf` | 768 |
-| qwen | `hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf` | 1024 |
+Without a config, qmd embeds with **embeddinggemma-300M**. **Qwen3-Embedding-0.6B**
+retrieves better on our golden set, but it is about twice the size and
+needs a GPU to build a whole index in reasonable time. A machine opts into a model
+with `scripts/luna/qmd-embed-model.sh set gemma|qwen|remote`.
+
+| Model | URI | Dimensions | Runs |
+|---|---|---|---|
+| gemma (default without a config) | `hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf` | 768 | locally |
+| qwen | `hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf` | 1024 | locally |
+| remote (the station) | `openai:qwen/qwen3-embedding-8b` | set by the provider (`check` prints it) | OpenRouter (see [Egress](#egress)) |
 
 ## The trap: a model that does not match the index
 
@@ -118,8 +126,12 @@ matching re-embedded copy is swapped in.
 
 ## Egress
 
-Qwen embeds locally, like gemma: the egress matrix
-(`scripts/guardrails/egress-matrix.json`) classes it as provider `local-ollama`,
+The local models (gemma, the 0.6B Qwen) embed on the machine: the egress matrix
+(`scripts/guardrails/egress-matrix.json`) classes them as provider `local-ollama`,
 purpose `embedding`. That is allowed for the luna and handover-state data
-classes and conditional (per-run opt-in) for salus, exactly as for gemma. No new
-transport is involved.
+classes and conditional (per-run opt-in) for salus. No new transport is involved.
+
+The `remote` model is different: it sends document chunks and queries to
+OpenRouter (provider `openrouter`, purposes `embedding` and `rerank`). The matrix
+allows it on every non-salus qmd corpus and hard-denies salus, which stays on its
+own local-only index. Details: [egress-matrix.md](egress-matrix.md).

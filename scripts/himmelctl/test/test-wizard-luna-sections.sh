@@ -1360,7 +1360,6 @@ adopter
 project
 none
 inline
-lean
 none
 no
 INPUT
@@ -2201,7 +2200,6 @@ project
 default-template
 $vaultPV1
 inline
-lean
 none
 no
 local
@@ -2706,7 +2704,6 @@ project
 default-template
 $vaultPV11
 inline
-lean
 none
 no
 local
@@ -3603,7 +3600,6 @@ starter
 project
 none
 inline
-lean
 none
 no
 INPUT

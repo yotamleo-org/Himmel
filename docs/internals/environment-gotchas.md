@@ -1563,7 +1563,7 @@ each capture site individually.
 
 ## A fresh worktree has no `node_modules` outside `scripts/jira`
 
-`scripts/clean-garden.sh` (and `_new-worktree.sh`) installs only the Jira
+`scripts/worktree.sh` (and `_new-worktree.sh`) installs only the Jira
 CLI's deps into a new worktree. Every other node package a suite depends on
 (`scripts/bitbucket`, `scripts/ci-orchestrator`,
 `marketplace/plugins/obsidian-triage/tools`, vitest under `scripts/jira`)

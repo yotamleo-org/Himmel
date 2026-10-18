@@ -242,7 +242,7 @@ merge proceeds with an audit line `main-red=no-completed-run`.
 
 ## Symptom: `/worktree` refuses the branch, or a stale worktree lingers
 
-`scripts/clean-garden.sh` (behind `/worktree`, `/clean`, `/clean_garden`) is the
+`scripts/worktree.sh` (behind `/worktree`, `/clean`, `/clean_garden`) is the
 one script behind all three. Two refusals surprise people:
 
 - **"PR already MERGED"** — `/worktree` refuses to re-create a worktree on a

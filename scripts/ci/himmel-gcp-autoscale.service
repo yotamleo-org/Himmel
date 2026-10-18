@@ -1,0 +1,7 @@
+[Unit]
+Description=himmel GCP CI runner pool autoscale tick (HIMMEL-6278)
+
+[Service]
+Type=oneshot
+# %h is the user's home; the checkout path is the station's primary himmel checkout.
+ExecStart=/usr/bin/env bash %h/Documents/github/himmel/scripts/ci/gcp-runner-autoscale.sh
