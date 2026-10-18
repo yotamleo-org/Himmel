@@ -2511,11 +2511,21 @@ for jgx_case in unsigned forgedmac otherpr otherbranch symlinkrec symlinkqid; do
     assert_eq "$jgo_vrc" "1" "6303 (h) a judge GO that is $jgx_case buys nothing ($jgo_out)"
     rm -rf "${vscope:?}/$jgx_q"
 done
-jgo_out="$(jgo_verb 'jg"q' "$jgo_head")"; jgo_vrc=$?
-assert_eq "$jgo_vrc" "2" "6303 (i) a branch name that breaks the JSON row is refused ($jgo_out)"
 jgo_rec jgx-ok GO "$jgo_head" 1 ""
 jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "0" "6303 (h) control: the same GO written properly is accepted ($jgo_out)"
+# A NO-GO in a symlinked qid dir still vetoes the GO beside it: it only narrows.
+jgo_rec jgx-nogo NO-GO "$jgo_head" 1 ""
+mv "$vscope/jgx-nogo" "$tmp/jgx-nogo"; ln -s "$tmp/jgx-nogo" "$vscope/jgx-nogo"
+jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "8" "6303 (j) a NO-GO in a symlinked qid dir still vetoes ($jgo_out)"
+rm -rf "${vscope:?}/jgx-nogo" "${vscope:?}/jgx-ok"
+# A branch name holding a double quote would break the JSON row: refused before any state is read.
+git -C "$repo" checkout -q -b 'jg"q' "$jgo_head"
+jgo_out="$(jgo_verb 'jg"q' "$jgo_head")"; jgo_vrc=$?
+git -C "$repo" checkout -q jg63x
+assert_eq "$jgo_vrc" "2" "6303 (i) a branch name that breaks the JSON row is refused ($jgo_out)"
+assert_has "$jgo_out" "cannot be written into a ledger row" "6303 (i) the refusal names the ledger row"
 # A post-cap delta that only adds a test file, with a judge GO at its head.
 three_rounds jg62 clean
 printf 'echo t\n' > "$repo/jg62-test.sh"

@@ -816,7 +816,6 @@ judge_go_record() (
         name="${f##*/}"; name="${name%.md}"
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
         case "$name" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
-        if [ -L "$dir/$qid" ]; then continue; fi
         if ! go_verdict_snapshot "$f"; then
             echo "review-round: ${f#"$dir"/} cannot be read whole - the judge GO is refused" >&2
             exit 8
@@ -834,6 +833,8 @@ EOF_SNAP
                 echo "review-round: ${f#"$dir"/} rules NO-GO for $want - the judge GO is refused" >&2
                 exit 8 ;;
         esac
+        # A symlinked qid dir can only narrow: it never supplies a GO.
+        if [ -L "$dir/$qid" ]; then continue; fi
         [ -z "$hit" ] || continue
         if [ "$l1" != "# VERDICT $qid - $name" ] || [ -n "$l2$l5$l7" ] || [ "$l6" != "## Verdict" ] \
             || ! [[ $l3 =~ $re_session ]] || ! [[ $l4 =~ $re_written ]]; then
