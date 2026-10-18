@@ -120,6 +120,26 @@ calls="$(cat "$T/calls")"
 if [ "$calls" = "query how do a console and a leg relate --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
 else fail "A7 calls='$calls'"; fi
 
+# A9: a budget with a leading zero is decimal, not octal: both halves still run.
+run query "how does go.sh write a GO file" --budget 0800 >/dev/null; rc=$?
+calls="$(cat "$T/calls")"
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --budget 400" <<<"$calls"; then
+  pass "A9 --budget 0800 halves to 400"
+else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
+
+# A10: --graph names the graph the anchors resolve against, not the primary's.
+python3 -I - "$T/other.json" <<'PY'
+import json, sys
+n = {"id": "other_go", "label": "go.sh", "norm_label": "go.sh", "file_type": "code",
+     "source_file": "scripts/handover/console-kit/go.sh", "source_location": "L1"}
+json.dump({"nodes": [n], "links": []}, open(sys.argv[1], "w"))
+PY
+run query "how does go.sh write a GO file" --graph "$T/other.json" >/dev/null
+calls="$(cat "$T/calls")"
+if grep -q -- "--seed other_go " <<<"$calls" && ! grep -q -- "--seed go_sh " <<<"$calls"; then
+  pass "A10 anchors resolve in the --graph graph"
+else fail "A10 calls='$calls'"; fi
+
 # A8: the real graphify on the fixture: the bare query never reaches go.sh's file, the wrapper
 # starts from it.
 if command -v graphify >/dev/null 2>&1; then

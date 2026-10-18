@@ -45,10 +45,11 @@ else
 fi
 
 # The question is the first argument after the verb that is neither a flag nor a flag's value.
-has_budget=0 budget=8000 has_seed=0 question="" want="" rest=()
+has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() graph="$out/graph.json"
 for a in "${@:2}"; do
   if [ -n "$want" ]; then
     if [ "$want" = budget ]; then budget="$a"; else rest+=("$a"); fi
+    [ "$want" = graph ] && graph="$a"
     want=""; continue
   fi
   case "$a" in
@@ -56,7 +57,9 @@ for a in "${@:2}"; do
     --budget=*) has_budget=1; budget="${a#--budget=}"; continue ;;
     --seed) has_seed=1; want=value ;;
     --seed=*) has_seed=1 ;;
-    --context|--graph) want=value ;;
+    --graph) want=graph ;;
+    --graph=*) graph="${a#--graph=}" ;;
+    --context) want=value ;;
     -*) ;;
     *) [ -n "$question" ] || question="$a" ;;
   esac
@@ -71,8 +74,9 @@ seeds=()
 if [ "$sub" = query ] && [ "$has_seed" = 0 ] && [ -n "$question" ] && command -v python3 >/dev/null 2>&1; then
   case "$budget" in
     ''|*[!0-9]*) ;;
-    *) while read -r sid; do [ -n "$sid" ] && seeds+=(--seed "$sid"); done \
-         < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" seeds "$out/graph.json" "$question") ;;
+    *) budget=$((10#$budget))
+       while read -r sid; do [ -n "$sid" ] && seeds+=(--seed "$sid"); done \
+         < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" seeds "$graph" "$question") ;;
   esac
 fi
 if [ "${#seeds[@]}" -gt 0 ]; then
@@ -85,18 +89,19 @@ if [ "${#seeds[@]}" -gt 0 ]; then
   wait "$pid"
   cat "$tmp/given.err" >&2
   printf '%s\n' "$ans" >"$tmp/keyword"
-  merged="$(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" merge "$tmp/given" "$tmp/keyword" "$budget")" && ans="$merged"
+  if merged="$(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" merge "$tmp/given" "$tmp/keyword" "$budget")"; then ans="$merged"
+  else ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?; fi
 else
   ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
 fi
 # graphify stores a semantic node's WHY as `rationale` but neither verb prints it, so a "why"
 # question got a pointer to a doc section; append-rationale.py adds the stored text.
 if command -v python3 >/dev/null 2>&1; then
-  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$out/graph.json")" && ans="$withwhy"
+  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$graph")" && ans="$withwhy"
   # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
   # doc and rationale nodes first for those questions and leaves any other question untouched.
   if [ "$sub" = query ]; then
-    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$out/graph.json" "$question" "$budget")" && ans="$ranked"
+    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
   fi
 fi
 printf '%s\n' "$ans"
