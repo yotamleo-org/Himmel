@@ -26,7 +26,9 @@
 # counts as 3, and appends one audit line to cr-review-rounds/grant-round.audit.
 # .head and .delta are left alone: the later delta scope is unchanged.
 #
-#   (e) the console alone never buys a 4th round. The record is a
+#   (e) a round past 3 needs a judge NO-GO, a standing Critical or Important
+#       ledger finding, or a record named `operator`, which the console itself
+#       can write (same-uid ceiling). The record is a
 #       judge NO-GO, or a record named `operator` (write-verdict.sh --judge
 #       operator, the operator's ruling quoted in its evidence), or the previous
 #       reviewed head (.head) has a standing Critical or Important critic finding
