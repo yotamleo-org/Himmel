@@ -23,8 +23,9 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   stamps `residual-depth-<depth of KEY + 1>` on each ticket the residual lines cite;
   `next-dispatchable.sh` drops depth >= 1 unless the console doc has a
   `residual-must <KEY>` line (security, data loss or a broken operator flow only),
-  and depth >= 2 files to ICE with no fixVersion. Pass `--residual-of` on a verdict
-  for a residual PR; a ticket with no label is depth 0.
+  and depth >= 2 files to ICE with no fixVersion. Pass `--residual-of <PR ticket key>`
+  (to `write-verdict.sh` or `verdict-go.sh`) on EVERY verdict whose residual lines
+  cite tickets; an unlabelled parent is depth 0, so its residuals stamp depth 1.
 - **Dispatch a judge call as `console-judge-ro`, not the built-in Explore**: same read-only tool list, passes the ruling-20 console
   dispatch fence, and its body carries the judge contract. A judge reads and
   reasons; it never runs suites or polls CI (the leg's scripts do that), so it
