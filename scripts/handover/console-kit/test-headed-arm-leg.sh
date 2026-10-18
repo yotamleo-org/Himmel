@@ -136,8 +136,8 @@ trap 'rm -rf "$tmp"' EXIT
 # suite points that seam at a recorder that logs its argv then runs the rest, so
 # no run here opens a real scope (the real-scope row below opts back in).
 SYSD_STUB="$tmp/systemd-run-stub"
-cat > "$SYSD_STUB" <<'SYSD_EOF'
-#!/usr/bin/bash
+printf '#!%s\n' "$(command -v bash)" > "$SYSD_STUB"
+cat >> "$SYSD_STUB" <<'SYSD_EOF'
 printf '%s\n' "$*" >> "${SYSD_RECORD:-/dev/null}"
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 shift
@@ -4297,11 +4297,16 @@ rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMME
 contains "memcap: off Linux the launch is uncapped" "$out" "scope=no"
 rc=0; out="$(HEADED_ARM_UNAME=Linux bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "memcap: on Linux the launch is scoped" "$out" "scope=yes"
+rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=12GG bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "memcap: a misplaced size suffix is refused" "$rc" "2"
+printf '#!%s\nexit 1\n' "$(command -v bash)" > "$tmp/systemd-run-nobus"; chmod 755 "$tmp/systemd-run-nobus"
+rc=0; out="$(HEADED_ARM_UNAME=Linux HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: a systemd-run that cannot start a user scope falls back to uncapped" "$out" "scope=no"
 d6119="$tmp/c6119"; mk_launch_stubs "$d6119" "HIMMEL-6119-leg"; mkdir -p "$tmp/repo6119"
 rc=0
 HEADED_ARM_UNAME=Linux SYSD_RECORD="$d6119/sysd" HIMMEL_LEG_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d6119" || true
-sysd6119="$(cat "$d6119/sysd" 2>/dev/null || true)"
+sysd6119="$(grep MemoryMax "$d6119/sysd" 2>/dev/null || true)"
 check "memcap: full launch exit 0" "$rc" "0"
 contains "memcap: launch runs in a user scope" "$sysd6119" "--user --scope"
 contains "memcap: launch carries MemoryMax" "$sysd6119" "MemoryMax=256M"

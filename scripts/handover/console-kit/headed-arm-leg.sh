@@ -1996,18 +1996,20 @@ fi
 # systemd-oomd picking a victim among the station's legs and the console.
 # HIMMEL_LEG_MEMORY_MAX is a systemd size (256M, 12G, infinity); swap gets the
 # same ceiling so the cap is not defeated by paging out. No systemd-run (macOS,
-# a non-systemd host) launches uncapped.
+# a non-systemd host) or no working user manager launches uncapped.
 LEG_MEMORY_MAX="${HIMMEL_LEG_MEMORY_MAX:-12G}"
 case "$LEG_MEMORY_MAX" in
     infinity) ;;
-    ''|*[!0-9KMGTkmgt]*|[KMGTkmgt]*)
-        echo "headed-arm-leg: HIMMEL_LEG_MEMORY_MAX must be a systemd size (e.g. 12G, 256M, infinity), got: $LEG_MEMORY_MAX" >&2
-        exit 2 ;;
+    *)
+        if ! [[ "$LEG_MEMORY_MAX" =~ ^[0-9]+[KMGTkmgt]?$ ]]; then
+            echo "headed-arm-leg: HIMMEL_LEG_MEMORY_MAX must be a systemd size (e.g. 12G, 256M, infinity), got: $LEG_MEMORY_MAX" >&2
+            exit 2
+        fi ;;
 esac
 LEG_SCOPE=()
 LEG_SYSTEMD_RUN="${HEADED_ARM_LEG_SYSTEMD_RUN:-}"
 [ -n "$LEG_SYSTEMD_RUN" ] || LEG_SYSTEMD_RUN="$(command -v systemd-run)" || LEG_SYSTEMD_RUN=""
-if [ "$HEADED_ARM_UNAME" = "Linux" ] && [ -n "$LEG_SYSTEMD_RUN" ]; then
+if [ "$HEADED_ARM_UNAME" = "Linux" ] && [ -n "$LEG_SYSTEMD_RUN" ] && "$LEG_SYSTEMD_RUN" --user --scope --quiet -- true >/dev/null 2>&1; then
     LEG_SCOPE=("$LEG_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$LEG_MEMORY_MAX" -p "MemorySwapMax=$LEG_MEMORY_MAX" --)
 fi
 
