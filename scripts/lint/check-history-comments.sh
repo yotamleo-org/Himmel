@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 #
-# check-history-comments.sh — refuse NEW code comments that narrate history.
+# check-history-comments.sh — refuse NEW history comments and ticket ids in output.
 # Agents copy the comments they read, so a ticket-citing or
 # review-round comment spreads; the rule is in docs/internals/ponytail-convention.md
 # ("Code comments"). Only ADDED lines are judged, so the ~20k existing lines never
@@ -11,6 +11,9 @@
 # excluded) in a code file, matching one of:
 #   a Jira key               (skipped on a `ponytail:` line, the one sanctioned place)
 #   a review-fix note, a bot-review round, "round <n>", a judge qid (j + 4 digits + letter)
+# Added output calls carrying a Jira key are also refused (shell echo/printf/die/warn/say,
+# JS/TS console.log/error/warn and process.stdout/stderr.write, Python print/sys.stderr.write).
+# Output in test files and lines carrying ponytail: are exempt; history-ok is not supported.
 # Scope: .sh .bash .zsh .ps1 .psm1 .py .js .mjs .cjs .ts .tsx .mts .cts; paths with a
 # fixtures/ or *-fixtures/ segment, archive/, vendored trees and generated output are skipped.
 # ponytail: only whole-line comments are seen, so a trailing comment after code slips through (a
@@ -52,6 +55,16 @@ function in_scope(p) {
     if (p ~ /\.obsidian\/plugins\//) return 0
     return 1
 }
+function output_call(p, s) {
+    if (p ~ /(^|\/)(tests?|__tests__)\// || p ~ /(^|\/)test-[^\/]+$/ || p ~ /\.(test|spec)\.[^.]+$/) return 0
+    if (p ~ /\.(sh|bash|zsh)$/)
+        return s ~ /(^|[;&|(){}])[ \t]*([0-9]*>&[0-9]+[ \t]*)?(echo|printf|die|warn|say)[ \t]+/
+    if (p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/)
+        return s ~ /(^|[;{}])[ \t]*(console\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/
+    if (p ~ /\.py$/)
+        return s ~ /(^|[;:])[ \t]*(print|sys\.stderr\.write)[ \t]*\(/
+    return 0
+}
 function why(t,   l) {
     l = tolower(t)
     if (t ~ /HIMMEL-[0-9]+/ && t !~ /(#|\/\/)[ \t]*ponytail:/) return "ticket id"
@@ -69,10 +82,10 @@ function why(t,   l) {
     if (scope) {
         t = substr($0, 2)
         s = t; sub(/^[ \t]+/, "", s)
-        if ((s ~ /^#/ && s !~ /^#!/) || s ~ /^\/\//) {
-            r = why(s)
-            if (r != "") { printf "%s:%d: %s: %s\n", path, ln, r, s; bad = 1 }
-        }
+        r = ""
+        if ((s ~ /^#/ && s !~ /^#!/) || s ~ /^\/\//) r = why(s)
+        else if (output_call(path, s) && s ~ /HIMMEL-[0-9]+/ && s !~ /ponytail:/) r = "ticket id"
+        if (r != "") { printf "%s:%d: %s: %s\n", path, ln, r, s; bad = 1 }
     }
     ln++
     next
@@ -82,7 +95,7 @@ END { exit bad ? 1 : 0 }
 rc=$?
 if [ "$rc" -eq 1 ]; then
     cat "$DIFF.out"
-    echo "check-history-comments: a code comment states a why the code cannot show; ticket IDs, review rounds, CR fixes and judge qids belong in git and Jira." >&2
+    echo "check-history-comments: ticket IDs in output, and ticket IDs, review rounds, CR fixes and judge qids in comments belong in git and Jira." >&2
     echo "  Delete the history, or fix the workaround in code. Policy: docs/internals/ponytail-convention.md (Code comments)." >&2
 elif [ "$rc" -ne 0 ]; then
     echo "check-history-comments: awk failed (rc=$rc)" >&2
