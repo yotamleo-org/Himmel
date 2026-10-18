@@ -1314,7 +1314,7 @@ vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
 if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" ]; then
     vdone_out="$(timeout -k 2 30 bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
     case "$vdone_out" in
-        unknown|[0-9]|[0-9][0-9]|[0-9][0-9][0-9]) vdone_summary="$vdone_out" ;;
+        unknown|[0-9]|[0-9][0-9]|[0-9][0-9][0-9]|[0-9][0-9][0-9]+) vdone_summary="$vdone_out" ;;
         *) vdone_summary=unknown ;;
     esac
 fi

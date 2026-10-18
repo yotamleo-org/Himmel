@@ -59,5 +59,15 @@ check "--apply alone is refused" 2 "$(bash "$SUT" --apply >/dev/null 2>&1; echo 
 check "a failed versions read is unknown" unknown "$(STUB_VERSIONS_FAIL=1 bash "$SUT")"
 check "a failed list read is unknown" unknown "$(STUB_LIST_FAIL=1 bash "$SUT")"
 
+STUB_LIST_FAIL=1 bash "$SUT" --backfill --apply >/dev/null; check "a failed read exits 1 in backfill mode" 1 $?
+
+printf 'HIMMEL-3011\tTask\tDone\tx\nHIMMEL-1528\tTask\tDone\ty\nHIMMEL-5\tTask\tDone\tz\n' > "$W/rows"
+check "the known no-PR closes are not counted" 1 "$(bash "$SUT")"
+check "VERSIONLESS_DONE_EXCEPTIONS empty counts them" 3 "$(VERSIONLESS_DONE_EXCEPTIONS='' bash "$SUT")"
+
+check "a full page reads as a lower bound" "3+" "$(VERSIONLESS_DONE_LIMIT=2 VERSIONLESS_DONE_EXCEPTIONS='' bash "$SUT")"
+: > "$W/log"
+VERSIONLESS_DONE_LIMIT=2 VERSIONLESS_DONE_EXCEPTIONS='' bash "$SUT" --backfill --apply >/dev/null 2>&1; check "a truncated backfill exits 1" 1 $?
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1

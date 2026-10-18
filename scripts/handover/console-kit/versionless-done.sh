@@ -50,7 +50,7 @@ else
     jira=(node "${anchor%/.git}/scripts/jira/dist/index.js")
 fi
 
-unknown() { echo unknown; exit 0; }
+unknown() { echo unknown; exit 1; }
 
 versions="$(JIRA_PROJECT_KEY="$project" "${jira[@]}" versions --project "$project" 2>/dev/null)" || unknown  # swallow-ok: a failed read prints unknown, not a count
 # versions rows: name, released (true|false), releaseDate.
@@ -62,17 +62,31 @@ current="$(printf '%s\n' "$versions" | awk -F'\t' '
     }
     END { print (best != "" ? best : first) }')"
 
+limit="${VERSIONLESS_DONE_LIMIT:-500}"
 jql="project = $project AND status = Done AND fixVersion is EMPTY AND issuetype != Epic"
 [ -z "$last_release" ] || jql="$jql AND resolved >= \"$last_release\""
 
-rows="$(JIRA_PROJECT_KEY="$project" "${jira[@]}" list --jql "$jql" --limit 500 2>/dev/null)" || unknown  # swallow-ok: a failed read prints unknown, not a count
+rows="$(JIRA_PROJECT_KEY="$project" "${jira[@]}" list --jql "$jql" --limit "$limit" 2>/dev/null)" || unknown  # swallow-ok: a failed read prints unknown, not a count
 rows="$(printf '%s\n' "$rows" | grep -E '^[A-Z][A-Z0-9]*-[0-9]+')" || rows=""
+
+# Tickets closed with no PR on purpose (a Done-truth audit close, a product-session close).
+exceptions="${VERSIONLESS_DONE_EXCEPTIONS-HIMMEL-3011 HIMMEL-1528}"
+for ex in $exceptions; do
+    rows="$(printf '%s\n' "$rows" | grep -v -E "^$ex([[:space:]]|\$)")" || rows=""
+done
+
+n=0
+[ -z "$rows" ] || n="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
+# A full page means the search may have stopped short: say so, never undercount quietly.
+truncated=0
+[ "$n" -lt "$limit" ] || truncated=1
 
 case "$mode" in
     count)
-        if [ -z "$rows" ]; then echo 0; else printf '%s\n' "$rows" | wc -l | tr -d ' '; fi ;;
+        if [ "$truncated" -eq 1 ]; then echo "$n+"; else echo "$n"; fi ;;
     list)
-        [ -z "$rows" ] || printf '%s\n' "$rows" ;;
+        [ -z "$rows" ] || printf '%s\n' "$rows"
+        [ "$truncated" -eq 0 ] || echo "versionless-done: list stopped at the $limit-row limit" >&2 ;;
     backfill)
         if [ -z "$current" ]; then echo "versionless-done: no unreleased version to set" >&2; exit 1; fi
         rc=0
@@ -88,5 +102,6 @@ case "$mode" in
                 echo "would-set $key $current"
             fi
         done <<<"$rows"
+        [ "$truncated" -eq 0 ] || { echo "versionless-done: backfill stopped at the $limit-row limit; run it again" >&2; rc=1; }
         exit "$rc" ;;
 esac
