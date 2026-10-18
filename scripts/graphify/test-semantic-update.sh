@@ -551,6 +551,12 @@ out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_CALL_N=4 GRAPHIFY_STUB_CALL_CLAUDE=1 run
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T48 two calls ran, the third was refused" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
 grep -q 'run spend cap' "$WS/claude.out" && pass "T48 shim states the cap" || fail "T48 no cap message: $(cat "$WS/claude.out")"
 
+echo "T54: a lane call with no verified cost is reserved at the per-call budget against the run cap"
+C54="$WS/c54"; new_corpus "$C54"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t54 --corpus-root "$C54" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && pass "T54 three unpriced calls ran, the fourth was refused" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+[ "$(lastrun "$C54" cost_usd)" = "0.0" ] && pass "T54 the reservation is not reported as cost" || fail "T54 row: $(tail -1 "$C54/graphify-out/semantic-runs.jsonl")"
+
 echo "T49: the run row carries the summed lane cost, the backend and the cap"
 [ "$(lastrun "$C48" cost_usd)" = "1.2" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
   && pass "T49 cost_usd 1.2, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"

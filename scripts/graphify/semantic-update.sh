@@ -321,7 +321,7 @@ export HIMMEL_API_TOOLS=""
 # so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
 out="$here/lane-out.$$"
 # Per-run spend cap: refuse the call once the verified cost of the calls so far reaches it.
-spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEND_FILE")"
+spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEND_FILE" "$GRAPHIFY_SEMANTIC_RESERVE_FILE")"
 if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= c + 0) }'; then
   echo "claude-api shim: run spend cap reached (spent $spent of $GRAPHIFY_SEMANTIC_RUN_CAP USD); call refused" >&2
   exit 3
@@ -329,8 +329,10 @@ fi
 { cat; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } | "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
   --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out"
 rc=${PIPESTATUS[1]}
-# A call without a verified cost (a failure) adds nothing; the lane keeps its reservation as unknown.
-node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE" 2>/dev/null
+# A call without a verified cost (a failure) may still have been billed: reserve its per-call budget against the
+# cap, but keep it out of the spend file so the run row reports only verified cost.
+cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
+if [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
 cat "$out"; rm -f "$out"
 exit "$rc"
@@ -342,8 +344,9 @@ ADDITIONAL REQUIREMENTS (these override the optional-rationale rule above for ev
 - Doc-to-code edges: whenever a document names a code file, script, function, command, hook or gate, add an edge from the document or concept node to that code node, source = the document or concept node, target = the code node (a path scripts/x/y.sh gives the id scripts_x_y, a symbol adds _name). Relation `documents` when the text describes that code, `explains` when it explains how or why that code works, `rationale_for` when it gives the reason that code exists or has its shape. Confidence EXTRACTED when the code is named in the text, otherwise INFERRED.
 - `documents`, `explains` and `rationale_for` are allowed relation values in addition to the schema's list.
 ADD
-    : > "$WORK/spend.log"
+    : > "$WORK/spend.log"; : > "$WORK/reserve.log"
     export GRAPHIFY_SEMANTIC_ADDENDUM="$WORK/addendum.txt" GRAPHIFY_SEMANTIC_SPEND_FILE="$WORK/spend.log" GRAPHIFY_SEMANTIC_RUN_CAP="$RUN_CAP"
+    export GRAPHIFY_SEMANTIC_RESERVE_FILE="$WORK/reserve.log"
     export GRAPHIFY_SEMANTIC_OUTCOME_BIN="$REPO_ROOT/scripts/api-lane/outcome.mjs"
     export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET" GRAPHIFY_SEMANTIC_LANE_EFFORT="$API_EFFORT"
     export PATH="$WORK/bin:$PATH"

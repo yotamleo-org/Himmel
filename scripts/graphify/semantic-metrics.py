@@ -33,17 +33,19 @@ def measure(graph, files=None):
     rat = [n for n in sem if str(n.get("rationale") or "").strip()]
     cross = [e for e in edges
              if e.get("_origin") != "ast" and e.get("relation") in SEMANTIC_RELATIONS
-             and in_scope(byid.get(e.get("source"), {}))
-             and byid.get(e.get("source"), {}).get("source_file") != byid.get(e.get("target"), {}).get("source_file")]
+             and e.get("source") in byid and e.get("target") in byid
+             and in_scope(byid[e["source"]])
+             and byid[e["source"]].get("source_file") != byid[e["target"]].get("source_file")]
     made = [n for n in sem if n.get("file_type") != "document"]
-    made_rat = [n for n in made if n in rat]
+    made_rat = [n for n in made if str(n.get("rationale") or "").strip()]
     return {
         "semantic_nodes": len(sem), "with_rationale": len(rat),
         "coverage_pct": round(100 * len(rat) / max(1, len(sem)), 1),
         "model_made_nodes": len(made), "model_made_with_rationale": len(made_rat),
         "model_made_coverage_pct": round(100 * len(made_rat) / max(1, len(made)), 1),
         "cross_file_semantic_edges": len(cross),
-        "doc_to_code_edges": sum(1 for e in cross if e["relation"] in ("documents", "explains", "rationale_for")),
+        "doc_to_code_edges": sum(1 for e in cross if e["relation"] in ("documents", "explains", "rationale_for")
+                                 and byid[e["target"]].get("file_type") == "code"),
     }
 
 
