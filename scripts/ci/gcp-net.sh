@@ -164,7 +164,7 @@ startup_script() {
         echo 'http_access deny all'
         echo 'cache deny all'
         echo 'SQUIDCONF'
-        echo 'systemctl enable squid'
+        echo 'systemctl enable squid'  # t13b-ok: text written into the proxy VM startup script, not run here
         echo 'systemctl restart squid'
     } > "$1"
 }
