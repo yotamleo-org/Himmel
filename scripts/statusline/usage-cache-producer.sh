@@ -20,9 +20,9 @@
 #
 # Branches:
 #   * stdin HAS rate_limits -> mirror them into both files (free, no network).
-#   * stdin has NO rate_limits -> query the OAuth seam; fetched primaries win,
-#     with existing five_hour/seven_day as fallback when a fetched window is
-#     absent (so an empty fetch never clobbers good data).
+#   * stdin has NO rate_limits -> query the OAuth seam; fetched primary keys win,
+#     with existing five_hour/seven_day fields as fallback for absent keys
+#     (so a thin fetch keeps prior reset times and other omitted fields).
 #
 # Throttle (dual TTL, env-tunable):
 #   USAGE_CACHE_TTL (300s) — a fresher consumer cache short-circuits the rates
@@ -365,14 +365,13 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   (($p.account // "") != $acct and $acct != "") as $mismatch |
   (if $mismatch then {} else $p end) as $carry |
   ($f // {}) as $ff |
-  # fetched primaries WIN; $carry is the fallback only when the
-  # fetch lacks a window. The old order ($p first) discarded live numbers
-  # on every poll, which is why the cache read week-old under a fresh mtime.
+  # Only primaries with utilization qualify. Fetched keys win (including
+  # explicit null); absent keys fall back to the same-account prior window.
   (if (($ff.five_hour.utilization // null) != null) then $ff.five_hour else null end) as $fh |
   (if (($ff.seven_day.utilization // null) != null) then $ff.seven_day else null end) as $sd |
   {
-    five_hour:   ($fh // $carry.five_hour // {}),
-    seven_day:   ($sd // $carry.seven_day // {}),
+    five_hour:   (($carry.five_hour // {}) + ($fh // {})),
+    seven_day:   (($carry.seven_day // {}) + ($sd // {})),
     extra_usage: ($ff.extra_usage // $carry.extra_usage // {}),
     oauth_checked_at: $ts,
     account: (if $acct == "" then null else $acct end),
