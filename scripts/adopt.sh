@@ -52,6 +52,11 @@
 #                       pre-commit-hooks` runs, so a hooks repair never
 #                       re-adopts the whole user scope. Core profile only;
 #                       not combinable with --skip-hooks.
+#   --commit-install    Project scope on main/master: commit the installed files
+#                       as the one allowed first commit (the git gates refuse
+#                       every later commit on main), so worktrees cut from main
+#                       carry scripts/. Without the flag an interactive run is
+#                       asked; a non-interactive run prints the command instead.
 #   --handover-mode <inline|external>
 #                       Gate for wire_handover_dir_luna's env.HANDOVER_DIR
 #                       write. external (the default, today's
@@ -122,6 +127,7 @@ FILL_ENV=0
 WITH_GRAPHIFY=0
 SKIP_HOOKS=0
 ONLY_HOOKS=0
+COMMIT_INSTALL=0
 HANDOVER_MODE="external"
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -136,6 +142,7 @@ while [[ $# -gt 0 ]]; do
     --with-graphify)  WITH_GRAPHIFY=1; shift ;;
     --skip-hooks)     SKIP_HOOKS=1; shift ;;
     --only-hooks)     ONLY_HOOKS=1; shift ;;
+    --commit-install) COMMIT_INSTALL=1; shift ;;
     --handover-mode)  HANDOVER_MODE="$2"; shift 2 ;;
     -h|--help)        sed -n '2,/^set -e/p' "$0" | sed 's/^# \{0,1\}//' | sed '$d'; exit 0 ;;
     *) echo "ERROR: unknown flag: $1" >&2; exit 2 ;;
@@ -305,6 +312,64 @@ copy_portable() {
     copy_recorded "$f" exec
     echo "  $f"
   done
+}
+
+# Keep worktrees out of `git add -A` (they would stage as embedded repos).
+ensure_worktrees_ignored() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  if [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.claude/worktrees/\{0,1\}' "$TARGET/.gitignore"; then
+    return 0
+  fi
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: append .claude/worktrees/ to $TARGET/.gitignore"
+    return 0
+  fi
+  # a .gitignore without a final newline would fuse the rule onto its last line
+  if [[ -s "$TARGET/.gitignore" && -n "$(tail -c1 "$TARGET/.gitignore")" ]]; then
+    echo >> "$TARGET/.gitignore"
+  fi
+  echo ".claude/worktrees/" >> "$TARGET/.gitignore"
+  echo "  .gitignore: added .claude/worktrees/"
+}
+
+# The git gates refuse every commit on main, so the install itself can only
+# land as one gate-skipping first commit; uncommitted, a worktree cut from main
+# has no scripts/ and its hooks fail.
+commit_install() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  local branch f ans
+  branch="$(git -C "$TARGET" symbolic-ref --short -q HEAD || true)"
+  case "$branch" in main|master) ;; *) return 0 ;; esac
+  local -a paths=()
+  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore; do
+    [[ -e "$TARGET/$f" ]] && paths+=("$f")
+  done
+  if [[ -z "$(git -C "$TARGET" status --porcelain -- "${paths[@]}")" ]]; then
+    return 0
+  fi
+  if [[ $COMMIT_INSTALL -ne 1 ]]; then
+    if [[ $DRY_RUN -eq 0 && -t 0 && -t 1 ]]; then
+      read -r -p "  Commit the install on $branch now (the one allowed commit there)? [y/N] " ans || ans=""
+      [[ "$ans" == [yY]* ]] && COMMIT_INSTALL=1
+    fi
+    if [[ $COMMIT_INSTALL -ne 1 ]]; then
+      echo "  The install is uncommitted on $branch, which the git gates now refuse commits on."
+      echo "  Commit it once with: bash scripts/adopt.sh --scope project --target $TARGET --commit-install"
+      return 0
+    fi
+  fi
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: git -C $TARGET add + commit --no-verify the installed files"
+    return 0
+  fi
+  if git -C "$TARGET" add -- "${paths[@]}" \
+     && git -C "$TARGET" commit -q --no-verify -m "chore: add himmel" -- "${paths[@]}"; then
+    echo "  committed the install on $branch (chore: add himmel)"
+  else
+    echo "  WARNING: could not commit the install - commit it by hand" >&2
+  fi
 }
 
 install_plugins() {
@@ -1239,6 +1304,10 @@ do_core() {
   wire_himmel_repo_core
   write_standalone_bundle_core
   if [[ $FILL_ENV -eq 1 ]]; then fill_env_core; fi
+  if [[ "$SCOPE" == "project" ]]; then
+    ensure_worktrees_ignored
+    commit_install
+  fi
 }
 
 do_luna() {

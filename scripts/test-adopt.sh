@@ -315,6 +315,27 @@ if [ -e "$base_home/.codex/AGENTS.md" ]; then
 fi
 echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md (HIMMEL-3309)"
 
+# ── 1d. trial path: no-origin repo on main ──────────────────────────────────
+# Install, commit the install on main (the one allowed commit), then cut a
+# worktree with no origin: it must carry scripts/ and .claude/worktrees/ must
+# be ignored.
+tp="$work/trial-path"; mkdir -p "$tp"
+git -C "$tp" init -q -b main
+git -C "$tp" config user.email t@t; git -C "$tp" config user.name t
+git -C "$tp" config commit.gpgsign false
+git -C "$tp" commit -q --allow-empty -m "chore: initial commit"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" >/dev/null
+[ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "HIMMEL-6326: install without --commit-install must stay uncommitted"
+grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
+[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
+[ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
+[ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "HIMMEL-6326: fixture must have no remote"
+(cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "HIMMEL-6326: worktree.sh failed in a project with no origin"
+[ -f "$tp/.claude/worktrees/feat+try-himmel/scripts/worktree.sh" ] || fail "HIMMEL-6326: worktree cut after install lacks scripts/"
+[ "$(git -C "$tp" status --porcelain | wc -l)" -eq 0 ] || fail "HIMMEL-6326: worktree dir shows up as untracked"
+echo "ok: HIMMEL-6326 no-origin worktree, committable install, .claude/worktrees/ ignored"
+
 # ── 1b. self-copy guard ─────────────────────────────────────────
 # A brand-new adopter clones himmel and runs the installer FROM INSIDE that
 # clone (TARGET == HIMMEL_ROOT). do_core() mutates its TARGET, so this can't
