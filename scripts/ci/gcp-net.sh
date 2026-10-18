@@ -69,7 +69,7 @@ PRIO_DENY_OUT=60001
 PROXY_HOSTS=(
     github.com api.github.com codeload.github.com ghcr.io
     github-cloud.s3.amazonaws.com dependabot-actions.githubapp.com api.snapcraft.io
-    .githubusercontent.com .pkg.github.com .core.windows.net
+    .githubusercontent.com .pkg.github.com .blob.core.windows.net
     registry.npmjs.org pypi.org files.pythonhosted.org nodejs.org
     archive.ubuntu.com security.ubuntu.com "$REGION.gce.archive.ubuntu.com"
 )
@@ -159,10 +159,17 @@ startup_script() {
         echo "http_port $PROXY_PORT"
         echo 'acl safe_ports port 80 443'
         echo 'http_access deny !safe_ports'
-        for h in "${PROXY_HOSTS[@]}"; do echo "acl allowed_hosts dstdomain $h"; done
+        # -n: match the name the client sent, never a reverse-DNS name of an IP literal.
+        echo 'acl ip4_dst dstdom_regex -n ^[0-9.]+$'
+        echo 'acl ip6_dst dstdom_regex -n :'
+        echo 'http_access deny ip4_dst'
+        echo 'http_access deny ip6_dst'
+        for h in "${PROXY_HOSTS[@]}"; do echo "acl allowed_hosts dstdomain -n $h"; done
         echo 'http_access allow allowed_hosts'
         echo 'http_access deny all'
         echo 'cache deny all'
+        echo 'forwarded_for delete'
+        echo 'via off'
         echo 'SQUIDCONF'
         echo 'systemctl enable squid'  # t13b-ok: text written into the proxy VM startup script, not run here
         echo 'systemctl restart squid'

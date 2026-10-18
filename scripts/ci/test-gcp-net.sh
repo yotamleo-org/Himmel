@@ -61,7 +61,7 @@ covered() {
             .*) [ "$h" = "${d#.}" ] && return 0; case "$h" in *"$d") return 0 ;; esac ;;
             *) [ "$h" = "$d" ] && return 0 ;;
         esac
-    done < <(sed -n 's/^acl allowed_hosts dstdomain //p' "$f")
+    done < <(sed -n -E 's/^acl allowed_hosts dstdomain (-n )?//p' "$f")
     return 1
 }
 
@@ -132,6 +132,17 @@ conf="$STUB_LOG.startup"
 if grep -q -E '^http_port 3128$' "$conf" && grep -q -E '^http_access deny all$' "$conf" && ! grep -q -E '^http_access allow all$' "$conf" \
     && [ "$(grep '^http_access' "$conf" | tail -1)" = "http_access deny all" ]; then ok "squid listens on 3128 and ends with http_access deny all"; else bad "squid access rules"; fi
 grep -q -E '^acl safe_ports port 80 443$' "$conf" && grep -q -E '^http_access deny !safe_ports$' "$conf" && ok "squid allows only ports 80 and 443" || bad "squid port restriction missing"
+# an IP-literal CONNECT must not pass on a reverse-DNS name: every dstdomain line
+# is -n, and the IP-literal denies (v4 and v6) come before the allow.
+nacl="$(grep -c -E '^acl allowed_hosts dstdomain ' "$conf")"
+nflag="$(grep -c -E '^acl allowed_hosts dstdomain -n ' "$conf")"
+if [ "$nacl" -gt 0 ] && [ "$nacl" = "$nflag" ]; then ok "every squid dstdomain line is -n ($nflag)"; else bad "squid dstdomain lines without -n: $((nacl - nflag)) of $nacl"; fi
+ln_allow="$(grep -n -E '^http_access allow allowed_hosts$' "$conf" | head -1 | cut -d: -f1)"
+ln_v4="$(grep -n -E '^http_access deny ip4_dst$' "$conf" | head -1 | cut -d: -f1)"
+ln_v6="$(grep -n -E '^http_access deny ip6_dst$' "$conf" | head -1 | cut -d: -f1)"
+if grep -q -F 'acl ip4_dst dstdom_regex -n ^[0-9.]+$' "$conf" && grep -q -F 'acl ip6_dst dstdom_regex -n :' "$conf" \
+    && [ -n "$ln_allow" ] && [ -n "$ln_v4" ] && [ -n "$ln_v6" ] && [ "$ln_v4" -lt "$ln_allow" ] && [ "$ln_v6" -lt "$ln_allow" ]; then ok "squid denies IP-literal destinations (v4, v6) before the allow"; else bad "squid IP-literal denies missing or after the allow"; fi
+grep -q -E '^forwarded_for delete$' "$conf" && grep -q -E '^via off$' "$conf" && ok "squid does not forward client addresses (forwarded_for delete, via off)" || bad "squid forwarded_for/via not hardened"
 hosts="$(grep -o -E 'https://[a-zA-Z0-9.-]+' "$ROOT/.github/workflows/ci.yml" | sed 's#https://##' | sort -u)"
 [ -n "$hosts" ] || bad "fixture: ci.yml yielded no https hosts"
 for h in $hosts; do
@@ -141,7 +152,7 @@ for h in github.com api.github.com codeload.github.com objects.githubusercontent
     pipelines.actions.githubusercontent.com ghcr.io npm.pkg.github.com acct123.blob.core.windows.net registry.npmjs.org pypi.org; do
     if covered "$h" "$conf"; then ok "runner host $h is on the proxy allowlist"; else bad "runner host $h missing"; fi
 done
-for h in example.com evil.githubusercontent.com.attacker.net core.windows.net.attacker.net; do
+for h in example.com evil.githubusercontent.com.attacker.net core.windows.net.attacker.net acct123.table.core.windows.net; do
     if covered "$h" "$conf"; then bad "$h must not be on the proxy allowlist"; else ok "$h is not on the proxy allowlist"; fi
 done
 
