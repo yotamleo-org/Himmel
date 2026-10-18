@@ -1894,14 +1894,17 @@ rep_text() {  # rep_text <text> <count> -> <text> repeated <count> times
     printf '%s' "$out"
 }
 if [ -n "${EPOCHREALTIME:-}" ]; then
+    # 1500 ms, not 1000: cmdpos_clean_for runs on every Bash call before the
+    # scans and costs about 36 ms on this text locally, about 1.9x that on a
+    # CI runner. The budget still catches the 13 s super-linear blowup.
     T0=${EPOCHREALTIME/[.,]/}
     run "$(j "HIMMEL_CONSOLE_LEG=1; ls a/*.sh; $(rep_text 'echo x >f; ' 200)")"
     T1=${EPOCHREALTIME/[.,]/}
     CASES=$((CASES + 1))
-    if [ "$RC" = "0" ] && [ $((T1 - T0)) -lt 1000000 ]; then
+    if [ "$RC" = "0" ] && [ $((T1 - T0)) -lt 1500000 ]; then
         echo "PASS 4157 J1685: 200 redirects beside a seam name finish in $(((T1 - T0) / 1000)) ms"
     else
-        echo "FAIL 4157 J1685: 200 redirects beside a seam name -- expected rc=0 under 1000 ms, got rc=$RC in $(((T1 - T0) / 1000)) ms"
+        echo "FAIL 4157 J1685: 200 redirects beside a seam name -- expected rc=0 under 1500 ms, got rc=$RC in $(((T1 - T0) / 1000)) ms"
         FAILED=$((FAILED + 1))
     fi
     P1K=$(rep_text "echo 'a'; " 1000)
