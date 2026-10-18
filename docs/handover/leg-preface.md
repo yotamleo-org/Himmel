@@ -138,7 +138,7 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   record it with `write-verdicts.sh sweep` (`SWEEP [<id>@<head>] class=<text> ::
   sites=<a>, <b>`). Every finding you fix or defer needs a **terminal** ledger
   verdict (`fixed` / `disproved` / `deferred`) before READY. [prose]
-- **Resolve each answered review thread**: himmel-gh `thread-resolve-action-cli.mjs
+- **Resolve review threads**: himmel-gh `thread-resolve-action-cli.mjs
   --reason`, one call each; denied → `BLOCKED resolve <pr> <ids>`. [prose]
 - **Merge only on the console's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says. Send `READY` and stop to hold for it. Past 30
@@ -151,7 +151,7 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition`.
-  - **`completes-ticket: no`** → omit the flag; never turn it on by default.
+  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059).
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand. Either way, re-read the ticket after merge and report its state. [prose]
 
