@@ -486,11 +486,12 @@ test("repairThenIngest: a stale beyond-EOF cursor is repaired BEFORE the tick's 
 test("dispatch creates session, enqueues, sets chat_id; running session only enqueues", async () => {
   const r = root(); const ran: string[] = [];
   const fakeRun = async (s:string)=>{ ran.push(s); };
-  await handleInbound(r, { from:1, chat_id:7, text:"work on HIMMEL-5" }, fakeRun);
+  const isOperator = (f: number) => f === 1;
+  await handleInbound(r, { from:1, chat_id:7, text:"work on HIMMEL-5" }, fakeRun, undefined, undefined, isOperator);
   const m = await readMeta(r, "HIMMEL-5"); expect(m?.chat_id).toBe(7);
   expect(ran).toEqual(["HIMMEL-5"]);
   await writeMeta(r, "HIMMEL-5", { ...(m as any), status:"running", last_run_pid: 999999 });
-  await handleInbound(r, { from:1, chat_id:7, text:"HIMMEL-5: more" }, fakeRun);
+  await handleInbound(r, { from:1, chat_id:7, text:"HIMMEL-5: more" }, fakeRun, undefined, undefined, isOperator);
   expect(ran).toEqual(["HIMMEL-5"]);   // no 2nd RUN while in-flight
 });
 
@@ -507,6 +508,84 @@ test("stop <KEY>: a non-operator sender is refused and the session keeps running
   await handleInbound(r, { from:5, chat_id:-50, text:"stop HIMMEL-5", ts: 42 }, noRun, undefined, undefined, isOperator, notifyChat);
   expect(readFileSync(stopFile, "utf8").trim()).toBe("42");               // operator stop still halts it
   expect(notes.length).toBe(1);
+});
+
+test("operator stop ends a running session within one turn (HIMMEL-6128)", async () => {
+  const r = root(); const sd = () => sessionDir(r, "HIMMEL-7"); const kinds: string[] = [];
+  await ensureSession(r, "HIMMEL-7");
+  await writeMeta(r, "HIMMEL-7", freshMeta(-50));
+  await appendLine(join(sd(), "inbox.jsonl"), JSON.stringify({ text: "go", operator: true }));
+  let spawns = 0;
+  const run = async () => {
+    spawns++;
+    // the operator's stop lands mid-run, and a second line queues behind it
+    await appendLine(join(sd(), "stop"), "42");
+    await appendLine(join(sd(), "inbox.jsonl"), JSON.stringify({ text: "more", operator: true }));
+    return { code: 0, capped: false, pid: 1 };
+  };
+  const notify = async (_s: string, _r: string, kind: string) => { kinds.push(kind); };
+  await makeRunFn(r, "/repo", run, 5000, notify)("HIMMEL-7");
+  expect(spawns).toBe(1);                                       // the self-drain turn never starts
+  expect(kinds).toEqual(["stopped"]);                           // reported as stopped by operator
+  expect((await readMeta(r, "HIMMEL-7"))?.status).toBe("idle");
+  expect(readdirSync(sd())).not.toContain("stop");              // marker consumed
+  expect((await peekPending(r, "HIMMEL-7")).count).toBe(0);     // queued work dropped, not re-run
+});
+
+test("operator stop written before the first spawn prevents the spawn (HIMMEL-6128)", async () => {
+  const r = root(); const sd = sessionDir(r, "HIMMEL-7");
+  await ensureSession(r, "HIMMEL-7");
+  await writeMeta(r, "HIMMEL-7", freshMeta(-50));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "go", operator: true }));
+  await appendLine(join(sd, "stop"), "42");
+  let spawns = 0;
+  await makeRunFn(r, "/repo", async () => { spawns++; return { code: 0, capped: false, pid: 1 }; }, 5000)("HIMMEL-7");
+  expect(spawns).toBe(0);
+});
+
+test("non-operator work on <KEY> creates no session, spawns nothing, never un-parks a failed one (HIMMEL-6128)", async () => {
+  const r = root(); const ran: string[] = [];
+  const isOperator = (from: number) => from === 5;
+  const run = async (s: string) => { ran.push(s); };
+  // 1. `work on` from a member: no session, no spawn
+  await handleInbound(r, { from: 9, chat_id: -50, text: "work on HIMMEL-9" }, run, undefined, undefined, isOperator);
+  expect(await readMeta(r, "HIMMEL-9")).toBeNull();
+  // 2. `KEY: text` from a member with no session: still no session
+  await handleInbound(r, { from: 9, chat_id: -50, text: "HIMMEL-9: do it" }, run, undefined, undefined, isOperator);
+  expect(await readMeta(r, "HIMMEL-9")).toBeNull();
+  // 3. a member's follow-up to a FAILED session: appended untrusted, parked stays parked, nothing spawns
+  await ensureSession(r, "HIMMEL-8");
+  await writeMeta(r, "HIMMEL-8", { ...freshMeta(-50), status: "failed", fail_count: 3 });
+  await handleInbound(r, { from: 9, chat_id: -50, text: "HIMMEL-8: try again", update_id: 1 }, run, undefined, undefined, isOperator);
+  expect((await readMeta(r, "HIMMEL-8"))?.status).toBe("failed");
+  expect((await readMeta(r, "HIMMEL-8"))?.fail_count).toBe(3);
+  const lines = readFileSync(join(sessionDir(r, "HIMMEL-8"), "inbox.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  expect(lines).toHaveLength(1);
+  expect(lines[0].operator).toBeUndefined();                    // untrusted follow-up
+  // 4. a member's follow-up to an IDLE session is appended but does not spawn
+  await ensureSession(r, "HIMMEL-6");
+  await writeMeta(r, "HIMMEL-6", freshMeta(-50));
+  await handleInbound(r, { from: 9, chat_id: -50, text: "HIMMEL-6: hi" }, run, undefined, undefined, isOperator);
+  expect(ran).toEqual([]);
+  // 5. the operator still creates, spawns and un-parks
+  await handleInbound(r, { from: 5, chat_id: -50, text: "HIMMEL-8: retry" }, run, undefined, undefined, isOperator);
+  expect((await readMeta(r, "HIMMEL-8"))?.status).not.toBe("failed");
+  await handleInbound(r, { from: 5, chat_id: -50, text: "work on HIMMEL-9" }, run, undefined, undefined, isOperator);
+  expect(ran).toEqual(["HIMMEL-8", "HIMMEL-9"]);
+});
+
+test("a ticket session whose pending lines are all non-operator is not spawned by its runFn (HIMMEL-6128)", async () => {
+  const r = root(); const sd = sessionDir(r, "HIMMEL-6");
+  await ensureSession(r, "HIMMEL-6");
+  await writeMeta(r, "HIMMEL-6", freshMeta(-50));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "untrusted" }));
+  let spawns = 0;
+  const runFn = makeRunFn(r, "/repo", async () => { spawns++; return { code: 0, capped: false, pid: 1 }; }, 5000);
+  await runFn("HIMMEL-6");
+  expect(spawns).toBe(0);
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "operator", operator: true }));
+  await runFn("HIMMEL-6");
+  expect(spawns).toBe(1);
 });
 
 test("chat routes to __chat__ session", async () => {
@@ -1074,8 +1153,8 @@ test("ticket session chat_id is pinned by its creator; a group followup does not
   // DM even when a group member sends a followup to the same ticket
   const r = root();
   const fakeRun = async (_s:string)=>{};
-  await handleInbound(r, { from:1, chat_id:7, text:"work on HIMMEL-5" }, fakeRun);
-  await handleInbound(r, { from:9, chat_id:-50, text:"HIMMEL-5: from the group" }, fakeRun);
+  await handleInbound(r, { from:1, chat_id:7, text:"work on HIMMEL-5" }, fakeRun, undefined, undefined, (f: number) => f === 1);
+  await handleInbound(r, { from:9, chat_id:-50, text:"HIMMEL-5: from the group" }, fakeRun, undefined, undefined, (f: number) => f === 1);
   expect((await readMeta(r, "HIMMEL-5"))?.chat_id).toBe(7);
 });
 
@@ -1184,13 +1263,13 @@ test("cold runFn: pending inbound → cold run replies to outbox, passes continu
   const r = root(); await ensureSession(r, "HIMMEL-7");
   await writeMeta(r, "HIMMEL-7", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
   const sd = sessionDir(r, "HIMMEL-7");
-  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text:"do A" }));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"do A" }));
   const prompts: string[] = [];
   const fakeRun = async (prompt: string, _cwd: string) => {
     prompts.push(prompt);
     const pending = await readFile(join(sd, "inbox.pending.jsonl"), "utf8");
     const n = pending.split("\n").filter((l)=>l.trim()).length;
-    await appendLine(join(sd, "outbox.jsonl"), JSON.stringify({ text:`handled ${n}` }));
+    await appendLine(join(sd, "outbox.jsonl"), JSON.stringify({ operator:true, text:`handled ${n}` }));
     return { code:0, capped:false, pid:1 };
   };
   await makeRunFn(r, "/repo", fakeRun)("HIMMEL-7");
@@ -1208,7 +1287,7 @@ test("cold runFn: resolves the telegram profile settings + mcp allowlist for eve
   const r = root(); await ensureSession(r, "HIMMEL-TG1");
   await writeMeta(r, "HIMMEL-TG1", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
   const sd = sessionDir(r, "HIMMEL-TG1");
-  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text:"do A" }));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"do A" }));
   let capturedSettings: string | undefined, capturedMcpConfig: string | undefined;
   const fakeRun = async (_prompt: string, _cwd: string, _permissionMode?: any, _lane?: any, _modelOverride?: any, settings?: string, _observe?: any, _extraEnv?: any, mcpConfig?: string) => {
     capturedSettings = settings;
@@ -1231,8 +1310,8 @@ test("cold runFn: a multi-line pending slice is consumed by ONE cold run (whole 
   const r = root(); await ensureSession(r, "HIMMEL-12");
   await writeMeta(r, "HIMMEL-12", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
   const sd = sessionDir(r, "HIMMEL-12");
-  await appendLine(join(sd,"inbox.jsonl"), JSON.stringify({ text:"one" }));
-  await appendLine(join(sd,"inbox.jsonl"), JSON.stringify({ text:"two" }));
+  await appendLine(join(sd,"inbox.jsonl"), JSON.stringify({ operator:true, text:"one" }));
+  await appendLine(join(sd,"inbox.jsonl"), JSON.stringify({ operator:true, text:"two" }));
   let calls = 0; let sawLines = 0;
   const fakeRun = async () => {
     calls++;
@@ -1249,7 +1328,7 @@ test("cold runFn: a multi-line pending slice is consumed by ONE cold run (whole 
 test("cold runFn: a capped run does NOT commit the cursor and settles meta capped + retry_at", async () => {
   const r = root(); await ensureSession(r, "HIMMEL-9");
   await writeMeta(r, "HIMMEL-9", { chat_id:5, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
-  await appendLine(join(sessionDir(r,"HIMMEL-9"), "inbox.jsonl"), JSON.stringify({ text:"hi" }));
+  await appendLine(join(sessionDir(r,"HIMMEL-9"), "inbox.jsonl"), JSON.stringify({ operator:true, text:"hi" }));
   const cappedRun = async () => ({ code:1, capped:true, pid:7 });
   await makeRunFn(r, "/repo", cappedRun)("HIMMEL-9");
   const m = await readMeta(r, "HIMMEL-9");
@@ -1264,7 +1343,7 @@ test("cold runFn: a FAILED run (non-zero exit, no cap) does NOT commit and backs
   // cursor on a run that produced no reply (silent drop).
   const r = root(); await ensureSession(r, "HIMMEL-13");
   await writeMeta(r, "HIMMEL-13", { chat_id:5, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
-  await appendLine(join(sessionDir(r,"HIMMEL-13"), "inbox.jsonl"), JSON.stringify({ text:"hi" }));
+  await appendLine(join(sessionDir(r,"HIMMEL-13"), "inbox.jsonl"), JSON.stringify({ operator:true, text:"hi" }));
   const failedRun = async () => ({ code:1, capped:false, pid:7 });   // exited non-zero, not a cap
   await makeRunFn(r, "/repo", failedRun)("HIMMEL-13");
   const m = await readMeta(r, "HIMMEL-13");
@@ -1278,7 +1357,7 @@ test("cold runFn: a clean run after a cap settles back to idle + clears retry_at
   // stays true forever and handleInbound's idle/done guard skips immediate dispatch.
   const r = root(); await ensureSession(r, "HIMMEL-11");
   await writeMeta(r, "HIMMEL-11", { chat_id:5, status:"capped", last_run_pid:9, last_run_at:null, task_name:null, retry_at:"2020-01-01T00:00:00Z" });
-  await appendLine(join(sessionDir(r,"HIMMEL-11"), "inbox.jsonl"), JSON.stringify({ text:"hi" }));
+  await appendLine(join(sessionDir(r,"HIMMEL-11"), "inbox.jsonl"), JSON.stringify({ operator:true, text:"hi" }));
   const cleanRun = async () => ({ code:0, capped:false, pid:8 });
   await makeRunFn(r, "/repo", cleanRun)("HIMMEL-11");
   const m = await readMeta(r, "HIMMEL-11");
@@ -1291,14 +1370,14 @@ test("cold runFn: empty tick reclaims a fully-consumed inbox; a fresh message st
   const r = root(); await ensureSession(r, "HIMMEL-8");
   await writeMeta(r, "HIMMEL-8", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
   const inbox = join(sessionDir(r,"HIMMEL-8"), "inbox.jsonl");
-  await appendLine(inbox, JSON.stringify({ text:"x" }));
+  await appendLine(inbox, JSON.stringify({ operator:true, text:"x" }));
   let calls = 0;
   const fakeRun = async () => { calls++; return { code:0, capped:false, pid:1 }; };
   await makeRunFn(r, "/repo", fakeRun)("HIMMEL-8");   // consumes "x", clean → recurse → count 0 → reclaim
   expect(calls).toBe(1);
   expect(await readFile(inbox, "utf8")).toBe("");
   expect(await readFile(inbox + ".consumed", "utf8")).toBe("0");
-  await appendLine(inbox, JSON.stringify({ text:"y" }));        // post-reclaim message reads from offset 0
+  await appendLine(inbox, JSON.stringify({ operator:true, text:"y" }));        // post-reclaim message reads from offset 0
   await makeRunFn(r, "/repo", fakeRun)("HIMMEL-8");
   expect(calls).toBe(2);
   expect((await peekPending(r, "HIMMEL-8")).count).toBe(0);
@@ -1313,11 +1392,11 @@ test("clean-run self-drain SKIPS a coalescer-held session (the burst keeps its m
   const r = root(); await ensureSession(r, "HELD");
   await writeMeta(r, "HELD", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
   const inbox = join(sessionDir(r,"HELD"), "inbox.jsonl");
-  await appendLine(inbox, JSON.stringify({ text:"first" }));
+  await appendLine(inbox, JSON.stringify({ operator:true, text:"first" }));
   let calls = 0;
   const fakeRun = async () => {
     calls++;
-    if (calls === 1) await appendLine(inbox, JSON.stringify({ text:"mid-run burst line" }));
+    if (calls === 1) await appendLine(inbox, JSON.stringify({ operator:true, text:"mid-run burst line" }));
     return { code:0, capped:false, pid:1 };
   };
   await makeRunFn(r, "/repo", fakeRun, 5000, undefined, 3, undefined, () => true)("HELD");
@@ -1329,11 +1408,11 @@ test("clean-run self-drain still runs when the session is NOT held", async () =>
   const r = root(); await ensureSession(r, "FREE");
   await writeMeta(r, "FREE", { chat_id:9, status:"idle", last_run_pid:null, last_run_at:null, task_name:null, retry_at:null });
   const inbox = join(sessionDir(r,"FREE"), "inbox.jsonl");
-  await appendLine(inbox, JSON.stringify({ text:"first" }));
+  await appendLine(inbox, JSON.stringify({ operator:true, text:"first" }));
   let calls = 0;
   const fakeRun = async () => {
     calls++;
-    if (calls === 1) await appendLine(inbox, JSON.stringify({ text:"mid-run line" }));
+    if (calls === 1) await appendLine(inbox, JSON.stringify({ operator:true, text:"mid-run line" }));
     return { code:0, capped:false, pid:1 };
   };
   await makeRunFn(r, "/repo", fakeRun)("FREE");           // default isHeld = () => false
@@ -3384,7 +3463,7 @@ test("cold runFn: a registry + validator change under a running poller still val
   const fakeRun = async (_p: string, _c: string, _pm?: any, _l?: any, _mo?: any, settings?: string) => { captured.push(settings); return { code:0, capped:false, pid:1 }; };
   const runFn = makeRunFn(r, "/repo", fakeRun, undefined, undefined, undefined, undefined, undefined, undefined, lanes);
 
-  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text:"before" }));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"before" }));
   await runFn("HIMMEL-4687");
   expect(JSON.parse(captured[0]!).enabledPlugins["obsidian-second-brain@himmel"]).toBe(true);
 
@@ -3396,7 +3475,7 @@ test("cold runFn: a registry + validator change under a running poller still val
   expect(mjs).toContain("'console-relay']);");
   await writeFile(join(lanes, "plugin-profiles.mjs"), mjs.replace("'console-relay']);", "'console-relay', 'leg-x4687']);"));
 
-  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text:"after" }));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"after" }));
   await runFn("HIMMEL-4687");
   expect(captured).toHaveLength(2);
   expect(JSON.parse(captured[1]!).enabledPlugins["obsidian-second-brain@himmel"]).toBe(false);
