@@ -653,17 +653,26 @@ write_plugin() {
     fi
     git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
 }
-# plugin_case <branch> <main version> <branch version> [main-bumps [file]]:
+# plugin_case <branch> <main version> <branch version> [main-bumps [file [spent]]]:
 # plugin.json at 0.1.0 on main, three rounds on a branch at <branch version>,
-# then main moves (a plugin file, the version when main-bumps is set, and its
-# own copy of <file> when given) and the branch merges it with --no-commit,
-# leaving the resolution to the caller.
+# optionally spending the delta round on a fix before main moves (a plugin
+# file, the version when main-bumps is set, and its own copy of <file> when
+# given) and the branch merges it with --no-commit, leaving the resolution to
+# the caller.
 plugin_case() {
     git -C "$repo" checkout -q main
     write_plugin "$1" 0.1.0
     git -C "$repo" commit -q -m "$1 plugin base"
     git -C "$repo" push -q origin main
     three_rounds "$1" clean "$3"
+    if [ -n "${6:-}" ]; then
+        CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
+            --branch "$1" --head "$cap_r3_head" --model stub --id plugin-fix --severity sug --file "$1.txt" --line 1 \
+            --verdict agreed >/dev/null 2>"$tmp/$1-finding.err" || fail "$1 finding setup"
+        fix_commit "$1"
+        (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch "$1" >/dev/null 2>"$tmp/$1-delta.err") \
+            || fail "$1 spent delta setup"
+    fi
     git -C "$repo" checkout -q main
     printf 'skill\n' > "$repo/marketplace/plugins/$1/SKILL.md"
     git -C "$repo" add "marketplace/plugins/$1/SKILL.md"
@@ -689,7 +698,7 @@ plugin_merge_commit
 pv1_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$plugin_head" --branch pvconflict 2>&1)"; pv1_rc=$?
 assert_eq "$pv1_rc" "0" "a version-only conflict resolution above both parents gets the merge-forward delta round"
 assert_has "$pv1_out" "pr-check: delta round 4 on pvconflict (from $cap_r3_head)" "version-only conflict resolution is the delta round"
-assert_has "$(cat "$git_dir/cr-review-rounds/pvconflict.delta" 2>/dev/null)" "merge-forward" "version-only conflict resolution records the merge-forward trigger"
+if [ -e "$git_dir/cr-review-rounds/pvconflict.delta" ]; then fail "a version-only conflict resolution leaves the delta round unspent"; else pass "a version-only conflict resolution leaves the delta round unspent"; fi
 
 # (1b) A clean merge whose merge commit bumps the version above both: accepted.
 plugin_case pvclean 0.1.0 0.1.2
@@ -698,7 +707,19 @@ plugin_merge_commit
 pv2_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$plugin_head" --branch pvclean 2>&1)"; pv2_rc=$?
 assert_eq "$pv2_rc" "0" "a clean merge plus a version-only bump gets the merge-forward delta round"
 assert_has "$pv2_out" "pr-check: delta round 4 on pvclean (from $cap_r3_head)" "clean merge plus bump is the delta round"
-assert_has "$(cat "$git_dir/cr-review-rounds/pvclean.delta" 2>/dev/null)" "merge-forward" "clean merge plus bump records the merge-forward trigger"
+if [ -e "$git_dir/cr-review-rounds/pvclean.delta" ]; then fail "a clean merge plus a version-only bump leaves the delta round unspent"; else pass "a clean merge plus a version-only bump leaves the delta round unspent"; fi
+
+# A version-only resolution is free even after a real fix spent the delta.
+plugin_case pvused 0.1.1 0.1.2 main-bumps "" spent
+pvused_from="$cap_fix_head"
+pvused_delta="$(cat "$git_dir/cr-review-rounds/pvused.delta")"
+write_plugin pvused 0.1.3
+plugin_merge_commit
+pvused_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$plugin_head" --branch pvused 2>&1)"; pvused_rc=$?
+assert_eq "$pvused_rc" "0" "a version-only conflict resolution is admitted after the delta round was spent ($pvused_out)"
+assert_has "$pvused_out" "pr-check: delta round 5 on pvused (from $pvused_from)" "the version-only round scopes from the last reviewed fix"
+assert_eq "$(cat "$git_dir/cr-review-rounds/pvused.delta")" "$pvused_delta" "a version-only resolution preserves the spent delta pair"
+assert_eq "$(cat "$git_dir/cr-review-rounds/pvused.round")" "5" "a version-only resolution advances the panel counter"
 
 # (2) The version bump plus one other byte in plugin.json: refused.
 plugin_case pvextra 0.1.1 0.1.2 main-bumps
