@@ -30,12 +30,12 @@
 #       judge NO-GO, or a record named `operator` (write-verdict.sh --judge
 #       operator, the operator's ruling quoted in its evidence), or the previous
 #       reviewed head (.head) has a standing Critical or Important critic finding
-#       in cr-critic-scores.jsonl (an unsettled, non-deferred, non-disproved row
+#       in cr-critic-scores.jsonl (a non-deferred, non-disproved row
 #       from a critic model). A judge GO record on a clean, suggestions-only or
 #       unknown head refuses (16). The clean-merge-forward admission past the cap
 #       (D3c) is review-round.sh's, not this script's. The same-uid ceiling below
-#       also means the console can name a record `operator`: the name is a
-#       recorded claim, not an authenticated one.
+#       also means the console, or any write-verdict caller, can name a record
+#       `operator`: the name is a recorded claim, not an authenticated one.
 #
 # Refused from a console leg (HIMMEL_CONSOLE_LEG) and a console relay
 # (HIMMEL_CONSOLE_RELAY), as write-verdict.sh refuses them: a leg must not buy
@@ -237,6 +237,7 @@ case "$round" in ''|*[!0-9]*) fail 5 "invalid counter state in $round_f - refusi
 # (e) the round-past-3 policy: a recorded operator ruling (a record named `operator`),
 # or an automatic condition - a judge NO-GO, or a standing Critical/Important critic
 # finding on the previous reviewed head (.head). Never after a clean or suggestions-only head.
+# ponytail: any judge NO-GO buys a past-cap round; same-class refusal is HIMMEL-6344
 if [ "${record#*/}" != operator ] && [ "$rword" != NO-GO ]; then
     prev="$(cat "$head_f")"
     standing="$(LEDGER="$common/cr-critic-scores.jsonl" BRANCH="$branch" PREV="$prev" node -e '
