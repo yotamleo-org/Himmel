@@ -72,6 +72,8 @@ rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_
 check    "3: 008 reads as decimal eight (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: 000 is zero, falls back to the default (rc 0 at 29M)" "$rc" 0
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr.jsonl" CONSOLE_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "3: 000 falls back to the default, not disabled (rc 3 at 30M)" "$rc" 3
 
 # --- 4. duplicate requestIds ---------------------------------------------------
 { row a 1000000; row a 1000000; row b 2000000; row b 2000000; row a 1000000; } > "$tmp/dup.jsonl"
