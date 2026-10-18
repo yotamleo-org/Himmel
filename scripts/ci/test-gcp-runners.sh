@@ -54,7 +54,7 @@ exit 0
 STUB
 chmod +x "$T/gcloud" "$T/gh"
 
-export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instances" STUB_VAR="$T/civar"
+export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instances" STUB_VAR="$T/civar" GCP_RUNNERS_LOCK="$T/lock"
 run() { : > "$STUB_LOG"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
 creates() { grep -c 'instances create' "$STUB_LOG"; }
 
@@ -124,6 +124,15 @@ echo off > "$STUB_VAR"
 if waitfor stopped; then ok "watch exits once CI_GCP is off"; else bad "watch still running after CI_GCP off"; kill "$wpid" 2>/dev/null; fi
 if grep -q 'instances delete' "$STUB_LOG" && grep -q 'pool deleted' "$T/watch.out"; then ok "watch runs down on exit"; else bad "watch did not run down"; fi
 rc="$(run watch 5)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch 5 is refused"; else bad "watch 5: rc=$rc"; fi
+
+# 6d. a second up while another holds the lock creates nothing.
+: > "$STUB_INSTANCES"
+( flock 9; sleep 3 ) 9> "$GCP_RUNNERS_LOCK" &
+holder=$!
+sleep 0.5
+rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses while another up holds the lock"; else bad "locked up: rc=$rc creates=$(creates)"; fi
+wait "$holder"
+rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
 
 # 7. unknown subcommand is refused.
 rc="$(run frobnicate)"; if [ "$rc" -ne 0 ]; then ok "unknown subcommand is refused"; else bad "unknown subcommand accepted"; fi

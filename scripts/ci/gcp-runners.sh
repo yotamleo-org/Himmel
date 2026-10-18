@@ -32,6 +32,7 @@ MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
 MAX_RUN="30m"
 POOL_LABEL="himmel-ci-runner=gcp"
 MAX_N=4
+LOCKFILE="${GCP_RUNNERS_LOCK:-${TMPDIR:-/tmp}/gcp-runners.lock}"
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
 GH="${GH:-gh}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,6 +49,9 @@ cmd_up() {
     case "$n" in ''|*[!0-9]*) die "up: N must be a positive integer, got '$n'" 2 ;; esac
     [ "$n" -ge 1 ] || die "up: N must be at least 1" 2
     [ "$n" -le "$MAX_N" ] || die "up: N=$n exceeds the hard max $MAX_N (the trial caps 8 vCPUs)" 2
+
+    exec 9> "$LOCKFILE" || die "cannot open lock $LOCKFILE"
+    flock -n 9 || die "another up is already running, refusing to count the pool twice"
 
     local live=0 name status zone vms
     vms="$(pool_vms)" || die "pool discovery failed, refusing to create VMs for an unknown pool"
@@ -94,7 +98,7 @@ cmd_down() {
         [ -n "$name" ] || continue
         gc compute instances delete "$name" --zone="${zone:-$ZONE}" --quiet || failed=1
     done <<< "$vms"
-    ids="$("$GH" api "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="offline" and any(.labels[]; .name=="gcp")) | .id')" || die "runner listing failed"
+    ids="$("$GH" api --paginate "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="offline" and any(.labels[]; .name=="gcp")) | .id')" || die "runner listing failed"
     while read -r id; do
         [ -n "$id" ] || continue
         "$GH" api -X DELETE "repos/$REPO/actions/runners/$id" || failed=1
@@ -127,8 +131,8 @@ cmd_watch() {
 }
 
 cmd_status() {
-    pool_vms
-    "$GH" api "repos/$REPO/actions/runners" --jq '.runners[] | select(any(.labels[]; .name=="gcp")) | "\(.name) \(.status)"'
+    pool_vms || die "pool discovery failed"
+    "$GH" api --paginate "repos/$REPO/actions/runners" --jq '.runners[] | select(any(.labels[]; .name=="gcp")) | "\(.name) \(.status)"'
 }
 
 case "${1:-}" in
