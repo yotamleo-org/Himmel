@@ -135,6 +135,7 @@ run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV"
 lacks "6d: without --residual-of the flag is absent" "$log" "--residual-of"
 run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --residual-of bogus
 check "6d: a non-key --residual-of rc 2" "$rc" 2
+# read-sink-ok: $LOG is this suite's own mktemp stub log
 check "6d: a non-key --residual-of ran nothing" "$(cat "$LOG")" ""
 run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --residual-of
 check "6d: --residual-of with no value rc 2" "$rc" 2
