@@ -55,6 +55,7 @@ exit 0
 STUB
 chmod +x "$T/gcloud" "$T/gh"
 
+mkdir "$T/tmp" && export TMPDIR="$T/tmp"
 export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instances" STUB_VAR="$T/civar" GCP_RUNNERS_LOCK="$T/lock"
 run() { : > "$STUB_LOG"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
 creates() { grep -c 'instances create' "$STUB_LOG"; }
@@ -92,6 +93,9 @@ if grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=gcp' && grep 'gene
 if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q -- '--jitconfig' "$STUB_LOG"; then ok "startup script starts the runner with --jitconfig"; else bad "startup script lacks --jitconfig"; fi
 if grep -q 'ACTIONS_RUNNER_HOOK_JOB_STARTED' "$STUB_LOG" && grep -q '^FILE job-started-hook <<' "$STUB_LOG" && grep -q 'fork guard' "$STUB_LOG"; then ok "fork guard hook is installed and wired as the job-started hook"; else bad "fork guard hook not wired"; fi
 if grep -q 'poweroff' "$STUB_LOG"; then ok "startup script powers the VM off after the one job"; else bad "startup script never powers off"; fi
+
+# 4b. the per-VM JIT config files are removed when up exits.
+if [ -z "$(ls -A "$TMPDIR")" ]; then ok "up leaves no JIT config on disk"; else bad "up left files in TMPDIR: $(ls "$TMPDIR")"; fi
 
 # 5. up tops the pool back to N: one existing VM means one create for up 2.
 printf 'himmel-ci-existing-1\n' > "$STUB_INSTANCES"

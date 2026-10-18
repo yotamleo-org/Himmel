@@ -77,7 +77,8 @@ cmd_up() {
 
     local tmpd i stamp vm
     tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
-    trap 'rm -rf "$tmpd"' EXIT
+    # shellcheck disable=SC2064  # expand now: tmpd is local and gone when the trap fires
+    trap "rm -rf '$tmpd'" EXIT
     chmod 700 "$tmpd"
     stamp="$(date +%m%d%H%M%S)"
     for i in $(seq 1 "$need"); do
