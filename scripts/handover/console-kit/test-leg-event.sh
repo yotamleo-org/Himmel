@@ -244,6 +244,7 @@ check "13 no-PR rc" "$rc" 0
 contains "13 no-PR prints HANDLED" "$out" "HANDLED close-wrapped N3001"
 contains "13 close gets the fleet and the leg doc" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-4-N3001-research-2026-10-14.md"
 lacks "13 wrap-merged not run" "$calls" "wrap --doc"
+# read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
 contains "13 live-state ran" "$(cat "$LE_LIVE_CALLS")" "live $W/doc"
 
 LE_LIST="$W/list13" run "WRAPPED N3002."
@@ -254,6 +255,7 @@ LE_CLOSE_RC=3 LE_CLOSE_ERR="close-wrapped-leg: refusing - queue lock held" LE_LI
 check "13 refused close rc" "$rc" 10
 contains "13 refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=3"
 contains "13 refusal surfaced" "$out" "queue lock held"
+# read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
 check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
 
 LE_LIST="$W/list13" run "MERGED #2566 N3001"
