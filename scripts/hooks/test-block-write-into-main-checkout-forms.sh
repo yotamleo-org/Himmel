@@ -631,6 +631,8 @@ if _growth_ok "$_el_c20" "$_el_k20"; then ok "5747 20 KB clauses ${_el_c20}s wit
 else bad "5747 20 KB clauses ${_el_c20}s exceed 3x + 2s of the same-length control ${_el_k20}s"; fi
 _c20p="${_c20}echo x > $_PR/f5747"
 _t_row "5747 20 KB of redirect clauses ending in a primary write denies" block "$_c20p" "$_HANG_CEILING"
+if _growth_ok "$_T_EL" "$_el_k20"; then ok "5747 20 KB clauses ending in a primary write ${_T_EL}s within 3x + 2s of the control ${_el_k20}s"
+else bad "5747 20 KB clauses ending in a primary write ${_T_EL}s exceed 3x + 2s of the control ${_el_k20}s"; fi
 # Runner speed must not decide the verdict. The fixture is a real CI figure
 # (shard 5, 2026-10-18T13:15:22Z): the clause command took 25s there, which a
 # fixed 22s budget rejected.
