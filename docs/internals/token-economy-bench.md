@@ -161,5 +161,6 @@ phrase; it adds no new steering the probes cover.
 | P3 graphify for structure | n/a | 0/3 | 0/3 |
 
 P3 does not discriminate: `graphify-out/` is untracked, so neither clone has a
-graph and both arms went straight to `grep`. Acceptance holds (lean ≤ fat tokens,
-lean ≥ fat − 1 on every probe).
+graph and both arms went straight to `grep`. Acceptance holds on P0–P2 (lean ≤ fat
+tokens, lean ≥ fat − 1); P3 is not evidence either way until it is repeated with a
+graph present in both arms.

@@ -68,7 +68,8 @@ prose. `docs/internals/context-architecture.md`.
 `MEMORY.md` routes, it does not store: on a surprising symptom read the theme
 file its keyword names. qmd finds content (scope with `-c <name>`; a miss is
 not proof of absence). graphify explains structure (`graphify query|explain|path`).
-A live URL → `WebFetch` directly.
+Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetch`
+directly.
 
 ## WORKFLOWS
 
