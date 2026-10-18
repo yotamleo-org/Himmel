@@ -389,7 +389,11 @@ fi
 "${MERGE[@]}" merge --name "$NAME" --out "$OUT_DIR" --scratch "$SCRATCH" --plan "$PLAN" \
   --runtime-s "$(( $(date +%s) - START ))" --tokens-in "$TOKENS_IN" --tokens-out "$TOKENS_OUT" \
   --backend "$BACKEND" --cost-usd "$(spent_usd)" --cap-usd "$([ "$BACKEND" = "claude-api" ] && echo "$RUN_CAP" || echo 0)" \
-  || { echo "semantic-update: merge failed -- the batch stays unstamped and re-extracts next run" >&2; exit 2; }
+  || {
+    # The merge writes its row last, so a failed merge billed calls without leaving one.
+    "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc 2 || true
+    echo "semantic-update: merge failed -- the batch stays unstamped and re-extracts next run" >&2; exit 2
+  }
 if [ -d "$SCRATCH/graphify-out/cache/semantic" ]; then
   mkdir -p "$OUT_DIR/cache/$CACHE_SUB"
   cp -R "$SCRATCH/graphify-out/cache/semantic/." "$OUT_DIR/cache/$CACHE_SUB/"

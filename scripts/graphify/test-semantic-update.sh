@@ -557,6 +557,11 @@ out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_ap
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && pass "T54 three unpriced calls ran, the fourth was refused" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
 [ "$(lastrun "$C54" cost_usd)" = "0.0" ] && pass "T54 the reservation is not reported as cost" || fail "T54 row: $(tail -1 "$C54/graphify-out/semantic-runs.jsonl")"
 
+echo "T55: a merge that fails after billed lane calls still leaves a run row with the cost"
+C55="$WS/c55"; new_corpus "$C55"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(GRAPHIFY_STUB_LEAK=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t55 --corpus-root "$C55" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(lastrun "$C55" cost_usd)" = "0.5" ] && pass "T55 failed merge row carries cost 0.5" || fail "T55 (rc=$rc): $(tail -1 "$C55/graphify-out/semantic-runs.jsonl" 2>&1)"
+
 echo "T49: the run row carries the summed lane cost, the backend and the cap"
 [ "$(lastrun "$C48" cost_usd)" = "1.2" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
   && pass "T49 cost_usd 1.2, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"

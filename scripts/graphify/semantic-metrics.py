@@ -35,6 +35,7 @@ def measure(graph, files=None):
              if e.get("_origin") != "ast" and e.get("relation") in SEMANTIC_RELATIONS
              and e.get("source") in byid and e.get("target") in byid
              and in_scope(byid[e["source"]])
+             and byid[e["source"]].get("source_file") and byid[e["target"]].get("source_file")
              and byid[e["source"]].get("source_file") != byid[e["target"]].get("source_file")]
     made = [n for n in sem if n.get("file_type") != "document"]
     made_rat = [n for n in made if str(n.get("rationale") or "").strip()]
