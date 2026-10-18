@@ -6,13 +6,28 @@
 # spare-capacity suggestion it replaced.
 #
 #   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
-#                        [--held FILE] [--no-classify]
+#                        [--held FILE] [--no-classify] [--doc CONSOLE_DOC]
+#                        [--priority-pool-only]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
 # candidate is a To Do issue that is not an Epic/Story/Sub-task, carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
 # blocked_by link. Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
 # natural order; none last), then priority, then key.
+#
+# Tiers (the first that applies; tier_of() in the script): 1 the operator pool
+# head: label ps3-blocker / must-v1.1.3, or a key on the ordered `priority:` line
+# in --doc's `## Live state` (line order ranks within the tier, labelled-only
+# tickets after the listed ones; groups split by `|`; a token that is not a key,
+# like K1, is skipped; a key marked `(CLOUD)` is dropped from the output); 2 label
+# operator-directed; 3 a Bug of High or above, or a security / data-integrity /
+# data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
+# tiers 1-3 only (no RESUME rows); an empty pool prints `POOL-EMPTY` and no rows.
+#
+# Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
+# panel residual and is excluded unless --doc records `residual-must <KEY>` on a
+# line of its own (security, data loss or a broken operator flow only). No label
+# means depth 0.
 #
 # Collision (one writer per file): the files a candidate names in its
 # description are checked against (a) the files in the live legs' docs (the
@@ -41,7 +56,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
-legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""
+legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --resume-only) resume_only=1; classify=0; shift ;;
@@ -51,12 +66,14 @@ while [ "$#" -gt 0 ]; do
         --legs-from) legs_from="${2:-}"; shift 2 || exit 2 ;;
         --held) held="${2:-}"; shift 2 || exit 2 ;;
         --no-classify) classify=0; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--resume-only] [--owners \"KEY ...\"]" >&2; exit 2 ;;
+        --doc) doc="${2:-}"; shift 2 || exit 2 ;;
+        --priority-pool-only) pool_only=1; shift ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CONSOLE_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only"
 exec python3 -I - <<'PY'
 import json, os, re, subprocess, sys
 
@@ -136,6 +153,63 @@ def rank(i):
     vers = [vorder[v] for v in i['ver'] if v in vorder]
     return (min(vers) if vers else 10**6, PRIO.get(i['prio'], 5), int(i['key'].split('-')[1]))
 
+# The operator's ordered `priority:` line, from the `## Live state` section of the console doc.
+def read_priority_line(path):
+    order, cloud = {}, set()
+    if not path:
+        return order, cloud
+    try:
+        lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+    except OSError:
+        return order, cloud
+    in_state = False
+    for line in lines:
+        if line.startswith('## '):
+            in_state = line.strip() == '## Live state'
+        m = re.match(r'^\s*(?:[-*]\s+)?priority:\s*(.*)$', line) if in_state else None
+        if m:
+            for k, c in re.findall(r'(?<![\w-])(?:HIMMEL-)?(\d{3,5})(?![\w-])(\(CLOUD\))?', m.group(1)):
+                key = 'HIMMEL-' + k
+                order.setdefault(key, len(order))
+                if c:
+                    cloud.add(key)
+            break
+    return order, cloud
+
+prio_order, prio_cloud = read_priority_line(os.environ.get('ND_DOC', ''))
+TIER1_LABELS = {'ps3-blocker', 'must-v1.1.3'}
+TIER3_LABELS = {'security', 'data-integrity', 'data-loss'}
+
+def residual_depth(i):
+    ds = [int(m.group(1)) for l in i['labels'] for m in [re.match(r'^residual-depth-(\d+)$', l)] if m]
+    return max(ds) if ds else 0
+
+def read_residual_must(path):
+    keys = set()
+    try:
+        for line in open(path, encoding='utf-8', errors='replace'):
+            m = re.match(r'^\s*(?:[-*]\s+)?residual-must\s+(?:HIMMEL-)?(\d{3,5})\b', line)
+            if m:
+                keys.add('HIMMEL-' + m.group(1))
+    except OSError:
+        pass
+    return keys
+
+residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
+
+def tier_of(i):
+    # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
+    if i['key'] in prio_order or i['labels'] & TIER1_LABELS:
+        return 1
+    if 'operator-directed' in i['labels']:
+        return 2
+    if (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1) or i['labels'] & TIER3_LABELS:
+        return 3
+    return 4
+
+def ranked(i):
+    return (tier_of(i), prio_order.get(i['key'], 10**6)) + rank(i)
+
 def load_platform_re():
     # The one pattern file gen-briefs.py reads too: its first non-blank, non-# line.
     path = os.path.join(repo, 'scripts/handover/console-kit/platform-dropped.re')
@@ -160,8 +234,15 @@ for i in issues.values():
         continue
     if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
+    if i['key'] in prio_cloud:
+        continue
+    if residual_depth(i) >= 1 and i['key'] not in residual_must:
+        continue
     cands.append(i)
-cands.sort(key=rank)
+cands.sort(key=ranked)
+pool_only = os.environ.get('ND_POOL_ONLY') == '1'
+if pool_only:
+    cands = [i for i in cands if tier_of(i) <= 3]
 
 # held files: live legs, open PRs, --held
 held = []
@@ -205,7 +286,7 @@ except (OSError, subprocess.SubprocessError):
 
 # In-work tickets nobody holds: no leg, no open PR, not parked or blocked.
 resume = []
-for i in issues.values():
+for i in ([] if pool_only else issues.values()):
     if i['status'] not in ('In Progress', 'In Review') or i['type'] in ('Epic', 'Story', 'Sub-task'):
         continue
     if i['labels'] & excl or any('parked' in l for l in i['labels']):
@@ -266,6 +347,9 @@ for i in resume:
 if resume_only:
     sys.exit(0)
 classified = os.environ.get('ND_CLASSIFY') == '1'
+if pool_only and not free:
+    print('POOL-EMPTY')
+    sys.exit(0)
 # Walk the collision-free list in chunks so BLOCKED rows in an early chunk do not
 # leave the list short while later candidates are dispatchable.
 for start in range(0, len(free) if n < top else 0, top * 3):
@@ -289,4 +373,6 @@ for start in range(0, len(free) if n < top else 0, top * 3):
             break
     if n >= top:
         break
+if pool_only and n == 0:  # every pool ticket was classified BLOCKED or collided with a printed one
+    print('POOL-EMPTY')
 PY

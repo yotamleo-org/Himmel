@@ -59,13 +59,14 @@ printf '%s\t%s\t%s\n' key close_flag close_evidence \
 printf '%s\t%s\n' key reason HIMMEL-4 'unplaced reason text' > "$plan/stage3/unplaced.tsv"
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-1 tooling 4 > "$plan/stage1/C01.tsv"
 
-# mk <n> <statusCategory> <fixVersions json> <title> [status name]; writes into $mdir. A status name is the Jira status
+# mk <n> <statusCategory> <fixVersions json> <title> [status name] [resolution]; writes into $mdir. A status name is the Jira status
 # without one the frontmatter has no `status:` line and the page falls back to the category.
 mdir="$mir"
 mk() {
     {
         printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$2\""
         [ -n "${5:-}" ] && printf 'status: "%s"\n' "$5"
+        [ -n "${6:-}" ] && printf 'resolution: "%s"\n' "$6"
         printf '%s\n' "fixVersions: $3" 'type: "Bug"' '---' "# HIMMEL-$1: $4"
     } > "$mdir/HIMMEL-$1.md"
 }
@@ -370,6 +371,11 @@ mk 34 'To Do' '["v1.0.3"]' 'next one' 'To Do'
 mk 35 'Done' '["v1.0.2"]' 'wont one' 'wont do'
 mk 36 'In Progress' '["v1.0.2"]' 'category fallback one'
 mk 37 'To Do' '["v1.0.0"]' 'zero version one' 'To Do'
+mk 38 'Done' '["v1.0.2"]' 'closed one' 'Closed'
+mk 39 'Done' '["v1.0.3"]' 'duplicate one' 'Done' 'Duplicate'
+mk 40 'Done' '["v1.0.3"]' 'done in future one' 'Done' 'Done'
+mk 41 'In Progress' '[]' 'flight one' 'In Progress'
+mk 42 'To Do' '[]' 'idle unversioned one' 'To Do'
 mdir="$mir"
 printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\n' > "$W/jm.versions.tsv"
 render --mirror-dir "$jm" >/dev/null
@@ -387,7 +393,15 @@ contains 'the released-but-open alert still renders when no unreleased version i
     's.textContent="Every unreleased version is done.";jalerts(-1);return}'
 contains 'In Review is counted from the status name (HIMMEL-3990)' "$jhtml" '"k":32,"t":"review one","s":"In Review","b":"rev","v":1,'
 contains 'IN CI is counted from the status name (HIMMEL-3990)' "$jhtml" '"k":33,"t":"ci one","s":"IN CI","b":"ci","v":1,'
-contains 'wont do counts as done (HIMMEL-3990)' "$jhtml" '"s":"wont do","b":"wont"'
+not_contains 'a wont-do ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"wont one"'
+not_contains 'a Closed ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"closed one"'
+not_contains 'a Done ticket with a Duplicate resolution is in no count (HIMMEL-6241)' "$jhtml" '"t":"duplicate one"'
+not_contains 'a closed-without-shipping ticket is in no plan row either (HIMMEL-6241)' "$jhtml" '"closed one"'
+contains 'closed without shipping is one count per version, not a Done count (HIMMEL-6241)' "$jhtml" '"JW":[[1,2],[2,1]]'
+contains 'a Done ticket in a future version is counted in the current one (HIMMEL-6241)' "$jhtml" \
+    '"k":40,"t":"done in future one","s":"Done","b":"done","v":1,'
+contains 'the footnote says closed without shipping (HIMMEL-6241)' "$jhtml" 'closed without shipping'
+not_contains 'the legend no longer calls Closed or wont do work done (HIMMEL-6241)' "$jhtml" 'Hides Done, Closed, In Public, wont do'
 contains 'an unknown status falls back to the status category (HIMMEL-3990)' "$jhtml" '"t":"category fallback one","s":"In Progress","b":"prog"'
 contains 'a released-only ticket keeps its released version (HIMMEL-3990)' "$jhtml" '"k":30,"t":"released done one","s":"Done","b":"done","v":0,'
 contains 'hide done work is ON by default (HIMMEL-3990)' "$jhtml" 'var HIDE=true;try{var hs=localStorage.getItem("hide3990")'
@@ -615,6 +629,95 @@ contains 'the summary counts Done-in-future-version tickets (HIMMEL-5801)' "$dfo
 printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t2026-10-20\n' > "$dfm.versions.tsv"
 dfout="$(render --mirror-dir "$dfm")"
 contains 'no Done ticket past the current version counts zero (HIMMEL-5801)' "$dfout" ', 0 done-in-future;'
+
+# --- remaining-only board (--remaining): open tickets of one version, grouped by the plan's priority line.
+rb="$W/rb"
+mkdir -p "$rb"
+mdir="$rb"
+mk 70 'Done' '["v1.1.3"]' 'done in version' 'Done'
+mk 71 'To Do' '["v1.1.3"]' 'first group open' 'To Do'
+mk 72 'In Progress' '["v1.1.3"]' 'second group open' 'In Progress'
+mk 73 'To Do' '["v1.1.3"]' 'on no group line' 'To Do'
+mk 74 'To Do' '["v1.1.4"]' 'other version' 'To Do'
+mk 75 'Done' '["v1.1.3"]' 'wont do in version' 'Wont Do'
+mdir="$mir"
+pf="$W/rb-plan.md"
+# shellcheck disable=SC2016  # the backticks are literal plan text
+printf '%s\n' '`priority:` line for the console:' '' '71 K1 | 72 (5000 71) | rest of v1.1.3 | 6100' > "$pf"
+rbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" 2>&1)"
+contains 'the remaining board lists an open ticket of the version' "$rbout" 'HIMMEL-71 [To Do] first group open'
+not_contains 'the remaining board drops a Done ticket' "$rbout" 'HIMMEL-70'
+not_contains 'the remaining board drops a wont-do ticket' "$rbout" 'HIMMEL-75'
+not_contains 'the remaining board drops another version' "$rbout" 'HIMMEL-74'
+contains 'the first priority segment is group 0' "$rbout" '## 0 critical (1)'
+contains 'the second priority segment is group 1K' "$rbout" '## 1K knowledge retrieval (1)'
+contains 'the first group holds ticket 71' "$rbout" "## 0 critical (1)"$'\n- HIMMEL-71 '
+contains 'the second group holds ticket 72' "$rbout" "## 1K knowledge retrieval (1)"$'\n- HIMMEL-72 '
+contains 'the rest group holds ticket 73' "$rbout" "## rest of version (1)"$'\n- HIMMEL-73 '
+if python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$W/no-such-plan.md" >/dev/null 2>&1; then
+    fail 'an explicit priority file that cannot be read fails the render'
+else
+    pass 'an explicit priority file that cannot be read fails the render'
+fi
+contains 'a ticket on no group line goes to the rest group' "$rbout" '## rest of version (1)'
+contains 'the heading counts the open tickets' "$rbout" '# v1.1.3 remaining board: 3 open'
+rbfile="$W/rb-out.md"
+python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" --out "$rbfile" >/dev/null 2>&1
+contains '--out writes the board to a file' "$(cat "$rbfile" 2>/dev/null)" 'HIMMEL-72 [In Progress] second group open'
+
+# --- done-in-future counts every unreleased version, not only v1.0.x.
+dfm="$W/dfm2"
+mkdir -p "$dfm"
+mdir="$dfm"
+mk 80 'Done' '["v1.1.3"]' 'done in current' 'Done'
+mk 81 'Done' '["v1.1.4"]' 'done in future v1.1.4' 'Done'
+mdir="$mir"
+printf 'v1.1.3\tfalse\t2026-10-20\nv1.1.4\tfalse\t\n' > "$dfm.versions.tsv"
+dfout="$(render --mirror-dir "$dfm")"
+contains 'a Done ticket in a future v1.1.x counts as done-in-future (HIMMEL-5826)' "$dfout" ', 1 done-in-future;'
+
+# A Done ticket in a later major version (v2.0.0) counts too: the count is not limited to the v1 train.
+dfm="$W/dfm3"
+mkdir -p "$dfm"
+mdir="$dfm"
+mk 85 'Done' '["v1.1.3"]' 'done in current' 'Done'
+mk 86 'Done' '["v2.0.0"]' 'done in a later major' 'Done'
+mdir="$mir"
+printf 'v1.1.3\tfalse\t2026-10-20\nv2.0.0\tfalse\t\n' > "$dfm.versions.tsv"
+dfout="$(render --mirror-dir "$dfm")"
+contains 'a Done ticket in a later major version counts as done-in-future (HIMMEL-5826)' "$dfout" ', 1 done-in-future;'
+
+# --- per-version page defects: multi-version tickets, in-flight lane, current version, fleet-manifest legs.
+# Item 2: a ticket with two fixVersions is counted in each (ticket 32 holds v1.0.3 and v1.0.2).
+contains 'a ticket with two fixVersions is counted in its second version too (HIMMEL-5217)' "$jhtml" \
+    '"k":32,"t":"review one","s":"In Review","b":"rev","v":2,'
+# Item 5: open In Progress / In Review work with no fixVersion is visible in its own lane.
+contains 'unversioned in-flight work has its own lane (HIMMEL-5217)' "$jhtml" 'In flight, no version'
+contains 'the lane lists the in-flight ticket (HIMMEL-5217)' "$jhtml" 'flight one'
+not_contains 'the lane leaves out an unversioned To Do ticket (HIMMEL-5217)' "$jhtml" 'idle unversioned one'
+# Item 4: the plan blocks follow the hero's rule: a released version is never current.
+cu="$W/cu"
+mkdir -p "$cu"
+cp -r "$plan" "$W/plan4"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+    v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.2 0.1 0 0 0 0 0.1 1 > "$W/plan4/stage3/versions.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
+    HIMMEL-1 v1.0.1 bugs 1 committed '' 'P1; pinned to v1.0.1 (ruling)' \
+    HIMMEL-90 v1.0.2 bugs 1 committed '' 'P1; pinned to v1.0.2 (ruling)' > "$W/plan4/stage3/placement.tsv"
+mdir="$cu"
+mk 1 'To Do' '["v1.0.1"]' 'planned bug' 'To Do'
+mk 90 'To Do' '["v1.0.2"]' 'next version bug' 'To Do'
+mdir="$mir"
+printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\n' > "$cu.versions.tsv"
+render --plan-dir "$W/plan4" --mirror-dir "$cu" >/dev/null
+cuhtml="$(cat "$out" 2>/dev/null)"
+contains 'a released version is not the plan blocks current version (HIMMEL-5217)' "$cuhtml" '"CUR":1,'
+# Item 1: a leg listed in a console's fleet manifest is live without a held queue lock.
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-leg-2026-10-01.md" > "$bk/test-console.fleet.json"
+render >/dev/null
+fmhtml="$(cat "$out" 2>/dev/null)"
+rm -f "$bk/test-console.fleet.json"
+contains 'a leg in the fleet manifest is live with its label and phase (HIMMEL-5217)' "$fmhtml" '"7":["N57","LIVE"'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

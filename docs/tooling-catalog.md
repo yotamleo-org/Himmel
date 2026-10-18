@@ -48,6 +48,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `i-have-adhd` | Vendored (`ayghri/i-have-adhd` MIT, pinned commit) output-shaping skill for an ADHD reader: action first, numbered steps, one next action. `disable-model-invocation`, so 0 listing tokens; one SessionStart hook injects it (~1.75k tokens once per session) only when `~/.claude/.i-have-adhd-always` exists, which the installer and updater create unless `HIMMEL_NO_ADHD_ALWAYS=1` — see `marketplace/plugins/i-have-adhd/README.md` | ALWAYS |
 | `pstack` | Seven vendored opt-in skills from `cursor/plugins` pstack (pinned `99743e9c`, MIT): `/correct`, `/blast-radius`, `/create-verification-skill`, `/maintain-verification-skill`, `/benchmark-checklist`, `principle-explain-the-number`, `/in-your-own-words`. All `disable-model-invocation`, no hooks or agents. Off in every leg profile; remove with `claude plugin disable pstack@himmel` — see `marketplace/plugins/pstack/README.md` | ON in the interactive `user` profile only |
 | `humanizer` | One vendored opt-in skill from `blader/humanizer` (pinned `225a6f39`, MIT): `/humanizer` rewrites AI-sounding prose. `disable-model-invocation`, no hooks, agents or scripts. In no profile; on-demand tier (installed, disabled): enable with `/profile enable humanizer@himmel`, remove with `claude plugin disable humanizer@himmel` — see `marketplace/plugins/humanizer/README.md` | OFF everywhere until the operator enables it |
+| `domain-modeling` | One vendored skill from `mattpocock/skills` (pinned `49dd158d`, MIT): keeps `docs/glossary.md` to one definition per term, aliases pointing at the canonical term. No hooks, agents or scripts; listing about 40 tokens. ON-DEMAND, `design` profile only (the profile that does design and docs work); remove with `claude plugin disable domain-modeling@himmel` — see `marketplace/plugins/domain-modeling/README.md` | ON-DEMAND — `design` profile only |
 | `context7` | Fetches current library/framework docs on demand (MCP server) | ON-DEMAND |
 | `code-review` | Code review agent with severity-tagged findings | ON-DEMAND — cached, off by default |
 | `code-simplifier` | Simplifies recently written code for clarity/maintainability | ON-DEMAND — cached, off by default |
@@ -1753,6 +1754,12 @@ signalled it. Same runner/scheduler split as the graphify pair above.
   arm --golden <golden.jsonl>` (default Sunday 06:00, after the 05:00 reindex;
   `--day` / `--time` / `--index` / `--force` / `--dry-run`). Cron only; not in
   the wizard registry. Test: `test-qmd-quality-cadence.sh`.
+- `scripts/eval/qmd-quality/qmd-burst-proof.sh` — an on-demand proof, not a
+  cadence: fires 10 parallel `vec` queries at the qmd daemon MCP endpoint and
+  prints a table plus `BURST-PASS` (every call a result within
+  `QMD_BURST_LIMIT` seconds or a `Busy` reply within `QMD_BURST_BUSY_MAX`) or
+  `BURST-FAIL`. Exit 2 for no daemon or an unreadable reply. Run it once after a
+  daemon or pin change. Test: `test-qmd-burst-proof.sh`.
 
 ---
 

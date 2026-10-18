@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
-import { SECTOR_FIELD, resolveSector, sectorOf } from './sector.js';
+import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
 
 const KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
 
@@ -10,12 +10,13 @@ const KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
 async function applyRow(key: string, sectorArg: string): Promise<{ sector: string; result: string }> {
   let sector = sectorArg;
   try {
-    sector = resolveSector(sectorArg);
+    const field = requireSectorField();
+    sector = resolveSector(sectorArg, await sectorOptions());
     if (!KEY_RE.test(key)) throw new Error(`Invalid issue key '${key}'`);
-    const cur = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${SECTOR_FIELD}`);
+    const cur = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${field}`);
     if (sectorOf(cur.fields) === sector) return { sector, result: 'unchanged' };
-    await request('PUT', `/issue/${key}`, { fields: { [SECTOR_FIELD]: { value: sector } } });
-    const got = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${SECTOR_FIELD}`);
+    await request('PUT', `/issue/${key}`, { fields: { [field]: { value: sector } } });
+    const got = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${field}`);
     const actual = sectorOf(got.fields);
     if (actual !== sector) {
       throw new Error(`requested '${sector}' but the issue still reads '${actual ?? 'none'}' after the PUT`);

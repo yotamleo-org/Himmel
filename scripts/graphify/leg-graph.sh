@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-graph.sh — run `graphify query|explain` from a leg worktree against the
+# leg-graph.sh — run `graphify query|explain|path` from a leg worktree against the
 # PRIMARY checkout's graphify-out/.
 #
 # WHY: graphify-out/ is gitignored, so a fresh worktree has no graph and a bare
@@ -7,22 +7,21 @@
 # GRAPHIFY_OUT env var, but a `VAR=` prefix typed in a leg drops to the
 # classifier; this wrapper sets it itself. Read-only: it never builds a graph.
 #
-# Usage: bash scripts/graphify/leg-graph.sh query|explain <graphify args...>
-#   `path` is refused: node ids are file-scoped, so cross-file paths are wrong.
+# Usage: bash scripts/graphify/leg-graph.sh query|explain|path <graphify args...>
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
 #   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
 #   under its NODE line (query) or as a Rationale line (explain).
+#   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
 
 sub="${1:-}"
 case "$sub" in
-  query|explain) ;;
-  path) echo "leg-graph: refused: 'graphify path' is broken (file-scoped node ids); use query or explain" >&2; exit 2 ;;
-  *) echo "usage: leg-graph.sh query|explain <graphify args...>" >&2; exit 2 ;;
+  query|explain|path) ;;
+  *) echo "usage: leg-graph.sh query|explain|path <graphify args...>" >&2; exit 2 ;;
 esac
 
 common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
@@ -30,7 +29,7 @@ common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
 primary="$(dirname "$common")"
 out="$primary/graphify-out"
 if [ ! -f "$out/graph.json" ]; then
-  echo "leg-graph: no graph at $out/graph.json (build it from the primary checkout: /graph-refresh); once built, run: bash scripts/graphify/leg-graph.sh query|explain \"<q>\"" >&2
+  echo "leg-graph: no graph at $out/graph.json (build it from the primary checkout: /graph-refresh); once built, run: bash scripts/graphify/leg-graph.sh query|explain|path \"<q>\"" >&2
   exit 2
 fi
 
@@ -53,6 +52,11 @@ ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
 # question got a pointer to a doc section; append-rationale.py adds the stored text.
 if command -v python3 >/dev/null 2>&1; then
   withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$out/graph.json")" && ans="$withwhy"
+  # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
+  # doc and rationale nodes first for those questions and leaves any other question untouched.
+  if [ "$sub" = query ]; then
+    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$out/graph.json" "${2:-}")" && ans="$ranked"
+  fi
 fi
 printf '%s\n' "$ans"
 need="$(printf '%s\n' "$ans" | grep -m1 'TRUNCATED: showing' | sed -n 's/.*--budget \([0-9][0-9]*\).*/\1/p')"

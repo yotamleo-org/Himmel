@@ -7,8 +7,8 @@
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
 > **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a
-> leg into it with `LEG_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, or 90 k input
-> tokens in one turn**, whichever comes first. Report at MILESTONES only.
+> leg into it with `LEG_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input
+> tokens in one turn, or 150 turns / 30 M cache-read**, whichever comes first. Report at MILESTONES only.
 
 ## ACTION ZERO — before anything else
 
@@ -20,8 +20,8 @@ Run these, in order, and write the result as the first bullet under
 > **One command for steps 2–6 and 8:**
 > `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
 > prints the lock sweep, head/remote, bank, leg processes, C29, load and this
-> document's lock state (read-only; `--acquire` takes a `free` lock and prints the
-> token, never a held one). `ListAgents`, the relays and quote-backs (step 9),
+> document's lock state (read-only; `--acquire` takes a `free` lock, prints the
+> token, never a held one). `ListAgents`, relays and quote-backs (step 9),
 > LIVE and the waiter (step 10) stay yours.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
@@ -29,13 +29,13 @@ Run these, in order, and write the result as the first bullet under
    Expect the predecessor's lock plus one per live leg; quote every path.
 3. **Head + remote:** `git -C "{{REPO}}" log -1 --format=%H` and
    `git -C "{{REPO}}" remote -v`, in the first bullet verbatim: every leg is cut
-   from that head and targets that remote.
+   from that head and remote.
 4. **Bank:** `bash "{{REPO}}/scripts/lib/bank-preflight.sh"` — never dispatch
    past a refusal.
 5. **Leg processes:** `pgrep -af 'claude .*-n {{PREFIX}}-'` against step 1, then
    `bash "{{REPO}}/scripts/himmel-doctor.sh" | grep C29`: **if it names YOU, your
    transcript is not being saved**, `scripts/context-fill.sh --percent` reads
-   `UNKNOWN`, so hand over on a proxy and say so in the first bullet.
+   `UNKNOWN`, so hand over on a proxy and say so in bullet 1.
 6. **Host load:** `uptime`; a vanished watcher proves nothing — poll CI by hand.
 7. **The kit:** `{{KIT}}` (tick, arm, `inbox-send.sh`).
 8. **The queue lock on THIS document.** Its release token is:
@@ -174,20 +174,20 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A leg reports `READY <pr> <head> GREEN`. Verify independently with
-`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
+`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `console-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
-cannot get a GO. The leg merges, reports `MERGED #<n> → <sha>`; you pull the
+gets no GO. The leg merges, reports `MERGED #<n> → <sha>`; you pull the
 primary and the leg wraps.
 
-The Jira close is the leg's call from the brief's `completes-ticket: yes|no` line
-(`--jira-transition` for `yes`, omitted for `no`): fill it in when you write the
+The leg closes Jira per the brief's `completes-ticket: yes|no` line
+(`--jira-transition` for `yes`, omitted for `no`): fill it in when writing the
 brief. After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
-of the PR title, so check a second key by hand. Never merge with open review
+of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. **A PR whose diff
-matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs an adversarial review and
+matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review and
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `console-sections/merges.md`.
 
@@ -199,15 +199,15 @@ file and run
 `HANDLED ...` is done, `ESCALATE <reason>` means by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/console-kit/close-wrapped-leg.sh <leg-doc>`. Never run the
-bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand sequence and the `digest=` line:
+bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence and the `digest=` line:
 `console-sections/wrapping.md`.
 
 ## Standing rules
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
-- **Idle capacity is your duty.** On `WAKE underfilled`, take the wake's
-  `next-dispatchable.sh` list, write briefs with `gen-briefs.py`, launch up to
-  `<slack>` legs; `capacity=unknown` means the census failed. [prose]
+- **Idle capacity is your duty.** On `WAKE underfilled`, `gen-briefs.py` the wake's
+  pool-only list, launch up to `<slack>` legs; `POOL-EMPTY` = idle;
+  `capacity=unknown` = census failed. [prose]
 - **A leg's BLOCKED, permission prompt, or question comes to the console first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
@@ -224,7 +224,7 @@ bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand s
 
 ## Handing over
 
-At **{{FILL_PERCENT}} % fill or 90 k input in one turn**, hand over:
+At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`**, hand over:
 
 1. `/console next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
    writes the successor stub and this console's `-HANDOFF.md` skeleton and arms

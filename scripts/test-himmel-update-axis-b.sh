@@ -10,7 +10,7 @@
 # with the scaffolding COMMITTED so the working tree starts clean.
 #
 # Fully offline and non-mutating: no real claude CLI (HIMMEL_UPDATE_CLAUDE_BIN
-# stub), no real pwsh or cli-proxy lane invocation (fake executables capture
+# stub), no real cli-proxy lane invocation (fake executables capture
 # apply calls), no real marketplace, and a fake HOME with USERPROFILE cleared
 # so the version stamp is read from the fixture rather than the developer
 # machine.
@@ -29,8 +29,8 @@
 #   7. cli-proxy roll: APPLY mode (--only cli_proxy) completes
 #      instead of errexiting on an ahead host or an uncomparable stamp, and
 #      later steps still run.
-#   8. Linux without pwsh stops before installing, then restarts; failures
-#      propagate without forcing, with a restore attempted if install fails.
+#   8. The Linux lane rolls through one --roll call; failures propagate
+#      without forcing, with a restore attempted if install fails.
 #
 # Bash 3.2 compatible.
 
@@ -50,9 +50,9 @@ trap 'rm -rf "$TMP"' EXIT
 # never from the operator's shell.
 unset HIMMEL_VM_MODE_CONFIG HIMMEL_UPDATE_VM_ACK
 
-# A deterministic copy of the caller's executable search path with pwsh
-# omitted and uname -s stubbed. This exercises the Linux lane regardless of the
-# host OS or whether PowerShell is installed; a case can override the stub OS.
+# A deterministic copy of the caller's executable search path with uname -s
+# stubbed. This exercises the Linux lane regardless of the host OS; a case can
+# override the stub OS.
 NO_PWSH_BIN="$TMP/no-pwsh-bin"
 mkdir -p "$NO_PWSH_BIN"
 REAL_UNAME="$(command -v uname)"
@@ -71,7 +71,6 @@ for _bindir in $PATH; do
     for _exe in "$_bindir"/*; do
         [ -x "$_exe" ] || continue
         _name="${_exe##*/}"
-        case "$_name" in pwsh|pwsh.exe) continue ;; esac
         [ -e "$NO_PWSH_BIN/$_name" ] || ln -s "$_exe" "$NO_PWSH_BIN/$_name"
     done
 done
@@ -143,19 +142,6 @@ make_mock_clone() {
     CHECKOUT_DIR="$clone"
 }
 
-# A fake cli-proxy-lane.ps1 carrying ONLY the $Version pin literal the roll step
-# greps for. Never executed by any case below (every cli-proxy assertion is on
-# --check, which compares versions and shells out to nothing).
-write_fake_lane() {   # <clone> <version>
-    mkdir -p "$1/scripts/setup"
-    # SC2016: the literal `$Version` is the POINT — it is the PowerShell pin
-    # literal the roll step greps for, not a shell expansion.
-    # shellcheck disable=SC2016
-    printf '$Version = %s%s%s\n' "'" "$2" "'" > "$1/scripts/setup/cli-proxy-lane.ps1"
-    git -C "$1" add -A
-    git -C "$1" commit --quiet -m "fake lane"
-}
-
 # --roll is now the ONE call sync_cli_proxy issues, so the fake
 # lane owns the stop -> install -> restart sequencing internally instead of
 # himmel-update.sh issuing three separate invocations. The rc knobs keep their
@@ -193,6 +179,11 @@ SH
     chmod +x "$1/scripts/setup/cli-proxy-lane.sh"
     git -C "$1" add -A
     git -C "$1" commit --quiet -m "fake linux lane"
+}
+
+# A fake lane carrying only the VERSION pin, for cases that never roll.
+write_fake_lane() {   # <clone> <version>
+    write_fake_linux_lane "$1" "$2" "$TMP/unused-lane-calls"
 }
 
 make_claude_stub() {   # <path> <exit-code> [call-log]
@@ -332,7 +323,7 @@ echo ""
 echo "Test 4: cli-proxy roll — absent lane script is a clean skip"
 OUT="$(run_update "$CLONE1" "$FH1" "$STUB1" --check)"; RC=$?
 assert_eq "--check exits 0 with no lane script" "0" "$RC"
-assert_contains "absent lane script is reported as a skip" "cli-proxy-lane.ps1 not found" "$OUT"
+assert_contains "absent lane script is reported as a skip" "cli-proxy-lane.sh not found" "$OUT"
 
 echo ""
 echo "Test 5: cli-proxy roll — no version stamp = not installed, never a roll"
@@ -342,7 +333,7 @@ write_fake_lane "$CLONE5" "9.9.9"
 FH5="$TMP/home5"
 OUT="$(run_update "$CLONE5" "$FH5" "$STUB1" --check)"; RC=$?
 assert_contains "no install on this machine is a skip" "no cli-proxy-api install on this machine" "$OUT"
-assert_contains "the skip names the operator's first-install command" "\\-Install \\-Start" "$OUT"
+assert_contains "the skip names the operator's first-install command" "cli-proxy-lane.sh.* --install" "$OUT"
 assert_not_contains "an absent install never reports BEHIND" "behind: host" "$OUT"
 
 echo ""
@@ -359,23 +350,22 @@ printf '1.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_update "$CLONE5" "$FH5" "$STUB1" --check)"; RC=$?
 assert_eq "--check exits 0 with a behind host" "0" "$RC"
 assert_contains "behind host names both versions" "behind: host v1.0.0 < pin v9.9.9" "$OUT"
-# --check must stay a zero-mutation dry run: no roll, no pwsh shell-out.
+# --check must stay a zero-mutation dry run: no roll.
 assert_not_contains "--check never rolls the host" "rolling host" "$OUT"
 
 echo ""
-echo "Test 7b: cli-proxy roll — Linux fallback reads the shell lane pin in check mode"
+echo "Test 7b: cli-proxy roll — check mode reads the lane pin and never invokes it"
 LINUXLOG="$TMP/linux-lane-calls"; : >"$LINUXLOG"
 make_mock_clone
 LINUXCLONE="$CHECKOUT_DIR"
-write_fake_lane "$LINUXCLONE" "9.9.9"
 write_fake_linux_lane "$LINUXCLONE" "8.8.8" "$LINUXLOG"
 LINUXHOME="$TMP/linux-home"
 mkdir -p "$LINUXHOME/.cli-proxy-api"
 printf '1.0.0\n' > "$LINUXHOME/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(PATH="$NO_PWSH_BIN" run_update "$LINUXCLONE" "$LINUXHOME" "$STUB1" --check)"; RC=$?
-assert_eq "Linux fallback check exits 0" "0" "$RC"
-assert_contains "Linux fallback check reads the shell lane pin" "behind: host v1.0.0 < pin v8.8.8" "$OUT"
-assert_eq "Linux fallback check never invokes the lane" "" "$(cat "$LINUXLOG")"
+assert_eq "Linux check exits 0" "0" "$RC"
+assert_contains "Linux check reads the lane pin" "behind: host v1.0.0 < pin v8.8.8" "$OUT"
+assert_eq "Linux check never invokes the lane" "" "$(cat "$LINUXLOG")"
 
 echo ""
 echo "Test 8: marketplaces catch-up — --check lists rows and calls claude zero times"
@@ -429,7 +419,7 @@ done
 printf 'custom\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_update "$CLONE5" "$FH5" "$STUB1" --check)"
 assert_contains "an unparseable stamp is reported as unverifiable" "cannot verify" "$OUT"
-assert_contains "and hands over the manual roll command" "Install -Restart" "$OUT"
+assert_contains "and hands over the manual roll command" "cli-proxy-lane.sh.* --roll" "$OUT"
 
 echo ""
 echo "Test 8d: cli-proxy roll — a PRERELEASE is behind the same stable pin"
@@ -454,37 +444,29 @@ assert_not_contains "build metadata is never rolled" "rolling host" "$OUT"
 echo ""
 echo "Test 9: cli-proxy roll — APPLY mode actually rolls the host"
 # The state-changing path: every case above asserts on
-# --check, which shells out to nothing. Here a fake `pwsh` is put first on PATH
-# and `--only cli_proxy` drives JUST that step, so the roll is exercised without
-# a pull/marketplace/jira-dist cycle and without touching a real proxy.
-PSDIR="$TMP/fakebin"; mkdir -p "$PSDIR"
-PSLOG="$TMP/pwsh-calls"; : >"$PSLOG"
-make_pwsh_stub() {   # <exit-code>
-    printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexit %s\n' "$PSLOG" "$1" > "$PSDIR/pwsh"
-    chmod +x "$PSDIR/pwsh"
-}
+# --check, which shells out to nothing. Here `--only cli_proxy` drives JUST that
+# step against a fake lane that logs its arguments, so the roll is exercised
+# without a pull/marketplace/jira-dist cycle and without touching a real proxy.
+C5LOG="$TMP/c5-lane-calls"; : >"$C5LOG"
+write_fake_linux_lane "$CLONE5" "9.9.9" "$C5LOG"
 run_only_cli_proxy() {   # <clone> <fake-home>
     local clone="$1" fh="$2"
     mkdir -p "$fh"
-    PATH="$PSDIR:$PATH" USERPROFILE='' HOME="$fh" \
+    USERPROFILE='' HOME="$fh" \
     HIMMEL_UPDATE_CLAUDE_BIN="$STUB1" HERMES_HOME="$TMP/no-hermes" \
     HIMMEL_UPDATE_AUTOSTASH='' \
     CLAUDE_USER_SETTINGS="$fh/.claude/settings.json" \
         bash "$clone/scripts/himmel-update.sh" --only cli_proxy 2>&1
 }
 printf '1.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
-make_pwsh_stub 0
 OUT="$(run_only_cli_proxy "$CLONE5" "$FH5")"; RC=$?
 assert_eq "a successful roll exits 0" "0" "$RC"
 assert_contains "names both versions before rolling" "rolling host v1.0.0 -> v9.9.9" "$OUT"
 assert_contains "reports the roll landed" "cli-proxy-api rolled to v9.9.9" "$OUT"
-# Patterns must not START with '-' — assert_contains passes them straight to
-# grep, which would read a leading dash as a flag.
-assert_contains "invoked the lane with -Install -Restart" "Install -Restart" "$(cat "$PSLOG")"
-assert_contains "invoked the lane script itself" "cli-proxy-lane.ps1" "$(cat "$PSLOG")"
+assert_eq "invoked the lane with a single --roll" "--roll" "$(cat "$C5LOG")"
 
 echo ""
-echo "Test 9b: cli-proxy roll — Linux fallback stops, installs, then restarts"
+echo "Test 9b: cli-proxy roll — the Linux lane rolls through one --roll"
 : >"$LINUXLOG"
 OUT="$(PATH="$NO_PWSH_BIN" USERPROFILE='' HOME="$LINUXHOME" \
     HIMMEL_UPDATE_CLAUDE_BIN="$STUB1" HERMES_HOME="$TMP/no-hermes" \
@@ -513,21 +495,20 @@ assert_contains "Linux failure prints the platform-correct retry" "bash .*--roll
 assert_not_contains "Linux failure never retries with --force" "force" "$(cat "$LINUXLOG")"
 
 echo ""
-echo "Test 9d: cli-proxy roll — Darwin without pwsh skips the Linux lane"
+echo "Test 9d: cli-proxy roll — a non-Linux host skips the lane"
 DARWINLOG="$TMP/darwin-lane-calls"; : >"$DARWINLOG"
 make_mock_clone
 DARWINCLONE="$CHECKOUT_DIR"
-write_fake_lane "$DARWINCLONE" "9.9.9"
 write_fake_linux_lane "$DARWINCLONE" "8.8.8" "$DARWINLOG"
 DARWINHOME="$TMP/darwin-home"
 mkdir -p "$DARWINHOME/.cli-proxy-api"
 printf '1.0.0\n' > "$DARWINHOME/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(PATH="$NO_PWSH_BIN" HIMMEL_TEST_UNAME_S=Darwin \
     run_update "$DARWINCLONE" "$DARWINHOME" "$STUB1" --only cli_proxy)"; RC=$?
-assert_eq "Darwin without pwsh exits 0" "0" "$RC"
-assert_contains "Darwin without pwsh reports the skip" "skip: pwsh not on PATH" "$OUT"
-assert_not_contains "Darwin without pwsh never rolls the host" "rolling host" "$OUT"
-assert_eq "Darwin never invokes the Linux lane" "" "$(cat "$DARWINLOG")"
+assert_eq "Darwin exits 0" "0" "$RC"
+assert_contains "Darwin reports the skip" "skip: the cli-proxy lane script is Linux-only" "$OUT"
+assert_not_contains "Darwin never rolls the host" "rolling host" "$OUT"
+assert_eq "Darwin never invokes the lane" "" "$(cat "$DARWINLOG")"
 assert_eq "Darwin leaves the host stamp unchanged" "1.0.0" "$(cat "$DARWINHOME/.cli-proxy-api/cli-proxy-api.version")"
 assert_eq "Darwin leaves the checkout unchanged" "" "$(git -C "$DARWINCLONE" status --porcelain)"
 
@@ -641,21 +622,21 @@ assert_eq "malformed vm config: the lane never runs" "" "$(cat "$LINUXLOG")"
 # The full chain never rolls under a configured none, ack or not: the ack is an
 # `--only cli_proxy` operator action, never an unattended update.
 printf '{"vm":{"mode":"none"}}\n' > "$VMC"
-: >"$PSLOG"
-make_pwsh_stub 0
+: >"$C5LOG"
 printf '1.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
-OUT="$(HIMMEL_VM_MODE_CONFIG="$VMC" HIMMEL_UPDATE_VM_ACK="$ROLLBACK" PATH="$PSDIR:$PATH" run_update "$CLONE5" "$FH5" "$STUB1")"; RC=$?
+OUT="$(HIMMEL_VM_MODE_CONFIG="$VMC" HIMMEL_UPDATE_VM_ACK="$ROLLBACK" run_update "$CLONE5" "$FH5" "$STUB1")"; RC=$?
 assert_eq "full chain under vm.mode=none exits 0" "0" "$RC"
 assert_contains "full chain under vm.mode=none: HELD" "HELD: vm.mode=none" "$OUT"
-assert_eq "full chain under vm.mode=none: never rolls, even with an ack" "" "$(cat "$PSLOG")"
+assert_eq "full chain under vm.mode=none: never rolls, even with an ack" "" "$(cat "$C5LOG")"
 printf '1.0.0\n' > "$LINUXHOME/.cli-proxy-api/cli-proxy-api.version"
 
 echo ""
 echo "Test 10: cli-proxy roll — a REFUSED bounce warns, never aborts the update"
-# Assert-BounceSafe refusing under a live codex-lane client is the expected
+# The lane refusing under a live codex-lane client is the expected
 # non-zero here. It must stay advisory: warn with the re-run command, rc 0.
-: >"$PSLOG"
-make_pwsh_stub 1
+: >"$C5LOG"
+write_fake_linux_lane "$CLONE5" "9.9.9" "$C5LOG" 1
+printf '1.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_only_cli_proxy "$CLONE5" "$FH5")"; RC=$?
 # --only cli_proxy PROPAGATES the failure: the operator asked for exactly this
 # step and is entitled to a truthful exit code. (Inside the full run the
@@ -663,8 +644,8 @@ OUT="$(run_only_cli_proxy "$CLONE5" "$FH5")"; RC=$?
 assert_eq "--only cli_proxy propagates a failed roll (rc 1)" "1" "$RC"
 assert_contains "warns that the roll did not complete" "roll did not complete" "$OUT"
 assert_contains "names the host version it stayed on" "host stays on v1.0.0" "$OUT"
-assert_contains "prints the idle re-run command" "Install -Restart" "$OUT"
-assert_not_contains "never retries with -Force on the operator's behalf" "Force" "$(cat "$PSLOG")"
+assert_contains "prints the idle re-run command" "bash .*--roll" "$OUT"
+assert_not_contains "never retries with --force on the operator's behalf" "force" "$(cat "$C5LOG")"
 
 echo ""
 echo "Test 11: cli-proxy roll — APPLY mode with an AHEAD host completes (HIMMEL-2152)"
@@ -672,40 +653,41 @@ echo "Test 11: cli-proxy roll — APPLY mode with an AHEAD host completes (HIMME
 # non-zero cmp_rc (1 = not behind) and killed the whole script BEFORE cmp_rc
 # was ever captured — masked in --check mode by the `|| true` at the check
 # call site, but --only (like the apply block) calls sync_cli_proxy bare.
-: >"$PSLOG"
+write_fake_linux_lane "$CLONE5" "9.9.9" "$C5LOG"
+: >"$C5LOG"
 printf '99.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_only_cli_proxy "$CLONE5" "$FH5")"; RC=$?
 assert_eq "an ahead host in apply mode still exits 0" "0" "$RC"
 assert_contains "an ahead host reports not-behind in apply mode" "not behind: host v99.0.0" "$OUT"
 assert_not_contains "an ahead host is never rolled in apply mode" "rolling host" "$OUT"
 assert_contains "later steps still run (status table prints)" "==> update chain status" "$OUT"
-assert_eq "an ahead host never invokes pwsh" "" "$(cat "$PSLOG")"
+assert_eq "an ahead host never invokes the lane" "" "$(cat "$C5LOG")"
 
 echo ""
 echo "Test 12: cli-proxy roll — APPLY mode with an UNCOMPARABLE stamp completes (HIMMEL-2152)"
-: >"$PSLOG"
+: >"$C5LOG"
 printf 'custom\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_only_cli_proxy "$CLONE5" "$FH5")"; RC=$?
 assert_eq "an uncomparable stamp in apply mode still exits 0" "0" "$RC"
 assert_contains "an uncomparable stamp reports cannot-verify in apply mode" "cannot verify" "$OUT"
 assert_not_contains "an uncomparable stamp is never rolled in apply mode" "rolling host" "$OUT"
 assert_contains "later steps still run (status table prints)" "==> update chain status" "$OUT"
-assert_eq "an uncomparable stamp never invokes pwsh" "" "$(cat "$PSLOG")"
+assert_eq "an uncomparable stamp never invokes the lane" "" "$(cat "$C5LOG")"
 
 echo ""
 echo "Test 13: a failed cli-proxy roll never aborts a FULL himmel update"
 # The other half of the same contract: advisory inside the chain run, truthful
 # under --only. A roll failure must not take down an entire update.
-: >"$PSLOG"
-make_pwsh_stub 1
+write_fake_linux_lane "$CLONE5" "9.9.9" "$C5LOG" 1
+: >"$C5LOG"
 printf '1.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
-OUT="$(PATH="$PSDIR:$PATH" run_update "$CLONE5" "$FH5" "$STUB1")"; RC=$?
+OUT="$(run_update "$CLONE5" "$FH5" "$STUB1")"; RC=$?
 assert_eq "a full run still exits 0 despite the failed roll" "0" "$RC"
 assert_contains "the failed roll is still reported" "roll did not complete" "$OUT"
 assert_contains "and the run reaches its status table" "==> update chain status" "$OUT"
 
 echo ""
-echo "Test 14: cli-proxy Linux pin stays equal to the upstream registry"
+echo "Test 14: cli-proxy lane pin stays equal to the upstream registry"
 SH_PIN="$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$SRC_SCRIPTS/setup/cli-proxy-lane.sh" | head -1)"
 REGISTRY_PIN="$(python3 - "$SRC_SCRIPTS/upstreams.json" <<'PY'
 import json, sys

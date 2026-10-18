@@ -3472,6 +3472,10 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "11a trivial descendant of the reviewed head clears at gate 3 -> exit 0"
 if marker_exists "$tmp"; then fail "11a: marker must be cleared"; else pass; fi
 if grepq "$LAST_CLEAR_OUT" -F 'reviewed head'; then pass; else fail "11a: the clearance must name the reviewed head: $LAST_CLEAR_OUT"; fi
+# ready-check item 4 reads exactly this predicate: a status=ok row whose head equals the READY head.
+n=$(jq -R -r --arg h "$B" 'fromjson? | select(.head == $h and .status == "ok") | .head' "$tmp/.git/cr-critic-scores.jsonl" | wc -l | tr -d ' ')
+if [ "$n" -ge 1 ]; then pass; else fail "11a: the cleared head must carry a status=ok ledger row (ready-check item 4), got $n"; fi
+if grep -F "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl" | grep -qF "$sha"; then pass; else fail "11a: the row must name the reviewed head it inherits from"; fi
 rm -rf "$tmp"
 
 # 11b. a non-test B is NOT reviewed -> still refused (no-responders).
@@ -3481,6 +3485,7 @@ write_ledger "$tmp" "$(avail_ok "$sha")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "11b non-trivial unreviewed delta is still refused -> exit 14"
 if marker_exists "$tmp"; then pass; else fail "11b: marker must REMAIN"; fi
+if grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl"; then fail "11b: a refused non-trivial head must get no ledger row"; else pass; fi
 rm -rf "$tmp"
 
 # 11c. a blocking finding at A still blocks B (the gates run at A, not around it).

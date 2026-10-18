@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SECTORS, resetSectorCache } from './sector.js';
 
 vi.mock('../client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client.js')>();
@@ -10,6 +11,13 @@ vi.mock('../client.js', async (importOriginal) => {
 });
 
 const FIELD = 'customfield_10212';
+
+// The field's context and options are read live from Jira.
+function fieldReply(path: string): unknown {
+  if (path.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
+  if (path.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
+  return undefined;
+}
 
 describe('Sector field (HIMMEL-5710)', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
@@ -23,9 +31,13 @@ describe('Sector field (HIMMEL-5710)', () => {
     });
     const { request } = await import('../client.js');
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
+    mockRequest.mockImplementation(async (_m: string, path: string) => fieldReply(path) ?? {});
+    resetSectorCache();
+    process.env.JIRA_SECTOR_FIELD = FIELD;
   });
 
   afterEach(() => {
+    delete process.env.JIRA_SECTOR_FIELD;
     vi.restoreAllMocks();
   });
 
@@ -39,20 +51,93 @@ describe('Sector field (HIMMEL-5710)', () => {
   describe('resolveSector', () => {
     it('returns the canonical label, case-insensitively', async () => {
       const { resolveSector } = await import('./sector.js');
-      expect(resolveSector('ship loop')).toBe('Ship loop');
-      expect(resolveSector('Safety & enforcement')).toBe('Safety & enforcement');
+      expect(resolveSector('ship loop', SECTORS)).toBe('Ship loop');
+      expect(resolveSector('Safety & enforcement', SECTORS)).toBe('Safety & enforcement');
     });
 
-    it('refuses an unknown option and lists the valid ones', async () => {
+    it('refuses an unknown option, listing the valid ones and the opt-out', async () => {
       const { resolveSector } = await import('./sector.js');
-      expect(() => resolveSector('Nope')).toThrow(/Unknown sector 'Nope'.*Fleet orchestration/s);
+      expect(() => resolveSector('Nope', SECTORS)).toThrow(
+        /Unknown sector 'Nope'.*Fleet orchestration.*sector setup --opt-out/s,
+      );
+    });
+  });
+
+  describe('sectorField / sectorOptions', () => {
+    it('treats unset, empty and none as not configured, and reads no options', async () => {
+      const { sectorField, sectorOptions } = await import('./sector.js');
+      for (const v of [undefined, '', '  ', 'none', 'NONE']) {
+        if (v === undefined) delete process.env.JIRA_SECTOR_FIELD;
+        else process.env.JIRA_SECTOR_FIELD = v;
+        expect(sectorField()).toBeUndefined();
+        expect(await sectorOptions()).toEqual([]);
+      }
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it('reads jira.sectorField from ~/.himmel/config.json; the env var overrides it', async () => {
+      const { sectorField } = await import('./sector.js');
+      const home = process.env.HOME!;
+      mkdirSync(join(home, '.himmel'), { recursive: true });
+      const cfg = join(home, '.himmel', 'config.json');
+      try {
+        delete process.env.JIRA_SECTOR_FIELD;
+        writeFileSync(cfg, JSON.stringify({ jira: { sectorField: 'customfield_777' } }));
+        expect(sectorField()).toBe('customfield_777');
+        process.env.JIRA_SECTOR_FIELD = 'customfield_888';
+        expect(sectorField()).toBe('customfield_888');
+        delete process.env.JIRA_SECTOR_FIELD;
+        writeFileSync(cfg, JSON.stringify({ jira: { sectorField: 'none' } }));
+        expect(sectorField()).toBeUndefined();
+        writeFileSync(cfg, '{not json');
+        expect(sectorField()).toBeUndefined();
+      } finally {
+        rmSync(cfg, { force: true });
+      }
+    });
+
+    it('reads the option list from the field contexts once, then serves the cache', async () => {
+      const { sectorOptions } = await import('./sector.js');
+      expect(await sectorOptions()).toEqual([...SECTORS]);
+      expect(mockRequest.mock.calls.map((c) => c[1])).toEqual([
+        `/field/${FIELD}/context?startAt=0&maxResults=100`,
+        `/field/${FIELD}/context/1/option?startAt=0&maxResults=100`,
+      ]);
+      mockRequest.mockClear();
+      expect(await sectorOptions()).toEqual([...SECTORS]);
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it('follows pagination across contexts and options', async () => {
+      const { sectorOptions } = await import('./sector.js');
+      mockRequest.mockImplementation(async (_m: string, path: string) => {
+        const at = Number(/startAt=(\d+)/.exec(path)![1]);
+        if (path.split('?')[0].endsWith('/context')) {
+          return at === 0 ? { isLast: false, values: [{ id: '1' }] } : { isLast: true, values: [{ id: '2' }] };
+        }
+        const ctx = /context\/(\d)\//.exec(path)![1];
+        return at === 0
+          ? { isLast: false, values: [{ value: `A${ctx}` }] }
+          : { isLast: true, values: [{ value: `B${ctx}` }] };
+      });
+      expect(await sectorOptions()).toEqual(['A1', 'B1', 'A2', 'B2']);
+    });
+
+    it('returns no options, uncached, when the context API is refused, so Jira validates', async () => {
+      const { sectorOptions, resolveSector } = await import('./sector.js');
+      mockRequest.mockRejectedValue(new Error('403 Forbidden'));
+      expect(await sectorOptions()).toEqual([]);
+      expect(resolveSector(' Ship loop ', [])).toBe('Ship loop');
+      mockRequest.mockImplementation(async (_m: string, path: string) => fieldReply(path) ?? {});
+      expect(await sectorOptions()).toEqual([...SECTORS]);
     });
   });
 
   describe('edit --sector', () => {
     function readBack(value: string | null): void {
-      mockRequest.mockImplementation(async (method: string) =>
-        method === 'GET' ? { fields: { [FIELD]: value === null ? null : { value } } } : {},
+      mockRequest.mockImplementation(async (method: string, path: string) =>
+        fieldReply(path) ??
+        (method === 'GET' ? { fields: { [FIELD]: value === null ? null : { value } } } : {}),
       );
     }
 
@@ -70,6 +155,15 @@ describe('Sector field (HIMMEL-5710)', () => {
       await expect(
         freshProgram(registerEdit).parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--sector', 'Bogus']),
       ).rejects.toThrow(/Unknown sector 'Bogus'/);
+      expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
+    });
+
+    it('refuses --sector when sectors are not configured, before any request', async () => {
+      delete process.env.JIRA_SECTOR_FIELD;
+      const { registerEdit } = await import('./edit.js');
+      await expect(
+        freshProgram(registerEdit).parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--sector', 'Ship loop']),
+      ).rejects.toThrow(/Sector is not configured.*sector setup/s);
       expect(mockRequest).not.toHaveBeenCalled();
     });
 
@@ -98,6 +192,18 @@ describe('Sector field (HIMMEL-5710)', () => {
       await freshProgram(registerGet).parseAsync(['node', 'jira', 'get', 'HIMMEL-1']);
       expect(mockRequest.mock.calls[0][1]).toContain(FIELD);
       expect(logs).toContain('Sector: Visibility');
+    });
+
+    it('does not request or print a Sector when sectors are not configured', async () => {
+      delete process.env.JIRA_SECTOR_FIELD;
+      mockRequest.mockResolvedValue({
+        key: 'HIMMEL-1',
+        fields: { summary: 's', status: { name: 'To Do' }, issuetype: { name: 'Task' }, description: null },
+      });
+      const { registerGet } = await import('./get.js');
+      await freshProgram(registerGet).parseAsync(['node', 'jira', 'get', 'HIMMEL-1']);
+      expect(mockRequest.mock.calls[0][1]).not.toContain('customfield');
+      expect(logs.some((l) => l.startsWith('Sector:'))).toBe(false);
     });
 
     it('prints no Sector line when the field is empty', async () => {
@@ -132,6 +238,8 @@ describe('Sector field (HIMMEL-5710)', () => {
     function jira(current: Record<string, string | null>, failPut: string[] = []): void {
       const state = { ...current };
       mockRequest.mockImplementation(async (method: string, path: string, body?: { fields: Record<string, { value: string }> }) => {
+        const fr = fieldReply(path);
+        if (fr) return fr;
         const key = /\/issue\/([A-Z]+-\d+)/.exec(path)?.[1] ?? '';
         if (method === 'GET') {
           if (!(key in state)) throw new Error(`HTTP 404 ${key}`);

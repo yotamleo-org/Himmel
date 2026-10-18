@@ -858,8 +858,6 @@ SUITE_REQUIRE_TOOL_DEFAULT="
 scripts/lib/test-sandbox-run.sh  $_sandbox_tool  # real corpus confinement boundary (HIMMEL-4912)
 scripts/eval/guard-corpus/test-guard-corpus.sh  $_sandbox_tool  # every replay hook runs confined (HIMMEL-4912)
 scripts/hooks/test-block-destructive-commands.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
-scripts/test-claude-openrouter-pwsh.sh  pwsh  # PowerShell twin smoke suite for claude-openrouter.ps1 (HIMMEL-1792); runs wherever pwsh exists, loud-skips where it does not
-scripts/lib/test-native-auth-pin-pwsh.sh  pwsh  # PowerShell twin suite for native-auth-pin.ps1 (HIMMEL-1867); runs wherever pwsh exists, loud-skips where it does not
 scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-glm vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
 scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not

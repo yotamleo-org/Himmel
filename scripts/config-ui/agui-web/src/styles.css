@@ -34,13 +34,17 @@ button{font:inherit;color:inherit}
 .dot{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;background:var(--ag)}
 
 /* run strip */
-.strip{padding:12px 24px 14px;border-bottom:1px solid var(--line)}
+.strip{padding:12px 24px 14px;border-bottom:1px solid var(--line);max-height:min(30vh,240px);overflow-y:auto;overscroll-behavior:contain}
 .axis{display:flex;justify-content:space-between;font:11px var(--mono);color:var(--dim);margin-bottom:6px;font-variant-numeric:tabular-nums}
-.band{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:start;padding:3px 0;border-top:1px solid var(--line);transition:opacity .2s}
+.band{display:grid;grid-template-columns:240px minmax(0,1fr);gap:12px;align-items:start;padding:3px 0;border-top:1px solid var(--line);transition:opacity .2s}
 .band:first-of-type{border-top:0}
 .band.dim{opacity:.3}
-.band-name{display:flex;gap:6px;align-items:center;font:11.5px/26px var(--mono);color:var(--fg);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.axis{margin-left:162px}
+.band-name{display:flex;gap:6px;align-items:center;min-width:0;font:11.5px/26px var(--mono);color:var(--fg);white-space:nowrap}
+button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;cursor:pointer}
+.band-label{overflow:hidden;text-overflow:ellipsis}
+.agent-badge{flex:none;min-width:20px;padding:0 3px;border:1px solid var(--ag);border-radius:3px;color:var(--ag);font:11px/16px var(--mono);text-align:center}
+.band-summary{font:11.5px/26px var(--mono);color:var(--dim)}
+.axis{margin-left:252px}
 .lanes{--lane:26px;position:relative;background:repeating-linear-gradient(transparent 0 11px,var(--line) 11px 12px,transparent 12px var(--lane))}
 .bar{--c:var(--ag);position:absolute;height:22px;min-width:6px;padding:0 6px;cursor:pointer;text-align:left;overflow:hidden;
   border:0;border-left:2px solid var(--c);border-radius:2px;background:color-mix(in srgb,var(--c) var(--tint),var(--bg));
@@ -265,9 +269,11 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
   .fleet-procs tr{padding:5px 0;border-bottom:1px dashed var(--line)}
   .fleet-procs td{border:0;padding:1px 0}
   .layout{grid-template-columns:minmax(0,1fr);gap:24px;padding:16px}
-  .side{position:static;order:-1}
+  .side{position:static}
   .band{grid-template-columns:minmax(0,1fr);gap:2px}
   .band-name{line-height:18px}
+  .band.collapsed{grid-template-columns:minmax(0,1fr) auto}
+  .band-summary{line-height:18px}
   .axis{margin-left:0}
   .block.sub{margin-left:8px}
   .group-cards{grid-template-columns:minmax(0,1fr)}

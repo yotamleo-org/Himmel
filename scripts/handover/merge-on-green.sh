@@ -1169,14 +1169,14 @@ esac
 bp_nlines=$(printf '%s\n' "$bp_files" | wc -l | tr -d ' ')
 if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     bp_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-bump.XXXXXX" 2>/dev/null) || bp_tmp=""
-    [ -n "$bp_tmp" ] && [ -d "$bp_tmp" ] || bump_refuse "cannot create a scratch directory for the recheck" "phase=scratch"
+    { [ -n "$bp_tmp" ] && [ -d "$bp_tmp" ]; } || bump_refuse "cannot create a scratch directory for the recheck" "phase=scratch"
     bp_fetch_rc=0
     git -C "$himmel_repo" fetch --no-tags --quiet origin \
         "+refs/heads/$default_branch:$bp_ns/base" "+refs/pull/$pr_num/head:$bp_ns/head" >/dev/null 2>"$bp_tmp/fetch.err" || bp_fetch_rc=$?
     [ "$bp_fetch_rc" -eq 0 ] || bump_refuse "cannot fetch $default_branch and PR #$pr_num's head from the anchor's origin (exit $bp_fetch_rc)" "phase=fetch rc=$bp_fetch_rc"
     bp_base=$(git -C "$himmel_repo" rev-parse --verify --quiet "$bp_ns/base^{commit}" 2>/dev/null) || bp_base=""
     bp_head=$(git -C "$himmel_repo" rev-parse --verify --quiet "$bp_ns/head^{commit}" 2>/dev/null) || bp_head=""
-    [ -n "$bp_base" ] && [ -n "$bp_head" ] || bump_refuse "the fetched base or PR head does not resolve to a commit" "phase=resolve"
+    { [ -n "$bp_base" ] && [ -n "$bp_head" ]; } || bump_refuse "the fetched base or PR head does not resolve to a commit" "phase=resolve"
     [ "$bp_head" = "$sha" ] || bump_refuse "PR #$pr_num's head on origin is ${bp_head:0:12}, not the certified ${sha:0:12}, so the recheck would not judge the head being merged" "phase=head-moved fetched=$bp_head"
     mkdir -p "$bp_tmp/checker/scripts/lib" "$bp_tmp/work" || bump_refuse "cannot lay out the scratch checker" "phase=scratch"
     for bp_blob in scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh; do
@@ -1974,8 +1974,9 @@ $remaining" "" comment-only)
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
+        # ponytail: an archived unreleased version can still be picked as current, since `versions` prints no archived column; HIMMEL-6325 adds it and filters here
         local versions_out fold_to
-        versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions 2>/dev/null)
+        versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
             try {
                 const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -2001,7 +2002,10 @@ $remaining" "" comment-only)
             if [ "$fold_rc" -eq 0 ] && [ "$fold_to" != "$fold_cur" ]; then
                 while IFS= read -r fold_keep; do
                     [ -n "$fold_keep" ] || continue
-                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 || fold_rc=1
+                    # The replace already dropped it, so one retry before giving up.
+                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || fold_rc=1
                 done <<< "${fold_to#*$'\n'}"
             fi
             if [ "$fold_rc" -eq 0 ]; then

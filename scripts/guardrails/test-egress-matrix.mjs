@@ -100,8 +100,8 @@ for (const p of providers) {
         `salus x ${p} x ${u} must be allow via its OWN openai-codex row (HIMMEL-5002 ruling), got ${effective}`);
     } else if (p === "openrouter") {
       assert(effective === "deny", `salus x ${p} x ${u} must stay deny by default (configurable ≠ open), got ${effective}`);
-      // embedding and rerank are HARD (pinned in block 6e); every other purpose stays configurable.
-      const wantHard = u === "embedding" || u === "rerank" ? true : undefined;
+      // embedding, rerank and query-expansion are HARD (pinned in blocks 6e and 6f); every other purpose stays configurable.
+      const wantHard = u === "embedding" || u === "rerank" || u === "query-expansion" ? true : undefined;
       assert(rule && rule.provider === "openrouter" && rule.hard === wantHard,
         `salus x ${p} x ${u} must deny via its OWN ${wantHard ? "hard" : "non-hard (operator-configurable, 2026-08-15 ruling)"} openrouter row, got ${rule ? `hard=${rule.hard}` : "default"}`);
     } else {
@@ -372,8 +372,8 @@ for (const c of qmdOpenRouterCorpora)
       `${c} x openrouter x ${u} must be allow via its OWN row naming HIMMEL-5756, got ${effective}`);
   }
 for (const c of ["luna-personal", "luna-clippings"])
-  for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank"))
-    assert(evaluate(c, "openrouter", u).effective === "deny", `${c} x openrouter x ${u} must stay deny (embedding and rerank only)`);
+  for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank" && x !== "query-expansion"))
+    assert(evaluate(c, "openrouter", u).effective === "deny", `${c} x openrouter x ${u} must stay deny (embedding, rerank and query-expansion only)`);
 for (const c of ["handover-state", "voice-audio"])
   for (const u of ["embedding", "rerank"])
     assert(evaluate(c, "openrouter", u).effective === "deny", `${c} x openrouter x ${u} must stay deny (not a qmd corpus)`);
@@ -386,6 +386,29 @@ const firstSalusOrHard = m.rules.findIndex(r => r.corpus === "salus" && r.provid
 const firstOrAllow = m.rules.findIndex(r => r.provider === "openrouter" && r.verdict === "allow" && (r.purpose === "embedding" || r.purpose === "rerank"));
 assert(firstSalusOrHard >= 0 && firstOrAllow >= 0 && firstSalusOrHard < firstOrAllow,
   "the salus x openrouter hard rows must precede every openrouter embedding/rerank allow row");
+
+// 6f. openrouter (US) as the remote qmd query expander (the generate role,
+//     operator ruling 2026-10-17): its OWN purpose, so the
+//     existing inference cells (himmel-code, handover-state) are not widened.
+//     Every non-salus qmd corpus gets its OWN allow row; salus is a HARD deny
+//     ahead of every openrouter query-expansion allow.
+for (const c of qmdOpenRouterCorpora) {
+  const { effective, rule } = evaluate(c, "openrouter", "query-expansion");
+  assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "openrouter" && rule.purpose === "query-expansion" &&
+    rule.hard === undefined && /HIMMEL-6125/.test(rule.why),
+    `${c} x openrouter x query-expansion must be allow via its OWN row naming HIMMEL-6125, got ${effective}`);
+}
+for (const c of ["handover-state", "voice-audio"])
+  assert(evaluate(c, "openrouter", "query-expansion").effective === "deny", `${c} x openrouter x query-expansion must stay deny (not a qmd corpus)`);
+{
+  const { effective, rule } = evaluate("salus", "openrouter", "query-expansion");
+  assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "openrouter" && rule.purpose === "query-expansion" && rule.hard === true,
+    `salus x openrouter x query-expansion must be HARD deny via its OWN row (HIMMEL-6125), got ${effective}`);
+}
+const firstOrQeAllow = m.rules.findIndex(r => r.provider === "openrouter" && r.verdict === "allow" && r.purpose === "query-expansion");
+const firstSalusQeHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "openrouter" && r.purpose === "query-expansion" && r.hard === true);
+assert(firstSalusQeHard >= 0 && firstOrQeAllow >= 0 && firstSalusQeHard < firstOrQeAllow,
+  "the salus x openrouter query-expansion hard row must precede every openrouter query-expansion allow row");
 
 // 7. OpenRouter: declared as its OWN provider — content transits
 //    the aggregator, a different trust boundary from the vendor cells, so the
@@ -513,6 +536,26 @@ for (const p of providers.filter(x => x !== "atlassian-mcp")) {
   assert(evaluate("mcp-tool-catalog", p, "catalog-fetch").effective === "deny",
     `mcp-tool-catalog x ${p} x catalog-fetch must be deny — the allow is scoped to atlassian-mcp`);
 }
+
+// DeepSeek Search/Fetch for the follow-web claim-check is an opt-in
+// enrichment of clipped content only. salus gets its OWN hard deny row naming
+// the provider; the one open cell is conditional on the explicit opt-in flag.
+for (const u of purposes) {
+  const { effective, rule } = evaluate("salus", "deepseek", u);
+  assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "deepseek" &&
+         rule.purpose === "*" && rule.hard === true,
+    `salus x deepseek x ${u} must deny via its OWN hard deepseek row (HIMMEL-6269)`);
+}
+{
+  const { effective, rule } = evaluate("luna-clippings", "deepseek", "enrichment");
+  assert(effective === "conditional" && rule && rule.corpus === "luna-clippings" && rule.provider === "deepseek" &&
+         rule.purpose === "enrichment" && rule.condition === "FOLLOW_WEB_DEEPSEEK=1" && rule.hard === undefined,
+    `luna-clippings x deepseek x enrichment must be conditional on FOLLOW_WEB_DEEPSEEK=1 via its OWN row (HIMMEL-6269), got ${effective}`);
+}
+for (const u of purposes.filter(x => x !== "enrichment"))
+  assert(evaluate("luna-clippings", "deepseek", u).effective === "deny", `luna-clippings x deepseek x ${u} must stay deny (HIMMEL-6269 opens enrichment only)`);
+for (const c of ["luna-personal", "handover-state", "voice-audio", "jira-mirror", "operator-repos"])
+  assert(evaluate(c, "deepseek", "enrichment").effective === "deny", `${c} x deepseek x enrichment must stay deny (HIMMEL-6269 opens luna-clippings only)`);
 
 if (failures > 0) {
   console.error(`egress-matrix: ${failures} invariant failure(s)`);

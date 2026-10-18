@@ -64,6 +64,12 @@ EOF
 chmod +x "$STUB/page.sh"  # the sender seam is exec'd directly, not run via bash
 export CONSOLE_WAIT_PAGE_CMD="$STUB/page.sh" CONSOLE_WAIT_PAGE_TIMEOUT=2
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
+# No test reads the real transcripts: the budget seam answers "unreadable" (exit 2) until (hb).
+cat > "$STUB/budget-off.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
 
 # tick_line <legs> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
@@ -736,7 +742,7 @@ wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (v) vmrun= wakes only on a class move TO DEAD / STUCK; the
+# --- (v) vmrun= wakes only on a class move TO DEAD / STUCK / DISAGREE; the
 # busy count moving, a move back to ok/off and an absent field never wake. ----
 vmrun_line() { sed "s#  *denials=none# vmrun=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub
@@ -764,6 +770,32 @@ vmrun_line ok:1/2,busy=0
 wait_exit "$WPID"
 check "(vm2) a vmrun move back to ok alone does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+vmrun_line ok:2/2,busy=0
+I="$(new_inbox vm3)"
+start "$I" "$WORK/vm3.out" --legs "N1.md"
+wait_hb "$I" || fail "(vm3) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+vmrun_line DISAGREE:2/2,online=0
+wait_exit "$WPID"
+check "(vm3) a vmrun move to DISAGREE ends the wait" "0" "$rc"
+check "(vm3) the DISAGREE wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm3.out")"
+[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+
+for recovery in ok:2/2,busy=0 off FAILING; do
+    reset_stub
+    vmrun_line DISAGREE:2/2,online=0
+    I="$(new_inbox "vm-recover-$recovery")"
+    start "$I" "$WORK/vm-recover.out" --legs "N1.md"
+    wait_hb "$I" || fail "(vm-recover) no baseline heartbeat"
+    tick_line "N1:FRESH" "ok"
+    vmrun_line "$recovery"
+    wait_exit "$WPID"
+    check "(vm-recover) DISAGREE to $recovery alone does not wake" "running" "$rc"
+    check "(vm-recover) DISAGREE to $recovery emits nothing" "" "$(cat "$WORK/vm-recover.out")"
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+done
 
 # --- (pk) parked= wakes when a leg joins the parked set; the growing age alone
 # never wakes; a tick line with no parked= field stays a valid sample. ---------
@@ -902,7 +934,15 @@ start "$I" "$WORK/u4959m.out" --legs-from "$WORK/u4959-fleet.json"
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (manifest)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives --legs-from" "ARGS --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
+check "(u4959) the dispatch command receives --legs-from after the pool-only flag" "ARGS --priority-pool-only --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
+reset_stub
+I="$(new_inbox u4959d)"
+printf '# console\n' > "$WORK/u4959-console.md"
+start "$I" "$WORK/u4959n.out" --doc "$WORK/u4959-console.md" --legs-from "$WORK/u4959-fleet.json"
+wait_hb "$I" || fail "(u4959) no baseline heartbeat (doc)"
+under_line "UNDERFILLED:7"
+wait_exit "$WPID"
+check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
 
 # --- (u5542) unowned-prs=: the first sight of an open PR with no live
 # owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes
@@ -1183,6 +1223,59 @@ unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
 # --- (k) usage ---------------------------------------------------------------
 bash "$WAIT" >/dev/null 2>&1; rc=$?
 check "(k) no inbox argument is a usage error (rc 2)" "2" "$rc"
+
+# --- (hb): console-budget.sh HANDOVER wakes the console once per streak ------
+# Needs --doc (the console's name is the doc basename, passed as --title). A
+# marker <inbox>.wait.budget outlives the waiter; verdict OK clears it.
+cat > "$STUB/budget.sh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in *--resolve*) printf 'x\n' >> "$STUB/budget.resolves"; printf '%s\n' "$STUB/budget.transcript"; exit 0 ;; esac
+printf '%s %s\n' "$*" "$CONTEXT_FILL_TRANSCRIPT" >> "$STUB/budget.calls"
+cat "$STUB/budget.out"; exit "$(cat "$STUB/budget.rc")"
+EOF
+export CONSOLE_WAIT_BUDGET="$STUB/budget.sh"
+printf 'budget turns=151 cache_read=12.0M verdict=HANDOVER\n' > "$STUB/budget.out"; printf '3\n' > "$STUB/budget.rc"
+reset_stub; : > "$STUB/budget.calls"; I="$(new_inbox hb1)"
+start "$I" "$WORK/hb1.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+wait_exit "$WPID"
+check "(hb1) HANDOVER wakes with the budget line" "WAKE handover-budget budget turns=151 cache_read=12.0M verdict=HANDOVER" "$(head -n1 "$WORK/hb1.out")"
+check "(hb1) and the waiter exits 0" "0" "$rc"
+check "(hb1) the console is named by the doc basename and the resolved transcript is passed" "--title HB $STUB/budget.transcript" "$(head -n1 "$STUB/budget.calls")"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/hb1b.out")"
+printf 'budget turns=3 cache_read=0.1M verdict=OK\n' > "$STUB/budget.out"; printf '0\n' > "$STUB/budget.rc"
+rm -f "$STUB/budget.resolves"; : > "$STUB/budget.calls"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb3) verdict OK clears the streak marker" "absent" "$([ -e "$I.wait.budget" ] && echo present || echo absent)"
+check "(hb3b) the transcript is resolved once per run, not per sample" "1:ok" "$(wc -l < "$STUB/budget.resolves" | tr -d ' '):$([ "$(wc -l < "$STUB/budget.calls")" -ge 2 ] && echo ok || echo few-samples)"
+printf '2\n' > "$STUB/budget.rc"; : > "$I.wait.budget"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1d.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb4) an unreadable transcript (rc 2) neither wakes nor clears the marker" "present:" "$([ -e "$I.wait.budget" ] && echo present):$(cat "$WORK/hb1d.out")"
+rm -f "$I.wait.budget"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1e.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb4b) rc 2 with no marker: no wake, no marker, the waiter ran to its timeout" "124:absent:" "$rc:$([ -e "$I.wait.budget" ] && echo present || echo absent):$(cat "$WORK/hb1e.out")"
+printf '#!/usr/bin/env bash\ncase "$*" in *--resolve*) echo /x; exit 0 ;; esac\nexec sleep 30\n' > "$STUB/budget.hang.sh"
+reset_stub; I="$(new_inbox hb6)"
+CONSOLE_WAIT_BUDGET="$STUB/budget.hang.sh" CONSOLE_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+sleep 0.5
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+n=0
+while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(hb6) a hung budget read is killed at CONSOLE_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$STUB/budget.hangresolve.sh"
+reset_stub; I="$(new_inbox hb6b)"
+CONSOLE_WAIT_BUDGET="$STUB/budget.hangresolve.sh" CONSOLE_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6b.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+sleep 0.5
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+n=0
+while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(hb6b) a hung --resolve is killed at CONSOLE_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6b.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
+export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
 
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"

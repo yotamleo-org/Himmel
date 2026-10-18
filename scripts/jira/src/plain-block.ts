@@ -138,3 +138,34 @@ export function plainBlockVerdict(type: string, found: string[]): PlainVerdict {
       PLAIN_BLOCK_TEMPLATE,
   };
 }
+
+export const STANDALONE_LABEL = 'standalone';
+
+/**
+ * The home rule: a ticket carries a Sector and either a parent epic or the
+ * `standalone` label. Epic and Subtask only warn, as in plainBlockVerdict.
+ * `sectors` is the configured field's option list; undefined means sectors are
+ * not in use (JIRA_SECTOR_FIELD unset), so only the epic-or-standalone check runs.
+ */
+export function homeVerdict(
+  type: string,
+  home: { sector?: string; parent?: string; labels?: string[] },
+  sectors?: readonly string[],
+): PlainVerdict {
+  const missing: string[] = [];
+  if (sectors && !home.sector)
+    missing.push(
+      `no Sector (pass --sector "<${sectors.join(' | ')}>", or run \`jira sector setup --opt-out\` to stop using sectors)`,
+    );
+  const standalone = (home.labels ?? []).includes(STANDALONE_LABEL);
+  if (!home.parent && !standalone)
+    missing.push(
+      `neither a parent epic nor the ${STANDALONE_LABEL} label (pass --parent <EPIC-KEY> or --labels ${STANDALONE_LABEL})`,
+    );
+  if (missing.length === 0) return { action: 'ok', message: '' };
+  const why = `ticket has no home: ${missing.join('; ')}`;
+  if (WARN_ONLY_TYPES.has(type.trim().toLowerCase())) {
+    return { action: 'warn', message: `jira: warning: ${why} (${type} is exempt, filing anyway)` };
+  }
+  return { action: 'refuse', message: `jira: refused: ${why}.` };
+}

@@ -2,6 +2,17 @@
 
 Helpers for the public-CI workflow (`.github/workflows/ci.yml`).
 
+Local knockout check: `bash scripts/ci/knockout-gate.sh <base>..<head>` (or
+`<base> <head>`) selects impacted suites on the real PR diff, then restores
+all non-test changes to the merge-base in a disposable worktree at the head.
+Every selected suite must first pass on the unchanged head; the scratch tree
+is recreated before knockout so baseline side effects cannot contaminate it.
+It exits 0 only when at least one suite then fails; baseline-red, all-green
+or zero selected suites exits 1, and usage errors exit 2. Test-only diffs are not applicable
+(exit 0). The checkout is untouched and scratch worktrees are removed on exit
+or interrupt. Suite runtimes must be installed. CI wiring and PR check posting
+are not included yet.
+
 ---
 
 ## Trigger
@@ -98,8 +109,8 @@ host that has the tool** and is `[SKIP]`ped loudly with its reason where the
 tool is absent — a SKIP_LIST entry would make it dead weight on exactly the
 hosts whose coverage it exists to add. Entries are repo-root-relative, one per
 line, `<repo-root-relative suite path>  <tool>  # <reason>` — e.g.
-`scripts/test-claude-openrouter-pwsh.sh  pwsh` (the PowerShell twin smoke
-suite). The suite's own runtime guard remains as the second layer for direct
+`scripts/telegram/test-phi-egress-guard-parity.sh  bun` (the cross-language
+parity check). The suite's own runtime guard remains as the second layer for direct
 invocation. Env-overridable (`SUITE_REQUIRE_TOOL`) so the runner self-test can
 drive the skip branch deterministically.
 

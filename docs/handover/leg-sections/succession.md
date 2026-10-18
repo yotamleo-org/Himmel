@@ -41,11 +41,12 @@ authentication, so its absence is not a gap and needs no rotation. If you hold a
 before the bullet, so the new console has an edge to you (without it `bus send`
 to you is refused: `no edge to <you>`). Add its printed line (`adopted: …`) or its
 refusal text (`old console … is not gone and sent no relay naming …`, `identity
-unbound`) to the bullet: a refusal is a recorded fact, not a reason to park, and
-you retry `bus adopt` once the old console is gone. Write
+unbound`) to a separate `LIVE` Results bullet. A refusal is a recorded fact, not a
+reason to park, and you retry `bus adopt` once the old console is gone. Write
 `- SUCCESSION accepted: <new console session> replaces <old>` under
-`## Results` (names and grammar only, no token). **That bullet is the
-quote-back:** the new console's `succession-tracker.sh` tallies it and its
+`## Results` (names and grammar only, no token), with **nothing after it on that
+line** — no explanation, punctuation, or bus output after the old console's name.
+**That bullet is the quote-back:** the new console's `succession-tracker.sh` tallies it and its
 `LIVE` waits on every leg's bullet, so send **no** `SendMessage` to accept. The
 one `SendMessage` you send is on a timeout or a decline: a leg that cannot
 write the bullet, or that declines the change, says so in one line to the
