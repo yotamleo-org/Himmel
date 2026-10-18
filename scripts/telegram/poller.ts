@@ -1570,7 +1570,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // Consumed with the queued work: the operator said stop, nothing re-runs it.
     const settleStopped = async () => {
       await unlink(join(sd, "stop")).catch(() => {});
-      await commitPending(root, session, nextPos);
+      await commitPending(root, session, (await peekPending(root, session)).nextPos);   // fresh peek: lines queued since the turn began are stopped too
       const m = await readMeta(root, session);
       if (m) await writeMeta(root, session, { ...m, status: "idle", retry_at: null, fail_count: null });
       noticed.delete(session);

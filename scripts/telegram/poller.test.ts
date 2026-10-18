@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
@@ -164,6 +164,22 @@ test("a member follow-up arriving during a ticket session's final failing run ke
   };
   await makeRunFn(r, "/repo", failingWithMemberArrival, 5000, undefined, 3)("HIMMEL-7");
   expect((await readMeta(r, "HIMMEL-7"))?.status).toBe("failed");
+});
+
+test("operator stop landing during pre-spawn setup also drops lines queued since the turn began", async () => {
+  const r = root(); const sd = sessionDir(r, "HIMMEL-7");
+  await ensureSession(r, "HIMMEL-7");
+  await writeMeta(r, "HIMMEL-7", freshMeta(-50));
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "go", operator: true }));
+  const vaultFor = () => {                                      // runs after the turn's pending snapshot, before the spawn
+    appendFileSync(join(sd, "inbox.jsonl"), JSON.stringify({ text: "late", operator: true }) + "\n");
+    appendFileSync(join(sd, "stop"), "42\n");
+    return null;
+  };
+  let spawns = 0;
+  await makeRunFn(r, "/repo", async () => { spawns++; return { code: 0, capped: false, pid: 1 }; }, 5000, undefined, undefined, vaultFor)("HIMMEL-7");
+  expect(spawns).toBe(0);
+  expect((await peekPending(r, "HIMMEL-7")).count).toBe(0);
 });
 
 test("operator stop on an already-failed ticket session is consumed and cannot eat the retry", async () => {
