@@ -1223,9 +1223,10 @@ report_pending_migrations() {
         [ -n "$vault" ] && [ -r "$vault" ] && [ -x "$vault" ] && [ -r "$script" ] || exit 0
         command -v node >/dev/null 2>&1 || exit 0
         # No --manifest: even the migration dry-run can write when one is given.
-        out=$("$_TIMEOUT_BIN" -k 1 3 node "$script" "$vault" --dry-run 2>/dev/null) || true
-        if grep -q '^PLAN ' <<< "$out"; then
-            printf 'clip-lifecycle migration needed: %s; preview: node %q %q --dry-run\n' "$vault" "$script" "$vault"
+        if out=$("$_TIMEOUT_BIN" -k 1 3 node "$script" "$vault" --dry-run 2>/dev/null); then
+            if grep -q '^PLAN ' <<< "$out"; then
+                printf 'clip-lifecycle migration needed: %s; preview: node %q %q --dry-run\n' "$vault" "$script" "$vault"
+            fi
         fi
     ) || true
     return 0
