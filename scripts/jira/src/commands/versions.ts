@@ -87,6 +87,13 @@ export function buildFixVersionBody(
   return { update: { fixVersions: [{ [op]: { name } }] } };
 }
 
+export function buildAffectsVersionBody(
+  op: 'add' | 'remove',
+  name: string,
+): { update: { versions: Array<Record<string, { name: string }>> } } {
+  return { update: { versions: [{ [op]: { name } }] } };
+}
+
 export const fetchVersions = (project: string) =>
   request<JiraVersion[]>('GET', `/project/${encodeURIComponent(project)}/versions`);
 
@@ -215,6 +222,18 @@ export async function assertVersionExists(project: string, name: string): Promis
   if (!found) throw new Error(`no version named "${name}" in project ${project}`);
 }
 
+// affectsVersion takes the literal `current` for "the version being worked on":
+// the earliest unreleased version at call time, so no caller hardcodes one.
+export async function resolveAffectsVersion(project: string, name: string): Promise<string> {
+  if (name !== 'current') {
+    await assertVersionExists(project, name);
+    return name;
+  }
+  const version = earliestUnreleased(await fetchVersions(project));
+  if (!version) throw new Error(`no unreleased version in project ${project} for "current"`);
+  return version;
+}
+
 // A Jira project key never contains a hyphen, so the project is everything
 // before the LAST one — used to validate `edit <key> --fix-version` against
 // the issue's own project rather than the configured default
@@ -232,6 +251,16 @@ export async function setFixVersion(
 ): Promise<string> {
   await request('PUT', `/issue/${key}`, buildFixVersionBody(op, name));
   return `${key} fixVersion ${op === 'add' ? '+' : '-'}${name}`;
+}
+
+export async function setAffectsVersion(
+  key: string,
+  op: 'add' | 'remove',
+  name: string,
+): Promise<string> {
+  const version = await resolveAffectsVersion(projectFromKey(key), name);
+  await request('PUT', `/issue/${key}`, buildAffectsVersionBody(op, version));
+  return `${key} affectsVersion ${op === 'add' ? '+' : '-'}${version}`;
 }
 
 export function registerVersions(program: Command): void {
@@ -342,6 +371,22 @@ export function registerVersions(program: Command): void {
       }
       const op = options.add !== undefined ? 'add' : 'remove';
       console.log(await setFixVersion(key, op, (options.add ?? options.remove) as string));
+      writeJiraBreadcrumb(key);
+    });
+
+  program
+    .command('affects-version <key>')
+    .description(
+      'Add or remove one affectsVersion on an issue (multi-valued; `current` = earliest unreleased version)',
+    )
+    .option('--add <name>', 'Version name to add')
+    .option('--remove <name>', 'Version name to remove')
+    .action(async (key: string, options: { add?: string; remove?: string }) => {
+      if ((options.add === undefined) === (options.remove === undefined)) {
+        throw new Error('affects-version needs exactly one of --add <name> or --remove <name>');
+      }
+      const op = options.add !== undefined ? 'add' : 'remove';
+      console.log(await setAffectsVersion(key, op, (options.add ?? options.remove) as string));
       writeJiraBreadcrumb(key);
     });
 }

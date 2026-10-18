@@ -5,7 +5,7 @@ import { markdownToAdf } from '../adf.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
-import { assertVersionExists, buildFixVersionBody, projectFromKey } from './versions.js';
+import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
 
 export interface EditOptions {
   priority?: string;
@@ -17,6 +17,7 @@ export interface EditOptions {
   addLabels?: string;
   fixVersion?: string;
   addFixVersion?: string;
+  affectsVersion?: string;
   sector?: string;
 }
 
@@ -67,6 +68,9 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
   // field the operator explicitly wants set. --add-fix-version
   // appends via Jira's atomic `update` operation instead.
   if (opts.fixVersion !== undefined) fields['fixVersions'] = [{ name: opts.fixVersion }];
+  // --affects-version is FULL-REPLACE, like --fix-version; the `affects-version`
+  // verb adds or removes one. The action resolves `current` before it gets here.
+  if (opts.affectsVersion !== undefined) fields['versions'] = [{ name: opts.affectsVersion }];
   if (opts.sector !== undefined) fields[requireSectorField()] = { value: resolveSector(opts.sector, sectors) };
   if (
     Object.keys(fields).length === 0 &&
@@ -75,7 +79,7 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
   ) {
     throw new Error(
       'Edit requires at least one of --priority, --severity, --title, --desc, --parent, ' +
-        '--labels, --add-labels, --fix-version, --add-fix-version, or --sector',
+        '--labels, --add-labels, --fix-version, --add-fix-version, --affects-version, or --sector',
     );
   }
   return fields;
@@ -102,6 +106,7 @@ function readBackFieldNames(o: EditOptions): string[] {
   if (o.sector !== undefined) names.push(requireSectorField());
   if (o.labels !== undefined || o.addLabels !== undefined) names.push('labels');
   if (o.fixVersion !== undefined || o.addFixVersion !== undefined) names.push('fixVersions');
+  if (o.affectsVersion !== undefined) names.push('versions');
   return [...new Set(names)];
 }
 
@@ -183,6 +188,14 @@ function verifyReadBack(
   if (o.addFixVersion !== undefined && !versions.includes(o.addFixVersion)) {
     bad('add-fix-version', o.addFixVersion, versions.join(', '));
   }
+  if (o.affectsVersion !== undefined) {
+    const affects = Array.isArray(got['versions'])
+      ? (got['versions'] as Array<{ name?: string }>).map((v) => v.name ?? '')
+      : [];
+    if (affects.length !== 1 || affects[0] !== o.affectsVersion) {
+      bad('affects-version', o.affectsVersion, affects.join(', '));
+    }
+  }
   return out;
 }
 
@@ -227,6 +240,11 @@ export function registerEdit(program: Command): void {
       'APPEND this version to fixVersions without touching existing ones ' +
         '(validated against the project\'s versions; mutually exclusive with --fix-version)',
     )
+    .option(
+      '--affects-version <name>',
+      'REPLACE the issue affectsVersions with this single version (validated against the ' +
+        "project's versions; `current` = the earliest unreleased version)",
+    )
     .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
@@ -236,6 +254,9 @@ export function registerEdit(program: Command): void {
         options.description = readBodyFile(options.descFile, '--desc-file');
       } else if (options.desc !== undefined && options.description === undefined) {
         options.description = options.desc;
+      }
+      if (options.affectsVersion !== undefined) {
+        options.affectsVersion = await resolveAffectsVersion(projectFromKey(key), options.affectsVersion);
       }
       const fields = buildEditFields(options, options.sector !== undefined ? await sectorOptions() : []);
       if (options.fixVersion !== undefined) {

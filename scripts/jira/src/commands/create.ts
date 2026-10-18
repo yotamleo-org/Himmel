@@ -9,7 +9,7 @@ import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
-import { assertVersionExists, earliestUnreleased, fetchVersions } from './versions.js';
+import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
@@ -55,6 +55,10 @@ export function registerCreate(program: Command): void {
       '--fix-version <name>',
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
+    .option(
+      '--affects-version <name>',
+      "Set the affectsVersion (validated against the project's versions; `current` = the earliest unreleased version)",
+    )
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
     .option('--attach <path>', 'File to attach (repeatable)', collect, [])
     .option(
@@ -74,6 +78,7 @@ export function registerCreate(program: Command): void {
         labels?: string;
         sector?: string;
         fixVersion?: string;
+        affectsVersion?: string;
         project?: string;
         attach: string[];
       }) => {
@@ -136,6 +141,10 @@ export function registerCreate(program: Command): void {
         if (options.fixVersion !== undefined) {
           await assertVersionExists(options.project ?? projectKey(), options.fixVersion);
           fields['fixVersions'] = [{ name: options.fixVersion }];
+        }
+        if (options.affectsVersion !== undefined) {
+          const version = await resolveAffectsVersion(options.project ?? projectKey(), options.affectsVersion);
+          fields['versions'] = [{ name: version }];
         }
         // A Bug without an explicit --fix-version defaults to the earliest
         // unreleased version; an unreadable/empty version list files with no
