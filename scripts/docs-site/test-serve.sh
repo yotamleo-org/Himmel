@@ -21,11 +21,15 @@ fi
 tmp=$(mktemp -d -t docs-site-j1.XXXXXX) || exit 1
 srv=""
 blocker=""
+up=0
 cleanup() {
   # astro detaches into its own session, so kill by port: this test owns 4321 (checked free above)
   if [ -n "$srv" ]; then
     kill "$srv" 2>/dev/null
-    ss -ltnp 'sport = :4321' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null
+    # only once our own server answered there; a failed start must not kill a stranger
+    if [ "$up" -eq 1 ]; then
+      ss -ltnp 'sport = :4321' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null
+    fi
   fi
   [ -n "$blocker" ] && kill "$blocker" 2>/dev/null
   rm -rf "$tmp"
