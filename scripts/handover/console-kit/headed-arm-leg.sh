@@ -492,6 +492,10 @@ if [ "$CONSULT" -eq 1 ]; then
         echo "headed-arm-leg: --consult refuses HEADED_ARM_LEG_CLAUDE_BIN=$HEADED_ARM_LEG_CLAUDE_BIN: a consult runs the PATH claude, which honours its --setting-sources confinement" >&2
         exit 2
     fi
+    if [ -n "${HEADED_ARM_LEG_SYSTEMD_RUN:-}" ]; then
+        echo "headed-arm-leg: --consult refuses HEADED_ARM_LEG_SYSTEMD_RUN=$HEADED_ARM_LEG_SYSTEMD_RUN: a consult only runs the system /usr/bin/systemd-run" >&2
+        exit 2
+    fi
     _consult_kit="$(cd -P "$(dirname "$0")" && pwd -P)"
     for _consult_pair in "HEADED_ARM_LEG_TARGET ../headed-arm.sh" "HEADED_ARM_LEG_PROFILES ../../lanes/plugin-profiles.mjs"; do
         _consult_var="${_consult_pair%% *}"; _consult_rel="${_consult_pair#* }"
@@ -1991,6 +1995,41 @@ if [ "$LANE_CHANNEL" = "file" ]; then
     fi
 fi
 
+# Per-leg memory cap: the konsole tab and everything under it run in their own
+# systemd user scope, so a runaway test is OOM-killed inside the scope instead of
+# systemd-oomd picking a victim among the station's legs and the console.
+# HIMMEL_LEG_MEMORY_MAX is a systemd size (256M, 12G, infinity); swap gets the
+# same ceiling so the cap is not defeated by paging out. No systemd-run (macOS,
+# a non-systemd host) or no working user manager launches uncapped, with a WARN.
+# A consult resolves only the absolute system systemd-run, never the caller's PATH.
+LEG_MEMORY_MAX="${HIMMEL_LEG_MEMORY_MAX:-12G}"
+case "$LEG_MEMORY_MAX" in
+    infinity) ;;
+    *)
+        if ! [[ "$LEG_MEMORY_MAX" =~ ^[1-9][0-9]*[KMGT]?$ ]]; then
+            echo "headed-arm-leg: HIMMEL_LEG_MEMORY_MAX must be a systemd size (e.g. 12G, 256M, infinity), got: $LEG_MEMORY_MAX" >&2
+            exit 2
+        fi ;;
+esac
+LEG_SCOPE=()
+LEG_SCOPE_WARN=""
+LEG_SYSTEMD_RUN=""
+if [ "$CONSULT" -eq 1 ]; then
+    [ -x /usr/bin/systemd-run ] && LEG_SYSTEMD_RUN=/usr/bin/systemd-run
+else
+    LEG_SYSTEMD_RUN="${HEADED_ARM_LEG_SYSTEMD_RUN:-}"
+    [ -n "$LEG_SYSTEMD_RUN" ] || LEG_SYSTEMD_RUN="$(command -v systemd-run)" || LEG_SYSTEMD_RUN=""
+fi
+if [ "$HEADED_ARM_UNAME" != "Linux" ]; then
+    LEG_SCOPE_WARN="not Linux ($HEADED_ARM_UNAME)"
+elif [ -z "$LEG_SYSTEMD_RUN" ]; then
+    LEG_SCOPE_WARN="no systemd-run found"
+elif ! "$LEG_SYSTEMD_RUN" --user --scope --quiet -- true >/dev/null 2>&1; then
+    LEG_SCOPE_WARN="systemd-run cannot start a user scope"
+else
+    LEG_SCOPE=("$LEG_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$LEG_MEMORY_MAX" -p "MemorySwapMax=$LEG_MEMORY_MAX" --)
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm-leg: would exec: %s %s %s %s %s %s %s %s\n' \
         "$HEADED_ARM" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT"
@@ -2037,8 +2076,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
         printf 'headed-arm-leg: consult=%s read-clamp-lines=%s preface-source=%s\n' \
             "$CONSULT" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
     fi
-    printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s' \
-        "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}"
+    printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s memory-max=%s scope=%s' \
+        "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}" \
+        "$LEG_MEMORY_MAX" "$([ "${#LEG_SCOPE[@]}" -gt 0 ] && echo yes || echo no)"
     if [ "$LANE_CHANNEL" = "file" ]; then
         printf ' exec-target=%s preface=%s recorder=%s' "$LEG_CLAUDE_BIN" "$LEG_PROFILE_PREFACE" "$HEADED_ARM_RECORDER"
     fi
@@ -2368,6 +2408,16 @@ if [ "$CONSULT" -eq 1 ]; then
     HA_RUN=(/usr/bin/env "${CONSULT_SCRUB[@]}" PATH="$(consult_pin_path)" "$_consult_bash" -p "$HEADED_ARM")
     # The --fleet hand-off below starts its own bash first: same absolute -p one.
     HA_SH=("$_consult_bash" -p)
+fi
+if [ -n "$LEG_SCOPE_WARN" ] && [ "$DRY_RUN" -eq 0 ]; then
+    # An uncapped leg is said on stdout, in the log and as a memcap=FAIL: bullet in
+    # the leg doc (lowercase lead: the tick tail ignores it, a grep finds it).
+    echo "$(date +%F_%T) headed-arm-leg: WARN memory cap NOT applied for $NAME ($LEG_SCOPE_WARN) - launching uncapped" >> "$LOG"
+    echo "headed-arm-leg: WARN memory cap NOT applied for $NAME - launching uncapped (memcap=FAIL:$LEG_SCOPE_WARN)"
+    bash "$HERE/append-results.sh" "$DOC" "memcap=FAIL:$LEG_SCOPE_WARN" >/dev/null 2>&1 || true
+fi
+if [ "${#LEG_SCOPE[@]}" -gt 0 ]; then
+    HA_RUN=("${LEG_SCOPE[@]}" "${HA_RUN[@]}")
 fi
 if [ -n "$FLEET_MANIFEST" ]; then
     # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.

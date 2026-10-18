@@ -3,12 +3,13 @@
 // harvested (and enriched) in the vault?". Filesystem-only: no network,
 // no fetch, no spawn. Returns null (never throws) when the vault or a
 // clip is absent, so callers degrade straight to live fetch.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { canonicalize } from "./url-canonical.mjs";
 import { tweetStatusId } from "./telegram-clip.mjs";
 import { isThinTweetBody } from "../fxtwitter-enrich.mjs";
+import { clipFileEgressClear } from "./follow-web.mjs";
 
 export function resolveVaultRoot(opts = {}) {
   const cand =
@@ -53,7 +54,10 @@ export function listClipFiles(vaultRoot) {
   // _done: recursive, exclude _synthesis
   const done = join(clip, "_done");
   if (existsSync(done)) walk(done, 0, 64, out);
-  return out;
+  // A symlinked .md can resolve outside Clippings/ (e.g. into a salus root).
+  let clipReal;
+  try { clipReal = realpathSync(clip); } catch { return []; }
+  return out.filter((f) => clipFileEgressClear(f, clipReal));
 }
 
 function frontmatter(text) {

@@ -76,6 +76,12 @@ To restore a tracked file to HEAD use `bash scripts/git/restore-to-head.sh
 <path>` — `git checkout -- <path>` is a settings deny and `git restore`
 prompts; the script saves the outgoing content first (a plain copy).
 
+**Your tab runs in a memory-capped systemd scope** (`HIMMEL_LEG_MEMORY_MAX`,
+default 12G, swap capped the same). A model-loading or burst run stays under
+it: a run that exceeds the cap is OOM-killed alone, not the station. Bound a
+load test yourself (one allocator, a small cap, `timeout 60`) rather than
+leaning on the cap.
+
 An observation meant to be "clean" runs through `scripts/lib/clean-sandbox.sh
 [--keep VAR]... -- <cmd>` (`env -i`, prints the env it passed), never a
 hand-rolled `HOME=… cmd`, which keeps every other operator variable.

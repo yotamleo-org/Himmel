@@ -222,4 +222,27 @@ tcli="$here/../tools/is-thin-cli.mjs"
 [ "$(node "$tcli" "$tmp/vault/Clippings/reddit-stub.md")" = "thin" ] || { echo "FAIL: is-thin-cli reddit-source override not thin"; exit 1; }
 echo "OK is-thin-cli reddit override"
 
+# --- per-file realpath: a symlinked clip file whose realpath leaves Clippings/ is never listed or read ---
+mkdir -p "$tmp/salusdir" "$tmp/outside" "$tmp/vault/Clippings/real-sub"
+: > "$tmp/salusdir/.salus"
+printf -- '---\nsource: "https://example.com/phi-note"\n---\nPHI body\n' > "$tmp/salusdir/phi.md"
+printf -- '---\nsource: "https://example.com/outside-note"\n---\nbody\n' > "$tmp/outside/out.md"
+printf -- '---\nsource: "https://example.com/inside-note"\n---\nbody\n' > "$tmp/vault/Clippings/real-sub/target.md"
+ln -s "$tmp/salusdir/phi.md" "$tmp/vault/Clippings/leak-salus.md"
+ln -s "$tmp/outside/out.md" "$tmp/vault/Clippings/leak-outside.md"
+ln -s "$tmp/vault/Clippings/real-sub/target.md" "$tmp/vault/Clippings/link-inside.md"
+cat > "$tmp/t6320.mjs" <<'JS'
+const { listClipFiles, findHarvestedClipForUrl } = await import(process.env.LIB);
+const names = listClipFiles(process.env.OBSIDIAN_VAULT_PATH).map(f => f.split(/[\\/]/).pop());
+for (const bad of ["leak-salus.md", "leak-outside.md"]) {
+  if (names.includes(bad)) { console.error("FAIL: escaping symlink listed:", bad); process.exit(1); }
+}
+if (!names.includes("link-inside.md")) { console.error("FAIL: in-root symlink dropped", names); process.exit(1); }
+for (const u of ["https://example.com/phi-note", "https://example.com/outside-note"]) {
+  if (findHarvestedClipForUrl(null, u) !== null) { console.error("FAIL: escaping symlink read for", u); process.exit(1); }
+}
+console.log("OK 6320 per-file realpath");
+JS
+LIB="$LIBURL" OBSIDIAN_VAULT_PATH="$tmp/vault" node "$tmp/t6320.mjs" || { echo "6320 per-file symlink test FAILED"; exit 1; }
+
 echo "ALL PASS"

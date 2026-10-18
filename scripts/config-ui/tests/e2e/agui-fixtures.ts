@@ -37,6 +37,21 @@ export const J = {
   name: (agentName: string) => JSON.stringify({ type: "agent-name", agentName, sessionId: SESSION }) + "\n",
 };
 
+// The same ten-band run for density assertions and before/after theme screenshots.
+export function denseRun(): string {
+  const rows = [J.name("HIMMEL-4711-dense-run"), J.prompt("Dense run: keep this first transcript entry in view.")];
+  for (let i = 1; i <= 9; i++) {
+    const sub = { sub: `dense${i}` };
+    rows.push(J.tool(`parent${i}`, "Agent", { description: `CV cold review ${i} (v7 correctness)`, prompt: `Review slice ${i}` }));
+    rows.push(J.tool(`read${i}`, "Read", { file_path: `slice${i}.ts` }, sub));
+    rows.push(J.tool(`test${i}`, "Bash", { command: "bun test", description: `Test slice ${i}` }, sub));
+    rows.push(J.result(`read${i}`, "ok", sub), J.result(`test${i}`, "ok", sub));
+    rows.push(J.result(`parent${i}`, "Looks right.", { use: { status: "completed", agentId: sub.sub } }));
+  }
+  rows.push(J.text("All nine reviews finished."), J.end());
+  return rows.map((row, i) => JSON.stringify({ ...JSON.parse(row), timestamp: new Date(1792281600000 + i * 100).toISOString() }) + "\n").join("");
+}
+
 export type AguiHarness = {
   url: string; // http://127.0.0.1:<port>/agui/#t=<64 hex>&run=<RUN>
   append: (record: string) => void;

@@ -315,6 +315,69 @@ if [ -e "$base_home/.codex/AGENTS.md" ]; then
 fi
 echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md (HIMMEL-3309)"
 
+# ── 1d. trial path: no-origin repo on main ──────────────────────────────────
+# Install, commit the install on main (the one allowed commit), then cut a
+# worktree with no origin: it must carry scripts/ and .claude/worktrees/ must
+# be ignored.
+tp="$work/trial-path"; mkdir -p "$tp"
+git -C "$tp" init -q -b main
+git -C "$tp" config user.email t@t; git -C "$tp" config user.name t
+git -C "$tp" config commit.gpgsign false
+git -C "$tp" commit -q --allow-empty -m "chore: initial commit"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" >/dev/null
+[ "$(git -C "$tp" status --porcelain -- scripts | wc -l)" -gt 0 ] || fail "HIMMEL-6326: install without --commit-install must stay uncommitted"
+grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --commit-install >/dev/null
+[ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6326: --commit-install left the install uncommitted"
+[ "$(grep -c -x '.claude/worktrees/' "$tp/.gitignore")" = "1" ] || fail "HIMMEL-6326: .gitignore rule duplicated on re-run"
+[ "$(git -C "$tp" remote | wc -l)" -eq 0 ] || fail "HIMMEL-6326: fixture must have no remote"
+(cd "$tp" && HOME="$base_home" bash scripts/worktree.sh feat/try-himmel >/dev/null 2>&1) || fail "HIMMEL-6326: worktree.sh failed in a project with no origin"
+[ -f "$tp/.claude/worktrees/feat+try-himmel/scripts/worktree.sh" ] || fail "HIMMEL-6326: worktree cut after install lacks scripts/"
+[ "$(git -C "$tp" status --porcelain | wc -l)" -eq 0 ] || fail "HIMMEL-6326: worktree dir shows up as untracked"
+echo "ok: HIMMEL-6326 no-origin worktree, committable install, .claude/worktrees/ ignored"
+
+# A user's own uncommitted .gitignore edit must not ride into the install commit.
+te="$work/trial-edited"; mkdir -p "$te"
+git -C "$te" init -q -b main
+git -C "$te" config user.email t@t; git -C "$te" config user.name t
+git -C "$te" config commit.gpgsign false
+printf 'node_modules/\n' > "$te/.gitignore"
+git -C "$te" add .gitignore
+git -C "$te" commit -q -m "chore: initial commit"
+printf 'my-private-notes/\n' >> "$te/.gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$te" --commit-install >/dev/null
+[ "$(git -C "$te" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a user's uncommitted .gitignore edit"
+echo "ok: HIMMEL-6326 pre-edited .gitignore blocks the auto-commit"
+
+# Same with an install already pending: an edit made after the declined run
+# must still stop --commit-install.
+tq="$work/trial-pending"; mkdir -p "$tq"
+git -C "$tq" init -q -b main
+git -C "$tq" config user.email t@t; git -C "$tq" config user.name t
+git -C "$tq" config commit.gpgsign false
+git -C "$tq" commit -q --allow-empty -m "chore: initial commit"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" >/dev/null
+printf 'my-private-notes/\n' >> "$tq/.gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" --commit-install >/dev/null
+[ "$(git -C "$tq" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in an edit made after a declined install"
+echo "ok: HIMMEL-6326 edit after a declined install blocks the auto-commit"
+
+# A change staged after the declined run still counts when the working tree
+# was put back to the recorded content.
+tr="$work/trial-staged"; mkdir -p "$tr"
+git -C "$tr" init -q -b main
+git -C "$tr" config user.email t@t; git -C "$tr" config user.name t
+git -C "$tr" config commit.gpgsign false
+git -C "$tr" commit -q --allow-empty -m "chore: initial commit"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tr" >/dev/null
+cp "$tr/.gitignore" "$work/trial-staged.gitignore"
+printf 'my-private-notes/\n' >> "$tr/.gitignore"
+git -C "$tr" add .gitignore
+cp "$work/trial-staged.gitignore" "$tr/.gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tr" --commit-install >/dev/null
+[ "$(git -C "$tr" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a staged .gitignore change"
+echo "ok: HIMMEL-6326 staged edit after a declined install blocks the auto-commit"
+
 # ── 1b. self-copy guard ─────────────────────────────────────────
 # A brand-new adopter clones himmel and runs the installer FROM INSIDE that
 # clone (TARGET == HIMMEL_ROOT). do_core() mutates its TARGET, so this can't
@@ -2366,6 +2429,46 @@ out=$(HOME="$p4home" HIMMEL_PROVENANCE_DIR="$p4led" bash "$adopt" --profile core
 grepq "$out" 'DRY: record create file' || fail "HIMMEL-3332 S4: --dry-run did not say what it would record: $out"
 [ ! -e "$p4dry/scripts/worktree.sh" ] || fail "HIMMEL-3332 S4: --dry-run copied a file"
 echo "ok: HIMMEL-3332 S4 --dry-run records nothing"
+
+# ── adopt never overwrites a file it cannot back up, and reports every replace.
+p6home="$work/p6-home"; mkdir -p "$p6home"
+p6led="$work/p6-ledger"
+p6proj="$work/p6-proj"; mkdir -p "$p6proj/scripts"
+printf '#!/bin/sh\necho user-owned worktree.sh\n' > "$p6proj/scripts/worktree.sh"
+chmod 0755 "$p6proj/scripts/worktree.sh"
+p6sha="$(prov_sha "$p6proj/scripts/worktree.sh")"
+# a mktemp that fails only for the bare snapshot call copy_recorded makes
+p6bin="$work/p6-bin"; mkdir -p "$p6bin"
+# shellcheck disable=SC2016 # the stub's $# and $@ must stay literal
+printf '#!/bin/sh\n[ "$#" -eq 0 ] && exit 1\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$p6bin/mktemp"
+chmod +x "$p6bin/mktemp"
+set +e
+out=$(PATH="$p6bin:$PATH" HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1); rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "HIMMEL-6321: adopt exited 0 although it could not back up an existing file: $out"
+[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] \
+  || fail "HIMMEL-6321: the user's worktree.sh was overwritten although the snapshot failed"
+grepq "$out" 'not replaced.*scripts/worktree.sh' \
+  || fail "HIMMEL-6321: the refused file is not listed: $out"
+echo "ok: HIMMEL-6321 a failed snapshot leaves the user's file untouched, lists it, exits non-zero"
+
+# a normal replace names the file and its backup; the backup holds the user's original bytes
+out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
+p6bk="$(jq -r '.pre.backup' <<< "$(prov_row "$p6led/provenance.jsonl" /scripts/worktree.sh)")"
+grepq "$out" "replaced scripts/worktree.sh (backed up to $p6bk)" \
+  || fail "HIMMEL-6321: a replace must print the file and its backup path ($p6bk): $out"
+[ "$(prov_sha "$p6bk")" = "$p6sha" ] || fail "HIMMEL-6321: the backup is not the user's original bytes"
+out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
+! grepq "$out" 'replaced scripts/worktree.sh' || fail "HIMMEL-6321: a noop re-run must not report a replace: $out"
+echo "ok: HIMMEL-6321 a replace prints the file and its backup path; a re-run is silent"
+
+# --dry-run says what it would replace
+printf '#!/bin/sh\necho user-owned worktree.sh\n' > "$p6proj/scripts/worktree.sh"
+out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" --dry-run 2>&1)
+grepq "$out" 'would replace scripts/worktree.sh (backed up to ' \
+  || fail "HIMMEL-6321: --dry-run must say 'would replace X (backed up to ...)': $out"
+[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] || fail "HIMMEL-6321: --dry-run changed the file"
+echo "ok: HIMMEL-6321 --dry-run reports would-replace"
 
 # P6: the user-scope gate copies (install_native_hooks) go through the same path
 p4gate="$work/p4-gate"; mkdir -p "$p4gate/scripts/hooks"

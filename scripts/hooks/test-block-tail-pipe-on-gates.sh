@@ -1219,6 +1219,59 @@ else
     fail "2082 10 KB chains scan in linear time: rc=$perf_rc/$perf_gate_rc after ${perf_secs}s"
 fi
 
+# 6015: a command that executes no gate (lib-cmdpos-clean.sh) only mentions one.
+allow "6015 mention in a commit message" 'git commit -m "never run bash scripts/check-ci.sh 1 | tail"'
+allow "6015 mention in a quoted heredoc body" 'cat <<'"'"'EOF'"'"'
+bash scripts/check-ci.sh 1 | tail -3
+EOF'
+deny "6015 control: a direct gate piped to tail still denies" 'bash scripts/check-ci.sh 1 | tail -5'
+# shellcheck disable=SC2016 # the $( is the literal command text under test
+deny "6015 control: a gate in an unquoted heredoc substitution still denies" 'cat <<EOF
+$(bash scripts/check-ci.sh 1 | tail -5)
+EOF'
+# A live $ in an unquoted heredoc body can re-expand a single-quoted gate an
+# earlier word carried: ${_@P} and ${x@P} prompt-expand it, an arithmetic
+# subscript evaluates $_ again. A git -c alias runs its quoted value. The
+# command-position relief must not apply; the hook's own scan then decides
+# (it withdraws on an unquoted heredoc and reads a quoted alias as data), so
+# these rows assert the relief predicate itself.
+# relief NAME clean|withheld CMD — whether lib-cmdpos-clean.sh calls CMD clean.
+relief() {
+    local got=withheld
+    if (
+        GATE_ANY='scripts/check-ci\.sh'
+        # shellcheck disable=SC2317,SC2329 # called by cmdpos_clean_for
+        tp_names_gate() { [[ $1 =~ $GATE_ANY ]]; }
+        . "$HERE/lib-cmdpos-clean.sh" && cmdpos_clean_for tp_names_gate "$3"
+    ); then
+        got=clean
+    fi
+    if [ "$got" = "$2" ]; then pass "$1"; else fail "$1 — expected $2, got $got"; fi
+}
+# shellcheck disable=SC2016 # the $ forms are the literal command text under test
+relief "6015 control: \${_@P} in an unquoted heredoc body re-expands a gate" withheld 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+${_@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+relief "6015 control: \${x@P} in an unquoted heredoc body re-expands a gate" withheld 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+relief "6015 control: an arithmetic subscript in an unquoted heredoc body re-expands a gate" withheld 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+$[a[$_]]
+EOF'
+# shellcheck disable=SC2016 # literal command text
+relief "6015 control: a git -c alias running a gate is not clean" withheld \
+    "git -c alias.x='!bash scripts/check-ci.sh 1 | tail -1' x"
+# shellcheck disable=SC2016 # literal command text
+relief "6015 \${_@P} in a QUOTED heredoc body is data" clean 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<'"'"'EOF'"'"'
+${_@P}
+EOF'
+
 if [ "$FAILED" -eq 0 ]; then
     echo "OK block-tail-pipe-on-gates: all cases passed"
     exit 0

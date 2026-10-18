@@ -2,6 +2,17 @@
 
 Helpers for the public-CI workflow (`.github/workflows/ci.yml`).
 
+Local knockout check: `bash scripts/ci/knockout-gate.sh <base>..<head>` (or
+`<base> <head>`) selects impacted suites on the real PR diff, then restores
+all non-test changes to the merge-base in a disposable worktree at the head.
+Every selected suite must first pass on the unchanged head; the scratch tree
+is recreated before knockout so baseline side effects cannot contaminate it.
+It exits 0 only when at least one suite then fails; baseline-red, all-green
+or zero selected suites exits 1, and usage errors exit 2. Test-only diffs are not applicable
+(exit 0). The checkout is untouched and scratch worktrees are removed on exit
+or interrupt. Suite runtimes must be installed. CI wiring and PR check posting
+are not included yet.
+
 ---
 
 ## Trigger

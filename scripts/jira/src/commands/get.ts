@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { request } from '../client.js';
 import { formatIssue, formatIssueWithDescription, printJson } from '../output.js';
 import type { JiraIssue } from '../types.js';
-import { SECTOR_FIELD, sectorOf } from './sector.js';
+import { sectorField, sectorOf } from './sector.js';
 
 // Local widening: the get.ts fields query includes `labels` and
 // `fixVersions`, but the shared JiraIssue type does not declare
@@ -42,7 +42,7 @@ export function registerGet(program: Command): void {
       try {
         issue = await request<IssueWithLabels>(
           'GET',
-          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description,labels,fixVersions,priority,${SECTOR_FIELD}`,
+          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description,labels,fixVersions,priority${sectorField() ? `,${sectorField()}` : ''}`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
