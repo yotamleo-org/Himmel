@@ -138,6 +138,10 @@ printf '%s\n' '{"type":"assistant","requestId":"n1","message":{"usage":{"cache_r
               '{"type":"assistant","requestId":"n2","message":{"usage":{"input_tokens":3}}}' > "$tmp/nullcr.jsonl"
 run "$tmp/nullcr.jsonl"
 check    "4: a turn without cache_read still counts" "$out" "budget turns=2 cache_read=0.0M verdict=OK"
+printf '%s\n' '{"type":"assistant","requestId":"k1","message":{"usage":{"cache_read_input_tokens":1000000}}}' \
+              '{"type":"assistant","requestId":"k1","message":{"usage":{"cache_read_input_tokens":null}}}' > "$tmp/keep.jsonl"
+run "$tmp/keep.jsonl"
+check    "4: a later streamed row without cache_read keeps the earlier count" "$out" "budget turns=1 cache_read=1.0M verdict=OK"
 
 # --- 7. sidechains and non-assistant rows --------------------------------------
 { row s1 1000000; row s2 1000000 ',"isSidechain":true'; printf '{"type":"user","requestId":"u1"}\n'; } > "$tmp/side.jsonl"

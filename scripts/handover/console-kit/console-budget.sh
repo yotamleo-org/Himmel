@@ -83,7 +83,8 @@ for (const line of fs.readFileSync(process.argv[2], 'utf8').split('\n')) {
   const id = row.requestId || (row.message && row.message.id);
   if (!id || !usage || typeof usage !== 'object') continue;
   const cr = usage.cache_read_input_tokens;
-  seen.set(id, Number.isSafeInteger(cr) && cr >= 0 ? cr : 0);
+  // a streamed row without a valid cache_read keeps the id's earlier count
+  seen.set(id, Number.isSafeInteger(cr) && cr >= 0 ? cr : (seen.get(id) || 0));
 }
 let sum = 0;
 for (const v of seen.values()) sum += v;
