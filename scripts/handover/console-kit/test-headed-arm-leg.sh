@@ -133,9 +133,11 @@ tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
 # Every non-dry launch wraps headed-arm.sh in a systemd scope. The
-# suite points that seam at a recorder that logs its argv then runs the rest, so
-# no run here opens a real scope (the real-scope row below opts back in).
-SYSD_STUB="$tmp/systemd-run-stub"
+# suite puts a recorder first on PATH that logs its argv then runs the rest, so
+# no run here opens a real scope (the real-scope row below opts back in). A
+# --consult never reads PATH or the seam, so it stays off the recorder.
+mkdir -p "$tmp/sysd-bin"
+SYSD_STUB="$tmp/sysd-bin/systemd-run"
 printf '#!%s\n' "$(command -v bash)" > "$SYSD_STUB"
 cat >> "$SYSD_STUB" <<'SYSD_EOF'
 printf '%s\n' "$*" >> "${SYSD_RECORD:-/dev/null}"
@@ -144,7 +146,7 @@ shift
 exec "$@"
 SYSD_EOF
 chmod 755 "$SYSD_STUB"
-export HEADED_ARM_LEG_SYSTEMD_RUN="$SYSD_STUB"
+PATH="$tmp/sysd-bin:$PATH"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A console-spawned leg exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-leg.sh); the case-26 e2e below runs the real
@@ -4312,15 +4314,44 @@ contains "memcap: launch runs in a user scope" "$sysd6119" "--user --scope"
 contains "memcap: launch carries MemoryMax" "$sysd6119" "MemoryMax=256M"
 contains "memcap: launch carries MemorySwapMax" "$sysd6119" "MemorySwapMax=256M"
 contains "memcap: konsole still launched inside the scope" "$(cat "$d6119/record" 2>/dev/null || true)" "--workdir $tmp/repo6119"
+for badcap in 12g 0 00 01 1k; do
+  rc=0; out="$(HIMMEL_LEG_MEMORY_MAX="$badcap" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  check "memcap: cap '$badcap' is refused" "$rc" "2"
+done
+# The uncapped fallback is visible: stdout, the launch log and a leg-doc bullet.
+d6119w="$tmp/c6119w"; mk_launch_stubs "$d6119w" "HIMMEL-6119-warn"; mkdir -p "$tmp/repo6119w"
+some_doc_6119="$some_doc"; some_doc="$tmp/memcap-doc.md"; cp "$some_doc_6119" "$some_doc"
+printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$some_doc"
+rc=0
+HEADED_ARM_UNAME=Linux HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" RUN_LEG_ARGS=--no-profile run_leg "$d6119w" "$tmp/repo6119w" "HIMMEL-6119-warn" "claude-sonnet-5" >"$d6119w/stdout" 2>&1 || rc=$?
+wait_record "$d6119w" || true
+check "memcap: fallback launch exit 0" "$rc" "0"
+contains "memcap: fallback WARN on stdout" "$(cat "$d6119w/stdout")" "WARN memory cap NOT applied"
+contains "memcap: fallback WARN in the launch log" "$(cat "$d6119w/log" 2>/dev/null || true)" "WARN memory cap NOT applied"
+contains "memcap: fallback leaves a memcap=FAIL bullet in the leg doc" "$(cat "$tmp/memcap-doc.md")" "memcap=FAIL:systemd-run cannot start a user scope"
+check "memcap: fallback bullet is not a status marker" "$(grep -c '^- [0-9:]* memcap=FAIL:' "$some_doc")" "1"
+some_doc="$some_doc_6119"
+contains "memcap: fallback still launches the konsole" "$(cat "$d6119w/record" 2>/dev/null || true)" "--workdir $tmp/repo6119w"
+rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+not_contains "memcap: a dry-run writes no WARN" "$out" "WARN memory cap"
+# --consult never honours the systemd-run seam and never execs a PATH systemd-run.
+rc=0; out="$(HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "memcap: --consult with the systemd-run seam set refuses" "$rc" "2"
+contains "memcap: --consult seam refusal says why" "$out" "--consult refuses HEADED_ARM_LEG_SYSTEMD_RUN"
+mkdir -p "$tmp/shadow6119"
+printf '#!%s\n: > "%s/shadow-ran"\nexit 0\n' "$(command -v bash)" "$tmp/shadow6119" > "$tmp/shadow6119/systemd-run"; chmod 755 "$tmp/shadow6119/systemd-run"
+rc=0; out="$(PATH="$tmp/shadow6119:$PATH" HEADED_ARM_UNAME=Linux LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "memcap: --consult with a PATH-shadowed systemd-run still launches" "$rc" "0"
+check "memcap: --consult never execs a PATH-shadowed systemd-run" "$([ -e "$tmp/shadow6119/shadow-ran" ] && echo ran || echo not-run)" "not-run"
 # Real environment: the argv the wrapper built, run against the real
 # systemd-run, must land the process in a cgroup whose memory.max is the cap.
 real_xdg="/run/user/$(id -u)"  # the suite pins XDG_RUNTIME_DIR to a tmp dir; the real bus lives here
-if [ "$(uname -s)" = "Linux" ] && XDG_RUNTIME_DIR="$real_xdg" systemd-run --user --scope --quiet true >/dev/null 2>&1; then
+if [ "$(uname -s)" = "Linux" ] && XDG_RUNTIME_DIR="$real_xdg" /usr/bin/systemd-run --user --scope --quiet true >/dev/null 2>&1; then
   read -r -a sysd_argv <<< "$sysd6119"
   sysd_cap_argv=()
   for a in "${sysd_argv[@]}"; do [ "$a" = "--" ] && break; sysd_cap_argv+=("$a"); done
   # shellcheck disable=SC2016  # the $(...) must expand inside the scope, not here
-  real_cap="$(XDG_RUNTIME_DIR="$real_xdg" systemd-run "${sysd_cap_argv[@]}" -- bash -c 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"' 2>/dev/null || true)"
+  real_cap="$(XDG_RUNTIME_DIR="$real_xdg" /usr/bin/systemd-run "${sysd_cap_argv[@]}" -- bash -c 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"' 2>/dev/null || true)"
   check "memcap: real scope enforces memory.max (256M)" "$real_cap" "268435456"
 else
   echo "ok - memcap: real scope row skipped (no systemd user bus)"
