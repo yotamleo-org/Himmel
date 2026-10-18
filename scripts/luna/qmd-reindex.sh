@@ -20,6 +20,9 @@
 # NUL stdin, no --settings auto-approve fragment, no claude invocation at all.
 # Headless-claude billing therefore does not apply: nothing in this
 # path shells `claude`, unlike refresh-graph-map.sh whose graphify backend does.
+# `qmd embed` uses the machine's CONFIGURED embed model, which may be remote
+# (OpenRouter on the station): read it with scripts/luna/qmd-embed-model.sh check;
+# egress is governed by the egress matrix.
 #
 # WHY A SECOND `qmd embed` (the completeness assert): `qmd embed` has a session
 # cap (--timeout, default 30 minutes). A run that hits the cap exits having

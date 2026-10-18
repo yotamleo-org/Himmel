@@ -554,6 +554,8 @@ fi
 # `set -e` a bare AND-list whose test fails is the classic errexit leak, and the
 # failure mode here would be the worst possible one — the guard exiting 1 instead
 # of printing its warning.
+# The model this machine embeds with (it may be remote), shown so nobody infers it.
+EMBED_MODEL="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-embed-model.sh" show 2>/dev/null || true)"
 STALE=0
 if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then STALE=1; fi
 INCOMPLETE=0
@@ -572,7 +574,7 @@ if [ "$STALE" -eq 0 ] && [ "$INCOMPLETE" -eq 0 ] && [ "$MISSING" -eq 0 ]; then
         # supports. Within budget is the strongest honest statement it can make.
         AGE_DESC="newest indexed doc edited ${UPDATED_RAW}"
     fi
-    [ "$QUIET" -eq 1 ] || echo "OK qmd-staleness: ${AGE_DESC} (within ${MAX_AGE_HOURS}h), complete (${TOTAL_RAW}, ${VECTORS_RAW}) (source: ${AGE_SOURCE})."
+    [ "$QUIET" -eq 1 ] || echo "OK qmd-staleness: ${AGE_DESC} (within ${MAX_AGE_HOURS}h), complete (${TOTAL_RAW}, ${VECTORS_RAW}) (source: ${AGE_SOURCE}), embed-model=${EMBED_MODEL:-unknown}."
     exit 0
 fi
 
@@ -597,6 +599,7 @@ fi
     if [ "$MISSING" -eq 1 ]; then
         echo "  qmd is MISSING required collection(s): ${MISSING_COLLECTIONS}"
     fi
+    echo "  embed-model=${EMBED_MODEL:-unknown}"
     echo
     if [ "$MISSING" -eq 1 ]; then
         echo "  Those collections are NOT SEARCHABLE here at all — a miss against them"

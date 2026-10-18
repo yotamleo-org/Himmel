@@ -17,6 +17,7 @@
 # Subcommands:
 #   capability                 classify this host: build | query | none
 #   set gemma|qwen|remote [--force]   write models.embed into the qmd config
+#   show                       print the configured embed model URI (no index read)
 #   check [--index P]          configured model vs the index's vectors
 #   reembed --model gemma|qwen|remote [--copy F] [--qmd-bin P [--qmd-js P]]
 #                              build a re-embedded COPY of the index (never the live one)
@@ -521,6 +522,7 @@ sub="$1"; shift
 case "$sub" in
     capability) cmd_capability "$@" ;;
     set)        cmd_set "$@" ;;
+    show)       configured_model ;;
     check)      cmd_check "$@" ;;
     reembed)    cmd_reembed "$@" ;;
     swap)       cmd_swap "$@" ;;
