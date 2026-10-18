@@ -47,6 +47,7 @@ usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>]" >&2
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
+    echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
@@ -140,6 +141,7 @@ case "$verb" in
     start) [ -n "$head_sha" ] || [ -z "$base_sha" ] || usage ;;
     defer) [ -n "$head_sha" ] || usage ;;
     promote) [ -n "$head_sha" ] || usage ;;
+    judge-go) [ -n "$head_sha" ] || usage ;;
     *) usage ;;
 esac
 
@@ -779,6 +781,75 @@ EOF
     exit 1
 )
 
+# Print "<qid>/<name>" for a signed judge GO on head $1, written
+# by console-kit/write-verdict.sh and bound to this branch's PR; rc 1 when there
+# is none, rc 8 when a NO-GO for the head or an unresolvable PR refuses it.
+# Unlike a scope record it carries no delta-from, is not consumed (it is bound
+# to one head) and buys no round: it stands in for the panel review.
+# ponytail: same-uid ceiling as judge_scope_record (the key is same-uid
+# readable); the upgrade path is a separate-uid verdict store.
+# shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+judge_go_record() (
+    want="$1"
+    lib="$HIMMEL_ROOT/scripts/lib"
+    # shellcheck source=scripts/lib/handover-path.sh
+    # shellcheck disable=SC1091
+    . "$lib/handover-path.sh" 2>/dev/null || exit 1
+    # shellcheck source=/dev/null
+    # shellcheck disable=SC1091
+    . "$lib/go-gate.sh" 2>/dev/null || exit 1
+    root="$(go_resolve_root "$HIMMEL_ROOT")" && [ -n "$root" ] || exit 1
+    scope="$(go_verdict_scope "$HIMMEL_ROOT")" && [ -n "$scope" ] || exit 1
+    dir="$root"
+    [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
+    for seg in "${scope%%/*}" "${scope#*/}" verdicts; do
+        dir="$dir/$seg"
+        [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
+    done
+    re_session='^writer-session: [A-Za-z0-9-]+$'
+    re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+    pr_want=""
+    hit=""
+    for f in "$dir"/*/*.md; do
+        if [ ! -f "$f" ] || [ -L "$f" ]; then continue; fi
+        qid="${f#"$dir"/}"; qid="${qid%%/*}"
+        name="${f##*/}"; name="${name%.md}"
+        case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        case "$name" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        if ! go_verdict_snapshot "$f"; then
+            echo "review-round: ${f#"$dir"/} cannot be read whole - the judge GO is refused" >&2
+            exit 8
+        fi
+        snap=$GO_VERDICT_SNAP
+        l1="" l2="" l3="" l4="" l5="" l6="" l7="" l8="" l9="" l10="" l11=""
+        { IFS= read -r l1; IFS= read -r l2; IFS= read -r l3; IFS= read -r l4
+          IFS= read -r l5; IFS= read -r l6; IFS= read -r l7; IFS= read -r l8
+          IFS= read -r l9; IFS= read -r l10; IFS= read -r l11; } <<EOF_SNAP 2>/dev/null
+$snap
+EOF_SNAP
+        # Any NO-GO for the head, signed or not, is the judges' last word.
+        case "$(printf '%s' "$l8" | tr -d '\r')" in
+            "**NO-GO** for head \`$want\`"|"**NO-GO** for head \`$want\`.")
+                echo "review-round: ${f#"$dir"/} rules NO-GO for $want - the judge GO is refused" >&2
+                exit 8 ;;
+        esac
+        [ -z "$hit" ] || continue
+        if [ "$l1" != "# VERDICT $qid - $name" ] || [ -n "$l2$l5$l7" ] || [ "$l6" != "## Verdict" ] \
+            || ! [[ $l3 =~ $re_session ]] || ! [[ $l4 =~ $re_written ]]; then
+            continue
+        fi
+        [ "$l8" = "**GO** for head \`$want\`." ] || [ "$l8" = "**GO** for head \`$want\`" ] || continue
+        go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name" || continue
+        if ! record_binds "" "$l10" "$l11"; then
+            [ "$pr_want" != "-" ] || exit 8
+            continue
+        fi
+        hit="$qid/$name"
+    done
+    [ -n "$hit" ] || exit 1
+    printf '%s\n' "$hit"
+)
+
 # ci_red_delta_lines <from> <to> prints how many diff lines the PR's
 # own diff changed from <from> to <to>; the base side of a merge-forward is not
 # counted (own_diff compares each head with its own base point). A changed line
@@ -1071,6 +1142,43 @@ delta_refuse() {
         echo "$1" >&2
     fi
 }
+
+# judge-go: after the round cap, a signed judge GO at --head stands in for the
+# panel review of the delta since the last critic-reviewed head.
+# Exit 0 = accepted: prints <qid>/<name> and records one ledger row with
+# source=judge:<qid>/<name>; 1 = no GO record, or a round is still available;
+# 8 = refused (NO-GO at the head, head not a descendant of a reviewed head).
+if [ "$verb" = "judge-go" ]; then
+    # swallow-ok: an unresolvable head is refused on the next line (exit 2)
+    if ! jg_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$jg_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
+    fi
+    read_round || exit 5
+    if [ "$round" -lt 3 ]; then
+        echo "review-round: $branch has run $round of 3 full rounds - run /pr-check, a judge GO does not replace an available round" >&2
+        exit 1
+    fi
+    # swallow-ok: an unreadable or unresolvable reviewed head leaves jg_from empty, which is refused (exit 8)
+    jg_from="$(cat "$head_state" 2>/dev/null)" || jg_from=""
+    # swallow-ok: same as above
+    jg_from="$(git rev-parse --verify --quiet "$jg_from^{commit}" 2>/dev/null)" || jg_from=""
+    if [ -z "$jg_from" ] || [ "$(ledger_query avail "$jg_from")" != "ok" ] \
+        || ! git merge-base --is-ancestor "$jg_from" "$jg_head" 2>/dev/null; then
+        echo "review-round: $jg_head does not descend from a critic-reviewed head of $branch - the judge GO is refused" >&2
+        exit 8
+    fi
+    jg_hit="$(judge_go_record "$jg_head")"
+    jg_rc=$?
+    [ "$jg_rc" -eq 0 ] && [ -n "$jg_hit" ] || exit "$jg_rc"
+    jg_ledger="$git_dir/cr-critic-scores.jsonl"
+    if ! grep -qsF "\"head\":\"$jg_head\",\"status\":\"ok\",\"source\":\"judge:$jg_hit\"" "$jg_ledger"; then
+        printf '{"kind":"judge-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$jg_head" "$jg_hit" >> "$jg_ledger" || exit 5
+    fi
+    printf '%s\n' "$jg_hit"
+    exit 0
+fi
 
 if [ "$verb" = "start" ]; then
     lock_lib="$HIMMEL_ROOT/scripts/lib/shared-branch-lock.sh"

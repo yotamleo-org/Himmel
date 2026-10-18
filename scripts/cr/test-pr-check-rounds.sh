@@ -2429,6 +2429,67 @@ git -C "$repo" config --unset diff.fake.textconv
 assert_eq "$cired_rc" "8" "a textconv driver cannot hide a 45-line change from the CI-red cap ($cired_out)"
 assert_has "$cired_out" "CI-red cap" "the textconv-hidden delta is measured and refused by the cap"
 
+# A signed judge GO at the exact head stands in for the review of a
+# post-cap delta. RED on main: the verb does not exist, so every clear is refused.
+printf 'class: other\nclass-reason: judge-go fixture\n\nreviewed the delta\n' > "$jev/judge-evidence.md"
+cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+# The promote negative control above left an unparseable row in the shared ledger.
+grep -v '^not-json-at-all$' "$git_dir/cr-critic-scores.jsonl" > "$tmp/jgo-ledger.jsonl"
+cp "$tmp/jgo-ledger.jsonl" "$git_dir/cr-critic-scores.jsonl"
+jgo_setup() {
+    three_rounds "$1" clean
+    printf 'x\n' >> "$repo/$1.txt"
+    printf 'echo t\n' > "$repo/$1-test.sh"
+    git -C "$repo" add "$1-test.sh"
+    git -C "$repo" commit -q -am "$1 delta"
+    jgo_head="$(git -C "$repo" rev-parse "$1")"
+    git -C "$repo" push -q -u origin "$1"
+    write_real_marker "$1" "$jgo_head"
+}
+jgo_clear() { (cd "$repo" && bash "$fx/scripts/cr/clear-cr-marker.sh" "$1" >"$tmp/$1-clear.out" 2>&1); }
+jgo_verb() { (cd "$repo" && bash "$fx/scripts/cr/review-round.sh" judge-go --branch "$1" --head "$2" 2>&1); }
+
+jgo_setup jg63a
+jgo_clear jg63a; jgo_rc=$?
+if [ "$jgo_rc" -ne 0 ]; then pass "6303 (a) a post-cap delta with no judge GO is still refused"; else fail "6303 (a) a post-cap delta with no judge GO is still refused ($(cat "$tmp/jg63a-clear.out"); ledger tail: $(tail -n 3 "$git_dir/cr-critic-scores.jsonl"); audit: $(tail -n 4 "$git_dir/clear-cr-marker.log" 2>&1); head=$jgo_head)"; fi
+jgo_out="$(jgo_verb jg63a "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6303 (b) judge-go with no record exits 1"
+judge jgo-1 GO "$cap_r3_head"
+jgo_out="$(jgo_verb jg63a "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6303 (c) a judge GO at a different head is refused"
+judge jgo-2 GO "$jgo_head"
+jgo_out="$(jgo_verb jg63a "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "6303 (d) a signed judge GO at the exact head is accepted ($jgo_out)"
+assert_has "$jgo_out" "jgo-2/judge" "6303 (d) the verb names the record"
+assert_has "$(cat "$git_dir/cr-critic-scores.jsonl")" "judge:jgo-2/judge" "6303 (d) the ledger row records source=judge:<qid>"
+jgo_clear jg63a; jgo_rc=$?
+assert_eq "$jgo_rc" "0" "6303 (e) the judge GO clears the post-cap delta ($(cat "$tmp/jg63a-clear.out"))"
+if [ -e "$git_dir/cr-pending/jg63a" ]; then fail "6303 (e) the marker is cleared"; else pass "6303 (e) the marker is cleared"; fi
+# A NO-GO at the same head vetoes the GO.
+jgo_setup jg63b
+judge jg63b-1 GO "$jgo_head"
+judge jg63b-2 NO-GO "$jgo_head"
+jgo_out="$(jgo_verb jg63b "$jgo_head")"; jgo_vrc=$?
+if [ "$jgo_vrc" -ne 0 ]; then pass "6303 (f) a NO-GO at the head vetoes the judge GO"; else fail "6303 (f) a NO-GO at the head vetoes the judge GO"; fi
+# Before the cap a round is still available: no judge shortcut.
+git -C "$repo" checkout -q -b jg63c main
+printf 'e\n' > "$repo/jg63c.txt"; git -C "$repo" add jg63c.txt; git -C "$repo" commit -q -m jg63c
+jge_head="$(git -C "$repo" rev-parse jg63c)"
+judge jg63c-1 GO "$jge_head"
+jgo_out="$(jgo_verb jg63c "$jge_head")"; jgo_vrc=$?
+if [ "$jgo_vrc" -ne 0 ]; then pass "6303 (g) no judge shortcut before the round cap"; else fail "6303 (g) no judge shortcut before the round cap"; fi
+# A post-cap delta that only adds a test file, with a judge GO at its head.
+three_rounds jg62 clean
+printf 'echo t\n' > "$repo/jg62-test.sh"
+git -C "$repo" add jg62-test.sh
+git -C "$repo" commit -q -m "jg62 test-only delta"
+jgo_head="$(git -C "$repo" rev-parse jg62)"
+git -C "$repo" push -q -u origin jg62
+write_real_marker jg62 "$jgo_head"
+judge jg62-1 GO "$jgo_head"
+jgo_clear jg62; jgo_rc=$?
+assert_eq "$jgo_rc" "0" "6262 a post-cap test-only delta clears on a judge GO at its head ($(cat "$tmp/jg62-clear.out"))"
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2
     exit 1
