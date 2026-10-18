@@ -179,6 +179,7 @@ export function ledgerPath(env: Record<string, string | undefined> = process.env
   return join(home, ".himmel", "session-runs.jsonl");
 }
 
+// ponytail: jsonStr escapes only backslash, quote, \n, \r, \t, so any other C0 char below 0x20 yields an invalid JSONL row the reader drops; escape all of U+0000-U+001F, HIMMEL-1632
 function jsonStr(s: string): string {
   return '"' + s
     .replace(/\\/g, "\\\\")

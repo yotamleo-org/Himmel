@@ -1932,6 +1932,7 @@ _bwimc_deny() {
         unresolved-chroot) why="it runs behind a chroot (chroot DIR, sudo -R/--chroot) whose new root could not be resolved, so its targets cannot be classified (failing closed, HIMMEL-4329)" ;;
         chroot-git) why="it runs a git write behind a chroot (chroot DIR, sudo -R/--chroot) other than /: its -C, --git-dir, --work-tree and GIT_* paths are not mapped into the new root, so its repo cannot be classified (failing closed, HIMMEL-4329)" ;;
         unsafe-interp-body) why="an eval/bash -c/sh -c/zsh -c argument contains a write-shaped token whose target cannot be proven to stay outside the primary (failing closed, HIMMEL-3648)" ;;
+        ast-unresolved) why="the AST engine could not read the command (shfmt missing, a parse error, an unknown node kind or a control byte in a target), so its targets cannot be classified (failing closed, HIMMEL-6014)" ;;
     esac
     {
         echo "⛔ block-write-into-main-checkout: refusing a write-shaped command — $why."
@@ -1957,7 +1958,7 @@ _bwimc_deny() {
         echo "      - set EDIT_ON_MAIN_OK=1 in the LAUNCHING shell (a per-call prefix cannot"
         echo "        reach a hook process)."
         case "$kind" in
-            unresolved-cd|unresolved-heredoc|marker-byte|shell-ambiguous|unclosed-expansion|unresolved-git-target)
+            unresolved-cd|unresolved-heredoc|marker-byte|shell-ambiguous|unclosed-expansion|unresolved-git-target|ast-unresolved)
                 # A shape refusal: the target was unreadable, not proven primary.
                 echo "    Retry (shape, not destination): one write per Bash call, an absolute"
                 echo "    worktree path as the target, no cd/heredoc/\$(…)/\$VAR — body via a file." ;;
@@ -3569,6 +3570,1051 @@ else
     esac
 fi
 
+# ---- the AST engine ----
+#
+# BWIMC_ENGINE, set in the LAUNCHING shell, picks the engine for a Bash call:
+# unset or `regex` runs the text scan below and nothing else; `ast` runs the
+# predicate over shfmt's syntax tree (lib/bash-ast-bwimc.jq) in place of arms
+# (a) and the verb loop, and arm (g) still runs; `both` denies when either
+# engine denies. The tree is read with `shfmt -ln bash --to-json`; a missing
+# shfmt, a parse error, an unknown node kind or a jq error denies. PowerShell
+# and the sourced lane keep the text scan alone.
+#
+# The jq program is the two lib files, inlined between the markers below
+# because hook-integrity pins this file and never a file it reads (the
+# shell-tokenize precedent). test-block-write-into-main-checkout.sh fails
+# when the copy drifts; regenerate it with
+# `bash scripts/hooks/lib/bash-ast-replay-bwimc.sh --sync`.
+_bwimc_engine="${BWIMC_ENGINE:-regex}"
+case "$_bwimc_engine" in
+    regex|ast|both) ;;
+    *) _bwimc_deny "ast-unresolved" "BWIMC_ENGINE=$_bwimc_engine" "(not regex, ast or both)" "" ;;
+esac
+{ [ "$_bwimc_sourced" = 0 ] && [ "${tool:-}" = Bash ]; } || _bwimc_engine=regex
+
+# _bwimc_ast_run BODY STATE DEPTH: run the predicate on BODY from the cwd
+# STATE (JSON) and act on its records; a `reparse` record recurses.
+_bwimc_ast_run() {
+    local body="$1" st="$2" depth="$3" envj tree recs rec k f1 f2 f3 f4 cm nm rest b ht=false ct=false
+    local dirs='{}' round=0 need p d c
+    [ "$depth" -le 4 ] || _bwimc_deny "ast-unresolved" "(shell body)" "(shell bodies nested deeper than 4)" ""
+    command -v shfmt >/dev/null 2>&1 || _bwimc_deny "ast-unresolved" "(shfmt not on PATH)" "" ""
+    { [ "$_bwimc_home_taint" = 1 ] || [ -z "${HOME:-}" ]; } && ht=true
+    [ "$_bwimc_cdpath_taint" = 1 ] && ct=true
+    # swallow-ok: a parse failure denies on the next line
+    tree=$(printf '%s' "$body" | shfmt -ln bash --to-json 2>/dev/null) \
+        || _bwimc_deny "ast-unresolved" "$body" "(shfmt could not parse it)" ""
+    # `needpath` records name paths whose directory-ness the predicate needs;
+    # answer them and run it again (at most 4 rounds; an unanswered one leaves
+    # its cd unresolved, which only denies more)
+    while :; do
+        envj=$(jq -nc --arg h "${HOME:-}" --argjson ht "$ht" --argjson ct "$ct" --arg c "$_bwimc_cwd" --argjson st "$st" \
+            --argjson d "$dirs" '{home: $h, home_taint: $ht, cdpath_taint: $ct, cwd: $c, st: $st, dirs: $d}') \
+            || _bwimc_deny "ast-unresolved" "(cwd state)" "" ""
+        # swallow-ok: an engine failure denies on the next line
+        recs=$(printf '%s' "$tree" | jq -j --argjson E "$envj" "$_BWIMC_AST_PROG" 2>/dev/null) \
+            || _bwimc_deny "ast-unresolved" "$body" "(the tree holds a node the engine does not model)" ""
+        case "$recs" in ''|*$'\036') ;; *) _bwimc_deny "ast-unresolved" "$body" "(truncated engine output)" "" ;; esac
+        round=$((round + 1)); need=0
+        [ "$round" -le 4 ] || break
+        rest="$recs"
+        while [ -n "$rest" ]; do
+            rec="${rest%%$'\036'*}"; rest="${rest#*$'\036'}"
+            case "$rec" in needpath$'\037'*) ;; *) continue ;; esac
+            p="${rec#*$'\037'}"; d=false
+            [ -d "$p" ] && [ -x "$p" ] && d=true
+            c=$(guard_canon_path "$p" 2>/dev/null) || c="$p" # swallow-ok: an uncanonical path only narrows the mut match
+            dirs=$(jq -c --arg p "$p" --arg c "${c%/}" --argjson d "$d" '. + {($p): {d: $d, c: $c}}' <<< "$dirs") \
+                || _bwimc_deny "ast-unresolved" "$p" "(directory lookup)" ""
+            need=1
+        done
+        [ "$need" = 1 ] || break
+    done
+    while [ -n "$recs" ]; do
+        rec="${recs%%$'\036'*}"; recs="${recs#*$'\036'}"
+        k="${rec%%$'\037'*}"; rest="${rec#*$'\037'}"
+        f1="${rest%%$'\037'*}"; rest="${rest#*$'\037'}"
+        f2="${rest%%$'\037'*}"; rest="${rest#*$'\037'}"
+        f3="${rest%%$'\037'*}"
+        case "$k" in
+            chk) _bwimc_check_abs "$f1" "$f2" "$f3" ;;
+            deny) _bwimc_deny "$f1" "$f2" "$f3" "" ;;
+            cwd) _bwimc_cwd_check_direct "$f1" ;;
+            root) _bwimc_chroot="$f1" ;;
+            needpath) ;;
+            reparse) _bwimc_ast_run "$f1" "$f2" $((depth + 1)) ;;
+            dird)
+                # f3 = ISDIR; then DIRMODE CHILDMODE NOTDIRMODE BASE…
+                rest="${rest#*$'\037'}"
+                f4="${rest%%$'\037'*}"; rest="${rest#*$'\037'}"
+                cm="${rest%%$'\037'*}"
+                rest="${rest#*$'\037'}"; nm="${rest%%$'\037'*}"
+                case "$rest" in *$'\037'*) rest="${rest#*$'\037'}" ;; *) rest="" ;; esac
+                if [ "$f3" = 1 ] || [ -d "$f1" ]; then
+                    _bwimc_check_abs "$f1" "$f2" "$f4"
+                    while [ -n "$rest" ]; do
+                        b="${rest%%$'\037'*}"
+                        case "$rest" in *$'\037'*) rest="${rest#*$'\037'}" ;; *) rest="" ;; esac
+                        [ -n "$b" ] && _bwimc_check_abs "${f1%/}/$b" "$f2" "$cm"
+                    done
+                else
+                    _bwimc_check_abs "$f1" "$f2" "$nm"
+                fi ;;
+            *) _bwimc_deny "ast-unresolved" "$body" "(unknown engine record: $k)" "" ;;
+        esac
+    done
+}
+
+# >>> BEGIN bash-ast (canonical: scripts/hooks/lib/bash-ast.jq + bash-ast-bwimc.jq) >>>
+IFS= read -r -d '' _BWIMC_AST_PROG <<'BWIMC_AST_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
+# bash-ast.jq — the shared Bash command model. Input: the
+# `shfmt -ln bash --to-json` tree of ONE Bash command. `ba::model($env)`
+# turns it into the normalized model a guard predicate reads, so the
+# predicate never re-tokenizes text:
+#
+#   stmt  {k:"stmt", cmd, redirs:[redir], bg, neg}
+#   cmd   {k:"call", assigns:[{name, w}], argv:[word]}
+#         {k:"and"|"or"|"pipe", x:stmt, y:stmt}       a && b, a || b, a | b
+#         {k:"sub"|"block", body:[stmt]}              ( … ) and { …; }
+#         {k:"compound", t, bodies:[[stmt]], words:[word]}
+#             if/while/for/case/select and a function body: bodies that run
+#             zero or more times, in an order the predicate does not assume
+#         {k:"other", t, words:[word]}                [[ ]], (( )), declare, let
+#         {k:"wrap", t, body:[stmt]}                  time, coproc
+#         null                                        a redirect-only `> f`
+#   redir {op, fd, w:word, hdoc:{lit, text, words}|null}
+#         A heredoc body is DATA: `text` is its literal text when it has no
+#         expansion (`lit`), and the command substitutions inside it, which
+#         DO run, sit in `words` like any other word's.
+#   word  {raw, t:"lit"|"dyn"|"amb", vals, pfx, dynfirst, why, ak, subs}
+#         t "lit": `vals` lists every word bash makes of it, after quote
+#         removal, brace expansion (capped at 64), tilde and $HOME, each
+#         {v, g, gp}: g = an unquoted glob character survived, gp = the
+#         glob-free directory prefix the match lands under.
+#         t "dyn": an expansion this model cannot evaluate; `pfx` is the
+#         static text before it, `dynfirst` says the word STARTS dynamic.
+#         t "amb": the word reads differently across the shells we run
+#         under, or past a cap; `ak` is the guard deny kind, `why` the reason.
+#         `subs` holds the stmt lists of every $(…), `…` and <(…) inside the
+#         word: they run, so a predicate walks them like top-level code.
+#
+# Fail closed: a node kind this module does not know raises an error, and so
+# does any jq failure, so the caller denies rather than guessing.
+#
+# ponytail: the alias table, `shopt` state and a function shadowing a builtin
+# (`touch(){ :; }`) are not modelled — every call is read by its literal
+# program name; upgrade path = a definitions pass over FuncDecl names.
+
+def _known: ["File","CallExpr","IfClause","WhileClause","ForClause","CaseClause",
+  "Block","Subshell","BinaryCmd","FuncDecl","ArithmCmd","TestClause","DeclClause",
+  "LetClause","TimeClause","CoprocClause","WordIter","CStyleLoop","Word","Lit",
+  "SglQuoted","DblQuoted","ParamExp","CmdSubst","ArithmExp","ProcSubst","ExtGlob",
+  "BinaryArithm","UnaryArithm","ParenArithm","BinaryTest","UnaryTest","ParenTest"];
+
+def assert_known:
+  ([.. | objects | .Type? // empty] | unique - _known) as $u
+  | if ($u | length) > 0 then error("bash-ast: unknown node kind " + ($u | map(tostring) | join(",")))
+    else . end;
+
+# ---- words -------------------------------------------------------------
+# A static segment is ENCODED: every quoted or escaped byte is preceded by
+# \u0001, so brace, glob and tilde handling see only the live characters.
+def _protect: gsub("(?<c>[\\[\\]{}*?,~\u0001])"; "\u0001\(.c)");
+def _decode: gsub("\u0001(?<c>.)"; "\(.c)"; "s");
+
+def _unq_lit: gsub("\\\\\n"; "") | gsub("\\\\(?<c>.)"; "\u0001\(.c)"; "s");
+def _dq_lit: gsub("\\\\\n"; "") | gsub("\\\\(?<c>[$`\"\\\\])"; "\(.c)") | _protect;
+
+# $'…' as bash 5 decodes it. Only escapes every shell we run under agrees on
+# are decoded; \u, \U, \c, an unknown escape or a decoded control byte
+# (other than tab and newline) or non-ASCII byte makes the word ambiguous.
+def _ansic:
+  [scan("\\\\(?:[0-7]{1,3}|x[0-9A-Fa-f]{1,2}|.)|[^\\\\]+|\\\\$"; "s")]
+  | map(
+      if startswith("\\") | not then {v: .}
+      elif . == "\\" then {amb: "a trailing backslash"}
+      else .[1:] as $e
+        | ({"a":7,"b":8,"e":27,"E":27,"f":12,"n":10,"r":13,"t":9,"v":11,
+            "\\":92,"'":39,"\"":34,"?":63}[$e]) as $m
+        | if $m != null then {c: $m}
+          elif ($e | test("^[0-7]{1,3}$")) then
+            {c: ($e | explode | reduce .[] as $d (0; . * 8 + $d - 48))}
+          elif ($e | test("^x[0-9A-Fa-f]{1,2}$")) then
+            {c: ($e[1:] | ascii_downcase | explode
+                 | reduce .[] as $d (0; . * 16 + (if $d >= 97 then $d - 87 else $d - 48 end)))}
+          else {amb: ("the escape \\" + $e)} end
+      end)
+  | if any(.[]; has("amb")) then {amb: (map(.amb // empty) | first)}
+    elif any(.[]; (has("c") and (.c > 126 or (.c < 32 and .c != 9 and .c != 10)))
+                  or (has("v") and (.v | test("[^\\t\\n\\x20-\\x7e]")))) then
+      {amb: "a decoded control or non-ASCII byte"}
+    else {v: (map(if has("c") then ([.c] | implode) else .v end) | join(""))} end;
+
+def _simple_pe: (keys - ["Type","Pos","End","Dollar","Rbrace","Short","Param"]) == [];
+
+def _is_pwd_subst:
+  (.Stmts | length) == 1
+  and (.Stmts[0] | (.Redirs // []) == [] and .Cmd.Type? == "CallExpr"
+       and (.Cmd.Assigns // []) == [] and (.Cmd.Args | length) == 1
+       and (.Cmd.Args[0].Parts | length) == 1
+       and .Cmd.Args[0].Parts[0].Type == "Lit" and .Cmd.Args[0].Parts[0].Value == "pwd");
+
+def _raw_part:
+  if .Type == "Lit" then .Value
+  elif .Type == "SglQuoted" then (if .Dollar then "$'" else "'" end) + .Value + "'"
+  elif .Type == "DblQuoted" then "\"" + ([.Parts[]? | _raw_part] | join("")) + "\""
+  elif .Type == "ParamExp" then (if .Short then "$" + .Param.Value else "${" + (.Param.Value // "") + "…}" end)
+  elif .Type == "CmdSubst" then "$(…)"
+  elif .Type == "ProcSubst" then .Op + "…)"
+  elif .Type == "ArithmExp" then "$((…))"
+  elif .Type == "ExtGlob" then .Op + .Pattern.Value + ")"
+  else "…" end;
+
+# one word part to a list of segments: {s} static (encoded) or {d: kind}
+def _segs($env; $dq):
+  if .Type == "Lit" then [{s: (.Value | if $dq then _dq_lit else _unq_lit end)}]
+  elif .Type == "SglQuoted" then
+    if .Dollar then (.Value | _ansic) as $a
+      | if $a.amb then [{d: "amb", why: ("$'…' with " + $a.amb)}] else [{s: ($a.v | _protect)}] end
+    else [{s: (.Value | _protect)}] end
+  elif .Type == "DblQuoted" then
+    ([.Parts[]? | _segs($env; true)] | add // []) | if . == [] then [{s: ""}] else . end
+  elif .Type == "ParamExp" then
+    if _simple_pe and .Param.Value == "HOME" then
+      if $env.home_taint then [{d: "amb", why: "HOME is reassigned in this command", ak: "home-reassigned"}]
+      else [{s: ($env.home | _protect)}] end
+    elif _simple_pe and .Param.Value == "PWD" then
+      if $env.pwd_taint then [{d: "amb", why: "PWD is reassigned in this command"}] else [{d: "pwd"}] end
+    else [{d: "param"}] end
+  elif .Type == "CmdSubst" then if _is_pwd_subst then [{d: "pwd"}] else [{d: "subst"}] end
+  elif .Type == "ProcSubst" then [{d: "psub"}]
+  elif .Type == "ArithmExp" then [{d: "arith"}]
+  elif .Type == "ExtGlob" then [{s: ((.Op | _protect) + "*" + (.Pattern.Value | _protect) + "\u0001)")}]
+  else error("bash-ast: unknown word part " + (.Type | tostring)) end;
+
+# ---- brace expansion over an encoded string -----------------------------
+def _bclose($a; $i):
+  def go($j; $d; $c):
+    if $j >= ($a | length) then null
+    elif $a[$j] == 1 then go($j + 2; $d; $c)
+    elif $a[$j] == 123 then go($j + 1; $d + 1; $c)
+    elif $a[$j] == 125 then (if $d == 0 then {close: $j, commas: $c} else go($j + 1; $d - 1; $c) end)
+    elif $a[$j] == 44 and $d == 0 then go($j + 1; $d; $c + [$j])
+    else go($j + 1; $d; $c) end;
+  go($i + 1; 0; []);
+
+# {x..y} and {x..y..step}: bash takes the step's magnitude and the endpoints'
+# direction; a step of 0 counts as 1
+def _terms($x; $y; $z):
+  ((if $z == 0 then 1 else ($z | fabs) end) * (if $y >= $x then 1 else -1 end)) as $s
+  | if ((($x - $y) | fabs) / ($s | fabs)) >= 64 then error("bash-ast: brace cap")
+    else [range($x; $y + (if $s > 0 then 1 else -1 end); $s)] end;
+
+def _seq($in):
+  if ($in | test("^-?[0-9]{1,6}\\.\\.-?[0-9]{1,6}(\\.\\.-?[0-9]{1,6})?$")) then
+    ($in | split("..")) as $e
+    | ($e | map(tonumber)) as $n
+    # a zero-padded endpoint pads every term to the wider endpoint, as bash does
+    | (if any($e[:2][]; test("^-?0[0-9]")) then ($e[:2] | map(length) | max) else 0 end) as $w
+    | [_terms($n[0]; $n[1]; $n[2] // 1)[]
+       | (if . < 0 then "-" else "" end) as $sg | (fabs | tostring) as $d
+       | $sg + ([range(0; $w - ($sg | length) - ($d | length))] | map("0") | join("")) + $d]
+  elif ($in | test("^[A-Za-z]\\.\\.[A-Za-z](\\.\\.-?[0-9]{1,6})?$")) then
+    ($in | explode) as $c
+    | [_terms($c[0]; $c[3]; ($in[6:] | if . == "" then 1 else tonumber end))[] | [.] | implode | _protect]
+  # a longer number is still a range in bash, but past what tonumber keeps exact
+  elif ($in | test("^(-?[0-9]+\\.\\.-?[0-9]+|[A-Za-z]\\.\\.[A-Za-z])(\\.\\.-?[0-9]+)?$")) then error("bash-ast: brace cap")
+  else null end;
+
+def _brace:
+  def exp($n):
+    if $n > 64 then error("bash-ast: brace cap")
+    else
+      explode as $a
+      | (def find($i):
+           if $i >= ($a | length) then null
+           elif $a[$i] == 1 then find($i + 2)
+           elif $a[$i] == 123 then
+             (_bclose($a; $i)) as $m
+             | if $m == null then null
+               elif ($m.commas | length) > 0 then {open: $i} + $m
+               elif (($a[$i + 1:$m.close] | implode) as $in | ($in | test("\u0001") | not) and _seq($in) != null) then {open: $i} + $m
+               else find($i + 1) end
+           else find($i + 1) end;
+         find(0)) as $f
+      | if $f == null then [$a | implode]
+        else ($a[:$f.open] | implode) as $pre | ($a[$f.close + 1:] | implode) as $suf
+          | (if ($f.commas | length) > 0 then
+               [[$f.open] + $f.commas, $f.commas + [$f.close]] | transpose | map($a[.[0] + 1:.[1]] | implode)
+             else _seq($a[$f.open + 1:$f.close] | implode) end) as $alts
+          | [$alts[] | ($pre + . + $suf) | exp($n + ($alts | length))[]]
+        end
+    end;
+  exp(1) | if length > 64 then error("bash-ast: brace cap") else . end;
+
+def _glob_pfx:
+  # the encoded text before the first live glob character, cut back to its
+  # directory ("./" when it names no directory), decoded
+  (explode | . as $a
+   | (def g($i): if $i >= ($a | length) then null
+                 elif $a[$i] == 1 then g($i + 2)
+                 elif ($a[$i] == 42 or $a[$i] == 63 or $a[$i] == 91) then $i
+                 else g($i + 1) end; g(0)) as $p
+   | if $p == null then null else ($a[:$p] | implode | _decode
+       | if test("/") then sub("/[^/]*$"; "/") else "./" end) end);
+
+def _tilde($env):
+  if test("^([A-Za-z_][A-Za-z0-9_]*=)?~(/|$)") then
+    if $env.home_taint then error("home-reassigned")
+    else sub("^(?<p>([A-Za-z_][A-Za-z0-9_]*=)?)~"; "\(.p)\($env.home | _protect)") end
+  elif test("^([A-Za-z_][A-Za-z0-9_]*=)?~") then error("tilde")
+  else . end;
+
+def _subs: [.. | objects | select(.Type? == "CmdSubst" or .Type? == "ProcSubst") | .Stmts];
+
+def word($env):
+  . as $w
+  | ([.Parts[] | _raw_part] | join("")) as $raw
+  | ([.Parts[] | _segs($env; false)] | add // []) as $segs0
+  # a leading $(pwd)/$PWD is the cwd when a `/` or the word end follows it
+  | (if ($segs0[0].d? == "pwd") and (($segs0 | length) == 1 or (($segs0[1].s? // "") | startswith("/")))
+     then [{s: "."}] + $segs0[1:] else $segs0 end) as $segs
+  | ([$w | _subs[]] | map(.)) as $subs
+  | ([$segs[] | select(.d == "amb")] | first) as $amb
+  | if $amb != null then {raw: $raw, t: "amb", why: $amb.why, ak: ($amb.ak // "ast-unresolved"), subs: $subs}
+    elif any($segs[]; has("d")) then
+      ([limit(($segs | map(has("d")) | index(true)); $segs[])] | map(.s) | join("")) as $p
+      | ($p | try _tilde($env) catch "\u0000") as $pt
+      | if $pt == "\u0000" then {raw: $raw, t: "amb", why: "a ~ prefix this model does not expand", ak: "ast-unresolved", subs: $subs}
+        else {raw: $raw, t: "dyn", pfx: ($pt | (_glob_pfx // _decode)), dynfirst: ($segs[0] | has("d")), dk: (first($segs[] | select(has("d"))).d), subs: $subs} end
+    else
+      ($segs | map(.s) | join("")) as $enc
+      | (try ($enc | _brace) catch null) as $alts
+      | if $alts == null then {raw: $raw, t: "amb", why: "a brace expansion past 64 words", ak: "ast-unresolved", subs: $subs}
+        else
+          (try [$alts[] | _tilde($env)] catch ("\u0000" + .)) as $ex
+          | if ($ex | type) == "string" then
+              {raw: $raw, t: "amb", subs: $subs,
+               why: (if $ex == "\u0000home-reassigned" then "HOME is reassigned in this command" else "a ~ prefix this model does not expand" end),
+               ak: (if $ex == "\u0000home-reassigned" then "home-reassigned" else "ast-unresolved" end)}
+            else {raw: $raw, t: "lit", subs: $subs,
+                  vals: [$ex[] | _glob_pfx as $gp | {v: _decode, g: ($gp != null), gp: $gp}]} end
+        end
+    end;
+
+# ---- statements ---------------------------------------------------------
+def _hdoc($env):
+  if . == null then null
+  else
+    (.Parts // []) as $p
+    | ([$p[] | select(.Type != "Lit")] | length == 0) as $lit
+    | {lit: $lit,
+       text: (if $lit then ($p | map(.Value) | join("")) else null end),
+       words: [{Parts: $p} | word($env)]}
+  end;
+
+def _redir($env):
+  {op: .Op, fd: (.N.Value // null), w: (if .Word then (.Word | word($env)) else null end),
+   hdoc: (.Hdoc | _hdoc($env))};
+
+def _stmts($env):
+  def st:
+   def body: [(. // [])[] | st];
+   def cm:
+    .Type as $t
+    | if $t == "CallExpr" then
+        {k: "call", argv: [(.Args // [])[] | word($env)],
+         assigns: [(.Assigns // [])[] | {name: .Name.Value, w: (if .Value then (.Value | word($env)) else null end),
+                                         arr: [(.Array.Elems // [])[] | .Value | select(. != null) | word($env)]}]}
+      elif $t == "BinaryCmd" then
+        {k: ({"&&": "and", "||": "or", "|": "pipe", "|&": "pipe"}[.Op] // error("bash-ast: unknown operator " + .Op)),
+         x: (.X | st), y: (.Y | st)}
+      elif $t == "Subshell" then {k: "sub", body: (.Stmts | body)}
+      elif $t == "Block" then {k: "block", body: (.Stmts | body)}
+      elif $t == "IfClause" then
+        {k: "compound", t: $t, words: [],
+         bodies: [recurse(.Else // empty) | (.Cond, .Then) | body]}
+      elif $t == "WhileClause" then {k: "compound", t: $t, words: [], bodies: [(.Cond | body), (.Do | body)]}
+      elif $t == "ForClause" then
+        {k: "compound", t: $t, bodies: [.Do | body],
+         words: [(.Loop.Items // [])[] | word($env)] + [.Loop | (.Init, .Cond, .Post) | select(. != null) | .. | objects | select(.Parts?) | word($env)]}
+      elif $t == "CaseClause" then
+        {k: "compound", t: $t, words: ([.Word | word($env)] + [(.Items // [])[] | (.Patterns // [])[] | word($env)]),
+         bodies: [(.Items // [])[] | .Stmts | body]}
+      elif $t == "FuncDecl" then {k: "compound", t: $t, words: [], bodies: [[.Body | st]]}
+      elif $t == "TimeClause" or $t == "CoprocClause" then {k: "wrap", t: $t, posix: (.PosixFormat // false), body: [.Stmt | select(. != null) | st]}
+      elif ($t == "ArithmCmd" or $t == "TestClause" or $t == "DeclClause" or $t == "LetClause") then
+        {k: "other", t: $t, words: [.. | objects | select(has("Parts") and (has("Type") | not) or .Type? == "Word") | word($env)]}
+      else error("bash-ast: unknown command kind " + ($t | tostring)) end;
+   {k: "stmt", bg: (.Background // false), neg: (.Negated // false),
+    redirs: [(.Redirs // [])[] | _redir($env)],
+    cmd: (if .Cmd == null then null else (.Cmd | cm) end)};
+  [(. // [])[] | st];
+
+# A word's `subs` come out of word() as raw shfmt stmt lists; normalize them
+# the same way, all the way down.
+def stmts($env):
+  _stmts($env) | ((.. | objects | select(has("subs")) | .subs) |= map(stmts($env)));
+
+# The model of a whole File node.
+# PWD is tainted when the text names it anywhere but a $PWD expansion's own
+# parameter (an assignment, export, read, for-loop name, nameref …).
+def model($env):
+  assert_known
+  | ([walk(if type == "object" and .Type? == "ParamExp" then del(.Param) else . end) | .. | strings | select(test("PWD"))] | length > 0) as $pt
+  | .Stmts | stmts($env + {pwd_taint: $pt});
+
+# The flat view: every simple command anywhere (inside substitutions and
+# heredoc bodies too), with the redirects of the statement that holds it.
+def calls:
+  [.[] | recurse(
+     (.cmd | select(. != null) | (.x, .y, (.body // [])[], ((.bodies // [])[][]))),
+     (.. | objects | select(has("subs")) | .subs[][])
+   ) | select(.k == "stmt")]
+  | unique_by(tojson)
+  | map({argv: (.cmd | if .k? == "call" then .argv else [] end), redirs});
+# bash-ast-bwimc.jq — block-write-into-main-checkout as a predicate over the
+# bash-ast model. Input: the shfmt JSON of one command. $E is
+# {home, home_taint, cdpath_taint, cwd, st}: `cwd` the tool payload's cwd,
+# `st` the cwd state the command starts in ({cwds, unres, stack}).
+#
+# The predicate decides WHICH paths a command writes and under which mode;
+# the guard's own resolvers decide whether a path lands in a protected
+# checkout. It prints records, each a field list joined by \u001f and ended
+# by \u001e, for the guard to run in order:
+#
+#   chk  ABS RAW MODE         _bwimc_check_abs ABS RAW MODE
+#   deny KIND RAW RESOLVED    _bwimc_deny KIND RAW RESOLVED
+#   dird ABS RAW ISDIR DIRMODE CHILDMODE NOTDIRMODE BASE…
+#        a destination whose meaning depends on whether ABS is a directory
+#        (cp/mv/ln): ISDIR 1 = it is one by its option (-t); otherwise the
+#        guard tests it. A directory is checked under DIRMODE and each
+#        ABS/BASE under CHILDMODE; anything else is ABS under NOTDIRMODE.
+#   cwd  ABS                  a git commit in the repo at ABS
+#   root ABS                  the records up to the next `root` run behind a
+#        chroot to ABS (empty: no chroot); the guard's _bwimc_chroot
+#   reparse BODY STATE        a shell body (bash -c, eval, env -S, script -c,
+#        su -c, a heredoc fed to a shell) to run through this predicate
+#        again, starting in the cwd STATE (JSON)
+#   needpath PATH             the predicate needs whether PATH is a searchable
+#        directory, and its canonical form: the guard adds it to $E.dirs and
+#        runs the predicate again; when acting on records it skips these
+#
+# A relative path is checked against EVERY directory the command may be in
+# at that point: each cwd a cd may have reached and the payload cwd, since a
+# cd can fail. An unknown cwd denies a relative target (unresolved-cd).
+#
+# ponytail: a command whose program word is itself dynamic (`$(echo rm) f`),
+# a target that STARTS dynamic (`"$(mktemp)"`, `$X/f`), a pipe into a bare
+# shell (`… | bash`), a user function or alias shadowing a verb, and a
+# command fed by xargs' stdin are not resolved — the same residuals the
+# regex engine carries; upgrade path = a value model for `$VAR` assignments.
+
+
+def isabs: test("^(/|[A-Za-z]:[/\\\\])");
+def pjoin($b; $p): if ($p | isabs) then $p else ($b | sub("/+$"; "")) + "/" + $p end;
+def mfo($v; $mode):
+  if $mode == "entry" and ($v | test("(/|/\\.|/\\.\\.)$|^\\.\\.?$")) then "follow" else $mode end;
+def base_of: split("/") | last;
+
+# A word becomes one operand per word bash makes of it.
+def operands: if .t == "lit" then . as $w | .vals[] | {k: "lit", raw: (if ($w.vals | length) > 1 then .v else $w.raw end), v, g, gp}
+              else {k: .t, raw, pfx, dynfirst, why, ak, subs} end;
+def mkop($s; $g):
+  {k: "lit", v: $s, raw: $s, g: $g,
+   gp: (if $g then ($s | sub("[*?\\[].*$"; "") | if test("/") then sub("/[^/]*$"; "/") else "./" end) else null end)};
+# the operand minus its first $n characters (`of=X`, `-tX`, `--opt=X`)
+def tail_op($n):
+  if .k == "lit" then mkop(.v[$n:]; (.g and (.v[$n:] | test("[*?\\[]"))))
+  elif .k == "dyn" then . + {pfx: (.pfx[$n:]), dynfirst: ((.pfx | length) <= $n), raw: (.raw[$n:])}
+  else . end;
+def tv: if .k == "lit" then .v else "" end;
+def islong($full; $t): ($t | startswith("--")) and (($t[2:] | split("=")[0]) as $n | $n != "" and ($full | startswith($n)));
+def lval($t): if ($t | test("=")) then ($t | sub("^[^=]*="; "")) else null end;
+
+def rec_deny($k; $raw; $res): [["deny", $k, $raw, $res]];
+
+# the records that check operand $o as a write under $mode, in cwd state $st
+def target($o; $mode; $st):
+  def at($p; $m):
+    if ($p | isabs) then [["chk", $p, $o.raw, $m]]
+    elif $st.unres then rec_deny("unresolved-cd"; $o.raw; $p)
+    else [(($st.cwds + (if $st.jail then [] else [$E.cwd] end)) | unique)[] | ["chk", pjoin(.; $p), $o.raw, $m]] end;
+  if $o.k == "amb" then rec_deny($o.ak; $o.raw; ($o.why // ""))
+  elif $o.k == "psub" then []
+  elif $o.k == "dyn" then
+    if ($o.pfx | test("/")) then at($o.pfx | sub("/[^/]*$"; "/"); "follow")
+    elif $o.dynfirst then []
+    else at("./"; "follow") end
+  elif $o.v == "" then []
+  elif ($o.v | test("[\u0000-\u001f\u007f]")) then rec_deny("ast-unresolved"; $o.raw; "a control byte in the target")
+  elif $o.g then at($o.gp; "follow")
+  else at($o.v; mfo($o.v; $mode)) end;
+
+# every absolute path a lit operand names in state $st (empty when unresolved)
+def abs_all($o; $st):
+  if ($o.v | isabs) then [$o.v] elif $st.unres then [] else [(($st.cwds + (if $st.jail then [] else [$E.cwd] end)) | unique)[] | pjoin(.; $o.v)] end;
+
+def merge($a; $b):
+  (($a.mut // []) + ($b.mut // []) | unique) as $m
+  | if $a.unres or $b.unres then $a + {unres: true, mut: $m}
+    else $a + {cwds: (($a.cwds + $b.cwds) | unique), mut: $m} | (if (.cwds | length) > 8 then .unres = true else . end) end;
+
+# The cwd after `env -C`/`sudo -D` to operand $o from $st.
+def chdir($o; $st):
+  if $st.unres or $o.k != "lit" or $o.g then $st + {unres: true}
+  elif ($o.v | test("[\u0000-\u001f\u007f]")) then $st + {unres: true}
+  elif $E.cdpath_taint and ($o.v | test("^(/|\\./|\\.\\./|\\.$|\\.\\.$)") | not) then $st + {unres: true}
+  elif ($o.v | isabs) then $st + {cwds: [$o.v]}
+  else $st + {cwds: [$st.cwds[] | pjoin(.; $o.v)]} end;
+
+def home_op: if $E.home_taint then {k: "amb", raw: "~", ak: "home-reassigned", why: ""} else mkop($E.home; false) end;
+
+# A `cd`/`pushd` the shell may fail leaves the real cwd where it was, so the
+# modelled one goes unresolved: a non-literal target, an extra operand, a
+# redirect other than fd 0-2 to /dev/null, a relative target under the CDPATH
+# taint, `-P` with `..`, a target that is not a searchable directory, or one
+# an earlier command in this call removed, moved or chmod-ed (`mut`). Whether
+# a path is a directory comes from $E.dirs ({path: {d, c}}, c = canonical);
+# an unknown path prints `needpath PATH` for the guard to look up and run the
+# predicate again.
+def nullredir:
+  ((.fd // "1") | IN("0", "1", "2")) and (.op | IN(">", ">>", "<", "&>", ">|"))
+  and ([.w | operands] | length == 1 and .[0].k == "lit" and .[0].v == "/dev/null");
+def muthit($p; $st):
+  (($E.dirs // {})[$p].c // $p) as $c
+  | any(($st.mut // [])[]; . == "*" or (. as $m | [$m, (($E.dirs // {})[$m].c // $m)] | any(.[]; . as $x | any($p, $c; (. + "/") | startswith($x + "/")))));
+def cdgo($o; $st; $phys; $extra; $R):
+  ($st + {unres: true}) as $u
+  | if $st.jail or $o.k != "lit" or $o.g then {r: [], st: $u}
+    elif ($o.v | test("[\u0000-\u001f\u007f]")) then {r: [], st: $u}
+    elif ($o.v | isabs | not) and $st.unres then {r: [], st: $u}
+    elif $extra or any($R[]; nullredir | not) then {r: [], st: $u}
+    elif $E.cdpath_taint and ($o.v | test("^(/|\\./|\\.\\./|\\.$|\\.\\.$)") | not) then {r: [], st: $u}
+    elif $phys and (("/" + $o.v + "/") | test("/\\.\\./")) then {r: [], st: $u}
+    else (if ($o.v | isabs) then [$o.v] else [$st.cwds[] | pjoin(.; $o.v)] end) as $T
+      | [$T[] | select(($E.dirs // {})[.] == null)] as $need
+      | if ($need | length) > 0 then {r: [$need[] | ["needpath", .]], st: $u}
+        elif any($T[]; $E.dirs[.].d != true) or any($T[]; muthit(.; $st)) then {r: [], st: $u}
+        else {r: [], st: ($st + {cwds: $T, unres: false})} end
+    end;
+
+# The paths a simple command removes, moves or chmods, for muthit: the
+# operands after an rm/rmdir/mv/chmod/… word, `*` for anything unresolved,
+# for xargs, a find that deletes or execs, or a shell string naming one.
+def mutnote($a; $st):
+  def mverb: IN("rm", "rmdir", "mv", "chmod", "unlink", "rename", "chown", "chgrp", "setfacl");
+  ($a | map(if .k == "lit" then .v else "" end)) as $t
+  | (first(range(0; $a | length) as $i | select($a[$i].k == "lit" and ($t[$i] | base_of | mverb)) | $i) // null) as $vi
+  | ([$a[] | select(.k == "lit" and (.v | test("\\s")) and (.v | test("(^|[\\s;&|(])(rm|rmdir|mv|chmod|unlink|find|xargs)([\\s;&|)]|$)")))] | length > 0) as $str
+  | if any($t[]; base_of == "xargs") or $str
+       or (any($t[]; base_of == "find") and any($t[]; IN("-delete", "-exec", "-execdir", "-ok", "-okdir"))) then ["*"]
+    elif $vi == null then []
+    else $a[$vi + 1:] as $ops
+      | (reduce range(0; $ops | length) as $j ({dd: false, l: []};
+          ($ops[$j] | tv) as $x
+          | if (.dd | not) and $x == "--" then .dd = true
+            elif $ops[$j].k == "lit" and $x == "" then .
+            elif (.dd | not) and $ops[$j].k == "lit" and ($x | startswith("-")) then .
+            elif $ops[$j].k != "lit" or $ops[$j].g or ($st.unres and ($x | isabs | not)) then .l += ["*"]
+            else .l += [abs_all($ops[$j]; $st)[] | sub("/+$"; "") | if . == "" then "/" else . end] end)) | .l
+    end;
+
+# A body run as shell code: literal → parse it again; otherwise deny when its
+# static text names a write.
+def body_rec($txt; $lit; $st):
+  if $lit then [["reparse", $txt, ($st | tojson)]]
+  elif ($txt | test(">|(^|[^A-Za-z0-9_-])(tee|sed|cp|mv|rm|touch|truncate|ln|install|rsync|dd|tar|git|eval|bash|sh|zsh|dash|ksh|cd|pushd)([^A-Za-z0-9_-]|$)"))
+  then rec_deny("unsafe-interp-body"; $txt; "")
+  else [] end;
+# A body built from a variable or from a substitution that reads repository or
+# file data (git log/show/cat-file…, cat, head, `$(<f)`) can carry any write.
+def datadeny($ops):
+  def reader:
+    (.argv[0].vals[0].v? // "" | base_of) as $p
+    | ($p | IN("cat", "head", "tail", "tac", "less", "more", "nl", "od", "xxd", "strings", "base64", "sed", "awk", "cut", "sort", "uniq", "tr", "grep", "jq", "yq", "rev", "paste"))
+      or ($p == "git" and ([.argv[1:][] | .vals[0].v? // ""] | map(select(startswith("-") | not)) | .[0] // "" | IN("log", "show", "cat-file", "blame", "grep", "diff", "rev-list", "notes", "var", "config", "describe", "for-each-ref", "shortlog", "format-patch", "archive")));
+  [$ops[] | select(.k != "lit")
+   | select((.raw | test("\\$[A-Za-z_{@*#?0-9!-]"))
+            or any(.subs[]?[]? | .. | objects | select(.k? == "stmt");
+                   (.cmd == null and any(.redirs[]; .op == "<")) or (.cmd.k? == "call" and (.cmd | reader))))]
+  | if length > 0 then rec_deny("unsafe-interp-body"; .[0].raw; "a shell body read from a variable or from file data") else [] end;
+def op_body($o; $st): body_rec(($o.v // $o.raw); ($o.k == "lit"); $st) + datadeny([$o]);
+
+def optloop($a; $vals):
+  # index of the first operand after leading options; $vals lists the
+  # options that take the next word as their value
+  def go($i): if $i >= ($a | length) then $i
+              else ($a[$i] | tv) as $t
+              | if $t == "--" then $i + 1
+                elif ($t | startswith("-")) and $t != "-" then (if any($vals[]; . == $t) then go($i + 2) else go($i + 1) end)
+                else $i end end;
+  go(0);
+
+# ---- verb predicates: $a = the operands after the program word ----------
+
+def v_sed($a; $st):
+  ($a | length) as $n
+  | def go($i; $s):
+      if $i >= $n then $s
+      else $a[$i] as $o | ($o | tv) as $t
+      | if $s.dd then go($i + 1; $s + {bare: ($s.bare + [$o])})
+        elif $t == "--" then go($i + 1; $s + {dd: true})
+        elif $t == "-e" or $t == "--expression" or $t == "-f" or $t == "--file" then go($i + 2; $s + {ef: true})
+        elif ($t | test("^-[ef].|^--expression=|^--file=")) then go($i + 1; $s + {ef: true})
+        elif ($t | startswith("--")) then
+          if islong("expression"; $t) or islong("file"; $t) then go($i + (if ($t | test("=")) then 1 else 2 end); $s + {ef: true})
+          elif islong("follow-symlinks"; $t) then go($i + 1; $s + {fs: true})
+          elif islong("in-place"; $t) then go($i + 1; $s + {ip: true})
+          else go($i + 1; $s) end
+        elif ($t | startswith("-")) and $t != "-" then
+          ($t[1:] | explode | map([.] | implode)) as $b
+          | (first(range(0; $b | length) | select($b[.] == "i" or $b[.] == "e" or $b[.] == "f" or $b[.] == "l")) // null) as $k
+          | if $k == null then go($i + 1; $s)
+            elif $b[$k] == "i" then go($i + 1; $s + {ip: true})
+            elif $b[$k] == "l" then go($i + 1; $s)
+            else go($i + (if $k == ($b | length) - 1 then 2 else 1 end); $s + {ef: true}) end
+        else go($i + 1; $s + {bare: ($s.bare + [$o])}) end
+      end;
+  go(0; {dd: false, ef: false, fs: false, ip: false, bare: []}) as $s
+  | if $s.ip | not then []
+    else (if $s.fs then "follow" else "entry" end) as $m
+      | [($s.bare | if ($s.ef | not) and length >= 1 then .[1:] else . end)[] | target(.; $m; $st)[]] end;
+
+def v_tee($a; $st):
+  def go($i; $dd):
+    if $i >= ($a | length) then []
+    else ($a[$i] | tv) as $t
+    | if ($dd | not) and $t == "--" then go($i + 1; true)
+      elif ($dd | not) and ($t | startswith("-")) then go($i + 1; false)
+      else target($a[$i]; "follow"; $st) + go($i + 1; $dd) end end;
+  go(0; false);
+
+def v_rmlike($verb; $a; $st):
+  (if $verb == "rm" then "entry" else "follow" end) as $m
+  | def go($i; $dd):
+      if $i >= ($a | length) then []
+      else ($a[$i] | tv) as $t
+      | if $dd then target($a[$i]; $m; $st) + go($i + 1; true)
+        elif $t == "--" then go($i + 1; true)
+        elif ($t == "-s" or $t == "--size" or $t == "-r" or $t == "--reference") and $verb == "truncate" then go($i + 2; false)
+        elif ($t | startswith("-")) then go($i + 1; false)
+        else target($a[$i]; $m; $st) + go($i + 1; false) end end;
+    go(0; false);
+
+def opt_scan($t):
+  if ($t | startswith("--")) then
+    if islong("no-target-directory"; $t) then {bigt: true}
+    elif islong("no-dereference"; $t) then {smalln: true}
+    elif islong("remove-destination"; $t) then {rmdest: true}
+    elif islong("force"; $t) then {force: true}
+    elif islong("target-directory"; $t) then (lval($t) as $v | if ($v // "") != "" then {tdirs: ($t | length) - ($v | length)} else {twant: true} end)
+    else {} end
+  elif ($t | test("^-.")) then
+    ($t[1:] | explode | map([.] | implode)) as $b
+    | (first(range(0; $b | length) | select($b[.] == "t")) // null) as $k
+    | ($b[: (if $k == null then ($b | length) else $k end)]) as $pre
+    | {bigt: any($pre[]; . == "T"), smalln: any($pre[]; . == "n"), force: any($pre[]; . == "f")}
+      + (if $k == null then {} elif $k < ($b | length) - 1 then {tdirs: ($k + 2)} else {twant: true} end)
+  else {} end;
+
+# cp/mv/ln: options, then the operand list and the target directory
+def cpscan($a):
+  def go($i; $s):
+    if $i >= ($a | length) then $s
+    else $a[$i] as $o | ($o | tv) as $t
+    | if $s.dd then go($i + 1; $s + {ops: ($s.ops + [$o])})
+      elif $t == "--" then go($i + 1; $s + {dd: true})
+      elif ($t | startswith("-")) and $t != "-" then
+        opt_scan($t) as $f
+        # jq-alt-ok: an absent flag and a false one both mean unset
+        | ($s + {bigt: ($s.bigt or ($f.bigt // false)), smalln: ($s.smalln or ($f.smalln // false)),
+                  rmdest: ($s.rmdest or ($f.rmdest // false)), force: ($s.force or ($f.force // false))}) as $s2 # jq-alt-ok: an absent flag and a false one both mean unset
+        | if $f.tdirs then go($i + 1; $s2 + {tdir: ($o | tail_op($f.tdirs))})
+          elif $f.twant then go($i + 2; $s2 + {tdir: $a[$i + 1]})
+          else go($i + 1; $s2) end
+      else go($i + 1; $s + {ops: ($s.ops + [$o])}) end end;
+  go(0; {dd: false, ops: [], tdir: null, bigt: false, smalln: false, rmdest: false, force: false});
+
+def dird($d; $isdir; $dm; $cm; $nm; $srcs; $st):
+  if $d.k == "lit" and ($d.g | not) and ($d.v != "") and ($d.v | test("[\u0000-\u001f\u007f]") | not) then
+    if ($d.v | isabs | not) and $st.unres then rec_deny("unresolved-cd"; $d.raw; $d.v)
+    else [abs_all($d; $st)[] | ["dird", ., $d.raw, (if $isdir then "1" else "0" end), $dm, $cm, $nm]
+          + [$srcs[] | select(.k == "lit" and (.g | not)) | .v | base_of]] end
+  else target($d; "follow"; $st) end;
+
+def v_cpmv($verb; $a; $st):
+  cpscan($a) as $s
+  | ($verb == "mv" and $s.bigt) as $nodrf
+  | ($verb == "cp" and $s.rmdest) as $rmdest
+  | ($verb == "cp" and $s.force) as $force
+  | (if $verb == "mv" or $rmdest then "entry" elif $force then "both" else "follow" end) as $cm
+  | (if $s.tdir != null then {d: $s.tdir, srcs: $s.ops, isdir: true}
+     elif ($s.ops | length) >= 2 then {d: $s.ops[-1], srcs: $s.ops[:-1], isdir: false}
+     else null end) as $p
+  | if $p == null then []
+    else
+      (if $verb == "mv" then [$p.srcs[] | target(.; "entry"; $st)[]] else [] end)
+      + (if $nodrf and ($p.isdir | not) then target($p.d; "entry"; $st)
+         else (($p.d.v // "") as $v
+               | (if $verb == "mv" or $rmdest then mfo($v; "entry") elif $force then "both" else "follow" end)) as $nm
+           | dird($p.d; $p.isdir; "follow"; $cm; $nm; $p.srcs; $st) end)
+    end;
+
+def v_ln($a; $st):
+  cpscan($a) as $s
+  | ($s.bigt or $s.smalln) as $nodrf
+  | (if $s.tdir != null then {d: $s.tdir, srcs: $s.ops, isdir: true}
+     elif ($s.ops | length) >= 2 then {d: $s.ops[-1], srcs: $s.ops[:-1], isdir: false}
+     else null end) as $p
+  | if $p == null then []
+    elif $nodrf and ($p.isdir | not) then target($p.d; "entry"; $st)
+    else dird($p.d; $p.isdir; "follow"; "entry"; mfo($p.d.v // ""; "entry"); $p.srcs; $st) end;
+
+def v_install($a; $st):
+  def go($i; $s):
+    if $i >= ($a | length) then $s
+    else $a[$i] as $o | ($o | tv) as $t
+    | if $s.dd then go($i + 1; $s + {ops: ($s.ops + [$o])})
+      elif $t == "--" then go($i + 1; $s + {dd: true})
+      elif ($t | test("^-t.")) then go($i + 1; $s + {tdir: ($o | tail_op(2))})
+      elif $t == "-t" or $t == "--target-directory" then go($i + 2; $s + {tdir: $a[$i + 1]})
+      elif ($t | startswith("--target-directory=")) then go($i + 1; $s + {tdir: ($o | tail_op(19))})
+      elif $t == "-d" or $t == "--directory" then go($i + 1; $s + {dm: true})
+      elif any(("-m","--mode","-o","--owner","-g","--group","-S","--suffix","--strip-program"); . == $t) then go($i + 2; $s)
+      elif ($t | startswith("-")) then go($i + 1; $s)
+      else go($i + 1; $s + {ops: ($s.ops + [$o])}) end end;
+  go(0; {dd: false, ops: [], tdir: null, dm: false}) as $s
+  | if $s.tdir != null then target($s.tdir; "follow"; $st)
+    elif $s.dm then [$s.ops[] | target(.; "follow"; $st)[]]
+    elif ($s.ops | length) >= 2 then target($s.ops[-1]; "follow"; $st)
+    else [] end;
+
+def _rsync_vals: ["-e","-f","--filter","--exclude","--exclude-from","--include","--include-from","--files-from",
+  "--temp-dir","-T","--backup-dir","--link-dest","--compare-dest","--copy-dest","--partial-dir","--log-file",
+  "--log-file-format","--out-format","--password-file","--bwlimit","--timeout","--contimeout","--port",
+  "--address","--sockopts","--usermap","--groupmap","--chown","--rsync-path","--rsh","--protocol",
+  "--checksum-seed","--max-size","--min-size","--modify-window","--skip-compress","--chmod","-B",
+  "--block-size","-M","--remote-option","--suffix","--max-delete","--iconv","--compress-level",
+  "--checksum-choice","--write-batch","--only-write-batch","--read-batch","--stop-after"];
+
+def v_rsync($a; $st):
+  def go($i; $s):
+    if $i >= ($a | length) then $s
+    else $a[$i] as $o | ($o | tv) as $t
+    | if $s.dd then go($i + 1; $s + {ops: ($s.ops + [$o])})
+      elif $t == "--" then go($i + 1; $s + {dd: true})
+      elif any(_rsync_vals[]; . == $t) then go($i + 2; $s)
+      elif ($t | startswith("-")) then go($i + 1; $s)
+      else go($i + 1; $s + {ops: ($s.ops + [$o])}) end end;
+  go(0; {dd: false, ops: []}) as $s
+  | if ($s.ops | length) < 2 then []
+    else $s.ops[-1] as $d | ($d.v // $d.raw) as $v
+      | if ($v | test("^[A-Za-z]:[/\\\\]")) then target($d; "follow"; $st)
+        elif ($v | startswith("rsync://")) or ($v | split("/")[0] | test(":")) then []
+        else target($d; "follow"; $st) end end;
+
+def v_dd($a; $st):
+  [$a[] | select((.v // .pfx // "") | startswith("of=")) | target(tail_op(3); "follow"; $st)[]];
+
+def v_tar($a; $st):
+  def go($i; $s):
+    if $i >= ($a | length) then $s
+    else $a[$i] as $o | ($o | tv) as $t
+    | if $t == "--directory" then go($i + 2; $s + {dirs: ($s.dirs + [$a[$i + 1] | select(. != null)])})
+      elif ($t | startswith("--directory=")) then go($i + 1; $s + {dirs: ($s.dirs + [$o | tail_op(12)])})
+      elif $t == "--file" then go($i + 2; $s + {f: $a[$i + 1]})
+      elif ($t | startswith("--file=")) then go($i + 1; $s + {f: ($o | tail_op(7))})
+      elif $t == "--extract" or $t == "--get" then go($i + 1; $s + {x: true})
+      elif any(("--create","--append","--update","--catenate","--concatenate","--delete"); . == $t) then go($i + 1; $s + {w: true})
+      elif ($t | startswith("--")) then go($i + 1; $s)
+      elif ($t | test("^-.")) then
+        ($t[1:] | explode | map([.] | implode)) as $b
+        | (first(range(0; $b | length) | select($b[.] | test("^[fCbLNTXFHIKVg]$"))) // null) as $k
+        | ($b[: ($k // ($b | length))]) as $fl
+        | ($s + {x: ($s.x or any($fl[]; . == "x")), w: ($s.w or any($fl[]; IN("c", "r", "u", "A")))}) as $s2
+        | if $k == null then go($i + 1; $s2)
+          elif $k < ($b | length) - 1 then
+            go($i + 1; $s2 + (if $b[$k] == "C" then {dirs: ($s2.dirs + [$o | tail_op($k + 2)])}
+                              elif $b[$k] == "f" then {f: ($o | tail_op($k + 2))} else {} end))
+          else go($i + 2; $s2 + (if $a[$i + 1] == null then {}
+                                 elif $b[$k] == "C" then {dirs: ($s2.dirs + [$a[$i + 1]])}
+                                 elif $b[$k] == "f" then {f: $a[$i + 1]} else {} end)) end
+      elif $i == 0 and ($t | test("^[a-zA-Z]+$")) then
+        ($t | explode | map([.] | implode)) as $b
+        | reduce $b[] as $c ({s: ($s + {x: ($s.x or any($b[]; . == "x")), w: ($s.w or any($b[]; IN("c", "r", "u", "A")))}), j: ($i + 1)};
+            if ($c | test("^[fCbLNTXFHIKVg]$")) then
+              (if $a[.j] == null then . elif $c == "C" then .s.dirs += [$a[.j]] elif $c == "f" then .s.f = $a[.j] else . end) | .j += 1
+            else . end)
+        | go(.j; .s)
+      else go($i + 1; $s) end end;
+  go(0; {x: false, w: false, f: null, dirs: []}) as $s
+  # create, append, update and delete write the -f archive
+  | (if $s.w and $s.f != null and ($s.f | tv) != "-" then target($s.f; "follow"; $st) else [] end)
+  + if $s.x | not then []
+    # an extract with no -C lands in the cwd
+    else reduce ($s.dirs | if length == 0 then [mkop("."; false)] else . end)[] as $d ({c: null, r: []};
+        (if $d.k == "lit" and ($d.g | not) and ($d.v | isabs | not) and .c != null and .c.k == "lit" and (.c.g | not)
+         then mkop(.c.v + "/" + $d.v; false) + {raw: (.c.raw + "/" + $d.raw)} else $d end) as $c
+        | {c: $c, r: (.r + target($c; "follow"; $st))})
+      | .r end;
+
+# git [opts] commit: the repo it commits in
+def v_git($a; $st):
+  def go($i; $s):
+    if $i >= ($a | length) then null
+    else ($a[$i] | tv) as $t
+    | if ($t | ascii_downcase) == "commit" then $s
+      elif $t == "-C" then go($i + 2; $s + {c: ($s.c + [$a[$i + 1]])})
+      elif $t == "--git-dir" then go($i + 2; $s + {gd: $a[$i + 1]})
+      elif ($t | startswith("--git-dir=")) then go($i + 1; $s + {gd: ($a[$i] | tail_op(10))})
+      elif any(("--work-tree","-c","--namespace","--config-env","--exec-path","--super-prefix"); . == $t) then go($i + 2; $s)
+      elif ($t | startswith("-")) then go($i + 1; $s)
+      else null end end;
+  go(0; {c: [], gd: null}) as $s
+  | if $s == null then []
+    elif $st.jail then rec_deny("chroot-git"; ([$a[] | .raw] | join(" ")); "")
+    elif any(($s.c + [$s.gd | select(. != null)])[]; . == null or .k != "lit" or .g) then
+      rec_deny("unresolved-git-target"; ([$a[] | .raw] | join(" ")); "")
+    else (reduce $s.c[] as $c ($st; chdir($c; .))) as $d
+      | (if $s.gd != null then chdir($s.gd | .v |= sub("/\\.git/*$"; "") | if .v == "" then .v = "/" else . end; $d) else $d end) as $g
+      | if $g.unres then rec_deny("unresolved-cd"; "git commit"; "")
+        else [(($g.cwds + (if ($s.c | length) == 0 and $s.gd == null then [$E.cwd] elif ($s.c + [$s.gd] | map(select(. != null)) | all(.v | isabs)) then [] else [$E.cwd] end)) | unique)[] | ["cwd", .]] end
+    end;
+
+def shells: ["bash","sh","zsh","dash","ksh","rbash","mksh","ash","busybox"];
+
+# ---- the walk -----------------------------------------------------------
+
+def own_words:
+  ((.redirs[] | (.w, (.hdoc.words[]?))), (.cmd | select(. != null)
+    | if .k == "call" then (.argv[], (.assigns[] | .w, .arr[]?))
+      elif .k == "compound" or .k == "other" then .words[] else empty end))
+  | select(. != null);
+
+def write_redir: (.op | IN(">", ">>", ">|", "&>", "&>>", "<>")) or (.op == ">&" and ((.w.vals[0].v? // "x") | test("^([0-9]+|-)$") | not));
+
+def go($st):
+  def seq($l; $s0):
+    reduce $l[] as $x ({r: [], st: $s0}; . as $acc | ($x | go($acc.st)) as $o | {r: ($acc.r + $o.r), st: $o.st});
+  # one simple command: $a its operands, $R its statement's redirects
+  def call($a; $R; $st):
+    if ($a | length) == 0 then {r: [], st: $st}
+    else $a[0] as $p | $a[1:] as $rest
+    | if $p.k == "amb" then {r: rec_deny($p.ak; $p.raw; ($p.why // "")), st: $st}
+      elif $p.k != "lit" then {r: [], st: $st}
+      else ($p.v | base_of | ascii_downcase | sub("\\.exe$"; "")) as $n
+      | ($rest | map(tv)) as $t
+      | def after($i): call($rest[$i:]; $R; $st);
+        def keep($r): {r: $r, st: $st};
+        # $more run under the new root $ro: every absolute path it names is
+        # checked as itself and mapped into the root (`root` records set the
+        # guard's _bwimc_chroot), and its cwd is the root's `/`
+        def jailed($ro; $more):
+          if $st.jail then keep(rec_deny("unresolved-chroot"; $ro.raw; "a chroot inside a chroot"))
+          elif $ro.k != "lit" or $ro.g or $ro.v == "" then keep(rec_deny("unresolved-chroot"; $ro.raw; ""))
+          elif ($ro.v | test("^/+$")) then call($more; $R; $st)
+          else abs_all($ro; $st) as $rs
+            | if ($rs | length) != 1 then keep(rec_deny("unresolved-chroot"; $ro.raw; ""))
+              else keep([["root", $rs[0]]] + (call($more; $R; {cwds: ["/"], unres: false, stack: [], jail: true}) | .r) + [["root", ""]]) end
+          end;
+        if $n == "cd" or $n == "pushd" then
+          # options: -P -L -e -@ bundles only, so `cd -1/..` is an operand
+          (def ci($j): if $j < ($t | length) and ($t[$j] | test("^-[PLe@]+$")) then ci($j + 1)
+                       elif $j < ($t | length) and $t[$j] == "--" then $j + 1 else $j end;
+           ci(0)) as $i
+          | any($t[:$i][]; test("^-[a-zA-Z@]*P")) as $phys
+          | $rest[$i] as $o
+          | (($rest | length) > $i + 1) as $extra
+          | if $o == null then
+              if $n == "cd" then cdgo(home_op; $st; false; false; $R)
+              elif (($st.stack // []) | length) > 0 then {r: [], st: ($st + {unres: true})}
+              else {r: [], st: $st} end
+            else ($st | if $n == "pushd" then .stack = ((.stack // []) + [{cwds, unres}]) else . end) as $s1
+              | if ($o | tv) == "-" or (($o | tv) | test("^[+-][0-9]")) then {r: [], st: ($s1 + {unres: true})}
+                else cdgo($o; $s1; $phys; $extra; $R) end
+            end
+        elif $n == "popd" then
+          if ($rest | length) == 0 and (($st.stack // []) | length) > 0 then {r: [], st: ($st + $st.stack[-1] + {stack: $st.stack[:-1]})}
+          else {r: [], st: ($st + {unres: true})} end
+        elif $n == "command" then
+          (optloop($rest; []) as $i | if any($t[:$i][]; test("^-[a-zA-Z]*[vV]")) then keep([]) else after($i) end)
+        # `--` as the program: what `time -p --` and `nohup --` leave behind
+        elif $n == "builtin" or $n == "nohup" or $n == "--" then after(0)
+        elif $n == "exec" then after(optloop($rest; ["-a"]))
+        elif $n == "time" then after(optloop($rest; ["-f","-o","--format","--output"]))
+        elif $n == "setsid" then after(optloop($rest; []))
+        elif $n == "nice" then after(optloop($rest; ["-n","--adjustment"]))
+        elif $n == "timeout" then after(optloop($rest; ["-s","-k","--signal","--kill-after"]) + 1)
+        elif $n == "stdbuf" then after(optloop($rest; ["-i","-o","-e","--input","--output","--error"]))
+        elif $n == "ionice" then (if any($t[]; . == "-p" or . == "-P" or . == "-u") then keep([]) else after(optloop($rest; ["-c","-n","--class","--classdata"])) end)
+        elif $n == "chrt" then (if any($t[]; . == "-p" or . == "--pid") then keep([]) else after(optloop($rest; ["-T","-P","-D"]) + 1) end)
+        elif $n == "taskset" then (if any($t[]; test("^-[a-z]*p")) then keep([]) else after(optloop($rest; []) + 1) end)
+        elif $n == "doas" then after(optloop($rest; ["-u","-C"]))
+        elif $n == "xargs" then after(optloop($rest; ["-I","-L","-n","-P","-s","-d","-E","-a","--arg-file","--delimiter","--max-args","--max-procs","--max-chars","--max-lines","--replace","--eof"]))
+        elif $n == "env" then
+          def eg($i; $s):
+            if $i >= ($rest | length) then $s + {i: $i}
+            else $rest[$i] as $o | ($o | tv) as $x
+            | if $x == "--" then eg($i + 1; $s + {dd: true})
+              elif ($s.dd | not) and $x == "--chdir" then eg($i + 2; $s + {cd: $rest[$i + 1]})
+              elif ($s.dd | not) and ($x | startswith("--chdir=")) then eg($i + 1; $s + {cd: ($o | tail_op(8))})
+              elif ($s.dd | not) and $x == "--split-string" then $s + {S: $rest[$i + 1], i: ($i + 2)}
+              elif ($s.dd | not) and ($x | startswith("--split-string=")) then $s + {S: ($o | tail_op(15)), i: ($i + 1)}
+              elif ($s.dd | not) and ($x == "--unset" or $x == "--argv0") then eg($i + 2; $s)
+              elif ($s.dd | not) and ($x | startswith("--")) then eg($i + 1; $s)
+              elif ($s.dd | not) and $x == "-" then eg($i + 1; $s)
+              # a short bundle: flags i0v, then at most one of C S u a whose
+              # value is the bundle's rest or the next word; any other letter
+              # is an option this model does not know
+              elif ($s.dd | not) and ($x | startswith("-")) then
+                if ($x | test("^-[i0v]*([CSua].*)?$")) then
+                  ($x | capture("^-(?<f>[i0v]*)(?<l>[CSua]?)(?<v>.*)$")) as $m
+                  | if $m.l == "" then eg($i + 1; $s)
+                    else (if $m.v == "" then [$rest[$i + 1], 2] else [($o | tail_op(2 + ($m.f | length))), 1] end) as [$val, $adv]
+                    | if $m.l == "C" then eg($i + $adv; $s + {cd: $val})
+                      elif $m.l == "S" then $s + {S: $val, i: ($i + $adv)}
+                      else eg($i + $adv; $s) end end
+                else $s + {bad: $o, i: $i} end
+              elif ($x | test("^[A-Za-z_][A-Za-z0-9_]*=")) or ($o.k == "dyn" and ($o.pfx | test("^[A-Za-z_][A-Za-z0-9_]*="))) then eg($i + 1; $s)
+              else $s + {i: $i} end end;
+          eg(0; {dd: false}) as $e
+          | (if $e.cd then chdir($e.cd; $st) else $st end) as $cst
+          | if $e.bad then keep(rec_deny("ast-unresolved"; $e.bad.raw; "an env option this model does not know"))
+            elif $e.S then
+              ($rest[$e.i:]) as $more
+              | keep(body_rec((([$e.S] + $more) | map(.v // .raw) | join(" ")); all(([$e.S] + $more)[]; .k == "lit"); $cst) + datadeny([$e.S] + $more))
+            else call($rest[$e.i:]; $R; $cst) | .st = $st end
+        elif $n == "sudo" then
+          def sg($i; $s):
+            if $i >= ($rest | length) then $s + {i: $i}
+            else $rest[$i] as $o | ($o | tv) as $x
+            | if $x == "--" then $s + {i: ($i + 1)}
+              elif $x == "--chdir" then sg($i + 2; $s + {cd: $rest[$i + 1]})
+              elif ($x | startswith("--chdir=")) then sg($i + 1; $s + {cd: ($o | tail_op(8))})
+              elif $x == "--chroot" then sg($i + 2; $s + {root: $rest[$i + 1]})
+              elif ($x | startswith("--chroot=")) then sg($i + 1; $s + {root: ($o | tail_op(9))})
+              elif $x == "--login" then sg($i + 1; $s + {login: true})
+              elif any(("--user","--group","--close-from","--host","--prompt","--other-user","--role","--type","--command-timeout"); . == $x) then sg($i + 2; $s)
+              elif ($x | startswith("--")) then sg($i + 1; $s)
+              # a short bundle: flags, then at most one valued letter whose
+              # value is the bundle's rest or the next word; `-i` starts in
+              # the target user's home; any other letter fails closed
+              elif ($x | test("^-[AbBEeHiKklnPSsVv]*([CDghpRrTtUu].*)?$")) and $x != "-" then
+                ($x | capture("^-(?<f>[AbBEeHiKklnPSsVv]*)(?<l>[CDghpRrTtUu]?)(?<v>.*)$")) as $m
+                | ($s + (if ($m.f | test("i")) then {login: true} else {} end)) as $s
+                | if $m.l == "" then sg($i + 1; $s)
+                  else (if $m.v == "" then [$rest[$i + 1], 2] else [($o | tail_op(2 + ($m.f | length))), 1] end) as [$val, $adv]
+                  | if $m.l == "D" then sg($i + $adv; $s + {cd: $val})
+                    elif $m.l == "R" then sg($i + $adv; $s + {root: $val})
+                    else sg($i + $adv; $s) end end
+              elif ($x | startswith("-")) and $x != "-" then $s + {bad: $o, i: $i}
+              elif ($x | test("^[A-Za-z_][A-Za-z0-9_]*=")) then sg($i + 1; $s)
+              else $s + {i: $i} end end;
+          sg(0; {}) as $e
+          | if $e.bad then keep(rec_deny("ast-unresolved"; $e.bad.raw; "a sudo option this model does not know"))
+            elif $e.root != null and $e.cd then keep(rec_deny("unresolved-chroot"; $e.root.raw; "sudo -R with -D"))
+            elif $e.root != null then jailed($e.root; $rest[$e.i:])
+            else (if $e.login then $st + {unres: true} elif $e.cd then chdir($e.cd; $st) else $st end) as $cst
+              | call($rest[$e.i:]; $R; $cst) | .st = $st end
+        elif $n == "chroot" then
+          (optloop($rest; ["--userspec","--groups"]) as $i
+           | if $rest[$i] == null then keep([]) else jailed($rest[$i]; $rest[$i + 1:]) end)
+        elif $n == "eval" then
+          (if ($rest | length) == 0 then keep([])
+           else {r: (body_rec(($rest | map(.v // .raw) | join(" ")); all($rest[]; .k == "lit"); $st) + datadeny($rest)),
+                 st: (if any($rest[]; (.v // .raw) | test("(^|[^A-Za-z0-9_])(cd|pushd|popd)([^A-Za-z0-9_]|$)")) then $st + {unres: true} else $st end)} end)
+        elif $n == "su" or $n == "runuser" or $n == "script" or $n == "flock" then
+          (first(range(0; $rest | length) as $i
+             | ($t[$i]) as $x
+             | if ($x | test("^-[a-zA-Z]*c$")) or $x == "--command" then $rest[$i + 1]
+               elif ($x | startswith("--command=")) then ($rest[$i] | tail_op(10))
+               else empty end) // null) as $b
+          | if $b != null then keep(op_body($b; $st))
+            elif $n == "flock" then
+              (optloop($rest; ["-E","-w","--conflict-exit-code","--timeout"]) as $i | after($i + 1))
+            else keep([]) end
+        elif any(shells[]; . == $n) then
+          def sh($i):
+            if $i >= ($rest | length) then {k: "stdin"}
+            else ($t[$i]) as $x
+            | if ($x | test("^-[a-zA-Z]*c[a-zA-Z]*$")) then {k: "c", b: $rest[$i + 1]}
+              elif $x == "-o" or $x == "+o" or $x == "-O" or $x == "+O" then sh($i + 2)
+              elif $x == "--" then {k: "file"}
+              elif ($x | test("^[-+]")) and $rest[$i].k == "lit" then sh($i + 1)
+              else {k: "file"} end end;
+          sh(0) as $m
+          | if $m.k == "c" then keep(if $m.b == null then [] else op_body($m.b; $st) end)
+            elif $m.k == "stdin" then
+              ([$R[] | select((.fd // "0") == "0" and (.op | IN("<<", "<<-", "<<<")))] | last) as $h
+              | if $h == null then keep([])
+                elif $h.hdoc != null then
+                  keep(if $h.hdoc.lit then [["reparse", $h.hdoc.text, ($st | tojson)]] else rec_deny("unresolved-heredoc"; $p.raw; "") end)
+                else keep([$h.w | operands] | if length == 1 then op_body(.[0]; $st) else rec_deny("ast-unresolved"; $h.w.raw; "") end)
+              end
+            else keep([]) end
+        elif $n == "sed" then keep(v_sed($rest; $st))
+        elif $n == "tee" then keep(v_tee($rest; $st))
+        elif $n == "rm" or $n == "touch" or $n == "truncate" then keep(v_rmlike($n; $rest; $st))
+        elif $n == "cp" or $n == "mv" then keep(v_cpmv($n; $rest; $st))
+        elif $n == "ln" then keep(v_ln($rest; $st))
+        elif $n == "install" then keep(v_install($rest; $st))
+        elif $n == "rsync" then keep(v_rsync($rest; $st))
+        elif $n == "dd" then keep(v_dd($rest; $st))
+        elif $n == "tar" or $n == "gtar" or $n == "bsdtar" then keep(v_tar($rest; $st))
+        elif $n == "git" then keep(v_git($rest; $st))
+        # grep may be ugrep, whose --filter runs commands and --save-config writes
+        elif ($n | IN("grep", "egrep", "fgrep", "ugrep", "ug")) and any($t[]; test("^--(filter|save-config)")) then
+          keep(rec_deny("ast-unresolved"; $p.raw; "ugrep --filter or --save-config"))
+        else keep([]) end
+      end
+    end;
+  if type == "array" then seq(.; $st)
+  else . as $S
+  | [$S | own_words | .subs[] | go($st)] as $sg
+  | ([$sg[].r[]]) as $sr
+  | ($st + {mut: ((($st.mut // []) + [$sg[].st.mut[]?]) | unique)}) as $st
+  | ([$S.redirs[] | select(write_redir) | .w | operands | target(.; "follow"; $st)[]]) as $rr
+  | ($S.cmd) as $c
+  | (if $c == null then {r: [], st: $st}
+     elif $c.k == "call" then
+       [$c.argv[] | operands] as $a
+       | call($a; $S.redirs; $st) as $o
+       | mutnote($a; $st) as $m
+       | {r: ($o.r + [$m[] | select(. != "*" and ($E.dirs // {})[.] == null) | ["needpath", .]]),
+          st: ($o.st + {mut: ((($o.st.mut // []) + $m) | unique)})}
+     elif $c.k == "and" or $c.k == "or" then
+       # `y` runs after x succeeded (&&) or failed (||): a failed x may have
+       # moved the cwd part-way, so `||` starts y from both states
+       ($c.x | go($st)) as $x
+       | ($c.y | go(if $c.k == "and" then $x.st else merge($st; $x.st) end)) as $y
+       | {r: ($x.r + $y.r), st: merge($st; merge($x.st; $y.st))}
+     elif $c.k == "pipe" then
+       ($c.x | go($st)) as $x | ($c.y | go($st)) as $y | {r: ($x.r + $y.r), st: merge($st; $y.st)}
+     elif $c.k == "sub" then {r: ($c.body | go($st) | .r), st: $st}
+     elif $c.k == "block" then ($c.body | go($st))
+     elif $c.k == "compound" then
+       (reduce $c.bodies[] as $b ($st; merge(.; ($b | go($st) | .st)))) as $m1
+       | [$c.bodies[] | go($m1)] as $p2
+       | {r: [$p2[].r[]], st: (reduce $p2[].st as $s ($m1; merge(.; $s)))}
+     # zsh reads `time -p` as running a command named -p: the body may not run
+     elif $c.k == "wrap" then ($c.body | go($st))
+       | (if $c.t == "CoprocClause" then .st = $st elif $c.posix then .st = merge($st; .st) else . end)
+     else {r: [], st: $st} end) as $o
+  | {r: ($sr + $rr + $o.r), st: (if $S.bg then $st else $o.st end)}
+  end;
+
+# a field holding a separator byte would split into forged records
+model($E) | go($E.st) | .r[] | map(tostring)
+| if any(.[]; test("[\u001e\u001f]")) then ["deny", "ast-unresolved", "(shell body)", "(a raw 0x1e or 0x1f byte, the engine's record separators)"] else . end
+| join("\u001f") + "\u001e"
+BWIMC_AST_EOF
+# <<< END bash-ast <<<
+
+if [ "$_bwimc_engine" != regex ]; then
+    _bwimc_ast_run "$cmd" "$(jq -nc --arg c "$_bwimc_cwd" '{cwds: [$c], unres: false, stack: []}')" 0
+fi
+
 _bwimc_hb=$(_bwimc_blank_heredocs "$cmd")
 
 # a comment can hide a quote from the scanner, which knows no
@@ -4361,7 +5407,7 @@ _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_fsmut=""
-_bwimc_redir_scan_text "$_bwimc_hb"
+[ "$_bwimc_engine" = ast ] || _bwimc_redir_scan_text "$_bwimc_hb"
 
 # ---- (g) git commands that rewrite a PROTECTED checkout ----
 #
@@ -7184,7 +8230,7 @@ while IFS= read -r _bwimc_clause; do
     if [ "$_bwimc_interp_seen" = 0 ] && { [[ "$_bwimc_wq" =~ $_BWIMC_WRAP_RE ]] || [[ "$_bwimc_wrap_lc" == *"\$'"* ]]; }; then
         _bwimc_check_interp_body "$_bwimc_wrap_sp" wrap
     fi
-done < <(_bwimc_verb_clauses "$_bwimc_hb")
+done < <([ "$_bwimc_engine" = ast ] || _bwimc_verb_clauses "$_bwimc_hb")
 _bwimc_chroot=""
 done  # HIMMEL-4138 readings
 

@@ -38,8 +38,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const evalCli = join(here, "..", "guardrails", "egress-matrix-eval.mjs");
 // The matrix is per provider, not per model, so the consumer pins the models a
 // provider may serve. A role with no entry has no pinned model and is refused.
-const PINNED = { openrouter: { embed: "openai:qwen/qwen3-embedding-8b", rerank: "openai:cohere/rerank-4-fast" } };
-const PURPOSE = { embed: "embedding", rerank: "rerank", generate: "inference" };
+const PINNED = { openrouter: { embed: "openai:qwen/qwen3-embedding-8b", rerank: "openai:cohere/rerank-4-fast", generate: "openai:google/gemini-2.5-flash-lite" } };
+const PURPOSE = { embed: "embedding", rerank: "rerank", generate: "query-expansion" };
 const ENV_ROLE = { embed: "QMD_EMBED_MODEL", rerank: "QMD_RERANK_MODEL", generate: "QMD_GENERATE_MODEL" };
 
 // --resolve <index.yml> [<index.sqlite>]: with no --index the fork opens the first
