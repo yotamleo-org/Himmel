@@ -23,14 +23,17 @@ bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 T="$(mktemp -d -t gcp-net-test.XXXXXX)" || exit 1
 trap 'rm -rf "$T"' EXIT
 
-# describe exits 1 (resource absent) unless $STUB_EXISTS is set; STUB_FAIL=<word>
-# makes any call whose text contains the word fail.
+# describe exits 1 with gcloud's "was not found" (resource absent) unless
+# $STUB_EXISTS is set, or with a PERMISSION_DENIED error when $STUB_DESCRIBE_ERR
+# is set; STUB_FAIL=<word> makes any call whose text contains the word fail.
 cat > "$T/gcloud" <<'STUB'
 #!/usr/bin/env bash
 printf 'GCLOUD %s\n' "$*" >> "$STUB_LOG"
 [ -n "${STUB_FAIL:-}" ] && case "$*" in *"$STUB_FAIL"*) exit 1 ;; esac
 case "$*" in
-    *" describe "*) [ -n "${STUB_EXISTS:-}" ] || exit 1 ;;
+    *" describe "*)
+        if [ -n "${STUB_DESCRIBE_ERR:-}" ]; then echo "ERROR: (gcloud) PERMISSION_DENIED: caller lacks permission" >&2; exit 1; fi
+        [ -n "${STUB_EXISTS:-}" ] || { echo "ERROR: (gcloud) The resource 'projects/himmel-ci/x' was not found" >&2; exit 1; } ;;
 esac
 exit 0
 STUB
@@ -104,6 +107,9 @@ if grep '^GCLOUD ' "$STUB_LOG" | grep -q -E '(network|networks|--network)[= ]def
 export STUB_EXISTS=1
 rc="$(run net-up)"
 if [ "$rc" -eq 0 ] && ! grep -q -E ' create ' "$STUB_LOG"; then ok "net-up on an existing network creates nothing"; else bad "idempotency: rc=$rc creates=$(grep -c ' create ' "$STUB_LOG")"; fi
+n_upd="$(grep -c 'network-firewall-policies rules update' "$STUB_LOG")"
+n_fq="$(grep 'network-firewall-policies rules update' "$STUB_LOG" | grep -c -- '--action=allow .*--dest-fqdns=\|--dest-fqdns=.*--action=allow')"
+if [ "$n_upd" -eq 5 ] && [ "$n_fq" -eq 3 ]; then ok "net-up on existing rules updates all 5 in place (3 FQDN allows), so an edited allowlist is deployed"; else bad "rules update: total=$n_upd fqdn-allows=$n_fq"; fi
 unset STUB_EXISTS
 
 # 8. a failing create fails net-up (no silent half-built network).
@@ -150,6 +156,19 @@ export STUB_EXISTS=1
 rc="$(run status)"
 if [ "$rc" -eq 0 ] && ! grep -q -E ' (create|delete|update) ' "$STUB_LOG" && grep -q 'describe' "$STUB_LOG"; then ok "status only reads"; else bad "status: rc=$rc"; fi
 unset STUB_EXISTS
+
+# 12. a failed lookup (permission, auth, API) is not "absent": nothing is created
+# or deleted on it, the command fails, and status reports it as unknown.
+export STUB_DESCRIBE_ERR=1
+rc="$(run debug-off)"
+if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update) ' "$STUB_LOG"; then ok "debug-off fails on a lookup error instead of reporting the rule absent"; else bad "debug-off lookup error: rc=$rc"; fi
+rc="$(run net-up)"
+if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update) ' "$STUB_LOG"; then ok "net-up creates nothing on a lookup error"; else bad "net-up lookup error: rc=$rc"; fi
+rc="$(run net-down)"
+if [ "$rc" -ne 0 ] && ! grep -q -E ' (delete|create|update) ' "$STUB_LOG"; then ok "net-down deletes nothing on a lookup error"; else bad "net-down lookup error: rc=$rc"; fi
+rc="$(run status)"
+if [ "$rc" -eq 0 ] && grep -q 'unknown' "$T/out" && ! grep -q 'absent' "$T/out"; then ok "status reports a failed lookup as unknown"; else bad "status lookup error: rc=$rc out=$(cat "$T/out")"; fi
+unset STUB_DESCRIBE_ERR
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed" >&2; exit 1; }
 echo "all cases passed"

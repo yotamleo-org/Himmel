@@ -81,42 +81,64 @@ gc() { "$GCLOUD" "$@" --project="$PROJECT" --impersonate-service-account="$SA"; 
 # join_csv <host>... -> comma-joined
 join_csv() { local IFS=,; echo "$*"; }
 
-# ensure <label> <describe args...> -- <create args...>: create only when describe fails.
+# present <describe args...>: 0 = present, 1 = confirmed absent (gcloud says not
+# found), 2 = the lookup itself failed (auth, permission, API): never absence.
+present() {
+    local err
+    err="$(gc "$@" 2>&1 > /dev/null)" && return 0
+    case "$err" in
+        *[Nn]ot\ [Ff]ound*|*NOT_FOUND*|*"does not exist"*) return 1 ;;
+    esac
+    echo "gcp-net: lookup failed: $err" >&2
+    return 2
+}
+
+# ensure <label> <describe args...> -- <create args...>: create only when confirmed absent.
 ensure() {
     local label="$1"; shift
     local -a dsc=()
     while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do dsc+=("$1"); shift; done
     shift
-    if gc "${dsc[@]}" > /dev/null 2>&1; then
-        echo "gcp-net: $label exists"
-    else
-        gc "$@" || die "creating $label failed"
-        echo "gcp-net: $label created"
-    fi
+    present "${dsc[@]}"
+    case $? in
+        0) echo "gcp-net: $label exists" ;;
+        1) gc "$@" || die "creating $label failed"
+           echo "gcp-net: $label created" ;;
+        *) die "checking $label failed" ;;
+    esac
 }
 
-# drop <label> <describe args...> -- <delete args...>: delete only when describe succeeds.
+# drop <label> <describe args...> -- <delete args...>: delete only when confirmed present.
 drop() {
     local label="$1"; shift
     local -a dsc=()
     while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do dsc+=("$1"); shift; done
     shift
-    if gc "${dsc[@]}" > /dev/null 2>&1; then
-        gc "$@" || die "deleting $label failed"
-        echo "gcp-net: $label deleted"
-    else
-        echo "gcp-net: $label absent"
-    fi
+    present "${dsc[@]}"
+    case $? in
+        0) gc "$@" || die "deleting $label failed"
+           echo "gcp-net: $label deleted" ;;
+        1) echo "gcp-net: $label absent" ;;
+        *) die "checking $label failed" ;;
+    esac
 }
 
 POL=(--firewall-policy="$POLICY" --global-firewall-policy)
 
-# rule <priority> <label> <rule-create args...>
+# rule <priority> <label> <rule args...>: create the rule, or update it in place
+# when it exists, so an edited allowlist reaches the deployed policy on re-run.
 rule() {
     local prio="$1" label="$2"; shift 2
-    ensure "rule $prio ($label)" \
-        compute network-firewall-policies rules describe "$prio" "${POL[@]}" -- \
-        compute network-firewall-policies rules create "$prio" "${POL[@]}" "$@"
+    present compute network-firewall-policies rules describe "$prio" "${POL[@]}"
+    case $? in
+        0) gc compute network-firewall-policies rules update "$prio" "${POL[@]}" "$@" \
+               || die "updating rule $prio ($label) failed"
+           echo "gcp-net: rule $prio ($label) updated" ;;
+        1) gc compute network-firewall-policies rules create "$prio" "${POL[@]}" "$@" \
+               || die "creating rule $prio ($label) failed"
+           echo "gcp-net: rule $prio ($label) created" ;;
+        *) die "checking rule $prio ($label) failed" ;;
+    esac
 }
 
 cmd_net_up() {
@@ -176,7 +198,10 @@ cmd_net_down() {
 }
 
 cmd_status() {
-    probe() { if gc "$@" > /dev/null 2>&1; then echo "present"; else echo "absent"; fi; }
+    probe() {
+        present "$@" 2> /dev/null
+        case $? in 0) echo "present" ;; 1) echo "absent" ;; *) echo "unknown (lookup failed)" ;; esac
+    }
     echo "network $NET: $(probe compute networks describe "$NET")"
     echo "subnet $SUBNET ($REGION): $(probe compute networks subnets describe "$SUBNET" --region="$REGION")"
     echo "router $ROUTER: $(probe compute routers describe "$ROUTER" --region="$REGION")"
