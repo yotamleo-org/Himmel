@@ -503,8 +503,8 @@ def ledger_lines(rows, vers, unthemed=0, released=()):
         return '%s%d of %d done (%d %%), %d in progress, %d to do.' % (
             label, t[2], len(a), int(100.0 * t[2] / len(a) + 0.5) if a else 0, t[1], t[0])
     cur = next((i for i in train if vers[i] not in released and any(r[3] == i and r[2] != 2 for r in rows)), None)
-    out = [line('Running now: %s — ' % vlabel(vers[cur]), {cur}) if cur is not None
-           else 'Running now: nothing — no unreleased v1.0.x version has open work.', line('Whole v1.0.x train: ', set(train))]
+    out = [line('Plan rows placed in %s (not Jira progress): ' % vlabel(vers[cur]), {cur}) if cur is not None
+           else 'Plan rows placed: no unreleased v1.0.x version has open plan rows.', line('Plan rows placed in the whole v1.0.x train (not Jira progress): ', set(train))]
     dr = sum(1 for r in rows if r[3] in train and r[7] == 1)
     un = sum(1 for r in rows if r[3] in train and r[7] == 2 and r[2] != 2)
     att = []
@@ -565,6 +565,57 @@ def done_in_future(mir, vers, unknown):
         return 0
     fut = {v['n'] for v in unrel} - {cur['n']}
     return sum(1 for m in mir.values() if bucket(m) == 'done' and any(f in fut for f in m['fv']))
+
+
+def jira_cli():
+    """TRACKER_JIRA (test seam), else the primary checkout's Jira CLI: a worktree has no dist/."""
+    if os.environ.get('TRACKER_JIRA'):
+        return os.environ['TRACKER_JIRA']
+    here = os.path.dirname(os.path.abspath(__file__))
+    scrub = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
+             'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX',
+             'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_REPLACE_REF_BASE',
+             'GIT_SHALLOW_FILE', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT']
+    env = {k: v for k, v in os.environ.items() if k not in scrub}
+    try:
+        common = subprocess.run(['git', '-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                                env=env, capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        common = ''
+    root = os.path.dirname(common) if common else os.path.join(here, '..', '..', '..')
+    return os.path.join(root, 'scripts', 'jira', 'dist', 'index.js')
+
+
+def jira_parity(tk, vers, cur):
+    """One live `jira list` for the version worked on, its per-bucket counts against the hero's.
+
+    Closed and wont do are in neither count; IN CI counts as in review. Any CLI failure or garbled answer reads
+    unavailable, never a render failure."""
+    if cur < 0:
+        return 'parity: unavailable (no version worked on)'
+    v, cli = vers[cur]['n'], jira_cli()
+    cmd = (['node', cli] if cli.endswith('.js') else [cli]) + [
+        'list', '--jql', 'project = HIMMEL AND fixVersion = "%s"' % v, '--limit', '5000']
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                           env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY') or 'HIMMEL'))
+    except (OSError, subprocess.SubprocessError):
+        return 'parity: %s unavailable' % v
+    lines = [l.split('\t') for l in r.stdout.splitlines() if l.strip()]
+    if r.returncode != 0 or any(len(f) < 3 or not KEY_RE.fullmatch(f[0]) for f in lines):
+        return 'parity: %s unavailable' % v
+    order = ('done', 'prog', 'rev', 'todo')
+
+    def tally(bs):
+        c = {b: 0 for b in order}
+        for b in bs:
+            if b != 'wont':
+                c['rev' if b == 'ci' else b] += 1
+        return '/'.join(str(c[b]) for b in order)
+    page = tally(t['b'] for t in tk if t['v'] == cur)
+    jira = tally(BUCKETS.get(f[2].strip().lower(), 'todo') for f in lines)
+    tail = ' (done/in progress/in review/to do)'
+    return 'parity: %s ok %s%s' % (v, page, tail) if page == jira else 'parity: %s DRIFT page %s jira %s%s' % (v, page, jira, tail)
 
 
 def jira_view(mir, legs, vers, prows, vnames):
@@ -1172,6 +1223,7 @@ def main():
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
     jt, jc, jn, ja, jw, jf = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    par = jira_parity(jt, jv, jc)
     kb = kanban(jt, jv, jc, a.jira_base_url, jw, jf)
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
@@ -1183,7 +1235,7 @@ def main():
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
                 LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes, P=rows,
-                U=unpl, DR=dirs, N=notes, LG=lg, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, RU=ru,
+                U=unpl, DR=dirs, N=notes, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, RU=ru, PAR=par,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
                                             [v for v in vers if trail_parent(v)])),
@@ -1209,6 +1261,7 @@ def main():
         print('drift trend: ' + ' → '.join('%s %d/%d/%d' % (x[0][:10], x[1], x[2], x[3]) for x in dt[-6:]) + ' (drift/unplanned/unthemed)')
     for l in lg:
         print('ledger: ' + l)
+    print(par)
     print('luna-map coverage: %d/%d placed keys with >=1 note; %d distinct notes; %.1fs'
           % (cov, n_plan, len(notes), time.time() - t0))
 
@@ -1842,7 +1895,8 @@ var HIDE=true;try{var hs=localStorage.getItem("hide3990");if(hs!==null)HIDE=hs==
 // jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins. Tickets closed without shipping are not in JT (D.JW counts them).
 function jb(t){return t.live?"prog":t.b}
 function jin(i){return JT.filter(function(t){return t.v===i})}
-function jtally(a){var r={n:a.length};JB.forEach(function(s){r[s[0]]=[]});a.forEach(function(t){r[jb(t)].push(t)});r.open=a.length-r.done.length;return r}
+// jtally(a,raw): raw counts the Jira status (the hero, which must equal JQL); else the board's live-leg display.
+function jtally(a,raw){var r={n:a.length};JB.forEach(function(s){r[s[0]]=[]});a.forEach(function(t){r[raw?t.b:jb(t)].push(t)});r.open=a.length-r.done.length;return r}
 function jdot(b,x){return el("span","jst jc-"+b,x)}
 function jnum(label,title,list,cls){var b=el("button",cls||"jn",String(label));b.type="button";
  b.addEventListener("click",function(e){e.stopPropagation();openDrill("jt",{list:list},title,b)});return b}
@@ -1856,17 +1910,17 @@ function jlist(db,list){db.appendChild(el("p","note",pl(list.length,"ticket","ti
 function jbar(t,big){var w=el("div",big?"jbar big":"jbar");JB.slice().reverse().forEach(function(s){var n=t[s[0]].length;if(!n)return;var i=el("i","js-"+s[0]);i.dataset.w=(100*n/(t.n||1))+"%";i.title=s[1]+": "+n;w.appendChild(i)});
  w.setAttribute("role","img");w.setAttribute("aria-label",JB.map(function(s){return t[s[0]].length+" "+s[1]}).join(", "));return w}
 function jgrow(){var a=document.querySelectorAll(".jbar i[data-w]");requestAnimationFrame(function(){requestAnimationFrame(function(){a.forEach(function(i){i.style.width=i.dataset.w;i.removeAttribute("data-w")})})})}
-function jhero(){var h=$("hh"),s=$("sent"),hn=$("hnote");s.textContent="";hn.textContent=D.RU?"release state unknown":"";
+function jhero(){var h=$("hh"),s=$("sent"),hn=$("hnote");s.textContent="";hn.textContent=[D.RU?"release state unknown":"",D.PAR||""].filter(Boolean).join(" · ");
  if(D.RU)hn.title="No versions file was found, so no version counts as released. Write `jira versions` to <mirror-dir>.versions.tsv.";
  var lg=$("legend"),nx=$("next"),al=$("alerts"),nb0=jbar(jtally([]),true);nb0.id="hbar";$("hbar").replaceWith(nb0);lg.textContent="";nx.textContent="";al.textContent="";
  if(JCUR<0){h.textContent="Nothing open";s.textContent="Every unreleased version is done.";jalerts(-1);return}
- var v=JV[JCUR],t=jtally(jin(JCUR));h.textContent=v.n;
+ var v=JV[JCUR],t=jtally(jin(JCUR),1);h.textContent=v.n;
  add(s,jnum(t.done.length,v.n+": Done",t.done)," of ",jnum(t.n,v.n+": every ticket",jin(JCUR))," done · ",
   jnum(t.rev.length,v.n+": In Review",t.rev)," in review · ",jnum(t.ci.length,v.n+": IN CI",t.ci)," in CI · ",
   jnum(t.prog.length,v.n+": In Progress",t.prog)," in progress · ",jnum(t.todo.length,v.n+": To Do",t.todo)," to do.");
  var nb=jbar(t,true);nb.id="hbar";$("hbar").replaceWith(nb);
  JB.slice().reverse().forEach(function(x){lg.appendChild(jdot(x[0],x[1]))});
- if(JNXT>=0){var u=jtally(jin(JNXT));add(nx,"Up next: "+JV[JNXT].n+" — ",jnum(u.open,JV[JNXT].n+": open",jin(JNXT).filter(function(x){return jb(x)!="done"}))," open, "+u.done.length+" done.")}
+ if(JNXT>=0){var u=jtally(jin(JNXT),1);add(nx,"Up next: "+JV[JNXT].n+" — ",jnum(u.open,JV[JNXT].n+": open",jin(JNXT).filter(function(x){return jb(x)!="done"}))," open, "+u.done.length+" done.")}
  jalerts(JCUR)}
 // jalerts(cur): released versions that still hold open tickets. Runs even when nothing unreleased is open (cur<0).
 function jalerts(cur){var al=$("alerts"),to=cur<0?"an unreleased version":JV[cur].n;
