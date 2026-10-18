@@ -6,7 +6,9 @@
 #      token-quoting message;
 #   2. one-push-per-session (claudex lane): ONE push per head, with a same-head
 #      fixup (fast-forward over the already-pushed head) allowed; a rewritten or
-#      different-base head stays refused.
+#      different-base head stays refused;
+#   3. CI-queue orphans (claudex lane): a pending CI is never an external
+#      blocker; the leg re-runs check-ci until green or red and triages a red.
 # Docs-only reads. PLATFORM GUARD: no .ps1 twin — Bash 3.2, grep/tr only.
 set -uo pipefail
 
@@ -83,6 +85,23 @@ if has "$CLAUDEX" 'Do not retry the push or work around a refusal'; then
     pass "claudex preface still forbids retrying a refused push"
 else
     fail "claudex preface still forbids retrying a refused push"
+fi
+
+# 3. a pending CI is not an external blocker (claudex lane)
+if has "$CLAUDEX" 'pending or queued CI is never an external blocker'; then
+    pass "claudex preface: a pending CI is never an external blocker"
+else
+    fail "claudex preface: a pending CI is never an external blocker"
+fi
+if has "$CLAUDEX" 'DEADLINE-PENDING[^.]*re-run[^.]*check-ci[^.]*until it is green or red'; then
+    pass "claudex preface: DEADLINE-PENDING re-runs check-ci until green or red"
+else
+    fail "claudex preface: DEADLINE-PENDING re-runs check-ci until green or red"
+fi
+if has "$CLAUDEX" 'red is yours to triage[^.]*ci-red\.md'; then
+    pass "claudex preface: a red CI is the leg's to triage per ci-red.md"
+else
+    fail "claudex preface: a red CI is the leg's to triage per ci-red.md"
 fi
 
 if [ "$fails" -eq 0 ]; then printf 'PASS - test-friction-gate-docs.sh\n'; exit 0; fi

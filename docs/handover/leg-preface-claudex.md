@@ -44,6 +44,13 @@ blocks all remaining work** (including a PROBE-style ask), record the state in
 Results and arm **ONE Monitor**. Do not wrap immediately on a console-owned
 blocker. External blockers still wrap unless the console can resolve them.
 
+**A pending or queued CI is never an external blocker.** A busy runner queue is
+the fleet's own load, and the PR stays yours. When `scripts/check-ci.sh` exits
+`DEADLINE-PENDING` (exit 2, nothing failed), re-run one foreground `check-ci`
+until it is green or red; do not wrap, and do not arm an inbox hold for it. A
+red is yours to triage, as on the native lane: read
+`docs/handover/leg-sections/ci-red.md`.
+
 Resolve `<handover-root>` through `scripts/lib/handover-path.sh`'s
 `handover_root()`; `<session>` is YOUR exact launch session name, never a
 sender-supplied path or the console's inbox. Use the resulting absolute path:
