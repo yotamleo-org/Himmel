@@ -2050,13 +2050,15 @@ PY
         echo "    none declared in the registry."
         return 0
     fi
-    drift_out=$(bash "$guard" 2>&1) || true
+    echo "    checking $(printf '%s\n' "$entries" | grep -c .) tools against upstream..."
+    drift_out=$(bash "$guard" 2>&1 </dev/null) || true
     while IFS=$'\x1f' read -r name unattended; do
         [ -n "$name" ] || continue
         line=$(printf '%s\n' "$drift_out" | grep -F -- "  $name: " | head -1)
         case "$line" in
             "  $name: CURRENT"*)
                 inst=$(printf '%s' "$line" | sed -n 's/.*installed \([^ )]*\).*/\1/p')
+                echo "    $name: current (${inst:--})"
                 _probe_tool_row "$name" up-to-date "${inst:-current}"
                 _ver_row "$name" "${inst:--}" "${inst:--}" current
                 continue ;;
@@ -2076,6 +2078,7 @@ PY
         latest=$(printf '%s' "$line" | sed -n 's/.*latest tag v\{0,1\}\([^;) ]*\).*/\1/p')
         inst=$(printf '%s' "$line" | sed -n 's/.*installed \([^ )]*\).*/\1/p')
         manual="bash scripts/upstreams/apply-tool-upgrade.sh $name $latest"
+        echo "    $name: behind ($inst -> $latest)"
         if [ "$unattended" != "true" ]; then
             echo "    $name $inst -> $latest is operator-gated (upgrade.unattended is not true); run: $manual"
             _probe_tool_row "$name" skipped "$inst -> $latest operator-gated — run: $manual"
@@ -2088,9 +2091,10 @@ PY
             continue
         fi
         rc=0
-        out=$(bash "$upgrader" "$name" "$latest" --unattended 2>&1) || rc=$?
+        out=$(bash "$upgrader" "$name" "$latest" --unattended 2>&1 </dev/null) || rc=$?
         case "$rc" in
-            0) _probe_tool_row "$name" updated "$(printf '%s\n' "$out" | grep '^UPGRADE ' | tail -1 | cut -d' ' -f3-)" ;;
+            0) echo "    $name: upgraded ($inst -> $latest)"
+               _probe_tool_row "$name" updated "$(printf '%s\n' "$out" | grep '^UPGRADE ' | tail -1 | cut -d' ' -f3-)" ;;
             1) _probe_tool_row "$name" up-to-date "$(_last_line_trimmed "$out")" ;;
             3) _probe_tool_row "$name" skipped "$(_last_line_trimmed "$out")" ;;
             *)

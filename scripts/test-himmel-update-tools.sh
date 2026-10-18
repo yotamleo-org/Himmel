@@ -80,8 +80,8 @@ mkdir -p "$STATE" "$BIN" || exit 1
 for t in alpha beta; do
     printf '#!/bin/sh\ncat "%s/%s"\n' "$STATE" "$t" > "$BIN/$t"
     # shellcheck disable=SC2016 # $STUB_LATEST must expand when the stub runs
-    printf '#!/bin/sh\necho "%s-up ran" >> "%s"\n[ -f "%s/%s.fail" ] && exit 1\nprintf "%%s\\n" "$STUB_LATEST" > "%s/%s"\n' \
-        "$t" "$LOG" "$STATE" "$t" "$STATE" "$t" > "$BIN/$t-up"
+    printf '#!/bin/sh\necho "%s-up ran" >> "%s"\n[ -f "%s/%s.stdin" ] && cat >/dev/null\n[ -f "%s/%s.fail" ] && exit 1\nprintf "%%s\\n" "$STUB_LATEST" > "%s/%s"\n' \
+        "$t" "$LOG" "$STATE" "$t" "$STATE" "$t" "$STATE" "$t" > "$BIN/$t-up"
     chmod +x "$BIN/$t" "$BIN/$t-up"
 done
 
@@ -119,7 +119,7 @@ EOF
 
 # reset <alpha-ver> <beta-ver>
 reset() {
-    rm -f "$STATE"/*.fail "$LOG"
+    rm -f "$STATE"/*.fail "$STATE"/*.stdin "$LOG"
     printf '%s\n' "$1" > "$STATE/alpha"
     printf '%s\n' "$2" > "$STATE/beta"
 }
@@ -172,6 +172,26 @@ check_has "beta still upgraded after alpha failed" 'beta .*updated' "$OUT"
 check_eq  "both upgrade commands ran" "alpha-up ran
 beta-up ran" "$(ran)"
 check_eq  "--only reports the failure in its exit code" 1 "$RC"
+
+echo "an upgrader that reads stdin does not swallow the remaining tools"
+write_registry true true
+reset 1.0.0 1.0.0
+: > "$STATE/alpha.stdin"
+run --only tools
+check_eq  "both upgrade commands ran" "alpha-up ran
+beta-up ran" "$(ran)"
+check_has "beta upgraded after alpha read stdin" 'beta .*updated' "$OUT"
+
+echo "per-tool progress: count line first, then one result line per tool"
+reset 2.0.0 2.0.0
+run --only tools
+check_has "count line" 'checking 2 tools against upstream' "$OUT"
+check_has "alpha current line" '^    alpha: current' "$OUT"
+check_has "beta current line" '^    beta: current' "$OUT"
+reset 1.0.0 2.0.0
+run --only tools
+check_has "alpha behind line" '^    alpha: behind' "$OUT"
+check_has "alpha upgraded line" '^    alpha: upgraded' "$OUT"
 
 echo "--check: reports behind, runs no upgrade"
 write_registry true true
