@@ -33,8 +33,8 @@ three places it feeds. The JSON is the source of truth; this page is the map.
    · waived W · checked C` line. Exit 3 while a hit is open: the session fixes,
    waives (with a reason) or checks each hit BEFORE step 3, then records the pass
    with `ledger-append.sh preflight --hit <class>=<fixed|checked|waived:reason>`
-   (a `kind: preflight` ledger row; the latest row for the branch is what
-   closes a hit on the next run). Without `--area`, `--diff` stays advisory
+   (a `kind: preflight` ledger row; the latest row for the branch, recorded at
+   the current head, is what closes a hit on the next run). Without `--area`, `--diff` stays advisory
    (always exit 0). After adjudication the session prints
    `known-findings: round-1 hits = N` — the acceptance metric. Fixed and
    deferred `amend` rows carry `class=` (auto-attributed from this catalog,

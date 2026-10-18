@@ -816,7 +816,7 @@
       ],
       "detector": {
         "type": "added-line-regex",
-        "pattern": "^\\s*(exit|return)\\s+[3-9][0-9]*\\b"
+        "pattern": "^\\s*(exit|return)\\s+([3-9]|[1-9][0-9]+)\\b"
       },
       "learning_match": "exit contract|exit code|rc=[0-9]",
       "match": "exit contract|exit code|\\brc=[0-9]",

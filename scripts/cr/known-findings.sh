@@ -94,15 +94,16 @@ if [ "$MODE" = diff ]; then
 fi
 LEDGER="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-BRANCH=""
+BRANCH=""; HEADSHA=""
 if [ "$AREA" = 1 ]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD)" || { echo "known-findings.sh: cannot resolve the current branch" >&2; exit 2; }
+  HEADSHA="$(git rev-parse HEAD)" || { echo "known-findings.sh: cannot resolve HEAD" >&2; exit 2; }
 fi
 if [ "$MODE" = refresh ] && [ -n "$LEARNINGS" ] && [ ! -f "$LEARNINGS" ]; then
   echo "known-findings.sh: learnings export not found: $LEARNINGS" >&2; exit 2
 fi
 
-MODE="$MODE" KF="$KF" AREA="$AREA" BRANCH="$BRANCH" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
+MODE="$MODE" KF="$KF" AREA="$AREA" BRANCH="$BRANCH" HEADSHA="$HEADSHA" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
 const fs = require("fs"), path = require("path");
 const T0 = Date.now();
 const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON === "1";
@@ -406,11 +407,11 @@ if (MODE === "diff") {
     if (where.length) hits.push({ id: c.id, kind: c.kind, title: c.title, canonical: c.canonical, coverage: c.coverage, where });
   }
   if (process.env.AREA === "1") {
-    // A hit is open until the latest recorded preflight pass for this branch
-    // closed its class as waived or checked; a class that pass recorded as fixed
+    // A hit is open until the latest recorded preflight pass for this branch AT
+    // THIS HEAD closed its class (a new commit voids earlier waivers) as waived or checked; a class that pass recorded as fixed
     // and that no longer hits counts as fixed.
     let last = null;
-    try { for (const l of fs.readFileSync(process.env.LEDGER, "utf8").split("\n")) { if (!l) continue; let r; try { r = JSON.parse(l); } catch { continue; } if (r.kind === "preflight" && r.branch === process.env.BRANCH) last = r; } } catch { /* no ledger: every hit is open */ }
+    try { for (const l of fs.readFileSync(process.env.LEDGER, "utf8").split("\n")) { if (!l) continue; let r; try { r = JSON.parse(l); } catch { continue; } if (r.kind === "preflight" && r.branch === process.env.BRANCH) last = r.head === process.env.HEADSHA ? r : null; } } catch { /* no ledger: every hit is open */ }
     const prior = {}; for (const h of (last && last.hits) || []) prior[h.class] = h;
     for (const h of hits) { const p = prior[h.id]; h.state = p && (p.state === "waived" || p.state === "checked") ? p.state : "open"; if (h.state === "waived" && p.ref) h.ref = p.ref; }
     const fixedN = Object.values(prior).filter(p => p.state === "fixed" && !hits.some(h => h.id === p.class)).length;

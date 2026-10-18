@@ -470,12 +470,17 @@ contains "area: summary names fixed, waived and checked" "$bout" "· fixed 0 · 
 bash "$SCRIPT" --area >/dev/null 2>&1; check "area: --area without --diff → exit 2" "$?" "2"
 abranch="$(cd "$repo" && git rev-parse --abbrev-ref HEAD)"
 ajson="$(cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area --json 2>&1)"
-AJ="$ajson" AB="$abranch" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map((h,i)=>({class:h.id,state:i===0?"checked":"waived",...(i===0?{}:{ref:"fixture"})}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:"x",hits:hs}))' > "$AL"
+AJ="$ajson" AB="$abranch" AH="$(cd "$repo" && git rev-parse HEAD)" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map((h,i)=>({class:h.id,state:i===0?"checked":"waived",...(i===0?{}:{ref:"fixture"})}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:process.env.AH,hits:hs}))' > "$AL"
 cout="$(cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area 2>&1)"; crc=$?
 check "area: a preflight row closing every hit exits 0" "$crc" "0"
 not_contains "area: no hit stays open after the pass is recorded" "$cout" "state=open"
 contains "area: a waived hit shows its state and reason" "$cout" "state=waived (fixture)"
 printf '%s\n' '{"kind":"preflight","branch":"other-branch","head":"x","hits":[]}' >> "$AL"
+cp "$AL" "$AL.cur"
+printf '%s\n' '{"kind":"preflight","branch":"'"$abranch"'","head":"0000000","hits":[]}' >> "$AL"
+( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); erc=$?
+check "area: a preflight row recorded at an older head closes nothing" "$erc" "3"
+cp "$AL.cur" "$AL"
 ( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); drc=$?
 check "area: a preflight row of another branch is ignored, the latest own row still holds" "$drc" "0"
 
