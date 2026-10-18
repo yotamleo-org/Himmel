@@ -96,6 +96,11 @@ const gap = scanRepo("o/r", { ghFn: (args) => {
 }, scanFn });
 console.log("GAP_STATUS=" + gap.status);
 console.log("GAP_SUMMARY=" + gap.summary);
+const dirFail = scanRepo("o/r", { ghFn: (args) => {
+  if (args.join(" ") === "api repos/o/r/contents/commands") throw new Error("gh exited 1: HTTP 403 rate limit");
+  return mk("fine")(args);
+}, scanFn });
+console.log("DIRFAIL_STATUS=" + dirFail.status);
 const many = Array.from({ length: 15 }, (_, i) => ({ name: "DOC" + i + ".md", type: "file", size: 5 }));
 const crowd = scanRepo("o/r", { ghFn: (args) => {
   const k = args.join(" ");
@@ -113,6 +118,7 @@ grep -q '^DEAD_STATUS=fetch_error$' <<<"$out2" && r=yes || r=no; assert "unreach
 grep -q '^SUMMARY=flagged: ' <<<"$out2" && r=yes || r=no; assert "summary line starts flagged:" yes "$r"
 grep -q '^GAP_STATUS=partial$' <<<"$out2" && r=yes || r=no; assert "unreadable file makes the scan partial" yes "$r"
 grep -q '^GAP_SUMMARY=incomplete: ' <<<"$out2" && r=yes || r=no; assert "finding-free partial scan is incomplete, not clean" yes "$r"
+grep -q '^DIRFAIL_STATUS=partial$' <<<"$out2" && r=yes || r=no; assert "non-404 directory listing failure makes the scan partial" yes "$r"
 grep -q '^CROWD_PKG=true$' <<<"$out2" && r=yes || r=no; assert "package.json survives the file cap behind many root docs" yes "$r"
 
 # -- Test 3: gather puts the scan in the dossier -----------------------------

@@ -159,6 +159,8 @@ function decode(blob) {
 const ROOT_FILE_RE = /^(package\.json|(install|setup|bootstrap)(\.sh)?|[A-Za-z0-9_-]+\.md)$/i;
 const MD_DIRS = ["commands", ".claude/commands"];
 const SKILL_DIRS = ["skills", ".claude/skills"];
+// an absent command/skill dir is normal; any other listing failure leaves content unscanned
+const MISSING_RE = /404|not found|no [A-Z_]*FIXTURE entry/i;
 
 // ponytail: root docs + one level of command/skill dirs only (<=12 files, 200 KB each), not a full tree walk — upgrade path: ghFn tree API when a real miss shows up.
 function listFiles(fullName, ghFn, errors) {
@@ -168,8 +170,8 @@ function listFiles(fullName, ghFn, errors) {
     try {
       const r = ghFn(["api", `repos/${fullName}/contents${path ? "/" + path : ""}`]);
       return Array.isArray(r) ? r : [];
-    } catch {
-      if (!path) errors.push("listing");
+    } catch (e) {
+      if (!path || !MISSING_RE.test(String(e && e.message))) errors.push(`listing:${path}`);
       return [];
     }
   };
@@ -233,7 +235,7 @@ function makeGhFn() {
   return (args) => {
     const res = spawnSync("gh", args, { encoding: "utf-8", windowsHide: true, timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
     if (res.error) throw res.error;
-    if (res.status !== 0) throw new Error(`gh exited ${res.status}`);
+    if (res.status !== 0) throw new Error(`gh exited ${res.status}: ${String(res.stderr || "").slice(0, 200)}`);
     return JSON.parse(res.stdout);
   };
 }
