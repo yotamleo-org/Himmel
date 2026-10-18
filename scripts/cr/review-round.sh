@@ -816,6 +816,7 @@ judge_go_record() (
         name="${f##*/}"; name="${name%.md}"
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
         case "$name" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        if [ -L "$dir/$qid" ]; then continue; fi
         if ! go_verdict_snapshot "$f"; then
             echo "review-round: ${f#"$dir"/} cannot be read whole - the judge GO is refused" >&2
             exit 8
@@ -1146,7 +1147,9 @@ delta_refuse() {
 # judge-go: after the round cap, a signed judge GO at --head stands in for the
 # panel review of the delta since the last critic-reviewed head.
 # Exit 0 = accepted: prints <qid>/<name> and records one ledger row with
-# source=judge:<qid>/<name>; 1 = no GO record, or a round is still available;
+# source=judge:<qid>/<name>. The row is audit-only: its kind is not one
+# ledger-append.sh writes, and every gate reader keys on kind and ignores it.
+# 1 = no GO record, or a round is still available;
 # 8 = refused (NO-GO at the head, head not a descendant of a reviewed head).
 if [ "$verb" = "judge-go" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)

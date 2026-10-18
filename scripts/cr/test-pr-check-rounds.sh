@@ -2475,9 +2475,45 @@ if [ "$jgo_vrc" -ne 0 ]; then pass "6303 (f) a NO-GO at the head vetoes the judg
 git -C "$repo" checkout -q -b jg63c main
 printf 'e\n' > "$repo/jg63c.txt"; git -C "$repo" add jg63c.txt; git -C "$repo" commit -q -m jg63c
 jge_head="$(git -C "$repo" rev-parse jg63c)"
+for jge_n in 1 2; do
+    (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$jge_head" --branch jg63c >/dev/null 2>"$tmp/jg63c-$jge_n.err") || fail "jg63c fixture setup round $jge_n"
+done
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg63c.round")" "2" "6303 (g) fixture: two full rounds, one below the cap"
+printf 'f\n' >> "$repo/jg63c.txt"; git -C "$repo" commit -q -am "jg63c delta"
+jge_head="$(git -C "$repo" rev-parse jg63c)"
 judge jg63c-1 GO "$jge_head"
 jgo_out="$(jgo_verb jg63c "$jge_head")"; jgo_vrc=$?
-if [ "$jgo_vrc" -ne 0 ]; then pass "6303 (g) no judge shortcut before the round cap"; else fail "6303 (g) no judge shortcut before the round cap"; fi
+assert_eq "$jgo_vrc" "1" "6303 (g) no judge shortcut while a full round is still available ($jgo_out)"
+# A GO that only the record checks can refuse: each case has a reviewed head
+# below the delta and a GO at the delta, so a deleted check accepts it.
+jgo_rec() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-6303 \
+        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$1" "$2" "$3" \
+        --pr "$4" ${5:+--branch "$5"} --evidence-file "$jev/judge-evidence.md" \
+        >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1"
+}
+jgo_setup jg63x
+for jgx_case in unsigned forgedmac otherpr otherbranch symlinkrec symlinkqid; do
+    jgx_q="jgx-$jgx_case"
+    jgx_pr=1 jgx_br=""
+    case "$jgx_case" in
+        otherpr) jgx_pr=2 ;;
+        otherbranch) jgx_br=some-other-branch ;;
+    esac
+    jgo_rec "$jgx_q" GO "$jgo_head" "$jgx_pr" "$jgx_br"
+    case "$jgx_case" in
+        unsigned) sed -i.bak '/^mac: /d' "$vscope/$jgx_q/judge.md"; rm -f "$vscope/$jgx_q/judge.md.bak" ;;
+        forgedmac) sed -i.bak 's/^mac: ./mac: x/' "$vscope/$jgx_q/judge.md"; rm -f "$vscope/$jgx_q/judge.md.bak" ;;
+        symlinkrec) mv "$vscope/$jgx_q/judge.md" "$tmp/$jgx_q.md"; ln -s "$tmp/$jgx_q.md" "$vscope/$jgx_q/judge.md" ;;
+        symlinkqid) mv "$vscope/$jgx_q" "$tmp/$jgx_q"; ln -s "$tmp/$jgx_q" "$vscope/$jgx_q" ;;
+    esac
+    jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
+    assert_eq "$jgo_vrc" "1" "6303 (h) a judge GO that is $jgx_case buys nothing ($jgo_out)"
+    rm -rf "${vscope:?}/$jgx_q"
+done
+jgo_rec jgx-ok GO "$jgo_head" 1 ""
+jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "6303 (h) control: the same GO written properly is accepted ($jgo_out)"
 # A post-cap delta that only adds a test file, with a judge GO at its head.
 three_rounds jg62 clean
 printf 'echo t\n' > "$repo/jg62-test.sh"
