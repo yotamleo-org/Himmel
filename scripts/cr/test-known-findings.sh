@@ -459,6 +459,41 @@ contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-
 
 for rcf in "$tmp"/rc-*; do check "feed: refresh exits 0 ($(basename "$rcf"))" "$(cat "$rcf")" "0"; done
 
+# --diff --area gives each hit a state; an open hit blocks (exit 3) until a preflight row closes it
+contains "diff: new hook with no bypass var is flagged" "$out" "[hook-no-bypass-row]"
+AL="$tmp/area-ledger.jsonl"; : > "$AL"
+bout="$(cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area 2>&1)"; brc=$?
+check "area: an open hit exits 3" "$brc" "3"
+contains "area: each hit carries a state slot" "$bout" "state=open"
+contains "area: prints the preflight summary line" "$bout" "preflight: classes hit"
+contains "area: summary names fixed, waived and checked" "$bout" "· fixed 0 · waived 0 · checked 0"
+bash "$SCRIPT" --area >/dev/null 2>&1; check "area: --area without --diff → exit 2" "$?" "2"
+abranch="$(cd "$repo" && git rev-parse --abbrev-ref HEAD)"
+ajson="$(cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area --json 2>&1)"
+AJ="$ajson" AB="$abranch" AH="$(cd "$repo" && git rev-parse HEAD)" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map((h,i)=>({class:h.id,state:i===0?"checked":"waived",...(i===0?{}:{ref:"fixture"})}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:process.env.AH,hits:hs}))' > "$AL"
+cout="$(cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area 2>&1)"; crc=$?
+check "area: a preflight row closing every hit exits 0" "$crc" "0"
+not_contains "area: no hit stays open after the pass is recorded" "$cout" "state=open"
+contains "area: a waived hit shows its state and reason" "$cout" "state=waived (fixture)"
+printf '%s\n' '{"kind":"preflight","branch":"other-branch","head":"x","hits":[]}' >> "$AL"
+cp "$AL" "$AL.cur"
+AJ="$ajson" AB="$abranch" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map(h=>({class:h.id,state:"checked"}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:"0000000",hits:hs}))' >> "$AL"
+( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); erc=$?
+check "area: a preflight row recorded at an older head closes nothing" "$erc" "3"
+cp "$AL.cur" "$AL"
+AJ="$ajson" AB="$abranch" AH="$(cd "$repo" && git rev-parse HEAD)" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map(h=>({class:h.id,state:"fixed"}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:process.env.AH,hits:hs}))' >> "$AL"
+( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); frc=$?
+check "area: a class recorded fixed that still hits stays open" "$frc" "3"
+cp "$AL.cur" "$AL"
+AL2="$tmp/e2e-ledger.jsonl"; : > "$AL2"
+e2e_hits=(); while IFS= read -r e2e_id; do e2e_hits+=(--hit "$e2e_id=checked"); done < <(AJ="$ajson" node -e 'for (const h of JSON.parse(process.env.AJ).hits) console.log(h.id)')
+( cd "$repo" && CR_LEDGER="$AL2" bash "$HERE/ledger-append.sh" preflight --head "$(git rev-parse HEAD)" "${e2e_hits[@]}" >/dev/null 2>&1 ); e2wrc=$?
+check "area: the preflight writer without --branch exits 0" "$e2wrc" "0"
+( cd "$repo" && CR_LEDGER="$AL2" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); e2rc=$?
+check "area: a pass written by ledger-append without --branch closes the hits" "$e2rc" "0"
+( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); drc=$?
+check "area: a preflight row of another branch is ignored, the latest own row still holds" "$drc" "0"
+
 # usage contract
 bash "$SCRIPT" >/dev/null 2>&1; check "no mode → exit 2" "$?" "2"
 # bare --diff defaults to <default-branch>...HEAD (the fixture HEAD IS its default branch → empty diff → clean)

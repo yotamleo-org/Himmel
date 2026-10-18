@@ -18,7 +18,7 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 | `globs` | which changed files the class applies to |
 | `match` | optional: case-insensitive JS regex over the ledger finding text; with `globs` it decides which ledger findings the ladder attributes to the class (no `match` = skipped by the ladder proposals) |
 | `platform` | optional: `"windows"` = never proposed for promotion |
-| `detector` | deterministic matcher for `--diff` (added-line ERE, twin-missing, no-test-change, removed-flag-in-docs, md-fence-no-lang, hook-header-no-fail-direction); `null` = prompt-only class |
+| `detector` | deterministic matcher for `--diff` (added-line ERE, twin-missing, no-test-change, removed-flag-in-docs, md-fence-no-lang, hook-header-no-fail-direction, hook-no-bypass); `null` = prompt-only class |
 | `canonical` | the fix, or the rebuttal to paste, in one paragraph |
 | `coverage` | what already enforces it structurally (shell-lint rule, `.coderabbit.yaml` instruction, hook) and the gap, with ticket ids |
 | `prompt` | `true` = rendered into every diff-mode critic prompt as "already adjudicated" |
@@ -26,12 +26,19 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 
 ## Where it feeds
 
-1. **`/pr-check` step 2.8** — `bash scripts/cr/known-findings.sh --diff` (a bare
-   `--diff` resolves `<default-branch>...HEAD`; pass a range to override)
-   prints the checklist for the diff. Fix / verify / pre-rebut every line BEFORE
-   step 3 runs a critic. Advisory (always exit 0); the runbook owns the "do not
-   proceed with an unhandled item" rule. After adjudication the session prints
-   `known-findings: round-1 hits = N` — the acceptance metric.
+1. **`/pr-check` step 2.8** — `bash scripts/cr/known-findings.sh --diff --area`
+   (a bare `--diff` resolves `<default-branch>...HEAD`; pass a range to
+   override) prints the checklist for the diff with a `state=` per hit
+   (`open`, `waived`, `checked`) and a closing `preflight: classes hit N · fixed F
+   · waived W · checked C` line. Exit 3 while a hit is open: the session fixes,
+   waives (with a reason) or checks each hit BEFORE step 3, then records the pass
+   with `ledger-append.sh preflight --hit <class>=<fixed|checked|waived:reason>`
+   (a `kind: preflight` ledger row; the latest row for the branch, recorded at
+   the current head, is what closes a hit on the next run). Without `--area`, `--diff` stays advisory
+   (always exit 0). After adjudication the session prints
+   `known-findings: round-1 hits = N` — the acceptance metric. Fixed and
+   deferred `amend` rows carry `class=` (auto-attributed from this catalog,
+   `unattributed` when no class claims the finding).
 2. **Critic prompts** — `scripts/cr/critic-first-pass.sh` appends
    `known-findings.sh --prompt` (the `prompt:true` classes) after the perspective
    block in diff mode: *do not re-raise unless the code regressed; if you do, cite
