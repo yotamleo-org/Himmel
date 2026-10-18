@@ -46,6 +46,7 @@ jit="$(md jit-config)" || exit 1
 repo="$(md runner-repo)" || exit 1
 install -d -m 755 -o root -g root /usr/local/lib/himmel
 md job-started-hook > /usr/local/lib/himmel/job-started-hook.sh || exit 1
+[ -s /usr/local/lib/himmel/job-started-hook.sh ] || exit 1
 chown root:root /usr/local/lib/himmel/job-started-hook.sh
 chmod 755 /usr/local/lib/himmel/job-started-hook.sh
 printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh\nHIMMEL_CI_RUNNER_REPO=%s\n%s\n' "$repo" "$proxy_env" > /opt/runner/.env || exit 1

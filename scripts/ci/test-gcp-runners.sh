@@ -97,7 +97,7 @@ if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q '^export ACTIONS_RUN
 # 4a. the subnet only lets tcp:3128 out: the proxy env is a metadata file, set before apt, kept in the runner .env.
 if grep -q '^FILE proxy-env <<' "$STUB_LOG" && grep -q '^HTTPS_PROXY=http://[0-9.]*:3128$' "$STUB_LOG" && grep -q '^NO_PROXY=169.254.169.254' "$STUB_LOG"; then ok "proxy env is passed as the proxy-env metadata file"; else bad "proxy-env metadata file missing"; fi
 # shellcheck disable=SC2016  # the literal startup-script text, not an expansion
-if grep -q 'md proxy-env' "$STUB_LOG" && grep -q 'apt.conf.d/95ci-proxy' "$STUB_LOG" && grep -q '"\$proxy_env" > /opt/runner/.env' "$STUB_LOG"; then ok "startup script wires the proxy into apt and the runner .env"; else bad "startup script does not wire the proxy"; fi
+if grep -q 'md proxy-env' "$STUB_LOG" && grep -q 'apt.conf.d/95ci-proxy' "$STUB_LOG" && grep -q '"\$proxy_env" > /opt/runner/.env || exit 1$' "$STUB_LOG" && grep -q '^chown runner:runner /opt/runner/.env || exit 1$' "$STUB_LOG"; then ok "startup script wires the proxy into apt and the runner .env"; else bad "startup script does not wire the proxy"; fi
 pe="$(grep -n 'md proxy-env' "$STUB_LOG" | head -1 | cut -d: -f1)"; au="$(grep -n 'apt-get update' "$STUB_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$pe" ] && [ -n "$au" ] && [ "$pe" -lt "$au" ]; then ok "the proxy is set before the first apt call"; else bad "proxy set after apt (pe=$pe au=$au)"; fi
 
@@ -110,6 +110,7 @@ if [ -n "$last_create" ] && [ -n "$first_rm" ] && [ "$first_rm" -gt "$last_creat
 if grep -q 'iptables -A OUTPUT -d 169.254.169.254 -m owner --uid-owner runner -j REJECT' "$STUB_LOG"; then ok "startup script rejects metadata-server traffic from the runner uid"; else bad "no iptables owner-match REJECT"; fi
 # shellcheck disable=SC2016  # the literal startup-script line, not an expansion
 if grep -q "^printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh" "$STUB_LOG" && grep -q '^FILE job-started-hook <<' "$STUB_LOG" && grep -q 'fork guard' "$STUB_LOG"; then ok "fork guard hook is installed and wired as the job-started hook"; else bad "fork guard hook not wired"; fi
+if grep -q '^md job-started-hook > /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$STUB_LOG" && grep -q '^\[ -s /usr/local/lib/himmel/job-started-hook.sh \] || exit 1$' "$STUB_LOG"; then ok "startup script fails closed on a missing or empty fork guard hook"; else bad "fork guard hook write is not checked"; fi
 if grep -q 'poweroff' "$STUB_LOG"; then ok "startup script powers the VM off after the one job"; else bad "startup script never powers off"; fi
 
 # 4b. the per-VM JIT config files are removed when up exits.
