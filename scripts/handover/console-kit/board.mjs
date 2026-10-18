@@ -770,8 +770,8 @@ const crLoopSection = (() => {
             const head = readFileSync(join(dir, name), 'utf8').slice(0, 3000).split('\n---')[0];
             const val = (k) => { const m = new RegExp(`^${k}: (.*)$`, 'm').exec(head); if (!m) return null; try { return JSON.parse(m[1]); } catch { return m[1]; } };
             const labels = val('labels') || [], status = String(val('status') || ''), cat = String(val('statusCategory') || '');
-            const done = DONE_STATUS.test(status) || DONE_STATUS.test(cat);
             const out = OUT_STATUS.test(status) || OUT_STATUS.test(cat);
+            const done = !out && (DONE_STATUS.test(status) || DONE_STATUS.test(cat));
             if (labels.some((x) => /^restructure-class-/.test(x)) && !done && !out) restructure += 1;
             if (!labels.some((x) => /(^|-)residual(-|$)/.test(x))) continue;
             if (Date.parse(val('created')) >= since) inflow += 1;
