@@ -207,6 +207,29 @@ run_test "(3j) missing or null fetched utilization ignores the whole window and 
   jq -e --argjson prior "$prior" ".five_hour == \$prior and .seven_day == \$prior and .primaries_refreshed_at == 1234567890" "$CLAUDE_USAGE_CACHE" || exit 1;
 '
 
+run_test "(3k) valid OAuth windows replace malformed same-account primaries without losing a healthy sibling" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-current\"}}" > "$HOME/.claude.json";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  export USAGE_FORCE_REFRESH=1;
+  printf "%s" "{\"rate_limits\":{\"five_hour\":{\"utilization\":1},\"seven_day\":{\"utilization\":2}}}" | bash "$PRODUCER";
+  acct=$(jq -er ".account" "$CLAUDE_USAGE_CACHE") || exit 1;
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  for window in five_hour seven_day; do
+    for malformed in "\"corrupt\"" "[]" "42" "true"; do
+      jq -n --arg acct "$acct" --arg window "$window" --argjson malformed "$malformed" \
+        "{account:\$acct,five_hour:{utilization:1,resets_at:\"old\"},seven_day:{utilization:2,resets_at:\"old\"},primaries_refreshed_at:1234567890} | .[\$window] = \$malformed" > "$CLAUDE_USAGE_CACHE" || exit 1;
+      before=$(date +%s); bash "$PRODUCER" </dev/null;
+      jq -e --arg acct "$acct" --arg window "$window" \
+        ".account == \$acct and .five_hour == ({utilization:10} + (if \$window == \"five_hour\" then {} else {resets_at:\"old\"} end)) and .seven_day == ({utilization:20} + (if \$window == \"seven_day\" then {} else {resets_at:\"old\"} end))" "$CLAUDE_USAGE_CACHE" || exit 1;
+      stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
+      [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
+    done;
+  done;
+'
+
 run_test "(4) atomicity: temp+mv pattern present AND cache intact after failing OAuth stub (no partial/tmp file)" '
   W=$(mktemp -d); export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";

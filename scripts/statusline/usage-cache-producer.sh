@@ -370,8 +370,8 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   (if (($ff.five_hour.utilization // null) != null) then $ff.five_hour else null end) as $fh |
   (if (($ff.seven_day.utilization // null) != null) then $ff.seven_day else null end) as $sd |
   {
-    five_hour:   (($carry.five_hour // {}) + ($fh // {})),
-    seven_day:   (($carry.seven_day // {}) + ($sd // {})),
+    five_hour:   ((if ($carry.five_hour | type) == "object" then $carry.five_hour else {} end) + ($fh // {})),
+    seven_day:   ((if ($carry.seven_day | type) == "object" then $carry.seven_day else {} end) + ($sd // {})),
     extra_usage: ($ff.extra_usage // $carry.extra_usage // {}),
     oauth_checked_at: $ts,
     account: (if $acct == "" then null else $acct end),
