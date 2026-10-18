@@ -644,7 +644,7 @@ _stand_in="$TMPFIX/stand-in-5747.sh"
 cat > "$_stand_in" <<'SI'
 #!/usr/bin/env bash
 n=$(wc -c)
-sleep "$(awk -v n="$n" -v q="$STAND_IN_QUAD" 'BEGIN { print (q ? n * n / 60000000 : n / 20000) }')"
+sleep "$(awk -v n="$n" -v q="$STAND_IN_QUAD" 'BEGIN { print (q ? n * n / 40000000 : n / 40000) }')"
 SI
 _si_time() { # _si_time <quad 0|1> <bytes> -> whole seconds
     local t0=$SECONDS
