@@ -22,6 +22,7 @@ import { replyThread, resolveThread } from './forge/bitbucket-threads.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPLY_QUERY_FILE = join(__dirname, '..', 'graphql', 'reply-thread.gql');
 const RESOLVE_QUERY_FILE = join(__dirname, '..', 'graphql', 'resolve-thread.gql');
+const THREAD_PR_QUERY_FILE = join(__dirname, '..', 'graphql', 'thread-pr.gql');
 
 const USAGE =
   'usage: thread-resolve-action-cli.mjs --owner O --repo R --number N (--prefix P | --thread-id ID)\n' +
@@ -86,6 +87,32 @@ async function ghStep(what, threadId, extra, queryFile) {
   if (res.stdout.trim()) process.stdout.write(`${res.stdout.trim()}\n`);
 }
 
+// A full thread id is not scoped by the cache, so check it sits on the named
+// PR before writing anything to it.
+async function assertThreadOnPr(threadId) {
+  const res = await execGh(['api', 'graphql', '-f', `threadId=${threadId}`, '-F', `query=@${THREAD_PR_QUERY_FILE}`]);
+  if (res.exitCode !== 0) {
+    process.stderr.write(res.stderr || `gh api graphql thread lookup failed (exit ${res.exitCode})\n`);
+    process.exit(res.exitCode);
+  }
+  let pr;
+  try {
+    pr = JSON.parse(res.stdout).data?.node?.pullRequest;
+  } catch {
+    pr = undefined;
+  }
+  const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  if (
+    !pr ||
+    pr.number !== Number(number) ||
+    !same(pr.repository?.owner?.login, owner) ||
+    !same(pr.repository?.name, repo)
+  ) {
+    process.stderr.write(`refused: thread ${threadId} is not on ${owner}/${repo}#${number}\n`);
+    process.exit(2);
+  }
+}
+
 const args = parseArgs(process.argv.slice(2));
 const { owner, repo, number, prefix, reason } = args;
 const threadIdArg = args['thread-id'];
@@ -127,6 +154,7 @@ if (detectForge() === 'bitbucket') {
     process.exit(1);
   }
 } else {
+  await assertThreadOnPr(threadId);
   await ghStep('reply', threadId, ['-f', `body=${body}`], REPLY_QUERY_FILE);
   await ghStep('resolve', threadId, [], RESOLVE_QUERY_FILE);
 }

@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash(himmel-run:*), Bash(node:*), Bash(gh:*)
-description: Resolve a PR review thread by 6-char prefix, with a reason posted as a reply first. Pair with /gh-pr-comments to populate the prefix cache first.
-argument-hint: "<thread-prefix> <reason>"
+description: Resolve a PR review thread by 6-char prefix, posting the reason as a reply first. Run /gh-pr-comments first.
+argument-hint: "<thread-prefix> \"<reason>\""
 ---
 
 ## Your task
@@ -22,7 +22,8 @@ through the active forge (GitHub GraphQL or, for a `bitbucket.org` repo, the
 himmel-run gh --summary-regex 'resolved: ok' -- node $CLAUDE_PROJECT_DIR/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner "$owner" --repo "$name" --number "$pr_n" --prefix "$1" --reason "$2"
 ```
 
-`$2` is the reason: `fixed <sha>`, `followup <KEY-n>` or `rejected <why>`.
+`$2` is the reason, quoted as one argument: `"fixed <sha>"`, `"followup <KEY-n>"`
+or `"rejected <why>"`; an unquoted reason arrives as its first word and is refused.
 The CLI refuses without one, posts it as a thread reply, and resolves only
 after the reply lands.
 

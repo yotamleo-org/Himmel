@@ -46,8 +46,10 @@ Then run `/gh-init` to verify scopes.
   `(owner, repo, PR-N)`, so if no PR is currently in session context the skill
   asks for the PR number first (or you can run `/gh-pr-comments <N>` to seed
   the cache).
-- `/gh-pr-resolve <prefix>` — resolve a thread by 6-char prefix (same cache
-  lookup semantics as `/gh-pr-reply`).
+- `/gh-pr-resolve <prefix> "<reason>"` — resolve a thread by 6-char prefix (same
+  cache lookup semantics as `/gh-pr-reply`). The reason (`fixed <sha>`,
+  `followup <KEY-n>` or `rejected <why>`) is required and is posted as a thread
+  reply before the resolve.
 
 The three thread commands are **forge-aware** (spec §5.3): on a `github.com`
 repo they use GitHub GraphQL; on a `bitbucket.org` repo they route through the

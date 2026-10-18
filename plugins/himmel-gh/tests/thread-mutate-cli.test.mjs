@@ -181,14 +181,15 @@ describe('thread mutate CLIs — bitbucket forge route', () => {
 // reply lands. POSIX only: the fake is a shell script.
 describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github route)', () => {
   let log;
-  function writeFakeGh({ failReply = false } = {}) {
+  function writeFakeGh({ failReply = false, prNumber = 9 } = {}) {
     const bin = join(dir, 'bin');
     mkdirSync(bin, { recursive: true });
     log = join(dir, 'gh.log');
     const onReply = failReply ? "echo 'reply refused' >&2; exit 1" : "echo '{}'";
+    const pr = `{"data":{"node":{"pullRequest":{"number":${prNumber},"repository":{"name":"r","owner":{"login":"o"}}}}}}`;
     writeFileSync(
       join(bin, 'gh'),
-      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\ncase "$*" in *reply-thread.gql*) ${onReply} ;; *) echo '{}' ;; esac\n`,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\ncase "$*" in *thread-pr.gql*) echo '${pr}' ;; *reply-thread.gql*) ${onReply} ;; *) echo '{}' ;; esac\n`,
       { mode: 0o755 },
     );
     return cacheEnv({ PATH: `${bin}:${process.env.PATH}`, FORGE: 'github' });
@@ -234,11 +235,12 @@ describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github 
     expect(res.status).toBe(0);
     expect(res.stdout).toMatch(/resolved: ok/);
     const c = calls();
-    expect(c).toHaveLength(2);
-    expect(c[0]).toMatch(/reply-thread\.gql/);
-    expect(c[0]).toContain(`body=${body}`);
-    expect(c[0]).toContain('threadId=PRRT_x');
-    expect(c[1]).toMatch(/resolve-thread\.gql/);
+    expect(c).toHaveLength(3);
+    expect(c[0]).toMatch(/thread-pr\.gql/);
+    expect(c[1]).toMatch(/reply-thread\.gql/);
+    expect(c[1]).toContain(`body=${body}`);
+    expect(c[1]).toContain('threadId=PRRT_x');
+    expect(c[2]).toMatch(/resolve-thread\.gql/);
   });
 
   it('does not resolve when the reply fails', () => {
@@ -246,7 +248,16 @@ describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github 
     expect(res.status).not.toBe(0);
     expect(res.stderr).toMatch(/reply refused/);
     const c = calls();
+    expect(c).toHaveLength(2);
+    expect(c[1]).toMatch(/reply-thread\.gql/);
+  });
+
+  it('refuses a thread id that sits on another PR: exit 2, no reply, no resolve', () => {
+    const res = run(['--reason', 'fixed 0d4ad5b8'], writeFakeGh({ prNumber: 8 }));
+    expect(res.status).toBe(2);
+    expect(res.stderr).toMatch(/is not on o\/r#9/);
+    const c = calls();
     expect(c).toHaveLength(1);
-    expect(c[0]).toMatch(/reply-thread\.gql/);
+    expect(c[0]).toMatch(/thread-pr\.gql/);
   });
 });
