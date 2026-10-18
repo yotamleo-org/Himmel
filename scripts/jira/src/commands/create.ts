@@ -8,7 +8,7 @@ import { uploadAll } from './attach-helper.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
-import { SECTOR_FIELD, resolveSector } from './sector.js';
+import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -50,7 +50,7 @@ export function registerCreate(program: Command): void {
     .option('--adf-file <path>', 'Path to pre-built ADF JSON document (overrides --desc)')
     .option('--parent <key>', 'Parent issue key')
     .option('--labels <labels>', 'Comma-separated labels to set (e.g. a,b); `standalone` marks a ticket with no parent epic')
-    .option('--sector <s>', 'Sector (single-select custom field; required for a Task, Story or Bug)')
+    .option('--sector <s>', 'Sector (single-select custom field; required for a Task, Story or Bug once JIRA_SECTOR_FIELD is set)')
     .option(
       '--fix-version <name>',
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
@@ -114,10 +114,17 @@ export function registerCreate(program: Command): void {
           process.exit(1);
         }
         if (verdict.action === 'warn') console.error(verdict.message);
-        const sector = options.sector !== undefined ? resolveSector(options.sector) : undefined;
+        // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
+        const sectorId = sectorField();
+        const sectors = sectorId ? await sectorOptions() : undefined;
+        if (options.sector !== undefined && !sectors) {
+          console.error('jira: warning: --sector ignored, Sector is not configured (run `jira sector setup`)');
+        }
+        const sector =
+          options.sector !== undefined && sectors ? resolveSector(options.sector, sectors) : undefined;
         const labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
-        // A Sector plus an epic or the standalone label; Epic and Subtask only warn.
-        const home = homeVerdict(options.type, { sector, parent: options.parent, labels });
+        // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
+        const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
         if (home.action === 'refuse') {
           console.error(home.message);
           process.exit(1);
@@ -125,7 +132,7 @@ export function registerCreate(program: Command): void {
         if (home.action === 'warn') console.error(home.message);
         if (options.parent) fields['parent'] = { key: options.parent };
         if (labels) fields['labels'] = labels;
-        if (sector) fields[SECTOR_FIELD] = { value: sector };
+        if (sector && sectorId) fields[sectorId] = { value: sector };
         if (options.fixVersion !== undefined) {
           await assertVersionExists(options.project ?? projectKey(), options.fixVersion);
           fields['fixVersions'] = [{ name: options.fixVersion }];

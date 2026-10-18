@@ -537,6 +537,26 @@ for (const p of providers.filter(x => x !== "atlassian-mcp")) {
     `mcp-tool-catalog x ${p} x catalog-fetch must be deny — the allow is scoped to atlassian-mcp`);
 }
 
+// DeepSeek Search/Fetch for the follow-web claim-check is an opt-in
+// enrichment of clipped content only. salus gets its OWN hard deny row naming
+// the provider; the one open cell is conditional on the explicit opt-in flag.
+for (const u of purposes) {
+  const { effective, rule } = evaluate("salus", "deepseek", u);
+  assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "deepseek" &&
+         rule.purpose === "*" && rule.hard === true,
+    `salus x deepseek x ${u} must deny via its OWN hard deepseek row (HIMMEL-6269)`);
+}
+{
+  const { effective, rule } = evaluate("luna-clippings", "deepseek", "enrichment");
+  assert(effective === "conditional" && rule && rule.corpus === "luna-clippings" && rule.provider === "deepseek" &&
+         rule.purpose === "enrichment" && rule.condition === "FOLLOW_WEB_DEEPSEEK=1" && rule.hard === undefined,
+    `luna-clippings x deepseek x enrichment must be conditional on FOLLOW_WEB_DEEPSEEK=1 via its OWN row (HIMMEL-6269), got ${effective}`);
+}
+for (const u of purposes.filter(x => x !== "enrichment"))
+  assert(evaluate("luna-clippings", "deepseek", u).effective === "deny", `luna-clippings x deepseek x ${u} must stay deny (HIMMEL-6269 opens enrichment only)`);
+for (const c of ["luna-personal", "handover-state", "voice-audio", "jira-mirror", "operator-repos"])
+  assert(evaluate(c, "deepseek", "enrichment").effective === "deny", `${c} x deepseek x enrichment must stay deny (HIMMEL-6269 opens luna-clippings only)`);
+
 if (failures > 0) {
   console.error(`egress-matrix: ${failures} invariant failure(s)`);
   process.exit(1);

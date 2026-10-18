@@ -4,7 +4,7 @@ import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
-import { SECTOR_FIELD, resolveSector, sectorOf } from './sector.js';
+import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey } from './versions.js';
 
 export interface EditOptions {
@@ -20,7 +20,7 @@ export interface EditOptions {
   sector?: string;
 }
 
-export function buildEditFields(opts: EditOptions): Record<string, unknown> {
+export function buildEditFields(opts: EditOptions, sectors: readonly string[] = []): Record<string, unknown> {
   if (opts.labels !== undefined && opts.addLabels !== undefined) {
     throw new Error(
       'Edit --labels and --add-labels are mutually exclusive: --labels replaces the full ' +
@@ -67,7 +67,7 @@ export function buildEditFields(opts: EditOptions): Record<string, unknown> {
   // field the operator explicitly wants set. --add-fix-version
   // appends via Jira's atomic `update` operation instead.
   if (opts.fixVersion !== undefined) fields['fixVersions'] = [{ name: opts.fixVersion }];
-  if (opts.sector !== undefined) fields[SECTOR_FIELD] = { value: resolveSector(opts.sector) };
+  if (opts.sector !== undefined) fields[requireSectorField()] = { value: resolveSector(opts.sector, sectors) };
   if (
     Object.keys(fields).length === 0 &&
     opts.addLabels === undefined &&
@@ -99,7 +99,7 @@ function readBackFieldNames(o: EditOptions): string[] {
   if (o.title !== undefined) names.push('summary');
   if (o.description !== undefined) names.push('description');
   if (o.parent) names.push('parent');
-  if (o.sector !== undefined) names.push(SECTOR_FIELD);
+  if (o.sector !== undefined) names.push(requireSectorField());
   if (o.labels !== undefined || o.addLabels !== undefined) names.push('labels');
   if (o.fixVersion !== undefined || o.addFixVersion !== undefined) names.push('fixVersions');
   return [...new Set(names)];
@@ -148,7 +148,7 @@ function verifyReadBack(
     if (!same(actual, o.severity)) bad('severity', o.severity, actual);
   }
   if (o.sector !== undefined) {
-    const want = resolveSector(o.sector);
+    const want = (sent[requireSectorField()] as { value: string }).value;
     const actual = sectorOf(got);
     if (actual !== want) bad('sector', want, actual);
   }
@@ -237,7 +237,7 @@ export function registerEdit(program: Command): void {
       } else if (options.desc !== undefined && options.description === undefined) {
         options.description = options.desc;
       }
-      const fields = buildEditFields(options);
+      const fields = buildEditFields(options, options.sector !== undefined ? await sectorOptions() : []);
       if (options.fixVersion !== undefined) {
         await assertVersionExists(projectFromKey(key), options.fixVersion);
       }

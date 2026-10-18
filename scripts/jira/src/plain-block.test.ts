@@ -152,10 +152,18 @@ describe('homeVerdict (HIMMEL-6223)', () => {
 
   it('refuses a Task, Story or Bug with no Sector, naming the field and the fix', () => {
     for (const t of ['Task', 'Story', 'bug']) {
-      const v = homeVerdict(t, { ...home, sector: undefined });
+      const v = homeVerdict(t, { ...home, sector: undefined }, ['Ship loop', 'Visibility']);
       expect(v.action).toBe('refuse');
-      expect(v.message).toMatch(/no Sector.*--sector/s);
+      expect(v.message).toMatch(/no Sector.*--sector "<Ship loop \| Visibility>".*sector setup --opt-out/s);
     }
+  });
+
+  it('drops the Sector check when sectors are not configured, keeping the epic-or-standalone check', () => {
+    expect(homeVerdict('Task', { parent: 'HIMMEL-1', labels: [] }).action).toBe('ok');
+    const v = homeVerdict('Task', { labels: [] });
+    expect(v.action).toBe('refuse');
+    expect(v.message).not.toMatch(/Sector/);
+    expect(v.message).toMatch(/--parent.*--labels standalone/s);
   });
 
   it('refuses a Sector with neither a parent nor the standalone label, naming the marker', () => {
