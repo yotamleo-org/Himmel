@@ -106,6 +106,30 @@ test("fix", () => assert.equal(readFileSync("value.txt", "utf8").trim(), "fixed"
 commit node-suite
 verdict real-ci-node-runner 0 detected
 
+# An already-red suite is not evidence that reverting the fix broke it.
+new_repo
+w value.txt fixed
+w test-already-red.sh 'exit 1 # value.txt'
+commit already-red
+verdict already-red 1 baseline-red
+
+# Runtime errors can also return 1; they must not masquerade as a detection.
+new_repo
+w value.txt fixed
+w scripts/hooks/runtime.test.mjs 'import "./missing-runtime.mjs"; // value.txt'
+commit missing-runtime
+verdict missing-runtime 1 baseline-red
+
+new_repo
+w __tests__/expected.txt broken
+commit root-fixture-base
+BASE=$(git rev-parse HEAD)
+w value.txt fixed
+w __tests__/expected.txt fixed
+w __tests__/test-root.sh '[ "$(cat value.txt)" = "$(cat __tests__/expected.txt)" ]'
+commit root-tests
+verdict root-tests 0 detected
+
 new_repo
 w value.txt fixed
 w test-signal.sh 'kill -TERM "$PPID"

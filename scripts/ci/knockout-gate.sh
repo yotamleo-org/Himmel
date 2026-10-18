@@ -40,11 +40,11 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Copied from review-round.sh's test_path_p; basename patterns do not
-# accidentally classify a production file just because a parent is test-*.sh.
+# review-round.sh's test_path_p rule, also covering a root __tests__ tree.
+# Basename patterns never classify production by a test-*.sh parent name.
 test_path_p() {
     case "$1" in
-        */tests/*|tests/*|*/test/*|test/*|*/__tests__/*) return 0 ;;
+        */tests/*|tests/*|*/test/*|test/*|*/__tests__/*|__tests__/*) return 0 ;;
     esac
     case "${1##*/}" in
         test-*.sh|*.test.[a-z]*) return 0 ;;
@@ -81,25 +81,37 @@ while IFS= read -r suite; do
     esac
 done < "$work/suites"
 [ "$n" -gt 0 ] || fail no-suites
+run_suites() {
+    local phase="$1" suite command rc
+    n=0
+    while IFS= read -r suite; do
+        [ -n "$suite" ] || continue
+        n=$((n + 1))
+        command=$(< "$work/command-$n")
+        rc=0
+        (cd "$tree" && bash -c "$command") || rc=$?
+        printf 'knockout-gate: %s suite %s exit=%s\n' "$phase" "$suite" "$rc"
+        if [ "$phase" = baseline ] && [ "$rc" -ne 0 ]; then
+            fail "baseline-red $suite (exit=$rc; not knockout evidence)"
+        fi
+        case "$rc" in
+            0) ;;
+            126|127) fail "runner-unavailable $suite" ;;
+            *) red=$((red + 1)) ;;
+        esac
+    done < "$work/suites"
+}
+git worktree add --detach "$tree" "$head" || fail worktree-add
+red=0
+run_suites baseline
+# Recreate the tree so a baseline suite's tracked edits, generated files or
+# dependency directories cannot leak into the knockout run.
+git worktree remove --force "$tree" || fail baseline-cleanup
 git worktree add --detach "$tree" "$head" || fail worktree-add
 # Restore handles additions (remove), deletions (recreate), modes and symlinks
 # together, without following an old symlink or touching the real index.
 git -C "$tree" --literal-pathspecs restore --source="$base" --staged --worktree \
     --pathspec-from-file="$work/non-test" --pathspec-file-nul || fail restore
-red=0
-n=0
-while IFS= read -r suite; do
-    [ -n "$suite" ] || continue
-    n=$((n + 1))
-    command=$(< "$work/command-$n")
-    rc=0
-    (cd "$tree" && bash -c "$command") || rc=$?
-    printf 'knockout-gate: suite %s exit=%s\n' "$suite" "$rc"
-    case "$rc" in
-        0) ;;
-        126|127) fail "runner-unavailable $suite" ;;
-        *) red=$((red + 1)) ;;
-    esac
-done < "$work/suites"
+run_suites knockout
 [ "$red" -gt 0 ] || fail "all-green ($n suites; non-test change not detected)"
 printf 'knockout-gate: detected (%s of %s suites failed)\n' "$red" "$n"
