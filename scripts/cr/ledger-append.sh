@@ -405,6 +405,8 @@ fi
 # --hit records a clean pass. --duration-secs is the pass's wall time.
 if [ "$kind" = "preflight" ]; then
   [ -n "$head" ] || { echo "ledger-append.sh: preflight requires --head" >&2; exit 2; }
+  [ -n "$branch" ] || branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true) # swallow-ok: empty is refused on the next line
+  [ -n "$branch" ] || { echo "ledger-append.sh: preflight needs --branch (no current branch to stamp: detached HEAD or not a repo) - NOTHING was written" >&2; exit 2; }
   if [ -n "$duration_secs" ] && ! [[ "$duration_secs" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
     echo "ledger-append.sh: preflight --duration-secs must be a non-negative number (got '$duration_secs')" >&2; exit 2
   fi

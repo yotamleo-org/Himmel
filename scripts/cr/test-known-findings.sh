@@ -477,10 +477,19 @@ not_contains "area: no hit stays open after the pass is recorded" "$cout" "state
 contains "area: a waived hit shows its state and reason" "$cout" "state=waived (fixture)"
 printf '%s\n' '{"kind":"preflight","branch":"other-branch","head":"x","hits":[]}' >> "$AL"
 cp "$AL" "$AL.cur"
-printf '%s\n' '{"kind":"preflight","branch":"'"$abranch"'","head":"0000000","hits":[]}' >> "$AL"
+AJ="$ajson" AB="$abranch" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map(h=>({class:h.id,state:"checked"}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:"0000000",hits:hs}))' >> "$AL"
 ( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); erc=$?
 check "area: a preflight row recorded at an older head closes nothing" "$erc" "3"
 cp "$AL.cur" "$AL"
+AJ="$ajson" AB="$abranch" AH="$(cd "$repo" && git rev-parse HEAD)" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map(h=>({class:h.id,state:"fixed"}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:process.env.AH,hits:hs}))' >> "$AL"
+( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); frc=$?
+check "area: a class recorded fixed that still hits stays open" "$frc" "3"
+cp "$AL.cur" "$AL"
+AL2="$tmp/e2e-ledger.jsonl"; : > "$AL2"
+e2e_hits=(); while IFS= read -r e2e_id; do e2e_hits+=(--hit "$e2e_id=checked"); done < <(AJ="$ajson" node -e 'for (const h of JSON.parse(process.env.AJ).hits) console.log(h.id)')
+( cd "$repo" && CR_LEDGER="$AL2" bash "$HERE/ledger-append.sh" preflight --head "$(git rev-parse HEAD)" "${e2e_hits[@]}" >/dev/null 2>&1 )
+( cd "$repo" && CR_LEDGER="$AL2" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); e2rc=$?
+check "area: a pass written by ledger-append without --branch closes the hits" "$e2rc" "0"
 ( cd "$repo" && CR_LEDGER="$AL" bash "$SCRIPT" --diff "$base...HEAD" --area >/dev/null 2>&1 ); drc=$?
 check "area: a preflight row of another branch is ignored, the latest own row still holds" "$drc" "0"
 
