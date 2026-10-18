@@ -46,7 +46,8 @@ Invariants: spawn depth and concurrency are capped by
 haiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
 work routes to Claude tiers + Codex lanes only (never GLM). Every dispatch
 carries a RETASK block with a fresh nonce; a revision arrives only as a direct
-message quoting it and never widens permissions. Tiers, cost, live inventory:
+message quoting it (a narrowing or halt needs no token), never widens
+permissions. Tiers, cost, live inventory:
 `docs/internals/lane-calibration.md`, `/lanes`, `docs/internals/retask-channel.md`.
 
 ### Adding a rule — pick the cheapest layer
