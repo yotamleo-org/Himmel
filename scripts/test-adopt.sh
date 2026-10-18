@@ -336,6 +336,19 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tp" --
 [ "$(git -C "$tp" status --porcelain | wc -l)" -eq 0 ] || fail "HIMMEL-6326: worktree dir shows up as untracked"
 echo "ok: HIMMEL-6326 no-origin worktree, committable install, .claude/worktrees/ ignored"
 
+# A user's own uncommitted .gitignore edit must not ride into the install commit.
+te="$work/trial-edited"; mkdir -p "$te"
+git -C "$te" init -q -b main
+git -C "$te" config user.email t@t; git -C "$te" config user.name t
+git -C "$te" config commit.gpgsign false
+printf 'node_modules/\n' > "$te/.gitignore"
+git -C "$te" add .gitignore
+git -C "$te" commit -q -m "chore: initial commit"
+printf 'my-private-notes/\n' >> "$te/.gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$te" --commit-install >/dev/null
+[ "$(git -C "$te" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a user's uncommitted .gitignore edit"
+echo "ok: HIMMEL-6326 pre-edited .gitignore blocks the auto-commit"
+
 # ── 1b. self-copy guard ─────────────────────────────────────────
 # A brand-new adopter clones himmel and runs the installer FROM INSIDE that
 # clone (TARGET == HIMMEL_ROOT). do_core() mutates its TARGET, so this can't

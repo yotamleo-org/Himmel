@@ -336,12 +336,29 @@ ensure_worktrees_ignored() {
 # The git gates refuse every commit on main, so the install itself can only
 # land as one gate-skipping first commit; uncommitted, a worktree cut from main
 # has no scripts/ and its hooks fail.
+PRE_EDITED=0
+# ponytail: an edit made while an earlier install is still uncommitted looks like that install's own, revisit if adopters report a swept edit
+snapshot_user_edits() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  if [[ "$(git -C "$TARGET" status --porcelain -- "${PORTABLE_FILES[@]}" | wc -l)" -gt 0 ]]; then
+    return 0
+  fi
+  if [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json | wc -l)" -gt 0 ]]; then
+    PRE_EDITED=1
+  fi
+}
+
 commit_install() {
   [[ -e "$TARGET/.git" ]] || return 0
   [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
   local branch f ans
   branch="$(git -C "$TARGET" symbolic-ref --short -q HEAD || true)"
   case "$branch" in main|master) ;; *) return 0 ;; esac
+  if [[ $PRE_EDITED -eq 1 ]]; then
+    echo "  .gitignore or .claude/settings.json already had uncommitted edits, so the install is not auto-committed (it would sweep them in)."
+    echo "  Commit your edits first, then re-run: bash scripts/adopt.sh --scope project --target $TARGET --commit-install"
+    return 0
+  fi
   local -a paths=()
   for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore; do
     [[ -e "$TARGET/$f" ]] && paths+=("$f")
@@ -1261,6 +1278,7 @@ do_core() {
   print_machine_footprint
   require_tools
   if [[ "$SCOPE" == "project" ]]; then
+    snapshot_user_edits
     copy_portable
     # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
     # shellcheck disable=SC2016
