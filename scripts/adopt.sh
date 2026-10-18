@@ -337,15 +337,27 @@ ensure_worktrees_ignored() {
 # land as one gate-skipping first commit; uncommitted, a worktree cut from main
 # has no scripts/ and its hooks fail.
 PRE_EDITED=0
-# ponytail: an edit made while an earlier install is still uncommitted looks like that install's own, revisit if adopters report a swept edit
+# Content hashes of the two files the install shares with the user. A declined
+# install records them, so a later --commit-install can tell its own leftovers
+# from an edit the user made since.
+shared_file_hashes() {
+  local f
+  for f in .gitignore .claude/settings.json; do
+    [[ -f "$TARGET/$f" ]] && git -C "$TARGET" hash-object -- "$f"
+  done
+  return 0
+}
+install_marker() {
+  echo "$(git -C "$TARGET" rev-parse --absolute-git-dir)/himmel-install-pending"
+}
 snapshot_user_edits() {
   [[ -e "$TARGET/.git" ]] || return 0
-  if [[ "$(git -C "$TARGET" status --porcelain -- "${PORTABLE_FILES[@]}" | wc -l)" -gt 0 ]]; then
+  [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json | wc -l)" -gt 0 ]] || return 0
+  local marker; marker="$(install_marker)"
+  if [[ -f "$marker" && "$(shared_file_hashes)" == "$(cat "$marker")" ]]; then
     return 0
   fi
-  if [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json | wc -l)" -gt 0 ]]; then
-    PRE_EDITED=1
-  fi
+  PRE_EDITED=1
 }
 
 commit_install() {
@@ -374,6 +386,7 @@ commit_install() {
     if [[ $COMMIT_INSTALL -ne 1 ]]; then
       echo "  The install is uncommitted on $branch, which the git gates now refuse commits on."
       echo "  Commit it once with: bash scripts/adopt.sh --scope project --target $TARGET --commit-install"
+      [[ $DRY_RUN -eq 1 ]] || shared_file_hashes > "$(install_marker)"
       return 0
     fi
   fi
@@ -383,6 +396,7 @@ commit_install() {
   fi
   if git -C "$TARGET" add -- "${paths[@]}" \
      && git -C "$TARGET" commit -q --no-verify -m "chore: add himmel" -- "${paths[@]}"; then
+    rm -f "$(install_marker)"
     echo "  committed the install on $branch (chore: add himmel)"
   else
     echo "  WARNING: could not commit the install - commit it by hand" >&2

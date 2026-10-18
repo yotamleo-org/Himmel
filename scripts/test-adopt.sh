@@ -349,6 +349,19 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$te" --
 [ "$(git -C "$te" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in a user's uncommitted .gitignore edit"
 echo "ok: HIMMEL-6326 pre-edited .gitignore blocks the auto-commit"
 
+# Same with an install already pending: an edit made after the declined run
+# must still stop --commit-install.
+tq="$work/trial-pending"; mkdir -p "$tq"
+git -C "$tq" init -q -b main
+git -C "$tq" config user.email t@t; git -C "$tq" config user.name t
+git -C "$tq" config commit.gpgsign false
+git -C "$tq" commit -q --allow-empty -m "chore: initial commit"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" >/dev/null
+printf 'my-private-notes/\n' >> "$tq/.gitignore"
+HOME="$base_home" bash "$adopt" --profile core --scope project --target "$tq" --commit-install >/dev/null
+[ "$(git -C "$tq" log --oneline | wc -l)" -eq 1 ] || fail "HIMMEL-6326: install commit swept in an edit made after a declined install"
+echo "ok: HIMMEL-6326 edit after a declined install blocks the auto-commit"
+
 # ── 1b. self-copy guard ─────────────────────────────────────────
 # A brand-new adopter clones himmel and runs the installer FROM INSIDE that
 # clone (TARGET == HIMMEL_ROOT). do_core() mutates its TARGET, so this can't
