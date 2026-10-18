@@ -92,7 +92,7 @@ cmd_up() {
             --boot-disk-size=50GB \
             --provisioning-model=SPOT --max-run-duration="$MAX_RUN" --instance-termination-action=DELETE \
             --labels="$POOL_LABEL" \
-            --network-interface="subnet=$NET,no-address" \
+            --network="$NET" --subnet="$NET" --no-address \
             --no-service-account --no-scopes \
             --metadata="runner-repo=$REPO" \
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,jit-config=$tmpd/$vm.jit" \

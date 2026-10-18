@@ -74,7 +74,7 @@ rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up defa
 rc="$(run up 2)"
 for f in '--provisioning-model=SPOT' '--max-run-duration=45m' '--instance-termination-action=DELETE' \
          '--labels=himmel-ci-runner=gcp' '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com' \
-         '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network-interface=subnet=himmel-ci-net,no-address'; do
+         '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network=himmel-ci-net' '--subnet=himmel-ci-net' '--no-address' '--zone=us-central1-a'; do
     n="$(grep 'instances create' "$STUB_LOG" | grep -cF -- "$f")"
     if [ "$n" -eq 2 ]; then ok "both creates carry $f"; else bad "creates carrying $f: $n of 2"; fi
 done
