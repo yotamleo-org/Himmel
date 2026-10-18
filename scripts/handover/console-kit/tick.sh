@@ -581,6 +581,16 @@ for leg in $LEGS_SPLIT; do
         fi
         tail_status="$(leg_tail_status "$leg_doc")"
         [ -n "$tail_status" ] || tail_status="?"
+        # a LIVE bullet that says the leg is holding at READY (`holding at READY`, or
+        # `READY <pr> <full head>`) is a READY: a claudex leg cannot SendMessage, so
+        # this bullet is its only channel. Only LIVE is promoted; any other leading
+        # marker keeps its own word.
+        if [ "$tail_status" = LIVE ]; then
+            newest_bullet="$(sed -nE '/^- /p' "$leg_doc" 2>/dev/null | tail -n 1)" || newest_bullet=""  # pipefail-ok: sed reads the doc to EOF
+            if printf '%s\n' "$newest_bullet" | grep -qE 'holding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
+                tail_status=READY
+            fi
+        fi
         # a READY whose GO file (<root>/.locks/go/<pr>.<head>) is still
         # absent after $go_stale_min minutes reads READY!stale. tails= is in the
         # console-wait action key, so the entry moving once wakes the console.

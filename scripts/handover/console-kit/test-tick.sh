@@ -1430,6 +1430,17 @@ contains 'a bold leading marker reads as that marker (HIMMEL-3393)' "$(tail3393 
 contains 'a bullet leading with prose is invisible to the tick (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:48 Sent the FINDING to the console, will report READY once it rules')" 'N393:FINDING'
 contains 'a marker glued to a longer word is not a marker (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDINGS pending, no marker here')" 'N393:LIVE'
 
+# --- a leg holding at READY must read READY whatever its bullet's first word.
+# N2524 (10-17) held READY on PR 3002 behind `LIVE — holding at READY for GO`; a
+# claudex leg cannot SendMessage, so the doc bullet is its only channel, and tails=
+# read LIVE for ~40 minutes. RED control (pre-fix tick.sh): tails=N393:LIVE.
+sha6154=0123456789abcdef0123456789abcdef01234567
+contains 'a LIVE bullet "holding at READY" reads READY (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO')" 'N393:READY'
+contains 'a LIVE bullet naming READY <pr> <full head> reads READY (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — sent READY 3002 $sha6154 GREEN, waiting")" 'N393:READY'
+contains 'a plain LIVE fix-pushed bullet stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — fix pushed')" 'N393:LIVE'
+contains 'a WRAPPED bullet naming READY <pr> <head> stays WRAPPED (HIMMEL-6154)' "$(tail3393 "- 23:47 WRAPPED — merged after READY 3002 $sha6154")" 'N393:WRAPPED'
+contains 'READY held then a newer plain LIVE bullet reads LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
+
 # --- a lock queue-lock can neither attribute to this doc nor rule
 # out (status `held -- UNVERIFIED`, rc 11) reads UNVERIFIED -- never FREE, which
 # the console reads as "reclaim it", and never folded into WRAPPED by the leg's
