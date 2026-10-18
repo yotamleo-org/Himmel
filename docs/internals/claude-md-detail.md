@@ -14,7 +14,7 @@ the prior wording, verbatim, kept for reference. It is not preloaded.
   belong in the **FIRST commit**, written after genuinely testing and reviewing
   (the pre-push gate fires too late to teach this). Never recover with a
   reactive `git commit --amend`; recovery:
-  [`docs/internals/stuck-playbook.md`](docs/internals/stuck-playbook.md). [enforced: security-reviewed]
+  [`docs/internals/stuck-playbook.md`](stuck-playbook.md). [enforced: security-reviewed]
 
 ### Jira — prefer plugin over MCP
 Invoke by ABSOLUTE path from the primary checkout —
@@ -23,7 +23,7 @@ worktree (`dist/` is an untracked build artifact; a worktree lacks it →
 MODULE_NOT_FOUND and SILENT create failures), never the global `jira` shim.
 `JIRA_PROJECT_KEY` is required. CLI-over-MCP routing is enforced by
 `block-backend-tier.sh` (registry `scripts/backends.json`); ops + op↔MCP
-mapping: [`docs/internals/jira-plugin.md`](docs/internals/jira-plugin.md).
+mapping: [`docs/internals/jira-plugin.md`](jira-plugin.md).
 
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
@@ -32,7 +32,7 @@ sites preflight with `scripts/lib/bank-preflight.sh`, parse
 `--output-format json`, and declare an
 explicit `--permission-mode` (never `bypassPermissions`). Evidence, sources +
 re-measure recipe:
-[`docs/internals/enforcement.md`](docs/internals/enforcement.md#claude-invocation-billing).
+[`docs/internals/enforcement.md`](enforcement.md#claude-invocation-billing).
 
 ### Subagent policy — delegation & escalation
 **Delegate what is genuinely independent and sizeable — and only that.** Don't
@@ -67,12 +67,12 @@ file; high-frequency + cheap → rule + skill; eval-shaped → a timeboxed ticke
 **Structural > instructional** — first drift is signal; on the **second**,
 escalate to a hook, gate or classifier, never to stronger prose. Frame + worked
 examples:
-[`docs/internals/context-architecture.md`](docs/internals/context-architecture.md).
+[`docs/internals/context-architecture.md`](context-architecture.md).
 
 ### Honesty markers — `ponytail:`
 `ponytail: <ceiling>, <upgrade path>` marks a known, deliberate simplification
 (limitation AND the ticket or trigger to revisit it) →
-[`docs/internals/ponytail-convention.md`](docs/internals/ponytail-convention.md).
+[`docs/internals/ponytail-convention.md`](ponytail-convention.md).
 Other code comments: keep list only, never ticket/review history (gate: `check-history-comments`, same doc).
 
 ### Where artifacts land
@@ -113,7 +113,7 @@ State lives in your handover state repo (`$HANDOVER_DIR`), never himmel
 never by editing docs. Scripts source
 `scripts/lib/handover-path.sh` and call `handover_root` — never a hardcoded
 `./handovers/`. Flows + resolver:
-[`docs/internals/handover-system.md`](docs/internals/handover-system.md).
+[`docs/internals/handover-system.md`](handover-system.md).
 
 ## ENFORCEMENT (runs automatically)
 
@@ -121,7 +121,7 @@ Enforced by PreToolUse/PostToolUse hooks plus **pre-commit/commit-msg/pre-push g
 `.claude/settings.json` and `.pre-commit-config.yaml` — read those, not a list
 here (an enumeration drifts silently); the Codex lane re-wires the
 same guardrails in `.codex/hooks.json`. Per-hook behaviour + guardrail matrix:
-[`docs/internals/enforcement.md`](docs/internals/enforcement.md).
+[`docs/internals/enforcement.md`](enforcement.md).
 
 **Session-critical (kept inline — needed at a glance):** hook off switch = a session
 env var set in the LAUNCHING shell (e.g. `EDIT_ON_MAIN_OK=1 claude`); a per-call
@@ -129,12 +129,12 @@ prefix does NOT work. Per-repo opt-out: a local gitignored `.single-writer` at a
 repo root allows on-main edits there (single-writer repos — personal vaults,
 state repos — that commit straight to main by design); clones without the marker
 stay protected. Required environment:
-[`docs/setup/new-machine.md`](docs/setup/new-machine.md#1-required-environment-himmel-123).
+[`docs/setup/new-machine.md`](../setup/new-machine.md#1-required-environment-himmel-123).
 
 When a guardrail stops you — a denial, a permission prompt, a silent no-op at
 rc=0, a failed attestation gate, a refused worktree — the recovery lives in
 `himmel-ops:stuck-playbook` /
-[`docs/internals/stuck-playbook.md`](docs/internals/stuck-playbook.md), which
+[`docs/internals/stuck-playbook.md`](stuck-playbook.md), which
 also carries the Bash command shapes the native permission matcher refuses.
 
 ## REFERENCE INDEX
