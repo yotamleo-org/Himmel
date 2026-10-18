@@ -1109,17 +1109,6 @@ are where a top-tier parent quietly burns its scarce weekly quota on mechanical
 edits, and because a worker lane on a shared branch can absorb several findings
 per dispatch instead of one round-trip each.
 
-### Tier-return marker (retired)
-
-The `> **Tier-return:** <reason>` marker and its counter,
-`scripts/lanes/tier-return-sweep.mjs`, are **retired**. The sweep counted
-subagent transcripts ending in the marker, but nothing ever instructed a child
-to emit it: `leg-preface.md` is read by headed top-level worker sessions, the sweep only
-counts `subagents/` transcripts, and no injection reaches a dispatched child.
-It read `sonnet 0/77` whatever the escalation rate, so G10 could not fail. The
-script now exits non-zero and prints no counts; a counter wired to nothing is
-worse than none.
-
 The launch-time `> **Tier:** … — tier-return: <reason>` category tag that
 `headed-arm-leg.sh` validates is a different thing and stays.
 

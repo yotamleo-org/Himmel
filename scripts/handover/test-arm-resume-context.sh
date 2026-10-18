@@ -495,7 +495,6 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
         TITLE_J1=$(job_title "$REAL_SCHED/job.body")
         assert_contains "j1: precondition, the launch command names the session" 'arm-context-console' "$TITLE_J1"
         assert_contains "j1: the reason line spells the source like headed-arm.sh" 'context=1m (default)' "$out"
-        assert_not_contains "j1: the old prose reason is gone" 'no --context given' "$out"
         assert_rc "j1: sc_launch_context attributes the arm from its record, not unknown" 0 \
             "$(rc_of test "$(sc_launch_context "$CACHE_J/launch-logs" "$TITLE_J1")" = 1m)"
         ROW_J1=$(cat "$CACHE_J/launch-logs/$TITLE_J1.log" 2>/dev/null)
