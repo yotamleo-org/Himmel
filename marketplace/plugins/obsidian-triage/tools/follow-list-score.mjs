@@ -28,7 +28,7 @@
 //
 // gather pipeline, per roster handle:
 //   buildCorpusEvidence -> fetchAccount -> extractClaims -> resolveGithub
-//   + fetchRepos -> verifyClaims -> screenDossier -> verifyWebClaims
+//   + fetchRepos -> scanRepo (advisory) -> verifyClaims -> screenDossier -> verifyWebClaims
 // -> writeDossier
 // A handle with an existing (fresh) dossier is skipped unless --refetch.
 // "Fresh" == a dossier already exists on disk; the dossier schema (Task 2)
@@ -66,6 +66,7 @@ import {
   fetchRepos,
   verifyClaims,
 } from "./lib/follow-verify.mjs";
+import { scanRepo } from "./repo-security-scan.mjs";
 import { screenDossier, trimForJudge } from "./lib/follow-screen.mjs";
 import { verifyWebClaims, makeWebFn } from "./lib/follow-web.mjs";
 import { sha256 } from "./lib/frontmatter.mjs";
@@ -323,6 +324,11 @@ async function processHandle(vaultRoot, handle, rosterInfo, accountSource, deps)
     ...repoEvidence,
     source: gh.login ? "github" : null,
   };
+  // Advisory content scan of the account's top repos: findings
+  // ride in the dossier for the operator; they never set injection_suspect.
+  dossier.repos.security_scan = (repoEvidence.scan_candidates || []).map((full) =>
+    scanRepo(full, { ghFn: deps.ghFn }),
+  );
 
   dossier.claims = verifyClaims(dossier, {
     ghFn: deps.ghFn,

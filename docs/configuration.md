@@ -243,7 +243,7 @@ flowchart TD
     ROUTE --> EXT{"external lanes — available only if<br/>their probe passes (lanes.json)"}
     EXT -->|"ZAI_API_KEY set"| GLM["spawn-glm → branch glm/slug<br/>own worktree, push-url poisoned"]
     EXT -->|"CLIPROXY_API_KEY set<br/>+ codex bank < refuse threshold"| CLX["spawn-claudex → branch claudex/slug<br/>own worktree, push-url poisoned"]
-    EXT -->|"codex / wsl on PATH"| CDX["codex-exec / codex-wsl"]
+    EXT -->|"codex on PATH"| CDX["codex-exec"]
     EXT -->|"hermes installed"| HRM["hermes critics — CR panel rows<br/>inside /pr-check (CR_PROFILE)"]
     ROUTE --> GEM["scripts/gemini/invoke.sh — stateless<br/>second-opinion helper (not a lanes.json lane)"]
     GLM --> BACK["worker commits on its own branch;<br/>parent session owns review + merge"]
@@ -316,9 +316,9 @@ Wired in three places: the repo's `.claude/settings.json` (project scope),
 [§4.2](#42-claude-code-settings--hooks)), and the himmel-ops plugin's
 `marketplace/plugins/himmel-ops/hooks/hooks.json` (`block-docker-privesc`,
 `block-merged-pr-commit`, `block-unresolved-cr-merge`, `block-graphify-egress`,
-`block-rogue-codex-wsl`, `block-rogue-codex-exec`, `guard-implementor-dispatch`,
+`block-rogue-codex-exec`, `guard-implementor-dispatch`,
 `guard-console-dispatch`
-— these eight exist only
+— these seven exist only
 where that plugin is installed). All scripts under `scripts/hooks/`. Full
 per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 
@@ -328,7 +328,6 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-read-secrets` | Read/Grep/Bash/PowerShell touching `.env`, keys, credentials | auth-gated | `READ_SECRETS_OK=1` |
 | `block-destructive-commands` | recursive `rm`, `schtasks` mutation, `taskkill`, forced git rewrites, `curl\|sh`, … | auth-gated | `DESTRUCTIVE_OK=1` |
 | `block-rogue-claude-schedule` | one command that both registers a scheduler job and launches `claude` | auth-gated | `ROGUE_SCHEDULE_OK=1`; or use the sanctioned `arm-resume.sh` / `pipeline-cadence.sh` |
-| `block-rogue-codex-wsl` | raw `wsl … codex exec` outside the sanctioned dispatch script | auth-gated | `CODEX_WSL_RAW_OK=1` |
 | `block-rogue-codex-exec` | raw native `codex exec` outside the sanctioned dispatch script (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |
 | `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
 | `block-jira-compound-write` | a Jira CLI write wrapped in `$(…)`/heredoc/chain | auth-gated (blocks the compound shape, prescribes the one literal retry) | `JIRA_COMPOUND_WRITE_OK=1` |

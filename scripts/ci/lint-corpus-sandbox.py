@@ -83,7 +83,11 @@ def shell_launches(text):
     errors = []
     # Require the owned runner path at the call site, never a mutable binding.
     command = 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
-    hook = re.compile(r'\bbash\s+[\"\']?\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})|[\"\']?\$BASH[A-Za-z0-9_]*[\"\']?\s+[\"\']?\$HOOK\b')
+    hook = re.compile(
+        r'\b(?:bash|sh|env)\s+(?:[^\s$`\"\'();|&]+\s+)*'
+        r'[\"\']?\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})'
+        r'|[\"\']?\$BASH[A-Za-z0-9_]*[\"\']?\s+[\"\']?\$HOOK\b'
+    )
     wrapper = re.compile(re.escape(command) + r'[^;|&]*?\s+--\s')
     for number, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith("#"):

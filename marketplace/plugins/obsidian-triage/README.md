@@ -419,6 +419,15 @@ manual Claude judge pass → `assemble` pipeline that scores/tiers the X/Twitter
 follow list. See `tools/README.md` ("Follow-list scorer" section) for the
 full runbook.
 
+### Advisory repo security scan (HIMMEL-5816)
+
+`tools/repo-security-scan.mjs` reads a GitHub repo's README, root docs, command and skill markdown, `package.json` and setup scripts through `gh api` (no clone, nothing executed) and reports prompt injection, install hooks, obfuscated payloads, secret upload / pipe-to-shell in setup, and git/URL dependencies. It is advisory: it never installs, rejects or gates anything.
+
+- **Crawler:** `gather` scans each account's top 3 repos by stars and writes the result to `dossier.repos.security_scan[]`. It does not set `injection_suspect`.
+- **Ingest:** `/luna-ingest` Phase 1.6 runs `node tools/repo-security-scan.mjs <owner>/<repo>` and records `repo_scan:` plus a `## Security scan (advisory)` section in the tech-ingest note.
+- Findings carry a fixed `kind` / `detail` and a sanitized path, never a quote of the repo text. A scan that cannot run is `fetch_error` / `unavailable`, never `clean`.
+- Tests: `tests/test-repo-security-scan.sh` (hermetic; `REPO_SCAN_GH_FIXTURE` swaps `gh`).
+
 ### Opt-in web search: DeepSeek (HIMMEL-6269)
 
 The claim-check web rung (`tools/lib/follow-web.mjs`) can search with DeepSeek

@@ -2,11 +2,11 @@
 // Boots the REAL `himmelctl ui --port 0 --agui <run>` (the same spawn as fixtures.ts, so the
 // in-session refusal stays untouched) with a temp HOME whose ~/.claude/projects holds a
 // session journal the test APPENDS to while the page is open: a live stream over the real SSE path.
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fleetFixture } from "../agui-fleet-fixture";
+import { fleetFixture, FLEET } from "../agui-fleet-fixture";
 import { BIN } from "./fixtures";
 
 export const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -66,6 +66,15 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
   const dir = mkdtempSync(join(tmpdir(), "agui-e2e-"));
   const fleet = opts.fleet ? fleetFixture(dir, { cloud: opts.cloud }) : null;
   const home = join(dir, "home");
+  // A live console holds its queue lock; the process fixture alone is not live.
+  if (fleet) {
+    const root = fleet.env.HANDOVER_DIR;
+    const doc = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
+    execFileSync("bash", [join(__dirname, "../../../handover/queue-lock.sh"), "acquire", doc, "fixture-console"], {
+      env: { PATH: process.env.PATH, HOME: home, HANDOVER_DIR: root },
+    });
+    appendFileSync(doc, "- 09:00 LIVE — lock `fixture-console`\n");
+  }
   const slug = join(home, ".claude", "projects", "e2e-project");
   mkdirSync(slug, { recursive: true });
   const journal = join(slug, `${RUN}.jsonl`);

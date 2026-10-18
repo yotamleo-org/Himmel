@@ -48,6 +48,25 @@ cat > "$SHELL_FIXTURE" <<'SH'
 bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" -- bash "$HOOK"; bash "$HOOK"
 SH
 if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'second unsandboxed simple command accepted'; else ok 'second unsandboxed simple command rejected'; fi
+# Bash arguments copied from actions/runner ScriptHandlerHelpers.cs _defaultArguments;
+# the script placeholder {0} is replaced by the owned hook path.
+# https://github.com/actions/runner/blob/main/src/Runner.Worker/Handlers/ScriptHandlerHelpers.cs
+# shellcheck disable=SC2016
+for launch in 'sh "$HOOK"' 'env "$HOOK"' '/bin/sh "${HOOK}"' '/usr/bin/env "$HOOK"' \
+    'env FLAG=value sh "$HOOK"' 'bash --noprofile --norc -e -o pipefail "$HOOK"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped shell launch accepted: $launch"
+    else ok "unwrapped shell launch rejected: $launch"; fi
+    printf 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" -- %s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        ok "sandboxed shell launch accepted: $launch"
+    else bad "sandboxed shell launch rejected: $launch"; fi
+    printf 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" -- bash "$HOOK"; %s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "second unwrapped shell launch accepted: $launch"
+    else ok "second unwrapped shell launch rejected: $launch"; fi
+done
 cat > "$SHELL_FIXTURE" <<'SH'
 bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" -- bash "$HOOK"
 SH

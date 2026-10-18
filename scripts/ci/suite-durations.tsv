@@ -132,7 +132,6 @@ scripts/codex/test-codex-arg-filter.sh	0
 scripts/codex/test-codex-hook-parity.sh	0
 scripts/codex/test-companion-liveness.sh	0
 scripts/codex/test-dispatch-codex-exec.sh	57
-scripts/codex/test-dispatch-codex-wsl.sh	2
 scripts/codex/test-hook-smoke-demo.sh	10
 scripts/codex/test-install-himmel-codex.sh	0
 scripts/codex/test-reap-mcp-fleet.sh	0
@@ -362,7 +361,6 @@ scripts/hooks/test-block-primary-git-writes.sh	78
 scripts/hooks/test-block-read-secrets.sh	4
 scripts/hooks/test-block-rogue-claude-schedule.sh	0
 scripts/hooks/test-block-rogue-codex-exec.sh	1
-scripts/hooks/test-block-rogue-codex-wsl.sh	0
 scripts/hooks/test-block-subagent-park.sh	0
 scripts/hooks/test-block-tail-pipe-on-gates.sh	5
 scripts/hooks/test-block-terminal-write-fence.sh	5

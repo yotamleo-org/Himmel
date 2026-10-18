@@ -104,6 +104,9 @@ safe="${safe#:}"
 #   sneaky   -> foreign serverInfo but a name:qmd pair OUTSIDE serverInfo
 #   dead     -> nothing, connection-refused rc
 #   sentinel -> qmd-shaped reply iff $QMD_MOCK_STATE/alive exists, else dead
+#   auth401  -> an authenticated daemon the probe holds no token for: the MCP
+#               route answers 401 with an empty body, /health answers
+#               $QMD_MOCK_HEALTH (default 200; 000 = connection refused)
 # Dead exits rc 7 (connect refused); the rc 7 vs rc 28 (timeout) distinction
 # is intentionally collapsed - production branches on empty body only.
 mock_curl="$bin/curl"
@@ -117,6 +120,16 @@ case "${QMD_MOCK_CURL_MODE:-dead}" in
   sentinel)
     if [ -f "$QMD_MOCK_STATE/alive" ]; then printf '%s' "$qmd_reply"; exit 0; fi
     exit 7 ;;
+  auth401)
+    route=mcp; wcode=0
+    for a in "$@"; do
+      case "$a" in */health) route=health ;; '%{http_code}') wcode=1 ;; esac
+    done
+    code=401
+    if [ "$route" = health ]; then code="${QMD_MOCK_HEALTH:-200}"; fi
+    [ "$code" = 000 ] && exit 7
+    if [ "$wcode" = 1 ]; then printf '%s' "$code"; elif [ "$route" = health ]; then hb='{"status":"ok","uptime":3}'; printf '%s' "${QMD_MOCK_HEALTH_BODY-$hb}"; fi
+    exit 0 ;;
   *) exit 7 ;;
 esac
 EOF
@@ -171,6 +184,7 @@ run_ensure() {
   set +e
   out="$(QMD_CURL="$mock_curl" QMD_MOCK_CURL_MODE="$1" QMD_MOCK_STATE="$state" \
     QMD_MOCK_HANG="${QMD_MOCK_HANG:-0}" QMD_START_TIMEOUT="${QMD_START_TIMEOUT:-20}" \
+    QMD_MOCK_HEALTH="${QMD_MOCK_HEALTH:-200}" \
     QMD_MCP_URL="${QMD_MCP_URL:-$test_url}" \
     HOME="$home" PATH="$2" \
     bash "$script" 2>&1)"
@@ -882,5 +896,29 @@ if kill -0 "$late_daemon" 2>/dev/null; then fail "(x3) off did not wait for the 
 [ ! -d "$swap_lock" ] || fail "(x3) off left the lock behind"
 rm -f "$off_flag"
 echo "ok (x3): off waits for a launch holding the lock, then stops the daemon it started"
+
+# ---- (y) authenticated daemon: MCP route 401, /health 200 -> alive ----------
+# The probe holds no (or a stale) bearer token, so the MCP route answers 401
+# while the daemon is healthy. That is "alive, auth required", never dead.
+rm -f "$state/alive"
+run_ensure auth401 "$bin:$safe"
+[ "$rc" -eq 0 ] || fail "(y) auth401: expected rc 0, got $rc ($out)"
+[ ! -f "$state/qmd-argv.log" ] || fail "(y) auth401: qmd was invoked but the daemon was already alive"
+echo "ok (y): MCP route 401 + /health 200 -> reported alive, qmd not invoked"
+
+# ---- (y2) control: MCP route 401 but /health dead -> not alive ---------------
+rm -f "$state/alive"
+QMD_MOCK_HEALTH=000 run_ensure auth401 "$bin:$safe"
+[ "$rc" -ne 0 ] || fail "(y2) auth401+dead health: expected nonzero rc"
+printf '%s' "$out" | grep -q "nothing came alive" || \
+  fail "(y2) auth401+dead health: missing 'nothing came alive' message (got: $out)"
+echo "ok (y2): MCP route 401 with /health dead -> still reported not alive"
+
+# ---- (y3) control: 401 + a 200 /health that is not qmd's -> not alive --------
+# A foreign auth-gated service on the port must still hit the not-qmd path.
+rm -f "$state/alive"
+QMD_MOCK_HEALTH_BODY='OK' run_ensure auth401 "$bin:$safe"
+[ "$rc" -ne 0 ] || fail "(y3) auth401+foreign health: expected nonzero rc"
+echo "ok (y3): MCP route 401 with a non-qmd /health body -> not reported alive"
 
 echo "PASS: all ensure-qmd-daemon cases"

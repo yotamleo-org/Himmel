@@ -1129,7 +1129,14 @@ jobs:
     # unset — runs on matrix.os. Never pull_request_target. The accounts mirror
     # scripts/vm/ci-runner/job-started-hook.sh, which refuses the rest anyway, so
     # a job this expression would misroute fails there instead of running code.
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('["self-hosted","himmel-vm"]') || matrix.os }}
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('["self-hosted","himmel-vm"]') || (vars.CI_GCP == 'on' && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.triggering_actor) && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login)))) && fromJSON('["self-hosted","gcp"]') || matrix.os }}
+    # HIMMEL-6272: otherwise, while repo variable CI_GCP is 'on' (setting it to
+    # 'off' is the instant kill switch), a dispatch or a same-repo
+    # pull_request by the same operator accounts runs on an ephemeral GCP spot
+    # runner (label gcp, one job per VM, scripts/ci/gcp-runners.sh up). A fork PR,
+    # any other author and a schedule never reach it (ci.yml has no push trigger;
+    # the 45 min VM cap is under the nightly shards).
+    # The VM image carries the tools the github-hosted-gated steps below install.
     # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
     # non-cancelling concurrency group, so one hung shard queued every later
     # main run). The nightly SUITE_TIER_MODE=all legs are far slower than the

@@ -1186,6 +1186,52 @@ offer_retired_plugin_removal() {
     return 0
 }
 
+# Read-only, bounded previews only: migrations always require operator consent.
+# Missing inputs/tools and probe failures are silent, best-effort skips.
+report_pending_migrations() {
+    (
+        load_dotenv HANDOVER_DIR LUNA_VAULT_PATH 2>/dev/null || true
+        local timer="$ROOT/scripts/lib/timeout-bin.sh" out=""
+        [ -r "$timer" ] || exit 0
+        # shellcheck source=lib/timeout-bin.sh
+        . "$timer" 2>/dev/null
+        [ -n "${_TIMEOUT_BIN:-}" ] || exit 0
+
+        # Bound the resolver AND all user dry-runs together, not each item.
+        # shellcheck disable=SC2016 # Expansion belongs to the bounded child shell.
+        "$_TIMEOUT_BIN" -k 1 3 bash -c '
+            helper="$1/scripts/lib/handover-path.sh"
+            script="$1/marketplace/plugins/handover/scripts/migrate-v1-to-v2.sh"
+            [ -r "$helper" ] && [ -r "$script" ] || exit 0
+            . "$helper" # read-sink-ok: path is built from the checkout ROOT, not operator input
+            state=$(handover_root) || exit 0
+            # The legacy engine accepts --root <parent of handovers>.
+            [ "${state##*/}" = handovers ] || exit 0
+            for user in "$state"/*/; do
+                [ -r "$user" ] && [ -x "$user" ] || continue
+                slug=${user%/}; slug=${slug##*/}
+                out=$(bash "$script" --root "${state%/*}" --user "$slug" --dry-run) || continue
+                if grep -q "^  rename:" <<< "$out"; then
+                    printf "handover migration needed: %s (%s); preview: bash %q --root %q --user %q --dry-run\n" \
+                        "$state" "$slug" "$script" "${state%/*}" "$slug"
+                fi
+            done
+        ' _ "$ROOT" 2>/dev/null || true
+
+        local vault="${LUNA_VAULT_PATH:-}"
+        local script="$ROOT/marketplace/plugins/obsidian-triage/tools/migrate-clip-lifecycle.mjs"
+        [ -n "$vault" ] && [ -r "$vault" ] && [ -x "$vault" ] && [ -r "$script" ] || exit 0
+        command -v node >/dev/null 2>&1 || exit 0
+        # No --manifest: even the migration dry-run can write when one is given.
+        if out=$("$_TIMEOUT_BIN" -k 1 3 node "$script" "$vault" --dry-run 2>/dev/null); then
+            if grep -q '^PLAN ' <<< "$out"; then
+                printf 'clip-lifecycle migration needed: %s; preview: node %q %q --dry-run\n' "$vault" "$script" "$vault"
+            fi
+        fi
+    ) || true
+    return 0
+}
+
 # ─── the full dependency chain ──────────────────────────────────
 # Six MANAGED items — the things this file already updates (or, for jira/qmd/
 # luna below, already has a real recipe for elsewhere in this repo that this
@@ -2004,13 +2050,15 @@ PY
         echo "    none declared in the registry."
         return 0
     fi
-    drift_out=$(bash "$guard" 2>&1) || true
+    echo "    checking $(printf '%s\n' "$entries" | grep -c .) tools against upstream..."
+    drift_out=$(bash "$guard" 2>&1 </dev/null) || true
     while IFS=$'\x1f' read -r name unattended; do
         [ -n "$name" ] || continue
         line=$(printf '%s\n' "$drift_out" | grep -F -- "  $name: " | head -1)
         case "$line" in
             "  $name: CURRENT"*)
                 inst=$(printf '%s' "$line" | sed -n 's/.*installed \([^ )]*\).*/\1/p')
+                echo "    $name: current (${inst:--})"
                 _probe_tool_row "$name" up-to-date "${inst:-current}"
                 _ver_row "$name" "${inst:--}" "${inst:--}" current
                 continue ;;
@@ -2030,6 +2078,7 @@ PY
         latest=$(printf '%s' "$line" | sed -n 's/.*latest tag v\{0,1\}\([^;) ]*\).*/\1/p')
         inst=$(printf '%s' "$line" | sed -n 's/.*installed \([^ )]*\).*/\1/p')
         manual="bash scripts/upstreams/apply-tool-upgrade.sh $name $latest"
+        echo "    $name: behind ($inst -> $latest)"
         if [ "$unattended" != "true" ]; then
             echo "    $name $inst -> $latest is operator-gated (upgrade.unattended is not true); run: $manual"
             _probe_tool_row "$name" skipped "$inst -> $latest operator-gated — run: $manual"
@@ -2042,9 +2091,10 @@ PY
             continue
         fi
         rc=0
-        out=$(bash "$upgrader" "$name" "$latest" --unattended 2>&1) || rc=$?
+        out=$(bash "$upgrader" "$name" "$latest" --unattended 2>&1 </dev/null) || rc=$?
         case "$rc" in
-            0) _probe_tool_row "$name" updated "$(printf '%s\n' "$out" | grep '^UPGRADE ' | tail -1 | cut -d' ' -f3-)" ;;
+            0) echo "    $name: upgraded ($inst -> $latest)"
+               _probe_tool_row "$name" updated "$(printf '%s\n' "$out" | grep '^UPGRADE ' | tail -1 | cut -d' ' -f3-)" ;;
             1) _probe_tool_row "$name" up-to-date "$(_last_line_trimmed "$out")" ;;
             3) _probe_tool_row "$name" skipped "$(_last_line_trimmed "$out")" ;;
             *)
@@ -3105,6 +3155,10 @@ if [ "${1:-}" = "--plugins-check" ]; then
     warn_doc_guard_off "$ROOT"
     exit 0
 fi
+
+case "${1:-}" in
+    ""|--check|--dry-run) report_pending_migrations ;;
+esac
 
 # ─── non-git install: a packaged / tarball install has no upstream ─
 # Everything below this block is built on `git`: pull,

@@ -99,6 +99,14 @@ OUT=$(bash "$RUNNER" -- bash -c 'touch "$HOME/ok" "$TMPDIR/ok"; test -f "$HOME/o
 if [ "$RC" = 0 ] && [[ "$OUT" == *WRITABLE* ]]; then ok 'HOME and scratch are writable'; else bad "writable fixtures: $OUT"; fi
 OUT=$(bash "$RUNNER" -- bash -c 'echo HOOK_DENY; exit 2' 2>&1); RC=$?
 if [ "$RC" = 2 ] && [[ "$OUT" == *HOOK_DENY* ]]; then ok 'hook deny status and output preserved'; else bad "hook status: rc=$RC $OUT"; fi
+OUT=$(bash "$RUNNER" -- bash -c 'echo FD_CHECK_STARTED; if { printf leaked >&9; } 2>/dev/null; then exit 1; fi' 9> "$TMP/fd9" 2>&1); RC=$?
+if [ "$RC" = 0 ] && [[ "$OUT" == *FD_CHECK_STARTED* ]] && [ ! -s "$TMP/fd9" ]; then
+    ok 'caller fd 9 cannot write its host file inside sandbox'
+else bad "inherited fd 9: rc=$RC $OUT"; fi
+OUT=$(bash "$RUNNER" -- bash -c 'echo FD_CHECK_STARTED; if { printf leaked >&123; } 2>/dev/null; then exit 1; fi' 123> "$TMP/fd123" 2>&1); RC=$?
+if [ "$RC" = 0 ] && [[ "$OUT" == *FD_CHECK_STARTED* ]] && [ ! -s "$TMP/fd123" ]; then
+    ok 'caller high fd cannot write its host file inside sandbox'
+else bad "inherited fd 123: rc=$RC $OUT"; fi
 if [ "$(uname -s)" = Linux ]; then
     mkdir -p "$TMP/linux-bin"
     printf '#!/bin/bash\nprintf "Linux\\n"\n' > "$TMP/linux-bin/uname"
@@ -136,9 +144,10 @@ OUTER=()
 for input in /usr /bin /sbin /lib /lib64; do
     [ ! -e "$input" ] || OUTER+=(--ro-bind "$input" "$input")
 done
-OUT=$(bwrap "${OUTER[@]}" --ro-bind "$TMP/runtime" /etc --ro-bind "$ROOT" "$ROOT" \
+# Bind the checkout after tmpfs so a checkout under /tmp remains visible.
+OUT=$(bwrap "${OUTER[@]}" --ro-bind "$TMP/runtime" /etc \
     --unshare-all --unshare-user --die-with-parent --proc /proc --dev /dev \
-    --tmpfs /tmp --chdir "$ROOT" -- bash "$RUNNER" -- \
+    --tmpfs /tmp --ro-bind "$ROOT" "$ROOT" --chdir "$ROOT" -- bash "$RUNNER" -- \
     bash -c 'if test -S /etc/host.sock; then echo RUNTIME_SOCKET_VISIBLE; else echo RUNTIME_MASKED; fi; if test -d /etc/hidden && test ! -e /etc/hidden/canary; then echo HIDDEN_MASKED; else echo HIDDEN_CANARY_VISIBLE; fi' 2>&1); RC=$?
 chmod 700 "$TMP/runtime/hidden"
 if [ "$RC" = 0 ] && [[ "$OUT" == *RUNTIME_MASKED* ]]; then

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # scripts/ci/test-pages-workflow.sh -- static suite for Pages
-# source is build_type=workflow, so pages.yml must deploy ONLY when docs/**
-# changes (the legacy branch build redeployed the site on every push to main,
-# ~30 deployments in 12 h). Properties asserted over the workflow text:
-#   1. triggers are exactly push-to-main with paths docs/** plus
-#      workflow_dispatch (no pull_request, no schedule, no tags);
+# source is build_type=workflow, so pages.yml must deploy once a day plus on
+# demand, never on every push (the legacy branch build redeployed the site on
+# every push to main, ~30 deployments in 12 h). Properties asserted over the
+# workflow text:
+#   1. triggers are exactly a daily schedule (cron 17 3 * * *) plus
+#      workflow_dispatch (no push, no pull_request, no tags);
 #   2. permissions pages:write + id-token:write + contents:read, nothing wider;
 #   3. the three Pages actions run (configure, upload, deploy), upload path is
 #      docs, and docs/.nojekyll exists (plain static == the legacy output);
@@ -31,12 +32,11 @@ check_file() {
     [ -f "$f" ] || { echo "workflow-missing"; return; }
     s=$(strip_comments "$f")
     grep -qE '^name:[[:space:]]*Pages[[:space:]]*$' <<< "$s" || echo "name-not-Pages"
-    grep -qE '^[[:space:]]+branches:[[:space:]]*\[main\]' <<< "$s" || echo "push-not-main"
-    grep -qE "^[[:space:]]+paths:[[:space:]]*\\['docs/\\*\\*'\\]" <<< "$s" || echo "paths-not-docs"
+    grep -qE "^[[:space:]]+-[[:space:]]*cron:[[:space:]]*'17 3 \\* \\* \\*'" <<< "$s" || echo "cron-not-daily-0317"
     grep -qE '^[[:space:]]+workflow_dispatch:' <<< "$s" || echo "no-dispatch"
     events=$(awk '/^on:/{f=1;next} /^[^[:space:]]/{f=0} f && /^  [a-z_]+:/{sub(/:.*/,"");gsub(/ /,"");print}' <<< "$s" | sort | tr '\n' ' ') # pipefail-ok: small input
-    [ "$events" = "push workflow_dispatch " ] || echo "extra-trigger"
-    grep -qE '^[[:space:]]+(tags|branches-ignore):' <<< "$s" && echo "extra-trigger"
+    [ "$events" = "schedule workflow_dispatch " ] || echo "extra-trigger"
+    grep -qE '^[[:space:]]+(tags|branches|branches-ignore|paths):' <<< "$s" && echo "extra-trigger"
     grep -qE '^[[:space:]]+pages:[[:space:]]*write' <<< "$s" || echo "no-pages-write"
     grep -qE '^[[:space:]]+id-token:[[:space:]]*write' <<< "$s" || echo "no-id-token"
     grep -qE '^[[:space:]]+contents:[[:space:]]*read' <<< "$s" || echo "no-contents-read"
@@ -68,8 +68,9 @@ if [ -f "$WF" ]; then
         out=$(check_file "$tmp/m.yml")
         if grep -qx "$1" <<< "$out"; then ok "control: $1 detected"; else bad "control: $1 NOT detected"; fi
     }
-    mutate paths-not-docs "s#docs/\*\*#**#"
-    mutate push-not-main "s#\[main\]#[main, dev]#"
+    mutate cron-not-daily-0317 "s#'17 3 \* \* \*'#'0 * * * *'#"
+    mutate extra-trigger "s#^  schedule:#  push:\n    branches: [main]\n  schedule:#"
+    mutate extra-trigger "s#^  schedule:#  pull_request:\n  schedule:#"
     mutate no-dispatch "s#workflow_dispatch:#workflow_x:#"
     mutate no-timeout "s#timeout-minutes:#timeout:#"
     mutate cancels-running-deploy "s#cancel-in-progress: false#cancel-in-progress: true#"
@@ -77,7 +78,6 @@ if [ -f "$WF" ]; then
     mutate name-not-Pages "s#^name: Pages#name: CI#"
     mutate extra-trigger "s#^  workflow_dispatch:#  workflow_run:\n  workflow_dispatch:#"
     mutate extra-trigger "s#^  workflow_dispatch:#  create:\n  workflow_dispatch:#"
-    mutate extra-trigger "s#^  push:#  pull_request:#"
     mutate extra-write-permission "s#^  contents: read#  contents: read\n  issues: write#"
 fi
 

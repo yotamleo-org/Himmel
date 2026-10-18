@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 16,
+  PreToolUse: 15,
   SessionStart: 5,
   SessionEnd: 3,
   Notification: 1,
@@ -37,7 +37,6 @@ const EXPECTED_HOOKS = Object.freeze([
   // before the hook that reads GLM_EXTERNAL_WRITES_OK can bypass it.
   { event: 'PreToolUse', script: 'block-glm-external-writes.sh', failClosedWhen: 'HIMMEL_GLM_WORKER=1' },
   { event: 'PreToolUse', script: 'block-graphify-egress.sh' },
-  { event: 'PreToolUse', script: 'block-rogue-codex-wsl.sh' },
   { event: 'PreToolUse', script: 'block-rogue-codex-exec.sh' },
   { event: 'PreToolUse', script: 'block-lesson-enforcement-writes.sh', failClosedWhen: 'HIMMEL_LESSON_LOOP=1' },
   { event: 'PreToolUse', script: 'guard-implementor-dispatch.sh' },

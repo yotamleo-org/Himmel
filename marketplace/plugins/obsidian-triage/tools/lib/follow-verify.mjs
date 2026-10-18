@@ -112,6 +112,7 @@ function emptyRepoEvidence(status) {
     recent_pushed_at: null,
     topical_hits: 0,
     sample_descriptions: [],
+    scan_candidates: [],
     status,
   };
 }
@@ -139,6 +140,13 @@ export function fetchRepos(login, { ghFn } = {}) {
     .filter(Boolean)
     .slice(0, 5);
 
+  // Top repos by stars feed the advisory content scan (repo-security-scan.mjs).
+  const scan_candidates = [...repos]
+    .filter((r) => typeof r.full_name === "string")
+    .sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
+    .slice(0, 3)
+    .map((r) => r.full_name);
+
   let recentPushedMs = null;
   for (const r of repos) {
     const t = r.pushed_at ? Date.parse(r.pushed_at) : NaN;
@@ -151,6 +159,7 @@ export function fetchRepos(login, { ghFn } = {}) {
     recent_pushed_at: recentPushedMs === null ? null : new Date(recentPushedMs).toISOString(),
     topical_hits,
     sample_descriptions,
+    scan_candidates,
     status: "ok",
   };
 }

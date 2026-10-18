@@ -103,6 +103,29 @@ probe_body() {
     "$QMD_MCP_URL" 2>/dev/null
 }
 
+# Echo the HTTP status of a bounded request (000 when nothing answers).
+http_code() {
+  "$QMD_CURL" -s -m "$PROBE_TIMEOUT" -o /dev/null -w '%{http_code}' "$@" 2>/dev/null
+}
+
+# True when the daemon is up but refuses this probe's token (none readable, or
+# a stale one): the MCP route answers 401 while the unauthenticated /health on
+# the same host:port answers with qmd's own {"status":"ok","uptime":N} body.
+# Alive, auth required - never dead. The body is matched, not just a 200, so a
+# foreign auth-gated service on the port still reaches the not-qmd error.
+alive_auth_required() {
+  local hostport="${QMD_MCP_URL#*://}" health
+  hostport="${hostport%%/*}"
+  [ "$(http_code -X POST -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -d "$INIT_PAYLOAD" "$QMD_MCP_URL")" = 401 ] || return 1
+  health="$("$QMD_CURL" -s -m "$PROBE_TIMEOUT" "${QMD_MCP_URL%%://*}://$hostport/health" 2>/dev/null)"
+  case "$health" in
+    *'"status":"ok"'*'"uptime":'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # True when the body carries a qmd-shaped MCP initialize reply: the match is
 # scoped to the serverInfo object (serverInfo.name == "qmd"), so a foreign
 # server whose reply merely CONTAINS a name:qmd pair elsewhere (tool list,
@@ -266,11 +289,11 @@ fi
 
 # ---- Healthy path: something already answers -------------------------------
 body="$(probe_body)"
+if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
+  check_ceiling
+  exit 0
+fi
 if [ -n "$body" ]; then
-  if is_qmd_shaped "$body"; then
-    check_ceiling
-    exit 0
-  fi
   echo "ensure-qmd-daemon: ERROR - a process is listening on $QMD_MCP_URL but it is NOT qmd" >&2
   echo "  (the MCP initialize reply has no qmd serverInfo). Port 8181 is taken by another service." >&2
   echo "  Free the port or stop that service, then start a fresh session." >&2
@@ -494,7 +517,7 @@ fi
 i=0
 while [ "$i" -lt "$WAIT_TRIES" ]; do
   body="$(probe_body)"
-  if [ -n "$body" ] && is_qmd_shaped "$body"; then
+  if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
     exit 0
   fi
   i=$((i + 1))

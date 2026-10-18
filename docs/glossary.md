@@ -369,7 +369,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | `~/.himmel/config.json` opt-ins not writable | `block-himmel-config-writes` | — | `block-himmel-config-writes` | — | — | — |
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
 | No commit onto a merged PR's branch | — | `block-merged-pr-commit` | `block-merged-pr-commit` | pc `check-merged-branch` (warns) | — | — |
-| Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec`, `block-rogue-codex-wsl` | `guard-pr-check-literal` | — | — | — |
+| Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec` | `guard-pr-check-literal` | — | — | — |
 | Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `console-judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-console-dispatch` | — | — | — | — |
 | Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress`, `block-glm-external-writes` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 | Leg session discipline | `block-leg-askuserquestion`, `guard-leg-wakeup`, `guard-leg-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-leg-context-handoff` | — | — | — |
