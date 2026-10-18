@@ -12,6 +12,9 @@
 #
 # Usage:
 #   known-findings.sh --diff [<range>] [--json] checklist for `git diff <range>` (default <default-branch>...HEAD)
+#   known-findings.sh --diff [<range>] --area   same, with a state per hit (open|waived|checked, from the latest
+#                                               preflight row for this branch), then a "preflight: classes hit N · fixed F ·
+#                                               waived W · checked C" line; exit 3 while any hit is open
 #   known-findings.sh --prompt                  critic-prompt block (prompt:true classes)
 #   known-findings.sh --list                    markdown table (human index)
 #   known-findings.sh --ladder                  class count per rung (design|gate|advisory|prompt|human),
@@ -36,7 +39,7 @@
 # Env: KNOWN_FINDINGS_PROMOTE_N / KNOWN_FINDINGS_PROMOTE_M (defaults for the flags above),
 #      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
-# Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input.
+# Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input, 3 (--diff --area only) an open hit.
 set -uo pipefail
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
@@ -44,7 +47,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KF="${KNOWN_FINDINGS_FILE:-$SCRIPT_DIR/known-findings.json}"
-MODE="" RANGE="" JSON=0 LEARNINGS=""
+MODE="" RANGE="" JSON=0 AREA=0 LEARNINGS=""
 PROMO_N="${KNOWN_FINDINGS_PROMOTE_N:-}" PROMO_M="${KNOWN_FINDINGS_PROMOTE_M:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,6 +65,7 @@ while [ $# -gt 0 ]; do
     --min-recurrences) [ $# -ge 2 ] || { echo "known-findings.sh: --min-recurrences requires a number" >&2; exit 2; }; PROMO_N="$2"; shift 2;;
     --min-branches)    [ $# -ge 2 ] || { echo "known-findings.sh: --min-branches requires a number" >&2; exit 2; }; PROMO_M="$2"; shift 2;;
     --json)      JSON=1; shift;;
+    --area)      AREA=1; shift;;
     -h|--help)   sed -n '2,30p' "$0"; exit 0;;
     *) echo "known-findings.sh: unknown option $1" >&2; exit 2;;
   esac
@@ -69,6 +73,7 @@ done
 [ -n "$MODE" ] || { echo "known-findings.sh: one of --diff <range> | --prompt | --list | --ladder | --refresh is required" >&2; exit 2; }
 case "$PROMO_N" in *[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
 case "$PROMO_M" in *[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
+[ "$AREA" = 0 ] || [ "$MODE" = diff ] || { echo "known-findings.sh: --area is valid only with --diff" >&2; exit 2; }
 [ -f "$KF" ] || { echo "known-findings.sh: not found: $KF" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || { echo "known-findings.sh: node is required" >&2; exit 2; }
 
@@ -89,12 +94,17 @@ if [ "$MODE" = diff ]; then
 fi
 LEDGER="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+BRANCH=""
+if [ "$AREA" = 1 ]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)" || { echo "known-findings.sh: cannot resolve the current branch" >&2; exit 2; }
+fi
 if [ "$MODE" = refresh ] && [ -n "$LEARNINGS" ] && [ ! -f "$LEARNINGS" ]; then
   echo "known-findings.sh: learnings export not found: $LEARNINGS" >&2; exit 2
 fi
 
-MODE="$MODE" KF="$KF" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
+MODE="$MODE" KF="$KF" AREA="$AREA" BRANCH="$BRANCH" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
 const fs = require("fs"), path = require("path");
+const T0 = Date.now();
 const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON === "1";
 const ROOT = process.env.REPO_ROOT;
 const db = JSON.parse(fs.readFileSync(KF, "utf8"));
@@ -390,8 +400,30 @@ if (MODE === "diff") {
         for (const a of files[f].added) { const t = a.text.trim(); if (!/^(```|~~~)/.test(t)) continue; if (!open && /^(`{3,}|~{3,})\s*$/.test(t)) where.push(`${f}:${a.n}`); open = !open; } }
     } else if (d.type === "hook-header-no-fail-direction") {
       for (const f of scoped) if (files[f].isNew && !isTestFile(f) && !files[f].added.slice(0, 40).some(a => /fail[- ]?(open|closed)/i.test(a.text))) where.push(f);
+    } else if (d.type === "hook-no-bypass") {
+      for (const f of scoped) if (files[f].isNew && !isTestFile(f) && !files[f].added.some(a => /_(OK|BYPASS)\b|_BYPASS_/.test(a.text))) where.push(f);
     }
     if (where.length) hits.push({ id: c.id, kind: c.kind, title: c.title, canonical: c.canonical, coverage: c.coverage, where });
+  }
+  if (process.env.AREA === "1") {
+    // A hit is open until the latest recorded preflight pass for this branch
+    // closed its class as waived or checked; a class that pass recorded as fixed
+    // and that no longer hits counts as fixed.
+    let last = null;
+    try { for (const l of fs.readFileSync(process.env.LEDGER, "utf8").split("\n")) { if (!l) continue; let r; try { r = JSON.parse(l); } catch { continue; } if (r.kind === "preflight" && r.branch === process.env.BRANCH) last = r; } } catch { /* no ledger: every hit is open */ }
+    const prior = {}; for (const h of (last && last.hits) || []) prior[h.class] = h;
+    for (const h of hits) { const p = prior[h.id]; h.state = p && (p.state === "waived" || p.state === "checked") ? p.state : "open"; if (h.state === "waived" && p.ref) h.ref = p.ref; }
+    const fixedN = Object.values(prior).filter(p => p.state === "fixed" && !hits.some(h => h.id === p.class)).length;
+    const cnt = (st) => hits.filter(h => h.state === st).length;
+    const sum = { classes_hit: hits.length + fixedN, fixed: fixedN, waived: cnt("waived"), checked: cnt("checked"), open: cnt("open"), wall_secs: +((Date.now() - T0) / 1000).toFixed(1) };
+    const line = `preflight: classes hit ${sum.classes_hit} · fixed ${sum.fixed} · waived ${sum.waived} · checked ${sum.checked} (${sum.wall_secs}s)`;
+    if (JSON_OUT) console.log(JSON.stringify({ range: process.env.RANGE || null, files: changed.length, hits, preflight: sum }, null, 2));
+    else {
+      for (const h of hits) { console.log(`[${h.id}] (${h.kind}) state=${h.state}${h.ref ? " (" + h.ref + ")" : ""} ${h.title}`); for (const w of h.where.slice(0, 12)) console.log(`  - ${w}`); if (h.where.length > 12) console.log(`  - … ${h.where.length - 12} more`); console.log(`  do: ${h.canonical}`); }
+      console.log(line);
+      if (sum.open) console.log(`known-findings: ${sum.open} open hit(s) — close each (fix, waive with a reason, or check) and record the pass with ledger-append.sh preflight before step 3.`);
+    }
+    process.exit(sum.open ? 3 : 0);
   }
   if (JSON_OUT) { console.log(JSON.stringify({ range: process.env.RANGE || null, files: changed.length, hits }, null, 2)); process.exit(0); }
   if (!hits.length) { console.log(`known-findings: no known class matches this diff (${changed.length} file(s)) — go to the panel.`); process.exit(0); }

@@ -71,15 +71,16 @@ set -uo pipefail
 # A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
+_kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
 prompt_chars="" response_chars="" reason="" detail="" deferred_to="" fu_class="" set_pairs="" attempt_num="" duration_secs="" batch_file="" text=""
-round="" disposition_round=""
+round="" disposition_round="" hit_pairs=""
 crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
 while [ $# -gt 0 ]; do case "$1" in
   --branch) branch="$2"; shift 2;; --head) head="$2"; shift 2;;
@@ -100,6 +101,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --suggestions) sug_n="$2"; shift 2;; --dropped) dropped_n="$2"; shift 2;;
   --raw-path) raw_path="$2"; shift 2;;
   --set) set_pairs="$set_pairs$2"$'\n'; shift 2;;
+  --hit) hit_pairs="$hit_pairs$2"$'\n'; shift 2;;
   --attempt) attempt_num="$2"; shift 2;; --duration-secs) duration_secs="$2"; shift 2;;
   --batch-file) batch_file="$2"; shift 2;;
   *) echo "ledger-append.sh: unknown $1" >&2; exit 2;;
@@ -187,6 +189,8 @@ fi
 # path and `amend` enforce it; a batch spec row (panel output) does not --
 # ponytail: batch rows are not deferrals a person classifies, add if one ever is.
 valid_fu_class() { case "$1" in escape|hardening|polish) return 0;; *) return 1;; esac; }
+# A class id is a known-findings.json id; new:<slug> names a class the catalog lacks.
+valid_class() { printf '%s' "$1" | grep -qE '^(new:)?[a-z0-9][a-z0-9-]*$'; }
 if [ -n "$fu_class" ] && ! valid_fu_class "$fu_class"; then
   echo "ledger-append.sh: --fu-class must be escape|hardening|polish (got '$fu_class')" >&2
   exit 2
@@ -312,8 +316,8 @@ if [ "$kind" = "amend" ]; then
       # RECORD was wrong — a different field. Without this key, the deferral
       # path clear-cr-marker itself recommends is a dead end for any finding
       # originally recorded without a reason, which is most of them.
-      severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|reason=*|file=*|line=*) ;;
-      *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, reason, file, line)" >&2; exit 2;;
+      severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|class=*|reason=*|file=*|line=*) ;;
+      *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, class, reason, file, line)" >&2; exit 2;;
       *)   echo "ledger-append.sh: --set expects <key>=<value> (got '$_pair')" >&2; exit 2;;
     esac
     # Same eager validation as --deferred-to (glm-5): otherwise a typo'd ticket
@@ -339,6 +343,11 @@ if [ "$kind" = "amend" ]; then
       fu_class=*)
         if ! valid_fu_class "${_pair#fu_class=}"; then
           echo "ledger-append.sh: --set fu_class= must be escape|hardening|polish (got '${_pair#fu_class=}')" >&2
+          exit 2
+        fi ;;
+      class=*)
+        if ! valid_class "${_pair#class=}"; then
+          echo "ledger-append.sh: --set class= must be a known-findings class id or new:<slug> (lowercase letters, digits, hyphens; got '${_pair#class=}')" >&2
           exit 2
         fi ;;
       severity=*)
@@ -389,6 +398,27 @@ if [ "$kind" = "amend" ]; then
   if [ -z "$branch" ]; then
     caller_branch="$(git symbolic-ref --short -q HEAD 2>/dev/null || true)"
   fi
+fi
+
+# preflight: one row per /pr-check step 2.8 pass, never deduped.
+# --hit <class>=<fixed|checked|waived:<reason>> repeats once per class hit; zero
+# --hit records a clean pass. --duration-secs is the pass's wall time.
+if [ "$kind" = "preflight" ]; then
+  [ -n "$head" ] || { echo "ledger-append.sh: preflight requires --head" >&2; exit 2; }
+  if [ -n "$duration_secs" ] && ! expr "$duration_secs" : '^[0-9][0-9]*$' > /dev/null 2>&1; then
+    echo "ledger-append.sh: preflight --duration-secs must be a non-negative integer (got '$duration_secs')" >&2; exit 2
+  fi
+  while IFS= read -r _hit; do
+    [ -n "$_hit" ] || continue
+    case "$_hit" in *=*) ;; *) echo "ledger-append.sh: --hit expects <class>=<state> (got '$_hit')" >&2; exit 2;; esac
+    _hc="${_hit%%=*}"; _hs="${_hit#*=}"
+    valid_class "$_hc" || { echo "ledger-append.sh: --hit class must be a class id or new:<slug> (got '$_hc')" >&2; exit 2; }
+    case "$_hs" in
+      fixed|checked) ;;
+      waived:?*) ;;
+      *) echo "ledger-append.sh: --hit state must be fixed|checked|waived:<reason> (got '${_hs%%:*}'; a waived hit needs its reason)" >&2; exit 2;;
+    esac
+  done <<< "$hit_pairs"
 fi
 
 # attempt: one row per invocation ATTEMPT (primary + each
@@ -523,7 +553,7 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
@@ -1015,6 +1045,18 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
         }
       }
     }
+    // A fixed or deferred amend carries the class it belongs to. The session
+    // supplies class= only when this attribution (the globs + match test the
+    // known-findings ladder uses) finds none; a finding no class claims is
+    // recorded as "unattributed" so a later slice can count them.
+    if((set.verdict==="fixed"||set.verdict==="deferred"||set.deferred_to)&&!set.class){
+      set.class="unattributed";
+      try{
+        const globRe=(g)=>new RegExp("^"+g.replace(/[.+^${}()|[\]\\]/g,"\\$&").replace(/\*\*\//g,"\u0001").replace(/\*\*/g,"\u0002").replace(/\*/g,"[^/]*").replace(/\?/g,"[^/]").replace(/\u0001/g,"(?:.*/)?").replace(/\u0002/g,".*")+"$");
+        const hit=(JSON.parse(fs.readFileSync(e.KF_FILE,"utf8")).classes||[]).find(c=>c.match&&target.file&&(c.globs||[]).some(g=>globRe(g).test(target.file))&&typeof target.text==="string"&&new RegExp(c.match,"i").test(target.text));
+        if(hit) set.class=hit.id;
+      }catch(err){ /* no readable catalog: the row stays unattributed */ }
+    }
     // By this point e.BRANCH has already been resolved above - explicit
     // --branch if given, else (for the "" case) the unique real candidate
     // branch a matching finding row or re-key amend belongs to, else the
@@ -1182,6 +1224,18 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // Readers key on kind, so every gate and scorecard reader ignores it.
     rec={kind:"ci-red-unlock",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,reason:e.REASON};
     if(e.DETAIL) rec.detail=e.DETAIL;
+    dup=false;
+  } else if(e.KIND==="preflight"){
+    // One row per /pr-check step 2.8 pass. NEVER deduped: the latest row for a
+    // branch is the pass's current state.
+    const hits=(e.HIT_PAIRS||"").split("\n").filter(Boolean).map(p=>{
+      const i=p.indexOf("="), c=p.slice(0,i), st=p.slice(i+1), j=st.indexOf(":");
+      const h={class:c,state:j<0?st:st.slice(0,j)};
+      if(j>=0) h.ref=st.slice(j+1).replace(/[\r\n]+/g," ").slice(0,200);
+      return h;});
+    const n=(s)=>hits.filter(h=>h.state===s).length;
+    rec={kind:"preflight",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,hits,hit_n:hits.length,fixed:n("fixed"),waived:n("waived"),checked:n("checked")};
+    if(e.DURATION_SECS!=="") rec.duration_secs=Number(e.DURATION_SECS)||0;
     dup=false;
   } else if(e.KIND==="delegation"){
     // One row per anchor->branch delegation event. NEVER

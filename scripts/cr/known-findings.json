@@ -814,7 +814,10 @@
         "docs/**/*.md",
         ".agents/**/*.md"
       ],
-      "detector": null,
+      "detector": {
+        "type": "added-line-regex",
+        "pattern": "^\\s*(exit|return)\\s+[3-9][0-9]*\\b"
+      },
       "learning_match": "exit contract|exit code|rc=[0-9]",
       "match": "exit contract|exit code|\\brc=[0-9]",
       "canonical": "Scripts here publish their exit codes in a header comment (`# Exit: 0 ok, 2 usage, ...`) and runbooks branch on them. When a change makes an existing code reachable by a second path, or adds a new one, the header AND every doc that branches on it move in the same commit — otherwise a caller keeps treating one code as one condition. State the full set of conditions for that code, not only the new one.",
@@ -882,6 +885,123 @@
         },
         "learnings_rows": 1
       }
+    },
+    {
+      "id": "hook-no-bypass-row",
+      "kind": "checklist",
+      "rung": "advisory",
+      "title": "new hook that denies without a documented single-run bypass env var",
+      "source": "ledger",
+      "globs": [
+        "scripts/hooks/*.sh",
+        "scripts/hooks/*.mjs"
+      ],
+      "detector": {
+        "type": "hook-no-bypass"
+      },
+      "learning_match": "bypass|escape hatch|opt-out|_OK\\b",
+      "match": "bypass|escape hatch|opt-out|_OK\\b",
+      "canonical": "Every deny names the exact replacement AND the single-run bypass env var (`<NAME>_OK=1`, set in the launching shell). A new hook adds the bypass row to its header and its deny message in the same commit.",
+      "coverage": "Detector: hook-no-bypass (a NEW hook whose added lines never mention a *_OK / *_BYPASS variable). scripts/hooks/CLAUDE.md prose; advisory only.",
+      "prompt": false
+    },
+    {
+      "id": "hook-adhoc-parse",
+      "kind": "checklist",
+      "rung": "advisory",
+      "title": "hook parses a command with ad-hoc sed/awk/cut instead of the shared tokenizer",
+      "source": "ledger",
+      "globs": [
+        "scripts/hooks/*.sh"
+      ],
+      "detector": {
+        "type": "added-line-regex",
+        "pattern": "\\b(sed|awk|cut)\\b.*(\\$\\{?(1|cmd|command|CMD)\\b|<<<)"
+      },
+      "learning_match": "tokeniz|ad-hoc pars|quote.split|split on",
+      "match": "tokeniz|ad-hoc pars|quote.split|split on",
+      "canonical": "Parse a Bash command through scripts/hooks/lib/shell-tokenize.sh (or the bash-ast helpers), never a sed/awk/cut over the raw string: quoting, `\\`-escapes and `$(...)` make the ad-hoc split deniable by construction.",
+      "coverage": "Detector: added-line-regex over hook sources (advisory; a legitimate non-command sed on a path is waived with a reason).",
+      "prompt": false
+    },
+    {
+      "id": "hook-path-no-realpath",
+      "kind": "checklist",
+      "rung": "advisory",
+      "title": "hook compares a path to PWD/HOME/ROOT without resolving it first",
+      "source": "ledger",
+      "globs": [
+        "scripts/hooks/*.sh",
+        "scripts/hooks/lib/*.sh"
+      ],
+      "detector": {
+        "type": "added-line-regex",
+        "pattern": "(==|!=|=~|\\bcase)\\s*\"?\\$\\{?(PWD|HOME|OLDPWD|REPO_ROOT|CLAUDE_PROJECT_DIR)\\b"
+      },
+      "learning_match": "realpath|symlink|canonical path|readlink",
+      "match": "realpath|symlink|canonical path|readlink",
+      "canonical": "Resolve both sides (`realpath -m`, `cd -P`) before comparing a path against a root: a symlink or `..` segment otherwise bypasses the fence. Cover the symlinked case in the suite.",
+      "coverage": "Detector: added-line-regex (advisory; a comparison of two already-resolved values is checked).",
+      "prompt": false
+    },
+    {
+      "id": "console-kit-lock-helper",
+      "kind": "checklist",
+      "rung": "advisory",
+      "title": "console-kit script rolls its own lock/flock instead of the shared lock helper",
+      "source": "ledger",
+      "globs": [
+        "scripts/handover/console-kit/*.sh"
+      ],
+      "detector": {
+        "type": "added-line-regex",
+        "pattern": "\\bflock\\b|mkdir +\"?\\$[A-Za-z_]*[Ll]ock|\\.lock\"?\\s*(;|\\|\\||&&|$)"
+      },
+      "learning_match": "lock|flock|stale lock|race",
+      "match": "lock|flock|stale lock|race",
+      "canonical": "Take the queue/leg lock through scripts/handover/queue-lock.sh (acquire / release with the owner token), never an inline flock or mkdir-lock: the shared helper owns stale-lock reaping and owner-pid semantics.",
+      "coverage": "Detector: added-line-regex (advisory).",
+      "prompt": false
+    },
+    {
+      "id": "eval-tokenizer-split",
+      "kind": "checklist",
+      "rung": "advisory",
+      "title": "eval harness splits a command or transcript line with an ad-hoc split instead of the shared tokenizer",
+      "source": "ledger",
+      "globs": [
+        "scripts/eval/**/*.sh",
+        "scripts/eval/**/*.mjs",
+        "scripts/eval/**/*.js"
+      ],
+      "detector": {
+        "type": "added-line-regex",
+        "pattern": "\\.split\\(|\\bIFS=|shlex"
+      },
+      "learning_match": "tokeniz|split|IFS",
+      "match": "tokeniz|split|IFS",
+      "canonical": "An eval that classifies shell commands must run them through the same tokenizer the guard uses (scripts/hooks/lib/shell-tokenize.sh), or its verdict measures a different parser than production.",
+      "coverage": "Detector: added-line-regex (advisory; splitting a non-command string is checked).",
+      "prompt": false
+    },
+    {
+      "id": "sh-ps1-twin-drift",
+      "kind": "checklist",
+      "rung": "advisory",
+      "title": "a .sh changed while its .ps1 twin (or the reverse) did not",
+      "source": "ledger",
+      "globs": [
+        "scripts/**/*.sh",
+        "scripts/**/*.ps1"
+      ],
+      "detector": {
+        "type": "twin-missing"
+      },
+      "learning_match": "ps1|powershell|twin|parity",
+      "match": "ps1|powershell|twin|parity",
+      "canonical": "Change both halves of a .sh/.ps1 pair in one commit, or state in the PR why the twin does not apply (windows is dropped for this repo: say so and waive).",
+      "coverage": "Detector: twin-missing (advisory).",
+      "prompt": false
     }
   ],
   "learnings_export": {
