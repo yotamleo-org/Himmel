@@ -25,6 +25,8 @@ NodeNext) + vitest package. Never bun (npm-only pre-commit gates).
 | `public-fork` | dispatched (P4) | Post-merge / propagated-surface coverage on free GitHub-hosted runners. Never posts a private PR's required check (validates `runSha`, not `headSha`). |
 | `local-exec` | dispatched (last resort) | The dev host, load-gated by the work-profile. Decided client-side by the local daemon (protect-local in `focus`). |
 
+GCP runner network (HIMMEL-6282): the ephemeral GCP runners (`scripts/ci/gcp-runners.sh`) sit on subnet `himmel-ci-net` with no external IP, built by `bash scripts/ci/gcp-net.sh net-up` — deny-all ingress, FQDN-allowlisted egress (GitHub runner hosts, ci.yml package hosts, Google APIs), IAP-only SSH behind `debug-on`/`debug-off`.
+
 ## Routing order (pure — `src/routing.ts`)
 
 `route(job × lane-availability × work-profile × private-minute-headroom ×
