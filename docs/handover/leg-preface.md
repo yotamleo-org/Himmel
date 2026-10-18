@@ -110,9 +110,7 @@ exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
 with counts. Restore-to-HEAD, sandbox and corpus-replay rules (destructive
-commands are VM-only): `leg-sections/shell-and-tests.md`. Your tab runs in a
-memory-capped systemd scope (`HIMMEL_LEG_MEMORY_MAX`, default 12G): keep a
-model-loading or burst run under it; one that exceeds it is killed alone.
+commands are VM-only): `leg-sections/shell-and-tests.md`.
 
 ## Shipping
 
