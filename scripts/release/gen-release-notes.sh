@@ -44,7 +44,7 @@ $H_INTERNAL"
         elif hit="$(printf '%s\n' "$line" | grep -E -o "$LEAK_RE" | head -1)" && [ -n "$hit" ]; then
             die "$f:$i: '$hit' in section '$sect' - tickets and PR numbers belong in CHANGELOG.md, not the user sections"
         fi
-    done < "$f"
+    done < "$f" # read-sink-ok: operator-supplied notes path, read-only validation, release-cut entry point
     [ "$internal" -eq 1 ] || die "$f: section '$H_INTERNAL' must be exactly one line (found $internal)"
     return 0
 }
