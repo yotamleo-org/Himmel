@@ -253,15 +253,18 @@ require_tools() {
 }
 
 # copy_recorded <path relative to both roots> [exec]
-# copy $HIMMEL_ROOT/<path> over $TARGET/<path> — unconditionally, as
-# copy_portable always did — and record one `file` row for it: `create` when
-# there was nothing there, `noop` when the bytes and mode did not change, else
-# `replace` with the prior bytes backed up (mode preserved) so uninstall can put
-# the user's file back. `exec` also chmod +x's the copy. The pre-state is a
-# snapshot taken BEFORE the cp, because prov_record hashes and backs up a file
-# it is handed and the destination is about to be overwritten.
+# copy $HIMMEL_ROOT/<path> over $TARGET/<path> and record one `file` row for it:
+# `create` when there was nothing there, `noop` when the bytes and mode did not
+# change, else `replace` with the prior bytes backed up (mode preserved) so
+# uninstall can put the user's file back. `exec` also chmod +x's the copy. The
+# pre-state is a snapshot taken BEFORE the cp, because prov_record hashes and
+# backs up a file it is handed and the destination is about to be overwritten.
+# A destination that cannot be snapshotted, or whose backup does not land, is
+# never left overwritten: it is skipped (restored from the snapshot), added to
+# COPY_REFUSED, and the run exits non-zero at the end.
+COPY_REFUSED=()
 copy_recorded() {
-  local f="$1" exec="${2:-}" dest="$TARGET/$1" snap="" tmp="" rec=1 op=create
+  local f="$1" exec="${2:-}" dest="$TARGET/$1" snap="" tmp="" op=create bk=""
   local -a pre=(--pre-absent)
   run mkdir -p "$(dirname "$dest")" || return 1
   if [ -f "$dest" ]; then
@@ -271,9 +274,12 @@ copy_recorded() {
     elif tmp="$(mktemp)" && cp -p "$dest" "$tmp"; then
       snap="$tmp"
     else
-      rm -f "$tmp"; tmp=""; rec=0
+      rm -f "$tmp"
+      echo "  not replaced $f (cannot back up the existing file; left untouched)" >&2
+      COPY_REFUSED+=("$f")
+      return 0
     fi
-    [ -z "$snap" ] || pre=(--pre-file "$snap" --backup)
+    pre=(--pre-file "$snap" --backup)
   fi
   run cp "$HIMMEL_ROOT/$f" "$dest" || { rm -f "$tmp"; return 1; }
   if [ -n "$exec" ]; then run chmod +x "$dest" || { rm -f "$tmp"; return 1; }; fi
@@ -281,13 +287,33 @@ copy_recorded() {
   if [ -n "$tmp" ] && cmp -s "$tmp" "$dest" && [ "$(_prov_mode "$tmp")" = "$(_prov_mode "$dest")" ]; then
     op=noop; pre=(--pre-file "$snap")
   fi
-  if [ "$rec" = 1 ]; then
-    prov_record "$op" file "$dest" --scope project --class code --row adopter-scripts \
-      --writer adopt.sh "${pre[@]}" --post-file "$dest" || rec=0
+  if ! prov_record "$op" file "$dest" --scope project --class code --row adopter-scripts \
+      --writer adopt.sh "${pre[@]}" --post-file "$dest"; then
+    if [ "$op" = replace ] && [ -n "$tmp" ]; then
+      # the backup did not land: put the user's file back rather than keep an unbacked overwrite
+      cp -p "$tmp" "$dest" 2>/dev/null
+      echo "  not replaced $f (the backup could not be recorded; original restored)" >&2
+      COPY_REFUSED+=("$f")
+    else
+      echo "  warning: provenance record failed for $f (the copy is in place; uninstall will keep it)" >&2
+    fi
+  elif [ "$op" = replace ]; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      cmp -s "$HIMMEL_ROOT/$f" "$dest" || echo "  would replace $f (backed up to $(prov_dir)/provenance-backups/)"
+    else
+      bk="$(jq -r --arg p "$dest" 'select(.kind=="file" and .path==$p) | .pre.backup // empty' "$(prov_ledger_path)" 2>/dev/null | tail -n 1)"
+      echo "  replaced $f (backed up to ${bk:-unknown})"
+    fi
   fi
   rm -f "$tmp"
-  [ "$rec" = 1 ] || echo "  warning: provenance record failed for $f (the copy is in place; uninstall will keep it)" >&2
   return 0
+}
+
+copy_refused_exit() {
+  [ "${#COPY_REFUSED[@]}" -eq 0 ] && return 0
+  echo "ERROR: ${#COPY_REFUSED[@]} existing file(s) could not be backed up and were left untouched:" >&2
+  printf '  %s\n' "${COPY_REFUSED[@]}" >&2
+  exit 1
 }
 
 copy_portable() {
@@ -1377,6 +1403,7 @@ _dry_note=""; [[ $DRY_RUN -eq 1 ]] && _dry_note=" (dry-run)"
 echo "==> himmel adopt — profile=$PROFILE scope=$SCOPE${_dry_note}"
 if [[ $ONLY_HOOKS -eq 1 ]]; then
   install_precommit_hooks || exit $?
+  copy_refused_exit
   echo "──── Done ────"
   exit 0
 fi
@@ -1388,4 +1415,5 @@ case "$PROFILE" in
   luna) if [[ $LUNA_TARGET_SET -eq 1 ]]; then do_luna "$LUNA_TARGET"; else do_luna "$TARGET"; fi ;;
   all)  do_core; do_luna "$LUNA_TARGET" ;;
 esac
+copy_refused_exit
 echo "──── Done ────"

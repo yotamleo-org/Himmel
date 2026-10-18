@@ -2430,6 +2430,46 @@ grepq "$out" 'DRY: record create file' || fail "HIMMEL-3332 S4: --dry-run did no
 [ ! -e "$p4dry/scripts/worktree.sh" ] || fail "HIMMEL-3332 S4: --dry-run copied a file"
 echo "ok: HIMMEL-3332 S4 --dry-run records nothing"
 
+# ── adopt never overwrites a file it cannot back up, and reports every replace.
+p6home="$work/p6-home"; mkdir -p "$p6home"
+p6led="$work/p6-ledger"
+p6proj="$work/p6-proj"; mkdir -p "$p6proj/scripts"
+printf '#!/bin/sh\necho user-owned worktree.sh\n' > "$p6proj/scripts/worktree.sh"
+chmod 0755 "$p6proj/scripts/worktree.sh"
+p6sha="$(prov_sha "$p6proj/scripts/worktree.sh")"
+# a mktemp that fails only for the bare snapshot call copy_recorded makes
+p6bin="$work/p6-bin"; mkdir -p "$p6bin"
+# shellcheck disable=SC2016 # the stub's $# and $@ must stay literal
+printf '#!/bin/sh\n[ "$#" -eq 0 ] && exit 1\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$p6bin/mktemp"
+chmod +x "$p6bin/mktemp"
+set +e
+out=$(PATH="$p6bin:$PATH" HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1); rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "HIMMEL-6321: adopt exited 0 although it could not back up an existing file: $out"
+[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] \
+  || fail "HIMMEL-6321: the user's worktree.sh was overwritten although the snapshot failed"
+grepq "$out" 'not replaced.*scripts/worktree.sh' \
+  || fail "HIMMEL-6321: the refused file is not listed: $out"
+echo "ok: HIMMEL-6321 a failed snapshot leaves the user's file untouched, lists it, exits non-zero"
+
+# a normal replace names the file and its backup; the backup holds the user's original bytes
+out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
+p6bk="$(jq -r '.pre.backup' <<< "$(prov_row "$p6led/provenance.jsonl" /scripts/worktree.sh)")"
+grepq "$out" "replaced scripts/worktree.sh (backed up to $p6bk)" \
+  || fail "HIMMEL-6321: a replace must print the file and its backup path ($p6bk): $out"
+[ "$(prov_sha "$p6bk")" = "$p6sha" ] || fail "HIMMEL-6321: the backup is not the user's original bytes"
+out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
+! grepq "$out" 'replaced scripts/worktree.sh' || fail "HIMMEL-6321: a noop re-run must not report a replace: $out"
+echo "ok: HIMMEL-6321 a replace prints the file and its backup path; a re-run is silent"
+
+# --dry-run says what it would replace
+printf '#!/bin/sh\necho user-owned worktree.sh\n' > "$p6proj/scripts/worktree.sh"
+out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" --dry-run 2>&1)
+grepq "$out" 'would replace scripts/worktree.sh (backed up to ' \
+  || fail "HIMMEL-6321: --dry-run must say 'would replace X (backed up to ...)': $out"
+[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] || fail "HIMMEL-6321: --dry-run changed the file"
+echo "ok: HIMMEL-6321 --dry-run reports would-replace"
+
 # P6: the user-scope gate copies (install_native_hooks) go through the same path
 p4gate="$work/p4-gate"; mkdir -p "$p4gate/scripts/hooks"
 HOME="$p4home" git -C "$p4gate" init -q
