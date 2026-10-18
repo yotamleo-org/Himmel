@@ -4293,9 +4293,13 @@ rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=256M bash "$SCRIPT" --dry-run --no-profile HI
 contains "memcap: dry-run reports an env-set cap" "$out" "memory-max=256M"
 rc=0; out="$(HIMMEL_LEG_MEMORY_MAX='1G --evil' bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "memcap: a malformed cap is refused" "$rc" "2"
+rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: off Linux the launch is uncapped" "$out" "scope=no"
+rc=0; out="$(HEADED_ARM_UNAME=Linux bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: on Linux the launch is scoped" "$out" "scope=yes"
 d6119="$tmp/c6119"; mk_launch_stubs "$d6119" "HIMMEL-6119-leg"; mkdir -p "$tmp/repo6119"
 rc=0
-SYSD_RECORD="$d6119/sysd" HIMMEL_LEG_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+HEADED_ARM_UNAME=Linux SYSD_RECORD="$d6119/sysd" HIMMEL_LEG_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d6119" || true
 sysd6119="$(cat "$d6119/sysd" 2>/dev/null || true)"
 check "memcap: full launch exit 0" "$rc" "0"
@@ -4306,7 +4310,7 @@ contains "memcap: konsole still launched inside the scope" "$(cat "$d6119/record
 # Real environment: the argv the wrapper built, run against the real
 # systemd-run, must land the process in a cgroup whose memory.max is the cap.
 real_xdg="/run/user/$(id -u)"  # the suite pins XDG_RUNTIME_DIR to a tmp dir; the real bus lives here
-if XDG_RUNTIME_DIR="$real_xdg" systemd-run --user --scope --quiet true >/dev/null 2>&1; then
+if [ "$(uname -s)" = "Linux" ] && XDG_RUNTIME_DIR="$real_xdg" systemd-run --user --scope --quiet true >/dev/null 2>&1; then
   read -r -a sysd_argv <<< "$sysd6119"
   sysd_cap_argv=()
   for a in "${sysd_argv[@]}"; do [ "$a" = "--" ] && break; sysd_cap_argv+=("$a"); done
