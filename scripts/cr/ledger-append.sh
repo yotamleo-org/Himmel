@@ -405,8 +405,8 @@ fi
 # --hit records a clean pass. --duration-secs is the pass's wall time.
 if [ "$kind" = "preflight" ]; then
   [ -n "$head" ] || { echo "ledger-append.sh: preflight requires --head" >&2; exit 2; }
-  if [ -n "$duration_secs" ] && ! expr "$duration_secs" : '^[0-9][0-9]*$' > /dev/null 2>&1; then
-    echo "ledger-append.sh: preflight --duration-secs must be a non-negative integer (got '$duration_secs')" >&2; exit 2
+  if [ -n "$duration_secs" ] && ! [[ "$duration_secs" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "ledger-append.sh: preflight --duration-secs must be a non-negative number (got '$duration_secs')" >&2; exit 2
   fi
   while IFS= read -r _hit; do
     [ -n "$_hit" ] || continue
