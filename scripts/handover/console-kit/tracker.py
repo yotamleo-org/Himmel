@@ -602,7 +602,8 @@ def jira_parity(tk, vers, cur):
     except (OSError, subprocess.SubprocessError):
         return 'parity: %s unavailable' % v
     lines = [l.split('\t') for l in r.stdout.splitlines() if l.strip()]
-    if r.returncode != 0 or any(len(f) < 3 or not KEY_RE.fullmatch(f[0]) for f in lines):
+    if r.returncode != 0 or any(len(f) < 3 or not KEY_RE.fullmatch(f[0])
+                                or f[2].strip().lower() not in BUCKETS for f in lines):
         return 'parity: %s unavailable' % v
     order = ('done', 'prog', 'rev', 'todo')
 
@@ -613,7 +614,7 @@ def jira_parity(tk, vers, cur):
                 c['rev' if b == 'ci' else b] += 1
         return '/'.join(str(c[b]) for b in order)
     page = tally(t['b'] for t in tk if t['v'] == cur)
-    jira = tally(BUCKETS.get(f[2].strip().lower(), 'todo') for f in lines)
+    jira = tally(BUCKETS[f[2].strip().lower()] for f in lines)
     tail = ' (done/in progress/in review/to do)'
     return 'parity: %s ok %s%s' % (v, page, tail) if page == jira else 'parity: %s DRIFT page %s jira %s%s' % (v, page, jira, tail)
 

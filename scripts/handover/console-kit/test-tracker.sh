@@ -744,6 +744,12 @@ printf '#!/bin/sh\ncat "%s"\n' "$W/agree.tsv" > "$W/agreejira"
 chmod +x "$W/agreejira"
 pstdout="$(TRACKER_JIRA="$W/agreejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
 contains 'equal counts are parity ok (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 ok 2/1/0/0 (done/in progress/in review/to do)'
+# a status the tracker has no bucket for is a garbled answer, never a guessed To Do.
+printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-6143\tTask\tSomething New\tx\n' > "$W/odd.tsv"
+printf '#!/bin/sh\ncat "%s"\n' "$W/odd.tsv" > "$W/oddjira"
+chmod +x "$W/oddjira"
+pstdout="$(TRACKER_JIRA="$W/oddjira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'an unknown Jira status reads parity unavailable (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 unavailable'
 # a failing CLI never fails the render.
 pstdout="$(render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
 prc=$?
