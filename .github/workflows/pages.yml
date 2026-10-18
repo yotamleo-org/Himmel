@@ -1,20 +1,17 @@
 name: Pages
 
-# HIMMEL-5075: the Pages source is build_type=workflow (was a legacy branch
-# build of main:/docs, which redeployed the site on EVERY push to main - about
-# 30 deployments in 12 h). This workflow deploys only when docs/** changes, or
-# on demand via `gh workflow run pages.yml`. Static suite:
-# scripts/ci/test-pages-workflow.sh.
+# The Pages source is build_type=workflow. This workflow deploys once a day
+# (17 03 UTC) and on demand via `gh workflow run pages.yml`; it does not deploy
+# on push. Static suite: scripts/ci/test-pages-workflow.sh.
 #
-# docs/ is uploaded as-is. The legacy build ran Jekyll, but docs/.nojekyll
-# turned it off, so the served bytes are identical: no build step is needed.
+# docs/ is uploaded as-is. docs/.nojekyll turns Jekyll off, so no build step
+# is needed.
 #
 # The workflow is deliberately NOT named `CI`: scripts/handover/console-kit/
 # cut-tag.sh reads the commit's workflow run named exactly `CI`.
 on:
-  push:
-    branches: [main]
-    paths: ['docs/**']
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:

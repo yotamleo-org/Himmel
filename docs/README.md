@@ -90,11 +90,11 @@ The public repo serves this folder as a static site at
 `https://yotamleo.github.io/Himmel/<path under docs/>`.
 
 - **Source.** Pages is set to "GitHub Actions" (`build_type=workflow`), and
-  `.github/workflows/pages.yml` uploads `docs/` and deploys it. It runs only
-  when a push to `main` changes `docs/**`, or on demand with
-  `gh workflow run pages.yml`; a push that touches nothing under `docs/` does
-  not redeploy. Publishing is merging a `docs/` change to `main`; the deploy
-  takes a minute or two. Read the live settings with
+  `.github/workflows/pages.yml` uploads `docs/` and deploys it. It runs once a
+  day (cron `17 3 * * *`, 03:17 UTC) and on demand with
+  `gh workflow run pages.yml`; a push that changes `docs/**` does not redeploy,
+  so the change goes live at the next daily run or on the manual command. The
+  deploy takes a minute or two. Read the live settings with
   `gh api repos/yotamleo/Himmel/pages` and the runs with
   `gh run list --workflow pages.yml`.
 - **What is served.** Every file under `docs/`, byte for byte, and nothing
