@@ -86,9 +86,23 @@ EOF
 chmod +x "$tmp/qdbus-denied"
 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-denied" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>"$tmp/denied-err"
 rc=$?
-if [ "$rc" -eq 3 ] && grep -qxF 'bus-idle-waker: sendText denied (window predates the konsole D-Bus setting; relaunch it): legX' "$tmp/denied-err" && ! grep -q 'session gone' "$tmp/denied-err"; then
+denied_line='bus-idle-waker: sendText denied (konsole security-sensitive D-Bus API is disabled, or this window predates enabling it; enable it, then relaunch the window): legX'
+if [ "$rc" -eq 3 ] && grep -qxF "$denied_line" "$tmp/denied-err" && ! grep -q 'session gone' "$tmp/denied-err"; then
   pass "an AccessDenied sendText ends with rc=3 and names the denial, not a gone session"
 else fail "denied: expected rc=3, got rc=$rc: $(cat "$tmp/denied-err")"; fi
+
+# The one-line form a station with the setting off prints.
+cat > "$tmp/qdbus-denied-1l" <<'EOF'
+#!/usr/bin/env bash
+printf 'org.freedesktop.DBus.Error.AccessDenied: Security sensitive DBus API is disabled in the settings.\n' >&2
+exit 2
+EOF
+chmod +x "$tmp/qdbus-denied-1l"
+BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-denied-1l" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>"$tmp/denied-err"
+rc=$?
+if [ "$rc" -eq 3 ] && grep -qxF "$denied_line" "$tmp/denied-err"; then
+  pass "a one-line AccessDenied error also ends with rc=3 and the denial line"
+else fail "denied one-line: expected rc=3, got rc=$rc: $(cat "$tmp/denied-err")"; fi
 
 bash "$WAKER" --name legX --service s --session >/dev/null 2>&1
 rc=$?

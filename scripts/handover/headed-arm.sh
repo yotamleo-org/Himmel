@@ -1636,7 +1636,7 @@ if [ "$sv_seen" -eq 1 ]; then
     # konsole --separate owns the D-Bus service org.kde.konsole-<pid>; --pid
     # stops the waker when this window closes. Best-effort, never the launch result.
     if [ "$WAKER_ARM" = "1" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ]; then
-        nohup bash "$WAKER_CMD" --name "$NAME" --service "org.kde.konsole-$KPID" --session /Sessions/1 --pid "$KPID" </dev/null >>"$LOG" 2>&1 &
+        nohup bash "$WAKER_CMD" --name "$NAME" --service "org.kde.konsole-$KPID" --session /Sessions/1 --pid "$KPID" </dev/null >>"$LOG" 2>&1 &  # t13b-ok: per-window waker bound to the konsole pid via --pid, exits when the window closes; not a service
         echo "$(date +%F_%T) idle waker armed for $NAME on org.kde.konsole-$KPID" >> "$LOG"
     fi
     exit 0

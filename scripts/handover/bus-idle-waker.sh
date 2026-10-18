@@ -12,8 +12,9 @@
 # org.kde.konsole.Session.sendText. Only the integer count is ever interpolated:
 # message content never reaches the terminal, so a message cannot type commands.
 # One wake per streak, again every --rewake seconds while mail stays unread.
-# A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (konsole
-# reads EnableSecuritySensitiveDBusAPI only at startup, so an older window refuses).
+# A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (the
+# EnableSecuritySensitiveDBusAPI setting is off, or konsole read it before it was
+# enabled: konsole reads it only at startup, so an older window refuses).
 # --pid ends it with rc=0 once that konsole process is gone, so an armed waker
 # never outlives its window.
 #
@@ -85,7 +86,7 @@ while :; do
             && { [ "$last" = 0 ] || [ "$gap" -ge "$(awk -v g="$REWAKE" 'BEGIN{printf "%d", g*1000}')" ]; }; then
             if ! err="$("$QDBUS" "$SERVICE" "$SESSION" org.kde.konsole.Session.sendText "You have $n unread himmel messages: read them now."$'\r' 2>&1 >/dev/null)"; then
                 case "$err" in *org.freedesktop.DBus.Error.AccessDenied*)
-                    echo "bus-idle-waker: sendText denied (window predates the konsole D-Bus setting; relaunch it): $NAME" >&2
+                    echo "bus-idle-waker: sendText denied (konsole security-sensitive D-Bus API is disabled, or this window predates enabling it; enable it, then relaunch the window): $NAME" >&2
                     exit 3 ;;
                 esac
                 echo "bus-idle-waker: sendText failed, session gone: $NAME" >&2
