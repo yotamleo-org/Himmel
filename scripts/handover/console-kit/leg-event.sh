@@ -9,6 +9,12 @@
 #   MERGED / WRAPPED  -> wrap-merged.sh --doc <doc> --fleet <manifest> <leg doc> [--pr <n>]
 #                        The leg doc is the manifest entry whose name carries the
 #                        message's N<k> label; <n> is the PR in a `MERGED #<n>` line.
+#                        A WRAPPED line that mentions deferred, follow-up or residual with
+#                        no HIMMEL-<n> key or `no-ticket: <reason>` (residual-lines.sh)
+#                        is ESCALATE unfiled-residual: <line>, before wrap-merged runs.
+#                        A WRAPPED whose leg doc names no PR (a research leg) skips wrap-merged:
+#                        close-wrapped-leg.sh --fleet <manifest> <leg doc> closes it, which
+#                        itself refuses unless the leg's queue lock is free and its tail is WRAPPED.
 #   anything else     -> ESCALATE (READY and FINDING need a judge or the console)
 #
 #   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
@@ -20,17 +26,20 @@
 # live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
 # is appended as ` live-state=failed <why>` (the wrap is done, so rc stays 0).
 #
-# Output: one line. `HANDLED wrap-merged <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0) or
+# Output: one line. `HANDLED wrap-merged|close-wrapped <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0) or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
-# marker-<X>, or wrap-merged-failed rc=<n> with wrap-merged's stderr after it.
+# marker-<X>, unfiled-residual: <line>, or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it.
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_LIST LE_LIVE LE_STATION LE_STATION_LOG.
+# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/handover/console-kit/residual-lines.sh
+. "$HERE/residual-lines.sh"
 if [ -n "${LE_WRAP:-}" ]; then WRAP=("$LE_WRAP"); else WRAP=(bash "$HERE/wrap-merged.sh"); fi
+if [ -n "${LE_CLOSE:-}" ]; then CLOSE=("$LE_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-leg.sh"); fi
 if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$HERE/station-sync.sh"); fi
 if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
@@ -49,7 +58,7 @@ while [ "$#" -gt 0 ]; do
         *) [ -z "$MSG" ] || usage; MSG="$1"; shift ;;
     esac
 done
-[ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$MSG" ] || usage
+if [ -z "$DOC" ] || [ -z "$FLEET" ] || [ -z "$MSG" ]; then usage; fi
 
 if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
@@ -62,6 +71,16 @@ case "$marker" in
     MERGED|WRAPPED) ;;
     *) escalate "marker-${marker:-none}" ;;
 esac
+
+if [ "$marker" = WRAPPED ]; then
+    mf="$(mktemp "${TMPDIR:-/tmp}/leg-event-msg.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
+    printf '%s\n' "$body" > "$mf"
+    unfiled="$(unfiled_residual_mention_lines "$mf")"
+    rm -f "$mf"
+    if [ -n "$unfiled" ]; then
+        escalate "unfiled-residual: $(printf '%s' "$unfiled" | tr '\n' ' ')"
+    fi
+fi
 
 # the leg is named by its N<k> label, or failing that by its session name (the
 # leg doc's stem, which a wrap message may quote without any N<k>)
@@ -94,14 +113,29 @@ if [ "$marker" = MERGED ]; then
     pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)" || pr=""
 fi
 
-args=(--doc "$DOC" --fleet "$FLEET" "$leg")
-[ -z "$pr" ] || args+=(--pr "$pr")
+# a WRAPPED leg whose doc names no PR (a research leg) has nothing to merge-check:
+# close its window directly. close-wrapped-leg.sh itself refuses unless the leg's
+# queue lock is free and its tail marker is WRAPPED.
+close_only=""
+if [ "$marker" = WRAPPED ] && [ -r "$leg" ] \
+    && ! grep -qE '^- .*(READY|PR) #?[0-9]+' "$leg"; then
+    close_only=1
+fi
+
 errf="$(mktemp "${TMPDIR:-/tmp}/leg-event.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
-"${WRAP[@]}" "${args[@]}" >/dev/null 2>"$errf"; rc=$?
+if [ -n "$close_only" ]; then
+    "${CLOSE[@]}" --fleet "$FLEET" "$leg" >/dev/null 2>"$errf"; rc=$?
+    what=close-wrapped
+else
+    args=(--doc "$DOC" --fleet "$FLEET" "$leg")
+    [ -z "$pr" ] || args+=(--pr "$pr")
+    "${WRAP[@]}" "${args[@]}" >/dev/null 2>"$errf"; rc=$?
+    what=wrap-merged
+fi
 if [ "$rc" -ne 0 ]; then
     msg="$(tr '\n' ' ' <"$errf")"
     rm -f "$errf"
-    escalate "wrap-merged-failed rc=$rc $msg"
+    escalate "$what-failed rc=$rc $msg"
 fi
 rm -f "$errf"
 # A merged PR leaves the station behind main until its components are updated:
@@ -121,4 +155,4 @@ live=""
 if ! lerr="$("${LIVE[@]}" "$DOC" 2>&1 >/dev/null)"; then
     live=" live-state=failed $(printf '%s' "$lerr" | tr '\n' ' ')"
 fi
-echo "HANDLED wrap-merged $label$station$live"
+echo "HANDLED $what $label$station$live"

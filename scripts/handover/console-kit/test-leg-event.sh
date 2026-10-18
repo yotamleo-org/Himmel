@@ -13,6 +13,8 @@
 #   6. label not in the manifest                             -> ESCALATE, rc 10
 #   7. wrap-merged fails (rc 3)                              -> ESCALATE naming rc=3, rc 10
 #   8. message on stdin ("-") and a leading "- " bullet marker
+#   12. a WRAPPED message that mentions deferred / follow-up / residual with no key -> ESCALATE
+#   13. a WRAPPED leg whose doc has no PR: close-wrapped-leg.sh runs, HANDLED close-wrapped; a refused close -> ESCALATE
 #
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
@@ -188,5 +190,75 @@ out="$(LE_LIVE='' bash "$SCRIPT" --doc "$W/c.md" --fleet "$W/c.fleet.json" "$W/m
 check "11 rc" "$rc" 0
 lacks "11 legs line drops the wrapped leg" "$(cat "$W/c.md")" "N2078:"
 contains "11 legs line is none" "$(cat "$W/c.md")" "legs: none"
+
+# 12. a WRAPPED message that mentions deferred / follow-up / residual must name a ticket
+run "WRAPPED N2078. Deferred: the retry path."
+check "12a unkeyed deferred rc" "$rc" 10
+contains "12a escalate reason" "$out" "ESCALATE unfiled-residual"
+contains "12a names the line" "$out" "Deferred: the retry path."
+check "12a wrap not run" "$calls" ""
+run "$(printf 'WRAPPED N2078\n- follow-up: tighten the regex\n')"
+check "12b unkeyed follow-up on a later line rc" "$rc" 10
+run "WRAPPED N2078. Residual risk left for later."
+check "12c unkeyed residual rc" "$rc" 10
+run "WRAPPED N2078. Follow-up filed as HIMMEL-6200."
+check "12d keyed follow-up rc" "$rc" 0
+run "WRAPPED N2078. Deferred the retry path, no-ticket: operator accepted."
+check "12e no-ticket reason rc" "$rc" 0
+run "WRAPPED N2078. Deferred the retry path, no-ticket:"
+check "12f empty no-ticket reason rc" "$rc" 10
+run "WRAPPED N2078. No residuals, nothing deferred."
+check "12g a negated mention rc" "$rc" 0
+run "WRAPPED N2078. No residuals; follow-up: fix the retry path"
+check "12g2 a negated mention does not hide an affirmative one on the same line rc" "$rc" 10
+run "WRAPPED N2078. No residuals or follow-ups."
+check "12g3 a coordinated negation rc" "$rc" 0
+run "WRAPPED N2078 without fixing residuals"
+check "12g4 an intervening non-modifier word is not a negation rc" "$rc" 10
+run "WRAPPED N2078. No further follow-ups."
+check "12g5 a modifier between the negator and the mention rc" "$rc" 0
+run "WRAPPED N2078. Lock released."
+check "12h a plain wrap rc" "$rc" 0
+run "MERGED #2566 → abcdef01 N2088. Follow-up: x"
+check "12i MERGED is not checked here rc" "$rc" 0
+
+# 13. a WRAPPED leg whose doc names no PR (a research leg) is closed directly, not sent to wrap-merged
+cat > "$W/close" <<'EOF3'
+#!/usr/bin/env bash
+echo "close $*" >> "$LE_CALLS"
+[ -z "${LE_CLOSE_ERR:-}" ] || echo "$LE_CLOSE_ERR" >&2
+exit "${LE_CLOSE_RC:-0}"
+EOF3
+chmod +x "$W/close"
+export LE_CLOSE="$W/close"
+printf '%s\n' '## Results' '- 10:00 LIVE - start' '- 10:30 WRAPPED research done' > "$W/HIMMEL-4-N3001-research-2026-10-14.md"
+printf '%s\n' '## Results' '- 10:00 READY 2553 abc' > "$W/HIMMEL-5-N3002-shipped-2026-10-14.md"
+cat > "$W/list13" <<EOF3
+#!/usr/bin/env bash
+printf '%s\n' $W/HIMMEL-4-N3001-research-2026-10-14.md $W/HIMMEL-5-N3002-shipped-2026-10-14.md
+EOF3
+chmod +x "$W/list13"
+
+LE_LIST="$W/list13" run "WRAPPED N3001. Research only."
+check "13 no-PR rc" "$rc" 0
+contains "13 no-PR prints HANDLED" "$out" "HANDLED close-wrapped N3001"
+contains "13 close gets the fleet and the leg doc" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-4-N3001-research-2026-10-14.md"
+lacks "13 wrap-merged not run" "$calls" "wrap --doc"
+# read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
+contains "13 live-state ran" "$(cat "$LE_LIVE_CALLS")" "live $W/doc"
+
+LE_LIST="$W/list13" run "WRAPPED N3002."
+contains "13 a doc with a PR still goes to wrap-merged" "$calls" "wrap --doc"
+lacks "13 a doc with a PR does not close directly" "$calls" "close"
+
+LE_CLOSE_RC=3 LE_CLOSE_ERR="close-wrapped-leg: refusing - queue lock held" LE_LIST="$W/list13" run "WRAPPED N3001."
+check "13 refused close rc" "$rc" 10
+contains "13 refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=3"
+contains "13 refusal surfaced" "$out" "queue lock held"
+# read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
+check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
+
+LE_LIST="$W/list13" run "MERGED #2566 N3001"
+contains "13 MERGED never takes the close path" "$calls" "wrap --doc"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

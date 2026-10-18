@@ -553,9 +553,24 @@ jobs:
       # CHANGED against the baseline; a diff that cannot be computed fails closed
       # (shell-lint exits 2). The checkout is the PR merge ref, so HEAD^1 is the
       # current base tip; event base.sha can lag it and would lint main's own files.
+      # HIMMEL-6315: shell-lint's [shellcheck] check ran the runner's preinstalled 0.9.0 while
+      # the pre-commit hook above runs the pinned shellcheck-py, so a PR could pass every local
+      # gate and fail here. Install that same rev, read from the pre-commit config, first on PATH.
+      - name: pinned shellcheck for shell-lint
+        if: github.event_name == 'pull_request'
+        run: |
+          rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
+          [ -n "$rev" ] || { echo "no shellcheck-py rev in .pre-commit-config.yaml" >&2; exit 1; }
+          python -m pip install --disable-pip-version-check --target "$RUNNER_TEMP/shellcheck-pinned" "shellcheck-py==$rev"
+          echo "$RUNNER_TEMP/shellcheck-pinned/bin" >> "$GITHUB_PATH"
+          echo "SHELLCHECK_PIN=$rev" >> "$GITHUB_ENV"
       - name: shell-lint changed files
         if: github.event_name == 'pull_request'
-        run: bash scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
+        run: |
+          sc_ver="$(shellcheck --version)"
+          echo "$sc_ver"
+          printf '%s\n' "$sc_ver" | grep -qxF "version: ${SHELLCHECK_PIN%.*}" || { echo "shellcheck on PATH is not the pinned ${SHELLCHECK_PIN}" >&2; exit 1; }
+          bash scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
       # HIMMEL-6019: a doc naming a --flag the script it cites lacks; same merge-ref range as above.
       - name: flag-parity changed files
         if: github.event_name == 'pull_request'

@@ -4,6 +4,29 @@ Read on demand from `console-template.md` `## Monitors`. `<kit>` is the kit path
 
 ## Monitors
 
+**Compact tick line.** `tick.sh` omits empty and unconsumed healthy/default
+fields: `hb=ok|skip`, `procs=0`, `models=none`, `ceiling=ok`, `atq=0`,
+`suites=0alive/0dead`, `ext-prs=none`, `tick=UNKNOWN`, `burn=none`,
+`orphans=none`, `nonces=ok|skip`, `plan-index=ok|skip`, `or=skip` and
+`fails=none|skip`. Absence means that field's healthy/not-applicable default;
+unknown/error values remain visible. Missing `tick=` still means UNKNOWN,
+never proof that a monitor is armed. `--verbose` keeps the explicit labels.
+
+`inbox=<label>:<bytes>/<cursor>` lists only inboxes with unread complete lines;
+no `inbox=` means none. It uses the hook's `.cursor/<session>` delivery cursor
+when present, otherwise the native follower's `<inbox>.cursor`. A wake cursor
+cannot mask rulings still pending hook delivery; empty, consumed and
+partial-line-only inboxes are omitted. Reading the snapshot never advances a
+cursor.
+
+All fields read by `console-wait.sh` or `board.mjs` retain their values and
+order, even at defaults: `legs`, `livestate`, `prs`, `tails`, `legset`, `board`,
+`tracker`, `vault`, `cloud`, `orphans-wip`, `vmrun`, `denials`, `bank`, `fleet`,
+`gql`, `capacity` and `unowned-prs`, plus the existing conditional `parked`,
+`closable` and `deadwin` alerts. In particular, `capacity=ok`,
+`unowned-prs=none` and non-stale `tracker=` must stay present to clear the
+waiter's persisted streaks. The compact format needs no reader change.
+
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,
@@ -24,6 +47,13 @@ The three polling monitors are plain Bash loops over already-versioned inputs;
 write them in the session scratchpad, not in the repo. The context-fill probe
 (`scripts/context-fill.sh --percent`) **fails inside a Monitor** — run it in an
 ordinary Bash call.
+
+**Handover budget.** `<kit>/console-budget.sh --title <your session name>` prints
+`budget turns=<n> cache_read=<M>M verdict=OK|HANDOVER` (exit 3 on HANDOVER, 2 when
+the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M cumulative
+cache-read (`CONSOLE_TURN_BUDGET`, `CONSOLE_CACHE_READ_BUDGET_M`), the same duty as
+the 45 % fill and 90k input triggers. The waiter runs it each successful sample (with `--doc`) and
+raises `WAKE handover-budget` once per streak; run it by hand in an ordinary Bash call.
 
 **Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a leg
 waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR

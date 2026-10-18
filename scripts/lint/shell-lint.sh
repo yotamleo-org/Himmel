@@ -350,7 +350,14 @@ _baseline_counts() {
 }
 
 command -v shellcheck >/dev/null 2>&1 && HAVE_SHELLCHECK=1 || HAVE_SHELLCHECK=0
-[ "$HAVE_SHELLCHECK" -eq 1 ] || printf 'shell-lint: shellcheck not installed — running BOM + errexit checks only\n' >&2
+if [ "$HAVE_SHELLCHECK" -ne 1 ]; then
+    # --staged/--changed are the gate paths: a skipped [shellcheck] check there reads as a clean pass.
+    if [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
+        printf 'shell-lint: shellcheck is required for --staged/--changed but is not on PATH\n' >&2
+        exit 2
+    fi
+    printf 'shell-lint: shellcheck not installed — running BOM + errexit checks only\n' >&2
+fi
 # iconv validates a no-BOM .ps1's bytes as UTF-8 before prescribing a BOM add
 # Ships with Git Bash; when absent the .ps1 policy fails
 # SAFE (never prescribes an automated UTF-8-BOM add on unverified bytes).

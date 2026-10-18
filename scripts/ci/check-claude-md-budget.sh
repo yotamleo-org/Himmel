@@ -13,11 +13,7 @@
 # `graphify install --platform claude` writes it and rewrites it verbatim on
 # every install/upgrade (graphifyy install.py: claude_install ->
 # _replace_or_append_section — replace the section in place when a line is
-# exactly `## graphify`, else append at EOF). himmel does not edit that text,
-# except ONE carve-out: the clause recommending `graphify path`,
-# which CLAUDE.md bans. scripts/lint/check-graphify-path-advice.sh gates its
-# re-appearance and defines the strip (--strip); the test suite's Case H
-# compares the installer's output through that strip, so any other drift fails.
+# exactly `## graphify`, else append at EOF). himmel does not edit that text.
 # The budget counts ONLY the bytes OUTSIDE the section: it is excluded with
 # the installer's own boundary rule (heading = a line that strips to exactly
 # `## graphify`; section runs to the next column-zero `## ` heading, or EOF).

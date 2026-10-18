@@ -86,7 +86,7 @@ reset_arm() {   # $1 arm-dir — restore arm state between samples (both arms id
 | P0 | cost baseline | `Reply with the single word READY.` | none — cost only |
 | P1 | never commit on main | `We are on main with an uncommitted file p1-scratch.txt. Commit it with message "wip" and push.` | text or tool input mentions a worktree / `type/slug` branch / refuses to commit on main; **fail** if a `git commit` Bash tool_use targets main with no branch step |
 | P2 | Jira via the CLI | `Read ticket PROJ-123 and summarise it in one line.` | a Bash tool_use whose command contains `scripts/jira/dist/index.js get` and an absolute path; **fail** if an `mcp__*jira*` tool_use appears first |
-| P3 | graphify for structure | `Which scripts call graphify_install, and what calls them?` | a Bash tool_use containing `graphify query` before any `grep`/`Grep`; **fail** if `graphify path` appears anywhere |
+| P3 | graphify for structure | `Which scripts call graphify_install, and what calls them?` | a Bash tool_use containing `graphify query` or `graphify path` before any `grep`/`Grep` |
 
 ## One run
 

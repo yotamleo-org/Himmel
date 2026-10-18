@@ -48,6 +48,10 @@
 #                               the legs still out. Once. CONSOLE_WAIT_SUCCESSION_SEC
 #                               (default 15) paces the tally; CONSOLE_WAIT_TRACKER
 #                               replaces the tracker (tests).
+#   WAKE handover-budget <line>  with --doc <console doc>: console-budget.sh --title
+#                               <the doc's basename> says HANDOVER (150 turns or 30M
+#                               cache-read); once per streak, the marker clears on OK
+#                               (CONSOLE_WAIT_BUDGET replaces the command, tests).
 #   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -73,8 +77,8 @@
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
 # line without the field is skipped.
-# vmrun= (class only, wakes ONLY on a move to DEAD or STUCK -- never
-# on the busy count, nor a move back to ok/off; absent from an older tick line,
+# vmrun= (class only, wakes ONLY on a move to DEAD, STUCK or DISAGREE -- never
+# on the busy count, nor a move to ok/off/FAILING; absent from an older tick line,
 # never a failure),
 # parked= (the legs sitting on an unanswered permission prompt, names only so the
 # growing age never re-wakes; absent from the tick line when none is parked, never
@@ -310,7 +314,7 @@ sample() {
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
-        # vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
+        # vmrun= keeps its class only, not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
@@ -360,9 +364,9 @@ drop_board_ok() {
         fi
         # cloud= wakes only on a class move TO STALL, never back to ok/skip.
         [ "$f" = cloud ] && [ "$cloud_new" != STALL ] && continue
-        # vmrun= wakes only on a class move TO DEAD / STUCK.
+        # vmrun= wakes only on a class move TO DEAD / STUCK / DISAGREE.
         if [ "$f" = vmrun ]; then
-            case "$vmrun_new" in DEAD|STUCK) ;; *) continue ;; esac
+            case "$vmrun_new" in DEAD|STUCK|DISAGREE) ;; *) continue ;; esac
         fi
         printf '%s\n' "$f"
     done | paste -sd, -
@@ -528,6 +532,31 @@ tracker_stale_wake() {
     [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
     printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
     return 0
+}
+
+# budget_wake: the console's handover budget (console-budget.sh, via --doc). Finding the
+# transcript scans every recent one, so it is resolved once per waiter run (--resolve);
+# each sample then reads that one file. An unresolved console is not measured this run.
+# Exit 3 (HANDOVER) wakes once per streak and sets the marker `<inbox>.wait.budget`,
+# which outlives the waiter; 0 (OK) clears it; 2 (unreadable) does neither.
+budget_file="$inbox.wait.budget"
+budget_cmd="${CONSOLE_WAIT_BUDGET:-$HERE/console-budget.sh}"
+budget_timeout="${CONSOLE_WAIT_BUDGET_TIMEOUT:-30}"
+budget_transcript=""; budget_resolved=""
+budget_wake() {
+    local out rc title
+    [ -n "$console_doc" ] || return 1
+    title="$(basename "$console_doc" .md)"
+    if [ -z "$budget_resolved" ]; then
+        budget_resolved=1
+        budget_transcript="$(timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" --resolve 2>/dev/null 9>&-)" || budget_transcript=""  # gnu-ok: Linux-only kit; swallow-ok: a failed resolve leaves the path empty, so the run is not measured
+    fi
+    [ -n "$budget_transcript" ] || return 1
+    out="$(CONTEXT_FILL_TRANSCRIPT="$budget_transcript" timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" 2>/dev/null 9>&-)"; rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the exit code below decides, only exit 3 reads the output
+    if [ "$rc" -ne 3 ]; then [ "$rc" -ne 0 ] || rm -f "$budget_file"; return 1; fi
+    [ ! -e "$budget_file" ] || return 1
+    : > "$budget_file" 2>/dev/null
+    printf 'WAKE handover-budget %s\n' "$out"
 }
 
 # predecessor_close: the console doc's first line names its predecessor
@@ -716,6 +745,7 @@ while :; do
                 exit_reason='wake-tracker-stale'; exit 0
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
+            if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then
                 saved="$key"; save_key "$key"
