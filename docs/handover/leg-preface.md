@@ -78,8 +78,8 @@ read `docs/handover/leg-sections/succession.md`**.
 - **Do the work yourself** unless the brief says otherwise; never spawn a
   subagent to verify your own work. **No unrequested features, tests or files.** [prose]
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob tool. Structure
-  questions: `bash scripts/graphify/leg-graph.sh query|explain "<q>"` first (never
-  `graphify path`). Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
+  questions: `bash scripts/graphify/leg-graph.sh query|explain|path "<q>"` first.
+  Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
 - **Pre-check a bucket file** with `bash scripts/handover/console-kit/bucket-gitleaks.sh <file>`
   before writing it; a real credential goes to the console, never reworded. [prose]
 - **Ship steps are typed exactly as their allow rule is written** — no quotes, no

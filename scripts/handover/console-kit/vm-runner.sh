@@ -228,17 +228,20 @@ unit_failing() {
 # runners GitHub reports busy, and the himmel-vm runners it reports online
 # (the ground truth the unit count is checked against; an unrelated runner
 # must not mask them). Prints nothing and caches nothing when GitHub is
-# unreadable, so the caller fails closed. One page of 100: the repo registers
-# at most MAX_VMS ephemeral himmel-vm runners, so a second page cannot hold them.
+# unreadable, so the caller fails closed. Read every page under one timeout:
+# unrelated runners can fill earlier pages before the himmel-vm runners.
 runner_counts() {
     local f="$STATE_DIR/tick-vmrun-cache" now ts busy online val
     now="$(date +%s)"
     if [ -r "$f" ] && read -r ts busy online < "$f" 2>/dev/null && [ -n "$ts" ] && [ $((now - ts)) -lt "$CACHE_TTL" ]; then
         case "$busy" in ''|*[!0-9]*) ;; *) case "$online" in ''|*[!0-9]*) ;; *) printf '%s %s\n' "$busy" "$online"; return ;; esac ;; esac
     fi
-    val="$(bounded gh api "repos/$REPO/actions/runners?per_page=100" --jq '"\([.runners[] | select(.busy and (.name | startswith("himmel-vm-")))] | length) \([.runners[] | select(.status == "online" and (.name | startswith("himmel-vm-")))] | length)"' 2>/dev/null)" || return 0
-    case "$val" in [0-9]*\ [0-9]*) ;; *) return 0 ;; esac
-    case "${val// /}" in *[!0-9]*) return 0 ;; esac
+    val="$(bounded gh api "repos/$REPO/actions/runners?per_page=100" --paginate --jq '"\([.runners[] | select(.busy and (.name | startswith("himmel-vm-")))] | length) \([.runners[] | select(.status == "online" and (.name | startswith("himmel-vm-")))] | length)"' 2>/dev/null)" || return 0
+    val="$(printf '%s\n' "$val" | awk '
+        NF != 2 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ { exit 1 }
+        { busy += $1; online += $2 }
+        END { printf "%.0f %.0f\n", busy, online }
+    ')" || return 0
     { mkdir -p "$STATE_DIR" && printf '%s %s\n' "$now" "$val" > "$f"; } 2>/dev/null || true
     printf '%s\n' "$val"
 }

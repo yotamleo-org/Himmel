@@ -509,6 +509,29 @@ documented at the top of [`.env.example`](../../.env.example):
 | `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the `getAccessibleAtlassianResources` API. |
 | `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` overflow launcher (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm-ps1-twin)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
 
+#### Jira Sector (optional)
+
+A sector is a stable, coarse product area: the "where in the system" axis of a
+ticket, next to epics ("what goal") and versions ("when"). Tagging every ticket
+with one lets a board or report answer "where is our effort going, and which
+area is starved?" without hand-tagging; together with the epic-or-standalone
+rule it stops orphan tickets. Sectors are a custom Jira field, so they are off
+until you configure them.
+
+1. `node <repo-root>/scripts/jira/dist/index.js sector setup --dry-run` prints
+   the explanation, a suggested nine-sector set and the exact Jira calls.
+2. `... sector setup` (add `--sectors "A,B,C"` for your own set, `--yes` to skip
+   the prompt) creates the single-select field and its options and prints
+   a `{"jira": {"sectorField": "customfield_NNNNN"}}` snippet; merge it into
+   `~/.himmel/config.json` yourself (the setup command never writes that file;
+   the field id is not a secret, so it is not a `.env` key).
+3. `... sector setup --opt-out` prints the `"sectorField": "none"` snippet
+   instead. With it absent or `none`, `create` neither requires nor sends a Sector; the
+   epic-or-standalone rule stays, and `edit --sector` and `edit-batch` refuse.
+
+The valid options are read live from the field, so adding one in Jira needs no
+code change.
+
 **PROCESS-ENV** (export, or set in `settings.json` `"env"` — a value only in
 `.env` is not read unless it's a bridged exception):
 

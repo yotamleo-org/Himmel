@@ -7,7 +7,7 @@
 #         round N, judge qid)                                   -> exit 1, path:line named
 #   6.    ponytail: line citing a ticket                         -> exit 0
 #   7.    old (context) line carrying a ticket                   -> exit 0
-#   8.    ticket inside a string, not a comment                  -> exit 0
+#   8.    output calls refuse ticket ids; data and exemptions pass
 #   9.    // comment in a .mjs file                              -> exit 1
 #   10.   non-code path (.md) and fixtures path                  -> exit 0
 #   11.   clean why-comment                                      -> exit 0
@@ -78,8 +78,51 @@ expect_allow "ponytail line with ticket" scripts/a.sh "+# ponytail: prefix match
 echo "== 7. unchanged old line =="
 expect_allow "context line" scripts/a.sh "=# ${H}-1234 old history" '+echo new'
 
-echo "== 8. string, not a comment =="
-expect_allow "ticket in a string" scripts/a.sh "+echo \"see ${H}-1234 for details\""
+echo "== 8. user-facing output =="
+expect_allow "ticket in data" scripts/a.sh "+ticket=\"${H}-1234\""
+expect_allow "ticket before clean shell output" scripts/a.sh "+ticket=\"${H}-123\"; echo ready"
+expect_allow "ticket after clean shell output" scripts/a.sh "+echo ready; ticket=\"${H}-123\""
+expect_allow "ticket before clean JS output" scripts/a.ts "+const ticket = '${H}-123'; console.log('ready');"
+expect_allow "ticket after clean JS output" scripts/a.ts "+console.log('ready'); const ticket = '${H}-123';"
+expect_allow "ticket before clean Python output" scripts/a.py "+ticket = '${H}-123'; print('ready')"
+expect_allow "ticket after clean Python output" scripts/a.py "+print('ready'); ticket = '${H}-123'"
+expect_allow "ticket in separate shell and-list" scripts/a.sh "+ticket='${H}-123' && echo ready"
+expect_allow "ticket in separate shell or-list" scripts/a.sh "+echo ready || ticket='${H}-123'"
+expect_block "shell echo output" scripts/a.sh "+echo \"see ${H}-1234 for details\""
+expect_block "shell printf output" scripts/a.sh "+printf '%s\\n' '${H}-123'"
+expect_block "shell die output" scripts/a.sh "+die '${H}-123 failed'"
+expect_block "shell warn output" scripts/a.sh "+warn '${H}-123 failed'"
+expect_block "shell say output" scripts/a.sh "+say '${H}-123 ready'"
+expect_block "shell stderr echo" scripts/a.sh "+>&2 echo '${H}-123 failed'"
+expect_block "shell inline output" scripts/a.sh "+[ -f a ] || echo '${H}-123 missing'"
+expect_block "shell then output" scripts/a.sh "+if true; then echo '${H}-123'; fi"
+expect_block "shell do output" scripts/a.sh "+for a in b; do echo '${H}-123'; done"
+expect_block "shell else output" scripts/a.sh "+if false; then :; else echo '${H}-123'; fi"
+expect_block "console error output" scripts/a.ts "+console.error('${H}-123 failed');"
+expect_block "console log output" scripts/a.mjs "+console.log('${H}-123 ready');"
+expect_block "console warn output" scripts/a.js "+console.warn('${H}-123 warning');"
+expect_block "stdout write output" scripts/a.cjs "+process.stdout.write('${H}-123 ready');"
+expect_block "stderr write output" scripts/a.tsx "+process.stderr.write('${H}-123 failed');"
+expect_block "Python print output" scripts/a.py "+print('${H}-123 ready')"
+expect_block "Python stderr output" scripts/a.py "+sys.stderr.write('${H}-123 failed')"
+expect_allow "output ponytail" scripts/a.sh "+echo '${H}-123 ready' # ponytail: fixed text only, replace when localized"
+expect_allow "output fixture" scripts/fixtures/a.sh "+echo '${H}-123 fixture'"
+expect_allow "output test file" scripts/test-a.sh "+echo '${H}-123 test'"
+expect_allow "output test directory" scripts/tests/a.py "+print('${H}-123 test')"
+expect_allow "output JS test file" src/a.test.ts "+console.error('${H}-123 test');"
+expect_allow "output spec file" src/a.spec.js "+console.log('${H}-123 test');"
+expect_allow "output clean" scripts/a.sh '+echo ready'
+expect_allow "command mentioned in data" scripts/a.sh "+example=\"echo ${H}-123\""
+expect_allow "quoted shell delimiter" scripts/a.sh "+example=\"; echo ${H}-123\""
+expect_allow "quoted JS delimiter" scripts/a.ts "+const example = \"; console.log('${H}-123')\";"
+expect_allow "quoted Python delimiter" scripts/a.py "+example = \"; print('${H}-123')\""
+expect_allow "Python test filename" scripts/test_a.py "+print('${H}-123 fixture')"
+expect_allow "console mentioned in data" scripts/a.ts "+const example = \"console.error('${H}-123')\";"
+expect_allow "no invented history-ok exemption" docs/a.md "+echo '${H}-123' # history-ok: example"
+expect_block "history-ok is not an exemption" scripts/a.sh "+echo '${H}-123' # history-ok: debug only"
+mkdiff scripts/a.sh '+echo clean' "+echo '${H}-123 failed'"
+run
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:2: ticket id:" && has "echo '${H}-123 failed'"; then pass "output reports path, line and text"; else fail "output diagnostic -> rc=$RC: $OUT"; fi
 
 echo "== 9. // comment =="
 expect_block "js comment" scripts/a.mjs "+// ${H}-5 workaround"
@@ -160,6 +203,24 @@ if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "--staged: -diff attribute
 git -C "$A" commit -q -m ticket
 OUT="$(cd "$A" && bash "$GATE" --range "$attr_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "--range: -diff attribute does not hide the line"; else fail "--range -diff -> rc=$RC: $OUT"; fi
+
+echo "== 15. --range ignores unchanged output ids =="
+O="$T/output"; mkdir -p "$O/scripts"; git -C "$O" init -q
+git -C "$O" config user.email t@t; git -C "$O" config user.name t
+printf 'echo "%s-123 old output"\n' "$H" > "$O/scripts/a.sh"
+git -C "$O" add -A; git -C "$O" commit -q -m base
+output_base="$(git -C "$O" rev-parse HEAD)"
+printf 'echo ready\n' >> "$O/scripts/a.sh"
+git -C "$O" add -A; git -C "$O" commit -q -m clean
+OUT="$(cd "$O" && bash "$GATE" --range "$output_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ]; then pass "--range: unchanged output id is not new"; else fail "unchanged output -> rc=$RC: $OUT"; fi
+printf 'echo "%s-456 new output"\n' "$H" >> "$O/scripts/a.sh"
+git -C "$O" add -A
+OUT="$(cd "$O" && bash "$GATE" --staged 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:3"; then pass "--staged: new output id refused"; else fail "staged output -> rc=$RC: $OUT"; fi
+git -C "$O" commit -q -m output
+OUT="$(cd "$O" && bash "$GATE" --range "$output_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:3"; then pass "--range: new output id refused"; else fail "range output -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

@@ -273,7 +273,7 @@ CLAUDE.md, not done on a branch checked out in the primary tree (HIMMEL-507).
 Move the work into a worktree (a linked worktree carries its own \`.git\` file,
 so edits there are allowed):
 
-    /clean_garden feat/<scope>          # prune merged worktrees + create new
+    bash scripts/worktree.sh feat/<scope>   # create the worktree
     cd .claude/worktrees/feat+<scope>   # switch in the existing shell
 
 Bypass / single-writer opt-out behave the same as the on-main case:
@@ -293,7 +293,7 @@ cat >&2 <<EOF
 
 Feature work must go in a worktree per CLAUDE.md. To start one:
 
-    /clean_garden feat/<scope>          # prune merged worktrees + create new
+    bash scripts/worktree.sh feat/<scope>   # create the worktree
     cd .claude/worktrees/feat+<scope>   # switch in the existing shell
 
 Or to bypass for an emergency hotfix, set EDIT_ON_MAIN_OK=1 in the shell

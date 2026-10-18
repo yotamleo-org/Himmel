@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-graph.sh — run `graphify query|explain` from a leg worktree against the
+# leg-graph.sh — run `graphify query|explain|path` from a leg worktree against the
 # PRIMARY checkout's graphify-out/.
 #
 # WHY: graphify-out/ is gitignored, so a fresh worktree has no graph and a bare
@@ -7,8 +7,7 @@
 # GRAPHIFY_OUT env var, but a `VAR=` prefix typed in a leg drops to the
 # classifier; this wrapper sets it itself. Read-only: it never builds a graph.
 #
-# Usage: bash scripts/graphify/leg-graph.sh query|explain <graphify args...>
-#   `path` is refused: node ids are file-scoped, so cross-file paths are wrong.
+# Usage: bash scripts/graphify/leg-graph.sh query|explain|path <graphify args...>
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
@@ -21,9 +20,8 @@ set -u
 
 sub="${1:-}"
 case "$sub" in
-  query|explain) ;;
-  path) echo "leg-graph: refused: 'graphify path' is broken (file-scoped node ids); use query or explain" >&2; exit 2 ;;
-  *) echo "usage: leg-graph.sh query|explain <graphify args...>" >&2; exit 2 ;;
+  query|explain|path) ;;
+  *) echo "usage: leg-graph.sh query|explain|path <graphify args...>" >&2; exit 2 ;;
 esac
 
 common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
@@ -31,7 +29,7 @@ common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
 primary="$(dirname "$common")"
 out="$primary/graphify-out"
 if [ ! -f "$out/graph.json" ]; then
-  echo "leg-graph: no graph at $out/graph.json (build it from the primary checkout: /graph-refresh); once built, run: bash scripts/graphify/leg-graph.sh query|explain \"<q>\"" >&2
+  echo "leg-graph: no graph at $out/graph.json (build it from the primary checkout: /graph-refresh); once built, run: bash scripts/graphify/leg-graph.sh query|explain|path \"<q>\"" >&2
   exit 2
 fi
 

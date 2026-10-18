@@ -7,8 +7,8 @@
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
 > **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a
-> leg into it with `LEG_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, or 90 k input
-> tokens in one turn**, whichever comes first. Report at MILESTONES only.
+> leg into it with `LEG_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input
+> tokens in one turn, or 150 turns / 30 M cache-read**, whichever comes first. Report at MILESTONES only.
 
 ## ACTION ZERO — before anything else
 
@@ -20,8 +20,8 @@ Run these, in order, and write the result as the first bullet under
 > **One command for steps 2–6 and 8:**
 > `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
 > prints the lock sweep, head/remote, bank, leg processes, C29, load and this
-> document's lock state (read-only; `--acquire` takes a `free` lock and prints the
-> token, never a held one). `ListAgents`, the relays and quote-backs (step 9),
+> document's lock state (read-only; `--acquire` takes a `free` lock, prints the
+> token, never a held one). `ListAgents`, relays and quote-backs (step 9),
 > LIVE and the waiter (step 10) stay yours.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
@@ -29,13 +29,13 @@ Run these, in order, and write the result as the first bullet under
    Expect the predecessor's lock plus one per live leg; quote every path.
 3. **Head + remote:** `git -C "{{REPO}}" log -1 --format=%H` and
    `git -C "{{REPO}}" remote -v`, in the first bullet verbatim: every leg is cut
-   from that head and targets that remote.
+   from that head and remote.
 4. **Bank:** `bash "{{REPO}}/scripts/lib/bank-preflight.sh"` — never dispatch
    past a refusal.
 5. **Leg processes:** `pgrep -af 'claude .*-n {{PREFIX}}-'` against step 1, then
    `bash "{{REPO}}/scripts/himmel-doctor.sh" | grep C29`: **if it names YOU, your
    transcript is not being saved**, `scripts/context-fill.sh --percent` reads
-   `UNKNOWN`, so hand over on a proxy and say so in the first bullet.
+   `UNKNOWN`, so hand over on a proxy and say so in bullet 1.
 6. **Host load:** `uptime`; a vanished watcher proves nothing — poll CI by hand.
 7. **The kit:** `{{KIT}}` (tick, arm, `inbox-send.sh`).
 8. **The queue lock on THIS document.** Its release token is:
@@ -224,7 +224,7 @@ bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` 
 
 ## Handing over
 
-At **{{FILL_PERCENT}} % fill or 90 k input in one turn**, hand over:
+At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`**, hand over:
 
 1. `/console next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
    writes the successor stub and this console's `-HANDOFF.md` skeleton and arms

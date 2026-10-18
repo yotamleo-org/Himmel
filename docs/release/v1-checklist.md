@@ -105,6 +105,10 @@ with that curated file (`--notes-file`, read at the tag); it does not rely on
 to the previous tag, but the first non-prerelease tag's unbounded generated notes
 exceed GitHub's 125000-char limit and fail.
 
+Write the notes in the user-facing shape (`docs/release/changelog-shape.md`):
+draft them with `scripts/release/gen-release-notes.sh --prs <prs.json> --version <TAG>`
+and keep `scripts/release/gen-release-notes.sh --check docs/release/<TAG>-notes.md` green.
+
 ## 6. After the tag
 
 - Confirm the release-tarball build (`scripts/release/build-tarball.sh

@@ -13,7 +13,7 @@ import { buildEditFields } from './commands/edit.js';
 import { parseLabels } from './commands/labels.js';
 import { uploadAll } from './commands/attach-helper.js';
 import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict } from './plain-block.js';
-import { SECTOR_FIELD, resolveSector } from './commands/sector.js';
+import { resolveSector, sectorField, sectorOptions } from './commands/sector.js';
 import type {
   JiraIssue,
   JiraSearchResult,
@@ -115,7 +115,7 @@ export function createTools(): JiraTool[] {
           adfFile: str('Path to pre-built ADF JSON document (overrides desc)'),
           parent: str('Parent issue key'),
           labels: str('Comma-separated labels to set (e.g. a,b); `standalone` marks a ticket with no parent epic'),
-          sector: str('Sector (required for a Task, Story or Bug)'),
+          sector: str('Sector (required for a Task, Story or Bug once JIRA_SECTOR_FIELD is set)'),
           project: str('Project key (default: JIRA_PROJECT_KEY env var)'),
           attach: {
             type: 'array',
@@ -150,13 +150,17 @@ export function createTools(): JiraTool[] {
         // Same plain Impact/What/Why rule as the CLI create.
         const verdict = plainBlockVerdict(args.type as string, found);
         if (verdict.action === 'refuse') throw new Error(verdict.message);
-        const sector = args.sector !== undefined ? resolveSector(args.sector as string) : undefined;
+        // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
+        const sectorId = sectorField();
+        const sectors = sectorId ? await sectorOptions(deps.request) : undefined;
+        const sector =
+          args.sector !== undefined && sectors ? resolveSector(args.sector as string, sectors) : undefined;
         const labels = args.labels !== undefined ? parseLabels(args.labels as string) : undefined;
-        const home = homeVerdict(args.type as string, { sector, parent: args.parent as string | undefined, labels });
+        const home = homeVerdict(args.type as string, { sector, parent: args.parent as string | undefined, labels }, sectors);
         if (home.action === 'refuse') throw new Error(home.message);
         if (args.parent) fields['parent'] = { key: args.parent };
         if (labels) fields['labels'] = labels;
-        if (sector) fields[SECTOR_FIELD] = { value: sector };
+        if (sector && sectorId) fields[sectorId] = { value: sector };
 
         const result = await deps.request<CreateIssueResponse>('POST', '/issue', {
           fields,

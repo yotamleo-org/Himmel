@@ -17,6 +17,8 @@
 # Clustering is left to the next AST pass, which reclusters and keeps semantic
 # nodes. Each run appends one line to <out>/semantic-runs.jsonl (nodes/edges
 # added and removed, backlog, runtime, tokens, cost equivalent).
+# Measure the result with semantic-metrics.py <graph.json> [--files a.md,b.md]
+# (rationale coverage, cross-file and doc-to-code edges).
 #
 # BILLING: --backend claude-cli makes graphify shell `claude -p` once per chunk,
 # which draws the SAME subscription 5h/weekly bank as interactive use
@@ -44,9 +46,19 @@
 # A high-effort call needs a 1.00 USD cap at 30k-token chunks (at 0.50 and 60k
 # it fails the per-call budget stop), so 1.00 is the default cap.
 #
+# claude-api also appends two requirements graphify's own prompt lacks to every
+# chunk prompt (through the shim): a `rationale` on every non-code node, and
+# doc-to-code edges of relation `documents`, `explains` or `rationale_for`. Its
+# extraction cache is kept apart (cache/semantic-r1), so a chunk cached under the
+# old prompt is never replayed without them. A per-run spend cap (--max-run-usd,
+# default 5.00; GRAPHIFY_API_RUN_BUDGET_USD) sums each lane call's verified cost and
+# refuses further calls once it is reached; chunks in flight may overshoot it by up
+# to one per-call budget each. The run row carries the summed cost (`cost_usd`), the
+# backend and the cap.
+#
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
-#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--seed-manifest] [--dry-run]
+#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--max-run-usd 5.00] [--seed-manifest] [--dry-run]
 #
 # --backend ollama runs the local model (OLLAMA_MODEL, default qwen3.6:27b) at
 # --max-concurrency 1 and skips bank-preflight (no subscription draw). It
@@ -65,7 +77,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
-NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-cli" MAX_FILES=150 SEED=0 DRY=0
+NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-cli" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-5.00}"
 usage() { sed -n '/^# Usage:/,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -74,6 +86,7 @@ while [ $# -gt 0 ]; do
     --corpus-class) CORPUS_CLASS="${2:-}"; shift 2 ;;
     --backend) BACKEND="${2:-}"; shift 2 ;;
     --max-files) MAX_FILES="${2:-}"; shift 2 ;;
+    --max-run-usd) RUN_CAP="${2:-}"; shift 2 ;;
     --seed-manifest) SEED=1; shift ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage ;;
@@ -96,6 +109,8 @@ API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 if [ "$BACKEND" = "claude-api" ]; then
   case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
   case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+  case "$RUN_CAP" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: --max-run-usd must be a positive decimal" >&2; exit 1 ;; esac
+  case "$RUN_CAP" in *[1-9]*) ;; *) echo "semantic-update: --max-run-usd must be a positive decimal" >&2; exit 1 ;; esac
   case "$API_EFFORT" in low|medium|high|xhigh|max) ;; *) echo "semantic-update: GRAPHIFY_API_EFFORT must be one of low, medium, high, xhigh, max (got '$API_EFFORT')" >&2; exit 1 ;; esac
 fi
 # A chunk must fit one lane call: graphify's default 60000-token chunk costs about 0.45 USD on sonnet and died
@@ -213,9 +228,9 @@ plan_or_noop
 if [ "$BACKEND" = "claude-api" ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
-  python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" <<'PY' >&2
+  python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY' >&2
 import json, os, sys
-plan, root, model, budget, chunk = sys.argv[1:6]
+plan, root, model, budget, chunk, cap = sys.argv[1:7]
 files = json.load(open(plan))["batch"]
 size = sum(os.path.getsize(os.path.join(root, f)) for f in files)
 tin = size // 4 + 2000 * len(files)
@@ -224,8 +239,8 @@ usd = (tin * 3 + tout * 15) / 1e6
 print("semantic-update: estimate: files=%d bytes=%d ~tokens_in=%d ~tokens_out=%d ~usd=%.2f model=%s per-call-budget-usd=%s"
       % (len(files), size, tin, tout, usd, model, budget))
 ct = int(chunk)
-print("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f chunks~%d"
-      % (budget, ct, (ct * 3 + ct // 4 * 15) / 1e6, -(-tin // ct)))
+print("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f chunks~%d run-cap-usd=%s"
+      % (budget, ct, (ct * 3 + ct // 4 * 15) / 1e6, -(-tin // ct), cap))
 PY
 fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
@@ -243,6 +258,8 @@ acquire_promote_lock
 plan_or_noop
 
 TOKENS_IN=0 TOKENS_OUT=0 FAILED_CHUNKS="" START="$(date +%s)"
+# Summed verified cost of the lane calls so far (0 off the claude-api path, which never writes the file).
+spent_usd() { if [ -f "$WORK/spend.log" ]; then awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$WORK/spend.log"; else echo 0; fi; }
 SCRATCH="$WORK/corpus"
 if [ "$N_BATCH" -gt 0 ]; then
   case "$BACKEND" in
@@ -305,14 +322,34 @@ export HIMMEL_API_TOOLS=""
 # The lane's result goes to stdout, where graphify never shows it on a failed call; echo its tail to stderr
 # so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
 out="$here/lane-out.$$"
-"$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
+# Per-run spend cap: refuse the call once the verified cost of the calls so far reaches it.
+spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEND_FILE" "$GRAPHIFY_SEMANTIC_RESERVE_FILE")"
+if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= c + 0) }'; then
+  echo "claude-api shim: run spend cap reached (spent $spent of $GRAPHIFY_SEMANTIC_RUN_CAP USD); call refused" >&2
+  exit 3
+fi
+{ cat; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } | "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
   --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out"
-rc=$?
+rc=${PIPESTATUS[1]}
+# A call without a verified cost (a failure) may still have been billed: reserve its per-call budget against the
+# cap, but keep it out of the spend file so the run row reports only verified cost.
+cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
+if [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
 cat "$out"; rm -f "$out"
 exit "$rc"
 SHIM
     chmod +x "$WORK/bin/claude"
+    cat > "$WORK/addendum.txt" <<'ADD'
+ADDITIONAL REQUIREMENTS (these override the optional-rationale rule above for every node that is not a code symbol):
+- Every document, concept or rationale node MUST carry a non-empty `rationale`: one sentence of WHY, the reason, trade-off, constraint or intent behind what the node says. If the source never states a reason, give the reason it implies and prefix it with "implied: ". Never null, never a restatement of the label.
+- Doc-to-code edges: whenever a document names a code file, script, function, command, hook or gate, add an edge from the document or concept node to that code node, source = the document or concept node, target = the code node (a path scripts/x/y.sh gives the id scripts_x_y, a symbol adds _name). Relation `documents` when the text describes that code, `explains` when it explains how or why that code works, `rationale_for` when it gives the reason that code exists or has its shape. Confidence EXTRACTED when the code is named in the text, otherwise INFERRED.
+- `documents`, `explains` and `rationale_for` are allowed relation values in addition to the schema's list.
+ADD
+    : > "$WORK/spend.log"; : > "$WORK/reserve.log"
+    export GRAPHIFY_SEMANTIC_ADDENDUM="$WORK/addendum.txt" GRAPHIFY_SEMANTIC_SPEND_FILE="$WORK/spend.log" GRAPHIFY_SEMANTIC_RUN_CAP="$RUN_CAP"
+    export GRAPHIFY_SEMANTIC_RESERVE_FILE="$WORK/reserve.log"
+    export GRAPHIFY_SEMANTIC_OUTCOME_BIN="$REPO_ROOT/scripts/api-lane/outcome.mjs"
     export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET" GRAPHIFY_SEMANTIC_LANE_EFFORT="$API_EFFORT"
     export PATH="$WORK/bin:$PATH"
   fi
@@ -325,7 +362,10 @@ for rel in json.load(open(plan))["batch"]:
     shutil.copy2(os.path.join(src, rel), os.path.join(dst, rel))
 PY
   [ ! -f "$CORPUS_ROOT/.graphifyignore" ] || cp "$CORPUS_ROOT/.graphifyignore" "$SCRATCH/"
-  [ ! -d "$OUT_DIR/cache/semantic" ] || cp -R "$OUT_DIR/cache/semantic" "$SCRATCH/graphify-out/cache/semantic"
+  # The claude-api prompt differs from graphify's own, whose cache stamp would not notice: keep its entries apart.
+  CACHE_SUB="semantic"
+  if [ "$BACKEND" = "claude-api" ]; then CACHE_SUB="semantic-r1"; fi
+  [ ! -d "$OUT_DIR/cache/$CACHE_SUB" ] || cp -R "$OUT_DIR/cache/$CACHE_SUB" "$SCRATCH/graphify-out/cache/semantic"
   printf '%s\n' "$CORPUS_CLASS" > "$SCRATCH/.graphify-corpus"
   EXTRA=()
   # One request at a time: the local model holds the whole GPU.
@@ -339,17 +379,26 @@ PY
   set -e
   cat "$WORK/extract.log" >&2
   FAILED_CHUNKS="$(sed -n 's|.*WARNING: \([0-9]*/[0-9]*\) semantic chunk(s) failed.*|\1|p' "$WORK/extract.log" | tail -1)"
-  [ "$rc" -eq 0 ] || { echo "semantic-update: graphify extract exited $rc -- graph and manifest untouched" >&2; exit 2; }
+  if [ "$rc" -ne 0 ]; then
+    # Calls made before the failure were billed: leave a row so the spend is not lost.
+    "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc "$rc" || true
+    echo "semantic-update: graphify extract exited $rc -- graph and manifest untouched" >&2; exit 2
+  fi
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
 fi
 
 "${MERGE[@]}" merge --name "$NAME" --out "$OUT_DIR" --scratch "$SCRATCH" --plan "$PLAN" \
   --runtime-s "$(( $(date +%s) - START ))" --tokens-in "$TOKENS_IN" --tokens-out "$TOKENS_OUT" \
-  || { echo "semantic-update: merge failed -- the batch stays unstamped and re-extracts next run" >&2; exit 2; }
+  --backend "$BACKEND" --cost-usd "$(spent_usd)" --cap-usd "$([ "$BACKEND" = "claude-api" ] && echo "$RUN_CAP" || echo 0)" \
+  || {
+    # The merge writes its row last, so a failed merge billed calls without leaving one.
+    "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc 2 || true
+    echo "semantic-update: merge failed -- the batch stays unstamped and re-extracts next run" >&2; exit 2
+  }
 if [ -d "$SCRATCH/graphify-out/cache/semantic" ]; then
-  mkdir -p "$OUT_DIR/cache/semantic"
-  cp -R "$SCRATCH/graphify-out/cache/semantic/." "$OUT_DIR/cache/semantic/"
+  mkdir -p "$OUT_DIR/cache/$CACHE_SUB"
+  cp -R "$SCRATCH/graphify-out/cache/semantic/." "$OUT_DIR/cache/$CACHE_SUB/"
 fi
 python3 "$HERE/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
   || echo "semantic-update: WARN harden-graph.py failed; the merged graph stands, the next refresh re-hardens it" >&2

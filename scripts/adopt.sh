@@ -52,6 +52,11 @@
 #                       pre-commit-hooks` runs, so a hooks repair never
 #                       re-adopts the whole user scope. Core profile only;
 #                       not combinable with --skip-hooks.
+#   --commit-install    Project scope on main/master: commit the installed files
+#                       as the one allowed first commit (the git gates refuse
+#                       every later commit on main), so worktrees cut from main
+#                       carry scripts/. Without the flag an interactive run is
+#                       asked; a non-interactive run prints the command instead.
 #   --handover-mode <inline|external>
 #                       Gate for wire_handover_dir_luna's env.HANDOVER_DIR
 #                       write. external (the default, today's
@@ -122,6 +127,7 @@ FILL_ENV=0
 WITH_GRAPHIFY=0
 SKIP_HOOKS=0
 ONLY_HOOKS=0
+COMMIT_INSTALL=0
 HANDOVER_MODE="external"
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -136,6 +142,7 @@ while [[ $# -gt 0 ]]; do
     --with-graphify)  WITH_GRAPHIFY=1; shift ;;
     --skip-hooks)     SKIP_HOOKS=1; shift ;;
     --only-hooks)     ONLY_HOOKS=1; shift ;;
+    --commit-install) COMMIT_INSTALL=1; shift ;;
     --handover-mode)  HANDOVER_MODE="$2"; shift 2 ;;
     -h|--help)        sed -n '2,/^set -e/p' "$0" | sed 's/^# \{0,1\}//' | sed '$d'; exit 0 ;;
     *) echo "ERROR: unknown flag: $1" >&2; exit 2 ;;
@@ -246,15 +253,18 @@ require_tools() {
 }
 
 # copy_recorded <path relative to both roots> [exec]
-# copy $HIMMEL_ROOT/<path> over $TARGET/<path> — unconditionally, as
-# copy_portable always did — and record one `file` row for it: `create` when
-# there was nothing there, `noop` when the bytes and mode did not change, else
-# `replace` with the prior bytes backed up (mode preserved) so uninstall can put
-# the user's file back. `exec` also chmod +x's the copy. The pre-state is a
-# snapshot taken BEFORE the cp, because prov_record hashes and backs up a file
-# it is handed and the destination is about to be overwritten.
+# copy $HIMMEL_ROOT/<path> over $TARGET/<path> and record one `file` row for it:
+# `create` when there was nothing there, `noop` when the bytes and mode did not
+# change, else `replace` with the prior bytes backed up (mode preserved) so
+# uninstall can put the user's file back. `exec` also chmod +x's the copy. The
+# pre-state is a snapshot taken BEFORE the cp, because prov_record hashes and
+# backs up a file it is handed and the destination is about to be overwritten.
+# A destination that cannot be snapshotted, or whose backup does not land, is
+# never left overwritten: it is skipped (restored from the snapshot), added to
+# COPY_REFUSED, and the run exits non-zero at the end.
+COPY_REFUSED=()
 copy_recorded() {
-  local f="$1" exec="${2:-}" dest="$TARGET/$1" snap="" tmp="" rec=1 op=create
+  local f="$1" exec="${2:-}" dest="$TARGET/$1" snap="" tmp="" op=create bk=""
   local -a pre=(--pre-absent)
   run mkdir -p "$(dirname "$dest")" || return 1
   if [ -f "$dest" ]; then
@@ -264,9 +274,12 @@ copy_recorded() {
     elif tmp="$(mktemp)" && cp -p "$dest" "$tmp"; then
       snap="$tmp"
     else
-      rm -f "$tmp"; tmp=""; rec=0
+      rm -f "$tmp"
+      echo "  not replaced $f (cannot back up the existing file; left untouched)" >&2
+      COPY_REFUSED+=("$f")
+      return 0
     fi
-    [ -z "$snap" ] || pre=(--pre-file "$snap" --backup)
+    pre=(--pre-file "$snap" --backup)
   fi
   run cp "$HIMMEL_ROOT/$f" "$dest" || { rm -f "$tmp"; return 1; }
   if [ -n "$exec" ]; then run chmod +x "$dest" || { rm -f "$tmp"; return 1; }; fi
@@ -274,13 +287,37 @@ copy_recorded() {
   if [ -n "$tmp" ] && cmp -s "$tmp" "$dest" && [ "$(_prov_mode "$tmp")" = "$(_prov_mode "$dest")" ]; then
     op=noop; pre=(--pre-file "$snap")
   fi
-  if [ "$rec" = 1 ]; then
-    prov_record "$op" file "$dest" --scope project --class code --row adopter-scripts \
-      --writer adopt.sh "${pre[@]}" --post-file "$dest" || rec=0
+  if ! prov_record "$op" file "$dest" --scope project --class code --row adopter-scripts \
+      --writer adopt.sh "${pre[@]}" --post-file "$dest"; then
+    if [ "$op" = replace ] && [ -n "$tmp" ]; then
+      # the backup did not land: put the user's file back rather than keep an unbacked overwrite
+      if cp -p "$tmp" "$dest"; then
+        echo "  not replaced $f (the backup could not be recorded; original restored)" >&2
+      else
+        echo "  ERROR: $f was overwritten and could not be restored; your original is kept at $tmp" >&2
+        tmp=""
+      fi
+      COPY_REFUSED+=("$f")
+    else
+      echo "  warning: provenance record failed for $f (the copy is in place; uninstall will keep it)" >&2
+    fi
+  elif [ "$op" = replace ]; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      cmp -s "$HIMMEL_ROOT/$f" "$dest" || echo "  would replace $f (backed up to $(prov_dir)/provenance-backups/)"
+    else
+      bk="$(jq -r --arg p "$dest" 'select(.kind=="file" and .path==$p) | .pre.backup // empty' "$(prov_ledger_path)" 2>/dev/null | tail -n 1)"
+      echo "  replaced $f (backed up to ${bk:-unknown})"
+    fi
   fi
   rm -f "$tmp"
-  [ "$rec" = 1 ] || echo "  warning: provenance record failed for $f (the copy is in place; uninstall will keep it)" >&2
   return 0
+}
+
+copy_refused_exit() {
+  [ "${#COPY_REFUSED[@]}" -eq 0 ] && return 0
+  echo "ERROR: ${#COPY_REFUSED[@]} existing file(s) could not be backed up and were left untouched:" >&2
+  printf '  %s\n' "${COPY_REFUSED[@]}" >&2
+  exit 1
 }
 
 copy_portable() {
@@ -305,6 +342,96 @@ copy_portable() {
     copy_recorded "$f" exec
     echo "  $f"
   done
+}
+
+# Keep worktrees out of `git add -A` (they would stage as embedded repos).
+ensure_worktrees_ignored() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  if [[ -f "$TARGET/.gitignore" ]] && grep -qx -e '/\{0,1\}\.claude/worktrees/\{0,1\}' "$TARGET/.gitignore"; then
+    return 0
+  fi
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: append .claude/worktrees/ to $TARGET/.gitignore"
+    return 0
+  fi
+  # a .gitignore without a final newline would fuse the rule onto its last line
+  if [[ -s "$TARGET/.gitignore" && -n "$(tail -c1 "$TARGET/.gitignore")" ]]; then
+    echo >> "$TARGET/.gitignore"
+  fi
+  echo ".claude/worktrees/" >> "$TARGET/.gitignore"
+  echo "  .gitignore: added .claude/worktrees/"
+}
+
+# The git gates refuse every commit on main, so the install itself can only
+# land as one gate-skipping first commit; uncommitted, a worktree cut from main
+# has no scripts/ and its hooks fail.
+PRE_EDITED=0
+# Content hashes of the two files the install shares with the user. A declined
+# install records them, so a later --commit-install can tell its own leftovers
+# from an edit the user made since.
+shared_file_hashes() {
+  local f
+  for f in .gitignore .claude/settings.json; do
+    [[ -f "$TARGET/$f" ]] && git -C "$TARGET" hash-object -- "$f"
+  done
+  return 0
+}
+install_marker() {
+  echo "$(git -C "$TARGET" rev-parse --absolute-git-dir)/himmel-install-pending"
+}
+snapshot_user_edits() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  [[ "$(git -C "$TARGET" status --porcelain -- .gitignore .claude/settings.json | wc -l)" -gt 0 ]] || return 0
+  local marker; marker="$(install_marker)"
+  if [[ -f "$marker" && "$(shared_file_hashes)" == "$(cat "$marker")" ]] \
+     && git -C "$TARGET" diff --cached --quiet -- .gitignore .claude/settings.json; then
+    return 0
+  fi
+  PRE_EDITED=1
+}
+
+commit_install() {
+  [[ -e "$TARGET/.git" ]] || return 0
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  local branch f ans
+  branch="$(git -C "$TARGET" symbolic-ref --short -q HEAD || true)"
+  case "$branch" in main|master) ;; *) return 0 ;; esac
+  if [[ $PRE_EDITED -eq 1 ]]; then
+    echo "  .gitignore or .claude/settings.json already had uncommitted edits, so the install is not auto-committed (it would sweep them in)."
+    echo "  Commit your edits first, then re-run: bash scripts/adopt.sh --scope project --target $TARGET --commit-install"
+    return 0
+  fi
+  local -a paths=()
+  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore; do
+    [[ -e "$TARGET/$f" ]] && paths+=("$f")
+  done
+  if [[ -z "$(git -C "$TARGET" status --porcelain -- "${paths[@]}")" ]]; then
+    return 0
+  fi
+  if [[ $COMMIT_INSTALL -ne 1 ]]; then
+    if [[ $DRY_RUN -eq 0 && -t 0 && -t 1 ]]; then
+      read -r -p "  Commit the install on $branch now (the one allowed commit there)? [y/N] " ans || ans=""
+      [[ "$ans" == [yY]* ]] && COMMIT_INSTALL=1
+    fi
+    if [[ $COMMIT_INSTALL -ne 1 ]]; then
+      echo "  The install is uncommitted on $branch, which the git gates now refuse commits on."
+      echo "  Commit it once with: bash scripts/adopt.sh --scope project --target $TARGET --commit-install"
+      [[ $DRY_RUN -eq 1 ]] || shared_file_hashes > "$(install_marker)"
+      return 0
+    fi
+  fi
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: git -C $TARGET add + commit --no-verify the installed files"
+    return 0
+  fi
+  if git -C "$TARGET" add -- "${paths[@]}" \
+     && git -C "$TARGET" commit -q --no-verify -m "chore: add himmel" -- "${paths[@]}"; then
+    rm -f "$(install_marker)"
+    echo "  committed the install on $branch (chore: add himmel)"
+  else
+    echo "  WARNING: could not commit the install - commit it by hand" >&2
+  fi
 }
 
 install_plugins() {
@@ -1196,6 +1323,7 @@ do_core() {
   print_machine_footprint
   require_tools
   if [[ "$SCOPE" == "project" ]]; then
+    snapshot_user_edits
     copy_portable
     # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
     # shellcheck disable=SC2016
@@ -1239,6 +1367,10 @@ do_core() {
   wire_himmel_repo_core
   write_standalone_bundle_core
   if [[ $FILL_ENV -eq 1 ]]; then fill_env_core; fi
+  if [[ "$SCOPE" == "project" ]]; then
+    ensure_worktrees_ignored
+    commit_install
+  fi
 }
 
 do_luna() {
@@ -1275,6 +1407,7 @@ _dry_note=""; [[ $DRY_RUN -eq 1 ]] && _dry_note=" (dry-run)"
 echo "==> himmel adopt — profile=$PROFILE scope=$SCOPE${_dry_note}"
 if [[ $ONLY_HOOKS -eq 1 ]]; then
   install_precommit_hooks || exit $?
+  copy_refused_exit
   echo "──── Done ────"
   exit 0
 fi
@@ -1286,4 +1419,5 @@ case "$PROFILE" in
   luna) if [[ $LUNA_TARGET_SET -eq 1 ]]; then do_luna "$LUNA_TARGET"; else do_luna "$TARGET"; fi ;;
   all)  do_core; do_luna "$LUNA_TARGET" ;;
 esac
+copy_refused_exit
 echo "──── Done ────"

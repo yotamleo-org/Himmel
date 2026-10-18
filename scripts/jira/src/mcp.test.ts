@@ -1,8 +1,26 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
 import { markdownToAdf } from './adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
+import { SECTORS, resetSectorCache } from './commands/sector.js';
+
+// The Sector field is opt-in: these tests run with it configured unless one deletes the variable.
+beforeEach(() => {
+  resetSectorCache();
+  process.env.JIRA_SECTOR_FIELD = 'customfield_10212';
+});
+afterEach(() => {
+  delete process.env.JIRA_SECTOR_FIELD;
+});
+
+// The field's context and options are read live from Jira.
+function fieldReply(path: unknown): unknown {
+  const p = String(path);
+  if (p.split('?')[0].endsWith('/context')) return { values: [{ id: '1' }] };
+  if (p.includes('/option')) return { values: SECTORS.map((value) => ({ value })) };
+  return undefined;
+}
 
 const PLAIN_FILLED = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
 
@@ -41,7 +59,7 @@ function mockDeps(reply: unknown = {}): {
   request: ReturnType<typeof vi.fn>;
   uploadAttachment: ReturnType<typeof vi.fn>;
 } {
-  const request = vi.fn(async () => reply);
+  const request = vi.fn(async (_method?: string, path?: string) => fieldReply(path) ?? reply);
   const uploadAttachment = vi.fn(async () => ({}));
   return {
     deps: { request, uploadAttachment } as unknown as ToolDeps,
@@ -183,7 +201,16 @@ describe('MCP tool happy-path routing', () => {
     await expect(
       tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'Ship loop' }, deps),
     ).rejects.toThrow(/--parent.*--labels standalone/s);
-    expect(request).not.toHaveBeenCalled();
+    expect(request.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
+  it('create with JIRA_SECTOR_FIELD unset files without a Sector and sends no Sector field (HIMMEL-6277)', async () => {
+    delete process.env.JIRA_SECTOR_FIELD;
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await tool('create').handler({ type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps);
+    expect(request).toHaveBeenCalledTimes(1);
+    const body = (request.mock.calls[0] as unknown[])[2] as { fields: Record<string, unknown> };
+    expect(Object.keys(body.fields).filter((k) => k.startsWith('customfield_'))).toEqual([]);
   });
 
   it('create with a Sector and a parent or the standalone label writes the Sector field (HIMMEL-6223)', async () => {
@@ -192,11 +219,12 @@ describe('MCP tool happy-path routing', () => {
       { type: 'Task', title: 'New', desc: PLAIN_FILLED, project: 'ABC', sector: 'ship loop', labels: 'standalone' },
       deps,
     );
-    const fields = (request.mock.calls[0] as unknown[])[2] as { fields: Record<string, unknown> };
+    const fields = (request.mock.calls.find((c) => c[0] === 'POST') as unknown[])[2] as { fields: Record<string, unknown> };
     expect(fields.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
   });
 
   it('create only warns-exempts an Epic with no body (HIMMEL-5226)', async () => {
+    delete process.env.JIRA_SECTOR_FIELD;
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     const out = await tool('create').handler({ type: 'Epic', title: 'E', project: 'ABC' }, deps);
     expect(request).toHaveBeenCalledTimes(1);

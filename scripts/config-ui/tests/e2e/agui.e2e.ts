@@ -3,7 +3,7 @@
 // (`cd scripts/config-ui/agui-web && bun install && bun run build`); skipped, loudly, when absent.
 import { test, expect } from "@playwright/test";
 import { CLOUD, FLEET, PRIOR_CONSOLE } from "../agui-fleet-fixture";
-import { aguiBuilt, bootAgui, J, play, type AguiHarness } from "./agui-fixtures";
+import { aguiBuilt, bootAgui, denseRun, J, play, type AguiHarness } from "./agui-fixtures";
 import { shortName } from "../../agui-web/src/fleet-model";
 import type { Page } from "@playwright/test";
 
@@ -70,6 +70,44 @@ for (const [name, scheme, size] of [
     expect(overflow).toBeLessThanOrEqual(0);
     await ctx.close();
   });
+}
+
+for (const scheme of ["dark", "light"] as const) {
+  for (const width of [1280, 390]) {
+    test(`dense strip: ten bands in ${scheme} at ${width}px leave the transcript in view`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.emulateMedia({ colorScheme: scheme });
+      h = await bootAgui(denseRun());
+      await page.goto(h.url);
+      await expect(page.locator(".band")).toHaveCount(10);
+      await page.screenshot({ path: info.outputPath("dense.png") });
+      const strip = page.getByRole("region", { name: "Tool calls over time, by agent" });
+      const first = await page.locator(".transcript .msg").first().boundingBox();
+      expect(first!.y + first!.height).toBeLessThan(800);
+      const size = await strip.evaluate((el) => ({ height: el.clientHeight, scroll: el.scrollHeight }));
+      expect(size.height).toBeLessThanOrEqual(240);
+      expect(size.scroll).toBeGreaterThan(size.height);
+      await strip.focus();
+      await page.keyboard.press("End");
+      await expect.poll(() => strip.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+      const band = page.locator(".band").nth(9);
+      const toggle = band.getByRole("button", { name: "10 CV cold review 9 (v7 correctness)", exact: true });
+      await expect(toggle).toHaveAttribute("title", "CV cold review 9 (v7 correctness) · subagent");
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(band.locator(".bar")).toHaveCount(0);
+      await expect(band.locator(".agent-badge")).toHaveText("10");
+      await toggle.focus();
+      await page.keyboard.press("Enter");
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(band.locator(".bar")).toHaveCount(2);
+      await band.locator(".bar").first().click();
+      await expect(page.locator("#call-read9")).toBeFocused();
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(band.locator(".bar")).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    });
+  }
 }
 
 // the leg's /pr-check round with a critic subagent (SCENE), its transcript in a separate file.

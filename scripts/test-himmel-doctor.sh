@@ -4953,6 +4953,41 @@ else
 fi
 rm -rf "$c40_t"
 
+echo "== C40 (HIMMEL-6324): daemon started before the installed qmd build -> WARN stale daemon, not 'no vector index' (RED) =="
+c40_setup
+mkdir -p "$c40_t/home/.cache/qmd" "$c40_t/home/.himmel/qmd-fork"
+echo $$ > "$c40_t/home/.cache/qmd/mcp.pid"
+echo c3b84dd > "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
+touch -t 202610180048 "$c40_t/home/.cache/qmd/mcp.pid"
+touch -t 202610180405 "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
+if ! c40_precond novec; then fail "C40 stale daemon: precondition — stub did not answer init"
+else
+    out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
+    if grepq "$out" 'WARN C40-qmd-vec.*older than the installed qmd build' && grepq "$out" -F "pkill -f 'qmd.*mcp.*--http'" && ! grepq "$out" -F 'no vector index'; then
+        pass "C40 daemon older than the build -> WARN stale daemon with the restart commands"
+    else
+        fail "C40 daemon older than the build -> $(printf '%s' "$out" | grep -A1 C40)"
+    fi
+    sleep 0 & c40_dead=$!; wait "$c40_dead"
+    echo "$c40_dead" > "$c40_t/home/.cache/qmd/mcp.pid"
+    touch -t 202610180048 "$c40_t/home/.cache/qmd/mcp.pid"
+    out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
+    if grepq "$out" -F 'no vector index' && ! grepq "$out" -F 'older than the installed'; then
+        pass "C40 leftover pid file of a dead daemon -> no stale-daemon WARN"
+    else
+        fail "C40 leftover pid file of a dead daemon -> $(printf '%s' "$out" | grep -A1 C40)"
+    fi
+    echo $$ > "$c40_t/home/.cache/qmd/mcp.pid"
+    touch -t 202610180500 "$c40_t/home/.cache/qmd/mcp.pid"
+    out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
+    if grepq "$out" 'WARN C40-qmd-vec' && grepq "$out" -F 'no vector index' && ! grepq "$out" -F 'older than the installed'; then
+        pass "C40 daemon started after the build -> the no-vector-index WARN stands"
+    else
+        fail "C40 daemon started after the build -> $(printf '%s' "$out" | grep -A1 C40)"
+    fi
+fi
+rm -rf "$c40_t"
+
 echo "== C40 (HIMMEL-4860): documents awaiting embedding at/above the floor -> WARN with count + fix =="
 c40_setup
 if ! c40_precond stale; then fail "C40 backlog: precondition — stub did not answer init"
@@ -6668,7 +6703,7 @@ rm -rf "$c68_t"
 # Fixtures are the real upstream function before and after 946eafdf2fe (scripts/hermes/fixtures/).
 c66_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c66.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c66_t/home" "$c66_t/hermes/.git" "$c66_t/hermes/cron"
-c66_run() { DOCTOR_HERMES_CHECKOUT="$c66_t/hermes" CLAUDE_DIR="$c66_t/home/claude" HOME="$c66_t/home" bash "$DOC" --no-color --only C66 2>&1; }
+c66_run() { DOCTOR_HERMES_GATEWAY_START="${DOCTOR_HERMES_GATEWAY_START:-4000000000}" DOCTOR_HERMES_CHECKOUT="$c66_t/hermes" CLAUDE_DIR="$c66_t/home/claude" HOME="$c66_t/home" bash "$DOC" --no-color --only C66 2>&1; }
 
 echo "== C66: worker without hook registration (pre-946eafdf2fe) -> FAIL (RED) =="
 cp "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-unfenced.py" "$c66_t/hermes/cron/scheduler.py"
@@ -6686,10 +6721,18 @@ cp "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-fenced.py" "$c66_t/hermes/cro
 out="$(c66_run)"
 if grepq "$out" -F 'OK   C66-hermes-cron-hooks'; then pass "C66 fenced -> OK"; else fail "C66 fenced -> $(printf '%s' "$out" | grep -A1 C66)"; fi
 
-echo "== C66: no external worker entrypoint -> INFO, not a FAIL =="
+echo "== C66: scheduler exists but the worker entrypoint is gone (upstream rename) -> WARN, not INFO =="
 printf 'def run_job():\n    pass\n' > "$c66_t/hermes/cron/scheduler.py"
 out="$(c66_run)"
-if grepq "$out" -F 'INFO C66-hermes-cron-hooks' && ! grepq "$out" -F 'FAIL C66-hermes-cron-hooks'; then pass "C66 no worker -> INFO"; else fail "C66 no worker -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+if grepq "$out" -F 'WARN C66-hermes-cron-hooks' && ! grepq "$out" -F 'INFO C66-hermes-cron-hooks'; then pass "C66 entrypoint gone -> WARN"; else fail "C66 entrypoint gone -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+
+echo "== C66: fenced worker older than the running gateway -> OK; newer than it -> WARN stale gateway =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/cron-worker-fenced.py" "$c66_t/hermes/cron/scheduler.py"
+TZ=UTC touch -t 200109090146.40 "$c66_t/hermes/cron/scheduler.py" || fail "C66 could not backdate scheduler.py"
+out="$(DOCTOR_HERMES_GATEWAY_START=1000000100 c66_run)"
+if grepq "$out" -F 'OK   C66-hermes-cron-hooks'; then pass "C66 gateway newer than scheduler -> OK"; else fail "C66 gateway newer -> $(printf '%s' "$out" | grep -A1 C66)"; fi
+out="$(DOCTOR_HERMES_GATEWAY_START=999999900 c66_run)"
+if grepq "$out" -F 'WARN C66-hermes-cron-hooks' && grepq "$out" -F 'gateway'; then pass "C66 gateway older than scheduler -> WARN"; else fail "C66 gateway older -> $(printf '%s' "$out" | grep -A1 C66)"; fi
 
 echo "== C66: no hermes checkout -> INFO =="
 out="$(DOCTOR_HERMES_CHECKOUT="$c66_t/none" CLAUDE_DIR="$c66_t/home/claude" HOME="$c66_t/home" bash "$DOC" --no-color --only C66 2>&1)"
@@ -6712,6 +6755,21 @@ echo "== C67: the same profile after the installer's ensure pass -> OK =="
 python3 "$REPO_ROOT/scripts/hermes/assets/wire_parity_guard.py" ensure "$c67_t/hermes/profiles/station/config.yaml" /x/parity_guard.py python3 >/dev/null
 out="$(c67_run)"
 if grepq "$out" -F 'OK   C67-hermes-fail-open'; then pass "C67 re-wired -> OK"; else fail "C67 re-wired -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+
+echo "== C67: parity_guard behind a nested secret_env mapping, no fail_closed -> WARN =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/profile-hooks-nested-key-fail-open.yaml" "$c67_t/hermes/profiles/station/config.yaml"
+out="$(c67_run)"
+if grepq "$out" -F 'WARN C67-hermes-fail-open'; then pass "C67 nested key then command -> WARN"; else fail "C67 nested key then command -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+
+echo "== C67: fail_closed: true after a nested secret_env mapping -> OK =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/profile-hooks-nested-key-fail-closed.yaml" "$c67_t/hermes/profiles/station/config.yaml"
+out="$(c67_run)"
+if grepq "$out" -F 'OK   C67-hermes-fail-open'; then pass "C67 fail_closed after nested key -> OK"; else fail "C67 fail_closed after nested key -> $(printf '%s' "$out" | grep -A1 C67)"; fi
+
+echo "== C67: a fail_closed: true inside a nested mapping does not fence the entry -> WARN =="
+cp "$REPO_ROOT/scripts/hermes/fixtures/profile-hooks-nested-fail-closed-fail-open.yaml" "$c67_t/hermes/profiles/station/config.yaml"
+out="$(c67_run)"
+if grepq "$out" -F 'WARN C67-hermes-fail-open'; then pass "C67 nested fail_closed -> WARN"; else fail "C67 nested fail_closed -> $(printf '%s' "$out" | grep -A1 C67)"; fi
 
 echo "== C67: no hermes install -> INFO =="
 out="$(DOCTOR_HERMES_HOME="$c67_t/none" CLAUDE_DIR="$c67_t/home/claude" HOME="$c67_t/home" bash "$DOC" --no-color --only C67 2>&1)"

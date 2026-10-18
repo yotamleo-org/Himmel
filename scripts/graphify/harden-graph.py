@@ -17,6 +17,23 @@
 # only if it is unique across AST file nodes. An ambiguous match (two+ files)
 # is skipped and counted; a directory-qualified token matching zero files is
 # skipped and counted separately -- never resolved by guessing.
+#
+# Canonical identity (runs first): graphify ids are file-scoped, so one entity
+# named in several files is several nodes and `graphify path` refuses the
+# label as ambiguous. A semantic node whose label is exactly a code-file token
+# (resolved by the rule above), a `name()` symbol defined by exactly one AST
+# node, or a term defined in docs/glossary.md is merged into that canonical
+# node: its edges and hyperedge memberships are redirected and the canonical
+# node lists it in `merged_ids`. A symbol with no AST node, and a registry name
+# (`/command`, `<name> plugin|skill|hook`, unique by construction), merges its
+# semantic copies into the smallest id. Never merged: AST nodes (two same-name
+# symbols in different files are distinct entities), a token or symbol
+# matching two+ AST nodes, a code-file token with no AST file node named from
+# two+ files (YAML/JSON/TOML get no AST node, and two docs naming
+# .pre-commit-config.yaml may mean two different files) -- both counted
+# identity-ambiguous -- and other prose labels outside the glossary
+# ("Precedence ladder" names a different ladder in two docs).
+# ponytail: a merged-away node's own edges are pruned by semantic-merge.py if its canonical semantic node disappears before its own file is re-extracted; re-extract the merged_ids files if semantic-runs.jsonl shows that loss.
 import argparse
 import json
 import os
@@ -29,6 +46,10 @@ from harden_shell_calls import find_shell_edges
 CODE_EXT = r"[\w./-]+\.(?:mjs|js|ts|sh|py|json|yaml|yml|ps1|toml)\b"
 GHOST_LABEL_RE = re.compile(r"(" + CODE_EXT + r")(?: script| file| router| module)?")
 DOC_SUFFIXES = (".md", ".txt", ".png", ".yaml", ".yml")
+CODE_TOKEN_RE = re.compile(CODE_EXT)
+CALLABLE_RE = re.compile(r"[A-Za-z_][\w.]*\(\)")
+REGISTRY_NAME_RE = re.compile(r"/[a-z][\w:-]*|[\w:.-]+ (?:plugin|skill|(?:pre-commit )?hook)")
+GLOSSARY = "docs/glossary.md"
 
 
 def edge_list_key(graph):
@@ -86,6 +107,93 @@ def resolve_code_file(token, by_path, by_base):
     if len(candidates) > 1:
         return None, True, False
     return None, False, False
+
+
+def find_canonical_ids(nodes, by_path, by_base):
+    """({alias_id: canonical_id}, ambiguous_count) per the canonical-identity
+    rule in the header."""
+    ast_callables = defaultdict(list)
+    glossary = {}
+    for node_id in sorted(nodes):
+        node = nodes[node_id]
+        label = node.get("label") or ""
+        if node.get("_origin") == "ast" and node.get("file_type") == "code" and CALLABLE_RE.fullmatch(label):
+            ast_callables[label].append(node_id)
+        elif node.get("_origin") == "semantic" and node.get("source_file") == GLOSSARY:
+            glossary.setdefault(label, node_id)
+
+    aliases = {}
+    unanchored = defaultdict(list)
+    ambiguous = 0
+    for node_id in sorted(nodes):
+        node = nodes[node_id]
+        if node.get("_origin") != "semantic":
+            continue
+        label = node.get("label") or ""
+        target = None
+        if CODE_TOKEN_RE.fullmatch(label):
+            target, is_ambiguous, _ = resolve_code_file(label, by_path, by_base)
+            if is_ambiguous:
+                ambiguous += 1
+                continue
+        elif CALLABLE_RE.fullmatch(label):
+            hits = ast_callables.get(label, [])
+            if len(hits) > 1:
+                ambiguous += 1
+                continue
+            target = hits[0] if hits else None
+        elif label in glossary and node.get("source_file") != GLOSSARY:
+            target = glossary[label]
+        elif not REGISTRY_NAME_RE.fullmatch(label):
+            continue
+        if target is None:
+            unanchored[label].append(node_id)
+        elif target != node_id:
+            aliases[node_id] = target
+    for label, ids in unanchored.items():
+        if len({nodes[i].get("source_file") for i in ids}) > 1:
+            if CODE_TOKEN_RE.fullmatch(label):
+                ambiguous += len(ids)
+                continue
+            for alias in ids[1:]:
+                aliases[alias] = ids[0]
+    return aliases, ambiguous
+
+
+def apply_canonical_ids(graph, ekey, nodes, aliases):
+    """Drop the alias nodes, record them on their canonical node, and redirect
+    their edges and hyperedge memberships; an edge that becomes a self-loop or
+    duplicates an existing (source, target, relation, source_file) is dropped."""
+    for alias, canon in aliases.items():
+        node = nodes[canon]
+        absorbed = set(nodes[alias].get("merged_ids") or []) | {alias}
+        node["merged_ids"] = sorted(set(node.get("merged_ids") or []) | absorbed)
+    graph["nodes"] = [n for n in graph.get("nodes", []) if n["id"] not in aliases]
+
+    def key(e):
+        return (e.get("source"), e.get("target"), e.get("relation"), e.get("source_file"))
+
+    edges = graph.get(ekey, [])
+    seen = {key(e) for e in edges if e.get("source") not in aliases and e.get("target") not in aliases}
+    out = []
+    for e in edges:
+        src, tgt = aliases.get(e.get("source"), e.get("source")), aliases.get(e.get("target"), e.get("target"))
+        if src == e.get("source") and tgt == e.get("target"):
+            out.append(e)
+            continue
+        e = dict(e, source=src, target=tgt)
+        if src == tgt or key(e) in seen:
+            continue
+        seen.add(key(e))
+        out.append(e)
+    graph[ekey] = out
+    for h in graph.get("hyperedges") or []:
+        members = []
+        for m in h.get("nodes", []):
+            m = aliases.get(m, m)
+            if m not in members:
+                members.append(m)
+        h["nodes"] = members
 
 
 def find_ghost_bridges(nodes, by_path, by_base):
@@ -198,9 +306,13 @@ def main(argv):
 
     nodes = {n["id"]: n for n in graph.get("nodes", [])}
     ekey = edge_list_key(graph)
-    edges = graph.get(ekey, [])
 
     by_path, by_base = build_ast_index(nodes)
+    aliases, identity_ambiguous = find_canonical_ids(nodes, by_path, by_base)
+    if aliases:
+        apply_canonical_ids(graph, ekey, nodes, aliases)
+        nodes = {n["id"]: n for n in graph["nodes"]}
+    edges = graph.get(ekey, [])
     bridges, skipped_ambiguous, skipped_path_mismatch = find_ghost_bridges(nodes, by_path, by_base)
 
     # An explicitly-supplied --allowlist that doesn't exist is a typo, not the
@@ -235,16 +347,17 @@ def main(argv):
     fact_count = sum(1 for e in new_edges if e["hardened"] == "subprocess-exec")
     shell_calls = sum(1 for e in new_edges if e["hardened"] == "shell-call" and e["relation"] == "calls")
     shell_sources = sum(1 for e in new_edges if e["hardened"] == "shell-call" and e["relation"] == "sources")
-    unchanged = 0 if new_edges else 1
+    unchanged = 0 if new_edges or aliases else 1
     summary = (
         f"harden-graph: bridges={bridge_count} code-facts={fact_count} "
         f"skipped-ambiguous={skipped_ambiguous} skipped-path-mismatch={skipped_path_mismatch} "
         f"unchanged={unchanged} shell-calls={shell_calls} shell-sources={shell_sources} "
-        f"shell-unresolved={shell_unresolved}"
+        f"shell-unresolved={shell_unresolved} "
+        f"identity-merged={len(aliases)} identity-ambiguous={identity_ambiguous}"
     )
     print(summary)
 
-    if not new_edges or args.dry_run:
+    if unchanged or args.dry_run:
         return 0
 
     graph[ekey] = edges + new_edges
