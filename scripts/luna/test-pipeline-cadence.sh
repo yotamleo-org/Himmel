@@ -575,6 +575,15 @@ for what in harvest synth health; do
     assert_contains "$what runner requires foreground execution" "Run every command in the foreground. Never background a command or wait for a notification." "$body_plain"
     assert_contains "$what runner carries the fail-closed bare marker instruction" "Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation." "$body_plain"
 done
+for what in harvest synth health; do
+    body=$(eval "printf '%s' \"\$${what}_sh\"")
+    assert_contains "$what runner classifies against the completion marker" '"" PIPELINE-LEG-DONE 2>/dev/null' "$body"
+    # shellcheck disable=SC2016  # emitted runner text, asserted literally
+    assert_contains "$what runner fails closed when the classifier is silent" 'if [ "$_flow_outcome" = "" ]; then if [ "$_rc" = 0 ]; then _flow_outcome=parked; else _flow_outcome=error; fi; fi' "$body"
+    assert_not_contains "$what runner has no complete-by-default fallback" '_flow_outcome=complete' "$body"
+    # shellcheck disable=SC2016  # the runner's own $_flow_outcome/$_rc, asserted as literal emitted text
+    assert_contains "$what runner raises a no-op leg (rc 0, not complete) to exit 3" 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi' "$body"
+done
 # Every CLAUDE leg (not just harvest) carries the bounded
 # retry/resume wrapper — same emitter, so all three or none.
 # shellcheck disable=SC2016  # literal $_attempt/$_rc needles — the runner expands them at fire time
