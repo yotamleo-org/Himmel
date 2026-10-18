@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-leg-graph.sh — leg-graph.sh points graphify at the PRIMARY
-# checkout's graphify-out/ from a linked worktree, refuses `path`, and says so
+# checkout's graphify-out/ from a linked worktree, passes `path` through, and says so
 # when the graph is behind the worktree. A graphify stub on PATH echoes what it
 # was given, so no real graph is needed.
 set -u
@@ -43,9 +43,12 @@ run explain "Y" >/dev/null
 if grep -q '2 commits behind' "$T/err"; then pass "T3 stale graph says how far behind"
 else fail "T3 no staleness note: $(cat "$T/err")"; fi
 
-# T4: `path` is refused (file-scoped node ids make it wrong).
-run path A B >/dev/null; rc=$?
-if [ "$rc" = 2 ]; then pass "T4 path refused"; else fail "T4 rc=$rc"; fi
+# T4: `path` on a cross-file pair reaches graphify against the primary graph
+# (harden-graph.py merges one entity across files into one node).
+out="$(run path "docs/a.md" "check.sh")"; rc=$?
+if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=path docs/a.md check.sh --budget 8000" ]; then
+  pass "T4 path on a cross-file pair runs against the primary graph"
+else fail "T4 rc=$rc out='$out'"; fi
 
 # T5: missing graph → exit 2, says so, never silent.
 mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"

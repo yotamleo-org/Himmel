@@ -127,6 +127,19 @@ run q6c NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --prior
 check "6c: --prior with no value rc 2" "$rc" 2
 check "6c: --prior with no value ran nothing" "$(cat "$LOG")" ""
 
+# --- 6d. --residual-of passes through to write-verdict only when given ----------
+run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --residual-of HIMMEL-77
+check "6d: rc 0" "$rc" 0
+contains "6d: write-verdict gets --residual-of" "$log" "[--evidence-file] [$EV] [--residual-of] [HIMMEL-77]"
+run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV"
+lacks "6d: without --residual-of the flag is absent" "$log" "--residual-of"
+run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --residual-of bogus
+check "6d: a non-key --residual-of rc 2" "$rc" 2
+# read-sink-ok: $LOG is this suite's own mktemp stub log
+check "6d: a non-key --residual-of ran nothing" "$(cat "$LOG")" ""
+run q6d NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --residual-of
+check "6d: --residual-of with no value rc 2" "$rc" 2
+
 # --- 7. usage ----------------------------------------------------------------
 run q7 MAYBE "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "7: bad answer rc 2" "$rc" 2

@@ -1,7 +1,7 @@
 {"id":"q01","kind":"why","src":"selfq","q":"why does block-graphify-egress exist and which corpora does it protect","gold":["scripts/guardrails/graphify-fence.sh","scripts/hooks/block-graphify-egress.sh"],"reason":["salus","luna"]}
 {"id":"q02","kind":"why","src":"selfq","q":"why does a RETASK narrowing or halt need no token while an expansion does","gold":["docs/internals/retask-channel.md"],"reason":["mild DoS"]}
 {"id":"q03","kind":"what","src":"selfq","q":"how do a console and a leg relate","gold":["docs/glossary.md"],"reason":[]}
-{"id":"q04","kind":"why","src":"selfq","q":"why is the graphify path verb banned","gold":["CLAUDE.md","AGENTS.md","scripts/graphify/leg-graph.sh","scripts/lint/check-graphify-path-advice.sh"],"reason":["file-scoped"]}
+{"id":"q04","kind":"why","src":"selfq","q":"how does graphify path traverse an entity named in several files","gold":["scripts/graphify/harden-graph.py","CLAUDE.md","AGENTS.md"],"reason":["canonical"]}
 {"id":"q05","kind":"why","src":"selfq","q":"why does the Jira transition at merge need the completes-ticket flag","gold":["docs/handover/leg-preface.md","scripts/handover/merge-on-green.sh"],"reason":["HIMMEL-3059"]}
 {"id":"q06","kind":"how","src":"graphify","q":"how does the queue lock work","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"reason":[]}
 {"id":"q07","kind":"how","src":"graphify","q":"how does the RETASK channel nonce work","gold":["docs/internals/retask-channel.md"],"reason":["nonce"]}
