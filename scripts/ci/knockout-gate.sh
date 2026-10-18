@@ -4,7 +4,8 @@
 # Usage: knockout-gate.sh <base>..<head>
 #        knockout-gate.sh <base> <head>
 # Exit: 0 detected / test-only not applicable, 1 failed gate, 2 usage.
-# Platform: bash 3.2+, git; suite runtimes must already be installed.
+# Env: SUITE_TIMEOUT per-suite cap in seconds (default 600).
+# Platform: bash 3.2+, git, timeout; suite runtimes must already be installed.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 TOOLS="$(cd "$(dirname "$0")/../cr" && pwd)" || exit 1
@@ -81,6 +82,12 @@ while IFS= read -r suite; do
     esac
 done < "$work/suites"
 [ "$n" -gt 0 ] || fail no-suites
+# Per-suite wall-clock cap, as in run-shell-tests.sh. timeout leads its own
+# process group and signals all of it, so a hung suite's children die too; a
+# knocked-out hang (124/137) is a failing suite, a baseline hang is baseline-red.
+suite_timeout="${SUITE_TIMEOUT:-600}"
+case "$suite_timeout" in ''|*[!0-9]*|0) fail "bad SUITE_TIMEOUT '$suite_timeout'" ;; esac
+command -v timeout >/dev/null 2>&1 || fail 'runner-unavailable timeout'
 run_suites() {
     local phase="$1" suite command rc
     n=0
@@ -89,10 +96,10 @@ run_suites() {
         n=$((n + 1))
         command=$(< "$work/command-$n")
         rc=0
-        (cd "$tree" && bash -c "$command") || rc=$?
+        (cd "$tree" && timeout -k 5 "$suite_timeout" bash -c "$command") || rc=$?
         printf 'knockout-gate: %s suite %s exit=%s\n' "$phase" "$suite" "$rc"
         if [ "$phase" = baseline ] && [ "$rc" -ne 0 ]; then
-            fail "baseline-red $suite (exit=$rc; not knockout evidence)"
+            fail "baseline-red $suite (exit=$rc, 124/137 = timed out after ${suite_timeout}s; not knockout evidence)"
         fi
         case "$rc" in
             0) ;;

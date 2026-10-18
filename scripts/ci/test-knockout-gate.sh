@@ -132,10 +132,34 @@ verdict root-tests 0 detected
 
 new_repo
 w value.txt fixed
-w test-signal.sh 'kill -TERM "$PPID"
-exit 0 # value.txt'
+# The suite runs under timeout, so TERM goes to every ancestor that is the gate
+# (its suite subshell shares the gate's command line).
+w test-signal.sh "p=\$PPID
+while [ \"\$p\" -gt 1 ]; do
+    case \"\$(ps -o args= -p \"\$p\")\" in *'$GATE'*) kill -TERM \"\$p\" ;; esac
+    p=\$(ps -o ppid= -p \"\$p\" | tr -d ' ')
+done
+exit 0 # value.txt"
 commit interrupted
-verdict interrupt 143 ''
+verdict interrupt 143 'changed value.txt'
+
+# A knocked-out hang must be killed at the cap and count as detection; a hang
+# at baseline is not evidence. SUITE_TIMEOUT keeps both rows fast.
+new_repo
+w value.txt fixed
+w test-hang.sh '[ "$(cat value.txt)" = fixed ] || sleep 60'
+commit knockout-hang
+start=$SECONDS
+SUITE_TIMEOUT=2 verdict knockout-hang 0 detected
+if [ $((SECONDS - start)) -lt 30 ]; then ok 'knockout-hang: gate returned within the deadline'; else bad 'knockout-hang: gate outlived the deadline'; fi
+
+new_repo
+w value.txt fixed
+w test-baseline-hang.sh 'sleep 60 # value.txt'
+commit baseline-hang
+start=$SECONDS
+SUITE_TIMEOUT=2 verdict baseline-hang 1 baseline-red
+if [ $((SECONDS - start)) -lt 30 ]; then ok 'baseline-hang: gate returned within the deadline'; else bad 'baseline-hang: gate outlived the deadline'; fi
 
 rc=0
 bash "$GATE" > "$T/usage" 2>&1 || rc=$?
