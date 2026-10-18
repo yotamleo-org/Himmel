@@ -123,8 +123,11 @@ printf 'a\nb\n' > "$STUB_INSTANCES"; echo on > "$STUB_VAR"; : > "$STUB_LOG"
 bash "$SUT" watch 2 --interval 1 > "$T/watch.out" 2>&1 &
 wpid=$!
 waitfor() { local _; for _ in $(seq 1 100); do "$@" && return 0; sleep 0.1; done; return 1; }
+# shellcheck disable=SC2317  # invoked indirectly through waitfor
 listed() { grep -q "instances list" "$STUB_LOG"; }
+# shellcheck disable=SC2317
 topped() { [ "$(creates)" -ge 1 ]; }
+# shellcheck disable=SC2317
 stopped() { ! kill -0 "$wpid" 2>/dev/null; }
 if waitfor listed && [ "$(creates)" -eq 0 ]; then ok "watch creates nothing while the pool is full"; else bad "watch first pass: creates=$(creates)"; fi
 printf 'a\n' > "$STUB_INSTANCES"

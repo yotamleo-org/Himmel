@@ -122,7 +122,7 @@ cmd_down() {
 cmd_watch() {
     local n="${1:-2}" interval=60
     case "$n" in ''|*[!0-9]*) die "watch: N must be a positive integer, got '$n'" 2 ;; esac
-    [ "$n" -ge 1 ] && [ "$n" -le "$MAX_N" ] || die "watch: N must be 1..$MAX_N" 2
+    if [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_N" ]; then die "watch: N must be 1..$MAX_N" 2; fi
     shift
     if [ "${1:-}" = "--interval" ]; then interval="${2:-}"; fi
     case "$interval" in ''|*[!0-9]*) die "watch: --interval must be a positive integer" 2 ;; esac
