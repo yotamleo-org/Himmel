@@ -60,7 +60,7 @@ case "$ANSWER" in GO|NO-GO) ;; *) echo "verdict-go: the answer must be GO or NO-
 case "$PR" in ''|0*|*[!0123456789]*) echo "verdict-go: --pr <n> is required (digits, no leading zero)" >&2; usage ;; esac
 [ -n "$EVIDENCE" ] || { echo "verdict-go: --evidence-file <path> is required" >&2; usage; }
 if [ -n "$RESIDUAL_OF" ] && ! [[ $RESIDUAL_OF =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
-    echo "verdict-go: --residual-of must be a ticket key like HIMMEL-123 (got '$RESIDUAL_OF')" >&2
+    echo "verdict-go: --residual-of must be a ticket key like PROJ-123 (got '$RESIDUAL_OF')" >&2
     usage
 fi
 case "$HEAD_SHA" in *[!0123456789abcdef]*) HEAD_OK=0 ;; *) HEAD_OK=1 ;; esac

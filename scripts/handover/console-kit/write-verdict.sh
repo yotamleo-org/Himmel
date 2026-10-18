@@ -164,7 +164,7 @@ if [ -n "$BIND" ]; then
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
 if [ -n "$RESIDUAL_OF" ] && ! [[ $RESIDUAL_OF =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
-    echo "write-verdict: --residual-of must be a ticket key like HIMMEL-123 (got '$RESIDUAL_OF')" >&2
+    echo "write-verdict: --residual-of must be a ticket key like PROJ-123 (got '$RESIDUAL_OF')" >&2
     exit 2
 fi
 case "$PRIOR" in
