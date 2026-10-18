@@ -129,7 +129,7 @@ run_test "(3d) HIMMEL-1866: empty fetched window preserves prior utilization" '
 '
 
 run_test "(3e) thin five_hour fetch keeps prior reset/dollars and partial-fetch provenance" '
-  W=$(mktemp -d) || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
   printf "%s" "{\"five_hour\":{\"utilization\":40,\"resets_at\":\"R5\",\"used_dollars\":12},\"seven_day\":{\"utilization\":8,\"resets_at\":\"R7\",\"limit_dollars\":100},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
   stub="$W/stub.sh";
@@ -141,7 +141,7 @@ run_test "(3e) thin five_hour fetch keeps prior reset/dollars and partial-fetch 
 '
 
 run_test "(3f) thin seven_day fetch keeps prior reset/dollars; two valid fetched primaries refresh provenance and HUD stays two-key" '
-  W=$(mktemp -d) || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
   printf "%s" "{\"five_hour\":{\"utilization\":40,\"resets_at\":\"R5\",\"used_dollars\":12},\"seven_day\":{\"utilization\":8,\"resets_at\":\"R7\",\"limit_dollars\":100},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
   stub="$W/stub.sh";
@@ -155,7 +155,7 @@ run_test "(3f) thin seven_day fetch keeps prior reset/dollars; two valid fetched
 '
 
 run_test "(3g) complete OAuth windows replace every fetched key and refresh provenance" '
-  W=$(mktemp -d) || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
   prior="{\"utilization\":40,\"resets_at\":\"old\",\"limit_dollars\":100,\"used_dollars\":40,\"remaining_dollars\":60}";
   printf "%s" "{\"five_hour\":$prior,\"seven_day\":$prior,\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
@@ -171,7 +171,7 @@ run_test "(3g) complete OAuth windows replace every fetched key and refresh prov
 '
 
 run_test "(3h) explicit fetched null wins over prior reset/dollars in either primary" '
-  W=$(mktemp -d) || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
   prior="{\"utilization\":40,\"resets_at\":\"old\",\"used_dollars\":12}";
   printf "%s" "{\"five_hour\":$prior,\"seven_day\":$prior}" > "$CLAUDE_USAGE_CACHE";
@@ -183,7 +183,7 @@ run_test "(3h) explicit fetched null wins over prior reset/dollars in either pri
 '
 
 run_test "(3i) thin OAuth windows never carry fields across known accounts" '
-  W=$(mktemp -d) || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-current\"}}" > "$HOME/.claude.json";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
   prior="{\"utilization\":40,\"resets_at\":\"other-account-reset\",\"used_dollars\":12}";
@@ -196,7 +196,7 @@ run_test "(3i) thin OAuth windows never carry fields across known accounts" '
 '
 
 run_test "(3j) missing or null fetched utilization ignores the whole window and preserves provenance" '
-  W=$(mktemp -d) || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
   prior="{\"utilization\":40,\"resets_at\":\"old\",\"used_dollars\":12}";
   printf "%s" "{\"five_hour\":$prior,\"seven_day\":$prior,\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
