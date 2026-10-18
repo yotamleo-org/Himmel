@@ -121,10 +121,11 @@ case $? in
 esac
 
 echo "[test-ci-tool-pins] every actions/cache step pins one SHA"
-shas=$(grep -hoE 'uses:[[:space:]]*actions/cache@[0-9a-f]{40}' "$ROOT"/.github/workflows/*.yml | sed 's/.*@//' | sort -u)
-nsha=$(printf '%s\n' "$shas" | grep -c .)
-nuses=$(grep -hcE 'uses:[[:space:]]*actions/cache@' "$ROOT"/.github/workflows/*.yml | paste -sd+ - | bc)
-npinned=$(grep -hcE 'uses:[[:space:]]*actions/cache@[0-9a-f]{40}' "$ROOT"/.github/workflows/*.yml | paste -sd+ - | bc)
+uses_lines=$(grep -hE 'uses:[[:space:]]*actions/cache@' "$ROOT"/.github/workflows/*.yml)
+pinned_lines=$(printf '%s\n' "$uses_lines" | grep -E 'actions/cache@[0-9a-f]{40}([[:space:]]|$)')
+nuses=$(printf '%s\n' "$uses_lines" | grep -c .)
+npinned=$(printf '%s\n' "$pinned_lines" | grep -c .)
+nsha=$(printf '%s\n' "$pinned_lines" | grep -oE '@[0-9a-f]{40}' | sort -u | grep -c .)
 if [ "$nuses" -lt 1 ]; then bad "found no actions/cache step: the scan is vacuous"
 elif [ "$nuses" -ne "$npinned" ]; then bad "an actions/cache step is not pinned to a full SHA"
 elif [ "$nsha" -ne 1 ]; then bad "actions/cache is pinned to $nsha different SHAs"
