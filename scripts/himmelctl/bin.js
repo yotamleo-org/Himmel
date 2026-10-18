@@ -1125,7 +1125,8 @@ function previewCommitRules(answers) {
 }
 
 // Replace each key's line in place (first match; later duplicates dropped),
-// append the missing ones, leave every other line untouched.
+// append the missing ones, drop a commit-rule key the answers leave out (a stale
+// value would contradict them), leave every other line untouched.
 function applyCommitRulesStep(answers) {
   if (!answers.commitRules) return { rc: 0 };
   const file = commitRulesPath();
@@ -1133,7 +1134,12 @@ function applyCommitRulesStep(answers) {
     let lines = [];
     try { lines = fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-    for (const [k, v] of commitRulesEntries(answers.commitRules)) {
+    const entries = commitRulesEntries(answers.commitRules);
+    const kept = new Set(entries.map(([k]) => k));
+    for (const k of ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']) {
+      if (!kept.has(k)) lines = lines.filter((l) => !l.startsWith(`${k}=`));
+    }
+    for (const [k, v] of entries) {
       const idx = lines.findIndex((l) => l.startsWith(`${k}=`));
       if (idx === -1) { lines.push(`${k}=${v}`); continue; }
       lines[idx] = `${k}=${v}`;

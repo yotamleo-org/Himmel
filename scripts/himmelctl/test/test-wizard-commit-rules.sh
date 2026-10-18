@@ -105,6 +105,23 @@ grepq "$body" '^TICKET_ID_REQUIRED=' && fail "case2: tracker none must not write
 grepq "$out" '? ticket ID required' && fail "case2: tracker none must not ask for a required ticket ID"
 echo "ok: case2 J7 none writes TRACKER=none and never asks for a ticket ID"
 
+# ── Case 2b: keys the answers omit are removed from an existing himmel.conf ──
+h2b="$work/h2b"; mkdir -p "$h2b/.himmel"
+printf 'CR_PROFILE=keep-me\nTRACKER=jira\nTICKET_ID_REQUIRED=1\nTICKET_ID_PATTERN=OLD-[0-9]+\n' > "$h2b/.himmel/himmel.conf"
+out=$(run_apply "$h2b" '{"tracker":"none"}')
+rc=$?
+[ "$rc" -eq 0 ] || fail "case2b: install should succeed (rc=$rc): $out"
+body=$(cat "$h2b/.himmel/himmel.conf")
+grepq "$body" '^TRACKER=none$' || fail "case2b: TRACKER=none missing: $body"
+grepq "$body" '^TICKET_ID_REQUIRED=' && fail "case2b: stale TICKET_ID_REQUIRED kept under tracker none: $body"
+grepq "$body" '^TICKET_ID_PATTERN=' && fail "case2b: stale TICKET_ID_PATTERN kept under tracker none: $body"
+grepq "$body" '^CR_PROFILE=keep-me$' || fail "case2b: unrelated key lost: $body"
+printf 'TICKET_ID_PATTERN=OLD-[0-9]+\n' > "$h2b/.himmel/himmel.conf"
+out=$(run_apply "$h2b" '{"tracker":"jira","ticketIdRequired":false}')
+body=$(cat "$h2b/.himmel/himmel.conf")
+grepq "$body" '^TICKET_ID_PATTERN=' && fail "case2b: blank pattern must drop the old TICKET_ID_PATTERN: $body"
+echo "ok: case2b omitted commit-rule keys are removed, not left stale"
+
 # ── Case 3: --dry-run prints the line, writes nothing ────────────────────────
 h3="$work/h3"; mkdir -p "$h3"
 out=$(run_wizard "$h3" --dry-run <<INPUT
