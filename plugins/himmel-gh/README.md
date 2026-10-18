@@ -56,7 +56,9 @@ repo they use GitHub GraphQL; on a `bitbucket.org` repo they route through the
 `bitbucket` CLI's `pr comments|reply|resolve` REST verbs (Bitbucket Cloud has no
 GraphQL, so its flat comment+`parent` model is mapped into the same thread
 abstraction). The 6-char prefix cache is identical across forges — only the
-fetch/mutate calls differ.
+fetch/mutate calls differ. The resolve CLI's `--thread-id` (a full id, no
+cache) is GitHub-only: there it is checked against the named PR first, and on
+Bitbucket it is refused until a thread → PR check exists (HIMMEL-6399).
 
 Each command has a matching skill that auto-triggers on PR/GitHub intent. Skills explicitly do NOT trigger on Jira tickets (HIMMEL-N pattern → himmel-jira plugin), ambiguous "show issue" prompts, or whole-PR ops when the user means a thread.
 

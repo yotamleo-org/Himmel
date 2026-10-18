@@ -4,7 +4,7 @@
 // resolve carries a reason, which is posted as a thread reply BEFORE the
 // thread is resolved; a failed reply resolves nothing. The thread is named by
 // a 6-char cache prefix (--prefix, after /gh-pr-comments) or by its full id
-// (--thread-id, no cache). GitHub uses the GraphQL reply + resolveReviewThread
+// (--thread-id, no cache, GitHub only). GitHub uses the GraphQL reply + resolveReviewThread
 // mutations; Bitbucket (no GraphQL) routes through the `bitbucket pr reply` /
 // `bitbucket pr resolve` CLI verbs. Prints a `resolved: ok` summary line the
 // runner's --summary-regex captures.
@@ -133,6 +133,15 @@ if (!body) {
   process.exit(2);
 }
 
+const forge = detectForge();
+// Bitbucket has no thread → PR lookup yet, so a full id there could write to
+// a thread on another PR. Only the PR-scoped --prefix is accepted.
+// ponytail: Bitbucket --thread-id refused outright, HIMMEL-6399 adds the check.
+if (threadIdArg && forge === 'bitbucket') {
+  process.stderr.write('refused: --thread-id is not checked against the PR on Bitbucket; use --prefix\n');
+  process.exit(2);
+}
+
 let threadId = threadIdArg;
 if (!threadId) {
   const expanded = expandPrefix({ owner, repo, number, prefix });
@@ -143,7 +152,7 @@ if (!threadId) {
   threadId = expanded.id;
 }
 
-if (detectForge() === 'bitbucket') {
+if (forge === 'bitbucket') {
   try {
     const replied = await replyThread({ number: Number(number), id: threadId, body });
     if (replied.trim()) process.stdout.write(`${replied.trim()}\n`);

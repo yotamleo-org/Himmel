@@ -10,6 +10,11 @@ denied the leg sends `BLOCKED resolve <pr> <thread ids>`. That is yours, never
 an operator item: for each thread, check the fix, ticket or rejection against
 the PR head, then run the same CLI with the matching reason, one literal call
 per thread. A thread you cannot verify goes back to the leg as a finding.
+When YOUR OWN resolve call is classifier-denied, that is still not an
+operator item, and the playbook's defer-to-operator does not apply: write a
+`BLOCKED resolve <pr> <thread ids>` bullet with the denial text, retry once
+as one literal call per thread, and if a thread is still denied, leave it
+open with a reason reply and file a ticket for it.
 This is escalation, not permission laundering: the CLI posts its reason on
 GitHub, so every resolve is auditable. It codifies console AS's 10-15 ruling
 to leg N2224 (resolveReviewThread allowed, one literal call per thread, stop

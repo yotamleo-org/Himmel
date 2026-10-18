@@ -163,6 +163,58 @@ describe('thread mutate CLIs — bitbucket forge route', () => {
     expect(res.stdout).toMatch(/resolved: ok/);
   });
 
+  // A stub that appends each argv (joined by |) to a log, so a row can assert
+  // the call order. failReply makes `pr reply` fail.
+  function writeLoggingBbStub({ failReply = false } = {}) {
+    const log = join(dir, 'bb.log');
+    writeBbStub(
+      `import { appendFileSync } from 'node:fs';
+       const a = process.argv.slice(2);
+       appendFileSync(${JSON.stringify(log)}, a.join('|') + '\\n');
+       if (a[1]==='reply' && ${failReply}) { process.stderr.write('reply refused\\n'); process.exit(1); }
+       process.stdout.write('{}'); process.exit(0);`,
+    );
+    return () => {
+      try {
+        return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
+      } catch {
+        return [];
+      }
+    };
+  }
+  function runResolveBb(threadArgs) {
+    return spawnSync(
+      process.execPath,
+      [RESOLVE_CLI, '--owner', 'ws', '--repo', 'repo', '--number', '4', ...threadArgs, '--reason', 'fixed abc1234'],
+      { env: envBb(), cwd: dir, encoding: 'utf8' },
+    );
+  }
+
+  it('resolve posts the reply before the resolve', () => {
+    const [prefix] = seedCache('ws', 'repo', 4, [{ id: '30', path: 'a', line: 1, isResolved: false }]);
+    const calls = writeLoggingBbStub();
+    const res = runResolveBb(['--prefix', prefix]);
+    expect(res.status).toBe(0);
+    expect(calls()).toEqual(['pr|reply|4|30|--body|Fixed at abc1234.', 'pr|resolve|4|30']);
+  });
+
+  it('a failed reply leaves the thread unresolved: no resolve call', () => {
+    const [prefix] = seedCache('ws', 'repo', 4, [{ id: '31', path: 'a', line: 1, isResolved: false }]);
+    const calls = writeLoggingBbStub({ failReply: true });
+    const res = runResolveBb(['--prefix', prefix]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/reply refused/);
+    expect(calls()).toEqual(['pr|reply|4|31|--body|Fixed at abc1234.']);
+  });
+
+  it('refuses --thread-id on the bitbucket route: exit 2, no CLI call', () => {
+    const calls = writeLoggingBbStub();
+    const res = runResolveBb(['--thread-id', '32']);
+    expect(res.status).toBe(2);
+    expect(res.stderr).toMatch(/--thread-id is not checked against the PR on Bitbucket/);
+    expect(calls()).toEqual([]);
+  });
+
   it('reply propagates a bitbucket CLI failure as exit 1', () => {
     const [prefix] = seedCache('ws', 'repo', 4, [{ id: '10', path: 'a', line: 1, isResolved: false }]);
     writeBbStub(`process.stderr.write('comment gone\\n'); process.exit(1);`);
@@ -181,12 +233,12 @@ describe('thread mutate CLIs — bitbucket forge route', () => {
 // reply lands. POSIX only: the fake is a shell script.
 describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github route)', () => {
   let log;
-  function writeFakeGh({ failReply = false, prNumber = 9 } = {}) {
+  function writeFakeGh({ failReply = false, prNumber = 9, prOwner = 'o', prRepo = 'r' } = {}) {
     const bin = join(dir, 'bin');
     mkdirSync(bin, { recursive: true });
     log = join(dir, 'gh.log');
     const onReply = failReply ? "echo 'reply refused' >&2; exit 1" : "echo '{}'";
-    const pr = `{"data":{"node":{"pullRequest":{"number":${prNumber},"repository":{"name":"r","owner":{"login":"o"}}}}}}`;
+    const pr = `{"data":{"node":{"pullRequest":{"number":${prNumber},"repository":{"name":"${prRepo}","owner":{"login":"${prOwner}"}}}}}}`;
     writeFileSync(
       join(bin, 'gh'),
       `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\ncase "$*" in *thread-pr.gql*) echo '${pr}' ;; *reply-thread.gql*) ${onReply} ;; *) echo '{}' ;; esac\n`,
@@ -254,6 +306,18 @@ describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github 
 
   it('refuses a thread id that sits on another PR: exit 2, no reply, no resolve', () => {
     const res = run(['--reason', 'fixed 0d4ad5b8'], writeFakeGh({ prNumber: 8 }));
+    expect(res.status).toBe(2);
+    expect(res.stderr).toMatch(/is not on o\/r#9/);
+    const c = calls();
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatch(/thread-pr\.gql/);
+  });
+
+  it.each([
+    ['owner', { prOwner: 'other' }],
+    ['repo', { prRepo: 'other' }],
+  ])('refuses a thread id on a PR with a foreign %s: exit 2, no reply, no resolve', (_what, pr) => {
+    const res = run(['--reason', 'fixed 0d4ad5b8'], writeFakeGh(pr));
     expect(res.status).toBe(2);
     expect(res.stderr).toMatch(/is not on o\/r#9/);
     const c = calls();
