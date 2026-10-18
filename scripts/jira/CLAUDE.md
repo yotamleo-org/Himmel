@@ -26,6 +26,12 @@ helpers (HIMMEL-437).
   Subtask only warn; `create --type Task --skeleton` prints the six headings
   to fill); the rule lives in `src/plain-block.ts`, shared by the CLI and MCP
   `create` (HIMMEL-5226, HIMMEL-5643).
+- `create` also refuses a Task, Story or Bug with neither `--parent <epic>` nor
+  `--labels standalone`, and (only when `jira.sectorField` is set in `~/.himmel/config.json`) with no
+  `--sector` (Epic and Subtask only warn); `homeVerdict` in `src/plain-block.ts`,
+  shared by the CLI and MCP `create` (HIMMEL-6223). Sector is opt-in: the field
+  id is config and the options are read live, never hardcoded; `jira sector
+  setup` creates it (HIMMEL-6277).
 - Verify every `create`/`move` by checking the printed `Created HIMMEL-N`.
 - `JIRA_PROJECT_KEY` is required at runtime — no `HIMMEL` fallback.
 

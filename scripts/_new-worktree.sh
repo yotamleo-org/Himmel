@@ -160,7 +160,18 @@ esac
     echo "=== new-worktree $BRANCH @ $(date -Iseconds) ==="
 } >>"$LOG"
 
-if ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
+# A project with no origin (a fresh adopter trial) has nothing to fetch: branch
+# from the local default instead of dying on the fetch.
+if git -C "$PRIMARY_WORKTREE" remote get-url origin >/dev/null 2>&1; then
+    HAS_ORIGIN=1
+    BASE_REF="origin/$DEFAULT_BRANCH"
+else
+    HAS_ORIGIN=0
+    BASE_REF="$DEFAULT_BRANCH"
+    echo "WARN new-worktree: no 'origin' remote - branching from local '$DEFAULT_BRANCH'" >&2
+fi
+
+if [ "$HAS_ORIGIN" -eq 1 ] && ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
     # Common unattended-run failure (e.g. arm-resume relaunch): git's stored
     # credential (Windows Git Credential Manager, or an expired PAT git uses) is
     # stale while `gh` holds a SEPARATE valid token. `gh auth setup-git` wires git
@@ -197,7 +208,7 @@ if command -v flock >/dev/null 2>&1; then
     fi
 fi
 wt_ceiling_check
-if ! run git -C "$PRIMARY_WORKTREE" worktree add "$WORKTREE_RELATIVE" -b "$BRANCH" "origin/$DEFAULT_BRANCH"; then
+if ! run git -C "$PRIMARY_WORKTREE" worktree add "$WORKTREE_RELATIVE" -b "$BRANCH" "$BASE_REF"; then
     echo "ERR new-worktree: worktree add failed (log: $LOG)" >&2
     exit 1
 fi
@@ -210,8 +221,10 @@ exec 9>&-
 # branch's OWN tracking config at its own future remote ref instead (branch-scoped
 # keys only — never a global/repo-wide default) so `git push` with no flags
 # already knows where to go and creates that ref on the first push.
-run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.remote" origin
-run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.merge" "refs/heads/${BRANCH}"
+if [ "$HAS_ORIGIN" -eq 1 ]; then
+    run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.remote" origin
+    run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.merge" "refs/heads/${BRANCH}"
+fi
 
 INSTALL_NOTE=""
 if [ $NPM_INSTALL -eq 1 ] && [ -f "$WORKTREE_PATH/scripts/jira/package.json" ]; then

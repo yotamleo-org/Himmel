@@ -11,8 +11,9 @@
 # one more delta round per reviewed head, even after the fix/merge-forward
 # delta was used. Consumed records are kept in <branch>.verdicts.
 # A CLEAN merge of the base (conflict-free, the PR's own diff
-# unchanged) is admitted past the cap without spending the one delta round; a
-# conflict-resolving merge needs a judge GO carrying `delta-scope:
+# unchanged), or one whose only resolution is a plugin.json version bump above
+# both parents, is admitted past the cap without spending the one delta round.
+# Any other conflict-resolving merge needs a judge GO carrying `delta-scope:
 # merge-resolution` and `delta-from:`, bound like the scope records.
 # Every verdict record read here (NO-GO delta, layer-decision,
 # scope) must carry write-verdict.sh's mac under the GO key; a hand-written or
@@ -681,7 +682,7 @@ judge_scope_record() (
     # or not - a NO-GO only narrows), blocks the scope round: a GO beside it is
     # not the judges' last word.
     for nf in "$dir"/*/*.md; do
-        [ -f "$nf" ] && [ ! -L "$nf" ] || continue
+        if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
         # A record that cannot be read whole may be a NO-GO: it vetoes, never skips.
         if ! go_verdict_snapshot "$nf"; then
             echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused (HIMMEL-4984)" >&2
@@ -965,11 +966,17 @@ EOF
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
     [ "$judge_rc" -ne 8 ] || return 8
-    # A clean merge-forward is admitted without spending the one
-    # delta round, whether or not it was already used. It is checked before the
-    # fix trigger: a clean merge carries no fix, so it must not spend the round.
+    # Clean and version-only merge-forwards are admitted without spending the
+    # one delta round, whether or not it was already used. Check before the
+    # fix trigger: neither carries a fix, so neither must spend the round.
     if clean_merge_forward "$delta_from" "$delta_to"; then
         delta_trigger="clean-merge"
+        delta_free=1
+        return 0
+    fi
+    if merge_forward_shape "$delta_from" "$delta_to" \
+        && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
+        delta_trigger="version-merge"
         delta_free=1
         return 0
     fi
@@ -991,10 +998,6 @@ EOF
             && merged_base="$(git merge-base "$delta_to" "$base_sha" 2>/dev/null)"; then
             if clean_tree="$(git merge-tree --write-tree "$delta_from" "$merged_base" 2>/dev/null)" \
                 && [ "$clean_tree" = "$(git rev-parse "$delta_to^{tree}" 2>/dev/null)" ]; then
-                delta_trigger="merge-forward"
-                return 0
-            fi
-            if version_only_merge "$delta_from" "$merged_base" "$delta_to"; then
                 delta_trigger="merge-forward"
                 return 0
             fi
@@ -1616,7 +1619,7 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
     echo "review-round: $round_label has deferrable findings only, but no valid defer ticket was supplied." >&2
-    printf "node '%s/scripts/jira/dist/index.js' create --type Task --title 'Track deferred /pr-check round 4+ suggestions' --desc-file '%s/scripts/cr/deferred-ticket-body.md'\n" "$primary_root" "$primary_root" >&2
+    printf "node '%s/scripts/jira/dist/index.js' create --type Task --title 'Track deferred /pr-check round 4+ suggestions' --sector 'Ship loop' --labels standalone --desc-file '%s/scripts/cr/deferred-ticket-body.md'\n" "$primary_root" "$primary_root" >&2
     printf "Then resume without rerunning the panel:\nCR_DEFER_TO=HIMMEL-NNNN bash '%s/review-round.sh' defer --head '%s' --branch '%s'\n" "$SCRIPT_DIR" "$full_head" "$branch" >&2
     exit 6
 fi

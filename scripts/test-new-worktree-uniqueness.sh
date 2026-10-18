@@ -51,6 +51,9 @@ git -C "$REPO" config user.email "test@test.local"
 git -C "$REPO" config user.name "Test"
 # Need at least one commit so HEAD exists.
 git -C "$REPO" commit -q --allow-empty -m "init"
+# An unreachable origin: the cases below expect the run to reach the fetch and
+# fail there (with no origin at all, worktree creation succeeds locally).
+git -C "$REPO" remote add origin "$TMPBASE/no-such-origin.git"
 
 # ---------------------------------------------------------------------------
 # Stub factory: produce a gh binary that, for `pr list`, prints a fixed count.

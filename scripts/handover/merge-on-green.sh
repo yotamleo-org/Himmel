@@ -1974,6 +1974,7 @@ $remaining" "" comment-only)
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
+        # ponytail: an archived unreleased version can still be picked as current, since `versions` prints no archived column; HIMMEL-6325 adds it and filters here
         local versions_out fold_to
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
@@ -2001,7 +2002,10 @@ $remaining" "" comment-only)
             if [ "$fold_rc" -eq 0 ] && [ "$fold_to" != "$fold_cur" ]; then
                 while IFS= read -r fold_keep; do
                     [ -n "$fold_keep" ] || continue
-                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 || fold_rc=1
+                    # The replace already dropped it, so one retry before giving up.
+                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || fold_rc=1
                 done <<< "${fold_to#*$'\n'}"
             fi
             if [ "$fold_rc" -eq 0 ]; then

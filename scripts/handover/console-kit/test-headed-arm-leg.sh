@@ -124,13 +124,29 @@ unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 . "$HERE/../../lib/timeout-bin.sh"
 # The suite owns every launcher input; an ambient leg shell must not silently
 # turn default-native cases into claudex cases.
-unset CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT 2>/dev/null || true
+unset CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-leg-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The launcher resolves every path it writes physically; macOS's TMPDIR sits
 # behind /var -> /private/var, so pin the fixture root to its physical path.
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
+
+# Every non-dry launch wraps headed-arm.sh in a systemd scope. The
+# suite puts a recorder first on PATH that logs its argv then runs the rest, so
+# no run here opens a real scope (the real-scope row below opts back in). A
+# --consult never reads PATH or the seam, so it stays off the recorder.
+mkdir -p "$tmp/sysd-bin"
+SYSD_STUB="$tmp/sysd-bin/systemd-run"
+printf '#!%s\n' "$(command -v bash)" > "$SYSD_STUB"
+cat >> "$SYSD_STUB" <<'SYSD_EOF'
+printf '%s\n' "$*" >> "${SYSD_RECORD:-/dev/null}"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+shift
+exec "$@"
+SYSD_EOF
+chmod 755 "$SYSD_STUB"
+PATH="$tmp/sysd-bin:$PATH"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A console-spawned leg exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-leg.sh); the case-26 e2e below runs the real
@@ -1413,6 +1429,85 @@ process.stdout.write(hit?.hooks?.[0]?.command ?? "");
 ' "$settings17b4")"
 exec17b4="$(bash -c "$cmd17b4" 2>/dev/null || true)"
 check "compact-hook exec: executing the generated command outputs the real contract content" "$exec17b4" "$contractcontent17b4"
+
+# --- 17b-5. LEG_REPO_MAP=1 puts the repo map at the HEAD of the per-leg
+# preface (the turn-ending section stays last), built from the leg repo's
+# primary graphify-out/graph.json with the LEG_REPO_MAP_TOKENS cap; a failing
+# generator launches without it and says so in the launch log. Off by default:
+# 17b's preface starts with the leg-preface heading.
+check "repo-map off by default: the preface starts with the leg-preface heading" \
+  "$(head -1 "$preface17b" 2>/dev/null)" "$(head -1 "$HERE/../../../docs/handover/leg-preface.md")"
+d17b5="$tmp/c17b5"; mk_launch_stubs "$d17b5" "HIMMEL-9999-map"; git init -q "$tmp/repo17b5"
+cat > "$d17b5/repo-map" <<STUB_EOF
+#!/bin/sh
+printf '%s\n' "\$*" > "$d17b5/map-args"
+echo "# Repo map STUB"
+STUB_EOF
+chmod +x "$d17b5/repo-map"
+rc=0
+HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
+HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" \
+LEG_REPO_MAP=1 LEG_REPO_MAP_TOKENS=777 \
+KONSOLE_CMD="$d17b5/konsole" PGREP_CMD="$d17b5/pgrep" \
+LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b5/locks" HEADED_ARM_PROC="$d17b5/proc" \
+  bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-map" "$fixture17b" "$d17b5/signal-never" "$PAST" "$d17b5/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d17b5" || true
+check "repo-map: full launch exit 0" "$rc" "0"
+preface17b5="$d17b5/HIMMEL-9999-map.leg-preface.md"
+check "repo-map: the map is the preface's first line" "$(head -1 "$preface17b5" 2>/dev/null)" "# Repo map STUB"
+check "repo-map: the turn-ending section stays last" \
+  "$(grep '^## ' "$preface17b5" 2>/dev/null | tail -1)" "## How your turns end"
+check "repo-map: built from the leg repo's graph with the LEG_REPO_MAP_TOKENS cap" \
+  "$(cat "$d17b5/map-args" 2>/dev/null)" "--graph $tmp/repo17b5/graphify-out/graph.json --max-tokens 777"
+printf '#!/bin/sh\necho "repo-map: no graph" >&2\nexit 2\n' > "$d17b5/repo-map"
+d17b6="$tmp/c17b6"; mk_launch_stubs "$d17b6" "HIMMEL-9999-nomap"
+rc=0
+HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
+HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" LEG_REPO_MAP=1 \
+KONSOLE_CMD="$d17b6/konsole" PGREP_CMD="$d17b6/pgrep" \
+LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b6/locks" HEADED_ARM_PROC="$d17b6/proc" \
+  bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-nomap" "$fixture17b" "$d17b6/signal-never" "$PAST" "$d17b6/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d17b6" || true
+check "repo-map: a failing generator still launches" "$rc" "0"
+check "repo-map: a failing generator leaves the preface unchanged" \
+  "$(head -1 "$d17b6/HIMMEL-9999-nomap.leg-preface.md" 2>/dev/null)" "$(head -1 "$HERE/../../../docs/handover/leg-preface.md")"
+contains "repo-map: a failing generator is named in the launch log" "$(cat "$d17b6/log" 2>/dev/null)" "WARN repo-map not injected"
+# A generator that hangs past LEG_REPO_MAP_TIMEOUT is killed and the leg
+# launches without the map. Hang-guard: with no GNU timeout the row SKIPs.
+if [ -n "$_TIMEOUT_BIN" ]; then
+    printf '#!/bin/sh\nsleep 60\necho "# Repo map LATE"\n' > "$d17b5/repo-map"
+    d17b7="$tmp/c17b7"; mk_launch_stubs "$d17b7" "HIMMEL-9999-slowmap"
+    rc=0
+    HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
+    HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" \
+    LEG_REPO_MAP=1 LEG_REPO_MAP_TIMEOUT=2 \
+    KONSOLE_CMD="$d17b7/konsole" PGREP_CMD="$d17b7/pgrep" \
+    LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b7/locks" HEADED_ARM_PROC="$d17b7/proc" \
+      "$_TIMEOUT_BIN" 25 bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-slowmap" "$fixture17b" "$d17b7/signal-never" "$PAST" "$d17b7/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+    wait_record "$d17b7" || true
+    check "repo-map: a hung generator still launches" "$rc" "0"
+    check "repo-map: a hung generator leaves the preface unchanged" \
+      "$(head -1 "$d17b7/HIMMEL-9999-slowmap.leg-preface.md" 2>/dev/null)" "$(head -1 "$HERE/../../../docs/handover/leg-preface.md")"
+    contains "repo-map: a hung generator is named in the launch log" "$(cat "$d17b7/log" 2>/dev/null)" "WARN repo-map not injected (graph=$tmp/repo17b5/graphify-out/graph.json, timed out after 2s)"
+else
+    echo "SKIP - repo-map: hung generator (hang-guard row needs GNU timeout/gtimeout)"
+fi
+# Off by default: with LEG_REPO_MAP unset the generator never runs.
+printf '#!/bin/sh\n: > "%s"\necho "# Repo map OFF"\n' "$tmp/c17b8-ran" > "$d17b5/repo-map"
+d17b8="$tmp/c17b8"; mk_launch_stubs "$d17b8" "HIMMEL-9999-offmap"
+rc=0
+HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
+HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_LEG_REPO_MAP="$d17b5/repo-map" \
+KONSOLE_CMD="$d17b8/konsole" PGREP_CMD="$d17b8/pgrep" \
+LEG_REPO="$tmp/repo17b5" HEADED_ARM_LOCK_DIR="$d17b8/locks" HEADED_ARM_PROC="$d17b8/proc" \
+  bash "$SCRIPT" --profile leg-impl "HIMMEL-9999-offmap" "$fixture17b" "$d17b8/signal-never" "$PAST" "$d17b8/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d17b8" || true
+check "repo-map off by default: full launch exit 0" "$rc" "0"
+if [ -e "$tmp/c17b8-ran" ]; then
+  echo "FAIL - repo-map off by default: the generator ran with LEG_REPO_MAP unset"; fails=$((fails+1))
+else
+  echo "ok - repo-map off by default: the generator never runs with LEG_REPO_MAP unset"
+fi
 
 # 17c. Omitting --profile changes nothing: no shim, no lean flag, and a
 # dry-run report byte-identical to the earlier three-line form. This
@@ -4191,6 +4286,76 @@ rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profi
 check "leg-vm brief naming ubuntu_new: accepted" "$rc" "0"
 rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "leg-impl is not subject to the VM-name check" "$rc" "0"
+
+# --- a leg runs under its own MemoryMax scope, so a runaway test
+# is killed alone instead of taking the station and every other leg with it.
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: dry-run reports the default 12G cap" "$out" "memory-max=12G"
+rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=256M bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: dry-run reports an env-set cap" "$out" "memory-max=256M"
+rc=0; out="$(HIMMEL_LEG_MEMORY_MAX='1G --evil' bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "memcap: a malformed cap is refused" "$rc" "2"
+rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: off Linux the launch is uncapped" "$out" "scope=no"
+rc=0; out="$(HEADED_ARM_UNAME=Linux bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: on Linux the launch is scoped" "$out" "scope=yes"
+rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=12GG bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "memcap: a misplaced size suffix is refused" "$rc" "2"
+printf '#!%s\nexit 1\n' "$(command -v bash)" > "$tmp/systemd-run-nobus"; chmod 755 "$tmp/systemd-run-nobus"
+rc=0; out="$(HEADED_ARM_UNAME=Linux HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: a systemd-run that cannot start a user scope falls back to uncapped" "$out" "scope=no"
+d6119="$tmp/c6119"; mk_launch_stubs "$d6119" "HIMMEL-6119-leg"; mkdir -p "$tmp/repo6119"
+rc=0
+HEADED_ARM_UNAME=Linux SYSD_RECORD="$d6119/sysd" HIMMEL_LEG_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d6119" || true
+sysd6119="$(grep MemoryMax "$d6119/sysd" 2>/dev/null || true)"
+check "memcap: full launch exit 0" "$rc" "0"
+contains "memcap: launch runs in a user scope" "$sysd6119" "--user --scope"
+contains "memcap: launch carries MemoryMax" "$sysd6119" "MemoryMax=256M"
+contains "memcap: launch carries MemorySwapMax" "$sysd6119" "MemorySwapMax=256M"
+contains "memcap: konsole still launched inside the scope" "$(cat "$d6119/record" 2>/dev/null || true)" "--workdir $tmp/repo6119"
+for badcap in 12g 0 00 01 1k; do
+  rc=0; out="$(HIMMEL_LEG_MEMORY_MAX="$badcap" bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+  check "memcap: cap '$badcap' is refused" "$rc" "2"
+done
+# The uncapped fallback is visible: stdout, the launch log and a leg-doc bullet.
+d6119w="$tmp/c6119w"; mk_launch_stubs "$d6119w" "HIMMEL-6119-warn"; mkdir -p "$tmp/repo6119w"
+some_doc_6119="$some_doc"; some_doc="$tmp/memcap-doc.md"; cp "$some_doc_6119" "$some_doc"
+printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$some_doc"
+rc=0
+HEADED_ARM_UNAME=Linux HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" RUN_LEG_ARGS=--no-profile run_leg "$d6119w" "$tmp/repo6119w" "HIMMEL-6119-warn" "claude-sonnet-5" >"$d6119w/stdout" 2>&1 || rc=$?
+wait_record "$d6119w" || true
+check "memcap: fallback launch exit 0" "$rc" "0"
+contains "memcap: fallback WARN on stdout" "$(cat "$d6119w/stdout")" "WARN memory cap NOT applied"
+contains "memcap: fallback WARN in the launch log" "$(cat "$d6119w/log" 2>/dev/null || true)" "WARN memory cap NOT applied"
+contains "memcap: fallback leaves a memcap=FAIL bullet in the leg doc" "$(cat "$tmp/memcap-doc.md")" "memcap=FAIL:systemd-run cannot start a user scope"
+check "memcap: fallback bullet is not a status marker" "$(grep -c '^- [0-9:]* memcap=FAIL:' "$some_doc")" "1"
+some_doc="$some_doc_6119"
+contains "memcap: fallback still launches the konsole" "$(cat "$d6119w/record" 2>/dev/null || true)" "--workdir $tmp/repo6119w"
+rc=0; out="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+not_contains "memcap: a dry-run writes no WARN" "$out" "WARN memory cap"
+# --consult never honours the systemd-run seam and never execs a PATH systemd-run.
+rc=0; out="$(HEADED_ARM_LEG_SYSTEMD_RUN="$tmp/systemd-run-nobus" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "memcap: --consult with the systemd-run seam set refuses" "$rc" "2"
+contains "memcap: --consult seam refusal says why" "$out" "--consult refuses HEADED_ARM_LEG_SYSTEMD_RUN"
+mkdir -p "$tmp/shadow6119"
+printf '#!%s\n: > "%s/shadow-ran"\nexit 0\n' "$(command -v bash)" "$tmp/shadow6119" > "$tmp/shadow6119/systemd-run"; chmod 755 "$tmp/shadow6119/systemd-run"
+rc=0; out="$(PATH="$tmp/shadow6119:$PATH" HEADED_ARM_UNAME=Linux LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion --console HIMMEL-4014-console HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "memcap: --consult with a PATH-shadowed systemd-run still launches" "$rc" "0"
+check "memcap: --consult never execs a PATH-shadowed systemd-run" "$([ -e "$tmp/shadow6119/shadow-ran" ] && echo ran || echo not-run)" "not-run"
+# Real environment: the argv the wrapper built, run against the real
+# systemd-run, must land the process in a cgroup whose memory.max is the cap.
+real_xdg="/run/user/$(id -u)"  # the suite pins XDG_RUNTIME_DIR to a tmp dir; the real bus lives here
+if [ "$(uname -s)" = "Linux" ] && XDG_RUNTIME_DIR="$real_xdg" /usr/bin/systemd-run --user --scope --quiet true >/dev/null 2>&1; then
+  read -r -a sysd_argv <<< "$sysd6119"
+  sysd_cap_argv=()
+  for a in "${sysd_argv[@]}"; do [ "$a" = "--" ] && break; sysd_cap_argv+=("$a"); done
+  # shellcheck disable=SC2016  # the $(...) must expand inside the scope, not here
+  real_cap="$(XDG_RUNTIME_DIR="$real_xdg" /usr/bin/systemd-run "${sysd_cap_argv[@]}" -- bash -c 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"' 2>/dev/null || true)"
+  check "memcap: real scope enforces memory.max (256M)" "$real_cap" "268435456"
+else
+  echo "ok - memcap: real scope row skipped (no systemd user bus)"
+fi
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

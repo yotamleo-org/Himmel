@@ -302,10 +302,20 @@ def cmd_merge(a):
         "edges_added": edges_added, "edges_removed": edges_removed,
         "runtime_s": a.runtime_s, "tokens_in": a.tokens_in, "tokens_out": a.tokens_out,
         "cost_eq_usd": round(a.tokens_in / 1e6 * PRICE_IN + a.tokens_out / 1e6 * PRICE_OUT, 4),
+        "backend": a.backend, "cost_usd": round(a.cost_usd, 6), "cap_usd": a.cap_usd,
     }
     with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
         f.write(json.dumps(run) + "\n")
     print("merge: " + json.dumps(run))
+
+
+def cmd_failrow(a):
+    # An extraction that died after billing lane calls: the spend still gets a row, nothing else changes.
+    run = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "name": a.name, "extract_rc": a.rc,
+           "backend": a.backend, "cost_usd": round(a.cost_usd, 6)}
+    with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
+        f.write(json.dumps(run) + "\n")
+    print("failrow: " + json.dumps(run))
 
 
 def main():
@@ -327,11 +337,20 @@ def main():
     m.add_argument("--runtime-s", type=int, default=0)
     m.add_argument("--tokens-in", type=int, default=0)
     m.add_argument("--tokens-out", type=int, default=0)
+    m.add_argument("--backend", default="")
+    m.add_argument("--cost-usd", type=float, default=0.0)
+    m.add_argument("--cap-usd", type=float, default=0.0)
+    f = sub.add_parser("failrow")
+    f.add_argument("--name", required=True)
+    f.add_argument("--out", required=True)
+    f.add_argument("--backend", default="")
+    f.add_argument("--cost-usd", type=float, default=0.0)
+    f.add_argument("--rc", type=int, default=0)
     r = sub.add_parser("restore")
     r.add_argument("--out", required=True)
     r.add_argument("--before", required=True)
     a = ap.parse_args()
-    {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "restore": cmd_restore}[a.cmd](a)
+    {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore}[a.cmd](a)
 
 
 if __name__ == "__main__":
