@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/ci/test-ci-gcp-routing.sh -- regression suite: the shell-unit-shard
 # runs-on expression in ci.yml resolves to the ephemeral GCP runner
-# [self-hosted, gcp] only when repo variable CI_GCP is 'on' AND the event is a
-# workflow_dispatch or a same-repo pull_request. The repo is public: a fork PR must never
-# reach a self-hosted runner, and the switch off must always fall back to the
+# [self-hosted, gcp] only when repo variable CI_GCP is 'on', the event is a
+# workflow_dispatch or a same-repo pull_request, and the actor, the triggering
+# actor and (for a PR) the author are operator accounts. The repo is public: a fork
+# PR or any other author must never reach a self-hosted runner, and the switch off must always fall back to the
 # GitHub-hosted matrix.os, so an empty pool can never wedge CI.
 #
 # The expression is EVALUATED (python3 translation of the GitHub expression
@@ -25,18 +26,20 @@ stripped="$(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]][[:space:]]*#.*$//' "$CI
 blk="$(awk '$0 == "  shell-unit-shard:" {f=1; next} f && /^  [a-zA-Z_-]+:/ {f=0} f' <<< "$stripped")"
 runs_on="$(sed -n 's/^[[:space:]]*runs-on:[[:space:]]*//p' <<< "$blk")"
 
-# resolve <event> <head_repo> <ci_gcp> <vm_runner> -> JSON of the runs-on value
+# resolve <event> <head_repo> <ci_gcp> <vm_runner> -> JSON of the runs-on value;
+# ACTOR, TACTOR (triggering actor) and AUTHOR (PR author) default to the operator.
 resolve() {
     python3 -I - "$runs_on" "$1" "$2" "$3" "$4" <<'PY'
-import json, re, sys
+import json, os, re, sys
 expr, event, head, ci_gcp, vm = sys.argv[1:6]
 class C(dict):
     def __getattr__(self, k): return self.get(k, "")
 def wrap(d): return C({k: wrap(v) if isinstance(v, dict) else v for k, v in d.items()})
 ctx = wrap({
-    "github": {"event_name": event, "repository": "yotamleo/Himmel", "actor": "someone",
-               "triggering_actor": "someone",
-               "event": {"pull_request": {"head": {"repo": {"full_name": head}}, "user": {"login": "someone"}}}},
+    "github": {"event_name": event, "repository": "yotamleo/Himmel", "actor": os.environ.get("ACTOR", "yotamleo"),
+               "triggering_actor": os.environ.get("TACTOR", "yotamleo"),
+               "event": {"pull_request": {"head": {"repo": {"full_name": head}},
+                                          "user": {"login": os.environ.get("AUTHOR", "yotamleo")}}}},
     "vars": {"CI_GCP": ci_gcp, "HIMMEL_VM_RUNNER": vm},
     "matrix": {"os": "ubuntu-latest"},
 })
@@ -66,6 +69,20 @@ chk "push, CI_GCP off -> hosted"              "$HOSTED" push         ""         
 chk "schedule, CI_GCP on -> hosted"           "$HOSTED" schedule     ""              on  ""
 chk "workflow_dispatch, CI_GCP on -> gcp"     "$GCP"    workflow_dispatch "" on ""
 chk "fork PR, CI_GCP on, VM switch on -> hosted" "$HOSTED" pull_request someone/Himmel on on
+
+# Actor gate: the same three conjunctions as the VM-runner branch.
+export AUTHOR=someone
+chk "same-repo PR by a non-operator author, CI_GCP on -> hosted" "$HOSTED" pull_request yotamleo/Himmel on ""
+unset AUTHOR
+export ACTOR=someone
+chk "same-repo PR pushed by a non-operator actor, CI_GCP on -> hosted" "$HOSTED" pull_request yotamleo/Himmel on ""
+chk "workflow_dispatch by a non-operator, CI_GCP on -> hosted" "$HOSTED" workflow_dispatch "" on ""
+unset ACTOR
+export TACTOR=someone
+chk "same-repo PR re-run by a non-operator, CI_GCP on -> hosted" "$HOSTED" pull_request yotamleo/Himmel on ""
+chk "workflow_dispatch re-run by a non-operator, CI_GCP on -> hosted" "$HOSTED" workflow_dispatch "" on ""
+unset TACTOR
+ACTOR=yotamleo11-test TACTOR=yotamleo11-test chk "workflow_dispatch by the second operator account, CI_GCP on -> gcp" "$GCP" workflow_dispatch "" on ""
 
 if grep -q 'pull_request_target' <<< "$stripped"; then bad "ci.yml uses pull_request_target"; else ok "ci.yml never uses pull_request_target"; fi
 

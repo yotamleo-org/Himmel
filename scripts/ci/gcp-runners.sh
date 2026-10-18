@@ -11,7 +11,7 @@
 # Each VM is a SPOT instance (--max-run-duration, termination action DELETE)
 # running gcp-runner-startup.sh: one --ephemeral runner labelled gcp, one job,
 # then power off. ci.yml routes shell-unit-shard to [self-hosted, gcp] while
-# repo variable CI_GCP is 'on' (push, dispatch, same-repo pull_request only);
+# repo variable CI_GCP is 'on' (dispatch or same-repo pull_request, operator accounts only);
 # `gh variable set CI_GCP --body off` is the instant kill switch.
 #
 # No service-account key exists (org policy): every gcloud call impersonates
@@ -19,6 +19,9 @@
 # and no scopes. Each VM gets its OWN just-in-time runner config (one runner,
 # one job, no shared token) as a metadata FILE, never an argv, plus the runner-side
 # fork guard scripts/vm/ci-runner/job-started-hook.sh (ACTIONS_RUNNER_HOOK_JOB_STARTED).
+# Once a runner is online `up` removes the jit-config key from that VM's metadata, so
+# the config does not outlive its read; the proxy env of gcp-net.sh rides along as the
+# proxy-env metadata file (the subnet has no other way out).
 #
 # ponytail: pool size is whatever `up` was last told, topped up by hand; upgrade
 # to an autoscaling timer, a budget kill switch and a regional CPU quota pin
@@ -31,6 +34,8 @@ SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
 MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
 MAX_RUN="45m"
+ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
+ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
 MAX_N=4
 NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
@@ -50,6 +55,27 @@ pool_vms() { gc compute instances list --filter="labels.himmel-ci-runner=gcp" --
 need_net() {
     gc compute networks subnets describe "$NET" --region="${ZONE%-*}" > /dev/null 2>&1 \
         || die "subnet $NET does not exist; create it with scripts/ci/gcp-net.sh first (never the default VPC)"
+}
+
+# drop_jit VM... -> wait until each VM's runner is online (the startup script has then
+# read its config), then remove jit-config from that VM's metadata. A runner that never
+# comes online within ONLINE_WAIT loses the key anyway: the config must not idle there.
+drop_jit() {
+    local deadline=$((SECONDS + ONLINE_WAIT)) pending=("$@") left online vm
+    while [ "${#pending[@]}" -gt 0 ]; do
+        online="$("$GH" api --paginate "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="online") | .name')" || online=""
+        left=()
+        for vm in "${pending[@]}"; do
+            if grep -qxF "$vm" <<< "$online" || [ "$SECONDS" -ge "$deadline" ]; then
+                gc compute instances remove-metadata "$vm" --zone="$ZONE" --keys=jit-config \
+                    || echo "gcp-runners: could not remove jit-config from $vm" >&2
+            else
+                left+=("$vm")
+            fi
+        done
+        pending=("${left[@]}")
+        [ "${#pending[@]}" -eq 0 ] || sleep "$ONLINE_POLL"
+    done
 }
 
 cmd_up() {
@@ -75,16 +101,18 @@ cmd_up() {
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
-    local tmpd i stamp vm
+    local tmpd i stamp vm created=()
     tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
     # shellcheck disable=SC2064  # expand now: tmpd is local and gone when the trap fires
     trap "rm -rf '$tmpd'" EXIT
     chmod 700 "$tmpd"
+    bash "$HERE/gcp-net.sh" proxy-env > "$tmpd/proxy-env" || die "gcp-net.sh proxy-env failed"
+    [ -s "$tmpd/proxy-env" ] || die "empty proxy env"
     stamp="$(date +%m%d%H%M%S)"
     for i in $(seq 1 "$need"); do
         vm="himmel-ci-$stamp-$i"
         "$GH" api -X POST "repos/$REPO/actions/runners/generate-jitconfig" \
-            -f "name=$vm" -F runner_group_id=1 -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
+            -f "name=$vm" -F runner_group_id=1 -f 'labels[]=self-hosted' -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
             || die "JIT config request failed for $vm"
         [ -s "$tmpd/$vm.jit" ] || die "empty JIT config for $vm"
         gc compute instances create "$vm" \
@@ -96,9 +124,11 @@ cmd_up() {
             --network="$NET" --subnet="$NET" --no-address \
             --no-service-account --no-scopes \
             --metadata="runner-repo=$REPO" \
-            --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,jit-config=$tmpd/$vm.jit" \
+            --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
             || die "instances create failed for $vm"
+        created+=("$vm")
     done
+    drop_jit "${created[@]}"
     echo "gcp-runners: created $need VM(s); pool target $n"
 }
 

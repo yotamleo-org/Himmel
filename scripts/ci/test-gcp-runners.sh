@@ -48,6 +48,7 @@ cat > "$T/gh" <<'STUB'
 printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
     *generate-jitconfig*) echo "JITCFG-abc123" ;;
+    *'status=="online"'*) [ "${STUB_ONLINE:-}" = none ] || grep -o 'name=himmel-ci-[^ ]*' "$STUB_LOG" | cut -d= -f2 ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
     *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
 esac
@@ -89,13 +90,36 @@ if grep '^GCLOUD ' "$STUB_LOG" | grep -q 'JITCFG-abc123'; then bad "JIT config l
 if grep -q '^FILE jit-config <<' "$STUB_LOG" && grep -q 'JITCFG-abc123' "$STUB_LOG"; then ok "JIT config is passed as a metadata file"; else bad "JIT config metadata file missing"; fi
 if ! grep -q 'registration-token' "$STUB_LOG"; then ok "no shared registration token is requested"; else bad "registration token still requested"; fi
 n="$(grep -c 'generate-jitconfig' "$STUB_LOG")"; if [ "$n" -eq 2 ]; then ok "one JIT config per VM"; else bad "JIT configs requested: $n of 2"; fi
-if grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=gcp' && grep 'generate-jitconfig' "$STUB_LOG" | grep -q 'name=himmel-ci-'; then ok "JIT config carries the gcp label and a unique name"; else bad "JIT config lacks gcp label / name"; fi
-if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q -- '--jitconfig' "$STUB_LOG"; then ok "startup script starts the runner with --jitconfig"; else bad "startup script lacks --jitconfig"; fi
+if grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=gcp' && grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=self-hosted' && grep 'generate-jitconfig' "$STUB_LOG" | grep -q 'name=himmel-ci-'; then ok "JIT config carries the self-hosted and gcp labels and a unique name"; else bad "JIT config lacks labels / name"; fi
+if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q 'ACTIONS_RUNNER_INPUT_JITCONFIG' "$STUB_LOG" && ! grep -q -- '--jitconfig' "$STUB_LOG"; then ok "startup script hands the JIT config to run.sh through the environment, never argv"; else bad "startup script passes the JIT config on argv or not at all"; fi
+
+# 4a. the subnet only lets tcp:3128 out: the proxy env is a metadata file, set before apt, kept in the runner .env.
+if grep -q '^FILE proxy-env <<' "$STUB_LOG" && grep -q '^HTTPS_PROXY=http://[0-9.]*:3128$' "$STUB_LOG" && grep -q '^NO_PROXY=169.254.169.254' "$STUB_LOG"; then ok "proxy env is passed as the proxy-env metadata file"; else bad "proxy-env metadata file missing"; fi
+# shellcheck disable=SC2016  # the literal startup-script text, not an expansion
+if grep -q 'md proxy-env' "$STUB_LOG" && grep -q 'apt.conf.d/95ci-proxy' "$STUB_LOG" && grep -q '"\$proxy_env" > /opt/runner/.env' "$STUB_LOG"; then ok "startup script wires the proxy into apt and the runner .env"; else bad "startup script does not wire the proxy"; fi
+pe="$(grep -n 'md proxy-env' "$STUB_LOG" | head -1 | cut -d: -f1)"; au="$(grep -n 'apt-get update' "$STUB_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$pe" ] && [ -n "$au" ] && [ "$pe" -lt "$au" ]; then ok "the proxy is set before the first apt call"; else bad "proxy set after apt (pe=$pe au=$au)"; fi
+
+# 4c. the JIT config does not outlive its read: removed from instance metadata once the runner is online,
+#     and the runner uid is walled off from the metadata server.
+n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
+if [ "$n" -eq 2 ]; then ok "jit-config is removed from each VM's metadata"; else bad "remove-metadata calls: $n of 2"; fi
+last_create="$(grep -n 'instances create' "$STUB_LOG" | tail -1 | cut -d: -f1)"; first_rm="$(grep -n 'instances remove-metadata' "$STUB_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$last_create" ] && [ -n "$first_rm" ] && [ "$first_rm" -gt "$last_create" ]; then ok "jit-config is removed only after the VMs are created"; else bad "remove-metadata order: create=$last_create rm=$first_rm"; fi
+if grep -q 'iptables -A OUTPUT -d 169.254.169.254 -m owner --uid-owner runner -j REJECT' "$STUB_LOG"; then ok "startup script rejects metadata-server traffic from the runner uid"; else bad "no iptables owner-match REJECT"; fi
 if grep -q 'ACTIONS_RUNNER_HOOK_JOB_STARTED' "$STUB_LOG" && grep -q '^FILE job-started-hook <<' "$STUB_LOG" && grep -q 'fork guard' "$STUB_LOG"; then ok "fork guard hook is installed and wired as the job-started hook"; else bad "fork guard hook not wired"; fi
 if grep -q 'poweroff' "$STUB_LOG"; then ok "startup script powers the VM off after the one job"; else bad "startup script never powers off"; fi
 
 # 4b. the per-VM JIT config files are removed when up exits.
 if [ -z "$(ls -A "$TMPDIR")" ]; then ok "up leaves no JIT config on disk"; else bad "up left files in TMPDIR: $(ls "$TMPDIR")"; fi
+
+# 4d. a runner that never comes online still loses its jit-config at the deadline.
+export STUB_ONLINE=none GCP_RUNNERS_ONLINE_WAIT=1 GCP_RUNNERS_ONLINE_POLL=1
+: > "$STUB_INSTANCES"
+rc="$(run up 1)"
+n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
+if [ "$rc" -eq 0 ] && [ "$n" -eq 1 ]; then ok "jit-config is removed even when the runner never comes online"; else bad "never-online: rc=$rc removals=$n"; fi
+unset STUB_ONLINE GCP_RUNNERS_ONLINE_WAIT GCP_RUNNERS_ONLINE_POLL
 
 # 5. up tops the pool back to N: one existing VM means one create for up 2.
 printf 'himmel-ci-existing-1\n' > "$STUB_INSTANCES"
