@@ -68,7 +68,10 @@ check "VERSIONLESS_DONE_EXCEPTIONS empty counts them" 3 "$(VERSIONLESS_DONE_EXCE
 check "a full page reads as a lower bound" "3+" "$(VERSIONLESS_DONE_LIMIT=2 VERSIONLESS_DONE_EXCEPTIONS='' bash "$SUT")"
 check "a full page of excluded tickets still reads as a lower bound" "1+" "$(VERSIONLESS_DONE_LIMIT=3 bash "$SUT")"
 : > "$W/log"
-VERSIONLESS_DONE_LIMIT=2VERSIONLESS_DONE_EXCEPTIONS='' bash "$SUT" --backfill --apply >/dev/null 2>&1; check "a truncated backfill exits 1" 1 $?
+err="$(VERSIONLESS_DONE_LIMIT=2 VERSIONLESS_DONE_EXCEPTIONS='' bash "$SUT" --backfill --apply 2>&1 >/dev/null)"; rc=$?
+check "a truncated backfill exits 1" 1 "$rc"
+check "a truncated backfill says it stopped at the limit" 1 "$(printf '%s\n' "$err" | grep -c 'stopped at the 2-row limit')"
+check "the capped search asked for the limit" 1 "$(grep -c -- '--limit 2$' "$W/log")"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1
