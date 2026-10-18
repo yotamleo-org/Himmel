@@ -190,7 +190,7 @@ fi
 # ponytail: batch rows are not deferrals a person classifies, add if one ever is.
 valid_fu_class() { case "$1" in escape|hardening|polish) return 0;; *) return 1;; esac; }
 # A class id is a known-findings.json id; new:<slug> names a class the catalog lacks.
-valid_class() { printf '%s' "$1" | grep -qE '^(new:)?[a-z0-9][a-z0-9-]*$'; }
+valid_class() { [[ "$1" =~ ^(new:)?[a-z0-9][a-z0-9-]*$ ]]; }
 if [ -n "$fu_class" ] && ! valid_fu_class "$fu_class"; then
   echo "ledger-append.sh: --fu-class must be escape|hardening|polish (got '$fu_class')" >&2
   exit 2
