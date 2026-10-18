@@ -65,7 +65,7 @@ assert_warning() {
 assert_unchanged() {
     local after
     if after="$(snapshot)"; then
-        assert_eq "$1" "$before" "$after"
+        assert_eq "$1" "$2" "$after"
     else
         assert_fail "$1: snapshot failed"
     fi
@@ -76,7 +76,7 @@ run_check
 assert_eq 'check: exits successfully' 0 "$rc"
 assert_warning handover "$HANDOVER_DIR" 'migrate-v1-to-v2.sh'
 assert_warning clip-lifecycle "$LUNA_VAULT_PATH" 'migrate-clip-lifecycle.mjs'
-assert_unchanged 'check: both fixture trees byte-identical'
+assert_unchanged 'check: both fixture trees byte-identical' "$before"
 
 # The printed commands must actually target these installs, even with spaces.
 if [ "$fail" -eq 0 ]; then
@@ -91,7 +91,7 @@ if [ "$fail" -eq 0 ]; then
             assert_fail "printed preview command: no plan ($preview)"
         fi
     done < <(grep -E '(handover|clip-lifecycle) migration needed' <<< "$out")
-    assert_unchanged 'printed previews: fixture trees byte-identical'
+    assert_unchanged 'printed previews: fixture trees byte-identical' "$before"
 fi
 
 # Apply mode may update its mock checkout, but must never migrate user data.
@@ -100,7 +100,7 @@ out="$(bash "$ROOT/scripts/himmel-update.sh" 2>&1)" || rc=$?
 assert_eq 'apply: updater succeeds' 0 "$rc"
 assert_warning handover "$HANDOVER_DIR" 'migrate-v1-to-v2.sh'
 assert_warning clip-lifecycle "$LUNA_VAULT_PATH" 'migrate-clip-lifecycle.mjs'
-assert_unchanged 'apply: both fixture trees byte-identical'
+assert_unchanged 'apply: both fixture trees byte-identical' "$before"
 printf '%s\n' "$out" | grep -E '(handover|clip-lifecycle) migration needed' || true
 
 mv "$HANDOVER_DIR/tester/standalones/#7-legacy" "$HANDOVER_DIR/tester/standalones/TEST-7-legacy"
