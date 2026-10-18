@@ -727,6 +727,11 @@ contains "23: a depth-2+ residual carrying a fixVersion draws a warning" "$out" 
 check "23: the stamp never touches fixVersions" "$(grep -c 'fix-version' "$rdlog")" 0
 rc=0; rdwv q23e GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of bogus >/dev/null 2>&1 || rc=$?
 check "23: a --residual-of that is not a ticket key is refused rc 2" "$rc" 2
+printf -- '---\nkey: "HIMMEL-920"\nlabels: ["residual-depth-08"]\nfixVersions: []\n---\n' > "$rdm/HIMMEL-920.md"
+: > "$rdlog"
+rc=0; rdwv q23z GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-920 >/dev/null 2>&1 || rc=$?
+check "23: a leading-zero parent label is read as decimal, so the writer exits rc 0" "$rc" 0
+check "23: a residual-depth-08 parent stamps residual-depth-9" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-9$' "$rdlog")" 1
 : > "$rdlog"
 rc=0; out=$(rdwv q23f GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-999 2>&1) || rc=$?
 check "23: a parent with no mirror still writes the verdict rc 0" "$rc" 0

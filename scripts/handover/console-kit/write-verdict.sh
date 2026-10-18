@@ -503,7 +503,7 @@ if [ -n "$RESIDUAL_OF" ]; then
     wv_new=
     if [ -r "$wv_mirror/$RESIDUAL_OF.md" ]; then
         wv_parent=$(wv_depth "$RESIDUAL_OF")
-        wv_new=$(( ${wv_parent:-0} + 1 ))
+        wv_new=$(( 10#${wv_parent:-0} + 1 ))
     else
         echo "write-verdict: warning - no mirror for $RESIDUAL_OF, so its depth is unknown; add the residual-depth label by hand" >&2
     fi
