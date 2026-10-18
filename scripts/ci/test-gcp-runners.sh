@@ -40,6 +40,8 @@ case "$*" in
     *"instances list"*) [ "${STUB_FAIL:-}" = list ] && exit 1; cat "$STUB_INSTANCES" ;;
     *"subnets describe"*) [ "${STUB_FAIL:-}" = subnet ] && exit 1 ;;
     *"instances delete"*) [ "${STUB_FAIL:-}" = delete ] && exit 1 ;;
+    *"instances remove-metadata"*) [ "${STUB_FAIL:-}" = rmmeta ] && exit 1 ;;
+    *"instances create"*) [ "${STUB_FAIL:-}" = create2 ] && [ "$(grep -c 'instances create' "$STUB_LOG")" -ge 2 ] && exit 1 ;;
 esac
 exit 0
 STUB
@@ -47,7 +49,7 @@ cat > "$T/gh" <<'STUB'
 #!/usr/bin/env bash
 printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
-    *generate-jitconfig*) echo "JITCFG-abc123" ;;
+    *generate-jitconfig*) [ "${STUB_FAIL:-}" = jit2 ] && [ "$(grep -c 'generate-jitconfig' "$STUB_LOG")" -ge 2 ] && exit 1; echo "JITCFG-abc123" ;;
     *'status=="online"'*) [ "${STUB_ONLINE:-}" = none ] || grep -o 'name=himmel-ci-[^ ]*' "$STUB_LOG" | cut -d= -f2 ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
     *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
@@ -166,12 +168,55 @@ rc="$(run watch 5)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watc
 
 # 6d. a second up while another holds the lock creates nothing.
 : > "$STUB_INSTANCES"
-( flock 9; sleep 3 ) 9> "$GCP_RUNNERS_LOCK" &
-holder=$!
-sleep 0.5
-rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses while another up holds the lock"; else bad "locked up: rc=$rc creates=$(creates)"; fi
-wait "$holder"
-rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
+if [ "$(uname -s)" = Linux ]; then
+    ( flock 9; sleep 3 ) 9> "$GCP_RUNNERS_LOCK" &
+    holder=$!
+    sleep 0.5
+    rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses while another up holds the lock"; else bad "locked up: rc=$rc creates=$(creates)"; fi
+    wait "$holder"
+    rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
+else
+    ok "flock lock cases skipped: not Linux"
+fi
+
+# 6f. flock is Linux-only: up refuses on any other platform before it creates anything.
+: > "$STUB_INSTANCES"
+rc="$(GCP_RUNNERS_UNAME=Darwin run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'Linux' "$T/out"; then ok "up refuses off Linux"; else bad "non-Linux up: rc=$rc creates=$(creates)"; fi
+
+# 6g. a failure part-way through `up` still strips jit-config from every VM already created.
+export STUB_FAIL=create2
+rc="$(run up 3)"
+n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
+if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then ok "a failed create drops jit-config from the VM already created"; else bad "create fail: rc=$rc removals=$n of 1"; fi
+export STUB_FAIL=jit2
+rc="$(run up 3)"
+n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
+if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then ok "a failed JIT request drops jit-config from the VM already created"; else bad "jit fail: rc=$rc removals=$n of 1"; fi
+unset STUB_FAIL
+
+# 6h. a jit-config that cannot be removed gets its VM deleted and fails `up`.
+export STUB_FAIL=rmmeta
+rc="$(run up 1)"
+if [ "$rc" -ne 0 ] && grep -q 'instances delete himmel-ci-' "$STUB_LOG" && ! grep -q 'created 1 VM' "$T/out"; then ok "an undroppable jit-config deletes the VM and fails up"; else bad "rmmeta fail: rc=$rc"; fi
+unset STUB_FAIL
+
+# 6i. bash 3.2 under set -u: the empty-array expansions are guarded on the executable lines.
+# shellcheck disable=SC2016  # the literal script text, not an expansion
+if grep -qF 'pending=(${left[@]+"${left[@]}"})' "$SUT" && ! grep -qF 'pending=("${left[@]}")' "$SUT"; then ok "drop_jit guards the empty left[] expansion"; else bad "drop_jit expands left[] unguarded"; fi
+
+# 6j. startup script hardening, pinned on the executable lines.
+SS="$ROOT/scripts/ci/gcp-runner-startup.sh"
+if grep -q '^chown root:root /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$SS" && grep -q '^chmod 755 /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$SS"; then ok "fork guard hook chown/chmod fail closed"; else bad "hook chown/chmod can fail silently"; fi
+if grep -q '^systemctl enable --now atd' "$SS" && ! grep '^systemctl enable --now atd' "$SS" | grep -q '|| true' && grep -q '^systemctl is-active --quiet atd || exit 1$' "$SS"; then ok "a failed atd start fails the startup"; else bad "atd start failure is swallowed"; fi
+# Fixture: the checksum line of the pinned release's notes, copied from the real
+# `gh api repos/actions/runner/releases/latest --jq .body` (v2.338.0).
+fixture='- actions-runner-linux-x64-2.338.0.tar.gz <!-- BEGIN SHA linux-x64 -->af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32<!-- END SHA linux-x64 -->'
+fix_sha="$(sed -n 's/.*BEGIN SHA linux-x64 -->\([0-9a-f]\{64\}\)<!--.*/\1/p' <<< "$fixture")"
+pin_ver="$(sed -n 's/^RUNNER_VERSION=\([0-9.]*\)$/\1/p' "$SS")"; pin_sha="$(sed -n 's/^RUNNER_SHA256=\([0-9a-f]\{64\}\)$/\1/p' "$SS")"
+if [ "$pin_ver" = 2.338.0 ] && [ -n "$pin_sha" ] && [ "$pin_sha" = "$fix_sha" ]; then ok "startup script pins the runner version and the release's sha256"; else bad "runner pin: ver='$pin_ver' sha='$pin_sha'"; fi
+if ! grep -q 'releases/latest' "$SS"; then ok "startup script no longer resolves the latest runner release"; else bad "startup script still resolves releases/latest"; fi
+ck="$(grep -n 'sha256sum -c' "$SS" | head -1 | cut -d: -f1)"; tx="$(grep -n 'tar -xz' "$SS" | head -1 | cut -d: -f1)"
+if [ -n "$ck" ] && [ -n "$tx" ] && [ "$ck" -lt "$tx" ] && grep 'sha256sum -c' "$SS" | grep -q '|| exit 1$'; then ok "the tarball checksum is verified, fail closed, before extract"; else bad "checksum check missing or after extract (ck=$ck tx=$tx)"; fi
 
 # 6e. up and watch refuse while the dedicated subnet is missing, naming gcp-net.sh.
 export STUB_FAIL=subnet
