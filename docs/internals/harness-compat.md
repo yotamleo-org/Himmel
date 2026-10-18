@@ -330,7 +330,7 @@ is killed through `scripts/lib/proc-tree.sh` — never a hand-rolled `taskkill` 
 and the dispatch exits **124** (what GNU `timeout` and `run-shell-tests.sh`
 already report) with a `codex-exec: TIMEOUT after Ns - killed tree` line on
 stderr. Start/end rows now land in `~/.himmel/flow-runs.jsonl` exactly as the
-`codex-wsl` twin writes them, `outcome` ∈ `complete|timeout|error`; and the
+former WSL twin wrote them, `outcome` ∈ `complete|timeout|error`; and the
 job-registry JSON, previously deleted by the script's own EXIT trap, is moved to
 `$CODEX_JOBS_DIR/failed/` on a timeout or nonzero exit — out of the live-jobs
 glob so `reap-mcp-fleet` does not re-report a dead job, but still on disk as
@@ -349,9 +349,9 @@ chain sequentially inside ONE command where Claude wires the same guards as N
 independent entries. Adding a `timeout` field does **not** re-trust: the trust
 key is `<abs path>:<event>:<i>:<j>` (see above), and neither the `command`
 strings nor the entry count/order changed. (4) **Native rogue guard.**
-`scripts/hooks/block-rogue-codex-exec.sh` mirrors `block-rogue-codex-wsl.sh` for
+`scripts/hooks/block-rogue-codex-exec.sh` guards
 raw native `codex exec` (off switch `CODEX_EXEC_RAW_OK=1`), wired in the himmel-ops
-plugin `hooks.json` beside its WSL sibling. Mirroring both into
+plugin `hooks.json`. Mirroring it into
 `.codex/hooks.json` remains open (a known gap).
 
 **Alternative considered — plugin delivery.** Shipping via the `himmel-ops`
@@ -521,16 +521,6 @@ command text is **PowerShell** (`Get-Content`, `Remove-Item`, …), so reader/
 destructive token lists tuned for bash shapes under-match. The `Bash` tool name
 is itself a Codex compat alias (Claude-engine), which is why the project matchers
 `Bash|PowerShell` are harmless but the `PowerShell` half never matches.
-
-**The codex-WSL lane (`dispatch-codex-wsl.sh`) is outside both traps by
-construction, but NOT live-verified this round.** Inside the distro Codex runs
-hooks via `$SHELL -lc`, reads the distro's own `$HOME/.codex` (not the Windows
-one via `/mnt/c` — the lane's quota probe reads `$HOME/.codex/sessions` in-distro),
-and the project `.codex/hooks.json` resolves through `run-hook.sh`.
-So neither the pwsh quoted-path trap nor the `& "C:\…bash.exe"` global rewrite
-reaches it. Unverified because WSL itself was wedged on the box and the lane is
-dormant (`CODEX_WSL_LANE_OK` opt-in); re-probe with `codex exec` in
-the in-distro clone after `wsl --shutdown` clears the hang.
 
 **Same benchmark on the other two harnesses (2026-08-21, no finding):** Claude Code
 runs hooks through Git Bash (`bash -c`) with `CLAUDE_PROJECT_DIR`/`CLAUDE_PLUGIN_ROOT`

@@ -612,9 +612,9 @@ tool calls: `auto-approve-safe-bash.sh`, `check-cr-marker-on-pr-create.sh`,
 hang; one (`auto-arm-on-cap`) is a fail-open watchdog that decides nothing;
 one (`mcp-policy`) only tracks MCP calls and always allows — see
 [MCP policy tracking](#mcp-policy-tracking-himmel-4676).
-Ten FURTHER guards — `block-docker-privesc.sh` (HIMMEL-441),
+Nine FURTHER guards — `block-docker-privesc.sh` (HIMMEL-441),
 `block-merged-pr-commit.sh` (HIMMEL-512), `block-unresolved-cr-merge.sh`
-(HIMMEL-936), `block-rogue-codex-wsl.sh` (HIMMEL-999),
+(HIMMEL-936),
 `block-rogue-codex-exec.sh` (HIMMEL-2023), `guard-implementor-dispatch.sh`
 (HIMMEL-920), `guard-console-dispatch.sh` (HIMMEL-2323),
 `block-glm-external-writes.sh` (HIMMEL-654),
@@ -623,11 +623,10 @@ Ten FURTHER guards — `block-docker-privesc.sh` (HIMMEL-441),
 via the **himmel-ops plugin `hooks.json`** rather than `.claude/settings.json`
 (so they can be agent-installed without a settings self-mod veto — same
 delivery path as `inject-minerva-critic.sh`, the plugin's Skill-matcher
-critic INJECTOR rather than a guard, see its own section below); all ten
+critic INJECTOR rather than a guard, see its own section below); all nine
 are live only after `/himmel-update` (marketplace re-sync) + a fresh session.
 `block-docker-privesc.sh` and `block-merged-pr-commit.sh` fail CLOSED
-(security boundaries); `block-rogue-codex-wsl.sh` and its native sibling
-`block-rogue-codex-exec.sh` (raw `codex exec` outside
+(security boundaries); `block-rogue-codex-exec.sh` (raw `codex exec` outside
 `scripts/codex/dispatch-codex-exec.sh` — no ACL preflight, no model/sandbox
 pins, no job registry, and no watchdog, so a wedged raw run is exactly the
 HIMMEL-1788 invisible hang; bypass `CODEX_EXEC_RAW_OK=1`) fail CLOSED only for

@@ -3,7 +3,7 @@
 # Hermetic tests for codex-arg-filter.sh. The filter cases are
 # cross-checked against test-dispatch-codex-exec.sh — the exec lane's
 # messages must stay byte-identical (that suite is the extraction proof);
-# THIS suite pins the lib's own contract + the WSL-lane parameterization.
+# THIS suite pins the lib's own contract + the caller-supplied parameterization.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,17 +98,17 @@ echo "test: unknown dash flag hits the allow-list catch-all"
 OUT="$(run_filter --frobnicate hi)"
 case "$OUT" in *"rc=1"*) pass "catch-all refused";; *) fail "catch-all allowed";; esac
 
-echo "test: message parameterization (WSL-lane hints)"
+echo "test: message parameterization (caller-supplied hints)"
 (
   # shellcheck disable=SC1090
   . "$LIB"
-  CAF_SELF_NAME="dispatch-codex-wsl.sh"
+  CAF_SELF_NAME="dispatch-example.sh"
   CAF_SCOPE_NOUN="clone"
   CAF_CONTAINER_FLAG="--clone"
   CAF_ADDDIR_HINT="the containment check covers only the dispatched clone"
   codex_filter_passthrough_args --cd /tmp hi 2>"$TMP/err2"
 ) || true
-if grep -q "^dispatch-codex-wsl.sh: workspace-redirect flag '--cd' refused - the wrapper owns the clone (pass it via --clone)$" "$TMP/err2"; then
+if grep -q "^dispatch-example.sh: workspace-redirect flag '--cd' refused - the wrapper owns the clone (pass it via --clone)$" "$TMP/err2"; then
   pass "parameterized redirect message"
 else
   fail "parameterized redirect message wrong: $(cat "$TMP/err2")"

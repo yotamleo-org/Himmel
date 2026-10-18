@@ -11,8 +11,7 @@
 > `claude-codex` row) was **RETIRED 2026-07-13** (operator decision) — see the superseded-lock note below.
 
 > **Note:** this index records compatibility/parity, not current routing —
-> dormancy status for impl lanes (GLM, claudex, hermes-oneshot, codex-exec,
-> codex-wsl) lives in `scripts/lanes/lanes.json` /
+> dormancy status for impl lanes (GLM, claudex, hermes-oneshot, codex-exec) lives in `scripts/lanes/lanes.json` /
 > [`lane-calibration.md`](lane-calibration.md), not here.
 
 ## Doctrine

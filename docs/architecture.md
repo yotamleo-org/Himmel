@@ -37,7 +37,7 @@ flowchart TD
     subgraph S1["1 · tool call — in-session, before the call runs"]
         TC["Claude tool call<br/>Bash · Edit · Read · Agent · MCP"]
         H1[".claude/settings.json — 15 guardrail scripts,<br/>run as ONE chained dispatch per hook event<br/>block-edit-on-main · block-read-secrets · block-destructive-commands<br/>block-git-stash · block-jira-compound-write · block-tail-pipe-on-gates<br/>block-rogue-claude-schedule · block-chokepoint-env-prefix<br/>require-quiet-run · orchestrator-inline-guard · guard-memory-capture<br/>block-backend-tier · check-cr-marker-on-pr-create<br/>auto-approve-safe-bash · auto-arm-on-cap"]
-        H2["marketplace/plugins/himmel-ops/hooks/hooks.json — 10 guards<br/>block-docker-privesc · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-lesson-enforcement-writes<br/>block-rogue-codex-wsl · block-rogue-codex-exec<br/>guard-implementor-dispatch · guard-console-dispatch"]
+        H2["marketplace/plugins/himmel-ops/hooks/hooks.json — 9 guards<br/>block-docker-privesc · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-lesson-enforcement-writes<br/>block-rogue-codex-exec<br/>guard-implementor-dispatch · guard-console-dispatch"]
         H3["scripts/hooks/guardrail-block.mjs<br/>installs 3 of them into USER scope (~/.claude/settings.json)<br/>so they still fire outside a himmel checkout"]
         H4["passive taps — record, never block<br/>scripts/trust/shadow-ledger.mjs<br/>scripts/observability/session-run-hook.ts"]
         TC --> H1

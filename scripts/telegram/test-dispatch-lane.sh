@@ -167,7 +167,7 @@ jq '(.lanes[] | select(.dormant) | .probe) = {"kind":"always"}' "$REAL_REG" > "$
 # failure. Capture the lookup's own exit status and treat a non-zero rc OR
 # empty stdout as a hard failure naming the cause, rather than silently
 # degrading into "every lane is probe-unavailable" (which would still
-# increment DORMANT_COUNT to 6 further down and report a false ok).
+# increment DORMANT_COUNT to 5 further down and report a false ok).
 PROBE_JSON="$(LANES_REGISTRY="$DORMANT_FIXTURE_REG" node "$SCRIPT_DIR/../lanes/resolve.mjs" --json)"
 PROBE_RC=$?
 PROBE_AVAILABLE_IDS=""
@@ -235,13 +235,13 @@ fi
 # get their DORMANT refusal exercised, but must never narrow this count, or a
 # registry regression that dropped the dormant block would go uncaught right
 # alongside a probe that happens to fail everywhere. Bump it DELIBERATELY when
-# the registry's dormant set changes. Currently 6: glm, claudex, hermes-oneshot,
-# codex-exec, codex-wsl, openrouter-claude.
+# the registry's dormant set changes. Currently 5: glm, claudex, hermes-oneshot,
+# codex-exec, openrouter-claude.
 #
-# The count above proves the registry still ENUMERATES 6 dormant lanes; it says
+# The count above proves the registry still ENUMERATES 5 dormant lanes; it says
 # nothing about whether any of them was actually EXERCISED -- a probe-lookup
-# failure (caught above) or a host where every single one of the 6 happens to
-# be probe-unavailable would both leave DORMANT_COUNT at 6 while DORMANT_EXERCISED
+# failure (caught above) or a host where every single one of the 5 happens to
+# be probe-unavailable would both leave DORMANT_COUNT at 5 while DORMANT_EXERCISED
 # stays 0, i.e. the exact vacuity this case exists to catch, reintroduced one
 # level up. So require DORMANT_EXERCISED > 0 as its own hard failure, separate
 # from the count check, so a reader can tell "wrong count" apart from "right
@@ -250,7 +250,7 @@ fi
 if [ "$DORMANT_EXERCISED" -eq 0 ]; then
   bad "dormant refusals exercised zero of $DORMANT_COUNT registry-declared dormant lanes (all probe-unavailable on this host, or the probe lookup above failed) -- a DORMANT-gate case that tests nothing must not report ok"
 fi
-if [ "$DORMANT_COUNT" -eq 6 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
+if [ "$DORMANT_COUNT" -eq 5 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
 
 # With every impl lane dormant, an unqualified dispatch (no
 # --lane, no HIMMEL_IMPL_LANE) must refuse and name the native-subagent path

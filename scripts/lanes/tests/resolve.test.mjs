@@ -389,10 +389,9 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
   }
   const text = execFileSync(process.execPath, [RESOLVER], { encoding: 'utf8', env: { ...process.env, ...forcedEnv } });
   assert.ok(dormantLanes.length > 0, 'expected at least one dormant impl lane in the real registry');
-  // A path-probed lane's CLI (codex-wsl's `wsl`; codex-exec's
-  // `codex`) can be genuinely absent here - wsl is Windows-only tooling and can
-  // never resolve on Linux/macOS, and a CLI like codex may simply not be
-  // installed on a given box or CI runner either. Neither is hardcoded to one
+  // A path-probed lane's CLI (codex-exec's `codex`) can be genuinely absent
+  // here - a CLI like codex may simply not be installed on a given box or CI
+  // runner. It is not hardcoded to one
   // platform: derive both branches - CLI present (must render DORMANT) and CLI
   // absent (must appear in the loud skip list, and ONLY there) - from a fresh
   // probe right here, so the suite is correct on whichever host runs it instead
@@ -488,7 +487,7 @@ test('every structured context in the registry is valid and carries no legacy de
   assert.equal(REG.lanes.find((l) => l.id === 'glm').context.windowTokens, 1000000);
   // Haiku 5.5 has a 1M window (Haiku 4.5 was 200k).
   assert.deepEqual(REG.lanes.find((l) => l.id === 'haiku').context, { windowTokens: 1000000, overflow: 'hard-limit' });
-  for (const id of ['claudex', 'codex', 'codex-exec', 'codex-wsl', 'hermes-oneshot']) {
+  for (const id of ['claudex', 'codex', 'codex-exec', 'hermes-oneshot']) {
     const { tiers, ...window } = REG.lanes.find((l) => l.id === id).context;
     assert.deepEqual(window, { windowTokens: 900000, overflow: 'compact-continue' });
     // tiers are the dispatcher --context-tier enum: only the lanes that take the flag declare them.
@@ -751,4 +750,10 @@ test('HIMMEL-1450: the adopter install targets the primary checkout overlay from
   const want = join(clone.primary, 'scripts', 'lanes', 'lanes.local.json');
   assert.equal(resolveLaneAllowlistFile(clone.wt).file, want);
   assert.equal(resolveLaneAllowlistFile(clone.primary).file, want);
+});
+
+test('the registry ships no WSL lane and the resolver output lists none (HIMMEL-6030)', () => {
+  assert.deepEqual(REG.lanes.filter((l) => /wsl/i.test(JSON.stringify(l))).map((l) => l.id), []);
+  const text = execFileSync(process.execPath, [RESOLVER], { encoding: 'utf8' });
+  assert.doesNotMatch(text, /wsl/i);
 });
