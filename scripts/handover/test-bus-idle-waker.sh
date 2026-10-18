@@ -77,10 +77,11 @@ BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-dead" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER"
 rc=$?
 [ "$rc" -eq 1 ] && pass "a dead session ends the waker with rc=1" || fail "dead session: expected rc=1, got rc=$rc"
 
-# A window started before EnableSecuritySensitiveDBusAPI refuses sendText: named, rc=3.
+# A window with EnableSecuritySensitiveDBusAPI off refuses sendText: named, rc=3.
+# Copied from a real qdbus6 run: the error goes to STDOUT, rc=2.
 cat > "$tmp/qdbus-denied" <<'EOF'
 #!/usr/bin/env bash
-printf 'Error: org.freedesktop.DBus.Error.AccessDenied\nSecurity sensitive DBus API is disabled in the settings.\n' >&2
+printf 'Error: org.freedesktop.DBus.Error.AccessDenied\nSecurity sensitive DBus API is disabled in the settings.\n'
 exit 2
 EOF
 chmod +x "$tmp/qdbus-denied"
@@ -91,7 +92,7 @@ if [ "$rc" -eq 3 ] && grep -qxF "$denied_line" "$tmp/denied-err" && ! grep -q 's
   pass "an AccessDenied sendText ends with rc=3 and names the denial, not a gone session"
 else fail "denied: expected rc=3, got rc=$rc: $(cat "$tmp/denied-err")"; fi
 
-# The one-line form a station with the setting off prints.
+# The one-line form, on stderr.
 cat > "$tmp/qdbus-denied-1l" <<'EOF'
 #!/usr/bin/env bash
 printf 'org.freedesktop.DBus.Error.AccessDenied: Security sensitive DBus API is disabled in the settings.\n' >&2
