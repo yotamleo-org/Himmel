@@ -3,6 +3,8 @@
 # Run it on the station.
 #
 #   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 2, max 4)
+#   bash scripts/ci/gcp-runners.sh watch N [--interval 60]   foreground loop: re-run `up N` every interval
+#                                           while CI_GCP is on; on CI_GCP off or SIGTERM run `down` and exit
 #   bash scripts/ci/gcp-runners.sh down     delete every pool VM, deregister offline gcp runners
 #   bash scripts/ci/gcp-runners.sh status   list pool VMs and registered gcp runners
 #
@@ -101,6 +103,29 @@ cmd_down() {
     echo "gcp-runners: pool deleted"
 }
 
+cmd_watch() {
+    local n="${1:-2}" interval=60
+    case "$n" in ''|*[!0-9]*) die "watch: N must be a positive integer, got '$n'" 2 ;; esac
+    [ "$n" -ge 1 ] && [ "$n" -le "$MAX_N" ] || die "watch: N must be 1..$MAX_N" 2
+    shift
+    if [ "${1:-}" = "--interval" ]; then interval="${2:-}"; fi
+    case "$interval" in ''|*[!0-9]*) die "watch: --interval must be a positive integer" 2 ;; esac
+    [ "$interval" -ge 1 ] || die "watch: --interval must be at least 1" 2
+
+    local stop=0 var
+    trap 'stop=1' TERM INT
+    while [ "$stop" -eq 0 ]; do
+        if var="$("$GH" variable get CI_GCP --repo "$REPO")"; then
+            [ "$var" = "on" ] || { echo "gcp-runners: CI_GCP is '$var', stopping"; break; }
+            ( cmd_up "$n" ) || echo "gcp-runners: top-up failed, retrying next interval" >&2
+        else
+            echo "gcp-runners: could not read CI_GCP, skipping this interval" >&2
+        fi
+        sleep "$interval" & wait $!
+    done
+    ( cmd_down )
+}
+
 cmd_status() {
     pool_vms
     "$GH" api "repos/$REPO/actions/runners" --jq '.runners[] | select(any(.labels[]; .name=="gcp")) | "\(.name) \(.status)"'
@@ -109,6 +134,7 @@ cmd_status() {
 case "${1:-}" in
     up) shift; cmd_up "$@" ;;
     down) cmd_down ;;
+    watch) shift; cmd_watch "$@" ;;
     status) cmd_status ;;
-    *) die "usage: gcp-runners.sh up [N] | down | status" 2 ;;
+    *) die "usage: gcp-runners.sh up [N] | watch N [--interval S] | down | status" 2 ;;
 esac

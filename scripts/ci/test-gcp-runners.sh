@@ -8,6 +8,7 @@
 #
 # Usage: bash scripts/ci/test-gcp-runners.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
+# shellcheck disable=SC2329  # the waitfor predicates are invoked indirectly
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -47,12 +48,13 @@ printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
     *registration-token*) echo "REGTOKEN-abc123" ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
+    *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
 esac
 exit 0
 STUB
 chmod +x "$T/gcloud" "$T/gh"
 
-export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instances"
+export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instances" STUB_VAR="$T/civar"
 run() { : > "$STUB_LOG"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
 creates() { grep -c 'instances create' "$STUB_LOG"; }
 
@@ -106,6 +108,22 @@ export STUB_FAIL=delete
 printf 'vm-a\n' > "$STUB_INSTANCES"
 rc="$(run down)"; if [ "$rc" -ne 0 ] && ! grep -q 'pool deleted' "$T/out"; then ok "down fails when a delete fails"; else bad "down after failed delete: rc=$rc"; fi
 unset STUB_FAIL
+
+# 6c. watch tops up after a VM disappears and stops, running down, once CI_GCP is off.
+printf 'a\nb\n' > "$STUB_INSTANCES"; echo on > "$STUB_VAR"; : > "$STUB_LOG"
+bash "$SUT" watch 2 --interval 1 > "$T/watch.out" 2>&1 &
+wpid=$!
+waitfor() { local _; for _ in $(seq 1 100); do "$@" && return 0; sleep 0.1; done; return 1; }
+listed() { grep -q "instances list" "$STUB_LOG"; }
+topped() { [ "$(creates)" -ge 1 ]; }
+stopped() { ! kill -0 "$wpid" 2>/dev/null; }
+if waitfor listed && [ "$(creates)" -eq 0 ]; then ok "watch creates nothing while the pool is full"; else bad "watch first pass: creates=$(creates)"; fi
+printf 'a\n' > "$STUB_INSTANCES"
+if waitfor topped; then ok "watch tops the pool up after a VM disappears"; else bad "watch never topped up"; fi
+echo off > "$STUB_VAR"
+if waitfor stopped; then ok "watch exits once CI_GCP is off"; else bad "watch still running after CI_GCP off"; kill "$wpid" 2>/dev/null; fi
+if grep -q 'instances delete' "$STUB_LOG" && grep -q 'pool deleted' "$T/watch.out"; then ok "watch runs down on exit"; else bad "watch did not run down"; fi
+rc="$(run watch 5)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch 5 is refused"; else bad "watch 5: rc=$rc"; fi
 
 # 7. unknown subcommand is refused.
 rc="$(run frobnicate)"; if [ "$rc" -ne 0 ]; then ok "unknown subcommand is refused"; else bad "unknown subcommand accepted"; fi
