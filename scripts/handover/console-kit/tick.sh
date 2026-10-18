@@ -369,7 +369,9 @@ ready_mismatch_scan() {
         while read -r line; do
             pr="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\1/p')"
             head="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\2/p')"
-            [ -n "$pr" ] && [ -n "$head" ] || continue
+            if [ -z "$pr" ] || [ -z "$head" ]; then
+                continue
+            fi
             grep -q "^$pr	$head	" "$rec" && continue
             if printf '%s\n' "$line" | grep -qiE 'no (ci[- ])?trust[- ]paths?|trust[- ]paths?: (none|no)\b|not a trust path|docs[- ]only|touch(es)? no trust|trust[- ]paths?:? (not touched|untouched)|not touch(es)? (a |any )?(ci[- ])?trust'; then claim=none
             elif printf '%s\n' "$line" | grep -qi 'trust'; then claim=named
@@ -1516,7 +1518,9 @@ if [ -n "$dw_ps" ]; then
         }
         END { for (j = 1; j <= n; j++) print pid[j], et[j], ttl[j], (pid[j] in ppid_seen) ? 1 : 0 }')"
     while read -r dw_pid dw_et dw_tt dw_alive; do
-        [ -n "$dw_pid" ] && [ "$dw_alive" = 0 ] || continue
+        if [ -z "$dw_pid" ] || [ "$dw_alive" != 0 ]; then
+            continue
+        fi
         case "$dw_et" in ""|*[!0-9]*) continue ;; esac
         [ "$dw_et" -ge "$dw_grace" ] || continue
         dw_label="${dw_tt#HIMMEL-*-}"; dw_label="${dw_label%%-*}"
