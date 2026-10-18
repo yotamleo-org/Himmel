@@ -348,6 +348,14 @@ run_cron() {
         PIPELINE_BAT_DIR="$CRON_DIR" bash "$SCRIPT" "$@"
 }
 
+# Test C0: usage errors (subcommand parsing precedes the platform case) --------
+
+echo "TEST: missing / unknown subcommand rejected"
+rc=0; out=$(run_cron 2>&1) || rc=$?
+assert_rc "no subcommand -> rc 1" 1 "$rc"
+rc=0; out=$(run_cron frobnicate 2>&1) || rc=$?
+assert_rc "unknown subcommand -> rc 1" 1 "$rc"
+
 # Test C1: status with no crontab installed ----------------------------------
 
 echo "TEST: cron status with no crontab installed"
@@ -392,6 +400,22 @@ assert_rc "cron bad --health-day -> rc 1" 1 "$rc"
 assert_contains "cron bad --health-day names the accepted set" "MON TUE WED THU FRI SAT SUN DAILY" "$out"
 rc=0; out=$(run_cron arm --vault "$VAULT" --health-model "" 2>&1) || rc=$?
 assert_rc "cron empty --health-model -> rc 1 (HIMMEL-506)" 1 "$rc"
+rc=0; out=$(run_cron arm --vault "$VAULT" --harvest-model "" 2>&1) || rc=$?
+assert_rc "cron empty --harvest-model -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_contains "cron empty --harvest-model message names the flag + grammar" "--harvest-model must match [A-Za-z0-9][A-Za-z0-9._:-]*" "$out"
+# A model value carrying " and & must be rejected by the grammar gate; the
+# message names the offending flag, the grammar and the value.
+rc=0; out=$(run_cron arm --vault "$VAULT" --harvest-model 'a"&b' 2>&1) || rc=$?
+assert_rc "cron hostile --harvest-model (\" and &) -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_contains "cron hostile model message names the flag" "--harvest-model" "$out"
+assert_contains "cron hostile model message names the grammar" "[A-Za-z0-9][A-Za-z0-9._:-]*" "$out"
+assert_contains "cron hostile model message echoes the offending value" "a\"&b" "$out"
+# Whitespace-only slips a bare [ -z ] check; the grammar rejects it.
+rc=0; out=$(run_cron arm --vault "$VAULT" --harvest-model " " 2>&1) || rc=$?
+assert_rc "cron whitespace-only --harvest-model -> rc 1 (HIMMEL-506)" 1 "$rc"
+assert_contains "cron whitespace model message names the flag" "--harvest-model" "$out"
+rc=0; out=$(run_cron arm --vault "$TMP_ROOT/does-not-exist" 2>&1) || rc=$?
+assert_rc "cron missing vault dir -> rc 1" 1 "$rc"
 
 # Test C2: arm --dry-run touches nothing --------------------------------------
 

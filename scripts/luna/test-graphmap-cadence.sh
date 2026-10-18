@@ -366,6 +366,14 @@ run_cron() {
         "$REAL_BASH" "$SCRIPT" "$@"
 }
 
+# Test C0: usage errors (subcommand parsing precedes the platform case) --------
+
+echo "TEST: missing / unknown subcommand rejected"
+rc=0; out=$(run_cron 2>&1) || rc=$?
+assert_rc "no subcommand -> rc 1" 1 "$rc"
+rc=0; out=$(run_cron frobnicate 2>&1) || rc=$?
+assert_rc "unknown subcommand -> rc 1" 1 "$rc"
+
 # Test C1: status with no crontab installed ----------------------------------
 
 echo "TEST: cron status with no crontab installed"

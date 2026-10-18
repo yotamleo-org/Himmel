@@ -3,8 +3,8 @@
 #
 # Single daily task (HIMMEL-CodexOrphanSweep) fires a runner .bat that runs
 # scripts/cleanup/sweep-codex-orphans.ps1 -Kill then scripts/codex/
-# reap-mcp-fleet.ps1 -Kill via a resolved pwsh/powershell. Windows-only: the
-# malformed-input rc-1 path and the POSIX rc-2 refusal path are pure-unit /
+# reap-mcp-fleet.ps1 -Kill via a resolved pwsh/powershell. This suite keeps the
+# malformed-input rc-1 path and the POSIX rc-2 refusal path: pure-unit /
 # platform-detect checks (they short-circuit before any schtasks call).
 set -euo pipefail
 
