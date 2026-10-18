@@ -3219,7 +3219,7 @@ done <<<"$REG_LINES"
 # only mentions one - a commit message, grep, sed -n, a quoted heredoc body -
 # and the text scans below do not judge it. A helper that cannot load relieves
 # nothing.
-# shellcheck disable=SC2329 # called by cmdpos_clean_for as its <names-fn>
+# shellcheck disable=SC2317,SC2329 # called by cmdpos_clean_for as its <names-fn>
 cp_names_chokepoint() { # cp_names_chokepoint <word> - names a registered chokepoint, in any case
     local p rc=1
     shopt -s nocasematch
