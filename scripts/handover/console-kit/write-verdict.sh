@@ -111,7 +111,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>] [--residual-of <KEY>]" >&2
     exit 2
 }
 seg_ok() {
@@ -121,13 +121,14 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR=""
+EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR="" RESIDUAL_OF=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --bind-reviewed)
             [ "$#" -ge 2 ] || usage
             [ -n "$2" ] || { echo "write-verdict: --bind-reviewed needs the full 40-char lowercase hex sha (got an empty value)" >&2; exit 2; }
             BIND=$2; shift 2 ;;
+        --residual-of) [ "$#" -ge 2 ] || usage; RESIDUAL_OF=$2; shift 2 ;;
         --pr) [ "$#" -ge 2 ] || usage; PR=$2; shift 2 ;;
         --branch) [ "$#" -ge 2 ] || usage; BRANCH=$2; shift 2 ;;
         --prior) [ "$#" -ge 2 ] || usage; PRIOR=$2; shift 2 ;;
@@ -162,6 +163,10 @@ if [ -n "$BIND" ]; then
     fi
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
+if [ -n "$RESIDUAL_OF" ] && ! [[ $RESIDUAL_OF =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+    echo "write-verdict: --residual-of must be a ticket key like HIMMEL-123 (got '$RESIDUAL_OF')" >&2
+    exit 2
+fi
 case "$PRIOR" in
     ''|GO|NO-GO) ;;
     *) echo "write-verdict: --prior must be GO or NO-GO (got '$PRIOR')" >&2; exit 2 ;;
@@ -479,4 +484,31 @@ case "$jd_seg" in
     "j$PR"|"j$PR"[a-z])
         { [ -L "$SCRATCH/$jd_seg/.verdict-written" ] || : > "$SCRATCH/$jd_seg/.verdict-written"; } 2>/dev/null || true ;;
 esac
+# --residual-of <parent>: stamp residual-depth-<parent depth + 1> on each ticket the
+# residual lines cite, so next-dispatchable.sh can hold residuals back. Best effort:
+# the verdict is already on disk, a failed stamp only warns.
+# ponytail: a depth >= 2 residual with a fixVersion is warned about, not cleared, and affectsVersion is unset, upgrade path HIMMEL-6236 (jira --affects-version) then stamp both here
+if [ -n "$RESIDUAL_OF" ]; then
+    wv_mirror=${WV_MIRROR:-$HOME/.himmel/state/jira-mirror/${RESIDUAL_OF%%-*}}
+    if [ -n "${WV_JIRA_CMD:-}" ]; then
+        wv_jira=$WV_JIRA_CMD
+    else
+        # dist/ is built in the primary checkout only, which HIMMEL_REPO names
+        wv_jira="node ${HIMMEL_REPO:-$_ah_d/../../..}/scripts/jira/dist/index.js"
+    fi
+    # the depth of a mirrored ticket: its residual-depth-<n> label, 0 when it has none
+    wv_depth() {
+        sed -n 's/^labels: //p' "$wv_mirror/$1.md" 2>/dev/null | grep -o 'residual-depth-[0-9]*' | sed 's/residual-depth-//' | sort -n | tail -1
+    }
+    wv_parent=$(wv_depth "$RESIDUAL_OF")
+    wv_new=$(( ${wv_parent:-0} + 1 ))
+    for wv_key in $(filed_residual_keys "$EVIDENCE"); do
+        # shellcheck disable=SC2086  # wv_jira is a command plus its script path
+        JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --add-labels "residual-depth-$wv_new" >/dev/null 2>&1 ||
+            echo "write-verdict: warning - could not stamp residual-depth-$wv_new on $wv_key; add the label by hand" >&2
+        if [ "$wv_new" -ge 2 ] && sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" 2>/dev/null | grep -q '"'; then
+            echo "write-verdict: warning - $wv_key is residual-depth-$wv_new and carries a fixVersion; a depth >= 2 residual files to ICE with none" >&2
+        fi
+    done
+fi
 printf '%s\n' "$TARGET"

@@ -336,6 +336,15 @@ gathering, per the rule below.>
 > NO-GO evidence carries a `HIMMEL-<n>` key or `no-ticket: <reason>`, or the
 > writer refuses it. So does any standalone `residual: <text>` line (bulleted
 > or not, any case, with or without a heading).
+>
+> **Residual depth (HIMMEL-6115).** When the PR you rule on is itself a residual
+> (its ticket carries a `residual-depth-<n>` label), record its residuals as a PR
+> comment, and file a ticket only for a High, a security or a data-loss residual.
+> Pass `--residual-of <the PR's ticket key>` to `write-verdict.sh`: it stamps
+> `residual-depth-<n+1>` on each ticket your residual lines cite, and
+> `next-dispatchable.sh` holds depth 1 and above back until the console records
+> `residual-must <KEY>`. A residual at depth 2 or more is filed to ICE with no
+> fixVersion.
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through

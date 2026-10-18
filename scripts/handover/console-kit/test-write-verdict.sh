@@ -697,6 +697,36 @@ printf '## Non-blocking\n\n- HIMMEL-9 filed\n\nThe next paragraph is plain prose
 rc=0; wv q22k GO "$SHA_A" --evidence-file "$evd/r-block-end.md" >/dev/null 2>&1 || rc=$?
 check "22: a bullet after the residual block ended is not refused" "$rc" 0
 
+# --- 23. --residual-of <KEY> stamps residual-depth-<parent+1> on each keyed residual ---
+rdm="$tmp/rd-mirror"; mkdir -p "$rdm"
+printf -- '---\nkey: "HIMMEL-900"\nlabels: ["residual-depth-1"]\nfixVersions: []\n---\n' > "$rdm/HIMMEL-900.md"
+printf -- '---\nkey: "HIMMEL-910"\nlabels: ["operator-directed"]\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-910.md"
+printf -- '---\nkey: "HIMMEL-902"\nlabels: ["residual-depth-2"]\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-902.md"
+rdlog="$tmp/rd-jira.log"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$rdlog" > "$tmp/rd-jira"
+chmod +x "$tmp/rd-jira"
+rdwv() { WV_MIRROR="$rdm" WV_JIRA_CMD="$tmp/rd-jira" wv "$@"; }
+printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 tighten the regex\n- other thing, no-ticket: operator accepted\n' > "$evd/rd-ev1.md"
+: > "$rdlog"
+rc=0; rdwv q23a GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
+check "23: --residual-of is accepted rc 0" "$rc" 0
+check "23: a depth-1 parent stamps its keyed residual residual-depth-2" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-2$' "$rdlog")" 1
+check "23: a no-ticket residual line is not stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 1
+: > "$rdlog"
+rc=0; rdwv q23b GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-910 >/dev/null 2>&1 || rc=$?
+check "23: an unlabelled parent is depth 0, so the residual is stamped residual-depth-1" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-1$' "$rdlog")" 1
+: > "$rdlog"
+rc=0; rdwv q23c GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" >/dev/null 2>&1 || rc=$?
+check "23: without --residual-of nothing is stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 0
+printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-902 a depth-3 child\n' > "$evd/rd-ev2.md"
+: > "$rdlog"
+rc=0; out=$(rdwv q23d GO "$SHA_A" --evidence-file "$evd/rd-ev2.md" --residual-of HIMMEL-902 2>&1) || rc=$?
+check "23: a depth-3 stamp still writes the verdict rc 0" "$rc" 0
+contains "23: a depth-2+ residual carrying a fixVersion draws a warning" "$out" "carries a fixVersion"
+check "23: the stamp never touches fixVersions" "$(grep -c 'fix-version' "$rdlog")" 0
+rc=0; rdwv q23e GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of bogus >/dev/null 2>&1 || rc=$?
+check "23: a --residual-of that is not a ticket key is refused rc 2" "$rc" 2
+
 # strict parse of every file this suite wrote through the writer (hand-built fixtures excluded)
 strict_bad=0 strict_n=0
 for sf in "$scope_dir"/*/*.md; do

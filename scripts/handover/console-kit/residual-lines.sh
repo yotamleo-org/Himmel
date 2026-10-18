@@ -35,6 +35,22 @@ unfiled_residual_section_lines() {
     sec && items && /^[^ \t]/ { sec = 0 }' "$1"
 }
 
+# Every HIMMEL-<n> key on a residual line of an evidence file (the same lines
+# unfiled_residual_section_lines reads), one per line, first-seen order.
+filed_residual_keys() {
+    awk '
+    { sub(/\r$/, "") }
+    function lead(s) { gsub(/^[ \t]*(#+[ \t]+)?(\*\*)?/, "", s); gsub(/(\*\*)?[ \t]*:?(\*\*)?[ \t]*$/, "", s); return tolower(s) }
+    function keys(s,   k) { while (match(s, /HIMMEL-[0-9]+/)) { k = substr(s, RSTART, RLENGTH); if (!(k in seen)) { seen[k] = 1; print k } s = substr(s, RSTART + RLENGTH) } }
+    tolower($0) ~ /^[ \t]*([-*+][ \t]+)?residuals?:[ \t]*[^ \t]/ { keys($0); next }
+    /^#+[ \t]/ || /^\*\*.*\*\*:?[ \t]*$/ || /^[A-Za-z-]+:[ \t]*$/ {
+        l = lead($0); sec = (l ~ /^(non-blocking|follow-ups?|residuals?)$/); items = 0; next
+    }
+    sec && /^[ \t]*$/ { next }
+    sec && /^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/ { items = 1; keys($0); next }
+    sec && items && /^[^ \t]/ { sec = 0 }' "$1"
+}
+
 unfiled_residual_mention_lines() {
     awk '
     { sub(/\r$/, "") }

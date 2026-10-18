@@ -24,6 +24,11 @@
 # data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
 # tiers 1-3 only (no RESUME rows); an empty pool prints `POOL-EMPTY` and no rows.
 #
+# Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
+# panel residual and is excluded unless --doc records `residual-must <KEY>` on a
+# line of its own (security, data loss or a broken operator flow only). No label
+# means depth 0.
+#
 # Collision (one writer per file): the files a candidate names in its
 # description are checked against (a) the files in the live legs' docs (the
 # manifest's `legs[].doc`, scope lines), (b) the diff of every open PR (gh), and
@@ -175,6 +180,23 @@ prio_order, prio_cloud = read_priority_line(os.environ.get('ND_DOC', ''))
 TIER1_LABELS = {'ps3-blocker', 'must-v1.1.3'}
 TIER3_LABELS = {'security', 'data-integrity', 'data-loss'}
 
+def residual_depth(i):
+    ds = [int(m.group(1)) for l in i['labels'] for m in [re.match(r'^residual-depth-(\d+)$', l)] if m]
+    return max(ds) if ds else 0
+
+def read_residual_must(path):
+    keys = set()
+    try:
+        for line in open(path, encoding='utf-8', errors='replace'):
+            m = re.match(r'^\s*(?:[-*]\s+)?residual-must\s+(?:HIMMEL-)?(\d{3,5})\b', line)
+            if m:
+                keys.add('HIMMEL-' + m.group(1))
+    except OSError:
+        pass
+    return keys
+
+residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
+
 def tier_of(i):
     # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
     if i['key'] in prio_order or i['labels'] & TIER1_LABELS:
@@ -213,6 +235,8 @@ for i in issues.values():
     if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
     if i['key'] in prio_cloud:
+        continue
+    if residual_depth(i) >= 1 and i['key'] not in residual_must:
         continue
     cands.append(i)
 cands.sort(key=ranked)

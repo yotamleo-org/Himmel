@@ -18,6 +18,13 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   --pr <n> --evidence-file <path> --doc <console doc>`: it runs `write-verdict.sh`,
   `go.sh`, the Results bullet and the board in one call and prints the message to
   send the leg. The hand steps are for a verdict it refuses.
+- **Residuals are depth-gated** (HIMMEL-6115): a ticket labelled `residual-depth-<n>`
+  (n >= 1) is a judge, CR or panel residual. `write-verdict.sh --residual-of <KEY>`
+  stamps `residual-depth-<depth of KEY + 1>` on each ticket the residual lines cite;
+  `next-dispatchable.sh` drops depth >= 1 unless the console doc has a
+  `residual-must <KEY>` line (security, data loss or a broken operator flow only),
+  and depth >= 2 files to ICE with no fixVersion. Pass `--residual-of` on a verdict
+  for a residual PR; a ticket with no label is depth 0.
 - **Dispatch a judge call as `console-judge-ro`, not the built-in Explore**: same read-only tool list, passes the ruling-20 console
   dispatch fence, and its body carries the judge contract. A judge reads and
   reasons; it never runs suites or polls CI (the leg's scripts do that), so it
