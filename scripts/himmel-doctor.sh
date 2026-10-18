@@ -3130,6 +3130,18 @@ check_c40_qmd_vec() {
             "free port 8181 (see marketplace/plugins/qmd/scripts/), then start a fresh session"
         return
     fi
+    # A daemon started before the fork's last build still serves the old code
+    # from memory, and an old build reads a migrated index as having no vectors.
+    # The pid file's mtime is the daemon's start; the build stamp's is the install.
+    local qd_pidfile qd_stamp
+    qd_pidfile="${XDG_CACHE_HOME:-$HOME/.cache}/qmd/mcp.pid"
+    # shellcheck disable=SC1090
+    qd_stamp="$( . "$REPO_ROOT/scripts/lib/qmd-bin.sh" >/dev/null 2>&1; _qmd_fork_dir )/.himmel-build-ok"
+    if [ -f "$qd_pidfile" ] && [ -f "$qd_stamp" ] && [ "$qd_pidfile" -ot "$qd_stamp" ]; then
+        emit WARN C40-qmd-vec "the qmd daemon on $url is older than the installed qmd build (it started before $qd_stamp was written) -- it serves the old code from memory, so its vector-index status cannot be trusted" \
+            "restart it: pgrep -af 'qmd.*mcp.*--http' (look), then pkill -f 'qmd.*mcp.*--http', then bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
+        return
+    fi
     instr="$(printf '%s' "$init_json" | jq -r '.result.instructions // ""' 2>/dev/null)"
     case "$instr" in
     *'No vector embeddings yet'*)
