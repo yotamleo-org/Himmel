@@ -48,8 +48,8 @@ install -d -m 755 -o root -g root /usr/local/lib/himmel
 md job-started-hook > /usr/local/lib/himmel/job-started-hook.sh || exit 1
 chown root:root /usr/local/lib/himmel/job-started-hook.sh
 chmod 755 /usr/local/lib/himmel/job-started-hook.sh
-printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh\nHIMMEL_CI_RUNNER_REPO=%s\n%s\n' "$repo" "$proxy_env" > /opt/runner/.env
-chown runner:runner /opt/runner/.env
+printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh\nHIMMEL_CI_RUNNER_REPO=%s\n%s\n' "$repo" "$proxy_env" > /opt/runner/.env || exit 1
+chown runner:runner /opt/runner/.env || exit 1
 # Everything is read from metadata: the runner uid may not reach it from here on.
 iptables -A OUTPUT -d 169.254.169.254 -m owner --uid-owner runner -j REJECT || exit 1
 export ACTIONS_RUNNER_INPUT_JITCONFIG="$jit" HOME=/home/runner USER=runner
