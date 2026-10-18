@@ -588,10 +588,10 @@ for leg in $LEGS_SPLIT; do
         if [ "$tail_status" = LIVE ]; then
             newest_bullet="$(sed -nE '/^- /p' "$leg_doc" 2>/dev/null | tail -n 1)" || newest_bullet=""  # pipefail-ok: sed reads the doc to EOF
             if printf '%s\n' "$newest_bullet" | grep -qE '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' \
-                && printf '%s\n' "$newest_bullet" | grep -qE 'holding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
+                && printf '%s\n' "$newest_bullet" | grep -qE '[Hh]olding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
                 # a negation shortly before READY ("no longer holding at READY", "not currently
                 # holding at READY", "no longer READY <pr> <head>") is work again, not a READY
-                if ! printf '%s\n' "$newest_bullet" | grep -qiE "((^|[^[:alnum:]_])(no longer|not|never|without)([^[:alnum:]_]|$)|n't)[^;.]{0,30}READY"; then  # pipefail-ok: one extracted line
+                if ! printf '%s\n' "$newest_bullet" | grep -qiE "((^|[^[:alnum:]_])(no longer|not|never|without|cannot)([^[:alnum:]_]|$)|n't)[^;.]{0,30}READY"; then  # pipefail-ok: one extracted line
                     tail_status=READY
                 fi
             fi

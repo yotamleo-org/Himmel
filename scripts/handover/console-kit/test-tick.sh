@@ -1430,7 +1430,8 @@ contains 'a bold leading marker reads as that marker (HIMMEL-3393)' "$(tail3393 
 contains 'a bullet leading with prose is invisible to the tick (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:48 Sent the FINDING to the console, will report READY once it rules')" 'N393:FINDING'
 contains 'a marker glued to a longer word is not a marker (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDINGS pending, no marker here')" 'N393:LIVE'
 
-# --- a leg holding at READY must read READY whatever its bullet's first word.
+# --- a leg holding at READY behind a LIVE-led bullet must read READY (only LIVE-led
+# bullets are promoted; any other leading marker keeps its own word).
 # N2524 (10-17) held READY on PR 3002 behind `LIVE — holding at READY for GO`; a
 # claudex leg cannot SendMessage, so the doc bullet is its only channel, and tails=
 # read LIVE for ~40 minutes. RED control (pre-fix tick.sh): tails=N393:LIVE.
@@ -1443,6 +1444,11 @@ contains 'a LIVE bullet "no longer holding at READY" stays LIVE (HIMMEL-6154)' "
 contains 'a LIVE bullet "not currently holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — not currently holding at READY; fixing findings')" 'N393:LIVE'
 contains 'a LIVE bullet "no longer READY <pr> <head>" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — no longer READY 3002 $sha6154; fixing findings")" 'N393:LIVE'
 contains 'a LIVE bullet "nothing blocking, holding at READY" reads READY (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — nothing blocking, holding at READY for GO')" 'N393:READY'
+contains 'a LIVE bullet "cannot send READY <pr> <head> yet" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — cannot send READY 3002 $sha6154 yet: CI red")" 'N393:LIVE'
+contains 'a LIVE bullet "Holding at READY" (capitalised) reads READY (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — Holding at READY for GO')" 'N393:READY'
+contains 'a LIVE bullet "never READY <pr> <head>" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — never READY 3002 $sha6154 on this head")" 'N393:LIVE'
+contains 'a LIVE bullet "without READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — without holding at READY, fixing')" 'N393:LIVE'
+contains 'a LIVE bullet "isn'"'"'t holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — isn't holding at READY, fixing")" 'N393:LIVE'
 contains 'a newer prose-leading bullet naming holding at READY does not promote the earlier LIVE (HIMMEL-6154)' "$(tail3393 '- 23:48 Still holding at READY, waiting on the console')" 'N393:LIVE'
 contains 'READY held then a newer plain LIVE bullet reads LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
 
