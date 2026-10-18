@@ -162,7 +162,7 @@ WT_DRY=$(mk_wt wt-dry feat/dry)
 
 # ── case 1: --only <path> prunes that worktree ONLY ──────────────────────────
 echo "CASE 1: --only <path>"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_A")
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_A")
 expect "1: rc=0" "$out" rc_is "$out" 0
 expect "1: target worktree pruned" "$out" is_gone "$WT_A"
 # RED core: a fleet-wide sweep would have taken every merged sibling.
@@ -174,28 +174,28 @@ expect_not "1: target branch feat/a deleted with its worktree" "$out" has_branch
 
 # ── case 2: --only <branch> ──────────────────────────────────────────────────
 echo "CASE 2: --only <branch>"
-out=$(run_clean "$CLEAN_GARDEN" --only feat/c)
+out=$(run_clean "$CLEAN_GARDEN" prune --only feat/c)
 expect "2: rc=0" "$out" rc_is "$out" 0
 expect "2: target worktree pruned by branch name" "$out" is_gone "$WT_C"
 expect "2: siblings survived" "$out" is_dir "$WT_B"
 
 # ── case 3: refuses a non-candidate, non-zero, worktree kept ─────────────────
 echo "CASE 3: refusals"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_OPEN")
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_OPEN")
 expect "3a: un-merged target refused non-zero" "$out" rc_nonzero "$out"
 expect "3a: un-merged target kept" "$out" is_dir "$WT_OPEN"
 expect "3a: message names the refusal" "$out" grepq "$out" "not a prune candidate"
 
-out=$(run_clean "$CLEAN_GARDEN" --only feat/dirty)
+out=$(run_clean "$CLEAN_GARDEN" prune --only feat/dirty)
 expect "3b: dirty target refused non-zero" "$out" rc_nonzero "$out"
 expect "3b: dirty target kept" "$out" is_dir "$WT_DIRTY"
 expect "3b: dirty check still fires under --only" "$out" grepq "$out" "uncommitted changes"
 
-out=$(run_clean "$CLEAN_GARDEN" --only "$REPO")
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$REPO")
 expect "3c: primary refused non-zero" "$out" rc_nonzero "$out"
 expect "3c: primary untouched" "$out" is_dir "$REPO/.git"
 
-out=$(run_clean "$CLEAN_GARDEN" --only feat/no-such-branch)
+out=$(run_clean "$CLEAN_GARDEN" prune --only feat/no-such-branch)
 expect "3d: unknown target refused non-zero" "$out" rc_nonzero "$out"
 expect "3d: message names the refusal" "$out" grepq "$out" "not a registered worktree"
 
@@ -209,7 +209,7 @@ if [ -d /proc/self ]; then
 ( cd "$WT_HELD" && exec sleep 60 ) &
 HOLDER_PID=$!
 sleep 0.3
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_HELD")
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_HELD")
 expect "4: live-cwd target refused non-zero" "$out" rc_nonzero "$out"
 expect "4: live-cwd target kept" "$out" is_dir "$WT_HELD"
 expect "4: message says in use" "$out" grepq "$out" "in use"
@@ -219,12 +219,12 @@ HOLDER_PID=""
 else
 echo "  SKIP: 4: no /proc on this platform, live-cwd holder cannot be detected"
 fi
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_HELD")
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_HELD")
 expect "4 control: same target with no holder is pruned" "$out" is_gone "$WT_HELD"
 
 # ── case 5: --dry-run under --only mutates nothing ───────────────────────────
 echo "CASE 5: --only --dry-run"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_DRY" --dry-run)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_DRY" --dry-run)
 expect "5: rc=0" "$out" rc_is "$out" 0
 expect "5: dry-run names the target" "$out" grepq "$out" "would prune feat/dry"
 expect_not "5: dry-run plans no sibling" "$out" grepq "$out" "would prune feat/b"
@@ -232,13 +232,13 @@ expect "5: dry-run removed nothing" "$out" is_dir "$WT_DRY"
 
 # ── case 6: flag hygiene ─────────────────────────────────────────────────────
 echo "CASE 6: flag hygiene"
-out=$(run_clean "$CLEAN_GARDEN" --only)
+out=$(run_clean "$CLEAN_GARDEN" prune --only)
 expect "6a: --only with no value refused" "$out" rc_nonzero "$out"
 expect "6a: usage error names the flag" "$out" grepq "$out" -e "--only needs"
-out=$(run_clean "$CLEAN_GARDEN" feat/newone --only feat/b)
+out=$(run_clean "$CLEAN_GARDEN" prune feat/newone --only feat/b)
 expect "6b: --only with a create branch refused" "$out" rc_nonzero "$out"
 expect "6b: nothing pruned" "$out" is_dir "$WT_B"
-out=$(run_clean "$CLEAN_GARDEN" --only feat/b --no-prune)
+out=$(run_clean "$CLEAN_GARDEN" prune --only feat/b --no-prune)
 expect "6c: --only with --no-prune refused" "$out" rc_nonzero "$out"
 expect "6c: nothing pruned" "$out" is_dir "$WT_B"
 
@@ -254,7 +254,7 @@ echo "CASE 8: ambiguous target"
 mkdir -p "$REPO/feat"
 git -C "$REPO" worktree add -q "$REPO/feat/amb" -b feat/amb-holder >/dev/null 2>&1
 WT_AMB_BR=$(mk_wt wt-amb-br feat/amb)   # branch feat/amb; the other one's PATH is repo/feat/amb
-out=$(run_clean "$CLEAN_GARDEN" --only feat/amb)
+out=$(run_clean "$CLEAN_GARDEN" prune --only feat/amb)
 expect "8: ambiguous target refused non-zero" "$out" rc_nonzero "$out"
 expect "8: message names the ambiguity" "$out" grepq "$out" "matches 2 worktrees"
 expect "8: path-matched worktree kept" "$out" is_dir "$REPO/feat/amb"
@@ -264,24 +264,24 @@ expect "8: branch-matched worktree kept" "$out" is_dir "$WT_AMB_BR"
 echo "CASE 9: --only-allow-unmerged"
 
 WT_UA_NONE=$(mk_wt wt-ua-none none/case)
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_NONE")
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_NONE")
 expect "9a control: no-PR branch refused WITHOUT the flag" "$out" rc_nonzero "$out"
 expect "9a control: kept" "$out" is_dir "$WT_UA_NONE"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_NONE" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_NONE" --only-allow-unmerged)
 expect "9a: no-PR branch, clean, zero-ahead pruned WITH the flag" "$out" is_gone "$WT_UA_NONE"
 
 WT_UA_CLOSED=$(mk_wt wt-ua-closed closed/case)
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_CLOSED" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_CLOSED" --only-allow-unmerged)
 expect "9b: closed-unmerged PR, clean, zero-ahead pruned WITH the flag" "$out" is_gone "$WT_UA_CLOSED"
 
 WT_UA_OPEN=$(mk_wt wt-ua-open open/case)
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_OPEN" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_OPEN" --only-allow-unmerged)
 expect "9c: OPEN PR still refused even WITH the flag" "$out" rc_nonzero "$out"
 expect "9c: open-PR worktree kept" "$out" is_dir "$WT_UA_OPEN"
 
 WT_UA_DIRTY=$(mk_wt wt-ua-dirty none/dirty)
 printf 'changed\n' >> "$WT_UA_DIRTY/README"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_DIRTY" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_DIRTY" --only-allow-unmerged)
 expect "9d: dirty tree still refused WITH the flag" "$out" rc_nonzero "$out"
 expect "9d: dirty worktree kept" "$out" is_dir "$WT_UA_DIRTY"
 
@@ -290,7 +290,7 @@ printf 'extra\n' > "$WT_UA_PUSHED/extra.txt"
 git -C "$WT_UA_PUSHED" add extra.txt
 git -C "$WT_UA_PUSHED" commit -q -m "extra commit ahead of main"
 git -C "$REPO" push -q origin "none/pushed:refs/heads/none/pushed"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_PUSHED" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_PUSHED" --only-allow-unmerged)
 expect "9e: ahead-of-main but head pushed to origin pruned WITH the flag" "$out" is_gone "$WT_UA_PUSHED"
 
 # 9g: a never-merged branch's leg scratch may be its only copy,
@@ -299,12 +299,12 @@ expect "9e: ahead-of-main but head pushed to origin pruned WITH the flag" "$out"
 WT_UA_SCRATCH=$(mk_wt wt-ua-scratch none/scratch)
 printf 'x\n' > "$WT_UA_SCRATCH/.pr-body.txt"
 mkdir -p "$WT_UA_SCRATCH/.scratch"; printf 'x\n' > "$WT_UA_SCRATCH/.scratch/a.txt"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_SCRATCH" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_SCRATCH" --only-allow-unmerged)
 expect "9g: unmerged branch with root scratch refused WITH the flag" "$out" rc_nonzero "$out"
 expect "9g: unmerged scratch worktree kept" "$out" is_dir "$WT_UA_SCRATCH"
 WT_UA_CHURN=$(mk_wt wt-ua-churn none/churn)
 printf 'lock\n' > "$WT_UA_CHURN/package-lock.json"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_CHURN" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_CHURN" --only-allow-unmerged)
 expect "9g control: tool churn alone still pruned WITH the flag" "$out" is_gone "$WT_UA_CHURN"
 
 # 9g2: the REAL repo .gitignore must not hide
@@ -316,7 +316,7 @@ git -C "$WT_UA_REAL" add .gitignore
 git -C "$WT_UA_REAL" commit -q -m "carry the real repo .gitignore"
 git -C "$REPO" push -q origin "none/realignore:refs/heads/none/realignore"
 mkdir -p "$WT_UA_REAL/.himmel-scratch"; printf 'x\n' > "$WT_UA_REAL/.himmel-scratch/notes.md"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_REAL" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_REAL" --only-allow-unmerged)
 expect "9g2: .himmel-scratch/notes.md under the REAL .gitignore refused WITH the flag" "$out" rc_is "$out" 1
 expect "9g2: worktree with .himmel-scratch kept" "$out" is_dir "$WT_UA_REAL"
 
@@ -324,22 +324,22 @@ WT_UA_NOTPUSHED=$(mk_wt wt-ua-notpushed none/notpushed)
 printf 'extra\n' > "$WT_UA_NOTPUSHED/extra.txt"
 git -C "$WT_UA_NOTPUSHED" add extra.txt
 git -C "$WT_UA_NOTPUSHED" commit -q -m "extra commit, never pushed"
-out=$(run_clean "$CLEAN_GARDEN" --only "$WT_UA_NOTPUSHED" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_NOTPUSHED" --only-allow-unmerged)
 expect "9f: ahead-of-main and NOT on origin refused WITH the flag" "$out" rc_nonzero "$out"
 expect "9f: unpushed-ahead worktree kept" "$out" is_dir "$WT_UA_NOTPUSHED"
 
 WT_UA_UNKNOWN=$(mk_wt wt-ua-unknown none/unknown)
-out=$(RUN_CLEAN_STUB_DIR="$STUB_DIR_FAIL" run_clean "$CLEAN_GARDEN" --only "$WT_UA_UNKNOWN" --only-allow-unmerged)
+out=$(RUN_CLEAN_STUB_DIR="$STUB_DIR_FAIL" run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_UNKNOWN" --only-allow-unmerged)
 expect "9g: unresolvable PR state (gh/cache failure) refused WITH the flag" "$out" rc_nonzero "$out"
 expect "9g: unknown-state worktree kept" "$out" is_dir "$WT_UA_UNKNOWN"
 
-out=$(run_clean "$CLEAN_GARDEN" --only-allow-unmerged)
+out=$(run_clean "$CLEAN_GARDEN" prune --only-allow-unmerged)
 expect "9h: --only-allow-unmerged with no --only refused" "$out" rc_nonzero "$out"
 expect "9h: usage error names the flag" "$out" grepq "$out" -e "--only-allow-unmerged requires --only"
 
 # ── control: the plain (fleet-wide) run still prunes every merged sibling ────
 echo "CONTROL: plain --prune-only"
-out=$(run_clean "$CLEAN_GARDEN" --prune-only)
+out=$(run_clean "$CLEAN_GARDEN" prune --prune-only)
 expect "control: plain prune still takes the merged sibling feat/b" "$out" is_gone "$WT_B"
 
 echo

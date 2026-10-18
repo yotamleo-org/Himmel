@@ -66,7 +66,7 @@ run_clean() {
     local repo="$1"; shift
     (
         cd "$repo" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
+        bash "$CLEAN_GARDEN" prune "$@" 2>&1
     )
 }
 

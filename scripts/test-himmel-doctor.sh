@@ -5505,6 +5505,23 @@ if grepq "$out" 'INFO C42-sweep-health' && ! grepq "$out" 'OK   C42-sweep-health
 else
     fail "C42 rc 1 + empty output -> $(printf '%s' "$out" | grep -A1 C42)"
 fi
+
+echo "== C42: the REAL worktree.sh against a fixture repo with a stuck worktree -> WARN STUCK =="
+c42_repo="$c42_t/repo"
+git init -q --bare "$c42_t/origin.git" && git clone -q "$c42_t/origin.git" "$c42_repo" 2>/dev/null
+git -C "$c42_repo" checkout -q -b main
+git -C "$c42_repo" -c user.email=t@t.local -c user.name=T commit -q --allow-empty -m init
+git -C "$c42_repo" push -q origin HEAD:main && git -C "$c42_repo" remote set-head origin main
+mkdir -p "$c42_repo/.git/sweep-health"
+git -C "$c42_repo" worktree add -q "$c42_t/wt-stuck" -b feat/stuck >/dev/null 2>&1
+printf '%s\t%s\t%s\t%s\n' "$c42_t/wt-stuck" "$(($(date +%s) - 100 ))" 9 "uncommitted changes" > "$c42_repo/.git/sweep-health/stuck.tsv"
+out="$(PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c42_t/claude" HOME="$c42_t" DOCTOR_SWEEP_HEALTH_SCRIPT="$REPO_ROOT/scripts/worktree.sh" \
+    bash "$DOC" --no-color --root "$c42_repo" 2>&1)"
+if grepq "$out" 'WARN C42-sweep-health' && grepq "$out" -F 'STUCK ' && ! grepq "$out" 'INFO C42-sweep-health'; then
+    pass "C42 real worktree.sh prune --health -> WARN STUCK"
+else
+    fail "C42 real worktree.sh prune --health -> $(printf '%s' "$out" | grep -A1 C42)"
+fi
 rm -rf "$c42_t"
 
 # --- C43: bare `rtk hook claude` PreToolUse entry ---------------

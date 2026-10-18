@@ -111,7 +111,7 @@ run_clean() {
         export PATH="${STUB_DIR}:${PATH}"
         cd "$REPO" || exit 1
         set +e
-        out=$(bash "$CLEAN_GARDEN" "$@" 2>&1)
+        out=$(bash "$CLEAN_GARDEN" prune "$@" 2>&1)
         rc=$?
         printf '%s\nrc=%s\n' "$out" "$rc"
     )

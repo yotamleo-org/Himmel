@@ -186,7 +186,7 @@ run_clean() {
     (
         export PATH="${STUB_DIR}:${PATH}"
         cd "$REPO" || exit 1
-        bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
+        bash "$CLEAN_GARDEN" prune "$@" 2>&1
     )
 }
 

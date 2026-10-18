@@ -98,7 +98,6 @@ print_help() {
     exit 0
 }
 
-ORIG_ARGC=$#
 SUBCMD=""
 case "${1:-}" in
     new|prune) SUBCMD="$1"; shift ;;
@@ -145,14 +144,14 @@ if [ "$SUBCMD" = "prune" ]; then
         echo "ERR clean-garden: prune takes no branch-name (use: worktree.sh new $BRANCH)" >&2
         exit 2
     fi
-    PRUNE_ONLY=1
+    [ "$HEALTH" -eq 1 ] || PRUNE_ONLY=1   # --health is its own read-only path
 elif [ "$SUBCMD" = "new" ] && [ -z "$BRANCH" ]; then
     echo "ERR clean-garden: new needs a branch-name" >&2
     usage_err
 elif [ -z "$SUBCMD" ] && [ -n "$BRANCH" ] && [ "$PRUNE_ONLY" -eq 0 ] && [ -z "$ONLY_TARGET" ]; then
     NO_PRUNE=1   # bare `worktree.sh <branch>`: the older create-only form
-elif [ "$ORIG_ARGC" -eq 0 ]; then
-    usage_err   # a bare `worktree.sh` names no verb; never prune by accident
+elif [ -z "$SUBCMD" ] && [ -z "$BRANCH" ]; then
+    usage_err   # no verb and no branch (bare, flags only, or ""): never prune by accident
 fi
 
 if [ "$HEALTH" -eq 1 ] && { [ -n "$BRANCH" ] || [ -n "$ONLY_TARGET" ] || [ "$PRUNE_ONLY" -eq 1 ] || [ "$NO_PRUNE" -eq 1 ] || [ "$DRY_RUN" -eq 1 ] || [ "$NO_INSTALL" -eq 1 ]; }; then

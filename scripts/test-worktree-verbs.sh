@@ -81,5 +81,30 @@ run bash "$CG" --dry-run
 if [ "$rc" -eq 0 ] && grep -q 'deprecated' "$ERR" && grep -q 'worktree.sh prune' "$ERR"; then _pass "clean-garden.sh --dry-run still prunes and names worktree.sh prune on stderr"
 else _fail "clean-garden.sh --dry-run still prunes and names worktree.sh prune on stderr" "rc=$rc $(cat "$ERR")"; fi
 
+# --health reaches the health path (read-only monitor), via the verb and the forwarder.
+# Seed one stuck worktree in the sweep-health state file.
+git -C "$REPO" worktree add -q "$TMPBASE/wt-stuck" -b feat/stuck >/dev/null 2>&1
+mkdir -p "$REPO/.git/sweep-health"
+printf '%s\t%s\t%s\t%s\n' "$TMPBASE/wt-stuck" "$(( $(date +%s) - 100 ))" 9 "uncommitted changes" > "$REPO/.git/sweep-health/stuck.tsv"
+
+run bash "$WT" prune --health
+if [ "$rc" -eq 1 ] && grep -q '^STUCK ' "$OUT" && ! grep -q 'takes no other flag' "$ERR"; then _pass "worktree.sh prune --health reaches the health path (STUCK alarm, rc 1)"
+else _fail "worktree.sh prune --health reaches the health path (STUCK alarm, rc 1)" "rc=$rc $(cat "$OUT" "$ERR")"; fi
+
+run bash "$CG" --health
+if [ "$rc" -eq 1 ] && grep -q '^STUCK ' "$OUT" && grep -q 'worktree.sh prune' "$ERR"; then _pass "clean-garden.sh --health forwards to the health path"
+else _fail "clean-garden.sh --health forwards to the health path" "rc=$rc $(cat "$OUT" "$ERR")"; fi
+
+run bash "$WT" prune --health --dry-run
+if [ "$rc" -eq 1 ] && grep -q 'takes no other flag' "$ERR"; then _pass "worktree.sh prune --health --dry-run still refuses"
+else _fail "worktree.sh prune --health --dry-run still refuses" "rc=$rc $(cat "$OUT" "$ERR")"; fi
+
+# No verb and no branch is a usage error (rc 2): prune only ever runs behind `prune`.
+for noverb in --no-install --dry-run --verbose ''; do
+    run bash "$WT" "$noverb"
+    if [ "$rc" -eq 2 ] && ! grep -q 'clean-garden:' "$OUT" "$ERR"; then _pass "worktree.sh '$noverb' (no verb, no branch) exits 2 without pruning"
+    else _fail "worktree.sh '$noverb' (no verb, no branch) exits 2 without pruning" "rc=$rc $(cat "$OUT" "$ERR")"; fi
+done
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

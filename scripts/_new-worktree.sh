@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Create a himmel-convention worktree + branch in one shot.
 #
-# INTERNAL HELPER — invoked only by scripts/clean-garden.sh. Do not call directly;
-# use `/clean_garden <branch>` instead. (Renamed from `new-worktree.sh` in #39
+# INTERNAL HELPER — invoked only by scripts/worktree.sh. Do not call directly;
+# use `/worktree <branch>` instead. (Renamed from `new-worktree.sh` in #39
 # after `/clean_garden` superseded the standalone `/new-worktree` command.)
 #
 # Usage (internal):
