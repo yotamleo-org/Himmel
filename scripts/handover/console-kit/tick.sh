@@ -591,7 +591,7 @@ for leg in $LEGS_SPLIT; do
                 && printf '%s\n' "$newest_bullet" | grep -qE 'holding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
                 # a negation shortly before READY ("no longer holding at READY", "not currently
                 # holding at READY", "no longer READY <pr> <head>") is work again, not a READY
-                if ! printf '%s\n' "$newest_bullet" | grep -qiE "(no longer|not|never|n't|without)[^;.]{0,30}READY"; then  # pipefail-ok: one extracted line
+                if ! printf '%s\n' "$newest_bullet" | grep -qiE "((^|[^[:alnum:]_])(no longer|not|never|without)([^[:alnum:]_]|$)|n't)[^;.]{0,30}READY"; then  # pipefail-ok: one extracted line
                     tail_status=READY
                 fi
             fi
