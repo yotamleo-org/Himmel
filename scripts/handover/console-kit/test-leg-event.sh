@@ -14,6 +14,7 @@
 #   7. wrap-merged fails (rc 3)                              -> ESCALATE naming rc=3, rc 10
 #   8. message on stdin ("-") and a leading "- " bullet marker
 #   12. a WRAPPED message that mentions deferred / follow-up / residual with no key -> ESCALATE
+#   13. a WRAPPED leg whose doc has no PR: close-wrapped-leg.sh runs, HANDLED close-wrapped; a refused close -> ESCALATE
 #
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
@@ -220,5 +221,42 @@ run "WRAPPED N2078. Lock released."
 check "12h a plain wrap rc" "$rc" 0
 run "MERGED #2566 → abcdef01 N2088. Follow-up: x"
 check "12i MERGED is not checked here rc" "$rc" 0
+
+# 13. a WRAPPED leg whose doc names no PR (a research leg) is closed directly, not sent to wrap-merged
+cat > "$W/close" <<'EOF3'
+#!/usr/bin/env bash
+echo "close $*" >> "$LE_CALLS"
+[ -z "${LE_CLOSE_ERR:-}" ] || echo "$LE_CLOSE_ERR" >&2
+exit "${LE_CLOSE_RC:-0}"
+EOF3
+chmod +x "$W/close"
+export LE_CLOSE="$W/close"
+printf '%s\n' '## Results' '- 10:00 LIVE - start' '- 10:30 WRAPPED research done' > "$W/HIMMEL-4-N3001-research-2026-10-14.md"
+printf '%s\n' '## Results' '- 10:00 READY 2553 abc' > "$W/HIMMEL-5-N3002-shipped-2026-10-14.md"
+cat > "$W/list13" <<EOF3
+#!/usr/bin/env bash
+printf '%s\n' $W/HIMMEL-4-N3001-research-2026-10-14.md $W/HIMMEL-5-N3002-shipped-2026-10-14.md
+EOF3
+chmod +x "$W/list13"
+
+LE_LIST="$W/list13" run "WRAPPED N3001. Research only."
+check "13 no-PR rc" "$rc" 0
+contains "13 no-PR prints HANDLED" "$out" "HANDLED close-wrapped N3001"
+contains "13 close gets the fleet and the leg doc" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-4-N3001-research-2026-10-14.md"
+lacks "13 wrap-merged not run" "$calls" "wrap --doc"
+contains "13 live-state ran" "$(cat "$LE_LIVE_CALLS")" "live $W/doc"
+
+LE_LIST="$W/list13" run "WRAPPED N3002."
+contains "13 a doc with a PR still goes to wrap-merged" "$calls" "wrap --doc"
+lacks "13 a doc with a PR does not close directly" "$calls" "close"
+
+LE_CLOSE_RC=3 LE_CLOSE_ERR="close-wrapped-leg: refusing - queue lock held" LE_LIST="$W/list13" run "WRAPPED N3001."
+check "13 refused close rc" "$rc" 10
+contains "13 refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=3"
+contains "13 refusal surfaced" "$out" "queue lock held"
+check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
+
+LE_LIST="$W/list13" run "MERGED #2566 N3001"
+contains "13 MERGED never takes the close path" "$calls" "wrap --doc"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
