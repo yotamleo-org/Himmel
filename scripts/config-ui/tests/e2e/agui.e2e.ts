@@ -82,8 +82,10 @@ for (const scheme of ["dark", "light"] as const) {
       await expect(page.locator(".band")).toHaveCount(10);
       await page.screenshot({ path: info.outputPath("dense.png") });
       const strip = page.getByRole("region", { name: "Tool calls over time, by agent" });
-      const first = await page.locator(".transcript .msg").first().boundingBox();
-      expect(first!.y + first!.height).toBeLessThan(800);
+      // ponytail: census refresh may reset the transcript; stabilize the source in HIMMEL-6352.
+      await expect.poll(() => page.locator(".transcript .msg").first().evaluateAll(
+        ([el]) => el?.getClientRects()[0]?.bottom ?? Infinity,
+      ), { timeout: 15_000 }).toBeLessThan(800);
       const size = await strip.evaluate((el) => ({ height: el.clientHeight, scroll: el.scrollHeight }));
       expect(size.height).toBeLessThanOrEqual(240);
       expect(size.scroll).toBeGreaterThan(size.height);
