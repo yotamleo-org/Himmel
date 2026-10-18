@@ -136,7 +136,7 @@ cmd_up() {
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
             || up_fail "instances create failed for $vm"
     done
-    drop_jit "${created[@]}" || die "jit-config cleanup failed, the VM(s) it covered were deleted"
+    drop_jit "${created[@]}" || die "jit-config cleanup failed, deleting the affected VM(s) was attempted; check 'status' for leftovers"
     echo "gcp-runners: created $need VM(s); pool target $n"
 }
 

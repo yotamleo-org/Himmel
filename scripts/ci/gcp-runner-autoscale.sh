@@ -28,7 +28,7 @@ var="$("$GH" variable get CI_GCP --repo "$REPO")" || die "could not read CI_GCP"
 # A queued gcp job can sit in a run that is already in_progress (its other jobs started).
 runs="$("$GH" api --paginate "repos/$REPO/actions/runs?status=queued&per_page=100" --jq '.workflow_runs[].id')" || die "could not list queued runs"
 running="$("$GH" api --paginate "repos/$REPO/actions/runs?status=in_progress&per_page=100" --jq '.workflow_runs[].id')" || die "could not list in-progress runs"
-runs="$runs"$'\n'"$running"
+runs="$(printf '%s\n%s\n' "$runs" "$running" | sort -u)"  # a run can move queued to in_progress between the two reads
 depth=0
 while read -r id; do
     [ -n "$id" ] || continue

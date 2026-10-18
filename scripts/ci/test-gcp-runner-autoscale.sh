@@ -94,6 +94,10 @@ rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 3' "$STUB_LOG"; then ok 
 mkruns 10; mkjobs 10 queued:gcp; mkruns_ip 40; mkjobs 40 in_progress:ubuntu-latest queued:gcp
 rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 2' "$STUB_LOG"; then ok "queued gcp jobs of in-progress runs count"; else bad "in-progress run: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
 
+# 3c. a run seen in both listings (it moved between the reads) counts once.
+mkruns 10; mkjobs 10 queued:gcp; mkruns_ip 10
+rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 1' "$STUB_LOG"; then ok "a run in both listings counts once"; else bad "dup run: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
+
 # 4. queue depth 7: capped at 4.
 mkruns 30; mkjobs 30 queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp
 rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 4' "$STUB_LOG" && [ "$(ups)" -eq 1 ]; then ok "up is capped at 4"; else bad "depth 7: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
