@@ -117,11 +117,52 @@ else fail "T7 order='$order' out='$out'"; fi
 
 # T8: a question that is not why/how keeps graphify's order byte for byte.
 want="$(PATH="$T/bin:$PATH" graphify query x | python3 -I "$HERE/append-rationale.py" "$P/graphify-out/graph.json")"
-for q in "what is the RETASK channel" "Token" "show me how-to docs"; do
+for q in "what is the RETASK channel" "Token" "show me how-to docs" "how-to docs for jira" "reason codes for transition"; do
   out="$(run query "$q")"
   if [ "$out" = "$want" ]; then pass "T8 '$q' keeps graphify's order"
   else fail "T8 '$q' out='$out'"; fi
 done
+
+# T10: a flag before the question still ranks the answer: the question is the first non-flag argument.
+out="$(run query --budget 6000 "why does a halt need no token")"
+order="$(grep "^NODE " <<<"$out" | sed "s/^NODE //; s/ \[src=.*//" | tr "\n" "|")"
+if [ "$order" = "$HALT|RETASK channel|Need|Token|" ]; then pass "T10 --budget before the question still ranks it"
+else fail "T10 order='$order'"; fi
+
+# T11: a start node the caller gave stays first, ahead of the doc and rationale tiers.
+cat > "$T/bin/graphify" <<'STUB'
+#!/bin/sh
+echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start (given): ['queue-lock.sh'] | 4 nodes found"
+echo ""
+echo "NODE queue-lock.sh [src=scripts/handover/queue-lock.sh loc=L1 community=]"
+echo "NODE Need [src=scripts/board-model.ts loc=L16 community=]"
+echo "NODE RETASK channel [src=AGENTS.md loc=Subagent policy community=]"
+echo "NODE Halt/narrowing needs no token (fail-safe asymmetry) [src=docs/internals/retask-channel.md loc=None community=]"
+STUB
+out="$(run query "why does a halt need no token")"
+order="$(grep "^NODE " <<<"$out" | sed "s/^NODE //; s/ \[src=.*//" | tr "\n" "|")"
+if [ "$order" = "queue-lock.sh|$HALT|RETASK channel|Need|" ]; then pass "T11 a given start node stays above the ranked tiers"
+else fail "T11 order='$order'"; fi
+
+# T12: added doc nodes never push the answer past the requested budget (3 chars per token);
+# trailing code nodes make room for them instead.
+cat > "$T/bin/graphify" <<'STUB'
+#!/bin/sh
+echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start: ['Transition'] | 6 nodes found"
+echo ""
+echo "NODE Transition [src=scripts/jira/resolution.test.ts loc=L5 community=]"
+echo "NODE Need [src=scripts/board-model.ts loc=L16 community=]"
+echo "NODE need() [src=scripts/plan-index.sh loc=L25 community=]"
+echo "NODE Token [src=scripts/ansi.ts loc=L11 community=]"
+echo "NODE egress() [src=scripts/lib/test-claude-lane.sh loc=L45 community=]"
+echo "NODE console() [src=scripts/nav.js loc=L9 community=]"
+STUB
+budget=160
+raw="$(PATH="$T/bin:$PATH" graphify query x | python3 -I "$HERE/append-rationale.py" "$P/graphify-out/graph.json")"
+limit=$(( budget * 3 > ${#raw} ? budget * 3 : ${#raw} ))
+out="$(run query "why does the jira transition at merge need an explicit flag" --budget "$budget")"
+if [ "${#out}" -le "$limit" ] && grep -q '^NODE completes-ticket' <<<"$out" && grep -q '^NODE Transition ' <<<"$out"; then pass "T12 added nodes stay inside the budget (${#out} of $limit chars)"
+else fail "T12 ${#out} chars over limit $limit: out='$out'"; fi
 
 # T9: a why question whose answer misses the reason node gets it added, from the words of the question.
 cat > "$T/bin/graphify" <<'STUB'
