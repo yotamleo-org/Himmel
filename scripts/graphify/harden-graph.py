@@ -24,13 +24,15 @@
 # (resolved by the rule above), a `name()` symbol defined by exactly one AST
 # node, or a term defined in docs/glossary.md is merged into that canonical
 # node: its edges and hyperedge memberships are redirected and the canonical
-# node lists it in `merged_ids`. A code token or symbol with no AST node, and a
-# registry name (`/command`, `<name> plugin|skill|hook`, unique by
-# construction), merges its semantic copies into the smallest id. Never merged:
-# AST nodes (two same-name symbols in different files are distinct entities),
-# a token or symbol matching two+ AST nodes (counted identity-ambiguous), and
-# other prose labels outside the glossary ("Precedence ladder" names a
-# different ladder in two docs).
+# node lists it in `merged_ids`. A symbol with no AST node, and a registry name
+# (`/command`, `<name> plugin|skill|hook`, unique by construction), merges its
+# semantic copies into the smallest id. Never merged: AST nodes (two same-name
+# symbols in different files are distinct entities), a token or symbol
+# matching two+ AST nodes, a code-file token with no AST file node named from
+# two+ files (YAML/JSON/TOML get no AST node, and two docs naming
+# .pre-commit-config.yaml may mean two different files) -- both counted
+# identity-ambiguous -- and other prose labels outside the glossary
+# ("Precedence ladder" names a different ladder in two docs).
 # ponytail: a merged-away node's own edges are pruned by semantic-merge.py if its canonical semantic node disappears before its own file is re-extracted; re-extract the merged_ids files if semantic-runs.jsonl shows that loss.
 import argparse
 import json
@@ -148,8 +150,11 @@ def find_canonical_ids(nodes, by_path, by_base):
             unanchored[label].append(node_id)
         elif target != node_id:
             aliases[node_id] = target
-    for ids in unanchored.values():
+    for label, ids in unanchored.items():
         if len({nodes[i].get("source_file") for i in ids}) > 1:
+            if CODE_TOKEN_RE.fullmatch(label):
+                ambiguous += len(ids)
+                continue
             for alias in ids[1:]:
                 aliases[alias] = ids[0]
     return aliases, ambiguous
