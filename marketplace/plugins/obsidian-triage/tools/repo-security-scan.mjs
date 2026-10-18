@@ -163,6 +163,7 @@ const SKILL_DIRS = ["skills", ".claude/skills"];
 // ponytail: root docs + one level of command/skill dirs only (<=12 files, 200 KB each), not a full tree walk — upgrade path: ghFn tree API when a real miss shows up.
 function listFiles(fullName, ghFn, errors) {
   const wanted = ["README.md"];
+  const rootDocs = [];
   const tryList = (path) => {
     try {
       const r = ghFn(["api", `repos/${fullName}/contents${path ? "/" + path : ""}`]);
@@ -173,7 +174,8 @@ function listFiles(fullName, ghFn, errors) {
     }
   };
   for (const e of tryList("")) {
-    if (e.type === "file" && ROOT_FILE_RE.test(e.name) && e.name.toLowerCase() !== "readme.md") wanted.push(e.name);
+    if (e.type !== "file" || !ROOT_FILE_RE.test(e.name) || e.name.toLowerCase() === "readme.md") continue;
+    (/\.md$/i.test(e.name) ? rootDocs : wanted).push(e.name);
   }
   for (const dir of MD_DIRS) {
     for (const e of tryList(dir)) if (e.type === "file" && /\.md$/i.test(e.name)) wanted.push(`${dir}/${e.name}`);
@@ -181,7 +183,8 @@ function listFiles(fullName, ghFn, errors) {
   for (const dir of SKILL_DIRS) {
     for (const e of tryList(dir).filter((x) => x.type === "dir").slice(0, 5)) wanted.push(`${dir}/${e.name}/SKILL.md`);
   }
-  return [...new Set(wanted)].slice(0, MAX_FILES);
+  // root docs go last so the file cap never crowds out package.json, setup scripts, commands or skills
+  return [...new Set([...wanted, ...rootDocs])].slice(0, MAX_FILES);
 }
 
 /**
@@ -211,7 +214,9 @@ export function scanRepo(fullName, { ghFn, scanFn } = {}) {
   const scanned = files.map((f) => f.path);
   const summary = findings.length
     ? `flagged: ${[...new Set(findings.map((f) => `${f.kind}:${f.detail}`))].join(", ")}`
-    : `clean: ${scanned.length} file(s) scanned`;
+    : errors.length
+      ? `incomplete: ${scanned.length} file(s) scanned, ${errors.length} unreadable`
+      : `clean: ${scanned.length} file(s) scanned`;
   return { repo: fullName, status: errors.length ? "partial" : "ok", scanned, findings, summary };
 }
 
@@ -226,7 +231,7 @@ function makeGhFn() {
     };
   }
   return (args) => {
-    const res = spawnSync("gh", args, { encoding: "utf-8", windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+    const res = spawnSync("gh", args, { encoding: "utf-8", windowsHide: true, timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
     if (res.error) throw res.error;
     if (res.status !== 0) throw new Error(`gh exited ${res.status}`);
     return JSON.parse(res.stdout);

@@ -10,7 +10,7 @@ node "<plugin>/tools/repo-security-scan.mjs" "${owner_repo}" > /tmp/luna-ingest-
 
 Record in the synthesis:
 
-- Frontmatter `repo_scan: clean | flagged | unavailable` — `flagged` when `findings[]` is non-empty, `unavailable` on `fetch_error` or a non-zero exit of the tool (a scan that could not run is never written as `clean`).
+- Frontmatter `repo_scan: clean | flagged | unavailable` — `flagged` when `findings[]` is non-empty, `unavailable` on `fetch_error`, on `partial` with no findings (the summary reads `incomplete:`), or a non-zero exit of the tool (a scan that could not run or read every file is never written as `clean`).
 - A `## Security scan (advisory)` section: the `summary` line, then one bullet per finding as `` `<kind>: <detail>` in `<path>` ``. Omit nothing, quote nothing from the repo. Clean and `unavailable` runs render the `summary` line alone.
 
 Do **not** change `trust_tier`, `safety_flag` or the Phase 1.5 outcome from this scan: it informs the operator, it does not gate.

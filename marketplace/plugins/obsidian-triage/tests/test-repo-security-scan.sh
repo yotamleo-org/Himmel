@@ -90,6 +90,19 @@ console.log("GOOD_INJ=" + good.findings.some((f) => f.kind === "prompt-injection
 const dead = scanRepo("o/gone", { ghFn: () => { throw new Error("404"); }, scanFn });
 console.log("DEAD_STATUS=" + dead.status);
 console.log("SUMMARY=" + bad.summary);
+const gap = scanRepo("o/r", { ghFn: (args) => {
+  if (args.join(" ") === "api repos/o/r/contents/package.json") throw new Error("boom");
+  return mk("fine")(args);
+}, scanFn });
+console.log("GAP_STATUS=" + gap.status);
+console.log("GAP_SUMMARY=" + gap.summary);
+const many = Array.from({ length: 15 }, (_, i) => ({ name: "DOC" + i + ".md", type: "file", size: 5 }));
+const crowd = scanRepo("o/r", { ghFn: (args) => {
+  const k = args.join(" ");
+  if (k === "api repos/o/r/contents") return [...many, { name: "package.json", type: "file", size: 40 }];
+  return mk("fine")(args);
+}, scanFn });
+console.log("CROWD_PKG=" + crowd.scanned.includes("package.json"));
 EOF
 out2="$(node "$tmpdir/repo.mjs" 2>&1)"
 grep -q '^BAD_FLAGGED=true$' <<<"$out2" && r=yes || r=no; assert "scanRepo flags the seeded README" yes "$r"
@@ -98,6 +111,9 @@ grep -q '^SCANNED=README.md|package.json$' <<<"$out2" && r=yes || r=no; assert "
 grep -q '^GOOD_INJ=false$' <<<"$out2" && r=yes || r=no; assert "scanRepo clean README not flagged (control)" yes "$r"
 grep -q '^DEAD_STATUS=fetch_error$' <<<"$out2" && r=yes || r=no; assert "unreachable repo is fetch_error, not clean" yes "$r"
 grep -q '^SUMMARY=flagged: ' <<<"$out2" && r=yes || r=no; assert "summary line starts flagged:" yes "$r"
+grep -q '^GAP_STATUS=partial$' <<<"$out2" && r=yes || r=no; assert "unreadable file makes the scan partial" yes "$r"
+grep -q '^GAP_SUMMARY=incomplete: ' <<<"$out2" && r=yes || r=no; assert "finding-free partial scan is incomplete, not clean" yes "$r"
+grep -q '^CROWD_PKG=true$' <<<"$out2" && r=yes || r=no; assert "package.json survives the file cap behind many root docs" yes "$r"
 
 # -- Test 3: gather puts the scan in the dossier -----------------------------
 echo "Test 3: gather -> dossier.repos.security_scan"
