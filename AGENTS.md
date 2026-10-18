@@ -162,11 +162,9 @@ before improvising; that read is the primary path. **qmd finds content** —
 second hop (cross-repo, historic), scoped via `-c <name>` (`--collections` is
 NOT a qmd flag — silently ignored, searching everything while looking scoped);
 a qmd miss is NOT evidence a fact is absent. **graphify explains structure** (`graphify query` /
-`graphify explain` / `graphify path`) — only code files, `name()` symbols, glossary
-terms and `/command`/plugin/skill/hook names merge across files; other same-name
-concepts, and code symbols defined in 2+ files, stay separate (pick one with
-`path::symbol`). An hourly or incremental refresh can leave a merge stale
-(HIMMEL-6285), so confirm a `graphify path` miss with grep.
+`graphify explain` / `graphify path`) — only code files, `name()` symbols, glossary terms and `/command`/plugin/skill/hook names
+merge across files; other same-name concepts, and code symbols defined in 2+ files, stay separate (pick one with `path::symbol`).
+An hourly or incremental refresh can leave a merge stale (HIMMEL-6285), so confirm a `graphify path` miss with grep.
 Luna's hot cache
 `~/Documents/luna/hot.md` comes before crawling luna `index.md`. Extraction runs
 on scratchpad copies, **never live vaults**. A live external URL is none of the three organs' job — `WebFetch` it directly.
