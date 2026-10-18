@@ -422,7 +422,7 @@ build on itself across sessions without re-explaining the context each time.
 
 `bash scripts/docs-site/serve.sh` builds `docs/` with Starlight and serves it on
 loopback only: open `http://127.0.0.1:4321/Himmel/`. Needs Node 22.22+ and
-network on first run (`npm ci` in `site/`). `--dev` serves with live reload.
+network on first run (`npm ci` in `site/`).
 
 ## Contributing
 
