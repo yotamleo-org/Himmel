@@ -3,7 +3,7 @@
 # the local docs site. Runs serve.sh for real on 127.0.0.1:4321.
 # Needs `npm ci` in site/ (network); without it, skips loudly.
 set -u
-repo=$(cd "$(dirname "$0")/../.." && pwd)
+repo=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 pass=0
 fail=0
 ok() { pass=$((pass + 1)); printf 'PASS  %s\n' "$1"; }

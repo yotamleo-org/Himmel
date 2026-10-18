@@ -55,7 +55,8 @@ if [ "$c1" -eq 1 ]; then ok "criterion 1: titles from H1, exactly one h1 per pag
 check "criterion 1: git diff --stat docs/ is empty" test -z "$(git -C "$repo" status --porcelain -- docs)"
 
 # --- criterion 2: links
-check "criterion 2: no site-local href ends in .md" bash -c "! grep -rhoE 'href=\"(/|\\.)[^\"#]*\\.md[\"#]' '$dist' --include=index.html"
+md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; echo "rc=$?")
+check "criterion 2: no site-local href ends in .md" test "$md_pages" = "rc=1"
 check "criterion 2: .md link rewritten to its route" grep -q 'href="/Himmel/setup/install/"' "$(route_of getting-started.md)"
 check "criterion 2: repo-path link points at the GitHub blob URL" grep -q 'href="https://github.com/yotamleo/himmel/blob/main/CLAUDE.md"' "$(route_of getting-started.md)"
 c2=1
@@ -64,7 +65,7 @@ while IFS= read -r h; do
   p=${p#/Himmel}
   if [ -e "$dist$p" ] && [ -f "$dist$p" ]; then continue; fi
   [ -f "$dist${p%/}/index.html" ] || { c2=0; echo "  dead internal link $h"; }
-done < <(grep -rhoE 'href="/Himmel/[^"]*"' "$dist" --include=index.html | sed 's/^href="//; s/"$//' | sort -u | grep -vE '/_astro/|/pagefind/|favicon|sitemap')
+done < <(grep -rhoE --include=index.html 'href="/Himmel/[^"]*"' "$dist" | sed 's/^href="//; s/"$//' | sort -u | grep -vE '/_astro/|/pagefind/|favicon|sitemap')
 if [ "$c2" -eq 1 ]; then ok "criterion 2: every internal href resolves in dist"; else ko "criterion 2: every internal href resolves in dist"; fi
 # control: the remark step throws on a link to a file that does not exist
 broken=$(cd "$here" && node --input-type=module -e "

@@ -12,10 +12,14 @@ export function readAllowlist(file) {
 }
 
 export function h1Of(md) {
-  let fence = false;
+  let fence = null;
   for (const line of md.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
-    const m = !fence && line.match(/^# (.+?)\s*$/);
+    const f = line.match(/^\s*(`{3,}|~{3,})/);
+    if (f) {
+      if (!fence) fence = f[1];
+      else if (f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+    }
+    const m = !fence && !f && line.match(/^# (.+?)\s*$/);
     if (m) return m[1].replace(/`/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
   }
   throw new Error('no H1');

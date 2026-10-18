@@ -27,13 +27,16 @@ export function remarkDocs(opts) {
     const src = path.resolve(file.path);
     const dir = path.dirname(src);
     const rewrite = (url) => {
-      if (!url || /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('#') || url.startsWith('/')) return url;
+      if (!url || /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('#') || url.startsWith('?') || url.startsWith('/')) return url;
       const m = url.match(/^([^#?]*)([?#].*)?$/);
       const target = path.resolve(dir, decodeURIComponent(m[1]));
       const suffix = m[2] ?? '';
       const rel = path.relative(DOCS, target).split(path.sep).join('/');
       if (!rel.startsWith('..')) {
-        if (allow.has(rel)) return `${base}/${slugOf(rel)}/`.replace('//', '/') + suffix;
+        if (allow.has(rel)) {
+          const slug = slugOf(rel);
+          return `${base}/${slug === 'index' ? '' : slug}/`.replace('//', '/') + suffix;
+        }
         if (html.has(rel)) return `${base}/${rel}` + suffix;
       }
       if (!fs.existsSync(target)) {
