@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { join } from "node:path";
 import { mapFile } from "../agui/journal-mapper.ts";
-import { initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningAgents, runningCount, liveness, turnEnded, type View } from "../agui-web/src/reducer";
+import { agentBadge, bandCollapsed, initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningAgents, runningCount, liveness, turnEnded, type View } from "../agui-web/src/reducer";
 import fixture from "../agui-web/src/fixture.json";
 
 // the page is a pure fold of AG-UI events into view state; these cases pin it on the
@@ -380,6 +380,30 @@ describe("agent live state", () => {
     expect(liveness(ended, { live: false, closed: false }, 0).word).toBe("finished");
     expect(liveness(initialView(), { live: true, closed: false }, 0).word).toBe("connecting");
     expect(liveness(reduceAll([{ type: "RUN_ERROR", message: "x", timestamp: 1900 }], opened), { live: true, closed: false }, 0).word).toBe("stopped");
+  });
+});
+
+describe("run strip density", () => {
+  const agent = { id: "q", name: "CV cold review 1 (v7 correctness)", role: "critic", parentToolCallId: "parent" };
+  const running = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 },
+    { type: "TOOL_CALL_START", toolCallId: "parent", toolCallName: "Agent", timestamp: 1 },
+    { type: "TOOL_CALL_START", toolCallId: "read", toolCallName: "Read", agent, timestamp: 2 }]);
+  const between = reduceAll([{ type: "TOOL_CALL_RESULT", toolCallId: "read", content: "ok", timestamp: 3 }], running);
+  const done = reduceAll([{ type: "TOOL_CALL_RESULT", toolCallId: "parent", content: "ok", timestamp: 4 }], between);
+
+  test("only finished subagents collapse, never running or failed bands or the session", () => {
+    expect(bandCollapsed(done, "q")).toBe(true);
+    expect(bandCollapsed(running, "q")).toBe(false);
+    expect(bandCollapsed(between, "q")).toBe(false);
+    expect(bandCollapsed(done, "main")).toBe(false);
+    const failed = reduceAll([{ type: "TOOL_CALL_RESULT", toolCallId: "parent", isError: true, content: "failed", timestamp: 4 }], running);
+    expect(bandCollapsed(failed, "q")).toBe(false);
+    const resumed = reduceAll([{ type: "TOOL_CALL_START", toolCallId: "later", toolCallName: "Read", agent, timestamp: 5 }], done);
+    expect(bandCollapsed(resumed, "q")).toBe(false);
+  });
+
+  test("agent badges distinguish indices beyond the six repeating colours", () => {
+    expect([0, 5, 6, 9, 26].map(agentBadge)).toEqual(["1", "6", "7", "10", "27"]);
   });
 });
 
