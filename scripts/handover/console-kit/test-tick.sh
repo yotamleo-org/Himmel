@@ -2109,6 +2109,16 @@ contains 'a probe that prints a non-token reads vmrun=unknown (HIMMEL-5641)' "$v
 printf '#!/bin/sh\necho DISAGREE:2/2,online=0\n' > "$W/vmrun-probe-disagree.sh"
 vmrun_disagree="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-disagree.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe that reports units up with no runner online reads vmrun=DISAGREE (HIMMEL-6034)' "$vmrun_disagree" ' vmrun=DISAGREE:2/2,online=0'
+mkdir -p "$W/vd-mirror"
+printf '#!/bin/sh\necho 3\n' > "$W/vd-probe-3.sh"
+printf '#!/bin/sh\necho 0\n' > "$W/vd-probe-0.sh"
+printf '#!/bin/sh\necho oops\n' > "$W/vd-probe-bad.sh"
+vd_three="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/vd-probe-3.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'versionless Done tickets show as versionless-done=<n> (HIMMEL-6406)' "$vd_three" ' vmrun=off versionless-done=3'
+vd_zero="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/vd-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+case "$vd_zero" in *versionless-done*) fail "a clean project hides versionless-done (out='$vd_zero')" ;; *) pass 'a clean project hides versionless-done (HIMMEL-6406)' ;; esac
+vd_bad="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/vd-probe-bad.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a probe that prints a non-count reads versionless-done=unknown (HIMMEL-6406)' "$vd_bad" ' versionless-done=unknown'
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'
