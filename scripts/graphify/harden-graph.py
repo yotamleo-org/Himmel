@@ -161,7 +161,8 @@ def apply_canonical_ids(graph, ekey, nodes, aliases):
     duplicates an existing (source, target, relation, source_file) is dropped."""
     for alias, canon in aliases.items():
         node = nodes[canon]
-        node["merged_ids"] = sorted(set(node.get("merged_ids") or []) | {alias})
+        absorbed = set(nodes[alias].get("merged_ids") or []) | {alias}
+        node["merged_ids"] = sorted(set(node.get("merged_ids") or []) | absorbed)
     graph["nodes"] = [n for n in graph.get("nodes", []) if n["id"] not in aliases]
 
     def key(e):

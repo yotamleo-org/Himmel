@@ -528,6 +528,19 @@ cp "$D16/graph.json" "$D16/graph.json.before"
 out16b=$( python3 "$SCRIPT" --out "$D16" )
 echo "$out16b" | grep -qF "unchanged=1" && cmp -s "$D16/graph.json.before" "$D16/graph.json" \
   && pass "T16 re-run merges nothing twice" || fail "T16 re-run changed graph.json: $out16b"
+# An AST definition appearing later absorbs the earlier canonical node AND the
+# ids that node had already absorbed.
+python3 - "$D16/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+g["nodes"].append({"id": "scripts_matrix", "label": "matrix.json", "source_file": "scripts/matrix.json",
+                   "file_type": "code", "source_location": "L1", "_origin": "ast"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+python3 "$SCRIPT" --out "$D16" >/dev/null
+got16c=$( python3 -c 'import json,sys; print({n["id"]: n for n in json.load(open(sys.argv[1]))["nodes"]}["scripts_matrix"].get("merged_ids"))' "$D16/graph.json" )
+[ "$got16c" = "['docs_f_matrix', 'docs_g_matrix']" ] \
+  && pass "T16 a later canonical keeps the ids its alias had absorbed" || fail "T16 merged_ids lost on re-merge: $got16c"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
