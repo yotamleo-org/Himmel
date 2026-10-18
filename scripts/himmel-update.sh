@@ -1203,7 +1203,7 @@ report_pending_migrations() {
             helper="$1/scripts/lib/handover-path.sh"
             script="$1/marketplace/plugins/handover/scripts/migrate-v1-to-v2.sh"
             [ -r "$helper" ] && [ -r "$script" ] || exit 0
-            . "$helper"
+            . "$helper" # read-sink-ok: path is built from the checkout ROOT, not operator input
             state=$(handover_root) || exit 0
             # The legacy engine accepts --root <parent of handovers>.
             [ "${state##*/}" = handovers ] || exit 0
