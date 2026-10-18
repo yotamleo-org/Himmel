@@ -12,9 +12,11 @@ the PR head, then run the same CLI with the matching reason, one literal call
 per thread. A thread you cannot verify goes back to the leg as a finding.
 When YOUR OWN resolve call is classifier-denied, that is still not an
 operator item, and the playbook's defer-to-operator does not apply: write a
-`BLOCKED resolve <pr> <thread ids>` bullet with the denial text, retry once
-as one literal call per thread, and if a thread is still denied, leave it
-open with a reason reply and file a ticket for it.
+`BLOCKED resolve <pr> <thread ids>` bullet with the denial text. Retry once
+only if the denied call was not already one literal call per thread; a
+denied single-thread literal call is not retried. A thread still denied
+stays open: reply with the reason if the reply goes through, and file a
+ticket for it.
 This is escalation, not permission laundering: the CLI posts its reason on
 GitHub, so every resolve is auditable. It codifies console AS's 10-15 ruling
 to leg N2224 (resolveReviewThread allowed, one literal call per thread, stop
