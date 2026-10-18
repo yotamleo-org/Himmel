@@ -132,7 +132,6 @@ starter
 project
 none
 inline
-lean
 
 no
 INPUT
@@ -146,10 +145,10 @@ qs=$(count_questions "$out")
 # (repo-sync is requires:'platform:windows'), so the cadences
 # question is now asked (+1), and closed stdin
 # declines all three, which triggers the disarm-consent follow-up (+1) —
-# 7 main questions + those 2 = 9. See test-wizard-cadence-per-unit.sh case e
+# 6 main questions (pluginSet no longer asked) + those 2 = 8; the commit-rules prompts follow a bare "> " on closed stdin so this line-anchored count does not see them. See test-wizard-cadence-per-unit.sh case e
 # for the row-level coverage of this exact scenario.
-[ "$qs" -eq 9 ] \
-  || fail "case1: starter profile + vault=none should ask 7 main questions + cadences + disarm-consent = 9 (got $qs): $out"
+[ "$qs" -eq 8 ] \
+  || fail "case1: starter profile + vault=none should ask 6 main questions (pluginSet is no longer asked, HIMMEL-6362) + cadences + disarm-consent = 8 (got $qs): $out"
 grepq "$out" '"schemaVersion": 2' \
   || fail "case1: cache/summary should carry schemaVersion 2 (got: $out)"
 grepq "$out" '"profile": "starter"' \
@@ -204,7 +203,7 @@ c2bpath=$(build_path "$stub2b" bash jq python3 npm -- )
 h2b="$work/h2b"; mkdir -p "$h2b"
 set +e
 outOp=$(PATH="$c2bpath" HOME="$h2b" USERPROFILE="$(winpath "$h2b")" HIMMELCTL_CACHE_DIR="$(winpath "$h2b.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h2b.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=win32 \
-      "$node_bin" "$wizard" install --dry-run 2>&1 <<< "operator"); rcOp=$?
+      "$node_bin" "$wizard" install --dry-run --contribute 2>&1 <<< "operator"); rcOp=$?
 set -e
 [ "$rcOp" -eq 0 ] || fail "case2(operator): should succeed (got rc=$rcOp): $outOp"
 grepq "$outOp" -F '? vault [none|default-template|existing] (default: existing)' \
@@ -223,7 +222,7 @@ c2cpath=$(build_path "$stub2c" bash jq python3 npm -- )
 h2c="$work/h2c"; mkdir -p "$h2c"
 set +e
 outOpLinux=$(PATH="$c2cpath" HOME="$h2c" USERPROFILE="$(winpath "$h2c")" HIMMELCTL_CACHE_DIR="$(winpath "$h2c.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h2c.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=linux \
-      "$node_bin" "$wizard" install --dry-run 2>&1 <<< "operator"); rcOpLinux=$?
+      "$node_bin" "$wizard" install --dry-run --contribute 2>&1 <<< "operator"); rcOpLinux=$?
 set -e
 [ "$rcOpLinux" -eq 0 ] || fail "case2(operator, linux): should succeed (got rc=$rcOpLinux): $outOpLinux"
 grepq "$outOpLinux" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,doctor,vault-stall|none] (default: pipeline,qmd,graphmap)' \
@@ -255,7 +254,7 @@ grepq "$outOp" -F '? whisper model [tiny|base|small|medium|large-v3|large-v3-tur
 # stays correct if that mapping ever changes.
 adopter_profile_lib_w="$(winpath "$repo_root/scripts/himmelctl/lib/adopter-profile.js")"
 bridge_persist_artifact=$("$node_bin" -e "process.stdout.write(require('$adopter_profile_lib_w').bridgePersistenceArtifact() || '')")
-_needles=('? vault path' '? handover path' '? pluginSet' '? lanes' \
+_needles=('? vault path' '? handover path' '? lanes' \
           'always-on machine' '? cadences —' \
           'Protected Health Information' \
           "personal/medical vault this machine's agents must never send" \
@@ -307,7 +306,6 @@ starter
 project
 none
 inline
-lean
 INPUT
 )
 rc=$?
@@ -350,7 +348,6 @@ starter
 project
 none
 inline
-lean
 none
 no
 INPUT
@@ -649,7 +646,6 @@ starter
 project
 none
 inline
-lean
 none
 no
 INPUT
@@ -663,8 +659,8 @@ qs=$(count_questions "$out")
 # compare against is 9, not the 7 (the point of this
 # assertion — "--contribute does not change the count" — still holds; only
 # the number itself moved, for an unrelated reason).
-[ "$qs" -eq 9 ] \
-  || fail "case7: --contribute must not change the question count (baseline 9 post-HIMMEL-3068, got $qs): $out"
+[ "$qs" -eq 8 ] \
+  || fail "case7: --contribute must not change the question count (baseline 8 post-HIMMEL-6362 (pluginSet no longer asked), got $qs): $out"
 grepq "$out" '"devOverlay": true' \
   || fail "case7: --contribute should record devOverlay=true (got: $out)"
 grepq "$out" -iE '\? .*contribut' \
@@ -682,7 +678,6 @@ starter
 
 none
 inline
-lean
 INPUT
 )
 rc=$?
@@ -713,7 +708,6 @@ out=$(PATH="$c9path" HOME="$h9" USERPROFILE="$(winpath "$h9")" HIMMELCTL_CACHE_D
 1
 1
 1
-1
 2
 1
 INPUT
@@ -723,8 +717,6 @@ set -e
 [ "$rc" -eq 0 ] || fail "case9: numbered-answer run should succeed (got rc=$rc): $out"
 grepq "$out" '"profile": "starter"' \
   || fail "case9: answering '1' for profile should record starter (got: $out)"
-grepq "$out" '"pluginSet": "lean"' \
-  || fail "case9: answering '1' for pluginSet (its only option) should record lean (got: $out)"
 grepq "$out" '"hermes"' \
   || fail "case9: answering '2' for lanes (codex|hermes, default none) should record hermes (got: $out)"
 grepq "$out" '"codex"' \
@@ -785,41 +777,6 @@ grepq "$ask_enum_body" '\[0-9\]' \
   && fail "case10: askEnum() must NOT accept a bare numeric index — that would let a digit silently satisfy a consent/PHI prompt (got: $ask_enum_body)"
 echo "ok: case10 PHI/consent prompts are untouched by the numbered-menu conversion, and askEnum() itself accepts no bare digit"
 
-# ── Case 11: pluginSet=full is DROPPED from the wizard ───────
-# The pluginSet question stays (so every existing stdin sequence answering
-# 'lean' keeps working — case1 above proves that), but 'full' is no longer a
-# valid answer: typing it re-prompts exactly like any other invalid enum
-# value (askEnum's existing re-prompt loop, unchanged), and the printed menu
-# offers only the single 'lean' option.
-stub11="$work/case11"; mkdir -p "$stub11"
-c11path=$(build_path "$stub11" bash jq python3 npm -- )
-h11="$work/h11"; mkdir -p "$h11"
-set +e
-out=$(PATH="$c11path" HOME="$h11" USERPROFILE="$(winpath "$h11")" HIMMELCTL_CACHE_DIR="$(winpath "$h11.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h11.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
-      "$node_bin" "$wizard" install 2>&1 <<INPUT
-starter
-project
-none
-inline
-full
-lean
-
-no
-INPUT
-)
-rc=$?
-set -e
-[ "$rc" -eq 0 ] || fail "case11: run answering 'full' then 'lean' should succeed (got rc=$rc): $out"
-grepq "$out" '"pluginSet": "lean"' \
-  || fail "case11: the retry ('lean') should be the recorded answer (got: $out)"
-grepq "$out" '"pluginSet": "full"' \
-  && fail "case11: 'full' must never be recorded — it is not a valid answer anymore (got: $out)"
-grepq "$out" -F '  1) lean (recommended — press Enter)' \
-  || fail "case11: the pluginSet menu must offer lean (got: $out)"
-grepq "$out" -F '  2) full' \
-  && fail "case11: the pluginSet menu must never list full as option 2 (got: $out)"
-echo "ok: case11 pluginSet=full is rejected (re-prompts) and never offered in the menu; lean is the only path"
-
 # ── Case 12: whisper model numbered enum + custom escape hatch ──
 # The whisper-model question used to be free text with a default nobody could
 # evaluate without asking someone "what is the big one?" (the operator
@@ -842,7 +799,7 @@ whisper_case_input() {
   # one extra blank line vs. before — the new personal/medical
   # vault question sits between PHI and secretsWalk, defaults 'no' on blank,
   # so no follow-up path/marker sub-answers are ever reached here.
-  printf 'custom\n\ndefault-template\n\n\n\nnone\n\n\nnone\n\n\n\n\non\n\n\n%s\n' "$1"
+  printf 'custom\n\ndefault-template\n\n\nnone\n\n\nnone\n\n\n\n\non\n\n\n%s\n' "$1"
   if [ -n "${2:-}" ]; then printf '%s\n' "$2"; fi
   printf '\n'
 }

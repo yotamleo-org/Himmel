@@ -193,8 +193,8 @@ function laneCrossModelDisclosureLines() {
 // (install/note/optIn) — a second lane-fact table in bin.js would drift from
 // this one the first time a lane's install story changed.
 const LANE_HELP = {
-  codex: 'requires the codex CLI + its own login; skip if you don\'t have it',
-  hermes: 'gateway lane; own opt-in, own install profile, own credentials',
+  codex: 'a second-model review on each PR; uses your Codex plan, so run `codex login` first (skip if you don\'t have it)',
+  hermes: 'critic panel on a gateway (alpha); needs the hermes tool and a provider key',
 };
 
 // ollama-local and copilot-cli are no longer part of
@@ -1782,6 +1782,8 @@ function summaryLines(summary) {
       if (n) lines.push(`      ${n}`);
     }
   }
+  lines.push('');
+  lines.push('next: commit these files on a branch');
   lines.push('');
   return lines;
 }
