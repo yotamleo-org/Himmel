@@ -67,6 +67,7 @@ with_lock() (
             # record still naming that dead PID is stale; a new owner or absent
             # record means retry, not an acquisition failure.
             prim_current=''
+            # read-sink-ok: explicit lock-file API reads the caller-selected PID record in a caller-controlled directory.
             IFS= read -r prim_current 2>/dev/null < "$prim_lock" || continue
             [ "$prim_current" = "$prim_owner" ] || continue
             printf 'with_lock: dead or inaccessible owner in %s; explicit recovery required\n' "$prim_lock" >&2

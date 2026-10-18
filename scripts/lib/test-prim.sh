@@ -35,6 +35,7 @@ fi
 
 increment() {
     local n
+    # read-sink-ok: workers supply the counter path inside this suite's private temporary fixture.
     IFS= read -r n < "$1" || return 1
     sleep 0.05 || return 1
     printf '%s\n' "$((n + 1))" > "$1"
@@ -85,7 +86,7 @@ lock_workers() {
 lock_churn() {
     local root="$1" i pid pids='' rc=0
     printf '0\n' > "$root/churn-counter" || return 1
-    # shellcheck disable=SC2329 # Invoked indirectly by with_lock.
+    # shellcheck disable=SC2317,SC2329 # Invoked indirectly by with_lock.
     fast_increment() {
         local n
         IFS= read -r n < "$root/churn-counter" || return 1
@@ -210,7 +211,7 @@ fallback_owner_exited() {
     wait "$pid" || return 1
     printf '%s\n' "$pid" > "$T/exiting.lock" || return 1
     # Schedule release at the liveness-probe boundary; retain real kill status.
-    # shellcheck disable=SC2329 # The sourced helper calls this liveness probe.
+    # shellcheck disable=SC2317,SC2329 # The sourced helper calls this liveness probe.
     kill() {
         rm -f "$T/exiting.lock" || return 1
         builtin kill "$@"
@@ -222,7 +223,7 @@ fallback_owner_exited() {
 fallback_changed_directory() {
     mkdir "$T/elsewhere" || return 1
     printf 'unrelated\n' > "$T/elsewhere/cwd.lock" || return 1
-    # shellcheck disable=SC2329 # Invoked indirectly by with_lock.
+    # shellcheck disable=SC2317,SC2329 # Invoked indirectly by with_lock.
     change_directory() { cd "$T/elsewhere" || return 1; }
     cd "$T" || return 1
     PATH="$T/bin" with_lock cwd.lock change_directory || return 1
