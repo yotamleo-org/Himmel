@@ -147,9 +147,9 @@ def manifest_docs():
             continue
         for lg in legs:
             d = lg.get('doc') if isinstance(lg, dict) else None
-            if d and LEG_RE.match(os.path.basename(d)) and os.path.isfile(d):
+            if isinstance(d, str) and LEG_RE.match(os.path.basename(d)) and os.path.isfile(d):
                 out.append(d)
-    return out
+    return sorted(out, key=lambda x: (os.path.getmtime(x), x))
 
 
 def live_legs():
@@ -164,11 +164,11 @@ def live_legs():
             continue
         n, lab = LEG_RE.match(os.path.basename(p)).groups()
         out[int(n)] = [lab, mk, pr]
-    for p in manifest_docs():
+    for p in reversed(manifest_docs()):
         mk, pr = leg_marker(p)
         if mk not in ('WRAPPED', 'HALTED'):
             n, lab = LEG_RE.match(os.path.basename(p)).groups()
-            out[int(n)] = [lab, mk, pr]
+            out.setdefault(int(n), [lab, mk, pr])
     return out
 
 
