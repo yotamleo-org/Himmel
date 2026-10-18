@@ -1974,6 +1974,7 @@ $remaining" "" comment-only)
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
+        # ponytail: an archived unreleased version can still be picked as current, since `versions` prints no archived column; HIMMEL-6325 adds it and filters here
         local versions_out fold_to
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
