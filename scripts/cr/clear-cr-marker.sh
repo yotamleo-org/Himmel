@@ -1830,6 +1830,16 @@ if ! rm -f "$marker_claim"; then
 fi
 # Deleted for real — disarm the restore.
 marker_claim=""
+# A tip cleared through the trivial-descendant shortcut has no ledger row of its
+# own, and ready-check item 4 wants a status=ok row at the READY head. Record one
+# through the normal writer, after the delete so a refused run leaves no row that
+# a rerun would read as the tip's own review. Model "claude" is neither
+# cross-model nor floor evidence; the detail names the head it inherits from.
+if [ "$review_head" != "$tip" ]; then
+    bash "$SCRIPT_DIR/ledger-append.sh" avail --branch "$branch" --head "$tip" --model claude --status ok \
+        --detail "trivial-descendant of reviewed head $review_head (HIMMEL-5856)" >/dev/null 2>&1 \
+        || echo "clear-cr-marker: WARNING: could not record the status=ok ledger row for ${tip:0:8}; ready-check item 4 will read it as missing." >&2
+fi
 if [ "$stale_marker" -eq 1 ]; then
     echo "clear-cr-marker: WARNING: stale marker ${marker_sha:0:8} cleared only because the ledger gates certified the current tip ${tip:0:8}." >&2
     audit "CLEARED reason=stale-marker-superseded-by-ledger-at-tip branch=$branch marker_sha=$marker_sha tip=$tip responders=$responders${pr_num:+ pr=#$pr_num}${carry_audit:-}${clear_basis:-}"
