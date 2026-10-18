@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# site/test-site-build.sh — docs-site go/no-go: builds the docs site from
+# scripts/docs-site/test-site-build.sh — docs-site go/no-go: builds the docs site from
 # docs/ as-is and asserts the four criteria of the docs-site plan.
 #   1 titles come from the H1, no duplicate H1, no docs/ file edited
 #   2 relative .md links resolve to site routes, repo-path links point at the
@@ -9,8 +9,8 @@
 #     byte-identical
 # Needs `npm ci` in site/ (network); without site/node_modules it skips loudly.
 set -u
-here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/.." && pwd)
+repo=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
+here="$repo/site"
 pass=0
 fail=0
 ok() { pass=$((pass + 1)); printf 'PASS  %s\n' "$1"; }
