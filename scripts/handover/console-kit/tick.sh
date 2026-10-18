@@ -587,7 +587,8 @@ for leg in $LEGS_SPLIT; do
         # marker keeps its own word.
         if [ "$tail_status" = LIVE ]; then
             newest_bullet="$(sed -nE '/^- /p' "$leg_doc" 2>/dev/null | tail -n 1)" || newest_bullet=""  # pipefail-ok: sed reads the doc to EOF
-            if printf '%s\n' "$newest_bullet" | grep -qE 'holding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
+            if printf '%s\n' "$newest_bullet" | grep -qE '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' \
+                && printf '%s\n' "$newest_bullet" | grep -qE 'holding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
                 # a negated hold ("no longer holding at READY") is work again, not a READY
                 if ! printf '%s\n' "$newest_bullet" | grep -qiE "(no longer|not|never|n't)[[:space:]]+(be[[:space:]]+)?holding[[:space:]]+at[[:space:]]+READY"; then  # pipefail-ok: one extracted line
                     tail_status=READY
