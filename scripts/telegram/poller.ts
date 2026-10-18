@@ -559,6 +559,23 @@ async function handleStop(root: string, msg: DeliveredMsg, ticket: string, fromO
   await appendLine(join(sessionDir(root, ticket), "stop"), String(msg.ts ?? 0));
 }
 
+// OPERATOR-ONLY: an allow-listed group without a per-group allowFrom admits every
+// member, so a ticket route from a non-operator must not create a session, spawn
+// a run or un-park a failed one. A member may only append an untrusted follow-up
+// to a session that already exists; makeRunFn declines to spawn on pending lines
+// that carry no operator marker.
+async function handleMemberTicketRoute(root: string, msg: DeliveredMsg, route: Extract<Route, { ticket: string }>, notifyChat?: NotifyChatFn): Promise<void> {
+  const existing = route.kind === "followup" ? await readMeta(root, route.ticket) : null;
+  if (route.kind !== "followup" || !existing) {
+    if (notifyChat) {
+      try { await notifyChat(msg.chat_id, "work on is operator-only"); }
+      catch (e) { logRedacted(`[poller] ticket-route refusal could not be delivered for chat ${redactChatId(msg.chat_id)}: ${e}`); }
+    }
+    return;
+  }
+  await appendInboxOnce(join(sessionDir(root, route.ticket), "inbox.jsonl"), join(root, "handled-update.hw"), route.text, msg, false);
+}
+
 export async function handleInbound(root: string, msg: DeliveredMsg, run: InboundRunFn, auto?: AutoGate, triage: TriageFn = (text, sessionLabel, fromOperator) => classifyForSpawn(text, { sessionLabel, fromOperator }), isOperator: OperatorFn = () => false, notifyChat?: NotifyChatFn, requireMention: RequireMentionFn = () => false, botUsername?: string | null, consoleRoute?: ConsoleRouteGate): Promise<void> {
   // OPERATOR-ONLY (CR codex-adv-3). The tag is an operator instruction, and the
   // surrounding code treats it as one — but an allow-listed group WITHOUT a
@@ -690,6 +707,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
         return ((_: never) => { throw new Error(`unhandled triage verdict: ${String(_)}`); })(floored);
     }
   }
+  if ("ticket" in route && !fromOperator) { await handleMemberTicketRoute(root, msg, route, notifyChat); return; }
   const { created } = await ensureSession(root, session);
   let meta = await readMeta(root, session);
   if (created || !meta) {
@@ -1304,7 +1322,7 @@ const RUN_DEADLINE_MS = Number(process.env.RUN_TIMEOUT_MS ?? 30 * 60 * 1000) + 6
 // wires it to a direct poller-side sendMessage so the chat is told instead of
 // going silent. A clean run ends the episode. The episode set is in-memory: a
 // bridge restart may re-notice once — harmless.
-export type NotifyKind = "cap" | "transient" | "giveup" | "blocked";
+export type NotifyKind = "cap" | "transient" | "giveup" | "blocked" | "stopped";
 export type NotifyFn = (session: string, retryAt: string, kind: NotifyKind) => Promise<void>;
 // noticeText: the operator-facing notice string per kind. Pure +
 // exported so the cap-vs-transient honesty (a 529 must say "NOT a usage cap",
@@ -1316,6 +1334,7 @@ export function noticeText(kind: NotifyKind, when: string, maxRetries: number): 
   switch (kind) {
     case "giveup":    return `❌ gave up after ${maxRetries} failed runs — your message is still queued. Reply here to retry, or handle it from the terminal (see run.log in the session dir).`;
     case "blocked":   return `⛔ a reply was blocked by the content-filter policy (this is NOT a usage cap). Retrying won't help — the same output is blocked each time. Your message is still queued; investigate from the terminal (see run.log in the session dir).`;
+    case "stopped":   return `🛑 stopped by operator — the queued work for this session was dropped.`;
     case "cap":       return `⏳ hit the usage cap — your message is queued, retrying ~${when}.`;
     case "transient": return `⏳ a run failed transiently (e.g. server overload) — your message is queued, retrying ~${when}. This is NOT a usage cap.`;
     default:          return ((_: never) => { throw new Error(`unhandled notify kind: ${String(_)}`); })(kind);
@@ -1521,17 +1540,46 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     try { await notify(session, retryAtIso, kind); }
     catch (e) { logRedacted("[poller] " + kind + " notify failed for " + session + ": " + e); }
   };
+  // A ticket session acts only on operator lines (buildPrompt); true when any
+  // pending line past the first `skip` carries the operator marker.
+  const pendingHasOperatorLine = async (sd: string, skip: number): Promise<boolean> => {
+    const pending = await readFile(join(sd, "inbox.pending.jsonl"), "utf8");
+    return pending.split("\n").filter((l) => l.trim()).slice(skip).some((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } });
+  };
   const runOnce = async (session: string, modelOverride?: ModelOverride): Promise<void> => {
     if (lockdownEnabled(root)) return;
     const sd = sessionDir(root, session);
     const parked = await readMeta(root, session);
-    if (parked?.status === "failed") return;                    // retry cap exhausted — wait for a new message
+    if (parked?.status === "failed") {                          // retry cap exhausted — wait for a new message
+      // a stop on a parked session still consumes its marker and the queued work, or it would eat the operator's retry
+      if (existsSync(join(sd, "stop"))) {
+        await unlink(join(sd, "stop")).catch(() => {});
+        await commitPending(root, session, (await peekPending(root, session)).nextPos);
+      }
+      return;
+    }
     const { count, nextPos } = await peekPending(root, session);
     if (count === 0) {                                          // inbox fully consumed → reclaim (HIMMEL-221)
       const inbox = join(sd, "inbox.jsonl");
       await truncateFullyConsumed(inbox, inbox + ".consumed");
+      await unlink(join(sd, "stop")).catch(() => {});           // a stop with nothing to stop is moot
       return;
     }
+    // STOP MARKER: handleStop writes <session>/stop; honoured here, at
+    // the top of every turn, so it also covers the self-drain between spawns below.
+    // Consumed with the queued work: the operator said stop, nothing re-runs it.
+    const settleStopped = async () => {
+      await unlink(join(sd, "stop")).catch(() => {});
+      await commitPending(root, session, (await peekPending(root, session)).nextPos);   // fresh peek: lines queued since the turn began are stopped too
+      const m = await readMeta(root, session);
+      if (m) await writeMeta(root, session, { ...m, status: "idle", retry_at: null, fail_count: null });
+      noticed.delete(session);
+      await safeNotify(session, "", "stopped");
+    };
+    if (existsSync(join(sd, "stop"))) { await settleStopped(); return; }
+    // A queued member follow-up is no reason to spawn: it waits for the operator's next line.
+    const isTicket = /^[A-Z][A-Z0-9]+-[0-9]+$/.test(session);
+    if (isTicket && !(await pendingHasOperatorLine(sd, 0))) return;
     // `|| null` normalizes a falsy vault ("" from a blank access.json `vault:`) to
     // null, so the nullish-coalescing `?? repoCwd` below stays coherent with the
     // truthy `vault ?` checks (an empty string would otherwise spawn in cwd "" with
@@ -1601,7 +1649,9 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const mcpConfig = await resolveTelegramMcpConfig(repoCwd, lanesDir);
     if (lockdownEnabled(root)) return;
     let lockedAtSpawn = false;
+    let stoppedAtSpawn = false;
     const res = await runAndSettle(root, session, () => {
+      if (existsSync(join(sd, "stop"))) { stoppedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "stopped by operator" }); }
       // Settlement performs async I/O too: recheck immediately before spawn.
       // Not a content-filter block and no agent ran: code 0 settles the session
       // back to idle with its pending lines uncommitted.
@@ -1612,6 +1662,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // run's stdout/stderr vanished and failures were undebuggable
     const logHead = `[${new Date().toISOString()}] session=${session} code=${res.code} capped=${res.capped} blocked=${res.blocked ?? false} pid=${res.pid}\n`;
     await atomicWrite(join(sd, "run.log"), logHead + (res.tail ?? "(no output captured — run hung or was killed at the deadline)") + "\n");
+    if (stoppedAtSpawn) { await settleStopped(); return; }
     if (lockedAtSpawn) {
       noticed.delete(session);
       logRedacted(`[poller] lockdown arrived before spawn for ${session}; no agent ran, pending left queued`);
@@ -1665,7 +1716,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // not be stranded under the park — re-peek; growth = the operator spoke,
       // treat it as an un-park (same semantics as handleInbound's failed reset)
       const again = await peekPending(root, session);
-      if (again.count > count) {
+      if (again.count > count && (!isTicket || await pendingHasOperatorLine(sd, count))) {
         await writeMeta(root, session, { ...m, status: "idle", fail_count: null });
         noticed.delete(session);
         return;

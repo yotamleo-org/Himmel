@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { agentState, currentCall, initialView, liveness, reduce, runClock, runningAgents, runningCount, settledCount, type Agent, type ClockAnchor, type Entry, type Failure, type Text, type Tool, type View } from "./reducer";
+import { agentBadge, bandCollapsed, agentState, currentCall, initialView, liveness, reduce, runClock, runningAgents, runningCount, settledCount, type Agent, type ClockAnchor, type Entry, type Failure, type Text, type Tool, type View } from "./reducer";
 import type { Source } from "./stream";
 
 // A transport failure ends the run the same way RUN_ERROR does, so calls still running are marked failed too.
@@ -58,7 +58,7 @@ export function App({ source }: { source: Source }) {
     <>
       <TopBar view={view} now={now} source={source} closed={closed} at={at} onJump={jump}
         onReplay={() => { setOpen({}); setOnly(null); setAt(-1); setEpoch((n) => n + 1); }} />
-      <RunStrip view={view} now={now} only={only} onPick={(id) => { if (only && view.tools[id]?.agent !== only) setOnly(null); reveal(id); }} />
+      <RunStrip key={epoch} view={view} now={now} only={only} onPick={(id) => { if (only && view.tools[id]?.agent !== only) setOnly(null); reveal(id); }} />
       <div className="layout">
         <main className="transcript" aria-label="Agent transcript">
           {view.entries.length === 0 && <p className="quiet">{view.status === "error" ? "" : "Waiting for the agent's first event."}</p>}
@@ -122,19 +122,26 @@ function TopBar({ view, now, source, closed, at, onJump, onReplay }: {
 
 // One band per agent, in order of appearance; inside a band, parallel calls stack on its lanes.
 function RunStrip({ view, now, only, onPick }: { view: View; now: number; only: string | null; onPick: (id: string) => void }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const total = Math.max(now, 1);
   const tools = Object.values(view.tools).sort((a, b) => a.start - b.start);
   const bands = view.agentOrder.filter((id) => view.agents[id].lanes > 0);
   return (
-    <section className="strip" aria-label="Tool calls over time, by agent">
+    <section className="strip" tabIndex={0} aria-label="Tool calls over time, by agent">
       <div className="axis"><span>0s</span><span>{secs(total)}</span></div>
       {bands.map((id) => {
         const a = view.agents[id];
+        const foldable = bandCollapsed(view, id);
+        const collapsed = foldable && !expanded[id];
+        const label = <><span className="agent-badge">{agentBadge(view.agentOrder.indexOf(id))}</span><span className="band-label">{a.name}</span></>;
         return (
-          <div key={id} className={`band${only && only !== id ? " dim" : ""}`} style={agentStyle(view, id)}>
-            <span className="band-name" title={`${a.name} · ${a.role}`}><i className="dot" aria-hidden="true" />{a.name}</span>
-            <div className="lanes" style={{ height: `calc(var(--lane) * ${a.lanes})` }}>
-              {tools.filter((t) => t.agent === id).map((t) => {
+          <div key={id} className={`band${collapsed ? " collapsed" : ""}${only && only !== id ? " dim" : ""}`} style={agentStyle(view, id)}>
+            {foldable ? <button className="band-name" title={`${a.name} · ${a.role}`} aria-expanded={!collapsed} aria-controls={`band-lanes-${id}`}
+              onClick={() => setExpanded((o) => ({ ...o, [id]: !o[id] }))}>{label}<span aria-hidden="true">{collapsed ? "▸" : "▾"}</span></button>
+              : <span className="band-name" tabIndex={0} title={`${a.name} · ${a.role}`}>{label}</span>}
+            {collapsed && <span className="band-summary">{plural(a.calls, "call")} · done</span>}
+            <div id={`band-lanes-${id}`} className="lanes" hidden={collapsed} style={{ height: `calc(var(--lane) * ${a.lanes})` }}>
+              {!collapsed && tools.filter((t) => t.agent === id).map((t) => {
                 const left = (t.start / total) * 100;
                 const width = Math.max(((t.end ?? now) - t.start) / total * 100, 0.6);
                 return (
@@ -199,7 +206,7 @@ function Agents({ view, now, only, onOnly }: { view: View; now: number; only: st
             <li key={id} style={{ ...agentStyle(view, id), ["--depth" as string]: depth(a) }}>
               <button className="agent" aria-pressed={only === id} onClick={() => onOnly(only === id ? null : id)}
                 title={only === id ? "Show every agent" : `Show only ${a.name}`}>
-                <i className="dot" aria-hidden="true" />
+                <span className="agent-badge">{agentBadge(view.agentOrder.indexOf(id))}</span>
                 <span className="agent-name">{a.name}</span>
                 <span className="agent-meta">{[ROLE[a.role], a.kind && a.kind !== a.role ? a.kind.replace(/^.*:/, "") : "", model(a.model)].filter(Boolean).join(" · ")}</span>
                 <span className="agent-count">{plural(a.calls, "call")}</span>

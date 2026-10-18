@@ -128,6 +128,108 @@ run_test "(3d) HIMMEL-1866: empty fetched window preserves prior utilization" '
   [ "$(jq -r ".five_hour.utilization" "$CLAUDE_USAGE_CACHE")" = "40" ] || exit 1;
 '
 
+run_test "(3e) thin five_hour fetch keeps prior reset/dollars and partial-fetch provenance" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  printf "%s" "{\"five_hour\":{\"utilization\":40,\"resets_at\":\"R5\",\"used_dollars\":12},\"seven_day\":{\"utilization\":8,\"resets_at\":\"R7\",\"limit_dollars\":100},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":0}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  bash "$PRODUCER" </dev/null;
+  jq -e ".five_hour == {utilization:0,resets_at:\"R5\",used_dollars:12} and .seven_day == {utilization:8,resets_at:\"R7\",limit_dollars:100}" "$CLAUDE_USAGE_CACHE" || exit 1;
+  [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" = "1234567890" ] || exit 1;
+'
+
+run_test "(3f) thin seven_day fetch keeps prior reset/dollars; two valid fetched primaries refresh provenance and HUD stays two-key" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  printf "%s" "{\"five_hour\":{\"utilization\":40,\"resets_at\":\"R5\",\"used_dollars\":12},\"seven_day\":{\"utilization\":8,\"resets_at\":\"R7\",\"limit_dollars\":100},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  before=$(date +%s); bash "$PRODUCER" </dev/null;
+  jq -e ".seven_day == {utilization:20,resets_at:\"R7\",limit_dollars:100}" "$CLAUDE_USAGE_CACHE" || exit 1;
+  stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
+  [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
+  jq -e ".five_hour == {used_percentage:10,resets_at:\"R5\"} and .seven_day == {used_percentage:20,resets_at:\"R7\"}" "$HUD_USAGE_SNAPSHOT" || exit 1;
+'
+
+run_test "(3g) complete OAuth windows replace every fetched key and refresh provenance" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  prior="{\"utilization\":40,\"resets_at\":\"old\",\"limit_dollars\":100,\"used_dollars\":40,\"remaining_dollars\":60}";
+  printf "%s" "{\"five_hour\":$prior,\"seven_day\":$prior,\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  five="{\"utilization\":10,\"resets_at\":\"new5\",\"limit_dollars\":200,\"used_dollars\":20,\"remaining_dollars\":180}";
+  seven="{\"utilization\":20,\"resets_at\":\"new7\",\"limit_dollars\":300,\"used_dollars\":60,\"remaining_dollars\":240}";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":$five,\"seven_day\":$seven}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  before=$(date +%s); bash "$PRODUCER" </dev/null;
+  jq -e --argjson five "$five" --argjson seven "$seven" ".five_hour == \$five and .seven_day == \$seven" "$CLAUDE_USAGE_CACHE" || exit 1;
+  stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
+  [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
+'
+
+run_test "(3h) explicit fetched null wins over prior reset/dollars in either primary" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  prior="{\"utilization\":40,\"resets_at\":\"old\",\"used_dollars\":12}";
+  printf "%s" "{\"five_hour\":$prior,\"seven_day\":$prior}" > "$CLAUDE_USAGE_CACHE";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":10,\"resets_at\":null,\"used_dollars\":null},\"seven_day\":{\"utilization\":20,\"resets_at\":null,\"used_dollars\":null}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  bash "$PRODUCER" </dev/null;
+  jq -e ".five_hour == {utilization:10,resets_at:null,used_dollars:null} and .seven_day == {utilization:20,resets_at:null,used_dollars:null}" "$CLAUDE_USAGE_CACHE" || exit 1;
+'
+
+run_test "(3i) thin OAuth windows never carry fields across known accounts" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-current\"}}" > "$HOME/.claude.json";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  prior="{\"utilization\":40,\"resets_at\":\"other-account-reset\",\"used_dollars\":12}";
+  printf "%s" "{\"account\":\"different-account\",\"five_hour\":$prior,\"seven_day\":$prior,\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  bash "$PRODUCER" </dev/null;
+  jq -e ".five_hour == {utilization:10} and .seven_day == {utilization:20} and (.account != null and .account != \"different-account\")" "$CLAUDE_USAGE_CACHE" || exit 1;
+'
+
+run_test "(3j) missing or null fetched utilization ignores the whole window and preserves provenance" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  prior="{\"utilization\":40,\"resets_at\":\"old\",\"used_dollars\":12}";
+  printf "%s" "{\"five_hour\":$prior,\"seven_day\":$prior,\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"resets_at\":\"ignored\"},\"seven_day\":{\"utilization\":null,\"resets_at\":\"ignored\"}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  bash "$PRODUCER" </dev/null;
+  jq -e --argjson prior "$prior" ".five_hour == \$prior and .seven_day == \$prior and .primaries_refreshed_at == 1234567890" "$CLAUDE_USAGE_CACHE" || exit 1;
+'
+
+run_test "(3k) valid OAuth windows replace malformed same-account primaries without losing a healthy sibling" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-fields.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-current\"}}" > "$HOME/.claude.json";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  export USAGE_FORCE_REFRESH=1;
+  printf "%s" "{\"rate_limits\":{\"five_hour\":{\"utilization\":1},\"seven_day\":{\"utilization\":2}}}" | bash "$PRODUCER";
+  acct=$(jq -er ".account" "$CLAUDE_USAGE_CACHE") || exit 1;
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  for window in five_hour seven_day; do
+    for malformed in "\"corrupt\"" "[]" "42" "true"; do
+      jq -n --arg acct "$acct" --arg window "$window" --argjson malformed "$malformed" \
+        "{account:\$acct,five_hour:{utilization:1,resets_at:\"old\"},seven_day:{utilization:2,resets_at:\"old\"},primaries_refreshed_at:1234567890} | .[\$window] = \$malformed" > "$CLAUDE_USAGE_CACHE" || exit 1;
+      before=$(date +%s); bash "$PRODUCER" </dev/null;
+      jq -e --arg acct "$acct" --arg window "$window" \
+        ".account == \$acct and .five_hour == ({utilization:10} + (if \$window == \"five_hour\" then {} else {resets_at:\"old\"} end)) and .seven_day == ({utilization:20} + (if \$window == \"seven_day\" then {} else {resets_at:\"old\"} end))" "$CLAUDE_USAGE_CACHE" || exit 1;
+      stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
+      [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
+    done;
+  done;
+'
+
 run_test "(4) atomicity: temp+mv pattern present AND cache intact after failing OAuth stub (no partial/tmp file)" '
   W=$(mktemp -d); export HOME="$W/home"; mkdir -p "$HOME";
   export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";

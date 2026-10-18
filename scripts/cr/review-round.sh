@@ -11,8 +11,9 @@
 # one more delta round per reviewed head, even after the fix/merge-forward
 # delta was used. Consumed records are kept in <branch>.verdicts.
 # A CLEAN merge of the base (conflict-free, the PR's own diff
-# unchanged) is admitted past the cap without spending the one delta round; a
-# conflict-resolving merge needs a judge GO carrying `delta-scope:
+# unchanged), or one whose only resolution is a plugin.json version bump above
+# both parents, is admitted past the cap without spending the one delta round.
+# Any other conflict-resolving merge needs a judge GO carrying `delta-scope:
 # merge-resolution` and `delta-from:`, bound like the scope records.
 # Every verdict record read here (NO-GO delta, layer-decision,
 # scope) must carry write-verdict.sh's mac under the GO key; a hand-written or
@@ -965,11 +966,17 @@ EOF
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
     [ "$judge_rc" -ne 8 ] || return 8
-    # A clean merge-forward is admitted without spending the one
-    # delta round, whether or not it was already used. It is checked before the
-    # fix trigger: a clean merge carries no fix, so it must not spend the round.
+    # Clean and version-only merge-forwards are admitted without spending the
+    # one delta round, whether or not it was already used. Check before the
+    # fix trigger: neither carries a fix, so neither must spend the round.
     if clean_merge_forward "$delta_from" "$delta_to"; then
         delta_trigger="clean-merge"
+        delta_free=1
+        return 0
+    fi
+    if merge_forward_shape "$delta_from" "$delta_to" \
+        && version_only_merge "$delta_from" "$mf_merged_base" "$delta_to"; then
+        delta_trigger="version-merge"
         delta_free=1
         return 0
     fi
@@ -991,10 +998,6 @@ EOF
             && merged_base="$(git merge-base "$delta_to" "$base_sha" 2>/dev/null)"; then
             if clean_tree="$(git merge-tree --write-tree "$delta_from" "$merged_base" 2>/dev/null)" \
                 && [ "$clean_tree" = "$(git rev-parse "$delta_to^{tree}" 2>/dev/null)" ]; then
-                delta_trigger="merge-forward"
-                return 0
-            fi
-            if version_only_merge "$delta_from" "$merged_base" "$delta_to"; then
                 delta_trigger="merge-forward"
                 return 0
             fi

@@ -253,9 +253,7 @@ so it recurs. After such a run, re-apply himmel's hook pricing with
 restores the stock four-tool, no-timeout entries. The section is therefore **upstream-owned**: himmel keeps exactly
 what the installer writes, unmodified — a reinstall or upgrade is then a no-op
 (or a clean upstream text bump), never a conflict. himmel's own rules live
-entirely OUTSIDE the section; the one caveat (upstream text recommends
-`graphify path`, which Retrieval routing forbids) is a single line in the RULES
-above the section: where they conflict, RULES win. The budget gate
+entirely OUTSIDE the section; where they conflict, the RULES above it win. The budget gate
 (`scripts/ci/check-claude-md-budget.sh`) counts ONLY himmel's bytes — it
 excludes the section using the installer's own boundary rule — and asserts
 exactly one section (zero = anchor deleted, hint to reinstall; duplicates never

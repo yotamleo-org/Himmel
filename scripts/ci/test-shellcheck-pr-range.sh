@@ -220,6 +220,46 @@ fi
 '; commit_case dyn_nodir
 verdict dyn_nodir ALL
 
+# absent <name> <file>: the dry-run list must NOT carry <file>
+absent() {
+  local out
+  out=$(bash "$SPR" --dry-run "$BASE" 2>/dev/null) || { bad "$1: dry-run failed"; return; }
+  if printf '%s\n' "$out" | grep -Fxq -- "$2"; then bad "$1: list wrongly carries $2"; else ok "$1: list omits $2"; fi
+}
+
+# merge_ref: CI's pull_request checkout is GitHub's merge ref (^1 = base branch tip, ^2 = PR head)
+# and a rerun reuses the event's STALE base.sha, so base..HEAD spans every main commit since. Shape
+# copied from lint job 117489260636 (run 39059106090, PR 2997): $BASE stale, main moved on, the PR
+# adds one file. Only the PR's own file may be linted, not the main-side file.
+reset; w scripts/zzmain.sh '#!/usr/bin/env bash
+echo main
+'; commit_case mr_main; MR_MAIN=$(git rev-parse HEAD)
+reset; w scripts/zzpr.sh '#!/usr/bin/env bash
+echo pr
+'; commit_case mr_pr; MR_PR=$(git rev-parse HEAD)
+git checkout -q "$MR_MAIN" && git merge -q --no-ff -m mergeref "$MR_PR" || bad "merge_ref: fixture merge failed"
+export GITHUB_EVENT_NAME=pull_request
+verdict merge_ref FILES scripts/zzpr.sh
+absent merge_ref scripts/zzmain.sh
+unset GITHUB_EVENT_NAME
+
+# one_pass: the closure must not re-grep the tree once per file (a 324-file closure ran past the
+# job cap). A git shim logs every call; the 4-deep chain needs at most the one up-front grep.
+mkdir -p "$T/gshim"
+RGIT=$(command -v git)
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/git.log"\nexec %s "$@"\n' "$T" "$RGIT" > "$T/gshim/git"
+chmod +x "$T/gshim/git"
+git checkout -q -f "$CBASE" && git clean -fdxq
+printf '# touched again\n' >> scripts/zzc/c0.sh; commit_case one_pass
+: > "$T/git.log"
+PATH="$T/gshim:$PATH" BASE=$CBASE verdict one_pass FILES scripts/zzc/c3.sh
+greps=$(grep -c ' grep ' "$T/git.log")
+[ "$greps" -le 2 ] && ok "one_pass: $greps git grep call(s) for a 4-deep closure" || bad "one_pass: $greps git grep calls, want at most 2"
+
+# timings: a slow run must be diagnosable from the job log
+out=$(bash "$SPR" --dry-run "$CBASE" 2>&1 >/dev/null)
+printf '%s' "$out" | grep -q 'selection took' && ok "timings: selection time is printed" || bad "timings: no selection time in: $out"
+
 # sweep_*: the non-dry fallback shards the full sweep in parallel through a stub pre-commit.
 # A stub shard fails when handed a file named *bad*; it records every invocation's file list.
 mkdir -p "$T/bin"
@@ -316,6 +356,54 @@ chmod +x "$T/shim/cat"
 shimsweep; rc=$?
 [ "$rc" -ne 0 ] && ok "sweep_badrc: a non-numeric rc fails the sweep" || bad "sweep_badrc: non-numeric rc passed (rc 0)"
 rm -f "$T/shim/cat"
+
+# files_*: the selected-set lint with NO config change (no run_all), so only the FILES path runs.
+# The logging stub fails a shard handed a file named *bad*.
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+shift 3
+[ "${1:-}" = "--files" ] && shift
+printf '%s\n' "$*" >> "$STUB_LOG"
+case "$*" in *bad*) exit 1 ;; esac
+exit 0
+STUB
+reset; w scripts/zzbad.sh '#!/usr/bin/env bash
+echo $x
+'; commit_case files_fail
+: > "$T/stub.log"; shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "files_parallel: a failing selected file fails the lint" || bad "files_parallel: failing selected file passed (rc 0)"
+[ "$(cat "$T/stub.log")" = "scripts/zzbad.sh" ] && ok "files_parallel: the stub was handed exactly the FILES list" || bad "files_parallel: stub got: $(tr '\n' '|' < "$T/stub.log")"
+# files_serial: one cpu forces the subset serial fallback
+printf '#!/bin/sh\necho 1\n' > "$T/shim/nproc"; chmod +x "$T/shim/nproc"
+: > "$T/stub.log"; shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "files_serial: a failing selected file fails the serial subset lint" || bad "files_serial: failing selected file passed (rc 0)"
+[ "$(cat "$T/stub.log")" = "scripts/zzbad.sh" ] && ok "files_serial: the stub was handed exactly the FILES list" || bad "files_serial: stub got: $(tr '\n' '|' < "$T/stub.log")"
+# files_serial_pipefail: tr dies, xargs runs the stub with no files and it passes; the serial
+# subset lint must fail on the pipeline status
+cat > "$T/shim/tr" <<SHIM
+#!/bin/sh
+[ "\$1" = '\\n' ] && [ "\$2" = '\\0' ] && exit 1
+exec $RTR "\$@"
+SHIM
+chmod +x "$T/shim/tr"
+reset; w scripts/zzok.sh '#!/usr/bin/env bash
+echo ok
+'; commit_case files_pipefail
+: > "$T/stub.log"; shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "files_serial_pipefail: a failing tr fails the serial subset lint" || bad "files_serial_pipefail: failing tr passed (rc 0)"
+rm -f "$T/shim/tr" "$T/shim/nproc"
+# consumers_rc: the neighbour lookup's awk fails; the sort after it must not hide that, the
+# selection falls back to ALL rather than silently dropping a consumer
+printf '#!/bin/sh\ncase "$*" in *ENVIRON*) exit 2 ;; esac\nexec %s "$@"\n' "$RAWK" > "$T/shim/awk"
+chmod +x "$T/shim/awk"
+reset; w scripts/lib/gh-ci-cache.sh '#!/usr/bin/env bash
+CIC_SLEEP_CMD=sleep
+# touched
+'; commit_case consumers_rc
+out=$(PATH="$T/shim:$PATH" bash "$SPR" --dry-run "$BASE" 2>/dev/null)
+case "$out" in ALL*) ok "consumers_rc: a failing neighbour lookup selects ALL" ;; *) bad "consumers_rc: failing lookup gave: ${out%%$'\n'*}" ;; esac
+rm -f "$T/shim/awk"
 
 # script-absent-at-base: the workflow runs `git show <base>:<script>`; at a base
 # that predates the script it must fail, which drives the --all-files branch

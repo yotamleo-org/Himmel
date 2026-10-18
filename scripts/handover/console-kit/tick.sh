@@ -369,7 +369,9 @@ ready_mismatch_scan() {
         while read -r line; do
             pr="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\1/p')"
             head="$(printf '%s\n' "$line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\2/p')"
-            [ -n "$pr" ] && [ -n "$head" ] || continue
+            if [ -z "$pr" ] || [ -z "$head" ]; then
+                continue
+            fi
             grep -q "^$pr	$head	" "$rec" && continue
             if printf '%s\n' "$line" | grep -qiE 'no (ci[- ])?trust[- ]paths?|trust[- ]paths?: (none|no)\b|not a trust path|docs[- ]only|touch(es)? no trust|trust[- ]paths?:? (not touched|untouched)|not touch(es)? (a |any )?(ci[- ])?trust'; then claim=none
             elif printf '%s\n' "$line" | grep -qi 'trust'; then claim=named
@@ -579,6 +581,21 @@ for leg in $LEGS_SPLIT; do
         fi
         tail_status="$(leg_tail_status "$leg_doc")"
         [ -n "$tail_status" ] || tail_status="?"
+        # a LIVE bullet that says the leg is holding at READY (`holding at READY`, or
+        # `READY <pr> <full head>`) is a READY: a claudex leg cannot SendMessage, so
+        # this bullet is its only channel. Only LIVE is promoted; any other leading
+        # marker keeps its own word.
+        if [ "$tail_status" = LIVE ]; then
+            newest_bullet="$(sed -nE '/^- /p' "$leg_doc" 2>/dev/null | tail -n 1)" || newest_bullet=""  # pipefail-ok: sed reads the doc to EOF
+            if printf '%s\n' "$newest_bullet" | grep -qE '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' \
+                && printf '%s\n' "$newest_bullet" | grep -qE '[Hh]olding at READY|READY[^0-9a-f]*[0-9]+[[:space:]]+[0-9a-f]{40}'; then  # pipefail-ok: one extracted line
+                # a negation shortly before READY ("no longer holding at READY", "not currently
+                # holding at READY", "no longer READY <pr> <head>") is work again, not a READY
+                if ! printf '%s\n' "$newest_bullet" | grep -qiE "((^|[^[:alnum:]_])(no longer|not|never|without|cannot)([^[:alnum:]_]|$)|n't)[^;.]{0,30}READY"; then  # pipefail-ok: one extracted line
+                    tail_status=READY
+                fi
+            fi
+        fi
         # a READY whose GO file (<root>/.locks/go/<pr>.<head>) is still
         # absent after $go_stale_min minutes reads READY!stale. tails= is in the
         # console-wait action key, so the entry moving once wakes the console.
@@ -1516,7 +1533,9 @@ if [ -n "$dw_ps" ]; then
         }
         END { for (j = 1; j <= n; j++) print pid[j], et[j], ttl[j], (pid[j] in ppid_seen) ? 1 : 0 }')"
     while read -r dw_pid dw_et dw_tt dw_alive; do
-        [ -n "$dw_pid" ] && [ "$dw_alive" = 0 ] || continue
+        if [ -z "$dw_pid" ] || [ "$dw_alive" != 0 ]; then
+            continue
+        fi
         case "$dw_et" in ""|*[!0-9]*) continue ;; esac
         [ "$dw_et" -ge "$dw_grace" ] || continue
         dw_label="${dw_tt#HIMMEL-*-}"; dw_label="${dw_label%%-*}"
@@ -1579,11 +1598,23 @@ if [ -n "$root" ] && [ -d "$root/inbox" ]; then
         [ -f "$inbox_file" ] || continue
         inbox_name="${inbox_file##*/}"
         inbox_name="${inbox_name%.md}"
-        inbox_label="$(leg_label "$inbox_name")"
         inbox_size="$(wc -c < "$inbox_file" 2>/dev/null | tr -d '[:space:]')"
-        case "$inbox_size" in ''|*[!0-9]*) inbox_size='?' ;; esac
-        cursor="$(cat "$root/inbox/.cursor/$inbox_name" 2>/dev/null)" || cursor=0
-        case "$cursor" in ''|*[!0-9]*) cursor=0 ;; esac
+        case "$inbox_size" in ''|*[!0-9]*) continue ;; esac
+        # Hook delivery and native followers have different cursors. A wake
+        # follower must never hide rulings the hook has not delivered yet.
+        if [ -f "$root/inbox/.cursor/$inbox_name" ]; then
+            cursor="$(cat "$root/inbox/.cursor/$inbox_name" 2>/dev/null)" || cursor=0  # swallow-ok: a missing/unreadable cursor conservatively treats the inbox as unread
+            case "$cursor" in ''|*[!0-9]*|????????????????*) cursor=0 ;; esac
+        else
+            cursor="$(cat "$inbox_file.cursor" 2>/dev/null)" || cursor=0  # swallow-ok: a missing/unreadable cursor conservatively treats the inbox as unread
+            case "$cursor" in ''|*[!0-9]*|0?*|????????????????*) cursor=0 ;; esac
+            [ "$cursor" -le "$inbox_size" ] || cursor=0
+        fi
+        [ "$inbox_size" -gt "$((10#$cursor))" ] || continue
+        # A partial final line is not deliverable by inbox-follow.sh yet.
+        unread_lines="$(tail -c +$((10#$cursor + 1)) "$inbox_file" 2>/dev/null | tr -cd '\n' | wc -c | tr -d '[:space:]')"  # swallow-ok: unreadable inboxes are not proven unread and are omitted
+        [ "${unread_lines:-0}" -gt 0 ] || continue
+        inbox_label="$(leg_label "$inbox_name")"
         inbox_summary="$(csv_add "$inbox_summary" "$inbox_label:$inbox_size/$cursor")"
     done
 fi
@@ -1920,23 +1951,53 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
-    # `tick=` is always appended; `burn=` stays APPENDED only
-    # under --burn, after it. `fleet=`/`capacity=` are appended
-    # after everything else, so a consumer keyed on the existing fields and
-    # their order sees them only as a tail. `gql=` follows them, and
-    # `orphans=` follows, `nonces=` follows it, and
-    # `legset=` follows, `board=` follows it, and
-    # `tracker=` follows `board=`, `denials=` follows,
-    # and `ciq=` follows, `plan-index=` and `or=`
-    # follow, and `fails=` closes the line, before the optional `spare=`.
-    # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
-    if [ "$burn" -eq 1 ]; then
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
-    else
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
-    fi
+    # Keep reader inputs even at their defaults: console-wait.sh rejects
+    # missing required fields, and capacity/unowned-prs/tracker clear streaks.
+    # Only unconsumed healthy/default values are elided; unknowns stay visible.
+    compact_field() {
+        case "$1=$2" in
+            *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
+            ext-prs=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
+            plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip) return ;;
+        esac
+        printf ' %s=%s' "$1" "$2"
+    }
+    printf 'TICK %s' "$clock"
+    compact_field hb "$hb"
+    compact_field legs "$legs_summary"
+    compact_field livestate "$livestate_summary"
+    compact_field procs "$procs"
+    compact_field models "$models_summary"
+    compact_field ceiling "${ceiling_summary#ceiling=}"
+    compact_field atq "$at_count"
+    compact_field suites "$suites"
+    compact_field prs "$prs"
+    compact_field unowned-prs "$unowned_prs"
+    compact_field ext-prs "$ext_prs"
+    compact_field bank "$bank"
+    compact_field fill "$fill"
+    compact_field tails "$tails_summary"
+    compact_field inbox "$inbox_summary"
+    compact_field tick "$tick_status"
+    [ "$burn" -eq 0 ] || compact_field burn "$burn_summary"
+    compact_field fleet "$fleet"
+    compact_field capacity "$capacity"
+    compact_field gql "$gql"
+    compact_field orphans "$orphans"
+    compact_field nonces "$nonces_summary"
+    compact_field legset "$legset_summary"
+    compact_field board "$board_summary"
+    compact_field tracker "$tracker_summary"
+    compact_field vault "$vault_summary"
+    compact_field cloud "$cloud_summary"
+    compact_field orphans-wip "$orphans_wip"
+    compact_field denials "$denials_summary"
+    compact_field ciq "$ciq_summary"
+    compact_field plan-index "$plan_index_summary"
+    compact_field or "$openrouter"
+    compact_field fails "$fails_summary"
+    compact_field vmrun "$vmrun_summary"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
 fi
 if [ "$emit_fp" -eq 1 ]; then
     printf 'board-fp=%s\n' "$board_fp"

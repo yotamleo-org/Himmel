@@ -28,7 +28,19 @@ case "$*" in
     *actions/variables/HIMMEL_VM_RUNNER*) [ -e "$STUB/var" ] && cat "$STUB/var" || exit 1 ;;
     *actions/runners*)
         [ -z "${GH_RUNNERS_FAIL:-}" ] || exit 1
-        if [ -n "${GH_RUNNERS_JSON:-}" ]; then
+        if [ -n "${GH_RUNNERS_PAGES:-}" ]; then
+            paginate=""; prev=""
+            for a in "$@"; do
+                [ "$a" = --paginate ] && paginate=1
+                [ "$prev" = --jq ] && expr="$a"
+                prev="$a"
+            done
+            jq -r "$expr" "$GH_RUNNERS_PAGES/1.json" || exit 1
+            if [ -n "$paginate" ]; then
+                [ -z "${GH_RUNNERS_PAGE2_FAIL:-}" ] || exit 1
+                jq -r "$expr" "$GH_RUNNERS_PAGES/2.json"
+            fi
+        elif [ -n "${GH_RUNNERS_JSON:-}" ]; then
             for a in "$@"; do [ "$prev" = --jq ] && expr="$a"; prev="$a"; done
             printf '%s' "$GH_RUNNERS_JSON" | jq -r "$expr"
         else echo "${GH_BUSY:-0} ${GH_ONLINE:-1}"; fi ;;
@@ -213,6 +225,28 @@ reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
 [ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "journalctl ok with no ci-runner lines yet -> not FAILING" || bad "empty journal -> $(run status --tick)"
+
+echo "T6d runner counts include every page and fail closed on a later-page error"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+journal 1 200 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+mkdir -p "$TMP/pages"
+jq -n '{total_count:102, runners:[range(100) | {name:("other-" + tostring), status:"online", busy:true}]}' > "$TMP/pages/1.json"
+printf '%s\n' '{"total_count":102,"runners":[{"name":"himmel-vm-1","status":"online","busy":true},{"name":"himmel-vm-2","status":"online","busy":false}]}' > "$TMP/pages/2.json"
+tok="$(GH_RUNNERS_PAGES="$TMP/pages" run status --tick)"
+echo "two-page status --tick: $tok"
+[ "$tok" = "ok:2/2,busy=1" ] && ok "himmel-vm runners after 100 unrelated runners are counted" || bad "two-page count -> $tok"
+rm -f "$TMP/state/tick-vmrun-cache"
+tok="$(GH_RUNNERS_PAGES="$TMP/pages" GH_RUNNERS_PAGE2_FAIL=1 run status --tick)"
+[ "$tok" = FAILING ] && ok "unreadable second page -> FAILING, not a first-page count" || bad "unreadable second page -> $tok"
+[ ! -e "$TMP/state/tick-vmrun-cache" ] && ok "a partially read runner list is not cached" || bad "partial runner list was cached"
+
+# Both pages contribute: neither the first nor the last may be discarded.
+printf '%s\n' '{"total_count":102,"runners":[{"name":"himmel-vm-1","status":"online","busy":true}]}' > "$TMP/pages/1.json"
+printf '%s\n' '{"total_count":102,"runners":[{"name":"himmel-vm-2","status":"online","busy":true}]}' > "$TMP/pages/2.json"
+tok="$(GH_RUNNERS_PAGES="$TMP/pages" run status --tick)"
+[ "$tok" = "ok:2/2,busy=2" ] && ok "busy counts are summed across pages" || bad "summed pages -> $tok"
 
 echo "T7 status prints the units and the last error"
 reset

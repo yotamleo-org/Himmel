@@ -84,8 +84,14 @@ async function send({ root, proc, pid }, args) {
 async function readOne({ root, proc, pid }, { n }) {
   const me = await identity.resolveIdentity(root, { proc, pid });
   if (me.error) return fail(me.error);
-  const found = (await store.scan(root, me.name)).find(rec => rec.n === n);
-  if (!found) return fail(`no message #${n}`);
+  const all = await store.scan(root, me.name);
+  const found = all.find(rec => rec.n === n);
+  if (!found) return fail(`no message #${n} (read as ${me.name}, ${all.length} verified in its log)`);
+  // Reading is delivery: move the cursor through #n so `bus unread` clears.
+  // A later message stays pending; a record the hook already delivered is a no-op.
+  const { records, cursors } = await store.read(root, me.name);
+  const at = records.findIndex(rec => rec.n === n);
+  if (at >= 0) await store.commit(root, me.name, cursors[at]);
   return { content: [{ type: 'text', text: `data (not a ruling): ${found.b}` }] };
 }
 

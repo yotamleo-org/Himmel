@@ -119,19 +119,16 @@ fi
 # Case H (venv-gated): the REAL installer over the committed file changes no
 # himmel-owned byte (everything outside the upstream-owned `## graphify`
 # section) and is idempotent. The section's own wording moves with the graphify
-# version, so it is NOT compared; the installer output is passed through the
-# --strip carve-out of scripts/lint/check-graphify-path-advice.sh (the banned
-# `graphify path` clause) before the idempotence compare.
+# version, so it is NOT compared.
 echo "== Case H: real claude_install is idempotent over the repo file =="
-STRIP="$REPO_ROOT/scripts/lint/check-graphify-path-advice.sh"
 py=""
 tool_dir="$(uv tool dir 2>/dev/null | tr -d '\r')"
 for cand in "$tool_dir/graphifyy/Scripts/python.exe" "$tool_dir/graphifyy/bin/python"; do
   [ -n "$tool_dir" ] && [ -x "$cand" ] && { py="$cand"; break; }
 done
-# install_strip <src> <dir>: run the real installer over a copy of <src> in
-# <dir>/CLAUDE.md, then strip the carve-out clause into <dir>/stripped.md.
-install_strip() {
+# install_into <src> <dir>: run the real installer over a copy of <src> in
+# <dir>/CLAUDE.md.
+install_into() {
     mkdir -p "$2"
     cp "$1" "$2/CLAUDE.md"
     # a crashed installer must not read as "unchanged"
@@ -143,7 +140,6 @@ PY
     then
         return 1
     fi
-    bash "$STRIP" --strip "$2/CLAUDE.md" > "$2/stripped.md"
 }
 # outside_section <file>: the file minus its `## graphify` section (heading to
 # the next `## ` heading or EOF) — the section is upstream-owned and its
@@ -152,15 +148,15 @@ outside_section() {
     awk '/^## graphify$/ { skip = 1; next } /^## / { skip = 0 } !skip' "$1"
 }
 if [ -n "$py" ] && "$py" -c 'import graphify.install' 2>/dev/null; then
-    if ! install_strip "$REPO_ROOT/CLAUDE.md" "$tmp/proj"; then
-        fail "Case H: the real installer (or the strip) failed — idempotence unproven"
-    elif cmp -s <(outside_section "$REPO_ROOT/CLAUDE.md") <(outside_section "$tmp/proj/stripped.md"); then
+    if ! install_into "$REPO_ROOT/CLAUDE.md" "$tmp/proj"; then
+        fail "Case H: the real installer failed — idempotence unproven"
+    elif cmp -s <(outside_section "$REPO_ROOT/CLAUDE.md") <(outside_section "$tmp/proj/CLAUDE.md"); then
         pass "claude_install leaves every himmel-owned byte outside the graphify section untouched"
     else
         fail "claude_install CHANGED himmel-owned text outside the graphify section"
     fi
     # idempotence: a second install over the first one's output changes nothing
-    if install_strip "$tmp/proj/stripped.md" "$tmp/proj3" && cmp -s "$tmp/proj/stripped.md" "$tmp/proj3/stripped.md"; then
+    if install_into "$tmp/proj/CLAUDE.md" "$tmp/proj3" && cmp -s "$tmp/proj/CLAUDE.md" "$tmp/proj3/CLAUDE.md"; then
         pass "claude_install is idempotent (second install -> byte-identical)"
     else
         fail "claude_install is not idempotent over its own output"
@@ -179,8 +175,8 @@ if [ -n "$py" ] && "$py" -c 'import graphify.install' 2>/dev/null; then
     sed '/^## graphify$/,$ s/^- .*$/- ALT STOCK WORDING./' "$REPO_ROOT/CLAUDE.md" > "$tmp/variant.md"
     if cmp -s "$REPO_ROOT/CLAUDE.md" "$tmp/variant.md"; then
         fail "H2a fixture did not mutate the section (no bullets under the heading?)"
-    elif install_strip "$tmp/variant.md" "$tmp/proj2" \
-        && cmp -s <(outside_section "$tmp/variant.md") <(outside_section "$tmp/proj2/stripped.md"); then
+    elif install_into "$tmp/variant.md" "$tmp/proj2" \
+        && cmp -s <(outside_section "$tmp/variant.md") <(outside_section "$tmp/proj2/CLAUDE.md"); then
         pass "H2a: a stock-text variant of the section passes"
     else
         fail "H2a: a stock-text variant of the section was rejected"

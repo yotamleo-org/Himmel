@@ -374,7 +374,7 @@ async function runGather(args) {
     headFn: makeHeadFn(),
     urlFn: makeUrlFn(),
     scanFn: makeScanFn(),
-    webFn: makeWebFn(),
+    webFn: makeWebFn(process.env, { vaultRoot }),
   };
 
   let ok = 0;
