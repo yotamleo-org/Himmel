@@ -500,9 +500,15 @@ if [ -n "$RESIDUAL_OF" ]; then
     wv_depth() {
         sed -n 's/^labels: //p' "$wv_mirror/$1.md" 2>/dev/null | grep -o 'residual-depth-[0-9]*' | sed 's/residual-depth-//' | sort -n | tail -1
     }
-    wv_parent=$(wv_depth "$RESIDUAL_OF")
-    wv_new=$(( ${wv_parent:-0} + 1 ))
-    for wv_key in $(filed_residual_keys "$EVIDENCE"); do
+    wv_new=
+    if [ -r "$wv_mirror/$RESIDUAL_OF.md" ]; then
+        wv_parent=$(wv_depth "$RESIDUAL_OF")
+        wv_new=$(( ${wv_parent:-0} + 1 ))
+    else
+        echo "write-verdict: warning - no mirror for $RESIDUAL_OF, so its depth is unknown; add the residual-depth label by hand" >&2
+    fi
+    for wv_key in $([ -n "$wv_new" ] && filed_residual_keys "$EVIDENCE"); do
+        [ "$wv_key" = "$RESIDUAL_OF" ] && continue
         # shellcheck disable=SC2086  # wv_jira is a command plus its script path
         JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --add-labels "residual-depth-$wv_new" >/dev/null 2>&1 ||
             echo "write-verdict: warning - could not stamp residual-depth-$wv_new on $wv_key; add the label by hand" >&2

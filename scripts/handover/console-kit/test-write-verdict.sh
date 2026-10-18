@@ -718,7 +718,8 @@ check "23: an unlabelled parent is depth 0, so the residual is stamped residual-
 : > "$rdlog"
 rc=0; rdwv q23c GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" >/dev/null 2>&1 || rc=$?
 check "23: without --residual-of nothing is stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 0
-printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-902 a depth-3 child\n' > "$evd/rd-ev2.md"
+printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-903 a depth-3 child\n' > "$evd/rd-ev2.md"
+printf -- '---\nkey: "HIMMEL-903"\nlabels: []\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-903.md"
 : > "$rdlog"
 rc=0; out=$(rdwv q23d GO "$SHA_A" --evidence-file "$evd/rd-ev2.md" --residual-of HIMMEL-902 2>&1) || rc=$?
 check "23: a depth-3 stamp still writes the verdict rc 0" "$rc" 0
@@ -726,6 +727,20 @@ contains "23: a depth-2+ residual carrying a fixVersion draws a warning" "$out" 
 check "23: the stamp never touches fixVersions" "$(grep -c 'fix-version' "$rdlog")" 0
 rc=0; rdwv q23e GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of bogus >/dev/null 2>&1 || rc=$?
 check "23: a --residual-of that is not a ticket key is refused rc 2" "$rc" 2
+: > "$rdlog"
+rc=0; out=$(rdwv q23f GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-999 2>&1) || rc=$?
+check "23: a parent with no mirror still writes the verdict rc 0" "$rc" 0
+check "23: a parent with no mirror stamps nothing" "$(wc -l < "$rdlog" | tr -d ' ')" 0
+contains "23: a parent with no mirror warns" "$out" "no mirror for HIMMEL-999"
+printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 follow-up to HIMMEL-900\n- HIMMEL-910 again\n' > "$evd/rd-ev3.md"
+: > "$rdlog"
+rc=0; rdwv q23g GO "$SHA_A" --evidence-file "$evd/rd-ev3.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
+check "23: only the first key on a residual line is stamped" "$(grep -c '^edit HIMMEL-901 ' "$rdlog")" 1
+check "23: a contextual parent key on a residual line is not stamped" "$(grep -c '^edit HIMMEL-900 ' "$rdlog")" 0
+printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-900 the parent itself\n' > "$evd/rd-ev4.md"
+: > "$rdlog"
+rc=0; rdwv q23h GO "$SHA_A" --evidence-file "$evd/rd-ev4.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
+check "23: the --residual-of parent is never relabelled" "$(wc -l < "$rdlog" | tr -d ' ')" 0
 
 # strict parse of every file this suite wrote through the writer (hand-built fixtures excluded)
 strict_bad=0 strict_n=0

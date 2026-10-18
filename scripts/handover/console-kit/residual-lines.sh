@@ -35,13 +35,14 @@ unfiled_residual_section_lines() {
     sec && items && /^[^ \t]/ { sec = 0 }' "$1"
 }
 
-# Every HIMMEL-<n> key on a residual line of an evidence file (the same lines
-# unfiled_residual_section_lines reads), one per line, first-seen order.
+# The first HIMMEL-<n> key on each residual line of an evidence file (the same lines
+# unfiled_residual_section_lines reads), one per line, first-seen order. Later keys on
+# a line are context (a parent, a related ticket), not the filed residual.
 filed_residual_keys() {
     awk '
     { sub(/\r$/, "") }
     function lead(s) { gsub(/^[ \t]*(#+[ \t]+)?(\*\*)?/, "", s); gsub(/(\*\*)?[ \t]*:?(\*\*)?[ \t]*$/, "", s); return tolower(s) }
-    function keys(s,   k) { while (match(s, /HIMMEL-[0-9]+/)) { k = substr(s, RSTART, RLENGTH); if (!(k in seen)) { seen[k] = 1; print k } s = substr(s, RSTART + RLENGTH) } }
+    function keys(s,   k) { if (match(s, /HIMMEL-[0-9]+/)) { k = substr(s, RSTART, RLENGTH); if (!(k in seen)) { seen[k] = 1; print k } } }
     tolower($0) ~ /^[ \t]*([-*+][ \t]+)?residuals?:[ \t]*[^ \t]/ { keys($0); next }
     /^#+[ \t]/ || /^\*\*.*\*\*:?[ \t]*$/ || /^[A-Za-z-]+:[ \t]*$/ {
         l = lead($0); sec = (l ~ /^(non-blocking|follow-ups?|residuals?)$/); items = 0; next
