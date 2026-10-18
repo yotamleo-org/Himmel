@@ -291,8 +291,12 @@ copy_recorded() {
       --writer adopt.sh "${pre[@]}" --post-file "$dest"; then
     if [ "$op" = replace ] && [ -n "$tmp" ]; then
       # the backup did not land: put the user's file back rather than keep an unbacked overwrite
-      cp -p "$tmp" "$dest" 2>/dev/null
-      echo "  not replaced $f (the backup could not be recorded; original restored)" >&2
+      if cp -p "$tmp" "$dest"; then
+        echo "  not replaced $f (the backup could not be recorded; original restored)" >&2
+      else
+        echo "  ERROR: $f was overwritten and could not be restored; your original is kept at $tmp" >&2
+        tmp=""
+      fi
       COPY_REFUSED+=("$f")
     else
       echo "  warning: provenance record failed for $f (the copy is in place; uninstall will keep it)" >&2
