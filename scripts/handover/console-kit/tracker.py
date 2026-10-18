@@ -506,11 +506,14 @@ def num(key):
 
 # the Jira-first view. Buckets come from the status NAME (statusCategory only for a name not listed).
 BUCKETS = {'to do': 'todo', 'backlog': 'todo', 'in progress': 'prog', 'in review': 'rev', 'ci': 'ci', 'in ci': 'ci',
-           'done': 'done', 'closed': 'done', 'in public': 'done', 'wont do': 'wont', 'wont fix': 'wont'}
+           'done': 'done', 'closed': 'wont', 'in public': 'done', 'wont do': 'wont', 'wont fix': 'wont'}
+SHIPPED = ('', 'done', 'fixed')
 
 
 def bucket(m):
-    return BUCKETS.get(m['sn'].strip().lower()) or {'Done': 'done', 'In Progress': 'prog'}.get(m['cat'], 'todo')
+    """'wont' is every closed-without-shipping state: Closed, wont do/fix, or Done with a resolution other than Done/Fixed."""
+    b = BUCKETS.get(m['sn'].strip().lower()) or {'Done': 'done', 'In Progress': 'prog'}.get(m['cat'], 'todo')
+    return 'wont' if b == 'done' and m['res'].strip().lower() not in SHIPPED else b
 
 
 def read_versions(path, mir):
@@ -540,7 +543,7 @@ def done_in_future(mir, vers, unknown):
     if cur is None:
         return 0
     fut = {v['n'] for v in unrel} - {cur['n']}
-    return sum(1 for m in mir.values() if m['st'] == 2 and any(f in fut for f in m['fv']))
+    return sum(1 for m in mir.values() if bucket(m) == 'done' and any(f in fut for f in m['fv']))
 
 
 def jira_view(mir, legs, vers, prows, vnames):
@@ -549,7 +552,7 @@ def jira_view(mir, legs, vers, prows, vnames):
     prows are the plan's placed rows (user impact is col 9, plan version col 3), vnames the plan's version names."""
     vi = {v['n']: i for i, v in enumerate(vers)}
     plan = {r[0]: r for r in prows}
-    tk = []
+    tk, wont = [], {}
     for k, m in mir.items():
         hit = [v for v in m['fv'] if v in vi]
         if not hit:
@@ -557,6 +560,9 @@ def jira_view(mir, legs, vers, prows, vnames):
         un = [v for v in hit if not vers[vi[v]]['rel']]
         v = min(un, key=vi.get) if un else max(hit, key=vi.get)
         b, p = bucket(m), plan.get(num(k))
+        if b == 'wont':
+            wont[vi[v]] = wont.get(vi[v], 0) + 1
+            continue
         lg = legs.get(num(k))
         tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
                        ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
@@ -567,9 +573,66 @@ def jira_view(mir, legs, vers, prows, vnames):
         return t['b'] not in ('done', 'wont')
 
     cur = next((i for i in range(len(vers)) if not vers[i]['rel'] and any(t['v'] == i and open_(t) for t in tk)), -1)
+    for t in tk:
+        if t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']:
+            t['v'] = cur
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
-    return tk, cur, nxt, [a for a in al if a[1]]
+    return tk, cur, nxt, [a for a in al if a[1]], sorted([i, n] for i, n in wont.items())
+
+GROUP_NAMES = ['0 critical', '1K knowledge retrieval', '1 data freshness', '2 rules, truth and eval', '3 CI throughput',
+               '4 PS3 blockers', '5 structural guards', '6 stability bugs', '7 console offload', '8 cost']
+PRIO_KEY_RE = re.compile(r'(?<![\w.])(?:HIMMEL-)?(\d{2,5})(?![\d.])')
+
+
+def priority_groups(path):
+    """[(group name, [ticket numbers in dispatch order])] from the plan's `priority:` line, or [] without one.
+
+    The line is the first non-blank line after the one naming "`priority:` line", or a line starting `priority:`; `|`
+    separates groups. The last two segments are the rest-of-version marker and the bottom pair; tokens with no number
+    (K1, SCORECARD) hold no key."""
+    try:
+        lines = open(path, encoding='utf-8').read().splitlines()
+    except OSError:
+        return []
+    line = ''
+    for i, l in enumerate(lines):
+        if l.startswith('priority:'):
+            line = l[len('priority:'):]
+            break
+        if l.startswith('`priority:` line'):
+            line = next((x for x in lines[i + 1:] if x.strip()), '')
+            break
+    segs = [x for x in line.split('|')]
+    if len(segs) < 3:
+        return []
+    names = GROUP_NAMES[:len(segs) - 2] + ['rest of version'] + ['bottom']
+    return [(n, [int(k) for k in PRIO_KEY_RE.findall(sg)]) for n, sg in zip(names, segs)]
+
+
+def remaining_board(mir, version, groups):
+    """Markdown of the open tickets whose fixVersion includes `version`, grouped by the plan's priority groups.
+
+    Done, Closed, In Public and wont do/fix tickets are left out. A ticket on no group line goes to 'rest of version'
+    (and in the rest group, ahead of the bottom group); a ticket named in two groups stays in the first."""
+    opn = {num(k): m for k, m in mir.items()
+           if version in m['fv'] and bucket(m) not in ('done', 'wont')}
+    placed, out = set(), []
+    names = [g[0] for g in groups] or ['rest of version']
+    rows = {n: [] for n in names}
+    for n, keys in groups:
+        for k in keys:
+            if k in opn and k not in placed:
+                placed.add(k)
+                rows[n].append(k)
+    rest = 'rest of version' if 'rest of version' in rows else names[0]
+    rows[rest] += sorted(k for k in opn if k not in placed)
+    out.append('# %s remaining board: %d open' % (version, len(opn)))
+    for n in names:
+        if rows[n]:
+            out.append('\n## %s (%d)' % (n, len(rows[n])))
+            out += ['- HIMMEL-%d [%s] %s' % (k, opn[k]['sn'] or opn[k]['cat'], clip(opn[k]['title'], 90)) for k in rows[n]]
+    return '\n'.join(out) + '\n'
 
 
 def first_sentence(s):
@@ -579,19 +642,19 @@ def first_sentence(s):
 
 
 KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('done', 'Done'))
-KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done', 'wont': 'done'}
+KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done'}
 
 
-def kanban(tk, vers, cur, base):
+def kanban(tk, vers, cur, base, wont=()):
     """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
-    one-line user-facing description. IN CI reads as In Review; wont do/fix as Done; a To Do ticket a live leg works reads
+    one-line user-facing description. IN CI reads as In Review; closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
     In Progress, as the main board does. The release being worked on (cur) opens expanded."""
     base = base.strip().rstrip('/')
     if not re.match(r'^https?://', base):
         base = ''
-    out = []
+    out, wn = [], dict(wont)
     for i, v in enumerate(vers):
         a = [t for t in tk if t['v'] == i]
         if not a:
@@ -601,9 +664,10 @@ def kanban(tk, vers, cur, base):
             cols[KCOL_OF['prog' if t['live'] else t['b']]].append(t)
         n_open = len(a) - len(cols['done'])
         parts = ['<details class="krel"%s data-v="%s"><summary><span class="vn">%s</span> '
-                 '<span class="kmeta">%d open of %d%s</span></summary><div class="kboard">'
+                 '<span class="kmeta">%d open of %d%s%s</span></summary><div class="kboard">'
                  % (' open' if i == cur else '', esc(v['n']), esc(v['n']), n_open, len(a),
-                    ' · released ' + esc(v['date']) if v['rel'] else '')]
+                    ' · released ' + esc(v['date']) if v['rel'] else '',
+                    ' · %d closed without shipping' % wn[i] if wn.get(i) else '')]
         for c, title in KCOLS:
             parts.append('<div class="kcol" data-col="%s"><h3>%s <span class="kn">%d</span></h3>' % (c, title, len(cols[c])))
             for t in cols[c]:
@@ -662,7 +726,7 @@ def plain_impact(body):
 
 def read_mirror():
     """{key: dict(st, sn, cat, fv, upd, title, type, impact, labels, parent, rel, otext)} from the mirror; sn is the Jira
-    status name, cat its category; rel the relates-linked ticket numbers, otext the title and description (HIMMEL-5453)."""
+    status name, cat its category, res its resolution ('' when none); rel the relates-linked ticket numbers, otext the title and description (HIMMEL-5453)."""
     out = {}
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         txt = open(p, encoding='utf-8', errors='replace').read()
@@ -702,7 +766,12 @@ def read_mirror():
             sn = json.loads(fm.get('status', '""'))
         except ValueError:
             sn = ''
+        try:
+            res = json.loads(fm.get('resolution', 'null'))
+        except ValueError:
+            res = None
         out[key] = dict(st=2 if cat == 'Done' else 1 if cat == 'In Progress' else 0, sn=sn if isinstance(sn, str) else '', cat=cat, fv=fv,
+                        res=res if isinstance(res, str) else '',
                         upd=fm.get('updated', '').strip('"'), title=m.group(1) if m else '',
                         type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]),
                         labels=lab if isinstance(lab, list) else [], parent=par if isinstance(par, str) and KEY_RE.fullmatch(par) else '',
@@ -841,6 +910,9 @@ def bench(mir, rows, n_plan, act, seqm, erange):
         s = dict(n=len(ns), open=0, done=0, legs=0, dated=0, wall=0, active=0, first=None, end=None)
         for n in ns:
             m = mir.get('HIMMEL-%d' % n)
+            if m and bucket(m) == 'wont':
+                s['n'] -= 1  # closed without shipping: out of every count
+                continue
             s['done' if m and m['st'] == 2 else 'open'] += 1
             a = act.get(n)
             if a:
@@ -909,9 +981,13 @@ def write_bench(path, out, opr, unr):
 def main():
     global MIRROR, LUNA, HANDOVERS, ROOT, OUT, LUNA_MAP, VERSIONS
     ap = argparse.ArgumentParser(description='Render the HIMMEL-3882 roadmap tracker page.')
-    ap.add_argument('--plan-dir', required=True, help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
-    ap.add_argument('--out', required=True, help='tracker.html to write')
-    ap.add_argument('--luna-map', required=True, help='luna-map.json cache path')
+    ap.add_argument('--remaining', metavar='VERSION', default=None,
+                    help='write the open tickets of one version grouped by the plan priority line (--priority-file) to '
+                         '--out (else stdout), then exit; needs only --mirror-dir')
+    ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining)')
+    ap.add_argument('--plan-dir', help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
+    ap.add_argument('--out', help='tracker.html to write')
+    ap.add_argument('--luna-map', help='luna-map.json cache path')
     ap.add_argument('--mirror-dir', default=MIRROR)
     ap.add_argument('--versions-file', default=None,
                     help="a `jira versions` snapshot: name<TAB>released<TAB>releaseDate (default <mirror-dir>.versions.tsv)")
@@ -927,6 +1003,19 @@ def main():
     ap.add_argument('--refresh-luna', action='store_true')
     ap.add_argument('--emit-fp', action='store_true')
     a = ap.parse_args()
+    if a.remaining:
+        MIRROR = os.path.abspath(a.mirror_dir)
+        grp = priority_groups(a.priority_file) if a.priority_file else []
+        if a.priority_file and not grp:
+            raise SystemExit('tracker:--priority-file %s is unreadable or has no priority: line' % a.priority_file)
+        text = remaining_board(read_mirror(), a.remaining, grp)
+        if a.out:
+            open(a.out, 'w', encoding='utf-8').write(text)
+        else:
+            print(text, end='')
+        return
+    if not (a.plan_dir and a.out and a.luna_map):
+        ap.error('--plan-dir, --out and --luna-map are required unless --remaining is given')
     ROOT, OUT, LUNA_MAP, MIRROR, LUNA = (os.path.abspath(a.plan_dir), os.path.abspath(a.out),
                                          os.path.abspath(a.luna_map), os.path.abspath(a.mirror_dir),
                                          os.path.abspath(a.luna_root))
@@ -1012,6 +1101,8 @@ def main():
     for r in placed:
         k, m = r['key'], mir.get(r['key'])
         planned.add(k)
+        if m and bucket(m) == 'wont':
+            continue
         lay = r.get('layer') or 'misc'
         fl = 1 if (m and m['fv'] and r['version'] not in m['fv']) else 0  # drift
         rows.append([num(k), clip(m['title'] if m else '(not in mirror)', 62),
@@ -1022,7 +1113,7 @@ def main():
                            float(r['effort_mid'] or 0)))
     n_plan = len(rows)
     for k, m in mir.items():
-        if k in planned:
+        if k in planned or bucket(m) == 'wont':
             continue
         hit = [v for v in m['fv'] if TRAIN_RE.match(v) and v in vidx]
         if hit:
@@ -1032,6 +1123,8 @@ def main():
     unpl = []
     for r in read_tsv(os.path.join(S, 'unplaced.tsv'))[1]:
         m = mir.get(r['key'])
+        if m and bucket(m) == 'wont':
+            continue
         unpl.append([num(r['key']), clip(m['title'] if m else '', 60), m['st'] if m else 0,
                      clip(r['reason'], 60)])
     # parked closures stay visible (evidence = the reason); other closure flags are not shown.
@@ -1039,6 +1132,8 @@ def main():
         if r['close_flag'] != 'park-ns':
             continue
         m = mir.get(r['key'])
+        if m and bucket(m) == 'wont':
+            continue
         unpl.append([num(r['key']), clip(m['title'] if m else '', 60), m['st'] if m else 0,
                      clip(r.get('close_evidence', ''), 70)])
 
@@ -1050,8 +1145,8 @@ def main():
     dt = drift_log(a.drift_log, sum(1 for r in rows if r[7] == 1), sum(1 for r in rows if r[7] == 2 and r[2] != 2), nothm)
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
-    jt, jc, jn, ja = jira_view(mir, legs, jv, rows[:n_plan], vers)
-    kb = kanban(jt, jv, jc, a.jira_base_url)
+    jt, jc, jn, ja, jw = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    kb = kanban(jt, jv, jc, a.jira_base_url, jw)
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}
@@ -1062,7 +1157,7 @@ def main():
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
                 LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes, P=rows,
-                U=unpl, DR=dirs, N=notes, LG=lg, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, RU=ru,
+                U=unpl, DR=dirs, N=notes, LG=lg, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, RU=ru,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
                                             [v for v in vers if trail_parent(v)])),
@@ -1079,7 +1174,7 @@ def main():
     unp = sum(1 for r in rows if r[7] == 2 and r[2] != 2)  # open only
     drift = sum(1 for r in rows if r[7] == 1)
     dif = done_in_future(mir, jv, ru)
-    cov =sum(1 for r in rows[:n_plan] if r[8])
+    cov = sum(1 for r in rows[:n_plan] if r[8])
     print('wrote %s.bench.tsv: %d planned items, operator bundle %d, unattributed %d'
           % (outp, len(bn), bop[8], bun[8]))
     print('wrote %s (%.1f KB): %d planned, %d unplanned, %d drift, %d unthemed, %d unplaced, %d done-in-future; mirror %d issues'
@@ -1342,7 +1437,7 @@ a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
 }
 </style>
 <header class="mast"><div class="in"><b class="brand">himmel · roadmap</b><span class="stamp" id="stamp"></span>
-<button class="jsw" id="hide" type="button" role="switch" aria-checked="true" title="Hides Done, Closed, In Public, wont do and wont fix from the boards and lists; the counts in the hero sentence and the table still include them."><span class="jt"></span>Hide done work</button>
+<button class="jsw" id="hide" type="button" role="switch" aria-checked="true" title="Hides Done and In Public from the boards and lists; the counts in the hero sentence and the table still include them. Closed and wont do tickets are in no count."><span class="jt"></span>Hide done work</button>
 <button class="tbtn" id="theme" type="button">Theme</button></div></header>
 <div class="shell" id="main">
 <main>
@@ -1718,8 +1813,8 @@ function renderPvj(){var a=M.inTrain(REM),dr=a.filter(function(p){return p[7]==1
 var JV=D.JV,JT=D.JT,JB=[["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]],
  RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JC>=0?D.JC:JV.length-1;
 var HIDE=true;try{var hs=localStorage.getItem("hide3990");if(hs!==null)HIDE=hs==="1"}catch(e){}
-// jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins; wont do/fix count as done.
-function jb(t){return t.live?"prog":t.b=="wont"?"done":t.b}
+// jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins. Tickets closed without shipping are not in JT (D.JW counts them).
+function jb(t){return t.live?"prog":t.b}
 function jin(i){return JT.filter(function(t){return t.v===i})}
 function jtally(a){var r={n:a.length};JB.forEach(function(s){r[s[0]]=[]});a.forEach(function(t){r[jb(t)].push(t)});r.open=a.length-r.done.length;return r}
 function jdot(b,x){return el("span","jst jc-"+b,x)}
@@ -1757,7 +1852,8 @@ function jboard(){var b=$("board"),f=$("donefold");b.textContent="";f.textConten
  if(JSEL<0){$("bh").textContent="No versions";$("bsub").textContent="";return}
  var v=JV[JSEL],a=jin(JSEL),t=jtally(a);
  $("bh").textContent=v.n+(JSEL===JCUR?" — the board":" — board");
- $("bsub").textContent=(v.rel?"Released "+v.date+". ":JSEL===JCUR?"The version being worked on. ":"Not released. ")+t.open+" open of "+t.n+".";
+ var wn=(D.JW.filter(function(x){return x[0]===JSEL})[0]||[0,0])[1];
+ $("bsub").textContent=(v.rel?"Released "+v.date+". ":JSEL===JCUR?"The version being worked on. ":"Not released. ")+t.open+" open of "+t.n+"."+(wn?" "+wn+" closed without shipping.":"");
  var cols=JB.filter(function(s){return !HIDE||s[0]!="done"});b.style.setProperty("--cols",cols.length);
  cols.forEach(function(s,ci){var c=el("div","jcol enter"),h=el("h3");c.style.animationDelay=ci*40+"ms";
   add(h,jdot(s[0],s[1]),jnum(t[s[0]].length,v.n+": "+s[1],t[s[0]]));c.appendChild(h);
@@ -1827,7 +1923,7 @@ $("prov").textContent="Versions and statuses are read from Jira (fixVersion and 
   ["Ready to build",["0 no plan yet · 1 problem stated · 2 fix named, not yet checked · 3 plan audited · 4 spec ready. Below 3 a version schedules only a planning slice."]],
   ["Budget",[capBar({used:.45,cap:.6,kinds:[]})," used of the version's cap; the tick is the cap, orange is over it."]],
   ["No cap",[capBar({deferred:true})," ","no cap — deferred bucket"]],
-  ["Hide done work",["Hides Done, Closed, In Public, wont do and wont fix from the version board and its lists. The counts in the sentence and the table still include them."]]
+  ["Hide done work",["Hides Done and In Public from the version board and its lists. The counts in the sentence and the table still include them. Closed, wont do and wont fix tickets, and Done tickets resolved as anything but Done or Fixed, are in no count: each version notes how many closed without shipping."]]
  ].forEach(function(x){t.appendChild(el("dt",null,x[0]));var d=el("dd");x[1].forEach(function(c){add(d,c)});t.appendChild(d)})})();
 D.CAP.text.forEach(function(x){$("rules").appendChild(el("p",null,x))});
 render();

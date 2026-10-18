@@ -1,5 +1,7 @@
 # Console-kit scripts a CONSOLE session must run with run_in_background: true.
 # One basename per line; read by scripts/hooks/guard-console-foreground.sh.
+# A listed script may run in the foreground as `timeout <=90 bash <script>`; console-wait.sh
+# and run-suite.sh are listed but the guard never bounds them: they stay background.
 # Add a script here when a console run of it blocks the turn for
 # more than about 30 s; leave short scripts (append-results.sh, go.sh,
 # write-verdict.sh, fleet-manifest.sh) out.
@@ -9,3 +11,5 @@ ready-check.sh
 verdict-go.sh
 action-zero.sh
 board.mjs
+console-wait.sh
+run-suite.sh

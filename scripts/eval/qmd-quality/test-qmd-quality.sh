@@ -243,5 +243,31 @@ bash "$HERE/backfill-ledger.sh" "$TMP/bf" --golden "$TMP/g8.jsonl" --modes hybri
 eq "backfill: scores.tsv that disagrees with the golden set is refused" "$rc" "2"
 eq "backfill: a refused run writes no row" "$([ -s "$TMP/bf-ledger2.jsonl" ] && echo row || echo none)" "none"
 
+# --- remote roles: the egress gate runs before the eval ---------------------
+# A salus-active index plus an OpenRouter role must be refused (the HARD
+# salus x openrouter cells), whatever --index points at.
+if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  mkdir -p "$TMP/rg/cfg"
+  printf 'collections:\n  salus:\n    path: %s/salus-vault\n' "$TMP" >"$TMP/rg/cfg/index.yml"
+  printf 'QMD_OPENAI_API_KEY=sk-test-gate\n' >"$TMP/rg/key.env"; chmod 600 "$TMP/rg/key.env"
+  sqlite3 "$TMP/rg/salus.sqlite" "CREATE TABLE documents (collection TEXT, active INTEGER); INSERT INTO documents VALUES ('salus', 1);"
+  sqlite3 "$TMP/rg/himmel.sqlite" "CREATE TABLE documents (collection TEXT, active INTEGER); INSERT INTO documents VALUES ('himmel', 1);"
+  rgrun() {
+    QMD_CONFIG_DIR="${RG_CFG:-$TMP/rg/cfg}" QMD_DAEMON_ENV_FILE="$TMP/rg/key.env" \
+      QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1 \
+      QMD_RERANK_MODEL=openai:cohere/rerank-4-fast QMD_GENERATE_MODEL=openai:google/gemini-2.5-flash-lite \
+      PATH="$TMP/stub:$PATH" XDG_CACHE_HOME="$TMP/xdg" HIMMEL_EVAL_RUNS_LEDGER="$TMP/rg/ledger.jsonl" \
+      bash "$HERE/qmd-quality.sh" --golden "$FIX/golden.jsonl" --index "$1" --no-snapshot --modes auto --out "$2" 2>&1
+  }
+  out=$(rgrun "$TMP/rg/salus.sqlite" "$TMP/rg/o1"); rc=$?
+  if [ "$rc" -ne 0 ]; then pass "remote: a salus-active index with remote roles is refused"; else fail "remote: salus index with remote roles exited 0"; fi
+  has "remote: the refusal comes from the egress gate" "$out" "qmd-jina-gate"
+  mkdir -p "$TMP/rg/cfg2"; printf 'collections:\n  himmel:\n    path: %s/himmel-repo\n' "$TMP" >"$TMP/rg/cfg2/index.yml"
+  out=$(RG_CFG="$TMP/rg/cfg2" rgrun "$TMP/rg/himmel.sqlite" "$TMP/rg/o2"); rc=$?
+  eq "remote: a non-salus index with the pinned roles passes the gate" "$rc" "0"
+else
+  echo "SKIP remote: sqlite3 or node not on PATH"
+fi
+
 echo "test-qmd-quality: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
