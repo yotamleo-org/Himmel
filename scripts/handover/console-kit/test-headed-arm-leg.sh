@@ -131,6 +131,20 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-leg-test.XXXXXX")" || { echo "FAIL:
 # behind /var -> /private/var, so pin the fixture root to its physical path.
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
+
+# Every non-dry launch wraps headed-arm.sh in a systemd scope. The
+# suite points that seam at a recorder that logs its argv then runs the rest, so
+# no run here opens a real scope (the real-scope row below opts back in).
+SYSD_STUB="$tmp/systemd-run-stub"
+cat > "$SYSD_STUB" <<'SYSD_EOF'
+#!/usr/bin/bash
+printf '%s\n' "$*" >> "${SYSD_RECORD:-/dev/null}"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+shift
+exec "$@"
+SYSD_EOF
+chmod 755 "$SYSD_STUB"
+export HEADED_ARM_LEG_SYSTEMD_RUN="$SYSD_STUB"
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A console-spawned leg exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-leg.sh); the case-26 e2e below runs the real
@@ -4270,6 +4284,38 @@ rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profi
 check "leg-vm brief naming ubuntu_new: accepted" "$rc" "0"
 rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "leg-impl is not subject to the VM-name check" "$rc" "0"
+
+# --- a leg runs under its own MemoryMax scope, so a runaway test
+# is killed alone instead of taking the station and every other leg with it.
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: dry-run reports the default 12G cap" "$out" "memory-max=12G"
+rc=0; out="$(HIMMEL_LEG_MEMORY_MAX=256M bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+contains "memcap: dry-run reports an env-set cap" "$out" "memory-max=256M"
+rc=0; out="$(HIMMEL_LEG_MEMORY_MAX='1G --evil' bash "$SCRIPT" --dry-run --no-profile HIMMEL-6119-leg "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "memcap: a malformed cap is refused" "$rc" "2"
+d6119="$tmp/c6119"; mk_launch_stubs "$d6119" "HIMMEL-6119-leg"; mkdir -p "$tmp/repo6119"
+rc=0
+SYSD_RECORD="$d6119/sysd" HIMMEL_LEG_MEMORY_MAX=256M RUN_LEG_ARGS=--no-profile run_leg "$d6119" "$tmp/repo6119" "HIMMEL-6119-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d6119" || true
+sysd6119="$(cat "$d6119/sysd" 2>/dev/null || true)"
+check "memcap: full launch exit 0" "$rc" "0"
+contains "memcap: launch runs in a user scope" "$sysd6119" "--user --scope"
+contains "memcap: launch carries MemoryMax" "$sysd6119" "MemoryMax=256M"
+contains "memcap: launch carries MemorySwapMax" "$sysd6119" "MemorySwapMax=256M"
+contains "memcap: konsole still launched inside the scope" "$(cat "$d6119/record" 2>/dev/null || true)" "--workdir $tmp/repo6119"
+# Real environment: the argv the wrapper built, run against the real
+# systemd-run, must land the process in a cgroup whose memory.max is the cap.
+real_xdg="/run/user/$(id -u)"  # the suite pins XDG_RUNTIME_DIR to a tmp dir; the real bus lives here
+if XDG_RUNTIME_DIR="$real_xdg" systemd-run --user --scope --quiet true >/dev/null 2>&1; then
+  read -r -a sysd_argv <<< "$sysd6119"
+  sysd_cap_argv=()
+  for a in "${sysd_argv[@]}"; do [ "$a" = "--" ] && break; sysd_cap_argv+=("$a"); done
+  # shellcheck disable=SC2016  # the $(...) must expand inside the scope, not here
+  real_cap="$(XDG_RUNTIME_DIR="$real_xdg" systemd-run "${sysd_cap_argv[@]}" -- bash -c 'cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"' 2>/dev/null || true)"
+  check "memcap: real scope enforces memory.max (256M)" "$real_cap" "268435456"
+else
+  echo "ok - memcap: real scope row skipped (no systemd user bus)"
+fi
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

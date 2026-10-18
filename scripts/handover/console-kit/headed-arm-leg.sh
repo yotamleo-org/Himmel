@@ -1991,6 +1991,26 @@ if [ "$LANE_CHANNEL" = "file" ]; then
     fi
 fi
 
+# Per-leg memory cap: the konsole tab and everything under it run in their own
+# systemd user scope, so a runaway test is OOM-killed inside the scope instead of
+# systemd-oomd picking a victim among the station's legs and the console.
+# HIMMEL_LEG_MEMORY_MAX is a systemd size (256M, 12G, infinity); swap gets the
+# same ceiling so the cap is not defeated by paging out. No systemd-run (macOS,
+# a non-systemd host) launches uncapped.
+LEG_MEMORY_MAX="${HIMMEL_LEG_MEMORY_MAX:-12G}"
+case "$LEG_MEMORY_MAX" in
+    infinity) ;;
+    ''|*[!0-9KMGTkmgt]*|[KMGTkmgt]*)
+        echo "headed-arm-leg: HIMMEL_LEG_MEMORY_MAX must be a systemd size (e.g. 12G, 256M, infinity), got: $LEG_MEMORY_MAX" >&2
+        exit 2 ;;
+esac
+LEG_SCOPE=()
+LEG_SYSTEMD_RUN="${HEADED_ARM_LEG_SYSTEMD_RUN:-}"
+[ -n "$LEG_SYSTEMD_RUN" ] || LEG_SYSTEMD_RUN="$(command -v systemd-run)" || LEG_SYSTEMD_RUN=""
+if [ "$HEADED_ARM_UNAME" = "Linux" ] && [ -n "$LEG_SYSTEMD_RUN" ]; then
+    LEG_SCOPE=("$LEG_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$LEG_MEMORY_MAX" -p "MemorySwapMax=$LEG_MEMORY_MAX" --)
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm-leg: would exec: %s %s %s %s %s %s %s %s\n' \
         "$HEADED_ARM" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT"
@@ -2037,8 +2057,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
         printf 'headed-arm-leg: consult=%s read-clamp-lines=%s preface-source=%s\n' \
             "$CONSULT" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
     fi
-    printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s' \
-        "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}"
+    printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s memory-max=%s scope=%s' \
+        "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}" \
+        "$LEG_MEMORY_MAX" "$([ "${#LEG_SCOPE[@]}" -gt 0 ] && echo yes || echo no)"
     if [ "$LANE_CHANNEL" = "file" ]; then
         printf ' exec-target=%s preface=%s recorder=%s' "$LEG_CLAUDE_BIN" "$LEG_PROFILE_PREFACE" "$HEADED_ARM_RECORDER"
     fi
@@ -2368,6 +2389,9 @@ if [ "$CONSULT" -eq 1 ]; then
     HA_RUN=(/usr/bin/env "${CONSULT_SCRUB[@]}" PATH="$(consult_pin_path)" "$_consult_bash" -p "$HEADED_ARM")
     # The --fleet hand-off below starts its own bash first: same absolute -p one.
     HA_SH=("$_consult_bash" -p)
+fi
+if [ "${#LEG_SCOPE[@]}" -gt 0 ]; then
+    HA_RUN=("${LEG_SCOPE[@]}" "${HA_RUN[@]}")
 fi
 if [ -n "$FLEET_MANIFEST" ]; then
     # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
