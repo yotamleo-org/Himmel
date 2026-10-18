@@ -611,7 +611,15 @@ _subst_row "5747 git archive -o leg worktree/a.tar allows"       allow "git arch
 _subst_row "5747 git archive -o /tmp/a.tar allows"               allow "git archive -o /tmp/a5747.tar HEAD" "$_WR"
 _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR/f$_i; "; _i=$((_i+1)); done
 _k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done
-_t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" 22
+# No absolute budget: a slow runner stretched the 20 KB clauses past a fixed
+# 22s. The verdict is the growth check below against a control
+# timed in the same run; the ceiling is only a hang guard.
+_HANG_CEILING=120
+_within_ceiling() { [ "$1" -le "$_HANG_CEILING" ]; } # _within_ceiling <seconds>
+# _growth_ok <clause-secs> <control-secs>: 3x + 2s of the same-length control
+# (the 2s slack absorbs whole-second timer granularity)
+_growth_ok() { [ "$1" -le $(($2 * 3 + 2)) ]; }
+_t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" "$_HANG_CEILING"
 _el_c20=$_T_EL
 # the control is bound against a 5 KB echo timed in the same run: a linear scan
 # costs ~4x it, a quadratic one ~16x, and runner load scales both alike
@@ -619,11 +627,37 @@ _t_row "5747 5 KB plain echo baseline allows" allow "echo $_blob" 60
 _el_b5=$_T_EL
 _t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $(( (_el_b5 > 0 ? _el_b5 : 1) * 6 + 3 ))
 _el_k20=$_T_EL
-# the 2 s slack absorbs whole-second timer granularity
-if [ "$_el_c20" -le $((_el_k20 * 3 + 2)) ]; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
+if _growth_ok "$_el_c20" "$_el_k20"; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
 else bad "5747 20 KB clauses ${_el_c20}s exceed 3x + 2s of the same-length control ${_el_k20}s"; fi
 _c20p="${_c20}echo x > $_PR/f5747"
-_t_row "5747 20 KB of redirect clauses ending in a primary write denies" block "$_c20p" 22
+_t_row "5747 20 KB of redirect clauses ending in a primary write denies" block "$_c20p" "$_HANG_CEILING"
+# Runner speed must not decide the verdict. The fixture is a real CI figure
+# (shard 5, 2026-10-18T13:15:22Z): the clause command took 25s there, which a
+# fixed 22s budget rejected.
+if _growth_ok 25 9; then ok "5747 fixture: 25s clauses vs a 9s control is linear, not a regression"
+else bad "5747 fixture: 25s clauses vs a 9s control rejected as a regression"; fi
+if _within_ceiling 25; then ok "5747 fixture: 25s is under the ${_HANG_CEILING}s hang ceiling"
+else bad "5747 fixture: 25s rejected by the ${_HANG_CEILING}s hang ceiling"; fi
+# Knockout: stand-ins that sleep (no CPU, so load cannot skew them) linearly vs
+# quadratically in the payload size; the check must pass one and fail the other.
+_stand_in="$TMPFIX/stand-in-5747.sh"
+cat > "$_stand_in" <<'SI'
+#!/usr/bin/env bash
+n=$(wc -c)
+sleep "$(awk -v n="$n" -v q="$STAND_IN_QUAD" 'BEGIN { print (q ? n * n / 60000000 : n / 20000) }')"
+SI
+_si_time() { # _si_time <quad 0|1> <bytes> -> whole seconds
+    local t0=$SECONDS
+    head -c "$2" /dev/zero | STAND_IN_QUAD="$1" bash "$_stand_in"
+    echo $((SECONDS - t0))
+}
+_si_ctl=$(_si_time 0 20000)
+_si_lin=$(_si_time 0 20000)
+_si_quad=$(_si_time 1 20000)
+if _growth_ok "$_si_lin" "$_si_ctl"; then ok "5747 knockout: linear stand-in (${_si_lin}s vs control ${_si_ctl}s) passes the growth check"
+else bad "5747 knockout: linear stand-in (${_si_lin}s vs control ${_si_ctl}s) failed the growth check"; fi
+if _growth_ok "$_si_quad" "$_si_ctl"; then bad "5747 knockout: quadratic stand-in (${_si_quad}s vs control ${_si_ctl}s) passed the growth check"
+else ok "5747 knockout: quadratic stand-in (${_si_quad}s vs control ${_si_ctl}s) fails the growth check"; fi
 
 echo "== HIMMEL-4921: nested-quote \${:-} redirect, truncate, tar -C, /tmp symlink into the primary =="
 _j4921() {  # _j4921 <command> <cwd> -> hook JSON
