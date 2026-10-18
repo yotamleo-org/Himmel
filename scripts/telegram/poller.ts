@@ -1540,11 +1540,24 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     try { await notify(session, retryAtIso, kind); }
     catch (e) { logRedacted("[poller] " + kind + " notify failed for " + session + ": " + e); }
   };
+  // A ticket session acts only on operator lines (buildPrompt); true when any
+  // pending line past the first `skip` carries the operator marker.
+  const pendingHasOperatorLine = async (sd: string, skip: number): Promise<boolean> => {
+    const pending = await readFile(join(sd, "inbox.pending.jsonl"), "utf8");
+    return pending.split("\n").filter((l) => l.trim()).slice(skip).some((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } });
+  };
   const runOnce = async (session: string, modelOverride?: ModelOverride): Promise<void> => {
     if (lockdownEnabled(root)) return;
     const sd = sessionDir(root, session);
     const parked = await readMeta(root, session);
-    if (parked?.status === "failed") return;                    // retry cap exhausted — wait for a new message
+    if (parked?.status === "failed") {                          // retry cap exhausted — wait for a new message
+      // a stop on a parked session still consumes its marker and the queued work, or it would eat the operator's retry
+      if (existsSync(join(sd, "stop"))) {
+        await unlink(join(sd, "stop")).catch(() => {});
+        await commitPending(root, session, (await peekPending(root, session)).nextPos);
+      }
+      return;
+    }
     const { count, nextPos } = await peekPending(root, session);
     if (count === 0) {                                          // inbox fully consumed → reclaim (HIMMEL-221)
       const inbox = join(sd, "inbox.jsonl");
@@ -1564,12 +1577,9 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       await safeNotify(session, "", "stopped");
     };
     if (existsSync(join(sd, "stop"))) { await settleStopped(); return; }
-    // A ticket session acts only on operator lines (buildPrompt), so a queued
-    // member follow-up is no reason to spawn: it waits for the operator's next line.
-    if (/^[A-Z][A-Z0-9]+-[0-9]+$/.test(session)) {
-      const pending = await readFile(join(sd, "inbox.pending.jsonl"), "utf8");
-      if (!pending.split("\n").some((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } })) return;
-    }
+    // A queued member follow-up is no reason to spawn: it waits for the operator's next line.
+    const isTicket = /^[A-Z][A-Z0-9]+-[0-9]+$/.test(session);
+    if (isTicket && !(await pendingHasOperatorLine(sd, 0))) return;
     // `|| null` normalizes a falsy vault ("" from a blank access.json `vault:`) to
     // null, so the nullish-coalescing `?? repoCwd` below stays coherent with the
     // truthy `vault ?` checks (an empty string would otherwise spawn in cwd "" with
@@ -1706,7 +1716,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // not be stranded under the park — re-peek; growth = the operator spoke,
       // treat it as an un-park (same semantics as handleInbound's failed reset)
       const again = await peekPending(root, session);
-      if (again.count > count) {
+      if (again.count > count && (!isTicket || await pendingHasOperatorLine(sd, count))) {
         await writeMeta(root, session, { ...m, status: "idle", fail_count: null });
         noticed.delete(session);
         return;

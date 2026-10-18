@@ -153,6 +153,36 @@ test("retry cap: a message arriving DURING the final failing run prevents the pa
   expect((await peekPending(r, "S")).count).toBe(2);   // both messages re-runnable
 });
 
+test("a member follow-up arriving during a ticket session's final failing run keeps it parked as failed", async () => {
+  const r = root(); const sd = sessionDir(r, "HIMMEL-7");
+  await ensureSession(r, "HIMMEL-7");
+  await writeMeta(r, "HIMMEL-7", { ...freshMeta(-50), fail_count: 2 });
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "go", operator: true }));
+  const failingWithMemberArrival = async () => {
+    await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "member nudge" }));
+    return { code: 1, capped: false, pid: 1 };
+  };
+  await makeRunFn(r, "/repo", failingWithMemberArrival, 5000, undefined, 3)("HIMMEL-7");
+  expect((await readMeta(r, "HIMMEL-7"))?.status).toBe("failed");
+});
+
+test("operator stop on an already-failed ticket session is consumed and cannot eat the retry", async () => {
+  const r = root(); const sd = sessionDir(r, "HIMMEL-7");
+  await ensureSession(r, "HIMMEL-7");
+  await writeMeta(r, "HIMMEL-7", { ...freshMeta(-50), status: "failed", fail_count: 3 });
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "old", operator: true }));
+  await appendLine(join(sd, "stop"), "42");
+  let spawns = 0;
+  const runFn = makeRunFn(r, "/repo", async () => { spawns++; return { code: 0, capped: false, pid: 1 }; }, 5000);
+  await runFn("HIMMEL-7");
+  expect(readdirSync(sd)).not.toContain("stop");
+  expect((await peekPending(r, "HIMMEL-7")).count).toBe(0);
+  await writeMeta(r, "HIMMEL-7", freshMeta(-50));               // the operator's retry un-parks
+  await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ text: "retry", operator: true }));
+  await runFn("HIMMEL-7");
+  expect(spawns).toBe(1);
+});
+
 test("retry cap: a clean run resets fail_count", async () => {
   const r = root(); await ensureSession(r, "S");
   await writeMeta(r, "S", freshMeta(9));
