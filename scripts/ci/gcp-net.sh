@@ -50,7 +50,7 @@ POLICY="himmel-ci-net-policy"
 ASSOC="himmel-ci-net-assoc"
 IAP_RANGE="35.235.240.0/20"
 PROXY_VM="himmel-ci-proxy"
-PROXY_ZONE="${REGION}-a"
+PROXY_ZONE="${GCP_NET_ZONE:-${REGION}-a}"
 PROXY_IP="10.10.0.10"  # leak-allow: private-lan-ip the proxy's fixed address inside the dedicated runner VPC
 PROXY_PORT=3128
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
@@ -241,6 +241,11 @@ cmd_net_up() {
 }
 
 cmd_net_down() {
+    # NAT and router first: cut the internet before the deny policy comes off.
+    drop "nat $NAT" compute routers nats describe "$NAT" --router="$ROUTER" --region="$REGION" -- \
+        compute routers nats delete "$NAT" --router="$ROUTER" --region="$REGION" --quiet
+    drop "router $ROUTER" compute routers describe "$ROUTER" --region="$REGION" -- \
+        compute routers delete "$ROUTER" --region="$REGION" --quiet
     drop "policy association $ASSOC" \
         compute network-firewall-policies associations describe --name="$ASSOC" "${POL[@]}" -- \
         compute network-firewall-policies associations delete "$ASSOC" "${POL[@]}"
@@ -248,10 +253,6 @@ cmd_net_down() {
         compute network-firewall-policies delete "$POLICY" --global --quiet
     drop "proxy $PROXY_VM" compute instances describe "$PROXY_VM" --zone="$PROXY_ZONE" -- \
         compute instances delete "$PROXY_VM" --zone="$PROXY_ZONE" --quiet
-    drop "nat $NAT" compute routers nats describe "$NAT" --router="$ROUTER" --region="$REGION" -- \
-        compute routers nats delete "$NAT" --router="$ROUTER" --region="$REGION" --quiet
-    drop "router $ROUTER" compute routers describe "$ROUTER" --region="$REGION" -- \
-        compute routers delete "$ROUTER" --region="$REGION" --quiet
     drop "subnet $SUBNET" compute networks subnets describe "$SUBNET" --region="$REGION" -- \
         compute networks subnets delete "$SUBNET" --region="$REGION" --quiet
     drop "network $NET" compute networks describe "$NET" -- \

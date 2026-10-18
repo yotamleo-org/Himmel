@@ -201,8 +201,14 @@ export STUB_EXISTS=1
 rc="$(run net-down)"
 if [ "$rc" -eq 0 ]; then ok "net-down exits 0"; else bad "net-down rc=$rc: $(cat "$T/out")"; fi
 order="$(grep -o -E 'associations delete|network-firewall-policies delete|instances delete|nats delete|routers delete|subnets delete|networks delete' "$STUB_LOG" | tr '\n' ',')"
-want="associations delete,network-firewall-policies delete,instances delete,nats delete,routers delete,subnets delete,networks delete,"
-if [ "$order" = "$want" ]; then ok "net-down deletes in reverse dependency order, proxy VM included"; else bad "net-down order: $order"; fi
+want="nats delete,routers delete,associations delete,network-firewall-policies delete,instances delete,subnets delete,networks delete,"
+if [ "$order" = "$want" ]; then ok "net-down cuts NAT before detaching the policy, then deletes in dependency order, proxy VM included"; else bad "net-down order: $order"; fi
+export GCP_NET_ZONE=us-east1-b GCP_NET_REGION=us-east1
+unset STUB_EXISTS
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && grep -F 'instances create' "$STUB_LOG" | grep -q -F -- '--zone=us-east1-b'; then ok "GCP_NET_ZONE places the proxy in a valid zone of an overridden region"; else bad "zone override: rc=$rc"; fi
+unset GCP_NET_ZONE GCP_NET_REGION
+export STUB_EXISTS=1
 grep '^GCLOUD ' "$STUB_LOG" | grep -q -E ' (delete|create) .*default' && bad "net-down touched a default resource" || ok "net-down never touches default"
 unset STUB_EXISTS
 
