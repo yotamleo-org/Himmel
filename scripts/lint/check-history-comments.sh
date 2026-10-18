@@ -55,14 +55,27 @@ function in_scope(p) {
     if (p ~ /\.obsidian\/plugins\//) return 0
     return 1
 }
-function output_call(p, s) {
-    if (p ~ /(^|\/)(tests?|__tests__)\// || p ~ /(^|\/)test-[^\/]+$/ || p ~ /\.(test|spec)\.[^.]+$/) return 0
+function output_call(p, s,   i, c, q, code, single) {
+    if (p ~ /(^|\/)(tests?|__tests__)\// || p ~ /(^|\/)test[-_][^\/]+$/ || p ~ /\.(test|spec)\.[^.]+$/) return 0
+    single = sprintf("%c", 39)
+    for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\" && q != single) { i++; code = code " "; continue }
+        if (q != "") {
+            if (c == q) q = ""
+            continue
+        }
+        if (c == single || c == "\"" || (c == "`" && p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/)) {
+            q = c; code = code " "; continue
+        }
+        code = code c
+    }
     if (p ~ /\.(sh|bash|zsh)$/)
-        return s ~ /(^|[;&|(){}])[ \t]*([0-9]*>&[0-9]+[ \t]*)?(echo|printf|die|warn|say)[ \t]+/
+        return code ~ /(^|[;&|(){}])[ \t]*((then|do|else)[ \t]+)?([0-9]*>&[0-9]+[ \t]*)?(echo|printf|die|warn|say)[ \t]+/
     if (p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/)
-        return s ~ /(^|[;{}])[ \t]*(console\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/
+        return code ~ /(^|[;{}])[ \t]*(console\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/
     if (p ~ /\.py$/)
-        return s ~ /(^|[;:])[ \t]*(print|sys\.stderr\.write)[ \t]*\(/
+        return code ~ /(^|[;:])[ \t]*(print|sys\.stderr\.write)[ \t]*\(/
     return 0
 }
 function why(t,   l) {

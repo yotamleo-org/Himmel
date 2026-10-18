@@ -106,7 +106,7 @@ signal to fix the code, or to file one ticket for the workaround.
 `scripts/lint/check-history-comments.sh` enforces this on added comment lines and
 user-facing output calls (pre-commit; `--range <base>` for a PR range). Shell
 `echo`/`printf`/`die`/`warn`/`say`, JS/TS `console.log`/`error`/`warn` and
-`process.stdout`/`stderr.write`, and Python `print`/`sys.stderr.write` must not
+`process.stdout.write`/`process.stderr.write`, and Python `print`/`sys.stderr.write` must not
 carry a Jira key. Output lines carrying `ponytail:` and output in test files or
 fixtures are exempt; there is no `history-ok` exemption. Detection is line-based,
 not a language parser: split calls and strings on continuation lines are not
