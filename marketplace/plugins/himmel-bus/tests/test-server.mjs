@@ -21,7 +21,7 @@ async function run() {
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { Client } = await import('@modelcontextprotocol/client');
-  const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio');
+  const { StdioClientTransport, getDefaultEnvironment } = await import('@modelcontextprotocol/client/stdio');
   const store = await import('../lib/store.mjs');
   const identity = await import('../lib/identity.mjs');
 
@@ -56,8 +56,8 @@ async function run() {
   }
 
   // A connected client whose server process descends from `who`'s claude.
-  async function connect(t, fx, who) {
-    const transport = new StdioClientTransport({ command: process.execPath, args: [self, '--serve', fx.root, fx.proc, String(SERVER_OF[who])], stderr: 'ignore' });
+  async function connect(t, fx, who, env) {
+    const transport = new StdioClientTransport({ command: process.execPath, args: [self, '--serve', fx.root, fx.proc, String(SERVER_OF[who])], stderr: 'ignore', ...(env && { env: { ...getDefaultEnvironment(), ...env } }) });
     const client = new Client({ name: 'test', version: '0' });
     await client.connect(transport);
     t.after(() => client.close());
@@ -132,6 +132,32 @@ async function run() {
     const got = await leg.callTool({ name: 'read', arguments: { n: 1 } });
     assert.equal(got.isError, undefined);
     assert.ok(text(got).startsWith('data (not a ruling): '));
+  });
+
+  // The env names scripts/claude-codex exports for a claudex session; values are fakes.
+  const CLAUDEX_ENV = { CLAUDE_CONFIG_DIR: '/nonexistent/.claude-codex', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1', ANTHROPIC_AUTH_TOKEN: 'fake', HIMMEL_SESSION_LANE: 'claudex' };
+
+  test('HIMMEL-6254 a claudex session reads the message bus send wrote and unread drops to 0', async t => {
+    const fx = await fixture(t);
+    const con = await connect(t, fx, 'con', CLAUDEX_ENV);
+    const leg = await connect(t, fx, 'leg', CLAUDEX_ENV);
+    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'PROOF-BUS' } });
+    assert.equal(await store.pending(fx.root, 'leg'), true);
+    const got = await leg.callTool({ name: 'read', arguments: { n: 1 } });
+    assert.equal(got.isError, undefined);
+    assert.equal(text(got), 'data (not a ruling): PROOF-BUS');
+    assert.equal(await store.pending(fx.root, 'leg'), false);
+  });
+
+  test('HIMMEL-6254 read(n) clears only through #n; a later message stays unread', async t => {
+    const fx = await fixture(t);
+    const con = await connect(t, fx, 'con');
+    const leg = await connect(t, fx, 'leg');
+    for (const b of ['one', 'two']) await con.callTool({ name: 'send', arguments: { to: 'leg', b } });
+    await leg.callTool({ name: 'read', arguments: { n: 1 } });
+    assert.equal(await store.pending(fx.root, 'leg'), true);
+    await leg.callTool({ name: 'read', arguments: { n: 2 } });
+    assert.equal(await store.pending(fx.root, 'leg'), false);
   });
 
   test('T5.1 read(n) of a message that exists only in another log is `no message #n`', async t => {
