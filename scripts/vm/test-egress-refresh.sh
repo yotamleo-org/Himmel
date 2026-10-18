@@ -31,12 +31,16 @@ case "$2" in
     codeload.github.com) echo "140.82.121.10 STREAM $2" ;;
     objects.githubusercontent.com|release-assets.githubusercontent.com) echo "185.199.108.133 STREAM $2" ;;
     results-receiver.actions.githubusercontent.com) echo "140.82.114.21 STREAM $2" ;;
-    *) echo "203.0.113.9 STREAM $2" ;;
+    archive.ubuntu.com|security.ubuntu.com|pypi.org|files.pythonhosted.org|registry.npmjs.org) echo "203.0.113.9 STREAM $2" ;;
+    *) echo "getent stub: unexpected host $2" >&2; exit 2 ;;
 esac
 EOF
 cat > "$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-cat "$STUB/meta.json"
+case " $* " in
+    *" https://api.github.com/meta "*) cat "$STUB/meta.json" ;;
+    *) echo "curl stub: unexpected URL $*" >&2; exit 22 ;;
+esac
 EOF
 cat > "$TMP/bin/nft" <<'EOF'
 #!/usr/bin/env bash
@@ -53,7 +57,7 @@ run() {
     : > "$TMP/nft.argv"
     PATH="$TMP/bin:$PATH" bash "$1" > "$TMP/out" 2>&1
 }
-loaded() { grep -qF "$1" "$TMP/nft.argv"; }
+loaded() { awk -v c="$1" 'index($0, "add element inet himmel_egress allowed4 {") == 1 && index($0, c) { f = 1 } END { exit !f }' "$TMP/nft.argv"; }
 
 echo "T1 the loaded allow-list covers every host the shard job reaches"
 run "$SUT"; rc=$?

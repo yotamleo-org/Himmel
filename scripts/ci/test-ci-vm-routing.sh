@@ -90,7 +90,13 @@ done
 #    successfully" and then "Unable to locate executable file:
 #    /home/runner/.bun/bin/bun" (run 39034533470, himmel-vm-1792243231). The
 #    guest downloads bun itself: no-cache on every non-hosted runner.
-sb="$(awk '/^      - uses: oven-sh\/setup-bun@/ {f=1} f' <<< "$blk")"
+sb="$(awk '
+    /^      - / {
+        if (f) exit
+        f = index($0, "      - uses: oven-sh/setup-bun@") == 1
+    }
+    f
+' <<< "$blk")"
 if grep -qE "^[[:space:]]+no-cache:[[:space:]]*\\$\\{\\{[[:space:]]*runner\\.environment != 'github-hosted'[[:space:]]*\\}\\}[[:space:]]*$" <<< "$sb"; then ok "setup-bun skips the shared cache on a non-hosted runner"; else bad "setup-bun in shell-unit-shard restores the hosted cache on the himmel-vm guest"; fi
 
 if [ "$fails" -eq 0 ]; then echo "PASS: $0"; exit 0; fi
