@@ -35,6 +35,7 @@ done
 case "$url" in
     variable) [ "${STUB_FAIL:-}" = var ] && exit 1; cat "$STUB_VAR"; exit 0 ;;
     repos/*/actions/runs\?status=queued*) [ "${STUB_FAIL:-}" = runs ] && exit 1; f="$STUB_DIR/runs.json" ;;
+    repos/*/actions/runs\?status=in_progress*) f="$STUB_DIR/runs-ip.json" ;;
     repos/*/actions/runs/*/jobs*) id="${url#*/runs/}"; id="${id%%/*}"; f="$STUB_DIR/jobs-$id.json" ;;
     *) exit 1 ;;
 esac
@@ -49,10 +50,16 @@ export GH="$T/gh" GCP_AUTOSCALE_RUNNERS="$T/runners" STUB_LOG="$T/log" STUB_VAR=
 
 # Fixture shapes copied from the real `gh api repos/yotamleo/Himmel/actions/runs?status=queued`
 # and `.../actions/runs/<id>/jobs` responses.
-mkruns() { # ids...
+mkruns() { # ids... -> queued runs (in-progress runs: mkruns_ip)
     local first=1 id out='{"total_count":'"$#"',"workflow_runs":['
     for id in "$@"; do [ "$first" -eq 1 ] || out="$out,"; first=0; out="$out{\"id\":$id,\"status\":\"queued\"}"; done
     printf '%s]}\n' "$out" > "$T/runs.json"
+    printf '{"total_count":0,"workflow_runs":[]}\n' > "$T/runs-ip.json"
+}
+mkruns_ip() { # ids... -> in-progress runs on top of the queued set
+    local first=1 id out='{"total_count":'"$#"',"workflow_runs":['
+    for id in "$@"; do [ "$first" -eq 1 ] || out="$out,"; first=0; out="$out{\"id\":$id,\"status\":\"in_progress\"}"; done
+    printf '%s]}\n' "$out" > "$T/runs-ip.json"
 }
 mkjobs() { # run-id status label... one job per status:label pair
     local id="$1" first=1 j out='{"total_count":0,"jobs":[' n=100
@@ -82,6 +89,10 @@ rc="$(run)"; if [ "$rc" -eq 0 ] && [ "$(ups)" -eq 0 ]; then ok "only queued gcp 
 # 3. queue depth 3 across two runs: up 3.
 mkruns 10 20; mkjobs 10 queued:gcp queued:gcp queued:ubuntu-latest; mkjobs 20 queued:gcp
 rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 3' "$STUB_LOG"; then ok "up gets the queued gcp depth"; else bad "depth 3: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
+
+# 3b. a queued gcp job inside an in-progress run (other jobs already running) counts too.
+mkruns 10; mkjobs 10 queued:gcp; mkruns_ip 40; mkjobs 40 in_progress:ubuntu-latest queued:gcp
+rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 2' "$STUB_LOG"; then ok "queued gcp jobs of in-progress runs count"; else bad "in-progress run: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
 
 # 4. queue depth 7: capped at 4.
 mkruns 30; mkjobs 30 queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp

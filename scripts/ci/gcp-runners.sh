@@ -123,6 +123,7 @@ cmd_up() {
             -f "name=$vm" -F runner_group_id=1 -f 'labels[]=self-hosted' -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
             || up_fail "JIT config request failed for $vm"
         [ -s "$tmpd/$vm.jit" ] || up_fail "empty JIT config for $vm"
+        created+=("$vm")  # before the call: a create whose response was lost may still have made the VM
         gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
@@ -134,7 +135,6 @@ cmd_up() {
             --metadata="runner-repo=$REPO" \
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
             || up_fail "instances create failed for $vm"
-        created+=("$vm")
     done
     drop_jit "${created[@]}" || die "jit-config cleanup failed, the VM(s) it covered were deleted"
     echo "gcp-runners: created $need VM(s); pool target $n"

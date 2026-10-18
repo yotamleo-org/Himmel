@@ -25,7 +25,10 @@ die() { echo "gcp-runner-autoscale: $1" >&2; exit "${2:-1}"; }
 var="$("$GH" variable get CI_GCP --repo "$REPO")" || die "could not read CI_GCP"
 [ "$var" = "on" ] || { echo "gcp-runner-autoscale: CI_GCP is '$var', nothing to do"; exit 0; }
 
+# A queued gcp job can sit in a run that is already in_progress (its other jobs started).
 runs="$("$GH" api --paginate "repos/$REPO/actions/runs?status=queued&per_page=100" --jq '.workflow_runs[].id')" || die "could not list queued runs"
+running="$("$GH" api --paginate "repos/$REPO/actions/runs?status=in_progress&per_page=100" --jq '.workflow_runs[].id')" || die "could not list in-progress runs"
+runs="$runs"$'\n'"$running"
 depth=0
 while read -r id; do
     [ -n "$id" ] || continue

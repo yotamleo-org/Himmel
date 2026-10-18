@@ -187,7 +187,7 @@ rc="$(GCP_RUNNERS_UNAME=Darwin run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" 
 export STUB_FAIL=create2
 rc="$(run up 3)"
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
-if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then ok "a failed create drops jit-config from the VM already created"; else bad "create fail: rc=$rc removals=$n of 1"; fi
+if [ "$rc" -ne 0 ] && [ "$n" -eq 2 ]; then ok "a failed create drops jit-config from the VM already created and the one attempted"; else bad "create fail: rc=$rc removals=$n of 2"; fi
 export STUB_FAIL=jit2
 rc="$(run up 3)"
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
