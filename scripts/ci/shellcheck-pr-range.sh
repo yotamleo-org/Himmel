@@ -50,6 +50,7 @@ run_all() {
 subset=""
 serial_sweep() {
   if [ -n "$subset" ]; then
+    set -o pipefail
     printf '%s\n' "$subset" | tr '\n' '\0' | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files
     exit $?
   fi
@@ -178,7 +179,7 @@ cmd_pos() {
   return 0
 }
 # consumers of $1: a source/. line or a `# shellcheck source=` directive naming it
-consumers() { N="$1" awk '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, ENVIRON["N"])) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n"; }
+consumers() { ( set -o pipefail; N="$1" awk '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, ENVIRON["N"])) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n" ); }
 
 printf '%s\n' "$changed" > "$list"
 while IFS= read -r f; do

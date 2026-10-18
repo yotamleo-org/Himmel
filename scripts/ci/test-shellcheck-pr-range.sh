@@ -357,6 +357,54 @@ shimsweep; rc=$?
 [ "$rc" -ne 0 ] && ok "sweep_badrc: a non-numeric rc fails the sweep" || bad "sweep_badrc: non-numeric rc passed (rc 0)"
 rm -f "$T/shim/cat"
 
+# files_*: the selected-set lint with NO config change (no run_all), so only the FILES path runs.
+# The logging stub fails a shard handed a file named *bad*.
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+shift 3
+[ "${1:-}" = "--files" ] && shift
+printf '%s\n' "$*" >> "$STUB_LOG"
+case "$*" in *bad*) exit 1 ;; esac
+exit 0
+STUB
+reset; w scripts/zzbad.sh '#!/usr/bin/env bash
+echo $x
+'; commit_case files_fail
+: > "$T/stub.log"; shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "files_parallel: a failing selected file fails the lint" || bad "files_parallel: failing selected file passed (rc 0)"
+[ "$(cat "$T/stub.log")" = "scripts/zzbad.sh" ] && ok "files_parallel: the stub was handed exactly the FILES list" || bad "files_parallel: stub got: $(tr '\n' '|' < "$T/stub.log")"
+# files_serial: one cpu forces the subset serial fallback
+printf '#!/bin/sh\necho 1\n' > "$T/shim/nproc"; chmod +x "$T/shim/nproc"
+: > "$T/stub.log"; shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "files_serial: a failing selected file fails the serial subset lint" || bad "files_serial: failing selected file passed (rc 0)"
+[ "$(cat "$T/stub.log")" = "scripts/zzbad.sh" ] && ok "files_serial: the stub was handed exactly the FILES list" || bad "files_serial: stub got: $(tr '\n' '|' < "$T/stub.log")"
+# files_serial_pipefail: tr dies, xargs runs the stub with no files and it passes; the serial
+# subset lint must fail on the pipeline status
+cat > "$T/shim/tr" <<SHIM
+#!/bin/sh
+[ "\$1" = '\\n' ] && [ "\$2" = '\\0' ] && exit 1
+exec $RTR "\$@"
+SHIM
+chmod +x "$T/shim/tr"
+reset; w scripts/zzok.sh '#!/usr/bin/env bash
+echo ok
+'; commit_case files_pipefail
+: > "$T/stub.log"; shimsweep; rc=$?
+[ "$rc" -ne 0 ] && ok "files_serial_pipefail: a failing tr fails the serial subset lint" || bad "files_serial_pipefail: failing tr passed (rc 0)"
+rm -f "$T/shim/tr" "$T/shim/nproc"
+# consumers_rc: the neighbour lookup's awk fails; the sort after it must not hide that, the
+# selection falls back to ALL rather than silently dropping a consumer
+printf '#!/bin/sh\ncase "$*" in *ENVIRON*) exit 2 ;; esac\nexec %s "$@"\n' "$RAWK" > "$T/shim/awk"
+chmod +x "$T/shim/awk"
+reset; w scripts/lib/gh-ci-cache.sh '#!/usr/bin/env bash
+CIC_SLEEP_CMD=sleep
+# touched
+'; commit_case consumers_rc
+out=$(PATH="$T/shim:$PATH" bash "$SPR" --dry-run "$BASE" 2>/dev/null)
+case "$out" in ALL*) ok "consumers_rc: a failing neighbour lookup selects ALL" ;; *) bad "consumers_rc: failing lookup gave: ${out%%$'\n'*}" ;; esac
+rm -f "$T/shim/awk"
+
 # script-absent-at-base: the workflow runs `git show <base>:<script>`; at a base
 # that predates the script it must fail, which drives the --all-files branch
 pre=$(git commit-tree "$(git rev-parse "$BASE^{tree}")" -m pre)
