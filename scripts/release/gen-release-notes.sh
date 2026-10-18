@@ -50,7 +50,7 @@ $H_INTERNAL"
 }
 
 render() {
-    local prs="$1" version="$2" date="$3" items kind text n_internal=0 line
+    local prs="$1" version="$2" date="$3" items kind text n_internal=0 line plural
     local new="" changed="" update="" known=""
     # one `INTERNAL` per PR with no Release note block, else one `- kind: text` per item
     items="$(jq -r '
@@ -86,7 +86,8 @@ render() {
     section "$H_KNOWN" "$known"
     echo "## $H_INTERNAL"
     echo
-    echo "Internal: ${n_internal} further changes (guards, console and CI tooling, tests) are not listed here; \`CHANGELOG.md\` has the per-commit record."
+    plural="s"; [ "$n_internal" -eq 1 ] && plural=""
+    echo "Internal: ${n_internal} further change${plural} (guards, console and CI tooling, tests) are not listed here; \`CHANGELOG.md\` has the per-commit record."
 }
 
 case "${1:-}" in
