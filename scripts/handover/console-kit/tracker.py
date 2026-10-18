@@ -135,11 +135,26 @@ def leg_marker(path):
     return (ms[-1] if ms else 'LIVE'), pr
 
 
+def manifest_docs():
+    """Leg docs listed in the console fleet manifests (<console doc>.fleet.json) next to the bucket's docs.
+
+    A manifest lists the legs a console dispatched, so its legs are live without a queue lock of their own."""
+    out = []
+    for m in glob.glob(os.path.join(HANDOVERS, '*.fleet.json')):
+        try:
+            legs = json.load(open(m, encoding='utf-8')).get('legs') or []
+        except (OSError, ValueError, AttributeError):
+            continue
+        for lg in legs:
+            d = lg.get('doc') if isinstance(lg, dict) else None
+            if d and LEG_RE.match(os.path.basename(d)) and os.path.isfile(d):
+                out.append(d)
+    return out
+
+
 def live_legs():
     """{ticket number: [leg label, marker, pr or None]} for live legs; the newest doc wins per ticket."""
     held, out = held_docs(), {}
-    if not held:
-        return out
     docs = [p for p in glob.glob(os.path.join(HANDOVERS, 'HIMMEL-*-N*-*.md')) if LEG_RE.match(os.path.basename(p))]
     for p in sorted(docs, key=lambda x: (os.path.getmtime(x), x)):
         if os.path.realpath(p) not in held:
@@ -149,6 +164,11 @@ def live_legs():
             continue
         n, lab = LEG_RE.match(os.path.basename(p)).groups()
         out[int(n)] = [lab, mk, pr]
+    for p in manifest_docs():
+        mk, pr = leg_marker(p)
+        if mk not in ('WRAPPED', 'HALTED'):
+            n, lab = LEG_RE.match(os.path.basename(p)).groups()
+            out[int(n)] = [lab, mk, pr]
     return out
 
 
@@ -474,7 +494,7 @@ def drift_log(path, drift, unplanned, unthemed):
     return rows[-30:]
 
 
-def ledger_lines(rows, vers, unthemed=0):
+def ledger_lines(rows, vers, unthemed=0, released=()):
     """Header ledger (HIMMEL-3957): the running version, the whole v1.0.x train, and drift/unplanned only when non-zero."""
     train = [i for i, v in enumerate(vers) if TRAIN_RE.match(v)]
 
@@ -483,7 +503,7 @@ def ledger_lines(rows, vers, unthemed=0):
         t = [sum(1 for r in a if r[2] == s) for s in (0, 1, 2)]
         return '%s%d of %d done (%d %%), %d in progress, %d to do.' % (
             label, t[2], len(a), int(100.0 * t[2] / len(a) + 0.5) if a else 0, t[1], t[0])
-    cur = next((i for i in train if any(r[3] == i and r[2] != 2 for r in rows)), None)
+    cur = next((i for i in train if vers[i] not in released and any(r[3] == i and r[2] != 2 for r in rows)), None)
     out = [line('Running now: %s — ' % vlabel(vers[cur]), {cur}) if cur is not None
            else 'Running now: nothing — every v1.0.x ticket is done.', line('Whole v1.0.x train: ', set(train))]
     dr = sum(1 for r in rows if r[3] in train and r[7] == 1)
@@ -516,19 +536,21 @@ def bucket(m):
     return 'wont' if b == 'done' and m['res'].strip().lower() not in SHIPPED else b
 
 
-def read_versions(path, mir):
+def read_versions(path, mir, train_only=True):
     """(versions, release state unknown): [{n, rel, date}] in Jira release order from a `jira versions` snapshot.
 
-    v1.0.0 and non-v1.0.x names are not rows. A missing, empty or row-less file lists the mirror's v1.0.x fixVersions, none released."""
+    v1.0.0 and non-v1.0.x names are not rows (every name is a row with train_only False). A missing, empty or row-less
+    file lists the mirror's v1.0.x fixVersions, none released."""
+    ok = TRAIN_RE.match if train_only else re.compile(r'^v\d+\.\d+\.\d+').match
     try:
         lines = [l.rstrip('\n').split('\t') for l in open(path, encoding='utf-8')]
     except OSError:
         lines = []
-    if not any(len(f) >= 2 and TRAIN_RE.match(f[0]) and f[0] != 'v1.0.0' for f in lines):
+    if not any(len(f) >= 2 and ok(f[0]) and f[0] != 'v1.0.0' for f in lines):
         names = sorted({v for m in mir.values() for v in m['fv'] if TRAIN_RE.match(v) and v != 'v1.0.0'}, key=ver_key)
         return [dict(n=v, rel=False, date='') for v in names], True
     return [dict(n=f[0], rel=f[1] == 'true', date=f[2] if len(f) > 2 else '') for f in lines
-            if len(f) >= 2 and TRAIN_RE.match(f[0]) and f[0] != 'v1.0.0'], False
+            if len(f) >= 2 and ok(f[0]) and f[0] != 'v1.0.0'], False
 
 
 def done_in_future(mir, vers, unknown):
@@ -552,21 +574,20 @@ def jira_view(mir, legs, vers, prows, vnames):
     prows are the plan's placed rows (user impact is col 9, plan version col 3), vnames the plan's version names."""
     vi = {v['n']: i for i, v in enumerate(vers)}
     plan = {r[0]: r for r in prows}
-    tk, wont = [], {}
+    tk, wont, fl = [], {}, []
     for k, m in mir.items():
         hit = [v for v in m['fv'] if v in vi]
-        if not hit:
-            continue
-        un = [v for v in hit if not vers[vi[v]]['rel']]
-        v = min(un, key=vi.get) if un else max(hit, key=vi.get)
         b, p = bucket(m), plan.get(num(k))
-        if b == 'wont':
-            wont[vi[v]] = wont.get(vi[v], 0) + 1
-            continue
-        lg = legs.get(num(k))
-        tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
-                       ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
-                       leg=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
+        if not hit and b in ('prog', 'rev', 'ci'):
+            fl.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], ln=first_sentence(m['impact']) or clip(m['title'], 160)))
+        for v in hit:
+            if b == 'wont':
+                wont[vi[v]] = wont.get(vi[v], 0) + 1
+                continue
+            lg = legs.get(num(k))
+            tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
+                           ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
+                           leg=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
     tk.sort(key=lambda t: t['k'])
 
     def open_(t):
@@ -578,7 +599,7 @@ def jira_view(mir, legs, vers, prows, vnames):
             t['v'] = cur
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
-    return tk, cur, nxt, [a for a in al if a[1]], sorted([i, n] for i, n in wont.items())
+    return tk, cur, nxt, [a for a in al if a[1]], sorted([i, n] for i, n in wont.items()), sorted(fl, key=lambda t: t['k'])
 
 GROUP_NAMES = ['0 critical', '1K knowledge retrieval', '1 data freshness', '2 rules, truth and eval', '3 CI throughput',
                '4 PS3 blockers', '5 structural guards', '6 stability bugs', '7 console offload', '8 cost']
@@ -645,7 +666,7 @@ KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('don
 KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done'}
 
 
-def kanban(tk, vers, cur, base, wont=()):
+def kanban(tk, vers, cur, base, wont=(), flight=()):
     """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
@@ -681,6 +702,12 @@ def kanban(tk, vers, cur, base, wont=()):
             parts.append('</div>')
         parts.append('</div></details>')
         out.append(''.join(parts))
+    if flight:  # HIMMEL-5217: open work in progress or review that no version holds yet
+        cards = ''.join('<div class="kcard">%s<div class="ktl">%s</div><div class="kline">%s</div></div>'
+                        % (('<a class="kkey" href="%s/browse/HIMMEL-%d">HIMMEL-%d</a>' % (esc(base, True), t['k'], t['k'])) if base
+                           else '<span class="kkey">HIMMEL-%d</span>' % t['k'], esc(t['t']), esc(t['s'])) for t in flight)
+        out.append('<details class="krel" open data-v=""><summary><span class="vn">In flight, no version</span> '
+                   '<span class="kmeta">%d open</span></summary><div class="kboard">%s</div></details>' % (len(flight), cards))
     return ''.join(out) or '<p class="jsub">No release holds a ticket yet.</p>'
 
 
@@ -1139,14 +1166,14 @@ def main():
 
     upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
     nothm = sum(1 for r in rows if r[5] == tidx['(no theme)'] and r[2] != 2)  # open only
-    lg, cur = ledger_lines(rows, vers, nothm)
     seq = rules['seq']
     jv, ru = read_versions(VERSIONS, mir)
+    lg, cur = ledger_lines(rows, vers, nothm, {x['n'] for x in jv if x['rel']})
     dt = drift_log(a.drift_log, sum(1 for r in rows if r[7] == 1), sum(1 for r in rows if r[7] == 2 and r[2] != 2), nothm)
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
-    jt, jc, jn, ja, jw = jira_view(mir, legs, jv, rows[:n_plan], vers)
-    kb = kanban(jt, jv, jc, a.jira_base_url, jw)
+    jt, jc, jn, ja, jw, jf = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    kb = kanban(jt, jv, jc, a.jira_base_url, jw, jf)
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}
@@ -1173,7 +1200,7 @@ def main():
     open(outp + '.fp', 'w', encoding='utf-8').write(fp0 + '\n')
     unp = sum(1 for r in rows if r[7] == 2 and r[2] != 2)  # open only
     drift = sum(1 for r in rows if r[7] == 1)
-    dif = done_in_future(mir, jv, ru)
+    dif = done_in_future(mir, read_versions(VERSIONS, mir, False)[0], ru)
     cov = sum(1 for r in rows[:n_plan] if r[8])
     print('wrote %s.bench.tsv: %d planned items, operator bundle %d, unattributed %d'
           % (outp, len(bn), bop[8], bun[8]))

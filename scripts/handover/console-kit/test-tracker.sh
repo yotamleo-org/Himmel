@@ -374,6 +374,8 @@ mk 37 'To Do' '["v1.0.0"]' 'zero version one' 'To Do'
 mk 38 'Done' '["v1.0.2"]' 'closed one' 'Closed'
 mk 39 'Done' '["v1.0.3"]' 'duplicate one' 'Done' 'Duplicate'
 mk 40 'Done' '["v1.0.3"]' 'done in future one' 'Done' 'Done'
+mk 41 'In Progress' '[]' 'flight one' 'In Progress'
+mk 42 'To Do' '[]' 'idle unversioned one' 'To Do'
 mdir="$mir"
 printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\n' > "$W/jm.versions.tsv"
 render --mirror-dir "$jm" >/dev/null
@@ -673,6 +675,49 @@ mdir="$mir"
 printf 'v1.1.3\tfalse\t2026-10-20\nv1.1.4\tfalse\t\n' > "$dfm.versions.tsv"
 dfout="$(render --mirror-dir "$dfm")"
 contains 'a Done ticket in a future v1.1.x counts as done-in-future (HIMMEL-5826)' "$dfout" ', 1 done-in-future;'
+
+# A Done ticket in a later major version (v2.0.0) counts too: the count is not limited to the v1 train.
+dfm="$W/dfm3"
+mkdir -p "$dfm"
+mdir="$dfm"
+mk 85 'Done' '["v1.1.3"]' 'done in current' 'Done'
+mk 86 'Done' '["v2.0.0"]' 'done in a later major' 'Done'
+mdir="$mir"
+printf 'v1.1.3\tfalse\t2026-10-20\nv2.0.0\tfalse\t\n' > "$dfm.versions.tsv"
+dfout="$(render --mirror-dir "$dfm")"
+contains 'a Done ticket in a later major version counts as done-in-future (HIMMEL-5826)' "$dfout" ', 1 done-in-future;'
+
+# --- per-version page defects: multi-version tickets, in-flight lane, current version, fleet-manifest legs.
+# Item 2: a ticket with two fixVersions is counted in each (ticket 32 holds v1.0.3 and v1.0.2).
+contains 'a ticket with two fixVersions is counted in its second version too (HIMMEL-5217)' "$jhtml" \
+    '"k":32,"t":"review one","s":"In Review","b":"rev","v":2,'
+# Item 5: open In Progress / In Review work with no fixVersion is visible in its own lane.
+contains 'unversioned in-flight work has its own lane (HIMMEL-5217)' "$jhtml" 'In flight, no version'
+contains 'the lane lists the in-flight ticket (HIMMEL-5217)' "$jhtml" 'flight one'
+not_contains 'the lane leaves out an unversioned To Do ticket (HIMMEL-5217)' "$jhtml" 'idle unversioned one'
+# Item 4: the plan blocks follow the hero's rule: a released version is never current.
+cu="$W/cu"
+mkdir -p "$cu"
+cp -r "$plan" "$W/plan4"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+    v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.2 0.1 0 0 0 0 0.1 1 > "$W/plan4/stage3/versions.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
+    HIMMEL-1 v1.0.1 bugs 1 committed '' 'P1; pinned to v1.0.1 (ruling)' \
+    HIMMEL-90 v1.0.2 bugs 1 committed '' 'P1; pinned to v1.0.2 (ruling)' > "$W/plan4/stage3/placement.tsv"
+mdir="$cu"
+mk 1 'To Do' '["v1.0.1"]' 'planned bug' 'To Do'
+mk 90 'To Do' '["v1.0.2"]' 'next version bug' 'To Do'
+mdir="$mir"
+printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\n' > "$cu.versions.tsv"
+render --plan-dir "$W/plan4" --mirror-dir "$cu" >/dev/null
+cuhtml="$(cat "$out" 2>/dev/null)"
+contains 'a released version is not the plan blocks current version (HIMMEL-5217)' "$cuhtml" '"CUR":1,'
+# Item 1: a leg listed in a console's fleet manifest is live without a held queue lock.
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-leg-2026-10-01.md" > "$bk/test-console.fleet.json"
+render >/dev/null
+fmhtml="$(cat "$out" 2>/dev/null)"
+rm -f "$bk/test-console.fleet.json"
+contains 'a leg in the fleet manifest is live with its label and phase (HIMMEL-5217)' "$fmhtml" '"7":["N57","LIVE"'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

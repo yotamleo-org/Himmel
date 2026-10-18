@@ -2001,7 +2001,10 @@ $remaining" "" comment-only)
             if [ "$fold_rc" -eq 0 ] && [ "$fold_to" != "$fold_cur" ]; then
                 while IFS= read -r fold_keep; do
                     [ -n "$fold_keep" ] || continue
-                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 || fold_rc=1
+                    # The replace already dropped it, so one retry before giving up.
+                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || fold_rc=1
                 done <<< "${fold_to#*$'\n'}"
             fi
             if [ "$fold_rc" -eq 0 ]; then
