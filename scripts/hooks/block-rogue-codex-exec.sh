@@ -6,9 +6,7 @@
 # worktree containment, job registry + fleet reap, and the
 # watchdog timebox + flow-run-ledger rows). A raw `codex exec` bypasses all of
 # it - including the watchdog, so it is exactly the invisible-hang shape
-# is about. The WSL variant has had this guard;
-# the native one was the remaining unfenced path. Sibling of
-# block-rogue-codex-wsl.sh, same shape, same fail posture.
+# is about.
 #
 # Fail posture (sized for a Bash|PowerShell-wide matcher - a missing dep
 # must never brick every shell call):
@@ -80,8 +78,8 @@ CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 # ('codex' ...), so the quoted-name checks below run on the ORIGINAL text.
 STRIPPED="$(printf '%s' "$CMD" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")"
 
-# Command-position detection composed from the same shared fragments as the
-# WSL sibling (case-INSENSITIVE, Codex.exe == codex.exe on Windows):
+# Command-position detection composed from shared fragments
+# (case-INSENSITIVE, Codex.exe == codex.exe on Windows):
 #   _SEP        opener: line start (+ leading whitespace), or a separator
 #               (| ; & && ||) / group / command-subst opener ( or backtick,
 #               each optionally followed by whitespace. NOT bare whitespace -

@@ -13,6 +13,7 @@
 #   re-run line naming this wrapper on stderr.
 #   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
 #   under its NODE line (query) or as a Rationale line (explain).
+#   A query naming a file or identifier also starts from that node (anchor-seeds.py).
 #   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
@@ -43,19 +44,64 @@ else
   [ "$n" -gt 0 ] && echo "leg-graph: NOTE graph built at ${built:0:9} is $n commits behind this worktree's HEAD; recent changes are missing" >&2
 fi
 
-has_budget=0
-for a in "$@"; do case "$a" in --budget|--budget=*) has_budget=1 ;; esac; done
+# The question is the first argument after the verb that is neither a flag nor a flag's value.
+has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() graph="$out/graph.json"
+for a in "${@:2}"; do
+  if [ -n "$want" ]; then
+    if [ "$want" = budget ]; then budget="$a"; else rest+=("$a"); fi
+    [ "$want" = graph ] && graph="$a"
+    want=""; continue
+  fi
+  case "$a" in
+    --budget) has_budget=1; want=budget; continue ;;
+    --budget=*) has_budget=1; budget="${a#--budget=}"; continue ;;
+    --seed) has_seed=1; want=value ;;
+    --seed=*) has_seed=1 ;;
+    --graph) want=graph ;;
+    --graph=*) graph="${a#--graph=}" ;;
+    --context) want=value ;;
+    -*) ;;
+    *) [ -n "$question" ] || question="$a" ;;
+  esac
+  rest+=("$a")
+done
 [ "$has_budget" = 1 ] || set -- "$@" --budget 8000
 
-ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
+# graphify seeds on the question's words and never on a file or identifier it names (go.sh,
+# leg_tail_status), so anchor-seeds.py resolves those names; the named nodes and graphify's own
+# seeds then answer on half the budget each, merged with the named nodes first.
+seeds=()
+if [ "$sub" = query ] && [ "$has_seed" = 0 ] && [ -n "$question" ] && command -v python3 >/dev/null 2>&1; then
+  case "$budget" in
+    ''|*[!0-9]*) ;;
+    *) budget=$((10#$budget))
+       while read -r sid; do [ -n "$sid" ] && seeds+=(--seed "$sid"); done \
+         < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" seeds "$graph" "$question") ;;
+  esac
+fi
+if [ "${#seeds[@]}" -gt 0 ]; then
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-graph.XXXXXX")" || exit 1
+  trap 'rm -rf "$tmp"' EXIT
+  half=$((budget / 2))
+  GRAPHIFY_OUT="$out" graphify query "${rest[@]}" "${seeds[@]}" --budget "$half" >"$tmp/given" 2>"$tmp/given.err" &
+  pid=$!
+  ans="$(GRAPHIFY_OUT="$out" graphify query "${rest[@]}" --budget "$((budget - half))")"; rc=$?
+  wait "$pid"
+  cat "$tmp/given.err" >&2
+  printf '%s\n' "$ans" >"$tmp/keyword"
+  if merged="$(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" merge "$tmp/given" "$tmp/keyword" "$budget")"; then ans="$merged"
+  else ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?; fi
+else
+  ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
+fi
 # graphify stores a semantic node's WHY as `rationale` but neither verb prints it, so a "why"
 # question got a pointer to a doc section; append-rationale.py adds the stored text.
 if command -v python3 >/dev/null 2>&1; then
-  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$out/graph.json")" && ans="$withwhy"
+  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$graph")" && ans="$withwhy"
   # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
   # doc and rationale nodes first for those questions and leaves any other question untouched.
   if [ "$sub" = query ]; then
-    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$out/graph.json" "${2:-}")" && ans="$ranked"
+    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
   fi
 fi
 printf '%s\n' "$ans"

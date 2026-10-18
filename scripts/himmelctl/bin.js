@@ -1055,7 +1055,7 @@ const PROFILE_PRESETS = {
 // factual line per option, verified against what the code right below
 // actually does — never a claim the implementation doesn't back.
 const PROFILE_HELP = {
-  starter: 'core harness: hooks, guardrails, worktrees, statusline, jira CLI',
+  starter: 'guardrails, git gates and worktrees for this project',
   luna: 'starter + the second-brain surface, nothing else (vault/qmd/cadences/PHI/secrets/bridge questions)',
   operator: 'the maintainer machine as a consumable profile (seeds defaults ONLY; lanes and every has-it-or-not feature are still asked, each lane line saying what it needs, e.g. "codex — requires the codex CLI + its own login; skip if you don\'t have it")',
   custom: 'walk every question from scratch, no seeding',
@@ -1081,14 +1081,97 @@ const HANDOVER_HELP = {
   external: 'persists HANDOVER_DIR to an external state repo you point at next',
 };
 
-const PLUGIN_SET_HELP = {
-  lean: 'the only supported set — the reconciler wires only what himmel actually runs (HIMMEL-2292)',
-};
-
 const ALWAYS_ON_HELP = {
-  yes: 'print the unattended/scheduled-run hardening checklist (nothing is executed either way)',
+  yes: 'print the unattended-run hardening checklist (nothing is executed either way); why and how: docs/setup/new-machine.md, on the docs site https://yotamleo.github.io/Himmel/',
   no: 'print a one-line pointer to the checklist instead',
 };
+
+const TRACKER_HELP = {
+  jira: 'commits name a ticket like ABC-123; the Jira secrets are offered later',
+  local: 'commits name a ticket from your local ticket files; no Jira secrets asked',
+  none: 'no ticket tracker; a commit needs no ticket ID',
+};
+
+const TICKET_REQUIRED_HELP = {
+  yes: 'the commit-msg gate refuses a commit that names no ticket',
+  no: 'a commit may omit the ticket ID',
+};
+
+// Commit rules are config-class keys (scripts/lib/load-dotenv.sh
+// _himmel_key_class), so they live in ~/.himmel/himmel.conf, not the .env.
+function commitRulesPath() {
+  return path.join(os.homedir(), '.himmel', 'himmel.conf');
+}
+
+// tracker none has no ticket pattern, so a required ID there would contradict
+// itself (check-commit-msg.sh refuses it); the ID question is skipped for none.
+function commitRulesEntries(cr) {
+  const entries = [['TRACKER', cr.tracker]];
+  if (cr.tracker !== 'none') {
+    entries.push(['TICKET_ID_REQUIRED', cr.ticketIdRequired ? '1' : '0']);
+    if (cr.ticketIdPattern) entries.push(['TICKET_ID_PATTERN', cr.ticketIdPattern]);
+  }
+  return entries;
+}
+
+function commitRulesPatternOk(p) {
+  return typeof p === 'string' && p.trim() !== '' && !/[\r\n\0]/.test(p);
+}
+
+function previewCommitRules(answers) {
+  if (!answers.commitRules) return;
+  const kv = commitRulesEntries(answers.commitRules).map(([k, v]) => `${k}=${v}`).join(', ');
+  console.log(`himmelctl: would write ${kv} to ${commitRulesPath()}`);
+}
+
+// Replace each key's line in place (first match; later duplicates dropped),
+// append the missing ones, drop a commit-rule key the answers leave out (a stale
+// value would contradict them), leave every other line untouched.
+function applyCommitRulesStep(answers) {
+  if (!answers.commitRules) return { rc: 0 };
+  const file = commitRulesPath();
+  try {
+    let lines = [];
+    try { lines = fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    const entries = commitRulesEntries(answers.commitRules);
+    const kept = new Set(entries.map(([k]) => k));
+    for (const k of ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN']) {
+      if (!kept.has(k)) lines = lines.filter((l) => !l.startsWith(`${k}=`));
+    }
+    for (const [k, v] of entries) {
+      const idx = lines.findIndex((l) => l.startsWith(`${k}=`));
+      if (idx === -1) { lines.push(`${k}=${v}`); continue; }
+      lines[idx] = `${k}=${v}`;
+      lines = lines.filter((l, i) => i <= idx || !l.startsWith(`${k}=`));
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${lines.join('\n')}\n`);
+  } catch (e) {
+    console.error(`himmelctl: could not write commit rules to ${file}: ${e.message}`);
+    return { rc: 1 };
+  }
+  console.log(`himmelctl: wrote ${commitRulesEntries(answers.commitRules).map(([k]) => k).join(', ')} to ${file}`);
+  return { rc: 0 };
+}
+
+async function askCommitRules(ask) {
+  const tracker = await askNumberedEnum(ask, 'tracker', ['jira', 'local', 'none'], 'jira', TRACKER_HELP);
+  const cr = { tracker: tracker };
+  if (tracker !== 'none') {
+    cr.ticketIdRequired = (await askNumberedEnum(ask, 'ticket ID required', ['yes', 'no'], 'yes', TICKET_REQUIRED_HELP)) === 'yes';
+    for (;;) {
+      const p = await askPath(ask, "? ticket ID pattern (regex; blank = the commit gate's own default)\n> ", '');
+      if (p === '') break;
+      if (commitRulesPatternOk(p)) { cr.ticketIdPattern = p; break; }
+      console.error('  ! the pattern must be a single line; try again, or leave it blank for the default');
+    }
+  }
+  const kv = commitRulesEntries(cr).map(([k, v]) => `${k}=${v}`).join(', ');
+  // CONSENT prompt for a file write: literal yes/no, never a bare number
+  const ans = await askEnum(ask, `? write these commit rules to ${commitRulesPath()} now (${kv}; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no');
+  return ans === 'yes' ? cr : undefined;
+}
 
 const SECRETS_WALK_HELP = {
   run: 'walk each luna secret with an instruction card + probe (himmelctl never harvests the value)',
@@ -1588,8 +1671,8 @@ function vmProofNote(row, route) {
   return 'vm.mode config error — fix ~/.himmel/config.json';
 }
 
-async function askCadences(ask, lanes, vaultMode, defaultIds, vmAnswer, doc) {
-  const rows = offeredCadenceRows(lanes, vaultMode);
+async function askCadences(ask, lanes, vaultMode, defaultIds, vmAnswer, doc, hideIds) {
+  const rows = offeredCadenceRows(lanes, vaultMode).filter((r) => (hideIds || []).indexOf(r.id) === -1);
   const ids = rows.map((r) => r.id);
   const route = rows.some((r) => r.vm_proof) ? vmProofRoute(doc, vmAnswer) : { rc: 0 };
   const blocked = (id) => rows.some((r) => r.id === id && r.vm_proof) && route.rc !== 0;
@@ -1682,7 +1765,9 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   // 1. profile — replaces the old role question. Seeds the
   // per-question defaults below; every question is still asked regardless of
   // which preset is picked (see PROFILE_PRESETS' own comment).
-  const profile = await askNumberedEnum(ask, 'profile', ['starter', 'luna', 'operator', 'custom'], 'starter', PROFILE_HELP);
+  // operator is the maintainer machine's own seed: offered only with --contribute
+  const profileOpts = devOverlay ? ['starter', 'luna', 'operator', 'custom'] : ['starter', 'luna', 'custom'];
+  const profile = await askNumberedEnum(ask, 'profile', profileOpts, 'starter', PROFILE_HELP);
   const preset = PROFILE_PRESETS[profile];
 
   // 2. scope — universal now (the old adopter-only gate died with role).
@@ -1710,14 +1795,9 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     }
   }
 
-  // 5. pluginSet. 'full' is DROPPED — the full-plugin-enable.json
-  // set does not reflect what himmel actually runs (the reconciler whitelist
-  // is the truth), so offering it installed a batteries-
-  // included set nobody operates. 'lean' is the only remaining path; the
-  // question stays (rather than being removed outright) so every existing
-  // --from-profile cache / hermetic-test stdin sequence that already answers
-  // 'lean' here keeps working unchanged — only the 'full' CHOICE is gone.
-  const pluginSet = await askNumberedEnum(ask, 'pluginSet', ['lean'], 'lean', PLUGIN_SET_HELP);
+  // 5. pluginSet is not asked: 'lean' is the only supported set, so the answer
+  // stays in the schema (saved profiles still validate) without a question.
+  const pluginSet = 'lean';
 
   // 6/7 (asked for every install).
   const opts = laneOpts || {};
@@ -1746,7 +1826,12 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   let disarmCadence = false;
   let vm;
   let existingDoc;
-  const offeredRows = offeredCadenceRows(lanes, vaultMode);
+  // starter offers only the doctor among the always-available rows; rows with a
+  // real requirement (vault, lane, env, platform) stay offered once it is met
+  const hideCadenceIds = profile === 'starter'
+    ? CADENCE_REGISTRY.filter((r) => r.requires === 'none' && r.id !== 'doctor').map((r) => r.id)
+    : [];
+  const offeredRows = offeredCadenceRows(lanes, vaultMode).filter((r) => hideCadenceIds.indexOf(r.id) === -1);
   if (offeredRows.length > 0) {
     // the vm.mode question sits right before the cadences it
     // gates — asked only when a vm_proof row is offered, so a flow with none
@@ -1755,7 +1840,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
       try { existingDoc = lunaConfigLib.inspect().doc; } catch (_e) { existingDoc = undefined; }
       vm = await askVm(ask, existingDoc && existingDoc.vm);
     }
-    cadences = await askCadences(ask, lanes, vaultMode, preset.cadenceIds, vm, existingDoc);
+    cadences = await askCadences(ask, lanes, vaultMode, preset.cadenceIds, vm, existingDoc, hideCadenceIds);
     // RETASK stage1-build-6d2e an earlier fix (extended to
     // every declined UNIT, not just pipeline): declining a unit writes its
     // disposition as 'off' but does NOT, by itself, disarm anything already
@@ -1911,9 +1996,14 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     luna = { disarmCadence: disarmCadence };
   }
 
+  // Commit rules (all profiles, last so vault-gated sections keep their order):
+  // tracker + ticket ID rules -> ~/.himmel/himmel.conf
+  const commitRules = await askCommitRules(ask);
+
   rl.close();
   const answers = buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handoverMode, handoverPath, pluginSet, lanes, alwaysOn, luna, secretsWalk, bridge, cadences, vm);
   if (handoverRegister) answers.handover.register = handoverRegister;
+  if (commitRules) answers.commitRules = commitRules;
   return answers;
 }
 
@@ -2029,6 +2119,17 @@ function loadProfile(p) {
     profileError(p, "field 'handover.path' is required when handover.mode=external");
   }
   if (obj.handover.register !== undefined) checkEnum('handover.register', obj.handover.register, ['yes', 'no']);
+  if (obj.commitRules !== undefined) {
+    const cr = obj.commitRules;
+    if (!cr || typeof cr !== 'object' || Array.isArray(cr)) profileError(p, "field 'commitRules' must be an object");
+    checkEnum('commitRules.tracker', cr.tracker, ['jira', 'local', 'none']);
+    if (cr.tracker !== 'none' && typeof cr.ticketIdRequired !== 'boolean') {
+      profileError(p, `field 'commitRules.ticketIdRequired' must be a boolean (got ${JSON.stringify(cr.ticketIdRequired)})`);
+    }
+    if (cr.ticketIdPattern !== undefined && !commitRulesPatternOk(cr.ticketIdPattern)) {
+      profileError(p, "field 'commitRules.ticketIdPattern' must be a non-blank single line");
+    }
+  }
   // lanes/alwaysOn join the strictly-validated set for the same
   // reason every other field is in it — --from-profile is unattended-execution
   // consent, so a skewed field must fail loud BEFORE any side effect rather
@@ -4478,6 +4579,7 @@ async function runPlan(answers, args) {
     }
     previewHandoverAndPlugins(answers);
     const lunaPreview = previewLunaSections(answers);
+    previewCommitRules(answers);
     applyHimmelctlPathShim(args);
     await printContributorProfile(answers, overlayCmd ? displayCommand(overlayCmd) : undefined, args.dryRun);
     await printAdopterEpilogue(answers, displayCommand(cmd), args.dryRun, null, vaultScaffolded, lunaPreview);
@@ -4621,11 +4723,12 @@ async function runPlan(answers, args) {
   // (adopt.sh's/setup.sh's settings-template default).
   const pluginResult = applyPluginStep(answers);
   const lunaResult = applyLunaSectionsStep(answers);
+  const commitRulesResult = applyCommitRulesStep(answers);
   await printContributorProfile(answers, overlayCmd ? displayCommand(overlayCmd) : undefined, args.dryRun);
   await printAdopterEpilogue(answers, displayCommand(cmd), args.dryRun, pluginResult, vaultScaffolded, lunaResult);
   printUninstallFooter();
-  const finalRc = pluginResult.rc || lunaResult.rc || (shimOk ? 0 : 1);
-  if (finalRc !== 0) provStep = pluginResult.rc ? 'plugins' : lunaResult.rc ? 'luna' : 'shim';
+  const finalRc = pluginResult.rc || lunaResult.rc || commitRulesResult.rc || (shimOk ? 0 : 1);
+  if (finalRc !== 0) provStep = pluginResult.rc ? 'plugins' : lunaResult.rc ? 'luna' : commitRulesResult.rc ? 'commit-rules' : 'shim';
   return finalRc;
 }
 

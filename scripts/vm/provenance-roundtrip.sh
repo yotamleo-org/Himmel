@@ -397,6 +397,7 @@ else
     TOP=()
     while IFS= read -r f; do TOP+=("$f"); done < <(ls -A "$HOST_TMP")
     echo "[step] stage"
+    # shellcheck disable=SC2153  # PORT is set by vm_restore in the sourced vm-clone.sh
     rsync_e="ssh -i ${HIMMEL_VM_AR_SSH_KEY:-$HOME/.ssh/id_ed25519} -p $PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes"
     vm_stage_tree "$HOST_TMP" "$SRC" vm_ssh "$rsync_e" "$GUEST_USER@127.0.0.1" "${TOP[@]}" || fail "step stage failed"
     step git-init "cd $SRC && git init -q && git add -A && git -c user.name=rt -c user.email=rt@invalid commit -qm 'rt $SHA'"

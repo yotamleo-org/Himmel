@@ -37,7 +37,7 @@ In prose, say the plain name, and the old name once in brackets the first time.
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
 top-tier parent must not implement inline), not a session role; the word also
-names a script (`scripts/clean-garden.sh`) and CI components. *Conductor* is
+names a script (`scripts/worktree.sh`) and CI components. *Conductor* is
 the cross-project layer, not a role in this fleet.
 
 ## Plain names for harness terms
@@ -295,7 +295,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Verdict (CR)** | One disposition per review finding. `scripts/cr/write-verdicts.sh` writes `agreed`, `disproved`, `conflict` (evidence both agrees and disproves), `unaddressed` (no verdict reached; blocks) or `deferred -> <TICKET>` (a bare `deferred` is refused); it never writes `fixed`. `fixed` comes from `review-round.sh promote`, which amends an `agreed` row on a clean round (`clear-cr-marker.sh` gate 4c runs it), or from `ledger-append.sh --set verdict=fixed`. Terminal, per `promote`: `fixed`, `disproved`, `deferred`; `agreed` waits for promotion, and `conflict` and `unaddressed` are never promoted. | resolution |
 | **Class sweep** | One `SWEEP` line per agreed or fixed finding, naming every site of the finding's class; `clear-cr-marker.sh` refuses without it (`missing-class-sweep`). | — |
 | **Round** | One counted panel run on a branch, printed as `pr-check: round N of 3 on <branch>`. A CR round, a panel round and a pr-check round are the same counter. It advances once per panel run, not per critic or retry. | — |
-| **Delta round** | The one extra round allowed after round 3, printed as `pr-check: delta round 4 on <branch>`. It reviews only the diff since the last counted head, and only a Critical or escape-class finding blocks. A fourth full round or a second delta round exits 8. | 4th round |
+| **Delta round** | The one extra round allowed after round 3, printed as `pr-check: delta round 4 on <branch>`. It reviews only the diff since the last counted head, and only a Critical or escape-class finding blocks. A fourth full round or a second delta round exits 8; a signed judge GO at the exact head clears any later change instead. | 4th round |
 | **Ready-check** | `scripts/handover/console-kit/ready-check.sh`: the numbered pre-GO checks on one PR head (head and merge state, check rollup, threads, CR ledger, trailers, ticket ids, coverage). `go.sh` runs it before it signs. | — |
 | **GO / GO file** | The console's merge authorisation for one PR at one head sha, written by `go.sh`. The file *is* the GO: `merge-on-green.sh` refuses (exit 17) a console-spawned leg without it, whatever any message says. | approval |
 | **Attestation trailer** | `Platforms tested: <os>` or `Security reviewed: <token>` in a PR's first commit, checked at pre-push and by ready-check item 5. | sign-off |
@@ -369,7 +369,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | `~/.himmel/config.json` opt-ins not writable | `block-himmel-config-writes` | — | `block-himmel-config-writes` | — | — | — |
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
 | No commit onto a merged PR's branch | — | `block-merged-pr-commit` | `block-merged-pr-commit` | pc `check-merged-branch` (warns) | — | — |
-| Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec`, `block-rogue-codex-wsl` | `guard-pr-check-literal` | — | — | — |
+| Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec` | `guard-pr-check-literal` | — | — | — |
 | Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `console-judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-console-dispatch` | — | — | — | — |
 | Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress`, `block-glm-external-writes` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 | Leg session discipline | `block-leg-askuserquestion`, `guard-leg-wakeup`, `guard-leg-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-leg-context-handoff` | — | — | — |

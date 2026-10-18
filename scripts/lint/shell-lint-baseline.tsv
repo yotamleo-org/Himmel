@@ -104,8 +104,8 @@ scripts/ci/test-run-shell-tests-flake.sh	mktemp	1
 scripts/ci/test-tmp-sweep.sh	gnu-flag	1
 scripts/ci/tmp-sweep.sh	mktemp	1
 scripts/claude-glm-seed-check.sh	mktemp	1
+scripts/worktree.sh	mktemp	2
 scripts/clean-garden.sh	errexit	1
-scripts/clean-garden.sh	mktemp	2
 scripts/clean.sh	errexit	1
 scripts/cleanup/codex-sweep-cadence.sh	errexit	1
 scripts/cleanup/codex-sweep-cadence.sh	gnu-flag	1
@@ -116,7 +116,6 @@ scripts/cleanup/test-reap-mcp-orphans.sh	mktemp	1
 scripts/codex/bump-codex-sessionend-timeout.sh	errexit	1
 scripts/codex/bump-codex-sessionend-timeout.sh	gnu-flag	1
 scripts/codex/companion-liveness.sh	errexit	1
-scripts/codex/dispatch-codex-wsl.sh	gnu-flag	1
 scripts/codex/install-himmel-codex.sh	errexit	1
 scripts/codex/sanitize-plugin-hooks.sh	errexit	1
 scripts/codex/test-bump-codex-sessionend-timeout.sh	errexit	1
@@ -128,7 +127,6 @@ scripts/codex/test-companion-liveness.sh	errexit	1
 scripts/codex/test-companion-liveness.sh	mktemp	1
 scripts/codex/test-dispatch-codex-exec.sh	errexit	1
 scripts/codex/test-dispatch-codex-exec.sh	mktemp	1
-scripts/codex/test-dispatch-codex-wsl.sh	mktemp	1
 scripts/codex/test-hook-smoke-demo.sh	errexit	1
 scripts/codex/test-hook-smoke-demo.sh	mktemp	1
 scripts/codex/test-install-himmel-codex.sh	errexit	1
@@ -465,7 +463,6 @@ scripts/hooks/test-block-merged-pr-commit.sh	mktemp	1
 scripts/hooks/test-block-read-secrets.sh	gnu-flag	4
 scripts/hooks/test-block-read-secrets.sh	mktemp	2
 scripts/hooks/test-block-rogue-codex-exec.sh	mktemp	1
-scripts/hooks/test-block-rogue-codex-wsl.sh	mktemp	2
 scripts/hooks/test-block-tail-pipe-on-gates.sh	bash32	3
 scripts/hooks/test-block-tail-pipe-on-gates.sh	mktemp	1
 scripts/hooks/test-block-unresolved-cr-merge.sh	mktemp	1

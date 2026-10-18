@@ -19,7 +19,11 @@
 #
 # Headless-claude billing does NOT apply here, not even indirectly.
 # The graphmap sibling carries that caveat because its graphify backend shells the
-# `claude` CLI underneath; nothing in the qmd path invokes claude at all.
+# `claude` CLI underneath; nothing in the qmd path invokes claude at all. That says
+# nothing about the network: the embed step uses the machine's CONFIGURED embed
+# model, which may be remote (the station runs openai:qwen/qwen3-embedding-8b on
+# OpenRouter). Read it with `bash scripts/luna/qmd-embed-model.sh check`; egress is
+# governed by the egress matrix (docs/internals/qmd-embed-model.md).
 #
 # ONE task is registered:
 #   HIMMEL-Qmd-Reindex   daily (default 05:00 local)
@@ -30,7 +34,7 @@
 # -Health 04:00), so the reindex actually picks up what those legs just wrote
 # instead of racing them — a reindex scheduled before them would index the
 # previous day's vault. It is also clear of the graphmap slots (13:00 / 13:20)
-# and the 17:00 codex orphan sweep. Cost basis for daily: a full local refresh
+# and the 17:00 codex orphan sweep. Cost basis for daily: a full refresh
 # measured 2026-07-25 ran in 16s (update) + 24s (embed) — daily is cheap, and
 # daily is what bounds the observed five-day staleness to under 24h.
 #

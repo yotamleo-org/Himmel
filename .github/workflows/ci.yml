@@ -1209,9 +1209,12 @@ jobs:
       # and fails closed ("required test tool not found before PATH scrub:
       # bun") without it. Installing bun keeps that hermetic PATH-scrub case
       # under a runner check; a self-skip would exit 0 with nothing exercised.
+      # The himmel-vm guest must not restore a cache entry a
+      # hosted run wrote (it restores, then the bun executable is missing).
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+          no-cache: ${{ runner.environment != 'github-hosted' }}
       # HIMMEL-3193: the run step below now covers marketplace/ (root `.`), where
       # the obsidian-triage suites need js-yaml + playwright from
       # tools/node_modules. ensure-deps.sh installs them and exits non-zero on

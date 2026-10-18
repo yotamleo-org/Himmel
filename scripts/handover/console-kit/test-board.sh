@@ -50,6 +50,8 @@ export BOARD_BANK_LIFT="$W/bin/bank-lift-stub"
 # empty dir here, so no row ever reads the operator's own ~/.claude/projects.
 mkdir -p "$W/tx-none"
 export BOARD_TRANSCRIPTS="$W/tx-none"
+# the CR-loop line reads the CR ledger and the Jira mirror; never the operator's own.
+export CR_LEDGER="$W/no-cr-ledger.jsonl" BOARD_MIRROR="$W/no-mirror"
 
 # The tick stub records its argv and prints a fixed line + fingerprint. N1..N7
 # cover every phase; the fleet is 9/15 with six idle slots. N12 (issue #1336):
@@ -452,6 +454,8 @@ write_v100 3
 {
     printf 'HIMMEL-9101%sTask%sDone%sfirst%s\n' "$T" "$T" "$T" "$T"
     printf 'HIMMEL-9102%sTask%sTo Do%ssecond%sv1-blocker\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9103%sTask%sClosed%sclosed one%s\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9104%sTask%swont do%swont one%s\n' "$T" "$T" "$T" "$T"
 } > "$JD/v1.0.1.tsv"
 DOCV="$B/HIMMEL-nextleg-2026-09-21V-console-v.md"
 sed 's/^epics: .*/&\nversions: v1.0.0, v1.0.1/' "$DOC" > "$DOCV"  # gnu-ok: console kit is Linux-only
@@ -468,7 +472,7 @@ vhtml="$(cat "$W/v-board.html" 2>/dev/null)"
 jargv="$(cat "$W/jira-argv.log" 2>/dev/null)"
 contains 'a versions: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'each version renders done/total' "$vhtml" 'data-release="v1.0.0" data-done="3" data-total="6"'
-contains 'the second version renders its own counts' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
+contains 'the second version renders its own counts, Closed and won'"'"'t do left out of done and total' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
 contains 'the panel is titled Release <version>' "$vhtml" '<h2>Release v1.0.0</h2>'
 contains 'an open v1-blocker ticket is listed with its key' "$vhtml" 'data-blocker="HIMMEL-9001"'
 contains 'a listed blocker shows its status' "$vhtml" '<span class="pr">In Progress</span>'
@@ -945,6 +949,71 @@ jcheck '--json: succession is a tool-eval row' 'M.trends.tools.length === 1 && M
 jcheck '--json: succession counts both sessions from successor start to LIVE' 'M.trends.tools[0].turns === 3 && M.trends.tools[0].eq === 108000 && M.trends.tools[0].wall_min === 10'
 jcheck '--json: succession counts legs quoted back vs silent' 'M.trends.tools[0].legs_quoted === 2 && M.trends.tools[0].legs_silent === 23'
 jcheck '--json: succession passes against the target with a recommendation' 'M.trends.tools[0].pass === true && M.trends.tools[0].target.eq === 457000 && M.trends.tools[0].target.turns === 20 && M.trends.tools[0].recommendation.length > 0'
+
+# --- CR-loop line: rounds per merged PR from the ledger's score heads,
+# preflight hits per PR, residual inflow/outflow from the Jira mirror, per-version
+# residual slots against the 15 soft cap (a warning colour, never a refusal), open
+# restructure tickets, and the plan's before row. RED control (pre-change board.mjs):
+# --json has no trends.cr_loop and the page has no data-cr-loop section.
+CL="$W/crloop"
+mkdir -p "$CL/mirror/HIMMEL"
+ago() { date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%SZ; }
+printf '%s\n' '# console' '## Live state' 'epics: none' '' '## Results' > "$CL/console-c.md"
+printf '[{"number":3001,"title":"a","mergedAt":"%s","headRefName":"feat/a"},{"number":3002,"title":"b","mergedAt":"%s","headRefName":"feat/b"},{"number":3003,"title":"c","mergedAt":"%s","headRefName":"feat/c"}]\n' \
+    "$(ago 1)" "$(ago 2)" "$(ago 10)" > "$CL/merged.json"
+{
+    for h in h1 h1 h2 h3; do printf '{"kind":"score","ts":"%s","branch":"feat/a","head":"%s","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 1)" "$h"; done
+    printf '{"kind":"score","ts":"%s","branch":"feat/b","head":"h4","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 2)"
+    for h in o1 o2 o3 o4 o5; do printf '{"kind":"score","ts":"%s","branch":"feat/c","head":"%s","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 10)" "$h"; done
+    printf '{"kind":"preflight","ts":"%s","branch":"feat/a","head":"h1","classes":[{"class":"x","state":"fixed"},{"class":"y","state":"waived"}]}\n' "$(ago 1)"
+    printf '{"kind":"preflight","ts":"%s","branch":"feat/b","head":"h4","classes":[]}\n' "$(ago 2)"
+} > "$CL/ledger.jsonl"
+mirror_issue() {  # mirror_issue <key> <labels json> <versions json> <status> <days old> [resolved days ago] [statusCategory]
+    {
+        printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\nlabels: %s\nfixVersions: %s\n' "$1" "$4" "${7:-$4}" "$2" "$3"
+        printf 'created: "%s"\nupdated: "%s"\nresolution: null\n' "$(ago "$5")" "$(ago 0)"
+        [ -z "${6:-}" ] || printf 'resolved: "%s"\n' "$(ago "$6")"
+        printf -- '---\n\n# %s: t\n' "$1"
+    } > "$CL/mirror/HIMMEL/$1.md"
+}
+mirror_issue HIMMEL-9101 '["residual"]' '["v1.1.3"]' 'To Do' 2
+mirror_issue HIMMEL-9102 '["residual-depth-1"]' '["v1.1.3"]' 'To Do' 3
+mirror_issue HIMMEL-9103 '["residual"]' '["v1.1.3"]' 'Done' 20
+mirror_issue HIMMEL-9104 '["restructure-class-x"]' '[]' 'To Do' 20
+mirror_issue HIMMEL-9106 '["residual"]' '["v1.1.3"]' 'Closed' 20 1 Done
+mirror_issue HIMMEL-9105 '["theme"]' '["v1.1.3"]' 'To Do' 1
+for n in $(seq 9110 9125); do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"]' 'To Do' 30; done
+crrun() {
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" CR_LEDGER="${CL_LEDGER:-$CL/ledger.jsonl}" BOARD_MIRROR="${CL_MIRROR:-$CL/mirror/HIMMEL}" \
+        GH_OPEN="$W/open.json" GH_MERGED="$CL/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$CL/console-c.md" --repo "$W/repo" --out "$CL/board.html" --json "$CL/board.json" 2>"$W/stderr.log"
+}
+crrun >/dev/null; rc=$?
+contains 'cr-loop: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+jcheck 'cr-loop --json: rounds per merged PR are distinct score heads per branch, in the window (mean 2, p90 3)' 'M.trends.cr_loop.rounds.prs === 2 && M.trends.cr_loop.rounds.mean === 2 && M.trends.cr_loop.rounds.p90 === 3'
+jcheck 'cr-loop --json: preflight hits per PR (2 hits over 2 PRs)' 'M.trends.cr_loop.preflight.hits === 2 && M.trends.cr_loop.preflight.per_pr === 1'
+jcheck 'cr-loop --json: residual inflow counts residual-labelled tickets created in the window, not other labels' 'M.trends.cr_loop.residual.inflow === 2'
+jcheck 'cr-loop --json: a Done residual with no resolved date makes outflow and net n/a (null), never the updated proxy' 'M.trends.cr_loop.residual.outflow === null && M.trends.cr_loop.residual.net === null && M.trends.cr_loop.residual.outflow_note.includes("HIMMEL-6390")'
+jcheck 'cr-loop --json: residual slots per version against the 15 soft cap' 'M.trends.cr_loop.versions.find((v) => v.version === "v1.1.3").slots === 2 && M.trends.cr_loop.versions.find((v) => v.version === "v1.1.4").slots === 16 && M.trends.cr_loop.soft_cap === 15'
+jcheck 'cr-loop --json: over the soft cap is flagged, under it is not' 'M.trends.cr_loop.versions.find((v) => v.version === "v1.1.4").over === true && M.trends.cr_loop.versions.find((v) => v.version === "v1.1.3").over === false'
+jcheck 'cr-loop --json: open restructure tickets' 'M.trends.cr_loop.restructure_open === 1'
+jcheck 'cr-loop --json: the plan section 1 numbers are the before row' 'M.trends.cr_loop.before.rounds_mean === 2.71 && M.trends.cr_loop.before.rounds_p90 === 5 && M.trends.cr_loop.before.residuals_per_merged_pr === 0.41'
+contains 'cr-loop html: one data-cr-loop line with rounds per PR and p90' "$chtml" 'rounds/PR 2.0 (p90 3)'
+contains 'cr-loop html: residual inflow, with outflow n/a and the ticket that fixes it' "$chtml" 'in 2 · out n/a'
+contains 'cr-loop html: a version past 15 carries the warning flag' "$chtml" 'data-cr-version="v1.1.4" data-over="1"'
+contains 'cr-loop html: a version under 15 does not' "$chtml" 'data-cr-version="v1.1.3" data-over="0"'
+mirror_issue HIMMEL-9103 '["residual"]' '["v1.1.3"]' 'Done' 20 1
+crrun >/dev/null
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+jcheck 'cr-loop --json: with a resolved date in the window, outflow is counted and net is inflow minus outflow' 'M.trends.cr_loop.residual.outflow === 1 && M.trends.cr_loop.residual.net === 1'
+CL_LEDGER="$W/none.jsonl" CL_MIRROR="$W/none" crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+contains 'cr-loop: an absent ledger and mirror never fail the render (rc 0)' "rc=$rc" 'rc=0'
+jcheck 'cr-loop --json: absent ledger and mirror read n/a (null), the before row stays' 'M.trends.cr_loop.rounds.mean === null && M.trends.cr_loop.residual.inflow === null && M.trends.cr_loop.before.rounds_mean === 2.71'
+jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 'M.trends.cr_loop.preflight.per_pr === null'
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

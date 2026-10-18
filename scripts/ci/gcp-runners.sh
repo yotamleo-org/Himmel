@@ -23,9 +23,9 @@
 # the config does not outlive its read; the proxy env of gcp-net.sh rides along as the
 # proxy-env metadata file (the subnet has no other way out).
 #
-# ponytail: pool size is whatever `up` was last told, topped up by hand; upgrade
-# to an autoscaling timer, a budget kill switch and a regional CPU quota pin
-# (follow-up ticket).
+# ponytail: pool size is whatever `up` was last told (gcp-runner-autoscale.sh tops it up
+# from the queue depth); upgrade to a budget kill switch and a regional CPU quota pin
+# (operator-side, after the live proof).
 set -u
 
 REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
@@ -60,22 +60,27 @@ need_net() {
 # drop_jit VM... -> wait until each VM's runner is online (the startup script has then
 # read its config), then remove jit-config from that VM's metadata. A runner that never
 # comes online within ONLINE_WAIT loses the key anyway: the config must not idle there.
+# A key that cannot be removed gets its VM deleted; returns 1 if any VM could not be cleaned.
 drop_jit() {
-    local deadline=$((SECONDS + ONLINE_WAIT)) pending=("$@") left online vm
+    local deadline=$((SECONDS + ONLINE_WAIT)) pending=("$@") left online vm failed=0
     while [ "${#pending[@]}" -gt 0 ]; do
         online="$("$GH" api --paginate "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="online") | .name')" || online=""
         left=()
         for vm in "${pending[@]}"; do
             if grep -qxF "$vm" <<< "$online" || [ "$SECONDS" -ge "$deadline" ]; then
-                gc compute instances remove-metadata "$vm" --zone="$ZONE" --keys=jit-config \
-                    || echo "gcp-runners: could not remove jit-config from $vm" >&2
+                if ! gc compute instances remove-metadata "$vm" --zone="$ZONE" --keys=jit-config; then
+                    echo "gcp-runners: could not remove jit-config from $vm, deleting it" >&2
+                    gc compute instances delete "$vm" --zone="$ZONE" --quiet || echo "gcp-runners: could not delete $vm" >&2
+                    failed=1
+                fi
             else
                 left+=("$vm")
             fi
         done
-        pending=("${left[@]}")
+        pending=(${left[@]+"${left[@]}"})
         [ "${#pending[@]}" -eq 0 ] || sleep "$ONLINE_POLL"
     done
+    return "$failed"
 }
 
 cmd_up() {
@@ -84,6 +89,7 @@ cmd_up() {
     [ "$n" -ge 1 ] || die "up: N must be at least 1" 2
     [ "$n" -le "$MAX_N" ] || die "up: N=$n exceeds the hard max $MAX_N (the trial caps 8 vCPUs)" 2
 
+    [ "${GCP_RUNNERS_UNAME:-$(uname -s)}" = Linux ] || die "up: Linux only (the pool lock needs flock)"
     need_net
     exec 9> "$LOCKFILE" || die "cannot open lock $LOCKFILE"
     flock -n 9 || die "another up is already running, refusing to count the pool twice"
@@ -102,6 +108,8 @@ cmd_up() {
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
     local tmpd i stamp vm created=()
+    # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.
+    up_fail() { [ "${#created[@]}" -eq 0 ] || ONLINE_WAIT=0 drop_jit "${created[@]}"; die "$1"; }
     tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
     # shellcheck disable=SC2064  # expand now: tmpd is local and gone when the trap fires
     trap "rm -rf '$tmpd'" EXIT
@@ -113,8 +121,9 @@ cmd_up() {
         vm="himmel-ci-$stamp-$i"
         "$GH" api -X POST "repos/$REPO/actions/runners/generate-jitconfig" \
             -f "name=$vm" -F runner_group_id=1 -f 'labels[]=self-hosted' -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
-            || die "JIT config request failed for $vm"
-        [ -s "$tmpd/$vm.jit" ] || die "empty JIT config for $vm"
+            || up_fail "JIT config request failed for $vm"
+        [ -s "$tmpd/$vm.jit" ] || up_fail "empty JIT config for $vm"
+        created+=("$vm")  # before the call: a create whose response was lost may still have made the VM
         gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
@@ -125,10 +134,9 @@ cmd_up() {
             --no-service-account --no-scopes \
             --metadata="runner-repo=$REPO" \
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
-            || die "instances create failed for $vm"
-        created+=("$vm")
+            || up_fail "instances create failed for $vm"
     done
-    drop_jit "${created[@]}"
+    drop_jit "${created[@]}" || die "jit-config cleanup failed, deleting the affected VM(s) was attempted; check 'status' for leftovers"
     echo "gcp-runners: created $need VM(s); pool target $n"
 }
 

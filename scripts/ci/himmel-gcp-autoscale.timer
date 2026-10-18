@@ -1,0 +1,10 @@
+[Unit]
+Description=himmel GCP CI runner pool autoscale timer (HIMMEL-6278)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

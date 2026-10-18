@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/codex/codex-arg-filter.sh - the codex-exec passthrough-args filter,
-# extracted from dispatch-codex-exec.sh so the exec and WSL
+# extracted from dispatch-codex-exec.sh so the exec and any sibling
 # dispatchers share ONE decision source (never two prose-synced
 # copies of a security filter).
 #

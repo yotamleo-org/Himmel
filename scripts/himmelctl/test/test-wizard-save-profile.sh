@@ -159,9 +159,9 @@ stage() {
   sleep 0.5
 }
 
-# The 9 base wizard answers (profile/scope/vault/handover/pluginSet/lanes/
-# alwaysOn/cadences/disarm-consent) that produce a starter/project/vault=none/
-# inline/lean/no-lanes/no-alwaysOn profile — verbatim the same sequence
+# The 10 base wizard answers (profile/scope/vault/handover/lanes/alwaysOn/
+# cadences/disarm-consent/tracker/commit-rules-consent) that produce a
+# starter/project/vault=none/inline/no-lanes/no-alwaysOn profile — verbatim the same sequence
 # test-wizard-questions.sh's case5 uses. this vault=none +
 # no-codex-lane shape now ALSO reaches the cadences question (drift-fix/
 # upstream-watch are requires:'none', always offered; repo-sync is Windows-
@@ -169,7 +169,9 @@ stage() {
 # the disarm-consent question (since declining all three counts as a
 # decline) — 7 became 9; see that file's case1/case7 for the exact count
 # assertion this mirrors.
-BASE_ANSWERS=(starter project none inline lean none no none no)
+# pluginSet is no longer asked (-1); the Commit rules step adds
+# tracker=none and its consent=no (+2).
+BASE_ANSWERS=(starter project none inline none no none no none no)
 
 # ── Case 1: interactive install, save accepted -> byte-identical file ───────
 c1="$work/case1"; mkdir -p "$c1"
@@ -261,7 +263,6 @@ starter
 project
 none
 inline
-lean
 none
 no
 INPUT

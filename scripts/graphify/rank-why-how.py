@@ -6,16 +6,22 @@ code symbols first and the node holding the reason sits far below them, or is no
 For a why/how question this filter:
   1. adds up to MAX_ADDED doc/rationale nodes whose label or rationale shares at least two words
      with the question (a rare word, or one in the label, weighs more) and that the answer does not already list, and
-  2. orders the NODE blocks: nodes carrying a RATIONALE line, then doc nodes (a .md source, a
-     document/concept/rationale node, or an end of a rationale_for/documents/explains edge), then
-     the rest. Order within a tier is graphify's.
-Any other question passes through byte for byte.
+  2. orders the NODE blocks: the start nodes the caller gave (`Start (given): [...]`), then nodes
+     carrying a RATIONALE line, then doc nodes (a .md source, a document/concept/rationale node,
+     or an end of a rationale_for/documents/explains edge), then the rest. Order within a tier is
+     graphify's.
+  3. given a budget, keeps the answer within max(its own length, budget * 3 chars) by dropping
+     trailing code nodes, then the weakest added nodes; a given start node is never dropped.
+A why/how question starts with why, "how <word>", what for or for what reason, or holds
+"why|how does|do|is|..."; "how-to docs" and "reason codes" are not. Any other question passes
+through byte for byte.
 
-Usage: <leg-graph query output> | python3 rank-why-how.py <graph.json> <question>
+Usage: <leg-graph query output> | python3 rank-why-how.py <graph.json> <question> [<budget>]
 
 Fails open: an unreadable graph or any error prints the input as-is and says so on stderr.
 ponytail: word overlap, not meaning; upgrade path is graphify scoring rationale itself (HIMMEL-6056).
 """
+import ast
 import json
 import math
 import re
@@ -24,10 +30,11 @@ import sys
 MAX_ADDED = 3
 MAX_LEN = 400
 WHY_HOW = re.compile(
-    r"^\s*(why|how|what\s+for|for\s+what\s+reason|reason)\b|\b(why|how)\s+(does|do|did|is|are|was|were|can|should|would)\b",
+    r"^\s*(why|what\s+for|for\s+what\s+reason)\b|^\s*how\s+\w|\b(why|how)\s+(does|do|did|is|are|was|were|can|should|would)\b",
     re.I,
 )
 NODE_LINE = re.compile(r"^NODE (?P<label>.*) \[src=(?P<src>.*?) loc=")
+GIVEN = re.compile(r"\| Start \(given\): (\[.*?\])(?= \| )")
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 DOC_TYPES = {"document", "concept", "rationale", "paper"}
 DOC_RELATIONS = {"rationale_for", "documents", "explains"}
@@ -60,7 +67,22 @@ def is_doc(node, doc_ids):
     return node.get("file_type") in DOC_TYPES or src.endswith(".md") or node.get("id") in doc_ids
 
 
-def rank(lines, graph, question):
+def note(n):
+    return f" (+{n} doc/rationale nodes added for a why/how question)"
+
+
+def given_labels(head):
+    for line in head:
+        m = GIVEN.search(line)
+        if m:
+            try:
+                return set(ast.literal_eval(m.group(1)))
+            except (ValueError, SyntaxError):
+                return set()
+    return set()
+
+
+def rank(lines, graph, question, budget=None):
     nodes = graph.get("nodes", [])
     doc_ids = set()
     for edge in graph.get("links", graph.get("edges", [])):
@@ -120,7 +142,17 @@ def rank(lines, graph, question):
             block.append("  RATIONALE: " + why)
         added.append(block)
 
+    # The first block for each given start label stays on top: the caller named that node.
+    pinned, wanted = set(), given_labels(lines[:start])
+    for block in blocks:
+        m = NODE_LINE.match(block[0])
+        if m and m.group("label") in wanted:
+            wanted.discard(m.group("label"))
+            pinned.add(id(block))
+
     def tier(block):
+        if id(block) in pinned:
+            return -1
         if any(line.startswith("  RATIONALE:") for line in block[1:]):
             return 0
         m = NODE_LINE.match(block[0])
@@ -131,9 +163,23 @@ def rank(lines, graph, question):
 
     ordered = sorted(added + blocks, key=tier)
     head = lines[:start]
+    if budget and added:
+        # Added nodes take the room of trailing code nodes, then of the weakest added ones, so the
+        # answer never grows past the budget graphify was given (it counts 3 chars per token).
+        limit = max(len("\n".join(lines)), budget * 3)
+
+        def size():
+            body = len("\n".join(head + [line for b in ordered for line in b] + lines[end:]))
+            return body + (len(note(len(added))) if added else 0)
+
+        for block in [b for b in reversed(ordered) if tier(b) == 2] + added[::-1]:
+            if size() <= limit:
+                break
+            ordered.remove(block)
+            if block in added:
+                added.remove(block)
     if added:
-        note = f" (+{len(added)} doc/rationale nodes added for a why/how question)"
-        head = [re.sub(r"(\| \d+ nodes found)$", r"\1" + note, line) for line in head]
+        head = [re.sub(r"(\| \d+ nodes found)$", r"\1" + note(len(added)), line) for line in head]
         print(f"rank-why-how: added {len(added)} doc/rationale node(s) matching the question's words", file=sys.stderr)
     return head + [line for block in ordered for line in block] + lines[end:]
 
@@ -141,13 +187,14 @@ def rank(lines, graph, question):
 def main():
     raw = sys.stdin.read()
     question = sys.argv[2] if len(sys.argv) > 2 else ""
+    budget = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else None
     if not WHY_HOW.search(question):
         sys.stdout.write(raw)
         return
     try:
         with open(sys.argv[1], encoding="utf-8") as fh:
             graph = json.load(fh)
-        lines = rank(raw.split("\n"), graph, question)
+        lines = rank(raw.split("\n"), graph, question, budget)
     except Exception as exc:  # fail open: the plain answer beats no answer
         print(f"rank-why-how: {exc}; printing the answer unranked", file=sys.stderr)
         sys.stdout.write(raw)

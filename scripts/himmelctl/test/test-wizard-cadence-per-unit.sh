@@ -272,7 +272,6 @@ project
 default-template
 
 inline
-lean
 
 no
 INPUT
@@ -290,7 +289,6 @@ project
 default-template
 
 inline
-lean
 codex
 no
 INPUT
@@ -320,11 +318,10 @@ homeD="$work/homeD"; mkdir -p "$homeD"
 set +e
 outD=$(PATH="$pathD" HOME="$homeD" USERPROFILE="$(winpath "$homeD")" HIMMELCTL_CACHE_DIR="$(winpath "$homeD.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeD.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=win32 \
   "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-starter
+custom
 project
 none
 inline
-lean
 codex
 no
 1
@@ -363,11 +360,10 @@ homeD2="$work/homeD2"; mkdir -p "$homeD2"
 set +e
 outD2=$(PATH="$pathD2" HOME="$homeD2" USERPROFILE="$(winpath "$homeD2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeD2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeD2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=linux \
   "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-starter
+custom
 project
 none
 inline
-lean
 codex
 no
 1
@@ -404,11 +400,10 @@ homeE="$work/homeE"; mkdir -p "$homeE"
 set +e
 outE=$(PATH="$pathE" HOME="$homeE" USERPROFILE="$(winpath "$homeE")" HIMMELCTL_CACHE_DIR="$(winpath "$homeE.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeE.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=win32 \
   "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-starter
+custom
 project
 none
 inline
-lean
 
 no
 
@@ -451,11 +446,10 @@ for platE2 in linux darwin win32; do
   set +e
   outE2=$(PATH="$pathE2" HOME="$homeE2" USERPROFILE="$(winpath "$homeE2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeE2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeE2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM="$platE2" \
     "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-starter
+custom
 project
 none
 inline
-lean
 
 no
 

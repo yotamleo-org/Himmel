@@ -108,7 +108,6 @@ D_DOCKER="dock""er run --privileged img sh"
 D_INFRA="terra""form destr""oy"
 D_SCHED="schta""sks /create /tn X /tr \"cla""ude load h\" /sc ONCE /st 04:30 /f"
 D_CODEX="cod""ex exec --sandbox workspace-write do-the-thing"
-D_WSL="ws""l -d Ubuntu -- bash -lc \"cod""ex exec -s workspace-write do-it\""
 D_TAIL="bash scripts/cr/clear-cr-mar""ker.sh | tai""l -5"
 D_QUIET="bash scripts/test-check-c""i.sh"
 D_RELAY="CLAUDE_PID=1 bash x.sh"
@@ -136,8 +135,6 @@ check block-rogue-claude-schedule Bash 2 "$D_SCHED"  "deny rogue scheduled agent
 check block-rogue-claude-schedule Bash 0 "$A_OK"     "allow git status"
 check block-rogue-codex-exec      Bash 2 "$D_CODEX"  "deny raw codex exec"
 check block-rogue-codex-exec      Bash 0 "cod""ex --version" "allow a codex read"
-check block-rogue-codex-wsl       Bash 2 "$D_WSL"    "deny raw wsl codex dispatch"
-check block-rogue-codex-wsl       Bash 0 "$A_OK"     "allow git status"
 check block-tail-pipe-on-gates    Bash 2 "$D_TAIL"   "deny gate piped to tail"
 check block-tail-pipe-on-gates    Bash 0 "$A_OK"     "allow git status"
 check require-quiet-run           Bash 2 "$D_QUIET"  "deny bare suite run"
@@ -175,7 +172,6 @@ for _pair in \
     "block-infra-destroy|$D_INFRA" \
     "block-rogue-claude-schedule|$D_SCHED" \
     "block-rogue-codex-exec|$D_CODEX" \
-    "block-rogue-codex-wsl|$D_WSL" \
     "block-tail-pipe-on-gates|$D_TAIL" \
     "require-quiet-run|$D_QUIET" \
     "block-bank-lift-writes|$D_LIFT" \

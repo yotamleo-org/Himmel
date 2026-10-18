@@ -927,7 +927,7 @@ case "$_leg_rcwd" in
     _leg_wt_phys="$(cd -P "$_leg_rcwd" 2>/dev/null && pwd -P)" || _leg_wt_phys=""
     if [ -z "$_leg_wt_top" ] || [ "$_leg_wt_top" != "$_leg_wt_phys" ]; then
         _leg_wt_base="${_leg_rcwd%/}"; _leg_wt_base="${_leg_wt_base##*/}"
-        echo "headed-arm-leg: refusing to launch $NAME: the doc's resume_cwd ($_leg_rcwd) is not an existing git worktree (HIMMEL-4783). Create it first, from the repo's primary checkout: bash scripts/clean-garden.sh ${_leg_wt_base/+//} --no-prune" >&2
+        echo "headed-arm-leg: refusing to launch $NAME: the doc's resume_cwd ($_leg_rcwd) is not an existing git worktree. Create it first, from the repo's primary checkout: bash scripts/worktree.sh new ${_leg_wt_base/+//} --no-prune" >&2
         exit 2
     fi
     ;;

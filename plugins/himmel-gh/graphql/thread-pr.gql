@@ -1,0 +1,15 @@
+query ThreadPullRequest($threadId: ID!) {
+  node(id: $threadId) {
+    ... on PullRequestReviewThread {
+      pullRequest {
+        number
+        repository {
+          name
+          owner {
+            login
+          }
+        }
+      }
+    }
+  }
+}

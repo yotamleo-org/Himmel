@@ -9,8 +9,7 @@
 > Claude subagents are the ruled default, and an unqualified impl dispatch
 > refuses toward that path rather than picking one of these lanes. Each
 > dormant lane's opt-in env and readiness gate are recorded in
-> `scripts/lanes/lanes.json` (`glm`, `hermes-oneshot`, `codex-exec`,
-> `codex-wsl`); `/lanes` and [`lane-calibration.md`](lane-calibration.md) are
+> `scripts/lanes/lanes.json` (`glm`, `hermes-oneshot`, `codex-exec`); `/lanes` and [`lane-calibration.md`](lane-calibration.md) are
 > the live source of truth. The contract detail in the matrix below (worktree
 > isolation, guard coverage, artifact contracts) still applies to each lane
 > when it is used.

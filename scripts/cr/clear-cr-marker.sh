@@ -497,6 +497,16 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
         echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths or comments since the reviewed head ${review_head:0:8} - gating on the reviewed head (HIMMEL-5416)." >&2
         audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
     fi
+    # A signed judge GO at the tip stands in for the panel on a post-cap delta
+    # review-round.sh judge-go re-verifies the record, the cap and
+    # the descent, so the gates below run at the head a critic did review.
+    if [ "$review_head" = "$tip" ] && [ "${#_rr_head}" -ge 40 ] && [ "$_rr_head" != "$tip" ] \
+        && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
+        && _jg_hit=$(bash "$SCRIPT_DIR/review-round.sh" judge-go --branch "$branch" --head "$tip" 2>/dev/null); then # swallow-ok: a failing verb is the no-GO case, the gates below refuse at the tip
+        review_head="$_rr_head"
+        echo "clear-cr-marker: ${tip:0:8} has no review round of its own but a signed judge GO ($_jg_hit) rules on it - gating on the reviewed head ${review_head:0:8}." >&2
+        audit "JUDGE-GO branch=$branch sha=$tip reviewed_head=$review_head source=judge:$_jg_hit"
+    fi
 fi
 # Is the configured critic panel EMPTY? Read from the FIXED
 # sibling critics.json (no env seam, same as the ledger). Only a readable file
