@@ -2385,8 +2385,8 @@ check_contains "HIMMEL-5830: failed diff temp mktemp names the failure" "$m5830_
 # Exit 2 is documented as usage error OR temp-file failure, in the header and
 # in usage(), so an operator with a full TMPDIR is not sent chasing a critic
 # outage.
-check_contains "HIMMEL-6088: header documents the temp-file exit 2" "$(sed -n 1,20p "$PANEL")" "temp-file (mktemp) failure"
-check_contains "HIMMEL-6088: usage() documents the temp-file exit 2" "$(bash "$PANEL" --bogus-flag 2>&1 >/dev/null)" "temp-file (mktemp) failure"
+check_contains "HIMMEL-6088: header documents the temp-file exit 2" "$(sed -n 1,20p "$PANEL")" "mktemp temp-file failure"
+check_contains "HIMMEL-6088: usage() documents the temp-file exit 2" "$(bash "$PANEL" --bogus-flag 2>&1 >/dev/null)" "mktemp temp-file failure"
 
 # The remaining mktemp sites (check prompt, fallback out/err, sequential out/err,
 # parallel outdir) stop with the same clear message and exit 2. One PATH-shadowed
