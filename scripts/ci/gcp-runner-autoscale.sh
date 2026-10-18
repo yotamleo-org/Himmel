@@ -26,8 +26,11 @@ var="$("$GH" variable get CI_GCP --repo "$REPO")" || die "could not read CI_GCP"
 [ "$var" = "on" ] || { echo "gcp-runner-autoscale: CI_GCP is '$var', nothing to do"; exit 0; }
 
 # A queued gcp job can sit in a run that is already in_progress (its other jobs started).
-runs="$("$GH" api --paginate "repos/$REPO/actions/runs?status=queued&per_page=100" --jq '.workflow_runs[].id')" || die "could not list queued runs"
-running="$("$GH" api --paginate "repos/$REPO/actions/runs?status=in_progress&per_page=100" --jq '.workflow_runs[].id')" || die "could not list in-progress runs"
+# Only runs whose head is this repo count: a fork PR's run lists in the same endpoint and must
+# never make the pool spin up VMs on the project's credit.
+own='.workflow_runs[] | select(.head_repository.full_name == "'"$REPO"'") | .id'
+runs="$("$GH" api --paginate "repos/$REPO/actions/runs?status=queued&per_page=100" --jq "$own")" || die "could not list queued runs"
+running="$("$GH" api --paginate "repos/$REPO/actions/runs?status=in_progress&per_page=100" --jq "$own")" || die "could not list in-progress runs"
 runs="$(printf '%s\n%s\n' "$runs" "$running" | sort -u)"  # a run can move queued to in_progress between the two reads
 depth=0
 while read -r id; do
