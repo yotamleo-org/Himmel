@@ -61,6 +61,11 @@ contains "--check: names the section" "$out" "What you can now do"
 rc=0; out=$(bash "$SCRIPT" --check "$tmp/two.md" 2>&1) || rc=$?
 check "--check: two Internal lines rc 1" "$rc" "1"
 
+# --check: a second Internal line with no trailing newline is still counted
+{ cat "$tmp/gen.md"; echo; printf 'A second internal line, no newline.'; } > "$tmp/nonl.md"
+rc=0; out=$(bash "$SCRIPT" --check "$tmp/nonl.md" 2>&1) || rc=$?
+check "--check: unterminated final Internal line rc 1" "$rc" "1"
+
 # --check: a missing section fails
 grep -v 'Known issues' "$tmp/gen.md" > "$tmp/miss.md"
 rc=0; out=$(bash "$SCRIPT" --check "$tmp/miss.md" 2>&1) || rc=$?

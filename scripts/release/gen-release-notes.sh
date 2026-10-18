@@ -32,7 +32,7 @@ $H_UPDATE
 $H_KNOWN
 $H_INTERNAL"
     [ "$heads" = "$want" ] || die "$f: sections must be exactly, in order: $H_NEW, $H_CHANGED, $H_UPDATE, $H_KNOWN, $H_INTERNAL"
-    while IFS= read -r line; do
+    while IFS= read -r line || [ -n "$line" ]; do
         i=$((i + 1))
         case "$line" in
             '## '*) sect="${line#\#\# }"; continue ;;

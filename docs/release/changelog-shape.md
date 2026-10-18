@@ -49,7 +49,7 @@ block is counted in the Internal line.
 ## Producing and checking a release's notes
 
 ```
-gh pr list --state merged --search 'merged:>=<prev-tag-date>' --json number,title,body > prs.json
+gh pr list --state merged --limit 2000 --search 'merged:>=<prev-tag-date>' --json number,title,body > prs.json
 bash scripts/release/gen-release-notes.sh --prs prs.json --version vX.Y.Z > docs/release/vX.Y.Z-notes.md
 bash scripts/release/gen-release-notes.sh --check docs/release/vX.Y.Z-notes.md
 ```
