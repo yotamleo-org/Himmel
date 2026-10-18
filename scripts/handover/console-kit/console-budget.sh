@@ -7,7 +7,8 @@
 # fresh console would cost. A turn is one assistant API call, deduped by
 # requestId (message.id when absent); sidechain (subagent) rows are not turns.
 #
-# usage: console-budget.sh [--title <console session name>]
+# usage: console-budget.sh [--title <console session name>] [--resolve]
+# --resolve prints the session's transcript path and exits 0 (2 when unresolved).
 # Session: CONTEXT_FILL_TRANSCRIPT, else --title (newest transcript whose
 # customTitle matches), else CLAUDE_CODE_SESSION_ID - as context-fill.sh does.
 # Exit: 0 OK, 3 HANDOVER, 2 the transcript cannot be read or holds no usage
@@ -31,13 +32,14 @@ num_env() { # <name> <default> - a bad value warns and falls back, never disable
 TURN_BUDGET="$(num_env CONSOLE_TURN_BUDGET 150)"
 CR_BUDGET_M="$(num_env CONSOLE_CACHE_READ_BUDGET_M 30)"
 
-title=""
+title=""; resolve_only=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --resolve) resolve_only=1; shift ;;
     --title)
       if [ "$#" -lt 2 ] || [ -z "$2" ]; then echo "console-budget: --title needs a non-empty value" >&2; exit 2; fi
       title="$2"; shift 2 ;;
-    *) echo "usage: console-budget.sh [--title <console session name>]" >&2; exit 2 ;;
+    *) echo "usage: console-budget.sh [--title <console session name>] [--resolve]" >&2; exit 2 ;;
   esac
 done
 
@@ -68,6 +70,7 @@ resolve_transcript() {
 
 transcript="$(resolve_transcript)" || { echo "console-budget: cannot resolve the console session (set CONTEXT_FILL_TRANSCRIPT, --title, or CLAUDE_CODE_SESSION_ID)" >&2; exit 2; }
 if [ ! -r "$transcript" ] || [ ! -f "$transcript" ]; then echo "console-budget: cannot read transcript $transcript" >&2; exit 2; fi
+if [ -n "$resolve_only" ]; then printf '%s\n' "$transcript"; exit 0; fi  # the waiter scans once, then reads this one file per sample via CONTEXT_FILL_TRANSCRIPT
 command -v node >/dev/null 2>&1 || { echo "console-budget: node not found" >&2; exit 2; }
 
 # <turns> <cache_read tokens>, last row per request wins (streamed rows repeat the id)

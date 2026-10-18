@@ -515,17 +515,6 @@ unowned_wake() {
 # marker holds the epoch the streak was first seen and the wake fires once the
 # streak passes CONSOLE_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
 # the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
-budget_file="$inbox.wait.budget"
-budget_cmd="${CONSOLE_WAIT_BUDGET:-$HERE/console-budget.sh}"
-budget_wake() { # prints the WAKE block and returns 0 once per HANDOVER streak; the marker outlives the waiter
-    local out rc
-    [ -n "$console_doc" ] || return 1
-    out="$(timeout -k 2 30 bash "$budget_cmd" --title "$(basename "$console_doc" .md)" 2>/dev/null 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
-    if [ "$rc" -ne 3 ]; then [ "$rc" -ne 0 ] || rm -f "$budget_file"; return 1; fi
-    [ ! -e "$budget_file" ] || return 1
-    : > "$budget_file" 2>/dev/null
-    printf 'WAKE handover-budget %s\n' "$out"
-}
 tracker_stale_file="$inbox.wait.trackerstale"
 tracker_stale_wake() {
     local since
@@ -543,6 +532,31 @@ tracker_stale_wake() {
     [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
     printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
     return 0
+}
+
+# budget_wake: the console's handover budget (console-budget.sh, via --doc). Finding the
+# transcript scans every recent one, so it is resolved once per waiter run (--resolve);
+# each sample then reads that one file. An unresolved console is not measured this run.
+# Exit 3 (HANDOVER) wakes once per streak and sets the marker `<inbox>.wait.budget`,
+# which outlives the waiter; 0 (OK) clears it; 2 (unreadable) does neither.
+budget_file="$inbox.wait.budget"
+budget_cmd="${CONSOLE_WAIT_BUDGET:-$HERE/console-budget.sh}"
+budget_timeout="${CONSOLE_WAIT_BUDGET_TIMEOUT:-30}"
+budget_transcript=""; budget_resolved=""
+budget_wake() {
+    local out rc title
+    [ -n "$console_doc" ] || return 1
+    title="$(basename "$console_doc" .md)"
+    if [ -z "$budget_resolved" ]; then
+        budget_resolved=1
+        budget_transcript="$(timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" --resolve 2>/dev/null 9>&-)" || budget_transcript=""  # gnu-ok: Linux-only kit; swallow-ok: a failed resolve leaves the path empty, so the run is not measured
+    fi
+    [ -n "$budget_transcript" ] || return 1
+    out="$(CONTEXT_FILL_TRANSCRIPT="$budget_transcript" timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" 2>/dev/null 9>&-)"; rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the exit code below decides, only exit 3 reads the output
+    if [ "$rc" -ne 3 ]; then [ "$rc" -ne 0 ] || rm -f "$budget_file"; return 1; fi
+    [ ! -e "$budget_file" ] || return 1
+    : > "$budget_file" 2>/dev/null
+    printf 'WAKE handover-budget %s\n' "$out"
 }
 
 # predecessor_close: the console doc's first line names its predecessor

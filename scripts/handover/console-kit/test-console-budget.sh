@@ -135,6 +135,10 @@ rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE
 check    "6: empty --title rc 2, never the session-id transcript" "$rc" 2
 rc=0; out="$(bash "$SCRIPT" --bogus 2>&1)" || rc=$?
 check    "6: unknown flag rc 2" "$rc" 2
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title new-name-console --resolve 2>&1)" || rc=$?
+check    "6: --resolve prints the transcript path (rc 0)" "$rc:$out" "0:$cfg/projects/-slug/sid-4.jsonl"
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title no-such-console --resolve 2>&1)" || rc=$?
+check    "6: --resolve on an unknown --title rc 2" "$rc" 2
 
 printf '%s\n' '{"type":"assistant","requestId":"n1","message":{"usage":{"cache_read_input_tokens":null}}}' \
               '{"type":"assistant","requestId":"n2","message":{"usage":{"input_tokens":3}}}' > "$tmp/nullcr.jsonl"

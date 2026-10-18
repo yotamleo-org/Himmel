@@ -64,6 +64,12 @@ EOF
 chmod +x "$STUB/page.sh"  # the sender seam is exec'd directly, not run via bash
 export CONSOLE_WAIT_PAGE_CMD="$STUB/page.sh" CONSOLE_WAIT_PAGE_TIMEOUT=2
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
+# No test reads the real transcripts: the budget seam answers "unreadable" (exit 2) until (hb).
+cat > "$STUB/budget-off.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
 
 # tick_line <legs> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
@@ -1223,7 +1229,8 @@ check "(k) no inbox argument is a usage error (rc 2)" "2" "$rc"
 # marker <inbox>.wait.budget outlives the waiter; verdict OK clears it.
 cat > "$STUB/budget.sh" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$STUB/budget.calls"
+case "$*" in *--resolve*) printf 'x\n' >> "$STUB/budget.resolves"; printf '%s\n' "$STUB/budget.transcript"; exit 0 ;; esac
+printf '%s %s\n' "$*" "$CONTEXT_FILL_TRANSCRIPT" >> "$STUB/budget.calls"
 cat "$STUB/budget.out"; exit "$(cat "$STUB/budget.rc")"
 EOF
 export CONSOLE_WAIT_BUDGET="$STUB/budget.sh"
@@ -1233,19 +1240,33 @@ start "$I" "$WORK/hb1.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
 wait_exit "$WPID"
 check "(hb1) HANDOVER wakes with the budget line" "WAKE handover-budget budget turns=151 cache_read=12.0M verdict=HANDOVER" "$(head -n1 "$WORK/hb1.out")"
 check "(hb1) and the waiter exits 0" "0" "$rc"
-check "(hb1) the console is named by the doc basename" "--title HB" "$(head -n1 "$STUB/budget.calls")"
+check "(hb1) the console is named by the doc basename and the resolved transcript is passed" "--title HB $STUB/budget.transcript" "$(head -n1 "$STUB/budget.calls")"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/hb1b.out")"
 printf 'budget turns=3 cache_read=0.1M verdict=OK\n' > "$STUB/budget.out"; printf '0\n' > "$STUB/budget.rc"
+rm -f "$STUB/budget.resolves"; : > "$STUB/budget.calls"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb3) verdict OK clears the streak marker" "absent" "$([ -e "$I.wait.budget" ] && echo present || echo absent)"
+check "(hb3b) the transcript is resolved once per run, not per sample" "1:ok" "$(wc -l < "$STUB/budget.resolves" | tr -d ' '):$([ "$(wc -l < "$STUB/budget.calls")" -ge 2 ] && echo ok || echo few-samples)"
 printf '2\n' > "$STUB/budget.rc"; : > "$I.wait.budget"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1d.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb4) an unreadable transcript (rc 2) neither wakes nor clears the marker" "present:" "$([ -e "$I.wait.budget" ] && echo present):$(cat "$WORK/hb1d.out")"
+rm -f "$I.wait.budget"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1e.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb4b) rc 2 with no marker: no wake, no marker, the waiter ran to its timeout" "124:absent:" "$rc:$([ -e "$I.wait.budget" ] && echo present || echo absent):$(cat "$WORK/hb1e.out")"
+printf '#!/usr/bin/env bash\ncase "$*" in *--resolve*) echo /x; exit 0 ;; esac\nexec sleep 30\n' > "$STUB/budget.hang.sh"
+reset_stub; I="$(new_inbox hb6)"
+CONSOLE_WAIT_BUDGET="$STUB/budget.hang.sh" CONSOLE_WAIT_BUDGET_TIMEOUT=1 start "$I" "$WORK/hb6.out" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md"
+sleep 0.5
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+n=0
+while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(hb6) a hung budget read is killed at CONSOLE_WAIT_BUDGET_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/hb6.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
-unset CONSOLE_WAIT_BUDGET
+export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
 
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"
