@@ -472,8 +472,7 @@ vhtml="$(cat "$W/v-board.html" 2>/dev/null)"
 jargv="$(cat "$W/jira-argv.log" 2>/dev/null)"
 contains 'a versions: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'each version renders done/total' "$vhtml" 'data-release="v1.0.0" data-done="3" data-total="6"'
-contains 'Closed and won'"'"'t do tickets are out of done and total (HIMMEL-6402)' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
-contains 'the second version renders its own counts' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
+contains 'the second version renders its own counts, Closed and won'"'"'t do left out of done and total' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
 contains 'the panel is titled Release <version>' "$vhtml" '<h2>Release v1.0.0</h2>'
 contains 'an open v1-blocker ticket is listed with its key' "$vhtml" 'data-blocker="HIMMEL-9001"'
 contains 'a listed blocker shows its status' "$vhtml" '<span class="pr">In Progress</span>'
