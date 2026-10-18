@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEAN_GARDEN="$SCRIPT_DIR/clean-garden.sh"
+CLEAN_GARDEN="$SCRIPT_DIR/worktree.sh"
 
 PASS=0
 FAIL=0

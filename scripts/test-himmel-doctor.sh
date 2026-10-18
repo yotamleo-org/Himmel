@@ -5442,7 +5442,7 @@ fi
 rm -rf "$c41_t"
 
 # --- C42: sweep health alarms ------------------------------------
-# C42 delegates to `clean-garden.sh --health` (alarm lines only, empty = healthy,
+# C42 delegates to `worktree.sh prune --health` (alarm lines only, empty = healthy,
 # exit 0/1) and WARNs once per line. Seam: DOCTOR_SWEEP_HEALTH_SCRIPT -- a stub
 # here, so no case makes a live forge call or reads real branches.
 c42_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c42.XXXXXX")" || { fail "C42 setup: mktemp -d failed"; exit 1; }
@@ -5473,7 +5473,7 @@ out="$(c42_run)"
 n="$(printf '%s\n' "$out" | grep -c 'WARN C42-sweep-health')"
 if [ "$n" = 3 ] && grepq "$out" -F 'LOST-COMMITS fix/x pr#12 ahead=3' && grepq "$out" -F 'STUCK /w/fix+y' \
    && grepq "$out" -F 'SWEEP-ERROR fix/z no merge base' && grepq "$out" -F 'git log <branch> --not origin/main' \
-   && grepq "$out" -F 'clean-garden.sh --dry-run' && grepq "$out" -F 'unlanded-work.sh --health' \
+   && grepq "$out" -F 'worktree.sh prune --dry-run' && grepq "$out" -F 'unlanded-work.sh --health' \
    && ! grepq "$out" 'OK   C42-sweep-health' && ! grepq "$out" 'FAIL C42'; then
     pass "C42 alarms -> 3 WARN lines (n=$n), remedies per type, no OK, no FAIL"
 else

@@ -63,7 +63,7 @@ jira_cli_smoke  (^|/)package(-lock)?\.json$
 
 benign          ^scripts/(testing|hooks|lib)/
 benign          ^scripts/(handover|lanes|codex|cr|git)/
-benign          ^scripts/(clean-garden|quiet-run)\.sh$
+benign          ^scripts/(clean-garden|worktree|quiet-run)\.sh$
 benign          ^\.claude/
 benign          ^\.bun-version$
 

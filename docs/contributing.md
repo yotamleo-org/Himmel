@@ -19,7 +19,7 @@ keep that working at any team size.
    ```
 
    Branch names must be `<type>/<slug>` where
-   `type ∈ feat|fix|chore|docs|refactor|test`. `scripts/clean-garden.sh`
+   `type ∈ feat|fix|chore|docs|refactor|test`. `scripts/worktree.sh`
    enforces this.
 
 3. **Commit format:** conventional commits with a required ticket key in this repo.

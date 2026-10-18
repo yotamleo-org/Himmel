@@ -28,8 +28,8 @@ Common invocations:
 - `/clean_garden --health` — read-only sweep health check: prints only alarm lines (`LOST-COMMITS`, `STUCK`, `SWEEP-ERROR`), nothing when healthy; exit 1 if any. Takes no other flag; `himmel-doctor` C42 runs it.
 
 Single-purpose siblings (same script, mode flag pinned):
-- `/clean` — prune-only (`clean-garden.sh --prune-only`). Use when you only want to clean up merged worktrees.
-- `/worktree <branch>` — create-only (`clean-garden.sh --no-prune <branch>`). Use when starting a fresh feature without touching existing worktrees.
+- `/clean` — prune-only (`worktree.sh prune`). Use when you only want to clean up merged worktrees.
+- `/worktree <branch>` — create-only (`worktree.sh new --no-prune <branch>`). Use when starting a fresh feature without touching existing worktrees.
 
 Branch naming for create: `type/slug` where type ∈ feat|fix|chore|docs|refactor|test. Worktree path is derived as `.claude/worktrees/<type>+<slug>`.
 
