@@ -4956,7 +4956,7 @@ rm -rf "$c40_t"
 echo "== C40 (HIMMEL-6324): daemon started before the installed qmd build -> WARN stale daemon, not 'no vector index' (RED) =="
 c40_setup
 mkdir -p "$c40_t/home/.cache/qmd" "$c40_t/home/.himmel/qmd-fork"
-echo 4242 > "$c40_t/home/.cache/qmd/mcp.pid"
+echo $$ > "$c40_t/home/.cache/qmd/mcp.pid"
 echo c3b84dd > "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
 touch -t 202610180048 "$c40_t/home/.cache/qmd/mcp.pid"
 touch -t 202610180405 "$c40_t/home/.himmel/qmd-fork/.himmel-build-ok"
@@ -4968,6 +4968,16 @@ else
     else
         fail "C40 daemon older than the build -> $(printf '%s' "$out" | grep -A1 C40)"
     fi
+    sleep 0 & c40_dead=$!; wait "$c40_dead"
+    echo "$c40_dead" > "$c40_t/home/.cache/qmd/mcp.pid"
+    touch -t 202610180048 "$c40_t/home/.cache/qmd/mcp.pid"
+    out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
+    if grepq "$out" -F 'no vector index' && ! grepq "$out" -F 'older than the installed'; then
+        pass "C40 leftover pid file of a dead daemon -> no stale-daemon WARN"
+    else
+        fail "C40 leftover pid file of a dead daemon -> $(printf '%s' "$out" | grep -A1 C40)"
+    fi
+    echo $$ > "$c40_t/home/.cache/qmd/mcp.pid"
     touch -t 202610180500 "$c40_t/home/.cache/qmd/mcp.pid"
     out="$(XDG_CACHE_HOME="$c40_t/home/.cache" QMD_FORK_DIR="$c40_t/home/.himmel/qmd-fork" c40_run novec)"
     if grepq "$out" 'WARN C40-qmd-vec' && grepq "$out" -F 'no vector index' && ! grepq "$out" -F 'older than the installed'; then
