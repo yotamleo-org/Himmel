@@ -32,6 +32,7 @@ MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
 MAX_RUN="30m"
 POOL_LABEL="himmel-ci-runner=gcp"
 MAX_N=4
+NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
 LOCKFILE="${GCP_RUNNERS_LOCK:-${TMPDIR:-/tmp}/gcp-runners.lock}"
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
 GH="${GH:-gh}"
@@ -44,12 +45,19 @@ gc() { "$GCLOUD" "$@" --project="$PROJECT" --impersonate-service-account="$SA"; 
 # pool_vms -> "name status zone" per pool VM (zone falls back to $ZONE when empty)
 pool_vms() { gc compute instances list --filter="labels.himmel-ci-runner=gcp" --format="value(name,status,zone.basename())"; }
 
+# need_net: runner VMs never use the default VPC; refuse until the dedicated subnet exists.
+need_net() {
+    gc compute networks subnets describe "$NET" --region="${ZONE%-*}" > /dev/null 2>&1 \
+        || die "subnet $NET does not exist; run 'gcp-runners.sh net-up' first (never the default VPC)"
+}
+
 cmd_up() {
     local n="${1:-2}"
     case "$n" in ''|*[!0-9]*) die "up: N must be a positive integer, got '$n'" 2 ;; esac
     [ "$n" -ge 1 ] || die "up: N must be at least 1" 2
     [ "$n" -le "$MAX_N" ] || die "up: N=$n exceeds the hard max $MAX_N (the trial caps 8 vCPUs)" 2
 
+    need_net
     exec 9> "$LOCKFILE" || die "cannot open lock $LOCKFILE"
     flock -n 9 || die "another up is already running, refusing to count the pool twice"
 
@@ -83,6 +91,7 @@ cmd_up() {
             --boot-disk-size=50GB \
             --provisioning-model=SPOT --max-run-duration="$MAX_RUN" --instance-termination-action=DELETE \
             --labels="$POOL_LABEL" \
+            --network-interface="subnet=$NET,no-address" \
             --no-service-account --no-scopes \
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,reg-token=$tokfile,runner-url=$urlfile" \
             || die "instances create failed for himmel-ci-$stamp-$i"
@@ -116,6 +125,7 @@ cmd_watch() {
     case "$interval" in ''|*[!0-9]*) die "watch: --interval must be a positive integer" 2 ;; esac
     [ "$interval" -ge 1 ] || die "watch: --interval must be at least 1" 2
 
+    need_net
     local stop=0 var
     trap 'stop=1' TERM INT
     while [ "$stop" -eq 0 ]; do

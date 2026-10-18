@@ -38,6 +38,7 @@ for a in "$@"; do
 done
 case "$*" in
     *"instances list"*) [ "${STUB_FAIL:-}" = list ] && exit 1; cat "$STUB_INSTANCES" ;;
+    *"subnets describe"*) [ "${STUB_FAIL:-}" = subnet ] && exit 1 ;;
     *"instances delete"*) [ "${STUB_FAIL:-}" = delete ] && exit 1 ;;
 esac
 exit 0
@@ -73,7 +74,7 @@ rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up defa
 rc="$(run up 2)"
 for f in '--provisioning-model=SPOT' '--max-run-duration=30m' '--instance-termination-action=DELETE' \
          '--labels=himmel-ci-runner=gcp' '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com' \
-         '--project=himmel-ci' '--no-service-account' '--no-scopes'; do
+         '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network-interface=subnet=himmel-ci-net,no-address'; do
     n="$(grep 'instances create' "$STUB_LOG" | grep -cF -- "$f")"
     if [ "$n" -eq 2 ]; then ok "both creates carry $f"; else bad "creates carrying $f: $n of 2"; fi
 done
@@ -133,6 +134,13 @@ sleep 0.5
 rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses while another up holds the lock"; else bad "locked up: rc=$rc creates=$(creates)"; fi
 wait "$holder"
 rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
+
+# 6e. up and watch refuse while the dedicated subnet is missing, naming net-up.
+export STUB_FAIL=subnet
+: > "$STUB_INSTANCES"
+rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'net-up' "$T/out"; then ok "up refuses without the dedicated subnet"; else bad "no-subnet up: rc=$rc creates=$(creates)"; fi
+rc="$(run watch 2 --interval 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch refuses without the dedicated subnet"; else bad "no-subnet watch: rc=$rc"; fi
+unset STUB_FAIL
 
 # 7. unknown subcommand is refused.
 rc="$(run frobnicate)"; if [ "$rc" -ne 0 ]; then ok "unknown subcommand is refused"; else bad "unknown subcommand accepted"; fi
