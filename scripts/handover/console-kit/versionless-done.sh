@@ -68,6 +68,10 @@ jql="project = $project AND status = Done AND fixVersion is EMPTY AND issuetype 
 
 rows="$(JIRA_PROJECT_KEY="$project" "${jira[@]}" list --jql "$jql" --limit "$limit" 2>/dev/null)" || unknown  # swallow-ok: a failed read prints unknown, not a count
 rows="$(printf '%s\n' "$rows" | grep -E '^[A-Z][A-Z0-9]*-[0-9]+')" || rows=""
+# A full page means the search may have stopped short: say so, never undercount quietly.
+# Judged before the exceptions are dropped, since they take rows from the page too.
+truncated=0
+[ -z "$rows" ] || [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt "$limit" ] || truncated=1
 
 # Tickets closed with no PR on purpose (a Done-truth audit close, a product-session close).
 exceptions="${VERSIONLESS_DONE_EXCEPTIONS-HIMMEL-3011 HIMMEL-1528}"
@@ -77,9 +81,6 @@ done
 
 n=0
 [ -z "$rows" ] || n="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
-# A full page means the search may have stopped short: say so, never undercount quietly.
-truncated=0
-[ "$n" -lt "$limit" ] || truncated=1
 
 case "$mode" in
     count)
