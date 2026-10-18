@@ -733,7 +733,7 @@ const crLoopSection = (() => {
     trend.cr_loop = out;
     const since = Date.now() - 7 * 86400e3;
     const round2 = (v) => Math.round(v * 100) / 100;
-    const merged = ghJson(['pr', 'list', '--state', 'merged', '--limit', '200', '--search', `merged:>=${new Date(since).toISOString().slice(0, 10)}`, '--json', 'number,headRefName,mergedAt']);
+    const merged = ghJson(['pr', 'list', '--state', 'merged', '--limit', '1000', '--search', `merged:>=${new Date(since).toISOString().slice(0, 10)}`, '--json', 'number,headRefName,mergedAt']);
     const mergedWin = Array.isArray(merged) ? merged.filter((p) => Date.parse(p.mergedAt) >= since) : null;
     const branches = new Set((mergedWin || []).map((p) => p.headRefName));
     try {
