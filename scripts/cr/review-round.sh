@@ -454,7 +454,7 @@ try {
 '
 }
 
-# record_binds <l9> <l10> <l11> - shared with the scope
+# record_binds <l9> <l10> <l11> [prepr] - shared with the scope
 # path. A record binds to this branch's PR: its `pr:` line (line 10,
 # write-verdict.sh's fixed place) must name the PR gh resolves for the branch,
 # and a `branch:` line (line 11, optional) must name the branch. No pr: line, or
@@ -464,23 +464,44 @@ try {
 # resolved by --head, never `gh pr view <branch>` (a branch named 42 would
 # resolve to PR 42), and bounded: this runs under the counter lock. pr_want
 # caches it for the calling subshell, which must set it to "" first.
+# With a fourth argument `prepr` (judge-go only) a record with no pr: line whose
+# line 10 is `branch: <this branch>` also binds, but only while gh answers that
+# the branch has no open PR (pr_none=1); a failed lookup or an open PR refuses
+# it, so it never stands in for a PR-bound record.
 # ponytail: the binding is covered by the record mac (HIMMEL-4984), whose key
 # is same-uid readable.
 record_binds() {
     [ -z "$1" ] || return 1
-    case "$2" in 'pr: '[1-9]*) ;; *) return 1 ;; esac
-    case "${2#pr: }" in *[!0-9]*) return 1 ;; esac
-    case "$3" in 'branch: '*) [ "${3#branch: }" = "$branch" ] || return 1 ;; esac
+    _rb_branch_form=0
+    case "$2" in
+        'pr: '[1-9]*) ;;
+        'branch: '*) [ "${4:-}" = prepr ] && [ "${2#branch: }" = "$branch" ] || return 1
+                     _rb_branch_form=1 ;;
+        *) return 1 ;;
+    esac
+    if [ "$_rb_branch_form" -eq 0 ]; then
+        case "${2#pr: }" in *[!0-9]*) return 1 ;; esac
+        case "$3" in 'branch: '*) [ "${3#branch: }" = "$branch" ] || return 1 ;; esac
+    fi
     if [ -z "$pr_want" ]; then
         # shellcheck source=scripts/lib/timeout-bin.sh
         # shellcheck disable=SC1091
         . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+        _rb_rc=0
         pr_want="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
-            --json number -q '.[].number' 2>/dev/null)" || pr_want=""
+            --json number -q '.[].number' 2>/dev/null)" || _rb_rc=1
+        if [ "$_rb_rc" -ne 0 ]; then pr_want=""; fi
+        if [ "$_rb_rc" -eq 0 ] && [ -z "$pr_want" ]; then pr_none=1; fi
         case "$pr_want" in ''|0*|*[!0-9]*)
-            echo "review-round: cannot resolve the one open PR for $branch (gh pr list --head) - no judge record is honoured" >&2
+            if [ "$_rb_branch_form" -eq 0 ] || [ -z "${pr_none:-}" ]; then
+                echo "review-round: cannot resolve the one open PR for $branch (gh pr list --head) - no judge record is honoured" >&2
+            fi
             pr_want="-" ;;
         esac
+    fi
+    if [ "$_rb_branch_form" -eq 1 ]; then
+        [ -n "${pr_none:-}" ]
+        return
     fi
     [ "${2#pr: }" = "$pr_want" ]
 }
@@ -812,7 +833,7 @@ judge_go_record() (
     done
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
-    pr_want=""
+    pr_want="" pr_none=""
     hit=""
     for f in "$dir"/*/*.md; do
         if [ ! -f "$f" ] || [ -L "$f" ]; then continue; fi
@@ -846,8 +867,8 @@ EOF_SNAP
         fi
         [ "$l8" = "**GO** for head \`$want\`." ] || [ "$l8" = "**GO** for head \`$want\`" ] || continue
         go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name" || continue
-        if ! record_binds "" "$l10" "$l11"; then
-            [ "$pr_want" != "-" ] || exit 8
+        if ! record_binds "" "$l10" "$l11" prepr; then
+            [ "$pr_want" != "-" ] || [ -n "$pr_none" ] || exit 8
             continue
         fi
         hit="$qid/$name"
@@ -1183,6 +1204,9 @@ if [ "$verb" = "judge-go" ]; then
     fi
     jg_hit="$(judge_go_record "$jg_head")"
     jg_rc=$?
+    if [ "$jg_rc" -eq 1 ]; then
+        echo "review-round: no signed judge GO at $jg_head is bound to $branch (a record naming its open PR, or the branch while it has no PR yet) - the judge GO is refused" >&2
+    fi
     [ "$jg_rc" -eq 0 ] && [ -n "$jg_hit" ] || exit "$jg_rc"
     jg_ledger="$git_dir/cr-critic-scores.jsonl"
     if ! grep -qsF "\"head\":\"$jg_head\",\"status\":\"ok\",\"source\":\"judge:$jg_hit\"" "$jg_ledger"; then

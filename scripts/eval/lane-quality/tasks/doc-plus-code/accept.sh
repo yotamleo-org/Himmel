@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hidden acceptance test for task doc-plus-code (HIMMEL-4090).
+# Hidden acceptance test for task doc-plus-code.
 # Usage: accept.sh <worktree> <fixture-sha>
 # bash -c bodies take their values as positional args, so single quotes are right.
 # shellcheck disable=SC2016

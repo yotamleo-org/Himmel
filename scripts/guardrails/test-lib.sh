@@ -517,7 +517,10 @@ rm -rf "$td" "$wtparent"
 # ============================================================================
 echo "== HIMMEL-2526: guard_canon_path / repo_root_for_path / primary_checkout_root / main_checkout_verdict =="
 _REAL_HOME="$HOME"
-FIX=$(mktemp -d "${_REAL_HOME}/.himmel-2526-libfix-XXXXXX") || exit 1
+# shellcheck source=../hooks/lib-fixture-root.sh
+. "$REPO_ROOT/scripts/hooks/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || exit 1
+FIX=$(mktemp -d "$_FROOT/.himmel-2526-libfix-XXXXXX") || exit 1
 trap 'rm -rf "$FIX"' EXIT
 export HOME="$FIX/home"
 mkdir -p "$HOME"

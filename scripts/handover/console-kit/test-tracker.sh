@@ -378,14 +378,16 @@ mk 37 'To Do' '["v1.0.0"]' 'zero version one' 'To Do'
 mk 38 'Done' '["v1.0.2"]' 'closed one' 'Closed'
 mk 39 'Done' '["v1.0.3"]' 'duplicate one' 'Done' 'Duplicate'
 mk 40 'Done' '["v1.0.3"]' 'done in future one' 'Done' 'Done'
+mk 43 'Done' '["v1.0.1","v1.0.3"]' 'released and future one' 'Done' 'Done'
+mk 44 'Done' '["v1.0.4"]' 'only closed one' 'Closed'
 mk 41 'In Progress' '[]' 'flight one' 'In Progress'
 mk 42 'To Do' '[]' 'idle unversioned one' 'To Do'
 mdir="$mir"
-printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\n' > "$W/jm.versions.tsv"
+printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\nv1.0.4\tfalse\t\n' > "$W/jm.versions.tsv"
 render --mirror-dir "$jm" >/dev/null
 jhtml="$(cat "$out" 2>/dev/null)"
 contains 'the default versions file is <mirror-dir>.versions.tsv (HIMMEL-3990)' "$jhtml" \
-    '"JV":[{"n":"v1.0.1","rel":true,"date":"2026-10-04"},{"n":"v1.0.2","rel":false,"date":""},{"n":"v1.0.3","rel":false,"date":""}]'
+    '"JV":[{"n":"v1.0.1","rel":true,"date":"2026-10-04"},{"n":"v1.0.2","rel":false,"date":""},{"n":"v1.0.3","rel":false,"date":""},{"n":"v1.0.4","rel":false,"date":""}]'
 contains 'a versions file means release state is known (HIMMEL-3990)' "$jhtml" '"RU":false'
 contains 'a released version has no caps: its tickets already shipped (HIMMEL-4930)' "$jhtml" '"VC":[null,'
 not_contains 'a ticket with only v1.0.0 is in no version (HIMMEL-3990)' "$jhtml" '"t":"zero version one"'
@@ -401,9 +403,17 @@ not_contains 'a wont-do ticket is in no count, bar or column (HIMMEL-6241)' "$jh
 not_contains 'a Closed ticket is in no count, bar or column (HIMMEL-6241)' "$jhtml" '"t":"closed one"'
 not_contains 'a Done ticket with a Duplicate resolution is in no count (HIMMEL-6241)' "$jhtml" '"t":"duplicate one"'
 not_contains 'a closed-without-shipping ticket is in no plan row either (HIMMEL-6241)' "$jhtml" '"closed one"'
-contains 'closed without shipping is one count per version, not a Done count (HIMMEL-6241)' "$jhtml" '"JW":[[1,2],[2,1]]'
+contains 'closed without shipping is one count per version, not a Done count (HIMMEL-6241)' "$jhtml" '"JW":[[1,2],[2,1],[3,1]]'
 contains 'a Done ticket in a future version is counted in the current one (HIMMEL-6241)' "$jhtml" \
     '"k":40,"t":"done in future one","s":"Done","b":"done","v":1,'
+not_contains 'a Done ticket naming a released and a later unreleased version is not counted again in the current one (HIMMEL-6246)' "$jhtml" \
+    '"k":43,"t":"released and future one","s":"Done","b":"done","v":1,'
+contains 'a Done ticket naming a released and a later unreleased version stays in the released one (HIMMEL-6246)' "$jhtml" \
+    '"k":43,"t":"released and future one","s":"Done","b":"done","v":0,'
+contains 'a version holding only closed-without-shipping work gets a kanban row (HIMMEL-6246)' "$jhtml" \
+    'data-v="v1.0.4"><summary><span class="vn">v1.0.4</span> <span class="kmeta">0 open of 0 · 1 closed without shipping</span>'
+contains 'the client version table renders a row for a closed-only version (HIMMEL-6246)' "$jhtml" \
+    '[1];if(!t.n&&!wn)return;if(HIDE&&!t.open&&t.n){hid++;return}'
 contains 'the footnote says closed without shipping (HIMMEL-6241)' "$jhtml" 'closed without shipping'
 not_contains 'the legend no longer calls Closed or wont do work done (HIMMEL-6241)' "$jhtml" 'Hides Done, Closed, In Public, wont do'
 contains 'an unknown status falls back to the status category (HIMMEL-3990)' "$jhtml" '"t":"category fallback one","s":"In Progress","b":"prog"'

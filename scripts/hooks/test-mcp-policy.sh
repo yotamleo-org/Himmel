@@ -225,7 +225,7 @@ done
 # adapter, the tracker and block-backend-tier all run.
 CHAIN_CMD="$REPO_ROOT/.codex/run-hook.sh"
 CHAIN_ARG="mcp-policy.sh+block-backend-tier.sh"
-for t in mcp__qmd__query mcp__nosuch__thing mcp__claude_ai_Gmail__send_message mcp__claude_ai_Atlassian_MCP__executeRead; do
+for t in mcp__qmd__query mcp__nosuch__thing mcp__claude_ai_Gmail__send_message; do
     : > "$MCP_POLICY_AUDIT_LOG"
     out=$(call "$t" | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
     rc=$?
@@ -236,6 +236,26 @@ for t in mcp__qmd__query mcp__nosuch__thing mcp__claude_ai_Gmail__send_message m
         bad "codex chain on $t: rc=$rc audit-lines=$lines out=$(printf '%s' "$out" | head -c 200)"
     fi
 done
+
+# A wrapper call whose real tool name cannot be read is denied by the chain.
+: > "$MCP_POLICY_AUDIT_LOG"
+out=$(call mcp__claude_ai_Atlassian_MCP__executeRead | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
+if grep -qi 'deny' <<< "$out"; then
+    ok "codex chain denies executeRead with no readable tool_input.name"
+else
+    bad "codex chain allowed executeRead with no readable name: $(printf '%s' "$out" | head -c 200)"
+fi
+
+# Read traffic stays unbroken: a well-formed allowlisted read is allowed and audited.
+: > "$MCP_POLICY_AUDIT_LOG"
+out=$(printf '{"session_id":"s-test","tool_name":"mcp__claude_ai_Atlassian_MCP__executeRead","tool_input":{"name":"lookupJiraAccountId"}}' | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
+rc=$?
+lines=$(wc -l < "$MCP_POLICY_AUDIT_LOG" | tr -d ' ')
+if [ "$rc" = 0 ] && ! grep -qi 'deny' <<< "$out" && [ "$lines" = 1 ]; then
+    ok "codex chain allows a well-formed executeRead and audits it"
+else
+    bad "codex chain on well-formed executeRead: rc=$rc audit-lines=$lines out=$(printf '%s' "$out" | head -c 200)"
+fi
 
 # --- 9. latency budget -------------------------------------------------------
 # Budget: p95 under MCP_POLICY_P95_BUDGET_MS (default 300 ms; idle is ~10x
