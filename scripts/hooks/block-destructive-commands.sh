@@ -1248,15 +1248,27 @@ _gh_api() {
 # wrapper or computed word) running `variable set CI_GCP` with one --body of
 # on|off and exactly one -R/--repo naming this repository (yotamleo/Himmel or
 # its canonical slug yotamleo-org/Himmel; an omitted repo would follow GH_REPO
-# or the checkout), nothing else. The words are lowercased but gh's flags are
-# case-sensitive (-r is --repos, not --repo), so the typed command must carry
-# no quote or backslash, no lowercase -r and no upper-case letter in a long option.
+# or the checkout), nothing else. The words are lowercased but gh's flags and
+# the stored value are case-sensitive (-r is --repos, not --repo; ON is not on
+# to the runner scripts), so the typed command must carry no quote or
+# backslash (its words then split on whitespace alone), no lowercase -r, and
+# no word with an upper-case letter except the ones whose fold is safe: -R,
+# CI_GCP (names match case-insensitively) and the repository slugs.
 _gh_cigcp() {
-    local j=$1 n=${#_gc_w[@]} w pos='' body='' repo=''
+    local j=$1 n=${#_gc_w[@]} w pos='' body='' repo='' raw
     [ "$j" = 1 ] || return 1
     [[ $cmd == *[\'\"\\]* ]] && return 1
     [[ $cmd =~ (^|[[:space:]])-r([[:space:]=]|$) ]] && return 1
-    [[ $cmd =~ (^|[[:space:]])--[a-z-]*[A-Z] ]] && return 1
+    read -rd '' -a raw <<<"$cmd" || true # swallow-ok: read -d '' always ends at EOF with status 1
+    for w in ${raw[@]+"${raw[@]}"}; do
+        case "$w" in
+            *[A-Z]*)
+                case "$w" in
+                    -R|CI_GCP|yotamleo/Himmel|yotamleo-org/Himmel|--repo=yotamleo/Himmel|--repo=yotamleo-org/Himmel) ;;
+                    *) return 1 ;;
+                esac ;;
+        esac
+    done
     while [ "$j" -lt "$n" ]; do
         [ "${_gc_k[j]}" = W ] || return 1
         w=${_gc_w[j]}
