@@ -552,6 +552,11 @@ g "gh pr view, CR marker pending allowed" allow "{\"tool_name\":\"terminal\",\"t
 g "echo mentioning gh pr create allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"echo 'run gh pr create later'\",\"cwd\":\"$FR\"}}"
 rm -f "$TMP/featrepo/.git/cr-pending/feat/x"
 g "gh pr create, marker cleared allowed" allow "$PRC"
+printf 'm\n' > "$TMP/featrepo/.git/cr-pending/feat/y"
+g "gh pr create --head feat/y, that branch pending (checked-out feat/x clear), refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --head feat/y -t x\",\"cwd\":\"$FR\"}}"
+g "gh pr create -H owner:feat/y, that branch pending, refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create -H owner:feat/y -t x\",\"cwd\":\"$FR\"}}"
+g "gh pr create --head feat/z, no marker for that branch, allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --head feat/z -t x\",\"cwd\":\"$FR\"}}"
+rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
 unset HERMES_EXTERNAL_WRITES_OK
 # .single-writer marker at the repo root opts the on-main repo out.
 : > "$TMP/mainrepo/.single-writer"

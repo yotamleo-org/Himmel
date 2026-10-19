@@ -1260,7 +1260,8 @@ fi
 # 3c. Cross-family review: when an implementer family is recorded for the
 # branch, >=1 ok responder must be of ANOTHER family (a codex-only panel does
 # not satisfy codex-authored code). No record = no change.
-if [ -n "$impl_family" ] && [ "${other_family_responders:-0}" -lt 1 ]; then
+case "${other_family_responders:-}" in ''|*[!0-9]*) other_family_responders=0 ;; esac
+if [ -n "$impl_family" ] && [ "$other_family_responders" -lt 1 ]; then
     echo "clear-cr-marker: implementer family '$impl_family' is recorded for $branch but no 'avail ... ok' responder of another family exists at ${tip:0:8} — run a cross-family critic (hermes/codex work routes to claude -p), then re-run." >&2
     audit "REFUSED reason=no-cross-family branch=$branch sha=$tip impl_family=$impl_family responders=$responders"
     exit 14

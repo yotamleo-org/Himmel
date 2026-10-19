@@ -786,13 +786,25 @@ def _common_git_dir(git_path: str) -> str:
     return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
 
 
-def _pending_cr_reason(start: str):
-    """Block reason if the repo at `start` has a pending CR marker for its
-    checked-out branch, else None."""
+_PR_HEAD = re.compile(r"(?:^|\s)(?:--head[=\s]\s*|-H\s*)['\"]?([^\s'\"]+)")
+
+
+def _pr_head_branch(cmd: str) -> str:
+    """The branch named by `--head`/`-H` after `gh pr create` (`owner:branch`
+    reduced to `branch`), else ""."""
+    m = GH_PR_CREATE.search(cmd)
+    h = _PR_HEAD.search(cmd[m.end():]) if m else None
+    return h.group(1).rsplit(":", 1)[-1] if h else ""
+
+
+def _pending_cr_reason(start: str, head_branch: str = ""):
+    """Block reason if the repo at `start` has a pending CR marker for
+    `head_branch` (the PR's explicit head) or else its checked-out branch,
+    else None."""
     repo_root, git_path = _git_dir_for(start)
     if not repo_root:
         return None
-    branch = _current_branch(git_path)
+    branch = head_branch or _current_branch(git_path)
     if not branch:
         return None
     common = _common_git_dir(git_path)
@@ -1824,7 +1836,7 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     if GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(_join_continuations(raw_cmd))):
         pr_dir = _commit_dir(raw_cmd, _agent_cwd(payload, args), None)
         if pr_dir:
-            reason = _pending_cr_reason(pr_dir)
+            reason = _pending_cr_reason(pr_dir, _pr_head_branch(raw_cmd))
             if reason:
                 block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh
