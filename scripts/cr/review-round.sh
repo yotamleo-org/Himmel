@@ -33,6 +33,8 @@
 # REMOTE only (gh api: default branch name, then compare <sha>...<default> must
 # be identical or ahead); no local ref names or vouches for it. Offline, no gh
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
+# A start at the head the last counted round ran on, below the cap, reuses that
+# round; bookkeeping-only heads get their ledger row from the `evidence` verb.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -48,6 +50,7 @@ usage() {
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>]" >&2
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
+    echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests/comments-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
@@ -142,6 +145,7 @@ case "$verb" in
     defer) [ -n "$head_sha" ] || usage ;;
     promote) [ -n "$head_sha" ] || usage ;;
     judge-go) [ -n "$head_sha" ] || usage ;;
+    evidence) [ -n "$head_sha" ] || usage ;;
     *) usage ;;
 esac
 
@@ -1189,6 +1193,39 @@ if [ "$verb" = "judge-go" ]; then
     exit 0
 fi
 
+# evidence: a ledger row for a head that only adds tests or comments to the
+# critic-reviewed head, so ready-check's CR row exists without spending a round.
+# Exit 0 = recorded (or already there); 8 = refused (not a descendant of a
+# reviewed head, or the diff is more than tests/comments).
+if [ "$verb" = "evidence" ]; then
+    # swallow-ok: an unresolvable head is refused on the next line (exit 2)
+    if ! ev_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ev_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
+    fi
+    case "$branch" in
+        *[\"\\]*|*[[:cntrl:]]*)
+            echo "review-round: branch name $branch cannot be written into a ledger row - evidence is refused" >&2
+            exit 2 ;;
+    esac
+    # swallow-ok: an unreadable or unresolvable reviewed head leaves ev_from empty, which is refused (exit 8)
+    ev_from="$(cat "$head_state" 2>/dev/null)" || ev_from=""
+    # swallow-ok: same as above
+    ev_from="$(git rev-parse --verify --quiet "$ev_from^{commit}" 2>/dev/null)" || ev_from=""
+    if [ -z "$ev_from" ] || [ "$(ledger_query avail "$ev_from")" != "ok" ] \
+        || ! trivial_descendant "$ev_from" "$ev_head"; then
+        echo "review-round: $ev_head is not a tests- or comments-only descendant of a critic-reviewed head of $branch - no evidence row (run /pr-check)" >&2
+        exit 8
+    fi
+    ev_ledger="$git_dir/cr-critic-scores.jsonl"
+    if ! grep -qsF "\"head\":\"$ev_head\",\"status\":\"ok\",\"source\":\"evidence\"" "$ev_ledger"; then
+        printf '{"kind":"evidence","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"evidence"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$ev_head" >> "$ev_ledger" || exit 5
+    fi
+    printf 'evidence %s\n' "$ev_head"
+    exit 0
+fi
+
 if [ "$verb" = "start" ]; then
     lock_lib="$HIMMEL_ROOT/scripts/lib/shared-branch-lock.sh"
     if [ ! -f "$lock_lib" ]; then
@@ -1216,6 +1253,20 @@ if [ "$verb" = "start" ]; then
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
         exit 5
+    fi
+    # A start at the head the counted round already ran on is bookkeeping, not
+    # a new round: reuse it. From the cap on, the same head stays refused below.
+    if [ "$round" -ge 1 ] && [ "$round" -lt 3 ] && [ -n "$head_sha" ]; then
+        # swallow-ok: an unresolvable or unrecorded head just takes the normal count
+        same_cur="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || same_cur=""
+        # swallow-ok: same as above
+        same_rec="$(cat "$head_state" 2>/dev/null)" || same_rec=""
+        if [ -n "$same_cur" ] && [ "$same_cur" = "$same_rec" ]; then
+            SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+                bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+            printf '%s\n' "$round"
+            exit 0
+        fi
     fi
     delta_from=""
     delta_reuse=0
