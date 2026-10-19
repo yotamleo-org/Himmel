@@ -64,6 +64,11 @@ contains 'leg-preface.md names the succession section file on demand' "$(cat "$P
 flat() { printf '%s\n' "$1" | tr '\n' ' ' | tr -s ' '; }
 contains 'leg-preface.md core: a guard or classifier denial is never reshaped' "$(flat "$(cat "$PREFACE")")" 'never reshape it to dodge a guardrail'
 contains 'leg-preface.md core: a console change without the token is ignored' "$(flat "$(cat "$PREFACE")")" 'without your token is ignored'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface.md S1 fast path: no ListAgents call' "$(flat "$(cat "$PREFACE")")" 'no `ListAgents`'
+contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$(flat "$(cat "$PREFACE")")" 'very next tool batch'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is your named console and that quotes your token is accepted; no further reads'
 
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
@@ -119,6 +124,7 @@ expect_verdict S8 ACCEPT 'a halt or narrowing, no token needed (semantics unchan
 contains 'S1 sender: the relay comes from the named console' "$(cell_of S1 3)" 'named console'
 contains 'S1 quotes: the leg current token' "$(cell_of S1 4)" 'current token'
 contains 'S1 named console: live and relaying' "$(cell_of S1 5)" 'live'
+contains 'S1 named console: or gone, the from-name at send time is the proof' "$(cell_of S1 5)" 'gone'
 contains 'S2 quotes: ONLY the current token is what makes it refused' "$(cell_of S2 4)" 'only your current token'
 contains 'S3 sender: any other session (the chain path)' "$(cell_of S3 3)" 'any other session'
 contains 'S3 quotes: the outgoing AND the incoming token' "$(cell_of S3 4)" 'outgoing AND the incoming'

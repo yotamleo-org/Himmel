@@ -58,7 +58,7 @@ always carries a fresh token, so it always rotates.
 
 | # | Sender (`from`) | Quotes | Named console | Verdict |
 |---|---|---|---|---|
-| S1 | the named console | your current token (a fresh one is optional) | live, relaying | ACCEPT — relay (1); keep your token if none came |
+| S1 | the named console | your current token (a fresh one is optional) | live or gone — the `from` at send time is the proof | ACCEPT — relay (1); keep your token if none came |
 | S2 | any other session | only your current token | any | REFUSE — replayable, no sender proof |
 | S3 | any other session | the outgoing AND the incoming token | gone from `ListAgents` | ACCEPT — chain (2); adopt it |
 | S4 | any other session | the outgoing AND the incoming token | still live | REFUSE — until it relays or leaves |
