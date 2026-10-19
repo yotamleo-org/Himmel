@@ -16,9 +16,9 @@ pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }
 # check <name> <cmd...> — pass when the command succeeds.
 check() { local n="$1"; shift; if "$@"; then pass "$n"; else fail "$n"; fi; }
-size_is() { [[ "$(wc -c < "$1")" -eq "$2" ]]; }
-head_eq() { head -c "$1" "$TMP/ref" | cmp -s - "$2"; }
-tail_eq() { tail -c "$1" "$TMP/ref" | cmp -s - "$2"; }
+size_is() { [[ "$(wc -c < "$1")" -eq "$2" ]]; } # read-sink-ok: test-local fixture path
+head_eq() { head -c "$1" "$TMP/ref" | cmp -s - "$2"; } # read-sink-ok: byte count, not a path
+tail_eq() { tail -c "$1" "$TMP/ref" | cmp -s - "$2"; } # read-sink-ok: byte count, not a path
 exits_with() { local want="$1" got; shift; bash "$CHUNK" "$@" >/dev/null 2>&1; got=$?; [[ "$got" -eq "$want" ]]; }
 
 TMP="$(mktemp -d -t probe-chunk.XXXXXX)" || exit 1
