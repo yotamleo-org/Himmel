@@ -157,9 +157,11 @@ assert_contains "output says updated" "$out" "updated TST-100"
 
 echo "TEST: --dry-run writes nothing"
 reset
+printf 'TST-601\tTask\tTo Do\tp1\tresidual,class-hook-fail-direction\n' >"$JSTATE/residuals"
 out=$(run --merged-file "$MERGED" --dry-run); rc=$?
 assert_eq "dry-run exits 0" "0" "$rc"
 assert_eq "dry-run creates nothing" "0" "$(count '^create' "$JLOG")"
+assert_eq "dry-run makes no Jira write" "0" "$(count '^\(create\|edit\|comment\|link\|fix-version\) ' "$JLOG")"
 assert_contains "dry-run names the plan" "$out" "dry-run"
 
 echo "TEST: open residuals of the class are folded (link, label, backlog)"

@@ -80,7 +80,8 @@ segments, class) pair shows in 5 merged PRs with 2 deferring, or when 3 open
 or files one ticket under HIMMEL-6176 (at most 2 new a week), then folds each open
 residual into it (Relates link, `folded-into-<KEY>` label, fixVersion removed). A
 residual stays open until the restructure merges. `--dry-run` prints without
-writing; exit 4 is a failed tracker lookup, 2 a missing merged-PR list. Test:
+writing; exit 4 is a failed tracker lookup, 3 a failed Jira write, 2 a usage
+error, a missing merged-PR list or a missing `JIRA_PROJECT_KEY`. Test:
 `scripts/cr/test-class-recurrence.sh`.
 
 Attribution and proposal rules (print-only; no rung is ever changed):
