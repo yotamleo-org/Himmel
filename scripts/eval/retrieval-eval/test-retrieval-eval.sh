@@ -134,6 +134,21 @@ n = []
 m.subprocess.run = lambda *a, **k: n.append(1) or type("R", (), {"stdout": "t"})()
 m.qmd_token(); m.qmd_token(); print(len(n))' "$EV")"
 
+# 8i. qmd-hybrid-norerank: --arms accepts it, it sends lex+vec with rerank false; qmd-hybrid sends no rerank key.
+cat > "$W/qmd-log" <<'EOF'
+#!/usr/bin/env bash
+cat >> "$(dirname "$0")/qmd-in.log"; echo >> "$(dirname "$0")/qmd-in.log"
+printf '[{"file":"qmd://himmel/bin/run.sh","snippet":"relay_batch"}]\n'
+EOF
+chmod +x "$W/qmd-log"
+printf '{"id":"q8","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}\n' > "$W/q8.jsonl"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-log" py "$EV" run --repo "$R" --questions "$W/q8.jsonl" --out "$W/out8" --arms qmd-hybrid,qmd-hybrid-norerank > /dev/null 2>&1
+eq "norerank arm is accepted by --arms" "0" "$?"
+eq "norerank arm scores a hit" "1.00" "$(awk -F'\t' '$1=="qmd-hybrid-norerank"{print $3}' "$W/out8/scores.tsv")"
+eq "norerank sends lex+vec with rerank false" "2 False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(len(a["searches"]), a.get("rerank"))' "$W/qmd-in.log")"
+eq "qmd-hybrid sends no rerank key" "2 None" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(len(a["searches"]), a.get("rerank"))' "$W/qmd-in.log")"
+eq "default arms stay the five" "6" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
+
 # 9. usage errors.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/o9" --arms nosuch > /dev/null 2>&1
 eq "unknown arm exits 64" "64" "$?"
