@@ -789,7 +789,8 @@ def _common_git_dir(git_path: str) -> str:
 def _unquoted_segment(text: str) -> str:
     """`text` up to the first shell operator that is neither quoted nor
     escaped. A `&` that belongs to a redirection (`2>&1`, `&>f`) does not end
-    it. An unterminated quote raises ValueError."""
+    it. An unterminated quote, or an unquoted `$`, backtick, `<(`, `>(` or `>|`
+    (constructs this scanner does not parse), raises ValueError."""
     i, n = 0, len(text)
     while i < n:
         c = text[i]
@@ -802,6 +803,8 @@ def _unquoted_segment(text: str) -> str:
                 i += 2 if (c == '"' and text[i] == "\\") else 1
             if i >= n:
                 raise ValueError("unterminated quote")
+        elif c in "$`" or (c in "<>" and text[i + 1:i + 2] in ("(", "|")):
+            raise ValueError("unclassified shell construct")
         elif c in ";|()\n":
             return text[:i]
         elif c == "&" and not (i and text[i - 1] in "<>") and text[i + 1:i + 2] != ">":
