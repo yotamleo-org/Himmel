@@ -480,6 +480,14 @@ _bwimc_plain_run() {
 _bwimc_blank_heredocs() {
     local _ww="" _wb=0 _we=0
     local text="$1" nest="${2:-}"
+    # no `<<` anywhere (a backslash-newline joined first) means no opener: the
+    # walk below would copy every line through, which is the text plus the
+    # here-string's newline
+    local _bsnl0=$'\\\n'
+    case "${text//"$_bsnl0"/}" in
+        *'<<'*) ;;
+        *) printf '%s\n' "$text"; return 0 ;;
+    esac
     local nl=0 unsure=0 ncode="" nopen=0 allq=1 allgit=1
     local -a pd=()
     local out="" line
@@ -691,10 +699,29 @@ _bwimc_blank_heredocs() {
 # \002, not \001: \001 is _bwimc_subst_split's stub marker, counted per clause.
 _BWIMC_PIPE=$'\002'
 _bwimc_sp_pipe=0
+# _bwimc_simple TEXT — true when TEXT holds no quote, backslash or non-ASCII
+# byte. Then _bwimc_scan_step never opens a quote or an escape, every character
+# is ACTIVE, and [[:space:]] is the six ASCII blanks, so the walkers below
+# take a one-pass fast path with the same output as the per-character walk.
+_bwimc_simple() {
+    local LC_ALL=C
+    case "$1" in
+        *[\'\"\\]*|*[$'\200'-$'\377']*) return 1 ;;
+    esac
+    return 0
+}
+_BWIMC_KW_RE='(^|[[:space:];|])(!|time|coproc|if|then|elif|else|fi|while|until|for|select|case|esac|do|done|function|\{|\}|\[\[|\]\])([[:space:];|]|$)'
 _bwimc_text_untrusted() {
     local _ww="" _wb=0 _we=0
     local text="$1" i=0 c w="" wq=0 prevact="" nx act
     local len=${#text}
+    # no quote, `(`, `)` or `&`: only a keyword word can make the text untrusted
+    if _bwimc_simple "$text"; then
+        case "$text" in
+            *[\(\)\&]*) ;;
+            *) [[ $text =~ $_BWIMC_KW_RE ]] && return 0; return 1 ;;
+        esac
+    fi
     _bwimc_scan_init
     while [ "$i" -lt "$len" ]; do
         if [ -n "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
@@ -1322,6 +1349,20 @@ _bwimc_split_clauses() {
     local i=0 len=${#text} c clause="" prevact="" run pend=() np=0 k
     _bwimc_sp_pipe=0
     ! _bwimc_text_untrusted "$text" || _bwimc_sp_pipe=1
+    # no quote, `|`, `&` or parenthesis: the clauses are the pieces between `;` and newlines
+    if _bwimc_simple "$text"; then
+        case "$text" in
+            *[\|\&\(\)]*) ;;
+            *)
+                local _sep=$';\n'
+                while :; do
+                    case "$text" in
+                        *["$_sep"]*) _bwimc_split_emit "${text%%["$_sep"]*}"; text="${text#*["$_sep"]}" ;;
+                        *) _bwimc_split_emit "$text"; return 0 ;;
+                    esac
+                done ;;
+        esac
+    fi
     _bwimc_scan_init
     while [ "$i" -lt "$len" ]; do
         if [ -n "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
@@ -1417,6 +1458,13 @@ _bwimc_tokenize() {
     local _ww="" _wb=0 _we=0
     local text="$1"
     local i=0 len=${#text} c tok="" have=0
+    if _bwimc_simple "$text"; then
+        local -a _tk=()
+        local IFS=$' \t\n\r\v\f'
+        read -r -d '' -a _tk <<< "$text" || true # swallow-ok: read -d '' returns 1 at end of input
+        [ "${#_tk[@]}" -eq 0 ] || printf '%s\n' "${_tk[@]}"
+        return 0
+    fi
     _bwimc_scan_init
     while [ "$i" -lt "$len" ]; do
         if [ -n "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
@@ -1534,6 +1582,11 @@ _bwimc_space_before_redirects() {
     local text="$1"
     local out="" i=0 len=${#text} c prev="" prevact="" boundary=0 run _pr_tr
     local _bwimc_word_alldigit=1
+    # no redirect operator at all: nothing is spaced off
+    case "$text" in
+        *[\<\>]*) ;;
+        *) printf '%s' "$text"; return 0 ;;
+    esac
     _bwimc_scan_init
     while [ "$i" -lt "$len" ]; do
         if [ -n "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
@@ -1643,7 +1696,9 @@ _bwimc_expand_token_raw() {
         *"\$'"*) t=$(_bwimc_ansic_spans "$t") ;;
         *$'\016'*) t="${t//$'\016'/$'\016\016'}" ;;
     esac
-    t=$(printf '%s' "$t" | sed -E "s/^[$Q]+//; s/[$Q]+\$//; s#/[$Q]+#/#g; s#[$Q]+/#/#g")
+    case "$t" in
+        *[\"\']*) t=$(printf '%s' "$t" | sed -E "s/^[$Q]+//; s/[$Q]+\$//; s#/[$Q]+#/#g; s#[$Q]+/#/#g") ;;
+    esac
     # Trim leading/trailing whitespace and drop a WHITESPACE-ONLY candidate
     # here, before the emptiness check below. Pass A's quoted-operand regex
     # can hand back a lone quoted SPACE straddling two unrelated arguments
