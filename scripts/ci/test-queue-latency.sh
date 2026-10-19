@@ -168,6 +168,13 @@ echo '{"total_count":150,"jobs":[]}' > "$TMP/fx/jobs-1.json"
 out="$(run)"
 is "truncated jobs page -> unknown" "ci-queue: unknown" "$out"
 
+# a jobs body whose jobs is not an array is not zero jobs
+reset
+runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+echo '{"total_count":0,"jobs":{}}' > "$TMP/fx/jobs-1.json"
+out="$(run)"
+is "non-array jobs -> unknown" "ci-queue: unknown" "$out"
+
 # API error -> unknown, exit 0
 reset
 out="$(FAKE_GH_FAIL=1 run)"; rc=$?
