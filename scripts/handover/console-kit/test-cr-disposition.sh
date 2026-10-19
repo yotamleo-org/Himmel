@@ -79,10 +79,10 @@ SHA2=3333333333333333333333333333333333333333
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
 ready_pass_ledger "$REPO" "$SHA"
 cat "$FIX" >> "$LEDGER"
-ROOT="$tmp/root"; mkdir -p "$ROOT"
-export HANDOVER_DIR="$ROOT"
+HDIR="$tmp/root"; mkdir -p "$HDIR"
+export HANDOVER_DIR="$HDIR"
 gos() { rc=0; out="$(bash "$GOSH" "$@" 2>&1)" || rc=$?; }
-nogo() { check "$1 -> nothing written" "$(find "$ROOT/.locks" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"; }
+nogo() { check "$1 -> nothing written" "$(find "$HDIR/.locks" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"; }
 
 # --- 1. a leg-deferred Important never gets a GO --------------------------
 gos 90 "$SHA"
@@ -115,8 +115,8 @@ rc=0; bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-635
 check "4: record follow-up -> exit 0" "$rc" "0"
 gos 90 "$SHA"
 check "4: judged follow-up with three attests -> exit 0" "$rc" "0"
-check "4: the GO is written" "$out" "$ROOT/.locks/go/90.$SHA"
-rm -rf "$ROOT/.locks"
+check "4: the GO is written" "$out" "$HDIR/.locks/go/90.$SHA"
+rm -rf "$HDIR/.locks"
 
 # --- 5. head-bound, tamper-evident, fix-here never clears -----------------
 ready_pass_ledger "$REPO" "$SHA2"
@@ -149,10 +149,10 @@ rc=0; bash "$DISP" record 90 "$SHA" "codex-9@$FHEAD" follow-up:HIMMEL-6352 \
 check "6: record judge source -> exit 0" "$rc" "0"
 gos 90 "$SHA"
 check "6: judge source with no GO verdict on this head -> exit 9" "$rc" "9"
-verdict "$ROOT" JD1 "**GO** for head \`$SHA\`." 90
+verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 90
 gos 90 "$SHA"
 check "6: judge source with a GO verdict on this head -> exit 0" "$rc" "0"
-rm -rf "$ROOT/.locks"
+rm -rf "$HDIR/.locks"
 
 # --- 7. an Important on a trust-path PR needs a judge ----------------------
 TA="$tmp/anchor"; TO="$tmp/origin.git"
@@ -162,7 +162,7 @@ git -C "$TA" add -A; git -C "$TA" -c user.name=t -c user.email=t@t commit -q -m 
 git -C "$TA" remote add origin "$TO"; git -C "$TA" push -q origin HEAD:refs/heads/main 2>/dev/null
 git -C "$TO" symbolic-ref HEAD refs/heads/main
 export READY_CHECK_ANCHOR="$TA" READY_STUB_TRUST_FILE=scripts/lib/env-alias.sh
-verdict "$ROOT" JT1 "**GO** for head \`$SHA\`." 90
+verdict "$HDIR" JT1 "**GO** for head \`$SHA\`." 90
 gos --trust-reviewed JT1 90 "$SHA"
 check    "7: console follow-up on a trust-path Important -> exit 9" "$rc" "9"
 contains "7: names the trust path" "$out" "trust path"
