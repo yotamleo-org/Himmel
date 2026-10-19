@@ -120,6 +120,11 @@ describe('comment', () => {
     expect(JSON.stringify(mockRequest.mock.calls[0][2])).toContain('edited from file');
   });
 
+  it('--edit percent-encodes the id so it cannot rewrite the request path', async () => {
+    await run(['HIMMEL-1', 'text', '--edit', '10042/../10043']);
+    expect(mockRequest.mock.calls[0][1]).toBe('/issue/HIMMEL-1/comment/10042%2F..%2F10043');
+  });
+
   it('--edit with an empty id exits 1 and never POSTs a new comment', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('exit');

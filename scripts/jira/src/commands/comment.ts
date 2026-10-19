@@ -51,7 +51,7 @@ export function registerComment(program: Command): void {
           body = markdownToAdf(markdown);
         }
         if (options.edit) {
-          await request('PUT', `/issue/${key}/comment/${options.edit}`, { body });
+          await request('PUT', `/issue/${key}/comment/${encodeURIComponent(options.edit)}`, { body });
         } else {
           await request('POST', `/issue/${key}/comment`, { body });
         }
