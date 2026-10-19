@@ -78,13 +78,13 @@ done
 case "$min" in '' | *[!0-9]*) usage ;; esac
 [ -d "$mirror" ] || { printf 'STUCK-UNKNOWN mirror missing\n'; exit 3; }
 
-prs="$(gh pr list ${repo:+--repo "$repo"} --state open --limit 200 --json number,title,headRefName 2>/dev/null)" || { printf 'STUCK-UNKNOWN gh failed\n'; exit 3; }  # swallow-ok: a gh failure exits 3 as STUCK-UNKNOWN on this line
+prs="$(gh pr list ${repo:+--repo "$repo"} --state open --limit "${STUCK_SCAN_PR_LIMIT:-1000}" --json number,title,headRefName 2>/dev/null)" || { printf 'STUCK-UNKNOWN gh failed\n'; exit 3; }  # swallow-ok: a gh failure exits 3 as STUCK-UNKNOWN on this line
 # pgrep exits 1 on no match, which is a valid empty answer; only rc >= 2 is a failure
 alive="$(pgrep -af 'claude .*-n HIMMEL-' 2>/dev/null)"  # swallow-ok: rc is checked on the next line
 [ "$?" -le 1 ] || { printf 'STUCK-UNKNOWN pgrep failed\n'; exit 3; }
 
-SS_MIRROR="$mirror" SS_VERSION="$version" SS_MIN="$min" SS_PRS="$prs" SS_ALIVE="$alive" SS_NOW="${STUCK_SCAN_NOW:-}" python3 - <<'PY'
-import datetime, glob, json, os, re
+SS_PR_LIMIT="${STUCK_SCAN_PR_LIMIT:-1000}" SS_MIRROR="$mirror" SS_VERSION="$version" SS_MIN="$min" SS_PRS="$prs" SS_ALIVE="$alive" SS_NOW="${STUCK_SCAN_NOW:-}" python3 - <<'PY'
+import datetime, glob, json, os, re, sys
 
 IN_WORK = {'In Progress', 'In Review', 'IN CI'}
 CLOSED = {'Done', 'Closed', 'wont do', 'wont fix', 'In Public'}
@@ -98,6 +98,9 @@ def ts(s):
 now = ts(os.environ['SS_NOW']) if os.environ['SS_NOW'] else datetime.datetime.now(datetime.timezone.utc)
 prs = json.loads(os.environ['SS_PRS'] or '[]')
 alive = os.environ['SS_ALIVE']
+if len(prs) >= int(os.environ['SS_PR_LIMIT']):
+    print('STUCK-UNKNOWN open PRs reach the limit, the list may be truncated')
+    sys.exit(3)
 open_prs = {str(p['number']) for p in prs}
 pr_text = ' '.join(p['title'] + ' ' + p['headRefName'] for p in prs).upper()
 

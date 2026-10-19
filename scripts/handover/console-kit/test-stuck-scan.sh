@@ -18,7 +18,12 @@ has() { # <name> <pattern> <text>
     if printf '%s\n' "$3" | grep -Eq -- "$2"; then pass "$1"; else fail "$1 (no match for '$2' in: $3)"; fi
 }
 hasnt() { # <name> <pattern> <text>
-    if printf '%s\n' "$3" | grep -Eq -- "$2"; then fail "$1 (unexpected '$2' in: $3)"; else pass "$1"; fi
+    printf '%s\n' "$3" | grep -Eq -- "$2"; local rc=$?
+    case "$rc" in
+        0) fail "$1 (unexpected '$2' in: $3)" ;;
+        1) pass "$1" ;;
+        *) fail "$1 (grep error rc=$rc for '$2')" ;;
+    esac
 }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/stuck-scan-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
@@ -113,6 +118,10 @@ hasnt "--min raises the threshold" 'HIMMEL-900[1-8]' "$out"
 out="$(STUB_GH_FAIL=1 bash "$SS" 2>&1)"; rc=$?
 check "gh failure exits 3" 3 "$rc"
 has   "gh failure prints STUCK-UNKNOWN, not an all-clear" '^STUCK-UNKNOWN' "$out"
+
+out="$(STUCK_SCAN_PR_LIMIT=2 bash "$SS" 2>&1)"; rc=$?
+check "a PR list as long as the limit exits 3 (it may be truncated)" 3 "$rc"
+has   "a possibly truncated PR list prints STUCK-UNKNOWN" '^STUCK-UNKNOWN open PRs reach the limit' "$out"
 
 # --- dispose
 : > "$WORK/jira.log"
