@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "checker": "scripts/docs/check-dev-graph.sh",
   "lanes": [
     {
       "id": "operator",
