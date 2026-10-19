@@ -15,6 +15,12 @@
 #      gated body incl. ## Dropped Citations (never "(0 found)"); the panel
 #      treats 4 as responded and raises its citation guard; guard-less
 #      callers treat it like 1 (not clean, proceed claude-only)
+#   5  SKIPPED: the Claude critic (provider claude-api / claude-subscription)
+#      had no key, a closed API lane, exhausted credit or a bank that is not
+#      PROCEED. A clean no-op, no stdout, no score row; never a review verdict
+#
+# Claude critic: effort = CR_CLAUDE_CRITIC_EFFORT, else the claude row's effort,
+# else medium; CR_CLAUDE_CRITIC_MAX_USD caps one API review (default 1.00).
 #
 # Env: CRITIC_FIRST_PASS_CAP_BYTES — diff byte cap (default 204800).
 # Bash 3.2 safe.
@@ -496,7 +502,87 @@ fi
 # option-looking tokens (e.g. "x --toolsets terminal") cannot inject extra
 # invoke.sh flags. `none`/empty → omit --profile (hermes default profile). An
 # array would hit the bash-3.2 `set -u` empty-array expansion bug, so branch instead.
+# Claude critic: provider claude-api / claude-subscription runs the
+# official claude binary read-only (Read,Glob,Grep, dontAsk, never
+# bypassPermissions) in a scratch cwd, not hermes. rc 5 = SKIPPED: no key, lane
+# off, credit or bank exhausted -- a clean no-op the panel records as unavailable,
+# never a failed review.
+_cfp_claude_effort() {
+    _cce_e="${CR_CLAUDE_CRITIC_EFFORT:-}"
+    if [ -z "$_cce_e" ] && command -v node >/dev/null 2>&1; then
+        _cce_e="$(REG="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}" node -e '
+          try { const r = (JSON.parse(require("fs").readFileSync(process.env.REG, "utf8")).panel || []).find(x => x && x.slug === "claude" && !x.drop);
+            if (r && r.effort) process.stdout.write(String(r.effort)); } catch (e) {}' 2>/dev/null || true)"  # swallow-ok: unreadable row falls to the medium default
+    fi
+    case "$_cce_e" in low|medium|high|xhigh|max) printf '%s' "$_cce_e" ;; *) printf 'medium' ;; esac
+}
+
+# stdin: claude's --output-format json envelope. stdout: the review text. stderr:
+# one cost line. Non-zero when the envelope is not a successful result.
+_cfp_claude_unwrap() {
+    node -e '
+      let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+        let j; try { j = JSON.parse(s); } catch (e) { process.exit(1); }
+        if (!j || j.type !== "result" || j.is_error || typeof j.result !== "string") process.exit(1);
+        const u = j.usage || {};
+        process.stderr.write("critic-first-pass.sh: claude critic cost_usd=" + (j.total_cost_usd == null ? "unknown" : j.total_cost_usd)
+          + " input_tokens=" + (u.input_tokens || 0) + " output_tokens=" + (u.output_tokens || 0) + "\n");
+        process.stdout.write(j.result);
+      });'
+}
+
+_cfp_claude_invoke() {
+    _cc_effort="$(_cfp_claude_effort)"
+    _cc_dir="$(mktemp -d "${TMPDIR:-/tmp}/cfp-claude.XXXXXX")" || { echo "critic-first-pass.sh: mktemp -d failed" >&2; return 1; }
+    _cc_out=""
+    _cc_rc=0
+    case "$provider" in
+        claude-api)
+            cp "$pf" "$_cc_dir/review-prompt.md" || { rm -rf "$_cc_dir"; return 1; }
+            _cc_budget="${CR_CLAUDE_CRITIC_MAX_USD:-1.00}"
+            case "$_cc_budget" in ''|*[!0-9.]*) _cc_budget="1.00" ;; esac
+            _cc_err="$_cc_dir/stderr"
+            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_TOOLS=Read,Glob,Grep HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+                bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
+                -p "Read ./review-prompt.md and follow it exactly. Reply with the review only." \
+                --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
+                --output-format json --effort "$_cc_effort" 2>"$_cc_err")" || _cc_rc=$?
+            if grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
+                echo "critic-first-pass.sh: claude critic SKIPPED ($(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')) — clean no-op" >&2
+                rm -rf "$_cc_dir"
+                return 5
+            fi
+            cat "$_cc_err" >&2
+            ;;
+        claude-subscription)
+            _cc_bank="$(CADENCE_BANK_LEG=claude-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
+            case "$_cc_bank" in
+                PROCEED*) ;;
+                *) echo "critic-first-pass.sh: claude critic SKIPPED (${_cc_bank:-no bank verdict}) — clean no-op" >&2
+                   rm -rf "$_cc_dir"; return 5 ;;
+            esac
+            # shellcheck source=../lib/native-auth-pin.sh
+            # shellcheck disable=SC1091
+            . "$SCRIPT_DIR/../lib/native-auth-pin.sh"
+            native_auth_pin_env
+            cd "$_cc_dir" || { rm -rf "$_cc_dir"; return 1; }
+            # launch gated on keywords only (native-auth-pin.sh LAUNCH GATE)
+            if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
+                _cc_out="$("${HIMMEL_CLAUDE_BIN:-claude}" -p --output-format json --permission-mode dontAsk \
+                    --allowedTools Read,Glob,Grep --model "$model" --effort "$_cc_effort" < "$pf")" || _cc_rc=$?
+            else
+                echo "critic-first-pass.sh: claude critic SKIPPED (native auth pin could not clear ANTHROPIC_*/CLAUDE_CODE_USE_*) — clean no-op" >&2
+                return 5
+            fi
+            ;;
+    esac
+    rm -rf "$_cc_dir" 2>/dev/null || true
+    [ "$_cc_rc" -eq 0 ] || return "$_cc_rc"
+    printf '%s' "$_cc_out" | _cfp_claude_unwrap
+}
+
 _cfp_invoke() {
+    case "$provider" in claude-api|claude-subscription) _cfp_claude_invoke; return $? ;; esac
     # --provider threads the registry row's provider to hermes so
     # model ids newer than hermes' catalog can't silently fall to its default
     # provider. Branching (not arrays) for the same bash-3.2 reason as --profile.
@@ -613,6 +699,8 @@ while [ "$_attempt" -lt 3 ]; do
     _attempt=$((_attempt + 1))
     raw="$(_cfp_invoke)"
     rc=$?
+    # a skip is a decision, not a failure: no retry, no raw log, no score row
+    [ "$rc" -eq 5 ] && exit 5
     _trimmed="$(printf '%s' "$raw" | tr -d '[:space:]')"
     if [ "$rc" -eq 0 ] && [ -n "$_trimmed" ]; then
         break
