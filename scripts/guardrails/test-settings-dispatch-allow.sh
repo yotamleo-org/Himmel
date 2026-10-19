@@ -26,8 +26,8 @@ for rule in \
   fi
 done
 
-if jq -e '.permissions.allow | map(select(test("gcp-runners\\.sh( (up|watch)|:\\*)"))) | length > 0' "$SETTINGS" >/dev/null 2>&1; then
-  echo "FAIL: allow list pre-approves a gcp-runners subcommand that spawns VMs"
+if jq -e '.permissions.allow | map(select(test("gcp-runners\\.sh") and . != "Bash(bash scripts/ci/gcp-runners.sh down)" and . != "Bash(bash scripts/ci/gcp-runners.sh status)")) | length > 0' "$SETTINGS" >/dev/null 2>&1; then
+  echo "FAIL: allow list carries a gcp-runners rule beyond the exact down and status literals"
   fail=1
 fi
 
