@@ -1247,10 +1247,14 @@ _gh_api() {
 # _gh_cigcp J — true only for the CI_GCP kill switch: a bare gh (no env prefix,
 # wrapper or computed word) running `variable set CI_GCP` with one --body of
 # on|off and exactly one -R/--repo naming this repository (an omitted repo
-# would follow GH_REPO or the checkout), nothing else.
+# would follow GH_REPO or the checkout), nothing else. The words are lowercased
+# but gh's flags are case-sensitive (-r is --repos, not --repo), so the typed
+# command must carry no lowercase -r and no upper-case letter in a long option.
 _gh_cigcp() {
     local j=$1 n=${#_gc_w[@]} w pos='' body='' repo=''
     [ "$j" = 1 ] || return 1
+    [[ $cmd =~ (^|[[:space:]])-r([[:space:]=]|$) ]] && return 1
+    [[ $cmd =~ (^|[[:space:]])--[a-z-]*[A-Z] ]] && return 1
     while [ "$j" -lt "$n" ]; do
         [ "${_gc_k[j]}" = W ] || return 1
         w=${_gc_w[j]}

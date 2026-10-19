@@ -1602,6 +1602,11 @@ for c in \
     'gh variable set CI_GCP --body off --org o -R yotamleo/Himmel' \
     'gh variable set CI_GCP --body off -R other/repo' \
     'gh variable set CI_GCP --body off -R yotamleo/Himmel -R other/repo' \
+    'gh variable set CI_GCP --body on -r yotamleo/Himmel' \
+    'gh variable set -r yotamleo/Himmel CI_GCP --body on' \
+    'gh -r yotamleo/Himmel variable set CI_GCP --body on' \
+    'gh variable set CI_GCP --body on --REPO yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on --Repo=yotamleo/Himmel' \
     'gh variable set CI_GCP CI_GCP2 --body off -R yotamleo/Himmel' \
     'gh variable delete CI_GCP -R yotamleo/Himmel' \
     'gh variable remove CI_GCP -R yotamleo/Himmel' \
