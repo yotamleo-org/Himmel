@@ -11,6 +11,12 @@ export const PAGES = [
 ];
 const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban"];
 
+// The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
+// tests/docs-routes.test.ts checks each against a fresh site/dist build.
+export const DOCS_URL = "https://yotamleo.github.io/Himmel/";
+export const DOCS_PATHS = ["/"];
+export const docsHref = (path) => DOCS_URL + path.replace(/^\//, "");
+
 const frag = (o) => "#" + new URLSearchParams(o).toString();
 
 // here: "console" (the / document: its pages are #/<id> routes, the token is held in memory) or "agui".
@@ -23,7 +29,10 @@ export function pageHref({ here, token, id, run }) {
 // run: the session the run page shows, which adds a Run entry.
 export function navLinks({ here, token, current, run }) {
   const pages = run ? [...PAGES, { id: "run", label: "Run" }] : PAGES;
-  return pages.map((p) => ({ ...p, href: pageHref({ here, token, id: p.id, run }), current: p.id === current }));
+  return [
+    ...pages.map((p) => ({ ...p, href: pageHref({ here, token, id: p.id, run }), current: p.id === current })),
+    { id: "docs", label: "Docs", href: docsHref("/"), current: false, external: true },
+  ];
 }
 
 // The console's landing fragment, #t=<hex>[&page=<id>]: the token and the console page to open; null otherwise.
