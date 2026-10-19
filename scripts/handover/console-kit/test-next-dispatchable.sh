@@ -257,12 +257,12 @@ M7="$WORK/jira-mirror7/HIMMEL"; mkdir -p "$M7"
 M_SAVE="$M"; M="$M7"
 mk HIMMEL-140 "To Do" Medium '[]' '["v1.0.1"]' '[]' "tier4 early version" "Edit scripts/lib/q1.sh only."
 mk HIMMEL-141 "To Do" Highest '[]' '["v1.0.2"]' '[]' "tier4 later version" "Edit scripts/lib/q2.sh only."
-mk HIMMEL-130 "To Do" Medium '["security"]' '[]' '[]' "tier3 security label" "Edit scripts/lib/q3.sh only."
-mk HIMMEL-131 "To Do" High '[]' '[]' '[]' "tier3 high bug" "Edit scripts/lib/q4.sh only."
+mk HIMMEL-130 "To Do" Medium '["security"]' '["v1.0.1"]' '[]' "tier3 security label" "Edit scripts/lib/q3.sh only."
+mk HIMMEL-131 "To Do" High '[]' '["v1.0.1"]' '[]' "tier3 high bug" "Edit scripts/lib/q4.sh only."
 sed -i 's/^type: "Task"/type: "Bug"/' "$M7/HIMMEL-131.md"  # gnu-ok: Linux-only kit
 mk HIMMEL-132 "To Do" Medium '[]' '[]' '[]' "medium bug is not tier3" "Edit scripts/lib/q5.sh only."
 sed -i 's/^type: "Task"/type: "Bug"/' "$M7/HIMMEL-132.md"  # gnu-ok: Linux-only kit
-mk HIMMEL-120 "To Do" Low '["operator-directed"]' '[]' '[]' "tier2 operator directed" "Edit scripts/lib/q6.sh only."
+mk HIMMEL-120 "To Do" Low '["operator-directed"]' '["v1.0.1"]' '[]' "tier2 operator directed" "Edit scripts/lib/q6.sh only."
 mk HIMMEL-110 "To Do" Low '["must-v1.1.3"]' '[]' '[]' "tier1 by label" "Edit scripts/lib/q7.sh only."
 mk HIMMEL-111 "To Do" Low '[]' '[]' '[]' "tier1 second on the line" "Edit scripts/lib/q8.sh only."
 mk HIMMEL-112 "To Do" Low '[]' '[]' '[]' "tier1 first on the line" "Edit scripts/lib/q9.sh only."
@@ -449,6 +449,100 @@ peak14="$(awk '/^S$/{c++; if(c>m)m=c} /^E$/{c--} END{print m+0}' "$CLASSIFY_LOG"
 : > "$REFUSE_401"; : > "$CLASSIFY_LOG"
 o14="$(run14)"
 [ "$o14" = "HIMMEL-402 HIMMEL-403 " ] && pass "a refused row is skipped and rank order holds" || fail "refusal order wrong: $o14"
+
+# --- fix 1: a WRAPPED leg holds nothing; only the leg's own write scope holds files ---
+M20="$WORK/jira-mirror20/HIMMEL"; mkdir -p "$M20"
+M_SAVE="$M"; M="$M20"
+mk HIMMEL-701 "To Do" Medium '[]' '["v1.0.1"]' '[]' "named by a wrapped leg" "Edit scripts/lib/wrapped-held.sh only."
+mk HIMMEL-702 "To Do" Medium '[]' '["v1.0.1"]' '[]' "named only in boilerplate" "Edit scripts/lib/readonly-boiler.sh only."
+mk HIMMEL-703 "To Do" Medium '[]' '["v1.0.1"]' '[]' "inside a live write scope" "Edit scripts/lib/own-scope.sh only."
+mk HIMMEL-704 "To Do" Medium '[]' '["v1.0.1"]' '[]' "named after Other live legs" "Edit scripts/lib/other-legs.sh only."
+mk HIMMEL-705 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir a leg describes in prose" "Edit scripts/lib/prose-dir/other.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror20/HIMMEL.versions.tsv"
+LEGW="$WORK/HIMMEL-98-N8-wrapped.md"
+LEGB="$WORK/HIMMEL-97-N9-live.md"
+# shellcheck disable=SC2016  # the backticks are literal doc text
+printf '# wrapped\n> **Scope / do not:** writes confined to `scripts/lib/wrapped-held.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 11:00 READY 1 abc GREEN\n- 12:00 WRAPPED - merged\n' > "$LEGW"
+# shellcheck disable=SC2016
+printf '# live\n> **Scope / do not:** writes confined to `scripts/lib/own-scope.sh` and its test. completes-ticket: yes. Other live legs: `scripts/lib/other-legs.sh`. No settings; READ ONLY `scripts/lib/readonly-boiler.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 12:30 SUCCESSION accepted: x\n' > "$LEGB"
+LEGP="$WORK/HIMMEL-96-N7-prose.md"
+# shellcheck disable=SC2016
+printf '# prose\n> **Scope / do not:** writes confined to `scripts/lib/prose-dir/ (the new command + tests)`.\n\n## Results\n- 10:00 LIVE - go\n' > "$LEGP"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N8"},{"doc":"%s","label":"N9"},{"doc":"%s","label":"N7"}]}\n' "$LEGW" "$LEGB" "$LEGP" > "$WORK/fleet20.json"
+run20() { NEXT_DISPATCH_MIRROR="$M20" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify --legs-from "$WORK/fleet20.json" 2>/dev/null; }
+f1="$(run20)"
+has "fix1: a ticket on a WRAPPED leg's file is listed" "$f1" "HIMMEL-701	"
+has "fix1: a ticket on a file named only in READ ONLY prose is listed" "$f1" "HIMMEL-702	"
+lacks "fix1: a ticket on a live leg's write scope is held" "$f1" "HIMMEL-703	"
+has "fix1: a ticket on a file after Other live legs is listed" "$f1" "HIMMEL-704	"
+lacks "fix1: a directory scope with prose in parentheses still holds the directory" "$f1" "HIMMEL-705	"
+
+# --- fix 2: a ticket a live leg or an open PR already owns is not offered ---
+M21="$WORK/jira-mirror21/HIMMEL"; mkdir -p "$M21"
+M_SAVE="$M"; M="$M21"
+mk HIMMEL-97 "To Do" Medium '[]' '["v1.0.1"]' '[]' "owned by the live leg" "Edit scripts/lib/fresh-a.sh only."
+mk HIMMEL-52 "To Do" Medium '[]' '["v1.0.1"]' '[]' "owned by an open PR" "Edit scripts/lib/fresh-b.sh only."
+mk HIMMEL-710 "To Do" Medium '[]' '["v1.0.1"]' '[]' "unowned" "Edit scripts/lib/fresh-c.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror21/HIMMEL.versions.tsv"
+f2="$(NEXT_DISPATCH_MIRROR="$M21" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --legs-from "$WORK/fleet20.json" 2>/dev/null)"
+lacks "fix2: a ticket whose key is a live leg's is not offered" "$f2" "HIMMEL-97	"
+lacks "fix2: a ticket whose key is in an open PR title is not offered" "$f2" "HIMMEL-52	"
+has "fix2: an unowned ticket is offered" "$f2" "HIMMEL-710	"
+
+# --- fix 3: tiers 2-3 only for the earliest unreleased version; operator-gated and Parked: are out ---
+M22="$WORK/jira-mirror22/HIMMEL"; mkdir -p "$M22"
+M_SAVE="$M"; M="$M22"
+mk HIMMEL-720 "To Do" Medium '["operator-directed"]' '["v1.0.1"]' '[]' "directed in the earliest version" "Edit scripts/lib/t3a.sh only."
+mk HIMMEL-721 "To Do" Medium '["operator-directed"]' '["v1.0.2"]' '[]' "directed in a later version" "Edit scripts/lib/t3b.sh only."
+mk HIMMEL-722 "To Do" Medium '["operator-directed"]' '[]' '[]' "directed with no version" "Edit scripts/lib/t3c.sh only."
+mk HIMMEL-723 "To Do" High '["security"]' '["v1.0.2"]' '[]' "security in a later version" "Edit scripts/lib/t3d.sh only."
+mk HIMMEL-724 "To Do" Medium '["operator-gated"]' '["v1.0.1"]' '[]' "gated on the operator" "Edit scripts/lib/t3e.sh only."
+mk HIMMEL-725 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Parked: revisit later" "Edit scripts/lib/t3f.sh only."
+mk HIMMEL-726 "To Do" Medium '[]' '["v1.0.1"]' '[]' "plain earliest-version work" "Edit scripts/lib/t3g.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror22/HIMMEL.versions.tsv"
+run22() { NEXT_DISPATCH_MIRROR="$M22" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify "$@" 2>/dev/null; }
+f3="$(run22 --priority-pool-only --owners HIMMEL-999)"
+has "fix3: operator-directed in the earliest unreleased version is in the pool" "$f3" "HIMMEL-720	"
+lacks "fix3: operator-directed in a later version is not in the pool" "$f3" "HIMMEL-721	"
+lacks "fix3: operator-directed with no version is not in the pool" "$f3" "HIMMEL-722	"
+lacks "fix3: a later-version security ticket is not in the pool" "$f3" "HIMMEL-723	"
+f3b="$(run22)"
+has "fix3: a later-version operator-directed ticket still lists as backlog" "$f3b" "HIMMEL-721	"
+lacks "fix3: operator-gated is excluded" "$f3b" "HIMMEL-724	"
+lacks "fix3: a Parked: title is excluded" "$f3b" "HIMMEL-725	"
+has "fix3: plain earliest-version work is listed" "$f3b" "HIMMEL-726	"
+
+# --- fix 5: a named file that is not in the repo is warned about ---
+M23="$WORK/jira-mirror23/HIMMEL"; mkdir -p "$M23"
+M_SAVE="$M"; M="$M23"
+mk HIMMEL-730 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a ghost file" "Edit scripts/handover/tick-ghost-6478.sh only."
+mk HIMMEL-731 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a real file" "Edit scripts/handover/console-kit/next-dispatchable.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror23/HIMMEL.versions.tsv"
+f5="$(NEXT_DISPATCH_MIRROR="$M23" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"
+has "fix5: a ticket naming a missing file draws a warn line" "$f5" "# warn: HIMMEL-730 names scripts/handover/tick-ghost-6478.sh"
+lacks "fix5: a ticket naming an existing file draws none" "$f5" "# warn: HIMMEL-731"
+
+# --- replay: the 10-19T console state (doc priority line, 28-leg manifest, open PRs, v1.1.3 Jira slice) frozen under fixtures/ ---
+RP="$HERE/fixtures/dispatcher-replay"
+sed "s#@@FIXTURE@@#$RP#" "$RP/fleet.json" > "$WORK/replay-fleet.json"
+cat > "$WORK/replay-gh" <<EOF
+#!/usr/bin/env bash
+if [ "\$2" = list ]; then
+    case "\$*" in *headRefName*) cat "$RP/prs.tsv" ;; *) cut -f1 "$RP/prs.tsv" ;; esac
+else awk -F'\t' -v n="\$3" '\$1 == n {print \$2}' "$RP/pr-files.tsv"; fi
+EOF
+chmod +x "$WORK/replay-gh"
+rp="$(NEXT_DISPATCH_MIRROR="$RP/mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/console.md" --legs-from "$WORK/replay-fleet.json" 2>/dev/null)"
+has "replay: a ticket the 'Do not touch' fence of a live leg hid is offered (HIMMEL-6034)" "$rp" "HIMMEL-6034	"
+lacks "replay: a directory-wide scope described in parentheses still holds its directory (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
+lacks "replay: a ticket whose key is a live leg's is not offered (HIMMEL-4999)" "$rp" "HIMMEL-4999	"
+lacks "replay: a ticket really held by a live leg stays held (HIMMEL-6484)" "$rp" "HIMMEL-6484	"
+n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
+[ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

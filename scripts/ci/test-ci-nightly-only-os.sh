@@ -134,6 +134,18 @@ if grep -Eq '^ +bash \.github/scripts/apt-install\.sh at bubblewrap socat$' <<< 
 else
   bad "shell-unit-shard: at/atd install does not call apt-install.sh for at bubblewrap socat"
 fi
+# A runner where atd never started must fail the step, not pass it and fail a
+# later job with an unrelated symptom.
+if grep -Eq '\|\|[[:space:]]*true[[:space:]]*$' <<< "$(grep -E 'atd' <<< "$step" | grep -v '^ *#')"; then
+  bad "shell-unit-shard: at/atd start swallows a failure with || true"
+else
+  ok "shell-unit-shard: at/atd start is not swallowed with || true"
+fi
+if grep -Eq '^ +(sudo )?systemctl is-active --quiet atd \|\| \{ echo "[^"]+" >&2; exit 1; \}$' <<< "$step"; then
+  ok "shell-unit-shard: at/atd step ends in an is-active check that exits 1"
+else
+  bad "shell-unit-shard: at/atd step has no 'systemctl is-active --quiet atd || { echo ...; exit 1; }' check"
+fi
 # shellcheck disable=SC2016  # the patterns match helper source text literally
 if [ ! -f "$HELPER_SH" ]; then
   bad "shell-unit-shard: apt-install.sh helper missing"

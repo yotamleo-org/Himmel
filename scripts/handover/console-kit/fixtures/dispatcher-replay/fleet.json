@@ -1,0 +1,117 @@
+{
+ "schema": 1,
+ "legs": [
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-2053-N2702-hermes-cr-gate-parity-2026-10-19.md",
+   "label": "N2702"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-3724-N2741-classifier-dispatch-denials-2026-10-19.md",
+   "label": "N2741"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6057-N2759-known-findings-refresh-jq-match-2026-10-19.md",
+   "label": "N2759"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6287-N2766-docs-site-starlight-build-2026-10-19.md",
+   "label": "N2766"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6431-N2769-ci-gcp-kill-switch-carve-out-2026-10-19.md",
+   "label": "N2769"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6393-N2774-ci-atd-start-fails-loudly-2026-10-19.md",
+   "label": "N2774"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6449-N2777-cadence-approve-containment-gaps-2026-10-19.md",
+   "label": "N2777"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6443-N2778-claudex-probe-chunk-script-2026-10-19.md",
+   "label": "N2778"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6475-N2782-critic-rc5-skipped-not-failure-2026-10-19.md",
+   "label": "N2782"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6354-N2783-gcp-net-debian-mirrors-2026-10-19.md",
+   "label": "N2783"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6465-N2784-graphify-skill-as-plugin-2026-10-19.md",
+   "label": "N2784"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-5057-N2785-shard-stop-first-fail-2026-10-19.md",
+   "label": "N2785"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6416-N2786-transition-stamps-version-2026-10-19.md",
+   "label": "N2786"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6471-N2787-gcp-quota-ext-machine-2026-10-19.md",
+   "label": "N2787"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-5673-N2788-qmd-rerank-off-switch-2026-10-19.md",
+   "label": "N2788"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6479-N2789-behind-main-merge-spelling-2026-10-19.md",
+   "label": "N2789"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6483-N2791-tracker-lean-sector-parity-2026-10-19.md",
+   "label": "N2791"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-5556-N2793-ci-fold-quick-collapse-shards-2026-10-19.md",
+   "label": "N2793"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-2872-N2794-ci-prebuilt-ghcr-image-2026-10-19.md",
+   "label": "N2794"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6488-N2795-service-mode-test-line-read-2026-10-19.md",
+   "label": "N2795"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6377-N2799-cr-loop-critical-disposition-2026-10-19.md",
+   "label": "N2799"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6419-N2801-critic-cost-measure-2026-10-19.md",
+   "label": "N2801"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-4999-N2802-vault-gitleaks-token-grammar-2026-10-19.md",
+   "label": "N2802"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6476-N2804-leg-api-lane-switch-2026-10-19.md",
+   "label": "N2804"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6489-N2796-pr-create-hook-short-flags-2026-10-19.md",
+   "label": "N2796"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6466-N2797-write-guard-batch-forks-2026-10-19.md",
+   "label": "N2797"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6478-N2806-dispatcher-false-collisions-2026-10-19.md",
+   "label": "N2806"
+  },
+  {
+   "doc": "@@FIXTURE@@/legs/HIMMEL-6492-N2807-cheaper-console-handover-plan-2026-10-19.md",
+   "label": "N2807"
+  }
+ ]
+}
