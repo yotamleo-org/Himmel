@@ -19,9 +19,9 @@
 #
 # --critic-split compares branches where the Claude critic ran (a ledger `attempt` row for
 # model claude with status ok) against the rest, and joins the critic's per-call cost from
-# api-lane launches.jsonl rows of kind critic. Launch rows carry no branch or head, so a
-# launch joins an attempt only when their timestamps (both written at call end) are within
-# 60s; a branch with no joined launch reports cost unjoined, never a zero. Default launches
+# api-lane launches.jsonl rows of kind critic. A launch row with branch and head joins the
+# attempt of that branch and head by key; a row without them (older rows) joins only when
+# the timestamps (both written at call end) are within 60s; a branch with no joined launch reports cost unjoined, never a zero. Default launches
 # file: the api-lane state dir's launches file under ~/.himmel (absent = cost unjoined; an
 # explicit --launches must load). A reader only: claude-api.sh owns that ledger.
 #
@@ -240,7 +240,10 @@ if (e.SPLIT) {
     okCalls.set(a.branch, (okCalls.get(a.branch) || 0) + 1);
     const at = Date.parse(a.ts);
     let best = -1, bestD = 60001;
-    launches.forEach((l, i) => { const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
+    // a launch row carrying branch+head joins on that key; only keyless rows fall back to the timestamp window
+    const keyed = launches.findIndex((l, i) => !used.has(i) && l.branch && l.head && l.branch === a.branch && String(a.head).startsWith(l.head.slice(0, 7)));
+    if (keyed >= 0) best = keyed;
+    else launches.forEach((l, i) => { if (l.branch && l.head) return; const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
     const c = best >= 0 ? Number(launches[best].cost_usd) : NaN;
     if (best >= 0 && Number.isFinite(c)) { used.add(best); cost.set(a.branch, (cost.get(a.branch) || 0) + c); matchedCalls.set(a.branch, (matchedCalls.get(a.branch) || 0) + 1); }
   }

@@ -100,6 +100,21 @@ test('funded API account proceeds while the native bank is exhausted; child sees
   assert.equal(row.spent_est_usd, '0.012345');
 });
 
+test('HIMMEL-6490: the launch record carries branch, head and PR; absent keys are empty and null', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { HIMMEL_API_BRANCH: 'feat/x"y', HIMMEL_API_HEAD: 'abc123def', HIMMEL_API_PR: '3300' }).status, 0);
+  const rec = JSON.parse(f.record().trim());
+  assert.equal(rec.branch, 'feat/xy');
+  assert.equal(rec.head, 'abc123def');
+  assert.equal(rec.pr, 3300);
+  assert.equal(rec.cost_usd, '0.012345');
+  const g = fixture();
+  assert.equal(g.run().status, 0);
+  const bare = JSON.parse(g.record().trim());
+  assert.equal(bare.branch, '');
+  assert.equal(bare.pr, null);
+});
+
 test('judge j2229c: the harness hand-off names (LQ_API_*) never reach claude', () => {
   const f = fixture();
   const r = f.run(f.good, { LQ_API_KEY: DUMMY, LQ_API_ACCOUNT: 'B', LQ_API_KEY_ID: 'key-b', LQ_API_LANE: 'on' });

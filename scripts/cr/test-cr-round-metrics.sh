@@ -181,6 +181,18 @@ json="$(CR_LEDGER="$tmp/split2.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --kn
 check "split two calls one launch: partly unjoined" "$(q critic_split.critic.cost)" "partly unjoined"
 check "split one call one launch: joined" "$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).critic_split.critic.cost))')" "joined"
 
+# a launch row with branch and head joins by key, days away from the attempt timestamp
+{
+  echo '{"ts":"2026-10-02T09:00:00Z","job_id":"cr-claude-critic-5151","kind":"critic","outcome":"settled","cost_usd":"0.770000","rc":0,"branch":"fix/a","head":"a3","pr":77}'
+} > "$tmp/keyed.jsonl"
+json="$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$tmp/keyed.jsonl" | grep -m1 '^{')"
+check "keyed launch joins without a timestamp match" "$(q critic_split.critic.cost_usd_total)" "0.77"
+check "keyed launch: cost joined" "$(q critic_split.critic.cost)" "joined"
+# a keyed row for another branch never joins by timestamp
+sed 's/"branch":"fix\/a"/"branch":"fix\/zzz"/' "$tmp/keyed.jsonl" | sed 's/2026-10-02T09:00:00Z/2026-10-01T02:30:05Z/' > "$tmp/keyed-other.jsonl"
+json="$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$tmp/keyed-other.jsonl" | grep -m1 '^{')"
+check "keyed launch of another branch does not join by time" "$(q critic_split.critic.cost_usd_total)" "null"
+
 # no successful critic attempt anywhere: zero critic PRs, cost null (never a made-up zero)
 json="$(CR_LEDGER="$L" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{')"
 check "split with no critic runs: critic branches" "$(q critic_split.critic.branches)" "0"
