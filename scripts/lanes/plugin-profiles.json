@@ -303,7 +303,7 @@
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
-      "mcpServers": ["qmd"],
+      "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 35000,
       "contextMode": "standard",
       "autocompact": 200000,
@@ -311,7 +311,7 @@
     },
     "leg-bus": {
       "gateAllow": true,
-      "_comment": "HIMMEL-5223: leg-impl plus the himmel-bus MCP server, the only profile that opts in until HIMMEL-4841 rolls the bus out to every headed leg. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. HIMMEL-4830 adds the himmel-bus tool allow entries via mcpAllow; everything else is leg-impl's: same gateAllow, same budget.",
+      "_comment": "HIMMEL-5223: the first profile on the himmel-bus MCP server; HIMMEL-4841 put every headed leg profile on it, so this is now the same manifest as leg-impl, kept as a name existing briefs pass. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. HIMMEL-4830 adds the himmel-bus tool allow entries via mcpAllow.",
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
@@ -327,7 +327,7 @@
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
-      "mcpServers": ["qmd"],
+      "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 35000,
       "contextMode": "standard",
       "autocompact": 200000
@@ -340,7 +340,8 @@
       ],
       "mcpServers": [
         "qmd",
-        "playwright"
+        "playwright",
+        "himmel-bus"
       ],
       "contextBudget": 40000,
       "contextMode": "standard",
