@@ -23,7 +23,9 @@
 # operator-directed; 3 a Bug of High or above, or a security / data-integrity /
 # data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
 # tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review, no leg, no open PR)
-# lead that tier's To Do rows; an empty pool prints `POOL-EMPTY` and no rows.
+# lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
+# the RESUME rows need a leg source (--owners or --legs-from, plus the cloud-sessions.tsv
+# next to --doc, 48h) and print none without one; an empty pool prints `POOL-EMPTY`.
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
@@ -76,7 +78,7 @@ case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive n
 
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only"
 exec python3 -I - <<'PY'
-import json, os, re, subprocess, sys
+import datetime, json, os, re, subprocess, sys, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
@@ -276,6 +278,23 @@ if legs_from and os.path.isfile(legs_from):
                 legs_unknown = True
     except (OSError, ValueError):
         legs_unknown = True
+if pool_only and not legs_from and not leg_keys:
+    legs_unknown = True
+    print('next-dispatchable: no RESUME rows: --priority-pool-only has no leg source (--owners or --legs-from)', file=sys.stderr)
+# cloud sessions own their ticket too: the same file and 48h window tick reads
+cloud_tsv = os.path.join(os.path.dirname(os.environ['ND_DOC']), 'cloud-sessions.tsv') if os.environ.get('ND_DOC') else ''
+if cloud_tsv and os.path.isfile(cloud_tsv):
+    window_s = int(os.environ.get('CLOUD_LIVENESS_WINDOW_H', '48')) * 3600
+    for line in open(cloud_tsv, encoding='utf-8', errors='replace'):
+        cols = line.rstrip('\n').split('\t')
+        if len(cols) < 2:
+            continue
+        try:
+            at = datetime.datetime.fromisoformat(cols[0].replace('Z', '+00:00')).timestamp()
+        except ValueError:
+            continue
+        if time.time() - at <= window_s:
+            leg_keys.add(cols[1].strip().upper())
 hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list') for l in open(hf) if l.strip()]
@@ -303,6 +322,10 @@ for i in issues.values():
     if i['status'] not in ('In Progress', 'In Review') or i['type'] in ('Epic', 'Story', 'Sub-task'):
         continue
     if i['labels'] & excl or any('parked' in l for l in i['labels']):
+        continue
+    if pool_only and platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
+        continue
+    if pool_only and residual_depth(i) >= 1 and i['key'] not in residual_must:
         continue
     if i['key'] in leg_keys or i['key'] in pr_keys:
         continue
