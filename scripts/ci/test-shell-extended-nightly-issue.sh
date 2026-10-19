@@ -57,6 +57,39 @@ out="$(DRY_RUN=1 DRY_RUN_LOOKUP_FAIL=1 bash "$SCRIPT" 0 "$RUN_URL" 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ]; then ok "green + lookup-failure -> exit 1 (propagate)"; else bad "green + lookup-failure exit=$rc (expected 1)"; fi
 hasnt 'DRY: gh issue close' "$out" "green + lookup-failure never closes blindly"
 
+# 8. Classify the red before filing. Fixtures are the real API payloads of
+# schedule run 39029239710 (shard 4 cancelled, none failed) and the schedule
+# run list that held a newer green nightly.
+FX="$ROOT/scripts/ci/fixtures/nightly-reporter"
+JOBS_CANCELLED="$FX/jobs-cancelled-shard.json"
+RUNS="$FX/runs-newer-green.json"
+JOBS_FAILED="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-failed.XXXXXX")" || exit 1
+sed 's/"cancelled"/"failure"/' "$JOBS_CANCELLED" > "$JOBS_FAILED"
+OLD_RUN="2026-10-17T11:34:47Z"
+NEWEST_RUN="2026-10-19T01:00:00Z"
+
+# cancelled-only shards, no existing issue -> no issue opened
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_CANCELLED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"; rc=$?
+hasnt 'DRY: gh issue ' "$out" "cancelled-only shards open no issue"
+hasnt 'DRY: gh label create' "$out" "cancelled-only shards touch no label"
+has 'inconclusive' "$out" "cancelled-only shards log an inconclusive note"
+if [ "$rc" -eq 0 ]; then ok "cancelled-only shards -> exit 0"; else bad "cancelled-only exit=$rc (expected 0)"; fi
+
+# cancelled-only shards, issue already open -> not refreshed
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="7" DRY_RUN_JOBS_FILE="$JOBS_CANCELLED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+hasnt 'DRY: gh issue ' "$out" "cancelled-only shards do not refresh an open issue"
+
+# a failed shard on the newest run stays red
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+has 'DRY: gh issue create' "$out" "failed shard on the newest run still opens the issue"
+
+# older run finishing after a newer green nightly -> no red
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$OLD_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"; rc=$?
+hasnt 'DRY: gh issue ' "$out" "red superseded by a newer green nightly opens no issue"
+has 'superseded' "$out" "superseded red logs a note"
+if [ "$rc" -eq 0 ]; then ok "superseded red -> exit 0"; else bad "superseded exit=$rc (expected 0)"; fi
+rm -f "$JOBS_FAILED"
+
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
 echo "all checks passed."
