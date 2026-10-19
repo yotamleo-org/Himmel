@@ -538,7 +538,7 @@ rs_shift_glob_secret() {
 # glob, a child render of guard_unwrap whose cwd is not ours) is not proved,
 # with the reason in RS_AST_WHY.
 rs_ast_proves_safe() {
-    local lib pos pats dirs chain d pat m
+    local lib pos pats dirs chain d pat m ms
     RS_AST_WHY=''
     if [ "${GUARD_UNWRAP_CWD:-}" = unknown ]; then
         RS_AST_WHY='a nested body runs after a cwd change this pass cannot see'
@@ -572,16 +572,27 @@ rs_ast_proves_safe() {
                 | "a .. hop, which cd -P and cd -L resolve differently")]
         | first // ""') || RS_AST_WHY='the model output could not be read'
     [ -z "$RS_AST_WHY" ] || return 1
-    pats=$(printf '%s' "$pos" | jq -r '[.[] | (.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g) | .v] | unique | .[]')
+    pats=$(printf '%s' "$pos" | jq -r '[.[] | (.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g) | .v] | unique | .[]') ||
+        { RS_AST_WHY='the model output could not be read'; return 1; }
     [ -n "$pats" ] || return 0
-    dirs=$(printf '%s' "$pos" | jq -c '[.[] | select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g)) | (.cwd + .ecwd)[]] | unique | .[]')
+    dirs=$(printf '%s' "$pos" | jq -c '[.[] | select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g)) | (.cwd + .ecwd)[]] | unique | .[]') ||
+        { RS_AST_WHY='the model output could not be read'; return 1; }
     while IFS= read -r chain; do
+        ms=$(printf '%s' "$chain" | jq -r '.[]') || { RS_AST_WHY='the model output could not be read'; return 1; }
         d=$(
             unset CDPATH
-            while IFS= read -r m; do cd -- "$m" 2>/dev/null || exit 1; done < <(printf '%s' "$chain" | jq -r '.[]')
+            while IFS= read -r m; do [ -z "$m" ] || cd -- "$m" 2>/dev/null || exit 1; done <<<"$ms"
             pwd -P
         ) || { RS_AST_WHY='a cd target that does not resolve from here'; return 1; }
         while IFS= read -r pat; do
+            # compgen -G exits 1 on no match, so only a failed setup step fails the proof;
+            # bash 3.2 has no globstar to unset
+            ms=$(
+                cd -- "$d" && shopt -s dotglob nocaseglob && shopt -u failglob nullglob || exit 3
+                shopt -u globstar 2>/dev/null
+                compgen -G "$pat"
+                exit 0
+            ) || { RS_AST_WHY="the glob $pat could not be expanded in $d"; return 1; }
             while IFS= read -r m; do
                 [ -n "$m" ] || continue
                 case "$m" in /*) ;; *) m=$d/$m ;; esac
@@ -589,7 +600,7 @@ rs_ast_proves_safe() {
                     RS_AST_WHY="the glob $pat matches $m"
                     return 1
                 fi
-            done < <(cd -- "$d" && shopt -s dotglob nocaseglob && shopt -u failglob nullglob globstar && compgen -G "$pat")
+            done <<<"$ms"
         done <<<"$pats"
     done <<<"$dirs"
     return 0

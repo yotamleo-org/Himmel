@@ -838,6 +838,14 @@ assert_rc "6014 cd -P then .. lands in a secret dir"    2 "$(run_in_shiftdir 'cd
 assert_rc "6014 env -C redirect opens in the caller's dir" 2 "$(run_in_shiftdir "cd sub && env -C $SHIFTDIR/empty cat < .en*")"
 mkdir -p "$SHIFTDIR/empty/sub"
 assert_rc "6014 env -C a -C b runs in b alone"           2 "$(run_in_shiftdir "env -C empty -C sub bash -c 'cat .en*'")"
+# bash 3.2 has no globstar: a shopt that refuses it must not skip the match step
+# shellcheck disable=SC2329
+rs_shopt32() {
+    shopt() { case " $* " in *" globstar "*) echo "shopt: globstar: invalid shell option name" >&2; return 1 ;; esac; builtin shopt "$@"; }
+    export -f shopt
+    run_in_shiftdir "$1"
+}
+assert_rc "6014 a shell with no globstar keeps the deny" 2 "$(rs_shopt32 'cd sub && cat .en*')"
 assert_rc "6014 pushd -n leaves the read in a secret dir" 2 "$(run_in_shiftdir "cd sub && pushd -n $SHIFTDIR/empty && cat .en*")"
 assert_rc "6014 brace redirect reads a secret glob"     2 "$(run_in_shiftdir 'cd sub && { cat; } < .en*')"
 assert_rc "6014 subshell redirect reads a secret glob"  2 "$(run_in_shiftdir 'cd sub && (cat) < .en*')"
