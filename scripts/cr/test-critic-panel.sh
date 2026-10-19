@@ -815,12 +815,12 @@ import json, sys
 rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 av = [r for r in rows if r.get('kind') == 'avail' and r.get('model') == 'skipper']
 print('reason=' + ','.join(r.get('reason', '') for r in av))
-print('detail-skipped=' + ('yes' if av and all('SKIPPED' in r.get('detail', '') for r in av) else 'no'))
+print('detail-skipped=' + ('yes' if av and all('api lane is OFF' in r.get('detail', '') for r in av) else 'no'))
 print('attempt-errors=' + str(sum(r.get('kind') == 'attempt' and r.get('status') == 'error' for r in rows)))
 PYEOF
 )"
 check "HIMMEL-6475: rc-5 member records reason critic-skipped, never generic-rc-5" "$(printf '%s\n' "$sk_summary" | sed -n 's/^reason=//p')" "critic-skipped"
-check "HIMMEL-6475: critic-skipped avail row carries the SKIPPED stderr line" "$(printf '%s\n' "$sk_summary" | sed -n 's/^detail-skipped=//p')" "yes"
+check "HIMMEL-6475: critic-skipped avail row carries the captured stderr, not the default detail" "$(printf '%s\n' "$sk_summary" | sed -n 's/^detail-skipped=//p')" "yes"
 check "HIMMEL-6475: rc-5 member writes no attempt error row" "$(printf '%s\n' "$sk_summary" | sed -n 's/^attempt-errors=//p')" "0"
 check "HIMMEL-6475: rc-5 member runs no fallback (stub called once)" "$(cat "$SK_COUNT")" "1"
 
