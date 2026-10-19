@@ -60,7 +60,10 @@ waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR
 sits for hours, run `<kit>/pr-stall.sh --manifest <fleet manifest>` by hand: one
 `STALL <pr> <class> <leg> <detail>` line per stuck PR (conflict, no-ci, ci-slow,
 idle). Add `--notify` to send the owning leg the action once per (pr, class,
-head). Not yet wired into the tick (HIMMEL-6049 slice 2).
+head). The tick also carries `stall=<pr>:<class>,...` (absent when nothing is
+stuck; the probe result is cached `TICK_STALL_TTL_MIN` minutes, default 5), and
+the waiter wakes once per new `conflict` or `no-ci` token: run the command above
+for the detail. `ci-slow` and `idle` show on the tick line but never wake.
 
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads

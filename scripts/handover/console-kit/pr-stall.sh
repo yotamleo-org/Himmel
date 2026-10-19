@@ -43,9 +43,8 @@
 # ponytail: updatedAt stands in for the push time, so a comment resets the
 # no-ci clock and delays detection; upgrade: read the head's push event from
 # the PR timeline.
-# ponytail: standalone, run by hand or by a leg; wiring a stall= field into
-# tick.sh and a wake key into console-wait.sh waits for PR 2887 (both files are
-# in flight there), the follow-up slice.
+# tick.sh folds the STALL rows into a stall= field (cached, fail-soft) and
+# console-wait.sh wakes once per new conflict or no-ci token.
 #
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only
 # (GNU date). needs gh and jq.

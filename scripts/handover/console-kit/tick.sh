@@ -202,6 +202,11 @@ budget) and one ls-remote, both timeout-bounded. Thresholds: CLOUD_LIVENESS_BRAN
 (30), _PR_MIN (60), _DONE_MIN (15), _WINDOW_H (48). Sits after vault=;
 console-wait.sh wakes on a class change to STALL only. board.mjs lists each session.
 
+stall=<pr>:<class>[,<pr>:<class>...] (HIMMEL-6049) is the open PRs pr-stall.sh calls stuck
+(conflict, no-ci, ci-slow, idle), himmel's own repo only. Absent when none is stuck or the
+probe fails; the folded value is cached TICK_STALL_TTL_MIN minutes (default 5, 0 = off) in
+TICK_STALL_CACHE. console-wait.sh wakes once per new conflict or no-ci token.
+
 denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] (HIMMEL-3724) is classifier
 denials seen by scripts/hooks/log-classifier-denial.sh in a trailing window
 (TICK_DENIALS_WINDOW_MIN minutes, default 30), grouped by the hook's own
@@ -1534,6 +1539,29 @@ if [ -r "$station_state" ]; then
     station_val="$(head -n 1 "$station_state" 2>/dev/null)" || station_val=""
     case "$station_val" in BEHIND:*[!A-Za-z0-9._,:-]*) ;; BEHIND:*) station_tail=" station=$station_val" ;; esac
 fi
+# stall=<pr>:<class>[,...]: open PRs pr-stall.sh calls stuck (conflict, no-ci,
+# ci-slow, idle). ABSENT when none is stuck, the probe fails or prints STALL-UNKNOWN. pr-stall.sh
+# makes one gh read per open PR, so the folded value is cached for TICK_STALL_TTL_MIN minutes
+# (default 5; 0 = no cache) in TICK_STALL_CACHE. Himmel's own repo only: pr-stall.sh reads one.
+stall_tail=""
+stall_probe="${TICK_STALL_PROBE:-$HERE/pr-stall.sh}"
+stall_cache="${TICK_STALL_CACHE:-${HOME:-/tmp}/.himmel/state/tick-stall.cache}"
+case "${TICK_STALL_TTL_MIN:-5}" in ""|*[!0-9]*) stall_ttl=5 ;; *) stall_ttl=$((10#${TICK_STALL_TTL_MIN:-5})) ;; esac
+if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$REPO" ]; } && [ -f "$stall_probe" ]; then
+    stall_val=""; stall_have=""
+    # swallow-ok: an unreadable cache reads as stale and the probe runs
+    if [ "$stall_ttl" -gt 0 ] && [ -f "$stall_cache" ] && [ -n "$(find "$stall_cache" -mmin "-$stall_ttl" 2>/dev/null)" ]; then
+        stall_val="$(cat "$stall_cache" 2>/dev/null)"; stall_have=1  # swallow-ok: an empty read is no stall field, never a wrong one
+    elif stall_rows="$(timeout -k 2 60 bash "$stall_probe" ${LEGS_FROM:+--manifest "$LEGS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe leaves stall= absent
+        stall_val="$(printf '%s\n' "$stall_rows" | awk '$1 == "STALL" && $2 ~ /^[0-9]+$/ && $3 ~ /^[a-z-]+$/ { printf "%s%s:%s", sep, $2, $3; sep = "," }')"
+        stall_have=1
+        if [ "$stall_ttl" -gt 0 ]; then
+            # swallow-ok: a cache that cannot be written only costs the next tick a probe run
+            { mkdir -p "${stall_cache%/*}" && printf '%s' "$stall_val" > "$stall_cache"; } 2>/dev/null || true
+        fi
+    fi
+    case "$stall_val" in ""|*[!0-9a-z:,-]*) ;; *) [ -z "$stall_have" ] || stall_tail=" stall=$stall_val" ;; esac
+fi
 # deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
 # HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)
 # and the window sits on "program crashed". ONE ps read, no per-window probe.
@@ -1973,6 +2001,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
+    [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
@@ -2025,7 +2054,7 @@ else
     compact_field fails "$fails_summary"
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$station_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$stall_tail$station_tail$spare_tail"
 fi
 if [ "$emit_fp" -eq 1 ]; then
     printf 'board-fp=%s\n' "$board_fp"
