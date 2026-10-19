@@ -1609,7 +1609,7 @@ test('leg-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-44
 
 test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so only the catalog server exists (HIMMEL-4400)', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'leg-e2e', { installed: [] });
-  for (const id of ['pr-review-toolkit-himmel@himmel', 'qmd@himmel']) assert.equal(p[id], true, id);
+  assert.equal(p['qmd@himmel'], true, 'qmd@himmel');
   assert.notEqual(p['playwright@claude-plugins-official'], true, 'plugin ships only the MCP; enabling it risks a second server');
   assert.deepEqual(resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, p);
   assert.equal(REG.profiles['leg-e2e'].gateAllow, true);
@@ -1856,4 +1856,14 @@ test('vmLaunch is restricted to leg-vm', () => {
   const registry = structuredClone(REG);
   registry.profiles['leg-impl'].vmLaunch = true;
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
+});
+
+// /pr-check dispatches no plugin agent, so the leg family drops the reviewer fork.
+test('leg family drops pr-review-toolkit-himmel, keeps the floor and the rest of base (HIMMEL-4017)', () => {
+  for (const name of ['leg-impl', 'leg-bus', 'leg-vm', 'leg-e2e']) {
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p['pr-review-toolkit-himmel@himmel'], false, `${name}: pr-review-toolkit-himmel`);
+    for (const id of [...REG.floor, 'lean-skills@himmel', 'i-have-adhd@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+    assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills legs call`);
+  }
 });

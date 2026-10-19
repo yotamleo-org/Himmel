@@ -89,12 +89,12 @@ cost is joined later from the session transcript, not written at launch.
 
 `leg-impl` is the profile a worker session gets from
 `headed-arm-leg.sh --profile leg-impl`. **There is exactly one worker session profile, and
-that is deliberate:** it resolves to the same plugin set as `lane-impl` today
-because the measured worker session floor is schema-shaped, not roster-shaped (~40k of a
+that is deliberate:** it is `lane-impl` minus `pr-review-toolkit-himmel` (no leg
+dispatches its agent; `/pr-check`'s Claude floor reads `agents/code-reviewer.md` by path —
+HIMMEL-4017 audit) because the measured worker session floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 sibling profiles for docs or upstream work would either resolve to `bare` and
-break `/pr-check` — whose automated review gate dispatches
-`pr-review-toolkit-himmel:code-reviewer` — or duplicate `leg-impl` exactly. What
+lose the floor's guards and skills or duplicate `leg-impl` exactly. What
 distinguishes it is the legacy `contextBudget: 35000` target, **not a
 measured attainable floor**. The context-budget audit below retains it for lack of
 three attributable worker sessions; measure a real worker session with `scripts/lanes/leg-burn.sh`.
