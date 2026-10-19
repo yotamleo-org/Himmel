@@ -4155,7 +4155,7 @@ check_c68_konsole_dbus() {
         emit INFO C68-konsole-dbus "konsole not installed — bus-idle-waker's sendText wake is not used here"
         return
     fi
-    if [ -f "$rc" ] && awk '/^\[/ { in_win = ($0 == "[KonsoleWindow]") } in_win && /^EnableSecuritySensitiveDBusAPI[ \t]*=[ \t]*true[ \t]*$/ { found = 1 } END { exit !found }' "$rc" 2>/dev/null; then
+    if [ -f "$rc" ] && awk '/^\[/ { in_win = ($0 == "[KonsoleWindow]") } in_win && /^EnableSecuritySensitiveDBusAPI[ \t]*=/ { on = ($0 ~ /=[ \t]*true[ \t]*$/) } END { exit !on }' "$rc" 2>/dev/null; then
         emit OK C68-konsole-dbus "konsolerc sets EnableSecuritySensitiveDBusAPI=true ($rc)"
         return
     fi
