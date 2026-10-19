@@ -203,6 +203,15 @@ else
     fail "expected exit 0, got rc=$rc" "out: $out"
 fi
 
+# Test 2f: an attached value of another short flag must not overwrite --head
+echo "TEST: --head feat/X -tHotfix, marker present -> BLOCK (H in -t value ignored)"
+run_hook "gh pr create --head feat/X -tHotfix --base main"
+if [ "$rc" -eq 2 ]; then
+    pass "blocked (exit 2): -tHotfix did not replace the head"
+else
+    fail "expected exit 2, got rc=$rc" "out: $out"
+fi
+
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
 echo "TEST: --head feat/X, no marker -> allow"
 rm -f "$(marker_for feat/X)"
