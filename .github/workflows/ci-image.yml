@@ -23,8 +23,9 @@ concurrency:
 
 jobs:
   build:
-    # Only the real repo pushes: a fork's schedule has no GHCR namespace of ours.
-    if: github.repository == 'yotamleo/himmel'
+    # Only the real repo's main pushes: a fork's schedule has no GHCR namespace of ours,
+    # and a dispatch from another branch must not move the shared :latest tag.
+    if: github.repository == 'yotamleo/himmel' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

@@ -27,11 +27,13 @@ if [ ! -f "$DOCKERFILE" ]; then
   exit 1
 fi
 df_text="$(cat "$DOCKERFILE")"
-# has <token>: the token as a whole word, so BUN_VERSION=1.4.3 does not match =1.4.30.
+# the apt-get install stanza only: a package named by a later RUN line is not installed by apt.
+apt_text="$(awk '/apt-get install/ {f=1} f {print} f && !/\\$/ {exit}' <<< "$df_text")"
+# has <token> [haystack]: the token as a whole word, so BUN_VERSION=1.4.3 does not match =1.4.30.
 has() {
   local esc
   esc="$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')"
-  grep -Eq -- "(^|[[:space:]])${esc}([[:space:]\\\\]|\$)" <<< "$df_text"
+  grep -Eq -- "(^|[[:space:]])${esc}([[:space:]\\\\=]|\$)" <<< "${2:-$df_text}"
 }
 
 # 1. every apt package ci.yml hands to apt-install.sh (version pin stripped to the name)
@@ -39,7 +41,7 @@ ci_pkgs="$(grep -E '^ +bash \.github/scripts/apt-install\.sh ' "$CI_YML" \
   | sed -E "s/^ +bash \.github\/scripts\/apt-install\.sh //; s/'//g" | tr ' ' '\n' | sed -E 's/=.*//' | sort -u)"
 [ -n "$ci_pkgs" ] || bad "no apt-install.sh packages found in ci.yml (parse failure)"
 for p in $ci_pkgs; do
-  if grep -Eq "(^|[[:space:]\\\\])${p}([[:space:]\\\\=]|\$)" <<< "$df_text"; then ok "Dockerfile installs ci.yml apt package $p"
+  if has "$p" "$apt_text"; then ok "Dockerfile installs ci.yml apt package $p"
   else bad "Dockerfile lacks ci.yml apt package $p"; fi
 done
 
@@ -48,13 +50,13 @@ done
 gcp_pkgs="$(grep -E '^apt-get install ' "$STARTUP" | sed -E 's/^apt-get install -y -qq //; s/ \|\|.*//' | tr ' ' '\n' | grep -vxE 'iptables|nodejs|npm' | sort -u)"
 [ -n "$gcp_pkgs" ] || bad "no apt-get install list found in gcp-runner-startup.sh (parse failure)"
 for p in $gcp_pkgs; do
-  if grep -Eq "(^|[[:space:]\\\\])${p}([[:space:]\\\\=]|\$)" <<< "$df_text"; then ok "Dockerfile installs gcp-runner apt package $p"
+  if has "$p" "$apt_text"; then ok "Dockerfile installs gcp-runner apt package $p"
   else bad "Dockerfile lacks gcp-runner apt package $p"; fi
 done
 
 # 3. the ffmpeg pin ci.yml uses for the HLS suite
 ff_pin="$(grep -oE "ffmpeg=[^' ]+" "$CI_YML" | head -n 1)"
-if [ -n "$ff_pin" ] && has "$ff_pin"; then ok "Dockerfile carries ci.yml's ffmpeg pin $ff_pin"
+if [ -n "$ff_pin" ] && has "$ff_pin" "$apt_text"; then ok "Dockerfile carries ci.yml's ffmpeg pin $ff_pin"
 else bad "Dockerfile lacks ci.yml's ffmpeg pin (${ff_pin:-none found})"; fi
 
 # 4. bun: the version file the runners read
@@ -101,6 +103,7 @@ else
   wfrow "has workflow_dispatch" 'workflow_dispatch'
   wfrow "tags :<sha> and :latest" 'IMAGE: ghcr\.io/yotamleo/himmel-ci$' '[$]IMAGE:[$][{][{] *github\.sha *[}][}]' '[$]IMAGE:latest'
   wfrow "permissions are packages:write + contents:read" '^  packages: write' '^  contents: read'
+  wfrow "job runs only on main of the real repo" "^    if: .*github\.repository == 'yotamleo/himmel'.*github\.ref == 'refs/heads/main'"
   wfrow "job has timeout-minutes" 'timeout-minutes:'
   if grep -q 'pull_request' <<< "$wf"; then bad "workflow must not trigger on pull_request (no push from a fork PR)"
   else ok "workflow does not trigger on pull_request"; fi

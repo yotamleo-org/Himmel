@@ -11,6 +11,11 @@ today, so a job starts from a ready environment that only changes when we change
   pre-commit, node, gitleaks and shellcheck-py pins live from `ci.yml`, `.bun-version`,
   `.pre-commit-config.yaml` and `gcp-runner-startup.sh` and fails when the Dockerfile
   lacks one.
+- **Who can publish:** the job runs only for `refs/heads/main` of `yotamleo/himmel`, so a
+  dispatch from another branch builds nothing. A branch writer can still edit the workflow
+  on their own branch, so the real boundary is the package's repository-access setting
+  (give `himmel-ci` write access only to this repo's main workflow) and, if wanted, a
+  `ghcr-publish` environment limited to `main`.
 - **One-time step:** after the first push, set the `himmel-ci` package visibility to
   public (GHCR defaults to private) so a job can pull it without a token.
 
