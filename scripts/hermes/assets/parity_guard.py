@@ -786,26 +786,39 @@ def _common_git_dir(git_path: str) -> str:
     return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
 
 
+def _unquoted_segment(text: str) -> str:
+    """`text` up to the first shell operator that is neither quoted nor
+    escaped. A `&` that belongs to a redirection (`2>&1`, `&>f`) does not end
+    it. An unterminated quote raises ValueError."""
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c in "'\"":
+            i += 1
+            while i < n and text[i] != c:
+                i += 2 if (c == '"' and text[i] == "\\") else 1
+            if i >= n:
+                raise ValueError("unterminated quote")
+        elif c in ";|()\n":
+            return text[:i]
+        elif c == "&" and not (i and text[i - 1] in "<>") and text[i + 1:i + 2] != ">":
+            return text[:i]
+        i += 1
+    return text
+
+
 def _pr_head_branches(cmd: str) -> list:
     """Every branch named by a `--head`/`-H` token among the arguments of
     `gh pr create` (`owner:branch` reduced to `branch`). A token that is
     really another option's value is included too, so the lock errs closed.
-    Every `gh pr create` in the command string is scanned."""
+    Every `gh pr create` in the command string is scanned. Raises ValueError
+    when the arguments cannot be tokenised; the caller must refuse."""
     heads = []
     for m in GH_PR_CREATE.finditer(cmd):
-        lex = shlex.shlex(cmd[m.end():], posix=False, punctuation_chars=True)
-        lex.whitespace_split = True
-        toks = []
-        try:
-            for t in lex:
-                if t and all(c in "();<>|&" for c in t):
-                    break
-                try:
-                    toks.append("".join(shlex.split(t)))
-                except ValueError:
-                    toks.append(t)
-        except ValueError:
-            continue
+        toks = shlex.split(_unquoted_segment(cmd[m.end():]))
         for i, t in enumerate(toks):
             val = ""
             if t in ("--head", "-H"):
@@ -1867,7 +1880,12 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
         pr_dir = _commit_dir(joined[:pr_m.start()] if pr_m else joined,
                              _agent_cwd(payload, args), None)
         if pr_dir:
-            reason = _pending_cr_reason(pr_dir, _pr_head_branches(joined))
+            try:
+                heads = _pr_head_branches(joined)
+            except ValueError:
+                block("The `gh pr create` arguments cannot be parsed to find "
+                      "their --head — refused fail-closed.")
+            reason = _pending_cr_reason(pr_dir, heads)
             if reason:
                 block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh
