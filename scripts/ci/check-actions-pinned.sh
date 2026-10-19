@@ -8,7 +8,8 @@
 #
 # Greps .github/ (or the given dirs/files) for `uses:` lines in *.yml / *.yaml
 # that do not carry `@<40 hex>`. Exempt: local refs (`uses: ./...`) and
-# `docker://` refs (those pin by @sha256: digest, not a git SHA).
+# `docker://...@sha256:<64 hex>` refs (pinned by digest, not a git SHA);
+# a `docker://` ref without a digest is flagged.
 #
 # Line-based: a `uses:` is recognised at the start of a line (`uses:` or
 # `- uses:`). YAML flow mappings (`- {uses: ...}`) are not scanned; this repo
@@ -49,7 +50,7 @@ fi
 # grep file:line: prefix), so a `uses:` inside a trailing comment cannot match.
 head_re='^[^:]*:[0-9]+:[[:space:]]*-?[[:space:]]*uses:[[:space:]]*["'\'']?'
 matches=$(printf '%s\n' "$found" \
-  | grep -vE "${head_re}(\./|docker://)" \
+  | grep -vE "${head_re}(\./|docker://[^[:space:]]*@sha256:[0-9a-f]{64})" \
   | grep -vE "${head_re}[^[:space:]\"'@#]+@[0-9a-f]{40}[\"']?([[:space:]]|\$)" \
   | grep -E "${head_re}" || true)
 
