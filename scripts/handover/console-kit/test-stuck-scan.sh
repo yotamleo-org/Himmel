@@ -71,7 +71,7 @@ esac
 STUB
 cat > "$WORK/bin/pgrep" <<'STUB'
 #!/usr/bin/env bash
-cat "$STUB_PGREP"
+cat "$STUB_PGREP"  # read-sink-ok: the stub replays the fixture file this test wrote
 STUB
 cat > "$WORK/jira-stub" <<'STUB'
 #!/usr/bin/env bash
