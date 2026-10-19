@@ -45,7 +45,7 @@ mk HIMMEL-10 Task "In Progress" "In Progress" '["v1.0.2"]'
 mkdir -p "$WORK/legs"
 printf '# leg\n\n## Results\n- 10:00 LIVE — up\n' > "$WORK/legs/HIMMEL-7-N1-x.md"
 printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$WORK/legs/HIMMEL-7-N1-x.md" > "$WORK/fleet.json"
-printf '#!/usr/bin/env bash\nif [ -f "$GH_FAIL" ]; then exit 1; fi\nprintf "9999\\tfeat: [HIMMEL-1] x\\tfeat/himmel-1-x\\n"\n' > "$WORK/gh"
+printf '#!/usr/bin/env bash\nif [ -f "$GH_FAIL" ]; then exit 1; fi\ncase " $* " in *" --state open "*) ;; *) exit 1 ;; esac\nprintf "9999\\tfeat: [HIMMEL-1] x\\tfeat/himmel-1-x\\n"\n' > "$WORK/gh"
 chmod +x "$WORK/gh"
 
 run() { VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$M" "$@" 2>&1; }
@@ -171,8 +171,25 @@ vmir "$WORK/v-pre" 'v1.2.0\tfalse\t\tfalse\nv1.2.0-pre.1\tfalse\t\tfalse\n' '["v
 out="$(vrun "$WORK/v-pre")"
 has "a release is later than its own pre-release" "$out" "LATER-VERSION	HIMMEL-1"
 vmir "$WORK/v-pre2" 'v1.2.0\tfalse\t\tfalse\nv1.2.0-pre.1\tfalse\t\tfalse\n' '["v1.2.0-pre.1"]'
-out="$(vrun "$WORK/v-pre2")"
+out="$(vrun "$WORK/v-pre2")"; rc=$?
 lacks "a pre-release is the active version before its release" "$out" "LATER-VERSION"
+has "the pre-release audit completes with no mismatch" "$out" "vmismatch=0"
+[ "$rc" = 0 ] && pass "the pre-release audit exits 0" || fail "the pre-release audit exits 0 (rc=$rc)"
+
+# a versions file that exists but cannot be read has its own non-RESET exit code
+vmir "$WORK/v-perm" 'v1.0.1\tfalse\t\tfalse\n' '["v1.0.1"]'
+chmod 000 "$WORK/v-perm/HIMMEL.versions.tsv"
+out="$(vrun "$WORK/v-perm")"; rc=$?
+[ "$rc" = 4 ] && pass "unreadable versions file exits 4" || fail "unreadable versions file exits 4 (rc=$rc: $out)"
+has "unreadable versions file is warned about" "$out" "versions file unreadable"
+
+# a front matter block missing key or status is not audited
+P="$WORK/partial/HIMMEL"; mkdir -p "$P"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/partial/HIMMEL.versions.tsv"
+cp "$M/HIMMEL-6.md" "$P/"
+printf -- '---\nkey: "HIMMEL-1"\ntype: "Task"\nfixVersions: ["v1.0.2"]\n---\n' > "$P/HIMMEL-1.md"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$P" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
+has "front matter without status is warned about" "$out" "1 mirror file(s) lack front matter"
+[ "$rc" = 3 ] && pass "front matter without status exits 3" || fail "front matter without status exits 3 (rc=$rc)"
 
 printf '%s fail(s)\n' "$fails"
 [ "$fails" = 0 ]

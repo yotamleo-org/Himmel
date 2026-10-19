@@ -24,7 +24,8 @@
 #
 # Env (tests): VSA_GH_CMD replaces `gh`.
 #
-# Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 3 not fully audited
+# Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 4 versions file
+# unreadable; 3 not fully audited
 # (mirror unreadable or empty, versions file missing, a mirror file without
 # front matter, or the leg manifest unreadable: its unowned rows print UNKNOWN).
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
@@ -65,8 +66,12 @@ unreleased, released, known, archived_open = [], set(), set(), set()
 vf = mirror.rstrip('/') + '.versions.tsv'
 if not os.path.exists(vf):
     print('version-status-audit: versions file missing (%s)' % vf, file=sys.stderr); sys.exit(3)
-for line in open(vf, encoding='utf-8', errors='replace'):
-    p = line.rstrip('\n').split('\t')
+try:
+    vf_lines = open(vf, encoding='utf-8', errors='replace').read().splitlines()
+except OSError as e:
+    print('version-status-audit: versions file unreadable (%s)' % e, file=sys.stderr); sys.exit(4)
+for line in vf_lines:
+    p = line.split('\t')
     if len(p) < 2 or p[1].strip() not in ('true', 'false'):
         continue
     known.add(p[0])
@@ -127,13 +132,16 @@ if legs_unknown or gh_unknown:
 
 rows, audited, skipped, badver = [], 0, 0, []
 for n in names:
-    m = re.match(r'^---\n(.*?)\n---\n', open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read(), re.S)
-    if not m:
+    try:
+        m = re.match(r'^---\n(.*?)\n---\n', open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read(), re.S)
+    except OSError:
+        m = None
+    fm = m.group(1) if m else ''
+    key, typ, status = fm_val(fm, 'key'), fm_val(fm, 'type'), fm_val(fm, 'status')
+    if not (key and status):
         skipped += 1
         continue
     audited += 1
-    fm = m.group(1)
-    key, typ, status = fm_val(fm, 'key'), fm_val(fm, 'type'), fm_val(fm, 'status')
     done = fm_val(fm, 'statusCategory').lower() == 'done'
     vers = re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions'))
     started = status.lower() in STARTED
