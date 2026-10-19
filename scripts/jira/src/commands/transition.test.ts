@@ -106,6 +106,17 @@ describe('transition to Done stamps the current fixVersion (HIMMEL-6416)', () =>
     expect(puts()).toHaveLength(0);
   });
 
+  it('stamps before transitioning, so a failed stamp leaves the issue open', async () => {
+    wire([]);
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'PUT') throw new Error('edit rejected');
+      return base(method, path, body);
+    });
+    await expect(run('HIMMEL-1', 'Done')).rejects.toThrow('edit rejected');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
   it('does not stamp a non-Done transition', async () => {
     wire([]);
     await run('HIMMEL-1', 'In Progress');

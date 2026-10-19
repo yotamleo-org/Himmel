@@ -29,11 +29,9 @@ export function registerTransition(program: Command): void {
         for (const t of transitions) console.error(`- ${t.name}`);
         process.exit(1);
       }
-      await request('POST', `/issue/${key}/transitions`, {
-        transition: { id: match.id },
-      });
-      writeJiraBreadcrumb(key);
-      console.log(`${key} → ${match.name}`);
+      // Stamp before the transition: a failed lookup or update then leaves the
+      // issue open instead of Done-and-unstamped, and a workflow that locks
+      // edits once Done cannot reject the stamp.
       // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
       // another Done-category status would need statusCategory from the transition payload.
       if (options.version && match.name.toLowerCase() === 'done') {
@@ -48,5 +46,10 @@ export function registerTransition(program: Command): void {
           }
         }
       }
+      await request('POST', `/issue/${key}/transitions`, {
+        transition: { id: match.id },
+      });
+      writeJiraBreadcrumb(key);
+      console.log(`${key} → ${match.name}`);
     });
 }
