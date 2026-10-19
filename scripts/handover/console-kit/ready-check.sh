@@ -416,6 +416,14 @@ if [ -z "$cov_lines" ]; then
     mark_fail
 else
     cov_bad=""; cov_shape=0
+    # A deferral must land on a residual-verb ticket or one that predates this PR's own.
+    # ponytail: key order stands for creation order (the PR title's first key is the
+    # branch's ticket); upgrade: compare Jira's created to the first commit date once
+    # `jira get` fetches created.
+    cov_own=""
+    if printf '%s\n' "$cov_lines" | grep -qiE 'deferred'; then
+        cov_own=$("$GH" pr view "$PR" --repo "$nwo" --json title --jq '.title' 2>/dev/null | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]' || true) # swallow-ok: an unreadable title leaves cov_own empty, so only a residual label passes
+    fi
     while IFS= read -r cov_line; do
         [ -n "$cov_line" ] || continue
         cov_def=$(printf '%s\n' "$cov_line" | grep -ioE 'deferred[[:space:]]*(→|->)[^[:alnum:]]*[A-Za-z][A-Za-z0-9]*-[0-9]+[^[:alnum:]]*$' || true)
@@ -427,6 +435,9 @@ else
                     cov_bad="$cov_bad; $cov_key UNKNOWN (jira returned no status)"
                 elif printf '%s\n' "$cov_status" | grep -qiE '^(done|closed|resolved|won.?t do)$'; then
                     cov_bad="$cov_bad; $cov_key already $cov_status"
+                elif ! printf '%s\n' "$cov_out" | grep -qE '^Labels:.*(^|[ ,])residual(,|$)' \
+                    && ! { [ -n "$cov_own" ] && [ "${cov_key%-*}" = "${cov_own%-*}" ] && [ "${cov_key##*-}" -lt "${cov_own##*-}" ]; }; then
+                    cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}) - file it with: jira create --residual-of <parent> --fu-class <c> --class <id>"
                 fi
             elif printf '%s\n' "$cov_out" | grep -qiE '404|does not exist'; then
                 cov_bad="$cov_bad; $cov_key does not exist"
