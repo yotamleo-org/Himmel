@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""scripts/eval/handover-cost.py - re-derive the HIMMEL-6491 per-handover price from session JSONLs (HIMMEL-6501).
+
+Read-only, deterministic, no model call. Reads every *.jsonl directly under --dir (default:
+~/.claude/projects/-home-overlord-Documents-github-himmel). Only token counts and tool names
+are read.
+
+  handover-cost.py [--dir D] [--name-re RE] [--since ISO8601] [--legs-after ISO8601]
+
+Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-console$),
+ordered by first record; each consecutive pair is one handover P -> S. A turn is a de-duplicated
+assistant message id. Price table (input-equivalent tokens, mirrors scripts/lanes/lib/burn-weights.sh,
+same LEG_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
+
+Pieces per handover (turns/cost):
+  prep   P's turns from its last `console.sh next` call up to S's first turn
+  relay  P's turns after S's first turn (relay + wrap)
+  az     S's turns up to P's last turn (successor ACTION ZERO + wait)
+  leg    per non-console session that received P's SUCCESSION message in [P's last
+         `console.sh next`, P's last turn]: the turns after the delivery up to and including the one
+         that says `SUCCESSION accepted`, at most 4. --legs-after drops legs whose first record is
+         earlier than the cutoff (count only legs launched after the fast path merged).
+
+gross = every turn in the four pieces (the HIMMEL-6491 method, an upper bound: overlap turns include work
+that would have happened anyway). net = only the turns that touch the handover machinery (their tool
+input or text names console.sh, action-zero, console-wait, live-state, HANDOFF, SUCCESSION, RELAYED,
+ListAgents or succession.md).
+ponytail: net is a name-match on handover scripts, upgrade path = hand-label a sample and compare.
+
+Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost leg=t/cost legs=n gross=G net=N` row per
+pair, then `MEAN n=<pairs> ...` (integer means) and a `legs_skipped_before_cutoff=<n>` line.
+
+Exit: 0 ok, 2 usage error (argparse), unreadable dir or fewer than two consoles (the message says which).
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+W_IN = float(os.environ.get("LEG_BURN_W_INPUT", "1"))
+W_CR = float(os.environ.get("LEG_BURN_W_CACHE_READ", "0.1"))
+W_CC = float(os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25"))
+W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
+DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
+LEG_TURN_CAP = 4
+NEXT_RE = re.compile(r"console\.sh\s+next\b")
+MECH_RE = re.compile(
+    r"console\.sh|action-zero|console-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
+)
+PIECES = ("prep", "relay", "az", "leg")
+
+
+def parse_ts(s):
+    d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def iso_arg(s):
+    try:
+        return parse_ts(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError("not an ISO 8601 timestamp: %r" % s)
+
+
+def turn_text(msg):
+    """Tool names, tool inputs and text of one assistant message, as one string."""
+    out = []
+    for b in msg.get("content") or []:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "text":
+            out.append(str(b.get("text", "")))
+        elif b.get("type") == "tool_use":
+            out.append(str(b.get("name", "")))
+            out.append(json.dumps(b.get("input", {})))
+    return "\n".join(out)
+
+
+def load(path):
+    """-> dict(name, first, turns=[(ts, cost, mech, nxt, accepted)], deliveries=[ts])"""
+    name = first = None
+    turns = {}
+    deliveries = []
+    for line in open(path, encoding="utf-8", errors="replace"):
+        try:
+            d = json.loads(line)
+            ts = parse_ts(d["timestamp"]) if d.get("timestamp") else None
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if not isinstance(d, dict):
+            continue
+        if ts and not first:
+            first = ts
+        t = d.get("type")
+        if t == "agent-name":
+            name = d.get("agentName") or name
+        elif t == "user" and ts and "SUCCESSION" in json.dumps(d.get("message", "")):
+            deliveries.append(ts)
+        elif t == "assistant" and ts and not d.get("isSidechain"):
+            msg = d.get("message") or {}
+            u = msg.get("usage")
+            if not u or not msg.get("id"):
+                continue
+            text = turn_text(msg)
+            cost = (u.get("input_tokens", 0) * W_IN + u.get("cache_read_input_tokens", 0) * W_CR
+                    + u.get("cache_creation_input_tokens", 0) * W_CC + u.get("output_tokens", 0) * W_OUT)
+            prev_ts = turns[msg["id"]][0] if msg["id"] in turns else ts
+            turns[msg["id"]] = (prev_ts, cost, bool(MECH_RE.search(text)),
+                                bool(NEXT_RE.search(text)), "SUCCESSION accepted" in text)
+    return {"name": name, "first": first, "turns": sorted(turns.values(), key=lambda x: x[0]),
+            "deliveries": sorted(deliveries)}
+
+
+def piece(turns):
+    return (len(turns), sum(t[1] for t in turns), sum(t[1] for t in turns if t[2]))
+
+
+def handover(p, s, legs, legs_after):
+    p_next = [t[0] for t in p["turns"] if t[3]]
+    p_last = p["turns"][-1][0] if p["turns"] else None
+    if not p_next or not p_last or not s["turns"]:
+        return None
+    nxt, s_first = p_next[-1], s["turns"][0][0]
+    out = {
+        "prep": piece([t for t in p["turns"] if nxt <= t[0] < s_first]),
+        "relay": piece([t for t in p["turns"] if t[0] > s_first]),
+        "az": piece([t for t in s["turns"] if t[0] <= p_last]),
+    }
+    leg_turns, nlegs, skipped = [], 0, 0
+    for lg in legs:
+        got = [x for x in lg["deliveries"] if nxt <= x <= p_last]
+        if not got:
+            continue
+        if legs_after and (not lg["first"] or lg["first"] < legs_after):
+            skipped += 1
+            continue
+        after = [t for t in lg["turns"] if t[0] > got[0]]
+        taken = []
+        for t in after[:LEG_TURN_CAP]:
+            taken.append(t)
+            if t[4]:
+                break
+        leg_turns.extend(taken)
+        nlegs += 1
+    out["leg"] = piece(leg_turns)
+    out["legs"] = nlegs
+    out["skipped"] = skipped
+    return out
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--dir", default=DEFAULT_DIR)
+    ap.add_argument("--name-re", default=r"-roadmap-console$")
+    ap.add_argument("--since", type=iso_arg)
+    ap.add_argument("--legs-after", type=iso_arg)
+    a = ap.parse_args(argv)
+
+    d = os.path.expanduser(a.dir)
+    if not os.path.isdir(d):
+        print("handover-cost: cannot read %s: not a directory" % d, file=sys.stderr)
+        return 2
+    name_re = re.compile(a.name_re)
+    consoles, legs = [], []
+    for path in sorted(glob.glob(os.path.join(d, "*.jsonl"))):
+        s = load(path)
+        if not s["name"] or not s["first"]:
+            continue
+        (consoles if name_re.search(s["name"]) else legs).append(s)
+    consoles = sorted([c for c in consoles if not a.since or c["first"] >= a.since], key=lambda c: c["first"])
+    if len(consoles) < 2:
+        print("handover-cost: fewer than two consoles matching %r in %s" % (a.name_re, d), file=sys.stderr)
+        return 2
+
+    rows = []
+    for p, s in zip(consoles, consoles[1:]):
+        h = handover(p, s, legs, a.legs_after)
+        if not h:
+            continue
+        gross = sum(h[k][1] for k in PIECES)
+        net = sum(h[k][2] for k in PIECES)
+        rows.append((h, gross, net))
+        print("HANDOVER %s->%s %s legs=%d gross=%d net=%d" % (
+            p["name"], s["name"],
+            " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["legs"], round(gross), round(net)))
+    n = len(rows)
+    if n:
+        mean = lambda xs: round(sum(xs) / n)
+        print("MEAN n=%d %s gross=%d net=%d" % (
+            n, " ".join("%s=%d/%d" % (k, mean([r[0][k][0] for r in rows]), mean([r[0][k][1] for r in rows]))
+                        for k in PIECES),
+            mean([r[1] for r in rows]), mean([r[2] for r in rows])))
+    print("legs_skipped_before_cutoff=%d" % sum(r[0]["skipped"] for r in rows))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
