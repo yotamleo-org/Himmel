@@ -299,9 +299,9 @@
     },
     "leg-impl": {
       "gateAllow": true,
-      "_comment": "HIMMEL-2830 / HIMMEL-2928 lever 1, audited HIMMEL-4017 (2026-10-20, 1376 leg sessions over 14 days). A headed leg re-pays its whole fixed context on every API call of a session that runs for hours, so its budget is the legacy leg target (35000), not the lane-worker default (45000); HIMMEL-4021 retains this unmet target because the merged PR bodies cannot attribute three legs to this profile. Do NOT \"dedupe\" this into lane-impl: a lane worker and a headed leg are different callers, and headed-arm-leg.sh --profile names this one. Plugins = the floor (handover, himmel-ops: its hooks are guards, its skills are used; qmd) plus base's lean-skills (minerva's stages name its skills) and i-have-adhd (the operator watches headed leg windows). drop removes pr-review-toolkit-himmel: zero code-reviewer dispatches in the audit window; /pr-check dispatches no agent by default, its claude floor reads agents/code-reviewer.md by file path, and its CR_CLAUDE_AGENTS=1 matrix names the upstream pr-review-toolkit:* types. role-requires.mjs names himmel-ops for the leg family: a role with no required plugin gets no skillOverrides and lists 7.4k more first-turn tokens. mcpServers (HIMMEL-2935): --strict-mcp-config strips every MCP server not named here, plugin-bundled ones included; qmd is the one MCP server legs call (10 of 1376 sessions). context7 is left out: a leg fetching library docs uses the ctx7 CLI (the find-docs skill) through Bash, which needs no MCP server. MEASURED (HIMMEL-2935): dropping the user-level servers saved only 2.5k of first-turn context (73.0k to 70.5k); most of the floor is built-in tool schemas and skill/agent listings. Sibling profiles leg-docs and leg-upstream were DROPPED: /drift-fix, /fork-resync and /upstream-file are repo-local .claude/commands/*.md, so either would be a second name for this manifest.",
+      "_comment": "HIMMEL-2830 / HIMMEL-2928 lever 1, audited HIMMEL-4017 (2026-10-20, 1376 leg sessions over 14 days). A headed leg re-pays its whole fixed context on every API call of a session that runs for hours, so its budget is the legacy leg target (35000), not the lane-worker default (45000); HIMMEL-4021 retains this unmet target because the merged PR bodies cannot attribute three legs to this profile. Do NOT \"dedupe\" this into lane-impl: a lane worker and a headed leg are different callers, and headed-arm-leg.sh --profile names this one. Plugins = the floor (handover, himmel-ops: its hooks are guards, its skills are used; qmd) plus base's lean-skills (minerva's stages name its skills). drop removes i-have-adhd (operator ruling: its reading-style ruleset, about 2k tokens at SessionStart and again on every compact, is for the operator's console windows, so console keeps it from base) and pr-review-toolkit-himmel: zero code-reviewer dispatches in the audit window; /pr-check dispatches no agent by default, its claude floor reads agents/code-reviewer.md by file path, and its CR_CLAUDE_AGENTS=1 matrix names the upstream pr-review-toolkit:* types. role-requires.mjs names himmel-ops for the leg family: a role with no required plugin gets no skillOverrides and lists 7.4k more first-turn tokens. mcpServers (HIMMEL-2935): --strict-mcp-config strips every MCP server not named here, plugin-bundled ones included; qmd is the one MCP server legs call (10 of 1376 sessions). context7 is left out: a leg fetching library docs uses the ctx7 CLI (the find-docs skill) through Bash, which needs no MCP server. MEASURED (HIMMEL-2935): dropping the user-level servers saved only 2.5k of first-turn context (73.0k to 70.5k); most of the floor is built-in tool schemas and skill/agent listings. Sibling profiles leg-docs and leg-upstream were DROPPED: /drift-fix, /fork-resync and /upstream-file are repo-local .claude/commands/*.md, so either would be a second name for this manifest.",
       "enable": [],
-      "drop": ["pr-review-toolkit-himmel@himmel"],
+      "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "mcpServers": ["qmd"],
       "contextBudget": 35000,
       "contextMode": "standard",
@@ -312,7 +312,7 @@
       "gateAllow": true,
       "_comment": "HIMMEL-5223: leg-impl plus the himmel-bus MCP server, the only profile that opts in until HIMMEL-4841 rolls the bus out to every headed leg. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. HIMMEL-4830 adds the himmel-bus tool allow entries via mcpAllow; everything else is leg-impl's: same gateAllow, same plugins, same budget.",
       "enable": [],
-      "drop": ["pr-review-toolkit-himmel@himmel"],
+      "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 35000,
       "contextMode": "standard",
@@ -323,7 +323,7 @@
       "vmLaunch": true,
       "_comment": "HIMMEL-5997: leg-impl plus vmLaunchAllow, the one rule that lets a leg start claude sessions on a registered himmel test VM through scripts/vm/launch-guest.sh. headed-arm-leg.sh refuses this profile for a brief that names no VM from scripts/lib/vms.json. Every other profile stays without the rule.",
       "enable": [],
-      "drop": ["pr-review-toolkit-himmel@himmel"],
+      "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "mcpServers": ["qmd"],
       "contextBudget": 35000,
       "contextMode": "standard",
@@ -333,7 +333,7 @@
       "gateAllow": true,
       "_comment": "HIMMEL-4400 headed e2e leg: leg-impl plus ONE Playwright MCP server, so a leg can drive a browser (the himmelctl config-UI checklist). The server comes from mcpCatalog.playwright (pinned @playwright/mcp, npm registry only, never @latest) and rides --mcp-config under --strict-mcp-config; the playwright@claude-plugins-official plugin is deliberately NOT enabled, because it ships nothing but that same MCP server (no skills, commands or agents) and under strict mode its copy is stripped anyway, so enabling it would add nothing or a second server. Tools therefore appear as mcp__playwright__*, not mcp__plugin_playwright_playwright__*. Context cost: the playwright tool schemas add an estimated 3-5k first-turn tokens over leg-impl (code-ui's own estimate, unmeasured here), hence the 40000 budget vs leg-impl's 35000. Use it only for legs that drive a browser; every other leg stays on leg-impl.",
       "enable": [],
-      "drop": ["pr-review-toolkit-himmel@himmel"],
+      "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "mcpServers": [
         "qmd",
         "playwright"

@@ -90,8 +90,9 @@ cost is joined later from the session transcript, not written at launch.
 `leg-impl` is the profile a worker session gets from
 `headed-arm-leg.sh --profile leg-impl`. **There is exactly one worker session profile, and
 that is deliberate:** it is `lane-impl` minus `pr-review-toolkit-himmel` (no leg
-dispatches its agent; `/pr-check`'s Claude floor reads `agents/code-reviewer.md` by path —
-HIMMEL-4017 audit) because the measured worker session floor is schema-shaped, not roster-shaped (~40k of a
+dispatches its agent; `/pr-check`'s Claude floor reads `agents/code-reviewer.md` by path)
+and minus `i-have-adhd` (the operator reads console windows, not leg windows) — HIMMEL-4017
+audit, 33650 to 31219 first-turn tokens — because the measured worker session floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 sibling profiles for docs or upstream work would either resolve to `bare` and
 lose the floor's guards and skills or duplicate `leg-impl` exactly. What

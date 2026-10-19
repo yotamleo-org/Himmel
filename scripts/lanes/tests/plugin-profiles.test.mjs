@@ -1859,11 +1859,15 @@ test('vmLaunch is restricted to leg-vm', () => {
 });
 
 // /pr-check dispatches no plugin agent, so the leg family drops the reviewer fork.
-test('leg family drops pr-review-toolkit-himmel, keeps the floor and the rest of base (HIMMEL-4017)', () => {
-  for (const name of ['leg-impl', 'leg-bus', 'leg-vm', 'leg-e2e']) {
+test('leg family drops pr-review-toolkit-himmel and i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
+  const legs = Object.keys(REG.profiles).filter((n) => n.startsWith('leg-'));
+  assert.deepEqual(legs.sort(), ['leg-bus', 'leg-e2e', 'leg-impl', 'leg-vm']);
+  for (const name of legs) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
-    assert.equal(p['pr-review-toolkit-himmel@himmel'], false, `${name}: pr-review-toolkit-himmel`);
-    for (const id of [...REG.floor, 'lean-skills@himmel', 'i-have-adhd@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+    for (const id of ['pr-review-toolkit-himmel@himmel', 'i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
+    for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
     assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills legs call`);
   }
+  // The operator reads the console window, so the reading-style ruleset stays there.
+  assert.equal(resolveProfile(REG, 'console', { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, 'console keeps i-have-adhd');
 });
