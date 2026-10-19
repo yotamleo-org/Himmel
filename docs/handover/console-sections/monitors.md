@@ -72,6 +72,14 @@ and the waiter wakes once per new `conflict` or `no-ci` token and keeps its save
 set on `?`: run the command above for the detail. `ci-slow` and `idle` show on
 the tick line but never wake.
 
+**Stuck tickets.** The tick's `orphans-wip=` field counts In Progress / In Review
+tickets nobody holds. To see every stuck In Progress / In Review / IN CI ticket with
+its age, run `<kit>/stuck-scan.sh [--version vX]` by hand: `STUCK <key> <status> <age>`
+for work no live leg or open PR holds, `BLOCKED-BY <key> <ref>` while the blocker named
+by the ticket's latest `DISPOSITION` comment is still open (it prints `STUCK` again once
+that PR merges or closes). Give each one a disposition:
+`<kit>/stuck-scan.sh dispose <KEY> RESUME <leg> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
+
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads
 `OPERATOR: <ask>. Filed HIMMEL-n`. The roadmap tracker builds the
