@@ -1197,7 +1197,7 @@ jobs:
           trap 'echo "at/atd install: duration_seconds=$((SECONDS - started))"' EXIT
           sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/microsoft-* /etc/apt/sources.list.d/azure-cli*
           bash .github/scripts/apt-install.sh at bubblewrap socat
-          sudo systemctl enable --now atd || sudo service atd start || echo "atd start failed; checking is-active"
+          sudo systemctl enable --now atd || sudo service atd start || echo "atd start failed; checking is-active"  # t13b-ok: stock at daemon on a throwaway CI runner, not a himmel service
           systemctl is-active --quiet atd || { echo "::error::atd is not active after install; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
       # HIMMEL-4912: ubuntu-24.04 refuses unprivileged user namespaces by default
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
