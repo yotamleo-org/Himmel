@@ -14,8 +14,8 @@ Positioning → `README.md`; reference detail → `docs/internals/`.
 - Conventional commits; **every commit and every PR carries a ticket ID**
   (search Jira and extend an existing ticket before re-filing). [enforced: conventional-commit-msg]
 - Attestation trailers (`Platforms tested: <os>`, `Security reviewed: <token>`)
-  go in the **FIRST commit**; never `git commit --amend`. [enforced: security-reviewed]
-  Recovery: `docs/internals/stuck-playbook.md`.
+  go in the **FIRST commit**; never `git commit --amend`. Recovery:
+  `docs/internals/stuck-playbook.md`. [enforced: security-reviewed]
 
 ### Jira — prefer plugin over MCP
 Never reach for the Atlassian MCP first. Invoke by ABSOLUTE path from the
@@ -60,10 +60,10 @@ prose. `docs/internals/context-architecture.md`.
 ### Honesty markers and artifacts
 - `ponytail: <ceiling>, <upgrade path>` marks a deliberate simplification →
   `docs/internals/ponytail-convention.md`. Other comments: keep list only,
-  no ticket/review history.
+  no ticket/review history. [prose]
 - Operator reference docs → the owning repo's `docs/`; internal specs, plans
   and decision records → the state repo bucket `specs/<type>/`, never himmel
-  `docs/`; vault content stays in luna.
+  `docs/`; vault content stays in luna. [prose]
 
 ### Retrieval routing
 `MEMORY.md` routes, it does not store: on a surprising symptom read the theme
