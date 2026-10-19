@@ -868,7 +868,7 @@ EOF_SNAP
         [ "$l8" = "**GO** for head \`$want\`." ] || [ "$l8" = "**GO** for head \`$want\`" ] || continue
         go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name" || continue
         if ! record_binds "" "$l10" "$l11" prepr; then
-            [ "$pr_want" != "-" ] || exit 8
+            [ "$pr_want" != "-" ] || [ -n "$pr_none" ] || exit 8
             continue
         fi
         hit="$qid/$name"

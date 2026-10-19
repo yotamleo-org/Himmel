@@ -2621,11 +2621,13 @@ assert_eq "$jgo_vrc" "1" "6427 (b) a branch-bound GO for another branch buys not
 jgo_recb jg64-stale "$jg64_cap" jg64p
 jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "1" "6427 (c) a branch-bound GO at a stale head buys nothing ($jgo_out)"
-jgo_rec jg64-prbound GO "$jgo_head" 1 jg64p
+jgo_rec jg64-aprbound GO "$jgo_head" 1 jg64p
 jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
-assert_eq "$jgo_vrc" "8" "6427 (d) a PR-bound GO with no open PR still refuses ($jgo_out)"
-rm -rf "${vscope:?}/jg64-prbound"
+assert_eq "$jgo_vrc" "1" "6427 (d) a PR-bound GO with no open PR buys nothing ($jgo_out)"
 jgo_recb jg64-ok "$jgo_head" jg64p
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "6427 (d) a PR-bound GO read first does not shadow the branch-bound GO ($jgo_out)"
+rm -rf "${vscope:?}/jg64-aprbound"
 jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "0" "6427 (e) a branch-bound GO at the exact head is accepted with no PR ($jgo_out)"
 assert_has "$jgo_out" "jg64-ok/judge" "6427 (e) the verb names the record"
