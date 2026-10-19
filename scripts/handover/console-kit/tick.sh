@@ -1167,7 +1167,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no leg this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1197,7 +1197,7 @@ unowned_grace_min="${TICK_UNOWNED_GRACE_MIN:-10}"
 prs=""
 unowned_prs=""
 ext_prs=""
-while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated; do
+while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red; do
     case "$pr" in ''|*[!0-9]*) continue ;; esac
     prs="$(csv_add "$prs" "#$pr")"
     [ -n "$pr_branch" ] || continue
@@ -1210,7 +1210,10 @@ while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated; do
     pr_at="$(date -d "$pr_updated" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
     pr_age=$(( ($(date +%s) - pr_at) / 60 ))
     [ "$pr_age" -ge "$unowned_grace_min" ] || continue
-    unowned_prs="$(csv_add "$unowned_prs" "#$pr:${pr_age}m")"
+    # a failed check on an orphan: red CI has no other owner, so the console owes a resume leg
+    pr_owed=""
+    case "$pr_red" in ''|*[!0-9]*|0) ;; *) pr_owed=":dispatch-owed" ;; esac
+    unowned_prs="$(csv_add "$unowned_prs" "#$pr:${pr_age}m$pr_owed")"
 done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
 [ -n "$unowned_prs" ] || unowned_prs=none
