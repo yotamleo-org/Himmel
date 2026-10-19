@@ -555,6 +555,23 @@ describe('create --residual-of', () => {
     expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50|HIMMEL-50.*HIMMEL-77/s);
   });
 
+  it('a failed parent link still names the created key and exits non-zero', async () => {
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (m: string, path: string, b?: unknown) => {
+      if (path === '/issueLink') throw new Error('link boom');
+      return base(m, path, b);
+    });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    const err = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(err).toMatch(/HIMMEL-77 but linking to HIMMEL-50 failed: link boom/);
+    exit.mockRestore();
+  });
+
   it('the duplicate search leaves out the parent itself', async () => {
     play();
     await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
