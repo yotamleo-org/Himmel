@@ -84,7 +84,9 @@ classify_red() {
   command -v jq >/dev/null 2>&1 || return 0
   local jobs="" runs="" created=""
   if [ "${DRY_RUN:-0}" = "1" ]; then
+    # read-sink-ok: DRY_RUN test seam, read only under DRY_RUN=1 from the test harness
     [ -n "${DRY_RUN_JOBS_FILE:-}" ] && jobs="$(cat "$DRY_RUN_JOBS_FILE")"
+    # read-sink-ok: DRY_RUN test seam, read only under DRY_RUN=1 from the test harness
     [ -n "${DRY_RUN_RUNS_FILE:-}" ] && runs="$(cat "$DRY_RUN_RUNS_FILE")"
     created="${DRY_RUN_CREATED_AT:-}"
   elif [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
@@ -110,6 +112,7 @@ classify_red() {
     # the nightly cron alone, so its success marks a green nightly.
     for id in $(jq -r --arg c "$created" '.workflow_runs[]|select(.conclusion=="success" and .created_at>$c)|.id' <<< "$runs"); do
       if [ "${DRY_RUN:-0}" = "1" ]; then
+        # read-sink-ok: DRY_RUN test seam, read only under DRY_RUN=1 from the test harness
         rj="$(cat "${DRY_RUN_RUN_JOBS_DIR:-/nonexistent}/$id.json")" || rj=""
       else
         rj="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100")" || rj=""
