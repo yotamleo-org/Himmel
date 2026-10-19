@@ -543,6 +543,8 @@ describe('create --residual-of', () => {
     expect(created()).toBeUndefined();
     const posts = mockRequest.mock.calls.filter((x) => x[0] === 'POST').map((x) => x[1]);
     expect(posts).toEqual(['/issue/HIMMEL-31/comment', '/issueLink']);
+    const comment = mockRequest.mock.calls.find((x) => x[1] === '/issue/HIMMEL-31/comment');
+    expect(JSON.stringify(comment![2])).toContain('filled');
     expect(searches.join('\n')).toMatch(/class-shell-quoting.*area-cr-scripts/s);
   });
 

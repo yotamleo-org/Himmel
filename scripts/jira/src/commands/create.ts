@@ -218,9 +218,9 @@ export function registerCreate(program: Command): void {
           residual = await planResidual(options.project ?? projectKey(), { ...options, residualOf: options.residualOf });
           if (residual.duplicateOf) {
             const dup = residual.duplicateOf;
-            await request('POST', `/issue/${dup}/comment`, {
-              body: markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`),
-            });
+            const head = markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`);
+            const detail = (fields['description'] as { content?: unknown[] } | undefined)?.content ?? [];
+            await request('POST', `/issue/${dup}/comment`, { body: { ...head, content: [...head.content, ...detail] } });
             await createIssueLink(dup, options.residualOf, { name: 'Relates', inward: 'relates to' });
             console.log(`Duplicate ${dup}`);
             return;
