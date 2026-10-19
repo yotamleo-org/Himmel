@@ -556,6 +556,25 @@ assert "plugin refresh: plugin marker advanced" test "$(cat "$srp_plug/skills/gr
 assert "plugin refresh: legacy user-scope skill removed" test ! -e "$srp_home/.claude/skills/graphify"
 assert "plugin refresh: retirement reported" grep -qi 'user-scope skill retired' <<<"$out"
 
+echo "[test-graphify-bin] _graphify_skill_refresh: legacy retirement removes only graphify's own files; user files survive and keep the dir"
+srk_home="$tmpdir/sr-plugin-userfile"; srk_plug="$tmpdir/sr-plugin-userfile-dir"
+mkdir -p "$srk_home/.claude/skills/graphify/references/notes"
+printf '0.0.1' > "$srk_home/.claude/skills/graphify/.graphify_version"
+printf 'legacy user-scope skill' > "$srk_home/.claude/skills/graphify/SKILL.md"
+printf 'legacy ref' > "$srk_home/.claude/skills/graphify/references/quickstart.md"
+printf 'mine top' > "$srk_home/.claude/skills/graphify/my-notes.md"
+printf 'mine nested' > "$srk_home/.claude/skills/graphify/references/notes/mine.md"
+out=$(HOME="$srk_home" GRAPHIFY_PLUGIN_DIR="$srk_plug" PATH="$stub_dir/bin:$base_path" \
+      UV_TOOL_DIR="$srr_tools" UV_LOG="$tmpdir/sr-plugin-k-uvlog" UV_LIST_FILE="$tmpdir/sr-plugin-k-list" \
+      bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
+assert "legacy with user files: plugin copy still lands" cmp -s "$srk_plug/skills/graphify/SKILL.md" "$expected_skill"
+assert "legacy with user files: top-level user file survives" test "$(cat "$srk_home/.claude/skills/graphify/my-notes.md")" = "mine top"
+assert "legacy with user files: nested user file survives" test "$(cat "$srk_home/.claude/skills/graphify/references/notes/mine.md")" = "mine nested"
+assert "legacy with user files: graphify's SKILL.md is gone" test ! -e "$srk_home/.claude/skills/graphify/SKILL.md"
+assert "legacy with user files: graphify's marker is gone" test ! -e "$srk_home/.claude/skills/graphify/.graphify_version"
+assert "legacy with user files: graphify's reference file is gone" test ! -e "$srk_home/.claude/skills/graphify/references/quickstart.md"
+assert "legacy with user files: the dir is kept and the leftovers are warned about" grep -qi 'left in place' <<<"$out"
+
 echo "[test-graphify-bin] _graphify_skill_refresh: user-scope dir without graphify's marker is NOT removed"
 srq_home="$tmpdir/sr-plugin-foreign"; srq_plug="$tmpdir/sr-plugin-foreign-dir"
 mkdir -p "$srq_home/.claude/skills/graphify"

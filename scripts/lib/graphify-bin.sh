@@ -894,9 +894,28 @@ _graphify_claude_skill_dir() {
   printf '%s/skills/graphify\n' "$(_graphify_plugin_dir)"
 }
 
+# _graphify_retire_mirror <src-dir> <dst-dir> -- remove from dst each file src
+# also carries, then each dst subdirectory that is left empty; nothing else in dst.
+_graphify_retire_mirror() {
+  local e name
+  [ -d "$2" ] || return 0
+  for e in "$1"/* "$1"/.[!.]*; do
+    { [ -e "$e" ] || [ -L "$e" ]; } || continue
+    name="${e##*/}"
+    if [ -d "$e" ] && [ ! -L "$e" ]; then
+      _graphify_retire_mirror "$e" "$2/$name"
+      rm -d "$2/$name" 2>/dev/null
+    else
+      rm -f "$2/$name" 2>/dev/null
+    fi
+  done
+  return 0
+}
+
 # _graphify_retire_user_scope_skill -- remove the user-scope copy an older
 # himmel wrote. Only a dir carrying graphify's own .graphify_version marker is
-# removed; anything else under that path is not ours and is left alone.
+# touched, and only graphify's own files in it are removed; anything else under
+# that path is not ours and is left alone.
 _graphify_retire_user_scope_skill() {
   local legacy="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/graphify"
   [ -d "$legacy" ] || return 0
@@ -904,10 +923,16 @@ _graphify_retire_user_scope_skill() {
     echo "  note: $legacy has no .graphify_version marker, so it is not himmel's copy; leaving it (it loads in every session -- remove it by hand if unwanted)." >&2
     return 0
   fi
-  if rm -rf "$legacy" 2>/dev/null && [ ! -e "$legacy" ]; then
+  # Remove only what graphify installed: the marker, SKILL.md (+ its .bak) and the
+  # references files the plugin copy also carries. Then remove empty dirs bottom-up, so a
+  # user's own file at any level keeps its directory.
+  rm -f "$legacy/SKILL.md" "$legacy/SKILL.md.bak" "$legacy/.graphify_version" 2>/dev/null
+  _graphify_retire_mirror "$(_graphify_claude_skill_dir)/references" "$legacy/references"
+  rm -d "$legacy/references" "$legacy" 2>/dev/null
+  if [ ! -e "$legacy" ]; then
     echo "  graphify user-scope skill retired ($legacy); the skill now ships as the graphify@himmel plugin."
   else
-    echo "  WARNING: could not remove the user-scope graphify skill $legacy; it still loads in every session. Remove it by hand." >&2
+    echo "  WARNING: retired graphify's own files from the user-scope skill $legacy but other files are left in place (yours?); the directory no longer carries a skill, remove it by hand if unwanted." >&2
   fi
   return 0
 }
