@@ -2,6 +2,7 @@
 # scripts/cr/cr-round-metrics.sh — review-round and repeat-finding baseline
 # Usage: cr-round-metrics.sh [--days N] [--now ISO-8601] [--known <known-findings.json>]
 #                            [--groups <file of branch<TAB>group>]
+#                            [--critic-split [--launches <launches.jsonl>]]
 # Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl),
 # read-only and repeatable. Prints one JSON line, then one `cr-round-metrics:` summary line.
 #
@@ -16,6 +17,13 @@
 # whose text matches a known-findings.json class `learning_match`: the list already names
 # them, so a match is a finding the panel was told about and raised anyway.
 #
+# --critic-split compares branches where the Claude critic ran (a ledger `attempt` row for
+# model claude with status ok) against the rest, and joins the critic's per-call cost from
+# api-lane launches.jsonl rows of kind critic. Launch rows carry no branch or head, so a
+# launch joins an attempt only when their timestamps (both written at call end) are within
+# 60s; a branch with no joined launch reports cost unjoined, never a zero. Default launches
+# file: ~/.himmel/state/api-credit/launches.jsonl (absent = cost unjoined; explicit must load).
+#
 # ponytail: classes come from the keyword table below, not a model, ceiling = text that
 # names none of them lands in `other`; upgrade path = grow the table from by_class.other.
 set -uo pipefail
@@ -28,13 +36,17 @@ NOW=""
 KNOWN="$_ah_d/known-findings.json"
 GROUPS_FILE=""
 KNOWN_EXPLICIT=""
+SPLIT=""
+LAUNCHES=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --days) [ $# -ge 2 ] || { echo "cr-round-metrics.sh: --days requires an argument" >&2; exit 2; }; DAYS="$2"; shift 2;;
     --now) [ $# -ge 2 ] || { echo "cr-round-metrics.sh: --now requires an argument" >&2; exit 2; }; NOW="$2"; shift 2;;
     --groups) [ $# -ge 2 ] || { echo "cr-round-metrics.sh: --groups requires an argument" >&2; exit 2; }; GROUPS_FILE="$2"; shift 2;;
     --known) [ $# -ge 2 ] || { echo "cr-round-metrics.sh: --known requires an argument" >&2; exit 2; }; KNOWN="$2"; KNOWN_EXPLICIT=1; shift 2;;
-    *) echo "cr-round-metrics.sh: unknown option $1" >&2; exit 2;;
+    --critic-split) SPLIT=1; shift;;
+    --launches) [ $# -ge 2 ] || { echo "cr-round-metrics.sh: --launches requires an argument" >&2; exit 2; }; LAUNCHES="$2"; shift 2;;
+    *) echo "cr-round-metrics.sh: unknown option $1">&2; exit 2;;
   esac
 done
 case "$DAYS" in ''|*[!0-9]*) echo "cr-round-metrics.sh: --days must be a number" >&2; exit 2;; esac
@@ -48,7 +60,7 @@ else
 fi
 
 # shellcheck disable=SC2016  # $-refs below are inside the single-quoted node script (JS), not shell
-LEDGER="$ledger" DAYS="$DAYS" NOW="$NOW" KNOWN="$KNOWN" KNOWN_EXPLICIT="$KNOWN_EXPLICIT" GROUPS_FILE="$GROUPS_FILE" node -e '
+LEDGER="$ledger" DAYS="$DAYS" NOW="$NOW" KNOWN="$KNOWN" KNOWN_EXPLICIT="$KNOWN_EXPLICIT" GROUPS_FILE="$GROUPS_FILE" SPLIT="$SPLIT" LAUNCHES="$LAUNCHES" HOME_DIR="$HOME" node -e '
 const fs = require("fs");
 const e = process.env;
 const now = e.NOW ? Date.parse(e.NOW) : Date.now();
@@ -208,6 +220,55 @@ if (e.GROUPS_FILE) {
   }
 }
 
+// --critic-split: critic = a branch with a successful claude attempt row; the rest are no-critic.
+let criticSplit;
+if (e.SPLIT) {
+  const explicit = !!e.LAUNCHES;
+  const launches = [];
+  try {
+    const lt = fs.readFileSync(e.LAUNCHES || (e.HOME_DIR + "/.himmel/state/api-credit/launches.jsonl"), "utf8");
+    for (const l of lt.split("\n").filter(Boolean)) { try { const r = JSON.parse(l); if (r && r.kind === "critic") launches.push(r); } catch (_) { /* skip */ } }
+  } catch (err) {
+    if (explicit) { console.error("cr-round-metrics.sh: cannot read --launches " + e.LAUNCHES + ": " + (err && err.code)); process.exit(2); }
+  }
+  const attempts = records.filter(r => r.kind === "attempt" && r.model === "claude" && r.branch && Number.isFinite(Date.parse(r.ts)) && Date.parse(r.ts) <= now);
+  const okAttempts = attempts.filter(r => r.status === "ok").sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
+  const criticBranches = new Set(okAttempts.map(r => r.branch));
+  const used = new Set(), cost = new Map();
+  for (const a of okAttempts) {
+    const at = Date.parse(a.ts);
+    let best = -1, bestD = 60001;
+    launches.forEach((l, i) => { const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
+    const c = best >= 0 ? Number(launches[best].cost_usd) : NaN;
+    if (best >= 0 && Number.isFinite(c)) { used.add(best); cost.set(a.branch, (cost.get(a.branch) || 0) + c); }
+  }
+  const unjoined = launches.filter((l, i) => { const t = Date.parse(l.ts); return !used.has(i) && t >= since && t <= now; }).length;
+  const inWin = new Set(inWindow.map(b => b.name));
+  const stat = (list, withCost) => {
+    const v = list.map(rounds).sort((x, y) => x - y);
+    const p = q => v.length ? v[Math.max(0, Math.ceil(q * v.length) - 1)] : 0;
+    const nf = list.reduce((s, b) => s + b.rows.length, 0);
+    const o = { branches: v.length, p50: p(0.5), p90: p(0.9), cap_hits: v.filter(r => r >= 4).length,
+                findings: nf, repeat_rate: rate(list.reduce((s, b) => s + (b.repeats || 0), 0), nf) };
+    if (withCost) {
+      const joined = list.filter(b => cost.has(b.name));
+      const total = joined.reduce((s, b) => s + cost.get(b.name), 0);
+      o.cost_joined = joined.length;
+      o.cost_usd_total = joined.length ? Math.round(total * 1e6) / 1e6 : null;
+      o.cost_usd_per_pr = joined.length ? Math.round(total / joined.length * 1e6) / 1e6 : null;
+      o.cost = joined.length ? (joined.length === list.length ? "joined" : "partly unjoined") : "unjoined";
+    }
+    return o;
+  };
+  criticSplit = {
+    critic: stat(inWindow.filter(b => criticBranches.has(b.name)), true),
+    no_critic: stat(inWindow.filter(b => !criticBranches.has(b.name)), false),
+    critic_attempts_ok: okAttempts.filter(a => inWin.has(a.branch)).length,
+    critic_attempts_failed: attempts.filter(r => r.status !== "ok" && inWin.has(r.branch)).length,
+    launches_unjoined: unjoined,
+  };
+}
+
 const out = {
   window_days: Number(e.DAYS),
   ledger_lines_skipped: skippedLines,
@@ -224,6 +285,7 @@ const out = {
   top_classes: top,
 };
 if (groups) out.groups = groups;
+if (criticSplit) out.critic_split = criticSplit;
 console.log(JSON.stringify(out));
 console.log("cr-round-metrics: last " + e.DAYS + "d: " + out.branches + " PRs, rounds p50=" + out.rounds.p50 + " p90=" + out.rounds.p90
   + ", cap hits=" + out.cap_hits.count + ", " + total + " findings (crit " + (bySev.crit || 0) + " imp " + (bySev.imp || 0) + " sug " + (bySev.sug || 0)

@@ -146,4 +146,42 @@ check "null record skipped" "$(q findings.total)" "8"
 CR_LEDGER="$L" bash "$CM" --now 2026-10-09T00:00:00Z --days 99999999999 --known "$K" > "$tmp/h.out" 2>&1
 check "huge --days exits 2" "$?" "2"
 
+# --critic-split: a branch is "critic" when the ledger has a claude attempt row with status ok.
+# Launch-row shape copied from a real claude-api.sh row (organization_id redacted); a critic launch
+# joins an attempt when its ts is within 60s of the attempt ts (both are written at call end).
+{
+  cat "$L"
+  echo '{"kind":"attempt","ts":"2026-10-01T02:30:00Z","branch":"fix/a","head":"a3","model":"claude","status":"ok","hour_utc":2,"artifact":"diff","perspective":"off","responding_model":"claude-opus-5-5","attempt":1,"duration_secs":20,"detail":"rc=0"}'
+  echo '{"kind":"attempt","ts":"2026-10-05T03:30:00Z","branch":"fix/b","head":"b4","model":"claude","status":"error","hour_utc":3,"artifact":"diff","perspective":"off","responding_model":"claude-opus-5-5","attempt":1,"duration_secs":0,"detail":"rc=5: critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) - clean no-op"}'
+  echo '{"kind":"attempt","ts":"2026-10-05T03:31:00Z","branch":"fix/b","head":"b4","model":"codex","status":"ok","hour_utc":3,"artifact":"diff","perspective":"off","attempt":1,"duration_secs":11,"detail":"rc=0"}'
+} > "$tmp/split.jsonl"
+LF="$tmp/launches.jsonl"
+{
+  echo '{"ts":"2026-10-01T02:30:05Z","job_id":"cr-claude-critic-4242","account":"A","organization_id":"redacted","key_id":"A-pilot","cycle_id":"2026-10","model":"claude-opus-5-5","budget_usd":"1.00","source":"operator-console-snapshot","outcome":"settled","cost_usd":"0.400000","rc":0,"kind":"critic","cache_ttl":"5m","input_tokens":2,"cache_creation_tokens":34847,"cache_read_tokens":1250}'
+  echo '{"ts":"2026-10-03T00:00:00Z","job_id":"cr-claude-critic-4343","account":"A","organization_id":"redacted","key_id":"A-pilot","cycle_id":"2026-10","model":"claude-opus-5-5","budget_usd":"1.00","source":"operator-console-snapshot","outcome":"settled","cost_usd":"0.990000","rc":0,"kind":"critic","cache_ttl":"5m","input_tokens":2,"cache_creation_tokens":1,"cache_read_tokens":1}'
+  echo '{"ts":"2026-10-01T02:30:06Z","job_id":"api-1","account":"B","organization_id":"redacted","key_id":"B-pilot","cycle_id":"2026-10","model":"sonnet","budget_usd":"1.00","source":"operator-console-snapshot","outcome":"settled","cost_usd":"0.370000","rc":0,"kind":"other","cache_ttl":"5m","input_tokens":2,"cache_creation_tokens":1,"cache_read_tokens":1}'
+} > "$LF"
+json="$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{')"
+check "split critic branches" "$(q critic_split.critic.branches)" "1"
+check "split critic p90" "$(q critic_split.critic.p90)" "3"
+check "split no-critic branches" "$(q critic_split.no_critic.branches)" "1"
+check "split no-critic cap hits" "$(q critic_split.no_critic.cap_hits)" "1"
+check "split critic cost total" "$(q critic_split.critic.cost_usd_total)" "0.4"
+check "split critic cost per PR" "$(q critic_split.critic.cost_usd_per_pr)" "0.4"
+check "split critic cost joined" "$(q critic_split.critic.cost_joined)" "1"
+check "split unjoined critic launches" "$(q critic_split.launches_unjoined)" "1"
+check "split failed attempts counted" "$(q critic_split.critic_attempts_failed)" "1"
+
+# no successful critic attempt anywhere: zero critic PRs, cost null (never a made-up zero)
+json="$(CR_LEDGER="$L" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{')"
+check "split with no critic runs: critic branches" "$(q critic_split.critic.branches)" "0"
+check "split with no critic runs: cost null" "$(q critic_split.critic.cost_usd_total)" "null"
+check "split with no critic runs: all in no-critic" "$(q critic_split.no_critic.branches)" "2"
+
+# default launches file absent is tolerated (cost null); an explicit missing one is an error
+json="$(HOME="$tmp/nohome" CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split | grep -m1 '^{')"
+check "split default launches absent: cost null" "$(q critic_split.critic.cost_usd_total)" "null"
+CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$tmp/nolaunch.jsonl" > "$tmp/l.out" 2>&1
+check "missing --launches exits 2" "$?" "2"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
