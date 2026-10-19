@@ -119,4 +119,14 @@ describe('comment', () => {
     expect(mockRequest.mock.calls[0][0]).toBe('PUT');
     expect(JSON.stringify(mockRequest.mock.calls[0][2])).toContain('edited from file');
   });
+
+  it('--edit with an empty id exits 1 and never POSTs a new comment', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(run(['HIMMEL-1', 'text', '--edit', ''])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(mockRequest).not.toHaveBeenCalled();
+    exit.mockRestore();
+  });
 });

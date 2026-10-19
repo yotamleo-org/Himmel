@@ -28,6 +28,10 @@ export function registerComment(program: Command): void {
         text: string | undefined,
         options: { adfFile?: string; commentFile?: string; edit?: string; attach: string[] },
       ) => {
+        if (options.edit === '') {
+          console.error('jira: --edit requires a non-empty comment id');
+          process.exit(1);
+        }
         let body: unknown;
         if (options.adfFile) {
           try {
