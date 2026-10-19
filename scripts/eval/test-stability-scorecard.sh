@@ -85,6 +85,25 @@ check "migrated header carries the shipped columns" "$(sed -n 1p "$td/legacy.tsv
 check "migrated old row is padded with n/a" "$(sed -n 2p "$td/legacy.tsv" | cut -f11-14)" "$(printf '8\tn/a\tn/a\told')"
 check "migrated file gains the new row" "$(sed -n 3p "$td/legacy.tsv" | cut -f1,12)" "$(printf '2026-10-27\t2')"
 
+# deferred escapes split per class-<id> label (unclassified when absent) and per priority, in the note cell
+cat >"$td/jesc.sh" <<'E'
+#!/usr/bin/env bash
+case "$*" in
+  *"priority = Highest"*) : ;;
+  *"priority = High"*) echo "HIMMEL-1 x" ;;
+  *"priority = Medium"*) printf 'HIMMEL-5 y\nHIMMEL-6 z\n' ;;
+  *"priority ="*) : ;;
+  *deferred-escape*) printf 'HIMMEL-1\tBug\tDone\tx\tdeferred-escape,class-fail-open\nHIMMEL-5\tBug\tDone\ty\tclass-fail-open,deferred-escape\nHIMMEL-6\tBug\tDone\tz\tdeferred-escape\n' ;;
+  *) echo "HIMMEL-2 a" ;;
+esac
+E
+SCORECARD_JIRA_CMD="bash $td/jesc.sh" SCORECARD_TSV="$td/esc.tsv" bash "$tool" run --date 2026-10-28 >/dev/null 2>&1; rc=$?
+check "escape split run exits 0" "$rc" 0
+check "deferred_escapes still counts every escape" "$(sed -n 2p "$td/esc.tsv" | cut -f10)" 3
+sed -n 2p "$td/esc.tsv" | cut -f14 | grep -qF 'escapes by class: class-fail-open=2 unclassified=1; by priority: High=1 Medium=2' \
+  && ok "note carries the per-class and per-priority split" || bad "note carries the per-class and per-priority split: $(sed -n 2p "$td/esc.tsv" | cut -f14)"
+sed -n 2p "$td/s.tsv" | cut -f14 | grep -q 'unclassified=1' && ok "an escape row with no labels column reads unclassified" || bad "an escape row with no labels column reads unclassified"
+
 printf 'wrong\theader\n' >"$td/bad.tsv"
 SCORECARD_TSV="$td/bad.tsv" bash "$tool" run --date 2026-10-21 >/dev/null 2>&1; rc=$?
 check "foreign header is refused" "$rc" 1
