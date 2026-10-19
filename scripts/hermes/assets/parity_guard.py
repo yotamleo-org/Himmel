@@ -759,7 +759,7 @@ def _edit_on_main_reason(start: str):
 # push's own output and every fix round pushes again. FAIL-CLOSED on an
 # unreadable marker; an undeterminable repo/branch is skipped (same stance as
 # the commit lock — judging this process's cwd would be wrong).
-GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$)", re.IGNORECASE)
+GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$|(?=[;&|()<>]))", re.IGNORECASE)
 
 
 def _common_git_dir(git_path: str) -> str:
@@ -793,14 +793,17 @@ def _pr_head_branches(cmd: str) -> list:
     Every `gh pr create` in the command string is scanned."""
     heads = []
     for m in GH_PR_CREATE.finditer(cmd):
-        lex = shlex.shlex(cmd[m.end():], posix=True, punctuation_chars=True)
+        lex = shlex.shlex(cmd[m.end():], posix=False, punctuation_chars=True)
         lex.whitespace_split = True
         toks = []
         try:
             for t in lex:
                 if t and all(c in "();<>|&" for c in t):
                     break
-                toks.append(t)
+                try:
+                    toks.append("".join(shlex.split(t)))
+                except ValueError:
+                    toks.append(t)
         except ValueError:
             continue
         for i, t in enumerate(toks):
