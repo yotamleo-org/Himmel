@@ -22,6 +22,7 @@ cat > "$TMP/bin/gh" <<'EOF'
 # fake gh: `gh api <path> --jq <expr>`; fixtures live in $FX.
 [ -n "${FAKE_GH_FAIL:-}" ] && { echo "fake-gh: simulated API failure" >&2; exit 1; }
 shift; path="$1"; shift
+echo "$path $*" >> "$FX/calls.log"
 expr=""
 while [ $# -gt 0 ]; do case "$1" in --jq) expr="$2"; shift 2 ;; *) shift ;; esac; done
 case "$path" in
@@ -147,6 +148,12 @@ runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$
 : > "$TMP/fx/jobs-1.json"
 out="$(run)"
 is "empty-body jobs listing -> unknown" "ci-queue: unknown" "$out"
+
+# every runs listing is paged, so a queue past 100 runs is not cut at page one
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+out="$(run)"
+is "runs listings carry --paginate" "3" "$(grep -c 'actions/runs?status=.*--paginate' "$TMP/fx/calls.log")"
 
 # a jobs page that is shorter than the run's total_count is not a full count
 reset
