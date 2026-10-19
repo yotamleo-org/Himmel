@@ -295,8 +295,10 @@ resolved, and squash as the only merge method, plus these status checks:
 `guardrail-matrices`, `lanes-and-trust-suites`, `leak-classes`, `lint`,
 `node-suites` (bitbucket, ci-orchestrator, himmel-run, jira), `secret-scan`,
 `security-scan`, `shell-unit`, `pr-title-lint`, `unchecked-mktemp-range`,
-`claude-startup` and `git-env-scrub`. No approval is needed, so wait for CI
-instead: `scripts/check-ci.sh <pr>` blocks until the checks settle.
+`claude-startup` and `git-env-scrub`. The ruleset sets
+`require_extra_approval_for_unattributed_changes`, so a change GitHub cannot
+attribute to a user may still need an extra approval; a normal PR needs none,
+so wait for CI instead: `scripts/check-ci.sh <pr>` blocks until the checks settle.
 
 ---
 
@@ -316,6 +318,10 @@ until four gates pass:
 3. in a console-spawned leg, a console GO file matches the head SHA;
 4. a PR touching a CI trust path (`scripts/ci/ci-trust-paths.txt`) carries a
    trust-reviewed GO and is merged pinned to its head.
+
+Gates 3 and 4 fail closed. Gates 1 and 2 have session bypasses set in the
+launching shell (`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1`; `CR_PROFILE=none`
+also skips gate 1), and an API error while evaluating them fails open.
 
 The branch is squash-merged into main. The worktree is now stale.
 
