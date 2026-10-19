@@ -35,6 +35,9 @@ expect "branch-pinned" 1 "$tmp/branch.yml"
 printf '    steps:\n      - uses: actions/checkout@%s0\n' "$sha" > "$tmp/long.yml"
 expect "41-hex ref" 1 "$tmp/long.yml"
 
+printf '    steps:\n      - uses: actions/checkout@v7 # @%s\n' "$sha" > "$tmp/commented-sha.yml"
+expect "tag pin with a sha-looking comment" 1 "$tmp/commented-sha.yml"
+
 printf '    steps:\n      - uses: actions/checkout@%s # v7.0.1\n' "$sha" > "$tmp/sha.yml"
 expect "sha-pinned with comment" 0 "$tmp/sha.yml"
 

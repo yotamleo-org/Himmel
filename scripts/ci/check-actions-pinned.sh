@@ -34,7 +34,7 @@ q="[\"']?"
 matches=$(grep -rnHE --include='*.yml' --include='*.yaml' \
     '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}" 2>/dev/null \
   | grep -vE "uses:[[:space:]]*${q}(\./|docker://)" \
-  | grep -vE "@[0-9a-f]{40}${q}([[:space:]]|\$)" || true)
+  | grep -vE "uses:[[:space:]]*${q}[^[:space:]\"'@#]+@[0-9a-f]{40}${q}([[:space:]]|\$)" || true)
 
 if [ -n "$matches" ]; then
   printf 'ERROR: GitHub Action not pinned to a full 40-hex commit SHA:\n'

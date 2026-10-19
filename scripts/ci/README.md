@@ -29,7 +29,7 @@ push/PR triggers once it is green.
 
 | Job | What it runs |
 |-----|-------------|
-| `secret-scan` | `scripts/ci/check-no-secrets.sh` — asserts no `${{ secrets.* }}` interpolation appears in `.github/workflows/`. Enforces the secret-free rail (see below). Also `scripts/ci/check-actions-pinned.sh` — every non-local `uses:` must be pinned to a full 40-hex commit SHA with a `# vX.Y.Z` comment (HIMMEL-6559). |
+| `secret-scan` | `scripts/ci/check-no-secrets.sh` — asserts no `${{ secrets.* }}` interpolation appears in `.github/workflows/`. Enforces the secret-free rail (see below). Also `scripts/ci/check-actions-pinned.sh` — every non-local `uses:` must be pinned to a full 40-hex commit SHA (a trailing `# vX.Y.Z` comment is the convention Dependabot maintains; the check enforces only the SHA). |
 | `lint` | `shellcheck --severity=warning` over all `scripts/*.sh` (git pathspec — every depth) except `scripts/statusline/` (vendored). The pre-commit gate is stricter; CI catches warnings across all runner shellcheck versions. |
 | `node-suites` | `npm ci && npm test` matrix across `scripts/jira`, `scripts/bitbucket`, `scripts/himmel-run`. |
 | `bun-suites` | `bun install --frozen-lockfile && bun test` in `scripts/luna-vitals`. |
