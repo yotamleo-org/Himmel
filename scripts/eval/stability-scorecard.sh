@@ -49,9 +49,11 @@ tsv_path() {
     printf '%s/%s/himmel/specs/research/stability-scorecard.tsv' "$root" "${USER_SLUG:-${USER:-unknown}}"
 }
 
-# main_keys <primary>: HIMMEL keys in the squash subjects (`(#N)` suffix) of main over the last 30 days.
+# main_keys <primary>: HIMMEL keys in the squash subjects (`(#N)` suffix) of main over the last 30 days;
+# fails (cells read unknown) when origin/main cannot be refreshed, so a stale ref never undercounts.
 main_keys() {
     local subjects
+    git -C "$1" fetch -q origin main 2>/dev/null || return 1
     subjects="$(git -C "$1" log origin/main --since='30 days ago' --format=%s 2>/dev/null)" || return 1
     printf '%s\n' "$subjects" | grep -E '\(#[0-9]+\)$' | grep -oE 'HIMMEL-[0-9]+' | sort -u || true
 }
