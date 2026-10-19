@@ -4305,17 +4305,20 @@ cat > "$d46/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
 printf '%s' "$$" > "$(dirname "$0")/kpid"
+{ echo "recorded"; env | grep -E '^HEADED_ARM_WAKER=' || true; } > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
 chmod 755 "$d46/konsole"
 rc=0
-WAKER_CALLS="$d46/waker-calls" run_leg "$d46" "$tmp/repo46" "HIMMEL-46-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+# HEADED_ARM_UNAME=Linux pins the non-shim branch: on a real Darwin host headed-arm.sh skips the waker.
+HEADED_ARM_UNAME=Linux WAKER_CALLS="$d46/waker-calls" run_leg "$d46" "$tmp/repo46" "HIMMEL-46-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 n=0; while [ ! -s "$d46/waker-calls" ] && [ "$n" -lt 60 ]; do sleep 0.05; n=$((n+1)); done
 kpid46="$(cat "$d46/kpid" 2>/dev/null || true)"
 check "46a headed launch: exit 0" "$rc" "0"
 check "46b headed launch: exactly one waker started" "$(wc -l < "$d46/waker-calls" 2>/dev/null | tr -d '[:space:]')" "1"
 check "46c waker carries the leg's --name, --service, --session and --pid" "$(cat "$d46/waker-calls" 2>/dev/null)" "--name HIMMEL-46-leg --service org.kde.konsole-$kpid46 --session /Sessions/1 --pid $kpid46"
+contains "46d control: the konsole stub recorded its env" "$(cat "$d46/env-record" 2>/dev/null || true)" "recorded"
 not_contains "46d the waker path never reaches the leg's env" "$(cat "$d46/env-record" 2>/dev/null || true)" "HEADED_ARM_WAKER"
 
 # --- a leg runs under its own MemoryMax scope, so a runaway test
