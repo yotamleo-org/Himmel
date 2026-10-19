@@ -2,6 +2,7 @@
   "user": {
     "enabled": [
       "find-docs@himmel",
+      "graphify@himmel",
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",

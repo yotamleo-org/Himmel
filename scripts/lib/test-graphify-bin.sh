@@ -64,6 +64,9 @@ assert() {
 fail() { echo "  FATAL: $*" >&2; exit 1; }
 
 tmpdir="$(mktemp -d -t graphify-bin.XXXXXX)"
+# The claude skill lands in the marketplace plugin dir; never let a case that
+# forgets its own GRAPHIFY_PLUGIN_DIR write into the real checkout.
+export GRAPHIFY_PLUGIN_DIR="$tmpdir/default-gplug"
 # holder_pid: the ONE live process the holder test spawns. Reaped
 # by its exact pid on any exit, never by pattern.
 holder_pid=""
@@ -157,7 +160,7 @@ noreal_home="$tmpdir/noreal"; mkdir -p "$noreal_home"
 # `rc -ne 0` assertion passed without has_graphify ever executing. Asserting on
 # rc cannot tell "has_graphify said no" from "the subshell never reached it";
 # proving execution needs no enumeration of the failure modes that skip it.
-noreal_out=$(PATH="$utils_bin:$base_path" HOME="$noreal_home" \
+noreal_out=$(PATH="$utils_bin:$base_path" HOME="$noreal_home" GRAPHIFY_PLUGIN_DIR="$noreal_home/gplug" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; if has_graphify; then echo "HG=yes"; else echo "HG=no"; fi' 2>&1)
 assert "has_graphify=false with no graphify on PATH" grep -q '^HG=no$' <<<"$noreal_out"
 
@@ -258,7 +261,7 @@ fresh_bin="$tmpdir/fresh-bin"; mkdir -p "$fresh_bin"
 fresh_log="$tmpdir/fresh-uvlog"; : > "$fresh_log"
 fresh_path="$fresh_bin:$stub_dir/bin:$base_path"
 
-out=$(HOME="$fresh_home" PATH="$fresh_path" UV_TOOL_DIR="$fresh_tools" UV_LIST_FILE="$fresh_list" \
+out=$(HOME="$fresh_home" GRAPHIFY_PLUGIN_DIR="$fresh_home/gplug" PATH="$fresh_path" UV_TOOL_DIR="$fresh_tools" UV_LIST_FILE="$fresh_list" \
       UV_BIN_DIR="$fresh_bin" UV_LOG="$fresh_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "missing: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -267,9 +270,9 @@ assert "missing: install argv carries --with mcp + graphifyy[ollama] at the vers
   grep -qE 'UV tool install --with mcp graphifyy\[ollama\]==[0-9]' "$fresh_log"
 assert "missing: graphify shim landed on PATH" test -x "$fresh_bin/graphify"
 assert "missing: has_graphify true post-install" \
-  env PATH="$fresh_path" HOME="$fresh_home" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; has_graphify'
+  env PATH="$fresh_path" HOME="$fresh_home" GRAPHIFY_PLUGIN_DIR="$fresh_home/gplug" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; has_graphify'
 
-out2=$(HOME="$fresh_home" PATH="$fresh_path" UV_TOOL_DIR="$fresh_tools" UV_LIST_FILE="$fresh_list" \
+out2=$(HOME="$fresh_home" GRAPHIFY_PLUGIN_DIR="$fresh_home/gplug" PATH="$fresh_path" UV_TOOL_DIR="$fresh_tools" UV_LIST_FILE="$fresh_list" \
        UV_BIN_DIR="$fresh_bin" UV_LOG="$fresh_log" \
        bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "idempotent re-run: rc 0" grep -q '^RC=0$' <<<"$out2"
@@ -289,7 +292,7 @@ funiv_list="$tmpdir/foreignuv-list"; printf 'graphifyy v1.2.3\n' > "$funiv_list"
 funiv_log="$tmpdir/foreignuv-uvlog"; : > "$funiv_log"
 funiv_path="$stub_dir/bin:$base_path"
 
-out=$(HOME="$funiv_home" PATH="$funiv_path" UV_TOOL_DIR="$funiv_tools" UV_LIST_FILE="$funiv_list" \
+out=$(HOME="$funiv_home" GRAPHIFY_PLUGIN_DIR="$funiv_home/gplug" PATH="$funiv_path" UV_TOOL_DIR="$funiv_tools" UV_LIST_FILE="$funiv_list" \
       UV_BIN_DIR="$tmpdir/foreignuv-bin" UV_LOG="$funiv_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "foreign(uv-list, unresolvable): rc nonzero" grep -qv '^RC=0$' <<<"$out"
@@ -309,7 +312,7 @@ echo "FOREIGN UV GRAPHIFY $*"
 EOF
 chmod +x "$funivok_bin/graphify"
 : > "$funiv_log"
-out=$(HOME="$funiv_home" PATH="$funivok_bin:$funiv_path" UV_TOOL_DIR="$funiv_tools" UV_LIST_FILE="$funiv_list" \
+out=$(HOME="$funiv_home" GRAPHIFY_PLUGIN_DIR="$funiv_home/gplug" PATH="$funivok_bin:$funiv_path" UV_TOOL_DIR="$funiv_tools" UV_LIST_FILE="$funiv_list" \
       UV_BIN_DIR="$tmpdir/foreignuv-bin" UV_LOG="$funiv_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "foreign(uv-list, resolvable): rc 0" grep -q '^RC=0$' <<<"$out"
@@ -330,7 +333,7 @@ funpath_list="$tmpdir/foreignpath-list"; : > "$funpath_list"
 funpath_log="$tmpdir/foreignpath-uvlog"; : > "$funpath_log"
 funpath_path="$funpath_bin:$stub_dir/bin:$base_path"
 
-out=$(HOME="$funpath_home" PATH="$funpath_path" UV_TOOL_DIR="$tmpdir/foreignpath-tools" UV_LIST_FILE="$funpath_list" \
+out=$(HOME="$funpath_home" GRAPHIFY_PLUGIN_DIR="$funpath_home/gplug" PATH="$funpath_path" UV_TOOL_DIR="$tmpdir/foreignpath-tools" UV_LIST_FILE="$funpath_list" \
       UV_BIN_DIR="$tmpdir/foreignpath-bin2" UV_LOG="$funpath_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "foreign(PATH): rc 0" grep -q '^RC=0$' <<<"$out"
@@ -339,7 +342,7 @@ assert "foreign(PATH): reports source=foreign" grep -q 'source=foreign' <<<"$out
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "foreign(PATH): no install call" bash -c '! grep -q "tool install" "$1"' _ "$funpath_log"
 assert "foreign(PATH): has_graphify true (adopted binary resolvable)" \
-  env PATH="$funpath_path" HOME="$funpath_home" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; has_graphify'
+  env PATH="$funpath_path" HOME="$funpath_home" GRAPHIFY_PLUGIN_DIR="$funpath_home/gplug" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; has_graphify'
 
 echo "[test-graphify-bin] graphify_source: uv graphifyy at the PINNED version -> himmel-pin"
 pin_home="$tmpdir/pindirect"; mkdir -p "$pin_home"
@@ -347,13 +350,13 @@ pin_tools="$tmpdir/pindirect-tools"; mkdir -p "$pin_tools/graphifyy"
 printf 'requirements = [{ name = "graphifyy" }]\n' > "$pin_tools/graphifyy/uv-receipt.toml"
 pin_list="$tmpdir/pindirect-list"; printf 'graphifyy v%s\n' "$pinned_ver" > "$pin_list"
 src=$(UV_TOOL_DIR="$pin_tools" UV_LIST_FILE="$pin_list" UV_LOG="$tmpdir/pindirect-log" \
-      PATH="$stub_dir/bin:$base_path" HOME="$pin_home" \
+      PATH="$stub_dir/bin:$base_path" HOME="$pin_home" GRAPHIFY_PLUGIN_DIR="$pin_home/gplug" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_source')
 assert "uv graphifyy at the pinned version -> himmel-pin" test "$src" = "himmel-pin"
 # CR-r2: the SAME himmel-pin metadata with no resolvable binary must not report
 # success either -- WARN + nonzero, zero install calls.
 pin_log="$tmpdir/pindirect-uvlog"; : > "$pin_log"
-out=$(HOME="$pin_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$pin_tools" UV_LIST_FILE="$pin_list" \
+out=$(HOME="$pin_home" GRAPHIFY_PLUGIN_DIR="$pin_home/gplug" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$pin_tools" UV_LIST_FILE="$pin_list" \
       UV_BIN_DIR="$tmpdir/pindirect-bin" UV_LOG="$pin_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "himmel-pin metadata, unresolvable: rc nonzero" grep -qv '^RC=0$' <<<"$out"
@@ -369,13 +372,13 @@ badver_home="$tmpdir/badver"; mkdir -p "$badver_home"
 badver_tools="$tmpdir/badver-tools"; mkdir -p "$badver_tools/graphifyy"
 badver_list="$tmpdir/badver-list"; printf 'graphifyy vunknown\n' > "$badver_list"
 src=$(UV_TOOL_DIR="$badver_tools" UV_LIST_FILE="$badver_list" UV_LOG="$tmpdir/badver-log" \
-      PATH="$stub_dir/bin:$base_path" HOME="$badver_home" \
+      PATH="$stub_dir/bin:$base_path" HOME="$badver_home" GRAPHIFY_PLUGIN_DIR="$badver_home/gplug" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_source')
 assert "unreadable version -> foreign (present but unprovable, never 'not installed')" test "$src" = "foreign"
 
 echo "[test-graphify-bin] no uv on PATH -> WARN + nonzero rc"
 nouv_home="$tmpdir/nouv"; mkdir -p "$nouv_home"
-out=$(HOME="$nouv_home" PATH="$utils_bin:$base_path" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
+out=$(HOME="$nouv_home" GRAPHIFY_PLUGIN_DIR="$nouv_home/gplug" PATH="$utils_bin:$base_path" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 # Assert the POSITIVE -- that a nonzero RC was actually printed. Two weaker
 # forms were vacuous here: `grep -qv '^RC=0$'` inverted per LINE, so the
 # WARNING line alone satisfied it even when RC=0 was present; and negating the
@@ -390,7 +393,7 @@ ufail_home="$tmpdir/ufail"; mkdir -p "$ufail_home"
 ufail_tools="$tmpdir/ufail-tools"; mkdir -p "$ufail_tools"
 ufail_list="$tmpdir/ufail-list"; : > "$ufail_list"
 ufail_log="$tmpdir/ufail-uvlog"; : > "$ufail_log"
-out=$(HOME="$ufail_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$ufail_tools" UV_LIST_FILE="$ufail_list" \
+out=$(HOME="$ufail_home" GRAPHIFY_PLUGIN_DIR="$ufail_home/gplug" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$ufail_tools" UV_LIST_FILE="$ufail_list" \
       UV_BIN_DIR="$tmpdir/ufail-bin" UV_LOG="$ufail_log" STUB_UV_INSTALL_RC=1 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "install-fail: rc nonzero" grep -qv '^RC=0$' <<<"$out"
@@ -406,7 +409,7 @@ nopath_tools="$tmpdir/nopath-tools"; mkdir -p "$nopath_tools"
 nopath_list="$tmpdir/nopath-list"; : > "$nopath_list"
 nopath_bin="$tmpdir/nopath-bin"; mkdir -p "$nopath_bin"
 nopath_log="$tmpdir/nopath-uvlog"; : > "$nopath_log"
-out=$(HOME="$nopath_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$nopath_tools" \
+out=$(HOME="$nopath_home" GRAPHIFY_PLUGIN_DIR="$nopath_home/gplug" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$nopath_tools" \
       UV_LIST_FILE="$nopath_list" UV_BIN_DIR="$nopath_bin" UV_LOG="$nopath_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "unresolvable: install WAS attempted (one uv call)" test "$(grep -c 'UV tool install' "$nopath_log")" -eq 1
@@ -425,7 +428,7 @@ echo x
 EOF
 chmod +x "$gup_bin/graphify"
 gup_log="$tmpdir/gup-atpin-log"; : > "$gup_log"
-out=$(HOME="$gup_home" PATH="$gup_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gup_tools" UV_LIST_FILE="$gup_list" \
+out=$(HOME="$gup_home" GRAPHIFY_PLUGIN_DIR="$gup_home/gplug" PATH="$gup_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gup_tools" UV_LIST_FILE="$gup_list" \
       UV_BIN_DIR="$gup_bin" UV_LOG="$gup_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update at-pin: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -472,19 +475,19 @@ srt_home="$tmpdir/sr-two-dirs"; mkdir -p "$srt_home/.local/share/uv/tools/graphi
 srt_tools="$tmpdir/sr-two-dirs-roaming"; mkdir -p "$srt_tools"
 make_fake_graphify_venv "$srt_tools" "$pinned_ver" > /dev/null
 srt_log="$tmpdir/sr-two-dirs-uvlog"; : > "$srt_log"
-out=$(HOME="$srt_home" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srt_home" GRAPHIFY_PLUGIN_DIR="$srt_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srt_tools" UV_LIST_FILE="$tmpdir/sr-two-dirs-list" UV_LOG="$srt_log" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "two tool dirs: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "two tool dirs: uv tool dir was queried" grep -q '^UV tool dir$' "$srt_log"
 assert "two tool dirs: refresh used the uv-reported venv" grep -qi 'skill refreshed' <<<"$out"
 assert "two tool dirs: copied from the uv-reported directory" \
-  grep -q "FAKE .* SKILL BODY v$pinned_ver" "$srt_home/.claude/skills/graphify/SKILL.md"
+  grep -q "FAKE .* SKILL BODY v$pinned_ver" "$srt_home/gplug/skills/graphify/SKILL.md"
 assert "two tool dirs: marker came from uv-reported Python metadata" \
-  test "$(cat "$srt_home/.claude/skills/graphify/.graphify_version")" = "$pinned_ver"
+  test "$(cat "$srt_home/gplug/skills/graphify/.graphify_version")" = "$pinned_ver"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: resolved Python with unreadable metadata warns, never silently succeeds"
-srb_home="$tmpdir/sr-bad-metadata"; mkdir -p "$srb_home/.claude/skills/graphify"
+srb_home="$tmpdir/sr-bad-metadata"; mkdir -p "$srb_home/gplug/skills/graphify"
 srb_tools="$tmpdir/sr-bad-metadata-tools"
 srb_pkg=$(make_fake_graphify_venv "$srb_tools" "$pinned_ver")
 cat > "$srb_tools/graphifyy/Scripts/python" <<EOF
@@ -495,23 +498,20 @@ case "\$2" in
 esac
 EOF
 chmod +x "$srb_tools/graphifyy/Scripts/python"
-out=$(HOME="$srb_home" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srb_home" GRAPHIFY_PLUGIN_DIR="$srb_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srb_tools" UV_LIST_FILE="$tmpdir/sr-bad-metadata-list" UV_LOG="$tmpdir/sr-bad-metadata-uvlog" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "bad metadata: rc 0 (best-effort contract)" grep -q '^RC=0$' <<<"$out"
 assert "bad metadata: warning identifies graphifyy metadata" grep -qi 'cannot resolve graphifyy package metadata' <<<"$out"
-assert "bad metadata: no skill copied" test ! -f "$srb_home/.claude/skills/graphify/SKILL.md"
+assert "bad metadata: no skill copied" test ! -f "$srb_home/gplug/skills/graphify/SKILL.md"
 
-echo "[test-graphify-bin] _graphify_skill_refresh: CURRENT marker under CLAUDE_CONFIG_DIR -> no copy (HIMMEL-1750 redirect regression)"
-# A STALE marker sits in the DEFAULT root; the CURRENT marker lives in the
-# redirected CLAUDE_CONFIG_DIR root. The refresh must read the redirected root
-# and conclude "current" — reading ~/.claude would wrongly re-copy here.
-srr_home="$tmpdir/sr-redir"; mkdir -p "$srr_home/.claude/skills/graphify"
-printf '0.0.1' > "$srr_home/.claude/skills/graphify/.graphify_version"
-srr_cfg="$tmpdir/sr-redir-cfg"; mkdir -p "$srr_cfg/skills/graphify/references"
-printf '%s' "$pinned_ver" > "$srr_cfg/skills/graphify/.graphify_version"
-printf 'existing current skill' > "$srr_cfg/skills/graphify/SKILL.md"
-printf 'existing current ref' > "$srr_cfg/skills/graphify/references/quickstart.md"
+echo "[test-graphify-bin] _graphify_skill_refresh: CURRENT marker in the plugin dir -> no copy (a routed CLAUDE_CONFIG_DIR is irrelevant to it)"
+srr_home="$tmpdir/sr-redir"; mkdir -p "$srr_home/gplug/skills/graphify/references"
+printf '%s' "$pinned_ver" > "$srr_home/gplug/skills/graphify/.graphify_version"
+printf 'existing current skill' > "$srr_home/gplug/skills/graphify/SKILL.md"
+printf 'existing current ref' > "$srr_home/gplug/skills/graphify/references/quickstart.md"
+srr_cfg="$tmpdir/sr-redir-cfg"; mkdir -p "$srr_cfg/skills/graphify"
+printf '0.0.1' > "$srr_cfg/skills/graphify/.graphify_version"
 srr_tools="$tmpdir/sr-redir-tools"
 srr_pkg=$(make_fake_graphify_venv "$srr_tools" "$pinned_ver")
 case "$(uname -s 2>/dev/null || echo)" in
@@ -530,63 +530,101 @@ expected_codex_skill="$srr_pkg/skill-codex.md"
 expected_codex_refs="$srr_pkg/skills/codex/references/quickstart.md"
 expected_hermes_skill="$srr_pkg/skill-claw.md"
 expected_hermes_refs="$srr_pkg/skills/claw/references/quickstart.md"
-out=$(HOME="$srr_home" CLAUDE_CONFIG_DIR="$srr_cfg" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srr_home" GRAPHIFY_PLUGIN_DIR="$srr_home/gplug" CLAUDE_CONFIG_DIR="$srr_cfg" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-redir-list" UV_LOG="$tmpdir/sr-redir-uvlog" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "skill-refresh redirect current: rc 0" grep -q '^RC=0$' <<<"$out"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "skill-refresh redirect current: no refresh performed" bash -c '! grep -qi "skill refreshed" <<<"$1"' _ "$out"
-assert "skill-refresh redirect current: existing SKILL.md unchanged" test "$(cat "$srr_cfg/skills/graphify/SKILL.md")" = "existing current skill"
+assert "skill-refresh redirect current: existing SKILL.md unchanged" test "$(cat "$srr_home/gplug/skills/graphify/SKILL.md")" = "existing current skill"
+assert "skill-refresh redirect current: the routed legacy copy is still retired" test ! -e "$srr_cfg/skills/graphify"
 
-echo "[test-graphify-bin] _graphify_skill_refresh: STALE marker under a ROUTED CLAUDE_CONFIG_DIR -> refreshed IN PLACE, default profile untouched (redesign: direct copy is profile-safe)"
+echo "[test-graphify-bin] _graphify_skill_refresh: skill lands in the PLUGIN dir; legacy user-scope copy retired (HIMMEL-6465)"
+srp_home="$tmpdir/sr-plugin"; srp_plug="$tmpdir/sr-plugin-dir"
+mkdir -p "$srp_home/.claude/skills/graphify/references"
+printf '0.0.1' > "$srp_home/.claude/skills/graphify/.graphify_version"
+printf 'legacy user-scope skill' > "$srp_home/.claude/skills/graphify/SKILL.md"
+out=$(HOME="$srp_home" GRAPHIFY_PLUGIN_DIR="$srp_plug" PATH="$stub_dir/bin:$base_path" \
+      UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-plugin-list" UV_LOG="$tmpdir/sr-plugin-uvlog" \
+      bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
+assert "plugin refresh: rc 0" grep -q '^RC=0$' <<<"$out"
+assert "plugin refresh: SKILL.md copied into the plugin dir" cmp -s "$srp_plug/skills/graphify/SKILL.md" "$expected_skill"
+assert "plugin refresh: references copied into the plugin dir" cmp -s "$srp_plug/skills/graphify/references/quickstart.md" "$expected_refs"
+assert "plugin refresh: plugin marker advanced" test "$(cat "$srp_plug/skills/graphify/.graphify_version")" = "$pinned_ver"
+assert "plugin refresh: legacy user-scope skill removed" test ! -e "$srp_home/.claude/skills/graphify"
+assert "plugin refresh: retirement reported" grep -qi 'user-scope skill retired' <<<"$out"
+
+echo "[test-graphify-bin] _graphify_skill_refresh: user-scope dir without graphify's marker is NOT removed"
+srq_home="$tmpdir/sr-plugin-foreign"; srq_plug="$tmpdir/sr-plugin-foreign-dir"
+mkdir -p "$srq_home/.claude/skills/graphify"
+printf 'someone elses skill' > "$srq_home/.claude/skills/graphify/SKILL.md"
+out=$(HOME="$srq_home" GRAPHIFY_PLUGIN_DIR="$srq_plug" PATH="$stub_dir/bin:$base_path" \
+      UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-plugin-f-list" UV_LOG="$tmpdir/sr-plugin-f-uvlog" \
+      bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
+assert "foreign user-scope: plugin copy still lands" cmp -s "$srq_plug/skills/graphify/SKILL.md" "$expected_skill"
+assert "foreign user-scope: unmarked dir left untouched" test "$(cat "$srq_home/.claude/skills/graphify/SKILL.md")" = "someone elses skill"
+
+echo "[test-graphify-bin] _graphify_skill_refresh: legacy copy survives a refresh that could not land the plugin copy"
+srf_home="$tmpdir/sr-plugin-fail"; srf_plug="$tmpdir/sr-plugin-fail-dir"
+mkdir -p "$srf_home/.claude/skills/graphify" "$srf_plug/skills/graphify/SKILL.md"
+printf '0.0.1' > "$srf_home/.claude/skills/graphify/.graphify_version"
+out=$(HOME="$srf_home" GRAPHIFY_PLUGIN_DIR="$srf_plug" PATH="$stub_dir/bin:$base_path" \
+      UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-plugin-x-list" UV_LOG="$tmpdir/sr-plugin-x-uvlog" \
+      bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
+assert "failed plugin refresh: legacy copy kept" test -f "$srf_home/.claude/skills/graphify/.graphify_version"
+
+echo "[test-graphify-bin] _graphify_skill_refresh: STALE plugin marker with a ROUTED CLAUDE_CONFIG_DIR -> plugin refreshed, only the routed legacy copy retired, default profile untouched"
+srs_home="$tmpdir/sr-stale-home"; mkdir -p "$srs_home/.claude/skills/graphify" "$srs_home/gplug/skills/graphify"
+printf '0.0.1' > "$srs_home/.claude/skills/graphify/.graphify_version"
+printf '0.0.1' > "$srs_home/gplug/skills/graphify/.graphify_version"
 srs_cfg="$tmpdir/sr-stale-cfg"; mkdir -p "$srs_cfg/skills/graphify"
 printf '0.0.1' > "$srs_cfg/skills/graphify/.graphify_version"
-out=$(HOME="$srr_home" CLAUDE_CONFIG_DIR="$srs_cfg" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srs_home" GRAPHIFY_PLUGIN_DIR="$srs_home/gplug" CLAUDE_CONFIG_DIR="$srs_cfg" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-stale-list" UV_LOG="$tmpdir/sr-stale-uvlog" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "skill-refresh routed stale: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "skill-refresh routed stale: refresh performed" grep -qi 'skill refreshed' <<<"$out"
-assert "skill-refresh routed stale: SKILL.md copied into the ROUTED root" cmp -s "$srs_cfg/skills/graphify/SKILL.md" "$expected_skill"
-assert "skill-refresh routed stale: references sidecar copied" cmp -s "$srs_cfg/skills/graphify/references/quickstart.md" "$expected_refs"
-assert "skill-refresh routed stale: routed marker advanced" test "$(cat "$srs_cfg/skills/graphify/.graphify_version")" = "$pinned_ver"
-assert "skill-refresh routed stale: DEFAULT profile untouched (no SKILL.md)" test ! -f "$srr_home/.claude/skills/graphify/SKILL.md"
-assert "skill-refresh routed stale: DEFAULT profile marker unchanged" test "$(cat "$srr_home/.claude/skills/graphify/.graphify_version")" = "0.0.1"
+assert "skill-refresh routed stale: SKILL.md copied into the plugin dir" cmp -s "$srs_home/gplug/skills/graphify/SKILL.md" "$expected_skill"
+assert "skill-refresh routed stale: references sidecar copied" cmp -s "$srs_home/gplug/skills/graphify/references/quickstart.md" "$expected_refs"
+assert "skill-refresh routed stale: plugin marker advanced" test "$(cat "$srs_home/gplug/skills/graphify/.graphify_version")" = "$pinned_ver"
+assert "skill-refresh routed stale: routed legacy copy retired" test ! -e "$srs_cfg/skills/graphify"
+assert "skill-refresh routed stale: DEFAULT profile legacy copy untouched" test "$(cat "$srs_home/.claude/skills/graphify/.graphify_version")" = "0.0.1"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: STALE marker under the DEFAULT root -> direct copy lands + marker written LAST"
-srd_home="$tmpdir/sr-default"; mkdir -p "$srd_home/.claude/skills/graphify"
-printf '0.0.1' > "$srd_home/.claude/skills/graphify/.graphify_version"
-out=$(HOME="$srd_home" PATH="$stub_dir/bin:$base_path" \
+srd_home="$tmpdir/sr-default"; mkdir -p "$srd_home/gplug/skills/graphify"
+printf '0.0.1' > "$srd_home/gplug/skills/graphify/.graphify_version"
+out=$(HOME="$srd_home" GRAPHIFY_PLUGIN_DIR="$srd_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-default-list" UV_LOG="$tmpdir/sr-default-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "skill-refresh default stale: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "skill-refresh default stale: refresh performed" grep -qi 'skill refreshed' <<<"$out"
-assert "skill-refresh default stale: SKILL.md matches the platform package variant" cmp -s "$srd_home/.claude/skills/graphify/SKILL.md" "$expected_skill"
-assert "skill-refresh default stale: references match the platform package variant" cmp -s "$srd_home/.claude/skills/graphify/references/quickstart.md" "$expected_refs"
-assert "skill-refresh default stale: marker equals the venv-reported version" test "$(cat "$srd_home/.claude/skills/graphify/.graphify_version")" = "$pinned_ver"
+assert "skill-refresh default stale: SKILL.md matches the platform package variant" cmp -s "$srd_home/gplug/skills/graphify/SKILL.md" "$expected_skill"
+assert "skill-refresh default stale: references match the platform package variant" cmp -s "$srd_home/gplug/skills/graphify/references/quickstart.md" "$expected_refs"
+assert "skill-refresh default stale: marker equals the venv-reported version" test "$(cat "$srd_home/gplug/skills/graphify/.graphify_version")" = "$pinned_ver"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: CURRENT marker with missing content triggers a repair"
-src_home="$tmpdir/sr-current-missing"; mkdir -p "$src_home/.claude/skills/graphify"
-printf '%s' "$pinned_ver" > "$src_home/.claude/skills/graphify/.graphify_version"
-out=$(HOME="$src_home" PATH="$stub_dir/bin:$base_path" \
+src_home="$tmpdir/sr-current-missing"; mkdir -p "$src_home/gplug/skills/graphify"
+printf '%s' "$pinned_ver" > "$src_home/gplug/skills/graphify/.graphify_version"
+out=$(HOME="$src_home" GRAPHIFY_PLUGIN_DIR="$src_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-current-missing-list" UV_LOG="$tmpdir/sr-current-missing-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "current marker missing content: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "current marker missing content: refresh performed" grep -qi 'skill refreshed' <<<"$out"
-assert "current marker missing content: SKILL.md repaired" cmp -s "$src_home/.claude/skills/graphify/SKILL.md" "$expected_skill"
-assert "current marker missing content: references repaired" cmp -s "$src_home/.claude/skills/graphify/references/quickstart.md" "$expected_refs"
+assert "current marker missing content: SKILL.md repaired" cmp -s "$src_home/gplug/skills/graphify/SKILL.md" "$expected_skill"
+assert "current marker missing content: references repaired" cmp -s "$src_home/gplug/skills/graphify/references/quickstart.md" "$expected_refs"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: unsafe staging targets fail closed without advancing the marker"
-sru_home="$tmpdir/sr-unsafe"; mkdir -p "$sru_home/.claude/skills/graphify/SKILL.md" "$sru_home/.claude/skills/graphify/SKILL.md.tmp"
-printf '0.0.1' > "$sru_home/.claude/skills/graphify/.graphify_version"
-out=$(HOME="$sru_home" PATH="$stub_dir/bin:$base_path" \
+sru_home="$tmpdir/sr-unsafe"; mkdir -p "$sru_home/gplug/skills/graphify/SKILL.md" "$sru_home/gplug/skills/graphify/SKILL.md.tmp"
+printf '0.0.1' > "$sru_home/gplug/skills/graphify/.graphify_version"
+out=$(HOME="$sru_home" GRAPHIFY_PLUGIN_DIR="$sru_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-unsafe-list" UV_LOG="$tmpdir/sr-unsafe-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "unsafe staging targets: rc 0 (best-effort contract)" grep -q '^RC=0$' <<<"$out"
 assert "unsafe staging targets: warning emitted" grep -qi 'unsafe staging target' <<<"$out"
-assert "unsafe staging targets: marker unchanged" test "$(cat "$sru_home/.claude/skills/graphify/.graphify_version")" = "0.0.1"
-assert "unsafe staging targets: SKILL.md remains a directory" test -d "$sru_home/.claude/skills/graphify/SKILL.md"
-assert "unsafe staging targets: staged directory cleaned" test ! -e "$sru_home/.claude/skills/graphify/SKILL.md.tmp"
+assert "unsafe staging targets: marker unchanged" test "$(cat "$sru_home/gplug/skills/graphify/.graphify_version")" = "0.0.1"
+assert "unsafe staging targets: SKILL.md remains a directory" test -d "$sru_home/gplug/skills/graphify/SKILL.md"
+assert "unsafe staging targets: staged directory cleaned" test ! -e "$sru_home/gplug/skills/graphify/SKILL.md.tmp"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: PRESENT codex skill dir is refreshed; ABSENT hermes dir is left untouched and NOT created (HIMMEL-3050)"
 # This once pinned "other platforms are NEVER touched" back when the refresh
@@ -598,19 +636,19 @@ echo "[test-graphify-bin] _graphify_skill_refresh: PRESENT codex skill dir is re
 # or inventing new ones). A still-untouched platform (agents) stays alongside
 # codex/hermes to prove the widening is scoped, not a blanket "refresh
 # anything under ~/.*/skills/graphify".
-srm_home="$tmpdir/sr-markers"; mkdir -p "$srm_home/.claude/skills/graphify" "$srm_home/.codex/skills/graphify" "$srm_home/.agents/skills/graphify"
-printf '0.0.1' > "$srm_home/.claude/skills/graphify/.graphify_version"
+srm_home="$tmpdir/sr-markers"; mkdir -p "$srm_home/gplug/skills/graphify" "$srm_home/.codex/skills/graphify" "$srm_home/.agents/skills/graphify"
+printf '0.0.1' > "$srm_home/gplug/skills/graphify/.graphify_version"
 printf '0.0.1' > "$srm_home/.codex/skills/graphify/.graphify_version"
 printf 'stale codex skill body' > "$srm_home/.codex/skills/graphify/SKILL.md"
 printf '0.0.2' > "$srm_home/.agents/skills/graphify/.graphify_version"
 printf 'stale agents skill body' > "$srm_home/.agents/skills/graphify/SKILL.md"
 # .hermes is deliberately never created at all -- the absent-platform case.
-out=$(HOME="$srm_home" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srm_home" GRAPHIFY_PLUGIN_DIR="$srm_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-markers-list" UV_LOG="$tmpdir/sr-markers-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR CODEXHOME HERMESHOME; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "other-platforms: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "other-platforms: refresh performed" grep -qi 'skill refreshed' <<<"$out"
-assert "other-platforms: claude marker advanced" test "$(cat "$srm_home/.claude/skills/graphify/.graphify_version")" = "$pinned_ver"
+assert "other-platforms: claude marker advanced" test "$(cat "$srm_home/gplug/skills/graphify/.graphify_version")" = "$pinned_ver"
 assert "(a) present codex marker advanced" test "$(cat "$srm_home/.codex/skills/graphify/.graphify_version")" = "$pinned_ver"
 assert "(a) present codex SKILL.md refreshed" cmp -s "$srm_home/.codex/skills/graphify/SKILL.md" "$expected_codex_skill"
 assert "(a) present codex references refreshed" cmp -s "$srm_home/.codex/skills/graphify/references/quickstart.md" "$expected_codex_refs"
@@ -624,9 +662,9 @@ echo "[test-graphify-bin] _graphify_skill_refresh: (c) codex CURRENT marker with
 # already matches the installed version must NOT short-circuit the refresh
 # when the content it claims to describe is gone -- same rule, now proven for
 # a widened platform too.
-src2_home="$tmpdir/sr-platform-repair"; mkdir -p "$src2_home/.claude/skills/graphify" "$src2_home/.codex/skills/graphify"
+src2_home="$tmpdir/sr-platform-repair"; mkdir -p "$src2_home/gplug/skills/graphify" "$src2_home/.codex/skills/graphify"
 printf '%s' "$pinned_ver" > "$src2_home/.codex/skills/graphify/.graphify_version"
-out=$(HOME="$src2_home" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$src2_home" GRAPHIFY_PLUGIN_DIR="$src2_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-platform-repair-list" UV_LOG="$tmpdir/sr-platform-repair-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR CODEXHOME HERMESHOME; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "(c) platform repair: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -635,10 +673,10 @@ assert "(c) platform repair: codex references repaired" cmp -s "$src2_home/.code
 assert "(c) platform repair: codex marker advanced" test "$(cat "$src2_home/.codex/skills/graphify/.graphify_version")" = "$pinned_ver"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: CODEXHOME / HERMESHOME overrides are honoured, not just the default ~/.codex ~/.hermes"
-srov_home="$tmpdir/sr-override-home"; mkdir -p "$srov_home/.claude/skills/graphify"
+srov_home="$tmpdir/sr-override-home"; mkdir -p "$srov_home/gplug/skills/graphify"
 srov_codex="$tmpdir/sr-override-codex"; mkdir -p "$srov_codex/skills/graphify"
 printf '0.0.1' > "$srov_codex/skills/graphify/.graphify_version"
-out=$(HOME="$srov_home" CODEXHOME="$srov_codex" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srov_home" GRAPHIFY_PLUGIN_DIR="$srov_home/gplug" CODEXHOME="$srov_codex" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-override-list" UV_LOG="$tmpdir/sr-override-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR HERMESHOME; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "CODEXHOME override: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -651,7 +689,7 @@ assert "CODEXHOME override: the default ~/.codex was NOT created" test ! -d "$sr
 # same override plumbing for the OTHER platform.
 srov_hermes="$tmpdir/sr-override-hermes"; mkdir -p "$srov_hermes/skills/graphify"
 printf '0.0.1' > "$srov_hermes/skills/graphify/.graphify_version"
-out=$(HOME="$srov_home" HERMESHOME="$srov_hermes" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srov_home" GRAPHIFY_PLUGIN_DIR="$srov_home/gplug" HERMESHOME="$srov_hermes" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srr_tools" UV_LIST_FILE="$tmpdir/sr-override-hermes-list" UV_LOG="$tmpdir/sr-override-hermes-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR CODEXHOME; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "HERMESHOME override: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -664,17 +702,17 @@ assert "HERMESHOME override: the ROUTED hermes references were refreshed" cmp -s
 assert "HERMESHOME override: the default ~/.hermes was NOT created" test ! -d "$srov_home/.hermes"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: no uv venv python -> silent no-op (foreign installs untouched)"
-srn_home="$tmpdir/sr-noviv"; mkdir -p "$srn_home/.claude/skills/graphify"
-printf '0.0.1' > "$srn_home/.claude/skills/graphify/.graphify_version"
+srn_home="$tmpdir/sr-noviv"; mkdir -p "$srn_home/gplug/skills/graphify"
+printf '0.0.1' > "$srn_home/gplug/skills/graphify/.graphify_version"
 srn_tools="$tmpdir/sr-noviv-tools"; mkdir -p "$srn_tools"
-out=$(HOME="$srn_home" PATH="$stub_dir/bin:$base_path" \
+out=$(HOME="$srn_home" GRAPHIFY_PLUGIN_DIR="$srn_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srn_tools" UV_LIST_FILE="$tmpdir/sr-noviv-list" UV_LOG="$tmpdir/sr-noviv-uvlog" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
 assert "no-venv: rc 0" grep -q '^RC=0$' <<<"$out"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "no-venv: silent no-op" bash -c '! grep -qiE "skill refreshed|WARNING" <<<"$1"' _ "$out"
-assert "no-venv: marker unchanged" test "$(cat "$srn_home/.claude/skills/graphify/.graphify_version")" = "0.0.1"
+assert "no-venv: marker unchanged" test "$(cat "$srn_home/gplug/skills/graphify/.graphify_version")" = "0.0.1"
 
 echo "[test-graphify-bin] graphify_update: FRESH install also refreshes the skill (HIMMEL-1750)"
 # graphify absent -> update delegates to graphify_install (uv stub drops a
@@ -688,7 +726,7 @@ make_fake_graphify_venv "$gfr_tools" "$pinned_ver" > /dev/null
 gfr_list="$tmpdir/gfr-list"; : > "$gfr_list"
 gfr_bin="$tmpdir/gfr-bin"; mkdir -p "$gfr_bin"
 gfr_log="$tmpdir/gfr-uvlog"; : > "$gfr_log"
-out=$(HOME="$gfr_home" PATH="$gfr_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gfr_tools" UV_LIST_FILE="$gfr_list" \
+out=$(HOME="$gfr_home" GRAPHIFY_PLUGIN_DIR="$gfr_home/gplug" PATH="$gfr_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gfr_tools" UV_LIST_FILE="$gfr_list" \
       UV_BIN_DIR="$gfr_bin" UV_LOG="$gfr_log" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update fresh: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -712,7 +750,7 @@ gud_log="$tmpdir/gup-diff-log"; : > "$gud_log"
 # graphify-mcp servers (every Claude Code session spawns one) and the new
 # pre-flight guard correctly skips the reinstall, so the assertion below goes
 # red on a busy workstation and green on CI. Observed exactly that.
-out=$(HOME="$gud_home" PATH="$gud_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gud_tools" UV_LIST_FILE="$gud_list" \
+out=$(HOME="$gud_home" GRAPHIFY_PLUGIN_DIR="$gud_home/gplug" PATH="$gud_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gud_tools" UV_LIST_FILE="$gud_list" \
       UV_BIN_DIR="$gud_bin" UV_LOG="$gud_log" GRAPHIFY_MCP_HOLDERS=0 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update diff-ver: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -726,7 +764,7 @@ kex_home="$tmpdir/kimi-extras-only"; mkdir -p "$kex_home"
 kex_tools="$tmpdir/kimi-extras-only-tools"; mkdir -p "$kex_tools/graphifyy"
 printf 'requirements = [{ name = "graphifyy", extras = ["kimi"] }]\n' > "$kex_tools/graphifyy/uv-receipt.toml"
 kex_log="$tmpdir/kimi-extras-only-uvlog"; : > "$kex_log"
-out=$(HOME="$kex_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$kex_tools" UV_LOG="$kex_log" \
+out=$(HOME="$kex_home" GRAPHIFY_PLUGIN_DIR="$kex_home/gplug" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$kex_tools" UV_LOG="$kex_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; printf "EXTRAS=[%s]\n" "$(_graphify_installed_extras)"' 2>&1)
 assert "recorded [kimi]-only extras read back as no extras" grep -q '^EXTRAS=\[\]$' <<<"$out"
 
@@ -735,7 +773,7 @@ kmix_home="$tmpdir/kimi-extras-mixed"; mkdir -p "$kmix_home"
 kmix_tools="$tmpdir/kimi-extras-mixed-tools"; mkdir -p "$kmix_tools/graphifyy"
 printf 'requirements = [{ name = "graphifyy", extras = ["kimi", "pdf"] }]\n' > "$kmix_tools/graphifyy/uv-receipt.toml"
 kmix_log="$tmpdir/kimi-extras-mixed-uvlog"; : > "$kmix_log"
-out=$(HOME="$kmix_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$kmix_tools" UV_LOG="$kmix_log" \
+out=$(HOME="$kmix_home" GRAPHIFY_PLUGIN_DIR="$kmix_home/gplug" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$kmix_tools" UV_LOG="$kmix_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; printf "EXTRAS=[%s]\n" "$(_graphify_installed_extras)"' 2>&1)
 assert "recorded [kimi,pdf] extras keep pdf, drop kimi" grep -q '^EXTRAS=\[\[pdf\]\]$' <<<"$out"
 
@@ -744,7 +782,7 @@ knone_home="$tmpdir/kimi-extras-none"; mkdir -p "$knone_home"
 knone_tools="$tmpdir/kimi-extras-none-tools"; mkdir -p "$knone_tools/graphifyy"
 printf 'requirements = [{ name = "graphifyy", extras = ["all"] }]\n' > "$knone_tools/graphifyy/uv-receipt.toml"
 knone_log="$tmpdir/kimi-extras-none-uvlog"; : > "$knone_log"
-out=$(HOME="$knone_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$knone_tools" UV_LOG="$knone_log" \
+out=$(HOME="$knone_home" GRAPHIFY_PLUGIN_DIR="$knone_home/gplug" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$knone_tools" UV_LOG="$knone_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; printf "EXTRAS=[%s]\n" "$(_graphify_installed_extras)"' 2>&1)
 assert "non-kimi recorded extras pass through unchanged" grep -q '^EXTRAS=\[\[all\]\]$' <<<"$out"
 
@@ -759,7 +797,7 @@ gh_list="$tmpdir/gup-held-list"; printf 'graphifyy v0.0.1\n' > "$gh_list"   # be
 gh_bin="$tmpdir/gup-held-bin"; mkdir -p "$gh_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$gh_bin/graphify"; chmod +x "$gh_bin/graphify"
 gh_log="$tmpdir/gup-held-log"; : > "$gh_log"
-out=$(HOME="$gh_home" PATH="$gh_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gh_tools" UV_LIST_FILE="$gh_list" \
+out=$(HOME="$gh_home" GRAPHIFY_PLUGIN_DIR="$gh_home/gplug" PATH="$gh_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gh_tools" UV_LIST_FILE="$gh_list" \
       UV_BIN_DIR="$gh_bin" UV_LOG="$gh_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=3 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 # rc 0: a deliberate, healthy skip — nothing failed and nothing is broken.
@@ -796,7 +834,7 @@ ghp_list="$tmpdir/gup-held-platforms-list"; printf 'graphifyy v0.0.1\n' > "$ghp_
 ghp_bin="$tmpdir/gup-held-platforms-bin"; mkdir -p "$ghp_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$ghp_bin/graphify"; chmod +x "$ghp_bin/graphify"
 ghp_log="$tmpdir/gup-held-platforms-log"; : > "$ghp_log"
-out=$(HOME="$ghp_home" PATH="$ghp_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$ghp_tools" UV_LIST_FILE="$ghp_list" \
+out=$(HOME="$ghp_home" GRAPHIFY_PLUGIN_DIR="$ghp_home/gplug" PATH="$ghp_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$ghp_tools" UV_LIST_FILE="$ghp_list" \
       UV_BIN_DIR="$ghp_bin" UV_LOG="$ghp_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=1 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "held platforms: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -821,25 +859,25 @@ psc_list="$tmpdir/gup-skiptrack-list"; printf 'graphifyy v0.0.1\n' > "$psc_list"
 psc_bin="$tmpdir/gup-skiptrack-bin"; mkdir -p "$psc_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$psc_bin/graphify"; chmod +x "$psc_bin/graphify"
 psc_log="$tmpdir/gup-skiptrack-log"; : > "$psc_log"
-psc_marker="$psc_home/.claude/skills/graphify/.graphify_pin_skip_count"
+psc_marker="$psc_home/gplug/skills/graphify/.graphify_pin_skip_count"
 
 # First SKIP: skill copied, counter created at 1.
 # unset CLAUDE_CONFIG_DIR (codex-1 CR finding): _graphify_skill_refresh and
 # the skip-marker helper both prioritize it over HOME, so an operator
 # environment that exports it (a routed profile, per the tests above) would
 # otherwise make this sandboxed test read/write REAL machine state.
-out=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \
+out=$(HOME="$psc_home" GRAPHIFY_PLUGIN_DIR="$psc_home/gplug" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \
       UV_BIN_DIR="$psc_bin" UV_LOG="$psc_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=2 \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "skip-track 1st: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "skip-track 1st: skill WAS refreshed despite the package skip" \
-  grep -q "FAKE .* SKILL BODY v$pinned_ver" "$psc_home/.claude/skills/graphify/SKILL.md"
+  grep -q "FAKE .* SKILL BODY v$pinned_ver" "$psc_home/gplug/skills/graphify/SKILL.md"
 assert "skip-track 1st: escalated as a STANDING OPERATOR ACTION" grep -q 'STANDING OPERATOR ACTION' <<<"$out"
 assert "skip-track 1st: counter reads 1 consecutive" grep -q 'SKIPPED 1 consecutive' <<<"$out"
 assert "skip-track 1st: counter file persisted at 1" test "$(cat "$psc_marker" 2>/dev/null)" = "1"
 
 # Second SKIP (same HOME): counter advances to 2, still visible without logs.
-out2=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \
+out2=$(HOME="$psc_home" GRAPHIFY_PLUGIN_DIR="$psc_home/gplug" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \
       UV_BIN_DIR="$psc_bin" UV_LOG="$psc_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=2 \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "skip-track 2nd: rc 0" grep -q '^RC=0$' <<<"$out2"
@@ -848,24 +886,24 @@ assert "skip-track 2nd: counter file persisted at 2" test "$(cat "$psc_marker" 2
 
 assert "skip-track 2nd: action names the exact clearing command" grep -q 'bash scripts/himmel-update.sh --graphify-only' <<<"$out2"
 assert "skip-track 2nd: action names installed vs pinned version" grep -q "installed v0.0.1, pinned v$pinned_ver" <<<"$out2"
-sum=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_LIST_FILE="$psc_list" UV_LOG="$psc_log" \
+sum=$(HOME="$psc_home" GRAPHIFY_PLUGIN_DIR="$psc_home/gplug" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_LIST_FILE="$psc_list" UV_LOG="$psc_log" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_pin_skip_summary' 2>&1)
 assert "skip-summary: reports the 2 consecutive skips + versions" grep -q "2 consecutive skip.*installed v0.0.1.*pinned v$pinned_ver" <<<"$sum"
 
 # A non-skip outcome (already at pin) resets the counter.
 psc_list_at_pin="$tmpdir/gup-skiptrack-list-atpin"; printf 'graphifyy v%s\n' "$pinned_ver" > "$psc_list_at_pin"
-out3=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list_at_pin" \
+out3=$(HOME="$psc_home" GRAPHIFY_PLUGIN_DIR="$psc_home/gplug" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list_at_pin" \
       UV_BIN_DIR="$psc_bin" UV_LOG="$psc_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=2 \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "skip-track reset: rc 0" grep -q '^RC=0$' <<<"$out3"
 assert "skip-track reset: counter file removed once the pin is no longer being skipped" \
   test ! -e "$psc_marker"
-sum=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" \
+sum=$(HOME="$psc_home" GRAPHIFY_PLUGIN_DIR="$psc_home/gplug" PATH="$psc_bin:$stub_dir/bin:$base_path" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_pin_skip_summary' 2>&1)
 assert "skip-summary after reset: empty" test -z "$sum"
 
 # The next SKIP after a reset starts back at 1, not 3.
-out4=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \
+out4=$(HOME="$psc_home" GRAPHIFY_PLUGIN_DIR="$psc_home/gplug" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$psc_tools" UV_LIST_FILE="$psc_list" \
       UV_BIN_DIR="$psc_bin" UV_LOG="$psc_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=2 \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "skip-track after reset: counter restarts at 1" grep -q 'SKIPPED 1 consecutive' <<<"$out4"
@@ -1154,7 +1192,7 @@ chmod +x "$gb_bin/graphify"
 # above and make the binary look healthy — testing the opposite of the point.
 # Keep it off PATH so `command -v graphify` keeps resolving the flipping stub.
 gb_uvbin="$tmpdir/gup-broken-uvbin"; mkdir -p "$gb_uvbin"
-out=$(HOME="$gb_home" PATH="$gb_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gb_tools" UV_LIST_FILE="$gb_list" \
+out=$(HOME="$gb_home" GRAPHIFY_PLUGIN_DIR="$gb_home/gplug" PATH="$gb_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gb_tools" UV_LIST_FILE="$gb_list" \
       UV_BIN_DIR="$gb_uvbin" UV_LOG="$gb_log" GRAPHIFY_MCP_HOLDERS=0 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "broken-after-install: rc 1 (presence is not proof it runs)" grep -q '^RC=1$' <<<"$out"
@@ -1193,7 +1231,7 @@ gs_bin="$tmpdir/gup-survive-bin"; mkdir -p "$gs_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$gs_bin/graphify"; chmod +x "$gs_bin/graphify"
 gs_log="$tmpdir/gup-survive-log"; : > "$gs_log"
 gs_uvbin="$tmpdir/gup-survive-uvbin"; mkdir -p "$gs_uvbin"
-out=$(HOME="$gs_home" PATH="$gs_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gs_tools" UV_LIST_FILE="$gs_list" \
+out=$(HOME="$gs_home" GRAPHIFY_PLUGIN_DIR="$gs_home/gplug" PATH="$gs_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gs_tools" UV_LIST_FILE="$gs_list" \
       UV_BIN_DIR="$gs_uvbin" UV_LOG="$gs_log" GRAPHIFY_MCP_HOLDERS=0 STUB_UV_FORCE_RC=1 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "install-failed-binary-survives: rc 1 (the pin did not advance)" grep -q '^RC=1$' <<<"$out"
@@ -1218,7 +1256,7 @@ gp_list="$tmpdir/gup-probe-list"; printf 'graphifyy v0.0.1\n' > "$gp_list"
 gp_bin="$tmpdir/gup-probe-bin"; mkdir -p "$gp_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$gp_bin/graphify"; chmod +x "$gp_bin/graphify"
 gp_log="$tmpdir/gup-probe-log"; : > "$gp_log"
-out=$(HOME="$gp_home" PATH="$gp_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gp_tools" UV_LIST_FILE="$gp_list" \
+out=$(HOME="$gp_home" GRAPHIFY_PLUGIN_DIR="$gp_home/gplug" PATH="$gp_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gp_tools" UV_LIST_FILE="$gp_list" \
       UV_BIN_DIR="$gp_bin" UV_LOG="$gp_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=unavailable \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 # rc 0 for the same reason as the holders>0 skip: a deliberate, healthy decline
@@ -1256,7 +1294,7 @@ gpp_list="$tmpdir/gup-probe-platforms-list"; printf 'graphifyy v0.0.1\n' > "$gpp
 gpp_bin="$tmpdir/gup-probe-platforms-bin"; mkdir -p "$gpp_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$gpp_bin/graphify"; chmod +x "$gpp_bin/graphify"
 gpp_log="$tmpdir/gup-probe-platforms-log"; : > "$gpp_log"
-out=$(HOME="$gpp_home" PATH="$gpp_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gpp_tools" UV_LIST_FILE="$gpp_list" \
+out=$(HOME="$gpp_home" GRAPHIFY_PLUGIN_DIR="$gpp_home/gplug" PATH="$gpp_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gpp_tools" UV_LIST_FILE="$gpp_list" \
       UV_BIN_DIR="$gpp_bin" UV_LOG="$gpp_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=unavailable \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "unprobeable platforms: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -1275,7 +1313,7 @@ gpo_list="$tmpdir/gup-probe-ok-list"; printf 'graphifyy v0.0.1\n' > "$gpo_list"
 gpo_bin="$tmpdir/gup-probe-ok-bin"; mkdir -p "$gpo_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$gpo_bin/graphify"; chmod +x "$gpo_bin/graphify"
 gpo_log="$tmpdir/gup-probe-ok-log"; : > "$gpo_log"
-out=$(HOME="$gpo_home" PATH="$gpo_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gpo_tools" UV_LIST_FILE="$gpo_list" \
+out=$(HOME="$gpo_home" GRAPHIFY_PLUGIN_DIR="$gpo_home/gplug" PATH="$gpo_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gpo_tools" UV_LIST_FILE="$gpo_list" \
       UV_BIN_DIR="$gpo_bin" UV_LOG="$gpo_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=unavailable GRAPHIFY_UNPROBED_OK=1 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "unprobeable+override: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -1295,7 +1333,7 @@ gpv_list="$tmpdir/gup-probe-veto-list"; printf 'graphifyy v0.0.1\n' > "$gpv_list
 gpv_bin="$tmpdir/gup-probe-veto-bin"; mkdir -p "$gpv_bin"
 printf '#!/usr/bin/env bash\necho x\n' > "$gpv_bin/graphify"; chmod +x "$gpv_bin/graphify"
 gpv_log="$tmpdir/gup-probe-veto-log"; : > "$gpv_log"
-out=$(HOME="$gpv_home" PATH="$gpv_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gpv_tools" UV_LIST_FILE="$gpv_list" \
+out=$(HOME="$gpv_home" GRAPHIFY_PLUGIN_DIR="$gpv_home/gplug" PATH="$gpv_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gpv_tools" UV_LIST_FILE="$gpv_list" \
       UV_BIN_DIR="$gpv_bin" UV_LOG="$gpv_log" GRAPHIFY_PLATFORM_OVERRIDE=MINGW64_NT-10.0 GRAPHIFY_MCP_HOLDERS=2 GRAPHIFY_UNPROBED_OK=1 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "holders+override: still reports the holder SKIP" grep -q 'SKIP: 2 graphify-mcp process' <<<"$out"
@@ -1333,7 +1371,7 @@ lf_setup() {
 lf_run() {
   # shellcheck disable=SC2016
   env -u CLAUDE_CONFIG_DIR -u CODEXHOME -u HERMESHOME \
-    HOME="$lf_home" PATH="${lf_extra_path:+$lf_extra_path:}$lf_bin:$stub_dir/bin:$base_path" \
+    HOME="$lf_home" GRAPHIFY_PLUGIN_DIR="$lf_home/gplug" PATH="${lf_extra_path:+$lf_extra_path:}$lf_bin:$stub_dir/bin:$base_path" \
     UV_TOOL_DIR="$lf_tools" UV_LIST_FILE="$lf_list" UV_BIN_DIR="$lf_bin" UV_LOG="$lf_log" \
     TMPDIR="$lf_tmp" "$@" \
     bash -c '. "$1/graphify-bin.sh"; graphify_update; echo "RC=$?"' _ "$SCRIPT_DIR" 2>&1
@@ -1498,8 +1536,8 @@ if [ "$lf_posix" -eq 1 ]; then
   assert "noauto: EVERY graphify invocation saw GRAPHIFY_NO_AUTO_REFRESH=1" \
     bash -c '! grep -qv "NO_AUTO_REFRESH=1$" "$1"' _ "$gel"
   assert "noauto: skill marker advanced to the pin" \
-    test "$(cat "$lf_home/.claude/skills/graphify/.graphify_version" 2>/dev/null)" = "$pinned_ver"
-  assert "noauto: skill body is the new package's" grep -q "STUB SKILL BODY v$pinned_ver" "$lf_home/.claude/skills/graphify/SKILL.md"
+    test "$(cat "$lf_home/gplug/skills/graphify/.graphify_version" 2>/dev/null)" = "$pinned_ver"
+  assert "noauto: skill body is the new package's" grep -q "STUB SKILL BODY v$pinned_ver" "$lf_home/gplug/skills/graphify/SKILL.md"
   assert "noauto: the staging scratch dir is cleaned up" lf_tmp_empty
 
   echo "[test-graphify-bin] graphify_update (POSIX): the STAGE fails -> live install untouched"
@@ -1580,7 +1618,7 @@ echo x
 EOF
 chmod +x "$gua_bin/graphify"
 gua_log="$tmpdir/gup-ahead-log"; : > "$gua_log"
-out=$(HOME="$gua_home" PATH="$gua_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gua_tools" UV_LIST_FILE="$gua_list" \
+out=$(HOME="$gua_home" GRAPHIFY_PLUGIN_DIR="$gua_home/gplug" PATH="$gua_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gua_tools" UV_LIST_FILE="$gua_list" \
       UV_BIN_DIR="$gua_bin" UV_LOG="$gua_log" \
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update ahead-of-pin: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -1613,7 +1651,7 @@ echo x
 EOF
 chmod +x "$guu_bin/graphify"
 guu_log="$tmpdir/gup-unparse-log"; : > "$guu_log"
-out=$(HOME="$guu_home" PATH="$guu_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$guu_tools" UV_LIST_FILE="$guu_list" \
+out=$(HOME="$guu_home" GRAPHIFY_PLUGIN_DIR="$guu_home/gplug" PATH="$guu_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$guu_tools" UV_LIST_FILE="$guu_list" \
       UV_BIN_DIR="$guu_bin" UV_LOG="$guu_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update unparseable-ver: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -1627,7 +1665,7 @@ gun_tools="$tmpdir/gup-none-tools"; mkdir -p "$gun_tools"
 gun_list="$tmpdir/gup-none-list"; : > "$gun_list"
 gun_bin="$tmpdir/gup-none-bin"; mkdir -p "$gun_bin"
 gun_log="$tmpdir/gup-none-log"; : > "$gun_log"
-out=$(HOME="$gun_home" PATH="$gun_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gun_tools" UV_LIST_FILE="$gun_list" \
+out=$(HOME="$gun_home" GRAPHIFY_PLUGIN_DIR="$gun_home/gplug" PATH="$gun_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gun_tools" UV_LIST_FILE="$gun_list" \
       UV_BIN_DIR="$gun_bin" UV_LOG="$gun_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update missing: exactly one install call (fresh at pin)" test "$(grep -c 'UV tool install' "$gun_log")" -eq 1
@@ -1642,7 +1680,7 @@ EOF
 chmod +x "$guf_bin/graphify"
 guf_list="$tmpdir/gup-foreign-list"; : > "$guf_list"   # empty: NO uv graphifyy package
 guf_log="$tmpdir/gup-foreign-log"; : > "$guf_log"
-out=$(HOME="$guf_home" PATH="$guf_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$tmpdir/gup-foreign-tools" UV_LIST_FILE="$guf_list" \
+out=$(HOME="$guf_home" GRAPHIFY_PLUGIN_DIR="$guf_home/gplug" PATH="$guf_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$tmpdir/gup-foreign-tools" UV_LIST_FILE="$guf_list" \
       UV_BIN_DIR="$tmpdir/gup-foreign-bin2" UV_LOG="$guf_log" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update foreign non-uv: rc 0" grep -q '^RC=0$' <<<"$out"
@@ -1670,17 +1708,17 @@ probe_home="$tmpdir/probe-home"; mkdir -p "$probe_home"
 printf '#!%s/py-ok python\n' "$probe_dir" > "$probe_dir/graphify-mcp"
 chmod +x "$probe_dir/graphify-mcp"
 rc=0
-HOME="$probe_home" PATH="$probe_dir:$utils_bin:$base_path" \
+HOME="$probe_home" GRAPHIFY_PLUGIN_DIR="$probe_home/gplug" PATH="$probe_dir:$utils_bin:$base_path" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_mcp_import_ok' || rc=$?
 assert "probe rc 0 when the shebang python imports mcp" test "$rc" -eq 0
 printf '#!%s/py-fail python\n' "$probe_dir" > "$probe_dir/graphify-mcp"
 rc=0
-HOME="$probe_home" PATH="$probe_dir:$utils_bin:$base_path" \
+HOME="$probe_home" GRAPHIFY_PLUGIN_DIR="$probe_home/gplug" PATH="$probe_dir:$utils_bin:$base_path" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_mcp_import_ok' || rc=$?
 assert "probe rc 1 when the shebang python cannot import mcp" test "$rc" -eq 1
 rm -f "$probe_dir/graphify-mcp"
 rc=0
-HOME="$probe_home" PATH="$probe_dir:$utils_bin:$base_path" \
+HOME="$probe_home" GRAPHIFY_PLUGIN_DIR="$probe_home/gplug" PATH="$probe_dir:$utils_bin:$base_path" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_mcp_import_ok' || rc=$?
 assert "probe rc 2 (unvalidated) when no interpreter is resolvable" test "$rc" -eq 2
 
@@ -2054,7 +2092,7 @@ assert "graphify-bin.sh: no ' -- then ' copy-paste trap in any hint" \
 # "--platform claude" literal.
 # shellcheck disable=SC2016
 assert "graphify-bin.sh: still has 4 'Run by hand'/'run by hand' install hints" \
-  test "$(grep -ic 'run by hand: graphify install --platform \$label' "$SCRIPT_DIR/graphify-bin.sh")" = "4"
+  test "$(grep -ic 'run by hand: \$recipe' "$SCRIPT_DIR/graphify-bin.sh")" = "4"
 assert "graphify-bin.sh: each install hint is followed by its own re-price echo" \
   test "$(grep -c 'Then re-price the hooks: bash scripts/lib/graphify-bin.sh price-hooks' "$SCRIPT_DIR/graphify-bin.sh")" = "4"
 # shellcheck disable=SC2016

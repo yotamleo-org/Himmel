@@ -872,7 +872,44 @@ _graphify_stage_install() {
 # loudly on every skip. This does not touch the `uv tool install --force`
 # path at all -- the fail-closed refusal is untouched.
 _graphify_pin_skip_marker() {
-  printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/graphify/.graphify_pin_skip_count"
+  printf '%s\n' "$(_graphify_claude_skill_dir)/.graphify_pin_skip_count"
+}
+
+# _graphify_plugin_dir -- the graphify plugin the himmel marketplace serves
+# (marketplace/plugins/graphify). Its plugin.json is tracked; the skills/ tree is
+# generated here from the pinned package (version-coupled, so it cannot be vendored)
+# and gitignored. GRAPHIFY_PLUGIN_DIR overrides it (test seam).
+_graphify_plugin_dir() {
+  if [ -n "${GRAPHIFY_PLUGIN_DIR:-}" ]; then
+    printf '%s\n' "$GRAPHIFY_PLUGIN_DIR"
+    return 0
+  fi
+  printf '%s/marketplace/plugins/graphify\n' "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+}
+
+# _graphify_claude_skill_dir -- where the Claude skill lives: inside the plugin,
+# so enabledPlugins (the profile) decides whether a session loads it. The old
+# user-scope ~/.claude/skills/graphify ignored enabledPlugins.
+_graphify_claude_skill_dir() {
+  printf '%s/skills/graphify\n' "$(_graphify_plugin_dir)"
+}
+
+# _graphify_retire_user_scope_skill -- remove the user-scope copy an older
+# himmel wrote. Only a dir carrying graphify's own .graphify_version marker is
+# removed; anything else under that path is not ours and is left alone.
+_graphify_retire_user_scope_skill() {
+  local legacy="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/graphify"
+  [ -d "$legacy" ] || return 0
+  if [ ! -f "$legacy/.graphify_version" ]; then
+    echo "  note: $legacy has no .graphify_version marker, so it is not himmel's copy; leaving it (it loads in every session -- remove it by hand if unwanted)." >&2
+    return 0
+  fi
+  if rm -rf "$legacy" 2>/dev/null && [ ! -e "$legacy" ]; then
+    echo "  graphify user-scope skill retired ($legacy); the skill now ships as the graphify@himmel plugin."
+  else
+    echo "  WARNING: could not remove the user-scope graphify skill $legacy; it still loads in every session. Remove it by hand." >&2
+  fi
+  return 0
 }
 
 # graphify_pin_skip_summary -- one line for the himmel-update status row: the
@@ -968,13 +1005,13 @@ _graphify_platform_skill_bundle() {
 }
 
 # _graphify_present_platforms -- one platform name per line, for every
-# platform whose skill dir ALREADY exists. Used both to decide which
-# non-Claude platforms _graphify_skill_refresh widens to and to
-# name which `graphify install --platform <p>` lines the manual repair recipe
-# should print.
+# non-Claude platform whose skill dir ALREADY exists, naming which
+# `graphify install --platform <p>` lines the manual repair recipe should print.
+# Claude is excluded: its skill is the plugin, and `graphify install` would
+# re-create the user-scope copy.
 _graphify_present_platforms() {
   local plat root
-  for plat in claude codex hermes; do
+  for plat in codex hermes; do
     root="$(_graphify_platform_root "$plat")"
     [ -d "$root/skills/graphify" ] && printf '%s\n' "$plat"
   done
@@ -988,7 +1025,9 @@ _graphify_present_platforms() {
 # platform invariant, now scoped per platform instead of "just Claude").
 _graphify_skill_refresh_one() {
   local dst="$1" label="$2" inst="$3" skill_src="$4" refs_src="$5" require_existing="$6"
-  local marker skill_ver stage backup had_skill=0 had_refs=0
+  local marker skill_ver stage backup had_skill=0 had_refs=0 recipe
+  recipe="graphify install --platform $label"
+  [ "$label" = "claude" ] && recipe="bash scripts/himmel-update.sh --graphify-only"
 
   if [ "$require_existing" = "1" ] && [ ! -d "$dst" ]; then
     return 0
@@ -998,7 +1037,7 @@ _graphify_skill_refresh_one() {
   skill_ver="$(cat "$marker" 2>/dev/null || true)"
   [ "$skill_ver" = "$inst" ] && [ -f "$dst/SKILL.md" ] && [ -d "$dst/references" ] && return 0
   if [ ! -f "$skill_src" ] || [ ! -d "$refs_src" ]; then
-    echo "  WARNING: graphify skill refresh ($label) SKIPPED -- packaged skill layout not found under the installed package (upstream layout change?); skill stays at ${skill_ver:-absent} (package $inst). Run by hand: graphify install --platform $label" >&2
+    echo "  WARNING: graphify skill refresh ($label) SKIPPED -- packaged skill layout not found under the installed package (upstream layout change?); skill stays at ${skill_ver:-absent} (package $inst). Run by hand: $recipe" >&2
     echo "  Then re-price the hooks: bash scripts/lib/graphify-bin.sh price-hooks" >&2
     return 0
   fi
@@ -1029,7 +1068,7 @@ _graphify_skill_refresh_one() {
   if ! cp "$skill_src" "$stage/SKILL.md" 2>/dev/null \
      || ! cp -R "$refs_src" "$stage/references" 2>/dev/null; then
     rm -rf "$stage" "$backup" 2>/dev/null
-    echo "  WARNING: graphify skill refresh ($label) failed (copy from the installed package); skill stays at ${skill_ver:-absent} (package $inst). Run by hand: graphify install --platform $label" >&2
+    echo "  WARNING: graphify skill refresh ($label) failed (copy from the installed package); skill stays at ${skill_ver:-absent} (package $inst). Run by hand: $recipe" >&2
     echo "  Then re-price the hooks: bash scripts/lib/graphify-bin.sh price-hooks" >&2
     return 0
   fi
@@ -1039,7 +1078,7 @@ _graphify_skill_refresh_one() {
   if [ -e "$dst/SKILL.md" ] || [ -L "$dst/SKILL.md" ]; then
     if ! mv "$dst/SKILL.md" "$backup/SKILL.md"; then
       rm -rf "$stage" "$backup" 2>/dev/null
-      echo "  WARNING: graphify skill refresh ($label) partially failed during the swap; marker NOT advanced; run by hand: graphify install --platform $label" >&2
+      echo "  WARNING: graphify skill refresh ($label) partially failed during the swap; marker NOT advanced; run by hand: $recipe" >&2
       echo "  Then re-price the hooks: bash scripts/lib/graphify-bin.sh price-hooks" >&2
       return 0
     fi
@@ -1064,7 +1103,7 @@ _graphify_skill_refresh_one() {
     [ "$had_refs" -eq 1 ] && mv "$backup/references" "$dst/references" 2>/dev/null
     [ "$had_skill" -eq 1 ] && mv "$backup/SKILL.md" "$dst/SKILL.md" 2>/dev/null
     rm -rf "$stage" "$backup" 2>/dev/null
-    echo "  WARNING: graphify skill refresh ($label) partially failed during the swap; marker NOT advanced; run by hand: graphify install --platform $label" >&2
+    echo "  WARNING: graphify skill refresh ($label) partially failed during the swap; marker NOT advanced; run by hand: $recipe" >&2
     echo "  Then re-price the hooks: bash scripts/lib/graphify-bin.sh price-hooks" >&2
   fi
   return 0
@@ -1076,10 +1115,9 @@ _graphify_skill_refresh_one() {
 # platform (codex, hermes) whose skill dir is ALREADY on disk
 # widens the refresh without ever inventing a platform that wasn't there.
 _graphify_skill_refresh() {
-  local root py pkg inst dst tool_dir skill_src refs_src _cand plat plat_root
+  local py pkg inst dst tool_dir skill_src refs_src _cand plat plat_root
   local bundle plat_skill_file plat_refs_bundle
-  root="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  dst="$root/skills/graphify"
+  dst="$(_graphify_claude_skill_dir)"
   tool_dir="$(_graphify_uv_tool_dir)"
   py=""
   for _cand in "$tool_dir/graphifyy/Scripts/python.exe" \
@@ -1113,6 +1151,10 @@ _graphify_skill_refresh() {
   esac
 
   _graphify_skill_refresh_one "$dst" "claude" "$inst" "$skill_src" "$refs_src" 0
+  # Retire the old user-scope copy only once the plugin copy is current.
+  if [ "$(cat "$dst/.graphify_version" 2>/dev/null)" = "$inst" ] && [ -f "$dst/SKILL.md" ]; then
+    _graphify_retire_user_scope_skill
+  fi
 
   for plat in codex hermes; do
     plat_root="$(_graphify_platform_root "$plat")"
