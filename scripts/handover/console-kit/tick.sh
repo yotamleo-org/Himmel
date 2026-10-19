@@ -1557,7 +1557,7 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
         stall_have=1
         if [ "$stall_ttl" -gt 0 ]; then
             # swallow-ok: a cache that cannot be written only costs the next tick a probe run
-            { mkdir -p "${stall_cache%/*}" && printf '%s' "$stall_val" > "$stall_cache"; } 2>/dev/null || true
+            { mkdir -p "${stall_cache%/*}" && printf '%s' "$stall_val" > "$stall_cache.$$" && mv "$stall_cache.$$" "$stall_cache"; } 2>/dev/null || true
         fi
     fi
     case "$stall_val" in ""|*[!0-9a-z:,-]*) ;; *) [ -z "$stall_have" ] || stall_tail=" stall=$stall_val" ;; esac

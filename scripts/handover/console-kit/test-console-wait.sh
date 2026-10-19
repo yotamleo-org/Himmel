@@ -1310,19 +1310,15 @@ stall_line 2887:conflict
 I="$(new_inbox st2)"
 start "$I" "$WORK/st2.out" --legs "N1.md"
 wait_hb "$I" || fail "(st2) no baseline heartbeat"
-tick_line "N1:FRESH" "ok"
 stall_line 2887:conflict
 wait_exit "$WPID"
 check "(st2) an unchanged stall does not wake" "running" "$rc"
-tick_line "N1:FRESH" "ok"
 stall_line 2887:conflict,2869:ci-slow,9004:idle
 wait_exit "$WPID"
 check "(st2) a new ci-slow/idle token alone does not wake" "running" "$rc"
-tick_line "N1:FRESH" "ok"
 stall_line 2869:ci-slow
 wait_exit "$WPID"
 check "(st2) a stall resolving does not wake" "running" "$rc"
-tick_line "N1:FRESH" "ok"
 stall_line 9003:no-ci,2869:ci-slow
 wait_exit "$WPID"
 check "(st2) a new no-ci token wakes" "0" "$rc"
