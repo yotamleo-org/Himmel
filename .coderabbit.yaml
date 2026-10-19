@@ -17,8 +17,7 @@
 #     agent discretion: scripts/hooks/trigger-cr-on-pr-create.sh (HIMMEL-1362)
 #     fires it automatically on every `gh pr create`, so the App is the
 #     PRIMARY CodeRabbit reviewer — one review per PR, at PR-ready time.
-#     Re-trigger after every push: a head move discards the in-flight review. There is no local CLI
-#     lane — HIMMEL-2704 retired it, so the App is the only reviewer.
+#     Re-trigger after every push: a head move discards the in-flight review.
 #     Consequence: CodeRabbit is no longer a merge gate — it was also dropped
 #     from the public repo's branch-protection required checks (it would
 #     otherwise be an unsatisfiable required context with auto-review off).
@@ -52,9 +51,8 @@ reviews:
     # auto-review on push/open; a reviewer posts `@coderabbitai review` (or
     # `@coderabbitai full review`) to run it on demand. Conserves the shared CR
     # rate limit; the App (triggered structurally on `gh pr create`) stays the
-    # only CodeRabbit reviewer (HIMMEL-2704). The base_branches setting below
-    # is inert while this is false (it only scopes which bases get
-    # AUTO-reviewed) — kept so re-enabling needs no re-derivation.
+    # only CodeRabbit reviewer. The base_branches setting below is inert while
+    # this is false (it only scopes which bases get AUTO-reviewed).
     enabled: false
     drafts: false
     # base_branches (HIMMEL-1102): defaults to [] = ONLY the repo default
