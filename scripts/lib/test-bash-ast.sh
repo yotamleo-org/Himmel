@@ -131,6 +131,9 @@ row "a shell reading stdin is opaque" \
 row "a glob arg keeps its live-glob flag and raw text" \
     'cat .en* ".en"*' \
     '(.[0].argv[1] | .v == ".en*" and .g and .raw == ".en*") and (.[0].argv[2] | .g and .raw == "\".en\"*")'
+row "pushd -n does not move the cwd; a dash target is unknown" \
+    'cd sub && pushd -n /e && cat x; pushd -n; cat y; cd -q; cat z' \
+    '(.[] | select(.prog == "cat" and .argv[1].v == "x") | .cwd) == [["sub"]] and (.[] | select(.prog == "cat" and .argv[1].v == "y") | .cwd) == [[], ["sub"]] and (.[] | select(.prog == "cat" and .argv[1].v == "z") | .cwd | index(null) != null)'
 row "a redirect on a subshell, brace or loop is a position in the outer cwd" \
     'cd sub && (cat) < a*; { cat; } < b*; while read -r l; do :; done < c*' \
     '[.[] | select(.prog == null) | {w: .redirs[0].w.v, cwd}] == [{w: "a*", cwd: [["sub"]]}, {w: "b*", cwd: [[], ["sub"]]}, {w: "c*", cwd: [[], ["sub"]]}]'

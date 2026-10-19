@@ -463,7 +463,7 @@ def _cdargs($p):
   (.[0] | _l1) as $o
   | if length == 0 then .
     elif $o == "--" then .[1:]
-    elif $o != null and (($p == "cd" and ($o | test("^-[LPe@]+$"))) or ($p != "cd" and $o == "-n")) then .[1:] | _cdargs($p)
+    elif $o != null and (($p == "cd" and ($o | test("^-[LPe@]+$"))) or ($p == "popd" and $o == "-n")) then .[1:] | _cdargs($p)
     else . end;
 
 def _nav($S; $env):
@@ -473,10 +473,11 @@ def _nav($S; $env):
     .prog as $p
     | (.a[1:] | _cdargs($p)) as $r
     | if $p == "popd" then {ok: [null], fail: $S}
+      elif $p == "pushd" and (.a[1] | _l1) == "-n" then {ok: $S, fail: $S}
       else
         (if ($r | length) == 0 then (if $p == "cd" and ($env.home_taint | not) then $env.home else null end)
          elif ($r | length) == 1 then ($r[0] | _l1)
-           | (if . == null or . == "-" or ($p == "pushd" and test("^[+-][0-9]+$")) then null else . end)
+           | (if . == null or startswith("-") or ($p == "pushd" and test("^[+-][0-9]+$")) then null else . end)
          else null end) as $t
         | {ok: _cdto($S; $t), fail: $S}
       end
