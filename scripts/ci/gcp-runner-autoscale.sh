@@ -5,7 +5,7 @@
 #   bash scripts/ci/gcp-runner-autoscale.sh
 #
 # While repo variable CI_GCP is 'on', counts the queued workflow_job entries labelled
-# gcp and runs `gcp-runners.sh up <depth>`, depth capped at 2 (the trial caps 8 vCPUs).
+# gcp and runs `gcp-runners.sh up <depth>`, depth capped at 1 (the trial caps 8 vCPUs, the proxy uses 1).
 # CI_GCP off or an empty queue does nothing; an unreadable CI_GCP or queue fails the tick
 # without creating a VM.
 #
@@ -18,7 +18,7 @@ REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
 GH="${GH:-gh}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNERS="${GCP_AUTOSCALE_RUNNERS:-$HERE/gcp-runners.sh}"
-MAX_N=2  # keep equal to gcp-runners.sh: two e2-standard-4 VMs fill the 8-vCPU CPUS pin
+MAX_N=1  # keep equal to gcp-runners.sh: the proxy's 1 vCPU leaves room for one e2-standard-4 under the 8-vCPU CPUS pin
 
 die() { echo "gcp-runner-autoscale: $1" >&2; exit "${2:-1}"; }
 
