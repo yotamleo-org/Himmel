@@ -781,7 +781,7 @@ verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$g
               // evidence and not an exhaustion-tracked lane.
               if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") nonClaudeResponders++;
               // Family = first token of the model slug (claude-floor is claude).
-              if (e.IMPL_FAMILY && model && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) otherFamilyResponders++;
+              if (e.IMPL_FAMILY && model && model !== "codex-adv" && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) otherFamilyResponders++;
               if (model === "claude") claudeOk = true;
               if (model === "claude-floor") floorOk = true;
           }

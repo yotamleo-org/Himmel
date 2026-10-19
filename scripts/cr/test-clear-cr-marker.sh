@@ -1294,6 +1294,15 @@ run_clear "$tmp" 14 "impl family codex + codex only → exit 14"
 if marker_exists "$tmp"; then pass; else fail "codex-on-codex: marker must REMAIN"; fi
 rm -rf "$tmp"
 
+# 4o2b. Implementer claude + claude + a retired codex-adv row → not another family → exit 14.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_impl_family "$tmp" claude
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")" "$(printf '{"kind":"avail","head":"%s","model":"codex-adv","status":"ok"}' "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "impl family claude + retired codex-adv row → exit 14"
+if marker_exists "$tmp"; then pass; else fail "codex-adv must not count as another family: marker must REMAIN"; fi
+rm -rf "$tmp"
+
 # 4o3. Implementer codex + a claude responder → another family reviewed → exit 0.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_impl_family "$tmp" codex

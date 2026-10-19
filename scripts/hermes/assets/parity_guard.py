@@ -759,7 +759,7 @@ def _edit_on_main_reason(start: str):
 # push's own output and every fix round pushes again. FAIL-CLOSED on an
 # unreadable marker; an undeterminable repo/branch is skipped (same stance as
 # the commit lock — judging this process's cwd would be wrong).
-GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?\s+pr\s+create(?:\s|$)", re.IGNORECASE)
+GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+create(?:\s|$)", re.IGNORECASE)
 
 
 def _common_git_dir(git_path: str) -> str:
