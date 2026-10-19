@@ -413,7 +413,7 @@ contains 'a Done ticket naming a released and a later unreleased version stays i
 contains 'a version holding only closed-without-shipping work gets a kanban row (HIMMEL-6246)' "$jhtml" \
     'data-v="v1.0.4"><summary><span class="vn">v1.0.4</span> <span class="kmeta">0 open of 0 · 1 closed without shipping</span>'
 contains 'the client version table renders a row for a closed-only version (HIMMEL-6246)' "$jhtml" \
-    'if(!t.n&&!wn)return;'
+    '[1];if(!t.n&&!wn)return;if(HIDE&&!t.open&&t.n){hid++;return}'
 contains 'the footnote says closed without shipping (HIMMEL-6241)' "$jhtml" 'closed without shipping'
 not_contains 'the legend no longer calls Closed or wont do work done (HIMMEL-6241)' "$jhtml" 'Hides Done, Closed, In Public, wont do'
 contains 'an unknown status falls back to the status category (HIMMEL-3990)' "$jhtml" '"t":"category fallback one","s":"In Progress","b":"prog"'
