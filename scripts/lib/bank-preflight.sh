@@ -325,7 +325,7 @@ _fleet_gate_take() {
   # survives, and the loop below refuses (fail-closed).
   for victim in "$gate".broken.*; do
     if [ -e "$victim" ]; then
-      ( rm -rf "$gate".broken.* 2>/dev/null ) &
+      ( rm -rf "$gate".broken.* >/dev/null 2>&1 ) &
       rm_pid=$!
       rm_ticks=0
       rm_secs="${FLEET_ADMIT_BROKEN_RM_SECS:-5}"
@@ -373,7 +373,8 @@ _fleet_gate_drop() { # _fleet_gate_drop <gate> <fence>
 }
 # _fleet_release_admit <admit-dir>: the ONE way this script gives up its own
 # admission lock. Gated, so it cannot land between a reclaimer's
-# verification and its rename; pid-verified, so a caller whose lock was
+# verification and its rename; pid-verified and removed by a fenced rename
+# (not a bare rm), so a caller whose lock was
 # legitimately reclaimed (a holder only PRESUMED dead) never deletes its
 # successor's live one. Waits a bounded few dozen retries for the gate; if it
 # cannot get it, the lock is left to age out (a REFUSED launch — SKIPPED-FLEET —
@@ -395,10 +396,13 @@ _fleet_release_admit() {
     sleep "${FLEET_ADMIT_RETRY_SLEEP:-0.05}"
   done
   fence="$_fleet_gate_fence"
-  # No fence needed on this rm: only a holder presumed DEAD loses
-  # its admit to a steal (a live pid, stopped ones included, answers `kill -0`
-  # and is refused below), so a releaser paused here still owns what it checked.
-  [ "$(cat "$admit/pid" 2>/dev/null)" = "$$" ] && rm -rf "$admit" 2>/dev/null
+  # Fenced like a steal: a live holder is reclaimed once it passes the hold
+  # ceiling, so a releaser paused after its pid check could otherwise delete
+  # the reclaimer's lock. The rename targets a path through our fence and
+  # fails once the gate is not ours; the victim goes when the gate drops.
+  if [ -n "$fence" ] && [ "$(cat "$admit/pid" 2>/dev/null)" = "$$" ]; then
+    mv "$admit" "$fence/victim" 2>/dev/null
+  fi
   _fleet_gate_drop "$gate" "$fence"
   return 0
 }
@@ -555,7 +559,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
          # A live holder is trusted only up to a hard ceiling: a preflight
          # blocked inside the lock (hung network, stopped process) would
          # otherwise refuse every launch on the host forever.
-         _fleet_max_hold="${FLEET_ADMIT_MAX_HOLD_SECS:-$(( ${FLEET_ADMIT_STALE_SECS:-60} * 10 ))}"
+         _fleet_max_hold="${FLEET_ADMIT_MAX_HOLD_SECS:-$(( 10#${FLEET_ADMIT_STALE_SECS:-60} * 10 ))}"
          [ "$age" -ge "$_fleet_max_hold" ] || return 1
          echo "bank-preflight: reclaiming the fleet admission lock ($admit) from a live but blocked holder pid $_fleet_held_pid (age ${age}s, past the ${_fleet_max_hold}s ceiling)" >&2
        fi ;;
@@ -914,6 +918,15 @@ if [ "$_fleet_admitted" -eq 1 ]; then
   fi
 fi
 
+# A live holder blocked past the hold ceiling is reclaimed, so the census and
+# prune above may have run on a lock that is no longer ours. Decide on it only
+# while "$SLOTS/.admit/pid" still names this process; a lost lock is a refusal
+# (the admission-failure branch below), never an admit on a stale census.
+if [ "$_fleet_admitted" -eq 1 ] && [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" != "$$" ]; then
+  echo "bank-preflight: the fleet admission lock ($SLOTS/.admit) was reclaimed while this preflight held it — refusing to decide on a stale census" >&2
+  _fleet_admitted=0
+fi
+
 echo "bank-preflight: FLEET native=$fleet_native claudex=$fleet_claudex openrouter=$fleet_openrouter reserved=$fleet_reserved total=$fleet_n/$FLEET_CAP" >&2
 
 # api dispatch is OFF unless the reviewed one-shot launcher
@@ -1043,6 +1056,10 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
       emit SKIPPED-FLEET
       ;;
   esac
+  if [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" != "$$" ]; then
+    echo "bank-preflight: the fleet admission lock ($SLOTS/.admit) was reclaimed before the reservation — refusing" >&2
+    emit SKIPPED-FLEET
+  fi
   _fleet_resv_key="$(fleet_reservation_key "$LEG")"
   _fleet_reserve "$SLOTS/$_fleet_resv_key"
   _fleet_reserve_rc=$?
@@ -1099,9 +1116,11 @@ fi
 # reservation release, applied here to the admission lock itself: a mismatch
 # means someone else now legitimately owns .admit, and this process has
 # nothing left to release. That check now lives in
-# _fleet_release_admit (gated, so it cannot land between a reclaimer's
-# verification and its rename) and EVERY release site — the early-exit
-# refusals above as well as this final one — goes through it.
+# _fleet_release_admit (gated, and the removal is a fenced rename, so a
+# reclaimer's lock cannot be deleted by a releaser paused after its check) and
+# EVERY release site — the early-exit refusals above as well as this final
+# one — goes through it. A holder that was reclaimed mid-section re-checks the
+# pid before the cap decision and again before the reservation.
 if [ "$_fleet_admitted" -eq 1 ]; then
   _fleet_release_admit "$SLOTS/.admit"
 fi
