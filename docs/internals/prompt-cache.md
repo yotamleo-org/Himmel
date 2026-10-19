@@ -175,6 +175,36 @@ so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
 break-even.
 
+## Leg keepalive or wrap
+
+A console leg that waits past the 1 h TTL with nothing armed pays a cold
+rewrite on the next wake. Measured over 24 h on 2026-10-19 (148 leg sessions,
+`cache-probe.sh idle-gap`, verdict `ttl-consistent cold-expected=17
+cold-rewrote=17`): 17 cold wakes in 7 legs, 1,854,556 tokens written, all at
+gaps of 60 min or more (gaps of 30-59 min: 44, none cold). In 16 of the 17 the
+leg had no wait armed; the next console relay woke it. Waits: CI 7, another PR
+5, the operator 4, `GO` 1.
+
+The cost rule:
+
+- A keepalive wake is one warm turn: the prefix read at 0.1×. A cold wake
+  writes the prefix at 2× (1-hour tier), so **one avoided cold wake pays for
+  about 20 keepalive turns**. At one turn per 50 min, that is many hours of
+  keepalive.
+- So **keep warm** (a background wait bounded under the TTL, re-armed on each
+  wake) while the wait has an end you can name: CI, a PR about to merge, a `GO`.
+- **Wrap** with a resume brief when the wait is open-ended (the operator,
+  another PR, a hold with no end in sight). Holding the slot for an unknown
+  time costs more than one successor's cold start.
+
+Enforced by `scripts/hooks/guard-leg-cache-ttl.sh`, a Stop hook in the leg
+profile. It refuses, once per stop, the stop of a leg that holds its queue lock
+while no background task or Monitor is running. Bound:
+`HIMMEL_LEG_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule:
+[`docs/handover/leg-sections/cache-keepalive.md`](../handover/leg-sections/cache-keepalive.md).
+Re-measure with the `idle-gap` command below over the leg transcripts of the
+24 h after it ships.
+
 ## Re-run
 
 ```bash
