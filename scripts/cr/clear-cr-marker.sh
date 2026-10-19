@@ -1262,7 +1262,7 @@ fi
 # not satisfy codex-authored code). No record = no change.
 case "${other_family_responders:-}" in ''|*[!0-9]*) other_family_responders=0 ;; esac
 if [ -n "$impl_family" ] && [ "$other_family_responders" -lt 1 ]; then
-    echo "clear-cr-marker: implementer family '$impl_family' is recorded for $branch but no 'avail ... ok' responder of another family exists at ${tip:0:8} — run a cross-family critic (hermes/codex work routes to claude -p), then re-run." >&2
+    echo "clear-cr-marker: implementer family '$impl_family' is recorded for $branch but no 'avail ... ok' responder of another family exists at ${tip:0:8} — run a cross-family critic (hermes/codex work routes to a Claude critic), then re-run." >&2
     audit "REFUSED reason=no-cross-family branch=$branch sha=$tip impl_family=$impl_family responders=$responders"
     exit 14
 fi
