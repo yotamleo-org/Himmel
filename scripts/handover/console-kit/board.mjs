@@ -436,7 +436,7 @@ let closeBudgetLeft = CLOSE_BUDGET_MS;
 const closeNote = (doc) => {
     if (closeBudgetLeft <= 0) return 'close check skipped (time budget spent)';
     const t0 = Date.now();
-    const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: closeBudgetLeft });
+    const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: closeBudgetLeft, killSignal: 'SIGKILL' });
     closeBudgetLeft -= Date.now() - t0;
     if (r.error || r.status === null) return 'close check did not run';
     if (r.status === 0) return 'safe to close';
