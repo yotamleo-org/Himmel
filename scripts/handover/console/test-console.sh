@@ -2502,6 +2502,20 @@ check "82 HANDOFF is at most 12000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 12
 check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
 check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$handoff82A")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
+check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
+check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
+
+# --- 83: still over budget after the pointer pass: a stderr warning with the
+# byte count and a one-line note in the HANDOFF; the Live state is not trimmed.
+out83="$(console new --bucket cap83)"
+token83="$(token_of "$out83")"
+doc83A="$root/tester/cap83/DEMO-nextleg-${today}A-console.md"
+handoff83A="$root/tester/cap83/DEMO-nextleg-${today}A-console-HANDOFF.md"
+HANDOFF_BUDGET_BYTES=1000 console next --bucket cap83dst --doc "$doc83A" >/dev/null 2>"$tmp/err83"
+check "83 stderr warns with the byte count" "$(grep -cE 'warning: HANDOFF over budget: [0-9]+ bytes \(limit 1000\)' "$tmp/err83")" "1"
+check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); Live state [0-9]+ bytes' "$handoff83A")" "1"
+check "83 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff83A")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

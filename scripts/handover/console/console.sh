@@ -1667,7 +1667,7 @@ cmd_next() {
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../console-kit/handoff-facts.sh"
-        local hf_legs hf_prs hf_summary hf_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-12000}"
         hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
@@ -1696,10 +1696,19 @@ cmd_next() {
             [ "$hf_pass" -eq 1 ] && [ "$(wc -c < "$predecessor_handoff")" -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
-            hf_prs="over the HANDOFF size budget — run: gh pr list --state open"
+            hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')"  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
+            hf_prs="over the HANDOFF size budget — run: gh pr list -R ${hf_slug:-<owner/repo>} --state open"
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
         done
         wrapped_open_prs_section "$predecessor_doc" >> "$predecessor_handoff"
+        # Still over budget after the pointer pass: the remainder is Live state,
+        # rulings and the wrapped-PR list, which are never trimmed — say so loudly.
+        hf_total="$(wc -c < "$predecessor_handoff")"
+        if [ "$hf_total" -gt "$hf_budget" ]; then
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); Live state ${#predecessor_live_state} bytes, wrapped-PR list $(wrapped_open_prs_section "$predecessor_doc" | wc -c) bytes — tighten the Live state"
+            printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
+            err "warning: $hf_note"
+        fi
         echo "handoff: $predecessor_handoff"
     else
         set +C
