@@ -2496,10 +2496,11 @@ for i in $(seq 1 30); do
 done
 printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-console.fleet.json"
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
+awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" console next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
 check "82 HANDOFF is at most 12000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 12000 ] && echo yes || echo no)" "yes"
 check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
-check "82 the Live state stays inline" "$(grep -c '^## In flight' "$handoff82A")" "1"
+check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$handoff82A")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
 

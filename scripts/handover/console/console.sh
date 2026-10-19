@@ -1671,6 +1671,7 @@ cmd_next() {
         hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
+        # ponytail: the cap trims only the re-derivable fact sections; Live state, rulings and the wrapped-PR list stay inline even over budget, an oversized Live state needs a tighter Live-state writer.
         local hf_pass=1
         while :; do
             render_template "$handoff_template" "$predecessor_handoff" \
