@@ -2213,10 +2213,12 @@ g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 # anchor's, and a branch edit (committed, dirty, or grafted into main's
 # history) still denies.
 ORIG_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+# shellcheck disable=SC2016 # the entry's literal hand-off lines
+AH_CASE='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac'
 # shellcheck disable=SC2016 # the entry's literal hand-off line
-printf '%s\n' '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+printf '%s\n' '#!/usr/bin/env bash' '# header' 'set -uo pipefail' '' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
 # shellcheck disable=SC2016 # the entry's literal hand-off line
-printf '%s\n' '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/console-kit/go.sh"
 g -C "$PRIMARY" commit -qam 'entries source the hand-off'
 BASE_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
 g -C "$WT" reset -q --hard "$BASE_MAIN"
@@ -2243,6 +2245,17 @@ run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
 g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+# main moved to a child that restores its bytes, so the merge-base is a commit
+# whose entry runs code before the hand-off.
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' 'echo above' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+g -C "$PRIMARY" commit -qam 'code above the hand-off'
+ABOVE=$(g -C "$PRIMARY" rev-parse HEAD)
+g -C "$PRIMARY" checkout -q "$BASE_MAIN" -- scripts/handover/merge-on-green.sh
+g -C "$PRIMARY" commit -qam 'restore main bytes'
+g -C "$WT" reset -q --hard "$ABOVE"
+run "behind main, merge-base copy runs code above the hand-off -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 g -C "$WT" reset -q --hard "$ORIG_MAIN"
 run "behind main, merge-base copy predates the hand-off -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"

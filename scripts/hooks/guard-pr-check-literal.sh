@@ -2485,10 +2485,18 @@ behind_main_entries_ok() {
         | awk -F'\t' '{ split($1, m, " "); print m[1] " " m[3] " " $2 }' | LC_ALL=C sort) || return 1
     [ -n "$base" ] || return 1
     [ "$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } ($3 in h)')" = "$base" ] || return 1
-    # A merge-base copy from before an entry sourced the hand-off would run itself.
+    # The merge-base copy must run nothing before the hand-off: past comments,
+    # blank lines and one `set -u` / `set -uo pipefail` line, its first
+    # statements are the `_ah_d` line and the hand-off source line.
     for e in $hentries; do
+        # shellcheck disable=SC2016 # the entries' literal `_ah_d` line
         anchorq cat-file blob "$mb:$e" 2>/dev/null \
-            | awk '/^[.] "[$]_ah_d\/([.][.]\/)+cr\/anchor-handoff[.]sh" [|][|] exit 2$/ { f = 1 } END { exit !f }' || return 1
+            | awk -v c='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac' '
+                /^[[:space:]]*(#|$)/ { next }
+                n == 0 && /^set -u(o pipefail)?$/ { n = 1; next }
+                n < 2 { if ($0 != c) exit; n = 2; next }
+                { f = /^[.] "[$]_ah_d\/([.][.]\/)+cr\/anchor-handoff[.]sh" [|][|] exit 2$/; exit }
+                END { exit !f }' || return 1
     done
     rest_have=$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
     rest_want=$(printf '%s\n' "$want" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
