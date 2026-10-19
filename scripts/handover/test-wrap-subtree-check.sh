@@ -65,9 +65,13 @@ FIX
 FIX
 } > "$W/dirty.txt"
 
+# /proc stand-in: <pid>/cwd symlinks. A pid with no cwd link has an unreadable cwd.
+mkdir -p "$W/proc"
+setcwd() { mkdir -p "$W/proc/$1"; ln -s "$2" "$W/proc/$1/cwd"; }
+
 run() { # run <fixture> [args...] — SUT under the hermetic seams, self = 901
     local fx="$1"; shift
-    PATH="$W/bin:$PATH" PS_FIXTURE="$fx" WRAP_SUBTREE_SELF=901 bash "$SUT" "$@"
+    PATH="$W/bin:$PATH" PS_FIXTURE="$fx" WRAP_SUBTREE_SELF=901 WRAP_SUBTREE_PROC="$W/proc" bash "$SUT" "$@"
 }
 
 out="$(run "$W/clean.txt" 101 2>&1)"; rc=$?
@@ -550,9 +554,10 @@ cat > "$W/mkt-fetch.txt" <<'FIX'
   101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
   500   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= fetch origin
   501   500       00:00 git remote-https origin https://github.com/atlassian/atlassian-mcp-server.git
-  502   101       00:00 git clone --depth 1 https://github.com/kepano/obsidian-skills.git /home/u/.claude/plugins/cache/temp_git_1792105184121_b88lv6
+  502   101       00:00 git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= clone --depth 1 https://github.com/kepano/obsidian-skills.git /home/u/.claude/plugins/cache/temp_git_1792105184121_b88lv6
   503   502       00:00 /usr/lib/git-core/git-remote-https origin https://github.com/kepano/obsidian-skills.git
 FIX
+for pp in 500 501 502 503 510 511 512 513 514 515 517 518 520 521 522; do setcwd $pp /home/u/.claude/plugins/cache; done
 out="$(run "$W/mkt-fetch.txt" 101 2>&1)"; rc=$?
 eq 'a marketplace fetch and plugin-cache clone read CLOSABLE: rc 0 (HIMMEL-5923)' 0 "$rc"
 contains 'all four fetch/clone pids are listed as ignored (HIMMEL-5923)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (4 harness-owned children ignored)'
@@ -593,6 +598,70 @@ for dp in 510 511 512 514 515 516 517 518; do
     contains "decoy pid=$dp withholds (HIMMEL-5923)" "$out" "  pid=$dp ppid="
 done
 lacks 'the exact-shape fetch beside the decoys is still ignored, not withheld (HIMMEL-5923)' "$out" '  pid=513 ppid='
+
+# Claude Code 2.1.303's real refresh, shapes copied from live `ps` rows
+# with the hook.* list dropped: the hardened git is a direct child of the session whose
+# cwd is the plugin cache (or a temp_git_/temp_subdir_ dir under it, or /tmp/claude-lsremote-*),
+# the -c list carries a `core.sshCommand=ssh -o BatchMode=yes ...` value with spaces and a
+# `-C <dir>`, the verb is clone / fetch / ls-remote / read-tree, and the children are
+# `git remote-https`, `git index-pack` and `git fetch`.
+PC=/home/u/.claude/plugins/cache
+HARD='-c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= -c submodule.recurse=false -c gc.auto=0 -c core.sshCommand=ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -c protocol.ext.allow=never -c protocol.git.allow=never -c init.defaultRefFormat=files'
+HARD2='-c core.askPass= -c submodule.recurse=false -c gc.auto=0 -c core.hooksPath=/dev/null -c core.fsmonitor= -c core.sshCommand=ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -c protocol.ext.allow=never -c init.defaultRefFormat=files'
+cat > "$W/mkt-live.txt" <<FIX
+    1     0 40-00:00:01 /sbin/init
+  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
+  600   101       00:00 /usr/bin/git $HARD clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/atlassian/atlassian-mcp-server.git $PC/temp_git_1792433434918_8mlpxu
+  601   600       00:00 /usr/lib/git-core/git remote-https origin https://github.com/atlassian/atlassian-mcp-server.git
+  602   600       00:00 /usr/lib/git-core/git --shallow-file $PC/temp_git_1792433434918_8mlpxu/.git/shallow.lock index-pack --stdin --fix-thin --keep=fetch-pack 600 on host
+  603   101       00:00 /usr/bin/git $HARD2 fetch --upload-pack=git-upload-pack --depth 1 origin
+  604   603       00:00 /usr/lib/git-core/git remote-https origin https://github.com/atlassian/atlassian-mcp-server.git
+  605   101       00:00 /usr/bin/git $HARD2 read-tree -u --reset HEAD
+  606   605       00:00 /usr/lib/git-core/git -c fetch.negotiationAlgorithm=noop fetch origin --no-tags --no-write-fetch-head --filter=blob:none --stdin
+  607   101       00:00 /usr/bin/git $HARD2 -C /tmp/claude-lsremote-ItRW2a ls-remote --heads https://github.com/anthropics/claude-plugins-official.git
+  608   607       00:00 /usr/lib/git-core/git remote-https origin https://github.com/anthropics/claude-plugins-official.git
+FIX
+for pp in 600 601 602; do setcwd $pp $PC; done
+for pp in 603 604; do setcwd $pp $PC/temp_git_1792433434919_nbr3qa; done
+for pp in 605 606; do setcwd $pp $PC/temp_subdir_1792433434918_vctuyw.clone; done
+for pp in 607 608; do setcwd $pp /tmp/claude-lsremote-ItRW2a; done
+out="$(run "$W/mkt-live.txt" 101 2>&1)"; rc=$?
+eq 'the 2.1.303 plugin refresh (clone, fetch, read-tree, ls-remote + children) reads CLOSABLE: rc 0 (HIMMEL-6335)' 0 "$rc"
+contains 'all nine refresh pids are listed as ignored (HIMMEL-6335)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (9 harness-owned children ignored)'
+contains 'the ignore reason is marketplace-refresh (HIMMEL-6335)' "$out" 'ignored pid=601 ppid=600 etime=00:00 why=marketplace-refresh'
+contains 'the index-pack child is ignored (HIMMEL-6335)' "$out" 'ignored pid=602 '
+
+# What must still withhold beside it: the same hardened argv with a cwd outside the plugin
+# dirs, from a non-GitHub or ssh remote, a tool-call shell's git (even with a cache cwd), a
+# bare remote-https under the session, a non-refresh verb, an unreadable cwd, a `/..` cwd.
+cat > "$W/mkt-live-decoys.txt" <<FIX
+    1     0 40-00:00:01 /sbin/init
+  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
+  700   101       00:00 /usr/bin/git $HARD fetch origin
+  701   700       00:00 /usr/lib/git-core/git remote-https origin https://github.com/a/b.git
+  702   101       00:00 /usr/bin/git $HARD clone --depth 1 https://evil.example/x/y.git $PC/temp_git_1792433434918_aaaaaa
+  703   702       00:00 /usr/lib/git-core/git remote-https origin https://evil.example/x/y.git
+  704   101       00:00 /usr/lib/git-core/git remote-https origin https://github.com/a/b.git
+  705   101       00:05 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-1-a.sh && eval 'git fetch origin'
+  706   705       00:00 /usr/lib/git-core/git remote-https origin https://github.com/a/b.git
+  707   101       00:00 /usr/bin/git $HARD clone --depth 1 git@github.com:a/b.git $PC/temp_git_1792433434918_bbbbbb
+  708   101       00:00 /usr/bin/git $HARD push origin HEAD
+  709   101       00:00 /usr/bin/git $HARD fetch origin
+  710   101       00:00 /usr/bin/git $HARD fetch origin
+  711   101       00:00 /usr/bin/git $HARD fetch origin
+FIX
+setcwd 700 /home/u/work; setcwd 701 /home/u/work
+setcwd 702 $PC; setcwd 703 $PC
+setcwd 704 $PC
+setcwd 706 $PC
+setcwd 707 $PC; setcwd 708 $PC
+setcwd 710 "$PC/../../work"
+setcwd 711 /home/u/.claude/plugins/cachefoo
+out="$(run "$W/mkt-live-decoys.txt" 101 2>&1)"; rc=$?
+eq 'the live-shape decoys withhold: rc 1 (HIMMEL-6335)' 1 "$rc"
+for dp in 700 701 702 703 704 705 706 707 708 709 710 711; do
+    contains "live-shape decoy pid=$dp withholds (HIMMEL-6335/5934)" "$out" "  pid=$dp ppid="
+done
 
 # --queue-doc <doc> withholds CLOSABLE while the leg's queue lock
 # is still held. Real queue-lock.sh over a scratch handover root.

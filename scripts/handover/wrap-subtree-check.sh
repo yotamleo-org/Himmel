@@ -146,20 +146,26 @@ harness_re="${WRAP_SUBTREE_HARNESS_RE:-(^|[ /])(mcp-server[^ ]*|[^ ]*qmd([.][a-z
 # No backslashes: the value crosses awk -v.
 chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|^([^ ]*/)?(bash|sh) /[^ ]*/scripts/statusline/hud-custom-lines[.]sh$|^(timeout [0-9]+ )?([^ ]*/)?(bash|sh) /[^ ]*/scripts/where-are-we/statusline-segment[.]sh( --cwd [^ ].*)?$|^(timeout [0-9]+ )?([^ ]*/)?node /[^ ]*/scripts/where-are-we/provision[.]mjs slice( .*)?$'
 
-# Claude Code's own plugin-marketplace refresh: a direct
-# child of the session `git -c core.fsmonitor= -c core.hooksPath=/dev/null -c
-# core.askPass= …`, or a `git clone … <home>/.claude/plugins/cache/temp_git_<id>`,
-# whose only child is a `git remote-https origin https://github.com/<owner>/<repo>`.
-# New pids at etime 00:00 on every run. Matched by shape and parentage only (no
-# marketplace registry read); anything broader, a wrapper, or a `/..` still withholds.
-# Claude Code 2.1.303 puts ~40 more `-c key=value` flags (protocol.ext.allow, hook.*.enabled,
-# ...) between core.askPass and the verb; they are allowed, the verb stays fetch/ls-remote.
-# ponytail: a leg that types this exact three-flag git prefix as a DIRECT child of the
-# session (not under a shell-tool wrapper) would be exempt; legs run git inside a
-# wrapper, so not observed; tighten with the marketplace registry if it ever happens.
+# Claude Code's own plugin refresh: a hardened `git -c core.fsmonitor= -c
+# core.hooksPath=/dev/null -c core.askPass= … <clone|fetch|ls-remote|read-tree>` that
+# is a DIRECT child of the session, whose cwd (read from /proc/<pid>/cwd) is the plugin
+# cache or marketplace dir under <home>/.claude/plugins/ (or its /tmp/claude-lsremote-*
+# probe dir), plus its git descendants (`git remote-https`, `index-pack`, `fetch`),
+# each also running in such a cwd. New pids at etime 00:00 on every run. Matched by
+# shape, cwd and parentage (no marketplace registry read); every argv may name only
+# https://github.com remotes (an ssh, scp-style or other-host remote withholds), and a
+# wrapper, a `/..` argv or cwd, or a non-refresh verb still withholds. Claude Code 2.1.303
+# puts ~40 more `-c key=value` flags between core.askPass and the verb, a `-C <dir>`, and a
+# `-c core.sshCommand=ssh -o BatchMode=yes …` value that holds spaces; the sshCommand value
+# and -C are stripped before the verb is read, and the three core.* flags may sit in any order.
+# A git whose cwd cannot be read (exited between ps and the read, or not ours) withholds;
+# the next run sees a fresh table.
+# ponytail: a leg that types a hardened git with this cwd as a DIRECT child of the session
+# (not under a shell-tool wrapper) would be exempt; legs run git inside a wrapper, so not
+# observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
-mkt_top_re='^([^ ]*/)?git -c core[.]fsmonitor= -c core[.]hooksPath=/dev/null -c core[.]askPass= (-c [A-Za-z0-9_.-]+=[^ ]* )*(fetch|ls-remote)( |$)|^([^ ]*/)?git clone .* /[^ ]*/[.]claude/plugins/cache/temp_git_[A-Za-z0-9_]+$'
-mkt_child_re='^(([^ ]*/)?git remote-https|([^ ]*/)?git-remote-https) origin https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+mkt_top_re='^([^ ]*/)?git (-c [A-Za-z0-9_.-]+=[^ ]* )*(clone|fetch|ls-remote|read-tree)( |$)'
+mkt_cwd_re='^/[^ ]*/[.]claude/plugins/(marketplaces|cache)(/[^ ]*)?$|^/[^ ]*/claude-lsremote-[A-Za-z0-9]+$'
 
 ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
 if [ -z "$ps_out" ]; then
@@ -167,7 +173,16 @@ if [ -z "$ps_out" ]; then
     exit 2
 fi
 
-result="$(printf '%s\n' "$ps_out" | awk -v root="$root" -v self="$self" -v hre="$harness_re" -v chainpat="$chain_re" -v mkttop="$mkt_top_re" -v mktchild="$mkt_child_re" -v win="$window" '
+# cwd of every git / git-remote-https row, one `<pid> <cwd>` line each (WRAP_SUBTREE_PROC is the test seam).
+procdir="${WRAP_SUBTREE_PROC:-/proc}"
+cwds=""
+for gp in $(printf '%s\n' "$ps_out" | awk '$4 ~ /(^|\/)git(-remote-https)?$/ { print $1 }'); do
+    # swallow-ok: an unreadable cwd is recorded UNKNOWN, which is never exempt, so the row withholds
+    gc="$(readlink "$procdir/$gp/cwd" 2>/dev/null)"
+    cwds="$cwds$gp ${gc:-UNKNOWN}"$'\n'
+done
+
+result="$(printf '%s\n' "$ps_out" | WRAP_SUBTREE_CWDS="$cwds" awk -v root="$root" -v self="$self" -v hre="$harness_re" -v chainpat="$chain_re" -v mkttop="$mkt_top_re" -v mktcwd="$mkt_cwd_re" -v win="$window" '
 function iswrap(a) {
     return a ~ /^[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-(bash|zsh)-/
 }
@@ -180,13 +195,32 @@ function isharness(p) {
     if (iswrap(arg[p])) return 0
     return arg[p] ~ hre
 }
-function ismkttop(p) {
-    return !iswrap(arg[p]) && arg[p] ~ mkttop && index(arg[p], "/..") == 0 && ppid[p] == root
+function isgit(p,   t, n, b) {
+    split(arg[p], t, " ")
+    n = split(t[1], b, "/")
+    return b[n] == "git" || b[n] == "git-remote-https"
 }
-function ismkt(p) {
-    if (iswrap(arg[p]) || index(arg[p], "/..") != 0) return 0
-    if (ismkttop(p)) return 1
-    return arg[p] ~ mktchild && (ppid[p] in ppid) && ismkttop(ppid[p])
+# every remote in the argv is an https://github.com one
+function githubonly(p,   a) {
+    a = arg[p]
+    gsub(/https:\/\/github[.]com\/[A-Za-z0-9_.\/-]+/, "", a)
+    return a !~ /:\/\// && a !~ /[A-Za-z0-9_.-]+@[A-Za-z0-9.-]+:/
+}
+# the harness'"'"'s hardened refresh git: the three core.* flags in any order, a clone/fetch/
+# ls-remote/read-tree verb once the sshCommand value (it holds spaces) and -C are stripped
+function ishardened(p,   a) {
+    a = arg[p]
+    gsub(/ -c core[.]sshCommand=ssh( -o [A-Za-z]+=[A-Za-z]+)+/, "", a)
+    gsub(/ -C [^ ]+/, "", a)
+    if (index(a, " -c core.hooksPath=/dev/null ") == 0 || index(a, " -c core.fsmonitor= ") == 0 || index(a, " -c core.askPass= ") == 0) return 0
+    return a ~ mkttop
+}
+function ismkt(p, d,   c) {
+    if (d > 8 || iswrap(arg[p]) || index(arg[p], "/..") != 0 || !isgit(p) || !githubonly(p)) return 0
+    c = cwd[p]
+    if (c !~ mktcwd || index(c, "/..") != 0) return 0
+    if (ppid[p] == root) return ishardened(p)
+    return (ppid[p] in ppid) && ismkt(ppid[p], d + 1)
 }
 function ischain(p) {
     return arg[p] ~ chainpat && index(arg[p], "/..") == 0
@@ -209,7 +243,11 @@ function isearly(p,   a, b, d) {
     d = a - b
     return d >= 0 && d <= win + 0
 }
-BEGIN { maxh = 4096 }
+BEGIN {
+    maxh = 4096
+    nc = split(ENVIRON["WRAP_SUBTREE_CWDS"], cl, "\n")
+    for (k = 1; k <= nc; k++) { sp = index(cl[k], " "); if (sp > 0) cwd[substr(cl[k], 1, sp - 1)] = substr(cl[k], sp + 1) }
+}
 {
     pid = $1; ppid[pid] = $2; et[pid] = $3
     a = $0
@@ -250,7 +288,7 @@ END {
         # process is outside the subtree, so count it (fail closed).
         if (h >= maxh) under = 1
         if (!under || skip) continue
-        if (!harness && ismkt(pid)) { harness = 1; why = "marketplace-refresh"; via = pid }
+        if (!harness && ismkt(pid, 0)) { harness = 1; why = "marketplace-refresh"; via = pid }
         if (!harness && allchain) { harness = 1; why = "statusline-chain"; via = pid }
         # a descendant of a chain node that is itself the session'"'"'s direct
         # child (claude-hud'"'"'s `git status --porcelain`) inherits the ignore by its
