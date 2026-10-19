@@ -502,6 +502,9 @@ fi
 # option-looking tokens (e.g. "x --toolsets terminal") cannot inject extra
 # invoke.sh flags. `none`/empty → omit --profile (hermes default profile). An
 # array would hit the bash-3.2 `set -u` empty-array expansion bug, so branch instead.
+# The registry's provider field also accepts the short spellings api / subscription.
+case "$provider" in api) provider="claude-api" ;; subscription) provider="claude-subscription" ;; esac
+
 # Claude critic: provider claude-api / claude-subscription runs the
 # official claude binary read-only (Read,Glob,Grep, dontAsk, never
 # bypassPermissions) in a scratch cwd, not hermes. rc 5 = SKIPPED: no key, lane

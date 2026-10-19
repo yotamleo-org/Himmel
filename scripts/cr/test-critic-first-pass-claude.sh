@@ -150,5 +150,15 @@ RC=0; printf '%s\n' "$DIFF" | bash "$CFP" --model claude-opus-5-5 --slug claude 
 check "8 --print-prompt exits 0 for the claude row" 0 "$RC"
 has "8 claude family scaffolding" "IMPORTANT: Output EXACTLY" "$W/out"
 
+# --- 9. the short provider spellings api / subscription ---------------------
+fresh_rec 9; unset FAKE_REFUSE FAKE_FAIL
+run_cfp api
+check "9 provider 'api' routes to the API launcher" 0 "$RC"
+has "9 launcher saw the call" "dontAsk" "$REC/argv"
+fresh_rec 10; bank 10
+run_cfp subscription
+check "9 provider 'subscription' routes to the native claude" 0 "$RC"
+has "9 claude saw the call" "Read,Glob,Grep" "$REC/argv"
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]
