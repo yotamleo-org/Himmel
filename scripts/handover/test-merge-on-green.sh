@@ -3743,6 +3743,10 @@ STUB_JIRA_BUILD=1 STUB_JIRA_NO_FIXVERSIONS=1 STUB_PR_TITLE="feat(jira): [HIMMEL-
     run_mog 0 "jira: a get reply without a fixVersions field is not stamped" -- --jira-transition
 assert_jira_log_lacks "jira: no fixVersion edit when the field is missing from the reply" "edit "
 
+STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.1\tfalse\t2026-10-01\ttrue\nv1.1.3\tfalse\t2026-10-22\tfalse\nv1.1.4\tfalse\t\tfalse\n' STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: an archived earlier unreleased version is not the fold target" -- --jira-transition
+assert_jira_log_has "jira: fold skips the archived version and picks the live one" "edit HIMMEL-374 --fix-version v1.1.3"
+
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.2\ttrue\t2026-10-11\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: an unversioned ticket with no unreleased version is not edited" -- --jira-transition
 assert_jira_log_lacks "jira: no fixVersion edit when no unreleased version exists" "edit "

@@ -113,13 +113,13 @@ describe('buildFixVersionBody', () => {
 });
 
 describe('listVersions', () => {
-  it('GETs the project versions and prints name, released, releaseDate', async () => {
+  it('GETs the project versions and prints name, released, releaseDate, archived', async () => {
     const calls = stubJira({ 'GET /project/HIMMEL/versions': VERSIONS });
     const rows = await listVersions('HIMMEL');
     expect(calls).toHaveLength(1);
     expect(rows).toEqual([
-      'v0.2.0\ttrue\t2026-09-10',
-      'v1.0.0\tfalse\t',
+      'v0.2.0\ttrue\t2026-09-10\tfalse',
+      'v1.0.0\tfalse\t\tfalse',
     ]);
   });
 });
