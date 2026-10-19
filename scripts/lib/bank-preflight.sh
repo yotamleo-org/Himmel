@@ -320,7 +320,13 @@ _fleet_gate_take() {
   fi
   # Kill every broken generation's fences before holding; one
   # that survives (EACCES/EIO) refuses the take — fail-closed.
-  rm -rf "$gate".broken.* 2>/dev/null
+  # Bounded: a wedged filesystem must not stall the take; an rm that timed out
+  # leaves its victim behind and the loop below refuses (fail-closed).
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${FLEET_ADMIT_GATE_STALE_SECS:-5}" rm -rf "$gate".broken.* 2>/dev/null
+  else
+    rm -rf "$gate".broken.* 2>/dev/null
+  fi
   for victim in "$gate".broken.*; do
     if [ -e "$victim" ]; then
       _fleet_gate_drop "$gate" "$fence"
@@ -531,7 +537,14 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
   _fleet_held_pid="$(cat "$admit/pid" 2>/dev/null)"
   case "$_fleet_held_pid" in
     ''|*[!0-9]*) : ;;
-    *) kill -0 "$_fleet_held_pid" 2>/dev/null && return 1 ;;
+    *) if kill -0 "$_fleet_held_pid" 2>/dev/null; then
+         # A live holder is trusted only up to a hard ceiling: a preflight
+         # blocked inside the lock (hung network, stopped process) would
+         # otherwise refuse every launch on the host forever.
+         _fleet_max_hold="${FLEET_ADMIT_MAX_HOLD_SECS:-$(( ${FLEET_ADMIT_STALE_SECS:-60} * 10 ))}"
+         [ "$age" -ge "$_fleet_max_hold" ] || return 1
+         echo "bank-preflight: reclaiming the fleet admission lock ($admit) from a live but blocked holder pid $_fleet_held_pid (age ${age}s, past the ${_fleet_max_hold}s ceiling)" >&2
+       fi ;;
   esac
   _fleet_steal_stale_admit "$admit" "$held_at"
 }
@@ -903,6 +916,12 @@ fi
 
 if [ "$_fleet_admitted" -eq 0 ]; then
   echo "bank-preflight: could not acquire the fleet admission lock ($SLOTS/.admit) after $_fleet_admit_iters retries — cannot verify the fleet is under cap" >&2
+  _fleet_held_pid="$(cat "$SLOTS/.admit/pid" 2>/dev/null)"
+  _fleet_held_at="$(cat "$SLOTS/.admit/acquired" 2>/dev/null)"
+  case "$_fleet_held_pid:$_fleet_held_at" in
+    *[!0-9:]*|:*|*:) ;;
+    *) echo "bank-preflight: admission lock held by holder pid $_fleet_held_pid (age $(( $(date +%s) - _fleet_held_at ))s, command: $(ps -o args= -p "$_fleet_held_pid" 2>/dev/null | head -c 200))" >&2 ;;
+  esac
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
     echo "bank-preflight: FLEET_CAP_OK bypass in effect (launching shell only) — proceeding despite the admission-lock failure" >&2
   elif [ "$LAUNCH_INTENT" = "1" ]; then

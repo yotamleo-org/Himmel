@@ -693,5 +693,32 @@ check "(r) lock dir present after real acquire" present "$([ -e "$r_lockdir" ] &
 HANDOVER_DIR="$r_dir" bash "$REPO/scripts/handover/queue-lock.sh" release "$r_doc" "$r_token" >/dev/null 2>&1
 check "(r) lock dir absent after real release" absent "$([ -e "$r_lockdir" ] && echo present || echo absent)"
 
+# --- (s)/(t)/(u) a LIVE holder that stays blocked: below the hard ceiling
+# (FLEET_ADMIT_MAX_HOLD_SECS) it is never reclaimed and the refusal names it
+# (pid, age, command); past the ceiling it is reclaimed and the reclaim logs
+# pid and age. The holder is a `sleep` (deterministic, no CPU load).
+sleep 120 & s_holder=$!
+slots_s="$(mktemp -d "$W/slots-s.XXXXXX")" || { echo "FAIL - could not create slots-s scratch dir" >&2; exit 1; }
+mkdir -p "$slots_s/.admit"
+printf '%s\n' "$((NOW - 150))" > "$slots_s/.admit/acquired"
+printf '%s\n' "$s_holder" > "$slots_s/.admit/pid"
+: > "$W/err.log"
+s_out="$(run_pf "$slots_s" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9020-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=600 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(s) live holder 150s old, ceiling 600s -> not reclaimed, SKIPPED-FLEET" SKIPPED-FLEET "$s_out"
+if grep -q "holder pid $s_holder .*age 1[0-9][0-9]s.*sleep 120" "$W/err.log"; then
+  PASS=$((PASS+1)); echo "ok - (t) the refusal names the live holder (pid, age, command)"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (t) refusal does not name the live holder"; tail -3 "$W/err.log"
+fi
+: > "$W/err.log"
+u_out="$(run_pf "$slots_s" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9021-past HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(u) live holder 150s old, ceiling 100s -> reclaimed, PROCEED" PROCEED "$u_out"
+if grep -q "reclaiming .*holder pid $s_holder .*age 1[0-9][0-9]s" "$W/err.log"; then
+  PASS=$((PASS+1)); echo "ok - (u) the reclaim logs the holder pid and age"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (u) reclaim did not log pid and age"; tail -3 "$W/err.log"
+fi
+kill "$s_holder" 2>/dev/null; wait "$s_holder" 2>/dev/null
+
 echo "--- $PASS passed, $FAIL failed ---"
 [ "$FAIL" -eq 0 ]
