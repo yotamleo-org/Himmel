@@ -393,8 +393,9 @@ if pool_only:
     # tier by tier: a tier's leg-less In Progress rows lead its To Do rows
     for t in (1, 2, 3):
         emit_resume([i for i in resume if tier_of(i) == t])
-        emit_free([i for i in free if tier_of(i) == t])
-    if n == 0:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
+        if not resume_only:
+            emit_free([i for i in free if tier_of(i) == t])
+    if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
     sys.exit(0)
 emit_resume(resume)
