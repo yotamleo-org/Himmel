@@ -1751,32 +1751,32 @@ test('design core carries the motion-budget note', () => {
 // Legs on our own registered forks get the classifier's
 // autoMode.environment trust through the resolved --settings file, never blanket.
 test('forkNwos adds one exact autoMode.environment entry per fork on a gateAllow profile', () => {
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo/qmd', 'yotamleo/graphify'] });
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo-org/qmd', 'yotamleo-org/graphify'] });
   assert.equal(s.autoMode.environment[0], '$defaults');
   assert.equal(s.autoMode.environment.length, 3);
-  assert.match(s.autoMode.environment[1], /^Source control: github\.com\/yotamleo\/qmd /);
-  assert.match(s.autoMode.environment[2], /^Source control: github\.com\/yotamleo\/graphify /);
+  assert.match(s.autoMode.environment[1], /^Source control: github\.com\/yotamleo-org\/qmd /);
+  assert.match(s.autoMode.environment[2], /^Source control: github\.com\/yotamleo-org\/graphify /);
 });
 test('no forkNwos, or a profile without gateAllow, emits no autoMode key', () => {
   assert.equal(resolveProfile(REG, 'leg-impl').autoMode, undefined);
   assert.equal(resolveProfile(REG, 'leg-impl', { forkNwos: [] }).autoMode, undefined);
-  assert.equal(resolveProfile(REG, 'bare', { forkNwos: ['yotamleo/qmd'] }).autoMode, undefined);
+  assert.equal(resolveProfile(REG, 'bare', { forkNwos: ['yotamleo-org/qmd'] }).autoMode, undefined);
 });
-test('forkNwos refuses anything but an exact owner/repo under yotamleo', () => {
-  for (const bad of ['yotamleo', 'yotamleo/', 'yotamleo/*', 'tobi/qmd', 'yotamleo/a b', 'github.com/yotamleo/qmd', 'yotamleo/../x', '']) {
+test('forkNwos refuses anything but an exact owner/repo under yotamleo-org', () => {
+  for (const bad of ['yotamleo', 'yotamleo-org', 'yotamleo/qmd','yotamleo-org/', 'yotamleo-org/*', 'tobi/qmd', 'yotamleo-org/a b', 'github.com/yotamleo-org/qmd', 'yotamleo-org/../x', '']) {
     assert.throws(() => resolveProfile(REG, 'leg-impl', { forkNwos: [bad] }), /fork nwo/, bad);
   }
 });
 test('a composed profile list unions the autoMode entries once', () => {
-  const s = resolveProfile(REG, 'leg-impl,code-ui', { forkNwos: ['yotamleo/qmd'] });
+  const s = resolveProfile(REG, 'leg-impl,code-ui', { forkNwos: ['yotamleo-org/qmd'] });
   assert.deepEqual(s.autoMode.environment.filter((e) => e === '$defaults'), ['$defaults']);
   assert.equal(s.autoMode.environment.length, 2);
 });
 test('forkNwosFromAdapters reads exact nwo entries from a registry file shape', () => {
   const dir = makeTmpDir('fork-trust');
   const f = join(dir, 'himmel-adapters.json');
-  writeFileSync(f, JSON.stringify([{ nwo: 'yotamleo/qmd', upstream: 'tobi/qmd', himmel_branch: 'x', pin_site: 'y', role: 'runtime-dependency', merge_allowed: true }]));
-  assert.deepEqual(PP.forkNwosFromAdapters(f), ['yotamleo/qmd']);
+  writeFileSync(f, JSON.stringify([{ nwo: 'yotamleo-org/qmd', upstream: 'tobi/qmd', himmel_branch: 'x', pin_site: 'y', role: 'runtime-dependency', merge_allowed: true }]));
+  assert.deepEqual(PP.forkNwosFromAdapters(f), ['yotamleo-org/qmd']);
   assert.deepEqual(PP.forkNwosFromAdapters(join(dir, 'absent.json')), []);
   writeFileSync(f, '{not json');
   assert.throws(() => PP.forkNwosFromAdapters(f), /himmel-adapters/);
@@ -1785,24 +1785,24 @@ test('registry-driven trust: three registered forks are trusted, an unregistered
   const dir = makeTmpDir('fork-trust-three');
   const f = join(dir, 'himmel-adapters.json');
   const row = (nwo) => ({ nwo, upstream: 'u/x', himmel_branch: 'b', pin_site: 'p', role: 'runtime-dependency', merge_allowed: true });
-  writeFileSync(f, JSON.stringify([row('yotamleo/qmd'), row('yotamleo/graphify'), row('yotamleo/third-fork')]));
+  writeFileSync(f, JSON.stringify([row('yotamleo-org/qmd'), row('yotamleo-org/graphify'), row('yotamleo-org/third-fork')]));
   const s = resolveProfile(REG, 'leg-impl', { forkNwos: PP.forkNwosFromAdapters(f) });
   const text = s.autoMode.environment.join('\n');
-  for (const nwo of ['yotamleo/qmd', 'yotamleo/graphify', 'yotamleo/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
+  for (const nwo of ['yotamleo-org/qmd', 'yotamleo-org/graphify', 'yotamleo-org/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
   assert.equal(s.autoMode.environment.length, 4);
-  assert.ok(!text.includes('yotamleo/not-registered'));
+  assert.ok(!text.includes('yotamleo-org/not-registered'));
   assert.ok(!text.includes('github.com/yotamleo '), 'never an owner-wide entry');
   assert.ok(!/tobi\/qmd/.test(text), 'upstream is not trusted');
 });
 test('fork trust text names the destination and excludes upstream, parent, force-push, delete and publish', () => {
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo/qmd'] });
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo-org/qmd'] });
   const line = s.autoMode.environment.find((e) => e !== '$defaults');
-  assert.match(line, /push only to the origin remote github\.com\/yotamleo\/qmd/);
-  assert.match(line, /gh pr create --repo yotamleo\/qmd/);
+  assert.match(line, /push only to the origin remote github\.com\/yotamleo-org\/qmd/);
+  assert.match(line, /gh pr create --repo yotamleo-org\/qmd/);
   assert.match(line, /Not covered:[^.]*upstream/);
   for (const word of ['parent repo', 'force-push', 'branch delete', 'publish']) assert.ok(line.includes(word), word);
   assert.ok(!line.includes('trusted like the working repo'));
-  assert.deepEqual([...line.matchAll(/github\.com\/([\w.-]+\/[\w.-]+)/g)].map((m) => m[1].replace(/\.$/, '')), ['yotamleo/qmd', 'yotamleo/qmd']);
+  assert.deepEqual([...line.matchAll(/github\.com\/([\w.-]+\/[\w.-]+)/g)].map((m) => m[1].replace(/\.$/, '')), ['yotamleo-org/qmd', 'yotamleo-org/qmd']);
 });
 test('CLI reads the fork registry from the anchor, never the worktree copy', () => {
   const { root, repo, wt } = primaryWithWorktree();
@@ -1810,16 +1810,16 @@ test('CLI reads the fork registry from the anchor, never the worktree copy', () 
     mkdirSync(join(base, 'scripts', 'guardrails'), { recursive: true });
     writeFileSync(join(base, 'scripts', 'guardrails', 'himmel-adapters.json'), JSON.stringify([{ nwo }]));
   };
-  put(repo, 'yotamleo/qmd');
-  put(wt, 'yotamleo/evil');
+  put(repo, 'yotamleo-org/qmd');
+  put(wt, 'yotamleo-org/evil');
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const run = spawnSync(process.execPath, [cli, 'leg-impl'], {
     encoding: 'utf8', cwd: wt, env: { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt },
   });
   assert.equal(run.status, 0, run.stderr);
   const text = JSON.parse(run.stdout).autoMode.environment.join('\n');
-  assert.ok(text.includes('github.com/yotamleo/qmd '), text);
-  assert.ok(!text.includes('yotamleo/evil'), text);
+  assert.ok(text.includes('github.com/yotamleo-org/qmd '), text);
+  assert.ok(!text.includes('yotamleo-org/evil'), text);
 });
 
 // leg-vm: leg-impl plus ONE rule for the sanctioned guest-launch script.
