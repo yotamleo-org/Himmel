@@ -101,7 +101,7 @@ jobs:
       # starts. Cost: 3 runner-minutes and 3 minutes of latency per push.
       # test-ci-push-concurrency.sh holds the 120-240 s window.
       - run: sleep 180
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -186,8 +186,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 8s over 10 green PR runs; 2x, floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: bash scripts/ci/check-no-secrets.sh
+      - run: bash scripts/ci/check-actions-pinned.sh
 
   # HIMMEL-3653: HIMMEL-3624 fixed a bracket-expression bug in
   # scripts/lib/unchecked-mktemp.sh that only failed under a real BWK
@@ -204,7 +205,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 18s; floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: bash scripts/ci/run-unchecked-mktemp-under-bwk.sh
 
   # HIMMEL-4301: the unchecked-mktemp gate (scripts/hooks/check-unchecked-mktemp.sh)
@@ -219,7 +220,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 37s; floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -243,7 +244,7 @@ jobs:
         # The 8 ids here and the /8 in the run step are one number.
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -292,7 +293,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25 # p95 672s (11m); 2x
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # This is a pull_request workflow, so it checks out and executes
           # contributor code. The default persists the GITHUB_TOKEN into
@@ -310,7 +311,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 207s; 2x = 7m, floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: bash scripts/guardrails/check-git-env-scrub.sh --tree
@@ -327,7 +328,7 @@ jobs:
       JIRA_PROJECT_KEY: HIMMEL
       TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Lint commit messages in the PR range
@@ -373,7 +374,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 9s; floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -400,11 +401,11 @@ jobs:
     timeout-minutes: 25 # p95 736s (12m); 2x
     steps:
       # fetch-depth: 0 so the PR base sha is reachable for the shellcheck range.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # HIMMEL-4332: flag-registry-lint ran on the runner's unpinned default node.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       # HIMMEL-4265: run the SAME pre-commit shellcheck hook the local gate runs
@@ -513,7 +514,7 @@ jobs:
       # tree. Fail closed: a diff that cannot be computed, or a change to a gate,
       # its config or this workflow, runs everything; OXLINT_FAIL_CLOSED=1 turns the
       # gates' own missing-runner fail-open into a red job.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - name: skill size + oxlint complexity/hardening
@@ -596,9 +597,9 @@ jobs:
             dir: marketplace/plugins/himmel-bus
             node: '24'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node || '22' }}
           cache: 'npm'
@@ -619,8 +620,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 26s; floor 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -648,13 +649,13 @@ jobs:
     env:
       CLAUDE_CLI_VERSION: '2.1.296'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       # HIMMEL-4412: the project's SessionStart/Subagent hooks run `bun`; a runner
       # without it makes them exit 127 and the hook smoke correctly reports a failing hook.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       # The mock sandbox runs claude under a scrubbed PATH (claude, node, /usr/local/bin,
@@ -700,7 +701,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # p95 423s (7m); 2x
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # HIMMEL-1560: the trust suite's skew regression reads the REAL
           # historical recorder out of git (`git show c49716d5:…`) rather than a
@@ -712,7 +713,7 @@ jobs:
           # fix; degrading the test to a stub in CI would delete exactly the
           # evidence it exists to provide.
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       # HIMMEL-2587: the bench-run-batch dispatch-luna tests shell out to
@@ -722,7 +723,7 @@ jobs:
       # before reaching their assertions and the job stays red. Installing bun
       # keeps the retry-cap / resume / mid-batch-abort contract under a runner
       # check; SKIP-guarding them instead would exit 0 with nothing exercised.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - run: node --test "scripts/lanes/tests/**/*.test.mjs"
@@ -764,13 +765,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 15s; floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # This is a pull_request workflow, so it checks out and executes
           # contributor code. The default persists the GITHUB_TOKEN into
           # .git/config, where that code can read it.
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - run: bash scripts/hooks/check-guardrail-matrices.sh
@@ -805,10 +806,10 @@ jobs:
     steps:
       # HIMMEL-4350: this job holds issues:write; the issue steps use gh with
       # GH_TOKEN env and never git, so the persisted checkout token is not needed.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
@@ -886,10 +887,10 @@ jobs:
     steps:
       # fetch-depth: 0 (HIMMEL-5423): the doc-guard step below walks the PR
       # range, which needs the merge ref's parents, not a one-commit clone.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - name: Enable the himmel-dev gates in this checkout
@@ -1005,15 +1006,15 @@ jobs:
     # burn a full 6h runner slot (codex-3 CR hardening).
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1152,7 +1153,7 @@ jobs:
       # fetch-depth: 0 (not the default shallow clone) so --changed-since below
       # can resolve a pull_request's base SHA, which a depth-1 checkout of the
       # head ref does not carry.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # arm-resume's non-dry-run cases exercise the real `at` scheduler backend,
@@ -1212,7 +1213,7 @@ jobs:
       # under a runner check; a self-skip would exit 0 with nothing exercised.
       # The himmel-vm guest must not restore a cache entry a
       # hosted run wrote (it restores, then the bun executable is missing).
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
           no-cache: ${{ runner.environment != 'github-hosted' }}
@@ -1316,7 +1317,7 @@ jobs:
           SUITE_MANIFEST: shard-manifest/manifest-shard${{ matrix.shard }}.txt
       - name: Upload shard manifest
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shell-unit-manifest-${{ matrix.os }}-shard${{ matrix.shard }}
           path: shard-manifest/
@@ -1327,7 +1328,7 @@ jobs:
           overwrite: true
       - name: Upload failed-suite logs
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shell-unit-failed-logs-${{ matrix.os }}-shard${{ matrix.shard }}
           path: failed-suite-logs/
@@ -1391,7 +1392,7 @@ jobs:
     steps:
       # Full history: impacted-selection.sh diffs base...HEAD and checks the
       # base is on origin/main, exactly as the shards did.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Every gating shell-unit shard must have passed
@@ -1418,7 +1419,7 @@ jobs:
         # failed download is not forgiven: every shard not named in --absent-ok
         # below must still have its manifest, so the verify step goes red.
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: shell-unit-manifest-ubuntu-latest-shard*
           path: shard-manifest/
@@ -1484,7 +1485,7 @@ jobs:
           cat selector-miss.txt
       - name: Upload selector-miss ledger
         if: failure() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.range.outputs.range != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: selector-miss-ledger
           path: |
@@ -1521,7 +1522,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Record runner image (apt cache key)
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (guard-corpus)
