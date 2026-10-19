@@ -324,6 +324,14 @@ for rid in ps1-twin-parity ps1-bom-policy scheduler-task-xml-encoding worker-wor
 done
 check "retired: gnu-only-utility canonical text has no Git Bash" "$(node -e 'console.log(/Git Bash/.test(require(process.argv[1]).classes.find(x=>x.id==="gnu-only-utility").canonical))' "$HERE/known-findings.json")" "false"
 
+# A dotted jq field before // must still attribute the ledger finding.
+cp "$HERE/known-findings.json" "$tmp/kf-jq.json"
+vf "$(rd 2)" b1 a000061 jq1 scripts/foo.sh fixed 'jq .flag // empty swallows false' > "$tmp/jq-ledger.jsonl"
+vf "$(rd 2)" b1 a000062 jq2 scripts/foo.sh fixed 'jq .flag parsing fails' >> "$tmp/jq-ledger.jsonl"
+vf "$(rd 2)" b1 a000063 jq3 docs/foo.md fixed 'jq .flag // empty swallows false' >> "$tmp/jq-ledger.jsonl"
+KNOWN_FINDINGS_FILE="$tmp/kf-jq.json" CR_LEDGER="$tmp/jq-ledger.jsonl" bash "$SCRIPT" --refresh >/dev/null 2>&1
+check "refresh: jq dotted-field finding attributed, unrelated text and file excluded" "$(node -e 'const e=require(process.argv[1]).classes.find(c=>c.id==="jq-alternative-swallows-false").evidence.ledger;console.log(e.findings,e.agreed)' "$tmp/kf-jq.json")" "1 1"
+
 # --refresh on a COPY: ledger + learnings evidence rewritten; shipped JSON untouched
 cp "$HERE/known-findings.json" "$tmp/kf.json"
 before_sum="$(cksum < "$HERE/known-findings.json")"
