@@ -786,12 +786,13 @@ def _common_git_dir(git_path: str) -> str:
     return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
 
 
-def _pr_head_branch(cmd: str) -> str:
-    """The branch named by `--head`/`-H` among the real arguments of
-    `gh pr create` (`owner:branch` reduced to `branch`), else ""."""
+def _pr_head_branches(cmd: str) -> list:
+    """Every branch named by a `--head`/`-H` token among the arguments of
+    `gh pr create` (`owner:branch` reduced to `branch`). A token that is
+    really another option's value is included too, so the lock errs closed."""
     m = GH_PR_CREATE.search(cmd)
     if not m:
-        return ""
+        return []
     lex = shlex.shlex(cmd[m.end():], posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     toks = []
@@ -801,7 +802,8 @@ def _pr_head_branch(cmd: str) -> str:
                 break
             toks.append(t)
     except ValueError:
-        return ""
+        return []
+    heads = []
     for i, t in enumerate(toks):
         val = ""
         if t in ("--head", "-H"):
@@ -811,19 +813,19 @@ def _pr_head_branch(cmd: str) -> str:
         elif t.startswith("-H") and not t.startswith("--"):
             val = t[2:]
         if val:
-            return val.rsplit(":", 1)[-1]
-    return ""
+            heads.append(val.rsplit(":", 1)[-1])
+    return heads
 
 
-def _pending_cr_reason(start: str, head_branch: str = ""):
-    """Block reason if the repo at `start` has a pending CR marker for
-    `head_branch` (the PR's explicit head) or its checked-out branch, else
-    None. Both are checked, so a misparsed head cannot hide the checked-out
-    branch's marker."""
+def _pending_cr_reason(start: str, head_branches: list = ()):
+    """Block reason if the repo at `start` has a pending CR marker for any of
+    `head_branches` (the PR's explicit heads) or its checked-out branch, else
+    None. All are checked, so a misparsed head cannot hide the real one or the
+    checked-out branch's marker."""
     repo_root, git_path = _git_dir_for(start)
     if not repo_root:
         return None
-    branches = [b for b in (_current_branch(git_path), head_branch) if b]
+    branches = [b for b in (_current_branch(git_path), *head_branches) if b]
     if not branches:
         return None
     common = _common_git_dir(git_path)
@@ -1861,7 +1863,7 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
         pr_dir = _commit_dir(joined[:pr_m.start()] if pr_m else joined,
                              _agent_cwd(payload, args), None)
         if pr_dir:
-            reason = _pending_cr_reason(pr_dir, _pr_head_branch(joined))
+            reason = _pending_cr_reason(pr_dir, _pr_head_branches(joined))
             if reason:
                 block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh
