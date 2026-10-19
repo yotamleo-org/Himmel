@@ -120,6 +120,17 @@ case $? in
   *) bad "grep failed scanning workflows for pip installs" ;;
 esac
 
+echo "[test-ci-tool-pins] every actions/cache step pins one SHA"
+uses_lines=$(grep -hE 'uses:[[:space:]]*actions/cache@' "$ROOT"/.github/workflows/*.yml)
+pinned_lines=$(printf '%s\n' "$uses_lines" | grep -E 'actions/cache@[0-9a-f]{40}([[:space:]]|$)')
+nuses=$(printf '%s\n' "$uses_lines" | grep -c .)
+npinned=$(printf '%s\n' "$pinned_lines" | grep -c .)
+nsha=$(printf '%s\n' "$pinned_lines" | grep -oE '@[0-9a-f]{40}' | sort -u | grep -c .)
+if [ "$nuses" -lt 1 ]; then bad "found no actions/cache step: the scan is vacuous"
+elif [ "$nuses" -ne "$npinned" ]; then bad "an actions/cache step is not pinned to a full SHA"
+elif [ "$nsha" -ne 1 ]; then bad "actions/cache is pinned to $nsha different SHAs"
+else ok "$nuses actions/cache step(s) share one pinned SHA"; fi
+
 echo ""
 if [ "$fails" -eq 0 ]; then echo "[test-ci-tool-pins] all checks passed"; exit 0; fi
 echo "[test-ci-tool-pins] $fails check(s) FAILED"
