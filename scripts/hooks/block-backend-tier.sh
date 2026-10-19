@@ -284,6 +284,36 @@ invoke_cli() {
 }
 
 # ---------------------------------------------------------------------------
+# Wrapper-name helpers (executeWrite/executeRead/executeDestructive).
+#   wrapped_name_is_mapped <name>       — exact match in ANY service map
+#   wrapped_name_is_allowlisted <name>  — read-only tool with no CLI equivalent
+# ---------------------------------------------------------------------------
+# One name per line; add an entry only with a stated reason.
+#   lookupJiraAccountId — read-only account lookup, no CLI verb
+_WRAPPED_ALLOWLIST="lookupJiraAccountId"
+
+wrapped_name_is_mapped() {
+    printf '%s\n%s\n' "$_JIRA_VERB_METHOD_MAP" "$_CONFLUENCE_VERB_METHOD_MAP" \
+        | awk -F'\t' -v n="$1" '$2 == n { f = 1 } END { exit !f }'
+}
+
+wrapped_name_is_allowlisted() {
+    printf '%s\n' "$_WRAPPED_ALLOWLIST" | awk -v n="$1" '$0 == n { f = 1 } END { exit !f }'
+}
+
+# deny_wrapped <service> <bypass_var> <reason> — refusal for an unroutable wrapper call.
+deny_wrapped() {
+    local service="$1" bypass_var="$2" reason="$3"
+    {
+        printf 'block-backend-tier: refusing MCP call "%s": %s.\n\n' "$tool_name" "$reason"
+        printf 'The wrapper hides which tool runs, so the call cannot be routed. Use the plugin instead:\n\n'
+        printf '    %s\n\n' "$(replacement_for "$service" "")"
+        printf 'Bypass for a genuine carve-out: set %s=1 (or MCP_ALL_OK=1) in the shell that\n' "$bypass_var"
+        printf 'launched Claude Code, then restart.\n'
+    } >&2
+}
+
+# ---------------------------------------------------------------------------
 # evaluate_service <name> <chain> <cli> <prefix>
 #   Evaluate ONE prefix-matching service. Returns:
 #     2 — block (refusal already printed to stderr)
@@ -348,9 +378,20 @@ evaluate_service() {
     # route on that, else executeWrite{name:createJiraIssue} is a bypass.
     case "$suffix" in
         executeWrite|executeRead|executeDestructive)
-            wrapped=$(printf '%s' "$input" | jq -r '.tool_input.name | select(type=="string") // empty')
+            # Fail CLOSED: a name this hook cannot read is a call it cannot route.
+            wrapped=$(printf '%s' "$input" | jq -r 'if (.tool_input | type) == "object" and (.tool_input.name | type) == "string" then .tool_input.name else empty end') || wrapped=""  # swallow-ok: an unreadable name is denied just below
             wrapped="${wrapped//[$' \t\r\n']/}"
-            [ -n "$wrapped" ] && suffix="$wrapped"
+            if [ -z "$wrapped" ]; then
+                deny_wrapped "$matched_service" "$bypass_var" "$suffix has no readable string tool_input.name"
+                return 2
+            fi
+            suffix="$wrapped"
+            # Only a mapped name (routed below) or an allowlisted one may pass;
+            # an unknown name, a case variant (CreateJiraIssue) included, is denied.
+            if ! wrapped_name_is_mapped "$suffix" && ! wrapped_name_is_allowlisted "$suffix"; then
+                deny_wrapped "$matched_service" "$bypass_var" "$suffix is neither a mapped nor an allowlisted tool name"
+                return 2
+            fi
             ;;
     esac
     verb_method_map=$(verb_method_map_for "$matched_service")
