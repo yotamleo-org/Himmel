@@ -287,7 +287,7 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # and it refuses (over-count, never under-count); no destructive admit
 # operation is reachable without a live fence.
 _fleet_gate_take() {
-  local gate="$1" held_at victim seen fence
+  local gate="$1" held_at victim seen fence rm_pid rm_ticks
   if ! mkdir "$gate" 2>/dev/null; then
     held_at="$(cat "$gate/acquired" 2>/dev/null)" || held_at=""
     case "$held_at" in
@@ -320,13 +320,25 @@ _fleet_gate_take() {
   fi
   # Kill every broken generation's fences before holding; one
   # that survives (EACCES/EIO) refuses the take — fail-closed.
-  # Bounded: a wedged filesystem must not stall the take; an rm that timed out
-  # leaves its victim behind and the loop below refuses (fail-closed).
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "${FLEET_ADMIT_GATE_STALE_SECS:-5}" rm -rf "$gate".broken.* 2>/dev/null
-  else
-    rm -rf "$gate".broken.* 2>/dev/null
-  fi
+  # Only when debris exists, and bounded: a wedged filesystem must not stall
+  # the take. An rm still running at the deadline is abandoned, its victim
+  # survives, and the loop below refuses (fail-closed).
+  for victim in "$gate".broken.*; do
+    if [ -e "$victim" ]; then
+      ( rm -rf "$gate".broken.* 2>/dev/null ) &
+      rm_pid=$!
+      rm_ticks=0
+      while kill -0 "$rm_pid" 2>/dev/null; do
+        if [ "$rm_ticks" -ge $(( ${FLEET_ADMIT_BROKEN_RM_SECS:-5} * 10 )) ]; then
+          kill "$rm_pid" 2>/dev/null
+          break
+        fi
+        sleep 0.1
+        rm_ticks=$((rm_ticks + 1))
+      done
+      break
+    fi
+  done
   for victim in "$gate".broken.*; do
     if [ -e "$victim" ]; then
       _fleet_gate_drop "$gate" "$fence"
