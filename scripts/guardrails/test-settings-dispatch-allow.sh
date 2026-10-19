@@ -26,7 +26,7 @@ for rule in \
   fi
 done
 
-if jq -e '.permissions.allow | map(select(test("gcp-runners.sh (up|watch|:\\*)"))) | length > 0' "$SETTINGS" >/dev/null 2>&1; then
+if jq -e '.permissions.allow | map(select(test("gcp-runners\\.sh( (up|watch)|:\\*)"))) | length > 0' "$SETTINGS" >/dev/null 2>&1; then
   echo "FAIL: allow list pre-approves a gcp-runners subcommand that spawns VMs"
   fail=1
 fi
