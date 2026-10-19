@@ -457,6 +457,7 @@ mk HIMMEL-701 "To Do" Medium '[]' '["v1.0.1"]' '[]' "named by a wrapped leg" "Ed
 mk HIMMEL-702 "To Do" Medium '[]' '["v1.0.1"]' '[]' "named only in boilerplate" "Edit scripts/lib/readonly-boiler.sh only."
 mk HIMMEL-703 "To Do" Medium '[]' '["v1.0.1"]' '[]' "inside a live write scope" "Edit scripts/lib/own-scope.sh only."
 mk HIMMEL-704 "To Do" Medium '[]' '["v1.0.1"]' '[]' "named after Other live legs" "Edit scripts/lib/other-legs.sh only."
+mk HIMMEL-705 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir a leg describes in prose" "Edit scripts/lib/prose-dir/other.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror20/HIMMEL.versions.tsv"
 LEGW="$WORK/HIMMEL-98-N8-wrapped.md"
@@ -465,13 +466,17 @@ LEGB="$WORK/HIMMEL-97-N9-live.md"
 printf '# wrapped\n> **Scope / do not:** writes confined to `scripts/lib/wrapped-held.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 11:00 READY 1 abc GREEN\n- 12:00 WRAPPED - merged\n' > "$LEGW"
 # shellcheck disable=SC2016
 printf '# live\n> **Scope / do not:** writes confined to `scripts/lib/own-scope.sh` and its test. completes-ticket: yes. Other live legs: `scripts/lib/other-legs.sh`. No settings; READ ONLY `scripts/lib/readonly-boiler.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 12:30 SUCCESSION accepted: x\n' > "$LEGB"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N8"},{"doc":"%s","label":"N9"}]}\n' "$LEGW" "$LEGB" > "$WORK/fleet20.json"
+LEGP="$WORK/HIMMEL-96-N7-prose.md"
+# shellcheck disable=SC2016
+printf '# prose\n> **Scope / do not:** writes confined to `scripts/lib/prose-dir/ (the new command + tests)`.\n\n## Results\n- 10:00 LIVE - go\n' > "$LEGP"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N8"},{"doc":"%s","label":"N9"},{"doc":"%s","label":"N7"}]}\n' "$LEGW" "$LEGB" "$LEGP" > "$WORK/fleet20.json"
 run20() { NEXT_DISPATCH_MIRROR="$M20" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify --legs-from "$WORK/fleet20.json" 2>/dev/null; }
 f1="$(run20)"
 has "fix1: a ticket on a WRAPPED leg's file is listed" "$f1" "HIMMEL-701	"
 has "fix1: a ticket on a file named only in READ ONLY prose is listed" "$f1" "HIMMEL-702	"
 lacks "fix1: a ticket on a live leg's write scope is held" "$f1" "HIMMEL-703	"
 has "fix1: a ticket on a file after Other live legs is listed" "$f1" "HIMMEL-704	"
+lacks "fix1: a directory scope with prose in parentheses still holds the directory" "$f1" "HIMMEL-705	"
 
 # --- fix 2: a ticket a live leg or an open PR already owns is not offered ---
 M21="$WORK/jira-mirror21/HIMMEL"; mkdir -p "$M21"
@@ -533,11 +538,11 @@ EOF
 chmod +x "$WORK/replay-gh"
 rp="$(NEXT_DISPATCH_MIRROR="$RP/mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/console.md" --legs-from "$WORK/replay-fleet.json" 2>/dev/null)"
 has "replay: a ticket the 'Do not touch' fence of a live leg hid is offered (HIMMEL-6034)" "$rp" "HIMMEL-6034	"
-has "replay: a ticket held only by a directory the leg merely names is offered (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
+lacks "replay: a directory-wide scope described in parentheses still holds its directory (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
 lacks "replay: a ticket whose key is a live leg's is not offered (HIMMEL-4999)" "$rp" "HIMMEL-4999	"
 lacks "replay: a ticket really held by a live leg stays held (HIMMEL-6484)" "$rp" "HIMMEL-6484	"
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
-[ "$n113" -ge 6 ] && pass "replay: at least 6 v1.1.3 rows ($n113)" || fail "replay: at least 6 v1.1.3 rows (got $n113)"
+[ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

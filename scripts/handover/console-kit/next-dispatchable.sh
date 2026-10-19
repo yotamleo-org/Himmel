@@ -109,8 +109,13 @@ def write_scope(line):
             m = SCOPE_END_RE.search(rest)
             rest = rest[:m.start()] if m else rest
             rest = re.sub(r'Do not (?:touch|edit|change)\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)', ' ', rest)  # a fence, not a write scope
-            # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir
-            return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', lambda g: ' '.join(g.group(1) + p.strip() for p in g.group(2).split(',')), rest)
+            # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
+            def expand(g):
+                parts = [p.strip() for p in g.group(2).split(',')]
+                if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
+                    return ' '.join(g.group(1) + p for p in parts)
+                return g.group(1)
+            return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
     return ''
 
 def collides(a, b):
