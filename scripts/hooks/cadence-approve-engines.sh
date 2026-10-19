@@ -764,8 +764,9 @@ nav_target_is_contained() {
     esac
     real=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
     [ -n "$real" ] || return 1
+    # A cd back into the vault never clears NAV_ROOT_PHYS: `||` may have skipped it,
+    # so every base visited stays checked.
     if [ -n "$SESSION_CWD_PHYS" ] && [ "$real" = "$SESSION_CWD_PHYS" ]; then
-        NAV_ROOT_PHYS=""
         return 0
     fi
     root=$(cd -P "$ENGINE_ROOT_POSIX" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant

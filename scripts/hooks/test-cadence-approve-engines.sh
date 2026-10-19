@@ -751,6 +751,11 @@ assert "6449 cd into checkout piped to engine + --whisper-model dir existing onl
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model scripts" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd checkout && piped cd vault, engine runs in the checkout + vault-only model dir -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd \"${VAULT_FIXTURE_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
+mkdir -p "$VAULT_FIXTURE/vo/nly" || { echo "setup: mkdir vo/nly failed" >&2; exit 1; }
+assert "6449 cd checkout || cd vault + slash-shaped vault-only model dir (the cd can be skipped) -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" || cd \"${VAULT_FIXTURE_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vo/nly" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd checkout && cd vault + slash-shaped vault-only model dir -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd \"${VAULT_FIXTURE_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vo/nly" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd into checkout + --whisper-model dir existing only in the vault -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd target with a backslash (bash drops it) -> refused" PASS \
