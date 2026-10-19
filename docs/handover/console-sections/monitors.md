@@ -27,6 +27,11 @@ order, even at defaults: `legs`, `livestate`, `prs`, `tails`, `legset`, `board`,
 `unowned-prs=none` and non-stale `tracker=` must stay present to clear the
 waiter's persisted streaks. The compact format needs no reader change.
 
+`busedge=MISSING:<label>[,...]` is conditional too: a held leg (lock FRESH or
+STALE) with no himmel-bus peer record has no edge to the live console. It is
+absent when every held leg has a record or the bus has no peers dir, and
+`console-wait.sh` does not wake on it, so read it at the next tick.
+
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,

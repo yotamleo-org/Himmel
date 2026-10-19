@@ -21,8 +21,10 @@ command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 # by is_temp_or_devnull's `*/tmp/*` pattern — making the redirect-deny rows
 # vacuous (they'd pass as "allow" for the wrong reason). Root under the REAL
 # HOME instead, captured BEFORE HOME is overridden below.
-_REAL_HOME="$HOME"
-T="$(mktemp -d "${_REAL_HOME}/.himmel-2526-tfixture-XXXXXX")"; trap 'rm -rf "$T"' EXIT
+# shellcheck source=lib-fixture-root.sh
+. "$HOOKS/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || exit 1
+T="$(mktemp -d "$_FROOT/.himmel-2526-tfixture-XXXXXX")" || exit 1; trap 'rm -rf "$T"' EXIT
 # Isolate git from the real user/system config so branch reads are deterministic.
 export HOME="$T"
 export GIT_CONFIG_NOSYSTEM=1

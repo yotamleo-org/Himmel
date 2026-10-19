@@ -607,7 +607,8 @@ _t_row "5747 15 KB quoted payload, write to /tmp allows" allow "echo '$_blob15' 
 _subst_row "5747 git archive -o primary/a.tar denies"            block "git archive -o $_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive --output=primary/a.tar denies"      block "git archive --output=$_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive --output primary/a.tar denies"      block "git archive --output $_PR/a5747.tar HEAD" "$_WR"
-_subst_row "5747 git archive -o leg worktree/a.tar allows"       allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 CR CR between words still denies a primary write"      block "echo a"$'\r\r'"b > $_PR/a5747.txt" "$_WR"
+_subst_row "5747 git archive -o leg worktree/a.tar allows"     allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive -o /tmp/a.tar allows"               allow "git archive -o /tmp/a5747.tar HEAD" "$_WR"
 _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR/f$_i; "; _i=$((_i+1)); done
 _k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done
@@ -619,6 +620,13 @@ _within_ceiling() { [ "$1" -le "$_HANG_CEILING" ]; } # _within_ceiling <seconds>
 # _growth_ok <clause-secs> <control-secs>: 3x + 2s of the same-length control
 # (the 2s slack absorbs whole-second timer granularity)
 _growth_ok() { [ "$1" -le $(($2 * 3 + 2)) ]; }
+# clause cost is per clause (a fork per redirect target), so the plain-echo
+# control no longer bounds it; a 5 KB run of the same clauses does: linear
+# growth costs ~4x it, a quadratic one ~16x
+_c5="${_c20:0:5000}"; _c5="${_c5%echo*}"
+_lin_ok() { [ "$1" -le $(($2 * 6 + 2)) ]; } # _lin_ok <20 KB secs> <5 KB secs>
+_t_row "5747 5 KB of redirect clauses (leg worktree) allows" allow "$_c5" "$_HANG_CEILING"
+_el_c5=$_T_EL
 _t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" "$_HANG_CEILING"
 _el_c20=$_T_EL
 # the control is bound against a 5 KB echo timed in the same run: a linear scan
@@ -627,12 +635,15 @@ _t_row "5747 5 KB plain echo baseline allows" allow "echo $_blob" 60
 _el_b5=$_T_EL
 _t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $(( (_el_b5 > 0 ? _el_b5 : 1) * 6 + 3 ))
 _el_k20=$_T_EL
-if _growth_ok "$_el_c20" "$_el_k20"; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
-else bad "5747 20 KB clauses ${_el_c20}s exceed 3x + 2s of the same-length control ${_el_k20}s"; fi
+# a command with no quote, redirect or pipe is one linear pass: decided in
+# under 1 s (whole-second timer, so the bound is 1)
+_t_row "5747 20 KB plain echo is decided in under 1 s" allow "echo $_k20" 1
+if _lin_ok "$_el_c20" "$_el_c5"; then ok "5747 20 KB clauses ${_el_c20}s grow linearly from the 5 KB run ${_el_c5}s"
+else bad "5747 20 KB clauses ${_el_c20}s exceed 6x + 2s of the 5 KB run ${_el_c5}s"; fi
 _c20p="${_c20}echo x > $_PR/f5747"
 _t_row "5747 20 KB of redirect clauses ending in a primary write denies" block "$_c20p" "$_HANG_CEILING"
-if _growth_ok "$_T_EL" "$_el_k20"; then ok "5747 20 KB clauses ending in a primary write ${_T_EL}s within 3x + 2s of the control ${_el_k20}s"
-else bad "5747 20 KB clauses ending in a primary write ${_T_EL}s exceed 3x + 2s of the control ${_el_k20}s"; fi
+if _lin_ok "$_T_EL" "$_el_c5"; then ok "5747 20 KB clauses ending in a primary write ${_T_EL}s grow linearly from the 5 KB run ${_el_c5}s"
+else bad "5747 20 KB clauses ending in a primary write ${_T_EL}s exceed 6x + 2s of the 5 KB run ${_el_c5}s"; fi
 # Runner speed must not decide the verdict. The fixture is a real CI figure
 # (shard 5, 2026-10-18T13:15:22Z): the clause command took 25s there, which a
 # fixed 22s budget rejected.
