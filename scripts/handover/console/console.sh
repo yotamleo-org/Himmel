@@ -1672,7 +1672,8 @@ cmd_next() {
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; Live state, rulings and the wrapped-PR list stay inline even over budget, an oversized Live state needs a tighter Live-state writer.
-        local hf_pass=1
+        local hf_pass=1 hf_wrapped
+        hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         while :; do
             render_template "$handoff_template" "$predecessor_handoff" \
                 HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
@@ -1693,19 +1694,19 @@ cmd_next() {
                 LIVE_STATE "$predecessor_live_state"
             # Over budget: the bulky fact sections (all re-derivable) become
             # pointers; the Live state and the rulings stay inline.
-            [ "$hf_pass" -eq 1 ] && [ "$(wc -c < "$predecessor_handoff")" -gt "$hf_budget" ] || break
+            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + ${#hf_wrapped} )) -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
             hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')"  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
             hf_prs="over the HANDOFF size budget — run: gh pr list -R ${hf_slug:-<owner/repo>} --state open"
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
         done
-        wrapped_open_prs_section "$predecessor_doc" >> "$predecessor_handoff"
+        [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
         # Still over budget after the pointer pass: the remainder is Live state,
         # rulings and the wrapped-PR list, which are never trimmed — say so loudly.
         hf_total="$(wc -c < "$predecessor_handoff")"
         if [ "$hf_total" -gt "$hf_budget" ]; then
-            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); Live state ${#predecessor_live_state} bytes, wrapped-PR list $(wrapped_open_prs_section "$predecessor_doc" | wc -c) bytes — tighten the Live state"
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); Live state ${#predecessor_live_state} bytes, wrapped-PR list ${#hf_wrapped} bytes — tighten the Live state"
             printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
             err "warning: $hf_note"
         fi
