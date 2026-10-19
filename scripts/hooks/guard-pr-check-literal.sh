@@ -2475,7 +2475,7 @@ case "$have" in ODD\ *) deny "a non-regular file or a control-character name sit
 # scripts/guardrails/lib.sh or scripts/lib/load-dotenv.sh moved on main still
 # refuses at run time - merge main forward in that case.
 behind_main_entries_ok() {
-    local wt_head mb base rest_have rest_want
+    local wt_head mb base e rest_have rest_want
     [ -z "$entries" ] && [ -n "$hentries" ] || return 1
     wt_head=$(gitq rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null) || return 1 # swallow-ok: a failure denies
     mb=$(GIT_GRAFT_FILE=/dev/null anchorq -c core.commitGraph=false merge-base refs/heads/main "$wt_head" 2>/dev/null) || return 1 # swallow-ok: a failure denies
@@ -2485,6 +2485,11 @@ behind_main_entries_ok() {
         | awk -F'\t' '{ split($1, m, " "); print m[1] " " m[3] " " $2 }' | LC_ALL=C sort) || return 1
     [ -n "$base" ] || return 1
     [ "$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } ($3 in h)')" = "$base" ] || return 1
+    # A merge-base copy from before an entry sourced the hand-off would run itself.
+    for e in $hentries; do
+        anchorq cat-file blob "$mb:$e" 2>/dev/null \
+            | awk '/^[.] "[$]_ah_d\/([.][.]\/)+cr\/anchor-handoff[.]sh" [|][|] exit 2$/ { f = 1 } END { exit !f }' || return 1
+    done
     rest_have=$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
     rest_want=$(printf '%s\n' "$want" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
     [ "$rest_have" = "$rest_want" ]

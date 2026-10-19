@@ -2212,7 +2212,14 @@ g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 # hand-off execs the anchor's copy. The hand-off itself must still equal the
 # anchor's, and a branch edit (committed, dirty, or grafted into main's
 # history) still denies.
+ORIG_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+g -C "$PRIMARY" commit -qam 'entries source the hand-off'
 BASE_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+g -C "$WT" reset -q --hard "$BASE_MAIN"
 echo 'echo mog v2' >"$PRIMARY/scripts/handover/merge-on-green.sh"
 echo 'echo go v2' >"$PRIMARY/scripts/handover/console-kit/go.sh"
 echo 'echo write-verdicts v2' >"$PRIMARY/scripts/cr/write-verdicts.sh"
@@ -2236,6 +2243,9 @@ run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
 g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$WT" reset -q --hard "$ORIG_MAIN"
+run "behind main, merge-base copy predates the hand-off -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
 
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*
