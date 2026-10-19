@@ -1570,6 +1570,25 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     fi
     case "$stall_val" in ""|*[!0-9a-z:,?-]*) ;; *) stall_tail=" stall=$stall_val" ;; esac
 fi
+# busedge=MISSING:<label>[,...]: a held leg (lock FRESH or STALE) none of whose
+# session names has a himmel-bus peer record, so it has no bus edge to the live console.
+# ABSENT when every held leg has a record, or when the bus has no peers dir (bus not in use).
+# console-wait.sh's wake key does not name it, so it wakes nothing. Env seam: TICK_BUS_PEERS_DIR.
+busedge_tail=""
+bus_peers_dir="${TICK_BUS_PEERS_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus/peers}"
+if [ -d "$bus_peers_dir" ]; then
+    busedge_val=""
+    while IFS=$'\t' read -r be_label be_lock be_cands; do
+        [ -n "$be_label" ] || continue
+        case "$be_lock" in FRESH|STALE) ;; *) continue ;; esac
+        be_found=""
+        for be_cand in ${be_cands//,/ }; do
+            [ -f "$bus_peers_dir/$be_cand.json" ] && { be_found=1; break; }
+        done
+        [ -n "$be_found" ] || busedge_val="$(csv_add "$busedge_val" "$be_label")"
+    done <<< "$leg_candmap"
+    [ -z "$busedge_val" ] || busedge_tail=" busedge=MISSING:$busedge_val"
+fi
 # deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
 # HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)
 # and the window sits on "program crashed". ONE ps read, no per-window probe.
@@ -2006,6 +2025,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     [ -z "$deadwin_tail" ] || printf 'dead windows: %s\n' "${deadwin_tail# deadwin=}"
+    [ -z "$busedge_tail" ] || printf 'bus edges: %s\n' "${busedge_tail# busedge=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
@@ -2062,7 +2082,7 @@ else
     compact_field fails "$fails_summary"
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$stall_tail$station_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$stall_tail$station_tail$spare_tail"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;

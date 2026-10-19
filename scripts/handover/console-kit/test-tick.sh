@@ -196,6 +196,7 @@ export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
 # ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
+export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
