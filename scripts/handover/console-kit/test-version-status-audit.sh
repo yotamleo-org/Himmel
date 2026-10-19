@@ -7,6 +7,7 @@
 #
 # Run: bash scripts/handover/console-kit/test-version-status-audit.sh
 set -u
+unset LEGS_FROM
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${VSA:-$HERE/version-status-audit.sh}"
 
@@ -133,6 +134,11 @@ has "no manifest reports ownership unknown" "$out" "ownership unknown"
 has "no manifest prints UNKNOWN for an unowned started row" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
 [ "$rc" = 3 ] && pass "no manifest exits 3" || fail "no manifest exits 3 (rc=$rc)"
 
+# a missing manifest stays unknown even when --owners is also given
+out="$(run --legs-from "$WORK/absent-fleet.json" --owners HIMMEL-7)"; rc=$?
+has "missing manifest with --owners is still ownership unknown" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
+[ "$rc" = 3 ] && pass "missing manifest with --owners exits 3" || fail "missing manifest with --owners exits 3 (rc=$rc)"
+
 # the open-PR read targets the org slug
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/gh.args"\n' "$WORK" > "$WORK/gh-args"; chmod +x "$WORK/gh-args"
 VSA_GH_CMD="$WORK/gh-args" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" > /dev/null 2>&1
@@ -144,11 +150,11 @@ vmir() { # <dir> <tsv body> <ticket fixVersions json>
     printf -- '---\nkey: "HIMMEL-1"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "In Progress"\nfixVersions: %s\n---\n' "$3" > "$1/HIMMEL/HIMMEL-1.md"
 }
 vrun() { VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$1/HIMMEL" --legs-from "$WORK/fleet.json" 2>&1; }
-vmir "$WORK/v-empty" '' '["v1.0.1"]'
+vmir "$WORK/v-empty" '' '[]'
 out="$(vrun "$WORK/v-empty")"; rc=$?
 [ "$rc" = 3 ] && pass "empty versions file exits 3" || fail "empty versions file exits 3 (rc=$rc: $out)"
 has "empty versions file is warned about" "$out" "versions file"
-vmir "$WORK/v-junk" 'garbage without tabs\n' '["v1.0.1"]'
+vmir "$WORK/v-junk" 'garbage without tabs\n' '[]'
 out="$(vrun "$WORK/v-junk")"; rc=$?
 [ "$rc" = 3 ] && pass "unparseable versions file exits 3" || fail "unparseable versions file exits 3 (rc=$rc: $out)"
 vmir "$WORK/v-unk" 'v1.0.1\tfalse\t\tfalse\n' '["v9.9.9"]'
