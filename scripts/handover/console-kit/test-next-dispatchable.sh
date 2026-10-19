@@ -423,13 +423,26 @@ DOC14="$WORK/console14.md"
 printf '# console\n\n## Live state\n\n- priority: 401 402 403 404 405 406\n' > "$DOC14"
 cat > "$WORK/classify14" <<'EOF'
 #!/usr/bin/env bash
-for k in "$@"; do printf '%s\n' "$k" >> "$CLASSIFY_LOG"; printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
+printf 'S\n' >> "$CLASSIFY_LOG"; sleep 1
+for k in "$@"; do
+    printf 'K\n' >> "$CLASSIFY_LOG"
+    if [ "$k" = HIMMEL-401 ] && [ -f "$REFUSE_401" ]; then printf '%s\tBLOCKED\tstub\n' "$k"; else printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; fi
+done
+printf 'E\n' >> "$CLASSIFY_LOG"
 EOF
 chmod +x "$WORK/classify14"
-export CLASSIFY_LOG="$WORK/classify14.log"; : > "$CLASSIFY_LOG"
-NEXT_DISPATCH_MIRROR="$M14" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify14" bash "$SUT" --doc "$DOC14" --priority-pool-only --owners "HIMMEL-999" --top 2 >/dev/null 2>&1
-c14="$(wc -l < "$CLASSIFY_LOG" | tr -d ' ')"
-[ "$c14" -le 2 ] && pass "classify sees at most --top keys when none are refused ($c14)" || fail "classify saw $c14 keys for --top 2"
+export CLASSIFY_LOG="$WORK/classify14.log" REFUSE_401="$WORK/refuse401"; : > "$CLASSIFY_LOG"
+run14() { NEXT_DISPATCH_MIRROR="$M14" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify14" bash "$SUT" --doc "$DOC14" --priority-pool-only --owners "HIMMEL-999" --top 2 2>/dev/null | cut -f2 | grep '^HIMMEL' | tr '\n' ' '; }
+o14="$(run14)"
+keys14="$(grep -c '^K$' "$CLASSIFY_LOG")"; calls14="$(grep -c '^S$' "$CLASSIFY_LOG")"
+# in-flight peak: S raises, E lowers
+peak14="$(awk '/^S$/{c++; if(c>m)m=c} /^E$/{c--} END{print m+0}' "$CLASSIFY_LOG")"
+[ "$keys14" -le 4 ] && pass "classify sees at most 2*--top keys ($keys14)" || fail "classify saw $keys14 keys for --top 2"
+[ "$calls14" -le 2 ] && [ "$peak14" -le 2 ] && pass "classify makes at most 2 calls, at most 2 in flight (calls=$calls14 peak=$peak14)" || fail "classify calls=$calls14 peak=$peak14"
+[ "$o14" = "HIMMEL-401 HIMMEL-402 " ] && pass "parallel classify keeps rank order" || fail "rank order wrong: $o14"
+: > "$REFUSE_401"; : > "$CLASSIFY_LOG"
+o14="$(run14)"
+[ "$o14" = "HIMMEL-402 HIMMEL-403 " ] && pass "a refused row is skipped and rank order holds" || fail "refusal order wrong: $o14"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

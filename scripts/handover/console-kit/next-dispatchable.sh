@@ -403,9 +403,17 @@ def classify_new(batch):
     if fresh:
         cls_cache.update(classify(fresh))
 
-# One classify call costs a fixed ~20 s: the first --top rows of the whole free list go in one call.
+# One classify call costs a fixed ~20 s: the first 2*--top free rows go in two parallel calls
+# of --top rows each, so a refused or colliding row in the first call does not cost a serial round.
 if classified and top > len(resume):
-    classify_new(free[:top])
+    from concurrent.futures import ThreadPoolExecutor
+    halves = [free[:top], free[top:top * 2]]
+    halves = [h for h in halves if h]
+    for h in halves:
+        asked.update(i['key'] for i in h)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for part in pool.map(classify, halves):
+            cls_cache.update(part)
 
 def emit_free(rows):
     # Classify only the slots still open, then walk on in further batches so BLOCKED rows
