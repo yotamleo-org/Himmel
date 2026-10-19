@@ -358,7 +358,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "$HOOK")/../.." && pwd)"
 if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     readers=$(git -C "$REPO_ROOT" grep -l -E 'input_head|reason_tag' -- scripts ':!*.md' | sort | tr '\n' ' ')
-    want="scripts/eval/leg-digest/fixtures/classifier-denials.jsonl scripts/eval/leg-digest/leg-digest.ts scripts/eval/leg-digest/test-leg-digest.sh scripts/handover/console-kit/test-tick.sh scripts/handover/console-kit/tick.sh scripts/hooks/log-classifier-denial.sh scripts/hooks/test-log-classifier-denial.sh "
+    want="scripts/eval/leg-digest/fixtures/classifier-denials.jsonl scripts/eval/leg-digest/leg-digest.ts scripts/eval/leg-digest/test-leg-digest.sh scripts/handover/console-kit/denied-launch-alert.sh scripts/handover/console-kit/test-denied-launch-alert.sh scripts/handover/console-kit/test-tick.sh scripts/handover/console-kit/tick.sh scripts/hooks/log-classifier-denial.sh scripts/hooks/test-log-classifier-denial.sh "
     if [ "$readers" = "$want" ]; then
         pass "only the host-local files reference input_head / reason_tag"
     else
