@@ -96,7 +96,10 @@ skip() {
 # shellcheck disable=SC1091
 . "$HERE/leg-transcripts.sh" || skip no-lib
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/leg-digest-step.XXXXXX")" || skip no-tmp
+# shellcheck source=scripts/lib/prim.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/prim.sh" || skip no-lib
+WORK="$(tmpdir)" || skip no-tmp
 trap 'rm -rf "$WORK"' EXIT
 
 # ---------- who: closed-shape fields only (leg_ledger.py refuses anything else)

@@ -366,6 +366,58 @@ EOF
 OUT15c="$(bash "$LINT" "$GF_OK" 2>&1)"
 if grepq "$OUT15c" -F '[gnu-flag]'; then fail "gnu-ok marker did not exempt grep -P" "$OUT15c"; else pass "gnu-ok marker exempts grep -P"; fi
 
+# Case 15p: [prim-*] — ad-hoc tmpdir / lock / atomic-write / canonical-path forms
+# are flagged, the scripts/lib/prim.sh calls are not, `# prim-ok:` exempts, and
+# the baseline accepts existing findings but refuses a new one.
+printf '\nCase 15p: prim-* detection, lib calls clean, prim-ok exemption, baseline\n'
+PRIM_BAD="$TMP_ROOT/prim_bad.sh"
+cat > "$PRIM_BAD" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+t=$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")
+mkdir "$LOCKDIR" || exit 1
+flock -x 9
+mv -f "$tmpfile" "$dest"
+sed -i 's/a/b/' "$dest"
+here=$(readlink -f "$0")
+there=$(realpath "$1")
+PRIMEOF
+OUT15P="$(bash "$LINT" "$PRIM_BAD" 2>&1)"
+for _t in prim-tmpdir prim-lock prim-atomic prim-canon; do
+    if grepq "$OUT15P" -F "[$_t]"; then pass "15p $_t flags the ad-hoc form"; else fail "15p $_t should flag the ad-hoc form" "$OUT15P"; fi
+done
+PRIM_OK="$TMP_ROOT/prim_ok.sh"
+cat > "$PRIM_OK" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+. "$(dirname "$0")/prim.sh"
+t=$(tmpdir) || exit 1
+with_lock "$t/lock" do_work
+printf 'x\n' | atomic_write "$t/out"
+here=$(canon_path "$0")
+mkdir -p "$t/locks"
+# prim-ok: the scratch dir is the fixture under test
+d=$(mktemp -d "${TMPDIR:-/tmp}/y.XXXXXX")
+PRIMEOF
+OUT15Q="$(bash "$LINT" "$PRIM_OK" 2>&1)"
+if grepq "$OUT15Q" -F '[prim-'; then fail "15p lib calls and a prim-ok line must be clean" "$OUT15Q"; else pass "15p lib calls, mkdir -p and prim-ok are clean"; fi
+mkdir -p "$TMP_ROOT/prim-skip"
+cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/test-thing.sh"
+OUT15R="$(bash "$LINT" "$TMP_ROOT/prim-skip/test-thing.sh" 2>&1)"
+if grepq "$OUT15R" -F '[prim-'; then fail "15p a test-* file must not be scanned" "$OUT15R"; else pass "15p a test-* file is not scanned"; fi
+cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/prim.sh"
+OUT15S="$(bash "$LINT" "$TMP_ROOT/prim-skip/prim.sh" 2>&1)"
+if grepq "$OUT15S" -F '[prim-'; then fail "15p the lib's own prim.sh must not be scanned" "$OUT15S"; else pass "15p prim.sh is not scanned"; fi
+PRIM_BASE="$TMP_ROOT/prim_base.tsv"
+printf '%s\tprim-tmpdir\t1\n%s\tprim-lock\t2\n%s\tprim-atomic\t2\n%s\tprim-canon\t2\n' "$PRIM_BAD" "$PRIM_BAD" "$PRIM_BAD" "$PRIM_BAD" > "$PRIM_BASE"
+OUT15T="$(bash "$LINT" --baseline "$PRIM_BASE" "$PRIM_BAD" 2>&1)"
+if grepq "$OUT15T" -F '[prim-'; then fail "15p baselined findings must be accepted" "$OUT15T"; else pass "15p baselined findings are accepted"; fi
+cat >> "$PRIM_BAD" <<'PRIMEOF'
+d2=$(mktemp -d "${TMPDIR:-/tmp}/z.XXXXXX")
+PRIMEOF
+OUT15U="$(bash "$LINT" --baseline "$PRIM_BASE" "$PRIM_BAD" 2>&1)"
+if grepq "$OUT15U" -F '[prim-tmpdir]'; then pass "15p one new ad-hoc tmpdir over the baseline is refused"; else fail "15p a new finding over the baseline must be refused" "$OUT15U"; fi
+
 # Case 16: BOM policy is split by file type. A BOM is CORRECT for
 # *.ps1 (PS5.1 needs it to decode UTF-8) -> [BOM] is never reported on a .ps1.
 # Instead a .ps1 with non-ASCII bytes (>0x7F) but NO BOM is the trap itself
