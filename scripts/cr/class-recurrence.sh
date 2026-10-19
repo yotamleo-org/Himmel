@@ -126,13 +126,12 @@ const pairs = {};
 for (const k of Object.keys(first)) {
   const f = first[k];
   if (!(Date.parse(f.ts) >= cutoff) || !merged.has(f.branch)) continue;
-  let cls = "", verdict = f.verdict || "", deferred = !!f.deferred_to;
+  let cls = "", verdict = f.verdict || "", deferred = !!f.deferred_to || verdict === "deferred";
   for (const a of amends[k] || []) {
     if (a.set.class) cls = a.set.class;
-    if (a.set.verdict) verdict = a.set.verdict;
-    if (a.set.deferred_to) deferred = true;
+    if (a.set.verdict) { verdict = a.set.verdict; deferred = verdict === "deferred"; }
+    else if (a.set.deferred_to) deferred = true;
   }
-  if (verdict === "deferred") deferred = true;
   if (!cls || cls === "unattributed" || verdict === "disproved") continue;
   const id = cls.replace(/:/g, "-"), p = id + "\t" + areaOf(f.file);
   const e2 = pairs[p] = pairs[p] || { prs: new Set(), def: new Set() };

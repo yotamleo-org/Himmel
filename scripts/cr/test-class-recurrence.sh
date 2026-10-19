@@ -265,6 +265,17 @@ printf 'TST-504\tTask\tTo Do\tp4\tresidual,class-lone-one\n' >"$JSTATE/residuals
 out=$(run --merged-file "$MERGED"); rc=$?
 assert_not_contains "a lone unfolded residual with no folded sibling does not trigger" "$(cat "$JLOG")" "lone-one"
 
+echo "TEST: a finding deferred and then fixed no longer counts as deferring"
+reset
+seed revived-class scripts/hooks/foo.sh "$TS_NEW" 2 u1 u2 u3 u4 u5
+for b in u1 u2; do
+    printf '{"kind":"amend","ts":"%s","branch":"%s","target_head":"h-%s","finding_id":"f-revived-class","set":{"verdict":"fixed"}}\n' "$TS_NEW" "$b" "$b" >>"$LEDGER"
+done
+printf '%s\n' u1 u2 u3 u4 u5 >>"$MERGED"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_eq "revived-class run exits 0" "0" "$rc"
+assert_not_contains "deferred-then-fixed findings do not fire the class" "$(cat "$JLOG")" "revived-class"
+
 echo "TEST: --dry-run counts the tickets it would file against the weekly cap"
 reset
 printf 'TST-90\n' >"$JSTATE/week"
