@@ -516,12 +516,11 @@ if [ -n "$RESIDUAL_OF" ]; then
         JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --affects-version current >/dev/null 2>&1 ||
             echo "write-verdict: warning - could not stamp affectsVersion on $wv_key; set it by hand" >&2
         if [ "$wv_new" -ge 2 ] && [ -r "$wv_mirror/$wv_key.md" ]; then
-            # shellcheck disable=SC2013  # version names carry no spaces
-            for wv_fv in $(sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" | grep -o '"[^"]*"' | sed 's/"//g'); do
+            while IFS= read -r wv_fv; do
                 # shellcheck disable=SC2086
-                JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira fix-version "$wv_key" --remove "$wv_fv" >/dev/null 2>&1 ||
+                JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira fix-version "$wv_key" --remove "$wv_fv" </dev/null >/dev/null 2>&1 ||
                     echo "write-verdict: warning - could not remove fixVersion $wv_fv from $wv_key; a depth >= 2 residual files to ICE with none" >&2
-            done
+            done < <(sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" | grep -o '"[^"]*"' | sed 's/"//g')
         fi
     done
 fi
