@@ -293,6 +293,22 @@ test("health: a firing page alert makes the verdict Act now and shows its summar
   await expect(page.locator("#broken .alert")).toContainText("e2e-page-alert-summary");
 });
 
+const healthDotOf = (page: Page) => page.locator("nav.pages a", { hasText: "Health" }).locator(".st-dot");
+
+test("health: the rail's Health dot is fail, ok and warn with the verdict (Act now, All clear, Needs a look)", async ({ page }) => {
+  await openHealth(page); // a fail row in the feed
+  await expect(verdictWord(page)).toHaveText("Act now");
+  await expect(healthDotOf(page)).toHaveClass(/\bfail\b/);
+  await h.stop();
+  await openHealth(page, { clean: true });
+  await expect(verdictWord(page)).toHaveText("All clear");
+  await expect(healthDotOf(page)).toHaveClass(/\bok\b/);
+  await h.stop();
+  await openHealth(page, { clean: true }, { prom: { alerts: [{ labels: { alertname: "E2EWarnAlert", severity: "warning" }, annotations: { summary: "e2e-warn-alert" } }] } });
+  await expect(verdictWord(page)).toHaveText("Needs a look");
+  await expect(healthDotOf(page)).toHaveClass(/\bwarn\b/);
+});
+
 test("health: every source absent leaves No data cards that name the source; verdict says alerts not checked (I3, I6)", async ({ page }) => {
   await openHealth(page, { clean: true });
   await expect(verdictWord(page)).toHaveText("All clear");
