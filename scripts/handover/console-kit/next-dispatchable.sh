@@ -174,10 +174,10 @@ def read_priority_line(path):
             in_state = line.strip() == '## Live state'
         m = re.match(r'^\s*(?:[-*]\s+)?(?:\*\*)?priority:(?:\*\*)?\s*(.*)$', line) if in_state else None
         if m:
-            # Outside (...) every bare number is a key; inside, only HIMMEL-NNNN or a number
+            # Outside (...) or [...] every bare number that is not part of a dotted number is a key; inside, only HIMMEL-NNNN or a number
             # from a `+` to the closing paren. `NNN (CLOUD)` marks NNN cloud-only.
             depth, plus = 0, False
-            for t in re.finditer(r'(\()|(\))|(\+)|(?<![\w-])(HIMMEL-)?(\d{3,5})(?![\w-])(\s*\(CLOUD\))?', m.group(1)):
+            for t in re.finditer(r'([(\[])|([)\]])|(\+)|(?<![\w.-])(HIMMEL-)?(\d{3,5})(?![\w-]|\.\d)(\s*\(CLOUD\))?', m.group(1)):
                 if t.group(1):
                     depth += 1
                 elif t.group(2):
