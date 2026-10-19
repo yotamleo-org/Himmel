@@ -816,7 +816,7 @@ const iceFollowupsSection = (() => {
         const keys = lines.slice(1).filter((k) => /^HIMMEL-\d+$/.test(k));
         trend.ice_followups = { count: Number(m[1]), keys };
         if (!keys.length) return na;
-        return `<section data-ice-followups="${keys.length}">${title}<p class="sub">ice-followups=${keys.length}: parked in ICE, nobody owns them</p><ul>${keys.map((k) => `<li data-ice-key="${esc(k)}">${esc(k)}</li>`).join('')}</ul></section>`;
+        return `<section data-ice-followups="${keys.length}">${title}<p class="sub">ice-followups=${keys.length}: cited as follow-ups, now parked in ICE</p><ul>${keys.map((k) => `<li data-ice-key="${esc(k)}">${esc(k)}</li>`).join('')}</ul></section>`;
     } catch { return na; }
 })();
 

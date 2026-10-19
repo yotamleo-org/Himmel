@@ -31,7 +31,7 @@ done
 dir="${dir:-${BOARD_MIRROR:-$HOME/.himmel/state/jira-mirror/HIMMEL}}"
 case "$days" in '' | *[!0-9]*) days=14 ;; esac
 
-if [ ! -d "$dir" ]; then
+if [ ! -d "$dir" ] || [ ! -r "$dir" ] || [ ! -x "$dir" ]; then
     printf 'ice-followups=?\n'
     exit 0
 fi

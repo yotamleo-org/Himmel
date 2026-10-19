@@ -60,6 +60,14 @@ else
 fi
 chmod 644 "$M/HIMMEL-9010.md"
 
+chmod 000 "$M"
+if [ -r "$M" ]; then
+    pass 'unreadable-dir row skipped (running as a user that reads mode 000)'
+else
+    same 'an unreadable mirror directory reads ?, never a false 0' "$(bash "$SUT" "$M" 2>/dev/null)" "ice-followups=?"
+fi
+chmod 755 "$M"
+
 rm -rf "$M"; mkdir -p "$M"; issue HIMMEL-9004 ""
 same 'no ICE citations reads 0 with no keys' "$(bash "$SUT" "$M" 2>&1)" "ice-followups=0"
 
