@@ -770,6 +770,12 @@ contains 'a page ahead of Jira is DRIFT naming the key and both statuses (HIMMEL
 pstdout="$(TRACKER_JIRA="$W/fakejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
 contains 'a key only on the page is DRIFT, a lagging key beside it is listed too (HIMMEL-6483)' "$pstdout" \
     'HIMMEL-5860 page Done jira (absent), HIMMEL-6143 page In Progress jira In Review'
+printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-5860\tTask\tDone\tx\nHIMMEL-6143\tTask\tIn Progress\tx\nHIMMEL-5574\tTask\tClosed\tx\nHIMMEL-9001\tTask\tTo Do\tx\n' > "$W/new.tsv"
+printf '#!/bin/sh\ncat "%s"\n' "$W/new.tsv" > "$W/newjira"
+chmod +x "$W/newjira"
+pstdout="$(TRACKER_JIRA="$W/newjira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'a ticket live Jira has and the mirror lacks is lag, not DRIFT' "$pstdout" 'HIMMEL-9001 page (absent) jira To Do'
+not_contains 'a ticket only in Jira is not DRIFT' "$pstdout" 'parity: v1.1.3 DRIFT'
 contains 'the Jira side drops Done tickets resolved as something other than Done or Fixed (HIMMEL-6483)' \
     "$(cat "$W/jira-args" 2>/dev/null)" 'resolution not in'
 # a status the tracker has no bucket for is a garbled answer, never a guessed To Do.

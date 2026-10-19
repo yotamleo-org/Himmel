@@ -624,7 +624,7 @@ def jira_parity(tk, vers, cur):
     if not diff:
         return 'parity: %s ok %s%s' % (v, page, tail)
     # a page status earlier in the workflow than Jira's is the mirror trailing a live move; anything else is a real mismatch
-    lag = all(k in pg and k in jr and rank[pg[k][0]] < rank[jr[k][0]] for k in diff)
+    lag = all(k not in pg or (k in jr and rank[pg[k][0]] < rank[jr[k][0]]) for k in diff)
     names = ', '.join('HIMMEL-%d page %s jira %s' % (k, pg[k][1] if k in pg else '(absent)', jr[k][1] if k in jr else '(absent)')
                       for k in diff[:8]) + (' (+%d more)' % (len(diff) - 8) if len(diff) > 8 else '')
     return 'parity: %s %s page %s jira %s%s: %s' % (v, 'lag' if lag else 'DRIFT', page, jira, tail, names)
