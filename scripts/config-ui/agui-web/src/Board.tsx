@@ -137,7 +137,7 @@ export function Trends({ board, onCard }: { board: Board; onCard: (c: CardId) =>
 
 function Spark({ values }: { values: number[] }) {
   const max = Math.max(...values, 1);
-  return <svg className="bd-spark" viewBox={`0 0 ${values.length * 10} 24`} preserveAspectRatio="none" role="img" aria-label="console cost per hour">
+  return <svg className="bd-spark" width={values.length * 12} height={28} viewBox={`0 0 ${values.length * 10} 24`} preserveAspectRatio="none" role="img" aria-label="console cost per hour">
     {values.map((v, i) => <rect key={i} x={i * 10 + 1} width={8} y={24 - (v / max) * 22} height={(v / max) * 22} fill="var(--accent)" />)}</svg>;
 }
 

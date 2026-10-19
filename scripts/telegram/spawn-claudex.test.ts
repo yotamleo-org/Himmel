@@ -2290,3 +2290,13 @@ test("executeClaudexRun: growth observed the poll AFTER the window elapses must 
     rmSync(dir, { recursive: true, force: true }); rmSync(watchRoot, { recursive: true, force: true });
   }
 });
+
+test("composeWorkerSettings: a POSIX session dir is granted as a `//`-rooted absolute Read rule so the worker can Read its brief.md (HIMMEL-6421)", async () => {
+  const { composeWorkerSettings } = await import("./spawn-glm");
+  const sessionDir = "/srv/.claude/handover/bridge/claudex-sessions/claudex-t1";
+  const allow: string[] = JSON.parse(composeWorkerSettings(undefined, "/srv/repo/.claude/worktrees/claudex+t1", sessionDir)).permissions.allow;
+  // a single leading `/` is project-root-relative in Claude Code permission rules; `//` is filesystem-absolute
+  expect(allow).toContain(`Read(/${sessionDir})`);
+  expect(allow).toContain(`Read(/${sessionDir}/*)`);
+  expect(allow.some((r) => r.startsWith("Read(/srv/"))).toBe(false);
+});

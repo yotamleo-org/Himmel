@@ -14,6 +14,8 @@ Arms (all read-only):
               files ranked by distinct words matched; shows <=8 lines per file
   qmd-lex     qmd BM25 (lex search), rerank off
   qmd-hybrid  qmd lex + vec with qmd's default rerank: the shape agents send
+  qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
+              --arms, not in the default five and not fused into combined
   graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify; its
               tokens and time are the sum of the three
@@ -55,6 +57,7 @@ import eval_runs  # noqa: E402
 
 ARMS = ["grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
+OPT_IN = ["qmd-hybrid-norerank"]
 # The question set holds every question and reason phrase verbatim.
 GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/"]
 STOP = set("""a an and are as at be by can do does for from has have how i in is it its
@@ -201,10 +204,10 @@ def mcp_rows(msg):
     return rows if isinstance(rows, list) else []
 
 
-def arm_qmd(q, hybrid, timeout, k, collection):
+def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
     args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
             "collections": [collection], "limit": k, "intent": q}
-    if not hybrid:
+    if not hybrid or not rerank:
         args["rerank"] = False
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
@@ -309,14 +312,14 @@ def cmd_check(a):
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
     for x in arms:
-        if x not in ARMS:
-            raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS)))
+        if x not in ARMS + OPT_IN:
+            raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS + OPT_IN)))
     qs = load_questions(a.questions)
     repo = os.path.abspath(a.repo)
     os.makedirs(a.out, exist_ok=True)
     need = list(arms)
     if "combined" in arms:
-        need = [x for x in ARMS if x in arms or x in FUSED]
+        need = [x for x in ARMS + OPT_IN if x in arms or x in FUSED]
     rows = []
     for q in qs:
         got = {}
@@ -334,7 +337,8 @@ def cmd_run(a):
                 elif arm == "graphify":
                     files, text, to, err = arm_graphify(q["q"], repo, a.timeout, a.k)
                 else:
-                    files, text, to, err = arm_qmd(q["q"], arm == "qmd-hybrid", a.timeout, a.k, a.collection)
+                    files, text, to, err = arm_qmd(q["q"], arm != "qmd-lex", a.timeout, a.k, a.collection,
+                                                   arm != "qmd-hybrid-norerank")
                 got[arm] = dict(files=files, _text=text, ms=int((time.time() - t0) * 1000), timeout=bool(to),
                                 error=bool(err))
         for arm in arms:

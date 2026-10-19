@@ -3,7 +3,7 @@ description: Prune merged-PR worktrees and (optionally) create a new one in the 
 argument-hint: [branch-name] [--prune-only] [--only <path|branch>] [--no-prune] [--no-install] [--dry-run] [--verbose]
 ---
 
-Combined worktree gardener. Supersedes the legacy `/new-worktree` (removed in #39) and the plugin command `/clean_gone` (still installed via `commit-commands` plugin but superseded for himmel — use `/clean_garden` instead).
+Combined worktree gardener.
 
 Default behavior: prune any non-primary worktree whose PR is merged (preferred signal: `gh pr list --state merged`; falls back to `[gone]` branch tracking when gh is unavailable). When a branch name is supplied, also creates the new worktree afterwards.
 

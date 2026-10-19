@@ -317,13 +317,15 @@ export function composeGlmOutboxWriteHint(outbox: string): string {
 
 // Windows absolute path -> the POSIX form Claude Code's path-scoped
 // permission rules require (`C:\a\b` -> `//c/a/b`; verified against current
-// permission docs). Non-Windows-shaped input (already POSIX, or relative) is
-// returned with backslashes normalized only — callers always pass an
-// already-`resolve()`d absolute path.
+// permission docs). A POSIX absolute path gets the same `//` root: a single
+// leading `/` is project-root-relative in a permission rule, so `Read(/home/..)`
+// never matches the real file. Relative input is returned with backslashes
+// normalized only — callers always pass an already-`resolve()`d absolute path.
 export function toPermissionPath(p: string): string {
   const posix = p.replace(/\\/g, "/");
   const m = posix.match(/^([A-Za-z]):\/(.*)$/);
-  return m ? `//${m[1].toLowerCase()}/${m[2]}` : posix;
+  if (m) return `//${m[1].toLowerCase()}/${m[2]}`;
+  return posix.startsWith("/") && !posix.startsWith("//") ? `/${posix}` : posix;
 }
 
 // Curated literal-command Bash allow-list: mirrors auto-

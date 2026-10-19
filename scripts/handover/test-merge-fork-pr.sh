@@ -273,6 +273,9 @@ check "merge: absolute entry runs local" "$out" "RAN:branch"
 rc=0; (cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/merge-fork-pr.sh >/dev/null 2>&1) || rc=$?
 check "merge: relative entry with the anchor unset exits 2" "$rc" 2
 
+out=$(jq -r '.[] | select(.nwo == "yotamleo/qmd") | .himmel_branch' "$HERE/../guardrails/himmel-adapters.json" 2>/dev/null)
+check "registry: yotamleo/qmd himmel_branch is the fork main the pin tracks" "$out" "main"
+
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-merge-fork-pr.sh"
 else

@@ -34,6 +34,11 @@ export function parseLanding(hash) {
   return { token, page: CONSOLE.includes(p.get("page")) ? p.get("page") : "config" };
 }
 
+// The Health entry's status dot: the Health page's verdict (health.js verdict()), cls already ok / warn / fail / off.
+export function healthDot(v) {
+  return { cls: v.cls, title: `health: ${v.word}` };
+}
+
 // The Fleet entry's status dot, in app.css's ok / warn / fail: can the fleet be read in full right now?
 export function fleetDot(fleet, error) {
   if (error) return { cls: "fail", title: `fleet: ${error}` };

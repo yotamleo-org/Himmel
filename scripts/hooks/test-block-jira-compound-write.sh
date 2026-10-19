@@ -942,12 +942,12 @@ run_hook Bash "node $JIRA fix-version HIMMEL-4801 --add v1.0.2c"
 # --- 14.6 the CLI's other mutating verbs are writes too (the incident verb,
 #          fix-version, was missing, so even its non-loop compound shapes fell
 #          through unbounced).
-for verb in fix-version rank unlink resolution version-create version-edit version-release version-archive version-move; do
+for verb in fix-version affects-version rank unlink resolution version-create version-edit version-release version-archive version-move; do
   run_hook Bash "node $JIRA $verb HIMMEL-1 --x \"\$(cat /tmp/a.md)\""
   [ "$RC" -eq 2 ] || fail "write verb '$verb' not bounced (rc=$RC)"
   grep -q "^    node .* $verb " "$ERR" || fail "retry example for '$verb' does not name that verb"
 done
-pass "fix-version / rank / unlink / resolution / version-* bounced"
+pass "fix-version / affects-version / rank / unlink / resolution / version-* bounced"
 for sub in set sync-sprints; do
   run_hook Bash "node $JIRA roadmap $sub HIMMEL-1 --x \"\$(cat /tmp/a.md)\""
   [ "$RC" -eq 2 ] || fail "'roadmap $sub' not bounced (rc=$RC)"

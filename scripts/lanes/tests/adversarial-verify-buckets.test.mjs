@@ -86,14 +86,24 @@ test('(b2) a lone finding the judge puts in noted stays in noted', async () => {
   assert.equal(out.buckets.noted[0].rationale, 'low impact');
 });
 
-test('(b3) a lone critical finding is still capped at consider', async () => {
+test('(b3) a lone verified critical finding the judge puts in act reaches act, without agreement', async () => {
   const { out } = await exec({
     reviews: { correctness: [F('c.js', 3, 'critical')] },
     judge: () => ({ judgments: [act('c.js:3')] }),
   });
+  assert.equal(out.buckets.act.length, 1);
+  assert.equal(out.buckets.act[0].agreed, false);
+  assert.equal(out.buckets.consider.length, 0);
+  assert.deepEqual(out.agreement, {});
+});
+
+test('(b4) a lone critical the judge puts in consider stays in consider', async () => {
+  const { out } = await exec({
+    reviews: { correctness: [F('c.js', 3, 'critical')] },
+    judge: () => ({ judgments: [{ key: 'c.js:3', bucket: 'consider', rationale: 'r' }] }),
+  });
   assert.equal(out.buckets.act.length, 0);
   assert.equal(out.buckets.consider.length, 1);
-  assert.deepEqual(out.agreement, {});
 });
 
 test('(c) a refuted finding lands in dismissed with the verifier reason, not dropped', async () => {
@@ -165,10 +175,10 @@ test('two different findings on one line, one refuted and one confirmed critical
     verdict: p => (p.includes('swallowed error') ? { refuted: true, reason: 'caller handles it' } : { refuted: false, reason: 'holds' }),
     judge: () => ({ judgments: [act('k.js:4')] }),
   });
-  assert.equal(out.buckets.act.length, 0);
-  assert.equal(out.buckets.consider.length, 1);
-  assert.equal(out.buckets.consider[0].title, 'unbounded loop');
-  assert.deepEqual(out.buckets.consider[0].raisedBy, ['silent-failure']);
+  assert.equal(out.buckets.act.length, 1);
+  assert.equal(out.buckets.consider.length, 0);
+  assert.equal(out.buckets.act[0].title, 'unbounded loop');
+  assert.deepEqual(out.buckets.act[0].raisedBy, ['silent-failure']);
   assert.equal(out.buckets.dismissed.length, 1);
   assert.equal(out.buckets.dismissed[0].title, 'swallowed error');
   assert.deepEqual(out.buckets.dismissed[0].raisedBy, ['correctness']);
@@ -190,10 +200,10 @@ test('two confirmed reports on one line the judge says are different defects: ca
 
 const twoDifferent = { correctness: [F('p.js', 3, 'critical', 'off by one')], 'silent-failure': [F('p.js', 3, 'critical', 'error dropped')] };
 
-test('two different reports on one line, judge says act but omits sameDefect: not act, not agreement', async () => {
+test('two different critical reports on one line, judge says act but omits sameDefect: act by severity, not agreement', async () => {
   const { out } = await exec({ reviews: twoDifferent, judge: () => ({ judgments: [act('p.js:3')] }) });
-  assert.equal(out.buckets.act.length, 0);
-  assert.equal(out.buckets.consider.length, 1);
+  assert.equal(out.buckets.act.length, 1);
+  assert.equal(out.buckets.consider.length, 0);
   assert.deepEqual(out.agreement, {});
 });
 

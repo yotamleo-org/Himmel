@@ -2248,7 +2248,8 @@ test("toPermissionPath: Windows absolute path -> POSIX //<drive>/... form", () =
 });
 
 test("toPermissionPath: already-POSIX / non-drive input is normalized (backslash only), not drive-mangled", () => {
-  expect(toPermissionPath("/already/posix")).toBe("/already/posix");
+  expect(toPermissionPath("/already/posix")).toBe("//already/posix");
+  expect(toPermissionPath("//already/rooted")).toBe("//already/rooted");
   expect(toPermissionPath("relative\\path")).toBe("relative/path");
 });
 

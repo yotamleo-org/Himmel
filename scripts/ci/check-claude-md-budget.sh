@@ -32,7 +32,7 @@
 # 2 cannot evaluate (fail-closed).
 set -euo pipefail
 
-MAX_BYTES="${CLAUDE_MD_MAX_BYTES:-12288}"   # 12 KiB, himmel content only
+MAX_BYTES="${CLAUDE_MD_MAX_BYTES:-6144}"   # 6 KiB, himmel content only
 
 case "$MAX_BYTES" in
     ''|*[!0-9]*) echo "→ claude-md-budget: CLAUDE_MD_MAX_BYTES must be an integer, got '$MAX_BYTES'" >&2; exit 2 ;;
