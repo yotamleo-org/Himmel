@@ -32,6 +32,8 @@ STALE) with no himmel-bus peer record has no edge to the live console. It is
 absent when every held leg has a record or the bus has no peers dir, and
 `console-wait.sh` does not wake on it, so read it at the next tick.
 
+`console-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <leg>` Telegram per classifier-denied `headed-arm-leg.sh` launch (leg, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
+
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,
