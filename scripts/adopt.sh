@@ -168,6 +168,7 @@ PORTABLE_FILES=(
   scripts/hooks/lib/guard-unwrap.sh
   scripts/hooks/lib/shell-tokenize.sh
   scripts/lib/guard-empty-expansion.sh
+  scripts/lib/bash-ast.sh
   scripts/hooks/check-commit-msg.sh
   scripts/lib/project-mode.sh
   scripts/hooks/check-worktree-isolation.sh
