@@ -93,6 +93,9 @@ case "$sub" in
           id=${jql#*restructure-class-}; id=${id%%\"*}
           case "$jql" in *'statusCategory != Done'*) [ -f "$JSTATE/done-$id" ] && exit 0 ;; esac
           [ -f "$JSTATE/ticket-$id" ] && cat "$JSTATE/ticket-$id" ;;
+      *'key = '*)
+          mk=${jql#*key = }; mk=${mk%% *}
+          [ -f "$JSTATE/done-key-$mk" ] || printf '%s\tTask\tTo Do\tmember\tx\n' "$mk" ;;
       *restructure-trigger*) cat "$JSTATE/week" 2>/dev/null ;;
       *'labels = residual'*) cat "$JSTATE/residuals" 2>/dev/null ;;
     esac
@@ -239,6 +242,28 @@ out=$(run --merged-file "$MERGED"); rc=$?
 assert_eq "recurrence after a closed restructure exits 0" "0" "$rc"
 assert_eq "a new ticket is filed" "1" "$(count '^create' "$JLOG")"
 assert_not_contains "the closed ticket gets no comment" "$(cat "$JLOG")" "comment TST-50 "
+
+echo "TEST: a Done epic member is not labelled, a new ticket is filed"
+reset
+: >"$JSTATE/done-key-TST-5061"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_eq "closed member exits 0" "0" "$rc"
+assert_not_contains "the closed member is not labelled" "$(cat "$JLOG")" "edit TST-5061 --add-labels"
+assert_contains "a new ticket carries the member's class" "$(grep '^create' "$JLOG")" "restructure-class-eval-tokenizer-split"
+
+echo "TEST: a residual left unfolded beside a folded sibling is retried"
+reset
+printf 'TST-100\tTask\tTo Do\ttitle\trestructure-class-lonely-class\n' >"$JSTATE/ticket-lonely-class"
+printf 'TST-501\tTask\tTo Do\tp1\tresidual,class-lonely-class,folded-into-TST-100\nTST-502\tTask\tTo Do\tp2\tresidual,class-lonely-class\nTST-503\tTask\tTo Do\tp3\tresidual,class-lonely-class\n' >"$JSTATE/residuals"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_eq "retry run exits 0" "0" "$rc"
+assert_contains "unfolded residual 2 is linked" "$(cat "$JLOG")" "link TST-502 TST-100"
+assert_contains "unfolded residual 3 is linked" "$(cat "$JLOG")" "link TST-503 TST-100"
+assert_not_contains "the folded sibling is untouched" "$(cat "$JLOG")" "link TST-501"
+reset
+printf 'TST-504\tTask\tTo Do\tp4\tresidual,class-lone-one\n' >"$JSTATE/residuals"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_not_contains "a lone unfolded residual with no folded sibling does not trigger" "$(cat "$JLOG")" "lone-one"
 
 echo "TEST: --dry-run counts the tickets it would file against the weekly cap"
 reset

@@ -10,7 +10,8 @@
 # (unattributed rows are never counted; `new:<slug>` counts as `new-<slug>`).
 # In the rolling window (--days, default 14) a class fires when either holds:
 #   - one pair appears in >= 5 distinct merged PRs and >= 2 of them deferred it;
-#   - >= 3 open, not-yet-folded residuals carry its `class-<id>` label.
+#   - >= 3 open, not-yet-folded residuals carry its `class-<id>` label, or one
+#     does beside an already folded sibling (a fold that failed half way is retried).
 # Per fired class, in order:
 #   1. a ticket labelled restructure-class-<id> exists  -> comment the evidence;
 #   2. the class has a member of the structural-fix epic (--members) -> label the member, comment;
@@ -55,7 +56,7 @@ gnu-only-utility HIMMEL-5062
 bash32-portability HIMMEL-5062
 console-kit-lock-helper HIMMEL-5063"
 
-usage() { sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2; }
+usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' >&2; }
 die() { echo "class-recurrence: $*" >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
@@ -155,7 +156,13 @@ awk -F'\t' '
         n = split($5, L, ","); for (i = 1; i <= n; i++) if (L[i] ~ /^class-./) print substr(L[i], 7) "\t" $1 "\t" $4
     }' "$W/residuals.raw" >"$W/residuals.tsv"
 
-{ cut -f1 "$W/pairs.tsv"; awk -F'\t' -v m="$RESIDUAL_MIN" '{ c[$1]++ } END { for (k in c) if (c[k] >= m) print k }' "$W/residuals.tsv"; } \
+{ cut -f1 "$W/pairs.tsv"
+  awk -F'\t' -v m="$RESIDUAL_MIN" '
+      NF >= 5 {
+          folded = ($5 ~ /(^|,)folded-into-/); n = split($5, L, ",")
+          for (i = 1; i <= n; i++) if (L[i] ~ /^class-./) { k = substr(L[i], 7); if (folded) f[k]++; else u[k]++ }
+      }
+      END { for (k in u) if (u[k] >= m || f[k] > 0) print k }' "$W/residuals.raw"; } \
     | sort -u >"$W/classes.txt"
 
 if [ -n "$MEMBERS_FILE" ]; then
@@ -235,6 +242,13 @@ while IFS= read -r id; do
     member=$(awk -v c="$id" '$1 == c {print $2; exit}' "$W/members.txt")
     prs=$(awk -F'\t' -v c="$id" '$1 == c {n += $3} END {print n + 0}' "$W/pairs.tsv")
     nres=$(awk -F'\t' -v c="$id" '$1 == c' "$W/residuals.tsv" | wc -l | tr -d ' ')
+    if [ -z "$key" ] && [ -n "$member" ]; then
+        if ! jira_run list --project "$PROJECT" --limit 1 --jql "key = ${member} AND statusCategory != Done" >"$W/member.raw" 2>"$W/err"; then
+            echo "class-recurrence: member lookup for ${member} failed — fail-closed: $(cat "$W/err")" >&2
+            exit 4
+        fi
+        [ -n "$(awk 'NF{print $1; exit}' "$W/member.raw")" ] || member=""
+    fi
     new_ticket=0
     if [ -n "$key" ]; then
         action="updated"
