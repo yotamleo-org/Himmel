@@ -438,7 +438,7 @@ keys14="$(grep -c '^K$' "$CLASSIFY_LOG")"; calls14="$(grep -c '^S$' "$CLASSIFY_L
 # in-flight peak: S raises, E lowers
 peak14="$(awk '/^S$/{c++; if(c>m)m=c} /^E$/{c--} END{print m+0}' "$CLASSIFY_LOG")"
 [ "$keys14" -le 4 ] && pass "classify sees at most 2*--top keys ($keys14)" || fail "classify saw $keys14 keys for --top 2"
-[ "$calls14" -le 2 ] && [ "$peak14" -le 2 ] && pass "classify makes at most 2 calls, at most 2 in flight (calls=$calls14 peak=$peak14)" || fail "classify calls=$calls14 peak=$peak14"
+[ "$calls14" -eq 2 ] && [ "$peak14" -eq 2 ] && pass "classify makes at most 2 calls, at most 2 in flight (calls=$calls14 peak=$peak14)" || fail "classify calls=$calls14 peak=$peak14"
 [ "$o14" = "HIMMEL-401 HIMMEL-402 " ] && pass "parallel classify keeps rank order" || fail "rank order wrong: $o14"
 : > "$REFUSE_401"; : > "$CLASSIFY_LOG"
 o14="$(run14)"
