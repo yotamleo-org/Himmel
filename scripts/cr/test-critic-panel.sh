@@ -824,6 +824,15 @@ check "HIMMEL-6475: critic-skipped avail row carries the SKIPPED stderr line" "$
 check "HIMMEL-6475: rc-5 member writes no attempt error row" "$(printf '%s\n' "$sk_summary" | sed -n 's/^attempt-errors=//p')" "0"
 check "HIMMEL-6475: rc-5 member runs no fallback (stub called once)" "$(cat "$SK_COUNT")" "1"
 
+# rc 5 with nothing on stderr still records a non-empty detail.
+SK2_STUB="$tmp/sk2-stub.sh"
+printf '%s\n' '#!/bin/bash' 'exit 5' > "$SK2_STUB"; chmod +x "$SK2_STUB"
+SK2_LEDGER="$tmp/sk2-ledger.jsonl"; : > "$SK2_LEDGER"
+CR_LEDGER="$SK2_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+    CRITICS_JSON="$SK_JSON" CRITIC_FIRST_PASS="$SK2_STUB" \
+    bash "$PANEL" <<< "$DIFF" > /dev/null 2> /dev/null || true
+check "HIMMEL-6475: rc-5 with empty stderr still carries a detail" "$(grep -c '"reason":"critic-skipped".*"detail":"critic SKIPPED' "$SK2_LEDGER" || true)" "1"
+
 # Test LA: the panel persists its OWN evidence through ledger-append.sh. One run
 # contains two responders + one unavailable member and four findings, so it
 # covers both availability statuses and empty raw verdicts without orchestrator
