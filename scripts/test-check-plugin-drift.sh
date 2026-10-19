@@ -178,6 +178,10 @@ assert co['tracked_repo'] == 'AgriciDaniel/claude-obsidian'
 assert co['synced_base'] == ups['claude-obsidian']['synced_base']
 assert 'fork' not in co
 
+holds = {f['fork_repo']: f.get('hold-reason', '').strip() for f in reg.get('forks', [])}
+for retired in ('yotamleo/claude-obsidian', 'yotamleo/claude-squad'):
+    assert holds.get(retired), retired + ' needs a hold-reason row in upstreams.json forks'
+
 qmd = entries['qmd']
 assert qmd['tracked_repo'] == 'tobi/qmd'
 # re-carried the fork (launcher signal forwarding) until

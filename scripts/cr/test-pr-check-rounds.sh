@@ -385,10 +385,14 @@ three_rounds() {
     # An optional third argument bumps the branch's plugin.json.
     [ -z "${3:-}" ] || write_plugin "$1" "$3"
     git -C "$repo" commit -q -m "$1"
-    cap_r3_head="$(git -C "$repo" rev-parse "$1")"
+    # An empty commit per round: a start at an already-counted head reuses its
+    # round, so each of the three rounds needs its own head.
     for n in 1 2; do
+        cap_r3_head="$(git -C "$repo" rev-parse "$1")"
         (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_r3_head" --branch "$1" >/dev/null 2>"$tmp/$1-$n.err") || fail "$1 fixture setup round $n"
+        git -C "$repo" commit -q --allow-empty -m "$1 round $n"
     done
+    cap_r3_head="$(git -C "$repo" rev-parse "$1")"
     (cd "$repo" && PANEL_MODE="$2" bash "$SCRIPT" --head "$cap_r3_head" --branch "$1" >/dev/null 2>"$tmp/$1-3.err") || fail "$1 fixture setup round 3"
 }
 fix_commit() {
@@ -396,6 +400,76 @@ fix_commit() {
     git -C "$repo" commit -q -am "fix $1"
     cap_fix_head="$(git -C "$repo" rev-parse "$1")"
 }
+
+# Start is idempotent per head: a second start at the head the counted round
+# ran on reuses that round and spends nothing; a new head counts as before.
+RR="$fx/scripts/cr/review-round.sh"
+git -C "$repo" checkout -q -b idem main
+printf 'idem\n' > "$repo/idem.txt"
+git -C "$repo" add idem.txt
+git -C "$repo" commit -q -m idem
+idem_head="$(git -C "$repo" rev-parse idem)"
+idem_out1="$(cd "$repo" && bash "$RR" start --branch idem --head "$idem_head" 2>&1)"
+idem_out2="$(cd "$repo" && bash "$RR" start --branch idem --head "$idem_head" 2>&1)"; idem_rc2=$?
+assert_eq "$idem_out1" "1" "5233 first start at a head counts round 1"
+assert_eq "$idem_rc2" "0" "5233 a repeat start at the same head succeeds"
+assert_eq "$idem_out2" "1" "5233 a repeat start at the same head reuses round 1"
+assert_eq "$(cat "$git_dir/cr-review-rounds/idem.round")" "1" "5233 a repeat start spends no round"
+git -C "$repo" commit -q --allow-empty -m "idem 2"
+idem_out3="$(cd "$repo" && bash "$RR" start --branch idem --head "$(git -C "$repo" rev-parse idem)" 2>&1)"
+assert_eq "$idem_out3" "2" "5233 a new head still counts the next round"
+
+# The evidence verb records an ok ledger row for a head that only adds tests
+# to a critic-reviewed head, spends no round, and refuses anything else.
+three_rounds evid clean
+evid_ledger="$git_dir/cr-critic-scores.jsonl"
+printf 'echo t\n' > "$repo/test-evid.sh"
+git -C "$repo" add test-evid.sh
+git -C "$repo" commit -q -m "evid test-only"
+evid_head="$(git -C "$repo" rev-parse evid)"
+evid_out="$(cd "$repo" && bash "$RR" evidence --branch evid --head "$evid_head" 2>&1)"; evid_rc=$?
+assert_eq "$evid_rc" "0" "5233 evidence records a test-only descendant of a reviewed head ($evid_out)"
+assert_has "$(cat "$evid_ledger")" "\"kind\":\"evidence\",\"ts\":\"" "5233 evidence appends an evidence row"
+assert_has "$(grep '"kind":"evidence"' "$evid_ledger")" "\"head\":\"$evid_head\",\"status\":\"ok\"" "5233 the evidence row is ok at the head"
+assert_has "$(grep '"kind":"evidence"' "$evid_ledger")" "\"branch\":\"evid\",\"head\":\"$evid_head\"" "5233 the evidence row names its branch"
+(cd "$repo" && bash "$RR" evidence --branch evid --head "$evid_head" >/dev/null 2>&1)
+assert_eq "$(grep -c "\"head\":\"$evid_head\",\"status\":\"ok\",\"source\":\"evidence" "$evid_ledger")" "1" "5233 a repeated evidence call adds no second row"
+assert_eq "$(cat "$git_dir/cr-review-rounds/evid.round")" "3" "5233 evidence spends no round"
+printf 'code\n' >> "$repo/evid.txt"
+git -C "$repo" commit -q -am "evid code"
+evid_code_head="$(git -C "$repo" rev-parse evid)"
+(cd "$repo" && bash "$RR" evidence --branch evid --head "$evid_code_head" >/dev/null 2>&1); evid_rc2=$?
+assert_eq "$evid_rc2" "8" "5233 evidence refuses a head that changes code"
+assert_lacks "$(cat "$evid_ledger")" "$evid_code_head\",\"status\":\"ok\",\"source\":\"evidence" "5233 a refused evidence head gets no row"
+
+# Evidence clears with no critic review of the delta, so a comment-prefixed
+# line in a non-test file (it can sit inside a heredoc) is refused, and so is a
+# .head that is not a full hex sha.
+three_rounds evidc clean
+printf '# looks like a comment\n' >> "$repo/evidc.txt"
+git -C "$repo" commit -q -am "evidc comment line"
+evidc_head="$(git -C "$repo" rev-parse evidc)"
+(cd "$repo" && bash "$RR" evidence --branch evidc --head "$evidc_head" >/dev/null 2>&1); evidc_rc=$?
+assert_eq "$evidc_rc" "8" "5233 evidence refuses a comment-prefixed line in a non-test file"
+assert_lacks "$(cat "$evid_ledger")" "$evidc_head\",\"status\":\"ok\",\"source\":\"evidence" "5233 a comment-line head gets no evidence row"
+three_rounds evidh clean
+printf 'echo t\n' > "$repo/test-evidh.sh"
+git -C "$repo" add test-evidh.sh
+git -C "$repo" commit -q -m "evidh test-only"
+evidh_head="$(git -C "$repo" rev-parse evidh)"
+printf 'not-a-sha\n' > "$git_dir/cr-review-rounds/evidh.head"
+(cd "$repo" && bash "$RR" evidence --branch evidh --head "$evidh_head" >/dev/null 2>&1); evidh_rc=$?
+assert_eq "$evidh_rc" "8" "5233 evidence refuses a .head that is not a full hex sha"
+
+# A reviewed head whose critic finding is still open passes nothing on: its
+# test-only descendant gets no evidence row.
+three_rounds evidf suggestion
+printf 'echo t\n' > "$repo/test-evidf.sh"
+git -C "$repo" add test-evidf.sh
+git -C "$repo" commit -q -m "evidf test-only"
+evidf_head="$(git -C "$repo" rev-parse evidf)"
+(cd "$repo" && bash "$RR" evidence --branch evidf --head "$evidf_head" >/dev/null 2>&1); evidf_rc=$?
+assert_eq "$evidf_rc" "8" "5233 evidence refused while the reviewed head has an open finding"
 
 # The RED: three rounds, the third raised a finding, the leg fixed
 # it at a new head. clear-cr-marker refuses that head (no critic reviewed it)
@@ -821,9 +895,9 @@ git -C "$repo" push -q origin main
 git -C "$repo" checkout -q pvcross
 git -C "$repo" merge -q --no-edit main >/dev/null 2>&1 || fail "pvcross fixture merge X"
 cap_r3_head="$(git -C "$repo" rev-parse pvcross)"
-for n in 1 2 3; do
-    (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_r3_head" --branch pvcross >/dev/null 2>"$tmp/pvcross-$n.err") || fail "pvcross fixture setup round $n"
-done
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_r3_head" --branch pvcross >/dev/null 2>"$tmp/pvcross-1.err") || fail "pvcross fixture setup round 1"
+# A repeat start at one head reuses its round, so seed the other two.
+printf '3\n' > "$git_dir/cr-review-rounds/pvcross.round"
 git -C "$repo" checkout -q main
 git -C "$repo" merge -q --no-ff --no-edit "$cross_p" >/dev/null 2>&1 || fail "pvcross fixture merge Y"
 git -C "$repo" push -q origin main
@@ -1688,9 +1762,9 @@ assert_eq "$(cat "$git_dir/cr-review-rounds/jonly.round")" "3" "the refused roun
 three_rounds jbr1 clean
 jbr_r3="$cap_r3_head"
 git -C "$repo" checkout -q -b jbr2 "$jbr_r3"
-for n in 1 2 3; do
-    (start_round "$jbr_r3" clean jbr2 >/dev/null) || fail "jbr2 fixture setup round $n"
-done
+(start_round "$jbr_r3" clean jbr2 >/dev/null) || fail "jbr2 fixture setup round 1"
+# A repeat start at one head reuses its round, so seed the other two.
+printf '3\n' > "$git_dir/cr-review-rounds/jbr2.round"
 # The ledger dedups avail on (head,model), so the stub's jbr1 row hides jbr2's:
 # give jbr2 its own critic row at the shared head.
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail \
@@ -2043,9 +2117,9 @@ co_a="$(git -C "$repo" rev-parse cmoff)"
 printf 'b\n' >> "$repo/cmoff.txt"
 git -C "$repo" commit -q -am "cmoff b"
 co_b="$(git -C "$repo" rev-parse cmoff)"
-for n in 1 2 3; do
-    (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$co_b" --branch cmoff >/dev/null 2>"$tmp/cmoff-$n.err") || fail "cmoff fixture setup round $n"
-done
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$co_b" --branch cmoff >/dev/null 2>"$tmp/cmoff-1.err") || fail "cmoff fixture setup round 1"
+# A repeat start at one head reuses its round, so seed the other two.
+printf '3\n' > "$git_dir/cr-review-rounds/cmoff.round"
 printf 'edited\n' >> "$repo/cmoff.txt"
 git -C "$repo" add cmoff.txt
 co_tree="$(git -C "$repo" write-tree)"
@@ -2428,6 +2502,115 @@ cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch 
 git -C "$repo" config --unset diff.fake.textconv
 assert_eq "$cired_rc" "8" "a textconv driver cannot hide a 45-line change from the CI-red cap ($cired_out)"
 assert_has "$cired_out" "CI-red cap" "the textconv-hidden delta is measured and refused by the cap"
+
+# A signed judge GO at the exact head stands in for the review of a
+# post-cap delta. RED on main: the verb does not exist, so every clear is refused.
+printf 'class: other\nclass-reason: judge-go fixture\n\nreviewed the delta\n' > "$jev/judge-evidence.md"
+cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+# The promote negative control above left an unparseable row in the shared ledger.
+grep -v '^not-json-at-all$' "$git_dir/cr-critic-scores.jsonl" > "$tmp/jgo-ledger.jsonl"
+cp "$tmp/jgo-ledger.jsonl" "$git_dir/cr-critic-scores.jsonl"
+jgo_setup() {
+    three_rounds "$1" clean
+    printf 'x\n' >> "$repo/$1.txt"
+    printf 'echo t\n' > "$repo/$1-test.sh"
+    git -C "$repo" add "$1-test.sh"
+    git -C "$repo" commit -q -am "$1 delta"
+    jgo_head="$(git -C "$repo" rev-parse "$1")"
+    git -C "$repo" push -q -u origin "$1"
+    write_real_marker "$1" "$jgo_head"
+}
+jgo_clear() { (cd "$repo" && bash "$fx/scripts/cr/clear-cr-marker.sh" "$1" >"$tmp/$1-clear.out" 2>&1); }
+jgo_verb() { (cd "$repo" && bash "$fx/scripts/cr/review-round.sh" judge-go --branch "$1" --head "$2" 2>&1); }
+
+jgo_setup jg63a
+jgo_clear jg63a; jgo_rc=$?
+if [ "$jgo_rc" -ne 0 ]; then pass "6303 (a) a post-cap delta with no judge GO is still refused"; else fail "6303 (a) a post-cap delta with no judge GO is still refused ($(cat "$tmp/jg63a-clear.out"); ledger tail: $(tail -n 3 "$git_dir/cr-critic-scores.jsonl"); audit: $(tail -n 4 "$git_dir/clear-cr-marker.log" 2>&1); head=$jgo_head)"; fi
+jgo_out="$(jgo_verb jg63a "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6303 (b) judge-go with no record exits 1"
+judge jgo-1 GO "$cap_r3_head"
+jgo_out="$(jgo_verb jg63a "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6303 (c) a judge GO at a different head is refused"
+judge jgo-2 GO "$jgo_head"
+jgo_out="$(jgo_verb jg63a "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "6303 (d) a signed judge GO at the exact head is accepted ($jgo_out)"
+assert_has "$jgo_out" "jgo-2/judge" "6303 (d) the verb names the record"
+assert_has "$(cat "$git_dir/cr-critic-scores.jsonl")" "judge:jgo-2/judge" "6303 (d) the ledger row records source=judge:<qid>"
+jgo_clear jg63a; jgo_rc=$?
+assert_eq "$jgo_rc" "0" "6303 (e) the judge GO clears the post-cap delta ($(cat "$tmp/jg63a-clear.out"))"
+if [ -e "$git_dir/cr-pending/jg63a" ]; then fail "6303 (e) the marker is cleared"; else pass "6303 (e) the marker is cleared"; fi
+# A NO-GO at the same head vetoes the GO.
+jgo_setup jg63b
+judge jg63b-1 GO "$jgo_head"
+judge jg63b-2 NO-GO "$jgo_head"
+jgo_out="$(jgo_verb jg63b "$jgo_head")"; jgo_vrc=$?
+if [ "$jgo_vrc" -ne 0 ]; then pass "6303 (f) a NO-GO at the head vetoes the judge GO"; else fail "6303 (f) a NO-GO at the head vetoes the judge GO"; fi
+# Before the cap a round is still available: no judge shortcut.
+git -C "$repo" checkout -q -b jg63c main
+printf 'e\n' > "$repo/jg63c.txt"; git -C "$repo" add jg63c.txt; git -C "$repo" commit -q -m jg63c
+jge_head="$(git -C "$repo" rev-parse jg63c)"
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$jge_head" --branch jg63c >/dev/null 2>"$tmp/jg63c-1.err") || fail "jg63c fixture setup round 1"
+# A repeat start at one head reuses its round, so seed the second.
+printf '2\n' > "$git_dir/cr-review-rounds/jg63c.round"
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg63c.round")" "2" "6303 (g) fixture: two full rounds, one below the cap"
+printf 'f\n' >> "$repo/jg63c.txt"; git -C "$repo" commit -q -am "jg63c delta"
+jge_head="$(git -C "$repo" rev-parse jg63c)"
+judge jg63c-1 GO "$jge_head"
+jgo_out="$(jgo_verb jg63c "$jge_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6303 (g) no judge shortcut while a full round is still available ($jgo_out)"
+# A GO that only the record checks can refuse: each case has a reviewed head
+# below the delta and a GO at the delta, so a deleted check accepts it.
+jgo_rec() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-6303 \
+        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$1" "$2" "$3" \
+        --pr "$4" ${5:+--branch "$5"} --evidence-file "$jev/judge-evidence.md" \
+        >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1"
+}
+jgo_setup jg63x
+for jgx_case in unsigned forgedmac otherpr otherbranch symlinkrec symlinkqid; do
+    jgx_q="jgx-$jgx_case"
+    jgx_pr=1 jgx_br=""
+    case "$jgx_case" in
+        otherpr) jgx_pr=2 ;;
+        otherbranch) jgx_br=some-other-branch ;;
+    esac
+    jgo_rec "$jgx_q" GO "$jgo_head" "$jgx_pr" "$jgx_br"
+    case "$jgx_case" in
+        unsigned) sed -i.bak '/^mac: /d' "$vscope/$jgx_q/judge.md"; rm -f "$vscope/$jgx_q/judge.md.bak" ;;
+        forgedmac) sed -i.bak 's/^mac: ./mac: x/' "$vscope/$jgx_q/judge.md"; rm -f "$vscope/$jgx_q/judge.md.bak" ;;
+        symlinkrec) mv "$vscope/$jgx_q/judge.md" "$tmp/$jgx_q.md"; ln -s "$tmp/$jgx_q.md" "$vscope/$jgx_q/judge.md" ;;
+        symlinkqid) mv "$vscope/$jgx_q" "$tmp/$jgx_q"; ln -s "$tmp/$jgx_q" "$vscope/$jgx_q" ;;
+    esac
+    jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
+    assert_eq "$jgo_vrc" "1" "6303 (h) a judge GO that is $jgx_case buys nothing ($jgo_out)"
+    rm -rf "${vscope:?}/$jgx_q"
+done
+jgo_rec jgx-ok GO "$jgo_head" 1 ""
+jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "6303 (h) control: the same GO written properly is accepted ($jgo_out)"
+# A NO-GO in a symlinked qid dir still vetoes the GO beside it: it only narrows.
+jgo_rec jgx-nogo NO-GO "$jgo_head" 1 ""
+mv "$vscope/jgx-nogo" "$tmp/jgx-nogo"; ln -s "$tmp/jgx-nogo" "$vscope/jgx-nogo"
+jgo_out="$(jgo_verb jg63x "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "8" "6303 (j) a NO-GO in a symlinked qid dir still vetoes ($jgo_out)"
+rm -rf "${vscope:?}/jgx-nogo" "${vscope:?}/jgx-ok"
+# A branch name holding a double quote would break the JSON row: refused before any state is read.
+git -C "$repo" checkout -q -b 'jg"q' "$jgo_head"
+jgo_out="$(jgo_verb 'jg"q' "$jgo_head")"; jgo_vrc=$?
+git -C "$repo" checkout -q jg63x
+assert_eq "$jgo_vrc" "2" "6303 (i) a branch name that breaks the JSON row is refused ($jgo_out)"
+assert_has "$jgo_out" "cannot be written into a ledger row" "6303 (i) the refusal names the ledger row"
+# A post-cap delta that only adds a test file, with a judge GO at its head.
+three_rounds jg62 clean
+printf 'echo t\n' > "$repo/jg62-test.sh"
+git -C "$repo" add jg62-test.sh
+git -C "$repo" commit -q -m "jg62 test-only delta"
+jgo_head="$(git -C "$repo" rev-parse jg62)"
+git -C "$repo" push -q -u origin jg62
+write_real_marker jg62 "$jgo_head"
+judge jg62-1 GO "$jgo_head"
+jgo_clear jg62; jgo_rc=$?
+assert_eq "$jgo_rc" "0" "6262 a post-cap test-only delta clears on a judge GO at its head ($(cat "$tmp/jg62-clear.out"))"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

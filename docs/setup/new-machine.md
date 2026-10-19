@@ -4,7 +4,6 @@ Complete checklist for getting a new machine to full working state.
 
 **Adopting himmel on your own repo** (not developing himmel itself)? See [docs/setup/install.md](./install.md) instead — it covers the portable-core flow and tells you which sections here apply to you.
 
-**Setting up a clean Windows machine remotely (over SSH), including the delegation-lane fleet (hermes/codex/…)?** Follow [windows-clean-machine.md](./windows-clean-machine.md) — the ordered walkthrough through this doc plus the remote-drive pattern, lane installs, and always-on hardening.
 
 ## Support matrix
 
@@ -330,7 +329,7 @@ Then it goes through. The attestation gates ("Cross-platform attestation",
 the FIRST commit — do not try to add them with `git commit --amend` after a
 refusal.
 
-**`clean-garden.sh` leaves the new worktree dirty.** It installs the Jira CLI
+**`worktree.sh new` leaves the new worktree dirty.** It installs the Jira CLI
 dependencies, which rewrites `scripts/jira/package-lock.json`. Revert that file
 rather than committing it: `git checkout -- scripts/jira/package-lock.json`.
 
@@ -807,7 +806,7 @@ mean the installer asserting something it cannot stand behind:
   `probe.kind=always` and make an absent lane report as available.
 - **Machine hardening is printed, never executed.** With `alwaysOn=yes` the run
   ends in a checklist of the
-  [Phase-6 steps](./windows-clean-machine.md) — power profile, no-lock-on-wake,
+  Phase-6 steps — power profile, no-lock-on-wake,
   sshd, auto-logon. They are machine-wide, need an elevated shell, and
   `himmelctl uninstall` cannot undo them, so they stay a checklist you run by
   hand.

@@ -713,15 +713,15 @@ def first_sentence(s):
     return clip(m.group(1) if m else s, 160)
 
 
-KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('done', 'Done'))
-KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done'}
+KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('ci', 'IN CI'), ('done', 'Done'))
+KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'ci', 'done': 'done'}
 
 
 def kanban(tk, vers, cur, base, wont=(), flight=()):
-    """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
+    """HIMMEL-5381: one <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
-    one-line user-facing description. IN CI reads as In Review; closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
+    one-line user-facing description. closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
     In Progress, as the main board does. The release being worked on (cur) opens expanded."""
     base = base.strip().rstrip('/')
     if not re.match(r'^https?://', base):
@@ -1485,10 +1485,10 @@ tr.jflash{animation:jflash .9s ease-out}
 .krel>summary{cursor:pointer;padding:8px 10px;font:600 13px var(--f-mono)}
 .krel>summary:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
 .kmeta{color:var(--dim);font-weight:400;font-size:12px;margin-left:8px}
-.kboard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 10px 10px}
+.kboard{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:0 10px 10px}
 .kcol{background:var(--panel);border:1px solid var(--line);padding:10px;min-width:0}
 .kcol h3{font:600 12px var(--f-mono);margin:0 0 8px;display:flex;justify-content:space-between;gap:8px}
-.kcol[data-col="todo"] h3{color:var(--todo)}.kcol[data-col="prog"] h3{color:var(--prog)}.kcol[data-col="rev"] h3{color:var(--rev)}.kcol[data-col="done"] h3{color:var(--done)}
+.kcol[data-col="todo"] h3{color:var(--todo)}.kcol[data-col="prog"] h3{color:var(--prog)}.kcol[data-col="rev"] h3{color:var(--rev)}.kcol[data-col="ci"] h3{color:var(--ci)}.kcol[data-col="done"] h3{color:var(--done)}
 .kcard{border:1px solid var(--line);padding:8px 10px;margin:0 0 8px;background:var(--bg)}
 a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
 .ktl{font-size:12.5px;margin:2px 0;overflow-wrap:anywhere}.kline{font:12px/1.45 var(--f-sans);color:var(--dim);overflow-wrap:anywhere}

@@ -40,10 +40,10 @@ is refused, since it would otherwise fall through to the closing merge (HIMMEL-6
 The brief follows the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
 leg preface and are not repeated.
 
-Worktrees: `scripts/clean-garden.sh <branch> --no-prune` from --repo
+Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
 --no-worktree skips it, but refuses a leg whose worktree does not exist yet and prints the
-clean-garden line to run; it never creates one, HIMMEL-5517).
+worktree.sh line to run; it never creates one, HIMMEL-5517).
 --bucket: a bare name (no slash, e.g. `himmel`) resolves to <handover-root>/<user>/<name>, like
 console.sh --bucket; a path is made absolute. A bucket inside a git checkout that is not under
 the handover root is refused (HIMMEL-5517). Output files, in the bucket: the brief
@@ -246,7 +246,7 @@ template_version: 3
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix. {extra}{envline}
 > 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Run them, and the full suite of every file you touched, BEFORE opening the PR: a CI fix after the third review round cannot be re-reviewed without the operator.
-> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh`.
+> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
 > **Scope / do not:** writes confined to {scope}. Other live legs and their files: {others}{also}. Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the console first). Remove any fixture you create under the real HOME before you wrap.
@@ -255,7 +255,7 @@ template_version: 3
 
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
-           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'],
+           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], others=others, also=also,
@@ -346,6 +346,7 @@ def main():
     ctx = dict(repo=a.repo, base=a.base, console=a.console, date=a.date, hroot=a.handover_root, work_dir=work_dir,
                deadline=deadline, legs=legs, also_live=a.also_live)
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)
+    ctx['bucket'] = a.bucket
     refuse_git_bucket(a.bucket, a.handover_root)
     os.makedirs(a.bucket, exist_ok=True)
 
@@ -367,12 +368,12 @@ def main():
             # headed-arm-leg.sh refuses a resume_cwd that is not a git worktree; never create it here.
             top = subprocess.run(['git', '-C', l['wt'], 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
             if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(l['wt']):
-                die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the legs after it. Create it from %s first: bash scripts/clean-garden.sh %s --no-prune' % (l['wt'], l['label'], a.repo, l['branch']))
+                die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the legs after it. Create it from %s first: bash scripts/worktree.sh new %s --no-prune' % (l['wt'], l['label'], a.repo, l['branch']))
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
     for l in legs:
         if not a.no_worktree:
-            argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/clean-garden.sh', l['branch'], '--no-prune']
+            argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
             r = subprocess.run(argv, cwd=a.repo, capture_output=True, text=True)
             tail = (r.stdout + r.stderr).strip().splitlines()
             print('%s worktree: %s' % (l['label'], tail[-1][:90] if tail else 'rc=%d' % r.returncode))

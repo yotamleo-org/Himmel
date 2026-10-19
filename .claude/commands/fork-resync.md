@@ -10,8 +10,7 @@ handles the class that has no cheap fix: a **fork**.
 `qmd` carries a `fork` block again (HIMMEL-3956): it is SHA-pinned via
 `_qmd_fork_ref()` in `scripts/lib/qmd-bin.sh` to a `yotamleo/qmd` commit whose
 launcher forwards signals, until tobi/qmd#1030 lands (HIMMEL-3982 returns it
-to upstream). HIMMEL-3045 had de-forked it once before, and `claude-obsidian`
-was retired at v2.2.0 (HIMMEL-2925). A registry entry with a `fork` block records, in
+to upstream). HIMMEL-3045 had de-forked it once before. A registry entry with a `fork` block records, in
 `synced_base`, the highest upstream STABLE tag that fork actually sits on.
 
 **The trap this command exists to prevent:** when upstream tags past
@@ -159,7 +158,7 @@ Two edits that must move together, same discipline as `/drift-fix`:
   (for qmd, `_qmd_fork_ref()` in `scripts/lib/qmd-bin.sh`) → the new rebased SHA from step 4;
 - `synced_base` in `scripts/upstreams.json` → the upstream tag just rebased onto.
 
-Do this in a worktree (`bash scripts/clean-garden.sh --no-prune chore/fork-resync-<name>-<YYYYMMDD>`),
+Do this in a worktree (`bash scripts/worktree.sh new --no-prune chore/fork-resync-<name>-<YYYYMMDD>`),
 never in the primary checkout.
 
 Then re-run `bash scripts/check-plugin-drift.sh` from the worktree — the entry

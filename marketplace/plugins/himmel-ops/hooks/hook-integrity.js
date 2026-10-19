@@ -847,6 +847,65 @@ function resolveMismatch(context) {
   }
 }
 
+// A channel update (scripts/himmel-update.sh) detaches HEAD onto the highest
+// release tag, which sits BEHIND the anchor tip, so the on-disk bytes are the
+// tag's rather than the tip's. They are accepted only when they are the bytes at
+// the commit ORIGIN advertises for the highest tag of the configured channel
+// (the same grammar and ordering as that script's _channel_resolve_tag). A tag
+// name is looked up on the remote, never locally: a local-only tag, or one that
+// points elsewhere than origin's, vouches for nothing.
+const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)(?:-pre\.(\d+))?$/;
+
+function updateChannel() {
+  const fromEnv = process.env.HIMMEL_UPDATE_CHANNEL;
+  let channel = fromEnv;
+  if (!fromEnv) {
+    try {
+      const dir = process.env.HIMMELCTL_CACHE_DIR || path.join(os.homedir(), '.claude', 'himmel');
+      channel = JSON.parse(fs.readFileSync(path.join(dir, 'install-profile.json'), 'utf8')).channel;
+    } catch (_e) {
+      return null;
+    }
+  }
+  return channel === 'stable' || channel === 'pre' ? channel : null;
+}
+
+// Highest-version origin tag on the channel -> the commit it points at, or ''.
+function channelReleaseCommit(gitDir, channel) {
+  const listing = gitStdout(gitInRecordedRepo(gitDir, ['ls-remote', '--tags', 'origin', 'v*']));
+  const tags = new Map();
+  for (const line of listing.split('\n')) {
+    const [sha, ref] = line.split('\t');
+    if (!sha || !ref || ref.indexOf('refs/tags/') !== 0) continue;
+    const peeled = ref.endsWith('^{}');
+    const name = ref.slice('refs/tags/'.length, peeled ? -3 : undefined);
+    const m = RELEASE_TAG.exec(name);
+    if (!m || (channel === 'stable' && m[4] !== undefined)) continue;
+    const entry = tags.get(name) || { rank: [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? Infinity : Number(m[4])] };
+    entry[peeled ? 'peeled' : 'direct'] = sha;
+    tags.set(name, entry);
+  }
+  let best = null;
+  for (const entry of tags.values()) {
+    if (best) {
+      const i = entry.rank.findIndex((n, k) => n !== best.rank[k]);
+      if (i === -1 || entry.rank[i] < best.rank[i]) continue;
+    }
+    best = entry;
+  }
+  return best ? (best.peeled || best.direct) : '';
+}
+
+function channelReleaseHasBytes(gitDir, tip, relPath, actual) {
+  const channel = updateChannel();
+  if (!channel) return false;
+  const commit = channelReleaseCommit(gitDir, channel);
+  if (!commit) return false;
+  const onLine = gitInRecordedRepo(gitDir, ['merge-base', '--is-ancestor', commit, tip]);
+  if (!onLine || onLine.status !== 0) return false;
+  return gitStdout(gitInRecordedRepo(gitDir, ['rev-parse', '--verify', '--quiet', `${commit}:${relPath}`])) === actual;
+}
+
 function resolveMismatchInner(context) {
   const { projectDir, relPath, actual, record, sessionId } = context;
   const deny = (reason) => ({ ok: false, relPath, reason: reason || null });
@@ -890,9 +949,10 @@ function resolveMismatchInner(context) {
       return deny(`the anchor ref ${current.anchor_ref} could not be resolved`);
     }
 
-    // (a) the on-disk bytes must BE the anchor tip's bytes for this path.
+    // (a) the on-disk bytes must BE the anchor tip's bytes for this path, or
+    // the bytes of the configured channel's release tag on the anchor line.
     const atTip = gitStdout(gitInRecordedRepo(gitDir, ['rev-parse', '--verify', '--quiet', `${tip}:${relPath}`]));
-    if (atTip !== actual) return deny('not the anchor tip');
+    if (atTip !== actual && !channelReleaseHasBytes(gitDir, tip, relPath, actual)) return deny('not the anchor tip');
 
     // (b) monotonic: the recorded anchor must still be an ancestor of the tip.
     const ancestor = gitInRecordedRepo(gitDir, ['merge-base', '--is-ancestor', current.anchor, tip]);

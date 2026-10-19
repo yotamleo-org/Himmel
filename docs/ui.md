@@ -88,6 +88,6 @@ have them in use.
 ## Keeping this page current
 
 Adding a user-facing page or verb means updating this page, `llms.txt` and the
-v1 release checklist step ([release/v1-checklist.md](release/v1-checklist.md)).
+v1 release checklist step.
 `bash scripts/docs/test-check-llms-links.sh` fails when a page id in
 `scripts/config-ui/public/nav.js` is missing here.

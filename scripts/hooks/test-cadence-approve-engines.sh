@@ -329,6 +329,7 @@ EVIDENCE_KIND_ENG="marketplace/plugins/obsidian-triage/tools/lib/evidence-kind.m
 DAILY_TIMELINE_ENG="marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs"
 IG_MEDIA_FETCH_ENG="marketplace/plugins/obsidian-triage/tools/ig-media-fetch.py"
 ENSURE_DEPS_ENG="marketplace/plugins/obsidian-triage/tools/ensure-deps.sh"
+X_MEDIA_FETCH_ENG="marketplace/plugins/obsidian-triage/tools/x-media-fetch.py"
 # The two X/reddit enrich rungs.
 FXTWITTER_ENG="marketplace/plugins/obsidian-triage/tools/fxtwitter-enrich.mjs"
 REDDIT_ENRICH_ENG="marketplace/plugins/obsidian-triage/tools/reddit-enrich.mjs"
@@ -338,6 +339,7 @@ EVIDENCE_KIND_ABS="${ROOT_MIXED}/${EVIDENCE_KIND_ENG}"
 DAILY_TIMELINE_ABS="${ROOT_MIXED}/${DAILY_TIMELINE_ENG}"
 IG_MEDIA_FETCH_ABS="${ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}"
 ENSURE_DEPS_ABS="${ROOT_MIXED}/${ENSURE_DEPS_ENG}"
+X_MEDIA_FETCH_ABS="${ROOT_MIXED}/${X_MEDIA_FETCH_ENG}"
 FXTWITTER_ABS="${ROOT_MIXED}/${FXTWITTER_ENG}"
 REDDIT_ENRICH_ABS="${ROOT_MIXED}/${REDDIT_ENRICH_ENG}"
 
@@ -384,6 +386,23 @@ assert "daily-timeline.mjs: node + --vault/--date" ALLOW \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "node \"${DAILY_TIMELINE_ABS}\" --vault \"${VAULT_FIXTURE_MIXED}\" --date 2026-08-26" "$VAULT_FIXTURE_MIXED")")"
 assert "ig-media-fetch.py: python + --limit" ALLOW \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --limit 5 --include-evidence" "$VAULT_FIXTURE_MIXED")")"
+# x-media-fetch.py's documented invocations (commands/x-media-enrich.md:100,
+# 163,202,207) mirror ig-media-fetch.py's: the uv-run prefix, optional
+# PYTHONUTF8=1 lead-in, and the digest-apply / flag-screen flag shapes.
+assert "x-media-fetch.py: documented --apply-digest uv run shape" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run --python 3.12 python \"${X_MEDIA_FETCH_ABS}\" --apply-digest \"clip.md\" --digest-file \"digest.json\"" "$VAULT_FIXTURE_MIXED")")"
+assert "x-media-fetch.py: documented fetch shape (--limit/--include-done)" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run --python 3.12 python \"${X_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --limit 5 --include-evidence --include-done --whisper-model base" "$VAULT_FIXTURE_MIXED")")"
+assert "x-media-fetch.py: documented --flag-screen/--detail shape" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run --python 3.12 python \"${X_MEDIA_FETCH_ABS}\" --flag-screen \"clip.md\" --detail screen-error" "$VAULT_FIXTURE_MIXED")")"
+assert "x-media-fetch.py: unenumerated flag --repair-provenance -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run --python 3.12 python \"${X_MEDIA_FETCH_ABS}\" --repair-provenance \"clip.md\"" "$VAULT_FIXTURE_MIXED")")"
+assert "x-media-fetch.py: compound && shape -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run --python 3.12 python \"${X_MEDIA_FETCH_ABS}\" --apply-digest \"clip.md\" --digest-file \"digest.json\" && rm -rf x" "$VAULT_FIXTURE_MIXED")")"
+assert "x-media-fetch.py: command substitution -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "PYTHONUTF8=1 uv run --python 3.12 python \"${X_MEDIA_FETCH_ABS}\" --apply-digest \"\$(whoami).md\" --digest-file \"digest.json\"" "$VAULT_FIXTURE_MIXED")")"
+assert "x-media-fetch.py: right suffix, wrong root -> refused" PASS \
+    "$(decide "$(j_bash "PYTHONUTF8=1 uv run --python 3.12 python \"C:/tmp/evil/${X_MEDIA_FETCH_ENG}\" --apply-digest clip.md --digest-file d.json")")"
 assert "ensure-deps.sh: bare bash invocation" ALLOW \
     "$(decide "$(j_bash "bash \"${ENSURE_DEPS_ABS}\"")")"
 

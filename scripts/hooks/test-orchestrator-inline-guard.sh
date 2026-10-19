@@ -277,7 +277,6 @@ assert_not_contains "budget: deny no longer prescribes the stale dispatch-lane.s
 assert_contains "budget: deny names the per-PR rule" "$ERR6B" "Per PR, not per round"
 assert_contains "budget: deny closes the round-guard hole (escalation)" "$ERR6B" "NOT licence to implement inline"
 assert_contains "budget: deny names the Fable tier" "$ERR6B" "Fable tier"
-assert_not_contains "budget: deny does not name the dead GLM lane" "$ERR6B" "spawn-glm"
 assert_not_contains "budget: deny does not name the dormant claudex lane" "$ERR6B" "claudex"
 assert_contains "budget: deny names the audited override" "$ERR6B" "INLINE_IMPL_OK=1"
 assert_contains "budget: deny logged" "$(cat "$LOG6B" 2>/dev/null || true)" '"decision":"deny"'

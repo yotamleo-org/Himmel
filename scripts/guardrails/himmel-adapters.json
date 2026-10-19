@@ -2,7 +2,7 @@
   {
     "nwo": "yotamleo/qmd",
     "upstream": "tobi/qmd",
-    "himmel_branch": "himmel/pin-http-auth",
+    "himmel_branch": "main",
     "pin_site": "scripts/lib/qmd-bin.sh",
     "role": "runtime-dependency",
     "merge_allowed": true

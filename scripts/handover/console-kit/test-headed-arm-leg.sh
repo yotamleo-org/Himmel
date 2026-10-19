@@ -4060,10 +4060,10 @@ dry42() { # <resume_cwd> -> sets rc42/out42
 }
 dry42 "$repo42/.claude/worktrees/feat+missing-42"
 check "42a resume_cwd names a worktree that does not exist -> exit 2" "$rc42" "2"
-contains "42a the refusal prints the create command" "$out42" "bash scripts/clean-garden.sh feat/missing-42 --no-prune"
+contains "42a the refusal prints the create command" "$out42" "bash scripts/worktree.sh new feat/missing-42 --no-prune"
 dry42 "$repo42/.claude/worktrees/fix+plain-dir"
 check "42b an existing dir that is not a git worktree -> exit 2" "$rc42" "2"
-contains "42b the refusal names the slug derived from the path" "$out42" "clean-garden.sh fix/plain-dir --no-prune"
+contains "42b the refusal names the slug derived from the path" "$out42" "worktree.sh new fix/plain-dir --no-prune"
 dry42 "$repo42/.claude/worktrees/feat+leg-42"
 check "42c an existing git worktree launches (rc 0)" "$rc42" "0"
 dry42 "$tmp/home39/.cache/himmel/verdicts/q1/scratch"

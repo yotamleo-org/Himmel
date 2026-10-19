@@ -487,7 +487,7 @@ esac
 # --residual-of <parent>: stamp residual-depth-<parent depth + 1> on each ticket the
 # residual lines cite, so next-dispatchable.sh can hold residuals back. Best effort:
 # the verdict is already on disk, a failed stamp only warns.
-# ponytail: a depth >= 2 residual with a fixVersion is warned about, not cleared, and affectsVersion is unset, upgrade path HIMMEL-6236 (jira --affects-version) then stamp both here
+# Each stamped residual also gets affectsVersion=current; a depth >= 2 one drops its fixVersions.
 if [ -n "$RESIDUAL_OF" ]; then
     wv_mirror=${WV_MIRROR:-$HOME/.himmel/state/jira-mirror/${RESIDUAL_OF%%-*}}
     if [ -n "${WV_JIRA_CMD:-}" ]; then
@@ -512,8 +512,15 @@ if [ -n "$RESIDUAL_OF" ]; then
         # shellcheck disable=SC2086  # wv_jira is a command plus its script path
         JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --add-labels "residual-depth-$wv_new" >/dev/null 2>&1 ||
             echo "write-verdict: warning - could not stamp residual-depth-$wv_new on $wv_key; add the label by hand" >&2
-        if [ "$wv_new" -ge 2 ] && sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" 2>/dev/null | grep -q '"'; then
-            echo "write-verdict: warning - $wv_key is residual-depth-$wv_new and carries a fixVersion; a depth >= 2 residual files to ICE with none" >&2
+        # shellcheck disable=SC2086
+        JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --affects-version current >/dev/null 2>&1 ||
+            echo "write-verdict: warning - could not stamp affectsVersion on $wv_key; set it by hand" >&2
+        if [ "$wv_new" -ge 2 ] && [ -r "$wv_mirror/$wv_key.md" ]; then
+            while IFS= read -r wv_fv; do
+                # shellcheck disable=SC2086
+                JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira fix-version "$wv_key" --remove "$wv_fv" </dev/null >/dev/null 2>&1 ||
+                    echo "write-verdict: warning - could not remove fixVersion $wv_fv from $wv_key; a depth >= 2 residual files to ICE with none" >&2
+            done < <(sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" | grep -o '"[^"]*"' | sed 's/"//g')
         fi
     done
 fi

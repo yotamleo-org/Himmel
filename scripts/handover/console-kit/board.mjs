@@ -54,7 +54,7 @@
 // Closed / Resolved, and tick.sh never sees these counts, so tick's board= cannot go
 // STALE on one -- only --changed (the versions fingerprint meta) reports it. Upgrade
 // path: have tick.sh fold the counts into board-fp once #1421 lands.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -335,7 +335,9 @@ const primaryRoot = () => {
 const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length ? join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
 // the legs' Jira ladder, in the order a Release panel shows it.
 const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
-const DONE_STATUS =/^(done|closed|resolved)$/i;
+const DONE_STATUS = /^(done|resolved)$/i;
+// Closed and won't do are out of every count, as the tracker has it.
+const OUT_STATUS = /^(closed|wont do|won't do|wont fix|won't fix)$/i;
 const releaseOf = (version) => {
     const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', '1000'];
     let out;
@@ -349,9 +351,10 @@ const releaseOf = (version) => {
     const rows = lines.filter((f) => f.length >= 5 && /^[A-Z][A-Z0-9]*-\d+$/.test(f[0]))
         .map((f) => ({ key: f[0], status: f[2].trim(), title: f[3], labels: (f[4] || '').split(',').map((x) => x.trim()) }));
     if (rows.length !== lines.length) return { version, unavailable: true };
-    const open = rows.filter((r) => !DONE_STATUS.test(r.status));
+    const counted = rows.filter((r) => !OUT_STATUS.test(r.status));
+    const open = counted.filter((r) => !DONE_STATUS.test(r.status));
     const byStatus = Object.fromEntries(LEG_STATUSES.map((st) => [st, rows.filter((r) => r.status === st).length]));
-    return { version, done: rows.length - open.length, total: rows.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
+    return { version, done: counted.length - open.length, total: counted.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
 };
 const releases = versionsDeclared.map(releaseOf);
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
@@ -423,6 +426,25 @@ try {
         { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     censusNames = new Set(out.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t')[1]).filter(Boolean));
 } catch { censusNames = null; }
+// The pre-close checks a hand-close needs: close-wrapped-leg.sh --check signals nothing,
+// exits 0 when safe, and otherwise names what is still running. A check that cannot run
+// reads as unknown, never as safe.
+const CLOSE_CHECK = process.env.BOARD_CLOSE_CHECK || join(HERE, 'close-wrapped-leg.sh');
+// One board render waits at most CLOSE_BUDGET_MS in all, so several slow checks cannot stall it.
+const CLOSE_BUDGET_MS = 60000;
+let closeBudgetLeft = CLOSE_BUDGET_MS;
+const closeNote = (doc) => {
+    if (closeBudgetLeft <= 0) return 'close check skipped (time budget spent)';
+    const t0 = Date.now();
+    const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: closeBudgetLeft, killSignal: 'SIGKILL' });
+    closeBudgetLeft -= Date.now() - t0;
+    if (r.error || r.status === null) return 'close check did not run';
+    if (r.status === 0) return 'safe to close';
+    if (r.status < 3 || r.status > 7) return 'close check failed (rc ' + r.status + ')';
+    const lines = (r.stdout + '\n' + r.stderr).split('\n').map((x) => x.trim()).filter(Boolean);
+    const what = lines.find((x) => x.startsWith('WITHHELD')) || lines[lines.length - 1] || 'close check refused (rc ' + r.status + ')';
+    return 'still running: ' + what.replace(/^close-wrapped-leg: /, '');
+};
 const wrappedLegs = legs.filter((l) => l.phase === 'WRAPPED' && legInfo.get(l.label)?.file);
 if (censusNames && wrappedLegs.length) {
     let out = '';
@@ -438,6 +460,7 @@ if (censusNames && wrappedLegs.length) {
         if (stillOpen) {
             l.phase = 'WRAPPED, window still open';
             l.needs = true;
+            l.closeNote = closeNote(legInfo.get(l.label).file);
         }
     });
 }
@@ -463,7 +486,7 @@ const needRows = legs.filter((l) => l.needs).map((l) => {
     const tailWhy = l.phase === 'READY' ? `READY${l.prNum ? ` · PR #${l.prNum}` : ''} — awaiting GO`
         : l.phase === 'READY-TO-OPEN' ? 'READY-TO-OPEN — awaiting PR open'
             : l.phase === 'BLOCKED' ? 'BLOCKED — needs a ruling'
-                : l.phase === 'WRAPPED, window still open' ? 'WRAPPED, window still open — close the leg window'
+                : l.phase === 'WRAPPED, window still open' ? 'WRAPPED, window still open — ' + (l.closeNote || 'close the leg window')
                     : l.tail === 'FINDING' ? 'FINDING — needs a ruling'
                         : '';
     // A lost/stale lock is its own rendered signal, never displaced by the tail/phase
@@ -767,14 +790,15 @@ const crLoopSection = (() => {
             const head = readFileSync(join(dir, name), 'utf8').slice(0, 3000).split('\n---')[0];
             const val = (k) => { const m = new RegExp(`^${k}: (.*)$`, 'm').exec(head); if (!m) return null; try { return JSON.parse(m[1]); } catch { return m[1]; } };
             const labels = val('labels') || [], status = String(val('status') || ''), cat = String(val('statusCategory') || '');
-            const done = DONE_STATUS.test(status) || DONE_STATUS.test(cat);
-            if (labels.some((x) => /^restructure-class-/.test(x)) && !done) restructure += 1;
+            const out = OUT_STATUS.test(status) || OUT_STATUS.test(cat);
+            const done = !out && (DONE_STATUS.test(status) || DONE_STATUS.test(cat));
+            if (labels.some((x) => /^restructure-class-/.test(x)) && !done && !out) restructure += 1;
             if (!labels.some((x) => /(^|-)residual(-|$)/.test(x))) continue;
             if (Date.parse(val('created')) >= since) inflow += 1;
             if (done) {
                 const res = Date.parse(val('resolved'));
                 if (Number.isNaN(res)) doneMissing += 1; else if (res >= since) outflow += 1;
-            } else {
+            } else if (!out) {
                 for (const v of val('fixVersions') || []) slots.set(v, (slots.get(v) || 0) + 1);
             }
         }
@@ -792,6 +816,28 @@ const crLoopSection = (() => {
     const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight hits ${na(out.preflight.per_pr, (v) => v.toFixed(1))}/PR · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs HIMMEL-6390)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
     const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
+})();
+
+// ICE-parked follow-ups: HIMMEL keys cited as follow-ups in the last 14 days of comments
+// that now live in the icebox, from ice-followups.sh over the Jira mirror (BOARD_MIRROR is
+// the seam; local files only, no network). The panel shows only when a key is parked, to
+// keep the live page small (--json still carries count null for an unreadable mirror and 0
+// for none); never fatal; not part of the fingerprint.
+const iceFollowupsSection = (() => {
+    const title = '<h2>ICE-parked follow-ups (14d)</h2>';
+    const na = '';
+    trend.ice_followups = { count: null, keys: [] };
+    try {
+        const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+        const lines = execFileSync('bash', [join(HERE, 'ice-followups.sh'), dir],
+            { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+        const m = /^ice-followups=(\d+)$/.exec(lines[0] || '');
+        if (!m) return na;
+        const keys = lines.slice(1).filter((k) => /^HIMMEL-\d+$/.test(k));
+        trend.ice_followups = { count: Number(m[1]), keys };
+        if (!keys.length) return na;
+        return `<section data-ice-followups="${keys.length}">${title}<p class="sub">ice-followups=${keys.length}: cited as follow-ups, now parked in ICE</p><ul>${keys.map((k) => `<li data-ice-key="${esc(k)}">${esc(k)}</li>`).join('')}</ul></section>`;
+    } catch { return na; }
 })();
 
 const archiveHtml = `<!doctype html>
@@ -872,6 +918,7 @@ ${explorationSection}
 ${failuresSection}
 ${flakesSection}
 ${crLoopSection}
+${iceFollowupsSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
@@ -1124,7 +1171,7 @@ const boardModel = {
     milestones,
     needs_you: needsYou,
     legs: legsOut,
-    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, tools: succession },
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, tools: succession },
     legend,
     cards,
 };

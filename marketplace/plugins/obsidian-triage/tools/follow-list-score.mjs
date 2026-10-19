@@ -30,6 +30,8 @@
 //   buildCorpusEvidence -> fetchAccount -> extractClaims -> resolveGithub
 //   + fetchRepos -> scanRepo (advisory) -> verifyClaims -> screenDossier -> verifyWebClaims
 // -> writeDossier
+// Repo content scans are off by default; FOLLOW_REPO_SCAN=1 opts in to the
+// extra GitHub calls (up to 51 per handle), each bounded to 30 seconds.
 // A handle with an existing (fresh) dossier is skipped unless --refetch.
 // "Fresh" == a dossier already exists on disk; the dossier schema (Task 2)
 // carries no fetch timestamp, so existence is the only signal available.
@@ -66,7 +68,7 @@ import {
   fetchRepos,
   verifyClaims,
 } from "./lib/follow-verify.mjs";
-import { scanRepo } from "./repo-security-scan.mjs";
+import { scanRepo, makeGhFn as makeRepoScanGhFn } from "./repo-security-scan.mjs";
 import { screenDossier, trimForJudge } from "./lib/follow-screen.mjs";
 import { verifyWebClaims, makeWebFn } from "./lib/follow-web.mjs";
 import { sha256 } from "./lib/frontmatter.mjs";
@@ -324,11 +326,11 @@ async function processHandle(vaultRoot, handle, rosterInfo, accountSource, deps)
     ...repoEvidence,
     source: gh.login ? "github" : null,
   };
-  // Advisory content scan of the account's top repos: findings
-  // ride in the dossier for the operator; they never set injection_suspect.
-  dossier.repos.security_scan = (repoEvidence.scan_candidates || []).map((full) =>
-    scanRepo(full, { ghFn: deps.ghFn }),
-  );
+  // Opt-in advisory scan preserves GitHub headroom for claim verification.
+  // Findings ride in the dossier; they never set injection_suspect.
+  dossier.repos.security_scan = deps.repoScanGhFn
+    ? (repoEvidence.scan_candidates || []).map((full) => scanRepo(full, { ghFn: deps.repoScanGhFn }))
+    : [];
 
   dossier.claims = verifyClaims(dossier, {
     ghFn: deps.ghFn,
@@ -376,6 +378,9 @@ async function runGather(args) {
   const accountSource = loadAccountSource();
   const deps = {
     ghFn: makeGhFn(),
+    repoScanGhFn: process.env.FOLLOW_REPO_SCAN === "1"
+      ? makeRepoScanGhFn({ fixture: readFixtureEnv("FOLLOW_GH_FIXTURE") })
+      : null,
     fetchFn: makeFetchFn(),
     headFn: makeHeadFn(),
     urlFn: makeUrlFn(),

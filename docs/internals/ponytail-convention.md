@@ -51,7 +51,7 @@ formatting trick, not part of the convention.
 
 ## Where we stand today
 
-`docs/internals/ponytail-debt.md` is the harvested ledger, generated with
+The harvested ledger (kept in the state repo) is generated with
 upstream's method (`grep -rnE '(#|//) ?ponytail:' .`, skipping
 `node_modules`/`.git`/build output). Most existing markers predate this
 rewrite and name only a ceiling; the ledger's `no-trigger` count is that
@@ -83,7 +83,7 @@ be fixed instead. If not, write the marker at the site, naming the concrete
 limitation and the upgrade path — not merely that a limitation exists.
 
 Run upstream's `/ponytail-debt` (or regenerate
-`docs/internals/ponytail-debt.md` the same way) whenever you want the
+the ledger the same way) whenever you want the
 current backlog, rather than trusting a stale ledger snapshot.
 
 ## Code comments

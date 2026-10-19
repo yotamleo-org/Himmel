@@ -2452,6 +2452,21 @@ grepq "$out" 'not replaced.*scripts/worktree.sh' \
   || fail "HIMMEL-6321: the refused file is not listed: $out"
 echo "ok: HIMMEL-6321 a failed snapshot leaves the user's file untouched, lists it, exits non-zero"
 
+# a cp that truncates the destination and then fails (disk full, EIO): the user's file is restored from the snapshot
+p6cp="$work/p6-cp-bin"; mkdir -p "$p6cp"
+# shellcheck disable=SC2016 # the stub's $# and $@ must stay literal
+printf '#!/bin/sh\nfor a; do last="$a"; done\ncase "$last" in */p6-proj/scripts/worktree.sh) [ "$#" -eq 2 ] && { : > "$last"; exit 1; };; esac\nPATH="${PATH#*:}" cp "$@"\n' > "$p6cp/cp"
+chmod +x "$p6cp/cp"
+set +e
+out=$(PATH="$p6cp:$PATH" HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1); rc=$?
+set -e
+[ "$(prov_sha "$p6proj/scripts/worktree.sh")" = "$p6sha" ] \
+  || fail "HIMMEL-6356: a failed copy left the user's worktree.sh truncated: $out"
+[ "$rc" -ne 0 ] || fail "HIMMEL-6356: adopt exited 0 although a copy failed: $out"
+grepq "$out" 'not replaced.*scripts/worktree.sh' \
+  || fail "HIMMEL-6356: the file whose copy failed is not listed: $out"
+echo "ok: HIMMEL-6356 a failed copy restores the user's file from the snapshot, lists it, exits non-zero"
+
 # a normal replace names the file and its backup; the backup holds the user's original bytes
 out=$(HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1)
 p6bk="$(jq -r '.pre.backup' <<< "$(prov_row "$p6led/provenance.jsonl" /scripts/worktree.sh)")"

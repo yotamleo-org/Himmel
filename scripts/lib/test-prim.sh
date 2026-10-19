@@ -239,6 +239,90 @@ fallback_missing_parent() {
     [ "$rc" -eq 1 ]
 }
 
+fallback_owner_is_live_parent() {
+    local rc
+    # shellcheck disable=SC2016 # The child shell expands its positional arguments.
+    PATH="$T/bin" with_lock "$T/live.lock" "$BASH_BIN" -c \
+        'IFS= read -r o < "$1" && [ "$o" = "$PPID" ] && kill -0 "$o"' _ "$T/live.lock" # read-sink-ok: test-owned fixture lock under $T
+    rc=$?
+    [ "$rc" -eq 0 ] && [ ! -e "$T/live.lock" ]
+}
+
+atomic_symlink_replaced() {
+    printf 'referent\n' > "$T/with space/referent" || return 1
+    ln -s referent "$T/with space/live-link" || return 1
+    printf 'new\n' | atomic_write "$T/with space/live-link" || return 1
+    # The link itself is replaced; the file it pointed at is untouched.
+    [ ! -L "$T/with space/live-link" ] && [ "$(< "$T/with space/live-link")" = new ] &&
+        [ "$(< "$T/with space/referent")" = referent ]
+}
+
+atomic_symlink_dangling() {
+    ln -s nowhere "$T/with space/dangling" || return 1
+    printf 'new\n' | atomic_write "$T/with space/dangling" || return 1
+    [ ! -L "$T/with space/dangling" ] && [ "$(< "$T/with space/dangling")" = new ] &&
+        [ ! -e "$T/with space/nowhere" ]
+}
+
+atomic_symlink_to_directory() {
+    local rc
+    mkdir "$T/with space/linked-dir" || return 1
+    ln -s linked-dir "$T/with space/dir-link" || return 1
+    printf 'new\n' | atomic_write "$T/with space/dir-link" 2>/dev/null
+    rc=$?
+    [ "$rc" -eq 1 ] && [ -L "$T/with space/dir-link" ] && [ -z "$(ls -A "$T/with space/linked-dir")" ]
+}
+
+fallback_unreadable_record() {
+    local rc
+    printf '%s\n' "$$" > "$T/unreadable.lock" || return 1
+    chmod 000 "$T/unreadable.lock" || return 1
+    # A privileged user reads through mode 000, so the case cannot arise there.
+    if [ -r "$T/unreadable.lock" ]; then chmod 600 "$T/unreadable.lock"; return 0; fi
+    # shellcheck disable=SC2016 # Expansion belongs to the child shell.
+    "$TIMEOUT" 3 "$BASH_BIN" -c '. "$1"; PATH="$2" with_lock "$3" touch "$4"' _ \
+        "$LIB" "$T/bin" "$T/unreadable.lock" "$T/entered-unreadable" 2> "$T/unreadable.err"
+    rc=$?
+    chmod 600 "$T/unreadable.lock"
+    [ "$rc" -eq 1 ] && [ ! -e "$T/entered-unreadable" ] && grep -q 'unreadable' "$T/unreadable.err"
+}
+
+lock_not_held_by_children() {
+    local rc path_override="$1" tag=fl; [ -z "$1" ] || tag=fb
+    # A background child must not keep the lock after with_lock returns.
+    # shellcheck disable=SC2016 # Expansion belongs to the child shell.
+    "$TIMEOUT" 8 "$BASH_BIN" -c '
+        . "$1"; [ -z "$2" ] || PATH="$2" # read-sink-ok: test-owned library path from the harness
+        with_lock "$3" "$4" -c "sleep 4 & exit 0" || exit 1
+        "$5" 2 "$4" -c ". \"\$1\"; with_lock \"\$2\" true" _ "$1" "$3"
+    ' _ "$LIB" "$path_override" "$T/child-held-$tag.lock" "$BASH_BIN" "$TIMEOUT"
+    rc=$?
+    [ "$rc" -eq 0 ]
+}
+
+lock_nested_distinct() {
+    local rc path_override="$1" tag=fl; [ -z "$1" ] || tag=fb
+    # shellcheck disable=SC2016 # Expansion belongs to the child shell.
+    "$TIMEOUT" 5 "$BASH_BIN" -c '
+        . "$1"; [ -z "$2" ] || PATH="$2" # read-sink-ok: test-owned library path from the harness
+        with_lock "$3" with_lock "$4" true
+    ' _ "$LIB" "$path_override" "$T/outer-$tag.lock" "$T/inner-$tag.lock"
+    rc=$?
+    [ "$rc" -eq 0 ]
+}
+
+lock_nested_same_blocks() {
+    local rc path_override="$1" tag=fl; [ -z "$1" ] || tag=fb
+    # Re-entering one lock is a documented deadlock; callers bound it with timeout.
+    # shellcheck disable=SC2016 # Expansion belongs to the child shell.
+    "$TIMEOUT" 2 "$BASH_BIN" -c '
+        . "$1"; [ -z "$2" ] || PATH="$2" # read-sink-ok: test-owned library path from the harness
+        with_lock "$3" with_lock "$3" true
+    ' _ "$LIB" "$path_override" "$T/same-$tag.lock"
+    rc=$?
+    [ "$rc" -eq 124 ]
+}
+
 canonical_directory() {
     local got rc
     ln -s "$T/with space" "$T/link" || return 1
@@ -289,6 +373,17 @@ check 'fallback retries if owner exited after releasing its record' fallback_own
 check 'fallback fails promptly when lock parent is missing' fallback_missing_parent
 check 'fallback releases correct lock when command changes directory' fallback_changed_directory
 check 'fallback tolerates rapid lock release and reacquisition' env PATH="$T/bin" "$TIMEOUT" 20 "$BASH_BIN" "$0" --churn-workers "$T"
+check 'fallback records its live parent as owner and releases' fallback_owner_is_live_parent
+check 'atomic_write replaces a symlink, not its referent' atomic_symlink_replaced
+check 'atomic_write replaces a dangling symlink' atomic_symlink_dangling
+check 'atomic_write refuses a symlink to a directory' atomic_symlink_to_directory
+check 'fallback fails on an unreadable lock record instead of waiting' fallback_unreadable_record
+check 'flock lock is not held by background children' lock_not_held_by_children ''
+check 'fallback lock is not held by background children' lock_not_held_by_children "$T/bin"
+check 'flock nested distinct locks both acquire' lock_nested_distinct ''
+check 'fallback nested distinct locks both acquire' lock_nested_distinct "$T/bin"
+check 'flock re-entering one lock blocks until the caller timeout' lock_nested_same_blocks ''
+check 'fallback re-entering one lock blocks until the caller timeout' lock_nested_same_blocks "$T/bin"
 check 'canon_path resolves symlink and spaces' canonical_directory
 check 'canon_path rejects nonexistent directory' canonical_missing
 check 'tmpdir honors TMPDIR and strips trailing slashes' temp_directory

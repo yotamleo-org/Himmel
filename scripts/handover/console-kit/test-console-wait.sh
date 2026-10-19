@@ -892,6 +892,19 @@ wait_exit "$WPID"
 check "(l4568) a READY going stale wakes the console (rc 0)" "0" "$rc"
 check "(l4568) the wake names tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n1 "$WORK/l4568.out")"
 
+# --- acts= moving (a new READY, a second BLOCKED) wakes, though tails= did not move
+# RED control (pre-fix console-wait.sh): acts= is not in the key, so the waiter stays asleep.
+reset_stub
+sed 's/ tails=N1:LIVE/ tails=N1:LIVE acts=N1:READY#1/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+I="$(new_inbox a6292)"
+start "$I" "$WORK/a6292.out" --legs "N1.md"
+wait_hb "$I" || fail "(a6292) no baseline heartbeat"
+sed 's/ acts=N1:READY#1/ acts=N1:BLOCKED#2/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+wait_exit "$WPID"
+check "(a6292) a new actionable bullet wakes the console (rc 0)" "0" "$rc"
+check "(a6292) the wake names acts" "WAKE tick changed=acts bank=PROCEED" "$(head -n1 "$WORK/a6292.out")"
+check "(a6292) and the tick line names the leg and marker" "1" "$(grep -c 'acts=N1:BLOCKED#2' "$WORK/a6292.out")"
+
 # --- (u4959) a sustained capacity=UNDERFILLED wakes, once per streak
 # tick.sh already folds TICK_UNDERFILL_MIN into capacity=; the waiter wakes on the
 # first UNDERFILLED sample, prints the dispatchable list (stubbed here), and a
@@ -934,7 +947,7 @@ start "$I" "$WORK/u4959m.out" --legs-from "$WORK/u4959-fleet.json"
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (manifest)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives --legs-from after the pool-only flag" "ARGS --priority-pool-only --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
+check "(u4959) the dispatch command receives the slack as --top, then --legs-from" "ARGS --priority-pool-only --top 7 --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
 reset_stub
 I="$(new_inbox u4959d)"
 printf '# console\n' > "$WORK/u4959-console.md"
@@ -942,7 +955,7 @@ start "$I" "$WORK/u4959n.out" --doc "$WORK/u4959-console.md" --legs-from "$WORK/
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (doc)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
+check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --top 7 --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
 
 # --- (u5542) unowned-prs=: the first sight of an open PR with no live
 # owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes

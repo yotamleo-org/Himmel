@@ -16,6 +16,10 @@ shape keeps getting blocked, the fix is usually a hook/CLI change (a new
 the classifier. The cases below are the residual judgment calls after the
 structural fixes are exhausted. **Never reshape a command to dodge a guardrail —
 if a write is denied after following this playbook, defer to the operator.**
+The one carve-out is a review-thread resolve or reply: it is verifiable
+against the PR head, so a leg sends it to the console as
+`BLOCKED resolve <pr> <thread ids>` and the console verifies and resolves it
+itself, never handing it to the operator.
 
 ---
 
@@ -113,7 +117,7 @@ vars, no loops, body via file) and retry once; a classifier denial on a loop
 shape is a shape denial (`block-jira-compound-write.sh` now
 bounces loop, `$J` and `xargs` shapes itself with that recipe). If the single
 literal write is still denied, that is not a shape problem — defer to the
-operator, do **not** reshape again to dodge the classifier. See
+operator (a review-thread write goes to the console instead, above), do **not** reshape again to dodge the classifier. See
 [`overnight-mode.md`](../handover/overnight-mode.md) § Auto-mode classifier &
 attestation. Multi-line bodies: use `--comment-file <path>` / `--desc-file
 <path>` so the shell command stays single-line.
@@ -242,7 +246,7 @@ merge proceeds with an audit line `main-red=no-completed-run`.
 
 ## Symptom: `/worktree` refuses the branch, or a stale worktree lingers
 
-`scripts/clean-garden.sh` (behind `/worktree`, `/clean`, `/clean_garden`) is the
+`scripts/worktree.sh` (behind `/worktree`, `/clean`, `/clean_garden`) is the
 one script behind all three. Two refusals surprise people:
 
 - **"PR already MERGED"** — `/worktree` refuses to re-create a worktree on a

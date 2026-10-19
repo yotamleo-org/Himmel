@@ -1069,6 +1069,26 @@ out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME=
 if grepq "$out" 'OK   C13-plugin-hooks'; then pass "C13 -> OK (shipped hook targets exist)"; else fail "C13 -> $(printf '%s' "$out" | grep C13)"; fi
 rm -rf "$t"
 
+echo "== C13: stale UNPINNED plugin-cache version is ignored, a PINNED one still warns =="
+t="$(mktemp -d -t c13pin.XXXXXX)" || exit 1; mkdir -p "$t/claude/plugins/cache/himmel/himmel-ops/0.1.0/hooks" "$t/claude/plugins/cache/himmel/himmel-ops/0.2.0/hooks"; write_settings "$t/claude" "$WRAPPER"
+cat > "$t/claude/plugins/cache/himmel/himmel-ops/0.1.0/hooks/hooks.json" <<'EOF'
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash -c 'h=\"$CLAUDE_PROJECT_DIR/scripts/hooks/stale-gone-hook.sh\"; [ -f \"$h\" ] && exec bash \"$h\"'" } ] } ] } }
+EOF
+echo '{ "hooks": {} }' > "$t/claude/plugins/cache/himmel/himmel-ops/0.2.0/hooks/hooks.json"
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.2.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'OK   C13-plugin-hooks' && ! grepq "$out" 'WARN C13-plugin-hooks'; then pass "C13 -> OK (unpinned stale cache version ignored)"; else fail "C13 unpinned -> $(printf '%s' "$out" | grep C13)"; fi
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.2.0\" }, \"garbage\" ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (malformed registry falls back to the whole cache)"; else fail "C13 malformed registry -> $(printf '%s' "$out" | grep C13)"; fi
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/9.9.9\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" '9.9.9'; then pass "C13 -> WARN (pinned install has no hooks.json)"; else fail "C13 pinned no manifest -> $(printf '%s' "$out" | grep C13)"; fi
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"project\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.1.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (pinned stale version)"; else fail "C13 pinned -> $(printf '%s' "$out" | grep C13)"; fi
+rm -rf "$t"
+
 # ── C14: ollama zero-egress defense-in-depth pin (OLLAMA_NO_CLOUD) ────────────
 FAKEOLLAMA="$FAKEROOT/ollamabin"; mkdir -p "$FAKEOLLAMA"
 printf '#!/bin/sh\necho ollama version fake\n' > "$FAKEOLLAMA/ollama"; chmod +x "$FAKEOLLAMA/ollama"
@@ -5442,14 +5462,14 @@ fi
 rm -rf "$c41_t"
 
 # --- C42: sweep health alarms ------------------------------------
-# C42 delegates to `clean-garden.sh --health` (alarm lines only, empty = healthy,
+# C42 delegates to `worktree.sh prune --health` (alarm lines only, empty = healthy,
 # exit 0/1) and WARNs once per line. Seam: DOCTOR_SWEEP_HEALTH_SCRIPT -- a stub
 # here, so no case makes a live forge call or reads real branches.
 c42_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c42.XXXXXX")" || { fail "C42 setup: mktemp -d failed"; exit 1; }
 c42_stub() { # $1 exit code, $2.. stdout lines
     local rc="$1" l; shift
     # shellcheck disable=SC2016  # $1/$* belong to the generated stub, not to this shell
-    { printf '#!/bin/sh\n[ "$1" = "--health" ] || { echo "stub: wrong args: $*" >&2; exit 9; }\n'
+    { printf '#!/bin/sh\n[ "$1 $2" = "prune --health" ] || { echo "stub: wrong args: $*" >&2; exit 9; }\n'
       for l in "$@"; do printf 'echo %s\n' "'$l'"; done
       printf 'exit %s\n' "$rc"; } > "$c42_t/stub.sh"
 }
@@ -5473,7 +5493,7 @@ out="$(c42_run)"
 n="$(printf '%s\n' "$out" | grep -c 'WARN C42-sweep-health')"
 if [ "$n" = 3 ] && grepq "$out" -F 'LOST-COMMITS fix/x pr#12 ahead=3' && grepq "$out" -F 'STUCK /w/fix+y' \
    && grepq "$out" -F 'SWEEP-ERROR fix/z no merge base' && grepq "$out" -F 'git log <branch> --not origin/main' \
-   && grepq "$out" -F 'clean-garden.sh --dry-run' && grepq "$out" -F 'unlanded-work.sh --health' \
+   && grepq "$out" -F 'worktree.sh prune --dry-run' && grepq "$out" -F 'unlanded-work.sh --health' \
    && ! grepq "$out" 'OK   C42-sweep-health' && ! grepq "$out" 'FAIL C42'; then
     pass "C42 alarms -> 3 WARN lines (n=$n), remedies per type, no OK, no FAIL"
 else
@@ -5504,6 +5524,23 @@ if grepq "$out" 'INFO C42-sweep-health' && ! grepq "$out" 'OK   C42-sweep-health
     pass "C42 rc 1 + empty output -> INFO"
 else
     fail "C42 rc 1 + empty output -> $(printf '%s' "$out" | grep -A1 C42)"
+fi
+
+echo "== C42: the REAL worktree.sh against a fixture repo with a stuck worktree -> WARN STUCK =="
+c42_repo="$c42_t/repo"
+git init -q --bare "$c42_t/origin.git" && git clone -q "$c42_t/origin.git" "$c42_repo" 2>/dev/null
+git -C "$c42_repo" checkout -q -b main
+git -C "$c42_repo" -c user.email=t@t.local -c user.name=T commit -q --allow-empty -m init
+git -C "$c42_repo" push -q origin HEAD:main && git -C "$c42_repo" remote set-head origin main
+mkdir -p "$c42_repo/.git/sweep-health"
+git -C "$c42_repo" worktree add -q "$c42_t/wt-stuck" -b feat/stuck >/dev/null 2>&1
+printf '%s\t%s\t%s\t%s\n' "$c42_t/wt-stuck" "$(($(date +%s) - 100 ))" 9 "uncommitted changes" > "$c42_repo/.git/sweep-health/stuck.tsv"
+out="$(PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c42_t/claude" HOME="$c42_t" DOCTOR_SWEEP_HEALTH_SCRIPT="$REPO_ROOT/scripts/worktree.sh" \
+    bash "$DOC" --no-color --root "$c42_repo" 2>&1)"
+if grepq "$out" 'WARN C42-sweep-health' && grepq "$out" -F 'STUCK ' && ! grepq "$out" 'INFO C42-sweep-health'; then
+    pass "C42 real worktree.sh prune --health -> WARN STUCK"
+else
+    fail "C42 real worktree.sh prune --health -> $(printf '%s' "$out" | grep -A1 C42)"
 fi
 rm -rf "$c42_t"
 

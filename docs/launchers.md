@@ -83,8 +83,8 @@ Runs Claude Code against DeepSeek's Anthropic-compatible endpoint
 
 The Z.ai GLM lane has been dropped and is **not supported**. The launcher and
 its historical notes remain in the tree, but do not plan on it:
-[glm-offload.md](glm-offload.md) and the `claude-glm` section of
-[tooling-catalog.md](tooling-catalog.md) describe the retired design. Use
+the `claude-glm` section of
+[tooling-catalog.md](tooling-catalog.md) describes the retired design. Use
 `claude-codex` or a native Claude subagent instead.
 
 ## Not a lane: `himmel-run`

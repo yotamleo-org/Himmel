@@ -6,6 +6,7 @@
 // "work on <X>" / "stop <X>" falls through to chat (never dispatch/control),
 // so attacker-controlled text can never reach a ticket path.
 const KEY = /^[A-Z][A-Z0-9]+-[0-9]+$/;
+export const isTicketKey = (s: string): boolean => KEY.test(s);
 
 export type Route =
   | { kind: "control"; verb: "status" | "sessions" }

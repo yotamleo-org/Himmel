@@ -17,6 +17,7 @@ tmp=$(mktemp -d) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home"
 mkdir -p "$HOME"
+export CLAUDE_CONFIG_DIR="$HOME/.claude"
 unset CLAUDE_PROJECT_DIR
 
 claude plugin marketplace add "$MARKET" >"$tmp/add.log" 2>&1 || { cat "$tmp/add.log"; bad "marketplace add"; }
@@ -24,6 +25,7 @@ claude plugin install himmel-guard@himmel >"$tmp/inst.log" 2>&1 || { cat "$tmp/i
 
 hook=$(find "$HOME/.claude/plugins" -type f -name block-destructive-commands.sh -path '*himmel-guard*' 2>/dev/null | head -1)
 [ -n "$hook" ] || { bad "hook not present in the installed plugin"; exit 1; }
+case "$hook" in "$tmp"/*) ok "install landed under the test root";; *) bad "install resolved outside the test root: $hook"; exit 1;; esac
 root=$(cd "$(dirname "$hook")/.." && pwd)
 export CLAUDE_PLUGIN_ROOT="$root"
 

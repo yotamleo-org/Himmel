@@ -1628,4 +1628,34 @@ check "HIMMEL-5155: a fresh batch row prints its confirmation line" "$(cat "$tmp
 CR_LEDGER="$CFB" bash "$LA" finding --batch-file "$CFR" 2>"$tmp/cb2.err"
 check "HIMMEL-5155: a repeated batch row prints no confirmation" "$(grep -c 'appended finding' "$tmp/cb2.err")" "0"
 
+# ── a fixed or deferred amend carries class=; a preflight row records the 2.8 pass ──
+KFJ="$tmp/kf-class.json"
+printf '%s\n' '{"classes":[{"id":"hook-fail-direction","globs":["scripts/hooks/*.sh"],"match":"fail-open|fail-closed"}]}' > "$KFJ"
+CLS="$tmp/class.jsonl"; : > "$CLS"
+cls_of() { L="$CLS" FID="$1" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend"&&r.finding_id===process.env.FID);console.log(rs.map(r=>r.set.class||"none").join(","))'; }
+CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-hit --severity imp --file scripts/hooks/x.sh --line 1 --text 'this hook is fail-open on a parse error'
+CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-miss --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim'
+CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-own --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim two'
+CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-ok --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim three'
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-hit --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --reason 'tracked' 2>/dev/null
+check "HIMMEL-6376: a deferred amend is auto-attributed to the matching class" "$(cls_of cl-hit)" "hook-fail-direction"
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-miss --set verdict=fixed --reason 'fixed in follow-up' 2>/dev/null
+check "HIMMEL-6376: a fixed amend with no matching class is recorded as unattributed" "$(cls_of cl-miss)" "unattributed"
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-own --set verdict=fixed --set class=new:quote-split --reason 'fixed in follow-up' 2>/dev/null
+check "HIMMEL-6376: a supplied class=new:<slug> is kept" "$(cls_of cl-own)" "new:quote-split"
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-ok --set verdict=fixed --set 'class=Bad Class' --reason 'fixed in follow-up' 2>/dev/null
+check "HIMMEL-6376: a malformed class= is refused" "$?" "2"
+CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit hook-fail-direction=fixed --hit exit-contract-drift=waived:false-positive-out-of-scope --hit docs-flag-drift=checked --duration-secs 3 2>/dev/null
+check "HIMMEL-6376: the three-hit preflight write exits 0" "$?" "0"
+check "HIMMEL-6376: a preflight row records per-hit state and counts" "$(L="$CLS" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="preflight");console.log([r.hits.map(h=>h.class+":"+h.state).join("|"),r.hit_n,r.fixed,r.waived,r.checked,r.duration_secs,r.hits[1].ref].join(","))')" "hook-fail-direction:fixed|exit-contract-drift:waived|docs-flag-drift:checked,3,1,1,1,3,false-positive-out-of-scope"
+CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=waived 2>/dev/null
+check "HIMMEL-6376: a waived hit with no reason is refused" "$?" "2"
+CR_LEDGER="$tmp/dup.jsonl" bash "$LA" preflight --branch b --head CL1 --hit docs-flag-drift=fixed --hit docs-flag-drift=checked 2>/dev/null
+check "HIMMEL-6376: a class given twice in one preflight is refused" "$?" "2"
+check "HIMMEL-6376: a refused duplicate-class preflight writes no row" "$(test -s "$tmp/dup.jsonl" && echo wrote || echo none)" "none"
+CR_LEDGER="$tmp/frac.jsonl" bash "$LA" preflight --branch b --head CL2 --duration-secs 0.1 >/dev/null 2>&1
+check "HIMMEL-6376: a preflight accepts the scanner fractional seconds" "$?" "0"
+CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=open 2>/dev/null
+check "HIMMEL-6376: an unknown hit state is refused" "$?" "2"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

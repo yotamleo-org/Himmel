@@ -31,6 +31,10 @@ every leg that has not been re-briefed. Then re-arm without `--succession`.
 
 ## In flight
 
+> The pre-filled fact sections are capped at about 3k tokens in total: one that reads
+> `over the HANDOFF size budget — run: …` is a pointer; run that command if you need it.
+> The Live state and the rulings are never trimmed, so they alone can exceed the cap.
+
 {{LIVE_STATE}}
 
 <Copied verbatim from the predecessor's `## Live state` —

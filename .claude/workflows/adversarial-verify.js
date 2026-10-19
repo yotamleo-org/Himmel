@@ -101,8 +101,8 @@ if (toJudge.length) {
     const agreed = m.raisedBy.length >= 2 && j?.sameDefect === true
     let bucket = j?.bucket ?? 'consider'
     let rationale = j?.rationale ?? 'not judged; defaulted to consider'
-    // A finding no second reviewer agreed on never reaches act, whatever its severity.
-    if (bucket === 'act' && !agreed) {
+    // Agreement weights a finding but never hides a verified critical: only a non-critical one is capped.
+    if (bucket === 'act' && !agreed && m.severity !== 'critical') {
       bucket = 'consider'
       rationale = `${rationale} (no second reviewer agreed: capped at consider)`
     }

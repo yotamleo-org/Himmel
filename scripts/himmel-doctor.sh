@@ -615,12 +615,25 @@ check_c12() {
 # a missing/moved himmel hook script silent in a himmel checkout.  Doctor surfaces
 # that drift without changing hook runtime semantics.
 check_c13() {
-    local hooks_files=() hooks_json f
+    local hooks_files=() hooks_json f unverified=""
     if [ -n "${DOCTOR_HIMMEL_OPS_HOOKS_JSON:-}" ]; then
         hooks_files=("$DOCTOR_HIMMEL_OPS_HOOKS_JSON")
     else
+        # Only cache versions installed_plugins.json pins are live; unpinned
+        # leftovers are dead weight. No readable registry -> scan the whole cache.
+        local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
+        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]?.installPath // empty' "$installed" 2>/dev/null)" || pins=""; }
+        if [ -n "$pins" ]; then
+            while IFS= read -r f; do
+                if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
+            done <<EOF_PINS
+$pins
+EOF_PINS
+        else
+            cache_hooks=("$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json)
+        fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
-                 "$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json \
+                 "${cache_hooks[@]}" \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
         done
@@ -643,6 +656,8 @@ EOF_CMDS
     done
     if [ -n "$missing" ]; then
         emit WARN C13-plugin-hooks "himmel-ops hooks.json references missing checkout hook(s):$missing - guarded [ -f ] wrappers will silently no-op" "run /himmel-update or restore the missing script(s), then re-run"
+    elif [ -n "$unverified" ]; then
+        emit WARN C13-plugin-hooks "pinned himmel-ops install(s) have no hooks/hooks.json, cannot verify:$unverified" "run /himmel-update to reinstall the plugin"
     else
         emit OK C13-plugin-hooks "himmel-ops plugin hooks resolve in this checkout"
     fi
@@ -3466,7 +3481,7 @@ check_c41_mcp_argv_key() {
 }
 
 # --- C42: sweep health alarms (read-only advisory) -------------------
-# scripts/clean-garden.sh --health prints ONLY alarm lines -- LOST-COMMITS (work
+# scripts/worktree.sh prune --health prints ONLY alarm lines -- LOST-COMMITS (work
 # pushed after its PR merged, never shipped), STUCK (a worktree/branch the sweep
 # keeps skipping), SWEEP-ERROR (the sweep could not classify a branch) -- and
 # prints nothing when the sweep is healthy. Delegates entirely to it; one WARN
@@ -3475,17 +3490,17 @@ check_c41_mcp_argv_key() {
 # is INFO, never a false-clean OK.
 # Test seam: DOCTOR_SWEEP_HEALTH_SCRIPT replaces the script (hermetic suite).
 check_c42_sweep_health() {
-    local script="${DOCTOR_SWEEP_HEALTH_SCRIPT:-$REPO_ROOT/scripts/clean-garden.sh}"
+    local script="${DOCTOR_SWEEP_HEALTH_SCRIPT:-$REPO_ROOT/scripts/worktree.sh}"
     [ -f "$script" ] || { emit OK C42-sweep-health "sweep-health script not found (skipped)"; return; }
     local out rc n=0 line remedy
-    out="$(cd "$REPO_ROOT" 2>/dev/null && bash "$script" --health 2>/dev/null)"; rc=$?
+    out="$(cd "$REPO_ROOT" 2>/dev/null && bash "$script" prune --health 2>/dev/null)"; rc=$?
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
-        emit INFO C42-sweep-health "sweep health check could not run (exit $rc)" "bash scripts/clean-garden.sh --health   # investigate directly"
+        emit INFO C42-sweep-health "sweep health check could not run (exit $rc)" "bash scripts/worktree.sh prune --health   # investigate directly"
         return
     fi
     if [ -z "$out" ]; then
         if [ "$rc" -ne 0 ]; then
-            emit INFO C42-sweep-health "sweep health check exited $rc with no alarm lines" "bash scripts/clean-garden.sh --health   # investigate directly"
+            emit INFO C42-sweep-health "sweep health check exited $rc with no alarm lines" "bash scripts/worktree.sh prune --health   # investigate directly"
         else
             emit OK C42-sweep-health "sweep healthy (no lost commits, stuck deletions or sweep errors)"
         fi
@@ -3496,7 +3511,7 @@ check_c42_sweep_health() {
         n=$((n+1))
         case "$line" in
             LOST-COMMITS*) remedy="git log <branch> --not origin/main   # then open a PR or cherry-pick the commits" ;;
-            STUCK*)        remedy="bash scripts/clean-garden.sh --dry-run   # fix the named reason, then re-run /clean" ;;
+            STUCK*)        remedy="bash scripts/worktree.sh prune --dry-run   # fix the named reason, then re-run /clean" ;;
             *)             remedy="bash scripts/unlanded-work.sh --health   # investigate directly" ;;
         esac
         emit WARN C42-sweep-health "$line" "$remedy"

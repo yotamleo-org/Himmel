@@ -36,7 +36,6 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [voice.md](voice.md) — **BETA.** Local speech I/O: `/speak`, the off-by-default `Stop` hook, the daemon, wake word and push-to-talk. Detached and hand-launched — not a `himmelctl` install item, not in the adopter template, and it needs a local runtime that is not in the repo.
 - [operator-conventions.md](operator-conventions.md) — durable operator working-habits.
 - [contributing.md](contributing.md) — the contribution workflow.
-- [glm-offload.md](glm-offload.md) — the GLM-lane offload loop (spawn a GLM worker from the main session, review its diff through the normal automated review loop).
 - [token-economy.md](token-economy.md) — per-boundary token-optimizer policy — who owns which token cost and where it's paid.
 
 ## How enforcement works (internals)
@@ -55,7 +54,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 ## Orchestration & lanes
 
-- [orchestration-patterns.md](orchestration-patterns.md) (+ [.notes.md](orchestration-patterns.notes.md) run log) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
+- [orchestration-patterns.md](orchestration-patterns.md) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.
 - [internals/lane-parity.md](internals/lane-parity.md) — the living compatibility index across delegation lanes.
 - [internals/validation-gates.md](internals/validation-gates.md) — placement doctrine for validation/quality gates across workflows.
@@ -66,13 +65,12 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [jira-projects.md](jira-projects.md) — Jira project setup + conventions.
 - [telegram-bridge.md](telegram-bridge.md) · [internals/telegram-bridge.md](internals/telegram-bridge.md) — the Telegram bridge.
 - [hermes-runbook.md](hermes-runbook.md) — the hermes junior-tier model lane.
-- [luna/README.md](luna/README.md) — the luna companion second-brain vault guides (incl. [end-session-wiki](luna/end-session-wiki.md) + its [schema](luna/end-session-wiki-schema.md), [emergence-crystallization](luna/emergence-crystallization.md), [pr-lane-guard](luna/pr-lane-guard.md), [compounding](luna/compounding.md), [google-health-connector-setup](luna/google-health-connector-setup.md)).
+- [luna/README.md](luna/README.md) — the luna companion second-brain vault guides (incl. [end-session-wiki](luna/end-session-wiki.md) + its [schema](luna/end-session-wiki-schema.md), [pr-lane-guard](luna/pr-lane-guard.md), [compounding](luna/compounding.md), [google-health-connector-setup](luna/google-health-connector-setup.md)).
 
 ## Setup (continued)
 
 - [setup/cli-proxy-lane.md](setup/cli-proxy-lane.md) — the `cc-codex` CLIProxyAPI lane per-host bring-up checksheet.
 - [setup/codex.md](setup/codex.md) — running himmel under OpenAI Codex (`codex-cli`) — step-by-step setup.
-- [setup/windows-clean-machine.md](setup/windows-clean-machine.md) — factory-clean-Windows-11 → full himmel dev + lane fleet, remote-driven runbook.
 
 ## Process, security & audits
 

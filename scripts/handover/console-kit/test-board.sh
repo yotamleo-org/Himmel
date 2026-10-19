@@ -370,7 +370,32 @@ out="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-alive-board
 n5html="$(cat "$W/n5-alive-board.html" 2>/dev/null)"
 contains 'a WRAPPED leg with a live census match reads WRAPPED, window still open' "$n5html" 'data-label="N5" data-phase="WRAPPED, window still open"'
 contains 'it is listed as needing the console' "$n5html" 'data-need="N5"'
-contains 'the need row explains why' "$n5html" 'WRAPPED, window still open — close the leg window'
+contains 'the need row explains why' "$n5html" 'WRAPPED, window still open — '
+
+# The need row says whether the window is safe to close, from the same
+# close-wrapped-leg.sh --check a hand-close would run. The refusal text below is
+# copied from the real script's wrap-subtree-check output (WITHHELD line, rc 6).
+cat > "$W/bin/close-check-safe.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --check ] || exit 2
+echo "SAFE-TO-CLOSE: pid 999 (N5) has no live subtree or subagent; nothing was signalled"
+STUB
+cat > "$W/bin/close-check-busy.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --check ] || exit 2
+echo "WITHHELD: 1 process(es) still alive under claude pid 999"
+echo "close-wrapped-leg: refusing to signal pid 999 - wrap-subtree-check.sh did not report CLOSABLE (see above); retry shortly" >&2
+exit 6
+STUB
+chmod +x "$W/bin/close-check-safe.sh" "$W/bin/close-check-busy.sh"
+BOARD_CLOSE_CHECK="$W/bin/close-check-safe.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-safe-board.html" >/dev/null
+contains 'a still-open WRAPPED leg whose close check passes reads safe to close' "$(cat "$W/n5-safe-board.html")" 'WRAPPED, window still open — safe to close'
+BOARD_CLOSE_CHECK="$W/bin/close-check-busy.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-busy-board.html" >/dev/null
+contains 'a refused close check reads still running with the reason' "$(cat "$W/n5-busy-board.html")" 'still running: WITHHELD: 1 process(es) still alive under claude pid 999'
+# a missing check script exits 127: an operational failure, never "still running"
+BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-missing-board.html" >/dev/null
+contains 'a close check that fails to run reads close check failed' "$(cat "$W/n5-missing-board.html")" 'close check failed (rc 127)'
+lacks 'a close check that fails to run is never read as still running' "$(cat "$W/n5-missing-board.html")" 'still running'
 
 # No census match (the default empty stub the suite already uses throughout):
 # N5 stays plain WRAPPED, as pinned above at line 212. (The ladder itself always
@@ -454,6 +479,8 @@ write_v100 3
 {
     printf 'HIMMEL-9101%sTask%sDone%sfirst%s\n' "$T" "$T" "$T" "$T"
     printf 'HIMMEL-9102%sTask%sTo Do%ssecond%sv1-blocker\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9103%sTask%sClosed%sclosed one%s\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9104%sTask%swont do%swont one%s\n' "$T" "$T" "$T" "$T"
 } > "$JD/v1.0.1.tsv"
 DOCV="$B/HIMMEL-nextleg-2026-09-21V-console-v.md"
 sed 's/^epics: .*/&\nversions: v1.0.0, v1.0.1/' "$DOC" > "$DOCV"  # gnu-ok: console kit is Linux-only
@@ -470,7 +497,7 @@ vhtml="$(cat "$W/v-board.html" 2>/dev/null)"
 jargv="$(cat "$W/jira-argv.log" 2>/dev/null)"
 contains 'a versions: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'each version renders done/total' "$vhtml" 'data-release="v1.0.0" data-done="3" data-total="6"'
-contains 'the second version renders its own counts' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
+contains 'the second version renders its own counts, Closed and won'"'"'t do left out of done and total' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
 contains 'the panel is titled Release <version>' "$vhtml" '<h2>Release v1.0.0</h2>'
 contains 'an open v1-blocker ticket is listed with its key' "$vhtml" 'data-blocker="HIMMEL-9001"'
 contains 'a listed blocker shows its status' "$vhtml" '<span class="pr">In Progress</span>'
@@ -966,9 +993,9 @@ printf '[{"number":3001,"title":"a","mergedAt":"%s","headRefName":"feat/a"},{"nu
     printf '{"kind":"preflight","ts":"%s","branch":"feat/a","head":"h1","classes":[{"class":"x","state":"fixed"},{"class":"y","state":"waived"}]}\n' "$(ago 1)"
     printf '{"kind":"preflight","ts":"%s","branch":"feat/b","head":"h4","classes":[]}\n' "$(ago 2)"
 } > "$CL/ledger.jsonl"
-mirror_issue() {  # mirror_issue <key> <labels json> <versions json> <status> <days old> [resolved days ago]
+mirror_issue() {  # mirror_issue <key> <labels json> <versions json> <status> <days old> [resolved days ago] [statusCategory]
     {
-        printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\nlabels: %s\nfixVersions: %s\n' "$1" "$4" "$4" "$2" "$3"
+        printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\nlabels: %s\nfixVersions: %s\n' "$1" "$4" "${7:-$4}" "$2" "$3"
         printf 'created: "%s"\nupdated: "%s"\nresolution: null\n' "$(ago "$5")" "$(ago 0)"
         [ -z "${6:-}" ] || printf 'resolved: "%s"\n' "$(ago "$6")"
         printf -- '---\n\n# %s: t\n' "$1"
@@ -978,6 +1005,7 @@ mirror_issue HIMMEL-9101 '["residual"]' '["v1.1.3"]' 'To Do' 2
 mirror_issue HIMMEL-9102 '["residual-depth-1"]' '["v1.1.3"]' 'To Do' 3
 mirror_issue HIMMEL-9103 '["residual"]' '["v1.1.3"]' 'Done' 20
 mirror_issue HIMMEL-9104 '["restructure-class-x"]' '[]' 'To Do' 20
+mirror_issue HIMMEL-9106 '["residual"]' '["v1.1.3"]' 'Closed' 20 1 Done
 mirror_issue HIMMEL-9105 '["theme"]' '["v1.1.3"]' 'To Do' 1
 for n in $(seq 9110 9125); do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"]' 'To Do' 30; done
 crrun() {
@@ -1011,6 +1039,27 @@ jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 contains 'cr-loop: an absent ledger and mirror never fail the render (rc 0)' "rc=$rc" 'rc=0'
 jcheck 'cr-loop --json: absent ledger and mirror read n/a (null), the before row stays' 'M.trends.cr_loop.rounds.mean === null && M.trends.cr_loop.residual.inflow === null && M.trends.cr_loop.before.rounds_mean === 2.71'
 jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 'M.trends.cr_loop.preflight.per_pr === null'
+
+# --- ICE-parked follow-ups: keys cited as follow-ups in the last 14 days of
+# comments that moved to ICE, from the mirror. RED control (pre-change board.mjs): no
+# data-ice-followups section and no trends.ice_followups.
+ice_issue() {  # ice_issue <key> <comments body>
+    { printf -- '---\nkey: "%s"\nstatus: "Done"\nstatusCategory: "Done"\nlabels: []\nfixVersions: []\ncreated: "%s"\nupdated: "%s"\n---\n\n# %s: t\n\n## Description\n\nd\n\n## Comments\n%s\n' "$1" "$(ago 30)" "$(ago 1)" "$1" "$2"; } > "$CL/mirror/HIMMEL/$1.md"
+}
+ice_issue HIMMEL-9201 "$(printf '\n### Op — %s\n\nMoved to ICE-77. Closing.\n' "$(ago 5)")"
+ice_issue HIMMEL-9202 "$(printf '\n### Op — %s\n\nFollow-up: HIMMEL-9201 parked.\n\n### Op — %s\n\nFollow-up HIMMEL-9105 stays open.\n' "$(ago 1)" "$(ago 1)")"
+crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+contains 'ice-followups: rc 0' "rc=$rc" 'rc=0'
+jcheck 'ice-followups --json: count and keys are the ICE-moved keys cited as follow-ups in the window' 'M.trends.ice_followups.count === 1 && M.trends.ice_followups.keys.join() === "HIMMEL-9201"'
+contains 'ice-followups html: one section with the count and the key' "$chtml" 'data-ice-followups="1"'
+contains 'ice-followups html: the key is listed' "$chtml" 'data-ice-key="HIMMEL-9201"'
+CL_MIRROR="$W/none" crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+contains 'ice-followups: an absent mirror never fails the render (rc 0)' "rc=$rc" 'rc=0'
+jcheck 'ice-followups --json: an absent mirror reads n/a (null count)' 'M.trends.ice_followups.count === null && M.trends.ice_followups.keys.length === 0'
+lacks 'ice-followups html: an absent mirror renders no panel' "$(cat "$CL/board.html")" 'data-ice-followups='
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

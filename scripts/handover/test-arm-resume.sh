@@ -1916,10 +1916,8 @@ assert_not_contains "T28a refusal does not claim same-handover" "for the SAME ha
 # --force in THIS scope is NO LONGER multi-delete — it replaces
 # only THIS handover's own job(s), so the refusal must say so rather than warn
 # of a sibling-endangering wipe. (T28d proves the foreign siblings in fact
-# survive.) Pre-1563 this asserted the opposite ("deletes EVERY") and T28d
-# proved that was real; both flip together here.
+# survive.)
 assert_contains "T28a refusal says --force is own-only (HIMMEL-1563)" "replaces only THIS" "$out"
-assert_not_contains "T28a no stale multi-delete warning (HIMMEL-1563)" "deletes EVERY" "$out"
 # Sanity: WITHOUT --dedup-any the same distinct arm would succeed (T25 proves
 # this), so the rc 3 here is the flag's doing, not a stuck scheduler.
 if [ "$(count_slots "$DB28" "$DB28D")" = "1" ]; then

@@ -751,7 +751,6 @@ unchanged. Probe kinds: `always` (Claude tiers), `env:<KEY>`, `path:<cli>`,
 Claude tiers (haiku/sonnet/opus/fable) are always available as native
 subagents. External lanes appear only when configured — see the
 [lanes table in §4.1](#41-env--the-file-based-config) for the enabling keys,
-[glm-offload.md](glm-offload.md) for the GLM loop, and
 [hermes-runbook.md](hermes-runbook.md) for the hermes critic/junior tiers.
 The delegation *policy* (which tier gets what work) is prose in
 [CLAUDE.md](../CLAUDE.md); a pre-commit guard (`scripts/lanes/check.mjs`)
@@ -848,7 +847,6 @@ the human-only public merge — those fail closed with no env override.
 | Overnight pipeline (11 phases) | [handover/overnight-mode.md](handover/overnight-mode.md) |
 | Handover system | [internals/handover-system.md](internals/handover-system.md) |
 | Telegram bridge | [telegram-bridge.md](telegram-bridge.md) · [internals/telegram-bridge.md](internals/telegram-bridge.md) |
-| GLM offload loop | [glm-offload.md](glm-offload.md) |
 | hermes lanes | [hermes-runbook.md](hermes-runbook.md) |
 | graphify + egress fence | [internals/egress-matrix.md](internals/egress-matrix.md) |
 | Machine setup (incl. hook scopes §4b, scheduler backends §4c) | [setup/new-machine.md](setup/new-machine.md) |

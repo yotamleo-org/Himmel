@@ -55,9 +55,9 @@ WARN C40-qmd-vec: 394 docs not embedded, invisible to vec search
        → bash scripts/luna/qmd-reindex.sh   # update + embed + cleanup
 OK   C41-mcp-argv-key: scanned 10 MCP config file(s); no credential passed on a server command line
 WARN C42-sweep-health: STUCK /home/user/Documents/github/himmel/.claude/worktrees/docs+himmel-4903-agents-md-review merged, but the worktree has untra
-       → bash scripts/clean-garden.sh --dry-run   # fix the named reason, then re-run /clean
+       → bash scripts/worktree.sh prune --dry-run   # fix the named reason, then re-run /clean
 WARN C42-sweep-health: STUCK /home/user/Documents/github/himmel/.claude/worktrees/feat+himmel-4869-deepseek-phase-b-pilot merged, but the worktree is
-       → bash scripts/clean-garden.sh --dry-run   # fix the named reason, then re-run /clean
+       → bash scripts/worktree.sh prune --dry-run   # fix the named reason, then re-run /clean
 OK   C43-rtk-hook: no bare rtk hook entry (guard-wrapped or absent)
 OK   C44-skill-index: 'skills' qmd collection present (486 files)
 OK   C45-qmd-daemon: qmd daemon pid 2957436: RSS 1504 MB, up 2-19:01:50 (ceiling 4096 MB)

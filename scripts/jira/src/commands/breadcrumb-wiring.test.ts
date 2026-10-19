@@ -38,7 +38,8 @@ beforeEach(() => {
 
 describe('jira breadcrumb wiring', () => {
   it('transition (mutation) drops a breadcrumb for the key', async () => {
-    mockRequest.mockImplementation(async (method: string) => {
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.includes('fields=fixVersions')) return { fields: { fixVersions: [{ name: 'v1.1.3' }] } };
       if (method === 'GET') return { transitions: [{ id: '31', name: 'Done' }] };
       return {};
     });

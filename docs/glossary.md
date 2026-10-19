@@ -37,7 +37,7 @@ In prose, say the plain name, and the old name once in brackets the first time.
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
 top-tier parent must not implement inline), not a session role; the word also
-names a script (`scripts/clean-garden.sh`) and CI components. *Conductor* is
+names a script (`scripts/worktree.sh`) and CI components. *Conductor* is
 the cross-project layer, not a role in this fleet.
 
 ## Plain names for harness terms
@@ -73,8 +73,7 @@ git's own term), floor, anchor, arm, lane, queue lock.
 
 ## Identifier aliases
 
-Rename plan: [`internals/identifier-rename-inventory.md`](internals/identifier-rename-inventory.md)
-(HIMMEL-5689). Names ruled 2026-10-17. Each old name keeps working through the
+Rename plan: HIMMEL-5689. Names ruled 2026-10-17. Each old name keeps working through the
 alias mechanism below until the removal release, the release after v1.1.3.
 Mechanisms: **env** = read-both via `scripts/lib/env-alias.sh` (`alias_env NEW OLD`;
 writers export both; a guard keyed on an identity marker uses `env_alias_any`
@@ -295,7 +294,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Verdict (CR)** | One disposition per review finding. `scripts/cr/write-verdicts.sh` writes `agreed`, `disproved`, `conflict` (evidence both agrees and disproves), `unaddressed` (no verdict reached; blocks) or `deferred -> <TICKET>` (a bare `deferred` is refused); it never writes `fixed`. `fixed` comes from `review-round.sh promote`, which amends an `agreed` row on a clean round (`clear-cr-marker.sh` gate 4c runs it), or from `ledger-append.sh --set verdict=fixed`. Terminal, per `promote`: `fixed`, `disproved`, `deferred`; `agreed` waits for promotion, and `conflict` and `unaddressed` are never promoted. | resolution |
 | **Class sweep** | One `SWEEP` line per agreed or fixed finding, naming every site of the finding's class; `clear-cr-marker.sh` refuses without it (`missing-class-sweep`). | — |
 | **Round** | One counted panel run on a branch, printed as `pr-check: round N of 3 on <branch>`. A CR round, a panel round and a pr-check round are the same counter. It advances once per panel run, not per critic or retry. | — |
-| **Delta round** | The one extra round allowed after round 3, printed as `pr-check: delta round 4 on <branch>`. It reviews only the diff since the last counted head, and only a Critical or escape-class finding blocks. A fourth full round or a second delta round exits 8. | 4th round |
+| **Delta round** | The one extra round allowed after round 3, printed as `pr-check: delta round 4 on <branch>`. It reviews only the diff since the last counted head, and only a Critical or escape-class finding blocks. A fourth full round or a second delta round exits 8; a signed judge GO at the exact head clears any later change instead. | 4th round |
 | **Ready-check** | `scripts/handover/console-kit/ready-check.sh`: the numbered pre-GO checks on one PR head (head and merge state, check rollup, threads, CR ledger, trailers, ticket ids, coverage). `go.sh` runs it before it signs. | — |
 | **GO / GO file** | The console's merge authorisation for one PR at one head sha, written by `go.sh`. The file *is* the GO: `merge-on-green.sh` refuses (exit 17) a console-spawned leg without it, whatever any message says. | approval |
 | **Attestation trailer** | `Platforms tested: <os>` or `Security reviewed: <token>` in a PR's first commit, checked at pre-push and by ready-check item 5. | sign-off |

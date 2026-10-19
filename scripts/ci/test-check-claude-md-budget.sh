@@ -37,12 +37,12 @@ bash "$GUARD" "$tmp/under.md"; rc=$?
 if [ "$rc" -eq 0 ]; then pass "under.md -> exit 0"; else fail "under.md -> expected 0 got $rc"; fi
 
 # Case B: over-budget HIMMEL content is refused, and the message names the
-# overage and the exclusion. 20000 'x' outside the section vs the 12288 default.
+# overage and the exclusion. 20000 'x' outside the section vs the 6144 default.
 echo "== Case B: over budget (ours) is refused =="
 { awk 'BEGIN { for (i = 0; i < 20000; i++) printf "x"; printf "\n\n" }'; printf '%s' "$section"; } > "$tmp/over.md"
 out_b=$(bash "$GUARD" "$tmp/over.md" 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "over.md -> exit 1"; else fail "over.md -> expected 1 got $rc"; fi
-if grep -q 'over the 12288 B always-on budget' <<< "$out_b" && grep -q 'graphify.*section is excluded' <<< "$out_b"; then
+if grep -q 'over the 6144 B always-on budget' <<< "$out_b" && grep -q 'graphify.*section is excluded' <<< "$out_b"; then
     pass "over.md -> message names the budget and the exclusion"
 else
     fail "over.md -> message wrong: $out_b"
