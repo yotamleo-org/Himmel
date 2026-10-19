@@ -602,7 +602,7 @@ Three readings that look like evidence and are not:
 
 ## Superseded runs under a runner backlog
 
-With a large fleet the account's 20-job cap backs up, and superseded
+With a large fleet the org's 60-job cap backs up, and superseded
 `pull_request` runs sit in workflow-level `queued` — the concurrency group does
 not cancel them, and `codeowner-review-gate` / `workflow_dispatch` runs are
 outside it by design. From a supervisor session, `bash scripts/ci/cancel-superseded-runs.sh
@@ -612,5 +612,18 @@ current head. It never touches a run at the current head, main, a
 schedule run or a branch with no open PR, and any `gh` read error cancels
 nothing and exits 1. Cancels land ~20 s later. Run from a supervisor session only; not yet wired
 into `tick.sh` or the worker session ship flow.
+
+Never rerun a CI run by hand or in a loop: the concurrency group `ci-pr-<N>`
+makes a rerun the newest request, so rerunning a run at a superseded sha cancels
+the PR's real head run (HIMMEL-6509). `bash scripts/ci/rerun-head.sh [--dry-run] <pr>`
+reruns (`--failed`) the newest CI run at the PR's current head only when it is
+completed as failure, cancelled or timed_out; a live or green head run, a run
+already rerun once and no run at the head are no-ops. `--run <id>` does the same
+but exits 1 when that run's sha is not its PR's current head. `--fleet` runs
+`cancel-superseded-runs.sh` first, then the `<pr>` pass over every open PR: the
+one sanctioned recovery after an outage. Every run read precedes the first
+rerun, so a `gh` error there reruns nothing and exits 1. The PR heads are
+re-read right before each rerun and a moved head is skipped, so a fleet pass can
+rerun some PRs and still exit 1 when a later re-read or rerun fails.
 
 `bash scripts/lint/flag-parity.sh [--staged | --changed A..B] --baseline scripts/lint/flag-parity-baseline.tsv` fails a doc (`docs/`, `.claude/commands/`, skills) that writes a `--flag` after a tracked script name the script lacks; `--advisory` lists usage-header flags no doc mentions. Pre-commit and the CI lint job run it; ~0.3 s on the full tree.

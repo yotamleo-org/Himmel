@@ -130,6 +130,7 @@ scripts/ci/test-check-macos-nightly-health.sh	0
 scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-vacuous-path-assert.sh	1
 scripts/ci/test-ci-gcp-routing.sh	0
+scripts/ci/test-ci-image.sh	0
 scripts/ci/test-ci-job-timeouts.sh	0
 scripts/ci/test-ci-lint-tree-gates.sh	24
 scripts/ci/test-ci-main-cron.sh	0

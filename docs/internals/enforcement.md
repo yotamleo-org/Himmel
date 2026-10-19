@@ -5687,6 +5687,20 @@ to the SDK or the raw Messages API is needed. Measured 2026-10-13 (account B, Ha
 Billing promotional credit went from $199.91 to $199.90, so the spend landed
 on the credit.
 
+**Leg API-lane switch (HIMMEL-6476):** `scripts/api-lane/claude-api.sh` refuses
+rc 5 unless `HIMMEL_API_LANE=on` is in the caller's environment, and a per-call
+env prefix is refused by the guards, so legs never reached it and the PR critic
+(`critic-first-pass.sh`) was skipped. `headed-arm-leg.sh` now reads an opt-in seam
+from the LAUNCHING shell: `LEG_API_LANE=on` puts `HIMMEL_API_LANE=on` and
+`HIMMEL_API_ACCOUNT=auto` into the leg's environment (`--dry-run` prints both).
+Default OFF: unset or any other value launches a leg with neither. The wrapper
+strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT` (both are in
+`console_context_leg_env_unset_names`), so the seam is the only way in. The
+console makes it the standing default by exporting `LEG_API_LANE=on` in its own
+launch environment. The switch does not bypass spend control: `claude-api.sh`
+still applies the API credit guard (`~/.himmel/state/api-credit`) and account
+routing per call, and `bank-preflight.sh` still gates the launch itself.
+
 Subagent transcripts are NOT flat files under the project directory. A
 session's own transcript is `~/.claude/projects/<slugified-cwd>/<sessionId>.jsonl`,
 but every subagent it dispatches writes to

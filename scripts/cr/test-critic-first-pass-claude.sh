@@ -68,6 +68,7 @@ pwd > "$REC/cwd"
 printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" > "$REC/env"
 if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit 2; fi
 [ -z "${FAKE_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
+[ -z "${FAKE_RC5:-}" ] || { echo "boom" >&2; exit 5; }
 cat "$ENVELOPE"
 EOF
 chmod +x "$LAUNCH"
@@ -111,6 +112,10 @@ fresh_rec 3; export FAKE_FAIL=1
 run_cfp claude-api
 check "3 a launcher crash exits 1" 1 "$RC"
 unset FAKE_FAIL
+fresh_rec 3b; export FAKE_RC5=1
+run_cfp claude-api
+check "3b a child crash that happens to exit 5 is a failure (1), not a skip" 1 "$RC"
+unset FAKE_RC5
 
 # --- 4. subscription provider: PROCEED runs the native read-only call ------
 fresh_rec 4; bank 10
