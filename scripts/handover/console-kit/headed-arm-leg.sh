@@ -2366,11 +2366,14 @@ fi
 # unregistered leg is merely unbound (bus send refused) and keeps today's
 # channels, so a register failure warns (launch log, launcher stdout, a
 # bus=FAIL: leg-doc bullet) and never blocks a launch of the live fleet. A headless leg
-# never binds (spec 8.5), so it is not registered either.
+# never binds (spec 8.5), so it is not registered either; nor is a leg whose doc
+# names no console, which has nobody to register with.
 # ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
 case "${MCP_NAMES_JSON:-}" in
     *'"himmel-bus"'*)
-        if [ "$HEADLESS" -ne 1 ]; then
+        if [ "$HEADLESS" -ne 1 ] && [ -z "$BUS_CONSOLE" ]; then
+            echo "$(date +%F_%T) headed-arm-leg: $NAME names no console - not registered on the bus" >> "$LOG"
+        elif [ "$HEADLESS" -ne 1 ]; then
             BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
             BUS_ROLE=leg
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
