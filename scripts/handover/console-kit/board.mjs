@@ -798,6 +798,28 @@ const crLoopSection = (() => {
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
 
+// ICE-parked follow-ups: HIMMEL keys cited as follow-ups in the last 14 days of comments
+// that now live in the icebox, from ice-followups.sh over the Jira mirror (BOARD_MIRROR is
+// the seam; local files only, no network). The panel shows only when a key is parked, to
+// keep the live page small (--json still carries count null for an unreadable mirror and 0
+// for none); never fatal; not part of the fingerprint.
+const iceFollowupsSection = (() => {
+    const title = '<h2>ICE-parked follow-ups (14d)</h2>';
+    const na = '';
+    trend.ice_followups = { count: null, keys: [] };
+    try {
+        const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+        const lines = execFileSync('bash', [join(HERE, 'ice-followups.sh'), dir],
+            { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+        const m = /^ice-followups=(\d+)$/.exec(lines[0] || '');
+        if (!m) return na;
+        const keys = lines.slice(1).filter((k) => /^HIMMEL-\d+$/.test(k));
+        trend.ice_followups = { count: Number(m[1]), keys };
+        if (!keys.length) return na;
+        return `<section data-ice-followups="${keys.length}">${title}<p class="sub">ice-followups=${keys.length}: parked in ICE, nobody owns them</p><ul>${keys.map((k) => `<li data-ice-key="${esc(k)}">${esc(k)}</li>`).join('')}</ul></section>`;
+    } catch { return na; }
+})();
+
 const archiveHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Supervisor Session Board — archive</title></head>
 <body>
@@ -876,6 +898,7 @@ ${explorationSection}
 ${failuresSection}
 ${flakesSection}
 ${crLoopSection}
+${iceFollowupsSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
@@ -1128,7 +1151,7 @@ const boardModel = {
     milestones,
     needs_you: needsYou,
     legs: legsOut,
-    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, tools: succession },
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, tools: succession },
     legend,
     cards,
 };
