@@ -31,7 +31,7 @@ _env_value_config() {
         const vals = doc && typeof doc === "object" ? doc.env_values : undefined;
         if (vals === undefined || vals === null) process.exit(1);
         if (typeof vals !== "object" || Array.isArray(vals)) process.exit(2);
-        if (!Object.prototype.hasOwnProperty.call(vals, key) || vals[key] === null) process.exit(1);
+        if (!Object.prototype.hasOwnProperty.call(vals, key)) process.exit(1);
         const v = vals[key];
         if (typeof v !== "string" || v === "" || /[\r\n\0]/.test(v)) process.exit(2);
         process.stdout.write(v + "\n");

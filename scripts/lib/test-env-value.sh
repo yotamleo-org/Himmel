@@ -58,6 +58,9 @@ check "malformed config does not fall through to discovery" "" "$out"; check "ma
 printf '{"env_values":{"PAGES_URL":["x"]}}\n' > "$HOME/.himmel/config.json"
 out=$(env_value PAGES_URL disc_ok); rc=$?
 check "non-string value fails closed" "1" "$rc"
+printf '{"env_values":{"PAGES_URL":null}}\n' > "$HOME/.himmel/config.json"
+out=$(env_value PAGES_URL disc_ok); rc=$?
+check "explicit null does not fall through to discovery" "" "$out"; check "explicit null rc" "1" "$rc"
 rm -f "$HOME/.himmel/config.json"
 out=$(env_value PAGES_URL disc_ok); check "absent config file falls to discovery" "discovered-value" "$out"
 
