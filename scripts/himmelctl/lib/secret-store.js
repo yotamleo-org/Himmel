@@ -127,10 +127,15 @@ function privateGroup(st, ctx) {
   const files = ctx.accountFiles || { group: '/etc/group', passwd: '/etc/passwd' };
   const me = os.userInfo().username;
   try {
+    let named = false;
     for (const l of fs.readFileSync(files.group, 'utf8').split('\n')) {
       const f = l.split(':');
-      if (Number(f[2]) === gid && f[3] && f[3].split(',').some((u) => u && u !== me)) return false;
+      if (Number(f[2]) !== gid) continue;
+      if (f[0] === me) named = true;
+      if (f[3] && f[3].split(',').some((u) => u && u !== me)) return false;
     }
+    // A group the local files do not define (NSS/LDAP) cannot be proven private.
+    if (!named) return false;
     for (const l of fs.readFileSync(files.passwd, 'utf8').split('\n')) {
       const f = l.split(':');
       if (Number(f[3]) === gid && f[0] !== me) return false;

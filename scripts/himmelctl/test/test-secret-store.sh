@@ -242,6 +242,7 @@ row('h9 directory mode: group-write passes only for the user\'s private group; w
   const c2 = mk(); acct(c2, ['other'], [me]); fs.chmodSync(c2.himmelRoot, 0o775); refused(c2, 'shared group member');
   const c3 = mk(); acct(c3, [], [me, 'other']); fs.chmodSync(c3.himmelRoot, 0o775); refused(c3, 'shared primary group');
   const c4 = mk(); acct(c4, [], [me]); c4.gid = process.getgid() + 1; fs.chmodSync(c4.himmelRoot, 0o775); refused(c4, 'dir group is not the primary group');
+  const c6 = mk(); acct(c6, [], [me]); fs.writeFileSync(c6.accountFiles.group, 'other:x:' + (process.getgid() + 1) + ':\n'); fs.chmodSync(c6.himmelRoot, 0o775); refused(c6, 'group not defined in the local group file');
   const c5 = mk(); acct(c5, [], [me]); fs.chmodSync(c5.himmelRoot, 0o777); refused(c5, 'world-writable');
 });
 
