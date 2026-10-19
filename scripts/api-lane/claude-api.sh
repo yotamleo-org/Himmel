@@ -222,10 +222,12 @@ fi
 # --- secret-free launch record (no key, no prompt) ---
 # the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
 read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
-# branch/head are reduced to ref-safe characters so the row stays valid JSON; a non-numeric PR is null.
-R_BRANCH="$(printf '%s' "${HIMMEL_API_BRANCH:-}" | tr -cd 'A-Za-z0-9._/+@-')"
+# branch is JSON-escaped (control characters dropped) so it still matches the ledger's branch; head must be hex;
+# a PR that is not a canonical positive decimal is null.
+R_BRANCH="$(printf '%s' "${HIMMEL_API_BRANCH:-}" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"
 R_HEAD="$(printf '%s' "${HIMMEL_API_HEAD:-}" | tr -cd 'A-Fa-f0-9')"
-R_PR="$(printf '%s' "${HIMMEL_API_PR:-}" | tr -cd '0-9')"
+R_PR=""
+[[ "${HIMMEL_API_PR:-}" =~ ^[1-9][0-9]*$ ]] && R_PR="$HIMMEL_API_PR"
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 {
   printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s,"kind":"%s","cache_ttl":"%s","input_tokens":%s,"cache_creation_tokens":%s,"cache_read_tokens":%s,"branch":"%s","head":"%s","pr":%s}\n' \

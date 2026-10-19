@@ -241,7 +241,7 @@ if (e.SPLIT) {
     const at = Date.parse(a.ts);
     let best = -1, bestD = 60001;
     // a launch row carrying branch+head joins on that key; only keyless rows fall back to the timestamp window
-    const keyed = launches.findIndex((l, i) => !used.has(i) && l.branch && l.head && l.branch === a.branch && String(a.head).startsWith(l.head.slice(0, 7)));
+    const keyed = launches.findIndex((l, i) => !used.has(i) && l.branch && l.head && l.branch === a.branch && (String(a.head).startsWith(l.head) || l.head.startsWith(String(a.head))));
     if (keyed >= 0) best = keyed;
     else launches.forEach((l, i) => { if (l.branch && l.head) return; const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
     const c = best >= 0 ? Number(launches[best].cost_usd) : NaN;
