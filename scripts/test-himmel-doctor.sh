@@ -1069,6 +1069,20 @@ out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME=
 if grepq "$out" 'OK   C13-plugin-hooks'; then pass "C13 -> OK (shipped hook targets exist)"; else fail "C13 -> $(printf '%s' "$out" | grep C13)"; fi
 rm -rf "$t"
 
+echo "== C13: stale UNPINNED plugin-cache version is ignored, a PINNED one still warns =="
+t="$(mktemp -d -t c13pin.XXXXXX)" || exit 1; mkdir -p "$t/claude/plugins/cache/himmel/himmel-ops/0.1.0/hooks" "$t/claude/plugins/cache/himmel/himmel-ops/0.2.0/hooks"; write_settings "$t/claude" "$WRAPPER"
+cat > "$t/claude/plugins/cache/himmel/himmel-ops/0.1.0/hooks/hooks.json" <<'EOF'
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash -c 'h=\"$CLAUDE_PROJECT_DIR/scripts/hooks/stale-gone-hook.sh\"; [ -f \"$h\" ] && exec bash \"$h\"'" } ] } ] } }
+EOF
+echo '{ "hooks": {} }' > "$t/claude/plugins/cache/himmel/himmel-ops/0.2.0/hooks/hooks.json"
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.2.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'OK   C13-plugin-hooks'; then pass "C13 -> OK (unpinned stale cache version ignored)"; else fail "C13 unpinned -> $(printf '%s' "$out" | grep C13)"; fi
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"project\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.1.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (pinned stale version)"; else fail "C13 pinned -> $(printf '%s' "$out" | grep C13)"; fi
+rm -rf "$t"
+
 # ── C14: ollama zero-egress defense-in-depth pin (OLLAMA_NO_CLOUD) ────────────
 FAKEOLLAMA="$FAKEROOT/ollamabin"; mkdir -p "$FAKEOLLAMA"
 printf '#!/bin/sh\necho ollama version fake\n' > "$FAKEOLLAMA/ollama"; chmod +x "$FAKEOLLAMA/ollama"

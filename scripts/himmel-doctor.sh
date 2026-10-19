@@ -619,8 +619,19 @@ check_c13() {
     if [ -n "${DOCTOR_HIMMEL_OPS_HOOKS_JSON:-}" ]; then
         hooks_files=("$DOCTOR_HIMMEL_OPS_HOOKS_JSON")
     else
+        # Only cache versions installed_plugins.json pins are live; unpinned
+        # leftovers are dead weight. No readable registry -> scan the whole cache.
+        local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
+        [ -r "$installed" ] && pins="$(jq -r '.plugins["himmel-ops@himmel"][]?.installPath // empty' "$installed" 2>/dev/null)"
+        if [ -n "$pins" ]; then
+            while IFS= read -r f; do cache_hooks+=("$f/hooks/hooks.json"); done <<EOF_PINS
+$pins
+EOF_PINS
+        else
+            cache_hooks=("$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json)
+        fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
-                 "$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json \
+                 "${cache_hooks[@]}" \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
         done
