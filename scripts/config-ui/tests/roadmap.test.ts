@@ -14,10 +14,10 @@ const TOKEN = "a".repeat(64); // hex: parseLanding only accepts a hex token
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-const issue = (n: number, status: string, cat: string, fv: string[], title: string, labels: string[] = [], body = "") =>
+const issue = (n: number, status: string, cat: string, fv: string[], title: string, labels: string[] = [], body = "", res: string | null = null) =>
   ["---", `key: "HIMMEL-${n}"`, `type: "Story"`, `status: ${JSON.stringify(status)}`, `statusCategory: ${JSON.stringify(cat)}`,
     `priority: "Medium"`, `labels: ${JSON.stringify(labels)}`, `fixVersions: ${JSON.stringify(fv)}`, `parent: null`,
-    `created: "2026-10-01T00:00:00.000+0000"`, `updated: "2026-10-0${Math.min(n, 9)}T10:00:00.000+0000"`, `resolution: null`,
+    `created: "2026-10-01T00:00:00.000+0000"`, `updated: "2026-10-0${Math.min(n, 9)}T10:00:00.000+0000"`, `resolution: ${JSON.stringify(res)}`,
     "links:", "  blocks: []", "  blocked_by: []", "  relates: []", "---", "", `# HIMMEL-${n}: ${title}`, "", "## Description", "", "x", "",
     "## Comments", "", body || "_(none)_", ""].join("\n");
 
@@ -73,6 +73,24 @@ test("the kanban: every train ticket sits in its Jira version and its status col
   // the running version is the earliest unreleased one with open work; the release panel counts its columns
   expect(r.versions[r.cur].n).toBe("v1.1.2");
   expect(r.versions[1].counts).toEqual({ todo: 1, prog: 2, rev: 1, ci: 0, done: 0, wont: 0 });
+});
+
+test("buckets follow tracker.py: Closed, wont do and Done with a non-shipping resolution are wont, not done", () => {
+  const s = station();
+  const put = (n: number, st: string, cat: string, res: string | null) =>
+    writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), issue(n, st, cat, ["v1.1.2"], `Closed case ${n}`, [], "", res));
+  put(20, "Closed", "Done", "Done");
+  put(21, "wont do", "Done", null);
+  put(22, "Done", "Done", "Wont Do");
+  put(23, "Done", "Done", "Duplicate");
+  put(24, "Done", "Done", "Fixed");
+  put(25, "Done", "Done", null);
+  const r = read(s);
+  const t = byKey(r);
+  expect([20, 21, 22, 23].map((k) => t[k].b)).toEqual(["wont", "wont", "wont", "wont"]);
+  expect([24, 25].map((k) => t[k].b)).toEqual(["done", "done"]);
+  expect(r.versions[1].counts.done).toBe(2);
+  expect(r.versions[1].counts.wont).toBe(4);
 });
 
 test("release panels: a released version lists its still-open tickets", () => {

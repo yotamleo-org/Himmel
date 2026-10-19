@@ -39,7 +39,9 @@ set -euo pipefail
 # chain is colon-separated tiers (cli:api:mcp or mcp:cli:api etc.)
 # ---------------------------------------------------------------------------
 _DEFAULTS="jira|true|mcp__plugin_atlassian_atlassian__|scripts/jira/dist/index.js|cli:api:mcp
+jira|true|mcp__claude_ai_Atlassian_MCP__|scripts/jira/dist/index.js|cli:api:mcp
 confluence|true|mcp__plugin_atlassian_atlassian__|scripts/jira/dist/confluence.js|cli:api:mcp
+confluence|true|mcp__claude_ai_Atlassian_MCP__|scripts/jira/dist/confluence.js|cli:api:mcp
 bitbucket|true||scripts/bitbucket/dist/index.js|cli:api:mcp
 github|true||gh|cli:api:mcp"
 
@@ -52,6 +54,7 @@ _JIRA_VERB_METHOD_MAP=$(printf '%s\n' \
     "create	createJiraIssue" \
     "edit	editJiraIssue" \
     "comment	addCommentToJiraIssue" \
+    "comment	addOrEditJiraIssueComment" \
     "transition	transitionJiraIssue" \
     "transition	getTransitionsForJiraIssue" \
     "projects	getVisibleJiraProjects" \
@@ -66,9 +69,13 @@ _JIRA_VERB_METHOD_MAP=$(printf '%s\n' \
 # ---------------------------------------------------------------------------
 _CONFLUENCE_VERB_METHOD_MAP=$(printf '%s\n' \
     "page get	getConfluencePage" \
+    "page get	getConfluenceContent" \
     "page create	createConfluencePage" \
+    "page create	createConfluenceContent" \
     "page update	updateConfluencePage" \
+    "page update	updateConfluenceContent" \
     "search	searchConfluenceUsingCql" \
+    "search	searchConfluence" \
     "spaces	getConfluenceSpaces" \
     "comments	getConfluencePageFooterComments" \
     "comment	createConfluenceFooterComment")
@@ -291,7 +298,7 @@ evaluate_service() {
     local matched_service="$1" matched_chain="$2" matched_cli="$3" matched_prefix="$4"
     local svc_upper bypass_var bypass_val
     local cli_above_mcp seen_cli api_in_chain tier chain_tiers
-    local suffix verb_method_map verb map_verb map_method
+    local suffix wrapped verb_method_map verb map_verb map_method
     local cli_bin commands line verb_present
     local replacement api_advisory bypass_launch
 
@@ -337,6 +344,15 @@ evaluate_service() {
 
     # Extract MCP method suffix and reverse-map to a CLI verb.
     suffix="${tool_name#"${matched_prefix}"}"
+    # The generic execute* wrappers carry the real tool in tool_input.name:
+    # route on that, else executeWrite{name:createJiraIssue} is a bypass.
+    case "$suffix" in
+        executeWrite|executeRead|executeDestructive)
+            wrapped=$(printf '%s' "$input" | jq -r '.tool_input.name | select(type=="string") // empty')
+            wrapped="${wrapped//[$' \t\r\n']/}"
+            [ -n "$wrapped" ] && suffix="$wrapped"
+            ;;
+    esac
     verb_method_map=$(verb_method_map_for "$matched_service")
     [ -z "$verb_method_map" ] && return 0  # no map → no known equivalent → allow
     verb=""

@@ -1,10 +1,19 @@
 [
-  {
-    "nwo": "yotamleo/qmd",
-    "upstream": "tobi/qmd",
-    "himmel_branch": "himmel/pin-http-auth",
-    "pin_site": "scripts/lib/qmd-bin.sh",
-    "role": "runtime-dependency",
-    "merge_allowed": true
-  }
+  {"nwo": "yotamleo/qmd", "upstream": "tobi/qmd", "himmel_branch": "main", "pin_site": "scripts/lib/qmd-bin.sh", "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo/graphify", "upstream": "Graphify-Labs/graphify", "himmel_branch": "himmel-main", "pin_site": "scripts/lib/graphify-bin.sh", "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo/claude-video", "upstream": "bradautomates/claude-video", "himmel_branch": "himmel-main", "pin_site": null, "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo/obsidian-skills", "upstream": "kepano/obsidian-skills", "himmel_branch": "himmel-main", "pin_site": null, "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo/twitter-cli", "upstream": "public-clis/twitter-cli", "himmel_branch": "himmel-main", "pin_site": "scripts/upstreams.json", "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo/claude-obsidian", "upstream": "AgriciDaniel/claude-obsidian", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/codex-plugin-cc", "upstream": "openai/codex-plugin-cc", "himmel_branch": "main", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
+  {"nwo": "yotamleo/obsidian-second-brain", "upstream": "eugeniughelbur/obsidian-second-brain", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/effective-html", "upstream": "plannotator/effective-html", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/claude-hud", "upstream": "jarrodwatts/claude-hud", "himmel_branch": "main", "pin_site": "scripts/upstreams.json", "role": "vendored-source", "merge_allowed": false},
+  {"nwo": "yotamleo/claude-statusline", "upstream": "nilbuild/claude-statusline", "himmel_branch": "main", "pin_site": "scripts/statusline/VENDORED.md", "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/claude-squad", "upstream": "smtg-ai/claude-squad", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/hermes-agent", "upstream": "NousResearch/hermes-agent", "himmel_branch": "main", "pin_site": "scripts/upstreams.json", "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/caveman", "upstream": "JuliusBrussee/caveman", "himmel_branch": "main", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
+  {"nwo": "yotamleo/codex", "upstream": "openai/codex", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
+  {"nwo": "yotamleo/core", "upstream": "home-assistant/core", "himmel_branch": "dev", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
+  {"nwo": "yotamleo/home-assistant.io", "upstream": "home-assistant/home-assistant.io", "himmel_branch": "current", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false}
 ]

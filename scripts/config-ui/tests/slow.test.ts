@@ -112,12 +112,12 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
   const waiting: ((b: string) => void)[] = [];
   let first = true;
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "document", "location", "history", "fetch", "__loadFeed"];
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadFeed"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: (f: { id?: string } | null) => { if (f) painted.push(f.id ?? "?"); return ""; }, renderNav: () => "", renderHeader: () => "",
     // the rail (nav.js) and its fleet read are not under test here.
-    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }),
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     // nor is the vm form's read (Config's onVisit): it must not take the feed's fetch slot.

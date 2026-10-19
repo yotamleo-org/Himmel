@@ -317,13 +317,15 @@ export function composeGlmOutboxWriteHint(outbox: string): string {
 
 // Windows absolute path -> the POSIX form Claude Code's path-scoped
 // permission rules require (`C:\a\b` -> `//c/a/b`; verified against current
-// permission docs). Non-Windows-shaped input (already POSIX, or relative) is
-// returned with backslashes normalized only — callers always pass an
-// already-`resolve()`d absolute path.
+// permission docs). A POSIX absolute path gets the same `//` root: a single
+// leading `/` is project-root-relative in a permission rule, so `Read(/home/..)`
+// never matches the real file. Relative input is returned with backslashes
+// normalized only — callers always pass an already-`resolve()`d absolute path.
 export function toPermissionPath(p: string): string {
   const posix = p.replace(/\\/g, "/");
   const m = posix.match(/^([A-Za-z]):\/(.*)$/);
-  return m ? `//${m[1].toLowerCase()}/${m[2]}` : posix;
+  if (m) return `//${m[1].toLowerCase()}/${m[2]}`;
+  return posix.startsWith("/") && !posix.startsWith("//") ? `/${posix}` : posix;
 }
 
 // Curated literal-command Bash allow-list: mirrors auto-
@@ -1493,7 +1495,7 @@ export async function executeRun(deps: {
 // finally on every CATCHABLE exit path (including a thrown runBody, which
 // still propagates after cleanup); a SIGKILL/hard-kill is not catchable, so a
 // leaked lock is recovered manually via `shared-branch-lock.sh release`
-// (docs/glm-offload.md).
+// (GLM lane, dropped).
 export async function runSharedDispatch(p: {
   repoDir: string; worktree: string; branch: string; needsWorktreeAdd: boolean;
   lockScript: string; gitAdd: () => void; runBody: () => Promise<number>;

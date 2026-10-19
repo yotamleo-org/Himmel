@@ -41,6 +41,15 @@ done
 [ -n "${STUB_FAIL:-}" ] && case "$*" in *"$STUB_FAIL"*) exit 1 ;; esac
 case "$*" in
     *" describe "*)
+        case "$*" in *"associations describe"*) echo "ERROR: (gcloud.compute.network-firewall-policies.associations) Invalid choice: 'describe'." >&2; exit 2 ;; esac
+        if [ -n "${STUB_EXISTS:-}" ]; then case "$*" in *"network-firewall-policies describe"*"--format=json"*)
+            [ -n "${STUB_JSON_FAIL:-}" ] && { echo "ERROR: (gcloud) transient" >&2; exit 1; }
+            if [ -n "${STUB_NO_ASSOC:-}" ]; then echo '{"name": "himmel-ci-net-policy", "associations": []}'
+            elif [ -n "${STUB_OTHER_NET_ASSOC:-}" ]; then echo '{"name": "himmel-ci-net-policy", "associations": [{"attachmentTarget": "https://www.googleapis.com/compute/v1/projects/himmel-ci/global/networks/other-net", "name": "himmel-ci-net-assoc"}]}'
+            else echo '{"name": "himmel-ci-net-policy", "associations": [{"attachmentTarget": "https://www.googleapis.com/compute/v1/projects/himmel-ci/global/networks/himmel-ci-net", "name": "himmel-ci-net-assoc"}]}'; fi
+            exit 0 ;; esac; fi
+        if [ -n "${STUB_RULE_ERR:-}" ]; then case "$*" in *"rules describe"*) printf '%s\n' "$STUB_RULE_ERR" >&2; exit 1 ;; esac; fi
+        if [ -n "${STUB_POLICY_ERR:-}" ]; then case "$*" in *"network-firewall-policies describe"*) echo "ERROR: (gcloud) PERMISSION_DENIED: caller lacks permission" >&2; exit 1 ;; esac; fi
         if [ -n "${STUB_DESCRIBE_ERR:-}" ]; then echo "ERROR: (gcloud) PERMISSION_DENIED: caller lacks permission" >&2; exit 1; fi
         [ -n "${STUB_EXISTS:-}" ] || { echo "ERROR: (gcloud) The resource 'projects/himmel-ci/x' was not found" >&2; exit 1; } ;;
 esac
@@ -252,6 +261,41 @@ if [ "$rc" -eq 0 ] && [ ! -s "$STUB_LOG" ] && echo "$env_out" | grep -q -F "HTTP
     && echo "$env_out" | grep -E '^no_proxy=' | grep -q -F '169.254.169.254' && echo "$env_out" | grep -E '^no_proxy=' | grep -q -F '.googleapis.com'; then
     ok "proxy-env prints upper- and lowercase http(s)_proxy and a no_proxy for the metadata server and googleapis"
 else bad "proxy-env: rc=$rc out=$env_out"; fi
+
+# 14. gcloud's absent-rule error for a firewall-policy rule (captured from the live
+# net-up) reads as absence, so the rules are created; a different priority error
+# stays a failed lookup and creates nothing.
+export STUB_RULE_ERR="ERROR: (gcloud.compute.network-firewall-policies.rules.describe) Invalid value for field 'priority': '1000'. The firewall policy does not contain a rule at priority 1000."
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && [ -n "$(rules_create)" ]; then ok "an absent rule at a priority is read as absence and created"; else bad "absent-rule net-up: rc=$rc out=$(cat "$T/out")"; fi
+export STUB_RULE_ERR="ERROR: (gcloud.compute.network-firewall-policies.rules.describe) Invalid value for field 'priority': '1000'. The priority is out of range."
+rc="$(run net-up)"
+if [ "$rc" -ne 0 ] && [ -z "$(rules_create)" ]; then ok "any other priority error stays a failed lookup"; else bad "other priority error: rc=$rc"; fi
+unset STUB_RULE_ERR
+
+# 15. the association is looked up on the policy (gcloud has no associations
+# describe): present when the policy lists it, absent when it does not, and a
+# failed policy lookup creates nothing.
+export STUB_EXISTS=1 STUB_NO_ASSOC=1
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && grep -q 'associations create' "$STUB_LOG" && ! grep -q 'associations describe' "$STUB_LOG"; then ok "a policy listing no association gets one created"; else bad "no-assoc net-up: rc=$rc out=$(cat "$T/out")"; fi
+export STUB_JSON_FAIL=1
+rc="$(run net-up)"
+if [ "$rc" -ne 0 ] && ! grep -q 'associations create' "$STUB_LOG"; then ok "a JSON read that fails after the policy exists is never read as the association being present"; else bad "json-fail net-up: rc=$rc"; fi
+unset STUB_JSON_FAIL STUB_NO_ASSOC
+export STUB_OTHER_NET_ASSOC=1
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && grep -q 'associations create' "$STUB_LOG"; then ok "an association of that name attached to another network is not this network's association"; else bad "other-net assoc net-up: rc=$rc"; fi
+unset STUB_OTHER_NET_ASSOC
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && ! grep -q 'associations create' "$STUB_LOG"; then ok "a policy listing the association is left alone"; else bad "assoc-present net-up: rc=$rc"; fi
+export STUB_POLICY_ERR=1 STUB_JSON_FAIL=1
+rc="$(run net-down)"
+if [ "$rc" -ne 0 ] && grep -q 'network-firewall-policies describe .*--format=json' "$STUB_LOG" && ! grep -q 'associations delete' "$STUB_LOG"; then ok "a failed policy lookup deletes no association"; else bad "assoc lookup error net-down: rc=$rc"; fi
+unset STUB_POLICY_ERR STUB_JSON_FAIL
+rc="$(run status)"
+if [ "$rc" -eq 0 ] && grep -q -E '^association himmel-ci-net-assoc: present' "$T/out"; then ok "status reads the association off the policy"; else bad "status association: rc=$rc out=$(cat "$T/out")"; fi
+unset STUB_EXISTS
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed" >&2; exit 1; }
 echo "all cases passed"

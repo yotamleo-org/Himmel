@@ -288,13 +288,104 @@ M="$M_SAVE"
 e8="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"; e8_rc=$?
 [ "$e8_rc" = 0 ] && pass "an empty pool exits 0" || fail "empty pool rc=$e8_rc"
 has "an empty pool prints POOL-EMPTY" "$e8" "POOL-EMPTY"
-lacks "an empty pool prints no ticket row" "$e8" "HIMMEL-160"
+lacks "an empty pool prints no dispatchable ticket row" "$(printf '%s\n' "$e8" | grep -v '^NEXT-TIER')" "HIMMEL-160"
 M9="$WORK/jira-mirror9/HIMMEL"; mkdir -p "$M9"
 M_SAVE="$M"; M="$M9"
 mk HIMMEL-20 "To Do" Low '["operator-directed"]' '[]' '[]' "pool ticket the classifier blocks" "Edit scripts/lib/w2.sh only."
 M="$M_SAVE"
 e9="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"
 has "a pool whose tickets are all classified BLOCKED prints POOL-EMPTY" "$e9" "POOL-EMPTY"
+
+# --- the pool offers leg-less In Progress tickets and reads the priority: line as written ---
+M11="$WORK/jira-mirror11/HIMMEL"; mkdir -p "$M11"
+M_SAVE="$M"; M="$M11"
+mk HIMMEL-401 "In Progress" Low '[]' '[]' '[]' "resume keyed first on the line" "Edit scripts/lib/s1.sh only."
+mk HIMMEL-402 "To Do" Low '[]' '[]' '[]' "todo keyed second on the line" "Edit scripts/lib/s2.sh only."
+mk HIMMEL-403 "In Progress" Low '["operator-directed"]' '[]' '[]' "resume tier 2" "Edit scripts/lib/s3.sh only."
+mk HIMMEL-404 "To Do" Low '["operator-directed"]' '[]' '[]' "todo tier 2" "Edit scripts/lib/s4.sh only."
+mk HIMMEL-405 "In Progress" Low '[]' '[]' '[]' "resume tier 4 is not pool" "Edit scripts/lib/s5.sh only."
+mk HIMMEL-406 "In Progress" Low '[]' '[]' '[]' "resume keyed cloud with a space" "Edit scripts/lib/s6.sh only."
+mk HIMMEL-407 "To Do" Low '[]' '[]' '[]' "todo keyed cloud with a space" "Edit scripts/lib/s7.sh only."
+mk HIMMEL-408 "To Do" Low '[]' '[]' '[]' "keyed on a bold priority line" "Edit scripts/lib/s8.sh only."
+mk HIMMEL-409 "To Do" Low '[]' '[]' '[]' "keyed only under a later heading" "Edit scripts/lib/s9.sh only."
+mk HIMMEL-410 "In Progress" Low '[]' '[]' '[]' "resume keyed with a leg" "Edit scripts/lib/s10.sh only."
+mk HIMMEL-411 "To Do" Low '[]' '[]' '[]' "named only in a plus annotation" "Edit scripts/lib/s11.sh only."
+mk HIMMEL-412 "To Do" Low '[]' '[]' '[]' "named only in a bare annotation" "Edit scripts/lib/s12.sh only."
+mk HIMMEL-413 "To Do" Low '[]' '[]' '[]' "keyed head of an annotated entry" "Edit scripts/lib/s13.sh only."
+mk HIMMEL-414 "To Do" Low '[]' '[]' '[]' "second number of a plus run" "Edit scripts/lib/s14.sh only."
+mk HIMMEL-415 "To Do" Low '[]' '[]' '[]' "bare number in a paren with no plus" "Edit scripts/lib/s15.sh only."
+mk HIMMEL-416 "To Do" Low '[]' '[]' '[]' "prefixed key inside a paren" "Edit scripts/lib/s16.sh only."
+M="$M_SAVE"
+LEG11="$WORK/HIMMEL-410-N11-live.md"; printf '# live\n' > "$LEG11"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N11"}]}\n' "$LEG11" > "$WORK/fleet11.json"
+run11() { NEXT_DISPATCH_MIRROR="$M11" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
+D11="$WORK/console-doc11.md"
+printf '# console\n\n## Live state\n\npriority: 401 402 406 407(CLOUD) | 410 413(NOTE +411 and 2026 plan)\n' > "$D11"
+rows11() { grep -v '^#' | cut -f1,2 | tr '\t' ':' | paste -sd, -; }
+o11="$(run11 --doc "$D11" --legs-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
+[ "$o11" = "RESUME:HIMMEL-401,RESUME:HIMMEL-406,LOCAL:HIMMEL-402,LOCAL:HIMMEL-413,LOCAL:HIMMEL-411,RESUME:HIMMEL-403,LOCAL:HIMMEL-404" ] && pass "pool-only: tier 1-3 RESUME rows lead their tier's To Do rows" || fail "pool-only with RESUME is '$o11'"
+lacks "pool-only: a tier-4 In Progress ticket is not a pool row" "$o11" "HIMMEL-405"
+lacks "pool-only: a leg-less pool key with a live leg is not a RESUME row" "$o11" "HIMMEL-410"
+lacks "pool-only: a 'NNN (CLOUD)' To Do ticket is excluded" "$o11" "HIMMEL-407"
+printf '# console\n\n## Live state\n\n**priority:** 408 | 407 (CLOUD) 406 (CLOUD)\n\n## Later\n\npriority: 409\n' > "$D11"
+b11="$(run11 --doc "$D11" --legs-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
+[ "$b11" = "LOCAL:HIMMEL-408,RESUME:HIMMEL-403,LOCAL:HIMMEL-404" ] && pass "a bold **priority:** line is read, a 'NNN (CLOUD)' token is excluded, a priority: under a later heading is not" || fail "bold-line pool is '$b11'"
+printf '# console\n\n## Live state\n\npriority: 413(NOTE +411 414) 400(verify 415 HIMMEL-416) 412x\n' > "$D11"
+p11="$(run11 --doc "$D11" --legs-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
+has "a number right after a plus inside parens is a key" "$p11" "HIMMEL-411"
+has "every number from a plus to the closing paren is a key" "$p11" "HIMMEL-414"
+lacks "a bare number inside parens with no plus is not a key" "$p11" "HIMMEL-415"
+has "a HIMMEL-NNNN inside parens is a key" "$p11" "HIMMEL-416"
+lacks "a key glued to letters is not a key" "$p11" "HIMMEL-412"
+printf '# console\n\n## Live state\n\npriority: 402\n' > "$D11"
+e11="$(NEXT_DISPATCH_MIRROR="$M11" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --doc "$D11" --top 1 --legs-from "$WORK/fleet11.json" --priority-pool-only 2>/dev/null | rows11)"
+[ "$e11" = "LOCAL:HIMMEL-402" ] && pass "pool-only: --top caps RESUME and To Do rows together" || fail "top-capped pool is '$e11'"
+r11="$(NEXT_DISPATCH_MIRROR="$M11" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --doc "$D11" --legs-from "$WORK/fleet11.json" --priority-pool-only --resume-only 2>/dev/null | rows11)"
+[ "$r11" = "RESUME:HIMMEL-403" ] && pass "pool-only with --resume-only prints only RESUME rows and no POOL-EMPTY" || fail "pool-only resume-only is '$r11'"
+M12="$WORK/jira-mirror12/HIMMEL"; mkdir -p "$M12"
+M_SAVE="$M"; M="$M12"
+mk HIMMEL-420 "In Progress" Low '["must-v1.1.3"]' '[]' '[]' "only a leg-less pool ticket" "Edit scripts/lib/t1.sh only."
+M="$M_SAVE"
+x12="$(NEXT_DISPATCH_MIRROR="$M12" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "HIMMEL-999" 2>/dev/null)"
+has "pool-only: a leg-less pool ticket alone is a RESUME row" "$x12" "RESUME	HIMMEL-420"
+lacks "pool-only: a pool with only a RESUME row is not POOL-EMPTY" "$x12" "POOL-EMPTY"
+n12="$(NEXT_DISPATCH_MIRROR="$M12" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>"$WORK/n12.err")"
+lacks "pool-only: no leg source (no --owners, no --legs-from) offers no RESUME row" "$n12" "RESUME"
+has "pool-only: no leg source says why on stderr" "$(cat "$WORK/n12.err")" "no leg source"
+# a doc whose only priority: line sits under a later heading names no tier-1 key
+printf '# console\n\n## Live state\n\nnothing here\n\n## Later\n\npriority: 408\n' > "$D11"
+l11="$(run11 --doc "$D11" --legs-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
+lacks "a priority: line only under a later heading keys nothing" "$l11" "HIMMEL-408"
+# a cloud session in cloud-sessions.tsv next to the doc owns its ticket
+mkdir -p "$WORK/cl11"; printf '# console\n\n## Live state\n\npriority: 401 402\n' > "$WORK/cl11/doc.md"
+printf '%s\tHIMMEL-401\tsess\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORK/cl11/cloud-sessions.tsv"
+c11="$(run11 --doc "$WORK/cl11/doc.md" --legs-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
+lacks "pool-only: a cloud-owned In Progress ticket is not offered" "$c11" "HIMMEL-401"
+printf '%s\tHIMMEL-401\tsess\n' "2020-01-01T00:00:00Z" > "$WORK/cl11/cloud-sessions.tsv"
+c11b="$(run11 --doc "$WORK/cl11/doc.md" --legs-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
+has "pool-only: a cloud session past the liveness window owns nothing" "$c11b" "RESUME:HIMMEL-401"
+# dropped-platform and residual-depth rules apply to RESUME rows as they do to To Do rows
+M13="$WORK/jira-mirror13/HIMMEL"; mkdir -p "$M13"
+M_SAVE="$M"; M="$M13"
+mk HIMMEL-421 "In Progress" Low '["must-v1.1.3"]' '[]' '[]' "port the hook to powershell" "Edit scripts/lib/u1.sh only."
+mk HIMMEL-422 "In Progress" Low '["must-v1.1.3","residual-depth-1"]' '[]' '[]' "a residual one" "Edit scripts/lib/u2.sh only."
+mk HIMMEL-423 "In Progress" Low '["must-v1.1.3"]' '[]' '[]' "an ordinary pool ticket" "Edit scripts/lib/u3.sh only."
+M="$M_SAVE"
+f13="$(NEXT_DISPATCH_MIRROR="$M13" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "HIMMEL-999" 2>/dev/null)"
+lacks "pool-only: a dropped-platform In Progress ticket is not a RESUME row" "$f13" "HIMMEL-421"
+lacks "pool-only: a residual-depth In Progress ticket is not a RESUME row" "$f13" "HIMMEL-422"
+has "pool-only: an ordinary leg-less pool ticket is still a RESUME row" "$f13" "RESUME	HIMMEL-423"
+
+# --- pool depth: --top is the free-slot count; a pool short of it says LOW, and
+# an empty pool names the next-tier candidates (tier 4, rank order unchanged)
+# on NEXT-TIER rows a dispatcher reading ticket rows never picks up.
+has "a pool shorter than the free slots prints pool=<n>/<slots>,LOW" "$(run7 --doc "$CDOC" --priority-pool-only --top 8)" "pool=6/8,LOW"
+p10="$(run7 --doc "$CDOC" --priority-pool-only --top 4)"
+has "a pool that fills the slots prints pool=<n>/<slots>" "$p10" "pool=4/4"
+lacks "a pool that fills the slots is not LOW" "$p10" "LOW"
+e10="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --top 8 2>/dev/null)"
+has "an empty pool prints pool=0/<slots>,LOW" "$e10" "pool=0/8,LOW"
+has "an empty pool lists the next-tier candidate on a NEXT-TIER row" "$e10" "NEXT-TIER	HIMMEL-160"
 
 # --- residual-depth: depth >= 1 needs a `residual-must <KEY>` ruling in --doc ---
 M10="$WORK/jira-mirror10/HIMMEL"; mkdir -p "$M10"
@@ -322,6 +413,37 @@ lacks "residual-depth: with no --doc, depth 1 is excluded" "$r3" "HIMMEL-302"
 printf '# console\n\n- residual-must HIMMEL-303 (data loss)\n' > "$RDOC"
 r4="$(rdrun --doc "$RDOC")"
 has "residual-depth: a residual-must ruling releases a depth-2 ticket too" "$r4" "HIMMEL-303"
+
+# --- classify only up to --top: a batch never classifies more keys than the slots left ---
+M14="$WORK/jira-mirror14/HIMMEL"; mkdir -p "$M14"
+M_SAVE="$M"; M="$M14"
+for n in 1 2 3 4 5 6; do mk "HIMMEL-40$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "pool work $n" "Edit scripts/lib/cls$n.sh only."; done
+M="$M_SAVE"
+DOC14="$WORK/console14.md"
+printf '# console\n\n## Live state\n\n- priority: 401 402 403 404 405 406\n' > "$DOC14"
+cat > "$WORK/classify14" <<'EOF'
+#!/usr/bin/env bash
+printf 'S\n' >> "$CLASSIFY_LOG"
+for _ in $(seq 100); do [ "$(grep -c '^S$' "$CLASSIFY_LOG")" -ge 2 ] && break; sleep 0.1; done
+for k in "$@"; do
+    printf 'K\n' >> "$CLASSIFY_LOG"
+    if [ "$k" = HIMMEL-401 ] && [ -f "$REFUSE_401" ]; then printf '%s\tBLOCKED\tstub\n' "$k"; else printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; fi
+done
+printf 'E\n' >> "$CLASSIFY_LOG"
+EOF
+chmod +x "$WORK/classify14"
+export CLASSIFY_LOG="$WORK/classify14.log" REFUSE_401="$WORK/refuse401"; : > "$CLASSIFY_LOG"
+run14() { NEXT_DISPATCH_MIRROR="$M14" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify14" bash "$SUT" --doc "$DOC14" --priority-pool-only --owners "HIMMEL-999" --top 2 2>/dev/null | cut -f2 | grep '^HIMMEL' | tr '\n' ' '; }
+o14="$(run14)"
+keys14="$(grep -c '^K$' "$CLASSIFY_LOG")"; calls14="$(grep -c '^S$' "$CLASSIFY_LOG")"
+# in-flight peak: S raises, E lowers
+peak14="$(awk '/^S$/{c++; if(c>m)m=c} /^E$/{c--} END{print m+0}' "$CLASSIFY_LOG")"
+[ "$keys14" -ge 2 ] && [ "$keys14" -le 4 ] && pass "classify sees 2..2*--top keys ($keys14)" || fail "classify saw $keys14 keys for --top 2"
+[ "$calls14" -eq 2 ] && [ "$peak14" -eq 2 ] && pass "classify makes at most 2 calls, at most 2 in flight (calls=$calls14 peak=$peak14)" || fail "classify calls=$calls14 peak=$peak14"
+[ "$o14" = "HIMMEL-401 HIMMEL-402 " ] && pass "parallel classify keeps rank order" || fail "rank order wrong: $o14"
+: > "$REFUSE_401"; : > "$CLASSIFY_LOG"
+o14="$(run14)"
+[ "$o14" = "HIMMEL-402 HIMMEL-403 " ] && pass "a refused row is skipped and rank order holds" || fail "refusal order wrong: $o14"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

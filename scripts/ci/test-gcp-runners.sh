@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/test-gcp-runners.sh -- regression suite for scripts/ci/gcp-runners.sh
 # the ephemeral GCP spot runner pool. gcloud and gh are stubs on
-# $GCLOUD / $GH; no live call is made. Pins: `up` refuses N above 4, every
+# $GCLOUD / $GH; no live call is made. Pins: `up` refuses N above 1, every
 # create is SPOT + max-run-duration + DELETE + labelled + impersonated and
 # carries its own JIT config in a metadata FILE (never argv), `up` tops the
 # pool up, `down` deletes every pool VM and deregisters offline gcp runners.
@@ -41,7 +41,7 @@ case "$*" in
     *"subnets describe"*) [ "${STUB_FAIL:-}" = subnet ] && exit 1 ;;
     *"instances delete"*) [ "${STUB_FAIL:-}" = delete ] && exit 1 ;;
     *"instances remove-metadata"*) [ "${STUB_FAIL:-}" = rmmeta ] && exit 1 ;;
-    *"instances create"*) [ "${STUB_FAIL:-}" = create2 ] && [ "$(grep -c 'instances create' "$STUB_LOG")" -ge 2 ] && exit 1 ;;
+    *"instances create"*) [ "${STUB_FAIL:-}" = create ] && exit 1 ;;
 esac
 exit 0
 STUB
@@ -49,7 +49,7 @@ cat > "$T/gh" <<'STUB'
 #!/usr/bin/env bash
 printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
-    *generate-jitconfig*) [ "${STUB_FAIL:-}" = jit2 ] && [ "$(grep -c 'generate-jitconfig' "$STUB_LOG")" -ge 2 ] && exit 1; echo "JITCFG-abc123" ;;
+    *generate-jitconfig*) [ "${STUB_FAIL:-}" = jit ] && exit 1; echo "JITCFG-abc123" ;;
     *'status=="online"'*) [ "${STUB_ONLINE:-}" = none ] || grep -o 'name=himmel-ci-[^ ]*' "$STUB_LOG" | cut -d= -f2 ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
     *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
@@ -63,24 +63,36 @@ export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instan
 run() { : > "$STUB_LOG"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
 creates() { grep -c 'instances create' "$STUB_LOG"; }
 
-# 1. up refuses N above 4 and N that is not a positive integer; nothing is created.
+# 1. up refuses N above 1 (the 8-vCPU CPUS pin minus the proxy's 1 vCPU leaves room for one
+#    e2-standard-4) and N that is not a positive integer; nothing is created.
 : > "$STUB_INSTANCES"
-for n in 5 0 abc; do
+for n in 2 3 5 0 abc; do
     rc="$(run up "$n")"
     if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up $n is refused"; else bad "up $n: rc=$rc creates=$(creates)"; fi
 done
 
-# 2. up 4 is allowed; up with no N defaults to 2.
-rc="$(run up 4)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 4 ]; then ok "up 4 creates 4"; else bad "up 4: rc=$rc creates=$(creates)"; fi
-rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up defaults to 2"; else bad "up default: rc=$rc creates=$(creates)"; fi
+# 1b. the quota arithmetic behind the cap: the measured CPUS usage with only the proxy up is 1.0
+#     (the e2-micro counts as a whole vCPU), so the runners get 8 - 1 = 7 vCPUs. The cap fits
+#     in that and one more VM does not; a 2nd runner is refused before any JIT request or create.
+cap="$(sed -n 's/^MAX_N=\([0-9]*\).*/\1/p' "$SUT")"
+vcpus="$(sed -n 's/^MACHINE=.*:-e2-standard-\([0-9]*\)}".*/\1/p' "$SUT")"
+if [ -n "$cap" ] && [ -n "$vcpus" ] && [ $((1 + cap * vcpus)) -le 8 ] && [ $((1 + (cap + 1) * vcpus)) -gt 8 ]; then ok "MAX_N=$cap x $vcpus vCPU plus the 1-vCPU proxy fits the 8-vCPU pin, one more VM does not"; else bad "quota arithmetic: cap='$cap' vcpus='$vcpus'"; fi
+printf 'himmel-ci-existing-1\n' > "$STUB_INSTANCES"
+rc="$(run up 2)"
+if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && ! grep -q 'generate-jitconfig' "$STUB_LOG"; then ok "a 2nd runner is refused before any JIT request or create"; else bad "2nd runner: rc=$rc creates=$(creates)"; fi
+: > "$STUB_INSTANCES"
+
+# 2. up 1 is allowed; up with no N defaults to 1.
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "up 1 creates 1"; else bad "up 1: rc=$rc creates=$(creates)"; fi
+rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "up defaults to 1"; else bad "up default: rc=$rc creates=$(creates)"; fi
 
 # 3. every create carries the safety flags; every gcloud call is impersonated.
-rc="$(run up 2)"
+rc="$(run up 1)"
 for f in '--provisioning-model=SPOT' '--max-run-duration=45m' '--instance-termination-action=DELETE' \
          '--labels=himmel-ci-runner=gcp' '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com' \
-         '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network=himmel-ci-net' '--subnet=himmel-ci-net' '--no-address' '--zone=us-central1-a'; do
+         '--machine-type=e2-standard-4' '--boot-disk-type=pd-balanced' '--boot-disk-size=50GB' '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network=himmel-ci-net' '--subnet=himmel-ci-net' '--no-address' '--zone=us-central1-a'; do
     n="$(grep 'instances create' "$STUB_LOG" | grep -cF -- "$f")"
-    if [ "$n" -eq 2 ]; then ok "both creates carry $f"; else bad "creates carrying $f: $n of 2"; fi
+    if [ "$n" -eq 1 ]; then ok "the create carries $f"; else bad "creates carrying $f: $n of 1"; fi
 done
 total="$(grep -c '^GCLOUD ' "$STUB_LOG")"
 imp="$(grep '^GCLOUD ' "$STUB_LOG" | grep -c -- '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com')"
@@ -91,7 +103,7 @@ if [ "$total" -gt 0 ] && [ "$total" -eq "$imp" ]; then ok "all $total gcloud cal
 if grep '^GCLOUD ' "$STUB_LOG" | grep -q 'JITCFG-abc123'; then bad "JIT config leaked into a gcloud argv"; else ok "JIT config is not in any gcloud argv"; fi
 if grep -q '^FILE jit-config <<' "$STUB_LOG" && grep -q 'JITCFG-abc123' "$STUB_LOG"; then ok "JIT config is passed as a metadata file"; else bad "JIT config metadata file missing"; fi
 if ! grep -q 'registration-token' "$STUB_LOG"; then ok "no shared registration token is requested"; else bad "registration token still requested"; fi
-n="$(grep -c 'generate-jitconfig' "$STUB_LOG")"; if [ "$n" -eq 2 ]; then ok "one JIT config per VM"; else bad "JIT configs requested: $n of 2"; fi
+n="$(grep -c 'generate-jitconfig' "$STUB_LOG")"; if [ "$n" -eq 1 ]; then ok "one JIT config per VM"; else bad "JIT configs requested: $n of 1"; fi
 if grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=gcp' && grep 'generate-jitconfig' "$STUB_LOG" | grep -qF 'labels[]=self-hosted' && grep 'generate-jitconfig' "$STUB_LOG" | grep -q 'name=himmel-ci-'; then ok "JIT config carries the self-hosted and gcp labels and a unique name"; else bad "JIT config lacks labels / name"; fi
 # shellcheck disable=SC2016  # the literal startup-script line, not an expansion
 if grep -q '^FILE startup-script <<' "$STUB_LOG" && grep -q '^export ACTIONS_RUNNER_INPUT_JITCONFIG="$jit"' "$STUB_LOG" && ! grep -q -- '--jitconfig' "$STUB_LOG"; then ok "startup script hands the JIT config to run.sh through the environment, never argv"; else bad "startup script passes the JIT config on argv or not at all"; fi
@@ -106,7 +118,7 @@ if [ -n "$pe" ] && [ -n "$au" ] && [ "$pe" -lt "$au" ]; then ok "the proxy is se
 # 4c. the JIT config does not outlive its read: removed from instance metadata once the runner is online,
 #     and the runner uid is walled off from the metadata server.
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
-if [ "$n" -eq 2 ]; then ok "jit-config is removed from each VM's metadata"; else bad "remove-metadata calls: $n of 2"; fi
+if [ "$n" -eq 1 ]; then ok "jit-config is removed from each VM's metadata"; else bad "remove-metadata calls: $n of 1"; fi
 last_create="$(grep -n 'instances create' "$STUB_LOG" | tail -1 | cut -d: -f1)"; first_rm="$(grep -n 'instances remove-metadata' "$STUB_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$last_create" ] && [ -n "$first_rm" ] && [ "$first_rm" -gt "$last_create" ]; then ok "jit-config is removed only after the VMs are created"; else bad "remove-metadata order: create=$last_create rm=$first_rm"; fi
 if grep -q 'iptables -A OUTPUT -d 169.254.169.254 -m owner --uid-owner runner -j REJECT' "$STUB_LOG"; then ok "startup script rejects metadata-server traffic from the runner uid"; else bad "no iptables owner-match REJECT"; fi
@@ -114,6 +126,9 @@ if grep -q 'iptables -A OUTPUT -d 169.254.169.254 -m owner --uid-owner runner -j
 if grep -q "^printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh" "$STUB_LOG" && grep -q '^FILE job-started-hook <<' "$STUB_LOG" && grep -q 'fork guard' "$STUB_LOG"; then ok "fork guard hook is installed and wired as the job-started hook"; else bad "fork guard hook not wired"; fi
 if grep -q '^md job-started-hook > /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$STUB_LOG" && grep -q '^\[ -s /usr/local/lib/himmel/job-started-hook.sh \] || exit 1$' "$STUB_LOG"; then ok "startup script fails closed on a missing or empty fork guard hook"; else bad "fork guard hook write is not checked"; fi
 if grep -q 'poweroff' "$STUB_LOG"; then ok "startup script powers the VM off after the one job"; else bad "startup script never powers off"; fi
+bun_want="$(tr -d '[:space:]' < "$ROOT/.bun-version")"
+if grep -q "^BUN_VERSION=$bun_want\$" "$STUB_LOG" && grep -q '^BUN_SHA256=[0-9a-f]\{64\}$' "$STUB_LOG" && grep -q 'sha256sum -c' "$STUB_LOG" && grep -q 'install -D -m 755 -o runner -g runner .* /home/runner/.bun/bin/bun' "$STUB_LOG"; then ok "startup script bakes the pinned bun (sha256-checked) at the path setup-bun expects"; else bad "bun is not baked into the runner image"; fi
+if grep -q '^python3 -m pip install --break-system-packages --ignore-installed .*pre-commit==' "$STUB_LOG"; then ok "pre-commit pip install ignores the apt-owned packaging (no uninstall)"; else bad "pip install can try to uninstall a debian package"; fi
 
 # 4b. the per-VM JIT config files are removed when up exits.
 if [ -z "$(ls -A "$TMPDIR")" ]; then ok "up leaves no JIT config on disk"; else bad "up left files in TMPDIR: $(ls "$TMPDIR")"; fi
@@ -126,11 +141,11 @@ n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-confi
 if [ "$rc" -eq 0 ] && [ "$n" -eq 1 ]; then ok "jit-config is removed even when the runner never comes online"; else bad "never-online: rc=$rc removals=$n"; fi
 unset STUB_ONLINE GCP_RUNNERS_ONLINE_WAIT GCP_RUNNERS_ONLINE_POLL
 
-# 5. up tops the pool back to N: one existing VM means one create for up 2.
-printf 'himmel-ci-existing-1\n' > "$STUB_INSTANCES"
-rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "up 2 with 1 live VM creates 1"; else bad "top-up: rc=$rc creates=$(creates)"; fi
-printf 'a\nb\n' > "$STUB_INSTANCES"
-rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 0 ]; then ok "up 2 with 2 live VMs creates 0"; else bad "full pool: rc=$rc creates=$(creates)"; fi
+# 5. up tops the pool back to N: an empty pool means one create, a full pool none.
+: > "$STUB_INSTANCES"
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "up 1 with an empty pool creates 1"; else bad "top-up: rc=$rc creates=$(creates)"; fi
+printf 'a\n' > "$STUB_INSTANCES"
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 0 ]; then ok "up 1 with 1 live VM creates 0"; else bad "full pool: rc=$rc creates=$(creates)"; fi
 
 # 6. down deletes every pool VM, creates none, deregisters the offline gcp runner.
 printf 'vm-a\nvm-b\n' > "$STUB_INSTANCES"
@@ -141,15 +156,15 @@ if grep -q 'GH api -X DELETE repos/yotamleo/Himmel/actions/runners/4242' "$STUB_
 
 # 6b. a failed pool listing is an error, never an empty pool; a failed delete fails down.
 export STUB_FAIL=list
-rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses to create when pool discovery fails"; else bad "discovery failure: rc=$rc creates=$(creates)"; fi
+rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses to create when pool discovery fails"; else bad "discovery failure: rc=$rc creates=$(creates)"; fi
 export STUB_FAIL=delete
 printf 'vm-a\n' > "$STUB_INSTANCES"
 rc="$(run down)"; if [ "$rc" -ne 0 ] && ! grep -q 'pool deleted' "$T/out"; then ok "down fails when a delete fails"; else bad "down after failed delete: rc=$rc"; fi
 unset STUB_FAIL
 
 # 6c. watch tops up after a VM disappears and stops, running down, once CI_GCP is off.
-printf 'a\nb\n' > "$STUB_INSTANCES"; echo on > "$STUB_VAR"; : > "$STUB_LOG"
-bash "$SUT" watch 2 --interval 1 > "$T/watch.out" 2>&1 &
+printf 'a\n' > "$STUB_INSTANCES"; echo on > "$STUB_VAR"; : > "$STUB_LOG"
+bash "$SUT" watch 1 --interval 1 > "$T/watch.out" 2>&1 &
 wpid=$!
 waitfor() { local _; for _ in $(seq 1 100); do "$@" && return 0; sleep 0.1; done; return 1; }
 # shellcheck disable=SC2317  # invoked indirectly through waitfor
@@ -159,12 +174,15 @@ topped() { [ "$(creates)" -ge 1 ]; }
 # shellcheck disable=SC2317
 stopped() { ! kill -0 "$wpid" 2>/dev/null; }
 if waitfor listed && [ "$(creates)" -eq 0 ]; then ok "watch creates nothing while the pool is full"; else bad "watch first pass: creates=$(creates)"; fi
-printf 'a\n' > "$STUB_INSTANCES"
+: > "$STUB_INSTANCES"
 if waitfor topped; then ok "watch tops the pool up after a VM disappears"; else bad "watch never topped up"; fi
+printf 'a\n' > "$STUB_INSTANCES"
 echo off > "$STUB_VAR"
 if waitfor stopped; then ok "watch exits once CI_GCP is off"; else bad "watch still running after CI_GCP off"; kill "$wpid" 2>/dev/null; fi
 if grep -q 'instances delete' "$STUB_LOG" && grep -q 'pool deleted' "$T/watch.out"; then ok "watch runs down on exit"; else bad "watch did not run down"; fi
-rc="$(run watch 5)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch 5 is refused"; else bad "watch 5: rc=$rc"; fi
+for n in 2 5; do
+    rc="$(run watch "$n")"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch $n is refused"; else bad "watch $n: rc=$rc"; fi
+done
 
 # 6d. a second up while another holds the lock creates nothing.
 : > "$STUB_INSTANCES"
@@ -172,26 +190,26 @@ if [ "$(uname -s)" = Linux ]; then
     ( flock 9; sleep 3 ) 9> "$GCP_RUNNERS_LOCK" &
     holder=$!
     sleep 0.5
-    rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses while another up holds the lock"; else bad "locked up: rc=$rc creates=$(creates)"; fi
+    rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up refuses while another up holds the lock"; else bad "locked up: rc=$rc creates=$(creates)"; fi
     wait "$holder"
-    rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
+    rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "up proceeds once the lock is free"; else bad "unlocked up: rc=$rc creates=$(creates)"; fi
 else
     ok "flock lock cases skipped: not Linux"
 fi
 
 # 6f. flock is Linux-only: up refuses on any other platform before it creates anything.
 : > "$STUB_INSTANCES"
-rc="$(GCP_RUNNERS_UNAME=Darwin run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'Linux' "$T/out"; then ok "up refuses off Linux"; else bad "non-Linux up: rc=$rc creates=$(creates)"; fi
+rc="$(GCP_RUNNERS_UNAME=Darwin run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'Linux' "$T/out"; then ok "up refuses off Linux"; else bad "non-Linux up: rc=$rc creates=$(creates)"; fi
 
 # 6g. a failure part-way through `up` still strips jit-config from every VM already created.
-export STUB_FAIL=create2
-rc="$(run up 3)"
+export STUB_FAIL=create
+rc="$(run up 1)"
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
-if [ "$rc" -ne 0 ] && [ "$n" -eq 2 ]; then ok "a failed create drops jit-config from the VM already created and the one attempted"; else bad "create fail: rc=$rc removals=$n of 2"; fi
-export STUB_FAIL=jit2
-rc="$(run up 3)"
+if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then ok "a failed create drops jit-config from the VM attempted"; else bad "create fail: rc=$rc removals=$n of 1"; fi
+export STUB_FAIL=jit
+rc="$(run up 1)"
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
-if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then ok "a failed JIT request drops jit-config from the VM already created"; else bad "jit fail: rc=$rc removals=$n of 1"; fi
+if [ "$rc" -ne 0 ] && [ "$n" -eq 0 ] && [ "$(creates)" -eq 0 ]; then ok "a failed JIT request creates no VM and removes nothing"; else bad "jit fail: rc=$rc removals=$n creates=$(creates)"; fi
 unset STUB_FAIL
 
 # 6h. a jit-config that cannot be removed gets its VM deleted and fails `up`.
@@ -221,8 +239,8 @@ if [ -n "$ck" ] && [ -n "$tx" ] && [ "$ck" -lt "$tx" ] && grep 'sha256sum -c' "$
 # 6e. up and watch refuse while the dedicated subnet is missing, naming gcp-net.sh.
 export STUB_FAIL=subnet
 : > "$STUB_INSTANCES"
-rc="$(run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'gcp-net.sh' "$T/out"; then ok "up refuses without the dedicated subnet"; else bad "no-subnet up: rc=$rc creates=$(creates)"; fi
-rc="$(run watch 2 --interval 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch refuses without the dedicated subnet"; else bad "no-subnet watch: rc=$rc"; fi
+rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ] && grep -q 'gcp-net.sh' "$T/out"; then ok "up refuses without the dedicated subnet"; else bad "no-subnet up: rc=$rc creates=$(creates)"; fi
+rc="$(run watch 1 --interval 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "watch refuses without the dedicated subnet"; else bad "no-subnet watch: rc=$rc"; fi
 unset STUB_FAIL
 
 # 7. unknown subcommand is refused.

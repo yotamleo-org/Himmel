@@ -42,8 +42,8 @@
 #                                    no .exe — a `$cmd`/absolute interpreter
 #                                    binary is NOT granted: fail-safe).
 #                                    It also grants
-#                                    TWO engines (harvest-clip-body-batch.py,
-#                                    ig-media-fetch.py) invoked as `uv run
+#                                    THREE engines (harvest-clip-body-batch.py,
+#                                    ig-media-fetch.py, x-media-fetch.py) invoked as `uv run
 #                                    [--python <ver>] python <script>` — the
 #                                    shape their own leg docs use — via
 #                                    match_uv_prefix below, optionally preceded
@@ -139,6 +139,7 @@ IS_THIN_SUFFIX="marketplace/plugins/obsidian-triage/tools/is-thin-cli.mjs"
 EVIDENCE_KIND_SUFFIX="marketplace/plugins/obsidian-triage/tools/lib/evidence-kind.mjs"
 DAILY_TIMELINE_SUFFIX="marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs"
 IG_MEDIA_FETCH_SUFFIX="marketplace/plugins/obsidian-triage/tools/ig-media-fetch.py"
+X_MEDIA_FETCH_SUFFIX="marketplace/plugins/obsidian-triage/tools/x-media-fetch.py"
 ENSURE_DEPS_SUFFIX="marketplace/plugins/obsidian-triage/tools/ensure-deps.sh"
 # The harvest-clips.md thin-body
 # enrich rungs (~lines 210-211) dispatch these two X/reddit enrichers, but
@@ -151,6 +152,7 @@ REDDIT_ENRICH_SUFFIX="marketplace/plugins/obsidian-triage/tools/reddit-enrich.mj
 ENGINE_LIST="python:${VAULT_LINT_SUFFIX} python3:${VAULT_LINT_SUFFIX} \
 python:${HARVEST_SUFFIX} python3:${HARVEST_SUFFIX} \
 python:${IG_MEDIA_FETCH_SUFFIX} python3:${IG_MEDIA_FETCH_SUFFIX} \
+python:${X_MEDIA_FETCH_SUFFIX} python3:${X_MEDIA_FETCH_SUFFIX} \
 node:${IS_THIN_SUFFIX} node:${EVIDENCE_KIND_SUFFIX} node:${DAILY_TIMELINE_SUFFIX} \
 node:${FXTWITTER_SUFFIX} node:${REDDIT_ENRICH_SUFFIX} \
 bash:${ENSURE_DEPS_SUFFIX}"
@@ -395,6 +397,13 @@ flag_is_safe() {
                 --flag-screen|--detail) return 0 ;;
             esac
             return 1 ;;
+        "$X_MEDIA_FETCH_SUFFIX")
+            case "$flag" in
+                --dry-run|--include-evidence|--include-done| \
+                --limit|--whisper-model|--apply-digest|--digest-file| \
+                --flag-screen|--detail) return 0 ;;
+            esac
+            return 1 ;;
         "$EVIDENCE_KIND_SUFFIX")
             case "$flag" in
                 --type|--url|--tags) return 0 ;;
@@ -609,7 +618,7 @@ segment_is_engine() {
     # uv" is not something any leg actually needs.
     if [ "$via_uv" -eq 1 ]; then
         case "$MATCHED_SUFFIX" in
-            "$HARVEST_SUFFIX"|"$IG_MEDIA_FETCH_SUFFIX") ;;
+            "$HARVEST_SUFFIX"|"$IG_MEDIA_FETCH_SUFFIX"|"$X_MEDIA_FETCH_SUFFIX") ;;
             *) return 1 ;;
         esac
     fi

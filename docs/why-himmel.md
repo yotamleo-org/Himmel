@@ -144,7 +144,7 @@ timeout, so the scrape timeout went to 30 s. The reasoning is written into
   merge gate additionally requires CI green *and* zero unresolved threads.
 - **Small context by construction.** A local CLI instead of an always-loaded
   MCP server, an output-summarizing proxy for noisy commands, and a hard byte
-  budget on the always-on instruction file (12,288 bytes, enforced by a
+  budget on the always-on instruction file (6,144 bytes, enforced by a
   pre-commit gate — an instruction file that grows without limit is a tax on
   every single call).
 - **Cross-platform, including the awkward one.** Linux, macOS, and Windows Git

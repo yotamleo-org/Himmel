@@ -1,9 +1,9 @@
 // thin DOM glue. All markup comes from render.js.
 import { render, renderNav, renderHeader, renderProbe } from "/render.js";
-import { renderHealth } from "/health.js";
+import { renderHealth, verdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
-import { fleetDot, navLinks, parseLanding } from "/nav.js";
+import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
 const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null };
@@ -61,9 +61,9 @@ route();
 
 // The rail (nav.js, shared with the AG-UI page): Config and Health are routes here, Fleet is /agui/.
 function renderPages() {
-  const dot = fleetDot(fleet.data, fleet.error);
+  const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
   $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id }).map((l) =>
-    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}>${l.label}${l.id === "fleet" ? `<span class="st-dot ${dot.cls}" title="${dot.title}"></span>` : ""}</a>`).join("");
+    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("");
 }
 
 async function loadFleet() {
@@ -81,6 +81,7 @@ function paint() {
   $("#main").innerHTML = currentPage.render(feed);
   $("#nav").innerHTML = currentPage.regions && feed ? renderNav(feed, current) : "";
   $("#top").innerHTML = renderHeader(feed);
+  renderPages(); // the Health dot follows the feed and the health read
   $("#where").textContent = `${location.host} · ${feed && feed.target ? feed.target.scope : "?"} scope`;
   if (focusK !== null) { for (const h of document.querySelectorAll(".row-head")) if (h.dataset.k === focusK) { h.focus(); break; } }
   if (focusB !== null) { for (const h of document.querySelectorAll(".bhead")) if (h.dataset.b === focusB) { h.focus(); break; } }

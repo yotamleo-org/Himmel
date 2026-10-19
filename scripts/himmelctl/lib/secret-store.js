@@ -17,6 +17,7 @@
 // ponytail: card entries and the MCP stores are detect-only, no vault backend yet, HIMMEL-4862.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const manifest = require('./secrets-manifest.json');
 
@@ -44,11 +45,17 @@ function unwritable(v) {
   return /[\r\n\0#]/.test(v) || /^["']/.test(v) || v !== v.trim();
 }
 
+// bash `source` of the store (bitbucket live-smoke sources the himmel .env, and
+// an operator may) would expand or execute these in an unquoted value. Quoting
+// would break the dotenv readers that keep quotes, so refuse instead.
+const SHELL_META = /[$`;\\&|<>()'"\s]/;
+
 function validate(name, value) {
   const e = entryOf(name);
   if (!e) return { ok: false, rule: 'known-secret' };
   if (typeof value !== 'string') return { ok: false, rule: 'string' };
   if (unwritable(value)) return { ok: false, rule: 'single-line' };
+  if (SHELL_META.test(value)) return { ok: false, rule: 'shell-safe' };
   const rule = RULES[e.validate];
   if (!rule) return { ok: false, rule: e.validate };
   return rule(value) ? { ok: true } : { ok: false, rule: e.validate };
@@ -111,6 +118,31 @@ function ownedByMe(st, ctx) {
   const uid = ctx.uid !== undefined ? ctx.uid : (process.getuid ? process.getuid() : st.uid);
   return st.uid === uid;
 }
+// Group-write on the store directory is harmless when the directory's group is
+// the user's own and nobody else belongs to it (umask 002 + user-private groups
+// on stock Ubuntu/Fedora). Unreadable account files mean not private.
+function privateGroup(st, ctx) {
+  const gid = ctx.gid !== undefined ? ctx.gid : (process.getgid ? process.getgid() : st.gid);
+  if (st.gid !== gid) return false;
+  const files = ctx.accountFiles || { group: '/etc/group', passwd: '/etc/passwd' };
+  const me = os.userInfo().username;
+  try {
+    let named = false;
+    for (const l of fs.readFileSync(files.group, 'utf8').split('\n')) {
+      const f = l.split(':');
+      if (Number(f[2]) !== gid) continue;
+      if (f[0] === me) named = true;
+      if (f[3] && f[3].split(',').some((u) => u && u !== me)) return false;
+    }
+    // A group the local files do not define (NSS/LDAP) cannot be proven private.
+    if (!named) return false;
+    for (const l of fs.readFileSync(files.passwd, 'utf8').split('\n')) {
+      const f = l.split(':');
+      if (Number(f[3]) === gid && f[0] !== me) return false;
+    }
+  } catch { return false; }
+  return true;
+}
 function inWorkTree(dir) {
   for (let d = dir; ; d = path.dirname(d)) {
     if (fs.existsSync(path.join(d, '.git'))) return true;
@@ -126,7 +158,7 @@ function fileWrite(name, value, ctx) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const dst = fs.statSync(dir);
   if (!ownedByMe(dst, ctx)) refuse('store directory is owned by another user');
-  if (dst.mode & 0o022) refuse('store directory is group or world writable');
+  if ((dst.mode & 0o002) || ((dst.mode & 0o020) && !privateGroup(dst, ctx))) refuse('store directory is group or world writable');
   if (inWorkTree(dir)) {
     if (typeof ctx.gitCheckIgnore !== 'function') refuse('store sits in a git work tree and no gitignore check was supplied');
     if (ctx.gitCheckIgnore(file) !== true) refuse('store file is not ignored by git (add it to .gitignore first)');

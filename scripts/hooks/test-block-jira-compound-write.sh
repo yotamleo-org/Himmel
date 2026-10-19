@@ -942,12 +942,12 @@ run_hook Bash "node $JIRA fix-version HIMMEL-4801 --add v1.0.2c"
 # --- 14.6 the CLI's other mutating verbs are writes too (the incident verb,
 #          fix-version, was missing, so even its non-loop compound shapes fell
 #          through unbounced).
-for verb in fix-version rank unlink resolution version-create version-edit version-release version-archive version-move; do
+for verb in fix-version affects-version rank unlink resolution version-create version-edit version-release version-archive version-move; do
   run_hook Bash "node $JIRA $verb HIMMEL-1 --x \"\$(cat /tmp/a.md)\""
   [ "$RC" -eq 2 ] || fail "write verb '$verb' not bounced (rc=$RC)"
   grep -q "^    node .* $verb " "$ERR" || fail "retry example for '$verb' does not name that verb"
 done
-pass "fix-version / rank / unlink / resolution / version-* bounced"
+pass "fix-version / affects-version / rank / unlink / resolution / version-* bounced"
 for sub in set sync-sprints; do
   run_hook Bash "node $JIRA roadmap $sub HIMMEL-1 --x \"\$(cat /tmp/a.md)\""
   [ "$RC" -eq 2 ] || fail "'roadmap $sub' not bounced (rc=$RC)"
@@ -959,6 +959,18 @@ for sub in get export; do
   [ "$RC" -eq 0 ] || fail "read 'roadmap $sub' bounced (rc=$RC)"
 done
 pass "roadmap get / export left alone"
+run_hook Bash "node $JIRA edit-batch --file edits.json --x \"\$(cat /tmp/a.md)\""
+[ "$RC" -eq 2 ] || fail "write verb 'edit-batch' not bounced (rc=$RC)"
+grep -q "^    node .* edit-batch " "$ERR" || fail "retry example for 'edit-batch' does not name that verb"
+pass "edit-batch bounced with the verb in the retry example"
+for flags in "" "--dry-run"; do
+  run_hook Bash "node $JIRA sector setup $flags --x \"\$(cat /tmp/a.md)\""
+  [ "$RC" -eq 2 ] || fail "'sector setup $flags' not bounced (rc=$RC)"
+  grep -q "^    node .* sector setup" "$ERR" || fail "retry example for 'sector setup $flags' drops the subcommand"
+done
+pass "sector setup bounced with the full verb, --dry-run included"
+run_hook Bash "node $JIRA sector --help --x \"\$(cat /tmp/a.md)\""
+[ "$RC" -eq 0 ] && pass "sector without setup left alone" || fail "sector --help bounced (rc=$RC)"
 
 # --- 14.7 j2061: a JIRA_* targeting prefix is never "dropped" — dropping
 #          JIRA_BASE_URL / JIRA_BOARD_ID / JIRA_SEVERITY_FIELD silently retargets the

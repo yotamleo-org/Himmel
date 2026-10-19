@@ -281,7 +281,22 @@ copy_recorded() {
     fi
     pre=(--pre-file "$snap" --backup)
   fi
-  run cp "$HIMMEL_ROOT/$f" "$dest" || { rm -f "$tmp"; return 1; }
+  if ! run cp "$HIMMEL_ROOT/$f" "$dest"; then
+    # a failed cp may have truncated the destination: put the user's file back, keep the snapshot if that fails too
+    if [ "$op" = replace ] && [ -n "$tmp" ]; then
+      if cp -p "$tmp" "$dest"; then
+        echo "  not replaced $f (the copy failed; original restored)" >&2
+      else
+        echo "  ERROR: $f may be truncated and could not be restored; your original is kept at $tmp" >&2
+        tmp=""
+      fi
+      COPY_REFUSED+=("$f")
+      rm -f "$tmp"
+      return 0
+    fi
+    rm -f "$tmp"
+    return 1
+  fi
   if [ -n "$exec" ]; then run chmod +x "$dest" || { rm -f "$tmp"; return 1; }; fi
   # _prov_mode is the lib's own mode reader, so this compares exactly what the row stores.
   if [ -n "$tmp" ] && cmp -s "$tmp" "$dest" && [ "$(_prov_mode "$tmp")" = "$(_prov_mode "$dest")" ]; then

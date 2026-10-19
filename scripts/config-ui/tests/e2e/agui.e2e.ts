@@ -82,7 +82,6 @@ for (const scheme of ["dark", "light"] as const) {
       await expect(page.locator(".band")).toHaveCount(10);
       await page.screenshot({ path: info.outputPath("dense.png") });
       const strip = page.getByRole("region", { name: "Tool calls over time, by agent" });
-      // ponytail: census refresh may reset the transcript; stabilize the source in HIMMEL-6352.
       await expect.poll(() => page.locator(".transcript .msg").first().evaluateAll(
         ([el]) => el?.getClientRects()[0]?.bottom ?? Infinity,
       ), { timeout: 15_000 }).toBeLessThan(800);
@@ -492,4 +491,79 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   await expect(live.filter({ has: page.locator('[title="cloud-HIMMEL-907"]') })).toHaveCount(0);
   await page.locator("details.fleet-closed > summary").click();
   await expect(page.getByRole("list", { name: "Finished sessions" }).locator('[id="fleet-cloud-HIMMEL-907"] .fleet-meta')).toHaveText("PR merged · PR 1907");
+});
+
+// the console board: the leg card's goal cell, the Trends cost chart and the stage-dot drawer, measured in a real render.
+for (const [width, tallest] of [[1280, 120], [390, 180]] as const) {
+  test(`13. the leg card's goal cell is wide, whole and inside its card at ${width}px`, async ({ page }) => {
+    h = await bootAgui("", { fleet: true });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(h.url);
+    const row = card(page, FLEET.leg.name);
+    await expect(row.locator(".bd-goalcell")).toBeVisible();
+    const box = (await row.boundingBox())!, cell = (await row.locator(".bd-goalcell").boundingBox())!;
+    expect(cell.width).toBeGreaterThanOrEqual(200);
+    expect(box.height).toBeLessThanOrEqual(tallest);
+    for (const dot of await row.locator(".bd-dot").all()) {
+      const d = (await dot.boundingBox())!;
+      expect(d.x).toBeGreaterThanOrEqual(box.x);
+      expect(d.x + d.width).toBeLessThanOrEqual(box.x + box.width);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  });
+}
+
+test("14. the Trends cost chart keeps its bars a bar's width, and a stage dot opens the drawer that Esc closes", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  await page.goto(h.url);
+  await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Trends" }).click();
+  await expect(page.locator(".bd-card")).toHaveCount(4);
+  const bars = page.locator("svg.bd-spark rect");
+  await expect(bars).toHaveCount(2);
+  expect((await bars.first().boundingBox())!.width).toBeLessThanOrEqual(24);
+  await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Fleet" }).click();
+  await card(page, FLEET.leg.name).locator(".bd-dot").first().click();
+  await expect(page.locator(".bd-drawer")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".bd-drawer")).toHaveCount(0);
+});
+
+test("15. a fleet census refresh keeps the live transcript and its one stream; a new run or token still restarts it", async ({ page }) => {
+  h = await bootAgui(denseRun());
+  const streams: string[] = [];
+  page.on("request", (r) => { const m = /\/api\/agui\/(?!fleet|board)([^/?]+)$/.exec(new URL(r.url()).pathname); if (m) streams.push(m[1]); });
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route("**/api/agui/fleet", async (route) => { await held; await route.continue(); });
+  // the transcript is watched for any moment it is empty after its first message, so a reset and replay cannot slip between polls
+  await page.addInitScript(() => {
+    (window as any).__emptied = false;
+    addEventListener("DOMContentLoaded", () => {
+      let seen = false;
+      new MutationObserver(() => {
+        const n = document.querySelectorAll(".transcript .msg").length;
+        if (n) seen = true; else if (seen) (window as any).__emptied = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+  });
+  await page.goto(h.url);
+  const msgs = page.locator(".transcript .msg");
+  await expect(msgs.first()).toBeVisible();
+  expect(streams).toHaveLength(1);
+
+  const census = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/agui/fleet");
+  release();
+  await census;
+  await page.waitForTimeout(500); // the root re-renders on the census; give a stray restart time to show
+  expect(streams).toHaveLength(1);
+  expect(await page.evaluate(() => (window as any).__emptied)).toBe(false);
+  await expect(msgs.first()).toBeVisible();
+
+  const t = /#t=([0-9a-f]{64})/.exec(h.url)![1];
+  await page.evaluate((hash) => { location.hash = hash; }, `t=${t}&run=other-run`);
+  await expect.poll(() => streams.length).toBe(2);
+  expect(streams[1]).toBe("other-run");
+  await page.evaluate((hash) => { location.hash = hash; }, `t=${"0".repeat(64)}&run=other-run`);
+  await expect.poll(() => streams.length).toBe(3);
+  await expect(page.getByRole("alert")).toContainText("The run stopped");
 });

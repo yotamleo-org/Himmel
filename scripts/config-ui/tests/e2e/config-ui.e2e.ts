@@ -158,7 +158,7 @@ const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Sch
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
-  await page.getByRole("link", { name: "Health", exact: true }).click();
+  await page.getByRole("link", { name: /^Health\b/ }).click();
   await page.locator("#verdict .word").waitFor();
 }
 const verdictWord = (page: Page) => page.locator("#verdict .word");
@@ -166,7 +166,7 @@ const verdictWord = (page: Page) => page.locator("#verdict .word");
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await open(page);
   expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban"]);
-  await page.getByRole("link", { name: "Health", exact: true }).click();
+  await page.getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");
   await expect(page.locator("header.top")).toHaveCount(1);
@@ -291,6 +291,22 @@ test("health: a firing page alert makes the verdict Act now and shows its summar
   await expect(page.locator("#verdict")).toContainText("alerts: 1 firing");
   await expect(page.locator("#broken .alert")).toContainText("E2EPageAlert");
   await expect(page.locator("#broken .alert")).toContainText("e2e-page-alert-summary");
+});
+
+const healthDotOf = (page: Page) => page.locator("nav.pages a", { hasText: "Health" }).locator(".st-dot");
+
+test("health: the rail's Health dot is fail, ok and warn with the verdict (Act now, All clear, Needs a look)", async ({ page }) => {
+  await openHealth(page); // a fail row in the feed
+  await expect(verdictWord(page)).toHaveText("Act now");
+  await expect(healthDotOf(page)).toHaveClass(/\bfail\b/);
+  await h.stop();
+  await openHealth(page, { clean: true });
+  await expect(verdictWord(page)).toHaveText("All clear");
+  await expect(healthDotOf(page)).toHaveClass(/\bok\b/);
+  await h.stop();
+  await openHealth(page, { clean: true }, { prom: { alerts: [{ labels: { alertname: "E2EWarnAlert", severity: "warning" }, annotations: { summary: "e2e-warn-alert" } }] } });
+  await expect(verdictWord(page)).toHaveText("Needs a look");
+  await expect(healthDotOf(page)).toHaveClass(/\bwarn\b/);
 });
 
 test("health: every source absent leaves No data cards that name the source; verdict says alerts not checked (I3, I6)", async ({ page }) => {

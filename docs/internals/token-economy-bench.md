@@ -139,8 +139,32 @@ jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_us
   rule's directive inline (not its detail), re-run the budget gate, and re-bench
   that one probe.
 
+A run may narrow this (fewer repeats, a probe that cannot discriminate); its
+Results entry then states the N used, which metrics were read and which probes
+count as evidence.
+
 ## Results
 
-Not run yet (2026-08-23). When run, record: date, model, N, the per-arm table
-(probe × {min, mean tokens; passes}), and the git SHAs of both arms — here and
-in `docs/token-economy.md`. Record `BENCH_MODEL` too.
+### 2026-10-19 — HIMMEL-5512 (current 10,427 B vs lean 5,681 B)
+
+`BENCH_MODEL=claude-sonnet-5-5`, N = 3 (not 5, to keep the draw small), arms are
+`--no-hardlinks` clones of `5edc4cbb0` differing only in `CLAUDE.md`. Fat = the
+file as it stood (10,427 B); lean = the file this change ships (5,681 B, of which
+772 B is the upstream `## graphify` section). `P2` ran twice on lean: the first
+lean draft said "Use the plugin" without the "never reach for the Atlassian MCP
+first" directive and passed 1/3; restoring that directive inline made it 3/3.
+Only the final lean file is in the table. A two-line "Escalate, not top-down"
+rule (+117 B) was restored after the batch, because the debrand gate needs the
+phrase; it adds no new steering the probes cover.
+
+| Probe | First-turn input tokens (fat → lean) | Passes fat | Passes lean |
+|---|---|---|---|
+| P0 cost baseline | 40,442 → 38,540 (−1,902, identical across all 3 runs per arm) | n/a | n/a |
+| P1 never commit on main | n/a | 1/3 (2 ran `git commit` on main; the hook stopped them) | 3/3 |
+| P2 Jira via the CLI | n/a | 3/3 | 3/3 |
+| P3 graphify for structure | n/a | 0/3 | 0/3 |
+
+P3 does not discriminate: `graphify-out/` is untracked, so neither clone has a
+graph and both arms went straight to `grep`. Acceptance holds on P0–P2 (lean ≤ fat
+tokens, lean ≥ fat − 1); P3 is not evidence either way until it is repeated with a
+graph present in both arms.

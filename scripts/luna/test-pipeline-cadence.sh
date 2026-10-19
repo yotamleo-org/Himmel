@@ -586,6 +586,12 @@ assert_contains "synth runner cds into vault" "cd $VAULT || {" "$synth_sh"
 assert_contains "synth runner runs /synthesize-clips" "/synthesize-clips" "$synth_sh"
 assert_contains "synth runner chains /archive-clips"  "/archive-clips"    "$synth_sh"
 assert_contains "synth runner bounded run"            "< /dev/null"       "$synth_sh"
+synth_sh_plain=${synth_sh//\\/}
+assert_contains "synth DONE: archive-clips (stuck) clips are structural backlog (HIMMEL-6433)" "archive-clips reports clips as (stuck)" "$synth_sh_plain"
+assert_contains "synth DONE: stuck clips still print the marker (HIMMEL-6433)" "report the stuck count and still print the marker" "$synth_sh_plain"
+assert_contains "synth DONE: a real step failure withholds it (HIMMEL-6433)" "Withhold the marker when a step itself failed or aborted" "$synth_sh_plain"
+assert_contains "synth DONE: blocked, parked or early-bailed still withholds it (HIMMEL-6433)" "or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain" "$synth_sh_plain"
+assert_not_contains "synth DONE: no clause makes stuck clips withhold the marker (HIMMEL-6433)" "stuck clips remain, do not print" "$synth_sh_plain"
 # shellcheck disable=SC2016  # literal $log needles — the runner expands them at fire time
 assert_contains "synth runner rotates the log" 'mv -f "$log" "$log.prev"' "$synth_sh"
 assert_contains "synth runner stamps every fire" '[fired' "$synth_sh"

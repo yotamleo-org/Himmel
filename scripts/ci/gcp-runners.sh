@@ -2,7 +2,7 @@
 # gcp-runners.sh -- the ephemeral GCP spot CI runner pool.
 # Run it on the station.
 #
-#   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 2, max 4)
+#   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 1, max 1)
 #   bash scripts/ci/gcp-runners.sh watch N [--interval 60]   foreground loop: re-run `up N` every interval
 #                                           while CI_GCP is on; on CI_GCP off or SIGTERM run `down` and exit
 #   bash scripts/ci/gcp-runners.sh down     delete every pool VM, deregister offline gcp runners
@@ -32,12 +32,12 @@ REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
 PROJECT="${GCP_RUNNERS_PROJECT:-himmel-ci}"
 SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
-MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
+MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-4}"
 MAX_RUN="45m"
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
-MAX_N=4
+MAX_N=1  # the proxy e2-micro counts 1 vCPU against the 8-vCPU CPUS pin, leaving 7: one e2-standard-4 fits, two do not
 NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
 LOCKFILE="${GCP_RUNNERS_LOCK:-${TMPDIR:-/tmp}/gcp-runners.lock}"
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
@@ -84,7 +84,7 @@ drop_jit() {
 }
 
 cmd_up() {
-    local n="${1:-2}"
+    local n="${1:-1}"
     case "$n" in ''|*[!0-9]*) die "up: N must be a positive integer, got '$n'" 2 ;; esac
     [ "$n" -ge 1 ] || die "up: N must be at least 1" 2
     [ "$n" -le "$MAX_N" ] || die "up: N=$n exceeds the hard max $MAX_N (the trial caps 8 vCPUs)" 2
@@ -127,7 +127,7 @@ cmd_up() {
         gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
-            --boot-disk-size=50GB \
+            --boot-disk-size=50GB --boot-disk-type=pd-balanced \
             --provisioning-model=SPOT --max-run-duration="$MAX_RUN" --instance-termination-action=DELETE \
             --labels="$POOL_LABEL" \
             --network="$NET" --subnet="$NET" --no-address \
@@ -158,7 +158,7 @@ cmd_down() {
 }
 
 cmd_watch() {
-    local n="${1:-2}" interval=60
+    local n="${1:-1}" interval=60
     case "$n" in ''|*[!0-9]*) die "watch: N must be a positive integer, got '$n'" 2 ;; esac
     if [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_N" ]; then die "watch: N must be 1..$MAX_N" 2; fi
     shift

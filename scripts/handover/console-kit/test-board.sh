@@ -370,7 +370,32 @@ out="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-alive-board
 n5html="$(cat "$W/n5-alive-board.html" 2>/dev/null)"
 contains 'a WRAPPED leg with a live census match reads WRAPPED, window still open' "$n5html" 'data-label="N5" data-phase="WRAPPED, window still open"'
 contains 'it is listed as needing the console' "$n5html" 'data-need="N5"'
-contains 'the need row explains why' "$n5html" 'WRAPPED, window still open — close the leg window'
+contains 'the need row explains why' "$n5html" 'WRAPPED, window still open — '
+
+# The need row says whether the window is safe to close, from the same
+# close-wrapped-leg.sh --check a hand-close would run. The refusal text below is
+# copied from the real script's wrap-subtree-check output (WITHHELD line, rc 6).
+cat > "$W/bin/close-check-safe.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --check ] || exit 2
+echo "SAFE-TO-CLOSE: pid 999 (N5) has no live subtree or subagent; nothing was signalled"
+STUB
+cat > "$W/bin/close-check-busy.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --check ] || exit 2
+echo "WITHHELD: 1 process(es) still alive under claude pid 999"
+echo "close-wrapped-leg: refusing to signal pid 999 - wrap-subtree-check.sh did not report CLOSABLE (see above); retry shortly" >&2
+exit 6
+STUB
+chmod +x "$W/bin/close-check-safe.sh" "$W/bin/close-check-busy.sh"
+BOARD_CLOSE_CHECK="$W/bin/close-check-safe.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-safe-board.html" >/dev/null
+contains 'a still-open WRAPPED leg whose close check passes reads safe to close' "$(cat "$W/n5-safe-board.html")" 'WRAPPED, window still open — safe to close'
+BOARD_CLOSE_CHECK="$W/bin/close-check-busy.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-busy-board.html" >/dev/null
+contains 'a refused close check reads still running with the reason' "$(cat "$W/n5-busy-board.html")" 'still running: WITHHELD: 1 process(es) still alive under claude pid 999'
+# a missing check script exits 127: an operational failure, never "still running"
+BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-missing-board.html" >/dev/null
+contains 'a close check that fails to run reads close check failed' "$(cat "$W/n5-missing-board.html")" 'close check failed (rc 127)'
+lacks 'a close check that fails to run is never read as still running' "$(cat "$W/n5-missing-board.html")" 'still running'
 
 # No census match (the default empty stub the suite already uses throughout):
 # N5 stays plain WRAPPED, as pinned above at line 212. (The ladder itself always
@@ -1014,6 +1039,27 @@ jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 contains 'cr-loop: an absent ledger and mirror never fail the render (rc 0)' "rc=$rc" 'rc=0'
 jcheck 'cr-loop --json: absent ledger and mirror read n/a (null), the before row stays' 'M.trends.cr_loop.rounds.mean === null && M.trends.cr_loop.residual.inflow === null && M.trends.cr_loop.before.rounds_mean === 2.71'
 jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 'M.trends.cr_loop.preflight.per_pr === null'
+
+# --- ICE-parked follow-ups: keys cited as follow-ups in the last 14 days of
+# comments that moved to ICE, from the mirror. RED control (pre-change board.mjs): no
+# data-ice-followups section and no trends.ice_followups.
+ice_issue() {  # ice_issue <key> <comments body>
+    { printf -- '---\nkey: "%s"\nstatus: "Done"\nstatusCategory: "Done"\nlabels: []\nfixVersions: []\ncreated: "%s"\nupdated: "%s"\n---\n\n# %s: t\n\n## Description\n\nd\n\n## Comments\n%s\n' "$1" "$(ago 30)" "$(ago 1)" "$1" "$2"; } > "$CL/mirror/HIMMEL/$1.md"
+}
+ice_issue HIMMEL-9201 "$(printf '\n### Op — %s\n\nMoved to ICE-77. Closing.\n' "$(ago 5)")"
+ice_issue HIMMEL-9202 "$(printf '\n### Op — %s\n\nFollow-up: HIMMEL-9201 parked.\n\n### Op — %s\n\nFollow-up HIMMEL-9105 stays open.\n' "$(ago 1)" "$(ago 1)")"
+crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+contains 'ice-followups: rc 0' "rc=$rc" 'rc=0'
+jcheck 'ice-followups --json: count and keys are the ICE-moved keys cited as follow-ups in the window' 'M.trends.ice_followups.count === 1 && M.trends.ice_followups.keys.join() === "HIMMEL-9201"'
+contains 'ice-followups html: one section with the count and the key' "$chtml" 'data-ice-followups="1"'
+contains 'ice-followups html: the key is listed' "$chtml" 'data-ice-key="HIMMEL-9201"'
+CL_MIRROR="$W/none" crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+contains 'ice-followups: an absent mirror never fails the render (rc 0)' "rc=$rc" 'rc=0'
+jcheck 'ice-followups --json: an absent mirror reads n/a (null count)' 'M.trends.ice_followups.count === null && M.trends.ice_followups.keys.length === 0'
+lacks 'ice-followups html: an absent mirror renders no panel' "$(cat "$CL/board.html")" 'data-ice-followups='
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

@@ -84,6 +84,10 @@
 # parked= (the legs sitting on an unanswered permission prompt, names only so the
 # growing age never re-wakes; absent from the tick line when none is parked, never
 # a failure; a leg joining or leaving the set wakes),
+# stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
+# conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
+# and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
+# from an older tick line, never a failure),
 # denials= (a new leg, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
@@ -305,12 +309,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails acts legset board tracker vault cloud orphans-wip vmrun parked denials closable deadwin; do
+    for f in legs livestate prs tails acts legset board tracker vault cloud orphans-wip vmrun parked stall denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
@@ -320,6 +324,17 @@ sample() {
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
         [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
+        # stall= keeps the actionable tokens (conflict, no-ci) only, sorted: ci-slow and idle are
+        # report-only. A set with none is left out of the key altogether. stall=? (a probe
+        # outage) keeps the saved set, so the same conflict returning is not a new one.
+        if [ "$f" = stall ]; then
+            if [ "$v" = '?' ]; then
+                v="$(key_field stall "$saved")"
+            else
+                v="$(printf '%s' "$v" | tr ',' '\n' | grep -E ':(conflict|no-ci)$' | LC_ALL=C sort | paste -sd, -)"  # swallow-ok: no match is the empty set
+            fi
+            [ -n "$v" ] || continue
+        fi
         key="$key$f=$v|"
     done
     key="${key}bank=$bank"
@@ -410,6 +425,21 @@ drop_denials_expiry() {
     done | paste -sd, -
 }
 
+# drop_stall_resolved: <changed csv> <old key> <new key> — stall= wakes only when the new
+# value holds a pr:class token the old one lacked; a stall resolving is not an event.
+drop_stall_resolved() {
+    local old new tok fresh=""
+    old=",$(key_field stall "$2"),"; new="$(key_field stall "$3")"
+    for tok in $(printf '%s' "$new" | tr ',' ' '); do
+        case "$old" in *",$tok,"*) ;; *) fresh=1 ;; esac
+    done
+    if [ -n "$fresh" ]; then printf '%s\n' "$1"; return; fi
+    printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
+        [ "$f" = stall ] && continue
+        printf '%s\n' "$f"
+    done | paste -sd, -
+}
+
 # denial_pages: <old key> <new key> — one `<leg> <class> <count>` line per leg
 # whose denials= class ROSE to SHIP-STEP or PAUSE-RISK between the two keys (a
 # new leg, or a higher class). A count rising inside one class is a wake but not
@@ -478,6 +508,7 @@ underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
     [ -r "$dispatch_cmd" ] || return 0
     local lf=(--priority-pool-only)  # free slots fill only from the operator's priority pool
+    case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
     timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
@@ -760,6 +791,7 @@ while :; do
                 # it never appears in changed=; the key still saves.
                 real_changed="$(drop_board_ok "$(changed_fields "$saved" "$key")" "$key")"
                 real_changed="$(drop_denials_expiry "$real_changed" "$saved" "$key")"
+                real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
                 if [ -z "$real_changed" ]; then
                     saved="$key"; save_key "$key"; pending=""
                 else

@@ -33,6 +33,8 @@
 # REMOTE only (gh api: default branch name, then compare <sha>...<default> must
 # be identical or ahead); no local ref names or vouches for it. Offline, no gh
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
+# A start at the head the last counted round ran on, below the cap, reuses that
+# round; bookkeeping-only heads get their ledger row from the `evidence` verb.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -48,6 +50,7 @@ usage() {
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>]" >&2
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
+    echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests/comments-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
@@ -142,6 +145,7 @@ case "$verb" in
     defer) [ -n "$head_sha" ] || usage ;;
     promote) [ -n "$head_sha" ] || usage ;;
     judge-go) [ -n "$head_sha" ] || usage ;;
+    evidence) [ -n "$head_sha" ] || usage ;;
     *) usage ;;
 esac
 
@@ -450,7 +454,7 @@ try {
 '
 }
 
-# record_binds <l9> <l10> <l11> - shared with the scope
+# record_binds <l9> <l10> <l11> [prepr] - shared with the scope
 # path. A record binds to this branch's PR: its `pr:` line (line 10,
 # write-verdict.sh's fixed place) must name the PR gh resolves for the branch,
 # and a `branch:` line (line 11, optional) must name the branch. No pr: line, or
@@ -460,23 +464,44 @@ try {
 # resolved by --head, never `gh pr view <branch>` (a branch named 42 would
 # resolve to PR 42), and bounded: this runs under the counter lock. pr_want
 # caches it for the calling subshell, which must set it to "" first.
+# With a fourth argument `prepr` (judge-go only) a record with no pr: line whose
+# line 10 is `branch: <this branch>` also binds, but only while gh answers that
+# the branch has no open PR (pr_none=1); a failed lookup or an open PR refuses
+# it, so it never stands in for a PR-bound record.
 # ponytail: the binding is covered by the record mac (HIMMEL-4984), whose key
 # is same-uid readable.
 record_binds() {
     [ -z "$1" ] || return 1
-    case "$2" in 'pr: '[1-9]*) ;; *) return 1 ;; esac
-    case "${2#pr: }" in *[!0-9]*) return 1 ;; esac
-    case "$3" in 'branch: '*) [ "${3#branch: }" = "$branch" ] || return 1 ;; esac
+    _rb_branch_form=0
+    case "$2" in
+        'pr: '[1-9]*) ;;
+        'branch: '*) [ "${4:-}" = prepr ] && [ "${2#branch: }" = "$branch" ] || return 1
+                     _rb_branch_form=1 ;;
+        *) return 1 ;;
+    esac
+    if [ "$_rb_branch_form" -eq 0 ]; then
+        case "${2#pr: }" in *[!0-9]*) return 1 ;; esac
+        case "$3" in 'branch: '*) [ "${3#branch: }" = "$branch" ] || return 1 ;; esac
+    fi
     if [ -z "$pr_want" ]; then
         # shellcheck source=scripts/lib/timeout-bin.sh
         # shellcheck disable=SC1091
         . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+        _rb_rc=0
         pr_want="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
-            --json number -q '.[].number' 2>/dev/null)" || pr_want=""
+            --json number -q '.[].number' 2>/dev/null)" || _rb_rc=1
+        if [ "$_rb_rc" -ne 0 ]; then pr_want=""; fi
+        if [ "$_rb_rc" -eq 0 ] && [ -z "$pr_want" ]; then pr_none=1; fi
         case "$pr_want" in ''|0*|*[!0-9]*)
-            echo "review-round: cannot resolve the one open PR for $branch (gh pr list --head) - no judge record is honoured" >&2
+            if [ "$_rb_branch_form" -eq 0 ] || [ -z "${pr_none:-}" ]; then
+                echo "review-round: cannot resolve the one open PR for $branch (gh pr list --head) - no judge record is honoured" >&2
+            fi
             pr_want="-" ;;
         esac
+    fi
+    if [ "$_rb_branch_form" -eq 1 ]; then
+        [ -n "${pr_none:-}" ]
+        return
     fi
     [ "${2#pr: }" = "$pr_want" ]
 }
@@ -808,7 +833,7 @@ judge_go_record() (
     done
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
-    pr_want=""
+    pr_want="" pr_none=""
     hit=""
     for f in "$dir"/*/*.md; do
         if [ ! -f "$f" ] || [ -L "$f" ]; then continue; fi
@@ -842,8 +867,8 @@ EOF_SNAP
         fi
         [ "$l8" = "**GO** for head \`$want\`." ] || [ "$l8" = "**GO** for head \`$want\`" ] || continue
         go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name" || continue
-        if ! record_binds "" "$l10" "$l11"; then
-            [ "$pr_want" != "-" ] || exit 8
+        if ! record_binds "" "$l10" "$l11" prepr; then
+            [ "$pr_want" != "-" ] || [ -n "$pr_none" ] || exit 8
             continue
         fi
         hit="$qid/$name"
@@ -1179,6 +1204,9 @@ if [ "$verb" = "judge-go" ]; then
     fi
     jg_hit="$(judge_go_record "$jg_head")"
     jg_rc=$?
+    if [ "$jg_rc" -eq 1 ]; then
+        echo "review-round: no signed judge GO at $jg_head is bound to $branch (a record naming its open PR, or the branch while it has no PR yet) - the judge GO is refused" >&2
+    fi
     [ "$jg_rc" -eq 0 ] && [ -n "$jg_hit" ] || exit "$jg_rc"
     jg_ledger="$git_dir/cr-critic-scores.jsonl"
     if ! grep -qsF "\"head\":\"$jg_head\",\"status\":\"ok\",\"source\":\"judge:$jg_hit\"" "$jg_ledger"; then
@@ -1186,6 +1214,49 @@ if [ "$verb" = "judge-go" ]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$jg_head" "$jg_hit" >> "$jg_ledger" || exit 5
     fi
     printf '%s\n' "$jg_hit"
+    exit 0
+fi
+
+# evidence: a ledger row for a head that only adds tests or comments to the
+# critic-reviewed head, so ready-check's CR row exists without spending a round.
+# Exit 0 = recorded (or already there); 8 = refused (not a descendant of a
+# reviewed head, or the diff is more than tests/comments).
+if [ "$verb" = "evidence" ]; then
+    # swallow-ok: an unresolvable head is refused on the next line (exit 2)
+    if ! ev_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ev_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
+    fi
+    case "$branch" in
+        *[\"\\]*|*[[:cntrl:]]*)
+            echo "review-round: branch name $branch cannot be written into a ledger row - evidence is refused" >&2
+            exit 2 ;;
+    esac
+    ev_from=""
+    if [ -f "$head_state" ] && [ ! -L "$head_state" ]; then
+        # swallow-ok: an unreadable, symlinked or non-hex .head leaves ev_from empty, which is refused (exit 8)
+        ev_from="$(sed -n '1p' "$head_state" 2>/dev/null)" || ev_from=""
+        case "$ev_from" in
+            *[!0-9a-f]*|'') ev_from="" ;;
+        esac
+        { [ "${#ev_from}" -eq 40 ] || [ "${#ev_from}" -eq 64 ]; } || ev_from=""
+    fi
+    # swallow-ok: same as above
+    ev_from="$(git rev-parse --verify --quiet "$ev_from^{commit}" 2>/dev/null)" || ev_from=""
+    # tests-only: evidence clears with no critic review of from..to, so the
+    # comment branch (a code line that looks like a comment) is not admitted.
+    if [ -z "$ev_from" ] || [ "$(ledger_query avail "$ev_from")" != "ok" ] \
+        || [ "$(ledger_query finding "$ev_from")" = "finding" ] \
+        || ! ( _td_tests_only=1; trivial_descendant "$ev_from" "$ev_head" ); then
+        echo "review-round: $ev_head is not a tests-only descendant of a critic-reviewed head of $branch with no open finding - no evidence row (run /pr-check)" >&2
+        exit 8
+    fi
+    ev_ledger="$git_dir/cr-critic-scores.jsonl"
+    if ! grep -qsF "\"branch\":\"$branch\",\"head\":\"$ev_head\",\"status\":\"ok\",\"source\":\"evidence\"" "$ev_ledger"; then
+        printf '{"kind":"evidence","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"evidence"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$ev_head" >> "$ev_ledger" || exit 5
+    fi
+    printf 'evidence %s\n' "$ev_head"
     exit 0
 fi
 
@@ -1216,6 +1287,20 @@ if [ "$verb" = "start" ]; then
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
         exit 5
+    fi
+    # A start at the head the counted round already ran on is bookkeeping, not
+    # a new round: reuse it. From the cap on, the same head stays refused below.
+    if [ "$round" -ge 1 ] && [ "$round" -lt 3 ] && [ -n "$head_sha" ]; then
+        # swallow-ok: an unresolvable or unrecorded head just takes the normal count
+        same_cur="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || same_cur=""
+        # swallow-ok: same as above
+        same_rec="$(cat "$head_state" 2>/dev/null)" || same_rec=""
+        if [ -n "$same_cur" ] && [ "$same_cur" = "$same_rec" ]; then
+            SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+                bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+            printf '%s\n' "$round"
+            exit 0
+        fi
     fi
     delta_from=""
     delta_reuse=0

@@ -24,7 +24,7 @@
 #
 #     **GO** for head `<head>`.
 #
-#     pr: <n>
+#     pr: <n>                   (absent for a GO written with --branch and no --pr)
 #     branch: <name>            (only when --branch is given)
 #     prior: <GO|NO-GO>         (only when --prior is given)
 #     flipped: <y|n>            (with prior: y when it differs from the answer)
@@ -45,6 +45,10 @@
 # another PR. review-round.sh reads only the first eight lines, so it is
 # unaffected. A verdict file with no `pr:` line (written before this field
 # existed) is refused by go.sh; the judge rewrites it with --pr.
+#
+# A GO for a branch that has no PR yet is written with --branch and no --pr: it
+# has no `pr:` line, so go.sh refuses it as merge trust, and review-round.sh
+# judge-go honours it only for that branch while no open PR exists.
 #
 # The writer-session stamp is a breadcrumb, not authentication: an in-process
 # judge call shares the console's environment, so it names the session the
@@ -174,7 +178,10 @@ esac
 # the verdict names its PR, as go.sh's PR argument is spelled
 # (no leading zero), so two PRs on one head are told apart.
 case "$PR" in
-    ''|0*|*[!0-9]*) echo "write-verdict: --pr <n> is required and must be a PR number without a leading zero (got '$PR')" >&2; exit 2 ;;
+    '') if [ -z "$BRANCH" ] || [ "$ANSWER" != GO ]; then
+            echo "write-verdict: --pr <n> is required (only a GO may be written with --branch and no --pr, for a branch with no PR yet)" >&2; exit 2
+        fi ;;
+    0*|*[!0-9]*) echo "write-verdict: --pr <n> is required and must be a PR number without a leading zero (got '$PR')" >&2; exit 2 ;;
 esac
 case "$BRANCH" in
     *[!A-Za-z0-9._/-]*|*..*|/*|*/) echo "write-verdict: --branch '$BRANCH' is not a plain branch name ([A-Za-z0-9._/-], no '..')" >&2; exit 2 ;;
@@ -443,7 +450,7 @@ if ! {
     printf 'writer-session: %s\n' "$SESSION" &&
     printf 'written-at: %s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" &&
     printf '## Verdict\n\n**%s** for head `%s`.\n\n' "$ANSWER" "$HEAD" &&
-    printf 'pr: %s\n' "$PR" &&
+    { [ -z "$PR" ] || printf 'pr: %s\n' "$PR"; } &&
     { [ -z "$BRANCH" ] || printf 'branch: %s\n' "$BRANCH"; } &&
     { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
     printf '\n' &&
@@ -480,14 +487,14 @@ fi
 # is released; another PR's judge dir that held the evidence is left to its own verdict.
 # Best effort: the verdict is already on disk.
 jd_seg=${EVIDENCE#"$SCRATCH"/}; jd_seg=${jd_seg%%/*}
-case "$jd_seg" in
+case "${PR:+$jd_seg}" in
     "j$PR"|"j$PR"[a-z])
         { [ -L "$SCRATCH/$jd_seg/.verdict-written" ] || : > "$SCRATCH/$jd_seg/.verdict-written"; } 2>/dev/null || true ;;
 esac
 # --residual-of <parent>: stamp residual-depth-<parent depth + 1> on each ticket the
 # residual lines cite, so next-dispatchable.sh can hold residuals back. Best effort:
 # the verdict is already on disk, a failed stamp only warns.
-# ponytail: a depth >= 2 residual with a fixVersion is warned about, not cleared, and affectsVersion is unset, upgrade path HIMMEL-6236 (jira --affects-version) then stamp both here
+# Each stamped residual also gets affectsVersion=current; a depth >= 2 one drops its fixVersions.
 if [ -n "$RESIDUAL_OF" ]; then
     wv_mirror=${WV_MIRROR:-$HOME/.himmel/state/jira-mirror/${RESIDUAL_OF%%-*}}
     if [ -n "${WV_JIRA_CMD:-}" ]; then
@@ -512,8 +519,15 @@ if [ -n "$RESIDUAL_OF" ]; then
         # shellcheck disable=SC2086  # wv_jira is a command plus its script path
         JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --add-labels "residual-depth-$wv_new" >/dev/null 2>&1 ||
             echo "write-verdict: warning - could not stamp residual-depth-$wv_new on $wv_key; add the label by hand" >&2
-        if [ "$wv_new" -ge 2 ] && sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" 2>/dev/null | grep -q '"'; then
-            echo "write-verdict: warning - $wv_key is residual-depth-$wv_new and carries a fixVersion; a depth >= 2 residual files to ICE with none" >&2
+        # shellcheck disable=SC2086
+        JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira edit "$wv_key" --affects-version current >/dev/null 2>&1 ||
+            echo "write-verdict: warning - could not stamp affectsVersion on $wv_key; set it by hand" >&2
+        if [ "$wv_new" -ge 2 ] && [ -r "$wv_mirror/$wv_key.md" ]; then
+            while IFS= read -r wv_fv; do
+                # shellcheck disable=SC2086
+                JIRA_PROJECT_KEY=${wv_key%%-*} $wv_jira fix-version "$wv_key" --remove "$wv_fv" </dev/null >/dev/null 2>&1 ||
+                    echo "write-verdict: warning - could not remove fixVersion $wv_fv from $wv_key; a depth >= 2 residual files to ICE with none" >&2
+            done < <(sed -n 's/^fixVersions: //p' "$wv_mirror/$wv_key.md" | grep -o '"[^"]*"' | sed 's/"//g')
         fi
     done
 fi

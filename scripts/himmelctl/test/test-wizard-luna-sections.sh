@@ -1376,9 +1376,9 @@ echo "$cacheBodyVN" | jq -e 'has("luna") | not' >/dev/null \
   || fail "caseVaultNoneNoOp [codex-1]: a vault=none interactive run must NOT serialize a luna key at all -- the question was never asked (got cache: $cacheBodyVN)"
 echo "$cacheBodyVN" | jq -e 'has("bridge") | not' >/dev/null \
   || fail "caseVaultNoneNoOp [codex-1]: a vault=none interactive run must NOT serialize a bridge key at all -- the question was never asked (got cache: $cacheBodyVN)"
-echo "$cacheBodyVN" | jq -e 'has("secretsWalk") | not' >/dev/null \
-  || fail "caseVaultNoneNoOp: a vault=none interactive run should not serialize secretsWalk either -- same never-asked shape (got cache: $cacheBodyVN)"
-echo "ok: caseVaultNoneNoOp [codex-1] an interactive vault=none run never serializes luna/secretsWalk/bridge keys -- 'not asked' is structurally absent, not a manufactured default"
+echo "$cacheBodyVN" | jq -e ".secretsWalk == \"skip\"" >/dev/null \
+  || fail "caseVaultNoneNoOp: the secrets step is asked for every profile, so a declined walk serializes secretsWalk=skip (got cache: $cacheBodyVN)"
+echo "ok: caseVaultNoneNoOp [codex-1] an interactive vault=none run never serializes luna/bridge keys -- 'not asked' is structurally absent; secretsWalk is asked for every profile and records skip"
 
 # ── step 2: replay that EXACT cache (the artifact a real adopter would get)
 # via --from-profile against an ALREADY-ARMED config -- same assertion shape

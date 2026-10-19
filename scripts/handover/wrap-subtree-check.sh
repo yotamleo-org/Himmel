@@ -152,11 +152,13 @@ chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|
 # whose only child is a `git remote-https origin https://github.com/<owner>/<repo>`.
 # New pids at etime 00:00 on every run. Matched by shape and parentage only (no
 # marketplace registry read); anything broader, a wrapper, or a `/..` still withholds.
+# Claude Code 2.1.303 puts ~40 more `-c key=value` flags (protocol.ext.allow, hook.*.enabled,
+# ...) between core.askPass and the verb; they are allowed, the verb stays fetch/ls-remote.
 # ponytail: a leg that types this exact three-flag git prefix as a DIRECT child of the
 # session (not under a shell-tool wrapper) would be exempt; legs run git inside a
 # wrapper, so not observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
-mkt_top_re='^([^ ]*/)?git -c core[.]fsmonitor= -c core[.]hooksPath=/dev/null -c core[.]askPass= (fetch|ls-remote)( |$)|^([^ ]*/)?git clone .* /[^ ]*/[.]claude/plugins/cache/temp_git_[A-Za-z0-9_]+$'
+mkt_top_re='^([^ ]*/)?git -c core[.]fsmonitor= -c core[.]hooksPath=/dev/null -c core[.]askPass= (-c [A-Za-z0-9_.-]+=[^ ]* )*(fetch|ls-remote)( |$)|^([^ ]*/)?git clone .* /[^ ]*/[.]claude/plugins/cache/temp_git_[A-Za-z0-9_]+$'
 mkt_child_re='^(([^ ]*/)?git remote-https|([^ ]*/)?git-remote-https) origin https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 
 ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""

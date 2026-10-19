@@ -206,7 +206,7 @@ from it — and it had grown to 19,018 B. Every rule was re-sorted by layer
 (hook/gate → one line naming the enforcer; reference detail → `docs/internals/`;
 recovery → the stuck-playbook; general engineering defaults → a user-scope
 block installed once by `adopt.sh`/`adopt.ps1`/`himmel-update`), and a
-pre-commit byte gate (`scripts/ci/check-claude-md-budget.sh`, ≤ 12,288 B) keeps
+pre-commit byte gate (`scripts/ci/check-claude-md-budget.sh`, ≤ 6,144 B since HIMMEL-5512) keeps
 it from re-accreting.
 
 **Method.** Tracked bytes straight from the object store (`git show <rev>:<path> | wc -c`)
@@ -227,7 +227,7 @@ commit before the description cap landed; "after" is this branch.
 | Hermes | `AGENTS.md` (generated, total) | 20,851 | 14,143 | −6,708 (−32.2%) | ~5,210 → ~3,540 |
 
 Of the 12,310 B file, **11,537 B is himmel content** (what the budget gate
-holds ≤ 12,288 B) and **773 B is the upstream-owned `## graphify` section**,
+held ≤ 12,288 B at the time; the limit is now 6,144 B) and **773 B is the upstream-owned `## graphify` section**,
 excluded from the budget (see below). The `CLAUDE.md` lean-invoke share alone is the
 `CLAUDE.md`/`AGENTS.md` rows: **−6,708 B on every session of every harness.**
 On the operator's own machine the working principles were paid *twice* before

@@ -54,7 +54,7 @@
 // Closed / Resolved, and tick.sh never sees these counts, so tick's board= cannot go
 // STALE on one -- only --changed (the versions fingerprint meta) reports it. Upgrade
 // path: have tick.sh fold the counts into board-fp once #1421 lands.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -426,6 +426,25 @@ try {
         { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     censusNames = new Set(out.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t')[1]).filter(Boolean));
 } catch { censusNames = null; }
+// The pre-close checks a hand-close needs: close-wrapped-leg.sh --check signals nothing,
+// exits 0 when safe, and otherwise names what is still running. A check that cannot run
+// reads as unknown, never as safe.
+const CLOSE_CHECK = process.env.BOARD_CLOSE_CHECK || join(HERE, 'close-wrapped-leg.sh');
+// One board render waits at most CLOSE_BUDGET_MS in all, so several slow checks cannot stall it.
+const CLOSE_BUDGET_MS = 60000;
+let closeBudgetLeft = CLOSE_BUDGET_MS;
+const closeNote = (doc) => {
+    if (closeBudgetLeft <= 0) return 'close check skipped (time budget spent)';
+    const t0 = Date.now();
+    const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: closeBudgetLeft, killSignal: 'SIGKILL' });
+    closeBudgetLeft -= Date.now() - t0;
+    if (r.error || r.status === null) return 'close check did not run';
+    if (r.status === 0) return 'safe to close';
+    if (r.status < 3 || r.status > 7) return 'close check failed (rc ' + r.status + ')';
+    const lines = (r.stdout + '\n' + r.stderr).split('\n').map((x) => x.trim()).filter(Boolean);
+    const what = lines.find((x) => x.startsWith('WITHHELD')) || lines[lines.length - 1] || 'close check refused (rc ' + r.status + ')';
+    return 'still running: ' + what.replace(/^close-wrapped-leg: /, '');
+};
 const wrappedLegs = legs.filter((l) => l.phase === 'WRAPPED' && legInfo.get(l.label)?.file);
 if (censusNames && wrappedLegs.length) {
     let out = '';
@@ -441,6 +460,7 @@ if (censusNames && wrappedLegs.length) {
         if (stillOpen) {
             l.phase = 'WRAPPED, window still open';
             l.needs = true;
+            l.closeNote = closeNote(legInfo.get(l.label).file);
         }
     });
 }
@@ -466,7 +486,7 @@ const needRows = legs.filter((l) => l.needs).map((l) => {
     const tailWhy = l.phase === 'READY' ? `READY${l.prNum ? ` · PR #${l.prNum}` : ''} — awaiting GO`
         : l.phase === 'READY-TO-OPEN' ? 'READY-TO-OPEN — awaiting PR open'
             : l.phase === 'BLOCKED' ? 'BLOCKED — needs a ruling'
-                : l.phase === 'WRAPPED, window still open' ? 'WRAPPED, window still open — close the leg window'
+                : l.phase === 'WRAPPED, window still open' ? 'WRAPPED, window still open — ' + (l.closeNote || 'close the leg window')
                     : l.tail === 'FINDING' ? 'FINDING — needs a ruling'
                         : '';
     // A lost/stale lock is its own rendered signal, never displaced by the tail/phase
@@ -798,6 +818,28 @@ const crLoopSection = (() => {
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
 
+// ICE-parked follow-ups: HIMMEL keys cited as follow-ups in the last 14 days of comments
+// that now live in the icebox, from ice-followups.sh over the Jira mirror (BOARD_MIRROR is
+// the seam; local files only, no network). The panel shows only when a key is parked, to
+// keep the live page small (--json still carries count null for an unreadable mirror and 0
+// for none); never fatal; not part of the fingerprint.
+const iceFollowupsSection = (() => {
+    const title = '<h2>ICE-parked follow-ups (14d)</h2>';
+    const na = '';
+    trend.ice_followups = { count: null, keys: [] };
+    try {
+        const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+        const lines = execFileSync('bash', [join(HERE, 'ice-followups.sh'), dir],
+            { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+        const m = /^ice-followups=(\d+)$/.exec(lines[0] || '');
+        if (!m) return na;
+        const keys = lines.slice(1).filter((k) => /^HIMMEL-\d+$/.test(k));
+        trend.ice_followups = { count: Number(m[1]), keys };
+        if (!keys.length) return na;
+        return `<section data-ice-followups="${keys.length}">${title}<p class="sub">ice-followups=${keys.length}: cited as follow-ups, now parked in ICE</p><ul>${keys.map((k) => `<li data-ice-key="${esc(k)}">${esc(k)}</li>`).join('')}</ul></section>`;
+    } catch { return na; }
+})();
+
 const archiveHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Supervisor Session Board — archive</title></head>
 <body>
@@ -876,6 +918,7 @@ ${explorationSection}
 ${failuresSection}
 ${flakesSection}
 ${crLoopSection}
+${iceFollowupsSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
@@ -1128,7 +1171,7 @@ const boardModel = {
     milestones,
     needs_you: needsYou,
     legs: legsOut,
-    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, tools: succession },
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, tools: succession },
     legend,
     cards,
 };

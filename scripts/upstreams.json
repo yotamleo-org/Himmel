@@ -16,6 +16,10 @@
       { "name": "luna optional plugin pointers", "reason": "Templater, Excalidraw, Thino, and Charts are documentation-only suggestions, not bundled assets; user-managed Obsidian installs own their updates." }
     ]
   },
+  "forks": [
+    { "fork_repo": "yotamleo/claude-obsidian", "hold-reason": "de-forked (HIMMEL-2925): upstream absorbed our carried delta at v2.2.0 and marketplace.json pins AgriciDaniel/claude-obsidian directly; the fork is a retired archive, not consumed (HIMMEL-6126)" },
+    { "fork_repo": "yotamleo/claude-squad", "hold-reason": "fork archived and the cs integration removed (HIMMEL-929); nothing consumes it (HIMMEL-6126)" }
+  ],
   "entries": [
     {
       "name": "claude-obsidian",
