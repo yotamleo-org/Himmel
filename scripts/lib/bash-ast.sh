@@ -405,9 +405,9 @@ def _opts_env:
     elif ($o | IN("-", "-i", "--ignore-environment", "-0", "--null", "-v", "--debug")) then .a |= .[1:] | _opts_env
     elif ($o | IN("-u", "--unset")) then .a |= .[2:] | _opts_env
     elif ($o | test("^(-u.|--unset=)")) then .a |= .[1:] | _opts_env
-    elif ($o | IN("-C", "--chdir")) then .cdx += [.a[1] | _l1] | .a |= .[2:] | _opts_env
-    elif ($o | test("^-C.")) then .cdx += [$o[2:]] | .a |= .[1:] | _opts_env
-    elif ($o | startswith("--chdir=")) then .cdx += [$o[8:]] | .a |= .[1:] | _opts_env
+    elif ($o | IN("-C", "--chdir")) then .ec = [.a[1] | _l1] | .a |= .[2:] | _opts_env
+    elif ($o | test("^-C.")) then .ec = [$o[2:]] | .a |= .[1:] | _opts_env
+    elif ($o | startswith("--chdir=")) then .ec = [$o[8:]] | .a |= .[1:] | _opts_env
     elif ($o | startswith("-")) then .opaque = "an env option this model does not read"
     elif ($o | test("^[A-Za-z_][A-Za-z0-9_]*=")) then
       (if ($o | split("=")[0] | test(_names)) then .taint = true else . end) | .a |= .[1:] | _opts_env
@@ -422,7 +422,7 @@ def _unwrap:
       elif $n == "builtin" then .via += [$n] | .a |= .[1:] | _unwrap
       elif $n == "exec" then .via += [$n] | .a |= .[1:] | _opts_exec | _unwrap
       elif $n == "nohup" then .via += [$n] | .a |= .[1:] | (if (.a[0] | _l1) == "--" then .a |= .[1:] else . end) | _unwrap
-      elif $n == "env" then .via += [$n] | .a |= .[1:] | _opts_env | _unwrap
+      elif $n == "env" then .via += [$n] | .a |= .[1:] | .ec = [] | _opts_env | .cdx += .ec | del(.ec) | _unwrap
       else . end
     end
   end;

@@ -95,6 +95,9 @@ row "cd inside a brace group does leave it" \
 row "env -C moves only its own command" \
     'env -C sub cat x; cat y' \
     '(.[0] | .prog == "cat" and .cwd == [["sub"]] and .via == ["env"]) and (.[1].cwd == [[]])'
+row "a later -C in one env replaces the earlier; a nested env chains" \
+    'env -C a -C b cat x; env -C a env --chdir=b cat y' \
+    '(.[0] | .argv[1].v == "x" and .cwd == [["b"]]) and (.[1] | .argv[1].v == "y" and .cwd == [["a", "b"]])'
 row "a cd to an expansion is unknown" \
     'cd "$D" && cat x' \
     '(.[] | select(.prog == "cat") | .cwd) == [null]'
