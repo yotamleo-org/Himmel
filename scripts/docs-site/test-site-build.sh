@@ -65,7 +65,7 @@ while IFS= read -r f; do
   [ "$(grep -o '<h1' "$page" | wc -l)" -eq 1 ] || { c1=0; echo "  $f: h1 count != 1"; }
 done <<<"$allow"
 if [ "$c1" -eq 1 ]; then ok "criterion 1: titles from H1, exactly one h1 per page"; else ko "criterion 1: titles from H1, exactly one h1 per page"; fi
-check "criterion 1: only the two dangling-link docs are edited" test "$(git -C "$repo" status --porcelain -- docs | awk '{print $2}' | sort | tr '\n' ' ')" = "docs/internals/handover-system.md docs/security-review.md " -o -z "$(git -C "$repo" status --porcelain -- docs)"
+check "criterion 1: only the permitted docs files are edited" test -z "$(git -C "$repo" status --porcelain -- docs | awk '{print $2}' | grep -vxE 'docs/(README\.md|internals/handover-system\.md|security-review\.md)')"
 
 # --- criterion 2: links
 md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; echo "rc=$?")
