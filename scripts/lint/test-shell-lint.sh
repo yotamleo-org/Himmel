@@ -383,8 +383,9 @@ here=$(readlink -f "$0")
 there=$(realpath "$1")
 PRIMEOF
 OUT15P="$(bash "$LINT" "$PRIM_BAD" 2>&1)"
-for _t in prim-tmpdir prim-lock prim-atomic prim-canon; do
-    if grepq "$OUT15P" -F "[$_t]"; then pass "15p $_t flags the ad-hoc form"; else fail "15p $_t should flag the ad-hoc form" "$OUT15P"; fi
+for _tl in prim-tmpdir:3 prim-lock:4 prim-lock:5 prim-atomic:6 prim-atomic:7 prim-canon:8 prim-canon:9; do
+    _t="${_tl%%:*}"; _l="${_tl##*:}"
+    if grepq "$OUT15P" -F "[$_t] line $_l:"; then pass "15p $_t flags the ad-hoc form on line $_l"; else fail "15p $_t should flag the ad-hoc form on line $_l" "$OUT15P"; fi
 done
 PRIM_OK="$TMP_ROOT/prim_ok.sh"
 cat > "$PRIM_OK" <<'PRIMEOF'
@@ -401,7 +402,14 @@ d=$(mktemp -d "${TMPDIR:-/tmp}/y.XXXXXX")
 PRIMEOF
 OUT15Q="$(bash "$LINT" "$PRIM_OK" 2>&1)"
 if grepq "$OUT15Q" -F '[prim-'; then fail "15p lib calls and a prim-ok line must be clean" "$OUT15Q"; else pass "15p lib calls, mkdir -p and prim-ok are clean"; fi
+PRIM_NOOK="$TMP_ROOT/prim_nook.sh"
+grep -v 'prim-ok' "$PRIM_OK" > "$PRIM_NOOK"
+OUT15V="$(bash "$LINT" "$PRIM_NOOK" 2>&1)"
+if grepq "$OUT15V" -F '[prim-tmpdir]'; then pass "15p the same fixture without prim-ok is flagged"; else fail "15p removing prim-ok must expose the tmpdir finding" "$OUT15V"; fi
 mkdir -p "$TMP_ROOT/prim-skip"
+cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/normal.sh"
+OUT15N="$(bash "$LINT" "$TMP_ROOT/prim-skip/normal.sh" 2>&1)"
+if grepq "$OUT15N" -F '[prim-'; then pass "15p a normal-name file in the skip directory is scanned"; else fail "15p a normal-name file in the skip directory must be scanned" "$OUT15N"; fi
 cp "$PRIM_BAD" "$TMP_ROOT/prim-skip/test-thing.sh"
 OUT15R="$(bash "$LINT" "$TMP_ROOT/prim-skip/test-thing.sh" 2>&1)"
 if grepq "$OUT15R" -F '[prim-'; then fail "15p a test-* file must not be scanned" "$OUT15R"; else pass "15p a test-* file is not scanned"; fi
