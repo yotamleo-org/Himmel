@@ -19,7 +19,7 @@ check() { local n="$1"; shift; if "$@"; then pass "$n"; else fail "$n"; fi; }
 size_is() { [[ "$(wc -c < "$1")" -eq "$2" ]]; }
 head_eq() { head -c "$1" "$TMP/ref" | cmp -s - "$2"; }
 tail_eq() { tail -c "$1" "$TMP/ref" | cmp -s - "$2"; }
-rejects() { ! bash "$CHUNK" "$@" >/dev/null 2>&1; }
+exits_with() { local want="$1" got; shift; bash "$CHUNK" "$@" >/dev/null 2>&1; got=$?; [[ "$got" -eq "$want" ]]; }
 
 TMP="$(mktemp -d -t probe-chunk.XXXXXX)" || exit 1
 trap 'rm -rf "$TMP"' EXIT
@@ -54,13 +54,18 @@ check "last chunk matches reference" tail_eq "$want" "$TMP/cl"
 
 echo "test: k past the end exits non-zero with a message"
 out="$(bash "$CHUNK" $((last + 1)) 2>&1 >/dev/null)"; rc=$?
-check "past-end exit $rc" test "$rc" -ne 0
+check "past-end exit is 3" test "$rc" -eq 3
 check "past-end message" test -n "$out"
 
-echo "test: bad argument exits non-zero"
-check "non-numeric rejected" rejects abc
-check "missing arg rejected" rejects
-check "overflowing index rejected" rejects 18446744073709551616
+echo "test: bad argument exits 2"
+check "non-numeric rejected" exits_with 2 abc
+check "missing arg rejected" exits_with 2
+check "overflowing index rejected" exits_with 2 18446744073709551616
+
+echo "test: outside a git work tree exits 1"
+mkdir -p "$TMP/x/y" && cp "$CHUNK" "$TMP/x/y/probe-chunk.sh"
+bash "$TMP/x/y/probe-chunk.sh" 0 >/dev/null 2>&1; rc=$?
+check "no work tree exits 1" test "$rc" -eq 1
 
 [[ $fails -eq 0 ]] && { echo "all passed"; exit 0; }
 echo "FAIL: $fails" >&2; exit 1

@@ -7,7 +7,8 @@
 # stream as ONE literal command (no pipes, redirects or $(...)):
 #   bash scripts/claudex/probe-chunk.sh 0
 #
-# Exit: 0 ok, 2 bad/missing argument, 3 k is past the end of the stream.
+# Exit: 0 ok, 1 no git work tree or an empty stream, 2 bad/missing argument,
+# 3 k is past the end of the stream.
 set -uo pipefail
 
 CHUNK_BYTES=100000
@@ -26,7 +27,16 @@ export LC_ALL=C
 # SIGPIPEs the producers, and cat fails on a tracked-but-deleted path.
 stream() { git ls-files -z docs scripts '*.md' | sort -z | xargs -0 cat 2>/dev/null || true; }
 
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "probe-chunk: not inside a git work tree, cannot list the stream" >&2
+  exit 1
+fi
+
 total=$(stream | wc -c)
+if (( total == 0 )); then
+  echo "probe-chunk: the stream is empty, nothing to chunk" >&2
+  exit 1
+fi
 start=$((k * CHUNK_BYTES))
 if (( start >= total )); then
   echo "probe-chunk: chunk $k is past the end (stream is $total bytes, last chunk is $(( (total - 1) / CHUNK_BYTES )))" >&2
