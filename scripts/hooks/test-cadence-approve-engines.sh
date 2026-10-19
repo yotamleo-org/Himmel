@@ -719,6 +719,14 @@ assert "6449 --whisper-model existing vault dir" ALLOW \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model real" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 --whisper-model=org/repo (joined form) -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model=evil/model" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model size name shadowed by a vault symlink -> refused" PASS \
+    "$(mkdir -p "$VAULT_FIXTURE/shadow" && ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/shadow/tiny" && decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}/shadow\" --whisper-model tiny" "$VAULT_FIXTURE_MIXED/shadow")")"
+# A cd into the checkout re-roots later relative args there, so a symlink in the checkout must not carry one out.
+ln -s "$OUTSIDE_FIXTURE" "$SPACED_ROOT/esc"
+assert "6449 cd into checkout + arg through a checkout symlink -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ABS}\" esc/notes" "$VAULT_FIXTURE")")"
+assert "6449 cd into checkout + plain relative arg still granted" ALLOW \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ABS}\" vault" "$VAULT_FIXTURE")")"
 # (5) bare python / python3 on a non-enumerated or relative script.
 assert "6449 bare python, no script" PASS "$(decide "$(j_bash "python")")"
 assert "6449 python3 non-enumerated script" PASS "$(decide "$(j_bash "python3 /tmp/evil.py vault")")"

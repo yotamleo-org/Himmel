@@ -472,6 +472,11 @@ arg_is_vault_safe() {
             path_is_under_session_cwd "$norm" || return 1
             path_is_physically_in_vault "$norm" ;;
         *)
+            # After an approved cd into the checkout the shell resolves this
+            # token there, so it must stay contained in that base too.
+            if [ -n "$NAV_ROOT_PHYS" ] && [ "$NAV_ROOT_PHYS" != "$SESSION_CWD_PHYS" ]; then
+                path_is_physically_in_vault "$NAV_ROOT_PHYS/$norm" "$NAV_ROOT_PHYS" || return 1
+            fi
             [ -n "$SESSION_CWD_PHYS" ] || return 0
             path_is_physically_in_vault "$SESSION_CWD_POSIX/$norm" ;;
     esac
@@ -482,7 +487,7 @@ arg_is_vault_safe() {
 # points out of it. Resolves the deepest EXISTING ancestor (an argument may name
 # a file the engine will create) and refuses when that cannot be resolved.
 path_is_physically_in_vault() {
-    local p="$1" rest="" d real
+    local p="$1" root="${2:-$SESSION_CWD_PHYS}" rest="" d real
     while [ ! -e "$p" ] && [ ! -L "$p" ]; do
         rest="/$(basename "$p")$rest"
         d=$(dirname "$p")
@@ -492,8 +497,8 @@ path_is_physically_in_vault() {
     real=$(realpath -- "$p" 2>/dev/null) || return 1 # swallow-ok: failure refuses the grant
     [ -n "$real" ] || return 1
     real="$real$rest"
-    [ "$real" = "$SESSION_CWD_PHYS" ] && return 0
-    case "$real" in "$SESSION_CWD_PHYS"/*) return 0 ;; esac
+    [ "$real" = "$root" ] && return 0
+    case "$real" in "$root"/*) return 0 ;; esac
     return 1
 }
 
@@ -506,7 +511,9 @@ whisper_model_is_safe() {
     norm=$(norm_path "$1")
     case "$norm" in
         tiny|tiny.en|base|base.en|small|small.en|medium|medium.en| \
-        large|large-v1|large-v2|large-v3) return 0 ;;
+        large|large-v1|large-v2|large-v3)
+            # A same-named path on disk wins over the built-in size name.
+            [ -e "$SESSION_CWD_POSIX/$norm" ] || [ -L "$SESSION_CWD_POSIX/$norm" ] || return 0 ;;
     esac
     arg_is_vault_safe "$norm" || return 1
     case "$norm" in
@@ -742,9 +749,13 @@ nav_target_is_contained() {
     esac
     real=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
     [ -n "$real" ] || return 1
-    [ -n "$SESSION_CWD_PHYS" ] && [ "$real" = "$SESSION_CWD_PHYS" ] && return 0
+    if [ -n "$SESSION_CWD_PHYS" ] && [ "$real" = "$SESSION_CWD_PHYS" ]; then
+        NAV_ROOT_PHYS=""
+        return 0
+    fi
     root=$(cd -P "$ENGINE_ROOT_POSIX" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
-    [ "$real" = "$root" ]
+    [ "$real" = "$root" ] || return 1
+    NAV_ROOT_PHYS="$real"
 }
 
 # Is this segment a READ-shaped `gh api repos/...` call (see
@@ -929,6 +940,7 @@ cwd_raw=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev
 SESSION_CWD_POSIX=""
 SESSION_CWD_MIXED=""
 SESSION_CWD_PHYS=""
+NAV_ROOT_PHYS=""
 if [ -n "$cwd_raw" ]; then
     # shellcheck disable=SC1003 # '\\' is tr's two-char escape for one backslash
     cwd_folded=$(printf '%s' "$cwd_raw" | tr '\\' '/')
