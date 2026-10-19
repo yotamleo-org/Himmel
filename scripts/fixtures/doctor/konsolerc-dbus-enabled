@@ -1,0 +1,8 @@
+[General]
+ConfigVersion=1
+
+[KonsoleWindow]
+EnableSecuritySensitiveDBusAPI=true
+
+[UiSettings]
+ColorScheme=

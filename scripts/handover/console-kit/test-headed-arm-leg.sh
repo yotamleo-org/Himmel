@@ -198,6 +198,16 @@ PAST=$(( $(date +%s) - 100 ))
 some_doc="$tmp/some-doc.md"
 fx_brief '# fixture doc' > "$some_doc"
 
+# Every headed launch below arms a bus-idle-waker; the real one would poll a
+# konsole that does not exist, so the wrapper's seam points at a recorder.
+waker_stub="$tmp/waker-stub"
+cat > "$waker_stub" <<'WAKER_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${WAKER_CALLS:-/dev/null}"
+WAKER_EOF
+chmod 755 "$waker_stub"
+export HEADED_ARM_LEG_WAKER="$waker_stub"
+
 # mk_launch_stubs <dir> <name> - konsole/pgrep/proc stubs, same shape
 # headed-arm.sh's own suite (test-headed-arm.sh) uses: konsole records its
 # FULL argv AND, filtered to the three non-secret guard vars (codex-1 review
@@ -4286,6 +4296,30 @@ rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profi
 check "leg-vm brief naming ubuntu_new: accepted" "$rc" "0"
 rc=0; out="$(HEADED_ARM_LEG_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "leg-impl is not subject to the VM-name check" "$rc" "0"
+
+# --- 46. one bus-idle-waker per headed leg, with that leg's --name, --service
+# and --pid. The konsole stub records its own pid, which headed-arm.sh backgrounds
+# as KPID; the waker stub records its argv.
+d46="$tmp/c46"; mk_launch_stubs "$d46" "HIMMEL-46-leg"; mkdir -p "$tmp/repo46"
+cat > "$d46/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/record"
+printf '%s' "$$" > "$(dirname "$0")/kpid"
+{ echo "recorded"; env | grep -E '^HEADED_ARM_WAKER=' || true; } > "$(dirname "$0")/env-record"
+: > "$(dirname "$0")/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$d46/konsole"
+rc=0
+# HEADED_ARM_UNAME=Linux pins the non-shim branch: on a real Darwin host headed-arm.sh skips the waker.
+HEADED_ARM_UNAME=Linux WAKER_CALLS="$d46/waker-calls" run_leg "$d46" "$tmp/repo46" "HIMMEL-46-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+n=0; while [ ! -s "$d46/waker-calls" ] && [ "$n" -lt 60 ]; do sleep 0.05; n=$((n+1)); done
+kpid46="$(cat "$d46/kpid" 2>/dev/null || true)"
+check "46a headed launch: exit 0" "$rc" "0"
+check "46b headed launch: exactly one waker started" "$(wc -l < "$d46/waker-calls" 2>/dev/null | tr -d '[:space:]')" "1"
+check "46c waker carries the leg's --name, --service, --session and --pid" "$(cat "$d46/waker-calls" 2>/dev/null)" "--name HIMMEL-46-leg --service org.kde.konsole-$kpid46 --session /Sessions/1 --pid $kpid46"
+contains "46d control: the konsole stub recorded its env" "$(cat "$d46/env-record" 2>/dev/null || true)" "recorded"
+not_contains "46d the waker path never reaches the leg's env" "$(cat "$d46/env-record" 2>/dev/null || true)" "HEADED_ARM_WAKER"
 
 # --- a leg runs under its own MemoryMax scope, so a runaway test
 # is killed alone instead of taking the station and every other leg with it.
