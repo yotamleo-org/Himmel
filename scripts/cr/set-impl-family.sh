@@ -3,7 +3,8 @@
 # clear-cr-marker.sh gate 3c can require a responder of ANOTHER family.
 #
 # Usage: set-impl-family.sh <family> [<branch>]
-#   family  claude | codex | hermes | ... (the first token of a critic's model slug)
+#   family  claude | codex | ... the underlying model that wrote the change (the
+#           first token of a critic's model slug), not a harness name like hermes
 #   branch  defaults to the current branch
 #
 # Writes <git-common-dir>/cr-impl-family/<branch>. No record = gate 3c is off.

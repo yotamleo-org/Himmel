@@ -82,8 +82,9 @@ pre-commit hooks, which fire for any harness that runs real git.
 | Cross-family review: a responder outside the implementer's family (gate 3c) | opt-in per branch | same | same |
 
 Gate 3c reads `<git-common-dir>/cr-impl-family/<branch>`, written by
-`bash scripts/cr/set-impl-family.sh <family>` (for example `hermes` or
-`codex`). The family of a critic is the first token of its model slug
+`bash scripts/cr/set-impl-family.sh <family>`. Record the family of the
+underlying model that wrote the change (`codex`, `claude`), not the harness
+name: a hermes run on a codex model is `codex`. The family of a critic is the first token of its model slug
 (`claude-floor` is `claude`). With no record the gate is off; an empty or
 unreadable record refuses (exit 14). A plain `git push` is deliberately not
 refused by the hermes guard: the marker is the push's own output and every fix

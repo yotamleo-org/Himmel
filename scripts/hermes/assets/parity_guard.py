@@ -786,15 +786,33 @@ def _common_git_dir(git_path: str) -> str:
     return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
 
 
-_PR_HEAD = re.compile(r"(?:^|\s)(?:--head[=\s]\s*|-H\s*)['\"]?([^\s'\"]+)")
-
-
 def _pr_head_branch(cmd: str) -> str:
-    """The branch named by `--head`/`-H` after `gh pr create` (`owner:branch`
-    reduced to `branch`), else ""."""
+    """The branch named by `--head`/`-H` among the real arguments of
+    `gh pr create` (`owner:branch` reduced to `branch`), else ""."""
     m = GH_PR_CREATE.search(cmd)
-    h = _PR_HEAD.search(cmd[m.end():]) if m else None
-    return h.group(1).rsplit(":", 1)[-1] if h else ""
+    if not m:
+        return ""
+    lex = shlex.shlex(cmd[m.end():], posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    toks = []
+    try:
+        for t in lex:
+            if t and all(c in "();<>|&" for c in t):
+                break
+            toks.append(t)
+    except ValueError:
+        return ""
+    for i, t in enumerate(toks):
+        val = ""
+        if t in ("--head", "-H"):
+            val = toks[i + 1] if i + 1 < len(toks) else ""
+        elif t.startswith("--head="):
+            val = t[len("--head="):]
+        elif t.startswith("-H") and not t.startswith("--"):
+            val = t[2:]
+        if val:
+            return val.rsplit(":", 1)[-1]
+    return ""
 
 
 def _pending_cr_reason(start: str, head_branch: str = ""):
