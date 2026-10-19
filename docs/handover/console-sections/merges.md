@@ -58,5 +58,6 @@ flag, or add `--keep-sha <sha>`; `--dry-run` first to see the count) — it
 cancels every non-completed run on the repo except those on the kept heads,
 and prints `cancelled=<n> failed=<n> kept=<list>`. A keep is required; `--all`
 is the explicit way to keep nothing. A keep that cannot be resolved refuses
-before anything is cancelled. Never hand-roll a `gh run cancel` loop: the
+before anything is cancelled. A listing that fills `CANCEL_RUNS_LIMIT` (500)
+exits 1 after cancelling what it saw: re-run until it exits 0. Never hand-roll a `gh run cancel` loop: the
 classifier denies it as Interfere With Workloads.

@@ -83,9 +83,12 @@ check "dry-run cancels nothing" "" "$(cancelled)"
 has "dry-run reports what it would cancel" "^cancelled=0 failed=0 kept=$KEEP would-cancel=3\$" "$out"
 
 out="$(run --keep-sha "$KEEP")"; rc=$?
+check "keep-sha exits 0" "0" "$rc"
 check "keep-sha cancels the same 3 runs" "103 104 105 " "$(cancelled)"
+has "keep-sha summary names the kept head" "^cancelled=3 failed=0 kept=$KEEP\$" "$out"
 
 out="$(run --keep-pr 3221 --keep-sha "$KEEP2")"; rc=$?
+check "repeated keeps exit 0" "0" "$rc"
 check "repeated keeps union (a second head with no runs changes nothing)" "103 104 105 " "$(cancelled)"
 has "summary lists both kept heads" "^cancelled=3 failed=0 kept=$KEEP,$KEEP2\$" "$out"
 
@@ -115,6 +118,7 @@ check "the other runs still cancel" "103 105 " "$(cancelled)"
 has "summary counts the failure" "^cancelled=2 failed=1 kept=$KEEP\$" "$out"
 
 out="$(STUB_DUP=1 run --keep-pr 3221)"; rc=$?
+check "a duplicated run exits 0" "0" "$rc"
 check "a run listed under two statuses is cancelled once" "103 104 105 " "$(cancelled)"
 has "a duplicated run counts once" "^cancelled=3 failed=0 kept=$KEEP\$" "$out"
 
