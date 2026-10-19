@@ -1244,6 +1244,31 @@ _gh_api() {
     return 0
 }
 
+# _gh_cigcp J — true only for the CI_GCP kill switch: a bare gh (no env prefix,
+# wrapper or computed word) running `variable set CI_GCP` with one --body of
+# on|off and at most one -R/--repo naming this repository, nothing else.
+_gh_cigcp() {
+    local j=$1 n=${#_gc_w[@]} w pos='' body='' repo=''
+    [ "$j" = 1 ] || return 1
+    while [ "$j" -lt "$n" ]; do
+        [ "${_gc_k[j]}" = W ] || return 1
+        w=${_gc_w[j]}
+        case "$w" in
+            -r|--repo) [ -z "$repo" ] || return 1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; repo=${_gc_w[j]} ;;
+            --repo=*) [ -z "$repo" ] || return 1; repo=${w#--repo=} ;;
+            -b|--body) [ -z "$body" ] || return 1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; body=${_gc_w[j]} ;;
+            --body=*) [ -z "$body" ] || return 1; body=${w#--body=} ;;
+            -*) return 1 ;;
+            *) pos="$pos $w" ;;
+        esac
+        j=$((j + 1))
+    done
+    [ "$pos" = " variable set ci_gcp" ] || return 1
+    case "$body" in on|off) ;; *) return 1 ;; esac
+    case "$repo" in ''|yotamleo/himmel) ;; *) return 1 ;; esac
+    return 0
+}
+
 # _gh_inv J — one gh invocation whose first argument is word J.
 _gh_inv() {
     local j=$1 n=${#_gc_w[@]} w p1='' p2='' np=0 ai=0 e
@@ -1267,7 +1292,12 @@ _gh_inv() {
     done
     case "$p1" in
         api) _gh_api "$ai" ;;
-        secret|variable) case "$p2" in set|delete|remove) deny "gh $p1 $p2" ;; esac ;;
+        secret|variable)
+            case "$p2" in
+                set|delete|remove)
+                    [ "$p1" = variable ] && [ "$p2" = set ] && _gh_cigcp "$1" && return 0
+                    deny "gh $p1 $p2" ;;
+            esac ;;
         workflow) case "$p2" in disable|enable) deny "gh workflow $p2" ;; esac ;;
         repo) case "$p2" in delete|archive|unarchive|rename|transfer|edit) deny "gh repo $p2" ;; esac ;;
         release) case "$p2" in delete|delete-asset) deny "gh release $p2" ;; esac ;;

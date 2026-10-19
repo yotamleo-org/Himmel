@@ -1579,6 +1579,49 @@ for c in \
     assert_rc "5275 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
 done
 
+# CI_GCP kill switch: exactly the on/off literal is allowed, nothing else.
+for c in \
+    'gh variable set CI_GCP --body off' \
+    'gh variable set CI_GCP --body on' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP -R yotamleo/Himmel --body on' \
+    'gh variable set CI_GCP --body=off --repo yotamleo/Himmel' \
+    'gh -R yotamleo/Himmel variable set CI_GCP -b off'; do
+    assert_rc "6431 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
+done
+# shellcheck disable=SC2016  # literal $VAR in a payload is the point
+for c in \
+    'gh variable set CI_GCP_X --body off' \
+    'gh variable set OTHER --body off' \
+    'gh variable set CI_GCP --body maybe' \
+    'gh variable set CI_GCP --body offf' \
+    'gh variable set CI_GCP' \
+    'gh variable set CI_GCP --body off --body on' \
+    'gh variable set CI_GCP --body off --env-file x' \
+    'gh variable set CI_GCP --body off --org o' \
+    'gh variable set CI_GCP --body off -R other/repo' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel -R other/repo' \
+    'gh variable set CI_GCP CI_GCP2 --body off' \
+    'gh variable delete CI_GCP' \
+    'gh variable remove CI_GCP' \
+    'gh secret set CI_GCP --body off' \
+    'gh variable set CI_GCP --body off && gh secret set A' \
+    'gh variable set CI_GCP --body off; gh variable set OTHER --body 1' \
+    'gh variable set CI_GCP --body $(echo off)' \
+    'gh variable set CI_GCP --body "$X"' \
+    'gh variable set CI_GCP --body off -R "$R"' \
+    'gh variable set "$N" --body off' \
+    'gh variable set CI_GCP --body `echo off`' \
+    'GH_REPO=other/repo gh variable set CI_GCP --body off' \
+    'GH_TOKEN=x gh variable set CI_GCP --body off' \
+    'env GH_REPO=other/repo gh variable set CI_GCP --body off' \
+    'command gh variable set CI_GCP --body off' \
+    'sudo gh variable set CI_GCP --body off' \
+    'bash -c "gh variable set OTHER --body off"' \
+    'gh api -X PATCH repos/yotamleo/Himmel/actions/variables/CI_GCP -f value=off'; do
+    assert_rc "6431 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+
 # Remote exec beyond curl|sh.
 # shellcheck disable=SC2016  # payloads are literal command text
 for c in \
