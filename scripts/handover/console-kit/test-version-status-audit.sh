@@ -107,5 +107,20 @@ printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do printf "%%s\\tt\\tb\\n" "
 out="$(VSA_GH_CMD="$WORK/gh-many" bash "$SUT" --mirror "$M" 2>&1)"
 has "a full 200-PR page is reported as unknown coverage" "$out" "200-PR cap reached"
 
+# a mirror file without front matter among parsable ones fails non-zero
+S="$WORK/skip/HIMMEL"; mkdir -p "$S"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/skip/HIMMEL.versions.tsv"
+cp "$M/HIMMEL-6.md" "$S/"; printf 'no front matter\n' > "$S/HIMMEL-1.md"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$S" 2>&1)"; rc=$?
+has "a skipped mirror file is warned about" "$out" "1 mirror file(s) lack front matter"
+[ "$rc" = 3 ] && pass "a skipped mirror file exits 3" || fail "a skipped mirror file exits 3 (rc=$rc)"
+
+# an unreadable leg manifest never yields RESET for an unowned started row
+printf 'not json' > "$WORK/fleet-bad.json"
+out="$(run --legs-from "$WORK/fleet-bad.json")"; rc=$?
+has "unreadable manifest is reported" "$out" "ownership unknown"
+has "unowned started row is UNKNOWN, not RESET" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
+lacks "no LATER-VERSION row prints RESET with an unreadable manifest" "$out" "v1.0.2	none	RESET"
+[ "$rc" = 3 ] && pass "unreadable manifest exits 3" || fail "unreadable manifest exits 3 (rc=$rc)"
+
 printf '%s fail(s)\n' "$fails"
 [ "$fails" = 0 ]

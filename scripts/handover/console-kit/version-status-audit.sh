@@ -24,8 +24,9 @@
 #
 # Env (tests): VSA_GH_CMD replaces `gh`.
 #
-# Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 3 nothing audited
-# (mirror unreadable or empty, versions file missing).
+# Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 3 not fully audited
+# (mirror unreadable or empty, versions file missing, a mirror file without
+# front matter, or the leg manifest unreadable: its unowned rows print UNKNOWN).
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
 set -u
 mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; legs_from="${LEGS_FROM:-}"; owners=""
@@ -78,6 +79,7 @@ for k in os.environ.get('VSA_OWNERS', '').split():
     owner.setdefault(k, 'leg:' + k)
 legs_from = os.environ.get('VSA_LEGS_FROM', '')
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)\b')
+legs_unknown = legs_from != '' and not os.path.isfile(legs_from)  # manifest named but unreadable: ownership coverage unknown
 if legs_from and os.path.isfile(legs_from):
     try:
         for leg in json.load(open(legs_from)).get('legs', []):
@@ -92,8 +94,10 @@ if legs_from and os.path.isfile(legs_from):
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
                 owner.setdefault(k, 'leg:%s%s' % (leg.get('label', '?'), unverified))
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError, AttributeError):
+        legs_unknown = True
+if legs_unknown:
+    print('version-status-audit: ownership unknown (leg manifest unreadable); unowned rows print UNKNOWN, not RESET')
 gh = os.environ.get('VSA_GH_CMD', 'gh')
 try:
     out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName',
@@ -108,10 +112,11 @@ try:
 except (OSError, subprocess.SubprocessError):
     print('version-status-audit: open PRs unknown (gh read failed); OWNED rows may be missing')
 
-rows, audited = [], 0
+rows, audited, skipped = [], 0, 0
 for n in names:
     m = re.match(r'^---\n(.*?)\n---\n', open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read(), re.S)
     if not m:
+        skipped += 1
         continue
     audited += 1
     fm = m.group(1)
@@ -131,7 +136,7 @@ for n in names:
         cls = 'NO-VERSION'
     if cls:
         own = owner.get(key) if cls != 'RELEASED-NOT-DONE' else None
-        rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else 'RESET'))
+        rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if legs_unknown and cls != 'RELEASED-NOT-DONE' else 'RESET')))
 
 if not audited:
     print('version-status-audit: no ticket in %s has front matter' % mirror, file=sys.stderr); sys.exit(3)
@@ -139,5 +144,9 @@ rows.sort(key=lambda r: (r[0], int(r[1].split('-')[1])))
 for r in rows:
     print('\t'.join(r))
 print('vmismatch=%d' % len(rows))
+if skipped:
+    print('version-status-audit: %d mirror file(s) lack front matter and were not audited' % skipped, file=sys.stderr)
+if skipped or legs_unknown:
+    sys.exit(3)
 sys.exit(1 if any(r[5] == 'RESET' for r in rows) else 0)
 PY
