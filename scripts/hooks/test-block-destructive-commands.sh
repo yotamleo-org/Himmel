@@ -1585,7 +1585,9 @@ for c in \
     'gh variable set CI_GCP --body on -R yotamleo/Himmel' \
     'gh variable set CI_GCP -R yotamleo/Himmel --body on' \
     'gh variable set CI_GCP --body=off --repo yotamleo/Himmel' \
-    'gh -R yotamleo/Himmel variable set CI_GCP -b off'; do
+    'gh -R yotamleo/Himmel variable set CI_GCP -b off' \
+    'gh variable set CI_GCP --body off -R yotamleo-org/Himmel' \
+    'gh variable set CI_GCP --body=on --repo=yotamleo-org/Himmel'; do
     assert_rc "6431 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
 done
 # shellcheck disable=SC2016  # literal $VAR in a payload is the point
@@ -1607,6 +1609,15 @@ for c in \
     'gh -r yotamleo/Himmel variable set CI_GCP --body on' \
     'gh variable set CI_GCP --body on --REPO yotamleo/Himmel' \
     'gh variable set CI_GCP --body on --Repo=yotamleo/Himmel' \
+    "gh variable set CI_GCP --body on '-r' yotamleo/Himmel" \
+    'gh variable set CI_GCP --body on "-r" yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on -"r" yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on \-r yotamleo/Himmel' \
+    "gh variable set CI_GCP --body on --'repo' yotamleo/Himmel -r x/y" \
+    'gh variable set CI_GCP --body on -R yotamleo-org/Himmel2' \
+    'gh variable set CI_GCP --body on -R yotamleo-org/other' \
+    'gh variable set CI_GCP --body on -R yotamleo-org/Himmel -R other/repo' \
+    'gh variable set CI_GCP --body on -R evil-yotamleo-org/Himmel' \
     'gh variable set CI_GCP CI_GCP2 --body off -R yotamleo/Himmel' \
     'gh variable delete CI_GCP -R yotamleo/Himmel' \
     'gh variable remove CI_GCP -R yotamleo/Himmel' \
