@@ -510,6 +510,60 @@ rc=$(printf '%s' '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","
 assert_rc "registry-file path: block getJiraIssue (jira not shadowed by confluence)" 2 "$rc"
 
 # ============================================================================
+# 3b. LIVE ATLASSIAN CONNECTOR GAPS
+# ============================================================================
+
+echo ""
+echo "=== Live Atlassian connector gaps ==="
+
+LIVE=mcp__claude_ai_Atlassian_MCP__
+
+# Gap 1 — the code defaults carry the live prefix: a missing/malformed
+# registry must still block live createJiraIssue and live Confluence.
+rc=$(run_case_conf "{\"tool_name\":\"${LIVE}createJiraIssue\",\"tool_input\":{}}")
+assert_rc "code defaults: block live createJiraIssue" 2 "$rc"
+rc=$(run_case_conf "{\"tool_name\":\"${LIVE}getConfluenceContent\",\"tool_input\":{}}")
+assert_rc "code defaults: block live getConfluenceContent" 2 "$rc"
+rc=$(printf '%s' "{\"tool_name\":\"${LIVE}createJiraIssue\",\"tool_input\":{}}" \
+    | env "BACKENDS_REGISTRY=$REG_BAD" "JIRA_CLI=$STUB_FULL" bash "$HOOK" >/dev/null 2>&1; echo "$?")
+assert_rc "malformed registry: block live createJiraIssue" 2 "$rc"
+
+# Gap 2 — live comment + live Confluence tools route to the CLI, through the
+# shipped scripts/backends.json (the registry-file path production runs).
+rc=$(run_case "{\"tool_name\":\"${LIVE}addOrEditJiraIssueComment\",\"tool_input\":{}}")
+assert_rc "block live addOrEditJiraIssueComment" 2 "$rc"
+assert_stderr_contains "live comment names the jira comment replacement" \
+    "{\"tool_name\":\"${LIVE}addOrEditJiraIssueComment\",\"tool_input\":{}}" \
+    'jira/dist/index.js comment'
+for tool in getConfluenceContent createConfluenceContent updateConfluenceContent searchConfluence; do
+    rc=$(run_case "{\"tool_name\":\"${LIVE}${tool}\",\"tool_input\":{}}")
+    assert_rc "block live $tool" 2 "$rc"
+done
+rc=$(run_case "{\"tool_name\":\"${LIVE}getConfluenceContent\",\"tool_input\":{}}" "$STUB_FULL" '' "$STUB_CONF_REDUCED")
+assert_rc "allow live getConfluenceContent when confluence CLI lacks 'page get'" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}getConfluenceContent\",\"tool_input\":{}}" "$STUB_FULL" 'MCP_CONFLUENCE_OK=1')
+assert_rc "bypass live getConfluenceContent with MCP_CONFLUENCE_OK" 0 "$rc"
+
+# Gap 3 — executeWrite/executeRead/executeDestructive route on the tool name
+# they carry, not on the wrapper name.
+for wrapper in executeWrite executeRead executeDestructive; do
+    rc=$(run_case "{\"tool_name\":\"${LIVE}${wrapper}\",\"tool_input\":{\"name\":\"createJiraIssue\",\"inputs\":{}}}")
+    assert_rc "block ${wrapper}{name:createJiraIssue}" 2 "$rc"
+done
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"addOrEditJiraIssueComment\"}}")
+assert_rc "block executeWrite{name:addOrEditJiraIssueComment}" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"getConfluenceContent\"}}")
+assert_rc "block executeRead{name:getConfluenceContent}" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"lookupJiraAccountId\"}}")
+assert_rc "allow executeWrite{name:lookupJiraAccountId} (no CLI equivalent)" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}")
+assert_rc "allow executeWrite with no name" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":42}}")
+assert_rc "allow executeWrite with non-string name" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"createJiraIssue\"}}" "$STUB_REDUCED")
+assert_rc "allow executeWrite{name:createJiraIssue} when CLI lacks create" 0 "$rc"
+
+# ============================================================================
 # 4. VERDICT EQUALITY ACROSS CHECKOUTS
 # ============================================================================
 #
