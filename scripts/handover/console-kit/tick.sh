@@ -2065,7 +2065,7 @@ else
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$stall_tail$station_tail$spare_tail"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
-        *) printf 'ACTION versionless-done=%s: bash %s/versionless-done.sh --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE" ;;
+        *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;
     esac
 fi
 if [ "$emit_fp" -eq 1 ]; then
