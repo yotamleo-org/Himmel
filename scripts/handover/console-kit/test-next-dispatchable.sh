@@ -423,7 +423,8 @@ DOC14="$WORK/console14.md"
 printf '# console\n\n## Live state\n\n- priority: 401 402 403 404 405 406\n' > "$DOC14"
 cat > "$WORK/classify14" <<'EOF'
 #!/usr/bin/env bash
-printf 'S\n' >> "$CLASSIFY_LOG"; sleep 1
+printf 'S\n' >> "$CLASSIFY_LOG"
+for _ in $(seq 100); do [ "$(grep -c '^S$' "$CLASSIFY_LOG")" -ge 2 ] && break; sleep 0.1; done
 for k in "$@"; do
     printf 'K\n' >> "$CLASSIFY_LOG"
     if [ "$k" = HIMMEL-401 ] && [ -f "$REFUSE_401" ]; then printf '%s\tBLOCKED\tstub\n' "$k"; else printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; fi
@@ -437,7 +438,7 @@ o14="$(run14)"
 keys14="$(grep -c '^K$' "$CLASSIFY_LOG")"; calls14="$(grep -c '^S$' "$CLASSIFY_LOG")"
 # in-flight peak: S raises, E lowers
 peak14="$(awk '/^S$/{c++; if(c>m)m=c} /^E$/{c--} END{print m+0}' "$CLASSIFY_LOG")"
-[ "$keys14" -le 4 ] && pass "classify sees at most 2*--top keys ($keys14)" || fail "classify saw $keys14 keys for --top 2"
+[ "$keys14" -ge 2 ] && [ "$keys14" -le 4 ] && pass "classify sees 2..2*--top keys ($keys14)" || fail "classify saw $keys14 keys for --top 2"
 [ "$calls14" -eq 2 ] && [ "$peak14" -eq 2 ] && pass "classify makes at most 2 calls, at most 2 in flight (calls=$calls14 peak=$peak14)" || fail "classify calls=$calls14 peak=$peak14"
 [ "$o14" = "HIMMEL-401 HIMMEL-402 " ] && pass "parallel classify keeps rank order" || fail "rank order wrong: $o14"
 : > "$REFUSE_401"; : > "$CLASSIFY_LOG"
