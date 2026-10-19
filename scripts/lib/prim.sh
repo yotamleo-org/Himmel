@@ -8,6 +8,8 @@ prim_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)" || return 1
 # atomic_write FILE: stdin is published by a same-directory rename. Readers
 # see the old or new file, never an incomplete write. Existing permissions are
 # replaced by mktemp's private permissions; this is not an fsync/durability API.
+# A symlink FILE is itself replaced by a regular file, its referent untouched;
+# a symlink to a directory is refused like a directory.
 atomic_write() (
     [ "$#" -eq 1 ] && [ -n "$1" ] || exit 2
     local prim_file="$1" prim_dir prim_temp
@@ -33,6 +35,10 @@ atomic_write() (
 # needing a deadline wrap the call in timeout. Do not mix backends for one path;
 # remove a leftover flock file only with all users stopped before switching.
 # Commands must not daemonize; SIGKILL can leave a fallback file for recovery.
+# An unreadable record fails closed like a dead owner. Descriptor 9 is reserved
+# for the flock backend and is closed for the command. Nesting distinct locks
+# works; re-entering a lock an enclosing with_lock holds deadlocks on both
+# backends (the lock is not reentrant), so bound such calls with timeout.
 with_lock() (
     [ "$#" -ge 2 ] && [ -n "$1" ] || exit 2
     local prim_lock="$1" prim_pid prim_owner prim_probe prim_current
@@ -41,12 +47,14 @@ with_lock() (
     if command -v flock >/dev/null 2>&1; then
         exec 9>> "$prim_lock" || exit 1
         flock -x 9 || exit "$?"
-        "$@"
+        # Close 9 for the command so a child it leaves behind cannot keep the lock.
+        "$@" 9>&-
         exit "$?"
     fi
 
     # $$ does not change in a bash subshell; a child's PPID does, even on 3.2.
-    prim_pid=$(sh -c 'printf "%s\n" "$PPID"') || exit 1
+    # exec: bash 3.2 may fork the substitution's sh, whose PPID is then a dead shell.
+    prim_pid=$(exec sh -c 'printf "%s\n" "$PPID"') || exit 1
     while ! ( set -C; printf '%s\n' "$prim_pid" > "$prim_lock" ) 2>/dev/null; do
         if [ ! -f "$prim_lock" ]; then
             [ ! -d "$prim_lock" ] && [ ! -L "$prim_lock" ] || exit 1
@@ -55,6 +63,11 @@ with_lock() (
             prim_probe=$(mktemp "${prim_lock%/*}/.prim-lock.XXXXXX") || exit 1
             rm -f -- "$prim_probe" || exit 1
             continue
+        fi
+        if [ ! -r "$prim_lock" ]; then
+            [ -e "$prim_lock" ] || continue
+            printf 'with_lock: unreadable lock record %s; explicit recovery required\n' "$prim_lock" >&2
+            exit 1
         fi
         prim_owner=''
         IFS= read -r prim_owner 2>/dev/null < "$prim_lock" || prim_owner=''
