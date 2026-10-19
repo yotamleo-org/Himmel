@@ -19,6 +19,7 @@ check() { local n="$1"; shift; if "$@"; then pass "$n"; else fail "$n"; fi; }
 size_is() { [[ "$(wc -c < "$1")" -eq "$2" ]]; } # read-sink-ok: test-local fixture path
 head_eq() { head -c "$1" "$TMP/ref" | cmp -s - "$2"; } # read-sink-ok: byte count, not a path
 tail_eq() { tail -c "$1" "$TMP/ref" | cmp -s - "$2"; } # read-sink-ok: byte count, not a path
+emit() { bash "$CHUNK" "$1" > "$2"; }
 exits_with() { local want="$1" got; shift; bash "$CHUNK" "$@" >/dev/null 2>&1; got=$?; [[ "$got" -eq "$want" ]]; }
 
 TMP="$(mktemp -d -t probe-chunk.XXXXXX)" || exit 1
@@ -33,21 +34,25 @@ total=$(wc -c < "$TMP/ref")
 last=$(( (total - 1) / 100000 ))
 
 echo "test: chunk 0 is 100000 bytes and the reference head"
-bash "$CHUNK" 0 > "$TMP/c0"
+check "chunk 0 exits 0" emit 0 "$TMP/c0"
 check "chunk 0 size" size_is "$TMP/c0" 100000
 check "chunk 0 matches reference" head_eq 100000 "$TMP/c0"
 
 echo "test: determinism"
-bash "$CHUNK" 1 > "$TMP/c1a"; bash "$CHUNK" 1 > "$TMP/c1b"
+check "chunk 1 exits 0 (run a)" emit 1 "$TMP/c1a"
+check "chunk 1 exits 0 (run b)" emit 1 "$TMP/c1b"
 check "chunk 1 identical twice" cmp -s "$TMP/c1a" "$TMP/c1b"
 
 echo "test: first $CONCAT_N chunks concatenate to the reference prefix"
 : > "$TMP/cat"
-for ((k = 0; k < CONCAT_N; k++)); do bash "$CHUNK" "$k" >> "$TMP/cat"; done
+for ((k = 0; k < CONCAT_N; k++)); do
+  check "concat chunk $k exits 0" emit "$k" "$TMP/part"
+  cat "$TMP/part" >> "$TMP/cat"
+done
 check "concat prefix" head_eq $((CONCAT_N * 100000)) "$TMP/cat"
 
 echo "test: last chunk is the short remainder"
-bash "$CHUNK" "$last" > "$TMP/cl"
+check "last chunk exits 0" emit "$last" "$TMP/cl"
 want=$(( total - last * 100000 ))
 check "last chunk size $want" size_is "$TMP/cl" "$want"
 check "last chunk matches reference" tail_eq "$want" "$TMP/cl"
