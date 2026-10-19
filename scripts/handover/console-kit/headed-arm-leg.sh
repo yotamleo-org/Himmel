@@ -1455,6 +1455,8 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # instead of the registry's declared value. Mirrored rather than imported:
 # run.ts is TS/bun-only and off the leg's Do-not list to edit; jq is already
 # a direct dependency of this file (the --profile settings merge below).
+# Precedence: an explicit CLAUDE_CODE_EFFORT_LEVEL, then a valid LEG_EFFORT,
+# then the registry row; the winner and its source print as one stderr line.
 # An explicit CLAUDE_CODE_EFFORT_LEVEL from the LAUNCHING shell always wins
 # over the registry - checked here, before the lookup, because
 # leg_propagate_env's own `export` would otherwise silently overwrite it with
@@ -1463,9 +1465,19 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # no-op), so it reaches HEADED_ARM_LAUNCHER_ENV's token list and shows up in
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
+    EFFORT_SOURCE=""
     if [ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ]; then
+        EFFORT_SOURCE="CLAUDE_CODE_EFFORT_LEVEL"
         leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$CLAUDE_CODE_EFFORT_LEVEL"
     else
+        case "${LEG_EFFORT:-}" in
+            low | medium | high | xhigh | max)
+                EFFORT_SOURCE="LEG_EFFORT"
+                leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$LEG_EFFORT"
+                ;;
+        esac
+    fi
+    if [ -z "$EFFORT_SOURCE" ]; then
         LANES_JSON="${HEADED_ARM_LEG_LANES_JSON:-$HERE/../../lanes/lanes.json}"
         if [ -f "$LANES_JSON" ]; then
             NATIVE_EFFORT="$(jq -r --arg model "$MODEL" '
@@ -1475,11 +1487,13 @@ if [ "$LANE" = "native" ]; then
             ' "$LANES_JSON" 2>/dev/null)"
             case "$NATIVE_EFFORT" in
                 low | medium | high | xhigh | max)
+                    EFFORT_SOURCE="lanes.json"
                     leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$NATIVE_EFFORT"
                     ;;
             esac
         fi
     fi
+    [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$CLAUDE_CODE_EFFORT_LEVEL source=$EFFORT_SOURCE" >&2
 fi
 
 # the leg's own bank-preflight reads CADENCE_BANK_LANE before
