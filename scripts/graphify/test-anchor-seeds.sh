@@ -97,7 +97,7 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 out="$(run query "how does go.sh write a GO file")"; rc=$?
 calls="$(cat "$T/calls")"
 order="$(grep '^NODE ' <<<"$out" | sed 's/^NODE //; s/ \[src=.*//' | tr '\n' '|')"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --budget 4000" <<<"$calls" \
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --seed deferred --budget 4000" <<<"$calls" \
   && grep -qx -- "query how does go.sh write a GO file --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
   pass "A5 two graphify calls, half the budget each"
 else fail "A5 rc=$rc calls='$calls'"; fi
@@ -114,16 +114,16 @@ calls="$(cat "$T/calls")"
 if [ "$calls" = "query how does go.sh write a GO file --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
 else fail "A6 calls='$calls'"; fi
 
-# A7: a question naming nothing runs exactly as before: one call, the caller's arguments.
-run query "how do a console and a leg relate" >/dev/null
+# A7: a question naming nothing, and matching nothing semantically, runs exactly as before: one call, the caller's arguments.
+run query "how do planets orbit" >/dev/null
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how do a console and a leg relate --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
+if [ "$calls" = "query how do planets orbit --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
 else fail "A7 calls='$calls'"; fi
 
 # A9: a budget with a leading zero is decimal, not octal: both halves still run.
 run query "how does go.sh write a GO file" --budget 0800 >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --budget 400" <<<"$calls"; then
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --seed deferred --budget 400" <<<"$calls"; then
   pass "A9 --budget 0800 halves to 400"
 else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
 

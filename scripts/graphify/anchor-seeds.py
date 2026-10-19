@@ -19,8 +19,8 @@ question asked about. leg-graph.sh uses the two verbs below to fix that from out
       the caller prints the keyword answer alone.
 
 Fails open: an unreadable graph prints no seeds and says so on stderr.
-ponytail: names only, not meaning; a question with no file or identifier keeps graphify's own
-seeding (the HIMMEL-6143 follow-up on semantic retrieval is the upgrade path).
+ponytail: names only, not meaning; a question with no file or identifier is seeded by
+semantic-seeds.py beside these anchors.
 """
 import json
 import re
