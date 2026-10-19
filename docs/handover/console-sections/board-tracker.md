@@ -72,3 +72,9 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     it first, exactly as for `board:`. The vault-map cache refreshes
     incrementally (only keys that are missing or older than 7 days), so a render
     is cheap.
+
+- **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh`
+  lists started tickets outside the active version, open tickets in a released
+  version and versionless started Tasks, Stories and Bugs (OWNED = a live leg or
+  open PR holds it, RESET = move it to To Do with a reason comment). Run it after
+  a version cut; expect `vmismatch=0`.
