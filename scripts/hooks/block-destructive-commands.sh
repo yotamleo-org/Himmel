@@ -1246,7 +1246,8 @@ _gh_api() {
 
 # _gh_cigcp J — true only for the CI_GCP kill switch: a bare gh (no env prefix,
 # wrapper or computed word) running `variable set CI_GCP` with one --body of
-# on|off and at most one -R/--repo naming this repository, nothing else.
+# on|off and exactly one -R/--repo naming this repository (an omitted repo
+# would follow GH_REPO or the checkout), nothing else.
 _gh_cigcp() {
     local j=$1 n=${#_gc_w[@]} w pos='' body='' repo=''
     [ "$j" = 1 ] || return 1
@@ -1265,7 +1266,7 @@ _gh_cigcp() {
     done
     [ "$pos" = " variable set ci_gcp" ] || return 1
     case "$body" in on|off) ;; *) return 1 ;; esac
-    case "$repo" in ''|yotamleo/himmel) ;; *) return 1 ;; esac
+    [ "$repo" = yotamleo/himmel ] || return 1
     return 0
 }
 

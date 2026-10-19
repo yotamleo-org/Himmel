@@ -1581,9 +1581,8 @@ done
 
 # CI_GCP kill switch: exactly the on/off literal is allowed, nothing else.
 for c in \
-    'gh variable set CI_GCP --body off' \
-    'gh variable set CI_GCP --body on' \
     'gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body on -R yotamleo/Himmel' \
     'gh variable set CI_GCP -R yotamleo/Himmel --body on' \
     'gh variable set CI_GCP --body=off --repo yotamleo/Himmel' \
     'gh -R yotamleo/Himmel variable set CI_GCP -b off'; do
@@ -1591,7 +1590,9 @@ for c in \
 done
 # shellcheck disable=SC2016  # literal $VAR in a payload is the point
 for c in \
-    'gh variable set CI_GCP_X --body off' \
+    'gh variable set CI_GCP --body off' \
+    'gh variable set CI_GCP --body on' \
+    'gh variable set CI_GCP_X --body off -R yotamleo/Himmel' \
     'gh variable set OTHER --body off' \
     'gh variable set CI_GCP --body maybe' \
     'gh variable set CI_GCP --body offf' \
