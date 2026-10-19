@@ -243,7 +243,7 @@ fallback_owner_is_live_parent() {
     local rc
     # shellcheck disable=SC2016 # The child shell expands its positional arguments.
     PATH="$T/bin" with_lock "$T/live.lock" "$BASH_BIN" -c \
-        'IFS= read -r o < "$1" && [ "$o" = "$PPID" ] && kill -0 "$o"' _ "$T/live.lock"
+        'IFS= read -r o < "$1" && [ "$o" = "$PPID" ] && kill -0 "$o"' _ "$T/live.lock" # read-sink-ok: test-owned fixture lock under $T
     rc=$?
     [ "$rc" -eq 0 ] && [ ! -e "$T/live.lock" ]
 }
@@ -292,7 +292,7 @@ lock_not_held_by_children() {
     # A background child must not keep the lock after with_lock returns.
     # shellcheck disable=SC2016 # Expansion belongs to the child shell.
     "$TIMEOUT" 8 "$BASH_BIN" -c '
-        . "$1"; [ -z "$2" ] || PATH="$2"
+        . "$1"; [ -z "$2" ] || PATH="$2" # read-sink-ok: test-owned library path from the harness
         with_lock "$3" "$4" -c "sleep 4 & exit 0" || exit 1
         "$5" 2 "$4" -c ". \"\$1\"; with_lock \"\$2\" true" _ "$1" "$3"
     ' _ "$LIB" "$path_override" "$T/child-held-$tag.lock" "$BASH_BIN" "$TIMEOUT"
@@ -304,7 +304,7 @@ lock_nested_distinct() {
     local rc path_override="$1" tag=fl; [ -z "$1" ] || tag=fb
     # shellcheck disable=SC2016 # Expansion belongs to the child shell.
     "$TIMEOUT" 5 "$BASH_BIN" -c '
-        . "$1"; [ -z "$2" ] || PATH="$2"
+        . "$1"; [ -z "$2" ] || PATH="$2" # read-sink-ok: test-owned library path from the harness
         with_lock "$3" with_lock "$4" true
     ' _ "$LIB" "$path_override" "$T/outer-$tag.lock" "$T/inner-$tag.lock"
     rc=$?
@@ -316,7 +316,7 @@ lock_nested_same_blocks() {
     # Re-entering one lock is a documented deadlock; callers bound it with timeout.
     # shellcheck disable=SC2016 # Expansion belongs to the child shell.
     "$TIMEOUT" 2 "$BASH_BIN" -c '
-        . "$1"; [ -z "$2" ] || PATH="$2"
+        . "$1"; [ -z "$2" ] || PATH="$2" # read-sink-ok: test-owned library path from the harness
         with_lock "$3" with_lock "$3" true
     ' _ "$LIB" "$path_override" "$T/same-$tag.lock"
     rc=$?
