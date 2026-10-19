@@ -158,8 +158,10 @@ template_version: 3
 >    ticket spans further PRs, sibling slices, or work owed outside any PR) →
 >    it omits the flag. The merge is typed exactly
 >    `bash scripts/handover/merge-on-green.sh [--jira-transition]` from the
->    worktree root, even on a branch behind main: the `$HIMMEL_REPO` and
->    absolute spellings are left to the classifier, which denies them run to run. **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
+>    worktree root, even on a branch behind main: the `$HIMMEL_REPO` spelling's
+>    rule carries an expansion the matcher does not resolve and the absolute
+>    spelling matches no rule, so both are left to the auto-mode classifier,
+>    which allows and denies them run to run. **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
 >    `done` or `deferred → HIMMEL-<n>` (`->` also accepted), e.g.
 >    `- ask one: done` / `- ask two: deferred → HIMMEL-<n>`. A deferred key
 >    must exist and still be open; `ready-check.sh` item 7 FAILs a missing
