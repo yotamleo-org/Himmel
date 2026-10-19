@@ -696,6 +696,13 @@ contains 'a blocked_by link lands in the suffix as open' "$bbout" 'HIMMEL-90 [To
 contains 'a Depends-on body line lands in the suffix, closed and open' "$bbout" 'HIMMEL-92 [To Do] blocked by body line {blocked-by: HIMMEL-93 done, HIMMEL-91 open}'
 contains 'a card with no blocker keeps the bare line' "$bbout" 'HIMMEL-94 [To Do] unblocked card'
 not_contains 'a relates link is no blocker' "$bbout" 'HIMMEL-94 [To Do] unblocked card {'
+not_contains 'a relates link is no blocker (the linking card names only its blocked_by key)' "$bbout" 'HIMMEL-90 [To Do] blocked by link {blocked-by: HIMMEL-91 open, HIMMEL-94'
+mdir="$bb"
+mk 95 'To Do' '["v1.1.3"]' 'colon form' 'To Do'
+mdir="$mir"
+printf '%s\n' '' '## Description' '' 'BLOCKED-BY: HIMMEL-91. Now unblocked by HIMMEL-93.' >> "$bb/HIMMEL-95.md"
+bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)"
+contains 'an upper-case BLOCKED-BY: form lands in the suffix; "unblocked by" is no blocker' "$bbout" 'HIMMEL-95 [To Do] colon form {blocked-by: HIMMEL-91 open}'
 
 # --- done-in-future counts every unreleased version, not only v1.0.x.
 dfm="$W/dfm2"
