@@ -255,7 +255,7 @@ template_version: 3
 
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
-           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'], doc=os.path.join(ctx['bucket'], l['stem'] + '.md'),
+           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], others=others, also=also,
