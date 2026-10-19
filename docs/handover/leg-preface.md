@@ -170,8 +170,10 @@ console `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR 
 
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
 then prove the process subtree is clean** with
-`bash scripts/handover/wrap-subtree-check.sh`: paste its `CLOSABLE:` line; on
-`WITHHELD:` TaskStop the pids and re-run, never send `WRAPPED`.
+`bash scripts/handover/wrap-subtree-check.sh --queue-doc <your doc>` (absolute
+path, run after releasing the lock: it withholds while the lock is held): paste
+its `CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, never send
+`WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
 is on** (off by default; `--context-guard compact|handoff`;

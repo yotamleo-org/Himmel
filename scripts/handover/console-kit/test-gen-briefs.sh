@@ -52,6 +52,11 @@ bash "$HERE/brief-lint.sh" "$D1" 2>"$WORK/lint1.err"; rc=$?
 bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 [ "$rc" = 0 ] && pass "brief 2 (none found (<query>) prior art) passes brief-lint.sh" || fail "brief 2 brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
 
+# the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
+has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
+has "brief 2 wrap command passes --queue-doc with its own doc" "$(cat "$D2")" "wrap-subtree-check.sh --queue-doc $D2"
+has "the leg preface's HALT/WRAP step passes --queue-doc" "$(tr '\n' ' ' < "$HERE/../../../docs/handover/leg-preface.md" | tr -s ' ')" "wrap-subtree-check.sh --queue-doc <your doc>"
+
 # the arming gate lints every brief, so a generated brief must also
 # arm through the launcher itself (dry-run reaches the gate before it exits).
 # (a copy without resume_cwd: the worktree check is a later gate and the copy leaves D1 alone)
