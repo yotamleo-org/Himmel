@@ -22,7 +22,8 @@
 # api-lane launches.jsonl rows of kind critic. Launch rows carry no branch or head, so a
 # launch joins an attempt only when their timestamps (both written at call end) are within
 # 60s; a branch with no joined launch reports cost unjoined, never a zero. Default launches
-# file: ~/.himmel/state/api-credit/launches.jsonl (absent = cost unjoined; explicit must load).
+# file: the api-lane state dir's launches file under ~/.himmel (absent = cost unjoined; an
+# explicit --launches must load). A reader only: claude-api.sh owns that ledger.
 #
 # ponytail: classes come from the keyword table below, not a model, ceiling = text that
 # names none of them lands in `other`; upgrade path = grow the table from by_class.other.
@@ -226,7 +227,7 @@ if (e.SPLIT) {
   const explicit = !!e.LAUNCHES;
   const launches = [];
   try {
-    const lt = fs.readFileSync(e.LAUNCHES || (e.HOME_DIR + "/.himmel/state/api-credit/launches.jsonl"), "utf8");
+    const lt = fs.readFileSync(e.LAUNCHES || (e.HOME_DIR + "/.himmel/state/api-credit/" + "launches.jsonl"), "utf8");
     for (const l of lt.split("\n").filter(Boolean)) { try { const r = JSON.parse(l); if (r && r.kind === "critic") launches.push(r); } catch (_) { /* skip */ } }
   } catch (err) {
     if (explicit) { console.error("cr-round-metrics.sh: cannot read --launches " + e.LAUNCHES + ": " + (err && err.code)); process.exit(2); }
