@@ -2496,11 +2496,13 @@ for i in $(seq 1 30); do
 done
 printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-console.fleet.json"
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
-awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
+awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" console next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
 check "82 HANDOFF is at most 12000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 12000 ] && echo yes || echo no)" "yes"
 check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
 check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$handoff82A")" "1"
+check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$handoff82A")" "1"
+check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$handoff82A")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
 check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
@@ -2517,5 +2519,40 @@ check "83 stderr warns with the byte count" "$(grep -cE 'warning: HANDOFF over b
 check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); Live state [0-9]+ bytes' "$handoff83A")" "1"
 check "83 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff83A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
+
+# --- 84: a repo with no origin remote must not abort `next` mid-render: the
+# pointer falls back to a placeholder and the wrapped-PR section is still written.
+out84="$(console new --bucket cap84)"
+token84="$(token_of "$out84")"
+doc84A="$root/tester/cap84/DEMO-nextleg-${today}A-console.md"
+handoff84A="$root/tester/cap84/DEMO-nextleg-${today}A-console-HANDOFF.md"
+origin84="$(git -C "$fixture_repo" remote get-url origin)"
+git -C "$fixture_repo" remote remove origin
+rc84=0
+HANDOFF_BUDGET_BYTES=1000 console next --bucket cap84dst --doc "$doc84A" >/dev/null 2>&1 || rc84=$?
+git -C "$fixture_repo" remote add origin "$origin84"
+check "84 next with no origin exits 0" "$rc84" "0"
+check "84 the pointer falls back to the placeholder repo" "$(grep -cF 'gh pr list -R <owner/repo> --state open' "$handoff84A")" "1"
+check "84 the wrapped-PR section is still written" "$(grep -c '^## Wrapped with open PR' "$handoff84A")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc84A" "$token84" >/dev/null 2>&1
+
+# --- 85: the wrapped-PR list counts toward the budget decision. Two identical
+# fixtures (same-length bucket names); the second runs with a budget one byte
+# under the first's final size, so only the wrapped bytes tip it over.
+mk85() { # <bucket>
+    local b="$1" d="$root/tester/$1"
+    console new --bucket "$b" >"$tmp/out85-$b"
+    printf '%s\n' '# leg' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$d/DEMO-85-N1.md"
+    printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$d/DEMO-85-N1.md" > "$d/DEMO-nextleg-${today}A-console.fleet.json"
+}
+mk85 cap85x
+mk85 cap85y
+console next --bucket cap85xdst --doc "$root/tester/cap85x/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1
+size85="$(wc -c < "$root/tester/cap85x/DEMO-nextleg-${today}A-console-HANDOFF.md")"
+HANDOFF_BUDGET_BYTES=$((size85 - 1)) console next --bucket cap85ydst --doc "$root/tester/cap85y/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1
+handoff85y="$root/tester/cap85y/DEMO-nextleg-${today}A-console-HANDOFF.md"
+check "85 under budget: the first fixture keeps its open-PR facts inline" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$root/tester/cap85x/DEMO-nextleg-${today}A-console-HANDOFF.md")" "0"
+check "85 the wrapped-PR bytes tip the second fixture into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff85y")" "1"
+check "85 the wrapped-PR entry is still listed" "$(grep -c '^- PR #5 (N1)' "$handoff85y")" "1"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
