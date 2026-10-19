@@ -835,6 +835,7 @@ assert_rc "6014 quoted glob char is not proved"         2 "$(run_in_shiftdir 'cd
 # a .. hop resolves differently under cd -P (lnk is a symlink to sub/inner)
 mkdir -p "$SHIFTDIR/sub/inner"; ln -s sub/inner "$SHIFTDIR/lnk"
 assert_rc "6014 cd -P then .. lands in a secret dir"    2 "$(run_in_shiftdir 'cd -P lnk && cd .. && cat .en*')"
+assert_rc "6014 env -C redirect opens in the caller's dir" 2 "$(run_in_shiftdir "cd sub && env -C $SHIFTDIR/empty cat < .en*")"
 assert_rc "6014 pushd -n leaves the read in a secret dir" 2 "$(run_in_shiftdir "cd sub && pushd -n $SHIFTDIR/empty && cat .en*")"
 assert_rc "6014 brace redirect reads a secret glob"     2 "$(run_in_shiftdir 'cd sub && { cat; } < .en*')"
 assert_rc "6014 subshell redirect reads a secret glob"  2 "$(run_in_shiftdir 'cd sub && (cat) < .en*')"

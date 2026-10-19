@@ -18,6 +18,8 @@
 #     assigns  the names of prefix assignments
 #     cwd      the directories it can run in: each a chain of cd targets
 #              from the caller's cwd ([] = that cwd), null = unknown
+#     ecwd     where its words expand and its redirects open: cwd, except
+#              that `env -C D` moves only cwd
 #     in       enclosing contexts: pipe subshell brace compound bg subst
 #              coproc shell-c eval
 #     opaque   why this model cannot see what runs (sudo, xargs, find
@@ -484,7 +486,7 @@ def _nav($S; $env):
   else {ok: $S, fail: $S} end;
 
 def _pos($st; $S; $tg):
-  {prog, argv: .a, via, lookup, redirs: ($st.redirs | map(_redir)), assigns: [], cwd: $S,
+  {prog, argv: .a, via, lookup, redirs: ($st.redirs | map(_redir)), assigns: [], cwd: $S, ecwd: $S,
    in: $tg, opaque, body};
 
 # . = a stmt or a stmt list; returns {ok, fail, pos}: the cwd sets after it
@@ -513,7 +515,7 @@ def _w($S; $tags; $env):
              taint: any($an[]; test(_names))} | _unwrap | _classify) as $u
          | (reduce $u.cdx[] as $d ($S; _cdto(.; $d))) as $pc
          | ($u | _nav($S; $env)) as $nv
-         | {ok: $nv.ok, fail: $nv.fail, pos: ($sp + [$u | _pos($st; $pc; $tg) | .assigns = $an])}
+         | {ok: $nv.ok, fail: $nv.fail, pos: ($sp + [$u | _pos($st; $pc; $tg) | .assigns = $an | .ecwd = $S])}
        elif $c.k == "and" then
          ($c.x | _w($S; $tg; $env)) as $x | ($c.y | _w($x.ok; $tg; $env)) as $y
          | {ok: $y.ok, fail: _u($x.fail; $y.fail), pos: ($x.pos + $y.pos)}

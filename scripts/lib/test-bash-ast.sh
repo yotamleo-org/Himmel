@@ -131,6 +131,9 @@ row "a shell reading stdin is opaque" \
 row "a glob arg keeps its live-glob flag and raw text" \
     'cat .en* ".en"*' \
     '(.[0].argv[1] | .v == ".en*" and .g and .raw == ".en*") and (.[0].argv[2] | .g and .raw == "\".en\"*")'
+row "env -C runs in its dir but the caller expands words and opens redirects" \
+    'cd sub && env -C e cat x* < y*' \
+    '(.[] | select(.prog == "cat") | .cwd == [["sub", "e"]] and .ecwd == [["sub"]]) and (.[] | select(.prog == "cd") | .ecwd == .cwd)'
 row "pushd -n does not move the cwd; a dash target is unknown" \
     'cd sub && pushd -n /e && cat x; pushd -n; cat y; cd -q; cat z' \
     '(.[] | select(.prog == "cat" and .argv[1].v == "x") | .cwd) == [["sub"]] and (.[] | select(.prog == "cat" and .argv[1].v == "y") | .cwd) == [[], ["sub"]] and (.[] | select(.prog == "cat" and .argv[1].v == "z") | .cwd | index(null) != null)'
