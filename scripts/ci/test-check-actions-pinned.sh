@@ -38,6 +38,9 @@ expect "41-hex ref" 1 "$tmp/long.yml"
 printf '    steps:\n      - uses: actions/checkout@v7 # @%s\n' "$sha" > "$tmp/commented-sha.yml"
 expect "tag pin with a sha-looking comment" 1 "$tmp/commented-sha.yml"
 
+printf '    steps:\n      - uses: actions/checkout@main # uses: actions/checkout@%s\n' "$sha" > "$tmp/commented-uses.yml"
+expect "tag pin with a second uses: in the comment" 1 "$tmp/commented-uses.yml"
+
 printf '    steps:\n      - uses: actions/checkout@%s # v7.0.1\n' "$sha" > "$tmp/sha.yml"
 expect "sha-pinned with comment" 0 "$tmp/sha.yml"
 
@@ -49,6 +52,16 @@ expect "local + docker refs exempt" 0 "$tmp/exempt.yml"
 
 printf '# uses: actions/checkout@v7 is only a comment\n' > "$tmp/comment.yml"
 expect "commented-out uses" 0 "$tmp/comment.yml"
+
+echo "== unreadable file is a scan failure, not a clean pass =="
+printf '    steps:\n      - uses: actions/checkout@v7\n' > "$tmp/locked.yml"
+chmod 000 "$tmp/locked.yml"
+if [ -r "$tmp/locked.yml" ]; then
+  pass "skipped: running as a user that can read mode-000 files"
+else
+  bash "$GUARD" "$tmp/locked.yml" >/dev/null 2>&1; rc=$?
+  if [ "$rc" -eq 2 ]; then pass "unreadable file -> exit 2"; else fail "unreadable file -> expected 2 got $rc"; fi
+fi
 
 echo "== absent scan path =="
 bash "$GUARD" "$tmp/does-not-exist" >/dev/null 2>&1; rc=$?

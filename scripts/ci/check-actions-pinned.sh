@@ -10,12 +10,17 @@
 # that do not carry `@<40 hex>`. Exempt: local refs (`uses: ./...`) and
 # `docker://` refs (those pin by @sha256: digest, not a git SHA).
 #
+# Line-based: a `uses:` is recognised at the start of a line (`uses:` or
+# `- uses:`). YAML flow mappings (`- {uses: ...}`) are not scanned; this repo
+# does not use them.
+#
 # Usage:
 #   check-actions-pinned.sh [scan-path ...]   # default: .github
 #
 # Exit codes:
 #   0 — every non-local `uses:` is SHA-pinned (or no scan path exists)
 #   1 — at least one unpinned `uses:` found
+#   2 — the scan itself failed (e.g. an unreadable file)
 set -uo pipefail
 
 if [ "$#" -gt 0 ]; then
@@ -30,11 +35,23 @@ for t in "${scan_targets[@]}"; do
 done
 [ "${#existing[@]}" -eq 0 ] && exit 0
 
-q="[\"']?"
-matches=$(grep -rnHE --include='*.yml' --include='*.yaml' \
-    '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}" 2>/dev/null \
-  | grep -vE "uses:[[:space:]]*${q}(\./|docker://)" \
-  | grep -vE "uses:[[:space:]]*${q}[^[:space:]\"'@#]+@[0-9a-f]{40}${q}([[:space:]]|\$)" || true)
+# grep exits 0 on a match, 1 on none, 2+ on a scan error: only 2+ is a failure
+# here, and it must not read as "nothing unpinned".
+found=$(grep -rnHE --include='*.yml' --include='*.yaml' \
+  '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}")
+rc=$?
+if [ "$rc" -gt 1 ]; then
+  printf 'ERROR: scanning for uses: lines failed (grep rc=%s)\n' "$rc" >&2
+  exit 2
+fi
+
+# Every pattern is anchored to the start of the line's content (after the
+# grep file:line: prefix), so a `uses:` inside a trailing comment cannot match.
+head_re='^[^:]*:[0-9]+:[[:space:]]*-?[[:space:]]*uses:[[:space:]]*["'\'']?'
+matches=$(printf '%s\n' "$found" \
+  | grep -vE "${head_re}(\./|docker://)" \
+  | grep -vE "${head_re}[^[:space:]\"'@#]+@[0-9a-f]{40}[\"']?([[:space:]]|\$)" \
+  | grep -E "${head_re}" || true)
 
 if [ -n "$matches" ]; then
   printf 'ERROR: GitHub Action not pinned to a full 40-hex commit SHA:\n'
