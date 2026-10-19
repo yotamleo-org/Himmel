@@ -430,8 +430,14 @@ try {
 // exits 0 when safe, and otherwise names what is still running. A check that cannot run
 // reads as unknown, never as safe.
 const CLOSE_CHECK = process.env.BOARD_CLOSE_CHECK || join(HERE, 'close-wrapped-leg.sh');
+// One board render waits at most CLOSE_BUDGET_MS in all, so several slow checks cannot stall it.
+const CLOSE_BUDGET_MS = 60000;
+let closeBudgetLeft = CLOSE_BUDGET_MS;
 const closeNote = (doc) => {
-    const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: 60000 });
+    if (closeBudgetLeft <= 0) return 'close check skipped (time budget spent)';
+    const t0 = Date.now();
+    const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: closeBudgetLeft });
+    closeBudgetLeft -= Date.now() - t0;
     if (r.error || r.status === null) return 'close check did not run';
     if (r.status === 0) return 'safe to close';
     if (r.status < 3 || r.status > 7) return 'close check failed (rc ' + r.status + ')';
