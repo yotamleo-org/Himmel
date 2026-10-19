@@ -285,7 +285,8 @@ is_engine_binary() {
 # -- the one shape harvest-clip-body-batch.py's own leg docs use
 # (ig-media-enrich.md/x-media-enrich.md). Only this segment's own caller
 # (segment_is_engine) may treat a match as an engine invocation, and it does
-# so ONLY for the harvest suffix -- see the via_uv guard there. `--python`'s
+# so ONLY for the harvest, ig-media-fetch and x-media-fetch suffixes -- see the
+# via_uv guard there. `--python`'s
 # value must be a literal digits-and-dots version string (no $, no glob): same
 # fail-safe posture as every other literal-token check in this file. Sets
 # UV_PREFIX_LEN to the number of tokens the matched prefix consumed. Returns 1
@@ -468,9 +469,49 @@ arg_is_vault_safe() {
     case "$norm" in
         /*|[A-Za-z]:/*)
             [ -n "$SESSION_CWD_POSIX" ] || return 1
-            path_is_under_session_cwd "$norm" ;;
+            path_is_under_session_cwd "$norm" || return 1
+            path_is_physically_in_vault "$norm" ;;
         *)
-            return 0 ;;
+            [ -n "$SESSION_CWD_PHYS" ] || return 0
+            path_is_physically_in_vault "$SESSION_CWD_POSIX/$norm" ;;
+    esac
+}
+
+# Does $1 still sit inside the vault once every symlink is resolved? The
+# lexical checks above cannot see a symlinked directory inside the vault that
+# points out of it. Resolves the deepest EXISTING ancestor (an argument may name
+# a file the engine will create) and refuses when that cannot be resolved.
+path_is_physically_in_vault() {
+    local p="$1" rest="" d real
+    while [ ! -e "$p" ] && [ ! -L "$p" ]; do
+        rest="/$(basename "$p")$rest"
+        d=$(dirname "$p")
+        [ "$d" != "$p" ] || return 1
+        p="$d"
+    done
+    real=$(realpath -- "$p" 2>/dev/null) || return 1 # swallow-ok: failure refuses the grant
+    [ -n "$real" ] || return 1
+    real="$real$rest"
+    [ "$real" = "$SESSION_CWD_PHYS" ] && return 0
+    case "$real" in "$SESSION_CWD_PHYS"/*) return 0 ;; esac
+    return 1
+}
+
+# --whisper-model M makes faster-whisper download M from Hugging Face unless it
+# is a built-in size name or an existing local directory, so an arbitrary
+# org/repo would pull an untrusted model on an unattended run. Granted: a
+# faster-whisper size name, or a directory that already exists in the vault.
+whisper_model_is_safe() {
+    local norm
+    norm=$(norm_path "$1")
+    case "$norm" in
+        tiny|tiny.en|base|base.en|small|small.en|medium|medium.en| \
+        large|large-v1|large-v2|large-v3) return 0 ;;
+    esac
+    arg_is_vault_safe "$norm" || return 1
+    case "$norm" in
+        /*) [ -d "$norm" ] ;;
+        *)  [ -n "$SESSION_CWD_POSIX" ] && [ -d "$SESSION_CWD_POSIX/$norm" ] ;;
     esac
 }
 
@@ -567,7 +608,7 @@ segment_is_engine() {
     #
     # ONE exception: the EXACT literal assignment
     # `PYTHONUTF8=1`, and ONLY when it immediately precedes the `uv run` chain,
-    # is allowed. This is the documented invocation shape for the two
+    # is allowed. This is the documented invocation shape for the three
     # uv-capable engines (commands/ig-media-enrich.md:88 etc, README.md:118) --
     # unlike PYTHONPATH, PYTHONUTF8 is a text-encoding runtime knob; it cannot
     # shadow a module or redirect an import, so it carries none of the hijack
@@ -581,7 +622,7 @@ segment_is_engine() {
     if [ "${w[$start]}" = "uv" ]; then
         # `uv run [--python <ver>] python <script>` -- the shape
         # harvest-clip-body-batch.py's and ig-media-fetch.py's own leg docs
-        # use. Restricted to those two engines below (after
+        # use. Restricted to those three engines below (after
         # script_matches_engine resolves MATCHED_SUFFIX), not opened up to
         # every python-based engine.
         match_uv_prefix "${w[@]:$start}" || return 1
@@ -611,7 +652,7 @@ segment_is_engine() {
     esac
     script_matches_engine "$bin" "$script" || return 1
     # The uv-run prefix (with or without the PYTHONUTF8=1 lead-in above) is
-    # granted ONLY for the two engines documented as using it --
+    # granted ONLY for the three engines documented as using it --
     # a match against any other python-bin suffix (e.g. vault_lint) via
     # `uv run ... python <script>` is refused: that leg's own docs invoke it
     # with the bare interpreter, so widening this to "any python engine, via
@@ -637,14 +678,21 @@ segment_is_engine() {
     # fix above; norm_path is idempotent, so re-applying it inside
     # arg_is_vault_safe on an already-stripped token is a no-op.
     local idx=$((script_idx + script_consumed))
-    local tok
+    local tok model_next=""
     while [ "$idx" -lt "$n" ]; do
         reassemble_token "${w[@]:$idx}" || return 1
         tok=$(norm_path "$REASM_TOKEN")
         idx=$((idx + REASM_CONSUMED))
         case "$tok" in
-            -*) flag_is_safe "$MATCHED_SUFFIX" "$tok" || return 1 ;;
-            *)  arg_is_vault_safe "$tok" || return 1 ;;
+            -*) flag_is_safe "$MATCHED_SUFFIX" "$tok" || return 1
+                model_next=""
+                [ "$tok" = "--whisper-model" ] && model_next=yes ;;
+            *)  if [ -n "$model_next" ]; then
+                    whisper_model_is_safe "$tok" || return 1
+                    model_next=""
+                else
+                    arg_is_vault_safe "$tok" || return 1
+                fi ;;
         esac
     done
     return 0
@@ -655,6 +703,10 @@ segment_is_engine() {
 # invalid cd args; bash rejects >1 arg, nothing executes) — but a grant shouldn't cover more shape than the cadence needs.
 # Require cmd + AT MOST one dir argument, allowing that argument to be a
 # quoted, spaced path via the same reassembly used for the engine script.
+#
+# The dir argument must also land inside the vault (arg_is_vault_safe, which
+# resolves symlinks) or inside this checkout: a `cd /tmp/evil` would otherwise
+# re-root every later RELATIVE vault-safe argument outside the vault.
 segment_is_nav() {
     local seg="$1"
     local -a w
@@ -666,7 +718,24 @@ segment_is_nav() {
     esac
     [ "$n" -eq 1 ] && return 0
     reassemble_token "${w[@]:1}" || return 1
-    [ $((1 + REASM_CONSUMED)) -eq "$n" ]
+    [ $((1 + REASM_CONSUMED)) -eq "$n" ] || return 1
+    nav_target_is_contained "$REASM_TOKEN"
+}
+
+nav_target_is_contained() {
+    local norm
+    norm=$(norm_path "$1")
+    case "$norm" in ''|-*|+*) return 1 ;; esac
+    arg_is_vault_safe "$norm" && return 0
+    case "$norm" in
+        *'$'*|'~'*|*'{'*|*'}'*|*'*'*|*'?'*|*'['*) return 1 ;;
+    esac
+    case "/$norm/" in */../*) return 1 ;; esac
+    case "$norm" in
+        "$ENGINE_ROOT_POSIX"|"$ENGINE_ROOT_POSIX"/*) return 0 ;;
+        "$ENGINE_ROOT_MIXED"|"$ENGINE_ROOT_MIXED"/*) return 0 ;;
+    esac
+    return 1
 }
 
 # Is this segment a READ-shaped `gh api repos/...` call (see
@@ -850,10 +919,12 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null ||
 cwd_raw=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev/null || true)
 SESSION_CWD_POSIX=""
 SESSION_CWD_MIXED=""
+SESSION_CWD_PHYS=""
 if [ -n "$cwd_raw" ]; then
     # shellcheck disable=SC1003 # '\\' is tr's two-char escape for one backslash
     cwd_folded=$(printf '%s' "$cwd_raw" | tr '\\' '/')
     SESSION_CWD_POSIX="$(cd "$cwd_folded" 2>/dev/null && pwd)"
+    SESSION_CWD_PHYS="$(cd -P "$cwd_folded" 2>/dev/null && pwd -P)" # swallow-ok: empty leaves relative args to the lexical check
     if [ -n "$SESSION_CWD_POSIX" ]; then
         if command -v cygpath >/dev/null 2>&1; then
             SESSION_CWD_MIXED=$(cygpath -m "$SESSION_CWD_POSIX" 2>/dev/null || printf '%s' "$SESSION_CWD_POSIX")

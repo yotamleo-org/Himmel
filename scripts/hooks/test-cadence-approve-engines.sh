@@ -126,8 +126,8 @@ assert "python3 interpreter"         ALLOW "$(decide "$(j_bash "python3 \"${ABS}
 assert "variable vault arg (unprovable, now refused)" PASS "$(decide "$(j_bash 'python "'"${ABS}"'" "$VAULT"')")"
 assert "flag after script"           ALLOW "$(decide "$(j_bash "python \"${ABS}\" --json vault")")"
 assert "engine alone (no vault arg)" ALLOW "$(decide "$(j_bash "python \"${ABS}\"")")"
-assert "cd && engine"                ALLOW "$(decide "$(j_bash "cd /himmel && python \"${ABS}\" vault")")"
-assert "pushd && engine"             ALLOW "$(decide "$(j_bash "pushd /himmel && python \"${ABS}\" vault")")"
+assert "cd && engine"                ALLOW "$(decide "$(j_bash "cd \"${ROOT_MIXED}\" && python \"${ABS}\" vault")")"
+assert "pushd && engine"             ALLOW "$(decide "$(j_bash "pushd \"${ROOT_MIXED}\" && python \"${ABS}\" vault")")"
 
 # --- PASS: the grant stays narrow (this is the test that keeps the fix honest) ---
 assert "wrong script"                PASS "$(decide "$(j_bash 'python /tmp/evil.py vault')")"
@@ -676,6 +676,52 @@ fi
 # JSON payload on stdin must still be read and decided as before.
 assert "normal invocation (no flag) untouched by the new flag" ALLOW \
     "$(decide "$(j_bash "python \"${ABS}\" vault")")"
+
+# --- nav, symlink and model-download containment ---
+# (1) cd is granted only into the vault (session cwd) or this checkout.
+assert "6449 cd outside vault + relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd /tmp && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into vault + engine" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${VAULT_FIXTURE_MIXED}\" && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into this checkout + engine" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${ROOT_MIXED}\" && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd - (OLDPWD) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd - && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd outside vault, no session cwd -> refused" PASS \
+    "$(decide "$(j_bash "cd /tmp && python \"${ABS}\" vault")")"
+# (2) a symlinked dir inside the vault must not carry a path out of it.
+OUTSIDE_FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/cadence-outside.XXXXXX") || exit 1
+OUTSIDE_FIXTURE=$(canon_path "$OUTSIDE_FIXTURE") || { echo "setup: canon_path failed for the outside fixture" >&2; exit 1; }
+trap 'rm -f "$EMPTY_ROOT_HOOK" "$CYGLESS_HOOK"; rm -rf "$SPACED_ROOT" "$VAULT_FIXTURE" "$FAKE_HOME" "$OUTSIDE_FIXTURE"' EXIT
+mkdir -p "$VAULT_FIXTURE/real"
+ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/escape"
+ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/real/escape2"
+assert "6449 symlinked dir as relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" escape/notes" "$VAULT_FIXTURE")")"
+assert "6449 symlinked dir as absolute arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"${VAULT_FIXTURE}/real/escape2\"" "$VAULT_FIXTURE")")"
+assert "6449 cd through symlinked dir -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd escape && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 real vault subdir arg still granted" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" real" "$VAULT_FIXTURE")")"
+assert "6449 not-yet-existing vault path still granted" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" real/new/dir" "$VAULT_FIXTURE")")"
+# (3) --whisper-model: a known faster-whisper size name or an existing vault dir.
+assert "6449 --whisper-model org/repo (HF download) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model evil/model" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model unknown bare name -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model evilmodel" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model large-v3 (known size)" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model large-v3" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model existing vault dir" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model real" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model=org/repo (joined form) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model=evil/model" "$VAULT_FIXTURE_MIXED")")"
+# (5) bare python / python3 on a non-enumerated or relative script.
+assert "6449 bare python, no script" PASS "$(decide "$(j_bash "python")")"
+assert "6449 python3 non-enumerated script" PASS "$(decide "$(j_bash "python3 /tmp/evil.py vault")")"
+assert "6449 python3 relative engine path" PASS "$(decide "$(j_bash "python3 ${ENG} vault")")"
+assert "6449 python3 -c" PASS "$(decide "$(j_bash "python3 -c \"import os\"")")"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "OK cadence-approve-engines: all cases passed"
