@@ -39,11 +39,16 @@ EOF
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# stub gh: serves runs.json, resolves PR heads, logs cancels.
+# stub gh: serves runs.json (per --status), resolves PR heads, logs cancels.
 # STUB_GH_FAIL=1 fails every call; STUB_FAIL_ID=<id> fails that cancel only.
 [ "${STUB_GH_FAIL:-}" = 1 ] && { echo "gh: simulated failure" >&2; exit 1; }
 case "$1 $2" in
-    "run list") cat "$STUB_RUNS" ;;
+    "run list")
+        # An unfiltered listing is crowded out by newer completed runs (the --limit
+        # cap); only a --status listing reaches the active ones.
+        st=""
+        while [ "$#" -gt 0 ]; do [ "$1" = "--status" ] && st="$2"; shift; done
+        jq --arg st "$st" '[.[] | select(if $st == "" then .status == "completed" else .status == $st end)]' "$STUB_RUNS" ;;
     "run cancel")
         [ "$3" = "${STUB_FAIL_ID:-}" ] && { echo "gh: cannot cancel $3" >&2; exit 1; }
         printf '%s\n' "$3" >> "$STUB_CANCEL_LOG" ;;

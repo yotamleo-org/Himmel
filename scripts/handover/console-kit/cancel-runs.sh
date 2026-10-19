@@ -91,10 +91,16 @@ for n in $prs; do
 "
 done
 
-runs="$(gh run list -R "$REPO" --limit 500 --json databaseId,status,headSha)" \
-    || { echo "cancel-runs: gh run list failed on $REPO; nothing cancelled" >&2; exit 1; }
-ids="$(printf '%s' "$runs" | jq -r --arg keep "$KEEPS" \
-    '($keep | split("\n")) as $k | .[] | select(.status != "completed" and (.headSha as $h | $k | index($h) | not)) | .databaseId')" \
+# One listing per active status: an unfiltered listing is capped by --limit and
+# newer completed runs would crowd the active ones out of it.
+runs=""
+for st in queued in_progress waiting requested pending; do
+    part="$(gh run list -R "$REPO" --status "$st" --limit 500 --json databaseId,status,headSha)" \
+        || { echo "cancel-runs: gh run list --status $st failed on $REPO; nothing cancelled" >&2; exit 1; }
+    runs="$runs$part"
+done
+ids="$(printf '%s' "$runs" | jq -rs --arg keep "$KEEPS" \
+    '($keep | split("\n")) as $k | add[] | select(.status != "completed" and (.headSha as $h | $k | index($h) | not)) | .databaseId')" \
     || { echo "cancel-runs: could not parse the run list; nothing cancelled" >&2; exit 1; }
 
 cancelled=0
