@@ -3,7 +3,7 @@
 # gh is a stub that serves fixtures shaped like the real REST responses and applies the
 # caller's --jq with real jq; gcp-runners.sh is a stub that logs its argv. No live call.
 # Pins: nothing happens while CI_GCP is off or no gcp job is queued, `up` gets the queued
-# gcp depth capped at 4, only status=queued jobs count, a failed read never reaches `up`,
+# gcp depth capped at 2, only status=queued jobs count, a failed read never reaches `up`,
 # and the systemd timer + service units point at the script.
 #
 # Usage: bash scripts/ci/test-gcp-runner-autoscale.sh
@@ -86,9 +86,9 @@ rc="$(run)"; if [ "$rc" -eq 0 ] && [ "$(ups)" -eq 0 ]; then ok "no queued run: n
 mkruns 1 2; mkjobs 1 queued:ubuntu-latest; mkjobs 2 in_progress:gcp completed:gcp
 rc="$(run)"; if [ "$rc" -eq 0 ] && [ "$(ups)" -eq 0 ]; then ok "only queued gcp jobs count"; else bad "non-gcp / non-queued: rc=$rc ups=$(ups)"; fi
 
-# 3. queue depth 3 across two runs: up 3.
-mkruns 10 20; mkjobs 10 queued:gcp queued:gcp queued:ubuntu-latest; mkjobs 20 queued:gcp
-rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 3' "$STUB_LOG"; then ok "up gets the queued gcp depth"; else bad "depth 3: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
+# 3. queue depth 3 across two runs: up 2.
+mkruns 10 20; mkjobs 10 queued:gcp queued:ubuntu-latest; mkjobs 20 queued:gcp
+rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 2' "$STUB_LOG"; then ok "up gets the queued gcp depth"; else bad "depth 2: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
 
 # 3b. a queued gcp job inside an in-progress run (other jobs already running) counts too.
 mkruns 10; mkjobs 10 queued:gcp; mkruns_ip 40; mkjobs 40 in_progress:ubuntu-latest queued:gcp
@@ -104,9 +104,9 @@ rc="$(run)"; if [ "$rc" -eq 0 ] && [ "$(ups)" -eq 0 ]; then ok "a fork run's que
 mkruns 10; mkjobs 10 queued:gcp; RUN_HEAD_REPO=evil/Himmel RUN_HEAD_FORK=true mkruns_ip 51; mkjobs 51 queued:gcp queued:gcp
 rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 1' "$STUB_LOG"; then ok "a fork run in progress does not add to the depth"; else bad "fork in-progress: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
 
-# 4. queue depth 7: capped at 4.
+# 4. queue depth 7: capped at 2 (two e2-standard-4 VMs fill the 8-vCPU pin).
 mkruns 30; mkjobs 30 queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp queued:gcp
-rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 4' "$STUB_LOG" && [ "$(ups)" -eq 1 ]; then ok "up is capped at 4"; else bad "depth 7: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
+rc="$(run)"; if [ "$rc" -eq 0 ] && grep -qx 'RUNNERS up 2' "$STUB_LOG" && [ "$(ups)" -eq 1 ]; then ok "up is capped at 2"; else bad "depth 7: rc=$rc log=$(grep RUNNERS "$STUB_LOG")"; fi
 
 # 5. a failed read never reaches up.
 export STUB_FAIL=runs

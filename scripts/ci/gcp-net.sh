@@ -109,7 +109,7 @@ assoc_present() {
         json="$(gc compute network-firewall-policies describe "$POLICY" --global --format=json 2> /dev/null)" || return 2
     }
     case "$(printf '%s' "$json" | tr -d ' \n')" in
-        *'"name":"'"$ASSOC"'"'*) return 0 ;;
+        *'/networks/'"$NET"'","name":"'"$ASSOC"'"'*) return 0 ;;  # gcloud emits sorted keys: attachmentTarget, then name
     esac
     return 1
 }

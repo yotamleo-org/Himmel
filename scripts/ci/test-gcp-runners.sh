@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/test-gcp-runners.sh -- regression suite for scripts/ci/gcp-runners.sh
 # the ephemeral GCP spot runner pool. gcloud and gh are stubs on
-# $GCLOUD / $GH; no live call is made. Pins: `up` refuses N above 4, every
+# $GCLOUD / $GH; no live call is made. Pins: `up` refuses N above 2, every
 # create is SPOT + max-run-duration + DELETE + labelled + impersonated and
 # carries its own JIT config in a metadata FILE (never argv), `up` tops the
 # pool up, `down` deletes every pool VM and deregisters offline gcp runners.
@@ -63,15 +63,16 @@ export GCLOUD="$T/gcloud" GH="$T/gh" STUB_LOG="$T/log" STUB_INSTANCES="$T/instan
 run() { : > "$STUB_LOG"; bash "$SUT" "$@" > "$T/out" 2>&1; echo $?; }
 creates() { grep -c 'instances create' "$STUB_LOG"; }
 
-# 1. up refuses N above 4 and N that is not a positive integer; nothing is created.
+# 1. up refuses N above 2 (two e2-standard-4 VMs fill the 8-vCPU pin) and N that is not a
+#    positive integer; nothing is created.
 : > "$STUB_INSTANCES"
-for n in 5 0 abc; do
+for n in 3 5 0 abc; do
     rc="$(run up "$n")"
     if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "up $n is refused"; else bad "up $n: rc=$rc creates=$(creates)"; fi
 done
 
-# 2. up 4 is allowed; up with no N defaults to 2.
-rc="$(run up 4)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 4 ]; then ok "up 4 creates 4"; else bad "up 4: rc=$rc creates=$(creates)"; fi
+# 2. up 2 is allowed; up with no N defaults to 2.
+rc="$(run up 2)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up 2 creates 2"; else bad "up 2: rc=$rc creates=$(creates)"; fi
 rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 2 ]; then ok "up defaults to 2"; else bad "up default: rc=$rc creates=$(creates)"; fi
 
 # 3. every create carries the safety flags; every gcloud call is impersonated.
@@ -188,11 +189,11 @@ rc="$(GCP_RUNNERS_UNAME=Darwin run up 2)"; if [ "$rc" -ne 0 ] && [ "$(creates)" 
 
 # 6g. a failure part-way through `up` still strips jit-config from every VM already created.
 export STUB_FAIL=create2
-rc="$(run up 3)"
+rc="$(run up 2)"
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
 if [ "$rc" -ne 0 ] && [ "$n" -eq 2 ]; then ok "a failed create drops jit-config from the VM already created and the one attempted"; else bad "create fail: rc=$rc removals=$n of 2"; fi
 export STUB_FAIL=jit2
-rc="$(run up 3)"
+rc="$(run up 2)"
 n="$(grep 'instances remove-metadata' "$STUB_LOG" | grep -c -- '--keys=jit-config')"
 if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then ok "a failed JIT request drops jit-config from the VM already created"; else bad "jit fail: rc=$rc removals=$n of 1"; fi
 unset STUB_FAIL

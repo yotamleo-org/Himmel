@@ -2,7 +2,7 @@
 # gcp-runners.sh -- the ephemeral GCP spot CI runner pool.
 # Run it on the station.
 #
-#   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 2, max 4)
+#   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 2, max 2)
 #   bash scripts/ci/gcp-runners.sh watch N [--interval 60]   foreground loop: re-run `up N` every interval
 #                                           while CI_GCP is on; on CI_GCP off or SIGTERM run `down` and exit
 #   bash scripts/ci/gcp-runners.sh down     delete every pool VM, deregister offline gcp runners
@@ -37,7 +37,7 @@ MAX_RUN="45m"
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
-MAX_N=4
+MAX_N=2  # two e2-standard-4 VMs fill the 8-vCPU CPUS pin; the proxy e2-micro adds 0.25 more
 NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
 LOCKFILE="${GCP_RUNNERS_LOCK:-${TMPDIR:-/tmp}/gcp-runners.lock}"
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"

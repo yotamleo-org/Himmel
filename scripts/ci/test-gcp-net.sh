@@ -45,6 +45,7 @@ case "$*" in
         if [ -n "${STUB_EXISTS:-}" ]; then case "$*" in *"network-firewall-policies describe"*"--format=json"*)
             [ -n "${STUB_JSON_FAIL:-}" ] && { echo "ERROR: (gcloud) transient" >&2; exit 1; }
             if [ -n "${STUB_NO_ASSOC:-}" ]; then echo '{"name": "himmel-ci-net-policy", "associations": []}'
+            elif [ -n "${STUB_OTHER_NET_ASSOC:-}" ]; then echo '{"name": "himmel-ci-net-policy", "associations": [{"attachmentTarget": "https://www.googleapis.com/compute/v1/projects/himmel-ci/global/networks/other-net", "name": "himmel-ci-net-assoc"}]}'
             else echo '{"name": "himmel-ci-net-policy", "associations": [{"attachmentTarget": "https://www.googleapis.com/compute/v1/projects/himmel-ci/global/networks/himmel-ci-net", "name": "himmel-ci-net-assoc"}]}'; fi
             exit 0 ;; esac; fi
         if [ -n "${STUB_RULE_ERR:-}" ]; then case "$*" in *"rules describe"*) printf '%s\n' "$STUB_RULE_ERR" >&2; exit 1 ;; esac; fi
@@ -282,6 +283,10 @@ export STUB_JSON_FAIL=1
 rc="$(run net-up)"
 if [ "$rc" -ne 0 ] && ! grep -q 'associations create' "$STUB_LOG"; then ok "a JSON read that fails after the policy exists is never read as the association being present"; else bad "json-fail net-up: rc=$rc"; fi
 unset STUB_JSON_FAIL STUB_NO_ASSOC
+export STUB_OTHER_NET_ASSOC=1
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && grep -q 'associations create' "$STUB_LOG"; then ok "an association of that name attached to another network is not this network's association"; else bad "other-net assoc net-up: rc=$rc"; fi
+unset STUB_OTHER_NET_ASSOC
 rc="$(run net-up)"
 if [ "$rc" -eq 0 ] && ! grep -q 'associations create' "$STUB_LOG"; then ok "a policy listing the association is left alone"; else bad "assoc-present net-up: rc=$rc"; fi
 export STUB_POLICY_ERR=1 STUB_JSON_FAIL=1
