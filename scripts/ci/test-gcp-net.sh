@@ -122,6 +122,15 @@ world="$(rules_create | grep -- '--action=allow' | grep -E -- '0\.0\.0\.0/0|::/0
 if [ "$(echo "$world" | grep -c .)" -eq 1 ] && echo "$world" | grep -q -- "--src-ip-ranges=$PROXY_IP/32" && echo "$world" | grep -q -- '--layer4-configs=tcp:80,tcp:443'; then
     ok "the one allow rule open to the world is sourced from the proxy IP, tcp:80/443 only"
 else bad "world-open allow rules: $world"; fi
+# the proxy VM installs squid at boot through its own egress, not through squid: that
+# allow must come from the proxy /32, admit 80/443 to the world and outrank the deny-all egress.
+pout_prio="$(echo "$world" | sed -E 's/.*rules create ([0-9]+) .*/\1/')"
+egr_prio="$(echo "$egr" | sed -E 's/.*rules create ([0-9]+) .*/\1/')"
+if [ -n "$pout_prio" ] && [ -n "$egr_prio" ] && [ "$pout_prio" -lt "$egr_prio" ] && echo "$world" | grep -q -- '--direction=EGRESS' \
+    && echo "$world" | grep -q -- "--src-ip-ranges=$PROXY_IP/32" && echo "$world" | grep -q -- '--dest-ip-ranges=0.0.0.0/0' \
+    && echo "$world" | grep -q -- '--layer4-configs=tcp:80,tcp:443 '; then
+    ok "the proxy's own tcp:80/443 egress (its boot-time apt-get) is allowed above deny-all egress, independent of PROXY_HOSTS"
+else bad "proxy boot egress rule missing or below deny-all: prio=$pout_prio deny=$egr_prio rule=$world"; fi
 bad_egress="$(echo "$allow_egress" | grep -v -- "--dest-ip-ranges=$PROXY_IP/32" | grep -v -- '--dest-fqdns=' | grep -v -- "--src-ip-ranges=$PROXY_IP/32")"
 if [ -z "$bad_egress" ]; then ok "every allow-egress rule is proxy-bound, proxy-sourced or FQDN-scoped"; else bad "unscoped allow-egress: $bad_egress"; fi
 runner_to_proxy="$(echo "$allow_egress" | grep -- "--dest-ip-ranges=$PROXY_IP/32")"
