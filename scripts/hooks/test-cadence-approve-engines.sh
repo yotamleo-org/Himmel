@@ -687,6 +687,8 @@ assert "6449 cd into this checkout + engine" ALLOW \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${ROOT_MIXED}\" && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd - (OLDPWD) -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd - && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into vault subdir (re-roots relative args) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd real && python \"${ABS}\" escape2/notes" "$VAULT_FIXTURE")")"
 assert "6449 cd outside vault, no session cwd -> refused" PASS \
     "$(decide "$(j_bash "cd /tmp && python \"${ABS}\" vault")")"
 # (2) a symlinked dir inside the vault must not carry a path out of it.

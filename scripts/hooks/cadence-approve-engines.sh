@@ -723,21 +723,28 @@ segment_is_nav() {
 }
 
 nav_target_is_contained() {
-    local norm
+    local norm p real root
     norm=$(norm_path "$1")
     # A CRLF-terminated line leaves a trailing CR on the last token.
     norm="${norm%$'\r'}"
     case "$norm" in ''|-*|+*) return 1 ;; esac
-    arg_is_vault_safe "$norm" && return 0
     case "$norm" in
         *'$'*|'~'*|*'{'*|*'}'*|*'*'*|*'?'*|*'['*) return 1 ;;
     esac
     case "/$norm/" in */../*) return 1 ;; esac
+    # Only the vault root or the checkout root itself: a deeper target would
+    # re-root the later relative args, whose containment is judged against the
+    # session cwd. Symlinks are resolved so a link cannot stand in for either.
     case "$norm" in
-        "$ENGINE_ROOT_POSIX"|"$ENGINE_ROOT_POSIX"/*) return 0 ;;
-        "$ENGINE_ROOT_MIXED"|"$ENGINE_ROOT_MIXED"/*) return 0 ;;
+        /*) p="$norm" ;;
+        *)  [ -n "$SESSION_CWD_POSIX" ] || return 1
+            p="$SESSION_CWD_POSIX/$norm" ;;
     esac
-    return 1
+    real=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
+    [ -n "$real" ] || return 1
+    [ -n "$SESSION_CWD_PHYS" ] && [ "$real" = "$SESSION_CWD_PHYS" ] && return 0
+    root=$(cd -P "$ENGINE_ROOT_POSIX" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
+    [ "$real" = "$root" ]
 }
 
 # Is this segment a READ-shaped `gh api repos/...` call (see
