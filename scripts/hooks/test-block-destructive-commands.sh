@@ -1650,7 +1650,13 @@ for c in \
     'gh api -X PATCH repos/yotamleo/Himmel/actions/variables/CI_GCP -f value=off' \
     'gh variable set CI_GCP --body off -Rfoo/bar' \
     'gh variable set CI_GCP --body ＯＮ -R yotamleo/Himmel' \
-    "gh variable set CI_GCP --body '' -R yotamleo/Himmel"; do
+    "gh variable set CI_GCP --body '' -R yotamleo/Himmel" \
+    'gh variable set CI_GCP --body off -r>/dev/null yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r</dev/null yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r&>x yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r>&2 yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -r<>x yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -ryotamleo/himmel'; do
     assert_rc "6431 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
 # The guard reads a CR as a line break, the shell does not: everything after

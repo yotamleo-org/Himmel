@@ -1249,23 +1249,24 @@ _gh_api() {
 # `variable set CI_GCP` with one --body of on|off and exactly one -R/--repo
 # naming this repository (yotamleo/Himmel or its canonical slug
 # yotamleo-org/Himmel; an omitted repo would follow GH_REPO or the checkout),
-# nothing else. The command text must be printable ASCII, space, tab and
-# newline only: the guard reads a CR as a line break, the shell does not, so
-# what follows one would reach gh unseen. The words are lowercased but gh's flags and
-# the stored value are case-sensitive (-r is --repos, not --repo; ON is not on
-# to the runner scripts), so the typed command must carry no quote or
-# backslash (its words then split on whitespace alone), no lowercase -r, and
-# no word with an upper-case letter except the ones whose fold is safe: -R,
-# CI_GCP (names match case-insensitively) and the repository slugs.
+# nothing else. The command text must hold only ASCII letters, digits, _ . / =
+# -, space, tab and newline: no quote, backslash, redirect or other shell
+# metacharacter (the tokenizer splits `-r>x` into -r and a dropped redirect),
+# and no CR (the guard reads it as a line break, the shell does not). Its words
+# then split on whitespace alone, exactly as the shell splits them. The words
+# are lowercased but gh's flags and the stored value are case-sensitive (-r is
+# --repos, not --repo; ON is not on to the runner scripts), so no raw word may
+# start with a lowercase -r, and no word may hold an upper-case letter except
+# the ones whose fold is safe: -R, CI_GCP (names match case-insensitively) and
+# the repository slugs.
 _gh_cigcp() {
     local j=$1 n=${#_gc_w[@]} w pos='' body='' repo='' raw LC_ALL=C
     [ "$j" = 1 ] || return 1
-    [[ $cmd == *[!\ -~$'\t\n']* ]] && return 1
-    [[ $cmd == *[\'\"\\]* ]] && return 1
-    [[ $cmd =~ (^|[[:space:]])-r([[:space:]=]|$) ]] && return 1
+    [[ $cmd == *[!A-Za-z0-9_./=\ $'\t\n'-]* ]] && return 1
     read -rd '' -a raw <<<"$cmd" || true # swallow-ok: read -d '' always ends at EOF with status 1
     for w in ${raw[@]+"${raw[@]}"}; do
         case "$w" in
+            -r*) return 1 ;;
             *[A-Z]*)
                 case "$w" in
                     -R|CI_GCP|yotamleo/Himmel|yotamleo-org/Himmel|--repo=yotamleo/Himmel|--repo=yotamleo-org/Himmel) ;;
