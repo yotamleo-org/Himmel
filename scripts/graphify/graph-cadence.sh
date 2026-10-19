@@ -977,8 +977,11 @@ if [ "$SEMANTIC" -eq 1 ]; then
         0)
             bash "$CADENCE_ALERT" clear "$_sem_leg"
             # A file the merge backed off is not retried until it changes: say so once, on its own leg.
+            # A run with no new back-off re-arms that leg, so the next back-off alerts again.
             if printf '%s\n' "$_sem_out" | grep -q 'BACKED OFF'; then
                 bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
+            else
+                bash "$CADENCE_ALERT" clear "$_sem_leg-backoff"
             fi
             ;;
         # 3 = bank at/over threshold, 4 = promote lock held. Nothing
