@@ -546,6 +546,7 @@ test("stop <KEY>: a non-operator sender is refused and the session keeps running
   const isOperator = (from: number) => from === 5;
   const notifyChat = async (_chat: number, text: string) => { notes.push(text); };
   await ensureSession(r, "HIMMEL-5");
+  await writeMeta(r, "HIMMEL-5", { ...freshMeta(-50), status: "running" });
   const stopFile = join(sessionDir(r, "HIMMEL-5"), "stop");
   const noRun = async () => {};
   await handleInbound(r, { from:9, chat_id:-50, text:"stop HIMMEL-5" }, noRun, undefined, undefined, isOperator, notifyChat);
@@ -576,6 +577,33 @@ test("operator stop ends a running session within one turn (HIMMEL-6128)", async
   expect((await readMeta(r, "HIMMEL-7"))?.status).toBe("idle");
   expect(readdirSync(sd())).not.toContain("stop");              // marker consumed
   expect((await peekPending(r, "HIMMEL-7")).count).toBe(0);     // queued work dropped, not re-run
+});
+
+test("operator stop on a failed ticket session, then work on it through handleInbound, runs the session (HIMMEL-6342)", async () => {
+  const r = root(); const notes: string[] = []; const ran: string[] = [];
+  const isOperator = () => true;
+  const notifyChat = async (_chat: number, text: string) => { notes.push(text); };
+  await ensureSession(r, "HIMMEL-7");
+  await writeMeta(r, "HIMMEL-7", { ...freshMeta(-50), status: "failed", fail_count: 3 });
+  await handleInbound(r, { from: 5, chat_id: -50, text: "stop HIMMEL-7", ts: 42 }, async () => {}, undefined, undefined, isOperator, notifyChat);
+  expect(readdirSync(sessionDir(r, "HIMMEL-7"))).not.toContain("stop");
+  expect(notes).toEqual(["nothing running for HIMMEL-7"]);
+  const prompts: string[] = [];
+  const runFn = makeRunFn(r, "/repo", async (prompt) => { prompts.push(prompt); return { code: 0, capped: false, pid: 1 }; }, 5000);
+  await handleInbound(r, { from: 5, chat_id: -50, text: "HIMMEL-7: retry" }, async (s) => { ran.push(s); await runFn(s); }, undefined, undefined, isOperator);
+  expect(ran).toEqual(["HIMMEL-7"]);
+  expect(prompts.length).toBe(1);
+  expect(readdirSync(sessionDir(r, "HIMMEL-7"))).not.toContain("stop");
+});
+
+test("operator stop with no existing session leaves no session, and the next work on it is not dropped (HIMMEL-6342)", async () => {
+  const r = root(); const spawns: string[] = [];
+  const isOperator = () => true;
+  await handleInbound(r, { from: 5, chat_id: -50, text: "stop HIMMEL-8", ts: 42 }, async () => {}, undefined, undefined, isOperator);
+  expect(await readMeta(r, "HIMMEL-8")).toBeNull();
+  const runFn = makeRunFn(r, "/repo", async (prompt) => { spawns.push(prompt); return { code: 0, capped: false, pid: 1 }; }, 5000);
+  await handleInbound(r, { from: 5, chat_id: -50, text: "work on HIMMEL-8" }, async (s) => { await runFn(s); }, undefined, undefined, isOperator);
+  expect(spawns.length).toBe(1);
 });
 
 test("operator stop written before the first spawn prevents the spawn (HIMMEL-6128)", async () => {

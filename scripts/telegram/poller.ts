@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
-import { classify, type Route } from "./router";
+import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./console-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
@@ -555,7 +555,16 @@ async function handleStop(root: string, msg: DeliveredMsg, ticket: string, fromO
     }
     return;
   }
-  await ensureSession(root, ticket);
+  // A marker is consumed only by a turn that has work; on anything else it would eat the next message.
+  const meta = await readMeta(root, ticket);
+  const stoppable = !!meta && meta.status !== "failed" && (meta.status === "running" || (await peekPending(root, ticket)).count > 0);
+  if (!stoppable) {
+    if (notifyChat) {
+      try { await notifyChat(msg.chat_id, `nothing running for ${ticket}`); }
+      catch (e) { logRedacted(`[poller] stop notice could not be delivered for chat ${redactChatId(msg.chat_id)}: ${e}`); }
+    }
+    return;
+  }
   await appendLine(join(sessionDir(root, ticket), "stop"), String(msg.ts ?? 0));
 }
 
@@ -1578,7 +1587,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     };
     if (existsSync(join(sd, "stop"))) { await settleStopped(); return; }
     // A queued member follow-up is no reason to spawn: it waits for the operator's next line.
-    const isTicket = /^[A-Z][A-Z0-9]+-[0-9]+$/.test(session);
+    const isTicket = isTicketKey(session);
     if (isTicket && !(await pendingHasOperatorLine(sd, 0))) return;
     // `|| null` normalizes a falsy vault ("" from a blank access.json `vault:`) to
     // null, so the nullish-coalescing `?? repoCwd` below stays coherent with the
