@@ -195,6 +195,12 @@ describe('runMirror', () => {
 });
 
 describe('renderIssue', () => {
+  it('writes resolved: the resolutiondate, null when unresolved', () => {
+    const done = renderIssue(issue(7, { resolutiondate: '2026-10-01T12:00:00.000+0000' }), []);
+    expect(done).toContain('resolved: "2026-10-01T12:00:00.000+0000"');
+    expect(renderIssue(issue(8), [])).toContain('resolved: null');
+  });
+
   it('writes frontmatter, description and comments by display name only, no emails', () => {
     const md = renderIssue(
       issue(7, {
