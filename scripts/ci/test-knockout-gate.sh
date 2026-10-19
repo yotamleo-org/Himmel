@@ -253,6 +253,13 @@ w test-value.sh '[ "$(cat value.txt)" = fixed ]'
 commit bad-per-suite-cap
 SUITE_TIMEOUTS="test-value.sh=0" verdict bad-per-suite-cap 1 'bad SUITE_TIMEOUTS'
 
+# A bare number names no suite, so it would silently apply no override.
+new_repo
+w value.txt fixed
+w test-value.sh '[ "$(cat value.txt)" = fixed ]'
+commit nameless-per-suite-cap
+SUITE_TIMEOUTS="2" verdict nameless-per-suite-cap 1 'bad SUITE_TIMEOUTS'
+
 rc=0
 bash "$GATE" > "$T/usage" 2>&1 || rc=$?
 if [ "$rc" -eq 2 ]; then ok 'usage: exit 2'; else bad "usage: expected 2, got $rc"; fi

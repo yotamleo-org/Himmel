@@ -98,6 +98,7 @@ case "$suite_timeout" in ''|*[!0-9]*) fail "bad SUITE_TIMEOUT '$suite_timeout'" 
 command -v timeout >/dev/null 2>&1 || fail 'runner-unavailable timeout'
 # A per-suite override must be a valid cap too; the global cap covers the rest.
 for entry in ${SUITE_TIMEOUTS:-}; do
+    case "$entry" in ?*=*) ;; *) fail "bad SUITE_TIMEOUTS '$entry'" ;; esac
     case "${entry#*=}" in ''|*[!0-9]*) fail "bad SUITE_TIMEOUTS '$entry'" ;; esac
     [ "$((10#${entry#*=}))" -ge 1 ] || fail "bad SUITE_TIMEOUTS '$entry'"
 done
