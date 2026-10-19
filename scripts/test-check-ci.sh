@@ -545,6 +545,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
                 *)          printf 'MPR_OK\noctocat\nfalse\n1\nREADME.md\n' ;;
             esac
             exit 0 ;;
+        *"--json title"*) echo "${GH_STUB_TITLE:-}"; exit 0 ;;
         *url,reviewDecision,headRefOid,baseRefName*)
             head=sha1
             if [ "${GH_STUB_HEAD:-stable}" = moving ]; then
@@ -2936,7 +2937,27 @@ assert_rc 0 "3473-g --threads-only is unaffected by a BLOCKED merge state"
 _ms_args=$(cat "$STUBDIR/args.log")
 assert_grep_lacks "3473-g --threads-only makes no mergeStateStatus read" "found a mergeStateStatus read" -F mergeStateStatus <<<"$_ms_args"
 
+# 6430 - waiting on CI moves the PR title's ticket In Review -> IN CI (best effort,
+# forward-only via leg-jira-status.sh); --threads-only is not a CI wait and never moves it.
+cat > "$STUBDIR/jira-cli" <<'EOF2'
+#!/usr/bin/env bash
+echo "$*" >> "$STUBDIR_JIRA_LOG"
+if [ "$1" = get ]; then echo '{"fields":{"status":{"name":"In Review"}}}'; fi
+exit 0
+EOF2
+chmod +x "$STUBDIR/jira-cli"
+export LEG_JIRA_CLI="$STUBDIR/jira-cli" STUBDIR_JIRA_LOG="$STUBDIR/jira.log"
+export GH_STUB_TITLE="fix(x): [HIMMEL-9430] a thing"
+: > "$STUBDIR/jira.log"
+run cr-completed --grace 30
+assert_rc 0 "6430-a checks green with a ticket-tagged PR -> exit 0"
+if grep -qF -- "transition HIMMEL-9430 IN CI" "$STUBDIR/jira.log"; then pass "6430-a CI wait transitions the ticket to IN CI"; else fail "6430-a CI wait transitions the ticket to IN CI" "log: $(cat "$STUBDIR/jira.log")"; fi
+: > "$STUBDIR/jira.log"
+run cr-completed --threads-only
+assert_grep_lacks "6430-b --threads-only never moves the ticket" "unexpected transition" -F -- "transition" "$STUBDIR/jira.log"
+unset LEG_JIRA_CLI STUBDIR_JIRA_LOG GH_STUB_TITLE
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 208 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 208"; exit 1; fi
+if [ "$COUNT" -ne 210 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 210"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

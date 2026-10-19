@@ -1278,6 +1278,14 @@ export CHECK_CI_CACHE_REPO="${initial_url#https://github.com/}"
 CHECK_CI_CACHE_REPO="${CHECK_CI_CACHE_REPO%/pull/*}"
 
 if [ "$THREADS_ONLY" -eq 0 ]; then
+    # Waiting on CI moves the PR title's first [KEY] to IN CI. Best-effort and forward-only:
+    # leg-jira-status.sh warns and exits 0 on any Jira failure; LEG_JIRA_STATUS=0 opts out.
+    if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+        pr_title=$(pr_view --json title --jq .title 2>/dev/null) || pr_title=""
+        if [[ $pr_title =~ \[([A-Za-z][A-Za-z0-9]*-[0-9]+)\] ]]; then
+            bash "$(dirname "$0")/handover/console-kit/leg-jira-status.sh" "${BASH_REMATCH[1]}" "IN CI" >/dev/null 2>&1 || true
+        fi
+    fi
     # Grace window: probe (non-watch) until the PR has registered checks. gh exit
     # codes on the probe: 0 = all pass, 8 = pending — both mean checks exist, so
     # hand off to the watch. "no checks reported" right after a push is the CI

@@ -503,7 +503,9 @@ kt="$(kcol "$khtml" todo)"; kp="$(kcol "$khtml" prog)"; kr="$(kcol "$khtml" rev)
 contains 'To Do column holds the To Do ticket (HIMMEL-5381)' "$kt" 'HIMMEL-31'
 contains 'In Progress column holds the In Progress ticket (HIMMEL-5381)' "$kp" 'HIMMEL-32'
 contains 'In Review column holds the In Review ticket (HIMMEL-5381)' "$kr" 'HIMMEL-33'
-contains 'In Review column holds the IN CI ticket (HIMMEL-5381)' "$kr" 'HIMMEL-34'
+kc="$(kcol "$khtml" ci)"
+contains 'IN CI column holds the IN CI ticket (HIMMEL-6430)' "$kc" 'HIMMEL-34'
+not_contains 'In Review column no longer holds the IN CI ticket (HIMMEL-6430)' "$kr" 'HIMMEL-34'
 contains 'Done column holds the Done ticket (HIMMEL-5381)' "$kd" 'HIMMEL-35'
 not_contains 'a ticket sits in one column only (HIMMEL-5381)' "$kt$kp$kd" 'HIMMEL-33'
 contains 'a card links to the Jira browse URL from the configured base (HIMMEL-5381)' "$kt" 'href="https://jira.example.test/browse/HIMMEL-31"'
