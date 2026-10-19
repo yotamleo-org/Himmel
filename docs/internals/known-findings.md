@@ -107,7 +107,8 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
   (the before span runs from the class's first finding, at least a week). A class whose rate
   does not fall is demoted to restructure (S5).
 - A proposal expires after 14 days unbuilt. The next run lists `REFIRED [id]` when the class
-  is proposed again and `EXPIRED [id]` when it is not.
+  is proposed again, `EXPIRED [id]` when it is not, and `BUILT [id]` when the class was promoted
+  or removed since the proposal.
 
 ## Classes (2026-09-02 snapshot — regenerate with `--list`)
 

@@ -77,21 +77,29 @@ check "known-findings.json untouched" "$(cmp -s "$tmp/kf.json" "$tmp/kf.before.j
 
 # Expiry: a 20-day-old file whose class still recurs re-fires; one whose class stopped recurring expires.
 mkdir -p "$tmp/handovers/cr-tune"
-printf '# CR standards proposals 2026-09-29\nproposed: 2026-09-29\nexpires: 2026-10-13\n\n## Proposals\n- [jq-bool] target: lint or check\n- [quiet-class] target: lint or check\n' > "$tmp/handovers/cr-tune/proposals-2026-09-29.md"
-run "$TODAY" > /dev/null
+printf '# CR standards proposals 2026-09-29\nproposed: 2026-09-29\nexpires: 2026-10-13\n\n## Proposals\n- [jq-bool] target: lint or check\n- [quiet-class] target: lint or check\n- [promoted-ok] target: lint or check\n' > "$tmp/handovers/cr-tune/proposals-2026-09-29.md"
+run "$TODAY" > /dev/null; check "expiry: rerun exits 0" "$?" "0"
 body="$(cat "$f")"
 contains "expiry: still-recurring class re-fires"       "$body" "REFIRED [jq-bool] first proposed 2026-09-29"
 contains "expiry: quiet class is listed as expired"     "$body" "EXPIRED [quiet-class] first proposed 2026-09-29"
+contains "expiry: a class promoted since is BUILT"      "$body" "BUILT [promoted-ok] first proposed 2026-09-29"
+not_contains "expiry: a built class is not EXPIRED"     "$body" "EXPIRED [promoted-ok]"
 printf '# CR standards proposals 2026-10-15\nproposed: 2026-10-15\nexpires: 2026-10-29\n\n## Proposals\n- [quiet-class] target: lint or check\n' > "$tmp/handovers/cr-tune/proposals-2026-10-15.md"
-run "$TODAY" > /dev/null
+run "$TODAY" > /dev/null; check "expiry: second rerun exits 0" "$?" "0"
 contains "expiry: an unexpired proposal is not re-listed" "$(cat "$f")" "EXPIRED [quiet-class] first proposed 2026-09-29"
 not_contains "expiry: a 4-day-old proposal is not expired" "$(cat "$f")" "first proposed 2026-10-15"
 
 # A same-day file written by /cr-tune step 4 is never overwritten
 rm -f "$f"; printf '# hand-written cr-tune proposals\n' > "$f"
-run "$TODAY" > /dev/null
+run "$TODAY" > /dev/null; check "clobber: rerun exits 0" "$?" "0"
 check "clobber: foreign same-day file kept" "$(cat "$f")" "# hand-written cr-tune proposals"
 [ -f "$tmp/handovers/cr-tune/proposals-$TODAY-standards.md" ] && echo "ok - cadence wrote the -standards sibling" || { echo "FAIL - sibling file missing"; fails=$((fails+1)); }
+
+# ...nor a foreign -standards sibling
+sib="$tmp/handovers/cr-tune/proposals-$TODAY-standards.md"
+printf '# hand-written sibling\n' > "$sib"
+run "$TODAY" > /dev/null; check "clobber: foreign sibling makes the run exit 2" "$?" "2"
+check "clobber: foreign sibling kept" "$(cat "$sib")" "# hand-written sibling"
 
 # Usage contract
 out="$(HANDOVER_DIR="$tmp/handovers" bash "$SCRIPT" --since 7x 2>&1)"; rc=$?

@@ -14,7 +14,7 @@
 # Approval: CodeRabbit rule and critic rule (.coderabbit.yaml, critics.json) = operator; every other target
 #   = console GO with an opus judge.
 # Expiry: a proposal lasts 14 days. A class listed in an older file (>= 14 days) that is proposed again is
-#   REFIRED; one that is not is EXPIRED.
+#   REFIRED; one that is not is EXPIRED; one promoted (rung_since) or removed since is BUILT.
 # Promoted classes (`rung_since` set) show real findings per week before and after promotion; a class whose
 #   rate does not fall is demoted to restructure (S5).
 # Env: KNOWN_FINDINGS_FILE, CR_LEDGER (both passed through), HANDOVER_DIR (via scripts/lib/handover-path.sh),
@@ -57,6 +57,7 @@ KNOWN_FINDINGS_FILE="$KF" CR_LEDGER="$LEDGER" bash "$SCRIPT_DIR/known-findings.s
 OUT="$OUT_DIR/proposals-$TODAY.md"
 # /cr-tune step 4 writes the same name: never clobber a file this script did not write
 if [ -f "$OUT" ] && ! grep -q '^# CR standards proposals ' "$OUT"; then OUT="$OUT_DIR/proposals-$TODAY-standards.md"; fi
+if [ -f "$OUT" ] && ! grep -q '^# CR standards proposals ' "$OUT"; then echo "standards-cadence.sh: $OUT exists and is not a cadence file; move it aside" >&2; exit 2; fi
 KF="$KF" LEDGER="$LEDGER" LADDER="$LADDER" OUT="$OUT" OUT_DIR="$OUT_DIR" TODAY="$TODAY" SINCE="$SINCE" node -e '
 const fs = require("fs");
 const E = process.env, DAY = 864e5, WEEK = 7 * DAY;
@@ -126,7 +127,8 @@ for (const f of fs.readdirSync(E.OUT_DIR).filter(f => /^proposals-\d{4}-\d{2}-\d
   const d = f.slice(10, 20), dm = Date.parse(d + "T00:00:00Z");
   if (!fs.readFileSync(E.OUT_DIR + "/" + f, "utf8").startsWith("# CR standards proposals ") || d >= E.TODAY || isNaN(dm) || today - dm < 14 * DAY) continue;
   for (const m of fs.readFileSync(E.OUT_DIR + "/" + f, "utf8").matchAll(/^- \[([^\]]+)\] target:/gm)) {
-    const id = m[1];
+    const id = m[1], cl = byId[id];
+    if (!cl || (cl.rung_since && cl.rung_since >= d)) { exp.push(`- BUILT [${id}] first proposed ${d}, class retired or promoted since`); continue; }
     exp.push(proposed[id] && proposed[id].listed ? `- REFIRED [${id}] first proposed ${d}, unbuilt after 14 days and still recurring` : `- EXPIRED [${id}] first proposed ${d}, not built and no longer recurring`);
   }
 }
