@@ -25,7 +25,10 @@
 # tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review, no leg, no open PR)
 # lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
 # the RESUME rows need a leg source (--owners or --legs-from, plus the cloud-sessions.tsv
-# next to --doc, 48h) and print none without one; an empty pool prints `POOL-EMPTY`.
+# next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
+# `,LOW` when the pool printed fewer rows than --top (the free-slot count); an empty
+# pool prints `POOL-EMPTY` and then the tier-4 To Do rows as `NEXT-TIER` rows (rank
+# order, unclassified, collision-checked against held files), never dispatched from here.
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
@@ -254,6 +257,7 @@ for i in issues.values():
     cands.append(i)
 cands.sort(key=ranked)
 pool_only = os.environ.get('ND_POOL_ONLY') == '1'
+next_tier = [i for i in cands if tier_of(i) > 3]
 if pool_only:
     cands = [i for i in cands if tier_of(i) <= 3]
 
@@ -418,8 +422,13 @@ if pool_only:
         emit_resume([i for i in resume if tier_of(i) == t])
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])
+    if not resume_only:
+        print('# pool=%d/%d%s' % (n, top, ',LOW' if n < top else ''))
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
+        # the next tier, in rank order and unclassified: for the console to read, never to dispatch
+        for i in [i for i in next_tier if not any(collides(f, h) for f in i['files'] for h, _ in held)][:top]:
+            print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
     sys.exit(0)
 emit_resume(resume)
 if resume_only:

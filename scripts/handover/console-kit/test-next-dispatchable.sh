@@ -288,7 +288,7 @@ M="$M_SAVE"
 e8="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"; e8_rc=$?
 [ "$e8_rc" = 0 ] && pass "an empty pool exits 0" || fail "empty pool rc=$e8_rc"
 has "an empty pool prints POOL-EMPTY" "$e8" "POOL-EMPTY"
-lacks "an empty pool prints no ticket row" "$e8" "HIMMEL-160"
+lacks "an empty pool prints no dispatchable ticket row" "$(printf '%s\n' "$e8" | grep -v '^NEXT-TIER')" "HIMMEL-160"
 M9="$WORK/jira-mirror9/HIMMEL"; mkdir -p "$M9"
 M_SAVE="$M"; M="$M9"
 mk HIMMEL-20 "To Do" Low '["operator-directed"]' '[]' '[]' "pool ticket the classifier blocks" "Edit scripts/lib/w2.sh only."
@@ -375,6 +375,17 @@ f13="$(NEXT_DISPATCH_MIRROR="$M13" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH
 lacks "pool-only: a dropped-platform In Progress ticket is not a RESUME row" "$f13" "HIMMEL-421"
 lacks "pool-only: a residual-depth In Progress ticket is not a RESUME row" "$f13" "HIMMEL-422"
 has "pool-only: an ordinary leg-less pool ticket is still a RESUME row" "$f13" "RESUME	HIMMEL-423"
+
+# --- pool depth: --top is the free-slot count; a pool short of it says LOW, and
+# an empty pool names the next-tier candidates (tier 4, rank order unchanged)
+# on NEXT-TIER rows a dispatcher reading ticket rows never picks up.
+has "a pool shorter than the free slots prints pool=<n>/<slots>,LOW" "$(run7 --doc "$CDOC" --priority-pool-only --top 8)" "pool=6/8,LOW"
+p10="$(run7 --doc "$CDOC" --priority-pool-only --top 4)"
+has "a pool that fills the slots prints pool=<n>/<slots>" "$p10" "pool=4/4"
+lacks "a pool that fills the slots is not LOW" "$p10" "LOW"
+e10="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --top 8 2>/dev/null)"
+has "an empty pool prints pool=0/<slots>,LOW" "$e10" "pool=0/8,LOW"
+has "an empty pool lists the next-tier candidate on a NEXT-TIER row" "$e10" "NEXT-TIER	HIMMEL-160"
 
 # --- residual-depth: depth >= 1 needs a `residual-must <KEY>` ruling in --doc ---
 M10="$WORK/jira-mirror10/HIMMEL"; mkdir -p "$M10"
