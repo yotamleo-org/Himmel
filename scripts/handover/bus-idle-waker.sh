@@ -9,9 +9,15 @@
 # `bus unread`, inbox file vs its byte cursor) and, once mail has sat unread for
 # --grace seconds (a busy session's hook consumes it first), types ONE fixed
 # sentence plus Enter into its konsole through
-# org.kde.konsole.Session.sendText. Only the integer count is ever interpolated:
+# org.kde.konsole.Session.sendText. The sentence is a constant with no digit:
 # message content never reaches the terminal, so a message cannot type commands.
 # One wake per streak, again every --rewake seconds while mail stays unread.
+# Before every wake the screen (getAllDisplayedText) must show the idle input
+# box: a `❯` line between two `─` rules. A permission dialog or any menu
+# replaces that box, and Enter there would confirm its highlighted option, so
+# such a screen (or one that cannot be read) gets no keystroke.
+# The target must be the named session: the konsole session's processId must
+# run a claude whose argv carries `-n <name>`, or the waker refuses with rc=4.
 # A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (the
 # EnableSecuritySensitiveDBusAPI setting is off, or konsole read it before it was
 # enabled: konsole reads it only at startup, so an older window refuses). qdbus6
@@ -19,7 +25,8 @@
 # --pid ends it with rc=0 once that konsole process is gone, so an armed waker
 # never outlives its window.
 #
-# Seams: BUS_WAKER_QDBUS (default qdbus6), BUS_WAKER_BUS (default the himmel-bus CLI).
+# Seams: BUS_WAKER_QDBUS (default qdbus6), BUS_WAKER_BUS (default the himmel-bus CLI),
+# BUS_WAKER_PROC (default /proc).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -29,6 +36,7 @@ if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>
 
 QDBUS="${BUS_WAKER_QDBUS:-qdbus6}"
 BUS="${BUS_WAKER_BUS:-$HERE/../../marketplace/plugins/himmel-bus/bin/bus}"
+PROC="${BUS_WAKER_PROC:-/proc}"
 NAME="" SERVICE="" SESSION="" PID="" POLL=2 GRACE=20 REWAKE=120 MAX=0
 while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || { echo "bus-idle-waker: $1 needs a value" >&2; exit 64; }
@@ -70,6 +78,33 @@ unread() { # prints the unread total, or nothing when a count is unreadable
     echo $((b + i))
 }
 
+konsole() { # konsole <method> [args]: one Session call into $out; a failure ends the waker
+    if ! out="$("$QDBUS" "$SERVICE" "$SESSION" "org.kde.konsole.Session.$1" "${@:2}" 2>&1)"; then
+        case "$out" in *org.freedesktop.DBus.Error.AccessDenied*)
+            echo "bus-idle-waker: sendText denied (konsole security-sensitive D-Bus API is disabled, or this window predates enabling it; enable it, then relaunch the window): $NAME" >&2
+            exit 3 ;;
+        esac
+        echo "bus-idle-waker: konsole $1 failed, session gone: $NAME" >&2
+        exit 1
+    fi
+}
+
+# The session's process must be a claude launched as `-n <name>`.
+konsole processId
+target="$out"
+if ! num "$target" || ! tr '\0' '\n' < "$PROC/$target/cmdline" 2>/dev/null | grep -xF -A1 -e '-n' -e '--name' | grep -qxF -- "$NAME"; then
+    echo "bus-idle-waker: konsole session $SERVICE $SESSION does not run the claude named $NAME, refusing" >&2
+    exit 4
+fi
+
+at_prompt() { # the screen shows the idle input box: a ❯ line between two ─ rules
+    konsole getAllDisplayedText true
+    printf '%s\n' "$out" | awk '
+        { line[NR] = $0 }
+        /^❯/ { at = NR }
+        END { exit !(at > 1 && line[at - 1] ~ /^─/ && line[at + 1] ~ /^─/) }'
+}
+
 since=0 last=0 polls=0
 while :; do
     polls=$((polls + 1))
@@ -84,15 +119,9 @@ while :; do
         waited="$(awk -v a="$now" -v b="$since" 'BEGIN{printf "%d", (a-b)*1000}')"
         gap="$(awk -v a="$now" -v b="$last" 'BEGIN{printf "%d", (a-b)*1000}')"
         if [ "$waited" -ge "$(awk -v g="$GRACE" 'BEGIN{printf "%d", g*1000}')" ] \
-            && { [ "$last" = 0 ] || [ "$gap" -ge "$(awk -v g="$REWAKE" 'BEGIN{printf "%d", g*1000}')" ]; }; then
-            if ! err="$("$QDBUS" "$SERVICE" "$SESSION" org.kde.konsole.Session.sendText "You have $n unread himmel messages: read them now."$'\r' 2>&1)"; then
-                case "$err" in *org.freedesktop.DBus.Error.AccessDenied*)
-                    echo "bus-idle-waker: sendText denied (konsole security-sensitive D-Bus API is disabled, or this window predates enabling it; enable it, then relaunch the window): $NAME" >&2
-                    exit 3 ;;
-                esac
-                echo "bus-idle-waker: sendText failed, session gone: $NAME" >&2
-                exit 1
-            fi
+            && { [ "$last" = 0 ] || [ "$gap" -ge "$(awk -v g="$REWAKE" 'BEGIN{printf "%d", g*1000}')" ]; } \
+            && at_prompt; then
+            konsole sendText "You have unread himmel messages: read them now."$'\r'
             last="$now"
         fi
     else
