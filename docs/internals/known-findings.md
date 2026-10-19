@@ -72,8 +72,8 @@ then the promotion queue: `prompt`/`advisory` classes that carry a `match` and h
 real recurrences (verdict `agreed`, `confirmed` or `fixed`) in the `evidence.ledger`
 verdict history, most first, then the `PROPOSE` lines.
 
-`scripts/cr/class-recurrence.sh` is the restructure trigger. Run weekly, it reads
-the ledger over a rolling 14 days and acts on a class when one (directory cut to 3
+`scripts/cr/class-recurrence.sh` is the restructure trigger (operator-run; the
+weekly cadence wiring is a separate slice). It reads the ledger over a rolling 14 days and acts on a class when one (directory cut to 3
 segments, class) pair shows in 5 merged PRs with 2 deferring, or when 3 open
 `residual` tickets share the class label. It comments on the class's
 `restructure-class-<id>` ticket, labels the HIMMEL-6176 member that owns the fix,
