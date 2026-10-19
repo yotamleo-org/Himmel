@@ -804,12 +804,16 @@ contains "dry-run: unset LEG_SUPPRESS_CR_TRIGGER leaves CR_TRIGGER_SUPPRESS unse
 
 # --- 7d. LEG_API_LANE=on carries HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=auto; otherwise neither
 rc=0; out="$(LEG_API_LANE=on bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: LEG_API_LANE=on exits 0" "$rc" "0"
 contains "dry-run: LEG_API_LANE=on carries both API-lane vars" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: unset LEG_API_LANE exits 0" "$rc" "0"
 contains "dry-run: no LEG_API_LANE leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 rc=0; out="$(LEG_API_LANE=off bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: LEG_API_LANE=off exits 0" "$rc" "0"
 contains "dry-run: LEG_API_LANE=off leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 rc=0; out="$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: ambient API-lane vars exit 0" "$rc" "0"
 contains "dry-run: ambient API-lane vars without LEG_API_LANE are scrubbed" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 
 # --- 8-9, 11. full (non-dry) launch: proves the non-dry path builds the SAME
