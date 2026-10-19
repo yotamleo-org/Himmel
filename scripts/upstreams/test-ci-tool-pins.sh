@@ -121,7 +121,7 @@ case $? in
 esac
 
 echo "[test-ci-tool-pins] every actions/cache step pins one SHA"
-uses_lines=$(grep -hE 'uses:[[:space:]]*actions/cache@' "$ROOT"/.github/workflows/*.yml)
+uses_lines=$(grep -hE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*actions/cache@' "$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml 2>/dev/null)
 pinned_lines=$(printf '%s\n' "$uses_lines" | grep -E 'actions/cache@[0-9a-f]{40}([[:space:]]|$)')
 nuses=$(printf '%s\n' "$uses_lines" | grep -c .)
 npinned=$(printf '%s\n' "$pinned_lines" | grep -c .)
