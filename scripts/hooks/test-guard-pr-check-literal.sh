@@ -2235,6 +2235,7 @@ g -C "$WT" commit -qam 'branch edits merge-on-green'
 BRANCH_EDIT=$(g -C "$WT" rev-parse HEAD)
 run "behind main, committed merge-on-green.sh edit -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 MAIN_TIP=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+mkdir -p "$PRIMARY/.git/info"
 printf '%s %s\n' "$MAIN_TIP" "$BRANCH_EDIT" >"$PRIMARY/.git/info/grafts"
 [ "$(g -C "$PRIMARY" merge-base refs/heads/main "$BRANCH_EDIT" 2>/dev/null)" = "$BRANCH_EDIT" ] \
     || { echo "FAIL graft fixture does not move the merge-base"; FAILED=$((FAILED + 1)); }
