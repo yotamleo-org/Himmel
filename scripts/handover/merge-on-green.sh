@@ -301,7 +301,7 @@ GH="gh"
 # reputation. docs/internals/enforcement.md already records keeping the two
 # scripts separate rather than building a shared "which repo class" switch;
 # this constant staying its own fixed literal is that decision holding.
-HIMMEL_PUBLIC_ORIGIN_NWO="yotamleo/Himmel"
+HIMMEL_PUBLIC_ORIGIN_NWO="yotamleo-org/Himmel"
 
 selector=""
 DRY_RUN=0
