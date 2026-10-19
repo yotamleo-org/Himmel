@@ -841,7 +841,8 @@ const iceFollowupsSection = (() => {
 })();
 
 // Classes overdue for escalation: the PROPOSE lines of `known-findings.sh --ladder`, read
-// as printed -- the ladder is never recomputed here. BOARD_KNOWN_FINDINGS overrides the
+// as printed -- the ladder is never recomputed here. A `retire` proposal is not an escalation
+// and is left out. BOARD_KNOWN_FINDINGS overrides the
 // script (test seam). The panel shows only when a class is proposed; an unreadable ladder
 // renders nothing; never fatal; not part of the fingerprint.
 const KNOWN_FINDINGS_BIN = process.env.BOARD_KNOWN_FINDINGS || join(HERE, '..', '..', 'cr', 'known-findings.sh');
@@ -851,7 +852,7 @@ const overdueClassesSection = (() => {
         const out = execFileSync('bash', [KNOWN_FINDINGS_BIN, '--ladder'], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'ignore'] });
         for (const l of out.split('\n')) {
             const m = /^\s*PROPOSE \[([^\]]+)\] (.*?)\s*$/.exec(l.replace(/\r$/, ''));
-            if (m) trend.overdue_classes.push({ id: m[1], proposal: m[2] });
+            if (m && !/^retire\b/.test(m[2])) trend.overdue_classes.push({ id: m[1], proposal: m[2] });
         }
         if (!trend.overdue_classes.length) return '';
         const rows = trend.overdue_classes.map((c) => `<li data-overdue-class="${esc(c.id)}"><b>${safe(c.id, 80)}</b> ${safe(c.proposal, 240)}</li>`).join('');

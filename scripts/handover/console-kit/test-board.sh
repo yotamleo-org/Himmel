@@ -1071,6 +1071,7 @@ cat > "$W/bin/kf-two" <<'STUB'
 printf '%s\n' 'known-findings ladder: 27 class(es)' 'promotion proposals (printed only):' \
     '  PROPOSE [mktemp-no-template] advisory -> gate recurrences=57 branches=39 host=scripts/lint/shell-lint.sh' \
     '  PROPOSE [hook-fail-direction] advisory -> gate recurrences=19 branches=15 host=a scripts/hooks/ PreToolUse hook' \
+    '  PROPOSE [errexit-false-positive] retire disproved=9/10 real_in_30d=0' \
     '  [not-a-proposal] rung=advisory kind=fix agreed=3'
 STUB
 cat > "$W/bin/kf-none" <<'STUB'
@@ -1086,7 +1087,9 @@ contains 'overdue-classes html: a section with the count of PROPOSE lines' "$cht
 contains 'overdue-classes html: first proposed class is a row' "$chtml" 'data-overdue-class="mktemp-no-template"'
 contains 'overdue-classes html: second proposed class is a row' "$chtml" 'data-overdue-class="hook-fail-direction"'
 lacks 'overdue-classes html: a non-PROPOSE ladder line is not a row' "$chtml" 'not-a-proposal'
-jcheck 'overdue-classes --json: the proposed class ids' 'M.trends.overdue_classes.length === 2 && M.trends.overdue_classes[0].id === "mktemp-no-template"'
+contains 'overdue-classes html: the row carries the printed proposal text' "$chtml" 'advisory -&gt; gate recurrences=57 branches=39'
+lacks 'overdue-classes html: a retire proposal is not an escalation row' "$chtml" 'errexit-false-positive'
+jcheck 'overdue-classes --json: the proposed class ids and proposal text, retire excluded' 'M.trends.overdue_classes.length === 2 && M.trends.overdue_classes[0].id === "mktemp-no-template" && M.trends.overdue_classes[0].proposal.startsWith("advisory -> gate recurrences=57")'
 BOARD_KNOWN_FINDINGS="$W/bin/kf-none" crrun >/dev/null; rc=$?
 contains 'overdue-classes: no proposals is rc 0' "rc=$rc" 'rc=0'
 lacks 'overdue-classes html: no proposals renders no panel' "$(cat "$CL/board.html")" 'data-overdue-classes='
