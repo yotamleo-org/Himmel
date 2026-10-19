@@ -11,16 +11,21 @@
 #                                      head iff it is completed and failure /
 #                                      cancelled / timed_out
 #   rerun-head.sh [--dry-run] --run <id>  same, but refuse (exit 1) when <id>'s
-#                                      head_sha is not its PR's current head
+#                                      head_sha is not its PR's current head or its
+#                                      PR is a fork PR; it then reruns the newest
+#                                      head run, which may be a newer id than <id>
 #   rerun-head.sh [--dry-run] --fleet  cancel-superseded-runs.sh first, then <pr>
 #                                      mode for every open PR: the sanctioned
 #                                      recovery after an outage
+#   <pr> and --fleet do not check isCrossRepository.
 #
 # A live head run, a green one, a run already rerun once (attempt above 1) or no
 # run at the head are no-ops. Fails SAFE: every run read happens before the first
 # rerun, so a gh or jq error there means nothing is rerun and exit 1; the PR heads
-# are re-read right before each rerun and a head that moved is skipped. A rerun or
-# re-read that itself fails is reported, the rest still go, and the exit is 1.
+# are re-read right before each rerun and a head that moved is skipped, and so is a
+# head run that is no longer the planned run or no longer rerunnable (gh has no
+# atomic compare-and-rerun: each recheck narrows the race, none closes it). A rerun
+# or re-read that itself fails is reported, the rest still go, and the exit is 1.
 # -R comes from GH_REPO or the origin remote, never a hardcoded slug.
 # Console-run only, not wired into any hook or workflow.
 set -uo pipefail
@@ -92,7 +97,7 @@ plan_pr() {
   verdict="$(decide "$run")" || die "jq filter failed for PR #$1"
   IFS=$'\t' read -r action why <<< "$verdict"
   if [ "$action" = rerun ]; then
-    PLAN+=("$1"$'\t'"$2"$'\t'"$(printf '%s' "$run" | jq -r '.databaseId')"$'\t'"$why")
+    PLAN+=("$1"$'\t'"$2"$'\t'"$(printf '%s' "$run" | jq -r '.databaseId')"$'\t'"$3"$'\t'"$why")
   else
     echo "skip PR #$1 ${2:0:8}: $why"
   fi
@@ -101,9 +106,9 @@ plan_pr() {
 # Rerun each planned run whose PR head has not moved, re-reading the PR heads
 # right before every rerun.
 apply() {
-  local fresh entry pr oid id why now desc rc=0
+  local fresh entry pr oid id branch why now desc run verdict action again rc=0
   for entry in ${PLAN[@]+"${PLAN[@]}"}; do
-    IFS=$'\t' read -r pr oid id why <<< "$entry"
+    IFS=$'\t' read -r pr oid id branch why <<< "$entry"
     desc="$id PR #$pr head ${oid:0:8} ($why)"
     if [ "$DRY" -eq 1 ]; then echo "would-rerun $desc"; continue; fi
     if ! fresh="$(read_prs)"; then
@@ -113,6 +118,18 @@ apply() {
     if [ "$now" != "$oid" ]; then
       echo "skip PR #$pr: head moved to ${now:0:8} since the reads, run $id is now stale"
       # an explicit <pr> / --run asked for this rerun; a fleet pass just moves on
+      [ "$MODE" = fleet ] || rc=1
+      continue
+    fi
+    if ! run="$(head_run "$oid" "$branch")"; then
+      echo "rerun-failed $desc: gh run list failed on the re-read" >&2; rc=1; continue
+    fi
+    if ! verdict="$(decide "$run")"; then
+      echo "rerun-failed $desc: jq failed on the re-read" >&2; rc=1; continue
+    fi
+    IFS=$'\t' read -r action again <<< "$verdict"
+    if [ "$action" != rerun ] || [ "$(printf '%s' "$run" | jq -r '.databaseId')" != "$id" ]; then
+      echo "skip PR #$pr: head run changed since the plan ($again), run $id is not rerun"
       [ "$MODE" = fleet ] || rc=1
       continue
     fi
