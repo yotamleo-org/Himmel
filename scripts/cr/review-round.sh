@@ -1218,7 +1218,7 @@ if [ "$verb" = "evidence" ]; then
         exit 8
     fi
     ev_ledger="$git_dir/cr-critic-scores.jsonl"
-    if ! grep -qsF "\"head\":\"$ev_head\",\"status\":\"ok\",\"source\":\"evidence\"" "$ev_ledger"; then
+    if ! grep -qsF "\"branch\":\"$branch\",\"head\":\"$ev_head\",\"status\":\"ok\",\"source\":\"evidence\"" "$ev_ledger"; then
         printf '{"kind":"evidence","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"evidence"}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$ev_head" >> "$ev_ledger" || exit 5
     fi
