@@ -299,12 +299,14 @@ is "<pr>, the head run was rerun by someone else (attempt 2) after the plan: not
 rc_nz "  non-zero exit" "$rc"
 setpr "$(r 5 completed failure feat/a $H 1)"
 echo "[$(r 5 in_progress '' feat/a $H 1)]" > "$TMP/fx/runs-after-2.json"
-out="$(run 10)"
+out="$(run 10)"; rc=$?
 is "<pr>, the head run went live after the plan: not rerun" "none" "$(reruns)"
+rc_nz "  non-zero exit" "$rc"
 setpr "$(r 5 completed failure feat/a $H 1)"
 echo "[$(r 5 completed failure feat/a $H 1)]" > "$TMP/fx/runs-after-2.json"
-run 10 >/dev/null
+out="$(run 10)"; rc=$?
 is "<pr>, the head run unchanged on the re-read: rerun" "5" "$(reruns)"
+rc_is "  exit 0" 0 "$rc"
 setfleet
 echo "[$(r 1 completed cancelled feat/a $H 1),$(r 2 in_progress '' feat/b $O 1),$(r 3 completed success feat/c cccccccc33333333cccccccc33333333cccccccc 1),$(r 4 completed failure feat/d dddddddd44444444dddddddd44444444dddddddd 1)]" > "$TMP/fx/runs.json"
 echo "[$(r 1 completed cancelled feat/a $H 2),$(r 4 completed failure feat/d dddddddd44444444dddddddd44444444dddddddd 1)]" > "$TMP/fx/runs-after-5.json"
