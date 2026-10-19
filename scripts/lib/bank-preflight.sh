@@ -287,7 +287,7 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # and it refuses (over-count, never under-count); no destructive admit
 # operation is reachable without a live fence.
 _fleet_gate_take() {
-  local gate="$1" held_at victim seen fence rm_pid rm_ticks
+  local gate="$1" held_at victim seen fence rm_pid rm_ticks rm_secs
   if ! mkdir "$gate" 2>/dev/null; then
     held_at="$(cat "$gate/acquired" 2>/dev/null)" || held_at=""
     case "$held_at" in
@@ -328,8 +328,10 @@ _fleet_gate_take() {
       ( rm -rf "$gate".broken.* 2>/dev/null ) &
       rm_pid=$!
       rm_ticks=0
+      rm_secs="${FLEET_ADMIT_BROKEN_RM_SECS:-5}"
+      case "$rm_secs" in ''|*[!0-9]*) rm_secs=5 ;; esac
       while kill -0 "$rm_pid" 2>/dev/null; do
-        if [ "$rm_ticks" -ge $(( ${FLEET_ADMIT_BROKEN_RM_SECS:-5} * 10 )) ]; then
+        if [ "$rm_ticks" -ge $(( 10#$rm_secs * 10 )) ]; then
           kill "$rm_pid" 2>/dev/null
           break
         fi
@@ -932,7 +934,7 @@ if [ "$_fleet_admitted" -eq 0 ]; then
   _fleet_held_at="$(cat "$SLOTS/.admit/acquired" 2>/dev/null)"
   case "$_fleet_held_pid:$_fleet_held_at" in
     *[!0-9:]*|:*|*:) ;;
-    *) echo "bank-preflight: admission lock held by holder pid $_fleet_held_pid (age $(( $(date +%s) - _fleet_held_at ))s, command: $(ps -o args= -p "$_fleet_held_pid" 2>/dev/null | head -c 200))" >&2 ;;
+    *) echo "bank-preflight: admission lock held by holder pid $_fleet_held_pid (age $(( $(date +%s) - _fleet_held_at ))s, command: $(ps -o comm= -p "$_fleet_held_pid" 2>/dev/null | head -c 64))" >&2 ;;
   esac
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
     echo "bank-preflight: FLEET_CAP_OK bypass in effect (launching shell only) — proceeding despite the admission-lock failure" >&2
