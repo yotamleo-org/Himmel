@@ -293,6 +293,7 @@ export STUB_RUNS="$WORK/runs.json"
 
 # a hard cap on cancels per invocation
 out="$(live --keep-pr 3221 --max-cancels 2)"; rc=$?
+# read-sink-ok: STUB_CANCEL_LOG is the stub log this suite exports under its own $WORK
 check "--max-cancels stops at the cap" "2" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
 check "--max-cancels exits 1 (re-run to drain the rest)" "1" "$rc"
 has "the cancel cap is named" "cap of 2 cancels" "$out"
@@ -309,10 +310,12 @@ check "a non-numeric CANCEL_RUNS_LIMIT cancels nothing" "" "$(cancelled)"
 
 export STUB_RUNS="$WORK/runs-many.json"
 out="$(live --keep-sha "$KEEP")"; rc=$?
+# read-sink-ok: STUB_CANCEL_LOG is the stub log this suite exports under its own $WORK
 check "the default cap cancels 100 of 120 runs" "100" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
 check "the default cap exits 1" "1" "$rc"
 has "the default cap is named" "cap of 100 cancels" "$out"
 out="$(live --keep-sha "$KEEP" --max-cancels 500)"; rc=$?
+# read-sink-ok: STUB_CANCEL_LOG is the stub log this suite exports under its own $WORK
 check "--max-cancels 500 raises the cap to cancel all 120" "120" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
 check "an uncapped run exits 0" "0" "$rc"
 export STUB_RUNS="$WORK/runs.json"
