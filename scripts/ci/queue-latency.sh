@@ -42,7 +42,9 @@ gh_api() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 15} gh api "$@" 2>/dev/null; }
 # The leading "#ok" row proves the body held a workflow_runs array, so a valid
 # empty listing (no runs) is told apart from an empty or unparseable body.
 RUNS_JQ='"#ok", (.workflow_runs[] | [.id, .status, (.created_at | fromdateiso8601)] | @tsv)'
-JOBS_JQ='[ ([.jobs[] | select(.status=="in_progress")] | length),
+# A run with more jobs than one page holds would undercount; read it as unknown.
+JOBS_JQ='if (.total_count // 0) > (.jobs | length) then error("jobs listing truncated") else . end
+         | [ ([.jobs[] | select(.status=="in_progress")] | length),
            ([.jobs[] | select(.status=="in_progress" and ((.labels // []) | join(",") | test("macos")))] | length),
            ([.jobs[] | select(.status=="queued")] | length),
            ([.jobs[] | select(.status=="queued") | .created_at | fromdateiso8601] | min // 0) ] | @tsv'
