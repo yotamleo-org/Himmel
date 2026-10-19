@@ -67,7 +67,7 @@ RUNJOBS="$FX/run-jobs"
 JOBS_FAILED="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-failed.XXXXXX")" || exit 1
 sed 's/"cancelled"/"failure"/' "$JOBS_CANCELLED" > "$JOBS_FAILED" || exit 1
 JOBS_TIMEDOUT="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-timedout.XXXXXX")" || exit 1
-sed '0,/"success"/s/"success"/"timed_out"/' "$JOBS_CANCELLED" > "$JOBS_TIMEDOUT" || exit 1
+sed '1,/"success"/s/"success"/"timed_out"/' "$JOBS_CANCELLED" > "$JOBS_TIMEDOUT" || exit 1
 JOBS_CAPPED="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-capped.XXXXXX")" || exit 1
 sed 's/13:03:27Z/13:24:02Z/' "$JOBS_CANCELLED" > "$JOBS_CAPPED" || exit 1
 OLD_RUN="2026-10-17T11:34:47Z"
