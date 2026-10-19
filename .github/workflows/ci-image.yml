@@ -1,0 +1,45 @@
+name: CI image
+
+# Build the CI tooling image (.github/ci-image/Dockerfile) and push it
+# to GHCR. Rebuilt only when the Dockerfile directory changes on main, plus a weekly
+# run so base-image security updates land. Never runs on pull_request, so no fork PR
+# can push a tag. ci.yml pins a tag explicitly; a rebuild alone changes no PR's CI.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/ci-image/**'
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Only the real repo pushes: a fork's schedule has no GHCR namespace of ours.
+    if: github.repository == 'yotamleo/himmel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/yotamleo/himmel-ci
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build --pull -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .github/ci-image
+      - name: Smoke the tools the jobs call
+        run: |
+          docker run --rm "$IMAGE:${{ github.sha }}" bash -c 'at -V 2>&1 | head -n 1; bwrap --version; socat -V | head -n 2; ffmpeg -version | head -n 1; jq --version; shellcheck --version | sed -n 2p; node --version; npm --version; bun --version; gitleaks version; pre-commit --version; gh --version | head -n 1; git --version; sudo -V | head -n 1'
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
