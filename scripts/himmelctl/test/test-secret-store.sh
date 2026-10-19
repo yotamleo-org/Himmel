@@ -40,7 +40,7 @@ let n = 0;
 function mk() {
   const base = path.join(tmp, 'c' + (n++));
   const home = path.join(base, 'home'), himmelRoot = path.join(base, 'himmel'), projectRoot = path.join(base, 'proj');
-  for (const d of [home, himmelRoot, projectRoot]) fs.mkdirSync(d, { recursive: true });
+  for (const d of [home, himmelRoot, projectRoot]) { fs.mkdirSync(d, { recursive: true }); fs.chmodSync(d, 0o700); }
   return { home, himmelRoot, projectRoot, env: {} };
 }
 const modeOf = (f) => (fs.statSync(f).mode & 0o777).toString(8);
@@ -208,6 +208,41 @@ row('h7 write refuses a store directory other users can write to', () => {
   let msg = ''; try { store.write('JIRA_EMAIL', 'a@example.com', ctx); } catch (e) { msg = e.message; }
   ok(/writable/.test(msg), 'refused: ' + msg);
   ok(!fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'nothing written');
+});
+
+row('h8 shell-safe: a value a bash `source` would execute or expand is refused, never reaches the file', () => {
+  for (const meta of ['$', '`', ';', '\\', '&', '|', '<', '>', '(', ')', "'", '"']) {
+    const v = fake() + meta + fake();
+    const r = store.validate('JIRA_API_TOKEN', v);
+    eq(r.ok, false, JSON.stringify(meta)); eq(r.rule, 'shell-safe', JSON.stringify(meta));
+    const ctx = mk(); let msg = ''; try { store.write('JIRA_API_TOKEN', v, ctx); } catch (e) { msg = e.message; }
+    ok(/shell-safe/.test(msg) && !msg.includes(v), 'write refused: ' + msg);
+    ok(!fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'nothing written for ' + JSON.stringify(meta));
+  }
+  eq(store.validate('JIRA_API_TOKEN', fake() + '=_-.+/:@%').ok, true, 'token alphabet stays writable');
+  eq(store.validate('JIRA_BASE_URL', 'https://example.atlassian.net/x').ok, true);
+});
+
+row('h9 directory mode: group-write passes only for the user\'s private group; world-write never', () => {
+  const me = os.userInfo().username;
+  const acct = (ctx, members, primaries) => {
+    const g = process.getgid();
+    const gf = path.join(ctx.home, 'group'), pf = path.join(ctx.home, 'passwd');
+    fs.writeFileSync(gf, me + ':x:' + g + ':' + members.join(',') + '\n');
+    fs.writeFileSync(pf, primaries.map((u) => u + ':x:1:' + g + '::/:/bin/sh').join('\n') + '\n');
+    ctx.accountFiles = { group: gf, passwd: pf };
+  };
+  const refused = (ctx, why) => {
+    let msg = ''; try { store.write('JIRA_EMAIL', 'a@example.com', ctx); } catch (e) { msg = e.message; }
+    ok(/writable/.test(msg), why + ': ' + msg);
+  };
+  const ctx = mk(); acct(ctx, [], [me]); fs.chmodSync(ctx.himmelRoot, 0o775);
+  store.write('JIRA_EMAIL', 'a@example.com', ctx);
+  ok(fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'private group 0775 writes');
+  const c2 = mk(); acct(c2, ['other'], [me]); fs.chmodSync(c2.himmelRoot, 0o775); refused(c2, 'shared group member');
+  const c3 = mk(); acct(c3, [], [me, 'other']); fs.chmodSync(c3.himmelRoot, 0o775); refused(c3, 'shared primary group');
+  const c4 = mk(); acct(c4, [], [me]); c4.gid = process.getgid() + 1; fs.chmodSync(c4.himmelRoot, 0o775); refused(c4, 'dir group is not the primary group');
+  const c5 = mk(); acct(c5, [], [me]); fs.chmodSync(c5.himmelRoot, 0o777); refused(c5, 'world-writable');
 });
 
 row('h2 card entries are not writable', () => {
