@@ -39,7 +39,7 @@ paths = [
 regexes = [
   '''^himmel-local-claudex$''',
   # handover-token grammar
-  '''^(?:[a-z0-9]+(?:-[a-z0-9]+)*-pid[0-9]+|[A-Z]{1,3}-[A-Za-z0-9][A-Za-z0-9_-]{0,47}-[0-9a-f]{4,16}|[0-9a-f]{40}|[0-9a-f]{64})[.,;:)]?$''',
+  '''^(?:[a-z0-9]+(?:-[a-z0-9]+)*-pid[0-9]+|[A-Z]{1,3}-(?:[A-Za-z]{1,4}[0-9]{1,5}[A-Za-z]{0,2}|[A-Z]{2,8}-[0-9]{1,6})(?:_[a-z]{1,8})?-[0-9a-f]{4,16}|[0-9a-f]{40}|[0-9a-f]{64})[.,;:)]?$''',
   # atlassian-api-token false positive on a function name. Exact literal only.
   '''^runClaudexSharedDispatch$''',
 ]

@@ -9,7 +9,7 @@ One anchored rule in the vault template's `.gitleaks.toml` allowlists it.
 ## The rule
 
 ```
-^(?:[a-z0-9]+(?:-[a-z0-9]+)*-pid[0-9]+|[A-Z]{1,3}-[A-Za-z0-9][A-Za-z0-9_-]{0,47}-[0-9a-f]{4,16}|[0-9a-f]{40}|[0-9a-f]{64})[.,;:)]?$
+^(?:[a-z0-9]+(?:-[a-z0-9]+)*-pid[0-9]+|[A-Z]{1,3}-(?:[A-Za-z]{1,4}[0-9]{1,5}[A-Za-z]{0,2}|[A-Z]{2,8}-[0-9]{1,6})(?:_[a-z]{1,8})?-[0-9a-f]{4,16}|[0-9a-f]{40}|[0-9a-f]{64})[.,;:)]?$
 ```
 
 The rule has four alternatives:
@@ -23,7 +23,11 @@ The rule has four alternatives:
 
 - The host is the lowercased hostname. Each non-alphanumeric run in it is folded to one `-`.
 - The letters are one to three upper-case console letters.
-- The label is a leg label or a judge qid of up to 48 characters.
+- The label is a leg label or a judge qid in one of two low-entropy shapes: up to
+  four letters, one to five digits and up to two letters (`N2802`, `N236b`,
+  `jX3206m`), or an upper-case ticket key (`HIMMEL-4999`). Either may end in
+  `_` and up to eight lower-case letters (`J12_tune`). A random string does not
+  fit, so a secret wrapped as `S-<secret>-abcd` is still caught.
 - One trailing `.,;:)` is allowed for a token quoted at the end of a sentence.
 
 The rule is anchored, so a secret with a token prefix or suffix is still caught.

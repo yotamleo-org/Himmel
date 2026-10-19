@@ -91,7 +91,7 @@ done
 
 # --- 3. gen-judge-brief.py judge nonces -------------------------------------
 n=0
-for qid_letter in j2599a: HIMMEL-4999: J12_tune: j2599a:ABC; do
+for qid_letter in j2599a: HIMMEL-4999: J12_tune: jX3206m: J12A: legN9b: j2599a:ABC; do
     n=$((n + 1)); qid="${qid_letter%%:*}"; letter="${qid_letter#*:}"
     printf '{"qid": "%s", "ticket": "HIMMEL-3746", "pr": 2599, "head": "0123456789abcdef0123456789abcdef01234567", "question": "Is it?", "reason": "a dispute", "prior": "HIMMEL-3254. Source: qmd.", "tier": {"category": "design", "reason": "a design call"}}\n' "$qid" > "$WORK/spec$n.json"
     out="$(python3 "$HERE/gen-judge-brief.py" "$WORK/spec$n.json" --console HIMMEL-nextleg-2026-10-13Z-roadmap-console \
@@ -116,15 +116,24 @@ allowed "release token from the yotamasus station" "yotamasus-pid11439"
 aws="AKIA""Z4X7Q2M3KDLPW3NB"
 pat="ghp_""8fK2mQ9xLr4TzW7vNb3Hc6Jd1Ys5Pg0AeU2i"
 gen="Zx8qL2vN7pR4tY6wK9""mB3cF5hJ1sD0gQ"
+short="qK7xL2mP""9vR4tW"
 caught "AWS access key" "aws_access_key_id = $aws"
 caught "GitHub PAT" "export GITHUB_TOKEN=$pat"
 caught "generic api key" "api_key = \"$gen\""
 caught "nonce-prefixed secret" "token=S-N2802-7023775e$gen"
 caught "lock-token-prefixed secret" "token=cachyos-x8664-pid2124755$gen"
 caught "upper-case 40-char token" "secret = $(git -C "$ROOT" rev-parse HEAD | tr 'a-f' 'A-F')"
-for t in "S-N2802-7023775e$gen" "ab-$gen-pid1" "$aws" "$pat"; do
-    if [ -n "$GRAMMAR" ] && fullmatch "$t"; then fail "RED grammar admits a secret-shaped token"; else pass "RED grammar refuses a secret-shaped token"; fi
+caught "secret in the label slot" "token=S-$gen-abcd"
+caught "short secret in the label slot" "token=Z-$short-1a2b3c4d"
+for t in "S-N2802-7023775e$gen" "ab-$gen-pid1" "$aws" "$pat" "S-$gen-abcd" "Z-$short-1a2b3c4d" "S-N2802_${gen}-abcd"; do
+    if [ -n "$GRAMMAR" ] && fullmatch "$t"; then fail "RED grammar admits a secret-shaped token: $t"; else pass "RED grammar refuses a secret-shaped token"; fi
 done
+# the judge-brief qid validator refuses the same label-slot secret
+printf '{"qid": "%s", "ticket": "HIMMEL-3746", "pr": 2599, "head": "0123456789abcdef0123456789abcdef01234567", "question": "Is it?", "reason": "a dispute", "prior": "HIMMEL-3254. Source: qmd.", "tier": {"category": "design", "reason": "a design call"}}\n' "$gen" > "$WORK/spec-secret.json"
+err="$(python3 "$HERE/gen-judge-brief.py" "$WORK/spec-secret.json" --console HIMMEL-nextleg-2026-10-13Z-roadmap-console \
+    --bucket "$WORK/judge-secret" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" 2>&1 >/dev/null)"
+case "$err" in *"qid '$gen' must be"*) pass "RED gen-judge-brief refuses a high-entropy qid" ;;
+    *) fail "RED gen-judge-brief did not refuse the high-entropy qid (stderr: ${err:-none})" ;; esac
 
 # --- 6. one grammar everywhere -------------------------------------------------
 shapes="$(sed -n "/^CLOSED_SHAPES=/,/'\$/p" "$STALL")"
