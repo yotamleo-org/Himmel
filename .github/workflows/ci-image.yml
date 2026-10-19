@@ -41,7 +41,7 @@ jobs:
           docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null'
       - name: Push
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker push "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}"
