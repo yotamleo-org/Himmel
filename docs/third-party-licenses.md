@@ -142,6 +142,9 @@ names the pin and its deviations; the `unslop`, `no-comments` and
 `comment-sicko` files above are re-synced to the same pin (HIMMEL-5812). Never
 sourced from the `michael-denyer/pstack-claude` fork. Opt-in, off in every leg
 profile (registry row: [`tool-adoption/registry.md`](tool-adoption/registry.md)).
+The same pin also feeds a take-parts digest of six principles restated in our
+wording, with nothing vendored from it (HIMMEL-5810:
+[`tool-adoption/pstack-principles-digest.md`](tool-adoption/pstack-principles-digest.md)).
 
 MIT License text as it appeared at that commit (`pstack/LICENSE`), reproduced
 here per the license's own attribution requirement:
