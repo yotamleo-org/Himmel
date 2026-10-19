@@ -116,7 +116,7 @@ for (const c of classes.filter(c => c.rung_since)) {
   const ts = real(c), before = ts.filter(t => t < s), after = ts.filter(t => t >= s);
   const bSpan = Math.max(WEEK, s - Math.min(...before, s)), aSpan = Math.max(WEEK, today - s);
   const rb = before.length / (bSpan / WEEK), ra = after.length / (aSpan / WEEK);
-  const falling = !before.length || ra < rb;
+  const falling = ra === 0 || ra < rb;
   promoted.push(`- [${c.id}] promoted ${c.rung_since} before=${before.length} after=${after.length} per-week-before=${rb.toFixed(2)} per-week-after=${ra.toFixed(2)} ` +
     (falling ? "falling" : "not falling: demote to restructure (S5)"));
 }

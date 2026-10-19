@@ -21,6 +21,7 @@ cat > "$tmp/kf.json" <<'EOF'
  {"id":"fence-lang","title":"fence lang","kind":"checklist","rung":"prompt","source":"cr-app-comments","globs":["docs/**"],"match":"fence","canonical":"x","prompt":false,"detector":null},
  {"id":"quiet-class","title":"never recurs","kind":"fix","rung":"advisory","source":"ledger","globs":["scripts/**"],"match":"nevermatches","canonical":"x","prompt":false,"detector":null},
  {"id":"promoted-ok","title":"promoted, fell","kind":"fix","rung":"gate","rung_since":"2026-10-05","source":"ledger","globs":["lib/**"],"match":"fell","canonical":"x","prompt":false,"detector":null},
+ {"id":"promoted-new","title":"promoted, no baseline","kind":"fix","rung":"gate","rung_since":"2026-10-05","source":"ledger","globs":["lib/**"],"match":"brandnew","canonical":"x","prompt":false,"detector":null},
  {"id":"promoted-flat","title":"promoted, flat","kind":"fix","rung":"gate","rung_since":"2026-10-05","source":"ledger","globs":["lib/**"],"match":"flat","canonical":"x","prompt":false,"detector":null}
 ]}
 EOF
@@ -44,6 +45,8 @@ row() { printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"m
   row 2026-09-30T10:00:00Z b1 aaaaaaa p3 lib/a.sh "fell thrice"
   row 2026-10-01T10:00:00Z b1 aaaaaaa p4 lib/a.sh "fell again"
   row 2026-10-12T10:00:00Z b1 aaaaaaa p5 lib/a.sh "fell late"
+  row 2026-10-13T10:00:00Z b1 aaaaaaa n1 lib/a.sh "brandnew one"
+  row 2026-10-14T10:00:00Z b1 aaaaaaa n2 lib/a.sh "brandnew two"
   row 2026-10-01T11:00:00Z b1 aaaaaaa q1 lib/a.sh "flat early"
   row 2026-10-10T11:00:00Z b1 aaaaaaa q2 lib/a.sh "flat later"
   row 2026-10-11T11:00:00Z b1 aaaaaaa q3 lib/a.sh "flat later too"
@@ -72,6 +75,7 @@ contains "file: promoted class shows before rate"       "$body" "- [promoted-ok]
 contains "file: falling rate is kept"                   "$body" "- [promoted-ok] promoted 2026-10-05 before=4 after=1 per-week-before=4.00 per-week-after=0.50 falling"
 contains "file: flat rate is demoted to restructure"    "$body" "[promoted-flat] promoted 2026-10-05 before=1 after=3"
 contains "file: flat rate names restructure (S5)"       "$body" "not falling: demote to restructure (S5)"
+contains "file: findings after promotion with no baseline are not falling" "$body" "[promoted-new] promoted 2026-10-05 before=0 after=2 per-week-before=0.00 per-week-after=1.00 not falling"
 contains "stdout: prints the written path"              "$out" "$f"
 check "known-findings.json untouched" "$(cmp -s "$tmp/kf.json" "$tmp/kf.before.json" && echo same)" "same"
 
