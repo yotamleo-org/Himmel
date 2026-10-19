@@ -71,7 +71,7 @@ setcwd() { mkdir -p "$W/proc/$1"; ln -s "$2" "$W/proc/$1/cwd"; }
 
 run() { # run <fixture> [args...] — SUT under the hermetic seams, self = 901
     local fx="$1"; shift
-    PATH="$W/bin:$PATH" PS_FIXTURE="$fx" WRAP_SUBTREE_SELF=901 WRAP_SUBTREE_PROC="$W/proc" bash "$SUT" "$@"
+    PATH="$W/bin:$PATH" PS_FIXTURE="$fx" WRAP_SUBTREE_SELF=901 WRAP_SUBTREE_PROC="$W/proc" WRAP_SUBTREE_HOME=/home/u bash "$SUT" "$@"
 }
 
 out="$(run "$W/clean.txt" 101 2>&1)"; rc=$?
@@ -651,6 +651,8 @@ cat > "$W/mkt-live-decoys.txt" <<FIX
   711   101       00:00 /usr/bin/git $HARD fetch origin
   712   101       00:00 /usr/bin/git $HARD clone --depth 1 evil.example:/a/b.git $PC/temp_git_1792433434918_cccccc
   713   101       00:00 /usr/bin/git $HARD -C /home/u/claude-lsremote-Test ls-remote --heads https://github.com/a/b.git
+  714   705       00:00 /usr/bin/git $HARD fetch origin
+  715   101       00:00 /usr/bin/git $HARD fetch origin
 FIX
 setcwd 700 /home/u/work; setcwd 701 /home/u/work
 setcwd 702 $PC; setcwd 703 $PC
@@ -661,9 +663,11 @@ setcwd 710 "$PC/../../work"
 setcwd 711 /home/u/.claude/plugins/cachefoo
 setcwd 712 $PC
 setcwd 713 /home/u/claude-lsremote-Test
+setcwd 714 $PC
+setcwd 715 /home/u/work/repo/.claude/plugins/cache
 out="$(run "$W/mkt-live-decoys.txt" 101 2>&1)"; rc=$?
 eq 'the live-shape decoys withhold: rc 1 (HIMMEL-6335)' 1 "$rc"
-for dp in 700 701 702 703 704 705 706 707 708 709 710 711 712 713; do
+for dp in 700 701 702 703 704 705 706 707 708 709 710 711 712 713 714 715; do
     contains "live-shape decoy pid=$dp withholds (HIMMEL-6335/5934)" "$out" "  pid=$dp ppid="
 done
 

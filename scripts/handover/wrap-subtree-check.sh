@@ -87,6 +87,7 @@
 #
 # READ-ONLY: this script never signals a process. Bash 3.2-compatible.
 # WRAP_SUBTREE_SELF overrides the pid treated as "this script" (test seam).
+# WRAP_SUBTREE_HOME overrides the home whose .claude/plugins anchors the refresh cwd (test seam; default $HOME).
 # WRAP_SUBTREE_START_WINDOW: seconds after the session start within which a
 # direct child counts as session-started (non-negative integer; default 10).
 # PLATFORM GUARD: no .ps1 twin, by design — Linux-only (procps ps).
@@ -165,7 +166,10 @@ chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|
 # observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
 mkt_top_re='^([^ ]*/)?git (-c [A-Za-z0-9_.-]+=[^ ]* )*(clone|fetch|ls-remote|read-tree)( |$)'
-mkt_cwd_re='^/[^ ]*/[.]claude/plugins/(marketplaces|cache)(/[^ ]*)?$|^/tmp/claude-lsremote-[A-Za-z0-9]+$'
+mkt_cwd_re='^(marketplaces|cache)(/[^ ]*)?$|^/tmp/claude-lsremote-[A-Za-z0-9]+$'
+# the plugins dir itself is read from $HOME (WRAP_SUBTREE_HOME is the test seam); an empty home matches nothing
+mkt_home="${WRAP_SUBTREE_HOME:-${HOME:-}}"
+mkt_home="${mkt_home%/}"
 
 ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
 if [ -z "$ps_out" ]; then
@@ -182,7 +186,7 @@ for gp in $(printf '%s\n' "$ps_out" | awk '$4 ~ /(^|\/)git(-remote-https)?$/ { p
     cwds="$cwds$gp ${gc:-UNKNOWN}"$'\n'
 done
 
-result="$(printf '%s\n' "$ps_out" | WRAP_SUBTREE_CWDS="$cwds" awk -v root="$root" -v self="$self" -v hre="$harness_re" -v chainpat="$chain_re" -v mkttop="$mkt_top_re" -v mktcwd="$mkt_cwd_re" -v win="$window" '
+result="$(printf '%s\n' "$ps_out" | WRAP_SUBTREE_CWDS="$cwds" WRAP_SUBTREE_HOME_DIR="$mkt_home" awk -v root="$root" -v self="$self" -v hre="$harness_re" -v chainpat="$chain_re" -v mkttop="$mkt_top_re" -v mktcwd="$mkt_cwd_re" -v win="$window" '
 function iswrap(a) {
     return a ~ /^[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-(bash|zsh)-/
 }
@@ -218,7 +222,9 @@ function ishardened(p,   a) {
 function ismkt(p, d,   c) {
     if (d > 8 || iswrap(arg[p]) || index(arg[p], "/..") != 0 || !isgit(p) || !githubonly(p)) return 0
     c = cwd[p]
-    if (c !~ mktcwd || index(c, "/..") != 0) return 0
+    if (index(c, "/..") != 0) return 0
+    if (home != "" && index(c, home "/.claude/plugins/") == 1) c = substr(c, length(home "/.claude/plugins/") + 1)
+    if (c !~ mktcwd) return 0
     if (ppid[p] == root) return ishardened(p)
     return (ppid[p] in ppid) && ismkt(ppid[p], d + 1)
 }
@@ -245,6 +251,7 @@ function isearly(p,   a, b, d) {
 }
 BEGIN {
     maxh = 4096
+    home = ENVIRON["WRAP_SUBTREE_HOME_DIR"]
     nc = split(ENVIRON["WRAP_SUBTREE_CWDS"], cl, "\n")
     for (k = 1; k <= nc; k++) { sp = index(cl[k], " "); if (sp > 0) cwd[substr(cl[k], 1, sp - 1)] = substr(cl[k], sp + 1) }
 }
