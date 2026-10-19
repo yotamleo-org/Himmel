@@ -112,6 +112,7 @@
     "claude-obsidian@himmel",
     "obsidian-second-brain@himmel",
     "find-docs@himmel",
+    "graphify@himmel",
     "handover@himmel",
     "luna-correlate@himmel",
     "himmel-ops@himmel",
@@ -152,6 +153,7 @@
         "lean-skills@himmel",
         "obsidian-second-brain@himmel",
         "find-docs@himmel",
+        "graphify@himmel",
         "pstack@himmel"
       ],
       "contextBudget": 50000,

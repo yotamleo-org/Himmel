@@ -129,6 +129,8 @@ for (const name of ['operator', 'user', 'bare']) {
       'obsidian-second-brain@himmel',
       // find-docs was a user-scope skill; the user profile carries it.
       'find-docs@himmel',
+      // graphify was a user-scope skill written by himmel-update; same.
+      'graphify@himmel',
     ];
     const expected = name === 'operator' ? null : {
       enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && id === 'pstack@himmel')])),
@@ -1870,4 +1872,17 @@ test('leg family drops pr-review-toolkit-himmel and i-have-adhd, keeps the floor
   }
   // The operator reads the console window, so the reading-style ruleset stays there.
   assert.equal(resolveProfile(REG, 'console', { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, 'console keeps i-have-adhd');
+});
+
+// graphify's skill was a user-scope copy written by himmel-update into
+// ~/.claude/skills/graphify, which ignores enabledPlugins. As a plugin it is
+// catalogued and enabled only in the operator's interactive `user` profile.
+test('graphify@himmel is enabled only in the user profile (HIMMEL-6465)', () => {
+  const id = 'graphify@himmel';
+  assert.ok(REG.catalog.includes(id));
+  for (const [name, def] of Object.entries(REG.profiles)) {
+    if (def === null) continue; // operator: everything installed
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p[id], name === 'user', `${name}: ${id} enabled must be ${name === 'user'}`);
+  }
 });
