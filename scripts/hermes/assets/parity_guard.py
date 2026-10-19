@@ -789,33 +789,32 @@ def _common_git_dir(git_path: str) -> str:
 def _pr_head_branches(cmd: str) -> list:
     """Every branch named by a `--head`/`-H` token among the arguments of
     `gh pr create` (`owner:branch` reduced to `branch`). A token that is
-    really another option's value is included too, so the lock errs closed."""
-    m = GH_PR_CREATE.search(cmd)
-    if not m:
-        return []
-    lex = shlex.shlex(cmd[m.end():], posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    toks = []
-    try:
-        for t in lex:
-            if t and all(c in "();<>|&" for c in t):
-                break
-            toks.append(t)
-    except ValueError:
-        return []
+    really another option's value is included too, so the lock errs closed.
+    Every `gh pr create` in the command string is scanned."""
     heads = []
-    for i, t in enumerate(toks):
-        val = ""
-        if t in ("--head", "-H"):
-            val = toks[i + 1] if i + 1 < len(toks) else ""
-        elif t.startswith("--head="):
-            val = t[len("--head="):]
-        elif t.startswith("-") and not t.startswith("--") and "H" in t:
-            val = t.split("H", 1)[1].lstrip("=")
-            if not val:
+    for m in GH_PR_CREATE.finditer(cmd):
+        lex = shlex.shlex(cmd[m.end():], posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = []
+        try:
+            for t in lex:
+                if t and all(c in "();<>|&" for c in t):
+                    break
+                toks.append(t)
+        except ValueError:
+            continue
+        for i, t in enumerate(toks):
+            val = ""
+            if t in ("--head", "-H"):
                 val = toks[i + 1] if i + 1 < len(toks) else ""
-        if val:
-            heads.append(val.rsplit(":", 1)[-1])
+            elif t.startswith("--head="):
+                val = t[len("--head="):]
+            elif t.startswith("-") and not t.startswith("--") and "H" in t:
+                val = t.split("H", 1)[1].lstrip("=")
+                if not val:
+                    val = toks[i + 1] if i + 1 < len(toks) else ""
+            if val:
+                heads.append(val.rsplit(":", 1)[-1])
     return heads
 
 

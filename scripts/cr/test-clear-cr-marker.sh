@@ -1320,12 +1320,21 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "empty impl-family record → exit 14 (fail closed)"
 rm -rf "$tmp"
 
+# 4o4b. A dangling symlink record fails CLOSED too (it is not 'unset').
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+mkdir -p "$tmp/.git/cr-impl-family/feat" && ln -s "$tmp/nowhere" "$tmp/.git/cr-impl-family/feat/x"
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "dangling impl-family record → exit 14 (fail closed)"
+rm -rf "$tmp"
+
 # 4o5. set-impl-family.sh writes the record the gate reads (round trip).
 make_repo || exit 1
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-if (cd "$tmp" && git checkout -q feat/x 2>/dev/null; cd "$tmp" && bash scripts/cr/set-impl-family.sh Claude >/dev/null 2>&1) \
+if (cd "$tmp" && git checkout -q feat/x 2>/dev/null && bash scripts/cr/set-impl-family.sh Claude >/dev/null 2>&1) \
     && [ "$(cat "$tmp/.git/cr-impl-family/feat/x" 2>/dev/null)" = "claude" ]; then pass; else fail "set-impl-family.sh must write the lowercased record"; fi
 run_clear "$tmp" 14 "record written by set-impl-family.sh gates a claude-only review"
 if (cd "$tmp" && bash scripts/cr/set-impl-family.sh 'bad family' >/dev/null 2>&1); then fail "set-impl-family.sh must refuse a bad family"; else pass; fi

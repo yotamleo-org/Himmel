@@ -568,6 +568,8 @@ g "gh pr create -dH feat/w (stacked, no head pending), allowed" allow "{\"tool_n
 g "gh pr create --title '--head=feat/z' --head feat/y (real head pending), refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --title '--head=feat/z' --head feat/y\",\"cwd\":\"$FR\"}}"
 g "gh pr create -t -Hfeat/z --head feat/y (real head pending), refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create -t -Hfeat/z --head feat/y\",\"cwd\":\"$FR\"}}"
 g "gh pr create --head feat/z --head feat/y (second head pending), refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --head feat/z --head feat/y\",\"cwd\":\"$FR\"}}"
+g "gh pr create --head feat/z; gh pr create --head feat/y (second command's head pending), refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --head feat/z; gh pr create --head feat/y\",\"cwd\":\"$FR\"}}"
+g "gh pr create --head feat/z && gh pr create -H feat/w (no head pending), allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --head feat/z && gh pr create -H feat/w\",\"cwd\":\"$FR\"}}"
 g "gh pr create --title '--head=feat/z' --head feat/w (no head pending), allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --title '--head=feat/z' --head feat/w\",\"cwd\":\"$FR\"}}"
 rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
 printf 'm\n' > "$TMP/featrepo/.git/cr-pending/feat/x"

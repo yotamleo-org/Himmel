@@ -519,7 +519,7 @@ panel_empty=$(CRITICS="$SCRIPT_DIR/critics.json" node -e '
 # (<git-common-dir>/cr-impl-family/<branch>, written by set-impl-family.sh).
 # No record = gate off. A record that cannot be read or is empty fails CLOSED.
 impl_family=""
-if [ -e "$git_dir/cr-impl-family/$branch" ]; then
+if [ -e "$git_dir/cr-impl-family/$branch" ] || [ -L "$git_dir/cr-impl-family/$branch" ]; then
     impl_family=$(tr -d '[:space:]' < "$git_dir/cr-impl-family/$branch" 2>/dev/null | tr '[:upper:]' '[:lower:]') # swallow-ok: an unreadable record leaves it empty and the next test refuses (fail-closed)
     if [ -z "$impl_family" ]; then
         echo "clear-cr-marker: cr-impl-family record for $branch is empty or unreadable — refusing (cannot tell which family implemented it)." >&2
