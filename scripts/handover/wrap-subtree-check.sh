@@ -165,7 +165,7 @@ chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|
 # observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
 mkt_top_re='^([^ ]*/)?git (-c [A-Za-z0-9_.-]+=[^ ]* )*(clone|fetch|ls-remote|read-tree)( |$)'
-mkt_cwd_re='^/[^ ]*/[.]claude/plugins/(marketplaces|cache)(/[^ ]*)?$|^/[^ ]*/claude-lsremote-[A-Za-z0-9]+$'
+mkt_cwd_re='^/[^ ]*/[.]claude/plugins/(marketplaces|cache)(/[^ ]*)?$|^/tmp/claude-lsremote-[A-Za-z0-9]+$'
 
 ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
 if [ -z "$ps_out" ]; then
@@ -204,7 +204,7 @@ function isgit(p,   t, n, b) {
 function githubonly(p,   a) {
     a = arg[p]
     gsub(/https:\/\/github[.]com\/[A-Za-z0-9_.\/-]+/, "", a)
-    return a !~ /:\/\// && a !~ /[A-Za-z0-9_.-]+@[A-Za-z0-9.-]+:/
+    return a !~ /:\/\// && a !~ /(^| )[A-Za-z0-9_.@-]+:[^ ]/ && a !~ /(^| )\[[^ ]*\]:/
 }
 # the harness'"'"'s hardened refresh git: the three core.* flags in any order, a clone/fetch/
 # ls-remote/read-tree verb once the sshCommand value (it holds spaces) and -C are stripped

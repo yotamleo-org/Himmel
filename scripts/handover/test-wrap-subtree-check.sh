@@ -649,6 +649,8 @@ cat > "$W/mkt-live-decoys.txt" <<FIX
   709   101       00:00 /usr/bin/git $HARD fetch origin
   710   101       00:00 /usr/bin/git $HARD fetch origin
   711   101       00:00 /usr/bin/git $HARD fetch origin
+  712   101       00:00 /usr/bin/git $HARD clone --depth 1 evil.example:/a/b.git $PC/temp_git_1792433434918_cccccc
+  713   101       00:00 /usr/bin/git $HARD -C /home/u/claude-lsremote-Test ls-remote --heads https://github.com/a/b.git
 FIX
 setcwd 700 /home/u/work; setcwd 701 /home/u/work
 setcwd 702 $PC; setcwd 703 $PC
@@ -657,9 +659,11 @@ setcwd 706 $PC
 setcwd 707 $PC; setcwd 708 $PC
 setcwd 710 "$PC/../../work"
 setcwd 711 /home/u/.claude/plugins/cachefoo
+setcwd 712 $PC
+setcwd 713 /home/u/claude-lsremote-Test
 out="$(run "$W/mkt-live-decoys.txt" 101 2>&1)"; rc=$?
 eq 'the live-shape decoys withhold: rc 1 (HIMMEL-6335)' 1 "$rc"
-for dp in 700 701 702 703 704 705 706 707 708 709 710 711; do
+for dp in 700 701 702 703 704 705 706 707 708 709 710 711 712 713; do
     contains "live-shape decoy pid=$dp withholds (HIMMEL-6335/5934)" "$out" "  pid=$dp ppid="
 done
 
