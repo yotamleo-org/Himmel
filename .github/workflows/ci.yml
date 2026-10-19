@@ -1307,6 +1307,7 @@ jobs:
         env:
           FAIL_LOG_DIR: failed-suite-logs
           SUITE_TIER_MODE: ${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}
+          SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
           # HIMMEL-4912: the shards (60 min) always run the fast guard-corpus
           # subset; the full replay runs in the schedule-only guard-corpus-full job.
           GUARD_CORPUS_TIER: fast

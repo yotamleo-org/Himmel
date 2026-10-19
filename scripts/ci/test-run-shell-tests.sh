@@ -2579,4 +2579,49 @@ fi
 rm -rf "$sb22w"
 fi
 
+# --------------------------------------------------------------------------
+# Case 26 — SUITE_STOP_ON_FAIL=1 ends the shard at its first
+# failing suite; unset, every suite still runs. ci.yml passes it on
+# pull_request only.
+# --------------------------------------------------------------------------
+echo "== Case 26: SUITE_STOP_ON_FAIL stops a shard at its first failing suite =="
+sb26=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26.XXXXXX") || { fail "26: mktemp failed"; sb26=""; }
+if [ -n "$sb26" ]; then
+cat > "$sb26/test-a-fail.sh" <<'SHEOF'
+#!/usr/bin/env bash
+exit 1
+SHEOF
+cat > "$sb26/test-b-after.sh" <<'SHEOF'
+#!/usr/bin/env bash
+touch "$(dirname "$0")/after.sentinel"
+exit 0
+SHEOF
+chmod +x "$sb26/test-a-fail.sh" "$sb26/test-b-after.sh"
+
+out26=$(SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26" 2>&1)
+rc26=$?
+if [ "$rc26" -eq 1 ] && [ ! -e "$sb26/after.sentinel" ] && grepq "$out26" 'test-b-after.sh'; then
+  pass "26a: SUITE_STOP_ON_FAIL=1 -> exit 1, the suite after the failure never ran, and is named"
+else
+  fail "26a: expected exit 1, no after.sentinel, test-b-after.sh named; rc=$rc26 sentinel=$([ -e "$sb26/after.sentinel" ] && echo present || echo absent) output: $out26"
+fi
+rm -f "$sb26/after.sentinel"
+
+out26=$(env -u SUITE_STOP_ON_FAIL bash "$RUNNER" "$sb26" 2>&1)
+rc26=$?
+if [ "$rc26" -eq 1 ] && [ -e "$sb26/after.sentinel" ]; then
+  pass "26b: SUITE_STOP_ON_FAIL unset -> every suite still runs after a failure"
+else
+  fail "26b: expected exit 1 with after.sentinel present; rc=$rc26 output: $out26"
+fi
+rm -rf "$sb26"
+fi
+
+ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
+if grep -qE "^[[:space:]]+SUITE_STOP_ON_FAIL: \\$\\{\\{ github\\.event_name == 'pull_request' && '1' \\|\\| '' \\}\\}\$" "$ci_yml26"; then
+  pass "26c: ci.yml passes SUITE_STOP_ON_FAIL on pull_request only"
+else
+  fail "26c: ci.yml does not set SUITE_STOP_ON_FAIL to '1' on pull_request only"
+fi
+
 rst_tally
