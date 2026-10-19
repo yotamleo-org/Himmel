@@ -36,8 +36,8 @@ work works used use uses""".split())
 
 
 def stem(w):
-    for suf in ("ing", "ed", "es", "s"):
-        if w.endswith(suf) and len(w) - len(suf) >= 3:
+    for suf in ("ing", "ed", "s"):
+        if w.endswith(suf) and not w.endswith("ss") and len(w) - len(suf) >= 3:
             return w[: -len(suf)]
     return w
 

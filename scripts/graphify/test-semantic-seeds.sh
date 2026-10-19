@@ -54,6 +54,10 @@ got="$(seeds "what colour are the planets") $(python3 -I "$SEM" seeds "$T/missin
 if [ "$got" = " " ]; then pass "S3 no match or unreadable graph seeds nothing"
 else fail "S3 got='$got'"; fi
 
+# S3b: plural and singular forms tokenize alike ("consoles" matches the Console label).
+got="$(seeds "how do consoles and legs relate")"
+case "$got" in glossary\ *) pass "S3b plural question matches singular labels" ;; *) fail "S3b got='$got'" ;; esac
+
 cat > "$T/bin/graphify" <<STUB
 #!/bin/sh
 echo "\$*" >> "$T/calls"
@@ -74,7 +78,9 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 # S4: with no anchor, leg-graph.sh runs a given-seed query from the semantic file plus the keyword query.
 out="$(run query "how do a console and a leg relate")"; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && grep -qx -- "query how do a console and a leg relate --seed glossary --seed gl_console --seed gl_leg --seed runc --budget 4000" <<<"$calls" || grep -q -- "--seed glossary" <<<"$calls"; then
+if [ "$rc" = 0 ] && [ "$(wc -l < "$T/calls")" = 2 ] \
+  && grep -qx -- "query how do a console and a leg relate --seed glossary --seed runc --seed go_sh --budget 4000" <<<"$calls" \
+  && grep -qx -- "query how do a console and a leg relate --budget 4000" <<<"$calls"; then
   pass "S4 semantic seed passed to graphify query"
 else fail "S4 rc=$rc calls='$calls'"; fi
 if grep -m1 '^NODE ' <<<"$out" | grep -q '^NODE glossary.md ' && grep -q '^NODE Need ' <<<"$out"; then pass "S4b merged answer leads with the glossary, keeps the keyword node"
