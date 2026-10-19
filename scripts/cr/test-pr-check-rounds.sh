@@ -442,6 +442,16 @@ evid_code_head="$(git -C "$repo" rev-parse evid)"
 assert_eq "$evid_rc2" "8" "5233 evidence refuses a head that changes code"
 assert_lacks "$(cat "$evid_ledger")" "$evid_code_head\",\"status\":\"ok\",\"source\":\"evidence" "5233 a refused evidence head gets no row"
 
+# A reviewed head whose critic finding is still open passes nothing on: its
+# test-only descendant gets no evidence row.
+three_rounds evidf suggestion
+printf 'echo t\n' > "$repo/test-evidf.sh"
+git -C "$repo" add test-evidf.sh
+git -C "$repo" commit -q -m "evidf test-only"
+evidf_head="$(git -C "$repo" rev-parse evidf)"
+(cd "$repo" && bash "$RR" evidence --branch evidf --head "$evidf_head" >/dev/null 2>&1); evidf_rc=$?
+assert_eq "$evidf_rc" "8" "5233 evidence refused while the reviewed head has an open finding"
+
 # The RED: three rounds, the third raised a finding, the leg fixed
 # it at a new head. clear-cr-marker refuses that head (no critic reviewed it)
 # until the one delta round runs; then it clears through the real gate.

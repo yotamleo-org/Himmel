@@ -1213,8 +1213,9 @@ if [ "$verb" = "evidence" ]; then
     # swallow-ok: same as above
     ev_from="$(git rev-parse --verify --quiet "$ev_from^{commit}" 2>/dev/null)" || ev_from=""
     if [ -z "$ev_from" ] || [ "$(ledger_query avail "$ev_from")" != "ok" ] \
+        || [ "$(ledger_query finding "$ev_from")" = "finding" ] \
         || ! trivial_descendant "$ev_from" "$ev_head"; then
-        echo "review-round: $ev_head is not a tests- or comments-only descendant of a critic-reviewed head of $branch - no evidence row (run /pr-check)" >&2
+        echo "review-round: $ev_head is not a tests- or comments-only descendant of a critic-reviewed head of $branch with no open finding - no evidence row (run /pr-check)" >&2
         exit 8
     fi
     ev_ledger="$git_dir/cr-critic-scores.jsonl"
