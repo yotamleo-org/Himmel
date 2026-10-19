@@ -353,8 +353,20 @@ set +f
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --head=*) head_branch="${1#--head=}" ;;
-        --head|-H)
+        --head)
             if [ "$#" -ge 2 ]; then head_branch="$2"; fi
+            ;;
+        # gh (pflag) shorthand: -H x, -Hx, -H=x, and stacked forms (-dH x,
+        # -dHx, -dH=x). The value is the text after the first H, else the
+        # next token.
+        -H*|-[!-]*H*)
+            _short_val="${1#*H}"
+            _short_val="${_short_val#=}"
+            if [ -n "$_short_val" ]; then
+                head_branch="$_short_val"
+            elif [ "$#" -ge 2 ]; then
+                head_branch="$2"
+            fi
             ;;
         --repo=*) repo_nwo="${1#--repo=}" ;;
         --repo|-R)

@@ -182,6 +182,27 @@ case "$out" in
     *) fail "expected 'Automated review pending for feat/X' in stderr" "out: $out" ;;
 esac
 
+# Test 2d: attached and stacked gh short-flag spellings of --head -> BLOCK
+# gh (pflag) also accepts -Hx, -H=x and stacked shorthands (-d is --draft).
+for spelling in "-dH feat/X" "-dHfeat/X" "-dH=feat/X" "-H=feat/X" "-Hfeat/X" "-Hsomefork:feat/X"; do
+    echo "TEST: gh pr create $spelling, marker present -> BLOCK"
+    run_hook "gh pr create $spelling --base main"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2) on $spelling with marker"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
+# Test 2e: a capital H inside another flag's value must not be read as a head
+echo "TEST: H only inside --title/--body values -> allow (no false denial)"
+run_hook "gh pr create --title Hotfix-H --body Hello --base main"
+if [ "$rc" -eq 0 ]; then
+    pass "allowed (exit 0) when H appears only in flag values"
+else
+    fail "expected exit 0, got rc=$rc" "out: $out"
+fi
+
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
 echo "TEST: --head feat/X, no marker -> allow"
 rm -f "$(marker_for feat/X)"
