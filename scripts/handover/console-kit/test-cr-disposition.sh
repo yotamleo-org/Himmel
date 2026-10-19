@@ -68,7 +68,7 @@ verdict() {
   printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\n%s\n\n## Evidence checked\n\ne\n' \
     "$2" "$3" "$4" "${5:-reason}" > "$vf"
   # shellcheck disable=SC2094  # the read finishes before the append below
-  vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$2" "$(basename "$vf" .md)" < "$vf")" || return 1
+  vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$2" "$(basename "$vf" .md)" < "$vf")" || return 1  # read-sink-ok: the test's own verdict fixture under its temp dir
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
 
