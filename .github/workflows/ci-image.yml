@@ -32,16 +32,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build
-        # The run number makes the tag immutable: a weekly or manual rebuild of the same
+        # The run number and attempt make the tag immutable: a weekly, manual or re-run rebuild of the same
         # commit pulls fresh base layers and must not move a tag a job already pins.
-        run: docker build --pull -t "$IMAGE:${{ github.sha }}-${{ github.run_number }}" -t "$IMAGE:latest" .github/ci-image
+        run: docker build --pull -t "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" -t "$IMAGE:latest" .github/ci-image
       - name: Smoke the tools the jobs call
         run: |
-          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null'
+          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null'
       - name: Push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$IMAGE:${{ github.sha }}-${{ github.run_number }}"
+          docker push "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}"
           docker push "$IMAGE:latest"

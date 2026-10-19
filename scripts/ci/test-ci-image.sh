@@ -27,7 +27,12 @@ if [ ! -f "$DOCKERFILE" ]; then
   exit 1
 fi
 df_text="$(cat "$DOCKERFILE")"
-has() { grep -Fq -- "$1" <<< "$df_text"; }
+# has <token>: the token as a whole word, so BUN_VERSION=1.4.3 does not match =1.4.30.
+has() {
+  local esc
+  esc="$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')"
+  grep -Eq -- "(^|[[:space:]])${esc}([[:space:]\\\\]|\$)" <<< "$df_text"
+}
 
 # 1. every apt package ci.yml hands to apt-install.sh (version pin stripped to the name)
 ci_pkgs="$(grep -E '^ +bash \.github/scripts/apt-install\.sh ' "$CI_YML" \

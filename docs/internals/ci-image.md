@@ -4,7 +4,7 @@
 today, so a job starts from a ready environment that only changes when we change it.
 
 - **Source:** `.github/ci-image/Dockerfile` (Ubuntu 24.04).
-- **Build:** `.github/workflows/ci-image.yml` builds, smokes and pushes `:<sha>-<run number>` (immutable per run) and
+- **Build:** `.github/workflows/ci-image.yml` builds, smokes and pushes `:<sha>-<run number>-<attempt>` (immutable per run) and
   `:latest` on a push to main that touches `.github/ci-image/**`, weekly (Mon 04:17 UTC,
   base-image updates) and on `workflow_dispatch`. It never runs on `pull_request`.
 - **Drift check:** `scripts/ci/test-ci-image.sh` reads the apt packages, ffmpeg, bun,
