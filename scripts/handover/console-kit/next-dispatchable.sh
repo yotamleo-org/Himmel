@@ -86,7 +86,7 @@ import datetime, json, os, re, subprocess, sys, time
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
-    'operator-decision,operator,operator-present,blocked,decision,windows-parked,design-deferred,placeholder').split(',')))
+    'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
@@ -97,6 +97,21 @@ def files_in(text):
         if f and f not in out:
             out.append(f)
     return out
+
+MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)\b')
+SCOPE_END_RE = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
+
+def write_scope(line):
+    # the leg's own write scope: after "writes confined to" (else after "Scope / do not:"), up to the boilerplate that follows
+    for lead in ('writes confined to', 'Scope / do not:'):
+        if lead in line:
+            rest = line.split(lead, 1)[1]
+            m = SCOPE_END_RE.search(rest)
+            rest = rest[:m.start()] if m else rest
+            rest = re.sub(r'Do not (?:touch|edit|change)\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)', ' ', rest)  # a fence, not a write scope
+            # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir
+            return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', lambda g: ' '.join(g.group(1) + p.strip() for p in g.group(2).split(',')), rest)
+    return ''
 
 def collides(a, b):
     a, b = a.rstrip('/'), b.rstrip('/')
@@ -154,6 +169,8 @@ if os.path.exists(vf):
             vs.append(p[0])
     for i, v in enumerate(sorted(vs, key=nat)):
         vorder[v] = i
+
+first_ver = min(vorder, key=vorder.get) if vorder else None
 
 def rank(i):
     vers = [vorder[v] for v in i['ver'] if v in vorder]
@@ -215,8 +232,11 @@ residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_D
 
 def tier_of(i):
     # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
+    # Tiers 2-3 hold only the earliest unreleased version: later or versionless work waits in tier 4.
     if i['key'] in prio_order or i['labels'] & TIER1_LABELS:
         return 1
+    if first_ver is not None and first_ver not in i['ver']:
+        return 4
     if 'operator-directed' in i['labels']:
         return 2
     if (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1) or i['labels'] & TIER3_LABELS:
@@ -243,7 +263,7 @@ cands = []
 for i in issues.values():
     if i['status'] != 'To Do' or i['type'] in ('Epic', 'Story', 'Sub-task'):
         continue
-    if i['labels'] & excl:
+    if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
         continue
     if platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
         skipped_platform.append(i['key'])
@@ -273,13 +293,19 @@ if legs_from and os.path.isfile(legs_from):
     try:
         for leg in json.load(open(legs_from)).get('legs', []):
             doc = leg.get('doc', '')
-            leg_keys.update(re.findall(r'[A-Z]+-\d+', os.path.basename(doc)))
             try:
-                for line in open(doc, encoding='utf-8', errors='replace'):
-                    if line.startswith('> **Scope / do not:**') or 'writes confined to' in line:
-                        held += [(f, 'live leg %s' % leg.get('label', '?')) for f in files_in(line)]
+                lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
             except OSError:
+                leg_keys.update(re.findall(r'[A-Z]+-\d+', os.path.basename(doc)))
                 legs_unknown = True
+                continue
+            marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
+            if marks and marks[-1] == 'WRAPPED':  # a wrapped leg holds no files and owns no ticket
+                continue
+            leg_keys.update(re.findall(r'[A-Z]+-\d+', os.path.basename(doc)))
+            for line in lines:
+                if line.startswith('> **Scope / do not:**') or 'writes confined to' in line:
+                    held += [(f, 'live leg %s' % leg.get('label', '?')) for f in files_in(write_scope(line))]
     except (OSError, ValueError):
         legs_unknown = True
 if pool_only and not legs_from and not leg_keys:
@@ -349,6 +375,8 @@ resume.sort(key=ranked if pool_only else rank)
 
 free = []
 for i in cands:
+    if i['key'] in leg_keys or i['key'] in pr_keys:  # a live leg or an open PR already owns the ticket
+        continue
     if any(collides(f, h) for f in i['files'] for h, _ in held):
         continue
     free.append(i)
@@ -381,6 +409,14 @@ if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
 picked = []
+emitted = []
+
+def warn_missing():
+    # a named file that is not in the repo leaves the collision check blind for that ticket
+    for i in emitted:
+        gone = [f for f in i['files'] if not os.path.exists(os.path.join(repo, f))]
+        if gone:
+            print('# warn: %s names %s (not in the repo: a new file, or the collision check is blind)' % (i['key'], ', '.join(gone)))
 
 def emit_resume(rows):
     global n
@@ -390,6 +426,7 @@ def emit_resume(rows):
         if not resume_only and any(collides(f, h) for f in i['files'] for h in picked):
             continue
         picked.extend(i['files'])
+        emitted.append(i)
         print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
         n += 1
 
@@ -437,6 +474,7 @@ def emit_free(rows):
             if any(collides(f, h) for f in i['files'] for h in picked):
                 continue
             picked.extend(i['files'])
+            emitted.append(i)
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             n += 1
             if n >= top:
@@ -455,11 +493,14 @@ if pool_only:
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the console to read, never to dispatch
-        for i in [i for i in next_tier if not any(collides(f, h) for f in i['files'] for h, _ in held)][:top]:
+        for i in [i for i in next_tier if i['key'] not in leg_keys and i['key'] not in pr_keys and not any(collides(f, h) for f in i['files'] for h, _ in held)][:top]:
             print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
+    warn_missing()
     sys.exit(0)
 emit_resume(resume)
 if resume_only:
+    warn_missing()
     sys.exit(0)
 emit_free(free)
+warn_missing()
 PY
