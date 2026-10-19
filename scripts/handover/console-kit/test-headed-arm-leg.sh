@@ -124,7 +124,7 @@ unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 . "$HERE/../../lib/timeout-bin.sh"
 # The suite owns every launcher input; an ambient leg shell must not silently
 # turn default-native cases into claudex cases.
-unset CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT 2>/dev/null || true
+unset CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER LEG_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-leg-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The launcher resolves every path it writes physically; macOS's TMPDIR sits
@@ -801,6 +801,20 @@ contains "dry-run: LEG_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS" "$ou
 # --- 7c. unset LEG_SUPPRESS_CR_TRIGGER -> stays <unset> (default ON)
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run: unset LEG_SUPPRESS_CR_TRIGGER leaves CR_TRIGGER_SUPPRESS unset (default ON)" "$out" "CR_TRIGGER_SUPPRESS=<unset>"
+
+# --- 7d. LEG_API_LANE=on carries HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=auto; otherwise neither
+rc=0; out="$(LEG_API_LANE=on bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: LEG_API_LANE=on exits 0" "$rc" "0"
+contains "dry-run: LEG_API_LANE=on carries both API-lane vars" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto"
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: unset LEG_API_LANE exits 0" "$rc" "0"
+contains "dry-run: no LEG_API_LANE leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+rc=0; out="$(LEG_API_LANE=off bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: LEG_API_LANE=off exits 0" "$rc" "0"
+contains "dry-run: LEG_API_LANE=off leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
+rc=0; out="$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run: ambient API-lane vars exit 0" "$rc" "0"
+contains "dry-run: ambient API-lane vars without LEG_API_LANE are scrubbed" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 
 # --- 8-9, 11. full (non-dry) launch: proves the non-dry path builds the SAME
 # argv --dry-run predicted, via the real headed-arm.sh and its own KONSOLE_CMD
