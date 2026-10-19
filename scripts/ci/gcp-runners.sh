@@ -33,7 +33,7 @@ PROJECT="${GCP_RUNNERS_PROJECT:-himmel-ci}"
 SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
 MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-4}"
-MAX_RUN="45m"
+MAX_RUN="75m"  # the slowest hosted shard measured 49 min plus ~4 min boot, with headroom
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
@@ -95,7 +95,8 @@ drop_runner() {
 # quota_preflight VCPUS -> die unless the regional CPUS quota (limit capped at CPU_PIN) has VCPUS of headroom
 quota_preflight() {
     local q limit usage
-    q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --filter="quotas.metric=CPUS" --format="value(quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
+    q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --format="value(quotas.metric,quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
+    q="$(awk '$1=="CPUS" { print $2, $3 }' <<< "$q")"
     read -r limit usage <<< "$q"
     awk -v l="${limit:-x}" -v u="${usage:-x}" 'BEGIN { exit !(l ~ /^[0-9]+(\.[0-9]+)?$/ && u ~ /^[0-9]+(\.[0-9]+)?$/) }' || die "up: unreadable regional CPUS quota '$q', refusing to create VMs blind"
     awk -v l="$limit" -v u="$usage" -v n="$1" -v pin="$CPU_PIN" 'BEGIN { if (l + 0 > pin + 0) l = pin; exit !(u + n <= l + 0) }' \
