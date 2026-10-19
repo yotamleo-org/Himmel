@@ -18,7 +18,7 @@ const COLLECTION = 'jira-himmel';
 const DELETE_SAFETY_RATIO = 0.5;
 const CURSOR_FILE = '.cursor.json';
 const FIELDS =
-  'summary,status,issuetype,priority,labels,fixVersions,parent,created,updated,resolution,issuelinks,description,comment';
+  'summary,status,issuetype,priority,labels,fixVersions,parent,created,updated,resolution,resolutiondate,issuelinks,description,comment';
 
 interface Named { name?: string; displayName?: string }
 export interface MirrorIssue {
@@ -34,6 +34,7 @@ export interface MirrorIssue {
     created?: string;
     updated?: string;
     resolution?: Named | null;
+    resolutiondate?: string | null;
     issuelinks?: Array<{
       type?: { inward?: string; outward?: string };
       inwardIssue?: { key: string };
@@ -105,6 +106,7 @@ export function renderIssue(issue: MirrorIssue, comments: JiraCommentEntry[]): s
     `created: ${q(f.created)}`,
     `updated: ${q(f.updated)}`,
     `resolution: ${q(f.resolution?.name)}`,
+    `resolved: ${q(f.resolutiondate)}`,
     'links:',
     `  blocks: ${list(links.blocks)}`,
     `  blocked_by: ${list(links.blocked_by)}`,

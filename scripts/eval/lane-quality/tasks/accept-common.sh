@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# accept-common.sh - shared helpers for the hidden acceptance tests (HIMMEL-4090).
+# accept-common.sh - shared helpers for the hidden acceptance tests.
 # Sourced by tasks/<id>/accept.sh. Each check prints `ok <name>` or
 # `FAIL <name>`; accept_done prints `accept: <passed>/<total>` and exits 0 only
 # when every check passed. The runner records that line verbatim.

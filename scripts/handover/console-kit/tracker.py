@@ -645,9 +645,18 @@ def jira_view(mir, legs, vers, prows, vnames):
         return t['b'] not in ('done', 'wont')
 
     cur = next((i for i in range(len(vers)) if not vers[i]['rel'] and any(t['v'] == i and open_(t) for t in tk)), -1)
-    for t in tk:
-        if t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']:
+
+    def future_done(t):
+        return t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']
+    placed, kept = {t['k'] for t in tk if not future_done(t)}, []
+    for t in tk:  # a Done ticket already counted in another version keeps that one, never a second row in the current
+        if future_done(t):
+            if t['k'] in placed:
+                continue
+            placed.add(t['k'])
             t['v'] = cur
+        kept.append(t)
+    tk = kept
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
     return tk, cur, nxt, [a for a in al if a[1]], sorted([i, n] for i, n in wont.items()), sorted(fl, key=lambda t: t['k'])
@@ -729,7 +738,7 @@ def kanban(tk, vers, cur, base, wont=(), flight=()):
     out, wn = [], dict(wont)
     for i, v in enumerate(vers):
         a = [t for t in tk if t['v'] == i]
-        if not a:
+        if not a and not wn.get(i):
             continue
         cols = {c: [] for c, _ in KCOLS}
         for t in a:
@@ -1947,10 +1956,10 @@ function jboard(){var b=$("board"),f=$("donefold");b.textContent="";f.textConten
   if(!t[s[0]].length)c.appendChild(el("div","jnone","None."));b.appendChild(c)});
  if(HIDE&&t.done.length)add(f,jnum(t.done.length,v.n+": Done",t.done)," done ticket"+(t.done.length==1?" is":"s are")+" hidden. Turn off “Hide done work” to show them.")}
 function jversions(flashI){var b=$("vt");b.textContent="";var hid=0;
- JV.forEach(function(v,i){var a=jin(i),t=jtally(a);if(!t.n)return;if(HIDE&&!t.open){hid++;return}
+ JV.forEach(function(v,i){var a=jin(i),t=jtally(a),wn=(D.JW.filter(function(x){return x[0]===i})[0]||[0,0])[1];if(!t.n&&!wn)return;if(HIDE&&!t.open&&t.n){hid++;return}
   var r=el("tr","enter");r.dataset.v=i;r.tabIndex=0;if(i===JSEL)r.className="jsel"+(i===flashI?" jflash":"");
   var st=v.rel?(t.open?["fail","Released · "+t.open+" open"]:["done","Released"]):i===JCUR?["prog","Working on"]:i===JNXT?["rev","Up next"]:["todo","Planned"];
-  var td=el("td");td.appendChild(el("span","vn",v.n));r.appendChild(td);td=el("td");td.appendChild(jdot(st[0],st[1]));r.appendChild(td);
+  var td=el("td");td.appendChild(el("span","vn",v.n));r.appendChild(td);td=el("td");td.appendChild(jdot(st[0],st[1]+(wn?" · "+wn+" closed without shipping":"")));r.appendChild(td);
   td=el("td","barc");td.appendChild(jbar(t));r.appendChild(td);
   JB.forEach(function(s){var td=el("td"),n=t[s[0]].length;td.appendChild(n?jnum(n,v.n+": "+s[1],t[s[0]]):el("span","z","0"));r.appendChild(td)});
   td=el("td");td.appendChild(jnum(t.n,v.n+": every ticket",a));r.appendChild(td);

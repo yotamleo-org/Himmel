@@ -556,10 +556,27 @@ rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"
 assert_rc "block executeRead{name:getConfluenceContent}" 2 "$rc"
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"lookupJiraAccountId\"}}")
 assert_rc "allow executeWrite{name:lookupJiraAccountId} (no CLI equivalent)" 0 "$rc"
+# A wrapper call whose real tool name cannot be read fails CLOSED.
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}")
-assert_rc "allow executeWrite with no name" 0 "$rc"
+assert_rc "block executeWrite with no name" 2 "$rc"
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":42}}")
-assert_rc "allow executeWrite with non-string name" 0 "$rc"
+assert_rc "block executeWrite with number name" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":{\"x\":1}}}")
+assert_rc "block executeWrite with object name" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":\"createJiraIssue\"}")
+assert_rc "block executeWrite with non-object tool_input" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\"}")
+assert_rc "block executeWrite with no tool_input" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"CreateJiraIssue\"}}")
+assert_rc "block executeWrite{name:CreateJiraIssue} (case variant of a mapped name)" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"deleteEverything\"}}")
+assert_rc "block executeWrite{name:deleteEverything} (unknown name)" 2 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeRead\",\"tool_input\":{\"name\":\"lookupJiraAccountId\"}}")
+assert_rc "allow executeRead{name:lookupJiraAccountId} (allowlisted)" 0 "$rc"
+rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}" "$STUB_FULL" 'MCP_ALL_OK=1')
+assert_rc "bypass MCP_ALL_OK=1 on executeWrite with no name" 0 "$rc"
+assert_stderr_contains "no-name deny names the CLI route" \
+    "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{}}" 'scripts/jira/dist/index.js'
 rc=$(run_case "{\"tool_name\":\"${LIVE}executeWrite\",\"tool_input\":{\"name\":\"createJiraIssue\"}}" "$STUB_REDUCED")
 assert_rc "allow executeWrite{name:createJiraIssue} when CLI lacks create" 0 "$rc"
 

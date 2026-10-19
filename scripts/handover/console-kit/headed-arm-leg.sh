@@ -2385,6 +2385,14 @@ case "${MCP_NAMES_JSON:-}" in
 esac
 unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CONSOLE LEG_BUS_PAIR
 
+# Every headed leg gets one bus-idle-waker, started by headed-arm.sh once the
+# konsole pid exists (only it knows the pid). A headless leg has no konsole and
+# a consult is a throwaway, so neither is armed; an ambient value never rides in.
+unset -v HEADED_ARM_WAKER
+if [ "$HEADLESS" -ne 1 ] && [ "$CONSULT" -ne 1 ]; then
+    export HEADED_ARM_WAKER="${HEADED_ARM_LEG_WAKER:-$HERE/../bus-idle-waker.sh}"
+fi
+
 # Paired with this exec's PID: headed-arm.sh ignores stale ambient values.
 export HEADED_ARM_CONTEXT_PID="$$" HEADED_ARM_LEG_PROFILES="$PROFILES_MJS"
 # A consult runs headed-arm.sh on the pinned runtime: an absolute
