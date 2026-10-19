@@ -22,7 +22,8 @@
 # like K1, is skipped; a key marked `(CLOUD)` is dropped from the output); 2 label
 # operator-directed; 3 a Bug of High or above, or a security / data-integrity /
 # data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
-# tiers 1-3 only (no RESUME rows); an empty pool prints `POOL-EMPTY` and no rows.
+# tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review, no leg, no open PR)
+# lead that tier's To Do rows; an empty pool prints `POOL-EMPTY` and no rows.
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
@@ -166,13 +167,23 @@ def read_priority_line(path):
     for line in lines:
         if line.startswith('## '):
             in_state = line.strip() == '## Live state'
-        m = re.match(r'^\s*(?:[-*]\s+)?priority:\s*(.*)$', line) if in_state else None
+        m = re.match(r'^\s*(?:[-*]\s+)?(?:\*\*)?priority:(?:\*\*)?\s*(.*)$', line) if in_state else None
         if m:
-            for k, c in re.findall(r'(?<![\w-])(?:HIMMEL-)?(\d{3,5})(?![\w-])(\(CLOUD\))?', m.group(1)):
-                key = 'HIMMEL-' + k
-                order.setdefault(key, len(order))
-                if c:
-                    cloud.add(key)
+            # Outside (...) every bare number is a key; inside, only HIMMEL-NNNN or a number
+            # from a `+` to the closing paren. `NNN (CLOUD)` marks NNN cloud-only.
+            depth, plus = 0, False
+            for t in re.finditer(r'(\()|(\))|(\+)|(?<![\w-])(HIMMEL-)?(\d{3,5})(?![\w-])(\s*\(CLOUD\))?', m.group(1)):
+                if t.group(1):
+                    depth += 1
+                elif t.group(2):
+                    depth, plus = max(depth - 1, 0), False
+                elif t.group(3):
+                    plus = plus or depth > 0
+                elif depth == 0 or plus or t.group(4):
+                    key = 'HIMMEL-' + t.group(5)
+                    order.setdefault(key, len(order))
+                    if t.group(6):
+                        cloud.add(key)
             break
     return order, cloud
 
@@ -286,7 +297,9 @@ except (OSError, subprocess.SubprocessError):
 
 # In-work tickets nobody holds: no leg, no open PR, not parked or blocked.
 resume = []
-for i in ([] if pool_only else issues.values()):
+for i in issues.values():
+    if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
+        continue
     if i['status'] not in ('In Progress', 'In Review') or i['type'] in ('Epic', 'Story', 'Sub-task'):
         continue
     if i['labels'] & excl or any('parked' in l for l in i['labels']):
@@ -300,7 +313,7 @@ for i in ([] if pool_only else issues.values()):
     if any(collides(f, h) for f in i['files'] for h, _ in held):
         continue
     resume.append(i)
-resume.sort(key=rank)
+resume.sort(key=ranked if pool_only else rank)
 
 free = []
 for i in cands:
@@ -336,43 +349,56 @@ if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
 picked = []
-for i in resume:
-    if n >= top:
-        break
-    if not resume_only and any(collides(f, h) for f in i['files'] for h in picked):
-        continue
-    picked += i['files']
-    print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
-    n += 1
-if resume_only:
-    sys.exit(0)
-classified = os.environ.get('ND_CLASSIFY') == '1'
-if pool_only and not free:
-    print('POOL-EMPTY')
-    sys.exit(0)
-# Walk the collision-free list in chunks so BLOCKED rows in an early chunk do not
-# leave the list short while later candidates are dispatchable.
-for start in range(0, len(free) if n < top else 0, top * 3):
-    batch = free[start:start + top * 3]
-    cls = classify(batch) if classified else {}
-    for i in batch:
-        c = cls.get(i['key'])
-        if classified:
-            if c is None or c == 'BLOCKED':
-                continue
-            lane = 'CLOUD' if c == 'CLOUD-OK' else 'LOCAL'
-        else:
-            lane, c = 'LOCAL?', ''
-        # one writer per file: a listed ticket holds its files against the rest of the list
-        if any(collides(f, h) for f in i['files'] for h in picked):
-            continue
-        picked += i['files']
-        print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
-        n += 1
+
+def emit_resume(rows):
+    global n
+    for i in rows:
         if n >= top:
             break
-    if n >= top:
-        break
-if pool_only and n == 0:  # every pool ticket was classified BLOCKED or collided with a printed one
-    print('POOL-EMPTY')
+        if not resume_only and any(collides(f, h) for f in i['files'] for h in picked):
+            continue
+        picked.extend(i['files'])
+        print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
+        n += 1
+
+classified = os.environ.get('ND_CLASSIFY') == '1'
+
+def emit_free(rows):
+    # Walk the collision-free list in chunks so BLOCKED rows in an early chunk do not
+    # leave the list short while later candidates are dispatchable.
+    global n
+    for start in range(0, len(rows) if n < top else 0, top * 3):
+        batch = rows[start:start + top * 3]
+        cls = classify(batch) if classified else {}
+        for i in batch:
+            c = cls.get(i['key'])
+            if classified:
+                if c is None or c == 'BLOCKED':
+                    continue
+                lane = 'CLOUD' if c == 'CLOUD-OK' else 'LOCAL'
+            else:
+                lane, c = 'LOCAL?', ''
+            # one writer per file: a listed ticket holds its files against the rest of the list
+            if any(collides(f, h) for f in i['files'] for h in picked):
+                continue
+            picked.extend(i['files'])
+            print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
+            n += 1
+            if n >= top:
+                break
+        if n >= top:
+            break
+
+if pool_only:
+    # tier by tier: a tier's leg-less In Progress rows lead its To Do rows
+    for t in (1, 2, 3):
+        emit_resume([i for i in resume if tier_of(i) == t])
+        emit_free([i for i in free if tier_of(i) == t])
+    if n == 0:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
+        print('POOL-EMPTY')
+    sys.exit(0)
+emit_resume(resume)
+if resume_only:
+    sys.exit(0)
+emit_free(free)
 PY
