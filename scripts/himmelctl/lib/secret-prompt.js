@@ -8,6 +8,8 @@
 // The label is printed AFTER raw mode is on, so a caller that answers as soon
 // as it sees the label can never be echoed.
 
+const { StringDecoder } = require('string_decoder');
+
 const BULLET = '•';
 
 // Resolves the typed value ('' when only Enter was pressed). Ctrl-C restores
@@ -20,6 +22,8 @@ function readMasked(label, { input = process.stdin, output = process.stdout } = 
     input.resume();
     output.write(label);
     let value = '';
+    const decoder = new StringDecoder('utf8');
+    let esc = 0; // 0 none, 1 after ESC, 2 inside a CSI/SS3 sequence
     const finish = () => {
       input.removeListener('data', onData);
       input.setRawMode(false);
@@ -27,9 +31,10 @@ function readMasked(label, { input = process.stdin, output = process.stdout } = 
       output.write('\n');
     };
     function onData(chunk) {
-      const s = chunk.toString('utf8');
-      if (s.startsWith('\u001b')) return;
-      for (const ch of s) {
+      for (const ch of decoder.write(chunk)) {
+        if (esc === 1) { esc = (ch === '[' || ch === 'O') ? 2 : 0; continue; }
+        if (esc === 2) { if (ch >= '@' && ch <= '~') esc = 0; continue; }
+        if (ch === '\u001b') { esc = 1; continue; }
         if (ch === '\r' || ch === '\n') { finish(); resolve(value); return; }
         if (ch === '\u0003') { finish(); process.kill(process.pid, 'SIGINT'); resolve(''); return; }
         if (ch === '\u007f' || ch === '\b') {
