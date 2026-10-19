@@ -59,6 +59,7 @@ cleanup() {
     rmdir "$HANDOVER_DIR" 2>/dev/null
     for f in "$XDG_RUNTIME_DIR/himmel-queue-lock"/*; do rm -f "$f" 2>/dev/null; done
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" "$XDG_RUNTIME_DIR" 2>/dev/null
+    rmdir "$TMP/dir.jsonl" 2>/dev/null
     for f in "$TMP"/*.jsonl; do rm -f "$f" 2>/dev/null; done
     rmdir "$TMP" 2>/dev/null
 }
@@ -90,13 +91,20 @@ payload() {   # payload <transcript> [stop_hook_active] [session]
     printf '{"session_id":"%s","stop_hook_active":%s,"hook_event_name":"Stop","transcript_path":"%s"}' \
         "${3:-$SESSION_ID}" "${2:-false}" "$1"
 }
-run_guard() {   # run_guard <payload> [ENV=val ...]
+OUT=""; RC=0
+run_guard() {   # run_guard <payload> [ENV=val ...] — sets OUT and RC
     local p="$1"; shift
-    printf '%s' "$p" | env HIMMEL_CONSOLE_LEG=1 "$@" bash "$HOOK"
+    OUT="$(printf '%s' "$p" | env HIMMEL_CONSOLE_LEG=1 "$@" bash "$HOOK")"; RC=$?
 }
-is_block() { case "$1" in *'"decision":"block"'*) return 0 ;; esac; return 1; }
-expect_block() { if is_block "$2"; then ok "$1"; else bad "$1 — expected block, got: ${2:-<no output>}"; fi; }
-expect_allow() { if [ -z "$2" ]; then ok "$1"; else bad "$1 — expected a silent allow, got: $2"; fi; }
+expect_block() {   # expect_block <label> — reads OUT/RC from the last run_guard
+    case "$OUT" in
+        *'"decision":"block"'*) if [ "$RC" -eq 0 ]; then ok "$1"; else bad "$1 — blocked but exit $RC"; fi ;;
+        *) bad "$1 — expected block, got: ${OUT:-<no output>} (exit $RC)" ;;
+    esac
+}
+expect_allow() {   # expect_allow <label> — silent AND exit 0, so a crash is not an allow
+    if [ -z "$OUT" ] && [ "$RC" -eq 0 ]; then ok "$1"; else bad "$1 — expected a silent exit-0 allow, got: ${OUT:-<no output>} (exit $RC)"; fi
+}
 
 # --- RED control --------------------------------------------------------------
 BASE_SHA="4eff389fb4a74863c297bb826c9b3a5104df07b7"
@@ -107,8 +115,8 @@ else
 fi
 
 # --- refused ------------------------------------------------------------------
-out="$(run_guard "$(payload "$T_IDLE")")"
-expect_block "lock held, no background task -> block" "$out"
+run_guard "$(payload "$T_IDLE")"; out="$OUT"
+expect_block "lock held, no background task -> block"
 case "$out" in
     *'check-ci.sh <pr> --max-wait 3000'*) ok "reason names a bounded check-ci wait at the 3000s default" ;;
     *) bad "reason lacks the bounded check-ci wait — got: $out" ;;
@@ -127,31 +135,46 @@ else
     bad "block output is not valid JSON: $out"
 fi
 
-expect_block "background task completed (task-notification status) -> block" "$(run_guard "$(payload "$T_DONE")")"
-expect_block "Monitor stopped by TaskStop -> block" "$(run_guard "$(payload "$T_STOP")")"
+run_guard "$(payload "$T_DONE")"
+expect_block "background task completed (task-notification status) -> block"
+run_guard "$(payload "$T_STOP")"
+expect_block "Monitor stopped by TaskStop -> block"
 
-out="$(run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1800)"
+run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1800; out="$OUT"
 case "$out" in *'--max-wait 1800'*) ok "bound is config: HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1800 is named" ;; *) bad "bound 1800 not named — got: $out" ;; esac
-out="$(run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=7200)"
+run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=7200; out="$OUT"
 case "$out" in *'--max-wait 3000'*) ok "bound past the TTL margin (7200) falls back to 3000" ;; *) bad "bound 7200 did not fall back — got: $out" ;; esac
-out="$(run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=junk)"
+run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=junk; out="$OUT"
 case "$out" in *'--max-wait 3000'*) ok "junk bound falls back to 3000" ;; *) bad "junk bound did not fall back — got: $out" ;; esac
 
 # --- allowed ------------------------------------------------------------------
-expect_allow "background Bash still running -> allow" "$(run_guard "$(payload "$T_BG")")"
-expect_allow "Monitor running (an event is not terminal) -> allow" "$(run_guard "$(payload "$T_MON")")"
-expect_allow "one of two background tasks still running -> allow" "$(run_guard "$(payload "$T_MIXED")")"
-expect_allow "malformed transcript line is skipped, running task still seen -> allow" "$(run_guard "$(payload "$T_JUNK")")"
-expect_allow "stop_hook_active=true -> allow (one refusal per stop)" "$(run_guard "$(payload "$T_IDLE" true)")"
-expect_allow "another session's stop (lock not ours) -> allow" "$(run_guard "$(payload "$T_IDLE" false other-session)")"
-expect_allow "not a console leg (HIMMEL_CONSOLE_LEG unset) -> allow" \
-    "$(printf '%s' "$(payload "$T_IDLE")" | env -u HIMMEL_CONSOLE_LEG bash "$HOOK")"
-expect_allow "missing transcript -> allow (fail open)" "$(run_guard "$(payload "$TMP/absent.jsonl")")"
-expect_allow "junk payload -> allow (fail open)" "$(run_guard 'not json')"
-expect_allow "empty payload -> allow (fail open)" "$(run_guard '')"
+run_guard "$(payload "$T_BG")"
+expect_allow "background Bash still running -> allow"
+run_guard "$(payload "$T_MON")"
+expect_allow "Monitor running (an event is not terminal) -> allow"
+run_guard "$(payload "$T_MIXED")"
+expect_allow "one of two background tasks still running -> allow"
+run_guard "$(payload "$T_JUNK")"
+expect_allow "malformed transcript line is skipped, running task still seen -> allow"
+run_guard "$(payload "$T_IDLE" true)"
+expect_allow "stop_hook_active=true -> allow (one refusal per stop)"
+run_guard "$(payload "$T_IDLE" false other-session)"
+expect_allow "another session's stop (lock not ours) -> allow"
+OUT="$(printf '%s' "$(payload "$T_IDLE")" | env -u HIMMEL_CONSOLE_LEG bash "$HOOK")"; RC=$?
+expect_allow "not a console leg (HIMMEL_CONSOLE_LEG unset) -> allow"
+run_guard "$(payload "$TMP/absent.jsonl")"
+expect_allow "missing transcript -> allow (fail open)"
+mkdir -p "$TMP/dir.jsonl"
+run_guard "$(payload "$TMP/dir.jsonl")"
+expect_allow "transcript scan fails (path is a directory) -> allow, not a 0-task block"
+run_guard 'not json'
+expect_allow "junk payload -> allow (fail open)"
+run_guard ''
+expect_allow "empty payload -> allow (fail open)"
 
 release_lock
-expect_allow "wrapped leg (lock released) -> allow" "$(run_guard "$(payload "$T_IDLE")")"
+run_guard "$(payload "$T_IDLE")"
+expect_allow "wrapped leg (lock released) -> allow"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

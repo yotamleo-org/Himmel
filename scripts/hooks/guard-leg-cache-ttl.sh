@@ -42,7 +42,8 @@
 # OPEN on every gap — no jq, no sha256 tool, junk payload, no transcript, no
 # handover root or lock dir. Bypass: unset HIMMEL_CONSOLE_LEG in the launching
 # shell. bash 3.2-safe.
-set -u
+# pipefail: a failed transcript scan must exit 0 (allow), not count 0 tasks.
+set -uo pipefail
 
 [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
