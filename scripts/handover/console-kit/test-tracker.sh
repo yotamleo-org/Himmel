@@ -70,16 +70,17 @@ mk() {
     {
         printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$2\""
         [ -n "${5:-}" ] && printf 'status: "%s"\n' "$5"
+        [ -n "${7:-}" ] && printf 'sector: "%s"\n' "$7"
         [ -n "${6:-}" ] && printf 'resolution: "%s"\n' "$6"
         printf '%s\n' "fixVersions: $3" 'type: "Bug"' '---' "# HIMMEL-$1: $4"
     } > "$mdir/HIMMEL-$1.md"
 }
-mk 1 'To Do' '["v1.0.1"]' 'planned bug'
+mk 1 'To Do' '["v1.0.1"]' 'planned bug' '' '' Tooling
 mk 2 'To Do' '[]' 'parked ticket'
 mk 3 'To Do' '[]' 'likely fixed ticket'
 mk 4 'To Do' '[]' 'unplaced ticket'
 mk 5 'Done' '["v1.0.1"]' 'done unplanned'
-mk 6 'To Do' '["v1.0.1"]' 'open unplanned'
+mk 6 'To Do' '["v1.0.1"]' 'open unplanned' '' '' Visibility
 mk 7 'In Progress' '["v1.0.1"]' 'active unplanned'
 # Ticket 6 carries the plain block as the mirror renders ADF headings (bare lines); ticket 1 keeps only its explain sidecar.
 printf '%s\n' '' '## Description' '' 'Impact' 'Operators see a blank page after the nightly restart.' 'It happens once a day.' \
@@ -125,8 +126,8 @@ contains 'summary counts only open unplanned tickets (HIMMEL-3954)' "$stdout" ',
 contains 'the Done unplanned ticket still renders in its version tab data' "$html" '"done unplanned"'
 # unplanned is a flag (row field 7 = 2), never a theme; a ticket with no theme is counted and flagged.
 not_contains 'no "(unplanned)" theme in the page data (HIMMEL-4930)' "$html" '(unplanned)'
-contains 'summary counts the open tickets that have no theme (HIMMEL-4930)' "$stdout" ', 2 unthemed,'
-contains 'the ledger flags open tickets with no theme (HIMMEL-4930)' "$stdout" '2 open tickets have no theme'
+contains 'summary counts the open tickets that have no sector (HIMMEL-6483)' "$stdout" ', 1 unthemed,'
+contains 'the ledger flags open tickets with no sector (HIMMEL-6483)' "$stdout" '1 open ticket has no sector'
 
 # --- design pass.
 # Ask 1: a row carries user impact, the effort range, readiness, impact, issue_plain and its load (P columns).
@@ -155,7 +156,7 @@ contains 'the ledger names the running version with its progress; Done unplanned
 contains 'the ledger gives whole-train progress (HIMMEL-3957)' "$stdout" \
     'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 4 done (25 %), 1 in progress, 2 to do.'
 contains 'the ledger names open unplanned work when non-zero (HIMMEL-3957)' "$stdout" \
-    'Needs attention: 2 open tickets sit in a version but not in the plan; 2 open tickets have no theme.'
+    'Needs attention: 2 open tickets sit in a version but not in the plan; 1 open ticket has no sector.'
 not_contains 'the ledger omits drift when it is zero (HIMMEL-3957)' "$stdout" 'drifted'
 not_contains 'the page data carries no plan ledger: it is not Jira progress (HIMMEL-6401)' "$html" '"LG":'
 # Ask 5: a Done off-plan ticket still counts in its version; off-plan work adds no budget.
@@ -195,8 +196,12 @@ not_contains 'the page has no column chart (HIMMEL-3990)' "$html" 'renderChart'
 contains 'the status legend names the five Jira statuses (HIMMEL-3990)' "$html" '["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]'
 not_contains 'the steer panel waits for the UI phase (HIMMEL-3990)' "$html" 'renderSteer'
 contains 'the estimate-vs-actual fold shows each size against what finished work took (HIMMEL-3990)' "$html" 'fmtMin(x.med)+" · "+pl(x.legs,"leg","legs")'
-contains 'the plan decisions sit in a folded section (HIMMEL-3990)' "$html" '<details class="fold" id="pdec"><summary id="decs">'
-contains 'a lever words its console instruction (HIMMEL-3990)' "$html" 'lines.push("open trail "+toName)'
+not_contains 'no Plan decisions section (HIMMEL-6483)' "$html" 'Plan decisions that need your input'
+not_contains 'no What users gained section (HIMMEL-6483)' "$html" 'What users gained'
+not_contains 'no Plan vs Jira section (HIMMEL-6483)' "$html" 'Plan vs Jira'
+contains 'the themes fold is Sectors (HIMMEL-6483)' "$html" 'Sectors in the running version'
+contains 'a sector in the mirror frontmatter groups the ticket (HIMMEL-6483)' "$html" '"Visibility"'
+contains 'a ticket with no sector groups under (no sector) (HIMMEL-6483)' "$html" '"(no sector)"'
 contains 'a nested drill keeps the first opener (HIMMEL-3990)' "$html" '"drawer").hidden)opener=from;'
 # The new plan inputs move the freshness fingerprint; each render must itself succeed.
 # fp_ok <label> <var> [render args] -- render --emit-fp into <var>, failing the test when the render exits non-zero.
@@ -452,22 +457,16 @@ if [ "$fpb" != "$fpd" ]; then pass 'a missing versions file differs from a prese
 fp_ok 'versions missing again' fpe --mirror-dir "$jm"
 if [ "$fpd" = "$fpe" ]; then pass 'the fingerprint is stable with the versions file missing (HIMMEL-3990)'; else fail 'the fingerprint moved with no input change'; fi
 
-# --- theme overlay, drift log + trend.
+# --- drift log + trend.
 dl="$W/drift.tsv"
 unthemed_of() { printf '%s' "$1" | sed -n 's/.*drift, \([0-9]*\) unthemed,.*/\1/p'; }
 base_unthemed="$(unthemed_of "$(render --drift-log "$dl")")"
-fpo2=''
-fp_ok 'overlay absent' fpo2
-printf '%s\t%s\t%s\n' key theme source HIMMEL-6 'overlay theme' 'test' HIMMEL-1 'wrong theme' 'test' > "$plan/stage1/themes-overlay.tsv"
+sect7_on() { cp "$mir/HIMMEL-7.md" "$W/h7.bak"; { sed -n 1p "$W/h7.bak"; printf 'sector: "Tooling"\n'; sed 1d "$W/h7.bak"; } > "$mir/HIMMEL-7.md"; }
+sect7_off() { cp "$W/h7.bak" "$mir/HIMMEL-7.md"; }
+sect7_on
 ostdout="$(render --drift-log "$dl")"
-ohtml="$(cat "$out" 2>/dev/null)"
-contains 'the overlay gives an unthemed ticket its theme (HIMMEL-4930)' "$ohtml" '"overlay theme"'
-not_contains 'the overlay never overrides a stage1 theme (HIMMEL-4930)' "$ohtml" '"wrong theme"'
-if [ -n "$base_unthemed" ] && [ "$(unthemed_of "$ostdout")" = "$((base_unthemed - 1))" ]; then pass 'the overlay lowers the unthemed count by one (HIMMEL-4930)'; else fail "unthemed went from '$base_unthemed' to '$(unthemed_of "$ostdout")'"; fi
-fpo1=''
-fp_ok 'overlay present' fpo1
-if [ -n "$fpo1" ] && [ "$fpo1" != "$fpo2" ]; then pass 'the overlay is a fingerprint input (HIMMEL-4930)'; else fail 'the overlay left the fingerprint'; fi
-rm -f "$plan/stage1/themes-overlay.tsv"
+sect7_off
+if [ -n "$base_unthemed" ] && [ "$(unthemed_of "$ostdout")" = "$((base_unthemed - 1))" ]; then pass "a mirror sector lowers the unthemed count by one (HIMMEL-6483)"; else fail "unthemed went from '$base_unthemed' to '$(unthemed_of "$ostdout")'"; fi
 rows_n() { grep -c . "$dl" 2>/dev/null || printf 0; }
 rm -f "$dl"
 render --drift-log "$dl" >/dev/null
@@ -475,13 +474,13 @@ if grep -Eq '^20[0-9-]+T[0-9:]+Z	[0-9]+	[0-9]+	[0-9]+$' "$dl" 2>/dev/null && [ "
 n1="$(rows_n)"
 render --drift-log "$dl" >/dev/null
 if [ "$n1" = "$(rows_n)" ] && [ "$n1" -ge 2 ]; then pass 'an unchanged render within the hour adds no drift row (HIMMEL-4930)'; else fail "unchanged render grew the drift log from $n1 to $(rows_n)"; fi
-printf '%s\t%s\t%s\n' key theme source HIMMEL-6 'overlay theme' 'test' > "$plan/stage1/themes-overlay.tsv"
+sect7_on
 render --drift-log "$dl" >/dev/null
+sect7_off
 if [ "$(rows_n)" -gt "$n1" ]; then pass 'a changed count adds a drift row (HIMMEL-4930)'; else fail 'a changed count left the drift log alone'; fi
 trend="$(render --drift-log "$dl")"
 contains 'stdout prints the drift trend (HIMMEL-4930)' "$trend" 'drift trend:'
 contains 'the page carries the drift trend (HIMMEL-4930)' "$(cat "$out" 2>/dev/null)" '"DT":[['
-rm -f "$plan/stage1/themes-overlay.tsv"
 
 # --- a per-release kanban, rendered as static HTML. A fixture release holds one ticket per status.
 kmir="$W/mirror-kanban"
@@ -610,7 +609,7 @@ brender >/dev/null
 contains 'the ratio sits beside its raw inputs once every leg is dated (HIMMEL-5453)' \
     "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
 
-# a Jira `theme-<slug>` label is the ticket's theme, ahead of the plan's stage1 / overlay theme.
+# a Jira `theme-<slug>` label is no longer a theme: the page groups by the Jira Sector field.
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 HIMMEL-11 'Build Tools' 2 > "$plan/stage1/C02.tsv"
 tl() {  # tl <n> <labels json>
     printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' \
@@ -624,10 +623,8 @@ tout="$W/theme.html"
 python3 "$HERE/tracker.py" --plan-dir "$plan" --out "$tout" --luna-map "$W/luna-map.json" \
     --mirror-dir "$mir" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" >/dev/null 2>&1
 thtml="$(cat "$tout" 2>/dev/null)"
-contains 'a theme label with no plan theme becomes a theme (HIMMEL-5491)' "$thtml" '"fresh-label"'
-contains 'a theme label that names a plan theme shows the plan name (HIMMEL-5491)' "$thtml" '"Build Tools"'
-not_contains 'that label is not shown as a new theme of its own (HIMMEL-5491)' "$thtml" '"build-tools"'
-not_contains 'the Jira theme label wins over the stage1 theme (HIMMEL-5491)' "$thtml" '"legacy"'
+not_contains 'a theme label is not a group (HIMMEL-6483)' "$thtml" '"fresh-label"'
+not_contains 'the stage1 theme is not a group either (HIMMEL-6483)' "$thtml" '"legacy"'
 
 # --- done-in-future drift: a Done ticket in an unreleased version other than the current one
 # (earliest unreleased by release date) is counted; Done in the current or a released version is not.
@@ -756,6 +753,25 @@ printf '#!/bin/sh\ncat "%s"\n' "$W/agree.tsv" > "$W/agreejira"
 chmod +x "$W/agreejira"
 pstdout="$(TRACKER_JIRA="$W/agreejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
 contains 'equal counts are parity ok (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 ok 2/1/0/0 (done/in progress/in review/to do)'
+# a mirror one status behind live is lag, naming the key; a mismatch that is no lag is DRIFT naming both statuses.
+printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-5860\tTask\tDone\tx\nHIMMEL-6143\tTask\tIn Review\tx\nHIMMEL-5574\tTask\tClosed\tx\n' > "$W/lag.tsv"
+printf '#!/bin/sh\ncat "%s"\n' "$W/lag.tsv" > "$W/lagjira"
+chmod +x "$W/lagjira"
+pstdout="$(TRACKER_JIRA="$W/lagjira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'a mirror behind live reads lag and names the key (HIMMEL-6483)' "$pstdout" 'parity: v1.1.3 lag page 2/1/0/0 jira 2/0/1/0'
+contains 'the lag line gives both statuses (HIMMEL-6483)' "$pstdout" 'HIMMEL-6143 page In Progress jira In Review'
+not_contains 'a mirror behind live is not DRIFT (HIMMEL-6483)' "$pstdout" 'parity: v1.1.3 DRIFT'
+printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-5860\tTask\tDone\tx\nHIMMEL-6143\tTask\tTo Do\tx\nHIMMEL-5574\tTask\tClosed\tx\n' > "$W/real.tsv"
+printf '#!/bin/sh\ncat "%s"\n' "$W/real.tsv" > "$W/realjira"
+chmod +x "$W/realjira"
+pstdout="$(TRACKER_JIRA="$W/realjira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'a page ahead of Jira is DRIFT naming the key and both statuses (HIMMEL-6483)' "$pstdout" \
+    'parity: v1.1.3 DRIFT page 2/1/0/0 jira 2/0/0/1 (done/in progress/in review/to do): HIMMEL-6143 page In Progress jira To Do'
+pstdout="$(TRACKER_JIRA="$W/fakejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'a key only on the page is DRIFT, a lagging key beside it is listed too (HIMMEL-6483)' "$pstdout" \
+    'HIMMEL-5860 page Done jira (absent), HIMMEL-6143 page In Progress jira In Review'
+contains 'the Jira side drops Done tickets resolved as something other than Done or Fixed (HIMMEL-6483)' \
+    "$(cat "$W/jira-args" 2>/dev/null)" 'resolution not in'
 # a status the tracker has no bucket for is a garbled answer, never a guessed To Do.
 printf 'HIMMEL-4185\tTask\tDone\tx\nHIMMEL-6143\tTask\tSomething New\tx\n' > "$W/odd.tsv"
 printf '#!/bin/sh\ncat "%s"\n' "$W/odd.tsv" > "$W/oddjira"

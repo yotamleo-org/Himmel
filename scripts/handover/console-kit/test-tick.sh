@@ -1850,6 +1850,16 @@ if command -v python3 >/dev/null 2>&1; then
     # A plan file edit is a staleness too, not only the mirror.
     printf '%s\t%s\t%s\t%s\n' HIMMEL-2 v1.0.1 bugs 1 >> "$t3933_plan/stage3/placement.tsv"
     contains 'a plan file change reads tracker=STALE (HIMMEL-3933)' "$(t3933)" ' tracker=STALE:'
+    # a rendered page the console has not republished reads REPUBLISH; a publish stamp newer than the page reads ok.
+    head -n -1 "$t3933_plan/stage3/placement.tsv" > "$t3933_plan/stage3/placement.tmp" && mv "$t3933_plan/stage3/placement.tmp" "$t3933_plan/stage3/placement.tsv"
+    t3933_render
+    touch -d '5 hours ago' "$t3933_out.published"  # gnu-ok: console kit is Linux-only
+    touch -d '2 hours ago' "$t3933_out"  # gnu-ok: console kit is Linux-only
+    contains 'a page newer than its publish stamp reads tracker=REPUBLISH:<age> (HIMMEL-6483)' "$(t3933)" ' tracker=REPUBLISH:2h'
+    touch "$t3933_out.published"
+    contains 'a publish stamp newer than the page reads tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
+    rm -f "$t3933_out.published"
+    contains 'no publish stamp keeps reading tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
 else
     skip 'tracker= rows: no python3'
 fi

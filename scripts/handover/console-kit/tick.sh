@@ -1255,7 +1255,8 @@ fi
 # the roadmap tracker's freshness. tracker.py --emit-fp is the one
 # derivation (the mirror's newest updated + the plan files), the same value it
 # writes to <page>.fp when it renders; a tracker that moved past its render reads
-# STALE, aged by the page's mtime. skip = no (or `none`) `tracker:` Live state line.
+# STALE, aged by the page's mtime; a page newer than its `.published` stamp (touched by the
+# console after each publish) reads REPUBLISH:<age>. skip = no (or `none`) `tracker:` Live state line.
 # ponytail: tracker=ok says the LOCAL page matches Jira + the plan; tick cannot see
 # whether the artifact was republished, and it reads the mirror on disk, so a stale
 # mirror reads ok until the console refreshes it (node scripts/jira/dist/index.js mirror).
@@ -1267,6 +1268,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         tracker_plan="$(sed -n 's/^tracker-plan:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1)"
         [ -n "$tracker_plan" ] || tracker_plan="$tracker_dir/specs/plan/HIMMEL-3882"
         tracker_file="$tracker_dir/roadmap-tracker.html"
+        tracker_class=''
         tracker_want="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$tracker_plan" --out "$tracker_file" --luna-map "$tracker_dir/roadmap-luna-map.json" ${TICK_TRACKER_MIRROR_DIR:+--mirror-dir "$TICK_TRACKER_MIRROR_DIR"} 2>/dev/null)" || tracker_want=""
         if [ ! -f "$tracker_file" ]; then
             tracker_summary=MISSING
@@ -1274,14 +1276,20 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
             tracker_summary=skip  # cannot derive the reference (no python3, bad plan dir): no verdict
         elif [ "$(cat "$tracker_file.fp" 2>/dev/null)" = "$tracker_want" ]; then
             tracker_summary=ok
+            # The console touches <page>.published after each Artifact publish; a page newer than that stamp is
+            # rendered but not republished. No stamp file, no verdict.
+            if [ -f "$tracker_file.published" ] && [ "$tracker_file" -nt "$tracker_file.published" ]; then tracker_class=REPUBLISH; fi
         else
+            tracker_class=STALE
+        fi
+        if [ -n "$tracker_class" ]; then
             tracker_mtime="$(stat -c %Y "$tracker_file" 2>/dev/null)" || tracker_mtime=""  # gnu-ok: console kit is Linux-only
             tracker_age=0
             case "$tracker_mtime" in ''|*[!0-9]*) ;; *) tracker_age=$(( $(date +%s) - tracker_mtime )) ;; esac
             [ "$tracker_age" -ge 0 ] || tracker_age=0
-            if [ "$tracker_age" -ge 172800 ]; then tracker_summary="STALE:$((tracker_age / 86400))d"
-            elif [ "$tracker_age" -ge 3600 ]; then tracker_summary="STALE:$((tracker_age / 3600))h"
-            else tracker_summary="STALE:$((tracker_age / 60))m"; fi
+            if [ "$tracker_age" -ge 172800 ]; then tracker_summary="$tracker_class:$((tracker_age / 86400))d"
+            elif [ "$tracker_age" -ge 3600 ]; then tracker_summary="$tracker_class:$((tracker_age / 3600))h"
+            else tracker_summary="$tracker_class:$((tracker_age / 60))m"; fi
         fi
         ;;
     esac
