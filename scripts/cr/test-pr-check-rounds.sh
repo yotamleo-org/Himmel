@@ -102,6 +102,7 @@ if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
     for arg in "$@"; do
         if [ "$arg" = number ]; then
             [ "${GH_PR_RC:-0}" = 0 ] || exit "$GH_PR_RC"
+            [ -z "${GH_PR_NONE:-}" ] || exit 0
             printf '%s\n' "${GH_PR_NUMBER:-1}"
             exit 0
         fi
@@ -2600,6 +2601,44 @@ jgo_out="$(jgo_verb 'jg"q' "$jgo_head")"; jgo_vrc=$?
 git -C "$repo" checkout -q jg63x
 assert_eq "$jgo_vrc" "2" "6303 (i) a branch name that breaks the JSON row is refused ($jgo_out)"
 assert_has "$jgo_out" "cannot be written into a ledger row" "6303 (i) the refusal names the ledger row"
+# A branch capped before its PR exists. A GO bound to the branch
+# (branch: line, no pr: line) clears that exact head; nothing else does.
+jgo_recb() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-6427 \
+        bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$1" GO "$2" \
+        --branch "$3" --evidence-file "$jev/judge-evidence.md" \
+        >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1 (branch-bound)"
+}
+jgo_setup jg64p
+jg64_cap="$cap_r3_head"
+export GH_PR_NONE=1
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6427 (a) no record exits 1"
+assert_has "$jgo_out" "no signed judge GO" "6427 (a) the refusal says why instead of staying silent"
+jgo_recb jg64-other "$jgo_head" some-other-branch
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6427 (b) a branch-bound GO for another branch buys nothing ($jgo_out)"
+jgo_recb jg64-stale "$jg64_cap" jg64p
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6427 (c) a branch-bound GO at a stale head buys nothing ($jgo_out)"
+jgo_rec jg64-prbound GO "$jgo_head" 1 jg64p
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "8" "6427 (d) a PR-bound GO with no open PR still refuses ($jgo_out)"
+rm -rf "${vscope:?}/jg64-prbound"
+jgo_recb jg64-ok "$jgo_head" jg64p
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "6427 (e) a branch-bound GO at the exact head is accepted with no PR ($jgo_out)"
+assert_has "$jgo_out" "jg64-ok/judge" "6427 (e) the verb names the record"
+jgo_clear jg64p; jgo_rc=$?
+assert_eq "$jgo_rc" "0" "6427 (f) the branch-bound GO clears the marker ($(cat "$tmp/jg64p-clear.out"))"
+export GH_PR_RC=1
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+unset GH_PR_RC
+assert_eq "$jgo_vrc" "8" "6427 (g) an unreadable PR lookup refuses the branch-bound GO ($jgo_out)"
+unset GH_PR_NONE
+jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "6427 (h) once a PR exists a branch-only record no longer binds ($jgo_out)"
+rm -rf "${vscope:?}/jg64-other" "${vscope:?}/jg64-stale" "${vscope:?}/jg64-ok"
 # A post-cap delta that only adds a test file, with a judge GO at its head.
 three_rounds jg62 clean
 printf 'echo t\n' > "$repo/jg62-test.sh"
