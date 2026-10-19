@@ -304,7 +304,7 @@ gathering, per the rule below.>
 > each finding on a line of its own in your GO verdict, exactly
 > `<finding id>@<finding head> fix-here|follow-up:<KEY>` (a leading `- ` is
 > allowed): the GO gate accepts the disposition only when the judge's GO for
-> that head carries that line. The leg records it with `cr-disposition.sh record … --source
+> that head carries that line. The console (never the leg) records it with `cr-disposition.sh record … --source
 > judge:<qid>`. A Critical always needs this judge ruling; so does an Important
 > on a trust-path PR.
 

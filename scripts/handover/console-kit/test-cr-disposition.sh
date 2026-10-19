@@ -156,9 +156,10 @@ contains "6: says the verdict does not rule it" "$out" "does not rule"
 JDIR="$HDIR/$VSCOPE/verdicts/JD1"
 { cat "$JDIR/HIMMEL-1-judge-JD1.md"; printf -- '- codex-9@%s follow-up:HIMMEL-6352\n' "$FHEAD"; } > "$JDIR/forged.md"
 verdict "$HDIR" JD1 "**GO** for head \`$SHA2\`." 90 "- codex-9@$FHEAD follow-up:HIMMEL-6352" other
+verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 91 "- codex-9@$FHEAD follow-up:HIMMEL-6352" otherpr
 gos 90 "$SHA"
-check "6: a ruling only in an unsigned or other-head file -> exit 9" "$rc" "9"
-rm -f "$JDIR/forged.md" "$JDIR/other.md"
+check "6: a ruling only in an unsigned, other-head or other-PR file -> exit 9" "$rc" "9"
+rm -f "$JDIR/forged.md" "$JDIR/other.md" "$JDIR/otherpr.md"
 verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 90 "- codex-9@$FHEAD follow-up:HIMMEL-6352"
 gos 90 "$SHA"
 check "6: judge source with a GO verdict ruling the finding -> exit 0" "$rc" "0"
