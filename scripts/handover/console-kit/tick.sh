@@ -239,7 +239,7 @@ sets nor clears the saturation state ($TICK_STATE_DIR/tick-ciq-last, default
 versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
 mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.
-A non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
+In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 
 --burn adds a per-leg context-burn field (first-turn/avg-ctx, via
