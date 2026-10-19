@@ -71,7 +71,7 @@ count_rows() {
 }
 
 cmd_run() {
-    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc escrows escnote bycls byp p n bad=0 jira primary row locked all dn mk shipped admin
+    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc escrows escnote bycls byp p n got bad=0 jira primary row locked all dn mk shipped admin
     while [ $# -gt 0 ]; do
         case "$1" in
             --date) [ $# -ge 2 ] || { echo "ERR scorecard: --date needs a value" >&2; return 64; }; date_arg="$2"; shift 2 ;;
@@ -124,11 +124,14 @@ cmd_run() {
     if [[ "$esc" =~ ^[0-9]+$ && "$esc" -gt 0 ]]; then
         bycls="$(printf '%s\n' "$escrows" | awk -F'\t' 'NF { n = split($5, l, ","); c = 0; for (i = 1; i <= n; i++) { gsub(/ /, "", l[i]); if (l[i] ~ /^class-/) { t[l[i]]++; c = 1 } } if (!c) t["unclassified"]++ }
             END { for (k in t) print t[k], k }' | sort -k1,1nr -k2 | awk '{ printf "%s%s=%s", (NR > 1 ? " " : ""), $2, $1 }')"
-        byp=""
+        byp=""; got=0
         for p in Highest High Medium Low Lowest; do
-            n="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND labels = deferred-escape AND priority = $p" --limit 500)" || { n=unknown; bad=1; }
+            n="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND labels = deferred-escape AND priority = $p" --limit 500)" || { n=unknown; bad=1; got=""; }
             [ "$n" = 0 ] || byp="$byp${byp:+ }$p=$n"
+            [ -z "$got" ] || got=$((got + n))
         done
+        # An escape with no priority matches none of the five queries.
+        [[ -n "$got" && "$esc" -gt "$got" ]] && byp="$byp${byp:+ }unprioritized=$((esc - got))"
         escnote="; escapes by class: $bycls; by priority: $byp"
     fi
 

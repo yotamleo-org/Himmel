@@ -93,14 +93,15 @@ case "$*" in
   *"priority = High"*) echo "HIMMEL-1 x" ;;
   *"priority = Medium"*) printf 'HIMMEL-5 y\nHIMMEL-6 z\n' ;;
   *"priority ="*) : ;;
-  *deferred-escape*) printf 'HIMMEL-1\tBug\tDone\tx\tdeferred-escape,class-fail-open\nHIMMEL-5\tBug\tDone\ty\tclass-fail-open,deferred-escape\nHIMMEL-6\tBug\tDone\tz\tdeferred-escape\n' ;;
+  *deferred-escape*--labels*) printf 'HIMMEL-1\tBug\tDone\tx\tdeferred-escape,class-fail-open\nHIMMEL-5\tBug\tDone\ty\tclass-fail-open,deferred-escape\nHIMMEL-6\tBug\tDone\tz\tdeferred-escape\nHIMMEL-7\tBug\tDone\tw\tdeferred-escape\n' ;;
+  *deferred-escape*) : ;;
   *) echo "HIMMEL-2 a" ;;
 esac
 E
 SCORECARD_JIRA_CMD="bash $td/jesc.sh" SCORECARD_TSV="$td/esc.tsv" bash "$tool" run --date 2026-10-28 >/dev/null 2>&1; rc=$?
 check "escape split run exits 0" "$rc" 0
-check "deferred_escapes still counts every escape" "$(sed -n 2p "$td/esc.tsv" | cut -f10)" 3
-sed -n 2p "$td/esc.tsv" | cut -f14 | grep -qF 'escapes by class: class-fail-open=2 unclassified=1; by priority: High=1 Medium=2' \
+check "deferred_escapes still counts every escape" "$(sed -n 2p "$td/esc.tsv" | cut -f10)" 4
+sed -n 2p "$td/esc.tsv" | cut -f14 | grep -qF 'escapes by class: class-fail-open=2 unclassified=2; by priority: High=1 Medium=2 unprioritized=1' \
   && ok "note carries the per-class and per-priority split" || bad "note carries the per-class and per-priority split: $(sed -n 2p "$td/esc.tsv" | cut -f14)"
 sed -n 2p "$td/s.tsv" | cut -f14 | grep -q 'unclassified=1' && ok "an escape row with no labels column reads unclassified" || bad "an escape row with no labels column reads unclassified"
 
