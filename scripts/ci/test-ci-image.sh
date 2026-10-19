@@ -101,9 +101,9 @@ else
   wfrow "builds on push to main when .github/ci-image/** changes" '^    paths:' '\.github/ci-image/\*\*' 'branches: \[main\]'
   wfrow "has a weekly schedule" '^  schedule:' 'cron:'
   wfrow "has workflow_dispatch" 'workflow_dispatch'
-  wfrow "tags :<sha> and :latest" 'IMAGE: ghcr\.io/yotamleo/himmel-ci$' '[$]IMAGE:[$][{][{] *github\.sha *[}][}]' '[$]IMAGE:latest'
+  wfrow "tags :<sha> and :latest" 'IMAGE: ghcr\.io/yotamleo-org/himmel-ci$' '[$]IMAGE:[$][{][{] *github\.sha *[}][}]' '[$]IMAGE:latest'
   wfrow "permissions are packages:write + contents:read" '^  packages: write' '^  contents: read'
-  wfrow "job runs only on main of the real repo" "^    if: .*github\.repository == 'yotamleo/himmel'.*github\.ref == 'refs/heads/main'"
+  wfrow "job runs only on main of the real repo" "^    if: .*github\.repository == 'yotamleo-org/Himmel'.*github\.ref == 'refs/heads/main'"
   wfrow "job has timeout-minutes" 'timeout-minutes:'
   if grep -q 'pull_request' <<< "$wf"; then bad "workflow must not trigger on pull_request (no push from a fork PR)"
   else ok "workflow does not trigger on pull_request"; fi

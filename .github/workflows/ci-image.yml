@@ -25,11 +25,11 @@ jobs:
   build:
     # Only the real repo's main pushes: a fork's schedule has no GHCR namespace of ours,
     # and a dispatch from another branch must not move the shared :latest tag.
-    if: github.repository == 'yotamleo/himmel' && github.ref == 'refs/heads/main'
+    if: github.repository == 'yotamleo-org/Himmel' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      IMAGE: ghcr.io/yotamleo/himmel-ci
+      IMAGE: ghcr.io/yotamleo-org/himmel-ci
     steps:
       - uses: actions/checkout@v7
       - name: Build

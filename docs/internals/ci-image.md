@@ -1,6 +1,6 @@
 # CI image — prebuilt tooling (HIMMEL-2872)
 
-`ghcr.io/yotamleo/himmel-ci` carries the tools the Linux CI jobs install per run
+`ghcr.io/yotamleo-org/himmel-ci` carries the tools the Linux CI jobs install per run
 today, so a job starts from a ready environment that only changes when we change it.
 
 - **Source:** `.github/ci-image/Dockerfile` (Ubuntu 24.04).
@@ -11,7 +11,7 @@ today, so a job starts from a ready environment that only changes when we change
   pre-commit, node, gitleaks and shellcheck-py pins live from `ci.yml`, `.bun-version`,
   `.pre-commit-config.yaml` and `gcp-runner-startup.sh` and fails when the Dockerfile
   lacks one.
-- **Who can publish:** the job runs only for `refs/heads/main` of `yotamleo/himmel`, so a
+- **Who can publish:** the job runs only for `refs/heads/main` of `yotamleo-org/Himmel`, so a
   dispatch from another branch builds nothing. A branch writer can still edit the workflow
   on their own branch, so the real boundary is the package's repository-access setting
   (give `himmel-ci` write access only to this repo's main workflow) and, if wanted, a
@@ -29,7 +29,7 @@ gitleaks (pinned + sha256), pre-commit 4.7.0, shellcheck-py 0.11.0.1 first on PA
 
 `ci.yml` is untouched (other legs hold it). Adopting the image means, in `ci.yml`:
 
-- `shell-unit-shard` (job at line 1099): add `container: ghcr.io/yotamleo/himmel-ci:<sha tag>`
+- `shell-unit-shard` (job at line 1099): add `container: ghcr.io/yotamleo-org/himmel-ci:<sha tag>`
   to the job, and delete these steps for the Linux legs: `Record runner image` /
   `Cache apt debs (at/atd)` / `Install + enable at/atd` (1178-1203), `Allow unprivileged
   user namespaces` (1204; needs `options: --security-opt seccomp=unconfined` or the

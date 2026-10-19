@@ -1,5 +1,5 @@
 # .github/ci-image/Dockerfile -- the CI tooling image.
-# Built and pushed to ghcr.io/yotamleo/himmel-ci by .github/workflows/ci-image.yml
+# Built and pushed to ghcr.io/yotamleo-org/himmel-ci by .github/workflows/ci-image.yml
 # when this directory changes (plus a weekly rebuild for base-image updates).
 # Every pin below mirrors ci.yml / .bun-version / .pre-commit-config.yaml;
 # scripts/ci/test-ci-image.sh fails when one drifts.
