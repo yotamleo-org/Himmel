@@ -57,6 +57,8 @@ const bridgePersistenceLib = require('./lib/bridge-persistence.js');
 const uiServiceLib = require('./lib/ui-service.js');
 const cadenceEmitLib = require('./lib/cadence-emit.js');
 const SECRETS_MANIFEST = require('./lib/secrets-manifest.json');
+const secretStoreLib = require('./lib/secret-store.js');
+const secretPromptLib = require('./lib/secret-prompt.js');
 // per-cadence wizard registry (pipeline/qmd/graphmap/codex-sweep
 // — see the file's own $comment for why ggs-cadence.sh is excluded). The
 // wizard enumerates cadence UNITS from here, never a hardcoded list.
@@ -1174,7 +1176,7 @@ async function askCommitRules(ask) {
 }
 
 const SECRETS_WALK_HELP = {
-  run: 'walk each luna secret with an instruction card + probe (himmelctl never harvests the value)',
+  run: 'show each secret status, then keep / set / skip it; a typed value goes to the 0600 store, never the answers file',
   skip: 'skip the walk-through',
 };
 
@@ -1758,7 +1760,7 @@ async function askVm(ask, existing) {
 // --with-codex/--with-hermes. `devOverlay` is never a
 // question — it is set only by the --contribute CLI flag, threaded straight
 // into buildAnswers() below.
-async function askQuestions(defaultScope, laneOpts, devOverlay) {
+async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
   const ask = makeAsk(rl);
 
@@ -1942,8 +1944,6 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     // was always asked on this path.
     luna = { cadenceEnabled: cadences.pipeline === 'armed', phiDeclared: phiAns === 'yes', disarmCadence: disarmCadence, phiVaultPath: phiVaultPath, createSalusMarker: createSalusMarker };
 
-    secretsWalk = await askNumberedEnum(ask, 'walk through luna secrets now (instruction card + probe per secret; himmelctl never harvests the value itself)', ['run', 'skip'], 'skip', SECRETS_WALK_HELP);
-
     const bridgeAns = await askNumberedEnum(ask, 'configure the telegram bridge (voice/text ingestion)?', ['off', 'on'], preset.bridge, BRIDGE_HELP);
     if (bridgeAns === 'on') {
       const bd = defaultBridgeSectionAnswer();
@@ -1996,12 +1996,20 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     luna = { disarmCadence: disarmCadence };
   }
 
+  // Secrets (all profiles): the gate, then keep/set/skip per secret the picked
+  // features cover. Runs after the bridge answer so the scoping sees it.
+  secretsWalk = await askNumberedEnum(ask, 'walk through secrets now (status, then keep/set/skip per secret with a masked prompt; the answers file records status only)', ['run', 'skip'], 'skip', SECRETS_WALK_HELP);
+
   // Commit rules (all profiles, last so vault-gated sections keep their order):
   // tracker + ticket ID rules -> ~/.himmel/himmel.conf
   const commitRules = await askCommitRules(ask);
 
-  rl.close();
   const answers = buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handoverMode, handoverPath, pluginSet, lanes, alwaysOn, luna, secretsWalk, bridge, cadences, vm);
+  if (secretsWalk === 'run' && !dryRun) {
+    const statuses = await collectSecrets(ask, answers);
+    if (statuses) answers.secrets = statuses; else answers.secretsWalk = 'skip';
+  }
+  rl.close();
   if (handoverRegister) answers.handover.register = handoverRegister;
   if (commitRules) answers.commitRules = commitRules;
   return answers;
@@ -2284,6 +2292,20 @@ function loadProfile(p) {
   }
   if (obj.secretsWalk !== undefined) {
     checkEnum('secretsWalk', obj.secretsWalk, ['run', 'skip']);
+  }
+  // `secrets` is status-only: a name to set|kept|skipped|card, never a value.
+  if (obj.secrets !== undefined) {
+    if (!obj.secrets || typeof obj.secrets !== 'object' || Array.isArray(obj.secrets)) {
+      profileError(p, "field 'secrets' must be an object of secret name to status");
+    }
+    for (const k of Object.keys(obj.secrets)) {
+      if (!SECRETS_MANIFEST.secrets.some((e) => e.name === k)) {
+        profileError(p, `field 'secrets' names an unknown secret '${k}'`);
+      }
+      if (SECRET_STATUSES.indexOf(obj.secrets[k]) === -1) {
+        profileError(p, `field 'secrets.${k}' must be one of ${SECRET_STATUSES.join('|')} (the answers file never carries a value)`);
+      }
+    }
   }
   // `channel` picks the release channel scripts/himmel-update.sh
   // follows — optional (absent means "unset", today's plain git-pull
@@ -3212,6 +3234,63 @@ function probeOneSecret(entry, bridge) {
     return { status: 'error', detail: `probe threw: ${e && e.message ? e.message : e}` };
   }
   return { status: 'unconfigured', detail: 'not actively probed by the wizard — see the obtain instructions above' };
+}
+
+const SECRET_STATUSES = ['set', 'kept', 'skipped', 'card'];
+
+function gitCheckIgnore(file) {
+  return spawnSync('git', ['check-ignore', '-q', file], { cwd: path.dirname(file) }).status === 0;
+}
+
+// Walk the secrets the picked features cover: show where each one stands, offer
+// keep/set/skip, take a masked value, write it with the secret store. Returns
+// { NAME: set|kept|skipped|card } (status only), or null when refused.
+async function collectSecrets(ask, answers) {
+  if (process.env.CLAUDECODE || Object.keys(process.env).some((k) => k.indexOf('CLAUDE_CODE_') === 0)) {
+    console.error('himmelctl: secrets step refused: running inside Claude Code, where a typed secret would pass through the model session; run himmelctl from a plain terminal');
+    return null;
+  }
+  const ctx = {
+    home: process.env.HOME || os.homedir(),
+    himmelRoot: repoRoot(),
+    projectRoot: projectTargetDir(),
+    env: process.env,
+    gitCheckIgnore,
+  };
+  const tty = Boolean(process.stdin.isTTY && process.stdin.setRawMode);
+  const { scoped, skipped } = scopeSecretsByFeature(answers);
+  const line = scopedOutLine(skipped);
+  if (line) console.log(line);
+  const statuses = {};
+  for (const entry of scoped) {
+    if (entry.collect !== 'file') { statuses[entry.name] = 'card'; continue; }
+    const d = secretStoreLib.detect(entry.name, ctx);
+    let label = 'not set';
+    if (d.status === 'placeholder') label = 'placeholder';
+    else if (d.status === 'set') label = d.source === 'live-env' ? 'set in your shell only' : 'set (from ' + (d.source === 'store' ? entry.store : d.source) + ')';
+    console.log(`  ${entry.name} [${entry.required}] — ${label}`);
+    const isSet = d.status === 'set';
+    const choice = await askEnum(ask, `? ${entry.name} [${isSet ? 'keep|set|skip' : 'set|skip'}] (default: ${isSet ? 'keep' : 'skip'})\n> `, isSet ? ['keep', 'set', 'skip'] : ['set', 'skip'], isSet ? 'keep' : 'skip');
+    if (choice === 'keep') { statuses[entry.name] = 'kept'; continue; }
+    statuses[entry.name] = 'skipped';
+    if (choice !== 'set') continue;
+    for (;;) {
+      const prompt = `? ${entry.name} value (input hidden; blank to skip)\n> `;
+      const value = tty ? await secretPromptLib.readMasked(prompt) : (await ask(prompt)).trim();
+      if (value === '') break;
+      const v = secretStoreLib.validate(entry.name, value);
+      if (!v.ok) { console.error(`  ! that value failed the "${v.rule}" check; try again, or leave it blank to skip`); continue; }
+      try {
+        const r = secretStoreLib.write(entry.name, value, ctx);
+        console.log(`  written to ${displayPath(r.path)}${r.tightened ? ' (mode tightened to 0600)' : ''}`);
+        statuses[entry.name] = 'set';
+      } catch (e) {
+        console.error(`  ! not written: ${e && e.message ? e.message : 'store refused'}`);
+      }
+      break;
+    }
+  }
+  return statuses;
 }
 
 // split SECRETS_MANIFEST.secrets into what this recorded
@@ -4816,7 +4895,7 @@ async function cmdInstall(args) {
   if (profileAnswers) {
     answers = profileAnswers;
   } else if (shouldPrompt(args)) {
-    answers = await askQuestions(args.defaultScope, laneOpts, args.contribute);
+    answers = await askQuestions(args.defaultScope, laneOpts, args.contribute, args.dryRun);
   } else if (args.dryRun) {
     answers = defaultAnswers(args.defaultScope, laneOpts, args.contribute);
   } else {
