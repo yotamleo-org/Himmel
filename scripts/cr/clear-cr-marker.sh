@@ -515,8 +515,20 @@ fi
 panel_empty=$(CRITICS="$SCRIPT_DIR/critics.json" node -e '
   try { const p = JSON.parse(require("fs").readFileSync(process.env.CRITICS, "utf8")).panel;
         console.log(String(Array.isArray(p) && p.length === 0 ? 1 : 0)); } catch (_) { console.log("0"); }' 2>/dev/null)
+# Gate 3c input: the implementer family recorded for this branch
+# (<git-common-dir>/cr-impl-family/<branch>, written by set-impl-family.sh).
+# No record = gate off. A record that cannot be read or is empty fails CLOSED.
+impl_family=""
+if [ -e "$git_dir/cr-impl-family/$branch" ]; then
+    impl_family=$(tr -d '[:space:]' < "$git_dir/cr-impl-family/$branch" 2>/dev/null | tr '[:upper:]' '[:lower:]') # swallow-ok: an unreadable record leaves it empty and the next test refuses (fail-closed)
+    if [ -z "$impl_family" ]; then
+        echo "clear-cr-marker: cr-impl-family record for $branch is empty or unreadable — refusing (cannot tell which family implemented it)." >&2
+        audit "REFUSED reason=impl-family-unreadable branch=$branch sha=$tip"
+        exit 14
+    fi
+fi
 # shellcheck disable=SC2016  # $-refs below are JS inside a single-quoted node script, not shell
-verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
+verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
   const fs = require("fs"), e = process.env;
   const lines = fs.existsSync(e.LEDGER)
       ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
@@ -575,7 +587,7 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
   // or corrupted while an avail-ok line stays readable, the gate would clear
   // the marker without ever evaluating that finding. An unreadable ledger is
   // an unknown verdict, and unknown must never mean clean.
-  let responders = 0, nonClaudeResponders = 0, blocking = [], malformed = 0, deferred = [], applied = [];
+  let responders = 0, nonClaudeResponders = 0, otherFamilyResponders = 0, blocking = [], malformed = 0, deferred = [], applied = [];
   // CR_FLOOR_FALLBACK=claude-only eligibility tracking. claudeOk
   // is a PRESENT-model check, mirroring the nonClaudeResponders normalisation
   // just below (trim+lowercase, model must actually equal "claude") - it is
@@ -768,6 +780,8 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
               // was removed); a legacy row of that name is not cross-model
               // evidence and not an exhaustion-tracked lane.
               if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") nonClaudeResponders++;
+              // Family = first token of the model slug (claude-floor is claude).
+              if (e.IMPL_FAMILY && model && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) otherFamilyResponders++;
               if (model === "claude") claudeOk = true;
               if (model === "claude-floor") floorOk = true;
           }
@@ -1047,7 +1061,7 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
   if (emptyPanel) exhaustedLanes.push("empty-panel");
   const floorFallbackEligible = floorOk && (nonClaudeAvailModels.length > 0 || emptyPanel) &&
       nonExhaustedLanes.length === 0 && blocking.length === 0;
-  console.log(JSON.stringify({ responders, nonClaudeResponders, certifyRefused, blocking, blockingFiles, malformed, deferred, applied, unadjudicated, missingSweep: sweepsUnreadable ? null : missingSweep, floorFallbackEligible, floorOk, exhaustedLanes, nonExhaustedLanes }));
+  console.log(JSON.stringify({ responders, nonClaudeResponders, otherFamilyResponders, certifyRefused, blocking, blockingFiles, malformed, deferred, applied, unadjudicated, missingSweep: sweepsUnreadable ? null : missingSweep, floorFallbackEligible, floorOk, exhaustedLanes, nonExhaustedLanes }));
 ' 2>/dev/null)
 if [ -z "$verdict" ]; then
     echo "clear-cr-marker: could not read the CR ledger at $ledger — refusing (cannot certify the review)." >&2
@@ -1067,6 +1081,7 @@ if [ -n "$check_sweeps" ]; then
 fi
 responders=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).responders)))' 2>/dev/null)
 non_claude_responders=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).nonClaudeResponders)))' 2>/dev/null)
+other_family_responders=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).otherFamilyResponders)))' 2>/dev/null) # swallow-ok: a missing count reads as non-numeric and gate 3c refuses
 blocking=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).blocking.join(" ")))' 2>/dev/null)
 malformed=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).malformed)))' 2>/dev/null)
 deferred=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).deferred||[]).join(" ")))' 2>/dev/null)
@@ -1240,6 +1255,15 @@ if [ "${require_cross_model:-0}" = "1" ] && [ "${non_claude_responders:-0}" -lt 
         audit "REFUSED reason=no-cross-model branch=$branch sha=$tip responders=$responders non_claude=${non_claude_responders:-0}"
         exit 14
     fi
+fi
+
+# 3c. Cross-family review: when an implementer family is recorded for the
+# branch, >=1 ok responder must be of ANOTHER family (a codex-only panel does
+# not satisfy codex-authored code). No record = no change.
+if [ -n "$impl_family" ] && [ "${other_family_responders:-0}" -lt 1 ]; then
+    echo "clear-cr-marker: implementer family '$impl_family' is recorded for $branch but no 'avail ... ok' responder of another family exists at ${tip:0:8} — run a cross-family critic (hermes/codex work routes to claude -p), then re-run." >&2
+    audit "REFUSED reason=no-cross-family branch=$branch sha=$tip impl_family=$impl_family responders=$responders"
+    exit 14
 fi
 
 # The clearing basis, stated rather than inferred from the

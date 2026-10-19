@@ -533,6 +533,25 @@ g "delete in repo on main refused"     block "{\"tool_name\":\"delete_file\",\"t
 g "write on worker branch allowed"     allow "{\"tool_name\":\"write_file\",\"tool_input\":{\"path\":\"$FR/src/foo.sh\"}}"
 g "git commit on master refused"       block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git commit -m wip\",\"cwd\":\"$MASTR\"}}"
 g "git commit on worker branch allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git commit -m wip\",\"cwd\":\"$FR\"}}"
+# Pending-CR marker (check-cr-marker-on-pr-create parity). The
+# marker lives at <git-common-dir>/cr-pending/<branch>; featrepo is on feat/x.
+# A trusted engine (external-writes fence lifted) still cannot open a PR while
+# the marker is pending; a plain push is NOT refused (the pre-push hook writes
+# the marker, each fix round pushes again).
+export HERMES_EXTERNAL_WRITES_OK=1
+PRC="{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --title x --body y\",\"cwd\":\"$FR\"}}"
+g "gh pr create, no CR marker allowed (trusted)" allow "$PRC"
+mkdir -p "$TMP/featrepo/.git/cr-pending/feat"
+printf 'm\n' > "$TMP/featrepo/.git/cr-pending/feat/x"
+g "gh pr create, CR marker pending refused" block "$PRC"
+g "gh  pr  create (extra spaces), CR marker pending refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh  pr  create -t x\",\"cwd\":\"$FR\"}}"
+g "cd <repo> && gh pr create, CR marker pending refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd $FR && gh pr create -t x\"}}"
+g "git push, CR marker pending allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git push origin feat/x\",\"cwd\":\"$FR\"}}"
+g "gh pr view, CR marker pending allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr view 1\",\"cwd\":\"$FR\"}}"
+g "echo mentioning gh pr create allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"echo 'run gh pr create later'\",\"cwd\":\"$FR\"}}"
+rm -f "$TMP/featrepo/.git/cr-pending/feat/x"
+g "gh pr create, marker cleared allowed" allow "$PRC"
+unset HERMES_EXTERNAL_WRITES_OK
 # .single-writer marker at the repo root opts the on-main repo out.
 : > "$TMP/mainrepo/.single-writer"
 g "write on main with .single-writer allowed" allow "{\"tool_name\":\"write_file\",\"tool_input\":{\"path\":\"$MR/src/foo.sh\"}}"

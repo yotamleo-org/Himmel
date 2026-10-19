@@ -751,6 +751,65 @@ def _edit_on_main_reason(start: str):
     return None
 
 
+# --- Pending-CR marker lock (check-cr-marker-on-pr-create parity) -----------
+# The Claude lane refuses `gh pr create` while <git-common-dir>/cr-pending/<branch>
+# exists (the pre-push hook writes it, /pr-check clears it). Hermes runs no CC
+# hook, so a trusted engine (external-writes fence lifted) could open a PR over
+# a pending review. A plain `git push` is NOT refused here: the marker is the
+# push's own output and every fix round pushes again. FAIL-CLOSED on an
+# unreadable marker; an undeterminable repo/branch is skipped (same stance as
+# the commit lock — judging this process's cwd would be wrong).
+GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?\s+pr\s+create(?:\s|$)", re.IGNORECASE)
+
+
+def _common_git_dir(git_path: str) -> str:
+    """The git-common-dir behind a `.git` dir or worktree `.git` FILE."""
+    if not os.path.isfile(git_path):
+        return git_path
+    try:
+        with open(git_path, "r", encoding="utf-8") as fh:
+            content = fh.read().strip()
+    except OSError:
+        return ""
+    if not content.startswith("gitdir:"):
+        return ""
+    gd = content[len("gitdir:"):].strip()
+    if not os.path.isabs(gd):
+        gd = os.path.normpath(os.path.join(os.path.dirname(git_path), gd))
+    try:
+        with open(os.path.join(gd, "commondir"), "r", encoding="utf-8") as fh:
+            cd = fh.read().strip()
+    except FileNotFoundError:
+        return gd
+    except OSError:
+        return ""
+    return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
+
+
+def _pending_cr_reason(start: str):
+    """Block reason if the repo at `start` has a pending CR marker for its
+    checked-out branch, else None."""
+    repo_root, git_path = _git_dir_for(start)
+    if not repo_root:
+        return None
+    branch = _current_branch(git_path)
+    if not branch:
+        return None
+    common = _common_git_dir(git_path)
+    if not common:
+        return ("Cannot read the repo's git dir to check for a pending CR "
+                "marker — refused fail-closed.")
+    try:
+        os.stat(os.path.join(common, "cr-pending", branch))
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return ("The pending CR marker cannot be read — refused fail-closed.")
+    return (f"A CR review is pending for branch {branch}: run /pr-check "
+            "(clear-cr-marker.sh) before `gh pr create` "
+            "(check-cr-marker-on-pr-create parity).")
+
+
 def _usable_dir(cand) -> str:
     """An absolute, existing directory from `cand`, else "" (unusable)."""
     if not isinstance(cand, str):
@@ -1758,6 +1817,14 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
             # Merged-PR commit lock (block-merged-pr-commit parity): refuse
             # a commit onto a branch whose PR is already MERGED (fail-open).
             reason = _merged_pr_reason(commit_dir)
+            if reason:
+                block(reason)
+    # Pending-CR marker lock: independent of the engine fence below, so a
+    # trusted engine cannot open a PR over an unfinished review.
+    if GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(_join_continuations(raw_cmd))):
+        pr_dir = _commit_dir(raw_cmd, _agent_cwd(payload, args), None)
+        if pr_dir:
+            reason = _pending_cr_reason(pr_dir)
             if reason:
                 block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh

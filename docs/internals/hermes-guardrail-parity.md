@@ -68,6 +68,31 @@ Result, default env: **MATCH 29, GAP 9, OVER-DENY 5**
 | `mcp-other` | blanket `mcp__*` refusal (qmd carve-out only) | By design (HIMMEL-731); a hermes leg cannot use MCP servers. |
 | `self-write-claude-md` | any write under `~/.claude` | Stricter than CC, which only fences settings; harmless. |
 
+## CR gate enforcement matrix (HIMMEL-2053)
+
+Which harness reaches which review gate. "git" = the repo's wired pre-push /
+pre-commit hooks, which fire for any harness that runs real git.
+
+| Gate | Claude Code | Codex | Hermes |
+|---|---|---|---|
+| Pending-CR marker written on push (`check-cr-before-push.sh`) | git hook | git hook | git hook (same clone) |
+| `gh pr create` refused while the marker is pending | `check-cr-marker-on-pr-create.sh` | `.codex/hooks.json` parity | `parity_guard.py` `_pending_cr_reason`: fail-closed on an unreadable marker; skipped when the repo or branch cannot be determined |
+| Marker clears only with a responder and no blocker (`clear-cr-marker.sh`) | chokepoint | chokepoint | chokepoint |
+| Cross-model review (`CR_REQUIRE_CROSS_MODEL`) | opt-in policy key | same | same |
+| Cross-family review: a responder outside the implementer's family (gate 3c) | opt-in per branch | same | same |
+
+Gate 3c reads `<git-common-dir>/cr-impl-family/<branch>`, written by
+`bash scripts/cr/set-impl-family.sh <family>` (for example `hermes` or
+`codex`). The family of a critic is the first token of its model slug
+(`claude-floor` is `claude`). With no record the gate is off; an empty or
+unreadable record refuses (exit 14). A plain `git push` is deliberately not
+refused by the hermes guard: the marker is the push's own output and every fix
+round pushes again.
+
+A clone that is not himmel gets these gates only if its own hooks are wired
+(`scripts/cr/install-cr-gate.sh`); inheritance for managed clones such as
+ggs-local is tracked separately.
+
 ## Capabilities with no Claude Code guard at all
 
 Static findings from reading `parity_guard.py`, `invoke.sh` and the profile
