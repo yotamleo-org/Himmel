@@ -282,6 +282,7 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
+        if (residual) await createIssueLink(result.key, options.residualOf!, { name: 'Relates', inward: 'relates to' });
 
         const attachments = options.attach ?? [];
         if (attachments.length === 0) return;

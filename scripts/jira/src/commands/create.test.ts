@@ -548,6 +548,13 @@ describe('create --residual-of', () => {
     expect(searches.join('\n')).toMatch(/class-shell-quoting.*area-cr-scripts/s);
   });
 
+  it('a new residual is linked to its parent', async () => {
+    play();
+    await file(...RES, '--fu-class', 'polish');
+    const link = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issueLink');
+    expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50|HIMMEL-50.*HIMMEL-77/s);
+  });
+
   it('refuses a missing --fu-class or --class, an unknown fu-class, and an explicit --fix-version', async () => {
     play();
     await expect(file('--residual-of', 'HIMMEL-50', '--class', 'x')).rejects.toThrow(/--fu-class/);
