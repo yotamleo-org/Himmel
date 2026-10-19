@@ -308,9 +308,14 @@ gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 try:
     nums = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=60, check=True).stdout.split()
-    for num in ([] if resume_only else nums):
-        d =subprocess.run([gh, 'pr', 'diff', num, '--repo', 'yotamleo/Himmel', '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
-        held += [(f, 'open PR %s' % num) for f in d]
+    def pr_files(num):
+        return subprocess.run([gh, 'pr', 'diff', num, '--repo', 'yotamleo/Himmel', '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
+    pr_nums = [] if resume_only else nums
+    if pr_nums:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
+            for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
+                held += [(f, 'open PR %s' % num) for f in d]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
     for line in subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
@@ -389,16 +394,31 @@ def emit_resume(rows):
         n += 1
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
+cls_cache = {}
+asked = set()
+
+def classify_new(batch):
+    fresh = [i for i in batch if i['key'] not in asked]
+    asked.update(i['key'] for i in fresh)
+    if fresh:
+        cls_cache.update(classify(fresh))
+
+# One classify call costs a fixed ~20 s: the first --top rows of the whole free list go in one call.
+if classified and top > len(resume):
+    classify_new(free[:top])
 
 def emit_free(rows):
-    # Walk the collision-free list in chunks so BLOCKED rows in an early chunk do not
-    # leave the list short while later candidates are dispatchable.
+    # Classify only the slots still open, then walk on in further batches so BLOCKED rows
+    # in an early batch do not leave the list short while later candidates are dispatchable.
     global n
-    for start in range(0, len(rows) if n < top else 0, top * 3):
-        batch = rows[start:start + top * 3]
-        cls = classify(batch) if classified else {}
+    start = 0
+    while n < top and start < len(rows):
+        batch = rows[start:start + top - n]
+        start += len(batch)
+        if classified:
+            classify_new(batch)
         for i in batch:
-            c = cls.get(i['key'])
+            c = cls_cache.get(i['key'])
             if classified:
                 if c is None or c == 'BLOCKED':
                     continue

@@ -414,5 +414,22 @@ printf '# console\n\n- residual-must HIMMEL-303 (data loss)\n' > "$RDOC"
 r4="$(rdrun --doc "$RDOC")"
 has "residual-depth: a residual-must ruling releases a depth-2 ticket too" "$r4" "HIMMEL-303"
 
+# --- classify only up to --top: a batch never classifies more keys than the slots left ---
+M14="$WORK/jira-mirror14/HIMMEL"; mkdir -p "$M14"
+M_SAVE="$M"; M="$M14"
+for n in 1 2 3 4 5 6; do mk "HIMMEL-40$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "pool work $n" "Edit scripts/lib/cls$n.sh only."; done
+M="$M_SAVE"
+DOC14="$WORK/console14.md"
+printf '# console\n\n## Live state\n\n- priority: 401 402 403 404 405 406\n' > "$DOC14"
+cat > "$WORK/classify14" <<'EOF'
+#!/usr/bin/env bash
+for k in "$@"; do printf '%s\n' "$k" >> "$CLASSIFY_LOG"; printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
+EOF
+chmod +x "$WORK/classify14"
+export CLASSIFY_LOG="$WORK/classify14.log"; : > "$CLASSIFY_LOG"
+NEXT_DISPATCH_MIRROR="$M14" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify14" bash "$SUT" --doc "$DOC14" --priority-pool-only --owners "HIMMEL-999" --top 2 >/dev/null 2>&1
+c14="$(wc -l < "$CLASSIFY_LOG" | tr -d ' ')"
+[ "$c14" -le 2 ] && pass "classify sees at most --top keys when none are refused ($c14)" || fail "classify saw $c14 keys for --top 2"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
