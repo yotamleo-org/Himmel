@@ -62,6 +62,7 @@ echo "ok: control — canary scan finds a planted echo"
 
 # ── J4: masked entry ────────────────────────────────────────────────────────
 run_case j4 "$rules_j4"
+[ "$rc" -eq 0 ] || fail "j4: wizard exited $rc, want 0"
 [ -f "$c/transcript" ] || fail "j4: no transcript (rc=$rc)"
 grep -qF "$canary" "$c/transcript" && fail "j4: the canary appears in the terminal transcript (echoed)"
 grep -qF "•" "$c/transcript" || fail "j4: no mask character shown at the value prompt"
@@ -79,6 +80,7 @@ rc=0
     HIMMEL_LUNA_CONFIG_PATH="$c/cache/luna-config.json" HIMMELCTL_REPO_ROOT="$c/himmel" HIMMELCTL_INTERACTIVE=1 \
     python3 "$driver" "$c/transcript2" <(printf '%s' '[["walk through secrets", "run"],["Proceed\\?", "n"]]') \
     -- "$node_bin" "$wizard" install ) >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || fail "j4 re-run: wizard exited $rc, want 0"
 [ "$(sha_of "$c/himmel/.env")" = "$sum1" ] || fail "j4: re-run changed the store (must stay byte-identical)"
 [ "$(answers '.secrets.JIRA_API_TOKEN')" = "kept" ] || fail "j4: re-run answers.secrets.JIRA_API_TOKEN is not 'kept'"
 grep -qF "set (from himmel-env)" "$c/transcript2" || fail "j4: re-run did not show 'set (from himmel-env)'"
@@ -97,6 +99,7 @@ rc=0
 ( cd "$c/proj" && env "${scrub[@]}" HOME="$c/home" USERPROFILE="$c/home" HIMMELCTL_CACHE_DIR="$c/cache" \
     HIMMEL_LUNA_CONFIG_PATH="$c/cache/luna-config.json" HIMMELCTL_REPO_ROOT="$c/himmel" HIMMELCTL_INTERACTIVE=1 \
     python3 "$driver" "$c/transcript" "$c/rules.json" -- "$node_bin" "$wizard" install ) >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || fail "j6a: wizard exited $rc, want 0"
 grep -qF "JIRA_BASE_URL" "$c/transcript" || fail "j6a: JIRA_BASE_URL not listed"
 grep -qF "placeholder" "$c/transcript" || fail "j6a: the placeholder value was not reported as 'placeholder'"
 grep -qF "ops@example.com" "$c/transcript" && fail "j6a: a stored value was printed"
@@ -113,6 +116,7 @@ rc=0
 ( cd "$c/proj" && env "${scrub[@]}" HOME="$c/home" USERPROFILE="$c/home" HIMMELCTL_CACHE_DIR="$c/cache" \
     HIMMEL_LUNA_CONFIG_PATH="$c/cache/luna-config.json" HIMMELCTL_REPO_ROOT="$c/himmel" HIMMELCTL_INTERACTIVE=1 \
     python3 "$driver" "$c/transcript" "$c/rules.json" -- "$node_bin" "$wizard" install ) >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || fail "j6b: wizard exited $rc, want 0"
 [ ! -e "$c/himmel/.env" ] || fail "j6b: wrote a .env that git does not ignore"
 grep -qF "not ignored" "$c/transcript" || fail "j6b: no 'not ignored' refusal shown"
 [ "$(answers '.secrets.JIRA_API_TOKEN')" = "skipped" ] || fail "j6b: refused write not recorded as 'skipped'"
