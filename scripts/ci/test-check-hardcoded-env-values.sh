@@ -56,6 +56,19 @@ run_case "pages url literal" 1 scripts/site.mjs "const u = 'https://someone.gith
 run_case "ghcr image literal" 1 scripts/img.sh "docker pull ghcr.io/someone/image:latest"
 run_case "home path literal" 1 scripts/hp.sh "cd /ho""me/alice/work"
 
+echo "== a literal added while renaming a file is refused =="
+git -C "$repo" checkout -q -B case "$base"
+for i in 1 2 3 4 5 6; do printf 'echo line %s\n' "$i"; done > "$repo/scripts/ren-src.sh"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m "rename src"
+rbase=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" mv scripts/ren-src.sh scripts/ren-dst.sh
+printf '%s\n' "$SLUG_LINE" >> "$repo/scripts/ren-dst.sh"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m "rename dst"
+out=$(cd "$repo" && bash "$LINT" "$rbase" 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "rename plus literal (rc=$rc)"; else fail "rename plus literal: want rc=1 got rc=$rc: $out"; fi
+
 echo "== allowlisted shapes pass =="
 run_case "same literal in a test file" 0 scripts/test-gate.sh "$SLUG_LINE"
 run_case "same literal under a fixtures dir" 0 scripts/fixtures/x.json "$SLUG_LINE"

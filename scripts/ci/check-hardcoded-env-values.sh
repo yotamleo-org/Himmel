@@ -23,7 +23,7 @@ base="${1:-origin/main}"
 [ -f "$allow" ] || { echo "check-hardcoded-env-values: allowlist missing: $allow" >&2; exit 2; }
 git rev-parse --verify -q "$base^{commit}" >/dev/null || { echo "check-hardcoded-env-values: unknown base '$base'" >&2; exit 2; }
 
-diff_out=$(git diff -U0 --no-color --diff-filter=AM "$base"...HEAD) || { echo "check-hardcoded-env-values: git diff failed" >&2; exit 2; }
+diff_out=$(git diff -U0 --no-color --diff-filter=AMR "$base"...HEAD) || { echo "check-hardcoded-env-values: git diff failed" >&2; exit 2; }
 [ -n "$diff_out" ] || exit 0
 
 printf '%s\n' "$diff_out" | awk -v allowfile="$allow" '

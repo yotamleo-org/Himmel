@@ -52,6 +52,6 @@ env_value() {
     esac
     [ "$#" -gt 0 ] || return 1
     val=$("$@" 2>/dev/null) || return 1
-    [ -n "$val" ] || return 1
+    case "$val" in ''|*[[:cntrl:]]*) return 1 ;; esac
     printf '%s\n' "$val"
 }

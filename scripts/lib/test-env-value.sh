@@ -25,6 +25,8 @@ export HOME="$tmp/home"
 
 disc_ok() { printf 'discovered-value\n'; }
 disc_empty() { :; }
+disc_multiline() { printf 'line1\nline2\n'; }
+disc_cr() { printf 'value\r\n'; }
 
 echo "== config wins =="
 printf '{"env_values":{"PAGES_URL":"https://configured.example/docs/"}}\n' > "$HOME/.himmel/config.json"
@@ -38,6 +40,10 @@ out=$(env_value OTHER_KEY disc_empty); rc=$?
 check "empty discovery prints nothing" "" "$out"; check "empty discovery rc" "1" "$rc"
 out=$(env_value OTHER_KEY); rc=$?
 check "no discovery prints nothing" "" "$out"; check "no discovery rc" "1" "$rc"
+out=$(env_value OTHER_KEY disc_multiline); rc=$?
+check "multiline discovery output prints nothing" "" "$out"; check "multiline discovery rc" "1" "$rc"
+out=$(env_value OTHER_KEY disc_cr); rc=$?
+check "carriage-return discovery output rc" "1" "$rc"
 
 echo "== no environment seam =="
 out=$(PAGES_URL=https://evil.example/ env_value OTHER_KEY disc_empty); rc=$?
