@@ -16,6 +16,9 @@ This page walks one complete loop — a toy change from worktree creation
 to handover — explaining every hook and gate you will hit along the way.
 By the end you will have run the real workflow on a real branch.
 
+This is the solo loop. The agent loop (console, legs, judges) is the
+development graph.
+
 ---
 
 ## Toy change used throughout
@@ -33,12 +36,12 @@ Before you create a worktree, try editing a file in the primary checkout
 main`). Claude will attempt the edit and immediately hit:
 
 ```
-⛔ block-edit-on-main: refusing to edit `docs/contributing.md` from PRIMARY worktree while HEAD == main.
-(resolved path: /abs/path/docs/contributing.md)
+⛔ block-edit-on-main: refusing to edit `docs/contributing.md` — its repo is on main/master.
+(file: /abs/path/docs/contributing.md — repo: /abs/path)
 
 Feature work must go in a worktree per CLAUDE.md. To start one:
 
-    /clean_garden feat/<scope>          # prune merged worktrees + create new
+    bash scripts/worktree.sh feat/<scope>   # create the worktree
     cd .claude/worktrees/feat+<scope>   # switch in the existing shell
 
 Or to bypass for an emergency hotfix, set EDIT_ON_MAIN_OK=1 in the shell
@@ -51,6 +54,13 @@ hook process). Example:
 The bypass lasts for the entire Claude Code session (it's session-sticky,
 not per-edit). Restart Claude without the env var to re-enable the guard.
 
+Or, if this is a single-writer repo you always commit to main directly
+(a personal vault / state repo), opt it out locally:
+
+    touch "/abs/path/.single-writer"
+
+(Local + gitignored — never committed, so it cannot weaken a shared clone.)
+
 Or temporarily comment out the hook stanza in .claude/settings.json.
 ```
 
@@ -62,7 +72,8 @@ to do: create a worktree first.
 **The bypass** (`EDIT_ON_MAIN_OK=1`) must be set in the shell that
 launched `claude`, not as a per-command prefix — a per-call prefix cannot
 reach the hook process. Bypass is intentionally session-sticky so you
-cannot accidentally toggle it per-edit.
+cannot accidentally toggle it per-edit. The per-repo alternative is the
+gitignored `.single-writer` marker shown above.
 
 ---
 
@@ -75,7 +86,7 @@ cannot accidentally toggle it per-edit.
 `/worktree` is a thin alias for `/clean_garden --no-prune`. It creates
 `.claude/worktrees/docs+himmel-289-daily-loop/` and checks out a new
 branch `docs/himmel-289-daily-loop`. Branch names must be `type/slug`
-where type is one of `feat|fix|chore|docs|refactor|test`.
+(for example `feat/foo`, `docs/bar`).
 
 You now have an isolated copy of the repo. Claude's file operations in
 this session target the worktree path, not the primary checkout — the
@@ -96,8 +107,10 @@ add one line:
 <!-- toy change for daily-loop walkthrough -->
 ```
 
-Nothing fires at edit time for file writes inside a worktree. The hooks
-that run at edit time only block edits on main.
+`block-edit-on-main` no longer blocks you inside a worktree, but edits are
+not unguarded: `orchestrator-inline-guard`, `shadow-ledger` and
+`check-hook-file-parse` also run on Edit/Write and stay silent on a
+well-formed docs change.
 
 ---
 
@@ -130,16 +143,17 @@ COMMIT REJECTED: message does not match conventional commit format.
   Types: feat fix chore docs refactor test style perf ci build revert
 
   Examples:
-    feat(auth): PROJ-22 add JWT validation
-    fix(api): PROJ-23 correct status code on 404
-    chore: PROJ-24 update dependencies
+    feat(auth): [#12] add JWT validation
+    fix(api): PROJECT-23 correct status code on 404
+    chore: [#13] update dependencies
 
   Got: my bad message
 ```
 
 Fix the message and commit again. Once the format is valid the commit
-succeeds and pre-commit runs the standard linters (trailing-whitespace,
-end-of-file-fixer, check-yaml, check-json, shellcheck, gitleaks).
+succeeds and pre-commit runs the commit-stage hooks listed in
+[`.pre-commit-config.yaml`](../.pre-commit-config.yaml) (whitespace and
+format fixers, linters, gitleaks, and the repo's own checks).
 
 ### Attestation trailers — when they are required
 
@@ -161,7 +175,7 @@ fix(scripts): PROJ-42 correct bash exit code
 Platforms tested: linux, windows
 Security reviewed: manual
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 Trailers go in the **first commit** after genuinely testing and reviewing
@@ -192,6 +206,9 @@ Several **pre-push gates** run in sequence:
 | `code-review-before-push` | Writes a review-owed marker (see below). |
 | `platforms-tested` | Shell/script changes need `Platforms tested:` attestation. |
 | `security-reviewed` | Non-docs changes need `Security reviewed:` attestation. |
+| `added-unwired-check` | A file the branch adds must be wired into its suite/inventory. |
+| `doc-guard-push` | An added command or skill needs its catalog entry. |
+| `template-version-push` | A template content change needs a `metadata.version` bump. |
 | `pr-mergeable-gate` / `no-force-push` | Branch not conflicting, no force-push. |
 
 For our docs-only change, `platforms-tested` and `security-reviewed` skip
@@ -217,11 +234,14 @@ is advisory at push time and becomes a hard block at PR creation time.
 > `*.md`/`*.txt`) are **never zero-CR**. The `code-review-before-push` gate
 > writes a **`docs-audit` marker** for them, so `gh pr create`
 > is blocked until `/pr-check` clears it — same hard gate as code, but a
-> lighter lane: `/pr-check` reads the marker's `docs-audit` lane and runs ONE
-> `pr-review-toolkit:code-reviewer` with the docs charter (repo-claim accuracy
-> — hooks/gates/flags/paths/commands vs the actual code — dead links, stale
-> file/flag/ticket refs, example correctness, internal consistency; not prose
-> nitpicks; `CLAUDE.md` → `/claude-md-audit`) instead of the 6-reviewer set.
+> lighter lane: `/pr-check` reads the marker's `docs-audit` lane and applies
+> the docs charter (repo-claim accuracy — hooks/gates/flags/paths/commands vs
+> the actual code — dead links, stale file/flag/ticket refs, example
+> correctness, internal consistency; not prose nitpicks; `CLAUDE.md` →
+> `/claude-md-audit`) inline in your session, with no reviewer agent unless
+> `CR_CLAUDE_AGENTS=1` (then ONE `pr-review-toolkit:code-reviewer`). A
+> cross-model critic also runs when `CR_REQUIRE_CROSS_MODEL` is set. It does
+> not run the full lane's critic panel.
 > **Handover state stays exempt:** `handovers/` diffs (and handover/* state
 > commits) get NO marker — personal auto-committed state, not reviewable docs.
 
@@ -236,11 +256,17 @@ lane), so run:
 /pr-check
 ```
 
-`/pr-check` reads the marker's lane: a `full`-lane marker runs the multi-agent
-review; a `docs-audit`-lane marker (our toy docs change) runs ONE
-`pr-review-toolkit:code-reviewer` with the docs charter. Either way, when the
-review passes `/pr-check` deletes the marker file. If findings are critical,
-address them before continuing.
+`/pr-check` reads the marker's lane: a `full`-lane marker runs the cross-model
+critic panel and adjudicates its findings; a `docs-audit`-lane marker (our toy
+docs change) applies the docs charter inline (see the callout above). Either
+way the marker is cleared only through `clear-cr-marker.sh`, and only when
+there are no blocking findings, no unresolved review threads and every
+impacted suite passed. If findings are critical, address them before
+continuing.
+
+Reviews are counted in rounds: `/pr-check` prints `round N of 3` and, after
+round 3, allows one delta round scoped to what changed since; a further full
+round exits 8 and goes to the operator or console (`scripts/cr/review-round.sh`).
 
 While the marker exists, `gh pr create` is blocked by the
 `check-cr-marker-on-pr-create` PreToolUse hook:
@@ -262,20 +288,48 @@ gh pr create --title "docs: [PROJ-289] toy change for daily-loop walkthrough" \
   --body "Toy change per daily-loop walkthrough."
 ```
 
-PRs require **≥1 approval** before merge. Request a reviewer or wait for
-the approval in the normal GitHub flow.
+The `protect-main` ruleset (read with `gh api repos/:owner/:repo/rules/branches/main`)
+requires a pull request with **0** approving reviews, all review threads
+resolved, and squash as the only merge method, plus these status checks:
+`bun-suites`, `codeowner-review-gate`, `commit-lint`, `doc-invariants`,
+`guardrail-matrices`, `lanes-and-trust-suites`, `leak-classes`, `lint`,
+`node-suites` (bitbucket, ci-orchestrator, himmel-run, jira), `secret-scan`,
+`security-scan`, `shell-unit`, `pr-title-lint`, `unchecked-mktemp-range`,
+`claude-startup` and `git-env-scrub`. The ruleset sets
+`require_extra_approval_for_unattributed_changes`, so a change GitHub cannot
+attribute to a user may still need an extra approval; a normal PR needs none,
+so wait for CI instead: `scripts/check-ci.sh <pr>` blocks until the checks settle.
 
 ---
 
 ## 8. Merge
 
-After approval:
+Once CI is green and review threads are resolved:
 
 ```
 gh pr merge --squash
 ```
 
+A `PreToolUse` hook (`block-unresolved-cr-merge.sh`) refuses `gh pr merge`
+until four gates pass:
+
+1. no unresolved CodeRabbit threads, and no CodeRabbit check still running;
+2. the head SHA has green overall CI (no failing or pending check or status);
+3. in a console-spawned leg, a console GO file matches the head SHA;
+4. a PR touching a CI trust path (`scripts/ci/ci-trust-paths.txt`) carries a
+   trust-reviewed GO and is merged pinned to its head.
+
+Gates 3 and 4 fail closed. Gates 1 and 2 have session bypasses set in the
+launching shell (`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1`; `CR_PROFILE=none`
+also skips gate 1), and an API error while evaluating them fails open.
+
 The branch is squash-merged into main. The worktree is now stale.
+
+Console legs do not call `gh pr merge`; they merge through
+`merge-on-green.sh` on a GO file, which also refuses while the newest main CI
+run is red. The console verifies each PR with `ready-check.sh` before it
+writes that GO. This page covers the solo loop; the agent loop (console,
+legs, judges) is the development graph.
 
 ---
 
@@ -321,7 +375,7 @@ git commit -m "type: message"   # 4. commit (commit-msg gate fires)
 git push -u origin <branch>     # 5. push (pre-push gates fire)
 /pr-check                       # 6. if marker was written: run review
 gh pr create …                  # 7. open PR
-# get approval, merge           # 8. merge
+# wait for CI, then merge       # 8. merge (check-ci.sh; merge gates fire)
 /clean                          # 9. prune merged worktree
 /handover                       # 10. snapshot session state
 ```
@@ -335,7 +389,7 @@ gh pr create …                  # 7. open PR
 | `block-edit-on-main` | PreToolUse (Edit/Write) | Blocks edits in primary worktree while on main |
 | `check-cr-marker-on-pr-create` | PreToolUse (Bash) | Blocks `gh pr create` while a review-owed marker exists |
 | `conventional-commit-msg` | commit-msg | Validates conventional shape and required ticket traceability in this repo |
-| `code-review-before-push` | pre-push | Writes review-owed marker for non-docs changes |
+| `code-review-before-push` | pre-push | Writes review-owed marker for every non-handover change (`full` or `docs-audit` lane) |
 | `platforms-tested` | pre-push | Requires `Platforms tested:` trailer on shell/script diffs |
 | `security-reviewed` | pre-push | Requires `Security reviewed:` trailer on non-docs code |
 | `no-push-to-main` | pre-push | Blocks direct pushes to main |
