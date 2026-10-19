@@ -392,6 +392,10 @@ BOARD_CLOSE_CHECK="$W/bin/close-check-safe.sh" BOARD_SESSIONS="$W/bin/sessions-n
 contains 'a still-open WRAPPED leg whose close check passes reads safe to close' "$(cat "$W/n5-safe-board.html")" 'WRAPPED, window still open — safe to close'
 BOARD_CLOSE_CHECK="$W/bin/close-check-busy.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-busy-board.html" >/dev/null
 contains 'a refused close check reads still running with the reason' "$(cat "$W/n5-busy-board.html")" 'still running: WITHHELD: 1 process(es) still alive under claude pid 999'
+# a missing check script exits 127: an operational failure, never "still running"
+BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-missing-board.html" >/dev/null
+contains 'a close check that fails to run reads close check failed' "$(cat "$W/n5-missing-board.html")" 'close check failed (rc 127)'
+lacks 'a close check that fails to run is never read as still running' "$(cat "$W/n5-missing-board.html")" 'still running'
 
 # No census match (the default empty stub the suite already uses throughout):
 # N5 stays plain WRAPPED, as pinned above at line 212. (The ladder itself always

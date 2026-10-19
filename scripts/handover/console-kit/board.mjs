@@ -434,6 +434,7 @@ const closeNote = (doc) => {
     const r = spawnSync('bash', [CLOSE_CHECK, '--check', doc], { encoding: 'utf8', timeout: 60000 });
     if (r.error || r.status === null) return 'close check did not run';
     if (r.status === 0) return 'safe to close';
+    if (r.status < 3 || r.status > 7) return 'close check failed (rc ' + r.status + ')';
     const lines = (r.stdout + '\n' + r.stderr).split('\n').map((x) => x.trim()).filter(Boolean);
     const what = lines.find((x) => x.startsWith('WITHHELD')) || lines[lines.length - 1] || 'close check refused (rc ' + r.status + ')';
     return 'still running: ' + what.replace(/^close-wrapped-leg: /, '');
