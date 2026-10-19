@@ -85,5 +85,19 @@ check "(f) a missing log exits 0 and sends nothing" "0:3" "$rc:$(sent)"
 # --- (g) sentinels are private -----------------------------------------------
 check "(g) the sentinel dir is 0700" "700" "$(stat -c %a "$HIMMEL_DENIAL_ALERT_DIR" 2>/dev/null)"  # gnu-ok: Linux-only kit
 
+# --- (h) a claim abandoned by a killed scan is reclaimed once it is stale ------
+mkrow 1 feat+leg-h sid-h Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --h' sha-h
+# shellcheck disable=SC2016  # the sender body expands when the sender runs
+printf '#!/usr/bin/env bash\nkill -9 "$(ps -o ppid= -p "$PPID" | tr -d " ")"\n' > "$WORK/kill.sh"; chmod +x "$WORK/kill.sh"
+MERGE_BLOCK_ALERT_CMD="$WORK/kill.sh" bash "$SUT" >/dev/null 2>&1
+check "(h) a killed scan sent nothing" "3" "$(sent)"
+bash "$SUT" >/dev/null 2>&1
+check "(h) a fresh abandoned claim is not retried yet" "3" "$(sent)"
+find "$HIMMEL_DENIAL_ALERT_DIR" -type f -size 0 -exec touch -d '-10 minutes' {} + 2>/dev/null
+bash "$SUT" >/dev/null 2>&1
+check "(h) a stale abandoned claim is sent once" "4" "$(sent)"
+bash "$SUT" >/dev/null 2>&1
+check "(h) and never again" "4" "$(sent)"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1

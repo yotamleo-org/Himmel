@@ -18,7 +18,9 @@
 # Dedupe: one sentinel per denial row (session_id, ts, input_sha) in
 # ${HIMMEL_DENIAL_ALERT_DIR:-~/.himmel/state/denied-launch-alerts} (dir 0700),
 # created atomically BEFORE the send and removed again if the send fails, so a
-# later scan retries and the operator still gets at most one. A launch denied
+# later scan retries and the operator still gets at most one. A delivered row's
+# sentinel is non-empty; an empty one older than 5 min is a scan killed mid-send
+# and is reclaimed. A launch denied
 # again later is a new row and alerts again.
 #
 # Always exits 0: the alert is an addition, never a gate. Sender and operator
@@ -47,6 +49,7 @@ dir="${HIMMEL_DENIAL_ALERT_DIR:-$HOME/.himmel/state/denied-launch-alerts}"
 [ -d "$dir" ] || { ( umask 077; mkdir -p "$dir" ) 2>/dev/null && chmod 700 "$dir" 2>/dev/null; } || exit 0
 
 chat="$(_mba_operator_chat)" || chat=""
+stale=5  # minutes before an empty claim (a scan killed mid-send) is reclaimed
 
 # One TSV line per matching row: <leg>\t<tool>\t<row id>. The leg label and tool
 # are the only row fields that reach the alert.
@@ -59,12 +62,19 @@ chat="$(_mba_operator_chat)" || chat=""
            "\(.session_id // "")|\(.ts)|\(.input_sha // "")"] | @tsv' 2>/dev/null \
     | while IFS="$(printf '\t')" read -r leg tool rowid; do
         key="$(printf '%s' "$rowid" | sha256sum | cut -c1-40)"  # gnu-ok: Linux-only kit
-        ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null || continue
+        if ! ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null; then
+            [ -s "$dir/$key" ] && continue
+            [ -n "$(find "$dir/$key" -mmin "+$stale" 2>/dev/null)" ] || continue  # swallow-ok: a failed find skips the reclaim, the claim stays held
+            rm -f "$dir/$key" 2>/dev/null
+            ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null || continue
+        fi
         if [ -z "$chat" ]; then
             rm -f "$dir/$key" 2>/dev/null
             continue
         fi
-        if ! _mba_send "$chat" "DENIED-LAUNCH $leg - $tool launch denied by the classifier. Details stay on the station: $log" </dev/null; then
+        if _mba_send "$chat" "DENIED-LAUNCH $leg - $tool launch denied by the classifier. Details stay on the station: $log" </dev/null; then
+            printf 'sent\n' > "$dir/$key" 2>/dev/null
+        else
             rm -f "$dir/$key" 2>/dev/null
         fi
     done
