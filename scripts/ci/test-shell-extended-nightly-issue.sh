@@ -64,7 +64,9 @@ FX="$ROOT/scripts/ci/fixtures/nightly-reporter"
 JOBS_CANCELLED="$FX/jobs-cancelled-shard.json"
 RUNS="$FX/runs-newer-green.json"
 JOBS_FAILED="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-failed.XXXXXX")" || exit 1
-sed 's/"cancelled"/"failure"/' "$JOBS_CANCELLED" > "$JOBS_FAILED"
+sed 's/"cancelled"/"failure"/' "$JOBS_CANCELLED" > "$JOBS_FAILED" || exit 1
+JOBS_TIMEDOUT="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-timedout.XXXXXX")" || exit 1
+sed '0,/"success"/s/"success"/"timed_out"/' "$JOBS_CANCELLED" > "$JOBS_TIMEDOUT" || exit 1
 OLD_RUN="2026-10-17T11:34:47Z"
 NEWEST_RUN="2026-10-19T01:00:00Z"
 
@@ -88,7 +90,10 @@ out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_
 hasnt 'DRY: gh issue ' "$out" "red superseded by a newer green nightly opens no issue"
 has 'superseded' "$out" "superseded red logs a note"
 if [ "$rc" -eq 0 ]; then ok "superseded red -> exit 0"; else bad "superseded exit=$rc (expected 0)"; fi
-rm -f "$JOBS_FAILED"
+# a timed-out shard beside a cancelled one is a real red, not inconclusive
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_TIMEDOUT" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+has 'DRY: gh issue create' "$out" "timed-out shard plus cancelled shard still opens the issue"
+rm -f "$JOBS_FAILED" "$JOBS_TIMEDOUT"
 
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi

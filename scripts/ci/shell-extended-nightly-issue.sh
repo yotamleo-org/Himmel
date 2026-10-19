@@ -92,7 +92,7 @@ classify_red() {
   fi
   local failed cancelled newer
   if [ -n "$jobs" ]; then
-    failed="$(jq '[.jobs[]|select((.name|startswith("shell-unit-shard")) and .conclusion=="failure")]|length' <<< "$jobs")"
+    failed="$(jq '[.jobs[]|select((.name|startswith("shell-unit-shard")) and .conclusion!=null and (.conclusion|IN("success","skipped","cancelled")|not))]|length' <<< "$jobs")"
     cancelled="$(jq '[.jobs[]|select((.name|startswith("shell-unit-shard")) and .conclusion=="cancelled")]|length' <<< "$jobs")"
     if [ "${failed:-1}" = 0 ] && [ "${cancelled:-0}" -gt 0 ] 2>/dev/null; then
       echo inconclusive
