@@ -14,9 +14,9 @@ same LEG_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, outp
 
 Pieces per handover (turns/cost):
   prep   P's turns from its last `console.sh next` call up to S's first turn
-  relay  P's turns after S's first turn (relay + wrap)
+  relay  P's turns from S's first turn on (relay + wrap)
   az     S's turns up to P's last turn (successor ACTION ZERO + wait)
-  leg    per non-console session that received P's SUCCESSION message in [P's last
+  leg    per non-console session that received a SUCCESSION message naming P in [P's last
          `console.sh next`, P's last turn]: the turns after the delivery up to and including the one
          that says `SUCCESSION accepted`, at most 4. --legs-after drops legs whose first record is
          earlier than the cutoff (count only legs launched after the fast path merged).
@@ -98,8 +98,10 @@ def load(path):
         t = d.get("type")
         if t == "agent-name":
             name = d.get("agentName") or name
-        elif t == "user" and ts and "SUCCESSION" in json.dumps(d.get("message", "")):
-            deliveries.append(ts)
+        elif t == "user" and ts:
+            body = json.dumps(d.get("message", ""))
+            if "SUCCESSION" in body:
+                deliveries.append((ts, body))
         elif t == "assistant" and ts and not d.get("isSidechain"):
             msg = d.get("message") or {}
             u = msg.get("usage")
@@ -108,11 +110,14 @@ def load(path):
             text = turn_text(msg)
             cost = (u.get("input_tokens", 0) * W_IN + u.get("cache_read_input_tokens", 0) * W_CR
                     + u.get("cache_creation_input_tokens", 0) * W_CC + u.get("output_tokens", 0) * W_OUT)
-            prev_ts = turns[msg["id"]][0] if msg["id"] in turns else ts
-            turns[msg["id"]] = (prev_ts, cost, bool(MECH_RE.search(text)),
-                                bool(NEXT_RE.search(text)), "SUCCESSION accepted" in text)
+            # one message id spans several records (one per content block): keep the first ts, the
+            # last usage, and every flag any block raised
+            prev = turns.get(msg["id"], (ts, 0, False, False, False))
+            turns[msg["id"]] = (prev[0], cost, prev[2] or bool(MECH_RE.search(text)),
+                                prev[3] or bool(NEXT_RE.search(text)),
+                                prev[4] or "SUCCESSION accepted" in text)
     return {"name": name, "first": first, "turns": sorted(turns.values(), key=lambda x: x[0]),
-            "deliveries": sorted(deliveries)}
+            "deliveries": sorted(deliveries, key=lambda x: x[0])}
 
 
 def piece(turns):
@@ -127,12 +132,12 @@ def handover(p, s, legs, legs_after):
     nxt, s_first = p_next[-1], s["turns"][0][0]
     out = {
         "prep": piece([t for t in p["turns"] if nxt <= t[0] < s_first]),
-        "relay": piece([t for t in p["turns"] if t[0] > s_first]),
+        "relay": piece([t for t in p["turns"] if t[0] >= s_first]),
         "az": piece([t for t in s["turns"] if t[0] <= p_last]),
     }
     leg_turns, nlegs, skipped = [], 0, 0
     for lg in legs:
-        got = [x for x in lg["deliveries"] if nxt <= x <= p_last]
+        got = [x[0] for x in lg["deliveries"] if nxt <= x[0] <= p_last and p["name"] in x[1]]
         if not got:
             continue
         if legs_after and (not lg["first"] or lg["first"] < legs_after):

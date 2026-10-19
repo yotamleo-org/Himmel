@@ -19,7 +19,7 @@ PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
-hc() { python3 "$HC" --dir "$FX" "$@"; }
+hc() { LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$FX" "$@"; }
 row() { grep -E "^HANDOVER " "$1" | head -1; }
 
 echo "1. per-piece counts, legs launched after 09:30"
@@ -40,6 +40,30 @@ echo "3. leg cutoff"
 hc >"$TMP/b.out" 2>&1
 check "control: with no cutoff the old leg counts too (5 turns, 2 legs)" 'row "$TMP/b.out" | grep -q " leg=5/1250 legs=2 "'
 check "with the cutoff the old leg is reported skipped" 'grep -q "legs_skipped_before_cutoff=1" "$TMP/a.out"'
+
+echo "3b. one message id over several records, and a delivery naming another console"
+mkdir "$TMP/x" && cp "$FX"/*.jsonl "$TMP/x/"
+python3 - "$TMP/x" <<'PYEOF'
+import json, sys
+d = sys.argv[1]
+rows = [json.loads(l) for l in open(d + "/console-p.jsonl")]
+extra = []
+for r in rows:
+    if r.get("message", {}).get("id") == "mp3":
+        t = json.loads(json.dumps(r))
+        t["message"]["content"] = [{"type": "text", "text": "done"}]
+        extra.append(t)
+open(d + "/console-p.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in rows + extra))
+open(d + "/leg-other.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
+    {"type": "agent-name", "agentName": "HIMMEL-3-N3-leg-other", "timestamp": "2026-10-19T10:06:00Z"},
+    {"type": "user", "timestamp": "2026-10-19T10:14:32Z", "message": {"content": "SUCCESSION from HIMMEL-nextleg-2026-10-19Q-roadmap-console"}},
+    {"type": "assistant", "timestamp": "2026-10-19T10:14:42Z", "message": {"id": "mx1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "SUCCESSION accepted"}]}},
+]))
+PYEOF
+hc2() { LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/x" "$@"; }
+hc2 --legs-after 2026-10-19T09:30:00Z >"$TMP/c.out" 2>&1
+check "a later text-only record of the same id does not erase the console.sh next flag (prep stays 2/500)" 'row "$TMP/c.out" | grep -q " prep=2/500 "'
+check "a leg whose delivery names another console is not charged (still 1 leg)" 'row "$TMP/c.out" | grep -q " legs=1 "'
 
 echo "4. errors"
 mkdir "$TMP/empty"
