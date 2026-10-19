@@ -3195,6 +3195,15 @@ contains "34h an explicit value is reported as its own source" "$out34f" "headed
 contains "34h a registry value is reported as the lane default" "$out34a" "headed-arm-leg: effort=medium source=lanes.json"
 check "34h the effort line is the first line of the launch output" "$(printf '%s\n' "$out34e" | head -1)" "headed-arm-leg: effort=high source=LEG_EFFORT"
 
+# 34i. A full native launch with LEG_EFFORT=high puts high into the armed process env.
+d34i="$tmp/c34i"; mk_launch_stubs "$d34i" "HIMMEL-9999-leg-34i"; mkdir -p "$tmp/repo34i"
+rc=0
+LEG_EFFORT=high run_leg "$d34i" "$tmp/repo34i" "HIMMEL-9999-leg-34i" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d34i" || true
+env34i="$(cat "$d34i/env-record" 2>/dev/null || true)"
+check "34i full native launch, LEG_EFFORT=high: exit 0" "$rc" "0"
+contains "34i full native launch, LEG_EFFORT=high: the armed process env carries high" "$env34i" "CLAUDE_CODE_EFFORT_LEVEL=high"
+
 # --- 35. HANDOVER_DIR unset, but a root IS
 # self-resolvable (case 26's shape: a console-like cwd with an
 # inline handovers/ dir) and the leg's own doc lives OUTSIDE that root, not
