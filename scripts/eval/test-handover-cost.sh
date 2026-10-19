@@ -42,8 +42,8 @@ check "control: with no cutoff the old leg counts too (5 turns, 2 legs)" 'row "$
 check "with the cutoff the old leg is reported skipped" 'grep -q "legs_skipped_before_cutoff=1" "$TMP/a.out"'
 
 echo "3b. one message id over several records, and a delivery naming another console"
-mkdir "$TMP/x" && cp "$FX"/*.jsonl "$TMP/x/"
-python3 - "$TMP/x" <<'PYEOF'
+if ! { mkdir "$TMP/x" && cp "$FX"/*.jsonl "$TMP/x/"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! python3 - "$TMP/x" <<'PYEOF'
 import json, sys
 d = sys.argv[1]
 rows = [json.loads(l) for l in open(d + "/console-p.jsonl")]
@@ -60,6 +60,7 @@ open(d + "/leg-other.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
     {"type": "assistant", "timestamp": "2026-10-19T10:14:42Z", "message": {"id": "mx1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "SUCCESSION accepted"}]}},
 ]))
 PYEOF
+then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
 hc2() { LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/x" "$@"; }
 hc2 --legs-after 2026-10-19T09:30:00Z >"$TMP/c.out" 2>&1
 check "a later text-only record of the same id does not erase the console.sh next flag (prep stays 2/500)" 'row "$TMP/c.out" | grep -q " prep=2/500 "'
