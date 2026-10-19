@@ -607,7 +607,8 @@ _t_row "5747 15 KB quoted payload, write to /tmp allows" allow "echo '$_blob15' 
 _subst_row "5747 git archive -o primary/a.tar denies"            block "git archive -o $_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive --output=primary/a.tar denies"      block "git archive --output=$_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive --output primary/a.tar denies"      block "git archive --output $_PR/a5747.tar HEAD" "$_WR"
-_subst_row "5747 git archive -o leg worktree/a.tar allows"       allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 CR CR between words still denies a primary write"      block "echo a"$'\r\r'"b > $_PR/a5747.txt" "$_WR"
+_subst_row "5747 git archive -o leg worktree/a.tar allows"     allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive -o /tmp/a.tar allows"               allow "git archive -o /tmp/a5747.tar HEAD" "$_WR"
 _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR/f$_i; "; _i=$((_i+1)); done
 _k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done

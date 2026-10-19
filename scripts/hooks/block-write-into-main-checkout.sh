@@ -699,14 +699,15 @@ _bwimc_blank_heredocs() {
 # \002, not \001: \001 is _bwimc_subst_split's stub marker, counted per clause.
 _BWIMC_PIPE=$'\002'
 _bwimc_sp_pipe=0
-# _bwimc_simple TEXT — true when TEXT holds no quote, backslash or non-ASCII
-# byte. Then _bwimc_scan_step never opens a quote or an escape, every character
-# is ACTIVE, and [[:space:]] is the six ASCII blanks, so the walkers below
-# take a one-pass fast path with the same output as the per-character walk.
+# _bwimc_simple TEXT — true when TEXT holds no quote, backslash, CR/VT/FF or
+# non-ASCII byte. Then _bwimc_scan_step never opens a quote or an escape, every
+# character is ACTIVE, and the only blanks are space, tab and newline (the IFS
+# whitespace `read` collapses), so the walkers below take a one-pass fast path
+# with the same output as the per-character walk.
 _bwimc_simple() {
     local LC_ALL=C
     case "$1" in
-        *[\'\"\\]*|*[$'\200'-$'\377']*) return 1 ;;
+        *[\'\"\\$'\r\v\f']*|*[$'\200'-$'\377']*) return 1 ;;
     esac
     return 0
 }
