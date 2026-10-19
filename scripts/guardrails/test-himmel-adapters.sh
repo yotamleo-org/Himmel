@@ -22,6 +22,8 @@ check "no nwo is listed twice" "$(jq -r '[.[].nwo] | length - (unique | length)'
 check "every row has the six fields" "$(jq -r '[.[] | select((keys | sort) != ["himmel_branch","merge_allowed","nwo","pin_site","role","upstream"])] | length' "$REG" 2>/dev/null)" "0"
 check "every role is one of the four" "$(jq -r '[.[] | select(.role | IN("runtime-dependency","upstream-contribution","vendored-source","dormant") | not)] | length' "$REG" 2>/dev/null)" "0"
 check "merge_allowed is a boolean and himmel_branch a non-empty string" "$(jq -r '[.[] | select((.merge_allowed | type) != "boolean" or (.himmel_branch | type) != "string" or .himmel_branch == "")] | length' "$REG" 2>/dev/null)" "0"
+check "every upstream is an owner/name" "$(jq -r '[.[] | select((.upstream | type) != "string" or (.upstream | test("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$") | not))] | length' "$REG" 2>/dev/null)" "0"
+check "pin_site is null or a non-empty string" "$(jq -r '[.[] | select(.pin_site != null and ((.pin_site | type) != "string" or .pin_site == ""))] | length' "$REG" 2>/dev/null)" "0"
 check "merge_allowed true only for the forks we merge into" "$(jq -r '[.[] | select(.merge_allowed) | .nwo] | sort | join(" ")' "$REG" 2>/dev/null)" "$MERGE_TRUE"
 
 if [ "$fails" -eq 0 ]; then
