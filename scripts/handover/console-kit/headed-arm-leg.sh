@@ -1466,6 +1466,16 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
     EFFORT_SOURCE=""
+    # A caller-preset launcher token wins over leg_propagate_env, so the print
+    # below reports it; read before the resolver appends its own token.
+    PRESET_EFFORT=""
+    set -f
+    for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_effort_tok" in
+            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}" ;;
+        esac
+    done
+    set +f
     if [ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ]; then
         EFFORT_SOURCE="CLAUDE_CODE_EFFORT_LEVEL"
         leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$CLAUDE_CODE_EFFORT_LEVEL"
@@ -1493,7 +1503,13 @@ if [ "$LANE" = "native" ]; then
             esac
         fi
     fi
-    [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$CLAUDE_CODE_EFFORT_LEVEL source=$EFFORT_SOURCE" >&2
+    if [ -n "$PRESET_EFFORT" ]; then
+        EFFORT_SOURCE="HEADED_ARM_LAUNCHER_ENV"
+        EFFORT_SHOWN="$PRESET_EFFORT"
+    else
+        EFFORT_SHOWN="${CLAUDE_CODE_EFFORT_LEVEL:-}"
+    fi
+    [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
 fi
 
 # the leg's own bank-preflight reads CADENCE_BANK_LANE before

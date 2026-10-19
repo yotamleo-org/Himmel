@@ -3176,19 +3176,32 @@ cat > "$lanes_fixture_med" <<'LANES_JSON_EOF'
 {"lanes":[{"id":"sonnet","class":"claude-tier","effort":"medium"},{"id":"opus","class":"claude-tier","effort":"medium"}]}
 LANES_JSON_EOF
 
-out34e="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34e "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34e.log" claude-opus-5-5 2>&1)"
+rc34e=0
+out34e="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34e "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34e.log" claude-opus-5-5 2>&1)" || rc34e=$?
 lenv34e="$(printf '%s\n' "$out34e" | grep '^headed-arm-leg: lane=')"
+check "34e dry run exits 0" "$rc34e" "0"
 contains "34e native LEG_EFFORT=high beats the registry's medium" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=high"
 not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
-out34f="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)"
+rc34f=0
+out34f="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
 lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-leg: lane=')"
+check "34f dry run exits 0" "$rc34f" "0"
 contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats LEG_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 not_contains "34f LEG_EFFORT does not displace the explicit value" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
-out34g="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=bogus CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g.log" claude-opus-5-5 2>&1)"
+rc34g=0
+out34g="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=bogus CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g.log" claude-opus-5-5 2>&1)" || rc34g=$?
 lenv34g="$(printf '%s\n' "$out34g" | grep '^headed-arm-leg: lane=')"
+check "34g dry run exits 0" "$rc34g" "0"
 contains "34g an unrecognised LEG_EFFORT falls through to the registry" "$lenv34g" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+
+# 34g2. A caller-preset launcher token wins on a name clash; the effort line reports it.
+rc34g2=0
+out34g2="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g2 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g2.log" claude-opus-5-5 2>&1)" || rc34g2=$?
+check "34g2 dry run exits 0" "$rc34g2" "0"
+contains "34g2 the effort line reports the launcher token's value and source" "$out34g2" "headed-arm-leg: effort=low source=HEADED_ARM_LAUNCHER_ENV"
+not_contains "34g2 the effort line does not claim LEG_EFFORT won" "$out34g2" "source=LEG_EFFORT"
 
 contains "34h the launch states the effective effort and its source" "$out34e" "headed-arm-leg: effort=high source=LEG_EFFORT"
 contains "34h an explicit value is reported as its own source" "$out34f" "headed-arm-leg: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
