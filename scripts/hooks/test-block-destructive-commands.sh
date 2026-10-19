@@ -1647,8 +1647,23 @@ for c in \
     'command gh variable set CI_GCP --body off -R yotamleo/Himmel' \
     'sudo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
     'bash -c "gh variable set OTHER --body off"' \
-    'gh api -X PATCH repos/yotamleo/Himmel/actions/variables/CI_GCP -f value=off'; do
+    'gh api -X PATCH repos/yotamleo/Himmel/actions/variables/CI_GCP -f value=off' \
+    'gh variable set CI_GCP --body off -Rfoo/bar' \
+    'gh variable set CI_GCP --body ＯＮ -R yotamleo/Himmel' \
+    "gh variable set CI_GCP --body '' -R yotamleo/Himmel"; do
     assert_rc "6431 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+# The guard reads a CR as a line break, the shell does not: everything after
+# it still reaches gh, where the last -R wins.
+for c in \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r -R other/repo' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --org x' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --env production' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --body maybe' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\v -R other/repo' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\f -R other/repo'; do
+    l=${c//$'\r'/<CR>}; l=${l//$'\v'/<VT>}; l=${l//$'\f'/<FF>}
+    assert_rc "6431 deny: $l" 2 "$(run_case "$(j_bash "$c")")"
 done
 
 # Remote exec beyond curl|sh.
