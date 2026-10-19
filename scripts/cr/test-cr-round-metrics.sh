@@ -172,6 +172,15 @@ check "split critic cost joined" "$(q critic_split.critic.cost_joined)" "1"
 check "split unjoined critic launches" "$(q critic_split.launches_unjoined)" "1"
 check "split failed attempts counted" "$(q critic_split.critic_attempts_failed)" "1"
 
+# a branch with two successful critic calls but one matched launch is not fully joined
+{
+  cat "$tmp/split.jsonl"
+  echo '{"kind":"attempt","ts":"2026-10-01T02:45:00Z","branch":"fix/a","head":"a3","model":"claude","status":"ok","hour_utc":2,"artifact":"diff","perspective":"off","responding_model":"claude-opus-5-5","attempt":1,"duration_secs":20,"detail":"rc=0"}'
+} > "$tmp/split2.jsonl"
+json="$(CR_LEDGER="$tmp/split2.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{')"
+check "split two calls one launch: partly unjoined" "$(q critic_split.critic.cost)" "partly unjoined"
+check "split one call one launch: joined" "$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).critic_split.critic.cost))')" "joined"
+
 # no successful critic attempt anywhere: zero critic PRs, cost null (never a made-up zero)
 json="$(CR_LEDGER="$L" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{')"
 check "split with no critic runs: critic branches" "$(q critic_split.critic.branches)" "0"

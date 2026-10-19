@@ -234,13 +234,14 @@ if (e.SPLIT) {
   const attempts = records.filter(r => r.kind === "attempt" && r.model === "claude" && r.branch && Number.isFinite(Date.parse(r.ts)) && Date.parse(r.ts) <= now);
   const okAttempts = attempts.filter(r => r.status === "ok").sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
   const criticBranches = new Set(okAttempts.map(r => r.branch));
-  const used = new Set(), cost = new Map();
+  const used = new Set(), cost = new Map(), okCalls = new Map(), matchedCalls = new Map();
   for (const a of okAttempts) {
+    okCalls.set(a.branch, (okCalls.get(a.branch) || 0) + 1);
     const at = Date.parse(a.ts);
     let best = -1, bestD = 60001;
     launches.forEach((l, i) => { const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
     const c = best >= 0 ? Number(launches[best].cost_usd) : NaN;
-    if (best >= 0 && Number.isFinite(c)) { used.add(best); cost.set(a.branch, (cost.get(a.branch) || 0) + c); }
+    if (best >= 0 && Number.isFinite(c)) { used.add(best); cost.set(a.branch, (cost.get(a.branch) || 0) + c); matchedCalls.set(a.branch, (matchedCalls.get(a.branch) || 0) + 1); }
   }
   const unjoined = launches.filter((l, i) => { const t = Date.parse(l.ts); return !used.has(i) && t >= since && t <= now; }).length;
   const inWin = new Set(inWindow.map(b => b.name));
@@ -256,7 +257,8 @@ if (e.SPLIT) {
       o.cost_joined = joined.length;
       o.cost_usd_total = joined.length ? Math.round(total * 1e6) / 1e6 : null;
       o.cost_usd_per_pr = joined.length ? Math.round(total / joined.length * 1e6) / 1e6 : null;
-      o.cost = joined.length ? (joined.length === list.length ? "joined" : "partly unjoined") : "unjoined";
+      const whole = joined.every(b => matchedCalls.get(b.name) === okCalls.get(b.name));
+      o.cost = joined.length ? (joined.length === list.length && whole ? "joined" : "partly unjoined") : "unjoined";
     }
     return o;
   };
