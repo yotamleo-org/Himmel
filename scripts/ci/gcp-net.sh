@@ -101,9 +101,13 @@ present() {
 # assoc_present: gcloud has no `associations describe`, so read the association off the
 # policy itself. Same 0/1/2 contract as present(); a failed policy lookup is never absence.
 assoc_present() {
-    local json
-    json="$(gc compute network-firewall-policies describe "$POLICY" --global --format=json 2> /dev/null)" \
-        || { present compute network-firewall-policies describe "$POLICY" --global; return; }
+    local json rc
+    json="$(gc compute network-firewall-policies describe "$POLICY" --global --format=json 2> /dev/null)" || {
+        present compute network-firewall-policies describe "$POLICY" --global
+        rc=$?
+        [ "$rc" -eq 0 ] || return "$rc"
+        json="$(gc compute network-firewall-policies describe "$POLICY" --global --format=json 2> /dev/null)" || return 2
+    }
     case "$(printf '%s' "$json" | tr -d ' \n')" in
         *'"name":"'"$ASSOC"'"'*) return 0 ;;
     esac
