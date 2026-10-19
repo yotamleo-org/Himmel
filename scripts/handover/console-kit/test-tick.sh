@@ -187,6 +187,8 @@ export HANDOVER_DIR="$W/handover"
 export HIMMEL_TRUST_LEDGER_DIR="$W/trust-ledger"
 export REPO="$W/repo"
 export TICK_TMPDIR="$W"
+# no stall probe by default: a real pr-stall.sh against the stub gh would add stall=? to every line
+export TICK_STALL_PROBE="$W/no-stall-probe" TICK_STALL_CACHE="$W/stall.cache"
 # station= reads this state file; never the real ~/.himmel one.
 export TICK_STATION_STATE="$W/station-sync.state"
 export PS_FIXTURE="$W/ps-none.txt"
@@ -194,6 +196,7 @@ export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
 # ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
+export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
@@ -2280,6 +2283,34 @@ printf '%s\n' '#!/bin/sh' "node '$c5163/full.js'" > "$c5163/gh-full"
 chmod +x "$c5163/gh-full"
 printf '%s\t%s\t%s\t%s\n' '2026-10-10T15:56:20' HIMMEL-5077 session_012yMgxSaSskpLb4qrfXBhk1 'claude --teleport session_012yMgxSaSskpLb4qrfXBhk1' > "$c5163/cloud-sessions.tsv"
 contains 'a full gh page newer than the session launch reads cloud=skip (HIMMEL-5163)' "$(GHSTUB5163=gh-full t5163 | cloud_of)" 'skip'
+
+# --- stall=<pr>:<class>[,...]: pr-stall.sh's STALL rows folded into one field.
+# Absent when nothing is stuck, the probe fails or prints STALL-UNKNOWN. RED control
+# (pre-change tick.sh): the line never carries stall=. A cache bounds the probe to one run
+# per TICK_STALL_TTL_MIN.
+st6049="$W/stall6049"
+mkdir -p "$st6049"
+# shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
+printf '%s\n' '#!/bin/sh' 'echo run >> "$ST_COUNT"' 'if [ -n "$ST_FAIL" ]; then echo "STALL-UNKNOWN gh failed"; exit 3; fi' \
+    'echo "STALL 2887 conflict N2362 mergeStateStatus=DIRTY head=abc action=merge"' \
+    'echo "STALL 2869 ci-slow - 2 check(s) in flight queue=5"' 'echo "STALL-SUMMARY stuck=2 queue=5"' > "$st6049/probe"
+chmod +x "$st6049/probe"
+t6049() { rm -f "$st6049/cache"; ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN="${TTL6049:-0}" bash "$SUT" "$@" 2>/dev/null; }
+stall_of() { sed -nE 's/.* stall=([^ ]*).*/\1/p'; }
+same 'stall= folds the probe rows to pr:class (HIMMEL-6049)' "$(t6049 | stall_of)" '2887:conflict,2869:ci-slow'
+contains 'verbose labels the stall field (HIMMEL-6049)' "$(t6049 --verbose)" 'stall: 2887:conflict,2869:ci-slow'
+same 'a failing probe with nothing cached reads stall=? (HIMMEL-6049)' "$(ST_FAIL=1 t6049 | stall_of)" '?'
+rm -f "$st6049/count" "$st6049/cache"
+ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
+touch -d '3 hours ago' "$st6049/cache"
+same 'a failing probe after the TTL emits the last cached value (HIMMEL-6049)' "$(ST_FAIL=1 ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" 2>/dev/null | stall_of)" '2887:conflict,2869:ci-slow'
+: > "$st6049/count"
+ST_FAIL=1 ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
+same 'the failure is cached for the TTL: a second tick does not re-run the probe (HIMMEL-6049)' "$(wc -l < "$st6049/count" | tr -d ' ')" '0'
+rm -f "$st6049/count" "$st6049/cache"
+ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
+ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
+same 'two ticks inside the TTL run the probe once (HIMMEL-6049)' "$(wc -l < "$st6049/count" | tr -d ' ')" '1'
 
 # --- parked=<leg>:<age>m: a leg on an unanswered permission prompt -----
 # Absent unless a leg's newest trust-ledger row is a permission prompt older than

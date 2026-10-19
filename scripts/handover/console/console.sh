@@ -1358,6 +1358,8 @@ cmd_new() {
         RELEASE_TOKEN "$release_token" \
         BOARD_URL "none yet — publish it at ACTION ZERO step 12" \
         TRACKER_URL "none" \
+        CARRIED_LIVE_STATE "epics: none
+decisions: none" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
 
@@ -1440,34 +1442,46 @@ resolve_predecessor() {
     printf '%s' "$newest"
 }
 
-# Refuse a handover whose `decisions:` Live-state line is missing, a
-# placeholder or shorter than the line of the doc the outgoing console itself
-# succeeded (named on its first line), unless its Results carry a
-# `DECISIONS-DROP: <reason>` bullet. No predecessor, or one without a real
-# decisions line, passes. Args: outgoing doc, outgoing Live state.
-check_decisions_kept() {
-    local outgoing="$1" live="$2" prev_name prev_doc prev_line out_line
+# Refuse a handover whose <field>: Live-state line is missing or a
+# placeholder (for `decisions:`, also shorter) where the doc the outgoing
+# console itself succeeded (named on its first line) had a real one, unless its
+# Results carry a `<MARKER>: <reason>` bullet. No predecessor, or one without a
+# real line, passes. `priority:` shrinks as its keys ship, so it is held to
+# presence only. Args: field, drop marker, outgoing doc, outgoing Live state.
+check_live_line_kept() {
+    local field="$1" marker="$2" outgoing="$3" live="$4" prev_name prev_doc prev_line out_line
     prev_name="$(sed -n '1s/^.* successor to \([^ ]*\.md\).*$/\1/p' "$outgoing")"
     [ -n "$prev_name" ] || return 0
     prev_doc="$(dirname "$outgoing")/$prev_name"
     [ -f "$prev_doc" ] || return 0
-    prev_line="$(awk '
+    prev_line="$(awk -v k="$field:" '
         $0 == "## Live state" { f = 1; next }
         f && /^## / { exit }
-        f && /^decisions:/ { sub(/^decisions:[[:space:]]*/, ""); print; exit }
+        f && index($0, k) == 1 { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }
     ' "$prev_doc")"
     case "$prev_line" in ""|none|"none "*|"<"*) return 0 ;; esac
-    out_line="$(printf '%s\n' "$live" | sed -n 's/^decisions:[[:space:]]*//p' | head -n 1)"
+    out_line="$(printf '%s\n' "$live" | sed -n "s/^$field:[[:space:]]*//p" | head -n 1)"
     case "$out_line" in
         ""|none|"none "*|"<"*) ;;
-        *) [ "${#out_line}" -ge "${#prev_line}" ] && return 0 ;;
+        *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0 ;;
     esac
     awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing" \
-        | grep -Eq '^- .*DECISIONS-DROP:[[:space:]]*[^[:space:]<]' && return 0
-    err "refusing to hand over: the decisions: line in $outgoing is missing, a placeholder or shorter than its predecessor's ($prev_name):"
-    err "  predecessor: decisions: $prev_line"
-    err "  restore it, or record a Results bullet 'DECISIONS-DROP: <reason>' and retry"
+        | grep -Eq "^- .*$marker:[[:space:]]*[^[:space:]<]" && return 0
+    err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder or shorter than its predecessor's ($prev_name):"
+    err "  predecessor: $field: $prev_line"
+    err "  restore it, or record a Results bullet '$marker: <reason>' and retry"
     return 1
+}
+
+# The shift-spanning Live-state lines `next` copies verbatim into the
+# successor doc; `epics:` and `decisions:` fall back to `none`.
+carried_live_state() {
+    local live="$1" field line
+    for field in epics decisions priority versions tracker-plan; do
+        line="$(printf '%s\n' "$live" | grep -m 1 "^$field:")" || line=""
+        case "$field" in epics|decisions) [ -n "$line" ] || line="$field: none" ;; esac
+        [ -z "$line" ] || printf '%s\n' "$line"
+    done
 }
 
 cmd_next() {
@@ -1496,7 +1510,8 @@ cmd_next() {
         f && /^## / { exit }
         f { print }
     ' "$predecessor_doc")"
-    check_decisions_kept "$predecessor_doc" "$predecessor_live_state" || exit 1
+    check_live_line_kept decisions DECISIONS-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
+    check_live_line_kept priority PRIORITY-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
     # The console board's artifact URL rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
     # updates the same artifact instead of minting a new one.
@@ -1646,6 +1661,7 @@ cmd_next() {
         RELEASE_TOKEN "none yet — acquire your own at ACTION ZERO and record it here" \
         BOARD_URL "$predecessor_board" \
         TRACKER_URL "$predecessor_tracker" \
+        CARRIED_LIVE_STATE "$(carried_live_state "$predecessor_live_state")" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
 
@@ -1667,24 +1683,50 @@ cmd_next() {
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../console-kit/handoff-facts.sh"
-        render_template "$handoff_template" "$predecessor_handoff" \
-            HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
-            BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
-            LEG_LIST "$(bash "$facts" legs "$predecessor_doc" --repo "$repo")" \
-            OPEN_PRS "$(bash "$facts" prs "$predecessor_doc" --repo "$repo")" \
-            SHIFT_SUMMARY "$(bash "$facts" summary "$predecessor_doc" --repo "$repo")" \
-            QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \
-            LAST_GO "$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")" \
-            JUDGE_CALLS "$(judge_calls_now)" \
-            PREDECESSOR_LETTER "$predecessor_letter" \
-            LETTER "$successor_letter" \
-            PREDECESSOR "$predecessor_base" \
-            SUCCESSOR_DOC "$successor_doc_ref" \
-            REPO "$repo" \
-            BUCKET "$bucket" \
-            KIT "$kit" \
-            LIVE_STATE "$predecessor_live_state"
-        wrapped_open_prs_section "$predecessor_doc" >> "$predecessor_handoff"
+        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+        hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
+        hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
+        hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
+        # ponytail: the cap trims only the re-derivable fact sections; Live state, rulings and the wrapped-PR list stay inline even over budget, an oversized Live state needs a tighter Live-state writer.
+        local hf_pass=1 hf_wrapped hf_wrapped_bytes
+        hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
+        hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c)"
+        while :; do
+            render_template "$handoff_template" "$predecessor_handoff" \
+                HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
+                BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
+                LEG_LIST "$hf_legs" \
+                OPEN_PRS "$hf_prs" \
+                SHIFT_SUMMARY "$hf_summary" \
+                QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \
+                LAST_GO "$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")" \
+                JUDGE_CALLS "$(judge_calls_now)" \
+                PREDECESSOR_LETTER "$predecessor_letter" \
+                LETTER "$successor_letter" \
+                PREDECESSOR "$predecessor_base" \
+                SUCCESSOR_DOC "$successor_doc_ref" \
+                REPO "$repo" \
+                BUCKET "$bucket" \
+                KIT "$kit" \
+                LIVE_STATE "$predecessor_live_state"
+            # Over budget: the bulky fact sections (all re-derivable) become
+            # pointers; the Live state and the rulings stay inline.
+            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
+            hf_pass=2
+            hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
+            hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
+            hf_prs="over the HANDOFF size budget — run: gh pr list -R ${hf_slug:-<owner/repo>} --state open"
+            hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
+        done
+        [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
+        # Still over budget after the pointer pass: the remainder is Live state,
+        # rulings and the wrapped-PR list, which are never trimmed — say so loudly.
+        hf_total="$(wc -c < "$predecessor_handoff")"
+        if [ "$hf_total" -gt "$hf_budget" ]; then
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); Live state ${#predecessor_live_state} bytes, wrapped-PR list $hf_wrapped_bytes bytes — tighten the Live state"
+            printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
+            err "warning: $hf_note"
+        fi
         echo "handoff: $predecessor_handoff"
     else
         set +C

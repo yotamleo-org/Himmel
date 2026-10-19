@@ -27,6 +27,11 @@ order, even at defaults: `legs`, `livestate`, `prs`, `tails`, `legset`, `board`,
 `unowned-prs=none` and non-stale `tracker=` must stay present to clear the
 waiter's persisted streaks. The compact format needs no reader change.
 
+`busedge=MISSING:<label>[,...]` is conditional too: a held leg (lock FRESH or
+STALE) with no himmel-bus peer record has no edge to the live console. It is
+absent when every held leg has a record or the bus has no peers dir, and
+`console-wait.sh` does not wake on it, so read it at the next tick.
+
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,
@@ -60,7 +65,12 @@ waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR
 sits for hours, run `<kit>/pr-stall.sh --manifest <fleet manifest>` by hand: one
 `STALL <pr> <class> <leg> <detail>` line per stuck PR (conflict, no-ci, ci-slow,
 idle). Add `--notify` to send the owning leg the action once per (pr, class,
-head). Not yet wired into the tick (HIMMEL-6049 slice 2).
+head). The tick also carries `stall=<pr>:<class>,...` (absent when nothing is
+stuck; the probe result, a failure included, is cached `TICK_STALL_TTL_MIN`
+minutes, default 5; a failed probe reads the last cached value, else `stall=?`),
+and the waiter wakes once per new `conflict` or `no-ci` token and keeps its saved
+set on `?`: run the command above for the detail. `ci-slow` and `idle` show on
+the tick line but never wake.
 
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads

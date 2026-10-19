@@ -615,12 +615,25 @@ check_c12() {
 # a missing/moved himmel hook script silent in a himmel checkout.  Doctor surfaces
 # that drift without changing hook runtime semantics.
 check_c13() {
-    local hooks_files=() hooks_json f
+    local hooks_files=() hooks_json f unverified=""
     if [ -n "${DOCTOR_HIMMEL_OPS_HOOKS_JSON:-}" ]; then
         hooks_files=("$DOCTOR_HIMMEL_OPS_HOOKS_JSON")
     else
+        # Only cache versions installed_plugins.json pins are live; unpinned
+        # leftovers are dead weight. No readable registry -> scan the whole cache.
+        local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
+        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]?.installPath // empty' "$installed" 2>/dev/null)" || pins=""; }
+        if [ -n "$pins" ]; then
+            while IFS= read -r f; do
+                if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
+            done <<EOF_PINS
+$pins
+EOF_PINS
+        else
+            cache_hooks=("$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json)
+        fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
-                 "$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json \
+                 "${cache_hooks[@]}" \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
         done
@@ -643,6 +656,8 @@ EOF_CMDS
     done
     if [ -n "$missing" ]; then
         emit WARN C13-plugin-hooks "himmel-ops hooks.json references missing checkout hook(s):$missing - guarded [ -f ] wrappers will silently no-op" "run /himmel-update or restore the missing script(s), then re-run"
+    elif [ -n "$unverified" ]; then
+        emit WARN C13-plugin-hooks "pinned himmel-ops install(s) have no hooks/hooks.json, cannot verify:$unverified" "run /himmel-update to reinstall the plugin"
     else
         emit OK C13-plugin-hooks "himmel-ops plugin hooks resolve in this checkout"
     fi
@@ -4131,6 +4146,23 @@ check_c67_hermes_fail_open() {
     fi
 }
 
+# --- C68-konsole-dbus: konsolerc lacks EnableSecuritySensitiveDBusAPI=true ---
+# Without it konsole refuses the D-Bus sendText call, so bus-idle-waker.sh cannot
+# wake an idle console (rc 3). Read-only; the doctor does not edit konsolerc.
+check_c68_konsole_dbus() {
+    local rc="${XDG_CONFIG_HOME:-${HOME:-}/.config}/konsolerc"
+    if is_windows || ! command -v "${DOCTOR_KONSOLE:-konsole}" >/dev/null 2>&1; then
+        emit INFO C68-konsole-dbus "konsole not installed — bus-idle-waker's sendText wake is not used here"
+        return
+    fi
+    if [ -f "$rc" ] && awk '/^\[/ { in_win = ($0 == "[KonsoleWindow]") } in_win && /^EnableSecuritySensitiveDBusAPI[ \t]*=/ { on = ($0 ~ /=[ \t]*true[ \t]*$/) } END { exit !on }' "$rc" 2>/dev/null; then
+        emit OK C68-konsole-dbus "konsolerc sets EnableSecuritySensitiveDBusAPI=true ($rc)"
+        return
+    fi
+    emit WARN C68-konsole-dbus "$rc lacks EnableSecuritySensitiveDBusAPI=true under [KonsoleWindow] — konsole refuses sendText, so bus-idle-waker cannot wake an idle console (rc 3)" \
+        "add 'EnableSecuritySensitiveDBusAPI=true' under [KonsoleWindow] in $rc, then restart konsole"
+}
+
 # --- C61-codex-cli: codex CLI older than the latest release ------
 # Latest comes from DOCTOR_CODEX_LATEST (tests) else `npm view` (10 s cap); an
 # unreachable registry is INFO, never a WARN. Read-only: it never upgrades.
@@ -4459,6 +4491,7 @@ run_check C64 check_c64_vm_runner
 run_check C65 check_c65_git_gates
 run_check C66 check_c66_hermes_cron_hooks
 run_check C67 check_c67_hermes_fail_open
+run_check C68 check_c68_konsole_dbus
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

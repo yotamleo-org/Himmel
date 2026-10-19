@@ -89,12 +89,29 @@ join_csv() { local IFS=,; echo "$*"; }
 # found), 2 = the lookup itself failed (auth, permission, API): never absence.
 present() {
     local err
+    [ "$1" = assoc ] && { assoc_present; return; }
     err="$(gc "$@" 2>&1 > /dev/null)" && return 0
     case "$err" in
-        *[Nn]ot\ [Ff]ound*|*NOT_FOUND*|*"does not exist"*) return 1 ;;
+        *[Nn]ot\ [Ff]ound*|*NOT_FOUND*|*"does not exist"*|*"does not contain a rule at priority"*) return 1 ;;
     esac
     echo "gcp-net: lookup failed: $err" >&2
     return 2
+}
+
+# assoc_present: gcloud has no `associations describe`, so read the association off the
+# policy itself. Same 0/1/2 contract as present(); a failed policy lookup is never absence.
+assoc_present() {
+    local json rc
+    json="$(gc compute network-firewall-policies describe "$POLICY" --global --format=json 2> /dev/null)" || {
+        present compute network-firewall-policies describe "$POLICY" --global
+        rc=$?
+        [ "$rc" -eq 0 ] || return "$rc"
+        json="$(gc compute network-firewall-policies describe "$POLICY" --global --format=json 2> /dev/null)" || return 2
+    }
+    case "$(printf '%s' "$json" | tr -d ' \n')" in
+        *'/networks/'"$NET"'","name":"'"$ASSOC"'"'*) return 0 ;;  # gcloud emits sorted keys: attachmentTarget, then name
+    esac
+    return 1
 }
 
 # ensure <label> <describe args...> -- <create args...>: create only when confirmed absent.
@@ -241,8 +258,7 @@ cmd_net_up() {
         --description="deny all egress not allowlisted above"
 
     # Last, so the network is never enforced by a half-built policy.
-    ensure "policy association $ASSOC" \
-        compute network-firewall-policies associations describe --name="$ASSOC" "${POL[@]}" -- \
+    ensure "policy association $ASSOC" assoc -- \
         compute network-firewall-policies associations create --name="$ASSOC" "${POL[@]}" --network="$NET"
     echo "gcp-net: net-up done; runners belong on subnet $SUBNET ($REGION) with --no-address and the output of: bash scripts/ci/gcp-net.sh proxy-env"
 }
@@ -253,8 +269,7 @@ cmd_net_down() {
         compute routers nats delete "$NAT" --router="$ROUTER" --region="$REGION" --quiet
     drop "router $ROUTER" compute routers describe "$ROUTER" --region="$REGION" -- \
         compute routers delete "$ROUTER" --region="$REGION" --quiet
-    drop "policy association $ASSOC" \
-        compute network-firewall-policies associations describe --name="$ASSOC" "${POL[@]}" -- \
+    drop "policy association $ASSOC" assoc -- \
         compute network-firewall-policies associations delete "$ASSOC" "${POL[@]}"
     drop "firewall policy $POLICY" compute network-firewall-policies describe "$POLICY" --global -- \
         compute network-firewall-policies delete "$POLICY" --global --quiet
@@ -277,7 +292,7 @@ cmd_status() {
     echo "nat $NAT: $(probe compute routers nats describe "$NAT" --router="$ROUTER" --region="$REGION")"
     echo "proxy $PROXY_VM ($PROXY_IP:$PROXY_PORT): $(probe compute instances describe "$PROXY_VM" --zone="$PROXY_ZONE")"
     echo "policy $POLICY: $(probe compute network-firewall-policies describe "$POLICY" --global)"
-    echo "association $ASSOC: $(probe compute network-firewall-policies associations describe --name="$ASSOC" "${POL[@]}")"
+    echo "association $ASSOC: $(probe assoc)"
     echo "IAP debug rule $PRIO_IAP: $(probe compute network-firewall-policies rules describe "$PRIO_IAP" "${POL[@]}")"
 }
 

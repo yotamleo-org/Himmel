@@ -785,7 +785,7 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # closure test excludes scripts/jira/dist/.
 # merge-on-green.sh appends its PARTIAL line through console-kit/append-results.sh,
 # which takes console-kit/leg-doc-lock.sh, so both are guarded.
-cr_guarded="scripts/cr scripts/lib scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
+cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
 scripts/handover/merge-on-green.sh scripts/handover/queue-lock.sh
@@ -809,7 +809,7 @@ scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/teleg
 scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/lib/burn-weights.sh
 scripts/handover/console-kit/leg-jira-status.sh
 scripts/handover/console-kit/append-results.sh scripts/handover/console-kit/leg-doc-lock.sh"
-cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
+cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
     ':(top)scripts/handover/resolve-active-item.sh'
     ':(top)scripts/handover/resolve-active-item-report.sh'
     ':(top)scripts/handover/append-cr-findings.sh' ':(top)scripts/handover/append-cr-bugs.sh' ':(top)scripts/handover/bug.sh'

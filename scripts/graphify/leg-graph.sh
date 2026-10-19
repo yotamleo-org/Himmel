@@ -13,7 +13,8 @@
 #   re-run line naming this wrapper on stderr.
 #   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
 #   under its NODE line (query) or as a Rationale line (explain).
-#   A query naming a file or identifier also starts from that node (anchor-seeds.py).
+#   A query naming a file or identifier also starts from that node (anchor-seeds.py); the files
+#   whose content best matches its words are added after any anchors (semantic-seeds.py).
 #   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
@@ -76,7 +77,13 @@ if [ "$sub" = query ] && [ "$has_seed" = 0 ] && [ -n "$question" ] && command -v
     ''|*[!0-9]*) ;;
     *) budget=$((10#$budget))
        while read -r sid; do [ -n "$sid" ] && seeds+=(--seed "$sid"); done \
-         < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" seeds "$graph" "$question") ;;
+         < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" seeds "$graph" "$question")
+       # A question naming no file or identifier has no anchor; semantic-seeds.py adds the files
+       # whose content matches its meaning after any anchors.
+       while read -r sid; do
+         [ -n "$sid" ] || continue
+         case " ${seeds[*]} " in *" $sid "*) ;; *) seeds+=(--seed "$sid") ;; esac
+       done < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/semantic-seeds.py" seeds "$graph" "$question") ;;
   esac
 fi
 if [ "${#seeds[@]}" -gt 0 ]; then

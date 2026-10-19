@@ -24,7 +24,7 @@
 //   2. Machine hardening is PRINTED, never executed (rescope, explicit).
 //      Power profile / sshd / auto-logon are machine-wide, need elevation,
 //      and are NOT reversible by `himmelctl uninstall` — so v1 emits the
-//      docs/setup/windows-clean-machine.md Phase-6 steps as a checklist the
+//      Windows Phase-6 steps (the runbook is removed) as a checklist the
 //      operator runs by hand.
 //
 // Lane probing and hardening remain non-mutating. The one deliberate write is
@@ -119,7 +119,7 @@ const V1_LANES = [
     registryId: 'hermes-oneshot',
     optIn: true,
     install: {
-      win32: 'see docs/setup/windows-clean-machine.md Phase 5 (git clone + uv venv + pip install -e .)',
+      win32: 'git clone + uv venv + pip install -e . (Windows is dropped; see docs/hermes-runbook.md)',
       default: 'see docs/hermes-runbook.md § "Install hermes (upstream)" — the Linux / macOS / WSL2 branch',
     },
     note: {
@@ -773,7 +773,7 @@ function probeSelection(selected, ctx) {
 
 // ── always-on hardening checklist (PRINTED, never executed) ─────────────────
 //
-// Transcribed from docs/setup/windows-clean-machine.md Phase 0 + Phase 6.
+// Transcribed from the removed Windows clean-machine runbook, Phase 0 + Phase 6.
 // These are machine-wide, need elevation, and `himmelctl uninstall` cannot
 // undo them — which is exactly why they are a checklist and not a step.
 const HARDENING_CHECKLIST = [
@@ -897,7 +897,7 @@ function hardeningChecklistLines(platform) {
   if (applicable.length === 0) {
     lines.push('');
     lines.push(`  (no hardening steps are published for platform '${p}' — the runbook`);
-    lines.push('   docs/setup/windows-clean-machine.md Phase 6 is Windows-only so far)');
+    lines.push('   Phase 6 is Windows-only so far)');
     lines.push('');
     return lines;
   }
@@ -909,7 +909,6 @@ function hardeningChecklistLines(platform) {
     for (const c of step.commands) lines.push(`         ${c}`);
   }
   lines.push('');
-  lines.push('  Full runbook + verification checklist: docs/setup/windows-clean-machine.md');
   lines.push('');
   return lines;
 }
@@ -921,7 +920,7 @@ function hardeningPointerLines() {
   return [
     '',
     'always-on hardening: skipped (you answered alwaysOn=no).',
-    '  If you later run this machine unattended, see docs/setup/windows-clean-machine.md Phase 6.',
+    '  If you later run this machine unattended, see the Phase 6 hardening steps.',
     '',
   ];
 }
@@ -938,7 +937,7 @@ function hardeningNotAskedLines() {
   return [
     '',
     'always-on hardening: not asked (this flow does not ask the always-on question).',
-    '  If this machine runs unattended, see docs/setup/windows-clean-machine.md Phase 6.',
+    '  If this machine runs unattended, see the Phase 6 hardening steps.',
     '',
   ];
 }

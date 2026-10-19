@@ -25,7 +25,7 @@
 // a no-upstream FAILED whose branch has local commits ahead of
 // origin/main gets an EXTRA stderr hint line (never stdout — the one-line
 // contract above is load-bearing) naming the GLM lane's push-block as a
-// likely cause — see the "Parent-finish protocol" in docs/glm-offload.md.
+// likely cause (the GLM lane is dropped).
 // Contract-failing dispatches are counted, never silently absorbed: every
 // evaluated run appends one end-row to the flow-runs ledger (best-effort — a
 // ledger write failure warns on stderr but never flips the verdict).

@@ -67,7 +67,8 @@ fork's himmel branch plus the one `install` line, run once per clone.
 ## Fork inventory (2026-10-16)
 
 From `gh repo list yotamleo --fork`; the HIMMEL-5900 registry
-(`scripts/guardrails/himmel-adapters.json`) currently lists only `qmd`.
+(`scripts/guardrails/himmel-adapters.json`) lists every fork (standard:
+`docs/internals/fork-adapters.md`).
 
 | Fork | Default | Language | Own hooks | Own lint | CI |
 |---|---|---|---|---|---|

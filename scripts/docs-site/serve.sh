@@ -10,14 +10,25 @@ site="$repo/site"
 port=4321
 host=127.0.0.1
 
-if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then
-  echo "serve.sh: port $port is already in use on $host; free it and retry" >&2
-  exit 1
-fi
+# astro shifts to the next port when either family is taken, so check both
+check_port_free() {
+  local h
+  for h in "$host" ::1; do
+    if (exec 3<>"/dev/tcp/$h/$port") 2>/dev/null; then
+      echo "serve.sh: port $port is already in use on $h; free it and retry" >&2
+      exit 1
+    fi
+  done
+}
+
+check_port_free
 
 cd "$site" || exit 1
 if [ ! -d node_modules/astro ]; then npm ci >&2 || exit 1; fi
 npm run build >&2 || exit 1
+
+# the build takes seconds; a process may have claimed the port meanwhile
+check_port_free
 
 echo "docs site: http://$host:$port/Himmel/"
 exec npx astro preview --host "$host" --port "$port"

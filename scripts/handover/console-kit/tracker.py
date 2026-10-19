@@ -645,9 +645,18 @@ def jira_view(mir, legs, vers, prows, vnames):
         return t['b'] not in ('done', 'wont')
 
     cur = next((i for i in range(len(vers)) if not vers[i]['rel'] and any(t['v'] == i and open_(t) for t in tk)), -1)
-    for t in tk:
-        if t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']:
+
+    def future_done(t):
+        return t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']
+    placed, kept = {t['k'] for t in tk if not future_done(t)}, []
+    for t in tk:  # a Done ticket already counted in another version keeps that one, never a second row in the current
+        if future_done(t):
+            if t['k'] in placed:
+                continue
+            placed.add(t['k'])
             t['v'] = cur
+        kept.append(t)
+    tk = kept
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
     return tk, cur, nxt, [a for a in al if a[1]], sorted([i, n] for i, n in wont.items()), sorted(fl, key=lambda t: t['k'])
@@ -713,15 +722,15 @@ def first_sentence(s):
     return clip(m.group(1) if m else s, 160)
 
 
-KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('done', 'Done'))
-KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done'}
+KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('ci', 'IN CI'), ('done', 'Done'))
+KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'ci', 'done': 'done'}
 
 
 def kanban(tk, vers, cur, base, wont=(), flight=()):
-    """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
+    """HIMMEL-5381: one <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
-    one-line user-facing description. IN CI reads as In Review; closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
+    one-line user-facing description. closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
     In Progress, as the main board does. The release being worked on (cur) opens expanded."""
     base = base.strip().rstrip('/')
     if not re.match(r'^https?://', base):
@@ -729,7 +738,7 @@ def kanban(tk, vers, cur, base, wont=(), flight=()):
     out, wn = [], dict(wont)
     for i, v in enumerate(vers):
         a = [t for t in tk if t['v'] == i]
-        if not a:
+        if not a and not wn.get(i):
             continue
         cols = {c: [] for c, _ in KCOLS}
         for t in a:
@@ -1485,10 +1494,10 @@ tr.jflash{animation:jflash .9s ease-out}
 .krel>summary{cursor:pointer;padding:8px 10px;font:600 13px var(--f-mono)}
 .krel>summary:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
 .kmeta{color:var(--dim);font-weight:400;font-size:12px;margin-left:8px}
-.kboard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 10px 10px}
+.kboard{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:0 10px 10px}
 .kcol{background:var(--panel);border:1px solid var(--line);padding:10px;min-width:0}
 .kcol h3{font:600 12px var(--f-mono);margin:0 0 8px;display:flex;justify-content:space-between;gap:8px}
-.kcol[data-col="todo"] h3{color:var(--todo)}.kcol[data-col="prog"] h3{color:var(--prog)}.kcol[data-col="rev"] h3{color:var(--rev)}.kcol[data-col="done"] h3{color:var(--done)}
+.kcol[data-col="todo"] h3{color:var(--todo)}.kcol[data-col="prog"] h3{color:var(--prog)}.kcol[data-col="rev"] h3{color:var(--rev)}.kcol[data-col="ci"] h3{color:var(--ci)}.kcol[data-col="done"] h3{color:var(--done)}
 .kcard{border:1px solid var(--line);padding:8px 10px;margin:0 0 8px;background:var(--bg)}
 a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
 .ktl{font-size:12.5px;margin:2px 0;overflow-wrap:anywhere}.kline{font:12px/1.45 var(--f-sans);color:var(--dim);overflow-wrap:anywhere}
@@ -1947,10 +1956,10 @@ function jboard(){var b=$("board"),f=$("donefold");b.textContent="";f.textConten
   if(!t[s[0]].length)c.appendChild(el("div","jnone","None."));b.appendChild(c)});
  if(HIDE&&t.done.length)add(f,jnum(t.done.length,v.n+": Done",t.done)," done ticket"+(t.done.length==1?" is":"s are")+" hidden. Turn off “Hide done work” to show them.")}
 function jversions(flashI){var b=$("vt");b.textContent="";var hid=0;
- JV.forEach(function(v,i){var a=jin(i),t=jtally(a);if(!t.n)return;if(HIDE&&!t.open){hid++;return}
+ JV.forEach(function(v,i){var a=jin(i),t=jtally(a),wn=(D.JW.filter(function(x){return x[0]===i})[0]||[0,0])[1];if(!t.n&&!wn)return;if(HIDE&&!t.open&&t.n){hid++;return}
   var r=el("tr","enter");r.dataset.v=i;r.tabIndex=0;if(i===JSEL)r.className="jsel"+(i===flashI?" jflash":"");
   var st=v.rel?(t.open?["fail","Released · "+t.open+" open"]:["done","Released"]):i===JCUR?["prog","Working on"]:i===JNXT?["rev","Up next"]:["todo","Planned"];
-  var td=el("td");td.appendChild(el("span","vn",v.n));r.appendChild(td);td=el("td");td.appendChild(jdot(st[0],st[1]));r.appendChild(td);
+  var td=el("td");td.appendChild(el("span","vn",v.n));r.appendChild(td);td=el("td");td.appendChild(jdot(st[0],st[1]+(wn?" · "+wn+" closed without shipping":"")));r.appendChild(td);
   td=el("td","barc");td.appendChild(jbar(t));r.appendChild(td);
   JB.forEach(function(s){var td=el("td"),n=t[s[0]].length;td.appendChild(n?jnum(n,v.n+": "+s[1],t[s[0]]):el("span","z","0"));r.appendChild(td)});
   td=el("td");td.appendChild(jnum(t.n,v.n+": every ticket",a));r.appendChild(td);

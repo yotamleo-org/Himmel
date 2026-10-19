@@ -947,7 +947,7 @@ start "$I" "$WORK/u4959m.out" --legs-from "$WORK/u4959-fleet.json"
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (manifest)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives --legs-from after the pool-only flag" "ARGS --priority-pool-only --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
+check "(u4959) the dispatch command receives the slack as --top, then --legs-from" "ARGS --priority-pool-only --top 7 --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
 reset_stub
 I="$(new_inbox u4959d)"
 printf '# console\n' > "$WORK/u4959-console.md"
@@ -955,7 +955,7 @@ start "$I" "$WORK/u4959n.out" --doc "$WORK/u4959-console.md" --legs-from "$WORK/
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (doc)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
+check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --top 7 --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
 
 # --- (u5542) unowned-prs=: the first sight of an open PR with no live
 # owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes
@@ -1289,6 +1289,68 @@ printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
 export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+
+# --- (st) stall= wakes once per NEW conflict/no-ci token; ci-slow/idle are report-only,
+# a token leaving the set and an unchanged set never wake, absence is a valid sample
+# RED control (console-wait.sh before this change): the new token never woke.
+stall_line() { sed -E "s# stall=[^ ]*##; s#  *denials=none# stall=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+I="$(new_inbox st)"
+start "$I" "$WORK/st.out" --legs "N1.md"
+wait_hb "$I" || fail "(st) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+stall_line 2887:conflict
+wait_exit "$WPID"
+check "(st) a new conflict stall ends the wait" "0" "$rc"
+check "(st) the wake names stall" "WAKE tick changed=stall bank=PROCEED" "$(head -n1 "$WORK/st.out")"
+
+reset_stub
+tick_line "N1:FRESH" "ok"
+stall_line 2887:conflict
+I="$(new_inbox st2)"
+start "$I" "$WORK/st2.out" --legs "N1.md"
+wait_hb "$I" || fail "(st2) no baseline heartbeat"
+stall_line 2887:conflict
+wait_exit "$WPID"
+check "(st2) an unchanged stall does not wake" "running" "$rc"
+stall_line 2887:conflict,2869:ci-slow,9004:idle
+wait_exit "$WPID"
+check "(st2) a new ci-slow/idle token alone does not wake" "running" "$rc"
+stall_line 2869:ci-slow
+wait_exit "$WPID"
+check "(st2) a stall resolving does not wake" "running" "$rc"
+stall_line 9003:no-ci,2869:ci-slow
+wait_exit "$WPID"
+check "(st2) a new no-ci token wakes" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# a probe outage (stall=?) keeps the saved set: the same conflict coming back is not new
+reset_stub
+tick_line "N1:FRESH" "ok"
+stall_line 2887:conflict
+I="$(new_inbox st4)"
+start "$I" "$WORK/st4.out" --legs "N1.md"
+wait_hb "$I" || fail "(st4) no baseline heartbeat"
+stall_line '?'
+wait_exit "$WPID"
+check "(st4) a probe outage alone does not wake" "running" "$rc"
+wait_exit "$WPID"
+check "(st4) a second outage sample does not wake" "running" "$rc"
+stall_line 2887:conflict
+wait_exit "$WPID"
+check "(st4) the same conflict returning after the outage does not wake" "running" "$rc"
+stall_line 2887:conflict,9003:no-ci
+wait_exit "$WPID"
+check "(st4) a genuinely new token after the outage still wakes" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+I="$(new_inbox st3)"
+start "$I" "$WORK/st3.out" --legs "N1.md"
+wait_hb "$I" || fail "(st3) no baseline heartbeat"
+wait_exit "$WPID"
+check "(st3) a tick line with no stall= field is still a valid sample" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"

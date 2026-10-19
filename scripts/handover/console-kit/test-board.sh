@@ -370,7 +370,32 @@ out="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-alive-board
 n5html="$(cat "$W/n5-alive-board.html" 2>/dev/null)"
 contains 'a WRAPPED leg with a live census match reads WRAPPED, window still open' "$n5html" 'data-label="N5" data-phase="WRAPPED, window still open"'
 contains 'it is listed as needing the console' "$n5html" 'data-need="N5"'
-contains 'the need row explains why' "$n5html" 'WRAPPED, window still open — close the leg window'
+contains 'the need row explains why' "$n5html" 'WRAPPED, window still open — '
+
+# The need row says whether the window is safe to close, from the same
+# close-wrapped-leg.sh --check a hand-close would run. The refusal text below is
+# copied from the real script's wrap-subtree-check output (WITHHELD line, rc 6).
+cat > "$W/bin/close-check-safe.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --check ] || exit 2
+echo "SAFE-TO-CLOSE: pid 999 (N5) has no live subtree or subagent; nothing was signalled"
+STUB
+cat > "$W/bin/close-check-busy.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --check ] || exit 2
+echo "WITHHELD: 1 process(es) still alive under claude pid 999"
+echo "close-wrapped-leg: refusing to signal pid 999 - wrap-subtree-check.sh did not report CLOSABLE (see above); retry shortly" >&2
+exit 6
+STUB
+chmod +x "$W/bin/close-check-safe.sh" "$W/bin/close-check-busy.sh"
+BOARD_CLOSE_CHECK="$W/bin/close-check-safe.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-safe-board.html" >/dev/null
+contains 'a still-open WRAPPED leg whose close check passes reads safe to close' "$(cat "$W/n5-safe-board.html")" 'WRAPPED, window still open — safe to close'
+BOARD_CLOSE_CHECK="$W/bin/close-check-busy.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-busy-board.html" >/dev/null
+contains 'a refused close check reads still running with the reason' "$(cat "$W/n5-busy-board.html")" 'still running: WITHHELD: 1 process(es) still alive under claude pid 999'
+# a missing check script exits 127: an operational failure, never "still running"
+BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/n5-missing-board.html" >/dev/null
+contains 'a close check that fails to run reads close check failed' "$(cat "$W/n5-missing-board.html")" 'close check failed (rc 127)'
+lacks 'a close check that fails to run is never read as still running' "$(cat "$W/n5-missing-board.html")" 'still running'
 
 # No census match (the default empty stub the suite already uses throughout):
 # N5 stays plain WRAPPED, as pinned above at line 212. (The ladder itself always

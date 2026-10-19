@@ -34,7 +34,7 @@ cat > "$WORK/bin/gh" <<'STUB'
 # stub gh: serves the pr-stall fixtures; STUB_GH_FAIL=1 makes every call fail.
 [ "${STUB_GH_FAIL:-}" = 1 ] && { echo "gh: simulated failure" >&2; exit 1; }
 case "$1 $2" in
-    "pr list") cat "$STUB_FIX/pr-list.json" ;;
+    "pr list") jq -s '.' "$STUB_FIX"/pr-[0-9]*.json ;;
     "pr view") cat "$STUB_FIX/pr-$3.json" ;;
     "run list") cat "$STUB_FIX/run-list.json" ;;
     *) echo "stub gh: unhandled: $*" >&2; exit 1 ;;

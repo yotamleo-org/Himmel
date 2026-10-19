@@ -43,9 +43,8 @@
 # ponytail: updatedAt stands in for the push time, so a comment resets the
 # no-ci clock and delays detection; upgrade: read the head's push event from
 # the PR timeline.
-# ponytail: standalone, run by hand or by a leg; wiring a stall= field into
-# tick.sh and a wake key into console-wait.sh waits for PR 2887 (both files are
-# in flight there), the follow-up slice.
+# tick.sh folds the STALL rows into a stall= field (cached, fail-soft) and
+# console-wait.sh wakes once per new conflict or no-ci token.
 #
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only
 # (GNU date). needs gh and jq.
@@ -86,7 +85,7 @@ unknown() { printf 'STALL-UNKNOWN gh failed\n'; exit 3; }
 
 fields="number,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,updatedAt,createdAt"
 # swallow-ok: stderr only; every failed read below exits 3 through unknown
-list="$(gh pr list -R "$repo" --state open --limit 1000 --json number,headRefName 2>/dev/null)" || unknown
+list="$(gh pr list -R "$repo" --state open --limit 1000 --json "$fields" 2>/dev/null)" || unknown
 # swallow-ok: stderr only; a failed read exits 3 through unknown
 runs="$(gh run list -R "$repo" --limit 50 --json status 2>/dev/null)" || unknown
 # swallow-ok: stderr only; a failed read exits 3 through unknown
@@ -146,8 +145,8 @@ if [ "$notify" = 1 ]; then
 fi
 
 for n in $numbers; do
-    # swallow-ok: stderr only; a failed read exits 3 through unknown
-    pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown
+    # swallow-ok: stderr only; a failed select exits 3 through unknown
+    pr="$(printf '%s' "$list" | jq -c --argjson n "$n" '.[] | select(.number == $n)' 2>/dev/null)" || unknown
     # swallow-ok: a failed mergeable read skips the re-read; the classify step below fails closed
     if [ "$(printf '%s' "$pr" | jq -r '.mergeable' 2>/dev/null)" = "UNKNOWN" ]; then
         # swallow-ok: stderr only; a failed read exits 3 through unknown

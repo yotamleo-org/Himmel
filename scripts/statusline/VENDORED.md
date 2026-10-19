@@ -15,7 +15,7 @@ external repo or hand-editing global `~/.claude/settings.json`.
 - **Source fork:** `yotamleo/claude-statusline` (origin, **archived**)
 - **Upstream:** `nilbuild/claude-statusline` (`Kamran Ahmed`, MIT — see `LICENSE`)
 - **Vendored at commit:** `3f64887` (`feat: mirror himmel-vendored statusline (jq degrade guard + period knob)`)
-- **himmel cache-metrics patch:** `docs/patches/2026-05-16-cache-statusline.md`
+- **himmel cache-metrics patch:** record kept in the state repo (`specs/decisions/`)
 
 > Partial mirror history (as of `3f64887`, 2026-07-04): the
 > `HIMMEL_STATUSLINE_PERIOD` period knob (HIMMEL-617) and the fail-visible jq

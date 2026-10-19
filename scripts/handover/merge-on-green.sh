@@ -1974,7 +1974,7 @@ $remaining" "" comment-only)
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the
         # current one. Best-effort, like the transition itself.
-        # ponytail: an archived unreleased version can still be picked as current, since `versions` prints no archived column; HIMMEL-6325 adds it and filters here
+        # An archived version is never current: `versions` prints archived as column 4.
         local versions_out fold_to
         versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null)
         fold_to=$(printf '%s' "$issue_type_json" | node -e '
@@ -1983,9 +1983,9 @@ $remaining" "" comment-only)
                 const have = ((d.fields && d.fields.fixVersions) || []).map(v => v.name);
                 const vs = process.argv[1].split("\n").filter(Boolean).map(l => l.split("\t"));
                 const open = new Set(vs.filter(v => v[1] === "false").map(v => v[0]));
-                const dated = vs.filter(v => v[1] === "false" && v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
-                const unrel = vs.filter(v => v[1] === "false");
-                const cur = dated.length ? dated[0][0] : unrel.length ? unrel[0][0] : "";
+                const live = vs.filter(v => v[1] === "false" && v[3] !== "true");
+                const dated = live.filter(v => v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
+                const cur = dated.length ? dated[0][0] : live.length ? live[0][0] : "";
                 const known = d.fields && Array.isArray(d.fields.fixVersions);
                 if (cur && known && (!have.length || have.some(n => open.has(n) && n !== cur))) {
                     const keep = have.filter(n => !open.has(n));

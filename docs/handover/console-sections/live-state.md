@@ -72,3 +72,9 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > call per version per render; a failing or missing CLI reads `unavailable` and the
 > render still succeeds. The counts fold into `board.mjs --changed`, not into the
 > tick's `board=` (tick.sh never sees Jira).
+> `console.sh next` copies `epics:`, `decisions:`, `priority:`, `versions:` and
+> `tracker-plan:` verbatim into the successor's own Live state. It refuses to
+> hand over when your `decisions:` or `priority:` line is missing or a
+> placeholder while your predecessor's was real (`decisions:` also when shorter),
+> unless a Results bullet carries `DECISIONS-DROP: <reason>` or
+> `PRIORITY-DROP: <reason>`.

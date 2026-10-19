@@ -413,6 +413,18 @@ contains "14: the branch line is recorded" "$(cat "$f14")" "branch: fix/himmel-4
 # RED: the identical-head, two-PR case. The right PR passes, the other is refused.
 VPR=502; rc=0; verdict_rc q14c "$SHA_A" || rc=$?
 check "14: go_trust_verdict accepts the verdict's own PR" "$rc" 0
+
+# A GO for a branch with no PR yet: --branch alone, no pr: line.
+rc=0; WV_NOPR="--branch fix/himmel-6427-x" wv q14d GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+check "14: --branch without --pr writes a GO rc 0" "$rc" 0
+f14d="$scope_dir/q14d/judge.md"
+check "14: the branch-only record carries no pr line" "$(grep -c '^pr: ' "$f14d" 2>/dev/null)" 0
+check "14: the branch line sits where the pr line does" "$(awk '/^## Verdict/ {p=1; next} p && NF && !n {n=NR+2; next} n && NR==n {print; exit}' "$f14d")" "branch: fix/himmel-6427-x"
+VPR=501; rc=0; verdict_rc q14d "$SHA_A" || rc=$?
+check "14: go_trust_verdict refuses a branch-only record (no merge trust)" "$([ "$rc" -ne 0 ] && echo refused || echo accepted)" refused
+rc=0; WV_NOPR="--branch fix/himmel-6427-x" wv q14e NO-GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+check "14: --branch without --pr refuses a NO-GO rc 2" "$rc" 2
+check "14: the refused branch-only NO-GO writes nothing" "$([ -e "$scope_dir/q14e" ] && echo yes || echo no)" no
 VPR=503; rc=0; verdict_rc q14c "$SHA_A" || rc=$?
 check "14: go_trust_verdict refuses another PR on the same head" "$rc" 2
 VPR=
@@ -711,7 +723,8 @@ printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 tighten the regex\n- o
 rc=0; rdwv q23a GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
 check "23: --residual-of is accepted rc 0" "$rc" 0
 check "23: a depth-1 parent stamps its keyed residual residual-depth-2" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-2$' "$rdlog")" 1
-check "23: a no-ticket residual line is not stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 1
+check "23: a residual is stamped affectsVersion current" "$(grep -c '^edit HIMMEL-901 --affects-version current$' "$rdlog")" 1
+check "23: a no-ticket residual line is not stamped" "$(wc -l < "$rdlog" | tr -d ' ')" 2
 : > "$rdlog"
 rc=0; rdwv q23b GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-910 >/dev/null 2>&1 || rc=$?
 check "23: an unlabelled parent is depth 0, so the residual is stamped residual-depth-1" "$(grep -c '^edit HIMMEL-901 --add-labels residual-depth-1$' "$rdlog")" 1
@@ -723,8 +736,14 @@ printf -- '---\nkey: "HIMMEL-903"\nlabels: []\nfixVersions: ["v1.1.3"]\n---\n' >
 : > "$rdlog"
 rc=0; out=$(rdwv q23d GO "$SHA_A" --evidence-file "$evd/rd-ev2.md" --residual-of HIMMEL-902 2>&1) || rc=$?
 check "23: a depth-3 stamp still writes the verdict rc 0" "$rc" 0
-contains "23: a depth-2+ residual carrying a fixVersion draws a warning" "$out" "carries a fixVersion"
-check "23: the stamp never touches fixVersions" "$(grep -c 'fix-version' "$rdlog")" 0
+check "23: a depth-2+ residual carrying a fixVersion has it removed" "$(grep -c '^fix-version HIMMEL-903 --remove v1.1.3$' "$rdlog")" 1
+check "23: a depth-2+ residual is also stamped affectsVersion current" "$(grep -c '^edit HIMMEL-903 --affects-version current$' "$rdlog")" 1
+: > "$rdlog"
+printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-904 a depth-1 child\n' > "$evd/rd-ev5.md"
+printf -- '---\nkey: "HIMMEL-904"\nlabels: []\nfixVersions: ["v1.1.3"]\n---\n' > "$rdm/HIMMEL-904.md"
+rc=0; rdwv q23d2 GO "$SHA_A" --evidence-file "$evd/rd-ev5.md" --residual-of HIMMEL-910 >/dev/null 2>&1 || rc=$?
+check "23: the depth-1 residual is stamped, so the fixVersion check is not vacuous" "$(grep -c '^edit HIMMEL-904 --affects-version current$' "$rdlog")" 1
+check "23: a depth-1 residual keeps its fixVersion" "$(grep -c 'fix-version' "$rdlog")" 0
 rc=0; rdwv q23e GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of bogus >/dev/null 2>&1 || rc=$?
 check "23: a --residual-of that is not a ticket key is refused rc 2" "$rc" 2
 printf -- '---\nkey: "HIMMEL-920"\nlabels: ["residual-depth-08"]\nfixVersions: []\n---\n' > "$rdm/HIMMEL-920.md"
@@ -740,7 +759,7 @@ contains "23: a parent with no mirror warns" "$out" "no mirror for HIMMEL-999"
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 follow-up to HIMMEL-900\n- HIMMEL-910 again\n' > "$evd/rd-ev3.md"
 : > "$rdlog"
 rc=0; rdwv q23g GO "$SHA_A" --evidence-file "$evd/rd-ev3.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
-check "23: only the first key on a residual line is stamped" "$(grep -c '^edit HIMMEL-901 ' "$rdlog")" 1
+check "23: only the first key on a residual line is stamped" "$(grep -c '^edit HIMMEL-901 --add-labels' "$rdlog")" 1
 check "23: a contextual parent key on a residual line is not stamped" "$(grep -c '^edit HIMMEL-900 ' "$rdlog")" 0
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-900 the parent itself\n' > "$evd/rd-ev4.md"
 : > "$rdlog"

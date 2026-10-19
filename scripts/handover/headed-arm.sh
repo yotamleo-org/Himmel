@@ -506,6 +506,10 @@ case "$BUS_BIND_SECS" in
     ''|*[!0-9]*) BUS_BIND_SECS=15 ;;
 esac
 unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HEADED_ARM_BUS_BIND_SECS
+# headed-arm-leg.sh names the bus-idle-waker to start once the konsole pid is
+# known. Read once and cleared, so it never rides into the launched session.
+WAKER="${HEADED_ARM_WAKER:-}"
+unset HEADED_ARM_WAKER
 SESSION_PID=""
 # A console session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
@@ -1626,6 +1630,17 @@ if [ "$sv_seen" -eq 1 ]; then
             echo "$(date +%F_%T) WARN: bus bind of $NAME to pid $SESSION_PID failed - session stays unbound: $bus_out" >> "$LOG"
         fi
         [ "$bus_tmp" = /dev/null ] || rm -f "$bus_tmp"
+    fi
+    # One waker per headed leg, detached from this script and the leg (own
+    # session, no stdio held), bound to this konsole: it stops itself once the
+    # window's pid is gone. Best-effort like the bind above.
+    if [ -n "$WAKER" ] && [ "$sv_alive" -eq 1 ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] && [ -f "$WAKER" ]; then
+        if command -v setsid >/dev/null 2>&1; then
+            setsid bash "$WAKER" --name "$NAME" --service "org.kde.konsole-$KPID" --session /Sessions/1 --pid "$KPID" \
+                >> "$LOG" 2>&1 < /dev/null &
+        else
+            echo "$(date +%F_%T) WARN: no setsid, bus-idle-waker not started for $NAME" >> "$LOG"
+        fi
     fi
     exit 0
 fi

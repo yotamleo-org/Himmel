@@ -18,7 +18,8 @@ const CLEARING = new Set(["LIVE", "RESUMED", "RESOLVED", "READY", "WRAPPED"]);
 const NOTED = new Set(["READY", "WRAPPED"]);
 // tracker.py BUCKETS: the status NAME decides, the category only a name not listed.
 const BUCKETS: Record<string, string> = { "to do": "todo", backlog: "todo", "in progress": "prog", "in review": "rev", ci: "ci", "in ci": "ci",
-  done: "done", closed: "done", "in public": "done", "wont do": "wont", "wont fix": "wont" };
+  done: "done", closed: "wont", "in public": "done", "wont do": "wont", "wont fix": "wont" };
+const SHIPPED = new Set(["", "done", "fixed"]); // a Done ticket resolved any other way (Won't Do, Duplicate, ...) shipped nothing
 
 export type Bucket = "todo" | "prog" | "rev" | "ci" | "done" | "wont";
 export type Leg = { label: string; marker: string; reason: string };
@@ -40,7 +41,7 @@ export type Roadmap = {
   librarian: { staleInProgress: Proposal[]; drift: Proposal[]; unthemed: Proposal[]; releasedOpen: Proposal[]; duplicates: DupProposal[] };
 };
 type Opts = { mirrorDir: string; versionsFile?: string; planDir?: string; driftLog?: string; legs: Section };
-type M = { k: number; sn: string; cat: string; fv: string[]; labels: string[]; upd: string; title: string; body: string };
+type M = { k: number; sn: string; cat: string; res: string; fv: string[]; labels: string[]; upd: string; title: string; body: string };
 
 const text = (f: string) => { try { return readFileSync(f, "utf8"); } catch { return ""; } };
 const json = <T>(s: string | undefined, d: T): T => { try { return s === undefined ? d : JSON.parse(s); } catch { return d; } };
@@ -73,13 +74,17 @@ function readMirror(dir: string): M[] {
     if (k === null) continue;
     const body = parts.slice(2).join("---");
     const sn = json<unknown>(fm.status, "");
-    out.push({ k, sn: typeof sn === "string" ? sn : "", cat: unq(fm.statusCategory), fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
+    const res = json<unknown>(fm.resolution, "");
+    out.push({ k, sn: typeof sn === "string" ? sn : "", cat: unq(fm.statusCategory), res: typeof res === "string" ? res : "", fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
       upd: unq(fm.updated), title: /^# [A-Z]+-\d+:\s*(.*)$/m.exec(body)?.[1] ?? "", body });
   }
   return out;
 }
 
-const bucketOf = (m: M): Bucket => (BUCKETS[m.sn.trim().toLowerCase()] ?? ({ Done: "done", "In Progress": "prog" } as Record<string, string>)[m.cat] ?? "todo") as Bucket;
+const bucketOf = (m: M): Bucket => {
+  const b = BUCKETS[m.sn.trim().toLowerCase()] ?? ({ Done: "done", "In Progress": "prog" } as Record<string, string>)[m.cat] ?? "todo";
+  return (b === "done" && !SHIPPED.has(m.res.trim().toLowerCase()) ? "wont" : b) as Bucket;
+};
 const isOpen = (b: Bucket) => b !== "done" && b !== "wont";
 
 function readVersions(file: string, mir: M[]): { list: { n: string; rel: boolean; date: string }[]; unknown: boolean } {

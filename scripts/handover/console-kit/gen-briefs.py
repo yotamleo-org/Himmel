@@ -246,7 +246,7 @@ template_version: 3
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix. {extra}{envline}
 > 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Run them, and the full suite of every file you touched, BEFORE opening the PR: a CI fix after the third review round cannot be re-reviewed without the operator.
-> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh`.
+> 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
 > **Scope / do not:** writes confined to {scope}. Other live legs and their files: {others}{also}. Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the console first). Remove any fixture you create under the real HOME before you wrap.
@@ -255,7 +255,7 @@ template_version: 3
 
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
-           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'],
+           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], console=ctx['console'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], others=others, also=also,
@@ -346,6 +346,7 @@ def main():
     ctx = dict(repo=a.repo, base=a.base, console=a.console, date=a.date, hroot=a.handover_root, work_dir=work_dir,
                deadline=deadline, legs=legs, also_live=a.also_live)
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)
+    ctx['bucket'] = a.bucket
     refuse_git_bucket(a.bucket, a.handover_root)
     os.makedirs(a.bucket, exist_ok=True)
 

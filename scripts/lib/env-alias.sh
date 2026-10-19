@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/env-alias.sh -- read-both env var helper for the identifier
-# rename (docs/internals/identifier-rename-inventory.md).
+# rename.
 # Source it; it prints nothing and is safe under `set -euo pipefail`.
 #
 #   alias_env NEW OLD     export NEW from OLD when NEW is empty/unset and OLD

@@ -116,8 +116,11 @@ is_write_verb() {
         # mutating surface were missing, so their compound shapes fell through.
         fix-version|affects-version|rank|unlink|resolution) return 0 ;;
         version-create|version-edit|version-release|version-archive|version-move) return 0 ;;
+        edit-batch) return 0 ;;
         worklog) case "${2:-}" in add) return 0 ;; esac ;;
         roadmap) case "${2:-}" in set|sync-sprints) return 0 ;; esac ;;
+        # --dry-run is not parsed: a flag-aware arm costs more than the guidance it saves.
+        sector) case "${2:-}" in setup) return 0 ;; esac ;;
     esac
     return 1
 }
@@ -791,6 +794,7 @@ segment_has_write() {
                     DETECTED_VERB="${a[$j]}"
                     [ "$DETECTED_VERB" = "worklog" ] && DETECTED_VERB="worklog add"
                     [ "$DETECTED_VERB" = "roadmap" ] && DETECTED_VERB="roadmap ${a[$((j + 1))]}"
+                    [ "$DETECTED_VERB" = "sector" ] && DETECTED_VERB="sector setup"
                     return 0
                 fi
                 return 1 ;;

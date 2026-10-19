@@ -693,5 +693,91 @@ check "(r) lock dir present after real acquire" present "$([ -e "$r_lockdir" ] &
 HANDOVER_DIR="$r_dir" bash "$REPO/scripts/handover/queue-lock.sh" release "$r_doc" "$r_token" >/dev/null 2>&1
 check "(r) lock dir absent after real release" absent "$([ -e "$r_lockdir" ] && echo present || echo absent)"
 
+# --- (s)/(t)/(u) a LIVE holder that stays blocked: below the hard ceiling
+# (FLEET_ADMIT_MAX_HOLD_SECS) it is never reclaimed and the refusal names it
+# (pid, age, command); past the ceiling it is reclaimed and the reclaim logs
+# pid and age. The holder is a `sleep` (deterministic, no CPU load).
+sleep 120 & s_holder=$!
+slots_s="$(mktemp -d "$W/slots-s.XXXXXX")" || { echo "FAIL - could not create slots-s scratch dir" >&2; exit 1; }
+mkdir -p "$slots_s/.admit"
+printf '%s\n' "$((NOW - 150))" > "$slots_s/.admit/acquired"
+printf '%s\n' "$s_holder" > "$slots_s/.admit/pid"
+: > "$W/err.log"
+s_out="$(run_pf "$slots_s" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9020-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=600 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(s) live holder 150s old, ceiling 600s -> not reclaimed, SKIPPED-FLEET" SKIPPED-FLEET "$s_out"
+if grep -q "holder pid $s_holder .*age 1[0-9][0-9]s, command: sleep" "$W/err.log"; then
+  PASS=$((PASS+1)); echo "ok - (t) the refusal names the live holder (pid, age, command name)"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (t) refusal does not name the live holder"; tail -3 "$W/err.log"
+fi
+: > "$W/err.log"
+u_out="$(run_pf "$slots_s" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9021-past HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(u) live holder 150s old, ceiling 100s -> reclaimed, PROCEED" PROCEED "$u_out"
+if grep -q "reclaiming .*holder pid $s_holder .*age 1[0-9][0-9]s" "$W/err.log"; then
+  PASS=$((PASS+1)); echo "ok - (u) the reclaim logs the holder pid and age"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (u) reclaim did not log pid and age"; tail -3 "$W/err.log"
+fi
+kill "$s_holder" 2>/dev/null; wait "$s_holder" 2>/dev/null
+
+# --- (v) a reclaim that lands mid-section: the census stub rewrites
+# .admit/pid the way a reclaimer's fresh claim would, so the resumed holder
+# must refuse instead of deciding on a stale census.
+slots_v="$(mktemp -d "$W/slots-v.XXXXXX")" || { echo "FAIL - could not create slots-v scratch dir" >&2; exit 1; }
+p_steal="$W/ps-steal"; mk_ps_stub "$p_steal"
+printf '%s\n' '#!/usr/bin/env bash' "[ -f '$slots_v/.admit/pid' ] && printf '%s\n' 1 > '$slots_v/.admit/pid'" "cat '$p_steal/ps.data'" > "$p_steal/ps"
+: > "$W/err.log"
+v_out="$(run_pf "$slots_v" "$p_steal" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9022-stolen HIMMEL_FLEET_CAP=4)"
+check "(v) lock reclaimed mid-section -> resumed holder refuses, SKIPPED-FLEET" SKIPPED-FLEET "$v_out"
+if grep -q "was reclaimed while this preflight held it" "$W/err.log"; then
+  PASS=$((PASS+1)); echo "ok - (v) the refusal says the lock was reclaimed"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (v) no reclaimed-lock message"; tail -3 "$W/err.log"
+fi
+check "(v) no reservation was created by the displaced holder" 0 "$(find "$slots_v" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | wc -l | tr -d ' ')"
+
+# --- (w) the ceiling boundary: age == ceiling reclaims, ceiling-1 does not.
+sleep 120 & w_holder=$!
+slots_w="$(mktemp -d "$W/slots-w.XXXXXX")" || { echo "FAIL - could not create slots-w scratch dir" >&2; exit 1; }
+mkdir -p "$slots_w/.admit"
+printf '%s\n' "$w_holder" > "$slots_w/.admit/pid"
+printf '%s\n' "$(( $(date +%s) - 97 ))" > "$slots_w/.admit/acquired"
+w_below="$(run_pf "$slots_w" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9023-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(w) age just under the ceiling -> not reclaimed" SKIPPED-FLEET "$w_below"
+printf '%s\n' "$(( $(date +%s) - 100 ))" > "$slots_w/.admit/acquired"
+w_at="$(run_pf "$slots_w" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9024-at HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(w) age at the ceiling -> reclaimed" PROCEED "$w_at"
+
+# --- (x) the default ceiling is 10 x FLEET_ADMIT_STALE_SECS, read base 10
+# (a zero-padded "08" must not be octal): ceiling 80s.
+rm -rf "$slots_w/.admit"; mkdir -p "$slots_w/.admit"
+printf '%s\n' "$w_holder" > "$slots_w/.admit/pid"
+printf '%s\n' "$(( $(date +%s) - 70 ))" > "$slots_w/.admit/acquired"
+x_below="$(run_pf "$slots_w" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9025-xlow HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(x) default ceiling 10 x 08s: 70s old -> not reclaimed" SKIPPED-FLEET "$x_below"
+printf '%s\n' "$(( $(date +%s) - 90 ))" > "$slots_w/.admit/acquired"
+x_past="$(run_pf "$slots_w" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9026-xhigh HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(x) default ceiling 10 x 08s: 90s old -> reclaimed" PROCEED "$x_past"
+kill "$w_holder" 2>/dev/null; wait "$w_holder" 2>/dev/null
+
+# --- (y) FLEET_ADMIT_BROKEN_RM_SECS bounds the gate-debris sweep: an rm that
+# hangs on the debris is abandoned at the deadline, the take refuses, and the
+# release logs that it left the lock to age out — within seconds, not the hang.
+slots_y="$(mktemp -d "$W/slots-y.XXXXXX")" || { echo "FAIL - could not create slots-y scratch dir" >&2; exit 1; }
+mkdir -p "$slots_y/.admit.reclaim.broken.hung" "$W/rmbin"
+printf '%s\n' '#!/bin/sh' 'case "$*" in *broken*) sleep 8; exit 0 ;; esac' 'exec /bin/rm "$@"' > "$W/rmbin/rm"
+chmod +x "$W/rmbin/rm"
+: > "$W/err.log"
+y_start="$(date +%s)"
+y_out="$(run_pf "$slots_y" "$p0" PATH="$W/rmbin:$PATH" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9027-rm HIMMEL_FLEET_CAP=4 FLEET_ADMIT_BROKEN_RM_SECS=1 FLEET_ADMIT_RELEASE_ITERS=2 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+y_secs=$(( $(date +%s) - y_start ))
+check "(y) a hung debris sweep is abandoned at the deadline" 1 "$([ "$y_secs" -le 6 ] && echo 1 || echo 0)"
+if grep -q "could not take the admit-lock gate" "$W/err.log"; then
+  PASS=$((PASS+1)); echo "ok - (y) the release logs that the gate could not be taken"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (y) no gate-take failure logged"; tail -3 "$W/err.log"
+fi
+check "(y) the verdict is still emitted" PROCEED "$y_out"
+
 echo "--- $PASS passed, $FAIL failed ---"
 [ "$FAIL" -eq 0 ]

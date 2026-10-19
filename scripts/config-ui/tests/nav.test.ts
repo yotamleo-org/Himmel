@@ -2,7 +2,7 @@ import { test, expect, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fleetDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
+import { fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
 import { LANDING, launchUrl, startServer } from "../server";
 
 // the config console and the AG-UI pages are one app with one rail. These pin the page list, the
@@ -62,6 +62,14 @@ test("the Fleet status dot: ok, warn when degraded, fail when the fleet cannot b
   expect(fleetDot(null, "the token was refused").cls).toBe("fail");
   expect(fleetDot(null, null).cls).toBe("off"); // not read yet
   for (const d of [fleetDot({ census: "ok" }, null), fleetDot(null, "x")]) expect(d.title.length).toBeGreaterThan(0);
+});
+
+test("the Health status dot takes the verdict's ok, warn and fail, and is off until a verdict exists", () => {
+  expect(healthDot({ cls: "ok", word: "All clear" }).cls).toBe("ok");
+  expect(healthDot({ cls: "warn", word: "Needs a look" }).cls).toBe("warn");
+  expect(healthDot({ cls: "fail", word: "Act now" }).cls).toBe("fail");
+  expect(healthDot({ cls: "off", word: "No data" }).cls).toBe("off");
+  expect(healthDot({ cls: "fail", word: "Act now" }).title).toBe("health: Act now");
 });
 
 test("himmelctl ui prints ONE URL: the landing switch picks the fleet or the console", () => {

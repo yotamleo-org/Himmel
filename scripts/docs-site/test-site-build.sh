@@ -21,10 +21,23 @@ check() { # check <desc> <command...>
   if "$@" >/dev/null 2>&1; then ok "$d"; else ko "$d"; fi
 }
 
+absent() { # absent <fixed-string> <file>: pass only when grep ran and found nothing (exit 1); exit 2 is an error
+  grep -qF -- "$1" "$2" >/dev/null 2>&1
+  [ $? -eq 1 ]
+}
+fails() { ! "$@"; }
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
   exit 0
 fi
+
+ctl=$(mktemp -d -t site-build-ctl.XXXXXX) || exit 1
+trap 'rm -rf "$ctl"' EXIT
+echo present >"$ctl/page"
+check "control: absent() passes when the text is missing" absent nope "$ctl/page"
+check "control: absent() fails when the text is present" fails absent present "$ctl/page"
+check "control: absent() fails on an unreadable file" fails absent nope "$ctl/no-such-file"
 
 cd "$here" || exit 1
 rm -rf dist
@@ -57,15 +70,19 @@ check "criterion 1: git diff --stat docs/ is empty" test -z "$(git -C "$repo" st
 # --- criterion 2: links
 md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; echo "rc=$?")
 check "criterion 2: no site-local href ends in .md" test "$md_pages" = "rc=1"
+check "control: the .md scan had pages to read" test -n "$(find "$dist" -name index.html -print -quit 2>/dev/null)"
 check "criterion 2: .md link rewritten to its route" grep -q 'href="/Himmel/setup/install/"' "$(route_of getting-started.md)"
 check "criterion 2: repo-path link points at the GitHub blob URL" grep -q 'href="https://github.com/yotamleo/himmel/blob/main/CLAUDE.md"' "$(route_of getting-started.md)"
 c2=1
+nlinks=0
 while IFS= read -r h; do
+  nlinks=$((nlinks + 1))
   p=${h%%[#?]*}
   p=${p#/Himmel}
   if [ -e "$dist$p" ] && [ -f "$dist$p" ]; then continue; fi
   [ -f "$dist${p%/}/index.html" ] || { c2=0; echo "  dead internal link $h"; }
 done < <(grep -rhoE --include=index.html 'href="/Himmel/[^"]*"' "$dist" | sed 's/^href="//; s/"$//' | sort -u | grep -vE '/_astro/|/pagefind/|favicon|sitemap')
+[ "$nlinks" -gt 0 ] || { c2=0; echo "  no internal hrefs found in dist"; }
 if [ "$c2" -eq 1 ]; then ok "criterion 2: every internal href resolves in dist"; else ko "criterion 2: every internal href resolves in dist"; fi
 # control: the remark step throws on a link to a file that does not exist
 broken=$(cd "$here" && node --input-type=module -e "
@@ -77,7 +94,7 @@ case "$broken" in threw:*broken\ link*) ok "criterion 2: a broken link fails the
 
 # --- criterion 3: bare <placeholder> stays visible text
 check "criterion 3: bare <name> renders as visible text" grep -qE 'Console (&#x3C;|&lt;)name(>|&gt;) is live' "$(route_of telegram-bridge.md)"
-check "criterion 3: no <name> element swallowed into the DOM" bash -c "! grep -q 'Console <name>' '$(route_of telegram-bridge.md)'"
+check "criterion 3: no <name> element swallowed into the DOM" absent 'Console <name>' "$(route_of telegram-bridge.md)"
 
 # --- criterion 4: mermaid + byte-identical standalone HTML
 want=$(grep -c '^```mermaid' "$repo/docs/architecture.md")

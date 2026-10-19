@@ -171,7 +171,7 @@ stage() {
 # assertion this mirrors.
 # pluginSet is no longer asked (-1); the Commit rules step adds
 # tracker=none and its consent=no (+2).
-BASE_ANSWERS=(starter project none inline none no none no none no)
+BASE_ANSWERS=(starter project none inline none no none no "" none no)
 
 # ── Case 1: interactive install, save accepted -> byte-identical file ───────
 c1="$work/case1"; mkdir -p "$c1"

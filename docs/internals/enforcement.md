@@ -5681,8 +5681,8 @@ both values again and compare the deltas.
 as the billing note above says, the credit covers `claude -p` run with an API
 key from the linked Console org (https://support.claude.com/en/articles/17154008);
 the platform page's "Doesn't cover: Claude Code" row means interactive Claude
-Code. So the API credit lane (`claude -p` + `ANTHROPIC_API_KEY`,
-[api-credit-lane.md](api-credit-lane.md)) uses the covered surface; no switch
+Code. So the API credit lane (`claude -p` + `ANTHROPIC_API_KEY`)
+uses the covered surface; no switch
 to the SDK or the raw Messages API is needed. Measured 2026-10-13 (account B, Haiku, `total_cost_usd` 0.0032): Console >
 Billing promotional credit went from $199.91 to $199.90, so the spend landed
 on the credit.
