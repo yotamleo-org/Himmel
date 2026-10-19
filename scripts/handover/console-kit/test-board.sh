@@ -52,6 +52,8 @@ mkdir -p "$W/tx-none"
 export BOARD_TRANSCRIPTS="$W/tx-none"
 # the CR-loop line reads the CR ledger and the Jira mirror; never the operator's own.
 export CR_LEDGER="$W/no-cr-ledger.jsonl" BOARD_MIRROR="$W/no-mirror"
+# the overdue-classes panel reads known-findings.sh --ladder; never the live ledger.
+export BOARD_KNOWN_FINDINGS="$W/bin/no-known-findings"
 
 # The tick stub records its argv and prints a fixed line + fingerprint. N1..N7
 # cover every phase; the fleet is 9/15 with six idle slots. N12 (issue #1336):
@@ -1060,6 +1062,37 @@ jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 contains 'ice-followups: an absent mirror never fails the render (rc 0)' "rc=$rc" 'rc=0'
 jcheck 'ice-followups --json: an absent mirror reads n/a (null count)' 'M.trends.ice_followups.count === null && M.trends.ice_followups.keys.length === 0'
 lacks 'ice-followups html: an absent mirror renders no panel' "$(cat "$CL/board.html")" 'data-ice-followups='
+
+# --- classes overdue for escalation: the board reads the PROPOSE lines of
+# known-findings.sh --ladder (BOARD_KNOWN_FINDINGS is the seam) and never recomputes the ladder.
+cat > "$W/bin/kf-two" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --ladder ] || exit 2
+printf '%s\n' 'known-findings ladder: 27 class(es)' 'promotion proposals (printed only):' \
+    '  PROPOSE [mktemp-no-template] advisory -> gate recurrences=57 branches=39 host=scripts/lint/shell-lint.sh' \
+    '  PROPOSE [hook-fail-direction] advisory -> gate recurrences=19 branches=15 host=a scripts/hooks/ PreToolUse hook' \
+    '  [not-a-proposal] rung=advisory kind=fix agreed=3'
+STUB
+cat > "$W/bin/kf-none" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' 'known-findings ladder: 27 class(es)' 'promotion proposals (printed only):' '  none'
+STUB
+chmod +x "$W/bin/kf-two" "$W/bin/kf-none"
+BOARD_KNOWN_FINDINGS="$W/bin/kf-two" crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+contains 'overdue-classes: rc 0' "rc=$rc" 'rc=0'
+contains 'overdue-classes html: a section with the count of PROPOSE lines' "$chtml" 'data-overdue-classes="2"'
+contains 'overdue-classes html: first proposed class is a row' "$chtml" 'data-overdue-class="mktemp-no-template"'
+contains 'overdue-classes html: second proposed class is a row' "$chtml" 'data-overdue-class="hook-fail-direction"'
+lacks 'overdue-classes html: a non-PROPOSE ladder line is not a row' "$chtml" 'not-a-proposal'
+jcheck 'overdue-classes --json: the proposed class ids' 'M.trends.overdue_classes.length === 2 && M.trends.overdue_classes[0].id === "mktemp-no-template"'
+BOARD_KNOWN_FINDINGS="$W/bin/kf-none" crrun >/dev/null; rc=$?
+contains 'overdue-classes: no proposals is rc 0' "rc=$rc" 'rc=0'
+lacks 'overdue-classes html: no proposals renders no panel' "$(cat "$CL/board.html")" 'data-overdue-classes='
+BOARD_KNOWN_FINDINGS="$W/bin/absent" crrun >/dev/null; rc=$?
+contains 'overdue-classes: an unreadable ladder never fails the render (rc 0)' "rc=$rc" 'rc=0'
+lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/board.html")" 'data-overdue-classes='
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

@@ -840,6 +840,25 @@ const iceFollowupsSection = (() => {
     } catch { return na; }
 })();
 
+// Classes overdue for escalation: the PROPOSE lines of `known-findings.sh --ladder`, read
+// as printed -- the ladder is never recomputed here. BOARD_KNOWN_FINDINGS overrides the
+// script (test seam). The panel shows only when a class is proposed; an unreadable ladder
+// renders nothing; never fatal; not part of the fingerprint.
+const KNOWN_FINDINGS_BIN = process.env.BOARD_KNOWN_FINDINGS || join(HERE, '..', '..', 'cr', 'known-findings.sh');
+const overdueClassesSection = (() => {
+    trend.overdue_classes = [];
+    try {
+        const out = execFileSync('bash', [KNOWN_FINDINGS_BIN, '--ladder'], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'ignore'] });
+        for (const l of out.split('\n')) {
+            const m = /^\s*PROPOSE \[([^\]]+)\] (.*?)\s*$/.exec(l.replace(/\r$/, ''));
+            if (m) trend.overdue_classes.push({ id: m[1], proposal: m[2] });
+        }
+        if (!trend.overdue_classes.length) return '';
+        const rows = trend.overdue_classes.map((c) => `<li data-overdue-class="${esc(c.id)}"><b>${safe(c.id, 80)}</b> ${safe(c.proposal, 240)}</li>`).join('');
+        return `<section data-overdue-classes="${trend.overdue_classes.length}"><h2>Classes overdue for escalation</h2><p class="sub">PROPOSE lines of known-findings.sh --ladder; the refresh prints the same</p><ul>${rows}</ul></section>`;
+    } catch { trend.overdue_classes = []; return ''; }
+})();
+
 const archiveHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Supervisor Session Board — archive</title></head>
 <body>
@@ -919,6 +938,7 @@ ${failuresSection}
 ${flakesSection}
 ${crLoopSection}
 ${iceFollowupsSection}
+${overdueClassesSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
@@ -1171,7 +1191,7 @@ const boardModel = {
     milestones,
     needs_you: needsYou,
     legs: legsOut,
-    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, tools: succession },
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, cr_loop: trend.cr_loop, ice_followups: trend.ice_followups, overdue_classes: trend.overdue_classes, tools: succession },
     legend,
     cards,
 };
