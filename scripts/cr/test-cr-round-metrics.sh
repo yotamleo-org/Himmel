@@ -193,6 +193,11 @@ sed 's/"branch":"fix\/a"/"branch":"fix\/zzz"/' "$tmp/keyed.jsonl" | sed 's/2026-
 json="$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$tmp/keyed-other.jsonl" | grep -m1 '^{')"
 check "keyed launch of another branch does not join by time" "$(q critic_split.critic.cost_usd_total)" "null"
 
+# a short head that merely prefixes another does not join
+sed 's/"head":"a3"/"head":"a30"/' "$tmp/keyed.jsonl" > "$tmp/keyed-prefix.jsonl"
+json="$(CR_LEDGER="$tmp/split.jsonl" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$tmp/keyed-prefix.jsonl" | grep -m1 '^{')"
+check "keyed launch with a prefix-only head does not join" "$(q critic_split.critic.cost_usd_total)" "null"
+
 # no successful critic attempt anywhere: zero critic PRs, cost null (never a made-up zero)
 json="$(CR_LEDGER="$L" bash "$CM" --now 2026-10-09T00:00:00Z --known "$K" --critic-split --launches "$LF" | grep -m1 '^{')"
 check "split with no critic runs: critic branches" "$(q critic_split.critic.branches)" "0"

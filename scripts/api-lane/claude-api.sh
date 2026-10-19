@@ -222,10 +222,11 @@ fi
 # --- secret-free launch record (no key, no prompt) ---
 # the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
 read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
-# branch is JSON-escaped (control characters dropped) so it still matches the ledger's branch; head must be hex;
+# branch is JSON-escaped (control characters dropped) so it still matches the ledger's branch; head must be 7-64 hex or is empty;
 # a PR that is not a canonical positive decimal is null.
 R_BRANCH="$(printf '%s' "${HIMMEL_API_BRANCH:-}" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"
-R_HEAD="$(printf '%s' "${HIMMEL_API_HEAD:-}" | tr -cd 'A-Fa-f0-9')"
+R_HEAD=""
+[[ "${HIMMEL_API_HEAD:-}" =~ ^[0-9A-Fa-f]{7,64}$ ]] && R_HEAD="$HIMMEL_API_HEAD"
 R_PR=""
 [[ "${HIMMEL_API_PR:-}" =~ ^[1-9][0-9]*$ ]] && R_PR="$HIMMEL_API_PR"
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"

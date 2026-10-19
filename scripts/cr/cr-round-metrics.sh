@@ -235,13 +235,15 @@ if (e.SPLIT) {
   const attempts = records.filter(r => r.kind === "attempt" && r.model === "claude" && r.branch && Number.isFinite(Date.parse(r.ts)) && Date.parse(r.ts) <= now);
   const okAttempts = attempts.filter(r => r.status === "ok").sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
   const criticBranches = new Set(okAttempts.map(r => r.branch));
+  // equal heads, or one an abbreviation (7+ characters) of the other
+  const sameHead = (x, y) => x === y || (Math.min(x.length, y.length) >= 7 && (x.startsWith(y) || y.startsWith(x)));
   const used = new Set(), cost = new Map(), okCalls = new Map(), matchedCalls = new Map();
   for (const a of okAttempts) {
     okCalls.set(a.branch, (okCalls.get(a.branch) || 0) + 1);
     const at = Date.parse(a.ts);
     let best = -1, bestD = 60001;
     // a launch row carrying branch+head joins on that key; only keyless rows fall back to the timestamp window
-    const keyed = launches.findIndex((l, i) => !used.has(i) && l.branch && l.head && l.branch === a.branch && (String(a.head).startsWith(l.head) || l.head.startsWith(String(a.head))));
+    const keyed = launches.findIndex((l, i) => !used.has(i) && l.branch && l.head && l.branch === a.branch && sameHead(String(a.head), l.head));
     if (keyed >= 0) best = keyed;
     else launches.forEach((l, i) => { if (l.branch && l.head) return; const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
     const c = best >= 0 ? Number(launches[best].cost_usd) : NaN;

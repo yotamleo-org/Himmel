@@ -113,6 +113,9 @@ test('HIMMEL-6490: the launch record carries branch, head and PR; absent keys ar
     assert.equal(h.run(h.good, { HIMMEL_API_PR: bad }).status, 0);
     assert.equal(JSON.parse(h.record().trim()).pr, null, bad);
   }
+  const bh = fixture();
+  assert.equal(bh.run(bh.good, { HIMMEL_API_HEAD: 'refs/heads/abc' }).status, 0);
+  assert.equal(JSON.parse(bh.record().trim()).head, '');
   const g = fixture();
   assert.equal(g.run().status, 0);
   const bare = JSON.parse(g.record().trim());
