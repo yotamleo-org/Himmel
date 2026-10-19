@@ -493,3 +493,38 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   await page.locator("details.fleet-closed > summary").click();
   await expect(page.getByRole("list", { name: "Finished sessions" }).locator('[id="fleet-cloud-HIMMEL-907"] .fleet-meta')).toHaveText("PR merged · PR 1907");
 });
+
+// the console board: the leg card's goal cell, the Trends cost chart and the stage-dot drawer, measured in a real render.
+for (const [width, tallest] of [[1280, 120], [390, 180]] as const) {
+  test(`13. the leg card's goal cell is wide, whole and inside its card at ${width}px`, async ({ page }) => {
+    h = await bootAgui("", { fleet: true });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(h.url);
+    const row = card(page, FLEET.leg.name);
+    await expect(row.locator(".bd-goalcell")).toBeVisible();
+    const box = (await row.boundingBox())!, cell = (await row.locator(".bd-goalcell").boundingBox())!;
+    expect(cell.width).toBeGreaterThanOrEqual(200);
+    expect(box.height).toBeLessThanOrEqual(tallest);
+    for (const dot of await row.locator(".bd-dot").all()) {
+      const d = (await dot.boundingBox())!;
+      expect(d.x).toBeGreaterThanOrEqual(box.x);
+      expect(d.x + d.width).toBeLessThanOrEqual(box.x + box.width);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  });
+}
+
+test("14. the Trends cost chart keeps its bars a bar's width, and a stage dot opens the drawer that Esc closes", async ({ page }) => {
+  h = await bootAgui("", { fleet: true });
+  await page.goto(h.url);
+  await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Trends" }).click();
+  await expect(page.locator(".bd-card")).toHaveCount(4);
+  const bars = page.locator("svg.bd-spark rect");
+  await expect(bars).toHaveCount(2);
+  expect((await bars.first().boundingBox())!.width).toBeLessThanOrEqual(24);
+  await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Fleet" }).click();
+  await card(page, FLEET.leg.name).locator(".bd-dot").first().click();
+  await expect(page.locator(".bd-drawer")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".bd-drawer")).toHaveCount(0);
+});
