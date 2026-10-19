@@ -2942,20 +2942,25 @@ assert_grep_lacks "3473-g --threads-only makes no mergeStateStatus read" "found 
 cat > "$STUBDIR/jira-cli" <<'EOF2'
 #!/usr/bin/env bash
 echo "$*" >> "$STUBDIR_JIRA_LOG"
-if [ "$1" = get ]; then echo '{"fields":{"status":{"name":"In Review"}}}'; fi
+case "$*" in
+    "get HIMMEL-9430"*) echo '{"fields":{"status":{"name":"In Review"}}}' ;;
+    "transition HIMMEL-9430 IN CI") ;;
+    *) echo "unexpected jira-cli args: $*" >&2; exit 1 ;;
+esac
 exit 0
 EOF2
 chmod +x "$STUBDIR/jira-cli"
 export LEG_JIRA_CLI="$STUBDIR/jira-cli" STUBDIR_JIRA_LOG="$STUBDIR/jira.log"
 export GH_STUB_TITLE="fix(x): [HIMMEL-9430] a thing"
 : > "$STUBDIR/jira.log"
+export LEG_JIRA_STATUS=1
 run cr-completed --grace 30
 assert_rc 0 "6430-a checks green with a ticket-tagged PR -> exit 0"
 if grep -qF -- "transition HIMMEL-9430 IN CI" "$STUBDIR/jira.log"; then pass "6430-a CI wait transitions the ticket to IN CI"; else fail "6430-a CI wait transitions the ticket to IN CI" "log: $(cat "$STUBDIR/jira.log")"; fi
 : > "$STUBDIR/jira.log"
 run cr-completed --threads-only
 assert_grep_lacks "6430-b --threads-only never moves the ticket" "unexpected transition" -F -- "transition" "$STUBDIR/jira.log"
-unset LEG_JIRA_CLI STUBDIR_JIRA_LOG GH_STUB_TITLE
+unset LEG_JIRA_CLI STUBDIR_JIRA_LOG GH_STUB_TITLE LEG_JIRA_STATUS
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"

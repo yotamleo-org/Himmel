@@ -1280,10 +1280,12 @@ CHECK_CI_CACHE_REPO="${CHECK_CI_CACHE_REPO%/pull/*}"
 if [ "$THREADS_ONLY" -eq 0 ]; then
     # Waiting on CI moves the PR title's first [KEY] to IN CI. Best-effort and forward-only:
     # leg-jira-status.sh warns and exits 0 on any Jira failure; LEG_JIRA_STATUS=0 opts out.
+    # The call is bounded by a fixed 30s timeout, and skipped when no timeout binary exists.
     if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
         pr_title=$(pr_view --json title --jq .title 2>/dev/null) || pr_title=""
-        if [[ $pr_title =~ \[([A-Za-z][A-Za-z0-9]*-[0-9]+)\] ]]; then
-            bash "$(dirname "$0")/handover/console-kit/leg-jira-status.sh" "${BASH_REMATCH[1]}" "IN CI" >/dev/null 2>&1 || true
+        jira_tb=$(. "$(dirname "$0")/lib/timeout-bin.sh" >/dev/null 2>&1; printf '%s' "${_TIMEOUT_BIN:-}")
+        if [ -n "$jira_tb" ] && [[ $pr_title =~ \[([A-Za-z][A-Za-z0-9]*-[0-9]+)\] ]]; then
+            "$jira_tb" -k 5 30 bash "$(dirname "$0")/handover/console-kit/leg-jira-status.sh" "${BASH_REMATCH[1]}" "IN CI" >/dev/null 2>&1 || true
         fi
     fi
     # Grace window: probe (non-watch) until the PR has registered checks. gh exit
