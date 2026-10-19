@@ -18,8 +18,10 @@ SCRIPT="$HOOKS_DIR/record-primary-baseline.sh"
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 
-_REAL_HOME="$HOME"
-FIX="$(mktemp -d "${_REAL_HOME}/.himmel-2526-recfix-XXXXXX")" || exit 1
+# shellcheck source=lib-fixture-root.sh
+. "$HOOKS_DIR/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || exit 1
+FIX="$(mktemp -d "$_FROOT/.himmel-2526-recfix-XXXXXX")" || exit 1
 trap 'rm -rf "$FIX"' EXIT
 
 # Build fixtures under the real HOME BEFORE overriding it.
