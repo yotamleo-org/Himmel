@@ -127,6 +127,8 @@ cmd_up() {
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
     local vcpus="${MACHINE##*-}"
+    # custom types are <family>-custom-<vcpus>-<memory MB>: the vCPU field is second from last
+    case "$MACHINE" in *custom-*-*) vcpus="${MACHINE%-*}"; vcpus="${vcpus##*-}" ;; esac
     case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
     quota_preflight $((need * vcpus))
 
@@ -160,7 +162,7 @@ cmd_up() {
             # a create whose response was lost may still have made the VM: strip its jit-config.
             # Only a confirmed not-found means nothing to strip or delete, just the runner registration minted for it;
             # any other describe outcome is uncertain and keeps the cleanup.
-            if probe="$(gc compute instances describe "$vm" --zone="$ZONE" 2>&1)" || ! grep -q 'was not found' <<< "$probe"; then
+            if probe="$(gc compute instances describe "$vm" --zone="$ZONE" 2>&1)" || ! grep -qF "zones/$ZONE/instances/$vm' was not found" <<< "$probe"; then
                 created+=("$vm")
             else
                 drop_runner "$vm"

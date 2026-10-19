@@ -43,7 +43,9 @@ case "$*" in
     *"instances remove-metadata"*) [ "${STUB_FAIL:-}" = rmmeta ] && exit 1 ;;
     *"instances create"*) [ "${STUB_FAIL:-}" = create ] && { echo "ERROR: (gcloud.compute.instances.create) Could not fetch resource:" >&2; echo " - Quota 'CPUS' exceeded.  Limit: 8.0 in region us-central1." >&2; exit 1; } ;;
     *"instances describe"*)
-        [ "${STUB_GONE:-}" = 1 ] && { echo "ERROR: (gcloud.compute.instances.describe) Could not fetch resource:" >&2; echo " - The resource 'projects/himmel-ci/zones/us-central1-a/instances/x' was not found" >&2; exit 1; }
+        d="$4"
+        [ "${STUB_GONE:-}" = 1 ] && { echo "ERROR: (gcloud.compute.instances.describe) Could not fetch resource:" >&2; echo " - The resource 'projects/himmel-ci/zones/us-central1-a/instances/$d' was not found" >&2; exit 1; }
+        [ "${STUB_GONE:-}" = other ] && { echo "ERROR: (gcloud.compute.instances.describe) Could not fetch resource:" >&2; echo " - The resource 'projects/himmel-ci/zones/us-central1-a/instances/x' was not found" >&2; exit 1; }
         [ "${STUB_GONE:-}" = err ] && { echo "ERROR: (gcloud.compute.instances.describe) HTTPError 503: backend error" >&2; exit 1; } ;;
     *"regions describe"*) [ "${STUB_FAIL:-}" = quota ] && exit 1; printf '%s\n' "${STUB_QUOTA:-8.0	1.0}" ;;
 esac
@@ -231,6 +233,10 @@ export STUB_FAIL=create STUB_GONE=err
 rc="$(run up 1)"
 if [ "$rc" -ne 0 ] && grep -q 'instances remove-metadata' "$STUB_LOG" && ! grep -q 'GH api -X DELETE' "$STUB_LOG"; then ok "an uncertain describe keeps the jit-config cleanup and the runner"; else bad "uncertain describe: rc=$rc"; fi
 unset STUB_FAIL STUB_GONE
+export STUB_FAIL=create STUB_GONE=other
+rc="$(run up 1)"
+if [ "$rc" -ne 0 ] && grep -q 'instances remove-metadata' "$STUB_LOG" && ! grep -q 'GH api -X DELETE' "$STUB_LOG"; then ok "a not-found for a different resource is treated as uncertain"; else bad "other not-found: rc=$rc"; fi
+unset STUB_FAIL STUB_GONE
 
 # 6g2c. a quota reading that is not a plain decimal fails closed.
 for q in ".	1.0" "8.0	1..0"; do
@@ -250,7 +256,9 @@ for q in "8.0	7.0" "8.0	5.0" "16.0	6.0"; do
 done
 export STUB_QUOTA="8.0	4.0"
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "quota with exactly 4 vCPU headroom creates the VM"; else bad "exact headroom: rc=$rc"; fi
-unset STUB_QUOTA
+export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=e2-custom-4-8192
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "a custom machine type counts its vCPU field, not the memory"; else bad "custom machine: rc=$rc"; fi
+unset STUB_QUOTA GCP_RUNNERS_MACHINE
 export STUB_FAIL=quota
 rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "an unreadable quota refuses to create"; else bad "quota read fail: rc=$rc"; fi
 unset STUB_FAIL
