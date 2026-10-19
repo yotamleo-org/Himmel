@@ -142,6 +142,12 @@ reset
 out="$(run)"
 is "empty-body in_progress listing -> unknown" "ci-queue: unknown" "$out"
 
+# a body whose workflow_runs is not an array is not an empty queue
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; echo '{"workflow_runs":{}}' > "$TMP/fx/runs-queued.json"
+out="$(run)"
+is "non-array workflow_runs -> unknown" "ci-queue: unknown" "$out"
+
 # an empty-body jobs listing is not zero jobs
 reset
 runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
