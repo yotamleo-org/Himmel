@@ -1324,6 +1324,26 @@ wait_exit "$WPID"
 check "(st2) a new no-ci token wakes" "0" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# a probe outage (stall=?) keeps the saved set: the same conflict coming back is not new
+reset_stub
+tick_line "N1:FRESH" "ok"
+stall_line 2887:conflict
+I="$(new_inbox st4)"
+start "$I" "$WORK/st4.out" --legs "N1.md"
+wait_hb "$I" || fail "(st4) no baseline heartbeat"
+stall_line '?'
+wait_exit "$WPID"
+check "(st4) a probe outage alone does not wake" "running" "$rc"
+wait_exit "$WPID"
+check "(st4) a second outage sample does not wake" "running" "$rc"
+stall_line 2887:conflict
+wait_exit "$WPID"
+check "(st4) the same conflict returning after the outage does not wake" "running" "$rc"
+stall_line 2887:conflict,9003:no-ci
+wait_exit "$WPID"
+check "(st4) a genuinely new token after the outage still wakes" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 reset_stub
 I="$(new_inbox st3)"
 start "$I" "$WORK/st3.out" --legs "N1.md"

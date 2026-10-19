@@ -2296,7 +2296,14 @@ t6049() { rm -f "$st6049/cache"; ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6
 stall_of() { sed -nE 's/.* stall=([^ ]*).*/\1/p'; }
 same 'stall= folds the probe rows to pr:class (HIMMEL-6049)' "$(t6049 | stall_of)" '2887:conflict,2869:ci-slow'
 contains 'verbose labels the stall field (HIMMEL-6049)' "$(t6049 --verbose)" 'stall: 2887:conflict,2869:ci-slow'
-same 'a failing probe leaves stall= absent (HIMMEL-6049)' "$(ST_FAIL=1 t6049 | stall_of)" ''
+same 'a failing probe with nothing cached reads stall=? (HIMMEL-6049)' "$(ST_FAIL=1 t6049 | stall_of)" '?'
+rm -f "$st6049/count" "$st6049/cache"
+ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
+touch -d '3 hours ago' "$st6049/cache"
+same 'a failing probe after the TTL emits the last cached value (HIMMEL-6049)' "$(ST_FAIL=1 ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" 2>/dev/null | stall_of)" '2887:conflict,2869:ci-slow'
+: > "$st6049/count"
+ST_FAIL=1 ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
+same 'the failure is cached for the TTL: a second tick does not re-run the probe (HIMMEL-6049)' "$(wc -l < "$st6049/count" | tr -d ' ')" '0'
 rm -f "$st6049/count" "$st6049/cache"
 ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1
 ST_COUNT="$st6049/count" TICK_STALL_PROBE="$st6049/probe" TICK_STALL_CACHE="$st6049/cache" TICK_STALL_TTL_MIN=60 bash "$SUT" >/dev/null 2>&1

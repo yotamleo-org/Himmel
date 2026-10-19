@@ -86,7 +86,8 @@
 # a failure; a leg joining or leaving the set wakes),
 # stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
-# and a stall resolving do not wake; absent from an older tick line, never a failure),
+# and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
+# from an older tick line, never a failure),
 # denials= (a new leg, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
@@ -324,9 +325,14 @@ sample() {
         # The names are sorted: the doc order must not decide the key.
         [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
         # stall= keeps the actionable tokens (conflict, no-ci) only, sorted: ci-slow and idle are
-        # report-only. A set with none is left out of the key altogether.
+        # report-only. A set with none is left out of the key altogether. stall=? (a probe
+        # outage) keeps the saved set, so the same conflict returning is not a new one.
         if [ "$f" = stall ]; then
-            v="$(printf '%s' "$v" | tr ',' '\n' | grep -E ':(conflict|no-ci)$' | LC_ALL=C sort | paste -sd, -)"  # swallow-ok: no match is the empty set
+            if [ "$v" = '?' ]; then
+                v="$(key_field stall "$saved")"
+            else
+                v="$(printf '%s' "$v" | tr ',' '\n' | grep -E ':(conflict|no-ci)$' | LC_ALL=C sort | paste -sd, -)"  # swallow-ok: no match is the empty set
+            fi
             [ -n "$v" ] || continue
         fi
         key="$key$f=$v|"
