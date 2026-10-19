@@ -4,7 +4,7 @@
 # Under runner backlog, superseded PR runs sit in workflow-level `queued` and
 # the concurrency group does not cancel them; codeowner-review-gate (queue: max)
 # and workflow_dispatch runs are never in that group at all. Each holds a slot
-# of the account's 20-job cap. This cancels every live CI / codeowner-review-gate
+# of the org's 60-job cap. This cancels every live CI / codeowner-review-gate
 # run on an open PR's branch whose headSha is not that PR's current headRefOid.
 #
 # Never touched: a run at the current head (a CANCELLED context on
