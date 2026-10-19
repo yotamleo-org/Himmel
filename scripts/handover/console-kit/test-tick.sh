@@ -2376,7 +2376,8 @@ contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPA
 RMD="$W/rm"
 mkdir -p "$RMD/verdicts" "$W/repo/scripts/ci" "$TICK_STATE_DIR/ready-files"
 printf '# trust paths\n^scripts/ci/\n^scripts/lib/\n' > "$W/repo/scripts/ci/ci-trust-paths.txt"
-printf '#!/bin/sh\necho x >> "%s/rm-gh.calls"\nexit 1\n' "$W" > "$W/rm-gh"
+# shellcheck disable=SC2016  # "$*" expands in the generated stub, not here
+printf '#!/bin/sh\necho "$*" >> "%s/rm-gh.calls"\nexit 1\n' "$W" > "$W/rm-gh"
 chmod +x "$W/rm-gh"
 export TICK_GH_CMD="$W/rm-gh"
 rm_head() { printf '%040d' "$1"; }
@@ -2401,7 +2402,7 @@ rm_leg 5 claude-opus-5-5 105 '- touches scripts/ci/, trust-reviewed GO needed'
 rm_files 105 scripts/ci/z.sh
 printf '# console\n' > "$RMD/console.md"
 rm_of() { TOKEN='' bash "$SUT" --doc "$RMD/console.md" 2>/dev/null | sed -n -E 's/.* ready-mismatch=([^ ]*).*/\1/p'; }
-same 'ready-mismatch= flags a claimed-none, a silent and a NO-GO-at-head READY, not the GO control or the named-trust one (HIMMEL-6032)' "$(rm_of)" '3/5,nogo=1/2,ALERT'
+same 'ready-mismatch= flags a claimed-none and a silent READY, counts the NO-GO-at-head one in nogo only, and skips the GO control and the named-trust one (HIMMEL-6032, HIMMEL-6441)' "$(rm_of)" '2/5,nogo=1/2,ALERT'
 rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
 contains 'detail flags the claimed-none READY on a trust-path diff as M1b' "$rm_det" "M1b	101	"
 contains 'detail flags the silent READY on a trust-path diff as M1c' "$rm_det" "M1c	102	"
@@ -2409,8 +2410,9 @@ contains 'detail flags the READY whose head a judge NO-GO-ed as M1a' "$rm_det" "
 not_contains 'a clean READY with a GO verdict is not flagged' "$rm_det" "	103	"
 not_contains 'a READY that names its trust-path touch is not flagged' "$rm_det" "	105	"
 contains 'detail breaks the NO-GO rate out per model' "$rm_det" "MODEL	claude-sonnet-5-5	"
-contains 'verbose labels the field' "$(TOKEN='' bash "$SUT" --doc "$RMD/console.md" --verbose 2>/dev/null)" 'ready-mismatch: 3/5,nogo=1/2,ALERT'
-[ ! -e "$W/rm-gh.calls" ] && pass 'cached file lists mean no gh call' || fail 'a cached PR still called gh'
+contains 'verbose labels the field' "$(TOKEN='' bash "$SUT" --doc "$RMD/console.md" --verbose 2>/dev/null)" 'ready-mismatch: 2/5,nogo=1/2,ALERT'
+! grep -q 'files' "$W/rm-gh.calls" && pass 'cached file lists mean no file-list gh call' || fail 'a cached PR still read its files from gh'
+rm -f "$W/rm-gh.calls"
 rm -f "$RMD"/leg[1245].md
 same 'ready-mismatch= is absent when every READY is clean' "$(rm_of)" ''
 rm -f "$RMD/leg3.md"
@@ -2452,7 +2454,34 @@ rm_files 322 scripts/ci/b.sh
 rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
 contains 'a not-touched claim on a trust-path diff is M1b' "$rm_det" "M1b	321	"
 contains 'a does-not-touch claim on a trust-path diff is M1b' "$rm_det" "M1b	322	"
+rm -f "$RMD"/leg*.md "$TICK_STATE_DIR"/ready-files/*
+rm -rf "$RMD/verdicts"
+mkdir -p "$RMD/verdicts"
+# shellcheck disable=SC2016  # "$*" expands in the generated stub, not here
+printf '#!/bin/sh\ncase "$*" in *state*) echo MERGED ;; *) exit 1 ;; esac\n' > "$W/rm-gh"
+rm_leg 331 claude-sonnet-5-5 331 '- trust path: none'
+rm_leg 332 claude-sonnet-5-5 332 '- CI green, marker cleared'
+rm_files 331 scripts/ci/m.sh
+rm_files 332 scripts/lib/n.sh
+same 'a trust-path claim mismatch on an already-merged PR is not flagged (HIMMEL-6441)' "$(rm_of)" ''
+rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
+not_contains 'a merged PR raises no M1b' "$rm_det" "M1b	331	"
+not_contains 'a merged PR raises no M1c' "$rm_det" "M1c	332	"
+not_contains 'a merged PR raises no trust ALERT' "$rm_det" "ALERT"
+[ -e "$TICK_STATE_DIR/ready-files/331-$(rm_head 331).merged" ] && pass 'a merged state is cached' || fail 'a merged PR was not cached'
+printf '#!/bin/sh\nexit 1\n' > "$W/rm-gh"
+same 'a merged PR stays unflagged from its cache when gh is down' "$(rm_of)" ''
+rm -f "$RMD"/leg*.md "$TICK_STATE_DIR"/ready-files/*
+rm_leg 341 claude-sonnet-5-5 341 '- trust path: none'
+rm_files 341 docs/ok.md
+rm_verdict 341 NO-GO
+same 'a lone NO-GO at the READY head is counted in nogo, not in ready-mismatch (HIMMEL-6441)' "$(rm_of)" ''
+rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
+contains 'a lone NO-GO is still listed as M1a in the detail' "$rm_det" "M1a	341	"
+contains 'a lone NO-GO counts zero flagged and one nogo' "$rm_det" "COUNT	1	0	1	1	0"
 rm -f "$RMD"/leg*.md
+rm -rf "$RMD/verdicts"
+mkdir -p "$RMD/verdicts"
 rm_det="$(bash "$SUT" --ready-mismatch --ready-dir "$RMD" 2>/dev/null)"
 contains 'a window with no READY reports a zero count' "$rm_det" "COUNT	0	0	0	0	0"
 unset TICK_GH_CMD

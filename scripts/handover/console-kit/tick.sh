@@ -338,11 +338,14 @@ csv_add() {
 # `COUNT <ready> <flagged> <judged> <nogo> <unchecked>`, one `MODEL <m> <judged> <nogo>`
 # row per model, and `ALERT <reason>` rows. rc 1 = nothing to read (no bucket, no list).
 #   M1a  the READY head is the head a judge record NO-GO'd: any <bucket>/verdicts/<qid>/*.md
-#        carrying a `pr: <n>` line and a `**NO-GO** for head` line at the full head
+#        carrying a `pr: <n>` line and a `**NO-GO** for head` line at the full head;
+#        listed and counted in the nogo rate, not in <flagged>: a NO-GO is the review loop working
 # A scan past TICK_READY_BUDGET_SEC (default 30) stops reading gh, counts the rest
 # unchecked and prints a `PARTIAL` row.
 #   M1b  the READY says it touches no trust path, the PR's files hit ci-trust-paths.txt
 #   M1c  the PR's files hit ci-trust-paths.txt, the READY never mentions trust
+# M1b/M1c skip a PR that is already merged (one `gh pr view --json state` per candidate, a
+# MERGED answer cached as <pr>-<head>.merged); a failed state read leaves the row flagged.
 # Changed-file lists come from the ready-files cache under TICK_STATE_DIR (keyed
 # <pr>-<head>, so a re-pushed head is a fresh row); a miss costs one `gh pr view`,
 # at most 20 per scan, and past that the READY is counted unchecked, never clean.
@@ -410,6 +413,19 @@ ready_mismatch_scan() {
             if [ -z "$files" ]; then hit="?"
             elif printf '%s\n' "$files" | grep -Eq -f "$pats"; then hit=1
             else hit=0; fi
+            if [ "$hit" = 1 ] && [ "$claim" != named ]; then
+                if [ -e "$cache/$pr-$head.merged" ]; then
+                    hit=0
+                elif [ "$budget" -gt 0 ] && [ $((SECONDS - t0)) -lt "$cap" ]; then
+                    budget=$((budget - 1))
+                    left=$((cap - (SECONDS - t0)))
+                    [ "$left" -gt 10 ] && left=10
+                    if [ "$(cd "$REPO" && timeout -k 2 "$left" "$ghcmd" pr view "$pr" --json state -q .state 2>/dev/null)" = MERGED ]; then  # swallow-ok: a failed state read leaves the READY flagged, never clean
+                        : > "$cache/$pr-$head.merged" 2>/dev/null
+                        hit=0
+                    fi
+                fi
+            fi
             jv=none
             if grep -qx "$pr $head NO-GO" "$vidx"; then jv=NO-GO
             elif grep -qx "$pr $head GO" "$vidx"; then jv=GO; fi
@@ -421,7 +437,7 @@ ready_mismatch_scan() {
           if ($6 != "none") { j++; mj[$3]++ }
           if ($6 == "NO-GO") { n++; mn[$3]++ }
           f = 0
-          if ($6 == "NO-GO") { f = 1; printf "M1a\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3 }
+          if ($6 == "NO-GO") printf "M1a\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3
           if ($5 == "1" && $4 == "none") { f = 1; printf "M1b\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3; tm++ }
           if ($5 == "1" && $4 == "silent") { f = 1; printf "M1c\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3; tm++ }
           flagged += f }
