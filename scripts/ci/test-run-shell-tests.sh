@@ -2624,4 +2624,12 @@ else
   fail "26c: ci.yml does not set SUITE_STOP_ON_FAIL to '1' on pull_request only"
 fi
 
+# shellcheck disable=SC2016
+left26=$(env SUITE_STOP_ON_FAIL=1 bash -c '. "$1"; printf "[%s]" "${SUITE_STOP_ON_FAIL-}"' _ "$RST_FIXTURE_DIR/run-shell-tests-fixture.sh" 2>&1)
+if [ "$left26" = "[]" ]; then
+  pass "26d: the fixture clears an inherited SUITE_STOP_ON_FAIL for the family's nested runs"
+else
+  fail "26d: sourcing the fixture left SUITE_STOP_ON_FAIL set: $left26"
+fi
+
 rst_tally
