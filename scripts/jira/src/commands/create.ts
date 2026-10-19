@@ -76,7 +76,7 @@ async function planResidual(
   if (area) {
     const jql =
       `project = ${project} AND labels = residual AND labels = ${jqlQuote(labels[1])} AND labels = ${jqlQuote(area)}` +
-      ' AND statusCategory != Done';
+      ` AND key != ${jqlQuote(o.residualOf)} AND statusCategory != Done`;
     const [dup] = await searchAllIssues(jql, '1', request);
     if (dup) return { labels, duplicateOf: dup.key };
   }

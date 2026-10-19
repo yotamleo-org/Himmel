@@ -555,6 +555,12 @@ describe('create --residual-of', () => {
     expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50|HIMMEL-50.*HIMMEL-77/s);
   });
 
+  it('the duplicate search leaves out the parent itself', async () => {
+    play();
+    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    expect(searches.find((j) => j.includes('area-'))).toMatch(/key != "?HIMMEL-50"?/);
+  });
+
   it('refuses a missing --fu-class or --class, an unknown fu-class, and an explicit --fix-version', async () => {
     play();
     await expect(file('--residual-of', 'HIMMEL-50', '--class', 'x')).rejects.toThrow(/--fu-class/);
