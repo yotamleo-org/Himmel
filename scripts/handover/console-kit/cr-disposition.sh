@@ -78,7 +78,7 @@ if [ "$VERB" = record ]; then
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --source) SRC="${2:-}"; shift 2 2>/dev/null || shift "$#" ;;
-            --attest) ATTEST="${2:-}"; shift 2 2>/dev/null || shift "$#" ;;
+            --attest) ATTEST="${ATTEST:+$ATTEST,}${2:-}"; shift 2 2>/dev/null || shift "$#" ;;
             *) usage; exit 2 ;;
         esac
     done
@@ -149,6 +149,20 @@ jira_get() {
     fi
 }
 
+# judge_ruled <qid> <"fid@fhead disposition"> - a GO verdict for $SHA under the
+# judge's directory names this finding and this disposition on a line of its
+# own. Only GO-at-$SHA files count: go_trust_verdict has checked their macs.
+judge_ruled() {
+    local scope f
+    scope=$(go_verdict_scope "$ANCHOR") || return 1
+    for f in "$ROOT/$scope/verdicts/$1"/*.md; do
+        [ -f "$f" ] || continue
+        grep -qxF "**GO** for head \`$SHA\`." "$f" || grep -qxF "**GO** for head \`$SHA\`" "$f" || continue
+        tr -d '\r' < "$f" | grep -qxF -e "$2" -e "- $2" && return 0
+    done
+    return 1
+}
+
 # One TSV line per open crit/imp: id, finding head, sev, then the latest
 # disposition row for this PR at SHA (disposition, source, attest, mac) or "-".
 ROWS=$(LEDGER="$LEDGER" BRANCH="$BRANCH" PR="$PR" SHA="$SHA" node -e '
@@ -212,6 +226,8 @@ while IFS="$TAB" read -r fid fhead sev disp src attest mac; do
                     why="cannot resolve the handover root to read judge ${src#judge:}'s verdict"
                 elif ! r=$(go_trust_verdict "$ROOT" "${src#judge:}" "$SHA" "$ANCHOR" "$PR"); then
                     why="judge ${src#judge:} has no GO verdict for this head: $r"
+                elif ! judge_ruled "${src#judge:}" "$fid@$fhead $disp"; then
+                    why="judge ${src#judge:}'s GO verdict for this head does not rule '$fid@$fhead $disp'"
                 fi ;;
             console:*)
                 if [ "$sev" = crit ]; then

@@ -61,12 +61,12 @@ contains() { grep -qF -e "$3" <<< "$2" && echo "ok - $1" || { echo "FAIL - $1: o
 export USER_SLUG=u
 VBUCKET="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
 VSCOPE="u/$VBUCKET"
-# verdict <root> <qid> <verdict line> <pr> - a signed judge record, as test-go.sh builds it.
+# verdict <root> <qid> <verdict line> <pr> [ruling] - a signed judge record, as test-go.sh builds it.
 verdict() {
   local vf="$1/$VSCOPE/verdicts/$2/HIMMEL-1-judge-$2.md" vmac
   mkdir -p "$1/$VSCOPE/verdicts/$2"
-  printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n' \
-    "$2" "$3" "$4" > "$vf"
+  printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\n%s\n\n## Evidence checked\n\ne\n' \
+    "$2" "$3" "$4" "${5:-reason}" > "$vf"
   # shellcheck disable=SC2094  # the read finishes before the append below
   vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$2" "$(basename "$vf" .md)" < "$vf")" || return 1
   printf 'mac: %s\n' "$vmac" >> "$vf"
@@ -111,8 +111,8 @@ nogo     "3: missing key"
 
 # --- 4. a console follow-up with three attests passes ---------------------
 rc=0; bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
-  --source console --attest no-weakened-guard,ci-green,no-data-loss >/dev/null 2>&1 || rc=$?
-check "4: record follow-up -> exit 0" "$rc" "0"
+  --source console --attest no-weakened-guard --attest ci-green --attest no-data-loss >/dev/null 2>&1 || rc=$?
+check "4: record follow-up with repeated --attest -> exit 0" "$rc" "0"
 gos 90 "$SHA"
 check "4: judged follow-up with three attests -> exit 0" "$rc" "0"
 check "4: the GO is written" "$out" "$HDIR/.locks/go/90.$SHA"
@@ -151,7 +151,11 @@ gos 90 "$SHA"
 check "6: judge source with no GO verdict on this head -> exit 9" "$rc" "9"
 verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 90
 gos 90 "$SHA"
-check "6: judge source with a GO verdict on this head -> exit 0" "$rc" "0"
+check    "6: a GO verdict that does not rule the finding -> exit 9" "$rc" "9"
+contains "6: says the verdict does not rule it" "$out" "does not rule"
+verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 90 "- codex-9@$FHEAD follow-up:HIMMEL-6352"
+gos 90 "$SHA"
+check "6: judge source with a GO verdict ruling the finding -> exit 0" "$rc" "0"
 rm -rf "$HDIR/.locks"
 
 # --- 7. an Important on a trust-path PR needs a judge ----------------------
@@ -162,7 +166,7 @@ git -C "$TA" add -A; git -C "$TA" -c user.name=t -c user.email=t@t commit -q -m 
 git -C "$TA" remote add origin "$TO"; git -C "$TA" push -q origin HEAD:refs/heads/main 2>/dev/null
 git -C "$TO" symbolic-ref HEAD refs/heads/main
 export READY_CHECK_ANCHOR="$TA" READY_STUB_TRUST_FILE=scripts/lib/env-alias.sh
-verdict "$HDIR" JT1 "**GO** for head \`$SHA\`." 90
+verdict "$HDIR" JT1 "**GO** for head \`$SHA\`." 90 "census-reset-1@$FHEAD follow-up:HIMMEL-6352"
 gos --trust-reviewed JT1 90 "$SHA"
 check    "7: console follow-up on a trust-path Important -> exit 9" "$rc" "9"
 contains "7: names the trust path" "$out" "trust path"

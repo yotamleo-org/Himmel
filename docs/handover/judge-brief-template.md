@@ -301,8 +301,10 @@ gathering, per the rule below.>
 > **follow-up:<KEY>** — merge now with the follow-up ticket already filed, and
 > only if all three hold, each with evidence: CI green at this head, no data
 > loss, no weakened guard. If any of the three fails, the answer is (a). Name
-> each finding as `<finding id>@<finding head> fix-here|follow-up:<KEY>` in your
-> verdict; the leg records it with `cr-disposition.sh record … --source
+> each finding on a line of its own in your GO verdict, exactly
+> `<finding id>@<finding head> fix-here|follow-up:<KEY>` (a leading `- ` is
+> allowed): the GO gate accepts the disposition only when the judge's GO for
+> that head carries that line. The leg records it with `cr-disposition.sh record … --source
 > judge:<qid>`. A Critical always needs this judge ruling; so does an Important
 > on a trust-path PR.
 

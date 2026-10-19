@@ -51,5 +51,6 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   ticket already filed, and only if the merge cannot break main. The record must
   carry all three attests (CI green at the head, no data loss, no weakened guard)
   or it is refused. **Who decides:** a Critical always needs a judge verdict
-  (`judge:<qid>`, a signed GO at the same head); an Important on a trust-path PR
+  (`judge:<qid>`, a signed GO at the same head whose verdict carries the line
+  `<fid>@<finding head> <disposition>`); an Important on a trust-path PR
   needs one too; any other Important may take `console`.
