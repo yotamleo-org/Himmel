@@ -42,7 +42,9 @@ case "$*" in
     *"instances delete"*) [ "${STUB_FAIL:-}" = delete ] && exit 1 ;;
     *"instances remove-metadata"*) [ "${STUB_FAIL:-}" = rmmeta ] && exit 1 ;;
     *"instances create"*) [ "${STUB_FAIL:-}" = create ] && { echo "ERROR: (gcloud.compute.instances.create) Could not fetch resource:" >&2; echo " - Quota 'CPUS' exceeded.  Limit: 8.0 in region us-central1." >&2; exit 1; } ;;
-    *"instances describe"*) [ "${STUB_GONE:-}" = 1 ] && exit 1 ;;
+    *"instances describe"*)
+        [ "${STUB_GONE:-}" = 1 ] && { echo "ERROR: (gcloud.compute.instances.describe) Could not fetch resource:" >&2; echo " - The resource 'projects/himmel-ci/zones/us-central1-a/instances/x' was not found" >&2; exit 1; }
+        [ "${STUB_GONE:-}" = err ] && { echo "ERROR: (gcloud.compute.instances.describe) HTTPError 503: backend error" >&2; exit 1; } ;;
     *"regions describe"*) [ "${STUB_FAIL:-}" = quota ] && exit 1; printf '%s\n' "${STUB_QUOTA:-8.0	1.0}" ;;
 esac
 exit 0
@@ -222,6 +224,21 @@ rc="$(run up 1)"
 if [ "$rc" -ne 0 ] && ! grep -q 'instances remove-metadata' "$STUB_LOG" && ! grep -q 'instances delete' "$STUB_LOG" && grep -q 'instances create failed for himmel-ci-' "$T/out"; then ok "a create that left no instance makes no remove-metadata or delete call"; else bad "gone create: rc=$rc"; fi
 if grep -q 'GH api -X DELETE repos/yotamleo/Himmel/actions/runners/4242' "$STUB_LOG"; then ok "the runner minted for a failed create is deleted"; else bad "orphan runner not deleted"; fi
 unset STUB_FAIL STUB_GONE
+
+# 6g2b. a describe that fails for any reason but not-found is uncertain: the VM is treated as
+#       possibly live (jit-config stripped) and its runner registration is kept.
+export STUB_FAIL=create STUB_GONE=err
+rc="$(run up 1)"
+if [ "$rc" -ne 0 ] && grep -q 'instances remove-metadata' "$STUB_LOG" && ! grep -q 'GH api -X DELETE' "$STUB_LOG"; then ok "an uncertain describe keeps the jit-config cleanup and the runner"; else bad "uncertain describe: rc=$rc"; fi
+unset STUB_FAIL STUB_GONE
+
+# 6g2c. a quota reading that is not a plain decimal fails closed.
+for q in ".	1.0" "8.0	1..0"; do
+    export STUB_QUOTA="$q"
+    rc="$(run up 1)"
+    if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "malformed quota '$q' refuses to create"; else bad "malformed quota '$q': rc=$rc creates=$(creates)"; fi
+done
+unset STUB_QUOTA
 
 # 6g3. the regional CPUS quota is read before any JIT request or create; too little headroom
 #      (limit capped at 8 vCPU) creates nothing; an unreadable quota fails closed.

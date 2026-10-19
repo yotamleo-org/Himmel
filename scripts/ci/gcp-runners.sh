@@ -97,7 +97,7 @@ quota_preflight() {
     local q limit usage
     q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --filter="quotas.metric=CPUS" --format="value(quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
     read -r limit usage <<< "$q"
-    awk -v l="${limit:-x}" -v u="${usage:-x}" 'BEGIN { exit !(l ~ /^[0-9.]+$/ && u ~ /^[0-9.]+$/) }' || die "up: unreadable regional CPUS quota '$q', refusing to create VMs blind"
+    awk -v l="${limit:-x}" -v u="${usage:-x}" 'BEGIN { exit !(l ~ /^[0-9]+(\.[0-9]+)?$/ && u ~ /^[0-9]+(\.[0-9]+)?$/) }' || die "up: unreadable regional CPUS quota '$q', refusing to create VMs blind"
     awk -v l="$limit" -v u="$usage" -v n="$1" -v pin="$CPU_PIN" 'BEGIN { if (l + 0 > pin + 0) l = pin; exit !(u + n <= l + 0) }' \
         || die "up: regional CPUS quota has no headroom: usage $usage of limit $limit (pinned to $CPU_PIN), $1 more vCPU needed"
 }
@@ -130,7 +130,7 @@ cmd_up() {
     case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
     quota_preflight $((need * vcpus))
 
-    local tmpd i stamp vm created=()
+    local tmpd i stamp vm probe created=()
     # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.
     up_fail() { [ "${#created[@]}" -eq 0 ] || ONLINE_WAIT=0 drop_jit "${created[@]}"; die "$1"; }
     tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
@@ -158,8 +158,9 @@ cmd_up() {
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
             ; then
             # a create whose response was lost may still have made the VM: strip its jit-config.
-            # No instance means nothing to strip or delete, only the runner registration minted for it.
-            if gc compute instances describe "$vm" --zone="$ZONE" > /dev/null 2>&1; then
+            # Only a confirmed not-found means nothing to strip or delete, just the runner registration minted for it;
+            # any other describe outcome is uncertain and keeps the cleanup.
+            if probe="$(gc compute instances describe "$vm" --zone="$ZONE" 2>&1)" || ! grep -q 'was not found' <<< "$probe"; then
                 created+=("$vm")
             else
                 drop_runner "$vm"
