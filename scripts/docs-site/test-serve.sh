@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/docs-site/test-serve.sh — journey J1: the operator opens
 # the local docs site. Runs serve.sh for real on 127.0.0.1:4321.
-# Needs `npm ci` in site/ (network); without it, skips loudly.
+# The mid-build port race runs against stub npm/npx; the real serve needs
+# `npm ci` in site/ (network) and skips loudly without it.
 set -u
 repo=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 pass=0
@@ -9,10 +10,6 @@ fail=0
 ok() { pass=$((pass + 1)); printf 'PASS  %s\n' "$1"; }
 ko() { fail=$((fail + 1)); printf 'FAIL  %s\n' "$1"; }
 
-if [ ! -d "$repo/site/node_modules/astro" ]; then
-  echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
-  exit 0
-fi
 if (exec 3<>/dev/tcp/127.0.0.1/4321) 2>/dev/null; then
   echo "SKIP: port 4321 is busy on this host; free it to run J1"
   exit 0
@@ -21,20 +18,84 @@ fi
 tmp=$(mktemp -d -t docs-site-j1.XXXXXX) || exit 1
 srv=""
 blocker=""
-up=0
-cleanup() {
-  # astro detaches into its own session, so kill by port: this test owns 4321 (checked free above)
-  if [ -n "$srv" ]; then
-    kill "$srv" 2>/dev/null
-    # only once our own server answered there; a failed start must not kill a stranger
-    if [ "$up" -eq 1 ]; then
-      ss -ltnp 'sport = :4321' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs -r kill 2>/dev/null
-    fi
+foreign=""
+owned=0
+stop_server() {
+  # astro detaches into its own session; the lock in site/.astro names the one server this run started
+  if [ "$owned" -eq 1 ]; then
+    (cd "$repo/site" && npx astro preview stop) >/dev/null 2>&1
+    owned=0
   fi
+  [ -n "$srv" ] && kill "$srv" 2>/dev/null
+  srv=""
+}
+cleanup() {
+  stop_server
   [ -n "$blocker" ] && kill "$blocker" 2>/dev/null
+  [ -n "$foreign" ] && kill "$foreign" 2>/dev/null
+  [ -f "$tmp/racer.pid" ] && kill "$(cat "$tmp/racer.pid")" 2>/dev/null
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+
+listening() { (exec 3<>"/dev/tcp/$1/4321") 2>/dev/null; } # listening <host>
+wait_free() { # wait_free <host>
+  for _ in 1 2 3 4 5 6 7 8 9 10; do listening "$1" || return 0; sleep 0.3; done
+}
+
+# --- port claimed mid-build: non-zero exit, port named, no URL, preview never started
+mkdir "$tmp/bin"
+cat >"$tmp/bin/npm" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = run ] || exit 0
+node -e "require('net').createServer().listen(4321,'127.0.0.1');setTimeout(()=>{},60000)" >/dev/null 2>&1 &
+echo $! >"$J1_RACER_PID"
+for _ in 1 2 3 4 5 6 7 8 9 10; do (exec 3<>/dev/tcp/127.0.0.1/4321) 2>/dev/null && exit 0; sleep 0.3; done
+exit 1
+STUB
+cat >"$tmp/bin/npx" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$J1_NPX_LOG"
+STUB
+chmod +x "$tmp/bin/npm" "$tmp/bin/npx"
+if out=$(PATH="$tmp/bin:$PATH" J1_RACER_PID="$tmp/racer.pid" J1_NPX_LOG="$tmp/npx.log" bash "$repo/scripts/docs-site/serve.sh" 2>&1); then
+  ko "port claimed mid-build exits non-zero"
+else
+  case "$out" in *4321*) ok "port claimed mid-build exits non-zero and names 4321" ;; *) ko "port claimed mid-build names the port (got: $out)" ;; esac
+fi
+case "$out" in *'docs site: http'*) ko "port claimed mid-build prints no URL" ;; *) ok "port claimed mid-build prints no URL" ;; esac
+if [ ! -e "$tmp/npx.log" ]; then ok "port claimed mid-build never starts preview"; else ko "port claimed mid-build never starts preview"; fi
+[ -f "$tmp/racer.pid" ] && kill "$(cat "$tmp/racer.pid")" 2>/dev/null
+rm -f "$tmp/racer.pid"
+wait_free 127.0.0.1
+
+# --- a stranger on [::1]:4321 makes astro shift ports: serve.sh must refuse, not print 4321
+node -e "require('net').createServer().listen(4321,'::1');setTimeout(()=>{},60000)" >/dev/null 2>&1 &
+foreign=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do listening ::1 && break; sleep 0.3; done
+if listening ::1; then
+  if out=$(PATH="$tmp/bin:$PATH" J1_RACER_PID="$tmp/racer.pid" J1_NPX_LOG="$tmp/npx6.log" bash "$repo/scripts/docs-site/serve.sh" 2>&1); then
+    ko "IPv6-busy port exits non-zero"
+  else
+    case "$out" in *4321*) ok "IPv6-busy port exits non-zero and names 4321" ;; *) ko "IPv6-busy port names the port (got: $out)" ;; esac
+  fi
+  if [ ! -e "$tmp/npx6.log" ]; then ok "IPv6-busy port never starts preview"; else ko "IPv6-busy port never starts preview"; fi
+else
+  echo "SKIP: no IPv6 loopback; IPv6 rows not run"
+fi
+kill "$foreign" 2>/dev/null
+foreign=""
+[ -f "$tmp/racer.pid" ] && kill "$(cat "$tmp/racer.pid")" 2>/dev/null
+rm -f "$tmp/racer.pid"
+wait_free ::1
+wait_free 127.0.0.1
+
+if [ ! -d "$repo/site/node_modules/astro" ]; then
+  echo "SKIP: site/node_modules absent (run: cd site && npm ci); real serve not run in the hermetic shell shards"
+  printf '\n%d passed, %d failed\n' "$pass" "$fail"
+  [ "$fail" -eq 0 ]
+  exit
+fi
 
 # --- port busy: non-zero exit, port named, no silent shift
 node -e "require('net').createServer().listen(4321,'127.0.0.1');setTimeout(()=>{},60000)" &
@@ -47,15 +108,23 @@ kill "$blocker" 2>/dev/null
 wait "$blocker" 2>/dev/null
 blocker=""
 
+wait_free 127.0.0.1
+
 # --- serve for real
 bash "$repo/scripts/docs-site/serve.sh" >"$tmp/out" 2>"$tmp/err" &
 srv=$!
+owned=1
 up=0
 for _ in $(seq 1 120); do
   curl -fs -o /dev/null http://127.0.0.1:4321/Himmel/ 2>/dev/null && { up=1; break; }
   sleep 1
 done
 if [ "$up" -eq 1 ]; then ok "site answers on http://127.0.0.1:4321/Himmel/"; else ko "site answers"; tail -5 "$tmp/err"; fi
+# a stranger on [::1]:4321 (astro binds IPv4 only) is not ours: it must outlive the run
+node -e "require('net').createServer().listen(4321,'::1');setTimeout(()=>{},300000)" >/dev/null 2>&1 &
+foreign=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do listening ::1 && break; sleep 0.3; done
+listening ::1 || { kill "$foreign" 2>/dev/null; foreign=""; echo "SKIP: no IPv6 loopback; foreign-listener row not run"; }
 if [ "$(grep -c '^docs site: http://127.0.0.1:4321/Himmel/$' "$tmp/out")" -eq 1 ]; then ok "serve.sh prints exactly the one URL line"; else ko "serve.sh prints the URL line"; fi
 
 for p in "" why-himmel/ getting-started/ setup/install/ adoption-trail.html; do
@@ -75,6 +144,13 @@ if command -v chromium >/dev/null 2>&1; then
 else
   echo "SKIP: no chromium; mermaid render not checked in a browser"
 fi
+
+# --- stop our own server, then the stranger must still be listening
+stop_server
+if [ -n "$foreign" ]; then
+  if listening ::1; then ok "cleanup leaves a foreign [::1]:4321 listener alive"; else ko "cleanup leaves a foreign [::1]:4321 listener alive"; fi
+fi
+if listening 127.0.0.1; then ko "cleanup stops our own server"; else ok "cleanup stops our own server"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
