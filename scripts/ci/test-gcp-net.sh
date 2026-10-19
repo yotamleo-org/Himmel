@@ -127,8 +127,8 @@ else bad "world-open allow rules: $world"; fi
 pout_prio="$(echo "$world" | sed -E 's/.*rules create ([0-9]+) .*/\1/')"
 egr_prio="$(echo "$egr" | sed -E 's/.*rules create ([0-9]+) .*/\1/')"
 if [ -n "$pout_prio" ] && [ -n "$egr_prio" ] && [ "$pout_prio" -lt "$egr_prio" ] && echo "$world" | grep -q -- '--direction=EGRESS' \
-    && echo "$world" | grep -q -- "--src-ip-ranges=$PROXY_IP/32" && echo "$world" | grep -q -- '--dest-ip-ranges=0.0.0.0/0' \
-    && echo "$world" | grep -q -- '--layer4-configs=tcp:80,tcp:443 '; then
+    && echo "$world" | grep -q -F -- "--src-ip-ranges=$PROXY_IP/32 " && echo "$world" | grep -q -F -- '--dest-ip-ranges=0.0.0.0/0 ' \
+    && echo "$world" | grep -q -F -- '--layer4-configs=tcp:80,tcp:443 '; then
     ok "the proxy's own tcp:80/443 egress (its boot-time apt-get) is allowed above deny-all egress, independent of PROXY_HOSTS"
 else bad "proxy boot egress rule missing or below deny-all: prio=$pout_prio deny=$egr_prio rule=$world"; fi
 bad_egress="$(echo "$allow_egress" | grep -v -- "--dest-ip-ranges=$PROXY_IP/32" | grep -v -- '--dest-fqdns=' | grep -v -- "--src-ip-ranges=$PROXY_IP/32")"
