@@ -32,7 +32,7 @@ REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
 PROJECT="${GCP_RUNNERS_PROJECT:-himmel-ci}"
 SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
-MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
+MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-4}"
 MAX_RUN="45m"
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
@@ -127,7 +127,7 @@ cmd_up() {
         gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
-            --boot-disk-size=50GB \
+            --boot-disk-size=50GB --boot-disk-type=pd-balanced \
             --provisioning-model=SPOT --max-run-duration="$MAX_RUN" --instance-termination-action=DELETE \
             --labels="$POOL_LABEL" \
             --network="$NET" --subnet="$NET" --no-address \
