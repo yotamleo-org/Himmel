@@ -1077,7 +1077,13 @@ EOF
 echo '{ "hooks": {} }' > "$t/claude/plugins/cache/himmel/himmel-ops/0.2.0/hooks/hooks.json"
 echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.2.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
 out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'OK   C13-plugin-hooks'; then pass "C13 -> OK (unpinned stale cache version ignored)"; else fail "C13 unpinned -> $(printf '%s' "$out" | grep C13)"; fi
+if grepq "$out" 'OK   C13-plugin-hooks' && ! grepq "$out" 'WARN C13-plugin-hooks'; then pass "C13 -> OK (unpinned stale cache version ignored)"; else fail "C13 unpinned -> $(printf '%s' "$out" | grep C13)"; fi
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.2.0\" }, \"garbage\" ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (malformed registry falls back to the whole cache)"; else fail "C13 malformed registry -> $(printf '%s' "$out" | grep C13)"; fi
+echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"user\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/9.9.9\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" '9.9.9'; then pass "C13 -> WARN (pinned install has no hooks.json)"; else fail "C13 pinned no manifest -> $(printf '%s' "$out" | grep C13)"; fi
 echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"project\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.1.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
 out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (pinned stale version)"; else fail "C13 pinned -> $(printf '%s' "$out" | grep C13)"; fi
