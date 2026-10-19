@@ -268,6 +268,8 @@ export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=e2-custom-4-8192
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "a custom machine type counts its vCPU field, not the memory"; else bad "custom machine: rc=$rc"; fi
 export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=n2-custom-4-32768-ext
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "an extended-memory custom type (-ext suffix) counts its vCPU field"; else bad "custom -ext machine: rc=$rc"; fi
+export STUB_QUOTA="8.0	0.0" GCP_RUNNERS_MACHINE=n2-custom-08-32768-ext
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "a zero-padded vCPU field is read as decimal, not octal"; else bad "custom 08 machine: rc=$rc"; fi
 unset STUB_QUOTA GCP_RUNNERS_MACHINE
 export STUB_FAIL=quota
 rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "an unreadable quota refuses to create"; else bad "quota read fail: rc=$rc"; fi

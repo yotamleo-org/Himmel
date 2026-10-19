@@ -131,7 +131,7 @@ cmd_up() {
     # custom types are <family>-custom-<vcpus>-<memory MB>[-ext]: the vCPU field is second from last once -ext is dropped
     case "$shape" in *custom-*-*) vcpus="${shape%-*}"; vcpus="${vcpus##*-}" ;; esac
     case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
-    quota_preflight $((need * vcpus))
+    quota_preflight $((need * 10#$vcpus))
 
     local tmpd i stamp vm probe created=()
     # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.
