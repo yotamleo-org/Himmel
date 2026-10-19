@@ -725,6 +725,8 @@ segment_is_nav() {
 nav_target_is_contained() {
     local norm
     norm=$(norm_path "$1")
+    # A CRLF-terminated line leaves a trailing CR on the last token.
+    norm="${norm%$'\r'}"
     case "$norm" in ''|-*|+*) return 1 ;; esac
     arg_is_vault_safe "$norm" && return 0
     case "$norm" in
