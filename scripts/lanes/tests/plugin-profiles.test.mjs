@@ -127,6 +127,8 @@ for (const name of ['operator', 'user', 'bare']) {
       // pstack@himmel is user-only and added below.
       // The operator's interactive profile works the vault.
       'obsidian-second-brain@himmel',
+      // find-docs was a user-scope skill; the user profile carries it.
+      'find-docs@himmel',
     ];
     const expected = name === 'operator' ? null : {
       enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && id === 'pstack@himmel')])),
@@ -615,6 +617,19 @@ test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIM
   }
   for (const name of ['bare', 'leg-impl', 'console']) {
     assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[id], false, `${name} must not enable ${id}`);
+  }
+});
+
+// find-docs was a user-scope skill (library-docs lookup) that loaded
+// in every session. As a plugin it is catalogued and enabled only in the
+// operator's interactive `user` profile; every other profile resolves it false.
+test('find-docs@himmel is enabled only in the user profile (HIMMEL-4018)', () => {
+  const id = 'find-docs@himmel';
+  assert.ok(REG.catalog.includes(id));
+  for (const [name, def] of Object.entries(REG.profiles)) {
+    if (def === null) continue; // operator: everything installed
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p[id], name === 'user', `${name}: ${id} enabled must be ${name === 'user'}`);
   }
 });
 
