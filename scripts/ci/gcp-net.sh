@@ -91,7 +91,7 @@ present() {
     local err
     err="$(gc "$@" 2>&1 > /dev/null)" && return 0
     case "$err" in
-        *[Nn]ot\ [Ff]ound*|*NOT_FOUND*|*"does not exist"*) return 1 ;;
+        *[Nn]ot\ [Ff]ound*|*NOT_FOUND*|*"does not exist"*|*"does not contain a rule at priority"*) return 1 ;;
     esac
     echo "gcp-net: lookup failed: $err" >&2
     return 2

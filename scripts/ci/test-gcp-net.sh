@@ -41,6 +41,7 @@ done
 [ -n "${STUB_FAIL:-}" ] && case "$*" in *"$STUB_FAIL"*) exit 1 ;; esac
 case "$*" in
     *" describe "*)
+        if [ -n "${STUB_RULE_ERR:-}" ]; then case "$*" in *"rules describe"*) printf '%s\n' "$STUB_RULE_ERR" >&2; exit 1 ;; esac; fi
         if [ -n "${STUB_DESCRIBE_ERR:-}" ]; then echo "ERROR: (gcloud) PERMISSION_DENIED: caller lacks permission" >&2; exit 1; fi
         [ -n "${STUB_EXISTS:-}" ] || { echo "ERROR: (gcloud) The resource 'projects/himmel-ci/x' was not found" >&2; exit 1; } ;;
 esac
@@ -252,6 +253,17 @@ if [ "$rc" -eq 0 ] && [ ! -s "$STUB_LOG" ] && echo "$env_out" | grep -q -F "HTTP
     && echo "$env_out" | grep -E '^no_proxy=' | grep -q -F '169.254.169.254' && echo "$env_out" | grep -E '^no_proxy=' | grep -q -F '.googleapis.com'; then
     ok "proxy-env prints upper- and lowercase http(s)_proxy and a no_proxy for the metadata server and googleapis"
 else bad "proxy-env: rc=$rc out=$env_out"; fi
+
+# 14. gcloud's absent-rule error for a firewall-policy rule (captured from the live
+# net-up) reads as absence, so the rules are created; a different priority error
+# stays a failed lookup and creates nothing.
+export STUB_RULE_ERR="ERROR: (gcloud.compute.network-firewall-policies.rules.describe) Invalid value for field 'priority': '1000'. The firewall policy does not contain a rule at priority 1000."
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && [ -n "$(rules_create)" ]; then ok "an absent rule at a priority is read as absence and created"; else bad "absent-rule net-up: rc=$rc out=$(cat "$T/out")"; fi
+export STUB_RULE_ERR="ERROR: (gcloud.compute.network-firewall-policies.rules.describe) Invalid value for field 'priority': '1000'. The priority is out of range."
+rc="$(run net-up)"
+if [ "$rc" -ne 0 ] && [ -z "$(rules_create)" ]; then ok "any other priority error stays a failed lookup"; else bad "other priority error: rc=$rc"; fi
+unset STUB_RULE_ERR
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed" >&2; exit 1; }
 echo "all cases passed"
