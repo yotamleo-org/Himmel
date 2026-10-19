@@ -2632,4 +2632,22 @@ else
   fail "26d: sourcing the fixture left SUITE_STOP_ON_FAIL set: $left26"
 fi
 
+sb26e=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26e.XXXXXX") || { fail "26e: mktemp failed"; sb26e=""; }
+if [ -n "$sb26e" ]; then
+cat > "$sb26e/test-env.sh" <<'SHEOF'
+#!/usr/bin/env bash
+printf '[%s]' "${SUITE_STOP_ON_FAIL-}" > "$(dirname "$0")/seen.txt"
+exit 0
+SHEOF
+chmod +x "$sb26e/test-env.sh"
+SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26e" > /dev/null 2>&1
+seen26=$(cat "$sb26e/seen.txt" 2>/dev/null || echo missing)
+if [ "$seen26" = "[]" ]; then
+  pass "26e: a suite the runner launches does not inherit SUITE_STOP_ON_FAIL"
+else
+  fail "26e: the suite saw SUITE_STOP_ON_FAIL=$seen26"
+fi
+rm -rf "$sb26e"
+fi
+
 rst_tally

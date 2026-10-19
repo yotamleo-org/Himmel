@@ -3426,7 +3426,10 @@ fi
 
 pass=0 fail=0 skip=0 ran=0
 # SUITE_STOP_ON_FAIL=1: set once a suite has failed; the rest of this shard's
-# list is then recorded as stopped_suites instead of run.
+# list is then recorded as stopped_suites instead of run. The value is read once
+# and cleared, so a suite that runs this runner itself never inherits the stop.
+stop_on_fail="${SUITE_STOP_ON_FAIL:-}"
+unset SUITE_STOP_ON_FAIL
 stopped=0
 stopped_suites=""
 # PASSING suites whose output holds a SKIP line. `skip` above is
@@ -4374,7 +4377,7 @@ while IFS= read -r suite <&3; do
   fi
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
-  [ "$rc" -eq 0 ] || [ "${SUITE_STOP_ON_FAIL:-}" != 1 ] || stopped=1
+  [ "$rc" -eq 0 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 done 3< "$suites_file"
 
 if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
