@@ -145,8 +145,8 @@ printf '{"id":"q8","kind":"where","q":"where is relay_batch defined","gold":["bi
 RETRIEVAL_EVAL_QMD_CMD="$W/qmd-log" py "$EV" run --repo "$R" --questions "$W/q8.jsonl" --out "$W/out8" --arms qmd-hybrid,qmd-hybrid-norerank > /dev/null 2>&1
 eq "norerank arm is accepted by --arms" "0" "$?"
 eq "norerank arm scores a hit" "1.00" "$(awk -F'\t' '$1=="qmd-hybrid-norerank"{print $3}' "$W/out8/scores.tsv")"
-eq "norerank sends lex+vec with rerank false" "2 False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(len(a["searches"]), a.get("rerank"))' "$W/qmd-in.log")"
-eq "qmd-hybrid sends no rerank key" "2 None" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(len(a["searches"]), a.get("rerank"))' "$W/qmd-in.log")"
+eq "norerank sends lex+vec with rerank false" "lex,vec False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
+eq "qmd-hybrid sends lex+vec and no rerank key" "lex,vec absent" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
 eq "default arms stay the five" "6" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
 
 # 9. usage errors.
