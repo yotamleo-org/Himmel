@@ -832,6 +832,12 @@ assert_rc "6014 cd to an expansion stays unknown"      2 "$(run_in_shiftdir 'cd 
 assert_rc "6014 bash -c body cd into a secret dir"      2 "$(run_in_shiftdir "cd empty && bash -c 'cd ../sub; cat .en*'")"
 assert_rc "6014 bash -c body after an outer cd"         2 "$(run_in_shiftdir "cd sub && bash -c 'cat .en*'")"
 assert_rc "6014 quoted glob char is not proved"         2 "$(run_in_shiftdir 'cd empty && cat ".en"*')"
+# a .. hop resolves differently under cd -P (lnk is a symlink to sub/inner)
+mkdir -p "$SHIFTDIR/sub/inner"; ln -s sub/inner "$SHIFTDIR/lnk"
+assert_rc "6014 cd -P then .. lands in a secret dir"    2 "$(run_in_shiftdir 'cd -P lnk && cd .. && cat .en*')"
+assert_rc "6014 brace redirect reads a secret glob"     2 "$(run_in_shiftdir 'cd sub && { cat; } < .en*')"
+assert_rc "6014 subshell redirect reads a secret glob"  2 "$(run_in_shiftdir 'cd sub && (cat) < .en*')"
+assert_rc "6014 loop redirect reads a secret glob"      2 "$(run_in_shiftdir 'cd sub && while read -r l; do :; done < .en*')"
 # a PATH holding every tool but shfmt: the model cannot run, so the gate denies
 # and says why
 rs_nosh="$SHIFTDIR/no-shfmt-bin"; mkdir -p "$rs_nosh"

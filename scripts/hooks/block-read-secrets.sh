@@ -566,7 +566,10 @@ rs_ast_proves_safe() {
                 | select((.raw | test("^[A-Za-z0-9._/*?+@%,:-]+$") | not) or (.raw | contains("**")))
                 | "the glob " + .raw),
                (select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g))
-                | .cwd[] | select(. == null or any(.[]; test("\n"))) | "a cd target this hook cannot resolve")]
+                | .cwd[] | select(. == null or any(.[]; test("\n"))) | "a cd target this hook cannot resolve"),
+               (select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g))
+                | .cwd[] | select(. != null and any(.[]; test("(^|/)\\.\\.(/|$)")))
+                | "a .. hop, which cd -P and cd -L resolve differently")]
         | first // ""') || RS_AST_WHY='the model output could not be read'
     [ -z "$RS_AST_WHY" ] || return 1
     pats=$(printf '%s' "$pos" | jq -r '[.[] | (.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g) | .v] | unique | .[]')

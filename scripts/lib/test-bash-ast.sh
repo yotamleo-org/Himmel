@@ -131,6 +131,9 @@ row "a shell reading stdin is opaque" \
 row "a glob arg keeps its live-glob flag and raw text" \
     'cat .en* ".en"*' \
     '(.[0].argv[1] | .v == ".en*" and .g and .raw == ".en*") and (.[0].argv[2] | .g and .raw == "\".en\"*")'
+row "a redirect on a subshell, brace or loop is a position in the outer cwd" \
+    'cd sub && (cat) < a*; { cat; } < b*; while read -r l; do :; done < c*' \
+    '[.[] | select(.prog == null) | {w: .redirs[0].w.v, cwd}] == [{w: "a*", cwd: [["sub"]]}, {w: "b*", cwd: [[], ["sub"]]}, {w: "c*", cwd: [[], ["sub"]]}]'
 
 out=$(bash_ast_positions 'if then' 2>/dev/null); rc=$?
 if [ "$rc" = 3 ]; then ok "a parse error is rc 3"; else bad "a parse error is rc 3 — rc=$rc"; fi

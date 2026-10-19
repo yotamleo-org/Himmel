@@ -546,6 +546,11 @@ def _w($S; $tags; $env):
             pos: ($wp + [{prog: ({"DeclClause": "declare", "TestClause": "[[", "ArithmCmd": "((", "LetClause": "let"}[$c.t]),
                           a: [$c.words[] | _args], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg)])}
        else error("bash-ast: unknown model kind " + ($c.k | tostring)) end) as $r
+    # a redirect on a subshell, brace group, loop or wrap opens its file in the outer cwd
+    | (if $c != null and ($c.k | IN("sub", "block", "compound", "wrap")) and ($st.redirs | length) > 0
+       then [{prog: null, a: [], via: [], lookup: false, opaque: null, body: null} | _pos($st; $S; $tg)]
+       else [] end) as $sr
+    | ($r | .pos = ($sr + .pos)) as $r
     | (if $st.neg then {ok: $r.fail, fail: $r.ok} else {ok: $r.ok, fail: $r.fail} end) as $nf
     | if $st.bg then {ok: $S, fail: $S, pos: ($rp + $r.pos)} else $nf + {pos: ($rp + $r.pos)} end
   end;
