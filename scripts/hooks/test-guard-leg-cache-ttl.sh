@@ -108,7 +108,9 @@ expect_allow() {   # expect_allow <label> — silent AND exit 0, so a crash is n
 
 # --- RED control --------------------------------------------------------------
 BASE_SHA="4eff389fb4a74863c297bb826c9b3a5104df07b7"
-if git -C "$REPO" cat-file -e "$BASE_SHA:scripts/hooks/guard-leg-cache-ttl.sh" 2>/dev/null; then
+if ! git -C "$REPO" cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+    ok "RED control: SKIP — base $BASE_SHA is not in this clone (shallow checkout)"
+elif git -C "$REPO" cat-file -e "$BASE_SHA:scripts/hooks/guard-leg-cache-ttl.sh" 2>/dev/null; then
     bad "RED control: guard-leg-cache-ttl.sh already existed at $BASE_SHA"
 else
     ok "RED control: no leg cache guard at base $BASE_SHA — an idle lock-holding leg's stop was never refused"

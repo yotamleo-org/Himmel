@@ -1422,6 +1422,18 @@ assert.ok(cmd.includes(contractPath), `command does not name the contract file: 
 NODE
 check "compact-hook: settings JSON carries a SessionStart compact hook naming the contract file" "$rc" "0"
 
+rc=0
+node --input-type=module - "$d17b3/HIMMEL-9999-hook.leg-settings.json" <<'NODE' || rc=$?
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+const settings = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const cmds = (settings.hooks?.Stop ?? []).flatMap((e) => (e.hooks ?? []).map((h) => h.command ?? ''));
+const cmd = cmds.find((c) => c.includes('guard-leg-cache-ttl.sh'));
+assert.ok(cmd, `no Stop hook runs guard-leg-cache-ttl.sh: ${JSON.stringify(cmds)}`);
+assert.ok(existsSync(cmd.replace(/^bash /, '')), `Stop hook path does not exist: ${cmd}`);
+NODE
+check "cache-ttl: settings JSON carries a Stop hook running guard-leg-cache-ttl.sh" "$rc" "0"
+
 # --- 17b-4. 17b-3 only checks that the
 # generated command STRING names the contract path as a substring; it never
 # actually runs the command, so it would not have caught an unescaped path
