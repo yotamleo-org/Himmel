@@ -759,7 +759,7 @@ def _edit_on_main_reason(start: str):
 # push's own output and every fix round pushes again. FAIL-CLOSED on an
 # unreadable marker; an undeterminable repo/branch is skipped (same stance as
 # the commit lock — judging this process's cwd would be wrong).
-GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+create(?:\s|$)", re.IGNORECASE)
+GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$)", re.IGNORECASE)
 
 
 def _common_git_dir(git_path: str) -> str:
@@ -1855,9 +1855,13 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     # Pending-CR marker lock: independent of the engine fence below, so a
     # trusted engine cannot open a PR over an unfinished review.
     if GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(_join_continuations(raw_cmd))):
-        pr_dir = _commit_dir(raw_cmd, _agent_cwd(payload, args), None)
+        joined = _join_continuations(raw_cmd)
+        pr_m = GH_PR_CREATE.search(joined)
+        # Only a cd before the gh call moves it; one after it must not.
+        pr_dir = _commit_dir(joined[:pr_m.start()] if pr_m else joined,
+                             _agent_cwd(payload, args), None)
         if pr_dir:
-            reason = _pending_cr_reason(pr_dir, _pr_head_branch(raw_cmd))
+            reason = _pending_cr_reason(pr_dir, _pr_head_branch(joined))
             if reason:
                 block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh
