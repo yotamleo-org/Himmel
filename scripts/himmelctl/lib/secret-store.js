@@ -48,7 +48,7 @@ function unwritable(v) {
 // bash `source` of the store (bitbucket live-smoke sources the himmel .env, and
 // an operator may) would expand or execute these in an unquoted value. Quoting
 // would break the dotenv readers that keep quotes, so refuse instead.
-const SHELL_META = /[$`;\\&|<>()'"]/;
+const SHELL_META = /[$`;\\&|<>()'"\s]/;
 
 function validate(name, value) {
   const e = entryOf(name);

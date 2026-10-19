@@ -219,6 +219,8 @@ row('h8 shell-safe: a value a bash `source` would execute or expand is refused, 
     ok(/shell-safe/.test(msg) && !msg.includes(v), 'write refused: ' + msg);
     ok(!fs.existsSync(path.join(ctx.himmelRoot, '.env')), 'nothing written for ' + JSON.stringify(meta));
   }
+  const spaced = store.validate('JIRA_BASE_URL', 'https://a.atlassian.net/p x');
+  eq(spaced.ok, false, 'interior whitespace in a URL'); eq(spaced.rule, 'shell-safe', 'interior whitespace rule');
   eq(store.validate('JIRA_API_TOKEN', fake() + '=_-.+/:@%').ok, true, 'token alphabet stays writable');
   eq(store.validate('JIRA_BASE_URL', 'https://example.atlassian.net/x').ok, true);
 });
