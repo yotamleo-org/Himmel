@@ -66,6 +66,7 @@ fail() { echo "  FATAL: $*" >&2; exit 1; }
 tmpdir="$(mktemp -d -t graphify-bin.XXXXXX)"
 # The claude skill lands in the marketplace plugin dir; never let a case that
 # forgets its own GRAPHIFY_PLUGIN_DIR write into the real checkout.
+unset CLAUDE_CONFIG_DIR
 export GRAPHIFY_PLUGIN_DIR="$tmpdir/default-gplug"
 # holder_pid: the ONE live process the holder test spawns. Reaped
 # by its exact pid on any exit, never by pattern.

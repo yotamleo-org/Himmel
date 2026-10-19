@@ -1152,7 +1152,7 @@ _graphify_skill_refresh() {
 
   _graphify_skill_refresh_one "$dst" "claude" "$inst" "$skill_src" "$refs_src" 0
   # Retire the old user-scope copy only once the plugin copy is current.
-  if [ "$(cat "$dst/.graphify_version" 2>/dev/null)" = "$inst" ] && [ -f "$dst/SKILL.md" ]; then
+  if [ "$(cat "$dst/.graphify_version" 2>/dev/null)" = "$inst" ] && [ -f "$dst/SKILL.md" ] && [ -d "$dst/references" ]; then
     _graphify_retire_user_scope_skill
   fi
 
