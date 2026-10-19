@@ -2631,8 +2631,10 @@ rm -rf "${vscope:?}/jg64-aprbound"
 jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "0" "6427 (e) a branch-bound GO at the exact head is accepted with no PR ($jgo_out)"
 assert_has "$jgo_out" "jg64-ok/judge" "6427 (e) the verb names the record"
+if [ -e "$git_dir/cr-pending/jg64p" ]; then pass "6427 (f) the marker is pending before the clear"; else fail "6427 (f) the marker is pending before the clear"; fi
 jgo_clear jg64p; jgo_rc=$?
 assert_eq "$jgo_rc" "0" "6427 (f) the branch-bound GO clears the marker ($(cat "$tmp/jg64p-clear.out"))"
+if [ -e "$git_dir/cr-pending/jg64p" ]; then fail "6427 (f) the marker file is removed"; else pass "6427 (f) the marker file is removed"; fi
 export GH_PR_RC=1
 jgo_out="$(jgo_verb jg64p "$jgo_head")"; jgo_vrc=$?
 unset GH_PR_RC
