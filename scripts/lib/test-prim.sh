@@ -277,6 +277,8 @@ fallback_unreadable_record() {
     local rc
     printf '%s\n' "$$" > "$T/unreadable.lock" || return 1
     chmod 000 "$T/unreadable.lock" || return 1
+    # A privileged user reads through mode 000, so the case cannot arise there.
+    if [ -r "$T/unreadable.lock" ]; then chmod 600 "$T/unreadable.lock"; return 0; fi
     # shellcheck disable=SC2016 # Expansion belongs to the child shell.
     "$TIMEOUT" 3 "$BASH_BIN" -c '. "$1"; PATH="$2" with_lock "$3" touch "$4"' _ \
         "$LIB" "$T/bin" "$T/unreadable.lock" "$T/entered-unreadable" 2> "$T/unreadable.err"
