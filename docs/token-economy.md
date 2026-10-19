@@ -227,7 +227,7 @@ commit before the description cap landed; "after" is this branch.
 | Hermes | `AGENTS.md` (generated, total) | 20,851 | 14,143 | −6,708 (−32.2%) | ~5,210 → ~3,540 |
 
 Of the 12,310 B file, **11,537 B is himmel content** (what the budget gate
-holds ≤ 12,288 B) and **773 B is the upstream-owned `## graphify` section**,
+held ≤ 12,288 B at the time; the limit is now 6,144 B) and **773 B is the upstream-owned `## graphify` section**,
 excluded from the budget (see below). The `CLAUDE.md` lean-invoke share alone is the
 `CLAUDE.md`/`AGENTS.md` rows: **−6,708 B on every session of every harness.**
 On the operator's own machine the working principles were paid *twice* before
