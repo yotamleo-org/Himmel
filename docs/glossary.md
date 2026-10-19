@@ -73,8 +73,7 @@ git's own term), floor, anchor, arm, lane, queue lock.
 
 ## Identifier aliases
 
-Rename plan: [`internals/identifier-rename-inventory.md`](internals/identifier-rename-inventory.md)
-(HIMMEL-5689). Names ruled 2026-10-17. Each old name keeps working through the
+Rename plan: HIMMEL-5689. Names ruled 2026-10-17. Each old name keeps working through the
 alias mechanism below until the removal release, the release after v1.1.3.
 Mechanisms: **env** = read-both via `scripts/lib/env-alias.sh` (`alias_env NEW OLD`;
 writers export both; a guard keyed on an identity marker uses `env_alias_any`

@@ -16,22 +16,37 @@ trap 'rm -rf "$tmp"' EXIT
 export HANDOVER_DIR="$tmp/handovers"
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 
-# Fake qdbus6 records its argv, one call per line; fake bus prints $BUS_N.
+# Fake qdbus6: processId answers $QPID (or $QPID_LATER after its first call),
+# getAllDisplayedText prints $QSCREEN (a screen copied from a real konsole), and
+# every other call (sendText) is recorded in $QLOG, one per line; fake bus prints
+# $BUS_N. $tmp/proc stands in for /proc.
+FIX="$HERE/fixtures/bus-waker"
 cat > "$tmp/qdbus" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$QLOG"
+case "$3" in
+  org.kde.konsole.Session.processId)
+    if [ -n "${QPID_LATER:-}" ] && [ -e "$QLOG.pid" ]; then printf '%s\n' "$QPID_LATER"; else printf '%s\n' "$QPID"; fi
+    : > "$QLOG.pid" ;;
+  org.kde.konsole.Session.getAllDisplayedText) cat "$QSCREEN" ;;
+  *) printf '%s\n' "$*" >> "$QLOG" ;;
+esac
 EOF
 cat > "$tmp/bus" <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = unread ] && printf '%s\n' "${BUS_N:-0}"
 EOF
 chmod +x "$tmp/qdbus" "$tmp/bus"
-export QLOG="$tmp/qlog"
-FIXED='You have 2 unread himmel messages: read them now.'
+export QLOG="$tmp/qlog" QPID=4242 QSCREEN="$FIX/screen-idle.txt" BUS_WAKER_PROC="$tmp/proc"
+mkdir -p "$tmp/proc/4242" "$tmp/proc/4343" "$tmp/proc/4444" "$tmp/proc/4646"
+printf 'claude\0-n\0legX\0' > "$tmp/proc/4242/cmdline"
+printf 'claude\0-n\0HIMMEL-nextleg-2026-10-19H-roadmap-console\0' > "$tmp/proc/4343/cmdline"
+printf 'zsh\0' > "$tmp/proc/4444/cmdline"
+printf 'python3\0-n\0legX\0' > "$tmp/proc/4646/cmdline"
+FIXED='You have unread himmel messages: read them now.'
 
 run() { # run <polls> <grace> [extra args]; env BUS_N / inbox decide the count
   local polls="$1" grace="$2"; shift 2
-  : > "$QLOG"
+  : > "$QLOG"; rm -f "$QLOG.pid"
   BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" \
     bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
     --poll 0.2 --grace "$grace" --rewake 100 --max-polls "$polls" "$@" >/dev/null 2>&1
@@ -58,7 +73,7 @@ BUS_N=abc run 6 0
 printf 'from=con $(touch %s/pwned); rm -rf ~\n' "$tmp" > "$HANDOVER_DIR/inbox/legX.md"
 printf '0' > "$HANDOVER_DIR/inbox/.cursor/legX"
 BUS_N=0 run 8 0.5
-if grep -qF 'You have 1 unread himmel messages: read them now.' "$QLOG" && ! grep -q -e 'pwned' -e 'rm -rf' "$QLOG" && [ ! -e "$tmp/pwned" ]; then
+if grep -qF "$FIXED" "$QLOG" && ! grep -q -e 'pwned' -e 'rm -rf' "$QLOG" && [ ! -e "$tmp/pwned" ]; then
   pass "inbox line wakes with the fixed text only, never its content"
 else fail "inbox wake: $(cat "$QLOG")"; fi
 
@@ -124,7 +139,7 @@ rc=$?
 printf '08' > "$HANDOVER_DIR/inbox/.cursor/legX"
 printf 'aaaaaaa\nbbb\n' > "$HANDOVER_DIR/inbox/legX.md"
 BUS_N=0 run 8 0.5
-grep -qF 'You have 1 unread himmel messages' "$QLOG" && pass "a zero-padded cursor still counts bytes in decimal" || fail "08 cursor: $(cat "$QLOG")"
+grep -qF "$FIXED" "$QLOG" && pass "a zero-padded cursor still counts bytes in decimal" || fail "08 cursor: $(cat "$QLOG")"
 
 # --pid: the waker armed for a launched konsole stops once that konsole is gone.
 sleep 0 & dead=$!; wait "$dead"
@@ -139,6 +154,43 @@ rc=$?
 [ "$rc" -eq 64 ] && pass "--pid 0 is refused (rc=64): kill -0 0 would probe the process group" || fail "--pid 0: expected rc=64, got rc=$rc"
 BUS_N=2 run 3 0 --pid "$$"
 [ "$RUN_RC" -eq 0 ] && grep -qF 'unread himmel messages: read them now.' "$QLOG" && pass "--pid: a live konsole still gets the wake" || fail "--pid live: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+
+echo "== dialog and target =="
+# Screens copied from a real konsole (Claude Code 2.1.303) through getAllDisplayedText.
+QSCREEN="$FIX/screen-permission.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a pending permission dialog gets no keystroke (Enter would pick 1. Yes)" || fail "typed into a permission dialog: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-trust.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a digit-free menu (the trust dialog) gets no keystroke either" || fail "typed into the trust dialog: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-busy.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn (spinner above the input box) gets no keystroke" || fail "typed into a busy turn: $(cat "$QLOG")"
+sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle.txt" > "$tmp/draft-screen"
+QSCREEN="$tmp/draft-screen" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "an input box holding a draft gets no keystroke (Enter would submit it)" || fail "typed onto a draft: $(cat "$QLOG")"
+: > "$tmp/empty-screen"
+QSCREEN="$tmp/empty-screen" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a blank screen (no input box seen) gets no keystroke" || fail "typed blind: $(cat "$QLOG")"
+BUS_N=2 run 3 0
+if grep -q sendText "$QLOG" && ! sed 's/.*sendText //' "$QLOG" | grep -q '[0-9]'; then
+  pass "the idle prompt is woken, and the typed line carries no digit"
+else fail "idle wake or digit-free text: $(cat "$QLOG")"; fi
+
+QPID=4343 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+QPID=4444 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session that is not a named claude (a shell) is refused, rc=4" || fail "shell target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+QPID=4646 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "another program carrying -n <name> is refused, rc=4" || fail "non-claude -n target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+QPID_LATER=4444 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a session whose process changed after startup is refused before the wake, rc=4" || fail "replaced target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+# A real leg's claude argv, read from /proc/<processId>/cmdline.
+mkdir -p "$tmp/proc/4545" && cp "$FIX/cmdline-leg" "$tmp/proc/4545/cmdline"
+: > "$QLOG"
+QPID=4545 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name HIMMEL-6343-N2734-write-verdict-affects-version-2026-10-19 \
+  --service org.kde.konsole-1 --session /Sessions/3 --poll 0.2 --grace 0 --rewake 100 --max-polls 3 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a real leg argv naming the session (-n <name>) is accepted" || fail "real leg argv: rc=$rc, qlog: $(cat "$QLOG")"
+QPID=4545 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "the same real argv aimed at another --name is refused, rc=4" || fail "real argv, wrong name: rc=$RUN_RC"
 
 echo "== succession doc =="
 if grep -q 'run `bus adopt <new console>` as the leg' "$REPO/docs/handover/leg-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi

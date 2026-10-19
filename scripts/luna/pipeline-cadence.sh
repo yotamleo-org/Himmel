@@ -213,7 +213,7 @@ DAILY_CHAIN="/harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich
 LEG_DONE_MARKER="PIPELINE-LEG-DONE"
 COMPLETION_INSTRUCTIONS="Run every command in the foreground. Never background a command or wait for a notification. Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation. If it was blocked, parked, or bailed early, do not print the marker."
 HARVEST_PROMPT=""
-SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run (HIMMEL-255) - fully autonomous, no user prompts; report results and exit. $COMPLETION_INSTRUCTIONS"
+SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run (HIMMEL-255) - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
 HEALTH_PROMPT="Use the Skill tool to run the obsidian-triage:vault-lint skill (not /obsidian-health) against this vault to completion. This is the scheduled daily pipeline cadence run (HIMMEL-255/HIMMEL-1386) - fully autonomous, no user prompts; report results and exit. $COMPLETION_INSTRUCTIONS"
 
 usage() {

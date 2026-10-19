@@ -9,7 +9,8 @@ Every selected suite must first pass on the unchanged head; the scratch tree
 is recreated before knockout so baseline side effects cannot contaminate it.
 It exits 0 only when at least one suite then fails; baseline-red, all-green
 or zero selected suites exits 1, and usage errors exit 2. Test-only diffs are not applicable
-(exit 0). The checkout is untouched and scratch worktrees are removed on exit
+(exit 3, so 0 always means detected). `SUITE_TIMEOUTS="<suite>=<secs> ..."`
+overrides the per-suite cap for named suites. The checkout is untouched and scratch worktrees are removed on exit
 or interrupt. Suite runtimes must be installed. CI wiring and PR check posting
 are not included yet.
 

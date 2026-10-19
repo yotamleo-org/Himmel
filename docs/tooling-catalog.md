@@ -693,7 +693,7 @@ pass, never a blind find-and-replace.
 Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), cache TTL countdown, per-session and all-sessions cache read/write/hit/savings. The hud renderer above only has the cache-expiry line so far — the read/write/hit-rate/net/cost lines stay bash-bar-only (opt-in/rollback) until a planned follow-up ports them.
 
 **Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
-**Patch applied:** `docs/patches/2026-05-16-cache-statusline.md`
+**Patch applied:** cache-metrics patch (record kept in the state repo `specs/decisions/`)
 **Upstream:** `nilbuild/claude-statusline` (fork now archived; no PR path)
 
 ---
@@ -1263,8 +1263,7 @@ Telegram-flushed. A blocked worker can record a capability request and degrade
 gracefully via the **escalation channel** — `spawn-glm --grant`/`--autonomous`
 pre-seed, an `adjudicate list|grant|refuse` CLI, and a per-session append-only
 `grants.jsonl` the deny-hook honors on one arm (TTL/use-bounded, fail-closed).
-Full loop, permission guidance, escalation channel, and honest enforcement
-inventory in [`docs/glm-offload.md`](glm-offload.md).
+The offload-loop doc was removed with the lane.
 
 ```
 bun scripts/telegram/spawn-glm.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--timeout-mins <n>] [--permission-mode <mode>] [--arm-on-cap | --no-arm-on-cap]
@@ -1276,7 +1275,7 @@ Prints exactly three inspect-contract lines on exit: `session-dir:`,
 run `capped` in `meta.json` (`cap_window`/`resume_at`/`cap_source`), and by
 default (`--arm-on-cap`) arms a resume at the cycle reset; `--no-arm-on-cap`
 writes `resume_at` without arming. Preflight warns at `GLM_USAGE_WARN_PCT`
-(default `80`). Detail: [`docs/glm-offload.md`](glm-offload.md#cap-guard).
+(default `80`).
 Exit codes: **2** usage error / plan refusal (non-himmel cwd, settings
 conflict, missing ZAI key); **3** guard refusal (PHI marker, phi-root, denylist,
 unreadable guard config); **1** operational failure; else the worker's exit code.
@@ -1296,8 +1295,7 @@ gates the WS2 router only, not this direct-CLI lane.
 builder block + missing-key throw + quote-strip, `runSession` lane env merge
 with argv shape unchanged, GLM model pin ignoring `TELEGRAM_CLAUDE_MODEL`,
 settings-conflict preflight, prompt composition
-embedding the minted session paths); the live GLM-lane acceptance + offload-loop
-legs are recorded in [`docs/glm-offload.md`](glm-offload.md).
+embedding the minted session paths).
 
 ---
 
@@ -2022,7 +2020,7 @@ Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` co
 - `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
 - `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
 - `scripts/cr/cr-scores.sh` — generates a per-critic correctness scorecard from the ledger; surfaced via `/cr-scores`. Adds an estimated-token Usage section (per-model + cumulative) when the ledger holds `usage` records.
-- `scripts/cr/pr-check-external.sh` — **Claude-free automated review runner**: reviews a branch with NO Claude session so review still runs when the Claude subscription usage budget is maxed. `--branch <b> [--session-dir <dir>] [--base <ref>]`; fetches, diffs `origin/<base>...<branch>`, pipes to `critic-panel.sh` with `CR_PROFILE=free,paid` forced (so the paid codex critic reviews; `CR_PROFILE=none` refused). Fail-CLOSED gate: panel non-zero exit, unparseable Critical/Important counts, an ABSENT codex critic, or any Critical/Important finding all FAIL. A diff touching the automated review/merge **gate infrastructure** is refused outright (the original design wanted a quorum of two responding cross-model reviewers there; the CodeRabbit CLI was the second seat and it was retired, while `critics.json`'s panel is codex-only — so the quorum cannot be met on this path and gate-infra changes go through the interactive `/pr-check`). On clean it writes `external_cr_verdict: pass (sha=…; critics=…)` into the spawn-glm session `meta.json` (distinct from `d1_verdict`) and prints a PR-body snippet; does NOT touch the review-owed marker. Test: `scripts/cr/test-pr-check-external.sh` (hermetic; fake git repo + stubbed panel via `CRITIC_PANEL_CMD`). See [`docs/glm-offload.md`](glm-offload.md) "Claude-down ship flow".
+- `scripts/cr/pr-check-external.sh` — **Claude-free automated review runner**: reviews a branch with NO Claude session so review still runs when the Claude subscription usage budget is maxed. `--branch <b> [--session-dir <dir>] [--base <ref>]`; fetches, diffs `origin/<base>...<branch>`, pipes to `critic-panel.sh` with `CR_PROFILE=free,paid` forced (so the paid codex critic reviews; `CR_PROFILE=none` refused). Fail-CLOSED gate: panel non-zero exit, unparseable Critical/Important counts, an ABSENT codex critic, or any Critical/Important finding all FAIL. A diff touching the automated review/merge **gate infrastructure** is refused outright (the original design wanted a quorum of two responding cross-model reviewers there; the CodeRabbit CLI was the second seat and it was retired, while `critics.json`'s panel is codex-only — so the quorum cannot be met on this path and gate-infra changes go through the interactive `/pr-check`). On clean it writes `external_cr_verdict: pass (sha=…; critics=…)` into the spawn-glm session `meta.json` (distinct from `d1_verdict`) and prints a PR-body snippet; does NOT touch the review-owed marker. Test: `scripts/cr/test-pr-check-external.sh` (hermetic; fake git repo + stubbed panel via `CRITIC_PANEL_CMD`).
 
 ## OpenRouter free-tier watcher (`scripts/openrouter/free-watch.sh`)
 
@@ -2054,7 +2052,7 @@ Rerun it on monitoring-key rotation — never reuse the master pair for polling.
 
 ## GLM ship lane (`scripts/glm/`)
 
-- `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the review-owed marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin). See [`docs/glm-offload.md`](glm-offload.md) "Claude-down ship flow".
+- `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the review-owed marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin).
 
 ---
 

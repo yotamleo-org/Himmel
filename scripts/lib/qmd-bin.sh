@@ -69,9 +69,9 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # an equivalent launcher signal fix); then pin back to tobi/qmd at that SHA --
 # upstream-watch reports #1030 merging; the upstreams.json qmd
 # `fork` block keeps /fork-resync auditing the delta meanwhile.
-# The pin is the tip of origin/himmel/pin-http-auth (the former pin
-# 932839a, the tip of fix/launcher-forward-signals, plus the HTTP bearer-token
-# commit of fork PR #14), not fork main. The pin was the merge
+# History: the pin was the tip of origin/himmel/pin-http-auth (932839a, the
+# tip of fix/launcher-forward-signals, plus the HTTP bearer-token
+# commit of fork PR #14). The pin was the merge
 # commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
 # HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
 # The pin was 7cc60404, the tip of himmel/pin-http-auth: cecc32a9 (the
@@ -81,12 +81,14 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # of himmel/pin-http-auth, adding the serial query queue with a busy refusal
 # past QMD_QUERY_MAX_QUEUED (fork #23). The pin was 44fd0609, the tip,
 # adding the queue-test fix (fork #26) and the single vector scan for a
-# search over every collection (fork #25). The pin is now c3b84dd7, the squash
+# search over every collection (fork #25). The pin was c3b84dd7, the squash
 # merge of fork PR #29 into fork main, tagged v2.8.3-himmel.1: the fork
 # resynced to tobi/qmd 86d2365 (2.8.3) with the carried commits replayed.
-# ponytail: pinned by SHA, the tag v2.8.3-himmel.1 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
+# The pin is now 2d8589c6, the squash merge of fork PR #30 into fork main (the
+# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2.
+# ponytail: pinned by SHA, the tag v2.8.3-himmel.2 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-c3b84dd7596c18967f6fcfbfeab44681499cb192}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-2d8589c6ace332c351e9f6e1ac7400aab7a4ee02}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or

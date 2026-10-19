@@ -478,6 +478,7 @@ underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
     [ -r "$dispatch_cmd" ] || return 0
     local lf=(--priority-pool-only)  # free slots fill only from the operator's priority pool
+    case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
     timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit

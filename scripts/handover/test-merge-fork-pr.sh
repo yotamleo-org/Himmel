@@ -273,6 +273,24 @@ check "merge: absolute entry runs local" "$out" "RAN:branch"
 rc=0; (cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/merge-fork-pr.sh >/dev/null 2>&1) || rc=$?
 check "merge: relative entry with the anchor unset exits 2" "$rc" 2
 
+out=$(jq -r '.[] | select(.nwo == "yotamleo/qmd") | .himmel_branch' "$HERE/../guardrails/himmel-adapters.json" 2>/dev/null)
+check "registry: yotamleo/qmd himmel_branch is the fork main the pin tracks" "$out" "main"
+
+# --- 4. go.sh clears and load-checks go_fork_ready ---------------------------------
+# A go_fork_ready inherited from the caller's env must not stand in for one the
+# gate lib failed to define: the gate lib copy below lacks it, the env supplies a stale one.
+LD="$tmp/ld"
+mkdir -p "$LD/scripts/handover/console-kit" "$LD/scripts/lib"
+cp "$GO_SH" "$LD/scripts/handover/console-kit/go.sh"
+ln -s "$HERE/../cr" "$LD/scripts/cr"
+for lf in "$HERE"/../lib/*; do
+  [ "$(basename "$lf")" = go-gate.sh ] || ln -s "$lf" "$LD/scripts/lib/$(basename "$lf")"
+done
+sed 's/^go_fork_ready()/go_fork_ready_renamed()/' "$HERE/../lib/go-gate.sh" > "$LD/scripts/lib/go-gate.sh"
+rc=0; out="$(env HANDOVER_DIR="$ROOT" BASH_FUNC_go_fork_ready%%='() { echo stale; }' bash "$LD/scripts/handover/console-kit/go.sh" --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
+check "go: a stale env go_fork_ready with none defined by the lib -> exit 1" "$rc" 1
+contains "go: a stale env go_fork_ready is refused at load" "$out" "cannot load scripts/lib/go-gate.sh"
+
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-merge-fork-pr.sh"
 else

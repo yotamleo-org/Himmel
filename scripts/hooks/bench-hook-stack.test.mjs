@@ -378,7 +378,7 @@ for (const config of CONFIGS) {
 // reader of only the `Bash` chain would assume. A second `*`
 // group (guard-leg-context-handoff.sh) — its own process because
 // auto-arm-on-cap.sh stays out of every chain — so the count is now 5. Docs:
-// docs/internals/hook-cost-baseline.md. Pins the count so a future matcher
+// the hook-cost baseline. Pins the count so a future matcher
 // edit that silently drops or adds Bash coverage is caught here.
 test('exactly 5 PreToolUse matcher groups in .claude/settings.json match the Bash tool', (t) => {
   const config = join(REPO, '.claude', 'settings.json');

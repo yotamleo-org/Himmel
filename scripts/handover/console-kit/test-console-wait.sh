@@ -947,7 +947,7 @@ start "$I" "$WORK/u4959m.out" --legs-from "$WORK/u4959-fleet.json"
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (manifest)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives --legs-from after the pool-only flag" "ARGS --priority-pool-only --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
+check "(u4959) the dispatch command receives the slack as --top, then --legs-from" "ARGS --priority-pool-only --top 7 --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
 reset_stub
 I="$(new_inbox u4959d)"
 printf '# console\n' > "$WORK/u4959-console.md"
@@ -955,7 +955,7 @@ start "$I" "$WORK/u4959n.out" --doc "$WORK/u4959-console.md" --legs-from "$WORK/
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (doc)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
+check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --top 7 --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
 
 # --- (u5542) unowned-prs=: the first sight of an open PR with no live
 # owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes

@@ -163,15 +163,15 @@ it and `--jira-transition` did not (result `failed`, or a `skip=` for a missing
 tool or config). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the console instead. Then release the
 lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
-a leg does not end its own session: the console's `close-wrapped-leg.sh` ends the session
+the console's `close-wrapped-leg.sh` ends the session
 once the lock is free and `wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
 console `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
 then prove the process subtree is clean** with
-`bash scripts/handover/wrap-subtree-check.sh`: paste its `CLOSABLE:` line; on
-`WITHHELD:` TaskStop the pids and re-run, never send `WRAPPED`.
+`bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
+`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, never send `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
 is on** (off by default; `--context-guard compact|handoff`;

@@ -15,15 +15,18 @@
 # Columns: see HEADER below. stuck_playbook_hits is n/a (no ledger exists).
 # Seams (tests): SCORECARD_CI_METRICS_CMD (prints ci-metrics.sh markdown),
 # SCORECARD_RED_MAIN_CMD (prints a count), SCORECARD_JIRA_CMD (prints `jira list` rows),
+# SCORECARD_MAIN_KEYS_CMD (prints the HIMMEL keys in main squash subjects),
 # SCORECARD_DENIALS_FILE, SCORECARD_CRONTAB, SCORECARD_RUNNER_DIR, SCORECARD_VERSION.
 #
 # ponytail: residual_added counts every ticket created in the window on the current version (SCORECARD_VERSION, default v1.1.3), upgrade path = count only residual-depth labels once HIMMEL-6115 ships
+# ponytail: shipped_strict counts Done non-Epic tickets resolved in the window whose key is in a main squash subject `(#N)` of the last 30 days, so fork-repo PRs and body-only keys are missed, upgrade path = the fresh/broad forms in throughput-model-2026-10-17.md section 1 once the undercount matters
 # ponytail: deferred_escapes counts the `deferred-escape` label in total, no class/severity split, upgrade path = split once HIMMEL-1481 defines the class labels
 # OFF by default: only `arm` installs the cron entry. Platform: cron (Linux/macOS).
 set -uo pipefail
 
 TASK_NAME="HIMMEL-StabilityScorecard"
-HEADER=$'date\tts_utc\tci_queue_p50_s\tci_queue_p90_s\tred_job_rate_pct\tred_main_count\tguard_denials_24h\tstuck_playbook_hits\tresidual_added_v113\tdeferred_escapes\tcancelled_runner_share_pct\tnote'
+LEGACY_HEADER=$'date\tts_utc\tci_queue_p50_s\tci_queue_p90_s\tred_job_rate_pct\tred_main_count\tguard_denials_24h\tstuck_playbook_hits\tresidual_added_v113\tdeferred_escapes\tcancelled_runner_share_pct\tnote'
+HEADER=$'date\tts_utc\tci_queue_p50_s\tci_queue_p90_s\tred_job_rate_pct\tred_main_count\tguard_denials_24h\tstuck_playbook_hits\tresidual_added_v113\tdeferred_escapes\tcancelled_runner_share_pct\tshipped_strict\tadmin_closes\tnote'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${SCORECARD_REPO:-yotamleo/Himmel}"
 VERSION="${SCORECARD_VERSION:-v1.1.3}"
@@ -46,6 +49,15 @@ tsv_path() {
     printf '%s/%s/himmel/specs/research/stability-scorecard.tsv' "$root" "${USER_SLUG:-${USER:-unknown}}"
 }
 
+# main_keys <primary>: HIMMEL keys in the squash subjects (`(#N)` suffix) of main over the last 30 days;
+# fails (cells read unknown) when origin/main cannot be refreshed, so a stale ref never undercounts.
+main_keys() {
+    local subjects
+    git -C "$1" fetch -q origin main 2>/dev/null || return 1
+    subjects="$(git -C "$1" log origin/main --since='30 days ago' --format=%s 2>/dev/null)" || return 1
+    printf '%s\n' "$subjects" | grep -E '\(#[0-9]+\)$' | grep -oE 'HIMMEL-[0-9]+' | sort -u || true
+}
+
 # src <seam-var> <default command...>: run the seam command if set, else the default.
 src() { local v="$1"; shift; if [ -n "${!v:-}" ]; then bash -c "${!v} \"\$@\"" _ "$@"; else "$@"; fi; }
 # count_rows <seam-var> <cmd...>: rows the command prints; fails (cell reads unknown) when the command fails.
@@ -58,7 +70,7 @@ count_rows() {
 }
 
 cmd_run() {
-    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira primary row locked
+    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira primary row locked all dn mk shipped admin
     while [ $# -gt 0 ]; do
         case "$1" in
             --date) [ $# -ge 2 ] || { echo "ERR scorecard: --date needs a value" >&2; return 64; }; date_arg="$2"; shift 2 ;;
@@ -70,7 +82,7 @@ cmd_run() {
     ts="$(date -u +%FT%TZ)"
     date_arg="${date_arg:-${ts%%T*}}"
     if [ -f "$tsv" ]; then
-        [ "$(head -n 1 "$tsv")" = "$HEADER" ] || { echo "ERR scorecard: $tsv has a foreign header, refusing to append" >&2; return 1; }
+        [ "$(head -n 1 "$tsv")" = "$HEADER" ] || [ "$(head -n 1 "$tsv")" = "$LEGACY_HEADER" ] || { echo "ERR scorecard: $tsv has a foreign header, refusing to append" >&2; return 1; }
         if cut -f1 "$tsv" | grep -qx "$date_arg"; then echo "scorecard: $date_arg already recorded"; return 0; fi
     fi
     since="$(date -u -d '24 hours ago' +%FT%TZ 2>/dev/null || date -u -v-24H +%FT%TZ 2>/dev/null)" \
@@ -98,18 +110,28 @@ cmd_run() {
     primary="$(resolve_primary)" || primary=""
     if [ -z "$primary" ]; then
         echo "ERR scorecard: cannot resolve the primary checkout, the Jira cells read unknown" >&2
-        resid=""; esc=""
+        resid=""; esc=""; shipped=""; admin=""
     else
         jira=(node "$primary/scripts/jira/dist/index.js")
         resid="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND fixVersion = \"$VERSION\" AND created >= -24h" --limit 500)" || resid=""
         esc="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND labels = deferred-escape' --limit 500)" || esc=""
     fi
 
-    for v in q50 q90 share pct red den resid esc; do
+    if [ -n "$primary" ]; then
+        all="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND resolved >= -24h' --limit 500)" || all=""
+        shipped=""; admin=""
+        if dn="$(cd "$primary" && src SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND resolution = Done AND type != Epic AND resolved >= -24h' --limit 500 2>/dev/null)" \
+            && [ "$(printf '%s\n' "$dn" | grep -c .)" -lt 500 ] && mk="$(src SCORECARD_MAIN_KEYS_CMD main_keys "$primary" 2>/dev/null)"; then
+            shipped="$(comm -12 <(printf '%s\n' "$dn" | grep -oE '^HIMMEL-[0-9]+' | sort -u) <(printf '%s\n' "$mk" | sort -u) | grep -c . || true)"
+            [[ "$all" =~ ^[0-9]+$ && "$shipped" =~ ^[0-9]+$ && "$all" -ge "$shipped" ]] && admin=$((all - shipped))
+        fi
+    fi
+
+    for v in q50 q90 share pct red den resid esc shipped admin; do
         [[ "${!v}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { printf -v "$v" unknown; bad=1; }
     done
-    row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\tn/a\t%s\t%s\t%s\tdaily, 24h window ending %s' \
-        "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$ts")"
+    row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\tn/a\t%s\t%s\t%s\t%s\t%s\tdaily, 24h window ending %s' \
+        "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$shipped" "$admin" "$ts")"
     mkdir -p "$(dirname "$tsv")" || return 1
     # ponytail: mkdir lock, 30s wait; a kill -9 mid-append leaves tsv.lock to remove by hand, upgrade to flock if it recurs
     locked=0
@@ -117,6 +139,12 @@ cmd_run() {
     [ "$locked" -eq 1 ] || { echo "ERR scorecard: cannot take $tsv.lock" >&2; return 1; }
     if [ -f "$tsv" ] && cut -f1 "$tsv" | grep -qx "$date_arg"; then
         rmdir "$tsv.lock"; echo "scorecard: $date_arg already recorded"; return 0
+    fi
+    if [ -f "$tsv" ] && [ "$(head -n 1 "$tsv")" = "$LEGACY_HEADER" ]; then
+        if ! { awk -F'\t' -v h="$HEADER" 'NR == 1 { print h; next } { for (i = 1; i <= 11; i++) printf "%s\t", $i; printf "n/a\tn/a\t%s\n", $12 }' "$tsv" >"$tsv.mig" \
+            && mv -f "$tsv.mig" "$tsv"; }; then
+            rm -f "$tsv.mig"; rmdir "$tsv.lock"; echo "ERR scorecard: cannot migrate $tsv to the shipped columns" >&2; return 1
+        fi
     fi
     if ! { [ -f "$tsv" ] || printf '%s\n' "$HEADER" >"$tsv"; } || ! printf '%s\n' "$row" >>"$tsv"; then
         rmdir "$tsv.lock"; return 1

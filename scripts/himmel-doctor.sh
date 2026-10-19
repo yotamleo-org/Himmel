@@ -615,12 +615,25 @@ check_c12() {
 # a missing/moved himmel hook script silent in a himmel checkout.  Doctor surfaces
 # that drift without changing hook runtime semantics.
 check_c13() {
-    local hooks_files=() hooks_json f
+    local hooks_files=() hooks_json f unverified=""
     if [ -n "${DOCTOR_HIMMEL_OPS_HOOKS_JSON:-}" ]; then
         hooks_files=("$DOCTOR_HIMMEL_OPS_HOOKS_JSON")
     else
+        # Only cache versions installed_plugins.json pins are live; unpinned
+        # leftovers are dead weight. No readable registry -> scan the whole cache.
+        local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
+        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]?.installPath // empty' "$installed" 2>/dev/null)" || pins=""; }
+        if [ -n "$pins" ]; then
+            while IFS= read -r f; do
+                if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
+            done <<EOF_PINS
+$pins
+EOF_PINS
+        else
+            cache_hooks=("$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json)
+        fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
-                 "$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json \
+                 "${cache_hooks[@]}" \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
         done
@@ -643,6 +656,8 @@ EOF_CMDS
     done
     if [ -n "$missing" ]; then
         emit WARN C13-plugin-hooks "himmel-ops hooks.json references missing checkout hook(s):$missing - guarded [ -f ] wrappers will silently no-op" "run /himmel-update or restore the missing script(s), then re-run"
+    elif [ -n "$unverified" ]; then
+        emit WARN C13-plugin-hooks "pinned himmel-ops install(s) have no hooks/hooks.json, cannot verify:$unverified" "run /himmel-update to reinstall the plugin"
     else
         emit OK C13-plugin-hooks "himmel-ops plugin hooks resolve in this checkout"
     fi

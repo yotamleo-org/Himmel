@@ -49,9 +49,8 @@ recoverable actions (the Jira CLI, `gh issue`, read-only `gh pr view`, qmd KB
 reads) are carved out.
 
 **Use it.** Once opted in via `GLM_LANE_OK` (and past the readiness bar above),
-`bun scripts/telegram/spawn-glm.ts <task>` spawns a worker; see
-**[glm-offload.md](glm-offload.md)** for the spawn→inspect→validate runbook and
-the batch fan-out pattern. Chunk large plans — GLM workers choke on 500+-line
+`bun scripts/telegram/spawn-glm.ts <task>` spawns a worker; the runbook was
+removed with the lane. Chunk large plans — GLM workers choke on 500+-line
 plans.
 
 **Cost.** Pay via the GLM Coding Plan usage bank; per-token router lanes are
@@ -168,7 +167,6 @@ defaulting under `~/.claude/handover/bridge`.
 
 ---
 
-*Deep-dive docs:* [glm-offload.md](glm-offload.md) ·
-[token-economy.md](token-economy.md) · [hermes-runbook.md](hermes-runbook.md) ·
+*Deep-dive docs:* [token-economy.md](token-economy.md) · [hermes-runbook.md](hermes-runbook.md) ·
 [internals/enforcement.md](internals/enforcement.md) (the hooks that gate these
 lanes) · [internals/telegram-bridge.md](internals/telegram-bridge.md).
