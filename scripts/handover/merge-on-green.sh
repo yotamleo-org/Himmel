@@ -8,11 +8,15 @@
 # chain never merges.
 #
 # This is the narrow, self-gating merge path the operator authorizes via a
-# specific standing allow-rule. Legs are told to invoke the anchored spelling,
-# `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)`
-# — a relative `Bash(bash scripts/handover/merge-on-green.sh:*)` rule is also
-# still present, and now hands off to the
-# anchor's own copy on a relative entry — never a raw
+# specific standing allow-rule. Legs invoke the relative spelling
+# `bash scripts/handover/merge-on-green.sh` from their worktree root: it
+# matches the relative `Bash(bash scripts/handover/merge-on-green.sh:*)` rule
+# as plain text, guard-pr-check-literal.sh admits it when this copy equals the
+# anchor's or, on a branch behind main that never touched it, its merge-base's,
+# and it hands off to the anchor's own copy on a relative entry. The anchored
+# `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` rule
+# carries a shell expansion, so whether it applies is left to the auto-mode
+# classifier, which allows and denies it run to run — never a raw
 # `gh pr merge` (still classifier-blocked) and never a permission widening.
 # It merges ONLY on: opt-in (ARMAUTOMERGE=1) AND a PRIVATE github repo
 # — or, the ONE configured public origin, live-verified under

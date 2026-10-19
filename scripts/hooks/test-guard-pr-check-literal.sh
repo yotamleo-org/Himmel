@@ -2206,6 +2206,37 @@ run "4932: control [command substitution in path] -> deny" 2 "$(payload 'bash sc
 run "4932: control [pr-check script name] -> deny" 2 "$(payload 'bash scripts/cr/pr-check-context.sh > /tmp/o4932' "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 
+# ---- a branch behind main runs its relative handover writer ---------------
+# main moved merge-on-green.sh after the leg's branch was cut. The branch never
+# touched it, so its copy is the merge-base's - main-reviewed bytes whose
+# hand-off execs the anchor's copy. The hand-off itself must still equal the
+# anchor's, and a branch edit (committed, dirty, or grafted into main's
+# history) still denies.
+BASE_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+echo 'echo mog v2' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+echo 'echo go v2' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+echo 'echo write-verdicts v2' >"$PRIMARY/scripts/cr/write-verdicts.sh"
+g -C "$PRIMARY" commit -qam 'main moves on'
+run "behind main, untouched merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+run "behind main, untouched go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
+run "behind main, untouched scripts/cr writer -> still deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
+run "behind main, dirty merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$WT" commit -qam 'branch edits merge-on-green'
+BRANCH_EDIT=$(g -C "$WT" rev-parse HEAD)
+run "behind main, committed merge-on-green.sh edit -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+MAIN_TIP=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+printf '%s %s\n' "$MAIN_TIP" "$BRANCH_EDIT" >"$PRIMARY/.git/info/grafts"
+run "behind main, edit grafted into main's history -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+rm -f "$PRIMARY/.git/info/grafts"
+g -C "$WT" reset -q --hard "$BASE_MAIN"
+echo ': handoff v2' >>"$PRIMARY/scripts/cr/anchor-handoff.sh"
+g -C "$PRIMARY" commit -qam 'main moves the hand-off'
+run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
+g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
+run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*
 # must pass (a mention, or a himmel-gate run from the anchor), deny-* must stay

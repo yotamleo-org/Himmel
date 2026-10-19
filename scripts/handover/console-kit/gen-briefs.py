@@ -212,9 +212,9 @@ def ship_completes(scope):
     found = COMPLETES_RE.findall(scope)
     if found and found[-1].lower() == 'no':
         return ('completes-ticket: no (leave the ticket In Progress after MERGED)',
-                '`merge-on-green.sh` (bare, without the Jira-transition flag)')
+                '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root)')
     return ('completes-ticket: yes (if the PR title carries a second key, say so after MERGED so the console closes it)',
-            '`merge-on-green.sh --jira-transition`')
+            '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root)')
 
 
 def render_brief(l, ctx):
