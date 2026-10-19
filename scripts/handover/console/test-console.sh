@@ -2480,4 +2480,27 @@ check "81 doc with no predecessor passes" "$rc81" "0"
 mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-console.md"; run81 dec81k
 check "81 predecessor doc absent passes" "$rc81" "0"
 
+# --- 82: the rendered HANDOFF stays under the ~3k-token budget:
+# a large open-PR set, many legs and a full Results tail become pointers; the
+# Live state (rulings, tokens) stays inline.
+out82="$(console new --bucket cap82)"
+token82="$(token_of "$out82")"
+doc82A="$root/tester/cap82/DEMO-nextleg-${today}A-console.md"
+handoff82A="$root/tester/cap82/DEMO-nextleg-${today}A-console-HANDOFF.md"
+# shellcheck disable=SC2016  # the loop is expanded by the generated stub
+printf '#!/usr/bin/env bash\nfor i in $(seq 1 300); do echo "#$i [DEMO-$i] a fixture pull request title long enough to bulk (feat/branch-$i)"; done\n' > "$tmp/facts-prs82.sh"
+legs82=""
+for i in $(seq 1 30); do
+    printf '%s\n' '# leg' '## Results' "- 10:00 LIVE — $(printf 'x%.0s' $(seq 1 180))" > "$root/tester/cap82/DEMO-leg82-N$i.md"
+    legs82="$legs82${legs82:+,}{\"label\":\"N$i\",\"doc\":\"$root/tester/cap82/DEMO-leg82-N$i.md\"}"
+done
+printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-console.fleet.json"
+for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
+HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" console next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
+check "82 HANDOFF is at most 12000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 12000 ] && echo yes || echo no)" "yes"
+check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
+check "82 the Live state stays inline" "$(grep -c '^## In flight' "$handoff82A")" "1"
+check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

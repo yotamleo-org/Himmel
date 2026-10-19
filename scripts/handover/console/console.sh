@@ -1667,23 +1667,37 @@ cmd_next() {
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../console-kit/handoff-facts.sh"
-        render_template "$handoff_template" "$predecessor_handoff" \
-            HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
-            BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
-            LEG_LIST "$(bash "$facts" legs "$predecessor_doc" --repo "$repo")" \
-            OPEN_PRS "$(bash "$facts" prs "$predecessor_doc" --repo "$repo")" \
-            SHIFT_SUMMARY "$(bash "$facts" summary "$predecessor_doc" --repo "$repo")" \
-            QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \
-            LAST_GO "$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")" \
-            JUDGE_CALLS "$(judge_calls_now)" \
-            PREDECESSOR_LETTER "$predecessor_letter" \
-            LETTER "$successor_letter" \
-            PREDECESSOR "$predecessor_base" \
-            SUCCESSOR_DOC "$successor_doc_ref" \
-            REPO "$repo" \
-            BUCKET "$bucket" \
-            KIT "$kit" \
-            LIVE_STATE "$predecessor_live_state"
+        local hf_legs hf_prs hf_summary hf_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+        hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
+        hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
+        hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
+        local hf_pass=1
+        while :; do
+            render_template "$handoff_template" "$predecessor_handoff" \
+                HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
+                BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
+                LEG_LIST "$hf_legs" \
+                OPEN_PRS "$hf_prs" \
+                SHIFT_SUMMARY "$hf_summary" \
+                QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \
+                LAST_GO "$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")" \
+                JUDGE_CALLS "$(judge_calls_now)" \
+                PREDECESSOR_LETTER "$predecessor_letter" \
+                LETTER "$successor_letter" \
+                PREDECESSOR "$predecessor_base" \
+                SUCCESSOR_DOC "$successor_doc_ref" \
+                REPO "$repo" \
+                BUCKET "$bucket" \
+                KIT "$kit" \
+                LIVE_STATE "$predecessor_live_state"
+            # Over budget: the bulky fact sections (all re-derivable) become
+            # pointers; the Live state and the rulings stay inline.
+            [ "$hf_pass" -eq 1 ] && [ "$(wc -c < "$predecessor_handoff")" -gt "$hf_budget" ] || break
+            hf_pass=2
+            hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
+            hf_prs="over the HANDOFF size budget — run: gh pr list --state open"
+            hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
+        done
         wrapped_open_prs_section "$predecessor_doc" >> "$predecessor_handoff"
         echo "handoff: $predecessor_handoff"
     else

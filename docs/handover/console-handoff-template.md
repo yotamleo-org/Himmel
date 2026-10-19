@@ -31,6 +31,9 @@ every leg that has not been re-briefed. Then re-arm without `--succession`.
 
 ## In flight
 
+> The rendered HANDOFF is capped at about 3k tokens: a fact section that reads
+> `over the HANDOFF size budget — run: …` is a pointer; run that command if you need it.
+
 {{LIVE_STATE}}
 
 <Copied verbatim from the predecessor's `## Live state` —
