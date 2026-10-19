@@ -691,7 +691,9 @@ mdir="$mir"
 printf '%s\n' '---' 'key: "HIMMEL-90"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Bug"' 'links:' '  blocks: []' \
     '  blocked_by: ["HIMMEL-91"]' '  relates: ["relates to HIMMEL-94"]' '---' '# HIMMEL-90: blocked by link' > "$bb/HIMMEL-90.md"
 printf '%s\n' '' '## Description' '' 'Agent detail' 'Depends on HIMMEL-93 and HIMMEL-91 (the seam).' '' '## Comments' '' 'BLOCKED-BY HIMMEL-94' >> "$bb/HIMMEL-92.md"
-bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)"
+bbrc=0
+bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)" || bbrc=$?
+if [ "$bbrc" -eq 0 ]; then pass '--remaining with blockers exits 0'; else fail "--remaining with blockers exited $bbrc"; fi
 contains 'a blocked_by link lands in the suffix as open' "$bbout" 'HIMMEL-90 [To Do] blocked by link {blocked-by: HIMMEL-91 open}'
 contains 'a Depends-on body line lands in the suffix, closed and open' "$bbout" 'HIMMEL-92 [To Do] blocked by body line {blocked-by: HIMMEL-93 done, HIMMEL-91 open}'
 contains 'a card with no blocker keeps the bare line' "$bbout" 'HIMMEL-94 [To Do] unblocked card'
@@ -701,7 +703,9 @@ mdir="$bb"
 mk 95 'To Do' '["v1.1.3"]' 'colon form' 'To Do'
 mdir="$mir"
 printf '%s\n' '' '## Description' '' 'BLOCKED-BY: HIMMEL-91. Now unblocked by HIMMEL-93.' 'Depends on HIMMEL-96, HIMMEL-97, and HIMMEL-98.' >> "$bb/HIMMEL-95.md"
-bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)"
+bbrc=0
+bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)" || bbrc=$?
+if [ "$bbrc" -eq 0 ]; then pass '--remaining with a colon-form blocker exits 0'; else fail "--remaining with a colon-form blocker exited $bbrc"; fi
 contains 'an upper-case BLOCKED-BY: form lands in the suffix; "unblocked by" is no blocker' "$bbout" 'HIMMEL-95 [To Do] colon form {blocked-by: HIMMEL-91 open, HIMMEL-96 open, HIMMEL-97 open, HIMMEL-98 open}'
 
 # --- done-in-future counts every unreleased version, not only v1.0.x.
