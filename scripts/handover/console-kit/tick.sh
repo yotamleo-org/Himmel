@@ -1583,9 +1583,9 @@ if [ -d "$bus_peers_dir" ]; then
         for be_cand in ${be_cands//,/ }; do
             [ -f "$bus_peers_dir/$be_cand.json" ] && { be_found=1; break; }
         done
-        [ -n "$be_found" ] || busedge_val="$(csv_add "$busedge_val" "MISSING:$be_label")"
+        [ -n "$be_found" ] || busedge_val="$(csv_add "$busedge_val" "$be_label")"
     done <<< "$leg_candmap"
-    [ -z "$busedge_val" ] || busedge_tail=" busedge=$busedge_val"
+    [ -z "$busedge_val" ] || busedge_tail=" busedge=MISSING:$busedge_val"
 fi
 # deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
 # HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)

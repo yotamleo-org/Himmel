@@ -77,6 +77,9 @@ free="$(mkleg 801-N801-free)"
 out="$(run "$held")"
 check 'a held leg with no peer record reads busedge=MISSING:<label>' 'MISSING:N810' "$(field busedge "$out")"
 
+out="$(run "$held,$held2")"
+check 'several legs without a record share one MISSING: prefix' 'MISSING:N810,N811' "$(field busedge "$out")"
+
 peer HIMMEL-9810-N810-held
 check 'a held leg with a peer record has no busedge field' '' "$(field busedge "$(run "$held")")"
 

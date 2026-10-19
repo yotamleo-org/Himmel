@@ -6829,6 +6829,12 @@ cp "$REPO_ROOT/scripts/fixtures/doctor/konsolerc-dbus-enabled" "$c68_t/home/.con
 out="$(c68_run)"
 if grepq "$out" -F 'OK   C68-konsole-dbus'; then pass "C68 setting present -> OK"; else fail "C68 setting present -> $(printf '%s' "$out" | grep -A1 C68)"; fi
 
+echo "== C68: setting under another section -> WARN =="
+cp "$REPO_ROOT/scripts/fixtures/doctor/konsolerc-dbus-missing" "$c68_t/home/.config/konsolerc"
+printf 'EnableSecuritySensitiveDBusAPI=true\n' >> "$c68_t/home/.config/konsolerc"
+out="$(c68_run)"
+if grepq "$out" -F 'WARN C68-konsole-dbus'; then pass "C68 setting outside [KonsoleWindow] -> WARN"; else fail "C68 setting outside [KonsoleWindow] -> $(printf '%s' "$out" | grep -A1 C68)"; fi
+
 echo "== C68: no konsolerc at all -> WARN =="
 rm -f "$c68_t/home/.config/konsolerc"
 out="$(c68_run)"
