@@ -92,7 +92,7 @@ projection from one to the other:
 - `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (the Claude Code env var that actually
   controls when the harness starts compacting) is set by the **launcher**
   from its own env knob: the GLM launcher's `GLM_CONTEXT_WINDOW` and
-  `spawn-glm --context big|small` preset (`docs/glm-offload.md`): `big` =
+  `spawn-glm --context big|small` preset: `big` =
   `glm-5.2[1m]` + `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000`; `small` =
   `glm-5.2` + 200000; the codex lane's twin, `CODEX_CONTEXT_WINDOW`
   (`docs/tooling-catalog.md` `claude-codex` section).
@@ -103,7 +103,7 @@ silently stale.
 
 **GLM evidence:** without an explicit window, Claude Code assumes its ~200k
 default for an unrecognized model slug and compacts/rejects early — the
-documented "prompt too long" deaths in `docs/glm-offload.md`. Setting
+documented "prompt too long" deaths. Setting
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` for the `[1m]` GLM variant fixed it.
 
 **Action:** never let a new lane's model slug silently fall through to Claude

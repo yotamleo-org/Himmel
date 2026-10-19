@@ -5,8 +5,8 @@ lets himmel sessions (a supervisor session, its worker sessions, judges and cons
 other without going through a transcript or a shared file. It is a plugin under
 `marketplace/plugins/himmel-bus/`, not a `himmelctl` install item, and it has
 not yet had a clean live round trip on every station: the working record and
-open failures are in [internals/himmel-bus-poc.md](internals/himmel-bus-poc.md).
-Read that before relying on it.
+open failures are kept with the project's internal decision records.
+Check the ticket history before relying on it.
 
 The plugin's own [README](../marketplace/plugins/himmel-bus/README.md) is the
 store-level spec (chain, cursors, rotation, recovery). This page is the
@@ -81,6 +81,5 @@ reported without marking the chain tampered; fix the cause and retry.
 
 ## See also
 
-- [internals/himmel-bus-poc.md](internals/himmel-bus-poc.md) — live round-trip record and known failures.
 - [glossary.md](glossary.md) — console, leg, judge, relay, chain.
 - [handover/running-a-console.md](handover/running-a-console.md) — how supervisor sessions and worker sessions are launched.

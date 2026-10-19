@@ -693,7 +693,7 @@ pass, never a blind find-and-replace.
 Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), cache TTL countdown, per-session and all-sessions cache read/write/hit/savings. The hud renderer above only has the cache-expiry line so far — the read/write/hit-rate/net/cost lines stay bash-bar-only (opt-in/rollback) until a planned follow-up ports them.
 
 **Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
-**Patch applied:** `docs/patches/2026-05-16-cache-statusline.md`
+**Patch applied:** cache-metrics patch (record kept in the state repo `specs/decisions/`)
 **Upstream:** `nilbuild/claude-statusline` (fork now archived; no PR path)
 
 ---
@@ -1263,8 +1263,7 @@ Telegram-flushed. A blocked worker can record a capability request and degrade
 gracefully via the **escalation channel** — `spawn-glm --grant`/`--autonomous`
 pre-seed, an `adjudicate list|grant|refuse` CLI, and a per-session append-only
 `grants.jsonl` the deny-hook honors on one arm (TTL/use-bounded, fail-closed).
-Full loop, permission guidance, escalation channel, and honest enforcement
-inventory in [`docs/glm-offload.md`](glm-offload.md).
+The offload-loop doc was removed with the lane.
 
 ```
 bun scripts/telegram/spawn-glm.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--timeout-mins <n>] [--permission-mode <mode>] [--arm-on-cap | --no-arm-on-cap]
@@ -1276,7 +1275,7 @@ Prints exactly three inspect-contract lines on exit: `session-dir:`,
 run `capped` in `meta.json` (`cap_window`/`resume_at`/`cap_source`), and by
 default (`--arm-on-cap`) arms a resume at the cycle reset; `--no-arm-on-cap`
 writes `resume_at` without arming. Preflight warns at `GLM_USAGE_WARN_PCT`
-(default `80`). Detail: [`docs/glm-offload.md`](glm-offload.md#cap-guard).
+(default `80`).
 Exit codes: **2** usage error / plan refusal (non-himmel cwd, settings
 conflict, missing ZAI key); **3** guard refusal (PHI marker, phi-root, denylist,
 unreadable guard config); **1** operational failure; else the worker's exit code.
@@ -1297,7 +1296,7 @@ builder block + missing-key throw + quote-strip, `runSession` lane env merge
 with argv shape unchanged, GLM model pin ignoring `TELEGRAM_CLAUDE_MODEL`,
 settings-conflict preflight, prompt composition
 embedding the minted session paths); the live GLM-lane acceptance + offload-loop
-legs are recorded in [`docs/glm-offload.md`](glm-offload.md).
+legs are recorded in the ticket history.
 
 ---
 

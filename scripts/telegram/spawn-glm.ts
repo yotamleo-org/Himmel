@@ -1493,7 +1493,7 @@ export async function executeRun(deps: {
 // finally on every CATCHABLE exit path (including a thrown runBody, which
 // still propagates after cleanup); a SIGKILL/hard-kill is not catchable, so a
 // leaked lock is recovered manually via `shared-branch-lock.sh release`
-// (docs/glm-offload.md).
+// (GLM lane, dropped).
 export async function runSharedDispatch(p: {
   repoDir: string; worktree: string; branch: string; needsWorktreeAdd: boolean;
   lockScript: string; gitAdd: () => void; runBody: () => Promise<number>;

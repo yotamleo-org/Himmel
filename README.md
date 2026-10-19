@@ -348,8 +348,7 @@ Every feature has one doc that owns its detail; the full map is
 - `himmelctl` install, update and uninstall:
   [`docs/setup/updating.md`](docs/setup/updating.md)
 - Delegation across Claude model tiers, plus optional GLM and Codex lanes,
-  listed live by `/lanes`: [`docs/glm-offload.md`](docs/glm-offload.md) and
-  [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
+  listed live by `/lanes`: [`docs/tooling-catalog.md`](docs/tooling-catalog.md)
 - Cloud lane (`claude --cloud` sessions on your fork):
   [`docs/setup/cloud-environment.md`](docs/setup/cloud-environment.md)
 - Watchers that cost almost no tokens: `/morning-report` (git, GitHub and Jira
