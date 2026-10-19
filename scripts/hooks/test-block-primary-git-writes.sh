@@ -23,7 +23,10 @@ FENCE="$HOOKS/block-terminal-write-fence.sh"
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
-FIX=$(mktemp -d "${HOME}/.himmel-3401-gitfix-XXXXXX") || exit 1
+# shellcheck source=lib-fixture-root.sh
+. "$HOOKS/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || exit 1
+FIX=$(mktemp -d "$_FROOT/.himmel-3401-gitfix-XXXXXX") || exit 1
 trap 'rm -rf "$FIX"' EXIT
 
 export HOME="$FIX/home"
@@ -982,6 +985,18 @@ allow "GIT_EXTERNAL_DIFF= nice git diff, cwd=leg"     "$W" "GIT_EXTERNAL_DIFF=x 
 allow "HOME=<dir> git status, cwd=leg"                "$W" "HOME=/tmp/h git status"
 allow "LD_PRELOAD=<so> git status, cwd=leg"           "$W" "LD_PRELOAD=/tmp/x.so git status"
 allow "ls-remote --upload-pack=<cmd> ., cwd=leg"      "$W" "git ls-remote --upload-pack=x ."
+
+echo "== DENY: a temp-shaped HOME does not loosen the fence for a non-temp primary =="
+# The sandbox HOME shape scripts/ci/home-canary.sh builds.
+TMPSB=$(mktemp -d "${TMPDIR:-/tmp}/home-canary.XXXXXX") || exit 1
+trap 'rm -rf "$FIX" "$TMPSB"' EXIT
+TMPHOME="$TMPSB/home"
+mkdir -p "$TMPHOME"
+j=$(payload "git archive -o $P/x.tar HEAD" "$W")
+for s in "$DIRECT" "$FENCE"; do
+    got=$(HOME="$TMPHOME" _rc "$s" "$j")
+    if [ "$got" = block ]; then ok "primary write, HOME=mktemp -d [${s##*/}]"; else bad "primary write, HOME=mktemp -d [${s##*/}] — expected block got $got"; fi
+done
 
 echo "== DENY: unparseable input fails CLOSED in direct-exec mode (adversarial review S6) =="
 for raw in '' 'not json' '[]' '{}' '{"tool_name":"Bash"}' '{"tool_name":"Bash","tool_input":{}}' \
