@@ -56,7 +56,8 @@ To drain the hosted CI queue on an operator order, run
 `bash scripts/handover/console-kit/cancel-runs.sh --keep-pr <n>` (repeat the
 flag, or add `--keep-sha <sha>`) — a dry run that prints the count; add `--live`
 to cancel. It cancels every non-completed run on the `origin` repo (not
-overridable: a `--repo` that differs from origin refuses) except those on the
+overridable: a `--repo` that differs from origin refuses, as does an origin on
+any host but github.com) except those on the
 kept heads, and prints `cancelled=<n> failed=<n> kept=<list>`. A keep is
 required; `--all` is the explicit way to keep nothing. A keep that cannot be
 resolved refuses before anything is cancelled. Runs on `main`, and any run not

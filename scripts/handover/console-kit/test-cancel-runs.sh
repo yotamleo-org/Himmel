@@ -86,6 +86,15 @@ chmod +x "$WORK/bin/gh"
 mkdir -p "$WORK/repo" "$WORK/norepo"
 ( cd "$WORK/repo" && git init -q . && git remote add origin https://github.com/o/r.git ) || { echo "git fixture failed" >&2; exit 1; }
 ( cd "$WORK/norepo" && git init -q . ) || { echo "git fixture failed" >&2; exit 1; }
+mk_origin() { # <dir> <url>
+    mkdir -p "$WORK/$1"
+    ( cd "$WORK/$1" && git init -q . && git remote add origin "$2" ) || { echo "git fixture failed" >&2; exit 1; }
+}
+mk_origin ghe https://ghe.example.com/o/r.git
+mk_origin ghe-ssh git@ghe.example.com:o/r.git
+mk_origin ghe-port ssh://git@ghe.example.com:2222/o/r.git
+mk_origin gh-ssh git@github.com:o/r.git
+mk_origin gh-path /srv/git/o/r.git
 
 export PATH="$WORK/bin:$PATH"
 export STUB_RUNS="$WORK/runs.json" STUB_CANCEL_LOG="$WORK/cancel.log"
@@ -219,6 +228,26 @@ check "no origin cancels nothing" "" "$(cancelled)"
 
 out="$(live --repo not-a-slug --keep-pr 3221)"; rc=$?
 check "a malformed --repo is a usage error" "2" "$rc"
+
+# gh -R OWNER/REPO targets the default host, so only a github.com origin is accepted
+out="$(T_DIR="$WORK/ghe" live --keep-pr 3221)"; rc=$?
+check "an https origin on another host refuses, exit 2" "2" "$rc"
+check "an other-host https origin cancels nothing" "" "$(cancelled)"
+has "the other-host refusal names the host" "ghe.example.com" "$out"
+
+out="$(T_DIR="$WORK/ghe-ssh" live --keep-pr 3221)"; rc=$?
+check "an scp-style origin on another host refuses, exit 2" "2" "$rc"
+check "an other-host scp-style origin cancels nothing" "" "$(cancelled)"
+
+out="$(T_DIR="$WORK/ghe-port" live --keep-pr 3221)"; rc=$?
+check "an ssh:// origin with a port on another host refuses, exit 2" "2" "$rc"
+
+out="$(T_DIR="$WORK/gh-ssh" live --keep-pr 3221)"; rc=$?
+check "an scp-style github.com origin is accepted" "0" "$rc"
+check "an scp-style github.com origin cancels" "103 104 105 " "$(cancelled)"
+
+out="$(T_DIR="$WORK/gh-path" live --keep-pr 3221)"; rc=$?
+check "a local-path origin (no host) refuses, exit 2" "2" "$rc"
 
 # main, tags and push/schedule/workflow_dispatch runs are protected
 export STUB_RUNS="$WORK/runs-prot.json"

@@ -123,6 +123,16 @@ fi
 if ! url="$(git remote get-url origin)"; then
     echo "cancel-runs: no origin remote; the repo is pinned to origin" >&2; exit 2
 fi
+# gh -R OWNER/REPO addresses the default host, so any origin host but github.com could aim the cancels at a different repo.
+case "$url" in
+    *://*) ohost="${url#*://}"; ohost="${ohost%%/*}"; ohost="${ohost##*@}"; ohost="${ohost%%:*}" ;;
+    */*:* | *:*/*) case "${url%%:*}" in */*) ohost="" ;; *) ohost="${url%%:*}"; ohost="${ohost##*@}" ;; esac ;;
+    *) ohost="" ;;
+esac
+ohost="$(printf '%s' "$ohost" | tr '[:upper:]' '[:lower:]')"
+if [ "$ohost" != "github.com" ]; then
+    echo "cancel-runs: origin host '${ohost:-none}' is not github.com; the repo is pinned to a github.com origin" >&2; exit 2
+fi
 REPO="$(printf '%s\n' "$url" | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##')"
 printf '%s' "$REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
     || { echo "cancel-runs: cannot read owner/repo from origin '$url'" >&2; exit 2; }
