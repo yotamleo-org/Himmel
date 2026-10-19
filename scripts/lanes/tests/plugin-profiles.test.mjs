@@ -1791,7 +1791,7 @@ test('registry-driven trust: three registered forks are trusted, an unregistered
   for (const nwo of ['yotamleo-org/qmd', 'yotamleo-org/graphify', 'yotamleo-org/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
   assert.equal(s.autoMode.environment.length, 4);
   assert.ok(!text.includes('yotamleo-org/not-registered'));
-  assert.ok(!text.includes('github.com/yotamleo '), 'never an owner-wide entry');
+  assert.ok(!text.includes('github.com/yotamleo-org '), 'never an owner-wide entry');
   assert.ok(!/tobi\/qmd/.test(text), 'upstream is not trusted');
 });
 test('fork trust text names the destination and excludes upstream, parent, force-push, delete and publish', () => {
