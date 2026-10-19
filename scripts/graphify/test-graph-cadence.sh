@@ -1254,6 +1254,7 @@ for a in "$@"; do [ "$prev" = "--corpus-root" ] && root="$a"; prev="$a"; done
 manifest=absent; [ -f "$root/graphify-out/semantic-manifest.json" ] && manifest=present
 echo "args: $* manifest=$manifest" >> "$FAKE_SEM_LOG"
 mkdir -p "$root/graphify-out" && echo '{}' > "$root/graphify-out/semantic-manifest.json"
+[ -z "${FAKE_SEM_OUT:-}" ] || echo "$FAKE_SEM_OUT"
 exit "${FAKE_SEM_RC:-0}"
 FAKESEM
 chmod +x "$FAKE_SEM"
@@ -1321,6 +1322,16 @@ for brc in 3 4; do
     assert_eq "benign semantic rc=$brc appends no alert line" "" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
     assert_contains "benign semantic rc=$brc is reported as a skip" "semantic step skipped (rc=$brc" "$out"
 done
+# (e2) a file backed off by the merge alerts once, on its own leg, and the run stays green.
+tag=backoff; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+: > "$FAKE_SEND_LOG"
+for _ in 1 2; do
+    rc=0; out=$(FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
+    assert_eq "a backed-off file keeps the run rc=0" "0" "$rc"
+done
+assert_contains "a backed-off file appends a back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
+assert_eq "a backed-off file sends one alert across two runs" "1" "$(grep -c backoff "$FAKE_SEND_LOG")"
 # (f) the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
 # claude-cli; ollama is the opt-in; anything else refuses before any work.
 for tag in ollama bogus; do

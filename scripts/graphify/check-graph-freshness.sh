@@ -16,7 +16,9 @@
 #               --corpus-root given but the dir does not exist;
 #               corpus orphaned (no --corpus-root AND no .graphify_root marker,
 #               OR >50% of manifest.json's checkable paths do not resolve
-#               under the corpus root).
+#               under the corpus root);
+#               semantic refresh stuck (one file failed or shrink-refused in
+#               each of the last 3 merge rows of semantic-runs.jsonl).
 #   rc=1 WARN — age is older than --max-age-days. Age is measured from
 #               graph.json's embedded built_at_commit (via that commit's
 #               committer date in the resolved corpus, when available),
@@ -24,6 +26,9 @@
 #               manifest.json's) filesystem mtime.
 #   rc=0 OK   — fresh AND corpus verified; prints exactly one line:
 #               "graph-freshness: OK (<age-days>d old, corpus verified)"
+#   With a semantic-runs.jsonl, every verdict past the orphan check is preceded
+#   by "graph-freshness: semantic last=<ts> failed=<n> refused=<n> [backed_off=<n>
+#   unstamped=<n> oldest_unstamped=<d>d]" on stdout.
 #
 # CORPUS RESOLUTION (orphan detection):
 #   --corpus-root given → that dir is the corpus root (must exist); the orphan
@@ -183,6 +188,49 @@ else
   if [ "$total" -eq 0 ] || [ $(( exist * 2 )) -lt "$total" ]; then
     fail "corpus orphaned: only $exist/$total manifest.json paths exist under $CORPUS_RESOLVED (${RATIO_PCT}%, at least 50% required) — graph references a gone/moved corpus."
   fi
+fi
+
+# --- 3b. semantic refresh: the last merge row, and files stuck across runs ---
+SEMANTIC_RUNS="$OUT/semantic-runs.jsonl"
+if [ -f "$SEMANTIC_RUNS" ]; then
+  SEM_STATUS=""
+  if [ -f "$OUT/semantic-manifest.json" ]; then
+    SEM_STATUS="$(python3 "$HERE/semantic-merge.py" status --root "$CORPUS_RESOLVED" --out "$OUT" 2>/dev/null || true)"
+  fi
+  SEM_OUT="$(python3 - "$SEMANTIC_RUNS" <<'PYEOF'
+import json, sys
+
+rows = []
+with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and "batch" in row:
+            rows.append(row)
+if not rows:
+    sys.exit(0)
+
+
+def stuck(row):
+    return set(row.get("failed_files") or []) | set(row.get("refused_files") or [])
+
+
+last = rows[-1]
+failed = len(last["failed_files"]) if "failed_files" in last else last.get("failed", 0)
+refused = len(last["refused_files"]) if "refused_files" in last else last.get("shrink_refused", 0)
+print("LINE last=%s failed=%s refused=%s" % (last.get("ts", "?"), failed, refused))
+if len(rows) >= 3:
+    every = stuck(rows[-1]) & stuck(rows[-2]) & stuck(rows[-3])
+    if every:
+        print("STUCK " + ", ".join(sorted(every)))
+PYEOF
+)" || fail "cannot read $SEMANTIC_RUNS."
+  SEM_LINE="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^LINE //p')"
+  [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE $SEM_STATUS"
+  SEM_STUCK="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^STUCK //p')"
+  [ -z "$SEM_STUCK" ] || fail "semantic refresh stuck: $SEM_STUCK failed or refused in each of the last 3 runs."
 fi
 
 # --- 4. age check: build identity (built_at_commit) preferred over mtime ---

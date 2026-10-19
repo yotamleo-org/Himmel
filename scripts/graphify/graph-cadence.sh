@@ -974,7 +974,13 @@ if [ "$SEMANTIC" -eq 1 ]; then
     _sem_rc=$?
     printf '%s\n' "$_sem_out"
     case "$_sem_rc" in
-        0) bash "$CADENCE_ALERT" clear "$_sem_leg" ;;
+        0)
+            bash "$CADENCE_ALERT" clear "$_sem_leg"
+            # A file the merge backed off is not retried until it changes: say so once, on its own leg.
+            if printf '%s\n' "$_sem_out" | grep -q 'BACKED OFF'; then
+                bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
+            fi
+            ;;
         # 3 = bank at/over threshold, 4 = promote lock held. Nothing
         # was touched and the next fire retries, so neither alerts nor fails the
         # run. An existing alert is left standing: a skip is not a recovery.
