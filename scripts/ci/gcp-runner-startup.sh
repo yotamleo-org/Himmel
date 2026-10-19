@@ -36,7 +36,7 @@ apt-get install -y -qq iptables at bubblewrap socat ffmpeg git jq curl unzip she
 systemctl enable --now atd  # t13b-ok: stock at daemon on a throwaway CI VM, not a himmel service
 systemctl is-active --quiet atd || exit 1
 sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-python3 -m pip install --break-system-packages --disable-pip-version-check pre-commit==4.7.0 || exit 1
+python3 -m pip install --break-system-packages --ignore-installed --disable-pip-version-check pre-commit==4.7.0 || exit 1
 
 id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
 mkdir -p /opt/runner

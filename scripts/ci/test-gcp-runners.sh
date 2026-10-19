@@ -114,6 +114,7 @@ if grep -q 'iptables -A OUTPUT -d 169.254.169.254 -m owner --uid-owner runner -j
 if grep -q "^printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/himmel/job-started-hook.sh" "$STUB_LOG" && grep -q '^FILE job-started-hook <<' "$STUB_LOG" && grep -q 'fork guard' "$STUB_LOG"; then ok "fork guard hook is installed and wired as the job-started hook"; else bad "fork guard hook not wired"; fi
 if grep -q '^md job-started-hook > /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$STUB_LOG" && grep -q '^\[ -s /usr/local/lib/himmel/job-started-hook.sh \] || exit 1$' "$STUB_LOG"; then ok "startup script fails closed on a missing or empty fork guard hook"; else bad "fork guard hook write is not checked"; fi
 if grep -q 'poweroff' "$STUB_LOG"; then ok "startup script powers the VM off after the one job"; else bad "startup script never powers off"; fi
+if grep -q '^python3 -m pip install --break-system-packages --ignore-installed .*pre-commit==' "$STUB_LOG"; then ok "pre-commit pip install ignores the apt-owned packaging (no uninstall)"; else bad "pip install can try to uninstall a debian package"; fi
 
 # 4b. the per-VM JIT config files are removed when up exits.
 if [ -z "$(ls -A "$TMPDIR")" ]; then ok "up leaves no JIT config on disk"; else bad "up left files in TMPDIR: $(ls "$TMPDIR")"; fi
