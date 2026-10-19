@@ -6813,4 +6813,30 @@ out="$(DOCTOR_HERMES_HOME="$c67_t/none" CLAUDE_DIR="$c67_t/home/claude" HOME="$c
 if grepq "$out" -F 'INFO C67-hermes-fail-open'; then pass "C67 missing -> INFO"; else fail "C67 missing -> $(printf '%s' "$out" | grep -A1 C67)"; fi
 rm -rf "$c67_t"
 
+# --- C68-konsole-dbus: konsolerc must set EnableSecuritySensitiveDBusAPI=true ---
+# Fixtures are copies of the real ~/.config/konsolerc (with and without line 5).
+echo "== C68: konsolerc lacks EnableSecuritySensitiveDBusAPI=true -> WARN =="
+c68_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c68.XXXXXX")" || { fail "C68: mktemp -d failed"; exit 1; }
+mkdir -p "$c68_t/home/.config" "$c68_t/bin"
+printf '#!/bin/sh\nexit 0\n' > "$c68_t/bin/konsole"; chmod +x "$c68_t/bin/konsole"
+c68_run() { env -u XDG_CONFIG_HOME PATH="$c68_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c68_t/home/claude" HOME="$c68_t/home" bash "$DOC" --no-color --only C68 2>&1; }
+cp "$REPO_ROOT/scripts/fixtures/doctor/konsolerc-dbus-missing" "$c68_t/home/.config/konsolerc"
+out="$(c68_run)"
+if grepq "$out" -F 'WARN C68-konsole-dbus'; then pass "C68 missing setting -> WARN"; else fail "C68 missing setting -> $(printf '%s' "$out" | grep -A1 C68)"; fi
+
+echo "== C68: konsolerc sets EnableSecuritySensitiveDBusAPI=true -> OK =="
+cp "$REPO_ROOT/scripts/fixtures/doctor/konsolerc-dbus-enabled" "$c68_t/home/.config/konsolerc"
+out="$(c68_run)"
+if grepq "$out" -F 'OK   C68-konsole-dbus'; then pass "C68 setting present -> OK"; else fail "C68 setting present -> $(printf '%s' "$out" | grep -A1 C68)"; fi
+
+echo "== C68: no konsolerc at all -> WARN =="
+rm -f "$c68_t/home/.config/konsolerc"
+out="$(c68_run)"
+if grepq "$out" -F 'WARN C68-konsole-dbus'; then pass "C68 no konsolerc -> WARN"; else fail "C68 no konsolerc -> $(printf '%s' "$out" | grep -A1 C68)"; fi
+
+echo "== C68: konsole not installed -> INFO =="
+out="$(env -u XDG_CONFIG_HOME DOCTOR_KONSOLE=konsole-not-installed CLAUDE_DIR="$c68_t/home/claude" HOME="$c68_t/home" bash "$DOC" --no-color --only C68 2>&1)"
+if grepq "$out" -F 'INFO C68-konsole-dbus'; then pass "C68 no konsole -> INFO"; else fail "C68 no konsole -> $(printf '%s' "$out" | grep -A1 C68)"; fi
+rm -rf "$c68_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
