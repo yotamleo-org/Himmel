@@ -790,6 +790,40 @@ check "HIMMEL-1871 round 9: fallback's dropped blocker blocks in the LEDGER" "$(
 check "HIMMEL-1871 round 9: availability is truthful (ok via responding-model fb1)" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^avail-ok-fb1=//p')" "1"
 check "HIMMEL-1871 round 9: rejected fallback bullets stay out of member accuracy" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^member-findings=//p')" "0"
 
+# A member exiting critic-first-pass.sh's rc 5 (SKIPPED, a clean no-op) is
+# neither a failure nor a fallback trigger: one avail row, unavailable reason
+# critic-skipped carrying the SKIPPED stderr line, no generic-rc-5, no attempt
+# error row, and the configured fallback (trigger=any) never consulted.
+SK_JSON="$tmp/critics-skipped.json"
+printf '%s' '{"panel":[{"slug":"skipper","model":"fake/primary","provider":"test","tier":"free","fallback_models":["fake/fb1"],"fallback_trigger":"any"}]}' > "$SK_JSON"
+SK_COUNT="$tmp/sk-count"; printf '0' > "$SK_COUNT"
+SK_STUB="$tmp/sk-stub.sh"
+cat > "$SK_STUB" <<SHEOF
+#!/usr/bin/env bash
+c=\$(cat "$SK_COUNT" 2>/dev/null || echo 0)
+printf '%s' \$((c+1)) > "$SK_COUNT"
+echo "critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) — clean no-op" >&2
+exit 5
+SHEOF
+chmod +x "$SK_STUB"
+SK_LEDGER="$tmp/sk-ledger.jsonl"; : > "$SK_LEDGER"
+CR_LEDGER="$SK_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+    CRITICS_JSON="$SK_JSON" CRITIC_FIRST_PASS="$SK_STUB" \
+    bash "$PANEL" <<< "$DIFF" > "$tmp/sk-out" 2> "$tmp/sk-err" || true
+sk_summary="$(python3 - "$SK_LEDGER" <<'PYEOF'
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+av = [r for r in rows if r.get('kind') == 'avail' and r.get('model') == 'skipper']
+print('reason=' + ','.join(r.get('reason', '') for r in av))
+print('detail-skipped=' + ('yes' if av and all('SKIPPED' in r.get('detail', '') for r in av) else 'no'))
+print('attempt-errors=' + str(sum(r.get('kind') == 'attempt' and r.get('status') == 'error' for r in rows)))
+PYEOF
+)"
+check "HIMMEL-6475: rc-5 member records reason critic-skipped, never generic-rc-5" "$(printf '%s\n' "$sk_summary" | sed -n 's/^reason=//p')" "critic-skipped"
+check "HIMMEL-6475: critic-skipped avail row carries the SKIPPED stderr line" "$(printf '%s\n' "$sk_summary" | sed -n 's/^detail-skipped=//p')" "yes"
+check "HIMMEL-6475: rc-5 member writes no attempt error row" "$(printf '%s\n' "$sk_summary" | sed -n 's/^attempt-errors=//p')" "0"
+check "HIMMEL-6475: rc-5 member runs no fallback (stub called once)" "$(cat "$SK_COUNT")" "1"
+
 # Test LA: the panel persists its OWN evidence through ledger-append.sh. One run
 # contains two responders + one unavailable member and four findings, so it
 # covers both availability statuses and empty raw verdicts without orchestrator
