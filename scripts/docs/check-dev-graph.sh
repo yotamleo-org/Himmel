@@ -43,6 +43,7 @@ done
 command -v jq >/dev/null 2>&1 || { echo "check-dev-graph: jq not installed" >&2; exit 2; }
 [ -f "$GRAPH" ] || { echo "check-dev-graph: graph not found: $GRAPH" >&2; exit 2; }
 jq -e '.version == 1' "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH is not a version 1 graph" >&2; exit 2; }
+jq -e '(.lanes | type) == "array" and (.nodes | type) == "array" and (.edges | type) == "array" and (.walkthroughs | type) == "array" and (.coverage | type) == "object"' "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH lacks lanes/nodes/edges/walkthroughs arrays or a coverage object" >&2; exit 2; }
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/check-dev-graph.XXXXXX") || exit 2
 trap 'rm -rf "$TMP"' EXIT

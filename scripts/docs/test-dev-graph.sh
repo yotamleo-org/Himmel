@@ -237,6 +237,11 @@ mut "$D" '.nodes[0].lane = "nolane"'
 run "$D"
 expect_fail "integrity: node in an unknown lane fails" "n.a" "nolane"
 
+D=$TMP/min; fx "$D"
+printf '{"version":1}\n' > "$D/graph.json"
+run "$D"
+if [ "$rc" -eq 2 ]; then ok "integrity: a graph holding only a version is a usage error, not a pass"; else bad "integrity: version-only graph rc=$rc, want 2 :: $out"; fi
+
 # --- selection -------------------------------------------------------------
 D=$TMP/s1; fx "$D"
 printf 'tool.sh gate.sh preface.md\n' > "$D/suite.txt"
