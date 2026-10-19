@@ -48,7 +48,9 @@ case "$1 $2" in
         # cap); only a --status listing reaches the active ones.
         st=""
         while [ "$#" -gt 0 ]; do [ "$1" = "--status" ] && st="$2"; shift; done
-        jq --arg st "$st" '[.[] | select(if $st == "" then .status == "completed" else .status == $st end)]' "$STUB_RUNS" ;;
+        # STUB_DUP=1: run 103 also shows in the in_progress listing (it moved queued to in_progress mid-run).
+        jq --arg st "$st" --arg dup "${STUB_DUP:-}" \
+            '[.[] | select(if $st == "" then .status == "completed" else (.status == $st or ($dup == "1" and $st == "in_progress" and .databaseId == 103)) end)]' "$STUB_RUNS" ;;
     "run cancel")
         [ "$3" = "${STUB_FAIL_ID:-}" ] && { echo "gh: cannot cancel $3" >&2; exit 1; }
         printf '%s\n' "$3" >> "$STUB_CANCEL_LOG" ;;
@@ -111,6 +113,15 @@ out="$(STUB_FAIL_ID=104 run --keep-pr 3221)"; rc=$?
 check "a failed cancel exits 1" "1" "$rc"
 check "the other runs still cancel" "103 105 " "$(cancelled)"
 has "summary counts the failure" "^cancelled=2 failed=1 kept=$KEEP\$" "$out"
+
+out="$(STUB_DUP=1 run --keep-pr 3221)"; rc=$?
+check "a run listed under two statuses is cancelled once" "103 104 105 " "$(cancelled)"
+has "a duplicated run counts once" "^cancelled=3 failed=0 kept=$KEEP\$" "$out"
+
+out="$(CANCEL_RUNS_LIMIT=2 run --keep-pr 3221)"; rc=$?
+check "a listing that fills the cap still cancels what it saw" "103 104 105 " "$(cancelled)"
+check "a listing that fills the cap exits 1 (re-run to drain the rest)" "1" "$rc"
+has "the cap hit is named" "listing hit the cap of 2 runs" "$out"
 
 out="$(STUB_GH_FAIL=1 run --keep-pr 3221)"; rc=$?
 check "gh down refuses, exit 1" "1" "$rc"

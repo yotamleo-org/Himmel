@@ -17,8 +17,8 @@
 # Prints: cancelled=<n> failed=<n> kept=<comma list of head shas, - if none>
 # (--dry-run cancels nothing and appends would-cancel=<n>).
 #
-# Exit codes: 0 done; 1 gh failure, unresolvable keep, or a failed cancel;
-# 2 usage.
+# Exit codes: 0 done; 1 gh failure, unresolvable keep, a failed cancel, or a listing
+# that hit the cap (cancelled what it saw; re-run); 2 usage.
 #
 # Literal `gh` only (no variable command name) so guard-pr-check-literal can
 # verify the bytes. Linux/macOS bash 3.2+ (gh + jq).
@@ -93,14 +93,22 @@ done
 
 # One listing per active status: an unfiltered listing is capped by --limit and
 # newer completed runs would crowd the active ones out of it.
+# A listing that fills the cap may hide more: cancel what was seen, then exit 1 so the
+# caller re-runs to drain the rest.
+LIMIT="${CANCEL_RUNS_LIMIT:-500}"
 runs=""
+truncated=0
 for st in queued in_progress waiting requested pending; do
-    part="$(gh run list -R "$REPO" --status "$st" --limit 500 --json databaseId,status,headSha)" \
+    part="$(gh run list -R "$REPO" --status "$st" --limit "$LIMIT" --json databaseId,status,headSha)" \
         || { echo "cancel-runs: gh run list --status $st failed on $REPO; nothing cancelled" >&2; exit 1; }
+    if [ "$(printf '%s' "$part" | jq 'length')" -ge "$LIMIT" ]; then
+        echo "cancel-runs: the $st listing hit the cap of $LIMIT runs; re-run to drain the rest" >&2
+        truncated=1
+    fi
     runs="$runs$part"
 done
 ids="$(printf '%s' "$runs" | jq -rs --arg keep "$KEEPS" \
-    '($keep | split("\n")) as $k | add[] | select(.status != "completed" and (.headSha as $h | $k | index($h) | not)) | .databaseId')" \
+    '($keep | split("\n")) as $k | [add[] | select(.status != "completed" and (.headSha as $h | $k | index($h) | not)) | .databaseId] | unique[]')" \
     || { echo "cancel-runs: could not parse the run list; nothing cancelled" >&2; exit 1; }
 
 cancelled=0
@@ -123,4 +131,4 @@ if [ "$DRY_RUN" = 1 ]; then
 else
     echo "cancelled=$cancelled failed=$failed kept=$kept"
 fi
-[ "$failed" -eq 0 ]
+[ "$failed" -eq 0 ] && [ "$truncated" -eq 0 ]
