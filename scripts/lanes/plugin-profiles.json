@@ -111,6 +111,7 @@
     "qmd@qmd",
     "claude-obsidian@himmel",
     "obsidian-second-brain@himmel",
+    "find-docs@himmel",
     "handover@himmel",
     "luna-correlate@himmel",
     "himmel-ops@himmel",
@@ -150,6 +151,7 @@
       "enable": [
         "lean-skills@himmel",
         "obsidian-second-brain@himmel",
+        "find-docs@himmel",
         "pstack@himmel"
       ],
       "contextBudget": 50000,
