@@ -2,23 +2,21 @@
 # scripts/ci/queue-latency.sh
 #
 # One read-only line for the console tick: how saturated is GitHub Actions?
-#   ci-queue: jobs_in_progress=N/20 macos=M/5 queued=Q oldest_wait=Xm
-# Fails soft: any API error prints `ci-queue: unknown` and exits 0, so the
-# tick is never blocked by it.
+#   ci-queue: jobs_in_progress=N/60 macos=M/5 queued=Q oldest_wait=Xm
+# Fails soft: any API error, or a listing with no parseable body, prints
+# `ci-queue: unknown` and exits 0, so the tick is never blocked by it and an
+# unread queue is never reported as an empty one.
 #
 # Usage: queue-latency.sh [-R owner/repo]   (default: parsed from `origin`)
 set -uo pipefail
 
-# GitHub Free plan Actions limits (docs.github.com "Actions limits":
-# 20 concurrent jobs, of which at most 5 macOS). ci-queue-saturated readers
+# GitHub Team plan Actions limits (docs.github.com "Actions limits":
+# 60 concurrent jobs, of which at most 5 macOS). ci-queue-saturated readers
 # (tick.sh) compare jobs_in_progress against the first number printed here.
-CI_MAX_JOBS=20
+# CI_MAX_JOBS overrides the cap for another plan.
+CI_MAX_JOBS="${CI_MAX_JOBS:-60}"
+case "$CI_MAX_JOBS" in ''|*[!0-9]*) CI_MAX_JOBS=60 ;; esac
 CI_MAX_MACOS=5
-# Bound per-run API calls: in-progress runs are looked at first, so a storm of
-# queued runs cannot starve the in-progress count.
-# ponytail: runs past the cap are not counted, so a >40-run storm under-reports
-# queued; raise the cap or switch to a jobs-level endpoint if that bites.
-MAX_RUNS=40
 
 unknown() { echo "ci-queue: unknown"; exit 0; }
 
@@ -41,28 +39,54 @@ fi
 # GNU timeout (or gtimeout on macOS); no bound available = run unbounded.
 gh_api() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 15} gh api "$@" 2>/dev/null; }
 
-RUNS_JQ='.workflow_runs[] | [.id, .status, (.created_at | fromdateiso8601)] | @tsv'
+# The leading "#ok" row proves the body held a workflow_runs array, so a valid
+# empty listing (no runs) is told apart from an empty or unparseable body.
+RUNS_JQ='"#ok", (.workflow_runs[] | [.id, .status, (.created_at | fromdateiso8601)] | @tsv)'
 JOBS_JQ='[ ([.jobs[] | select(.status=="in_progress")] | length),
            ([.jobs[] | select(.status=="in_progress" and ((.labels // []) | join(",") | test("macos")))] | length),
            ([.jobs[] | select(.status=="queued")] | length),
            ([.jobs[] | select(.status=="queued") | .created_at | fromdateiso8601] | min // 0) ] | @tsv'
 
-ip_runs="$(gh_api "repos/$REPO/actions/runs?status=in_progress&per_page=100" --jq "$RUNS_JQ")" || unknown
-q_runs="$(gh_api "repos/$REPO/actions/runs?status=queued&per_page=100" --jq "$RUNS_JQ")" || unknown
+# A run reports status=queued while any one of its jobs waits, even with other
+# jobs running, so every run of every live status gets its jobs read, paged
+# past the first 100 runs.
+runs=""
+for st in in_progress queued pending; do
+  listing="$(gh_api "repos/$REPO/actions/runs?status=$st&per_page=100" --paginate --jq "$RUNS_JQ")" || unknown
+  case "$listing" in "#ok"*) ;; *) unknown ;; esac
+  runs="$runs"$'\n'"$listing"
+done
+# In-progress first; dedupe by id (a run can appear in more than one list).
+runs="$(printf '%s\n' "$runs" | awk 'NF && $1 !~ /^#/ && !seen[$1]++')"
 
-# In-progress first, then queued; dedupe by id (a run can appear in both).
-runs="$(printf '%s\n%s\n' "$ip_runs" "$q_runs" | awk 'NF && !seen[$1]++' | head -n "$MAX_RUNS")"
+# Read each run's jobs in parallel batches (bash 3.2 has no `wait -n`): a
+# serial read of 150+ runs outlasts the tick's probe bound. A failed or empty
+# read leaves no result file, which reads as unknown.
+JOBS_TMP="$(mktemp -d "${TMPDIR:-/tmp}/queue-latency.XXXXXX")" || unknown
+trap 'rm -rf "$JOBS_TMP"' EXIT
+JOBS_PAR=16
+n=0
+while IFS=$'\t' read -r id status created; do
+  [ -n "$id" ] || continue
+  (
+    line="$(gh_api "repos/$REPO/actions/runs/$id/jobs?per_page=100" --jq "$JOBS_JQ")" && [ -n "$line" ] &&
+      printf '%s\t%s\t%s\n' "$status" "$created" "$line" > "$JOBS_TMP/$id"
+  ) &
+  n=$((n + 1))
+  [ $((n % JOBS_PAR)) -eq 0 ] && wait
+done <<< "$runs"
+wait
 
 now="$(date +%s)"
 ip=0; mac=0; q=0; oldest=0
 while IFS=$'\t' read -r id status created; do
   [ -n "$id" ] || continue
-  line="$(gh_api "repos/$REPO/actions/runs/$id/jobs?per_page=100" --jq "$JOBS_JQ")" || unknown
-  IFS=$'\t' read -r jip jmac jq_ jold <<< "$line"
+  [ -s "$JOBS_TMP/$id" ] || unknown
+  IFS=$'\t' read -r _ _ jip jmac jq_ jold < "$JOBS_TMP/$id"
   ip=$((ip + jip)); mac=$((mac + jmac)); q=$((q + jq_))
   cand="$jold"
-  # A queued run with no live jobs yet is still waiting; count it once.
-  if [ "$status" = "queued" ] && [ $((jip + jq_)) -eq 0 ]; then
+  # A queued or pending run with no live jobs yet is still waiting; count it once.
+  if { [ "$status" = "queued" ] || [ "$status" = "pending" ]; } && [ $((jip + jq_)) -eq 0 ]; then
     q=$((q + 1)); cand="$created"
   fi
   if [ "${cand:-0}" -gt 0 ] && { [ "$oldest" -eq 0 ] || [ "$cand" -lt "$oldest" ]; }; then oldest="$cand"; fi
