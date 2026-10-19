@@ -16,7 +16,8 @@
 # a large one keeps all n. LPT places the first N suites in N distinct shards,
 # so every one of the N shards has work.
 #
-# FAIL-CLOSED: a --list that fails or lacks its summary footer falls back to
+# FAIL-CLOSED: a --list that fails or lacks its summary footer, or a ledger
+# with no valid duration to size a non-empty selection by, falls back to
 # N = n and one shard-has-work.sh probe per shard, run in parallel. A probe
 # that fails, prints nothing or prints anything but `has_work=false` leaves
 # the shard in the list. A shard wrongly left out is still caught downstream:
@@ -59,6 +60,7 @@ if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null
       for (i = 1; i <= m; i++) { d = (suite[i] in dur) ? dur[suite[i]] : med; c[i] = (d < 1) ? 1 : d }
       for (i = 2; i <= m; i++) { v = c[i]; j = i - 1; while (j >= 1 && c[j] < v) { c[j + 1] = c[j]; j-- }; c[j + 1] = v }
       if (m == 0) { print 0; exit }
+      if (nv == 0) exit
       for (k = 1; k <= n; k++) {
         for (b = 0; b < k; b++) load[b] = 0
         for (i = 1; i <= m; i++) { best = 0; for (b = 1; b < k; b++) if (load[b] < load[best]) best = b; load[best] += c[i] }

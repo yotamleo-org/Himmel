@@ -21,6 +21,8 @@
 #   PS12 a --list that fails or lacks its footer -> the probes at n (fail closed)
 #   PS13 the --list gets the runner args after -- and the root
 #   PS14 ci.yml sizes home-canary from the plan, one leg on an empty selection
+#   PS15 an empty or missing ledger -> the probes at n
+#   PS16 a root omitted before -- defaults to .
 #
 # Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
 #
@@ -64,6 +66,7 @@ STUB
 cat > "$PS/run-shell-tests.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${RST_LOG:-/dev/null}"
+[ "${1:-}" = --list ] || exit 1
 case "${STUB_LIST_MODE:-fail}" in fail) exit 1 ;; esac
 [ -n "${STUB_LIST:-}" ] && sed 's/^/[RUN ] /' "$STUB_LIST"
 [ "$STUB_LIST_MODE" = nofooter ] || printf '\n== Summary ==\n(--list: nothing executed)\n'
@@ -174,11 +177,12 @@ if [ "$out" = "$want" ]; then pass "PS12 a --list without its footer falls back 
 : > "$PS/rst.log"
 STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" RST_LOG="$PS/rst.log" \
   bash "$PS/plan-shards.sh" 8 /some/root -- --impacted a..b >/dev/null 2>&1
-if [ "$(cat "$PS/rst.log")" = "--list --impacted a..b /some/root" ]; then pass "PS13 the --list gets the runner args and the root"; else fail "PS13: $(cat "$PS/rst.log")"; fi
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$(cat "$PS/rst.log")" = "--list --impacted a..b /some/root" ]; then pass "PS13 the --list gets the runner args and the root"; else fail "PS13: rc=$rc $(cat "$PS/rst.log")"; fi
 
-# PS15: an empty or missing ledger costs every suite 1 s; the selection still runs.
+# PS15: an empty or missing ledger gives no cost to size by; the probes at n run.
 : > "$PS/empty.tsv"
-want=$(printf 'shards=[1]\nabsent_shards=\nshard_total=1')
+want=$(printf 'shards=[1,2,3,4,5,6,7,8]\nabsent_shards=\nshard_total=8')
 out=$(size "$PS/hand.list" "$PS/empty.tsv" 8)
 if [ "$out" = "$want" ]; then pass "PS15 an empty ledger still runs the selection"; else fail "PS15 empty: got [$out]"; fi
 out=$(size "$PS/hand.list" "$PS/no-such-ledger.tsv" 8)
@@ -188,6 +192,7 @@ if [ "$out" = "$want" ]; then pass "PS15 a missing ledger still runs the selecti
 : > "$PS/rst.log"
 STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" RST_LOG="$PS/rst.log" \
   bash "$PS/plan-shards.sh" 8 -- --impacted a..b >/dev/null 2>&1
-if [ "$(cat "$PS/rst.log")" = "--list --impacted a..b ." ]; then pass "PS16 an omitted root defaults to ."; else fail "PS16: $(cat "$PS/rst.log")"; fi
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$(cat "$PS/rst.log")" = "--list --impacted a..b ." ]; then pass "PS16 an omitted root defaults to ."; else fail "PS16: rc=$rc $(cat "$PS/rst.log")"; fi
 
 rst_tally
