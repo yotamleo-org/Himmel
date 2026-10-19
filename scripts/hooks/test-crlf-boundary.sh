@@ -420,7 +420,7 @@ check_verdict _decide_cadence cadence-approve-engines ALLOW \
 check_verdict _decide_cadence cadence-approve-engines PASS \
     "gi""t status" "never grant a non-enumerated command"
 check_verdict _decide_cadence cadence-approve-engines ALLOW \
-    "$(printf 'cd %s\npython "%s" vault' "$CADENCE_ROOT" "$CADENCE_ENGINE_BS")" \
+    "$(printf 'cd "%s"\npython "%s" vault' "$CADENCE_ROOT" "$CADENCE_ENGINE_BS")" \
     "allow across a nav-then-engine two-line command"
 
 # ── check-cr-marker-on-pr-create.sh ──────────────────────────────────────────

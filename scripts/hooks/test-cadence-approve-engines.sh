@@ -736,6 +736,18 @@ assert "6449 cd into checkout, cd . then arg through a checkout symlink -> refus
 ln -s "$OUTSIDE_FIXTURE" "$SPACED_ROOT/tiny"
 assert "6449 cd into checkout + --whisper-model size name shadowed by a checkout symlink -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model tiny" "$VAULT_FIXTURE_MIXED")")"
+# Non-space whitespace splits argv in bash but not in the hook's space tokeniser.
+TAB=$(printf '\t')
+assert "6449 tab-joined vault token carrying --whisper-model evil/model -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" vault${TAB}--whisper-model${TAB}evil/model" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 tab-joined vault token carrying an outside path -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" vault${TAB}/tmp/outside" "$VAULT_FIXTURE_MIXED")")"
+# After cd into the checkout the model dir is judged where bash will look for it.
+mkdir -p "$VAULT_FIXTURE/vonly"
+assert "6449 cd into checkout + --whisper-model dir existing only in the vault -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd target with a backslash (bash drops it) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd ${VAULT_FIXTURE_MIXED}\\. && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
 # (5) bare python / python3 on a non-enumerated or relative script.
 assert "6449 bare python, no script" PASS "$(decide "$(j_bash "python")")"
 assert "6449 python3 non-enumerated script" PASS "$(decide "$(j_bash "python3 /tmp/evil.py vault")")"

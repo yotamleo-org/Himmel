@@ -521,7 +521,12 @@ whisper_model_is_safe() {
     arg_is_vault_safe "$norm" || return 1
     case "$norm" in
         /*) [ -d "$norm" ] ;;
-        *)  [ -n "$SESSION_CWD_POSIX" ] && [ -d "$SESSION_CWD_POSIX/$norm" ] ;;
+        *)  # Bash resolves the relative dir against wherever the last cd left it.
+            if [ -n "$NAV_ROOT_PHYS" ]; then
+                [ -d "$NAV_ROOT_PHYS/$norm" ]
+            else
+                [ -n "$SESSION_CWD_POSIX" ] && [ -d "$SESSION_CWD_POSIX/$norm" ]
+            fi ;;
     esac
 }
 
@@ -735,8 +740,11 @@ segment_is_nav() {
 
 nav_target_is_contained() {
     local norm p real root
-    norm=$(norm_path "$1")
-    # A CRLF-terminated line leaves a trailing CR on the last token.
+    # Bash drops an unquoted backslash, so a target carrying one is not the path norm_path folds it to.
+    # shellcheck disable=SC1003 # '\' is a literal backslash match pattern
+    case "$1" in *'\'*) return 1 ;; esac
+    # A CRLF-terminated line leaves a trailing CR on the last token, inside or outside the quotes' reach.
+    norm=$(norm_path "${1%$'\r'}")
     norm="${norm%$'\r'}"
     case "$norm" in ''|-*|+*) return 1 ;; esac
     case "$norm" in
@@ -1007,6 +1015,12 @@ saw_engine=0
 while IFS= read -r seg; do
     seg="${seg#"${seg%%[![:space:]]*}"}"   # ltrim
     [ -z "$seg" ] && continue
+    # The tokenisers split on spaces only; bash also splits on tab, VT and FF,
+    # so a token joined by one would hide extra argv from every check below.
+    seg="${seg%$'\r'}"
+    case "$seg" in
+        *[$'\t\v\f\r']*) exit 0 ;;
+    esac
     if segment_is_engine "$seg"; then
         saw_engine=1
     elif segment_is_gh_read "$seg"; then
