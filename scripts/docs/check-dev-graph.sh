@@ -43,7 +43,20 @@ done
 command -v jq >/dev/null 2>&1 || { echo "check-dev-graph: jq not installed" >&2; exit 2; }
 [ -f "$GRAPH" ] || { echo "check-dev-graph: graph not found: $GRAPH" >&2; exit 2; }
 jq -e '.version == 1' "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH is not a version 1 graph" >&2; exit 2; }
-jq -e '(.lanes | type) == "array" and (.nodes | type) == "array" and (.edges | type) == "array" and (.walkthroughs | type) == "array" and (.coverage | type) == "object"' "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH lacks lanes/nodes/edges/walkthroughs arrays or a coverage object" >&2; exit 2; }
+# Every query below assumes this shape; a jq error inside a $(...) would not count as a
+# failure, so a malformed entry must stop the run here instead of passing unseen.
+SHAPE='
+  def str: type == "string";
+  def src: ((.sources // []) | type) == "array"
+    and all((.sources // [])[]; type == "object" and (.file | str) and ((.anchor // "") | str));
+  (.lanes | type) == "array" and (.nodes | type) == "array" and (.edges | type) == "array"
+  and (.walkthroughs | type) == "array" and (.coverage | type) == "object"
+  and all(.lanes[]; type == "object" and (.id | str))
+  and all(.nodes[]; type == "object" and (.id | str) and (.lane | str) and ((.pos // {}) | type) == "object" and src)
+  and all(.edges[]; type == "object" and (.id | str) and (.from | str) and (.to | str) and (.kind | str) and src)
+  and all(.walkthroughs[]; type == "object" and (.id | str) and (.steps | type) == "array" and all(.steps[]; type == "object" and (.at | str)))
+  and all(.coverage[]; type == "object" and ((.mapped // {}) | type) == "object" and ((.unmapped // {}) | type) == "object")'
+jq -e "$SHAPE" "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH is malformed (lanes/nodes/edges/walkthroughs/coverage entries have the wrong shape)" >&2; exit 2; }
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/check-dev-graph.XXXXXX") || exit 2
 trap 'rm -rf "$TMP"' EXIT

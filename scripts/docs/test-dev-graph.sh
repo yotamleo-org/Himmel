@@ -241,6 +241,14 @@ D=$TMP/min; fx "$D"
 printf '{"version":1}\n' > "$D/graph.json"
 run "$D"
 if [ "$rc" -eq 2 ]; then ok "integrity: a graph holding only a version is a usage error, not a pass"; else bad "integrity: version-only graph rc=$rc, want 2 :: $out"; fi
+D=$TMP/min2; fx "$D"
+mut "$D" '.edges = [1]'
+run "$D"
+if [ "$rc" -eq 2 ]; then ok "integrity: a non-object edge entry is a usage error, not a pass"; else bad "integrity: edges [1] rc=$rc, want 2 :: $out"; fi
+D=$TMP/min3; fx "$D"
+mut "$D" '.nodes[0].sources = [{"file": 7}]'
+run "$D"
+if [ "$rc" -eq 2 ]; then ok "integrity: a non-string source file is a usage error, not a pass"; else bad "integrity: file 7 rc=$rc, want 2 :: $out"; fi
 
 # --- selection -------------------------------------------------------------
 D=$TMP/s1; fx "$D"
