@@ -63,13 +63,14 @@ read_prs() {
   printf '%s' "$out"
 }
 
-# The newest pull_request CI run at exactly sha $1, or {} when there is none.
+# The newest pull_request CI run at exactly sha $1 on branch $2 (two open PRs can
+# share a commit; the branch keeps each to its own run), or {} when there is none.
 head_run() {
   local runs
   runs="$(gh run list -R "$REPO" --workflow "$WORKFLOW" --commit "$1" --limit "$RUN_LIMIT" --json "$RUN_FIELDS")" || return 1
   printf '%s' "$runs" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
-  printf '%s' "$runs" | jq -c --arg sha "$1" \
-    'map(select(.headSha == $sha and .event == "pull_request")) | sort_by(.databaseId) | last // {}'
+  printf '%s' "$runs" | jq -c --arg sha "$1" --arg b "$2" \
+    'map(select(.headSha == $sha and .headBranch == $b and .event == "pull_request")) | sort_by(.databaseId) | last // {}'
 }
 
 # "rerun<TAB>conclusion" or "noop<TAB>reason" for a head run.
@@ -84,10 +85,10 @@ decide() {
 }
 
 PLAN=()
-# plan_pr <number> <headRefOid>: read the head run, queue a rerun or say why not.
+# plan_pr <number> <headRefOid> <headRefName>: read the head run, queue a rerun or say why not.
 plan_pr() {
   local run verdict action why
-  run="$(head_run "$2")" || die "gh run list failed or unparseable for PR #$1"
+  run="$(head_run "$2" "$3")" || die "gh run list failed or unparseable for PR #$1"
   verdict="$(decide "$run")" || die "jq filter failed for PR #$1"
   IFS=$'\t' read -r action why <<< "$verdict"
   if [ "$action" = rerun ]; then
@@ -126,7 +127,8 @@ case "$MODE" in
     prs="$(read_prs)" || die "gh pr list failed or unparseable"
     oid="$(printf '%s' "$prs" | jq -r --argjson n "$ARG" 'map(select(.number == $n)) | .[0].headRefOid // ""')" || die "jq filter failed"
     [ -n "$oid" ] || die "PR #$ARG is not among the open PRs"
-    plan_pr "$ARG" "$oid"
+    branch="$(printf '%s' "$prs" | jq -r --argjson n "$ARG" 'map(select(.number == $n)) | .[0].headRefName')" || die "jq filter failed"
+    plan_pr "$ARG" "$oid" "$branch"
     ;;
   run)
     view="$(gh run view -R "$REPO" "$ARG" --json "$RUN_FIELDS")" || die "gh run view $ARG failed"
@@ -140,17 +142,17 @@ case "$MODE" in
     printf '%s' "$mine" | jq -e '.[0].isCrossRepository == false' >/dev/null 2>&1 || die "run $ARG belongs to a fork PR"
     oid="$(printf '%s' "$mine" | jq -r '.[0].headRefOid')"; pr="$(printf '%s' "$mine" | jq -r '.[0].number')"
     [ "$oid" = "$sha" ] || { echo "rerun-head: run $ARG is at ${sha:0:8}, not PR #$pr's current head ${oid:0:8}: stale, refused; nothing rerun" >&2; exit 1; }
-    plan_pr "$pr" "$oid"
+    plan_pr "$pr" "$oid" "$branch"
     ;;
   fleet)
     cancel="$(dirname "$0")/cancel-superseded-runs.sh"
     if [ "$DRY" -eq 1 ]; then bash "$cancel" --dry-run; else bash "$cancel"; fi || die "cancel-superseded-runs.sh failed"
     prs="$(read_prs)" || die "gh pr list failed or unparseable"
     printf '%s' "$prs" | jq -e 'length < 200' >/dev/null 2>&1 || die "gh pr list hit its 200 limit, PR heads may be hidden"
-    pairs="$(printf '%s' "$prs" | jq -r '.[] | [.number, .headRefOid] | @tsv')" || die "jq filter failed"
-    while IFS=$'\t' read -r pr oid; do
+    pairs="$(printf '%s' "$prs" | jq -r '.[] | [.number, .headRefOid, .headRefName] | @tsv')" || die "jq filter failed"
+    while IFS=$'\t' read -r pr oid ref; do
       [ -n "$pr" ] || continue
-      plan_pr "$pr" "$oid"
+      plan_pr "$pr" "$oid" "$ref"
     done <<< "$pairs"
     ;;
 esac

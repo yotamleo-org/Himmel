@@ -144,6 +144,15 @@ rc_is "  exit 0" 0 "$rc"
 setpr "$(r 5 completed failure feat/a $H 1),$(r 9 completed failure feat/a $O 1)"
 run 10 >/dev/null
 is "stale failed run with a newer id is ignored; the head run is rerun" "5" "$(reruns)"
+# two open PRs whose heads sit at one commit: each is judged on its own branch's run
+reset
+echo "[$(p 10 feat/a $H),$(p 11 feat/b $H)]" > "$TMP/fx/prs.json"
+echo "[$(r 5 completed failure feat/a $H 1),$(r 6 in_progress '' feat/b $H 1)]" > "$TMP/fx/runs.json"
+run 11 >/dev/null
+is "PR 11 shares its head sha with PR 10: PR 10's failed run is not PR 11's" "none" "$(reruns)"
+run 10 >/dev/null
+is "  PR 10 reruns its own failed run" "5" "$(reruns)"
+
 setpr "$(r 5 completed failure feat/a $H 1),$(r 6 completed success feat/a $H 1)"
 run 10 >/dev/null
 is "newest run at the head decides (green newer than red): no-op" "none" "$(reruns)"
