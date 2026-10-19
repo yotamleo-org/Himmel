@@ -342,6 +342,7 @@ fi
 # `--head=feat/x`. Fall back to the repo_dir branch when --head is absent
 # (do not regress that path — a missed block beats a false block).
 head_branch=""
+head_from_short=0
 repo_nwo=""
 # Disable pathname expansion before the unquoted split: we want word-splitting
 # of $cmd into argv, but NOT glob expansion — a title like `--title "fix *.md"`
@@ -352,14 +353,18 @@ set -- $cmd
 set +f
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --head=*) head_branch="${1#--head=}" ;;
+        --head=*) head_branch="${1#--head=}"; head_from_short=0 ;;
         --head)
-            if [ "$#" -ge 2 ]; then head_branch="$2"; fi
+            if [ "$#" -ge 2 ]; then head_branch="$2"; head_from_short=0; fi
             ;;
         # gh (pflag) shorthand: -H x, -Hx, -H=x, and stacked forms (-dH x,
         # -dHx, -dH=x). The value is the text after the first H, else the
-        # next token. Walk the cluster: another value-taking flag (-t, -b, ...)
-        # swallows the rest of the token, so an H after it is that flag's text.
+        # next token. Only gh's boolean shorthands (d f w e h) may precede the
+        # H; any other letter means the word is not a flag cluster (a title
+        # word, grep -nH, -SHA), so the whole token is ignored. A word such as
+        # `-Hfoo` is still ambiguous without a value-aware walk, so a head read
+        # from a short flag is advisory: with no marker of its own the check
+        # falls back to the cwd branch, as it did before short heads were read.
         -H*|-[!-]*H*)
             _short_rest="${1#-}"
             while [ -n "$_short_rest" ]; do
@@ -370,12 +375,15 @@ while [ "$#" -gt 0 ]; do
                         _short_rest="${_short_rest#=}"
                         if [ -n "$_short_rest" ]; then
                             head_branch="$_short_rest"
+                            head_from_short=1
                         elif [ "$#" -ge 2 ]; then
                             head_branch="$2"
+                            head_from_short=1
                         fi
                         break
                         ;;
-                    [tbBFRalmpTr]) break ;;
+                    [dfweh]) ;;
+                    *) break ;;
                 esac
             done
             ;;
@@ -455,8 +463,16 @@ esac
 
 marker="${git_dir}/cr-pending/${branch}"
 
+# A head read from a short flag may be a title word, not a head: with no marker
+# for it, judge the cwd branch instead.
+if [ ! -f "$marker" ] && [ "$head_from_short" = "1" ]; then
+    branch=$(git -C "$repo_dir" branch --show-current 2>/dev/null || true) # swallow-ok: empty branch falls through to allow, same as the no-head path
+    resolved_from_head=0
+    marker="${git_dir}/cr-pending/${branch}"
+fi
+
 # No marker → nothing pending → allow.
-if [ ! -f "$marker" ]; then
+if [ -z "$branch" ] || [ ! -f "$marker" ]; then
     exit 0
 fi
 

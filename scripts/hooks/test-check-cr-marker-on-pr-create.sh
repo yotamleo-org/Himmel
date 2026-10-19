@@ -194,11 +194,26 @@ for spelling in "-dH feat/X" "-dHfeat/X" "-dH=feat/X" "-H=feat/X" "-Hfeat/X" "-H
     fi
 done
 
-# Test 2e: a capital H inside another flag's value must not be read as a head
-echo "TEST: H only inside --title/--body values -> allow (no false denial)"
-run_hook "gh pr create --title Hotfix-H --body Hello --base main"
+# Test 2e: a dash word that only LOOKS like a head must never un-gate the
+# worktree's own pending branch. cwd = the feat/X worktree (marker present, no
+# --head): every spelling below must still BLOCK on that marker.
+write_marker "feat/X"
+for spelling in "--title fix -Hfoo" "--title fix -SHA" "--title fix -HEAD" "--title fix -Hotfix" "--title fix ; grep -nH pat f"; do
+    echo "TEST: gh pr create $spelling, marker on the cwd branch -> BLOCK"
+    run_hook "gh pr create $spelling --base main" "$WORKTREE"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2) on $spelling"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
+# Test 2e2: a short head naming a branch with no marker, from a cwd branch
+# with no marker either -> allow (the cwd fall-back does not over-block).
+echo "TEST: -Hother (no marker), cwd on main with no marker -> allow"
+run_hook "gh pr create -Hother --base main"
 if [ "$rc" -eq 0 ]; then
-    pass "allowed (exit 0) when H appears only in flag values"
+    pass "allowed (exit 0): unmarked short head, unmarked cwd branch"
 else
     fail "expected exit 0, got rc=$rc" "out: $out"
 fi
