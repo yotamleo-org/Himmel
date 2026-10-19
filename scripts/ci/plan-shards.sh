@@ -30,10 +30,10 @@ set -uo pipefail
 TARGET_S=600
 
 n="${1:-}"
-root="${2:-.}"
 case "$n" in ''|*[!0-9]*|0*) echo "usage: plan-shards.sh <n> [<root>] [-- <runner args>]" >&2; exit 2 ;; esac
 shift
-[ "$#" -gt 0 ] && [ "$1" != "--" ] && shift
+root=.
+if [ "$#" -gt 0 ] && [ "$1" != "--" ]; then root="$1"; shift; fi
 [ "${1:-}" = "--" ] && shift
 here="$(cd "$(dirname "$0")" && pwd)"
 
@@ -45,8 +45,9 @@ ledger="${SUITE_DURATIONS:-$here/suite-durations.tsv}"
 total=""
 if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null \
    && grep -q '^== Summary ==$' "$tmp/list"; then
-  total=$(sed -n 's/^\[RUN \] //p' "$tmp/list" | LC_ALL=C awk -F'\t' -v n="$n" -v target="$TARGET_S" '
-    NR == FNR {
+  sed -n 's/^\[RUN \] //p' "$tmp/list" > "$tmp/suites"
+  total=$(LC_ALL=C awk -F'\t' -v n="$n" -v target="$TARGET_S" '
+    phase == 1 {
       if ($1 !~ /^[[:space:]]*#/ && $1 != "" && $2 ~ /^[0-9]+$/) { dur[$1] = $2 + 0; vals[++nv] = $2 + 0 }
       next
     }
@@ -67,7 +68,7 @@ if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null
       limit = (span[n] > target) ? span[n] : target
       for (k = 1; k <= n; k++) if (span[k] <= limit) { r = (k < m) ? k : m; print r; exit }
     }
-  ' "$ledger" -)
+  ' phase=1 "$ledger" phase=2 "$tmp/suites")
 fi
 
 case "$total" in

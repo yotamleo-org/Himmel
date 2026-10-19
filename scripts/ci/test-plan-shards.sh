@@ -176,4 +176,18 @@ STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" RST_L
   bash "$PS/plan-shards.sh" 8 /some/root -- --impacted a..b >/dev/null 2>&1
 if [ "$(cat "$PS/rst.log")" = "--list --impacted a..b /some/root" ]; then pass "PS13 the --list gets the runner args and the root"; else fail "PS13: $(cat "$PS/rst.log")"; fi
 
+# PS15: an empty or missing ledger costs every suite 1 s; the selection still runs.
+: > "$PS/empty.tsv"
+want=$(printf 'shards=[1]\nabsent_shards=\nshard_total=1')
+out=$(size "$PS/hand.list" "$PS/empty.tsv" 8)
+if [ "$out" = "$want" ]; then pass "PS15 an empty ledger still runs the selection"; else fail "PS15 empty: got [$out]"; fi
+out=$(size "$PS/hand.list" "$PS/no-such-ledger.tsv" 8)
+if [ "$out" = "$want" ]; then pass "PS15 a missing ledger still runs the selection"; else fail "PS15 missing: got [$out]"; fi
+
+# PS16: the root may be omitted before --; it defaults to .
+: > "$PS/rst.log"
+STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" RST_LOG="$PS/rst.log" \
+  bash "$PS/plan-shards.sh" 8 -- --impacted a..b >/dev/null 2>&1
+if [ "$(cat "$PS/rst.log")" = "--list --impacted a..b ." ]; then pass "PS16 an omitted root defaults to ."; else fail "PS16: $(cat "$PS/rst.log")"; fi
+
 rst_tally
