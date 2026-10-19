@@ -36,9 +36,21 @@ apt-get install -y -qq iptables at bubblewrap socat ffmpeg git jq curl unzip she
 systemctl enable --now atd  # t13b-ok: stock at daemon on a throwaway CI VM, not a himmel service
 systemctl is-active --quiet atd || exit 1
 sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-python3 -m pip install --break-system-packages --disable-pip-version-check pre-commit==4.7.0 || exit 1
+python3 -m pip install --break-system-packages --ignore-installed --disable-pip-version-check pre-commit==4.7.0 || exit 1
 
 id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
+# ci.yml runs oven-sh/setup-bun on every runner and it expects the binary here; bump
+# BUN_VERSION and BUN_SHA256 with .bun-version (the release's SHASUMS256.txt).
+BUN_VERSION=1.4.3
+BUN_SHA256=3e730528d89775f03f87f05c06787c4df4099d0a37f3f252e7b829cb23816e18
+bun_dir="$(mktemp -d -t bun.XXXXXX)" || exit 1
+bun_zip="$bun_dir/bun-linux-x64.zip"
+curl -fsSL -o "$bun_zip" "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" || exit 1
+echo "${BUN_SHA256}  ${bun_zip}" | sha256sum -c - || exit 1
+unzip -q -o -d "$bun_dir/x64" "$bun_zip" || exit 1
+install -D -m 755 -o runner -g runner "$bun_dir/x64/bun-linux-x64/bun" /home/runner/.bun/bin/bun || exit 1
+chown -R runner:runner /home/runner/.bun
+rm -rf "$bun_dir"
 mkdir -p /opt/runner
 tarball="/opt/runner/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
 curl -fsSL -o "$tarball" "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" || exit 1

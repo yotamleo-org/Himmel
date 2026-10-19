@@ -413,6 +413,18 @@ contains "14: the branch line is recorded" "$(cat "$f14")" "branch: fix/himmel-4
 # RED: the identical-head, two-PR case. The right PR passes, the other is refused.
 VPR=502; rc=0; verdict_rc q14c "$SHA_A" || rc=$?
 check "14: go_trust_verdict accepts the verdict's own PR" "$rc" 0
+
+# A GO for a branch with no PR yet: --branch alone, no pr: line.
+rc=0; WV_NOPR="--branch fix/himmel-6427-x" wv q14d GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+check "14: --branch without --pr writes a GO rc 0" "$rc" 0
+f14d="$scope_dir/q14d/judge.md"
+check "14: the branch-only record carries no pr line" "$(grep -c '^pr: ' "$f14d" 2>/dev/null)" 0
+check "14: the branch line sits where the pr line does" "$(awk '/^## Verdict/ {p=1; next} p && NF && !n {n=NR+2; next} n && NR==n {print; exit}' "$f14d")" "branch: fix/himmel-6427-x"
+VPR=501; rc=0; verdict_rc q14d "$SHA_A" || rc=$?
+check "14: go_trust_verdict refuses a branch-only record (no merge trust)" "$([ "$rc" -ne 0 ] && echo refused || echo accepted)" refused
+rc=0; WV_NOPR="--branch fix/himmel-6427-x" wv q14e NO-GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
+check "14: --branch without --pr refuses a NO-GO rc 2" "$rc" 2
+check "14: the refused branch-only NO-GO writes nothing" "$([ -e "$scope_dir/q14e" ] && echo yes || echo no)" no
 VPR=503; rc=0; verdict_rc q14c "$SHA_A" || rc=$?
 check "14: go_trust_verdict refuses another PR on the same head" "$rc" 2
 VPR=

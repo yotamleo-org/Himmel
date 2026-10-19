@@ -1,0 +1,1766 @@
+{
+  "version": 1,
+  "checker": "scripts/docs/check-dev-graph.sh",
+  "lanes": [
+    {
+      "id": "operator",
+      "label": "Operator",
+      "token": "--alpha"
+    },
+    {
+      "id": "console",
+      "label": "Console",
+      "token": "--beta"
+    },
+    {
+      "id": "judge",
+      "label": "Judge",
+      "token": "--gamma"
+    },
+    {
+      "id": "leg",
+      "label": "Leg",
+      "token": "--delta"
+    },
+    {
+      "id": "gates",
+      "label": "Gates & CI",
+      "token": "--epsilon"
+    }
+  ],
+  "phases": [
+    {
+      "id": "dispatch",
+      "label": "Dispatch"
+    },
+    {
+      "id": "build",
+      "label": "Build"
+    },
+    {
+      "id": "review",
+      "label": "Review"
+    },
+    {
+      "id": "verify",
+      "label": "Verify"
+    },
+    {
+      "id": "merge",
+      "label": "Merge"
+    },
+    {
+      "id": "succession",
+      "label": "Succession"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "c.start",
+      "lane": "console",
+      "phase": "dispatch",
+      "label": "Console start",
+      "summary": "console.sh new writes the console doc, takes its queue lock and prints the launch line",
+      "sources": [
+        {
+          "file": "scripts/handover/console/console.sh",
+          "anchor": "console.sh new  — write the console doc + acquire its queue lock"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 80
+        }
+      }
+    },
+    {
+      "id": "c.wait",
+      "lane": "console",
+      "phase": "dispatch",
+      "label": "Waiter",
+      "summary": "console-wait.sh stays silent until the first real event, then prints one WAKE block",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/console-wait.sh",
+          "anchor": "printing one WAKE block, on the first real event"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 170
+        }
+      }
+    },
+    {
+      "id": "c.tick",
+      "lane": "console",
+      "phase": "dispatch",
+      "label": "Tick",
+      "summary": "One snapshot line of the fleet: capacity, leg labels FRESH/STALE/NOLIVE/FORKED, nonces",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/tick.sh",
+          "anchor": "one wake-up-budgeted console snapshot"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 260
+        }
+      }
+    },
+    {
+      "id": "c.pick",
+      "lane": "console",
+      "phase": "dispatch",
+      "label": "Next dispatchable",
+      "summary": "Ranked, collision-checked To Do candidates. Read-only.",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/next-dispatchable.sh",
+          "anchor": "Ranked, collision-checked list of the next"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 350
+        }
+      }
+    },
+    {
+      "id": "c.brief",
+      "lane": "console",
+      "phase": "dispatch",
+      "label": "Brief + worktree",
+      "summary": "gen-briefs.py writes the leg doc, launcher and worktree. An opus or fable leg needs a Tier line.",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/gen-briefs.py",
+          "anchor": "Write leg briefs + launchers"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 440
+        }
+      }
+    },
+    {
+      "id": "c.arm",
+      "lane": "console",
+      "phase": "dispatch",
+      "label": "Arm leg",
+      "summary": "headed-arm-leg.sh launches the leg in its own window",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "anchor": "Exit 14 joins 2 usage, 10 fleet"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 530
+        }
+      }
+    },
+    {
+      "id": "o.ruling",
+      "lane": "operator",
+      "phase": "dispatch",
+      "label": "Operator ruling",
+      "summary": "Operator decisions, bank lift, trust-path policy. The console never asks a blocking question.",
+      "sources": [
+        {
+          "file": "docs/handover/running-a-console.md",
+          "anchor": "A worker session that hits something it cannot decide reports to the supervisor session"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 140,
+          "y": 80
+        },
+        "narrow": {
+          "y": 620
+        }
+      }
+    },
+    {
+      "id": "l.live",
+      "lane": "leg",
+      "phase": "build",
+      "label": "LIVE",
+      "summary": "Takes the queue lock and writes a LIVE bullet. Status markers drive the tick.",
+      "sources": [
+        {
+          "file": "docs/handover/leg-preface.md",
+          "anchor": "Report at **milestones only**"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 340,
+          "y": 500
+        },
+        "narrow": {
+          "y": 710
+        }
+      }
+    },
+    {
+      "id": "l.red",
+      "lane": "leg",
+      "phase": "build",
+      "label": "RED first",
+      "summary": "One failing assertion before the implementation",
+      "sources": [
+        {
+          "file": "docs/handover/leg-preface.md",
+          "anchor": "RED first — one assertion that fails *before* the implementation"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 340,
+          "y": 500
+        },
+        "narrow": {
+          "y": 800
+        }
+      }
+    },
+    {
+      "id": "l.commit",
+      "lane": "leg",
+      "phase": "build",
+      "label": "Commit",
+      "summary": "Conventional commit with a ticket ID. Trailers go in the first commit.",
+      "sources": [
+        {
+          "file": "scripts/hooks/check-commit-msg.sh",
+          "anchor": "CONVENTIONAL_RE='^(feat|fix|chore"
+        },
+        {
+          "file": ".pre-commit-config.yaml",
+          "anchor": "id: conventional-commit-msg"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 340,
+          "y": 500
+        },
+        "narrow": {
+          "y": 890
+        }
+      }
+    },
+    {
+      "id": "g.prepush",
+      "lane": "gates",
+      "phase": "build",
+      "label": "Pre-push gates",
+      "summary": "no-push-to-main, code-review-before-push, pr-mergeable-gate, no-force-push, platforms-tested, security-reviewed",
+      "sources": [
+        {
+          "file": ".pre-commit-config.yaml",
+          "anchor": "id: no-push-to-main"
+        },
+        {
+          "file": ".pre-commit-config.yaml",
+          "anchor": "id: security-reviewed"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 340,
+          "y": 640
+        },
+        "narrow": {
+          "y": 980
+        }
+      }
+    },
+    {
+      "id": "g.marker",
+      "lane": "gates",
+      "phase": "build",
+      "label": "CR marker lane",
+      "summary": "classify_lane: full for any non-docs file, docs-audit for reviewable docs, skip for handover-only",
+      "sources": [
+        {
+          "file": "scripts/hooks/check-cr-before-push.sh",
+          "anchor": "classify_lane() {"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 340,
+          "y": 640
+        },
+        "narrow": {
+          "y": 1070
+        }
+      }
+    },
+    {
+      "id": "l.prcheck",
+      "lane": "leg",
+      "phase": "review",
+      "label": "/pr-check round",
+      "summary": "The panel prints round N of 3. Adjudicate, write verdicts, ledger, threads gate, impacted suites.",
+      "sources": [
+        {
+          "file": ".claude/commands/pr-check.md",
+          "anchor": "3.0 critic panel first pass via"
+        },
+        {
+          "file": "scripts/cr/panel-first-pass.sh",
+          "anchor": "pr-check: round %s of 3 on %s"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 540,
+          "y": 500
+        },
+        "narrow": {
+          "y": 1160
+        }
+      }
+    },
+    {
+      "id": "g.cap",
+      "lane": "gates",
+      "phase": "review",
+      "label": "Round cap",
+      "summary": "After round 3 only one delta round is left, blocking on Critical or escape-class only. A 4th full round exits 8.",
+      "sources": [
+        {
+          "file": "scripts/cr/review-round.sh",
+          "anchor": "After three full rounds the only round left is ONE delta round"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 540,
+          "y": 640
+        },
+        "narrow": {
+          "y": 1250
+        }
+      }
+    },
+    {
+      "id": "c.grant",
+      "lane": "console",
+      "phase": "review",
+      "label": "Grant round",
+      "summary": "grant-round.sh lowers .round on a signed judge record. A leg is refused.",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/grant-round.sh",
+          "anchor": "ONE more /pr-check review round itself"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 540,
+          "y": 220
+        },
+        "narrow": {
+          "y": 1340
+        }
+      }
+    },
+    {
+      "id": "l.pr",
+      "lane": "leg",
+      "phase": "review",
+      "label": "Open PR",
+      "summary": "gh pr create is denied while the CR marker exists",
+      "sources": [
+        {
+          "file": "scripts/hooks/check-cr-marker-on-pr-create.sh",
+          "anchor": "(HEAD=${short_head}). Run /pr-check"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 540,
+          "y": 500
+        },
+        "narrow": {
+          "y": 1430
+        }
+      }
+    },
+    {
+      "id": "g.ci",
+      "lane": "gates",
+      "phase": "verify",
+      "label": "CI wait",
+      "summary": "check-ci.sh: one foreground wait whose exit code decides",
+      "sources": [
+        {
+          "file": "scripts/check-ci.sh",
+          "anchor": "all checks green AND all review threads resolved"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 640
+        },
+        "narrow": {
+          "y": 1520
+        }
+      }
+    },
+    {
+      "id": "l.cired",
+      "lane": "leg",
+      "phase": "verify",
+      "label": "CI-red triage",
+      "summary": "A red job is the leg's to fix. If it is not the PR's fault: MAIN-RED once.",
+      "sources": [
+        {
+          "file": "docs/handover/leg-preface.md",
+          "anchor": "A red CI job on your PR is yours to triage"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 500
+        },
+        "narrow": {
+          "y": 1610
+        }
+      }
+    },
+    {
+      "id": "l.ready",
+      "lane": "leg",
+      "phase": "verify",
+      "label": "READY",
+      "summary": "Coverage lint, then READY with the full head. The GO-hold is the only permitted hold.",
+      "sources": [
+        {
+          "file": "docs/handover/leg-preface.md",
+          "anchor": "Merge only on the console's"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 500
+        },
+        "narrow": {
+          "y": 1700
+        }
+      }
+    },
+    {
+      "id": "c.verify",
+      "lane": "console",
+      "phase": "verify",
+      "label": "Ready-check",
+      "summary": "Head and CLEAN, rollup, threads, CR ledger row, trailers, ticket ids, coverage, plugin bump, workflow dispatch, added-unwired, TRUST-PATH",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/ready-check.sh",
+          "anchor": "mechanize the console's READY"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 220
+        },
+        "narrow": {
+          "y": 1790
+        }
+      }
+    },
+    {
+      "id": "j.judge",
+      "lane": "judge",
+      "phase": "verify",
+      "label": "Judge",
+      "summary": "Call or session; convened at the cheapest tier that can rule",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/judge-ladder.sh",
+          "anchor": "convene a judge at the cheapest tier that can rule"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 360
+        },
+        "narrow": {
+          "y": 1880
+        }
+      }
+    },
+    {
+      "id": "j.verdict",
+      "lane": "judge",
+      "phase": "verify",
+      "label": "Verdict record",
+      "summary": "write-verdict.sh writes a signed GO or NO-GO record for one head",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/write-verdict.sh",
+          "anchor": "writer for a judge's verdict file"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 360
+        },
+        "narrow": {
+          "y": 1970
+        }
+      }
+    },
+    {
+      "id": "c.verdictgo",
+      "lane": "console",
+      "phase": "verify",
+      "label": "verdict-go",
+      "summary": "write-verdict, then go.sh (GO only), then the Results bullet, then the board",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/verdict-go.sh",
+          "anchor": "judge's verdict to the persisted verdict, the GO, the Results bullet"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 220
+        },
+        "narrow": {
+          "y": 2060
+        }
+      }
+    },
+    {
+      "id": "c.go",
+      "lane": "console",
+      "phase": "verify",
+      "label": "GO file",
+      "summary": "go.sh writes an HMAC-signed .locks/go/<pr>.<sha>. The file IS the GO.",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/go.sh",
+          "anchor": "The file IS the GO"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 740,
+          "y": 220
+        },
+        "narrow": {
+          "y": 2150
+        }
+      }
+    },
+    {
+      "id": "l.merge",
+      "lane": "leg",
+      "phase": "merge",
+      "label": "merge-on-green",
+      "summary": "Gate chain, then the squash merge pinned to the head",
+      "sources": [
+        {
+          "file": "scripts/handover/merge-on-green.sh",
+          "anchor": "--squash --match-head-commit"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 940,
+          "y": 500
+        },
+        "narrow": {
+          "y": 2240
+        }
+      }
+    },
+    {
+      "id": "g.mergehook",
+      "lane": "gates",
+      "phase": "merge",
+      "label": "Merge hook",
+      "summary": "Any bare gh pr merge faces CR threads, CI green, console GO (legs) and trust path",
+      "sources": [
+        {
+          "file": "scripts/hooks/block-unresolved-cr-merge.sh",
+          "anchor": "Blocks `gh pr merge` on FOUR independent gates"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 940,
+          "y": 640
+        },
+        "narrow": {
+          "y": 2330
+        }
+      }
+    },
+    {
+      "id": "l.wrap",
+      "lane": "leg",
+      "phase": "merge",
+      "label": "WRAP",
+      "summary": "TaskStop, wrap-subtree-check.sh CLOSABLE or WITHHELD, release the lock, WRAPPED",
+      "sources": [
+        {
+          "file": "scripts/handover/wrap-subtree-check.sh",
+          "anchor": "the structural wrap/halt gate"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 940,
+          "y": 500
+        },
+        "narrow": {
+          "y": 2420
+        }
+      }
+    },
+    {
+      "id": "c.legevent",
+      "lane": "console",
+      "phase": "merge",
+      "label": "Leg event",
+      "summary": "MERGED or WRAPPED goes to wrap-merged; anything else is ESCALATE",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/leg-event.sh",
+          "anchor": "route one leg message to the"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 940,
+          "y": 220
+        },
+        "narrow": {
+          "y": 2510
+        }
+      }
+    },
+    {
+      "id": "c.residual",
+      "lane": "console",
+      "phase": "merge",
+      "label": "Residual triage",
+      "summary": "A deferred item needs HIMMEL-n or no-ticket: reason",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/residual-lines.sh",
+          "anchor": "the one definition of an unfiled residual"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 940,
+          "y": 220
+        },
+        "narrow": {
+          "y": 2600
+        }
+      }
+    },
+    {
+      "id": "c.wrapmerged",
+      "lane": "console",
+      "phase": "merge",
+      "label": "Wrap-merged",
+      "summary": "pr-state, close window, pull, log, board, tracker",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/wrap-merged.sh",
+          "anchor": "a leg's MERGED and"
+        },
+        {
+          "file": "scripts/handover/console-kit/close-wrapped-leg.sh",
+          "anchor": "console-run wrapped-leg"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 940,
+          "y": 220
+        },
+        "narrow": {
+          "y": 2690
+        }
+      }
+    },
+    {
+      "id": "c.next",
+      "lane": "console",
+      "phase": "succession",
+      "label": "Succession",
+      "summary": "console.sh next at 45 percent fill; the successor goes LIVE, legs quote back SUCCESSION accepted",
+      "sources": [
+        {
+          "file": "scripts/handover/console/console.sh",
+          "anchor": "console.sh next — write the successor's doc stub"
+        },
+        {
+          "file": "scripts/handover/console-kit/succession-tracker.sh",
+          "anchor": "The successor console's tally of its inherited legs'"
+        }
+      ],
+      "pos": {
+        "wide": {
+          "x": 1140,
+          "y": 220
+        },
+        "narrow": {
+          "y": 2780
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e.wake.underfilled",
+      "from": "c.wait",
+      "to": "c.pick",
+      "kind": "decision",
+      "condition": "tick capacity=UNDERFILLED:<n>: live below cap and no leg launched recently",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/console-wait.sh",
+          "anchor": "WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity"
+        }
+      ]
+    },
+    {
+      "id": "e.arm.ok",
+      "from": "c.arm",
+      "to": "l.live",
+      "kind": "decision",
+      "condition": "bank PROCEED, fleet below cap, Tier line valid, no un-acked denial page",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "anchor": "Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through."
+        }
+      ]
+    },
+    {
+      "id": "e.arm.cap",
+      "from": "c.arm",
+      "to": "c.wait",
+      "kind": "refusal",
+      "exit": 10,
+      "condition": "fleet-size cap reached",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "anchor": "refusing to launch $NAME - fleet-size cap reached"
+        }
+      ]
+    },
+    {
+      "id": "e.arm.bank",
+      "from": "c.arm",
+      "to": "o.ruling",
+      "kind": "refusal",
+      "exit": 11,
+      "condition": "bank exhausted",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "anchor": "lane bank exhausted (park and retry later"
+        }
+      ]
+    },
+    {
+      "id": "e.arm.denial",
+      "from": "c.arm",
+      "to": "o.ruling",
+      "kind": "refusal",
+      "exit": 14,
+      "condition": "an un-acked SHIP-STEP/PAUSE-RISK denial page; fixed by ack-denial.sh",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "anchor": "launch a leg even though it has an un-acked"
+        }
+      ]
+    },
+    {
+      "id": "e.arm.tier",
+      "from": "c.arm",
+      "to": "c.brief",
+      "kind": "refusal",
+      "exit": 2,
+      "condition": "an opus or fable leg without a Tier line",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "anchor": "has no '> **Tier:** $TIER_GATE — <category>: <reason>' line"
+        }
+      ]
+    },
+    {
+      "id": "e.tick.nolive",
+      "from": "c.tick",
+      "to": "c.wait",
+      "kind": "decision",
+      "condition": "lock FREE plus a clock: NOLIVE after TICK_NOLIVE_MIN (10)",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/tick.sh",
+          "anchor": "nolive_min=\"${TICK_NOLIVE_MIN:-10}\""
+        }
+      ]
+    },
+    {
+      "id": "e.commit.reject",
+      "from": "l.commit",
+      "to": "l.commit",
+      "kind": "loop",
+      "condition": "subject fails CONVENTIONAL_RE or has no ticket ID",
+      "sources": [
+        {
+          "file": "scripts/hooks/check-commit-msg.sh",
+          "anchor": "COMMIT REJECTED: message does not match conventional commit format."
+        }
+      ]
+    },
+    {
+      "id": "e.push.marker",
+      "from": "g.prepush",
+      "to": "g.marker",
+      "kind": "decision",
+      "condition": "lane full or docs-audit writes .git/cr-pending/<branch>; skip writes none",
+      "sources": [
+        {
+          "file": "scripts/hooks/check-cr-before-push.sh",
+          "anchor": "reviewable_docs=$(echo \"$files\" | grep -Ev"
+        }
+      ]
+    },
+    {
+      "id": "e.pr.blocked",
+      "from": "l.pr",
+      "to": "l.prcheck",
+      "kind": "refusal",
+      "condition": "marker present",
+      "sources": [
+        {
+          "file": "scripts/hooks/check-cr-marker-on-pr-create.sh",
+          "anchor": "Automated review pending for ${branch} (HEAD=${short_head}). Run"
+        }
+      ]
+    },
+    {
+      "id": "e.round.clean",
+      "from": "l.prcheck",
+      "to": "l.pr",
+      "kind": "decision",
+      "condition": "N == 0 blocking, threads_rc 0, impacted_rc 0; marker cleared via clear-cr-marker.sh",
+      "sources": [
+        {
+          "file": ".claude/commands/pr-check.md",
+          "anchor": "5. **Clear.** Only if step 4.9 did not already clear the marker"
+        }
+      ]
+    },
+    {
+      "id": "e.round.findings",
+      "from": "l.prcheck",
+      "to": "l.commit",
+      "kind": "loop",
+      "condition": "an agreed Critical or Important finding; fix, push, new round",
+      "sources": [
+        {
+          "file": ".claude/commands/pr-check.md",
+          "anchor": "4. **Cross-check.** Recompute the Critical/Important counts"
+        }
+      ]
+    },
+    {
+      "id": "e.round.cap",
+      "from": "l.prcheck",
+      "to": "g.cap",
+      "kind": "refusal",
+      "exit": 8,
+      "condition": "round 3 already used; a full round now exits 8",
+      "sources": [
+        {
+          "file": "scripts/cr/panel-first-pass.sh",
+          "anchor": "ABORT - the three-round /pr-check cap refused another round"
+        }
+      ]
+    },
+    {
+      "id": "e.cap.delta",
+      "from": "g.cap",
+      "to": "l.prcheck",
+      "kind": "decision",
+      "condition": "one delta round, blocking on Critical or escape-class only",
+      "sources": [
+        {
+          "file": "scripts/cr/panel-first-pass.sh",
+          "anchor": "delta round blocking set: Critical or escape-class only"
+        }
+      ]
+    },
+    {
+      "id": "e.cap.console",
+      "from": "g.cap",
+      "to": "c.grant",
+      "kind": "decision",
+      "exit": 16,
+      "condition": "leg FINDING; the console grants on a signed judge NO-GO, a standing finding or an operator record; a judge GO on a clean head is refused (exit 16)",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/grant-round.sh",
+          "anchor": "A PR parks at the round-3 cap (review-round.sh)"
+        }
+      ]
+    },
+    {
+      "id": "e.ci.green",
+      "from": "g.ci",
+      "to": "l.ready",
+      "kind": "decision",
+      "exit": 0,
+      "condition": "check-ci exit 0: checks green, threads resolved",
+      "sources": [
+        {
+          "file": "scripts/check-ci.sh",
+          "anchor": "all checks green AND all review threads resolved"
+        }
+      ]
+    },
+    {
+      "id": "e.ci.red",
+      "from": "g.ci",
+      "to": "l.cired",
+      "kind": "refusal",
+      "exit": 1,
+      "condition": "check-ci exit 1: a check failed (fail-fast)",
+      "sources": [
+        {
+          "file": "scripts/check-ci.sh",
+          "anchor": "at least one check failed (--fail-fast: returns on the first red)"
+        }
+      ]
+    },
+    {
+      "id": "e.ci.threads",
+      "from": "g.ci",
+      "to": "l.prcheck",
+      "kind": "refusal",
+      "exit": 3,
+      "condition": "check-ci exit 3: green, but the review state blocks",
+      "sources": [
+        {
+          "file": "scripts/check-ci.sh",
+          "anchor": "checks green but the review state blocks the merge"
+        }
+      ]
+    },
+    {
+      "id": "e.ci.blocked",
+      "from": "g.ci",
+      "to": "o.ruling",
+      "kind": "refusal",
+      "exit": 5,
+      "condition": "check-ci exit 5 or 6: GitHub will block the merge",
+      "sources": [
+        {
+          "file": "scripts/check-ci.sh",
+          "anchor": "GitHub will BLOCK this merge and waiting cannot fix it"
+        }
+      ]
+    },
+    {
+      "id": "e.cired.fix",
+      "from": "l.cired",
+      "to": "l.commit",
+      "kind": "loop",
+      "condition": "the PR's fault; every push needs its own review round",
+      "sources": [
+        {
+          "file": "docs/handover/running-a-console.md",
+          "anchor": "The automated review ledger is keyed by head sha, so **every push needs its own review"
+        }
+      ]
+    },
+    {
+      "id": "e.verify.fail",
+      "from": "c.verify",
+      "to": "l.ready",
+      "kind": "refusal",
+      "exit": 1,
+      "condition": "ready-check exit 1: any check FAILs",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/ready-check.sh",
+          "anchor": "1 — READY-CHECK FAIL (one or more checks failed)"
+        }
+      ]
+    },
+    {
+      "id": "e.verify.trust",
+      "from": "c.verify",
+      "to": "j.judge",
+      "kind": "decision",
+      "condition": "TRUST-PATH: yes, or the brief set judge: true",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/ready-check.sh",
+          "anchor": "Prints `TRUST-PATH: yes|no` just"
+        }
+      ]
+    },
+    {
+      "id": "e.verdict.nogo",
+      "from": "j.verdict",
+      "to": "l.commit",
+      "kind": "loop",
+      "condition": "NO-GO: verdict-go runs steps 1 and 3 only; the console relays it with the token",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/verdict-go.sh",
+          "anchor": "A NO-GO runs steps 1 and 3 only."
+        }
+      ]
+    },
+    {
+      "id": "e.verdict.go",
+      "from": "j.verdict",
+      "to": "c.verdictgo",
+      "kind": "decision",
+      "condition": "GO on this exact head",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/verdict-go.sh",
+          "anchor": "--trust-reviewed \"$QID\" \"$PR\" \"$HEAD_SHA\" || step_fail"
+        }
+      ]
+    },
+    {
+      "id": "e.go.trustplain",
+      "from": "c.go",
+      "to": "j.judge",
+      "kind": "refusal",
+      "exit": 8,
+      "condition": "TRUST-PATH: yes and a plain GO",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/go.sh",
+          "anchor": "only --trust-reviewed <judge qid> may write it"
+        }
+      ]
+    },
+    {
+      "id": "e.go.notready",
+      "from": "c.go",
+      "to": "c.verify",
+      "kind": "refusal",
+      "exit": 4,
+      "condition": "ready-check did not PASS",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/go.sh",
+          "anchor": "refused: ready-check.sh did not PASS for <pr> at <head>"
+        }
+      ]
+    },
+    {
+      "id": "e.go.leg",
+      "from": "c.go",
+      "to": "c.go",
+      "kind": "refusal",
+      "exit": 3,
+      "condition": "run from a leg or relay; a leg never writes its own GO",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/go.sh",
+          "anchor": "a leg never writes its own GO"
+        }
+      ]
+    },
+    {
+      "id": "e.go.ok",
+      "from": "c.go",
+      "to": "l.merge",
+      "kind": "decision",
+      "exit": 0,
+      "condition": "GO file written; the leg gets GO <pr> <sha> quoting its token",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/go.sh",
+          "anchor": "Prints the written path."
+        }
+      ]
+    },
+    {
+      "id": "e.mog.nogo",
+      "from": "l.merge",
+      "to": "l.ready",
+      "kind": "refusal",
+      "exit": 17,
+      "condition": "a console leg with no GO file for this head",
+      "sources": [
+        {
+          "file": "scripts/handover/merge-on-green.sh",
+          "anchor": "policy-refused by the console-GO gate"
+        }
+      ]
+    },
+    {
+      "id": "e.mog.trust",
+      "from": "l.merge",
+      "to": "c.go",
+      "kind": "refusal",
+      "exit": 21,
+      "condition": "a trust path without a trust-reviewed GO",
+      "sources": [
+        {
+          "file": "scripts/handover/merge-on-green.sh",
+          "anchor": "trust-path gate: the PR changes a path matching the"
+        }
+      ]
+    },
+    {
+      "id": "e.mog.mainred",
+      "from": "l.merge",
+      "to": "o.ruling",
+      "kind": "refusal",
+      "exit": 22,
+      "condition": "main is red; needs Fixes-main-red or go.sh --fix-main-red",
+      "sources": [
+        {
+          "file": "scripts/handover/merge-on-green.sh",
+          "anchor": "main-red gate: the newest COMPLETED, non-cancelled run"
+        }
+      ]
+    },
+    {
+      "id": "e.mog.ok",
+      "from": "l.merge",
+      "to": "l.wrap",
+      "kind": "decision",
+      "exit": 0,
+      "condition": "squash merge pinned to the head",
+      "sources": [
+        {
+          "file": "scripts/handover/merge-on-green.sh",
+          "anchor": "--squash --match-head-commit"
+        }
+      ]
+    },
+    {
+      "id": "e.wrap.withheld",
+      "from": "l.wrap",
+      "to": "l.wrap",
+      "kind": "loop",
+      "condition": "WITHHELD (rc 1/2): TaskStop and re-run",
+      "sources": [
+        {
+          "file": "scripts/handover/wrap-subtree-check.sh",
+          "anchor": "WITHHELD: <n> process(es) still alive under claude pid <pid>"
+        }
+      ]
+    },
+    {
+      "id": "e.event.handled",
+      "from": "c.legevent",
+      "to": "c.wrapmerged",
+      "kind": "decision",
+      "condition": "MERGED or WRAPPED with a manifest label",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/leg-event.sh",
+          "anchor": "MERGED / WRAPPED  -> wrap-merged.sh"
+        }
+      ]
+    },
+    {
+      "id": "e.event.residual",
+      "from": "c.legevent",
+      "to": "c.residual",
+      "kind": "refusal",
+      "exit": 10,
+      "condition": "ESCALATE unfiled-residual",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/leg-event.sh",
+          "anchor": "A WRAPPED line that mentions deferred, follow-up or residual with"
+        }
+      ]
+    },
+    {
+      "id": "e.event.escalate",
+      "from": "c.legevent",
+      "to": "j.judge",
+      "kind": "decision",
+      "condition": "READY or FINDING: needs a judge or the console",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/leg-event.sh",
+          "anchor": "or say ESCALATE"
+        }
+      ]
+    },
+    {
+      "id": "e.next.fill",
+      "from": "c.wait",
+      "to": "c.next",
+      "kind": "decision",
+      "condition": "context fill at CONSOLE_FILL_PERCENT (45) or the handover-budget WAKE",
+      "sources": [
+        {
+          "file": "scripts/handover/console/console.sh",
+          "anchor": "fill_percent=\"${CONSOLE_FILL_PERCENT:-45}\""
+        }
+      ]
+    },
+    {
+      "id": "e.next.wrapblocked",
+      "from": "c.next",
+      "to": "c.next",
+      "kind": "refusal",
+      "exit": 4,
+      "condition": "console.sh wrap exit 4 or 5: live subagent or non-harness process",
+      "sources": [
+        {
+          "file": "scripts/handover/console/console.sh",
+          "anchor": "wrap refused: this session has live subagents (above)"
+        }
+      ]
+    },
+    {
+      "id": "e.next.complete",
+      "from": "c.next",
+      "to": "c.wait",
+      "kind": "decision",
+      "condition": "WAKE succession complete <k/n>: every leg quoted back",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/console-wait.sh",
+          "anchor": "WAKE succession complete <k/n>   with --succession <successor>"
+        }
+      ]
+    },
+    {
+      "id": "f.c.pick.c.brief",
+      "from": "c.pick",
+      "to": "c.brief",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.c.brief.c.arm",
+      "from": "c.brief",
+      "to": "c.arm",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.l.live.l.red",
+      "from": "l.live",
+      "to": "l.red",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.l.red.l.commit",
+      "from": "l.red",
+      "to": "l.commit",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.l.commit.g.prepush",
+      "from": "l.commit",
+      "to": "g.prepush",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.g.marker.l.prcheck",
+      "from": "g.marker",
+      "to": "l.prcheck",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.l.pr.g.ci",
+      "from": "l.pr",
+      "to": "g.ci",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.l.ready.c.verify",
+      "from": "l.ready",
+      "to": "c.verify",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.c.verify.c.go",
+      "from": "c.verify",
+      "to": "c.go",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.l.wrap.c.legevent",
+      "from": "l.wrap",
+      "to": "c.legevent",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.j.judge.j.verdict",
+      "from": "j.judge",
+      "to": "j.verdict",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.c.verdictgo.c.go",
+      "from": "c.verdictgo",
+      "to": "c.go",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    },
+    {
+      "id": "f.c.grant.l.prcheck",
+      "from": "c.grant",
+      "to": "l.prcheck",
+      "kind": "flow",
+      "condition": "next step",
+      "sources": []
+    }
+  ],
+  "walkthroughs": [
+    {
+      "id": "w1",
+      "title": "A clean PR",
+      "steps": [
+        {
+          "at": "c.wait",
+          "caption": "WAKE underfilled: live is below the cap"
+        },
+        {
+          "at": "c.pick",
+          "caption": "Ranked, collision-checked candidates"
+        },
+        {
+          "at": "c.brief",
+          "caption": "Brief, launcher and worktree"
+        },
+        {
+          "at": "c.arm",
+          "caption": "Bank PROCEED, fleet below cap, Tier line valid"
+        },
+        {
+          "at": "l.live",
+          "caption": "Queue lock taken, LIVE bullet written"
+        },
+        {
+          "at": "l.red",
+          "caption": "One failing assertion first"
+        },
+        {
+          "at": "l.commit",
+          "caption": "Conventional commit, trailers in the first commit"
+        },
+        {
+          "at": "g.prepush",
+          "caption": "Pre-push gates pass"
+        },
+        {
+          "at": "g.marker",
+          "caption": "Lane full: a CR marker is written"
+        },
+        {
+          "at": "l.prcheck",
+          "caption": "round 1 of 3, zero blocking"
+        },
+        {
+          "at": "l.pr",
+          "caption": "Marker cleared, PR opens"
+        },
+        {
+          "at": "g.ci",
+          "caption": "check-ci exit 0"
+        },
+        {
+          "at": "l.ready",
+          "caption": "Coverage lint, then READY"
+        },
+        {
+          "at": "c.verify",
+          "caption": "Ready-check PASS, TRUST-PATH no"
+        },
+        {
+          "at": "c.go",
+          "caption": "GO file written"
+        },
+        {
+          "at": "l.merge",
+          "caption": "Squash merge pinned to the head"
+        },
+        {
+          "at": "l.wrap",
+          "caption": "Subtree clean: CLOSABLE"
+        },
+        {
+          "at": "c.legevent",
+          "caption": "MERGED or WRAPPED routed"
+        },
+        {
+          "at": "c.wrapmerged",
+          "caption": "Window closed, board and tracker updated"
+        }
+      ]
+    },
+    {
+      "id": "w2",
+      "title": "Judge NO-GO, then fix",
+      "steps": [
+        {
+          "at": "l.ready",
+          "caption": "READY at the head; the diff touches a trust path"
+        },
+        {
+          "at": "c.verify",
+          "caption": "TRUST-PATH: yes"
+        },
+        {
+          "at": "j.judge",
+          "caption": "A judge is convened"
+        },
+        {
+          "at": "j.verdict",
+          "caption": "NO-GO recorded for this head"
+        },
+        {
+          "at": "l.commit",
+          "caption": "The leg fixes and pushes; every push needs its own round"
+        },
+        {
+          "at": "g.prepush",
+          "caption": "Pre-push gates"
+        },
+        {
+          "at": "g.marker",
+          "caption": "Marker re-minted"
+        },
+        {
+          "at": "l.prcheck",
+          "caption": "Review round 2"
+        },
+        {
+          "at": "l.pr",
+          "caption": "PR is already open: push"
+        },
+        {
+          "at": "g.ci",
+          "caption": "Green again"
+        },
+        {
+          "at": "l.ready",
+          "caption": "READY at the new head"
+        },
+        {
+          "at": "c.verify",
+          "caption": "TRUST-PATH: yes again"
+        },
+        {
+          "at": "j.judge",
+          "caption": "Judge reconvened"
+        },
+        {
+          "at": "j.verdict",
+          "caption": "GO on this exact head"
+        },
+        {
+          "at": "c.verdictgo",
+          "caption": "write-verdict, then go.sh --trust-reviewed"
+        },
+        {
+          "at": "c.go",
+          "caption": "Trust-reviewed GO",
+          "ghost": "e.go.trustplain"
+        },
+        {
+          "at": "l.merge",
+          "caption": "The trust-path gate passes (exit 21 avoided)"
+        },
+        {
+          "at": "l.wrap",
+          "caption": "WRAP"
+        },
+        {
+          "at": "c.legevent",
+          "caption": "WRAPPED text says residual without a key: ESCALATE"
+        },
+        {
+          "at": "c.residual",
+          "caption": "The leg files a HIMMEL ticket"
+        }
+      ]
+    },
+    {
+      "id": "w3",
+      "title": "Capped round, then CI red",
+      "steps": [
+        {
+          "at": "l.prcheck",
+          "caption": "Rounds 1 to 3; round 3 leaves an Important finding"
+        },
+        {
+          "at": "g.cap",
+          "caption": "A 4th full round exits 8"
+        },
+        {
+          "at": "c.grant",
+          "caption": "FINDING to the console; a signed judge NO-GO buys the round"
+        },
+        {
+          "at": "l.prcheck",
+          "caption": "Counts as round 3: clean"
+        },
+        {
+          "at": "l.pr",
+          "caption": "PR opens"
+        },
+        {
+          "at": "g.ci",
+          "caption": "check-ci exit 1"
+        },
+        {
+          "at": "l.cired",
+          "caption": "The PR's own fault"
+        },
+        {
+          "at": "l.commit",
+          "caption": "Fix commit"
+        },
+        {
+          "at": "g.prepush",
+          "caption": "Pre-push gates"
+        },
+        {
+          "at": "g.marker",
+          "caption": "Marker re-minted"
+        },
+        {
+          "at": "l.prcheck",
+          "caption": "Delta round"
+        },
+        {
+          "at": "g.cap",
+          "caption": "One delta round, Critical or escape-class only"
+        },
+        {
+          "at": "l.prcheck",
+          "caption": "Delta round clean"
+        },
+        {
+          "at": "l.pr",
+          "caption": "Push to the open PR"
+        },
+        {
+          "at": "g.ci",
+          "caption": "Green"
+        },
+        {
+          "at": "l.ready",
+          "caption": "READY"
+        },
+        {
+          "at": "c.verify",
+          "caption": "Ready-check PASS"
+        },
+        {
+          "at": "c.go",
+          "caption": "GO file"
+        },
+        {
+          "at": "l.merge",
+          "caption": "Merge"
+        },
+        {
+          "at": "l.wrap",
+          "caption": "WRAP"
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "scripts/handover/merge-on-green.sh": {
+      "table": "exit",
+      "floor": 14,
+      "mapped": {
+        "0": "e.mog.ok",
+        "17": "e.mog.nogo",
+        "21": "e.mog.trust",
+        "22": "e.mog.mainred"
+      },
+      "unmapped": {
+        "2": "anchor handoff refusal: operational, not a workflow decision",
+        "10": "ARMAUTOMERGE not opted in: operational",
+        "11": "required tool missing: operational",
+        "12": "not a private repo or wrong base: operational",
+        "13": "cannot resolve the PR or its head: operational",
+        "14": "check-ci gate not green: shown by the check-ci edges",
+        "15": "merge failed: operational",
+        "16": "audit sink not writable: operational",
+        "18": "GitHub-blocked: shown by e.ci.blocked",
+        "19": "no anchor: operational",
+        "20": "PR title fails the conventional-commit gate: operational",
+        "23": "plugin-bump recheck: operational"
+      }
+    },
+    "scripts/handover/console-kit/go.sh": {
+      "table": "exit",
+      "floor": 8,
+      "mapped": {
+        "0": "e.go.ok",
+        "3": "e.go.leg",
+        "4": "e.go.notready",
+        "8": "e.go.trustplain"
+      },
+      "unmapped": {
+        "1": "handover root or GO key unreadable: operational",
+        "2": "usage or anchor handoff refusal: operational",
+        "5": "trust-reviewed id has no GO verdict: operational",
+        "6": "fork adapter refusal: out of scope",
+        "7": "fork adapter PR state refusal: out of scope"
+      }
+    },
+    "scripts/check-ci.sh": {
+      "table": "exit",
+      "floor": 8,
+      "mapped": {
+        "0": "e.ci.green",
+        "1": "e.ci.red",
+        "3": "e.ci.threads",
+        "5": "e.ci.blocked",
+        "6": "e.ci.blocked"
+      },
+      "unmapped": {
+        "2": "cannot evaluate: operational",
+        "4": "retired, no longer emitted",
+        "7": "deadline-pending variant, only under CHECK_CI_DISTINCT_DEADLINE",
+        "64": "usage error"
+      }
+    },
+    "scripts/handover/console-kit/ready-check.sh": {
+      "table": "checks",
+      "floor": 11,
+      "mapped": {
+        "1": "e.verify.fail",
+        "2": "e.verify.fail",
+        "3": "e.verify.fail",
+        "4": "e.verify.fail",
+        "5": "e.verify.fail",
+        "6": "e.verify.fail",
+        "7": "e.verify.fail",
+        "9": "e.verify.fail",
+        "10": "e.verify.fail",
+        "11": "e.verify.fail",
+        "12": "e.verify.trust"
+      },
+      "unmapped": {}
+    },
+    "scripts/handover/console-kit/console-wait.sh": {
+      "table": "wake",
+      "floor": 9,
+      "mapped": {
+        "underfilled": "e.wake.underfilled",
+        "succession complete": "e.next.complete",
+        "handover-budget": "e.next.fill"
+      },
+      "unmapped": {
+        "telegram": "operator inbound message: not a workflow decision",
+        "tick": "generic action-key change: shown as the tick node",
+        "tick-fail": "monitor health: operational",
+        "tracker-stale": "tracker housekeeping: operational",
+        "predecessor-open": "succession housekeeping: operational",
+        "succession partial": "succession progress report: operational",
+        "relay-on-live": "succession relay housekeeping: operational",
+        "unowned-prs": "PR ownership housekeeping: operational"
+      }
+    },
+    "docs/handover/leg-preface.md": {
+      "table": "markers",
+      "floor": 9,
+      "mapped": {
+        "LIVE": "l.live",
+        "FINDING": "e.cap.console",
+        "READY": "l.ready",
+        "WRAPPED": "l.wrap"
+      },
+      "unmapped": {
+        "RESOLVED": "retires a FINDING: bookkeeping",
+        "BLOCKED": "leg status: escalation to the console, no graph decision",
+        "HALTED": "leg status: stop, no graph decision",
+        "PARKED-BANK": "leg status: bank park, no graph decision",
+        "RESUMED": "leg status: resume, no graph decision"
+      }
+    }
+  }
+}

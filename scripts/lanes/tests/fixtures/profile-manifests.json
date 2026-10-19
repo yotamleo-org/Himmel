@@ -1,6 +1,7 @@
 {
   "user": {
     "enabled": [
+      "find-docs@himmel",
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",

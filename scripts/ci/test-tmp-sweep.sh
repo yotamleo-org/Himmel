@@ -123,7 +123,10 @@ rm -rf "$root_b"
 # from then on, while the suite still reports green. A unique root per run
 # cannot collide, so the case ALWAYS executes and needs no skip branch.
 echo "== Case C: non-temp root refused =="
-root_c=$(mktemp -d "$HOME/.himmel-sweep-guard-fixture.XXXXXX") || root_c=""
+# shellcheck source=../hooks/lib-fixture-root.sh
+. "$(dirname "$0")/../hooks/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || _FROOT=""
+root_c=$(mktemp -d "$_FROOT/.himmel-sweep-guard-fixture.XXXXXX") || root_c=""
 # Engage-control: prove the scenario was actually staged. Without this, a
 # fixture that failed to materialise would leave the assertions below passing
 # or failing for a reason that has nothing to do with the guard under test —
@@ -147,7 +150,7 @@ fi
 # temp-looking directory must still be refused — the guard reads the
 # resolved path, and $HOME is not a temp root (panel r1 codex-1, r2 codex-1).
 # The mktemp suffix keeps the "tmp" component in the path text.
-trav=$(mktemp -d "$HOME/.himmel-tmp-guard-fixture.XXXXXX") || trav=""
+trav=$(mktemp -d "$_FROOT/.himmel-tmp-guard-fixture.XXXXXX") || trav=""
 if [ -n "$trav" ] && [ -d "$trav" ]; then
     pass "traversal case staged its temp-named fixture ($trav)"
     out=$(bash "$SWEEP" --root "$trav/.." --older-than 999999 --apply 2>&1); rc=$?

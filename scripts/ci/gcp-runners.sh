@@ -2,7 +2,7 @@
 # gcp-runners.sh -- the ephemeral GCP spot CI runner pool.
 # Run it on the station.
 #
-#   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 2, max 4)
+#   bash scripts/ci/gcp-runners.sh up [N]   top the pool back up to N live VMs (default 1, max 1)
 #   bash scripts/ci/gcp-runners.sh watch N [--interval 60]   foreground loop: re-run `up N` every interval
 #                                           while CI_GCP is on; on CI_GCP off or SIGTERM run `down` and exit
 #   bash scripts/ci/gcp-runners.sh down     delete every pool VM, deregister offline gcp runners
@@ -32,12 +32,13 @@ REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
 PROJECT="${GCP_RUNNERS_PROJECT:-himmel-ci}"
 SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
-MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-2}"
+MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-4}"
 MAX_RUN="45m"
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
-MAX_N=4
+CPU_PIN=8  # never raise the regional CPUS quota above this
+MAX_N=1 # the proxy e2-micro counts 1 vCPU against the 8-vCPU CPUS pin, leaving 7: one e2-standard-4 fits, two do not
 NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
 LOCKFILE="${GCP_RUNNERS_LOCK:-${TMPDIR:-/tmp}/gcp-runners.lock}"
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
@@ -83,8 +84,26 @@ drop_jit() {
     return "$failed"
 }
 
+# drop_runner VM -> delete the runner registration minted for a VM that was never created
+drop_runner() {
+    local id
+    id="$("$GH" api --paginate "repos/$REPO/actions/runners" --jq ".runners[] | select(.name==\"$1\") | .id")" || { echo "gcp-runners: could not list runners to delete the registration of $1" >&2; return 1; }
+    [ -n "$id" ] || return 0
+    "$GH" api -X DELETE "repos/$REPO/actions/runners/$id" || { echo "gcp-runners: could not delete the runner registration of $1 (id $id)" >&2; return 1; }
+}
+
+# quota_preflight VCPUS -> die unless the regional CPUS quota (limit capped at CPU_PIN) has VCPUS of headroom
+quota_preflight() {
+    local q limit usage
+    q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --filter="quotas.metric=CPUS" --format="value(quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
+    read -r limit usage <<< "$q"
+    awk -v l="${limit:-x}" -v u="${usage:-x}" 'BEGIN { exit !(l ~ /^[0-9]+(\.[0-9]+)?$/ && u ~ /^[0-9]+(\.[0-9]+)?$/) }' || die "up: unreadable regional CPUS quota '$q', refusing to create VMs blind"
+    awk -v l="$limit" -v u="$usage" -v n="$1" -v pin="$CPU_PIN" 'BEGIN { if (l + 0 > pin + 0) l = pin; exit !(u + n <= l + 0) }' \
+        || die "up: regional CPUS quota has no headroom: usage $usage of limit $limit (pinned to $CPU_PIN), $1 more vCPU needed"
+}
+
 cmd_up() {
-    local n="${1:-2}"
+    local n="${1:-1}"
     case "$n" in ''|*[!0-9]*) die "up: N must be a positive integer, got '$n'" 2 ;; esac
     [ "$n" -ge 1 ] || die "up: N must be at least 1" 2
     [ "$n" -le "$MAX_N" ] || die "up: N=$n exceeds the hard max $MAX_N (the trial caps 8 vCPUs)" 2
@@ -107,7 +126,13 @@ cmd_up() {
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
-    local tmpd i stamp vm created=()
+    local vcpus="${MACHINE##*-}"
+    # custom types are <family>-custom-<vcpus>-<memory MB>: the vCPU field is second from last
+    case "$MACHINE" in *custom-*-*) vcpus="${MACHINE%-*}"; vcpus="${vcpus##*-}" ;; esac
+    case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
+    quota_preflight $((need * vcpus))
+
+    local tmpd i stamp vm probe created=()
     # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.
     up_fail() { [ "${#created[@]}" -eq 0 ] || ONLINE_WAIT=0 drop_jit "${created[@]}"; die "$1"; }
     tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
@@ -123,18 +148,28 @@ cmd_up() {
             -f "name=$vm" -F runner_group_id=1 -f 'labels[]=self-hosted' -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
             || up_fail "JIT config request failed for $vm"
         [ -s "$tmpd/$vm.jit" ] || up_fail "empty JIT config for $vm"
-        created+=("$vm")  # before the call: a create whose response was lost may still have made the VM
-        gc compute instances create "$vm" \
+        if ! gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
-            --boot-disk-size=50GB \
+            --boot-disk-size=50GB --boot-disk-type=pd-balanced \
             --provisioning-model=SPOT --max-run-duration="$MAX_RUN" --instance-termination-action=DELETE \
             --labels="$POOL_LABEL" \
             --network="$NET" --subnet="$NET" --no-address \
             --no-service-account --no-scopes \
             --metadata="runner-repo=$REPO" \
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
-            || up_fail "instances create failed for $vm"
+            ; then
+            # a create whose response was lost may still have made the VM: strip its jit-config.
+            # Only a confirmed not-found means nothing to strip or delete, just the runner registration minted for it;
+            # any other describe outcome is uncertain and keeps the cleanup.
+            if probe="$(gc compute instances describe "$vm" --zone="$ZONE" 2>&1)" || ! grep -qF "zones/$ZONE/instances/$vm' was not found" <<< "$probe"; then
+                created+=("$vm")
+            else
+                drop_runner "$vm"
+            fi
+            up_fail "instances create failed for $vm"
+        fi
+        created+=("$vm")
     done
     drop_jit "${created[@]}" || die "jit-config cleanup failed, deleting the affected VM(s) was attempted; check 'status' for leftovers"
     echo "gcp-runners: created $need VM(s); pool target $n"
@@ -158,7 +193,7 @@ cmd_down() {
 }
 
 cmd_watch() {
-    local n="${1:-2}" interval=60
+    local n="${1:-1}" interval=60
     case "$n" in ''|*[!0-9]*) die "watch: N must be a positive integer, got '$n'" 2 ;; esac
     if [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_N" ]; then die "watch: N must be 1..$MAX_N" 2; fi
     shift

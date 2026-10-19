@@ -99,7 +99,7 @@ export const fetchVersions = (project: string) =>
 
 export async function listVersions(project: string): Promise<string[]> {
   const versions = await fetchVersions(project);
-  return versions.map((v) => `${v.name}\t${v.released ? 'true' : 'false'}\t${v.releaseDate ?? ''}`);
+  return versions.map((v) => `${v.name}\t${v.released ? 'true' : 'false'}\t${v.releaseDate ?? ''}\t${v.archived ? 'true' : 'false'}`);
 }
 
 export async function createVersion(

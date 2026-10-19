@@ -535,6 +535,26 @@
       },
       "homepage": "https://github.com/eugeniughelbur/obsidian-second-brain",
       "license": "MIT"
+    },
+    {
+      "name": "find-docs",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/upstash/context7.git",
+        "path": "skills/find-docs",
+        "sha": "ae4871e9a8cbed00bc0f4a40b0b5b61e2d37378c"
+      },
+      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare (HIMMEL-4018). git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url (HIMMEL-549), pinned to upstream commit ae4871e9a8cbed00bc0f4a40b0b5b61e2d37378c per himmel supply-chain policy (HIMMEL-3069). Enabled by the `user` profile only.",
+      "strict": false,
+      "skills": [
+        "./"
+      ],
+      "author": {
+        "name": "Upstash",
+        "url": "https://github.com/upstash"
+      },
+      "homepage": "https://github.com/upstash/context7",
+      "license": "MIT"
     }
   ]
 }

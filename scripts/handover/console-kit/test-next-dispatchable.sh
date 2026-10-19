@@ -268,18 +268,23 @@ mk HIMMEL-111 "To Do" Low '[]' '[]' '[]' "tier1 second on the line" "Edit script
 mk HIMMEL-112 "To Do" Low '[]' '[]' '[]' "tier1 first on the line" "Edit scripts/lib/q9.sh only."
 mk HIMMEL-113 "To Do" Low '[]' '[]' '[]' "listed but cloud only" "Edit scripts/lib/q10.sh only."
 mk HIMMEL-150 "In Progress" Low '[]' '[]' '[]' "orphan in progress" "Edit scripts/lib/q11.sh only."
+mk HIMMEL-170 "To Do" Low '[]' '[]' '[]' "named only in a bracket" "Edit scripts/lib/q12.sh only."
+mk HIMMEL-171 "To Do" Low '[]' '[]' '[]' "part of a dotted number" "Edit scripts/lib/q13.sh only."
 M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\n' > "$WORK/jira-mirror7/HIMMEL.versions.tsv"
 CDOC="$WORK/console-doc.md"
 printf '# console\n\n## Live state\n\nlegs: none\npriority: K1 | 112 SCORECARD | 111 113(CLOUD) | 9999\nqueue: none\n\n## Later\n\npriority: 140\n' > "$CDOC"
 run7() { NEXT_DISPATCH_MIRROR="$M7" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
 o7="$(run7 --top 20 --doc "$CDOC" | grep -v '^#' | grep -v '^RESUME' | cut -f2 | paste -sd, -)"
-[ "$o7" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140,HIMMEL-141,HIMMEL-132" ] && pass "one ticket per tier on shuffled input comes out in tier order" || fail "tier order is '$o7'"
+[ "$o7" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140,HIMMEL-141,HIMMEL-132,HIMMEL-170,HIMMEL-171" ] && pass "one ticket per tier on shuffled input comes out in tier order" || fail "tier order is '$o7'"
 lacks "a (CLOUD) entry on the priority line is excluded from local output" "$o7" "HIMMEL-113"
 o7b="$(run7 --doc "$CDOC" --priority-pool-only | grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7b" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130" ] && pass "--priority-pool-only lists tiers 1-3 only" || fail "pool-only is '$o7b'"
 lacks "--priority-pool-only prints no RESUME row" "$(run7 --doc "$CDOC" --priority-pool-only)" "RESUME"
-o7c="$(run7 --priority-pool-only | grep -v '^#' | cut -f2 | paste -sd, -)"
+printf '# console\n\n## Live state\n\n**priority:** K1 | 112 SCORECARD | 111 113 (CLOUD) | [PR 170] since 10.171\nqueue: none\n' > "$WORK/console-doc-bold.md"
+o7d="$(run7 --doc "$WORK/console-doc-bold.md" --priority-pool-only | grep -v '^#' | cut -f2 | paste -sd, -)"
+[ "$o7d" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130" ] && pass "a bold **priority:** line with '113 (CLOUD)' and bracketed or dotted numbers ranks as written" || fail "bold-line pool is '$o7d'"
+o7c="$(run7 --priority-pool-only |grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7c" = "HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130" ] && pass "without --doc the pool is the labels and tiers 2-3" || fail "no-doc pool is '$o7c'"
 M8="$WORK/jira-mirror8/HIMMEL"; mkdir -p "$M8"
 M_SAVE="$M"; M="$M8"
@@ -413,6 +418,37 @@ lacks "residual-depth: with no --doc, depth 1 is excluded" "$r3" "HIMMEL-302"
 printf '# console\n\n- residual-must HIMMEL-303 (data loss)\n' > "$RDOC"
 r4="$(rdrun --doc "$RDOC")"
 has "residual-depth: a residual-must ruling releases a depth-2 ticket too" "$r4" "HIMMEL-303"
+
+# --- classify only up to --top: a batch never classifies more keys than the slots left ---
+M14="$WORK/jira-mirror14/HIMMEL"; mkdir -p "$M14"
+M_SAVE="$M"; M="$M14"
+for n in 1 2 3 4 5 6; do mk "HIMMEL-40$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "pool work $n" "Edit scripts/lib/cls$n.sh only."; done
+M="$M_SAVE"
+DOC14="$WORK/console14.md"
+printf '# console\n\n## Live state\n\n- priority: 401 402 403 404 405 406\n' > "$DOC14"
+cat > "$WORK/classify14" <<'EOF'
+#!/usr/bin/env bash
+printf 'S\n' >> "$CLASSIFY_LOG"
+for _ in $(seq 100); do [ "$(grep -c '^S$' "$CLASSIFY_LOG")" -ge 2 ] && break; sleep 0.1; done
+for k in "$@"; do
+    printf 'K\n' >> "$CLASSIFY_LOG"
+    if [ "$k" = HIMMEL-401 ] && [ -f "$REFUSE_401" ]; then printf '%s\tBLOCKED\tstub\n' "$k"; else printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; fi
+done
+printf 'E\n' >> "$CLASSIFY_LOG"
+EOF
+chmod +x "$WORK/classify14"
+export CLASSIFY_LOG="$WORK/classify14.log" REFUSE_401="$WORK/refuse401"; : > "$CLASSIFY_LOG"
+run14() { NEXT_DISPATCH_MIRROR="$M14" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify14" bash "$SUT" --doc "$DOC14" --priority-pool-only --owners "HIMMEL-999" --top 2 2>/dev/null | cut -f2 | grep '^HIMMEL' | tr '\n' ' '; }
+o14="$(run14)"
+keys14="$(grep -c '^K$' "$CLASSIFY_LOG")"; calls14="$(grep -c '^S$' "$CLASSIFY_LOG")"
+# in-flight peak: S raises, E lowers
+peak14="$(awk '/^S$/{c++; if(c>m)m=c} /^E$/{c--} END{print m+0}' "$CLASSIFY_LOG")"
+[ "$keys14" -ge 2 ] && [ "$keys14" -le 4 ] && pass "classify sees 2..2*--top keys ($keys14)" || fail "classify saw $keys14 keys for --top 2"
+[ "$calls14" -eq 2 ] && [ "$peak14" -eq 2 ] && pass "classify makes at most 2 calls, at most 2 in flight (calls=$calls14 peak=$peak14)" || fail "classify calls=$calls14 peak=$peak14"
+[ "$o14" = "HIMMEL-401 HIMMEL-402 " ] && pass "parallel classify keeps rank order" || fail "rank order wrong: $o14"
+: > "$REFUSE_401"; : > "$CLASSIFY_LOG"
+o14="$(run14)"
+[ "$o14" = "HIMMEL-402 HIMMEL-403 " ] && pass "a refused row is skipped and rank order holds" || fail "refusal order wrong: $o14"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -22,7 +22,7 @@ function run(args: string[]): Promise<Command> {
 
 const VERSIONS = [
   { id: '100', name: 'v1', self: 'https://j/rest/api/3/version/100', released: true, releaseDate: '2026-01-01' },
-  { id: '101', name: 'v2', self: 'https://j/rest/api/3/version/101' },
+  { id: '101', name: 'v2', self: 'https://j/rest/api/3/version/101', archived: true },
 ];
 
 describe('version commands + fix-version', () => {
@@ -37,12 +37,12 @@ describe('version commands + fix-version', () => {
     else process.env.JIRA_PROJECT_KEY = savedKey;
   });
 
-  it('versions: GET /project/<key>/versions, prints name/released/date rows', async () => {
+  it('versions: GET /project/<key>/versions, prints name/released/date/archived rows', async () => {
     mockRequest.mockResolvedValue(VERSIONS);
     await run(['versions']);
     expect(mockRequest).toHaveBeenCalledWith('GET', '/project/HIM/versions');
-    expect(console.log).toHaveBeenNthCalledWith(1, 'v1\ttrue\t2026-01-01');
-    expect(console.log).toHaveBeenNthCalledWith(2, 'v2\tfalse\t');
+    expect(console.log).toHaveBeenNthCalledWith(1, 'v1\ttrue\t2026-01-01\tfalse');
+    expect(console.log).toHaveBeenNthCalledWith(2, 'v2\tfalse\t\ttrue');
   });
 
   it('versions --project overrides the env key', async () => {
