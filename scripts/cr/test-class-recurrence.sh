@@ -91,6 +91,7 @@ case "$sub" in
     case "$jql" in
       *'labels = "restructure-class-'*)
           id=${jql#*restructure-class-}; id=${id%%\"*}
+          case "$jql" in *'statusCategory != Done'*) [ -f "$JSTATE/done-$id" ] && exit 0 ;; esac
           [ -f "$JSTATE/ticket-$id" ] && cat "$JSTATE/ticket-$id" ;;
       *restructure-trigger*) cat "$JSTATE/week" 2>/dev/null ;;
       *'labels = residual'*) cat "$JSTATE/residuals" 2>/dev/null ;;
@@ -105,7 +106,11 @@ case "$sub" in
     printf '%s\tTask\tTo Do\ttitle\t%s\n' "$key" "$labels" >"$JSTATE/ticket-$id"
     echo "Created $key  title" ;;
   comment)
+    [ "${JIRA_COMMENT_FAIL:-}" = 1 ] && { echo "boom" >&2; exit 1; }
     key="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = --comment-file ] && cat "$2" >>"$JLOG"; shift; done ;;
+  fix-version)
+    [ "${JIRA_FIXVER_FAIL:-}" = 1 ] && { echo "boom" >&2; exit 1; }
+    : ;;
   get)
     printf '%s\nFix versions: v1.1.3\n' "$1" ;;
   *) : ;;
@@ -116,7 +121,7 @@ chmod +x "$JSTUB"
 reset() { rm -rf "$JSTATE"; mkdir -p "$JSTATE"; : >"$JLOG"; }
 run() {  # run [args...]
     ( cd "$TMP_ROOT" && JIRA_PROJECT_KEY=TST JIRA_CMD="$JSTUB" JLOG="$JLOG" JSTATE="$JSTATE" \
-        JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" GH_CMD="${GH_CMD:-false}" \
+        JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_COMMENT_FAIL="${JIRA_COMMENT_FAIL:-}" JIRA_FIXVER_FAIL="${JIRA_FIXVER_FAIL:-}" GH_CMD="${GH_CMD:-false}" \
         bash "$CR" --ledger "$LEDGER" --members "$MEMBERS" "$@" 2>&1 )
 }
 
@@ -209,6 +214,40 @@ log=$(cat "$JLOG")
 assert_contains "member gets the class label" "$log" "edit TST-5061 --add-labels restructure-class-eval-tokenizer-split"
 assert_not_contains "no ticket for the member's class" "$(grep '^create' "$JLOG")" "eval-tokenizer-split"
 assert_contains "output names the member" "$out" "member TST-5061"
+
+echo "TEST: a residual is labelled folded only after its backlog step succeeded"
+reset
+printf 'TST-401\tTask\tTo Do\tp1\tresidual,class-hook-fail-direction\n' >"$JSTATE/residuals"
+out=$(JIRA_FIXVER_FAIL=1 run --merged-file "$MERGED"); rc=$?
+assert_eq "backlog failure exits 3" "3" "$rc"
+assert_not_contains "no folded label after a failed backlog step" "$(cat "$JLOG")" "edit TST-401 --add-labels"
+
+echo "TEST: a failed evidence comment folds nothing, so a retry still sees the residuals"
+reset
+printf 'TST-100\tTask\tTo Do\ttitle\trestructure-class-hook-fail-direction\n' >"$JSTATE/ticket-hook-fail-direction"
+printf 'TST-402\tTask\tTo Do\tp1\tresidual,class-hook-fail-direction\n' >"$JSTATE/residuals"
+out=$(JIRA_COMMENT_FAIL=1 run --merged-file "$MERGED"); rc=$?
+assert_eq "comment failure exits 3" "3" "$rc"
+assert_not_contains "no link after a failed comment" "$(cat "$JLOG")" "link TST-402"
+assert_not_contains "no folded label after a failed comment" "$(cat "$JLOG")" "edit TST-402 --add-labels"
+
+echo "TEST: a Done restructure ticket is not reused, a new one is filed"
+reset
+printf 'TST-50\tTask\tDone\told\trestructure-class-hook-fail-direction\n' >"$JSTATE/ticket-hook-fail-direction"
+: >"$JSTATE/done-hook-fail-direction"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_eq "recurrence after a closed restructure exits 0" "0" "$rc"
+assert_eq "a new ticket is filed" "1" "$(count '^create' "$JLOG")"
+assert_not_contains "the closed ticket gets no comment" "$(cat "$JLOG")" "comment TST-50 "
+
+echo "TEST: --dry-run counts the tickets it would file against the weekly cap"
+reset
+printf 'TST-90\n' >"$JSTATE/week"
+printf 'TST-301\tTask\tTo Do\tp1\tresidual,class-lonely-class\nTST-302\tTask\tTo Do\tp2\tresidual,class-lonely-class\nTST-303\tTask\tTo Do\tp3\tresidual,class-lonely-class\n' >"$JSTATE/residuals"
+out=$(run --merged-file "$MERGED" --dry-run); rc=$?
+assert_eq "dry-run with a cap exits 0" "0" "$rc"
+assert_eq "one class would be filed" "1" "$(printf '%s\n' "$out" | grep -c 'would filed')"
+assert_eq "the other is capped" "1" "$(printf '%s\n' "$out" | grep -c 'capped (')"
 
 echo "TEST: fail-closed paths"
 reset

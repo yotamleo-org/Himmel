@@ -212,18 +212,22 @@ write_ticket_body() {  # <class> <file>
 fold_residual() {  # <residual key> <restructure key>
     local r="$1" t="$2" v
     if ! jira_run link "$r" "$t" >/dev/null 2>"$W/err"; then echo "  FAILED link $r $t: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
-    if ! jira_run edit "$r" --add-labels "folded-into-${t}" >/dev/null 2>"$W/err"; then echo "  FAILED label $r: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
-    jira_run get "$r" 2>/dev/null | sed -n 's/^Fix versions: //p' | tr ',' '\n' | sed 's/^ *//;s/ *$//' | while IFS= read -r v; do
+    if ! jira_run get "$r" >"$W/get.txt" 2>"$W/err"; then echo "  FAILED read $r: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
+    sed -n 's/^Fix versions: //p' "$W/get.txt" | tr ',' '\n' | sed 's/^ *//;s/ *$//' >"$W/versions.txt"
+    while IFS= read -r v; do
         [ -n "$v" ] || continue
-        jira_run fix-version "$r" --remove "$v" >/dev/null 2>&1 || echo "  FAILED backlog $r (fix-version --remove $v)" >&2
-    done
+        if ! jira_run fix-version "$r" --remove "$v" >/dev/null 2>"$W/err"; then
+            echo "  FAILED backlog $r (fix-version --remove $v): $(cat "$W/err")" >&2; failed=$((failed+1)); return
+        fi
+    done <"$W/versions.txt"
+    if ! jira_run edit "$r" --add-labels "folded-into-${t}" >/dev/null 2>"$W/err"; then echo "  FAILED label $r: $(cat "$W/err")" >&2; failed=$((failed+1)); return; fi
     folded=$((folded+1))
     echo "  folded $r into $t"
 }
 
 while IFS= read -r id; do
     [ -n "$id" ] || continue
-    if ! jira_run list --project "$PROJECT" --limit 1 --jql "project = ${PROJECT} AND labels = \"restructure-class-${id}\"" >"$W/ticket.raw" 2>"$W/err"; then
+    if ! jira_run list --project "$PROJECT" --limit 1 --jql "project = ${PROJECT} AND labels = \"restructure-class-${id}\" AND statusCategory != Done" >"$W/ticket.raw" 2>"$W/err"; then
         echo "class-recurrence: ticket lookup for ${id} failed — fail-closed: $(cat "$W/err")" >&2
         exit 4
     fi
@@ -245,6 +249,7 @@ while IFS= read -r id; do
 
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "class ${id}: prs=${prs} residuals=${nres} -> dry-run: would ${action}${key:+ $key}"
+        [ "$new_ticket" -eq 1 ] && new_this_week=$((new_this_week+1))
         continue
     fi
 
@@ -269,7 +274,7 @@ while IFS= read -r id; do
         fi
         printf 'Recurrence run (rolling %s days) for class %s:\n\n%s\n' "$DAYS" "$id" "$(evidence "$id")" >"$W/comment.md"
         if ! jira_run comment "$key" --comment-file "$W/comment.md" >/dev/null 2>"$W/err"; then
-            echo "FAILED comment ${key}: $(cat "$W/err")" >&2; failed=$((failed+1))
+            echo "FAILED comment ${key}: $(cat "$W/err")" >&2; failed=$((failed+1)); continue
         fi
     fi
     echo "class ${id}: prs=${prs} residuals=${nres} -> ${action} ${key}"
