@@ -1,6 +1,7 @@
 import { spawn } from "bun";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { buildGlmEnv, GLM_MODEL_ALIAS } from "./glm-env";
+import { isTicketKey } from "./router";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -189,7 +190,7 @@ export function sessionEnv(lane?: "glm", extraEnv?: Record<string, string>): Rec
 // so an inherited defaultVault cannot re-attach the filing clause.
 export type BusPaths = { inbox: string; outbox: string; context: string; cwd: string; sessionCwd?: string };
 export function buildPrompt(session: string, p: BusPaths, vault?: string | null, cwdRouted = false): string {
-  const isTicket = /^[A-Z][A-Z0-9]+-[0-9]+$/.test(session);
+  const isTicket = isTicketKey(session);
   // A group session's inbox mixes every member of an allow-listed group, so its
   // text is third-party input: no operator framing, no Jira sanction.
   const isGroup = /^group_-?\d+$/.test(session);
