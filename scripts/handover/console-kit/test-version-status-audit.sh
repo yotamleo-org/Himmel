@@ -66,15 +66,19 @@ has "count line counts every row" "$out" "vmismatch=5"
 # clean mirror
 C="$WORK/clean/HIMMEL"; mkdir -p "$C"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/clean/HIMMEL.versions.tsv"
 cp "$M/HIMMEL-5.md" "$M/HIMMEL-4.md" "$M/HIMMEL-8.md" "$M/HIMMEL-6.md" "$C/"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$C" 2>&1)"; rc=$?
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$C" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "clean mirror prints vmismatch=0" "$out" "vmismatch=0"
 [ "$rc" = 0 ] && pass "clean mirror exits 0" || fail "clean mirror exits 0 (rc=$rc)"
 
 # gh failure must not hide rows as owned or clean
 : > "$WORK/gh-fail"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/gh-fail" bash "$SUT" --mirror "$M" 2>&1)"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/gh-fail" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "unreadable open-PR set is reported" "$out" "open PRs unknown"
 has "rows still print when gh fails" "$out" "HIMMEL-10"
+has "unowned started row is UNKNOWN when gh fails" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
+lacks "no unowned started row prints RESET when gh fails" "$out" "v1.0.2	none	RESET"
+has "released-not-done stays RESET when gh fails" "$out" "RELEASED-NOT-DONE	HIMMEL-2	To Do	v1.0.0	none	RESET"
+[ "$rc" = 3 ] && pass "gh failure exits 3" || fail "gh failure exits 3 (rc=$rc)"
 
 # nothing audited must not read as clean
 out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$WORK/absent/HIMMEL" 2>&1)"; rc=$?
@@ -85,8 +89,8 @@ out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$E" 2>
 
 # no unreleased version: RELEASED-NOT-DONE and NO-VERSION still report
 A="$WORK/allrel/HIMMEL"; mkdir -p "$A"; printf 'v1.0.0\ttrue\t2026-01-01\tfalse\n' > "$WORK/allrel/HIMMEL.versions.tsv"
-cp "$M/HIMMEL-2.md" "$M/HIMMEL-3.md" "$M/HIMMEL-10.md" "$A/"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$A" 2>&1)"; rc=$?
+cp "$M/HIMMEL-2.md" "$M/HIMMEL-3.md" "$A/"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$A" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "released-not-done still reported with no unreleased version" "$out" "RELEASED-NOT-DONE	HIMMEL-2"
 has "no-version still reported with no unreleased version" "$out" "NO-VERSION	HIMMEL-3"
 [ "$rc" = 1 ] && pass "exit 1 with no unreleased version" || fail "exit 1 with no unreleased version (rc=$rc)"
@@ -104,7 +108,7 @@ has "unreadable leg doc is OWNED with an unverified marker" "$out" "HIMMEL-10	In
 
 # the open-PR read is capped at 200: a full page is reported
 printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do printf "%%s\\tt\\tb\\n" "$i"; done\n' > "$WORK/gh-many"; chmod +x "$WORK/gh-many"
-out="$(VSA_GH_CMD="$WORK/gh-many" bash "$SUT" --mirror "$M" 2>&1)"
+out="$(VSA_GH_CMD="$WORK/gh-many" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" 2>&1)"
 has "a full 200-PR page is reported as unknown coverage" "$out" "200-PR cap reached"
 
 # a mirror file without front matter among parsable ones fails non-zero
@@ -118,9 +122,51 @@ has "a skipped mirror file is warned about" "$out" "1 mirror file(s) lack front 
 printf 'not json' > "$WORK/fleet-bad.json"
 out="$(run --legs-from "$WORK/fleet-bad.json")"; rc=$?
 has "unreadable manifest is reported" "$out" "ownership unknown"
+has "released-not-done stays RESET with an unreadable manifest" "$out" "RELEASED-NOT-DONE	HIMMEL-2	To Do	v1.0.0	none	RESET"
 has "unowned started row is UNKNOWN, not RESET" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
 lacks "no LATER-VERSION row prints RESET with an unreadable manifest" "$out" "v1.0.2	none	RESET"
 [ "$rc" = 3 ] && pass "unreadable manifest exits 3" || fail "unreadable manifest exits 3 (rc=$rc)"
+
+# no manifest at all is unknown ownership, never RESET
+out="$(run)"; rc=$?
+has "no manifest reports ownership unknown" "$out" "ownership unknown"
+has "no manifest prints UNKNOWN for an unowned started row" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
+[ "$rc" = 3 ] && pass "no manifest exits 3" || fail "no manifest exits 3 (rc=$rc)"
+
+# the open-PR read targets the org slug
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/gh.args"\n' "$WORK" > "$WORK/gh-args"; chmod +x "$WORK/gh-args"
+VSA_GH_CMD="$WORK/gh-args" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" > /dev/null 2>&1
+has "gh reads the yotamleo-org/Himmel slug" "$(cat "$WORK/gh.args" 2>/dev/null)" "--repo yotamleo-org/Himmel"
+
+# versions.tsv that cannot be trusted must not read as clean
+vmir() { # <dir> <tsv body> <ticket fixVersions json>
+    mkdir -p "$1/HIMMEL"; printf '%b' "$2" > "$1/HIMMEL.versions.tsv"
+    printf -- '---\nkey: "HIMMEL-1"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "In Progress"\nfixVersions: %s\n---\n' "$3" > "$1/HIMMEL/HIMMEL-1.md"
+}
+vrun() { VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$1/HIMMEL" --legs-from "$WORK/fleet.json" 2>&1; }
+vmir "$WORK/v-empty" '' '["v1.0.1"]'
+out="$(vrun "$WORK/v-empty")"; rc=$?
+[ "$rc" = 3 ] && pass "empty versions file exits 3" || fail "empty versions file exits 3 (rc=$rc: $out)"
+has "empty versions file is warned about" "$out" "versions file"
+vmir "$WORK/v-junk" 'garbage without tabs\n' '["v1.0.1"]'
+out="$(vrun "$WORK/v-junk")"; rc=$?
+[ "$rc" = 3 ] && pass "unparseable versions file exits 3" || fail "unparseable versions file exits 3 (rc=$rc: $out)"
+vmir "$WORK/v-unk" 'v1.0.1\tfalse\t\tfalse\n' '["v9.9.9"]'
+out="$(vrun "$WORK/v-unk")"; rc=$?
+[ "$rc" = 3 ] && pass "fixVersion absent from the versions file exits 3" || fail "fixVersion absent from the versions file exits 3 (rc=$rc: $out)"
+has "unknown fixVersion is warned about" "$out" "not in the versions file"
+vmir "$WORK/v-arch" 'v1.0.1\tfalse\t\tfalse\nv0.9.9\tfalse\t\ttrue\n' '["v0.9.9"]'
+out="$(vrun "$WORK/v-arch")"; rc=$?
+[ "$rc" = 3 ] && pass "archived unreleased fixVersion exits 3" || fail "archived unreleased fixVersion exits 3 (rc=$rc: $out)"
+has "archived unreleased fixVersion is warned about" "$out" "archived"
+
+# a pre-release orders before its release
+vmir "$WORK/v-pre" 'v1.2.0\tfalse\t\tfalse\nv1.2.0-pre.1\tfalse\t\tfalse\n' '["v1.2.0"]'
+out="$(vrun "$WORK/v-pre")"
+has "a release is later than its own pre-release" "$out" "LATER-VERSION	HIMMEL-1"
+vmir "$WORK/v-pre2" 'v1.2.0\tfalse\t\tfalse\nv1.2.0-pre.1\tfalse\t\tfalse\n' '["v1.2.0-pre.1"]'
+out="$(vrun "$WORK/v-pre2")"
+lacks "a pre-release is the active version before its release" "$out" "LATER-VERSION"
 
 printf '%s fail(s)\n' "$fails"
 [ "$fails" = 0 ]

@@ -73,8 +73,10 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     incrementally (only keys that are missing or older than 7 days), so a render
     is cheap.
 
-- **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh`
+- **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh --legs-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released
   version and versionless started Tasks, Stories and Bugs (OWNED = a live leg or
   open PR holds it, RESET = move it to To Do with a reason comment). Run it after
-  a version cut; expect `vmismatch=0`.
+  a version cut; expect `vmismatch=0`. Without the manifest, or when `gh` or the
+  mirror cannot be fully read, ownership is unknown: those rows print UNKNOWN and
+  the run exits 3, never RESET.

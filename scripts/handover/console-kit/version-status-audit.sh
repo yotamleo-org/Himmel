@@ -58,19 +58,29 @@ if not names:
     print('version-status-audit: no tickets in %s' % mirror, file=sys.stderr); sys.exit(3)
 
 def nat(v): return [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)]
-unreleased, released = [], set()
+def vkey(v):  # a pre-release (v1.2.0-pre.1) orders before its release (v1.2.0)
+    core, _, pre = v.partition('-')
+    return (nat(core), 0 if pre else 1, nat(pre))
+unreleased, released, known, archived_open = [], set(), set(), set()
 vf = mirror.rstrip('/') + '.versions.tsv'
 if not os.path.exists(vf):
     print('version-status-audit: versions file missing (%s)' % vf, file=sys.stderr); sys.exit(3)
 for line in open(vf, encoding='utf-8', errors='replace'):
     p = line.rstrip('\n').split('\t')
-    if len(p) < 2 or p[0].startswith('zz-'):
+    if len(p) < 2 or p[1].strip() not in ('true', 'false'):
+        continue
+    known.add(p[0])
+    if p[0].startswith('zz-'):
         continue
     if p[1].strip() == 'true':
         released.add(p[0])
-    elif p[1].strip() == 'false' and not (len(p) > 3 and p[3].strip() == 'true'):
+    elif len(p) > 3 and p[3].strip() == 'true':
+        archived_open.add(p[0])
+    else:
         unreleased.append(p[0])
-unreleased.sort(key=nat)
+if not known:
+    print('version-status-audit: versions file empty or unparseable (%s)' % vf, file=sys.stderr); sys.exit(3)
+unreleased.sort(key=vkey)
 active = unreleased[0] if unreleased else None  # None: no LATER-VERSION row can exist
 
 # owners: live legs and open PRs
@@ -79,7 +89,7 @@ for k in os.environ.get('VSA_OWNERS', '').split():
     owner.setdefault(k, 'leg:' + k)
 legs_from = os.environ.get('VSA_LEGS_FROM', '')
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)\b')
-legs_unknown = legs_from != '' and not os.path.isfile(legs_from)  # manifest named but unreadable: ownership coverage unknown
+legs_unknown = not os.path.isfile(legs_from) and not os.environ.get('VSA_OWNERS', '').split()  # no manifest to read: ownership coverage unknown
 if legs_from and os.path.isfile(legs_from):
     try:
         for leg in json.load(open(legs_from)).get('legs', []):
@@ -96,23 +106,26 @@ if legs_from and os.path.isfile(legs_from):
                 owner.setdefault(k, 'leg:%s%s' % (leg.get('label', '?'), unverified))
     except (OSError, ValueError, AttributeError):
         legs_unknown = True
-if legs_unknown:
-    print('version-status-audit: ownership unknown (leg manifest unreadable); unowned rows print UNKNOWN, not RESET')
 gh = os.environ.get('VSA_GH_CMD', 'gh')
+gh_unknown = False
 try:
-    out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName',
+    out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo-org/Himmel', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName',
                           '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                          capture_output=True, text=True, timeout=60, check=True).stdout
     if len(out.splitlines()) >= 200:
         print('version-status-audit: open PRs unknown (200-PR cap reached); OWNED rows may be missing')
+        gh_unknown = True
     for line in out.splitlines():
         num = line.split('\t', 1)[0]
         for k in re.findall(r'[A-Za-z]+-\d+', line.split('\t', 1)[-1]):
             owner.setdefault(k.upper(), 'PR:' + num)
 except (OSError, subprocess.SubprocessError):
     print('version-status-audit: open PRs unknown (gh read failed); OWNED rows may be missing')
+    gh_unknown = True
+if legs_unknown or gh_unknown:
+    print('version-status-audit: ownership unknown; unowned started rows print UNKNOWN, not RESET')
 
-rows, audited, skipped = [], 0, 0
+rows, audited, skipped, badver = [], 0, 0, []
 for n in names:
     m = re.match(r'^---\n(.*?)\n---\n', open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read(), re.S)
     if not m:
@@ -124,10 +137,15 @@ for n in names:
     done = fm_val(fm, 'statusCategory').lower() == 'done'
     vers = re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions'))
     started = status.lower() in STARTED
+    for v in vers:
+        if v not in known:
+            badver.append('%s %s is not in the versions file' % (key, v))
+        elif v in archived_open:
+            badver.append('%s %s is an archived unreleased version' % (key, v))
     open_vers = [v for v in vers if v in unreleased]
     cls = None
     if open_vers:
-        if started and active and all(nat(v) > nat(active) for v in open_vers):
+        if started and active and all(vkey(v) > vkey(active) for v in open_vers):
             cls = 'LATER-VERSION'
     elif vers and all(v in released for v in vers):
         if not done:
@@ -136,7 +154,7 @@ for n in names:
         cls = 'NO-VERSION'
     if cls:
         own = owner.get(key) if cls != 'RELEASED-NOT-DONE' else None
-        rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if legs_unknown and cls != 'RELEASED-NOT-DONE' else 'RESET')))
+        rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if (legs_unknown or gh_unknown) and cls != 'RELEASED-NOT-DONE' else 'RESET')))
 
 if not audited:
     print('version-status-audit: no ticket in %s has front matter' % mirror, file=sys.stderr); sys.exit(3)
@@ -146,7 +164,9 @@ for r in rows:
 print('vmismatch=%d' % len(rows))
 if skipped:
     print('version-status-audit: %d mirror file(s) lack front matter and were not audited' % skipped, file=sys.stderr)
-if skipped or legs_unknown:
+for b in badver:
+    print('version-status-audit: %s' % b, file=sys.stderr)
+if skipped or badver or legs_unknown or gh_unknown:
     sys.exit(3)
 sys.exit(1 if any(r[5] == 'RESET' for r in rows) else 0)
 PY
