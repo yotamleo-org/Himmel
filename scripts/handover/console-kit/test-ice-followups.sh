@@ -48,6 +48,18 @@ same '--days widens the window to include the old citation' "$(printf '%s' "$out
 out="$(bash "$SUT" "$W/no-mirror" 2>&1)"; rc=$?
 same 'an unreadable mirror reads ? and still rc 0' "$out/$rc" "ice-followups=?/0"
 
+out="$(timeout 10 bash "$SUT" "$M" --days 2>&1)"; rc=$?
+same 'a trailing --days with no value terminates (default window)' "$(printf '%s' "$out" | head -1)/$rc" "ice-followups=2/0"
+
+chmod 000 "$M/HIMMEL-9010.md"
+if [ -r "$M/HIMMEL-9010.md" ]; then
+    pass 'unreadable-file row skipped (running as a user that reads mode 000)'
+else
+    out="$(bash "$SUT" "$M" 2>/dev/null)"
+    same 'an unreadable mirror file reads ?, never a false 0' "$out" "ice-followups=?"
+fi
+chmod 644 "$M/HIMMEL-9010.md"
+
 rm -rf "$M"; mkdir -p "$M"; issue HIMMEL-9004 ""
 same 'no ICE citations reads 0 with no keys' "$(bash "$SUT" "$M" 2>&1)" "ice-followups=0"
 

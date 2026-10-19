@@ -24,7 +24,7 @@ dir=""
 days=14
 while [ $# -gt 0 ]; do
     case "$1" in
-        --days) days="${2:-14}"; shift 2 ;;
+        --days) shift; [ $# -eq 0 ] || { days="$1"; shift; } ;;
         *) dir="$1"; shift ;;
     esac
 done
@@ -43,9 +43,9 @@ if [ -z "$cutoff" ]; then
     exit 0
 fi
 
-keys="$(
-    set -- "$dir"/HIMMEL-*.md
-    [ -e "$1" ] || exit 0
+set -- "$dir"/HIMMEL-*.md
+[ -e "$1" ] || { printf 'ice-followups=0\n'; exit 0; }
+raw="$(
     awk -v cutoff="$cutoff" '
     FNR == 1 { self = FILENAME; sub(/^.*\//, "", self); sub(/\.md$/, "", self); incm = 0; inwin = 0 }
     { sub(/\r$/, "") }
@@ -65,8 +65,9 @@ keys="$(
             s = substr(s, RSTART + RLENGTH)
         }
     }
-    END { for (k in cited) if (k in ice) print k }' "$@" | sort -t- -k2,2n
-)"
+    END { for (k in cited) if (k in ice) print k }' "$@"
+)" || { printf 'ice-followups=?\n'; exit 0; }
+keys="$(printf '%s\n' "$raw" | sort -t- -k2,2n | sed '/^$/d')"
 
 n=0
 [ -z "$keys" ] || n="$(printf '%s\n' "$keys" | wc -l | tr -d ' ')"
