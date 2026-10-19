@@ -678,6 +678,25 @@ rbfile="$W/rb-out.md"
 python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" --out "$rbfile" >/dev/null 2>&1
 contains '--out writes the board to a file' "$(cat "$rbfile" 2>/dev/null)" 'HIMMEL-72 [In Progress] second group open'
 
+# --- remaining board blockers: a parseable ` {blocked-by: HIMMEL-n open|done, ...}` suffix on the card line.
+bb="$W/bb"
+mkdir -p "$bb"
+mdir="$bb"
+mk 90 'To Do' '["v1.1.3"]' 'blocked by link' 'To Do'
+mk 91 'To Do' '["v1.1.4"]' 'open link blocker' 'To Do'
+mk 92 'To Do' '["v1.1.3"]' 'blocked by body line' 'To Do'
+mk 93 'Done' '["v1.1.3"]' 'closed body blocker' 'Done' 'Done'
+mk 94 'To Do' '["v1.1.3"]' 'unblocked card' 'To Do'
+mdir="$mir"
+printf '%s\n' '---' 'key: "HIMMEL-90"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Bug"' 'links:' '  blocks: []' \
+    '  blocked_by: ["HIMMEL-91"]' '  relates: ["relates to HIMMEL-94"]' '---' '# HIMMEL-90: blocked by link' > "$bb/HIMMEL-90.md"
+printf '%s\n' '' '## Description' '' 'Agent detail' 'Depends on HIMMEL-93 and HIMMEL-91 (the seam).' '' '## Comments' '' 'BLOCKED-BY HIMMEL-94' >> "$bb/HIMMEL-92.md"
+bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)"
+contains 'a blocked_by link lands in the suffix as open' "$bbout" 'HIMMEL-90 [To Do] blocked by link {blocked-by: HIMMEL-91 open}'
+contains 'a Depends-on body line lands in the suffix, closed and open' "$bbout" 'HIMMEL-92 [To Do] blocked by body line {blocked-by: HIMMEL-93 done, HIMMEL-91 open}'
+contains 'a card with no blocker keeps the bare line' "$bbout" 'HIMMEL-94 [To Do] unblocked card'
+not_contains 'a relates link is no blocker' "$bbout" 'HIMMEL-94 [To Do] unblocked card {'
+
 # --- done-in-future counts every unreleased version, not only v1.0.x.
 dfm="$W/dfm2"
 mkdir -p "$dfm"
