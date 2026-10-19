@@ -17,10 +17,10 @@
 #                                      recovery after an outage
 #
 # A live head run, a green one, a run already rerun once (attempt above 1) or no
-# run at the head are no-ops. Fails SAFE: every read, including a re-read of the
-# PR heads, happens before the first rerun, so any gh or jq error means nothing
-# is rerun and exit 1; a head that moved since the reads is skipped. A rerun that
-# itself fails is reported, the rest still go, and the exit is 1.
+# run at the head are no-ops. Fails SAFE: every run read happens before the first
+# rerun, so a gh or jq error there means nothing is rerun and exit 1; the PR heads
+# are re-read right before each rerun and a head that moved is skipped. A rerun or
+# re-read that itself fails is reported, the rest still go, and the exit is 1.
 # -R comes from GH_REPO or the origin remote, never a hardcoded slug.
 # Console-run only, not wired into any hook or workflow.
 set -uo pipefail
@@ -98,15 +98,18 @@ plan_pr() {
   fi
 }
 
-# Re-read the PR heads, then rerun each planned run whose PR head has not moved.
+# Rerun each planned run whose PR head has not moved, re-reading the PR heads
+# right before every rerun.
 apply() {
-  local fresh="" entry pr oid id why now desc rc=0
-  [ "$DRY" -eq 1 ] || { fresh="$(read_prs)" || die "gh pr list failed on the re-read"; }
+  local fresh entry pr oid id why now desc rc=0
   for entry in ${PLAN[@]+"${PLAN[@]}"}; do
     IFS=$'\t' read -r pr oid id why <<< "$entry"
     desc="$id PR #$pr head ${oid:0:8} ($why)"
     if [ "$DRY" -eq 1 ]; then echo "would-rerun $desc"; continue; fi
-    now="$(printf '%s' "$fresh" | jq -r --argjson n "$pr" 'map(select(.number == $n)) | .[0].headRefOid // ""')" || die "jq filter failed on the re-read"
+    if ! fresh="$(read_prs)"; then
+      echo "rerun-failed $desc: gh pr list failed on the re-read" >&2; rc=1; continue
+    fi
+    now="$(printf '%s' "$fresh" | jq -r --argjson n "$pr" 'map(select(.number == $n)) | .[0].headRefOid // ""')" || { echo "rerun-failed $desc: jq failed on the re-read" >&2; rc=1; continue; }
     if [ "$now" != "$oid" ]; then
       echo "skip PR #$pr: head moved to ${now:0:8} since the reads, run $id is now stale"
       # an explicit <pr> / --run asked for this rerun; a fleet pass just moves on

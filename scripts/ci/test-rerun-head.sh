@@ -49,6 +49,7 @@ case "$1 $2" in
     [ "${FAKE_GH_FAIL:-}" = prs ] && { echo "fake-gh: pr list failed" >&2; exit 1; }
     n=$(grep -c '^gh pr list' "$FX/calls")
     f="$FX/prs.json"; [ "$n" -ge 2 ] && [ -f "$FX/prs-after.json" ] && f="$FX/prs-after.json"
+    [ -f "$FX/prs-after-$n.json" ] && f="$FX/prs-after-$n.json"
     head=""
     for a in "$@"; do [ "${prev:-}" = --head ] && head="$a"; prev="$a"; done
     jq -c --arg h "$head" 'map(select($h == "" or .headRefName == $h))' "$f" ;;
@@ -264,6 +265,12 @@ jq -n '[range(0;200) | {number:., headRefName:("feat/p\(.)"), headRefOid:"H\(.)"
 out="$(run --fleet)"; rc=$?
 is "--fleet, 200 open PRs (possible truncation): nothing rerun" "none" "$(reruns)"
 rc_nz "  non-zero exit" "$rc"
+
+# a push between two reruns of one fleet pass: only the PR that moved is skipped
+setfleet
+echo "[$(p 10 feat/a $H),$(p 11 feat/b $O),$(p 12 feat/c cccccccc33333333cccccccc33333333cccccccc),$(p 13 feat/d 9999999999999999999999999999999999999999)]" > "$TMP/fx/prs-after-3.json"
+out="$(run --fleet)"; rc=$?
+is "--fleet, PR 13 head moves after PR 10's rerun: only run 1 is rerun" "1" "$(reruns)"
 
 # a push between the reads and the writes: that PR's old head run is not rerun
 setfleet
