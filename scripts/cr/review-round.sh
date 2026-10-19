@@ -1208,14 +1208,23 @@ if [ "$verb" = "evidence" ]; then
             echo "review-round: branch name $branch cannot be written into a ledger row - evidence is refused" >&2
             exit 2 ;;
     esac
-    # swallow-ok: an unreadable or unresolvable reviewed head leaves ev_from empty, which is refused (exit 8)
-    ev_from="$(cat "$head_state" 2>/dev/null)" || ev_from=""
+    ev_from=""
+    if [ -f "$head_state" ] && [ ! -L "$head_state" ]; then
+        # swallow-ok: an unreadable, symlinked or non-hex .head leaves ev_from empty, which is refused (exit 8)
+        ev_from="$(sed -n '1p' "$head_state" 2>/dev/null)" || ev_from=""
+        case "$ev_from" in
+            *[!0-9a-f]*|'') ev_from="" ;;
+        esac
+        { [ "${#ev_from}" -eq 40 ] || [ "${#ev_from}" -eq 64 ]; } || ev_from=""
+    fi
     # swallow-ok: same as above
     ev_from="$(git rev-parse --verify --quiet "$ev_from^{commit}" 2>/dev/null)" || ev_from=""
+    # tests-only: evidence clears with no critic review of from..to, so the
+    # comment branch (a code line that looks like a comment) is not admitted.
     if [ -z "$ev_from" ] || [ "$(ledger_query avail "$ev_from")" != "ok" ] \
         || [ "$(ledger_query finding "$ev_from")" = "finding" ] \
-        || ! trivial_descendant "$ev_from" "$ev_head"; then
-        echo "review-round: $ev_head is not a tests- or comments-only descendant of a critic-reviewed head of $branch with no open finding - no evidence row (run /pr-check)" >&2
+        || ! ( _td_tests_only=1; trivial_descendant "$ev_from" "$ev_head" ); then
+        echo "review-round: $ev_head is not a tests-only descendant of a critic-reviewed head of $branch with no open finding - no evidence row (run /pr-check)" >&2
         exit 8
     fi
     ev_ledger="$git_dir/cr-critic-scores.jsonl"

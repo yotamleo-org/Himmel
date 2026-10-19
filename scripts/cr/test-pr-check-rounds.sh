@@ -442,6 +442,25 @@ evid_code_head="$(git -C "$repo" rev-parse evid)"
 assert_eq "$evid_rc2" "8" "5233 evidence refuses a head that changes code"
 assert_lacks "$(cat "$evid_ledger")" "$evid_code_head\",\"status\":\"ok\",\"source\":\"evidence" "5233 a refused evidence head gets no row"
 
+# Evidence clears with no critic review of the delta, so a comment-prefixed
+# line in a non-test file (it can sit inside a heredoc) is refused, and so is a
+# .head that is not a full hex sha.
+three_rounds evidc clean
+printf '# looks like a comment\n' >> "$repo/evidc.txt"
+git -C "$repo" commit -q -am "evidc comment line"
+evidc_head="$(git -C "$repo" rev-parse evidc)"
+(cd "$repo" && bash "$RR" evidence --branch evidc --head "$evidc_head" >/dev/null 2>&1); evidc_rc=$?
+assert_eq "$evidc_rc" "8" "5233 evidence refuses a comment-prefixed line in a non-test file"
+assert_lacks "$(cat "$evid_ledger")" "$evidc_head\",\"status\":\"ok\",\"source\":\"evidence" "5233 a comment-line head gets no evidence row"
+three_rounds evidh clean
+printf 'echo t\n' > "$repo/test-evidh.sh"
+git -C "$repo" add test-evidh.sh
+git -C "$repo" commit -q -m "evidh test-only"
+evidh_head="$(git -C "$repo" rev-parse evidh)"
+printf 'not-a-sha\n' > "$git_dir/cr-review-rounds/evidh.head"
+(cd "$repo" && bash "$RR" evidence --branch evidh --head "$evidh_head" >/dev/null 2>&1); evidh_rc=$?
+assert_eq "$evidh_rc" "8" "5233 evidence refuses a .head that is not a full hex sha"
+
 # A reviewed head whose critic finding is still open passes nothing on: its
 # test-only descendant gets no evidence row.
 three_rounds evidf suggestion
