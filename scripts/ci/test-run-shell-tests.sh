@@ -2554,9 +2554,10 @@ done < "$fix22w"
 # than `.` is "<root>/<suite>"; re-root the committed ledger's keys the same way.
 awk -F'\t' -v r="$sb22w/stubs/" '/^[[:space:]]*#/ { next } { print r $1 "\t" $2 }' \
   "$RST_FIXTURE_DIR/suite-durations.tsv" > "$sb22w/ledger.tsv"
-tot22w=0; max22w=0; slow22w=0; n22w=0
+tot22w=0; max22w=0; slow22w=0; n22w=0; rc22w=0
+nfix22w=$(grep -c . "$fix22w")
 for _i in 1 2 3 4 5 6 7 8; do
-  _out=$(SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1)
+  _out=$(SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1) || rc22w=$((rc22w + 1))
   _t=0
   while IFS= read -r _p; do
     [ -n "$_p" ] || continue
@@ -2570,10 +2571,10 @@ for _i in 1 2 3 4 5 6 7 8; do
 done
 floor22w=$(( tot22w / 8 )); [ "$max22w" -gt "$floor22w" ] && floor22w=$max22w
 bound22w=$(( floor22w * 105 / 100 ))
-if [ "$n22w" -ge 100 ] && [ "$slow22w" -le "$bound22w" ]; then
+if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nfix22w" ] && [ "$slow22w" -le "$bound22w" ]; then
   pass "22w: slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites)"
 else
-  fail "22w: slowest measured shard ${slow22w}s exceeds ${bound22w}s (floor ${floor22w}s, $n22w suites placed): the ledger is stale, refresh scripts/ci/suite-durations.tsv"
+  fail "22w: slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nfix22w suites placed, $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
 fi
 rm -rf "$sb22w"
 fi
