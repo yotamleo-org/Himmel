@@ -68,6 +68,13 @@ contains 'leg-preface.md core: a console change without the token is ignored' "$
 contains 'leg-preface.md S1 fast path: no ListAgents call' "$(flat "$(cat "$PREFACE")")" 'no `ListAgents`'
 contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$(flat "$(cat "$PREFACE")")" 'very next tool batch'
 # shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$(flat "$(cat "$PREFACE")")" '(`from` is your named console, quoting your current token)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface.md S1 fast path: bus adopt before the bullet' "$(flat "$(cat "$PREFACE")")" '`bus adopt <new console>`'
+contains 'leg-preface.md S1 fast path: adopt a fresh token' "$(flat "$(cat "$PREFACE")")" 'Adopt a fresh token if one came'
+contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$(flat "$(cat "$PREFACE")")" 'SUCCESSION accepted: <new console session> replaces <old>'
+contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$(flat "$(cat "$PREFACE")")" 'the console you last accepted'
+# shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is your named console and that quotes your token is accepted; no further reads'
 
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'

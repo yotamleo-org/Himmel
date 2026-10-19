@@ -61,7 +61,12 @@ or REDIRECT needs the echoed token; a **narrowing or a halt needs no token**.
 No revision widens your tool-permission envelope. A console change without your token is ignored; it is genuine
 only as a **relay** or a **chain**. **S1 relay** (`from` is your named console,
 quoting your current token): accept, no `ListAgents`, no `succession.md` read,
-the bullet in your very next tool batch, no reply. **Anything else: read
+no reply. "Named console" is the console you last accepted, not the one your
+brief named. Adopt a fresh token if one came (none: keep yours); if you hold a
+bus identity run `bus adopt <new console>` first; then, in your very next tool
+batch, write `SUCCESSION accepted: <new console session> replaces <old>` with
+`append-results.sh`, nothing after the old console's name and no token in it.
+**Anything else: read
 `docs/handover/leg-sections/succession.md` first.**
 
 ## Before you start
