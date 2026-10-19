@@ -87,7 +87,7 @@ chmod +x "$TMP/fake-pre-commit"
 
 N=0
 # mkvault — a fresh fixture vault whose last commit is 2 h old: the clobbered
-# (pre-template-fix) configs, a narrow shellcheck exclude and no lock-token
+# (pre-template-fix) configs, a narrow shellcheck exclude and no handover-token
 # allowlist line.
 mkvault() {
     N=$((N + 1))
@@ -164,15 +164,15 @@ assert_eq "T1 the hook now passes on the backlog" "0" "$(hook_rc)"
 assert_eq "T1 no alert sent" "" "$(sent)"
 assert_eq "T1 the cadence never ran the content fixers" "no" "$([ -f "$V/.git/fixer-ran.log" ] && echo yes || echo no)"
 
-# --- T2 lock-token gitleaks stall → canonical regex added, committed ---------
+# --- T2 handover-token gitleaks stall → canonical regex added, committed ---------
 mkvault
 printf -- '- 10:00 LIVE — release-token: `%s`\n' "$LOCK_TOKEN" >"$V/handovers/b.md"
 git -C "$V" add handovers/b.md
 out="$(run_sut)"; rc=$?
 assert_eq "T2 run exits 0" "0" "$rc"
-assert_has "T2 commit names the gitleaks lock-token class" "remediate stall class gitleaks:lock-token" "$(git -C "$V" log -1 --format=%s)"
+assert_has "T2 commit names the gitleaks handover-token class" "remediate stall class gitleaks:handover-token" "$(git -C "$V" log -1 --format=%s)"
 assert_eq "T2 commit holds ONLY the gitleaks config" ".gitleaks.toml " "$(head_files)"
-assert_has "T2 canonical lock-token regex present" "'''^[a-z0-9]+-[a-z0-9]+-pid[0-9]+[.,;:)]?\$'''" "$(cat "$V/.gitleaks.toml")"
+assert_has "T2 canonical handover-token regex present" "'''$(sed -n "s/^CLOSED_SHAPES='handover-token	\(.*\)'\$/\1/p" "$SUT")'''" "$(cat "$V/.gitleaks.toml")"
 assert_eq "T2 backlog still staged" "handovers/b.md " "$(staged)"
 assert_eq "T2 the hook now passes" "0" "$(hook_rc)"
 assert_eq "T2 no alert sent" "" "$(sent)"
@@ -582,7 +582,7 @@ shapes_missing_from() { # <toml> -> ids of closed shapes whose regex the toml la
 }
 assert_eq "T29 every closed shape is in the template allowlist" "" "$(shapes_missing_from "$TEMPLATE_TOML")"
 grep -vF '[0-9a-f]{40}' "$TEMPLATE_TOML" >"$TMP/t29.toml"
-assert_eq "T29 the drift check names a shape the toml lacks" "sha40 " "$(shapes_missing_from "$TMP/t29.toml")"
+assert_eq "T29 the drift check names a shape the toml lacks" "handover-token " "$(shapes_missing_from "$TMP/t29.toml")"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi

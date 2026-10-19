@@ -129,6 +129,8 @@ for (const name of ['operator', 'user', 'bare']) {
       'obsidian-second-brain@himmel',
       // find-docs was a user-scope skill; the user profile carries it.
       'find-docs@himmel',
+      // graphify was a user-scope skill written by himmel-update; same.
+      'graphify@himmel',
     ];
     const expected = name === 'operator' ? null : {
       enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && id === 'pstack@himmel')])),
@@ -1856,4 +1858,17 @@ test('vmLaunch is restricted to leg-vm', () => {
   const registry = structuredClone(REG);
   registry.profiles['leg-impl'].vmLaunch = true;
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
+});
+
+// graphify's skill was a user-scope copy written by himmel-update into
+// ~/.claude/skills/graphify, which ignores enabledPlugins. As a plugin it is
+// catalogued and enabled only in the operator's interactive `user` profile.
+test('graphify@himmel is enabled only in the user profile (HIMMEL-6465)', () => {
+  const id = 'graphify@himmel';
+  assert.ok(REG.catalog.includes(id));
+  for (const [name, def] of Object.entries(REG.profiles)) {
+    if (def === null) continue; // operator: everything installed
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p[id], name === 'user', `${name}: ${id} enabled must be ${name === 'user'}`);
+  }
 });
