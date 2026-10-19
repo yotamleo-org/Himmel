@@ -173,6 +173,12 @@ BUS_N=2 run 3 0
 if grep -q sendText "$QLOG" && ! sed 's/.*sendText //' "$QLOG" | grep -q '[0-9]'; then
   pass "the idle prompt is woken, and the typed line carries no digit"
 else fail "idle wake or digit-free text: $(cat "$QLOG")"; fi
+# A leg name wider than the window truncates the box's top rule to ` <name>… ─`.
+QSCREEN="$FIX/screen-idle-longname.txt" BUS_N=2 run 3 0
+grep -qF "$FIXED" "$QLOG" && pass "an idle prompt under a truncated session-name rule is woken" || fail "long-name idle prompt not woken: $(cat "$QLOG")"
+sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle-longname.txt" > "$tmp/draft-longname"
+QSCREEN="$tmp/draft-longname" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a draft under a truncated session-name rule gets no keystroke" || fail "typed onto a long-name draft: $(cat "$QLOG")"
 
 QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
