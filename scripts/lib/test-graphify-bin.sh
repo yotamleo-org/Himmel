@@ -575,6 +575,32 @@ assert "legacy with user files: graphify's marker is gone" test ! -e "$srk_home/
 assert "legacy with user files: graphify's reference file is gone" test ! -e "$srk_home/.claude/skills/graphify/references/quickstart.md"
 assert "legacy with user files: the dir is kept and the leftovers are warned about" grep -qi 'left in place' <<<"$out"
 
+echo "[test-graphify-bin] _graphify_skill_refresh: a symlinked legacy dir or references/ is unlinked, its target is never touched"
+srl_home="$tmpdir/sr-plugin-link"; srl_plug="$tmpdir/sr-plugin-link-dir"; srl_out="$tmpdir/sr-plugin-link-outside"
+mkdir -p "$srl_home/.claude/skills" "$srl_out/references"
+printf '0.0.1' > "$srl_out/.graphify_version"
+printf 'dotfiles skill' > "$srl_out/SKILL.md"
+printf 'dotfiles ref' > "$srl_out/references/quickstart.md"
+ln -s "$srl_out" "$srl_home/.claude/skills/graphify"
+out=$(HOME="$srl_home" GRAPHIFY_PLUGIN_DIR="$srl_plug" PATH="$stub_dir/bin:$base_path" \
+      UV_TOOL_DIR="$srr_tools" UV_LOG="$tmpdir/sr-plugin-l-uvlog" UV_LIST_FILE="$tmpdir/sr-plugin-l-list" \
+      bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
+assert "symlinked legacy dir: link removed" test ! -L "$srl_home/.claude/skills/graphify"
+assert "symlinked legacy dir: target SKILL.md survives" test "$(cat "$srl_out/SKILL.md")" = "dotfiles skill"
+assert "symlinked legacy dir: target marker survives" test "$(cat "$srl_out/.graphify_version")" = "0.0.1"
+assert "symlinked legacy dir: target reference survives" test "$(cat "$srl_out/references/quickstart.md")" = "dotfiles ref"
+srm_home="$tmpdir/sr-plugin-reflink"; srm_plug="$tmpdir/sr-plugin-reflink-dir"; srm_out="$tmpdir/sr-plugin-reflink-outside"
+mkdir -p "$srm_home/.claude/skills/graphify" "$srm_out"
+printf '0.0.1' > "$srm_home/.claude/skills/graphify/.graphify_version"
+printf 'legacy user-scope skill' > "$srm_home/.claude/skills/graphify/SKILL.md"
+printf 'dotfiles ref' > "$srm_out/quickstart.md"
+ln -s "$srm_out" "$srm_home/.claude/skills/graphify/references"
+out=$(HOME="$srm_home" GRAPHIFY_PLUGIN_DIR="$srm_plug" PATH="$stub_dir/bin:$base_path" \
+      UV_TOOL_DIR="$srr_tools" UV_LOG="$tmpdir/sr-plugin-m-uvlog" UV_LIST_FILE="$tmpdir/sr-plugin-m-list" \
+      bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
+assert "symlinked references/: target file survives" test "$(cat "$srm_out/quickstart.md")" = "dotfiles ref"
+assert "symlinked references/: graphify's SKILL.md is gone" test ! -e "$srm_home/.claude/skills/graphify/SKILL.md"
+
 echo "[test-graphify-bin] _graphify_skill_refresh: user-scope dir without graphify's marker is NOT removed"
 srq_home="$tmpdir/sr-plugin-foreign"; srq_plug="$tmpdir/sr-plugin-foreign-dir"
 mkdir -p "$srq_home/.claude/skills/graphify"

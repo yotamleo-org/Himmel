@@ -898,13 +898,14 @@ _graphify_claude_skill_dir() {
 # also carries, then each dst subdirectory that is left empty; nothing else in dst.
 _graphify_retire_mirror() {
   local e name
+  [ -L "$2" ] && return 0
   [ -d "$2" ] || return 0
   for e in "$1"/* "$1"/.[!.]*; do
     { [ -e "$e" ] || [ -L "$e" ]; } || continue
     name="${e##*/}"
     if [ -d "$e" ] && [ ! -L "$e" ]; then
       _graphify_retire_mirror "$e" "$2/$name"
-      rm -d "$2/$name" 2>/dev/null
+      [ -L "$2/$name" ] || rm -d "$2/$name" 2>/dev/null
     else
       rm -f "$2/$name" 2>/dev/null
     fi
@@ -921,6 +922,12 @@ _graphify_retire_user_scope_skill() {
   [ -d "$legacy" ] || return 0
   if [ ! -f "$legacy/.graphify_version" ]; then
     echo "  note: $legacy has no .graphify_version marker, so it is not himmel's copy; leaving it (it loads in every session -- remove it by hand if unwanted)." >&2
+    return 0
+  fi
+  if [ -L "$legacy" ]; then
+    # A symlinked dir (stow, dotfiles) points at files that are not ours: drop the link only.
+    rm -f "$legacy" 2>/dev/null
+    echo "  graphify user-scope skill link removed ($legacy); its target is untouched; the skill now ships as the graphify@himmel plugin."
     return 0
   fi
   # Remove only what graphify installed: the marker, SKILL.md (+ its .bak) and the
