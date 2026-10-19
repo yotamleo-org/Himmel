@@ -78,7 +78,7 @@ verdict zero-suites 1 no-suites
 new_repo
 w test-only.sh 'exit 0'
 commit tests-only
-VALUE=broken verdict test-only 0 not-applicable
+VALUE=broken verdict test-only 3 not-applicable
 
 new_repo
 w value.txt fixed
@@ -139,11 +139,13 @@ w test-signal.sh "p=\$PPID
 seen=0
 while [ \"\$p\" -gt 1 ]; do
     case \"\$(ps -o args= -p \"\$p\")\" in
-        'bash $GATE '*) seen=1; kill -TERM \"\$p\" ;;
+        'bash $GATE '*) seen=1; pids=\"\$p \$pids\" ;;
         *) [ \"\$seen\" -eq 1 ] && break ;;
     esac
     p=\$(ps -o ppid= -p \"\$p\" | tr -d ' ')
 done
+# Outermost first: the gate must be signalled before its subshell exits.
+kill -TERM \$pids
 exit 0 # value.txt"
 commit interrupted
 verdict interrupt 143 'changed value.txt'
@@ -205,6 +207,51 @@ w value.txt fixed
 w test-value.sh '[ "$(cat value.txt)" = fixed ]'
 commit zero-cap
 SUITE_TIMEOUT=00 verdict zero-cap 1 'bad SUITE_TIMEOUT'
+
+# A suite must see EOF on stdin: the suite list is the gate's loop input, so a
+# suite that drains stdin would otherwise swallow every suite after it.
+new_repo
+w value.txt fixed
+w test-a-drain.sh 'cat > /dev/null # value.txt'
+w test-b-value.sh '[ "$(cat value.txt)" = fixed ]'
+commit stdin-drain
+verdict stdin-closed 0 detected
+
+# timeout failing (125) or a missing runner (126/127) is not evidence, in either
+# phase. The stub passes the baseline through and fails only the knockout run
+# (value.txt restored to broken), or both phases when KO_ALWAYS is set.
+mkdir -p "$T/tstub"
+w "$T/tstub/timeout" "#!/usr/bin/env bash
+if [ -n \"\${KO_ALWAYS:-}\" ] || [ \"\$(cat value.txt)\" != fixed ]; then exit \"\$KO_RC\"; fi
+exec $(command -v timeout) \"\$@\""
+chmod +x "$T/tstub/timeout"
+for code in 125 126 127; do
+    new_repo
+    w value.txt fixed
+    w test-value.sh '[ "$(cat value.txt)" = fixed ]'
+    commit "runner-$code"
+    KO_RC=$code PATH="$T/tstub:$PATH" verdict "knockout-exit-$code" 1 "runner-unavailable"
+done
+new_repo
+w value.txt fixed
+w test-value.sh '[ "$(cat value.txt)" = fixed ]'
+commit baseline-runner-125
+KO_ALWAYS=1 KO_RC=125 PATH="$T/tstub:$PATH" verdict baseline-exit-125 1 "runner-unavailable"
+
+# SUITE_TIMEOUTS caps one named suite below the global cap.
+new_repo
+w value.txt fixed
+w test-hang.sh '[ "$(cat value.txt)" = fixed ] || sleep 60'
+commit per-suite-cap
+start=$SECONDS
+SUITE_TIMEOUT=60 SUITE_TIMEOUTS="test-hang.sh=2" verdict per-suite-cap 0 detected
+if [ $((SECONDS - start)) -lt 30 ]; then ok 'per-suite-cap: override applied'; else bad 'per-suite-cap: global cap used'; fi
+
+new_repo
+w value.txt fixed
+w test-value.sh '[ "$(cat value.txt)" = fixed ]'
+commit bad-per-suite-cap
+SUITE_TIMEOUTS="test-value.sh=0" verdict bad-per-suite-cap 1 'bad SUITE_TIMEOUTS'
 
 rc=0
 bash "$GATE" > "$T/usage" 2>&1 || rc=$?

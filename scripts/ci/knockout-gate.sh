@@ -3,8 +3,9 @@
 # impacted suite must fail there; unchanged-green or untested changes fail.
 # Usage: knockout-gate.sh <base>..<head>
 #        knockout-gate.sh <base> <head>
-# Exit: 0 detected / test-only not applicable, 1 failed gate, 2 usage.
+# Exit: 0 detected, 1 failed gate, 2 usage, 3 not applicable (test-only diff).
 # Env: SUITE_TIMEOUT per-suite cap in seconds (default 600).
+#      SUITE_TIMEOUTS space-separated <suite path>=<seconds> overrides of it.
 # Platform: bash 3.2+, git, timeout; suite runtimes must already be installed.
 # JS suite deps are installed per scratch tree by the selector's --run
 # (lockfile-pinned, --ignore-scripts), never fetched by a bare npx or bun.
@@ -67,7 +68,7 @@ while IFS= read -r -d '' path; do
 done < "$work/changed"
 if [ ! -s "$work/non-test" ]; then
     echo 'knockout-gate: not-applicable (test-only diff)'
-    exit 0
+    exit 3
 fi
 
 # Selection is computed on the real diff BEFORE restoration, using the tool
@@ -95,29 +96,41 @@ suite_timeout="${SUITE_TIMEOUT:-600}"
 case "$suite_timeout" in ''|*[!0-9]*) fail "bad SUITE_TIMEOUT '$suite_timeout'" ;; esac
 [ "$((10#$suite_timeout))" -ge 1 ] || fail "bad SUITE_TIMEOUT '$suite_timeout'"
 command -v timeout >/dev/null 2>&1 || fail 'runner-unavailable timeout'
+# A per-suite override must be a valid cap too; the global cap covers the rest.
+for entry in ${SUITE_TIMEOUTS:-}; do
+    case "${entry#*=}" in ''|*[!0-9]*) fail "bad SUITE_TIMEOUTS '$entry'" ;; esac
+    [ "$((10#${entry#*=}))" -ge 1 ] || fail "bad SUITE_TIMEOUTS '$entry'"
+done
+cap_for() {
+    local entry
+    for entry in ${SUITE_TIMEOUTS:-}; do
+        [ "${entry%%=*}" = "$1" ] && { echo "$((10#${entry#*=}))"; return; }
+    done
+    echo "$suite_timeout"
+}
 run_suites() {
-    local phase="$1" suite command rc
+    local phase="$1" suite command rc cap
     n=0
     while IFS= read -r suite; do
         [ -n "$suite" ] || continue
         n=$((n + 1))
         command="${cmds[$n]}"
         rc=0
-        (cd "$tree" && timeout -k 5 "$suite_timeout" bash -c "$command") 2> "$work/stderr" || rc=$?
+        cap=$(cap_for "$suite")
+        # stdin is closed so a suite that reads it ends instead of waiting for the cap.
+        (cd "$tree" && timeout -k 5 "$cap" bash -c "$command" < /dev/null) 2> "$work/stderr" || rc=$?
         cat "$work/stderr" >&2
         # A failed install is not a failing suite: never count it as detection.
         if grep -q 'impacted-suites: FAIL_INSTALL' "$work/stderr"; then
             fail "deps-install-failed $suite"
         fi
         printf 'knockout-gate: %s suite %s exit=%s\n' "$phase" "$suite" "$rc"
+        # 125 is timeout itself failing, 126/127 a missing runner: never evidence.
+        case "$rc" in 125|126|127) fail "runner-unavailable $suite (exit=$rc)" ;; esac
         if [ "$phase" = baseline ] && [ "$rc" -ne 0 ]; then
-            fail "baseline-red $suite (exit=$rc, 124/137 = timed out after ${suite_timeout}s; not knockout evidence)"
+            fail "baseline-red $suite (exit=$rc, 124/137 = timed out after ${cap}s; not knockout evidence)"
         fi
-        case "$rc" in
-            0) ;;
-            126|127) fail "runner-unavailable $suite" ;;
-            *) red=$((red + 1)) ;;
-        esac
+        [ "$rc" -eq 0 ] || red=$((red + 1))
     done < "$work/suites"
 }
 git worktree add --detach "$tree" "$head" || fail worktree-add
