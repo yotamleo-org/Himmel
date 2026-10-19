@@ -4377,7 +4377,7 @@ while IFS= read -r suite <&3; do
   [ "$rc" -eq 0 ] || [ "${SUITE_STOP_ON_FAIL:-}" != 1 ] || stopped=1
 done 3< "$suites_file"
 
-if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ "$stopped" -eq 0 ]; then
+if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
   mkdir -p "$FAIL_LOG_DIR" && : > "$FAIL_LOG_DIR/.run-complete"
 fi
 
@@ -4423,7 +4423,7 @@ if [ "$cap_exceeded_clean" -gt 0 ]; then
   # convention, not proof of health (see the detector's own comment above).
   printf ' CAP EXCEEDED (assertions passing): %s\n' "$cap_exceeded_clean"
 fi
-if [ "$stopped" -eq 1 ]; then
+if [ -n "$stopped_suites" ]; then
   printf 'STOPPED: SUITE_STOP_ON_FAIL=1 — a suite failed, so these suites never ran:\n%s' "$stopped_suites" >&2
 fi
 if [ "$budget_expired" -eq 1 ]; then
@@ -4595,7 +4595,7 @@ if [ "$SUITE_ROTATE" != "0" ]; then
           "$SUITE_ROTATE_STATE" >&2
       fi
     fi
-  elif [ "$budget_expired" -eq 0 ] && [ "$stopped" -eq 0 ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
+  elif [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
     # Same empty-path guard as above, for `rm -f ""` — a no-op in practice,
     # but the CLEARED-only comment above already draws the correct line, so
     # this stays consistent with it rather than relying on rm's leniency.

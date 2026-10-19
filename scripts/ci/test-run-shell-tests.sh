@@ -2600,7 +2600,7 @@ chmod +x "$sb26/test-a-fail.sh" "$sb26/test-b-after.sh"
 
 out26=$(SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26" 2>&1)
 rc26=$?
-if [ "$rc26" -eq 1 ] && [ ! -e "$sb26/after.sentinel" ] && grepq "$out26" 'test-b-after.sh'; then
+if [ "$rc26" -eq 1 ] && [ ! -e "$sb26/after.sentinel" ] && grepq "$out26" 'STOPPED:' && grepq "$out26" 'test-b-after.sh'; then
   pass "26a: SUITE_STOP_ON_FAIL=1 -> exit 1, the suite after the failure never ran, and is named"
 else
   fail "26a: expected exit 1, no after.sentinel, test-b-after.sh named; rc=$rc26 sentinel=$([ -e "$sb26/after.sentinel" ] && echo present || echo absent) output: $out26"
