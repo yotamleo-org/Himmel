@@ -84,31 +84,28 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 ## Publishing these docs (GitHub Pages)
 
-The public repo serves this folder as a static site at
-`https://yotamleo.github.io/Himmel/<path under docs/>`.
+The public repo serves a built docs site at `https://yotamleo.github.io/Himmel/`
+(sidebar, search, readable pages). Raw files stay at their old paths, for
+example `/Himmel/setup/install.md` and `/Himmel/setup/settings-template.json`,
+and `/Himmel/adoption-trail.html` is unchanged.
 
-- **Source.** Pages is set to "GitHub Actions" (`build_type=workflow`), and
-  `.github/workflows/pages.yml` uploads `docs/` and deploys it. It runs once a
-  day (cron `17 3 * * *`, 03:17 UTC) and on demand with
-  `gh workflow run pages.yml`; a push that changes `docs/**` does not redeploy,
-  so the change goes live at the next daily run or on the manual command. The
-  deploy takes a minute or two. Read the live settings with
-  `gh api repos/yotamleo/Himmel/pages` and the runs with
-  `gh run list --workflow pages.yml`.
-- **What is served.** Every file under `docs/`, byte for byte, and nothing
-  outside it (the root `README.md`, `scripts/` and the rest are not on the
-  site). `docs/.nojekyll` turns Jekyll off, so there is no build step and no
-  theme: `.html` renders as a page, `.md` is served as raw text (not
-  rendered), and because `docs/` has no `index.html` the site root itself
-  returns 404 — `adoption-trail.html` is the entry point.
-- **Preview locally.** The same static serving, no account needed:
-  `python3 -m http.server 8000 --directory docs`, then open
-  `http://localhost:8000/adoption-trail.html`. (The page makes no third-party
-  request; it uses system fonts.)
-- **Check before you merge.** `bash scripts/docs/test-adoption-trail.sh`
-  resolves every link on the trail page, confirms every detail chip has its
-  panel, and pins the claims that have drifted before (cadence count, lanes
-  menu, plugin provenance) to the tree.
+- **Source.** `site/` is the Starlight workspace and `docs/` is its content.
+  `.github/workflows/pages.yml` runs `npm ci` and `npm run build` in `site/`,
+  uploads `site/dist` and deploys it. It runs once a day (cron `17 3 * * *`,
+  03:17 UTC) and on demand with `gh workflow run pages.yml`; a push that
+  changes `docs/**` does not redeploy, so the change goes live at the next
+  daily run or on the manual command. `site/allowlist.txt` lists the pages and
+  `site/astro.config.mjs` holds the sidebar; a page in `docs/` that is on
+  neither list is not on the site. `docs/.nojekyll` stays so a plain static
+  serve of `docs/` matches the raw files.
+- **Preview locally.** `bash scripts/docs-site/serve.sh` builds the site and
+  serves it at `http://127.0.0.1:4321/Himmel/`. The raw files alone:
+  `python3 -m http.server 8000 --directory docs`.
+- **Check before you merge.** `bash scripts/docs-site/test-site-build.sh`
+  builds the site and checks titles, links (a broken link fails the build),
+  search and the raw files. `bash scripts/docs/test-adoption-trail.sh`
+  resolves every link on the trail page and pins the claims that have drifted
+  before (cadence count, lanes menu, plugin provenance) to the tree.
 - **Check after.** Once the `Pages` run succeeds,
   `curl -s https://yotamleo.github.io/Himmel/adoption-trail.html | cmp - docs/adoption-trail.html`
   prints nothing when the live page matches your checkout.
