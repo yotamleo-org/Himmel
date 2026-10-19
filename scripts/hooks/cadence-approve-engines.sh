@@ -894,6 +894,12 @@ split_and_mask() {
                 SCAN_SEGS="$SCAN_SEGS$seg$NL"; seg=""
                 SCAN_MASK="$SCAN_MASK$c"; i=$((i + 1)); continue ;;
             '|')                                     # | or || -> one break
+                # A piped cd runs in a subshell, so the cwd the nav tracker records is not the engine's.
+                if [ "$nx" != '|' ]; then
+                    case "${seg#"${seg%%[![:space:]]*}"}" in
+                        cd|cd[[:space:]]*|pushd|pushd[[:space:]]*|popd|popd[[:space:]]*) return 1 ;;
+                    esac
+                fi
                 SCAN_SEGS="$SCAN_SEGS$seg$NL"; seg=""
                 SCAN_MASK="$SCAN_MASK|"
                 if [ "$nx" = '|' ]; then SCAN_MASK="$SCAN_MASK|"; i=$((i + 2)); else i=$((i + 1)); fi

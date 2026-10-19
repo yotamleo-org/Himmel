@@ -749,6 +749,8 @@ mkdir -p "$VAULT_FIXTURE/vonly" || { echo "setup: mkdir vonly failed" >&2; exit 
 # In a pipeline the engine keeps the session cwd, so a dir that exists only under the checkout must not pass either.
 assert "6449 cd into checkout piped to engine + --whisper-model dir existing only in the checkout -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model scripts" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd checkout && piped cd vault, engine runs in the checkout + vault-only model dir -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd \"${VAULT_FIXTURE_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd into checkout + --whisper-model dir existing only in the vault -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd target with a backslash (bash drops it) -> refused" PASS \
