@@ -1260,7 +1260,7 @@ _gh_api() {
 # the ones whose fold is safe: -R, CI_GCP (names match case-insensitively) and
 # the repository slugs.
 _gh_cigcp() {
-    local j=$1 n=${#_gc_w[@]} w pos='' body='' repo='' raw LC_ALL=C
+    local j=$1 n=${#_gc_w[@]} w pos='' body='' repo='' nb=0 nr=0 raw LC_ALL=C
     [ "$j" = 1 ] || return 1
     [[ $cmd == *[!A-Za-z0-9_./=\ $'\t\n'-]* ]] && return 1
     read -rd '' -a raw <<<"$cmd" || true # swallow-ok: read -d '' always ends at EOF with status 1
@@ -1278,10 +1278,10 @@ _gh_cigcp() {
         [ "${_gc_k[j]}" = W ] || return 1
         w=${_gc_w[j]}
         case "$w" in
-            -r|--repo) [ -z "$repo" ] || return 1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; repo=${_gc_w[j]} ;;
-            --repo=*) [ -z "$repo" ] || return 1; repo=${w#--repo=} ;;
-            -b|--body) [ -z "$body" ] || return 1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; body=${_gc_w[j]} ;;
-            --body=*) [ -z "$body" ] || return 1; body=${w#--body=} ;;
+            -r|--repo) [ "$nr" = 0 ] || return 1; nr=1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; repo=${_gc_w[j]} ;;
+            --repo=*) [ "$nr" = 0 ] || return 1; nr=1; repo=${w#--repo=} ;;
+            -b|--body) [ "$nb" = 0 ] || return 1; nb=1; j=$((j + 1)); [ "$j" -lt "$n" ] || return 1; [ "${_gc_k[j]}" = W ] || return 1; body=${_gc_w[j]} ;;
+            --body=*) [ "$nb" = 0 ] || return 1; nb=1; body=${w#--body=} ;;
             -*) return 1 ;;
             *) pos="$pos $w" ;;
         esac

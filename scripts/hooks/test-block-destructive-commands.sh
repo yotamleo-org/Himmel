@@ -1656,7 +1656,9 @@ for c in \
     'gh variable set CI_GCP --body off -r&>x yotamleo/Himmel' \
     'gh variable set CI_GCP --body off -r>&2 yotamleo/Himmel' \
     'gh variable set CI_GCP --body off -r<>x yotamleo/Himmel' \
-    'gh variable set CI_GCP --body off -ryotamleo/himmel'; do
+    'gh variable set CI_GCP --body off -ryotamleo/himmel' \
+    'gh variable set CI_GCP --body= --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --repo= --repo yotamleo/Himmel'; do
     assert_rc "6431 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
 # The guard reads a CR as a line break, the shell does not: everything after
