@@ -513,7 +513,10 @@ whisper_model_is_safe() {
         tiny|tiny.en|base|base.en|small|small.en|medium|medium.en| \
         large|large-v1|large-v2|large-v3)
             # A same-named path on disk wins over the built-in size name.
-            [ -e "$SESSION_CWD_POSIX/$norm" ] || [ -L "$SESSION_CWD_POSIX/$norm" ] || return 0 ;;
+            if [ ! -e "$SESSION_CWD_POSIX/$norm" ] && [ ! -L "$SESSION_CWD_POSIX/$norm" ] \
+                && { [ -z "$NAV_ROOT_PHYS" ] || { [ ! -e "$NAV_ROOT_PHYS/$norm" ] && [ ! -L "$NAV_ROOT_PHYS/$norm" ]; }; }; then
+                return 0
+            fi ;;
     esac
     arg_is_vault_safe "$norm" || return 1
     case "$norm" in
@@ -723,7 +726,8 @@ segment_is_nav() {
         cd|pushd|popd) ;;
         *) return 1 ;;
     esac
-    [ "$n" -eq 1 ] && return 0
+    # A bare cd goes to $HOME and a bare pushd swaps the stack: no target to prove.
+    [ "$n" -gt 1 ] || return 1
     reassemble_token "${w[@]:1}" || return 1
     [ $((1 + REASM_CONSUMED)) -eq "$n" ] || return 1
     nav_target_is_contained "$REASM_TOKEN"
@@ -744,8 +748,13 @@ nav_target_is_contained() {
     # session cwd. Symlinks are resolved so a link cannot stand in for either.
     case "$norm" in
         /*) p="$norm" ;;
-        *)  [ -n "$SESSION_CWD_POSIX" ] || return 1
-            p="$SESSION_CWD_POSIX/$norm" ;;
+        *)  # Relative to wherever the previous approved cd left the shell.
+            if [ -n "$NAV_ROOT_PHYS" ]; then
+                p="$NAV_ROOT_PHYS/$norm"
+            else
+                [ -n "$SESSION_CWD_POSIX" ] || return 1
+                p="$SESSION_CWD_POSIX/$norm"
+            fi ;;
     esac
     real=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1 # swallow-ok: failure refuses the grant
     [ -n "$real" ] || return 1

@@ -727,6 +727,15 @@ assert "6449 cd into checkout + arg through a checkout symlink -> refused" PASS 
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ABS}\" esc/notes" "$VAULT_FIXTURE")")"
 assert "6449 cd into checkout + plain relative arg still granted" ALLOW \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 argumentless cd (goes to HOME) + relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 argumentless pushd + relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "pushd && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 cd into checkout, cd . then arg through a checkout symlink -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd . && python \"${SPACED_ABS}\" esc/notes" "$VAULT_FIXTURE")")"
+ln -s "$OUTSIDE_FIXTURE" "$SPACED_ROOT/tiny"
+assert "6449 cd into checkout + --whisper-model size name shadowed by a checkout symlink -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model tiny" "$VAULT_FIXTURE_MIXED")")"
 # (5) bare python / python3 on a non-enumerated or relative script.
 assert "6449 bare python, no script" PASS "$(decide "$(j_bash "python")")"
 assert "6449 python3 non-enumerated script" PASS "$(decide "$(j_bash "python3 /tmp/evil.py vault")")"
