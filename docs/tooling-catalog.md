@@ -1295,8 +1295,7 @@ gates the WS2 router only, not this direct-CLI lane.
 builder block + missing-key throw + quote-strip, `runSession` lane env merge
 with argv shape unchanged, GLM model pin ignoring `TELEGRAM_CLAUDE_MODEL`,
 settings-conflict preflight, prompt composition
-embedding the minted session paths); the live GLM-lane acceptance + offload-loop
-legs are recorded in the ticket history.
+embedding the minted session paths).
 
 ---
 
