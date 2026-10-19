@@ -37,7 +37,8 @@ MAX_RUN="45m"
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
-MAX_N=1  # the proxy e2-micro counts 1 vCPU against the 8-vCPU CPUS pin, leaving 7: one e2-standard-4 fits, two do not
+CPU_PIN=8  # never raise the regional CPUS quota above this
+MAX_N=1 # the proxy e2-micro counts 1 vCPU against the 8-vCPU CPUS pin, leaving 7: one e2-standard-4 fits, two do not
 NET="${GCP_RUNNERS_NET:-himmel-ci-net}"
 LOCKFILE="${GCP_RUNNERS_LOCK:-${TMPDIR:-/tmp}/gcp-runners.lock}"
 GCLOUD="${GCLOUD:-$HOME/google-cloud-sdk/bin/gcloud}"
@@ -83,6 +84,24 @@ drop_jit() {
     return "$failed"
 }
 
+# drop_runner VM -> delete the runner registration minted for a VM that was never created
+drop_runner() {
+    local id
+    id="$("$GH" api --paginate "repos/$REPO/actions/runners" --jq ".runners[] | select(.name==\"$1\") | .id")" || { echo "gcp-runners: could not list runners to delete the registration of $1" >&2; return 1; }
+    [ -n "$id" ] || return 0
+    "$GH" api -X DELETE "repos/$REPO/actions/runners/$id" || { echo "gcp-runners: could not delete the runner registration of $1 (id $id)" >&2; return 1; }
+}
+
+# quota_preflight VCPUS -> die unless the regional CPUS quota (limit capped at CPU_PIN) has VCPUS of headroom
+quota_preflight() {
+    local q limit usage
+    q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --filter="quotas.metric=CPUS" --format="value(quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
+    read -r limit usage <<< "$q"
+    awk -v l="${limit:-x}" -v u="${usage:-x}" 'BEGIN { exit !(l ~ /^[0-9.]+$/ && u ~ /^[0-9.]+$/) }' || die "up: unreadable regional CPUS quota '$q', refusing to create VMs blind"
+    awk -v l="$limit" -v u="$usage" -v n="$1" -v pin="$CPU_PIN" 'BEGIN { if (l + 0 > pin + 0) l = pin; exit !(u + n <= l + 0) }' \
+        || die "up: regional CPUS quota has no headroom: usage $usage of limit $limit (pinned to $CPU_PIN), $1 more vCPU needed"
+}
+
 cmd_up() {
     local n="${1:-1}"
     case "$n" in ''|*[!0-9]*) die "up: N must be a positive integer, got '$n'" 2 ;; esac
@@ -107,6 +126,10 @@ cmd_up() {
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
+    local vcpus="${MACHINE##*-}"
+    case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
+    quota_preflight $((need * vcpus))
+
     local tmpd i stamp vm created=()
     # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.
     up_fail() { [ "${#created[@]}" -eq 0 ] || ONLINE_WAIT=0 drop_jit "${created[@]}"; die "$1"; }
@@ -123,8 +146,7 @@ cmd_up() {
             -f "name=$vm" -F runner_group_id=1 -f 'labels[]=self-hosted' -f 'labels[]=gcp' --jq .encoded_jit_config > "$tmpd/$vm.jit" \
             || up_fail "JIT config request failed for $vm"
         [ -s "$tmpd/$vm.jit" ] || up_fail "empty JIT config for $vm"
-        created+=("$vm")  # before the call: a create whose response was lost may still have made the VM
-        gc compute instances create "$vm" \
+        if ! gc compute instances create "$vm" \
             --zone="$ZONE" --machine-type="$MACHINE" \
             --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
             --boot-disk-size=50GB --boot-disk-type=pd-balanced \
@@ -134,7 +156,17 @@ cmd_up() {
             --no-service-account --no-scopes \
             --metadata="runner-repo=$REPO" \
             --metadata-from-file="startup-script=$HERE/gcp-runner-startup.sh,job-started-hook=$HERE/../vm/ci-runner/job-started-hook.sh,proxy-env=$tmpd/proxy-env,jit-config=$tmpd/$vm.jit" \
-            || up_fail "instances create failed for $vm"
+            ; then
+            # a create whose response was lost may still have made the VM: strip its jit-config.
+            # No instance means nothing to strip or delete, only the runner registration minted for it.
+            if gc compute instances describe "$vm" --zone="$ZONE" > /dev/null 2>&1; then
+                created+=("$vm")
+            else
+                drop_runner "$vm"
+            fi
+            up_fail "instances create failed for $vm"
+        fi
+        created+=("$vm")
     done
     drop_jit "${created[@]}" || die "jit-config cleanup failed, deleting the affected VM(s) was attempted; check 'status' for leftovers"
     echo "gcp-runners: created $need VM(s); pool target $n"
