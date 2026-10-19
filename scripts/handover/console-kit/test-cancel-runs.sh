@@ -58,6 +58,7 @@ cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 # stub gh: serves $STUB_RUNS (per --status), resolves PR heads, logs cancels.
 # STUB_GH_FAIL=1 fails every call; STUB_FAIL_ID=<id> fails that cancel only.
+[ -n "${STUB_ARGS_LOG:-}" ] && printf '%s\n' "$*" >> "$STUB_ARGS_LOG"
 [ "${STUB_GH_FAIL:-}" = 1 ] && { echo "gh: simulated failure" >&2; exit 1; }
 case "$1 $2" in
     "run list")
@@ -95,6 +96,9 @@ mk_origin ghe-ssh git@ghe.example.com:o/r.git
 mk_origin ghe-port ssh://git@ghe.example.com:2222/o/r.git
 mk_origin gh-ssh git@github.com:o/r.git
 mk_origin gh-path /srv/git/o/r.git
+mk_origin gh-upper https://GITHUB.COM/o/r.git
+mk_origin gh-spoof https://github.com@evil.com/o/r.git
+mk_origin gh-alias ssh://git@ssh.github.com:443/o/r.git
 
 export PATH="$WORK/bin:$PATH"
 export STUB_RUNS="$WORK/runs.json" STUB_CANCEL_LOG="$WORK/cancel.log"
@@ -248,6 +252,26 @@ check "an scp-style github.com origin cancels" "103 104 105 " "$(cancelled)"
 
 out="$(T_DIR="$WORK/gh-path" live --keep-pr 3221)"; rc=$?
 check "a local-path origin (no host) refuses, exit 2" "2" "$rc"
+
+out="$(T_DIR="$WORK/gh-upper" live --keep-pr 3221)"; rc=$?
+check "an uppercase GITHUB.COM origin is accepted" "0" "$rc"
+check "an uppercase GITHUB.COM origin cancels" "103 104 105 " "$(cancelled)"
+
+out="$(T_DIR="$WORK/gh-spoof" live --keep-pr 3221)"; rc=$?
+check "a userinfo spoof (github.com@evil.com) refuses, exit 2" "2" "$rc"
+check "a userinfo spoof cancels nothing" "" "$(cancelled)"
+
+out="$(T_DIR="$WORK/gh-alias" live --keep-pr 3221)"; rc=$?
+check "an ssh.github.com:443 origin refuses (fail closed), exit 2" "2" "$rc"
+
+# every gh call names github.com, so an exported GH_HOST cannot redirect the cancels
+export STUB_ARGS_LOG="$WORK/gh-args.log"
+: > "$STUB_ARGS_LOG"
+out="$(GH_HOST=ghe.example.com live --keep-pr 3221)"; rc=$?
+check "GH_HOST set: the run still exits 0" "0" "$rc"
+check "GH_HOST set: every call has a -R argument (pr view, run list, run cancel)" "3" "$(awk '/ -R /{split($0, a, " "); seen[a[1] " " a[2]]=1} END{n=0; for (k in seen) n++; print n}' "$STUB_ARGS_LOG")"
+check "GH_HOST set: every -R argument is github.com/o/r" "0" "$(grep -e ' -R ' "$STUB_ARGS_LOG" | grep -vcE ' -R github\.com/o/r( |$)')"
+unset STUB_ARGS_LOG
 
 # main, tags and push/schedule/workflow_dispatch runs are protected
 export STUB_RUNS="$WORK/runs-prot.json"

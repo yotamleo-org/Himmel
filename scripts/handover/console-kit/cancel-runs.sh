@@ -10,7 +10,9 @@
 #
 # DRY RUN BY DEFAULT: nothing is cancelled without --live. The repo is the
 # `origin` remote's and is not overridable; --repo is accepted only when it
-# equals origin. Refuses (exit 3) in a console-spawned leg or a console relay,
+# equals origin. Only a github.com origin (https, ssh://, scp-style) is accepted;
+# an ssh-config alias or an ssh.github.com:443 origin refuses (fail closed).
+# Refuses (exit 3) in a console-spawned leg or a console relay,
 # the same predicate go.sh uses.
 #
 # Cancels every non-completed Actions run whose head sha is not on the keep-list.
@@ -136,12 +138,14 @@ fi
 REPO="$(printf '%s\n' "$url" | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##')"
 printf '%s' "$REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
     || { echo "cancel-runs: cannot read owner/repo from origin '$url'" >&2; exit 2; }
+# Every gh call names the host too: a bare OWNER/REPO follows GH_HOST.
+GHREPO="github.com/$REPO"
 if [ -n "$REPO_ARG" ] && [ "$REPO_ARG" != "$REPO" ]; then
     echo "cancel-runs: --repo $REPO_ARG differs from origin $REPO; the repo is pinned to origin" >&2; exit 2
 fi
 
 for n in $prs; do
-    sha="$(gh pr view "$n" -R "$REPO" --json headRefOid -q .headRefOid)"
+    sha="$(gh pr view "$n" -R "$GHREPO" --json headRefOid -q .headRefOid)"
     if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
         echo "cancel-runs: cannot resolve the head of PR $n on $REPO; nothing cancelled" >&2; exit 1
     fi
@@ -159,7 +163,7 @@ printf '%s' "$LIMIT" | grep -Eq '^[0-9]{1,4}$' && [ "$LIMIT" -ge 1 ] \
 runs=""
 truncated=0
 for st in queued in_progress waiting requested pending; do
-    part="$(gh run list -R "$REPO" --status "$st" --limit "$LIMIT" --json databaseId,status,headSha,headBranch,event)" \
+    part="$(gh run list -R "$GHREPO" --status "$st" --limit "$LIMIT" --json databaseId,status,headSha,headBranch,event)" \
         || { echo "cancel-runs: gh run list --status $st failed on $REPO; nothing cancelled" >&2; exit 1; }
     if [ "$(printf '%s' "$part" | jq 'length')" -ge "$LIMIT" ]; then
         echo "cancel-runs: the $st listing hit the cap of $LIMIT runs; re-run to drain the rest" >&2
@@ -194,7 +198,7 @@ while IFS="$TAB" read -r class id br sha ev; do
         capped=1
         break
     fi
-    err="$(gh run cancel "$id" -R "$REPO" 2>&1 >/dev/null)"
+    err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
     rc=$?
     printf 'cancel-runs: cancel run=%s branch=%s sha=%s event=%s rc=%s\n' "$id" "$br" "$sha" "$ev" "$rc" >&2
     if [ "$rc" -eq 0 ]; then
