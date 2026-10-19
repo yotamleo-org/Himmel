@@ -1580,8 +1580,14 @@ for c in \
 done
 
 # CI_GCP kill switch: exactly the on/off literal is allowed, nothing else.
+# The guard reads lowercased words, so the only upper-case letters it lets
+# through are folds that are safe: -R (a lowercase -r is denied on the raw
+# text, so a folded -r here was typed -R, gh's --repo), CI_GCP (GitHub matches
+# variable names case-insensitively) and Himmel (owner/repo slugs are
+# case-insensitive). Each allow row keeps only those folds.
 for c in \
     'gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'gh variable set ci_gcp --body off -R yotamleo/himmel' \
     'gh variable set CI_GCP --body on -R yotamleo/Himmel' \
     'gh variable set CI_GCP -R yotamleo/Himmel --body on' \
     'gh variable set CI_GCP --body=off --repo yotamleo/Himmel' \
@@ -1597,6 +1603,12 @@ for c in \
     'gh variable set CI_GCP_X --body off -R yotamleo/Himmel' \
     'gh variable set OTHER --body off -R yotamleo/Himmel' \
     'gh variable set CI_GCP --body maybe -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body ON -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body=On -R yotamleo-org/Himmel' \
+    'gh variable set CI_GCP -b oN -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body OFF -R yotamleo/Himmel' \
+    'gh variable set CI_GCP -B off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --BODY off -R yotamleo/Himmel' \
     'gh variable set CI_GCP --body offf -R yotamleo/Himmel' \
     'gh variable set CI_GCP -R yotamleo/Himmel' \
     'gh variable set CI_GCP --body off --body on -R yotamleo/Himmel' \
