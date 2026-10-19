@@ -114,7 +114,7 @@ is_write_verb() {
         attach|project-create|sprint) return 0 ;;
         # the incident verb (fix-version) and the rest of the CLI's
         # mutating surface were missing, so their compound shapes fell through.
-        fix-version|rank|unlink|resolution) return 0 ;;
+        fix-version|affects-version|rank|unlink|resolution) return 0 ;;
         version-create|version-edit|version-release|version-archive|version-move) return 0 ;;
         worklog) case "${2:-}" in add) return 0 ;; esac ;;
         roadmap) case "${2:-}" in set|sync-sprints) return 0 ;; esac ;;

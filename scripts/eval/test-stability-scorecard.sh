@@ -24,20 +24,24 @@ cat >"$td/ci.md" <<'E'
 E
 printf '%s\n' '#!/usr/bin/env bash' 'cat "$SCORECARD_FIX/ci.md"' >"$td/ci.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'echo 2' >"$td/redmain.sh"
-printf '%s\n' '#!/usr/bin/env bash' 'case "$*" in *deferred-escape*) echo "HIMMEL-1 x" ;; *) printf "HIMMEL-2 a\nHIMMEL-3 b\nHIMMEL-4 c\n" ;; esac' >"$td/jira.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'case "$*" in *deferred-escape*) echo "HIMMEL-1 x" ;; *"resolution = Done"*) printf "HIMMEL-2 a\nHIMMEL-3 b\nHIMMEL-9 z\n" ;; *"resolved >="*) printf "HIMMEL-2 a\nHIMMEL-3 b\nHIMMEL-9 z\nHIMMEL-10 e\nHIMMEL-11 f\nHIMMEL-12 g\n" ;; *) printf "HIMMEL-2 a\nHIMMEL-3 b\nHIMMEL-4 c\n" ;; esac' >"$td/jira.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "HIMMEL-2\nHIMMEL-3\nHIMMEL-77\n"' >"$td/mainkeys.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 3' >"$td/fail.sh"
 now=$(date -u +%s)
 printf '{"ts":"%s"}\n{"ts":"%s"}\n{"ts":"2020-01-01T00:00:00Z"}\n' \
   "$(date -u -d "@$((now-3600))" +%FT%TZ)" "$(date -u -d "@$((now-7200))" +%FT%TZ)" >"$td/den.jsonl"
 
 export SCORECARD_FIX="$td" SCORECARD_CI_METRICS_CMD="bash $td/ci.sh" SCORECARD_RED_MAIN_CMD="bash $td/redmain.sh" \
-  SCORECARD_JIRA_CMD="bash $td/jira.sh" SCORECARD_DENIALS_FILE="$td/den.jsonl" SCORECARD_TSV="$td/s.tsv"
+  SCORECARD_JIRA_CMD="bash $td/jira.sh" SCORECARD_MAIN_KEYS_CMD="bash $td/mainkeys.sh" SCORECARD_DENIALS_FILE="$td/den.jsonl" SCORECARD_TSV="$td/s.tsv"
 
 bash "$tool" run --date 2026-10-18; rc=$?
 check "run exits 0" "$rc" 0
 check "header + one row" "$(wc -l <"$td/s.tsv" | tr -d ' ')" 2
 row="$(sed -n 2p "$td/s.tsv")"
 check "row cells" "$(printf '%s' "$row" | cut -f1,3-11)" "$(printf '2026-10-18\t978\t3240\t1.00\t2\t2\tn/a\t3\t1\t10.5')"
+
+check "shipped_strict counts Done keys with a main squash subject (HIMMEL-9 has none)" "$(printf '%s' "$row" | cut -f12)" 2
+check "admin_closes is resolved minus shipped" "$(printf '%s' "$row" | cut -f13)" 4
 
 bash "$tool" run --date 2026-10-18 >/dev/null; check "same date again appends nothing" "$(wc -l <"$td/s.tsv" | tr -d ' ')" 2
 bash "$tool" run --date 2026-10-19 >/dev/null; check "next date appends a row" "$(wc -l <"$td/s.tsv" | tr -d ' ')" 3
@@ -60,6 +64,26 @@ SCORECARD_JIRA_CMD="bash $td/jsat.sh" bash "$tool" run --date 2026-10-24 >/dev/n
 check "jira list at the 500-row cap exits 1" "$rc" 1
 check "jira list at the cap reads unknown" "$(sed -n 7p "$td/s.tsv" | cut -f9)" unknown
 [ ! -d "$td/s.tsv.lock" ] && ok "no lock left behind" || bad "no lock left behind"
+
+# cron starts in $HOME, not a repo: the jira CLI finds its .env through git from its cwd, so the script must run it from the primary checkout.
+printf '%s\n' '#!/usr/bin/env bash' 'git rev-parse --git-common-dir >/dev/null 2>&1 || exit 7' 'echo "HIMMEL-9 z"' >"$td/jgit.sh"
+mkdir "$td/nogit"
+(cd "$td/nogit" && SCORECARD_JIRA_CMD="bash $td/jgit.sh" SCORECARD_TSV="$td/cwd.tsv" bash "$tool" run --date 2026-10-25 >/dev/null 2>&1); rc=$?
+check "jira cells are numeric when run outside any repo" "$(sed -n 2p "$td/cwd.tsv" | cut -f9,10)" "$(printf '1\t1')"
+check "run outside any repo exits 0" "$rc" 0
+
+SCORECARD_MAIN_KEYS_CMD="bash $td/fail.sh" bash "$tool" run --date 2026-10-26 >/dev/null 2>&1; rc=$?
+check "failed git source exits 1" "$rc" 1
+check "failed git source reads unknown shipped, never 0" "$(sed -n 8p "$td/s.tsv" | cut -f12,13)" "$(printf 'unknown\tunknown')"
+
+# a TSV written before the shipped columns existed is migrated in place, old rows padded with n/a
+legacy="$(sed -n 1p "$td/s.tsv" | cut -f1-11,14)"
+printf '%s\n%s\n' "$legacy" "$(printf '2026-10-01\tt\t1\t2\t3\t4\t5\tn/a\t6\t7\t8\told')" >"$td/legacy.tsv"
+SCORECARD_TSV="$td/legacy.tsv" bash "$tool" run --date 2026-10-27 >/dev/null 2>&1; rc=$?
+check "legacy header is migrated, run exits 0" "$rc" 0
+check "migrated header carries the shipped columns" "$(sed -n 1p "$td/legacy.tsv" | cut -f12,13)" "$(printf 'shipped_strict\tadmin_closes')"
+check "migrated old row is padded with n/a" "$(sed -n 2p "$td/legacy.tsv" | cut -f11-14)" "$(printf '8\tn/a\tn/a\told')"
+check "migrated file gains the new row" "$(sed -n 3p "$td/legacy.tsv" | cut -f1,12)" "$(printf '2026-10-27\t2')"
 
 printf 'wrong\theader\n' >"$td/bad.tsv"
 SCORECARD_TSV="$td/bad.tsv" bash "$tool" run --date 2026-10-21 >/dev/null 2>&1; rc=$?

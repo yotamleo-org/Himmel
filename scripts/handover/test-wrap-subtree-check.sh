@@ -557,6 +557,21 @@ out="$(run "$W/mkt-fetch.txt" 101 2>&1)"; rc=$?
 eq 'a marketplace fetch and plugin-cache clone read CLOSABLE: rc 0 (HIMMEL-5923)' 0 "$rc"
 contains 'all four fetch/clone pids are listed as ignored (HIMMEL-5923)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (4 harness-owned children ignored)'
 contains 'the remote-https child is listed ignored (HIMMEL-5923)' "$out" 'ignored pid=501 '
+# Claude Code 2.1.303 prefixes its hardened git with a long -c list (protocol.ext.allow,
+# hook.*.enabled, ...) between core.askPass and the verb; the prefix below is copied from
+# a live `ps` row of that git, verb swapped to fetch.
+cat > "$W/mkt-fetch-long.txt" <<'FIX'
+    1     0 40-00:00:01 /sbin/init
+  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
+  520   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= -c protocol.ext.allow=never -c submodule.recurse=false -c log.showSignature=false -c format.pretty=medium -c gc.auto=0 -c maintenance.auto=false -c hook.applypatch-msg.enabled=false -c hook.pre-applypatch.enabled=false -c hook.post-applypatch.enabled=false -c hook.pre-commit.enabled=false -c hook.pre-merge-commit.enabled=false -c hook.prepare-commit-msg.enabled=false -c hook.commit-msg.enabled=false -c hook.post-commit.enabled=false -c hook.pre-rebase.enabled=false -c hook.post-checkout.enabled=false -c hook.post-merge.enabled=false -c hook.pre-push.enabled=false -c hook.pre-receive.enabled=false -c hook.update.enabled=false -c hook.proc-receive.enabled=false -c hook.post-receive.enabled=false -c hook.post-update.enabled=false -c hook.reference-transaction.enabled=false -c hook.push-to-checkout.enabled=false -c hook.pre-auto-gc.enabled=false -c hook.post-rewrite.enabled=false -c hook.sendemail-validate.enabled=false -c hook.fsmonitor-watchman.enabled=false -c hook.p4-changelist.enabled=false -c hook.p4-prepare-changelist.enabled=false -c hook.p4-post-changelist.enabled=false -c hook.p4-pre-submit.enabled=false -c hook.post-index-change.enabled=false -c core.quotepath=false fetch origin
+  521   520       00:00 /usr/lib/git-core/git-remote-https origin https://github.com/atlassian/atlassian-mcp-server.git
+  522   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= -c protocol.ext.allow=never -c submodule.recurse=false -c log.showSignature=false -c format.pretty=medium -c gc.auto=0 -c maintenance.auto=false -c hook.applypatch-msg.enabled=false -c hook.pre-applypatch.enabled=false -c hook.post-applypatch.enabled=false -c hook.pre-commit.enabled=false -c hook.pre-merge-commit.enabled=false -c hook.prepare-commit-msg.enabled=false -c hook.commit-msg.enabled=false -c hook.post-commit.enabled=false -c hook.pre-rebase.enabled=false -c hook.post-checkout.enabled=false -c hook.post-merge.enabled=false -c hook.pre-push.enabled=false -c hook.pre-receive.enabled=false -c hook.update.enabled=false -c hook.proc-receive.enabled=false -c hook.post-receive.enabled=false -c hook.post-update.enabled=false -c hook.reference-transaction.enabled=false -c hook.push-to-checkout.enabled=false -c hook.pre-auto-gc.enabled=false -c hook.post-rewrite.enabled=false -c hook.sendemail-validate.enabled=false -c hook.fsmonitor-watchman.enabled=false -c hook.p4-changelist.enabled=false -c hook.p4-prepare-changelist.enabled=false -c hook.p4-post-changelist.enabled=false -c hook.p4-pre-submit.enabled=false -c hook.post-index-change.enabled=false -c core.quotepath=false push origin HEAD
+FIX
+out="$(run "$W/mkt-fetch-long.txt" 101 2>&1)"; rc=$?
+eq 'the long-prefix marketplace fetch beside a long-prefix push: rc 1 (HIMMEL-6259)' 1 "$rc"
+contains 'long-prefix fetch pid=520 is ignored (HIMMEL-6259)' "$out" 'ignored pid=520 '
+contains 'its remote-https child pid=521 is ignored (HIMMEL-6259)' "$out" 'ignored pid=521 '
+contains 'long-prefix push pid=522 still withholds (HIMMEL-6259)' "$out" '  pid=522 ppid='
 # Anything broader still withholds: a leg push, a fetch without the three -c flags,
 # a non-github remote, a remote-https under a non-fetch parent, a wrapper that quotes it.
 cat > "$W/mkt-decoys.txt" <<'FIX'
