@@ -48,7 +48,11 @@ wait_free() { # wait_free <host>
 mkdir "$tmp/bin"
 cat >"$tmp/bin/npm" <<'STUB'
 #!/usr/bin/env bash
-[ "$1" = run ] || exit 0
+case "$*" in
+  ci) exit 0 ;;
+  "run build") ;;
+  *) echo "stub npm: unexpected args: $*" >&2; exit 97 ;;
+esac
 node -e "require('net').createServer().listen(4321,'127.0.0.1');setTimeout(()=>{},60000)" >/dev/null 2>&1 &
 echo $! >"$J1_RACER_PID"
 for _ in 1 2 3 4 5 6 7 8 9 10; do (exec 3<>/dev/tcp/127.0.0.1/4321) 2>/dev/null && exit 0; sleep 0.3; done
