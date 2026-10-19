@@ -41,6 +41,11 @@ done
 [ -n "${STUB_FAIL:-}" ] && case "$*" in *"$STUB_FAIL"*) exit 1 ;; esac
 case "$*" in
     *" describe "*)
+        case "$*" in *"associations describe"*) echo "ERROR: (gcloud.compute.network-firewall-policies.associations) Invalid choice: 'describe'." >&2; exit 2 ;; esac
+        if [ -n "${STUB_EXISTS:-}" ]; then case "$*" in *"network-firewall-policies describe"*"--format=json"*)
+            if [ -n "${STUB_NO_ASSOC:-}" ]; then echo '{"name": "himmel-ci-net-policy", "associations": []}'
+            else echo '{"name": "himmel-ci-net-policy", "associations": [{"attachmentTarget": "https://www.googleapis.com/compute/v1/projects/himmel-ci/global/networks/himmel-ci-net", "name": "himmel-ci-net-assoc"}]}'; fi
+            exit 0 ;; esac; fi
         if [ -n "${STUB_RULE_ERR:-}" ]; then case "$*" in *"rules describe"*) printf '%s\n' "$STUB_RULE_ERR" >&2; exit 1 ;; esac; fi
         if [ -n "${STUB_DESCRIBE_ERR:-}" ]; then echo "ERROR: (gcloud) PERMISSION_DENIED: caller lacks permission" >&2; exit 1; fi
         [ -n "${STUB_EXISTS:-}" ] || { echo "ERROR: (gcloud) The resource 'projects/himmel-ci/x' was not found" >&2; exit 1; } ;;
@@ -264,6 +269,23 @@ export STUB_RULE_ERR="ERROR: (gcloud.compute.network-firewall-policies.rules.des
 rc="$(run net-up)"
 if [ "$rc" -ne 0 ] && [ -z "$(rules_create)" ]; then ok "any other priority error stays a failed lookup"; else bad "other priority error: rc=$rc"; fi
 unset STUB_RULE_ERR
+
+# 15. the association is looked up on the policy (gcloud has no associations
+# describe): present when the policy lists it, absent when it does not, and a
+# failed policy lookup creates nothing.
+export STUB_EXISTS=1 STUB_NO_ASSOC=1
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && grep -q 'associations create' "$STUB_LOG" && ! grep -q 'associations describe' "$STUB_LOG"; then ok "a policy listing no association gets one created"; else bad "no-assoc net-up: rc=$rc out=$(cat "$T/out")"; fi
+unset STUB_NO_ASSOC
+rc="$(run net-up)"
+if [ "$rc" -eq 0 ] && ! grep -q 'associations create' "$STUB_LOG"; then ok "a policy listing the association is left alone"; else bad "assoc-present net-up: rc=$rc"; fi
+export STUB_DESCRIBE_ERR=1
+rc="$(run net-down)"
+if [ "$rc" -ne 0 ] && ! grep -q 'associations delete' "$STUB_LOG"; then ok "a failed policy lookup deletes no association"; else bad "assoc lookup error net-down: rc=$rc"; fi
+unset STUB_DESCRIBE_ERR
+rc="$(run status)"
+if [ "$rc" -eq 0 ] && grep -q -E '^association himmel-ci-net-assoc: present' "$T/out"; then ok "status reads the association off the policy"; else bad "status association: rc=$rc out=$(cat "$T/out")"; fi
+unset STUB_EXISTS
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed" >&2; exit 1; }
 echo "all cases passed"
