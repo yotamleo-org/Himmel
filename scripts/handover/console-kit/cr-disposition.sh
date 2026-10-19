@@ -151,14 +151,19 @@ jira_get() {
 
 # judge_ruled <qid> <"fid@fhead disposition"> - a GO verdict for $SHA under the
 # judge's directory names this finding and this disposition on a line of its
-# own. Only GO-at-$SHA files count: go_trust_verdict has checked their macs.
+# own. A file counts only when its verdict line (the first under ## Verdict,
+# as go_trust_verdict parses it) is GO at $SHA and its mac checks.
 judge_ruled() {
-    local scope f
+    local scope f snap line name
     scope=$(go_verdict_scope "$ANCHOR") || return 1
     for f in "$ROOT/$scope/verdicts/$1"/*.md; do
         [ -f "$f" ] || continue
-        grep -qxF "**GO** for head \`$SHA\`." "$f" || grep -qxF "**GO** for head \`$SHA\`" "$f" || continue
-        tr -d '\r' < "$f" | grep -qxF -e "$2" -e "- $2" && return 0
+        snap=$(tr -d '\r' < "$f") || continue
+        line=$(printf '%s\n' "$snap" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }')
+        case "$line" in "**GO** for head \`$SHA\`"|"**GO** for head \`$SHA\`.") ;; *) continue ;; esac
+        name=${f##*/}; name=${name%.md}
+        go_verdict_mac_ok_text "$snap" "$scope" "$1" "$name" || continue
+        printf '%s\n' "$snap" | grep -qxF -e "$2" -e "- $2" && return 0
     done
     return 1
 }
@@ -175,14 +180,17 @@ for(const a of rows){
   if(a.kind!=="amend"||!a.set||typeof a.set!=="object") continue;
   const k=key(a.branch,a.target_head,a.finding_id,a.artifact,a.perspective);
   if("disposition" in a.set){ if(a.pr===Number(e.PR)&&a.head===e.SHA) disp.set(k,a); continue; }
-  amends.set(k,Object.assign({},amends.get(k)||{},a.set));
+  if(!amends.has(k)) amends.set(k,[]);
+  amends.get(k).push(a);
 }
 const SEV={crit:"crit",critical:"crit",imp:"imp",important:"imp"};
 const findings=new Map();
 for(const r of rows){
   if(r.kind!=="finding"||r.branch!==e.BRANCH) continue;
   const k=key(r.branch,r.head,r.finding_id,r.artifact,r.perspective);
-  const o=Object.assign({},r,amends.get(key("",r.head,r.finding_id,r.artifact,r.perspective))||{},amends.get(k)||{});
+  const o=Object.assign({},r);
+  const mine=(amends.get(key("",r.head,r.finding_id,r.artifact,r.perspective))||[]).concat(amends.get(k)||[]);
+  for(const a of mine.sort((x,y)=>rows.indexOf(x)-rows.indexOf(y))) Object.assign(o,a.set);
   findings.set(k,o);
 }
 for(const [k,o] of findings){

@@ -61,9 +61,9 @@ contains() { grep -qF -e "$3" <<< "$2" && echo "ok - $1" || { echo "FAIL - $1: o
 export USER_SLUG=u
 VBUCKET="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
 VSCOPE="u/$VBUCKET"
-# verdict <root> <qid> <verdict line> <pr> [ruling] - a signed judge record, as test-go.sh builds it.
+# verdict <root> <qid> <verdict line> <pr> [ruling] [name] - a signed judge record, as test-go.sh builds it.
 verdict() {
-  local vf="$1/$VSCOPE/verdicts/$2/HIMMEL-1-judge-$2.md" vmac
+  local vf="$1/$VSCOPE/verdicts/$2/${6:-HIMMEL-1-judge-$2}.md" vmac
   mkdir -p "$1/$VSCOPE/verdicts/$2"
   printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\n%s\n\n## Evidence checked\n\ne\n' \
     "$2" "$3" "$4" "${5:-reason}" > "$vf"
@@ -153,6 +153,12 @@ verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 90
 gos 90 "$SHA"
 check    "6: a GO verdict that does not rule the finding -> exit 9" "$rc" "9"
 contains "6: says the verdict does not rule it" "$out" "does not rule"
+JDIR="$HDIR/$VSCOPE/verdicts/JD1"
+{ cat "$JDIR/HIMMEL-1-judge-JD1.md"; printf -- '- codex-9@%s follow-up:HIMMEL-6352\n' "$FHEAD"; } > "$JDIR/forged.md"
+verdict "$HDIR" JD1 "**GO** for head \`$SHA2\`." 90 "- codex-9@$FHEAD follow-up:HIMMEL-6352" other
+gos 90 "$SHA"
+check "6: a ruling only in an unsigned or other-head file -> exit 9" "$rc" "9"
+rm -f "$JDIR/forged.md" "$JDIR/other.md"
 verdict "$HDIR" JD1 "**GO** for head \`$SHA\`." 90 "- codex-9@$FHEAD follow-up:HIMMEL-6352"
 gos 90 "$SHA"
 check "6: judge source with a GO verdict ruling the finding -> exit 0" "$rc" "0"
