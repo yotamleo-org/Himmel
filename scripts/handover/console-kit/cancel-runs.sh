@@ -100,7 +100,7 @@ while [ "$#" -gt 0 ]; do
                     KEEPS="$KEEPS$val
 " ;;
                 --max-cancels)
-                    if ! printf '%s' "$val" | grep -Eq '^[0-9]+$' || [ "$val" -lt 1 ] || [ "$val" -gt 500 ]; then
+                    if ! printf '%s' "$val" | grep -Eq '^[0-9]{1,3}$' || [ "$val" -lt 1 ] || [ "$val" -gt 500 ]; then
                         usage; echo "cancel-runs: --max-cancels needs a number from 1 to 500 (got '$val')" >&2; exit 2
                     fi
                     MAX_CANCELS="$val" ;;
@@ -144,6 +144,8 @@ done
 # A listing that fills the cap may hide more: cancel what was seen, then exit 1 so the
 # caller re-runs to drain the rest.
 LIMIT="${CANCEL_RUNS_LIMIT:-500}"
+printf '%s' "$LIMIT" | grep -Eq '^[0-9]{1,4}$' && [ "$LIMIT" -ge 1 ] \
+    || { echo "cancel-runs: CANCEL_RUNS_LIMIT needs a number from 1 to 9999 (got '$LIMIT')" >&2; exit 2; }
 runs=""
 truncated=0
 for st in queued in_progress waiting requested pending; do

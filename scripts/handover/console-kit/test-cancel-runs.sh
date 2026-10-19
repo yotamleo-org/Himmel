@@ -244,10 +244,15 @@ check "--max-cancels stops at the cap" "2" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d
 check "--max-cancels exits 1 (re-run to drain the rest)" "1" "$rc"
 has "the cancel cap is named" "cap of 2 cancels" "$out"
 
-for bad in 0 abc 501; do
+for bad in 0 abc 501 99999999999999999999; do
     out="$(live --keep-pr 3221 --max-cancels "$bad")"; rc=$?
     check "--max-cancels $bad is a usage error" "2" "$rc"
+    check "--max-cancels $bad cancels nothing" "" "$(cancelled)"
 done
+
+out="$(CANCEL_RUNS_LIMIT=abc live --keep-pr 3221)"; rc=$?
+check "a non-numeric CANCEL_RUNS_LIMIT is a usage error" "2" "$rc"
+check "a non-numeric CANCEL_RUNS_LIMIT cancels nothing" "" "$(cancelled)"
 
 export STUB_RUNS="$WORK/runs-many.json"
 out="$(live --keep-sha "$KEEP")"; rc=$?

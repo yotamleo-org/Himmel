@@ -60,7 +60,8 @@ overridable: a `--repo` that differs from origin refuses) except those on the
 kept heads, and prints `cancelled=<n> failed=<n> kept=<list>`. A keep is
 required; `--all` is the explicit way to keep nothing. A keep that cannot be
 resolved refuses before anything is cancelled. Runs on `main`, and any run not
-from a `pull_request` (push, tag, schedule, workflow_dispatch), are protected
+from a `pull_request` or `pull_request_target` (push, tag, schedule,
+workflow_dispatch), are protected
 and reported as `protected=<n>`; only `--include-protected` cancels them. At
 most `--max-cancels` (default 100, up to 500) runs are cancelled per call, and
 each cancel writes one stderr line with run, branch, sha, event and rc. A
