@@ -91,5 +91,21 @@ has "released-not-done still reported with no unreleased version" "$out" "RELEAS
 has "no-version still reported with no unreleased version" "$out" "NO-VERSION	HIMMEL-3"
 [ "$rc" = 1 ] && pass "exit 1 with no unreleased version" || fail "exit 1 with no unreleased version (rc=$rc)"
 
+# a mirror whose files all lack front matter audited nothing
+B="$WORK/bad/HIMMEL"; mkdir -p "$B"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/bad/HIMMEL.versions.tsv"
+printf 'no front matter\n' > "$B/HIMMEL-1.md"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$B" 2>&1)"; rc=$?
+[ "$rc" = 3 ] && pass "mirror with no parsable ticket exits 3" || fail "mirror with no parsable ticket exits 3 (rc=$rc: $out)"
+
+# an unreadable leg doc stays OWNED but is marked unverified
+printf '{"legs":[{"label":"N9","doc":"%s/legs/HIMMEL-10-N9-gone.md"}]}\n' "$WORK" > "$WORK/fleet-gone.json"
+out="$(run --legs-from "$WORK/fleet-gone.json")"
+has "unreadable leg doc is OWNED with an unverified marker" "$out" "HIMMEL-10	In Progress	v1.0.2	leg:N9?	OWNED"
+
+# the open-PR read is capped at 200: a full page is reported
+printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do printf "%%s\\tt\\tb\\n" "$i"; done\n' > "$WORK/gh-many"; chmod +x "$WORK/gh-many"
+out="$(VSA_GH_CMD="$WORK/gh-many" bash "$SUT" --mirror "$M" 2>&1)"
+has "a full 200-PR page is reported as unknown coverage" "$out" "200-PR cap reached"
+
 printf '%s fail(s)\n' "$fails"
 [ "$fails" = 0 ]

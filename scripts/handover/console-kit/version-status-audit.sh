@@ -84,13 +84,14 @@ if legs_from and os.path.isfile(legs_from):
             doc = leg.get('doc', '')
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
+                unverified = ''
             except OSError:
-                lines = []
+                lines, unverified = [], '?'  # doc unreadable: still OWNED, never reset, but the owner is marked unverified
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
             if marks and marks[-1] == 'WRAPPED':
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                owner.setdefault(k, 'leg:%s' % leg.get('label', '?'))
+                owner.setdefault(k, 'leg:%s%s' % (leg.get('label', '?'), unverified))
     except (OSError, ValueError):
         pass
 gh = os.environ.get('VSA_GH_CMD', 'gh')
@@ -98,6 +99,8 @@ try:
     out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName',
                           '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                          capture_output=True, text=True, timeout=60, check=True).stdout
+    if len(out.splitlines()) >= 200:
+        print('version-status-audit: open PRs unknown (200-PR cap reached); OWNED rows may be missing')
     for line in out.splitlines():
         num = line.split('\t', 1)[0]
         for k in re.findall(r'[A-Za-z]+-\d+', line.split('\t', 1)[-1]):
@@ -105,11 +108,12 @@ try:
 except (OSError, subprocess.SubprocessError):
     print('version-status-audit: open PRs unknown (gh read failed); OWNED rows may be missing')
 
-rows = []
+rows, audited = [], 0
 for n in names:
     m = re.match(r'^---\n(.*?)\n---\n', open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read(), re.S)
     if not m:
         continue
+    audited += 1
     fm = m.group(1)
     key, typ, status = fm_val(fm, 'key'), fm_val(fm, 'type'), fm_val(fm, 'status')
     done = fm_val(fm, 'statusCategory').lower() == 'done'
@@ -129,6 +133,8 @@ for n in names:
         own = owner.get(key) if cls != 'RELEASED-NOT-DONE' else None
         rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else 'RESET'))
 
+if not audited:
+    print('version-status-audit: no ticket in %s has front matter' % mirror, file=sys.stderr); sys.exit(3)
 rows.sort(key=lambda r: (r[0], int(r[1].split('-')[1])))
 for r in rows:
     print('\t'.join(r))
