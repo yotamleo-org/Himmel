@@ -2364,4 +2364,218 @@ done
 rm -rf "$sb25" "$fakebin25"
 fi
 
+# Case 22-fresh — the COMMITTED ledger keeps the real shard split balanced.
+#
+# 22i..22m pin the packing algorithm against synthetic ledgers; none of them
+# can notice the committed ledger going stale, which is how the real split
+# drifted to a 2800s slowest shard against a 2304s floor. The
+# fixture below is copied from the real CI log of green main run 39180908042
+# (shell-unit-shard 1..8): every suite that ran >= 10s, with its measured
+# seconds. The sandbox holds a stub for each, the runner packs them with the
+# committed ledger, and the measured seconds of each shard are summed.
+# The slowest shard cannot beat the heaviest single suite, so the bound is that
+# floor plus 5%.
+echo "== Case 22-fresh (HIMMEL-4075): the committed ledger balances measured shard time =="
+sb22w=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22w.XXXXXX") || { fail "22w: mktemp failed"; sb22w=""; }
+if [ -n "$sb22w" ]; then
+fix22w="$sb22w/measured.tsv"
+cat > "$fix22w" <<'FIXEOF'
+marketplace/plugins/himmel-bus/tests/test-cli.sh	17
+marketplace/plugins/obsidian-triage/tests/test-fxtwitter-enrich.sh	16
+marketplace/plugins/obsidian-triage/tests/test-fxtwitter-quote-own-text.sh	10
+marketplace/plugins/obsidian-triage/tests/test-ig-media-enrich.sh	10
+marketplace/plugins/obsidian-triage/tests/test-yt-scrapling.sh	30
+marketplace/plugins/telegram-himmel/tests/test-telegram-poller-gate.sh	11
+scripts/api-lane/test-claude-api.sh	25
+scripts/ci/test-ci-lint-tree-gates.sh	21
+scripts/ci/test-home-canary.sh	32
+scripts/ci/test-impacted-selection.sh	10
+scripts/ci/test-run-shell-tests-discovery.sh	15
+scripts/ci/test-run-shell-tests-flake.sh	12
+scripts/ci/test-run-shell-tests-rotation-cursor.sh	103
+scripts/ci/test-run-shell-tests-rotation-guards.sh	115
+scripts/ci/test-run-shell-tests-rotation.sh	112
+scripts/ci/test-run-shell-tests-timing.sh	41
+scripts/ci/test-run-shell-tests.sh	119
+scripts/ci/test-suite-concurrency.sh	117
+scripts/ci/test-suite-lock-brand-gap.sh	70
+scripts/ci/test-suite-lock-orphan-reaper.sh	15
+scripts/codex/test-dispatch-codex-exec.sh	77
+scripts/console/test-base-status.sh	11
+scripts/cr/test-clear-cr-marker.sh	120
+scripts/cr/test-critic-first-pass.sh	24
+scripts/cr/test-critic-panel-fallback.sh	16
+scripts/cr/test-critic-panel.sh	45
+scripts/cr/test-finding-reraise.sh	24
+scripts/cr/test-impacted-suites.sh	36
+scripts/cr/test-ledger-append.sh	17
+scripts/cr/test-pr-check-context.sh	55
+scripts/cr/test-pr-check-rounds.sh	746
+scripts/eval/guard-corpus/test-guard-corpus.sh	200
+scripts/eval/lane-quality/pilot-4869/test-pilot.sh	38
+scripts/eval/lane-quality/test-lane-quality.sh	27
+scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
+scripts/graphify/test-graph-cadence.sh	22
+scripts/graphify/test-refresh-graph-map-lock.sh	68
+scripts/graphify/test-refresh-graph-map.sh	44
+scripts/graphify/test-semantic-update.sh	26
+scripts/guardrails/test-check-git-env-scrub.sh	10
+scripts/guardrails/test-graphify-fence.sh	35
+scripts/guardrails/test-lesson-write-fence.sh	98
+scripts/handover/console-kit/test-board.sh	16
+scripts/handover/console-kit/test-close-wrapped-leg.sh	20
+scripts/handover/console-kit/test-console-kit-e2e.sh	16
+scripts/handover/console-kit/test-console-wait.sh	492
+scripts/handover/console-kit/test-go.sh	13
+scripts/handover/console-kit/test-headed-arm-leg.sh	126
+scripts/handover/console-kit/test-judge-ladder.sh	10
+scripts/handover/console-kit/test-leg-pretrust.sh	53
+scripts/handover/console-kit/test-ready-check.sh	34
+scripts/handover/console-kit/test-tick.sh	142
+scripts/handover/console-kit/test-wrap-merged.sh	36
+scripts/handover/console-kit/test-write-verdict.sh	22
+scripts/handover/console/test-console.sh	66
+scripts/handover/test-arm-resume-bus-rebind.sh	13
+scripts/handover/test-arm-resume-context.sh	17
+scripts/handover/test-arm-resume-cron.sh	12
+scripts/handover/test-arm-resume-fast.sh	249
+scripts/handover/test-arm-resume-proxy.sh	12
+scripts/handover/test-arm-resume-queue-lock.sh	26
+scripts/handover/test-headed-arm.sh	120
+scripts/handover/test-konsole-macos.sh	16
+scripts/handover/test-merge-on-green.sh	96
+scripts/handover/test-queue-lock.sh	25
+scripts/handover/test-register-state.sh	11
+scripts/hermes/test-parity-guard.sh	36
+scripts/hermes/test-parity-measure.sh	13
+scripts/himmelctl/test/test-versioned-layout.sh	20
+scripts/himmelctl/test/test-wizard-adopter-profile.sh	23
+scripts/himmelctl/test/test-wizard-luna-sections.sh	14
+scripts/himmelctl/test/test-wizard-probes.sh	38
+scripts/himmelctl/test/test-wizard-save-profile.sh	60
+scripts/himmelctl/test/test-wizard-statusreport.sh	13
+scripts/hooks/test-auto-approve-safe-bash.sh	43
+scripts/hooks/test-block-bare-qmd-query.sh	54
+scripts/hooks/test-block-chokepoint-env-prefix.sh	122
+scripts/hooks/test-block-destructive-commands.sh	2304
+scripts/hooks/test-block-edit-live-settings.sh	151
+scripts/hooks/test-block-glm-external-writes.sh	26
+scripts/hooks/test-block-jira-compound-write.sh	17
+scripts/hooks/test-block-primary-git-writes.sh	423
+scripts/hooks/test-block-read-secrets.sh	21
+scripts/hooks/test-block-tail-pipe-on-gates.sh	19
+scripts/hooks/test-block-unresolved-cr-merge.sh	403
+scripts/hooks/test-block-write-into-main-checkout-cd.sh	42
+scripts/hooks/test-block-write-into-main-checkout-evaldata.sh	164
+scripts/hooks/test-block-write-into-main-checkout-forms.sh	305
+scripts/hooks/test-block-write-into-main-checkout-heredoc.sh	62
+scripts/hooks/test-block-write-into-main-checkout-matrix1.sh	192
+scripts/hooks/test-block-write-into-main-checkout-matrix2.sh	138
+scripts/hooks/test-block-write-into-main-checkout-matrix3.sh	158
+scripts/hooks/test-block-write-into-main-checkout-wrappers.sh	46
+scripts/hooks/test-block-write-into-main-checkout.sh	142
+scripts/hooks/test-bus-deliver-hook.sh	13
+scripts/hooks/test-ci-doc-invariants.sh	10
+scripts/hooks/test-crlf-boundary.sh	30
+scripts/hooks/test-end-session-wiki.sh	35
+scripts/hooks/test-escape-class-corpus.sh	170
+scripts/hooks/test-fork-precommit-core.sh	33
+scripts/hooks/test-guard-implementor-dispatch.sh	237
+scripts/hooks/test-guard-leg-context-handoff.sh	18
+scripts/hooks/test-guard-pr-check-literal.sh	37
+scripts/hooks/test-hook-chain-latency.sh	156
+scripts/hooks/test-hook-rewrite-integrity.sh	14
+scripts/hooks/test-qmd-staleness-notice.sh	43
+scripts/hooks/test-refresh-where-are-we-on-end.sh	14
+scripts/hooks/test-session-end-timeout-budget.sh	12
+scripts/hooks/test-telegram-session-end.sh	12
+scripts/lanes/test-lane-canary.sh	12
+scripts/lanes/tests/test-await-glm-worker.sh	60
+scripts/lanes/tests/test-stop-worker.sh	317
+scripts/lib/test-bank-preflight.sh	16
+scripts/lib/test-claude-headless-trap.sh	17
+scripts/lib/test-claude-headless.sh	41
+scripts/lib/test-fixture-trap-clean.sh	159
+scripts/lib/test-graphify-bin.sh	12
+scripts/lib/test-provenance-read.sh	17
+scripts/lib/test-qmd-bounded.sh	19
+scripts/lib/test-sandbox-run.sh	68
+scripts/lib/test-watch-loop.sh	13
+scripts/lib/test-wire-statusline.sh	18
+scripts/luna/test-graphmap-cadence.sh	14
+scripts/luna/test-vault-stall-cadence.sh	30
+scripts/machine-setup/test-install-plugins-ondemand.sh	13
+scripts/machine-setup/test-install-plugins-provenance.sh	18
+scripts/machine-setup/test-machine-setup-hermetic.sh	12
+scripts/observability/test-tool-call-census.sh	10
+scripts/qmd/test-ensure-qmd-daemon-leak.sh	11
+scripts/qmd/test-ensure-qmd-daemon.sh	49
+scripts/qmd/test-qmd-jina-gate.sh	13
+scripts/telegram/test-dispatch-lane.sh	36
+scripts/telegram/test-restart-bridge.sh	64
+scripts/test-adopt.sh	692
+scripts/test-check-ci-cache.sh	14
+scripts/test-check-ci-run.sh	12
+scripts/test-check-plugin-drift.sh	46
+scripts/test-claude-codex.sh	18
+scripts/test-claude-openrouter.sh	12
+scripts/test-clean-garden-accounting.sh	10
+scripts/test-himmel-doctor.sh	436
+scripts/test-himmel-update-axis-b.sh	10
+scripts/test-himmel-update-check.sh	19
+scripts/test-lane-mirror-seed.sh	39
+scripts/test-luna-upgrade-all.sh	21
+scripts/test-quiet-run.sh	20
+scripts/test-template-nostash-hooks.sh	83
+scripts/test-tmp-reap.sh	100
+scripts/test-uninstall-provenance.sh	426
+scripts/test-uninstall-real-home-callers.sh	71
+scripts/test-uninstall-real-home-runtime.sh	89
+scripts/test-uninstall-routines.sh	45
+scripts/test-uninstall-standalone.sh	28
+scripts/test-uninstall-ux.sh	34
+scripts/test-uninstall.sh	340
+scripts/upstreams/test-upstream-watch.sh	12
+scripts/vm/test-after-report.sh	27
+scripts/vm/test-assert-provenance.sh	13
+scripts/vm/test-dry-run-restore.sh	11
+scripts/vm/test-provenance-roundtrip-dry.sh	34
+scripts/vm/test-vm-lock.sh	22
+scripts/web/research/test-research-path.sh	40
+templates/luna-second-brain/scripts/test-upgrade.sh	49
+templates/luna-second-brain/scripts/test-vault-git.sh	63
+FIXEOF
+while IFS=$'\t' read -r _p _s; do
+  mkdir -p "$sb22w/stubs/$(dirname "$_p")"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$sb22w/stubs/$_p"
+  chmod +x "$sb22w/stubs/$_p"
+done < "$fix22w"
+# The runner keys the ledger by the path it prints, which for a scan root other
+# than `.` is "<root>/<suite>"; re-root the committed ledger's keys the same way.
+awk -F'\t' -v r="$sb22w/stubs/" '/^[[:space:]]*#/ { next } { print r $1 "\t" $2 }' \
+  "$RST_FIXTURE_DIR/suite-durations.tsv" > "$sb22w/ledger.tsv"
+tot22w=0; max22w=0; slow22w=0; n22w=0
+for _i in 1 2 3 4 5 6 7 8; do
+  _out=$(SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1)
+  _t=0
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    _s=$(awk -F'\t' -v k="${_p#"$sb22w"/stubs/}" '$1 == k { print $2 + 0; exit }' "$fix22w")
+    _t=$(( _t + ${_s:-0} ))
+    [ -n "$_s" ] && n22w=$((n22w + 1))
+    [ "${_s:-0}" -gt "$max22w" ] && max22w=${_s:-0}
+  done <<< "$(run_lines "$_out")"
+  tot22w=$((tot22w + _t))
+  [ "$_t" -gt "$slow22w" ] && slow22w=$_t
+done
+floor22w=$(( tot22w / 8 )); [ "$max22w" -gt "$floor22w" ] && floor22w=$max22w
+bound22w=$(( floor22w * 105 / 100 ))
+if [ "$n22w" -ge 100 ] && [ "$slow22w" -le "$bound22w" ]; then
+  pass "22w: slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites)"
+else
+  fail "22w: slowest measured shard ${slow22w}s exceeds ${bound22w}s (floor ${floor22w}s, $n22w suites placed): the ledger is stale, refresh scripts/ci/suite-durations.tsv"
+fi
+rm -rf "$sb22w"
+fi
+
 rst_tally
