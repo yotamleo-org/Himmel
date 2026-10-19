@@ -38,7 +38,7 @@ bad() { fail=$((fail + 1)); echo "not ok - $*"; }
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/dev-graph-test.XXXXXX") || exit 2
 trap 'rm -rf "$TMP"' EXIT
 
-command -v jq >/dev/null 2>&1 || { echo "SKIP - jq not installed"; exit 0; }
+command -v jq >/dev/null 2>&1 || { echo "not ok - jq not installed (the checker needs it, so nothing here could run)"; exit 1; }
 
 # --- fixture ---------------------------------------------------------------
 # fx <dir>: a root holding tool.sh (exit table), wake.sh (WAKE kinds),
