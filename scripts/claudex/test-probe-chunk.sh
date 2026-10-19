@@ -60,6 +60,7 @@ check "past-end message" test -n "$out"
 echo "test: bad argument exits non-zero"
 check "non-numeric rejected" rejects abc
 check "missing arg rejected" rejects
+check "overflowing index rejected" rejects 18446744073709551616
 
 [[ $fails -eq 0 ]] && { echo "all passed"; exit 0; }
 echo "FAIL: $fails" >&2; exit 1

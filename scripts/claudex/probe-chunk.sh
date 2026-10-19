@@ -13,8 +13,8 @@ set -uo pipefail
 CHUNK_BYTES=100000
 
 k="${1:-}"
-if [[ $# -ne 1 || ! "$k" =~ ^[0-9]+$ ]]; then
-  echo "usage: probe-chunk.sh <k>   (k = non-negative integer)" >&2
+if [[ $# -ne 1 || ! "$k" =~ ^[0-9]{1,9}$ ]]; then
+  echo "usage: probe-chunk.sh <k>   (k = integer of at most 9 digits)" >&2
   exit 2
 fi
 k=$((10#$k))
