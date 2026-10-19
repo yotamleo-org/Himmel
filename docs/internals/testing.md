@@ -240,15 +240,34 @@ gated (a secret can land in any file). Only path-pure jobs are gated; a job
 whose suites glob or run files no gate group can enumerate (`lint`,
 `bun-suites`, `claude-startup`, `lanes-and-trust-suites`) is ungated and runs on
 every PR (trust judges j2543e, j2543g), pinned by test-pr-plan.sh A8. Gated
-non-matrix jobs (`guardrail-matrices`, ...) skip at job level, which reports
+non-matrix jobs (`git-env-scrub`, ...) skip at job level, which reports
 `skipped`. The matrix required job `node-suites` and `security-scan` always
 start and skip their steps, so every required name still reports.
+
+The short checks (`secret-scan`, `bwk-awk-mktemp-gate`, `unchecked-mktemp-range`,
+`commit-lint`, `jira-cli-smoke`, `claude-startup`, `guardrail-matrices`,
+`doc-invariants`) run as step groups of one job, `ci-quick` (HIMMEL-5675). A
+gated group skips its own steps. Each old job name stays as a sentinel. It
+carries the required context. It is skipped (green) when ci-quick reports its
+group as `pass`. Otherwise it runs `exit 1`. That includes a cancelled,
+timed-out or skipped ci-quick, and a failed shared step. A red group fails only
+its own sentinel. `scripts/ci/test-ci-quick.sh` pins the shape.
 
 In each `shell-unit-shard`, `scripts/ci/shard-has-work.sh` asks
 `run-shell-tests.sh --list` whether the shard has anything to run under the
 same selection env and skips the apt/bun/ffmpeg/gitleaks/pre-commit setup when
 it has not. The run step and manifest upload stay unconditional, so the
 aggregator's manifest verification is unchanged.
+
+On a pull request the plan also sizes the matrix (HIMMEL-5556).
+`scripts/ci/plan-shards.sh` costs each selected suite from
+`scripts/ci/suite-durations.tsv`. A suite missing from the ledger costs the
+median. It packs the suites longest-first and picks the fewest shards (at most 8) whose
+slowest shard stays under max(600 s, the 8-shard makespan). The shard total
+reaches the run step's `--shard i/N` and the aggregator's `--shards`. Push and
+nightly have no plan and keep 8 shards. If the `--list` fails, the plan falls
+back to the per-shard `shard-has-work.sh` probes at 8. `home-canary` is sized
+the same way over its `--impacted` selection.
 
 ## A failed suite is retried once; a pass on retry is a FLAKE
 

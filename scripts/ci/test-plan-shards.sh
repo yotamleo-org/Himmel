@@ -2,7 +2,8 @@
 # selector: tree-scan
 # scripts/ci/test-plan-shards.sh — scripts/ci/plan-shards.sh: the
 # plan job's list of shell-unit shards that have a suite to run. Each case runs
-# a COPY of plan-shards.sh beside a stub shard-has-work.sh that answers per shard.
+# a COPY of plan-shards.sh beside a stub shard-has-work.sh that answers per shard
+# and a stub run-shell-tests.sh whose --list fails unless a case gives it a list.
 #
 #   PS1  every shard has work                  -> all n listed, nothing absent
 #   PS2  no shard has work (docs-only)         -> shards=[] , every shard absent
@@ -11,7 +12,15 @@
 #   PS5  a probe that prints garbage           -> that shard is listed (fail closed)
 #   PS6  usage error (no / non-numeric n)      -> rc 2
 #   PS7  the probe gets the shard spec and root it was asked about
-#   PS8  ci.yml feeds the shard matrix from the plan output and guards the empty list
+#   PS8  ci.yml feeds the shard matrix and the shard total from the plan output
+#   PS9  sizing off the real ledger: a few short suites take 1 shard, every
+#        ledger suite keeps all n
+#   PS10 sizing off a hand ledger: the smallest N whose longest shard fits 600 s
+#        (or the longest shard at n) wins; a suite absent from it costs the median
+#   PS11 a --list with nothing selected -> shards=[] , total 1
+#   PS12 a --list that fails or lacks its footer -> the probes at n (fail closed)
+#   PS13 the --list gets the runner args after -- and the root
+#   PS14 ci.yml sizes home-canary from the plan, one leg on an empty selection
 #
 # Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
 #
@@ -49,12 +58,23 @@ for a in $STUB_ANSWERS; do
 done
 exit 0
 STUB
+# The runner stub's --list prints $STUB_LIST as [RUN ] lines plus the summary
+# footer; STUB_LIST_MODE=fail (the default) exits 1, nofooter drops the footer.
+# Every call's args go to $RST_LOG.
+cat > "$PS/run-shell-tests.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${RST_LOG:-/dev/null}"
+case "${STUB_LIST_MODE:-fail}" in fail) exit 1 ;; esac
+[ -n "${STUB_LIST:-}" ] && sed 's/^/[RUN ] /' "$STUB_LIST"
+[ "$STUB_LIST_MODE" = nofooter ] || printf '\n== Summary ==\n(--list: nothing executed)\n'
+exit 0
+STUB
 
 run_ps() { STUB_ANSWERS="$1" STUB_LOG="$PS/log" bash "$PS/plan-shards.sh" "${@:2}" 2>/dev/null; }
-check() { # check <label> <answers> <n> <want-shards> <want-absent>
+check() { # check <label> <answers> <n> <want-shards> <want-absent> [<want-total>]
   local out
   out=$(run_ps "$2" "$3" .)
-  if [ "$out" = "$(printf 'shards=%s\nabsent_shards=%s' "$4" "$5")" ]; then pass "$1"; else fail "$1: got [$out]"; fi
+  if [ "$out" = "$(printf 'shards=%s\nabsent_shards=%s\nshard_total=%s' "$4" "$5" "${6:-$3}")" ]; then pass "$1"; else fail "$1: got [$out]"; fi
 }
 
 check "PS1 every shard has work" "1=true 2=true 3=true" 3 "[1,2,3]" ""
@@ -81,5 +101,79 @@ if grep -q 'plan-shards.sh' "$CI" \
 else
   fail "PS8 ci.yml does not wire plan-shards.sh into the shard matrix"
 fi
+total_expr="\${{ needs.plan.outputs.shard_total || 8 }}"
+if grep -qF "run-shell-tests.sh --shard \${{ matrix.shard }}/$total_expr ." "$CI" \
+   && grep -qF "SHARD_TOTAL: $total_expr" "$CI" \
+   && grep -qF -- "--shards \"\$SHARD_TOTAL\"" "$CI" \
+   && grep -qF "shard_total: \${{ steps.shards.outputs.shard_total }}" "$CI"; then
+  pass "PS8 the shards and the aggregator take N from the plan, 8 without one"
+else
+  fail "PS8 ci.yml does not feed shard_total to the shard run and the aggregator verify"
+fi
+
+# PS14: home-canary is sized the same way, off its own --impacted selection, and
+# keeps one leg on an empty one (the host-file sink check runs in every leg).
+if grep -qF -- "plan-shards.sh 8 . -- --impacted \"\$PR_BASE_SHA..HEAD\"" "$CI" \
+   && grep -qF "canary_shards: \${{ steps.canary.outputs.canary_shards }}" "$CI" \
+   && grep -qF "canary_total: \${{ steps.canary.outputs.canary_total }}" "$CI" \
+   && grep -qF "shard: \${{ fromJSON(needs.plan.outputs.canary_shards == '[]' && '[1]' || needs.plan.outputs.canary_shards || '[1,2,3,4,5,6,7,8]') }}" "$CI" \
+   && grep -qF -- "--shard \"\${{ matrix.shard }}/\${{ needs.plan.outputs.canary_total || 8 }}\"" "$CI"; then
+  pass "PS14 home-canary takes its shard list and total from the plan, one leg when empty"
+else
+  fail "PS14 ci.yml does not size home-canary from the plan"
+fi
+
+# PS9: the committed ledger is per-suite timings from real main CI runs.
+cp "$SRC_ROOT/scripts/ci/suite-durations.tsv" "$PS/real-ledger.tsv"
+size() { # size <list file> <ledger> <n> [<mode>]
+  STUB_LIST="$1" STUB_LIST_MODE="${4:-ok}" SUITE_DURATIONS="$2" STUB_ANSWERS="${STUB_ANSWERS:-}" \
+    bash "$PS/plan-shards.sh" "$3" . 2>/dev/null
+}
+grep -v '^#' "$PS/real-ledger.tsv" | awk -F'\t' '$2 ~ /^[0-9]+$/ && $2 <= 20 { print $1 }' | head -5 > "$PS/small.list"
+grep -v '^#' "$PS/real-ledger.tsv" | awk -F'\t' '$2 ~ /^[0-9]+$/ { print $1 }' > "$PS/all.list"
+want=$(printf 'shards=[1]\nabsent_shards=\nshard_total=1')
+out=$(size "$PS/small.list" "$PS/real-ledger.tsv" 8)
+if [ "$(wc -l < "$PS/small.list")" -eq 5 ] && [ "$out" = "$want" ]; then pass "PS9 five short real suites take one shard"; else fail "PS9 small: got [$out]"; fi
+# A full sweep (~15000 s) needs nearly every shard; it may drop one or two only
+# because its longest suite (~2300 s) bounds the run at any N.
+out=$(size "$PS/all.list" "$PS/real-ledger.tsv" 8)
+t=$(printf '%s\n' "$out" | sed -n 's/^shard_total=//p')
+case "$t" in 6|7|8) want=$(printf 'shards=[%s]\nabsent_shards=\nshard_total=%s' "$(seq -s, 1 "$t")" "$t") ;; *) want=x ;; esac
+if [ "$out" = "$want" ]; then pass "PS9 every real ledger suite keeps 6-8 of 8 shards"; else fail "PS9 all: got [$out]"; fi
+
+# PS10: costs 500 400 300 200 100 (sum 1500). LPT spans: N=1 1500, N=2 800,
+# N=3 500 -> N=3 is the first within 600 s.
+printf 'a\t500\nb\t400\nc\t300\nd\t200\ne\t100\n' > "$PS/hand.tsv"
+printf 'a\nb\nc\nd\ne\n' > "$PS/hand.list"
+want=$(printf 'shards=[1,2,3]\nabsent_shards=\nshard_total=3')
+out=$(size "$PS/hand.list" "$PS/hand.tsv" 8)
+if [ "$out" = "$want" ]; then pass "PS10 the smallest N within 600 s wins"; else fail "PS10 600 s: got [$out]"; fi
+# n=2: the span at n (800) is over 600, so N=2 is the floor.
+want=$(printf 'shards=[1,2]\nabsent_shards=\nshard_total=2')
+out=$(size "$PS/hand.list" "$PS/hand.tsv" 2)
+if [ "$out" = "$want" ]; then pass "PS10 a span over 600 s at n keeps n"; else fail "PS10 n=2: got [$out]"; fi
+# x and y are not in the ledger and cost its median (300): spans N=1 700, N=2 400.
+printf 'a\t500\nb\t300\nc\t100\n' > "$PS/med.tsv"
+printf 'x\ny\nc\n' > "$PS/med.list"
+want=$(printf 'shards=[1,2]\nabsent_shards=\nshard_total=2')
+out=$(size "$PS/med.list" "$PS/med.tsv" 8)
+if [ "$out" = "$want" ]; then pass "PS10 a suite absent from the ledger costs the median"; else fail "PS10 median: got [$out]"; fi
+
+: > "$PS/empty.list"
+want=$(printf 'shards=[]\nabsent_shards=1\nshard_total=1')
+out=$(size "$PS/empty.list" "$PS/hand.tsv" 8)
+if [ "$out" = "$want" ]; then pass "PS11 nothing selected starts no shard"; else fail "PS11: got [$out]"; fi
+
+want=$(printf 'shards=[1,2]\nabsent_shards=\nshard_total=2')
+out=$(STUB_ANSWERS="1=true 2=true" size "$PS/hand.list" "$PS/hand.tsv" 2 fail)
+if [ "$out" = "$want" ]; then pass "PS12 a failed --list falls back to the probes at n"; else fail "PS12 fail: got [$out]"; fi
+want=$(printf 'shards=[1,2,3]\nabsent_shards=\nshard_total=3')
+out=$(size "$PS/small.list" "$PS/real-ledger.tsv" 3 nofooter)
+if [ "$out" = "$want" ]; then pass "PS12 a --list without its footer falls back to the probes at n"; else fail "PS12 nofooter: got [$out]"; fi
+
+: > "$PS/rst.log"
+STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" RST_LOG="$PS/rst.log" \
+  bash "$PS/plan-shards.sh" 8 /some/root -- --impacted a..b >/dev/null 2>&1
+if [ "$(cat "$PS/rst.log")" = "--list --impacted a..b /some/root" ]; then pass "PS13 the --list gets the runner args and the root"; else fail "PS13: $(cat "$PS/rst.log")"; fi
 
 rst_tally
