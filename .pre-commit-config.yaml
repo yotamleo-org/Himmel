@@ -435,6 +435,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: no-new-hardcoded-env-values
+        name: no new hardcoded repo/owner slug, Pages URL, GHCR path, home path or Jira host
+        entry: bash scripts/ci/check-hardcoded-env-values.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: added-unwired-check
         name: A file this branch adds must be wired (ready-check item 11)
         language: system

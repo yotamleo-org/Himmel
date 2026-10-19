@@ -46,5 +46,5 @@ new literal. It skips:
   docs, templates, vendored bundles, the detector files)
 - a line carrying `env-literal-ok: <reason>`
 
-Not yet wired into pre-commit or CI: `ci.yml` is single-writer and a follow-up
-ticket carries that wiring.
+Wired as the `no-new-hardcoded-env-values` pre-push hook. The CI job is not
+wired yet: `ci.yml` is single-writer and HIMMEL-6557 carries it.
