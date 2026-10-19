@@ -119,8 +119,7 @@ last GO: <`<pr>:<sha>`, or "none this shift">
 acked: <relay escalation ids acked this shift (only when a relay is live), or "none">
 board: {{BOARD_URL}}
 tracker: {{TRACKER_URL}}
-epics: none
-decisions: none
+{{CARRIED_LIVE_STATE}}
 
 ## Compact instructions
 

@@ -2555,4 +2555,43 @@ check "85 under budget: the first fixture keeps its open-PR facts inline" "$(gre
 check "85 the wrapped-PR bytes tip the second fixture into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff85y")" "1"
 check "85 the wrapped-PR entry is still listed" "$(grep -c '^- PR #5 (N1)' "$handoff85y")" "1"
 
+# --- 86. next carries every shift-spanning Live-state line into the successor --
+# `priority:`, `decisions:`, `epics:`, `versions:` and `tracker-plan:` reach the
+# successor doc verbatim, not only the HANDOFF; legs/queue/last GO/acked stay
+# per-shift. Then the guard: an outgoing doc that lost its predecessor's
+# `priority:` line is refused like a lost `decisions:` line.
+out86="$(console new --bucket carrysrc)"
+doc86A="$root/tester/carrysrc/DEMO-nextleg-${today}A-console.md"
+doc86B="$root/tester/carrydst/DEMO-nextleg-${today}B-console.md"
+pri86='priority: 6127 | 6137(K1) 6143(K7) | 6123 6125'
+dec86='decisions: OPERATOR 10-17 (BINDING): free slots fill only from the priority pool'
+epi86='epics: HIMMEL-6169=12'
+ver86='versions: v1.1.3'
+tpl86='tracker-plan: /fixture/plan'
+awk -v p="$pri86" -v d="$dec86" -v e="$epi86" -v v="$ver86" -v t="$tpl86" '
+    /^epics: none$/ { print e; next }
+    /^decisions: none$/ { print d; print p; print v; print t; next }
+    { print }' "$doc86A" > "$doc86A.new" && mv "$doc86A.new" "$doc86A"
+rc86=0
+console next --bucket carrydst --doc "$doc86A" >/dev/null 2>&1 || rc86=$?
+check "86 next succeeds against a doc carrying priority/decisions/epics" "$rc86" "0"
+for line86 in "$pri86" "$dec86" "$epi86" "$ver86" "$tpl86"; do
+    check "86 successor doc carries '${line86%%:*}:' verbatim" \
+        "$(grep -Fxc "$line86" "$doc86B" 2>/dev/null)" "1"
+done
+check "86 successor doc has no placeholder decisions: none" \
+    "$(grep -Fxc 'decisions: none' "$doc86B" 2>/dev/null)" "0"
+check "86 successor doc has no unrendered {{...}} slot" \
+    "$(grep -c '{{[A-Z_]*}}' "$doc86B" 2>/dev/null)" "0"
+# Guard: A had priority:, outgoing B dropped it.
+mkdir -p "$root/tester/pri86"
+printf '# A — CONSOLE — successor to none (fill signal 70 %%)\n\n## Live state\n%s\n' "$pri86" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}A-console.md"
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\nepics: none\n\n## Results\n' "$today" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
+rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc86=$?
+check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc86" "1"
+check "86 refusal quotes the predecessor's priority line" \
+    "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
