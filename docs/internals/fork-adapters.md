@@ -21,8 +21,9 @@ cannot widen it. Shape and coverage are checked by
 Roles: a runtime dependency is installed or loaded by himmel; an upstream
 contribution keeps the upstream PR flow (no upstream PRs where there are no
 external contributors); a vendored source is copied into himmel; a dormant fork
-is listed and marked, never deleted. Archived forks are not merge targets; an
-unarchived one is registered with `merge_allowed` true.
+is listed and marked, never deleted. Every fork is registered, archived or
+not; only a fork himmel carries a delta on and merges into has `merge_allowed`
+true, so an archived or contribution-only fork stays false.
 
 ## Adding or changing a fork
 
