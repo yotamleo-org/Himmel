@@ -494,7 +494,7 @@ path_is_physically_in_vault() {
         [ "$d" != "$p" ] || return 1
         p="$d"
     done
-    real=$(realpath -- "$p" 2>/dev/null) || return 1 # swallow-ok: failure refuses the grant
+    real=$(realpath "$p" 2>/dev/null) || return 1 # swallow-ok: failure refuses the grant
     [ -n "$real" ] || return 1
     real="$real$rest"
     [ "$real" = "$root" ] && return 0
@@ -521,12 +521,10 @@ whisper_model_is_safe() {
     arg_is_vault_safe "$norm" || return 1
     case "$norm" in
         /*) [ -d "$norm" ] ;;
-        *)  # Bash resolves the relative dir against wherever the last cd left it.
-            if [ -n "$NAV_ROOT_PHYS" ]; then
-                [ -d "$NAV_ROOT_PHYS/$norm" ]
-            else
-                [ -n "$SESSION_CWD_POSIX" ] && [ -d "$SESSION_CWD_POSIX/$norm" ]
-            fi ;;
+        *)  # The segment split drops the separator, so after a cd the engine may run in
+            # the checkout (&&) or still in the session cwd (a pipe): the dir must exist in both.
+            [ -n "$SESSION_CWD_POSIX" ] && [ -d "$SESSION_CWD_POSIX/$norm" ] \
+                && { [ -z "$NAV_ROOT_PHYS" ] || [ -d "$NAV_ROOT_PHYS/$norm" ]; } ;;
     esac
 }
 

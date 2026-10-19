@@ -702,6 +702,8 @@ assert "6449 symlinked dir as relative arg -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" escape/notes" "$VAULT_FIXTURE")")"
 assert "6449 symlinked dir as absolute arg -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"${VAULT_FIXTURE}/real/escape2\"" "$VAULT_FIXTURE")")"
+assert "6449 cd into vault + relative arg through a nested symlink -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${VAULT_FIXTURE_MIXED}\" && python \"${ABS}\" real/escape2/notes" "$VAULT_FIXTURE")")"
 assert "6449 cd through symlinked dir -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd escape && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
 assert "6449 real vault subdir arg still granted" ALLOW \
@@ -743,7 +745,10 @@ assert "6449 tab-joined vault token carrying --whisper-model evil/model -> refus
 assert "6449 tab-joined vault token carrying an outside path -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" vault${TAB}/tmp/outside" "$VAULT_FIXTURE_MIXED")")"
 # After cd into the checkout the model dir is judged where bash will look for it.
-mkdir -p "$VAULT_FIXTURE/vonly"
+mkdir -p "$VAULT_FIXTURE/vonly" || { echo "setup: mkdir vonly failed" >&2; exit 1; }
+# In a pipeline the engine keeps the session cwd, so a dir that exists only under the checkout must not pass either.
+assert "6449 cd into checkout piped to engine + --whisper-model dir existing only in the checkout -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model scripts" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd into checkout + --whisper-model dir existing only in the vault -> refused" PASS \
     "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
 assert "6449 cd target with a backslash (bash drops it) -> refused" PASS \
