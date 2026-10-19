@@ -41,6 +41,7 @@ trap cleanup EXIT
 listening() { (exec 3<>"/dev/tcp/$1/4321") 2>/dev/null; } # listening <host>
 wait_free() { # wait_free <host>
   for _ in 1 2 3 4 5 6 7 8 9 10; do listening "$1" || return 0; sleep 0.3; done
+  ko "port 4321 on $1 never freed"
 }
 
 # --- port claimed mid-build: non-zero exit, port named, no URL, preview never started
