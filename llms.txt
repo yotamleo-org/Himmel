@@ -55,6 +55,6 @@ Data egress from graph extraction is fenced by one policy file, `scripts/guardra
 - [.env.example](.env.example) — every operator flag, grouped by how it reaches code.
 - [marketplace/plugins/handover/README.md](marketplace/plugins/handover/README.md) — cross-session handover state.
 - [docs/himmelctl.md](docs/himmelctl.md) · [docs/cadences.md](docs/cadences.md) · [docs/himmel-bus.md](docs/himmel-bus.md) — `himmelctl` verbs, recurring jobs, the local session bus.
-- [marketplace/plugins/himmel-guard/README.md](marketplace/plugins/himmel-guard/README.md) · [marketplace/plugins/shadcn-mcp/README.md](marketplace/plugins/shadcn-mcp/README.md) · [marketplace/plugins/graphify/README.md](marketplace/plugins/graphify/README.md) — standalone guard plugin; shadcn/ui MCP wrapper; generated graphify skill plugin.
+- [marketplace/plugins/himmel-guard/README.md](marketplace/plugins/himmel-guard/README.md) · [marketplace/plugins/shadcn-mcp/README.md](marketplace/plugins/shadcn-mcp/README.md) · [marketplace/plugins/graphify/README.md](marketplace/plugins/graphify/README.md) — guard, shadcn/ui, graphify plugins.
 - [docs/telegram-bridge.md](docs/telegram-bridge.md) · [docs/hermes-runbook.md](docs/hermes-runbook.md) · [docs/launchers.md](docs/launchers.md) — optional remote control and alternate-model launchers.
 - [docs/README.md](docs/README.md) — the full docs map. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — license attribution.
