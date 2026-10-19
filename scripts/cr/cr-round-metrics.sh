@@ -243,9 +243,14 @@ if (e.SPLIT) {
     const at = Date.parse(a.ts);
     let best = -1, bestD = 60001;
     // a launch row carrying branch+head joins on that key; only keyless rows fall back to the timestamp window
-    const keyed = launches.findIndex((l, i) => !used.has(i) && l.branch && l.head && l.branch === a.branch && sameHead(String(a.head), l.head));
+    let keyed = -1, keyedD = Infinity;
+    launches.forEach((l, i) => {
+      if (used.has(i) || !l.branch || !l.head || l.branch !== a.branch || !sameHead(String(a.head), l.head)) return;
+      const d = Math.abs(Date.parse(l.ts) - at);
+      if (d < keyedD || keyed < 0) { keyed = i; keyedD = d; }
+    });
     if (keyed >= 0) best = keyed;
-    else launches.forEach((l, i) => { if (l.branch && l.head) return; const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
+    else launches.forEach((l, i) => { if (l.branch || l.head) return; const d = Math.abs(Date.parse(l.ts) - at); if (!used.has(i) && d < bestD) { best = i; bestD = d; } });
     const c = best >= 0 ? Number(launches[best].cost_usd) : NaN;
     if (best >= 0 && Number.isFinite(c)) { used.add(best); cost.set(a.branch, (cost.get(a.branch) || 0) + c); matchedCalls.set(a.branch, (matchedCalls.get(a.branch) || 0) + 1); }
   }
