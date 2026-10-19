@@ -24,8 +24,8 @@
 # proxy-env metadata file (the subnet has no other way out).
 #
 # ponytail: pool size is whatever `up` was last told (gcp-runner-autoscale.sh tops it up
-# from the queue depth); upgrade to a budget kill switch and a regional CPU quota pin
-# (operator-side, after the live proof).
+# from the queue depth; `up` preflights the regional CPUS quota, capped at CPU_PIN);
+# upgrade to a budget kill switch (operator-side, after the live proof).
 set -u
 
 REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
@@ -126,9 +126,9 @@ cmd_up() {
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
-    local vcpus="${MACHINE##*-}"
-    # custom types are <family>-custom-<vcpus>-<memory MB>: the vCPU field is second from last
-    case "$MACHINE" in *custom-*-*) vcpus="${MACHINE%-*}"; vcpus="${vcpus##*-}" ;; esac
+    local vcpus="${MACHINE##*-}" shape="${MACHINE%-ext}"
+    # custom types are <family>-custom-<vcpus>-<memory MB>[-ext]: the vCPU field is second from last once -ext is dropped
+    case "$shape" in *custom-*-*) vcpus="${shape%-*}"; vcpus="${vcpus##*-}" ;; esac
     case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
     quota_preflight $((need * vcpus))
 

@@ -57,6 +57,9 @@ printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
     *generate-jitconfig*) [ "${STUB_FAIL:-}" = jit ] && exit 1; echo "JITCFG-abc123" ;;
     *'status=="online"'*) [ "${STUB_ONLINE:-}" = none ] || grep -o 'name=himmel-ci-[^ ]*' "$STUB_LOG" | cut -d= -f2 ;;
+    *"actions/runners --jq"*'select(.name=='*)
+        rn="$(printf '%s' "$*" | sed -n 's/.*select(\.name=="\([^"]*\)").*/\1/p')"
+        [ -n "$rn" ] && grep -qF "name=$rn" "$STUB_LOG" && printf '4242\n' ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
     *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
 esac
@@ -258,6 +261,8 @@ export STUB_QUOTA="8.0	4.0"
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "quota with exactly 4 vCPU headroom creates the VM"; else bad "exact headroom: rc=$rc"; fi
 export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=e2-custom-4-8192
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "a custom machine type counts its vCPU field, not the memory"; else bad "custom machine: rc=$rc"; fi
+export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=n2-custom-4-32768-ext
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "an extended-memory custom type (-ext suffix) counts its vCPU field"; else bad "custom -ext machine: rc=$rc"; fi
 unset STUB_QUOTA GCP_RUNNERS_MACHINE
 export STUB_FAIL=quota
 rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "an unreadable quota refuses to create"; else bad "quota read fail: rc=$rc"; fi
