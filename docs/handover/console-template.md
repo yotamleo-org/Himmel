@@ -206,7 +206,7 @@ bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` 
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Idle capacity is a duty.** `WAKE underfilled`: `gen-briefs.py` the pool,
-  launch `<slack>`; `POOL-EMPTY`: unblock collisions, draft specs, or idle;
+  launch `<slack>`; `POOL-EMPTY`: unblock, draft specs, `NEXT-TIER` if ruled;
   `capacity=unknown` = census failed. [prose]
 - **A leg's BLOCKED, permission prompt, or question comes to the console first** —
   say so in every brief. **One session = one worktree.** [prose]
