@@ -17,7 +17,8 @@
 # replaces that box, and Enter there would confirm its highlighted option, so
 # such a screen (or one that cannot be read) gets no keystroke. A running turn
 # keeps the box but shows a spinner line (`✶ Smooshing… (16s · thinking)`) above
-# it, and that screen gets no keystroke either.
+# it, and that screen gets no keystroke either; nor does a box holding a draft,
+# which Enter would submit.
 # The target must be the named session: at startup and again before every wake
 # the konsole session's processId must run claude (argv0) with `-n <name>`, or
 # the waker refuses with rc=4.
@@ -105,13 +106,15 @@ named_target() { # the session's process must be claude launched as `-n <name>`;
 }
 named_target
 
-at_prompt() { # the screen shows the idle input box (a ❯ line between two ─ rules) and no running turn's spinner above it
+at_prompt() { # the screen shows the idle, empty input box (a bare ❯ line between two ─ rules) and no running turn's spinner above it
     konsole getAllDisplayedText true
     printf '%s\n' "$out" | awk '
         { line[NR] = $0 }
         /^❯/ { at = NR }
         END {
             if (!(at > 1 && line[at - 1] ~ /^─/ && line[at + 1] ~ /^─/)) exit 1
+            draft = line[at]; sub(/^❯/, "", draft); gsub(/\302\240|[ \t]/, "", draft)
+            if (draft != "") exit 1
             for (i = at - 2; i > 0 && i >= at - 9; i--) if (line[i] ~ /^[^ ]+ [A-Z][a-z]+…/) exit 1
         }'
 }

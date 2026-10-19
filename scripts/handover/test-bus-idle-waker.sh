@@ -163,6 +163,9 @@ QSCREEN="$FIX/screen-trust.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a digit-free menu (the trust dialog) gets no keystroke either" || fail "typed into the trust dialog: $(cat "$QLOG")"
 QSCREEN="$FIX/screen-busy.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn (spinner above the input box) gets no keystroke" || fail "typed into a busy turn: $(cat "$QLOG")"
+sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle.txt" > "$tmp/draft-screen"
+QSCREEN="$tmp/draft-screen" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "an input box holding a draft gets no keystroke (Enter would submit it)" || fail "typed onto a draft: $(cat "$QLOG")"
 : > "$tmp/empty-screen"
 QSCREEN="$tmp/empty-screen" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a blank screen (no input box seen) gets no keystroke" || fail "typed blind: $(cat "$QLOG")"
