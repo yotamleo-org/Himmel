@@ -817,27 +817,30 @@ def _pr_head_branch(cmd: str) -> str:
 
 def _pending_cr_reason(start: str, head_branch: str = ""):
     """Block reason if the repo at `start` has a pending CR marker for
-    `head_branch` (the PR's explicit head) or else its checked-out branch,
-    else None."""
+    `head_branch` (the PR's explicit head) or its checked-out branch, else
+    None. Both are checked, so a misparsed head cannot hide the checked-out
+    branch's marker."""
     repo_root, git_path = _git_dir_for(start)
     if not repo_root:
         return None
-    branch = head_branch or _current_branch(git_path)
-    if not branch:
+    branches = [b for b in (_current_branch(git_path), head_branch) if b]
+    if not branches:
         return None
     common = _common_git_dir(git_path)
     if not common:
         return ("Cannot read the repo's git dir to check for a pending CR "
                 "marker — refused fail-closed.")
-    try:
-        os.stat(os.path.join(common, "cr-pending", branch))
-    except FileNotFoundError:
-        return None
-    except OSError:
-        return ("The pending CR marker cannot be read — refused fail-closed.")
-    return (f"A CR review is pending for branch {branch}: run /pr-check "
-            "(clear-cr-marker.sh) before `gh pr create` "
-            "(check-cr-marker-on-pr-create parity).")
+    for branch in branches:
+        try:
+            os.stat(os.path.join(common, "cr-pending", branch))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return ("The pending CR marker cannot be read — refused fail-closed.")
+        return (f"A CR review is pending for branch {branch}: run /pr-check "
+                "(clear-cr-marker.sh) before `gh pr create` "
+                "(check-cr-marker-on-pr-create parity).")
+    return None
 
 
 def _usable_dir(cand) -> str:
