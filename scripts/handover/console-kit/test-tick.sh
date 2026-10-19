@@ -187,6 +187,8 @@ export HANDOVER_DIR="$W/handover"
 export HIMMEL_TRUST_LEDGER_DIR="$W/trust-ledger"
 export REPO="$W/repo"
 export TICK_TMPDIR="$W"
+# no stall probe by default: a real pr-stall.sh against the stub gh would add stall=? to every line
+export TICK_STALL_PROBE="$W/no-stall-probe" TICK_STALL_CACHE="$W/stall.cache"
 # station= reads this state file; never the real ~/.himmel one.
 export TICK_STATION_STATE="$W/station-sync.state"
 export PS_FIXTURE="$W/ps-none.txt"
