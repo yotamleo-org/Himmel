@@ -152,8 +152,8 @@ jira_get() {
 # judge_ruled <qid> <"fid@fhead disposition"> - a GO verdict for $SHA under the
 # judge's directory names this finding and this disposition on a line of its
 # own. A file counts only when its verdict line (the first under ## Verdict,
-# as go_trust_verdict parses it) is GO at $SHA, it names `pr: $PR`, and its
-# mac checks.
+# as go_trust_verdict parses it) is GO at $SHA, its pr: line (two lines below
+# it) names $PR, and its mac checks. The ruling counts only inside ## Verdict.
 judge_ruled() {
     local scope f snap line name
     scope=$(go_verdict_scope "$ANCHOR") || return 1
@@ -164,8 +164,8 @@ judge_ruled() {
         case "$line" in "**GO** for head \`$SHA\`"|"**GO** for head \`$SHA\`.") ;; *) continue ;; esac
         name=${f##*/}; name=${name%.md}
         go_verdict_mac_ok_text "$snap" "$scope" "$1" "$name" || continue
-        printf '%s\n' "$snap" | grep -qxF "pr: $PR" || continue
-        printf '%s\n' "$snap" | grep -qxF -e "$2" -e "- $2" && return 0
+        [ "$(printf '%s\n' "$snap" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }')" = "pr: $PR" ] || continue
+        printf '%s\n' "$snap" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } /^## / { p = 0 } p' | grep -qxF -e "$2" -e "- $2" && return 0
     done
     return 1
 }
