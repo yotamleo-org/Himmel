@@ -1593,31 +1593,31 @@ for c in \
     'gh variable set CI_GCP --body off' \
     'gh variable set CI_GCP --body on' \
     'gh variable set CI_GCP_X --body off -R yotamleo/Himmel' \
-    'gh variable set OTHER --body off' \
-    'gh variable set CI_GCP --body maybe' \
-    'gh variable set CI_GCP --body offf' \
-    'gh variable set CI_GCP' \
-    'gh variable set CI_GCP --body off --body on' \
-    'gh variable set CI_GCP --body off --env-file x' \
-    'gh variable set CI_GCP --body off --org o' \
+    'gh variable set OTHER --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body maybe -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body offf -R yotamleo/Himmel' \
+    'gh variable set CI_GCP -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --body on -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --env-file x -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off --org o -R yotamleo/Himmel' \
     'gh variable set CI_GCP --body off -R other/repo' \
     'gh variable set CI_GCP --body off -R yotamleo/Himmel -R other/repo' \
-    'gh variable set CI_GCP CI_GCP2 --body off' \
-    'gh variable delete CI_GCP' \
-    'gh variable remove CI_GCP' \
-    'gh secret set CI_GCP --body off' \
-    'gh variable set CI_GCP --body off && gh secret set A' \
-    'gh variable set CI_GCP --body off; gh variable set OTHER --body 1' \
-    'gh variable set CI_GCP --body $(echo off)' \
-    'gh variable set CI_GCP --body "$X"' \
+    'gh variable set CI_GCP CI_GCP2 --body off -R yotamleo/Himmel' \
+    'gh variable delete CI_GCP -R yotamleo/Himmel' \
+    'gh variable remove CI_GCP -R yotamleo/Himmel' \
+    'gh secret set CI_GCP --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel && gh secret set A' \
+    'gh variable set CI_GCP --body off -R yotamleo/Himmel; gh variable set OTHER --body 1' \
+    'gh variable set CI_GCP --body $(echo off) -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body "$X" -R yotamleo/Himmel' \
     'gh variable set CI_GCP --body off -R "$R"' \
-    'gh variable set "$N" --body off' \
-    'gh variable set CI_GCP --body `echo off`' \
-    'GH_REPO=other/repo gh variable set CI_GCP --body off' \
-    'GH_TOKEN=x gh variable set CI_GCP --body off' \
-    'env GH_REPO=other/repo gh variable set CI_GCP --body off' \
-    'command gh variable set CI_GCP --body off' \
-    'sudo gh variable set CI_GCP --body off' \
+    'gh variable set "$N" --body off -R yotamleo/Himmel' \
+    'gh variable set CI_GCP --body `echo off` -R yotamleo/Himmel' \
+    'GH_REPO=other/repo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'GH_TOKEN=x gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'env GH_REPO=other/repo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'command gh variable set CI_GCP --body off -R yotamleo/Himmel' \
+    'sudo gh variable set CI_GCP --body off -R yotamleo/Himmel' \
     'bash -c "gh variable set OTHER --body off"' \
     'gh api -X PATCH repos/yotamleo/Himmel/actions/variables/CI_GCP -f value=off'; do
     assert_rc "6431 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
