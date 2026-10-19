@@ -700,9 +700,9 @@ not_contains 'a relates link is no blocker (the linking card names only its bloc
 mdir="$bb"
 mk 95 'To Do' '["v1.1.3"]' 'colon form' 'To Do'
 mdir="$mir"
-printf '%s\n' '' '## Description' '' 'BLOCKED-BY: HIMMEL-91. Now unblocked by HIMMEL-93.' >> "$bb/HIMMEL-95.md"
+printf '%s\n' '' '## Description' '' 'BLOCKED-BY: HIMMEL-91. Now unblocked by HIMMEL-93.' 'Depends on HIMMEL-96, HIMMEL-97, and HIMMEL-98.' >> "$bb/HIMMEL-95.md"
 bbout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bb" --priority-file "$pf" 2>&1)"
-contains 'an upper-case BLOCKED-BY: form lands in the suffix; "unblocked by" is no blocker' "$bbout" 'HIMMEL-95 [To Do] colon form {blocked-by: HIMMEL-91 open}'
+contains 'an upper-case BLOCKED-BY: form lands in the suffix; "unblocked by" is no blocker' "$bbout" 'HIMMEL-95 [To Do] colon form {blocked-by: HIMMEL-91 open, HIMMEL-96 open, HIMMEL-97 open, HIMMEL-98 open}'
 
 # --- done-in-future counts every unreleased version, not only v1.0.x.
 dfm="$W/dfm2"

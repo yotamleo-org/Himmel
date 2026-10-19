@@ -702,7 +702,7 @@ def priority_groups(path):
     return [(n, [int(k) for k in PRIO_KEY_RE.findall(sg)]) for n, sg in zip(names, segs)]
 
 
-_DEP_RE = re.compile(r'\b(?:depends[ -]on|blocked[ -]by):?\s+(HIMMEL-\d+(?:\s*(?:,|and|\+)\s*HIMMEL-\d+)*)', re.I)
+_DEP_RE = re.compile(r'\b(?:depends[ -]on|blocked[ -]by):?\s+(HIMMEL-\d+(?:\s*(?:,(?:\s*and)?|and|\+)\s*HIMMEL-\d+)*)', re.I)
 
 
 def blockers(mir, m):
