@@ -1669,8 +1669,9 @@ for c in \
     $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --env production' \
     $'gh variable set ci_gcp --body off -R yotamleo/himmel\r --body maybe' \
     $'gh variable set ci_gcp --body off -R yotamleo/himmel\v -R other/repo' \
-    $'gh variable set ci_gcp --body off -R yotamleo/himmel\f -R other/repo'; do
-    l=${c//$'\r'/<CR>}; l=${l//$'\v'/<VT>}; l=${l//$'\f'/<FF>}
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\f -R other/repo' \
+    $'gh variable set ci_gcp --body off -R yotamleo/himmel\ngh issue list'; do
+    l=${c//$'\r'/<CR>}; l=${l//$'\v'/<VT>}; l=${l//$'\f'/<FF>}; l=${l//$'\n'/<LF>}
     assert_rc "6431 deny: $l" 2 "$(run_case "$(j_bash "$c")")"
 done
 

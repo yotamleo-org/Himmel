@@ -1250,7 +1250,7 @@ _gh_api() {
 # naming this repository (yotamleo/Himmel or its canonical slug
 # yotamleo-org/Himmel; an omitted repo would follow GH_REPO or the checkout),
 # nothing else. The command text must hold only ASCII letters, digits, _ . / =
-# -, space, tab and newline: no quote, backslash, redirect or other shell
+# -, space and tab: no quote, backslash, redirect, newline or other shell
 # metacharacter (the tokenizer splits `-r>x` into -r and a dropped redirect),
 # and no CR (the guard reads it as a line break, the shell does not). Its words
 # then split on whitespace alone, exactly as the shell splits them. The words
@@ -1262,7 +1262,7 @@ _gh_api() {
 _gh_cigcp() {
     local j=$1 n=${#_gc_w[@]} w pos='' body='' repo='' nb=0 nr=0 raw LC_ALL=C
     [ "$j" = 1 ] || return 1
-    [[ $cmd == *[!A-Za-z0-9_./=\ $'\t\n'-]* ]] && return 1
+    [[ $cmd == *[!A-Za-z0-9_./=\ $'\t'-]* ]] && return 1
     read -rd '' -a raw <<<"$cmd" || true # swallow-ok: read -d '' always ends at EOF with status 1
     for w in ${raw[@]+"${raw[@]}"}; do
         case "$w" in
