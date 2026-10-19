@@ -258,7 +258,7 @@ _needles=('? vault path' '? handover path' '? lanes' \
           'always-on machine' '? cadences —' \
           'Protected Health Information' \
           "personal/medical vault this machine's agents must never send" \
-          'walk through luna secrets' \
+          'walk through secrets' \
           'configure the telegram bridge' '? bridge .env path' \
           '? whisper CLI path' '? whisper model [')
 # '? whisper model filename' (the old free-text prompt) is now
@@ -799,7 +799,7 @@ whisper_case_input() {
   # one extra blank line vs. before — the new personal/medical
   # vault question sits between PHI and secretsWalk, defaults 'no' on blank,
   # so no follow-up path/marker sub-answers are ever reached here.
-  printf 'custom\n\ndefault-template\n\n\nnone\n\n\nnone\n\n\n\n\non\n\n\n%s\n' "$1"
+  printf 'custom\n\ndefault-template\n\n\nnone\n\n\nnone\n\n\n\non\n\n\n%s\n' "$1"
   if [ -n "${2:-}" ]; then printf '%s\n' "$2"; fi
   printf '\n'
 }
