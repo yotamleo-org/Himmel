@@ -810,8 +810,10 @@ def _pr_head_branches(cmd: str) -> list:
             val = toks[i + 1] if i + 1 < len(toks) else ""
         elif t.startswith("--head="):
             val = t[len("--head="):]
-        elif t.startswith("-H") and not t.startswith("--"):
-            val = t[2:]
+        elif t.startswith("-") and not t.startswith("--") and "H" in t:
+            val = t.split("H", 1)[1].lstrip("=")
+            if not val:
+                val = toks[i + 1] if i + 1 < len(toks) else ""
         if val:
             heads.append(val.rsplit(":", 1)[-1])
     return heads
