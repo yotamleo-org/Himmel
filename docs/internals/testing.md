@@ -621,7 +621,9 @@ completed as failure, cancelled or timed_out; a live or green head run, a run
 already rerun once and no run at the head are no-ops. `--run <id>` does the same
 but exits 1 when that run's sha is not its PR's current head. `--fleet` runs
 `cancel-superseded-runs.sh` first, then the `<pr>` pass over every open PR: the
-one sanctioned recovery after an outage. Every read, including a re-read of the
-PR heads, precedes the first rerun, so a `gh` error reruns nothing and exits 1.
+one sanctioned recovery after an outage. Every run read precedes the first
+rerun, so a `gh` error there reruns nothing and exits 1. The PR heads are
+re-read right before each rerun and a moved head is skipped, so a fleet pass can
+rerun some PRs and still exit 1 when a later re-read or rerun fails.
 
 `bash scripts/lint/flag-parity.sh [--staged | --changed A..B] --baseline scripts/lint/flag-parity-baseline.tsv` fails a doc (`docs/`, `.claude/commands/`, skills) that writes a `--flag` after a tracked script name the script lacks; `--advisory` lists usage-header flags no doc mentions. Pre-commit and the CI lint job run it; ~0.3 s on the full tree.
