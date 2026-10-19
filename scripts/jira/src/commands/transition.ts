@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
+import { earliestUnreleased, fetchVersions, projectFromKey, setFixVersion } from './versions.js';
 
 export function findTransition(
   transitions: JiraTransition[],
@@ -16,7 +17,8 @@ export function registerTransition(program: Command): void {
   program
     .command('transition <key> <status>')
     .description('Transition a Jira issue to a new status')
-    .action(async (key: string, status: string) => {
+    .option('--no-version', 'Do not stamp the current fixVersion on a versionless Done close')
+    .action(async (key: string, status: string, options: { version: boolean }) => {
       const { transitions } = await request<{ transitions: JiraTransition[] }>(
         'GET',
         `/issue/${key}/transitions`,
@@ -32,5 +34,19 @@ export function registerTransition(program: Command): void {
       });
       writeJiraBreadcrumb(key);
       console.log(`${key} → ${match.name}`);
+      // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
+      // another Done-category status would need statusCategory from the transition payload.
+      if (options.version && match.name.toLowerCase() === 'done') {
+        const fixVersions = (
+          await request<{ fields: { fixVersions?: unknown[] } }>('GET', `/issue/${key}?fields=fixVersions`)
+        ).fields.fixVersions;
+        if (!fixVersions || fixVersions.length === 0) {
+          const version = earliestUnreleased(await fetchVersions(projectFromKey(key)));
+          if (version) {
+            await setFixVersion(key, 'add', version);
+            console.log(`${key} fixVersion +${version} (earliest unreleased; --no-version opts out)`);
+          }
+        }
+      }
     });
 }
