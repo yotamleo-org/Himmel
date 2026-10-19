@@ -76,5 +76,20 @@ out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/gh-fail" bash "$SUT" --mirror "$M" 2
 has "unreadable open-PR set is reported" "$out" "open PRs unknown"
 has "rows still print when gh fails" "$out" "HIMMEL-10"
 
+# nothing audited must not read as clean
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$WORK/absent/HIMMEL" 2>&1)"; rc=$?
+[ "$rc" = 3 ] && pass "unreadable mirror exits 3" || fail "unreadable mirror exits 3 (rc=$rc: $out)"
+E="$WORK/empty/HIMMEL"; mkdir -p "$E"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/empty/HIMMEL.versions.tsv"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$E" 2>&1)"; rc=$?
+[ "$rc" = 3 ] && pass "empty mirror exits 3" || fail "empty mirror exits 3 (rc=$rc: $out)"
+
+# no unreleased version: RELEASED-NOT-DONE and NO-VERSION still report
+A="$WORK/allrel/HIMMEL"; mkdir -p "$A"; printf 'v1.0.0\ttrue\t2026-01-01\tfalse\n' > "$WORK/allrel/HIMMEL.versions.tsv"
+cp "$M/HIMMEL-2.md" "$M/HIMMEL-3.md" "$M/HIMMEL-10.md" "$A/"
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$A" 2>&1)"; rc=$?
+has "released-not-done still reported with no unreleased version" "$out" "RELEASED-NOT-DONE	HIMMEL-2"
+has "no-version still reported with no unreleased version" "$out" "NO-VERSION	HIMMEL-3"
+[ "$rc" = 1 ] && pass "exit 1 with no unreleased version" || fail "exit 1 with no unreleased version (rc=$rc)"
+
 printf '%s fail(s)\n' "$fails"
 [ "$fails" = 0 ]

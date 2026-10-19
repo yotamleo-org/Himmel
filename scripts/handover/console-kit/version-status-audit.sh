@@ -24,7 +24,8 @@
 #
 # Env (tests): VSA_GH_CMD replaces `gh`.
 #
-# Exit: 0 no RESET row; 1 at least one RESET row; 2 usage.
+# Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 3 nothing audited
+# (mirror unreadable or empty, versions file missing).
 # PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
 set -u
 mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; legs_from="${LEGS_FROM:-}"; owners=""
@@ -51,24 +52,25 @@ def fm_val(fm, name):
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
 except OSError as e:
-    print('version-status-audit: mirror unreadable (%s)' % e, file=sys.stderr); sys.exit(0)
+    print('version-status-audit: mirror unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
+if not names:
+    print('version-status-audit: no tickets in %s' % mirror, file=sys.stderr); sys.exit(3)
 
 def nat(v): return [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)]
 unreleased, released = [], set()
 vf = mirror.rstrip('/') + '.versions.tsv'
-if os.path.exists(vf):
-    for line in open(vf, encoding='utf-8', errors='replace'):
-        p = line.rstrip('\n').split('\t')
-        if len(p) < 2 or p[0].startswith('zz-'):
-            continue
-        if p[1].strip() == 'true':
-            released.add(p[0])
-        elif p[1].strip() == 'false' and not (len(p) > 3 and p[3].strip() == 'true'):
-            unreleased.append(p[0])
+if not os.path.exists(vf):
+    print('version-status-audit: versions file missing (%s)' % vf, file=sys.stderr); sys.exit(3)
+for line in open(vf, encoding='utf-8', errors='replace'):
+    p = line.rstrip('\n').split('\t')
+    if len(p) < 2 or p[0].startswith('zz-'):
+        continue
+    if p[1].strip() == 'true':
+        released.add(p[0])
+    elif p[1].strip() == 'false' and not (len(p) > 3 and p[3].strip() == 'true'):
+        unreleased.append(p[0])
 unreleased.sort(key=nat)
-active = unreleased[0] if unreleased else None
-if active is None:
-    print('version-status-audit: no unreleased version in %s' % vf, file=sys.stderr); sys.exit(0)
+active = unreleased[0] if unreleased else None  # None: no LATER-VERSION row can exist
 
 # owners: live legs and open PRs
 owner = {}
@@ -116,7 +118,7 @@ for n in names:
     open_vers = [v for v in vers if v in unreleased]
     cls = None
     if open_vers:
-        if started and all(nat(v) > nat(active) for v in open_vers):
+        if started and active and all(nat(v) > nat(active) for v in open_vers):
             cls = 'LATER-VERSION'
     elif vers and all(v in released for v in vers):
         if not done:
