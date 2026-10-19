@@ -137,7 +137,7 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #   STUB_PROTECTION      the guard-2b branch-protection read, as
 #                        the pre-joined shape the script's own --jq emits:
 #                        "<enforce_admins.enabled>|<#contexts>|<#checks>".
-#                        Default "true|10|0" (the live yotamleo/Himmel shape:
+#                        Default "true|10|0" (the live yotamleo-org/Himmel shape:
 #                        enforce_admins on, 10 required contexts). Only read on
 #                        the non-private path — a private repo never reaches it.
 #   STUB_PROTECTION_FAIL=1  the guard-2b `gh api .../protection` exits 1 (404 /
@@ -1063,11 +1063,11 @@ have_jq_2869=0; command -v jq >/dev/null 2>&1 && have_jq_2869=1
 
 # 2869-1. The configured public origin, under branch protection with required
 # status checks → proceeds to the merge exactly like a private repo would.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="pubok01" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="pubok01" \
     run_mog 0 "configured public origin under branch protection → merged"
 assert_merge_has "2869-1: merge pins the certified sha" "--match-head-commit pubok01"
 assert_merge_has "2869-1: merge uses --squash" "--squash"
-assert_gh_has "2869-1: reads branch protection on the configured origin" "api repos/yotamleo/Himmel/branches/main/protection"
+assert_gh_has "2869-1: reads branch protection on the configured origin" "api repos/yotamleo-org/Himmel/branches/main/protection"
 assert_audit_has "2869-1: audit records the merge" "MERGED"
 
 # 2869-1b. Every other allow-path case above (2869-1,
@@ -1083,17 +1083,17 @@ assert_audit_has "2869-1: audit records the merge" "MERGED"
 # shape, `strict` + a `contexts` array of real-looking check names) through
 # the script's OWN filter, asserting the result is one the gate ACCEPTS.
 if [ "$have_jq_2869" = "1" ]; then
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="jqok01" \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="jqok01" \
         STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":{"strict":true,"contexts":["lint","shell-unit (ubuntu-latest)","shellcheck"]}}' \
         run_mog 0 "realistic protected-branch JSON through the real filter → merged"
     assert_merge_has "2869-1b: merge pins the certified sha" "--match-head-commit jqok01"
-    assert_gh_has "2869-1b: reads branch protection on the configured origin" "api repos/yotamleo/Himmel/branches/main/protection"
+    assert_gh_has "2869-1b: reads branch protection on the configured origin" "api repos/yotamleo-org/Himmel/branches/main/protection"
 else
     echo "  SKIP: jq not installed — realistic protected-branch-JSON allow case (HIMMEL-2869, [codex-1])"
 fi
 
 # 2869-2. Protection unreadable (404 / API failure) → refuse, no merge.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
     run_mog 12 "public origin, protection unreadable → exit 12"
 assert_gh_lacks "2869-2: no merge attempted" "pr merge"
 assert_audit_has "2869-2: audits not-protected" "reason=not-protected"
@@ -1102,27 +1102,27 @@ assert_audit_has "2869-2: audits not-protected" "reason=not-protected"
 # answers with NOTHING (rather than a non-zero gh exit) must refuse exactly
 # like one that errors, never be read as "protected". The stub preserves an
 # explicitly-empty STUB_PROTECTION (`-`, not `:-`) so this path is reachable.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION="" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION="" \
     run_mog 12 "public origin, empty protection body → exit 12"
 assert_gh_lacks "2869-2b: no merge attempted" "pr merge"
 assert_audit_has "2869-2b: audits not-protected" "reason=not-protected"
 
 # 2869-3. Protection present but NO required status checks → refuse. This is
 # the gate the whole relaxation leans on.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION="true|0|0" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION="true|0|0" \
     run_mog 12 "public origin, no required checks → exit 12"
 assert_gh_lacks "2869-3: no merge attempted" "pr merge"
 assert_audit_has "2869-3: audits not-protected" "reason=not-protected"
 
 # 2869-3b. enforce_admins off → refuse, even with required checks present.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION="false|10|0" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION="false|10|0" \
     run_mog 12 "public origin, enforce_admins off → exit 12"
 assert_gh_lacks "2869-3b: no merge attempted" "pr merge"
 assert_audit_has "2869-3b: audits not-protected" "reason=not-protected"
 
 # 2869-3c. GitHub's newer `checks` list (instead of `contexts`) also satisfies
 # the gate — both required-status-check shapes count.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION="true|0|10" STUB_SHA="checksok01" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION="true|0|10" STUB_SHA="checksok01" \
     run_mog 0 "public origin, protection via 'checks' list → merged"
 assert_merge_has "2869-3c: merge pins the certified sha" "--match-head-commit checksok01"
 
@@ -1141,6 +1141,13 @@ STUB_NWO="someone/Himmel" STUB_CWD_NWO="someone/Himmel" STUB_PRIVATE=false HIMME
 assert_gh_lacks "2869-4b: no merge attempted" "pr merge"
 assert_audit_has "2869-4b: audits not-private" "reason=not-private"
 
+# 6502. The pre-org-move slug is no longer the configured origin, even under
+# protection with required checks.
+STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    run_mog 12 "old public origin slug → exit 12"
+assert_gh_lacks "6502: no merge attempted" "pr merge"
+assert_audit_has "6502: audits not-private" "reason=not-private"
+
 # 2869-5. Regression anchor: a private repo is unaffected, and does not pay
 # the protection round-trip at all.
 STUB_PRIVATE=true STUB_NWO="acme/private-repo" STUB_CWD_NWO="acme/private-repo" STUB_SHA="privok01" \
@@ -1149,7 +1156,7 @@ assert_gh_lacks "2869-5: private repo never reads protection" "/protection"
 
 # 2869-6. Pre-merge re-read: guard 2b passes, but protection is GONE by the
 # pre-merge re-check (the CI wait window) → refuse.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="protrace01" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="protrace01" \
     STUB_PROTECTION="true|10|0" STUB_PROTECTION_PREMERGE_FAIL=1 \
     run_mog 12 "protection removed during the CI wait → exit 12"
 assert_gh_lacks "2869-6: no merge attempted" "pr merge"
@@ -1157,7 +1164,7 @@ assert_audit_has "2869-6: audits not-protected-premerge" "reason=not-protected-p
 
 # 2869-6a. Same window, but protection stays readable and merely loses its
 # required checks rather than the endpoint disappearing.
-STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="protrace02" \
+STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="protrace02" \
     STUB_PROTECTION="true|10|0" STUB_PROTECTION_PREMERGE="true|0|0" \
     run_mog 12 "required checks removed during the CI wait → exit 12"
 assert_gh_lacks "2869-6a: no merge attempted" "pr merge"
@@ -1176,7 +1183,7 @@ assert_audit_has "2869-6a: audits not-protected-premerge" "reason=not-protected-
 # than each probing separately (the file's own shared `have_jq` guard is
 # computed further down, after this block, so it isn't reused here either).
 if [ "$have_jq_2869" = "1" ]; then
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
         STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":null}' \
         run_mog 12 "null required_status_checks → exit 12 not-protected"
     assert_gh_lacks "2869-7: no merge attempted" "pr merge"
@@ -1188,24 +1195,24 @@ fi
 # jq length accepts strings and objects too. Removing either
 # array type-check must make these real-JSON refusal cases fail.
 if [ "$have_jq_2869" = "1" ]; then
-    STUB_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    STUB_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
         STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":{"contexts":"lint"}}' \
         run_mog 12 "string contexts must not count as required checks"
     assert_audit_has "2876 contexts: not protected" "reason=not-protected"
     assert_gh_lacks "2876 contexts: no merge attempted" "pr merge"
 
-    STUB_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    STUB_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
         STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":{"checks":{"context":"lint"}}}' \
         run_mog 12 "object checks must not count as required checks"
     assert_audit_has "2876 checks: not protected" "reason=not-protected"
     assert_gh_lacks "2876 checks: no merge attempted" "pr merge"
 
-    STUB_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    STUB_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
         STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":{"checks":[{"context":"lint","app_id":123}]}}' \
         run_mog 0 "real checks array still permits protected-origin merge"
-    assert_merge_has "2876 checks array: merge attempted" "pr merge 77 --repo yotamleo/Himmel"
+    assert_merge_has "2876 checks array: merge attempted" "pr merge 77 --repo yotamleo-org/Himmel"
 
-    STUB_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    STUB_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
         STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":{"contexts":["lint"]}}' \
         STUB_PROTECTION_JSON_PREMERGE='{"enforce_admins":{"enabled":true},"required_status_checks":{"contexts":"lint"}}' \
         run_mog 12 "pre-merge protection re-read also rejects string contexts"
@@ -1229,17 +1236,17 @@ if [ "$have_jq_2869" = "1" ]; then
     R_SET='{"id":17745842,"enforcement":"active","bypass_actors":[]}'
 
     # 3808-1. Ruleset-only, strong → accept; the audit names the source.
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="rs01" \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="rs01" \
         STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
         STUB_RULES_JSON="$R_RULES" STUB_RULESET_JSON="$R_SET" \
         run_mog 0 "3808-1: strong ruleset alone (classic 404) → merged"
     assert_merge_has "3808-1: merge pins the certified sha" "--match-head-commit rs01"
-    assert_gh_has "3808-1: reads the effective rules" "api repos/yotamleo/Himmel/rules/branches/main"
-    assert_gh_has "3808-1: reads the contributing ruleset" "api repos/yotamleo/Himmel/rulesets/17745842"
+    assert_gh_has "3808-1: reads the effective rules" "api repos/yotamleo-org/Himmel/rules/branches/main"
+    assert_gh_has "3808-1: reads the contributing ruleset" "api repos/yotamleo-org/Himmel/rulesets/17745842"
     assert_audit_has "3808-1: audit names the ruleset source" "source=ruleset"
 
     # 3808-2. Classic-only → accept exactly as before; ruleset never read.
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="cl01" \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="cl01" \
         run_mog 0 "3808-2: classic alone → merged (no regression)"
     assert_audit_has "3808-2: audit names the classic source" "source=classic"
     assert_gh_lacks "3808-2: classic satisfied, ruleset never read" "/rules/branches/"
@@ -1247,7 +1254,7 @@ if [ "$have_jq_2869" = "1" ]; then
     # 3808-3. Every weakness of the ruleset path refuses (classic 404).
     r3() { # <label> <rules> <ruleset> [extra VAR=val…]
         local label="$1" rules="$2" set="$3"; shift 3
-        STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+        STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
             STUB_PROTECTION_FAIL=1 STUB_RULES_JSON="$rules" STUB_RULESET_JSON="$set" \
             run_mog 12 "3808-3: $label → exit 12"
         assert_gh_lacks "3808-3 ($label): no merge attempted" "pr merge"
@@ -1270,7 +1277,7 @@ if [ "$have_jq_2869" = "1" ]; then
     # 3808-3b. One contributing ruleset strong, a SECOND (with checks) has a bypass
     # actor: every contributing ruleset must be clean. Per-id bodies
     # so ONLY ruleset 2 carries the bypass — ruleset 1 is read clean first.
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
         STUB_RULES_JSON='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"a"}]}},{"type":"required_status_checks","ruleset_id":2,"parameters":{"required_status_checks":[{"context":"b"}]}}]' \
         STUB_RULESET_JSON_1='{"id":1,"enforcement":"active","bypass_actors":[]}' \
         STUB_RULESET_JSON_2='{"id":2,"enforcement":"active","bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]}' \
@@ -1282,36 +1289,36 @@ if [ "$have_jq_2869" = "1" ]; then
     # 3808-3c. A bypass actor on a ruleset with NO required_status_checks rule
     # cannot skip a required check: ruleset 1 strong, ruleset 2 bypassable but
     # contributing only a pull_request rule → accept.
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="rs3c" \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="rs3c" \
         STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
         STUB_RULES_JSON='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"a"}]}},{"type":"pull_request","ruleset_id":2}]' \
         STUB_RULESET_JSON_1='{"id":1,"enforcement":"active","bypass_actors":[]}' \
         STUB_RULESET_JSON_2='{"id":2,"enforcement":"active","bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]}' \
         run_mog 0 "3808-3c: bypass actor on a ruleset without required checks → merged"
     assert_merge_has "3808-3c: merge pins the certified sha" "--match-head-commit rs3c"
-    assert_gh_has "3808-3c: reads the strong ruleset" "api repos/yotamleo/Himmel/rulesets/1"
-    assert_gh_lacks "3808-3c: never reads the non-contributing ruleset" "api repos/yotamleo/Himmel/rulesets/2"
+    assert_gh_has "3808-3c: reads the strong ruleset" "api repos/yotamleo-org/Himmel/rulesets/1"
+    assert_gh_lacks "3808-3c: never reads the non-contributing ruleset" "api repos/yotamleo-org/Himmel/rulesets/2"
     assert_audit_has "3808-3c: audit names the ruleset source" "source=ruleset"
 
     # 3808-4. API errors fail closed.
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
         STUB_RULES_FAIL=1 STUB_RULES_JSON="$R_RULES" STUB_RULESET_JSON="$R_SET" \
         run_mog 12 "3808-4: rules endpoint error → exit 12"
     assert_gh_lacks "3808-4: no merge attempted" "pr merge"
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
         STUB_RULESET_FAIL=1 STUB_RULES_JSON="$R_RULES" STUB_RULESET_JSON="$R_SET" \
         run_mog 12 "3808-4: ruleset endpoint error → exit 12"
     assert_gh_lacks "3808-4b: no merge attempted" "pr merge"
 
     # 3808-5. Weakened between the watch and the merge → the FRESH pre-merge
     # re-read refuses (same staleness class as 2869-6).
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
         STUB_RULES_JSON="$R_RULES" STUB_RULESET_JSON="$R_SET" \
         STUB_RULESET_JSON_PREMERGE='{"id":17745842,"enforcement":"active","bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"pull_request"}]}' \
         run_mog 12 "3808-5: bypass actor added during the CI wait → exit 12"
     assert_gh_lacks "3808-5: no merge attempted" "pr merge"
     assert_audit_has "3808-5: audits not-protected-premerge" "reason=not-protected-premerge"
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
         STUB_RULES_JSON="$R_RULES" STUB_RULESET_JSON="$R_SET" STUB_RULES_JSON_PREMERGE='[]' \
         run_mog 12 "3808-5b: required checks dropped during the CI wait → exit 12"
     assert_audit_has "3808-5b: audits not-protected-premerge" "reason=not-protected-premerge"
@@ -1319,7 +1326,7 @@ if [ "$have_jq_2869" = "1" ]; then
     # 3808-5c. A rules response whose root is an object (not an array) is
     # malformed: a required_status_checks rule nested inside it must NOT satisfy
     # the gate (fail closed).
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
         STUB_RULES_JSON='{"x":{"type":"required_status_checks","ruleset_id":17745842,"parameters":{"required_status_checks":[{"context":"a"}]}}}' \
         STUB_RULESET_JSON='{"id":17745842,"enforcement":"active","bypass_actors":[]}' \
         run_mog 12 "3808-5c: object-rooted rules response → exit 12"
@@ -1342,7 +1349,7 @@ if [ "$have_jq_2869" = "1" ]; then
     mode_case() { # <mode> <classic:ok|bad> <ruleset:ok|bad> <expect rc> <label>
         local mode="$1" c="$2" r="$3" want="$4" label="$5" src
         src=$(mode_src "$mode")
-        local -a v=(STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false)
+        local -a v=(STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false)
         [ "$c" = "bad" ] && v+=(STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1)
         [ "$r" = "ok" ] && v+=(STUB_RULES_JSON="$R_RULES" STUB_RULESET_JSON="$R_SET")
         # shellcheck disable=SC2163
@@ -1370,7 +1377,7 @@ if [ "$have_jq_2869" = "1" ]; then
     # 3808-7. The knob is a fixed literal, not an env seam: an ambient
     # HIMMEL_PROTECTION_SOURCE=ruleset must not steer the gate (classic-only
     # protection must still merge under the shipped `either`).
-    STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false \
         HIMMEL_PROTECTION_SOURCE=ruleset STUB_SHA="env01" \
         run_mog 0 "3808-7: ambient HIMMEL_PROTECTION_SOURCE does not steer the gate"
     assert_audit_has "3808-7: still the classic source" "source=classic"
@@ -2878,7 +2885,7 @@ else
             red_control_run --cwd "$rc4_tmp" \
                 --env GH_LOG="$rc4_gh" --env CLEAR_LOG="$rc4_clear" --env MERGE_ON_GREEN_LOG="$rc4_audit" \
                 --env PATH="$rc4_tmp/bin:$PATH" --env MERGE_ON_GREEN_SLEEP_CMD=: \
-                --env ARMAUTOMERGE=1 --env STUB_NWO="yotamleo/Himmel" --env STUB_CWD_NWO="yotamleo/Himmel" \
+                --env ARMAUTOMERGE=1 --env STUB_NWO="yotamleo-org/Himmel" --env STUB_CWD_NWO="yotamleo-org/Himmel" \
                 --env STUB_PRIVATE=false --env STUB_SHA="pubok01" --env HIMMEL_REPO="$rc4_tmp" \
                 -- bash "$rc4_tmp/scripts/handover/merge-on-green.sh"
             # Discriminate on whether the MERGE FIRED, not on the audit
