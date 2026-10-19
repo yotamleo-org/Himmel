@@ -325,6 +325,10 @@ imports, so its suite runs in CI without an install.
   wrapped) and the click through to a run. Another adds the walk console to
   Fleet to a run and back over the shared rail, and checks no request line
   carries the token.
+- Docs link and tokens e2e (`docs-link.e2e.ts`, same opt-in suite): the rail
+  ends with a Docs link to the public site in a new tab with
+  `rel="noopener noreferrer"` and no session token, and the console reads the
+  shared tokens (`public/tokens.css`) in light and dark with system fonts.
 
 ## Manual pass (the same 7 items)
 
