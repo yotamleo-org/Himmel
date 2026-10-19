@@ -932,9 +932,10 @@ if [ "$_fleet_admitted" -eq 0 ]; then
   echo "bank-preflight: could not acquire the fleet admission lock ($SLOTS/.admit) after $_fleet_admit_iters retries — cannot verify the fleet is under cap" >&2
   _fleet_held_pid="$(cat "$SLOTS/.admit/pid" 2>/dev/null)"
   _fleet_held_at="$(cat "$SLOTS/.admit/acquired" 2>/dev/null)"
-  case "$_fleet_held_pid:$_fleet_held_at" in
-    *[!0-9:]*|:*|*:) ;;
-    *) echo "bank-preflight: admission lock held by holder pid $_fleet_held_pid (age $(( $(date +%s) - _fleet_held_at ))s, command: $(ps -o comm= -p "$_fleet_held_pid" 2>/dev/null | head -c 64))" >&2 ;;
+  case "$_fleet_held_pid" in ''|*[!0-9]*) _fleet_held_at="" ;; esac
+  case "$_fleet_held_at" in
+    ''|*[!0-9]*) ;;
+    *) echo "bank-preflight: admission lock held by holder pid $_fleet_held_pid (age $(( $(date +%s) - 10#$_fleet_held_at ))s, command: $(ps -o comm= -p "$_fleet_held_pid" 2>/dev/null | head -c 64))" >&2 ;;
   esac
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
     echo "bank-preflight: FLEET_CAP_OK bypass in effect (launching shell only) — proceeding despite the admission-lock failure" >&2
