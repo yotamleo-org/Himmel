@@ -63,37 +63,48 @@ hasnt 'DRY: gh issue close' "$out" "green + lookup-failure never closes blindly"
 FX="$ROOT/scripts/ci/fixtures/nightly-reporter"
 JOBS_CANCELLED="$FX/jobs-cancelled-shard.json"
 RUNS="$FX/runs-newer-green.json"
+RUNJOBS="$FX/run-jobs"
 JOBS_FAILED="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-failed.XXXXXX")" || exit 1
 sed 's/"cancelled"/"failure"/' "$JOBS_CANCELLED" > "$JOBS_FAILED" || exit 1
 JOBS_TIMEDOUT="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-timedout.XXXXXX")" || exit 1
 sed '0,/"success"/s/"success"/"timed_out"/' "$JOBS_CANCELLED" > "$JOBS_TIMEDOUT" || exit 1
+JOBS_CAPPED="$(mktemp "${TMPDIR:-/tmp}/nightly-jobs-capped.XXXXXX")" || exit 1
+sed 's/13:03:27Z/13:24:02Z/' "$JOBS_CANCELLED" > "$JOBS_CAPPED" || exit 1
 OLD_RUN="2026-10-17T11:34:47Z"
+SWEEP_ONLY_RUN="2026-10-18T12:30:00Z"
 NEWEST_RUN="2026-10-19T01:00:00Z"
 
 # cancelled-only shards, no existing issue -> no issue opened
-out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_CANCELLED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"; rc=$?
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_CANCELLED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"; rc=$?
 hasnt 'DRY: gh issue ' "$out" "cancelled-only shards open no issue"
 hasnt 'DRY: gh label create' "$out" "cancelled-only shards touch no label"
 has 'inconclusive' "$out" "cancelled-only shards log an inconclusive note"
 if [ "$rc" -eq 0 ]; then ok "cancelled-only shards -> exit 0"; else bad "cancelled-only exit=$rc (expected 0)"; fi
 
 # cancelled-only shards, issue already open -> not refreshed
-out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="7" DRY_RUN_JOBS_FILE="$JOBS_CANCELLED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="7" DRY_RUN_JOBS_FILE="$JOBS_CANCELLED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
 hasnt 'DRY: gh issue ' "$out" "cancelled-only shards do not refresh an open issue"
 
 # a failed shard on the newest run stays red
-out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
 has 'DRY: gh issue create' "$out" "failed shard on the newest run still opens the issue"
 
-# older run finishing after a newer green nightly -> no red
-out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$OLD_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"; rc=$?
+# older run finishing after a newer green nightly (not a main-sweep) -> no red
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$OLD_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"; rc=$?
 hasnt 'DRY: gh issue ' "$out" "red superseded by a newer green nightly opens no issue"
 has 'superseded' "$out" "superseded red logs a note"
 if [ "$rc" -eq 0 ]; then ok "superseded red -> exit 0"; else bad "superseded exit=$rc (expected 0)"; fi
+# newer green runs that are only main-sweeps (guard-corpus-full skipped) do not supersede
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_FAILED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$SWEEP_ONLY_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+has 'DRY: gh issue create' "$out" "red followed only by a green main-sweep still opens the issue"
+hasnt 'superseded' "$out" "a green main-sweep does not supersede a nightly red"
+# a cancelled shard that ran to the 60 min timeout cap is a failure
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_CAPPED" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+has 'DRY: gh issue create' "$out" "cancelled shard at the timeout cap opens the issue"
 # a timed-out shard beside a cancelled one is a real red, not inconclusive
-out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_TIMEDOUT" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" DRY_RUN_JOBS_FILE="$JOBS_TIMEDOUT" DRY_RUN_RUNS_FILE="$RUNS" DRY_RUN_RUN_JOBS_DIR="$RUNJOBS" DRY_RUN_CREATED_AT="$NEWEST_RUN" bash "$SCRIPT" 1 "$RUN_URL" 2>&1)"
 has 'DRY: gh issue create' "$out" "timed-out shard plus cancelled shard still opens the issue"
-rm -f "$JOBS_FAILED" "$JOBS_TIMEDOUT"
+rm -f "$JOBS_FAILED" "$JOBS_TIMEDOUT" "$JOBS_CAPPED"
 
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi

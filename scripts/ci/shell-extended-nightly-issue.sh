@@ -20,7 +20,8 @@
 #   rc != 0 -> open the issue if absent, else refresh its body + add a "still
 #              red" comment — unless the run is not a real red: no shard
 #              failed and one was cancelled (inconclusive), or a newer
-#              schedule run already went green (superseded). Both log a note
+#              green nightly already ran (superseded; a green main-sweep
+#              does not count, it skips the extended tier). Both log a note
 #              and leave the issue untouched.
 #   rc == 0 -> if an issue is open, comment "green again" and close it.
 #
@@ -32,9 +33,10 @@
 #   GITHUB_REPOSITORY / GITHUB_RUN_ID  the run being reported (workflow-supplied);
 #                            used to classify a red. When unset or a lookup
 #                            fails the red is reported as before.
-#   DRY_RUN_JOBS_FILE / DRY_RUN_RUNS_FILE / DRY_RUN_CREATED_AT  (DRY_RUN only)
-#                            the run's jobs JSON, the completed schedule runs
-#                            JSON and this run's created_at.
+#   DRY_RUN_JOBS_FILE / DRY_RUN_RUNS_FILE / DRY_RUN_CREATED_AT /
+#   DRY_RUN_RUN_JOBS_DIR     (DRY_RUN only) the run's jobs JSON, the completed
+#                            schedule runs JSON, this run's created_at and a
+#                            dir of <run id>.json jobs payloads for those runs.
 #   DRY_RUN=1                print the gh commands instead of running them
 #                            (used by the test harness; no network, no auth).
 set -uo pipefail
@@ -90,9 +92,12 @@ classify_red() {
     runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=schedule&status=completed&per_page=10")" || runs=""
     created="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)" || created=""
   fi
-  local failed cancelled newer
+  local failed cancelled id rj green
   if [ -n "$jobs" ]; then
-    failed="$(jq '[.jobs[]|select((.name|startswith("shell-unit-shard")) and .conclusion!=null and (.conclusion|IN("success","skipped","cancelled")|not))]|length' <<< "$jobs")"
+    # A shard killed by timeout-minutes reports conclusion "cancelled", so a
+    # cancelled shard that ran to its 60 min cap (3540 s with slack) is a
+    # failure, not an inconclusive cancel.
+    failed="$(jq '[.jobs[]|select((.name|startswith("shell-unit-shard")) and .conclusion!=null and ((.conclusion|IN("success","skipped","cancelled")|not) or (.conclusion=="cancelled" and .started_at!=null and .completed_at!=null and ((.completed_at|fromdateiso8601)-(.started_at|fromdateiso8601))>=3540)))]|length' <<< "$jobs")"
     cancelled="$(jq '[.jobs[]|select((.name|startswith("shell-unit-shard")) and .conclusion=="cancelled")]|length' <<< "$jobs")"
     if [ "${failed:-1}" = 0 ] && [ "${cancelled:-0}" -gt 0 ] 2>/dev/null; then
       echo inconclusive
@@ -100,10 +105,22 @@ classify_red() {
     fi
   fi
   if [ -n "$runs" ] && [ -n "$created" ]; then
-    newer="$(jq --arg c "$created" '[.workflow_runs[]|select(.conclusion=="success" and .created_at>$c)]|length' <<< "$runs")"
-    if [ "${newer:-0}" -gt 0 ] 2>/dev/null; then
-      echo superseded
-    fi
+    # Only a newer green NIGHTLY supersedes: ci.yml's main-sweep schedule is
+    # fast-tier and never runs the extended suites. guard-corpus-full runs on
+    # the nightly cron alone, so its success marks a green nightly.
+    for id in $(jq -r --arg c "$created" '.workflow_runs[]|select(.conclusion=="success" and .created_at>$c)|.id' <<< "$runs"); do
+      if [ "${DRY_RUN:-0}" = "1" ]; then
+        rj="$(cat "${DRY_RUN_RUN_JOBS_DIR:-/nonexistent}/$id.json")" || rj=""
+      else
+        rj="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100")" || rj=""
+      fi
+      [ -n "$rj" ] || continue
+      green="$(jq '[.jobs[]|select(.name=="guard-corpus-full" and .conclusion=="success")]|length' <<< "$rj")"
+      if [ "${green:-0}" -gt 0 ] 2>/dev/null; then
+        echo superseded
+        return 0
+      fi
+    done
   fi
 }
 
@@ -132,7 +149,7 @@ if [ "$RC" != 0 ]; then
       echo "shell-extended-nightly-issue: no shard failed and one was cancelled — inconclusive, not reporting red: $RUN_URL"
       exit 0 ;;
     superseded)
-      echo "shell-extended-nightly-issue: a newer schedule run already went green — red superseded, not reporting: $RUN_URL"
+      echo "shell-extended-nightly-issue: a newer nightly already went green — red superseded, not reporting: $RUN_URL"
       exit 0 ;;
   esac
   if ! num="$(find_open_issue)"; then
