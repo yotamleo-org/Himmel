@@ -51,3 +51,12 @@ own `v<X>.<Y>.<Z>-pre.` series — the series is derived from `<version>`
 itself, not hardcoded to any one release line, so `v0.3.0-pre.9` and a future
 `v0.4.0-pre.1` are each checked against their own prior tags — (or carries
 `--version-override <reason>`).
+
+To drain the hosted CI queue on an operator order, run
+`bash scripts/handover/console-kit/cancel-runs.sh --keep-pr <n>` (repeat the
+flag, or add `--keep-sha <sha>`; `--dry-run` first to see the count) — it
+cancels every non-completed run on the repo except those on the kept heads,
+and prints `cancelled=<n> failed=<n> kept=<list>`. A keep is required; `--all`
+is the explicit way to keep nothing. A keep that cannot be resolved refuses
+before anything is cancelled. Never hand-roll a `gh run cancel` loop: the
+classifier denies it as Interfere With Workloads.
