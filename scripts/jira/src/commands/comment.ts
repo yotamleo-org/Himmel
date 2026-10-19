@@ -13,7 +13,8 @@ function collect(value: string, prev: string[]): string[] {
 export function registerComment(program: Command): void {
   program
     .command('comment <key> [text]')
-    .description('Add a comment to a Jira issue (text supports markdown)')
+    .description('Add a comment to a Jira issue, or replace one with --edit (text supports markdown)')
+    .option('--edit <commentId>', 'Replace the body of an existing comment by id instead of adding a new one')
     .option('--adf-file <path>', 'Path to pre-built ADF JSON document (overrides <text>)')
     .option(
       '--comment-file <path>',
@@ -25,7 +26,7 @@ export function registerComment(program: Command): void {
       async (
         key: string,
         text: string | undefined,
-        options: { adfFile?: string; commentFile?: string; attach: string[] },
+        options: { adfFile?: string; commentFile?: string; edit?: string; attach: string[] },
       ) => {
         let body: unknown;
         if (options.adfFile) {
@@ -45,7 +46,11 @@ export function registerComment(program: Command): void {
           }
           body = markdownToAdf(markdown);
         }
-        await request('POST', `/issue/${key}/comment`, { body });
+        if (options.edit) {
+          await request('PUT', `/issue/${key}/comment/${options.edit}`, { body });
+        } else {
+          await request('POST', `/issue/${key}/comment`, { body });
+        }
         // Breadcrumb BEFORE attachments: the comment mutation has landed even
         // if a later attachment upload fails and we exit 1.
         writeJiraBreadcrumb(key);
@@ -54,7 +59,8 @@ export function registerComment(program: Command): void {
         // attempting attachments. Scripted callers piping stdout still
         // see the comment landed even if a subsequent attachment fails
         // and we exit 1. Attachment-failure message goes to stderr.
-        console.log(`Comment added to ${key}`);
+        const done = options.edit ? `Comment ${options.edit} edited on ${key}` : `Comment added to ${key}`;
+        console.log(done);
 
         const attachments = options.attach ?? [];
         if (attachments.length === 0) return;
@@ -62,7 +68,7 @@ export function registerComment(program: Command): void {
           const n = await uploadAll(key, attachments);
           console.error(`  attachments: ${n}`);
         } catch (e) {
-          console.error(`Comment added to ${key} but attachment failed: ${(e as Error).message}`);
+          console.error(`${done} but attachment failed: ${(e as Error).message}`);
           process.exit(1);
         }
       },

@@ -268,6 +268,13 @@ assert_stderr_contains "stderr names 'list' verb for JQL" \
 assert_stderr_contains "stderr names 'link' verb" \
     '{"tool_name":"mcp__plugin_atlassian_atlassian__createIssueLink","tool_input":{}}' \
     'jira/dist/index.js link'
+# An edit (commentId present) names the --edit form with that id.
+assert_stderr_contains "addOrEditJiraIssueComment with commentId names comment --edit <id>" \
+    '{"tool_name":"mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment","tool_input":{"issueIdOrKey":"HIMMEL-9","commentId":"10042"}}' \
+    'jira/dist/index.js comment HIMMEL-9 --edit 10042'
+assert_stderr_contains "addOrEditJiraIssueComment without commentId keeps the add hint" \
+    '{"tool_name":"mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment","tool_input":{}}' \
+    'jira/dist/index.js comment HIMMEL-N "<text>"'
 
 # --- Allowed Atlassian tools (no verb in EITHER map → no plugin equivalent) ---
 # NOTE: the Confluence page/search/spaces/comment methods are NO LONGER here —
