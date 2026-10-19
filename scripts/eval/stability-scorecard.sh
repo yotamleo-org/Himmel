@@ -58,7 +58,7 @@ count_rows() {
 }
 
 cmd_run() {
-    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira row locked
+    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira primary row locked
     while [ $# -gt 0 ]; do
         case "$1" in
             --date) [ $# -ge 2 ] || { echo "ERR scorecard: --date needs a value" >&2; return 64; }; date_arg="$2"; shift 2 ;;
@@ -94,9 +94,16 @@ cmd_run() {
             && den="$(printf '%s' "$den" | grep -c . || true)" || den=""
     fi
 
-    jira=(node "$(resolve_primary)/scripts/jira/dist/index.js")
-    resid="$(count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND fixVersion = \"$VERSION\" AND created >= -24h" --limit 500)" || resid=""
-    esc="$(count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND labels = deferred-escape' --limit 500)" || esc=""
+    # The jira CLI finds its .env through git from its cwd; cron starts in $HOME, so run it from the primary checkout.
+    primary="$(resolve_primary)" || primary=""
+    if [ -z "$primary" ]; then
+        echo "ERR scorecard: cannot resolve the primary checkout, the Jira cells read unknown" >&2
+        resid=""; esc=""
+    else
+        jira=(node "$primary/scripts/jira/dist/index.js")
+        resid="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND fixVersion = \"$VERSION\" AND created >= -24h" --limit 500)" || resid=""
+        esc="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND labels = deferred-escape' --limit 500)" || esc=""
+    fi
 
     for v in q50 q90 share pct red den resid esc; do
         [[ "${!v}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { printf -v "$v" unknown; bad=1; }

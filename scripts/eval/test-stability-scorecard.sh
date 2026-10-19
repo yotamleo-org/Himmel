@@ -61,6 +61,13 @@ check "jira list at the 500-row cap exits 1" "$rc" 1
 check "jira list at the cap reads unknown" "$(sed -n 7p "$td/s.tsv" | cut -f9)" unknown
 [ ! -d "$td/s.tsv.lock" ] && ok "no lock left behind" || bad "no lock left behind"
 
+# cron starts in $HOME, not a repo: the jira CLI finds its .env through git from its cwd, so the script must run it from the primary checkout.
+printf '%s\n' '#!/usr/bin/env bash' 'git rev-parse --git-common-dir >/dev/null 2>&1 || exit 7' 'echo "HIMMEL-9 z"' >"$td/jgit.sh"
+mkdir "$td/nogit"
+(cd "$td/nogit" && SCORECARD_JIRA_CMD="bash $td/jgit.sh" SCORECARD_TSV="$td/cwd.tsv" bash "$tool" run --date 2026-10-25 >/dev/null 2>&1); rc=$?
+check "jira cells are numeric when run outside any repo" "$(sed -n 2p "$td/cwd.tsv" | cut -f9,10)" "$(printf '1\t1')"
+check "run outside any repo exits 0" "$rc" 0
+
 printf 'wrong\theader\n' >"$td/bad.tsv"
 SCORECARD_TSV="$td/bad.tsv" bash "$tool" run --date 2026-10-21 >/dev/null 2>&1; rc=$?
 check "foreign header is refused" "$rc" 1
