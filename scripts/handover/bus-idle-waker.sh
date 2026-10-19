@@ -15,9 +15,12 @@
 # Before every wake the screen (getAllDisplayedText) must show the idle input
 # box: a `❯` line between two `─` rules. A permission dialog or any menu
 # replaces that box, and Enter there would confirm its highlighted option, so
-# such a screen (or one that cannot be read) gets no keystroke.
-# The target must be the named session: the konsole session's processId must
-# run a claude whose argv carries `-n <name>`, or the waker refuses with rc=4.
+# such a screen (or one that cannot be read) gets no keystroke. A running turn
+# keeps the box but shows a spinner line (`✶ Smooshing… (16s · thinking)`) above
+# it, and that screen gets no keystroke either.
+# The target must be the named session: at startup and again before every wake
+# the konsole session's processId must run claude (argv0) with `-n <name>`, or
+# the waker refuses with rc=4.
 # A failed sendText ends the waker: rc=1 session gone, rc=3 AccessDenied (the
 # EnableSecuritySensitiveDBusAPI setting is off, or konsole read it before it was
 # enabled: konsole reads it only at startup, so an older window refuses). qdbus6
@@ -89,20 +92,28 @@ konsole() { # konsole <method> [args]: one Session call into $out; a failure end
     fi
 }
 
-# The session's process must be a claude launched as `-n <name>`.
-konsole processId
-target="$out"
-if ! num "$target" || ! tr '\0' '\n' < "$PROC/$target/cmdline" 2>/dev/null | grep -xF -A1 -e '-n' -e '--name' | grep -qxF -- "$NAME"; then
-    echo "bus-idle-waker: konsole session $SERVICE $SESSION does not run the claude named $NAME, refusing" >&2
-    exit 4
-fi
+named_target() { # the session's process must be claude launched as `-n <name>`; checked before every wake
+    konsole processId
+    if ! num "$out" || ! tr '\0' '\n' < "$PROC/$out/cmdline" 2>/dev/null | awk -v n="$NAME" '
+        NR == 1 { sub(/.*\//, ""); claude = ($0 == "claude") }
+        (prev == "-n" || prev == "--name") && $0 == n { named = 1 }
+        { prev = $0 }
+        END { exit !(claude && named) }'; then
+        echo "bus-idle-waker: konsole session $SERVICE $SESSION does not run the claude named $NAME, refusing" >&2
+        exit 4
+    fi
+}
+named_target
 
-at_prompt() { # the screen shows the idle input box: a ❯ line between two ─ rules
+at_prompt() { # the screen shows the idle input box (a ❯ line between two ─ rules) and no running turn's spinner above it
     konsole getAllDisplayedText true
     printf '%s\n' "$out" | awk '
         { line[NR] = $0 }
         /^❯/ { at = NR }
-        END { exit !(at > 1 && line[at - 1] ~ /^─/ && line[at + 1] ~ /^─/) }'
+        END {
+            if (!(at > 1 && line[at - 1] ~ /^─/ && line[at + 1] ~ /^─/)) exit 1
+            for (i = at - 2; i > 0 && i >= at - 9; i--) if (line[i] ~ /^[^ ]+ [A-Z][a-z]+…/) exit 1
+        }'
 }
 
 since=0 last=0 polls=0
@@ -121,6 +132,7 @@ while :; do
         if [ "$waited" -ge "$(awk -v g="$GRACE" 'BEGIN{printf "%d", g*1000}')" ] \
             && { [ "$last" = 0 ] || [ "$gap" -ge "$(awk -v g="$REWAKE" 'BEGIN{printf "%d", g*1000}')" ]; } \
             && at_prompt; then
+            named_target
             konsole sendText "You have unread himmel messages: read them now."$'\r'
             last="$now"
         fi

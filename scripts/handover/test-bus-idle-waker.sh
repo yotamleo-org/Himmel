@@ -16,14 +16,17 @@ trap 'rm -rf "$tmp"' EXIT
 export HANDOVER_DIR="$tmp/handovers"
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 
-# Fake qdbus6: processId answers $QPID, getAllDisplayedText prints $QSCREEN (a
-# screen copied from a real konsole), and every other call (sendText) is recorded
-# in $QLOG, one per line; fake bus prints $BUS_N. $tmp/proc stands in for /proc.
+# Fake qdbus6: processId answers $QPID (or $QPID_LATER after its first call),
+# getAllDisplayedText prints $QSCREEN (a screen copied from a real konsole), and
+# every other call (sendText) is recorded in $QLOG, one per line; fake bus prints
+# $BUS_N. $tmp/proc stands in for /proc.
 FIX="$HERE/fixtures/bus-waker"
 cat > "$tmp/qdbus" <<'EOF'
 #!/usr/bin/env bash
 case "$3" in
-  org.kde.konsole.Session.processId) printf '%s\n' "$QPID" ;;
+  org.kde.konsole.Session.processId)
+    if [ -n "${QPID_LATER:-}" ] && [ -e "$QLOG.pid" ]; then printf '%s\n' "$QPID_LATER"; else printf '%s\n' "$QPID"; fi
+    : > "$QLOG.pid" ;;
   org.kde.konsole.Session.getAllDisplayedText) cat "$QSCREEN" ;;
   *) printf '%s\n' "$*" >> "$QLOG" ;;
 esac
@@ -34,15 +37,16 @@ cat > "$tmp/bus" <<'EOF'
 EOF
 chmod +x "$tmp/qdbus" "$tmp/bus"
 export QLOG="$tmp/qlog" QPID=4242 QSCREEN="$FIX/screen-idle.txt" BUS_WAKER_PROC="$tmp/proc"
-mkdir -p "$tmp/proc/4242" "$tmp/proc/4343" "$tmp/proc/4444"
+mkdir -p "$tmp/proc/4242" "$tmp/proc/4343" "$tmp/proc/4444" "$tmp/proc/4646"
 printf 'claude\0-n\0legX\0' > "$tmp/proc/4242/cmdline"
 printf 'claude\0-n\0HIMMEL-nextleg-2026-10-19H-roadmap-console\0' > "$tmp/proc/4343/cmdline"
 printf 'zsh\0' > "$tmp/proc/4444/cmdline"
+printf 'python3\0-n\0legX\0' > "$tmp/proc/4646/cmdline"
 FIXED='You have unread himmel messages: read them now.'
 
 run() { # run <polls> <grace> [extra args]; env BUS_N / inbox decide the count
   local polls="$1" grace="$2"; shift 2
-  : > "$QLOG"
+  : > "$QLOG"; rm -f "$QLOG.pid"
   BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" \
     bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
     --poll 0.2 --grace "$grace" --rewake 100 --max-polls "$polls" "$@" >/dev/null 2>&1
@@ -157,6 +161,8 @@ QSCREEN="$FIX/screen-permission.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a pending permission dialog gets no keystroke (Enter would pick 1. Yes)" || fail "typed into a permission dialog: $(cat "$QLOG")"
 QSCREEN="$FIX/screen-trust.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a digit-free menu (the trust dialog) gets no keystroke either" || fail "typed into the trust dialog: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-busy.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn (spinner above the input box) gets no keystroke" || fail "typed into a busy turn: $(cat "$QLOG")"
 : > "$tmp/empty-screen"
 QSCREEN="$tmp/empty-screen" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a blank screen (no input box seen) gets no keystroke" || fail "typed blind: $(cat "$QLOG")"
@@ -169,6 +175,10 @@ QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 QPID=4444 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session that is not a named claude (a shell) is refused, rc=4" || fail "shell target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+QPID=4646 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "another program carrying -n <name> is refused, rc=4" || fail "non-claude -n target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+QPID_LATER=4444 BUS_N=2 run 3 0
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a session whose process changed after startup is refused before the wake, rc=4" || fail "replaced target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 # A real leg's claude argv, read from /proc/<processId>/cmdline.
 mkdir -p "$tmp/proc/4545" && cp "$FIX/cmdline-leg" "$tmp/proc/4545/cmdline"
 : > "$QLOG"
