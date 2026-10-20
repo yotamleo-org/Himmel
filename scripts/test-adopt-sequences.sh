@@ -309,7 +309,7 @@ SEQS=(
   "fail-inject-9-then-uninstall||F9 U"
   "uninstall-on-clean||U A U"
   "declined-restore-HIMMEL-6110|HIMMEL-6110|N A T U"
-  "strict-residue-HIMMEL-6722|HIMMEL-6722|A P S U"
+  "strict-residue-HIMMEL-6729|HIMMEL-6729|A P S U"
   "reinstall-reuninstall-HIMMEL-3767|HIMMEL-3767|A U D A W"
 )
 
