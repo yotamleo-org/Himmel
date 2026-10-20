@@ -2272,10 +2272,17 @@ bk_push() {
     bk_marker="$BK_P/.git/cr-pending/$br"
 }
 bk_push claude/backup-6584-fix+himmel-1843-hook-matcher
-if [ "$rc" -eq 0 ] && [ ! -f "$bk_marker" ]; then
-    pass "backup: claude/backup-6584-<slug> with a code diff -> rc=0 and no CR marker written"
+if [ "$rc" -eq 0 ] && [ ! -f "$bk_marker" ] && [[ "$out" == *"worktree backup ref"* ]]; then
+    pass "backup: claude/backup-6584-<slug> with a code diff -> rc=0, exemption message, no CR marker written"
 else
-    fail "backup: expected rc=0 and no marker" "rc=$rc marker-exists=$([ -f "$bk_marker" ] && echo yes || echo no) out: $out"
+    fail "backup: expected rc=0, the exemption message and no marker" "rc=$rc marker-exists=$([ -f "$bk_marker" ] && echo yes || echo no) out: $out"
+fi
+# the pre-push exemption and the gh pr create refusal must carry the same pattern.
+bk_re='^claude/backup-[0-9]+-[A-Za-z0-9._+-]+$'
+if grep -qF -- "$bk_re" "$HOOK" && grep -qF -- "$bk_re" "$SCRIPT_DIR/check-cr-marker-on-pr-create.sh"; then
+    pass "backup: the push hook and the pr-create hook carry the same backup pattern"
+else
+    fail "backup: the two hooks must carry the same backup pattern" "pattern: $bk_re"
 fi
 for bk_branch in claude/feature-x claude/backup-x claude/backup-6584 claude/backup-6584- claude/backup-abc-slug claude/backup-6584-a/b claude/backup2-6584-x feat/claude/backup-6584-x; do
     bk_push "$bk_branch"
