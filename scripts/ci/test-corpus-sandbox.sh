@@ -150,7 +150,7 @@ for use in 'HOOK="$(cd "$(dirname "$0")" && pwd)/block-destructive-commands.sh"'
 done
 # An interpreter running any variable is a launch whatever the variable is named.
 # shellcheck disable=SC2016
-for launch in 'bash "$TARGET"' 'sh -e "$TARGET"' 'env FLAG=value dash "$TARGET"' 'python3 "${TARGET}"'; do
+for launch in 'bash "$TARGET"' 'sh -e "$TARGET"' 'env FLAG=value dash "$TARGET"' 'python3 "${TARGET}"' 'env PATH=$PATH:x "$T"' 'exec -a "a$b" "$T"'; do
     printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
     if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
         bad "unwrapped interpreter variable launch accepted: $launch"
@@ -178,7 +178,7 @@ printf '# sandbox-run.sh marker is not a wrapper\n"$HO\\\nOK"\n' > "$SHELL_FIXTU
 if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'variable name split by a continuation accepted'; else ok 'variable name split by a continuation rejected'; fi
 # exec, source and dot run any variable, whatever it is named.
 # shellcheck disable=SC2016
-for launch in 'exec "$TARGET"' 'source "$TARGET"' '. "$TARGET"' 'exec -a name "${TARGET}"' 'exec -a "name" "$TARGET"' 'exec -a "x"y "$TARGET"' 'exec -a x"y" "$TARGET"' 'exec 2>"/dev/null" "$TARGET"' 'env FOO="a b" "$TARGET"'; do
+for launch in 'exec "$TARGET"' 'source "$TARGET"' '. "$TARGET"' 'exec -a name "${TARGET}"' 'exec -a "name" "$TARGET"' 'exec -a "x"y "$TARGET"' 'exec -a x"y" "$TARGET"' 'exec 2>"/dev/null" "$TARGET"' 'env FOO="a b" "$TARGET"' 'exec -a "a$b" "$T"' 'env PATH=$PATH:x "$T"' 'env A="$x"y "$T"' 'exec -a a$b "$T"' 'exec -a x\"y "$T"' 'exec -a "a\"b" "$T"' 'bash "a;b" "$T"' 'echo "use sh x"; bash "$T"' 'echo "$(bash "$T")"'; do
     printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
     if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
         bad "unwrapped exec/source variable launch accepted: $launch"

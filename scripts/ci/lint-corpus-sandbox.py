@@ -100,24 +100,40 @@ def logical_lines(text):
         yield first, pending
 
 
-def mask_single_quotes(line):
-    """Blank single-quoted spans, ignoring apostrophes that are escaped or inside double quotes."""
-    out, i, double = list(line), 0, False
+def code_positions(line):
+    """Per character: True where the shell reads code, False inside quotes.
+
+    A command substitution or parenthesis opens code again, also inside double quotes.
+    """
+    code, stack, i = [False] * len(line), ["code"], 0
     while i < len(line):
         char = line[i]
         if char == "\\":
+            code[i:i + 2] = [stack[-1] != "dq"] * 2
             i += 2
             continue
-        if char == '"':
-            double = not double
-        elif char == "'" and not double:
-            end = line.find("'", i + 1)
-            if end < 0:
-                break
-            out[i:end + 1] = " " * (end + 1 - i)
-            i = end
+        if stack[-1] == "dq":
+            if char == '"':
+                stack.pop()
+            elif char == "(" and line[i - 1] == "$":
+                stack.append("paren")
+                code[i] = True
+        else:
+            code[i] = True
+            if char == "'":
+                end = line.find("'", i + 1)
+                if end < 0:
+                    break
+                code[i:end + 1] = [False] * (end + 1 - i)
+                i = end
+            elif char == '"':
+                stack.append("dq")
+            elif char == "(":
+                stack.append("paren")
+            elif char == ")" and stack[-1] == "paren":
+                stack.pop()
         i += 1
-    return "".join(out)
+    return code
 
 
 def shell_launches(text):
@@ -131,9 +147,12 @@ def shell_launches(text):
     # "$T") are caught only when the variable is hook-named.
     name = r'[A-Za-z_0-9]*hook[A-Za-z_0-9]*'
     reference = re.compile(r'\$\{?' + name, re.I)
+    # An operand is a run of escapes, bare characters and quoted strings; the
+    # first `$` reached inside one is the variable (or substitution) it runs.
+    piece = r'(?:\\.|"(?:[^"\\$]|\\.)*"|\'[^\']*\'|[^\s\\"\'$`;|&()])'
     runs_variable = re.compile(
-        r'(?:\b(?:bash|sh|dash|zsh|ksh|env|python3?|exec|source)|(?<![\w$.])\.)\s+'
-        r'(?:(?:[^\s$`"\'();|&]|"[^"$`]*")+\s+)*["\']?(?P<ref>\$)')
+        r'(?P<verb>\b(?:bash|sh|dash|zsh|ksh|env|python3?|exec|source)|(?<![\w$.])\.)'
+        r'(?=\s+(?:' + piece + r'+\s+)*' + piece + r'*(?:"(?:[^"\\$]|\\.)*)?(?P<ref>\$))')
     # The one shared lib the owned suites source, by its exact path expression.
     lib_source = '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"'
     ref = r'["\']?\$\{?' + name
@@ -150,10 +169,11 @@ def shell_launches(text):
         owned += [(m.start(), m.end()) for m in re.finditer(re.escape(lib_source), line)]
         allowed = list(non_launch.finditer(line))
         positions = {m.start() for m in reference.finditer(line)}
-        # Single-quoted text is literal payload data, so it cannot name a variable
-        # an interpreter runs; hook-named references above are still scanned raw.
-        masked = mask_single_quotes(line)
-        positions |= {m.start("ref") for m in runs_variable.finditer(masked)}
+        # A verb inside quotes is payload data, so it runs nothing; hook-named
+        # references above are still scanned wherever they sit.
+        code = code_positions(line)
+        positions |= {m.start("ref") for m in runs_variable.finditer(line)
+                      if code[m.start("verb")]}
         for position in sorted(positions):
             if any(start <= position < end for start, end in owned):
                 continue
