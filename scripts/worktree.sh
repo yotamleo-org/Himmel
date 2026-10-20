@@ -1357,8 +1357,10 @@ load_fresh_lock_docs() (
     roots=$(_ql_lock_roots) || exit 1
     while IFS= read -r root; do
         [ -d "$root/.locks/queue" ] || continue
+        { [ -r "$root/.locks/queue" ] && [ -x "$root/.locks/queue" ]; } || exit 1
         for lockdir in "$root"/.locks/queue/*.lock; do
-            [ -f "$lockdir/owner.json" ] || continue
+            [ -e "$lockdir/owner.json" ] || continue
+            [ -r "$lockdir/owner.json" ] || exit 1
             doc=$(_ql_json_field "$lockdir/owner.json" handover)
             [ -n "$doc" ] && [ -f "$doc" ] || continue
             case "$(queue_lock_status "$doc" 2>/dev/null)" in
@@ -1427,7 +1429,8 @@ reclaim_parked() {
     # The checks above were for $br_tip; a commit or change since would be left behind.
     if [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" != "refs/heads/$br" ] \
         || [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" != "$br_tip" ] \
-        || [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+        || [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] \
+        || ! case "$(stray_ignored_verdict "$wt")" in clean|disposable) true ;; *) false ;; esac; then
         echo "WARN clean-garden: parked $br changed during prune — kept ($wt)" >&2
         note_stuck "$wt" "parked, and the worktree changed during the prune"
         SKIPPED=$((SKIPPED+1)); return 0

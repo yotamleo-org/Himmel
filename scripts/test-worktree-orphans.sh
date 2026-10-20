@@ -312,6 +312,11 @@ chmod 000 "$HANDOVER_ROOT/leg-unread.md"
 out=$(run_wt prune)
 chmod 600 "$HANDOVER_ROOT/leg-unread.md"
 expect "7: a parked tree is kept when a live lock doc cannot be read" "$out" is_dir "$WT_PARK_UNREAD"
+WT_PARK_UNREAD2=$(mk_wt parkunread2 fix/park-unread-2 1) || exit 1
+chmod 000 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
+out=$(run_wt prune)
+chmod 600 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
+expect "7: a parked tree is kept when a lock's owner.json cannot be read" "$out" is_dir "$WT_PARK_UNREAD2"
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-unread.md" >/dev/null 2>&1 || true
 
 echo
