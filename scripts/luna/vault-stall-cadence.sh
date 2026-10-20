@@ -189,9 +189,18 @@ replay_hook() {
     return "$rc"
 }
 
-# hook_log <hook-output> — its structural lines only (see CLASSIFY).
+# hook_log <hook-output> — its structural lines only (see CLASSIFY). Source
+# text never reaches the allowlist: shellcheck's blocks after "In <f> line N:"
+# and "Did you mean:", and gitleaks' Finding/Secret span, are dropped first.
 hook_log() {
-    printf '%s\n' "$1" | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
+    printf '%s\n' "$1" | awk '
+        src && /^$/ { src = 0; next }
+        src { next }
+        /^In .+ line [0-9]+:$/ { print; src = 1; next }
+        /^Did you mean:$/ { src = 1; next }
+        /^Finding:/ { leak = 1 }
+        leak && /^RuleID:/ { leak = 0 }
+        !leak' | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
 }
 
 # describe <row> — "hook [rule] file:line", the only shape that leaves this script.

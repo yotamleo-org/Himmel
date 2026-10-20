@@ -643,5 +643,14 @@ out="$(run_sut)"
 assert_has "T33 alerts the passing stall" "stall-but-pre-commit-passes" "$(sent)"
 assert_not_has "T33 the stale log is replaced" "no-file-reported" "$(cat "$S/last-run.log" 2>/dev/null)"
 
+# --- T34 a source line shaped like a structural line stays out of the log ----
+mkvault
+printf '#!/usr/bin/env bash\nLine: src-sentinel-34 $1\n' >"$V/scripts/z.sh"
+git -C "$V" add scripts/z.sh
+out="$(run_sut)"
+assert_has "T34 alert names the refusal" "shellcheck scripts/z.sh:2" "$(sent)"
+assert_has "T34 last-run.log keeps the location line" "In scripts/z.sh line 2:" "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_not_has "T34 last-run.log carries no source line" "src-sentinel-34" "$(cat "$S/last-run.log" 2>/dev/null)"
+
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi
