@@ -959,7 +959,9 @@ printf '%s\n' '' '## Description' '' 'Start after HIMMEL-409 merges.' >> "$vp/HI
 printf '%s\n' 'priority: 400 | rest of v1.1.3 | 9999' > "$W/vp-plan.md"
 cat > "$W/vp-prs.json" <<'EOF'
 [{"number":500,"title":"feat: [HIMMEL-401] x","headRefName":"feat/himmel-401-x","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]},
- {"number":501,"title":"fix: y","headRefName":"fix/himmel-403-y","isDraft":true,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"}]}]
+ {"number":501,"title":"fix: y","headRefName":"fix/himmel-403-y","isDraft":true,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"}]},
+ {"number":503,"title":"feat: [HIMMEL-400] z","headRefName":"feat/z","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"COMPLETED","conclusion":"ACTION_REQUIRED"}]},
+ {"number":504,"title":"feat: [HIMMEL-410] w","headRefName":"feat/w","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"STARTUP_FAILURE"}]}]
 EOF
 cat > "$W/vp-chains.json" <<'EOF'
 [{"name":"0 — wave one","note":"land first","steps":[{"key":"HIMMEL-405","label":"chain step one","state":"work"},
@@ -996,6 +998,8 @@ contains 'a sector chip renders in the sector colour (HIMMEL-6769)' "$(card 400)
 contains 'a card with no sector says so (HIMMEL-6769)' "$(card 402)" 'no sector'
 contains 'an open PR badge carries its CI state (HIMMEL-6769)' "$(card 401)" 'href="https://github.com/example-org/example-repo/pull/500">#500 · CI green</a>'
 contains 'a PR found by its branch name, red and draft (HIMMEL-6769)' "$(card 403)" '#501 · CI red · draft'
+contains 'a check that needs action is not green (HIMMEL-6769)' "$(card 400)" '#503 · CI red'
+contains 'a check that failed to start is not green (HIMMEL-6769)' "$(card 410)" '#504 · CI red'
 contains 'a started card with no open PR is flagged (HIMMEL-6769)' "$(card 402)" 'no open PR'
 not_contains 'a To Do card with no PR is not flagged (HIMMEL-6769)' "$(card 407)" 'no open PR'
 contains 'a card with an open blocker is flagged (HIMMEL-6769)' "$(card 403)" 'BLOCKED by open HIMMEL-404'
@@ -1007,10 +1011,13 @@ contains 'a chain step whose ticket is Done reads merged (HIMMEL-6769)' "$(grep 
 contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 2 · N9'
 if [ ! -e "$vout.fp" ]; then pass 'a --version page without --plan-dir writes no .fp (HIMMEL-6769)'; else fail 'a --version page without --plan-dir wrote a .fp'; fi
 # a column that differs from Jira reads DRIFT and names the key.
-printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\n' > "$W/vp-jira.tsv"
+printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\nHIMMEL-411\tTask\tBlocked\tx\n' > "$W/vp-jira.tsv"
 vstdout="$(vrender)"
 contains 'a column Jira counts differently reads DRIFT (HIMMEL-6769)' "$vstdout" 'In Progress 1/2 DRIFT, In Review 1/0 DRIFT'
 contains 'the DRIFT line names the key and its Jira status (HIMMEL-6769)' "$(cat "$vout")" 'HIMMEL-402 Jira In Progress'
+contains 'a status only Jira holds gets a DRIFT column on the page (HIMMEL-6769)' "$(cat "$vout")" \
+    'data-col="Blocked"><h2>Blocked <span class="n">0</span></h2><div class="parity drift">Jira 1 · DRIFT: HIMMEL-411 page (absent)'
+contains 'stdout counts the Jira-only status as DRIFT (HIMMEL-6769)' "$vstdout" 'Blocked 0/1 DRIFT'
 # a failing Jira CLI or gh reads unavailable, never a failed render or a false flag.
 printf '#!/bin/sh\nexit 1\n' > "$W/vpnogh"
 chmod +x "$W/vpnogh"

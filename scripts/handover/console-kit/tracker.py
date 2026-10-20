@@ -1237,8 +1237,10 @@ def open_prs(path, repo):
             ci = 'red'
         elif any(b == 'CANCELLED' for _, b in st):
             ci = 'cancelled'
+        elif not st:
+            ci = 'none'
         else:
-            ci = 'green' if st else 'none'
+            ci = 'green' if all(b in ('SUCCESS', 'NEUTRAL', 'SKIPPED') for _, b in st) else 'red'
         for k in set(re.findall(r'HIMMEL-(\d+)', pr['title'] + ' ' + pr['headRefName'], re.I)):
             out.setdefault(int(k), []).append((pr['number'], ci, bool(pr.get('isDraft'))))
     return out
@@ -1315,7 +1317,8 @@ def version_page(mir, version, groups, prs, chains, base, repo):
                    '<div class="dirq">direction? %s: the link and the blocker\'s own text disagree</div>' % ', '.join(dirq) if dirq else '',
                    '<div class="dep">after %s</div>' % ', '.join(shut) if shut else '', sc, esc(sec or 'no sector')))
     colhtml, tally = [], []
-    for c, ks in cols.items():
+    for c in list(cols) + sorted(set(par or {}) - set(cols)):
+        ks = cols.get(c, [])
         if par is None:
             pl = '<div class="parity na">Jira unavailable</div>'
         else:
@@ -1331,8 +1334,6 @@ def version_page(mir, version, groups, prs, chains, base, repo):
                              % (min(bi, 7), esc(n), len(bk), ''.join(card(k) for k in bk)))
         colhtml.append('<section class="col" data-col="%s"><h2>%s <span class="n">%d</span></h2>%s%s</section>'
                        % (esc(c), esc(c), len(ks), pl, ''.join(parts) or '<div class="empty">none</div>'))
-    if par is not None:
-        tally += ['%s 0/%d DRIFT' % (c, jn) for c, (jn, diff) in par.items() if c not in cols]
     parline = 'parity %s: %s' % (version, ', '.join(tally) if par is not None else 'unavailable')
 
     def step(st):
