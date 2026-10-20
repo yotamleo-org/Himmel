@@ -234,6 +234,7 @@ scripts/cr/test-impacted-suites.sh	33
 scripts/cr/test-install-cr-gate.sh	2
 scripts/cr/test-known-findings.sh	4
 scripts/cr/test-lane-classify.sh	0
+scripts/cr/test-ledger-amend-auth.sh	1
 scripts/cr/test-ledger-append.sh	18
 scripts/cr/test-live-gate-e2e.sh	0
 scripts/cr/test-orphan-check.sh	0

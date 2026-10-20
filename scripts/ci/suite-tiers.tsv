@@ -214,6 +214,7 @@ scripts/cr/test-impacted-suites.sh	pr	trust-path
 scripts/cr/test-install-cr-gate.sh	pr	trust-path
 scripts/cr/test-known-findings.sh	pr	trust-path
 scripts/cr/test-lane-classify.sh	pr	trust-path
+scripts/cr/test-ledger-amend-auth.sh	pr	trust-path
 scripts/cr/test-ledger-append.sh	pr	static-gate
 scripts/cr/test-live-gate-e2e.sh	pr	trust-path
 scripts/cr/test-mark-deferred-escape.sh	local	behaviour suite, backfilled HIMMEL-6716

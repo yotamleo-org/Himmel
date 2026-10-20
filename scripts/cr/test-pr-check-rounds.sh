@@ -32,6 +32,7 @@ cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
 cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
 cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
 # Every chokepoint fails closed without its seam-guard lib.
 cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guard.sh"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
@@ -1280,6 +1281,37 @@ git -C "$repo" checkout -q promote
 assert_has "$branchkey_out" "$(printf 'still-open find-n@%s (unadjudicated)' "$(printf '%s' "$promote_head_a" | cut -c1-8)")" "HIMMEL-3461 (n) a different branch's amend does not merge into this branch's finding"
 assert_has "$branchkey_out" "promoted find-o@" "HIMMEL-3461 (o) a same-branch amend still merges (positive control)"
 assert_has "$branchkey_out" "promoted find-p@" "HIMMEL-3461 (p) a legacy branchless amend still applies (back-compat)"
+
+# (q) past the ledger's first signed amend, a hand-written amend that disproves
+# a re-raised finding is dropped (still-open); the same verdict written through
+# ledger-append.sh, which signs it, is honoured (skip-terminal).
+_rr_home="$HOME"
+export HOME="$tmp/qhome"
+mkdir -p "$HOME/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
+git -C "$repo" branch authq "$promote_head_b"
+CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch authq --head "$promote_head_a" --model stub --id find-q \
+    --severity imp --file promote.txt --line 13 --verdict "" \
+    --text "tidy up the promote fixture rho"
+CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
+    --branch authq --head "$promote_head_a" --id find-q \
+    --set verdict=agreed --reason "leg agrees with rho"
+CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch authq --head "$promote_head_b" --model stub --id find-q2 \
+    --severity imp --file promote.txt --line 13 --verdict "" \
+    --text "tidy up the promote fixture rho"
+printf '{"kind":"amend","ts":"2020-01-01T00:00:00Z","branch":"authq","target_head":"%s","finding_id":"find-q","artifact":"diff","perspective":"off","set":{"verdict":"disproved"},"reason":"hand-written"}\n' "$promote_head_a" >> "$promote_ledger"
+git -C "$repo" checkout -q authq
+authq_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" promote --branch authq --head "$promote_head_b")"
+assert_has "$authq_out" "still-open find-q@" "HIMMEL-6511 (q) an unsigned disproved amend after the cutover does not settle the re-raised finding"
+CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
+    --branch authq --head "$promote_head_a" --id find-q \
+    --set verdict=disproved --reason "rho is unreachable from the fixture"
+authq_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" promote --branch authq --head "$promote_head_b")"
+assert_has "$authq_out" "skip-terminal find-q@" "HIMMEL-6511 (q) a signed disproved amend still settles the finding"
+git -C "$repo" checkout -q promote
+export HOME="$_rr_home"
 
 # Negative control: a malformed ledger row refuses automatic promotion and writes nothing.
 promote_lines_before="$(wc -l < "$promote_ledger" | tr -d ' ')"
