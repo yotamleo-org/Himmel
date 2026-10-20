@@ -10,7 +10,9 @@
 #                artifacts and named by run id.
 #
 # The selector is the runner itself: SUITE_TIER_MODE=pr run-shell-tests.sh --list
-# over this checkout gives the tier floor T, every suite not [SKIP]ped "tier:".
+# over this checkout gives the tier floor T, every listed suite that is neither
+# [SKIP]ped "tier:" nor a local row. A local row an earlier rule skips first stays
+# out of T: that rule (the off-Linux skip list) does not hold on every host.
 # A manifest's pr-mode selection is T plus its impacted `suite` lines, or every
 # suite under `mode full`. A catch suite or a trust-owned suite (test-suite-tiers.sh
 # --lint's own rule, over every tracked suite) outside a selection fails the replay.
@@ -29,6 +31,7 @@ case "$#:${1:-}" in
   2:--tiers) tiers="$2" ;;
   *) echo "usage: $0 [--tiers <suite-tiers.tsv>]" >&2; exit 2 ;;
 esac
+case "$tiers" in /*) ;; *) tiers="$PWD/$tiers" ;; esac
 [ -r "$tiers" ] || { echo "tier-replay: cannot read $tiers" >&2; exit 2; }
 
 # shellcheck source=../lib/prim.sh
@@ -50,7 +53,9 @@ if ! (cd "$ROOT" && SUITE_TIER_MODE=pr SUITE_TIERS_TSV="$tiers" bash scripts/ci/
 fi
 # `[RUN ] <suite>` and `[SKIP] <suite> — <reason>`, the suite spelled under the scan root.
 awk '/^\[RUN \] / {print $3} /^\[SKIP\] / {print $2}' "$tmp/plan" | sed 's#^\./##' | sort -u > "$tmp/all"
-awk '/^\[RUN \] / {print $3} /^\[SKIP\] / && !/ — tier: / {print $2}' "$tmp/plan" | sed 's#^\./##' | sort -u > "$tmp/T"
+awk -F'\t' '!/^#/ && $2 == "local" {print $1}' "$tiers" | sort -u > "$tmp/local"
+awk '/^\[RUN \] / {print $3} /^\[SKIP\] / && !/ — tier: / {print $2}' "$tmp/plan" | sed 's#^\./##' | sort -u \
+  | comm -23 - "$tmp/local" > "$tmp/T"
 
 git -C "$ROOT" ls-files | awk -F/ '$NF ~ /^test-.*\.sh$/ {print $0 "\tlocal\tx"}' > "$tmp/all-local.tsv"
 bash "$ROOT/scripts/ci/test-suite-tiers.sh" --lint --tiers "$tmp/all-local.tsv" \
