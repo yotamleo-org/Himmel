@@ -379,7 +379,9 @@ wf_violations() {
   # skip: rule (a) passes the admin owner before any review is read, so a
   # SKIPPED (success) context is the result the job would produce. Any other
   # skip reports success under the required context and masks a red run.
-  grep -E '^    if:' "$s" | grep -vxF "$OWNER_IF" | grep -q . && echo "job-level if: on the required job (a skip masks a red run)"
+  local other_ifs
+  other_ifs=$(grep -E '^    if:' "$s" | grep -vxF "$OWNER_IF")
+  [ -n "$other_ifs" ] && echo "job-level if: on the required job (a skip masks a red run)"
   grep -qxF "$OWNER_IF" "$s" || echo "owner-only job-level if: is missing"
   grep -qE '^[[:space:]]*queue:' "$s" && echo "has queue: (pending runs must be replaced, not queued)"
   grep -qE '^[[:space:]]*cancel-in-progress:[[:space:]]*false' "$s" || echo "cancel-in-progress: false is missing"
