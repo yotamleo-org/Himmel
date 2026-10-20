@@ -1,0 +1,44 @@
+{
+  "_captured": "GET /issue/<key>?fields=issuelinks on the live Jira, 2026-10-20 (issue keys and link ids verbatim, type.self dropped). Jira's own JQL linkedIssues(HIMMEL-6494, \"is blocked by\") returns HIMMEL-5556 and linkedIssues(HIMMEL-6494, \"blocks\") returns HIMMEL-6572, so: an inwardIssue entry means THIS issue <type.inward> that issue, an outwardIssue entry means THIS issue <type.outward> that issue.",
+  "HIMMEL-6494": {
+    "key": "HIMMEL-6494",
+    "fields": {
+      "issuelinks": [
+        {
+          "id": "19707",
+          "type": { "id": "10000", "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+          "inwardIssue": { "key": "HIMMEL-5556" }
+        },
+        {
+          "id": "19708",
+          "type": { "id": "10000", "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+          "outwardIssue": { "key": "HIMMEL-6572" }
+        }
+      ]
+    }
+  },
+  "HIMMEL-5556": {
+    "key": "HIMMEL-5556",
+    "fields": {
+      "issuelinks": [
+        {
+          "id": "19707",
+          "type": { "id": "10000", "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+          "outwardIssue": { "key": "HIMMEL-6494" }
+        }
+      ]
+    }
+  },
+  "HIMMEL-6572": {
+    "key": "HIMMEL-6572",
+    "fields": {
+      "issuelinks": [
+        {
+          "id": "19708",
+          "type": { "id": "10000", "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+          "inwardIssue": { "key": "HIMMEL-6494" }
+        }
+      ]
+    }
+  }
+}

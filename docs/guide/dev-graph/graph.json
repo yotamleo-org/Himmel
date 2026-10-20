@@ -1097,6 +1097,20 @@
       ]
     },
     {
+      "id": "e.go.nodisposition",
+      "from": "c.go",
+      "to": "j.judge",
+      "kind": "refusal",
+      "exit": 9,
+      "condition": "a Critical or Important finding has no valid disposition; a judge or the console records one with cr-disposition.sh record",
+      "sources": [
+        {
+          "file": "scripts/handover/console-kit/go.sh",
+          "anchor": "has no valid disposition"
+        }
+      ]
+    },
+    {
       "id": "e.go.notready",
       "from": "c.go",
       "to": "c.verify",
@@ -1681,7 +1695,8 @@
         "0": "e.go.ok",
         "3": "e.go.leg",
         "4": "e.go.notready",
-        "8": "e.go.trustplain"
+        "8": "e.go.trustplain",
+        "9": "e.go.nodisposition"
       },
       "unmapped": {
         "1": "handover root or GO key unreadable: operational",

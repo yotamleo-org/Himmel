@@ -1,0 +1,22 @@
+✻ Sautéed for 31s · done 22:53
+
+※ recap: Goal: add `jira comment --edit <id>`
+  (HIMMEL-6442); it's committed at 84583799d but parked
+  and wrapped on the console's halt, unpushed with no
+  PR. Next action: whoever resumes clears the stray
+  worktree `dist/` and follows the RESUME brief to
+  ship. (disable recaps in /config)
+
+ HIMMEL-6147-N2836-bus-succession-live-proof-2026-10… ─
+❯
+───────────────────────────────────────────────────────
+  [Opus 5.5 ◑ high]
+  fix+himmel-6147-bus-succession-live-proof +.himmel…
+  Context ░░░░ 11% (109k/1.0M)
+  Usage   ░░░░ 9% (resets at Oct 20 03:10 AM)
+  Weekly  ███░ 75% (resets at Oct 24 11:00 AM)
+  $0.00 / $0.00
+  Cache ⏱ until Oct 20 12:12 AM
+  ⎇ HIMMEL-6147 in-progress
+  himmel-doctor  0 FAIL  5 WARN
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents

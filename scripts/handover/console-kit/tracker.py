@@ -702,6 +702,23 @@ def priority_groups(path):
     return [(n, [int(k) for k in PRIO_KEY_RE.findall(sg)]) for n, sg in zip(names, segs)]
 
 
+_DEP_RE = re.compile(r'\b(?:depends[ -]on|blocked[ -]by):?\s+(HIMMEL-\d+(?:\s*(?:,(?:\s*and)?|and|\+)\s*HIMMEL-\d+)*)', re.I)
+
+
+def blockers(mir, m):
+    """HIMMEL-6556: ' {blocked-by: HIMMEL-n open, HIMMEL-m done}' for a ticket's blockers, or ''.
+
+    Blockers are the mirror's links.blocked_by plus `Depends on` / `blocked by` / `BLOCKED-BY` description lines; a
+    blocker is done once it is a closed bucket, and open when not (a key missing from the mirror reads open)."""
+    ks = list(m['blk'])
+    for hit in _DEP_RE.findall(m['otext']):
+        ks += [num(x) for x in KEY_RE.findall(hit)]
+    seen = [k for i, k in enumerate(ks) if k not in ks[:i]]
+    return ' {blocked-by: %s}' % ', '.join(
+        'HIMMEL-%d %s' % (k, 'done' if 'HIMMEL-%d' % k in mir and bucket(mir['HIMMEL-%d' % k]) in ('done', 'wont') else 'open')
+        for k in seen) if seen else ''
+
+
 def remaining_board(mir, version, groups):
     """Markdown of the open tickets whose fixVersion includes `version`, grouped by the plan's priority groups.
 
@@ -723,7 +740,8 @@ def remaining_board(mir, version, groups):
     for n in names:
         if rows[n]:
             out.append('\n## %s (%d)' % (n, len(rows[n])))
-            out += ['- HIMMEL-%d [%s] %s' % (k, opn[k]['sn'] or opn[k]['cat'], clip(opn[k]['title'], 90)) for k in rows[n]]
+            out += ['- HIMMEL-%d [%s] %s%s' % (k, opn[k]['sn'] or opn[k]['cat'], clip(opn[k]['title'], 90), blockers(mir, opn[k]))
+                    for k in rows[n]]
     return '\n'.join(out) + '\n'
 
 
@@ -831,7 +849,7 @@ def read_mirror():
         parts = txt.split('---', 2)
         if len(parts) < 3:
             continue
-        fm, sub, rel = {}, '', []
+        fm, sub, rel, blk = {}, '', [], []
         for l in parts[1].splitlines():
             if ':' in l and not l.startswith(' '):
                 k, v = l.split(':', 1)
@@ -841,8 +859,12 @@ def read_mirror():
                 sub = l.split(':', 1)[0].strip()
                 if sub == 'relates':
                     rel += [num(x) for x in KEY_RE.findall(l)]
+                elif sub == 'blocked_by':
+                    blk += [num(x) for x in KEY_RE.findall(l)]
             elif sub == 'relates':
                 rel += [num(x) for x in KEY_RE.findall(l)]
+            elif sub == 'blocked_by':
+                blk += [num(x) for x in KEY_RE.findall(l)]
         key = fm.get('key', '').strip('"')
         if not key:
             continue
@@ -877,7 +899,7 @@ def read_mirror():
                         upd=fm.get('updated', '').strip('"'), title=m.group(1) if m else '',
                         type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]),
                         labels=lab if isinstance(lab, list) else [], parent=par if isinstance(par, str) and KEY_RE.fullmatch(par) else '',
-                        rel=rel, otext=(m.group(1) if m else '') + '\n' + parts[2].split('\n## Comments', 1)[0])
+                        rel=rel, blk=blk, otext=(m.group(1) if m else '') + '\n' + parts[2].split('\n## Comments', 1)[0])
     return out
 
 

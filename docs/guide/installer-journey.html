@@ -244,14 +244,16 @@
   }
   function answer(a) { return [['in', '> ' + a]]; }
 
-  // source: scripts/himmelctl/bin.js PROFILE_HELP, SCOPE_HELP, VAULT_HELP, HANDOVER_HELP, ALWAYS_ON_HELP, SECRETS_WALK_HELP, BRIDGE_HELP, VM_HELP
+  // source: scripts/himmelctl/bin.js PROFILE_HELP, SCOPE_HELP, VAULT_HELP, HANDOVER_HELP, ALWAYS_ON_HELP, SECRETS_WALK_HELP, BRIDGE_HELP, VM_HELP, TRACKER_HELP, TICKET_REQUIRED_HELP
   var help = {
     profile: { starter: 'core harness: hooks, guardrails, worktrees, statusline, jira CLI', luna: 'starter + the second-brain surface, nothing else (vault/qmd/cadences/PHI/secrets/bridge questions)', operator: 'the maintainer machine as a consumable profile (seeds defaults ONLY; lanes and every has-it-or-not feature are still asked)', custom: 'walk every question from scratch, no seeding' },
     scope: { project: "this install's config lives inside this repo's own .claude/ — wire it again separately for another project", user: "this install's config lives at ~/.claude/ — applies once, to every project you open" },
     vault: { none: 'no second brain on this machine; every vault question below is skipped', 'default-template': 'scaffold a fresh vault from templates/luna-second-brain', existing: 'point at the Obsidian vault you already have (in-place, STAMPED-gated upgrade)' },
     handover: { inline: "no-op — handover state stays in this repo's own handovers/ (adopt.sh/setup.sh default)", external: 'persists HANDOVER_DIR to an external state repo you point at next' },
     alwaysOn: { yes: 'print the unattended/scheduled-run hardening checklist (nothing is executed either way)', no: 'print a one-line pointer to the checklist instead' },
-    secrets: { run: 'walk each luna secret with an instruction card + probe (himmelctl never harvests the value)', skip: 'skip the walk-through' },
+    secrets: { run: 'show each secret status, then keep / set / skip it; a typed value goes to the 0600 store, never the answers file', skip: 'skip the walk-through' },
+    tracker: { jira: 'commits name a ticket like ABC-123; the Jira secrets are offered later', local: 'commits name a ticket from your local ticket files; no Jira secrets asked', none: 'no ticket tracker; a commit needs no ticket ID' },
+    ticketRequired: { yes: 'the commit-msg gate refuses a commit that names no ticket', no: 'a commit may omit the ticket ID' },
     bridge: { off: 'no telegram bridge configured', on: 'configure telegram voice/text ingestion (.env path, whisper CLI/model, optional persistence)' },
     vm: { local: 'the local test VM (ssh localhost:2222) — the default', remote: 'a VM you reach over ssh (asks for user@host, port, identity)', none: 'no VM available — VM-proof steps need an operator ack + rollback point' },
     lanes: { codex: "requires the codex CLI + its own login; skip if you don't have it", hermes: 'gateway lane; own opt-in, own install profile, own credentials' }
@@ -281,7 +283,7 @@
     // source: scripts/himmelctl/bin.js HARD_GATE_TOOLS; docs/getting-started.md §1; docs/setup/new-machine.md
     { id: 'pre', short: 'Prerequisites', sub: 'tools + one command', kind: 'info',
       intro: 'himmel is a harness for Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.',
-      term: function () { return [['d', '# 1. Claude Code itself (Linux/macOS)'], ['in', '$ curl -fsSL https://claude.ai/install.sh | bash'], ['d', '# 2. clone himmel once, then run the installer from the repo you want it in'], ['in', '$ git clone https://github.com/yotamleo/himmel'], ['in', '$ node himmel/scripts/himmelctl/bin.js install --scope project'], ['d', '# no Node yet? run this first, then re-run install:'], ['in', '$ bash himmel/scripts/himmelctl/bootstrap.sh']]; },
+      term: function () { return [['d', '# 1. Claude Code itself (Linux/macOS)'], ['in', '$ curl -fsSL https://claude.ai/install.sh | bash'], ['d', '# 2. clone himmel once, then run the installer from the repo you want it in'], ['in', '$ git clone https://github.com/yotamleo-org/Himmel himmel'], ['in', '$ node himmel/scripts/himmelctl/bin.js install --scope project'], ['d', '# no Node yet? run this first, then re-run install:'], ['in', '$ bash himmel/scripts/himmelctl/bootstrap.sh']]; },
       means: function () { return { see: ['A hard check for bash, git, jq and python3, plus npm or bun (npm is the one it recommends).', 'A missing tool stops the run before the first question, with the command to install it.'], does: ['Nothing yet. No question has been answered, and nothing on your machine has changed.'] }; } },
     { id: 'profile', short: 'Profile', sub: 'how much to set up', kind: 'ask',
       intro: 'The first question picks a starting point. A profile only fills in the default answers for the questions after it; it never skips a question.',
@@ -305,7 +307,7 @@
         return t;
       },
       means: function () {
-        var d = { none: 'No vault. The privacy, secrets and Telegram questions are skipped, and only the general scheduled jobs are offered.', 'default-template': 'A new vault is created from the bundled template at the path you give.', existing: 'Your existing vault is upgraded in place, but only if the template created it. Converting some other vault is not supported yet.' };
+        var d = { none: 'No vault. The privacy and Telegram questions are skipped, and only the general scheduled jobs are offered.', 'default-template': 'A new vault is created from the bundled template at the path you give.', existing: 'Your existing vault is upgraded in place, but only if the template created it. Converting some other vault is not supported yet.' };
         return { see: hasVault() ? ['The vault menu, then a path prompt. Enter accepts ~/Documents/luna.'] : ['The vault menu only.'], does: [d[p.vault]] };
       } },
     // source: bin.js HANDOVER_HELP; scripts/lib/handover-path.sh
@@ -370,41 +372,43 @@
       intro: 'If your vault will hold health records, himmel keeps them away from models outside your machine. It asks you to declare that, and prints the checklist you complete by hand.',
       term: function () { return [['d', '── PHI checklist — READ ONLY, himmelctl creates none of this ──────────────'], ['d', '  [ ] 1. drop a `.salus` marker file at the vault root (or an ancestor dir)'], ['d', '  [ ] 2. add the vault\'s absolute path as a line in ~/.config/claude-glm/phi-roots'], ['d', '  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist'], ['q', '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)'], ['in', '> no']]; },
       means: function () { return { see: ['A read-only checklist, then a yes/no question you must type in words. A bare number is not accepted here.', 'A second question asks about a separate personal or medical vault.'], does: ['Records your answer only. The markers themselves are yours to create.'] }; } },
-    // source: bin.js SECRETS_WALK_HELP; .env.example; docs/setup/install.md minimal config
-    { id: 'secrets', short: 'Secrets into .env', sub: 'tokens stay yours', kind: 'ask',
-      intro: 'Tokens and API keys go in .env and nowhere else. The installer never asks you to type a secret into it.',
-      term: function () {
-        if (!hasVault()) return [['d', '# no vault: there is no secrets walk. Add what you use to .env by hand,'], ['d', '# for example the Jira CLI:'], ['', 'JIRA_BASE_URL=https://your-site.atlassian.net'], ['', 'JIRA_EMAIL=you@example.com'], ['', 'JIRA_API_TOKEN=…'], ['', 'JIRA_PROJECT_KEY=ABC']];
-        return menu('walk through luna secrets now (instruction card + probe per secret; himmelctl never harvests the value itself)', ['run', 'skip'], 'skip', help.secrets).concat(answer('run'));
-      },
-      means: function () { return { see: hasVault() ? ['An instruction card per secret: where to get it and which .env line it belongs on, then a probe that checks it works.'] : ['No question. The .env.example file lists every optional secret.'], does: ['You paste each value into .env yourself; the installer only checks that it works. Every integration is optional.'] }; } },
     // source: bin.js BRIDGE_HELP
     { id: 'bridge', short: 'Telegram bridge', sub: 'voice and text notes', kind: 'ask',
       skip: function () { return hasVault() ? '' : 'Skipped on your path: the bridge files messages into a companion vault.'; },
       intro: 'An optional bridge that turns Telegram voice and text messages into vault notes, transcribed locally with whisper.',
       term: function () { return menu('configure the telegram bridge (voice/text ingestion)?', ['off', 'on'], p.profile === 'operator' ? 'on' : 'off', help.bridge).concat(answer(p.profile === 'operator' ? 'on' : 'off')); },
       means: function () { return { see: ['Two options; on asks for the bridge’s own .env path, the whisper program, the model and whether to keep it running.'], does: ['Off writes nothing. The bridge keeps its token in its own .env file.'] }; } },
+    // source: bin.js SECRETS_WALK_HELP, collectSecrets(); asked on every profile, after the bridge
+    { id: 'secrets', short: 'Secrets', sub: 'tokens stay yours', kind: 'ask',
+      intro: 'Tokens and API keys stay out of the answers file. The installer can walk you through them: it shows each secret\'s status, then you keep, set or skip it. A value you type is hidden as you type and goes to a private file only you can read.',
+      term: function () {
+        return menu('walk through secrets now (status, then keep/set/skip per secret with a masked prompt; the answers file records status only)', ['run', 'skip'], 'skip', help.secrets).concat(answer('run'));
+      },
+      means: function () { return { see: ['A menu, then for each secret its status and a keep, set or skip choice. A value you set is typed at a masked prompt.'], does: ['The answers file records each status only, never the value. Skip it and add what you use to .env by hand; the .env.example file lists every optional secret. Every integration is optional.'] }; } },
+    // source: bin.js askCommitRules(), TRACKER_HELP, TICKET_REQUIRED_HELP, commitRulesPath()
+    { id: 'commit', short: 'Commit rules', sub: 'tracker and ticket IDs', kind: 'ask',
+      intro: 'The last question sets how commits name their work: which tracker you use and whether every commit must carry a ticket ID. Nothing is written until you say yes.',
+      term: function () {
+        var t = menu('tracker', ['jira', 'local', 'none'], 'jira', help.tracker).concat(answer('jira'));
+        t = t.concat(menu('ticket ID required', ['yes', 'no'], 'yes', help.ticketRequired)).concat(answer('yes'));
+        t = t.concat([['q', '? ticket ID pattern (regex; blank = the commit gate\'s own default)'], ['in', '> ']]);
+        return t.concat([['q', '? write these commit rules to ~/.himmel/himmel.conf now (TRACKER=jira, TICKET_ID_REQUIRED=1; consented, --dry-run shows it) [yes|no] (default: no)'], ['in', '> yes']]);
+      },
+      means: function () { return { see: ['A tracker menu, a yes/no for required ticket IDs (skipped when the tracker is none), an optional pattern, then a typed yes or no before anything is written.'], does: ['Yes agrees to the write: once you confirm the plan, TRACKER, TICKET_ID_REQUIRED and any pattern go to ~/.himmel/himmel.conf as KEY=value lines. No leaves the file untouched.'] }; } },
     // source: bin.js runPlan(): answers summary, "derived:" line, Proceed? [Y/n], --dry-run
-    { id: 'summary', short: 'Summary', sub: 'nothing changes before this', kind: 'info',
-      intro: 'Every answer so far was only collected. Now you see the full plan and the exact command it will run, and you confirm once.',
+    { id: 'summary', short: 'Summary', sub: 'nothing is installed before this', kind: 'info',
+      intro: 'Every answer so far, apart from a secret you chose to set, was only collected. Now you see the full plan and the exact command it will run, and you confirm once.',
       term: function () {
         return [['d', '…your answers, one per line…'], ['', 'derived: adopt.sh --scope project …'], ['q', 'Proceed? [Y/n]'], ['in', '> '], ['ok', '✓ installed — re-run any time: it converges, it does not duplicate']];
       },
       means: function () { return { see: ['A summary of your answers, the derived command, and one confirm that defaults to yes.'], does: ['Add --dry-run to the install command to see the same plan and stop there.'] }; } },
-    // source: docs/internals/config-layers.md (new layout, in review); the config-file wizard step is not built yet
-    { id: 'config', short: 'Your config file', sub: 'coming soon', kind: 'soon',
-      intro: 'Coming soon: a step that writes your settings into a config file you can read, edit and track. Today the installer records answers in its own files; this step will gather them in one place.',
+    // source: bin.js applyCommitRulesStep(), commitRulesPath()
+    { id: 'config', short: 'Your config file', sub: 'rules you can edit', kind: 'info',
+      intro: 'The commit rules you confirmed land in a plain file you can read and edit: ~/.himmel/himmel.conf. Re-running the installer updates those lines and leaves every other line alone.',
       term: function () {
-        var t = [['d', '# coming soon — what the wizard will write'], ['', '~/.himmel/himmel.conf'], ['', '  USER_SLUG=jane-doe']];
-        if (p.handover === 'external') t.push(['', '  HANDOVER_DIR=~/.claude/handover-state']);
-        if (hasVault()) t.push(['', '  LUNA_VAULT_PATH=~/Documents/luna']);
-        t.push(['', '  TICKET_ID_REQUIRED=1']);
-        if (hasVault()) t.push(['d', '  ↳ tracked in your vault through a symlink, so it follows you between machines']);
-        t.push(['', '~/.himmel/himmel.conf.local   ← overrides for this machine only']);
-        t.push(['', '~/.himmel/config.json  policy  ← gate rules the agent cannot write']);
-        return t;
+        return [['ok', 'himmelctl: wrote TRACKER, TICKET_ID_REQUIRED to ~/.himmel/himmel.conf'], ['d', '# the file'], ['', 'TRACKER=jira'], ['', 'TICKET_ID_REQUIRED=1']];
       },
-      means: function () { return { see: ['A preview of the file before it is written.'], does: ['Everyday settings go in himmel.conf as KEY=value lines; an environment variable still wins over the file.', 'The three gate-policy settings go under policy in a file the agent cannot write, and the environment cannot override them.', '.env keeps secrets only.'] }; } },
+      means: function () { return { see: ['One line naming the file and the keys written.'], does: ['Everyday settings are KEY=value lines in himmel.conf; an environment variable still wins over the file.'] }; } },
     // source: docs/getting-started.md §3; docs/daily-loop.md; docs/handover/running-a-console.md
     { id: 'first', short: 'Your first session', sub: 'the loop starts', kind: 'info',
       intro: 'The harness only acts inside a Claude Code session. Open one at the repo root and run one change through the loop.',

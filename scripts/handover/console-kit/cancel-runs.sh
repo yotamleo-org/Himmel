@@ -27,13 +27,17 @@
 #
 # Each cancel writes one stderr line: run, branch, sha, event, rc (+ gh's error).
 # At most --max-cancels (default 100, 1-500) runs are cancelled per invocation.
+# Cancels are paced: at most 10 in any minute and 30 in any 10 minutes (failed
+# attempts count); the loop waits, so a full drain of 100 takes about 30 minutes.
+# The stamps persist in <git-common-dir>/cancel-runs-pace, so a re-run keeps the limits.
 #
 # Prints: cancelled=<n> failed=<n> kept=<comma list of head shas, - if none>
 # [protected=<n>] (a dry run appends would-cancel=<n>).
 #
 # Exit codes: 0 done; 1 gh failure, unresolvable keep, a failed cancel, a listing
 # that hit the cap, or the cancel cap reached (cancelled what it could; re-run);
-# 2 usage; 3 refused as a leg or relay.
+# 2 usage, a non-integer CANCEL_RUNS_FAKE_CLOCK, or a pacing state file that
+# cannot be written; 3 refused as a leg or relay.
 #
 # Literal `gh` only (no variable command name) so guard-pr-check-literal can
 # verify the bytes. Linux/macOS bash 3.2+ (gh + jq).
@@ -182,11 +186,79 @@ rows="$(printf '%s' "$runs" | jq -rs --arg keep "$KEEPS" --argjson incl "$INCLUD
     || { echo "cancel-runs: could not parse the run list; nothing cancelled" >&2; exit 1; }
 
 protected="$(printf '%s\n' "$rows" | grep -c '^P')"
+
+# Pacing: at most PACE_PER_MIN cancels in any 60 s and PACE_PER_WINDOW in any 600 s.
+# CANCEL_RUNS_FAKE_CLOCK=<file> is the test seam: the clock is the integer in that file
+# and a wait advances it instead of sleeping.
+PACE_PER_MIN=10
+PACE_PER_WINDOW=30
+PACE_STATE="${CANCEL_RUNS_PACE_STATE:-$(git rev-parse --git-common-dir)/cancel-runs-pace}"
+stamps=""
+if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then
+    fake_now=""
+    # read-sink-ok: the fake-clock seam reads one integer from the file the test suite names
+    [ ! -r "$CANCEL_RUNS_FAKE_CLOCK" ] || IFS= read -r fake_now < "$CANCEL_RUNS_FAKE_CLOCK"
+    printf '%s' "$fake_now" | grep -Eq '^[0-9]+$' \
+        || { echo "cancel-runs: CANCEL_RUNS_FAKE_CLOCK must name a file holding an integer" >&2; exit 2; }
+    echo "cancel-runs: CANCEL_RUNS_FAKE_CLOCK is set - the pacing clock is faked, nothing really waits" >&2
+fi
+pace_now() {
+    # read-sink-ok: the fake-clock seam reads one integer from the file the test suite names
+    if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then cat "$CANCEL_RUNS_FAKE_CLOCK"; else date +%s; fi
+}
+pace_nap() {
+    if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then
+        # read-sink-ok: the fake-clock seam reads one integer from the file the test suite names
+        echo $(($(cat "$CANCEL_RUNS_FAKE_CLOCK") + $1)) > "$CANCEL_RUNS_FAKE_CLOCK"
+    else
+        sleep "$1"
+    fi
+}
+# pace_load: take the stamps of the last 10 minutes from the state file, so a re-run keeps the limits.
+pace_load() {
+    now="$(pace_now)"
+    if [ -r "$PACE_STATE" ]; then
+        while IFS= read -r t; do
+            case "$t" in ''|*[!0-9]*) continue ;; esac
+            [ "$t" -gt $((now - 600)) ] && stamps="$stamps $t"
+        done < "$PACE_STATE"
+    fi
+    for t in $stamps; do echo "$t"; done > "$PACE_STATE" \
+        || { echo "cancel-runs: cannot write $PACE_STATE; nothing cancelled" >&2; exit 2; }
+}
+# pace_wait: block until one more cancel fits both windows; stamps holds each cancel's time, oldest first.
+pace_wait() {
+    while :; do
+        now="$(pace_now)"
+        keep_stamps=""; in_min=0; in_win=0; oldest_min=""; oldest_win=""
+        for t in $stamps; do
+            [ "$t" -gt $((now - 600)) ] || continue
+            keep_stamps="$keep_stamps $t"
+            in_win=$((in_win + 1))
+            [ -n "$oldest_win" ] || oldest_win=$t
+            if [ "$t" -gt $((now - 60)) ]; then
+                in_min=$((in_min + 1))
+                [ -n "$oldest_min" ] || oldest_min=$t
+            fi
+        done
+        stamps="$keep_stamps"
+        need=0
+        [ "$in_min" -lt "$PACE_PER_MIN" ] || need=$((oldest_min + 60 - now))
+        if [ "$in_win" -ge "$PACE_PER_WINDOW" ] && [ $((oldest_win + 600 - now)) -gt "$need" ]; then
+            need=$((oldest_win + 600 - now))
+        fi
+        [ "$need" -gt 0 ] || return 0
+        echo "cancel-runs: pacing - waiting ${need}s ($PACE_PER_MIN per minute, $PACE_PER_WINDOW per 10 minutes)" >&2
+        pace_nap "$need"
+    done
+}
 TAB="$(printf '\t')"
+[ "$LIVE" = 0 ] || pace_load
 cancelled=0
 failed=0
 would=0
 capped=0
+statefail=0
 while IFS="$TAB" read -r class id br sha ev; do
     [ "$class" = C ] || continue
     if [ "$LIVE" = 0 ]; then
@@ -196,6 +268,14 @@ while IFS="$TAB" read -r class id br sha ev; do
     if [ $((cancelled + failed)) -ge "$MAX_CANCELS" ]; then
         echo "cancel-runs: cap of $MAX_CANCELS cancels reached; re-run to drain the rest" >&2
         capped=1
+        break
+    fi
+    pace_wait
+    stamp="$(pace_now)"
+    stamps="$stamps $stamp"
+    if ! echo "$stamp" >> "$PACE_STATE"; then
+        echo "cancel-runs: cannot write $PACE_STATE; stopping before this cancel" >&2
+        statefail=1
         break
     fi
     err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
@@ -222,4 +302,5 @@ if [ "$LIVE" = 0 ]; then
 else
     echo "cancelled=$cancelled failed=$failed kept=$kept$prot"
 fi
+[ "$statefail" -eq 0 ] || exit 2
 [ "$failed" -eq 0 ] && [ "$truncated" -eq 0 ] && [ "$capped" -eq 0 ]

@@ -68,6 +68,7 @@ const STATIC: Record<string, [string, string]> = {
   // the rail and theme the AG-UI pages share (agui-web bundles its own copy at build time).
   "/nav.js": ["nav.js", "application/javascript; charset=utf-8"],
   "/theme.css": ["theme.css", "text/css; charset=utf-8"],
+  "/tokens.css": ["tokens.css", "text/css; charset=utf-8"],
 };
 // GET /agui/: the built AG-UI page, agui-web/dist (bun build, untracked).
 // Not token-gated: the page is static and the token rides the URL fragment; /api/agui/<run> stays gated.
@@ -102,7 +103,7 @@ function aguiStale(dist: string, web: string): { built: Date; changed: Date } | 
   try {
     const src = readdirSync(join(web, "src"), { recursive: true }).map((f) => join(web, "src", String(f)));
     // the page also bundles the console's rail and theme from public/.
-    const shared = ["nav.js", "theme.css"].map((f) => join(web, "..", "public", f)).filter((f) => existsSync(f));
+    const shared = ["nav.js", "theme.css", "tokens.css"].map((f) => join(web, "..", "public", f)).filter((f) => existsSync(f));
     const stats = [join(web, "index.html"), ...src, ...shared].map((f) => statSync(f));
     const newest = (sts: typeof stats) => sts.map((st) => st.mtime).reduce((a, b) => (b > a ? b : a));
     // a deleted or renamed source leaves no newer mtime, so the build lists its sources in

@@ -167,9 +167,11 @@ fi
 
 # Ticket section
 if [ -n "$ticket" ]; then
-    project_key="${ticket%%-*}"
-    project_key_lc=$(printf '%s' "$project_key" | tr '[:upper:]' '[:lower:]')
-    ticket_block="- ${ticket}: https://${project_key_lc}.atlassian.net/browse/${ticket}"
+    if [ -n "${JIRA_BASE_URL:-}" ]; then
+        ticket_block="- ${ticket}: ${JIRA_BASE_URL%/}/browse/${ticket}"
+    else
+        ticket_block="- ${ticket}"
+    fi
 else
     ticket_block="_no ticket — session branch_"
 fi

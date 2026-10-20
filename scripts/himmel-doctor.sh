@@ -4163,6 +4163,63 @@ check_c68_konsole_dbus() {
         "add 'EnableSecuritySensitiveDBusAPI=true' under [KonsoleWindow] in $rc, then restart konsole"
 }
 
+# --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
+# A key-less CLI call gets "401 No cookie auth credentials found" on every
+# generate and embed, while the daemon (which loads its own key) still answers,
+# so C40 stays green. This row loads the key the way scripts/lib/qmd-bin.sh does
+# (scripts/lib/qmd-daemon-env.sh) and asks OpenRouter's key endpoint whether it
+# is accepted. Silent when the config names no OpenRouter model. A missing or
+# group-readable key file and a 401/403 are FAIL; an unreachable provider or no
+# curl is INFO, never a credential verdict. The key reaches curl on stdin only.
+# Seams: HIMMEL_DOCTOR_QMD_CURL (curl binary), HIMMEL_DOCTOR_QMD_KEY_URL.
+check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and asks the provider, starts nothing
+    local cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+    local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
+    local url="${HIMMEL_DOCTOR_QMD_KEY_URL:-https://openrouter.ai/api/v1/auth/key}"
+    local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code=""
+    case "${QMD_OPENAI_BASE_URL:-}" in
+        *openrouter.ai*) ;;
+        *) grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0 ;;
+    esac
+    if [ ! -f "$lib" ]; then
+        emit INFO C69-qmd-cli-key "qmd-daemon-env.sh not found -- key check skipped"
+        return
+    fi
+    # the subshell keeps the key out of the doctor's own environment; it prints a
+    # verdict word, never the key; tracing stays off here so `bash -x` never prints it
+    out="$(
+        set +x
+        # shellcheck disable=SC1090
+        . "$lib"  # t13b-ok: sources the key loader, starts nothing
+        rc=0 sess_key="${QMD_OPENAI_API_KEY:-}"
+        qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
+        set +x
+        case "$rc" in
+            10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; exit 0 ;;
+            11) # the CLI also accepts a session key when the file holds none
+                if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; exit 0; fi ;;
+        esac
+        if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; exit 0; fi
+        code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
+        echo "code:${code:-000}"
+    )"
+    case "$out" in
+        readable-by-others:*)
+            emit FAIL C69-qmd-cli-key "the qmd provider key file ${out#*:} is readable by others -- qmd refuses to use it, every CLI vec query fails" \
+                "chmod 600 ${out#*:}" ;;
+        missing:*)
+            emit FAIL C69-qmd-cli-key "an OpenRouter qmd config but no QMD_OPENAI_API_KEY line in ${out#*:} -- every CLI generate and embed answers 401" \
+                "put a QMD_OPENAI_API_KEY=... line (mode 0600) in ${out#*:}, then restart the qmd daemon" ;;
+        no-curl) emit INFO C69-qmd-cli-key "curl not found -- qmd provider key not checked" ;;
+        code:200) emit OK C69-qmd-cli-key "the qmd provider key is present and OpenRouter accepts it" ;;
+        code:401|code:403)
+            code="${out#code:}"
+            emit FAIL C69-qmd-cli-key "OpenRouter answered HTTP $code for the qmd provider key -- every CLI generate and embed fails" \
+                "replace the QMD_OPENAI_API_KEY (the line in the qmd daemon env file, mode 0600, or your session's value), then restart the qmd daemon" ;;
+        *) emit INFO C69-qmd-cli-key "could not verify the qmd provider key with OpenRouter (${out#code:}) -- not a credential verdict" ;;
+    esac
+}
+
 # --- C61-codex-cli: codex CLI older than the latest release ------
 # Latest comes from DOCTOR_CODEX_LATEST (tests) else `npm view` (10 s cap); an
 # unreachable registry is INFO, never a WARN. Read-only: it never upgrades.
@@ -4492,6 +4549,7 @@ run_check C65 check_c65_git_gates
 run_check C66 check_c66_hermes_cron_hooks
 run_check C67 check_c67_hermes_fail_open
 run_check C68 check_c68_konsole_dbus
+run_check C69 check_c69_qmd_cli_key
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

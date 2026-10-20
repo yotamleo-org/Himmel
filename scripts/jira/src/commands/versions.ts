@@ -11,6 +11,7 @@ import { writeJiraBreadcrumb } from '../breadcrumb.js';
 interface JiraVersion {
   id: string;
   name: string;
+  description?: string;
   self?: string;
   released?: boolean;
   archived?: boolean;

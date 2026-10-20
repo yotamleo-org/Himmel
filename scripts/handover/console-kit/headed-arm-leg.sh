@@ -1974,6 +1974,17 @@ EOF_CS_FILES
             echo "headed-arm-leg: --profile $PROFILE: cannot add compact-hook to settings JSON" >&2
             exit 2
         fi
+        # Stop hook: an idle lock-holding leg keeps the prompt cache warm or
+        # wraps (docs/handover/leg-sections/cache-keepalive.md). A consult is
+        # a read-only one-question session with its own lifecycle: no hook.
+        if [ "$CONSULT" -eq 0 ]; then
+            _leg_ttl_cmd="$(printf 'bash %q' "$(cd "$HERE/../../hooks" && pwd)/guard-leg-cache-ttl.sh")"
+            if ! PROFILE_JSON="$(printf '%s' "$PROFILE_JSON" | jq --arg cmd "$_leg_ttl_cmd" \
+                '.hooks.Stop = ((.hooks.Stop // []) + [{hooks:[{type:"command", command:$cmd, timeout:10}]}])')"; then
+                echo "headed-arm-leg: --profile $PROFILE: cannot add cache-TTL Stop hook to settings JSON" >&2
+                exit 2
+            fi
+        fi
     fi
     # The shim reads these; propagate so they survive both konsole's
     # `-e env -u ...` (Linux) and `open -a`'s fresh environment (macOS).

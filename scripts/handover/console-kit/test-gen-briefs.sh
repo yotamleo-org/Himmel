@@ -265,6 +265,10 @@ lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-trans
 has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after MERGED)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the no Ship step names the relative merge spelling" "$ship_no" '`bash scripts/handover/merge-on-green.sh`'
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
 

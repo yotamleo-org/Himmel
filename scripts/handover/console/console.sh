@@ -1442,14 +1442,71 @@ resolve_predecessor() {
     printf '%s' "$newest"
 }
 
+# The text of every bucket decisions file a decisions: line names
+# (specs/decisions/console-decisions-<date>.md, relative to the bucket), one
+# after another. Fails when the line names none, or one is not a readable file.
+# Args: line, bucket dir.
+decisions_files_text() {
+    local line="$1" dir="$2" f n=0
+    while IFS= read -r f; do
+        [ -f "$dir/$f" ] && [ -r "$dir/$f" ] || return 1
+        cat "$dir/$f" || return 1
+        n=$((n + 1))
+    done < <(printf '%s\n' "$line" | grep -o 'specs/decisions/console-decisions-[0-9-]*\.md')
+    [ "$n" -gt 0 ]
+}
+
+# A decisions: line keeps every operator ruling when it names a bucket
+# decisions file and every numbered "(N) " entry of the predecessor's line, and
+# of the decisions files that line names, is found verbatim in the outgoing line
+# or the files it names, as a whole entry: an entry runs to the next "(N) " or
+# the end of its line, so a heading in a decisions file is part of no entry and
+# a ruling with words appended is not the ruling. Fails closed: an
+# unreadable file or no numbered entry fails, and the first entry not found is
+# printed to stderr.
+# Args: predecessor line, outgoing line, bucket dir.
+decisions_kept_verbatim() {
+    local prev="$1" out="$2" dir="$3" have need
+    have="$(decisions_files_text "$out" "$dir")" || return 1
+    need="$prev"
+    case "$prev" in
+        *specs/decisions/console-decisions-*)
+            need="$need"$'\n'"$(decisions_files_text "$prev" "$dir")" || return 1 ;;
+    esac
+    awk '
+        function entries(line,    rest, len, entry, k) {
+            rest = line; k = 0
+            while (match(rest, /\([0-9]+\) /)) {
+                rest = substr(rest, RSTART); len = RLENGTH
+                if (match(substr(rest, len + 1), /\([0-9]+\) /)) {
+                    entry = substr(rest, 1, len + RSTART - 1); rest = substr(rest, len + RSTART)
+                } else { entry = rest; rest = "" }
+                sub(/[[:space:]]+$/, "", entry); got[++k] = entry
+            }
+            return k
+        }
+        FNR == NR { for (i = entries($0); i > 0; i--) have[got[i]] = 1; next }
+        {
+            k = entries($0)
+            for (i = 1; i <= k; i++) {
+                n++
+                if (!(got[i] in have)) { print "  not found verbatim: " substr(got[i], 1, 100) > "/dev/stderr"; bad = 1; exit 1 }
+            }
+        }
+        END { if (!bad && !n) { print "  no numbered (N) entry in the predecessor decisions" > "/dev/stderr"; exit 1 } }
+        ' <(printf '%s\n%s\n' "$out" "$have") <(printf '%s\n' "$need")
+}
+
 # Refuse a handover whose <field>: Live-state line is missing or a
-# placeholder (for `decisions:`, also shorter) where the doc the outgoing
-# console itself succeeded (named on its first line) had a real one, unless its
-# Results carry a `<MARKER>: <reason>` bullet. No predecessor, or one without a
-# real line, passes. `priority:` shrinks as its keys ship, so it is held to
-# presence only. Args: field, drop marker, outgoing doc, outgoing Live state.
+# placeholder (for `decisions:`, also shorter or, once the predecessor's names
+# a decisions file, any length, unless decisions_kept_verbatim)
+# where the doc the outgoing console itself succeeded (named on its first line)
+# had a real one, unless its Results carry a `<MARKER>: <reason>` bullet. No
+# predecessor, or one without a real line, passes. `priority:` shrinks as its
+# keys ship, so it is held to presence only.
+# Args: field, drop marker, outgoing doc, outgoing Live state.
 check_live_line_kept() {
-    local field="$1" marker="$2" outgoing="$3" live="$4" prev_name prev_doc prev_line out_line
+    local field="$1" marker="$2" outgoing="$3" live="$4" prev_name prev_doc prev_line out_line why=""
     prev_name="$(sed -n '1s/^.* successor to \([^ ]*\.md\).*$/\1/p' "$outgoing")"
     [ -n "$prev_name" ] || return 0
     prev_doc="$(dirname "$outgoing")/$prev_name"
@@ -1463,13 +1520,19 @@ check_live_line_kept() {
     out_line="$(printf '%s\n' "$live" | sed -n "s/^$field:[[:space:]]*//p" | head -n 1)"
     case "$out_line" in
         ""|none|"none "*|"<"*) ;;
-        *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0 ;;
+        *) case "$field:$prev_line" in decisions:*specs/decisions/console-decisions-*) ;;
+               *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0 ;; esac
+           if [ "$field" = decisions ]; then
+               why="$(decisions_kept_verbatim "$prev_line" "$out_line" "$(dirname "$outgoing")" 2>&1 >/dev/null)" && return 0
+           fi ;;
     esac
     awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing" \
         | grep -Eq "^- .*$marker:[[:space:]]*[^[:space:]<]" && return 0
-    err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder or shorter than its predecessor's ($prev_name):"
+    err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder, shorter than its predecessor's or drops one of its rulings ($prev_name):"
     err "  predecessor: $field: $prev_line"
+    [ -z "$why" ] || err "$why"
     err "  restore it, or record a Results bullet '$marker: <reason>' and retry"
+    [ "$field" != decisions ] || err "  or move rulings verbatim to specs/decisions/console-decisions-<date>.md in the bucket and name that file on the line"
     return 1
 }
 

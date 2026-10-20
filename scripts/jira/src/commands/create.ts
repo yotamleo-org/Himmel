@@ -9,6 +9,8 @@ import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
+import { searchAllIssues } from './list.js';
+import { createIssueLink } from './link.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -29,6 +31,78 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
     throw new Error('Create requires --title (or --summary)');
   }
   return title;
+}
+
+const FU_CLASSES = ['polish', 'escape', 'hardening'];
+// Open hardening residuals a version takes before the rest go to the backlog;
+// a `residual-budget:N` line in the version description overrides it.
+export const RESIDUAL_BUDGET = 15;
+
+export function residualBudget(description: string | undefined): number {
+  const m = /^\s*residual-budget:\s*(\d+)\s*$/m.exec(description ?? '');
+  return m ? Number(m[1]) : RESIDUAL_BUDGET;
+}
+
+const jqlQuote = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+const labelSlug = (s: string): string => s.trim().replace(/\s+/g, '-');
+
+/** Residual depth of a new ticket: its parent's residual-depth-N label plus one (0 when the parent has none). */
+export function nextResidualDepth(parentLabels: string[]): number {
+  const depths = parentLabels.map((l) => /^residual-depth-(\d+)$/.exec(l)).filter((m) => m !== null).map((m) => Number(m![1]));
+  return Math.max(0, ...depths) + 1;
+}
+
+interface ResidualPlan {
+  labels: string[];
+  fixVersion?: string;
+  affectsVersion?: string;
+  duplicateOf?: string;
+}
+
+async function planResidual(
+  project: string,
+  o: { residualOf: string; fuClass?: string; class?: string; area?: string; fixVersion?: string },
+): Promise<ResidualPlan> {
+  if (!o.fuClass) throw new Error('--residual-of requires --fu-class <polish|escape|hardening>');
+  if (!o.class) throw new Error('--residual-of requires --class <id>');
+  if (!FU_CLASSES.includes(o.fuClass)) {
+    throw new Error(`--fu-class must be one of ${FU_CLASSES.join(', ')} (got "${o.fuClass}")`);
+  }
+  if (o.fixVersion !== undefined) throw new Error('--residual-of chooses the version itself; drop --fix-version');
+  const labels = ['residual', `class-${labelSlug(o.class)}`];
+  const area = o.area ? `area-${labelSlug(o.area)}` : undefined;
+  if (area) labels.push(area);
+
+  if (area) {
+    const jql =
+      `project = ${project} AND labels = residual AND labels = ${jqlQuote(labels[1])} AND labels = ${jqlQuote(area)}` +
+      ` AND key != ${jqlQuote(o.residualOf)} AND statusCategory != Done`;
+    const [dup] = await searchAllIssues(jql, '1', request);
+    if (dup) return { labels, duplicateOf: dup.key };
+  }
+
+  const parent = await request<{ fields: { labels?: string[] } }>('GET', `/issue/${o.residualOf}?fields=labels`);
+  const depth = nextResidualDepth(parent.fields.labels ?? []);
+  labels.push(`residual-depth-${depth}`);
+
+  const versions = await fetchVersions(project);
+  const current = earliestUnreleased(versions);
+  let fixVersion: string | undefined;
+  if (current && depth < 2 && o.fuClass !== 'polish') {
+    fixVersion = current;
+    if (o.fuClass === 'hardening') {
+      const budget = residualBudget(versions.find((v) => v.name === current)?.description);
+      const jql =
+        `project = ${project} AND fixVersion = ${jqlQuote(current)} AND labels = residual` +
+        ' AND labels != residual-overflow AND statusCategory != Done';
+      const open = await searchAllIssues(jql, String(budget), request);
+      if (open.length >= budget) {
+        fixVersion = undefined;
+        labels.push('residual-overflow');
+      }
+    }
+  }
+  return { labels, fixVersion, affectsVersion: current };
 }
 
 export function registerCreate(program: Command): void {
@@ -59,6 +133,13 @@ export function registerCreate(program: Command): void {
       '--affects-version <name>',
       "Set the affectsVersion (validated against the project's versions; `current` = the earliest unreleased version)",
     )
+    .option(
+      '--residual-of <key>',
+      'File this as a review residual of <key>: the writer picks the version, depth and labels (needs --fu-class and --class)',
+    )
+    .option('--fu-class <class>', 'Residual routing class: polish (backlog), escape (current version), hardening (current version under budget)')
+    .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
+    .option('--area <name>', 'Residual area; an open residual with the same class and area is commented on instead of filing a new one')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
     .option('--attach <path>', 'File to attach (repeatable)', collect, [])
     .option(
@@ -79,6 +160,10 @@ export function registerCreate(program: Command): void {
         sector?: string;
         fixVersion?: string;
         affectsVersion?: string;
+        residualOf?: string;
+        fuClass?: string;
+        class?: string;
+        area?: string;
         project?: string;
         attach: string[];
       }) => {
@@ -127,7 +212,21 @@ export function registerCreate(program: Command): void {
         }
         const sector =
           options.sector !== undefined && sectors ? resolveSector(options.sector, sectors) : undefined;
-        const labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
+        let labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
+        let residual: ResidualPlan | undefined;
+        if (options.residualOf !== undefined) {
+          residual = await planResidual(options.project ?? projectKey(), { ...options, residualOf: options.residualOf });
+          if (residual.duplicateOf) {
+            const dup = residual.duplicateOf;
+            const head = markdownToAdf(`Re-raised as a residual of ${options.residualOf}: ${resolveTitle(options)}`);
+            const detail = (fields['description'] as { content?: unknown[] } | undefined)?.content ?? [];
+            await request('POST', `/issue/${dup}/comment`, { body: { ...head, content: [...head.content, ...detail] } });
+            await createIssueLink(dup, options.residualOf, { name: 'Relates', inward: 'relates to' });
+            console.log(`Duplicate ${dup}`);
+            return;
+          }
+          labels = [...new Set([...(labels ?? []), ...residual.labels])];
+        }
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
         const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
         if (home.action === 'refuse') {
@@ -138,6 +237,11 @@ export function registerCreate(program: Command): void {
         if (options.parent) fields['parent'] = { key: options.parent };
         if (labels) fields['labels'] = labels;
         if (sector && sectorId) fields[sectorId] = { value: sector };
+        if (residual) {
+          if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
+          if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
+          console.error(`jira: residual routed to ${residual.fixVersion ?? 'the backlog'}`);
+        }
         if (options.fixVersion !== undefined) {
           await assertVersionExists(options.project ?? projectKey(), options.fixVersion);
           fields['fixVersions'] = [{ name: options.fixVersion }];
@@ -150,7 +254,7 @@ export function registerCreate(program: Command): void {
         // unreleased version; an unreadable/empty version list files with no
         // fixVersion rather than guess. The release gate is the
         // v1-blocker label and priority, not the version default.
-        if (options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
+        if (!residual && options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
           let defaultVersion: string | undefined;
           try {
             defaultVersion = earliestUnreleased(await fetchVersions(options.project ?? projectKey()));
@@ -178,6 +282,14 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
+        if (residual) {
+          try {
+            await createIssueLink(result.key, options.residualOf!, { name: 'Relates', inward: 'relates to' });
+          } catch (e) {
+            console.error(`Created ${result.key} but linking to ${options.residualOf} failed: ${(e as Error).message}`);
+            process.exit(1);
+          }
+        }
 
         const attachments = options.attach ?? [];
         if (attachments.length === 0) return;

@@ -228,7 +228,7 @@ def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
             return [], "", to, not to
     files, text = [], []
     for r in rows:
-        f = re.sub(r"^qmd://[^/]+/", "", str(r.get("file", "")))
+        f = re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))
         if f and f not in files:
             files.append(f)
         text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
@@ -247,11 +247,14 @@ def arm_graphify(q, repo, timeout, k):
 
 
 def fuse(lists, k):
-    s = {}
+    """Reciprocal-rank fusion; qmd lowercases its paths, so the key is the lowercased path."""
+    s, name = {}, {}
     for lst in lists:
         for i, f in enumerate(lst):
-            s[f] = s.get(f, 0.0) + 1.0 / (60 + i + 1)
-    return sorted(s, key=lambda f: (-s[f], f))[:k]
+            key = f.lower()
+            name.setdefault(key, f)
+            s[key] = s.get(key, 0.0) + 1.0 / (60 + i + 1)
+    return [name[x] for x in sorted(s, key=lambda x: (-s[x], x))[:k]]
 
 
 def is_hit(files, gold):

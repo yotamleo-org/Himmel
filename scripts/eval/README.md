@@ -9,6 +9,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
+| `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
 ## The eval-runs ledger

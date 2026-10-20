@@ -4,8 +4,12 @@ description: Refresh known-findings.json evidence from the CR ledger + a CodeRab
 
 Lean-invoke — run after a CodeRabbit learnings export lands in Downloads, or
 when `/pr-check` step 2.8 keeps printing `known-findings: round-1 hits = N` with
-N > 0. No cadence: the export is a manual download and the ledger mining is
-cheap enough to run on demand.
+N > 0. The export is a manual download, so the refresh itself has no cadence;
+the weekly cadence is `bash scripts/cr/standards-cadence.sh --since 7d` (see
+`/cr-tune` step 5), whose proposals file you read BEFORE this refresh so a lesson
+already learned is not paid for again. Approval split: `.coderabbit.yaml` and
+`critics.json` changes are operator-approved; catalog, lint and standard-line
+changes go through a console GO with an opus judge.
 
 1. Refresh evidence (ledger always; the export when you have one):
    ```bash

@@ -56,6 +56,10 @@ case "$args" in
         printf '%s' "${STUB_COMMITS:-[]}" ;;
     *"--json body"*)
         printf '%b' "${STUB_BODY:-}" ;;
+    *"--json title"*)
+        printf '%s' "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" ;;
+    *"--json headRefName"*)
+        printf '%s' "${STUB_PR_BRANCH-feat/himmel-100-thing}" ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ -z "${STUB_TRUST_LIST_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
         cat "$STUB_TRUST_LIST_FILE" ;;
@@ -101,20 +105,29 @@ esac
 STUB
 chmod +x "$tmp/bin/gh"
 
-# ── jira stub (JIRA_CMD): `get KEY` reads STUB_JIRA_DB lines "KEY<TAB>Status";
-# an absent key is the real CLI's HTTP 404, STUB_JIRA_DOWN=1 is an outage ────
+# ── jira stub (JIRA_CMD): `get KEY [--json]` reads STUB_JIRA_DB lines
+# "KEY<TAB>Status<TAB>Labels<TAB>Description"; an absent key is the real CLI's HTTP 404, STUB_JIRA_DOWN=1 is an outage ────
 cat > "$tmp/bin/jira-stub" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = "get" ] || { echo "jira-stub: unhandled: $*" >&2; exit 1; }
 [ -n "${STUB_JIRA_DOWN:-}" ] && { echo "jira: get $2 failed: connect ECONNREFUSED" >&2; exit 1; }
 st=$(awk -F'\t' -v k="$2" '$1 == k { print $2 }' "${STUB_JIRA_DB:-/dev/null}")
+lb=$(awk -F'\t' -v k="$2" '$1 == k { print $3 }' "${STUB_JIRA_DB:-/dev/null}")
+desc=$(awk -F'\t' -v k="$2" '$1 == k { print $4 }' "${STUB_JIRA_DB:-/dev/null}")
 if [ -z "$st" ]; then
     echo "jira: get $2 failed: HTTP 404: Issue does not exist or you do not have permission to see it." >&2
     exit 1
 fi
 [ "$st" = "MALFORMED" ] && { printf 'garbage with no tabs\n'; exit 0; }
 [ "$st" = "BLANK" ] && st=""
+if [ "${3:-}" = "--json" ]; then
+    jq -n --arg st "$st" --arg lb "$lb" --arg d "$desc" \
+        '{fields:{status:{name:$st},labels:($lb | split(", ") | map(select(length > 0))),description:$d}}'
+    exit 0
+fi
 printf '%s\tTask\t%s\tsummary\n' "$2" "$st"
+[ -z "$desc" ] || printf '%s\n' "$desc"
+[ -z "$lb" ] || printf 'Labels: %s\n' "$lb"
 STUB
 chmod +x "$tmp/bin/jira-stub"
 # ── trust-path fixtures: the REAL trust list, served as the default branch's; an
@@ -141,7 +154,7 @@ GREEN_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody"
 GREEN_FILES="scripts/x/run.sh"
 GREEN_BODY='## Summary\nthing\n\n## Ticket coverage\n- ask one: done\n- ask two: done\n\n## Test plan\nx\n'
 JIRA_DB="$tmp/jira.db"
-printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\n' > "$JIRA_DB"
+printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
 
 seed_ledger_ok() {
     printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","model":"codex","status":"ok"}\n' "$SHA" > "$LEDGER"
@@ -165,7 +178,7 @@ run() {
         STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" \
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
-        STUB_BODY="${STUB_BODY-$GREEN_BODY}" \
+        STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
@@ -177,7 +190,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
     seed_ledger_ok
 }
 
@@ -448,6 +461,50 @@ STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred \xe2\x86\x92
 rc=0; out="$(run)" || rc=$?
 check "coverage deferred to open key: exit 0" "$rc" "0"
 contains "coverage open key: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a raw-created newer ticket: exit 1" "$rc" "1"
+contains "coverage raw-created ticket: check 7 fails" "$out" "[FAIL] 7."
+contains "coverage raw-created ticket: names the key and the residual verb" "$out" "HIMMEL-200 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-201\n'
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a residual-labelled newer ticket: exit 0" "$rc" "0"
+contains "coverage residual-labelled ticket: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-202\n'
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a residual-depth-only label: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+STUB_PR_BRANCH='feat/himmel-300-later-ticket'
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a ticket older than the PR's own: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+STUB_PR_TITLE='feat(x): [HIMMEL-300] a title that names a newer key'
+rc=0; out="$(run)" || rc=$?
+check "coverage: a PR title naming a newer key does not make an older raw ticket pass: exit 1" "$rc" "1"
+contains "coverage title key ignored: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+STUB_PR_TITLE='feat(x): [HIMMEL-300] a title that names a newer key'
+STUB_PR_BRANCH=''
+rc=0; out="$(run)" || rc=$?
+check "coverage: an empty branch name leaves no own key, only the residual label passes: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-203\n'
+rc=0; out="$(run)" || rc=$?
+check "coverage: a description line reading 'Labels: residual' is not the label: exit 1" "$rc" "1"
+contains "coverage fake label line: names the raw-create refusal" "$out" "HIMMEL-203 was made by a raw jira create"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-50\n'
@@ -1109,6 +1166,11 @@ STUB_FILES="scripts/lib/env-alias.sh"
 STUB_BODY='## Ticket coverage\n- ask: done\n\nTRUST PATH: none touched\n'
 rc=0; out="$(run)" || rc=$?
 contains "trust: scripts/lib/env-alias.sh diff (PR 2885 shape) prints yes whatever the body claims" "$out" "TRUST-PATH: yes"
+
+reset_stubs
+STUB_FILES="scripts/handover/console-kit/cr-disposition.sh"
+rc=0; out="$(run)" || rc=$?
+contains "trust: cr-disposition.sh (go.sh signs and decides exit 9 through it) prints yes" "$out" "TRUST-PATH: yes"
 
 reset_stubs
 STUB_TRUST_LIST_FAIL=1

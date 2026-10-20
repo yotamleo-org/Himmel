@@ -57,6 +57,13 @@
 #                 stat -c) without a same-line BSD fallback; exempt via
 #                 `# gnu-ok: <reason>`.
 #   [echo-e]      `echo -e` / `echo -n` — non-portable; use printf.
+#   [prim-tmpdir] `mktemp -d` in a non-test script: use `tmpdir` from scripts/lib/prim.sh.
+#   [prim-lock]   a `mkdir` lock directory or a raw `flock`: use `with_lock`.
+#   [prim-atomic] `mv` of a tmp variable into place or `sed -i`: use `atomic_write`.
+#   [prim-canon]  `readlink -f` / `realpath`: use `canon_path`.
+#                 The four [prim-*] tags skip test-* files, tests/ and fixtures/ paths and
+#                 prim.sh / canon-path.sh themselves; exempt a line (or the one above) with
+#                 `# prim-ok: <reason>`.
 #   [octal-arith] a variable assigned from `date +%m|%d|%H|%M|%S|%j|%U|%V|%W`
 #                 (or a `cut` of such a value) that later appears inside
 #                 $(( )), (( )) or `let` without 10# normalization — a leading
@@ -168,6 +175,37 @@ _has_gnu_ok() {
     return 1
 }
 
+# True if line $2 (1-indexed) of file $1 carries a `# prim-ok: <reason>` marker,
+# on that line or the line immediately above.
+_has_prim_ok() {
+    local file="$1" line_no="$2"
+    sed -n "${line_no}p" "$file" 2>/dev/null | grep -q 'prim-ok' && return 0
+    if [ "$line_no" -gt 1 ]; then
+        sed -n "$((line_no - 1))p" "$file" 2>/dev/null | grep -q 'prim-ok' && return 0
+    fi
+    return 1
+}
+
+# _prim_report FILE TAG PATTERN HINT — report each non-comment, non-probe line of
+# FILE matching ERE PATTERN that has no prim-ok marker, as [TAG]. Appends to the
+# caller's file_report/file_issues.
+_prim_report() {
+    local _pf="$1" _ptag="$2" _ppat="$3" _phint="$4" _ph _pln _prest _pout=""
+    _ph="$(_grep_hits "$_pf" "$_ppat" | grep -vE "$PRIM_PROBE" || true)"
+    [ -n "$_ph" ] || return 0
+    while IFS=: read -r _pln _prest; do
+        [ -n "$_pln" ] || continue
+        _has_prim_ok "$_pf" "$_pln" && continue
+        _pout="${_pout}  [$_ptag] line $_pln: $_prest — $_phint"$'\n'
+    done <<EOF
+$_ph
+EOF
+    if [ -n "$_pout" ]; then
+        file_report="${file_report}${_pout}"
+        file_issues=$((file_issues + 1))
+    fi
+}
+
 # Print "lineno:line" for every arithmetic use ($(( )), (( )), let) of a variable
 # that was assigned from a leading-zero date field (see [octal-arith] above) and
 # is not 10#-normalized there. A same-line `octal-ok` marker exempts the line.
@@ -256,6 +294,15 @@ GNU_FLAG_PAT='(^|[^[:alnum:]_-])(sed[[:space:]]+-i([[:space:]]|$)|date[[:space:]
 
 # echo -e / echo -n (and combined short flags such as -ne / -en).
 ECHO_FLAG='(^|[^[:alnum:]_-])echo[[:space:]]+-[A-Za-z]*[en][A-Za-z]*'
+
+# Ad-hoc forms of the scripts/lib/prim.sh primitives. A lock word must sit in the
+# FIRST mkdir operand, so `mkdir -p "$d/locks"` is not a lock.
+PRIM_TMPDIR='(^|[^[:alnum:]_-])mktemp[[:space:]]+(-[A-Za-z]*d|-[A-Za-z]+[[:space:]]+-d)'
+PRIM_LOCK='(^|[^[:alnum:]_-])mkdir[[:space:]]+["'"'"']?[^-"'"'"'|;&[:space:]][^|;&[:space:]]*[Ll][Oo][Cc][Kk]|(^|[^[:alnum:]_./-])flock[[:space:]]'
+PRIM_ATOMIC='(^|[^[:alnum:]_-])(mv[[:space:]]+(-[A-Za-z]+[[:space:]]+)*["'"'"']?\$[{]?[A-Za-z_]*([Tt][Mm][Pp]|[Tt][Ee][Mm][Pp])|sed[[:space:]]+-i)'
+PRIM_CANON='(^|[^[:alnum:]_-])(readlink[[:space:]]+-f|realpath)([[:space:]]|$)'
+# A probe for the tool (`command -v flock`) is not a use of it.
+PRIM_PROBE='(command[[:space:]]+-v|type|which)[[:space:]]+(flock|realpath)'
 
 STAGED=0
 CHANGED=""
@@ -591,6 +638,22 @@ EOF
             file_issues=$((file_issues + 1))
         fi
     fi
+
+    # [prim-*] — ad-hoc equivalents of scripts/lib/prim.sh. Test code and the lib
+    # itself are out of scope; existing production hits live in the baseline.
+    case "$f" in
+        */prim.sh|*/canon-path.sh|*/test-*|test-*|*/tests/*|*/fixtures/*) ;;
+        *)
+            _prim_report "$f" prim-tmpdir "$PRIM_TMPDIR" \
+                "use tmpdir from scripts/lib/prim.sh, or '# prim-ok: <reason>'"
+            _prim_report "$f" prim-lock "$PRIM_LOCK" \
+                "use with_lock from scripts/lib/prim.sh (mkdir locks and raw flock are not portable), or '# prim-ok: <reason>'"
+            _prim_report "$f" prim-atomic "$PRIM_ATOMIC" \
+                "use atomic_write from scripts/lib/prim.sh (sed -i and tmp-then-mv races), or '# prim-ok: <reason>'"
+            _prim_report "$f" prim-canon "$PRIM_CANON" \
+                "use canon_path from scripts/lib/prim.sh, or '# prim-ok: <reason>'"
+            ;;
+    esac
 
     fi   # end advisory checks (_skip_advisory)
 

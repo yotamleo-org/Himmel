@@ -340,14 +340,13 @@ _suite_timeout_for() {
       # The nightly shards run tier all with GUARD_CORPUS_TIER=fast: the full
       # replay runs in the scheduled-only guard-corpus-full job, not a 60-min shard.
       if [ "${SUITE_TIER_MODE:-all}" = fast ] || [ "${GUARD_CORPUS_TIER:-}" = fast ]; then printf '1800'; else printf '10800'; fi ;;
-    scripts/hooks/test-block-destructive-commands.sh|*/scripts/hooks/test-block-destructive-commands.sh)
-      # Every fixture now starts a fresh bwrap sandbox. Linux with
-      # bwrap working measured 263s alone (2026-10-08). On the CI runner (bwrap
-      # working after the ci.yml userns sysctl) the suite was killed at the
-      # 1200s cap with ~80% of its fixtures done (PR 2177 shard 1, run
-      # 37828342755), so ~1500s there; 3000s is that x2 (the loaded-budget rule,
-      # same as the guard-corpus arm above).
-      printf '3000' ;;
+    scripts/hooks/test-block-destructive-commands-[abcd].sh|*/scripts/hooks/test-block-destructive-commands-[abcd].sh)
+      # Every fixture starts a fresh bwrap sandbox. The former single suite
+      # needed ~1500s on the CI runner (3000s cap = that x2, the loaded-budget
+      # rule, same as the guard-corpus arm above); it is now four case-range
+      # parts of 239-269 of its 1018 cases each, so ~400s each at most there,
+      # x2 loaded with margin = 1200s.
+      printf '1200' ;;
     scripts/handover/test-arm-resume-identity.sh|*/scripts/handover/test-arm-resume-identity.sh)
       # Fresh-boot idle benchmark (2026-08-27): new idle
       # 814s, rc=0 (reproduced at 802s, rc=0, same day). The prior 08-26 idle
@@ -862,7 +861,10 @@ esac
 SUITE_REQUIRE_TOOL_DEFAULT="
 scripts/lib/test-sandbox-run.sh  $_sandbox_tool  # real corpus confinement boundary (HIMMEL-4912)
 scripts/eval/guard-corpus/test-guard-corpus.sh  $_sandbox_tool  # every replay hook runs confined (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-a.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-b.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-c.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-d.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
 scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-glm vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
 scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not

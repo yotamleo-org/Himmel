@@ -503,7 +503,21 @@ jobs:
   # its own steps succeeded or were skipped by a gate; anything else, a
   # cancelled or timed-out job included, leaves it 'fail' or empty. Each old job
   # name below stays as a sentinel carrying its required context: skipped
-  # (green) on 'pass', `exit 1` otherwise. test-ci-quick.sh holds the shape.
+  # (green) on 'pass', `exit 1` otherwise. A sentinel also skips when the run
+  # was cancelled (`!cancelled()`, not `always()`): the run is already dead, so
+  # eight runners would only paint it red. It tests the run, not ci-quick's own
+  # result, so a ci-quick that timed out, whichever result a timeout reports,
+  # still fails them. test-ci-quick.sh holds the shape.
+  #
+  # Not changed, on purpose:
+  # - ci-quick waits behind the plan job (and its debounce sleep) because its
+  #   steps gate on plan's run_* outputs; home-canary sizes its matrix from
+  #   plan's canary_shards. Taking either out from behind plan drops that
+  #   gating or sizing, to save latency only.
+  # - The groups share one workspace, so a group that edits the tree could turn
+  #   a later one red (a false red, never a false green). The one destructive
+  #   group, doc-invariants, runs last (test-ci-quick.sh Q5); a separate
+  #   checkout per group would put back the setup cost this fold removed.
   ci-quick:
     needs: plan
     if: ${{ !cancelled() }}
@@ -812,7 +826,7 @@ jobs:
     # Runs as the secret-scan step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.secret-scan != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.secret-scan != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -831,7 +845,7 @@ jobs:
     # Runs as the bwk-awk-mktemp-gate step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.bwk-awk-mktemp-gate != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.bwk-awk-mktemp-gate != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -848,7 +862,7 @@ jobs:
     # Runs as the unchecked-mktemp-range step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -956,7 +970,7 @@ jobs:
     # Runs as the commit-lint step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.commit-lint != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.commit-lint != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1220,7 +1234,7 @@ jobs:
     # Runs as the jira-cli-smoke step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.jira-cli-smoke != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.jira-cli-smoke != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1241,7 +1255,7 @@ jobs:
     # Runs as the claude-startup step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.claude-startup != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.claude-startup != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1312,7 +1326,7 @@ jobs:
     # Runs as the guardrail-matrices step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1427,7 +1441,7 @@ jobs:
     # Runs as the doc-invariants step group of ci-quick; this job only carries the
     # required context: skipped (green) when the group passed, red otherwise.
     needs: ci-quick
-    if: ${{ always() && needs.ci-quick.outputs.doc-invariants != 'pass' }}
+    if: ${{ !cancelled() && needs.ci-quick.outputs.doc-invariants != 'pass' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -1,0 +1,37 @@
+# HIMMEL-6635 (HIMMEL-5689 slice R1): results-bullet marker parse, read by ALL
+# THREE twins so they cannot drift apart: scripts/lib/test-status-marker.sh
+# (status-marker.sh), scripts/lib/status-marker.test.mjs (status-marker.mjs) and
+# scripts/lib/test-status_marker.py (status_marker.py).
+#
+# Columns (TAB-separated):
+#   line  a results-doc line, exactly as written
+#   want  the canonical marker the parse prints, or - when the line carries none
+#
+# The vocabulary and the line shape follow scripts/lib/leg-tail-status.sh. The
+# one addition is PARKED-USAGE, the new spelling of PARKED-BANK (HIMMEL-5689
+# slice V1): both are accepted and both parse to PARKED-USAGE.
+- 23:47 PARKED-BANK — committed, waiting for RESUME	PARKED-USAGE
+- 23:47 PARKED-USAGE — committed, waiting for RESUME	PARKED-USAGE
+- PARKED-BANK	PARKED-USAGE
+- 9:05 LIVE	LIVE
+- LIVE — no stamp	LIVE
+- **WRAPPED** done	WRAPPED
+- 23:47 **READY** 3238 abc GREEN	READY
+- 23:47  RESUMED — two spaces after the stamp	RESUMED
+- 23:47 LIVE -- was BLOCKED, then WRAPPED nothing	LIVE
+- 23:47 FINDING: a colon ends the word	FINDING
+- 23:47 RESOLVED — ruling received	RESOLVED
+- 23:47 BLOCKED	BLOCKED
+- 23:47 HALTED	HALTED
+- 23:47 LIVELY — the word runs on	-
+- 23:47 PARKED-BANKRUPT — the word runs on	-
+- 23:47 PARKED-USAGEX — the word runs on	-
+- 23:47 PARKED-BANK_2 — an underscore runs on	-
+- 23:47 SHIPPED — not in the vocabulary	-
+- 23:47 live — lower case is not a marker	-
+- 123:47 LIVE — three-digit hour	-
+23:47 LIVE — no bullet dash	-
+* 23:47 LIVE — wrong bullet	-
+-23:47 LIVE — no space after the dash	-
+- 23:47 — a stamp and no word	-
+- plain prose bullet	-

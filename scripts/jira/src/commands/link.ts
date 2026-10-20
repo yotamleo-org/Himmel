@@ -51,10 +51,11 @@ export function findLinkType(
 }
 
 /**
- * Create the link and return the relationship as Jira STORES it: the inward
- * issue reads with the type's inward text ("HIM-1 is blocked by HIM-2"), which
- * is what `links` shows afterwards (HIMMEL-3901). inwardKey/outwardKey map
- * directly to Jira's inwardIssue/outwardIssue.
+ * Create the link and return the relationship as Jira STORES it. Jira's POST
+ * takes the inward issue as the SOURCE of the link: it reads with the type's
+ * outward text ("HIM-1 blocks HIM-2") and the outward issue with the inward
+ * text ("HIM-2 is blocked by HIM-1"), which is what `links` shows afterwards.
+ * inwardKey/outwardKey map directly to Jira's inwardIssue/outwardIssue.
  */
 export async function createIssueLink(
   inwardKey: string,
@@ -67,9 +68,13 @@ export async function createIssueLink(
     inwardIssue: { key: inwardKey },
     outwardIssue: { key: outwardKey },
   });
-  return `Linked: ${inwardKey} ${type.inward ?? type.name} ${outwardKey}`;
+  return `Linked: ${inwardKey} ${type.outward ?? type.name} ${outwardKey}`;
 }
 
+// A GET entry names the OTHER issue: `outwardIssue` means this issue reads with
+// the type's outward text ("this blocks that") and is the inward (source) issue
+// of the POST that made it; `inwardIssue` means this issue reads with the
+// inward text ("this is blocked by that").
 function directedIssueLink(
   currentKey: string,
   link: IssueLink,
@@ -96,7 +101,7 @@ function directedIssueLink(
 function formatDirectedIssueLink(currentKey: string, candidate: DirectedIssueLink): string {
   const { link, inwardKey, outwardKey, currentSide } = candidate;
   const otherKey = currentSide === 'inward' ? outwardKey : inwardKey;
-  const relation = currentSide === 'inward' ? link.type.inward : link.type.outward;
+  const relation = currentSide === 'inward' ? link.type.outward : link.type.inward;
   return `${link.id}\t${link.type.name}\tinward=${inwardKey}\toutward=${outwardKey}\t${currentKey} ${relation} ${otherKey}`;
 }
 
@@ -170,8 +175,8 @@ export function registerLink(program: Command): void {
     .command('link <key> [otherKey]')
     .description(
       'Create an issue link: `link A B [--type T]` (first key is the inward issue). ' +
-      'Blocks is refused in the bare two-key form because it stores "A is blocked ' +
-      'by B"; use `link A --blocks B` ("A blocks B") or `link A --blocked-by B` ' +
+      'Blocks is refused in the bare two-key form because it stores "A blocks ' +
+      'B"; use `link A --blocks B` ("A blocks B") or `link A --blocked-by B` ' +
       '("A is blocked by B").',
     )
     .option(
@@ -218,16 +223,16 @@ export function registerLink(program: Command): void {
         let inwardKey: string;
         let outwardKey: string;
         if (opts.blocks !== undefined) {
-          // "key blocks X": X is the inward ("is blocked by") issue.
-          inwardKey = opts.blocks;
-          outwardKey = key;
-        } else if (opts.blockedBy !== undefined) {
+          // "key blocks X": the blocker is the inward (source) issue.
           inwardKey = key;
-          outwardKey = opts.blockedBy;
+          outwardKey = opts.blocks;
+        } else if (opts.blockedBy !== undefined) {
+          inwardKey = opts.blockedBy;
+          outwardKey = key;
         } else {
           if (match.name.toLowerCase() === 'blocks') {
             fail(
-              'The bare two-key form is ambiguous for Blocks (it stores "A is blocked by B"). ' +
+              'The bare two-key form is ambiguous for Blocks (it stores "A blocks B"). ' +
               'Use `link A --blocks B` (A blocks B) or `link A --blocked-by B` (A is blocked by B).',
             );
           }
@@ -235,7 +240,7 @@ export function registerLink(program: Command): void {
           outwardKey = otherKey as string;
         }
         const line = await createIssueLink(inwardKey, outwardKey, match);
-        writeJiraBreadcrumb(inwardKey);
+        writeJiraBreadcrumb(key);
         console.log(line);
       },
     );

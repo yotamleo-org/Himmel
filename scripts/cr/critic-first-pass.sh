@@ -545,7 +545,10 @@ _cfp_claude_invoke() {
             _cc_budget="${CR_CLAUDE_CRITIC_MAX_USD:-1.00}"
             case "$_cc_budget" in ''|*[!0-9.]*) _cc_budget="1.00" ;; esac
             _cc_err="$_cc_dir/stderr"
+            _cc_branch="$(git branch --show-current 2>/dev/null || true)"  # swallow-ok: an empty branch is recorded as empty
+            _cc_head="$(git rev-parse HEAD 2>/dev/null || true)"  # swallow-ok: an empty head is recorded as empty
             _cc_out="$(cd "$_cc_dir" && HIMMEL_API_TOOLS=Read,Glob,Grep HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+                HIMMEL_API_BRANCH="${CR_TARGET_BRANCH:-$_cc_branch}" HIMMEL_API_HEAD="${CR_TARGET_HEAD:-$_cc_head}" HIMMEL_API_PR="${CR_TARGET_PR:-}" \
                 bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
                 -p "Read ./review-prompt.md and follow it exactly. Reply with the review only." \
                 --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \

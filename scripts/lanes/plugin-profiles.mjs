@@ -656,13 +656,13 @@ export function primaryCheckout(dir) {
 // "external" to it, so its install, tests, push and PR are denied. The documented
 // fix is an autoMode.environment entry, read only from user, managed or --settings
 // scope (never project settings), so it rides the resolved leg --settings file.
-// Exact owner/repo names only: no org wildcard, nothing outside yotamleo.
-const FORK_NWO_RE = /^yotamleo\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// Exact owner/repo names only: no org wildcard, nothing outside yotamleo-org.
+const FORK_NWO_RE = /^yotamleo-org\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export function forkTrustSettings(nwos) {
   if (!Array.isArray(nwos) || nwos.length === 0) return {};
   for (const n of nwos) {
     if (typeof n !== 'string' || !FORK_NWO_RE.test(n) || n.includes('..')) {
-      throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo/<repo> name`);
+      throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo-org/<repo> name`);
     }
   }
   const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);

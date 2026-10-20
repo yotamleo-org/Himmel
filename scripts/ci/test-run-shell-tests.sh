@@ -722,7 +722,8 @@ if [ -n "$sb13d" ]; then
 mkdir -p "$sb13d/bin" "$sb13d/scripts/lib" "$sb13d/scripts/eval/guard-corpus" "$sb13d/scripts/hooks"
 printf '#!/bin/bash\nprintf "Darwin\\n"\n' > "$sb13d/bin/uname"
 printf '#!/bin/bash\nexit 0\n' > "$sb13d/bin/sandbox-exec"
-for suite in lib/test-sandbox-run.sh eval/guard-corpus/test-guard-corpus.sh hooks/test-block-destructive-commands.sh; do
+for suite in lib/test-sandbox-run.sh eval/guard-corpus/test-guard-corpus.sh hooks/test-block-destructive-commands-a.sh \
+    hooks/test-block-destructive-commands-b.sh hooks/test-block-destructive-commands-c.sh hooks/test-block-destructive-commands-d.sh; do
   printf '#!/bin/bash\nprintf "DARWIN_SUITE_RAN\\n"\nexit 0\n' > "$sb13d/scripts/$suite"
   chmod +x "$sb13d/scripts/$suite"
 done
@@ -737,8 +738,8 @@ for tool in awk basename bash cat chmod cp cut date dirname env find flock git g
   ln -s "$tool_path" "$sb13d/bin/$tool"
 done
 out13d=$(PATH="$sb13d/bin" bash "$RUNNER" "$sb13d/scripts" 2>&1); rc13d=$?
-if [ "$rc13d" = 0 ] && grepq "$out13d" 'PASS: 3' && ! grepq "$out13d" 'capability: bwrap'; then
-  pass '13d: all three Darwin corpus suites run, not bwrap capability skip'
+if [ "$rc13d" = 0 ] && grepq "$out13d" 'PASS: 6' && ! grepq "$out13d" 'capability: bwrap'; then
+  pass '13d: all six Darwin corpus suites run, not bwrap capability skip'
 else fail "13d: Darwin coverage lost: rc=$rc13d out: $out13d"; fi
 rm -f "$sb13d/bin/sandbox-exec"
 out13e=$(PATH="$sb13d/bin" bash "$RUNNER" "$sb13d/scripts" 2>&1); rc13e=$?
@@ -1195,8 +1196,12 @@ else
   # The nightly shards run tier all with GUARD_CORPUS_TIER=fast (the full replay lives in
   # the guard-corpus-full job), so the subset cap applies there too.
   check_timeout_2267 "scripts/eval/guard-corpus/test-guard-corpus.sh" "1800" all fast
-  check_timeout_2267 "scripts/hooks/test-block-destructive-commands.sh" "3000"
-  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands.sh" "3000"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-a.sh" "1200"
+  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands-a.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-b.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-c.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-d.sh" "1200"
+  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands-d.sh" "1200"
 
   # Nightly #843: the 1879 suite previously had no dedicated arm,
   # so the 600s default killed it on every OS (603s on ubuntu). Its tier comment
@@ -2457,7 +2462,10 @@ scripts/himmelctl/test/test-wizard-statusreport.sh	13
 scripts/hooks/test-auto-approve-safe-bash.sh	43
 scripts/hooks/test-block-bare-qmd-query.sh	54
 scripts/hooks/test-block-chokepoint-env-prefix.sh	122
-scripts/hooks/test-block-destructive-commands.sh	2304
+scripts/hooks/test-block-destructive-commands-a.sh	563
+scripts/hooks/test-block-destructive-commands-b.sh	540
+scripts/hooks/test-block-destructive-commands-c.sh	608
+scripts/hooks/test-block-destructive-commands-d.sh	590
 scripts/hooks/test-block-edit-live-settings.sh	151
 scripts/hooks/test-block-glm-external-writes.sh	26
 scripts/hooks/test-block-jira-compound-write.sh	17
@@ -2618,10 +2626,35 @@ rm -rf "$sb26"
 fi
 
 ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
-if grep -qE "^[[:space:]]+SUITE_STOP_ON_FAIL: \\$\\{\\{ github\\.event_name == 'pull_request' && '1' \\|\\| '' \\}\\}\$" "$ci_yml26"; then
+stop_line26="          SUITE_STOP_ON_FAIL: \${{ github.event_name == 'pull_request' && '1' || '' }}"
+shard_step26() {
+  awk '/^      - run: bash scripts\/ci\/run-shell-tests\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1"
+}
+stop_on_fail_set26() { shard_step26 "$1" | grep -qxF "$stop_line26"; }
+if stop_on_fail_set26 "$ci_yml26"; then
   pass "26c: ci.yml passes SUITE_STOP_ON_FAIL on pull_request only"
 else
   fail "26c: ci.yml does not set SUITE_STOP_ON_FAIL to '1' on pull_request only"
+fi
+
+sb26c=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26c.XXXXXX") || { fail "26c: mktemp failed"; sb26c=""; }
+if [ -n "$sb26c" ]; then
+# Fixtures are the real ci.yml with one mutation each.
+awk -v l="$stop_line26" '$0 == l {next} {print} /- name: Upload shard manifest/ {print "        env:"; print l}' "$ci_yml26" > "$sb26c/moved.yml"
+awk '{print} /^          FAIL_LOG_DIR: failed-suite-logs$/ {print "          UNRELATED_26C: x"}' "$ci_yml26" > "$sb26c/unrelated.yml"
+if ! grep -qxF "$stop_line26" "$sb26c/moved.yml"; then
+  fail "26c-moved: the fixture mutation did not move the line (it is gone from moved.yml)"
+elif stop_on_fail_set26 "$sb26c/moved.yml"; then
+  fail "26c-moved: SUITE_STOP_ON_FAIL moved out of the shard run step still passes 26c"
+else
+  pass "26c-moved: SUITE_STOP_ON_FAIL moved to another step fails 26c"
+fi
+if shard_step26 "$sb26c/unrelated.yml" | grep -qxF "          UNRELATED_26C: x" && stop_on_fail_set26 "$sb26c/unrelated.yml"; then
+  pass "26c-unrelated: an unrelated env change in the shard step still passes 26c"
+else
+  fail "26c-unrelated: an unrelated env change broke 26c or did not apply"
+fi
+rm -rf "$sb26c"
 fi
 
 # shellcheck disable=SC2016

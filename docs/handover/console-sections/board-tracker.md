@@ -80,3 +80,13 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     decisions, no "What users gained" and no plan-vs-Jira section. The parity line
     names each differing key with both statuses and reads `lag` when the mirror
     trails live Jira, `DRIFT` otherwise.
+
+- **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh --legs-from <fleet manifest>`
+  lists started tickets outside the active version, open tickets in a released
+  version and versionless started Tasks, Stories and Bugs (OWNED = a live leg or
+  open PR holds it, RESET = move it to To Do with a reason comment). Run it after
+  a version cut; expect `vmismatch=0`. Without the manifest, or when `gh` cannot be
+  read, ownership is unknown: unowned started rows print UNKNOWN and the run exits
+  3, never RESET (released-version rows still print RESET). A mirror file missing
+  its key or status, or a bad version, also exits 3; an unreadable mirror prints
+  no rows and exits 3, an unreadable versions file exits 4.
