@@ -1327,6 +1327,13 @@ reclaim_detached() {
                 SKIPPED=$((SKIPPED+1)); return 0 ;;
         esac
     fi
+    # The pin and the reachability check above are for $head; a commit or checkout
+    # since the worktree list was read would leave the new tip unpinned.
+    if git -C "$wt" symbolic-ref -q HEAD >/dev/null 2>&1 || [ "$(git -C "$wt" rev-parse -q --verify HEAD 2>/dev/null)" != "$head" ]; then
+        echo "WARN clean-garden: $label moved during prune — kept ($wt)" >&2
+        note_stuck "$wt" "detached, and its HEAD moved during the prune"
+        SKIPPED=$((SKIPPED+1)); return 0
+    fi
     if git -C "$PRIMARY_WORKTREE" worktree remove ${remove_args[@]+"${remove_args[@]}"} "$wt" >/dev/null 2>&1; then
         echo "OK clean-garden: reclaimed $label ($wt)${pin:+; tip kept on ${pin#refs/heads/}}"
         PRUNED=$((PRUNED+1))
@@ -1438,6 +1445,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             continue
         fi
 
+        br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null || true)
         if ! is_branch_mergeable_for_prune "$br"; then
             log "  keep (PR not merged): $br @ $wt"
             continue
@@ -1526,6 +1534,13 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             note_stuck "$wt" "merged, but the worktree is in use by a live process"
             SKIPPED=$((SKIPPED+1))
             continue
+        fi
+
+        # The merged check was for $br_tip; a commit since would go with the branch delete.
+        if [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" != "$br_tip" ]; then
+            echo "WARN clean-garden: $br moved during prune — kept ($wt)" >&2
+            note_stuck "$wt" "merged, but its branch moved during the prune"
+            SKIPPED=$((SKIPPED+1)); continue
         fi
 
         if git -C "$PRIMARY_WORKTREE" worktree remove ${remove_args[@]+"${remove_args[@]}"} "$wt" >/dev/null 2>&1; then

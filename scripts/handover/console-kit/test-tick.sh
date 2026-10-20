@@ -2178,10 +2178,11 @@ wto_zero="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh
 case "$wto_zero" in *wt-orphans*|*wt-ceiling*) fail "a clean fleet hides wt-orphans and wt-ceiling (out='$wto_zero')" ;; *) pass 'a clean fleet hides wt-orphans and wt-ceiling (HIMMEL-6584)' ;; esac
 wto_err="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-err.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'an unavailable open-PR list reads wt-orphans=unknown, not an all-clear (HIMMEL-6584)' "$wto_err" ' wt-orphans=unknown'
+rm -f "$TICK_STATE_DIR/tick-wt-orphans"
 wto_crash="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-crash.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a failed probe reads wt-orphans=unknown (HIMMEL-6584)' "$wto_crash" ' wt-orphans=unknown'
 wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
-case "$wto_after" in *wt-orphans=unknown*) fail "a failed probe is not cached (out='$wto_after')" ;; *) pass 'a failed probe is not cached (HIMMEL-6584)' ;; esac
+contains 'a failed probe is not cached, so the next tick reads afresh (HIMMEL-6584)' "$wto_after" ' wt-orphans=2'
 rm -f "$TICK_STATE_DIR/tick-wt-orphans"
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"

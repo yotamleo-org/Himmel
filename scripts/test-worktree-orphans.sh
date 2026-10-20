@@ -118,7 +118,7 @@ mk_detached() {
 # run_wt <args...> — prints combined output then "rc=<n>".
 run_wt() {
     (
-        export PATH="$STUB_DIR:$PATH"
+        export PATH="${RACE_PATH:+$RACE_PATH:}$STUB_DIR:$PATH"
         export FORGE=github
         export HANDOVER_DIR="$HANDOVER_ROOT"
         export WORKTREE_ORPHAN_HOURS="${WORKTREE_ORPHAN_HOURS-0}"
@@ -180,6 +180,36 @@ echo "CASE 3: --only <detached>"
 out=$(WORKTREE_ORPHAN_HOURS=1 run_wt prune --only "$WT_FRESH")
 expect "3: rc=0" "$out" rc_is "$out" 0
 expect "3: --only reclaimed the detached tree" "$out" is_gone "$WT_FRESH"
+
+# A commit landing after the worktree list was read: the git shim commits in
+# the tree at the first git call matching RACE_ON, after the prune's checks.
+RACE_DIR="$TMP_ROOT/race-bin"
+mkdir -p "$RACE_DIR"
+cat > "$RACE_DIR/git" <<'SHIM'
+#!/usr/bin/env bash
+if [ ! -e "$RACE_DONE" ] && [[ " $* " == *" $RACE_ON "* ]]; then
+    : > "$RACE_DONE"
+    "$REAL_GIT" -C "$RACE_WT" commit -q --allow-empty -m race >/dev/null 2>&1
+fi
+exec "$REAL_GIT" "$@"
+SHIM
+chmod +x "$RACE_DIR/git"
+WT_RACE=$(mk_detached det-race)
+out=$(RACE_ON="for-each-ref --contains" REAL_GIT="$(command -v git)" RACE_WT="$WT_RACE" RACE_DONE="$TMP_ROOT/race-done" RACE_PATH="$RACE_DIR" run_wt prune --only "$WT_RACE")
+RACE_TIP=$(git -C "$WT_RACE" rev-parse HEAD 2>/dev/null || true)
+expect "3: the race fired" "$out" test -e "$TMP_ROOT/race-done"
+expect "3: a detached tree whose HEAD moved during the prune is kept" "$out" is_dir "$WT_RACE"
+expect "3: its new commit is still checked out" "$out" test "$(git -C "$WT_RACE" log -1 --format=%s 2>/dev/null)" = race
+expect "3: the moved tree is reported" "$out" grepq "$out" "moved during prune"
+[ -z "$RACE_TIP" ] || git -C "$REPO" worktree remove --force "$WT_RACE" >/dev/null 2>&1
+# The same race on a merged branch tree: branch -D would take the new commit.
+WT_BRACE=$(mk_wt brace feat/brace 1)
+out=$(RACE_ON="status --porcelain --untracked-files=no" REAL_GIT="$(command -v git)" RACE_WT="$WT_BRACE" RACE_DONE="$TMP_ROOT/brace-done" RACE_PATH="$RACE_DIR" run_wt prune --only "$WT_BRACE")
+expect "3: the branch race fired" "$out" test -e "$TMP_ROOT/brace-done"
+expect "3: a merged tree whose branch moved during the prune is kept" "$out" is_dir "$WT_BRACE"
+expect "3: its branch still holds the new commit" "$out" test "$(git -C "$REPO" log -1 --format=%s feat/brace 2>/dev/null)" = race
+expect "3: the moved branch is reported" "$out" grepq "$out" "feat/brace moved during prune"
+git -C "$REPO" worktree remove --force "$WT_BRACE" >/dev/null 2>&1
 
 # ── case 4: --orphans flags every unheld leftover ────────────────────────────
 echo "CASE 4: prune --orphans"
