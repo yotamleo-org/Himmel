@@ -54,6 +54,8 @@ test("J-DG1. W2 stepped with Next shows the NO-GO as refused, with its condition
   await expect(cap).toContainText(edgeById("e.verdict.nogo").condition);
   await expect(cap).toContainText("write-verdict.sh");
   await expect(cap).toContainText("Refused");
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(nodeState(page, "j.verdict")).toHaveAttribute("data-state", "refused");
 });
 
 test("J-DG1. a deep link restores the walkthrough and step, and stepping rewrites it", async ({ page }) => {
@@ -62,14 +64,13 @@ test("J-DG1. a deep link restores the walkthrough and step, and stepping rewrite
   await expect(page.locator(".dg-caption")).toContainText(`Step 7 of ${w("w2").steps.length}`);
   await expect(nodeState(page, w("w2").steps[6].at)).toHaveAttribute("data-state", "active");
   await page.getByRole("button", { name: "Next" }).click();
-  expect(new URL(page.url()).hash).toBe("#w=w2&s=8");
+  await expect(page).toHaveURL(/#w=w2&s=8$/);
 });
 
 test("J-DG1. a hash that carries other keys keeps them", async ({ page }) => {
   await open(page, "#t=abc&w=w1&s=2");
   await page.getByRole("button", { name: "Next" }).click();
-  expect(new URL(page.url()).hash).toMatch(/^#t=abc&/);
-  expect(new URL(page.url()).hash).toContain("s=3");
+  await expect(page).toHaveURL(/#t=abc&.*s=3$/);
 });
 
 test("J-DG1. Play advances at least two steps in six seconds", async ({ page }) => {

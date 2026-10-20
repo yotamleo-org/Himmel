@@ -439,7 +439,7 @@ function walk(root, data, uid, reduced) {
     const edgeState = new Map();
     for (let j = 0; j <= step; j++) {
       const s = w.steps[j];
-      nodeState.set(s.at, j === step ? s.state || 'active' : 'passed');
+      nodeState.set(s.at, j === step || s.state === 'refused' ? s.state || 'active' : 'passed');
       const e = j ? takenEdge(data, w.steps[j - 1].at, s.at) : null;
       if (e) edgeState.set(e.id, j === step ? 'active' : 'passed');
     }
@@ -519,7 +519,7 @@ function walk(root, data, uid, reduced) {
     timer = 0;
     if (!playing || hover || focus || document.hidden) return;
     timer = setTimeout(() => {
-      show(wi, step + 1, { forward: true });
+      show(wi, step + 1, { forward: true, reveal: true });
       if (step >= last()) setPlaying(false); else schedule();
     }, STEP_MS);
   }
