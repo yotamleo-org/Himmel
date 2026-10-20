@@ -386,7 +386,7 @@ detect() {
 }
 quiet=$(detect "$0"); quiet_rc=$?
 if [ "$quiet_rc" = "0" ] && [ -z "$quiet" ]; then pass "the detector finds no token shape in this file"; else fail "the detector finds no token shape in this file"; fi
-printf 'X=%s\n' "gh""p_$(rep F 36)" >"$WORKDIR/live.txt"
+printf 'X=%s\n' "gh""p_$(rep aB3dE5gH7jK9 3)" >"$WORKDIR/live.txt"
 if detect "$WORKDIR/live.txt" | grep -q 'TOKEN-IN-OUTPUT' && [ -s "$WORKDIR/sent.mark" ]; then pass "a run-time built token still alerts"; else fail "a run-time built token still alerts"; fi
 
 echo "----"
