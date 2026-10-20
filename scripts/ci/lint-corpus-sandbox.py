@@ -104,10 +104,14 @@ def shell_launches(text):
     errors = []
     # Require the owned runner path at the call site, never a mutable binding.
     command = 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
-    # Fail closed: any reference to a hook-like variable is a launch unless it
-    # sits after a wrapper's `--` or is one of the listed non-launch uses.
+    # Fail closed: any reference to a hook-like variable, and any variable an
+    # interpreter or exec/source runs, is a launch unless it sits after a
+    # wrapper's `--` or is one of the listed non-launch uses.
     name = r'[A-Za-z_0-9]*hook[A-Za-z_0-9]*'
     reference = re.compile(r'\$\{?' + name, re.I)
+    runs_variable = re.compile(
+        r'\b(?:bash|sh|dash|zsh|ksh|env|python3?)\s+'
+        r'(?:[^\s$`"\'();|&]+\s+)*["\']?(?P<ref>\$)')
     ref = r'["\']?\$\{?' + name
     non_launch = re.compile(
         r'(?:\[\[?|\btest)\s+-[a-z]\s+' + ref
@@ -116,16 +120,29 @@ def shell_launches(text):
     wrapper = re.compile(re.escape(command) + r'[^;|&]*?\s+--\s')
     for number, line in logical_lines(text):
         wrappers = list(wrapper.finditer(line))
+        # Only the exact runner path expression is exempt; anything else before
+        # the `--` (a command substitution, say) runs on the host.
+        owned = [(w.start(), w.start() + len(command)) for w in wrappers]
         allowed = list(non_launch.finditer(line))
-        for match in reference.finditer(line):
-            if any(w.start() <= match.start() < w.end() for w in wrappers):
+        positions = {m.start() for m in reference.finditer(line)}
+        # Single-quoted text is literal payload data, so it cannot name a variable
+        # an interpreter runs; hook-named references above are still scanned raw.
+        masked = re.sub(r"'[^']*'", lambda m: " " * len(m.group()), line)
+        positions |= {m.start("ref") for m in runs_variable.finditer(masked)}
+        for position in sorted(positions):
+            if any(start <= position < end for start, end in owned):
                 continue
-            if any(m.start() <= match.start() < m.end() for m in allowed):
+            if any(m.start() <= position < m.end() for m in allowed):
                 continue
-            covering = [w for w in wrappers if w.end() <= match.start()]
-            # A wrapper protects only its own simple command, never a later one.
-            if not covering or re.search(r'[;|&]', line[covering[-1].end():match.start()]):
-                errors.append((number, "hook reference outside a sandbox-run.sh wrapper"))
+            covering = [w for w in wrappers if w.end() <= position]
+            if covering:
+                between = line[covering[-1].end():position]
+                # A wrapper protects only its own simple command, never a later
+                # one, and never a substitution the host shell expands first.
+                if (not re.search(r'[;|&]', between) and between.count("`") % 2 == 0
+                        and between.count("(") <= between.count(")")):
+                    continue
+            errors.append((number, "hook reference outside a sandbox-run.sh wrapper"))
     return errors
 
 
