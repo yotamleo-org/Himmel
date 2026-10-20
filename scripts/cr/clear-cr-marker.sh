@@ -53,7 +53,10 @@
 #      `amend` supersede records are applied before this is judged, so a
 #      correction (wrong severity, wrong head) actually takes effect; a
 #      `deferred` verdict clears ONLY with a ticket key AND a reason, so a bare
-#      "deferred" is still blocking.
+#      "deferred" is still blocking. Exception: when a signed judge GO at the
+#      tip stands in for the panel (review-round.sh judge-go), a crit|imp at
+#      the reviewed head whose verdict is exactly `fixed` is the delta that GO
+#      rules on and does not block; the clear is audited FIXED-UNDER-JUDGE-GO.
 #   4b. The ledger records NO finding at that SHA with an EMPTY/missing verdict
 #      — including `sug`, which gate 4 never blocks on. `amend`
 #      records are applied first, same as gate 4. A cleared head must carry a
@@ -483,6 +486,9 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # it can buy is the clearance of a tests-paths-only delta over a head a critic
 # did review, never of a head with non-test changes. Upgrade path: sign the file.
 review_head="$tip"
+# Set only by the judge-go branch below: a `fixed` crit|imp at the reviewed head
+# is the delta the signed GO at the tip rules on, so gate 4 does not block on it.
+jg_fixed_ok=0
 _rr_head_file="$git_dir/cr-review-rounds/$branch.head"
 if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     _rr_head=$(sed -n '1p' "$_rr_head_file" 2>/dev/null || true)
@@ -504,6 +510,7 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
         && _jg_hit=$(bash "$SCRIPT_DIR/review-round.sh" judge-go --branch "$branch" --head "$tip" 2>/dev/null); then # swallow-ok: a failing verb is the no-GO case, the gates below refuse at the tip
         review_head="$_rr_head"
+        jg_fixed_ok=1
         echo "clear-cr-marker: ${tip:0:8} has no review round of its own but a signed judge GO ($_jg_hit) rules on it - gating on the reviewed head ${review_head:0:8}." >&2
         audit "JUDGE-GO branch=$branch sha=$tip reviewed_head=$review_head source=judge:$_jg_hit"
     fi
@@ -528,7 +535,7 @@ if [ -e "$git_dir/cr-impl-family/$branch" ] || [ -L "$git_dir/cr-impl-family/$br
     fi
 fi
 # shellcheck disable=SC2016  # $-refs below are JS inside a single-quoted node script, not shell
-verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
+verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
   const fs = require("fs"), e = process.env;
   const lines = fs.existsSync(e.LEDGER)
       ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
@@ -587,7 +594,7 @@ verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$g
   // or corrupted while an avail-ok line stays readable, the gate would clear
   // the marker without ever evaluating that finding. An unreadable ledger is
   // an unknown verdict, and unknown must never mean clean.
-  let responders = 0, nonClaudeResponders = 0, otherFamilyResponders = 0, blocking = [], malformed = 0, deferred = [], applied = [];
+  let responders = 0, nonClaudeResponders = 0, otherFamilyResponders = 0, blocking = [], malformed = 0, deferred = [], fixedUnderGo = [], applied = [];
   // CR_FLOOR_FALLBACK=claude-only eligibility tracking. claudeOk
   // is a PRESENT-model check, mirroring the nonClaudeResponders normalisation
   // just below (trim+lowercase, model must actually equal "claude") - it is
@@ -800,6 +807,14 @@ verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$g
           const why = typeof o.reason === "string" ? o.reason.trim() : "";
           if (o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && why) {
               deferred.push((o.finding_id || "?") + "->" + ticket);
+              continue;
+          }
+          // JUDGE GO. Reached only when the signed GO at the tip stood in for the
+          // panel (the shell set JG_FIXED_OK): the finding sits at the reviewed
+          // head and was fixed in the delta the GO rules on. Only the exact
+          // verdict fixed passes; an agreed, empty or any other verdict blocks.
+          if (e.JG_FIXED_OK === "1" && o.verdict === "fixed") {
+              fixedUnderGo.push((o.finding_id || "?") + "(" + o.severity + ")");
               continue;
           }
           // String concat, not a template literal: a dollar-brace inside this
@@ -1061,7 +1076,7 @@ verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$g
   if (emptyPanel) exhaustedLanes.push("empty-panel");
   const floorFallbackEligible = floorOk && (nonClaudeAvailModels.length > 0 || emptyPanel) &&
       nonExhaustedLanes.length === 0 && blocking.length === 0;
-  console.log(JSON.stringify({ responders, nonClaudeResponders, otherFamilyResponders, certifyRefused, blocking, blockingFiles, malformed, deferred, applied, unadjudicated, missingSweep: sweepsUnreadable ? null : missingSweep, floorFallbackEligible, floorOk, exhaustedLanes, nonExhaustedLanes }));
+  console.log(JSON.stringify({ responders, nonClaudeResponders, otherFamilyResponders, certifyRefused, blocking, blockingFiles, malformed, deferred, fixedUnderGo, applied, unadjudicated, missingSweep: sweepsUnreadable ? null : missingSweep, floorFallbackEligible, floorOk, exhaustedLanes, nonExhaustedLanes }));
 ' 2>/dev/null)
 if [ -z "$verdict" ]; then
     echo "clear-cr-marker: could not read the CR ledger at $ledger — refusing (cannot certify the review)." >&2
@@ -1085,6 +1100,7 @@ other_family_responders=$(printf '%s' "$verdict" | node -e 'let s="";process.std
 blocking=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).blocking.join(" ")))' 2>/dev/null)
 malformed=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String(JSON.parse(s).malformed)))' 2>/dev/null)
 deferred=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).deferred||[]).join(" ")))' 2>/dev/null)
+fixed_under_go=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).fixedUnderGo||[]).join(" ")))' 2>/dev/null) # swallow-ok: an unreadable list only drops the audit note, the blocking gate above already decided
 applied_amends=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).applied||[]).join(" ")))' 2>/dev/null)
 unadjudicated_count=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(String((JSON.parse(s).unadjudicated||[]).length)))' 2>/dev/null)
 # gate 4d. No `||[]` fallback: a verdict without the key is a
@@ -1335,6 +1351,10 @@ if [ -n "$blocking" ]; then
     echo "    scripts/cr/ledger-append.sh amend --head ${tip_short:-$tip} --id <finding-id> --set verdict=deferred --set deferred_to=<TICKET> --set fu_class=<escape|hardening|polish> --set reason=\"<why it is out of scope here>\" --reason \"deferred after review\"" >&2
     audit "REFUSED reason=blocking-findings branch=$branch sha=$tip findings=$blocking"
     exit 15
+fi
+if [ -n "$fixed_under_go" ]; then
+    echo "clear-cr-marker: fixed finding(s) at the reviewed head ${review_head:0:8} (covered by the judge GO at ${tip:0:8}, not blocking): $fixed_under_go" >&2
+    audit "FIXED-UNDER-JUDGE-GO branch=$branch sha=$tip reviewed_head=$review_head source=judge:${_jg_hit:-} findings=$fixed_under_go"
 fi
 # Deferrals are not silent: they cleared the gate, so say so and name the tickets.
 if [ -n "$deferred" ]; then
