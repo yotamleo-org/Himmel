@@ -18,7 +18,8 @@
 #
 # FAIL-CLOSED: a --list that fails or lacks its summary footer, or a ledger
 # with no valid duration to size a non-empty selection by, falls back to
-# N = n and one shard-has-work.sh probe per shard, run in parallel. A probe
+# N = n and one shard-has-work.sh probe per shard, run in parallel, each asked
+# under the same runner args as the --list that failed. A probe
 # that fails, prints nothing or prints anything but `has_work=false` leaves
 # the shard in the list. A shard wrongly left out is still caught downstream:
 # the aggregator's manifest accounting demands every selected suite ran once.
@@ -84,7 +85,11 @@ esac
 
 k=1
 while [ "$k" -le "$n" ]; do
-  ( bash "$here/shard-has-work.sh" "$k/$n" "$root" > "$tmp/$k.out" 2>/dev/null; echo $? > "$tmp/$k.rc" ) &
+  if [ "$#" -gt 0 ]; then
+    ( bash "$here/shard-has-work.sh" "$k/$n" "$root" -- "$@" > "$tmp/$k.out" 2>/dev/null; echo $? > "$tmp/$k.rc" ) &
+  else
+    ( bash "$here/shard-has-work.sh" "$k/$n" "$root" > "$tmp/$k.out" 2>/dev/null; echo $? > "$tmp/$k.rc" ) &
+  fi
   k=$((k + 1))
 done
 wait

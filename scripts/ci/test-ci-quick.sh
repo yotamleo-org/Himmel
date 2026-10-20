@@ -6,15 +6,20 @@
 # network, no PyYAML.
 #
 #   Q1  every folded name is a sentinel: needs ci-quick, fails unless its group
-#       output is 'pass', no checkout, a job timeout
+#       output is 'pass' and takes no runner when ci-quick was cancelled, no
+#       checkout, a job timeout
 #   Q2  every ci-quick step but the shared ones belongs to a group (id
 #       <group> or <group>__<x>) and runs under !cancelled()
 #   Q3  each group output is the canonical expression: the shared steps and the
 #       closing `finished` step succeeded, every group step succeeded or was skipped
-#   Q4  the model over that expression: a cancelled or timed-out ci-quick, a
-#       skipped ci-quick, a failed checkout and a failed group step all fail the
-#       sentinel; a step failure fails only its own group; a plan-gated skip passes
+#   Q4  the model over that expression: a timed-out ci-quick, a skipped
+#       ci-quick, a failed checkout and a failed group step all fail the
+#       sentinel; a cancelled ci-quick skips it; a step failure fails only its
+#       own group; a plan-gated skip passes
 #   Q5  the doc-invariants group (its orphan checkout is destructive) runs last
+#   Q6  two recorded hosted runs (test-ci-quick-fixtures/): in the cancelled
+#       run the sentinels took runners and went red; under the sentinel gate
+#       they take none. The green run's sentinels were skipped and still are
 #
 # Usage: bash scripts/ci/test-ci-quick.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -35,7 +40,7 @@ job_block() { awk -v job="$1" '$0 == "  " job ":" { j = 1; print; next } j && /^
 for g in $GROUPS_FOLDED; do
   b="$(job_block "$g")"
   if [ -z "$b" ]; then bad "Q1 $g: no sentinel job"; continue; fi
-  want_if="    if: \${{ always() && needs.ci-quick.outputs.$g != 'pass' }}"
+  want_if="    if: \${{ always() && needs.ci-quick.result != 'cancelled' && needs.ci-quick.outputs.$g != 'pass' }}"
   if printf '%s\n' "$b" | grep -qxF "    needs: ci-quick" \
      && printf '%s\n' "$b" | grep -qxF "$want_if" \
      && printf '%s\n' "$b" | grep -qE '^      - run: exit 1$' \
@@ -117,13 +122,18 @@ group_output() { # what ci-quick's output for group $1 evaluates to under $OUTCO
   done
   echo pass
 }
-sentinel_fails() { [ "$(group_output "$1")" != pass ]; } # the sentinel's `if`; its body is exit 1
+# The sentinel's `if` over ci-quick's result ($RESULT) and its group output; its body is exit 1.
+sentinel_runs() { [ "${RESULT:-success}" != cancelled ] && [ "$(group_output "$1")" != pass ]; }
+sentinel_fails() { sentinel_runs "$1"; }
 expect() { # expect <label> <want: pass|fail> <group>
   if sentinel_fails "$3"; then got=fail; else got=pass; fi
   if [ "$got" = "$2" ]; then ok "Q4 $1"; else bad "Q4 $1: sentinel $3 would $got"; fi
 }
 OUTCOMES="" JOB_RAN=1;                expect "all green: secret-scan sentinel skipped" pass secret-scan
-OUTCOMES="" JOB_RAN=0;                expect "ci-quick cancelled, timed out or skipped (no outputs) fails the sentinel" fail commit-lint
+OUTCOMES="" JOB_RAN=0 RESULT=failure;   expect "a timed-out ci-quick (no outputs) fails the sentinel" fail commit-lint
+OUTCOMES="" JOB_RAN=0 RESULT=skipped;   expect "a skipped ci-quick (no outputs) fails the sentinel" fail commit-lint
+OUTCOMES="" JOB_RAN=0 RESULT=cancelled; expect "a cancelled ci-quick takes no sentinel runner and shows no false red" pass commit-lint
+RESULT=success
 OUTCOMES="finished=skipped" JOB_RAN=1; expect "a timeout that skips the finished step fails every sentinel" fail claude-startup
 OUTCOMES="checkout=failure" JOB_RAN=1; expect "a failed checkout fails the sentinel before its group ran" fail guardrail-matrices
 OUTCOMES="jira-cli-smoke=skipped jira-cli-smoke__npm=skipped" JOB_RAN=1; expect "a plan-gated skip passes" pass jira-cli-smoke
@@ -139,6 +149,34 @@ first_doc="$(printf '%s\n' "$steps" | cut -f1 | grep -n -m1 -E '^doc-invariants(
 last_other="$(printf '%s\n' "$steps" | cut -f1 | grep -n -vE '^(doc-invariants(__.*)?|finished)$' | tail -n 1 | cut -d: -f1)"
 if [ -n "$first_doc" ] && [ -n "$last_other" ] && [ "$first_doc" -gt "$last_other" ]; then ok "Q5 the doc-invariants group runs last"
 else bad "Q5 a step runs after the doc-invariants group starts (first doc step ${first_doc:-?}, last other ${last_other:-?})"; fi
+
+# Q6: replay recorded hosted runs. A row is <job> <conclusion> <started> <completed>, tab separated.
+FIX="$ROOT/scripts/ci/test-ci-quick-fixtures"
+cancelled_fx="$FIX/cancelled-run-39388709732.tsv"
+green_fx="$FIX/green-run-39385449571.tsv"
+fx_result() { awk -F'\t' '$1 == "ci-quick" { print $2 }' "$1"; }
+fx_ran() { awk -F'\t' '$1 != "ci-quick" && $2 != "skipped" && $2 != "cancelled" { n++ } END { print n + 0 }' "$1"; }
+would_run() { # would_run <result>: how many sentinels take a runner when ci-quick had no outputs/outputs
+  local g n=0
+  for g in $GROUPS_FOLDED; do RESULT="$1" sentinel_runs "$g" && n=$((n + 1)); done
+  echo "$n"
+}
+if [ -r "$cancelled_fx" ] && [ -r "$green_fx" ]; then
+  res="$(fx_result "$cancelled_fx")"; ran="$(fx_ran "$cancelled_fx")"
+  if [ "$res" = cancelled ] && [ "$ran" -eq 8 ]; then ok "Q6 recorded cancelled run: ci-quick cancelled, $ran sentinels took a runner and went red"
+  else bad "Q6 the cancelled fixture is not the recorded shape (ci-quick '$res', $ran sentinels ran)"; fi
+  OUTCOMES="" JOB_RAN=0
+  spent="$(would_run "$res")"
+  if [ "$spent" -eq 0 ]; then ok "Q6 under the sentinel gate that cancelled run spends no sentinel runner"
+  else bad "Q6 $spent sentinels would still take a runner on the recorded cancelled run"; fi
+  res="$(fx_result "$green_fx")"; ran="$(fx_ran "$green_fx")"
+  OUTCOMES="" JOB_RAN=1
+  spent="$(would_run "$res")"
+  if [ "$res" = success ] && [ "$ran" -eq 0 ] && [ "$spent" -eq 0 ]; then ok "Q6 recorded green run: every sentinel was skipped, and still is"
+  else bad "Q6 green fixture: ci-quick '$res', $ran sentinels ran, $spent would run"; fi
+else
+  bad "Q6 missing fixtures under $FIX"
+fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2

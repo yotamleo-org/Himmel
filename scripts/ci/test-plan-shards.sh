@@ -47,6 +47,7 @@ cp "$SRC_ROOT/scripts/ci/plan-shards.sh" "$PS/plan-shards.sh"
 cat > "$PS/shard-has-work.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s|%s\n' "${1:-}" "${2:-}" >> "${STUB_LOG:-/dev/null}"
+printf '%s\n' "$*" >> "${STUB_ARGS_LOG:-/dev/null}"
 k="${1%%/*}"
 for a in $STUB_ANSWERS; do
   [ "${a%%=*}" = "$k" ] || continue
@@ -194,5 +195,16 @@ STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" RST_L
   bash "$PS/plan-shards.sh" 8 -- --impacted a..b >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 0 ] && [ "$(cat "$PS/rst.log")" = "--list --impacted a..b ." ]; then pass "PS16 an omitted root defaults to ."; else fail "PS16: rc=$rc $(cat "$PS/rst.log")"; fi
+
+# PS17: the probe fallback asks about the same selection as the --list it replaces,
+# so the runner args reach every probe after the shard and the root.
+: > "$PS/args.log"
+STUB_ARGS_LOG="$PS/args.log" STUB_ANSWERS="1=true 2=true" \
+  bash "$PS/plan-shards.sh" 2 /some/root -- --impacted a..b >/dev/null 2>&1
+if [ "$(sort "$PS/args.log")" = "$(printf '1/2 /some/root -- --impacted a..b\n2/2 /some/root -- --impacted a..b')" ]; then pass "PS17 each probe gets the runner args"; else fail "PS17: $(cat "$PS/args.log")"; fi
+: > "$PS/args.log"
+STUB_ARGS_LOG="$PS/args.log" STUB_ANSWERS="1=true 2=true" \
+  bash "$PS/plan-shards.sh" 2 /some/root >/dev/null 2>&1
+if [ "$(sort "$PS/args.log")" = "$(printf '1/2 /some/root\n2/2 /some/root')" ]; then pass "PS17 no runner args, none passed to the probes"; else fail "PS17 none: $(cat "$PS/args.log")"; fi
 
 rst_tally
