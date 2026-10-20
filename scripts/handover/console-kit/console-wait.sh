@@ -736,11 +736,13 @@ EOF
 # r0_fold_key: <saved key> <new key> <absorbed words> — the baseline after the relay
 # absorbed those legs' wraps (words: labels and #<pr>). A field whose only difference
 # is absorbed tokens (`<word>`, `<word>:…`; `none` counts as empty) takes the new
-# value, and so do the derived leg-set fields livestate legset board closable (each
-# leg's own state is in legs=/tails=/acts=). Any other difference keeps the saved
-# value, so another leg's pending change still wakes.
+# value, and so do the derived leg-set fields livestate legset board (each leg's own
+# state is in legs=/tails=/acts=). closable= moves with time alone, so it takes the
+# new value only when it did not rise. Any other difference keeps the saved value,
+# so another leg's pending change still wakes.
 r0_fold_key() {
     awk -v s="$1" -v k="$2" -v a=" $3 " '
+    function num(v) { return v == "" ? 0 : v + 0 }
     function strip(v,   n, t, i, l, o) {
         n = split(v, t, ","); o = ""
         for (i = 1; i <= n; i++) {
@@ -756,10 +758,10 @@ r0_fold_key() {
         nk = split(k, kp, "|"); out = ""
         for (i = 1; i <= nk; i++) {
             f = kp[i]; sub(/=.*/, "", f); v = substr(kp[i], length(f) + 2); seen[f] = 1
-            if (f ~ /^(livestate|legset|board|closable)$/ || strip(v) == ((f in sv) ? strip(sv[f]) : "")) out = out "|" f "=" v
+            if (f == "closable" ? num(v) <= num(sv[f]) : f ~ /^(livestate|legset|board)$/ || strip(v) == ((f in sv) ? strip(sv[f]) : "")) out = out "|" f "=" v
             else if (f in sv) out = out "|" f "=" sv[f]
         }
-        for (i = 1; i <= ns; i++) { f = sp[i]; sub(/=.*/, "", f); if (!(f in seen) && strip(sv[f]) != "") out = out "|" sp[i] }
+        for (i = 1; i <= ns; i++) { f = sp[i]; sub(/=.*/, "", f); if (!(f in seen) && f != "closable" && strip(sv[f]) != "") out = out "|" sp[i] }
         print substr(out, 2)
     }'
 }

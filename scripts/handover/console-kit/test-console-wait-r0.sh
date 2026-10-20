@@ -17,6 +17,7 @@
 #         N2's change still wakes
 #   (r0g) two legs: N1's wrap and N2's change in one sample, then the manifest
 #         move N1's wrap made: N2's change still wakes
+#   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
 #
 # tick.sh, the bank verdict and leg-event.sh are stubbed (CONSOLE_WAIT_TICK,
 # CONSOLE_WAIT_BANK, CONSOLE_WAIT_LEG_EVENT): nothing closes a window here.
@@ -246,6 +247,19 @@ wait_exit "$WPID"
 check "(r0g) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0g) as a tick wake on tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
 check "(r0g) the relay dropped N1 from the manifest" "N2" "$(jq -r '.legs[].label' "$M")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0i) a window turning closable beside the absorbed wrap still wakes -----
+reset_stub
+fleet2 r0i
+tick_line "N1:LIVE,N2:LIVE"
+start "$I" "$WORK/r0i.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(r0i) no baseline heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED,N2:LIVE"; printf '%s closable=1\n' "$(cat "$STUB/tick.line")" > "$STUB/tick.line.new"; mv "$STUB/tick.line.new" "$STUB/tick.line"
+wait_exit "$WPID"
+check "(r0i) the closable rise wakes (rc 0)" "0" "$rc"
+check "(r0i) as a tick wake on closable" "WAKE tick changed=closable bank=PROCEED" "$(head -n 1 "$WORK/r0i.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 echo
