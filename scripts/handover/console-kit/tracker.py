@@ -1201,6 +1201,17 @@ SECTOR_COLORS = {'Fleet orchestration': '#2563eb', 'Ship loop': '#16a34a', 'Safe
 VCOLS = ['To Do', 'In Progress', 'In Review', 'IN CI']
 
 
+def origin_repo():
+    """owner/name of this checkout's GitHub origin, or ''."""
+    try:
+        url = subprocess.run(['git', '-C', os.path.dirname(os.path.abspath(__file__)), 'remote', 'get-url', 'origin'],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    hit = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$', url)
+    return hit.group(1) if hit else ''
+
+
 def open_prs(path, repo):
     """{ticket number: [(pr, ci, draft)]} from a `gh pr list --json number,title,headRefName,isDraft,statusCheckRollup`
     file, else one live gh read (TRACKER_GH is the test seam); None when gh cannot be read. A PR belongs to every key
@@ -1411,7 +1422,8 @@ def main():
                                                      'statusCheckRollup` file (default: one live gh read)')
     ap.add_argument('--chains-file', default=None, help='--version: the merge chains and waves JSON '
                                                         '([{name, note, steps: [{key, pr, label, state, owner}]}])')
-    ap.add_argument('--repo', default='yotamleo-org/Himmel', help='--version: the GitHub repo the PR badges link to')
+    ap.add_argument('--repo', default=None, help='--version: the GitHub repo (owner/name) gh reads and the PR badges '
+                                                  'link to (default: this checkout\'s origin)')
     ap.add_argument('--plan-dir', help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
     ap.add_argument('--out', help='tracker.html to write (with --target-version, --out-done or --out-future: the focus page, '
                                   'the open tickets of the target version)')
@@ -1468,7 +1480,10 @@ def main():
             chains = json.load(open(a.chains_file, encoding='utf-8')) if a.chains_file else []
         except (OSError, ValueError):
             raise SystemExit('tracker: --chains-file %s is unreadable' % a.chains_file)
-        html, par = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, a.repo), chains, a.jira_base_url, a.repo)
+        repo = a.repo or origin_repo()
+        if not repo:
+            raise SystemExit('tracker: no GitHub origin found for this checkout; pass --repo owner/name')
+        html, par = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo)
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         open(OUT, 'w', encoding='utf-8').write(html)
         if fp0:

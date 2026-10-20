@@ -970,7 +970,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s"\ncat "%s"\n' "$W/vp-jira-args" "$
 chmod +x "$W/vpjira"
 vout="$W/vp-v113.html"
 vrender() {
-    TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$vp" --priority-file "$W/vp-plan.md" \
+    TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" --priority-file "$W/vp-plan.md" \
         --prs-file "$W/vp-prs.json" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$vout" 2>&1
 }
 vstdout="$(vrender)"
@@ -994,7 +994,7 @@ contains 'a card sits in its plan priority block (HIMMEL-6769, 6735)' "$(card 40
 contains 'a card on no priority line sits in rest of version (HIMMEL-6769, 6735)' "$(card 407)" 'data-block="rest of version"'
 contains 'a sector chip renders in the sector colour (HIMMEL-6769)' "$(card 400)" '<span class="sec" style="--s:#16a34a">Ship loop</span>'
 contains 'a card with no sector says so (HIMMEL-6769)' "$(card 402)" 'no sector'
-contains 'an open PR badge carries its CI state (HIMMEL-6769)' "$(card 401)" 'href="https://github.com/yotamleo-org/Himmel/pull/500">#500 · CI green</a>'
+contains 'an open PR badge carries its CI state (HIMMEL-6769)' "$(card 401)" 'href="https://github.com/example-org/example-repo/pull/500">#500 · CI green</a>'
 contains 'a PR found by its branch name, red and draft (HIMMEL-6769)' "$(card 403)" '#501 · CI red · draft'
 contains 'a started card with no open PR is flagged (HIMMEL-6769)' "$(card 402)" 'no open PR'
 not_contains 'a To Do card with no PR is not flagged (HIMMEL-6769)' "$(card 407)" 'no open PR'
@@ -1014,26 +1014,26 @@ contains 'the DRIFT line names the key and its Jira status (HIMMEL-6769)' "$(cat
 # a failing Jira CLI or gh reads unavailable, never a failed render or a false flag.
 printf '#!/bin/sh\nexit 1\n' > "$W/vpnogh"
 chmod +x "$W/vpnogh"
-vstdout="$(TRACKER_GH="$W/vpnogh" TRACKER_JIRA="$W/nojira" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$vp" --out "$vout" 2>&1)"
+vstdout="$(TRACKER_GH="$W/vpnogh" TRACKER_JIRA="$W/nojira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" --out "$vout" 2>&1)"
 vrc=$?
 if [ "$vrc" -eq 0 ]; then pass 'no Jira and no gh still render (HIMMEL-6769)'; else fail "no Jira and no gh exited $vrc: $vstdout"; fi
 contains 'a failed parity read says unavailable (HIMMEL-6769)' "$vstdout" 'parity v1.1.3: unavailable'
 contains 'a failed gh read says PR state unavailable (HIMMEL-6769)' "$(cat "$vout")" 'PR state unavailable'
 not_contains 'a failed gh read flags no card as PR-less (HIMMEL-6769)' "$(cat "$vout")" 'no open PR'
 # a later version gets its own page.
-TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.4 --mirror-dir "$vp" --chains-file "$W/vp-chains.json" --out "$W/vp-v114.html" >/dev/null 2>&1
+TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.4 --repo example-org/example-repo --mirror-dir "$vp" --chains-file "$W/vp-chains.json" --out "$W/vp-v114.html" >/dev/null 2>&1
 contains 'the v1.1.4 page holds its own ticket (HIMMEL-6769)' "$(cat "$W/vp-v114.html" 2>/dev/null)" 'vp next version'
 not_contains 'the v1.1.4 page holds no v1.1.3 ticket (HIMMEL-6769)' "$(cat "$W/vp-v114.html" 2>/dev/null)" 'vp todo in group'
 not_contains 'the v1.1.4 page holds no chain of another version (HIMMEL-6769)' "$(cat "$W/vp-v114.html" 2>/dev/null)" 'chain step two'
 # a missing mirror fails instead of writing an empty page.
-if TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$W/no-such-mirror" --out "$W/vp-missing.html" >/dev/null 2>&1; then
+if TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$W/no-such-mirror" --out "$W/vp-missing.html" >/dev/null 2>&1; then
     fail 'a missing mirror fails the --version render (HIMMEL-6769)'
 else
     pass 'a missing mirror fails the --version render (HIMMEL-6769)'
 fi
 # with --plan-dir the page carries the tick fingerprint, so tick reads tracker=ok from it.
 vfout="$W/vfp/roadmap-tracker.html"
-TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$vp" --out "$vfout" --plan-dir "$plan" \
+TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" --out "$vfout" --plan-dir "$plan" \
     --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" >/dev/null 2>&1
 vfp="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$plan" --out "$vfout" --luna-map "$W/luna-map.json" --mirror-dir "$vp" \
     --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" 2>&1)"
