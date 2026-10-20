@@ -152,6 +152,7 @@ scripts/ci/test-shellcheck-pr-range.sh	pr	trust-path
 scripts/ci/test-suite-concurrency.sh	pr	trust-path
 scripts/ci/test-suite-lock-brand-gap.sh	pr	trust-path
 scripts/ci/test-suite-lock-orphan-reaper.sh	pr	trust-path
+scripts/ci/test-suite-tiers.sh	pr	trust-path
 scripts/ci/test-tmp-sweep.sh	pr	trust-path
 scripts/ci/test-vm-runner-probe-workflow.sh	pr	trust-path
 scripts/ci/test-workflow-red-issue.sh	pr	trust-path
@@ -1030,4 +1031,3 @@ templates/luna-second-brain/scripts/test-upgrade-pyresolve.sh	local	behaviour su
 templates/luna-second-brain/scripts/test-upgrade.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 templates/luna-second-brain/scripts/test-vault-autosync-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 templates/luna-second-brain/scripts/test-vault-git.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/ci/test-suite-tiers.sh	pr	trust-path

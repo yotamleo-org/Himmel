@@ -21,7 +21,8 @@
 #     directory, the file's stem equals the suite's stem after dropping test- and
 #     trailing -words). The rule is computed, not hand-listed.
 #
-# Exit codes: 0 — all cases passed; 1 — at least one failed.
+# Exit codes: 0 — all cases passed; 1 — at least one failed; 2 — usage error
+# (an unknown --lint option, or one given with no value).
 set -uo pipefail
 
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -51,7 +52,6 @@ lint() { # <tiers> <trust> <tracked-list>
     }
     FILENAME == tiers {
       if ($0 ~ /^[ \t]*(#|$)/) next
-      n++
       if (NF != 3 || $1 == "" || $2 == "" || $3 == "") { printf "FAIL malformed row %d: %s\n", FNR, $0; bad++; next }
       if ($1 in tier) { printf "FAIL duplicate row: %s\n", $1; bad++; next }
       tier[$1] = $2; reason[$1] = $3
@@ -87,12 +87,16 @@ if [ "${1:-}" = "--lint" ]; then
   tracked=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --tiers) tiers="$2" ;;
-      --trust) trust="$2" ;;
-      --tracked) tracked="$2" ;;
+      --tiers|--trust|--tracked)
+        [ $# -ge 2 ] || { echo "usage: $0 --lint [--tiers F] [--trust F] [--tracked F]" >&2; exit 2; }
+        case "$1" in
+          --tiers) tiers="$2" ;;
+          --trust) trust="$2" ;;
+          --tracked) tracked="$2" ;;
+        esac ;;
       *) echo "usage: $0 --lint [--tiers F] [--trust F] [--tracked F]" >&2; exit 2 ;;
     esac
-    shift 2 || { echo "usage: $0 --lint [--tiers F] [--trust F] [--tracked F]" >&2; exit 2; }
+    shift 2
   done
   [ -r "$tiers" ] || { echo "FAIL tier file unreadable: $tiers"; exit 1; }
   [ -r "$trust" ] || { echo "FAIL trust list unreadable: $trust"; exit 1; }
@@ -171,6 +175,11 @@ row "RED: a row with no reason" 1 "malformed row" "$tmp/short.tsv"
 for reason in catch:3218 static-gate guard flow-miss:HIMMEL-6001; do
   retier "$tmp/good.tsv" "$tmp/r.tsv" scripts/ci/test-alpha.sh pr "$reason"
   row "pr reason $reason accepted" 0 "" "$tmp/r.tsv"
+done
+
+for opt in --tiers --trust --tracked; do
+  bash "$SELF" --lint "$opt" > "$tmp/out" 2>&1; rc=$?
+  if [ "$rc" -eq 2 ] && grep -qF -- usage "$tmp/out"; then pass "RED: $opt with no value -> usage, exit 2"; else fail "$opt with no value -> rc=$rc, expected usage and exit 2"; fi
 done
 
 echo "== real trust list + real tracked suites, one row of the committed file broken"
