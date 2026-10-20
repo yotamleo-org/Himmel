@@ -1787,6 +1787,20 @@ impacted_suites_is_anchored() {   # $1 root — subshell: the unsets stay local
     )
 }
 
+# is the WHOLE command `bash scripts/quiet-run.sh shell-unit -- bash
+# scripts/ci/run-shell-tests.sh` plus literal arguments - the form
+# require-quiet-run.sh suggests for the runner? WHY: the bare runner is already
+# allow-listed in settings.json, and quiet-run only wraps it with a log, so the
+# wrapped form is the same trust; without this a leg told to run the full
+# shell-unit locally hit a prompt nobody answers. Arguments are plain words
+# (no expansion, quote, glob or `~`) and none carries `..`.
+SR_RE='^bash scripts/quiet-run\.sh shell-unit -- bash scripts/ci/run-shell-tests\.sh( [-A-Za-z0-9_][-A-Za-z0-9_.=,:/@+]*)*$'
+cmd_is_shell_unit_runner() {
+    local c="${1%$'\n'}"
+    case "$c" in *..*) return 1 ;; esac
+    [[ "$c" =~ $SR_RE ]]
+}
+
 emit_allow() {
     local reason
     # `jq -n --arg r "<text>" '$r'` JSON-encodes the exact string
@@ -2092,6 +2106,10 @@ cmd="$(fold_backslash_newline "$cmd")"
 case "$cmd" in
     bash*impacted-suites.sh*)
         [ "$abstain" = 0 ] && cmd_is_impacted_suites "${result#*$'\n'}" && emit_allow "pr-check impacted-suites literal (HIMMEL-3486): ${cmd%%$'\n'*}" ;;
+esac
+case "$cmd" in
+    "bash scripts/quiet-run.sh shell-unit -- "*)
+        [ "$abstain" = 0 ] && cmd_is_shell_unit_runner "${result#*$'\n'}" && emit_allow "shell-unit runner literal (HIMMEL-6664): $cmd" ;;
 esac
 
 # Quote-aware structural scan: produces SCAN_SEGS (split only at

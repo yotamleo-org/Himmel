@@ -66,10 +66,54 @@ run_case "$(j_bash 'bash scripts/test-check-ci.sh')" "QUIET_RUN_BYPASS=1"
 assert_rc "QUIET_RUN_BYPASS=1" 0 "$RC"
 
 # 4. scripts/ci/run-shell-tests.sh -> denied (special-cased path, no test- prefix).
+# The suggestion must be a form quiet-run.sh accepts: label `suite` refuses
+# anything that is not a tracked test-*.sh, so the runner gets its own label.
 run_case "$(j_bash 'bash scripts/ci/run-shell-tests.sh')"
 assert_rc "run-shell-tests.sh" 2 "$RC"
-assert_contains "run-shell-tests.sh replacement" \
-    "bash scripts/quiet-run.sh suite -- bash scripts/ci/run-shell-tests.sh" "$ERR"
+RUNNER_CMD="bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh"
+assert_contains "run-shell-tests.sh replacement" "$RUNNER_CMD" "$ERR"
+case "$ERR" in
+    *"quiet-run.sh suite -- bash scripts/ci/run-shell-tests.sh"*)
+        echo "FAIL run-shell-tests.sh replacement - still suggests the refused suite label"
+        FAILED=$((FAILED + 1)) ;;
+    *) echo "PASS run-shell-tests.sh replacement is not the suite label" ;;
+esac
+run_case "$(j_bash "$RUNNER_CMD")"
+assert_rc "run-shell-tests.sh suggested form passes the hook" 0 "$RC"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+QR_OUT=$(cd "$REPO_ROOT" && bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh --list 2>&1)
+assert_rc "run-shell-tests.sh suggested form is accepted by quiet-run" 0 "$?"
+case "$QR_OUT" in
+    "OK quiet-run shell-unit "*) echo "PASS quiet-run reports OK for the shell-unit label" ;;
+    *) echo "FAIL quiet-run shell-unit label - got: $QR_OUT"; FAILED=$((FAILED + 1)) ;;
+esac
+
+# 4b. The suggested form needs no permission prompt: auto-approve-safe-bash.sh
+# allows exactly it (the bare runner is already allow-listed in settings.json),
+# and nothing wider than it.
+AUTO_HOOK="$(cd "$(dirname "$0")" && pwd)/auto-approve-safe-bash.sh"
+auto_decision() {
+    local out
+    out=$(printf '%s' "$(j_bash "$1")" | bash "$AUTO_HOOK" 2>/dev/null)
+    case "$out" in *'"permissionDecision":"allow"'*) echo ALLOW ;; *) echo PASS ;; esac
+}
+assert_auto() {
+    local label="$1" expected="$2" actual
+    actual=$(auto_decision "$3")
+    if [ "$actual" = "$expected" ]; then
+        echo "PASS $label ($actual)"
+    else
+        echo "FAIL $label - expected $expected, got $actual"
+        FAILED=$((FAILED + 1))
+    fi
+}
+assert_auto "auto-approve: shell-unit runner form" ALLOW "$RUNNER_CMD"
+assert_auto "auto-approve: shell-unit runner form with literal args" ALLOW "$RUNNER_CMD --changed-since origin/main"
+assert_auto "auto-approve: another label is not widened" PASS "bash scripts/quiet-run.sh other -- bash scripts/ci/run-shell-tests.sh"
+assert_auto "auto-approve: other command under the label is not widened" PASS "bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/other.sh"
+assert_auto "auto-approve: chained command is not widened" PASS "$RUNNER_CMD; rm -rf x"
+assert_auto "auto-approve: substitution arg is not widened" PASS "$RUNNER_CMD \$(id)"
+assert_auto "auto-approve: path-escaping arg is not widened" PASS "$RUNNER_CMD ../x"
 
 # 5. Non-suite commands are unaffected - the regression that matters most.
 run_case "$(j_bash 'git status')"
