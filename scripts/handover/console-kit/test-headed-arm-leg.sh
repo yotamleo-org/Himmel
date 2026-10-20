@@ -1044,8 +1044,8 @@ contains "dry-run --lane claudex: a named model reaches the launcher as CODEX_MO
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: no model names the default as CODEX_MODEL" "$out" "CODEX_MODEL=gpt-6.1-sol"
 rc=0; out="$(HEADED_ARM_LAUNCHER_ENV='CODEX_MODEL=preset-model' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log gpt-6-astra 2>&1)" || rc=$?
-contains "dry-run --lane claudex: a caller-preset CODEX_MODEL token still wins" "$out" "CODEX_MODEL=preset-model"
-not_contains "dry-run --lane claudex: a caller-preset CODEX_MODEL token is not duplicated" "$out" "CODEX_MODEL=gpt-6-astra"
+contains "dry-run --lane claudex: an inherited CODEX_MODEL token is scrubbed, the named model wins" "$out" "CODEX_MODEL=gpt-6-astra"
+not_contains "dry-run --lane claudex: an inherited CODEX_MODEL token does not survive" "$out" "CODEX_MODEL=preset-model"
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "dry-run, native lane: CODEX_MODEL is never set" "$out" "CODEX_MODEL"
 
