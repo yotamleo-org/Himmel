@@ -23,7 +23,7 @@ export const jiraMirrorDir = (env: Env) => env.HIMMEL_JIRA_MIRROR || join(env.HO
 
 function trackerSetting(env: Env, root: string): string {
   if (env.TRACKER) return env.TRACKER;
-  try { return execFileSync("git", ["-C", root, "config", "--get", "himmel.tracker"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; }
+  try { return execFileSync("git", ["-C", root, "config", "--get", "himmel.tracker"], { encoding: "utf8", timeout: 5000, env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; }
 }
 
 // gh by argv, no shell; GH_CMD replaces the binary (the tests' stub). A failure is { ok: false }, never a throw.
