@@ -14,6 +14,7 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/bus-waker.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export HANDOVER_DIR="$tmp/handovers"
+export BUS_WAKER_STATE_DIR="$tmp/wstate"
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 
 # Fake qdbus6: processId answers $QPID (or $QPID_LATER after its first call),
@@ -203,7 +204,6 @@ QPID=4545 BUS_N=2 run 3 0
 echo "== waker state file =="
 # A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the
 # console tick; a healthy start clears a stale one, and a clean end leaves none.
-export BUS_WAKER_STATE_DIR="$tmp/wstate"
 rm -rf "$BUS_WAKER_STATE_DIR"
 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-denied" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>&1
 [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = rc3 ] && pass "an AccessDenied end (rc=3) leaves state rc3" || fail "rc3 state: '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
@@ -211,7 +211,6 @@ QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = rc4 ] && pass "a refused target (rc=4) leaves state rc4" || fail "rc4 state: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
 BUS_N=0 run 2 0
 [ "$RUN_RC" -eq 0 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a healthy start clears a stale rc4 state" || fail "stale state kept: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
-unset BUS_WAKER_STATE_DIR
 
 echo "== succession doc =="
 if grep -q 'run `bus adopt <new console>` as the leg' "$REPO/docs/handover/leg-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi

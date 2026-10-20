@@ -1649,8 +1649,7 @@ if [ -d "$bus_waker_dir" ]; then
         for ws_cand in ${ws_cands//,/ }; do
             [ -f "$bus_waker_dir/$ws_cand" ] || continue
             ws_state="$(head -n 1 "$bus_waker_dir/$ws_cand" 2>/dev/null)" # swallow-ok: an unreadable state file reads as none
-            case "$ws_state" in rc3|rc4) wakerstate_val="$(csv_add "$wakerstate_val" "$ws_label:$ws_state")" ;; esac
-            break
+            case "$ws_state" in rc3|rc4) wakerstate_val="$(csv_add "$wakerstate_val" "$ws_label:$ws_state")"; break ;; esac
         done
     done <<< "$leg_candmap"
     [ -z "$wakerstate_val" ] || wakerstate_tail=" wakerstate=$wakerstate_val"

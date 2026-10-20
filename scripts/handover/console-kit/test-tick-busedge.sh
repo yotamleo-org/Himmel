@@ -25,7 +25,7 @@ cat > "$W/repo/scripts/handover/queue-lock.sh" <<'STUB'
 #!/usr/bin/env bash
 case "$1" in
   heartbeat) exit 0 ;;
-  status) case "$2" in *-N810-*|*-N811-*) printf '%s\n' 'status: FRESH'; exit 11 ;; *) printf '%s\n' free; exit 0 ;; esac ;;
+  status) case "$2" in *-N810-*|*-N811-*|*-N812-*) printf '%s\n' 'status: FRESH'; exit 11 ;; *) printf '%s\n' free; exit 0 ;; esac ;;
 esac
 exit 2
 STUB
@@ -106,6 +106,11 @@ check 'a free leg is never wakerstate-flagged' '' "$(field wakerstate "$(run "$f
 
 printf 'junk\n' > "$W/wstate/HIMMEL-9810-N810-held"
 check 'an unknown state value is not reported' '' "$(field wakerstate "$(run "$held")")"
+
+dated="$(mkleg 812-N812-dated-2026-10-20)"
+printf 'junk\n' > "$W/wstate/HIMMEL-9812-N812-dated-2026-10-20"
+printf 'rc4\n' > "$W/wstate/HIMMEL-9812-N812-dated"
+check 'an unknown state under the first name does not hide a later name rc4' 'N812:rc4' "$(field wakerstate "$(run "$dated")")"
 
 rm -rf "$W/wstate"
 check 'no waker state dir: wakerstate is absent' '' "$(field wakerstate "$(run "$held")")"
