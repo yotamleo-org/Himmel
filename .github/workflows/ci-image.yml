@@ -31,7 +31,7 @@ jobs:
     env:
       IMAGE: ghcr.io/yotamleo-org/himmel-ci
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build
         # The run number and attempt make the tag immutable: a weekly, manual or re-run rebuild of the same
         # commit pulls fresh base layers and must not move a tag a job already pins.
