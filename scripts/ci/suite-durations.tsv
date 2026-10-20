@@ -780,6 +780,7 @@ scripts/lib/test-red-control-extraction-lint.sh	3
 scripts/lib/test-red-control-lint.sh	6
 scripts/lib/test-red-control.sh	0
 scripts/lib/test-register-auto-arm-hook.sh	0
+scripts/lib/test-rename-aliases.sh	0
 scripts/lib/test-render-lease.sh	4
 scripts/lib/test-resolve-hermes-py.sh	5
 scripts/lib/test-resolve-node.sh	0

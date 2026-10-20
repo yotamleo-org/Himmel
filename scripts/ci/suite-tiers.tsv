@@ -766,6 +766,7 @@ scripts/lib/test-red-control-extraction-lint.sh	pr	trust-path
 scripts/lib/test-red-control-lint.sh	pr	trust-path
 scripts/lib/test-red-control.sh	pr	trust-path
 scripts/lib/test-register-auto-arm-hook.sh	pr	trust-path
+scripts/lib/test-rename-aliases.sh	pr	trust-path
 scripts/lib/test-render-lease.sh	pr	trust-path
 scripts/lib/test-resolve-hermes-py.sh	pr	trust-path
 scripts/lib/test-resolve-node.sh	pr	trust-path

@@ -4,7 +4,42 @@
 # or HIMMEL_WORKER_ not followed by SESSION_. A direction of keep marks a name owned elsewhere that is never renamed.
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
+# kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
+# (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is).
+# direction: old-to-new | keep for identifier, marker and do-not-rename; warn | fail for prose; for env and env-prefix
+# the scripts/lib/env-alias.sh function that resolves OLD against NEW: restrict (env_alias_restrict, a guard ON switch),
+# permit (env_alias_permit, an *_OK override), value (alias_env, a path, model or timeout).
+# First match wins: the R1 block below lists every exact name above the prefix that would swallow it, then the
+# identifier rows follow alphabetically. scripts/lib/test-rename-aliases.sh pins the R1 block.
 old	new	kind	direction	slice	remove-at
+console	chief	prose	fail	V5	never
+leg	worker	prose	fail	V4a	never
+supervisor session	chief	prose	warn	D	never
+worker session	worker	prose	warn	D	never
+ticket sequence	dependency chain	prose	fail	R2	never
+batch of workers	parallel wave	prose	fail	R2	never
+wave	parallel wave	prose	fail	R2	never
+HIMMEL_OVERNIGHT	HIMMEL_AFK	env	permit	V3	pending-N2892
+HIMMEL_INITIATIVE_OVERNIGHT	HIMMEL_INITIATIVE_AFK	env	value	V3	pending-N2892
+CADENCE_BANK_MAX_PCT	CADENCE_USAGE_MAX_PCT	env	permit	V1	pending-N2892
+CONSOLE_FG_OK	CHIEF_FG_OK	env	permit	V5	pending-N2892
+CONSOLE_DISPATCH_OK	CHIEF_DISPATCH_OK	env	permit	V5	pending-N2892
+CONSOLE_DISPATCH_DISABLE	CHIEF_DISPATCH_DISABLE	env	restrict	V5	pending-N2892
+LEG_CONTEXT_HANDOFF_OK	WORKER_SESSION_CONTEXT_HANDOFF_OK	env	permit	V4a	pending-N2892
+HIMMEL_LEAN_LEG	HIMMEL_LEAN_WORKER_SESSION	env	value	V4a	pending-N2892
+PARKED-BANK	PARKED-USAGE	marker	old-to-new	V1	never
+OVERNIGHT_	AFK_	env-prefix	value	V3	pending-N2892
+CADENCE_BANK_	CADENCE_USAGE_	env-prefix	value	V1	pending-N2892
+BANK_LIFT_	USAGE_LIFT_	env-prefix	value	V1	pending-N2892
+CODEX_BANK_	CODEX_USAGE_	env-prefix	value	V1	pending-N2892
+CLAUDEX_BANK_	CLAUDEX_USAGE_	env-prefix	value	V1	pending-N2892
+CR_MARKER_	REVIEW_MARKER_	env-prefix	value	V2	pending-N2892
+CONSOLE_	CHIEF_	env-prefix	value	V5	pending-N2892
+HIMMEL_LEG_	HIMMEL_WORKER_SESSION_	env-prefix	value	V4a	pending-N2892
+HEADED_ARM_LEG_	HEADED_ARM_WORKER_	env-prefix	value	V4a	pending-N2892
+LEG_	WORKER_SESSION_	env-prefix	value	V4a	pending-N2892
+HIMMEL_WORKER	HIMMEL_WORKER	do-not-rename	keep	none	never
+HIMMEL_CONSOLE_	HIMMEL_CONSOLE_	do-not-rename	keep	none	never
 ACTION_ZERO_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 ACTION_ZERO_BANK_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 ARM_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -24,7 +59,6 @@ BANK_FUNDED_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_GARBAGE_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_HANG_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_IDS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BANK_LIFT_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_LIFT_BIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_LIFT_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_LIFT_REASON	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -48,7 +82,6 @@ BREAK_GLASS_LEG_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2
 BROKEN_GOGATE_LEG_ERR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BROKEN_GOGATE_LEG_OUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CADENCE_BANK_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_CACHE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_CALLER_PID	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_CODEX_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -57,11 +90,9 @@ CADENCE_BANK_LAUNCH	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2
 CADENCE_BANK_LEDGER	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_LEG	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_MAX_AGE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CADENCE_BANK_MAX_PCT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_PRODUCER	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_SKIP_REFRESH	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CADENCE_BANK_STATUS_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CLAUDEX_BANK_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CLAUDEX_BANK_OK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CLAUDEX_BANK_REFUSE_PCT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CLAUDEX_BANK_WARN_PCT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -74,7 +105,6 @@ CLOSE_WRAPPED_LEG_PRUNE_WAIT	pending-N2892	identifier	old-to-new	pending-N2892	p
 CLOSE_WRAPPED_LEG_REAP_WAIT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CLOSE_WRAPPED_LEG_SESSIONS_DIR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CMDLINE_LEG_LEAK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CODEX_BANK_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CODEX_BANK_CACHE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CODEX_BANK_CACHE_TTL_SECONDS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -95,14 +125,11 @@ CONSOLE_CONTEXT_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_CONTEXT_RECORD_DIR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_CONTEXT_RESOLVED_MODE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_CONTEXT_RESOLVED_SOURCE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CONSOLE_DISPATCH_DISABLE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_DISPATCH_LOG	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CONSOLE_DISPATCH_OK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_DOC	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_ENV	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_FG_LIST	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-CONSOLE_FG_OK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_FILL_PERCENT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_FLAG	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_HEADED_ARM	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -168,7 +195,6 @@ HEADED_ARM_LEG_TARGET	pending-N2892	identifier	old-to-new	pending-N2892	pending-
 HEADED_ARM_LEG_VMS_JSON	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HEADED_ARM_LEG_WAKER	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_CODEX_BANK_START	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-HIMMEL_INITIATIVE_OVERNIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_LEG_AUTOCOMPACT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_LEG_CONTEXT_MODE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_LEG_CONTEXT_SHARE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -176,7 +202,6 @@ HIMMEL_LEG_DOC	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_LEG_FAILURES_LEDGER	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_LEG_MEMORY_MAX	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_LEG_PROFILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-HIMMEL_OVERNIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_STOP_GUARD_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_WORKER_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 IL_OVERNIGHT_ALL	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -201,7 +226,6 @@ LEG_CALLS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LEG_CLAUDE_BIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LEG_CONFIG_DIR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LEG_CONTEXT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-LEG_CONTEXT_HANDOFF_OK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LEG_COST_LEDGER	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LEG_DIGEST_BIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LEG_DIGEST_CHAIN_SLACK_MIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -281,7 +305,6 @@ M_LEG_E2	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 M_LEG_F	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 OTHER_BANK_FUNDED_MAX_PCT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 OVERNIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 OVERNIGHT_DOC	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 OVERNIGHT_LIMIT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 OVERNIGHT_PRIORITY	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
