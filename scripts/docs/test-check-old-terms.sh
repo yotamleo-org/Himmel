@@ -153,6 +153,40 @@ arhead=$(git -C "$repo" rev-parse HEAD)
 out=$(cd "$repo" && PRE_COMMIT_TO_REF="$arhead" bash "$LINT" --auto 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "--auto with PRE_COMMIT_TO_REF runs the range (rc=$rc)"; else fail "--auto range: want rc=1 got rc=$rc: $out"; fi
 
+echo "== a merge in progress is not linted at commit =="
+git -C "$repo" checkout -q -B mergewip "$base"
+printf 'LEG_TURN_CAP=40\n' > "$repo/scripts/mg.sh"
+git -C "$repo" add scripts/mg.sh
+printf '%s\n' "$base" > "$repo/.git/MERGE_HEAD"
+out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "staged merge commit is skipped (rc=$rc)"; else fail "staged merge commit: want rc=0 got rc=$rc: $out"; fi
+rm -f "$repo/.git/MERGE_HEAD"
+out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "same stage without MERGE_HEAD is linted (rc=$rc)"; else fail "no MERGE_HEAD: want rc=1 got rc=$rc: $out"; fi
+git -C "$repo" reset -q
+rm -f "$repo/scripts/mg.sh"
+
+echo "== the registry is read from the checked snapshot =="
+reg_row() { printf '%s\t%s\tidentifier\tkeep\tnone\tnever\n' "$1" "$1"; }
+git -C "$repo" checkout -q -B regsnap "$base"
+mkdir -p "$repo/scripts/lib"
+reg_row LEG_SNAP_ONLY > "$repo/scripts/lib/rename-aliases.tsv"
+git -C "$repo" add scripts/lib/rename-aliases.tsv
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "registry snapshot"
+printf 'LEG_SNAP_ONLY=1\n' > "$repo/scripts/rs.sh"
+git -C "$repo" add scripts/rs.sh
+out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "identifier registered in the committed registry passes (rc=$rc)"; else fail "snapshot registry: want rc=0 got rc=$rc: $out"; fi
+git -C "$repo" reset -q
+printf 'LEG_UNSTAGED_ROW=1\n' > "$repo/scripts/ru.sh"
+git -C "$repo" add scripts/ru.sh
+reg_row LEG_UNSTAGED_ROW >> "$repo/scripts/lib/rename-aliases.tsv"
+out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "a registry row that is not staged does not whitelist (rc=$rc)"; else fail "unstaged registry row: want rc=1 got rc=$rc: $out"; fi
+git -C "$repo" reset -q
+git -C "$repo" checkout -q -- scripts/lib/rename-aliases.tsv
+rm -f "$repo/scripts/ru.sh" "$repo/scripts/rs.sh"
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d case(s) failed\n' "$failures" >&2
     exit 1

@@ -7,7 +7,8 @@
 #
 #   <base>     lines added by <base>...<tip> (default origin/main, else main;
 #              tip is PRE_COMMIT_TO_REF, else HEAD)
-#   --staged   lines added to the index (a commit in progress)
+#   --staged   lines added to the index (a commit in progress; skipped while a
+#              merge is in progress, the push range check covers it)
 #   --auto     the range when pre-commit runs a push (PRE_COMMIT_TO_REF set),
 #              else the index: what the pre-commit hook runs
 #
@@ -60,8 +61,19 @@ if [ "$mode" = range ]; then
     diff_args=("$base...$tip")
     src="$tip:"
 else
+    # A merge in progress stages lines already reviewed on the other parent; the push range check covers the branch's own lines.
+    if git rev-parse -q --verify MERGE_HEAD >/dev/null; then exit 0; fi
     diff_args=(--cached)
     src=":"
+fi
+
+# The registry of the snapshot being checked, not the working tree's copy.
+reg_snap=""
+if [ -z "${OLD_TERMS_REGISTRY:-}" ] && git cat-file -e "${src}scripts/lib/rename-aliases.tsv" 2>/dev/null; then
+    reg_snap=$(mktemp "${TMPDIR:-/tmp}/old-terms-reg.XXXXXX") || { echo "$me: mktemp failed" >&2; exit 2; }
+    trap 'rm -f "$reg_snap"' EXIT
+    git show "${src}scripts/lib/rename-aliases.tsv" > "$reg_snap" || { echo "$me: cannot read the registry from the snapshot" >&2; exit 2; }
+    registry="$reg_snap"
 fi
 
 is_exempt_path() {
@@ -80,7 +92,7 @@ diff_out=$(git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-te
 [ -n "$diff_out" ] || exit 0
 
 findings=$(mktemp "${TMPDIR:-/tmp}/old-terms.XXXXXX") || { echo "$me: mktemp failed" >&2; exit 2; }
-trap 'rm -f "$findings"' EXIT
+trap 'rm -f "$findings" "$reg_snap"' EXIT
 
 # file<TAB>comma-separated added line numbers, one row per changed file.
 added=$(printf '%s\n' "$diff_out" | awk '
