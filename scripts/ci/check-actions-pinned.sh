@@ -68,9 +68,10 @@ fi
 
 # Container images: a `container: <ref>` or `image: <ref>` line (job container,
 # services:) must carry `@sha256:<64 hex>`. A `${{ ... }}` value passes when it
-# names at least one non-empty single-quoted literal outside an == / != comparison
-# and every such literal is digest-pinned: the vars.CI_IMAGE override itself is a
-# repo setting, not file content.
+# names at least one non-empty single-quoted literal outside a vars.* / github.*
+# == / != comparison, every such literal is digest-pinned, and its only other
+# operands are vars.*: the vars.CI_IMAGE override itself is a repo setting, not
+# file content.
 # `container:` with no value (the mapping form) is checked on its `image:` line.
 found=$(grep -rnHE --null --include='*.yml' --include='*.yaml' \
   '^[[:space:]]*-?[[:space:]]*(container|image):[[:space:]]*[^[:space:]#]' "${existing[@]}" | tr '\0' "$sep")
@@ -81,6 +82,7 @@ if [ "$rc" -gt 1 ]; then
 fi
 
 digest_re='^[^[:space:]@]+@sha256:[0-9a-f]{64}$'
+ref_re='(vars|github)\.[A-Za-z0-9_.]+'
 unpinned=()
 while IFS= read -r line; do
   [ -n "$line" ] || continue
@@ -88,11 +90,14 @@ while IFS= read -r line; do
   if [[ "$value" == \"*\" ]]; then value=${value#\"}; value=${value%\"}; fi
   if [[ "$value" == \'\$\{\{*\' ]]; then value=${value#\'}; value=${value%\'}; value=${value//\'\'/\'}; fi
   if [[ "$value" == \$\{\{* ]]; then
-    # An == / != operand is a comparison, not an image; '' means no container.
-    literals=$(sed -E "s/(==|!=)[[:space:]]*'[^']*'//g; s/'[^']*'[[:space:]]*(==|!=)//g; s/''//g" <<< "$value" \
-      | grep -oE "'[^']+'" | tr -d "'")
+    # A vars.* / github.* == / != comparison is a condition, not an image; '' means
+    # no container. What is left may hold only vars.*, literals and && || ! ( ):
+    # any other operand (matrix.*, needs.*, a bare github.*) can yield an image.
+    cond=$(sed -E "s/^\\$\\{\\{//; s/\\}\\}\$//; s/${ref_re}[[:space:]]*(==|!=)[[:space:]]*('[^']*'|${ref_re})//g; s/'[^']*'[[:space:]]*(==|!=)[[:space:]]*${ref_re}//g" <<< "$value")
+    literals=$(grep -oE "'[^']*'" <<< "$cond" | tr -d "'")
     ok=1
     [ -n "$literals" ] || ok=0
+    [ -z "$(sed -E "s/'[^']*'//g; s/vars\.[A-Za-z0-9_]+//g; s/&&|\|\||[!()[:space:]]//g" <<< "$cond")" ] || ok=0
     while IFS= read -r lit; do
       [ -n "$lit" ] && ! [[ "$lit" =~ $digest_re ]] && ok=0
     done <<< "$literals"
