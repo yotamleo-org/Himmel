@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { slugOf } from '../plugins/remark-docs.mjs';
+import { homeData, homeBody } from '../home.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const DOCS = path.join(REPO, 'docs');
@@ -20,7 +21,12 @@ export function h1Of(md) {
       else if (f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
     }
     const m = !fence && !f && line.match(/^# (.+?)\s*$/);
-    if (m) return m[1].replace(/`/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+    if (m) {
+      return m[1].replace(/`/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+        .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, '$2')
+        .replace(/\*(?=\S)(.+?)(?<=\S)\*/g, '$1')
+        .replace(/(^|\W)_(?=\S)(.+?)(?<=\S)_(?!\w)/g, '$1$2');
+    }
   }
   throw new Error('no H1');
 }
@@ -45,6 +51,15 @@ export function docsLoader(allowFile) {
           rendered: await renderMarkdown(body, { fileURL: pathToFileURL(abs) }),
         });
       }
+      const homeFile = fileURLToPath(new URL('../home.mjs', import.meta.url));
+      store.set({
+        id: 'index',
+        data: await parseData({ id: 'index', data: homeData }),
+        body: homeBody,
+        filePath: path.relative(REPO, homeFile),
+        digest: generateDigest(homeBody + JSON.stringify(homeData)),
+        rendered: await renderMarkdown(homeBody, { fileURL: pathToFileURL(homeFile) }),
+      });
       watcher?.add(DOCS);
     },
   };

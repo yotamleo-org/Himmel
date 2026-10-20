@@ -57,20 +57,20 @@ export default defineConfig({
   markdown: { remarkPlugins: [[remarkDocs, { base: BASE, allow: ALLOW, html: HTML_PASSTHROUGH }]] },
   integrations: [
     starlight({
-      title: 'Himmel',
+      title: 'himmel',
+      // Top-level groups are the F1 frame of docs-mockup-v4-agreed.html; test-site-build.sh asserts the list.
       sidebar: [
-        { label: 'Home', slug: '' },
         {
           label: 'Get started',
           items: [
-            'why-himmel',
-            { label: 'Adoption trail', link: '/adoption-trail.html' },
-            { label: 'Quickstart (15 min)', slug: 'getting-started' },
+            { label: 'What himmel is', slug: 'why-himmel' },
+            { label: 'Quickstart', slug: 'getting-started' },
+            { label: 'The adoption trail', link: '/adoption-trail.html' },
             { label: 'Install on your project', slug: 'setup/install' },
             { label: 'Install profiles', slug: 'setup/profiles' },
             'setup/new-machine',
             { label: 'Updating & uninstalling', slug: 'setup/updating' },
-            { label: 'Migrating an older install', slug: 'setup/migrating' },
+            { label: 'Moving from an older install', slug: 'setup/migrating' },
           ],
         },
         {
@@ -78,10 +78,10 @@ export default defineConfig({
           items: [
             { label: 'The daily loop', slug: 'daily-loop' },
             { label: 'Slash commands', slug: 'commands-catalog' },
-            { label: 'himmelctl', slug: 'himmelctl' },
-            { label: 'Configuration & gates', slug: 'configuration' },
-            { label: 'Cadences (scheduled jobs)', slug: 'cadences' },
-            { label: 'UI surfaces', slug: 'ui' },
+            { label: 'The himmelctl command', slug: 'himmelctl' },
+            { label: 'Settings & configuration', slug: 'configuration' },
+            { label: 'Scheduled jobs', slug: 'cadences' },
+            { label: 'The local dashboard', slug: 'ui' },
             {
               label: 'Lanes & launchers',
               items: [
@@ -94,7 +94,7 @@ export default defineConfig({
             { label: 'Cloud sessions', slug: 'setup/cloud-environment' },
             { label: 'Telegram bridge', slug: 'telegram-bridge' },
             {
-              label: 'Second brain (luna)',
+              label: 'Second brain (notes vault)',
               items: [
                 { label: 'Overview', slug: 'luna' },
                 { label: 'Compounding loop', slug: 'luna/compounding' },
@@ -123,52 +123,62 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Run a fleet',
+          label: 'Run many sessions',
           items: [
-            { label: 'Overnight mode', slug: 'handover/overnight-mode' },
-            { label: 'Running a console', slug: 'handover/running-a-console' },
-            { label: 'Handover system', slug: 'internals/handover-system' },
+            { label: 'Unattended runs', slug: 'handover/overnight-mode' },
+            { label: 'Supervisor sessions', slug: 'handover/running-a-console' },
+            { label: 'Handover notes', slug: 'internals/handover-system' },
             { label: 'Orchestration patterns', slug: 'orchestration-patterns' },
-            { label: 'Token economy', slug: 'token-economy' },
-          ],
-        },
-        {
-          label: 'Concepts',
-          items: [
-            { label: 'System design', slug: 'system-design' },
-            { label: 'Architecture diagrams', slug: 'architecture' },
-            { label: 'Context architecture', slug: 'internals/context-architecture' },
-            { label: 'Glossary', slug: 'glossary' },
+            { label: 'Usage and cost', slug: 'token-economy' },
           ],
         },
         {
           label: 'Reference',
           items: [
-            { label: 'Enforcement layers', slug: 'internals/enforcement' },
+            { label: 'Every guardrail and gate', slug: 'internals/enforcement' },
             { label: 'When a guardrail stops you', slug: 'internals/stuck-playbook' },
-            { label: 'Data-egress matrix', slug: 'internals/egress-matrix' },
-            { label: 'Harness compatibility (Codex)', slug: 'internals/harness-compat' },
-            { label: 'Headless modes', slug: 'internals/headless-modes' },
-            { label: 'Jira CLI and MCP', slug: 'internals/jira-plugin' },
-            { label: 'Testing', slug: 'internals/testing' },
-            { label: 'Environment gotchas', slug: 'internals/environment-gotchas' },
-            { label: 'Lane calibration', slug: 'internals/lane-calibration' },
-            { label: 'Lane parity', slug: 'internals/lane-parity' },
-            { label: 'RETASK channel', slug: 'internals/retask-channel' },
-            { label: 'Prompt cache', slug: 'internals/prompt-cache' },
-            { label: 'Config layers', slug: 'internals/config-layers' },
-            { label: 'MCP servers', slug: 'internals/mcp-servers' },
-            { label: 'The ponytail convention', slug: 'internals/ponytail-convention' },
+            { label: 'What data leaves your machine', slug: 'internals/egress-matrix' },
+            { label: 'Running without a terminal', slug: 'internals/headless-modes' },
+            { label: 'Using it from Codex', slug: 'internals/harness-compat' },
+            { label: 'Jira integration', slug: 'internals/jira-plugin' },
+            { label: 'Glossary', slug: 'glossary' },
           ],
         },
         {
-          label: 'Project',
+          label: 'For contributors',
           items: [
             { label: 'Contributing', slug: 'contributing' },
+            { label: 'How himmel is built', slug: 'system-design' },
+            { label: 'Security review', slug: 'security-review' },
+            { label: 'Testing', slug: 'internals/testing' },
             {
-              label: 'Security',
+              label: 'Releases & licenses',
               items: [
-                { label: 'Security review', slug: 'security-review' },
+                { label: 'v1.1.2 notes', slug: 'release/v1.1.2-notes' },
+                { label: 'v1.0.0 notes', slug: 'release/v1.0.0-notes' },
+                { label: 'Versioning scheme', slug: 'release/versioning-scheme' },
+                { label: 'License audit', slug: 'license-audit' },
+                { label: 'Third-party licenses', slug: 'third-party-licenses' },
+              ],
+            },
+            {
+              label: 'Internals',
+              items: [
+                { label: 'Architecture diagrams', slug: 'architecture' },
+                { label: 'Context architecture', slug: 'internals/context-architecture' },
+                { label: 'Environment gotchas', slug: 'internals/environment-gotchas' },
+                { label: 'Lane calibration', slug: 'internals/lane-calibration' },
+                { label: 'Lane parity', slug: 'internals/lane-parity' },
+                { label: 'RETASK channel', slug: 'internals/retask-channel' },
+                { label: 'Prompt cache', slug: 'internals/prompt-cache' },
+                { label: 'Config layers', slug: 'internals/config-layers' },
+                { label: 'MCP servers', slug: 'internals/mcp-servers' },
+                { label: 'The ponytail convention', slug: 'internals/ponytail-convention' },
+              ],
+            },
+            {
+              label: 'Security policies',
+              items: [
                 { label: 'npm policy', slug: 'security/npm-policy' },
                 { label: 'Python policy', slug: 'security/python-policy' },
               ],
@@ -187,21 +197,6 @@ export default defineConfig({
               items: [
                 { label: 'Prompt cache', slug: 'evals/prompt-cache' },
                 { label: 'Review panel', slug: 'evals/review-panel' },
-              ],
-            },
-            {
-              label: 'Releases',
-              items: [
-                { label: 'v1.1.2 notes', slug: 'release/v1.1.2-notes' },
-                { label: 'v1.0.0 notes', slug: 'release/v1.0.0-notes' },
-                { label: 'Versioning scheme', slug: 'release/versioning-scheme' },
-              ],
-            },
-            {
-              label: 'Licenses',
-              items: [
-                { label: 'License audit', slug: 'license-audit' },
-                { label: 'Third-party licenses', slug: 'third-party-licenses' },
               ],
             },
           ],
