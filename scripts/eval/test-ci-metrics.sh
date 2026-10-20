@@ -79,6 +79,7 @@ O=$(bash "$SCRIPT" --data-dir "$TMP/never" "${M20[@]}" 2>&1)
 has "never-ran: runner-min counts only jobs that ran" "$O" "| runner-min total | 11.0 |"
 has "never-ran: queue wait counts only jobs that ran" "$O" "| job queue wait p50 / p90 / max (s) | 10 / 30 / 30 |"
 has "never-ran: two cancelled-in-queue jobs reported" "$O" "| jobs cancelled before a runner took them | 2 |"
+has "never-ran: cancelled jobs without a REST answer are counted" "$O" "| cancelled jobs judged without a REST answer | 3 |"
 
 # A skipped job is never queued: its started_at is its skip time, not a runner pick-up.
 mk "$TMP/skip" "[$(jb a success 10:00:00 10:00:10 10:10:10),$(jb s skipped 10:00:00 10:05:00 10:05:00)]"
@@ -95,6 +96,10 @@ mk "$TMP/hour" "[$(jb x success 10:00:00 10:00:00 11:00:00)]"
 O=$(bash "$SCRIPT" --data-dir "$TMP/hour" "${M20[@]}" --hourly 2>&1)
 has "hour boundary: the starting hour counts the job" "$O" "| 2026-10-20T10:00:00Z | 1 |"
 has "hour boundary: the next hour does not" "$O" "| 2026-10-20T11:00:00Z | 0 |"
+# Several jobs ending together on the hour boundary leave only the survivors in the next hour.
+mk "$TMP/hour3" "[$(jb x success 10:00:00 10:00:00 11:00:00),$(jb y success 10:00:00 10:00:00 11:00:00),$(jb z success 10:00:00 10:00:00 11:00:00),$(jb w success 10:00:00 10:00:00 11:30:00)]"
+O=$(bash "$SCRIPT" --data-dir "$TMP/hour3" "${M20[@]}" --hourly 2>&1)
+has "hour boundary: three endings at once leave one in the next hour" "$O" "| 2026-10-20T11:00:00Z | 1 |"
 
 # --days and --top accept .5 and 08 (not valid JSON numbers as typed).
 O=$(bash "$SCRIPT" --data-dir "$TMP/hour" --now 2026-10-20T12:00:00Z --days .5 2>&1); eq "--days .5 exits 0" "$?" "0"

@@ -45,7 +45,8 @@
 # steps or (without a REST answer) started_at equals created_at within 1 s; it gets
 # no runner time, queue wait or concurrency interval. A skipped job is never queued
 # either. A run whose REST call fails is warned about and judged by the started_at
-# rule alone.
+# rule alone; the baseline counts those jobs (a gated job cancelled while queued can look
+# like it ran there, since GraphQL gives only the run's created_at).
 # The price of GraphQL: a job's created_at is not exposed, so queue wait is
 # measured from the RUN's creation unless REST gave the job's own created_at (runs
 # holding a cancelled job). That is exact for jobs with no `needs` and
@@ -316,8 +317,9 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
         (.cur) as $carry
         | ($EH[$h | tostring] // []) as $he
         # jobs ending exactly on the hour boundary are not running in this hour
-        | ($carry - ($he | map(select(.t == $h * 3600 and .d == -1)) | length)) as $p0
-        | (reduce $he[] as $e ({c: $carry, p: $p0}; .c += $e.d | .p = ([.p, .c] | max))) as $x
+        | ($he | map(select(.t == $h * 3600 and .d == -1))) as $bend
+        | ($carry - ($bend | length)) as $p0
+        | (reduce ($he - $bend)[] as $e ({c: $p0, p: $p0}; .c += $e.d | .p = ([.p, .c] | max))) as $x
         | .cur = $x.c | .out += [{h: ($h * 3600 | todate), n: $x.p}])
     | .out end) as $PK
 | ($PK | map(.n) | max // 0) as $peak
@@ -331,6 +333,7 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 # ---- queue backlog ----
 | ($J | map(select(.status == "queued" or .status == "waiting" or .status == "pending" or .status == "requested"))) as $wait
 | ($J | map(select(.never)) | length) as $preran
+| ($J | map(select(.conclusion == "cancelled" and .rest != true)) | length) as $norest
 | ($R | map(select(.status == "queued" or .status == "pending" or .status == "waiting")) | length) as $openruns
 
 # ---- guardrail rates (plan section 1.3) ----
@@ -421,6 +424,7 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
   "| cancelled share of runner-min | \(share($CR | map(.rs) | add // 0; $J | map(.rs) | add // 0)) |",
   "| job queue wait p50 / p90 / max (s) | \($J | [.[].q | numbers] | "\(pct(0.5) | sec) / \(pct(0.9) | sec) / \(max // "-")") |",
   "| jobs cancelled before a runner took them | \($preran) |",
+  "| cancelled jobs judged without a REST answer | \($norest) |",
   "| jobs still waiting for a runner at window end | \($wait | length) |",
   "| runs still queued or pending | \($openruns) |",
   "| peak concurrent in_progress jobs | \($peak) |",
