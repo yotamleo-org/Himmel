@@ -1397,7 +1397,7 @@ branch_in_fresh_lock_doc() {
 # many are on no remote. Anything not provably idle, held, clean (untracked
 # files included) or PR-free is left for `prune --orphans` to report.
 reclaim_parked() {
-    local wt="$1" br="$2" locked="$3" br_tip unpushed
+    local wt="$1" br="$2" locked="$3" br_tip unpushed ig
     [ -z "$ONLY_TARGET" ] || return 0
     [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ] && [ "$ORIGIN_PR_CACHE_OK" -eq 1 ] || return 0
     case "$PR_STATE" in closed|none|merged) ;; *) return 0 ;; esac
@@ -1412,6 +1412,13 @@ reclaim_parked() {
     br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null) || return 0
     [ "$(classify_worktree "$wt")" = "clean" ] || return 0
     [ "$(git -C "$wt" status --porcelain 2>/dev/null | wc -l)" -eq 0 ] || return 0
+    ig=$(stray_ignored_verdict "$wt") || ig="scanfail"
+    case "$ig" in
+        clean|disposable) ;;
+        *)
+            log "  keep parked $br (ignored files that may be user data: $ig): $wt"
+            return 0 ;;
+    esac
     unpushed=$(git -C "$PRIMARY_WORKTREE" rev-list --count "$br_tip" --not --remotes 2>/dev/null) || unpushed="?"
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY clean-garden: would reclaim parked $br ($wt); branch kept, $unpushed unpushed commit(s)"

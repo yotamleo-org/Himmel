@@ -37,6 +37,7 @@ expect_not() {
 }
 is_dir() { [ -d "$1" ]; }
 is_gone() { [ ! -d "$1" ]; }
+is_file() { [ -f "$1" ]; }
 rc_of() { printf '%s\n' "$1" | sed -n 's/^rc=//p' | tail -1; }
 rc_is() { [ "$(rc_of "$1")" = "$2" ]; }
 has_ref() { git -C "$REPO" rev-parse --verify -q "$1" >/dev/null; }
@@ -270,6 +271,11 @@ WT_PARK_DOC2=$(mk_wt parkdoc2 fix/park-doc-2 1) || exit 1
 printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/park-doc\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-live.md"
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-live.md" "orphans-test-$$" >/dev/null 2>&1 \
     || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
+printf '.env.local\nnode_modules/\n' >> "$REPO/.git/info/exclude"
+WT_PARK_IGN=$(mk_wt parkign fix/park-ign 1) || exit 1
+printf 'secret\n' > "$WT_PARK_IGN/.env.local"
+WT_PARK_NM=$(mk_wt parknm fix/park-nm 1) || exit 1
+mkdir "$WT_PARK_NM/node_modules" && printf 'x\n' > "$WT_PARK_NM/node_modules/pkg.js"
 PARK_TIP=$(git -C "$REPO" rev-parse fix/park)
 out=$(WORKTREE_ORPHAN_HOURS=1 run_wt prune)
 expect "7: rc=0 under a 1h gate" "$out" rc_is "$out" 0
@@ -285,6 +291,9 @@ expect "7: clean parked tree with no commit reclaimed" "$out" is_gone "$WT_PARK_
 expect "7: its branch ref is kept" "$out" has_ref fix/park-main
 expect "7: a parked tree with an untracked file is kept" "$out" is_dir "$WT_PARK_DIRTY"
 expect "7: a parked tree with a tracked change is kept" "$out" is_dir "$WT_PARK_MOD"
+expect "7: a parked tree holding an ignored non-disposable file is kept" "$out" is_dir "$WT_PARK_IGN"
+expect "7: its ignored file survives" "$out" is_file "$WT_PARK_IGN/.env.local"
+expect "7: a parked tree holding only disposable ignored content is reclaimed" "$out" is_gone "$WT_PARK_NM"
 expect "7: the open-PR tree is kept" "$out" is_dir "$WT_OPEN"
 expect "7: the locked tree is kept" "$out" is_dir "$WT_LOCKED"
 expect "7: the RESUME-held tree is kept" "$out" is_dir "$WT_RESUME"
