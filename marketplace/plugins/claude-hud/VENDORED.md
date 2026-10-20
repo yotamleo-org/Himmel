@@ -16,13 +16,11 @@ fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HI
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
 pinned_commit:        a7591681d46324b64360f429cf6eb1cdd30dfc8c  # v0.12.0, 6 commits past 5621429 (HIMMEL-6774)
 pinned_upstream_tree: 6ecc84fd9054360102e1599cf520c151e7eded47  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   328a35273e0d3776a367c643dab7efef29ec18e7332c8f3fa6f36f4be0bf4b8d  # sha256 over VENDORED.manifest
-vendored_at:          2026-10-17
+vendored_tree_hash:   dca4240abc1a64cf7fce5499419284f024c0e6ce1ef37d9f77bb5a3cebf04002  # sha256 over VENDORED.manifest
+vendored_at:          2026-10-21
 ```
 
-`pinned_commit` points at the **upstream** base `02d73c4` (v0.11.2:
-upstream's `build: compile dist/ [auto]` commit after the `v0.11.2` release
-prep); the vendored
+`pinned_commit` points at the **current upstream** base `a759168` (v0.12.0); the vendored
 tree is that base **plus** himmel's delta (`customLineCommand`, claudex lane,
 session-token cache split, write-only context snapshot writer) **plus** any
 dependabot lockfile bumps landed since the vendor (see **Fork delta**
@@ -71,7 +69,8 @@ protected: editing it without bumping the pin trips the guard.
   status line shows the effort level and the context window size (`45% (90k/200k)`).
   Config only, no source change; `plugin.json` was bumped to 0.11.4 (ahead of upstream
   0.11.3) so `claude plugin update` picks the config up. The v0.12.0 re-vendor below
-  superseded that bump (version now equals upstream's 0.12.0).
+  superseded that bump (version equalled upstream's 0.12.0); `plugin.json` is `0.12.1`,
+  one patch ahead of upstream, for the pin-record provenance refresh that followed.
 
 - **Re-vendored to upstream v0.12.0 `a759168` (HIMMEL-6774, 2026-10-21, drift sweep
   HIMMEL-6766):** +6 commits past `5621429`. Upstream work: the transcript parser
