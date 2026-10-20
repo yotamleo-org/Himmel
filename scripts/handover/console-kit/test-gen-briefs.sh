@@ -52,6 +52,10 @@ bash "$HERE/brief-lint.sh" "$D1" 2>"$WORK/lint1.err"; rc=$?
 bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 [ "$rc" = 0 ] && pass "brief 2 (none found (<query>) prior art) passes brief-lint.sh" || fail "brief 2 brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
 
+# every brief pre-authorizes a new suite's own tier + duration row
+has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
+has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "name the rows in READY"
+
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
 has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
 has "brief 2 wrap command passes --queue-doc with its own doc" "$(cat "$D2")" "wrap-subtree-check.sh --queue-doc $D2"
