@@ -632,6 +632,8 @@ gcr "gh pr create <(echo hi # )<newline>) --head feat/y (paren inside a comment 
 ) --head feat/y'
 gcr "gh pr create <(case x in x) echo;; esac) --head feat/y (case pattern paren in a process substitution), refused" block 'gh pr create <(case x in x) echo;; esac) --head feat/y'
 gcr "gh pr create --body <(case<TAB>x in x) echo hi;; esac) --head feat/y (tab after case), refused" block $'gh pr create --body <(case\tx in x) echo hi;; esac) --head feat/y'
+gcr "gh pr create --body <(cat <<EOF with a paren line) --head feat/y (heredoc body in a process substitution), refused" block $'gh pr create --body <(cat <<EOF\n)\nEOF\n) --head feat/y'
+gcr "gh pr create --body <(echo ANSI-C quote with an escaped quote) --head feat/y, refused" block $'gh pr create --body <(echo $\'a\\\'b)\') --head feat/y'
 gcr "gh pr create<newline>gh pr create --head feat/y (second call on the next line), refused" block 'gh pr create
 gh pr create --head feat/y'
 }

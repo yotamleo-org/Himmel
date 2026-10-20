@@ -812,7 +812,7 @@ def _skip_process_substitution(text: str, i: int) -> int:
             continue
         if c == "`" or text[i:i + 2] in ("$(", "${"):
             raise ValueError("unclassified shell construct")
-        if (c == "#" and text[i - 1] in " \t\n" or text[i:i + 2] == ";;"
+        if (c == "\n" or c == "#" and text[i - 1] in " \t" or text[i:i + 2] in (";;", "$'")
                 or _CASE_WORD.match(text, i)):
             raise ValueError("unclassified shell construct")
         if c in "'\"":
