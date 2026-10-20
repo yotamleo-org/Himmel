@@ -28,52 +28,18 @@ paths = [
 # curl-auth-header false positive for this one literal only. Anchored (^…$)
 # so it suppresses ONLY the exact constant — a prefixed/suffixed bearer
 # credential (himmel-local-claudex-<real-secret>) is still caught.
-# queue-lock release tokens (himmel scripts/handover/queue-lock.sh) are written
-# into each leg's LIVE bullet on purpose (autocompact
-# loses them otherwise). Their default shape is <host>-<arch>-pid<N>, e.g.
-# `cachyos-x8664-pid199036` — a process id, not a credential — but the
-# generic-api-key rule flags the line ("release-token: `...`") on entropy, and
-# that refusal silently stalls the github-sync autosync commit (2026-09-09,
-# console 03F: staged for 40 min, three missed syncs) — github-sync is opt-in
-# but this allowlist keeps working unchanged for any vault
-# that has it enabled. Anchored to that exact
-# shape, plus one optional trailing sentence-punctuation character (a leg's bare, unbacktick-quoted `release-token=<token>.` let gitleaks capture
-# the trailing "." into the secret, missing the anchor) — a suffixed real
-# credential is still caught, only that shape.
-# RETASK-channel nonces (docs/internals/retask-channel.md), shape
-# `<console letter(s)>-N<leg>-<hex>` e.g. `Y-N204-a68d71`, are written into
-# leg briefs/handovers on purpose and land in session notes the same way the
-# queue-lock token above does (a nonce can stall the vault's
-# autosync commit; nonces are 16 hex, e.g.
-# `B-N44-b5c0792bbc9bdc03`, so the hex run is bounded {4,16}). Anchored to that exact shape, plus one
-# optional trailing sentence-punctuation character — a suffixed real
-# credential is still caught, only that shape.
-# A fresh-leg recovery mints a RETASK nonce with a single
-# trailing lowercase letter on the leg number (e.g. `V-N236b-1d281f74`,
-# chained recoveries go b, c, d, ...; verified against the live handover
-# corpus — that suffix is always exactly one letter, never doubled), which
-# the pre-3471 regex didn't anchor for and stalled every vault commit that
-# quoted such a doc. The ticket also asked for a `paths` entry scoping this
-# allowlist to the handover bucket; empirically verified (3 isolated gitleaks
-# runs against this build, including a negative control pairing a real `paths`
-# match with a regex that can never match) that this build's `[[allowlists]]`
-# `matchCondition = "AND"` does not actually AND paths+regexes — a path match
-# alone suppresses the finding — so a `paths`-scoped entry here would be a
-# broader, unscoped exemption for anything under that path, not a narrower
-# one. Widening only the anchored regex below keeps the exemption as tight as
-# the token shape itself, regardless of which file it appears in.
+# Handover tokens (queue-lock release tokens, RETASK and judge nonces, git
+# shas, sha256 digests) are written into bucket docs on purpose and trip
+# generic-api-key on entropy, which stalls the vault autosync commit. Every
+# minting site emits ONE grammar (himmel docs/internals/handover-token-grammar.md),
+# allowlisted by the single anchored rule below; himmel CI runs every minting
+# site against this file (test-handover-token-grammar.sh) and keeps real
+# secret shapes caught. No `paths` entry for handovers/: this gitleaks build
+# lets a path match alone suppress a finding, which would admit real secrets.
 regexes = [
   '''^himmel-local-claudex$''',
-  '''^[a-z0-9]+-[a-z0-9]+-pid[0-9]+[.,;:)]?$''',
-  '''^[A-Z]{1,2}-N[0-9]+[a-z]?-[0-9a-f]{4,16}[.,;:)]?$''',
-  # Full 40-hex git commit SHAs (base/pin/head shas in briefs and plan docs)
-  # trip generic-api-key on entropy and can stall the autosync commit.
-  # Anchored to exactly 40 lowercase hex plus one optional trailing
-  # punctuation char; a longer or mixed-case token is still caught.
-  '''^[0-9a-f]{40}[.,;:)]?$''',
-  # Full 64-hex sha256 checksums (pinned release digests in handoffs and
-  # briefs, e.g. CLIPROXY_API_SHA256=<digest>), same class and anchoring.
-  '''^[0-9a-f]{64}[.,;:)]?$''',
+  # handover-token grammar
+  '''^(?:[a-z0-9]+(?:-[a-z0-9]+)*-pid[0-9]+|[A-Z]{1,3}-(?:[A-Za-z]{1,4}[0-9]{1,5}[A-Za-z]{0,2}|[A-Z]{2,8}-[0-9]{1,6})(?:_[a-z]{1,8})?-[0-9a-f]{4,16}|[0-9a-f]{40}|[0-9a-f]{64})[.,;:)]?$''',
   # atlassian-api-token false positive on a function name. Exact literal only.
   '''^runClaudexSharedDispatch$''',
 ]

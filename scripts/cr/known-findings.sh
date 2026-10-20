@@ -170,6 +170,7 @@ function learningsFeed(rows) {
   for (const r of um) if (!taken.has(r.n) && r.uses >= 25) { taken.add(r.n); clusters.push({ area: area(r.file), gram: toks(r.text).slice(0, 3).join(" "), rows: [r] }); }
   const usedIds = new Set();
   for (const c of clusters) {
+    if (!c.gram) continue; // a row of only stop words has no phrase to match, so the class could never attribute anything
     const uses = c.rows.reduce((s, r) => s + r.uses, 0);
     let id = c.gram.replace(/ /g, "-").replace(/[^a-z0-9_-]/g, "") || "cluster";
     if (usedIds.has(id)) id += "-" + (c.area.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "root");
