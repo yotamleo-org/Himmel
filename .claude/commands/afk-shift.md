@@ -152,7 +152,7 @@ dispatch step from `docs/handover/afk-mode.md`.
    a. **Capture** each subagent's result/log to a file and build a
       *swarm result ledger* (one row per dispatched ticket):
 
-      ```
+      ```text
       KEY \t BRANCH \t PR \t STATUS \t OUTCOME \t LOGFILE
       ```
 
@@ -241,7 +241,7 @@ dispatch step from `docs/handover/afk-mode.md`.
 6. **Write the consolidated morning report (HIMMEL-258).**
    Feed the final rows —
 
-   ```
+   ```text
    KEY \t BRANCH \t PR \t STATUS \t OUTCOME [\t DECISION]
    ```
 

@@ -79,7 +79,7 @@ For work that will need mid-flight decisions or will outlive one context window,
 6. **Fix batch** — dispatch fix subagent(s) for ALL Critical + Important findings. Run tests after each batch.
 7. **Automated re-review** — re-run `/pr-check` on the fixed head (same matrix; the Claude agents again only under `CR_CLAUDE_AGENTS=1`). Loop fix → re-review until 0 Critical remain.
 8. **PR open + push** — `gh pr create --body-file <path>`. Write the body to a file first to avoid shell-interpretation surprises (heredocs, `$()` substitutions, multi-line content with quotes). **Attestation trailers go in the FIRST commit, never a reactive amend** — see "Auto-mode classifier & attestation" below. Before the first `git commit` of any shippable change, after you have genuinely run tests + `/pr-check`, write the gate trailers directly into that commit body:
-   ```
+   ```text
    Platforms tested: <linux|windows|gitbash|…>   # only when the diff touches shell/scripts
    Security reviewed: <pr-review-toolkit|manual|claude-code-security-review>   # only for non-docs code
    ```
