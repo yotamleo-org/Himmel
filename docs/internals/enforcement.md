@@ -3205,7 +3205,7 @@ thread is evidence even when the status endpoint is down (observed live — GitH
 
 **Review freshness (HIMMEL-1181, B2) — retired (HIMMEL-3360).** The gate once
 denied on a *latest bot review* anchored to an older commit than the head
-(`scripts/lib/cr-review-freshness.sh`, GraphQL; live instance PR #1273: status
+(the `cr-review-freshness` library, GraphQL, now deleted; live instance PR #1273: status
 success + 0 unresolved threads over a head nobody reviewed, because a clean
 incremental posts no review object and GitHub outdates the old threads).
 CodeRabbit is best effort, so a stale anchor is now the same NOTE as an
@@ -3441,8 +3441,8 @@ construction), `scripts/lib/test-cr-merge-gate.sh` and
 ### CodeRabbit is the App, and only the App (HIMMEL-2704)
 
 **Operator ruling 2026-09-07: the GitHub App is the CodeRabbit surface. There is
-no CLI.** `scripts/cr/coderabbit-review.sh` (the CLI wrapper) and
-`scripts/cr/coderabbit-gate.sh` (the `/pr-check` conserve-or-run gate) are
+no CLI.** The `coderabbit-review` wrapper (the CLI wrapper) and
+`coderabbit-gate` (the `/pr-check` conserve-or-run gate) are
 DELETED, together with `CODERABBIT_BIN`, `CODERABBIT_WSL`,
 `CODERABBIT_TIMEOUT_SECS`, `CODERABBIT_CLI_DISABLE` and `CODERABBIT_ALLOW_WSL`.
 HIMMEL-2683 ("arm the CodeRabbit CLI") is closed won't-do.
@@ -4374,7 +4374,7 @@ allows. **FAIL-OPEN** (unlike the block-* hooks): it only ever exits 0 with
 either the injection envelope or empty stdout, so it never blocks a Skill call
 on its own error (a PreToolUse exit 2 would block the tool). Kill switch:
 `MINERVA_HOOK_DISABLE=1` in the launching shell (bypass convention as above).
-Paired smoke test: `hooks/test-inject-minerva-critic.sh`.
+Paired smoke test: `marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh`.
 
 ## Claude SessionStart Hooks
 
@@ -5717,7 +5717,7 @@ usage counters, so counting lines instead of requests inflates the total by
 declares `CADENCE_BANK_LAUNCH=1` (an actual arm/launch); a plain usage budget read
 (a `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the
 same verdict and FLEET line but is never refused by it — detail:
-[lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident-himmel-2765).
+[lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident).
 
 Refs: HIMMEL-1748; `scripts/graphify/refresh-graph-map.sh`;
 `scripts/lib/bank-preflight.sh`;

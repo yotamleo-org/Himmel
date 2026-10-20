@@ -491,7 +491,7 @@ existing value is the default; Enter keeps it). `himmel-doctor` row
 | `himmel.tracker` | unset (detected) | `git config` (per repo) | the persistent `TRACKER` choice: `jira`, `local` or `none` |
 | `himmel.forge` | unset (detected) | `git config` (per repo) | the persistent `FORGE` choice: `github`, `bitbucket` or `local-git` (`none` is env-only) |
 | `himmel.trackerPrefix` | `LOCAL` | `git config` (per repo) | the ID prefix for `tracker=local` (`LOCAL-12`); an uppercase letter, then `A-Z`/`0-9`. `#N` is always accepted too |
-| `himmel.localCheck` | unset — **no default** | `git config` (per repo) | read by WP5a (`scripts/lib/local-checks.sh`, not yet merged): the test command run at a head for `forge=local-git`. Unset, the local check refuses and READY is impossible |
+| `himmel.localCheck` | unset — **no default** | `git config` (per repo) | planned for WP5a (no reader ships yet): the test command run at a head for `forge=local-git`. Unset, the local check refuses and READY is impossible |
 
 To clear a choice back to detection: `git config --unset himmel.tracker` (or
 `himmel.forge`).

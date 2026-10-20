@@ -404,7 +404,7 @@ bun test scripts/telegram --dots
 ```
 
 The reproduction of the telegram failure mode lives in
-[`environment-gotchas.md`](environment-gotchas.md#the-bun-test-cwd-is-per-suite-scriptstelegram-runs-from-the-repo-root).
+[`environment-gotchas.md`](environment-gotchas.md#the-bun-test-cwd-is-per-suite--scriptstelegram-runs-from-the-repo-root).
 
 ## Quiet reporters are deliberate
 

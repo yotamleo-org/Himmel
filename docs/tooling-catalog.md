@@ -82,7 +82,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `platform-design-skills` | Platform design guidelines: all 8 upstream platforms load, no skills list (sha-pinned) | ON-DEMAND, `design-a11y` profile; catalog id `@himmel` |
 | `diagram-design` | Diagram design skills (manifest-bearing upstream, sha-pinned) | ON-DEMAND, `design-diagram` profile; catalog id `@himmel` |
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
-| `frontend-slides` | HTML presentation generator, `git-subdir` `plugins/frontend-slides`, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
+| `frontend-slides` | HTML presentation generator, `git-subdir` path plugins/frontend-slides in the upstream repo, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
 | `design-dna` | Design DNA skill (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anydesign` | Capture a site into a design system, tag `v0.6.0` (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anthropic-design-skills` | anthropics/skills: whole skills/ dir loads (design ones: theme-factory, brand-guidelines, canvas-design; a skills list cannot subset it) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
@@ -508,7 +508,7 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 **What:** Harness-meta operational skills for himmel.
 **Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check), `himmel-ops:ticket-standard` (lean-invoke draft checker: refuses a Task, Story or Bug without Plan, DoD and named Proof and parks it in an intake queue).
 **Commands:** `/minerva` — runs the minerva pipeline; `/memory-compound` — runs the auto-memory compaction pass; `/fanout` — validates + confirms + dispatches N work items to the invariant-policy lane by type, refusing destructive/irreversible items below the judgement tier and any dormant lane; `/cloud-route` — classifies tickets for the cloud credit lane, writes the cloud brief and prints the operator launch line without launching.
-**Hook:** `hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
+**Hook:** `marketplace/plugins/himmel-ops/hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
 **Plugin path:** `marketplace/plugins/himmel-ops/`
 
 ---
@@ -687,13 +687,13 @@ pass, never a blind find-and-replace.
 
 ## claude-statusline (vendored)
 
-**Vendored in himmel:** `scripts/statusline/` (`bin/statusline.sh`, `test/`, `LICENSE`, `README.md`, provenance in `VENDORED.md`).
-**Config:** `~/.claude/settings.json` → `statusLine.command` now points at the hud node renderer (`node "<himmel-path>/marketplace/plugins/claude-hud/dist/index.js"`, wired by `scripts/lib/wire-statusline.sh`; env gate `CLAUDE_HUD_ALLOW_EXTRA_CMD=1`; hud config dropped at `~/.claude/plugins/claude-hud/config.json`). `marketplace/plugins/claude-hud/config/himmel-config.json` sets `display.showPromptCache: true` and `display.promptCacheTtlSeconds: 3600` so the hud shows a `Cache ⏱ <until HH:MM>` wall-clock expiry line (a transcript-detected tier still wins over the configured fallback). The bash wrapper `<himmel-path>/scripts/where-are-we/statusline.sh` is retained as the **opt-in rollback fallback** — repoint to it with `bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`, restore the hud with `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` — no manifest item installs it (finding: no generic manifest `--with-<id>` mechanism exists, would need per-feature hand-wiring like `--with-graphify`; a follow-up is planned); it composes this vendored `bin/statusline.sh` + a where-are-we line — active handover + epic progression; the segment is default-ON — opt out with an explicit falsy `HIMMEL_WHERE_ARE_WE` (`0|false|off|no`); no external clone.
+**Vendored in himmel:** `scripts/statusline/` (`scripts/statusline/bin/statusline.sh`, `test/`, `LICENSE`, `README.md`, provenance in `VENDORED.md`).
+**Config:** `~/.claude/settings.json` → `statusLine.command` now points at the hud node renderer (`node "<himmel-path>/marketplace/plugins/claude-hud/dist/index.js"`, wired by `scripts/lib/wire-statusline.sh`; env gate `CLAUDE_HUD_ALLOW_EXTRA_CMD=1`; hud config dropped at `~/.claude/plugins/claude-hud/config.json`). `marketplace/plugins/claude-hud/config/himmel-config.json` sets `display.showPromptCache: true` and `display.promptCacheTtlSeconds: 3600` so the hud shows a `Cache ⏱ <until HH:MM>` wall-clock expiry line (a transcript-detected tier still wins over the configured fallback). The bash wrapper `<himmel-path>/scripts/where-are-we/statusline.sh` is retained as the **opt-in rollback fallback** — repoint to it with `bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`, restore the hud with `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` — no manifest item installs it (finding: no generic per-item install switch exists in the manifest, would need per-feature hand-wiring like the graphify one; a follow-up is planned); it composes this vendored `scripts/statusline/bin/statusline.sh` + a where-are-we line — active handover + epic progression; the segment is default-ON — opt out with an explicit falsy `HIMMEL_WHERE_ARE_WE` (`0|false|off|no`); no external clone.
 **What:** Bash script receiving Claude Code session JSON via stdin, outputs formatted status bar.
 
 Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), cache TTL countdown, per-session and all-sessions cache read/write/hit/savings. The hud renderer above only has the cache-expiry line so far — the read/write/hit-rate/net/cost lines stay bash-bar-only (opt-in/rollback) until a planned follow-up ports them.
 
-**Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
+**Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`scripts/statusline/bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
 **Patch applied:** cache-metrics patch (record kept in the state repo `specs/decisions/`)
 **Upstream:** `nilbuild/claude-statusline` (fork now archived; no PR path)
 
@@ -1911,7 +1911,8 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   armed" no-op path, so a stale registry entry with no matching live task
   (e.g. the task was deleted outside this script) still gets cleaned up.
   Flags: `--time HH:MM` (06:00 default), `--force`, `--dry-run`. Dedup-guarded;
-  hermetic test: `test-upstream-watch-cadence.sh`. `--arm-on-delta` (an
+  hermetic test: `test-upstream-watch-cadence.sh`.
+  `--arm-on-delta` (an
   interactive claude leg launched from the delta report) was deliberately
   **not** implemented — deferred to a follow-up ticket rather than shipped as
   a dormant flag, since the launch surface (mission-doc generation, model pin,
@@ -2067,7 +2068,7 @@ Bugs encountered and fixes applied when running bash scripts on Windows via Git 
 
 ### 1. `set -f` disables glob expansion globally
 
-**Script:** `bin/statusline.sh` line 2: `set -f`
+**Script:** `scripts/statusline/bin/statusline.sh` line 2: `set -f`
 **Effect:** All glob patterns treated as literal strings. `cat "$HOME/.claude/projects"/*/*.jsonl` passes the literal `*/*.jsonl` to cat → no files → jq returns 0.
 **Fix:** Wrap glob with `set +f` / `set -f`:
 ```bash
@@ -2075,7 +2076,7 @@ set +f
 stats=$(cat "$HOME/.claude/projects"/*/*.jsonl 2>/dev/null | ...)
 set -f
 ```
-**File:** `bin/statusline.sh`, `read_all_sessions_cache_stats()`
+**File:** `scripts/statusline/bin/statusline.sh`, `read_all_sessions_cache_stats()`
 
 ---
 
