@@ -56,6 +56,13 @@ bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
 has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "name the rows in READY"
 
+# contract item 3: a leg runs locally only the RED rows it builds; every other impacted suite is CI-gated
+B1="$(tr '\n' ' ' < "$D1" | tr -s ' ')"
+lacks "brief 1 no longer tells the leg to run the full suite of every touched file" "$B1" "the full suite of every file you touched"
+has "brief 1 lists non-RED impacted suites as SKIP CI-gated per decision 101" "$B1" "SKIP CI-gated per decision 101 (GitHub CI is the gate)"
+has "brief 1 routes VM-only checks through the VM queue" "$B1" "VM queue"
+has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never run run-shell-tests.sh"
+
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
 has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
 has "brief 2 wrap command passes --queue-doc with its own doc" "$(cat "$D2")" "wrap-subtree-check.sh --queue-doc $D2"
