@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+#
+# check-old-terms.sh [<base> | --staged | --auto] — refuse NEW old-term names in
+# the lines a change adds (slice R3 of the rename plan). Only added lines
+# are read, so the terms already in the tree need no baseline file.
+#
+#   <base>     lines added by <base>...<tip> (default origin/main, else main;
+#              tip is PRE_COMMIT_TO_REF, else HEAD)
+#   --staged   lines added to the index (a commit in progress)
+#   --auto     the range when pre-commit runs a push (PRE_COMMIT_TO_REF set),
+#              else the index: what the pre-commit hook runs
+#
+# Two checks:
+#   (a) PROSE, markdown only. An added line outside code spans, link targets and
+#       fences that uses a word the operator renamed: leg(s), console(s), bank,
+#       overnight mode, CR marker, judge call, chain, wave. "dependency chain",
+#       "parallel wave" and "browser console" are the new or unrelated senses.
+#   (b) IDENTIFIERS, every file. An added upper-case token holding LEG_ or
+#       CONSOLE_ (at a word start), BANK or OVERNIGHT that is not in the
+#       registry scripts/lib/rename-aliases.tsv. The kept HIMMEL_CONSOLE_ prefix
+#       is exempt.
+#
+# Skipped: the paths in is_exempt_path below, the CI-matrix sense of "leg" in
+# ci-image.md / testing.md, and a line carrying `old-term-ok: <reason>` (a
+# marker with no reason does not count).
+#
+# Exit: 0 clean; 1 at least one new old term; 2 usage / git failure.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+registry="${OLD_TERMS_REGISTRY:-$here/../lib/rename-aliases.tsv}"  # OLD_TERMS_REGISTRY: measurement seam (replay a past tree)
+me="check-old-terms"
+
+[ -f "$registry" ] || { echo "$me: registry missing: $registry" >&2; exit 2; }
+
+mode=range
+base=""
+case "${1:-}" in
+    --staged) mode=staged ;;
+    --auto) if [ -n "${PRE_COMMIT_TO_REF:-}" ]; then mode=range; else mode=staged; fi ;;
+    -*) echo "$me: unknown option '$1'" >&2; exit 2 ;;
+    *) base="${1:-}" ;;
+esac
+
+tip="${PRE_COMMIT_TO_REF:-HEAD}"
+if [ "$mode" = range ]; then
+    if [ -z "$base" ]; then
+        for candidate in origin/main main; do
+            if git rev-parse --verify -q "$candidate^{commit}" >/dev/null; then base="$candidate"; break; fi
+        done
+    fi
+    [ -n "$base" ] || { echo "$me: no usable base ref" >&2; exit 2; }
+    git rev-parse --verify -q "$base^{commit}" >/dev/null || { echo "$me: unknown base '$base'" >&2; exit 2; }
+    git rev-parse --verify -q "$tip^{commit}" >/dev/null || { echo "$me: unknown tip '$tip'" >&2; exit 2; }
+    diff_args=("$base...$tip")
+    src="$tip:"
+else
+    diff_args=(--cached)
+    src=":"
+fi
+
+is_exempt_path() {
+    case "$1" in
+        */fixtures/*|fixtures/*|*/fixture/*|fixture/*) return 0 ;;
+        scripts/lib/rename-aliases.tsv) return 0 ;;
+        docs/glossary.md) return 0 ;;
+        scripts/docs/check-old-terms.sh|scripts/docs/test-check-old-terms.sh) return 0 ;;
+        CHANGELOG.md|*/CHANGELOG.md) return 0 ;;
+    esac
+    return 1
+}
+
+diff_out=$(git diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "${diff_args[@]}") \
+    || { echo "$me: git diff failed" >&2; exit 2; }
+[ -n "$diff_out" ] || exit 0
+
+findings=$(mktemp "${TMPDIR:-/tmp}/old-terms.XXXXXX") || { echo "$me: mktemp failed" >&2; exit 2; }
+trap 'rm -f "$findings"' EXIT
+
+# file<TAB>comma-separated added line numbers, one row per changed file.
+added=$(printf '%s\n' "$diff_out" | awk '
+    function flush() { if (file != "" && nums != "") print file "\t" nums; nums = "" }
+    /^\+\+\+ / { flush(); file = $0; sub(/^\+\+\+ b\//, "", file); if ($0 == "+++ /dev/null") file = ""; next }
+    /^@@ / { ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
+    /^\+/ { if (file != "") nums = (nums == "" ? ln : nums "," ln); ln++ }
+    END { flush() }')
+
+while IFS="$(printf '\t')" read -r file nums; do
+    [ -n "$file" ] || continue
+    is_exempt_path "$file" && continue
+    case "$file" in
+        *.md) md=1 ;;
+        *) md=0 ;;
+    esac
+    ci_leg=0
+    case "$file" in
+        */ci-image.md|ci-image.md|*/testing.md|testing.md) ci_leg=1 ;;
+    esac
+    git show "$src$file" 2>/dev/null | awk -v file="$file" -v nums="$nums" -v md="$md" -v ci_leg="$ci_leg" -v registry="$registry" '
+        BEGIN {
+            n = split(nums, a, ",")
+            for (i = 1; i <= n; i++) want[a[i]] = 1
+            while ((getline line < registry) > 0) {
+                if (line ~ /^[[:space:]]*(#|$)/) continue
+                split(line, f, "\t")
+                known[f[1]] = 1
+            }
+            close(registry)
+            single["leg"] = single["legs"] = single["console"] = single["consoles"] = 1
+            single["bank"] = single["banks"] = single["chain"] = single["chains"] = single["wave"] = single["waves"] = 1
+            pair["overnight mode"] = pair["cr marker"] = pair["judge call"] = pair["judge calls"] = 1
+        }
+        function fenceline(s) { return s ~ /^[[:space:]]*(```|~~~)/ }
+        function report(kind, what, body) {
+            printf "%s:%d: %s `%s`: %s\n", file, NR, kind, what, body
+        }
+        {
+            if (md && fenceline($0)) { fence = !fence; next }
+            if (!(NR in want)) next
+            body = $0
+            if (body ~ /old-term-ok:[[:space:]]*[^[:space:]]/) next
+
+            # (b) identifiers, every file
+            rest = body
+            while (match(rest, /[A-Za-z0-9_]+/)) {
+                tok = substr(rest, RSTART, RLENGTH)
+                rest = substr(rest, RSTART + RLENGTH)
+                if (tok !~ /^[A-Z][A-Z0-9_]*$/) continue
+                if (!(tok ~ /(^|_)(LEG|CONSOLE)_[A-Z0-9]/ || tok ~ /BANK/ || tok ~ /OVERNIGHT/)) continue
+                if (tok ~ /^HIMMEL_CONSOLE_/ || (tok in known)) continue
+                report("old-term identifier", tok, body)
+                break
+            }
+
+            # (a) prose, markdown outside fences
+            if (!md || fence) next
+            s = body
+            gsub(/`[^`]*`/, " ", s)
+            gsub(/\]\([^)]*\)/, "]", s)
+            gsub(/https?:\/\/[^ )>]*/, " ", s)
+            nw = split(s, w, /[ \t]+/)
+            for (i = 1; i <= nw; i++) {
+                t = tolower(w[i])
+                sub(/\047s$/, "", t)
+                gsub(/^[^a-z0-9]+|[^a-z0-9]+$/, "", t)
+                w[i] = t
+            }
+            for (i = 1; i <= nw; i++) {
+                t = w[i]
+                if (t == "") continue
+                hit = ""
+                if (t in single) {
+                    hit = t
+                    if (ci_leg && (t == "leg" || t == "legs")) hit = ""
+                    if (t == "chain" && i > 1 && w[i - 1] == "dependency") hit = ""
+                    if (t == "wave" && i > 1 && w[i - 1] == "parallel") hit = ""
+                    if (t == "console" && i > 1 && w[i - 1] == "browser") hit = ""
+                } else if (i < nw && ((t " " w[i + 1]) in pair)) {
+                    hit = t " " w[i + 1]
+                }
+                if (hit != "") { report("old-term prose", hit, body); break }
+            }
+        }' >> "$findings"
+done <<EOF
+$added
+EOF
+
+if [ -s "$findings" ]; then
+    cat "$findings"
+    count=$(wc -l < "$findings" | tr -d ' ')
+    # shellcheck disable=SC2016  # the backticks are literal text in the message
+    printf '%s: %s added line(s) use an old term. Use the plain name (chief, worker, dependency chain, parallel wave), register a new identifier in scripts/lib/rename-aliases.tsv, or add `old-term-ok: <reason>` on the line.\n' "$me" "$count" >&2
+    exit 1
+fi
+exit 0

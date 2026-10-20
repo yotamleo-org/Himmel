@@ -571,6 +571,17 @@ repos:
         files: '\.sh$'
         stages: [pre-commit]
 
+      - id: check-old-terms
+        name: no new old-term prose (leg, console, bank, chain, wave) or unregistered old-term identifier
+        # Reads only the lines a change adds (--auto: the index on a
+        # commit, base...tip on a push); identifiers already in
+        # scripts/lib/rename-aliases.tsv pass. Marker: old-term-ok: <reason>.
+        language: system
+        entry: bash scripts/docs/check-old-terms.sh --auto
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-push]
+
       - id: flag-parity
         name: docs name only flags the cited script has (baseline-first)
         # HIMMEL-6019. Drift already present sits in scripts/lint/flag-parity-baseline.tsv
