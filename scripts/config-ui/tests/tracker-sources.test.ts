@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRoadmap } from "../roadmap";
-import { renderKanban } from "../public/roadmap.js";
+import { renderKanban, renderRoadmap } from "../public/roadmap.js";
 import { navLinks } from "../public/nav.js";
 import { startServer } from "../server";
 import { ISSUE_LIMIT, trackerSources } from "../tracker-sources";
@@ -94,6 +94,21 @@ test("GET /api/roadmap: a full page of issues is flagged truncated, a short one 
   const r = await serve({ ...short.env, TRACKER: "github" }, short.d).get("/api/roadmap");
   expect(r.truncated).toBe(false);
   expect(r.tickets.length).toBe(4);
+});
+
+test("an inherited-property label name is no status, and a malformed entry cannot break the board", async () => {
+  const odd = { number: 31, title: "odd", state: "OPEN", labels: [{ name: "constructor" }, { name: "toString" }], milestone: null };
+  const bad = { number: 32, state: "OPEN", labels: "x", milestone: { title: 3 } };
+  const s = scratch({ issues: [odd, bad] });
+  const r = await serve({ ...s.env, TRACKER: "github" }, s.d).get("/api/roadmap");
+  expect(r.state).toBe("ok");
+  expect(r.tickets.map((t: { id: string; b: string }) => [t.id, t.b])).toEqual([["#31", "todo"], ["#32", "todo"]]);
+});
+
+test("the Roadmap page says when the issue list is truncated, as the Kanban does", () => {
+  const r = { ...readRoadmap({ mirrorDir: "", github: ISSUES, legs: { state: "absent" } }), sync: [], truncated: true };
+  expect(renderRoadmap(r, { writes: false })).toContain("older ones are missing");
+  expect(renderRoadmap({ ...r, truncated: false }, { writes: false })).not.toContain("older ones are missing");
 });
 
 test("the rail hides Roadmap and Kanban when the sources are empty, keeps them otherwise or while unknown", () => {

@@ -90,7 +90,7 @@ function fromIssues(issues: GhIssue[]): M[] {
   return issues.map((i) => {
     const labels = (i.labels ?? []).map((l) => l.name);
     const open = i.state.toUpperCase() === "OPEN";
-    const live = labels.map((l) => GH_STATUS[slugOf(l).replace(/^status-/, "")]).find(Boolean);
+    const live = labels.map((l) => { const s = slugOf(l).replace(/^status-/, ""); return Object.hasOwn(GH_STATUS, s) ? GH_STATUS[s] : undefined; }).find(Boolean);
     const sn = open ? live ?? "To Do" : i.stateReason?.toUpperCase() === "NOT_PLANNED" ? "Closed" : "Done";
     return { k: i.number, sn, cat: "", res: "", fv: [i.milestone?.title ?? NO_MILESTONE], labels, upd: i.updatedAt ?? "", title: i.title, body: "" };
   });

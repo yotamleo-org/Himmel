@@ -41,12 +41,20 @@ export async function trackerSources(env: Env, root: string): Promise<TrackerSou
   return out;
 }
 
+// the fields the mapping consumes, forced to their types so one malformed entry cannot break the whole board.
+const clean = (i: GhIssue): GhIssue => ({
+  ...i,
+  title: String(i.title ?? ""),
+  labels: Array.isArray(i.labels) ? i.labels.filter((l) => l && typeof l.name === "string") : [],
+  milestone: i.milestone && typeof i.milestone.number === "number" && typeof i.milestone.title === "string" ? i.milestone : null,
+});
+
 // every issue of the repo gh resolves from root; null when gh fails or answers something other than a list.
 export async function readGithubIssues(env: Env, root: string): Promise<GhIssue[] | null> {
   const r = await gh(env, root, ["issue", "list", "--state", "all", "--limit", String(ISSUE_LIMIT), "--json", ISSUE_FIELDS]);
   if (!r.ok) return null;
   try {
     const j = JSON.parse(r.out);
-    return Array.isArray(j) ? j.filter((i) => i && typeof i.number === "number" && typeof i.state === "string") : null;
+    return Array.isArray(j) ? j.filter((i) => i && typeof i.number === "number" && typeof i.state === "string").map(clean) : null;
   } catch { return null; }
 }

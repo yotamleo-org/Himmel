@@ -121,7 +121,7 @@ export function renderRoadmap(data, ui) {
   if (u.ver) return versionHtml(data, u);
   const bar = `<div class="rm-bar">${filters(data, u)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
   if (gh) {
-    return section("rm-releases", "Milestones", `Live from GitHub issues (${data.mirror.count} issues). Read-only: change them on GitHub. Open a milestone for its kanban.`, releasesHtml(data));
+    return section("rm-releases", "Milestones", `Live from GitHub issues (${data.mirror.count} issues). Read-only: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""} Open a milestone for its kanban.`, releasesHtml(data));
   }
   return [
     section("rm-releases", "Releases", `Live from the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"}). Open a version for its kanban.`, releasesHtml(data)),
