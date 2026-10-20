@@ -223,6 +223,7 @@ function renderNarrow(root, data, uid, reduced) {
       for (const s of row) {
         const a = svgEl('g', {
           class: 'dg-stub dg-' + s.e.kind, 'data-edge': s.e.id, 'data-to': s.e.to, role: 'link', tabindex: 0,
+          'aria-label': s.text + ', ' + s.e.condition,
         }, svg);
         svgEl('rect', { x: s.x, y, width: s.w, height: N.stubH, rx: 9 }, a);
         const st = svgEl('text', { x: s.x + 8, y: y + 13 }, a);
