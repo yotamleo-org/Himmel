@@ -148,7 +148,9 @@ def unstamped(a):
 def cmd_plan(a):
     now, changed, skipped = unstamped(a)
     changed = [rel for rel in changed if rel not in skipped]
-    deleted = sorted(rel for rel in manifest_files(a.out) if rel not in now)
+    # A stuck record for a file that was never stamped has no manifest entry: it goes with the file.
+    m = load_manifest(a.out)
+    deleted = sorted(rel for rel in set(m.get("files", {})) | set(m.get("stuck", {})) if rel not in now)
     batch = changed[:a.max_files]
     plan = {"changed_total": len(changed), "batch": batch, "deleted": deleted,
             "backlog": len(changed) - len(batch), "backed_off": skipped}
@@ -379,13 +381,13 @@ def cmd_merge(a):
     if reasons:
         evict_cache(a.evict_cache, set(reasons), a.scratch)
 
+    backed_off_files = sorted(set(plan.get("backed_off", [])) | set(newly_backed_off))
     run = {
         "ts": ts,
         "name": a.name, "changed_total": plan["changed_total"], "batch": len(batch),
         "deleted": len(plan["deleted"]), "backlog": plan["backlog"], "failed": len(failed),
         "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
-        "backed_off": len(plan.get("backed_off", [])) + len(newly_backed_off),
-        "backed_off_files": sorted(set(plan.get("backed_off", [])) | set(newly_backed_off)),
+        "backed_off": len(backed_off_files), "backed_off_files": backed_off_files,
         "nodes_added": nodes_added, "nodes_removed": nodes_removed,
         "edges_added": edges_added, "edges_removed": edges_removed,
         "runtime_s": a.runtime_s, "tokens_in": a.tokens_in, "tokens_out": a.tokens_out,

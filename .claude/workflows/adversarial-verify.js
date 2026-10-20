@@ -47,25 +47,28 @@ const results = await pipeline(
   (review, d) => parallel((review?.findings ?? []).map(f => () =>
     agent(`Try to refute this finding with cited evidence from the file at ${f.file}:${f.line}: ${f.title}. Check whether a caller can actually reach the path: a hypothetical no caller reaches is refuted. Default to refuted=true if uncertain.`,
       { label: `verify:${f.file}`, phase: 'Verify', model: 'sonnet', schema: VERDICT })
-      .then(v => ({ dim: d.key, finding: { ...f, verdict: v } }))))
+      .catch(() => null)
+      .then(v => ({ dim: d.key, finding: { ...f, verdict: typeof v?.refuted === 'boolean' ? v : null } }))))
 )
 const raw = results.flat().filter(Boolean)
 const confirmed = raw.map(r => r.finding).filter(f => f.verdict && !f.verdict.refuted)
 
 const buckets = { act: [], consider: [], noted: [], dismissed: [] }
+const unverified = []
 const entry = (m, rationale, agreed = false) => ({ key: m.key, title: m.title, file: m.file, line: m.line, severity: m.severity, raisedBy: m.raisedBy, agreed, reports: m.reports, rationale })
 
-// Reports sharing a file:line are grouped, but a refuted or verdict-less report is dismissed on its
-// own and never counts as a raiser, so it cannot lend agreement to, or retitle, a confirmed one.
+// Reports sharing a file:line are grouped, but a refuted report is dismissed on its own and a
+// verdict-less one (null, malformed or a verifier that threw) goes to unverified, since nothing
+// refuted it. Neither counts as a raiser, so it cannot lend agreement to, or retitle, a confirmed one.
 // Every confirmed report keeps its own title and severity.
 const groups = new Map()
 for (const { dim, finding: f } of raw) {
   const key = `${f.file}:${f.line}`
   const report = { dim, title: f.title, severity: f.severity }
   if (!f.verdict || f.verdict.refuted) {
-    const reason = f.verdict?.reason
-    buckets.dismissed.push(entry({ key, title: f.title, file: f.file, line: f.line, severity: f.severity, raisedBy: [dim], reports: [report] },
-      reason ? `refuted: ${reason}` : 'refuted: verifier returned no verdict'))
+    const lone = { key, title: f.title, file: f.file, line: f.line, severity: f.severity, raisedBy: [dim], reports: [report] }
+    if (!f.verdict) unverified.push(entry(lone, 'unverified: the verifier returned no usable verdict or failed, nothing refuted this finding'))
+    else buckets.dismissed.push(entry(lone, f.verdict.reason ? `refuted: ${f.verdict.reason}` : 'refuted: verifier gave no reason'))
     continue
   }
   const m = groups.get(key) ?? { key, file: f.file, line: f.line, severity: f.severity, raisedBy: [], reports: [] }
@@ -110,7 +113,7 @@ if (toJudge.length) {
   }
 }
 
-for (const list of Object.values(buckets))
+for (const list of [...Object.values(buckets), unverified])
   list.sort((a, b) => Number(b.agreed) - Number(a.agreed) || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
 
 // Listed in bucket order, act first, agreed findings ahead of the rest.
@@ -120,4 +123,4 @@ for (const name of bucketOrder)
   for (const e of buckets[name])
     if (e.agreed) agreement[e.key] = { title: e.title, raisedBy: e.raisedBy }
 
-return { confirmed, buckets, agreement }
+return { confirmed, buckets, unverified, agreement }

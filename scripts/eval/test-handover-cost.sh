@@ -66,6 +66,29 @@ hc2 --legs-after 2026-10-19T09:30:00Z >"$TMP/c.out" 2>&1
 check "a later text-only record of the same id does not erase the console.sh next flag (prep stays 2/500)" 'row "$TMP/c.out" | grep -q " prep=2/500 "'
 check "a leg whose delivery names another console is not charged (still 1 leg)" 'row "$TMP/c.out" | grep -q " legs=1 "'
 
+echo "3c. a relay delivered as a queued_command attachment after the predecessor's last turn"
+if ! { mkdir "$TMP/q" && cp "$FX"/*.jsonl "$TMP/q/"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! python3 - "$TMP/q" <<'PYEOF'
+import json, sys
+open(sys.argv[1] + "/leg-late.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
+    {"type": "agent-name", "agentName": "HIMMEL-4-N4-leg-late", "timestamp": "2026-10-19T10:05:00Z"},
+    {"type": "attachment", "timestamp": "2026-10-19T10:18:00Z", "attachment": {"type": "queued_command", "prompt": "SUCCESSION from HIMMEL-nextleg-2026-10-19A-roadmap-console"}},
+    {"type": "assistant", "timestamp": "2026-10-19T10:18:10Z", "message": {"id": "mq1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "SUCCESSION accepted"}]}},
+]))
+PYEOF
+then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
+LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/q" --legs-after 2026-10-19T09:30:00Z >"$TMP/q.out" 2>&1; qrc=$?
+check "the late attachment run exits 0" '[ "$qrc" = 0 ]'
+check "the late attachment relay is a leg (legs=2, leg=3/750)" 'row "$TMP/q.out" | grep -q " leg=3/750 legs=2 "'
+
+echo "3d. mechanical columns"
+if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1; mrc2=$?
+check "the marker run exits 0" '[ "$mrc2" = 0 ]'
+check "P calls after S first call is 3 (the relay piece)" 'row "$TMP/a.out" | grep -q " p_after_s=3 "'
+check "S calls to its first marker bullet is - when S wrote none" 'row "$TMP/a.out" | grep -q " s_to_marker=- "'
+check "S calls to its first marker bullet counts the call, not an earlier text mention of append-results.sh" 'row "$TMP/m2.out" | grep -q " s_to_marker=2 "'
+
 echo "4. errors"
 mkdir "$TMP/empty"
 python3 "$HC" --dir "$TMP/empty" >"$TMP/e.out" 2>&1; erc=$?
