@@ -1,6 +1,7 @@
 # rename-aliases.tsv — registry of old-term identifiers (the rename plans alias registry).
 # Read by scripts/docs/check-old-terms.sh: an identifier listed here may still be used;
-# any other identifier containing LEG_, CONSOLE_, BANK, OVERNIGHT, WAVE, SEQUENCE_ or HIMMEL_WORKER_ (not SESSION_) fails on an added line.
+# any other identifier fails on an added line that has LEG_ or CONSOLE_ at a word start, BANK, OVERNIGHT, a bare WAVE or _WAVE, SEQUENCE_,
+# or HIMMEL_WORKER_ not followed by SESSION_. A direction of keep marks a name owned elsewhere that is never renamed.
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
 old	new	kind	direction	slice	remove-at
@@ -149,7 +150,7 @@ EXTERNAL_LEG_DOC	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 FAKE_REPO_NO_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 FIRST_WAVE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 FLEET_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-GIT_SEQUENCE_EDITOR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+GIT_SEQUENCE_EDITOR	GIT_SEQUENCE_EDITOR	identifier	keep	none	never
 HANDOFF_FACTS_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HANDOVER_LEG_SPLIT_OK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HEADED_ARM_LEG_CLAUDEX_BIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892

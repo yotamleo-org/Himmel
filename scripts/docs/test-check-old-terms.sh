@@ -10,6 +10,8 @@ set -uo pipefail
 
 LINT="$(cd "$(dirname "$0")" && pwd)/check-old-terms.sh"
 
+unset PRE_COMMIT_TO_REF GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE
+
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
@@ -74,6 +76,11 @@ run_case "ticket sequence in prose" 1 docs/ts.md 'Run the ticket sequence in ord
 run_case "batch of workers in prose" 1 docs/bw.md 'Launch a batch of workers at noon.'
 run_case "batch of worker sessions in prose" 1 docs/bws.md 'Launch a batch of worker sessions at noon.'
 run_case "plural legs in prose" 1 docs/legs.md 'Both legs finished.'
+run_case "noun wave beside the verb idiom" 1 docs/wave3.md 'The next wave must not wave it through.'
+run_case "added line starting with ++ does not hide later lines" 1 docs/plus.md '++ item
+the console arms a leg'
+run_case "non-ASCII path is read" 1 'docs/é.md' 'the console arms a leg'
+run_case "path git quotes cannot be read: refused, not skipped" 2 'docs/a"b.md' 'the console arms a leg'
 
 echo "== the exemption marker passes =="
 run_case "identifier with marker" 0 scripts/cap2.sh 'LEG_TURN_CAP=40 # old-term-ok: mirrors the upstream name'
@@ -129,10 +136,22 @@ printf 'LEG_TURN_CAP=40\n' > "$repo/scripts/st.sh"
 git -C "$repo" add scripts/st.sh
 out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "staged old-term identifier (rc=$rc)"; else fail "staged old-term identifier: want rc=1 got rc=$rc: $out"; fi
+out=$(cd "$repo" && bash "$LINT" --auto 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "--auto without PRE_COMMIT_TO_REF reads the index (rc=$rc)"; else fail "--auto index: want rc=1 got rc=$rc: $out"; fi
 git -C "$repo" reset -q
 rm -f "$repo/scripts/st.sh"
 out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "nothing staged (rc=$rc)"; else fail "nothing staged: want rc=0 got rc=$rc: $out"; fi
+
+echo "== --auto with PRE_COMMIT_TO_REF reads the range =="
+git -C "$repo" branch -f main "$base"
+git -C "$repo" checkout -q -B autorange "$base"
+printf 'LEG_TURN_CAP=40\n' > "$repo/scripts/ar.sh"
+git -C "$repo" add scripts/ar.sh
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "case autorange"
+arhead=$(git -C "$repo" rev-parse HEAD)
+out=$(cd "$repo" && PRE_COMMIT_TO_REF="$arhead" bash "$LINT" --auto 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "--auto with PRE_COMMIT_TO_REF runs the range (rc=$rc)"; else fail "--auto range: want rc=1 got rc=$rc: $out"; fi
 
 if [ "$failures" -ne 0 ]; then
     printf '\n%d case(s) failed\n' "$failures" >&2

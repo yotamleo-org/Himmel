@@ -75,7 +75,7 @@ is_exempt_path() {
     return 1
 }
 
-diff_out=$(git diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "${diff_args[@]}") \
+diff_out=$(git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "${diff_args[@]}") \
     || { echo "$me: git diff failed" >&2; exit 2; }
 [ -n "$diff_out" ] || exit 0
 
@@ -85,8 +85,9 @@ trap 'rm -f "$findings"' EXIT
 # file<TAB>comma-separated added line numbers, one row per changed file.
 added=$(printf '%s\n' "$diff_out" | awk '
     function flush() { if (file != "" && nums != "") print file "\t" nums; nums = "" }
-    /^\+\+\+ / { flush(); file = $0; sub(/^\+\+\+ b\//, "", file); if ($0 == "+++ /dev/null") file = ""; next }
-    /^@@ / { ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
+    /^diff --git / { flush(); file = ""; inhunk = 0; next }
+    /^\+\+\+ / && !inhunk { file = $0; sub(/^\+\+\+ b\//, "", file); if ($0 == "+++ /dev/null") file = ""; next }
+    /^@@ / { inhunk = 1; ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
     /^\+/ { if (file != "") nums = (nums == "" ? ln : nums "," ln); ln++ }
     END { flush() }')
 
@@ -147,7 +148,6 @@ while IFS="$(printf '\t')" read -r file nums; do
             gsub(/`[^`]*`/, " ", s)
             gsub(/\]\([^)]*\)/, "]", s)
             gsub(/https?:\/\/[^ )>]*/, " ", s)
-            waved = (tolower(s) ~ /wave[sd]? .{0,40}through/)
             nw = split(s, w, /[ \t]+/)
             for (i = 1; i <= nw; i++) {
                 t = tolower(w[i])
@@ -162,7 +162,7 @@ while IFS="$(printf '\t')" read -r file nums; do
                 if (t in single) {
                     hit = t
                     if (ci_leg && (t == "leg" || t == "legs")) hit = ""
-                    if ((t == "wave" || t == "waves") && ((i > 1 && w[i - 1] == "parallel") || waved)) hit = ""
+                    if ((t == "wave" || t == "waves") && ((i > 1 && w[i - 1] == "parallel") || w[i + 1] == "through" || w[i + 2] == "through" || w[i + 3] == "through")) hit = ""
                     if (t == "console" && i > 1 && w[i - 1] == "browser") hit = ""
                 } else if (i < nw && ((t " " w[i + 1]) in pair)) {
                     hit = t " " w[i + 1]
@@ -176,6 +176,12 @@ while IFS="$(printf '\t')" read -r file nums; do
                 if (hit != "") { report("old-term prose", hit, body); break }
             }
         }' >> "$findings"
+    # a file the diff names but git cannot read, or an awk failure, must not pass as clean
+    pipe_rc=("${PIPESTATUS[@]}")
+    if [ "${pipe_rc[0]}" -ne 0 ] || [ "${pipe_rc[1]}" -ne 0 ]; then
+        echo "$me: cannot read $src$file (git show rc=${pipe_rc[0]}, awk rc=${pipe_rc[1]})" >&2
+        exit 2
+    fi
 done <<EOF
 $added
 EOF
@@ -184,7 +190,7 @@ if [ -s "$findings" ]; then
     cat "$findings"
     count=$(wc -l < "$findings" | tr -d ' ')
     # shellcheck disable=SC2016  # the backticks are literal text in the message
-    printf '%s: %s added line(s) use an old term. Use the plain name (chief, worker, parallel wave), register a new identifier in scripts/lib/rename-aliases.tsv, or add `old-term-ok: <reason>` on the line.\n' "$me" "$count" >&2
+    printf '%s: %s old-term finding(s) in added lines. Use the plain name (chief, worker, parallel wave), register a new identifier in scripts/lib/rename-aliases.tsv, or add `old-term-ok: <reason>` on the line.\n' "$me" "$count" >&2
     exit 1
 fi
 exit 0
