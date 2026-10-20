@@ -776,6 +776,40 @@ has "$TMP/err-M22-best-effort-pending-relaxed" 'relaxed\(in-progress\)' "M22 rel
 GH_STUB_MODE=api-error rg M23-api-error-degraded 3
 GH_STUB_MODE=api-error t M23-merge-allows-degraded 0
 has "$TMP/err-M23-merge-allows-degraded" 'degraded' "M23 merge degraded note"
+# Armed clone, critic ledger unreadable (a torn line, or no ledger): every hard
+# or required critic holds; the merge blocks instead of failing open.
+led "$CRIT_OK" '{"kind":"avail","head":"abc123","model":"codex"'
+GH_STUB_MODE=clean rg armed-torn-ledger-holds 1
+has "$TMP/out-armed-torn-ledger-holds" '^HOLD: codex .*malformed critic ledger' "armed torn ledger HOLD names codex"
+has "$TMP/out-armed-torn-ledger-holds" '^HOLD: claude ' "armed torn ledger holds hard claude"
+GH_STUB_MODE=clean t armed-torn-ledger-merge-blocks 2
+rm -f "$LEDGER"
+GH_STUB_MODE=clean t armed-no-ledger-merge-blocks 2
+led "$CRIT_OK"
+# ...and a hard CodeRabbit row whose reads fail holds the same way.
+CRITICS_LOCAL_JSON="$TMP/m13.json" GH_STUB_MODE=api-error rg armed-hard-coderabbit-unreadable-holds 1
+CRITICS_LOCAL_JSON="$TMP/m13.json" GH_STUB_MODE=api-error t armed-hard-coderabbit-unreadable-merge-blocks 2
+# An overlay cannot drop a required row.
+cfg "$TMP/drop-codex.json" '{"panel":[{"slug":"codex","drop":true}]}'
+CRITICS_LOCAL_JSON="$TMP/drop-codex.json" GH_STUB_MODE=clean rg overlay-drop-required-config-error 2
+has "$TMP/out-overlay-drop-required-config-error" '^cr-reviewer-gate: config error: .*drop-codex\.json: .*codex is required' "drop-required names file and row"
+# The base critics.json is main's in the primary checkout: a branch's own
+# critics.json never decides its own gate.
+anc="$TMP/anchor"
+mkdir -p "$anc/scripts/lib" "$anc/scripts/cr"
+cp "$SCRIPT_DIR/critics-config.sh" "$anc/scripts/lib/critics-config.sh"
+cp "$TMP/critics.json" "$anc/scripts/cr/critics.json"
+git -C "$anc" init --quiet -b main >/dev/null 2>&1
+git -C "$anc" add -A >/dev/null 2>&1
+git -C "$anc" -c core.hooksPath=/dev/null -c user.name=t -c user.email=t@t commit --quiet -m base >/dev/null 2>&1
+git -C "$anc" worktree add --quiet -b pr "$TMP/anchor-wt" >/dev/null 2>&1
+cfg "$TMP/anchor-wt/scripts/cr/critics.json" '{"panel":[{"slug":"codex","provider":"openai-codex","mode":"best-effort"}]}'
+# shellcheck disable=SC2016  # $1 expands in the child shell
+anc_out=$(env -u CRITICS_BASE_JSON -u CRITICS_JSON CRITICS_LOCAL_JSON="$TMP/no-overlay.json" \
+  bash -c '. "$1/scripts/lib/critics-config.sh" && critics_config_resolve' _ "$TMP/anchor-wt" 2>&1) || true
+anc_got=$(printf '%s' "$anc_out" | jq -r '[.files.base, (.panel[] | select(.slug == "codex") | .mode)] | join(" ")' 2>/dev/null || true)
+if [ "$anc_got" = "$anc/scripts/cr/critics.json@main hard" ]; then pass=$((pass+1)); echo "ok   base-critics-json-anchored-to-main"
+else fail=$((fail+1)); echo "FAIL base-critics-json-anchored-to-main (got [$anc_got]; out: $anc_out)"; fi
 # A trivial-descendant carry row reads the reviewed head's critic states. As
 # clear-cr-marker.sh writes it (#3311): ONE row, model claude, for the whole
 # head; codex has no row of its own at the tip.

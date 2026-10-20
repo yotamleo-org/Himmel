@@ -16,7 +16,12 @@
 #
 # Inputs, in order:
 #   CRITICS_JSON          wins outright: read as the whole config, no overlay.
-#   CRITICS_BASE_JSON     the base (default: <cr-dir>/critics.json).
+#   CRITICS_BASE_JSON     the base. Default: scripts/cr/critics.json at `main`
+#                         in the PRIMARY checkout (`git rev-parse
+#                         --git-common-dir` from this file's own directory),
+#                         so a branch's own critics.json never decides its own
+#                         gate; <cr-dir>/critics.json only outside a git
+#                         checkout or where no `main` carries the file.
 #   the overlay (critics.local.json, gitignored), first that applies:
 #     CRITICS_LOCAL_JSON  when set (a missing file then means no overlay);
 #     ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/critics.local.json;
@@ -27,7 +32,8 @@
 #
 # Merge is field-wise per slug: a local row's fields override the base row's
 # (`{"slug":"coderabbit","mode":"hard"}` keeps provider github-app), a local
-# row with "drop":true removes the slug, a local-only slug is appended. A local
+# row with "drop":true removes the slug (a config error when the base row is
+# "required": true), a local-only slug is appended. A local
 # top-level "review" replaces the base's. CR_PROFILE=none resolves to
 # review "no_code_review": the explicit opt-out.
 #
@@ -58,20 +64,29 @@ _ccfg_local_path() {
 
 critics_config_resolve() {
     command -v node >/dev/null 2>&1 || { echo "node not on PATH" >&2; return 3; }
-    local crdir="${1:-$_ccfg_dir/../cr}" base local_path
+    local crdir="${1:-$_ccfg_dir/../cr}" base local_path common base_text="" from_main=0
     if [ -n "${CRITICS_JSON:-}" ]; then
         base="$CRITICS_JSON"; local_path=""
     else
-        base="${CRITICS_BASE_JSON:-$crdir/critics.json}"
+        base="${CRITICS_BASE_JSON:-}"
+        if [ -z "$base" ]; then
+            base="$crdir/critics.json"
+            common=$(git -C "$_ccfg_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
+            if [ -n "$common" ] && base_text=$(git --git-dir="$common" show main:scripts/cr/critics.json 2>/dev/null); then
+                base="${common%/.git}/scripts/cr/critics.json@main"; from_main=1
+            fi
+        fi
         local_path=$(_ccfg_local_path "$crdir")
         [ -f "$local_path" ] || local_path=""
     fi
-    CCFG_BASE="$base" CCFG_LOCAL="$local_path" CCFG_PROFILE="${CR_PROFILE:-}" node -e '
+    CCFG_BASE="$base" CCFG_BASE_FROM_MAIN="$from_main" CCFG_BASE_TEXT="$base_text" \
+    CCFG_LOCAL="$local_path" CCFG_PROFILE="${CR_PROFILE:-}" node -e '
 const fs = require("fs"), e = process.env;
 const fail = (file, why) => { process.stderr.write(file + ": " + why + "\n"); process.exit(2); };
 const read = (p) => {
     let txt;
-    try { txt = fs.readFileSync(p, "utf8"); } catch (_) { fail(p, "cannot be read"); }
+    if (p === e.CCFG_BASE && e.CCFG_BASE_FROM_MAIN === "1") txt = e.CCFG_BASE_TEXT;
+    else try { txt = fs.readFileSync(p, "utf8"); } catch (_) { fail(p, "cannot be read"); }
     try { return JSON.parse(txt); } catch (_) { fail(p, "does not parse"); }
 };
 const base = read(e.CCFG_BASE);
@@ -97,6 +112,8 @@ for (const r of bp) {
 for (const r of lp) {
     if (!r || typeof r !== "object" || typeof r.slug !== "string") continue;
     if (r.drop === true) {
+        if (bp.some((b) => b && b.slug === r.slug && b.required === true))
+            fail(e.CCFG_LOCAL, "row " + r.slug + " is required and cannot be dropped");
         if (idx.has(r.slug)) { out[idx.get(r.slug)] = null; idx.delete(r.slug); }
         continue;
     }

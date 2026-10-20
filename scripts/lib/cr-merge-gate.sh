@@ -26,7 +26,9 @@
 #   `cr-reviewer-gate: config error: <file>: <why>` on stdout.
 #   INFRASTRUCTURE failures (gh missing, API error, no PR, parse failure) still
 #   fail OPEN (rc 0/3) with a "cr-merge-gate: degraded (...) - failing open" note
-#   — a broken query is not evidence of anything.
+#   — a broken query is not evidence of anything. The one exception: in an
+#   armed clone an unreadable CR ledger holds every hard or required critic,
+#   and a failed CodeRabbit read holds a hard coderabbit row.
 #   CR_MERGE_GATE_OK=1 or CR_PROFILE=none skip the gate entirely (rc 0).
 #
 # Sourceable from hooks and scripts: uses only `return`, never `exit`;
@@ -376,7 +378,7 @@ _crg_coderabbit() {
 _crg_eval() {
     local cfg="$1" owner="$2" name="$3" num="$4" head="$5"
     local rows slug mode req prov state detail line crit="" states="" crit_deg=""
-    local table="" hard_left=0 armed=1 cr_row=0 hold="" note="" summary="" deg="" disp files
+    local table="" hard_left=0 armed=1 clone_armed="" cr_row=0 hold="" note="" summary="" deg="" disp files
     rows=$(printf '%s' "$cfg" | jq -r '.panel[] | [.slug, .mode, (.required | tostring), (.provider // "-")] | @tsv' 2>/dev/null) \
         || { echo "cr-reviewer-gate: degraded (cannot read the resolved config)" >&2; return 3; }
     while IFS=$'\t' read -r slug mode req prov; do
@@ -401,6 +403,12 @@ _crg_eval() {
             else state=absent; detail="CodeRabbit app not armed"; fi
         elif [ -n "$crit_deg" ]; then
             state=degraded; detail="$crit_deg"
+            # An armed clone keeps a CR ledger: not being able to read it holds
+            # every hard or required critic instead of failing open.
+            if [ "$mode" = hard ] || [ "$req" = true ]; then
+                [ -n "$clone_armed" ] || { clone_armed=0; cr_app_configured "$PWD" && clone_armed=1; }
+                [ "$clone_armed" -eq 1 ] && state=unreadable
+            fi
         else
             line=$(printf '%s\n' "$states" | awk -F'\t' -v s="$slug" '$1 == s { print $2 "\t" $3; exit }')
             state=${line%%$'\t'*}; detail=${line#*$'\t'}
@@ -423,10 +431,16 @@ _crg_eval() {
 
     while IFS=$'\t' read -r slug mode prov state detail; do
         [ -n "$slug" ] || continue
-        [ "$state" = to-read ] && { state="$_CRG_CR_STATE"; detail="$_CRG_CR_DETAIL"; }
+        if [ "$state" = to-read ]; then
+            state="$_CRG_CR_STATE"; detail="$_CRG_CR_DETAIL"
+            # Read only when the clone is armed: a hard row that cannot be read holds.
+            [ "$state" = degraded ] && [ "$mode" = hard ] && state=unreadable
+        fi
         disp="$state${detail:+($detail)}"
         case "$state" in
             pass|absent|not-selected|degraded) ;;
+            unreadable)
+                hold="${hold}HOLD: $slug ($mode) cannot be read at head $head of PR #$num: $detail — this clone is armed, so a reviewer that cannot be read holds; repair the read (the CR ledger, or the GitHub query) and re-run, or bypass with CR_MERGE_GATE_OK=1."$'\n' ;;
             findings-open)
                 if [ "$prov" = github-app ]; then
                     hold="${hold}HOLD: $_CRG_CR_HOLD"$'\n'
@@ -469,7 +483,8 @@ _crg_eval() {
 #   relaxed(rate_limited)`), degraded notes, and one `ALERT:` per (hard
 #   reviewer, head) that is unavailable.
 #   States: pass, findings-open, in-progress, not-yet-run, unavailable(<why>),
-#   absent(<why>), not-selected. Absent and not-selected rows leave the set (a
+#   absent(<why>), not-selected, unreadable(<why>) (an armed clone cannot read
+#   a hard or required row; it holds). Absent and not-selected rows leave the set (a
 #   required row that is absent is unavailable instead). A hard row holds on
 #   anything but pass; a best-effort row holds only on findings-open and is
 #   otherwise relaxed(<state>). No hard row left in the set is a config error,
