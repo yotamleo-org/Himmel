@@ -6856,10 +6856,12 @@ echo "== C69: OpenRouter config, key file present and accepted -> OK =="
 c69_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c69.XXXXXX")" || { fail "C69: mktemp -d failed"; exit 1; }
 mkdir -p "$c69_t/home/.config/qmd" "$c69_t/home/.himmel/state"
 printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c69_t/home/.config/qmd/index.yml"
-printf "#!/bin/sh\ncat >/dev/null\nprintf \"%%s\" \"\${C69_CODE:-200}\"\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
 C69_SENTINEL=sk-test-sentinel-c69
+# the stub answers C69_CODE only when the key arrives as an Authorization header on stdin, else 403
+printf "#!/bin/sh\nin=\"\$(cat)\"\ncase \"\$in\" in *'Authorization: Bearer $C69_SENTINEL\"'*) printf \"%%s\" \"\${C69_CODE:-200}\" ;; *) printf 403 ;; esac\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
 printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
-c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
 out="$(c69_run C69_CODE=200)"
 if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 key accepted -> OK"; else fail "C69 key accepted -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key"; else pass "C69 never prints the key"; fi
@@ -6881,6 +6883,26 @@ echo "== C69: no key file but a session key, as the CLI accepts -> OK =="
 out="$(c69_run C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
 if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 session key without a file -> OK"; else fail "C69 session key without a file -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the session key"; else pass "C69 session key never printed"; fi
+
+echo "== C69: a traced doctor run never prints the key =="
+out="$(c69_run_x C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 traced, session key -> OK"; else fail "C69 traced, session key -> $(printf '%s' "$out" | grep -F C69 | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the session key"; else pass "C69 trace never prints the session key"; fi
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run_x C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 traced, file key -> OK"; else fail "C69 traced, file key -> $(printf '%s' "$out" | grep -F C69 | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the file key"; else pass "C69 trace never prints the file key"; fi
+
+echo "== C69: provider answers 403 -> FAIL =="
+out="$(c69_run C69_CODE=403)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key forbidden -> FAIL"; else fail "C69 key forbidden -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: OpenRouter named only by QMD_OPENAI_BASE_URL, no key anywhere -> FAIL =="
+printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"
+rm -f "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200 QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 env base URL -> FAIL"; else fail "C69 env base URL -> $(printf '%s' "$out" | head -3)"; fi
+printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c69_t/home/.config/qmd/index.yml"
 
 echo "== C69: key file readable by others -> FAIL =="
 printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 644 "$c69_t/home/.himmel/state/qmd-daemon.env"

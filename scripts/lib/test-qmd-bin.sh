@@ -1190,6 +1190,21 @@ assert "a group-readable key file never leaks the key" bash -c '! grep -q "$2" <
 chmod 600 "$tmpdir/daemon.env"
 rc=0; out="$(key_run "$tmpdir/absent.env" QMD_OPENAI_API_KEY=session-key)" || rc=$?
 assert "no key file but a session key: the session key still reaches qmd" grep -q '^PATH-QMD KEY=set' <<<"$out"
+assert "no key file but a session key: qmd_cmd succeeds" test "$rc" -eq 0
+# a traced caller must not see the key in stderr, from the file or from the session
+key_run_x() {
+  local f="$1"; shift
+  ( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_API_KEY HOME="$gh_home" PATH="$keystub:$PATH" QMD_DAEMON_ENV_FILE="$f" "$@" \
+      bash -x -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1 )
+}
+out="$(key_run_x "$tmpdir/daemon.env")" || true
+assert "traced run, file key: qmd still gets the key" grep -q '^PATH-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "traced run, file key: the key never reaches the trace" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$KEY_SENTINEL"
+out="$(key_run_x "$tmpdir/absent.env" QMD_OPENAI_API_KEY="$KEY_SENTINEL")" || true
+assert "traced run, session key: qmd still gets the key" grep -q '^PATH-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "traced run, session key: the key never reaches the trace" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$KEY_SENTINEL"
 
 # node absent: a remote config must fail with the node message and a refused row must NOT pass for the wrong reason
 printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"

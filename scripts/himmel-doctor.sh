@@ -4177,18 +4177,23 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
     local url="${HIMMEL_DOCTOR_QMD_KEY_URL:-https://openrouter.ai/api/v1/auth/key}"
     local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code=""
-    grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0
+    case "${QMD_OPENAI_BASE_URL:-}" in
+        *openrouter.ai*) ;;
+        *) grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0 ;;
+    esac
     if [ ! -f "$lib" ]; then
         emit INFO C69-qmd-cli-key "qmd-daemon-env.sh not found -- key check skipped"
         return
     fi
     # the subshell keeps the key out of the doctor's own environment; it prints a
-    # verdict word, never the key
+    # verdict word, never the key; tracing stays off here so `bash -x` never prints it
     out="$(
+        set +x
         # shellcheck disable=SC1090
         . "$lib"  # t13b-ok: sources the key loader, starts nothing
         rc=0 sess_key="${QMD_OPENAI_API_KEY:-}"
         qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
+        set +x
         case "$rc" in
             10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; exit 0 ;;
             11) # the CLI also accepts a session key when the file holds none
