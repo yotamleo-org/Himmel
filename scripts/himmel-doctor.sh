@@ -625,7 +625,7 @@ check_c13() {
         # so a pin older than that folder's version is stale registry data: report
         # it as INFO and check the served hooks.json instead.
         local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
-        local known="$CLAUDE_DIR_R/plugins/known_marketplaces.json" pin_ver pin_scope pin_proj
+        local known="$CLAUDE_DIR_R/plugins/known_marketplaces.json" pin_ver pin_scope pin_proj pin_fix
         if [ -r "$known" ]; then
             served="$(jq -r '.himmel.source | select(.source == "directory") | .path // empty' "$known" 2>/dev/null)"
             [ -n "$served" ] && served="$served/plugins/himmel-ops"
@@ -639,7 +639,8 @@ check_c13() {
                 if [ -n "$served_ver" ] && [ "$pin_ver" != "$served_ver" ] \
                    && [ "$(printf '%s\n%s\n' "$pin_ver" "$served_ver" | sort -V | head -n1)" = "$pin_ver" ]; then
                     stale="$stale $pin_ver${pin_proj:+@$pin_proj}"
-                    stale_fix="$stale_fix${stale_fix:+; }${pin_proj:+cd $pin_proj && }claude plugin uninstall himmel-ops@himmel --scope ${pin_scope:-user}"
+                    pin_fix="claude plugin uninstall himmel-ops@himmel --scope ${pin_scope:-user}"
+                    stale_fix="$stale_fix${stale_fix:+; }${pin_proj:+cd $pin_proj && }$pin_fix"
                     continue
                 fi
                 if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
