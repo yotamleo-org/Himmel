@@ -137,9 +137,11 @@ WT="$SB/fx/wt"
 mkdir -p "$ORIGIN" "$SB/home" "$SB/run"
 g init -q "$ORIGIN" || { echo "FAIL fixture: git init"; exit 1; }
 if g -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ "$(g -C "$SRC" rev-parse --show-toplevel)" = "$SRC" ]; then
-    ( cd "$SRC" && g ls-files -z -- scripts .claude | tar --null -T - -cf - ) | tar -xf - -C "$ORIGIN"
+    ( cd "$SRC" && g ls-files -z -- scripts .claude | tar --null -T - -cf - ) | tar -xf - -C "$ORIGIN" \
+        || { echo "FAIL fixture: copying the tracked tree"; exit 1; }
 else
-    ( cd "$SRC" && tar -cf - scripts .claude ) | tar -xf - -C "$ORIGIN"
+    ( cd "$SRC" && tar -cf - scripts .claude ) | tar -xf - -C "$ORIGIN" \
+        || { echo "FAIL fixture: copying the tree"; exit 1; }
 fi
 g -C "$ORIGIN" add -A
 g -C "$ORIGIN" commit -qm base || { echo "FAIL fixture: commit"; exit 1; }
@@ -163,9 +165,13 @@ chain_verdict() { # chain_verdict <cwd> <command>
         ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$ROW_TIMEOUT"} node "$LAUNCHER" --chain "${args[@]}" \
         < "$SB/payload.json" > "$SB/out" 2> "$SB/err" )
     rc=$?
-    dec=$(jq -r '.hookSpecificOutput.permissionDecision // empty' "$SB/out" 2>/dev/null)
+    dec=""
+    if [ -s "$SB/out" ] && ! dec=$(jq -r '.hookSpecificOutput.permissionDecision // empty' "$SB/out" 2>/dev/null); then
+        dec="?"
+    fi
+    case $dec in '' | allow | deny | ask) ;; *) rc=99 ;; esac
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
-        printf 'launcher exited rc=%s: %s' "$rc" "$(head -c 500 "$SB/err")" > "$SB/reason"
+        printf 'launcher rc=%s or unreadable decision: %s' "$rc" "$(head -c 500 "$SB/err")" > "$SB/reason"
         echo ERROR
     elif [ "$rc" -eq 2 ] || [ "$dec" = deny ]; then
         { head -c 1000 "$SB/err"; jq -r '.hookSpecificOutput.permissionDecisionReason // empty' "$SB/out" 2>/dev/null; } | head -c 1000 > "$SB/reason"
