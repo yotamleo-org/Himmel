@@ -120,6 +120,10 @@ check "21: critic-first-pass rc=0 empty-body marker -> empty-response" \
 check "22: whitespace-only blob -> empty-response" "$(classify 1 '
    ' '')" "empty-response"
 
+# ── rc=5 is critic-first-pass.sh's SKIPPED clean no-op, not a failure ──────
+check "HIMMEL-6475: rc=5 -> critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF) — clean no-op')" "critic-skipped"
+check "HIMMEL-6475: rc=5 with no text -> critic-skipped" "$(classify 5 '' '')" "critic-skipped"
+
 # ── generic-rc-N fallback (no signature matches anything) ──────────────────
 check "23: unrecognized text -> generic-rc-N" "$(classify 42 '' 'connection refused')" "generic-rc-42"
 check "24: rc literal embedded in class name" "$(classify 7 '' 'some totally novel error')" "generic-rc-7"

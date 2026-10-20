@@ -1,0 +1,12 @@
+{
+  "name": "graphify",
+  "version": "0.1.0",
+  "description": "graphify knowledge-graph skill. The skills/ tree is generated at himmel-update time from the pinned graphifyy package (scripts/lib/graphify-bin.sh), never committed.",
+  "author": {
+    "name": "yotamleo"
+  },
+  "keywords": [
+    "graphify",
+    "knowledge-graph"
+  ]
+}

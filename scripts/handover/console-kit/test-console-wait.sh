@@ -957,6 +957,25 @@ under_line "UNDERFILLED:7"
 wait_exit "$WPID"
 check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --top 7 --doc $WORK/u4959-console.md --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
 
+# --- (6478) an empty priority pool falls through to the version backlog: a second pass without --priority-pool-only
+cat > "$STUB/dispatch.sh" <<'EOF2'
+#!/usr/bin/env bash
+case " $* " in
+    *" --priority-pool-only "*) printf '# pool=0/7,LOW\nPOOL-EMPTY\n' ;;
+    *) printf 'LOCAL\tHIMMEL-9002\tbacklog-ticket args=%s\n' "$*" ;;
+esac
+EOF2
+reset_stub
+I="$(new_inbox u6478)"
+start "$I" "$WORK/u6478.out" --legs-from "$WORK/u4959-fleet.json"
+wait_hb "$I" || fail "(6478) no baseline heartbeat"
+under_line "UNDERFILLED:7"
+wait_exit "$WPID"
+check "(6478) an empty priority pool still prints POOL-EMPTY" "1" "$(grep -c '^POOL-EMPTY' "$WORK/u6478.out")"
+check "(6478) an empty priority pool prints the version backlog from a second pass" "1" "$(grep -c '^LOCAL.HIMMEL-9002' "$WORK/u6478.out")"
+check "(6478) the second pass keeps --top and --legs-from but drops --priority-pool-only" "args=--top 7 --legs-from $WORK/u4959-fleet.json" "$(grep -o 'args=.*' "$WORK/u6478.out")"
+printf '#!/usr/bin/env bash\nprintf "ARGS %%s\\n" "$*"\n' > "$STUB/dispatch.sh"
+
 # --- (u5542) unowned-prs=: the first sight of an open PR with no live
 # owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes
 # again only after CONSOLE_WAIT_UNOWNED_REWAKE_MIN, and the marker clears once the

@@ -24,8 +24,8 @@
 # proxy-env metadata file (the subnet has no other way out).
 #
 # ponytail: pool size is whatever `up` was last told (gcp-runner-autoscale.sh tops it up
-# from the queue depth); upgrade to a budget kill switch and a regional CPU quota pin
-# (operator-side, after the live proof).
+# from the queue depth; `up` preflights the regional CPUS quota, capped at CPU_PIN);
+# upgrade to a budget kill switch (operator-side, after the live proof).
 set -u
 
 REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"
@@ -33,7 +33,7 @@ PROJECT="${GCP_RUNNERS_PROJECT:-himmel-ci}"
 SA="${GCP_RUNNERS_SA:-himmel-ci-runner@himmel-ci.iam.gserviceaccount.com}"
 ZONE="${GCP_RUNNERS_ZONE:-us-central1-a}"
 MACHINE="${GCP_RUNNERS_MACHINE:-e2-standard-4}"
-MAX_RUN="45m"
+MAX_RUN="75m"  # the slowest hosted shard measured 49 min plus ~4 min boot, with headroom
 ONLINE_WAIT="${GCP_RUNNERS_ONLINE_WAIT:-600}"
 ONLINE_POLL="${GCP_RUNNERS_ONLINE_POLL:-10}"
 POOL_LABEL="himmel-ci-runner=gcp"
@@ -95,7 +95,8 @@ drop_runner() {
 # quota_preflight VCPUS -> die unless the regional CPUS quota (limit capped at CPU_PIN) has VCPUS of headroom
 quota_preflight() {
     local q limit usage
-    q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --filter="quotas.metric=CPUS" --format="value(quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
+    q="$(gc compute regions describe "${ZONE%-*}" --flatten=quotas --format="value(quotas.metric,quotas.limit,quotas.usage)")" || die "up: could not read the regional CPUS quota, refusing to create VMs blind"
+    q="$(awk '$1=="CPUS" { print $2, $3 }' <<< "$q")"
     read -r limit usage <<< "$q"
     awk -v l="${limit:-x}" -v u="${usage:-x}" 'BEGIN { exit !(l ~ /^[0-9]+(\.[0-9]+)?$/ && u ~ /^[0-9]+(\.[0-9]+)?$/) }' || die "up: unreadable regional CPUS quota '$q', refusing to create VMs blind"
     awk -v l="$limit" -v u="$usage" -v n="$1" -v pin="$CPU_PIN" 'BEGIN { if (l + 0 > pin + 0) l = pin; exit !(u + n <= l + 0) }' \
@@ -126,11 +127,11 @@ cmd_up() {
     local need=$((n - live))
     [ "$need" -gt 0 ] || { echo "gcp-runners: pool already has $live live VM(s), nothing to create"; return 0; }
 
-    local vcpus="${MACHINE##*-}"
-    # custom types are <family>-custom-<vcpus>-<memory MB>: the vCPU field is second from last
-    case "$MACHINE" in *custom-*-*) vcpus="${MACHINE%-*}"; vcpus="${vcpus##*-}" ;; esac
+    local vcpus="${MACHINE##*-}" shape="${MACHINE%-ext}"
+    # custom types are <family>-custom-<vcpus>-<memory MB>[-ext]: the vCPU field is second from last once -ext is dropped
+    case "$shape" in *custom-*-*) vcpus="${shape%-*}"; vcpus="${vcpus##*-}" ;; esac
     case "$vcpus" in ''|*[!0-9]*) die "up: cannot derive the vCPU count from machine type $MACHINE" ;; esac
-    quota_preflight $((need * vcpus))
+    quota_preflight $((need * 10#$vcpus))
 
     local tmpd i stamp vm probe created=()
     # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.

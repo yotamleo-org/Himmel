@@ -1,6 +1,6 @@
 {
   "_schema": "known-findings v1 (HIMMEL-2058). One entry per recurring CR finding CLASS. `kind`: fix = a real defect class with a canonical fix; rebuttal = a false-premise class with a canonical rebuttal (critics are told not to re-raise it unless the code regressed); checklist = a judgment class the self-review asks about. `detector` runs in scripts/cr/known-findings.sh --diff (deterministic, no LLM): added-line-regex = POSIX-ERE over ADDED lines of files matching `globs`; twin-missing = a .sh/.ps1 twin exists but is not in the diff; no-test-change = non-test sources under `globs` changed and no test-*.sh/*.test.* file did; removed-flag-in-docs = a `--flag` token deleted from source still appears in a doc that also names that source file; md-fence-no-lang = an added ``` fence with no language in a .md; hook-header-no-fail-direction = a NEW scripts/hooks/*.sh whose header never states fail-open/fail-closed; files under a testdata/ dir are fixture data and never scanned. `learning_match` is the regex --refresh uses to attribute CodeRabbit learnings-export rows (sums their Usage into evidence.learnings_uses). `evidence.ledger` is rewritten by --refresh from the CR ledger (findings whose file matches `globs`, verdicts resolved through amends). `rung` (required, HIMMEL-4426) is the TOP rung of the correction ladder the class has reached, highest first: design = the defect cannot be written (structure removes it); gate = a hook / pre-commit / CI check blocks it; advisory = a deterministic detector or lint advisory reports it but nothing blocks; prompt = only critic-prompt / reviewer-instruction text holds it; human = judgment with no automation. A class with a `detector` and no gate is advisory; no detector but `prompt: true` is prompt. Promote a class up the ladder when `known-findings.sh --ladder` queues it (real recurrences: agreed, confirmed or fixed). Optional `match` = a case-insensitive JS regex over the ledger finding text; --ladder attributes a finding to a class only when its file hits `globs` AND its text hits `match`, and skips a class with no `match`. Optional `platform: \"windows\"` = never proposed. A `rebuttal` class is never proposed above prompt (retire instead). Keep the gate-vs-advisory rationale in `coverage`. A missing or unknown rung exits 2 in --list, --ladder and --refresh. Hand-edit everything else; keep ids stable (they are cited in PR comments).",
-  "refreshed_at": "2026-10-13",
+  "refreshed_at": "2026-10-19",
   "classes": [
     {
       "id": "errexit-false-positive",
@@ -26,22 +26,16 @@
         "learnings_uses": 1830,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 5364,
-          "agreed": 285,
-          "disproved": 586,
-          "deferred": 1478,
-          "other": 2487,
-          "unadjudicated": 528,
+          "findings": 52,
+          "agreed": 32,
+          "disproved": 14,
+          "deferred": 2,
+          "other": 0,
+          "unadjudicated": 4,
           "models": {
-            "codex": 5312,
-            "coderabbit": 31,
-            "claude": 13,
-            "console": 1,
-            "": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 52
           },
-          "disproved_pct": 12
+          "disproved_pct": 29
         },
         "learnings_rows": 5
       }
@@ -70,22 +64,16 @@
         "learnings_uses": 580,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 5364,
-          "agreed": 285,
-          "disproved": 586,
-          "deferred": 1478,
-          "other": 2487,
-          "unadjudicated": 528,
+          "findings": 54,
+          "agreed": 35,
+          "disproved": 1,
+          "deferred": 15,
+          "other": 0,
+          "unadjudicated": 3,
           "models": {
-            "codex": 5312,
-            "coderabbit": 31,
-            "claude": 13,
-            "console": 1,
-            "": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 54
           },
-          "disproved_pct": 12
+          "disproved_pct": 2
         },
         "learnings_rows": 3
       }
@@ -106,7 +94,20 @@
       "canonical": "A leading-zero-capable operand (a date field such as `date +%m`, env or user input) inside `$(( ))`, `(( ))` or `let` is octal: `08` and `09` abort with `value too great for base`. Normalize it with `$((10#$var))` before the arithmetic. This is the real counterpart of the octal-leading-zero rebuttal: a single-bracket `[ \"$m\" -gt 5 ]` is decimal and needs nothing.",
       "coverage": "shell-lint [octal-arith] (same-file only; advisory, not yet wired into pre-commit or CI) flags a variable assigned from date +%m/%d/%H/%M/%S/%j/%U/%V/%W that later sits in arithmetic without 10#; exempt a line with `# octal-ok: reason`. The portable-primitives helper is HIMMEL-6020, not built.",
       "prompt": false,
-      "evidence": {}
+      "evidence": {
+        "ledger": {
+          "findings": 34,
+          "agreed": 24,
+          "disproved": 0,
+          "deferred": 9,
+          "other": 0,
+          "unadjudicated": 1,
+          "models": {
+            "codex": 34
+          },
+          "disproved_pct": 0
+        }
+      }
     },
     {
       "id": "handover-root-bootstrap",
@@ -131,22 +132,17 @@
         "learnings_uses": 1075,
         "cr_app_finding_comments_since_2026-08-10": 8,
         "ledger": {
-          "findings": 5303,
-          "agreed": 285,
-          "disproved": 576,
-          "deferred": 1465,
-          "other": 2457,
-          "unadjudicated": 520,
+          "findings": 35,
+          "agreed": 13,
+          "disproved": 3,
+          "deferred": 17,
+          "other": 0,
+          "unadjudicated": 2,
           "models": {
-            "codex": 5252,
-            "coderabbit": 30,
-            "claude": 13,
-            "console": 1,
-            "": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 34,
+            "console": 1
           },
-          "disproved_pct": 12
+          "disproved_pct": 9
         },
         "learnings_rows": 8
       }
@@ -175,22 +171,18 @@
         "learnings_uses": 314,
         "cr_app_finding_comments_since_2026-08-10": 6,
         "ledger": {
-          "findings": 5447,
-          "agreed": 286,
-          "disproved": 593,
-          "deferred": 1508,
-          "other": 2530,
-          "unadjudicated": 530,
+          "findings": 169,
+          "agreed": 90,
+          "disproved": 15,
+          "deferred": 36,
+          "other": 0,
+          "unadjudicated": 28,
           "models": {
-            "codex": 5394,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 13,
-            "console": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 167,
+            "coderabbit": 1,
+            "claude": 1
           },
-          "disproved_pct": 12
+          "disproved_pct": 11
         },
         "learnings_rows": 5
       }
@@ -220,22 +212,16 @@
         "learnings_uses": 538,
         "cr_app_finding_comments_since_2026-08-10": 20,
         "ledger": {
-          "findings": 5447,
-          "agreed": 286,
-          "disproved": 593,
-          "deferred": 1508,
-          "other": 2530,
-          "unadjudicated": 530,
+          "findings": 168,
+          "agreed": 84,
+          "disproved": 13,
+          "deferred": 66,
+          "other": 0,
+          "unadjudicated": 5,
           "models": {
-            "codex": 5394,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 13,
-            "console": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 168
           },
-          "disproved_pct": 12
+          "disproved_pct": 8
         },
         "learnings_rows": 24
       }
@@ -265,22 +251,16 @@
         "learnings_uses": 3,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 5447,
-          "agreed": 286,
-          "disproved": 593,
-          "deferred": 1508,
-          "other": 2530,
-          "unadjudicated": 530,
+          "findings": 15,
+          "agreed": 4,
+          "disproved": 3,
+          "deferred": 5,
+          "other": 0,
+          "unadjudicated": 3,
           "models": {
-            "codex": 5394,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 13,
-            "console": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 15
           },
-          "disproved_pct": 12
+          "disproved_pct": 25
         },
         "learnings_rows": 4
       }
@@ -312,20 +292,21 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 16,
         "ledger": {
-          "findings": 6607,
-          "agreed": 328,
-          "disproved": 732,
-          "deferred": 1905,
-          "other": 3086,
-          "unadjudicated": 556,
+          "findings": 8236,
+          "agreed": 4363,
+          "disproved": 952,
+          "deferred": 2358,
+          "other": 2,
+          "unadjudicated": 561,
           "models": {
-            "codex": 6546,
+            "codex": 8166,
             "coderabbit": 31,
             "": 2,
-            "claude": 18,
+            "claude": 19,
             "console": 2,
-            "coderabbit-outside": 5,
-            "console-judge": 3
+            "coderabbit-outside": 12,
+            "console-judge": 3,
+            "gpt-6.1-sol": 1
           },
           "disproved_pct": 12
         },
@@ -361,20 +342,21 @@
         "learnings_uses": 260,
         "cr_app_finding_comments_since_2026-08-10": 21,
         "ledger": {
-          "findings": 7052,
-          "agreed": 337,
-          "disproved": 774,
-          "deferred": 2103,
-          "other": 3275,
-          "unadjudicated": 563,
+          "findings": 8796,
+          "agreed": 4610,
+          "disproved": 1009,
+          "deferred": 2607,
+          "other": 2,
+          "unadjudicated": 568,
           "models": {
-            "codex": 6974,
+            "codex": 8704,
             "coderabbit": 34,
             "": 13,
-            "claude": 19,
-            "coderabbit-outside": 7,
+            "claude": 20,
+            "coderabbit-outside": 18,
             "console": 2,
-            "console-judge": 3
+            "console-judge": 3,
+            "gpt-6.1-sol": 2
           },
           "disproved_pct": 12
         },
@@ -406,22 +388,16 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 5447,
-          "agreed": 286,
-          "disproved": 593,
-          "deferred": 1508,
-          "other": 2530,
-          "unadjudicated": 530,
+          "findings": 5,
+          "agreed": 4,
+          "disproved": 1,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 0,
           "models": {
-            "codex": 5394,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 13,
-            "console": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 5
           },
-          "disproved_pct": 12
+          "disproved_pct": 20
         },
         "learnings_rows": 0
       }
@@ -445,7 +421,7 @@
         "exclude": "^[[:space:]]*#|has\\(|jq-alt-ok:"
       },
       "learning_match": "jq[^.]*//[[:space:]]*empty|alternative operator",
-      "match": "jq[^.\\n]*//|alternative operator",
+      "match": "jq[^\\n]{0,60}//|alternative operator",
       "canonical": "jq's `//` treats `false` exactly like `null`, so `.field // empty` is NOT a presence test — it silently swallows a legitimate `false`, and the caller takes the absent branch while reporting success. Ask the question you mean: presence -> `has(\"field\")`; presence plus a type contract -> `(.field | type) == \"string\"` (better than has(), because it also rejects malformed values); a value that may legitimately be false -> read it explicitly, `if has(\"f\") then (.f|tostring) else \"absent\" end`. Do NOT over-correct into treating ANY present value as the signal: on #2071 that flipped a malformed payload (true / 123 / {}) into a DENY, and a fail-open workflow guard must ALLOW on an unreadable payload. Key the fix on the field's documented contract, not on 'stop using //'. Mark a deliberate benign default with `# jq-alt-ok: <why>`.",
       "coverage": "No structural check; shell-lint does not parse jq filters. The detector is deliberately NARROW — restricted to boolean-ish field names — because the broad `.field // (empty|\"\")` form matches 147 lines repo-wide (293 raw `// empty` occurrences), nearly all legitimate string defaults; a detector that fires on every PR buries the signal. Measured cost of the narrow form: 5 repo-wide hits, 3 of them in files that document this very trap. Ratified as a class by the 01R console 2026-09-01 (HIMMEL-2361). CR round 3 removed a `| type` clause from this exclude: it was unnecessary — the safe spelling `(.f | type) == \"string\"` carries no `//`, so the main pattern never matched it anyway — and, being a WHOLE-LINE match, it silently suppressed the genuinely buggy `.f // empty | type`, which still swallows false. The sibling `has(` clause has the same whole-line shape and may suppress a true positive too (`if has(\"f\") then .f // empty` still swallows false: has() establishes presence, it does not stop `//` treating false as absent); that one is NOT removed here because it may cover a real safe form — tracked for verification in HIMMEL-2453.",
       "prompt": true,
@@ -453,22 +429,16 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 1,
         "ledger": {
-          "findings": 5918,
-          "agreed": 304,
-          "disproved": 640,
-          "deferred": 1691,
-          "other": 2740,
-          "unadjudicated": 543,
+          "findings": 5,
+          "agreed": 3,
+          "disproved": 2,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 0,
           "models": {
-            "codex": 5860,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 15,
-            "console": 2,
-            "coderabbit-outside": 5,
-            "console-judge": 3
+            "codex": 5
           },
-          "disproved_pct": 12
+          "disproved_pct": 40
         },
         "learnings_rows": 0,
         "sightings": [
@@ -503,22 +473,16 @@
         "learnings_uses": 98,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 5447,
-          "agreed": 286,
-          "disproved": 593,
-          "deferred": 1508,
-          "other": 2530,
-          "unadjudicated": 530,
+          "findings": 31,
+          "agreed": 11,
+          "disproved": 5,
+          "deferred": 12,
+          "other": 0,
+          "unadjudicated": 3,
           "models": {
-            "codex": 5394,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 13,
-            "console": 1,
-            "coderabbit-outside": 4,
-            "console-judge": 2
+            "codex": 31
           },
-          "disproved_pct": 12
+          "disproved_pct": 18
         },
         "learnings_rows": 2,
         "sightings": [
@@ -548,21 +512,14 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 8,
         "ledger": {
-          "findings": 320,
-          "agreed": 27,
-          "disproved": 23,
-          "deferred": 71,
-          "other": 160,
-          "unadjudicated": 39,
-          "models": {
-            "codex": 273,
-            "coderabbit": 4,
-            "sonnet": 24,
-            "": 8,
-            "coderabbit-outside": 3,
-            "claude": 8
-          },
-          "disproved_pct": 8
+          "findings": 0,
+          "agreed": 0,
+          "disproved": 0,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 0,
+          "models": {},
+          "disproved_pct": null
         },
         "learnings_rows": 0
       }
@@ -589,17 +546,15 @@
         "learnings_uses": 171,
         "cr_app_finding_comments_since_2026-08-10": 10,
         "ledger": {
-          "findings": 1387,
-          "agreed": 84,
-          "disproved": 177,
-          "deferred": 384,
-          "other": 710,
-          "unadjudicated": 32,
+          "findings": 49,
+          "agreed": 25,
+          "disproved": 6,
+          "deferred": 15,
+          "other": 0,
+          "unadjudicated": 3,
           "models": {
-            "codex": 1375,
-            "coderabbit": 7,
-            "claude": 1,
-            "coderabbit-outside": 4
+            "codex": 48,
+            "coderabbit-outside": 1
           },
           "disproved_pct": 13
         },
@@ -629,19 +584,16 @@
         "learnings_uses": 60,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 1252,
-          "agreed": 68,
-          "disproved": 154,
-          "deferred": 307,
-          "other": 620,
-          "unadjudicated": 103,
+          "findings": 76,
+          "agreed": 34,
+          "disproved": 13,
+          "deferred": 23,
+          "other": 0,
+          "unadjudicated": 6,
           "models": {
-            "codex": 1235,
-            "coderabbit": 11,
-            "claude": 5,
-            "console-judge": 1
+            "codex": 76
           },
-          "disproved_pct": 13
+          "disproved_pct": 19
         },
         "learnings_rows": 42
       }
@@ -668,19 +620,16 @@
         "learnings_uses": 201,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 204,
-          "agreed": 23,
-          "disproved": 20,
-          "deferred": 43,
-          "other": 80,
-          "unadjudicated": 38,
+          "findings": 1,
+          "agreed": 0,
+          "disproved": 0,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 1,
           "models": {
-            "codex": 189,
-            "coderabbit": 4,
-            "coderabbit-outside": 3,
-            "claude": 8
+            "codex": 1
           },
-          "disproved_pct": 12
+          "disproved_pct": null
         },
         "learnings_rows": 6
       }
@@ -751,16 +700,16 @@
           "note": "hand-counted from this branch panel rounds; evidence.ledger left unset until --refresh mines it"
         },
         "ledger": {
-          "findings": 28,
-          "agreed": 0,
+          "findings": 39,
+          "agreed": 16,
           "disproved": 6,
-          "deferred": 12,
-          "other": 10,
-          "unadjudicated": 0,
+          "deferred": 16,
+          "other": 0,
+          "unadjudicated": 1,
           "models": {
-            "codex": 28
+            "codex": 39
           },
-          "disproved_pct": 21
+          "disproved_pct": 16
         }
       }
     },
@@ -786,18 +735,16 @@
         "learnings_uses": 127,
         "cr_app_finding_comments_since_2026-08-10": 3,
         "ledger": {
-          "findings": 1160,
-          "agreed": 66,
-          "disproved": 140,
-          "deferred": 274,
-          "other": 580,
-          "unadjudicated": 100,
+          "findings": 74,
+          "agreed": 41,
+          "disproved": 12,
+          "deferred": 18,
+          "other": 0,
+          "unadjudicated": 3,
           "models": {
-            "codex": 1148,
-            "coderabbit": 11,
-            "claude": 1
+            "codex": 74
           },
-          "disproved_pct": 13
+          "disproved_pct": 17
         },
         "learnings_rows": 8
       }
@@ -827,22 +774,16 @@
         "learnings_uses": 14,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 5506,
-          "agreed": 303,
-          "disproved": 595,
-          "deferred": 1518,
-          "other": 2537,
-          "unadjudicated": 553,
+          "findings": 66,
+          "agreed": 39,
+          "disproved": 6,
+          "deferred": 14,
+          "other": 0,
+          "unadjudicated": 7,
           "models": {
-            "codex": 5441,
-            "coderabbit": 33,
-            "claude": 22,
-            "console": 1,
-            "": 1,
-            "coderabbit-outside": 6,
-            "console-judge": 2
+            "codex": 66
           },
-          "disproved_pct": 12
+          "disproved_pct": 10
         },
         "learnings_rows": 10
       }
@@ -869,19 +810,16 @@
         "learnings_uses": 1,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 349,
-          "agreed": 13,
-          "disproved": 55,
-          "deferred": 91,
-          "other": 162,
-          "unadjudicated": 28,
+          "findings": 1,
+          "agreed": 1,
+          "disproved": 0,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 0,
           "models": {
-            "codex": 342,
-            "coderabbit": 4,
-            "coderabbit-outside": 2,
-            "claude": 1
+            "codex": 1
           },
-          "disproved_pct": 17
+          "disproved_pct": 0
         },
         "learnings_rows": 1
       }
@@ -903,7 +841,22 @@
       "match": "bypass|escape hatch|opt-out|_OK\\b",
       "canonical": "Every deny names the exact replacement AND the single-run bypass env var (`<NAME>_OK=1`, set in the launching shell). A new hook adds the bypass row to its header and its deny message in the same commit.",
       "coverage": "Detector: hook-no-bypass (a NEW hook whose added lines never mention a *_OK / *_BYPASS variable). scripts/hooks/CLAUDE.md prose; advisory only.",
-      "prompt": false
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 280,
+          "agreed": 194,
+          "disproved": 27,
+          "deferred": 56,
+          "other": 0,
+          "unadjudicated": 3,
+          "models": {
+            "codex": 279,
+            "coderabbit": 1
+          },
+          "disproved_pct": 10
+        }
+      }
     },
     {
       "id": "hook-adhoc-parse",
@@ -922,7 +875,21 @@
       "match": "tokeniz|ad-hoc pars|quote.split|split on",
       "canonical": "Parse a Bash command through scripts/hooks/lib/shell-tokenize.sh (or the bash-ast helpers), never a sed/awk/cut over the raw string: quoting, `\\`-escapes and `$(...)` make the ad-hoc split deniable by construction.",
       "coverage": "Detector: added-line-regex over hook sources (advisory; a legitimate non-command sed on a path is waived with a reason).",
-      "prompt": false
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 21,
+          "agreed": 10,
+          "disproved": 2,
+          "deferred": 6,
+          "other": 0,
+          "unadjudicated": 3,
+          "models": {
+            "codex": 21
+          },
+          "disproved_pct": 11
+        }
+      }
     },
     {
       "id": "hook-path-no-realpath",
@@ -942,7 +909,21 @@
       "match": "realpath|symlink|canonical path|readlink",
       "canonical": "Resolve both sides (`realpath -m`, `cd -P`) before comparing a path against a root: a symlink or `..` segment otherwise bypasses the fence. Cover the symlinked case in the suite.",
       "coverage": "Detector: added-line-regex (advisory; a comparison of two already-resolved values is checked).",
-      "prompt": false
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 68,
+          "agreed": 35,
+          "disproved": 12,
+          "deferred": 20,
+          "other": 0,
+          "unadjudicated": 1,
+          "models": {
+            "codex": 68
+          },
+          "disproved_pct": 18
+        }
+      }
     },
     {
       "id": "console-kit-lock-helper",
@@ -961,7 +942,23 @@
       "match": "lock|flock|stale lock|race",
       "canonical": "Take the queue/leg lock through scripts/handover/queue-lock.sh (acquire / release with the owner token), never an inline flock or mkdir-lock: the shared helper owns stale-lock reaping and owner-pid semantics.",
       "coverage": "Detector: added-line-regex (advisory).",
-      "prompt": false
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 80,
+          "agreed": 50,
+          "disproved": 8,
+          "deferred": 21,
+          "other": 0,
+          "unadjudicated": 1,
+          "models": {
+            "codex": 78,
+            "coderabbit": 1,
+            "console": 1
+          },
+          "disproved_pct": 10
+        }
+      }
     },
     {
       "id": "eval-tokenizer-split",
@@ -982,7 +979,21 @@
       "match": "tokeniz|split|IFS",
       "canonical": "An eval that classifies shell commands must run them through the same tokenizer the guard uses (scripts/hooks/lib/shell-tokenize.sh), or its verdict measures a different parser than production.",
       "coverage": "Detector: added-line-regex (advisory; splitting a non-command string is checked).",
-      "prompt": false
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 7,
+          "agreed": 1,
+          "disproved": 0,
+          "deferred": 6,
+          "other": 0,
+          "unadjudicated": 0,
+          "models": {
+            "codex": 7
+          },
+          "disproved_pct": 0
+        }
+      }
     },
     {
       "id": "sh-ps1-twin-drift",
@@ -1001,7 +1012,23 @@
       "match": "ps1|powershell|twin|parity",
       "canonical": "Change both halves of a .sh/.ps1 pair in one commit, or state in the PR why the twin does not apply (windows is dropped for this repo: say so and waive).",
       "coverage": "Detector: twin-missing (advisory).",
-      "prompt": false
+      "prompt": false,
+      "evidence": {
+        "ledger": {
+          "findings": 157,
+          "agreed": 71,
+          "disproved": 16,
+          "deferred": 60,
+          "other": 0,
+          "unadjudicated": 10,
+          "models": {
+            "codex": 154,
+            "claude": 2,
+            "coderabbit-outside": 1
+          },
+          "disproved_pct": 11
+        }
+      }
     }
   ],
   "learnings_export": {
