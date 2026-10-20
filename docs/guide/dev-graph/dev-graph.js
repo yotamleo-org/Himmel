@@ -267,6 +267,17 @@ function legend(root, lanes) {
   }
 }
 
+function conditions(root, data) {
+  const label = new Map(data.nodes.map((n) => [n.id, n.label]));
+  const box = htmlEl('details', 'dg-conditions', null, root);
+  htmlEl('summary', null, 'Every transition and its condition (' + data.edges.length + ')', box);
+  const ul = htmlEl('ul', null, null, box);
+  for (const e of data.edges) {
+    const text = (label.get(e.from) || e.from) + ' → ' + (label.get(e.to) || e.to) + ': ' + (e.exit != null ? 'exit ' + e.exit + ', ' : '') + e.condition;
+    htmlEl('li', 'dg-cond dg-cond-' + e.kind, text, ul);
+  }
+}
+
 export function mount(el, data) {
   if (!data || data.version !== 1 || !data.view || !data.view.wide) throw new Error('dev-graph: not a version 1 graph with a view');
   const mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -277,6 +288,7 @@ export function mount(el, data) {
   const stage = htmlEl('div', 'dg-stage', null, root);
   renderWide(stage, data, uid);
   renderNarrow(stage, data, uid, reduced);
+  conditions(root, data);
   el.replaceChildren(root);
   return { el: root, destroy() { root.remove(); } };
 }
