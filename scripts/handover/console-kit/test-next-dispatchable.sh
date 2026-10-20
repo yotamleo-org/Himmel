@@ -554,6 +554,7 @@ cp "$RP/mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror24/HIMMEL.versions.tsv"
 f6="$(NEXT_DISPATCH_MIRROR="$M24" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --priority-pool-only --owners HIMMEL-999 2>/dev/null)"
 lacks "archived: the pool is not empty" "$f6" "POOL-EMPTY"
 has "archived: the pool holds exactly the operator-directed ticket of the first live version (tier 2)" "$f6" "# pool=1/"
+has "archived: the pool row is the v1.1.3 operator-directed ticket" "$f6" "HIMMEL-740	Medium	v1.1.3"
 lacks "archived: the first live version's ticket is not parked as NEXT-TIER" "$f6" "NEXT-TIER	HIMMEL-740"
 lacks "archived: a later live version's operator-directed ticket is not in the pool" "$f6" "HIMMEL-741	"
 
