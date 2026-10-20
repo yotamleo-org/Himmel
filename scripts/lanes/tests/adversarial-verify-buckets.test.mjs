@@ -144,13 +144,44 @@ test('a verifier that stays uncertain (refuted:true by default) keeps the defaul
   assert.equal(out.buckets.dismissed.length, 1);
 });
 
-test('a verifier that returns no verdict is dismissed, not dropped and not confirmed', async () => {
-  const { out } = await exec({
+test('a verifier that returns no verdict leaves the finding unverified, not dismissed and not confirmed', async () => {
+  const { out, calls } = await exec({
     reviews: { correctness: [F('g.js', 4)] },
     verdict: () => null,
   });
   assert.deepEqual(out.confirmed, []);
-  assert.equal(out.buckets.dismissed.length, 1);
+  assert.equal(out.buckets.dismissed.length, 0);
+  assert.equal(out.unverified.length, 1);
+  assert.equal(out.unverified[0].file, 'g.js');
+  assert.equal(out.unverified[0].line, 4);
+  assert.deepEqual(out.unverified[0].raisedBy, ['correctness']);
+  assert.match(out.unverified[0].rationale, /unverified/);
+  assert.equal(calls.judge.length, 0, 'an unverified finding is not judged');
+});
+
+test('a verifier that returns a malformed verdict leaves the finding unverified', async () => {
+  const { out } = await exec({
+    reviews: { correctness: [F('g.js', 5)] },
+    verdict: () => ({ reason: 'no refuted flag' }),
+  });
+  assert.deepEqual(out.confirmed, []);
+  assert.equal(out.buckets.dismissed.length, 0);
+  assert.equal(out.unverified.length, 1);
+});
+
+test('a verify agent that throws leaves the finding visible in unverified, not dropped', async () => {
+  const { out } = await exec({
+    reviews: { correctness: [F('g.js', 6), F('g.js', 7)] },
+    verdict: p => { if (p.includes('g.js:6')) throw new Error('verifier crashed'); return { refuted: true, reason: 'caller validates' }; },
+  });
+  assert.deepEqual(out.confirmed, []);
+  assert.deepEqual(out.unverified.map(f => f.line), [6]);
+  assert.deepEqual(out.buckets.dismissed.map(f => f.line), [7]);
+});
+
+test('every verified or refuted run returns an empty unverified list', async () => {
+  const { out } = await exec({ reviews: { correctness: [F('g.js', 8)] }, judge: () => ({ judgments: [] }) });
+  assert.deepEqual(out.unverified, []);
 });
 
 test('verifiers disagreeing on one report: the refuted raiser is dismissed, the survivor is a lone raiser capped at consider', async () => {

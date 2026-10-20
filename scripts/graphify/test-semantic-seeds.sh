@@ -188,5 +188,49 @@ if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && grep -q -- '--seed l
   pass "S13 an anchored query keeps the full budget"
 else fail "S13 rc=$rc calls='$calls' out='$out'"; fi
 
+# A: a fleet corpus written in the old vocabulary (leg, console) beside lane-worker files whose
+# names already say worker in another sense; the registry marks those other-sense.
+python3 -I - "$T/alias.json" <<'PY'
+import json, sys
+def node(i, label, src, ft="code", **kw):
+    n = {"id": i, "label": label, "norm_label": label.lower(), "file_type": ft, "source_file": src, "source_location": "L1"}
+    n.update(kw)
+    return n
+nodes = [
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/console-kit/headed-arm-leg.sh"),
+    node("arm_fn", "start_leg_session()", "scripts/handover/console-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
+    node("preface", "leg-preface.md", "docs/handover/leg-preface.md", "document"),
+    node("pf_rule", "Report to the console", "docs/handover/leg-preface.md", "concept", rationale="A leg reports a blocker to its console first."),
+    node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
+    node("stop_fn", "stop_lane_worker()", "scripts/lanes/stop-worker.sh", rationale="Stops a lane worker process."),
+    node("rec_w", "reconcile-workers.sh", "scripts/handover/reconcile-workers.sh"),
+    node("rec_fn", "reconcile_worker_rows()", "scripts/handover/reconcile-workers.sh"),
+    node("await_w", "await-glm-worker.sh", "scripts/lanes/await-glm-worker.sh"),
+    node("pc", "prompt-cache.md", "docs/internals/prompt-cache.md", "document"),
+    node("hud_w", "git-worker.ts", "plugins/hud/src/git-worker.ts", rationale="A worker thread polls git status for the worker pool."),
+]
+json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
+PY
+aseeds() { python3 -I "$SEM" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
+
+# S14: a new-vocabulary question seeds the file written in the old one, not a lane-worker file.
+got="$(aseeds "how does the chief start a worker")"
+case "$got" in arm_leg\ *) pass "S14 chief/worker question leads with headed-arm-leg.sh" ;; *) fail "S14 got='$got'" ;; esac
+got="$(aseeds "how does the chief arm a worker")"
+case "$got" in arm_leg\ *) pass "S14b the arm phrasing leads with headed-arm-leg.sh" ;; *) fail "S14b got='$got'" ;; esac
+
+# S15: the same for a doc: the leg preface answers how a worker reports to the chief.
+got="$(aseeds "how does a worker report a blocker to the chief")"
+case "$got" in preface\ *) pass "S15 worker/chief question leads with the leg preface" ;; *) fail "S15 got='$got'" ;; esac
+
+# S16: a question about the lane worker itself still leads with it.
+got="$(aseeds "how does stop-worker.sh stop a lane worker")"
+case "$got" in stop_w\ *) pass "S16 a lane-worker question keeps stop-worker.sh first" ;; *) fail "S16 got='$got'" ;; esac
+
+# S17: registry words alone never bring a file in: an old-term question asked in the new
+# vocabulary seeds no file whose only match is "worker" in another sense.
+got="$(aseeds "what is a wave of legs")"
+case "$got" in *_w\ *) fail "S17 got='$got'" ;; *) pass "S17 swapped-in words alone seed no worker-sense file" ;; esac
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

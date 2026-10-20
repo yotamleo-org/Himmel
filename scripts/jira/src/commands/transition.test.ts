@@ -55,10 +55,15 @@ const VERSIONS = [
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
 function wire(fixVersions: Array<{ name: string }>) {
-  mockRequest.mockImplementation(async (method: string, path: string) => {
+  let current = fixVersions;
+  mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+    if (method === 'PUT') {
+      const ops = (body as { update: { fixVersions: Array<{ add?: { name: string } }> } }).update.fixVersions;
+      current = ops.flatMap((o) => (o.add ? [o.add] : []));
+    }
     if (method === 'GET' && path.endsWith('/transitions')) return { transitions: LIVE };
     if (method === 'GET' && path.endsWith('/versions')) return VERSIONS;
-    if (method === 'GET' && path.includes('/issue/')) return { fields: { fixVersions } };
+    if (method === 'GET' && path.includes('/issue/')) return { fields: { fixVersions: current } };
     return {};
   });
 }

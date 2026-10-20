@@ -24,6 +24,11 @@
 # leg_identity's names) is `UNRESOLVED <label> (candidates: ...)`: nothing is sent
 # and SENT / SENDMESSAGE are never printed without a resolved session.
 #
+# A WRAPPED leg (queue lock free and its newest marker bullet WRAPPED) is finished: it is
+# neither relayed nor counted, whether or not the Live state still lists it. The run ends
+# with `RELAYED <n> of <m>`: n legs delivered, m the manifest's non-lockless, non-wrapped
+# legs (the live fleet), so a tick can flag drift.
+#
 # Seams (tests): INBOX_SEND replaces inbox-send.sh; RELAY_BATCH_CENSUS is a script
 # printing claude_sessions-format census lines.
 # Exit: 0 ok (skips are not errors); 1 a claudex delivery failed; 2 usage.
@@ -47,6 +52,10 @@ sender="$(basename "$doc" .md)"
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
 # shellcheck source=../../lib/leg-identity.sh
 . "$HERE/../../lib/leg-identity.sh"
+# shellcheck source=../../lib/leg-tail-status.sh
+. "$HERE/../../lib/leg-tail-status.sh"
+# wrapped <leg doc>: lock free and newest marker WRAPPED (close-wrapped-leg.sh's gate).
+wrapped() { bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(leg_tail_status "$1")" = WRAPPED ]; }
 manifest="${doc%.md}.fleet.json"
 # The live process census (pid<TAB>name<TAB>model<TAB>autocompact), taken once.
 if [ -n "${RELAY_BATCH_CENSUS:-}" ]; then
@@ -90,7 +99,7 @@ if [ -n "$claudex" ]; then
     fi
 fi
 
-rc=0
+rc=0; sent=0
 while IFS=: read -r label nonce _lock _pid; do
     [ -n "$label" ] || continue
     ldoc=""; lane=unknown
@@ -113,6 +122,7 @@ EOR
         fi
     fi
     if [ -z "$ldoc" ]; then echo "SKIPPED $label (no manifest row)"; continue; fi
+    if wrapped "$ldoc"; then continue; fi
     case "$lane" in
         native|claudex) ;;
         unknown)
@@ -149,20 +159,24 @@ EOC
     case "$lane" in
         claudex)
             if bash "$send" "$lsession" "$text" --token "$nonce" --doc "$ldoc" >/dev/null; then
-                echo "SENT-INBOX $label ($lsession)"
+                echo "SENT-INBOX $label ($lsession)"; sent=$((sent + 1))
             else
                 echo "FAILED-INBOX $label ($lsession)"; rc=1
             fi ;;
-        *) printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$text" ;;
+        *) printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$text"; sent=$((sent + 1)) ;;
     esac
 done <<EOF
 $entries
 EOF
 # A manifest leg the Live state does not list is reported, never silently dropped.
+total="$(printf '%s\n' "$entries" | awk 'NF' | wc -l | tr -d ' ')"
 if [ -f "$manifest" ]; then
+    total=0
     mrows="$(jq -r '.legs[] | select(.lockless == true | not) | "\(.label) \(.doc)"' "$manifest" 2>/dev/null)"
     while read -r mlabel mdoc; do
         [ -n "$mlabel" ] || continue
+        if wrapped "$mdoc"; then continue; fi
+        total=$((total + 1))
         if ! printf '%s\n' "$entries" | cut -d: -f1 | grep -Fxq -- "$mlabel"; then
             echo "NOT-IN-LIVE-STATE $mlabel ($mdoc) — in the fleet manifest, not in ## Live state legs:; relay by hand if it is live"
         fi
@@ -177,4 +191,5 @@ EOF3
         printf '%s\n' "$lrows"
     fi
 fi
+echo "RELAYED $sent of $total"
 exit "$rc"

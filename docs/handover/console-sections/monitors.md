@@ -100,3 +100,9 @@ hour, `runs-day` 1500 per 24 h, `cancels-10m` 30, `reruns-h` 10, and `branch-day
 10 CI runs on one non-main branch. A metric alerts once and re-arms on the first
 read at or below its line; `unknown` (low REST budget, a failed fetch) changes
 nothing. `--runs FILE --now ISO` replays a saved runs list.
+
+The tick runs it once per tick and carries `ciguard=ok|OVER:<metric>[,<metric>]|unknown` on
+the TICK line, with one `ACTION ci-guardrail <metric>=<count>><line> (<where>)` line per new
+crossing. The next tick of the same crossing prints `ciguard=OVER:…` and no ACTION; on an
+ACTION, hold new dispatches and find the run, cancel or rerun burst. The waiter's wake key
+does not carry `ciguard`.

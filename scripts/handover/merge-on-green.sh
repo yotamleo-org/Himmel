@@ -61,8 +61,9 @@
 #                      (no merge)
 #   --jira-transition  opt IN to auto-transitioning the ticket on this merge
 #                      (see "Jira auto-transition is opt-in"
-#                      below; default is a PARTIAL merge: the ticket goes back
-#                      to To Do with the PR body's `Remaining:` line, never Done)
+#                      below; default is a PARTIAL merge: the ticket status is
+#                      left unchanged, and the PR body's `Remaining:` line is
+#                      posted to it as a comment, never Done)
 #   --leg-doc PATH     the leg's brief doc (else $HIMMEL_LEG_DOC); its
 #                      `> **Completes ticket:** yes|no` line above `## Results`
 #                      (any no wins; lines below Results are ignored) binds the merge:
