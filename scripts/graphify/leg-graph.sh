@@ -15,6 +15,8 @@
 #   under its NODE line (query) or as a Rationale line (explain).
 #   A query naming a file or identifier also starts from that node (anchor-seeds.py); the files
 #   whose content best matches its words are added after any anchors (semantic-seeds.py).
+#   A query with no anchor whose best file match is weak (semantic-seeds.py scored) and no --budget
+#   of yours is answered on WEAK_BUDGET tokens under a LOW CONFIDENCE header naming that file.
 #   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
@@ -46,7 +48,8 @@ else
 fi
 
 # The question is the first argument after the verb that is neither a flag nor a flag's value.
-has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() graph="$out/graph.json"
+WEAK_BUDGET=2000
+has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() graph="$out/graph.json" lowconf="" conf="" score="" file=""
 for a in "${@:2}"; do
   if [ -n "$want" ]; then
     if [ "$want" = budget ]; then budget="$a"; else rest+=("$a"); fi
@@ -66,7 +69,6 @@ for a in "${@:2}"; do
   esac
   rest+=("$a")
 done
-[ "$has_budget" = 1 ] || set -- "$@" --budget 8000
 
 # graphify seeds on the question's words and never on a file or identifier it names (go.sh,
 # leg_tail_status), so anchor-seeds.py resolves those names; the named nodes and graphify's own
@@ -79,13 +81,22 @@ if [ "$sub" = query ] && [ "$has_seed" = 0 ] && [ -n "$question" ] && command -v
        while read -r sid; do [ -n "$sid" ] && seeds+=(--seed "$sid"); done \
          < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" seeds "$graph" "$question")
        # A question naming no file or identifier has no anchor; semantic-seeds.py adds the files
-       # whose content matches its meaning after any anchors.
-       while read -r sid; do
-         [ -n "$sid" ] || continue
-         case " ${seeds[*]} " in *" $sid "*) ;; *) seeds+=(--seed "$sid") ;; esac
-       done < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/semantic-seeds.py" seeds "$graph" "$question") ;;
+       # whose content matches its meaning after any anchors. Its first line says how well the
+       # best file matches; with no anchor and no --budget of the caller's, a weak match gets
+       # WEAK_BUDGET tokens, not the full budget, and a header naming the seed.
+       anchored=${#seeds[@]}
+       { read -r conf score file
+         while read -r sid; do
+           [ -n "$sid" ] || continue
+           case " ${seeds[*]} " in *" $sid "*) ;; *) seeds+=(--seed "$sid") ;; esac
+         done; } < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/semantic-seeds.py" scored "$graph" "$question")
+       if [ "$conf" = weak ] && [ "$anchored" = 0 ] && [ "$has_budget" = 0 ]; then
+         budget=$WEAK_BUDGET
+         lowconf="leg-graph: LOW CONFIDENCE seed $file (match score $score is weak for this graph); answer scaled to $WEAK_BUDGET tokens. Name a file or identifier, or pass --budget N, for the full answer."
+       fi ;;
   esac
 fi
+[ "$has_budget" = 1 ] || set -- "$@" --budget "$budget"
 if [ "${#seeds[@]}" -gt 0 ]; then
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-graph.XXXXXX")" || exit 1
   trap 'rm -rf "$tmp"' EXIT
@@ -111,6 +122,7 @@ if command -v python3 >/dev/null 2>&1; then
     ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
   fi
 fi
+[ -z "$lowconf" ] || printf '%s\n' "$lowconf"
 printf '%s\n' "$ans"
 need="$(printf '%s\n' "$ans" | grep -m1 'TRUNCATED: showing' | sed -n 's/.*--budget \([0-9][0-9]*\).*/\1/p')"
 if [ -n "$need" ]; then
