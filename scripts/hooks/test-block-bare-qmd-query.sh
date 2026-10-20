@@ -1156,7 +1156,11 @@ deny 'for f in tmux x; do timeout 60 $f new -d "qmd query x"; done'
 deny 'for f in a b; do timeout -k 5 60 $f /tmp/x; done'
 deny "bash scripts/lib/qmd-bounded.sh query -c luna x | sh"
 deny "cat scripts/lib/qmd_search_notes.sh | sh"
+deny 'echo "${Q:-qmd} query x" | sh'
+deny 'echo "qmd ${V:--query} x" | sh'
+deny 'timeout -k 5 $f $(echo tmux) new -d x'
 deny "ssh research 'qmd query x'"
+deny "tmux new -s research 'qmd status'"
 deny "tmux new -s research 'qmd search x'"
 deny "tmux new -s research 'qmd.ts query x'"
 deny "ssh host bun /opt/qmd/src/cli/qmd.ts query x"
