@@ -23,9 +23,7 @@ never `AskUserQuestion`, never a question to your user.
 
 **An unreadable path in your brief is a BLOCKED, never a shortcut.** If the brief tells
 you to read a file (a spec, a plan) and the read is denied, post `BLOCKED unreadable
-brief path: <path>` and stop; never proceed on the brief's excerpt of it. A `read-clamp`
-denial (the file is over the whole-file line cap) is not unreadable: read it in the
-`offset`/`limit` pages the denial names.
+brief path: <path>` and stop; never proceed on the brief's excerpt of it.
 
 Rulings from the console reach you as `additionalContext` after a tool call
 (the file inbox, `scripts/hooks/claudex-inbox-hook.sh`) and are mirrored under

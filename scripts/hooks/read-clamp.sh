@@ -48,9 +48,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat) || exit 0
 [ -n "$input" ] || exit 0
 
-# 2000 = the Read tool's own page size. Measured over 1715 whole-file denials in
-# 604 worker transcripts: at a 400 cap the median denied file was 625 lines and
-# 96% of denials were files of <=2000 lines, i.e. one ordinary Read.
+# 2000 = the Read tool's own page size: a file that fits one ordinary Read is not clamped.
 LIMIT_LINES="${HIMMEL_READ_CLAMP_LINES:-2000}"
 
 # SOH (not tab): bash's `read` treats tab as an IFS-whitespace class char and
