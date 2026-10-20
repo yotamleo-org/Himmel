@@ -194,8 +194,8 @@ if command -v graphify >/dev/null 2>&1; then
     fi
   done <<EOF
 Q1|why does the graphify egress block exist and which corpora does it protect|
-Q2|why does a RETASK narrowing or halt need no token while an expansion does|$REASON
-Q3|how do a console and a leg relate|
+Q2|why does a RETASK narrowing need no token while an expansion does|$REASON
+Q3|which role launches a leg and which one watches it|
 Q4|why is the graph path verb banned|
 Q5|why does the Jira transition at merge need an explicit flag completes-ticket|closes the ticket only on --jira-transition
 EOF

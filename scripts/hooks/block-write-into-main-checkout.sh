@@ -245,6 +245,10 @@ if [ "$_bwimc_sourced" = 0 ]; then
         echo "block-write-into-main-checkout: cannot source guardrails/lib.sh — refusing to evaluate" >&2
         exit 2
     fi
+    # One hook run decides one command: read each repo's branch once, not once
+    # per redirect target (lib.sh _branch_set).
+    # shellcheck disable=SC2034 # read by the sourced lib.sh
+    GUARD_MEMO=1
 
     # Unparseable, empty or tool-less input fails CLOSED: this is a security
     # fence, and a payload it cannot read is not evidence the call is safe.
@@ -1688,6 +1692,15 @@ _bwimc_space_before_redirects() {
 # expanded text of a glob token. _bwimc_expand_token is that plus the
 # rejection, and is what every ordinary candidate path still calls.
 _bwimc_expand_token_raw() {
+    _bwimc_expand_token_raw_set "$1" || return 1
+    printf '%s' "$_BWIMC_ETR"
+}
+
+# _bwimc_expand_token_raw_set TOKEN — _bwimc_expand_token_raw without the
+# subshell: the text lands in _BWIMC_ETR, the rc is the same.
+_BWIMC_ETR=""
+_bwimc_expand_token_raw_set() {
+    _BWIMC_ETR=""
     local t="${1//$'\006'/$'\n'}"
     local Q="\"'"
     # an ANSI-C `$'…'` span names the path its decoded text spells
@@ -1731,23 +1744,40 @@ _bwimc_expand_token_raw() {
         '${HOME}/'*) t="${HOME:-}/${t:8}" ;;
     esac
     [ -n "$t" ] || return 1
-    printf '%s' "$t"
+    _BWIMC_ETR="$t"
 }
 
 _bwimc_expand_token() {
-    local t
-    t=$(_bwimc_expand_token_raw "$1") || return 1
-    case "$t" in
+    _bwimc_expand_token_set "$1" || return 1
+    printf '%s' "$_BWIMC_ET"
+}
+
+# _bwimc_expand_token_set TOKEN — _bwimc_expand_token without the subshells:
+# the text lands in _BWIMC_ET, the rc is the same.
+_BWIMC_ET=""
+_bwimc_expand_token_set() {
+    _BWIMC_ET=""
+    _bwimc_expand_token_raw_set "$1" || return 1
+    case "$_BWIMC_ETR" in
         *'$'*|*'`'*|*'*'*|*'?'*|*'['*) return 1 ;;
     esac
-    _bwimc_unsent "$t"
+    _bwimc_unsent_set "$_BWIMC_ETR"
+    _BWIMC_ET="$_BWIMC_UNS"
 }
 
 # _bwimc_unsent TEXT: the literal chars _bwimc_ansic_spans
 # parked as \016+letter sentinels (and \016\016 for a real \016), restored.
 _bwimc_unsent() {
+    _bwimc_unsent_set "$1"
+    printf '%s' "$_BWIMC_UNS"
+}
+
+# _bwimc_unsent_set TEXT — _bwimc_unsent without the subshell: the text lands
+# in _BWIMC_UNS.
+_BWIMC_UNS=""
+_bwimc_unsent_set() {
     local t="$1" o="" k=0 c
-    case "$t" in *$'\016'*) : ;; *) printf '%s' "$t"; return 0 ;; esac
+    case "$t" in *$'\016'*) : ;; *) _BWIMC_UNS="$t"; return 0 ;; esac
     while [ "$k" -lt "${#t}" ]; do
         c="${t:$k:1}"
         if [ "$c" = $'\016' ]; then
@@ -1761,7 +1791,7 @@ _bwimc_unsent() {
         fi
         o+="$c"; k=$((k+1))
     done
-    printf '%s' "$o"
+    _BWIMC_UNS="$o"
 }
 
 # _bwimc_glob_prefix RAW. A `glob` operand is not
@@ -1795,11 +1825,20 @@ _bwimc_glob_prefix() {
 # Resolve a raw candidate token to an absolute path against CWD (the TOOL
 # PAYLOAD cwd — never the hook process's own $PWD).
 _bwimc_resolve_abs() {
-    local raw="$1" cwd="$2" expanded
-    expanded=$(_bwimc_expand_token "$raw") || return 1
-    case "$expanded" in
-        /*|[A-Za-z]:/*|[A-Za-z]:\\*) printf '%s' "$expanded" ;;
-        *) printf '%s' "${cwd%/}/$expanded" ;;
+    _bwimc_resolve_abs_set "$1" "$2" || return 1
+    printf '%s' "$_BWIMC_ABS"
+}
+
+# _bwimc_resolve_abs_set RAW CWD — _bwimc_resolve_abs without the subshells:
+# the path lands in _BWIMC_ABS, the rc is the same.
+_BWIMC_ABS=""
+_bwimc_resolve_abs_set() {
+    local raw="$1" cwd="$2"
+    _BWIMC_ABS=""
+    _bwimc_expand_token_set "$raw" || return 1
+    case "$_BWIMC_ET" in
+        /*|[A-Za-z]:/*|[A-Za-z]:\\*) _BWIMC_ABS="$_BWIMC_ET" ;;
+        *) _BWIMC_ABS="${cwd%/}/$_BWIMC_ET" ;;
     esac
 }
 
@@ -1959,6 +1998,14 @@ _bwimc_opt_scan() {
 #     link, so nothing special is needed for those.
 # Only the first group needs an explicit override, which is what this does.
 _bwimc_mode_for_operand() {
+    _bwimc_mode_for_operand_set "$1" "$2"
+    printf '%s' "$_BWIMC_MODE"
+}
+
+# _bwimc_mode_for_operand_set RAW MODE — _bwimc_mode_for_operand without the
+# subshell: the mode lands in _BWIMC_MODE.
+_BWIMC_MODE=""
+_bwimc_mode_for_operand_set() {
     local raw="$1" mode="$2" t
     if [ "$mode" = entry ]; then
         t="${raw%\"}"; t="${t%\'}"
@@ -1966,7 +2013,7 @@ _bwimc_mode_for_operand() {
             */|*/.|*/..|.|..) mode="follow" ;;
         esac
     fi
-    printf '%s' "$mode"
+    _BWIMC_MODE="$mode"
 }
 
 _bwimc_deny() {
@@ -2039,7 +2086,8 @@ _bwimc_check_canon() {
     # runs. The EXIT trap still converts that to exit 2 (fail-closed), but
     # every branch below became dead code: a silent rc=2 with no message.
     vrc=0
-    repo_root=$(main_checkout_verdict "$canon" 2>/dev/null) || vrc=$?
+    main_checkout_verdict_set "$canon" 2>/dev/null || vrc=$?
+    repo_root="$_MCV_ROOT"
     case "$vrc" in
         0) return 0 ;;
         1|2)
@@ -2234,11 +2282,13 @@ _bwimc_check_target() {
             _bwimc_cd_guard "$raw" "$mode"
             ;;
     esac
-    if ! abs=$(_bwimc_resolve_abs "$raw" "$cwd"); then
+    if ! _bwimc_resolve_abs_set "$raw" "$cwd"; then
         _bwimc_check_glob_operand "$raw" "$cwd"
         return 0
     fi
-    eff=$(_bwimc_mode_for_operand "$raw" "$mode")
+    abs="$_BWIMC_ABS"
+    _bwimc_mode_for_operand_set "$raw" "$mode"
+    eff="$_BWIMC_MODE"
     _bwimc_check_abs "$abs" "$raw" "$eff"
 }
 
