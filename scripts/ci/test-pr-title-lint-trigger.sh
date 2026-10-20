@@ -71,17 +71,21 @@ else
 fi
 
 # A superseded run must be replaced while still pending, never
-# cancelled mid-run (a CANCELLED context), and the required job must carry no
-# job-level `if:` (a skipped job reports success and masks a red title).
+# cancelled mid-run (a CANCELLED context). The required job's only job-level
+# `if:` skips the owner's own PRs, whose title leg-pr-open.sh checks at open and
+# merge-on-green.sh re-checks right before the squash; any other skip reports
+# success and masks a red title.
 if grep -Eq '^[[:space:]]*cancel-in-progress:[[:space:]]*false' <<< "$body"; then
   ok "pr-title-lint concurrency has cancel-in-progress: false"
 else
   bad "pr-title-lint concurrency must set cancel-in-progress: false"
 fi
-if grep -Eq '^    if:' <<< "$body"; then
-  bad "pr-title-lint has a job-level if: (a skip masks a red title)"
+owner_if="    if: github.event.pull_request.user.login != 'yotamleo'"
+job_ifs="$(grep -E '^    if:' <<< "$body")"
+if [ "$job_ifs" = "$owner_if" ]; then
+  ok "pr-title-lint's only job-level if: is the owner-only skip"
 else
-  ok "pr-title-lint has no job-level if:"
+  bad "pr-title-lint's job-level if: must be exactly the owner-only skip (a wider skip masks a red title); got: ${job_ifs:-none}"
 fi
 
 # F1: the PR author must be threaded into TICKET_ID_AUTHOR AND

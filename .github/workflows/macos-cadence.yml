@@ -47,10 +47,10 @@ jobs:
     # The cap only bounds a hung suite.
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - name: Install obsidian-triage tool deps (marketplace suites)
@@ -83,7 +83,7 @@ jobs:
           fi
       - name: Upload failed-suite list
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-failed-suites-shard${{ matrix.shard }}
           overwrite: true
@@ -92,7 +92,7 @@ jobs:
           retention-days: 90
       - name: Upload failed-suite logs
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-cadence-failed-logs-${{ matrix.os }}-shard${{ matrix.shard }}
           overwrite: true
@@ -111,7 +111,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Record breakages against the previous cadence run
         # shell: bash = `bash -e -o pipefail`: without it the step's status is
         # tee's and a die inside `record` (rc 2) would go green.
@@ -144,7 +144,7 @@ jobs:
             --out record.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload breakage record
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-breakage-record
           overwrite: true
