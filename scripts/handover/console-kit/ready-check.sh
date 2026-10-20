@@ -467,7 +467,11 @@ else
             cov_key=$(printf '%s\n' "$cov_def" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]')
             if cov_out=$(jira_get "$cov_key"); then
                 cov_status=$(printf '%s\n' "$cov_out" | jq -r '.fields.status.name // empty' 2>/dev/null || true) # swallow-ok: unparseable output leaves the status empty, which reads UNKNOWN below
-                if [ -z "$cov_status" ]; then
+                cov_canon=$(printf '%s\n' "$cov_out" | jq -r '(.key // empty) | ascii_upcase' 2>/dev/null || true) # swallow-ok: unparseable output leaves the key empty, which reads UNKNOWN below
+                [ -z "$cov_canon" ] || cov_key="$cov_canon"
+                if [ -z "$cov_canon" ]; then
+                    cov_bad="$cov_bad; $cov_key UNKNOWN (jira returned no key)"
+                elif [ -z "$cov_status" ]; then
                     cov_bad="$cov_bad; $cov_key UNKNOWN (jira returned no status)"
                 elif printf '%s\n' "$cov_status" | grep -qiE '^(done|closed|resolved|won.?t do)$'; then
                     cov_bad="$cov_bad; $cov_key already $cov_status"

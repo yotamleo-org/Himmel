@@ -119,9 +119,10 @@ if [ "$1" = "links" ]; then
 fi
 [ "$1" = "get" ] || { echo "jira-stub: unhandled: $*" >&2; exit 1; }
 [ -n "${STUB_JIRA_DOWN:-}" ] && { echo "jira: get $2 failed: connect ECONNREFUSED" >&2; exit 1; }
-st=$(awk -F'\t' -v k="$2" '$1 == k { print $2 }' "${STUB_JIRA_DB:-/dev/null}")
-lb=$(awk -F'\t' -v k="$2" '$1 == k { print $3 }' "${STUB_JIRA_DB:-/dev/null}")
-desc=$(awk -F'\t' -v k="$2" '$1 == k { print $4 }' "${STUB_JIRA_DB:-/dev/null}")
+kc=$(printf '%s' "$2" | sed -E 's/-0+([0-9])/-\1/')
+st=$(awk -F'\t' -v k="$kc" '$1 == k { print $2 }' "${STUB_JIRA_DB:-/dev/null}")
+lb=$(awk -F'\t' -v k="$kc" '$1 == k { print $3 }' "${STUB_JIRA_DB:-/dev/null}")
+desc=$(awk -F'\t' -v k="$kc" '$1 == k { print $4 }' "${STUB_JIRA_DB:-/dev/null}")
 if [ -z "$st" ]; then
     echo "jira: get $2 failed: HTTP 404: Issue does not exist or you do not have permission to see it." >&2
     exit 1
@@ -129,8 +130,8 @@ fi
 [ "$st" = "MALFORMED" ] && { printf 'garbage with no tabs\n'; exit 0; }
 [ "$st" = "BLANK" ] && st=""
 if [ "${3:-}" = "--json" ]; then
-    jq -n --arg st "$st" --arg lb "$lb" --arg d "$desc" \
-        '{fields:{status:{name:$st},labels:($lb | split(", ") | map(select(length > 0))),description:$d}}'
+    jq -n --arg k "$kc" --arg st "$st" --arg lb "$lb" --arg d "$desc" \
+        '{key:$k,fields:{status:{name:$st},labels:($lb | split(", ") | map(select(length > 0))),description:$d}}'
     exit 0
 fi
 printf '%s\tTask\t%s\tsummary\n' "$2" "$st"
@@ -162,7 +163,7 @@ GREEN_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody"
 GREEN_FILES="scripts/x/run.sh"
 GREEN_BODY='## Summary\nthing\n\n## Ticket coverage\n- ask one: done\n- ask two: done\n\n## Test plan\nx\n'
 JIRA_DB="$tmp/jira.db"
-printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-100\tTo Do\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
+printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-100\tTo Do\tresidual\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
 
 seed_ledger_ok() {
     printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","model":"codex","status":"ok"}\n' "$SHA" > "$LEDGER"
@@ -770,6 +771,19 @@ printf 'HIMMEL-100\tHIMMEL-1\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
 rc=0; out="$(run)" || rc=$?
 check "self: a deferral to the PR's own ticket is refused though its links name it: exit 1" "$rc" "1"
 contains "self: names the own ticket" "$out" "HIMMEL-100 is the PR's own ticket"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-0100\n'
+seed_deferral HIMMEL-0100
+rc=0; out="$(run)" || rc=$?
+check "self: a zero-padded spelling of the own ticket is refused though it carries the residual label: exit 1" "$rc" "1"
+contains "self: padded spelling is read as Jira's canonical key" "$out" "HIMMEL-100 is the PR's own ticket"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-050\n'
+seed_deferral HIMMEL-50
+rc=0; out="$(run)" || rc=$?
+check "canonical key: a zero-padded spelling of a good target matches its ledger row: exit 0" "$rc" "0"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-201\n'
