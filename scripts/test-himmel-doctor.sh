@@ -1089,6 +1089,36 @@ out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME=
 if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (pinned stale version)"; else fail "C13 pinned -> $(printf '%s' "$out" | grep C13)"; fi
 rm -rf "$t"
 
+echo "== C13: stale project pin vs directory-sourced served himmel-ops -> INFO, a missing served hook still WARNs =="
+t="$(mktemp -d -t c13dir.XXXXXX)" || exit 1
+cp="$t/claude/plugins/cache/himmel/himmel-ops"; sv="$t/mkt/plugins/himmel-ops"
+mkdir -p "$cp/0.4.8/hooks" "$cp/0.4.112/hooks" "$sv/.claude-plugin" "$sv/hooks"; write_settings "$t/claude" "$WRAPPER"
+cat > "$cp/0.4.8/hooks/hooks.json" <<'EOF'
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash -c 'h=\"$CLAUDE_PROJECT_DIR/scripts/hooks/block-rogue-codex-wsl.sh\"; [ -f \"$h\" ] && exec bash \"$h\"'" } ] } ] } }
+EOF
+echo '{ "hooks": {} }' > "$cp/0.4.112/hooks/hooks.json"
+echo '{ "hooks": {} }' > "$sv/hooks/hooks.json"
+echo '{ "name": "himmel-ops", "version": "0.4.112" }' > "$sv/.claude-plugin/plugin.json"
+cat > "$t/claude/plugins/known_marketplaces.json" <<EOF
+{ "himmel": { "source": { "source": "directory", "path": "$t/mkt" }, "installLocation": "$t/mkt", "autoUpdate": true } }
+EOF
+cat > "$t/claude/plugins/installed_plugins.json" <<EOF
+{ "version": 2, "plugins": { "himmel-ops@himmel": [
+  { "scope": "user", "projectPath": null, "installPath": "$cp/0.4.112", "version": "0.4.112", "installedAt": "2026-09-04T12:17:57.732Z", "lastUpdated": "2026-10-19T00:08:11.517Z" },
+  { "scope": "project", "projectPath": "$t/proj", "installPath": "$cp/0.4.8", "version": "0.4.8", "installedAt": "2026-09-09T21:32:31.522Z", "lastUpdated": "2026-09-09T21:32:31.522Z", "gitCommitSha": "585394f96703279b0f227a70d37f10ca829bb728" } ] } }
+EOF
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'INFO C13-plugin-hooks' && ! grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" '0.4.8' && grepq "$out" 'claude plugin uninstall himmel-ops@himmel --scope project'; then pass "C13 -> INFO (stale project pin skipped, cleanup command given)"; else fail "C13 stale pin -> $(printf '%s' "$out" | grep -A1 C13)"; fi
+cat > "$sv/hooks/hooks.json" <<'EOF'
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash -c 'h=\"$CLAUDE_PROJECT_DIR/scripts/hooks/served-gone-hook.sh\"; [ -f \"$h\" ] && exec bash \"$h\"'" } ] } ] } }
+EOF
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'served-gone-hook.sh'; then pass "C13 -> WARN (missing hook in the served hooks.json)"; else fail "C13 served missing -> $(printf '%s' "$out" | grep C13)"; fi
+rm "$sv/hooks/hooks.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'block-rogue-codex-wsl.sh'; then pass "C13 -> WARN (served plugin has no hooks.json, stale pins are not skipped)"; else fail "C13 served no hooks.json -> $(printf '%s' "$out" | grep C13)"; fi
+rm -rf "$t"
+
 # ── C14: ollama zero-egress defense-in-depth pin (OLLAMA_NO_CLOUD) ────────────
 FAKEOLLAMA="$FAKEROOT/ollamabin"; mkdir -p "$FAKEOLLAMA"
 printf '#!/bin/sh\necho ollama version fake\n' > "$FAKEOLLAMA/ollama"; chmod +x "$FAKEOLLAMA/ollama"

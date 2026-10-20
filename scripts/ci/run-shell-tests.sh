@@ -15,7 +15,8 @@
 # have the capability, the exact blind spot that let a PowerShell-only
 # regression ship green — and SUITE_TIER is a
 # declarative corpus-reduction table gated by env SUITE_TIER_MODE
-# (fast|extended|all; unset = all = byte-identical to no filter).
+# (fast|extended|all|pr; unset = all = byte-identical to no filter;
+# pr reads scripts/ci/suite-tiers.tsv).
 #
 # Docs-only fast lane: an extension of the --changed-since
 # trigger, not a new flag. When the filter is active and EVERY changed path
@@ -833,13 +834,35 @@ SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
 tier_repo_root=$(pwd -P)
 SUITE_TIER_MODE="${SUITE_TIER_MODE:-all}"
 case "$SUITE_TIER_MODE" in
-  fast|extended|all) ;;
+  fast|extended|all|pr) ;;
   *)
-    printf 'ERROR: SUITE_TIER_MODE="%s" is invalid — must be fast, extended, or all.\n' \
+    printf 'ERROR: SUITE_TIER_MODE="%s" is invalid — must be fast, extended, pr, or all.\n' \
       "$SUITE_TIER_MODE" >&2
     exit 2
     ;;
 esac
+# SUITE_TIER_MODE=pr reads scripts/ci/suite-tiers.tsv (path<TAB>tier<TAB>reason)
+# instead of the table above: a suite runs when it is impacted, when its tier is
+# pr, flow or quarantine, or when it has no row; a local suite runs only when
+# impacted. A quarantine suite that fails is reported and never fails the run.
+# SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
+tiers_local_nl=""
+tiers_quarantine_nl=""
+if [ "$SUITE_TIER_MODE" = "pr" ]; then
+  SUITE_TIERS_TSV="${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}"
+  if [ ! -r "$SUITE_TIERS_TSV" ] \
+     || ! tiers_local_nl=$(awk -F'\t' '!/^#/ && $2 == "local" {print $1}' "$SUITE_TIERS_TSV") \
+     || ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV"); then
+    printf 'ERROR: SUITE_TIER_MODE=pr could not read %s.\n' "$SUITE_TIERS_TSV" >&2
+    exit 2
+  fi
+  tiers_local_nl="
+${tiers_local_nl}
+"
+  tiers_quarantine_nl="
+${tiers_quarantine_nl}
+"
+fi
 
 # Capability-conditional suites. Neither table above can say
 # "runs exactly where the host has the tool": SKIP_LIST is a NEVER, which made
@@ -3035,12 +3058,13 @@ if [ -n "$impacted_range" ]; then
       echo "run-shell-tests.sh: --only-list '${only_list_file}': grep failed (rc ${_only_list_grep_rc}) intersecting with --impacted — refusing to read it as 0 impacted suites" >&2
       exit 2
     fi
-    if [ -z "$_impacted_out" ]; then
+    if [ -z "$_impacted_out" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
       echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted suites in --only-list ${only_list_file} — nothing to run"
       exit 0
     fi
   fi
-  if [ -z "$_impacted_out" ]; then
+  # In pr mode the tier suites still run when nothing is impacted.
+  if [ -z "$_impacted_out" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
     echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted shell suites — nothing to run"
     exit 0
   fi
@@ -3106,7 +3130,10 @@ reason --impacted flag}" "$_mf_shard" > "$manifest_path"
 fi
 # manifest_add <line> — one suite's fate, for shard-manifest-verify.sh.
 manifest_add() { [ -z "$manifest_path" ] || printf '%s\n' "$1" >> "$manifest_path"; }
-if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ -z "$_sel_list" ]; then
+# A base-sourced `mode full` in pr mode runs every tier, local included.
+tiers_pr_full=0
+case "$manifest_hdr" in "mode full"*) tiers_pr_full=1 ;; esac
+if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ -z "$_sel_list" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
   # A docs-only PR: the selection is empty, so this shard has nothing to run.
   # Every required context still reports; the aggregator verifies the header.
   echo "run-shell-tests.sh: ${impacted_range}: 0 impacted shell suites — nothing to run"
@@ -3471,6 +3498,7 @@ failed_suites=""
 # a second cap would double its cost.
 flake=0
 flaked_suites=""
+quarantined=0
 SUITE_FLAKE_WINDOW_DAYS="${SUITE_FLAKE_WINDOW_DAYS:-7}"
 case "$SUITE_FLAKE_WINDOW_DAYS" in ''|*[!0-9]*) SUITE_FLAKE_WINDOW_DAYS=7 ;; esac
 # A leading zero (08) would be octal in the arithmetic below; 10# forces decimal.
@@ -3637,8 +3665,9 @@ fi
 # lane skipped, and the lane's input is not the same in every mode: the run
 # step's own untracked manifest made it fire in --list (the shard probe) and
 # not in the run, so the probe said "no work" while the shard ran a suite.
+# Inert in pr mode too: the pr tier floor runs on every diff, docs-only included.
 docs_only_skip_active=0
-if [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
+if [ "$SUITE_TIER_MODE" != "pr" ] && [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
   docs_only_skip_active=1
   _docs_saw_path=0
   while IFS= read -r _docs_p; do
@@ -3718,7 +3747,7 @@ plan_narrowed_why="${plan_narrowed_why%, }"
 # while all n shards report green. That is the false-green class,
 # so the two passes share one implementation by construction.
 suite_filter_reason() {
-  local _relpath="$1" _key="$2" _reason _ere
+  local _relpath="$1" _key="$2" _reason _ere _not_impacted=0
   _filter_reason=""
 
   # --only-list: a suite outside the list never runs.
@@ -3738,14 +3767,18 @@ ${_key#"$only_list_repo_root"/}
   # reads as "not impacted" rather than as whichever standing skip it also
   # carries; an impacted suite falls through to the ordinary chain unchanged
   # (a SKIP_LIST'd impacted suite is still [SKIP]ped, with its own reason).
+  # In pr mode impacted is one arm of a union, so a miss goes on to the tier check.
   if [ "$impacted_active" -eq 1 ]; then
     case "$impacted_nl" in
       *"
 ${_key#"$impacted_repo_root"/}
 "*) ;;
       *)
-        _filter_reason="impacted: no reference to a file changed in ${impacted_range}"
-        return 0
+        _not_impacted=1
+        if [ "$SUITE_TIER_MODE" != "pr" ]; then
+          _filter_reason="impacted: no reference to a file changed in ${impacted_range}"
+          return 0
+        fi
         ;;
     esac
   fi
@@ -3772,7 +3805,18 @@ ${_key#"$impacted_repo_root"/}
   # extended mode (this check only ever runs a suite forward to that check,
   # never around it). Inert when SUITE_TIER_MODE=all (the default), matching
   # a full run exactly regardless of table contents.
-  if tier_lookup "$_key" "$_relpath"; then
+  if [ "$SUITE_TIER_MODE" = "pr" ]; then
+    if [ "$tiers_pr_full" -eq 0 ] && { [ "$impacted_active" -eq 0 ] || [ "$_not_impacted" -eq 1 ]; }; then
+      case "$tiers_local_nl" in
+        *"
+${_key#"$tier_repo_root"/}
+"*)
+          _filter_reason="tier: local (SUITE_TIER_MODE=pr runs a local suite only when impacted)"
+          return 0
+          ;;
+      esac
+    fi
+  elif tier_lookup "$_key" "$_relpath"; then
     if [ "$SUITE_TIER_MODE" = "fast" ]; then
       _filter_reason="tier: extended (SUITE_TIER_MODE=fast) — ${_tier_reason}"
       return 0
@@ -4277,8 +4321,22 @@ while IFS= read -r suite <&3; do
   fi
   ran=$((ran + 1))
   manifest_add "ran $rc ${mf_rel:-}"
+  _quar=0
+  if [ "$rc" -ne 0 ] && [ "$SUITE_TIER_MODE" = "pr" ]; then
+    case "$tiers_quarantine_nl" in
+      *"
+${suite_key#"$tier_repo_root"/}
+"*) _quar=1 ;;
+    esac
+  fi
 
-  if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
+  if [ "$_quar" -eq 1 ]; then
+    quarantined=$((quarantined + 1))
+    printf '[QUARANTINE] %s (rc=%s, %ss) — tier quarantine, not failing the run\n' "$suite" "$rc" "$dur"
+    echo '----- last 40 lines -----'
+    tail -n 40 "$log" | sed 's/^/    /'
+    echo '--------------------------'
+  elif [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
     flake=$((flake + 1))
     flaked_suites="${flaked_suites}  ${suite} (first run rc=${first_rc}, passed on retry)
 "
@@ -4379,7 +4437,7 @@ while IFS= read -r suite <&3; do
   fi
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
-  [ "$rc" -eq 0 ] || [ "$stop_on_fail" != 1 ] || stopped=1
+  [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 done 3< "$suites_file"
 
 if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
@@ -4417,6 +4475,9 @@ printf ' skipped=%s (suites counted in PASS that printed a SKIP line)\n' "$skipp
 if [ "$flake" -gt 0 ]; then
   printf ' FLAKE: %s (failed once, passed on the single retry; not counted in PASS or FAIL)\n' "$flake"
   printf 'Flaked suites (ledger: %s):\n%s' "${SUITE_FLAKE_LEDGER:-none}" "$flaked_suites"
+fi
+if [ "$quarantined" -gt 0 ]; then
+  printf ' QUARANTINE: %s (failed, tier quarantine; not counted in FAIL)\n' "$quarantined"
 fi
 if [ "$timed_out" -gt 0 ]; then
   printf ' TIMED OUT: %s (counted in FAIL)\n' "$timed_out"

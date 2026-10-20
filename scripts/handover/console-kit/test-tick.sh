@@ -2176,6 +2176,44 @@ vd_space="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/
 contains 'the ACTION line escapes a script path with a space (HIMMEL-6416)' "$vd_space" 'vd\ dir/versionless-done.sh --backfill'
 case "$vd_zero$vd_bad" in *'ACTION versionless-done'*) fail "a zero or unknown count prints no ACTION line (out='$vd_zero$vd_bad')" ;; *) pass 'a zero or unknown count prints no ACTION line (HIMMEL-6416)' ;; esac
 case "$(printf '%s\n' "$vd_three" | grep -c '^TICK ')" in 1) pass 'the ACTION line adds no second TICK line (HIMMEL-6416)' ;; *) fail 'the ACTION line adds no second TICK line (HIMMEL-6416)' ;; esac
+case "$vd_zero" in *wt-orphans*|*wt-ceiling*) fail "no worktree.sh under REPO reads no wt-orphans field (out='$vd_zero')" ;; *) pass 'no worktree.sh under REPO reads no wt-orphans field (HIMMEL-6584)' ;; esac
+mkdir -p "$REPO"
+printf '#!/bin/sh\nprintf "ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\\nORPHAN /w/b branch=detached:0123456789ab dirty=1 ahead=0 idle=9h\\nCEILING 72/100 worktrees (alarm at 70)\\n"\nexit 1\n' > "$W/wto-probe-2.sh"
+printf '#!/bin/sh\nexit 0\n' > "$W/wto-probe-0.sh"
+printf '#!/bin/sh\necho "SWEEP-ERROR (prune --orphans) open-PR list unavailable"\nexit 1\n' > "$W/wto-probe-err.sh"
+printf '#!/bin/sh\nexit 3\n' > "$W/wto-probe-crash.sh"
+printf '#!/bin/sh\nexit 1\n' > "$W/wto-probe-silent1.sh"
+wto_two="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'leftover worktrees show as wt-orphans=<n> (HIMMEL-6584)' "$wto_two" ' wt-orphans=2'
+contains 'a live count at the alarm shows as wt-ceiling=<live>/<cap> (HIMMEL-6584)' "$wto_two" ' wt-ceiling=72/100'
+wto_cache_f="$TICK_STATE_DIR/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
+if [ -s "$wto_cache_f" ]; then pass 'the reading is cached under a file keyed by REPO (HIMMEL-6584)'; else fail 'the reading is cached under a file keyed by REPO (HIMMEL-6584)'; fi
+contains 'leftover worktrees print an ACTION line naming prune --orphans (HIMMEL-6584)' "$wto_two" 'ACTION wt-orphans=2 wt-ceiling=72/100: bash '
+case "$(printf '%s\n' "$wto_two" | grep -c '^TICK ')" in 1) pass 'the wt-orphans ACTION line adds no second TICK line (HIMMEL-6584)' ;; *) fail 'the wt-orphans ACTION line adds no second TICK line (HIMMEL-6584)' ;; esac
+wto_cached="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a read younger than the TTL is served from the cache (HIMMEL-6584)' "$wto_cached" ' wt-orphans=2'
+mkdir -p "$W/repo-other"
+wto_other="$(REPO="$W/repo-other" TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+case "$wto_other" in *wt-orphans*|*wt-ceiling*) fail "a console on another REPO never reads this REPO's cache (out='$wto_other')" ;; *) pass "a console on another REPO never reads this REPO's cache (HIMMEL-6584)" ;; esac
+wto_zero="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+case "$wto_zero" in *wt-orphans*|*wt-ceiling*) fail "a clean fleet hides wt-orphans and wt-ceiling (out='$wto_zero')" ;; *) pass 'a clean fleet hides wt-orphans and wt-ceiling (HIMMEL-6584)' ;; esac
+wto_err="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-err.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'an unavailable open-PR list reads wt-orphans=unknown, not an all-clear (HIMMEL-6584)' "$wto_err" ' wt-orphans=unknown'
+rm -f "$wto_cache_f"
+wto_crash="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-crash.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a failed probe reads wt-orphans=unknown (HIMMEL-6584)' "$wto_crash" ' wt-orphans=unknown'
+wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a failed probe is not cached, so the next tick reads afresh (HIMMEL-6584)' "$wto_after" ' wt-orphans=2'
+rm -f "$wto_cache_f"
+wto_silent="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-silent1.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a probe exiting 1 with no alarm line reads wt-orphans=unknown (HIMMEL-6584)' "$wto_silent" ' wt-orphans=unknown'
+wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a silent exit 1 is not cached as an all-clear (HIMMEL-6584)' "$wto_after" ' wt-orphans=2'
+: > "$wto_cache_f"
+wto_empty="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'an empty cache is not an all-clear, so the tick reads afresh (HIMMEL-6584)' "$wto_empty" ' wt-orphans=2'
+case "$(find "$TICK_STATE_DIR" -name 'tick-wt-orphans-*.*' 2>/dev/null)" in '') pass 'the cache write leaves no temp file behind (HIMMEL-6584)' ;; *) fail 'the cache write leaves no temp file behind (HIMMEL-6584)' ;; esac
+rm -f "$wto_cache_f"
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'

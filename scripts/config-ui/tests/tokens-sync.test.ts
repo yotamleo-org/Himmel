@@ -47,6 +47,20 @@ test("a one-byte edit to the copy is a sync fault; identical files are not", () 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("the docs site applies the tokens and the Starlight variable map through customCss", () => {
+  const site = join(import.meta.dir, "../../../site");
+  const cfg = read(join(site, "astro.config.mjs"));
+  const m = cfg.match(/customCss:\s*\[([^\]]*)\]/);
+  expect(m, "astro.config.mjs must set customCss").not.toBeNull();
+  const listed = [...m![1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1]);
+  expect(listed).toEqual(["./src/styles/tokens.css", "./src/styles/starlight-map.css"]);
+  for (const f of listed) expect(existsSync(join(site, f)), `${f} must exist`).toBe(true);
+  const map = read(join(site, "src/styles/starlight-map.css")).replace(/\s+/g, "");
+  for (const [sl, token] of [["--sl-color-accent", "--accent"], ["--sl-color-bg", "--bg"], ["--sl-color-text", "--ink"], ["--sl-color-hairline", "--rule"]]) {
+    expect(map, sl).toContain(`${sl}:var(${token})`);
+  }
+});
+
 test("the tokens define light and dark values for the ten colours the console reads", () => {
   const css = read(COPY);
   for (const v of ["--bg", "--surface", "--rule", "--rule-strong", "--ink", "--muted", "--accent", "--ship", "--beta", "--crit"]) {

@@ -1,0 +1,11 @@
+mode impacted
+reason base-sourced selector
+base a40981b1dc0aaa85d27192e3911cd01616a76ff0
+head 177b1c72ef18d872d34bfd25386e78bdd8791f83
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+changed scripts/handover/test-wrap-subtree-check.sh
+suite scripts/guardrails/test-check-git-env-scrub.sh
+suite scripts/handover/console-kit/test-console-kit-e2e.sh
+suite scripts/handover/test-wrap-subtree-check.sh
+suite scripts/lib/test-red-control-extraction-lint.sh
+shard 1/1

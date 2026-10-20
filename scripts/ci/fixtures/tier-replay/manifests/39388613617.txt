@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/hooks/block-read-secrets.sh
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head c6b017712ca33a0f1b52bbb07b14f2a2682d0ea7
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

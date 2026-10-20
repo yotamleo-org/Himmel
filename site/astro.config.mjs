@@ -59,6 +59,8 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'himmel',
+      // tokens.css is the canonical palette (the console serves a byte copy); the map points Starlight's --sl-* at it.
+      customCss: ['./src/styles/tokens.css', './src/styles/starlight-map.css'],
       // Top-level groups are the F1 frame of docs-mockup-v4-agreed.html; test-site-build.sh asserts the list.
       sidebar: [
         {
