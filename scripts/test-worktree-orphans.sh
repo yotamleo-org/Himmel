@@ -271,12 +271,15 @@ WT_PARK_DOC2=$(mk_wt parkdoc2 fix/park-doc-2 1) || exit 1
 printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/park-doc\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-live.md"
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-live.md" "orphans-test-$$" >/dev/null 2>&1 \
     || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
-mkdir -p "$REPO/.git/info"
-printf '.env.local\nnode_modules/\n' >> "$REPO/.git/info/exclude"
+{ mkdir -p "$REPO/.git/info" && printf '.env.local\nnode_modules/\n' >> "$REPO/.git/info/exclude"; } \
+    || { echo "setup: write info/exclude failed" >&2; exit 1; }
 WT_PARK_IGN=$(mk_wt parkign fix/park-ign 1) || exit 1
-printf 'secret\n' > "$WT_PARK_IGN/.env.local"
+printf 'secret\n' > "$WT_PARK_IGN/.env.local" || { echo "setup: .env.local failed" >&2; exit 1; }
+git -C "$WT_PARK_IGN" check-ignore -q .env.local || { echo "setup: .env.local is not ignored" >&2; exit 1; }
 WT_PARK_NM=$(mk_wt parknm fix/park-nm 1) || exit 1
-mkdir "$WT_PARK_NM/node_modules" && printf 'x\n' > "$WT_PARK_NM/node_modules/pkg.js"
+{ mkdir "$WT_PARK_NM/node_modules" && printf 'x\n' > "$WT_PARK_NM/node_modules/pkg.js"; } \
+    || { echo "setup: node_modules fixture failed" >&2; exit 1; }
+git -C "$WT_PARK_NM" check-ignore -q node_modules/pkg.js || { echo "setup: node_modules is not ignored" >&2; exit 1; }
 PARK_TIP=$(git -C "$REPO" rev-parse fix/park)
 out=$(WORKTREE_ORPHAN_HOURS=1 run_wt prune)
 expect "7: rc=0 under a 1h gate" "$out" rc_is "$out" 0
@@ -310,19 +313,24 @@ printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/other\n' "$TMP_ROOT"
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-unread.md" "orphans-test-unread-$$" >/dev/null 2>&1 \
     || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
 chmod 000 "$HANDOVER_ROOT/leg-unread.md"
-out=$(run_wt prune)
-chmod 600 "$HANDOVER_ROOT/leg-unread.md"
-expect "7: a parked tree is kept when a live lock doc cannot be read" "$out" is_dir "$WT_PARK_UNREAD"
-WT_PARK_UNREAD2=$(mk_wt parkunread2 fix/park-unread-2 1) || exit 1
-chmod 000 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
-out=$(run_wt prune)
-chmod 600 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
-expect "7: a parked tree is kept when a lock's owner.json cannot be read" "$out" is_dir "$WT_PARK_UNREAD2"
-WT_PARK_UNREAD3=$(mk_wt parkunread3 fix/park-unread-3 1) || exit 1
-chmod 600 "$HANDOVER_ROOT"/.locks/queue/*.lock
-out=$(run_wt prune)
-chmod 700 "$HANDOVER_ROOT"/.locks/queue/*.lock
-expect "7: a parked tree is kept when a lock directory cannot be searched" "$out" is_dir "$WT_PARK_UNREAD3"
+if [ -r "$HANDOVER_ROOT/leg-unread.md" ]; then
+    echo "    SKIP: 7: permission bits do not bind this user (root), unreadable-lock rows not run"
+    chmod 600 "$HANDOVER_ROOT/leg-unread.md"
+else
+    out=$(run_wt prune)
+    chmod 600 "$HANDOVER_ROOT/leg-unread.md"
+    expect "7: a parked tree is kept when a live lock doc cannot be read" "$out" is_dir "$WT_PARK_UNREAD"
+    WT_PARK_UNREAD2=$(mk_wt parkunread2 fix/park-unread-2 1) || exit 1
+    chmod 000 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
+    out=$(run_wt prune)
+    chmod 600 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
+    expect "7: a parked tree is kept when a lock's owner.json cannot be read" "$out" is_dir "$WT_PARK_UNREAD2"
+    WT_PARK_UNREAD3=$(mk_wt parkunread3 fix/park-unread-3 1) || exit 1
+    chmod 600 "$HANDOVER_ROOT"/.locks/queue/*.lock
+    out=$(run_wt prune)
+    chmod 700 "$HANDOVER_ROOT"/.locks/queue/*.lock
+    expect "7: a parked tree is kept when a lock directory cannot be searched" "$out" is_dir "$WT_PARK_UNREAD3"
+fi
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-unread.md" >/dev/null 2>&1 || true
 
 echo
