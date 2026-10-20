@@ -1359,6 +1359,8 @@ load_fresh_lock_docs() (
         [ -d "$root/.locks/queue" ] || continue
         { [ -r "$root/.locks/queue" ] && [ -x "$root/.locks/queue" ]; } || exit 1
         for lockdir in "$root"/.locks/queue/*.lock; do
+            [ -d "$lockdir" ] || continue
+            [ -x "$lockdir" ] || exit 1
             [ -e "$lockdir/owner.json" ] || continue
             [ -r "$lockdir/owner.json" ] || exit 1
             doc=$(_ql_json_field "$lockdir/owner.json" handover)
