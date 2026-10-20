@@ -52,6 +52,37 @@ export function nextResidualDepth(parentLabels: string[]): number {
   return Math.max(0, ...depths) + 1;
 }
 
+export const OVER_CAP_LABEL = 'over-cap';
+const OPERATOR_DIRECTED = 'operator-directed';
+
+interface CapState {
+  current: string;
+  next?: string;
+  open: number;
+  cap: number;
+}
+
+/**
+ * The current unreleased version's open residuals against its cap. With a
+ * target, any other version is not gated (undefined). An unreadable Jira
+ * answer skips the check with a warning rather than blocking a filing.
+ */
+async function capState(project: string, target?: string): Promise<CapState | undefined> {
+  try {
+    const versions = await fetchVersions(project);
+    const current = earliestUnreleased(versions);
+    if (!current || (target !== undefined && target !== current)) return undefined;
+    const cap = residualBudget(versions.find((v) => v.name === current)?.description);
+    const jql =
+      `project = ${project} AND fixVersion = ${jqlQuote(current)} AND labels = residual AND statusCategory != Done`;
+    const open = (await searchAllIssues(jql, String(cap), request)).length;
+    return { current, next: earliestUnreleased(versions.filter((v) => v.name !== current)), open, cap };
+  } catch (e) {
+    console.error(`jira: cap check skipped (${(e as Error).message})`);
+    return undefined;
+  }
+}
+
 interface ResidualPlan {
   labels: string[];
   fixVersion?: string;
@@ -105,6 +136,81 @@ async function planResidual(
   return { labels, fixVersion, affectsVersion: current };
 }
 
+/**
+ * Sets fixVersions and versions on a new ticket. Filing into the current
+ * unreleased version is held to its residual cap; an operator-directed ticket
+ * is exempt and a residual is routed by planResidual. Returns the over-cap
+ * reason to comment on the ticket once it exists.
+ */
+async function applyVersions(
+  project: string,
+  options: { type: string; fixVersion?: string; affectsVersion?: string; overCap?: string },
+  fields: Record<string, unknown>,
+  o: { labels?: string[]; residual: boolean },
+): Promise<string | undefined> {
+  const gated = !o.residual && !o.labels?.includes(OPERATOR_DIRECTED);
+  let overCapReason: string | undefined;
+  const markOverCap = (st: CapState): void => {
+    overCapReason = `Filed over the ${st.current} cap (${st.open}/${st.cap} open residuals): ${options.overCap}`;
+    fields['labels'] = [...new Set([...(o.labels ?? []), OVER_CAP_LABEL])];
+  };
+  if (options.fixVersion !== undefined) {
+    await assertVersionExists(project, options.fixVersion);
+    fields['fixVersions'] = [{ name: options.fixVersion }];
+    const st = gated ? await capState(project, options.fixVersion) : undefined;
+    if (st && st.open >= st.cap) {
+      if (options.overCap === undefined) {
+        console.error(
+          `jira: ${st.current} is at its residual cap (${st.open}/${st.cap} open); ` +
+            'pass --over-cap <reason> to file into it anyway, or file into a later version',
+        );
+        process.exit(1);
+      }
+      markOverCap(st);
+    }
+  }
+  if (options.affectsVersion !== undefined) {
+    const version = await resolveAffectsVersion(project, options.affectsVersion);
+    fields['versions'] = [{ name: version }];
+  }
+  // A Bug without an explicit --fix-version defaults to the earliest
+  // unreleased version, or the next one when that is over its cap; an
+  // unreadable/empty version list files with no fixVersion rather than
+  // guess. The release gate is the v1-blocker label and priority, not the
+  // version default.
+  if (!o.residual && options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
+    const st = gated ? await capState(project) : undefined;
+    let defaultVersion: string | undefined;
+    if (st) {
+      const full = st.open >= st.cap;
+      const redirect = full && options.overCap === undefined;
+      defaultVersion = redirect ? st.next : st.current;
+      if (full && !redirect) markOverCap(st);
+      if (redirect) {
+        console.error(
+          `jira: ${st.current} is over its cap (${st.open}/${st.cap} open); ` +
+            (st.next ? `the Bug goes to ${st.next}` : 'no later version, filing the Bug with no fixVersion') +
+            `; --over-cap <reason> files it into ${st.current}`,
+        );
+      }
+    } else {
+      try {
+        defaultVersion = earliestUnreleased(await fetchVersions(project));
+      } catch {
+        defaultVersion = undefined;
+      }
+    }
+    // stderr: stdout stays the bare `Created KEY` line scripted callers capture.
+    if (defaultVersion) {
+      fields['fixVersions'] = [{ name: defaultVersion }];
+      console.error(`jira: Bug defaults to fixVersion ${defaultVersion} (earliest unreleased); --fix-version overrides`);
+    } else {
+      console.error('jira: no unreleased version found; filing the Bug with no fixVersion');
+    }
+  }
+  return overCapReason;
+}
+
 export function registerCreate(program: Command): void {
   program
     .command('create')
@@ -137,6 +243,14 @@ export function registerCreate(program: Command): void {
       '--residual-of <key>',
       'File this as a review residual of <key>: the writer picks the version, depth and labels (needs --fu-class and --class)',
     )
+    .option(
+      '--follow-up-of <key>',
+      'File this as a follow-up of <key>: stamps the residual label and links it to <key>',
+    )
+    .option(
+      '--over-cap <reason>',
+      'File into the current version although it is at its residual cap; the reason is recorded on the ticket',
+    )
     .option('--fu-class <class>', 'Residual routing class: polish (backlog), escape (current version), hardening (current version under budget)')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
     .option('--area <name>', 'Residual area; an open residual with the same class and area is commented on instead of filing a new one')
@@ -161,6 +275,8 @@ export function registerCreate(program: Command): void {
         fixVersion?: string;
         affectsVersion?: string;
         residualOf?: string;
+        followUpOf?: string;
+        overCap?: string;
         fuClass?: string;
         class?: string;
         area?: string;
@@ -170,6 +286,12 @@ export function registerCreate(program: Command): void {
         if (options.skeleton) {
           console.log(PLAIN_BLOCK_TEMPLATE);
           return;
+        }
+        if (options.followUpOf !== undefined && options.residualOf !== undefined) {
+          throw new Error('--follow-up-of cannot be combined with --residual-of (a residual is already linked to its parent)');
+        }
+        if (options.overCap !== undefined && !options.overCap.trim()) {
+          throw new Error('--over-cap needs a reason');
         }
         const fields: Record<string, unknown> = {
           project: { key: options.project ?? projectKey() },
@@ -227,6 +349,7 @@ export function registerCreate(program: Command): void {
           }
           labels = [...new Set([...(labels ?? []), ...residual.labels])];
         }
+        if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
         const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
         if (home.action === 'refuse') {
@@ -242,33 +365,10 @@ export function registerCreate(program: Command): void {
           if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
           console.error(`jira: residual routed to ${residual.fixVersion ?? 'the backlog'}`);
         }
-        if (options.fixVersion !== undefined) {
-          await assertVersionExists(options.project ?? projectKey(), options.fixVersion);
-          fields['fixVersions'] = [{ name: options.fixVersion }];
-        }
-        if (options.affectsVersion !== undefined) {
-          const version = await resolveAffectsVersion(options.project ?? projectKey(), options.affectsVersion);
-          fields['versions'] = [{ name: version }];
-        }
-        // A Bug without an explicit --fix-version defaults to the earliest
-        // unreleased version; an unreadable/empty version list files with no
-        // fixVersion rather than guess. The release gate is the
-        // v1-blocker label and priority, not the version default.
-        if (!residual && options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
-          let defaultVersion: string | undefined;
-          try {
-            defaultVersion = earliestUnreleased(await fetchVersions(options.project ?? projectKey()));
-          } catch {
-            defaultVersion = undefined;
-          }
-          // stderr: stdout stays the bare `Created KEY` line scripted callers capture.
-          if (defaultVersion) {
-            fields['fixVersions'] = [{ name: defaultVersion }];
-            console.error(`jira: Bug defaults to fixVersion ${defaultVersion} (earliest unreleased); --fix-version overrides`);
-          } else {
-            console.error('jira: no unreleased version found; filing the Bug with no fixVersion');
-          }
-        }
+        const overCapReason = await applyVersions(options.project ?? projectKey(), options, fields, {
+          labels,
+          residual: residual !== undefined,
+        });
 
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
         // Breadcrumb BEFORE attachments (same rationale as comment): the issue
@@ -282,11 +382,20 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
-        if (residual) {
+        const parentKey = options.residualOf ?? options.followUpOf;
+        if (parentKey) {
           try {
-            await createIssueLink(result.key, options.residualOf!, { name: 'Relates', inward: 'relates to' });
+            await createIssueLink(result.key, parentKey, { name: 'Relates', inward: 'relates to' });
           } catch (e) {
-            console.error(`Created ${result.key} but linking to ${options.residualOf} failed: ${(e as Error).message}`);
+            console.error(`Created ${result.key} but linking to ${parentKey} failed: ${(e as Error).message}`);
+            process.exit(1);
+          }
+        }
+        if (overCapReason) {
+          try {
+            await request('POST', `/issue/${result.key}/comment`, { body: markdownToAdf(overCapReason) });
+          } catch (e) {
+            console.error(`Created ${result.key} but recording the over-cap reason failed: ${(e as Error).message}`);
             process.exit(1);
           }
         }
