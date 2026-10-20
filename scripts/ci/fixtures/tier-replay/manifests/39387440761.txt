@@ -1,0 +1,6 @@
+mode full
+reason trust-path: .pre-commit-config.yaml
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head dd0eb3f798d3f743b51f22a2cbe2202a50314f76
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

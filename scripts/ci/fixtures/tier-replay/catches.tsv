@@ -1,0 +1,67 @@
+# The live CATCH events of the HIMMEL-6579 test-value audit (2026-10-20), one per row:
+# pr<TAB>head<TAB>job family<TAB>failing suite (repo path), or - for a non-shard job.
+# PR 2822 (test-check-new-shell-platform-guard.sh, since deleted) is the 65th event and is left out.
+3208	87cdc3af0	secret-scan	-
+3208	aae450567	secret-scan	-
+3203	8891ac4f7	doc-invariants	-
+3200	055f11420	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+3172	42b4de3d3	home-canary	-
+3160	e57d206a0	lint	-
+3125	7ac81e6c6	shell-unit-shard	scripts/lint/test-check-rule-tags.sh
+3109	9261f8a53	lanes-and-trust-suites	-
+3218	2cecd4ef9	secret-scan, doc-invariants, guardrail-matrices, jira-cli-smoke, claude-startup, commit-lint, bwk-awk-mktemp-gate, unchecked-mktemp-range	-
+3218	ce6edfce9	commit-lint, jira-cli-smoke, secret-scan, doc-invariants, bwk-awk-mktemp-gate, claude-startup, unchecked-mktemp-range, guardrail-matrices	-
+3218	991eb6745	doc-invariants, bwk-awk-mktemp-gate, commit-lint, unchecked-mktemp-range, secret-scan, claude-startup, guardrail-matrices, jira-cli-smoke	-
+3082	54e0bf952	home-canary	-
+3072	c2d9ea5b4	lint	-
+3065	bf75cc358	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+3061	300eecabd	lint	-
+3061	3c606e2a6	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+3052	4a1e0cfcf	lint	-
+3052	2c58a606f	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+3050	b17936928	lint	-
+3050	b7c9d5b64	lint	-
+3049	dac899bf2	lint	-
+3048	50198bb39	home-canary	-
+3048	e27591bb5	home-canary	-
+3048	e27591bb5	lint	-
+3046	4395c379f	lint	-
+3046	fb71cea13	lint	-
+3045	cb6d102db	lint	-
+3045	560e6e8aa	plugin-version-bump	-
+3041	e53df7fab	lint	-
+3040	3f9fa155a	doc-invariants	-
+3032	01a78af32	lint	-
+3031	34014aa1c	lint	-
+3030	b66ddb648	lint	-
+3025	99c34232c	lint	-
+3023	7172c792f	home-canary	-
+3023	60744222f	home-canary	-
+3023	fe13909eb	home-canary	-
+3023	78e79a3f8	home-canary	-
+3022	07f2864bd	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+3021	89e35c846	plugin-version-bump	-
+3021	e0d9c8491	lint	-
+3021	59d11e2aa	lint	-
+3019	2986d3f2b	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+3009	4e8313ec0	shell-unit-shard	scripts/handover/console-kit/test-gen-briefs.sh
+2997	34cd3bd38	lint	-
+2990	1471789e4	home-canary	-
+2990	7bd9b93f6	home-canary	-
+2990	fb12a0bdc	lint	-
+2990	1d65d6f32	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+2919	332ea0c7b	shell-unit-shard	scripts/lint/test-check-swallowed-errors.sh
+2910	7b2705561	lint	-
+2908	7a6f6e0d8	node-suites	-
+2890	5daa020e1	lanes-and-trust-suites	-
+2889	0596e56ca	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+2887	c36ba92ef	shell-unit-shard	scripts/handover/console-kit/test-gen-briefs.sh
+2883	76671fa22	plugin-version-bump	-
+2878	08dfe53cc	shell-unit-shard	scripts/cr/test-cr-guarded-closure.sh
+2858	a4e1f9c30	shell-unit-shard	scripts/parity/test-ws5-invariants.sh
+2858	a4e1f9c30	doc-invariants	-
+2858	a4e1f9c30	lanes-and-trust-suites	-
+2858	61305cba1	shell-unit-shard	scripts/hooks/test-wired-hooks-integrity-resolution.sh
+2851	de13b09ec	shell-unit-shard	scripts/observability/test-ledgers-registry.sh
+2807	efda3e72e	doc-invariants	-
+2807	cf4043a12	doc-invariants	-

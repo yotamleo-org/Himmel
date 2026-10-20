@@ -49,6 +49,8 @@
 #   19. --pr <N> / SUITE_REPORT_PR: the runner posts its
 #       after-report to a PR, and does not post when it must not.
 #   22. --shard <i>/<n> partitions the run list.
+#   27. SUITE_TIER_MODE=pr reads suite-tiers.tsv: a local suite runs only when
+#       impacted, an unlisted suite runs, a quarantine failure does not fail the run.
 #
 # Usage: bash scripts/ci/test-run-shell-tests.sh
 #
@@ -2682,6 +2684,145 @@ else
   fail "26e: the suite saw SUITE_STOP_ON_FAIL=$seen26"
 fi
 rm -rf "$sb26e"
+fi
+
+# --- 27. SUITE_TIER_MODE=pr: tier in {pr, flow} + impacted + unlisted -------
+# A copy of the runner in a throwaway repo reads that repo's suite-tiers.tsv.
+# thing.sh changes; test-local-hit.sh references it, test-local-miss.sh does not.
+# shellcheck source=../lib/fixture-tempdir.sh
+# shellcheck disable=SC1091
+. "$RST_FIXTURE_DIR/../lib/fixture-tempdir.sh"
+src27="$(cd "$RST_FIXTURE_DIR/../.." && pwd)"
+sb27="$(fixture_mktemp_dir)" || { fail "27: mktemp failed"; sb27=""; }
+if [ -n "$sb27" ]; then
+(
+  fixture_enter_git_init_dir "$sb27" || exit 1
+  git init -q
+  git config user.email t@e
+  git config user.name t
+) || fail "27: sandbox git init failed"
+mkdir -p "$sb27/scripts/ci" "$sb27/scripts/lib" "$sb27/scripts/cr" "$sb27/docs"
+cp "$RUNNER" "$sb27/scripts/ci/run-shell-tests.sh"
+cp "$src27/scripts/cr/impacted-suites.sh" "$src27/scripts/cr/anchor-handoff.sh" "$sb27/scripts/cr/"
+for lib27 in chokepoint-seam-guard.sh proc-tree.sh git-test-env.sh override-env.sh runtime-preflight.sh suite-semaphore.sh; do
+  cp "$src27/scripts/lib/$lib27" "$sb27/scripts/lib/$lib27"
+done
+T27_LOG="$sb27/ran.log"
+export T27_LOG
+mk27() {
+  # shellcheck disable=SC2016  # $T27_LOG must expand in the generated suite, not here
+  printf '#!/usr/bin/env bash\n%s\necho %s >> "$T27_LOG"\nexit %s\n' "$3" "$2" "${4:-0}" > "$sb27/scripts/$1"
+}
+printf '# thing\n' > "$sb27/scripts/lib/thing.sh"
+mk27 test-local-hit.sh local-hit '# drives scripts/lib/thing.sh'
+mk27 test-local-miss.sh local-miss '# drives nothing that changed'
+mk27 test-unlisted.sh unlisted '# has no suite-tiers.tsv row'
+mk27 test-pr.sh pr '# a pr-tier suite'
+mk27 test-quar.sh quar '# a quarantined flake' 1
+printf '# fixture tiers\nscripts/test-local-hit.sh\tlocal\tx\nscripts/test-local-miss.sh\tlocal\tx\nscripts/test-pr.sh\tpr\tguard\nscripts/test-quar.sh\tquarantine\tflakes\n' \
+  > "$sb27/scripts/ci/suite-tiers.tsv"
+printf '# doc\n' > "$sb27/docs/note.md"
+git -C "$sb27" add -A
+git -C "$sb27" commit -q -m "chore: base"
+base27=$(git -C "$sb27" rev-parse HEAD)
+printf 'echo changed\n' >> "$sb27/scripts/lib/thing.sh"
+git -C "$sb27" commit -q -am "fix: thing"
+range27="$base27..$(git -C "$sb27" rev-parse HEAD)"
+printf '# changed\n' >> "$sb27/docs/note.md"
+git -C "$sb27" commit -q -am "docs: note"
+docs27="$(git -C "$sb27" rev-parse HEAD~1)..$(git -C "$sb27" rev-parse HEAD)"
+run27="$sb27/scripts/ci/run-shell-tests.sh"
+
+: > "$T27_LOG"
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --impacted "$range27" 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$ran27" = "local-hit pr quar unlisted " ]; then
+  pass "27a: pr mode runs the impacted local suite and skips the other local one"
+else
+  fail "27a: ran='$ran27' (want local-hit pr quar unlisted) output: $out27"
+fi
+if grepq "$out27" '\[SKIP\].*test-local-miss\.sh — tier: local'; then
+  pass "27a: the unimpacted local suite is [SKIP]ped with a 'tier: local' reason"
+else
+  fail "27a: no 'tier: local' skip for test-local-miss.sh: $out27"
+fi
+case "$ran27" in
+  *unlisted*) pass "27b: a suite with no suite-tiers.tsv row runs in pr mode" ;;
+  *) fail "27b: the unlisted suite did not run: $out27" ;;
+esac
+if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
+  pass "27c: a failing quarantine suite runs, is marked [QUARANTINE] and the run is rc 0"
+else
+  fail "27c: rc=$rc27 (want 0 with a [QUARANTINE] line): $out27"
+fi
+SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script > /dev/null 2>&1; rc27=$?
+if [ "$rc27" -eq 1 ]; then
+  pass "27c-control: the same quarantine failure fails a SUITE_TIER_MODE=all run"
+else
+  fail "27c-control: SUITE_TIER_MODE=all with a failing quarantine suite gave rc=$rc27, want 1"
+fi
+
+: > "$T27_LOG"
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --list 2>&1); rc27=$?
+if [ "$rc27" -eq 0 ] && [ ! -s "$T27_LOG" ] \
+   && grepq "$out27" '\[SKIP\].*test-local-hit\.sh — tier: local' \
+   && grepq "$out27" '\[SKIP\].*test-local-miss\.sh — tier: local' \
+   && grepq "$out27" '\[RUN \].*test-pr\.sh' \
+   && grepq "$out27" '\[RUN \].*test-quar\.sh' \
+   && grepq "$out27" '\[RUN \].*test-unlisted\.sh'; then
+  pass "27d: pr --list with no range plans pr, quarantine and unlisted suites and skips every local one"
+else
+  fail "27d: rc=$rc27 output: $out27"
+fi
+
+: > "$T27_LOG"
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --impacted "$docs27" 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$rc27" -eq 0 ] && [ "$ran27" = "pr quar unlisted " ]; then
+  pass "27e: a docs-only range in pr mode still runs the pr-tier and unlisted suites"
+else
+  fail "27e: rc=$rc27 ran='$ran27' (want pr quar unlisted) output: $out27"
+fi
+
+SUITE_TIERS_TSV="$sb27/missing.tsv" SUITE_TIER_MODE=pr bash "$run27" --scan-repo-of-script --list > /dev/null 2>&1; rc27=$?
+if [ "$rc27" -eq 2 ]; then
+  pass "27f: pr mode with no readable suite-tiers.tsv is refused rc 2"
+else
+  fail "27f: a missing suite-tiers.tsv gave rc=$rc27, want 2"
+fi
+
+: > "$T27_LOG"
+printf 'ran.log\n' >> "$sb27/.git/info/exclude"
+out27=$(cd "$sb27" && SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --changed-since HEAD~1 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$rc27" -eq 0 ] && [ "$ran27" = "pr quar unlisted " ]; then
+  pass "27g: a docs-only --changed-since diff in pr mode still runs the pr-tier and unlisted suites"
+else
+  fail "27g: rc=$rc27 ran='$ran27' (want pr quar unlisted) output: $out27"
+fi
+
+# The sandbox has no impacted-selection.sh, so a base-sourced run takes the
+# selector's fail-open `mode full` header.
+: > "$T27_LOG"
+out27=$(cd "$sb27" && SUITE_TIER_MODE="pr" SUITE_IMPACTED_FROM_BASE="$base27" bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$rc27" -eq 0 ] && [ "$ran27" = "local-hit local-miss pr quar unlisted " ]; then
+  pass "27h: pr mode under a base-sourced 'mode full' header runs every tier, local included"
+else
+  fail "27h: rc=$rc27 ran='$ran27' (want local-hit local-miss pr quar unlisted) output: $out27"
+fi
+
+mk27 test-prfail.sh prfail '# a failing pr-tier suite' 1
+printf 'scripts/test-prfail.sh\tpr\tguard\n' >> "$sb27/scripts/ci/suite-tiers.tsv"
+: > "$T27_LOG"
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 1 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh' \
+   && ! grepq "$out27" '\[QUARANTINE\].*test-prfail\.sh'; then
+  pass "27i: a failing pr-tier suite fails a pr-mode run; only the quarantine row is forgiven"
+else
+  fail "27i: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
+fi
+rm -rf "$sb27"
 fi
 
 rst_tally

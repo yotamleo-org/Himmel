@@ -155,6 +155,7 @@ scripts/ci/test-suite-lock-brand-gap.sh	pr	trust-path
 scripts/ci/test-suite-lock-orphan-reaper.sh	pr	trust-path
 scripts/ci/test-suite-tiers.sh	pr	trust-path
 scripts/ci/test-tmp-sweep.sh	pr	trust-path
+scripts/ci/test-tier-replay.sh	pr	trust-path
 scripts/ci/test-vm-runner-probe-workflow.sh	pr	trust-path
 scripts/ci/test-workflow-red-issue.sh	pr	trust-path
 scripts/ci/test-workflow-red-workflow.sh	pr	trust-path
@@ -203,6 +204,7 @@ scripts/cr/test-d1-verdict.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-emit-gate-fail.sh	pr	trust-path
+scripts/cr/test-escape-classes.sh	pr	trust-path
 scripts/cr/test-failure-classify.sh	pr	trust-path
 scripts/cr/test-file-deferred-issues.sh	pr	trust-path
 scripts/cr/test-finding-reraise.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1012,6 +1014,7 @@ scripts/test-uninstall.sh	local	behaviour suite, 0 catches in the 400-PR audit w
 scripts/test-unlanded-work.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-user-slug-resolve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-vm-e2e-mode-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-worktree-orphans.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-worktree-verbs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/testing/test-added-unwired-prepush.sh	pr	static-gate
 scripts/testing/test-claude-mock-turn.sh	local	new since the audit, behaviour suite

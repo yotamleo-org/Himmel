@@ -1,0 +1,11 @@
+mode impacted
+reason base-sourced selector
+base a40981b1dc0aaa85d27192e3911cd01616a76ff0
+head e90629ef90430bdd90178429e84337f29113425e
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+changed scripts/eval/retrieval-eval/retrieval-eval.py
+changed scripts/eval/retrieval-eval/test-retrieval-eval.sh
+suite scripts/cr/test-pr-check-run.sh
+suite scripts/eval/retrieval-eval/test-retrieval-eval.sh
+suite scripts/lib/test-red-control-extraction-lint.sh
+shard 1/1

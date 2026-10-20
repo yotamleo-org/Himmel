@@ -615,16 +615,34 @@ check_c12() {
 # a missing/moved himmel hook script silent in a himmel checkout.  Doctor surfaces
 # that drift without changing hook runtime semantics.
 check_c13() {
-    local hooks_files=() hooks_json f unverified=""
+    local hooks_files=() hooks_json f unverified="" stale="" stale_fix="" served="" served_ver=""
     if [ -n "${DOCTOR_HIMMEL_OPS_HOOKS_JSON:-}" ]; then
         hooks_files=("$DOCTOR_HIMMEL_OPS_HOOKS_JSON")
     else
         # Only cache versions installed_plugins.json pins are live; unpinned
         # leftovers are dead weight. No readable registry -> scan the whole cache.
+        # A directory-sourced himmel marketplace serves himmel-ops from its folder,
+        # so a pin older than that folder's version is stale registry data: report
+        # it as INFO and check the served hooks.json instead.
         local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json" pins="" cache_hooks=()
-        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]?.installPath // empty' "$installed" 2>/dev/null)" || pins=""; }
+        local known="$CLAUDE_DIR_R/plugins/known_marketplaces.json" pin_ver pin_scope pin_proj pin_fix
+        if [ -r "$known" ]; then
+            served="$(jq -r '.himmel.source | select(.source == "directory") | .path // empty' "$known" 2>/dev/null)"
+            [ -n "$served" ] && served="$served/plugins/himmel-ops"
+        fi
+        [ -n "$served" ] && [ -f "$served/hooks/hooks.json" ] && served_ver="$(jq -r '.version // empty' "$served/.claude-plugin/plugin.json" 2>/dev/null)"
+        [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]? | [.installPath // empty, .version // "", .scope // "", .projectPath // ""] | join("|")' "$installed" 2>/dev/null)" || pins=""; }
         if [ -n "$pins" ]; then
-            while IFS= read -r f; do
+            while IFS='|' read -r f pin_ver pin_scope pin_proj; do
+                [ -n "$f" ] || continue
+                [ -n "$pin_ver" ] || pin_ver="${f##*/}"
+                if [ -n "$served_ver" ] && [ "$pin_ver" != "$served_ver" ] \
+                   && [ "$(printf '%s\n%s\n' "$pin_ver" "$served_ver" | sort -V | head -n1)" = "$pin_ver" ]; then
+                    stale="$stale $pin_ver${pin_proj:+@$pin_proj}"
+                    pin_fix="claude plugin uninstall himmel-ops@himmel --scope ${pin_scope:-user}"
+                    stale_fix="$stale_fix${stale_fix:+; }${pin_proj:+cd $(printf '%q' "$pin_proj") && }$pin_fix"
+                    continue
+                fi
                 if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
             done <<EOF_PINS
 $pins
@@ -633,6 +651,7 @@ EOF_PINS
             cache_hooks=("$CLAUDE_DIR_R"/plugins/cache/himmel/himmel-ops/*/hooks/hooks.json)
         fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
+                 "${served:+$served/hooks/hooks.json}" \
                  "${cache_hooks[@]}" \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
@@ -658,6 +677,8 @@ EOF_CMDS
         emit WARN C13-plugin-hooks "himmel-ops hooks.json references missing checkout hook(s):$missing - guarded [ -f ] wrappers will silently no-op" "run /himmel-update or restore the missing script(s), then re-run"
     elif [ -n "$unverified" ]; then
         emit WARN C13-plugin-hooks "pinned himmel-ops install(s) have no hooks/hooks.json, cannot verify:$unverified" "run /himmel-update to reinstall the plugin"
+    elif [ -n "$stale" ]; then
+        emit INFO C13-plugin-hooks "served himmel-ops $served_ver hooks resolve; skipped stale registry pin(s) older than the served plugin:$stale" "remove each stale pin: $stale_fix"
     else
         emit OK C13-plugin-hooks "himmel-ops plugin hooks resolve in this checkout"
     fi
