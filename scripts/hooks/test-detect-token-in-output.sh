@@ -18,9 +18,20 @@ pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 rep() { local s="" i; for ((i = 0; i < $2; i++)); do s="$s$1"; done; printf '%s' "$s"; }
-TOK_GHP="ghp""_$(rep A 36)"
-TOK_GHO="gho""_$(rep b 36)"
-TOK_PAT="github""_pat_$(rep C 82)"
+# mk_tok PREFIX BODY30 -> PREFIX + BODY30 + the 6-char base62 CRC32 a real token
+# ends in. The CRC32 comes from gzip's trailer, an implementation independent of
+# the hook's.
+B62=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
+mk_tok() {
+    local b0 b1 b2 b3 c sum="" i
+    read -r b0 b1 b2 b3 < <(printf '%s' "$2" | gzip -c | tail -c 8 | head -c 4 | od -An -v -tu1)
+    c=$((b0 + b1 * 256 + b2 * 65536 + b3 * 16777216))
+    for ((i = 0; i < 6; i++)); do sum="${B62:c%62:1}$sum"; c=$((c / 62)); done
+    printf '%s%s%s' "$1" "$2" "$sum"
+}
+TOK_GHP=$(mk_tok "ghp""_" "$(rep A 30)")
+TOK_GHO=$(mk_tok "gho""_" "$(rep b 30)")
+TOK_PAT="github""_pat_${B62:0:41}${B62:10:41}"
 TOK_SHORT="ghp""_$(rep A 35)"
 
 printf '{"allowFrom":["12345"]}' >"$TMP/access.json"
@@ -159,6 +170,45 @@ else fail "bogus event name: $(cut -c1-200 "$TMP/out")"; fi
 grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"
 g=$?
 if [ "$g" = 1 ] && [ -n "$(ls -A "$TMP/alerts")" ]; then pass "sentinels hold no token"; else fail "token in sentinel dir (grep rc=$g)"; fi
+
+# 13. Fixtures: a token-shaped value that is low-entropy AND fails the GitHub
+# checksum is a test fixture, not a credential: no screen alert, no DM, no sentinel.
+before=$(sent_count)
+fixtures=("ghp""_$(rep A 36)" "ghp""_$(rep E 36)" "ghp""_$(rep C 36)" "gho""_$(rep b 36)")
+for fx in "${fixtures[@]}"; do
+    run_hook "$(j_post Bash s12 "T=$fx")"
+    if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ] && [ "$(sent_count)" = "$before" ]; then pass "repeated-char fixture ${fx:0:4} x36 is silent"; else fail "fixture ${fx:0:4} paged (rc=$rc)"; fi
+done
+if [ -z "$(find "$TMP/alerts" -name 's12__*' 2>/dev/null)" ]; then pass "a fixture leaves no sentinel"; else fail "fixture sentinel written"; fi
+off="${TOK_GHP%?}0"
+[ "$off" != "$TOK_GHP" ] || off="${TOK_GHP%?}1"
+run_hook "$(j_post Bash s12 "T=$off")"
+if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "a low-entropy token with a changed checksum is silent"; else fail "bad-checksum low-entropy token paged"; fi
+# The fail-safe: a random-looking body with a wrong checksum is NOT called a
+# fixture, so a wrong checksum rule can never hide a real token.
+rnd="ghp""_${B62:5:36}"
+[ "$rnd" != "$(mk_tok "ghp""_" "${B62:5:30}")" ] || rnd="ghp""_${B62:9:36}"
+run_hook "$(j_post Bash s12 "T=$rnd")"
+if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out"; then pass "random-looking body with a wrong checksum still alerts"; else fail "random wrong-checksum token went silent"; fi
+pat_fx="github""_pat_$(rep C 82)"
+run_hook "$(j_post Bash s12 "T=$pat_fx")"
+if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "github_pat_ of one repeated char is silent"; else fail "repeated github_pat_ paged"; fi
+for pre in ghp gho ghu ghs ghr; do
+    run_hook "$(j_post Bash "s13$pre" "T=$(mk_tok "${pre}_" "$(rep Q9 15)")")"
+    if grep -q "${pre}_…" "$TMP/out"; then pass "checksum-valid ${pre}_ token alerts"; else fail "valid ${pre}_ token silent"; fi
+done
+run_hook "$(j_post Bash s14 "A=${fixtures[0]} B=$TOK_GHP")"
+if grep -q 'a GitHub token (' "$TMP/out" && grep -q 'variable B' "$TMP/out"; then pass "fixture beside a real token: only the real one is named"; else fail "mixed fixture+real: $(cut -c1-200 "$TMP/out")"; fi
+
+# 14. No suite under scripts/ holds a token-shaped literal: a value the hook
+# can page on must be built at run time (prefix + repeated char) and named in
+# labels, never printed. git grep exits 1 on a clean "no match".
+ROOT=$(cd "$(dirname "$HOOK")/../.." && pwd)
+lit=$(git -C "$ROOT" grep -lE '(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})' -- ':(glob)scripts/**/test-*' ':(glob)scripts/**/*.test.*' 2>/dev/null)
+g=$?
+if [ "$g" = 1 ]; then pass "no suite under scripts/ holds a token-shaped literal"
+elif [ "$g" = 0 ]; then fail "token-shaped literal in: $lit"
+else pass "token-literal scan skipped (not a git checkout, rc=$g)"; fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then echo "All cases passed."; exit 0; fi

@@ -299,8 +299,9 @@ if grep -qF -e '--host' "$LOGK" 2>/dev/null; then pass "a flag after a value-les
 LOG9="$WORKDIR/c9.jsonl"
 S9="gh""p_$(rep E 36)"
 run_hook "$(payload "sid-$S9" "/w/token=zzz/worktrees/slug-$S9" "Tool$S9" 'ls' '[X]')" "$LOG9" >/dev/null
-for leak in "$S9" "zzz"; do
-    if grep -qF "$leak" "$LOG9" 2>/dev/null; then fail "secret '$leak' in cwd/session_id/tool/title is redacted"; else pass "secret '$leak' in cwd/session_id/tool/title is redacted"; fi
+for leak_name in token zzz; do
+    case "$leak_name" in token) leak="$S9" ;; *) leak="zzz" ;; esac
+    if grep -qF "$leak" "$LOG9" 2>/dev/null; then fail "secret '$leak_name' in cwd/session_id/tool/title is redacted"; else pass "secret '$leak_name' in cwd/session_id/tool/title is redacted"; fi
 done
 if [ -s "$LOG9" ]; then pass "a redacted-field denial still writes a row"; else fail "a redacted-field denial still writes a row"; fi
 

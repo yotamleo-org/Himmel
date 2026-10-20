@@ -41,15 +41,54 @@ IFS= read -r -d '' input 2>/dev/null || :
 tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
 
+# A test fixture is never a credential, and we call a value one only when two
+# independent signals agree, so a wrong guess about either cannot hide a real
+# token. (1) Low entropy: a random base62 body has far more than 7 distinct
+# characters; a fixture is one or two characters repeated. (2) A real
+# ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char base62 CRC32 of the 30 chars
+# before it, so a fixture fails it. A fine-grained PAT carries no checksum, so
+# low entropy alone decides it. Pure bash: the regex-hit path forks nothing.
+b62="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+is_real_token() {
+    local t="$1" body seen="" ch c i j b sum=""
+    case "$t" in github_pat_*) body="${t#github_pat_}" ;; *) body="${t:4}" ;; esac
+    for ((i = 0; i < ${#body}; i++)); do
+        ch="${body:i:1}"
+        case "$seen" in *"$ch"*) ;; *) seen="$seen$ch" ;; esac
+    done
+    [ "${#seen}" -ge 8 ] && return 0
+    case "$t" in github_pat_*) return 1 ;; esac
+    body="${t:4:30}"
+    c=4294967295
+    for ((i = 0; i < 30; i++)); do
+        printf -v b '%d' "'${body:i:1}"
+        c=$((c ^ b))
+        for ((j = 0; j < 8; j++)); do
+            if ((c & 1)); then c=$(((c >> 1) ^ 3988292384)); else c=$((c >> 1)); fi
+        done
+    done
+    c=$((c ^ 4294967295))
+    for ((i = 0; i < 6; i++)); do
+        sum="${b62:c%62:1}$sum"
+        c=$((c / 62))
+    done
+    [ "$sum" = "${t:34}" ]
+}
+
 # Every distinct token in the text, not just the first: a token already alerted
-# on must not hide a new one printed after it.
+# on must not hide a new one printed after it. A fixture is skipped here, so a
+# text holding only fixtures ends the hook below, silent.
 tokens=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
     t="${BASH_REMATCH[1]}"
-    case " ${tokens[*]-} " in *" $t "*) ;; *) tokens+=("$t") ;; esac
+    case " ${tokens[*]-} " in
+        *" $t "*) ;;
+        *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
+    esac
     rest="${rest#*"$t"}"
 done
+[ "${#tokens[@]}" -gt 0 ] || exit 0
 
 # Per token: the kind and the variable it was assigned to, when the text shows
 # one. Names are read from the DECODED string values (jq), so an escaped `\n`
