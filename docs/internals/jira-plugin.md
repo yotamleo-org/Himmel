@@ -261,8 +261,8 @@ non-empty reason and a ledger location (`HANDOVER_DIR`, or
 the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
 (`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
 spoofable by any same-uid caller (ponytail, upgrade path HIMMEL-6796). Code:
-`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission`,
-`readAdmissions`, `admissionsLedgerPath`, `checkConsoleOverride`).
+`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)` and
+`readAdmissions(version?)`, the whole API).
 
 ## Confluence CLI
 

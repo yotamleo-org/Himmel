@@ -16,7 +16,7 @@ export interface Admission {
 
 export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason'>;
 
-export function admissionsLedgerPath(): string {
+function admissionsLedgerPath(): string {
   const explicit = process.env['HIMMEL_ADMISSIONS_LEDGER'];
   if (explicit) return explicit;
   const root = process.env['HANDOVER_DIR'];
@@ -36,26 +36,13 @@ export function appendAdmission(row: AdmissionInput): Admission {
   return admission;
 }
 
-export function readAdmissions(): Admission[] {
+/** Every row, oldest first; with a version, only that version's rows. Throws when no ledger location is set. */
+export function readAdmissions(version?: string): Admission[] {
   const path = admissionsLedgerPath();
   if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
+  const rows = readFileSync(path, 'utf8')
     .split('\n')
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l) as Admission);
-}
-
-/**
- * Validates a console override before anything is filed: a reason, the console
- * marker and a ledger location are all required. Returns the trimmed reason.
- */
-export function checkConsoleOverride(reason: string): string {
-  const trimmed = reason.trim();
-  if (!trimmed) throw new Error('--console-override needs a reason');
-  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
-  if (process.env['HIMMEL_CONSOLE'] !== '1') {
-    throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
-  }
-  admissionsLedgerPath();
-  return trimmed;
+  return version === undefined ? rows : rows.filter((r) => r.version === version);
 }

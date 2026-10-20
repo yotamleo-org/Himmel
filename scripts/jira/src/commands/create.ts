@@ -11,7 +11,7 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAI
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink } from './link.js';
-import { appendAdmission, checkConsoleOverride } from './admissions-ledger.js';
+import { appendAdmission, readAdmissions } from './admissions-ledger.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -227,6 +227,21 @@ interface PlacementOptions {
   gate?: string;
   consoleOverride?: string;
   sector?: string;
+}
+
+/**
+ * A console override needs a reason, the console marker and a ledger location.
+ * Returns the trimmed reason; the ledger probe throws when no location is set.
+ */
+function checkConsoleOverride(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) throw new Error('--console-override needs a reason');
+  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
+  if (process.env['HIMMEL_CONSOLE'] !== '1') {
+    throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
+  }
+  readAdmissions();
+  return trimmed;
 }
 
 /** Checks the gate, backlog and console-override flags before anything is filed; returns the override reason. */
