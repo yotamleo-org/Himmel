@@ -2431,8 +2431,9 @@ sync_marketplaces() {
 # so a plugin the checkout newly vendors and the settings enable (PR 2382:
 # i-have-adhd) was never installed — himmelctl status read the plugin set as
 # degraded. Install exactly the specs that are (a) declared by this checkout's
-# marketplace manifest, (b) `true` in the user enabledPlugins, and (c) absent
-# from installed_plugins.json. Never touches a disabled or non-@himmel spec.
+# marketplace manifest, (b) `true` in the user enabledPlugins or enabled by a
+# shipped profile (plugin-profiles.json), and (c) absent from
+# installed_plugins.json. Never touches a disabled or non-@himmel spec.
 # Advisory + failure-isolated; an unreadable installed file installs nothing.
 install_missing_himmel_plugins() {
     local mode="${1:-apply}"   # check | apply
@@ -2452,11 +2453,18 @@ install_missing_himmel_plugins() {
     local mp_name specs
     mp_name=$(jq -r '.name // "himmel"' "$manifest" 2>/dev/null | tr -d '\r' || true)
     [ -n "$mp_name" ] || mp_name="himmel"
-    specs=$(jq -r --arg mp "$mp_name" --slurpfile s "$settings" --slurpfile i "$installed" '
+    # A shipped profile's plugins are injected per launch (--settings), never
+    # written to settings.json, so they count as enabled too: base + floor +
+    # every profile's enable list. A missing registry adds none.
+    local profiles="$ROOT/scripts/lanes/plugin-profiles.json"
+    [ -f "$profiles" ] || profiles=/dev/null
+    specs=$(jq -r --arg mp "$mp_name" --slurpfile s "$settings" --slurpfile i "$installed" --slurpfile p "$profiles" '
         ($i[0].plugins | if type == "object" then . else empty end) as $have
         | ($s[0].enabledPlugins // {}) as $on
+        | ((($p[0].base // []) + ($p[0].floor // []) + [($p[0].profiles // {})[]? | (.enable // [])[]])
+            | map({key: ., value: true}) | from_entries) as $prof
         | .plugins[]?.name | (. + "@" + $mp) as $spec
-        | select($on[$spec] == true and ($have | has($spec) | not))
+        | select(($on[$spec] == true or $prof[$spec] == true) and ($have | has($spec) | not))
         | $spec' "$manifest" 2>/dev/null | tr -d '\r' || true)
     if [ -z "$specs" ]; then
         echo "    none."
