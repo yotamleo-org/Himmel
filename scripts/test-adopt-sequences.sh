@@ -220,14 +220,14 @@ fixture_env() {
   unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT
 }
 
-# graphify, rtk, the hermes checkout and the built jira CLI are host tools adopt neither writes nor
+# graphify, rtk, the hermes checkout and lanes, bun, uv, gitleaks, shellcheck, gh, the scheduler backend, npm and the built jira CLI are host tools adopt neither writes nor
 # removes, and a CI runner lacks them; codex-cli "never provisioned" is the fixture's missing codex
 # cache. Every other red stays.
 status_unexpected_red() { # <status output>: the red lines that are not a host tool
-  grep -E '(^|[[:space:]])red([[:space:]]|$)' "$1" | grep -vE '(^|[[:space:]])red[[:space:]]+(graphify|hermes-checkout|rtk|jira-cli-dist-build)([[:space:]]|$)'
+  grep -E '(^|[[:space:]])red([[:space:]]|$)' "$1" | grep -vE '(^|[[:space:]])red[[:space:]]+(graphify|hermes-checkout|hermes-lanes|rtk|jira-cli-dist-build|bun|uv|gitleaks|shellcheck|gh|scheduler-backend|npm-less-node)([[:space:]]|$)'
 }
 doctor_unexpected_item() { # <doctor output>: the bullet items that are not a host tool or codex-cli
-  grep -E '^ +· ' "$1" | grep -vE '^ +· (red/graphify|red/hermes-checkout|red/rtk|degraded/codex-cli|red/jira-cli-dist-build)([: ]|$)'
+  grep -E '^ +· ' "$1" | grep -vE '^ +· (red/graphify|red/hermes-checkout|red/hermes-lanes|red/rtk|degraded/codex-cli|red/jira-cli-dist-build|red/bun|red/uv|red/gitleaks|red/shellcheck|red/gh|red/scheduler-backend|red/npm-less-node)([: ]|$)'
 }
 
 # a fake red must still fail the filters while the host-tool reds pass them
@@ -243,6 +243,8 @@ filter_selftest() {
   [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the doctor red/graphify item must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '  red  hermes-checkout  a\n  red  rtk  b\n  red  jira-cli-dist-build  c\n' > "$f"
   [ -z "$(status_unexpected_red "$f")" ] || { echo "FAIL: filter self-test: the hermes, rtk and jira build status reds must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '  red  bun  a\n  red  scheduler-backend  b\n  red  gh  c\n   · red/uv: d\n   · red/gitleaks: e\n' > "$f"
+  [ -z "$(status_unexpected_red "$f")" ] && [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the runner toolchain reds must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '  red  rtk-extra  b\n  red  hermes  a\n' > "$f"
   [ "$(status_unexpected_red "$f" | grep -c .)" -eq 2 ] || { echo "FAIL: filter self-test: a near-miss status name must not be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '   · red/hermes-checkout: a\n   · red/rtk: b\n' > "$f"
@@ -261,11 +263,11 @@ check_green() { # <scope> <label>
   ( cd "$cwd" && env PATH="$X/bin:$ORIG_PATH" HIMMELCTL_REPO_ROOT="$R" HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" "$REALNODE" "$R/scripts/himmelctl/bin.js" status ) > "$out" 2>&1
   rc=$?
   if [ "$rc" -eq 0 ] && [ -z "$(status_unexpected_red "$out")" ]; then row ok "$label: status green"  # vacuous-path-ok: grep is linked into the fixture bin dir
-  else row bad "$label: status not green (rc=$rc): $(grep -E 'red' "$out" | head -3 | tr '\n' ';')"; fi
+  else row bad "$label: status not green (rc=$rc): $(status_unexpected_red "$out" | cut -c1-200 | head -5 | tr '\n' ';')"; fi
   out="$X/doctor.out"
   ( cd "$cwd" && env PATH="$X/bin:$ORIG_PATH" HIMMELCTL_REPO_ROOT="$R" HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" bash "$R/scripts/himmel-doctor.sh" --no-color --only C1,C6,C13,C15,C16 ) > "$out" 2>&1
   if grep -q 'Summary: 0 FAIL' "$out" && [ -z "$(doctor_unexpected_item "$out")" ]; then row ok "$label: doctor green"  # vacuous-path-ok: grep is linked into the fixture bin dir
-  else row bad "$label: doctor not green: $(grep -E 'FAIL|·' "$out" | cut -c1-200 | head -3 | tr '\n' ';')"; fi
+  else row bad "$label: doctor not green: $(grep -E 'FAIL' "$out" | head -2 | tr '\n' ';')$(doctor_unexpected_item "$out" | cut -c1-200 | head -5 | tr '\n' ';')"; fi
 }
 
 v_adopt() { # <scope> <label> [fail-at-k]
@@ -288,7 +290,7 @@ v_uninstall() { # <label> [extra uninstall flags]
   n="$(printf '%s' "$left" | grep -c . || true)"
   if [ "$rc" -eq 0 ] && [ "$n" -eq 0 ]; then row ok "$label: rc 0 and fixture restored"
   elif [ "$rc" -eq 0 ]; then row bad "$label: rc 0 but $n path(s) differ from the pre-install snapshot: $(printf '%s' "$left" | head -5 | tr '\n' ' ')"
-  elif [ "$n" -eq 0 ]; then row bad "$label: rc=$rc but nothing remains: $(tail -3 "$X/un.out" | tr '\n' ';')"
+  elif [ "$n" -eq 0 ]; then row bad "$label: rc=$rc but nothing remains: $(sed -n '/^Uninstall INCOMPLETE/,/^Nothing was removed/p' "$X/un.out" | cut -c1-200 | head -8 | tr '\n' ';')"
   else row ok "$label: rc=$rc and $n path(s) remain (consistent)"; fi
   if [ "$MUST_PASS" -eq 1 ] && [ "$rc" -ne 0 ]; then row bad "$label: a clean install must uninstall clean, got rc=$rc: $(grep -m1 'Halted at' "$X/un.out")"; fi
   MUST_PASS=0
