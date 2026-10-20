@@ -708,6 +708,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
         if [ "$rc" -eq 0 ]; then
             printf '%s\n' "$sum" >> "$r0_file"
             r0_handled=1
+            r0_fold="$r0_fold $label"
             what="$(printf '%s\n' "$out" | sed -n 's/^HANDLED \([a-z-]*\).*/\1/p' | head -n 1)"
             [ "$what" = noop ] && continue
             pr=""
@@ -715,6 +716,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
                 pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)"
                 [ -n "$pr" ] || pr="$(grep -oE '^- .*(READY|PR) #?[0-9]+' "$ldoc" | tail -n 1 | grep -oE '[0-9]+$')"
             fi
+            [ -z "$pr" ] || r0_fold="$r0_fold #$pr"
             printf '%s %s %s\n' "$label" "${what:-handled}" "${pr:--}" >> "$digest_file"
             continue
         fi
@@ -729,6 +731,37 @@ r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
 $cands
 EOF
     return 1
+}
+
+# r0_fold_key: <saved key> <new key> <absorbed words> — the baseline after the relay
+# absorbed those legs' wraps (words: labels and #<pr>). A field whose only difference
+# is absorbed tokens (`<word>`, `<word>:…`; `none` counts as empty) takes the new
+# value, and so do the derived leg-set fields livestate legset board closable (each
+# leg's own state is in legs=/tails=/acts=). Any other difference keeps the saved
+# value, so another leg's pending change still wakes.
+r0_fold_key() {
+    awk -v s="$1" -v k="$2" -v a=" $3 " '
+    function strip(v,   n, t, i, l, o) {
+        n = split(v, t, ","); o = ""
+        for (i = 1; i <= n; i++) {
+            l = t[i]; sub(/:.*/, "", l)
+            if (t[i] == "none" || index(a, " " l " ")) continue
+            o = o "," t[i]
+        }
+        return o
+    }
+    BEGIN {
+        ns = split(s, sp, "|")
+        for (i = 1; i <= ns; i++) { f = sp[i]; sub(/=.*/, "", f); sv[f] = substr(sp[i], length(f) + 2) }
+        nk = split(k, kp, "|"); out = ""
+        for (i = 1; i <= nk; i++) {
+            f = kp[i]; sub(/=.*/, "", f); v = substr(kp[i], length(f) + 2); seen[f] = 1
+            if (f ~ /^(livestate|legset|board|closable)$/ || strip(v) == ((f in sv) ? strip(sv[f]) : "")) out = out "|" f "=" v
+            else if (f in sv) out = out "|" f "=" sv[f]
+        }
+        for (i = 1; i <= ns; i++) { f = sp[i]; sub(/=.*/, "", f); if (!(f in seen) && strip(sv[f]) != "") out = out "|" sp[i] }
+        print substr(out, 2)
+    }'
 }
 
 saved=""
@@ -750,6 +783,7 @@ fail_woke() {
 
 succ_file="$inbox.wait.succession"
 pending=""
+r0_fold=""; r0_refold=""
 fail_streak=0
 fail_wake="${CONSOLE_WAIT_FAIL_WAKE:-3}"
 next_tick=0
@@ -840,7 +874,9 @@ while :; do
         if [ -n "$legs_from" ]; then
             new_hash="$(args_hash_of "$@" 9>&-)"
             if [ "$new_hash" != "$args_hash" ]; then
-                args_hash="$new_hash"; saved=""; pending=""
+                args_hash="$new_hash"
+                # a manifest move after a wrap the relay absorbed folds like the wrap
+                if [ -n "$r0_fold" ]; then r0_refold=1; else saved=""; pending=""; fi
             fi
         fi
         sample "$@" 9>&-
@@ -850,8 +886,11 @@ while :; do
             # the leg-event wake carries the tick line and saves its key, so a re-arm
             # does not wake again on the same tails=/acts= move
             if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-leg-event'; exit 0; fi
-            # a wrap the relay absorbed moved tails=/acts=: this sample is the new baseline
-            [ -z "$r0_handled" ] || { saved=""; pending=""; }
+            # a wrap the relay absorbed folds only that leg into the baseline
+            if [ -n "$saved" ] && { [ -n "$r0_handled" ] || [ -n "$r0_refold" ]; }; then
+                saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"
+            fi
+            r0_refold=""
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then

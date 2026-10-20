@@ -1745,6 +1745,7 @@
       "table": "wake",
       "floor": 9,
       "mapped": {
+        "leg-event": "c.legevent",
         "underfilled": "e.wake.underfilled",
         "succession complete": "e.next.complete",
         "handover-budget": "e.next.fill"

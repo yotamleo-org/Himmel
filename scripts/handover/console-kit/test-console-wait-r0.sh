@@ -8,10 +8,14 @@
 #   (r0b) leg-event ESCALATE (rc 10): WAKE leg-event <line> out=<file>, once; a
 #         re-arm does not wake for the same bullet again
 #   (r0c) a refusal that only means "not yet" (rc=3 lock held): no WAKE leg-event,
-#         retried on the next sample
+#         retried on the next sample; a standing one falls back to WAKE tick
 #   (r0d) a RETASK token in the bullet never reaches leg-event, the WAKE line or
 #         the out file
 #   (r0e) without --legs-from the waiter never calls leg-event
+#   (r0f) two legs: N2 changed a sample before the relay absorbs N1's wrap, and
+#         N2's change still wakes
+#   (r0g) two legs: N1's wrap and N2's change in one sample, then the manifest
+#         move N1's wrap made: N2's change still wakes
 #
 # tick.sh, the bank verdict and leg-event.sh are stubbed (CONSOLE_WAIT_TICK,
 # CONSOLE_WAIT_BANK, CONSOLE_WAIT_LEG_EVENT): nothing closes a window here.
@@ -56,6 +60,11 @@ cat > "$STUB/leg-event.sh" <<'EOF'
 n=$(( $(cat "$STUB/le.calls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB/le.calls"
 printf '%s\n' "$*" > "$STUB/le.args"
 cat > "$STUB/le.stdin"
+# le.rm: act like wrap-merged, drop N1 from the manifest and from the tick line
+if [ -f "$STUB/le.rm" ]; then
+    jq -c '.legs |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
+    cp "$STUB/tick.after" "$STUB/tick.line"
+fi
 if [ -f "$STUB/le.echo" ]; then printf 'ESCALATE unfiled-residual: %s\n' "$(cat "$STUB/le.stdin")"
 else cat "$STUB/le.out"; fi
 exit "$(cat "$STUB/le.rc")"
@@ -158,6 +167,7 @@ tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 lacks "(r0c) a lock-held refusal is not a leg-event wake" "$(cat "$WORK/r0c.out")" "WAKE leg-event"
 check "(r0c) it was asked again on the next sample" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0c) the standing refusal falls back to the tick wake" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0c.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0d) no RETASK token reaches leg-event, the wake or the out file -------
@@ -185,6 +195,44 @@ tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 check "(r0e) the tick change wakes as before" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0e.out")"
 check "(r0e) leg-event never ran" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# fleet2 <case>: fleet plus a second leg N2 in the manifest; sets L2 too.
+fleet2() {
+    fleet "$1"
+    L2="$WORK/$1/HIMMEL-2-N2-b.md"; printf '# leg\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
+    printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
+}
+
+# --- (r0f) another leg's change a sample before the absorbed wrap still wakes -
+reset_stub
+fleet2 r0f
+tick_line "N1:LIVE,N2:LIVE"
+start "$I" "$WORK/r0f.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(r0f) no baseline heartbeat"
+tick_line "N1:LIVE,N2:BLOCKED"
+sleep 1.3
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED,N2:BLOCKED"
+wait_exit "$WPID"
+check "(r0f) N2's change wakes (rc 0)" "0" "$rc"
+check "(r0f) as a tick wake on tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0f.out")"
+contains "(r0f) the absorbed N1 wrap is in the digest" "$(cat "$WORK/r0f.out")" "absorbed since last wake: wraps=1 (N1)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0g) a change beside the wrap survives the manifest move it makes -------
+reset_stub
+fleet2 r0g
+tick_line "N1:LIVE,N2:LIVE"
+start "$I" "$WORK/r0g.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(r0g) no baseline heartbeat"
+tick_line "N2:BLOCKED"; cp "$STUB/tick.line" "$STUB/tick.after"; touch "$STUB/le.rm"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED,N2:BLOCKED"
+wait_exit "$WPID"
+check "(r0g) N2's change wakes (rc 0)" "0" "$rc"
+check "(r0g) as a tick wake on tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
+check "(r0g) the relay dropped N1 from the manifest" "N2" "$(jq -r '.legs[].label' "$M")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 echo
