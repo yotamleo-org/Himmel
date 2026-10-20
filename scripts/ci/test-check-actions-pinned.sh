@@ -56,6 +56,12 @@ expect "docker:// ref without a digest" 1 "$tmp/docker-tag.yml"
 printf '# uses: actions/checkout@v7 is only a comment\n' > "$tmp/comment.yml"
 expect "commented-out uses" 0 "$tmp/comment.yml"
 
+printf '    steps:\n      - uses: actions/checkout@v7\n' > "$tmp/a:b.yml"
+expect "tag-pinned in a colon-containing filename" 1 "$tmp/a:b.yml"
+
+printf '    steps:\n      - uses: actions/checkout@v7 # x:3: uses: a/b@%s\n' "$sha" > "$tmp/colon-comment.yml"
+expect "tag pin with a :N: uses: sha tail in the comment" 1 "$tmp/colon-comment.yml"
+
 echo "== unreadable file is a scan failure, not a clean pass =="
 printf '    steps:\n      - uses: actions/checkout@v7\n' > "$tmp/locked.yml"
 chmod 000 "$tmp/locked.yml"

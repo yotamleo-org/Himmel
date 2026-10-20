@@ -38,8 +38,12 @@ done
 
 # grep exits 0 on a match, 1 on none, 2+ on a scan error: only 2+ is a failure
 # here, and it must not read as "nothing unpinned".
-found=$(grep -rnHE --include='*.yml' --include='*.yaml' \
-  '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}")
+# -Z ends the file name with NUL instead of ':', and tr turns that NUL into
+# \001 (a shell variable cannot hold NUL), so a ':' in a path cannot be
+# mistaken for the file:line: separator. pipefail keeps grep's rc.
+sep=$'\001'
+found=$(grep -rnHZE --include='*.yml' --include='*.yaml' \
+  '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}" | tr '\0' "$sep")
 rc=$?
 if [ "$rc" -gt 1 ]; then
   printf 'ERROR: scanning for uses: lines failed (grep rc=%s)\n' "$rc" >&2
@@ -48,7 +52,7 @@ fi
 
 # Every pattern is anchored to the start of the line's content (after the
 # grep file:line: prefix), so a `uses:` inside a trailing comment cannot match.
-head_re='^[^:]*:[0-9]+:[[:space:]]*-?[[:space:]]*uses:[[:space:]]*["'\'']?'
+head_re="^[^${sep}]*${sep}[0-9]+:[[:space:]]*-?[[:space:]]*uses:[[:space:]]*[\"']?"
 matches=$(printf '%s\n' "$found" \
   | grep -vE "${head_re}(\./|docker://[^[:space:]]*@sha256:[0-9a-f]{64})" \
   | grep -vE "${head_re}[^[:space:]\"'@#]+@[0-9a-f]{40}[\"']?([[:space:]]|\$)" \
@@ -56,7 +60,7 @@ matches=$(printf '%s\n' "$found" \
 
 if [ -n "$matches" ]; then
   printf 'ERROR: GitHub Action not pinned to a full 40-hex commit SHA:\n'
-  printf '%s\n' "$matches"
+  printf '%s\n' "$matches" | tr "$sep" ':'
   printf 'Pin as: uses: owner/repo@<40-hex-sha> # vX.Y.Z  (gh api repos/owner/repo/commits/<tag> --jq .sha)\n'
   exit 1
 fi
