@@ -305,7 +305,9 @@ _cic_rest_endpoint() {
     esac
     # Combined status and latest check-runs each have a 100-row ceiling.
     # Larger sets use gh's paginated GraphQL rollup, never a partial green.
-    CIC_REST_DATA=$(printf '%s\n' "$CIC_REST_DATA" | jq -c --arg k "$kind" --arg etag "$etag" --argjson body "$body" '.[$k] = {etag:$etag,body:$body}' 2>/dev/null) || { CIC_ERR="malformed REST $kind JSON"; return 1; }
+    # The body rides on stdin, not argv: a check-runs page over 128 KB exceeds
+    # MAX_ARG_STRLEN and `--argjson` fails the exec before jq runs.
+    CIC_REST_DATA=$(printf '%s\n%s\n' "$CIC_REST_DATA" "$body" | jq -sc --arg k "$kind" --arg etag "$etag" 'if length != 2 then error("body") else .[0][$k] = {etag:$etag,body:.[1]} | .[0] end' 2>/dev/null) || { CIC_ERR="malformed REST $kind JSON"; return 1; }
 }
 
 _cic_fetch_rest() {
