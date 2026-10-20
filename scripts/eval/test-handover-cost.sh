@@ -81,11 +81,11 @@ LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BU
 check "the late attachment relay is a leg (legs=2, leg=3/750)" 'row "$TMP/q.out" | grep -q " leg=3/750 legs=2 "'
 
 echo "3d. mechanical columns"
-if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed 's/bash action-zero.sh --acquire/bash append-results.sh d x/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1
 check "P calls after S first call is 3 (the relay piece)" 'row "$TMP/a.out" | grep -q " p_after_s=3 "'
 check "S calls to its first marker bullet is - when S wrote none" 'row "$TMP/a.out" | grep -q " s_to_marker=- "'
-check "S calls to its first marker bullet counts through the append-results.sh call" 'row "$TMP/m2.out" | grep -q " s_to_marker=2 "'
+check "S calls to its first marker bullet counts the call, not an earlier text mention of append-results.sh" 'row "$TMP/m2.out" | grep -q " s_to_marker=2 "'
 
 echo "4. errors"
 mkdir "$TMP/empty"

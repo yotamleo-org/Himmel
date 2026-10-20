@@ -118,11 +118,13 @@ def load(path):
                     + u.get("cache_creation_input_tokens", 0) * W_CC + u.get("output_tokens", 0) * W_OUT)
             # one message id spans several records (one per content block): keep the first ts, the
             # last usage, and every flag any block raised
+            called = any(isinstance(b, dict) and b.get("type") == "tool_use"
+                         and MARKER_RE.search(json.dumps(b.get("input", {}))) for b in msg.get("content") or [])
             prev = turns.get(msg["id"], (ts, 0, False, False, False, False))
             turns[msg["id"]] = (prev[0], cost, prev[2] or bool(MECH_RE.search(text)),
                                 prev[3] or bool(NEXT_RE.search(text)),
                                 prev[4] or "SUCCESSION accepted" in text,
-                                prev[5] or bool(MARKER_RE.search(text)))
+                                prev[5] or called)
     return {"name": name, "first": first, "turns": sorted(turns.values(), key=lambda x: x[0]),
             "deliveries": sorted(deliveries, key=lambda x: x[0])}
 
