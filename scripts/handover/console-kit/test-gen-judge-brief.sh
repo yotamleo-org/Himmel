@@ -122,6 +122,7 @@ jletter() { # <label> <stderr fragment> <args...>: refused, rc 1, nothing writte
 }
 jletter "a 4-letter --letter is refused" "letter" --console "$CONSOLE" --letter ABCD
 jletter "a lower-case --letter is refused" "letter" --console "$CONSOLE" --letter z
+jletter "an explicitly empty --letter is refused" "letter" --console "$CONSOLE" --letter ""
 jletter "a letter derived from the console name that is 4 letters long is refused" "letter" --console HIMMEL-nextleg-2026-10-13ABCD-roadmap-console
 rm -rf "$BUCKET"
 python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?

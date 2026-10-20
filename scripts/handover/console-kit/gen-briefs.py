@@ -325,7 +325,7 @@ def main():
     if not re.match(r'^\d{4}-\d\d-\d\d$', a.date):
         die('--date must be YYYY-MM-DD', 2)
     letter = a.letter
-    if not letter:
+    if letter is None:
         m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.console)
         letter = m.group(1) if m else 'X'
     if not re.fullmatch(r'[A-Z]{1,3}', letter):

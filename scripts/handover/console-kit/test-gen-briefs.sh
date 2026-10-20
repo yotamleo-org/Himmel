@@ -163,6 +163,7 @@ tok() { # <name> <stderr fragment> <gen-briefs args...>: refused, rc 1, nothing 
 }
 tok "a 4-letter --letter is refused" "letter" --console BZ --letter ABCD
 tok "a lower-case --letter is refused" "letter" --console BZ --letter bz
+tok "an explicitly empty --letter is refused" "letter" --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console --letter ""
 tok "a letter derived from the console name that is 4 letters long is refused" "letter" --console HIMMEL-nextleg-2026-10-08ABCD-roadmap-console
 python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --letter ABC --bucket "$WORK/bt-ok" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && grep -q 'ABC-N901-' "$WORK/bt-ok"/HIMMEL-9001-N901-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
