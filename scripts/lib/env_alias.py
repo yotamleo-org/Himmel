@@ -15,7 +15,7 @@ name outside [A-Z_][A-Z0-9_]* raises InvalidName, the shell's rc 2. env
 defaults to os.environ.
 
 CLI: python3 env_alias.py restrict|permit NEW OLD -> exit 0 true, 1 false,
-2 invalid name or usage (message on stderr).
+2 invalid name, usage or any other error (message on stderr).
 """
 import os
 import re
@@ -57,7 +57,7 @@ def main(argv):
         return 2
     try:
         return 0 if fns[argv[0]](argv[1], argv[2]) else 1
-    except InvalidName as e:
+    except Exception as e:  # any failure is rc 2, never a plain false
         sys.stderr.write(f"{e}\n")
         return 2
 
