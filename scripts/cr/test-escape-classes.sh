@@ -18,7 +18,7 @@ lacks(){ case "$2" in *"$3"*) bad "$1: [$2] has [$3]" ;; *) ok "$1" ;; esac; }
 
 # Row shape of `jira list --labels`: key, type, status, summary, labels (tab separated).
 printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" >"$ESC_FIX/args"' 'cat "$ESC_FIX/rows"' >"$td/jira.sh"
-export ESC_FIX="$td" ESCAPE_CLASSES_JIRA_CMD="bash $td/jira.sh"
+export ESC_FIX="$td" ESCAPE_CLASSES_JIRA_CMD="bash '$td/jira.sh'"
 
 printf 'HIMMEL-1\tBug\tDone\ta\tdeferred-escape,class-fail-open\nHIMMEL-5\tBug\tDone\tb\tclass-fail-open,deferred-escape\nHIMMEL-7\tBug\tDone\tc\tdeferred-escape,class-quoting\nHIMMEL-6\tBug\tDone\td\tdeferred-escape\n' >"$td/rows"
 out="$(bash "$tool" 2>&1)"; rc=$?
@@ -41,6 +41,10 @@ contains "a tie is named" "$out" "tied with class-b"
 : >"$td/rows"
 out="$(bash "$tool" 2>&1)"
 contains "no tickets: says so" "$out" "no deferred-escape tickets"
+
+awk 'BEGIN { for (i = 1; i <= 500; i++) printf "HIMMEL-%d\tBug\tDone\tx\tdeferred-escape,class-a\n", i }' >"$td/rows"
+out="$(bash "$tool" 2>&1)"
+contains "a result at the 500-row cap warns the tally is partial" "$out" "500-row cap"
 
 printf '%s\n' '#!/usr/bin/env bash' 'exit 1' >"$td/jira.sh"
 bash "$tool" >/dev/null 2>&1; rc=$?

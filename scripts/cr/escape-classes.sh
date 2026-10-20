@@ -25,6 +25,7 @@ jira() {
 rows="$(jira list --jql 'project = HIMMEL AND labels = deferred-escape' --labels --limit 500)" \
     || { echo "ERR escape-classes: cannot list deferred-escape tickets" >&2; exit 1; }
 [ -n "$rows" ] || { echo "escape classes: no deferred-escape tickets"; exit 0; }
+[ "$(printf '%s\n' "$rows" | grep -c .)" -lt 500 ] || echo "WARN escape-classes: the query hit its 500-row cap, the tally below is partial" >&2
 
 # Rows are key, type, status, summary, labels (tab separated).
 printf '%s\n' "$rows" | awk -F'\t' '
