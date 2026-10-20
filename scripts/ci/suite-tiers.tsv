@@ -913,6 +913,7 @@ scripts/telegram/test-phi-egress-guard-parity.sh	pr	static-gate
 scripts/telegram/test-restart-bridge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-user-claude-md.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-check-ci-cache.sh	pr	trust-path
