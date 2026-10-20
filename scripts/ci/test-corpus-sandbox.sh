@@ -102,6 +102,52 @@ PY
     printf '%s\nsubprocess.Popen(argv)\n' "$mutation" >> "$PY_FIXTURE"
     if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad "mutated argv prefix falsely certified: $mutation"; else ok "mutated argv prefix rejected: $mutation"; fi
 done
+# Fail closed: every hook-variable reference that is not a wrapped launch or a
+# listed non-launch use is refused, whatever the launch shape.
+cat > "$PY_FIXTURE" <<'PY'
+import subprocess
+runner = "sandbox-run.sh"
+subprocess.Popen(["bash", runner, "--", "bash", hook_path])
+PY
+# shellcheck disable=SC2016
+WRAP='bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
+# shellcheck disable=SC2016
+for launch in '"$HOOK"' '. "$HOOK"' 'source "$HOOK"' 'exec "$HOOK"' '"${HOOKS[0]}"' \
+    'dash "$HOOK"' 'zsh "$HOOK"' 'python3 "$HOOK"' 'bash -c "$HOOK"' 'H2="$HOOK"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped hook reference accepted: $launch"
+    else ok "unwrapped hook reference rejected: $launch"; fi
+done
+# shellcheck disable=SC2016
+for launch in 'dash "$HOOK"' 'zsh "$HOOK"' 'python3 "$HOOK"' 'bash "$HOOK"' '"${HOOKS[0]}"' '"$HOOK"'; do
+    printf '%s -- %s\n' "$WRAP" "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        ok "wrapped hook reference accepted: $launch"
+    else bad "wrapped hook reference rejected: $launch"; fi
+done
+# shellcheck disable=SC2016
+printf 'exec %s -- bash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'wrapped exec accepted'; else bad 'wrapped exec rejected'; fi
+# shellcheck disable=SC2016
+printf '%s \\\n    -- bash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'wrapped launch split by continuation accepted'; else bad 'wrapped launch split by continuation rejected'; fi
+# shellcheck disable=SC2016
+printf '# sandbox-run.sh marker is not a wrapper\nbash \\\n    "$HOOK"\n' > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'unwrapped launch split by continuation accepted'; else ok 'unwrapped launch split by continuation rejected'; fi
+# shellcheck disable=SC2016
+printf '%s \\\n    -- bash x; \\\n    bash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'unwrapped launch after wrapped one across continuation accepted'; else ok 'unwrapped launch after wrapped one across continuation rejected'; fi
+# shellcheck disable=SC2016
+printf '%s -- bash x\nbash "$HOOK"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'wrapper on a previous line certifies the next line'; else ok 'wrapper on a previous line does not certify the next line'; fi
+# shellcheck disable=SC2016
+for use in 'HOOK="$(cd "$(dirname "$0")" && pwd)/block-destructive-commands.sh"' \
+    '[ -x "$HOOK" ] || chmod +x "$HOOK" 2>/dev/null || true' '[[ -f "$HOOK" ]]' \
+    'cp "$HOOK" "$nolib/block-destructive-commands.sh"'; do
+    printf '%s\n%s -- bash "$HOOK"\n' "$use" "$WRAP" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok "non-launch hook use accepted: $use"; else bad "non-launch hook use rejected: $use"; fi
+done
 if python3 -I "$LINT" "$ROOT"; then ok 'owned real harnesses routed, others warned'; else bad 'real corpus sandbox lint'; fi
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

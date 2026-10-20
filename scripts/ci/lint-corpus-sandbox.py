@@ -83,26 +83,49 @@ def python_launches(text):
     return errors
 
 
+def logical_lines(text):
+    """Yield (first line number, text) with backslash continuations joined."""
+    pending, first = "", 0
+    for number, line in enumerate(text.splitlines(), 1):
+        if not pending and line.lstrip().startswith("#"):
+            continue
+        if not pending:
+            first = number
+        if re.search(r'(?<!\\)(?:\\\\)*\\$', line):
+            pending += line[:-1] + " "
+            continue
+        yield first, pending + line
+        pending = ""
+    if pending:
+        yield first, pending
+
+
 def shell_launches(text):
     errors = []
     # Require the owned runner path at the call site, never a mutable binding.
     command = 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
-    hook = re.compile(
-        r'\b(?:bash|sh|env)\s+(?:[^\s$`\"\'();|&]+\s+)*'
-        r'[\"\']?\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})'
-        r'|[\"\']?\$BASH[A-Za-z0-9_]*[\"\']?\s+[\"\']?\$HOOK\b'
-    )
+    # Fail closed: any reference to a hook-like variable is a launch unless it
+    # sits after a wrapper's `--` or is one of the listed non-launch uses.
+    name = r'[A-Za-z_0-9]*hook[A-Za-z_0-9]*'
+    reference = re.compile(r'\$\{?' + name, re.I)
+    ref = r'["\']?\$\{?' + name
+    non_launch = re.compile(
+        r'(?:\[\[?|\btest)\s+-[a-z]\s+' + ref
+        + r'|\bchmod\s+[-+=a-z,]+\s+' + ref
+        + r'|\bcp\s+' + ref, re.I)
     wrapper = re.compile(re.escape(command) + r'[^;|&]*?\s+--\s')
-    for number, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith("#"):
-            continue
-        for match in hook.finditer(line):
-            prefix = line[:match.start()]
-            # Ignore operators inside the exact path expression, but a wrapper
-            # protects only its own simple command, never a later one.
-            wrappers = list(wrapper.finditer(prefix))
-            if not wrappers or re.search(r'[;|&]', prefix[wrappers[-1].end():]):
-                errors.append((number, "hook launch bypasses sandbox runner"))
+    for number, line in logical_lines(text):
+        wrappers = list(wrapper.finditer(line))
+        allowed = list(non_launch.finditer(line))
+        for match in reference.finditer(line):
+            if any(w.start() <= match.start() < w.end() for w in wrappers):
+                continue
+            if any(m.start() <= match.start() < m.end() for m in allowed):
+                continue
+            covering = [w for w in wrappers if w.end() <= match.start()]
+            # A wrapper protects only its own simple command, never a later one.
+            if not covering or re.search(r'[;|&]', line[covering[-1].end():match.start()]):
+                errors.append((number, "hook reference outside a sandbox-run.sh wrapper"))
     return errors
 
 
