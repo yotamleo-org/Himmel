@@ -79,6 +79,8 @@ mkdir -p "$STATE"
 #
 # Markers:
 #   fail-update   `qmd update` exits nonzero
+#   busy-update   `qmd update` dies on SQLITE_BUSY; the file holds how many
+#                 calls fail that way before it succeeds (-1 = every call)
 #   fail-embed    the FIRST `qmd embed` exits nonzero
 #   fail-verify   the SECOND `qmd embed` (the completeness assert) exits nonzero
 #   incomplete    every `qmd embed` reports work remaining (never the all-clear)
@@ -99,6 +101,14 @@ case "${1:-}" in
         if [ -e "$STATE/fail-update" ]; then
             echo "qmd: update exploded" >&2
             exit 7
+        fi
+        if [ -e "$STATE/busy-update" ]; then
+            want=$(cat "$STATE/busy-update")
+            n=$(grep -c '^update' "$STATE/calls" 2>/dev/null || :)
+            if [ "$want" -lt 0 ] || [ "$n" -le "$want" ]; then
+                echo "SQLiteError: database is locked (errno 5, SQLITE_BUSY)" >&2
+                exit 1
+            fi
         fi
         echo "Indexed: 45 new, 22 updated, 14119 unchanged, 20 removed"
         echo "4 collections updated."
@@ -427,6 +437,32 @@ if [ ! -e "$HOME/.cache/qmd/refresh-stamp" ]; then
 else
     fail "failed update writes no refresh stamp" "stamp exists after a failed update"
 fi
+
+echo "TEST: 'qmd update' SQLITE_BUSY that clears within the wait is retried, not failed"
+reset_state
+echo 2 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "transient update lock rc 0" 0 "$rc"
+assert_contains "transient update lock says it is waiting" "index busy" "$out"
+got_calls=$(calls | tr '\n' ',')
+if [ "$got_calls" = "update,update,update,embed,embed,cleanup," ]; then pass "transient update lock retries update only"; else fail "transient update lock retries update only" "$got_calls"; fi
+
+echo "TEST: 'qmd update' SQLITE_BUSY held past the wait still fails rc 3, loudly"
+reset_state
+echo -1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "persistent update lock rc 3" 3 "$rc"
+assert_contains "persistent update lock is explicit" "'qmd update' failed" "$out"
+assert_contains "persistent update lock names the lock" "SQLITE_BUSY" "$out"
+assert_not_contains "no embed attempted while the index stays locked" "embed" "$(calls)"
+
+echo "TEST: a non-BUSY 'qmd update' failure is not retried"
+reset_state
+touch "$STATE/fail-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "non-busy update failure rc 3" 3 "$rc"
+got_calls=$(calls | tr '\n' ',')
+if [ "$got_calls" = "update," ]; then pass "non-busy update failure runs update once"; else fail "non-busy update failure runs update once" "$got_calls"; fi
 
 echo "TEST: 'qmd embed' failure exits 4 and says vectors are stale"
 reset_state

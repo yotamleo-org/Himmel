@@ -111,7 +111,8 @@
 #   0  index refreshed and verified complete
 #   1  usage / input error
 #   2  qmd executable not found or not usable
-#   3  `qmd update` failed
+#   3  `qmd update` failed (a SQLITE_BUSY lock is retried first, up to
+#      QMD_REINDEX_BUSY_WAIT_SECS=180 at QMD_REINDEX_BUSY_RETRY_SECS=10)
 #   4  `qmd embed` failed
 #   5  embed INCOMPLETE — vectors still pending after the embed pass
 #   6  completeness assert could not READ its verifier (qmd reworded its
@@ -227,6 +228,52 @@ run_embed() {
         # Normalize ordinary failures so an upstream rc 9 cannot impersonate BUSY.
         [ "$rc" -eq 0 ] || return 4
         return 0
+    done
+}
+
+# Best-effort: who has the index open right now, for the rc 3 log line.
+index_holders() {
+    local h=""
+    if command -v fuser >/dev/null 2>&1; then
+        h=$(fuser "$QMD_INDEX_PATH" 2>/dev/null | tr -s ' ' || true)
+        [ -z "$h" ] || { printf 'pids:%s' "$h"; return 0; }
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+        h=$(lsof -t -- "$QMD_INDEX_PATH" 2>/dev/null | tr '\n' ' ' || true)
+        [ -z "$h" ] || { printf 'pids: %s' "$h"; return 0; }
+    fi
+    printf 'unknown'
+}
+
+# `qmd update` dies with SQLITE_BUSY ("database is locked") while another writer
+# (an MCP daemon, a capture, a second cadence) holds the index write lock. Wait
+# it out: retry on that signature only, every QMD_REINDEX_BUSY_RETRY_SECS up to
+# QMD_REINDEX_BUSY_WAIT_SECS in total. Any other failure, and a lock held past
+# the bound, return nonzero at once so the caller still exits 3.
+run_update() {
+    local wait_max="${QMD_REINDEX_BUSY_WAIT_SECS:-180}"
+    local step="${QMD_REINDEX_BUSY_RETRY_SECS:-10}"
+    local waited=0 out rc
+    while :; do
+        rc=0
+        out=$(run_qmd update 2>&1) || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            relabel_hash_count <<<"$out"
+            return 0
+        fi
+        printf '%s\n' "$out" >&2
+        if ! grep -qE -- 'SQLITE_BUSY|database is locked' <<<"$out"; then
+            return "$rc"
+        fi
+        if [ "$waited" -ge "$wait_max" ]; then
+            echo "ERR qmd-reindex: index still busy after ${waited}s (SQLITE_BUSY); lock holder: $(index_holders)" >&2
+            return "$rc"
+        fi
+        echo "qmd-reindex: index busy (SQLITE_BUSY; holder: $(index_holders)); retrying in ${step}s (waited ${waited}s of ${wait_max}s)" >&2
+        sleep "$step"
+        waited=$((waited + step))
+        # A zero step must still advance, or a held lock would loop forever.
+        [ "$step" -gt 0 ] || waited=$((waited + 1))
     done
 }
 
@@ -444,7 +491,7 @@ fi
 
 # --- 1. re-index changed files across every configured collection -----------
 echo "qmd-reindex: [1/3] qmd update"
-if ! run_qmd update 2>&1 | relabel_hash_count; then
+if ! run_update; then
     echo "ERR qmd-reindex: 'qmd update' failed — index NOT refreshed." >&2
     exit 3
 fi
