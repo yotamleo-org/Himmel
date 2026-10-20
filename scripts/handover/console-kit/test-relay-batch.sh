@@ -212,13 +212,15 @@ printf '# leg\n\n## Results\n\n- 10:00 LIVE - x\n- 10:30 WRAPPED - done\n' > "$L
 printf '# console\n\n## Live state\n\nlegs: `N40:tok-forty:lock40:1` `N41:tok-fortyone:lock41:2`\nqueue: none\n\n## Results\n' > "$DOC8"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N40","lane":"native"},{"doc":"%s","label":"N41","lane":"native"},{"doc":"%s","label":"N42","lane":"native"}]}\n' "$LEGW" "$LEGL" "$LEGX" > "${DOC8%.md}.fleet.json"
 census DEMO-12-N40-wrapped-2026-10-20 DEMO-13-N41-live-2026-10-20
-out15="$(bash "$RB" "$DOC8" --successor S8 2>&1)"
+out15="$(bash "$RB" "$DOC8" --successor S8 2>&1)"; rc15=$?
+check "the wrapped-leg relay exits 0" "0" "$rc15"
 check "a wrapped leg on Live state is not relayed" "0" "$(printf '%s\n' "$out15" | grep -c 'N40')"
 check "a wrapped leg off Live state is not reported" "0" "$(printf '%s\n' "$out15" | grep -c 'N42')"
 check "the live leg is relayed" "1" "$(printf '%s\n' "$out15" | grep -c '^SENDMESSAGE to=DEMO-13-N41-live-2026-10-20 ::')"
 check "the summary shows n of m with m the live fleet" "1" "$(printf '%s\n' "$out15" | grep -c '^RELAYED 1 of 1$')"
 census DEMO-9-N21-nat-2026-10-09
-out16="$(bash "$RB" "$DOC4" --successor S4 2>&1)"
+out16="$(bash "$RB" "$DOC4" --successor S4 2>&1)"; rc16=$?
+check "the relay with an undeliverable leg exits 0" "0" "$rc16"
 check "legs the relay could not deliver count in m but not n" "1" "$(printf '%s\n' "$out16" | grep -c '^RELAYED 2 of 3$')"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
