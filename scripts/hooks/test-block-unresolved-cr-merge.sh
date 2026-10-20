@@ -28,6 +28,10 @@ HOOK="$SCRIPT_DIR/block-unresolved-cr-merge.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
+# The reviewer set is this tree's critics.json with no overlay, never the
+# primary checkout's main or a local critics.local.json.
+export CRITICS_BASE_JSON="$SCRIPT_DIR/../cr/critics.json" CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
+unset CRITICS_JSON CR_PROFILE
 
 # The repo the hook runs IN. CodeRabbit availability is now a
 # repo-scoped, non-versioned git config, and cr_merge_gate only answers for the
@@ -40,6 +44,11 @@ mkdir -p "$TMP/repo"
 git -C "$TMP/repo" init --quiet >/dev/null 2>&1
 git -C "$TMP/repo" remote add origin https://github.com/o/r.git
 git -C "$TMP/repo" config --local himmel.coderabbit true
+# An armed clone holds on an unreadable critic ledger, so the repo carries a
+# clean one: codex and claude ok at abc123.
+CRIT_LEDGER="$TMP/repo/.git/cr-critic-scores.jsonl"
+printf '%s\n' '{"kind":"avail","head":"abc123","model":"codex","status":"ok"}' \
+    '{"kind":"avail","head":"abc123","model":"claude","status":"ok"}' > "$CRIT_LEDGER"
 cd "$TMP/repo" || { echo "FATAL: cannot cd to the test repo"; exit 1; }
 
 mkdir -p "$TMP/bin"
@@ -171,9 +180,11 @@ payload() { # payload <tool_name> <command>
 # own timeout-bin.sh, which it now also refuses to run without).
 cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
   local _d
-  for _d in cr-signal cr-body-findings cr-available cr-ledger-evidence nwo timeout-bin; do
+  for _d in cr-signal cr-body-findings cr-available cr-ledger-evidence nwo timeout-bin critics-config resolve-node; do
     cp "$SCRIPT_DIR/../lib/$_d.sh" "$1/"
   done
+  mkdir -p "$1/../cr"
+  cp "$SCRIPT_DIR/../cr/failure-classify.sh" "$SCRIPT_DIR/../cr/critics.json" "$1/../cr/"
 }
 
 pass=0; fail=0
@@ -235,6 +246,11 @@ GH_STUB_MODE=clean t fork-chokepoint-passes 0 Bash "bash scripts/handover/merge-
 
 GH_STUB_MODE=unresolved t merge-with-unresolved-blocks   2 Bash "gh pr merge 42 --squash"
 GH_STUB_MODE=clean      t merge-clean-allows             0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+# The same clean merge with no critic ledger in this armed clone holds.
+mv "$CRIT_LEDGER" "$CRIT_LEDGER.off"
+GH_STUB_MODE=clean      t armed-no-critic-ledger-holds   2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+mv "$CRIT_LEDGER.off" "$CRIT_LEDGER"
+cat "$TMP/out-armed-no-critic-ledger-holds" "$TMP/err-armed-no-critic-ledger-holds" | grep -q "BLOCK: codex (hard) cannot be read at head abc123" || { echo "FAIL armed-no-critic-ledger-holds: not the reviewer HOLD: $(cat "$TMP/out-armed-no-critic-ledger-holds" "$TMP/err-armed-no-critic-ledger-holds")"; fail=$((fail+1)); }
 # the contract is split. The PR LOOKUP fails closed on a real merge
 # (every gh call erroring = lookup unresolved = DENY; was fail-open, rc 0). The
 # CR/CI gates' own API-read errors stay fail-open once the lookup
@@ -487,6 +503,7 @@ for _lib in cr-merge-gate ci-green-gate; do
     _root="$TMP/nolib-$_lib"
     mkdir -p "$_root/scripts/hooks"
     cp -R "$SCRIPT_DIR/../lib" "$_root/scripts/lib"
+    cp_crgate_deps "$_root/scripts/lib"
     cp "$HOOK" "$_root/scripts/hooks/block-unresolved-cr-merge.sh"
     rm -f "$_root/scripts/lib/$_lib.sh"
     _rc=0
@@ -516,6 +533,7 @@ for _row in "cr-signal|cr-merge-gate" "cr-body-findings|cr-merge-gate" "cr-avail
     _root="$TMP/nolib-nested-$_lib"
     mkdir -p "$_root/scripts/hooks"
     cp -R "$SCRIPT_DIR/../lib" "$_root/scripts/lib"
+    cp_crgate_deps "$_root/scripts/lib"
     cp "$HOOK" "$_root/scripts/hooks/block-unresolved-cr-merge.sh"
     rm -f "$_root/scripts/lib/$_lib.sh"
     _rc=0
@@ -1355,6 +1373,7 @@ fi
 TRUST_ANCHOR="$TMP/trust-anchor"
 mkdir -p "$TRUST_ANCHOR/scripts/hooks"
 cp -R "$SCRIPT_DIR/../lib" "$TRUST_ANCHOR/scripts/lib"
+cp_crgate_deps "$TRUST_ANCHOR/scripts/lib"
 cp "$HOOK" "$TRUST_ANCHOR/scripts/hooks/block-unresolved-cr-merge.sh"
 git -C "$TRUST_ANCHOR" init -q
 git -C "$TRUST_ANCHOR" add -A
