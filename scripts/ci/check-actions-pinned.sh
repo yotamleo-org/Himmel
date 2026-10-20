@@ -55,7 +55,7 @@ fi
 # grep file:line: prefix), so a `uses:` inside a trailing comment cannot match.
 head_re="^[^${sep}]*${sep}[0-9]+:[[:space:]]*-?[[:space:]]*uses:[[:space:]]*[\"']?"
 matches=$(printf '%s\n' "$found" \
-  | grep -vE "${head_re}(\./|docker://[^[:space:]]*@sha256:[0-9a-f]{64})" \
+  | grep -vE "${head_re}(\./|docker://[^[:space:]]*@sha256:[0-9a-f]{64}[\"']?([[:space:]]|\$))" \
   | grep -vE "${head_re}[^[:space:]\"'@#]+@[0-9a-f]{40}[\"']?([[:space:]]|\$)" \
   | grep -E "${head_re}" || true)
 

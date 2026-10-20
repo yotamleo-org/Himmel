@@ -457,6 +457,15 @@ assert_contains "persistent update lock is explicit" "'qmd update' failed" "$out
 assert_contains "persistent update lock names the lock" "index still busy after" "$out"
 assert_not_contains "no embed attempted while the index stays locked" "embed" "$(calls)"
 
+echo "TEST: a 0 s retry step still naps, so a held lock is not hammered back to back"
+reset_state
+echo -1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=2 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "0 s retry under a held lock ends rc 3" 3 "$rc"
+assert_contains "0 s retry naps 1 s" "retrying in 1s" "$out"
+update_calls=$(calls | grep -c '^update$' || true)
+if [ "$update_calls" -le 3 ]; then pass "0 s retry makes at most 3 update attempts in a 2 s bound"; else fail "0 s retry makes at most 3 update attempts in a 2 s bound" "$update_calls attempts"; fi
+
 echo "TEST: the busy log names each lock holder by pid AND command, not a bare pid"
 reset_state
 mkdir -p "$HOME/.cache/qmd"

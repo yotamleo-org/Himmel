@@ -817,6 +817,9 @@ const crLoopSection = (() => {
     const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
+// Versions past the soft cap, folded into --changed (and the page's meta) so a cap over-run
+// wakes a console that waits on the board, as a CI or fleet move does; not part of board-fp.
+const capSig = (trend.cr_loop.versions || []).filter((v) => v.over).map((v) => `${v.version}=${v.slots}`).join(',');
 
 // ICE-parked follow-ups: HIMMEL keys cited as follow-ups in the last 14 days of comments
 // that now live in the icebox, from ice-followups.sh over the Jira mirror (BOARD_MIRROR is
@@ -884,7 +887,7 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supervisor Session Board</title>
 ${fp ? `<meta name="console-board-fp" content="${fp}">` : ''}
-${ciFleetSig ? `<meta name="console-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="console-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="console-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="console-board-manifest-fp" content="${esc(manifestSig)}">` : ''}
+${ciFleetSig ? `<meta name="console-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="console-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="console-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="console-board-manifest-fp" content="${esc(manifestSig)}">` : ''}${capSig ? `\n<meta name="console-board-cap-fp" content="${esc(capSig)}">` : ''}
 <style>
 :root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; } }
@@ -1206,6 +1209,7 @@ let oldCensusSig = '';
 let oldReleaseSig = '';
 let oldCiFleetSig = '';
 let oldManifestSig = '';
+let oldCapSig = '';
 if (changedFlag && existsSync(outPath)) {
     const prev = readFileSync(outPath, 'utf8');
     oldFp = (/<meta name="console-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
@@ -1213,6 +1217,7 @@ if (changedFlag && existsSync(outPath)) {
     oldCiFleetSig = (/<meta name="console-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
     oldReleaseSig = (/<meta name="console-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
     oldManifestSig = (/<meta name="console-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldCapSig = (/<meta name="console-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
 }
 const tmp = `${outPath}.tmp${process.pid}`;
 writeFileSync(tmp, html);
@@ -1228,7 +1233,7 @@ renameSync(archiveTmp, archivePath);
     renameSync(jsonTmp, jsonPath);
 }
 if (changedFlag) {
-    console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
+    console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig || esc(capSig) !== oldCapSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
 } else {
     console.log(outPath);
 }

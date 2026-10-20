@@ -463,6 +463,23 @@ run "duplicate job on latest, one row red: REFUSE" 1 'REFUSE.*a.*not proven fixe
 set3 'a\tfailure\n' 'a\tsuccess\na\tfailure\n' 'a\tsuccess\n'
 run "duplicate job at base, one row red: inherited, ALLOW" 0 'ALLOW.*a'
 
+# the latest main run may be a dispatch run (aggregator named "(dispatch verify)"), and the
+# same case lands in a different shard on a PR run (impacted suites only) than on a full base run
+SHP='shell-unit-shard (ubuntu-latest, 1)'; SHB='shell-unit-shard (ubuntu-latest, 7)'
+set3 "$SHP\tfailure\nshell-unit (ubuntu-latest)\tfailure\n" "$SHB\tfailure\nshell-unit (ubuntu-latest)\tfailure\n" 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-latest, 7)\tsuccess\nshell-unit (dispatch verify) (ubuntu-latest)\tsuccess\n'
+printf '%s\tX\nshell-unit (ubuntu-latest)\tX\n' "$SHP" > "$tmp/pr-cases"; printf '%s\tX\nshell-unit (ubuntu-latest)\tX\n' "$SHB" > "$tmp/base-cases"
+run "latest is a dispatch run and the case moved shard (1 to 7): ALLOW" 0 'ALLOW.*shell-unit'
+printf '%s\tX\nshell-unit (ubuntu-latest)\tX\n' "$SHP" > "$tmp/pr-cases"; printf '%s\tZ\nshell-unit (ubuntu-latest)\tX\n' "$SHB" > "$tmp/base-cases"
+run "PR shard case X absent from every base shard: REFUSE (the PR's own red)" 1 'REFUSE.*shell-unit-shard.*X'
+printf '%s\tX\nshell-unit (ubuntu-latest)\tX\n' "$SHP" > "$tmp/pr-cases"; printf '%s\tX\nshell-unit (ubuntu-latest)\tX\n' "$SHB" > "$tmp/base-cases"
+printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-latest, 7)\tfailure\nshell-unit (dispatch verify) (ubuntu-latest)\tsuccess\n' > "$tmp/latest"
+run "a shard still red on the dispatch latest run: REFUSE (not proven fixed)" 1 'REFUSE.*shell-unit-shard.*not proven fixed'
+printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-latest, 7)\tsuccess\nshell-unit (dispatch verify) (ubuntu-latest)\tfailure\n' > "$tmp/latest"
+run "the dispatch aggregator is red on latest: REFUSE (not proven fixed)" 1 'REFUSE.*shell-unit .*not proven fixed'
+printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-latest, 7)\tsuccess\nshell-unit (dispatch verify) (ubuntu-latest)\tsuccess\n' > "$tmp/latest"
+printf '%s\tX\n' "$SHP" > "$tmp/pr-cases"
+run "a PR job with no failing case recorded still REFUSEs under the renamed jobs" 1 'REFUSE.*shell-unit.*no failing case'
+
 bash "$MF" --pr "$tmp/pr" --main "$tmp/pr" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 2 ]; then ok "the old 2-file --main form is refused (exit 2)"; else bad "the old --main form exits 2 (rc=$rc)"; fi

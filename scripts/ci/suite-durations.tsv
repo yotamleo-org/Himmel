@@ -332,7 +332,8 @@ scripts/handover/console-kit/test-close-wrapped-leg.sh	20
 scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1
 scripts/handover/console-kit/test-console-kit-e2e.sh	14
-scripts/handover/console-kit/test-console-wait.sh	483
+scripts/handover/console-kit/test-console-wait-b.sh	265
+scripts/handover/console-kit/test-console-wait.sh	283
 scripts/handover/console-kit/test-cut-tag.sh	2
 scripts/handover/console-kit/test-fleet-manifest.sh	1
 scripts/handover/console-kit/test-fleet.sh	3
