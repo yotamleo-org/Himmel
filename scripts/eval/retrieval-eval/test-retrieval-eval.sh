@@ -113,7 +113,7 @@ eq "scores.tsv no longer names recall@5" "0" "$(hdr 'recall@5')"
 eq "qmd-hybrid precision@5 is 0.10" "0.10" "$(s qmd-hybrid precision@5)"
 eq "qmd-hybrid mrr is 0.50" "0.50" "$(s qmd-hybrid mrr)"
 eq "qmd-hybrid gold_share is 0.50" "0.50" "$(s qmd-hybrid gold_share)"
-eq "qmd-hybrid tokens_per_hit is its tokens over its one hit" "18" "$(s qmd-hybrid tokens_per_hit)"
+eq "qmd-hybrid tokens_per_hit is its tokens over its one hit" "18.0" "$(s qmd-hybrid tokens_per_hit)"
 eq "graphify precision@5 is 0.10" "0.10" "$(s graphify precision@5)"
 eq "graphify gold_share pools returned files: 1 of 3" "0.33" "$(s graphify gold_share)"
 eq "an arm with no hit has no tokens_per_hit" "-" "$(s path tokens_per_hit)"
@@ -124,6 +124,14 @@ eq "precision counts a grade-1 file; mrr and gold_share count only gold" "0.2 0.
 s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 q = {"gold": ["bin/run.sh"], "gold1": ["docs/lock.md"]}
 print(m.precision(["Docs/Lock.md"], q, 5), m.reciprocal_rank(["Docs/Lock.md"], q, 5), m.gold_share(["docs/lock.md", "bin/run.sh"], q, 5))' "$EV")"
+eq "a graded path is counted once however many returned files match it" "0.2 0.5" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+q = {"gold": ["docs/lock.md"], "gold1": []}
+f = ["docs/lock.md", "archive/docs/lock.md"]
+print(m.precision(f, q, 5), m.gold_share(f, q, 5))' "$EV")"
+printf '{"id":"f1","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}\n{"id":"f2","kind":"where","q":"where is relay_batch set","gold":["bin/run.sh"],"reason":[]}\n{"id":"f3","kind":"why","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[]}\n' > "$W/qf.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-5a.jsonl" py "$EV" run --repo "$R" --questions "$W/qf.jsonl" --out "$W/outf" --arms qmd-hybrid > /dev/null 2>&1
+eq "tokens_per_hit keeps its fraction" "13.5" "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} {print $h["tokens_per_hit"]}' "$W/outf/scores.tsv")"
 eq "mrr is the reciprocal of the first gold rank" "0.33" "$(py -c 'import importlib.util,sys
 s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 print("%.2f" % m.reciprocal_rank(["a.md", "b.md", "bin/run.sh"], {"gold": ["bin/run.sh"]}, 5))' "$EV")"

@@ -395,9 +395,22 @@ def _top(files, k):
     return out[:k]
 
 
+def _count(files, names, k):
+    """Files among the first k distinct ones that name a path in names, each path used once."""
+    left = [n.lower() for n in names]
+    c = 0
+    for f in _top(files, k):
+        fl = f.lower()
+        m = next((n for n in left if fl == n or fl.endswith("/" + n)), None)
+        if m:
+            left.remove(m)
+            c += 1
+    return c
+
+
 def precision(files, q, k):
-    """Graded (gold or gold1) files among the first k distinct files, over k."""
-    return sum(_named(f, q["gold"] + q.get("gold1", [])) for f in _top(files, k)) / k
+    """Graded (gold or gold1) files among the first k distinct files, over k; each graded path counts once."""
+    return _count(files, q["gold"] + q.get("gold1", []), k) / k
 
 
 def reciprocal_rank(files, q, k):
@@ -410,7 +423,7 @@ def reciprocal_rank(files, q, k):
 def gold_found(files, q, k):
     """(gold files, files returned) among the first k distinct files."""
     top = _top(files, k)
-    return sum(_named(f, q["gold"]) for f in top), len(top)
+    return _count(files, q["gold"], k), len(top)
 
 
 def gold_share(files, q, k):
@@ -553,7 +566,7 @@ def cmd_run(a):
         to = sum(r["timeout"] for r in rs)
         er = sum(r["error"] for r in rs)
         lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, dash(prec), dash(mrr), dash(gs), "%.2f" % rea,
-                                str(len(rr)), "%d" % tk, dash(tph, "%d"), "%d" % msm, "%d" % mst, str(to), str(er)]))
+                                str(len(rr)), "%d" % tk, dash(tph, "%.1f"), "%d" % msm, "%d" % mst, str(to), str(er)]))
         metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
                         arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
