@@ -2429,7 +2429,7 @@ not_contains 'a clean READY with a GO verdict is not flagged' "$rm_det" "	103	"
 not_contains 'a READY that names its trust-path touch is not flagged' "$rm_det" "	105	"
 contains 'detail breaks the NO-GO rate out per model' "$rm_det" "MODEL	claude-sonnet-5-5	"
 contains 'verbose labels the field' "$(TOKEN='' bash "$SUT" --doc "$RMD/console.md" --verbose 2>/dev/null)" 'ready-mismatch: 2/5,nogo=1/2,ALERT'
-! grep -q 'files' "$W/rm-gh.calls" && pass 'cached file lists mean no file-list gh call' || fail 'a cached PR still read its files from gh'
+[ -f "$W/rm-gh.calls" ] && ! grep -q 'files' "$W/rm-gh.calls" && pass 'cached file lists mean no file-list gh call' || fail 'a cached PR still read its files from gh'
 rm -f "$W/rm-gh.calls"
 rm -f "$RMD"/leg[1245].md
 same 'ready-mismatch= is absent when every READY is clean' "$(rm_of)" ''
