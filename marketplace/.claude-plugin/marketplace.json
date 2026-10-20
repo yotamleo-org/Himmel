@@ -555,6 +555,17 @@
       },
       "homepage": "https://github.com/upstash/context7",
       "license": "MIT"
+    },
+    {
+      "name": "graphify",
+      "source": "./plugins/graphify",
+      "description": "graphify knowledge-graph skill (Graphify-Labs/graphify, Apache-2.0). The skills/ tree is NOT vendored: scripts/lib/graphify-bin.sh (_graphify_skill_refresh, run by himmel-update) generates it from the pinned graphifyy pip package so skill and package stay version-coupled. Replaces the user-scope ~/.claude/skills/graphify copy, which ignored enabledPlugins and loaded in every session including bare (HIMMEL-6465). Enabled by the `user` profile only.",
+      "strict": true,
+      "author": {
+        "name": "yotamleo"
+      },
+      "homepage": "https://github.com/Graphify-Labs/graphify",
+      "license": "Apache-2.0"
     }
   ]
 }
