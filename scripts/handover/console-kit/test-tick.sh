@@ -2476,6 +2476,26 @@ contains 'a window with no READY reports a zero count' "$rm_det" "COUNT	0	0	0	0	
 unset TICK_GH_CMD
 rm -rf "$RMD" "$W/rm-gh.calls" "$W/rm-gh.pwd"
 
+# The console's own HANDOFF (<doc stem>-HANDOFF.md) over HANDOFF_BUDGET_BYTES, or
+# its decisions: line over DECISIONS_BUDGET_BYTES, prints an ACTION line.
+# The decisions: text and the HANDOFF note are copied from live console docs.
+d6603="$W/handover/HIMMEL-6603-console.md"
+printf '%s\n' '# console' '' '## Live state' 'decisions: OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.' > "$d6603"
+printf '%s\n' '> HANDOFF over budget: 46253 bytes (limit 12000); Live state 41637 bytes, wrapped-PR list 198 bytes — tighten the Live state' > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+hb_small="$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)"
+not_contains 'a HANDOFF and decisions: line under their budgets print no ACTION (HIMMEL-6603)' "$hb_small" 'over-budget'
+hb_over="$(HANDOFF_BUDGET_BYTES=100 DECISIONS_BUDGET_BYTES=200 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)"
+contains 'a HANDOFF over HANDOFF_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION handoff-over-budget=127/100: '
+contains 'the HANDOFF ACTION names the HANDOFF file (HIMMEL-6603)' "$hb_over" 'HIMMEL-6603-console-HANDOFF.md'
+contains 'a decisions: line over DECISIONS_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION decisions-over-budget=336/200: '
+contains 'the decisions ACTION names the bucket decisions file (HIMMEL-6603)' "$hb_over" "$W/handover/specs/decisions/console-decisions-"
+case "$(printf '%s\n' "$hb_over" | grep -c '^TICK ')" in 1) pass 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; *) fail 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; esac
+head -c 12000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+not_contains 'a HANDOFF of exactly 12000 bytes is within the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'handoff-over-budget'
+printf 'x' >> "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+contains 'a HANDOFF of 12001 bytes is over the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
+rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

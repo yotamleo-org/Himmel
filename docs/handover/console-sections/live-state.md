@@ -78,3 +78,15 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > placeholder while your predecessor's was real (`decisions:` also when shorter),
 > unless a Results bullet carries `DECISIONS-DROP: <reason>` or
 > `PRIORITY-DROP: <reason>`.
+> **Bound `decisions:`** (tick prints `ACTION decisions-over-budget=<bytes>/<limit>`
+> past `DECISIONS_BUDGET_BYTES`, default 4000, and `ACTION handoff-over-budget` when
+> your HANDOFF is past `HANDOFF_BUDGET_BYTES`, default 12000): copy each superseded
+> `(N) …` ruling **verbatim**, number included, into
+> `specs/decisions/console-decisions-<date>.md` in the bucket, then keep only the
+> active rulings plus that path on the line, e.g. `decisions:
+> specs/decisions/console-decisions-2026-10-20.md holds #1-#60; active: (61) …`.
+> `next` accepts the shorter line only when every numbered entry of your
+> predecessor's line, and of any decisions file that line names, is found verbatim
+> in your line or the files it names; a missing file or a changed word reads
+> `DECISIONS-DROP`. Name every older decisions file on the line, or copy its
+> entries into today's.

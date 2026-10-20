@@ -242,6 +242,13 @@ mirror on this machine). `versionless-done.sh --backfill` lists the fix; it neve
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 
+With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
+when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (12000), and
+`ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
+DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
+specs/decisions/console-decisions-<date>.md the superseded rulings move to verbatim
+(console-sections/live-state.md).
+
 --burn adds a per-leg context-burn field (first-turn/avg-ctx, via
 scripts/lanes/leg-burn.sh) for every doc in --legs. OPT-IN because it scans
 the Claude Code transcript root, which a plain tick must never do: a tick runs
@@ -1341,6 +1348,19 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
     esac
 fi
 
+# This console's own HANDOFF (<doc stem>-HANDOFF.md, written by console.sh next)
+# over HANDOFF_BUDGET_BYTES, and its decisions: line over DECISIONS_BUDGET_BYTES.
+# Shown only as ACTION lines after the TICK line; not in console-wait's wake key.
+handoff_bytes=0
+decisions_bytes=0
+handoff_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+decisions_budget="${DECISIONS_BUDGET_BYTES:-4000}"
+if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+    handoff_file="${console_doc%.md}-HANDOFF.md"
+    [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file")"
+    decisions_bytes="$(grep -m1 '^decisions:' "$console_doc" | tr -d '\n' | wc -c)"
+fi
+
 # the luna vault's commit health. vault-status.sh owns the derivation
 # (and is fail-soft); a missing or failing helper reads unknown, never a failed tick.
 vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.sh" 2>/dev/null)" || vault_summary=unknown
@@ -2095,6 +2115,13 @@ else
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;
     esac
+    decisions_file="${console_doc%/*}/specs/decisions/console-decisions-$(date +%F).md"
+    if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
+        printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (console-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
+    fi
+    if [ "$decisions_bytes" -gt "$decisions_budget" ]; then
+        printf 'ACTION decisions-over-budget=%s/%s: move superseded rulings verbatim to %q and keep the active ones plus that path on the line (console-sections/live-state.md)\n' "$decisions_bytes" "$decisions_budget" "$decisions_file"
+    fi
 fi
 if [ "$emit_fp" -eq 1 ]; then
     printf 'board-fp=%s\n' "$board_fp"
