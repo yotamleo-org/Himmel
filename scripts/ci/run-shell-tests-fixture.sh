@@ -129,16 +129,20 @@ rst_tally() {
 # mk_rotate_sandbox <dir> <order-log> — Case 17's shared fixture: six suites
 # test-a.sh .. test-f.sh, each appending its own name to <order-log> as it
 # runs, so a later assertion can read the ORDER the runner chose. test-a.sh
-# sleeps 25s and the rest 1s; that gap is the whole point, because a
-# SUITE_RUN_BUDGET below 25 truncates the run after the first suite and sends
-# the runner down its cursor-writing branch.
+# sleeps $RST_ROTATE_SLEEP s and the rest not at all; that gap is the whole point,
+# because a SUITE_RUN_BUDGET of $RST_ROTATE_BUDGET truncates the run after the
+# first suite and sends the runner down its cursor-writing branch.
 #
-# Every 17x sub-case drives this same sandbox, which is why each one costs
-# 25-51s: test-a.sh's sleep is paid on every full run, so the eleven sub-cases
-# were 327s of the original file's 382s. That is why
-# they now live in three files -- test-run-shell-tests-rotation.sh (17a-17f),
-# -rotation-guards.sh (17g-17j) and -rotation-cursor.sh (17k-17m) -- and why
-# this builder is here rather than copied into each of them.
+# Every 17x sub-case drives this same sandbox, so test-a.sh's sleep is paid on
+# every full run. The sleep is the 3s floor the budget arithmetic needs (the
+# runner's budget is whole seconds, checked between suites), not the 25s the
+# eleven sub-cases once paid -- 327s of the original file's 382s. The cases
+# live in three files -- test-run-shell-tests-rotation.sh (17a-17f),
+# -rotation-guards.sh (17g-17j) and -rotation-cursor.sh (17k-17m) -- which is
+# why this builder is here rather than copied into each of them.
+RST_ROTATE_SLEEP=3
+# shellcheck disable=SC2034  # read by the test-run-shell-tests-rotation*.sh suites that source this file
+RST_ROTATE_BUDGET=2
 mk_rotate_sandbox() {
   local _d="$1" _order="$2" _c _dur
   # Refuse an empty or non-existent target rather than writing the six suites
@@ -151,8 +155,8 @@ mk_rotate_sandbox() {
   fi
   : > "$_order"
   for _c in a b c d e f; do
-    _dur=1
-    [ "$_c" = "a" ] && _dur=25
+    _dur=0
+    [ "$_c" = "a" ] && _dur=$RST_ROTATE_SLEEP
     cat > "$_d/test-$_c.sh" <<SHEOF
 #!/usr/bin/env bash
 sleep $_dur
