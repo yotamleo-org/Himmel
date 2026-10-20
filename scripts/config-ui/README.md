@@ -329,6 +329,13 @@ imports, so its suite runs in CI without an install.
   ends with a Docs link to the public site in a new tab with
   `rel="noopener noreferrer"` and no session token, and the console reads the
   shared tokens (`public/tokens.css`) in light and dark with system fonts.
+- Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
+  takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
+  default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
+  The rail lists Roadmap and Kanban only for `jira` and `github`; with `none` a
+  direct landing on Kanban shows the plain-words empty state, and with `github`
+  the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
+  predicate behind it.
 
 ## Manual pass (the same 7 items)
 
