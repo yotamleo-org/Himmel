@@ -147,7 +147,7 @@ want=$(grep -c '^```mermaid' "$repo/docs/architecture.md")
 got=$(grep -o '<pre class="mermaid"' "$(route_of architecture.md)" | wc -l)
 if [ "$want" -gt 0 ] && [ "$want" -eq "$got" ]; then ok "criterion 4: $got mermaid blocks reach the page"; else ko "criterion 4: mermaid blocks reach the page (docs $want, page $got)"; fi
 check "criterion 4: mermaid renderer is bundled" grep -rlq 'mermaid' "$dist/_astro"
-for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html; do
+for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
 
