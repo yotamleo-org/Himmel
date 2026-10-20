@@ -608,6 +608,9 @@ _subst_row "5747 git archive -o primary/a.tar denies"            block "git arch
 _subst_row "5747 git archive --output=primary/a.tar denies"      block "git archive --output=$_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive --output primary/a.tar denies"      block "git archive --output $_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 CR CR between words still denies a primary write"      block "echo a"$'\r\r'"b > $_PR/a5747.txt" "$_WR"
+_subst_row "6466 VT between words still denies a primary write"         block "echo a"$'\v'"b > $_PR/a6466v.txt" "$_WR"
+_subst_row "6466 FF between words still denies a primary write"         block "echo a"$'\f'"b > $_PR/a6466f.txt" "$_WR"
+_subst_row "6466 high byte in a word still denies a primary write"      block "echo caf"$'\xc3\xa9'" > $_PR/a6466h.txt" "$_WR"
 _subst_row "5747 git archive -o leg worktree/a.tar allows"     allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive -o /tmp/a.tar allows"               allow "git archive -o /tmp/a5747.tar HEAD" "$_WR"
 _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR/f$_i; "; _i=$((_i+1)); done
@@ -644,6 +647,16 @@ _c20p="${_c20}echo x > $_PR/f5747"
 _t_row "5747 20 KB of redirect clauses ending in a primary write denies" block "$_c20p" "$_HANG_CEILING"
 if _lin_ok "$_T_EL" "$_el_c5"; then ok "5747 20 KB clauses ending in a primary write ${_T_EL}s grow linearly from the 5 KB run ${_el_c5}s"
 else bad "5747 20 KB clauses ending in a primary write ${_T_EL}s exceed 6x + 2s of the 5 KB run ${_el_c5}s"; fi
+# The per-target git forks are batched: a git shim counts the calls the 20 KB
+# command makes (172 before the batching, 1 after), independent of runner speed.
+_realgit=$(command -v git)
+_shim="$TMPFIX/gitshim"; mkdir -p "$_shim"
+printf '#!/bin/sh\nprintf x >> "%s"\nexec "%s" "$@"\n' "$TMPFIX/gitcalls" "$_realgit" > "$_shim/git"
+chmod +x "$_shim/git"; : > "$TMPFIX/gitcalls"
+_got=$(PATH="$_shim:$PATH" _run "$DIRECT" "$(_j5747 "$_c20")" "$_WR")
+_calls=$(wc -c < "$TMPFIX/gitcalls")
+if [ "$_got" = allow ] && [ "$_calls" -le 5 ]; then ok "6466 20 KB of redirect clauses forks git $_calls time(s) (bound 5)"
+else bad "6466 20 KB of redirect clauses: $_got, $_calls git forks (want allow, at most 5)"; fi
 # Runner speed must not decide the verdict. The fixture is a real CI figure
 # (shard 5, 2026-10-18T13:15:22Z): the clause command took 25s there, which a
 # fixed 22s budget rejected.

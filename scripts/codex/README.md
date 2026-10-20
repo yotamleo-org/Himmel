@@ -324,6 +324,15 @@ survive, cross-type keys, and a codex-owned qmd fleet that must stay
 reapable). Fires last in the `HIMMEL-CodexOrphanSweep` cadence, after both
 orphan sweeps have removed everything whose supervisor is already gone.
 
+## Context-probe chunk reader
+
+`scripts/claudex/probe-chunk.sh <k>` prints chunk k (100000 bytes; the last is
+shorter) of the context-probe stream: the working-tree bytes of every tracked
+file under `docs`, `scripts` and `*.md`, in C-locale path order. A `dontAsk`
+claudex worker runs it as one literal command, `bash scripts/claudex/probe-chunk.sh 0`,
+since it is denied pipes, redirects and `$(...)`. Exit 2 = bad argument, 3 = chunk
+past the end. Test: `scripts/claudex/test-probe-chunk.sh`.
+
 ## Skill loading caveat
 
 Enabling `himmel-ops` makes its **hooks** fire under Codex (e.g.

@@ -75,11 +75,10 @@ EDIT_ALREADY_PRESENT=3 EDIT_UNSAFE=4
 PHASE_STOP=1
 CANON_EXCLUDE='^handovers/'
 SKIP_FIXERS="trailing-whitespace,end-of-file-fixer"
-# The CLOSED list: id<TAB>regex, verbatim copies of the anchored regexes in
-# templates/luna-second-brain/.gitleaks.toml. Never extended at runtime.
-CLOSED_SHAPES='lock-token	^[a-z0-9]+-[a-z0-9]+-pid[0-9]+[.,;:)]?$
-sha40	^[0-9a-f]{40}[.,;:)]?$
-retask-nonce	^[A-Z]{1,2}-N[0-9]+[a-z]?-[0-9a-f]{4,16}[.,;:)]?$'
+# The CLOSED list: id<TAB>regex, a verbatim copy of the handover-token
+# grammar rule in templates/luna-second-brain/.gitleaks.toml
+# (docs/internals/handover-token-grammar.md). Never extended at runtime.
+CLOSED_SHAPES='handover-token	^(?:[a-z0-9]+(?:-[a-z0-9]+)*-pid[0-9]+|[A-Z]{1,3}-(?:[A-Za-z]{1,4}[0-9]{1,5}[A-Za-z]{0,2}|[A-Z]{2,8}-[0-9]{1,6})(?:_[a-z]{1,8})?-[0-9a-f]{4,16}|[0-9a-f]{40}|[0-9a-f]{64})[.,;:)]?$'
 
 default_vault() { printf '%s\n' "${LUNA_VAULT_PATH:-${HOME:-}/Documents/luna}"; }
 shape_regex() { printf '%s\n' "$CLOSED_SHAPES" | awk -F'\t' -v id="$1" '$1 == id { print $2 }'; }

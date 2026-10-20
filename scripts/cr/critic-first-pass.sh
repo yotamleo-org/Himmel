@@ -580,7 +580,10 @@ _cfp_claude_invoke() {
             ;;
     esac
     rm -rf "$_cc_dir" 2>/dev/null || true
-    [ "$_cc_rc" -eq 0 ] || return "$_cc_rc"
+    if [ "$_cc_rc" -ne 0 ]; then
+        [ "$_cc_rc" -eq 5 ] && return 1
+        return "$_cc_rc"
+    fi
     printf '%s' "$_cc_out" | _cfp_claude_unwrap
 }
 
