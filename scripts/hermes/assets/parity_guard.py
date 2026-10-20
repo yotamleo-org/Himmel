@@ -766,7 +766,7 @@ def _edit_on_main_reason(start: str):
 # separator.
 _QW = r"[\"'\\]*"
 GH_PR_CREATE = re.compile(
-    _CMDPOS + r"(?:" + _QW + _QW.join("gh") + _QW + r"(?:\.exe)?|[^\s;&|()<>]*[$`][^\s;&|()<>]*)"
+    _CMDPOS + r"(?:" + _QW + _QW.join("gh") + _QW + r"(?:\.exe)?|[^\s;&|()<>$`]*[$`][^\s;&|()<>]*)"
     r"(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+" + _QW + _QW.join("pr") + _QW
     + r"\s+" + _QW + r"(?:" + _QW.join("create") + "|" + _QW.join("new") + r")" + _QW
     + r"(?=\s|$|[;&|()<>])", re.IGNORECASE)
@@ -818,7 +818,13 @@ def _skip_process_substitution(text: str, i: int) -> int:
         if c in "'\"":
             i += 1
             while i < n and text[i] != c:
-                i += 2 if (c == '"' and text[i] == "\\") else 1
+                if c == '"':
+                    if text[i] == "\\":
+                        i += 2
+                        continue
+                    if text[i] == "`" or text[i:i + 2] in ("$(", "${"):
+                        raise ValueError("unclassified shell construct")
+                i += 1
         elif c == "(":
             depth += 1
         elif c == ")":

@@ -323,6 +323,12 @@ for opener in '(' '$('; do
   if [ $((SECONDS - t0)) -gt 3 ]; then
     echo "  FAIL: ${opener}x10000 took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
 done
+# A command word of expansion characters is one anchor, not a quadratic split.
+t0=$SECONDS
+pad=$("$PY" -c 'print("$" * 20000)')
+g "dollar x20000 word (linear)" allow "$("$PY" -c 'import json,sys; print(json.dumps({"tool_name": "terminal", "tool_input": {"command": sys.argv[1] + " x"}}))' "$pad")"
+if [ $((SECONDS - t0)) -gt 3 ]; then
+  echo "  FAIL: dollar x20000 word took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
 # ") {" is a second anchor kind ("){" x6000 took 12.3s at head, 2.5s at base).
 for spec in '){:6000' '){/:4000'; do
   opener=${spec%:*}; count=${spec#*:}
@@ -633,6 +639,7 @@ gcr "gh pr create <(echo hi # )<newline>) --head feat/y (paren inside a comment 
 gcr "gh pr create <(case x in x) echo;; esac) --head feat/y (case pattern paren in a process substitution), refused" block 'gh pr create <(case x in x) echo;; esac) --head feat/y'
 gcr "gh pr create --body <(case<TAB>x in x) echo hi;; esac) --head feat/y (tab after case), refused" block $'gh pr create --body <(case\tx in x) echo hi;; esac) --head feat/y'
 gcr "gh pr create --body <(cat <<EOF with a paren line) --head feat/y (heredoc body in a process substitution), refused" block $'gh pr create --body <(cat <<EOF\n)\nEOF\n) --head feat/y'
+gcr 'gh pr create <(echo "$(echo ")")") --head feat/y (substitution inside double quotes in a process substitution), refused' block 'gh pr create <(echo "$(echo ")")") --head feat/y'
 gcr "gh pr create --body <(echo ANSI-C quote with an escaped quote) --head feat/y, refused" block $'gh pr create --body <(echo $\'a\\\'b)\') --head feat/y'
 gcr "gh pr create<newline>gh pr create --head feat/y (second call on the next line), refused" block 'gh pr create
 gh pr create --head feat/y'
