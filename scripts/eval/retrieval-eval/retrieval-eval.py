@@ -18,7 +18,7 @@ Arms (all read-only):
               kebab-case, camelCase, file.ext); files holding a definition line
               rank first
   qmd-lex     qmd BM25 (lex search), rerank off
-  qmd-hybrid  qmd lex + vec with qmd's default rerank: the shape agents send
+  qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
               --arms, not in the default five and not fused into combined
   graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
@@ -301,8 +301,7 @@ def mcp_rows(msg):
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
     args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
             "collections": [collection], "limit": k, "intent": q}
-    if not hybrid or not rerank:
-        args["rerank"] = False
+    args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
         out, to, rc = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))

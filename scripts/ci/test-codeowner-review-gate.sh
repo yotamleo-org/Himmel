@@ -385,15 +385,47 @@ wf_violations() {
   grep -qxF "$OWNER_IF" "$s" || echo "owner-only job-level if: is missing"
   grep -qE '^[[:space:]]*queue:' "$s" && echo "has queue: (pending runs must be replaced, not queued)"
   grep -qE '^[[:space:]]*cancel-in-progress:[[:space:]]*false' "$s" || echo "cancel-in-progress: false is missing"
+  # One pending run per group: a review event sharing the group replaces the
+  # pending pull_request run, and the required check then stays Expected.
+  grep -qE '^[[:space:]]*group:.*github\.event_name' "$s" || echo "concurrency group is not keyed on github.event_name"
   return 0
+}
+
+# group_for <yaml> <event> <pr> — the concurrency group a run of <event> on <pr> lands in.
+group_for() {
+  sed -n 's/^[[:space:]]*group:[[:space:]]*//p' "$1" \
+    | sed -e "s/\${{ github.event_name }}/$2/g" -e "s/\${{ github.event.pull_request.number }}/$3/g"
+}
+
+# The fixture is the real run list of PR 3194's head (gh api .../runs?head_sha=...):
+# two pull_request runs and two pull_request_review runs, three CANCELLED and the
+# only success from the review event. Every event seen there must land in its
+# own group, or one pending run replaces the other.
+FIX_RUNS="$HERE/fixtures/codeowner-gate-3194-runs.json"
+fixture_group_clashes() { # <yaml>
+  local ev g seen="" evs
+  evs=$(jq -r '[.[].event] | unique[]' "$FIX_RUNS") || { echo "fixture unreadable: $FIX_RUNS"; return 0; }
+  [ "$(wc -w <<< "$evs")" -ge 2 ] || { echo "fixture has fewer than two events"; return 0; }
+  for ev in $evs; do
+    g=$(group_for "$1" "$ev" 3194)
+    case " $seen " in *" $g "*) echo "events share group $g";; esac
+    seen="$seen $g"
+  done
 }
 
 if [ -f "$WF" ]; then
   V=$(wf_violations "$WF")
   if [ -z "$V" ]; then pass "real workflow: zero static violations"; else fail "real workflow violations: $V"; fi
+  C=$(fixture_group_clashes "$WF")
+  if [ -z "$C" ]; then pass "real workflow: the pull_request and pull_request_review runs of the 3194 fixture get distinct groups"; else fail "3194 fixture: $C"; fi
 else
   fail "real workflow: cannot check, file absent"
 fi
+echo '[]' > "$TMP/no-runs.json"
+C=$(FIX_RUNS="$TMP/no-runs.json" fixture_group_clashes "$WF")
+if grepq "$C" -F "fewer than two events"; then pass "control: an empty run fixture is caught"; else fail "control: an empty run fixture NOT caught (got: ${C:-nothing})"; fi
+C=$(FIX_RUNS="$TMP/absent.json" fixture_group_clashes "$WF" 2>/dev/null)
+if grepq "$C" -F "fixture unreadable"; then pass "control: a missing run fixture is caught"; else fail "control: a missing run fixture NOT caught (got: ${C:-nothing})"; fi
 
 # Negative controls: a known-good skeleton passes; each single mutation is caught.
 GOOD="$TMP/good.yml"
@@ -408,7 +440,7 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: codeowner-review-gate-1
+  group: codeowner-review-gate-${{ github.event_name }}-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 jobs:
   gate:
@@ -448,7 +480,9 @@ mutate "a dropped edited trigger"    "pull_request types"  '/ready_for_review/s/
 mutate "a 404 bootstrap branch"      "404/bootstrap"       's|^    steps:|    steps:\n      - run: grep -q "HTTP 404" err|'
 mutate "cancel-in-progress restored" "has cancel-in-progress" 's/cancel-in-progress: false/cancel-in-progress: true/'
 mutate "cancel-in-progress dropped"  "cancel-in-progress: false is missing" '/cancel-in-progress/d'
-mutate "queue: max restored"         "has queue:"          's/^  cancel-in-progress: false/  cancel-in-progress: false\n  queue: max/'
+# shellcheck disable=SC2016  # the ${{ }} must reach sed literally
+mutate "event_name dropped from the group" "not keyed on github.event_name" 's/-\${{ github.event_name }}//'
+mutate "queue: max restored"        "has queue:"          's/^  cancel-in-progress: false/  cancel-in-progress: false\n  queue: max/'
 mutate "a job-level if: skip"        "job-level if"        's/^    name: codeowner-review-gate$/    name: codeowner-review-gate\n    if: github.event.action != '"'"'edited'"'"'/'
 mutate "a widened owner skip"        "job-level if"        "s/!= 'yotamleo'\$/!= 'yotamleo11-test'/"
 mutate "a dropped owner skip"        "owner-only job-level if: is missing" '/^    if: github.event.pull_request.user.login/d'
