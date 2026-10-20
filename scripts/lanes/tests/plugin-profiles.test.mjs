@@ -1608,7 +1608,23 @@ test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins bac
   for (const list of ['lane-impl,code', 'user,code', 'user,code-ui']) {
     const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
     assert.equal(p['pr-review-toolkit-himmel@himmel'], true, `${list} keeps pr-review-toolkit-himmel`);
-    assert.equal(p['i-have-adhd@himmel'], true, `${list} keeps i-have-adhd`);
+  }
+  for (const list of ['user,code', 'user,code-ui']) {
+    assert.equal(resolveProfile(REG, list, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${list} keeps i-have-adhd`);
+  }
+});
+
+// Operator decision 52: the reading-style ruleset is for the operator's windows. A lane worker
+// is read by a console, not the operator, so lane-impl, lane-review and lane-content drop it
+// (measured 2430 first-turn tokens each); telegram's output is read by the operator and keeps it.
+test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram and console keep it (HIMMEL-4017)', () => {
+  for (const name of ['lane-impl', 'lane-review', 'lane-content']) {
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p['i-have-adhd@himmel'], false, `${name}: i-have-adhd dropped`);
+    for (const id of [...REG.floor, 'lean-skills@himmel', 'pr-review-toolkit-himmel@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+  }
+  for (const name of ['telegram', 'console']) {
+    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${name} keeps i-have-adhd`);
   }
 });
 

@@ -296,6 +296,7 @@
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
+      "drop": ["i-have-adhd@himmel"],
       "contextBudget": 45000,
       "contextMode": "standard",
       "autocompact": 200000,
@@ -351,6 +352,7 @@
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
+      "drop": ["i-have-adhd@himmel"],
       "disallowedTools": [
         "Write",
         "Edit",
@@ -369,6 +371,7 @@
         "obsidian-triage@himmel",
         "obsidian-second-brain@himmel"
       ],
+      "drop": ["i-have-adhd@himmel"],
       "contextBudget": 45000,
       "contextMode": "standard",
       "autocompact": 200000,
