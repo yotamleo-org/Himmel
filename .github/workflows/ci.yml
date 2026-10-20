@@ -130,8 +130,9 @@ jobs:
           fi
           cat "$tools/plan.out"
           grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
-      # HIMMEL-5649 / HIMMEL-5556: how many shell-unit shards (at most 8) the
-      # selection needs, sized off the duration ledger. Asked once, here, under
+      # HIMMEL-5649 / HIMMEL-5556: how many shell-unit shards (at most
+      # vars.CI_MAX_SHARDS, 8 unset) the selection needs, sized off the duration
+      # ledger. Asked once, here, under
       # the SAME selection env the shards' run step gets, so a small selection
       # takes few runners and a shard with nothing to run never takes one. An
       # empty output (this step failed) means all 8 start, see shell-unit-shard.
@@ -141,11 +142,12 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CI_MAX_SHARDS: ${{ vars.CI_MAX_SHARDS }}
         run: |
           # A pull_request is never the nightly: tier is always fast here.
           export SUITE_TIER_MODE=fast GUARD_CORPUS_TIER=fast SUITE_CHANGED_SINCE="$PR_BASE_SHA"
           if [ "$PR_BASE_REF" = "$DEFAULT_BRANCH" ]; then export SUITE_IMPACTED_FROM_BASE="$PR_BASE_SHA"; fi
-          bash scripts/ci/plan-shards.sh 8 . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
+          bash scripts/ci/plan-shards.sh "${CI_MAX_SHARDS:-8}" . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
       # HIMMEL-5556: home-canary sized the same way, off the selection its own
@@ -154,8 +156,9 @@ jobs:
         name: How many home-canary shards?
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_MAX_SHARDS: ${{ vars.CI_MAX_SHARDS }}
         run: |
-          bash scripts/ci/plan-shards.sh 8 . -- --impacted "$PR_BASE_SHA..HEAD" > "$RUNNER_TEMP/canary.out" || : > "$RUNNER_TEMP/canary.out"
+          bash scripts/ci/plan-shards.sh "${CI_MAX_SHARDS:-8}" . -- --impacted "$PR_BASE_SHA..HEAD" > "$RUNNER_TEMP/canary.out" || : > "$RUNNER_TEMP/canary.out"
           cat "$RUNNER_TEMP/canary.out"
           sed -n -e 's/^shards=/canary_shards=/p' -e 's/^shard_total=/canary_total=/p' "$RUNNER_TEMP/canary.out" >> "$GITHUB_OUTPUT"
 
@@ -1571,13 +1574,15 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         # shard: [1..N] fans run-shell-tests.sh across N runners (HIMMEL-2872).
-        # On a pull_request the plan sizes N (at most 8); without a plan N is 8.
-        # The `8` fallbacks here, in the run step's `/N`, in the aggregator's
-        # SHARD_TOTAL and the `8` in the plan job's plan-shards.sh call are
-        # spellings of the same number — GitHub Actions has no way to derive one
-        # from the other (strategy.job-total counts os×shard, not shard alone), so
-        # a change to the shard count must edit all of them or the split stops
-        # being a partition (the aggregator's manifest check then goes red). Went from 6 to 8 because 6 measured an 18m23s
+        # On a pull_request the plan sizes N (at most vars.CI_MAX_SHARDS, 8 unset,
+        # HIMMEL-6585); without a plan N is 8. The `8` fallbacks here, in the run
+        # step's `/N` and in the aggregator's SHARD_TOTAL are spellings of the same
+        # number — GitHub Actions has no way to derive one from the other
+        # (strategy.job-total counts os×shard, not shard alone), so a change to
+        # the no-plan count must edit all of them or the split stops being a
+        # partition (the aggregator's manifest check then goes red). The plan's
+        # shards and shard_total outputs always travel together, so raising
+        # the variable never splits the fallbacks. Went from 6 to 8 because 6 measured an 18m23s
         # slowest shard (3m18s fastest) — round-robin, not the count, dumped
         # the corpus's two heaviest suites onto one shard (719s of its 1065s);
         # replaying measured durations predicts 9.9m at 8 but 10.7m at 12, so

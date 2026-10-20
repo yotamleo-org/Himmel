@@ -117,7 +117,7 @@ fi
 
 # PS14: home-canary is sized the same way, off its own --impacted selection, and
 # keeps one leg on an empty one (the host-file sink check runs in every leg).
-if grep -qF -- "plan-shards.sh 8 . -- --impacted \"\$PR_BASE_SHA..HEAD\"" "$CI" \
+if grep -qF -- "plan-shards.sh \"\${CI_MAX_SHARDS:-8}\" . -- --impacted \"\$PR_BASE_SHA..HEAD\"" "$CI" \
    && grep -qF "canary_shards: \${{ steps.canary.outputs.canary_shards }}" "$CI" \
    && grep -qF "canary_total: \${{ steps.canary.outputs.canary_total }}" "$CI" \
    && grep -qF "shard: \${{ fromJSON(needs.plan.outputs.canary_shards == '[]' && '[1]' || needs.plan.outputs.canary_shards || '[1,2,3,4,5,6,7,8]') }}" "$CI" \
@@ -206,5 +206,41 @@ if [ "$(sort "$PS/args.log")" = "$(printf '1/2 /some/root -- --impacted a..b\n2/
 STUB_ARGS_LOG="$PS/args.log" STUB_ANSWERS="1=true 2=true" \
   bash "$PS/plan-shards.sh" 2 /some/root >/dev/null 2>&1
 if [ "$(sort "$PS/args.log")" = "$(printf '1/2 /some/root\n2/2 /some/root')" ]; then pass "PS17 no runner args, none passed to the probes"; else fail "PS17 none: $(cat "$PS/args.log")"; fi
+
+# PS18: the plan job's two plan-shards.sh calls take the cap from vars.CI_MAX_SHARDS
+# and keep 8 without it. The run bodies are lifted from ci.yml itself and run against
+# a stub planner that logs its args; an unset repository variable reaches the step as
+# the empty string.
+step_dir="$PS/step"
+mkdir -p "$step_dir/scripts/ci"
+cat > "$step_dir/scripts/ci/plan-shards.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STEP_ARGS_LOG"
+printf 'shards=[1]\nabsent_shards=\nshard_total=1\n'
+STUB
+run_plan_step() { # run_plan_step <step id> <CI_MAX_SHARDS value> -> the planner's args
+  python3 -I - "$CI" "$1" "$step_dir/$1.run" <<'PY' || return 1
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1]))
+step = next(s for s in doc["jobs"]["plan"]["steps"] if s.get("id") == sys.argv[2])
+if step["env"].get("CI_MAX_SHARDS") != "${{ vars.CI_MAX_SHARDS }}":
+    sys.exit(1)
+open(sys.argv[3], "w").write(step["run"])
+PY
+  : > "$step_dir/args.log"
+  (cd "$step_dir" && RUNNER_TEMP="$step_dir" GITHUB_OUTPUT="$step_dir/gho" STEP_ARGS_LOG="$step_dir/args.log" \
+     PR_BASE_SHA=abc PR_BASE_REF=main DEFAULT_BRANCH=main CI_MAX_SHARDS="$2" bash "$step_dir/$1.run" >/dev/null 2>&1)
+  cat "$step_dir/args.log"
+}
+for sid in shards canary; do
+  case "$sid" in shards) tail_args="." ;; canary) tail_args=". -- --impacted abc..HEAD" ;; esac
+  got=$(run_plan_step "$sid" "")
+  if [ "$got" = "8 $tail_args" ]; then pass "PS18 $sid: variable unset plans at 8, as before"; else fail "PS18 $sid unset: got [$got]"; fi
+  got=$(run_plan_step "$sid" 16)
+  if [ "$got" = "16 $tail_args" ]; then pass "PS18 $sid: variable 16 plans at 16"; else fail "PS18 $sid 16: got [$got]"; fi
+done
+
+# PS19: a plan at 16 lists at most 16 shards and shard_total is 16.
+check "PS19 a 16-shard plan lists all 16" "1=true 2=true 3=true 4=true 5=true 6=true 7=true 8=true 9=true 10=true 11=true 12=true 13=true 14=true 15=true 16=true" 16 "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]" ""
 
 rst_tally
