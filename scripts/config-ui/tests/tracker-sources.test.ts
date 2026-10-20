@@ -8,7 +8,7 @@ import { readRoadmap } from "../roadmap";
 import { renderKanban } from "../public/roadmap.js";
 import { navLinks } from "../public/nav.js";
 import { startServer } from "../server";
-import { trackerSources } from "../tracker-sources";
+import { ISSUE_LIMIT, trackerSources } from "../tracker-sources";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -74,6 +74,26 @@ test("trackerSources: a configured source the UI cannot read is not listed (miss
 test("trackerSources: TRACKER=github with gh authenticated lists github", async () => {
   const s = scratch();
   expect(await trackerSources({ ...s.env, TRACKER: "github" }, s.d)).toEqual(["github"]);
+});
+
+test("trackerSources: an explicit TRACKER=github comes before a Jira mirror that also exists, and the roadmap reads the issues", async () => {
+  const s = scratch({ mirror: true });
+  const env = { ...s.env, TRACKER: "github" };
+  expect(await trackerSources(env, s.d)).toEqual(["github", "jira"]);
+  const { get } = serve(env, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("github");
+  expect(r.tickets.map((t: { id: string }) => t.id)).toEqual(["#11", "#12", "#13", "#14"]);
+});
+
+test("GET /api/roadmap: a full page of issues is flagged truncated, a short one is not, and malformed entries are dropped", async () => {
+  const many = Array.from({ length: ISSUE_LIMIT }, (_, i) => ({ number: i + 1, title: `t${i}`, state: "OPEN", labels: [], milestone: null }));
+  const full = scratch({ issues: many });
+  expect((await serve({ ...full.env, TRACKER: "github" }, full.d).get("/api/roadmap")).truncated).toBe(true);
+  const short = scratch({ issues: [null, { title: "no state" }, ...ISSUES] });
+  const r = await serve({ ...short.env, TRACKER: "github" }, short.d).get("/api/roadmap");
+  expect(r.truncated).toBe(false);
+  expect(r.tickets.length).toBe(4);
 });
 
 test("the rail hides Roadmap and Kanban when the sources are empty, keeps them otherwise or while unknown", () => {

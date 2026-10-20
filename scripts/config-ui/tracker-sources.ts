@@ -15,7 +15,8 @@ export type GhIssue = {
 };
 
 const GH_TIMEOUT_MS = 20_000;
-const ISSUE_LIMIT = "1000";
+// gh issue list stops at the limit with no marker, so a full page is how the board knows it may be partial.
+export const ISSUE_LIMIT = 1000;
 const ISSUE_FIELDS = "number,title,state,stateReason,labels,milestone,updatedAt";
 
 export const jiraMirrorDir = (env: Env) => env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
@@ -32,16 +33,20 @@ function gh(env: Env, root: string, args: string[]): Promise<{ ok: boolean; out:
   });
 }
 
+// github is listed only when the tracker setting names it, so it comes first: an explicit choice beats a mirror that merely exists.
 export async function trackerSources(env: Env, root: string): Promise<TrackerSource[]> {
   const out: TrackerSource[] = [];
-  try { if (readdirSync(jiraMirrorDir(env)).some((f) => /^HIMMEL-\d+\.md$/.test(f))) out.push("jira"); } catch { /* no mirror */ }
   if (trackerSetting(env, root) === "github" && (await gh(env, root, ["auth", "status"])).ok) out.push("github");
+  try { if (readdirSync(jiraMirrorDir(env)).some((f) => /^HIMMEL-\d+\.md$/.test(f))) out.push("jira"); } catch { /* no mirror */ }
   return out;
 }
 
 // every issue of the repo gh resolves from root; null when gh fails or answers something other than a list.
 export async function readGithubIssues(env: Env, root: string): Promise<GhIssue[] | null> {
-  const r = await gh(env, root, ["issue", "list", "--state", "all", "--limit", ISSUE_LIMIT, "--json", ISSUE_FIELDS]);
+  const r = await gh(env, root, ["issue", "list", "--state", "all", "--limit", String(ISSUE_LIMIT), "--json", ISSUE_FIELDS]);
   if (!r.ok) return null;
-  try { const j = JSON.parse(r.out); return Array.isArray(j) ? j : null; } catch { return null; }
+  try {
+    const j = JSON.parse(r.out);
+    return Array.isArray(j) ? j.filter((i) => i && typeof i.number === "number" && typeof i.state === "string") : null;
+  } catch { return null; }
 }

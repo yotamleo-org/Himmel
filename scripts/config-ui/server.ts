@@ -23,7 +23,7 @@ import { readFleet } from "./agui/fleet";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
-import { jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
+import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 
@@ -447,7 +447,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if ((await trackerSources(env, root))[0] === "github") {
           const issues = await readGithubIssues(env, root);
           const r = readRoadmap({ mirrorDir, github: issues ?? [], legs: { state: "absent" } });
-          return json(redactOut({ ...r, ...(issues ? {} : { reason: "gh issue list failed" }), sync: [] }));
+          return json(redactOut({ ...r, ...(issues ? {} : { reason: "gh issue list failed" }), truncated: (issues?.length ?? 0) >= ISSUE_LIMIT, sync: [] }));
         }
         const legs = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/legs.sh"), env, opts.legsTimeoutMs);
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
