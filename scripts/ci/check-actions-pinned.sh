@@ -38,11 +38,12 @@ done
 
 # grep exits 0 on a match, 1 on none, 2+ on a scan error: only 2+ is a failure
 # here, and it must not read as "nothing unpinned".
-# -Z ends the file name with NUL instead of ':', and tr turns that NUL into
-# \001 (a shell variable cannot hold NUL), so a ':' in a path cannot be
-# mistaken for the file:line: separator. pipefail keeps grep's rc.
+# --null (GNU and BSD alike; BSD's -Z means decompress) ends the file name with
+# NUL instead of ':', and tr turns that NUL into \001 (a shell variable cannot
+# hold NUL), so a ':' in a path cannot be mistaken for the file:line: separator.
+# pipefail keeps grep's rc.
 sep=$'\001'
-found=$(grep -rnHZE --include='*.yml' --include='*.yaml' \
+found=$(grep -rnHE --null --include='*.yml' --include='*.yaml' \
   '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}" | tr '\0' "$sep")
 rc=$?
 if [ "$rc" -gt 1 ]; then
