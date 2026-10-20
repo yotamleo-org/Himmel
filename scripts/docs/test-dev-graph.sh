@@ -271,12 +271,14 @@ if tokens_in_sync "$CANON" "$COPY"; then ok "tokens: docs/guide/dev-graph/tokens
 # Prints the id of every edge whose wide path is missing, or does not start on its
 # source node's box and end on its target's, within 2 px. M/H/V paths only.
 # shellcheck disable=SC2016  # jq program text, not shell expansion
-PATHS_JQ='
+PTS_JQ='
   def pts: reduce (scan("([MHV])\\s*(-?[0-9.]+)(?:\\s*,\\s*(-?[0-9.]+))?")) as $t ({pts: []};
     if $t[0] == "M" then .x = ($t[1] | tonumber) | .y = ($t[2] | tonumber)
     elif $t[0] == "H" then .x = ($t[1] | tonumber)
     else .y = ($t[1] | tonumber) end
-    | .pts += [[.x, .y]]) | .pts;
+    | .pts += [[.x, .y]]) | .pts;'
+# shellcheck disable=SC2016  # jq program text, not shell expansion
+PATHS_JQ="$PTS_JQ"'
   def onbox($c; $hw; $hh; $p):
     (($p[0] - $c.x) | fabs) as $dx | (($p[1] - $c.y) | fabs) as $dy
     | $dx <= $hw + 2 and $dy <= $hh + 2 and ($dx >= $hw - 2 or $dy >= $hh - 2);
@@ -302,12 +304,14 @@ if [ -f "$REAL" ]; then
     *"$first_id"*) ok "paths: a start moved 10 px off its box fails, naming $first_id" ;;
     *) bad "paths: a start moved 10 px off its box still passes (vacuous)" ;;
   esac
-  # two edges on one path stack their exit-code badges and hide one
-  shared_paths() { jq -r '[.edges[] | {id, p: .path.wide}] | group_by(.p) | map(select(length > 1) | map(.id) | join("+")) | .[]' "$1"; }
+  # two edges on one path, drawn in either direction, stack their badges and arrowheads and hide one
+  shared_paths() { jq -r "$PTS_JQ"'[.edges[] | {id, p: ((.path.wide | pts) as $a | [$a, ($a | reverse)] | map(tojson) | min)}] | group_by(.p) | map(select(length > 1) | map(.id) | join("+")) | .[]' "$1"; }
   dups=$(shared_paths "$REAL")
   if [ -z "$dups" ]; then ok "paths: no two edges share one wide path"; else bad "paths: edges share a path: $dups"; fi
   jq '.edges[1].path.wide = .edges[0].path.wide' "$REAL" > "$D/shared.json"
   if [ -n "$(shared_paths "$D/shared.json")" ]; then ok "paths: two edges copied onto one path fail the shared-path check"; else bad "paths: a shared path still passes (vacuous)"; fi
+  jq '.edges[0].path.wide = "M7,40 V10" | .edges[1].path.wide = "M7,10 V40"' "$REAL" > "$D/reversed.json"
+  if [ -n "$(shared_paths "$D/reversed.json")" ]; then ok "paths: two edges drawn over one path in opposite directions fail the shared-path check"; else bad "paths: a reversed shared path still passes (vacuous)"; fi
   jq 'del(.edges[1].path)' "$REAL" > "$D/missing.json"
   second_id=$(jq -r '.edges[1].id' "$REAL")
   case $(paths_bad "$D/missing.json") in
