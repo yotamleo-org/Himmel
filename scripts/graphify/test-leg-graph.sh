@@ -41,6 +41,28 @@ if [ "$out" = "STUB ARGS=query what is X --budget 8000" ]; then pass "T1b no --r
 else fail "T1b out='$out'"; fi
 cp "$T/bin/graphify.new" "$T/bin/graphify"
 
+# T1c-T1e: a hung graphify must not hang the wrapper. An outer timeout makes a missing bound fail the row, not the suite.
+# shellcheck source=../lib/timeout-bin.sh
+. "$HERE/../lib/timeout-bin.sh" 2>/dev/null
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
+  hrun() { (cd "$T/wt" && PATH="$T/bin:$PATH" "$_TIMEOUT_BIN" -k 2 25 bash "$SCRIPT" "$@" 2>"$T/err"); }
+  # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+  printf '#!/bin/sh\n[ "$1" = --help ] && { echo "$GRAPHIFY_NO_AUTO_REFRESH" > "%s/probe-env"; sleep 40; exit 0; }\necho "STUB ARGS=$*"\n' "$T" > "$T/bin/graphify"
+  out="$(GRAPH_WRAP_PROBE_SECS=1 hrun query "what is X")"; rc=$?
+  if [ "$rc" = 0 ] && [ "$out" = "STUB ARGS=query what is X --budget 8000" ]; then pass "T1c a hung --help probe is cut off and the query still runs"
+  else fail "T1c rc=$rc out='$out'"; fi
+  if [ "$(cat "$T/probe-env" 2>/dev/null)" = 1 ]; then pass "T1d the probe runs with GRAPHIFY_NO_AUTO_REFRESH=1"
+  else fail "T1d probe env='$(cat "$T/probe-env" 2>/dev/null)'"; fi
+  # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+  printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\nsleep 40\n' > "$T/bin/graphify"
+  out="$(GRAPH_WRAP_CALL_SECS=1 hrun query "what is X")"; rc=$?
+  if [ "$rc" = 124 ] && grep -q 'was stopped' "$T/err"; then pass "T1e a hung graphify call is cut off and reported"
+  else fail "T1e rc=$rc err='$(cat "$T/err")'"; fi
+else
+  echo "  skip: T1c-T1e (no GNU timeout)"
+fi
+cp "$T/bin/graphify.new" "$T/bin/graphify"
+
 # T2: graph at the worktree's HEAD → no staleness note.
 if ! grep -q behind "$T/err"; then pass "T2 current graph prints no staleness note"
 else fail "T2 unexpected note: $(cat "$T/err")"; fi
