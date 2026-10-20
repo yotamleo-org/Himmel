@@ -31,28 +31,28 @@ describe('link / links / unlink', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  it('link A --blocks B: POSTs B as inward (B is blocked by A) and prints the stored reading', async () => {
+  it('link A --blocks B: POSTs A as inward (the blocker) and prints the stored reading', async () => {
     mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
     await run(['link', 'A-1', '--blocks', 'B-2']);
     expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/issueLinkType');
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
       type: { name: 'Blocks' },
-      inwardIssue: { key: 'B-2' },
-      outwardIssue: { key: 'A-1' },
+      inwardIssue: { key: 'A-1' },
+      outwardIssue: { key: 'B-2' },
     });
-    expect(writeJiraBreadcrumb).toHaveBeenCalledWith('B-2');
-    expect(console.log).toHaveBeenCalledWith('Linked: B-2 is blocked by A-1');
+    expect(writeJiraBreadcrumb).toHaveBeenCalledWith('A-1');
+    expect(console.log).toHaveBeenCalledWith('Linked: A-1 blocks B-2');
   });
 
-  it('link A --blocked-by B: POSTs A as inward (A is blocked by B)', async () => {
+  it('link A --blocked-by B: POSTs B as inward (the blocker), A as outward', async () => {
     mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
     await run(['link', 'A-1', '--blocked-by', 'B-2']);
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
       type: { name: 'Blocks' },
-      inwardIssue: { key: 'A-1' },
-      outwardIssue: { key: 'B-2' },
+      inwardIssue: { key: 'B-2' },
+      outwardIssue: { key: 'A-1' },
     });
-    expect(console.log).toHaveBeenCalledWith('Linked: A-1 is blocked by B-2');
+    expect(console.log).toHaveBeenCalledWith('Linked: B-2 blocks A-1');
   });
 
   it('bare link A B --type Blocks is refused naming the explicit forms, never POSTs', async () => {
@@ -130,7 +130,7 @@ describe('link / links / unlink', () => {
     });
     await run(['links', 'A-1']);
     expect(mockRequest).toHaveBeenCalledWith('GET', '/issue/A-1?fields=issuelinks');
-    expect(console.log).toHaveBeenCalledWith('10\tBlocks\tinward=A-1\toutward=B-2\tA-1 is blocked by B-2');
+    expect(console.log).toHaveBeenCalledWith('10\tBlocks\tinward=A-1\toutward=B-2\tA-1 blocks B-2');
   });
 
   it('links with none prints the empty line', async () => {

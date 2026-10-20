@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { formatIssueLinks } from './link.js';
 import { runMirror, renderIssue, qmdRefresh, mirrorAgeMinutes, scrubEmails } from './mirror.js';
 import type { MirrorIssue, Req } from './mirror.js';
 
@@ -216,6 +217,24 @@ describe('renderIssue', () => {
     expect(md).toContain('zebra widgets');
     expect(md).toContain('Ann Lee');
     expect(md).not.toContain('bob@example.com');
+  });
+
+  it('mirror and `jira links` agree on every Blocks link of a real Jira GET', () => {
+    const real = JSON.parse(
+      readFileSync(new URL('./fixtures/blocks-links-real-get.json', import.meta.url), 'utf8'),
+    ) as Record<string, MirrorIssue>;
+    const render = (key: string): string =>
+      renderIssue({ ...real[key], fields: { summary: 's', ...real[key].fields } } as MirrorIssue, []);
+    const fm = (md: string, field: string): string[] =>
+      JSON.parse(new RegExp(`  ${field}: (.*)`).exec(md)![1]) as string[];
+    for (const key of ['HIMMEL-6494', 'HIMMEL-5556', 'HIMMEL-6572']) {
+      const md = render(key);
+      const reads = formatIssueLinks(key, real[key].fields.issuelinks as never).split('\n').map((l) => l.split('\t')[4]);
+      expect(reads.filter((r) => r.startsWith(`${key} blocks `)).map((r) => r.split(' ')[2])).toEqual(fm(md, 'blocks'));
+      expect(reads.filter((r) => r.startsWith(`${key} is blocked by `)).map((r) => r.split(' ')[4])).toEqual(fm(md, 'blocked_by'));
+    }
+    expect(fm(render('HIMMEL-6494'), 'blocked_by')).toEqual(['HIMMEL-5556']);
+    expect(fm(render('HIMMEL-6494'), 'blocks')).toEqual(['HIMMEL-6572']);
   });
 
   it('scrubs address-shaped text out of frontmatter values too', () => {

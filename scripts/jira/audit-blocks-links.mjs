@@ -32,12 +32,13 @@ export function collectBlocksRows(issues) {
     for (const link of issue.fields?.issuelinks ?? []) {
       if (link.type?.name !== 'Blocks' || seen.has(link.id)) continue;
       seen.add(link.id);
-      // Jira: the inward issue "is blocked by" the outward issue.
-      const blocked = link.outwardIssue ? issue.key : link.inwardIssue?.key;
-      const blocker = link.outwardIssue ? link.outwardIssue.key : issue.key;
+      // Jira: an outwardIssue entry means this issue "blocks" that one; an
+      // inwardIssue entry means this issue "is blocked by" that one.
+      const blocker = link.outwardIssue ? issue.key : link.inwardIssue?.key;
+      const blocked = link.outwardIssue ? link.outwardIssue.key : issue.key;
       if (!blocked || !blocker) continue;
-      const blockerSummary = summaries.get(blocker) ?? link.outwardIssue?.fields?.summary ?? '';
-      const blockedSummary = summaries.get(blocked) ?? link.inwardIssue?.fields?.summary ?? '';
+      const blockerSummary = summaries.get(blocker) ?? link.inwardIssue?.fields?.summary ?? '';
+      const blockedSummary = summaries.get(blocked) ?? link.outwardIssue?.fields?.summary ?? '';
       const flip = namesAsPrerequisite(blockerSummary, blocked);
       rows.push({
         id: link.id, blocker, blockerSummary, blocked, blockedSummary,
