@@ -127,7 +127,7 @@ describe('version commands + fix-version', () => {
   });
 
   it('fix-version --add: PUT update.fixVersions add, breadcrumb, line', async () => {
-    mockRequest.mockResolvedValue({});
+    mockRequest.mockResolvedValue({ fields: { fixVersions: [{ name: 'v2' }] } });
     await run(['fix-version', 'HIM-9', '--add', 'v2']);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIM-9', { update: { fixVersions: [{ add: { name: 'v2' } }] } });
     expect(writeJiraBreadcrumb).toHaveBeenCalledWith('HIM-9');
@@ -135,7 +135,7 @@ describe('version commands + fix-version', () => {
   });
 
   it('fix-version --remove: remove verb and - sign', async () => {
-    mockRequest.mockResolvedValue({});
+    mockRequest.mockResolvedValue({ fields: { fixVersions: [] } });
     await run(['fix-version', 'HIM-9', '--remove', 'v1']);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIM-9', { update: { fixVersions: [{ remove: { name: 'v1' } }] } });
     expect(console.log).toHaveBeenCalledWith('HIM-9 fixVersion -v1');

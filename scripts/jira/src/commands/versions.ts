@@ -245,12 +245,33 @@ export function projectFromKey(key: string): string {
   return key.slice(0, idx);
 }
 
+// A 2xx PUT does not prove the version list changed (Jira can drop a field
+// its edit screen or scheme does not take), so read it back and fail loud.
+async function verifyVersionField(
+  key: string,
+  field: 'fixVersions' | 'versions',
+  label: string,
+  op: 'add' | 'remove',
+  name: string,
+): Promise<void> {
+  const got = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${field}`);
+  const raw = got.fields?.[field];
+  const names = Array.isArray(raw) ? (raw as Array<{ name?: string }>).map((v) => v.name ?? '') : [];
+  if (names.includes(name) !== (op === 'add')) {
+    throw new Error(
+      `${label} ${key}: ${field} was not changed — requested ${op} '${name}' but the issue ` +
+        `still reads '${names.join(', ') || 'none'}' after the PUT.`,
+    );
+  }
+}
+
 export async function setFixVersion(
   key: string,
   op: 'add' | 'remove',
   name: string,
 ): Promise<string> {
   await request('PUT', `/issue/${key}`, buildFixVersionBody(op, name));
+  await verifyVersionField(key, 'fixVersions', 'Fix-version', op, name);
   return `${key} fixVersion ${op === 'add' ? '+' : '-'}${name}`;
 }
 
@@ -261,6 +282,7 @@ export async function setAffectsVersion(
 ): Promise<string> {
   const version = await resolveAffectsVersion(projectFromKey(key), name);
   await request('PUT', `/issue/${key}`, buildAffectsVersionBody(op, version));
+  await verifyVersionField(key, 'versions', 'Affects-version', op, version);
   return `${key} affectsVersion ${op === 'add' ? '+' : '-'}${version}`;
 }
 
