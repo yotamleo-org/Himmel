@@ -236,6 +236,14 @@ clears. ciq=unknown = the probe failed, timed out or is missing; it neither
 sets nor clears the saturation state ($TICK_STATE_DIR/tick-ciq-last, default
 ~/.himmel/state). Not part of console-wait's wake key.
 
+ciguard=ok|OVER:<metric>[,<metric>]|unknown (HIMMEL-6733) is one ci-guardrail.sh read
+per tick (TICK_CIGUARD_PROBE seam, bounded by TICK_CIQ_TIMEOUT), shown always. Each
+`ALERT <metric>=<count>><line> (<where>)` line it prints is a NEW crossing and becomes one
+`ACTION ci-guardrail <metric>=<count>><line> (<where>): …` line after the TICK line; the
+script remembers what it alerted ($TICK_STATE_DIR/tick-ciguard-state), so the next tick of
+the same crossing prints ciguard=OVER:… and no ACTION. unknown = the script is missing,
+timed out or printed no status line. Not part of console-wait's wake key.
+
 versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
 mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.
@@ -2013,6 +2021,28 @@ if [ -f "$ciq_probe" ]; then
     fi
 fi
 
+# ciguard=ok|OVER:<metric>[,<metric>]|unknown: one ci-guardrail.sh read per
+# tick, in the ciq probe slot, bounded by the same TICK_CIQ_TIMEOUT. The script keeps the
+# once-per-crossing memory ($TICK_STATE_DIR/tick-ciguard-state), so each "ALERT ..." line it
+# prints is a NEW crossing and becomes one ACTION line below; ciguard=OVER alone repeats for
+# as long as the metric stays over. No status line = unknown, and its ALERT lines are dropped.
+# console-wait.sh's wake key does not carry ciguard: the ACTION line is what the console reads.
+ciguard_summary=unknown
+ciguard_alerts=""
+ciguard_probe="${TICK_CIGUARD_PROBE:-$HERE/ci-guardrail.sh}"
+if [ -f "$ciguard_probe" ]; then
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+    ciguard_bound="${TICK_CIQ_TIMEOUT:-45}"
+    case "$ciguard_bound" in ''|*[!0-9]*) ciguard_bound=45 ;; esac
+    ciguard_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$ciguard_bound"} bash "$ciguard_probe" 2>/dev/null)" || ciguard_out=""  # swallow-ok: a failed or timed-out read leaves ciguard=unknown
+    ciguard_status="$(printf '%s\n' "$ciguard_out" | sed -n 's#^ciguard=\(ok\|unknown\|OVER:[a-z0-9,-]*\)$#\1#p' | head -n 1)"
+    if [ -n "$ciguard_status" ]; then
+        ciguard_summary="$ciguard_status"
+        ciguard_alerts="$(printf '%s\n' "$ciguard_out" | grep '^ALERT [a-z0-9-]*=' || true)"  # swallow-ok: no ALERT line is the normal quiet read
+    fi
+fi
+
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=0|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
 # --tick` call. DEAD = the repo variable is on but no unit is up; STUCK = a job
@@ -2121,6 +2151,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'tracker: %s\n' "$tracker_summary"
     printf 'denials: %s\n' "$denials_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
+    printf 'ci guardrail: %s\n' "$ciguard_summary"
+    [ -z "$ciguard_alerts" ] || printf '%s\n' "$ciguard_alerts"
     printf 'plan-index: %s\n' "$plan_index_summary"
     printf 'OpenRouter: %s\n' "$openrouter"
     printf 'worker-session failures: %s\n' "$fails_summary"
@@ -2185,6 +2217,7 @@ else
     compact_field orphans-wip "$orphans_wip"
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
+    compact_field ciguard "$ciguard_summary"
     compact_field plan-index "$plan_index_summary"
     compact_field or "$openrouter"
     compact_field fails "$fails_summary"
@@ -2193,6 +2226,10 @@ else
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"
+    while IFS= read -r ciguard_line; do
+        [ -n "$ciguard_line" ] || continue
+        printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (console-sections/monitors.md)\n' "${ciguard_line#ALERT }"
+    done <<< "$ciguard_alerts"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;

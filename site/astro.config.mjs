@@ -35,16 +35,31 @@ const copyPassthrough = {
   },
 };
 
-// Mermaid blocks are emitted as <pre class="mermaid">; bundle the renderer.
+// Mermaid blocks are emitted as <pre class="mermaid">; the renderer is a lazy chunk fetched only on pages that have one.
+// A render replaces the source with an SVG, so the source is kept on the node to redraw after a theme toggle.
 const mermaid = {
   name: 'mermaid-inject',
   hooks: {
     'astro:config:setup': ({ injectScript }) => {
       injectScript('page', `
-import mermaid from 'mermaid';
-const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
-if (document.querySelector('pre.mermaid')) mermaid.run({ querySelector: 'pre.mermaid' });
+if (document.querySelector('pre.mermaid')) import('mermaid').then(({ default: mermaid }) => {
+  const nodes = [...document.querySelectorAll('pre.mermaid')];
+  for (const n of nodes) n.dataset.src = n.textContent;
+  const isDark = () => {
+    const t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  };
+  let queue = Promise.resolve();
+  const render = () => {
+    queue = queue.then(async () => {
+      for (const n of nodes) { n.textContent = n.dataset.src; n.removeAttribute('data-processed'); }
+      mermaid.initialize({ startOnLoad: false, theme: isDark() ? 'dark' : 'default' });
+      await mermaid.run({ nodes });
+    }).catch(console.error);
+  };
+  render();
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+});
 `);
     },
   },

@@ -50,6 +50,9 @@ expect "sha-pinned, quoted" 0 "$tmp/quoted.yml"
 printf '    steps:\n      - uses: ./.github/actions/local\n      - uses: docker://alpine@sha256:%064d\n' 0 > "$tmp/exempt.yml"
 expect "local + docker refs exempt" 0 "$tmp/exempt.yml"
 
+printf '    steps:\n      - uses: docker://alpine@sha256:%064dXYZ\n' 0 > "$tmp/docker-trailing.yml"
+expect "docker digest with trailing characters" 1 "$tmp/docker-trailing.yml"
+
 printf '    steps:\n      - uses: docker://alpine:latest\n' > "$tmp/docker-tag.yml"
 expect "docker:// ref without a digest" 1 "$tmp/docker-tag.yml"
 

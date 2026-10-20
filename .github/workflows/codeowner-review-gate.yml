@@ -45,9 +45,12 @@ permissions:
 # rule (a) passes the admin owner before any review is read, so the SKIPPED
 # (success) context is the result the job would produce, and body edits and
 # bot reviews start no runner. Any wider skip reports success under the
-# required context and would mask a red run.
+# required context and would mask a red run. HIMMEL-6562: the group is keyed
+# on the event too. Only a pull_request run satisfies the required check, and a
+# review event sharing its group replaced the pending pull_request run (PR 3194),
+# leaving the check Expected.
 concurrency:
-  group: codeowner-review-gate-${{ github.event.pull_request.number }}
+  group: codeowner-review-gate-${{ github.event_name }}-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:

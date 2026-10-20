@@ -1330,12 +1330,18 @@ for _ in 1 2; do
     rc=0; out=$(FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
     assert_eq "a backed-off file keeps the run rc=0" "0" "$rc"
 done
-assert_contains "a backed-off file appends a back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
+assert_contains "a backed-off file appends a back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff semantic-file-backed-off" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
 assert_eq "a backed-off file sends one alert across two runs" "1" "$(grep -c backoff "$FAKE_SEND_LOG")"
 # A run with no new back-off re-arms the leg: the next back-off alerts again.
 rc=0; out=$(run_sem "$tag" --semantic) || rc=$?
 rc=0; out=$(FAKE_SEM_OUT="semantic-merge: BACKED OFF b.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
 assert_eq "a later back-off after a clean run alerts again" "2" "$(grep -c backoff "$FAKE_SEND_LOG")"
+# (e3) a back-off printed before a later non-zero exit still alerts on its own leg.
+tag=backoffrc; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+: > "$FAKE_SEND_LOG"; rc=0
+out=$(FAKE_SEM_RC=5 FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
+assert_contains "a back-off before a non-zero semantic exit still appends the back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff semantic-file-backed-off" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
 # (f) the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
 # claude-cli; ollama is the opt-in; anything else refuses before any work.
 for tag in ollama bogus; do

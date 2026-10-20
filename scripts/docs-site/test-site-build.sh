@@ -147,6 +147,14 @@ want=$(grep -c '^```mermaid' "$repo/docs/architecture.md")
 got=$(grep -o '<pre class="mermaid"' "$(route_of architecture.md)" | wc -l)
 if [ "$want" -gt 0 ] && [ "$want" -eq "$got" ]; then ok "criterion 4: $got mermaid blocks reach the page"; else ko "criterion 4: mermaid blocks reach the page (docs $want, page $got)"; fi
 check "criterion 4: mermaid renderer is bundled" grep -rlq 'mermaid' "$dist/_astro"
+# the shared page script may only import the vite preload helper statically; the renderer chunks load on demand
+page_js=$(grep -o '/_astro/page\.[^"]*\.js' "$(route_of glossary.md)" | head -1)
+page_js="$dist${page_js#/Himmel}"
+check "control: the page script was found" test -f "$page_js"
+check "criterion 4: mermaid loads on demand, not through a static import of the page script" is "$(grep -o 'from"\./[^"]*"' "$page_js" | grep -vc 'preload-helper')" 0
+check "criterion 4: the page script imports the renderer behind a diagram check" grep -q 'pre\.mermaid' "$page_js"
+check "criterion 4: the diagram theme follows data-theme" grep -q 'dataset\.theme' "$page_js"
+check "criterion 4: a data-theme change re-renders the diagrams" grep -q 'MutationObserver' "$page_js"
 for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done

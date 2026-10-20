@@ -24,6 +24,14 @@ const TYPES = {
   ],
 };
 
+// GET answers the type list and, for the post-POST read-back, the link just made.
+const jiraWith = (types: unknown, outward: string, type: string) => async (m: string, p: string) => {
+  if (m !== 'GET') return {};
+  return p.startsWith('/issue/')
+    ? { fields: { issuelinks: [{ type: { name: type }, outwardIssue: { key: outward } }] } }
+    : types;
+};
+
 describe('link / links / unlink', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,7 +40,7 @@ describe('link / links / unlink', () => {
   });
 
   it('link A --blocks B: POSTs A as inward (the blocker) and prints the stored reading', async () => {
-    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    mockRequest.mockImplementation(jiraWith(TYPES, 'B-2', 'Blocks'));
     await run(['link', 'A-1', '--blocks', 'B-2']);
     expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/issueLinkType');
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
@@ -45,7 +53,7 @@ describe('link / links / unlink', () => {
   });
 
   it('link A --blocked-by B: POSTs B as inward (the blocker), A as outward', async () => {
-    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    mockRequest.mockImplementation(jiraWith(TYPES, 'A-1', 'Blocks'));
     await run(['link', 'A-1', '--blocked-by', 'B-2']);
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
       type: { name: 'Blocks' },
@@ -83,8 +91,11 @@ describe('link / links / unlink', () => {
   });
 
   it('bare link A B --type Duplicate (other directional types) is still accepted', async () => {
-    mockRequest.mockImplementation(async (m: string) =>
-      m === 'GET' ? { issueLinkTypes: [{ name: 'Duplicate', inward: 'is duplicated by', outward: 'duplicates' }] } : {});
+    mockRequest.mockImplementation(jiraWith(
+      { issueLinkTypes: [{ name: 'Duplicate', inward: 'is duplicated by', outward: 'duplicates' }] },
+      'B-2',
+      'Duplicate',
+    ));
     await run(['link', 'A-1', 'B-2', '--type', 'Duplicate']);
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
       type: { name: 'Duplicate' },
@@ -94,7 +105,7 @@ describe('link / links / unlink', () => {
   });
 
   it('link A B with no --type (Relates) still works bare', async () => {
-    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    mockRequest.mockImplementation(jiraWith(TYPES, 'B-2', 'Relates'));
     await run(['link', 'A-1', 'B-2', '--type', 'Relates']);
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
       type: { name: 'Relates' },
@@ -104,7 +115,7 @@ describe('link / links / unlink', () => {
   });
 
   it('link defaults to Relates', async () => {
-    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    mockRequest.mockImplementation(jiraWith(TYPES, 'B-2', 'Relates'));
     await run(['link', 'A-1', 'B-2']);
     expect(mockRequest.mock.calls[1][2]).toMatchObject({ type: { name: 'Relates' } });
     expect(console.log).toHaveBeenCalledWith('Linked: A-1 relates to B-2');
