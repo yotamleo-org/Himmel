@@ -1166,6 +1166,16 @@ wrap_case 'prose bullets directly under legs: (no blank line) are not entries or
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' \
     '- **N192** BLOCKED — see `stuck-playbook.md:408`, `tick.sh:234`, worktree `.claude/worktrees/fix+himmel-3273-stop-queue-race`, head `798a4bda26487e04140d0b7aee715be51c7e7247`' \
     'queue: none' 'last GO: none' 'acked: none'
+# A successor stub as `console.sh next` seeds it: the two-line preamble (its
+# format span sits on a `>` line), the predecessor's legs: line verbatim and a
+# decisions: pointer to the bucket file. None of it is a malformed entry.
+# shellcheck disable=SC2016  # backtick leg spans, literal fixture text
+wrap_case 'a seeded stub with a decisions: pointer reads no MALFORMED (HIMMEL-6498)' 'livestate=ok ' \
+    '> **Authority-bearing state, not a summary.** One `<leg>:<nonce>:<lock-token>:<pid>` span per leg.' \
+    '> Format and optional fields: `console-sections/live-state.md`.' '' \
+    'legs: `N191:J-N191-0a1b2c:tok-191:120` `N192:J-N192-3d4e5f:tok-192:121`' \
+    'queue: none' 'last GO: none' 'acked: none' 'board: none yet' 'tracker: none' \
+    'decisions: specs/decisions/console-decisions-2026-10-20.md (latest #91)'
 # --- a `<name>.md:<line>` cite ON the legs: line is prose. RED
 # control (pre-fix tick.sh, first fixture below): both locks held
 # (legs=N191:FRESH,N192:FRESH, asserted by wrap_case) and
@@ -2625,11 +2635,11 @@ contains 'the HANDOFF ACTION names the HANDOFF file (HIMMEL-6603)' "$hb_over" 'H
 contains 'a decisions: line over DECISIONS_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION decisions-over-budget=336/200: '
 contains 'the decisions ACTION names the bucket decisions file (HIMMEL-6603)' "$hb_over" "$W/handover/specs/decisions/console-decisions-"
 case "$(printf '%s\n' "$hb_over" | grep -c '^TICK ')" in 1) pass 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; *) fail 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; esac
-head -c 12000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
-not_contains 'a HANDOFF of exactly 12000 bytes is within the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'handoff-over-budget'
+head -c 6000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+not_contains 'a HANDOFF of exactly 6000 bytes is within the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'handoff-over-budget'
 printf 'x' >> "$W/handover/HIMMEL-6603-console-HANDOFF.md"
-contains 'a HANDOFF of 12001 bytes is over the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
-contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6603)' "$(HANDOFF_BUDGET_BYTES=12k TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
+contains 'a HANDOFF of 6001 bytes is over the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=6001/6000: '
+contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6603)' "$(HANDOFF_BUDGET_BYTES=12k TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=6001/6000: '
 printf '%s\n' '# console' '' 'decisions: a brief note above Live state, not the line' '' '## Live state' 'decisions: (1) short.' > "$d6603"
 contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECISIONS_BUDGET_BYTES=10 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION decisions-over-budget=21/10: '
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"

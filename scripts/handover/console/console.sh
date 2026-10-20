@@ -1566,6 +1566,34 @@ carried_live_state() {
     done
 }
 
+# One per-shift Live-state field of the predecessor, without its `<field>:`
+# prefix: for `legs:`, the whole block tick.sh reads (the wrapped lines up to
+# a blank, `word:`, list-marker, `>` or `#` line). Absent field -> empty.
+seeded_live_field() {
+    printf '%s\n' "$1" | awk -v k="$2:" -v block="$([ "$2" = legs ] && echo 1)" '
+        !f && index($0, k) == 1 { f = 1; sub(/^[^:]*:[[:space:]]*/, ""); print; if (!block) exit; next }
+        f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { exit }
+        f { print }
+    '
+}
+
+# seed_live_fields <doc> <predecessor live state>: replace each `<field>: <...>`
+# placeholder line in the doc's `## Live state` with the predecessor's value,
+# verbatim; a field the predecessor lacks keeps its placeholder.
+seed_live_fields() {
+    local doc="$1" live="$2"
+    SL_legs="$(seeded_live_field "$live" legs)" SL_queue="$(seeded_live_field "$live" queue)" \
+    SL_last_GO="$(seeded_live_field "$live" "last GO")" SL_acked="$(seeded_live_field "$live" acked)" awk '
+        $0 == "## Live state" { f = 1; print; next }
+        f && /^## / { f = 0 }
+        f && /^(legs|queue|last GO|acked): </ {
+            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : name)]
+            if (v != "") { print name ": " v; next }
+        }
+        { print }' "$doc" > "$doc.seed" || { rm -f "$doc.seed"; err "could not seed the Live state into $doc"; exit 1; }
+    mv "$doc.seed" "$doc"
+}
+
 cmd_next() {
     [ -f "$console_template" ] || { err "missing template $console_template"; exit 2; }
     [ -f "$handoff_template" ] || { err "missing template $handoff_template"; exit 2; }
@@ -1582,11 +1610,11 @@ cmd_next() {
         exit 1
     fi
     # The predecessor's `## Live state` (nonces, lock
-    # tokens, held queue, last GO) is copied verbatim into the successor's
-    # HANDOFF below — a continuously maintained Live state IS a handoff, so
-    # the successor never has to re-derive authority-bearing state by hand.
-    # Absent section -> empty string -> the HANDOFF's own placeholder prose
-    # in the template still shows through render_template, not an error.
+    # tokens, held queue, last GO) is seeded verbatim into the successor's own
+    # Live state below, its one on-disk copy: the HANDOFF only points at it, so
+    # the successor never re-copies authority-bearing state by hand and
+    # `action-zero.sh --render-legs` finds every nonce it keeps. Absent section
+    # -> empty string -> each field falls back to its template placeholder.
     predecessor_live_state="$(awk '
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { exit }
@@ -1747,6 +1775,7 @@ cmd_next() {
         CARRIED_LIVE_STATE "$(carried_live_state "$predecessor_live_state")" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
+    seed_live_fields "$doc" "$predecessor_live_state"
 
     echo "doc: $doc"
     echo "session: $session"
@@ -1766,11 +1795,11 @@ cmd_next() {
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../console-kit/handoff-facts.sh"
-        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
         hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
-        # ponytail: the cap trims only the re-derivable fact sections; Live state, rulings and the wrapped-PR list stay inline even over budget, an oversized Live state needs a tighter Live-state writer.
+        # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
         local hf_pass=1 hf_wrapped hf_wrapped_bytes
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c)"
@@ -1791,9 +1820,9 @@ cmd_next() {
                 REPO "$repo" \
                 BUCKET "$bucket" \
                 KIT "$kit" \
-                LIVE_STATE "$predecessor_live_state"
+                LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`"
             # Over budget: the bulky fact sections (all re-derivable) become
-            # pointers; the Live state and the rulings stay inline.
+            # pointers; the rulings stay inline.
             [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
@@ -1802,11 +1831,11 @@ cmd_next() {
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
-        # Still over budget after the pointer pass: the remainder is Live state,
-        # rulings and the wrapped-PR list, which are never trimmed — say so loudly.
+        # Still over budget after the pointer pass: the remainder is the rulings
+        # and the wrapped-PR list, which are never trimmed — say so loudly.
         hf_total="$(wc -c < "$predecessor_handoff")"
         if [ "$hf_total" -gt "$hf_budget" ]; then
-            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); Live state ${#predecessor_live_state} bytes, wrapped-PR list $hf_wrapped_bytes bytes — tighten the Live state"
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); wrapped-PR list $hf_wrapped_bytes bytes"
             printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
             err "warning: $hf_note"
         fi

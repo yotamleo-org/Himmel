@@ -257,7 +257,7 @@ reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non
 alarming, each with an `ACTION wt-orphans=…` line after the TICK line.
 
 With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
-when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (12000), and
+when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000), and
 `ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
 DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
 specs/decisions/console-decisions-<date>.md the superseded rulings move to verbatim
@@ -1418,9 +1418,9 @@ fi
 # Shown only as ACTION lines after the TICK line; not in console-wait's wake key.
 handoff_bytes=0
 decisions_bytes=0
-handoff_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+handoff_budget="${HANDOFF_BUDGET_BYTES:-6000}"
 decisions_budget="${DECISIONS_BUDGET_BYTES:-4000}"
-case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=12000 ;; esac
+case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=6000 ;; esac
 case "$decisions_budget" in ''|*[!0-9]*) decisions_budget=4000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     handoff_file="${console_doc%.md}-HANDOFF.md"
