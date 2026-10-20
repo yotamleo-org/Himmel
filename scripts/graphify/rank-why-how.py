@@ -7,7 +7,7 @@ For a why/how question this filter:
   1. adds up to MAX_ADDED doc/rationale nodes whose label or rationale shares at least two words
      with the question (a rare word, or one in the label, weighs more) and that the answer does not already list, and
   2. orders the NODE blocks: the start nodes the caller gave (`Start (given): [...]`), then nodes
-     carrying a RATIONALE line, then doc nodes (a .md source, a document/concept/rationale node,
+     whose NODE line ends in graphify's ` WHY <rationale>` suffix, then doc nodes (a .md source, a document/concept/rationale node,
      or an end of a rationale_for/documents/explains edge), then the rest. Order within a tier is
      graphify's.
   3. given a budget, keeps the answer within max(its own length, budget * 3 chars) by dropping
@@ -34,6 +34,7 @@ WHY_HOW = re.compile(
     re.I,
 )
 NODE_LINE = re.compile(r"^NODE (?P<label>.*) \[src=(?P<src>.*?) loc=")
+WHY_SUFFIX = re.compile(r" community=[^\]]*\] WHY ")
 GIVEN = re.compile(r"\| Start \(given\): (\[.*?\])(?= \| )")
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 DOC_TYPES = {"document", "concept", "rationale", "paper"}
@@ -134,13 +135,11 @@ def rank(lines, graph, question, budget=None):
     scored.sort(key=lambda s: s[:3])
     added = []
     for _, _, _, node, why in scored[:MAX_ADDED]:
-        block = [
-            CONTROL.sub(" ", f"NODE {node.get('label')} [src={node.get('source_file')} loc={node.get('source_location')} "
-            f"community={node.get('community_name') or ''}]")
-        ]
-        if why:
-            block.append("  RATIONALE: " + why)
-        added.append(block)
+        line = CONTROL.sub(
+            " ", f"NODE {node.get('label')} [src={node.get('source_file')} loc={node.get('source_location')} "
+            f"community={node.get('community_name') or ''}]"
+        )
+        added.append([line + " WHY " + why if why else line])
 
     # The first block for each given start label stays on top: the caller named that node.
     pinned, wanted = set(), given_labels(lines[:start])
@@ -153,7 +152,7 @@ def rank(lines, graph, question, budget=None):
     def tier(block):
         if id(block) in pinned:
             return -1
-        if any(line.startswith("  RATIONALE:") for line in block[1:]):
+        if WHY_SUFFIX.search(block[0]):
             return 0
         m = NODE_LINE.match(block[0])
         node = by_key.get((m.group("label"), m.group("src"))) if m else None

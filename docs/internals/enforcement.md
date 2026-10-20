@@ -1315,6 +1315,53 @@ Known limitations (accepted, both fail-open by design):
 
 Spec: `scripts/cr/test-install-cr-gate.sh`, `scripts/cr/test-pr-check-pair.sh`.
 
+### CR ledger amends — only a signed adjudication lowers a finding (HIMMEL-6511)
+
+The ledger is an append-only JSONL file, so anything that can append a line
+could once append `{"kind":"amend","set":{"verdict":"disproved"}}` and clear a
+Critical or Important finding. Now a **lowering amend** counts only when it is
+signed. An amend is lowering when its `set` does any of these:
+
+- names a severity other than crit;
+- sets the verdict to `disproved`, `fixed` or `deferred`;
+- carries a `deferred_to`;
+- moves the finding to another `head`.
+
+**Who signs.** `ledger-append.sh` is the only amend writer, and it signs every
+amend it writes. It stamps `src: "ledger-append"` and `amend_mac`, an
+HMAC-SHA256 under the GO key (`~/.config/himmel/go-hmac.key`, domain
+`himmel-amend-v1`). The mac covers the branch, the target head, the finding
+id, the artifact, the perspective, the sorted `set` and `src`. So a mac copied
+onto another finding, head or branch does not verify.
+
+**Who checks.** Each gate reader runs its amend rows through
+`scripts/cr/ledger-amend-auth.js` before merging them:
+
+- `clear-cr-marker.sh`;
+- `review-round.sh` (ledger query, promote, and the defer/cap analysis);
+- the chief's `cr-disposition.sh`;
+- the merge-gate lib `scripts/lib/cr-ledger-evidence.sh`.
+
+The helper drops a lowering amend that fails to verify, so the finding stays
+open. Amends that do not lower a finding (`agreed`, crit, a reason) pass
+unsigned. If the helper is missing, the reader fails closed.
+
+**Cutover.** The cutover is the file position of the first amend in that
+ledger that carries an `amend_mac`. Rows above it were written before signing
+existed and are honoured unsigned, so in-flight work is not re-blocked. Below
+it, every lowering amend must verify. With no GO key on the host (CI, a fresh
+station), nothing is signed and every amend is honoured, as before.
+
+- **Ceiling.** The signer shares the operator's uid. Any process running as
+  that uid can read the key, or call `ledger-append.sh amend` itself. The
+  check therefore stops a hand-appended or tool-forged line, not a same-uid
+  writer that goes through the sanctioned path. The upgrade is a separate-uid
+  signer that only a judge or the chief can drive (HIMMEL-6772).
+
+Spec: `scripts/cr/test-ledger-amend-auth.sh`, plus the HIMMEL-6511 rows in
+`test-clear-cr-marker.sh`, `test-pr-check-rounds.sh` and
+`console-kit/test-cr-disposition.sh`.
+
 ### `block-jira-compound-write.sh` — jira write-shape bounce (HIMMEL-1077)
 
 Fires on Bash. Jira CLI writes are sanctioned (HIMMEL-205), but approval is

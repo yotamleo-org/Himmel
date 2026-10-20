@@ -191,6 +191,14 @@ assert qmd['fork']['upstream_repo'] == 'https://github.com/tobi/qmd.git'
 assert qmd['fork']['pin_file'] == 'scripts/lib/qmd-bin.sh'
 assert 'version_pin' not in qmd
 
+gfy = entries['graphify']
+assert gfy['tracked_repo'] == 'Graphify-Labs/graphify'
+assert gfy['fork']['fork_repo'] == 'https://github.com/yotamleo-org/graphify.git'
+assert gfy['fork']['upstream_repo'] == 'https://github.com/Graphify-Labs/graphify.git'
+assert gfy['fork']['branch'] == 'himmel-main'
+assert gfy['fork']['pin_file'] == 'scripts/lib/graphify-bin.sh'
+assert 'version_pin' not in gfy
+
 plugin_root = root / 'templates/luna-second-brain/.obsidian/plugins'
 community = json.load(open(root / 'templates/luna-second-brain/.obsidian/community-plugins.json', encoding='utf-8'))
 expected = {

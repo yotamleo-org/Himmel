@@ -168,6 +168,22 @@ case "$OUT" in *"step=graphify action=install graphifyy==9.8.7 "*) ok "graphify 
 printf '#!/bin/sh\necho "graphify 9.8.7"\n' > "$GV/graphify"
 run "$GV" --dry-run
 case "$OUT" in *"step=graphify action=skip"*) ok "graphify at the pin is skipped" ;; *) bad "graphify at the pin not skipped: $OUT" ;; esac
+# The fork pin: a +himmel.N stamp and a commit sha. The upstream base alone is
+# off the pin and reinstalls from the fork ref; the stamped build is at the pin.
+cp "$FAKE/scripts/lib/graphify-bin.sh" "$TMP/graphify-bin.plain"
+FSHA="0123456789abcdef0123456789abcdef01234567"
+{
+  # shellcheck disable=SC2016  # literal fixture text
+  printf '%s\n' '_graphify_version() { printf '"'"'%s\n'"'"' "${GRAPHIFY_VERSION:-9.8.7+himmel.1}"; }'
+  printf '%s\n' "_graphify_fork_ref() { printf '%s\\n' \"\${GRAPHIFY_FORK_REF:-$FSHA}\"; }"
+} > "$FAKE/scripts/lib/graphify-bin.sh"
+printf '#!/bin/sh\necho "graphify 9.8.7"\n' > "$GV/graphify"
+run "$GV" --dry-run
+case "$OUT" in *"step=graphify action=install graphifyy @ git+https://github.com/yotamleo-org/graphify@$FSHA "*) ok "upstream base off the fork pin reinstalls from the fork ref" ;; *) bad "fork ref not installed: $OUT" ;; esac
+printf '#!/bin/sh\necho "graphify 9.8.7+himmel.1"\n' > "$GV/graphify"
+run "$GV" --dry-run
+case "$OUT" in *"step=graphify action=skip"*) ok "the stamped fork build is at the pin" ;; *) bad "stamped fork build not at the pin: $OUT" ;; esac
+cp "$TMP/graphify-bin.plain" "$FAKE/scripts/lib/graphify-bin.sh"
 # a failing graphify / qmd install is NON-fatal and does not stop the next step.
 GF="$TMP/gfail"; mkdir -p "$GF"; cp "$HAVE"/* "$GF/"
 for t in timeout sh tail mkdir bash; do ln -s "$(command -v "$t")" "$GF/$t"; done

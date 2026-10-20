@@ -164,6 +164,7 @@ CONSOLE_WAIT_DISPATCH_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	
 CONSOLE_WAIT_FAIL_WAKE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_HANDOVER_MIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_INTERVAL	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+CONSOLE_WAIT_LEG_EVENT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_LOCK_STATUS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_PAGE_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_PAGE_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892

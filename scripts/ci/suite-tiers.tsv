@@ -214,6 +214,7 @@ scripts/cr/test-impacted-suites.sh	pr	trust-path
 scripts/cr/test-install-cr-gate.sh	pr	trust-path
 scripts/cr/test-known-findings.sh	pr	trust-path
 scripts/cr/test-lane-classify.sh	pr	trust-path
+scripts/cr/test-ledger-amend-auth.sh	pr	trust-path
 scripts/cr/test-ledger-append.sh	pr	static-gate
 scripts/cr/test-live-gate-e2e.sh	pr	trust-path
 scripts/cr/test-mark-deferred-escape.sh	local	behaviour suite, backfilled HIMMEL-6716
@@ -323,6 +324,7 @@ scripts/handover/console-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/console-kit/test-console-budget.sh	pr	static-gate
 scripts/handover/console-kit/test-console-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-console-wait-b.sh	quarantine	cap-exceeded flakes, HIMMEL-6547; second half of test-console-wait.sh, HIMMEL-6742
+scripts/handover/console-kit/test-console-wait-r0.sh	local	behaviour suite, the script relay (R0) of console-wait.sh, HIMMEL-6538
 scripts/handover/console-kit/test-console-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
 scripts/handover/console-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/console-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -343,6 +345,7 @@ scripts/handover/console-kit/test-ice-followups.sh	local	new since the audit, be
 scripts/handover/console-kit/test-inbox-audit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-inbox-follow.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-inbox-send.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-json-writers-final-newline.sh	local	behaviour suite, new for HIMMEL-6767
 scripts/handover/console-kit/test-judge-ladder.sh	pr	trust-path
 scripts/handover/console-kit/test-launch-cloud.sh	pr	trust-path
 scripts/handover/console-kit/test-leg-doc-lock.sh	pr	trust-path
@@ -1019,6 +1022,7 @@ scripts/test-worktree-orphans.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/test-worktree-verbs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/testing/test-added-unwired-prepush.sh	pr	static-gate
 scripts/testing/test-claude-mock-turn.sh	local	new since the audit, behaviour suite
+scripts/testing/test-documented-commands.sh	pr	guard
 scripts/testing/test-fakekey-claude-startup.sh	local	new since the audit, behaviour suite
 scripts/testing/test-mock-consult-sandbox.sh	pr	guard
 scripts/testing/test-mock-hook-live-turn.sh	local	new since the audit, behaviour suite

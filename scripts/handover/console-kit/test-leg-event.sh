@@ -15,6 +15,7 @@
 #   8. message on stdin ("-") and a leading "- " bullet marker
 #   12. a WRAPPED message that mentions deferred / follow-up / residual with no key -> ESCALATE
 #   13. a WRAPPED leg whose doc has no PR: close-wrapped-leg.sh runs, HANDLED close-wrapped; a refused close -> ESCALATE
+#   14. a label already closed (wrap-merged's `<label> WRAPPED, window closed.` bullet in the console doc) -> HANDLED noop
 #
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
@@ -260,5 +261,17 @@ check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
 
 LE_LIST="$W/list13" run "MERGED #2566 N3001"
 contains "13 MERGED never takes the close path" "$calls" "wrap --doc"
+
+# a leg already closed has left the manifest; wrap-merged's console-doc bullet proves it
+printf '%s\n' '- 10:00 MERGED #2566 → abcdef01 (N9999, HIMMEL-9 Done). N9999 WRAPPED, window closed.' > "$W/doc"
+run "WRAPPED N9999"
+check "14 re-run on a closed leg rc" "$rc" 0
+check "14 re-run on a closed leg prints HANDLED noop" "$out" "HANDLED noop N9999"
+check "14 nothing runs" "$calls" ""
+run "MERGED #2566 N9999"
+check "14 a MERGED re-run is a noop too" "$out" "HANDLED noop N9999"
+run "WRAPPED N999"
+contains "14 a label that is only a prefix of the closed one still escalates" "$out" "ESCALATE not-in-manifest N999"
+: > "$W/doc"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

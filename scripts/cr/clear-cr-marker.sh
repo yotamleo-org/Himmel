@@ -528,7 +528,7 @@ if [ -e "$git_dir/cr-impl-family/$branch" ] || [ -L "$git_dir/cr-impl-family/$br
     fi
 fi
 # shellcheck disable=SC2016  # $-refs below are JS inside a single-quoted node script, not shell
-verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
+verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
   const fs = require("fs"), e = process.env;
   const lines = fs.existsSync(e.LEDGER)
       ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
@@ -664,7 +664,8 @@ verdict=$(IMPL_FAMILY="$impl_family" LEDGER="$ledger" SWEEPS="${check_sweeps:-$g
   // every branch-specific amend post-dates the legacy ones).
   const SEP = String.fromCharCode(31);
   const amendsByKey = new Map();
-  for (const l of lines) {
+  // Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+  for (const l of require(e.AMEND_AUTH).filterLines(lines)) {
       let a;
       try { a = JSON.parse(l); } catch { continue; }   // counted below in the main pass
       if (a.kind !== "amend" || !a.set || typeof a.set !== "object") continue;

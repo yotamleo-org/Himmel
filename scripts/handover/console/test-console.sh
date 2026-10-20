@@ -26,6 +26,8 @@ QL="$REPO_REAL/scripts/handover/queue-lock.sh"
 . "$HERE/../../lib/permission-test.sh"
 # shellcheck source=../../lib/host-caps.sh
 . "$HERE/../../lib/host-caps.sh"
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
 # Cases 27/29/30/40 need a real symlink, 31/32/33/36/39/41/42 a
 # chmod / `mkdir -m` that sticks -- neither holds on Git Bash / NTFS, so those
 # cases SKIP there (measured, not keyed off uname) rather than fail.
@@ -266,7 +268,7 @@ check "5d launch line forces session persistence" \
 # The env prefix must precede the binary, not trail it -- `claude ... env -u X`
 # would pass the flags to claude as arguments instead of scrubbing anything.
 check "5d env prefix precedes the claude binary" \
-    "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
+    "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; (if \[ -f [^;]*console-bus-exec.sh \]; then bash [^;]*console-bus-exec.sh [^;]* -- )?env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
 
 # --- 6: next writes the successor stub + predecessor HANDOFF ----------
 doc6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-console.md"
@@ -2639,5 +2641,79 @@ run81 dec87i
 check "87 a longer line that drops its predecessor's decisions file refuses" "$rc81" "1"
 mk87 dec87j "$(printf '%s\n%s' "$e87_3" "$e87_4 Only on Sundays.")"; run81 dec87j
 check "87 pointer line whose file extended an entry refuses" "$rc81" "1"
+
+# --- 88: the pasted launch line binds the console on the bus, as the armed
+# path does: the console profile's opt-in registers the session as a console
+# (--predecessor on next) and binds the pid claude then runs as, and claude
+# gets HIMMEL_BUS_NAME and none of the pasting shell's HIMMEL_BUS_*; opted-out
+# calls nothing; a failed register still starts claude, unbound.
+b88="$tmp/bus88"; mkdir -p "$b88/bin"
+cat > "$b88/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+printf 'pid=%s bus_name=%s extra=%s\n' "$$" "${HIMMEL_BUS_NAME:-<unset>}" "${HIMMEL_BUS_EXTRA:-<unset>}" >> "$B88_SEEN"
+STUB
+cat > "$b88/bus" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -z "${BUS88_HANG:-}" ] || exec sleep 30
+[ -z "${BUS88_FAIL:-}" ]
+STUB
+chmod +x "$b88/bin/claude" "$b88/bus"
+print88() { # <in|out> <new|next> <bucket>
+  ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/work88" \
+      CONSOLE_BUS_PROFILES_MJS="$bus79/profiles-$1.mjs" bash "$C" "$2" --bucket "$3" --name bus88-console ) 2>&1
+}
+paste88() { # <printed output> [extra env...]
+  local line; line="$(printf '%s\n' "$1" | sed -n 's/^launch: //p')"; shift
+  rm -f "$b88/calls" "$b88/seen"
+  ( cd "$tmp" && env PATH="$b88/bin:$PATH" B88_SEEN="$b88/seen" CONSOLE_BUS_CLI="$b88/bus" \
+      HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" bash -c "$line" ) >/dev/null 2>&1
+}
+pid88() { sed -n 's/^pid=\([0-9]*\) .*/\1/p' "$b88/seen" 2>/dev/null; }
+s88a="DEMO-nextleg-${today}A-bus88-console"
+out88a="$(print88 in new bus88in)"
+paste88 "$out88a"
+check "88 opted-in new: the pasted line registers the console, then binds the pid claude runs as" \
+    "$(cat "$b88/calls" 2>/dev/null)" "register $s88a --role console
+bind $s88a $(pid88)"
+check "88 opted-in new: claude gets HIMMEL_BUS_NAME and no other HIMMEL_BUS_*" \
+    "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=$s88a extra=<unset>"
+s88b="DEMO-nextleg-${today}B-bus88-console"
+out88b="$(print88 in next bus88in)"
+paste88 "$out88b"
+check "88 opted-in next: register carries --predecessor <outgoing session>" \
+    "$(sed -n 1p "$b88/calls" 2>/dev/null)" "register $s88b --role console --predecessor $s88a"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88b.md" "$(token_of "$out88b")" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88a.md" "$(token_of "$out88a")" >/dev/null 2>&1
+out88c="$(print88 out new bus88out)"
+paste88 "$out88c"
+check "88 opted-out: bus never called" "$([ -e "$b88/calls" ] && echo called || echo none)" "none"
+check "88 opted-out: claude still starts" "$([ -s "$b88/seen" ] && echo started || echo not-started)" "started"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88out/$s88a.md" "$(token_of "$out88c")" >/dev/null 2>&1
+out88d="$(print88 in new bus88fail)"
+paste88 "$out88d" BUS88_FAIL=1
+check "88 failed register: no bind, claude starts unbound" \
+    "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
+
+# --- 89: the pasted line never hangs on the bus: a bus call stuck past
+# BUS_EXEC_SECS is killed and claude starts unbound; and a line whose
+# console-bus-exec.sh is gone runs claude directly.
+out89a="$(print88 in new bus89hang)"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    rc89=0
+    paste88 "$out89a" BUS88_HANG=1 BUS_EXEC_SECS=1 "$_TIMEOUT_BIN" 20 || rc89=$?
+    check "89 stuck bus: the pasted line does not hang" "$rc89" "0"
+    check "89 stuck bus: claude starts unbound" \
+        "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=<unset> extra=<unset>"
+else
+    echo "ok - SKIPPED: 89 stuck bus: no timeout or gtimeout on this host"
+fi
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89hang/$s88a.md" "$(token_of "$out89a")" >/dev/null 2>&1
+out89b="$(print88 in new bus89gone)"
+paste88 "$(printf '%s\n' "$out89b" | sed 's/console-bus-exec\.sh/console-bus-exec-gone.sh/g')"
+check "89 wrapper missing: claude still starts" "$([ -s "$b88/seen" ] && echo started || echo not-started)" "started"
+check "89 wrapper missing: bus never called" "$([ -e "$b88/calls" ] && echo called || echo none)" "none"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89gone/$s88a.md" "$(token_of "$out89b")" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
