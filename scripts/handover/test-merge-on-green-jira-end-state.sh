@@ -153,6 +153,7 @@ assert_eq "2 partial merge: fixVersion left alone" "$(state_versions)" "v1.1.3"
 assert_comment_has "2 partial merge: Remaining line on the ticket" "Remaining: slice 2 of 3"
 
 # --- 2b the brief says completes-ticket: no, so --jira-transition is ignored -----------------
+export STUB_PR_BODY="Remaining: slice 2 of 3"
 new_case "In Review" "v1.1.3"
 printf '> **Completes ticket:** no\n\n## Results\n' > "$TMP/leg-doc.md"
 run_merge 0 --jira-transition --leg-doc "$TMP/leg-doc.md"
