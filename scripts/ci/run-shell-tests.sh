@@ -4191,17 +4191,24 @@ _live_check() {
   [ "$_dirty" -eq 0 ]
 }
 if [ "$list_only" -eq 0 ]; then
-  # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root prints the NOTE below
+  # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root aborts the run below
   live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
+  _live_ok=0
   if [ -n "$live_root" ] && mkdir "$live_root/bin" && _live_reset; then
+    _live_ok=1
     for _ls_t in $live_sched; do
-      printf '#!/usr/bin/env bash\nprintf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q\necho "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2\nexit 1\n' \
-        "$_ls_t" "$live_root/scheduler-calls.log" "$_ls_t" > "$live_root/bin/$_ls_t" && chmod +x "$live_root/bin/$_ls_t"
+      if ! printf '#!/usr/bin/env bash\nprintf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q\necho "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2\nexit 1\n' \
+        "$_ls_t" "$live_root/scheduler-calls.log" "$_ls_t" > "$live_root/bin/$_ls_t" || ! chmod +x "$live_root/bin/$_ls_t"; then
+        _live_ok=0
+        break
+      fi
     done
-  else
+  fi
+  if [ "$_live_ok" -eq 0 ]; then
     [ -z "$live_root" ] || rm -rf "$live_root"
     live_root=""
-    printf '[NOTE] could not create the live-state sentinels; suites inherit the caller'"'"'s live-state env unchecked\n'
+    echo "run-shell-tests.sh: could not create the live-state sentinels — refusing to run suites against the caller's live state" >&2
+    exit 2
   fi
 fi
 # FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass

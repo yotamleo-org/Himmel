@@ -240,6 +240,7 @@ fi
 mkdir -p "$TMP/empty-atq-bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/empty-atq-bin/atq"
 chmod +x "$TMP/empty-atq-bin/atq"
+ATQ_REAL_PATH="$PATH"
 export PATH="$TMP/empty-atq-bin:$PATH"
 # every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
@@ -6638,7 +6639,7 @@ if [ -z "${HIMMEL_SUITE_CRONTAB_LOG:-}" ]; then
         diff <(printf '%s\n' "$CRONTAB_SNAPSHOT_BEFORE") <(printf '%s\n' "$CRONTAB_SNAPSHOT_AFTER") || true
         FAILED=$((FAILED + 1))
     fi
-    ATQ_SNAPSHOT_AFTER=$(atq 2>/dev/null || true)
+    ATQ_SNAPSHOT_AFTER=$(PATH="$ATQ_REAL_PATH" atq 2>/dev/null || true)
     if [ "$ATQ_SNAPSHOT_AFTER" != "$ATQ_SNAPSHOT_BEFORE" ]; then
         echo "FAIL the real at queue changed during this run -- a case leaked into the operator's live at queue:"
         diff <(printf '%s\n' "$ATQ_SNAPSHOT_BEFORE") <(printf '%s\n' "$ATQ_SNAPSHOT_AFTER") || true

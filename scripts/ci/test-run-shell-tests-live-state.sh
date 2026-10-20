@@ -12,6 +12,7 @@
 #       terminated.
 #   L4. A dirty sentinel is reset, so the next suite is not blamed; a suite
 #       that points the variable at its own file is not flagged.
+#   L5. Sentinels that cannot be set up abort the run before any suite.
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -213,5 +214,16 @@ SHEOF
   rm -rf "$sb3"
   ;;
 esac
+
+echo "== L5: sentinels that cannot be set up abort the run before any suite =="
+mkdir -p "$sb/mkfail" "$sb/scripts5"
+printf '#!/usr/bin/env bash\ncase "$*" in *himmel-live-sentinel*) exit 1 ;; esac\nexec %q "$@"\n' "$(command -v "mktemp")" > "$sb/mkfail/mktemp"
+chmod +x "$sb/mkfail/mktemp"
+printf '#!/usr/bin/env bash\n: > %q\nexit 0\n' "$sb/ran5" > "$sb/scripts5/test-ran.sh"
+chmod +x "$sb/scripts5/test-ran.sh"
+out5=$(PATH="$sb/mkfail:$PATH" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts5" 2>&1)
+rc5=$?
+if [ "$rc5" -eq 2 ]; then pass "L5: run exits 2"; else fail "L5: expected rc=2, got $rc5; out: $out5"; fi
+if [ ! -e "$sb/ran5" ]; then pass "L5: no suite ran"; else fail "L5: a suite ran without sentinels; out: $out5"; fi
 
 rst_tally
