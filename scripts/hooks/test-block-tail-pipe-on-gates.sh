@@ -1311,6 +1311,21 @@ EOF'
 # shellcheck disable=SC2016 # literal command text
 cr_cmd=$(printf '%s\n' "echo '\$(bash scripts/check-ci.sh 1 | tail -1)'"; printf 'cat <<EOF\r\n'; printf '%s\n' body EOF '${x@P}' EOF)
 deny "6338 CR-ended heredoc delimiter keeps a live \$ line in the body" "$cr_cmd"
+# A `<<` inside a quote is not a heredoc: it must not queue a fake delimiter that
+# swallows the real body's live $ as data.
+# shellcheck disable=SC2016 # literal command text
+deny "6338 a quoted << does not hide the real unquoted body" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+echo '"'"'<<FAKE'"'"'
+cat <<EOF
+${x@P}
+EOF'
+# The marker exempts the line it sits on, not the whole command.
+# shellcheck disable=SC2016 # literal command text
+deny "6338 a marker on an unrelated command does not exempt the heredoc" 'echo hi # tail-pipe-ok: unrelated
+echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF
+${x@P}
+EOF'
 # shellcheck disable=SC2016 # literal command text
 allow "6338 unquoted body with a live \$ and no gate anywhere" 'cat <<EOF
 home is $HOME
@@ -1328,6 +1343,11 @@ EOF'
 # shellcheck disable=SC2016 # literal command text
 allow "6338 the opt-out marker still opts out" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"' # tail-pipe-ok: documented
 cat <<EOF
+${x@P}
+EOF'
+# shellcheck disable=SC2016 # literal command text
+allow "6338 the opt-out marker on the heredoc opener line opts out" 'echo '"'"'$(bash scripts/check-ci.sh 1 | tail -1)'"'"'
+cat <<EOF # tail-pipe-ok: documented
 ${x@P}
 EOF'
 
