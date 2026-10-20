@@ -2262,6 +2262,51 @@ g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 g -C "$WT" reset -q --hard "$ORIG_MAIN"
 run "behind main, merge-base copy predates the hand-off -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
+# The merge-base copy is the variant under test: main moves to a child that
+# restores BASE_MAIN's bytes, the worktree sits on the variant commit.
+mb_variant_run() { # <label> <want> <mog-file> <go-file>
+    g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
+    cp "$3" "$PRIMARY/scripts/handover/merge-on-green.sh"
+    cp "$4" "$PRIMARY/scripts/handover/console-kit/go.sh"
+    g -C "$PRIMARY" commit -qam 'variant entries'
+    local variant
+    variant=$(g -C "$PRIMARY" rev-parse HEAD)
+    g -C "$PRIMARY" checkout -q "$BASE_MAIN" -- scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
+    g -C "$PRIMARY" commit -qam 'restore main bytes'
+    g -C "$WT" reset -q --hard "$variant"
+    run "behind main, $1 (merge-on-green.sh)" "$2" "$(payload "$MOG" "$WT")" "$HR"
+    run "behind main, $1 (go.sh)" "$2" "$(payload "$GO" "$WT")" "$HR"
+}
+VARIANTS="$TMP_ROOT/variants"
+mkdir -p "$VARIANTS"
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '%s\n' '#!/usr/bin/env bash' 'set -uo pipefail' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo mog'
+} >"$VARIANTS/mog-deep"
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '%s\n' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo go'
+} >"$VARIANTS/go-shallow"
+# a vertical tab before the # is not blank to bash, so the line runs
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '\v#;echo hidden\n'
+    printf '%s\n' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog'
+} >"$VARIANTS/mog-vt"
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '\v#;echo hidden\n'
+    printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go'
+} >"$VARIANTS/go-vt"
+mb_variant_run "merge-base hand-off at the wrong depth -> deny" 2 "$VARIANTS/mog-deep" "$VARIANTS/go-shallow"
+mb_variant_run "merge-base runs a vertical-tab line above the hand-off -> deny" 2 "$VARIANTS/mog-vt" "$VARIANTS/go-vt"
+REAL_REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+g -C "$REAL_REPO" show HEAD:scripts/handover/merge-on-green.sh >"$VARIANTS/mog-real"
+g -C "$REAL_REPO" show HEAD:scripts/handover/console-kit/go.sh >"$VARIANTS/go-real"
+mb_variant_run "merge-base is the real main prologue -> allow" 0 "$VARIANTS/mog-real" "$VARIANTS/go-real"
+rm -rf "$VARIANTS"
+g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
+g -C "$WT" reset -q --hard "$ORIG_MAIN"
 
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*

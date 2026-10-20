@@ -2487,15 +2487,26 @@ behind_main_entries_ok() {
     [ "$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } ($3 in h)')" = "$base" ] || return 1
     # The merge-base copy must run nothing before the hand-off: past comments,
     # blank lines and one `set -u` / `set -uo pipefail` line, its first
-    # statements are the `_ah_d` line and the hand-off source line.
+    # statements are the `_ah_d` line and the hand-off source line, which
+    # reaches scripts/cr/anchor-handoff.sh at the entry's own depth (any other
+    # depth sources a file the guard never hashes). Blank means space or tab
+    # only: bash does not treat \v, \f or \r as blank, so [[:space:]] would
+    # skip a line bash runs.
     for e in $hentries; do
-        # shellcheck disable=SC2016 # the entries' literal `_ah_d` line
+        case "$e" in
+            scripts/handover/merge-on-green.sh) up=.. ;;
+            scripts/handover/console-kit/go.sh) up=../.. ;;
+            *) return 1 ;;
+        esac
+        # shellcheck disable=SC2016 # the entries' literal `_ah_d` and source lines
         anchorq cat-file blob "$mb:$e" 2>/dev/null \
-            | awk -v c='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac' '
-                /^[[:space:]]*(#|$)/ { next }
+            | awk -v c='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac' \
+                -v s=". \"\$_ah_d/$up/cr/anchor-handoff.sh\" || exit 2" '
+                d { next }
+                /^[ \t]*(#|$)/ { next }
                 n == 0 && /^set -u(o pipefail)?$/ { n = 1; next }
-                n < 2 { if ($0 != c) exit; n = 2; next }
-                { f = /^[.] "[$]_ah_d\/([.][.]\/)+cr\/anchor-handoff[.]sh" [|][|] exit 2$/; exit }
+                n < 2 { if ($0 != c) d = 1; else n = 2; next }
+                { f = ($0 == s); d = 1 }
                 END { exit !f }' || return 1
     done
     rest_have=$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
