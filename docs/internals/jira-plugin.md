@@ -30,7 +30,7 @@ For Jira ops in this repo, default to the local CLI at
 |-------------|-----------------------------------------------------------------------------|------------------------------------------------------------------|
 | Get         | `node scripts/jira/dist/index.js get HIMMEL-N` (default includes description body, a `Labels:` line when the issue has any, and a `Fix versions:` line when it has any; add `--short` for header-only) | `getJiraIssue`                                                   |
 | List/search | `... list --jql "..."`; `... list --label <l>` filters by label (composed into the built JQL, `--jql` still wins); `... list --labels` appends each issue's labels as a trailing comma-separated column (off by default — on by default would break fixed-column consumers of the TSV output) | `searchJiraIssuesUsingJql`                                       |
-| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it defaults to the earliest unreleased version; `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
+| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it needs a placement: `--backlog`, `--gate critical\|regression` or `--priority Highest` (see "Bug placement" below); `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
 | Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name; `... edit HIMMEL-N --affects-version v1.0.0\|current` sets affectsVersion (FULL-REPLACE, same validation, read back after the PUT) | `editJiraIssue`                                                  |
 | Comment     | `... comment HIMMEL-N "text"` / `... comment HIMMEL-N --edit <commentId> "text"` (replace a comment's body, PUT) | `addCommentToJiraIssue` / `addOrEditJiraIssueComment`            |
 | Comments    | `... comments HIMMEL-N [--last N]` (read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
@@ -241,14 +241,28 @@ prints the `jira.sectorField` config.json snippet (it never writes the file;
 config.json writes are operator-only); `--opt-out` prints the `none` snippet. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
-**Bug default fixVersion.** `create --type Bug` without
-`--fix-version` sets the earliest unreleased, unarchived version from the project's
-versions and prints one stderr line saying so; an explicit `--fix-version` always
-wins, and when no unreleased version can be read the Bug is filed with no
-fixVersion and a warning. Other types are untouched. There is no date cutoff and
-no deferral of every Bug (the v1 bug freeze and its `freeze-check` op
-were removed by operator ruling 2026-10-05): the release gate is the `v1-blocker`
-label and priority, which the board shows.
+**Bug placement (HIMMEL-6776).** `create --type Bug` without `--fix-version` is
+placed at filing, never defaulted silently. `--backlog` files it with the
+`backlog` label and no fixVersion. `--priority Highest` or `--gate
+critical|regression` sets the earliest unreleased, unarchived version from the
+project's versions and prints one stderr line saying so (no readable unreleased
+version: filed with no fixVersion and a warning). With none of those the create
+is refused, naming both choices and the `--sector` given. An explicit
+`--fix-version` is untouched, as are other types. `create --priority <name>`
+sets the Jira priority. This reverses the PR #1237 earliest-unreleased default
+(decision 100, 2026-10-20); there is still no date cutoff (the v1 bug freeze was
+removed by operator ruling 2026-10-05) and the release gate is the `v1-blocker`
+label and priority.
+
+**Override and admissions ledger.** `create --fix-version <v>
+--console-override "<reason>"` is honoured only with `HIMMEL_CONSOLE=1` set, a
+non-empty reason and a ledger location (`HANDOVER_DIR`, or
+`HIMMEL_ADMISSIONS_LEDGER`); any miss refuses before the ticket is filed. After
+the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
+(`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
+spoofable by any same-uid caller (ponytail, upgrade path HIMMEL-6796). Code:
+`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission`,
+`readAdmissions`, `admissionsLedgerPath`, `checkConsoleOverride`).
 
 ## Confluence CLI
 
