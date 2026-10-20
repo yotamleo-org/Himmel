@@ -58,6 +58,7 @@ check "control: sweep passes the org URLs" clean "$sweep_ctl/org"
 check "control: sweep fails on an unreadable file" fails clean "$sweep_ctl/no-such-file"
 sweep_files=()
 while read -r f; do sweep_files+=("$repo/$f"); done < <(git -C "$repo" ls-files -- docs site README.md scripts/docs-site scripts/himmelctl scripts/jira/reconcile-lib.test.mjs)
+if [ "${#sweep_files[@]}" -gt 0 ]; then ok "host sweep: git ls-files listed files to sweep"; else ko "host sweep: git ls-files listed files to sweep"; fi
 check "host sweep: no tracked docs/site/wizard file names the old docs host or repo slug" clean "${sweep_files[@]}"
 
 if [ ! -d "$here/node_modules/astro" ]; then
