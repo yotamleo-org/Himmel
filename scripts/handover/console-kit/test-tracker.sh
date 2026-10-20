@@ -920,6 +920,7 @@ bsfile 204 'To Do' 'To Do' 'blocked by HIMMEL-305 in the title' '[]' 'Nothing he
 bsfile 205 'To Do' 'To Do' 'wont blocker' '[]' 'Blocked by: HIMMEL-306'
 bsfile 306 'Done' 'Wont Do' 'closed as wont' '[]' 'x'
 bsfile 207 'To Do' 'To Do' 'links line' '[]' 'Links: relates to HIMMEL-310, blocked by HIMMEL-311'
+bsfile 209 'To Do' 'To Do' 'bold label' '[]' '**Blocked by:** HIMMEL-314'
 bsfile 208 'To Do' 'To Do' 'yaml list' '' 'x'
 awk '$0 == "  blocked_by: " { print "  blocked_by:"; print "    - \"HIMMEL-312\""; print "    - \"HIMMEL-313\""; next } { print }' \
     "$bs/HIMMEL-208.md" > "$bs/yaml.tmp" && mv "$bs/yaml.tmp" "$bs/HIMMEL-208.md"
@@ -935,6 +936,7 @@ contains 'odd spacing and BLOCKED-BY:KEY are read (HIMMEL-6561)' "$bsout" 'HIMME
 contains 'the title is not scanned (HIMMEL-6561)' "$bsout" 'HIMMEL-204 [To Do] blocked by HIMMEL-305 in the title'$'\n'
 contains 'a blocker closed as wont reads wont (HIMMEL-6561)' "$bsout" 'HIMMEL-205 [To Do] wont blocker {blocked-by: HIMMEL-306 wont}'
 contains 'a Links: line names its blocked-by key only (HIMMEL-6749)' "$bsout" 'HIMMEL-207 [To Do] links line {blocked-by: HIMMEL-311 open}'
+contains 'a bold Markdown label with the colon inside is read (HIMMEL-6769)' "$bsout" 'HIMMEL-209 [To Do] bold label {blocked-by: HIMMEL-314 open}'
 contains 'a multi-line blocked_by YAML list is read (HIMMEL-6561)' "$bsout" 'HIMMEL-208 [To Do] yaml list {blocked-by: HIMMEL-312 open, HIMMEL-313 open}'
 contains 'a link the blocker text contradicts reads direction? (HIMMEL-6749)' "$bsout" 'HIMMEL-6535 [To Do] real 6535 link {blocked-by: HIMMEL-6538 direction?}'
 

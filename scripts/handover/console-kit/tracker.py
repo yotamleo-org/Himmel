@@ -717,7 +717,7 @@ def priority_groups(path):
 _KEYS = r'(HIMMEL-\d+(?:\s*(?:,(?:\s*and)?|and|\+)\s*HIMMEL-\d+)*)'
 # a ticket's own dependency line: `Depends on` / `Blocked by` at line start (after a list bullet), or a `Links:` line
 # naming one. Prose about another ticket, a quoted command and a negated mention never start a line with the phrase.
-_DEP_RE = re.compile(r'^\s*(?:[-*]\s+)?[*_]*(?:links\s*:.*?)?(?:depends\s+on|blocked[\s-]*by)[*_]*\s*:?\s*' + _KEYS,
+_DEP_RE = re.compile(r'^\s*(?:[-*]\s+)?[*_]*(?:links\s*:.*?)?(?:depends\s+on|blocked[\s-]*by)[*_]*\s*:?[*_]*\s*' + _KEYS,
                      re.I | re.M)
 _AFTER_RE = re.compile(r'\bafter\s+' + _KEYS, re.I)
 
