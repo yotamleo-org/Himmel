@@ -105,6 +105,7 @@ case "${1:-}" in
         if [ -e "$STATE/busy-update" ]; then
             want=$(cat "$STATE/busy-update")
             n=$(grep -c '^update' "$STATE/calls" 2>/dev/null || :)
+            [ -n "$n" ] || n=0
             if [ "$want" -lt 0 ] || [ "$n" -le "$want" ]; then
                 echo "SQLiteError: database is locked (errno 5, SQLITE_BUSY)" >&2
                 exit 1
@@ -453,7 +454,7 @@ echo -1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "persistent update lock rc 3" 3 "$rc"
 assert_contains "persistent update lock is explicit" "'qmd update' failed" "$out"
-assert_contains "persistent update lock names the lock" "SQLITE_BUSY" "$out"
+assert_contains "persistent update lock names the lock" "index still busy after" "$out"
 assert_not_contains "no embed attempted while the index stays locked" "embed" "$(calls)"
 
 echo "TEST: a non-BUSY 'qmd update' failure is not retried"
@@ -469,19 +470,25 @@ reset_state
 echo 1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=abc QMD_REINDEX_BUSY_RETRY_SECS=0 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "bad wait value still finishes" 0 "$rc"
-assert_contains "bad wait value is called out" "ignoring non-numeric seconds value 'abc'" "$out"
+assert_contains "bad wait value is called out" "ignoring invalid seconds value 'abc'" "$out"
 reset_state
 echo 1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=2 QMD_REINDEX_BUSY_RETRY_SECS=-5 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "bad retry value still finishes" 0 "$rc"
-assert_contains "bad retry value is called out" "ignoring non-numeric seconds value '-5'" "$out"
+assert_contains "bad retry value is called out" "ignoring invalid seconds value '-5'" "$out"
+reset_state
+echo 1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=18446744073709551616 QMD_REINDEX_BUSY_RETRY_SECS=0 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "out-of-range wait value still finishes" 0 "$rc"
+assert_contains "out-of-range wait value is called out" "ignoring invalid seconds value '18446744073709551616'" "$out"
 
 echo "TEST: a leading-zero retry value is decimal, not octal"
 reset_state
 echo 1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=08 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "08 retry is accepted" 0 "$rc"
-assert_contains "08 retry is clamped to the remaining wait" "retrying in 5s" "$out"
+assert_contains "08 retry waits" "retrying in" "$out"
+assert_not_contains "08 retry is not parsed as octal" "value too great" "$out"
 
 echo "TEST: one sleep never overshoots the wait bound"
 reset_state

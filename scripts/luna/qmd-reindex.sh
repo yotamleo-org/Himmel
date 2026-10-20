@@ -248,12 +248,13 @@ index_holders() {
     printf 'unknown'
 }
 
-# A non-negative decimal integer, else the default (a bad env value must not
-# turn the bounded wait into an endless loop).
+# A non-negative decimal integer of at most 9 digits, else the default (a bad
+# env value must not turn the bounded wait into an endless loop, and a digit
+# string past 64-bit range must not wrap to 0).
 secs_or_default() {
     case "$1" in
-        ''|*[!0-9]*)
-            [ -z "$1" ] || echo "WARN qmd-reindex: ignoring non-numeric seconds value '$1'; using $2." >&2
+        ''|*[!0-9]*|??????????*)
+            [ -z "$1" ] || echo "WARN qmd-reindex: ignoring invalid seconds value '$1'; using $2." >&2
             printf '%s' "$2" ;;
         *) printf '%s' "$((10#$1))" ;;
     esac
