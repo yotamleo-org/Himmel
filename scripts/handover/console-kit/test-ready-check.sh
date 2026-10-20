@@ -112,6 +112,7 @@ chmod +x "$tmp/bin/gh"
 cat > "$tmp/bin/jira-stub" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "links" ]; then
+    [ -n "${STUB_LINKS_FAIL:-}" ] && { echo "jira: links $2 failed: connect ECONNREFUSED" >&2; exit 1; }
     # STUB_LINKS_DB lines "KEY<TAB>KEY": one issue link; prints the real CLI's `links` row shape for each one touching $2
     awk -F'\t' -v k="$2" '$1 == k || $2 == k { printf "%d\tRelates\tinward=%s\toutward=%s\t%s relates to %s\n", NR, $1, $2, $1, $2 }' "${STUB_LINKS_DB:-/dev/null}"
     exit 0
@@ -191,7 +192,7 @@ run() {
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
         STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
-        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" \
+        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
@@ -202,7 +203,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
     seed_ledger_ok
 }
 
@@ -753,6 +754,27 @@ STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50
 rc=0; out="$(run7)" || rc=$?
 check "only 7: matching sets pass: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+STUB_LINKS_FAIL=1
+rc=0; out="$(run)" || rc=$?
+check "links: a failed links lookup fails: exit 1" "$rc" "1"
+contains "links: failed lookup: reads UNKNOWN" "$out" "HIMMEL-200 UNKNOWN (jira links failed for HIMMEL-100)"
+notcontains "links: failed lookup: is not blamed on a raw create" "$out" "raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+chmod 000 "$LEDGER"
+if [ -r "$LEDGER" ]; then
+    echo "SKIP ledger: an unreadable ledger fails (still readable here, e.g. root)"
+else
+    rc=0; out="$(run)" || rc=$?
+    check "ledger: an unreadable ledger fails check 7: exit 1" "$rc" "1"
+    contains "ledger: unreadable: names the cause" "$out" "the CR ledger could not be read"
+fi
+chmod 600 "$LEDGER"
 
 # --- 8. TICKET_ID_PATTERN / JIRA_PROJECT_KEY must resolve from
 # ready-check.sh's OWN checkout, never the caller's CWD repo. Fixture mirrors

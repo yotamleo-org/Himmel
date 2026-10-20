@@ -403,17 +403,20 @@ jira_get() { jira_run get "$1" --json; }
 jira_links() { jira_run links "$1"; }
 
 # cov_linked <own-key> <target-key>: the PR's own ticket has an issue link to the target, either direction, any type.
+# Returns 0 linked, 1 not linked (or no own ticket), 2 the links lookup failed.
 cov_linked() {
     [ -n "$1" ] || return 1
-    jira_links "$1" | awk -F'\t' -v t="$2" '{ for (i = 1; i <= NF; i++) if ($i == "inward=" t || $i == "outward=" t) f = 1 } END { exit !f }'
+    cov_links_out=$(jira_links "$1") || return 2
+    printf '%s\n' "$cov_links_out" | awk -F'\t' -v t="$2" '{ for (i = 1; i <= NF; i++) if ($i == "inward=" t || $i == "outward=" t) f = 1 } END { exit !f }'
 }
 
 # cov_ledger_keys <ledger> <head>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
 # A finding row at the head sets its verdict and deferral; an amend row targeting the head merges over it; only a
 # finding whose effective verdict is deferred counts. A head matches when either spelling is a prefix of the other.
+# A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
 cov_ledger_keys() {
     [ -f "$1" ] || return 0
-    jq -R -n -r --arg h "$2" '
+    cov_led_out=$(jq -R -n -r --arg h "$2" '
         def hm($x): ($x | type == "string") and ($x | length >= 7) and (($x | ascii_downcase) as $l | ($l | startswith($h)) or ($h | startswith($l)));
         def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
@@ -422,7 +425,8 @@ cov_ledger_keys() {
             elif $r.kind == "amend" and hm($r.target_head) and ($r.set | type == "object") then .[fk($r)] = ((.[fk($r)] // {}) + vd($r.set))
             else . end)
         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
-        | .deferred_to | ascii_upcase' "$1" 2>/dev/null | sort -u
+        | .deferred_to | ascii_upcase' "$1") || return 1
+    printf '%s\n' "$cov_led_out" | sort -u
 }
 
 cov_shape_help() {
@@ -469,8 +473,12 @@ else
                     cov_bad="$cov_bad; $cov_key already $cov_status"
                 elif ! printf '%s\n' "$cov_out" | jq -e '(.fields.labels // []) | any(. == "residual")' >/dev/null 2>&1 \
                     && ! { [ -n "$cov_own" ] && [ "${cov_key%-*}" = "${cov_own%-*}" ] && [ "${cov_key##*-}" -lt "${cov_own##*-}" ]; } \
-                    && ! cov_linked "$cov_own" "$cov_key"; then
-                    cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class <c> --class <id>"
+                    && ! { cov_linked "$cov_own" "$cov_key" && cov_rc=0 || cov_rc=$?; [ "$cov_rc" -eq 0 ]; }; then
+                    if [ "$cov_rc" -eq 2 ]; then
+                        cov_bad="$cov_bad; $cov_key UNKNOWN (jira links failed for $cov_own)"
+                    else
+                        cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class <c> --class <id>"
+                    fi
                 fi
                 cov_body_keys="$cov_body_keys $cov_key"
             elif printf '%s\n' "$cov_out" | grep -qiE '404|does not exist'; then
@@ -495,20 +503,24 @@ EOF
         cov_bad="$cov_bad; cannot read the PR head, so the CR ledger's deferrals cannot be compared"
     else
         cov_common=$(git rev-parse --git-common-dir 2>/dev/null) || cov_common="" # swallow-ok: no repo reads as no ledger, so a body deferral fails below
-        cov_led_keys=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head" | tr '\n' ' ')
         cov_h12=$(printf '%.12s' "$cov_head")
-        for cov_k in $cov_led_keys; do
-            case " $cov_body_keys " in
-                *" $cov_k "*) ;;
-                *) cov_bad="$cov_bad; $cov_k is deferred in the CR ledger for $cov_h12 but no coverage line defers to it" ;;
-            esac
-        done
-        for cov_k in $cov_body_keys; do
-            case " $cov_led_keys " in
-                *" $cov_k "*) ;;
-                *) cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12" ;;
-            esac
-        done
+        if cov_led_out=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head"); then
+            cov_led_keys=$(printf '%s\n' "$cov_led_out" | tr '\n' ' ')
+            for cov_k in $cov_led_keys; do
+                case " $cov_body_keys " in
+                    *" $cov_k "*) ;;
+                    *) cov_bad="$cov_bad; $cov_k is deferred in the CR ledger for $cov_h12 but no coverage line defers to it" ;;
+                esac
+            done
+            for cov_k in $cov_body_keys; do
+                case " $cov_led_keys " in
+                    *" $cov_k "*) ;;
+                    *) cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12" ;;
+                esac
+            done
+        else
+            cov_bad="$cov_bad; the CR ledger could not be read, so its deferrals cannot be compared"
+        fi
     fi
     if [ -z "$cov_bad" ]; then
         echo "[PASS] 7. ticket coverage: every ask is done or deferred to an open ticket"
