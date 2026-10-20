@@ -4163,6 +4163,40 @@ check_c68_konsole_dbus() {
         "add 'EnableSecuritySensitiveDBusAPI=true' under [KonsoleWindow] in $rc, then restart konsole"
 }
 
+# --- C70-graph-semantic: the himmel graph's semantic layer is stale or stuck ---
+# Runs check-graph-freshness.sh against the graph-cadence corpus and prints its
+# "graph-freshness: semantic ..." line verbatim (last run, failed, refused,
+# backed-off, oldest unstamped file). A file failed or refused in each of the
+# last 3 runs (the script's rc 2 "semantic refresh stuck") is WARN. No cadence
+# corpus or no semantic-runs.jsonl is an OK skip; any other rc 2 is INFO, the
+# graph's own staleness being C33's. Seam: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out dir).
+check_c70_graph_semantic() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-${HOME:-}/.claude/graph-cadence/himmel/graphify-out}"
+    local res rc=0 line fail_line
+    if [ ! -d "$out" ]; then
+        emit OK C70-graph-semantic "no cadence graphify-out at $out -- semantic freshness check skipped"
+        return 0
+    fi
+    if [ ! -f "$out/semantic-runs.jsonl" ]; then
+        emit OK C70-graph-semantic "no semantic-runs.jsonl in $out -- no semantic run recorded, check skipped"
+        return 0
+    fi
+    res="$(bash "$SELF_DIR/graphify/check-graph-freshness.sh" --out "$out" 2>&1)" || rc=$?
+    line="$(printf '%s\n' "$res" | grep -m1 '^graph-freshness: semantic ')" || true
+    fail_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: FAIL //p' | head -1)"
+    if [ "$rc" -eq 2 ] && grep -q 'semantic refresh stuck' <<< "$res"; then
+        emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $fail_line" \
+            "bash scripts/graphify/check-graph-freshness.sh --out $out   # names the stuck files; python3 scripts/graphify/semantic-merge.py status shows the backoff state"
+    elif [ "$rc" -eq 2 ]; then
+        emit INFO C70-graph-semantic "graph-freshness check failed (rc 2), semantic freshness not judged: $fail_line" \
+            "bash scripts/graphify/check-graph-freshness.sh --out $out"
+    elif [ -n "$line" ]; then
+        emit OK C70-graph-semantic "$line"
+    else
+        emit OK C70-graph-semantic "no semantic merge row in $out/semantic-runs.jsonl yet -- check skipped"
+    fi
+}
+
 # --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
 # A key-less CLI call gets "401 No cookie auth credentials found" on every
 # generate and embed, while the daemon (which loads its own key) still answers,
@@ -4550,6 +4584,7 @@ run_check C66 check_c66_hermes_cron_hooks
 run_check C67 check_c67_hermes_fail_open
 run_check C68 check_c68_konsole_dbus
 run_check C69 check_c69_qmd_cli_key
+run_check C70 check_c70_graph_semantic
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
