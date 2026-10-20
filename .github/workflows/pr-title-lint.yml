@@ -29,6 +29,11 @@ concurrency:
 
 jobs:
   pr-title-lint:
+    # The owner's own PRs skip (SKIPPED reports success): leg-pr-open.sh lints
+    # the title at open and merge-on-green.sh re-lints the live title right
+    # before the squash, so a body edit starts no runner. Every other author
+    # keeps the full check on every event.
+    if: github.event.pull_request.user.login != 'yotamleo'
     runs-on: ubuntu-latest
     env:
       TICKET_ID_REQUIRED: '1'
@@ -36,7 +41,7 @@ jobs:
       TICKET_ID_AUTHOR: ${{ github.event.pull_request.user.login }}
       TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PR_TITLE goes through env: rather than inline ${{ }} interpolation
       # into the run: shell, since the title is attacker-controlled text.
       - name: Lint the PR title
