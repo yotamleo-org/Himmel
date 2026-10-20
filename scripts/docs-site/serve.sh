@@ -26,7 +26,7 @@ check_port_free
 cd "$site" || exit 1
 # the stamp holds the lockfile hash of the last install, so a dependency bump reinstalls
 stamp=node_modules/.lockfile.sha256
-lock_sha=$(sha256sum package-lock.json | cut -d' ' -f1)
+lock_sha=$( (sha256sum package-lock.json 2>/dev/null || shasum -a 256 package-lock.json) | cut -d' ' -f1)
 if [ -z "$lock_sha" ]; then echo "serve.sh: cannot hash site/package-lock.json" >&2; exit 1; fi
 if [ ! -d node_modules/astro ] || [ "$(cat "$stamp" 2>/dev/null)" != "$lock_sha" ]; then
   npm ci >&2 || exit 1
