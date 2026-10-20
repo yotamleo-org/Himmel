@@ -28,7 +28,7 @@ absent() { # absent <fixed-string> <file>: pass only when grep ran and found not
 fails() { ! "$@"; }
 
 is() { [ "$1" = "$2" ]; }
-h1() { node --input-type=module -e "import { h1Of } from '$here/src/loaders/docs-loader.mjs'; process.stdout.write(h1Of(process.argv[1]));" "$1"; }
+h1() { node --input-type=module -e "import { pathToFileURL } from 'node:url'; const { h1Of } = await import(pathToFileURL(process.argv[2]).href); process.stdout.write(h1Of(process.argv[1]));" "$1" "$here/src/loaders/docs-loader.mjs"; }
 
 # --- h1Of: markup in a heading never reaches the page title (pure node, runs without node_modules)
 check "h1Of: *em* is stripped" is "$(h1 '# The *daily* loop')" "The daily loop"
@@ -36,6 +36,8 @@ check "h1Of: _em_ is stripped" is "$(h1 '# The _daily_ loop')" "The daily loop"
 check "h1Of: **strong** and __strong__ are stripped" is "$(h1 '# A **bold** and __bold__ head')" "A bold and bold head"
 check "h1Of: code and link markers are still stripped" is "$(h1 "# \`code\` and [link](x.md)")" "code and link"
 check "control: h1Of keeps an intraword underscore" is "$(h1 '# snake_case_name stays')" "snake_case_name stays"
+check "control: h1Of keeps intraword double underscores" is "$(h1 '# snake__case__name stays')" "snake__case__name stays"
+check "h1Of: emphasis markers inside a code span survive" is "$(h1 "# The \`*ptr*\` field")" "The *ptr* field"
 check "control: is() fails on a mismatch" fails is "a" "b"
 
 if [ ! -d "$here/node_modules/astro" ]; then

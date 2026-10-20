@@ -22,10 +22,12 @@ export function h1Of(md) {
     }
     const m = !fence && !f && line.match(/^# (.+?)\s*$/);
     if (m) {
-      return m[1].replace(/`/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-        .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, '$2')
+      return m[1].split(/(`[^`]*`)/).map((seg, i) => (i % 2 ? seg.slice(1, -1) : seg
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+        .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '$1')
+        .replace(/(^|\W)__(?=\S)(.+?)(?<=\S)__(?!\w)/g, '$1$2')
         .replace(/\*(?=\S)(.+?)(?<=\S)\*/g, '$1')
-        .replace(/(^|\W)_(?=\S)(.+?)(?<=\S)_(?!\w)/g, '$1$2');
+        .replace(/(^|\W)_(?=\S)(.+?)(?<=\S)_(?!\w)/g, '$1$2'))).join('');
     }
   }
   throw new Error('no H1');
