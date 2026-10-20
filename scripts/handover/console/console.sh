@@ -257,7 +257,9 @@ CONSOLE_BUS_PREDECESSOR=""
 
 # console_bus_opted_in -- the console profile lists himmel-bus in its MCP servers.
 console_bus_opted_in() {
-    case "$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" in
+    local bus_names
+    bus_names="$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || return 1
+    case "$bus_names" in
         *'"himmel-bus"'*) return 0 ;;
     esac
     return 1
