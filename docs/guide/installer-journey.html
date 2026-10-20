@@ -397,7 +397,7 @@
       means: function () { return { see: ['A tracker menu, a yes/no for required ticket IDs (skipped when the tracker is none), an optional pattern, then a typed yes or no before anything is written.'], does: ['Yes writes TRACKER, TICKET_ID_REQUIRED and any pattern to ~/.himmel/himmel.conf as KEY=value lines. No leaves the file untouched.'] }; } },
     // source: bin.js runPlan(): answers summary, "derived:" line, Proceed? [Y/n], --dry-run
     { id: 'summary', short: 'Summary', sub: 'nothing changes before this', kind: 'info',
-      intro: 'Every answer so far, apart from any secret you chose to set, was only collected. Now you see the full plan and the exact command it will run, and you confirm once.',
+      intro: 'Every answer so far, apart from a secret you chose to set and the commit rules you agreed to write, was only collected. Now you see the full plan and the exact command it will run, and you confirm once.',
       term: function () {
         return [['d', '…your answers, one per line…'], ['', 'derived: adopt.sh --scope project …'], ['q', 'Proceed? [Y/n]'], ['in', '> '], ['ok', '✓ installed — re-run any time: it converges, it does not duplicate']];
       },
