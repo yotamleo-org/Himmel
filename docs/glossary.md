@@ -256,7 +256,7 @@ redefining it.
 | Handoff (OpenAI Agents SDK) | There a handoff passes a conversation to another agent. himmel keeps "handover" for the command, the directory and the doc, because "handoff" already has four senses here (see Same word, different thing). |
 | LLM-as-a-judge (Zheng et al., 2023) | A judge session or subagent: a clean model that rules on one question. |
 | Sync wave (Argo CD) | A parallel wave: ordered groups whose members run together. |
-| Variant analysis (CodeQL) | The variant sweep: find every variant of a fixed bug.
+| Variant analysis (CodeQL) | The variant sweep: find every variant of a fixed bug. |
 
 ## Same word, different thing
 
