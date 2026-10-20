@@ -237,7 +237,9 @@ v_adopt() { # <scope> <label> [fail-at-k]
   : > "$X/state/calls"
   ( cd "$X/proj" && env ${k:+STUB_FAIL_AT=$k} bash "$R/scripts/adopt.sh" --profile core --scope "$scope" --target "$X/proj" </dev/null ) > "$X/adopt.out" 2>&1
   rc=$?
-  if [ -n "$k" ]; then row ok "$label: adopt ran (rc=$rc, injected)"
+  if [ -n "$k" ]; then
+    if [ "$(cat "$X/state/calls")" -ge "$k" ]; then row ok "$label: adopt ran (rc=$rc, injected)"
+    else row bad "$label: injection at claude call $k never reached (only $(cat "$X/state/calls") calls)"; fi
   elif [ "$rc" -eq 0 ]; then row ok "$label: adopt rc 0"; check_green "$scope" "$label"
   else row bad "$label: adopt rc=$rc: $(tail -3 "$X/adopt.out" | tr '\n' ';')"; fi
 }
@@ -353,7 +355,9 @@ for entry in "${SEQS[@]}"; do
   fi
   bad="$(grep '^bad ' "$D/rows" || true)"
   if [ -n "$xf" ]; then
-    if [ -n "$bad" ]; then echo "XFAIL $id [$verbs] ($xf): $(printf '%s' "$bad" | head -1 | cut -c5-)"; PASS=$((PASS + 1))
+    other="$(printf '%s\n' "$bad" | grep -vE '^bad [^ ]+#[0-9]+ [UWX]: ' | grep . || true)"
+    if [ -n "$other" ]; then echo "FAIL  $id [$verbs]: known-red row failed for another reason: $(printf '%s' "$other" | head -1 | cut -c5-)"; FAILED=$((FAILED + 1))
+    elif [ -n "$bad" ]; then echo "XFAIL $id [$verbs] ($xf): $(printf '%s' "$bad" | head -1 | cut -c5-)"; PASS=$((PASS + 1))
     else echo "FAIL  $id [$verbs]: XPASS — known-red row passes; $xf is fixed, drop the tag from this row"; FAILED=$((FAILED + 1)); fi
   elif [ -n "$bad" ]; then
     echo "FAIL  $id [$verbs]"; printf '%s\n' "$bad" | cut -c5- | sed 's/^/        /'; FAILED=$((FAILED + 1))
@@ -361,6 +365,7 @@ for entry in "${SEQS[@]}"; do
     echo "ok    $id [$verbs] ($(grep -c '^ok ' "$D/rows") checks)"; PASS=$((PASS + 1))
   fi
 done
+[ $((PASS + FAILED)) -gt 0 ] || { echo "FAIL: no sequence matched${ONLY:+ --only $ONLY}"; FAILED=1; }
 ELAPSED=$((SECONDS - START))
 echo "sequences: $PASS ok/xfail, $FAILED failed, ${ELAPSED}s (seed $SEED)"
 [ "$ELAPSED" -le 120 ] || { echo "FAIL: suite took ${ELAPSED}s, budget is 120s"; FAILED=$((FAILED + 1)); }
