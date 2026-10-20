@@ -270,7 +270,9 @@ function legend(root, lanes) {
 function conditions(root, data) {
   const label = new Map(data.nodes.map((n) => [n.id, n.label]));
   const box = htmlEl('details', 'dg-conditions', null, root);
-  htmlEl('summary', null, 'Every transition and its condition (' + data.edges.length + ')', box);
+  htmlEl('summary', null, 'Every step and transition as text (' + data.nodes.length + ' steps, ' + data.edges.length + ' transitions)', box);
+  const steps = htmlEl('ul', 'dg-steps', null, box);
+  for (const n of data.nodes) htmlEl('li', null, n.label + ' — ' + n.summary, steps);
   const ul = htmlEl('ul', null, null, box);
   for (const e of data.edges) {
     const text = (label.get(e.from) || e.from) + ' → ' + (label.get(e.to) || e.to) + ': ' + (e.exit != null ? 'exit ' + e.exit + ', ' : '') + e.condition;

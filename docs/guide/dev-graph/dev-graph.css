@@ -21,6 +21,7 @@
 /* the edge tooltips' conditions as text, readable by keyboard and screen reader */
 .dg-conditions { margin-top: var(--s3); font-size: var(--fs-sm); color: var(--muted); }
 .dg-conditions summary { cursor: pointer; color: var(--ink); }
+.dg-conditions ul + ul { margin-top: var(--s3); }
 .dg-conditions ul { margin: var(--s2) 0 0; padding-left: var(--s4); display: grid; gap: var(--s1); }
 .dg-cond-refusal { color: var(--crit); }
 
