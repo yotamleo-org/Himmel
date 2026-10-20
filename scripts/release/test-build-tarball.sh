@@ -188,7 +188,7 @@ check_not "RED: a workflow that never verifies the published pair is rejected" w
 # extra OIDC/attestation permissions, and verifies its own attestation.
 attest_ok() {
   local f="$1" jobperms
-  grep -Fq 'actions/attest-build-provenance@v4' "$f" || return 1
+  grep -Eq 'uses: actions/attest-build-provenance@[0-9a-f]{40} # v4([. ]|$)' "$f" || return 1
   jobperms="$(awk '/^    permissions:/{p=1;next} p&&/^    [a-z]/{next} p&&/^      /{print;next} p{exit}' "$f")"
   grep -Fq 'id-token: write' <<< "$jobperms" || return 1
   grep -Fq 'attestations: write' <<< "$jobperms" || return 1
@@ -200,6 +200,10 @@ check "workflow: attests build provenance, scoped permissions, verifies itself" 
 # RED controls -- mutate the workflow so the cause varies.
 grep -v 'actions/attest-build-provenance' "$WORKFLOW" > "$mut/no-attest.yml"
 check_not "RED: a workflow with no attest step is rejected" attest_ok "$mut/no-attest.yml"
+sed -E 's/(attest-build-provenance@[0-9a-f]{40}) # v4[0-9.]*/\1 # v3.0.0/' "$WORKFLOW" > "$mut/non-v4-pin.yml"
+check_not "RED: an attest action pinned with a non-v4 version comment is rejected" attest_ok "$mut/non-v4-pin.yml"
+sed 's#actions/attest-build-provenance@#actions/attest-sbom@#' "$WORKFLOW" > "$mut/other-action.yml"
+check_not "RED: a different action pinned in place of the attest action is rejected" attest_ok "$mut/other-action.yml"
 grep -v 'id-token: write' "$WORKFLOW" > "$mut/no-id-token.yml"
 check_not "RED: a workflow missing id-token: write is rejected" attest_ok "$mut/no-id-token.yml"
 grep -v 'attestations: write' "$WORKFLOW" > "$mut/no-attestations-perm.yml"
