@@ -643,6 +643,13 @@ gcr 'gh pr create <(echo "$(echo ")")") --head feat/y (substitution inside doubl
 gcr "gh pr create --body <(echo ANSI-C quote with an escaped quote) --head feat/y, refused" block $'gh pr create --body <(echo $\'a\\\'b)\') --head feat/y'
 gcr "gh pr create<newline>gh pr create --head feat/y (second call on the next line), refused" block 'gh pr create
 gh pr create --head feat/y'
+gcr "gh pr create --head feat/w # x \\<newline>gh pr create --head feat/y (comment ends at the raw newline), refused" block $'gh pr create --head feat/w # x \\\ngh pr create --head feat/y'
+gcr "gh pr create --head feat/w # x \\<newline>gh pr create --head feat/w2 (comment ends at the raw newline), allowed" allow $'gh pr create --head feat/w # x \\\ngh pr create --head feat/w2'
+gcr "gh pr create <(#x ) \\<newline>) --head feat/y (comment in a process substitution ends at the raw newline), refused" block $'gh pr create <(#x ) \\\n) --head feat/y'
+gcr "gh pr create <(echo;# )) --head feat/w (comment after a semicolon in a process substitution), refused" block 'gh pr create <(echo;# )) --head feat/w'
+gcr "gh pr create --body \"a # b \\<newline>c\" --head feat/y (hash inside a string is no comment), refused" block $'gh pr create --body "a # b \\\nc" --head feat/y'
+gcr "gh pr create --body \"a # b \\<newline>c\" --head feat/w (hash inside a string is no comment), allowed" allow $'gh pr create --body "a # b \\\nc" --head feat/w'
+gcr "gh pr create --title a\\ #b \\<newline>--head feat/y (escaped space makes no comment), refused" block $'gh pr create --title a\\ #b \\\n--head feat/y'
 }
 rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
 # Each `gh pr create` is judged in ITS OWN directory: the first one's dir used

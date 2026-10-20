@@ -804,15 +804,16 @@ def _skip_process_substitution(text: str, i: int) -> int:
     """Index just past the `)` closing the `<(` / `>(` whose `(` is at `i`.
     Quoted and nested parens do not count. A substitution or an unterminated
     group inside it (constructs this scanner does not parse) raises ValueError."""
-    depth, n = 0, len(text)
+    depth, n, esc = 0, len(text), -1
     while i < n:
         c = text[i]
         if c == "\\":
             i += 2
+            esc = i
             continue
         if c == "`" or text[i:i + 2] in ("$(", "${"):
             raise ValueError("unclassified shell construct")
-        if (c == "\n" or c == "#" and text[i - 1] in " \t" or text[i:i + 2] in (";;", "$'")
+        if (c == "\n" or c == "#" and i != esc and text[i - 1] in " \t;|&(" or text[i:i + 2] in (";;", "$'")
                 or _CASE_WORD.match(text, i)):
             raise ValueError("unclassified shell construct")
         if c in "'\"":
@@ -842,11 +843,12 @@ def _unquoted_segment(text: str) -> str:
     and a `$NAME` redirect target are skipped. An unterminated quote, a `$(`,
     `${` or backtick inside double quotes, or an unquoted `$`, backtick or
     `>|` (constructs this scanner does not parse), raises ValueError."""
-    i, n = 0, len(text)
+    i, n, esc = 0, len(text), -1
     while i < n:
         c = text[i]
         if c == "\\":
             i += 2
+            esc = i
             continue
         if c in "'\"":
             i += 1
@@ -868,7 +870,7 @@ def _unquoted_segment(text: str) -> str:
             continue
         elif c in "$`" or (c in "<>" and text[i + 1:i + 2] == "|"):
             raise ValueError("unclassified shell construct")
-        elif c == "#" and i and text[i - 1] in " \t":
+        elif c == "#" and i != esc and i and text[i - 1] in " \t":
             return text[:i]
         elif c in ";|()\n":
             return text[:i]
@@ -1599,6 +1601,35 @@ def _join_continuations(s: str) -> str:
     return _LINE_CONT.sub(r"\1", s)
 
 
+def _join_continuations_commented(s: str) -> str:
+    """`_join_continuations` that keeps the newline of a comment: bash ends a
+    comment at the raw newline even after a trailing backslash, so the next
+    line is a command of its own. Quotes are tracked so a `#` inside a string
+    is not taken for a comment; a backslash is literal inside single quotes."""
+    out, i, n, q, comment = [], 0, len(s), "", False
+    while i < n:
+        c = s[i]
+        if comment:
+            comment = c != "\n"
+        elif c == "\\" and q != "'":
+            nl = 2 if s[i + 1:i + 2] == "\n" else 3 if s[i + 1:i + 3] == "\r\n" else 0
+            if nl:
+                i += nl
+                continue
+            out.append(s[i:i + 2])
+            i += 2
+            continue
+        elif q:
+            q = "" if c == q else q
+        elif c in "'\"":
+            q = c
+        elif c == "#" and (not out or len(out[-1]) == 1 and out[-1] in " \t\n;|&("):
+            comment = True
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def terminal_external_write_reason(cmd_norm: str, raw_cmd: str = ""):
     """Return a block reason if `cmd_norm` (already norm()-ed) is an external-write
     shape (git push / remote-URL rewrite / gh PR-mutation / network CLI), else
@@ -1944,7 +1975,7 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     # trusted engine cannot open a PR over an unfinished review. EVERY
     # `gh pr create` is judged in its own directory: only a cd before a call
     # moves it, one after it must not.
-    joined = _join_continuations(raw_cmd)
+    joined = _join_continuations_commented(raw_cmd)
     pr_calls = [(m.start(), m) for m in GH_PR_CREATE.finditer(joined)]
     if not pr_calls and (GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(joined))):
         pr_calls = [(len(joined), None)]
