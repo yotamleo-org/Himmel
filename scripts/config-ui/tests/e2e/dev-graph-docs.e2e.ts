@@ -73,6 +73,14 @@ test("J-DG1. a hash that carries other keys keeps them", async ({ page }) => {
   await expect(page).toHaveURL(/#t=abc&.*s=3$/);
 });
 
+test("J-DG1. a hash change that is not a walkthrough one leaves the step alone", async ({ page }) => {
+  await open(page, "#w=w2&s=7");
+  await page.evaluate(() => { location.hash = "#conditions"; });
+  await page.waitForTimeout(300);
+  expect(await stepOf(page)).toBe(6);
+  await expect(page.getByLabel("Walkthrough")).toHaveValue("w2");
+});
+
 test("J-DG1. Play advances at least two steps in six seconds", async ({ page }) => {
   await open(page, "#w=w1&s=1");
   await page.getByRole("button", { name: "Play" }).click();

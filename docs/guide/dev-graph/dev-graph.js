@@ -566,9 +566,14 @@ function walk(root, data, uid, reduced) {
     const get = (k) => { const p = parts.find((x) => x.indexOf(k + '=') === 0); return p ? p.slice(k.length + 1) : null; };
     const w = data.walkthroughs.findIndex((x) => x.id === get('w'));
     const s = parseInt(get('s'), 10);
-    return { w: Math.max(0, w), s: s > 0 ? s - 1 : 0, has: Number.isFinite(s) };
+    return { w: Math.max(0, w), s: s > 0 ? s - 1 : 0, has: Number.isFinite(s), ours: w >= 0 || Number.isFinite(s) };
   };
-  const onHash = () => { const h = fromHash(); setPlaying(false); show(h.w, h.s, { hash: false, reveal: true }); };
+  const onHash = () => {
+    const h = fromHash();
+    if (!h.ours) return;
+    setPlaying(false);
+    show(h.w, h.s, { hash: false, reveal: true });
+  };
   const onVisible = () => schedule();
   window.addEventListener('hashchange', onHash);
   document.addEventListener('visibilitychange', onVisible);
