@@ -14,6 +14,9 @@ bad() { echo "FAIL - $1"; fails=$((fails + 1)); }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/parity-probe-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+# The probe reports `at -V`; a stub answers it so no run calls the real scheduler.
+mkdir -p "$TMP/bin"; printf '#!/bin/sh\necho "at version 0.0-stub"\n' > "$TMP/bin/at"; chmod +x "$TMP/bin/at"
+export PATH="$TMP/bin:$PATH"
 
 # 1. a clean run exits 0 and every row is `item<TAB>value` under a ## section.
 OUT="$(bash "$PROBE" --no-net 2>&1)"; RC=$?
