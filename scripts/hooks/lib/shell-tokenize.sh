@@ -38,7 +38,8 @@
 #               a segment of its own.
 #   ST_SUBST ST_HEREDOC ST_ANSIC ST_COMMENT — 1 when the command carries a
 #               live command/process substitution (including inside "…" and
-#               an unquoted heredoc body), a heredoc, a $'…' word, a comment.
+#               any live $ in an unquoted heredoc body), a heredoc, a $'…'
+#               word, a comment.
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 st_tokenize() {
     local LC_ALL=C
@@ -286,7 +287,7 @@ _st_resume() { # back from a substitution: inside "…" the word goes on
 
 # shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
 _st_heredocs() { # skip the bodies of every heredoc queued on the line just ended
-    local d line
+    local d line t
     while [ "$hd_i" -lt "$hd_n" ]; do
         d=${hd_d[hd_i]}
         while [ "$i" -lt "$n" ]; do
@@ -298,7 +299,11 @@ _st_heredocs() { # skip the bodies of every heredoc queued on the line just ende
             fi
             [ "$line" != "$d" ] || break
             if [ "${hd_q[hd_i]}" = 0 ]; then
-                case "$line" in *'$('*|*'`'*) ST_SUBST=1 ;; esac
+                # Any live $ expands: ${x@P} and an array subscript re-expand
+                # a $(...) held in a variable. Only a \$ is literal.
+                t=${line//\\\\/}
+                t=${t//\\\$/}
+                case "$t" in *'$'*|*'`'*) ST_SUBST=1 ;; esac
             fi
         done
         hd_i=$((hd_i + 1))
