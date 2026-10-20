@@ -18,6 +18,7 @@ MANIFEST="$HERE/fleet-manifest.sh"
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
+# read-sink-ok: $2 is always a fixture path this suite built under its own mktemp dir
 ends_nl() { [ -s "$2" ] && [ "$(tail -c1 "$2" | od -An -c | tr -d ' ')" = '\n' ] && pass "$1" || fail "$1 (last byte is not a newline: $2)"; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/json-final-nl-test.XXXXXX")" || exit 1
