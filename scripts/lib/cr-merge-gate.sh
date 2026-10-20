@@ -192,12 +192,12 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # match as in cr-ledger-evidence.sh; a malformed line is a degraded read,
 # never a skip. The ledger path is fixed (never env-overridable).
 _crg_critic_states() {
-    local head="$1" common
+    local head="$1" common node
     shift
-    command -v node >/dev/null 2>&1 || { printf 'degraded\tnode not on PATH\n'; return 0; }
+    node=$(_ccfg_node) || { printf 'degraded\tnode not found\n'; return 0; }
     common=$(git rev-parse --git-common-dir 2>/dev/null) || { printf 'degraded\tnot in a git repository\n'; return 0; }
     RG_LEDGER="$common/cr-critic-scores.jsonl" RG_HEAD="$head" RG_SLUGS="$*" \
-    RG_ABSENT_RE="$_FC_ABSENT_RE" node -e '
+    RG_ABSENT_RE="$_FC_ABSENT_RE" "$node" -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 let txt;
 try { txt = fs.readFileSync(e.RG_LEDGER, "utf8"); }
@@ -387,8 +387,14 @@ _crg_eval() {
     done <<<"$rows"
     if [ -n "$crit" ]; then
         # shellcheck disable=SC2086  # one word per slug, by construction
-        states=$(_crg_critic_states "$head" $crit)
+        states=$(_crg_critic_states "$head" $crit) || { crit_deg="critic ledger reader failed (rc=$?)"; states=""; }
         case "$states" in degraded$'\t'*) crit_deg=${states#degraded$'\t'}; states="" ;; esac
+        if [ -z "$crit_deg" ]; then
+            for slug in $crit; do
+                printf '%s\n' "$states" | awk -F'\t' -v s="$slug" '$1 == s { f = 1 } END { exit !f }' \
+                    || { crit_deg="no ledger state for $slug"; break; }
+            done
+        fi
     fi
     [ "$cr_row" -eq 1 ] && { cr_app_configured "$PWD" || armed=0; }
 
@@ -569,7 +575,12 @@ cr_merge_gate() {
     case "$cfg_rc" in
         0) ;;
         2) echo "cr-reviewer-gate: config error: $cfg"; return 2 ;;
-        *) _cmg_degrade "critics config unreadable: $cfg"; return 0 ;;
+        *)
+            if cr_app_configured "$PWD"; then
+                echo "BLOCK: critics config cannot be resolved (rc=$cfg_rc: $cfg) — this clone is armed, so the reviewer gate cannot be skipped; fix node or the resolver and re-run, or bypass with CR_MERGE_GATE_OK=1."
+                return 2
+            fi
+            _cmg_degrade "critics config unreadable: $cfg"; return 0 ;;
     esac
     if [ -z "$sel" ]; then _cmg_degrade "no PR selector"; return 0; fi
     command -v gh >/dev/null 2>&1 || { _cmg_degrade "gh not on PATH"; return 0; }

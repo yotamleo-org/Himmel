@@ -799,6 +799,33 @@ CRITICS_LOCAL_JSON="$TMP/m13.json" GH_STUB_MODE=api-error t armed-hard-coderabbi
 cfg "$TMP/drop-codex.json" '{"panel":[{"slug":"codex","drop":true}]}'
 CRITICS_LOCAL_JSON="$TMP/drop-codex.json" GH_STUB_MODE=clean rg overlay-drop-required-config-error 2
 has "$TMP/out-overlay-drop-required-config-error" '^cr-reviewer-gate: config error: .*drop-codex\.json: .*codex is required' "drop-required names file and row"
+# Armed clone, the resolver cannot run (no node, or node exits 1) or the ledger
+# reader crashes: the merge blocks instead of failing open; unarmed degrades.
+# shellcheck disable=SC2329  # called by cr_merge_gate
+critics_config_resolve() { echo "node not found" >&2; return 3; }
+GH_STUB_MODE=clean t armed-resolver-no-node-merge-blocks 2
+has "$TMP/out-armed-resolver-no-node-merge-blocks" '^BLOCK: .*critics config cannot be resolved .*node not found' "armed no-node BLOCK names the reason"
+git -C "$TMP/repo" config --local --unset himmel.coderabbit
+GH_STUB_MODE=clean t unarmed-resolver-no-node-fails-open 0
+has "$TMP/err-unarmed-resolver-no-node-fails-open" 'degraded' "unarmed no-node degraded note"
+git -C "$TMP/repo" config --local himmel.coderabbit true
+# shellcheck source=scripts/lib/critics-config.sh
+. "$SCRIPT_DIR/critics-config.sh"
+printf '%s\n' 'process.exit(1);' > "$TMP/die.js"
+NODE_OPTIONS="--require $TMP/die.js" GH_STUB_MODE=clean t armed-resolver-node-exit1-merge-blocks 2
+led "$CRIT_OK" '{"kind":"avail","model":"codex","head":{"toString":1}}'
+GH_STUB_MODE=clean rg armed-reader-throws-holds 1
+has "$TMP/out-armed-reader-throws-holds" '^HOLD: codex ' "armed reader crash holds codex"
+GH_STUB_MODE=clean t armed-reader-throws-merge-blocks 2
+led "$CRIT_OK"
+# node off PATH is still found where run-node.sh would find it.
+mkdir -p "$TMP/nopath"
+nd=$(command -v node)
+off_rc=0
+PATH="$TMP/nopath" RESOLVE_NODE_PROBE_DIRS="${nd%/*}" RESOLVE_NODE_NVM4W_DIR="" RESOLVE_NODE_NVM_ROOT="$TMP/nopath" \
+    CRITICS_JSON="$TMP/critics.json" critics_config_resolve >"$TMP/out-node-off-path" 2>&1 || off_rc=$?
+if [ "$off_rc" = 0 ]; then pass=$((pass+1)); echo "ok   node-off-path-resolves"
+else fail=$((fail+1)); echo "FAIL node-off-path-resolves (rc=$off_rc)"; sed 's/^/  out: /' "$TMP/out-node-off-path"; fi
 # The base critics.json is main's in the primary checkout: a branch's own
 # critics.json never decides its own gate.
 anc="$TMP/anchor"

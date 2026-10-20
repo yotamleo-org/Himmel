@@ -12,7 +12,7 @@
 #           every row carries `mode` (hard | best-effort) and `required`
 #           (boolean), defaults filled in.
 #   rc 0 = resolved; rc 2 = config error, `<file>: <why>` on stderr;
-#   rc 3 = cannot evaluate (node missing), reason on stderr.
+#   rc 3 = cannot evaluate (no node found), reason on stderr.
 #
 # Inputs, in order:
 #   CRITICS_JSON          wins outright: read as the whole config, no overlay.
@@ -46,6 +46,15 @@
 
 _ccfg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# _ccfg_node — an absolute node: PATH first, then where run-node.sh looks (a
+# hook may carry a PATH without node). rc 1 when there is none.
+_ccfg_node() {
+    command -v node 2>/dev/null && return 0
+    [ -r "$_ccfg_dir/resolve-node.sh" ] || return 1
+    # shellcheck source=scripts/lib/resolve-node.sh
+    (. "$_ccfg_dir/resolve-node.sh" && resolve_node)
+}
+
 # _ccfg_local_path <cr-dir> — the overlay path, per the order above.
 _ccfg_local_path() {
     if [ -n "${CRITICS_LOCAL_JSON+x}" ] && [ -n "$CRITICS_LOCAL_JSON" ]; then
@@ -63,7 +72,8 @@ _ccfg_local_path() {
 }
 
 critics_config_resolve() {
-    command -v node >/dev/null 2>&1 || { echo "node not on PATH" >&2; return 3; }
+    local node
+    node=$(_ccfg_node) || { echo "node not found" >&2; return 3; }
     local crdir="${1:-$_ccfg_dir/../cr}" base local_path common base_text="" from_main=0
     if [ -n "${CRITICS_JSON:-}" ]; then
         base="$CRITICS_JSON"; local_path=""
@@ -72,7 +82,7 @@ critics_config_resolve() {
         if [ -z "$base" ]; then
             base="$crdir/critics.json"
             common=$(git -C "$_ccfg_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
-            if [ -n "$common" ] && base_text=$(git --git-dir="$common" show main:scripts/cr/critics.json 2>/dev/null); then
+            if [ -n "$common" ] && base_text=$(git --git-dir="$common" show refs/heads/main:scripts/cr/critics.json 2>/dev/null); then
                 base="${common%/.git}/scripts/cr/critics.json@main"; from_main=1
             fi
         fi
@@ -80,7 +90,7 @@ critics_config_resolve() {
         [ -f "$local_path" ] || local_path=""
     fi
     CCFG_BASE="$base" CCFG_BASE_FROM_MAIN="$from_main" CCFG_BASE_TEXT="$base_text" \
-    CCFG_LOCAL="$local_path" CCFG_PROFILE="${CR_PROFILE:-}" node -e '
+    CCFG_LOCAL="$local_path" CCFG_PROFILE="${CR_PROFILE:-}" "$node" -e '
 const fs = require("fs"), e = process.env;
 const fail = (file, why) => { process.stderr.write(file + ": " + why + "\n"); process.exit(2); };
 const read = (p) => {
