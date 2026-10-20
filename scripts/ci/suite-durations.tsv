@@ -234,6 +234,7 @@ scripts/cr/test-impacted-suites.sh	33
 scripts/cr/test-install-cr-gate.sh	2
 scripts/cr/test-known-findings.sh	4
 scripts/cr/test-lane-classify.sh	0
+scripts/cr/test-ledger-amend-auth.sh	1
 scripts/cr/test-ledger-append.sh	18
 scripts/cr/test-live-gate-e2e.sh	0
 scripts/cr/test-orphan-check.sh	0
@@ -999,6 +1000,7 @@ scripts/test-user-slug-resolve.sh	0
 scripts/test-vm-e2e-mode-guard.sh	1
 scripts/test-worktree-verbs.sh	7
 scripts/testing/test-added-unwired-prepush.sh	0
+scripts/testing/test-documented-commands.sh	66
 scripts/testing/test-unwired-hooks.sh	1
 scripts/tests/test-setup-hooks-guardrail.sh	0
 scripts/upstream/test-run-target-tests.sh	0

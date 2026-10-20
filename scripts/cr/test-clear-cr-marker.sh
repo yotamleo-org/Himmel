@@ -107,6 +107,9 @@ build_repo_template() {
     # that reaches that gate at once (promote-error, exit 14).
     cp "$REVIEW_ROUND" "$REPO_TEMPLATE/scripts/cr/review-round.sh" \
         || { echo "FAIL: cp review-round.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    # The amend readers and the writer load the signed-amend helper.
+    cp "$(dirname "$CLEAR")/ledger-amend-auth.js" "$REPO_TEMPLATE/scripts/cr/ledger-amend-auth.js" \
+        || { echo "FAIL: cp ledger-amend-auth.js into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # The copied tree must carry the branch-lock lib the clear
     # path now takes around its read-validate-delete section — the script
     # refuses without it, so a missing copy would fail every case at once.
@@ -1498,6 +1501,27 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(finding "${sha:0:8}" imp agree
   "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"out of diff"}' "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "amend severity imp->sug unblocks gate 4 → exit 0"
+rm -rf "$tmp"
+
+# 6a-1s. Past the ledger's first signed amend, a hand-written amend lowering
+# imp->sug is dropped, so gate 4 still blocks; the same amend written through
+# ledger-append.sh, which signs it, unblocks as above.
+make_repo || exit 1
+mkdir -p "$tmp/home/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
+_real_home="$HOME"
+export HOME="$tmp/home"
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" \
+  "$(printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"unaddressed"}' "${sha:0:8}")"
+append_ledger "$tmp" "6a-1s signed cutover amend" amend --head "${sha:0:8}" --id codex-1 --set "reason=cutover row" --reason "first signed amend"
+printf '{"kind":"amend","branch":"feat/x","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"hand-written"}\n' "${sha:0:8}" >> "$tmp/.git/cr-critic-scores.jsonl"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "unsigned amend imp->sug after the cutover still blocks gate 4 → exit 15"
+if marker_exists "$tmp"; then pass; else fail "6a-1s: marker must REMAIN"; fi
+append_ledger "$tmp" "6a-1s signed lowering" amend --head "${sha:0:8}" --id codex-1 --set severity=sug --reason "out of diff"
+run_clear "$tmp" 0 "signed amend imp->sug unblocks gate 4 → exit 0"
+export HOME="$_real_home"
 rm -rf "$tmp"
 
 # 6a-1a. the message announcing a merged amend must not claim it

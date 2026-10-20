@@ -47,7 +47,7 @@ EOF
 cat > "$W/graph" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
-*halt*) printf 'NODE Halt rule [src=docs/lock.md loc=L2 community=x]\n  RATIONALE: a mild DoS, not a compromise\nNODE other [src=docs/other.md loc=L1 community=x]\n' ;;
+*halt*) printf 'NODE Halt rule [src=docs/lock.md loc=L2 community=x] WHY a mild DoS, not a compromise\nNODE other [src=docs/other.md loc=L1 community=x]\n' ;;
 *) printf 'NODE nothing [src=docs/other.md loc=L1 community=x]\n' ;;
 esac
 EOF

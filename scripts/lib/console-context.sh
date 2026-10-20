@@ -218,6 +218,7 @@ console_context_leg_env_unset_names() {
         LEG_LANE \
         CADENCE_BANK_LANE \
         OPENROUTER_MODEL \
+        CODEX_MODEL \
         LEG_PROFILE_SETTINGS \
         LEG_PROFILE_PREFACE \
         LEG_PROFILE_MCP_CONFIG \

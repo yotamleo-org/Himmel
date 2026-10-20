@@ -70,6 +70,7 @@ else fail "A4 got='$got'"; fi
 # Stub graphify: logs each call's arguments and answers by mode, as the real printer does.
 cat > "$T/bin/graphify" <<STUB
 #!/bin/sh
+[ "\$1" = --help ] && { echo "  --rationale"; exit 0; }
 echo "\$*" >> "$T/calls"
 case "\$*" in
   *--seed*)
@@ -97,8 +98,8 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 out="$(run query "how does go.sh write a GO file")"; rc=$?
 calls="$(cat "$T/calls")"
 order="$(grep '^NODE ' <<<"$out" | sed 's/^NODE //; s/ \[src=.*//' | tr '\n' '|')"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --seed deferred --budget 4000" <<<"$calls" \
-  && grep -qx -- "query how does go.sh write a GO file --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 4000" <<<"$calls" \
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 4000" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
   pass "A5 two graphify calls, half the budget each"
 else fail "A5 rc=$rc calls='$calls'"; fi
 if [ "$order" = "go.sh|write_go_file()|write_file()|" ] && grep -q "Start (given): \['go.sh'\] | Keyword start: \['write_file()', 'Write'\] | " <<<"$out" \
@@ -109,21 +110,22 @@ if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "leg-graph.sh query 'how do
 else fail "A5c out='$out' err=$(cat "$T/err")"; fi
 
 # A6: a caller's own --seed is left alone: one call, no anchor seeds added.
-run query "how does go.sh write a GO file" --seed write_file >/dev/null
+run query "how does go.sh write a GO file" --seed write_file >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how does go.sh write a GO file --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
+if [ "$rc" = 0 ] && [ "$calls" = "query how does go.sh write a GO file --rationale --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
 else fail "A6 calls='$calls'"; fi
 
 # A7: a question naming nothing, and matching nothing semantically, runs exactly as before: one call, the caller's arguments.
-run query "how do planets orbit" >/dev/null
+run query "how do planets orbit" >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how do planets orbit --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
+if [ "$rc" = 0 ] && [ "$calls" = "query how do planets orbit --rationale --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
 else fail "A7 calls='$calls'"; fi
 
 # A9: a budget with a leading zero is decimal, not octal: both halves still run.
 run query "how does go.sh write a GO file" --budget 0800 >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --seed go_sh --seed deferred --budget 400" <<<"$calls"; then
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 400" <<<"$calls" \
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 400" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
   pass "A9 --budget 0800 halves to 400"
 else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
 
@@ -167,7 +169,7 @@ else fail "A13 got='$got'"; fi
 
 # A8: the real graphify on the fixture: the bare query never reaches go.sh's file, the wrapper
 # starts from it.
-if command -v graphify >/dev/null 2>&1; then
+if command -v graphify >/dev/null 2>&1 && graphify --help 2>&1 | grep -q -- '--rationale'; then
   rm -f "$T/bin/graphify"
   bare="$(GRAPHIFY_OUT="$P/graphify-out" graphify query "how does go.sh write a GO file" --budget 8000 | grep -m1 '^NODE ')"
   first="$(run query "how does go.sh write a GO file" | grep -m1 '^NODE ')"
@@ -175,7 +177,7 @@ if command -v graphify >/dev/null 2>&1; then
     pass "A8 real graphify: the named file leads the answer (bare graphify led with '${bare%% \[src=*}')"
   else fail "A8 bare='$bare' first='$first' err=$(cat "$T/err")"; fi
 else
-  echo "  skip: A8 real graphify row (graphify not installed)"
+  echo "  skip: A8 real graphify row (graphify missing or without --rationale)"
 fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

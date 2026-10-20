@@ -56,6 +56,14 @@ bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
 has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "name the rows in READY"
 
+# contract item 3: a leg runs locally only the RED rows it builds; every other impacted suite is CI-gated
+B1="$(tr '\n' ' ' < "$D1" | tr -s ' ')"
+lacks "brief 1 no longer tells the leg to run the full suite of every touched file" "$B1" "the full suite of every file you touched"
+has "brief 1 lists non-RED impacted suites as SKIP CI-gated per decision 101" "$B1" "SKIP CI-gated per decision 101 (GitHub CI is the gate)"
+has "brief 1 routes VM-only checks through the VM queue" "$B1" "VM queue"
+has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never run run-shell-tests.sh full or sharded locally"
+has "brief 1 limits local runs to the RED rows of the item built" "$B1" "Locally run only the RED rows of the item you build"
+
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
 has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
 has "brief 2 wrap command passes --queue-doc with its own doc" "$(cat "$D2")" "wrap-subtree-check.sh --queue-doc $D2"
@@ -231,6 +239,15 @@ python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$
 lacks "a claudex leg with no model key passes no native model argument" "$(cat "$WORK/b20/launch-N901.sh")" "claude-sonnet-5-5"
 lacks "a claudex leg with no model key leaves the lane default to headed-arm-leg" "$(cat "$WORK/b20/launch-N901.sh")" "gpt-6.1-sol"
 has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMMEL-9001-N901-*.md)" "gpt-6.1-sol, claudex"
+# A claudex leg's named model is the launcher's trailing model argument, and headed-arm-leg.sh hands it to
+# scripts/claude-codex as CODEX_MODEL: the launcher's own arguments, run as a dry run.
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-astra.json"
+python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --console BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
+has "a claudex leg with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-leg.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
+mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
+rc=0; astra_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --lane claudex --profile leg-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-leg.sh rc=$rc: $astra_out"
+has "and the named model reaches the leg as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 # An effort key exports LEG_EFFORT in the launcher.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-effort.json"
 python3 "$SUT" "$WORK/lane-effort.json" --base 4ccb59d --console BZ --bucket "$WORK/b21" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1

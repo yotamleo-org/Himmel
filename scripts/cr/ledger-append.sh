@@ -575,10 +575,17 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
+  // Every amend is signed so the gate readers honour it (ledger-amend-auth.js);
+  // a fixture copy run without that helper writes it unsigned.
+  const signAmend=(rec)=>{
+    try { require(e.AMEND_AUTH).sign(rec); }
+    catch(err){ process.stderr.write("ledger-append.sh: amend written unsigned ("+err.message.split("\n")[0]+")\n"); }
+    return rec;
+  };
   // Keep this small inline copy in parity with finding-fingerprint.js. The
   // writer is intentionally standalone: anchor/fixture flows copy this one
   // script without adjacent JS files. test-ledger-append.sh locks single/batch
@@ -885,7 +892,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
             if(rec.deferred_to) set.deferred_to=rec.deferred_to;
             const amend={kind:"amend",ts:spec.ts||e.TS,branch:spec.branch,target_head:prior.head,finding_id:sid,
                          artifact,perspective,set,reason:"verdict appended after adjudication"};
-            fs.appendFileSync(led, JSON.stringify(amend)+"\n");
+            fs.appendFileSync(led, JSON.stringify(signAmend(amend))+"\n");
             parsed.push(amend);
             const amKey=[amend.branch||"",amend.target_head,amend.finding_id,amend.artifact,amend.perspective].join(SEP);
             amendsByKey.set(amKey,Object.assign({},amendsByKey.get(amKey)||{},amend.set));
@@ -1096,7 +1103,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // producer round as the disposition round. Only an amend that actually
     // sets a verdict is an adjudication; a bookkeeping amend carries no round.
     if(e.DISPOSITION_ROUND&&set.verdict) rec.disposition_round=Number(e.DISPOSITION_ROUND);
-    fs.appendFileSync(led, JSON.stringify(rec)+"\n");
+    fs.appendFileSync(led, JSON.stringify(signAmend(rec))+"\n");
     process.stderr.write("ledger-append.sh: amended "+e.ID+" at "+e.HEAD_.slice(0,8)+" -> "
       +JSON.stringify(set)+"\n");
     process.exit(0);
@@ -1191,7 +1198,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
           const amend={kind:"amend",ts:e.TS,branch:e.BRANCH,target_head:prior.head,finding_id:e.ID,
                        artifact:e.ARTIFACT,perspective:e.PERSPECTIVE,set,
                        reason:"verdict appended after adjudication"};
-          fs.appendFileSync(led, JSON.stringify(amend)+"\n");
+          fs.appendFileSync(led, JSON.stringify(signAmend(amend))+"\n");
           process.stderr.write("ledger-append.sh: appended verdict amend for "+e.ID+" at "+e.HEAD_.slice(0,8)+"\n");
           process.exit(0);
         }
