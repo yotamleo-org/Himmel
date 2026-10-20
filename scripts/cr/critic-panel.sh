@@ -160,67 +160,33 @@ else
     classify_failure() { echo "generic-rc-${1:-1}"; }
 fi
 
-# Registry resolution. CRITICS_JSON env
-# (tests/CI) wins outright. Otherwise critics.json is the BASE and
-# critics.local.json (gitignored per-operator overlay — ACCOUNT state like
-# exhausted free quotas / upgraded models) is MERGED per-slug ON TOP: a local row
-# OVERRIDES or APPENDS by slug, and a local row with "drop":true REMOVES the base
-# row of that slug. Merge (not the pre-1221 wholesale replace) so a stale overlay
-# can no longer silently mask a shipped critic that exists only in critics.json.
-# Test hooks:
+# Registry resolution. CRITICS_JSON env (tests/CI) wins outright. Otherwise
+# critics.json is the BASE and critics.local.json (gitignored per-operator
+# overlay — ACCOUNT state like exhausted free quotas / upgraded models) is
+# merged FIELD-WISE per slug on top by scripts/lib/critics-config.sh, the one
+# resolver cr-merge-gate.sh also reads, so who runs and who must pass cannot
+# disagree. A local row overrides fields of, or appends, a slug; "drop":true
+# removes it. The overlay is found in the himmelctl cache dir, then the
+# PRIMARY checkout (so a linked worktree resolves it too). Test hooks:
 # CRITICS_BASE_JSON / CRITICS_LOCAL_JSON override the two merge inputs.
 _MERGED_REG=""
 _REG_BASE="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}"
-# an unset CRITICS_LOCAL_JSON checks the himmelctl cache dir
-# first — a read-only install tree can never carry an in-tree overlay — and
-# falls back to the in-tree default so an existing writable clone's
-# hand-authored overlay still resolves exactly as before.
-_REG_CACHE_LOCAL="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/critics.local.json"
-if [ -n "${CRITICS_LOCAL_JSON:-}" ]; then
-    _REG_LOCAL="$CRITICS_LOCAL_JSON"
-elif [ -f "$_REG_CACHE_LOCAL" ]; then
-    _REG_LOCAL="$_REG_CACHE_LOCAL"
-else
-    _REG_LOCAL="$SCRIPT_DIR/critics.local.json"
-fi
 if [ -n "${CRITICS_JSON:-}" ]; then
     REG="$CRITICS_JSON"
-elif [ -f "$_REG_LOCAL" ]; then
-    _MERGED_REG="$(mktemp -t critics-merged.XXXXXX)" || _MERGED_REG=""
+elif [ -r "$SCRIPT_DIR/../lib/critics-config.sh" ] && . "$SCRIPT_DIR/../lib/critics-config.sh" \
+    && _MERGED_REG="$(mktemp -t critics-merged.XXXXXX)"; then
     # Early EXIT trap so the validation / arg-parse error exits below can't leak the
     # merged temp file. The --check and main traps RE-INCLUDE this rm because a
     # later `trap ... EXIT` REPLACES (not extends) an earlier one.
-    [ -n "$_MERGED_REG" ] && trap 'rm -f "$_MERGED_REG"' EXIT
-    if [ -n "$_MERGED_REG" ] && MERGE_BASE="$_REG_BASE" MERGE_LOCAL="$_REG_LOCAL" node -e '
-        const fs = require("fs");
-        const rd = p => { try { const j = JSON.parse(fs.readFileSync(p, "utf8"));
-            return Array.isArray(j.panel) ? j.panel : []; } catch (e) { return null; } };
-        const base = rd(process.env.MERGE_BASE), local = rd(process.env.MERGE_LOCAL);
-        if (base === null && local === null) process.exit(7);   // both unreadable
-        const bp = base || [], lp = local || [];
-        const drop = new Set(), over = new Map();               // local rows by slug
-        for (const r of lp) { if (r && typeof r === "object" && typeof r.slug === "string") {
-            if (r.drop === true) drop.add(r.slug); else over.set(r.slug, r); } }
-        const out = [], seen = new Set();
-        for (const r of bp) {                                   // base order first
-            if (!r || typeof r !== "object" || typeof r.slug !== "string") { out.push(r); continue; }
-            if (drop.has(r.slug)) { seen.add(r.slug); continue; }
-            out.push(over.has(r.slug) ? over.get(r.slug) : r);  // local override wins
-            seen.add(r.slug);
-        }
-        for (const r of lp) {                                   // local-only appends
-            if (!r || typeof r !== "object" || typeof r.slug !== "string") continue;
-            if (r.drop === true || seen.has(r.slug)) continue;
-            out.push(r); seen.add(r.slug);
-        }
-        process.stdout.write(JSON.stringify({ panel: out }));
-    ' > "$_MERGED_REG" 2>/dev/null; then
+    trap 'rm -f "$_MERGED_REG"' EXIT
+    if _reg_err=$(critics_config_resolve "$SCRIPT_DIR" 2>&1 >"$_MERGED_REG"); then
         REG="$_MERGED_REG"
-        echo "critic-panel.sh: merged critics.local.json over critics.json" >&2
+        grep -q '"local":null' "$REG" || echo "critic-panel.sh: merged critics.local.json over critics.json" >&2
     else
-        # Fail-open to the pre-1221 behavior: local overlay verbatim.
-        echo "critic-panel.sh: overlay merge failed — using critics.local.json verbatim" >&2
-        rm -f "$_MERGED_REG"; _MERGED_REG=""; REG="$_REG_LOCAL"
+        # Fail-open to the base: a broken overlay must not stop the panel.
+        # cr-merge-gate.sh reports the same error as a config error.
+        echo "critic-panel.sh: critics config error (${_reg_err}) — using $_REG_BASE" >&2
+        rm -f "$_MERGED_REG"; _MERGED_REG=""; REG="$_REG_BASE"
     fi
 else
     REG="$_REG_BASE"
@@ -584,6 +550,43 @@ if [ "$CHECK_MODE" = "1" ]; then
     done << CHECKROWSEOF
 $check_rows
 CHECKROWSEOF
+
+    # The effective reviewer set the merge gate holds this repo to: every row
+    # with its mode, required flag and state. A row that cannot run on this
+    # machine (the claude API lane off, the CodeRabbit app not armed) is
+    # absent and leaves the set, unless it is required, which makes it
+    # unavailable and keeps it in.
+    [ -r "$SCRIPT_DIR/../lib/cr-available.sh" ] && . "$SCRIPT_DIR/../lib/cr-available.sh"
+    _eff=""
+    while IFS="	" read -r slug mode required provider; do
+        [ -n "$slug" ] || continue
+        why=""
+        case "$provider" in
+            github-app)
+                if ! command -v cr_app_configured >/dev/null 2>&1 || ! cr_app_configured "$PWD"; then
+                    why="CodeRabbit app not armed"
+                fi ;;
+            claude-api)
+                [ "${HIMMEL_API_LANE:-}" = "on" ] || why="api lane is OFF" ;;
+        esac
+        if [ -z "$why" ]; then state="selected"
+        elif [ "$required" = "true" ]; then state="unavailable($why)"
+        else state="absent($why)"; fi
+        echo "reviewer $slug: mode=$mode required=$required state=$state"
+        case "$state" in absent*) ;; *) _eff="$_eff $slug" ;; esac
+    done << REVIEWERSEOF
+$(REG="$REG" node -e '
+  try {
+    const j = JSON.parse(require("fs").readFileSync(process.env.REG, "utf8"));
+    const p = (Array.isArray(j.panel) ? j.panel : []).filter(r => r && typeof r.slug === "string");
+    process.stdout.write(p.map(r => [r.slug,
+      r.mode || (r.provider === "github-app" ? "best-effort" : "hard"),
+      r.required === true ? "true" : "false",
+      r.route_provider === "claude-api" ? "claude-api" : (r.provider || "-")].join("\t")).join("\n"));
+  } catch (e) { process.exit(7); }
+' 2>/dev/null)
+REVIEWERSEOF
+    echo "effective reviewers:$_eff"
 
     rm -f "$check_prompt"
     [ -n "$_MERGED_REG" ] && rm -f "$_MERGED_REG"   # normal --check path (trap is disarmed next)

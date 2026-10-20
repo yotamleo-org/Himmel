@@ -9,14 +9,21 @@
 #          branch) so quoted/mis-tokenized selectors cannot dodge the gate
 # (/ codex-adv-1, CR round). Top-level consumers
 #          treat any non-2 rc as allow.
-# CodeRabbit is best effort. Deny
-#   only on an unresolved coderabbitai review thread, or an outside-diff body
-#   finding with no ledger disposition at this exact head — CodeRabbit's
-#   commit-status state (pending/absent/paged/skipped/etc.) prints an
-#   advisory NOTE and falls through; it never blocks on its own.
+# Who must pass is configuration (docs/configuration.md): every critics.json
+#   row is `mode` hard (must pass at the head) or best-effort (only a posted,
+#   open finding holds). cr_reviewer_gate below is that predicate, shared
+#   with the release check; this gate reads its HOLD as a block, then adds
+#   CodeRabbit's outside-diff body findings. As shipped (codex + claude hard,
+#   CodeRabbit best-effort), CodeRabbit's commit-status state (pending/absent/
+#   rate_limited/skipped/etc.) prints an advisory NOTE and never blocks on its
+#   own; an unresolved coderabbitai review thread, or an outside-diff body
+#   finding with no ledger disposition at this exact head, does.
 #
-#   A repo with no CodeRabbit is detected automatically and gets a NO-OP gate
-# (scripts/lib/cr-available.sh).
+#   A clone without the CodeRabbit app has the coderabbit row absent: no
+#   CodeRabbit call is made (scripts/lib/cr-available.sh).
+#   A config error (a critics file that does not parse, a bad mode, no hard
+#   reviewer without "review": "no_code_review") BLOCKS: rc 2,
+#   `cr-reviewer-gate: config error: <file>: <why>` on stdout.
 #   INFRASTRUCTURE failures (gh missing, API error, no PR, parse failure) still
 #   fail OPEN (rc 0/3) with a "cr-merge-gate: degraded (...) - failing open" note
 #   — a broken query is not evidence of anything.
@@ -157,16 +164,346 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 { [ -r "$_cmg_dir/nwo.sh" ] && . "$_cmg_dir/nwo.sh"; } || return 1
 
+# Which reviewers gate this repo and how hard (critics.json + its overlay),
+# and the absent-vs-unavailable vocabulary of a critic skip.
+# shellcheck source=scripts/lib/critics-config.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+{ [ -r "$_cmg_dir/critics-config.sh" ] && . "$_cmg_dir/critics-config.sh"; } || return 1
+# shellcheck source=scripts/cr/failure-classify.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+{ [ -r "$_cmg_dir/../cr/failure-classify.sh" ] && . "$_cmg_dir/../cr/failure-classify.sh"; } || return 1
+
+# _crg_critic_states <head> <slug>... — each critic's state at <head>, read
+# from the CR ledger: one `slug<TAB>state<TAB>detail` line per slug, or one
+# `degraded<TAB><why>` line when the ledger cannot be read.
+#   pass           an avail ok row, and no open crit/imp finding of its own
+#   findings-open  an avail ok row, but open finding(s); detail = their ids
+#   absent         a critic-skipped row whose detail matches _FC_ABSENT_RE
+#                  (cannot run on this machine); detail = the matched phrase
+#   not-selected   tier-excluded / keep-one-skipped: not picked for this PR
+#   unavailable    any other refusal or failure; detail = its reason
+#   not-yet-run    no avail row at the head
+# A row naming `trivial-descendant of reviewed head <sha>` carries the whole
+# head (clear-cr-marker.sh writes it once, as model claude): a slug with no
+# row of its own at <head> is read at the reviewed head instead. Heads, amends and tracked deferrals
+# match as in cr-ledger-evidence.sh; a malformed line is a degraded read,
+# never a skip. The ledger path is fixed (never env-overridable).
+_crg_critic_states() {
+    local head="$1" common
+    shift
+    command -v node >/dev/null 2>&1 || { printf 'degraded\tnode not on PATH\n'; return 0; }
+    common=$(git rev-parse --git-common-dir 2>/dev/null) || { printf 'degraded\tnot in a git repository\n'; return 0; }
+    RG_LEDGER="$common/cr-critic-scores.jsonl" RG_HEAD="$head" RG_SLUGS="$*" \
+    RG_ABSENT_RE="$_FC_ABSENT_RE" node -e '
+const fs = require("fs"), cp = require("child_process"), e = process.env;
+let txt;
+try { txt = fs.readFileSync(e.RG_LEDGER, "utf8"); }
+catch (_) { process.stdout.write("degraded\tno readable critic ledger at " + e.RG_LEDGER + "\n"); process.exit(0); }
+const HEX = /^[0-9a-f]{7,40}$/;
+const cache = new Map();
+const resolve = (h) => {
+    if (!cache.has(h)) {
+        let full = null;
+        try {
+            full = cp.execFileSync("git", ["rev-parse", "--verify", "--quiet", h + "^{commit}"],
+                { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+        } catch (_) { full = null; }
+        cache.set(h, full || null);
+    }
+    return cache.get(h);
+};
+const atHead = (o, head) => {
+    const h = String(o.head || "");
+    if (h === head) return true;
+    if (!HEX.test(h) || !head.startsWith(h)) return false;
+    return resolve(h) === head;
+};
+const SEP = String.fromCharCode(31), lines = txt.split("\n").filter(Boolean);
+const amends = new Map();
+for (const l of lines) {
+    let a;
+    try { a = JSON.parse(l); } catch (_) { continue; }
+    if (!a || a.kind !== "amend" || !a.set || typeof a.set !== "object") continue;
+    const k = [a.target_head, a.finding_id, a.artifact || "diff", a.perspective || "off"].join(SEP);
+    amends.set(k, Object.assign({}, amends.get(k) || {}, a.set));
+}
+const recs = [];
+let malformed = 0;
+for (const l of lines) {
+    let o;
+    try { o = JSON.parse(l); } catch (_) { malformed++; continue; }
+    if (!o || typeof o !== "object") { malformed++; continue; }
+    if (o.kind === "amend") continue;
+    if (o.kind === "finding") {
+        const k = [o.head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
+        if (amends.has(k)) o = Object.assign({}, o, amends.get(k));
+    }
+    recs.push(o);
+}
+if (malformed > 0) {
+    process.stdout.write("degraded\t" + malformed + " malformed critic ledger line(s)\n");
+    process.exit(0);
+}
+const ABSENT = new RegExp(e.RG_ABSENT_RE);
+const CARRY = /trivial-descendant of reviewed head ([0-9a-f]{7,40})/;
+const model = (o) => (typeof o.model === "string" ? o.model : "").trim();
+const str = (v) => (typeof v === "string" ? v.trim() : "");
+const avail = (slug, head) => recs.filter((o) => o.kind === "avail" && model(o) === slug && atHead(o, head));
+const own = (rows) => rows.filter((o) => !CARRY.test(String(o.detail || "")));
+const carry = recs.filter((o) => o.kind === "avail" && atHead(o, e.RG_HEAD))
+    .map((o) => String(o.detail || "").match(CARRY)).find(Boolean);
+const out = [];
+for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
+    let head = e.RG_HEAD;
+    let rows = own(avail(slug, head));
+    if (rows.length === 0 && carry) { head = carry[1]; rows = own(avail(slug, head)); }
+    let state, detail = "";
+    if (rows.length === 0) {
+        state = "not-yet-run";
+    } else if (rows.some((o) => o.status === "ok")) {
+        const open = recs.filter((o) => o.kind === "finding" && model(o) === slug && atHead(o, head)
+            && (o.severity === "crit" || o.severity === "imp") && o.verdict !== "disproved"
+            && !(o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(str(o.deferred_to)) && str(o.reason)));
+        if (open.length) { state = "findings-open"; detail = open.map((o) => o.finding_id || "?").join(","); }
+        else state = "pass";
+    } else {
+        const absent = rows.map((o) => String(o.reason || "").startsWith("critic-skipped")
+            ? String(o.detail || "").match(ABSENT) : null).find(Boolean);
+        const other = rows.find((o) => o.reason !== "tier-excluded" && o.reason !== "keep-one-skipped");
+        if (absent) { state = "absent"; detail = absent[0]; }
+        else if (other) { state = "unavailable"; detail = String(other.reason || other.status || "unknown"); }
+        else { state = "not-selected"; detail = String(rows[0].reason); }
+    }
+    out.push([slug, state, detail.replace(/[\t\n]/g, " ")].join("\t"));
+}
+process.stdout.write(out.length ? out.join("\n") + "\n" : "");
+'
+}
+
+# _crg_alert <slug> <head> <text> — `ALERT: <text>` on stderr, once per
+# (slug, head): the stamp file in the git common dir remembers what was said.
+_crg_alert() {
+    local common stamp
+    common=$(git rev-parse --git-common-dir 2>/dev/null) || common=""
+    if [ -n "$common" ]; then
+        stamp="$common/cr-reviewer-alerts"
+        grep -qxF "$1 $2" "$stamp" 2>/dev/null && return 0
+        printf '%s %s\n' "$1" "$2" >> "$stamp" 2>/dev/null || true
+    fi
+    echo "ALERT: $3" >&2
+}
+
+# _crg_coderabbit <owner> <name> <pr> <head> — the CodeRabbit github-app row's
+# state, into _CRG_CR_STATE / _CRG_CR_DETAIL, its raw status word into
+# _CRG_CR_RAW, a findings HOLD reason into _CRG_CR_HOLD and a failed read into
+# _CRG_CR_DEG. The commit status is read BEFORE the review threads
+# (coderabbit-10): once CodeRabbit has concluded, the thread set is final;
+# threads-first would pass over findings posted between the two reads. A
+# failed status read does not stop the thread read (codex-1): an unresolved
+# thread is evidence on its own.
+_crg_coderabbit() {
+    local owner="$1" name="$2" num="$3" head="$4" st rl threads complete unresolved locs
+    _CRG_CR_STATE=""; _CRG_CR_DETAIL=""; _CRG_CR_RAW=""; _CRG_CR_HOLD=""; _CRG_CR_DEG=""
+    if st=$(cr_signal_state "$owner" "$name" "$head" </dev/null); then
+        _CRG_CR_RAW="$st"
+        case "$st" in
+            success) _CRG_CR_STATE=pass ;;
+            pending) _CRG_CR_STATE=in-progress ;;
+            *)
+                rl=""
+                case "$st" in
+                    skipped|absent|paged) rl=$(cr_signal_rate_limit "$owner" "$name" "$num" "$head" </dev/null) || rl="" ;;
+                esac
+                if [ "$rl" = rate_limited ]; then
+                    _CRG_CR_RAW=rate_limited; _CRG_CR_STATE=unavailable; _CRG_CR_DETAIL=rate_limited
+                elif [ "$st" = absent ]; then
+                    _CRG_CR_STATE=not-yet-run
+                else
+                    _CRG_CR_STATE=unavailable; _CRG_CR_DETAIL="$st"
+                fi ;;
+        esac
+    else
+        _CRG_CR_STATE=degraded; _CRG_CR_DETAIL="status query failed"; _CRG_CR_DEG="CodeRabbit status query failed"
+    fi
+
+    # shellcheck disable=SC2016  # GraphQL variables ($owner/$name/$number) are literal here
+    if ! threads=$(gh api graphql \
+        -f owner="$owner" -f name="$name" -F number="$num" \
+        -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved path line comments(first:1){nodes{author{login}}}}}}}}' \
+        </dev/null 2>/dev/null); then
+        _CRG_CR_DEG="${_CRG_CR_DEG:+$_CRG_CR_DEG; }reviewThreads query failed"
+        [ "$_CRG_CR_STATE" = pass ] && { _CRG_CR_STATE=degraded; _CRG_CR_DETAIL="threads query failed"; }
+        return 0
+    fi
+    # Page-completeness marker (codex-adv-1): this single-page query is the
+    # only thread evidence, so "zero unresolved on page one" is a pass ONLY
+    # when page one was the whole story. `== false` on purpose (coderabbit
+    # 980-r2): only an EXPLICIT hasNextPage:false proves completeness; jq's
+    # `hasNextPage // true` would swallow a legitimate false.
+    complete=$(printf '%s' "$threads" | jq -r \
+        '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage == false' \
+        2>/dev/null || echo false)
+    unresolved=$(printf '%s' "$threads" | jq -r \
+        '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved==false) | select((.comments.nodes[0].author.login // "") | test("coderabbit"; "i"))] | length' \
+        2>/dev/null || true)
+    if [ -z "$unresolved" ]; then
+        _CRG_CR_DEG="${_CRG_CR_DEG:+$_CRG_CR_DEG; }reviewThreads parse failed"
+        [ "$_CRG_CR_STATE" = pass ] && { _CRG_CR_STATE=degraded; _CRG_CR_DETAIL="threads parse failed"; }
+        return 0
+    fi
+    # >100 threads with zero unresolved ON PAGE ONE is positive evidence of
+    # threads this query never counted (coderabbit 980-r3): it holds, unlike
+    # an API/parse failure. A real PR with 100+ threads is pathological.
+    if [ "$unresolved" -eq 0 ] 2>/dev/null && [ "$complete" != "true" ]; then
+        _CRG_CR_STATE=findings-open; _CRG_CR_DETAIL="over 100 threads"
+        _CRG_CR_HOLD="PR #$num has more review threads than the gate's single page (100) — cannot certify zero unresolved CodeRabbit threads. Check threads manually, or bypass with CR_MERGE_GATE_OK=1."
+    elif [ "$unresolved" -gt 0 ] 2>/dev/null; then
+        locs=$(printf '%s' "$threads" | jq -r \
+            '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved==false) | select((.comments.nodes[0].author.login // "") | test("coderabbit"; "i")) | "\(.path // "?"):\(.line // "?")"] | join(", ")' \
+            2>/dev/null || true)
+        _CRG_CR_STATE=findings-open; _CRG_CR_DETAIL="$unresolved thread(s)"
+        _CRG_CR_HOLD="$unresolved unresolved CodeRabbit review thread(s) on PR #$num [$locs]. Fix + RESOLVE each thread (operator rule 2026-07-12), or bypass with CR_MERGE_GATE_OK=1 in the launching shell if already adjudicated."
+    fi
+    return 0
+}
+
+# _crg_eval <config-json> <owner> <name> <pr> <head> — cr_reviewer_gate's body
+# over an already-resolved config (a review value of no_code_review is the
+# caller's to handle). Same rc and output contract as cr_reviewer_gate.
+_crg_eval() {
+    local cfg="$1" owner="$2" name="$3" num="$4" head="$5"
+    local rows slug mode req prov state detail line crit="" states="" crit_deg=""
+    local table="" hard_left=0 armed=1 cr_row=0 hold="" note="" summary="" deg="" disp files
+    rows=$(printf '%s' "$cfg" | jq -r '.panel[] | [.slug, .mode, (.required | tostring), (.provider // "-")] | @tsv' 2>/dev/null) \
+        || { echo "cr-reviewer-gate: degraded (cannot read the resolved config)" >&2; return 3; }
+    while IFS=$'\t' read -r slug mode req prov; do
+        [ -n "$slug" ] || continue
+        if [ "$prov" = github-app ]; then cr_row=1; else crit="$crit $slug"; fi
+    done <<<"$rows"
+    if [ -n "$crit" ]; then
+        # shellcheck disable=SC2086  # one word per slug, by construction
+        states=$(_crg_critic_states "$head" $crit)
+        case "$states" in degraded$'\t'*) crit_deg=${states#degraded$'\t'}; states="" ;; esac
+    fi
+    [ "$cr_row" -eq 1 ] && { cr_app_configured "$PWD" || armed=0; }
+
+    # Each row's state before any CodeRabbit call: absent and not-selected
+    # rows leave the set, except that a required row cannot be absent (it is
+    # unavailable). The CodeRabbit row stays in the set whenever the app is
+    # armed; it is read below.
+    while IFS=$'\t' read -r slug mode req prov; do
+        [ -n "$slug" ] || continue
+        if [ "$prov" = github-app ]; then
+            if [ "$armed" -eq 1 ]; then state=to-read; detail=""
+            else state=absent; detail="CodeRabbit app not armed"; fi
+        elif [ -n "$crit_deg" ]; then
+            state=degraded; detail="$crit_deg"
+        else
+            line=$(printf '%s\n' "$states" | awk -F'\t' -v s="$slug" '$1 == s { print $2 "\t" $3; exit }')
+            state=${line%%$'\t'*}; detail=${line#*$'\t'}
+            [ -n "$state" ] || { state=degraded; detail="no ledger state"; }
+        fi
+        [ "$state" = absent ] && [ "$req" = true ] && state=unavailable
+        case "$state" in absent|not-selected) ;; *) [ "$mode" = hard ] && hard_left=1 ;; esac
+        table="$table$slug"$'\t'"$mode"$'\t'"$prov"$'\t'"$state"$'\t'"$detail"$'\n'
+    done <<<"$rows"
+    [ -n "$crit_deg" ] && deg="critic ledger: $crit_deg"
+
+    if [ "$hard_left" -eq 0 ]; then
+        files=$(printf '%s' "$cfg" | jq -r '[.files.base, .files.local] | map(select(. != null)) | join(", ")' 2>/dev/null || true)
+        echo "cr-reviewer-gate: config error: $files: no hard reviewer in the effective set for head $head of PR #$num (absent and not-selected rows leave it) — make one row \"mode\": \"hard\", or set \"review\": \"no_code_review\" to merge on CI alone (docs/configuration.md)."
+        return 2
+    fi
+
+    case "$table" in *$'\t'to-read$'\t'*) _crg_coderabbit "$owner" "$name" "$num" "$head" ;; esac
+    [ -n "${_CRG_CR_DEG:-}" ] && deg="${deg:+$deg; }$_CRG_CR_DEG"
+
+    while IFS=$'\t' read -r slug mode prov state detail; do
+        [ -n "$slug" ] || continue
+        [ "$state" = to-read ] && { state="$_CRG_CR_STATE"; detail="$_CRG_CR_DETAIL"; }
+        disp="$state${detail:+($detail)}"
+        case "$state" in
+            pass|absent|not-selected|degraded) ;;
+            findings-open)
+                if [ "$prov" = github-app ]; then
+                    hold="${hold}HOLD: $_CRG_CR_HOLD"$'\n'
+                else
+                    hold="${hold}HOLD: $slug has open finding(s) at head $head of PR #$num: $detail — fix them, or record a disposition in the CR ledger (disproved, or deferred to a ticket with a reason)."$'\n'
+                fi ;;
+            *)
+                if [ "$mode" = hard ]; then
+                    hold="${hold}HOLD: $slug (hard) is $disp at head $head of PR #$num — a hard reviewer must pass at the head; re-run it, or change its mode in critics.local.json (docs/configuration.md)."$'\n'
+                    [ "$state" = unavailable ] && _crg_alert "$slug" "$head" "$slug (hard) is $disp at head $head of PR #$num — it cannot review, so the PR holds until it can or its mode changes."
+                else
+                    disp="relaxed(${detail:-$state})"
+                    if [ "$prov" = github-app ]; then
+                        note="${note}NOTE: CodeRabbit $_CRG_CR_RAW on head $head of PR #$num — best effort (HIMMEL-3360), not gating; the thread + body-findings gates still apply."$'\n'
+                    else
+                        note="${note}NOTE: $slug $state${detail:+($detail)} on head $head of PR #$num — best effort, not gating."$'\n'
+                    fi
+                fi ;;
+        esac
+        summary="${summary:+$summary · }$slug $mode $disp"
+    done <<<"$table"
+
+    echo "cr-reviewer-gate: PR #$num head $head: $summary" >&2
+    printf '%s%s' "$note" "$hold"
+    [ -n "$hold" ] && return 1
+    if [ -n "$deg" ]; then echo "cr-reviewer-gate: degraded ($deg)" >&2; return 3; fi
+    return 0
+}
+
+# cr_reviewer_gate <pr> <head> [<owner/name>]
+#   The reviewer predicate the merge gate and the release check share: does
+#   every reviewer in the effective set (critics_config_resolve) let <head> of
+#   PR <pr> through? <owner/name> defaults to this clone's origin.
+#   rc 0 = GO (NOTE lines on stdout); rc 1 = HOLD (`HOLD: ...` lines on
+#   stdout); rc 2 = config error (`cr-reviewer-gate: config error: <file>:
+#   <why>` on stdout); rc 3 = degraded: a read failed and nothing held. The
+#   release never takes rc 3 as GO; the merge gate fails open on it.
+#   stderr: one state line (`cr-reviewer-gate: PR #N head H: codex hard pass ·
+#   claude hard absent(api lane is OFF) · coderabbit best-effort
+#   relaxed(rate_limited)`), degraded notes, and one `ALERT:` per (hard
+#   reviewer, head) that is unavailable.
+#   States: pass, findings-open, in-progress, not-yet-run, unavailable(<why>),
+#   absent(<why>), not-selected. Absent and not-selected rows leave the set (a
+#   required row that is absent is unavailable instead). A hard row holds on
+#   anything but pass; a best-effort row holds only on findings-open and is
+#   otherwise relaxed(<state>). No hard row left in the set is a config error,
+#   unless the config says "review": "no_code_review" (or CR_PROFILE=none):
+#   then GO with a NOTE and no gh call.
+cr_reviewer_gate() {
+    local num="${1:-}" head="${2:-}" repo="${3:-}" cfg rc=0 owner name
+    if [ -z "$num" ] || [ -z "$head" ]; then
+        echo "cr-reviewer-gate: degraded (usage: cr_reviewer_gate <pr> <head> [<owner/name>])" >&2; return 3
+    fi
+    cfg=$(critics_config_resolve 2>&1) || rc=$?
+    case "$rc" in
+        0) ;;
+        2) echo "cr-reviewer-gate: config error: $cfg"; return 2 ;;
+        *) echo "cr-reviewer-gate: degraded ($cfg)" >&2; return 3 ;;
+    esac
+    command -v jq >/dev/null 2>&1 || { echo "cr-reviewer-gate: degraded (jq not on PATH)" >&2; return 3; }
+    if [ "$(printf '%s' "$cfg" | jq -r '.review // empty' 2>/dev/null || true)" = no_code_review ]; then
+        echo "NOTE: review is no_code_review here (critics.json \"review\", or CR_PROFILE=none) — no reviewer gates head $head of PR #$num; CI alone decides."
+        return 0
+    fi
+    [ -n "$repo" ] || repo=$(_cmg_local_nwo || true)
+    case "$repo" in */*/*) repo=${repo#*/} ;; esac
+    owner=${repo%%/*}; name=${repo#*/}
+    if [ -z "$owner" ] || [ -z "$name" ] || [ "$owner" = "$repo" ]; then
+        echo "cr-reviewer-gate: degraded (cannot tell the repo's owner/name)" >&2; return 3
+    fi
+    rc=0
+    _crg_eval "$cfg" "$owner" "$name" "$num" "$head" || rc=$?
+    return "$rc"
+}
+
 cr_merge_gate() {
     [ "${CR_MERGE_GATE_OK:-0}" = "1" ] && return 0
 
     local sel="${1:-}" repo="${2:-}"
 
-    # Availability gate. Silent: an adopter without CodeRabbit must
-    # not see a CodeRabbit gate announce itself. Subsumes the old
-    # `CR_PROFILE=none` early return — cr_app_configured reads that switch first,
-    # so an operator who set it sees identical behaviour.
-    #
     # cr_app_configured describes THIS clone (a repo-scoped git config), so it
     # may only answer for this clone (codex-adv-2). `gh pr merge 42 --repo
     # other/thing` targets a repo we hold no availability signal for — applying
@@ -205,10 +542,24 @@ cr_merge_gate() {
             fi
         fi
     fi
-    cr_app_configured "$PWD" || return 0
+    # Which reviewers must pass, resolved before any gh call: a broken config
+    # blocks, and an explicit no_code_review (CR_PROFILE=none included) spends
+    # nothing. A clone without the CodeRabbit app still holds its critics to
+    # their modes; only the coderabbit row goes absent.
+    local cfg cfg_rc=0
+    cfg=$(critics_config_resolve 2>&1) || cfg_rc=$?
+    case "$cfg_rc" in
+        0) ;;
+        2) echo "cr-reviewer-gate: config error: $cfg"; return 2 ;;
+        *) _cmg_degrade "critics config unreadable: $cfg"; return 0 ;;
+    esac
     if [ -z "$sel" ]; then _cmg_degrade "no PR selector"; return 0; fi
     command -v gh >/dev/null 2>&1 || { _cmg_degrade "gh not on PATH"; return 0; }
     command -v jq >/dev/null 2>&1 || { _cmg_degrade "jq not on PATH"; return 0; }
+    if [ "$(printf '%s' "$cfg" | jq -r '.review // empty' 2>/dev/null || true)" = no_code_review ]; then
+        echo "NOTE: review is no_code_review here (critics.json \"review\", or CR_PROFILE=none) — no reviewer gates this merge; CI alone decides." >&2
+        return 0
+    fi
 
     local meta url num head owner name
     if [ -n "$repo" ]; then
@@ -225,83 +576,28 @@ cr_merge_gate() {
     name=$(printf '%s' "$url"  | sed -n 's|^https://[^/]*/[^/]*/\([^/]*\)/.*|\1|p')
     if [ -z "$owner" ] || [ -z "$name" ]; then _cmg_degrade "cannot parse owner/name from $url"; return 0; fi
 
-    # 1) CodeRabbit's verdict on the head SHA is advisory only
-    # (operator ruling 2026-09-21: CodeRabbit is best effort). The read still
-    # happens BEFORE the thread query below (coderabbit-10) for the same
-    # ordering reason as before: once CodeRabbit has concluded (`success`),
-    # the thread set the query below sees is final. Threads-first would lose
-    # a race — snapshot threads (clean at T0) -> CodeRabbit posts findings at
-    # T0.5 and flips status to success at T1 -> the gate would pass over
-    # threads it never saw. Any state other than `success` — pending,
-    # failure/error, absent, paged, skipped (rate-limited or auto-reviews
-    # disabled), or an unrecognized state — is NEVER gating on its own; it
-    # prints one advisory NOTE and falls through to the thread + body-
-    # findings gates below, unchanged.
-    #
-    # A FAILED status query must not return early (codex-1): doing so would
-    # skip the thread query below and fail open over positive unresolved-
-    # thread evidence the independent GraphQL call would have caught — and a
-    # transient 503 on this endpoint is real (observed live 2026-07-17). So a
-    # degraded verdict is REMEMBERED, not acted on: the threads are still
-    # read, positive evidence still blocks, and the fail-open only happens at
-    # the end when nothing blocked.
-    local cr_state cr_degraded=0
-    cr_state=$(cr_signal_state "$owner" "$name" "$head") || cr_degraded=1
-    if [ "$cr_degraded" -eq 0 ] && [ "$cr_state" != "success" ]; then
-        echo "NOTE: CodeRabbit $cr_state on head $head of PR #$num — best effort (HIMMEL-3360), not gating; the thread + body-findings gates below still apply."
-    fi
-
-    # 2) unresolved coderabbitai review threads — read only now that CodeRabbit
-    # has concluded, so the set is complete. Still read when the verdict query
-    # degraded (see above): its evidence is independent and blocks on its own.
-    local threads unresolved threads_page_complete
-    # shellcheck disable=SC2016  # GraphQL variables ($owner/$name/$number) are literal here
-    threads=$(gh api graphql \
-        -f owner="$owner" -f name="$name" -F number="$num" \
-        -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved path line comments(first:1){nodes{author{login}}}}}}}}' \
-        2>/dev/null) || { _cmg_degrade "reviewThreads query failed"; return 0; }
-    # Page-completeness marker (codex-adv-1): this single-page query
-    # is the hook's ONLY thread evidence, so "zero unresolved on page one" is a
-    # pass ONLY when page one was the whole story. It now feeds exactly one
-    # consumer: the >100-thread BLOCK below (coderabbit-5 — it used to gate the
-    # zombie override, which removed).
-    # `== false` on purpose (coderabbit 980-r2): only an EXPLICIT
-    # hasNextPage:false proves completeness — a missing/null pageInfo yields
-    # "false" here (so an unprovable page blocks). jq's `//` operator cannot
-    # express this: `hasNextPage // true` swallows a legitimate false.
-    threads_page_complete=$(printf '%s' "$threads" | jq -r \
-        '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage == false' \
-        2>/dev/null || echo false)
-    unresolved=$(printf '%s' "$threads" | jq -r \
-        '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved==false) | select((.comments.nodes[0].author.login // "") | test("coderabbit"; "i"))] | length' \
-        2>/dev/null || true)
-    if [ -z "$unresolved" ]; then _cmg_degrade "reviewThreads parse failed"; return 0; fi
-    # >100 threads with zero unresolved ON PAGE ONE is not a pass — it is
-    # positive evidence of threads this single-page query never counted
-    # (coderabbit 980-r3). Unlike an API/parse failure (degrade, fail open),
-    # this blocks: the state is knowable, just not from one page. A real PR
-    # with 100+ CodeRabbit threads is pathological — check manually or bypass.
-    if [ "$unresolved" -eq 0 ] 2>/dev/null && [ "$threads_page_complete" != "true" ]; then
-        echo "BLOCK: PR #$num has more review threads than the gate's single page (100) — cannot certify zero unresolved CodeRabbit threads. Check threads manually, or bypass with CR_MERGE_GATE_OK=1."
-        return 2
-    fi
-    if [ "$unresolved" -gt 0 ] 2>/dev/null; then
-        # List the offending threads (path:line) so the block is actionable and
-        # the bypass is front-and-center (false-block trust erosion mitigation,
-        # plan-critic #5).
-        local locs
-        locs=$(printf '%s' "$threads" | jq -r \
-            '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved==false) | select((.comments.nodes[0].author.login // "") | test("coderabbit"; "i")) | "\(.path // "?"):\(.line // "?")"] | join(", ")' \
-            2>/dev/null || true)
-        echo "BLOCK: $unresolved unresolved CodeRabbit review thread(s) on PR #$num [$locs]. Fix + RESOLVE each thread (operator rule 2026-07-12), or bypass with CR_MERGE_GATE_OK=1 in the launching shell if already adjudicated."
-        return 2
-    fi
+    # 1+2) The reviewer set, through the predicate the release check shares
+    # (cr_reviewer_gate): every hard reviewer must pass at this head, a
+    # posted open finding holds in either mode, a best-effort CodeRabbit
+    # state prints a NOTE. A HOLD blocks the merge. A degraded read (ledger,
+    # status or thread query) is remembered and fails open only at the end,
+    # when nothing blocked: a broken query is not evidence here (the release
+    # check never fails open on it).
+    local crg_out crg_rc=0 crg_degraded=0
+    crg_out=$(_crg_eval "$cfg" "$owner" "$name" "$num" "$head") || crg_rc=$?
+    case "$crg_rc" in
+        1) printf '%s\n' "$crg_out" | sed 's/^HOLD: /BLOCK: /'; return 2 ;;
+        2) printf '%s\n' "$crg_out"; return 2 ;;
+        3) crg_degraded=1 ;;
+    esac
+    if [ -n "$crg_out" ]; then printf '%s\n' "$crg_out"; fi
 
     # 3) CodeRabbit review-BODY findings (S1 — see
     # cr-body-findings.sh header): outside-diff-range comments carry NO
     # thread, so every gate above is blind to them by construction. Read only
     # now that CodeRabbit has concluded and the thread set above is final —
-    # same ordering rationale as (1)/(2).
+    # same ordering rationale as (1)/(2). Read only while the coderabbit row is
+    # in the config and the app is armed here.
     #
     # Fail-open/closed asymmetry is DELIBERATE here (spec §4) — this is a
     # merge HOOK, not the certifier (check-ci fails closed on the same two
@@ -314,9 +610,15 @@ cr_merge_gate() {
     # (the failure was invisibility, not permissiveness —
     # blocking Trivial-severity findings tanks the loop).
     local body_line body_rc outside nitpick prior_outside substantive body_degraded=0 body_nitpick=0 tok
-    body_line=$(cr_body_findings "$owner" "$name" "$num" "$head")
-    body_rc=$?
+    if cr_app_configured "$PWD" \
+        && printf '%s' "$cfg" | jq -e 'any(.panel[]; .provider == "github-app")' >/dev/null 2>&1; then
+        body_line=$(cr_body_findings "$owner" "$name" "$num" "$head")
+        body_rc=$?
+    else
+        body_rc=skip
+    fi
     case "$body_rc" in
+        skip) ;;
         0)
             # Word-split + anchor on `case`, NOT a `.*key=` sed/grep regex: the
             # reader's line has both `outside=` and `prior_outside=`, and an
@@ -380,8 +682,8 @@ cr_merge_gate() {
     # degraded, note it — a broken query is not
     # evidence; unresolved threads and outside-diff findings are, and both
     # are already checked above.
-    if [ "$cr_degraded" -eq 1 ] || [ "$body_degraded" -eq 1 ]; then
-        [ "$cr_degraded" -eq 1 ] && _cmg_degrade "CodeRabbit status query failed"
+    if [ "$crg_degraded" -eq 1 ] || [ "$body_degraded" -eq 1 ]; then
+        [ "$crg_degraded" -eq 1 ] && _cmg_degrade "a reviewer read failed, see cr-reviewer-gate above"
         [ "$body_degraded" -eq 1 ] && _cmg_degrade "cr-body-findings query/parse failed"
         return 0
     fi

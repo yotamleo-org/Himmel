@@ -336,7 +336,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-docker-privesc` | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
 | `block-merged-pr-commit` | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
 | `check-cr-marker-on-pr-create` | `gh pr create` while a review-owed marker exists | auth-gated | clean `/pr-check` (clears the marker) |
-| `block-unresolved-cr-merge` | `gh pr merge` — two sub-gates: unresolved CR threads, and CI not green | auth-gated | `CR_MERGE_GATE_OK=1` / `CI_MERGE_GATE_OK=1` (independent); `CR_PROFILE=none` skips the CR sub-gate |
+| `block-unresolved-cr-merge` | `gh pr merge` — two sub-gates: the reviewer set (each `critics.json` row by its mode, see [Reviewer modes](#reviewer-modes)), and CI not green | auth-gated | `CR_MERGE_GATE_OK=1` / `CI_MERGE_GATE_OK=1` (independent); `"review": "no_code_review"` (or `CR_PROFILE=none`) skips the reviewer sub-gate with a NOTE |
 | `guard-implementor-dispatch` | expensive implementor-shaped `Agent` dispatches while the 5h Claude subscription usage budget is hot | auth-gated cost guard (fail-open; blocks only at ≥80% of the usage budget + provably live window, warns at ≥65%) | `IMPL_GUARD_DISABLE=1` / `IMPL_GUARD_OK=1` |
 | `guard-console-dispatch` | a supervisor session dispatching ship-flow-shaped `Agent` work (≥2 of worktree/pr-open/cr-gate marker families) as an in-process subagent | workflow fence (fail-open; console-shaped AND ≥2-family match required) | `CONSOLE_DISPATCH_DISABLE=1` / `CONSOLE_DISPATCH_OK=1` |
 | `block-graphify-egress` + `scripts/guardrails/graphify-fence.sh` | any `graphify` run — corpus × provider egress policy | HARD (fail-closed EXIT trap) | none for hard-deny cells; narrow per-cell opt-ins only (`GRAPHIFY_SALUS_LOCAL_OK`, `GRAPHIFY_CLIPPINGS_GLM_OK`) |
@@ -514,9 +514,60 @@ title.
 | `CR_CLAUDE_AGENTS` | OFF | `.env` (bridged) | opt-in Claude-agent reviewer fan-out inside `/pr-check` |
 | `CR_REQUIRE_CROSS_MODEL` | OFF | `.env` (bridged) | opt-in cross-model floor: require ≥1 non-Claude critic `avail … ok` at the SHA before the review-owed marker clears — makes the claude-only floor above insufficient. Bridged from `.env` by `scripts/cr/clear-cr-marker.sh` itself (gate 3b); a live-env value wins |
 | `CRITIC_TIMEOUT_SECS` / `CRITIC_PARALLEL` / `CRITIC_PANEL_TIERS` / `CR_TRIVIALITY_OVERRIDE` / `CR_USAGE_LOG` | 240s / sequential / `free` / heuristic / off | env | panel cost/scope tuning (`scripts/cr/critic-panel.sh`, `.claude/commands/pr-check.md`) |
-| `scripts/cr/critics.local.json` | — | file (gitignored) | per-machine critic overlay; `"drop": true` removes a base row |
+| `scripts/cr/critics.local.json` | — | file (gitignored) | per-machine critic overlay, merged field-wise per slug over `critics.json`; `"drop": true` removes a base row. Found in `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/` first, then the primary checkout's `scripts/cr/` (a linked worktree reads the primary's). See [Reviewer modes](#reviewer-modes) |
 | `ARMAUTOMERGE` | OFF | env | arms `merge-on-green.sh` (full condition list in [§3.3](#33-merge--publish-gates)); admits a confirmed-private repo, or the configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present. `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 |
 | `MERGE_ON_GREEN_LOG` | `<gitdir>/merge-on-green.log` | env | auto-merge audit log path |
+
+<a id="reviewer-modes"></a>
+**Reviewer modes — who must pass before a merge.** Every row of
+`scripts/cr/critics.json` is a reviewer with a `mode`, and the merge gate
+(`cr_reviewer_gate` in `scripts/lib/cr-merge-gate.sh`, shared with the release
+check) holds each one to it at the PR's head:
+
+| Field | Values | Default | Effect |
+|---|---|---|---|
+| `mode` | `hard` | every row except a `github-app` one | must **pass** at the head: anything else (in progress, not yet run, rate limited, unavailable, an open finding) holds the merge, and an unavailable hard reviewer raises one `ALERT` per head |
+| `mode` | `best-effort` | a `provider: "github-app"` row (CodeRabbit) | holds only on a posted, open finding (an unresolved review thread, an undisposed outside-diff body finding, a critic's open crit/imp finding); any other state prints a NOTE and is `relaxed` |
+| `required` | `true` / `false` | `false` | `true` keeps the row in the set even when it is **absent** on this machine (it is then `unavailable`, which holds a hard row) |
+| `review` (top level) | `"no_code_review"` | unset | no reviewer gates this repo: the gate prints a NOTE and CI alone decides. `CR_PROFILE=none` means the same |
+
+A reviewer's state at the head is one of `pass`, `findings-open`,
+`in-progress`, `not-yet-run`, `unavailable(<why>)` (rate limited, out of credit,
+a failed run), `absent(<why>)` (cannot run on this machine: the claude API lane
+is off, no key, the CodeRabbit app is not armed) and `not-selected` (tier-
+excluded for this PR). Absent and not-selected rows leave the effective set.
+A set with **no hard reviewer left is a config error**, unless the config says
+`"review": "no_code_review"`: the gate refuses with
+`cr-reviewer-gate: config error: <file>: <why>`, as it does for a critics file
+that does not parse or a `mode` other than the two above. A config error always
+blocks; a failed read (the critic ledger, a GitHub query) is *degraded*: the
+merge gate fails open on it with a note, the release check never does.
+`scripts/cr/critic-panel.sh --check` prints every row with its mode, required
+flag and state, and the effective set.
+
+As shipped: codex `hard`, `required: true`; claude `hard` (absent while the API
+lane is off); CodeRabbit `best-effort`. The overlay changes any of it per
+machine, field by field. This `critics.local.json` makes CodeRabbit a hard
+reviewer and claude advisory only:
+
+```json
+{ "panel": [
+  { "slug": "coderabbit", "mode": "hard" },
+  { "slug": "claude", "mode": "best-effort" }
+] }
+```
+
+A Codex-only gate drops the other two:
+
+```json
+{ "panel": [ { "slug": "claude", "drop": true }, { "slug": "coderabbit", "drop": true } ] }
+```
+
+A repo with no code review at all says so explicitly:
+
+```json
+{ "review": "no_code_review" }
+```
 
 **himmel's own review posture (operator decision 2026-07-28;
 CodeRabbit half superseded 2026-09-07).**

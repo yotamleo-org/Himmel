@@ -49,6 +49,17 @@ case "$*" in
     esac
     exit 0 ;;
 esac
+# The commit read (no /statuses suffix) the rate-limit reader uses to date the
+# head; GH_STUB_COMMIT_DATE moves it past the fixture's comments.
+case "$1 $2" in
+  "api repos/o/r/commits/"*)
+    case "$2" in
+      */statuses*) ;;
+      *) [ "$GH_STUB_MODE" = api-error ] && exit 1
+         printf '{"sha":"%s","commit":{"committer":{"date":"%s"}}}\n' "${GH_STUB_HEAD:-abc123}" "${GH_STUB_COMMIT_DATE:-2026-10-19T19:30:00Z}"
+         exit 0 ;;
+    esac ;;
+esac
 case "$1 $2" in
   "pr view")
     # A malformed --repo value (quotes survived tokenization) is what real gh
@@ -167,6 +178,8 @@ case "$1 $2" in
   # Default 'none' (an empty comment list) leaves every unrelated case exactly
   # as it was; only the zero-PR-wide-reviews arm reads it.
   "api repos/o/r/issues/42/comments"*)
+    # the real #3215 "Rate Limit Exceeded" reply to our trigger comment.
+    if [ -n "${GH_STUB_COMMENTS_FILE:-}" ]; then cat "$GH_STUB_COMMENTS_FILE"; exit 0; fi
     case "${GH_STUB_WALKTHROUGH:-none}" in
       clean) echo '[{"user":{"login":"coderabbitai[bot]","type":"Bot"},"body":"<!-- This is an auto-generated comment: summarize by coderabbit.ai -->\nNo actionable comments were generated in the recent review.\n\nMerge Risk: Low - up to `abc123d`"}]' ;;
       *)     echo '[]' ;;
@@ -193,6 +206,29 @@ git -C "$TMP/repo" init --quiet >/dev/null 2>&1
 git -C "$TMP/repo" remote add origin https://github.com/o/r.git
 git -C "$TMP/repo" config --local himmel.coderabbit true
 cd "$TMP/repo" || { echo "FATAL: cannot cd to the test repo"; exit 1; }
+
+# ── the reviewer set ─────────────────────────────────────────────
+# The gate reads which reviewers must pass from critics.json and the critic
+# states from the CR ledger. Pin a config shaped like the shipped one (codex
+# hard + required, claude hard, coderabbit best-effort) and an overlay path that
+# does not exist, so the real checkout's critics.local.json never decides a
+# case; every case below starts from both critics clean at abc123.
+cat > "$TMP/critics.json" <<'JSON'
+{"panel":[
+ {"slug":"codex","model":"m","provider":"openai-codex","mode":"hard","required":true},
+ {"slug":"claude","model":"m","provider":"claude-api","mode":"hard","required":false},
+ {"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}
+JSON
+export CRITICS_BASE_JSON="$TMP/critics.json" CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
+unset CRITICS_JSON CR_PROFILE
+LEDGER="$TMP/repo/.git/cr-critic-scores.jsonl"
+av() { # av <head> <model> <status> [reason] [detail] — one avail ledger row
+  printf '{"kind":"avail","head":"%s","model":"%s","status":"%s","reason":"%s","detail":"%s"}' "$1" "$2" "$3" "${4:-}" "${5:-}"
+}
+CRIT_OK="$(av abc123 codex ok)
+$(av abc123 claude ok)"
+led() { printf '%s\n' "$@" > "$LEDGER"; }
+led "$CRIT_OK"
 
 # hermeticity probe — when this suite re-execs itself under the
 # armed bypass env (see the guard at the end), short-circuit here: the startup
@@ -259,7 +295,7 @@ GH_STUB_MODE=cr-paged-found t cr-status-found-on-full-page-allows 0
 # (cr_ledger_carries_gate is deleted from this file; no ledger fixture is written
 # anywhere in this block, proving the read no longer happens).
 GH_STUB_MODE=cr-ratelimited t cr-status-ratelimited-allows 0
-grep -q "^NOTE: CodeRabbit skipped" "$TMP/out-cr-status-ratelimited-allows" || { echo "FAIL cr-status-ratelimited NOTE missing"; fail=$((fail+1)); }
+grep -q "^NOTE: CodeRabbit rate_limited" "$TMP/out-cr-status-ratelimited-allows" || { echo "FAIL cr-status-ratelimited NOTE missing"; fail=$((fail+1)); }
 grep -q "^BLOCK:" "$TMP/out-cr-status-ratelimited-allows" && { echo "FAIL cr-status-ratelimited-allows unexpectedly BLOCKed"; fail=$((fail+1)); }
 # ...same for the other skip wordings (auto-reviews-disabled, and an
 # unenumerated one) — the state collapses to `skipped` regardless of wording,
@@ -307,12 +343,12 @@ unset CR_PROFILE
 
 # — the adopter WITHOUT CodeRabbit, at the surface that actually
 # blocks `gh pr merge`. This whole gate is CodeRabbit-specific, so with no
-# CodeRabbit it must be a NO-OP: allow, and (like the other two short-circuits
-# above) do not spend a single gh call proving what the probe already knows.
+# CodeRabbit the coderabbit row is absent: the gate still reads the PR head
+# for the critics, but spends no CodeRabbit call (no status, no threads).
 # Pre-1125 this shape BLOCKED every merge on "absent", forever, until the
 # adopter discovered CR_PROFILE=none.
 GH_STUB_MODE=unresolved CR_APP=0 t cr-app-absent-allows 0
-[ -s "$TMP/calls-cr-app-absent-allows.log" ] && { echo "FAIL cr-app-absent called gh"; fail=$((fail+1)); }
+grep -qE 'statuses|api graphql' "$TMP/calls-cr-app-absent-allows.log" && { echo "FAIL cr-app-absent made a CodeRabbit call"; fail=$((fail+1)); }
 unset CR_APP
 
 # — the marker is what arms this suite, so prove the gate is really
@@ -320,7 +356,7 @@ unset CR_APP
 # the posture, and an unarmed repo is now the DEFAULT an adopter lands on.
 git -C "$TMP/repo" config --local --unset himmel.coderabbit
 GH_STUB_MODE=unresolved t unarmed-repo-allows 0
-[ -s "$TMP/calls-unarmed-repo-allows.log" ] && { echo "FAIL unarmed repo called gh"; fail=$((fail+1)); }
+grep -qE 'statuses|api graphql' "$TMP/calls-unarmed-repo-allows.log" && { echo "FAIL unarmed repo made a CodeRabbit call"; fail=$((fail+1)); }
 git -C "$TMP/repo" config --local himmel.coderabbit true
 
 # codex-adv-2 — availability describes THIS clone, so it must not be applied to a
@@ -458,11 +494,11 @@ grep -qi "degraded" "$TMP/err-body-infra-error-fails-open" || { echo "FAIL body-
 FIXD="$SCRIPT_DIR/fixtures/cr-body"
 OD_LEDGER="$(git rev-parse --git-common-dir)/cr-critic-scores.jsonl"
 OD_ROW='{"kind":"finding","ts":"2026-09-19T00:00:00Z","branch":"feat/x","head":"abc123","model":"coderabbit-outside","finding_id":"cr-od-39c3193c8945","severity":"sug","file":".pre-commit-config.yaml","line":459,"verdict":"deferred","artifact":"diff","perspective":"off","deferred_to":"HIMMEL-9001","reason":"tracked separately"}'
-od_ledger() { printf '%s\n' "$@" > "$OD_LEDGER"; }
+od_ledger() { printf '%s\n' "$CRIT_OK" "$@" > "$OD_LEDGER"; }
 od_variant() { printf '%s' "$OD_ROW" | jq -c "$1"; }
 export GH_STUB_BODY_FILE="$FIXD/pr-777-outside-diff-blockquote.body.txt"
 
-rm -f "$OD_LEDGER"
+od_ledger
 GH_STUB_MODE=body-file t od-undispositioned-blocks 2
 grep -qi "outside-diff-range finding" "$TMP/out-od-undispositioned-blocks" || { echo "FAIL od-undispositioned block reason missing"; fail=$((fail+1)); }
 # the recipe hint names --branch so a ledger-append run from a leg resolves the PR branch
@@ -495,10 +531,10 @@ GH_STUB_BODY_FILE="$TMP/od-count2.txt" GH_STUB_MODE=body-file t od-header-count-
 grep -qi "format drift\|cannot count" "$TMP/out-od-header-count-mismatch-blocks" || { echo "FAIL od-mismatch block reason missing"; fail=$((fail+1)); }
 
 # gate integrity: the ledger path is fixed; an env-pointed forged ledger is ignored.
-rm -f "$OD_LEDGER"
+od_ledger
 printf '%s\n' "$OD_ROW" > "$TMP/forged-ledger.jsonl"
 CR_LEDGER="$TMP/forged-ledger.jsonl" GH_STUB_MODE=body-file t od-env-forged-ledger-ignored-blocks 2
-rm -f "$OD_LEDGER"
+od_ledger
 export -n GH_STUB_BODY_FILE; unset GH_STUB_BODY_FILE
 
 # ── operator ruling: best effort covers ABSENCE
@@ -508,7 +544,7 @@ export -n GH_STUB_BODY_FILE; unset GH_STUB_BODY_FILE
 # governing prior review instead of the silent current head. ───────────────
 export GH_STUB_BODY_FILE="$FIXD/pr-777-outside-diff-blockquote.body.txt"
 
-rm -f "$OD_LEDGER"
+od_ledger
 GH_STUB_MODE=body-a2-file t a2-prior-head-undispositioned-blocks 2
 grep -qi "not dispositioned" "$TMP/out-a2-prior-head-undispositioned-blocks" || { echo "FAIL a2-prior-head-undispositioned block reason missing 'not dispositioned'"; fail=$((fail+1)); }
 grep -q "shaOLD" "$TMP/out-a2-prior-head-undispositioned-blocks" || { echo "FAIL a2-prior-head-undispositioned block does not name the governing prior head"; fail=$((fail+1)); }
@@ -523,7 +559,7 @@ grep -qi "dispositioned=1" "$TMP/err-a2-dispositioned-at-prior-head-allows" || {
 od_ledger "$(od_variant '.head="abc123"')"
 GH_STUB_MODE=body-a2-file t a2-dispositioned-at-wrong-head-blocks 2
 
-rm -f "$OD_LEDGER"
+od_ledger
 GH_STUB_MODE=body-a2-drift t a2-unparseable-prior-body-blocks 2
 grep -qi "format drift" "$TMP/out-a2-unparseable-prior-body-blocks" || { echo "FAIL a2-unparseable-prior-body block reason missing 'format drift'"; fail=$((fail+1)); }
 
@@ -535,7 +571,7 @@ export GH_STUB_BODY_FILE2="$FIXD/pr-777-outside-the-diff-range.body.txt"
 OD_A3_ROW_OLD=$(od_variant '.head="shaOLD"')
 OD_A3_ROW_NEW=$(od_variant '.finding_id="cr-od-2b1a31ba0692" | .severity="imp" | .file="marketplace/plugins/himmel-ops/README.md" | .line="80-91" | .head="shaOLD2"')
 
-rm -f "$OD_LEDGER"
+od_ledger
 GH_STUB_MODE=body-a3-file t a3-two-prior-heads-nothing-dispositioned-blocks 2
 grep -q "cr-od-39c3193c8945" "$TMP/out-a3-two-prior-heads-nothing-dispositioned-blocks" || { echo "FAIL a3-nothing-dispositioned block does not list the older head's finding"; fail=$((fail+1)); }
 grep -q "cr-od-2b1a31ba0692" "$TMP/out-a3-two-prior-heads-nothing-dispositioned-blocks" || { echo "FAIL a3-nothing-dispositioned block does not list the newer head's finding"; fail=$((fail+1)); }
@@ -558,7 +594,7 @@ od_ledger "$OD_A3_ROW_OLD" "$OD_A3_ROW_NEW"
 GH_STUB_MODE=body-a3-file t a3-both-prior-heads-dispositioned-allows 0
 grep -qi "dispositioned=" "$TMP/err-a3-both-prior-heads-dispositioned-allows" || { echo "FAIL a3-both-dispositioned ALLOW note missing on stderr"; fail=$((fail+1)); }
 
-rm -f "$OD_LEDGER"
+od_ledger
 export -n GH_STUB_BODY_FILE2; unset GH_STUB_BODY_FILE2
 export -n GH_STUB_BODY_FILE; unset GH_STUB_BODY_FILE
 
@@ -576,6 +612,198 @@ grep -qi "unresolved" "$TMP/out-unresolved-cr-thread-blocks" || { echo "FAIL blo
 # degradation notes land on stderr on both fail-open shapes
 grep -qi "degraded" "$TMP/err-gh-error-selector-unresolvable" || { echo "FAIL degradation note missing (rc3)"; fail=$((fail+1)); }
 grep -qi "degraded" "$TMP/err-downstream-api-error-fails-open" || { echo "FAIL degradation note missing (rc0)"; fail=$((fail+1)); }
+
+# ── reviewer modes — hard / best-effort, a distinct rate-limited
+# state, config error vs degraded. Rows RL0, M1-M23 and H16 of the plan's RED
+# tables; cr_reviewer_gate is the shared predicate, cr_merge_gate its merge
+# caller (HOLD reads as BLOCK there). ─────────────────────────────────────────
+rg() { # rg <name> <expected-rc> — cr_reviewer_gate 42 <head> o/r with current env
+  local name="$1" want="$2" rc=0
+  export GH_STUB_LOG="$TMP/calls-$name.log"; : > "$GH_STUB_LOG"
+  cr_reviewer_gate 42 "${GH_STUB_HEAD:-abc123}" o/r >"$TMP/out-$name" 2>"$TMP/err-$name" || rc=$?
+  if [ "$rc" = "$want" ]; then pass=$((pass+1)); echo "ok   $name"
+  else fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want)"; sed 's/^/  out: /' "$TMP/out-$name"; sed 's/^/  err: /' "$TMP/err-$name"; fi
+}
+has() { # has <file> <ERE> <label>
+  if grep -qE -- "$2" "$1" 2>/dev/null; then pass=$((pass+1)); echo "ok   $3"
+  else fail=$((fail+1)); echo "FAIL $3 (no /$2/ in $(basename "$1"))"; fi
+}
+hasnt() { # hasnt <file> <ERE> <label>
+  if grep -qE -- "$2" "$1" 2>/dev/null; then fail=$((fail+1)); echo "FAIL $3 (/$2/ in $(basename "$1"))"
+  else pass=$((pass+1)); echo "ok   $3"; fi
+}
+alerts() { grep -c '^ALERT:' "$1" 2>/dev/null || true; }
+cfg() { # cfg <file> <json> — write a config file for CRITICS_JSON / the overlay
+  printf '%s\n' "$2" > "$1"
+}
+RL_COMMENTS="$SCRIPT_DIR/fixtures/cr-ratelimit/pr-3215-comments.json"
+ABSENT_DETAIL='critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) - clean no-op'
+led "$CRIT_OK"
+
+# RL0 — the #2214 status shape is rate_limited, never clean, never absent.
+rl_rc=0; rl_out=$(GH_STUB_MODE=cr-ratelimited GH_STUB_LOG="$TMP/calls-rl0.log" cr_signal_rate_limit o r 42 abc123) || rl_rc=$?
+if [ "$rl_rc" = 0 ] && [ "$rl_out" = rate_limited ]; then pass=$((pass+1)); echo "ok   RL0-status-rate-limited"
+else fail=$((fail+1)); echo "FAIL RL0-status-rate-limited (rc=$rl_rc out=[$rl_out])"; fi
+# RL0b — the #3215 comment shape: the bot's "Rate Limit Exceeded" reply after
+# this head's trigger comment, with no rate-limited status at the head.
+rl_rc=0; rl_out=$(GH_STUB_MODE=cr-absent GH_STUB_COMMENTS_FILE="$RL_COMMENTS" GH_STUB_LOG="$TMP/calls-rl0b.log" cr_signal_rate_limit o r 42 abc123) || rl_rc=$?
+if [ "$rl_rc" = 0 ] && [ "$rl_out" = rate_limited ]; then pass=$((pass+1)); echo "ok   RL0b-comment-rate-limited"
+else fail=$((fail+1)); echo "FAIL RL0b-comment-rate-limited (rc=$rl_rc out=[$rl_out])"; fi
+# ...the same reply BEFORE this head was committed belongs to an older head.
+rl_rc=0; rl_out=$(GH_STUB_MODE=cr-absent GH_STUB_COMMENTS_FILE="$RL_COMMENTS" GH_STUB_COMMIT_DATE=2026-10-19T20:00:00Z GH_STUB_LOG="$TMP/calls-rl0c.log" cr_signal_rate_limit o r 42 abc123) || rl_rc=$?
+if [ "$rl_rc" = 0 ] && [ -z "$rl_out" ]; then pass=$((pass+1)); echo "ok   RL0c-older-head-comment-not-this-head"
+else fail=$((fail+1)); echo "FAIL RL0c-older-head-comment-not-this-head (rc=$rl_rc out=[$rl_out])"; fi
+# ...and a completed review is not rate-limited.
+rl_rc=0; rl_out=$(GH_STUB_MODE=cr-completed GH_STUB_LOG="$TMP/calls-rl0d.log" cr_signal_rate_limit o r 42 abc123) || rl_rc=$?
+if [ "$rl_rc" = 0 ] && [ -z "$rl_out" ]; then pass=$((pass+1)); echo "ok   RL0d-completed-not-rate-limited"
+else fail=$((fail+1)); echo "FAIL RL0d-completed-not-rate-limited (rc=$rl_rc out=[$rl_out])"; fi
+# RL1 — the comment shape on the first round, critics clean: relaxed, GO.
+GH_STUB_MODE=cr-absent GH_STUB_COMMENTS_FILE="$RL_COMMENTS" rg RL1-comment-rate-limited-relaxed-go 0
+has "$TMP/err-RL1-comment-rate-limited-relaxed-go" 'coderabbit best-effort relaxed\(rate_limited\)' "RL1 state line names rate_limited"
+
+# M1 — H/H/BE, all clean.
+GH_STUB_MODE=clean rg M1-all-clean-go 0
+has "$TMP/err-M1-all-clean-go" 'codex hard pass · claude hard pass · coderabbit best-effort pass' "M1 state line"
+GH_STUB_MODE=clean t M1-merge-all-clean-allows 0
+# M2 — codex unavailable: HOLD + one alert; the merge blocks.
+led "$(av abc123m2 codex unavailable timeout)" "$(av abc123m2 claude ok)"
+GH_STUB_HEAD=abc123m2 GH_STUB_MODE=clean rg M2-codex-unavailable-holds 1
+has "$TMP/out-M2-codex-unavailable-holds" '^HOLD: .*codex' "M2 HOLD names codex"
+if [ "$(alerts "$TMP/err-M2-codex-unavailable-holds")" = 1 ]; then pass=$((pass+1)); echo "ok   M2 one alert"; else fail=$((fail+1)); echo "FAIL M2 one alert"; fi
+GH_STUB_HEAD=abc123m2 GH_STUB_MODE=clean t M2-merge-blocks 2
+has "$TMP/out-M2-merge-blocks" '^BLOCK: .*codex' "M2 merge BLOCK names codex"
+# M3 — claude unavailable (bank not PROCEED is a refusal, not absence): HOLD;
+# the second call at the same head does not alert again.
+led "$(av abc123m3 codex ok)" "$(av abc123m3 claude unavailable critic-skipped 'claude critic SKIPPED (bank not PROCEED) - clean no-op')"
+GH_STUB_HEAD=abc123m3 GH_STUB_MODE=clean rg M3-claude-unavailable-holds 1
+GH_STUB_HEAD=abc123m3 GH_STUB_MODE=clean rg M3-second-call-holds 1
+a1=$(alerts "$TMP/err-M3-claude-unavailable-holds"); a2=$(alerts "$TMP/err-M3-second-call-holds")
+if [ "$a1" = 1 ] && [ "$a2" = 0 ]; then pass=$((pass+1)); echo "ok   M3 alert once per head"; else fail=$((fail+1)); echo "FAIL M3 alert once per head (first=$a1 second=$a2)"; fi
+# M4 — coderabbit rate-limited (status), critics clean: relaxed, GO.
+led "$CRIT_OK"
+GH_STUB_MODE=cr-ratelimited rg M4-coderabbit-rate-limited-go 0
+has "$TMP/err-M4-coderabbit-rate-limited-go" 'relaxed\(rate_limited\)' "M4 relaxed(rate_limited)"
+# M5 — a posted, unresolved coderabbit finding holds in best-effort mode too.
+GH_STUB_MODE=unresolved rg M5-coderabbit-finding-holds 1
+has "$TMP/out-M5-coderabbit-finding-holds" '^HOLD: .*unresolved CodeRabbit review thread' "M5 HOLD names the thread"
+GH_STUB_MODE=clean rg M5-resolved-go 0
+# M6 — every row best-effort: no hard reviewer, config error.
+cfg "$TMP/m6.json" '{"panel":[{"slug":"codex","provider":"openai-codex","mode":"best-effort"},{"slug":"claude","provider":"claude-api","mode":"best-effort"},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}'
+CRITICS_JSON="$TMP/m6.json" GH_STUB_MODE=clean rg M6-all-best-effort-config-error 2
+has "$TMP/out-M6-all-best-effort-config-error" '^cr-reviewer-gate: config error: .*m6\.json: .*no hard reviewer' "M6 names the file"
+CRITICS_JSON="$TMP/m6.json" GH_STUB_MODE=clean t M6-merge-blocks 2
+# M7 — claude absent (lane off) + coderabbit rate-limited: the set is codex.
+led "$(av abc123 codex ok)" "$(av abc123 claude unavailable critic-skipped "$ABSENT_DETAIL")"
+GH_STUB_MODE=cr-ratelimited rg M7-claude-absent-codex-only-go 0
+has "$TMP/err-M7-claude-absent-codex-only-go" 'claude hard absent\(api lane is OFF\)' "M7 claude absent(api lane is OFF)"
+# M8' — neither critic configured, no review value: config error.
+cfg "$TMP/m8.json" '{"panel":[{"slug":"codex","provider":"openai-codex","mode":"hard"},{"slug":"claude","provider":"claude-api","mode":"hard"},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}'
+led "$(av abc123 codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av abc123 claude unavailable critic-skipped "$ABSENT_DETAIL")"
+CRITICS_JSON="$TMP/m8.json" GH_STUB_MODE=clean rg "M8p-none-configured-config-error" 2
+# M8'' — the same with review: no_code_review: GO on CI alone, a NOTE, no gh.
+cfg "$TMP/m8b.json" '{"review":"no_code_review","panel":[{"slug":"codex","provider":"openai-codex","mode":"hard"},{"slug":"claude","provider":"claude-api","mode":"hard"},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}'
+CRITICS_JSON="$TMP/m8b.json" GH_STUB_MODE=unresolved rg "M8pp-no-code-review-go" 0
+has "$TMP/out-M8pp-no-code-review-go" '^NOTE: .*no_code_review' "M8'' NOTE names no_code_review"
+if [ -s "$TMP/calls-M8pp-no-code-review-go.log" ]; then fail=$((fail+1)); echo "FAIL M8'' called gh"; else pass=$((pass+1)); echo "ok   M8'' no gh call"; fi
+# M9 — overlay makes coderabbit hard (full row): rate-limited holds + alerts.
+led "$(av abc123m9 codex ok)" "$(av abc123m9 claude ok)"
+cfg "$TMP/m9.json" '{"panel":[{"slug":"coderabbit","provider":"github-app","mode":"hard"}]}'
+CRITICS_LOCAL_JSON="$TMP/m9.json" GH_STUB_HEAD=abc123m9 GH_STUB_MODE=cr-ratelimited rg M9-hard-coderabbit-rate-limited-holds 1
+if [ "$(alerts "$TMP/err-M9-hard-coderabbit-rate-limited-holds")" = 1 ]; then pass=$((pass+1)); echo "ok   M9 one alert"; else fail=$((fail+1)); echo "FAIL M9 one alert"; fi
+# M10 — H/BE/BE: claude's open finding still holds (a posted finding blocks).
+cfg "$TMP/m10.json" '{"panel":[{"slug":"codex","provider":"openai-codex","mode":"hard"},{"slug":"claude","provider":"claude-api","mode":"best-effort"},{"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}'
+led "$CRIT_OK" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-1","severity":"imp","verdict":""}'
+CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-best-effort-claude-finding-holds 1
+has "$TMP/out-M10-best-effort-claude-finding-holds" '^HOLD: .*claude.*claude-1' "M10 HOLD names the finding"
+# ...a tracked deferral disposes it.
+led "$CRIT_OK" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-1","severity":"imp","verdict":"deferred","deferred_to":"HIMMEL-9001","reason":"tracked"}'
+CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-deferred-finding-go 0
+# M11 — overlay drops claude: the Codex-only gate.
+led "$(av abc123 codex ok)"
+cfg "$TMP/m11.json" '{"panel":[{"slug":"claude","drop":true}]}'
+CRITICS_LOCAL_JSON="$TMP/m11.json" GH_STUB_MODE=cr-ratelimited rg M11-drop-claude-codex-only-go 0
+hasnt "$TMP/err-M11-drop-claude-codex-only-go" 'claude' "M11 claude not in the set"
+# M12 — mode soft: config error.
+cfg "$TMP/m12.json" '{"panel":[{"slug":"codex","mode":"soft"}]}'
+CRITICS_LOCAL_JSON="$TMP/m12.json" GH_STUB_MODE=clean rg M12-mode-soft-config-error 2
+has "$TMP/out-M12-mode-soft-config-error" '^cr-reviewer-gate: config error: .*m12\.json: .*soft' "M12 names file and value"
+# M13 — field-wise overlay keeps provider github-app: hard + rate-limited holds.
+led "$(av abc123m13 codex ok)" "$(av abc123m13 claude ok)"
+cfg "$TMP/m13.json" '{"panel":[{"slug":"coderabbit","mode":"hard"}]}'
+CRITICS_LOCAL_JSON="$TMP/m13.json" GH_STUB_HEAD=abc123m13 GH_STUB_MODE=cr-ratelimited rg M13-fieldwise-hard-coderabbit-holds 1
+has "$TMP/err-M13-fieldwise-hard-coderabbit-holds" 'coderabbit hard unavailable\(rate_limited\)' "M13 coderabbit hard unavailable(rate_limited)"
+# M14 — CR_PROFILE=none resolves to no_code_review: GO, NOTE, no gh.
+led "$CRIT_OK"
+CR_PROFILE=none GH_STUB_MODE=unresolved rg M14-cr-profile-none-go 0
+has "$TMP/out-M14-cr-profile-none-go" 'no_code_review' "M14 NOTE names no_code_review"
+if [ -s "$TMP/calls-M14-cr-profile-none-go.log" ]; then fail=$((fail+1)); echo "FAIL M14 called gh"; else pass=$((pass+1)); echo "ok   M14 no gh call"; fi
+# M15 — docs-audit lane: both critics tier-excluded.
+led "$(av abc123 codex unavailable tier-excluded)" "$(av abc123 claude unavailable tier-excluded)"
+GH_STUB_MODE=clean rg M15-docs-audit-no-value-config-error 2
+CRITICS_JSON="$TMP/m8b.json" GH_STUB_MODE=clean rg M15-docs-audit-no-code-review-go 0
+# M16 — both critics keep-one-skipped.
+led "$(av abc123 codex unavailable keep-one-skipped)" "$(av abc123 claude unavailable keep-one-skipped)"
+GH_STUB_MODE=clean rg M16-keep-one-no-value-config-error 2
+CRITICS_JSON="$TMP/m8b.json" GH_STUB_MODE=clean rg M16-keep-one-no-code-review-go 0
+# M17 — no critic rows at the head (a .github/ one-liner is never trivial, so
+# nothing carries): codex and claude must pass, so it holds.
+led "$(av otherhead codex ok)"
+GH_STUB_MODE=clean rg M17-no-critic-rows-holds 1
+has "$TMP/err-M17-no-critic-rows-holds" 'codex hard not-yet-run' "M17 codex not-yet-run"
+# M18 — required codex with no key anywhere: unavailable, HOLD + alert.
+led "$(av abc123m18 codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av abc123m18 claude ok)"
+GH_STUB_HEAD=abc123m18 GH_STUB_MODE=clean rg M18-required-codex-absent-holds 1
+if [ "$(alerts "$TMP/err-M18-required-codex-absent-holds")" = 1 ]; then pass=$((pass+1)); echo "ok   M18 one alert"; else fail=$((fail+1)); echo "FAIL M18 one alert"; fi
+# M19 — an overlay that does not parse: config error naming the file.
+printf '{"panel":[{"slug":"codex",}]}\n' > "$TMP/m19.json"
+led "$CRIT_OK"
+CRITICS_LOCAL_JSON="$TMP/m19.json" GH_STUB_MODE=clean rg M19-overlay-syntax-config-error 2
+has "$TMP/out-M19-overlay-syntax-config-error" 'm19\.json: does not parse' "M19 names the file"
+CRITICS_LOCAL_JSON="$TMP/m19.json" GH_STUB_MODE=clean t M19-merge-blocks 2
+# M21 — hard coderabbit, armed, no status at the head: hold.
+CRITICS_LOCAL_JSON="$TMP/m13.json" GH_STUB_MODE=cr-absent rg M21-hard-coderabbit-no-status-holds 1
+# M22 — best-effort CodeRabbit still reviewing: relaxed with a NOTE.
+GH_STUB_MODE=inflight rg M22-best-effort-pending-relaxed 0
+has "$TMP/out-M22-best-effort-pending-relaxed" '^NOTE: CodeRabbit pending' "M22 NOTE"
+has "$TMP/err-M22-best-effort-pending-relaxed" 'relaxed\(in-progress\)' "M22 relaxed(in-progress)"
+# M23 — gh API error: the release never fails open (rc 3), the merge does.
+GH_STUB_MODE=api-error rg M23-api-error-degraded 3
+GH_STUB_MODE=api-error t M23-merge-allows-degraded 0
+has "$TMP/err-M23-merge-allows-degraded" 'degraded' "M23 merge degraded note"
+# A trivial-descendant carry row reads the reviewed head's critic states. As
+# clear-cr-marker.sh writes it (#3311): ONE row, model claude, for the whole
+# head; codex has no row of its own at the tip.
+led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (HIMMEL-5856)')" \
+    "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 codex ok)" \
+    "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 claude unavailable critic-skipped "$ABSENT_DETAIL")"
+GH_STUB_MODE=clean rg carry-reads-reviewed-head 0
+has "$TMP/err-carry-reads-reviewed-head" 'claude hard absent\(api lane is OFF\)' "carry reads the reviewed head's rows"
+has "$TMP/err-carry-reads-reviewed-head" 'codex hard pass' "carry is head-wide: codex reads the reviewed head"
+# Unarmed clone: the critic read is unreadable (no ledger) -> fail open with a
+# degraded note at merge; a readable clean ledger allows with no CodeRabbit call.
+git -C "$TMP/repo" config --local --unset himmel.coderabbit
+rm -f "$LEDGER"
+GH_STUB_MODE=unresolved t unarmed-no-ledger-fails-open 0
+has "$TMP/err-unarmed-no-ledger-fails-open" 'degraded' "unarmed no-ledger degraded note"
+GH_STUB_MODE=error t unarmed-gh-error-fails-open 3
+led "$CRIT_OK"
+GH_STUB_MODE=unresolved t unarmed-clean-ledger-allows 0
+hasnt "$TMP/calls-unarmed-clean-ledger-allows.log" 'statuses|api graphql' "unarmed makes no CodeRabbit call"
+git -C "$TMP/repo" config --local himmel.coderabbit true
+
+# H16 — merge GO (not degraded) implies the release predicate GO at the same
+# head and config, across every CodeRabbit shape this suite stubs.
+led "$CRIT_OK"
+h16_bad=""
+for m in clean unresolved other-author paged inflight cr-absent cr-skipped cr-completed cr-failure cr-ratelimited cr-paged body-outside body-nitpick; do
+  mrc=0; GH_STUB_MODE=$m GH_STUB_LOG="$TMP/h16.log" cr_merge_gate 42 o/r >/dev/null 2>"$TMP/h16.err" || mrc=$?
+  [ "$mrc" = 0 ] || continue
+  grep -q degraded "$TMP/h16.err" && continue
+  rrc=0; GH_STUB_MODE=$m GH_STUB_LOG="$TMP/h16.log" cr_reviewer_gate 42 abc123 o/r >/dev/null 2>&1 || rrc=$?
+  [ "$rrc" = 0 ] || h16_bad="$h16_bad $m(rc=$rrc)"
+done
+if [ -z "$h16_bad" ]; then pass=$((pass+1)); echo "ok   H16 merge GO implies release GO"; else fail=$((fail+1)); echo "FAIL H16 merge GO but release not GO:$h16_bad"; fi
+led "$CRIT_OK"
 
 # hermeticity guard — prove the startup scrub holds. Re-run this
 # whole suite in a subprocess EXPORTING the exact armed bypass env an

@@ -313,15 +313,22 @@ gh pr merge --squash
 A `PreToolUse` hook (`block-unresolved-cr-merge.sh`) refuses `gh pr merge`
 until four gates pass:
 
-1. no unresolved CodeRabbit threads, and no CodeRabbit check still running;
+1. every **hard** reviewer in `scripts/cr/critics.json` passes at the head,
+   and no reviewer has an open finding: no unresolved CodeRabbit thread, no
+   undisposed CodeRabbit body finding, no open critic finding. A
+   **best-effort** reviewer (CodeRabbit, as shipped) that is pending, rate
+   limited or absent prints a NOTE and does not block
+   ([reviewer modes](configuration.md#reviewer-modes));
 2. the head SHA has green overall CI (no failing or pending check or status);
 3. in a console-spawned leg, a console GO file matches the head SHA;
 4. a PR touching a CI trust path (`scripts/ci/ci-trust-paths.txt`) carries a
    trust-reviewed GO and is merged pinned to its head.
 
 Gates 3 and 4 fail closed. Gates 1 and 2 have session bypasses set in the
-launching shell (`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1`; `CR_PROFILE=none`
-also skips gate 1), and an API error while evaluating them fails open.
+launching shell (`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1`;
+`"review": "no_code_review"` or `CR_PROFILE=none` also skips gate 1), and an
+API error while evaluating them fails open. A broken reviewer config (no hard
+reviewer, a bad `mode`) fails gate 1 closed.
 
 The branch is squash-merged into main. The worktree is now stale.
 
