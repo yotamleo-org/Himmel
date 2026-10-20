@@ -142,7 +142,7 @@ printf '.env\n' >> "$(git -C "$WT_DET_IGN" rev-parse --git-common-dir)/info/excl
 printf 'SECRET=1\n' > "$WT_DET_IGN/.env"
 WT_MERGED=$(mk_wt merged feat/merged 1) || exit 1
 # An unpushed local-only ref is a ticket's only copy: neither its own
-# worktree's reclaim nor a detached tree sitting on its tip may drop it.
+# worktree's reclaim nor a detached tree sitting on its tip may drop the ref.
 WT_LOCALONLY=$(mk_wt localonly fix/local-only 1) || exit 1
 LOCAL_TIP=$(git -C "$WT_LOCALONLY" rev-parse HEAD)
 WT_DET_ONLOCAL="$WT_HOME/det-onlocal"
@@ -163,7 +163,7 @@ expect "1: ignored .env still present" "$out" test -f "$WT_DET_IGN/.env"
 expect "1: control: merged branch tree still pruned" "$out" is_gone "$WT_MERGED"
 BRANCHES_AFTER=$(git -C "$REPO" for-each-ref --format='%(refname)' refs/heads | grep -v '^refs/heads/wip/detached-')
 expect "1: no branch ref deleted by a detached reclaim" "$out" test "$BRANCHES_BEFORE" = "$BRANCHES_AFTER"
-expect "1: no-PR tree with an unpushed commit kept" "$out" is_dir "$WT_LOCALONLY"
+expect "1: no-PR tree with an unpushed commit reclaimed, its ref kept" "$out" is_gone "$WT_LOCALONLY"
 expect "1: unpushed local-only ref still at its tip" "$out" ref_is refs/heads/fix/local-only "$LOCAL_TIP"
 expect "1: detached tree on a local-only tip reclaimed" "$out" is_gone "$WT_DET_ONLOCAL"
 expect_not "1: a tip a local ref reaches gets no extra pin" "$out" has_ref "refs/heads/wip/detached-${LOCAL_TIP:0:12}"
@@ -255,6 +255,44 @@ echo "CASE 6: --orphans takes no other flag"
 out=$(run_wt prune --orphans --dry-run)
 expect "6: --orphans --dry-run refused" "$out" rc_is "$out" 1
 expect "6: refusal names --orphans" "$out" grepq "$out" -- "--orphans"
+
+# ── case 7: prune reclaims a clean parked branch tree, never its branch ─────
+echo "CASE 7: fleet prune reclaims an idle clean branch tree with no open PR"
+git -C "$REPO" push -q origin main >/dev/null 2>&1 || { echo "setup: push main failed" >&2; exit 1; }
+WT_PARK=$(mk_wt park fix/park 1) || exit 1
+WT_PARK_MAIN=$(mk_wt parkmain fix/park-main) || exit 1
+WT_PARK_DIRTY=$(mk_wt parkdirty fix/park-dirty 1) || exit 1
+printf 'wip\n' > "$WT_PARK_DIRTY/untracked.txt"
+WT_PARK_MOD=$(mk_wt parkmod fix/park-mod 1) || exit 1
+printf 'changed\n' >> "$WT_PARK_MOD/README"
+WT_PARK_DOC=$(mk_wt parkdoc fix/park-doc 1) || exit 1
+WT_PARK_DOC2=$(mk_wt parkdoc2 fix/park-doc-2 1) || exit 1
+printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/park-doc\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-live.md"
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-live.md" "orphans-test-$$" >/dev/null 2>&1 \
+    || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
+PARK_TIP=$(git -C "$REPO" rev-parse fix/park)
+out=$(WORKTREE_ORPHAN_HOURS=1 run_wt prune)
+expect "7: rc=0 under a 1h gate" "$out" rc_is "$out" 0
+expect "7: a parked tree touched within the idle window is kept" "$out" is_dir "$WT_PARK"
+out=$(run_wt prune --dry-run)
+expect "7: dry-run names the parked tree" "$out" grepq "$out" -F "would reclaim parked fix/park"
+expect "7: dry-run removes nothing" "$out" is_dir "$WT_PARK"
+out=$(run_wt prune)
+expect "7: rc=0" "$out" rc_is "$out" 0
+expect "7: clean parked tree with a local-only commit reclaimed" "$out" is_gone "$WT_PARK"
+expect "7: its branch still holds the commit" "$out" ref_is fix/park "$PARK_TIP"
+expect "7: clean parked tree with no commit reclaimed" "$out" is_gone "$WT_PARK_MAIN"
+expect "7: its branch ref is kept" "$out" has_ref fix/park-main
+expect "7: a parked tree with an untracked file is kept" "$out" is_dir "$WT_PARK_DIRTY"
+expect "7: a parked tree with a tracked change is kept" "$out" is_dir "$WT_PARK_MOD"
+expect "7: the open-PR tree is kept" "$out" is_dir "$WT_OPEN"
+expect "7: the locked tree is kept" "$out" is_dir "$WT_LOCKED"
+expect "7: the RESUME-held tree is kept" "$out" is_dir "$WT_RESUME"
+expect "7: the reclaim names the kept branch and its unpushed commits" "$out" grepq "$out" -F "branch fix/park kept (1 unpushed commit(s))"
+expect "7: a no-commit branch reports 0 unpushed" "$out" grepq "$out" -F "branch fix/park-main kept (0 unpushed commit(s))"
+expect "7: a tree whose branch a live leg doc names is kept" "$out" is_dir "$WT_PARK_DOC"
+expect "7: a branch that only shares the doc's branch prefix is reclaimed" "$out" is_gone "$WT_PARK_DOC2"
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-live.md" >/dev/null 2>&1 || true
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
