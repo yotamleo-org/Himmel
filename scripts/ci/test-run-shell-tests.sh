@@ -2789,6 +2789,16 @@ if [ "$rc27" -eq 2 ]; then
 else
   fail "27f: a missing suite-tiers.tsv gave rc=$rc27, want 2"
 fi
+
+: > "$T27_LOG"
+printf 'ran.log\n' >> "$sb27/.git/info/exclude"
+out27=$(cd "$sb27" && SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --changed-since HEAD~1 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$rc27" -eq 0 ] && [ "$ran27" = "pr quar unlisted " ]; then
+  pass "27g: a docs-only --changed-since diff in pr mode still runs the pr-tier and unlisted suites"
+else
+  fail "27g: rc=$rc27 ran='$ran27' (want pr quar unlisted) output: $out27"
+fi
 rm -rf "$sb27"
 fi
 

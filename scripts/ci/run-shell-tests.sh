@@ -3665,8 +3665,9 @@ fi
 # lane skipped, and the lane's input is not the same in every mode: the run
 # step's own untracked manifest made it fire in --list (the shard probe) and
 # not in the run, so the probe said "no work" while the shard ran a suite.
+# Inert in pr mode too: the pr tier floor runs on every diff, docs-only included.
 docs_only_skip_active=0
-if [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
+if [ "$SUITE_TIER_MODE" != "pr" ] && [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
   docs_only_skip_active=1
   _docs_saw_path=0
   while IFS= read -r _docs_p; do
