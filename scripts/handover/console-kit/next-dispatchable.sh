@@ -170,7 +170,7 @@ if os.path.exists(vf):
     vs = []
     for line in open(vf, encoding='utf-8', errors='replace'):
         p = line.rstrip('\n').split('\t')
-        if len(p) >= 2 and p[1].strip() == 'false' and not p[0].startswith('zz-'):
+        if len(p) >= 2 and p[1].strip() == 'false' and not (len(p) >= 4 and p[3].strip() == 'true') and not p[0].startswith('zz-'):
             vs.append(p[0])
     for i, v in enumerate(sorted(vs, key=nat)):
         vorder[v] = i

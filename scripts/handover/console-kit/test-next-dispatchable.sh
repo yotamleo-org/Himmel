@@ -544,5 +544,18 @@ lacks "replay: a ticket really held by a live leg stays held (HIMMEL-6484)" "$rp
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
 [ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
 
+# --- the real version list: archived unreleased versions (v1.0.3b ...) sort before v1.1.3 but are not the first version ---
+M24="$WORK/jira-mirror24/HIMMEL"; mkdir -p "$M24"
+M_SAVE="$M"; M="$M24"
+mk HIMMEL-740 "To Do" Medium '["operator-directed"]' '["v1.1.3"]' '[]' "directed in the first live version" "Edit scripts/lib/t6a.sh only."
+mk HIMMEL-741 "To Do" Medium '["operator-directed"]' '["v1.1.4"]' '[]' "directed in a later live version" "Edit scripts/lib/t6b.sh only."
+M="$M_SAVE"
+cp "$RP/mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror24/HIMMEL.versions.tsv"
+f6="$(NEXT_DISPATCH_MIRROR="$M24" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --priority-pool-only --owners HIMMEL-999 2>/dev/null)"
+lacks "archived: the pool is not empty" "$f6" "POOL-EMPTY"
+has "archived: the pool holds exactly the operator-directed ticket of the first live version (tier 2)" "$f6" "# pool=1/"
+lacks "archived: the first live version's ticket is not parked as NEXT-TIER" "$f6" "NEXT-TIER	HIMMEL-740"
+lacks "archived: a later live version's operator-directed ticket is not in the pool" "$f6" "HIMMEL-741	"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
