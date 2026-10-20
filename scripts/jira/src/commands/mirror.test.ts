@@ -278,3 +278,23 @@ describe('cursor + qmd', () => {
     expect(run.mock.calls.some((c) => (c[0] as string[])[0] === 'embed')).toBe(false);
   });
 });
+
+describe('renderIssue — Sector (HIMMEL-6483)', () => {
+  const prev = process.env.JIRA_SECTOR_FIELD;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.JIRA_SECTOR_FIELD;
+    else process.env.JIRA_SECTOR_FIELD = prev;
+  });
+
+  it('writes a sector: frontmatter line from the configured field, null when unset on the ticket', () => {
+    process.env.JIRA_SECTOR_FIELD = 'customfield_10212';
+    const set = renderIssue(issue(7, { customfield_10212: { value: 'Visibility' } } as never), []);
+    expect(set).toContain('sector: "Visibility"');
+    expect(renderIssue(issue(8), [])).toContain('sector: null');
+  });
+
+  it('writes no sector line when no sector field is configured', () => {
+    process.env.JIRA_SECTOR_FIELD = 'none';
+    expect(renderIssue(issue(7, { customfield_10212: { value: 'Visibility' } } as never), [])).not.toContain('sector:');
+  });
+});

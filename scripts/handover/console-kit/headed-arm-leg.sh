@@ -201,6 +201,10 @@
 # the knob exists so a console can skip the review on a PR
 # that will never get one (machine-generated class), never to ration or
 # sequence it. Opt-out, default ON: unset changes nothing.
+#
+# LEG_API_LANE=on: set in the launching shell to give this leg HIMMEL_API_LANE=on
+# and HIMMEL_API_ACCOUNT=auto, so the PR critic runs on API credit. Opt-in,
+# default OFF: unset changes nothing.
 set -u
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -1296,6 +1300,16 @@ if [ -n "${LEG_SUPPRESS_CR_TRIGGER:-}" ]; then
     leg_propagate_env CR_TRIGGER_SUPPRESS 1
 fi
 
+# LEG_API_LANE=on: opt-in seam, set in the LAUNCHING shell, that
+# carries the API-lane switch into the leg so the PR critic bills API credit
+# (claude-api.sh refuses rc 5 without HIMMEL_API_LANE=on). Account is "auto";
+# the credit guard and per-call routing stay in claude-api.sh. Default OFF:
+# unset or any other value changes nothing.
+if [ "${LEG_API_LANE:-}" = "on" ]; then
+    leg_propagate_env HIMMEL_API_LANE on
+    leg_propagate_env HIMMEL_API_ACCOUNT auto
+fi
+
 # IMPL_GUARD_OK=1 / INLINE_IMPL_OK=1: leg-only env for
 # guard-implementor-dispatch / orchestrator-inline-guard.
 # headed-arm.sh's shared console/leg child-env block does not set these.
@@ -2052,10 +2066,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the leg's context guard reads.
-    printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s\n' \
+    printf 'headed-arm-leg: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
         "$LEG_ENV_SCRUB" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
-        "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT"
+        "${HIMMEL_LEG_CONTEXT_MODE:-<unset>}" "$HIMMEL_LEG_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
     # as the --profile line below.

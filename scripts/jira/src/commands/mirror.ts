@@ -8,6 +8,7 @@ import { adfToPlainText } from '../adf-render.js';
 import type { ADFDocument } from '../adf-render.js';
 import { fetchAllComments } from './comments.js';
 import type { JiraCommentEntry } from './comments.js';
+import { sectorField, sectorOf } from './sector.js';
 
 // Jira -> markdown mirror: one <KEY>.md per issue under a root
 // outside any repo/vault, plus a qmd collection over it. Read-only against Jira.
@@ -17,8 +18,9 @@ const OVERLAP_MINUTES = 10;
 const COLLECTION = 'jira-himmel';
 const DELETE_SAFETY_RATIO = 0.5;
 const CURSOR_FILE = '.cursor.json';
-const FIELDS =
+const BASE_FIELDS =
   'summary,status,issuetype,priority,labels,fixVersions,parent,created,updated,resolution,resolutiondate,issuelinks,description,comment';
+const fieldList = (): string => BASE_FIELDS + (sectorField() ? `,${sectorField()}` : '');
 
 interface Named { name?: string; displayName?: string }
 export interface MirrorIssue {
@@ -107,6 +109,7 @@ export function renderIssue(issue: MirrorIssue, comments: JiraCommentEntry[]): s
     `updated: ${q(f.updated)}`,
     `resolution: ${q(f.resolution?.name)}`,
     `resolved: ${q(f.resolutiondate)}`,
+    ...(sectorField() ? [`sector: ${q(sectorOf(f as Record<string, unknown>))}`] : []),
     'links:',
     `  blocks: ${list(links.blocks)}`,
     `  blocked_by: ${list(links.blocked_by)}`,
@@ -204,7 +207,7 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
   };
   const fullKeys = new Set<string>();
 
-  await searchPages(jql, FIELDS, req, async (issues) => {
+  await searchPages(jql, fieldList(), req, async (issues) => {
     await inChunks(issues, Math.max(1, Math.floor(opts.concurrency || 5)), async (issue) => {
       res.fetched++;
       fullKeys.add(issue.key);

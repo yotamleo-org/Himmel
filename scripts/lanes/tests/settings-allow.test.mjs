@@ -238,6 +238,8 @@ const PROJECT_EXACT_LITERALS = [
   'bash scripts/handover/console-kit/vm-runner.sh on --vms 2',
   'bash scripts/handover/console-kit/vm-runner.sh off',
   'bash scripts/handover/console-kit/vm-runner.sh status',
+  'bash scripts/ci/gcp-runners.sh down',
+  'bash scripts/ci/gcp-runners.sh status',
 ];
 
 test('every path-naming Bash allow rule is a per-file literal, a step-0 literal or an enumerated quiet-run suite rule', () => {
