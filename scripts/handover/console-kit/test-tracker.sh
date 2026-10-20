@@ -876,6 +876,10 @@ contains 'the focus page names the target version (HIMMEL-6514)' "$fhtml" '"PG":
 srender --target-version v1.1.4 > /dev/null
 contains 'an explicit --target-version moves the focus (HIMMEL-6514)' "$(cat "$sout" 2>/dev/null)" 'splitmark open in future'
 not_contains 'an explicit --target-version drops the old focus (HIMMEL-6514)' "$(cat "$sout" 2>/dev/null)" 'splitmark open in target'
+srender --target-version v9.9.9 > "$W/split-badtarget.stdout"
+brc=$?
+if [ "$brc" -eq 2 ]; then pass 'an unknown --target-version exits 2 (HIMMEL-6514)'; else fail "an unknown --target-version exited $brc"; fi
+contains 'an unknown --target-version names the versions file (HIMMEL-6514)' "$(cat "$W/split-badtarget.stdout")" 'is not in the versions file'
 srender > /dev/null
 # the focus page links to the other two, and each of those links back to it.
 contains 'the focus page links to the Done page (HIMMEL-6514)' "$fhtml" 'https://example.test/done'

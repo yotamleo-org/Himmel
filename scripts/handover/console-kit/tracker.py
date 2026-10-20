@@ -1328,6 +1328,8 @@ def main():
         e = earliest_unreleased(jv) if not ru else None
         tname = a.target_version or (e['n'] if e else '')
         tix = next((i for i, v in enumerate(jv) if v['n'] == tname), -1)
+        if a.target_version and jv and tix < 0:
+            ap.error('--target-version %s is not in the versions file (known: %s)' % (tname, ', '.join(v['n'] for v in jv)))
     lg, cur = ledger_lines(rows, vers, nothm, {x['n'] for x in jv if x['rel']})
     dt = drift_log(a.drift_log, sum(1 for r in rows if r[7] == 1), sum(1 for r in rows if r[7] == 2 and r[2] != 2), nothm)
     if dt:

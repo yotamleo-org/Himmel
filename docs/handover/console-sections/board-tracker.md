@@ -84,8 +84,10 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     list). `--out` is the focus page, so `--emit-fp` and the `.fp` file stay bound
     to it and the tick reads `tracker=ok` from the focus page alone. The `*-url`
     flags make each page link to the other two. Republish `tracker:` as above; republish
-    `tracker-done:` and `tracker-future:` only on a MERGED or when the target version
-    changes (their content moves only then), updating each URL in place with
+    `tracker-done:` and `tracker-future:` on a MERGED or when the target version
+    changes (the Done page and the later versions' plan rows move only then); a
+    ticket edit in a later version shows on the future page at its next
+    republish, or sooner when a republish is wanted. Update each URL in place with
     `Artifact read` first, never a new URL. A render with none of the split flags
     writes the one full page, as before.
     The page reads the Jira mirror alone and groups tickets by the Jira Sector
