@@ -118,13 +118,13 @@ named_target() { # the session's process must be claude launched as `-n <name>`;
 named_target
 
 at_prompt() { # the screen shows the idle, empty input box (a bare ❯ line between two ─ rules) and no running turn's spinner above it
-    # The top rule carries the session name; a name wider than the window truncates it to ` <name>… ─`.
+    # The top rule is a line starting with ─ (it carries the session name); a name wider than the window truncates it to ` <name>… ─`.
     konsole getAllDisplayedText true
     printf '%s\n' "$out" | awk '
         { line[NR] = $0 }
         /^❯/ { at = NR }
         END {
-            if (!(at > 1 && line[at - 1] ~ /─[ \t]*$/ && line[at + 1] ~ /^─/)) exit 1
+            if (!(at > 1 && (line[at - 1] ~ /^─/ || line[at - 1] ~ /^[ \t]*[^ \t]+…[ \t]+─+[ \t]*$/) && line[at + 1] ~ /^─/)) exit 1
             draft = line[at]; sub(/^❯/, "", draft); gsub(/\302\240|[ \t]/, "", draft)
             if (draft != "") exit 1
             for (i = at - 2; i > 0 && i >= at - 9; i--) if (line[i] ~ /^[^ ]+ [A-Z][a-z]+…/) exit 1
