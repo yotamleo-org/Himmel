@@ -4136,7 +4136,8 @@ _live_env() {
 }
 # _live_check <suite-pgid> — collect one line per thing the suite left behind
 # in live_msgs and return 1 if there was any. Survivors go first, so none can
-# write a sentinel after it was read; the dirty sentinels are reset last.
+# write a sentinel after it was read; the dirty sentinels are reset last, and
+# a reset that fails returns 2.
 _live_check() {
   local _v _e _c _dirty=0 _grace _members=""
   live_msgs=""
@@ -4199,8 +4200,9 @@ _live_check() {
     done < "$live_root/scheduler-calls.log"
     _dirty=1
   fi
-  [ "$_dirty" -eq 0 ] || _live_reset
-  [ "$_dirty" -eq 0 ]
+  [ "$_dirty" -eq 0 ] && return 0
+  _live_reset || return 2
+  return 1
 }
 if [ "$list_only" -eq 0 ]; then
   # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root aborts the run below
@@ -4424,7 +4426,9 @@ while IFS= read -r suite <&3; do
   live_fail=0
   _live_pgid="$suite_pid"
   [ "$capped" -eq 0 ] || _live_pgid=""
-  if ! _live_check "$_live_pgid"; then
+  _live_check "$_live_pgid"
+  _live_rc=$?
+  if [ "$_live_rc" -ne 0 ]; then
     live_fail=1
     while IFS= read -r _lm; do
       [ -n "$_lm" ] || continue
@@ -4434,6 +4438,10 @@ while IFS= read -r suite <&3; do
 $live_msgs
 LIVEMSGS
     [ "$rc" -ne 0 ] || rc=1
+  fi
+  if [ "$_live_rc" -eq 2 ]; then
+    echo "run-shell-tests.sh: could not reset the live-state sentinels after $suite — refusing to run more suites against the caller's live state" >&2
+    exit 2
   fi
 
   if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then

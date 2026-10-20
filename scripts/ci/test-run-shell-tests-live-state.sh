@@ -16,6 +16,8 @@
 #       before any suite.
 #   L6. A suite that removes the scheduler shims fails, and the next suite
 #       meets recreated shims.
+#   L7. Sentinels that cannot be reset after a suite abort the run, naming
+#       that suite, before a later suite runs.
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -257,5 +259,32 @@ out5b=$(PATH="$sb/chmodfail:$PATH" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash 
 rc5b=$?
 if [ "$rc5b" -eq 2 ]; then pass "L5: a shim that cannot be made executable exits 2"; else fail "L5: shim chmod failure: expected rc=2, got $rc5b; out: $out5b"; fi
 if [ ! -e "$sb/ran5" ]; then pass "L5: no suite ran without its shims"; else fail "L5: a suite ran without its shims; out: $out5b"; fi
+
+echo "== L7: sentinels that cannot be reset after a suite abort the run =="
+if [ "$(id -u)" = 0 ]; then
+  pass "L7: skipped as root, where a read-only dir does not stop rm"
+else
+  mkdir -p "$sb/scripts7"
+  cat > "$sb/scripts7/test-a-stuck.sh" <<SHEOF
+#!/usr/bin/env bash
+printf %s "\$HANDOVER_DIR" > "$sb/stuck7"
+: > "\$HANDOVER_DIR/stuck"
+chmod 500 "\$HANDOVER_DIR"
+exit 0
+SHEOF
+  printf '#!/usr/bin/env bash\n: > %q\nexit 0\n' "$sb/ran7" > "$sb/scripts7/test-b-later.sh"
+  chmod +x "$sb/scripts7/"*.sh
+  out7=$(SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts7" 2>&1)
+  rc7=$?
+  _stuck=$(cat "$sb/stuck7" 2>/dev/null)
+  if [ -n "$_stuck" ]; then chmod 700 "$_stuck" 2>/dev/null; rm -rf "${_stuck%/state/*}"; fi
+  if [ "$rc7" -eq 2 ]; then pass "L7: run exits 2"; else fail "L7: expected rc=2, got $rc7; out: $out7"; fi
+  if grepq "$out7" -E 'could not reset the live-state sentinels after .*test-a-stuck\.sh'; then
+    pass "L7: the error names the suite that dirtied the sentinels"
+  else
+    fail "L7: no reset error naming test-a-stuck.sh; out: $out7"
+  fi
+  if [ ! -e "$sb/ran7" ]; then pass "L7: no later suite ran"; else fail "L7: a later suite ran on unreset sentinels; out: $out7"; fi
+fi
 
 rst_tally
