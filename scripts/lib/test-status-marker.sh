@@ -45,7 +45,7 @@ done < "$HERE/fixtures/status-marker-rows.tsv"
 check "rows file was read (not vacuous)" "yes" "$([ "$n" -ge 20 ] && echo yes || echo no)"
 
 # read-sink-ok: sources the script under test ($SCRIPT), not a host file; no allowlist applies
-for line in $'- 23:47 LIVE \xe2\x80\x94 note\r'$'- LIVE \xe2\x80\x94 a\nb' $'- LIVE\r'; do
+for line in $'- 23:47 LIVE \xe2\x80\x94 note\r' $'- LIVE \xe2\x80\x94 a\nb' $'- LIVE\r'; do
   check "CR or embedded newline after the word: $(printf %q "$line")" "LIVE" \
     "$(bash -c 'set -euo pipefail; . "$1"; status_marker_parse "$2"' _ "$SCRIPT" "$line" 2>&1)"
 done
