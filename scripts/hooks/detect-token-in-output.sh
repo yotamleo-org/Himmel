@@ -50,9 +50,10 @@ tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 # low entropy alone decides it. Pure bash: the regex-hit path forks nothing.
 b62="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 is_real_token() {
-    local t="$1" body seen="" ch c i j b sum=""
+    local t="$1" body seen="" ch c i j b n sum=""
     case "$t" in github_pat_*) body="${t#github_pat_}" ;; *) body="${t:4}" ;; esac
-    for ((i = 0; i < ${#body}; i++)); do
+    n=${#body}
+    for ((i = 0; i < n; i++)); do
         ch="${body:i:1}"
         case "$seen" in *"$ch"*) ;; *) seen="$seen$ch" ;; esac
     done
