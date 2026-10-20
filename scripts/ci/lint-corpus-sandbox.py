@@ -139,8 +139,9 @@ def shell_launches(text):
                 between = line[covering[-1].end():position]
                 # A wrapper protects only its own simple command, never a later
                 # one, and never a substitution the host shell expands first.
-                if (not re.search(r'[;|&]', between) and between.count("`") % 2 == 0
-                        and between.count("(") <= between.count(")")):
+                # Quoting is not parsed, so any parenthesis or backtick between the
+                # delimiter and the reference refuses it.
+                if not re.search(r'[;|&`(]', between):
                     continue
             errors.append((number, "hook reference outside a sandbox-run.sh wrapper"))
     return errors

