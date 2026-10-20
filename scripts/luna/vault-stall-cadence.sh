@@ -198,7 +198,7 @@ hook_log() {
         src && /^$/ { src = 0; next }
         src { next }
         /^In .+ line [0-9]+:$/ { print; src = 1; next }
-        /^Did you mean:$/ { src = 1; next }
+        /^Did you mean:[[:space:]]*$/ { src = 1; next }
         /^Finding:/ { leak = 1 }
         leak && /^RuleID:/ { leak = 0 }
         !leak' | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
