@@ -144,8 +144,10 @@ for line in open(sys.argv[1], encoding="utf-8"):
     if line.strip():
         print(json.loads(line)["q"])
 PY
+qrc=$?
 hits=""
 grepbad=""
+[ "$qrc" = 0 ] || grepbad=" extractor rc=$qrc"
 while IFS= read -r q; do
   h="$(git -C "$HERE" grep -i -l -F -e "$q" -- . 2>/dev/null)"; grc=$?
   case "$grc" in
