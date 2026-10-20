@@ -2292,7 +2292,7 @@ git -C "$BK_P" branch -qf feat/bk-dest "$bk_tip"
 git -C "$BK_P" checkout -q feat/bk-dest
 rc=0
 out=$(cd "$BK_P" && bash "$HOOK" origin "$BK_ORIGIN" <<< "refs/heads/claude/backup-6584-local $bk_tip refs/heads/feat/bk-dest $Z40" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] || { [ "$rc" -eq 0 ] && [ -f "$BK_P/.git/cr-pending/feat/bk-dest" ]; }; then
+if [ "$rc" -eq 0 ] && [ -f "$BK_P/.git/cr-pending/feat/bk-dest" ]; then
     pass "backup: a backup-named LOCAL branch pushed to a feature destination is still gated"
 else
     fail "backup: destination decides the exemption, not the local name" "rc=$rc out: $out"
@@ -2319,8 +2319,8 @@ else
     fail "backup: foreign-ref refusal must still apply" "rc=$rc out: $out"
 fi
 # gitleaks is its own pre-commit hook; the carve-out lives only in this hook.
-gl_block=$(awk '/repo: https:\/\/github.com\/gitleaks\/gitleaks/{f=1;next} f&&/^  - repo:/{exit} f' "$SCRIPT_DIR/../../.pre-commit-config.yaml")
-if [[ "$gl_block" == *"id: gitleaks"* ]] && [[ "$gl_block" != *backup* ]] && [[ "$gl_block" != *exclude* ]]; then
+gl_block=$(awk '/repo: https:\/\/github.com\/gitleaks\/gitleaks/{f=1;next} f&&/^ *- repo:/{exit} f' "$SCRIPT_DIR/../../.pre-commit-config.yaml")
+if [[ "$gl_block" == *"id: gitleaks"* ]] && [[ "$gl_block" != *backup* ]]; then
     pass "backup: the gitleaks hook is still configured and carries no backup exemption"
 else
     fail "backup: gitleaks must keep scanning backup pushes" "block: $gl_block"
