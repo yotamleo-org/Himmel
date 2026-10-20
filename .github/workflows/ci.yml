@@ -478,6 +478,22 @@ jobs:
         run: |
           gh run cancel "$RUN_ID" || true
 
+  fail-fast-ci-quick:
+    needs: ci-quick
+    if: failure() && needs.ci-quick.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
   # HIMMEL-5675: the short checks run as step groups of this ONE job, so they
   # take one runner and one setup instead of eight (19 of 42 PR jobs finished
   # under 60 s, each paying 5-30 s of setup and a queue slot). A group is the

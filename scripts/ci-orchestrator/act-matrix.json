@@ -29,6 +29,7 @@
     "ci:fail-fast-doc-invariants": "HIMMEL-6494: pull_request-only twin that cancels a hosted GHA run via the Actions API (github.run_id, actions: write); meaningless under act, which has no hosted run to cancel.",
     "ci:fail-fast-security-scan": "HIMMEL-6494: pull_request-only twin that cancels a hosted GHA run via the Actions API (github.run_id, actions: write); meaningless under act, which has no hosted run to cancel.",
     "ci:fail-fast-shell-unit-shard": "HIMMEL-6494: pull_request-only twin that cancels a hosted GHA run via the Actions API (github.run_id, actions: write); meaningless under act, which has no hosted run to cancel.",
+    "ci:fail-fast-ci-quick": "HIMMEL-6494: pull_request-only twin that cancels a hosted GHA run via the Actions API (github.run_id, actions: write); meaningless under act, which has no hosted run to cancel.",
     "ci:plan":"HIMMEL-5524: pull_request-only planner (skipped on push/cron/dispatch); needs the pull_request base.sha context, same shim shape as ci:plugin-version-bump below; falls through to hosted routing without an act-exec fast path.",
     "ci:plugin-version-bump": "HIMMEL-3551: not yet act-classified — needs the pull_request base.sha context, same shim shape as ci:commit-lint above; falls through to hosted routing without an act-exec fast path until someone verifies it under act.",
     "ci:unchecked-mktemp-range": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
