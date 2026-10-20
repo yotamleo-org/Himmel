@@ -218,6 +218,8 @@ for row in csv.reader(open(expect), delimiter="\t"):
         elif label not in board_pr and tail in ("WRAPPED", "MERGED"):
             # a finished leg moves to the board's archive, out of legs[]
             pass
+        elif label not in board_pr:
+            disagree(doc, "board-pr", "<leg absent>", pr)
         else:
             got = board_pr.get(label)
             if isinstance(got, dict):
