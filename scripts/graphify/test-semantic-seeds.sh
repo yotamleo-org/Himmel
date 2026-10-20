@@ -60,6 +60,7 @@ case "$got" in glossary\ *) pass "S3b plural question matches singular labels" ;
 
 cat > "$T/bin/graphify" <<STUB
 #!/bin/sh
+[ "\$1" = --help ] && { echo "  --rationale"; exit 0; }
 echo "\$*" >> "$T/calls"
 case "\$*" in
   *--seed*)

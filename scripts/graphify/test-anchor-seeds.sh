@@ -70,6 +70,7 @@ else fail "A4 got='$got'"; fi
 # Stub graphify: logs each call's arguments and answers by mode, as the real printer does.
 cat > "$T/bin/graphify" <<STUB
 #!/bin/sh
+[ "\$1" = --help ] && { echo "  --rationale"; exit 0; }
 echo "\$*" >> "$T/calls"
 case "\$*" in
   *--seed*)

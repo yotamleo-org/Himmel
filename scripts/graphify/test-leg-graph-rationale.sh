@@ -29,6 +29,7 @@ REASON='An attacker who can only make the child do less has a mild DoS'
 # Stub graphify: verbatim shape of the real query / explain output on the fixture.
 cat > "$T/bin/graphify" <<'STUB'
 #!/bin/sh
+[ "$1" = --help ] && { echo "  --rationale"; exit 0; }
 why=""
 for a in "$@"; do [ "$a" = "--rationale" ] && why=" WHY An attacker who can only make the child do less has a mild DoS, not a compromise."; done
 case "$1" in
@@ -63,6 +64,7 @@ else fail "T2 out='$out'"; fi
 # Stub graphify for the ranking rows: name-matched code nodes come first, as on the live graph.
 cat > "$T/bin/graphify" <<'STUB'
 #!/bin/sh
+[ "$1" = --help ] && { echo "  --rationale"; exit 0; }
 why=""
 for a in "$@"; do [ "$a" = "--rationale" ] && why=" WHY An attacker who can only make the child do less has a mild DoS, not a compromise."; done
 echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start: ['Need', 'Token'] | 4 nodes found"
@@ -98,6 +100,7 @@ else fail "T10 order='$order'"; fi
 # T11: a start node the caller gave stays first, ahead of the doc and rationale tiers.
 cat > "$T/bin/graphify" <<'STUB'
 #!/bin/sh
+[ "$1" = --help ] && { echo "  --rationale"; exit 0; }
 why=""
 for a in "$@"; do [ "$a" = "--rationale" ] && why=" WHY An attacker who can only make the child do less has a mild DoS, not a compromise."; done
 echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start (given): ['queue-lock.sh'] | 4 nodes found"
@@ -116,6 +119,7 @@ else fail "T11 order='$order'"; fi
 # trailing code nodes make room for them instead.
 cat > "$T/bin/graphify" <<'STUB'
 #!/bin/sh
+[ "$1" = --help ] && { echo "  --rationale"; exit 0; }
 echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start: ['Transition'] | 6 nodes found"
 echo ""
 echo "NODE Transition [src=scripts/jira/resolution.test.ts loc=L5 community=]"
@@ -135,6 +139,7 @@ else fail "T12 ${#out} chars over limit $limit: out='$out'"; fi
 # T9: a why question whose answer misses the reason node gets it added, from the words of the question.
 cat > "$T/bin/graphify" <<'STUB'
 #!/bin/sh
+[ "$1" = --help ] && { echo "  --rationale"; exit 0; }
 echo "Graph: x (14 nodes) | Traversal: BFS depth=2 | Start: ['Transition'] | 2 nodes found"
 echo ""
 echo "NODE Transition [src=scripts/jira/resolution.test.ts loc=L5 community=]"

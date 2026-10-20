@@ -22,7 +22,7 @@ printf '{"nodes":[],"built_at_commit": "%s"}\n' "$BASE" > "$P/graphify-out/graph
 git -C "$P" worktree add -q -b leg "$T/wt"
 mkdir -p "$T/bin"
 # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
-printf '#!/bin/sh\necho "STUB GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*"\n' > "$T/bin/graphify"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "STUB GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*"\n' > "$T/bin/graphify"
 chmod +x "$T/bin/graphify"
 run() { (cd "$T/wt" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
 
@@ -31,6 +31,15 @@ out="$(run query "what is X")"; rc=$?
 if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query what is X --rationale --budget 8000" ]; then
   pass "T1 query from a worktree targets the primary graph"
 else fail "T1 rc=$rc out='$out'"; fi
+
+# T1b: a graphify whose help lacks --rationale gets the question unchanged (no flag it would misread).
+# shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "usage: graphify query"; exit 0; }\necho "STUB ARGS=$*"\n' > "$T/bin/graphify.old"
+cp "$T/bin/graphify" "$T/bin/graphify.new"; cp "$T/bin/graphify.old" "$T/bin/graphify"
+out="$(run query "what is X")"
+if [ "$out" = "STUB ARGS=query what is X --budget 8000" ]; then pass "T1b no --rationale for a graphify without it"
+else fail "T1b out='$out'"; fi
+cp "$T/bin/graphify.new" "$T/bin/graphify"
 
 # T2: graph at the worktree's HEAD → no staleness note.
 if ! grep -q behind "$T/err"; then pass "T2 current graph prints no staleness note"
@@ -70,7 +79,8 @@ if grep -q -- '--budget=123$' <<<"$out" && ! grep -q -- '--budget 8000' <<<"$out
 else fail "T6c out='$out'"; fi
 
 # T7: a truncated answer gets an explicit re-run line naming the wrapper.
-printf '#!/bin/sh\necho "[!] TRUNCATED: showing 60 of 223 nodes (~2000-token budget). raise the token budget to 7523 to get all 223 (CLI: --budget 7523)"\necho "NODE a"\n' > "$T/bin/graphify"
+# shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "[!] TRUNCATED: showing 60 of 223 nodes (~2000-token budget). raise the token budget to 7523 to get all 223 (CLI: --budget 7523)"\necho "NODE a"\n' > "$T/bin/graphify"
 out="$(run query "two words")"; rc=$?
 if [ "$rc" = 0 ] && grep -q 'NODE a' <<<"$out" && grep -q 'bash scripts/graphify/leg-graph.sh query '"'"'two words'"'"' --budget 7523' "$T/err"; then
   pass "T7 truncation prints a re-run line"

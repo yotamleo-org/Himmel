@@ -11,7 +11,7 @@
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
-#   query and explain run with graphify's --rationale: a semantic node's stored `rationale` text
+#   query and explain run with graphify's --rationale when the installed graphify has it: a semantic node's stored `rationale` text
 #   follows its NODE line as ` WHY <text>` (query) or is printed as a Rationale line (explain).
 #   A query naming a file or identifier also starts from that node (anchor-seeds.py); the files
 #   whose content best matches its words are added after any anchors (semantic-seeds.py).
@@ -49,6 +49,10 @@ fi
 
 # The question is the first argument after the verb that is neither a flag nor a flag's value.
 WEAK_BUDGET=2000
+# --rationale exists only in the fork build until upstream ships it; an older graphify reads it as
+# part of the question and finds no nodes, so it is passed only when the installed graphify lists it.
+rationale=0
+graphify --help 2>&1 | grep -q -- '--rationale' && rationale=1
 has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() args=() graph="$out/graph.json" lowconf="" conf="" score="" file=""
 for a in "${@:2}"; do
   args+=("$a")
@@ -69,7 +73,7 @@ for a in "${@:2}"; do
     *) if [ -z "$question" ]; then
          question="$a"
          # graphify reads the question first, so --rationale goes right after it.
-         [ "$sub" = path ] || { args+=(--rationale); rest+=("$a" --rationale); continue; }
+         [ "$sub" = path ] || [ "$rationale" = 0 ] || { args+=(--rationale); rest+=("$a" --rationale); continue; }
        fi ;;
   esac
   rest+=("$a")
