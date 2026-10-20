@@ -248,10 +248,10 @@ itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
 
-**A red orphan is owed a leg.** An `unowned-prs=` entry ending `:dispatch-owed`
-(`#<pr>:<age>m:dispatch-owed`) is an open, non-draft PR with no live leg and at least one
-failed check. Launch a resume leg for it on the next WAKE; triaging the red is that
-resumed leg's job. A pending or green orphan keeps its plain `#<pr>:<age>m` entry.
+**A red orphan is owed a worker.** An `unowned-prs=` entry ending `:dispatch-owed`
+(`#<pr>:<age>m:dispatch-owed`) is an open, non-draft PR with no live worker and at least one
+failed check. Launch a resume worker for it on the next WAKE; triaging the red is that
+resumed worker's job. A pending or green orphan keeps its plain `#<pr>:<age>m` entry.
 
 **Reading worker session locks and the tick.** `tick.sh --legs` takes **absolute**
 handover-doc paths on ONE `legs:` line; a relative path drops the bucket
