@@ -70,6 +70,46 @@
 
 .dg-key .dg-edge path { stroke-width: 2; }
 
+/* state is never colour alone: the glyph and the caption name it too */
+.dg-glyph { fill: var(--ink); font-size: var(--fs-sm); font-weight: 700; pointer-events: none; }
+.dg-node[data-state="refused"] .dg-glyph { fill: var(--crit); }
+.dg-node[data-state="active"] .dg-glyph { fill: var(--accent); }
+.dg-node[data-state="passed"] .dg-glyph { fill: var(--ship); }
+.dg-edge[data-state="ghost"] path { stroke: var(--muted); stroke-dasharray: 1 5; opacity: .7; }
+.dg-stub[data-state="active"] rect { stroke: var(--accent); stroke-width: 2; }
+.dg-stub[data-state="passed"] rect { stroke: var(--ship); }
+.dg-stub[data-state="ghost"] rect { stroke-dasharray: 1 4; }
+
+/* controls */
+.dg-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: 0 0 var(--s3); font-size: var(--fs-sm); }
+.dg-pick { display: inline-flex; align-items: center; gap: var(--s2); color: var(--muted); }
+.dg-walk, .dg-btn { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); padding: var(--s1) var(--s3); }
+.dg-btn { cursor: pointer; }
+.dg-btn:hover { border-color: var(--accent); }
+.dg-btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+.dg-btn:focus-visible, .dg-walk:focus-visible, .dg-scrub:focus-visible, .dg-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dg-scrub { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+
+/* caption beside the stage when there is room, under it otherwise */
+.dg-body { display: grid; gap: var(--s3); align-items: start; margin-bottom: var(--s3); }
+.dg-body > .dg-stage { min-width: 0; }
+@container (min-width: 900px) {
+  .dg-body { grid-template-columns: minmax(0, 1fr) 300px; }
+}
+.dg-caption { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: var(--s3) var(--s4); font-size: var(--fs-sm); }
+.dg-caption p, .dg-caption h3, .dg-caption dl, .dg-caption dd { margin: 0; }
+.dg-stepno { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; }
+.dg-cap-title { font-size: var(--fs-base); margin-top: var(--s1); }
+.dg-state { font-weight: 600; margin: var(--s1) 0 var(--s2); }
+.dg-caption dt { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; margin-top: var(--s2); }
+.dg-anchor { color: var(--muted); }
+.dg-ghost-note { margin-top: var(--s2); color: var(--muted); font-style: italic; }
+
+/* load-time validation */
+.dg-banner { margin: 0 0 var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--crit); border-radius: var(--radius); background: var(--crit-soft); color: var(--ink); font-size: var(--fs-sm); }
+.dg-banner p { margin: 0 0 var(--s1); font-weight: 600; }
+.dg-banner ul { margin: 0; padding-left: var(--s4); }
+
 @media (prefers-reduced-motion: reduce) {
   .dg *, .dg { transition-duration: 0ms !important; animation-duration: 0ms !important; scroll-behavior: auto; }
 }
