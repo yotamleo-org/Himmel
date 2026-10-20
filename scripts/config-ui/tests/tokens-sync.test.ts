@@ -25,8 +25,8 @@ test("the copy exists and names the site file it twins", () => {
   expect(read(COPY)).toContain("site/src/styles/tokens.css");
 });
 
-test("the copy is byte-identical to the site's token file once the site has one", () => {
-  if (!existsSync(TWIN)) return; // HIMMEL-6287 lands site/src/styles/tokens.css; until then the copy is the source
+test("the copy is byte-identical to the site's token file", () => {
+  expect(existsSync(TWIN), `${TWIN} must exist`).toBe(true);
   expect(syncFault(TWIN, COPY)).toBeNull();
 });
 

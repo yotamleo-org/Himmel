@@ -27,7 +27,8 @@ export function missingRoutes(paths: string[], routes: string[]): string[] {
 }
 
 test("DOCS_URL is the public site and every docs link is built from it", () => {
-  expect(DOCS_URL).toBe("https://yotamleo.github.io/Himmel/");
+  expect(new URL(DOCS_URL).host).toBe("yotamleo-org.github.io");
+  expect(DOCS_URL).toBe("https://yotamleo-org.github.io/Himmel/");
   expect(docsHref("/")).toBe(DOCS_URL);
   expect(docsHref("/trail/")).toBe(DOCS_URL + "trail/");
   expect(DOCS_PATHS).toContain("/");

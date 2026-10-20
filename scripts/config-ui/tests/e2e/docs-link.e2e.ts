@@ -18,7 +18,7 @@ test("J2. the rail shows Docs linking to the public site, in a new tab, with no 
   await open(page, "light");
   const docs = page.locator("#pages a", { hasText: "Docs" });
   await expect(docs).toHaveCount(1);
-  await expect(docs).toHaveAttribute("href", "https://yotamleo.github.io/Himmel/");
+  await expect(docs).toHaveAttribute("href", "https://yotamleo-org.github.io/Himmel/");
   await expect(docs).toHaveAttribute("target", "_blank");
   await expect(docs).toHaveAttribute("rel", /noopener/);
   expect(await page.locator("#pages a").last().innerText()).toContain("Docs");
