@@ -29,6 +29,19 @@ differences for code or script changes are called out inline.
 
 ---
 
+## 0. Start from a ticket
+
+Every commit subject and every PR title carries a ticket ID: the
+commit-message gate refuses a subject without one while
+`TICKET_ID_REQUIRED=1` (see step 4). So the loop starts in your tracker.
+Search for an existing ticket that covers the change and extend it before
+filing a new one. This walkthrough uses `PROJ-289`.
+
+The ticket moves with the work. With the `ticket` step in
+`HIMMEL_INITIATIVE` the session moves it for you; without it, you move it.
+
+---
+
 ## 1. First touch on main — the block-edit-on-main surprise
 
 Before you create a worktree, try editing a file in the primary checkout
@@ -111,6 +124,12 @@ add one line:
 not unguarded: `orchestrator-inline-guard`, `shadow-ledger` and
 `check-hook-file-parse` also run on Edit/Write and stay silent on a
 well-formed docs change.
+
+> **Code changes start with a failing test.** For a bug fix or a feature,
+> write the test that shows the problem first and watch it fail, then make
+> the change and watch it pass. The review in step 6 runs every suite that
+> references a file you touched (`scripts/cr/impacted-suites.sh`), so a
+> change that breaks a neighbour shows up before the PR opens.
 
 ---
 
@@ -302,6 +321,125 @@ so wait for CI instead: `scripts/check-ci.sh <pr>` blocks until the checks settl
 
 ---
 
+## 7a. Review on the pull request: CodeRabbit and the review gate
+
+Two kinds of reviewer look at a change:
+
+- **Critics** run inside `/pr-check` (step 6), before the PR exists:
+  `codex` and `claude`, the rows of `scripts/cr/critics.json`. Their findings
+  and your dispositions go to the CR ledger, stamped with the exact head.
+  When no critic lane is configured, `/pr-check` reviews the diff itself:
+  the claude-only floor. There is never "no review".
+- **CodeRabbit** is a GitHub App. It reviews the PR after `gh pr create`,
+  posts review threads and a `CodeRabbit` commit status, and is read by
+  `check-ci.sh` and the merge gate through `scripts/lib/cr-signal.sh`. A repo
+  without the App is detected (`git config --local himmel.coderabbit`,
+  `scripts/lib/cr-available.sh`) and its CodeRabbit gate is a no-op.
+
+**Today CodeRabbit is a best-effort reviewer.** A thread it posts must be
+resolved before the merge: fix it in a commit, or reply with why it is fixed
+elsewhere, deferred to a ticket, or wrong, and resolve the thread. A finding
+outside the diff (in the review body, with no thread) needs a recorded
+disposition at that head instead. But when CodeRabbit is absent, skipped or
+rate-limited, `check-ci.sh` and the merge gate print a NOTE and carry on:
+an unavailable CodeRabbit never makes you wait.
+
+### Reviewer modes (planned, HIMMEL-6580)
+
+> Not live yet. This describes the design under build for v1.1.3. Until it
+> lands, the rules above are the ones that run.
+
+Every reviewer gets a **mode** in config, `hard` or `best-effort`, in any
+combination. The mode decides what happens when the reviewer cannot review.
+
+| Mode | It posted findings at this head | It is unavailable at this head |
+|---|---|---|
+| `hard` | each finding fixed or dispositioned, then it passes | **hold**: nothing moves on until it reviews, and you are told why |
+| `best-effort` | each finding fixed or explained, exactly as for hard | **relaxed**: it is skipped, provided every hard reviewer passed |
+
+- *Unavailable* means the lane is configured but could not review this head:
+  it errored, ran out of credit, or is rate-limited. A rate-limited CodeRabbit
+  is its own state, never read as clean.
+- *Absent* means the lane is not set up on this machine at all (no key, no
+  App). An absent reviewer leaves the set; it neither passes nor holds.
+- *Not selected* means `/pr-check` did not run that critic for this head
+  (a trivial or docs-only diff, or your `CR_PROFILE`). It leaves the set for
+  that head too.
+- The **claude-only floor** counts as a hard reviewer, so a machine with no
+  critic lane still has one.
+- A config with no hard reviewer, or a mode other than `hard` and
+  `best-effort`, is a config error: the gate refuses, it never guesses.
+
+**Defaults.**
+
+- **Shipped (`scripts/cr/critics.json`):** `codex` hard, `claude` hard,
+  `coderabbit` best-effort. Because an unconfigured lane is absent, an
+  install with one lane gets one critic, codex or claude, plus the floor.
+  That is the adopter default.
+- **himmel's own repo:** both lanes are configured, so codex and claude (on
+  the Claude API lane) are hard on every PR and CodeRabbit is best-effort.
+
+**Change a mode for one machine** in the overlay `scripts/cr/critics.local.json`
+(gitignored), one row per reviewer you change:
+
+```json
+{ "panel": [
+  { "slug": "coderabbit", "mode": "hard" },
+  { "slug": "claude", "drop": true }
+] }
+```
+
+The first row makes CodeRabbit hard; the second removes the claude critic,
+which gives a codex-only gate. A row that cannot be read is a config error,
+not a silent fallback to the shipped file.
+
+**On a rate limit.** CodeRabbit runs at a per-account limit, and most heads
+are limited. A limited head is a best-effort CodeRabbit unavailable at that
+head: it is relaxed, and the head moves on once the hard critics pass.
+Nothing waits for the limit to reset and nothing re-requests the review. If
+CodeRabbit posts later, its threads still have to be resolved before the
+merge. A **hard** reviewer that is rate-limited or out of credit holds the
+head and says so in `check-ci.sh` and `ready-check.sh`; the levers are to
+restore the lane, or (an operator decision) to set that reviewer to
+`best-effort` or drop it in the overlay for the duration.
+
+### CI release: heavy CI after review (planned, HIMMEL-6581 and HIMMEL-6582)
+
+> Not live yet, and himmel-only: it needs a CI workflow that listens to the
+> `ci:go` label. A repo that does not opt in keeps running CI on every push.
+
+A push runs only the cheap checks (`plan`, `lint`, and the folded `ci-quick`
+job once it lands). The heavy jobs
+(the shell-unit shards and the bun, node and lanes-and-trust suites) start
+when the review gate passes at that head, so a head a reviewer is about to
+send back does not burn an hour of runners.
+
+1. You push. The cheap checks run.
+2. Each time the review loop concludes something about the head (the critic
+   panel finishes, you disposition a finding, CodeRabbit's verdict is read, a
+   thread is resolved), the station checks the review gate at that head.
+   There is no timer: the check runs on those events only.
+3. When every hard reviewer passes and every best-effort reviewer passes or is
+   relaxed, and the cheap checks are green, the station adds the `ci:go`
+   label. That label event starts the heavy jobs at that head.
+4. A new push starts over at step 1 and cancels the heavy run of the old
+   head.
+
+What does not change: the merge still needs every required check green at
+the final head and a passing review gate (step 8). `ci:go` only starts CI
+early or late; it never lets anything merge. Adding `ci:go` by hand starts
+heavy CI at once, which is the lever when a hold is understood. Until the
+heavy jobs report, `check-ci.sh` prints `CR-FIRST HOLD <reason>` for the head
+instead of failing on missing checks. A thread resolved in the GitHub web UI
+is picked up by the next `/pr-check` or `check-ci.sh` run, or by the console
+tick when you run a console.
+
+Opting in is one repository variable, read by both the workflow and the
+station, so the two cannot disagree; turning it off brings back CI on every
+push without editing the workflow.
+
+---
+
 ## 8. Merge
 
 Once CI is green and review threads are resolved:
@@ -330,6 +468,16 @@ Console legs do not call `gh pr merge`; they merge through
 run is red. The console verifies each PR with `ready-check.sh` before it
 writes that GO. This page covers the solo loop; the agent loop (console,
 legs, judges) is the development graph.
+
+---
+
+## 8a. Close the ticket
+
+A merge does not close the ticket by itself. If the PR finishes the ticket,
+move it to Done and note the PR number and merge commit on it; if work
+remains, leave it open. `merge-on-green.sh --jira-transition` closes the
+first `[KEY]` in the PR title at merge, and only when you pass the flag;
+the `ticket` step in `HIMMEL_INITIATIVE` does it for you.
 
 ---
 
@@ -368,6 +516,7 @@ Full handover internals:
 ## Summary — the full sequence
 
 ```
+# find or file the ticket       # 0. start from a ticket
 /worktree docs/<slug>           # 1. create worktree
 # edit files                    # 2. make the change
 git add …                       # 3. stage
@@ -375,7 +524,9 @@ git commit -m "type: message"   # 4. commit (commit-msg gate fires)
 git push -u origin <branch>     # 5. push (pre-push gates fire)
 /pr-check                       # 6. if marker was written: run review
 gh pr create …                  # 7. open PR
+# resolve CodeRabbit threads    # 7a. review on the PR (the review gate)
 # wait for CI, then merge       # 8. merge (check-ci.sh; merge gates fire)
+# move the ticket               # 8a. close the ticket
 /clean                          # 9. prune merged worktree
 /handover                       # 10. snapshot session state
 ```
