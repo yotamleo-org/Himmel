@@ -185,7 +185,8 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #   not-yet-run    no avail row at the head
 # A row naming `trivial-descendant of reviewed head <sha>` carries the whole
 # head (clear-cr-marker.sh writes it once, as model claude): a slug with no
-# row of its own at <head> is read at the reviewed head instead. Heads, amends and tracked deferrals
+# row of its own at <head> is read at the reviewed head instead, and a
+# finding posted at <head> itself still counts. Heads, amends and tracked deferrals
 # match as in cr-ledger-evidence.sh; a malformed line is a degraded read,
 # never a skip. The ledger path is fixed (never env-overridable).
 _crg_critic_states() {
@@ -258,7 +259,8 @@ for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
     let rows = own(avail(slug, head));
     if (rows.length === 0 && carry) { head = carry[1]; rows = own(avail(slug, head)); }
     let state, detail = "";
-    const open = recs.filter((o) => o.kind === "finding" && model(o) === slug && atHead(o, head)
+    const open = recs.filter((o) => o.kind === "finding" && model(o) === slug
+        && (atHead(o, head) || atHead(o, e.RG_HEAD))
         && (o.severity === "crit" || o.severity === "imp") && o.verdict !== "disproved"
         && !(o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(str(o.deferred_to)) && str(o.reason)));
     if (open.length) {

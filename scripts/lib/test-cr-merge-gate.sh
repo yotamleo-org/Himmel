@@ -785,6 +785,13 @@ led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda
 GH_STUB_MODE=clean rg carry-reads-reviewed-head 0
 has "$TMP/err-carry-reads-reviewed-head" 'claude hard absent\(api lane is OFF\)' "carry reads the reviewed head's rows"
 has "$TMP/err-carry-reads-reviewed-head" 'codex hard pass' "carry is head-wide: codex reads the reviewed head"
+# ...but a finding posted at the tip itself still holds.
+led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (HIMMEL-5856)')" \
+    "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 codex ok)" \
+    "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 claude unavailable critic-skipped "$ABSENT_DETAIL")" \
+    '{"kind":"finding","head":"abc123","model":"codex","finding_id":"codex-9","severity":"imp","verdict":""}'
+GH_STUB_MODE=clean rg carry-tip-finding-holds 1
+has "$TMP/out-carry-tip-finding-holds" '^HOLD: .*codex.*codex-9' "carry: the tip's own finding holds"
 # Unarmed clone: the critic read is unreadable (no ledger) -> fail open with a
 # degraded note at merge; a readable clean ledger allows with no CodeRabbit call.
 git -C "$TMP/repo" config --local --unset himmel.coderabbit
