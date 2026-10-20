@@ -521,7 +521,8 @@ for want in old_a_0 old_a_1 old_a_2 old_a_3 stale_a; do
   case " $all45 " in *" $want "*) ;; *) fail "T45 dropped $want (rc=$rc): $all45" ;; esac
 done
 case " $all45 " in *" sem_a.md_alpha "*) fail "T45 the refused file's new node was merged: $all45" ;; *) pass "T45 old nodes survived, the shrunken extraction was not merged" ;; esac
-[ "$(lastrun "$C45" failed)" = "1" ] && pass "T45 counted as a failed (retried) file" || fail "T45 failed count: $(tail -1 "$C45/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C45" failed)" = "0" ] && [ "$(lastrun "$C45" refused_files)" = "['a.md']" ] && [ "$(lastrun "$C45" failed_files)" = "[]" ] \
+  && pass "T45 a refused file is counted once, as refused, not also as failed" || fail "T45 counts: $(tail -1 "$C45/graphify-out/semantic-runs.jsonl")"
 [ "$(lastrun "$C45" shrink_refused)" = "1" ] && [[ "$out" == *"shrink guard"* ]] && pass "T45 decision logged to the run row and stderr" || fail "T45 no shrink log: $out"
 python3 -c 'import json,sys;sys.exit(0 if "a.md" not in json.load(open(sys.argv[1]))["files"] else 1)' "$C45/graphify-out/semantic-manifest.json" \
   && pass "T45 a.md stays unstamped" || fail "T45 a.md was stamped"
@@ -609,6 +610,50 @@ all53=$(python3 "$HERE/semantic-metrics.py" "$M53"); a53=$(python3 "$HERE/semant
 [[ "$all53" == *'"model_made_coverage_pct": 50.0'* ]] && [[ "$all53" == *'"model_made_nodes": 2'* ]] \
   && [[ "$a53" == *'"model_made_coverage_pct": 100.0'* ]] && pass "T53 model-made metric" || fail "T53 model-made: $all53 $a53"
 [[ "$a53" == *'"coverage_pct": 50.0'* ]] && [[ "$a53" == *'"semantic_nodes": 2'* ]] && pass "T53 --files scope" || fail "T53 scoped: $a53"
+
+stuck() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("stuck",{}).get(sys.argv[2],{}).get(sys.argv[3],""))' "$1/graphify-out/semantic-manifest.json" "$2" "$3"; }
+
+echo "T56: a file never extracted is backed off after 3 attempts on the same content, alerted once, retried when it changes"
+C56="$WS/c56"; new_corpus "$C56"
+for _ in 1 2 3; do out=$(GRAPHIFY_STUB_SKIP=a.md run --name t56 --corpus-root "$C56" --corpus-class himmel-code); done
+[ "$(stuck "$C56" a.md attempts)" = 3 ] && [[ "$(stuck "$C56" a.md reason)" == *"not extracted"* ]] \
+  && pass "T56 three attempts recorded with a reason" || fail "T56 stuck record: $(cat "$C56/graphify-out/semantic-manifest.json")"
+[[ "$out" == *"BACKED OFF a.md"* ]] && pass "T56 the third failure prints one BACKED OFF line" || fail "T56 no BACKED OFF line: $out"
+: > "$WS/calls.log"
+out=$(GRAPHIFY_STUB_SKIP=a.md run --name t56 --corpus-root "$C56" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && ! grep -q '^graphify' "$WS/calls.log" && [[ "$out" == *"backed_off=1"* ]] && [[ "$out" != *"BACKED OFF"* ]] \
+  && pass "T56 a backed-off file is not re-extracted (no graphify call, no repeat alert)" || fail "T56 run 4 (rc=$rc): $out / $(cat "$WS/calls.log")"
+[ "$(lastrun "$C56" backed_off_files)" = "['a.md']" ] && pass "T56 the run row names the backed-off file" || fail "T56 backed_off_files: $(lastrun "$C56" backed_off_files)"
+printf 'aleph\n' > "$C56/a.md"; : > "$WS/calls.log"
+out=$(run --name t56 --corpus-root "$C56" --corpus-class himmel-code); rc=$?
+case " $(ids "$C56") " in *" sem_a.md_aleph "*) pass "T56 changed content is retried and lands" ;; *) fail "T56 retry (rc=$rc): $(ids "$C56") $out" ;; esac
+[ -z "$(stuck "$C56" a.md attempts)" ] && pass "T56 a landed file leaves the stuck record" || fail "T56 stuck kept: $(cat "$C56/graphify-out/semantic-manifest.json")"
+
+echo "T57: a refused file's own cache entry is evicted so the retry re-extracts; other entries stay"
+C57="$WS/c57"; new_corpus "$C57"; rm -f "$C57/b.md" "$C57/sub/c.md"
+mkdir -p "$C57/graphify-out/cache/semantic/p1"
+printf '{"nodes":[{"id":"x","source_file":"a.md"}],"edges":[],"hyperedges":[]}' > "$C57/graphify-out/cache/semantic/p1/a-entry.json"
+printf '{"nodes":[{"id":"y","source_file":"b.md"}],"edges":[],"hyperedges":[]}' > "$C57/graphify-out/cache/semantic/p1/b-entry.json"
+python3 - "$C57/graphify-out/graph.json" <<'PY'
+import json, sys
+p = sys.argv[1]; g = json.load(open(p))
+for i in range(4):
+    g["nodes"].append({"id": "old_a_%d" % i, "label": "old %d" % i, "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(p, "w"))
+PY
+out=$(run --name t57 --corpus-root "$C57" --corpus-class himmel-code); rc=$?
+[ ! -e "$C57/graphify-out/cache/semantic/p1/a-entry.json" ] && [ -e "$C57/graphify-out/cache/semantic/p1/b-entry.json" ] \
+  && pass "T57 only the refused file's entry is evicted" || fail "T57 (rc=$rc): $(find "$C57/graphify-out/cache" -type f) $out"
+
+echo "T58: files under graphify's skipped dirs (.obsidian) never enter the batch"
+C58="$WS/c58"; new_corpus "$C58"; mkdir -p "$C58/.obsidian/plugins/p"; printf 'setup\n' > "$C58/.obsidian/plugins/p/VENDORED.md"
+out=$(run --name t58 --corpus-root "$C58" --corpus-class himmel-code); rc=$?
+[ "$(lastrun "$C58" batch)" = 3 ] && [ "$(lastrun "$C58" failed)" = 0 ] && pass "T58 .obsidian file skipped" || fail "T58 (rc=$rc): $(tail -1 "$C58/graphify-out/semantic-runs.jsonl")"
+
+echo "T59: test fixtures (any fixtures/ dir) never enter the batch"
+C59="$WS/c59"; new_corpus "$C59"; mkdir -p "$C59/scripts/kit/fixtures/mirror"; printf '# T-1\n' > "$C59/scripts/kit/fixtures/mirror/T-1.md"
+out=$(run --name t59 --corpus-root "$C59" --corpus-class himmel-code); rc=$?
+[ "$(lastrun "$C59" batch)" = 3 ] && pass "T59 fixtures file skipped" || fail "T59 (rc=$rc): $(tail -1 "$C59/graphify-out/semantic-runs.jsonl")"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

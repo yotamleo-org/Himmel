@@ -1,0 +1,48 @@
+name: CI image
+
+# Build the CI tooling image (.github/ci-image/Dockerfile) and push it
+# to GHCR. Rebuilt only when the Dockerfile directory changes on main, plus a weekly
+# run so base-image security updates land. Never runs on pull_request, so no fork PR
+# can push a tag. ci.yml pins a tag explicitly; a rebuild alone changes no PR's CI.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/ci-image/**'
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Only the real repo's main pushes: a fork's schedule has no GHCR namespace of ours,
+    # and a dispatch from another branch must not move the shared :latest tag.
+    if: github.repository == 'yotamleo-org/Himmel' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/yotamleo-org/himmel-ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        # The run number and attempt make the tag immutable: a weekly, manual or re-run rebuild of the same
+        # commit pulls fresh base layers and must not move a tag a job already pins.
+        run: docker build --pull -t "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" -t "$IMAGE:latest" .github/ci-image
+      - name: Smoke the tools the jobs call
+        run: |
+          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null'
+      - name: Push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}"
+          docker push "$IMAGE:latest"

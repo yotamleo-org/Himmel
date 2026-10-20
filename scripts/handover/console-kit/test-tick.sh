@@ -1850,6 +1850,17 @@ if command -v python3 >/dev/null 2>&1; then
     # A plan file edit is a staleness too, not only the mirror.
     printf '%s\t%s\t%s\t%s\n' HIMMEL-2 v1.0.1 bugs 1 >> "$t3933_plan/stage3/placement.tsv"
     contains 'a plan file change reads tracker=STALE (HIMMEL-3933)' "$(t3933)" ' tracker=STALE:'
+    # a rendered page the console has not republished reads REPUBLISH; a publish stamp newer than the page reads ok.
+    head -n -1 "$t3933_plan/stage3/placement.tsv" > "$t3933_plan/stage3/placement.tmp" && mv "$t3933_plan/stage3/placement.tmp" "$t3933_plan/stage3/placement.tsv"
+    t3933_render
+    touch -d '5 hours ago' "$t3933_out.published" || exit 1  # gnu-ok: console kit is Linux-only
+    touch -d '2 hours ago' "$t3933_out" || exit 1  # gnu-ok: console kit is Linux-only
+    contains 'a page newer than its publish stamp reads tracker=REPUBLISH:<age> (HIMMEL-6483)' "$(t3933)" ' tracker=REPUBLISH:2h'
+    touch "$t3933_out.published" || exit 1
+    contains 'a publish stamp newer than the page reads tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
+    touch -d '1 hour' "$t3933_out" || exit 1  # gnu-ok: console kit is Linux-only
+    rm -f "$t3933_out.published"
+    contains 'no publish stamp keeps reading tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
 else
     skip 'tracker= rows: no python3'
 fi
@@ -2143,6 +2154,13 @@ contains 'a probe that prints a non-count reads versionless-done=unknown (HIMMEL
 printf '#!/bin/sh\necho 1234+\n' > "$W/vd-probe-big.sh"
 vd_big="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/vd-probe-big.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a lower-bound count of any width is shown as-is (HIMMEL-6406)' "$vd_big" ' versionless-done=1234+'
+contains 'a non-zero versionless-done count prints an ACTION line (HIMMEL-6416)' "$vd_three" 'ACTION versionless-done=3: bash '
+contains 'the ACTION line names versionless-done.sh --backfill (HIMMEL-6416)' "$vd_three" 'versionless-done.sh --backfill'
+ln -s "$(dirname "$SUT")" "$W/vd dir"
+vd_space="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/vd-probe-3.sh" TOKEN='' bash "$W/vd dir/tick.sh" --doc "$d4670" 2>/dev/null)"
+contains 'the ACTION line escapes a script path with a space (HIMMEL-6416)' "$vd_space" 'vd\ dir/versionless-done.sh --backfill'
+case "$vd_zero$vd_bad" in *'ACTION versionless-done'*) fail "a zero or unknown count prints no ACTION line (out='$vd_zero$vd_bad')" ;; *) pass 'a zero or unknown count prints no ACTION line (HIMMEL-6416)' ;; esac
+case "$(printf '%s\n' "$vd_three" | grep -c '^TICK ')" in 1) pass 'the ACTION line adds no second TICK line (HIMMEL-6416)' ;; *) fail 'the ACTION line adds no second TICK line (HIMMEL-6416)' ;; esac
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'

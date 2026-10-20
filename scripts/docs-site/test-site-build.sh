@@ -65,7 +65,11 @@ while IFS= read -r f; do
   [ "$(grep -o '<h1' "$page" | wc -l)" -eq 1 ] || { c1=0; echo "  $f: h1 count != 1"; }
 done <<<"$allow"
 if [ "$c1" -eq 1 ]; then ok "criterion 1: titles from H1, exactly one h1 per page"; else ko "criterion 1: titles from H1, exactly one h1 per page"; fi
-check "criterion 1: git diff --stat docs/ is empty" test -z "$(git -C "$repo" status --porcelain -- docs)"
+if docs_status=$(git -C "$repo" status --porcelain -- docs); then
+  check "criterion 1: only the permitted docs files are edited" test -z "$(printf '%s\n' "$docs_status" | awk 'NF {print $2}' | grep -vxE 'docs/(README\.md|internals/handover-system\.md|security-review\.md)')"
+else
+  ko "criterion 1: git status of docs failed"
+fi
 
 # --- criterion 2: links
 md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; echo "rc=$?")
@@ -104,6 +108,31 @@ check "criterion 4: mermaid renderer is bundled" grep -rlq 'mermaid' "$dist/_ast
 for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
+
+# --- J1: full site (one page per IA section, trail page, raw passthrough, search)
+for r in daily-loop handover/overnight-mode glossary internals/stuck-playbook contributing; do
+  check "J1: IA page /$r/ built" test -f "$dist/$r/index.html"
+done
+check "J1: /adoption-trail.html served" test -f "$dist/adoption-trail.html"
+for raw in setup/install.md setup/settings-template.json setup/profiles/operator.install-profile.json; do
+  check "J1: raw $raw byte-identical" cmp "$repo/docs/$raw" "$dist/$raw"
+done
+c_raw=1
+while IFS= read -r f; do
+  cmp -s "$repo/docs/$f" "$dist/$f" || { c_raw=0; echo "  raw copy differs: $f"; }
+done <<<"$allow"
+if [ "$c_raw" -eq 1 ]; then ok "J1: every allowlisted .md is served raw at its path"; else ko "J1: every allowlisted .md is served raw at its path"; fi
+check "J1: Pagefind index built" test -f "$dist/pagefind/pagefind.js"
+hit=$(cd "$here" && node --input-type=module -e "
+import fs from 'node:fs';
+const pf = await import('file://$dist/pagefind/pagefind.js');
+const origFetch = globalThis.fetch;
+globalThis.fetch = (u, o) => String(u).startsWith('file:') ? Promise.resolve(new Response(fs.readFileSync(new URL(u)))) : origFetch(u, o);
+await pf.options({ basePath: 'file://$dist/pagefind/' });
+const r = await pf.search('stuck playbook');
+const d = await Promise.all(r.results.slice(0, 5).map((x) => x.data()));
+console.log(d.map((x) => x.url).join(' '));" 2>&1)
+case "$hit" in *stuck-playbook*) ok "J1: Pagefind hit for 'stuck playbook' ($hit)" ;; *) ko "J1: Pagefind hit for 'stuck playbook' (got: $hit)" ;; esac
 
 rm -f "$here/.build.log"
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

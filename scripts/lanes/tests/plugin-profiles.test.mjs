@@ -129,6 +129,8 @@ for (const name of ['operator', 'user', 'bare']) {
       'obsidian-second-brain@himmel',
       // find-docs was a user-scope skill; the user profile carries it.
       'find-docs@himmel',
+      // graphify was a user-scope skill written by himmel-update; same.
+      'graphify@himmel',
     ];
     const expected = name === 'operator' ? null : {
       enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && id === 'pstack@himmel')])),
@@ -1609,7 +1611,7 @@ test('leg-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-44
 
 test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so only the catalog server exists (HIMMEL-4400)', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'leg-e2e', { installed: [] });
-  for (const id of ['pr-review-toolkit-himmel@himmel', 'qmd@himmel']) assert.equal(p[id], true, id);
+  assert.equal(p['qmd@himmel'], true, 'qmd@himmel');
   assert.notEqual(p['playwright@claude-plugins-official'], true, 'plugin ships only the MCP; enabling it risks a second server');
   assert.deepEqual(resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, p);
   assert.equal(REG.profiles['leg-e2e'].gateAllow, true);
@@ -1856,4 +1858,31 @@ test('vmLaunch is restricted to leg-vm', () => {
   const registry = structuredClone(REG);
   registry.profiles['leg-impl'].vmLaunch = true;
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
+});
+
+// /pr-check dispatches no plugin agent, so the leg family drops the reviewer fork.
+test('leg family drops pr-review-toolkit-himmel and i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
+  const legs = Object.keys(REG.profiles).filter((n) => n.startsWith('leg-'));
+  assert.deepEqual(legs.sort(), ['leg-bus', 'leg-e2e', 'leg-impl', 'leg-vm']);
+  for (const name of legs) {
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    for (const id of ['pr-review-toolkit-himmel@himmel', 'i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
+    for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
+    assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills legs call`);
+  }
+  // The operator reads the console window, so the reading-style ruleset stays there.
+  assert.equal(resolveProfile(REG, 'console', { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, 'console keeps i-have-adhd');
+});
+
+// graphify's skill was a user-scope copy written by himmel-update into
+// ~/.claude/skills/graphify, which ignores enabledPlugins. As a plugin it is
+// catalogued and enabled only in the operator's interactive `user` profile.
+test('graphify@himmel is enabled only in the user profile (HIMMEL-6465)', () => {
+  const id = 'graphify@himmel';
+  assert.ok(REG.catalog.includes(id));
+  for (const [name, def] of Object.entries(REG.profiles)) {
+    if (def === null) continue; // operator: everything installed
+    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
+    assert.equal(p[id], name === 'user', `${name}: ${id} enabled must be ${name === 'user'}`);
+  }
 });

@@ -94,6 +94,9 @@ jobs:
       run_deps_audit: ${{ steps.plan.outputs.run_deps_audit }}
       shards: ${{ steps.shards.outputs.shards }}
       absent_shards: ${{ steps.shards.outputs.absent_shards }}
+      shard_total: ${{ steps.shards.outputs.shard_total }}
+      canary_shards: ${{ steps.canary.outputs.canary_shards }}
+      canary_total: ${{ steps.canary.outputs.canary_total }}
     steps:
       # Debounce. Every shell-unit shard needs this job, and a follow-up push
       # within ~3 min of the last one cancels a run whose shards already took
@@ -101,7 +104,7 @@ jobs:
       # starts. Cost: 3 runner-minutes and 3 minutes of latency per push.
       # test-ci-push-concurrency.sh holds the 120-240 s window.
       - run: sleep 180
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -127,10 +130,11 @@ jobs:
           fi
           cat "$tools/plan.out"
           grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
-      # HIMMEL-5649: which shell-unit shards have a suite to run? Asked once, here,
-      # under the SAME selection env the shards' run step gets, so a shard with
-      # nothing to run never takes a runner. An empty output (this step failed)
-      # means every shard starts, see shell-unit-shard.
+      # HIMMEL-5649 / HIMMEL-5556: how many shell-unit shards (at most 8) the
+      # selection needs, sized off the duration ledger. Asked once, here, under
+      # the SAME selection env the shards' run step gets, so a small selection
+      # takes few runners and a shard with nothing to run never takes one. An
+      # empty output (this step failed) means all 8 start, see shell-unit-shard.
       - id: shards
         name: Which shell-unit shards have work?
         env:
@@ -144,50 +148,675 @@ jobs:
           bash scripts/ci/plan-shards.sh 8 . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
+      # HIMMEL-5556: home-canary sized the same way, off the selection its own
+      # run step makes (--impacted, no SUITE_* env). Empty output = 8 legs.
+      - id: canary
+        name: How many home-canary shards?
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          bash scripts/ci/plan-shards.sh 8 . -- --impacted "$PR_BASE_SHA..HEAD" > "$RUNNER_TEMP/canary.out" || : > "$RUNNER_TEMP/canary.out"
+          cat "$RUNNER_TEMP/canary.out"
+          sed -n -e 's/^shards=/canary_shards=/p' -e 's/^shard_total=/canary_total=/p' "$RUNNER_TEMP/canary.out" >> "$GITHUB_OUTPUT"
 
-  # HIMMEL-6121: matrix fail-fast only stops sibling legs of one matrix; the
-  # other jobs keep their runners after the run is already red. On pull_request
-  # this watcher polls the run's jobs and cancels the whole run at the first
-  # failed one. No checkout and no `needs:` (it must run from the start). It
-  # fails open: an API error or a timeout leaves the run uncancelled, and it
-  # never reddens the run itself. Schedule and dispatch runs have no watcher,
-  # so a red there stays attributable. A cancelled run still reads red: the
-  # failed job keeps its `failure` conclusion and the required `shell-unit`
-  # check never reports success.
-  pr-fail-fast:
-    if: github.event_name == 'pull_request'
+  # HIMMEL-6121 / HIMMEL-6494: matrix fail-fast only stops sibling legs of one
+  # matrix; the other jobs keep their runners after the run is already red. Each
+  # job has a fail-fast-<job> twin that needs only that job, starts only when it
+  # failed on a pull_request, and cancels the whole run. A green run starts no
+  # twin, so nothing holds a runner while the shards work (the earlier watcher
+  # held one for up to 90 min). A twin checks out no PR code and uses no action; its
+  # one step comes from the PR's own ci.yml, which is safe because a same-repo
+  # author already has write access and a fork's token is read-only. It is the
+  # only kind of job that holds actions: write. A cancel the token
+  # refuses (a fork PR's is read-only) is swallowed: the run stays uncancelled,
+  # never reddened by the twin. Schedule and dispatch runs have no twins, so a
+  # red there stays attributable. A cancelled run still reads red: the failed
+  # job keeps its `failure` conclusion and the required `shell-unit` check never
+  # reports success. The aggregator (shell-unit) and the schedule-only
+  # guard-corpus-full have none.
+  fail-fast-plan:
+    needs: plan
+    if: failure() && needs.plan.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 100 # outlives the 90 min poll deadline below
+    timeout-minutes: 2
     permissions:
       actions: write
     steps:
-      - name: Cancel the run on the first failed job
+      - name: Cancel the run
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          deadline=$((SECONDS + 5400))
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            if jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[]')"; then
-              failed="$(jq -s '[.[] | select(.conclusion == "failure" or .conclusion == "timed_out")] | length' <<< "$jobs")"
-              if [ "$failed" -gt 0 ]; then
-                echo "a job failed; cancelling run $RUN_ID"
-                gh run cancel "$RUN_ID" || true
-                exit 0
-              fi
-              pending="$(jq -s '[.[] | select(.name != "pr-fail-fast" and .status != "completed")] | length' <<< "$jobs")"
-              [ "$pending" -eq 0 ] && exit 0
-            fi
-            sleep "${POLL_SECS:-15}"
-          done
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-secret-scan:
+    needs: secret-scan
+    if: failure() && needs.secret-scan.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-bwk-awk-mktemp-gate:
+    needs: bwk-awk-mktemp-gate
+    if: failure() && needs.bwk-awk-mktemp-gate.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-unchecked-mktemp-range:
+    needs: unchecked-mktemp-range
+    if: failure() && needs.unchecked-mktemp-range.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-home-canary:
+    needs: home-canary
+    if: failure() && needs.home-canary.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-leak-classes:
+    needs: leak-classes
+    if: failure() && needs.leak-classes.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-git-env-scrub:
+    needs: git-env-scrub
+    if: failure() && needs.git-env-scrub.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-commit-lint:
+    needs: commit-lint
+    if: failure() && needs.commit-lint.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-plugin-version-bump:
+    needs: plugin-version-bump
+    if: failure() && needs.plugin-version-bump.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-lint:
+    needs: lint
+    if: failure() && needs.lint.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-node-suites:
+    needs: node-suites
+    if: failure() && needs.node-suites.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-jira-cli-smoke:
+    needs: jira-cli-smoke
+    if: failure() && needs.jira-cli-smoke.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-claude-startup:
+    needs: claude-startup
+    if: failure() && needs.claude-startup.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-lanes-and-trust-suites:
+    needs: lanes-and-trust-suites
+    if: failure() && needs.lanes-and-trust-suites.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-guardrail-matrices:
+    needs: guardrail-matrices
+    if: failure() && needs.guardrail-matrices.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-bun-suites:
+    needs: bun-suites
+    if: failure() && needs.bun-suites.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-doc-invariants:
+    needs: doc-invariants
+    if: failure() && needs.doc-invariants.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-security-scan:
+    needs: security-scan
+    if: failure() && needs.security-scan.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-shell-unit-shard:
+    needs: shell-unit-shard
+    if: failure() && needs.shell-unit-shard.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-ci-quick:
+    needs: ci-quick
+    if: failure() && needs.ci-quick.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  # HIMMEL-5675: the short checks run as step groups of this ONE job, so they
+  # take one runner and one setup instead of eight (19 of 42 PR jobs finished
+  # under 60 s, each paying 5-30 s of setup and a queue slot). A group is the
+  # steps whose id is <group> or <group>__<x>; every step runs under
+  # !cancelled(), so one red group never hides another. The group's output is
+  # 'pass' only when the shared steps, the closing `finished` step and each of
+  # its own steps succeeded or were skipped by a gate; anything else, a
+  # cancelled or timed-out job included, leaves it 'fail' or empty. Each old job
+  # name below stays as a sentinel carrying its required context: skipped
+  # (green) on 'pass', `exit 1` otherwise. test-ci-quick.sh holds the shape.
+  ci-quick:
+    needs: plan
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # p95 sum of the folded jobs ~250s plus one setup; 30 bounds a hung group
+    outputs:
+      secret-scan: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.secret-scan.outcome) && 'pass' || 'fail' }}
+      bwk-awk-mktemp-gate: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.bwk-awk-mktemp-gate.outcome) && 'pass' || 'fail' }}
+      unchecked-mktemp-range: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.unchecked-mktemp-range.outcome) && 'pass' || 'fail' }}
+      commit-lint: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.commit-lint.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__platforms.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__security.outcome) && 'pass' || 'fail' }}
+      jira-cli-smoke: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke__npm.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke.outcome) && 'pass' || 'fail' }}
+      guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
+      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
+      doc-invariants: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__dev.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__guard.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__self.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__desc-cap.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__positional.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__catalog.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__secrets-doc.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__llms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__terms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__hermetic.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__stage.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__agents-md.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__debrand.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__lanes.outcome) && 'pass' || 'fail' }}
+    env:
+      CLAUDE_CLI_VERSION: '2.1.296'
+    steps:
+      # Full history: commit-lint, unchecked-mktemp-range and doc-guard walk the
+      # PR range. This checks out and executes contributor code, so the token is
+      # not persisted into .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        id: setup-node
+        with:
+          node-version: '22'
+      - id: secret-scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: |
+          bash scripts/ci/check-no-secrets.sh
+          bash scripts/ci/check-actions-pinned.sh
+      - id: bwk-awk-mktemp-gate
+        if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_bwk_gate == 'false') }}
+        timeout-minutes: 10
+        run: bash scripts/ci/run-unchecked-mktemp-under-bwk.sh
+      - id: unchecked-mktemp-range
+        name: No unchecked mktemp capture added anywhere in the PR range
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        timeout-minutes: 10
+        run: bash scripts/hooks/check-unchecked-mktemp.sh --range --merge-ref "${{ github.event.pull_request.base.sha }}"
+      - id: commit-lint
+        name: Lint commit messages in the PR range
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        env:
+          TICKET_ID_REQUIRED: '1'
+          JIRA_PROJECT_KEY: HIMMEL
+          TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            bash scripts/ci/check-commit-range.sh --merge-ref "${{ github.event.pull_request.base.sha }}"
+          else
+            bash scripts/ci/check-commit-range.sh
+          fi
+      # HIMMEL-5423: the attestation trailers are checked only at pre-push and in
+      # ready-check, both skipped by a --no-verify commit. These re-run the SAME
+      # pre-push gates over the PR range; the wrapper builds a branch-shaped
+      # scratch clone (the hooks no-op on a detached merge ref) and keeps only
+      # the PR's FIRST commit message, the rule CLAUDE.md states.
+      - id: commit-lint__platforms
+        name: First commit carries Platforms tested on shell/script diffs
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        timeout-minutes: 10
+        env:
+          TICKET_ID_REQUIRED: '1'
+          JIRA_PROJECT_KEY: HIMMEL
+          TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-platforms-tested.sh
+      - id: commit-lint__security
+        name: First commit carries Security reviewed on non-docs code
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        timeout-minutes: 10
+        env:
+          TICKET_ID_REQUIRED: '1'
+          JIRA_PROJECT_KEY: HIMMEL
+          TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-security-reviewed.sh
+      # HIMMEL-3616: the PR-title lint (the squash merge makes the title
+      # main's commit subject) lives in its own workflow,
+      # .github/workflows/pr-title-lint.yml — not here. commit-lint's
+      # `pull_request:` trigger has no `edited` type, so a step here would
+      # never re-run when a title is fixed via `gh pr edit --title`
+      # (judge J1284O F2); it also never threaded the PR author into
+      # TICKET_ID_AUTHOR, so the dependabot[bot] exemption never applied to
+      # a title (judge J1284O F1).
+      - id: jira-cli-smoke__npm
+        if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
+        timeout-minutes: 10
+        run: npm ci
+        working-directory: scripts/jira
+      - id: jira-cli-smoke
+        if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
+        timeout-minutes: 10
+        run: bash scripts/ci/jira-cli-smoke.sh
+      - id: guardrail-matrices
+        if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_guardrail_matrices == 'false') }}
+        timeout-minutes: 10
+        run: bash scripts/hooks/check-guardrail-matrices.sh
+      # claude-startup is ungated (trust judge j2543g): the hook chain it starts
+      # executes scripts outside any gate group, so it runs on every PR like main.
+      # HIMMEL-4412: the project's SessionStart/Subagent hooks run `bun`; a runner
+      # without it makes them exit 127 and the hook smoke correctly reports a failing hook.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        id: claude-startup__bun
+        if: ${{ !cancelled() }}
+        with:
+          bun-version-file: .bun-version
+      # The mock sandbox runs claude under a scrubbed PATH (claude, node, /usr/local/bin,
+      # /usr/bin, /bin), so setup-bun's ~/.bun/bin must be linked into one of those.
+      - id: claude-startup__bun-path
+        name: Put bun on the scrubbed PATH
+        if: ${{ !cancelled() }}
+        run: sudo ln -sf "$(command -v bun)" /usr/local/bin/bun
+      - id: claude-startup__cli
+        name: Install the pinned claude CLI
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: |
+          npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          claude --version
+      # ubuntu-24.04 refuses unprivileged user namespaces by default (AppArmor);
+      # the suite needs `unshare -rn` and fails closed without it.
+      - id: claude-startup__userns
+        name: Allow unprivileged user namespaces
+        if: ${{ !cancelled() }}
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - id: claude-startup
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash scripts/testing/test-fakekey-claude-startup.sh
+      # HIMMEL-4411: a full scripted turn (text, Bash tool_use, tool_result) against
+      # scripts/testing/mock-anthropic. The suite also asserts the installed CLI
+      # equals CLAUDE_CLI_VERSION, so a version drift fails loudly here.
+      - id: claude-startup__mock-turn
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash scripts/testing/test-claude-mock-turn.sh
+      # HIMMEL-4412: two "a hook that fails open" smokes on the same mock. MOCK-BACKED:
+      # they prove Claude Code enforces the consult sandbox and that the project hook
+      # chain fires clean in a real session; neither is evidence of real-model behaviour.
+      # The consult sandbox needs bubblewrap and socat on the runner.
+      - id: claude-startup__apt-image
+        name: Record runner image (apt cache key)
+        if: ${{ !cancelled() }}
+        run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+      - id: claude-startup__apt-cache
+        name: Cache apt debs (consult)
+        if: ${{ !cancelled() }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-consult-${{ hashFiles('.github/scripts/apt-install.sh') }}
+      - id: claude-startup__apt
+        name: Install the consult sandbox prerequisites
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash .github/scripts/apt-install.sh bubblewrap socat
+      - id: claude-startup__consult
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash scripts/testing/test-mock-consult-sandbox.sh
+      - id: claude-startup__hook-smoke
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash scripts/testing/test-mock-hook-smoke.sh
+      - id: claude-startup__live-turn
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash scripts/testing/test-mock-hook-live-turn.sh
+      # doc-invariants goes LAST: it touches .himmel-dev and its staging step
+      # leaves HEAD on an unborn orphan branch.
+      - id: doc-invariants__dev
+        name: Enable the himmel-dev gates in this checkout
+        if: ${{ !cancelled() }}
+        run: touch .himmel-dev
+      # HIMMEL-5423 — doc-guard (a command/skill ADDED without its catalog
+      # entry) ran only in pre-commit and pre-push, so a --no-verify commit
+      # skipped it. Runs the same `check-doc-guard.sh --pre-push` over the PR
+      # range. MUST stay ABOVE the destructive orphan checkout below: the
+      # wrapper needs the real merge ref and its history.
+      - id: doc-invariants__guard
+        name: doc-guard — added commands/skills update their catalog
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        timeout-minutes: 10
+        run: bash scripts/ci/check-hooks-on-pr-range.sh -- scripts/hooks/check-doc-guard.sh --pre-push
+      # Guard the guard: proves the three gates below catch a stale AGENTS.md,
+      # an orphaned debrand rule, and a re-introduced lane-inventory token —
+      # and that they do NOT without the staging step.
+      #
+      # MUST run BEFORE the staging step. It clones this checkout, and the
+      # staging step leaves HEAD on an unborn branch — cloning a repo whose HEAD
+      # is unborn yields "you appear to have cloned an empty repository" and an
+      # EMPTY worktree, so the test would validate nothing and die on setup.
+      - id: doc-invariants__self
+        name: The doc-invariants job itself is not a no-op
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bash scripts/hooks/test-ci-doc-invariants.sh
+      # HIMMEL-2037 — the pre-commit `skill-description-cap` hook only sees
+      # STAGED files, so it cannot catch an over-cap description that arrived
+      # via a bypassed hook. This step re-runs the same lint over the whole
+      # tracked set. It takes paths directly, so it needs no staging step and
+      # must stay ABOVE the destructive orphan checkout below.
+      # -z / xargs -0, not $(…): a tracked path containing whitespace would be
+      # word-split by command substitution and the lint would read nonexistent
+      # fragments instead of the real file.
+      - id: doc-invariants__desc-cap
+        name: Skill/command descriptions stay within the 120-char cap
+        if: ${{ !cancelled() }}
+        run: git ls-files -z '.claude/commands/*.md' '.claude/skills/*/SKILL.md' '.agents/skills/*/SKILL.md' 'marketplace/plugins/*/commands/*.md' 'marketplace/plugins/*/skills/*/SKILL.md' | xargs -0 node scripts/lanes/skill-cost.mjs --max-desc 120
+      # HIMMEL-2051 — same rationale as the description-cap step above: the
+      # pre-commit `command-positional-args` hook only sees staged files, so
+      # this re-runs the same lint over the whole tracked set.
+      # claude-hud is excluded: it is pinned byte-for-byte (HIMMEL-718) and
+      # gated by its own drift guard below, not this lint.
+      - id: doc-invariants__positional
+        name: Commands have no bare $<digit> in their fenced code
+        if: ${{ !cancelled() }}
+        run: git ls-files -z '.claude/commands/*.md' 'marketplace/plugins/*/commands/*.md' -- ':!marketplace/plugins/claude-hud' | xargs -0 node scripts/lanes/skill-cost.mjs --check-positional-args
+      # HIMMEL-2064 — docs/commands-catalog.md's Description column is
+      # generated from `.claude/commands/*.md` frontmatter; this refuses a
+      # divergent hand-edit. Reads the tracked files directly, so it needs no
+      # staging step and must stay ABOVE the destructive orphan checkout below.
+      - id: doc-invariants__catalog
+        name: commands-catalog.md Description column matches command frontmatter
+        if: ${{ !cancelled() }}
+        run: node scripts/lib/gen-commands-catalog.mjs check
+      # HIMMEL-2176 Task 5 — .env.example's generated secrets block is
+      # rendered from scripts/himmelctl/lib/secrets-manifest.json; this
+      # refuses a divergent hand-edit of either file. Reads the tracked files
+      # directly (non-staged check), so it needs no staging step and must
+      # stay ABOVE the destructive orphan checkout below, same as the
+      # commands-catalog check just above it.
+      - id: doc-invariants__secrets-doc
+        name: .env.example's generated secrets block matches secrets-manifest.json
+        if: ${{ !cancelled() }}
+        run: node scripts/lib/gen-secrets-doc.mjs check
+      # HIMMEL-2832/2848 — the v1 adopter docs' executable invariants
+      # (budget/forbidden-classes/link-resolution, qualified "profile" +
+      # live path/env references) were run by hand only; this wires them into
+      # CI. Both checkers read the tracked files directly (no git-diff/staged
+      # dependence), so they need no staging step and must stay ABOVE the
+      # destructive orphan checkout below, same as the checks just above.
+      - id: doc-invariants__llms
+        name: v1 adopter docs pass the llms.txt link/budget invariants
+        if: ${{ !cancelled() }}
+        run: |
+          bash scripts/docs/check-llms-links.sh llms.txt
+          bash scripts/docs/check-llms-links.sh docs/setup/install.md
+          bash scripts/docs/check-llms-links.sh docs/setup/migrating.md
+      - id: doc-invariants__terms
+        name: v1 adopter docs pass the qualified-"profile" + live-reference invariants
+        if: ${{ !cancelled() }}
+        run: bash scripts/docs/check-doc-terms.sh llms.txt docs/setup/install.md docs/setup/migrating.md
+      # HIMMEL-2978 — mirrors the pre-commit marketplace-source-hermetic hook
+      # so a PR editing the template is gated even when pre-commit was
+      # skipped. Reads the tracked template directly (no git-diff/staged
+      # dependence), so it needs no staging step and must stay ABOVE the
+      # destructive orphan checkout below, same as the checks just above.
+      - id: doc-invariants__hermetic
+        name: settings-template marketplace sources stay hermetic
+        if: ${{ !cancelled() }}
+        run: bash scripts/check-marketplace-source-hermetic.sh
+      # LOAD-BEARING — do not remove (HIMMEL-1305). These gates are pre-commit
+      # hooks: each triggers off `git diff --cached` and exits 0 when its inputs
+      # are not staged. A CI checkout's index is identical to HEAD, so without
+      # this step every gate below no-ops and the job goes green having checked
+      # nothing.
+      #
+      # `checkout --orphan` (NOT `read-tree --empty && add -A`) — the difference
+      # is not cosmetic. Re-adding against an unborn HEAD stages the whole tree;
+      # re-adding against the REAL HEAD reconstructs an index identical to it, so
+      # `git diff --cached` is empty again and nothing fires. That variant appears
+      # to work on Windows only because CRLF normalization leaves incidental
+      # differences — on this ubuntu runner it stages exactly nothing.
+      #
+      # This is destructive to the checkout's HEAD, so it goes LAST before the
+      # gates and nothing after it may rely on HEAD being a real branch.
+      - id: doc-invariants__stage
+        name: Stage the committed tree so the gates actually fire
+        if: ${{ !cancelled() }}
+        run: git checkout -q --orphan ci-doc-invariants && git add -A
+      - id: doc-invariants__agents-md
+        name: AGENTS.md is regenerated from CLAUDE.md
+        if: ${{ !cancelled() }}
+        run: bash scripts/hooks/check-agents-md-fresh.sh
+      - id: doc-invariants__debrand
+        name: Every debrand rule still matches CLAUDE.md
+        if: ${{ !cancelled() }}
+        run: bash scripts/hooks/check-debrand-coverage.sh
+      - id: doc-invariants__lanes
+        name: Lane inventory stays out of CLAUDE.md prose
+        if: ${{ !cancelled() }}
+        run: bash scripts/hooks/check-lanes-inventory.sh
+      # Reached only when the job was not cancelled or timed out; every group
+      # output requires it, so a job that stopped early passes no group.
+      - id: finished
+        if: ${{ !cancelled() }}
+        run: echo "ci-quick ran every group"
 
   secret-scan:
+    # Runs as the secret-scan step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.secret-scan != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 8s over 10 green PR runs; 2x, floor 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - run: bash scripts/ci/check-no-secrets.sh
+      - run: exit 1
 
   # HIMMEL-3653: HIMMEL-3624 fixed a bracket-expression bug in
   # scripts/lib/unchecked-mktemp.sh that only failed under a real BWK
@@ -199,13 +828,14 @@ jobs:
   # regression here previously reached main unnoticed. This job builds a pinned one-true-awk commit from source
   # (never a branch) and runs the gate's own suite under it, gating every PR.
   bwk-awk-mktemp-gate:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_bwk_gate == 'false') }}
+    # Runs as the bwk-awk-mktemp-gate step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.bwk-awk-mktemp-gate != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 18s; floor 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - run: bash scripts/ci/run-unchecked-mktemp-under-bwk.sh
+      - run: exit 1
 
   # HIMMEL-4301: the unchecked-mktemp gate (scripts/hooks/check-unchecked-mktemp.sh)
   # was pre-commit only (stages: [pre-commit]), so a commit made with the hook
@@ -215,16 +845,14 @@ jobs:
   # refs/pull/N/merge has the CURRENT base tip as HEAD^1, so lines main gained
   # since the PR forked are never the PR's. fetch-depth: 0 → HEAD^1 reachable.
   unchecked-mktemp-range:
-    if: github.event_name == 'pull_request'
+    # Runs as the unchecked-mktemp-range step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.unchecked-mktemp-range != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 37s; floor 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: No unchecked mktemp capture added anywhere in the PR range
-        run: bash scripts/hooks/check-unchecked-mktemp.sh --range --merge-ref "${{ github.event.pull_request.base.sha }}"
+      - run: exit 1
 
   # HIMMEL-6037: a suite that reads the real $HOME/.env (the PR 2883 shape) was
   # caught only by a judge. This job reruns the impacted suites with HOME and
@@ -234,16 +862,21 @@ jobs:
   # allowlist (check-host-file-read-sinks.sh, the PR 2878 class). Always runs,
   # no plan group. No secrets; the checkout does not persist the token.
   home-canary:
+    # HIMMEL-5556: on a pull_request the plan sizes the legs off the duration
+    # ledger; an empty selection still runs one leg for the host-file sink
+    # check. A push (no plan) or a plan with no output runs all 8.
+    needs: plan
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 50 # estimate: a PR touching ci.yml impacts ~190 suites (~45m serial), so 8 shards ~6-12m each, but loaded hosted runners took 25m+ and hit a 1500s bound twice; canary bound 2700s plus the log print; confirm p95 after first runs
     strategy:
       # Every shard reports its own leak; one red must not hide another.
       fail-fast: false
       matrix:
-        # The 8 ids here and the /8 in the run step are one number.
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        # The 8 fallbacks here and in the run step's /N are one number.
+        shard: ${{ fromJSON(needs.plan.outputs.canary_shards == '[]' && '[1]' || needs.plan.outputs.canary_shards || '[1,2,3,4,5,6,7,8]') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -280,7 +913,7 @@ jobs:
           else
             range="origin/$DEFAULT_BRANCH..HEAD"
           fi
-          bash scripts/ci/home-canary.sh --impacted "$range" --shard "${{ matrix.shard }}/8"
+          bash scripts/ci/home-canary.sh --impacted "$range" --shard "${{ matrix.shard }}/${{ needs.plan.outputs.canary_total || 8 }}"
 
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
@@ -292,7 +925,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25 # p95 672s (11m); 2x
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # This is a pull_request workflow, so it checks out and executes
           # contributor code. The default persists the GITHUB_TOKEN into
@@ -310,7 +943,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 207s; 2x = 7m, floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: bash scripts/guardrails/check-git-env-scrub.sh --tree
@@ -320,44 +953,14 @@ jobs:
   # commit-msg gate (scripts/hooks/check-commit-msg.sh) over the range so CI and
   # the author-time hook agree. fetch-depth: 0 → full history for the range walk.
   commit-lint:
+    # Runs as the commit-lint step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.commit-lint != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 19s; floor 10
-    env:
-      TICKET_ID_REQUIRED: '1'
-      JIRA_PROJECT_KEY: HIMMEL
-      TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Lint commit messages in the PR range
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            bash scripts/ci/check-commit-range.sh --merge-ref "${{ github.event.pull_request.base.sha }}"
-          else
-            bash scripts/ci/check-commit-range.sh
-          fi
-      # HIMMEL-5423: the attestation trailers are checked only at pre-push and in
-      # ready-check, both skipped by a --no-verify commit. These re-run the SAME
-      # pre-push gates over the PR range; the wrapper builds a branch-shaped
-      # scratch clone (the hooks no-op on a detached merge ref) and keeps only
-      # the PR's FIRST commit message, the rule CLAUDE.md states. No new job:
-      # this one already has the full history and the Free-plan runner cap
-      # (HIMMEL-3815) is saturated.
-      - name: First commit carries Platforms tested on shell/script diffs
-        if: github.event_name == 'pull_request'
-        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-platforms-tested.sh
-      - name: First commit carries Security reviewed on non-docs code
-        if: github.event_name == 'pull_request'
-        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-security-reviewed.sh
-      # HIMMEL-3616: the PR-title lint (the squash merge makes the title
-      # main's commit subject) lives in its own workflow,
-      # .github/workflows/pr-title-lint.yml — not here. commit-lint's
-      # `pull_request:` trigger has no `edited` type, so a step here would
-      # never re-run when a title is fixed via `gh pr edit --title`
-      # (judge J1284O F2); it also never threaded the PR author into
-      # TICKET_ID_AUTHOR, so the dependabot[bot] exemption never applied to
-      # a title (judge J1284O F1).
+      - run: exit 1
 
   # Plugin-version-bump governance (HIMMEL-3551): mirrors the local
   # plugin-version-bump-required pre-commit hook (--bump-required), which only
@@ -373,7 +976,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 9s; floor 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -400,11 +1003,11 @@ jobs:
     timeout-minutes: 25 # p95 736s (12m); 2x
     steps:
       # fetch-depth: 0 so the PR base sha is reachable for the shellcheck range.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # HIMMEL-4332: flag-registry-lint ran on the runner's unpinned default node.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       # HIMMEL-4265: run the SAME pre-commit shellcheck hook the local gate runs
@@ -513,7 +1116,7 @@ jobs:
       # tree. Fail closed: a diff that cannot be computed, or a change to a gate,
       # its config or this workflow, runs everything; OXLINT_FAIL_CLOSED=1 turns the
       # gates' own missing-runner fail-open into a red job.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - name: skill size + oxlint complexity/hardening
@@ -596,9 +1199,9 @@ jobs:
             dir: marketplace/plugins/himmel-bus
             node: '24'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node || '22' }}
           cache: 'npm'
@@ -614,20 +1217,14 @@ jobs:
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
   # green. Offline and secret-free (dummy JIRA_* values, a local mock server).
   jira-cli-smoke:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
+    # Runs as the jira-cli-smoke step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.jira-cli-smoke != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 26s; floor 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: scripts/jira/package-lock.json
-      - run: npm ci
-        working-directory: scripts/jira
-      - run: bash scripts/ci/jira-cli-smoke.sh
+      - run: exit 1
 
   # HIMMEL-4410 (epic HIMMEL-4409): the credential-free Claude startup suite. A
   # REAL `claude` CLI starts under a fake key inside a loopback-only network
@@ -641,55 +1238,14 @@ jobs:
   # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
   # have no claude CLI; this job is where it runs.
   claude-startup:
-    # Ungated (trust judge j2543g): the hook chain it starts executes scripts
-    # outside any gate group, so it runs on every PR like main.
+    # Runs as the claude-startup step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.claude-startup != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 86s; floor 10
-    env:
-      CLAUDE_CLI_VERSION: '2.1.296'
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-      # HIMMEL-4412: the project's SessionStart/Subagent hooks run `bun`; a runner
-      # without it makes them exit 127 and the hook smoke correctly reports a failing hook.
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-      # The mock sandbox runs claude under a scrubbed PATH (claude, node, /usr/local/bin,
-      # /usr/bin, /bin), so setup-bun's ~/.bun/bin must be linked into one of those.
-      - name: Put bun on the scrubbed PATH
-        run: sudo ln -sf "$(command -v bun)" /usr/local/bin/bun
-      - name: Install the pinned claude CLI
-        run: |
-          npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
-          claude --version
-      # ubuntu-24.04 refuses unprivileged user namespaces by default (AppArmor);
-      # the suite needs `unshare -rn` and fails closed without it.
-      - name: Allow unprivileged user namespaces
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      - run: bash scripts/testing/test-fakekey-claude-startup.sh
-      # HIMMEL-4411: a full scripted turn (text, Bash tool_use, tool_result) against
-      # scripts/testing/mock-anthropic. The suite also asserts the installed CLI
-      # equals CLAUDE_CLI_VERSION, so a version drift fails loudly here.
-      - run: bash scripts/testing/test-claude-mock-turn.sh
-      # HIMMEL-4412: two "a hook that fails open" smokes on the same mock. MOCK-BACKED:
-      # they prove Claude Code enforces the consult sandbox and that the project hook
-      # chain fires clean in a real session; neither is evidence of real-model behaviour.
-      # The consult sandbox needs bubblewrap and socat on the runner.
-      - name: Record runner image (apt cache key)
-        run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
-      - name: Cache apt debs (consult)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/apt-archives
-          key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-consult-${{ hashFiles('.github/scripts/apt-install.sh') }}
-      - name: Install the consult sandbox prerequisites
-        run: bash .github/scripts/apt-install.sh bubblewrap socat
-      - run: bash scripts/testing/test-mock-consult-sandbox.sh
-      - run: bash scripts/testing/test-mock-hook-smoke.sh
-      - run: bash scripts/testing/test-mock-hook-live-turn.sh
+      - run: exit 1
 
   lanes-and-trust-suites:
     # Ungated (trust judge j2543e): its suites glob-read files no gate group can
@@ -700,7 +1256,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # p95 423s (7m); 2x
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # HIMMEL-1560: the trust suite's skew regression reads the REAL
           # historical recorder out of git (`git show c49716d5:…`) rather than a
@@ -712,7 +1268,7 @@ jobs:
           # fix; degrading the test to a stub in CI would delete exactly the
           # evidence it exists to provide.
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       # HIMMEL-2587: the bench-run-batch dispatch-luna tests shell out to
@@ -722,7 +1278,7 @@ jobs:
       # before reaching their assertions and the job stays red. Installing bun
       # keeps the retry-cap / resume / mid-batch-abort contract under a runner
       # check; SKIP-guarding them instead would exit 0 with nothing exercised.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - run: node --test "scripts/lanes/tests/**/*.test.mjs"
@@ -753,27 +1309,14 @@ jobs:
       - run: bash scripts/hooks/check-hook-lib-suites.sh
 
   guardrail-matrices:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_guardrail_matrices == 'false') }}
-    # HIMMEL-1522: the egress matrix decides whether a corpus may leave the
-    # machine and the voice policy decides what a spoken request may do. Both
-    # were standalone scripts that only ran when someone remembered to type
-    # them. Also wired into pre-commit, which is the layer that matters most
-    # here — Actions is OFF on the private repo, so a green private PR is not
-    # evidence either suite ran.
+    # Runs as the guardrail-matrices step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.guardrail-matrices != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 15s; floor 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          # This is a pull_request workflow, so it checks out and executes
-          # contributor code. The default persists the GITHUB_TOKEN into
-          # .git/config, where that code can read it.
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-      - run: bash scripts/hooks/check-guardrail-matrices.sh
+      - run: exit 1
 
   # Single-entry os matrix, not a bare job (HIMMEL-1109): the matrix is what
   # names the required check-run context `bun-suites (ubuntu-latest)`. This
@@ -805,10 +1348,10 @@ jobs:
     steps:
       # HIMMEL-4350: this job holds issues:write; the issue steps use gh with
       # GH_TOKEN env and never git, so the persisted checkout token is not needed.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
@@ -881,111 +1424,14 @@ jobs:
   # harness. CI is a contributor context, so create the marker first, otherwise
   # every step below silently passes without checking anything.
   doc-invariants:
+    # Runs as the doc-invariants step group of ci-quick; this job only carries the
+    # required context: skipped (green) when the group passed, red otherwise.
+    needs: ci-quick
+    if: ${{ always() && needs.ci-quick.outputs.doc-invariants != 'pass' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # p95 38s; floor 10
+    timeout-minutes: 5
     steps:
-      # fetch-depth: 0 (HIMMEL-5423): the doc-guard step below walks the PR
-      # range, which needs the merge ref's parents, not a one-commit clone.
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-      - name: Enable the himmel-dev gates in this checkout
-        run: touch .himmel-dev
-      # HIMMEL-5423 — doc-guard (a command/skill ADDED without its catalog
-      # entry) ran only in pre-commit and pre-push, so a --no-verify commit
-      # skipped it. Runs the same `check-doc-guard.sh --pre-push` over the PR
-      # range. MUST stay ABOVE the destructive orphan checkout below: the
-      # wrapper needs the real merge ref and its history.
-      - name: doc-guard — added commands/skills update their catalog
-        if: github.event_name == 'pull_request'
-        run: bash scripts/ci/check-hooks-on-pr-range.sh -- scripts/hooks/check-doc-guard.sh --pre-push
-      # Guard the guard: proves the three gates below catch a stale AGENTS.md,
-      # an orphaned debrand rule, and a re-introduced lane-inventory token —
-      # and that they do NOT without the staging step.
-      #
-      # MUST run BEFORE the staging step. It clones this checkout, and the
-      # staging step leaves HEAD on an unborn branch — cloning a repo whose HEAD
-      # is unborn yields "you appear to have cloned an empty repository" and an
-      # EMPTY worktree, so the test would validate nothing and die on setup.
-      - name: The doc-invariants job itself is not a no-op
-        run: bash scripts/hooks/test-ci-doc-invariants.sh
-      # HIMMEL-2037 — the pre-commit `skill-description-cap` hook only sees
-      # STAGED files, so it cannot catch an over-cap description that arrived
-      # via a bypassed hook. This step re-runs the same lint over the whole
-      # tracked set. It takes paths directly, so it needs no staging step and
-      # must stay ABOVE the destructive orphan checkout below.
-      # -z / xargs -0, not $(…): a tracked path containing whitespace would be
-      # word-split by command substitution and the lint would read nonexistent
-      # fragments instead of the real file.
-      - name: Skill/command descriptions stay within the 120-char cap
-        run: git ls-files -z '.claude/commands/*.md' '.claude/skills/*/SKILL.md' '.agents/skills/*/SKILL.md' 'marketplace/plugins/*/commands/*.md' 'marketplace/plugins/*/skills/*/SKILL.md' | xargs -0 node scripts/lanes/skill-cost.mjs --max-desc 120
-      # HIMMEL-2051 — same rationale as the description-cap step above: the
-      # pre-commit `command-positional-args` hook only sees staged files, so
-      # this re-runs the same lint over the whole tracked set.
-      # claude-hud is excluded: it is pinned byte-for-byte (HIMMEL-718) and
-      # gated by its own drift guard below, not this lint.
-      - name: Commands have no bare $<digit> in their fenced code
-        run: git ls-files -z '.claude/commands/*.md' 'marketplace/plugins/*/commands/*.md' -- ':!marketplace/plugins/claude-hud' | xargs -0 node scripts/lanes/skill-cost.mjs --check-positional-args
-      # HIMMEL-2064 — docs/commands-catalog.md's Description column is
-      # generated from `.claude/commands/*.md` frontmatter; this refuses a
-      # divergent hand-edit. Reads the tracked files directly, so it needs no
-      # staging step and must stay ABOVE the destructive orphan checkout below.
-      - name: commands-catalog.md Description column matches command frontmatter
-        run: node scripts/lib/gen-commands-catalog.mjs check
-      # HIMMEL-2176 Task 5 — .env.example's generated secrets block is
-      # rendered from scripts/himmelctl/lib/secrets-manifest.json; this
-      # refuses a divergent hand-edit of either file. Reads the tracked files
-      # directly (non-staged check), so it needs no staging step and must
-      # stay ABOVE the destructive orphan checkout below, same as the
-      # commands-catalog check just above it.
-      - name: .env.example's generated secrets block matches secrets-manifest.json
-        run: node scripts/lib/gen-secrets-doc.mjs check
-      # HIMMEL-2832/2848 — the v1 adopter docs' executable invariants
-      # (budget/forbidden-classes/link-resolution, qualified "profile" +
-      # live path/env references) were run by hand only; this wires them into
-      # CI. Both checkers read the tracked files directly (no git-diff/staged
-      # dependence), so they need no staging step and must stay ABOVE the
-      # destructive orphan checkout below, same as the checks just above.
-      - name: v1 adopter docs pass the llms.txt link/budget invariants
-        run: |
-          bash scripts/docs/check-llms-links.sh llms.txt
-          bash scripts/docs/check-llms-links.sh docs/setup/install.md
-          bash scripts/docs/check-llms-links.sh docs/setup/migrating.md
-      - name: v1 adopter docs pass the qualified-"profile" + live-reference invariants
-        run: bash scripts/docs/check-doc-terms.sh llms.txt docs/setup/install.md docs/setup/migrating.md
-      # HIMMEL-2978 — mirrors the pre-commit marketplace-source-hermetic hook
-      # so a PR editing the template is gated even when pre-commit was
-      # skipped. Reads the tracked template directly (no git-diff/staged
-      # dependence), so it needs no staging step and must stay ABOVE the
-      # destructive orphan checkout below, same as the checks just above.
-      - name: settings-template marketplace sources stay hermetic
-        run: bash scripts/check-marketplace-source-hermetic.sh
-      # LOAD-BEARING — do not remove (HIMMEL-1305). These gates are pre-commit
-      # hooks: each triggers off `git diff --cached` and exits 0 when its inputs
-      # are not staged. A CI checkout's index is identical to HEAD, so without
-      # this step every gate below no-ops and the job goes green having checked
-      # nothing.
-      #
-      # `checkout --orphan` (NOT `read-tree --empty && add -A`) — the difference
-      # is not cosmetic. Re-adding against an unborn HEAD stages the whole tree;
-      # re-adding against the REAL HEAD reconstructs an index identical to it, so
-      # `git diff --cached` is empty again and nothing fires. That variant appears
-      # to work on Windows only because CRLF normalization leaves incidental
-      # differences — on this ubuntu runner it stages exactly nothing.
-      #
-      # This is destructive to the checkout's HEAD, so it goes LAST before the
-      # gates and nothing after it may rely on HEAD being a real branch.
-      - name: Stage the committed tree so the gates actually fire
-        run: git checkout -q --orphan ci-doc-invariants && git add -A
-      - name: AGENTS.md is regenerated from CLAUDE.md
-        run: bash scripts/hooks/check-agents-md-fresh.sh
-      - name: Every debrand rule still matches CLAUDE.md
-        run: bash scripts/hooks/check-debrand-coverage.sh
-      - name: Lane inventory stays out of CLAUDE.md prose
-        run: bash scripts/hooks/check-lanes-inventory.sh
+      - run: exit 1
 
   # Security / dependency scanning lane (HIMMEL-510): mirrors the local
   # pre-commit/pre-push security gates (.pre-commit-config.yaml) by invoking the
@@ -1005,15 +1451,15 @@ jobs:
     # burn a full 6h runner slot (codex-3 CR hardening).
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1110,12 +1556,14 @@ jobs:
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         os: [ubuntu-latest]
-        # shard: [1..8] fans run-shell-tests.sh across 8 runners (HIMMEL-2872).
-        # The `8` ids here, the `/8` in the run step below and the `8` in the
-        # plan job's plan-shards.sh call are spellings of the same number — GitHub Actions has no way to derive one from the
-        # other (strategy.job-total counts os×shard, not shard alone), so a
-        # change to the shard count must edit all three or the split silently stops
-        # being a partition. Went from 6 to 8 because 6 measured an 18m23s
+        # shard: [1..N] fans run-shell-tests.sh across N runners (HIMMEL-2872).
+        # On a pull_request the plan sizes N (at most 8); without a plan N is 8.
+        # The `8` fallbacks here, in the run step's `/N`, in the aggregator's
+        # SHARD_TOTAL and the `8` in the plan job's plan-shards.sh call are
+        # spellings of the same number — GitHub Actions has no way to derive one
+        # from the other (strategy.job-total counts os×shard, not shard alone), so
+        # a change to the shard count must edit all of them or the split stops
+        # being a partition (the aggregator's manifest check then goes red). Went from 6 to 8 because 6 measured an 18m23s
         # slowest shard (3m18s fastest) — round-robin, not the count, dumped
         # the corpus's two heaviest suites onto one shard (719s of its 1065s);
         # replaying measured durations predicts 9.9m at 8 but 10.7m at 12, so
@@ -1152,7 +1600,7 @@ jobs:
       # fetch-depth: 0 (not the default shallow clone) so --changed-since below
       # can resolve a pull_request's base SHA, which a depth-1 checkout of the
       # head ref does not carry.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # arm-resume's non-dry-run cases exercise the real `at` scheduler backend,
@@ -1197,7 +1645,8 @@ jobs:
           trap 'echo "at/atd install: duration_seconds=$((SECONDS - started))"' EXIT
           sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/microsoft-* /etc/apt/sources.list.d/azure-cli*
           bash .github/scripts/apt-install.sh at bubblewrap socat
-          sudo systemctl enable --now atd || sudo service atd start || true
+          sudo systemctl enable --now atd || sudo service atd start || echo "atd start failed; checking is-active"  # t13b-ok: stock at daemon on a throwaway CI runner, not a himmel service
+          systemctl is-active --quiet atd || { echo "::error::atd is not active after install; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
       # HIMMEL-4912: ubuntu-24.04 refuses unprivileged user namespaces by default
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
@@ -1211,7 +1660,7 @@ jobs:
       # under a runner check; a self-skip would exit 0 with nothing exercised.
       # The himmel-vm guest must not restore a cache entry a
       # hosted run wrote (it restores, then the bun executable is missing).
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
           no-cache: ${{ runner.environment != 'github-hosted' }}
@@ -1303,10 +1752,11 @@ jobs:
       # contexts either way; a docs-only PR's shards exit 0 with nothing to run.
       # SUITE_MANIFEST: the selection this shard acted on and every suite's fate,
       # uploaded below and verified by the shell-unit aggregator.
-      - run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/8 .
+      - run: bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/${{ needs.plan.outputs.shard_total || 8 }} .
         env:
           FAIL_LOG_DIR: failed-suite-logs
           SUITE_TIER_MODE: ${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}
+          SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
           # HIMMEL-4912: the shards (60 min) always run the fast guard-corpus
           # subset; the full replay runs in the schedule-only guard-corpus-full job.
           GUARD_CORPUS_TIER: fast
@@ -1315,7 +1765,7 @@ jobs:
           SUITE_MANIFEST: shard-manifest/manifest-shard${{ matrix.shard }}.txt
       - name: Upload shard manifest
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shell-unit-manifest-${{ matrix.os }}-shard${{ matrix.shard }}
           path: shard-manifest/
@@ -1326,7 +1776,7 @@ jobs:
           overwrite: true
       - name: Upload failed-suite logs
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shell-unit-failed-logs-${{ matrix.os }}-shard${{ matrix.shard }}
           path: failed-suite-logs/
@@ -1390,7 +1840,7 @@ jobs:
     steps:
       # Full history: impacted-selection.sh diffs base...HEAD and checks the
       # base is on origin/main, exactly as the shards did.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Every gating shell-unit shard must have passed
@@ -1417,7 +1867,7 @@ jobs:
         # failed download is not forgiven: every shard not named in --absent-ok
         # below must still have its manifest, so the verify step goes red.
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: shell-unit-manifest-ubuntu-latest-shard*
           path: shard-manifest/
@@ -1441,11 +1891,13 @@ jobs:
           # HIMMEL-5649: shards the plan left out because they had no suite. Empty
           # off a pull_request (every shard runs), where the plan job is skipped.
           ABSENT_SHARDS: ${{ needs.plan.result == 'success' && needs.plan.outputs.absent_shards || '' }}
+          # HIMMEL-5556: the N the shards ran as, the same expression as their run step.
+          SHARD_TOTAL: ${{ needs.plan.outputs.shard_total || 8 }}
         run: |
           bash scripts/ci/impacted-selection.sh "$IMPACTED_BASE" HEAD > shard-selection.txt
           head -n 2 shard-selection.txt
           bash scripts/ci/run-shell-tests.sh --list . > shard-discovered.txt
-          bash scripts/ci/shard-manifest-verify.sh --dir shard-manifest --shards 8 --selection shard-selection.txt --discovered shard-discovered.txt --absent-ok "$ABSENT_SHARDS"
+          bash scripts/ci/shard-manifest-verify.sh --dir shard-manifest --shards "$SHARD_TOTAL" --selection shard-selection.txt --discovered shard-discovered.txt --absent-ok "$ABSENT_SHARDS"
       # HIMMEL-3897 / HIMMEL-3896: the post-merge full sweep is where a
       # selector miss shows up — a suite red on main that the merged PR's
       # impacted selection did not list. Recorded, never blocking: the red
@@ -1483,7 +1935,7 @@ jobs:
           cat selector-miss.txt
       - name: Upload selector-miss ledger
         if: failure() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.range.outputs.range != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: selector-miss-ledger
           path: |
@@ -1520,7 +1972,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Record runner image (apt cache key)
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (guard-corpus)

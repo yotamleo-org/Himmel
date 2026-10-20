@@ -7,7 +7,8 @@
 # Prints ONE line: `GITLEAKS ok` (exit 0) or `GITLEAKS FINDING <rule>[,<rule>]`
 # (exit 1; the rule ids only, never the matched text). Exit 2 = usage / file
 # missing / gitleaks absent or unusable (the line says why). Config: --config,
-# else the vault's .gitleaks.toml (vault-status.sh --path), else gitleaks' defaults.
+# else the vault's .gitleaks.toml (vault-status.sh --path), else the vault
+# template's (templates/luna-second-brain/.gitleaks.toml), else gitleaks' defaults.
 # On a FINDING reword the prose (break the key=value shape) and re-run.
 # bash 3.2-safe; no .ps1 twin (the console kit is Linux-only).
 set -u
@@ -21,6 +22,8 @@ if [ -z "$cfg" ]; then
     vault="$(bash "$HERE/vault-status.sh" --path 2>/dev/null)"
     [ -n "$vault" ] && [ -f "$vault/.gitleaks.toml" ] && cfg="$vault/.gitleaks.toml"
 fi
+template="$HERE/../../../templates/luna-second-brain/.gitleaks.toml"
+[ -z "$cfg" ] && [ -f "$template" ] && cfg="$template"
 report="$(mktemp "${TMPDIR:-/tmp}/bucket-gitleaks.XXXXXX")" || { printf 'GITLEAKS error: mktemp failed\n'; exit 2; }
 trap 'rm -f "$report"' EXIT
 gitleaks detect --no-git --no-banner --redact -f json -r "$report" ${cfg:+--config "$cfg"} --source "$file" >/dev/null 2>&1

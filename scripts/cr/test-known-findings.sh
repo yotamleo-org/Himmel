@@ -324,6 +324,18 @@ for rid in ps1-twin-parity ps1-bom-policy scheduler-task-xml-encoding worker-wor
 done
 check "retired: gnu-only-utility canonical text has no Git Bash" "$(node -e 'console.log(/Git Bash/.test(require(process.argv[1]).classes.find(x=>x.id==="gnu-only-utility").canonical))' "$HERE/known-findings.json")" "false"
 
+# A dotted jq field before // must still attribute the ledger finding.
+cp "$HERE/known-findings.json" "$tmp/kf-jq.json"
+vf "$(rd 2)" b1 a000061 jq1 scripts/foo.sh fixed 'jq .flag // empty swallows false' > "$tmp/jq-ledger.jsonl"
+vf "$(rd 2)" b1 a000062 jq2 scripts/foo.sh fixed 'jq .flag parsing fails' >> "$tmp/jq-ledger.jsonl"
+vf "$(rd 2)" b1 a000063 jq3 docs/foo.md fixed 'jq .flag // empty swallows false' >> "$tmp/jq-ledger.jsonl"
+KNOWN_FINDINGS_FILE="$tmp/kf-jq.json" CR_LEDGER="$tmp/jq-ledger.jsonl" bash "$SCRIPT" --refresh >/dev/null 2>&1
+check "refresh: jq dotted-field finding attributed, unrelated text and file excluded" "$(node -e 'const e=require(process.argv[1]).classes.find(c=>c.id==="jq-alternative-swallows-false").evidence.ledger;console.log(e.findings,e.agreed)' "$tmp/kf-jq.json")" "1 1"
+vf "$(rd 2)" b1 a000062 jq2 scripts/foo.sh fixed 'jq .flag parsing fails' > "$tmp/jq-ledger.jsonl"
+vf "$(rd 2)" b1 a000063 jq3 docs/foo.md fixed 'jq .flag // empty swallows false' >> "$tmp/jq-ledger.jsonl"
+KNOWN_FINDINGS_FILE="$tmp/kf-jq.json" CR_LEDGER="$tmp/jq-ledger.jsonl" bash "$SCRIPT" --refresh >/dev/null 2>&1
+check "refresh: jq negative-only ledger attributes no findings" "$(node -e 'const e=require(process.argv[1]).classes.find(c=>c.id==="jq-alternative-swallows-false").evidence.ledger;console.log(e.findings,e.agreed)' "$tmp/kf-jq.json")" "0 0"
+
 # --refresh on a COPY: ledger + learnings evidence rewritten; shipped JSON untouched
 cp "$HERE/known-findings.json" "$tmp/kf.json"
 before_sum="$(cksum < "$HERE/known-findings.json")"
@@ -456,6 +468,8 @@ not_contains "feed: rows from different repositories never form one cluster" "$(
 check "feed: two clusters sharing a phrase get distinct ids" "$(lrun id "$tmp/l-id.csv" | sed -n 's/^PROPOSE-CLASS id=\([^ ]*\) .*/\1/p' | sort -u | wc -l | tr -d ' ')" "2"
 { echo "$LHDR"; lrow 'A very popular quuzmarker rule.' "$LFILE" 120; } > "$tmp/l-hot.csv"
 contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-hot.csv")" "PROMOTE-HINT row=1 uses=120"
+{ echo "$LHDR"; lrow 'Do not use the for any of all.' "$LFILE" 30; } > "$tmp/l-stop.csv"
+not_contains "feed: a 25+ use row of only stop words proposes no empty-phrase class" "$(lrun stop "$tmp/l-stop.csv")" "PROPOSE-CLASS "
 
 for rcf in "$tmp"/rc-*; do check "feed: refresh exits 0 ($(basename "$rcf"))" "$(cat "$rcf")" "0"; done
 
