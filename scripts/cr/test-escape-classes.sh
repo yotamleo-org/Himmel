@@ -27,7 +27,8 @@ contains "names the top class with its count and tickets" "$out" "top escape cla
 contains "tallies the other class" "$out" "class-quoting 1"
 contains "reports the unlabelled ticket as unclassified" "$out" "unclassified: 1 (HIMMEL-6)"
 lacks "never assigns the unlabelled ticket a class" "$out" "class-fail-open (3"
-contains "queries the deferred-escape label with --labels" "$(cat "$td/args")" "labels = deferred-escape"
+contains "queries the deferred-escape label" "$(cat "$td/args")" "labels = deferred-escape"
+contains "requests the labels column" "$(cat "$td/args")" "--labels"
 
 printf 'HIMMEL-2\tBug\tDone\ta\tdeferred-escape\n' >"$td/rows"
 out="$(bash "$tool" 2>&1)"
