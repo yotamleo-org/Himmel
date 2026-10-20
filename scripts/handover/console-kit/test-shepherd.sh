@@ -80,7 +80,8 @@ check "(b) clean path exits 0" 0 "$rc"
 has "(b) block says READY-CANDIDATE" "SHEPHERD 7 $HEADSHA READY-CANDIDATE" "$out"
 has "(b) steering skipped" "steering: skipped" "$out"
 has "(b) suite verdict line" "suite test-a.sh: PASS" "$out"
-check "(b) worktree exists" yes "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
+check "(b) clean run removes its own worktree" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
+check "(b) worktree no longer listed" "" "$(git -C "$WORK/repo" worktree list | grep shepherd-7)"
 
 # (c) failed suite -> needs leg
 setup yes ok 0
@@ -138,11 +139,12 @@ printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
 
 # (j) a reused worktree with local changes is refused, not tested
 setup yes ok 0
-out=$(run); rc=$?
+git -C "$WORK/repo" worktree add --quiet --detach "$WORK/repo/.claude/worktrees/shepherd-7" "$HEADSHA"
 echo stray > "$WORK/repo/.claude/worktrees/shepherd-7/stray.txt"
 out=$(run); rc=$?
 check "(j) dirty reused worktree exits 2" 2 "$rc"
 has "(j) says local changes" "local changes" "$out"
+check "(j) refused tree and its file are kept" yes "$([ -f "$WORK/repo/.claude/worktrees/shepherd-7/stray.txt" ] && echo yes)"
 
 # (k) a non-avail ledger row at the head is not a panel pass
 setup yes none 0
@@ -150,6 +152,22 @@ printf '{"kind":"finding","head":"%s","status":"ok"}\n' "$HEADSHA" > "$SHEPHERD_
 out=$(run); rc=$?
 check "(k) non-avail row exits 1" 1 "$rc"
 has "(k) panel NOT-RUN stated" "panel: NOT-RUN" "$out"
+
+# (l) a run that leaves a modified file keeps the tree and the file
+setup yes ok 0
+printf '#!/bin/sh\necho dirty > dirty.txt\n' > "$WORK/dirtier.sh"
+printf '#!/bin/sh\necho %s\n' "$WORK/dirtier.sh" > "$WORK/impacted-stub"
+out=$(run); rc=$?
+check "(l) dirtying run exits 0" 0 "$rc"
+check "(l) dirty worktree is kept" yes "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
+check "(l) the modified file is still there" yes "$([ -f "$WORK/repo/.claude/worktrees/shepherd-7/dirty.txt" ] && echo yes)"
+printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
+
+# (m) a failing run (exit 1) still removes its clean tree
+setup yes ok 0; echo 1 > "$SHEP_STUBDIR/cov.rc"
+out=$(run); rc=$?
+check "(m) coverage-gap exits 1" 1 "$rc"
+check "(m) clean tree removed on the NEEDS-LEG path" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
 
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
