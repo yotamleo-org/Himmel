@@ -358,7 +358,7 @@ out="$(live --keep-sha "$KEEP" --max-cancels 2)"; rc=$?
 check "pacing: the cancel is in the state file before gh runs (first cancel sees 1 stamp)" "1" "$(awk 'NR == 1 {print $3}' "$STUB_TIME_LOG")"
 check "pacing: the second cancel sees 2 stamps" "2" "$(awk 'NR == 2 {print $3}' "$STUB_TIME_LOG")"
 out="$(CANCEL_RUNS_PACE_STATE="$WORK/no-such-dir/pace" live --keep-sha "$KEEP")"; rc=$?
-check "pacing: a state file that cannot be written refuses, exit 1" "1" "$rc"
+check "pacing: a state file that cannot be written refuses, exit 2" "2" "$rc"
 check "pacing: an unwritable state file cancels nothing" "" "$(cancelled)"
 export STUB_RUNS="$WORK/runs.json"
 

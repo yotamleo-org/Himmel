@@ -36,7 +36,8 @@
 #
 # Exit codes: 0 done; 1 gh failure, unresolvable keep, a failed cancel, a listing
 # that hit the cap, or the cancel cap reached (cancelled what it could; re-run);
-# 2 usage; 3 refused as a leg or relay.
+# 2 usage, a non-integer CANCEL_RUNS_FAKE_CLOCK, or a pacing state file that
+# cannot be written; 3 refused as a leg or relay.
 #
 # Literal `gh` only (no variable command name) so guard-pr-check-literal can
 # verify the bytes. Linux/macOS bash 3.2+ (gh + jq).
@@ -220,7 +221,7 @@ pace_load() {
         done < "$PACE_STATE"
     fi
     for t in $stamps; do echo "$t"; done > "$PACE_STATE" \
-        || { echo "cancel-runs: cannot write $PACE_STATE; nothing cancelled" >&2; exit 1; }
+        || { echo "cancel-runs: cannot write $PACE_STATE; nothing cancelled" >&2; exit 2; }
 }
 # pace_wait: block until one more cancel fits both windows; stamps holds each cancel's time, oldest first.
 pace_wait() {
@@ -254,6 +255,7 @@ cancelled=0
 failed=0
 would=0
 capped=0
+statefail=0
 while IFS="$TAB" read -r class id br sha ev; do
     [ "$class" = C ] || continue
     if [ "$LIVE" = 0 ]; then
@@ -268,7 +270,11 @@ while IFS="$TAB" read -r class id br sha ev; do
     pace_wait
     stamp="$(pace_now)"
     stamps="$stamps $stamp"
-    echo "$stamp" >> "$PACE_STATE" || echo "cancel-runs: cannot write $PACE_STATE; pacing will not carry over to a re-run" >&2
+    if ! echo "$stamp" >> "$PACE_STATE"; then
+        echo "cancel-runs: cannot write $PACE_STATE; stopping before this cancel" >&2
+        statefail=1
+        break
+    fi
     err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
     rc=$?
     printf 'cancel-runs: cancel run=%s branch=%s sha=%s event=%s rc=%s\n' "$id" "$br" "$sha" "$ev" "$rc" >&2
@@ -293,4 +299,5 @@ if [ "$LIVE" = 0 ]; then
 else
     echo "cancelled=$cancelled failed=$failed kept=$kept$prot"
 fi
+[ "$statefail" -eq 0 ] || exit 2
 [ "$failed" -eq 0 ] && [ "$truncated" -eq 0 ] && [ "$capped" -eq 0 ]
