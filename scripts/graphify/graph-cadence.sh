@@ -973,16 +973,16 @@ if [ "$SEMANTIC" -eq 1 ]; then
         --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
     _sem_rc=$?
     printf '%s\n' "$_sem_out"
+    # A file the merge backed off is not retried until it changes: say so once, on its own leg, whatever the
+    # exit (the merge prints it before the steps that can still fail). A clean run with no new back-off
+    # re-arms that leg, so the next back-off alerts again.
+    _sem_backoff=0
+    ! printf '%s\n' "$_sem_out" | grep -q 'BACKED OFF' || _sem_backoff=1
+    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
     case "$_sem_rc" in
         0)
             bash "$CADENCE_ALERT" clear "$_sem_leg"
-            # A file the merge backed off is not retried until it changes: say so once, on its own leg.
-            # A run with no new back-off re-arms that leg, so the next back-off alerts again.
-            if printf '%s\n' "$_sem_out" | grep -q 'BACKED OFF'; then
-                bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
-            else
-                bash "$CADENCE_ALERT" clear "$_sem_leg-backoff"
-            fi
+            [ "$_sem_backoff" -eq 1 ] || bash "$CADENCE_ALERT" clear "$_sem_leg-backoff"
             ;;
         # 3 = bank at/over threshold, 4 = promote lock held. Nothing
         # was touched and the next fire retries, so neither alerts nor fails the
