@@ -8,6 +8,9 @@
 # CONSOLE_WAIT overrides the script under test (the RED control: today's
 # Monitor-arm shape, which runs tick.sh on every arm, fails the idle cases).
 #
+# Linux-only: console-wait.sh has no .ps1 twin by design; this suite uses GNU
+# timeout and touch -d, so run-shell-tests.sh skips it off-Linux.
+#
 # Second half of the console-wait suite: the (vmrun) cases onward. The first
 # half is test-console-wait.sh (cases up to (y4)).
 #
