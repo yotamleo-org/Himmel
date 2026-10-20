@@ -28,6 +28,9 @@
 # prints that error on stdout, so both streams are matched.
 # --pid ends it with rc=0 once that konsole process is gone, so an armed waker
 # never outlives its window.
+# An rc=3 or rc=4 end also leaves `rc3` / `rc4` in <state dir>/<name> (the tick
+# reads it); a start clears the file. State dir: BUS_WAKER_STATE_DIR, default
+# ${XDG_STATE_HOME:-~/.local/state}/himmel/bus-waker.
 #
 # Seams: BUS_WAKER_QDBUS (default qdbus6), BUS_WAKER_BUS (default the himmel-bus CLI),
 # BUS_WAKER_PROC (default /proc).
@@ -64,6 +67,12 @@ done
 case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exit 64 ;; esac
 [ "$(awk -v p="$POLL" 'BEGIN{print (p > 0)}')" = 1 ] || { echo "bus-idle-waker: --poll must be above 0" >&2; exit 64; }
 
+STATE_DIR="${BUS_WAKER_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"
+rm -f "$STATE_DIR/$NAME" 2>/dev/null # swallow-ok: a state file that cannot be cleared only leaves a stale tick flag
+end_state() { # end_state <rc3|rc4>: leave the reason for the console tick; the waker's log is not read by it
+    { mkdir -p "$STATE_DIR" && printf '%s\n' "$1" > "$STATE_DIR/$NAME"; } 2>/dev/null || true # swallow-ok: the state file is advisory, the exit code still ends the waker
+}
+
 num() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
 [ -z "$PID" ] || { num "$PID" && [ "$PID" -gt 0 ]; } || { echo "bus-idle-waker: --pid takes a process id" >&2; exit 64; }
 
@@ -86,6 +95,7 @@ konsole() { # konsole <method> [args]: one Session call into $out; a failure end
     if ! out="$("$QDBUS" "$SERVICE" "$SESSION" "org.kde.konsole.Session.$1" "${@:2}" 2>&1)"; then
         case "$out" in *org.freedesktop.DBus.Error.AccessDenied*)
             echo "bus-idle-waker: sendText denied (konsole security-sensitive D-Bus API is disabled, or this window predates enabling it; enable it, then relaunch the window): $NAME" >&2
+            end_state rc3
             exit 3 ;;
         esac
         echo "bus-idle-waker: konsole $1 failed, session gone: $NAME" >&2
@@ -101,6 +111,7 @@ named_target() { # the session's process must be claude launched as `-n <name>`;
         { prev = $0 }
         END { exit !(claude && named) }'; then
         echo "bus-idle-waker: konsole session $SERVICE $SESSION does not run the claude named $NAME, refusing" >&2
+        end_state rc4
         exit 4
     fi
 }

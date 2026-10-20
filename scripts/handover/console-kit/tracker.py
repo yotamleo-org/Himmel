@@ -552,6 +552,12 @@ def read_versions(path, mir, train_only=True):
             if len(f) >= 2 and ok(f[0]) and f[0] != 'v1.0.0'], False
 
 
+def earliest_unreleased(vers):
+    """The earliest unreleased version by release date, else the first unreleased listed; None when all are released."""
+    unrel = [v for v in vers if not v['rel']]
+    return min((v for v in unrel if v['date']), key=lambda v: v['date'], default=unrel[0] if unrel else None)
+
+
 def done_in_future(mir, vers, unknown):
     """Done tickets carrying an unreleased version other than the current one (HIMMEL-5801); must be 0.
 
@@ -560,7 +566,7 @@ def done_in_future(mir, vers, unknown):
     if unknown:
         return 0
     unrel = [v for v in vers if not v['rel']]
-    cur = min((v for v in unrel if v['date']), key=lambda v: v['date'], default=unrel[0] if unrel else None)
+    cur = earliest_unreleased(vers)
     if cur is None:
         return 0
     fut = {v['n'] for v in unrel} - {cur['n']}
@@ -630,10 +636,11 @@ def jira_parity(tk, vers, cur):
     return 'parity: %s %s page %s jira %s%s: %s' % (v, 'lag' if lag else 'DRIFT', page, jira, tail, names)
 
 
-def jira_view(mir, legs, vers, prows, vnames):
+def jira_view(mir, legs, vers, prows, vnames, target=None):
     """The version-first page data: JT tickets, JC working-on, JN up-next, JA released-but-open alerts.
 
-    prows are the plan's placed rows (user impact is col 9, plan version col 3), vnames the plan's version names."""
+    prows are the plan's placed rows (user impact is col 9, plan version col 3), vnames the plan's version names.
+    target is the index of the version worked on when the caller fixes it (else the first unreleased one holding open work)."""
     vi = {v['n']: i for i, v in enumerate(vers)}
     plan = {r[0]: r for r in prows}
     tk, wont, fl = [], {}, []
@@ -655,7 +662,8 @@ def jira_view(mir, legs, vers, prows, vnames):
     def open_(t):
         return t['b'] not in ('done', 'wont')
 
-    cur = next((i for i in range(len(vers)) if not vers[i]['rel'] and any(t['v'] == i and open_(t) for t in tk)), -1)
+    cur = target if target is not None else \
+        next((i for i in range(len(vers)) if not vers[i]['rel'] and any(t['v'] == i and open_(t) for t in tk)), -1)
 
     def future_done(t):
         return t['b'] == 'done' and cur >= 0 and t['v'] > cur and not vers[t['v']]['rel']
@@ -1102,6 +1110,57 @@ def write_bench(path, out, opr, unr):
             fh.write('\t'.join(cell(i, v) for i, v in enumerate(x)) + '\n')
 
 
+def reindex_notes(prows, notes, dirs):
+    """The plan rows with their note ids (col 8) renumbered against only the notes and directories they use."""
+    nid, did, nn, nd, out = {}, {}, [], [], []
+    for r in prows:
+        ids = []
+        for i in r[8]:
+            if i not in nid:
+                d = notes[i][0]
+                if d not in did:
+                    did[d] = len(nd)
+                    nd.append(dirs[d])
+                nid[i] = len(nn)
+                nn.append([did[d], notes[i][1], notes[i][2]])
+            ids.append(nid[i])
+        out.append(r[:8] + [ids] + r[9:])
+    return out, nn, nd
+
+
+def split_pages(rows, notes, dirs, jt, jc, ja, jw, jf, unpl, vers, tname, paths, urls):
+    """HIMMEL-6514: the three pages of a split render, as dicts of per-page data (a page with no path is skipped).
+
+    focus  = open tickets of the target version (plus the open tickets of released versions, which the alerts name,
+             and the in-flight ones no version holds); done = every Done ticket; future = every other open ticket
+             and the unplaced list. jc is the target's index in the Jira versions, tname its name in the plan's."""
+    alert = {(x[0], k) for x in ja for k in x[1]}
+
+    def where(t):
+        if t['b'] == 'done':
+            return 'done'
+        return 'focus' if t['v'] == jc or (t['v'], t['k']) in alert else 'future'
+
+    def prow(r):
+        return 'done' if r[2] == 2 else 'focus' if vers[r[3]] == tname else 'future'
+    jd = sum(1 for t in jt if t['b'] == 'done' and t['v'] == jc)
+    dv = [t['v'] for t in jt if t['b'] == 'done']
+    fv = [t['v'] for t in jt if where(t) == 'future']
+    lk = {k: v for k, v in urls.items() if v}
+    pages = []
+    for kind in ('focus', 'done', 'future'):
+        if not paths.get(kind):
+            continue
+        pr, nn, nd = reindex_notes([r for r in rows if prow(r) == kind], notes, dirs)
+        pages.append(dict(
+            kind=kind, path=paths[kind], P=pr, N=nn, DR=nd, JT=[t for t in jt if where(t) == kind],
+            JC=jc if kind != 'future' else -1, JN=-1, JA=ja if kind == 'focus' else [], JW=jw,
+            JF=jf if kind == 'focus' else [], U=unpl if kind == 'future' else [],
+            x=dict(PG=kind, LK=lk, JD=jd if kind == 'focus' else 0,
+                   JS=(max(dv, default=-1) if kind == 'done' else min(fv, default=-1) if kind == 'future' else None))))
+    return pages
+
+
 def main():
     global MIRROR, LUNA, HANDOVERS, ROOT, OUT, LUNA_MAP, VERSIONS
     ap = argparse.ArgumentParser(description='Render the HIMMEL-3882 roadmap tracker page.')
@@ -1110,7 +1169,15 @@ def main():
                          '--out (else stdout), then exit; needs only --mirror-dir')
     ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining)')
     ap.add_argument('--plan-dir', help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
-    ap.add_argument('--out', help='tracker.html to write')
+    ap.add_argument('--out', help='tracker.html to write (with --target-version, --out-done or --out-future: the focus page, '
+                                  'the open tickets of the target version)')
+    ap.add_argument('--out-done', default=None, help='split mode: the Done page (every Done ticket) to write')
+    ap.add_argument('--out-future', default=None, help='split mode: the future page (open tickets of every other version) to write')
+    ap.add_argument('--target-version', default=None,
+                    help='split mode: the version the focus page is about (default: the earliest unreleased version of the versions file)')
+    ap.add_argument('--focus-url', default=None, help='split mode: the published focus page, linked from the other pages')
+    ap.add_argument('--done-url', default=None, help='split mode: the published Done page, linked from the other pages')
+    ap.add_argument('--future-url', default=None, help='split mode: the published future page, linked from the other pages')
     ap.add_argument('--luna-map', help='luna-map.json cache path')
     ap.add_argument('--mirror-dir', default=MIRROR)
     ap.add_argument('--versions-file', default=None,
@@ -1255,13 +1322,28 @@ def main():
     nothm = sum(1 for r in rows if r[5] == tidx['(no sector)'] and r[2] != 2)  # open only
     seq = rules['seq']
     jv, ru = read_versions(VERSIONS, mir)
+    split = bool(a.out_done or a.out_future or a.target_version)
+    tname, tix = '', None
+    if split:
+        e = earliest_unreleased(jv) if not ru else None
+        tname = a.target_version or (e['n'] if e else '')
+        tix = next((i for i, v in enumerate(jv) if v['n'] == tname), -1)
+        if a.target_version and jv and tix < 0:
+            ap.error('--target-version %s is not in the versions file (known: %s)' % (tname, ', '.join(v['n'] for v in jv)))
     lg, cur = ledger_lines(rows, vers, nothm, {x['n'] for x in jv if x['rel']})
     dt = drift_log(a.drift_log, sum(1 for r in rows if r[7] == 1), sum(1 for r in rows if r[7] == 2 and r[2] != 2), nothm)
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
-    jt, jc, jn, ja, jw, jf = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    jt, jc, jn, ja, jw, jf = jira_view(mir, legs, jv, rows[:n_plan], vers, tix)
     par = jira_parity(jt, jv, jc)
-    kb = kanban(jt, jv, jc, a.jira_base_url, jw, jf)
+    pages = [dict(kind='all', path=OUT, P=rows, N=notes, DR=dirs, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, JF=jf, U=unpl, x={})]
+    if split:
+        paths = {'focus': OUT, 'done': a.out_done and os.path.abspath(a.out_done),
+                 'future': a.out_future and os.path.abspath(a.out_future)}
+        urls = {'focus': a.focus_url, 'done': a.done_url, 'future': a.future_url}
+        pages = split_pages(rows, notes, dirs, jt, jc, ja, jw, jf, unpl, vers, tname, paths, urls)
+    for p in pages:
+        p['kb'] = kanban(p['JT'], jv, p['JC'], a.jira_base_url, p['JW'], p['JF'])
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}
@@ -1271,8 +1353,8 @@ def main():
     data = dict(gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=utc_stamp(upd),
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
-                LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes, P=rows,
-                U=unpl, DR=dirs, N=notes, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, RU=ru, PAR=par,
+                LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes,
+                CUR=cur, JV=jv, RU=ru, PAR=par,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
                                             [v for v in vers if trail_parent(v)])),
@@ -1280,12 +1362,18 @@ def main():
                 PIN=sorted(num(r['key']) for r in placed if re.search(r'\bpinned to ' + re.escape(r['version']) + r'\b', r.get('reason') or '')),
                 EQ=' · '.join('%s %g' % x for x in zip(('XS', 'S', 'M', 'L', 'XL'), seq)) + ' S-equivalents'
                 if seq else 'not recorded in the plan')
-    blob = json.dumps(data, separators=(',', ':'), ensure_ascii=False).replace('<', '\\u003c')
-    html = re.sub(r'__DATA__|__KANBAN__', lambda m: blob if m.group(0) == '__DATA__' else kb, TEMPLATE)  # one pass: no re-scan of ticket text
+    for p in pages:
+        d = dict(data, P=p['P'], N=p['N'], DR=p['DR'], U=p['U'], JT=p['JT'], JC=p['JC'], JN=p['JN'], JA=p['JA'], JW=p['JW'],
+                 **{k: v for k, v in p['x'].items() if v is not None})
+        if p['kind'] in ('focus', 'future'):  # the accuracy tables are the Done page's
+            d.update(BN=[], BOP=None, BUN=None, ACT={})
+        blob = json.dumps(d, separators=(',', ':'), ensure_ascii=False).replace('<', '\\u003c')
+        html = re.sub(r'__DATA__|__KANBAN__', lambda m: blob if m.group(0) == '__DATA__' else p['kb'], TEMPLATE)  # one pass: no re-scan of ticket text
+        os.makedirs(os.path.dirname(p['path']), exist_ok=True)
+        open(p['path'], 'w', encoding='utf-8').write(html)
+        if p['path'] == OUT:
+            open(OUT + '.fp', 'w', encoding='utf-8').write(fp0 + '\n')
     outp = OUT
-    os.makedirs(os.path.dirname(outp), exist_ok=True)
-    open(outp, 'w', encoding='utf-8').write(html)
-    open(outp + '.fp', 'w', encoding='utf-8').write(fp0 + '\n')
     unp = sum(1 for r in rows if r[7] == 2 and r[2] != 2)  # open only
     drift = sum(1 for r in rows if r[7] == 1)
     dif = done_in_future(mir, read_versions(VERSIONS, mir, False)[0], ru)
@@ -1298,6 +1386,9 @@ def main():
         print('drift trend: ' + ' → '.join('%s %d/%d/%d' % (x[0][:10], x[1], x[2], x[3]) for x in dt[-6:]) + ' (drift/unplanned/unthemed)')
     for l in lg:
         print('ledger: ' + l)
+    for p in pages:
+        if p['path'] != OUT:
+            print('wrote %s (%.1f KB): %s page, %d plan rows, %d tickets' % (p['path'], os.path.getsize(p['path']) / 1024, p['kind'], len(p['P']), len(p['JT'])))
     print(par)
     print('luna-map coverage: %d/%d placed keys with >=1 note; %d distinct notes; %.1fs'
           % (cov, n_plan, len(notes), time.time() - t0))
@@ -1558,6 +1649,7 @@ a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
 <div class="shell" id="main">
 <main>
 <div id="rm">
+<p class="jsub" id="pages"></p>
 <section class="hero" aria-labelledby="hh">
 <div class="jk">Working on</div>
 <h1 id="hh"></h1>
@@ -1852,8 +1944,9 @@ function renderSectors(){var i=D.CUR!=null?D.CUR:0,h=$("themb"),a=M.inV(i,REM),g
  if(!gs.length)h.appendChild(el("p","fact","No tickets here."))}
 // The version-first view: Jira's own versions and status names, built from D.JV / D.JT; the plan's views sit folded below.
 var JV=D.JV,JT=D.JT,JB=[["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]],
- RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JC>=0?D.JC:JV.length-1;
+ RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JS!=null?D.JS:D.JC>=0?D.JC:JV.length-1;
 var HIDE=true;try{var hs=localStorage.getItem("hide3990");if(hs!==null)HIDE=hs==="1"}catch(e){}
+if(D.PG){HIDE=false;$("hide").style.display="none"}
 // jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins. Tickets closed without shipping are not in JT (D.JW counts them).
 function jb(t){return t.live?"prog":t.b}
 function jin(i){return JT.filter(function(t){return t.v===i})}
@@ -1877,10 +1970,11 @@ function jhero(){var h=$("hh"),s=$("sent"),hn=$("hnote");s.textContent="";hn.tex
  var lg=$("legend"),nx=$("next"),al=$("alerts"),nb0=jbar(jtally([]),true);nb0.id="hbar";$("hbar").replaceWith(nb0);lg.textContent="";nx.textContent="";al.textContent="";
  if(JCUR<0){h.textContent="Nothing open";s.textContent="Every unreleased version is done.";jalerts(-1);return}
  var v=JV[JCUR],t=jtally(jin(JCUR),1);h.textContent=v.n;
- add(s,jnum(t.done.length,v.n+": Done",t.done)," of ",jnum(t.n,v.n+": every ticket",jin(JCUR))," done · ",
+ var dn=D.JD||0;
+ add(s,dn?dn+" of "+(t.n+dn)+" done, listed on the Done page":add(el("span"),jnum(t.done.length,v.n+": Done",t.done)," of ",jnum(t.n,v.n+": every ticket",jin(JCUR))," done")," · ",
   jnum(t.rev.length,v.n+": In Review",t.rev)," in review · ",jnum(t.ci.length,v.n+": IN CI",t.ci)," in CI · ",
   jnum(t.prog.length,v.n+": In Progress",t.prog)," in progress · ",jnum(t.todo.length,v.n+": To Do",t.todo)," to do.");
- var nb=jbar(t,true);nb.id="hbar";$("hbar").replaceWith(nb);
+ var nb=jbar(dn?Object.assign({},t,{done:new Array(dn),n:t.n+dn}):t,true);nb.id="hbar";$("hbar").replaceWith(nb);
  JB.slice().reverse().forEach(function(x){lg.appendChild(jdot(x[0],x[1]))});
  if(JNXT>=0){var u=jtally(jin(JNXT),1);add(nx,"Up next: "+JV[JNXT].n+" — ",jnum(u.open,JV[JNXT].n+": open",jin(JNXT).filter(function(x){return jb(x)!="done"}))," open, "+u.done.length+" done.")}
  jalerts(JCUR)}
@@ -1923,6 +2017,13 @@ function jrender(flashI){jhero();jboard();jversions(flashI);jgrow();$("hide").se
 $("hide").addEventListener("click",function(){HIDE=!HIDE;try{localStorage.setItem("hide3990",HIDE?"1":"0")}catch(e){}
  if(RMO){jrender();return}document.querySelectorAll(".jcol,#vt tr").forEach(function(e){e.classList.remove("enter");e.classList.add("leave")});setTimeout(jrender,180)});
 function render(){jrender();renderAcc();renderSectors()}
+(function(){var p=$("pages"),L=D.LK||{};if(!D.PG){p.hidden=true;return}
+ if(D.PG!="focus")document.querySelector(".hero").style.display="none";
+ if(D.PG!="done")$("accb").parentNode.style.display="none";
+ if(D.PG!="focus")$("themb").parentNode.style.display="none";
+ [["focus","Focus"],["done","Done"],["future","Future"]].forEach(function(x,i){if(i)p.appendChild(txt(" · "));
+  if(x[0]==D.PG)p.appendChild(el("b",null,x[1]+" (this page)"));
+  else if(L[x[0]]){var a=el("a",null,x[1]);a.href=L[x[0]];p.appendChild(a)}else p.appendChild(el("span",null,x[1]))})})();
 // drawer: numbers open it; focus moves in, Tab is trapped, Esc closes and focus returns to the number that opened it.
 function openDrill(kind,scope,title,from){
  var db=$("db");db.textContent="";$("dh").textContent=title;if($("drawer").hidden)opener=from;

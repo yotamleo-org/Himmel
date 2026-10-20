@@ -274,7 +274,7 @@ logged in), extracts it into a new version directory and only then swaps
 version is kept, so `ln -sfn <previous-version> ~/.local/share/himmel/current`
 rolls back. For a native package, use the package manager (Arch: `pacman -Syu
 himmel`). For any other tarball install, download the next release tarball from
-the [releases page](https://github.com/yotamleo/Himmel/releases), verify its
+the [releases page](https://github.com/yotamleo-org/Himmel/releases), verify its
 sha256 checksum, and extract it into a fresh directory (or remove the old
 install first): extracting over an existing tree keeps files the new release
 deleted.

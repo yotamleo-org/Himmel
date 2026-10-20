@@ -32,6 +32,11 @@ STALE) with no himmel-bus peer record has no edge to the live console. It is
 absent when every held leg has a record or the bus has no peers dir, and
 `console-wait.sh` does not wake on it, so read it at the next tick.
 
+`wakerstate=<label>:rc3|rc4[,...]` is conditional the same way: a held worker whose
+`bus-idle-waker` ended on rc 3 (konsole refuses sendText: the window predates
+`EnableSecuritySensitiveDBusAPI`, relaunch it) or rc 4 (the session is not the
+named claude). Its mail wakes nothing. Absent when no waker left a state file.
+
 `console-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <leg>` Telegram per classifier-denied `headed-arm-leg.sh` launch (leg, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
 
 Five, and no more — every event wakes a full-context turn, so each one filters
@@ -86,3 +91,12 @@ that PR merges or closes). Give each one a disposition:
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads
 `OPERATOR: <ask>. Filed HIMMEL-n`. The roadmap tracker builds the
 operator-directed bundle from that label and that bullet.
+
+**CI guardrail.** To see whether the fleet's GitHub Actions use is starting to look
+abusive, run `<kit>/ci-guardrail.sh` by hand. It prints `ciguard=ok`,
+`ciguard=OVER:<metric>[,<metric>]` or `ciguard=unknown`, then one
+`ALERT <metric>=<count>><line> (<where>)` line per new crossing: `runs-h` 150 per
+hour, `runs-day` 1500 per 24 h, `cancels-10m` 30, `reruns-h` 10, and `branch-day`
+10 CI runs on one non-main branch. A metric alerts once and re-arms on the first
+read at or below its line; `unknown` (low REST budget, a failed fetch) changes
+nothing. `--runs FILE --now ISO` replays a saved runs list.

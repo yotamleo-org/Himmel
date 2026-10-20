@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { remarkDocs } from './src/plugins/remark-docs.mjs';
+import { SITE_ORIGIN, REPO_URL } from './src/urls.mjs';
 import { readAllowlist } from './src/loaders/docs-loader.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -50,7 +51,7 @@ if (document.querySelector('pre.mermaid')) mermaid.run({ querySelector: 'pre.mer
 };
 
 export default defineConfig({
-  site: 'https://yotamleo.github.io',
+  site: SITE_ORIGIN,
   base: BASE,
   // Starlight drops the .html from a sidebar link; this serves the trail at the extensionless path too.
   redirects: { '/adoption-trail': `${BASE}/adoption-trail.html` },
@@ -115,9 +116,9 @@ export default defineConfig({
             {
               label: 'Plugins',
               items: [
-                { label: 'himmel-guard', link: 'https://github.com/yotamleo/himmel/tree/main/marketplace/plugins/himmel-guard' },
-                { label: 'shadcn-mcp', link: 'https://github.com/yotamleo/himmel/tree/main/marketplace/plugins/shadcn-mcp' },
-                { label: 'handover', link: 'https://github.com/yotamleo/himmel/tree/main/marketplace/plugins/handover' },
+                { label: 'himmel-guard', link: `${REPO_URL}/tree/main/marketplace/plugins/himmel-guard` },
+                { label: 'shadcn-mcp', link: `${REPO_URL}/tree/main/marketplace/plugins/shadcn-mcp` },
+                { label: 'handover', link: `${REPO_URL}/tree/main/marketplace/plugins/handover` },
               ],
             },
           ],

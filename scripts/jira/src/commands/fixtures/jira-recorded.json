@@ -1,0 +1,330 @@
+{
+  "_captured": "Read-only GETs on the live Jira (project HIMMEL, issue HIMMEL-6624), 2026-10-20; self, iconUrl and avatarId dropped, versions trimmed to two.",
+  "issueLinkTypes": [
+    {
+      "id": "10000",
+      "name": "Blocks",
+      "inward": "is blocked by",
+      "outward": "blocks"
+    },
+    {
+      "id": "10001",
+      "name": "Cloners",
+      "inward": "is cloned by",
+      "outward": "clones"
+    },
+    {
+      "id": "10002",
+      "name": "Duplicate",
+      "inward": "is duplicated by",
+      "outward": "duplicates"
+    },
+    {
+      "id": "10003",
+      "name": "Relates",
+      "inward": "relates to",
+      "outward": "relates to"
+    }
+  ],
+  "versions": [
+    {
+      "id": "10149",
+      "name": "v1.0.41",
+      "archived": true,
+      "released": false,
+      "projectId": 10033
+    },
+    {
+      "id": "10460",
+      "description": "split of v1.0.2c (operator 2026-10-07)",
+      "name": "v1.1.3",
+      "archived": false,
+      "released": false,
+      "releaseDate": "2026-10-22"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "11",
+      "name": "To Do",
+      "to": {
+        "description": "",
+        "name": "To Do",
+        "id": "10004",
+        "statusCategory": {
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "4",
+      "name": "Backlog",
+      "to": {
+        "description": "",
+        "name": "Backlog",
+        "id": "10038",
+        "statusCategory": {
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "21",
+      "name": "In Progress",
+      "to": {
+        "description": "",
+        "name": "In Progress",
+        "id": "3",
+        "statusCategory": {
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "yellow",
+          "name": "In Progress"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "2",
+      "name": "In Review",
+      "to": {
+        "description": "",
+        "name": "In Review",
+        "id": "10072",
+        "statusCategory": {
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "yellow",
+          "name": "In Progress"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "3",
+      "name": "IN CI",
+      "to": {
+        "description": "",
+        "name": "IN CI",
+        "id": "10073",
+        "statusCategory": {
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "yellow",
+          "name": "In Progress"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "31",
+      "name": "Done",
+      "to": {
+        "description": "",
+        "name": "Done",
+        "id": "10005",
+        "statusCategory": {
+          "id": 3,
+          "key": "done",
+          "colorName": "green",
+          "name": "Done"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "5",
+      "name": "Closed",
+      "to": {
+        "description": "",
+        "name": "Closed",
+        "id": "6",
+        "statusCategory": {
+          "id": 3,
+          "key": "done",
+          "colorName": "green",
+          "name": "Done"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "6",
+      "name": "In Public",
+      "to": {
+        "description": "",
+        "name": "In Public",
+        "id": "10074",
+        "statusCategory": {
+          "id": 3,
+          "key": "done",
+          "colorName": "green",
+          "name": "Done"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "7",
+      "name": "wont do",
+      "to": {
+        "description": "",
+        "name": "wont do",
+        "id": "10075",
+        "statusCategory": {
+          "id": 3,
+          "key": "done",
+          "colorName": "green",
+          "name": "Done"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "8",
+      "name": "wont fix",
+      "to": {
+        "description": "",
+        "name": "wont fix",
+        "id": "10076",
+        "statusCategory": {
+          "id": 3,
+          "key": "done",
+          "colorName": "green",
+          "name": "Done"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    },
+    {
+      "id": "41",
+      "name": "Planning",
+      "to": {
+        "description": "",
+        "name": "Planning",
+        "id": "10109",
+        "statusCategory": {
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        }
+      },
+      "hasScreen": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isAvailable": true,
+      "isConditional": false,
+      "isLooped": false
+    }
+  ],
+  "priority": {
+    "name": "Medium",
+    "id": "3"
+  },
+  "status": {
+    "description": "",
+    "name": "In Progress",
+    "id": "3",
+    "statusCategory": {
+      "id": 4,
+      "key": "indeterminate",
+      "colorName": "yellow",
+      "name": "In Progress"
+    }
+  },
+  "issuetype": {
+    "id": "10009",
+    "description": "A small, distinct piece of work.",
+    "name": "Task",
+    "subtask": false,
+    "hierarchyLevel": 0
+  },
+  "parent": {
+    "id": "36503",
+    "key": "HIMMEL-5654",
+    "fields": {
+      "summary": "CI throughput: local-first review and tests, data-driven CI cuts",
+      "status": {
+        "description": "",
+        "name": "In Progress",
+        "id": "3",
+        "statusCategory": {
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "yellow",
+          "name": "In Progress"
+        }
+      },
+      "priority": {
+        "name": "Medium",
+        "id": "3"
+      },
+      "issuetype": {
+        "id": "10000",
+        "description": "A big user story that needs to be broken down. Created by Jira Software - do not edit or delete.",
+        "name": "Epic",
+        "subtask": false,
+        "hierarchyLevel": 1
+      }
+    }
+  }
+}

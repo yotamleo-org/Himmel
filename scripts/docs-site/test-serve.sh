@@ -138,7 +138,7 @@ for p in "" why-himmel/ getting-started/ setup/install/ adoption-trail.html; do
 done
 page=$(curl -s http://127.0.0.1:4321/Himmel/getting-started/)
 if printf '%s' "$page" | grep -q 'href="/Himmel/setup/install/"'; then ok "no-JS page carries its rewritten .md link"; else ko "no-JS page carries its rewritten .md link"; fi
-if printf '%s' "$page" | grep -q 'href="https://github.com/yotamleo/himmel/blob/main/CLAUDE.md"'; then ok "repo-path link points at GitHub"; else ko "repo-path link points at GitHub"; fi
+if printf '%s' "$page" | grep -q 'href="https://github.com/yotamleo-org/Himmel/blob/main/CLAUDE.md"'; then ok "repo-path link points at GitHub"; else ko "repo-path link points at GitHub"; fi
 code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4321/Himmel/pagefind/pagefind.js)
 if [ "$code" = 200 ]; then ok "search index (pagefind) is served"; else ko "search index is served (got $code)"; fi
 

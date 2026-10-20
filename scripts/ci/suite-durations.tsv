@@ -326,6 +326,7 @@ scripts/handover/console-kit/test-action-zero.sh	4
 scripts/handover/console-kit/test-append-results.sh	0
 scripts/handover/console-kit/test-board.sh	15
 scripts/handover/console-kit/test-brief-lint.sh	3
+scripts/handover/console-kit/test-ci-guardrail.sh	3
 scripts/handover/console-kit/test-close-wrapped-leg.sh	20
 scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1
@@ -780,6 +781,7 @@ scripts/lib/test-red-control-extraction-lint.sh	3
 scripts/lib/test-red-control-lint.sh	6
 scripts/lib/test-red-control.sh	0
 scripts/lib/test-register-auto-arm-hook.sh	0
+scripts/lib/test-rename-aliases.sh	0
 scripts/lib/test-render-lease.sh	4
 scripts/lib/test-resolve-hermes-py.sh	5
 scripts/lib/test-resolve-node.sh	0

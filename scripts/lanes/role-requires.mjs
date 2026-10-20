@@ -34,5 +34,5 @@ export const ROLE_REQUIRES = {
   'lane-content': ['claude-obsidian@himmel', 'obsidian-triage@himmel'],
   telegram: ['obsidian-triage@himmel'],
   console: ['lean-skills@himmel'],
-  bare: [], 'console-relay': [], 'console-judge': [],
+  bare: [], 'console-relay': ['himmel-ops@himmel'], 'console-judge': ['himmel-ops@himmel'],
 };

@@ -1198,7 +1198,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no leg this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1228,7 +1228,7 @@ unowned_grace_min="${TICK_UNOWNED_GRACE_MIN:-10}"
 prs=""
 unowned_prs=""
 ext_prs=""
-while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated; do
+while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red; do
     case "$pr" in ''|*[!0-9]*) continue ;; esac
     prs="$(csv_add "$prs" "#$pr")"
     [ -n "$pr_branch" ] || continue
@@ -1241,7 +1241,10 @@ while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated; do
     pr_at="$(date -d "$pr_updated" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
     pr_age=$(( ($(date +%s) - pr_at) / 60 ))
     [ "$pr_age" -ge "$unowned_grace_min" ] || continue
-    unowned_prs="$(csv_add "$unowned_prs" "#$pr:${pr_age}m")"
+    # a failed check on an orphan: red CI has no other owner, so the console owes a resume leg
+    pr_owed=""
+    case "$pr_red" in ''|*[!0-9]*|0) ;; *) pr_owed=":dispatch-owed" ;; esac
+    unowned_prs="$(csv_add "$unowned_prs" "#$pr:${pr_age}m$pr_owed")"
 done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
 [ -n "$unowned_prs" ] || unowned_prs=none
@@ -1672,6 +1675,25 @@ if [ -d "$bus_peers_dir" ]; then
         [ -n "$be_found" ] || busedge_val="$(csv_add "$busedge_val" "$be_label")"
     done <<< "$leg_candmap"
     [ -z "$busedge_val" ] || busedge_tail=" busedge=MISSING:$busedge_val"
+fi
+# wakerstate=<label>:rc3|rc4[,...]: a held leg whose bus-idle-waker ended on
+# rc=3 (konsole refuses sendText) or rc=4 (the session is not the named claude), so
+# its mail wakes nothing. bus-idle-waker.sh leaves the state file; ABSENT when none.
+# Env seam: TICK_BUS_WAKER_DIR.
+wakerstate_tail=""
+bus_waker_dir="${TICK_BUS_WAKER_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"
+if [ -d "$bus_waker_dir" ]; then
+    wakerstate_val=""
+    while IFS=$'\t' read -r ws_label ws_lock ws_cands; do
+        [ -n "$ws_label" ] || continue
+        case "$ws_lock" in FRESH|STALE) ;; *) continue ;; esac
+        for ws_cand in ${ws_cands//,/ }; do
+            [ -f "$bus_waker_dir/$ws_cand" ] || continue
+            ws_state="$(head -n 1 "$bus_waker_dir/$ws_cand" 2>/dev/null)" # swallow-ok: an unreadable state file reads as none
+            case "$ws_state" in rc3|rc4) wakerstate_val="$(csv_add "$wakerstate_val" "$ws_label:$ws_state")"; break ;; esac
+        done
+    done <<< "$leg_candmap"
+    [ -z "$wakerstate_val" ] || wakerstate_tail=" wakerstate=$wakerstate_val"
 fi
 # deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
 # HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)
@@ -2111,6 +2133,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     [ -z "$deadwin_tail" ] || printf 'dead windows: %s\n' "${deadwin_tail# deadwin=}"
     [ -z "$busedge_tail" ] || printf 'bus edges: %s\n' "${busedge_tail# busedge=}"
+    [ -z "$wakerstate_tail" ] || printf 'bus wakers: %s\n' "${wakerstate_tail# wakerstate=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
@@ -2169,7 +2192,7 @@ else
     compact_field versionless-done "$vdone_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$stall_tail$station_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;

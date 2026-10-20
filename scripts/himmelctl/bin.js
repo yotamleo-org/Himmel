@@ -1084,7 +1084,7 @@ const HANDOVER_HELP = {
 };
 
 const ALWAYS_ON_HELP = {
-  yes: 'print the unattended-run hardening checklist (nothing is executed either way); why and how: docs/setup/new-machine.md, on the docs site https://yotamleo.github.io/Himmel/',
+  yes: 'print the unattended-run hardening checklist (nothing is executed either way); why and how: docs/setup/new-machine.md, on the docs site https://yotamleo-org.github.io/Himmel/', // env-literal-ok: user-facing help text names the public docs site
   no: 'print a one-line pointer to the checklist instead',
 };
 

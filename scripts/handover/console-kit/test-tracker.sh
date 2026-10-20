@@ -824,5 +824,79 @@ contains 'the hero tallies by Jira status, not the live-leg display (HIMMEL-6401
 contains 'the up-next line tallies by Jira status (HIMMEL-6401)' "$phtml" 'var u=jtally(jin(JNXT),1)'
 contains 'a board tally keeps the live-leg display (HIMMEL-6401)' "$phtml" 'r[raw?t.b:jb(t)].push(t)'
 
+# --- the render splits into a focus page (open tickets of the target version), a Done page and a future page.
+# v1.1.1 is released, v1.1.3 is the earliest unreleased version, v1.1.4 is later. Tickets 801..805 carry one title each.
+splan="$W/splan"
+smir="$W/smirror"
+cp -R "$plan" "$splan"
+mkdir -p "$smir"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+    v1.1.1 0.1 0 0 0 0 0.1 1 v1.1.3 0.1 0 0 0 0 0.1 1 v1.1.4 0.1 0 0 0 0 0.1 1 > "$splan/stage3/versions.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
+    HIMMEL-801 v1.1.3 bugs 1 committed '' 'P1' HIMMEL-802 v1.1.3 bugs 1 committed '' 'P1' \
+    HIMMEL-803 v1.1.3 bugs 1 committed '' 'P1' HIMMEL-804 v1.1.4 bugs 1 committed '' 'P1' \
+    HIMMEL-805 v1.1.1 bugs 1 committed '' 'P1' > "$splan/stage3/placement.tsv"
+printf '%s\t%s\t%s\n' key close_flag close_evidence > "$splan/stage3/closures.tsv"
+printf '%s\t%s\n' key reason > "$splan/stage3/unplaced.tsv"
+mdir="$smir"
+mk 801 Done '["v1.1.3"]' 'splitmark done in target' Done Done Tooling
+mk 802 'To Do' '["v1.1.3"]' 'splitmark open in target' 'To Do' '' Tooling
+mk 803 'In Progress' '["v1.1.3"]' 'splitmark progress in target' 'In Progress' '' Tooling
+mk 804 'To Do' '["v1.1.4"]' 'splitmark open in future' 'To Do' '' Tooling
+mk 805 Done '["v1.1.1"]' 'splitmark done in released' Done Done Tooling
+printf 'v1.1.1\ttrue\t2026-10-01\nv1.1.3\tfalse\t2026-10-22\nv1.1.4\tfalse\t\n' > "$W/split.versions.tsv"
+sout="$W/split-focus.html"
+sdone="$W/split-done.html"
+sfuture="$W/split-future.html"
+srender() {
+    python3 "$HERE/tracker.py" --plan-dir "$splan" --out "$sout" --out-done "$sdone" --out-future "$sfuture" \
+        --luna-map "$W/luna-map.json" --mirror-dir "$smir" --versions-file "$W/split.versions.tsv" --luna-root "$W/luna" \
+        --handovers "$W/luna/handovers/tester/himmel" "$@" 2>&1
+}
+srender --done-url https://example.test/done --future-url https://example.test/future > "$W/split.stdout"
+src=$?
+if [ "$src" -eq 0 ]; then pass 'a split render exits 0 (HIMMEL-6514)'; else fail "a split render exited $src: $(cat "$W/split.stdout")"; fi
+fhtml="$(cat "$sout" 2>/dev/null)"
+dhtml="$(cat "$sdone" 2>/dev/null)"
+uhtml="$(cat "$sfuture" 2>/dev/null)"
+contains 'the focus page holds the open target tickets (HIMMEL-6514)' "$fhtml" 'splitmark open in target'
+contains 'the focus page holds the in-progress target ticket (HIMMEL-6514)' "$fhtml" 'splitmark progress in target'
+not_contains 'the focus page holds no Done ticket of the target (HIMMEL-6514)' "$fhtml" 'splitmark done in target'
+not_contains 'the focus page holds no Done ticket of a released version (HIMMEL-6514)' "$fhtml" 'splitmark done in released'
+not_contains 'the focus page holds no ticket of a later version (HIMMEL-6514)' "$fhtml" 'splitmark open in future'
+contains 'the Done page holds the Done target ticket (HIMMEL-6514)' "$dhtml" 'splitmark done in target'
+contains 'the Done page holds the Done released ticket (HIMMEL-6514)' "$dhtml" 'splitmark done in released'
+not_contains 'the Done page holds no open ticket (HIMMEL-6514)' "$dhtml" 'splitmark open in target'
+not_contains 'the Done page holds no future ticket (HIMMEL-6514)' "$dhtml" 'splitmark open in future'
+contains 'the future page holds the later version ticket (HIMMEL-6514)' "$uhtml" 'splitmark open in future'
+not_contains 'the future page holds no target ticket (HIMMEL-6514)' "$uhtml" 'splitmark open in target'
+not_contains 'the future page holds no Done ticket (HIMMEL-6514)' "$uhtml" 'splitmark done in target'
+# the target defaults to the earliest unreleased version of the versions file; --target-version overrides it.
+contains 'the focus page names the target version (HIMMEL-6514)' "$fhtml" '"PG":"focus"'
+srender --target-version v1.1.4 > /dev/null
+contains 'an explicit --target-version moves the focus (HIMMEL-6514)' "$(cat "$sout" 2>/dev/null)" 'splitmark open in future'
+not_contains 'an explicit --target-version drops the old focus (HIMMEL-6514)' "$(cat "$sout" 2>/dev/null)" 'splitmark open in target'
+srender --target-version v9.9.9 > "$W/split-badtarget.stdout"
+brc=$?
+if [ "$brc" -eq 2 ]; then pass 'an unknown --target-version exits 2 (HIMMEL-6514)'; else fail "an unknown --target-version exited $brc"; fi
+contains 'an unknown --target-version names the versions file (HIMMEL-6514)' "$(cat "$W/split-badtarget.stdout")" 'is not in the versions file'
+srender > /dev/null
+# the focus page links to the other two, and each of those links back to it.
+contains 'the focus page links to the Done page (HIMMEL-6514)' "$fhtml" 'https://example.test/done'
+contains 'the focus page links to the future page (HIMMEL-6514)' "$fhtml" 'https://example.test/future'
+# tick reads the freshness of the focus page: its .fp is the --emit-fp value, and no other page carries one.
+sfp="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$splan" --out "$sout" --luna-map "$W/luna-map.json" --mirror-dir "$smir" \
+    --versions-file "$W/split.versions.tsv" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" 2>&1)"
+if [ -n "$sfp" ] && [ "$(cat "$sout.fp" 2>/dev/null)" = "$sfp" ]; then pass 'the focus page .fp equals --emit-fp (HIMMEL-6514)'; else fail "focus .fp '$(cat "$sout.fp" 2>/dev/null)' differs from --emit-fp '$sfp'"; fi
+if [ ! -e "$sdone.fp" ] && [ ! -e "$sfuture.fp" ]; then pass 'the Done and future pages write no .fp (HIMMEL-6514)'; else fail 'a Done or future page wrote a .fp (HIMMEL-6514)'; fi
+# without --out-done / --out-future the one page keeps every ticket.
+python3 "$HERE/tracker.py" --plan-dir "$splan" --out "$W/split-all.html" --luna-map "$W/luna-map.json" --mirror-dir "$smir" \
+    --versions-file "$W/split.versions.tsv" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" > "$W/split-all.stdout" 2>&1
+arc=$?
+[ "$arc" -eq 0 ] || fail "the unsplit render exited $arc: $(cat "$W/split-all.stdout")"
+ahtml="$(cat "$W/split-all.html" 2>/dev/null)"
+contains 'a render with no split outputs keeps the Done tickets (HIMMEL-6514)' "$ahtml" 'splitmark done in target'
+contains 'a render with no split outputs keeps the future tickets (HIMMEL-6514)' "$ahtml" 'splitmark open in future'
+
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

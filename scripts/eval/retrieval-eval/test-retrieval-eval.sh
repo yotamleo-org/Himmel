@@ -23,6 +23,14 @@ R="$W/repo"; mkdir -p "$R/docs" "$R/bin"
 printf 'The queue lock keeps one session per handover doc.\nA halt needs no token: a mild DoS, not a compromise.\n' > "$R/docs/lock.md"
 printf '#!/bin/sh\nrelay_batch() { :; }\n' > "$R/bin/run.sh"
 printf 'unrelated words only\n' > "$R/docs/other.md"
+# Vendored noise: a plugin bundle and a minified file both name relay_batch and the lock words.
+mkdir -p "$R/templates/vault/.obsidian/plugins/p"
+printf 'relay_batch queue lock halt token relay_batch\n' > "$R/templates/vault/.obsidian/plugins/p/main.js"
+printf 'relay_batch queue lock halt token relay_batch\n' > "$R/docs/vendor.min.js"
+# A Python variable definition must outrank a file that merely uses the name more often.
+mkdir -p "$R/lib"
+printf 'retry_limit: int = 3\n' > "$R/lib/conf.py"
+printf 'retry_limit retry_limit retry_limit\n' > "$R/docs/a-use.md"
 # The question set itself is tracked; grep must never rank it.
 mkdir -p "$R/scripts/eval/retrieval-eval"
 printf 'why does a halt need no token mild DoS relay_batch defined\n' > "$R/scripts/eval/retrieval-eval/questions.jsonl"
@@ -58,15 +66,33 @@ EOF
 chmod +x "$W/graph" "$W/qmd"
 export RETRIEVAL_EVAL_GRAPH_CMD="$W/graph" RETRIEVAL_EVAL_QMD_CMD="$W/qmd"
 
-# 1. a full run over the five arms writes scores.tsv with one row per arm.
+# 1. a full run over the seven arms writes scores.tsv with one row per arm.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/out" --label t1 > "$W/run.txt" 2>&1
 eq "run exits 0" "0" "$?"
-eq "scores.tsv has a header and five arm rows" "6" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
+eq "scores.tsv has a header and seven arm rows" "8" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
+eq "scores.tsv lists the path and ident-grep arms" "ident-grep path" "$(awk -F'\t' 'NR>1 && ($1=="path" || $1=="ident-grep"){print $1}' "$W/out/scores.tsv" | sort | tr '\n' ' ' | sed 's/ $//')"
 s() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==a{print $h[c]}' "$W/out/scores.tsv"; }
 
 # 2. grep finds both gold files from the question words.
 eq "grep recall@5 is 1.00" "1.00" "$(s grep recall@5)"
 eq "grep carries the q1 reason" "1.00" "$(s grep reason_carried)"
+
+# 2b. path ranks tracked file names by the question words; ident-grep ranks the defining file of an identifier first.
+printf '{"id":"p1","kind":"where","q":"where does the lock doc live","gold":["docs/lock.md"],"reason":[]}\n{"id":"p2","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}\n' > "$W/qp.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-2b.jsonl" py "$EV" run --repo "$R" --questions "$W/qp.jsonl" --out "$W/outp" --arms path,ident-grep > /dev/null 2>&1
+hit() { py -c 'import json,sys
+for l in open(sys.argv[1]):
+    r = json.loads(l)
+    if r["id"] == sys.argv[2] and r["arm"] == sys.argv[3]:
+        print(int(r["hit"]), r["files"][0] if r["files"] else "-")' "$W/outp/results.jsonl" "$1" "$2"; }
+eq "path hits the file whose name holds the question words" "1 docs/lock.md" "$(hit p1 path)"
+eq "ident-grep ranks the defining file first and skips vendored bundles" "1 bin/run.sh" "$(hit p2 ident-grep)"
+eq "ident-grep finds nothing in a question with no identifier" "0 -" "$(hit p1 ident-grep)"
+printf '{"id":"p3","kind":"where","q":"where is retry_limit set","gold":["lib/conf.py"],"reason":[]}\n' > "$W/qp3.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-2b.jsonl" py "$EV" run --repo "$R" --questions "$W/qp3.jsonl" --out "$W/outp3" --arms ident-grep > /dev/null 2>&1
+eq "ident-grep ranks a Python variable definition first" "1 lib/conf.py" "$(py -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(int(r["hit"]), r["files"][0])' "$W/outp3/results.jsonl")"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-2b.jsonl" py "$EV" run --repo "$R" --questions "$W/qp3.jsonl" --out "$W/outp4" --arms ident-grep --timeout 0 > /dev/null 2>&1
+eq "ident-grep with an exhausted budget is a timeout row, not a late search" "True" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["timeout"])' "$W/outp4/results.jsonl")"
 
 # 3. graphify: q1 hit with its rationale, q2 miss (RED control: a wrong file is no hit).
 eq "graphify recall@5 is 0.50" "0.50" "$(s graphify recall@5)"
@@ -95,8 +121,8 @@ s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.uti
 print(len(m.fuse([["Docs/X.md"], ["docs/x.md"]], 5)))' "$EV")"
 
 # 6. per-case rows: one per question x arm, with tokens and ms.
-eq "results.jsonl has 10 rows" "10" "$(wc -l < "$W/out/results.jsonl" | tr -d ' ')"
-eq "every row carries tokens and ms" "10" "$(py -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if {"tokens","ms","files","hit","reason"} <= set(json.loads(l))))' "$W/out/results.jsonl")"
+eq "results.jsonl has 14 rows" "14" "$(wc -l < "$W/out/results.jsonl" | tr -d ' ')"
+eq "every row carries tokens and ms" "14" "$(py -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if {"tokens","ms","files","hit","reason"} <= set(json.loads(l))))' "$W/out/results.jsonl")"
 
 # 7. the eval-runs ledger row validates and is labelled.
 eq "ledger row validates" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$HIMMEL_EVAL_RUNS_LEDGER" > /dev/null 2>&1; echo $?)"
@@ -121,6 +147,7 @@ eq "failed backend row carries error" "True" "$(py -c 'import json,sys; print(js
 
 # 8d. grep never returns the tracked question set.
 eq "grep skips the question set" "0" "$(grep -c 'retrieval-eval/questions' "$W/out/results.jsonl")"
+eq "no arm returns a plugin bundle or a minified file" "0" "$(grep -cE '\.obsidian/plugins/|\.min\.js' "$W/out/results.jsonl")"
 
 # 8e. an MCP error reply (JSON-RPC error or isError) raises, so the arm scores an error.
 mcp() { py -c 'import importlib.util,json,sys
@@ -162,7 +189,7 @@ eq "norerank arm is accepted by --arms" "0" "$?"
 eq "norerank arm scores a hit" "1.00" "$(awk -F'\t' '$1=="qmd-hybrid-norerank"{print $3}' "$W/out8/scores.tsv")"
 eq "norerank sends lex+vec with rerank false" "lex,vec False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
 eq "qmd-hybrid sends lex+vec and no rerank key" "lex,vec absent" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
-eq "default arms stay the five" "6" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
+eq "default arms are the seven" "8" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
 
 # 9. usage errors.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/o9" --arms nosuch > /dev/null 2>&1

@@ -64,7 +64,7 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     release state (`node <primary>/scripts/jira/dist/index.js versions` redirected to
     `<mirror-dir>.versions.tsv`, i.e. `~/.himmel/state/jira-mirror/HIMMEL.versions.tsv`;
     without it the page says "release state unknown"), re-render with
-    `python3 "<kit>/tracker.py" --plan-dir <plan dir> --out <handover bucket>/roadmap-tracker.html`
+    `python3 "<kit>/tracker.py" --plan-dir <plan dir> --out <handover bucket>/roadmap-tracker.html --out-done <handover bucket>/roadmap-tracker-done.html --out-future <handover bucket>/roadmap-tracker-future.html --focus-url <tracker: URL> --done-url <tracker-done: URL> --future-url <tracker-future: URL>`
     plus the vault-map cache argument (`tracker.py --help` names every
     argument; `--out` and `--plan-dir` must be the paths the tick reads, so the
     render then reports `tracker=ok`), and republish that file to the `tracker:` URL with the `Artifact` tool. A
@@ -74,6 +74,22 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     is cheap. After each Artifact publish, `touch <handover bucket>/roadmap-tracker.html.published`:
     a page newer than that stamp reads `tracker=REPUBLISH:<age>` (rendered, not yet
     republished); without the stamp file the tick keeps reading plain `ok`.
+
+    **Three artifacts, three URLs.** The tracker is three pages, so a handover
+    carries three URLs in `## Live state`: `tracker:` (the focus page: the open
+    tickets of the target version, `--target-version`, default the earliest
+    unreleased version in the versions file), `tracker-done:` (every Done ticket,
+    folded to the version it shipped in, with the accuracy tables) and
+    `tracker-future:` (the open tickets of the later versions, and the unplaced
+    list). `--out` is the focus page, so `--emit-fp` and the `.fp` file stay bound
+    to it and the tick reads `tracker=ok` from the focus page alone. The `*-url`
+    flags make each page link to the other two. Republish `tracker:` as above; republish
+    `tracker-done:` and `tracker-future:` on a MERGED or when the target version
+    changes (the Done page and the later versions' plan rows move only then); a
+    ticket edit in a later version shows on the future page at its next
+    republish, or sooner when a republish is wanted. Update each URL in place with
+    `Artifact read` first, never a new URL. A render with none of the split flags
+    writes the one full page, as before.
     The page reads the Jira mirror alone and groups tickets by the Jira Sector
     field (the mirror's `sector:` frontmatter, written when `jira.sectorField` is
     set in `~/.himmel/config.json`; `(no sector)` otherwise). It carries no plan
