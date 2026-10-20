@@ -64,6 +64,10 @@ write_jira_stub() {
 s="$JIRA_STATE"
 echo "$*" >> "$s/calls"
 case "$1" in
+    get|comment|transition|edit)
+        [ "$2" = "HIMMEL-9001" ] || { echo "jira-stub: unexpected key $2" >&2; exit 1; } ;;
+esac
+case "$1" in
     get)
         fv=$(awk 'NF { printf "%s{\"name\":\"%s\"}", (n++ ? "," : ""), $0 }' "$s/fixversions")
         printf '{"fields":{"issuetype":{"name":"Task"},"status":{"name":"%s"},"fixVersions":[%s]}}\n' "$(cat "$s/status")" "$fv" ;;
@@ -147,6 +151,14 @@ run_merge 0
 assert_eq "2 partial merge: status left alone" "$(state_status)" "In Review"
 assert_eq "2 partial merge: fixVersion left alone" "$(state_versions)" "v1.1.3"
 assert_comment_has "2 partial merge: Remaining line on the ticket" "Remaining: slice 2 of 3"
+
+# --- 2b the brief says completes-ticket: no, so --jira-transition is ignored -----------------
+new_case "In Review" "v1.1.3"
+printf '> **Completes ticket:** no\n\n## Results\n' > "$TMP/leg-doc.md"
+run_merge 0 --jira-transition --leg-doc "$TMP/leg-doc.md"
+assert_eq "2b brief completes-ticket: no: status left alone" "$(state_status)" "In Review"
+assert_eq "2b brief completes-ticket: no: fixVersion left alone" "$(state_versions)" "v1.1.3"
+assert_comment_has "2b brief completes-ticket: no: Remaining line on the ticket" "Remaining: slice 2 of 3"
 unset STUB_PR_BODY
 
 # --- 3 versionless ticket: closed with the current version stamped -----------------------
