@@ -4,8 +4,8 @@ name: Pages
 # (17 03 UTC) and on demand via `gh workflow run pages.yml`; it does not deploy
 # on push. Static suite: scripts/ci/test-pages-workflow.sh.
 #
-# docs/ is uploaded as-is. docs/.nojekyll turns Jekyll off, so no build step
-# is needed.
+# The Starlight site in site/ is built from docs/ and site/dist is uploaded.
+# docs/.nojekyll stays so a plain static serve of docs/ matches the raw files.
 #
 # The workflow is deliberately NOT named `CI`: scripts/handover/console-kit/
 # cut-tag.sh reads the commit's workflow run named exactly `CI`.
@@ -35,8 +35,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build the docs site
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: docs
+          path: site/dist
       - id: deployment
         uses: actions/deploy-pages@v5

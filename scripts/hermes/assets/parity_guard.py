@@ -751,6 +751,120 @@ def _edit_on_main_reason(start: str):
     return None
 
 
+# --- Pending-CR marker lock (check-cr-marker-on-pr-create parity) -----------
+# The Claude lane refuses `gh pr create` while <git-common-dir>/cr-pending/<branch>
+# exists (the pre-push hook writes it, /pr-check clears it). Hermes runs no CC
+# hook, so a trusted engine (external-writes fence lifted) could open a PR over
+# a pending review. A plain `git push` is NOT refused here: the marker is the
+# push's own output and every fix round pushes again. FAIL-CLOSED on an
+# unreadable marker; an undeterminable repo/branch is skipped (same stance as
+# the commit lock — judging this process's cwd would be wrong).
+GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$|(?=[;&|()<>]))", re.IGNORECASE)
+
+
+def _common_git_dir(git_path: str) -> str:
+    """The git-common-dir behind a `.git` dir or worktree `.git` FILE."""
+    if not os.path.isfile(git_path):
+        return git_path
+    try:
+        with open(git_path, "r", encoding="utf-8") as fh:
+            content = fh.read().strip()
+    except OSError:
+        return ""
+    if not content.startswith("gitdir:"):
+        return ""
+    gd = content[len("gitdir:"):].strip()
+    if not os.path.isabs(gd):
+        gd = os.path.normpath(os.path.join(os.path.dirname(git_path), gd))
+    try:
+        with open(os.path.join(gd, "commondir"), "r", encoding="utf-8") as fh:
+            cd = fh.read().strip()
+    except FileNotFoundError:
+        return gd
+    except OSError:
+        return ""
+    return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
+
+
+def _unquoted_segment(text: str) -> str:
+    """`text` up to the first shell operator that is neither quoted nor
+    escaped. A `&` that belongs to a redirection (`2>&1`, `&>f`) does not end
+    it. An unterminated quote, or an unquoted `$`, backtick, `<(`, `>(` or `>|`
+    (constructs this scanner does not parse), raises ValueError."""
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c in "'\"":
+            i += 1
+            while i < n and text[i] != c:
+                i += 2 if (c == '"' and text[i] == "\\") else 1
+            if i >= n:
+                raise ValueError("unterminated quote")
+        elif c in "$`" or (c in "<>" and text[i + 1:i + 2] in ("(", "|")):
+            raise ValueError("unclassified shell construct")
+        elif c in ";|()\n":
+            return text[:i]
+        elif c == "&" and not (i and text[i - 1] in "<>") and text[i + 1:i + 2] != ">":
+            return text[:i]
+        i += 1
+    return text
+
+
+def _pr_head_branches(cmd: str) -> list:
+    """Every branch named by a `--head`/`-H` token among the arguments of
+    `gh pr create` (`owner:branch` reduced to `branch`). A token that is
+    really another option's value is included too, so the lock errs closed.
+    Every `gh pr create` in the command string is scanned. Raises ValueError
+    when the arguments cannot be tokenised; the caller must refuse."""
+    heads = []
+    for m in GH_PR_CREATE.finditer(cmd):
+        toks = shlex.split(_unquoted_segment(cmd[m.end():]))
+        for i, t in enumerate(toks):
+            val = ""
+            if t in ("--head", "-H"):
+                val = toks[i + 1] if i + 1 < len(toks) else ""
+            elif t.startswith("--head="):
+                val = t[len("--head="):]
+            elif t.startswith("-") and not t.startswith("--") and "H" in t:
+                val = t.split("H", 1)[1].lstrip("=")
+                if not val:
+                    val = toks[i + 1] if i + 1 < len(toks) else ""
+            if val:
+                heads.append(val.rsplit(":", 1)[-1])
+    return heads
+
+
+def _pending_cr_reason(start: str, head_branches: list = ()):
+    """Block reason if the repo at `start` has a pending CR marker for any of
+    `head_branches` (the PR's explicit heads) or its checked-out branch, else
+    None. All are checked, so a misparsed head cannot hide the real one or the
+    checked-out branch's marker."""
+    repo_root, git_path = _git_dir_for(start)
+    if not repo_root:
+        return None
+    branches = [b for b in (_current_branch(git_path), *head_branches) if b]
+    if not branches:
+        return None
+    common = _common_git_dir(git_path)
+    if not common:
+        return ("Cannot read the repo's git dir to check for a pending CR "
+                "marker — refused fail-closed.")
+    for branch in branches:
+        try:
+            os.stat(os.path.join(common, "cr-pending", branch))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return ("The pending CR marker cannot be read — refused fail-closed.")
+        return (f"A CR review is pending for branch {branch}: run /pr-check "
+                "(clear-cr-marker.sh) before `gh pr create` "
+                "(check-cr-marker-on-pr-create parity).")
+    return None
+
+
 def _usable_dir(cand) -> str:
     """An absolute, existing directory from `cand`, else "" (unusable)."""
     if not isinstance(cand, str):
@@ -1758,6 +1872,23 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
             # Merged-PR commit lock (block-merged-pr-commit parity): refuse
             # a commit onto a branch whose PR is already MERGED (fail-open).
             reason = _merged_pr_reason(commit_dir)
+            if reason:
+                block(reason)
+    # Pending-CR marker lock: independent of the engine fence below, so a
+    # trusted engine cannot open a PR over an unfinished review.
+    if GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(_join_continuations(raw_cmd))):
+        joined = _join_continuations(raw_cmd)
+        pr_m = GH_PR_CREATE.search(joined)
+        # Only a cd before the gh call moves it; one after it must not.
+        pr_dir = _commit_dir(joined[:pr_m.start()] if pr_m else joined,
+                             _agent_cwd(payload, args), None)
+        if pr_dir:
+            try:
+                heads = _pr_head_branches(joined)
+            except ValueError:
+                block("The `gh pr create` arguments cannot be parsed to find "
+                      "their --head — refused fail-closed.")
+            reason = _pending_cr_reason(pr_dir, heads)
             if reason:
                 block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh

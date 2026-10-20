@@ -240,15 +240,34 @@ gated (a secret can land in any file). Only path-pure jobs are gated; a job
 whose suites glob or run files no gate group can enumerate (`lint`,
 `bun-suites`, `claude-startup`, `lanes-and-trust-suites`) is ungated and runs on
 every PR (trust judges j2543e, j2543g), pinned by test-pr-plan.sh A8. Gated
-non-matrix jobs (`guardrail-matrices`, ...) skip at job level, which reports
+non-matrix jobs (`git-env-scrub`, ...) skip at job level, which reports
 `skipped`. The matrix required job `node-suites` and `security-scan` always
 start and skip their steps, so every required name still reports.
+
+The short checks (`secret-scan`, `bwk-awk-mktemp-gate`, `unchecked-mktemp-range`,
+`commit-lint`, `jira-cli-smoke`, `claude-startup`, `guardrail-matrices`,
+`doc-invariants`) run as step groups of one job, `ci-quick` (HIMMEL-5675). A
+gated group skips its own steps. Each old job name stays as a sentinel. It
+carries the required context. It is skipped (green) when ci-quick reports its
+group as `pass`. Otherwise it runs `exit 1`. That includes a cancelled,
+timed-out or skipped ci-quick, and a failed shared step. A red group fails only
+its own sentinel. `scripts/ci/test-ci-quick.sh` pins the shape.
 
 In each `shell-unit-shard`, `scripts/ci/shard-has-work.sh` asks
 `run-shell-tests.sh --list` whether the shard has anything to run under the
 same selection env and skips the apt/bun/ffmpeg/gitleaks/pre-commit setup when
 it has not. The run step and manifest upload stay unconditional, so the
 aggregator's manifest verification is unchanged.
+
+On a pull request the plan also sizes the matrix (HIMMEL-5556).
+`scripts/ci/plan-shards.sh` costs each selected suite from
+`scripts/ci/suite-durations.tsv`. A suite missing from the ledger costs the
+median. It packs the suites longest-first and picks the fewest shards (at most 8) whose
+slowest shard stays under max(600 s, the 8-shard makespan). The shard total
+reaches the run step's `--shard i/N` and the aggregator's `--shards`. Push and
+nightly have no plan and keep 8 shards. If the `--list` fails, the plan falls
+back to the per-shard `shard-has-work.sh` probes at 8. `home-canary` is sized
+the same way over its `--impacted` selection.
 
 ## A failed suite is retried once; a pass on retry is a FLAKE
 
@@ -602,7 +621,7 @@ Three readings that look like evidence and are not:
 
 ## Superseded runs under a runner backlog
 
-With a large fleet the account's 20-job cap backs up, and superseded
+With a large fleet the org's 60-job cap backs up, and superseded
 `pull_request` runs sit in workflow-level `queued` — the concurrency group does
 not cancel them, and `codeowner-review-gate` / `workflow_dispatch` runs are
 outside it by design. From a supervisor session, `bash scripts/ci/cancel-superseded-runs.sh
@@ -612,5 +631,18 @@ current head. It never touches a run at the current head, main, a
 schedule run or a branch with no open PR, and any `gh` read error cancels
 nothing and exits 1. Cancels land ~20 s later. Run from a supervisor session only; not yet wired
 into `tick.sh` or the worker session ship flow.
+
+Never rerun a CI run by hand or in a loop: the concurrency group `ci-pr-<N>`
+makes a rerun the newest request, so rerunning a run at a superseded sha cancels
+the PR's real head run (HIMMEL-6509). `bash scripts/ci/rerun-head.sh [--dry-run] <pr>`
+reruns (`--failed`) the newest CI run at the PR's current head only when it is
+completed as failure, cancelled or timed_out; a live or green head run, a run
+already rerun once and no run at the head are no-ops. `--run <id>` does the same
+but exits 1 when that run's sha is not its PR's current head. `--fleet` runs
+`cancel-superseded-runs.sh` first, then the `<pr>` pass over every open PR: the
+one sanctioned recovery after an outage. Every run read precedes the first
+rerun, so a `gh` error there reruns nothing and exits 1. The PR heads are
+re-read right before each rerun and a moved head is skipped, so a fleet pass can
+rerun some PRs and still exit 1 when a later re-read or rerun fails.
 
 `bash scripts/lint/flag-parity.sh [--staged | --changed A..B] --baseline scripts/lint/flag-parity-baseline.tsv` fails a doc (`docs/`, `.claude/commands/`, skills) that writes a `--flag` after a tracked script name the script lacks; `--advisory` lists usage-header flags no doc mentions. Pre-commit and the CI lint job run it; ~0.3 s on the full tree.
