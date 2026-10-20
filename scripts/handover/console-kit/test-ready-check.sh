@@ -331,6 +331,21 @@ check "no-ledger-row: exit 1" "$rc" "1"
 contains "no-ledger-row: check 4 fails" "$out" "[FAIL] 4."
 seed_ledger_ok
 
+# --- 4b. check 4 takes the audit row a signed judge GO leaves:
+# kind=judge-go, status ok, source=judge:<qid>/<name>, at the exact head.
+reset_stubs
+printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","status":"ok","source":"judge:q1/judge"}\n' "$SHA" > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "judge-go-row: exit 0" "$rc" "0"
+contains "judge-go-row: check 4 passes" "$out" "[PASS] 4. CR ledger: 1 row(s) for $SHA with status=ok"
+
+# --- 4c. a judge-go row at a DIFFERENT head buys nothing -----------------
+printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"b","head":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","status":"ok","source":"judge:q1/judge"}\n' > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "judge-go-other-head: exit 1" "$rc" "1"
+contains "judge-go-other-head: check 4 fails" "$out" "[FAIL] 4."
+seed_ledger_ok
+
 # --- 5a. check 5 fails: sensitive files, no Platforms tested trailer ----
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Security reviewed: manual"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":""}]'

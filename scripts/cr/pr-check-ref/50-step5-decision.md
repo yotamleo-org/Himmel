@@ -48,6 +48,7 @@
 6. If either `N > 0`, or step 4.8 reported `threads_rc != 0`, or step 3.6 reported `impacted_rc != 0`:
    - Leave the marker in place.
    - Surface the Critical / Important findings (and any unresolved-thread count, and every impacted suite still missing a verdict) to the user.
+   - **Route each finding (HIMMEL-6303).** A Critical or Important finding, or one in the version's priority pool, is fixed in this PR and run through a round. Every other finding is deferred to a ticket (step 4.5) with no commit and no round. After the round cap, a change that does land clears on a signed judge GO at its exact head (`review-round.sh judge-go`, step 3.0), never on a new full round.
    - Instruct: address the findings, commit fixes, resolve the addressed PR threads, then re-run `/pr-check`. Fix the whole round in ONE commit and ONE push (never a WIP push), and make any PR title/body/`## Ticket coverage` edit in that same step, not after CI is green: every push re-runs CI and an edit re-queues `pr-title-lint` and `codeowner-review-gate`. (A new commit invalidates the SHA in the marker too, but the marker is still present until `/pr-check` clears it.)
 
 6.5. **Critic-score footer (append after the gate decision in steps 5/6).** Emit a per-model verdict tally for this run plus the cumulative agreed% from the ledger:
