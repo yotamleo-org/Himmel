@@ -1007,6 +1007,7 @@ scripts/test-uninstall.sh	local	behaviour suite, 0 catches in the 400-PR audit w
 scripts/test-unlanded-work.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-user-slug-resolve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-vm-e2e-mode-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-worktree-orphans.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-worktree-verbs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/testing/test-added-unwired-prepush.sh	pr	static-gate
 scripts/testing/test-claude-mock-turn.sh	local	new since the audit, behaviour suite
