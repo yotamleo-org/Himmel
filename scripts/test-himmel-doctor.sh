@@ -6916,4 +6916,48 @@ out="$(c69_run C69_CODE=401)"
 if grepq "$out" -F 'C69-qmd-cli-key'; then fail "C69 local config should be silent -> $(printf '%s' "$out" | head -3)"; else pass "C69 local config -> silent"; fi
 rm -rf "$c69_t"
 
+echo "== C70: graphify semantic freshness =="
+c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
+c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
+mkdir -p "$c70_out" "$c70_corpus"
+printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
+printf '{"nodes":[],"edges":[]}\n' > "$c70_out/graph.json"
+printf '# real\n' > "$c70_corpus/real.md"
+printf '%s\n' "$c70_corpus" > "$c70_out/.graphify_root"
+# c70_rows <failed files>...: one merge row per argument, each a comma list
+c70_rows() { python3 - "$c70_out/semantic-runs.jsonl" "$@" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as f:
+    for i, spec in enumerate(sys.argv[2:]):
+        failed = [s for s in spec.split(",") if s]
+        f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
+                            "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
+PY
+}
+c70_run() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= "$@" bash "$DOC" --no-color --only C70 2>&1; }
+
+c70_rows "x.md" "x.md" "x.md"
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic'; then pass "C70 a file stuck across 3 runs -> WARN"; else fail "C70 stuck -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=1 refused=0'; then pass "C70 prints the semantic line verbatim"; else fail "C70 stuck line -> $(printf '%s' "$out" | head -3)"; fi
+
+c70_rows "x.md" "y.md" ""
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=0'; then pass "C70 draining failures -> OK with the line"; else fail "C70 draining -> $(printf '%s' "$out" | head -3)"; fi
+
+rm -f "$c70_out/semantic-runs.jsonl"
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no semantic-runs.jsonl'; then pass "C70 no semantic-runs.jsonl -> OK skip"; else fail "C70 no runs -> $(printf '%s' "$out" | head -3)"; fi
+
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_OUT="$c70_t/no-such-out")"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no cadence graphify-out'; then pass "C70 no cadence corpus -> OK skip"; else fail "C70 no corpus -> $(printf '%s' "$out" | head -3)"; fi
+c70_rows "x.md" "x.md" "x.md"
+printf '#!/bin/sh\nexit 127\n' > "$c70_t/missing-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/missing-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 127'; then pass "C70 checker exits 127 -> INFO, not a healthy OK"; else fail "C70 rc 127 -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\necho "graph-freshness: FAIL corpus orphaned: gone" >&2\nexit 2\n' > "$c70_t/orphan-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/orphan-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'corpus orphaned'; then pass "C70 other rc 2 -> INFO with the reason"; else fail "C70 rc 2 -> $(printf '%s' "$out" | head -3)"; fi
+rm -rf "$c70_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
