@@ -165,6 +165,18 @@ check "(l) dirty worktree is kept" yes "$([ -d "$WORK/repo/.claude/worktrees/she
 check "(l) the modified file is still there" yes "$([ -f "$WORK/repo/.claude/worktrees/shepherd-7/dirty.txt" ] && echo yes)"
 printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
 
+# (n) a run that leaves an ignored file keeps the tree and the file
+setup yes ok 0
+echo '*.local' >> "$WORK/repo/.git/info/exclude"
+printf '#!/bin/sh\necho secret > .env.local\n' > "$WORK/ignorer.sh"
+printf '#!/bin/sh\necho %s\n' "$WORK/ignorer.sh" > "$WORK/impacted-stub"
+out=$(run); rc=$?
+check "(n) ignoring run exits 0" 0 "$rc"
+check "(n) worktree with an ignored file is kept" yes "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
+check "(n) the ignored file is still there" yes "$([ -f "$WORK/repo/.claude/worktrees/shepherd-7/.env.local" ] && echo yes)"
+: > "$WORK/repo/.git/info/exclude"
+printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
+
 # (m) a failing run (exit 1) still removes its clean tree
 setup yes ok 0; echo 1 > "$SHEP_STUBDIR/cov.rc"
 out=$(run); rc=$?
