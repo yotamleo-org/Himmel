@@ -134,6 +134,8 @@ hint="$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; gr
 assert "hint uses uv tool install" grep -q '^uv tool install ' <<<"$hint"
 assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, single-quoted (no [kimi] extra, HIMMEL-2481/4513)" \
   grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
+fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
+assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
 assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
   grep -q -- '--with mcp' <<<"$hint"
 

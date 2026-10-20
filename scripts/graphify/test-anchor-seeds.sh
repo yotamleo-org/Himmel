@@ -110,21 +110,22 @@ if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "leg-graph.sh query 'how do
 else fail "A5c out='$out' err=$(cat "$T/err")"; fi
 
 # A6: a caller's own --seed is left alone: one call, no anchor seeds added.
-run query "how does go.sh write a GO file" --seed write_file >/dev/null
+run query "how does go.sh write a GO file" --seed write_file >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how does go.sh write a GO file --rationale --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
+if [ "$rc" = 0 ] && [ "$calls" = "query how does go.sh write a GO file --rationale --seed write_file --budget 8000" ]; then pass "A6 an explicit --seed runs unchanged"
 else fail "A6 calls='$calls'"; fi
 
 # A7: a question naming nothing, and matching nothing semantically, runs exactly as before: one call, the caller's arguments.
-run query "how do planets orbit" >/dev/null
+run query "how do planets orbit" >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how do planets orbit --rationale --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
+if [ "$rc" = 0 ] && [ "$calls" = "query how do planets orbit --rationale --budget 8000" ]; then pass "A7 no anchor, one unchanged call"
 else fail "A7 calls='$calls'"; fi
 
 # A9: a budget with a leading zero is decimal, not octal: both halves still run.
 run query "how does go.sh write a GO file" --budget 0800 >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 400" <<<"$calls"; then
+if [ "$rc" = 0 ] && grep -qx -- "query how does go.sh write a GO file --rationale --seed go_sh --seed deferred --budget 400" <<<"$calls" \
+  && grep -qx -- "query how does go.sh write a GO file --rationale --budget 400" <<<"$calls" && [ "$(wc -l < "$T/calls")" = 2 ]; then
   pass "A9 --budget 0800 halves to 400"
 else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
 

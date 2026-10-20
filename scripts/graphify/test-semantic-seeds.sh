@@ -94,15 +94,15 @@ if [ "$first" = "--seed go_sh" ]; then pass "S5 anchor seed precedes semantic se
 else fail "S5 first='$first' calls='$(cat "$T/calls")'"; fi
 
 # S6: a caller's own --seed is left alone.
-run query "how does a console hand work to a leg" --seed need >/dev/null
+run query "how does a console hand work to a leg" --seed need >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how does a console hand work to a leg --rationale --seed need --budget 8000" ]; then pass "S6 explicit --seed runs unchanged"
+if [ "$rc" = 0 ] && [ "$calls" = "query how does a console hand work to a leg --rationale --seed need --budget 8000" ]; then pass "S6 explicit --seed runs unchanged"
 else fail "S6 calls='$calls'"; fi
 
 # S7: a question matching nothing runs as before: one call.
-run query "what colour are the planets" >/dev/null
+run query "what colour are the planets" >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query what colour are the planets --rationale --budget 8000" ]; then pass "S7 no match, one unchanged call"
+if [ "$rc" = 0 ] && [ "$calls" = "query what colour are the planets --rationale --budget 8000" ]; then pass "S7 no match, one unchanged call"
 else fail "S7 calls='$calls'"; fi
 
 # W: a small corpus for the weak-seed and eval-corpus rows. effort.ts and check-best-effort.sh are the
