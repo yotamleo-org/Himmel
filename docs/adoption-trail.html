@@ -1146,8 +1146,7 @@ claude</pre>
         <h2>Reach: your phone joins</h2>
         <p>Wire the Telegram bridge. The installer also asks — explicitly,
         by name — whether the bridge should survive reboots, on the
-        platforms where it has an installer for that (Windows and
-        Linux).</p>
+        platforms where it has an installer for that (Linux).</p>
         <ul class="chips">
           <li><button class="chip" data-detail="bridge">Telegram
           bridge</button></li>
@@ -1258,10 +1257,10 @@ claude</pre>
         <p class="impact"><b>Impact:</b> work continues while you're away.
         Instead of reconstructing the night, you read <b>one morning
         report</b> and make the decisions only you can make.</p>
-        <div class="note">Partly guided-manual today: the installer wires
-        the monitoring stack up on Windows, but reports it as not yet
-        runnable elsewhere, and a few schedules are still armed by
-        hand.</div>
+        <div class="note">Partly guided-manual today: the installer can wire
+        the monitoring stack up on Linux when you opt in, but reports it
+        as not yet runnable elsewhere, and a few schedules are still
+        armed by hand.</div>
       </div>
     </section>
 
@@ -1603,11 +1602,11 @@ claude</pre>
     'monitoring': { t: 'Grafana + Prometheus + exporters', s: 'ship', h:
       '<p>A real monitoring stack installed on your machine: Prometheus scraping himmel’s own '
       + 'exporters for session and flow health, Grafana dashboards, and alerts routed to your bridge.</p>' +
-      '<p>The installer owns it through its own install script — but only on Windows today. On macOS '
-      + 'and Linux that step reports as not yet runnable, and you would stand the stack up by hand.</p>' },
+      '<p>The installer owns it through its own install script — but only on Linux today, and only once you opt in. On macOS '
+      + 'that step reports as not yet runnable, and you would stand the stack up by hand.</p>' },
     'rm-mondeps': { t: 'Monitoring deps sorted', s: 'road', h:
       '<p><b>Roadmap.</b> Full dependency handling for the monitoring stack, and the platforms the '
-      + 'installer does not cover yet — today it wires the stack on Windows only.</p>' },
+      + 'installer does not cover yet — today it wires the stack on Linux only.</p>' },
     'rm-report': { t: 'Templatable report', s: 'road', h:
       '<p><b>Roadmap.</b> The morning report becomes a template you shape to your needs, instead of one fixed layout.</p>' },
     'briefs': { t: 'Mission briefs', s: 'ship', h:
