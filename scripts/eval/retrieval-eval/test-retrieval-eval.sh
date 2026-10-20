@@ -230,6 +230,10 @@ eq "check refuses an unknown split" "1" "$(chk '{"id":"c1","split":"dev","q":"x"
 eq "check refuses a missing grade-1 file" "1" "$(chk '{"id":"c2","q":"x","gold":["docs/lock.md"],"gold1":["docs/nope.md"],"reason":[]}')"
 eq "check refuses a file graded 2 and 1" "1" "$(chk '{"id":"c3","q":"x","gold":["docs/lock.md"],"gold1":["docs/lock.md"],"reason":[]}')"
 eq "check accepts a held-out row with a grade-1 file" "0" "$(chk '{"id":"c4","split":"heldout","q":"x","gold":["docs/lock.md"],"gold1":["docs/other.md"],"reason":[]}')"
+# run does not call check, so a path graded 2 and 1 (any case) must still count once in ndcg.
+eq "ndcg counts a path graded 2 and 1 once" "1.0" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+print(round(m.ndcg(["docs/lock.md"], {"gold": ["docs/lock.md"], "gold1": ["Docs/Lock.md"]}, 5), 2))' "$EV")"
 
 # 10. the shipped question set is well-formed: 75 rows, unique ids, gold and gold1 files exist.
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"

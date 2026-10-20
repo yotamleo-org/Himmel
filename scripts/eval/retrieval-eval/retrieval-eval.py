@@ -363,7 +363,9 @@ def is_hit_any(files, q):
 
 def ndcg(files, q, k):
     """nDCG@k with gain 2 for a gold file and 1 for a gold1 file; a graded file is counted once."""
-    left = [(g.lower(), 2) for g in q["gold"]] + [(g.lower(), 1) for g in q.get("gold1", [])]
+    graded = {g.lower(): 1 for g in q.get("gold1", [])}
+    graded.update({g.lower(): 2 for g in q["gold"]})
+    left = list(graded.items())
     ideal = sum(g / math.log2(i + 2) for i, g in enumerate(sorted((g for _, g in left), reverse=True)[:k]))
     dcg = 0.0
     for i, f in enumerate(files[:k]):
