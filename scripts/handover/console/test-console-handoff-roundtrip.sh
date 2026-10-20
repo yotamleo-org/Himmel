@@ -65,13 +65,14 @@ root="$tmp/handovers"
 mkdir -p "$root"
 today="$(date +%F)"
 console() { ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CONSOLE_WORK_DIR="$tmp/work" bash "$C" "$@" ); }
+live_state() { awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$1"; }
 
 # --- 1: the field list matches the template and console.sh ------------------
 tpl="$REPO_REAL/docs/handover/console-template.md"
 tpl_fields="$(awk '
     $0 == "## Live state" { f = 1; next }
     f && /^## / { exit }
-    f && /^[a-z][A-Za-z -]*:/ { sub(/:.*/, ""); print }
+    f && /^[a-z][A-Za-z0-9_ -]*:/ { sub(/:.*/, ""); print }
 ' "$tpl")"
 sh_fields="$(sed -n 's/^    for field in \(.*\); do$/\1/p' "$REPO_REAL/scripts/handover/console/console.sh" | head -n 1 | tr ' ' '\n')"
 listed="$carried_fields
@@ -119,13 +120,13 @@ check "2 next succeeds against the full fixture" "$rc" "0"
 
 while IFS= read -r f; do
     want="$(printf '%s\n' "$fixture_live" | grep -m 1 "^$f:")"
-    check "2 successor doc carries '$f:' verbatim" "$(grep -Fxc "$want" "$docB" 2>/dev/null)" "1"
+    check "2 successor Live state carries '$f:' verbatim" "$(live_state "$docB" 2>/dev/null | grep -Fxc "$want")" "1"
 done <<EOF
 $carried_fields
 EOF
 while IFS= read -r f; do
     want="$(printf '%s\n' "$fixture_live" | grep -m 1 "^$f:")"
-    check "2 HANDOFF carries '$f:' verbatim" "$(grep -Fxc "$want" "$handoff" 2>/dev/null)" "1"
+    check "2 HANDOFF Live state carries '$f:' verbatim" "$(live_state "$handoff" 2>/dev/null | grep -Fxc "$want")" "1"
 done <<EOF
 $handoff_fields
 EOF
