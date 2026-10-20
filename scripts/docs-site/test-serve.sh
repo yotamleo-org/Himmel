@@ -121,6 +121,8 @@ serve_fake
 if [ "$(installs)" -eq 2 ]; then ok "lockfile: changed lockfile reinstalls"; else ko "lockfile: changed lockfile reinstalls (got $(installs))"; fi
 serve_fake
 if [ "$(installs)" -eq 2 ]; then ok "lockfile: reinstall is stamped, next serve skips"; else ko "lockfile: reinstall is stamped, next serve skips (got $(installs))"; fi
+rm "$fake/site/package-lock.json"
+if serve_fake || [ "$(installs)" -ne 2 ]; then ko "lockfile: unhashable lockfile fails without installing"; else ok "lockfile: unhashable lockfile fails without installing"; fi
 
 if [ ! -d "$repo/site/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); real serve not run in the hermetic shell shards"
