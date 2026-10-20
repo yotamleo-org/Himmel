@@ -25,12 +25,16 @@ Arms (all read-only):
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
               path and ident-grep baselines); its tokens and time are the sum
               of the three
-Metrics per arm: recall@5 (a gold file is among the first k distinct files),
-recall_any@5 (a gold or gold1 file is), ndcg@5 (graded: gold = 2, gold1 = 1,
-each file counted once, the ideal list holds every graded file),
-reason_carried (every reason phrase appears in the arm's output; only questions
-with a reason count), tokens (output chars / 4: what the caller has to read),
-ms (wall time).
+Metrics per arm: hit@5 (a gold file is among the first k distinct files),
+hit_any@5 (a gold or gold1 file is), precision@5 (graded files among the first
+k, over k: a short list is penalised), mrr (mean reciprocal rank of the first
+gold file in the first k, 0 for a miss), gold_share (gold files over files
+returned, pooled over the questions: off-target noise shows as a low share),
+ndcg@5 (graded: gold = 2, gold1 = 1, each file counted once, the ideal list
+holds every graded file), reason_carried (every reason phrase appears in the
+arm's output; only questions with a reason count), tokens (output chars / 4:
+what the caller has to read), tokens_per_hit (tokens over hits, pooled; "-" for
+an arm with no hit), ms (wall time).
 
 A question row is {id, kind, q, gold: [paths], reason: [phrases]} plus the
 optional gold1: [paths] (plausible docs, grade 1; gold files are grade 2: the
@@ -38,8 +42,8 @@ file defines or decides the answer) and split: "insample" (the default) or
 "heldout". A held-out question is frozen: it is never used to tune an arm, a
 query or a seed, and nothing outside this directory may quote it. Every run
 reports the two slices separately: scores-by-slice.tsv, the printed slice table
-and, per arm, <arm>.insample.* and <arm>.heldout.* ledger metrics (n, recall@k,
-recall_any@k, ndcg@k, reason_carried; null where the slice has no question to
+and, per arm, <arm>.insample.* and <arm>.heldout.* ledger metrics (n, hit@k,
+hit_any@k, ndcg@k, reason_carried; null where the slice has no question to
 score). The unsliced columns pool both slices: read them only as a continuity
 series.
 
@@ -377,6 +381,43 @@ def ndcg(files, q, k):
     return dcg / ideal if ideal else 0.0
 
 
+def _named(f, names):
+    fl = f.lower()
+    return any(fl == n.lower() or fl.endswith("/" + n.lower()) for n in names)
+
+
+def _top(files, k):
+    out, seen = [], set()
+    for f in files:
+        if f.lower() not in seen:
+            seen.add(f.lower())
+            out.append(f)
+    return out[:k]
+
+
+def precision(files, q, k):
+    """Graded (gold or gold1) files among the first k distinct files, over k."""
+    return sum(_named(f, q["gold"] + q.get("gold1", [])) for f in _top(files, k)) / k
+
+
+def reciprocal_rank(files, q, k):
+    for i, f in enumerate(_top(files, k)):
+        if _named(f, q["gold"]):
+            return 1.0 / (i + 1)
+    return 0.0
+
+
+def gold_found(files, q, k):
+    """(gold files, files returned) among the first k distinct files."""
+    top = _top(files, k)
+    return sum(_named(f, q["gold"]) for f in top), len(top)
+
+
+def gold_share(files, q, k):
+    g, n = gold_found(files, q, k)
+    return g / n if n else None
+
+
 def carried(text, reason):
     if not reason:
         return None
@@ -477,6 +518,8 @@ def cmd_run(a):
             row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
                        arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
                        hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
+                       precision=precision(g["files"], q, a.k), rr=reciprocal_rank(g["files"], q, a.k),
+                       gold_n=gold_found(g["files"], q, a.k)[0], ret_n=gold_found(g["files"], q, a.k)[1],
                        reason=carried(g["_text"], q.get("reason", [])),
                        tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"])
             rows.append(row)
@@ -485,11 +528,12 @@ def cmd_run(a):
     with open(os.path.join(a.out, "results.jsonl"), "w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")
-    rk = "recall@%d" % a.k
-    cols = ["arm", "n", rk,"reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts",
-            "errors"]
+    rk = "hit@%d" % a.k
+    pk = "precision@%d" % a.k
+    cols = ["arm", "n", rk, pk, "mrr", "gold_share", "reason_carried", "reason_n", "tokens_mean", "tokens_per_hit",
+            "ms_median", "ms_total", "timeouts", "errors"]
     lines = ["\t".join(cols)]
-    slice_cols = ["arm", "slice", "n", rk, "recall_any@%d" % a.k, "ndcg@%d" % a.k, "reason_carried", "reason_n"]
+    slice_cols = ["arm", "slice", "n", rk, "hit_any@%d" % a.k, "ndcg@%d" % a.k, "reason_carried", "reason_n"]
     slice_lines = ["\t".join(slice_cols)]
     mean = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
     metrics, cases = {}, {}
@@ -499,13 +543,19 @@ def cmd_run(a):
         rec = sum(r["hit"] for r in rs) / len(rs) if rs else 0.0
         rea = sum(r["reason"] for r in rr) / len(rr) if rr else 0.0
         tk = statistics.mean(r["tokens"] for r in rs) if rs else 0
+        prec = mean([r["precision"] for r in rs])
+        mrr = mean([r["rr"] for r in rs])
+        gs = sum(r["gold_n"] for r in rs) / sum(r["ret_n"] for r in rs) if sum(r["ret_n"] for r in rs) else None
+        tph = sum(r["tokens"] for r in rs) / sum(r["hit"] for r in rs) if sum(r["hit"] for r in rs) else None
+        dash = lambda v, f="%.2f": "-" if v is None else f % v  # noqa: E731
         msm = statistics.median(r["ms"] for r in rs) if rs else 0
         mst = sum(r["ms"] for r in rs)
         to = sum(r["timeout"] for r in rs)
         er = sum(r["error"] for r in rs)
-        lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, "%.2f" % rea, str(len(rr)),
-                                "%d" % tk, "%d" % msm, "%d" % mst, str(to), str(er)]))
-        metrics.update({arm + "." + rk: rec, arm + ".reason_carried": rea, arm + ".tokens_mean": tk,
+        lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, dash(prec), dash(mrr), dash(gs), "%.2f" % rea,
+                                str(len(rr)), "%d" % tk, dash(tph, "%d"), "%d" % msm, "%d" % mst, str(to), str(er)]))
+        metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
+                        arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
         for sl in SPLITS:
             sr = [r for r in rs if r["split"] == sl]
@@ -515,7 +565,7 @@ def cmd_run(a):
             slice_lines.append("\t".join([arm, sl, str(len(sr))] + ["-" if v is None else "%.2f" % v for v in vals]
                                          + [str(len(srr))]))
             pre = "%s.%s." % (arm, sl)
-            metrics.update({pre + "n": len(sr), pre + rk: vals[0], pre + "recall_any@%d" % a.k: vals[1],
+            metrics.update({pre + "n": len(sr), pre + rk: vals[0], pre + "hit_any@%d" % a.k: vals[1],
                             pre + "ndcg@%d" % a.k: vals[2], pre + "reason_carried": vals[3]})
         for r in rs:
             cases.setdefault(r["id"], {})[arm + ".hit"] = r["hit"]
