@@ -797,6 +797,7 @@ def _common_git_dir(git_path: str) -> str:
 
 
 _REDIRECT_VAR = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*")
+_CASE_WORD = re.compile(r"(?<![\w-])case(?![\w-])")
 
 
 def _skip_process_substitution(text: str, i: int) -> int:
@@ -811,7 +812,8 @@ def _skip_process_substitution(text: str, i: int) -> int:
             continue
         if c == "`" or text[i:i + 2] in ("$(", "${"):
             raise ValueError("unclassified shell construct")
-        if c == "#" and text[i - 1] in " \t\n" or text[i:i + 5] == "case ":
+        if (c == "#" and text[i - 1] in " \t\n" or text[i:i + 2] == ";;"
+                or _CASE_WORD.match(text, i)):
             raise ValueError("unclassified shell construct")
         if c in "'\"":
             i += 1
