@@ -540,6 +540,8 @@ out_prof=$(USERPROFILE='' HOME="$fake_home_prof" HIMMEL_UPDATE_CLAUDE_BIN="$clau
       CLAUDE_USER_SETTINGS="$fake_home_prof/.claude/settings.json" \
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --check 2>&1) || true
 assert_contains "check mode lists the profile-enabled plugin" "      find-docs@himmel" "$out_prof"
+assert_not_contains "check mode installs nothing" "plugin install" "$(cat "$log_prof")"
+: > "$log_prof"
 out_prof=$(USERPROFILE='' HOME="$fake_home_prof" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_prof" HERMES_HOME="$TMP/no-hermes" \
       CLAUDE_USER_SETTINGS="$fake_home_prof/.claude/settings.json" \
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
