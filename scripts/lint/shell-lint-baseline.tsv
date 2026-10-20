@@ -174,16 +174,12 @@ scripts/codex/test-startup-health.sh	mktemp	1
 scripts/config-ui/tests/e2e/record-agui-gif.sh	errexit	1
 scripts/context-fill.sh	errexit	1
 scripts/copilot/test-dispatch-copilot.sh	errexit	1
-scripts/cr/critic-first-pass.sh	prim-tmpdir	1
-scripts/cr/critic-panel.sh	prim-tmpdir	2
 scripts/cr/d1-verdict.sh	errexit	1
 scripts/cr/emit-gate-fail.sh	errexit	1
 scripts/cr/file-deferred-issues.sh	errexit	1
-scripts/cr/hermes-critic.sh	prim-tmpdir	1
 scripts/cr/impacted-suites.sh	prim-tmpdir	1
 scripts/cr/install-cr-gate.sh	prim-atomic	1
 scripts/cr/lane-classify.sh	errexit	1
-scripts/cr/live-gate-e2e.sh	prim-tmpdir	1
 scripts/cr/review-round.sh	prim-atomic	5
 scripts/cr/review-round.sh	prim-tmpdir	2
 scripts/cr/test-advisory-rows.sh	mktemp	1
@@ -358,8 +354,6 @@ scripts/handover/headed-arm.sh	prim-lock	2
 scripts/handover/hop.sh	errexit	1
 scripts/handover/hop.sh	gnu-flag	2
 scripts/handover/konsole-macos.sh	prim-atomic	1
-scripts/handover/konsole-macos.sh	prim-tmpdir	1
-scripts/handover/leg-timeline.sh	prim-tmpdir	2
 scripts/handover/merge-on-green.sh	prim-canon	1
 scripts/handover/merge-on-green.sh	prim-tmpdir	1
 scripts/handover/pr-merge.sh	errexit	1

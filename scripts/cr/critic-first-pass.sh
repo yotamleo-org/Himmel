@@ -29,6 +29,8 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 INVOKE="$SCRIPT_DIR/../hermes/invoke.sh"
 # first_signal_line (see _cfp_emit_raw_diag). Sourcing only defines
 # functions. Fail-open on a missing file, like critic-panel.sh's own source of
@@ -536,7 +538,7 @@ _cfp_claude_unwrap() {
 
 _cfp_claude_invoke() {
     _cc_effort="$(_cfp_claude_effort)"
-    _cc_dir="$(mktemp -d "${TMPDIR:-/tmp}/cfp-claude.XXXXXX")" || { echo "critic-first-pass.sh: mktemp -d failed" >&2; return 1; }
+    _cc_dir="$(tmpdir)" || { echo "critic-first-pass.sh: mktemp failed" >&2; return 1; }
     _cc_out=""
     _cc_rc=0
     case "$provider" in

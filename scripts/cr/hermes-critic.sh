@@ -48,6 +48,8 @@ set -uo pipefail
 # sanctioned product surface, not unattended background work.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 INVOKE="$SCRIPT_DIR/../hermes/invoke.sh"
 
 usage() {
@@ -335,7 +337,7 @@ run_claude_review() {
     deduped_path="$(dedupe_path "$PATH")"
     # Removed below rather than via the EXIT trap: this function always runs
     # inside a command substitution, whose subshell resets the parent's trap.
-    scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/hermes-critic-cwd.XXXXXX")"
+    scratch_dir="$(tmpdir)"
     # Reviewer isolation depends on this cwd, so do not lean on `cd ""` failing
     # (POSIX leaves an empty operand unspecified) — refuse the route instead.
     if [ -z "$scratch_dir" ] || [ ! -d "$scratch_dir" ]; then

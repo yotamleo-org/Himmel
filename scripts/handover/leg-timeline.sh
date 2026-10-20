@@ -127,12 +127,12 @@ if [ -z "$since_epoch" ]; then
   exit 1
 fi
 
-# Validate mktemp before using $tmp: `set` has no -e, so a failed mktemp -d
+# Validate tmpdir before using $tmp: `set` has no -e, so a failed tmpdir
 # would leave $tmp empty (or a non-dir) and execution would continue into
 # "/raw.tsv". Fail loudly, and arm the cleanup trap only once $tmp is real.
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/leg-timeline.XXXXXX") || tmp=""
+tmp=$(tmpdir) || tmp=""
 if [ -z "$tmp" ] || [ ! -d "$tmp" ]; then
-  printf 'ERROR: mktemp -d failed (no temp dir created); aborting.\n' >&2
+  printf 'ERROR: mktemp failed (no temp dir created); aborting.\n' >&2
   exit 1
 fi
 trap 'rm -rf "$tmp"' EXIT

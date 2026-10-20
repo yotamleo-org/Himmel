@@ -59,6 +59,8 @@ anchor_lc=$(printf '%s' "$anchor_nwo" | tr '[:upper:]' '[:lower:]')
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 TREE="$(cd "$SELF_DIR/../.." && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$SELF_DIR/../lib/prim.sh" || exit 2
 READY="$TREE/scripts/handover/console-kit/ready-check.sh"
 WORK="${E2E_WORKDIR:-$TREE/.himmel-scratch/gate-e2e}"
 BRANCH="test/e2e-$(date +%Y%m%d-%H%M%S)"
@@ -71,7 +73,7 @@ expect() { # <label> <want-rc> <got-rc>
 # A fresh snapshot cache per ready-check: the shared one is head-keyed with a
 # 60s TTL, so a thread resolve would not show up on a re-run otherwise.
 ready() { # <pr> <head>
-    local d; d=$(mktemp -d "${TMPDIR:-/tmp}/e2e-snap.XXXXXX") || return 99
+    local d; d=$(tmpdir) || return 99
     GH_PR_SNAPSHOT_CACHE_DIR="$d" bash "$READY" "$@" >"$d/out" 2>&1
     local rc=$?; READY_OUT=$(cat "$d/out"); rm -rf "$d"; return $rc
 }

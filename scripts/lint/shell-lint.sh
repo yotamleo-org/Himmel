@@ -190,8 +190,19 @@ _has_prim_ok() {
 # FILE matching ERE PATTERN that has no prim-ok marker, as [TAG]. Appends to the
 # caller's file_report/file_issues.
 _prim_report() {
-    local _pf="$1" _ptag="$2" _ppat="$3" _phint="$4" _ph _pln _prest _pout=""
-    _ph="$(_grep_hits "$_pf" "$_ppat" | grep -vE "$PRIM_PROBE" || true)"
+    local _pf="$1" _ptag="$2" _ppat="$3" _phint="$4" _ph _pln _prest _pout="" _pall _pstrip
+    _pall="$(_grep_hits "$_pf" "$_ppat")"
+    _ph=""
+    # Only the probe text is dropped: a call sharing the line with its probe
+    # (`command -v flock && flock -x 9`) still matches the pattern.
+    while IFS=: read -r _pln _prest; do
+        [ -n "$_pln" ] || continue
+        _pstrip="$(printf '%s\n' "$_prest" | sed -E "s/$PRIM_PROBE//g")"
+        printf '%s\n' "$_pstrip" | grep -qE "$_ppat" || continue
+        _ph="${_ph}${_pln}:${_prest}"$'\n'
+    done <<EOF
+$_pall
+EOF
     [ -n "$_ph" ] || return 0
     while IFS=: read -r _pln _prest; do
         [ -n "$_pln" ] || continue

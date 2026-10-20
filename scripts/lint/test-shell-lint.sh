@@ -425,6 +425,36 @@ d2=$(mktemp -d "${TMPDIR:-/tmp}/z.XXXXXX")
 PRIMEOF
 OUT15U="$(bash "$LINT" --baseline "$PRIM_BASE" "$PRIM_BAD" 2>&1)"
 if grepq "$OUT15U" -F '[prim-tmpdir]'; then pass "15p one new ad-hoc tmpdir over the baseline is refused"; else fail "15p a new finding over the baseline must be refused" "$OUT15U"; fi
+# One ad-hoc form per fixture: a detected neighbour (flock beside mkdir, realpath
+# beside readlink -f) cannot mask a broken pattern for the form under test.
+# shellcheck disable=SC2016  # the forms are fixture text, not expansions
+for _f in \
+    'prim-tmpdir|t=$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")' \
+    'prim-lock|mkdir "$LOCKDIR" || exit 1' \
+    'prim-lock|flock -x 9' \
+    'prim-atomic|mv -f "$tmpfile" "$dest"' \
+    'prim-atomic|sed -i "s/a/b/" "$dest"' \
+    'prim-canon|here=$(readlink -f "$0")' \
+    'prim-canon|there=$(realpath "$1")'; do
+    _t="${_f%%|*}"; _form="${_f#*|}"
+    PRIM_ONE="$TMP_ROOT/prim_one.sh"
+    printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\n' "$_form" > "$PRIM_ONE"
+    OUT15O="$(bash "$LINT" "$PRIM_ONE" 2>&1)"
+    if grepq "$OUT15O" -F "[$_t] line 3:"; then pass "15p alone, '$_form' is flagged as $_t"; else fail "15p alone, '$_form' must be flagged as $_t" "$OUT15O"; fi
+done
+# A probe line is not a use of the tool, but a call sharing the line with the probe is.
+PRIM_PROBE_F="$TMP_ROOT/prim_probe.sh"
+cat > "$PRIM_PROBE_F" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+command -v flock >/dev/null 2>&1 || exit 1
+command -v flock >/dev/null 2>&1 && flock -x 9
+if command -v realpath >/dev/null 2>&1; then p=$(realpath "$1"); fi
+PRIMEOF
+OUT15W="$(bash "$LINT" "$PRIM_PROBE_F" 2>&1)"
+if grepq "$OUT15W" -F '[prim-lock] line 3:'; then fail "15p a probe-only line must not be flagged" "$OUT15W"; else pass "15p a probe-only line is not flagged"; fi
+if grepq "$OUT15W" -F '[prim-lock] line 4:'; then pass "15p a flock call sharing a line with its probe is flagged"; else fail "15p a flock call sharing a line with its probe must be flagged" "$OUT15W"; fi
+if grepq "$OUT15W" -F '[prim-canon] line 5:'; then pass "15p a realpath call sharing a line with its probe is flagged"; else fail "15p a realpath call sharing a line with its probe must be flagged" "$OUT15W"; fi
 
 # Case 16: BOM policy is split by file type. A BOM is CORRECT for
 # *.ps1 (PS5.1 needs it to decode UTF-8) -> [BOM] is never reported on a .ps1.

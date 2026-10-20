@@ -80,6 +80,8 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 CFP="${CRITIC_FIRST_PASS:-$SCRIPT_DIR/critic-first-pass.sh}"
 INVOKE="${CRITIC_INVOKE:-$SCRIPT_DIR/../hermes/invoke.sh}"
 LEDGER_APPEND="${CRITIC_LEDGER_APPEND:-$SCRIPT_DIR/ledger-append.sh}"
@@ -1030,7 +1032,7 @@ outdir=""
 # bash sorts pathname expansion so the read order is deterministic.
 # an empty spool dir would send avail./finding. rows to /. The
 # EXIT trap below is not installed yet, so drop $tmp here before exiting.
-PANEL_SPOOL_DIR="$(mktemp -d -t critic-panel-spool.XXXXXX)" || {
+PANEL_SPOOL_DIR="$(tmpdir)" || {
     rm -f "$tmp"
     echo "critic-panel: mktemp failed" >&2
     exit 2
@@ -1916,7 +1918,7 @@ ROWSEOF
 # Parallel path (CRITIC_PARALLEL=1)
 # ---------------------------------------------------------------------------
 else
-    outdir="$(mktemp -d -t critic-panel-par.XXXXXX)" || {
+    outdir="$(tmpdir)" || {
         echo "critic-panel: mktemp failed" >&2
         exit 2
     }
