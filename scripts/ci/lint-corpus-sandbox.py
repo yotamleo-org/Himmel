@@ -92,7 +92,7 @@ def logical_lines(text):
         if not pending:
             first = number
         if re.search(r'(?<!\\)(?:\\\\)*\\$', line):
-            pending += line[:-1] + " "
+            pending += line[:-1]
             continue
         yield first, pending + line
         pending = ""
@@ -110,8 +110,10 @@ def shell_launches(text):
     name = r'[A-Za-z_0-9]*hook[A-Za-z_0-9]*'
     reference = re.compile(r'\$\{?' + name, re.I)
     runs_variable = re.compile(
-        r'\b(?:bash|sh|dash|zsh|ksh|env|python3?)\s+'
+        r'(?:\b(?:bash|sh|dash|zsh|ksh|env|python3?|exec|source)|(?<![\w$.])\.)\s+'
         r'(?:[^\s$`"\'();|&]+\s+)*["\']?(?P<ref>\$)')
+    # The one shared lib the owned suites source, by its exact path expression.
+    lib_source = '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"'
     ref = r'["\']?\$\{?' + name
     non_launch = re.compile(
         r'(?:\[\[?|\btest)\s+-[a-z]\s+' + ref
@@ -123,6 +125,7 @@ def shell_launches(text):
         # Only the exact runner path expression is exempt; anything else before
         # the `--` (a command substitution, say) runs on the host.
         owned = [(w.start(), w.start() + len(command)) for w in wrappers]
+        owned += [(m.start(), m.end()) for m in re.finditer(re.escape(lib_source), line)]
         allowed = list(non_launch.finditer(line))
         positions = {m.start() for m in reference.finditer(line)}
         # Single-quoted text is literal payload data, so it cannot name a variable

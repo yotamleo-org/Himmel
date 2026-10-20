@@ -172,6 +172,22 @@ for host in '$(bash "$HOOK")' '`bash "$HOOK"`'; do
         bad "host-side substitution after the delimiter accepted: $host"
     else ok "host-side substitution after the delimiter rejected: $host"; fi
 done
+# A continuation joins with nothing, so a name split across lines is still the hook variable.
+# shellcheck disable=SC2016
+printf '# sandbox-run.sh marker is not a wrapper\n"$HO\\\nOK"\n' > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'variable name split by a continuation accepted'; else ok 'variable name split by a continuation rejected'; fi
+# exec, source and dot run any variable, whatever it is named.
+# shellcheck disable=SC2016
+for launch in 'exec "$TARGET"' 'source "$TARGET"' '. "$TARGET"' 'exec -a name "${TARGET}"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "unwrapped exec/source variable launch accepted: $launch"
+    else ok "unwrapped exec/source variable launch rejected: $launch"; fi
+done
+# The shared lib source line is copied verbatim from test-block-destructive-commands-a.sh.
+# shellcheck disable=SC2016
+printf '%s\n' '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"' "$WRAP -- bash x" > "$SHELL_FIXTURE"
+if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'owned lib source accepted'; else bad 'owned lib source rejected'; fi
 # A quoted parenthesis must not balance a substitution that still runs on the host.
 # shellcheck disable=SC2016
 printf '%s -- bash x "$(printf '"'"')'"'"')$(bash "$HOOK")"\n' "$WRAP" > "$SHELL_FIXTURE"
