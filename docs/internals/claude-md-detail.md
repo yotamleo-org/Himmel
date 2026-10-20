@@ -131,7 +131,7 @@ prefix does NOT work. Per-repo opt-out: a local gitignored `.single-writer` at a
 repo root allows on-main edits there (single-writer repos — personal vaults,
 state repos — that commit straight to main by design); clones without the marker
 stay protected. Required environment:
-[`docs/setup/new-machine.md`](../setup/new-machine.md#1-required-environment-himmel-123).
+[`docs/setup/new-machine.md`](../setup/new-machine.md#1-required-environment).
 
 When a guardrail stops you — a denial, a permission prompt, a silent no-op at
 rc=0, a failed attestation gate, a refused worktree — the recovery lives in

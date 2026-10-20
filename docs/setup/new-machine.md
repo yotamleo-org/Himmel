@@ -66,7 +66,7 @@ value that isn't backed by one of these links.
 | `uv` (or `pipx` for pre-commit only) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` (recommended). PEP 668 blocks system pip. `pipx` can install pre-commit, but **graphify is uv-managed** — without `uv`, `himmel-update` skips graphify (status row `graphify skipped uv missing`) and it never installs. |
 | `npm` | **Not bundled.** Debian/Ubuntu's `nodejs` package ships without npm, so a box with a working `node` can still fail the install preflight (`ERROR: missing required tools: npm`). `sudo apt-get install -y npm`, or install Node + npm together from [NodeSource](https://github.com/nodesource/distributions). **And apt's npm is too old to push with** — 9.2.0's bundled registry key expired 2025-01-29, so the pre-push `npm audit signatures` gate refuses every push with `EEXPIREDSIGNATUREKEY`. Follow up with `sudo npm install -g npm@11` (npm 12 requires node ^22.22.2; apt ships 22.22.1). |
 | `sudo` | The toolchain steps that use `apt-get` need root. `himmelctl deps ensure` does **not** elevate — run the apt lines yourself (see the clean-install walkthrough below). |
-| claudex lane (optional) | `bash scripts/setup/cli-proxy-lane.sh` (`--install` → `--login` → `--register`) brings up the codex-proxied `cc-codex` lane on this host — needs `systemctl --user` + `ss` (iproute2), both stock on Ubuntu/Debian/Arch/Fedora. See [cli-proxy-lane.md](cli-proxy-lane.md#linux-bring-up). |
+| claudex lane (optional) | `bash scripts/setup/cli-proxy-lane.sh` (`--install` → `--login` → `--register`) brings up the codex-proxied `cc-codex` lane on this host — needs `systemctl --user` + `ss` (iproute2), both stock on Ubuntu/Debian/Arch/Fedora. See [cli-proxy-lane.md](cli-proxy-lane.md#where-it-runs-read-this-first). |
 
 **macOS:**
 
@@ -410,14 +410,14 @@ from reintroducing this. `run-shell-tests.sh`'s machine lock leaking
 inheriting an unrelated wait budget instead of the suite's own) is fixed.
 Verify hooks actually fire on a dash-`/bin/sh` box (Debian/Ubuntu; Arch's
 `/bin/sh` is bash, so this is silent here too): from inside a himmel clone,
-`dash -c 'command -p sh scripts/lib/run-node.sh --version'` prints a version,
-not nothing — then run `dash scripts/lib/run-node.sh --version` as well. Two
+`dash -c 'command -p sh scripts/lib/run-node.sh -v'` prints a version,
+not nothing — then run `dash scripts/lib/run-node.sh -v` as well. Two
 probes because a launcher resolves to `/bin/sh`: the first pins the shape
 production actually wires, but on a bash-`/bin/sh` box it executes
 run-node.sh's own body under bash, so a dash-incompatible expansion *inside*
 the file sails straight through it. The second puts that body under dash. A
 bash-only expansion anywhere in the chain aborts silently at exit 0 instead. A third probe pins the PATH boundary:
-`env PATH=/nonexistent /bin/sh -c 'command -p sh scripts/lib/run-node.sh --version'`
+`env PATH=/nonexistent /bin/sh -c 'command -p sh scripts/lib/run-node.sh -v'`
 (the outer shell by ABSOLUTE path — `env` clobbers PATH before it could look
 up a bare `dash`)
 must ALSO print a version — a bare `sh` there dies rc=127 before any guardrail
@@ -432,7 +432,7 @@ Debian/Ubuntu; hook commands are now wired
 exec'ing a payload-less node. Invoked this way `$0` names
 `run-node.sh`, so it resolves `resolve-node.sh` from its own directory and
 no `CLAUDE_PROJECT_DIR` is needed. The older sourced probe
-`CLAUDE_PROJECT_DIR="$PWD" dash -c '. scripts/lib/run-node.sh' sh --version`
+`CLAUDE_PROJECT_DIR="$PWD" dash -c '. scripts/lib/run-node.sh' sh -v`
 still works: operands placed after the `-c` string become the shell's OWN
 positional params, which a sourced file inherits, and without one of `$0`,
 the plugin root or `CLAUDE_PROJECT_DIR` set `run-node.sh` silently takes its
