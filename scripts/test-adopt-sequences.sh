@@ -32,9 +32,12 @@
 #   --keep DIR      build the fixtures in DIR and leave them (debugging)
 #   --break-restore  RED control: sabotage the restore in the control row so
 #                    it must fail a green row (not part of the normal run)
+#   SEQ_BUDGET_SECS  wall-clock budget in seconds (default 120, 300 when CI is set)
 set -u
 
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# wall-clock budget: 120 s on a workstation; the shared CI runner measured 191-198 s, so CI gets 300 s
+BUDGET="${SEQ_BUDGET_SECS:-$([ -n "${CI:-}" ] && echo 300 || echo 120)}"
 SEED=6626
 BREAK=0
 ONLY=
@@ -217,13 +220,14 @@ fixture_env() {
   unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT
 }
 
-# graphify and the built jira CLI are host tools adopt neither writes nor removes, and a CI runner
-# lacks both; codex-cli "never provisioned" is the fixture's missing codex cache. Every other red stays.
-status_unexpected_red() { # <status output>: the red lines that are not graphify
-  grep -E '(^|[[:space:]])red([[:space:]]|$)' "$1" | grep -vE '(^|[[:space:]])red[[:space:]]+graphify([[:space:]]|$)'
+# graphify, rtk, the hermes checkout and the built jira CLI are host tools adopt neither writes nor
+# removes, and a CI runner lacks them; codex-cli "never provisioned" is the fixture's missing codex
+# cache. Every other red stays.
+status_unexpected_red() { # <status output>: the red lines that are not a host tool
+  grep -E '(^|[[:space:]])red([[:space:]]|$)' "$1" | grep -vE '(^|[[:space:]])red[[:space:]]+(graphify|hermes-checkout|rtk|jira-cli-dist-build)([[:space:]]|$)'
 }
-doctor_unexpected_item() { # <doctor output>: the bullet items that are not graphify, codex-cli or the jira dist build
-  grep -E '^ +· ' "$1" | grep -vE '^ +· (red/graphify|degraded/codex-cli|red/jira-cli-dist-build)([: ]|$)'
+doctor_unexpected_item() { # <doctor output>: the bullet items that are not a host tool or codex-cli
+  grep -E '^ +· ' "$1" | grep -vE '^ +· (red/graphify|red/hermes-checkout|red/rtk|degraded/codex-cli|red/jira-cli-dist-build)([: ]|$)'
 }
 
 # a fake red must still fail the filters while the host-tool reds pass them
@@ -237,6 +241,12 @@ filter_selftest() {
   [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the host-tool doctor items must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '   · red/graphify: w\n' > "$f"
   [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the doctor red/graphify item must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '  red  hermes-checkout  a\n  red  rtk  b\n  red  jira-cli-dist-build  c\n' > "$f"
+  [ -z "$(status_unexpected_red "$f")" ] || { echo "FAIL: filter self-test: the hermes, rtk and jira build status reds must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '  red  rtk-extra  b\n  red  hermes  a\n' > "$f"
+  [ "$(status_unexpected_red "$f" | grep -c .)" -eq 2 ] || { echo "FAIL: filter self-test: a near-miss status name must not be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '   · red/hermes-checkout: a\n   · red/rtk: b\n' > "$f"
+  [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the hermes and rtk doctor items must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '   · red/jira-cli-dist-build: x\n   · red/foo: z\n' > "$f"
   [ -n "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: a fake red/foo passed the doctor filter"; return 1; }  # vacuous-path-ok: parent shell, real PATH
 }
@@ -278,7 +288,7 @@ v_uninstall() { # <label> [extra uninstall flags]
   n="$(printf '%s' "$left" | grep -c . || true)"
   if [ "$rc" -eq 0 ] && [ "$n" -eq 0 ]; then row ok "$label: rc 0 and fixture restored"
   elif [ "$rc" -eq 0 ]; then row bad "$label: rc 0 but $n path(s) differ from the pre-install snapshot: $(printf '%s' "$left" | head -5 | tr '\n' ' ')"
-  elif [ "$n" -eq 0 ]; then row bad "$label: rc=$rc but nothing remains"
+  elif [ "$n" -eq 0 ]; then row bad "$label: rc=$rc but nothing remains: $(tail -3 "$X/un.out" | tr '\n' ';')"
   else row ok "$label: rc=$rc and $n path(s) remain (consistent)"; fi
   if [ "$MUST_PASS" -eq 1 ] && [ "$rc" -ne 0 ]; then row bad "$label: a clean install must uninstall clean, got rc=$rc: $(grep -m1 'Halted at' "$X/un.out")"; fi
   MUST_PASS=0
@@ -401,5 +411,5 @@ done
 [ $((PASS + FAILED)) -gt 0 ] || { echo "FAIL: no sequence matched${ONLY:+ --only $ONLY}"; FAILED=1; }
 ELAPSED=$((SECONDS - START))
 echo "sequences: $PASS ok/xfail, $FAILED failed, ${ELAPSED}s (seed $SEED)"
-[ "$ELAPSED" -le 120 ] || { echo "FAIL: suite took ${ELAPSED}s, budget is 120s"; FAILED=$((FAILED + 1)); }
+[ "$ELAPSED" -le "$BUDGET" ] || { echo "FAIL: suite took ${ELAPSED}s, budget is ${BUDGET}s"; FAILED=$((FAILED + 1)); }
 [ "$FAILED" -eq 0 ]
