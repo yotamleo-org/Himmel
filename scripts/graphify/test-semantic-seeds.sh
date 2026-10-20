@@ -184,7 +184,7 @@ else fail "S12 rc=$rc calls='$calls' out='$out'"; fi
 # S13: a named file anchors the query, so a weak semantic match does not shrink it.
 out="$(run query "does lib.sh care about the effort setting for a session" --graph "$T/weak.json")"; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && grep -q -- '--seed lib' <<<"$calls" && ! grep -q -- '--budget 1000$' <<<"$calls"; then
+if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && grep -q -- '--seed lib' <<<"$calls" && [ "$(grep -c -- '--budget 4000$' <<<"$calls")" = 2 ]; then
   pass "S13 an anchored query keeps the full budget"
 else fail "S13 rc=$rc calls='$calls' out='$out'"; fi
 
