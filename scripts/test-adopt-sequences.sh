@@ -360,7 +360,9 @@ for entry in "${SEQS[@]}"; do
   if [ -n "$xf" ]; then
     case "$xf" in
       HIMMEL-3767) pin='rc=[0-9]+ but nothing remains|a clean install must uninstall clean' ;;
-      *) pin='rc 0 but [0-9]+ path\(s\) differ' ;;
+      HIMMEL-6110) pin='rc 0 but [0-9]+ path\(s\) differ from the pre-install snapshot: (home/\.claude/settings\.json ?)+$' ;;
+      HIMMEL-6729) pin='rc 0 but [0-9]+ path\(s\) differ from the pre-install snapshot: ((home/\.claude/\.i-have-adhd-always|home/\.claude/settings\.json|proj/\.claude/settings\.json|proj/\.gitignore) ?)+$' ;;
+      *) pin='no pin defined for this known-red row$' ;;
     esac
     other="$(printf '%s\n' "$bad" | grep -vE "^bad [^ ]+#[0-9]+ [UWX]: ($pin)" | grep . || true)"
     if [ -n "$other" ]; then echo "FAIL  $id [$verbs]: known-red row failed for another reason: $(printf '%s' "$other" | head -1 | cut -c5-)"; FAILED=$((FAILED + 1))
