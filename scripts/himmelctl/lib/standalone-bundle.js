@@ -27,6 +27,8 @@ const BUNDLE_FILES_POSIX = [
   'scripts/lib/qmd-bin.sh',
   // qmd-bin.sh sources it (qmd_cmd runs under qmd_bounded).
   'scripts/lib/qmd-bounded.sh',
+  // qmd-bin.sh sources it (the provider key loader).
+  'scripts/lib/qmd-daemon-env.sh',
   'scripts/lib/unwire-statusline.sh',
   'scripts/lib/unwire-himmel-repo.sh',
   'scripts/lib/unwire-luna-vault.sh',
