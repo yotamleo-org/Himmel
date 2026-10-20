@@ -44,7 +44,7 @@ doc, mirror, mode = os.environ['PP_DOC'], os.environ['PP_MIRROR'], os.environ['P
 TOK = re.compile(r'([(\[])|([)\]])|(\+)|(?<![\w.-])(HIMMEL-)?(\d{3,5})(?![\w-]|\.\d)(\s*\(CLOUD\))?')
 LINE = re.compile(r'^(\s*(?:[-*]\s+)?(?:\*\*)?priority:(?:\*\*)?\s*)(.*)$')
 
-text = open(doc, encoding='utf-8', errors='replace').read()
+text = open(doc, encoding='utf-8', errors='surrogateescape', newline='').read()
 lines = text.split('\n')
 at, in_state = None, False
 for n, line in enumerate(lines):
@@ -56,7 +56,8 @@ for n, line in enumerate(lines):
 if at is None:
     print('priority-prune: no priority: line in the Live state of %s' % doc, file=sys.stderr)
     sys.exit(1)
-prefix, body = LINE.match(lines[at]).groups()
+eol = '\r' if lines[at].endswith('\r') else ''
+prefix, body = LINE.match(lines[at][:len(lines[at]) - len(eol)]).groups()
 
 def closed(key):
     try:
@@ -123,11 +124,11 @@ for k in keys:
         gone.append(k[0].split('-')[1])
 print('priority-prune: dropped %d: %s' % (len(gone), ' '.join(gone)), file=sys.stderr)
 new = prefix + out
-print(new)
-if mode == 'apply' and new != lines[at]:
-    lines[at] = new
+sys.stdout.buffer.write((new + '\n').encode('utf-8', 'surrogateescape'))
+if mode == 'apply' and new + eol != lines[at]:
+    lines[at] = new + eol
     tmp = doc + '.prune.%d' % os.getpid()
-    with open(tmp, 'w', encoding='utf-8') as f:
+    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape', newline='') as f:
         f.write('\n'.join(lines))
     os.replace(tmp, doc)
 PY
