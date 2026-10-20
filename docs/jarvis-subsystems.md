@@ -16,7 +16,7 @@ enable it, and where the deep docs live.
 | Subsystem | Status | Default | Enable with |
 |---|---|---|---|
 | [Quota-gauge (cross-lane quota observability)](#quota-gauge--cross-lane-quota-observability) | shipped | **on** (passive) | no setup — reads only |
-| [Escalation channel](#escalation-channel) | shipped | **off** | needs a sandboxed worker lane (none shipped) |
+| [Escalation channel](#escalation-channel) | shipped | **off** | needs a sandboxed worker lane (the GLM lane, dormant) |
 | [Statusline](#statusline) | shipped | opt-in | `scripts/lib/wire-statusline.sh` |
 | [Clipper pipeline](#clipper-pipeline) | shipped | opt-in | luna vault + `/harvest-clips` |
 | [Mission Control / C&C](#mission-control--cc) | shipped (Phase 1, read-only) | opt-in | `bun scripts/fleet-control/server.ts serve` |
@@ -64,7 +64,8 @@ folds valid grant patterns into its allowed-count, so a grant re-enables one
 narrow capability without lifting the wall. A refusal clears the escalation.
 
 **Enable.** It needs a sandboxed worker lane that appends to `outbox.jsonl`;
-no such lane ships today, so it stays dormant.
+the only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
+is dormant, so the channel stays off until it is re-enabled.
 
 ## Statusline
 
