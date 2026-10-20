@@ -111,7 +111,7 @@ gitleaks_findings() {
     [ "${rcs[0]}" -eq 0 ] && [ "${rcs[1]}" -eq 0 ]
 }
 
-# classify <vault> <hook-output> — FINDINGS rows: verdict, class, hook, rule,
+# classify <repo> <hook-output> — FINDINGS rows: verdict, class, hook, rule,
 # file, line, joined by US (\x1f: not IFS whitespace, so empty fields survive).
 US=$'\x1f'
 row() { local IFS="$US"; printf '%s' "$*"; }
@@ -164,11 +164,12 @@ classify() {
 
 # replay_hook <vault> <gitdir> — sets HOOK_OUT to the vault's pre-commit output
 # over a scratch checkout of the staged blobs (see DETECT); rc = the hook's.
-# The scratch repo borrows the vault's objects read-only and is removed after.
+# The scratch repo borrows the vault's objects read-only; REPLAY_DIR names it so
+# classify scans the same staged config, and the caller removes it after.
 # REPLAY_ERR is set when the scratch could not be built.
 replay_hook() {
     local vault="$1" gitdir="$2" hooks scratch ref rc
-    HOOK_OUT="" REPLAY_ERR=""
+    HOOK_OUT="" REPLAY_ERR="" REPLAY_DIR=""
     hooks="$(git -C "$vault" rev-parse --path-format=absolute --git-path hooks)"
     ref="$(git -C "$vault" symbolic-ref -q HEAD)" || ref=refs/heads/main
     scratch="$(tmpdir)" || { REPLAY_ERR="replay-failed (no scratch dir)"; return 1; }
@@ -185,7 +186,7 @@ replay_hook() {
     fi
     [ -e "$vault/.single-writer" ] && cp "$vault/.single-writer" "$scratch/"
     HOOK_OUT="$(cd "$scratch" && git hook run pre-commit </dev/null 2>&1)"; rc=$?
-    rm -rf "$scratch"
+    REPLAY_DIR="$scratch"
     return "$rc"
 }
 
@@ -424,13 +425,13 @@ cmd_run() {
     local hook_lines
     hook_lines="$(hook_log "$out")"
     if [ "$hook_rc" -eq 0 ]; then
-        out=""
+        out=""; rm -rf "$REPLAY_DIR"
         [ "$dry" -eq 1 ] || printf -- '--- hook output\n%s\n' "$hook_lines" >> "$STATE_DIR/last-run.log"
         alert "stall-but-pre-commit-passes ($staged staged, ${age}m)" "$dry"
         return 0
     fi
-    classify "$vault" "$out"
-    out=""
+    classify "$REPLAY_DIR" "$out"
+    out=""; rm -rf "$REPLAY_DIR"
     local bad="" classes="" nbad=0 r
     while IFS= read -r r; do
         [ -n "$r" ] || continue

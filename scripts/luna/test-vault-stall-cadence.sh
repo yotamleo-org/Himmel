@@ -641,6 +641,7 @@ echo note >"$V/notes.md"
 git -C "$V" add notes.md
 out="$(run_sut)"
 assert_has "T33 alerts the passing stall" "stall-but-pre-commit-passes" "$(sent)"
+assert_has "T33 last-run.log is rewritten with the hook output" "--- hook output" "$(cat "$S/last-run.log" 2>/dev/null)"
 assert_not_has "T33 the stale log is replaced" "no-file-reported" "$(cat "$S/last-run.log" 2>/dev/null)"
 
 # --- T34 a source line shaped like a structural line stays out of the log ----
@@ -651,6 +652,14 @@ out="$(run_sut)"
 assert_has "T34 alert names the refusal" "shellcheck scripts/z.sh:2" "$(sent)"
 assert_has "T34 last-run.log keeps the location line" "In scripts/z.sh line 2:" "$(cat "$S/last-run.log" 2>/dev/null)"
 assert_not_has "T34 last-run.log carries no source line" "src-sentinel-34" "$(cat "$S/last-run.log" 2>/dev/null)"
+
+# --- T35 classify reads the staged gitleaks config the hook ran with ---------
+mkvault
+printf 'aws_key = "%s"\n' "$AWS_KEY" >"$V/notes.md"
+git -C "$V" add notes.md
+printf "paths = ['''notes\\\\.md''']\n" >>"$V/.gitleaks.toml"
+out="$(run_sut)"
+assert_has "T35 alert names the rule the staged config refused" "gitleaks aws-access-token notes.md:1" "$(sent)"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi
