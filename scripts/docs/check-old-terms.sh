@@ -14,12 +14,16 @@
 # Two checks:
 #   (a) PROSE, markdown only. An added line outside code spans, link targets and
 #       fences that uses a word the operator renamed: leg(s), console(s), bank,
-#       overnight mode, CR marker, judge call, chain, wave. "dependency chain",
-#       "parallel wave" and "browser console" are the new or unrelated senses.
+#       overnight mode, CR marker, judge call, class sweep, sibling sweep, ticket
+#       sequence, wave(s), "chain of legs|workers", "batch of workers" and
+#       "batch of worker sessions". "parallel wave", "wave it through" and
+#       "browser console" are the new or unrelated senses; a bare chain is not
+#       linted (CI chain, merge chain, hook chain).
 #   (b) IDENTIFIERS, every file. An added upper-case token holding LEG_ or
-#       CONSOLE_ (at a word start), BANK or OVERNIGHT that is not in the
-#       registry scripts/lib/rename-aliases.tsv. The kept HIMMEL_CONSOLE_ prefix
-#       is exempt.
+#       CONSOLE_ (at a word start), BANK, OVERNIGHT, a bare WAVE or _WAVE,
+#       SEQUENCE_, or HIMMEL_WORKER_ not followed by SESSION_, that is not in
+#       the registry scripts/lib/rename-aliases.tsv; and the name chief-judge.
+#       The kept HIMMEL_CONSOLE_ prefix is exempt.
 #
 # Skipped: the paths in is_exempt_path below, the CI-matrix sense of "leg" in
 # ci-image.md / testing.md, and a line carrying `old-term-ok: <reason>` (a
@@ -108,8 +112,9 @@ while IFS="$(printf '\t')" read -r file nums; do
             }
             close(registry)
             single["leg"] = single["legs"] = single["console"] = single["consoles"] = 1
-            single["bank"] = single["banks"] = single["chain"] = single["chains"] = single["wave"] = single["waves"] = 1
+            single["bank"] = single["banks"] = single["wave"] = single["waves"] = 1
             pair["overnight mode"] = pair["cr marker"] = pair["judge call"] = pair["judge calls"] = 1
+            pair["class sweep"] = pair["sibling sweep"] = pair["ticket sequence"] = 1
         }
         function fenceline(s) { return s ~ /^[[:space:]]*(```|~~~)/ }
         function report(kind, what, body) {
@@ -122,12 +127,15 @@ while IFS="$(printf '\t')" read -r file nums; do
             if (body ~ /old-term-ok:[[:space:]]*[^[:space:]]/) next
 
             # (b) identifiers, every file
+            if (body ~ /chief-judge/) report("old-term name", "chief-judge", body)
             rest = body
             while (match(rest, /[A-Za-z0-9_]+/)) {
                 tok = substr(rest, RSTART, RLENGTH)
                 rest = substr(rest, RSTART + RLENGTH)
                 if (tok !~ /^[A-Z][A-Z0-9_]*$/) continue
-                if (!(tok ~ /(^|_)(LEG|CONSOLE)_[A-Z0-9]/ || tok ~ /BANK/ || tok ~ /OVERNIGHT/)) continue
+                if (!(tok ~ /(^|_)(LEG|CONSOLE)_[A-Z0-9]/ || tok ~ /BANK/ || tok ~ /OVERNIGHT/ \
+                      || tok ~ /^WAVE$/ || tok ~ /_WAVE/ || tok ~ /SEQUENCE_/ \
+                      || (tok ~ /^HIMMEL_WORKER_/ && tok !~ /^HIMMEL_WORKER_SESSION_/))) continue
                 if (tok ~ /^HIMMEL_CONSOLE_/ || (tok in known)) continue
                 report("old-term identifier", tok, body)
                 break
@@ -139,6 +147,7 @@ while IFS="$(printf '\t')" read -r file nums; do
             gsub(/`[^`]*`/, " ", s)
             gsub(/\]\([^)]*\)/, "]", s)
             gsub(/https?:\/\/[^ )>]*/, " ", s)
+            waved = (tolower(s) ~ /wave[sd]? .{0,40}through/)
             nw = split(s, w, /[ \t]+/)
             for (i = 1; i <= nw; i++) {
                 t = tolower(w[i])
@@ -153,11 +162,16 @@ while IFS="$(printf '\t')" read -r file nums; do
                 if (t in single) {
                     hit = t
                     if (ci_leg && (t == "leg" || t == "legs")) hit = ""
-                    if (t == "chain" && i > 1 && w[i - 1] == "dependency") hit = ""
-                    if (t == "wave" && i > 1 && w[i - 1] == "parallel") hit = ""
+                    if ((t == "wave" || t == "waves") && ((i > 1 && w[i - 1] == "parallel") || waved)) hit = ""
                     if (t == "console" && i > 1 && w[i - 1] == "browser") hit = ""
                 } else if (i < nw && ((t " " w[i + 1]) in pair)) {
                     hit = t " " w[i + 1]
+                } else if (i + 2 <= nw && t == "chain" && w[i + 1] == "of" && w[i + 2] ~ /^(legs?|workers?)$/) {
+                    hit = "chain of " w[i + 2]
+                } else if (i + 2 <= nw && t == "batch" && w[i + 1] == "of" && w[i + 2] == "workers") {
+                    hit = "batch of workers"
+                } else if (i + 3 <= nw && t == "batch" && w[i + 1] == "of" && w[i + 2] == "worker" && w[i + 3] == "sessions") {
+                    hit = "batch of worker sessions"
                 }
                 if (hit != "") { report("old-term prose", hit, body); break }
             }
@@ -170,7 +184,7 @@ if [ -s "$findings" ]; then
     cat "$findings"
     count=$(wc -l < "$findings" | tr -d ' ')
     # shellcheck disable=SC2016  # the backticks are literal text in the message
-    printf '%s: %s added line(s) use an old term. Use the plain name (chief, worker, dependency chain, parallel wave), register a new identifier in scripts/lib/rename-aliases.tsv, or add `old-term-ok: <reason>` on the line.\n' "$me" "$count" >&2
+    printf '%s: %s added line(s) use an old term. Use the plain name (chief, worker, parallel wave), register a new identifier in scripts/lib/rename-aliases.tsv, or add `old-term-ok: <reason>` on the line.\n' "$me" "$count" >&2
     exit 1
 fi
 exit 0

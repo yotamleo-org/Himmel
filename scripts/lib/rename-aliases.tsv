@@ -1,6 +1,6 @@
-# rename-aliases.tsv — registry of old-term identifiers (the rename plan's alias registry).
+# rename-aliases.tsv — registry of old-term identifiers (the rename plans alias registry).
 # Read by scripts/docs/check-old-terms.sh: an identifier listed here may still be used;
-# any other identifier containing LEG_, CONSOLE_, BANK or OVERNIGHT fails on an added line.
+# any other identifier containing LEG_, CONSOLE_, BANK, OVERNIGHT, WAVE, SEQUENCE_ or HIMMEL_WORKER_ (not SESSION_) fails on an added line.
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
 old	new	kind	direction	slice	remove-at
@@ -147,7 +147,9 @@ CONSOLE_WORK_DIR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 EXPECT_LEG_B	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 EXTERNAL_LEG_DOC	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 FAKE_REPO_NO_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+FIRST_WAVE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 FLEET_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+GIT_SEQUENCE_EDITOR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HANDOFF_FACTS_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HANDOVER_LEG_SPLIT_OK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HEADED_ARM_LEG_CLAUDEX_BIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -175,6 +177,7 @@ HIMMEL_LEG_MEMORY_MAX	pending-N2892	identifier	old-to-new	pending-N2892	pending-
 HIMMEL_LEG_PROFILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_OVERNIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_STOP_GUARD_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+HIMMEL_WORKER_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 IL_OVERNIGHT_ALL	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 IMPL_GUARD_BANK_BUDGET_SECS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 IMPL_GUARD_BANK_STATUS_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -292,3 +295,4 @@ RUN_LEG_WRAP	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 SKIPPED_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 STUB_BANK_ROW	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 TICK_BANK_CACHE_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+WAVE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892

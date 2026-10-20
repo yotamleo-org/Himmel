@@ -572,7 +572,7 @@ repos:
         stages: [pre-commit]
 
       - id: check-old-terms
-        name: no new old-term prose (leg, console, bank, chain, wave) or unregistered old-term identifier
+        name: no new old-term prose (leg, console, bank, wave, chain of legs) or unregistered old-term identifier
         # Reads only the lines a change adds (--auto: the index on a
         # commit, base...tip on a push); identifiers already in
         # scripts/lib/rename-aliases.tsv pass. Marker: old-term-ok: <reason>.
