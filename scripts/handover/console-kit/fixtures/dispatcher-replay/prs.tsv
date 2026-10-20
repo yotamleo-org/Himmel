@@ -1,0 +1,23 @@
+3215	fix(hermes): [HIMMEL-2053] hermes lane gets himmel CR gates and hook parity	fix/himmel-2053-hermes-cr-gate-parity
+3216	feat(cr): [HIMMEL-6377] Critical/Important disposition (fix-here or judged follow-up) and go.sh refusal	feat/himmel-6377-cr-loop-critical-disposition
+3214	feat(console-kit): [HIMMEL-6476] leg launches carry an opt-in API-lane switch so the PR critic runs on API credit	feat/himmel-6476-leg-api-lane-switch
+3213	perf(guardrails): [HIMMEL-6466] write guard batches per-target git forks and pins the VT/FF/high-byte arms	fix/himmel-6466-write-guard-batch-forks
+3212	feat(console-kit): [HIMMEL-6483] tracker names drift keys, shows Sector, drops unmaintained sections	feat/himmel-6483-tracker-lean-sector-parity
+3211	feat(cr): [HIMMEL-6419] measure the Claude critic: per-PR API cost and CI/CR rounds saved	feat/himmel-6419-critic-cost-measure
+3210	fix(hooks): [HIMMEL-6489] CR pr-create hook reads the head from stacked and attached gh short flags	fix/himmel-6489-pr-create-hook-short-flags
+3209	fix(test): [HIMMEL-6488] service-mode test reads the URL line, not one stdout chunk	fix/himmel-6488-service-mode-test-line-read
+3208	feat(ci): [HIMMEL-2872] a prebuilt GHCR image carries the CI tooling, rebuilt only on Dockerfile change	feat/himmel-2872-ci-prebuilt-ghcr-image
+3207	fix(hooks): [HIMMEL-6479] a leg on a branch behind main has one merge-on-green spelling that passes	fix/himmel-6479-behind-main-merge-spelling
+3206	feat(console-kit): [HIMMEL-6416] tick prints an ACTION line naming versionless-done.sh --backfill	fix/himmel-6416-transition-stamps-version
+3205	fix(ci): [HIMMEL-6471] gcp-runners quota preflight reads the vCPU field of an -ext custom machine type	fix/himmel-6471-gcp-quota-ext-machine
+3204	feat(ci): [HIMMEL-5057] a pull_request shell-unit shard stops at its first failing suite	feat/himmel-5057-shard-stop-first-fail
+3203	feat(plugins): [HIMMEL-6465] graphify skill refresh writes a profile-controlled plugin	feat/himmel-6465-graphify-skill-as-plugin
+3202	fix(cr): [HIMMEL-6475] skipped Claude critic is critic-skipped, not generic-rc-5	fix/himmel-6475-critic-rc5-skipped-not-failure
+3201	fix(ci): [HIMMEL-6354] pin the gcp-net proxy's own 80/443 egress rule (premise disproved)	fix/himmel-6354-gcp-net-debian-mirrors
+3200	fix(ci): [HIMMEL-6393] atd start step fails loudly instead of ending in || true	fix/himmel-6393-ci-atd-start-fails-loudly
+3198	fix(hooks): [HIMMEL-6449] cadence-approve-engines closes nav, symlink and model-download containment gaps	fix/himmel-6449-cadence-approve-containment-gaps
+3197	feat(claudex): [HIMMEL-6443] read-only probe chunk script for the context probe	feat/himmel-6443-claudex-probe-chunk-script
+3194	feat(hooks): [HIMMEL-6431] agents may set the CI_GCP kill switch on or off	feat/himmel-6431-ci-gcp-kill-switch-carve-out
+3188	feat(site): [HIMMEL-6287] Starlight docs site with full navigation, search and raw passthrough	feat/himmel-6287-docs-site-starlight-build
+3186	chore(cr): [HIMMEL-6057] refresh known-findings evidence and widen the jq-alternative match	chore/himmel-6057-known-findings-refresh-jq-match
+3167	fix(settings): [HIMMEL-3724] allow the gcp-runners down and status literals	docs/himmel-3724-classifier-dispatch-denials

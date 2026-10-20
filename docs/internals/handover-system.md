@@ -165,7 +165,7 @@ ticket-prefix rule still resolves here
 it just has nothing to route. Do not read the bucket as evidence of a
 live repo. (Distinct from upstream OSS **`luna-brain`**, the publish
 target the template ships to — see
-[`public-propagation.md`](public-propagation.md).)
+`public-propagation.md`.)
 
 ## Single-root resolver (still wired for scripts)
 
