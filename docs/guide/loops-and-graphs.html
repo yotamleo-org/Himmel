@@ -337,7 +337,7 @@
             </div>
           </fieldset>
 
-          <!-- source: docs/configuration.md §3.3 + §4.1; docs/handover/overnight-mode.md -->
+          <!-- source: docs/configuration.md §3.3 + §4.1; docs/handover/afk-mode.md -->
           <fieldset><legend class="grp">Unattended runs</legend>
             <div class="setting" data-key="HIMMEL_OVERNIGHT">
               <div class="setting-row"><label for="s-on">HIMMEL_OVERNIGHT</label>
@@ -452,7 +452,7 @@
     <nav aria-label="Further reading">
       <a href="../cadences.md">Cadences reference</a>
       <a href="../handover/running-a-console.md">Running a supervisor session</a>
-      <a href="../handover/overnight-mode.md">AFK (unattended) mode</a>
+      <a href="../handover/afk-mode.md">AFK (unattended) mode</a>
       <a href="../internals/graph-cadence.md">Graph refresh internals</a>
       <a href="../glossary.md">Glossary</a>
     </nav>
@@ -534,7 +534,7 @@
         ];
       } },
     { id: 'overnight', tab: 'AFK mode', title: 'An unattended overnight shift',
-      blurb: '/overnight-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_OVERNIGHT switches which steps run without asking.',
+      blurb: '/afk-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_AFK switches which steps run without asking.',
       meta: 'source: overnight-mode',
       nodes: function () {
         var r = reviewState();

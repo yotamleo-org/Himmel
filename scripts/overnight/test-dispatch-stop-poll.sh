@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke test for the /overnight-shift dispatch-loop plumbing.
+# Smoke test for the /afk-shift dispatch-loop plumbing.
 #
-# .claude/commands/overnight-shift.md is a markdown command, not a script —
+# .claude/commands/afk-shift.md is a markdown command, not a script —
 # no harness executes it directly. This test exercises the two pieces of
 # plumbing the runbook now documents at each dispatch point: a
 # stop-marker.sh poll gating whether a ticket starts, and fanout-plan.mjs
@@ -46,7 +46,7 @@ fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FA
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dispatch-stop-poll.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
-export OVERNIGHT_STOP_DIR="$TMP_ROOT"
+export AFK_STOP_DIR="$TMP_ROOT"
 
 # The second fixture pins an explicit lane override so it resolves to a DIFFERENT
 # model than the first fixture's default (sonnet) — two identically-routed
@@ -86,7 +86,7 @@ model_for_id() {
     '
 }
 
-# The dispatch-loop shape overnight-shift.md step 4 documents: poll, then
+# The dispatch-loop shape afk-shift.md step 4 documents: poll, then
 # (only if clear) dispatch that one ticket using the plan's resolved model.
 # Returns via globals so the test can inspect what "dispatched" (and with
 # which model) without an actual Agent call.

@@ -145,7 +145,7 @@ export default defineConfig({
         {
           label: 'Run many sessions',
           items: [
-            { label: 'Unattended runs', slug: 'handover/overnight-mode' },
+            { label: 'Unattended runs', slug: 'handover/afk-mode' },
             { label: 'Supervisor sessions', slug: 'handover/running-a-console' },
             { label: 'Handover notes', slug: 'internals/handover-system' },
             { label: 'Orchestration patterns', slug: 'orchestration-patterns' },

@@ -286,7 +286,23 @@ assert_has "merge,public in canonical order" "Active steps: merge,public" "$out"
 echo "Test 20: HIMMEL_OVERNIGHT=1 + HIMMEL_INITIATIVE_OVERNIGHT=all → 6-leg set"
 out=$(printf '{}' | HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
 assert_has "overnight six-leg CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
-assert_has "overnight header names the overnight var" "HIMMEL_INITIATIVE_OVERNIGHT is active" "$out"
+assert_has "old names: header names the afk var" "HIMMEL_INITIATIVE_AFK is active" "$out"
+
+# ---------- 20b. afk names: HIMMEL_AFK selects, a set falsy name never widens --
+echo "Test 20b: HIMMEL_AFK=1 selects the afk profile over the day profile"
+out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_AFK=all bash "$hook")
+assert_has "afk six-leg CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
+assert_has "afk header names the afk var" "HIMMEL_INITIATIVE_AFK is active" "$out"
+out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
+assert_has "old value var read under the afk selector" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
+echo "Test 20c: HIMMEL_AFK=0 HIMMEL_OVERNIGHT=1 stays on the day profile"
+out=$(printf '{}' | HIMMEL_AFK=0 HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
+assert_has "conflict reads the day profile" "Active steps: prcheck" "$out"
+assert_lacks "conflict does not widen to the afk profile" "HIMMEL_INITIATIVE_AFK is active" "$out"
+echo "Test 20d: HIMMEL_INITIATIVE_AFK wins over HIMMEL_INITIATIVE_OVERNIGHT"
+out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK=prcheck HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
+assert_has "new value var wins" "Active steps: prcheck" "$out"
+assert_lacks "old value var does not widen" "Active steps: execute" "$out"
 
 # ---------- 21. plan token reserved → carried, but the runbook gives no step --
 echo "Test 21: plan,prcheck → plan is echoed for typo visibility"

@@ -190,13 +190,15 @@ EOF
 # construction: .env is gitignored, so the clone carries NO Jira/Telegram
 # credentials at all, and scripts/jira/dist/ (an untracked build artifact) does
 # not exist in the clone either.
-#   HIMMEL_INITIATIVE/_OVERNIGHT  empty -> inject-initiative + jira-nudge legs off
+#   HIMMEL_INITIATIVE/_AFK/_OVERNIGHT  empty -> inject-initiative + jira-nudge legs off
 #   HIMMEL_JIRA_NUDGE=0           jira-nudge-on-end.sh gate (default OFF anyway)
 #   CLAUDE_END_SESSION_WIKI=0     end-session-wiki.sh documented env opt-out
 #   AUTO_ARM_DISABLE=1            auto-arm-on-cap.sh kill switch - nothing this
 #                                 demo does may ever arm a scheduled session
 INERT_ENV=(
     HIMMEL_INITIATIVE=
+    HIMMEL_INITIATIVE_AFK=
+    HIMMEL_AFK=
     HIMMEL_INITIATIVE_OVERNIGHT=
     HIMMEL_OVERNIGHT=
     HIMMEL_JIRA_NUDGE=0

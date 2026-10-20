@@ -13,7 +13,7 @@
 #
 # There is no per-leg dispatch runtime to hook (inject-initiative is
 # SessionStart-only; the legs are self-paced prose) — so `write` is invoked from
-# the seams that ALREADY run between stages (the /overnight-shift post-fanout
+# the seams that ALREADY run between stages (the /afk-shift post-fanout
 # step, /pr-check, the handover writer). The breadcrumb root reuses the
 # single-root resolver (scripts/lib/handover-path.sh) — never a hardcoded path.
 #

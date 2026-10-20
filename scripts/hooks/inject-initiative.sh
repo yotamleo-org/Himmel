@@ -17,9 +17,11 @@
 # The directive echoes the recognized tokens (`Active steps: …`) so a typo is
 # visible.
 #
-# Profiles (selected by HIMMEL_OVERNIGHT):
-#   - interactive (default): var = HIMMEL_INITIATIVE,           `all` = prcheck,pr,ticket,handover
-#   - overnight (selector):  var = HIMMEL_INITIATIVE_OVERNIGHT, `all` = execute,prcheck,pr,ticket,merge,handover
+# Profiles (selected by HIMMEL_AFK; the old name HIMMEL_OVERNIGHT is read too):
+#   - interactive (default): var = HIMMEL_INITIATIVE,     `all` = prcheck,pr,ticket,handover
+#   - afk (selector):        var = HIMMEL_INITIATIVE_AFK, `all` = execute,prcheck,pr,ticket,merge,handover
+# A set falsy HIMMEL_AFK or HIMMEL_OVERNIGHT keeps the interactive profile, and
+# HIMMEL_INITIATIVE_AFK falls back to HIMMEL_INITIATIVE_OVERNIGHT when unset.
 #
 # Default: OFF. Exit silently when the env is unset, falsy, or resolves to no
 # recognized leg — behaviour then is byte-identical to a session without the
@@ -94,19 +96,21 @@ fi
 if [ -n "$_ii_root" ] && [ -f "$_ii_root/.env" ]; then
     # shellcheck source=/dev/null
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/load-dotenv.sh"
-    load_dotenv --root "$_ii_root" HIMMEL_INITIATIVE HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT || true
+    load_dotenv --root "$_ii_root" HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK \
+        HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT || true
 fi
 
 # --- Resolve the active legs via the shared resolver -----------
 # The leg grammar lives in ONE place: scripts/lib/initiative-legs.sh. We pass
 # the relevant env vars as named arguments (the resolver never reads ambient
 # env) and get back the normalized, canonical-ordered, deduped active leg set.
-# Profile is selected by HIMMEL_OVERNIGHT: truthy → read HIMMEL_INITIATIVE_OVERNIGHT
-# (overnight `all` = 6 legs), else HIMMEL_INITIATIVE (interactive `all` = legacy 4).
+# Profile is selected by HIMMEL_AFK: truthy → read HIMMEL_INITIATIVE_AFK
+# (afk `all` = 6 legs), else HIMMEL_INITIATIVE (interactive `all` = legacy 4).
+# resolve_legs_env also reads the old overnight names.
 # shellcheck source=/dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/initiative-legs.sh"
 
-active=$(resolve_legs "${HIMMEL_INITIATIVE:-}" "${HIMMEL_INITIATIVE_OVERNIGHT:-}" "${HIMMEL_OVERNIGHT:-}")
+active=$(resolve_legs_env)
 # Off when nothing resolved (unset / falsy / all-unknown subset).
 [ -n "$active" ] || exit 0
 
@@ -182,8 +186,8 @@ if [ -n "$_ii_sid_safe" ]; then
 fi
 
 # Which var the operator set (named in the pointer, so the profile is visible).
-if _il_truthy "${HIMMEL_OVERNIGHT:-}"; then
-    _var="HIMMEL_INITIATIVE_OVERNIGHT"
+if il_afk_active; then
+    _var="HIMMEL_INITIATIVE_AFK"
 else
     _var="HIMMEL_INITIATIVE"
 fi

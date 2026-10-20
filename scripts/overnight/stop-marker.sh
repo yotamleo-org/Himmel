@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# overnight/stop-marker — graceful-halt marker for /overnight-shift sessions.
+# overnight/stop-marker — graceful-halt marker for /afk-shift sessions.
 #
-# The marker file is what `/overnight-shift`
+# The marker file is what `/afk-shift`
 # (and the overnight-mode runbook Phase 3 impl loop) polls between
 # dispatches. When set, the dispatcher finishes the in-flight subagent +
 # halts before starting the next one. No subprocess kills — graceful only.
@@ -26,7 +26,7 @@
 #   3  filesystem error (can't create/remove)
 set -uo pipefail
 
-MARKER_DIR="${OVERNIGHT_STOP_DIR:-$HOME/.claude}"
+MARKER_DIR="${AFK_STOP_DIR:-${OVERNIGHT_STOP_DIR:-$HOME/.claude}}"
 MARKER_PATH="$MARKER_DIR/.overnight-stop"
 
 usage() {
@@ -34,7 +34,7 @@ usage() {
 Usage: stop-marker.sh <set|check|clear|status>
 
 Manages the ~/.claude/.overnight-stop marker file used by
-/overnight-shift's dispatch loop. When set, the dispatcher halts
+/afk-shift's dispatch loop. When set, the dispatcher halts
 gracefully before the next subagent dispatch.
 
 Subcommands:
@@ -44,7 +44,8 @@ Subcommands:
   status    Print human-readable state. Always exits 0.
 
 Environment:
-  OVERNIGHT_STOP_DIR    Override marker directory. Default: $HOME/.claude.
+  AFK_STOP_DIR          Override marker directory (old name OVERNIGHT_STOP_DIR).
+                        Default: $HOME/.claude.
 EOF
 }
 

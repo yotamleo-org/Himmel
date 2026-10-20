@@ -51,12 +51,12 @@ sites are changed here.
 | GO gate, user-slug setup probe | `USER_SLUG` (GO gate separately reads `HANDOVER_DIR`) |
 | Console ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
 | Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
-| Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT`; freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
+| Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` (old names `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` still read); freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
 | Bank preflight | `HIMMEL_FLEET_CAP` |
 | Updater | `HIMMEL_UPDATE_AUTOSTASH`, `LUNA_VAULT_PATH` |
 | Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS` (only actions allow a process-env override) |
 | Telegram session-status / luna-sync-alert (dedicated bridge file) | `TELEGRAM_BOT_TOKEN`; notification shell hooks separately load repo `TELEGRAM_GROUP_CHAT_ID` |
-| Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_OVERNIGHT`, `HIMMEL_OVERNIGHT`, `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_AFK` (and their old `_OVERNIGHT` names), `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | Upstream watcher | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | Alibaba quota probe | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK`, `ALIBABA_QUOTA_PROM_URL`, `ALIBABA_QUOTA_GRANTS` |
 | Alibaba monitoring-key setup | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK` (in-process lookup, not blanket export) |
@@ -434,7 +434,7 @@ groups describe **how each key reaches code**, which is the #1 trap:
 | Group | How it reaches code | Examples |
 |---|---|---|
 | TOOL-LOADED | a himmel CLI reads `.env` directly (via `scripts/lib/load-dotenv.sh`) — no export needed | `JIRA_*`, `BITBUCKET_*`, `ZAI_API_KEY` |
-| PROCESS-ENV | scripts read the **live environment**; a value only in `.env` is invisible unless the key is one of the explicitly bridged exceptions listed in the file's header (e.g. `HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the `HIMMEL_INITIATIVE` family) | `LUNA_VAULT_PATH`, `OVERNIGHT_*` |
+| PROCESS-ENV | scripts read the **live environment**; a value only in `.env` is invisible unless the key is one of the explicitly bridged exceptions listed in the file's header (e.g. `HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the `HIMMEL_INITIATIVE` family) | `LUNA_VAULT_PATH`, `AFK_*` |
 | SESSION-ONLY | per-launch bypasses/opt-ins, inventoried in the file. For **Claude Code hook** bypasses, set in the shell that **launches** `claude` — a per-call prefix never reaches those hooks. The **git-gate** skips listed in the same section (`SKIP_CR`, `PLATFORMS_TESTED_OK`, …) run in your own shell, so a per-command prefix (`SKIP_CR=1 git push`) works and is the preferred, one-push scope | `EDIT_ON_MAIN_OK`, `READ_SECRETS_OK` |
 | EXTERNAL-TOOLS | the key lives in the tool's *own* `.env` (hermes: `%LOCALAPPDATA%/hermes/.env`; Telegram bridge: `~/.claude/channels/telegram/.env`) — setting it in the repo `.env` does nothing | `TELEGRAM_BOT_TOKEN` (bridge copy), hermes provider keys |
 
@@ -550,7 +550,7 @@ default subset:
   reserved/inert, 7 renderable.
 - Two profiles: **interactive** (default; var `HIMMEL_INITIATIVE`) where the
   master switch `1/true/on/yes/all` = `prcheck,pr,ticket,handover`; and
-  **overnight** (`HIMMEL_OVERNIGHT` truthy; var `HIMMEL_INITIATIVE_OVERNIGHT`)
+  **afk** (`HIMMEL_AFK` truthy; var `HIMMEL_INITIATIVE_AFK`; the old `_OVERNIGHT` names still read)
   where `all` = `execute,prcheck,pr,ticket,merge,handover`.
 - Either var also accepts a comma-subset of the **full** vocabulary — so
   `HIMMEL_INITIATIVE=merge` or `=public` is legal and reaches auto-ship steps outside
@@ -576,9 +576,9 @@ default subset:
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
 | `HIMMEL_INITIATIVE` | OFF | `.env` (bridged) | interactive-profile auto-ship step set (above) |
-| `HIMMEL_OVERNIGHT` + `HIMMEL_INITIATIVE_OVERNIGHT` | OFF | `.env` (bridged) | switches to the overnight profile + its auto-ship step set |
-| `OVERNIGHT_PROJECT` / `OVERNIGHT_STATUS` / `OVERNIGHT_LIMIT` / `OVERNIGHT_PRIORITY` | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/overnight-shift` ticket-plan defaults (`scripts/overnight/build-plan.sh`) |
-| `OVERNIGHT_STOP_DIR` | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/overnight/stop-marker.sh`) |
+| `HIMMEL_AFK` + `HIMMEL_INITIATIVE_AFK` (old: `HIMMEL_OVERNIGHT` + `HIMMEL_INITIATIVE_OVERNIGHT`) | OFF | `.env` (bridged) | switches to the afk profile + its auto-ship step set; a set falsy `HIMMEL_AFK` wins over `HIMMEL_OVERNIGHT=1` |
+| `AFK_PROJECT` / `AFK_STATUS` / `AFK_LIMIT` / `AFK_PRIORITY` (old: `OVERNIGHT_*`) | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/afk-shift` ticket-plan defaults (`scripts/overnight/build-plan.sh`) |
+| `AFK_STOP_DIR` (old: `OVERNIGHT_STOP_DIR`) | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/overnight/stop-marker.sh`) |
 
 **Arming & scheduling** (`scripts/handover/arm-resume.sh` — schedules a
 `claude` relaunch via schtasks on Windows, `at`/`crontab` on Linux/macOS):
@@ -732,7 +732,7 @@ opt-in except the cap watchdogs (rung 2), which ship enabled with the hooks:
    the one configured public origin under live-verified branch protection
    (full condition list in [§3.3](#33-merge--publish-gates)).
    `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09.
-5. **AFK (unattended) mode** (`/overnight-shift --limit N`) — dispatches scoped
+5. **AFK (unattended) mode** (`/afk-shift --limit N`) — dispatches scoped
    tickets as parallel agents that branch, build, self-review, and open PRs.
    Halt with `/stop` (marker file polled between dispatches).
 
@@ -844,7 +844,7 @@ the human-only public merge — those fail closed with no env override.
 |---|---|
 | Every hook & gate, per-script detail | [internals/enforcement.md](internals/enforcement.md) |
 | The narrated daily loop | [daily-loop.md](daily-loop.md) |
-| Overnight pipeline (11 phases) | [handover/overnight-mode.md](handover/overnight-mode.md) |
+| Overnight pipeline (11 phases) | [handover/afk-mode.md](handover/afk-mode.md) |
 | Handover system | [internals/handover-system.md](internals/handover-system.md) |
 | Telegram bridge | [telegram-bridge.md](telegram-bridge.md) · [internals/telegram-bridge.md](internals/telegram-bridge.md) |
 | hermes lanes | [hermes-runbook.md](hermes-runbook.md) |
