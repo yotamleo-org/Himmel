@@ -403,8 +403,10 @@ group_for() {
 # own group, or one pending run replaces the other.
 FIX_RUNS="$HERE/fixtures/codeowner-gate-3194-runs.json"
 fixture_group_clashes() { # <yaml>
-  local ev g seen=""
-  for ev in $(jq -r '[.[].event] | unique[]' "$FIX_RUNS"); do
+  local ev g seen="" evs
+  evs=$(jq -r '[.[].event] | unique[]' "$FIX_RUNS") || { echo "fixture unreadable: $FIX_RUNS"; return 0; }
+  [ "$(wc -w <<< "$evs")" -ge 2 ] || { echo "fixture has fewer than two events"; return 0; }
+  for ev in $evs; do
     g=$(group_for "$1" "$ev" 3194)
     case " $seen " in *" $g "*) echo "events share group $g";; esac
     seen="$seen $g"
@@ -419,6 +421,11 @@ if [ -f "$WF" ]; then
 else
   fail "real workflow: cannot check, file absent"
 fi
+echo '[]' > "$TMP/no-runs.json"
+C=$(FIX_RUNS="$TMP/no-runs.json" fixture_group_clashes "$WF")
+if grepq "$C" -F "fewer than two events"; then pass "control: an empty run fixture is caught"; else fail "control: an empty run fixture NOT caught (got: ${C:-nothing})"; fi
+C=$(FIX_RUNS="$TMP/absent.json" fixture_group_clashes "$WF" 2>/dev/null)
+if grepq "$C" -F "fixture unreadable"; then pass "control: a missing run fixture is caught"; else fail "control: a missing run fixture NOT caught (got: ${C:-nothing})"; fi
 
 # Negative controls: a known-good skeleton passes; each single mutation is caught.
 GOOD="$TMP/good.yml"
