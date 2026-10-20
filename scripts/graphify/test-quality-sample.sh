@@ -32,6 +32,7 @@ REAL_QMD="$(command -v qmd)"
 
 WS="$(mktemp -d "${TMPDIR:-/tmp}/test-quality-sample.XXXXXX")" || exit 1
 trap 'rm -rf "$WS"' EXIT
+unset GRAPHIFY_OUT  # ast-update.sh honours it; every graph build must land under $C/graphify-out
 C="$WS/corpus" BIN="$WS/bin"
 mkdir -p "$C" "$BIN"
 
@@ -74,7 +75,7 @@ GQ=$(cd "$C" && graphify query "_promote_lock_release" --graph "$C/graphify-out/
 case "$GQ" in *"src=scripts/graphify/ast-update.sh"*) pass "G3 query hit scripts/graphify/ast-update.sh" ;; *) fail "G3 no ast-update.sh in the answer: $(printf '%s' "$GQ" | head -3)" ;; esac
 
 echo "G4: the count check bites (control): dropping 24 of 36 scripts reads below 0.9"
-grep '\.\(sh\|py\)$' "$WS/list" | sed -n '13,36p' | while IFS= read -r f; do rm -f "${C:?}/$f"; done
+grep -E '\.(sh|py)$' "$WS/list" | sed -n '13,36p' | while IFS= read -r f; do rm -f "${C:?}/$f"; done
 bash "$HERE/ast-update.sh" "$C" >"$WS/g4.out" 2>&1; rc=$?
 N2=$(nodes)
 if [ "$rc" -ne 0 ] || ! isnum "$N2"; then fail "G4 rebuild unusable (exit $rc, nodes '$N2')"
@@ -170,13 +171,15 @@ D1=$(indexed)
 [ "$rc" -eq 0 ] && ge90 "${D1:-0}" "${D0:-1}" && pass "Q2 exit 0, $D1 docs vs $D0" || fail "Q2 rc=$rc, $D1 docs vs $D0"
 
 echo "Q3: injected failures exit non-zero and leave no stamp"
-rm -f "$QMD_REFRESH_STAMP"
+[ -f "$QMD_REFRESH_STAMP" ] || fail "Q3 precondition: Q2 left no stamp to invalidate"
 out=$(QS_EMBED=pending reindex); rc=$?
 [ "$rc" -eq 5 ] && pass "Q3 incomplete embed exit 5" || fail "Q3 incomplete embed exit $rc, want 5"
 [ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after the incomplete embed" || fail "Q3 stamp written after the incomplete embed"
+: > "$QMD_REFRESH_STAMP"  # stale stamp from an earlier run
 out=$(QS_EMBED=fail reindex); rc=$?
 [ "$rc" -eq 4 ] && pass "Q3 embed failure exit 4" || fail "Q3 embed failure exit $rc, want 4"
 [ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after the embed failure" || fail "Q3 stamp written after the embed failure"
+: > "$QMD_REFRESH_STAMP"
 out=$(QS_UPDATE_FAIL=1 reindex); rc=$?
 [ "$rc" -eq 3 ] && pass "Q3 update failure exit 3" || fail "Q3 update failure exit $rc, want 3"
 [ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after the update failure" || fail "Q3 stamp written after the update failure"
