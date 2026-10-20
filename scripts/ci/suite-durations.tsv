@@ -997,6 +997,7 @@ scripts/test-user-slug-resolve.sh	0
 scripts/test-vm-e2e-mode-guard.sh	1
 scripts/test-worktree-verbs.sh	7
 scripts/testing/test-added-unwired-prepush.sh	0
+scripts/testing/test-documented-commands.sh	66
 scripts/testing/test-unwired-hooks.sh	1
 scripts/tests/test-setup-hooks-guardrail.sh	0
 scripts/upstream/test-run-target-tests.sh	0

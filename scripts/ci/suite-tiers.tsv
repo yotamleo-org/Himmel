@@ -1018,6 +1018,7 @@ scripts/test-worktree-orphans.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/test-worktree-verbs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/testing/test-added-unwired-prepush.sh	pr	static-gate
 scripts/testing/test-claude-mock-turn.sh	local	new since the audit, behaviour suite
+scripts/testing/test-documented-commands.sh	pr	guard
 scripts/testing/test-fakekey-claude-startup.sh	local	new since the audit, behaviour suite
 scripts/testing/test-mock-consult-sandbox.sh	pr	guard
 scripts/testing/test-mock-hook-live-turn.sh	local	new since the audit, behaviour suite
