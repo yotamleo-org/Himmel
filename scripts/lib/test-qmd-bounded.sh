@@ -273,6 +273,21 @@ if hang_row T7c; then
     assert_eq "T7c returns within deadline + grace + slack" "yes" "$([ "$took" -le 4 ] && echo yes || echo "no (${took}s)")"
 fi
 
+# T8: executed, a question naming a fleet word is asked in both vocabularies: a search
+# becomes a lex-only query without rerank, a query gains its vec line, and
+# QMD_VOCAB_EXPAND=0 passes the argv through as given.
+mkdir -p "$TMP/t8bin"
+printf '#!/bin/sh\nprintf "%%s|" "$@"\n' >"$TMP/t8bin/qmd"
+chmod +x "$TMP/t8bin/qmd"
+t8() { PATH="$TMP/t8bin:$PATH" BUN_INSTALL="$TMP/bun" bash "$LIB_DIR/qmd-bounded.sh" "$@" </dev/null; }
+assert_eq "T8a search expands to a lex-only query" "query|-c|himmel|--no-rerank|--|lex: the chief
+lex: the console|" "$(t8 search -c himmel "the chief")"
+assert_eq "T8b query keeps its vec line" "query|--|lex: the chief
+lex: the console
+vec: the chief|" "$(t8 query "the chief")"
+assert_eq "T8c QMD_VOCAB_EXPAND=0 runs the argv as given" "search|-c|himmel|the chief|" "$(QMD_VOCAB_EXPAND=0 t8 search -c himmel "the chief")"
+assert_eq "T8d a question with no fleet word runs as given" "search|prompt cache|" "$(t8 search "prompt cache")"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0

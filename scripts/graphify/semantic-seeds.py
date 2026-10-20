@@ -10,7 +10,13 @@ such as Need or Token and the file that answers it is missing. leg-graph.sh uses
       against the question. A file is scored as one document: its path words, its document,
       concept and rationale labels, its rationale text and its code labels, TF-IDF weighted
       across all files. Prints nothing when no file scores or the graph cannot be read.
-      Files under EVAL_DIR are never candidates.
+      Files under EVAL_DIR are never candidates. The question is also asked in the other fleet
+      vocabulary (scripts/qmd/vocab-expand.py swaps console/chief, leg/worker, ... from the rename
+      registry) and a file keeps its best score over the versions. A swapped version only
+      re-ranks a file that already shares a non-registry word with the question, so swapped-in
+      words alone never bring a file in ("wave of legs" never seeds a worker thread). A file the
+      registry marks other-sense (stop-worker.sh: a lane worker, not a renamed leg) earns no path
+      bonus from a registry word, so "worker" in either sense never seeds it by its name alone.
 
   scored <graph.json> <question>
       The same ids, preceded by one line "<weak|strong> <top score> <top file>". A match is weak
@@ -21,11 +27,13 @@ Fails open: an unreadable graph prints no seeds and says so on stderr.
 ponytail: word overlap with stemming over graph.json text, no embeddings; a paraphrase sharing no
 word with the file stays missed, qmd vectors over the same per-file text are the upgrade path.
 """
+import importlib.util
 import json
 import math
 import re
 import sys
 from collections import Counter
+from pathlib import Path
 
 TOP_FILES = 3
 K1, B = 1.2, 0.75
@@ -33,6 +41,7 @@ PATH_BONUS = 10.0
 TEST_FACTOR = 0.4
 WEAK_IDF = 1.6
 EVAL_DIR = "scripts/eval/retrieval-eval/"
+VOCAB = Path(__file__).resolve().parent.parent / "qmd" / "vocab-expand.py"
 TEST = re.compile(r"(^|/)(tests?|fixtures?)/|(^|/)test[-_]|[._-]test\.[a-z]+$|\.test\.")
 GENERIC = {"doc", "script", "internal", "test", "src", "lib", "md", "sh", "py", "json", "marketplace", "plugin"}
 WEIGHT = {"path": 3.0, "doc": 2.0, "rationale": 1.0, "code": 0.4}
@@ -77,31 +86,65 @@ def file_docs(graph):
     return docs, filenode, paths
 
 
+def vocab(question):
+    """The question's term sets, one per vocabulary; the registry's words; the other-sense names."""
+    versions, alias, other = [question], set(), set()
+    try:
+        sys.dont_write_bytecode = True
+        spec = importlib.util.spec_from_file_location("vocab_expand", VOCAB)
+        vx = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vx)
+        prs = vx.pairs()
+        for direction in ("to-new", "to-old"):
+            versions.append(vx.swap(question, direction, prs))
+        alias = {t for pair in prs for w in pair for t in terms(w)}
+        other = vx.other_sense()
+    except Exception as exc:  # fail open: the question as asked still seeds
+        print(f"semantic-seeds: {exc}; question not expanded", file=sys.stderr)
+    qs = []
+    for v in versions:
+        q = set(terms(v))
+        if q and q not in qs:
+            qs.append(q)
+    return qs, alias, other
+
+
 def ranked(graph, question):
     """The TOP_FILES best files as (score, file, node id), and the score under which a match is weak."""
     docs, filenode, paths = file_docs(graph)
-    q = set(terms(question))
-    if not q:
+    qs, alias, other = vocab(question)
+    if not qs:
         return [], 0.0
     df = Counter(t for d in docs.values() for t in d)
     n = len(docs)
     avg = sum(sum(d.values()) for d in docs.values()) / max(n, 1)
-    scored = []
-    for src, d in docs.items():
-        if src not in filenode:
-            continue
+
+    def score(src, d, q):
         hit = [t for t in q if t in d]
         if not hit:
-            continue
+            return None
         norm = 1 - B + B * sum(d.values()) / avg
         s = sum(math.log(1 + n / df[t]) * d[t] * (K1 + 1) / (d[t] + K1 * norm) for t in hit)
         pt = paths[src]
         if pt:
-            cov = sum(math.log(1 + n / df[t]) for t in pt & q) / sum(math.log(1 + n / df[t]) for t in pt)
-            s += PATH_BONUS * cov * len(pt & q) / len(q)
+            on = pt & q
+            if src.rsplit("/", 1)[-1].split(".", 1)[0] in other:
+                on -= alias
+            cov = sum(math.log(1 + n / df[t]) for t in on) / sum(math.log(1 + n / df[t]) for t in pt)
+            s += PATH_BONUS * cov * len(on) / len(q)
         if TEST.search(src) and "test" not in q:
             s *= TEST_FACTOR
-        scored.append((s, src))
+        return s
+
+    core = qs[0] - alias
+    scored = []
+    for src, d in docs.items():
+        if src not in filenode:
+            continue
+        swapped = qs[1:] if any(t in d for t in core) else []
+        best = [s for s in (score(src, d, q) for q in qs[:1] + swapped) if s is not None]
+        if best:
+            scored.append((max(best), src))
     scored.sort(key=lambda x: (-x[0], x[1]))
     return [(s, src, filenode[src]) for s, src in scored[:TOP_FILES]], WEAK_IDF * math.log(1 + n)
 
