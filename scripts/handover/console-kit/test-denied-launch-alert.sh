@@ -122,7 +122,9 @@ PATH="$WORK/shim:$PATH" timeout 30 bash "$SUT" >/dev/null 2>&1 &
 pid_a=$!
 PATH="$WORK/shim:$PATH" timeout 30 bash "$SUT" >/dev/null 2>&1 &
 pid_b=$!
-wait "$pid_a" "$pid_b"
+wait "$pid_a"; rc_a=$?
+wait "$pid_b"; rc_b=$?
+check "(i) both concurrent scans complete" "0:0" "$rc_a:$rc_b"
 check "(i) two concurrent scans of one stale claim send once" "$((before + 1))" "$(sent)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
