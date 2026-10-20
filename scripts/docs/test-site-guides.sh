@@ -18,6 +18,13 @@
 #                 href resolves, and no ticket ID appears outside a comment.
 #   5. CONTROL  — a fixture page naming a made-up key fails case 2, so the key
 #                 check cannot pass vacuously.
+#   6. STEPS    — installer-journey.html lists the wizard's questions in the
+#                 order scripts/himmelctl/bin.js askQuestions() asks them; a
+#                 fixture page with a renamed step fails, so it cannot pass
+#                 vacuously.
+#   7. TRAIL    — docs/adoption-trail.html carries no claim for a dropped
+#                 platform or plugin (.ps1, WSL, Git Bash, superpowers, "the
+#                 eight"); a fixture with one fails.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ plus grep/sed/jq/python3, so
 # it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
@@ -108,8 +115,48 @@ unknown_keys() {
   printf '%s' "$out"
 }
 
+BIN="$ROOT/scripts/himmelctl/bin.js"
+TRAIL="$ROOT/docs/adoption-trail.html"
+TRAIL_STALE='\.ps1|WSL|Git Bash|superpowers|the eight'
+
+# Prints the guide's question ids (kind: 'ask'), in page order, space-joined.
+guide_steps() {
+  python3 -I -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); print(" ".join(m.group(1) for m in re.finditer(r"\{ id: \x27([a-z]+)\x27[^\n]*?kind: \x27ask\x27", t)))' "$1"
+}
+
+# Prints the guide ids of the questions askQuestions() asks, in call order.
+wizard_steps() {
+  python3 -I - "$BIN" <<'PY'
+import re, sys
+t = open(sys.argv[1], encoding="utf-8").read()
+a = t.index("async function askQuestions(")
+body = t[a:t.index("// All-default answers", a)]
+calls = [
+    ("profile", r"askNumberedEnum\(ask, 'profile'"),
+    ("scope", r"askNumberedEnum\(ask, 'scope'"),
+    ("vault", r"askNumberedEnum\(ask, 'vault'"),
+    ("handover", r"askNumberedEnum\(ask, 'handover'"),
+    ("lanes", r"askLanes\(ask"),
+    ("always", r"askNumberedEnum\(ask, 'always-on machine"),
+    ("vm", r"askVm\(ask"),
+    ("cadences", r"askCadences\(ask"),
+    ("privacy", r"Protected Health Information"),
+    ("bridge", r"askNumberedEnum\(ask, 'configure the telegram bridge"),
+    ("secrets", r"askNumberedEnum\(ask, 'walk through secrets"),
+    ("commit", r"askCommitRules\(ask"),
+]
+found = sorted((m.start(), k) for k, r in calls for m in [re.search(r, body)] if m)
+print(" ".join(k for _, k in found))
+PY
+}
+
+# Prints the stale claims of a trail page, one per line (empty = clean).
+trail_stale() {
+  strip_comments "$1" | grep -o -E -- "$TRAIL_STALE"
+}
+
 check_page() {
-  local page="$1" rel err text unknown dead ref ids id hit
+  local page="$1" rel err text unknown dead ref ids id hit want got
   rel="${page#"$ROOT"/}"
   [ -f "$page" ] || { bad "$rel exists"; return; }
 
@@ -146,6 +193,12 @@ check_page() {
   else
     ok "$rel shows no ticket ID"
   fi
+
+  if [ "${page##*/}" = installer-journey.html ]; then
+    want="$(wizard_steps)"
+    got="$(guide_steps "$page")"
+    if [ -n "$want" ] && [ "$want" = "$got" ]; then ok "$rel question steps match the wizard order ($want)"; else bad "$rel question steps differ from bin.js askQuestions()" "wizard: $want / guide: $got"; fi
+  fi
 }
 
 # --- CONTROL: the key check must fail on a made-up key -------------------------
@@ -156,6 +209,31 @@ if [ -n "$(unknown_keys "$tmp/fixture.html")" ]; then
   ok "control: a made-up key is reported unknown"
 else
   bad "control: the key check accepted a made-up key"
+fi
+
+# --- CONTROL: the STEPS check must fail on a renamed step ----------------------
+if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
+  sed "s/{ id: 'bridge'/{ id: 'dropped'/" "$ROOT/docs/guide/installer-journey.html" > "$tmp/installer-journey.html"
+  if [ "$(wizard_steps)" != "$(guide_steps "$tmp/installer-journey.html")" ]; then
+    ok "control: a guide with a renamed step differs from the wizard"
+  else
+    bad "control: the STEPS check accepted a guide with a renamed step"
+  fi
+fi
+
+# --- TRAIL: no claim for a dropped platform or plugin ---------------------------
+printf '<p>Run <span class="mono">adopt.ps1</span> in Git Bash.</p>\n' > "$tmp/trail.html"
+if [ -n "$(trail_stale "$tmp/trail.html")" ]; then
+  ok "control: a stale claim is reported in a trail fixture"
+else
+  bad "control: the trail check accepted a stale claim"
+fi
+if [ ! -f "$TRAIL" ]; then
+  bad "docs/adoption-trail.html exists"
+elif [ -z "$(trail_stale "$TRAIL")" ]; then
+  ok "docs/adoption-trail.html carries no dropped-platform or dropped-plugin claim"
+else
+  bad "docs/adoption-trail.html carries stale claims" "$(trail_stale "$TRAIL" | sort -u | tr '\n' ' ')"
 fi
 
 # --- the pages ----------------------------------------------------------------

@@ -456,9 +456,8 @@ claude --version</pre>
         <p>Developers who already use git and a terminal and want Claude Code
         to work with guardrails on. You do not need to know Claude Code or
         himmel beforehand; you do need to be comfortable running commands in
-        a terminal. Linux and macOS are supported. Windows is an early
-        alpha &mdash; see the boxes in the
-        <a href="#first-5">first 5 minutes</a>. Try it on one throwaway
+        a terminal. Linux and macOS are supported; Windows is not.
+        Try it on one throwaway
         project before you point it at anything you care about.</p>
       </div>
 
@@ -746,38 +745,6 @@ uv tool install pre-commit</pre>
           open a new terminal.</p>
         </div>
 
-        <div class="os alpha" id="os-windows">
-          <h3>Windows with Git Bash <span class="tier">Alpha</span></h3>
-          <p>Experimental. The code paths exist, but they are best effort:
-          they are not tested on every change, and there is no guarantee that
-          an install and an uninstall round-trip cleanly. Expect quoting and
-          path differences from Linux, and report what breaks. PowerShell
-          versions of the scripts exist but are outside the support claim;
-          PowerShell alone is not enough &mdash; run everything on this page
-          in <b>Git Bash</b>.</p>
-          <ul>
-            <li>Install Git for Windows (it includes Git Bash) from
-            <a href="https://git-scm.com">git-scm.com</a>, then Node.js
-            (with npm), <span class="mono">jq</span> and Python 3 with your
-            usual installer.</li>
-            <li>Install Claude Code from PowerShell:
-            <span class="mono">irm https://claude.ai/install.ps1 | iex</span></li>
-            <li>Scheduled jobs use Windows Task Scheduler
-            (<span class="mono">schtasks</span>) instead of
-            <span class="mono">at</span>.</li>
-          </ul>
-        </div>
-
-        <div class="os alpha" id="os-wsl">
-          <h3>Windows with WSL <span class="tier">Alpha</span></h3>
-          <p>Same alpha caveats. Install Claude Code and himmel <em>inside</em>
-          a WSL distribution such as Ubuntu and follow the Linux box above.
-          Keep your projects on the Linux side (under <span class="mono">~</span>),
-          never under <span class="mono">/mnt/c</span>, which is very slow.
-          Running Windows-native Claude Code with a WSL shell is not
-          possible.</p>
-        </div>
-
         <p>When the installs finish, check your versions against the
         minimums in <a href="#before">Before you install</a>
         (<span class="mono">git --version</span>,
@@ -988,7 +955,6 @@ claude</pre>
           <ul class="chips">
             <li><button class="chip" data-detail="gh">gh CLI
             (for GitHub PRs)</button></li>
-            <li><button class="chip" data-detail="superpowers">superpowers</button></li>
             <li><button class="chip" data-detail="graphify">graphify
             (pinned)</button></li>
             <li><button class="chip" data-detail="plugins">Official Claude
@@ -1082,9 +1048,8 @@ claude</pre>
         where the wiring is installed.</p>
         <p class="note">The <em>git</em> hooks (pre-commit, commit-msg,
         pre-push) are placed by the install &mdash; the opt-out,
-        <span class="mono">--skip-hooks</span> (<span class="mono">-SkipHooks</span>
-        on Windows), is a flag of <span class="mono">scripts/adopt.sh</span>
-        / <span class="mono">adopt.ps1</span>, not of
+        <span class="mono">--skip-hooks</span>, is a flag of
+        <span class="mono">scripts/adopt.sh</span>, not of
         <span class="mono">himmelctl install</span>, so use it if you manage
         git hooks yourself. What they check is up to the project's own
         <span class="mono">.pre-commit-config.yaml</span>. When the
@@ -1348,7 +1313,7 @@ claude</pre>
 
   <section class="camp">
     <span class="lvl-tag">OFF-TRAIL</span>
-    <h2>Self-evolving — testing in progress</h2>
+    <h2>Self-evolving — experimental</h2>
     <p>The experimental tier: capabilities that run daily here but are not
     proven enough to promise. Listed as work in progress, not as
     features.</p>
@@ -1375,7 +1340,7 @@ claude</pre>
       <dt>cadence</dt>
       <dd>A recurring scheduled job that himmel arms with your operating
       system's scheduler &mdash; a nightly search reindex, say. Level 2 lists
-      the eight; you pick which to arm.</dd>
+      them; you pick which to arm.</dd>
       <dt>CR</dt>
       <dd>Short for automated review, the pre-PR review gate. Also used
       loosely for the review comments (&ldquo;CR findings&rdquo;) a pull
@@ -1546,8 +1511,6 @@ claude</pre>
       '<p>himmel’s <b>fork of Anthropic’s pr-review-toolkit</b> plugin: review agents plus the <span class="mono">/pr-check</span> flow — a multi-reviewer pass over your branch whose verdict gates the merge at the exact commit reviewed.</p>' },
     'himmel-ops': { t: 'himmel-ops', s: 'ship', h:
       '<p>himmel’s core ops plugin: the <b>guard hooks</b> behind Level 1 plus the operational commands the workflow runs on — worktree management, review gating, update and doctor flows.</p>' },
-    'superpowers': { t: 'superpowers', s: 'ship', h:
-      '<p>A community plugin himmel installs and builds on: it powers the <b>AFK (unattended) planning and subagent-driven implementation</b> flows — the plan-then-implement-with-reviews pipeline that autonomous runs execute.</p>' },
     'claude-obsidian': { t: 'claude-obsidian', s: 'ship', h:
       '<p>AgriciDaniel’s <b>claude-obsidian</b> plugin, installed <b>from upstream and pinned to a release tag</b> (himmel’s fork was retired once its fixes landed upstream): the vault connection layer Claude uses to read and write your Obsidian notes.</p>' },
     'luna-correlate': { t: 'luna-correlate', s: 'ship', h:
