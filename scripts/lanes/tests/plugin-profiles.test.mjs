@@ -1917,3 +1917,17 @@ test('graphify@himmel is enabled only in the user profile (HIMMEL-6465)', () => 
     assert.equal(p[id], name === 'user', `${name}: ${id} enabled must be ${name === 'user'}`);
   }
 });
+
+// A profile with no required plugin gets no skillOverrides, so it lists about 7.4k more
+// first-turn tokens (leg-impl note in plugin-profiles.json). The 35000 budgets cannot be met
+// that way: the live probe measured console-judge and console-relay at 36886 before they
+// required the floor plugin whose skills they call, 29950 after.
+test('a profile on the 35000 budget requires a plugin, so skillOverrides engage (HIMMEL-4017)', () => {
+  for (const [name, def] of Object.entries(REG.profiles)) {
+    if (def === null || def.contextBudget > 35000) continue;
+    assert.ok(ROLE_REQUIRES[name].length > 0, `${name}: contextBudget ${def.contextBudget} needs a ROLE_REQUIRES plugin`);
+  }
+  for (const name of ['console-judge', 'console-relay']) {
+    assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills it calls`);
+  }
+});
