@@ -660,6 +660,8 @@ gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \\<newline>gh pr create --
 gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \\<newline>gh pr create --head feat/w2 (stray double quote in an ANSI-C string), allowed" allow $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c \\\ngh pr create --head feat/w2'
 gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # c \\<newline>gh pr create --head feat/y (heredoc double quote), refused" block $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # c \\\ngh pr create --head feat/y'
 gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # c \\<newline>gh pr create --head feat/w2 (heredoc double quote), allowed" allow $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # c \\\ngh pr create --head feat/w2'
+gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \$x \\<newline>gh pr create --head feat/y (comment holds a substitution the base scanner refuses), refused" block $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c $x \\\ngh pr create --head feat/y'
+gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # it's \\<newline>gh pr create --head feat/y (comment holds an apostrophe the base scanner refuses), refused" block $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # it\'s \\\ngh pr create --head feat/y'
 }
 rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
 # Each `gh pr create` is judged in ITS OWN directory: the first one's dir used

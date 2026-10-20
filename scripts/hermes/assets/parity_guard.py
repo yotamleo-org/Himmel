@@ -2035,13 +2035,12 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
         base_dir = _commit_dir(base_joined[:base_m.start()] if base_m else base_joined,
                                _agent_cwd(payload, args), None)
         if base_dir:
-            # A shape the base scanner refuses is judged by arm 2, which
-            # reads the constructs the base scanner over-blocked.
             try:
                 base_heads = _pr_head_branches_main(base_joined)
             except ValueError:
-                base_heads = None
-            reason = _pending_cr_reason(base_dir, base_heads) if base_heads is not None else ""
+                block("The `gh pr create` arguments cannot be parsed to find "
+                      "their --head — refused fail-closed.")
+            reason = _pending_cr_reason(base_dir, base_heads)
             if reason:
                 block(reason)
     joins = {_join_continuations(raw_cmd), _join_continuations_commented(raw_cmd)}
