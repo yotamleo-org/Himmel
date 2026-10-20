@@ -255,6 +255,14 @@ console_metadata() {
 # here so an ambient value can never name a predecessor.
 CONSOLE_BUS_PREDECESSOR=""
 
+# console_bus_opted_in -- the console profile lists himmel-bus in its MCP servers.
+console_bus_opted_in() {
+    case "$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" in
+        *'"himmel-bus"'*) return 0 ;;
+    esac
+    return 1
+}
+
 # do_arm <session> <doc> <fill-signal> <log> -- launch (or foreground-run,
 # under CONSOLE_ARM_FOREGROUND=1) the headed-arm target and print the armed
 # lines. deadline_epoch/model/workdir are read from the outer resolution
@@ -290,22 +298,19 @@ do_arm() {
     # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
     # the console profile's opt-in decides whether anything is registered.
     # Fail-open: a failed register warns and the console launches unbound.
-    local bus_var bus_cli bus_names bus_args
+    local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
     bus_cli="${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-    bus_names="$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || bus_names=""
-    case "$bus_names" in
-        *'"himmel-bus"'*)
-            bus_args=(register "$session" --role console)
-            [ -n "$CONSOLE_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CONSOLE_BUS_PREDECESSOR")
-            if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
-                export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
-            else
-                echo "console.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
-            fi
-            ;;
-    esac
+    if console_bus_opted_in; then
+        bus_args=(register "$session" --role console)
+        [ -n "$CONSOLE_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CONSOLE_BUS_PREDECESSOR")
+        if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
+            export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
+        else
+            echo "console.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
+        fi
+    fi
     # plugin /console from any repo: a
     # foreign --project selects the bucket/prefix and is recorded in the
     # doc as data (see project_doc_value below) -- the console session
@@ -930,9 +935,17 @@ launch_cmd() {
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
         || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server (HIMMEL-5310)"; exit 2; }
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
-    printf 'cd %q && { bash %q %s %s %s %s; %s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"; }' \
+    # No launcher binds a pasted console on the bus, so the line runs claude
+    # through console-bus-exec.sh, which registers and binds it first.
+    local bus_exec=""
+    if console_bus_opted_in; then
+        bus_exec="$(printf 'bash %q %q ' "$HERE/console-bus-exec.sh" "$1")"
+        [ -z "$CONSOLE_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CONSOLE_BUS_PREDECESSOR")"
+        bus_exec+="-- "
+    fi
+    printf 'cd %q && { bash %q %s %s %s %s; %s%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"; }' \
         "$repo" "$HERE/record-launch.sh" "$1" "$CONSOLE_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
-        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2"
+        "$bus_exec" "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2"
 }
 
 # _console_sha256_8 <string> -- first 8 hex chars of sha256(<string>). Small
@@ -1587,6 +1600,7 @@ cmd_next() {
     [ -n "$predecessor_tracker" ] || predecessor_tracker="none"
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
+    CONSOLE_BUS_PREDECESSOR="$predecessor_stem"
     predecessor_prefix_part="${predecessor_stem%-"$name"}"
     if [ "$predecessor_prefix_part" = "$predecessor_stem" ]; then
         err "cannot parse predecessor doc name '$predecessor_base' (expected suffix '-$name.md')"
@@ -1835,7 +1849,6 @@ cmd_next() {
     fi
 
     if [ "$ARM" -eq 1 ]; then
-        CONSOLE_BUS_PREDECESSOR="$predecessor_stem"
         do_arm "$session" "$doc" "$fill_signal" "$log"
     fi
 }
