@@ -91,9 +91,9 @@ for (const tail of SUITE_TAILS) {
 }
 
 // The headed leg profiles opt in to himmel-bus and also allow its tools, both name forms.
-const HEADED_LEG_PROFILES = ['leg-impl', 'leg-bus', 'leg-vm', 'leg-e2e'];
+const BUS_PROFILES = ['leg-impl', 'leg-bus', 'leg-vm', 'leg-e2e'];
 const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
-const busAllow = (name) => (HEADED_LEG_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
+const busAllow = (name) => (BUS_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
 const expectedAllow = (name) => [...REG.gateAllow, ...busAllow(name)];
 
 for (const name of LEG_PROFILES) {
@@ -1685,7 +1685,7 @@ test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the pl
 
 // headed-arm-leg.sh registers a leg on the bus only when its profile lists himmel-bus.
 test('every headed leg profile opts in to himmel-bus and allows its tools (HIMMEL-4841)', () => {
-  for (const name of HEADED_LEG_PROFILES) {
+  for (const name of BUS_PROFILES) {
     assert.ok(mcpServersForProfile(REG, name)?.includes('himmel-bus'), `${name} must list himmel-bus`);
     const allow = resolveProfile(REG, name, { installed: [] }).permissions.allow;
     for (const tool of BUS_TOOL_ALLOW) assert.ok(allow.includes(tool), `${name}: missing ${tool}`);
@@ -1768,7 +1768,7 @@ test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and
   const dir = makeTmpDir('pp-bus-real-');
   const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'm'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
   assert.deepEqual(cfg.mcpServers['himmel-bus'].args, ['--prefix', '/srv/himmel/marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
-  for (const p of [...HEADED_LEG_PROFILES, 'console']) {
+  for (const p of [...BUS_PROFILES, 'console']) {
     const allow = resolveProfile(REG, p, { installed: [] }).permissions?.allow ?? [];
     for (const n of ['mcp__himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__read']) assert.ok(allow.includes(n), `${p} allows ${n}`);
   }
