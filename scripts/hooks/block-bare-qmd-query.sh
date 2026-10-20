@@ -666,8 +666,9 @@ _nv_fold() { printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:
 # _nv_fold_esc TEXT — _nv_fold with each backslash escape (\n, \t, \x20, \040,
 # `\ `) read as a blank instead of removed: printf and echo -e turn those into
 # the word boundary the removal would glue a letter onto qmd or the verb across.
+# qmd_words prints a quoted backslash as `_`, so `_n`, `_t`, `_x20` read the same.
 _nv_fold_esc() {
-    printf '%s' "$1" | LC_ALL=C sed -E 's/\\([xX][0-9a-fA-F]{1,2}|[0-7]{1,3}|.)/ /g' |
+    printf '%s' "$1" | LC_ALL=C sed -E 's/\\([xX][0-9a-fA-F]{1,2}|[0-7]{1,3}|.)/ /g; s/_([xX][0-9a-fA-F]{1,2}|[0-7]{1,3}|[ntrvabfe])/ /g' |
         LC_ALL=C tr -d '"'\''' | LC_ALL=C tr '[:upper:]' '[:lower:]'
 }
 # names_verb TEXT — succeed when TEXT, quotes and backslashes removed (or a
@@ -703,8 +704,11 @@ names_verb_cat() {
 # (`python3 -c 'exec(sys.stdin.read())'`) runs the output; telling it from a
 # reader needs a parser for every language — file a ticket if seen.
 names_verb_nb() {
-    local s seg w rest='' ws k ok
-    s=$(_nv_fold "$1")
+    _nvnb_folded "$(_nv_fold "$1")" || _nvnb_folded "$(_nv_fold_esc "$1")"
+}
+# _nvnb_folded S — names_verb_nb's test on the already folded text S.
+_nvnb_folded() {
+    local s=$1 seg w rest='' ws k ok
     s=${s//qmd-bounded.sh/ }
     [[ $s == *qmd* ]] || return 1
     s=$(printf '%s' "$s" | LC_ALL=C tr '|;&(){}`<>' '\n')

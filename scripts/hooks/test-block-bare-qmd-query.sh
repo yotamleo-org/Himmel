@@ -1167,6 +1167,14 @@ deny 'printf "qmd\tquery" | sh'
 deny 'printf "a\x20qmd query" | sh'
 deny 'printf "qmd\x20query" | sh'
 deny 'printf "qmd query\nx" | sh'
+# The same escapes in a launcher's words (names_verb_nb) and in a file the
+# command writes and then runs (qmd_words prints the quoted backslash as `_`).
+deny "ssh research \"echo 'x\nqmd query'\""
+deny "ssh research \"printf 'x\nqmd query'\""
+deny "printf 'x\nqmd query' > f.sh; sh f.sh"
+deny "printf 'qmd\tquery' > f.sh; bash f.sh"
+deny "printf 'qmd\x20query' > f.py; python3 f.py"
+deny "printf \"x\nqmd query\" > f.sh; sh f.sh"
 # Pinned over-deny (the tmux/screen launcher text keeps a substring test): no
 # search verb runs here, yet it is refused until that test is word-bounded.
 deny "tmux new -s research 'qmd status'"
