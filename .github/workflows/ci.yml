@@ -159,42 +159,340 @@ jobs:
           cat "$RUNNER_TEMP/canary.out"
           sed -n -e 's/^shards=/canary_shards=/p' -e 's/^shard_total=/canary_total=/p' "$RUNNER_TEMP/canary.out" >> "$GITHUB_OUTPUT"
 
-  # HIMMEL-6121: matrix fail-fast only stops sibling legs of one matrix; the
-  # other jobs keep their runners after the run is already red. On pull_request
-  # this watcher polls the run's jobs and cancels the whole run at the first
-  # failed one. No checkout and no `needs:` (it must run from the start). It
-  # fails open: an API error or a timeout leaves the run uncancelled, and it
-  # never reddens the run itself. Schedule and dispatch runs have no watcher,
-  # so a red there stays attributable. A cancelled run still reads red: the
-  # failed job keeps its `failure` conclusion and the required `shell-unit`
-  # check never reports success.
-  pr-fail-fast:
-    if: github.event_name == 'pull_request'
+  # HIMMEL-6121 / HIMMEL-6494: matrix fail-fast only stops sibling legs of one
+  # matrix; the other jobs keep their runners after the run is already red. Each
+  # job has a fail-fast-<job> twin that needs only that job, starts only when it
+  # failed on a pull_request, and cancels the whole run. A green run starts no
+  # twin, so nothing holds a runner while the shards work (the earlier watcher
+  # held one for up to 90 min). A twin checks out no PR code and uses no action; its
+  # one step comes from the PR's own ci.yml, which is safe because a same-repo
+  # author already has write access and a fork's token is read-only. It is the
+  # only kind of job that holds actions: write. A cancel the token
+  # refuses (a fork PR's is read-only) is swallowed: the run stays uncancelled,
+  # never reddened by the twin. Schedule and dispatch runs have no twins, so a
+  # red there stays attributable. A cancelled run still reads red: the failed
+  # job keeps its `failure` conclusion and the required `shell-unit` check never
+  # reports success. The aggregator (shell-unit) and the schedule-only
+  # guard-corpus-full have none.
+  fail-fast-plan:
+    needs: plan
+    if: failure() && needs.plan.result == 'failure' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 100 # outlives the 90 min poll deadline below
+    timeout-minutes: 2
     permissions:
       actions: write
     steps:
-      - name: Cancel the run on the first failed job
+      - name: Cancel the run
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          deadline=$((SECONDS + 5400))
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            if jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[]')"; then
-              failed="$(jq -s '[.[] | select(.conclusion == "failure" or .conclusion == "timed_out")] | length' <<< "$jobs")"
-              if [ "$failed" -gt 0 ]; then
-                echo "a job failed; cancelling run $RUN_ID"
-                gh run cancel "$RUN_ID" || true
-                exit 0
-              fi
-              pending="$(jq -s '[.[] | select(.name != "pr-fail-fast" and .status != "completed")] | length' <<< "$jobs")"
-              [ "$pending" -eq 0 ] && exit 0
-            fi
-            sleep "${POLL_SECS:-15}"
-          done
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-secret-scan:
+    needs: secret-scan
+    if: failure() && needs.secret-scan.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-bwk-awk-mktemp-gate:
+    needs: bwk-awk-mktemp-gate
+    if: failure() && needs.bwk-awk-mktemp-gate.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-unchecked-mktemp-range:
+    needs: unchecked-mktemp-range
+    if: failure() && needs.unchecked-mktemp-range.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-home-canary:
+    needs: home-canary
+    if: failure() && needs.home-canary.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-leak-classes:
+    needs: leak-classes
+    if: failure() && needs.leak-classes.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-git-env-scrub:
+    needs: git-env-scrub
+    if: failure() && needs.git-env-scrub.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-commit-lint:
+    needs: commit-lint
+    if: failure() && needs.commit-lint.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-plugin-version-bump:
+    needs: plugin-version-bump
+    if: failure() && needs.plugin-version-bump.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-lint:
+    needs: lint
+    if: failure() && needs.lint.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-node-suites:
+    needs: node-suites
+    if: failure() && needs.node-suites.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-jira-cli-smoke:
+    needs: jira-cli-smoke
+    if: failure() && needs.jira-cli-smoke.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-claude-startup:
+    needs: claude-startup
+    if: failure() && needs.claude-startup.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-lanes-and-trust-suites:
+    needs: lanes-and-trust-suites
+    if: failure() && needs.lanes-and-trust-suites.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-guardrail-matrices:
+    needs: guardrail-matrices
+    if: failure() && needs.guardrail-matrices.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-bun-suites:
+    needs: bun-suites
+    if: failure() && needs.bun-suites.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-doc-invariants:
+    needs: doc-invariants
+    if: failure() && needs.doc-invariants.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-security-scan:
+    needs: security-scan
+    if: failure() && needs.security-scan.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-shell-unit-shard:
+    needs: shell-unit-shard
+    if: failure() && needs.shell-unit-shard.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
+
+  fail-fast-ci-quick:
+    needs: ci-quick
+    if: failure() && needs.ci-quick.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run cancel "$RUN_ID" || true
 
   # HIMMEL-5675: the short checks run as step groups of this ONE job, so they
   # take one runner and one setup instead of eight (19 of 42 PR jobs finished
