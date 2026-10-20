@@ -164,6 +164,9 @@ mkdir -p "$SPACED_ROOT/scripts/hooks"
 CANON_SPACED=$(canon_path "$SPACED_ROOT") || { echo "setup: canon_path failed for the spaced root" >&2; exit 1; }
 SPACED_ROOT="$CANON_SPACED"
 cp "$HOOK" "$SPACED_ROOT/scripts/hooks/cadence-approve-engines.sh"
+# The hook sources scripts/lib/prim.sh (canon_path), so the copy needs its lib.
+mkdir -p "$SPACED_ROOT/scripts/lib"
+cp "$(dirname "$HOOK")/../lib/prim.sh" "$(dirname "$HOOK")/../lib/canon-path.sh" "$SPACED_ROOT/scripts/lib/"
 SPACED_HOOK="$SPACED_ROOT/scripts/hooks/cadence-approve-engines.sh"
 if command -v cygpath >/dev/null 2>&1; then
     SPACED_ROOT_MIXED=$(cygpath -m "$SPACED_ROOT" 2>/dev/null || printf '%s' "$SPACED_ROOT")

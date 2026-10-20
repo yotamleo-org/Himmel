@@ -122,6 +122,10 @@
 # bash 3.2-compatible (no mapfile / associative arrays).
 set -uo pipefail
 
+# A missing prim.sh leaves canon_path unset, so the grant check below refuses.
+# shellcheck source=../lib/prim.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" 2>/dev/null
+
 # Enumerated cadence engines. Add legs here as `<bin>:<normalized suffix>`
 # pairs. The suffix is the per-leg registry key; it is joined to the ROOT ANCHOR
 # below and matched EXACTLY (backslashes folded to `/`, case-insensitively), so
@@ -494,7 +498,16 @@ path_is_physically_in_vault() {
         [ "$d" != "$p" ] || return 1
         p="$d"
     done
-    real=$(realpath "$p" 2>/dev/null) || return 1 # swallow-ok: failure refuses the grant
+    # canon_path takes a directory. A directory resolves whole; a file resolves
+    # its parent and keeps the leaf, and a symlink leaf is refused rather than
+    # followed out of the vault.
+    if [ -d "$p" ]; then
+        real=$(canon_path "$p") || return 1 # swallow-ok: failure refuses the grant
+    else
+        [ ! -L "$p" ] || return 1
+        real=$(canon_path "$(dirname "$p")") || return 1 # swallow-ok: failure refuses the grant
+        real="$real/$(basename "$p")"
+    fi
     [ -n "$real" ] || return 1
     real="$real$rest"
     [ "$real" = "$root" ] && return 0
