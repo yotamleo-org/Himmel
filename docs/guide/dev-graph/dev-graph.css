@@ -99,11 +99,11 @@
 .dg-caption { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: var(--s3) var(--s4); font-size: var(--fs-sm); }
 .dg-caption p, .dg-caption h3, .dg-caption dl, .dg-caption dd { margin: 0; }
 .dg-stepno { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; }
-.dg-cap-title { font-size: var(--fs-base); margin-top: var(--s1); }
-.dg-state { font-weight: 600; margin: var(--s1) 0 var(--s2); }
+.dg-caption .dg-cap-title { font-size: var(--fs-base); margin-top: var(--s1); }
+.dg-caption .dg-state { font-weight: 600; margin: var(--s1) 0 var(--s2); }
 .dg-caption dt { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; margin-top: var(--s2); }
 .dg-anchor { color: var(--muted); }
-.dg-ghost-note { margin-top: var(--s2); color: var(--muted); font-style: italic; }
+.dg-caption .dg-ghost-note { margin-top: var(--s2); color: var(--muted); font-style: italic; }
 
 /* load-time validation */
 .dg-banner { margin: 0 0 var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--crit); border-radius: var(--radius); background: var(--crit-soft); color: var(--ink); font-size: var(--fs-sm); }

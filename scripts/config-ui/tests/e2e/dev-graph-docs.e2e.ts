@@ -81,6 +81,16 @@ test("J-DG1. a hash change that is not a walkthrough one leaves the step alone",
   await expect(page.getByLabel("Walkthrough")).toHaveValue("w2");
 });
 
+test("J-DG1. the caption keeps the spacing its title and state rows are styled with", async ({ page }) => {
+  await open(page, "#w=w1&s=1");
+  const margins = await page.evaluate(() => {
+    const m = (sel: string) => getComputedStyle(document.querySelector(sel) as Element);
+    return { titleTop: m(".dg-cap-title").marginTop, stateBottom: m(".dg-state").marginBottom };
+  });
+  expect(margins.titleTop).not.toBe("0px");
+  expect(margins.stateBottom).not.toBe("0px");
+});
+
 test("J-DG1. Play advances at least two steps in six seconds", async ({ page }) => {
   await open(page, "#w=w1&s=1");
   await page.getByRole("button", { name: "Play" }).click();
