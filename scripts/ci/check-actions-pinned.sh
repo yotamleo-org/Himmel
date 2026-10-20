@@ -12,8 +12,8 @@
 # a `docker://` ref without a digest is flagged.
 #
 # Line-based: a `uses:` is recognised at the start of a line (`uses:` or
-# `- uses:`). YAML flow mappings (`- {uses: ...}`) are not scanned; this repo
-# does not use them.
+# `- uses:`). A YAML flow mapping (`- {uses: ...}`) is not parsed, so a
+# `uses:`, `container:` or `image:` key inside one is refused.
 #
 # Usage:
 #   check-actions-pinned.sh [scan-path ...]   # default: .github
@@ -86,6 +86,7 @@ while IFS= read -r line; do
   [ -n "$line" ] || continue
   value=$(printf '%s\n' "${line#*"$sep"}" | sed -E 's/^[0-9]+:[[:space:]]*-?[[:space:]]*(container|image):[[:space:]]*//; s/[[:space:]]+#.*$//')
   if [[ "$value" == \"*\" ]]; then value=${value#\"}; value=${value%\"}; fi
+  if [[ "$value" == \'\$\{\{*\' ]]; then value=${value#\'}; value=${value%\'}; value=${value//\'\'/\'}; fi
   if [[ "$value" == \$\{\{* ]]; then
     # An == / != operand is a comparison, not an image; '' means no container.
     literals=$(sed -E "s/(==|!=)[[:space:]]*'[^']*'//g; s/'[^']*'[[:space:]]*(==|!=)//g; s/''//g" <<< "$value" \
@@ -107,6 +108,20 @@ if [ "${#unpinned[@]}" -gt 0 ]; then
   printf 'ERROR: container image not pinned by @sha256: digest:\n'
   printf '%s\n' "${unpinned[@]}" | tr "$sep" ':'
   printf 'Pin as: image: registry/name@sha256:<64-hex>  (docker buildx imagetools inspect <ref>)\n'
+  exit 1
+fi
+
+# The scan above is line-based, so a flow mapping (`db: {image: ...}`) is refused
+# outright rather than passed unread. `${{` is an expression, not a mapping.
+flow=$(grep -rnHE --include='*.yml' --include='*.yaml' \
+  '(^|[^{$])\{[[:space:]]*([^}]*,[[:space:]]*)?(uses|container|image)[[:space:]]*:' "${existing[@]}")
+rc=$?
+if [ "$rc" -gt 1 ]; then
+  printf 'ERROR: scanning for flow-mapping keys failed (grep rc=%s)\n' "$rc" >&2
+  exit 2
+fi
+if [ -n "$flow" ]; then
+  printf 'ERROR: uses/container/image key in a YAML flow mapping (not scanned; write it in block form):\n%s\n' "$flow"
   exit 1
 fi
 

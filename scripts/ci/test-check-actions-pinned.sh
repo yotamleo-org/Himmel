@@ -85,6 +85,12 @@ printf "jobs:\n  a:\n    container:\n      image: \${{ vars.X == 'on' && 'ubuntu
 expect "expression with a bare-name image branch" 1 "$tmp/ctr-expr-bare.yml"
 printf "jobs:\n  a:\n    container:\n      image: \"\${{ vars.X == 'on' && '' || 'ghcr.io/o/img@sha256:%s' }}\"\n" "$dig" > "$tmp/ctr-expr-quoted.yml"
 expect "YAML-quoted expression with a digest default and an empty branch" 0 "$tmp/ctr-expr-quoted.yml"
+printf "jobs:\n  a:\n    container:\n      image: '\${{ vars.CI_IMAGE || ''ghcr.io/o/img@sha256:%s'' }}'\n" "$dig" > "$tmp/ctr-expr-squoted.yml"
+expect "single-quoted YAML expression with a digest default" 0 "$tmp/ctr-expr-squoted.yml"
+printf "jobs:\n  a:\n    services:\n      db: {image: 'postgres:16'}\n" > "$tmp/svc-flow.yml"
+expect "flow-mapping services image (not scanned, so refused)" 1 "$tmp/svc-flow.yml"
+printf '    steps:\n      - {uses: actions/checkout@v7}\n' > "$tmp/uses-flow.yml"
+expect "flow-mapping uses: (not scanned, so refused)" 1 "$tmp/uses-flow.yml"
 
 echo "== unreadable file is a scan failure, not a clean pass =="
 printf '    steps:\n      - uses: actions/checkout@v7\n' > "$tmp/locked.yml"
