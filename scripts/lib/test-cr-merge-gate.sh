@@ -665,6 +665,12 @@ has "$TMP/err-RL1-comment-rate-limited-relaxed-go" 'coderabbit best-effort relax
 GH_STUB_MODE=clean rg M1-all-clean-go 0
 has "$TMP/err-M1-all-clean-go" 'codex hard pass · claude hard pass · coderabbit best-effort pass' "M1 state line"
 GH_STUB_MODE=clean t M1-merge-all-clean-allows 0
+# Resolver stderr (a node warning) never mixes into the config JSON.
+printf '%s\n' 'process.stderr.write("(node) warning noise\n");' > "$TMP/noise.js"
+NODE_OPTIONS="--require $TMP/noise.js" GH_STUB_MODE=clean rg resolver-stderr-kept-apart-go 0
+has "$TMP/err-resolver-stderr-kept-apart-go" 'codex hard pass · claude hard pass' "resolver stderr kept apart: state line"
+NODE_OPTIONS="--require $TMP/noise.js" GH_STUB_MODE=clean t resolver-stderr-merge-allows 0
+hasnt "$TMP/err-resolver-stderr-merge-allows" 'degraded' "resolver stderr kept apart: merge not degraded"
 # M2 — codex unavailable: HOLD + one alert; the merge blocks.
 led "$(av abc123m2 codex unavailable timeout)" "$(av abc123m2 claude ok)"
 GH_STUB_HEAD=abc123m2 GH_STUB_MODE=clean rg M2-codex-unavailable-holds 1
@@ -826,6 +832,14 @@ led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda
     '{"kind":"finding","head":"abc123","model":"codex","finding_id":"codex-9","severity":"imp","verdict":""}'
 GH_STUB_MODE=clean rg carry-tip-finding-holds 1
 has "$TMP/out-carry-tip-finding-holds" '^HOLD: .*codex.*codex-9' "carry: the tip's own finding holds"
+# An abbreviated reviewed head in the carry row still finds the full-SHA rows.
+git -C "$TMP/repo" -c core.hooksPath=/dev/null -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m carry >/dev/null 2>&1
+carry_full=$(git -C "$TMP/repo" rev-parse HEAD)
+led "$(av abc123 claude ok '' "trivial-descendant of reviewed head ${carry_full:0:7} (HIMMEL-5856)")" \
+    "$(av "$carry_full" codex ok)" \
+    "$(av "$carry_full" claude unavailable critic-skipped "$ABSENT_DETAIL")"
+GH_STUB_MODE=clean rg carry-short-sha-reads-reviewed-head 0
+has "$TMP/err-carry-short-sha-reads-reviewed-head" 'codex hard pass' "short carry SHA resolves to the reviewed head"
 # Unarmed clone: the critic read is unreadable (no ledger) -> fail open with a
 # degraded note at merge; a readable clean ledger allows with no CodeRabbit call.
 git -C "$TMP/repo" config --local --unset himmel.coderabbit

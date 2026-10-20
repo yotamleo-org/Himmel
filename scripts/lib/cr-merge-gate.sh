@@ -259,7 +259,7 @@ const out = [];
 for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
     let head = e.RG_HEAD;
     let rows = own(avail(slug, head));
-    if (rows.length === 0 && carry) { head = carry[1]; rows = own(avail(slug, head)); }
+    if (rows.length === 0 && carry) { head = resolve(carry[1]) || carry[1]; rows = own(avail(slug, head)); }
     let state, detail = "";
     const open = recs.filter((o) => o.kind === "finding" && model(o) === slug
         && (atHead(o, head) || atHead(o, e.RG_HEAD))
@@ -495,7 +495,7 @@ cr_reviewer_gate() {
     if [ -z "$num" ] || [ -z "$head" ]; then
         echo "cr-reviewer-gate: degraded (usage: cr_reviewer_gate <pr> <head> [<owner/name>])" >&2; return 3
     fi
-    cfg=$(critics_config_resolve 2>&1) || rc=$?
+    cfg=$(critics_config_resolve 2>/dev/null) || { rc=$?; cfg=$(critics_config_resolve 2>&1 >/dev/null); }
     case "$rc" in
         0) ;;
         2) echo "cr-reviewer-gate: config error: $cfg"; return 2 ;;
@@ -565,7 +565,7 @@ cr_merge_gate() {
     # nothing. A clone without the CodeRabbit app still holds its critics to
     # their modes; only the coderabbit row goes absent.
     local cfg cfg_rc=0
-    cfg=$(critics_config_resolve 2>&1) || cfg_rc=$?
+    cfg=$(critics_config_resolve 2>/dev/null) || { cfg_rc=$?; cfg=$(critics_config_resolve 2>&1 >/dev/null); }
     case "$cfg_rc" in
         0) ;;
         2) echo "cr-reviewer-gate: config error: $cfg"; return 2 ;;
