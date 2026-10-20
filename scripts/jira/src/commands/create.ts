@@ -203,7 +203,7 @@ async function applyVersions(
     // stderr: stdout stays the bare `Created KEY` line scripted callers capture.
     if (defaultVersion) {
       fields['fixVersions'] = [{ name: defaultVersion }];
-      console.error(`jira: Bug defaults to fixVersion ${defaultVersion} (earliest unreleased); --fix-version overrides`);
+      console.error(`jira: Bug defaults to fixVersion ${defaultVersion}; --fix-version overrides`);
     } else {
       console.error('jira: no unreleased version found; filing the Bug with no fixVersion');
     }
@@ -382,20 +382,21 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
+        // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
+        if (overCapReason) {
+          try {
+            await request('POST', `/issue/${result.key}/comment`, { body: markdownToAdf(overCapReason) });
+          } catch (e) {
+            console.error(`Created ${result.key} but recording the over-cap reason failed: ${(e as Error).message}`);
+            process.exit(1);
+          }
+        }
         const parentKey = options.residualOf ?? options.followUpOf;
         if (parentKey) {
           try {
             await createIssueLink(result.key, parentKey, { name: 'Relates', inward: 'relates to' });
           } catch (e) {
             console.error(`Created ${result.key} but linking to ${parentKey} failed: ${(e as Error).message}`);
-            process.exit(1);
-          }
-        }
-        if (overCapReason) {
-          try {
-            await request('POST', `/issue/${result.key}/comment`, { body: markdownToAdf(overCapReason) });
-          } catch (e) {
-            console.error(`Created ${result.key} but recording the over-cap reason failed: ${(e as Error).message}`);
             process.exit(1);
           }
         }
