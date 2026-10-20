@@ -242,6 +242,12 @@ mirror on this machine). `versionless-done.sh --backfill` lists the fix; it neve
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 
+wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> (HIMMEL-6584) come from one
+`scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
+worktrees with no open PR and nothing holding them, and the live worktree count once it
+reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non-zero or
+alarming, each with an `ACTION wt-orphans=…` line after the TICK line.
+
 With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
 when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (12000), and
 `ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
@@ -1367,6 +1373,38 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
     esac
 fi
 
+# wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
+# open PR, nothing holding them) and the live worktree count once it reaches
+# HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
+# takes ~20s on a 50-tree fleet, so its output is cached under TICK_STATE_DIR
+# for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so consoles
+# on different checkouts never share a reading. Not in console-wait's wake key.
+wto_summary=0
+wtc_summary=""
+wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
+wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
+wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
+case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
+if [ -f "$wto_probe" ]; then
+    if [ -s "$wto_cache" ] && [ -n "$(find "$wto_cache" -mmin "-$wto_ttl" 2>/dev/null)" ]; then  # swallow-ok: an unreadable cache age reads stale, so the tick reads afresh
+        wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
+    else
+        wto_rc=0
+        wto_out="$(cd "$REPO" && timeout -k 2 90 bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
+        if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
+            wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
+        elif [[ "$wto_out" != *SWEEP-ERROR* ]]; then
+            mkdir -p "${wto_cache%/*}" 2>/dev/null && printf '%s\n' "$wto_out" > "$wto_cache.$$" 2>/dev/null && mv -f "$wto_cache.$$" "$wto_cache" 2>/dev/null || rm -f "$wto_cache.$$" 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a fresh read; the rename keeps a concurrent tick from reading a half-written cache
+        fi
+    fi
+    case "$wto_out" in
+        *SWEEP-ERROR*) wto_summary=unknown ;;
+        *) wto_summary=$(grep -c '^ORPHAN ' <<<"$wto_out") || true ;;  # swallow-ok: grep -c exits 1 on a count of 0
+    esac
+    wtc_summary=$(sed -n 's|^CEILING \([0-9]*/[0-9]*\) .*|\1|p' <<<"$wto_out")
+fi
+
 # This console's own HANDOFF (<doc stem>-HANDOFF.md, written by console.sh next)
 # over HANDOFF_BUDGET_BYTES, and its decisions: line over DECISIONS_BUDGET_BYTES.
 # Shown only as ACTION lines after the TICK line; not in console-wait's wake key.
@@ -2088,6 +2126,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session failures: %s\n' "$fails_summary"
     printf 'vm runner: %s\n' "$vmrun_summary"
     printf 'versionless-done: %s\n' "$vdone_summary"
+    printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ -z "$ready_tail" ] || printf 'ready-mismatch: %s\n' "${ready_tail# ready-mismatch=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
@@ -2110,7 +2149,7 @@ else
             *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip) return ;;
+            versionless-done=0|versionless-done=skip|wt-orphans=0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -2151,11 +2190,17 @@ else
     compact_field fails "$fails_summary"
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
+    compact_field wt-orphans "$wto_summary"
+    compact_field wt-ceiling "$wtc_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;
     esac
+    if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
+        printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \
+            "$wto_summary" "${wtc_summary:+ wt-ceiling=$wtc_summary}" "$REPO/scripts/worktree.sh" "$REPO/scripts/worktree.sh"
+    fi
     decisions_file="${console_doc%/*}/specs/decisions/console-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
         printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (console-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"

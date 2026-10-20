@@ -1049,6 +1049,15 @@ not_contains "dry-run --lane claudex: an inherited CODEX_MODEL token does not su
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "dry-run, native lane: CODEX_MODEL is never set" "$out" "CODEX_MODEL"
 
+# A claudex leg-impl leg gets the native leg's knowledge access: the same profile
+# settings, MCP allowlist (qmd), lean switch and handover root.
+_access_env() { printf '%s\n' "$1" | tr ' ' '\n' | grep -E '^(LEG_PROFILE_SETTINGS|LEG_PROFILE_MCP_CONFIG|HIMMEL_LEAN_LEG|HANDOVER_DIR)=' | sort; }
+rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc_x=0; out_x="$(bash "$SCRIPT" --dry-run --profile leg-impl --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc_x=$?
+check "dry-run --profile leg-impl: native and claudex both exit 0" "$rc/$rc_x" "0/0"
+contains "dry-run --profile leg-impl --lane claudex: carries the qmd MCP allowlist" "$out_x" 'mcp=["qmd"] mcp-config=/tmp/HIMMEL-9999-leg.leg-mcp.json'
+check "dry-run --profile leg-impl: claudex access env equals native" "$(_access_env "$out_x")" "$(_access_env "$out_n")"
+
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run, no --lane: reports lane=native" "$out" "lane=native"
 not_contains "dry-run, no --lane: no claude-codex launcher" "$out" "claude-codex"

@@ -31,8 +31,8 @@ opus or fable model, because headed-arm-leg.sh refuses such a launch without a
 design|unverified-finding|tier-return|operator-ruling, reason is non-blank single-line
 text; the brief gets that line, and nothing is written for a leg without it), lane (the manifest
 lane the printed add line passes as --lane; default native, the lane of the
-launchers written here; a non-native lane's text may not name a path under the handover root,
-that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
+launchers written here; a lane other than native or claudex may not name a path under the
+handover root, that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
 the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; no line when it
 states neither), which the merge script reads through --leg-doc to bind the merge (HIMMEL-5843).
 The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
@@ -70,6 +70,8 @@ TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruli
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 # Mirrors headed-arm-leg.sh's claudex default (`[ -z "$MODEL" ] && MODEL="gpt-6.1-sol"`).
 LANE_MODELS = {'claudex': 'gpt-6.1-sol'}
+# Lanes whose legs can read the handover root (see check_lane_reads).
+READS_HANDOVER_ROOT = ('native', 'claudex')
 EFFORTS = ('low', 'medium', 'high', 'xhigh')
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
@@ -187,9 +189,10 @@ def validate(leg, i):
 
 def check_lane_reads(l, hroot):
     # A lane worker cannot read the state repo, so a brief that points it at a
-    # handover-root path would be a silent no-op instruction. Native legs can read it.
+    # handover-root path would be a silent no-op instruction. Native and claudex legs
+    # can read it: a claudex leg loads the same project additionalDirectories.
     root = hroot.rstrip('/')
-    if l.get('lane', 'native') == 'native' or not root:
+    if l.get('lane', 'native') in READS_HANDOVER_ROOT or not root:
         return
     tier = l.get('tier')
     texts = [(k, l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra')]

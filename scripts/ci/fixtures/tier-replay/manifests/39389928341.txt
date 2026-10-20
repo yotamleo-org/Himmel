@@ -1,0 +1,16 @@
+mode impacted
+reason base-sourced selector
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head b1ea2eae576480881523f31a2bf08f8e67d047d2
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+changed docs/handover/console-sections/merges.md
+changed scripts/handover/console-kit/cancel-runs.sh
+changed scripts/handover/console-kit/test-cancel-runs.sh
+suite scripts/ci/test-check-cr-terminology.sh
+suite scripts/cr/test-pr-check-run.sh
+suite scripts/guardrails/test-check-git-env-scrub.sh
+suite scripts/handover/console-kit/test-cancel-runs.sh
+suite scripts/handover/test-thread-resolve-docs.sh
+suite scripts/lanes/test-launch-site-profiles.sh
+suite scripts/lib/test-red-control-extraction-lint.sh
+shard 1/1

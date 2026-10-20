@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/lib/deprecated-forwarder.sh
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head 2fc52390e4be5a4971c42acab5875fe0c35ad426
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

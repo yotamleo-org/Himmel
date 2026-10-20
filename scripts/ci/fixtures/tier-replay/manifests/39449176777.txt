@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/cr/pr-check-ref/50-step5-decision.md
+base a40981b1dc0aaa85d27192e3911cd01616a76ff0
+head 6d28e9e1c4f1aac53b1ce2b73c8775c4938c1418
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8
