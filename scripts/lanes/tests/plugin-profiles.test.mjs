@@ -1960,3 +1960,25 @@ test('a profile on the 35000 budget requires a plugin, so skillOverrides engage 
     assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills it calls`);
   }
 });
+
+// A leg composes an add-on onto a leg profile (`leg-impl,design`); the composed list keeps the
+// leg member's allowlist, so the add-on legs register on the bus too.
+test('leg profiles composed with design, code and code-ui keep himmel-bus and its tool allow (HIMMEL-4841)', () => {
+  for (const list of ['leg-impl,design', 'leg-impl,code', 'leg-impl,code-ui']) {
+    assert.ok(mcpServersForProfile(REG, list)?.includes('himmel-bus'), `${list} must list himmel-bus`);
+    const allow = resolveProfile(REG, list, { installed: [] }).permissions.allow;
+    for (const tool of BUS_TOOL_ALLOW) assert.ok(allow.includes(tool), `${list}: missing ${tool}`);
+  }
+});
+
+// The claudex and openrouter lanes concatenate their preface after the standing one; both forbid
+// SendMessage, so a leg registered on the bus needs the preface to say the bus tools are fine.
+test('the claudex and openrouter lane prefaces let a registered leg use the bus tools beside the doc channel (HIMMEL-4841)', () => {
+  const docs = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'handover');
+  for (const lane of ['claudex', 'openrouter']) {
+    const text = readFileSync(join(docs, `leg-preface-${lane}.md`), 'utf8').replace(/\s+/g, ' ');
+    assert.match(text, /himmel-bus/, `${lane}: names himmel-bus`);
+    assert.match(text, /HIMMEL_BUS_NAME/, `${lane}: gates the bus on the registered name`);
+    assert.match(text, /handover document stays/i, `${lane}: the doc stays the fallback and the record`);
+  }
+});
