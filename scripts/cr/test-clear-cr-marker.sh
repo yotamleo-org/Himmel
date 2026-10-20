@@ -100,6 +100,8 @@ build_repo_template() {
         || { echo "FAIL: cp ledger-append.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$REPO_TEMPLATE/scripts/cr/anchor-handoff.sh" \
         || { echo "FAIL: cp anchor-handoff.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$(dirname "$CLEAR")/set-impl-family.sh" "$REPO_TEMPLATE/scripts/cr/set-impl-family.sh" \
+        || { echo "FAIL: cp set-impl-family.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # clear-cr-marker.sh's new branch-wide gate shells out to its
     # sibling review-round.sh promote -- a missing copy would fail every case
     # that reaches that gate at once (promote-error, exit 14).
@@ -1269,6 +1271,74 @@ run_clear "$tmp" 0 "CR_REQUIRE_CROSS_MODEL=0 is OFF → claude-only floor clears
 if marker_exists "$tmp"; then fail "flag=0 (off): marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 unset CR_REQUIRE_CROSS_MODEL
+
+# 4o1-4o4. Gate 3c: a recorded implementer family (cr-impl-family/<branch>)
+# needs >=1 ok responder of ANOTHER family. No record = no change (4o above).
+write_impl_family() { mkdir -p "$1/.git/cr-impl-family/feat"; printf '%s\n' "$2" > "$1/.git/cr-impl-family/feat/x"; }
+
+# 4o1. Implementer claude + ONLY claude responders → exit 14, marker REMAINS.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_impl_family "$tmp" claude
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")" "$(avail_ok_floor "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "impl family claude + claude/claude-floor only → exit 14"
+if marker_exists "$tmp"; then pass; else fail "same-family only: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 4o2. Implementer codex + ONLY codex responders → exit 14.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_impl_family "$tmp" codex
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "impl family codex + codex only → exit 14"
+if marker_exists "$tmp"; then pass; else fail "codex-on-codex: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 4o2b. Implementer claude + claude + a retired codex-adv row → not another family → exit 14.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_impl_family "$tmp" claude
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")" "$(printf '{"kind":"avail","head":"%s","model":"codex-adv","status":"ok"}' "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "impl family claude + retired codex-adv row → exit 14"
+if marker_exists "$tmp"; then pass; else fail "codex-adv must not count as another family: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 4o3. Implementer codex + a claude responder → another family reviewed → exit 0.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_impl_family "$tmp" codex
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "impl family codex + claude ok → exit 0"
+if marker_exists "$tmp"; then fail "cross-family met: marker should be GONE"; else pass; fi
+rm -rf "$tmp"
+
+# 4o4. An empty record file fails CLOSED (unreadable identity is not 'unset').
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_impl_family "$tmp" ""
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "empty impl-family record → exit 14 (fail closed)"
+rm -rf "$tmp"
+
+# 4o4b. A dangling symlink record fails CLOSED too (it is not 'unset').
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+mkdir -p "$tmp/.git/cr-impl-family/feat" && ln -s "$tmp/nowhere" "$tmp/.git/cr-impl-family/feat/x"
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "dangling impl-family record → exit 14 (fail closed)"
+rm -rf "$tmp"
+
+# 4o5. set-impl-family.sh writes the record the gate reads (round trip).
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+if (cd "$tmp" && git checkout -q feat/x 2>/dev/null && bash scripts/cr/set-impl-family.sh Claude >/dev/null 2>&1) \
+    && [ "$(cat "$tmp/.git/cr-impl-family/feat/x" 2>/dev/null)" = "claude" ]; then pass; else fail "set-impl-family.sh must write the lowercased record"; fi
+run_clear "$tmp" 14 "record written by set-impl-family.sh gates a claude-only review"
+if (cd "$tmp" && bash scripts/cr/set-impl-family.sh 'bad family' >/dev/null 2>&1); then fail "set-impl-family.sh must refuse a bad family"; else pass; fi
+rm -rf "$tmp"
 
 # 4p. Production .env bridge (glm-1 CR suggestion). Cases 4k-4o set the flag via
 # the PROCESS env; the flag's REAL entry point is clear-cr-marker.sh sourcing

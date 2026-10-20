@@ -2222,7 +2222,7 @@ fi
 ci23="$repo23/.github/workflows/ci.yml"
 dep_ln=$(grep -n 'run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh' "$ci23" | cut -d: -f1)
 # shellcheck disable=SC2016 # the ${{ }} is literal workflow text, not a shell expansion
-shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/8 \.$' "$ci23" | cut -d: -f1)
+shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/\${{ needs.plan.outputs.shard_total || 8 }} \.$' "$ci23" | cut -d: -f1)
 if [ -n "$dep_ln" ] && [ -n "$shard_ln" ] && [ "$dep_ln" -lt "$shard_ln" ]; then
   pass "23f: ci.yml installs the tool deps before the shard run, and the shard run passes root ."
 else
@@ -2577,6 +2577,77 @@ else
   fail "22w: slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nfix22w suites placed, $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
 fi
 rm -rf "$sb22w"
+fi
+
+# --------------------------------------------------------------------------
+# Case 26 — SUITE_STOP_ON_FAIL=1 ends the shard at its first
+# failing suite; unset, every suite still runs. ci.yml passes it on
+# pull_request only.
+# --------------------------------------------------------------------------
+echo "== Case 26: SUITE_STOP_ON_FAIL stops a shard at its first failing suite =="
+sb26=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26.XXXXXX") || { fail "26: mktemp failed"; sb26=""; }
+if [ -n "$sb26" ]; then
+cat > "$sb26/test-a-fail.sh" <<'SHEOF'
+#!/usr/bin/env bash
+exit 1
+SHEOF
+cat > "$sb26/test-b-after.sh" <<'SHEOF'
+#!/usr/bin/env bash
+touch "$(dirname "$0")/after.sentinel"
+exit 0
+SHEOF
+chmod +x "$sb26/test-a-fail.sh" "$sb26/test-b-after.sh"
+
+out26=$(SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26" 2>&1)
+rc26=$?
+if [ "$rc26" -eq 1 ] && [ ! -e "$sb26/after.sentinel" ] && grepq "$out26" 'STOPPED:' && grepq "$out26" 'test-b-after.sh'; then
+  pass "26a: SUITE_STOP_ON_FAIL=1 -> exit 1, the suite after the failure never ran, and is named"
+else
+  fail "26a: expected exit 1, no after.sentinel, test-b-after.sh named; rc=$rc26 sentinel=$([ -e "$sb26/after.sentinel" ] && echo present || echo absent) output: $out26"
+fi
+rm -f "$sb26/after.sentinel"
+
+out26=$(env -u SUITE_STOP_ON_FAIL bash "$RUNNER" "$sb26" 2>&1)
+rc26=$?
+if [ "$rc26" -eq 1 ] && [ -e "$sb26/after.sentinel" ]; then
+  pass "26b: SUITE_STOP_ON_FAIL unset -> every suite still runs after a failure"
+else
+  fail "26b: expected exit 1 with after.sentinel present; rc=$rc26 output: $out26"
+fi
+rm -rf "$sb26"
+fi
+
+ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
+if grep -qE "^[[:space:]]+SUITE_STOP_ON_FAIL: \\$\\{\\{ github\\.event_name == 'pull_request' && '1' \\|\\| '' \\}\\}\$" "$ci_yml26"; then
+  pass "26c: ci.yml passes SUITE_STOP_ON_FAIL on pull_request only"
+else
+  fail "26c: ci.yml does not set SUITE_STOP_ON_FAIL to '1' on pull_request only"
+fi
+
+# shellcheck disable=SC2016
+left26=$(env SUITE_STOP_ON_FAIL=1 bash -c '. "$1"; printf "[%s]" "${SUITE_STOP_ON_FAIL-}"' _ "$RST_FIXTURE_DIR/run-shell-tests-fixture.sh" 2>&1)
+if [ "$left26" = "[]" ]; then
+  pass "26d: the fixture clears an inherited SUITE_STOP_ON_FAIL for the family's nested runs"
+else
+  fail "26d: sourcing the fixture left SUITE_STOP_ON_FAIL set: $left26"
+fi
+
+sb26e=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26e.XXXXXX") || { fail "26e: mktemp failed"; sb26e=""; }
+if [ -n "$sb26e" ]; then
+cat > "$sb26e/test-env.sh" <<'SHEOF'
+#!/usr/bin/env bash
+printf '[%s]' "${SUITE_STOP_ON_FAIL-}" > "$(dirname "$0")/seen.txt"
+exit 0
+SHEOF
+chmod +x "$sb26e/test-env.sh"
+SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26e" > /dev/null 2>&1
+seen26=$(cat "$sb26e/seen.txt" 2>/dev/null || echo missing)
+if [ "$seen26" = "[]" ]; then
+  pass "26e: a suite the runner launches does not inherit SUITE_STOP_ON_FAIL"
+else
+  fail "26e: the suite saw SUITE_STOP_ON_FAIL=$seen26"
+fi
+rm -rf "$sb26e"
 fi
 
 rst_tally
