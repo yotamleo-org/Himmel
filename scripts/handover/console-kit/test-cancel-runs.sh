@@ -71,7 +71,8 @@ case "$1 $2" in
             '[.[] | select(if $st == "" then .status == "completed" else (.status == $st or ($dup == "1" and $st == "in_progress" and .databaseId == 103)) end)]' "$STUB_RUNS" ;;
     "run cancel")
         [ "$3" = "${STUB_FAIL_ID:-}" ] && { echo "gh: cannot cancel $3" >&2; exit 1; }
-        printf '%s\n' "$3" >> "$STUB_CANCEL_LOG" ;;
+        printf '%s\n' "$3" >> "$STUB_CANCEL_LOG"
+        [ -n "${STUB_TIME_LOG:-}" ] && printf '%s %s\n' "$3" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")" >> "$STUB_TIME_LOG" ;;
     "pr view")
         case "$3" in
             3221) echo "$STUB_KEEP_SHA" ;;
@@ -103,11 +104,15 @@ mk_origin gh-alias ssh://git@ssh.github.com:443/o/r.git
 export PATH="$WORK/bin:$PATH"
 export STUB_RUNS="$WORK/runs.json" STUB_CANCEL_LOG="$WORK/cancel.log"
 export STUB_KEEP_SHA="$KEEP" STUB_KEEP2_SHA="$KEEP2"
+# a fake clock: cancel-runs.sh reads the time from this file and "sleeps" by advancing it, so no test waits for real
+export CANCEL_RUNS_FAKE_CLOCK="$WORK/clock" STUB_TIME_LOG="$WORK/times.log"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
 # run <args>: dry by default. T_LEG=1 / T_RELAY=1 set the leg / relay markers; T_DIR the cwd.
 run() {
     : > "$STUB_CANCEL_LOG"
+    : > "$STUB_TIME_LOG"
+    echo 1000 > "$CANCEL_RUNS_FAKE_CLOCK"
     (
         unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
         [ -n "${T_LEG:-}" ] && export HIMMEL_CONSOLE_LEG=1
@@ -318,6 +323,28 @@ out="$(live --keep-sha "$KEEP" --max-cancels 500)"; rc=$?
 # read-sink-ok: STUB_CANCEL_LOG is the stub log this suite exports under its own $WORK
 check "--max-cancels 500 raises the cap to cancel all 120" "120" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
 check "an uncapped run exits 0" "0" "$rc"
+export STUB_RUNS="$WORK/runs.json"
+
+# pacing: at most 10 cancels per minute and 30 per 10 minutes (the fake clock starts at 1000)
+times_at() { awk -v t="$1" '$2 == t' "$STUB_TIME_LOG" | wc -l | tr -d ' '; }
+time_of() { awk -v id="$1" '$1 == id {print $2}' "$STUB_TIME_LOG"; }
+export STUB_RUNS="$WORK/runs-many.json"
+out="$(live --keep-sha "$KEEP" --max-cancels 12)"; rc=$?
+check "pacing: 12 runs, the first 10 cancel in the first minute" "10" "$(times_at 1000)"
+check "pacing: the 11th cancel waits for the next minute window" "1060" "$(time_of 1010)"
+check "pacing: the 12th cancel runs in the same later window" "1060" "$(time_of 1011)"
+has "pacing: the wait is named on stderr" "pacing - waiting 60s" "$out"
+# read-sink-ok: STUB_CANCEL_LOG is the stub log this suite exports under its own $WORK
+check "pacing: the paced run still cancels all 12" "12" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
+out="$(live --keep-sha "$KEEP" --max-cancels 31)"; rc=$?
+check "pacing: the 30th cancel runs at the third minute window" "1120" "$(time_of 1029)"
+check "pacing: the 31st cancel waits for the 10-minute window" "1600" "$(time_of 1030)"
+# read-sink-ok: STUB_CANCEL_LOG is the stub log this suite exports under its own $WORK
+check "pacing: all 31 cancels happen" "31" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
+out="$(live --keep-sha "$KEEP" --max-cancels 5)"; rc=$?
+check "pacing: a run under the limits never waits" "5" "$(times_at 1000)"
+out="$(run --keep-sha "$KEEP")"; rc=$?
+check "pacing: a dry run never waits" "1000" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")"
 export STUB_RUNS="$WORK/runs.json"
 
 if [ "$fails" -eq 0 ]; then printf 'ALL PASS\n'; exit 0; fi

@@ -27,6 +27,8 @@
 #
 # Each cancel writes one stderr line: run, branch, sha, event, rc (+ gh's error).
 # At most --max-cancels (default 100, 1-500) runs are cancelled per invocation.
+# Cancels are paced: at most 10 in any minute and 30 in any 10 minutes (failed
+# attempts count); the loop waits, so a full drain of 100 takes about 30 minutes.
 #
 # Prints: cancelled=<n> failed=<n> kept=<comma list of head shas, - if none>
 # [protected=<n>] (a dry run appends would-cancel=<n>).
@@ -182,6 +184,49 @@ rows="$(printf '%s' "$runs" | jq -rs --arg keep "$KEEPS" --argjson incl "$INCLUD
     || { echo "cancel-runs: could not parse the run list; nothing cancelled" >&2; exit 1; }
 
 protected="$(printf '%s\n' "$rows" | grep -c '^P')"
+
+# Pacing: at most PACE_PER_MIN cancels in any 60 s and PACE_PER_WINDOW in any 600 s.
+# CANCEL_RUNS_FAKE_CLOCK=<file> is the test seam: the clock is the integer in that file
+# and a wait advances it instead of sleeping.
+PACE_PER_MIN=10
+PACE_PER_WINDOW=30
+stamps=""
+pace_now() {
+    if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then cat "$CANCEL_RUNS_FAKE_CLOCK"; else date +%s; fi
+}
+pace_nap() {
+    if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then
+        echo $(($(cat "$CANCEL_RUNS_FAKE_CLOCK") + $1)) > "$CANCEL_RUNS_FAKE_CLOCK"
+    else
+        sleep "$1"
+    fi
+}
+# pace_wait: block until one more cancel fits both windows; stamps holds each cancel's time, oldest first.
+pace_wait() {
+    while :; do
+        now="$(pace_now)"
+        keep_stamps=""; in_min=0; in_win=0; oldest_min=""; oldest_win=""
+        for t in $stamps; do
+            [ "$t" -gt $((now - 600)) ] || continue
+            keep_stamps="$keep_stamps $t"
+            in_win=$((in_win + 1))
+            [ -n "$oldest_win" ] || oldest_win=$t
+            if [ "$t" -gt $((now - 60)) ]; then
+                in_min=$((in_min + 1))
+                [ -n "$oldest_min" ] || oldest_min=$t
+            fi
+        done
+        stamps="$keep_stamps"
+        need=0
+        [ "$in_min" -lt "$PACE_PER_MIN" ] || need=$((oldest_min + 60 - now))
+        if [ "$in_win" -ge "$PACE_PER_WINDOW" ] && [ $((oldest_win + 600 - now)) -gt "$need" ]; then
+            need=$((oldest_win + 600 - now))
+        fi
+        [ "$need" -gt 0 ] || return 0
+        echo "cancel-runs: pacing - waiting ${need}s ($PACE_PER_MIN per minute, $PACE_PER_WINDOW per 10 minutes)" >&2
+        pace_nap "$need"
+    done
+}
 TAB="$(printf '\t')"
 cancelled=0
 failed=0
@@ -198,8 +243,10 @@ while IFS="$TAB" read -r class id br sha ev; do
         capped=1
         break
     fi
+    pace_wait
     err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
     rc=$?
+    stamps="$stamps $(pace_now)"
     printf 'cancel-runs: cancel run=%s branch=%s sha=%s event=%s rc=%s\n' "$id" "$br" "$sha" "$ev" "$rc" >&2
     if [ "$rc" -eq 0 ]; then
         cancelled=$((cancelled + 1))

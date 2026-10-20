@@ -65,7 +65,11 @@ from a `pull_request` or `pull_request_target` (push, tag, schedule,
 workflow_dispatch), are protected
 and reported as `protected=<n>`; only `--include-protected` cancels them. At
 most `--max-cancels` (default 100, up to 500) runs are cancelled per call, and
-each cancel writes one stderr line with run, branch, sha, event and rc. A
+each cancel writes one stderr line with run, branch, sha, event and rc.
+Cancels are paced at 10 per minute and 30 per 10 minutes (failed attempts
+count): past a limit the verb waits and says so on stderr (`pacing - waiting
+<n>s`), so a drain of 100 runs takes about half an hour; run it foreground,
+and a dry run never waits. A
 listing that fills `CANCEL_RUNS_LIMIT` (500), or the cancel cap, exits 1 after
 cancelling what it could: re-run until it exits 0. It refuses (exit 3) in a leg
 or relay. Never hand-roll a `gh run cancel` loop: the classifier denies it as
