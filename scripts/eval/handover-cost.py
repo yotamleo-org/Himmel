@@ -53,7 +53,7 @@ W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
 DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
 LEG_TURN_CAP = 4
 NEXT_RE = re.compile(r"console\.sh\s+next\b")
-MARKER_RE = re.compile(r"append-results\.sh")
+MARKER_RE = re.compile(r"\bbash\s+\S*append-results\.sh")
 MECH_RE = re.compile(
     r"console\.sh|action-zero|console-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
 )
@@ -105,7 +105,7 @@ def load(path):
         if t == "agent-name":
             name = d.get("agentName") or name
         elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type") == "queued_command")):
-            body = json.dumps(d.get("message", "") if t == "user" else d["attachment"])
+            body = json.dumps(d.get("message", "") if t == "user" else d["attachment"].get("prompt", ""))
             if "SUCCESSION" in body:
                 deliveries.append((ts, body))
         elif t == "assistant" and ts and not d.get("isSidechain"):

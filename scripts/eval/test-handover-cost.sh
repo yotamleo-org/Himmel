@@ -77,12 +77,14 @@ open(sys.argv[1] + "/leg-late.jsonl", "w").write("".join(json.dumps(r) + "\n" fo
 ]))
 PYEOF
 then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
-LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/q" --legs-after 2026-10-19T09:30:00Z >"$TMP/q.out" 2>&1
+LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/q" --legs-after 2026-10-19T09:30:00Z >"$TMP/q.out" 2>&1; qrc=$?
+check "the late attachment run exits 0" '[ "$qrc" = 0 ]'
 check "the late attachment relay is a leg (legs=2, leg=3/750)" 'row "$TMP/q.out" | grep -q " leg=3/750 legs=2 "'
 
 echo "3d. mechanical columns"
 if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
-LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1
+LEG_BURN_W_INPUT=1 LEG_BURN_W_CACHE_READ=0.1 LEG_BURN_W_CACHE_CREATE=1.25 LEG_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1; mrc2=$?
+check "the marker run exits 0" '[ "$mrc2" = 0 ]'
 check "P calls after S first call is 3 (the relay piece)" 'row "$TMP/a.out" | grep -q " p_after_s=3 "'
 check "S calls to its first marker bullet is - when S wrote none" 'row "$TMP/a.out" | grep -q " s_to_marker=- "'
 check "S calls to its first marker bullet counts the call, not an earlier text mention of append-results.sh" 'row "$TMP/m2.out" | grep -q " s_to_marker=2 "'
