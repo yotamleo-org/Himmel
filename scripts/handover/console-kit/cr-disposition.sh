@@ -14,7 +14,8 @@
 #       [--attest ci-green,no-data-loss,no-weakened-guard]
 #   cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no]
 #
-# record appends one ledger row to <git-common-dir>/cr-critic-scores.jsonl:
+# record appends one ledger row (through ledger-append.sh disposition) to
+# <git-common-dir>/cr-critic-scores.jsonl:
 #   {"kind":"amend",...,"target_head","finding_id","set":{"disposition":...},
 #    "source":"judge:<qid>"|"console:<name>","attest":[...],"pr","head","mac"}
 # The mac is go_msg_mac himmel-disposition-v1 over pr|head|branch|finding_id|
@@ -112,21 +113,9 @@ if [ "$VERB" = record ]; then
     esac
     MAC=$(disp_mac "$FID" "$FHEAD" "$DISP" "$SRC" "$ATTEST") || {
         echo "cr-disposition: cannot sign the row (GO key at $(go_key_file) unreadable)" >&2; exit 2; }
-    LEDGER="$LEDGER" BRANCH="$BRANCH" FID="$FID" FHEAD="$FHEAD" DISP="$DISP" SRC="$SRC" ATTEST="$ATTEST" \
-    PR="$PR" SHA="$SHA" MAC="$MAC" node -e '
-const fs=require("fs"),e=process.env;
-let f=null;
-for(const l of fs.readFileSync(e.LEDGER,"utf8").split("\n")){
-  let o; try{o=JSON.parse(l)}catch{continue}
-  if(o.kind==="finding"&&o.branch===e.BRANCH&&o.finding_id===e.FID&&o.head===e.FHEAD) f=o;
-}
-if(!f){process.stderr.write("cr-disposition: no finding "+e.FID+"@"+e.FHEAD+" on "+e.BRANCH+" in the CR ledger\n");process.exit(2)}
-const rec={kind:"amend",ts:new Date().toISOString().replace(/\.\d+Z$/,"Z"),branch:e.BRANCH,target_head:e.FHEAD,
-  finding_id:e.FID,artifact:f.artifact||"diff",perspective:f.perspective||"off",set:{disposition:e.DISP},
-  reason:"disposition recorded by "+e.SRC,source:e.SRC,attest:e.ATTEST?e.ATTEST.split(","):[],
-  pr:Number(e.PR),head:e.SHA,mac:e.MAC};
-fs.appendFileSync(e.LEDGER,JSON.stringify(rec)+"\n");
-' || exit 2
+    CR_LEDGER="$LEDGER" bash "$ANCHOR/scripts/cr/ledger-append.sh" disposition --branch "$BRANCH" --head "$SHA" \
+        --id "$FID" --target-head "$FHEAD" --disposition "$DISP" --source "$SRC" --attest "$ATTEST" \
+        --pr "$PR" --mac "$MAC" || exit 2
     echo "cr-disposition: recorded $DISP for $FID@$FHEAD on PR #$PR at $SHA ($SRC)"
     exit 0
 fi
