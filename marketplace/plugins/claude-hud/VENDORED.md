@@ -14,9 +14,9 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        5621429b84ea2503185221244c43a06797bfd05e  # v0.11.3, 4 commits past 02d73c4 (HIMMEL-5929)
-pinned_upstream_tree: a9a2abdf0c93bcfa26b998428ff70656d1d760ac  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   de81c033b5611a3589935f7439c4b7408be2878788144b462e575244271c2cad  # sha256 over VENDORED.manifest
+pinned_commit:        a7591681d46324b64360f429cf6eb1cdd30dfc8c  # v0.12.0, 6 commits past 5621429 (HIMMEL-6774)
+pinned_upstream_tree: 6ecc84fd9054360102e1599cf520c151e7eded47  # git tree of pinned_commit (provenance)
+vendored_tree_hash:   328a35273e0d3776a367c643dab7efef29ec18e7332c8f3fa6f36f4be0bf4b8d  # sha256 over VENDORED.manifest
 vendored_at:          2026-10-17
 ```
 
@@ -69,8 +69,28 @@ protected: editing it without bumping the pin trips the guard.
 - **Display config (HIMMEL-6136):** `config/himmel-config.json` sets
   `display.showEffortLevel: true` and `display.contextValue: "both"` so the
   status line shows the effort level and the context window size (`45% (90k/200k)`).
-  Config only, no source change; `plugin.json` version is bumped to 0.11.4 (ahead of upstream 0.11.3;
-  re-sync on the next upstream re-vendor) so `claude plugin update` picks the config up.
+  Config only, no source change; `plugin.json` was bumped to 0.11.4 (ahead of upstream
+  0.11.3) so `claude plugin update` picks the config up. The v0.12.0 re-vendor below
+  superseded that bump (version now equals upstream's 0.12.0).
+
+- **Re-vendored to upstream v0.12.0 `a759168` (HIMMEL-6774, 2026-10-21, drift sweep
+  HIMMEL-6766):** +6 commits past `5621429`. Upstream work: the transcript parser
+  reads only what was appended since the last render (`src/transcript.ts`, saved
+  parser state for the 32 most recent transcripts, new tests), a
+  `display.showAgentEffort` option for subagent reasoning effort (`src/effort.ts`,
+  `src/render/activity.ts`, `src/config.ts`, `src/types.ts`, README rows), an
+  `@types/node` 26.6.4 to 26.6.5 dev bump, and the release prep with compiled
+  `dist/`. Applied as the upstream `5621429..a759168` source diff onto the
+  vendored tree. Two hunks needed hand work: `.claude-plugin/plugin.json` took
+  upstream's `0.12.0` over himmel's `0.11.4`, and the second `src/index.ts` hunk
+  (the `readTranscript` wrapper, `parseTranscript(path, os.homedir())`,
+  `addSubagentEfforts`) was applied by hand next to himmel's `customLineCommand`
+  `Promise.all` entry (`parts.ts` took a fuzz-2 import hunk; the himmel
+  session-token cache split there is unchanged). No himmel delta was dropped.
+  `dist/` rebuilt from source (`npm ci --ignore-scripts && npm run build`) and
+  differs from upstream's only in the files the himmel delta touches. `npm test`:
+  412 tests, 407 pass, 0 fail, 5 skipped. The `brace-expansion` 5.0.12 lockfile
+  floor is unchanged (upstream's lockfile diff does not touch it).
 
 - **Re-vendored to upstream v0.11.3 `5621429` (HIMMEL-5929, 2026-10-17, fork-drift
   issue #2809):** +4 commits past `02d73c4`. Upstream work: background agents
