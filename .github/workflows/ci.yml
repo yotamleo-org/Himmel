@@ -150,8 +150,10 @@ jobs:
   # job has a fail-fast-<job> twin that needs only that job, starts only when it
   # failed on a pull_request, and cancels the whole run. A green run starts no
   # twin, so nothing holds a runner while the shards work (the earlier watcher
-  # held one for up to 90 min). A twin runs no PR code (no checkout, no action),
-  # so it is the only kind of job that holds actions: write. A cancel the token
+  # held one for up to 90 min). A twin checks out no PR code and uses no action; its
+  # one step comes from the PR's own ci.yml, which is safe because a same-repo
+  # author already has write access and a fork's token is read-only. It is the
+  # only kind of job that holds actions: write. A cancel the token
   # refuses (a fork PR's is read-only) is swallowed: the run stays uncancelled,
   # never reddened by the twin. Schedule and dispatch runs have no twins, so a
   # red there stays attributable. A cancelled run still reads red: the failed

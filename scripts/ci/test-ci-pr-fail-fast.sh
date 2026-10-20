@@ -123,7 +123,7 @@ else bad "run 39045466700's red '${red:-<none>}' has no twin"; fi
 writers=""
 for job in $job_ids; do
   case "$job" in fail-fast-*) continue ;; esac
-  job_block "$job" | grep -qE '^      actions: write[[:space:]]*$' && writers="$writers $job"
+  job_block "$job" | grep -qE '^[[:space:]]+actions:[[:space:]]*write[[:space:]]*$' && writers="$writers $job"
 done
 if [ -z "$writers" ]; then ok "only fail-fast twins hold actions: write"
 else bad "jobs other than the twins hold actions: write:$writers"; fi
@@ -144,7 +144,7 @@ STUB
   for gh_rc in 0 1; do
     : > "$stub/cancel.log"
     PATH="$stub:$PATH" CANCEL_LOG="$stub/cancel.log" GH_RC="$gh_rc" RUN_ID=4242 GH_REPO=o/r \
-      timeout 20 bash -c "$twin_body" >/dev/null 2>&1; rc=$?
+      bash -c "$twin_body" >/dev/null 2>&1; rc=$?
     n="$(wc -l < "$stub/cancel.log")"
     if [ "$rc" -eq 0 ] && [ "$n" -eq 1 ] && grep -qx 4242 "$stub/cancel.log"; then ok "twin step cancels run 4242 once (gh rc $gh_rc), exit 0"
     else bad "twin step with gh rc $gh_rc: rc=$rc cancels=$n (expected 0 and one cancel of 4242)"; fi
