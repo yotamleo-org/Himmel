@@ -2158,6 +2158,9 @@ contains 'a probe that prints a non-token reads vmrun=unknown (HIMMEL-5641)' "$v
 printf '#!/bin/sh\necho DISAGREE:2/2,online=0\n' > "$W/vmrun-probe-disagree.sh"
 vmrun_disagree="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-disagree.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe that reports units up with no runner online reads vmrun=DISAGREE (HIMMEL-6034)' "$vmrun_disagree" ' vmrun=DISAGREE:2/2,online=0'
+printf '#!/bin/sh\necho DISAGREE:2/2,online=1\n' > "$W/vmrun-probe-partial.sh"
+vmrun_partial="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-partial.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a probe that reports fewer runners online than registered units reads vmrun=DISAGREE:2/2,online=1 (HIMMEL-6034)' "$vmrun_partial" ' vmrun=DISAGREE:2/2,online=1'
 mkdir -p "$W/vd-mirror"
 # --- ciguard= (ci-guardrail.sh -> compact field + one ACTION per ALERT line).
 # The stub prints $STUB_CIG_OUT on its first call and $STUB_CIG_OUT2 on later ones.

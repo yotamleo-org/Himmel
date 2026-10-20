@@ -226,6 +226,22 @@ reset
 : > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
 [ "$(run status --tick)" = "ok:2/2,busy=0" ] && ok "journalctl ok with no ci-runner lines yet -> not FAILING" || bad "empty journal -> $(run status --tick)"
 
+echo "T6c2 partial outage: fewer runners online than units with a registered, unfinished runner (HIMMEL-6034)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"
+: > "$TMP/stub/active-1"; : > "$TMP/stub/active-2"
+journal 1 106 "ci-runner: runner 4242 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+journal 2 106 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(GH_ONLINE=1 run status --tick)" = "DISAGREE:2/2,online=1" ] && ok "2 units past the connect window, 1 runner online -> DISAGREE:2/2,online=1" || bad "partial outage -> $(GH_ONLINE=1 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+[ "$(GH_ONLINE=2 run status --tick)" = "ok:2/2,busy=0" ] && ok "2 units past the connect window, 2 runners online -> ok" || bad "both online -> $(GH_ONLINE=2 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+journal 2 20 "ci-runner: runner 4243 registered on yotamleo/Himmel (himmel-vm); waiting for one job (max 4500s)"
+[ "$(GH_ONLINE=1 run status --tick)" = "ok:2/2,busy=0" ] && ok "the second runner still inside the connect window is not counted" || bad "fresh second registration -> $(GH_ONLINE=1 run status --tick)"
+rm -f "$TMP/state/tick-vmrun-cache"
+journal 2 10 "ci-runner: runner 4243 done (rc=0)"
+[ "$(GH_ONLINE=1 run status --tick)" = "ok:2/2,busy=0" ] && ok "a finished second runner is not counted" || bad "finished second runner -> $(GH_ONLINE=1 run status --tick)"
+
 echo "T6d runner counts include every page and fail closed on a later-page error"
 reset
 : > "$TMP/units/himmel-ci-runner@.service"; echo on > "$TMP/stub/var"

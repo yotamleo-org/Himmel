@@ -628,12 +628,12 @@ bash scripts/handover/console-kit/vm-runner.sh status
   writes the stop file and stops the units; a job already running is not
   re-queued but no new runner is minted.
 - `status` prints the variable, per-VM up/idle/busy state and the last error.
-- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING | DISAGREE:<up>/<want>,online=0>`.
+- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING | DISAGREE:<up>/<want>,online=<n>>`.
   `DEAD` is variable on with no unit up; `STUCK` is a job running past its
   budget plus ten minutes; `FAILING` is a loop whose newest log line is an
-  error, or a GitHub runner count that could not be read; `DISAGREE` is a unit
-  with a registered, unfinished runner while GitHub shows no himmel-vm runner
-  online (zero online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD` or
+  error, or a GitHub runner count that could not be read; `DISAGREE` is more units
+  with a registered, unfinished runner than GitHub shows himmel-vm runners
+  online (fewer online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD` or
   `STUCK`; answer with `status`, then `off` and a note to the operator.
 - With the variable `on`, `ci.yml` runs the `shell-unit-shard` matrix on the VM
   runner for a same-repo `pull_request` whose author and actor are the operator
