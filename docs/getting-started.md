@@ -24,7 +24,7 @@ depth*, not a prerequisite — the steps below stand on their own.
 Clone once, then run the installer against the repo you want the harness in:
 
 ```bash
-git clone https://github.com/yotamleo/himmel
+git clone https://github.com/yotamleo-org/Himmel
 node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 ```
 

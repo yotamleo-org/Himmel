@@ -142,7 +142,7 @@ There are two ways in:
    [`docs/getting-started.md`](docs/getting-started.md), a 15-minute
    walkthrough. The eight-level [adoption trail](docs/adoption-trail.html)
    (also at
-   [yotamleo.github.io/Himmel/adoption-trail.html](https://yotamleo.github.io/Himmel/adoption-trail.html))
+   [yotamleo-org.github.io/Himmel/adoption-trail.html](https://yotamleo-org.github.io/Himmel/adoption-trail.html))
    shows what each stage of adoption changes.
 2. **Run or develop himmel itself.** The contributor path, with more
    prerequisites. The rest of this section covers it.

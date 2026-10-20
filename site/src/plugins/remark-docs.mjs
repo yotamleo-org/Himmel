@@ -3,11 +3,12 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { REPO_URL } from '../urls.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const DOCS = path.join(REPO, 'docs');
-const BLOB = 'https://github.com/yotamleo/himmel/blob/main/';
-const TREE = 'https://github.com/yotamleo/himmel/tree/main/';
+const BLOB = `${REPO_URL}/blob/main/`;
+const TREE = `${REPO_URL}/tree/main/`;
 
 const KNOWN = new Set(('a abbr b blockquote br code dd del details div dl dt em h1 h2 h3 h4 h5 h6 hr i img ins kbd li mark ol p picture pre q s samp small source span strong sub summary sup table tbody td tfoot th thead tr u ul').split(' '));
 

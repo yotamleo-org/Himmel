@@ -497,7 +497,7 @@ Spec: `scripts/hooks/test-check-main-ref-transaction.sh`.
 Worktree isolation was structurally enforced only in himmel; other repos
 the operator works in (notably luna) relied on prose. `.pre-commit-hooks.yaml`
 at the repo root exports two gates other repos opt into via pre-commit's
-remote-repo mechanism (`repo: https://github.com/yotamleo/himmel` +
+remote-repo mechanism (`repo: https://github.com/yotamleo-org/Himmel` +
 pinned `rev:`):
 
 - **`pr-lane-isolation`** (`check-pr-lane-isolation.sh`) — path-scoped:

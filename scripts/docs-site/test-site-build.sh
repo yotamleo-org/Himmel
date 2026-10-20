@@ -43,6 +43,23 @@ check "h1Of: a lone backtick is dropped" is "$(h1 "# Use the \` key")" "Use the 
 check "h1Of: a double-backtick span keeps its inner backtick" is "$(h1 "# The \`\`a\`b\`\` span")" "The a\`b span"
 check "control: is() fails on a mismatch" fails is "a" "b"
 
+# --- host sweep: the docs site and repo live under the org, so no tracked file may name the old host or slug
+old_host='yotamleo\.github\.io'
+old_repo='github\.com/yotamleo/himmel'
+clean() { grep -qE -- "$old_host|$old_repo" "$@" >/dev/null 2>&1; [ $? -eq 1 ]; } # exit 2 (unreadable) is not clean
+sweep_ctl=$(mktemp -d -t site-host-ctl.XXXXXX) || exit 1
+trap 'rm -rf "$sweep_ctl"' EXIT
+printf 'see https://yotamleo%s\n' '.github.io/Himmel/' >"$sweep_ctl/planted-host"
+printf 'see https://github.com/yotamleo%s\n' '/himmel' >"$sweep_ctl/planted-repo"
+printf 'see %s\n' 'https://yotamleo-org.github.io/Himmel/' >"$sweep_ctl/org"
+check "control: sweep flags a planted old site host" fails clean "$sweep_ctl/planted-host"
+check "control: sweep flags a planted old repo slug" fails clean "$sweep_ctl/planted-repo"
+check "control: sweep passes the org URLs" clean "$sweep_ctl/org"
+check "control: sweep fails on an unreadable file" fails clean "$sweep_ctl/no-such-file"
+sweep_files=()
+while read -r f; do sweep_files+=("$repo/$f"); done < <(git -C "$repo" ls-files -- docs site README.md scripts/docs-site scripts/himmelctl scripts/jira/reconcile-lib.test.mjs)
+check "host sweep: no tracked docs/site/wizard file names the old docs host or repo slug" clean "${sweep_files[@]}"
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
   printf '\n%d passed, %d failed (site build not run)\n' "$pass" "$fail"
@@ -51,7 +68,7 @@ if [ ! -d "$here/node_modules/astro" ]; then
 fi
 
 ctl=$(mktemp -d -t site-build-ctl.XXXXXX) || exit 1
-trap 'rm -rf "$ctl"' EXIT
+trap 'rm -rf "$ctl" "$sweep_ctl"' EXIT
 echo present >"$ctl/page"
 check "control: absent() passes when the text is missing" absent nope "$ctl/page"
 check "control: absent() fails when the text is present" fails absent present "$ctl/page"
@@ -95,7 +112,7 @@ md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; 
 check "criterion 2: no site-local href ends in .md" test "$md_pages" = "rc=1"
 check "control: the .md scan had pages to read" test -n "$(find "$dist" -name index.html -print -quit 2>/dev/null)"
 check "criterion 2: .md link rewritten to its route" grep -q 'href="/Himmel/setup/install/"' "$(route_of getting-started.md)"
-check "criterion 2: repo-path link points at the GitHub blob URL" grep -q 'href="https://github.com/yotamleo/himmel/blob/main/CLAUDE.md"' "$(route_of getting-started.md)"
+check "criterion 2: repo-path link points at the GitHub blob URL" grep -q 'href="https://github.com/yotamleo-org/Himmel/blob/main/CLAUDE.md"' "$(route_of getting-started.md)"
 c2=1
 nlinks=0
 while IFS= read -r h; do

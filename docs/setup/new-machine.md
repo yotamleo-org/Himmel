@@ -187,7 +187,7 @@ curl -fsSL https://claude.ai/install.sh | bash
 #    on PATH yet — the launcher is written to ~/.local/bin BY the install —
 #    so the first invocation is necessarily clone-relative.
 mkdir -p ~/Documents/github && cd ~/Documents/github
-git clone https://github.com/yotamleo/himmel.git
+git clone https://github.com/yotamleo-org/Himmel.git
 cd himmel
 node scripts/himmelctl/bin.js install --dry-run | tee dryrun.txt   # the plan
 node scripts/himmelctl/bin.js install                             # the real thing
@@ -704,7 +704,7 @@ result to exactly one guard entry. Safe to run multiple times.
 ## 4. himmel Repo
 
 ```bash
-git clone https://github.com/yotamleo/himmel.git
+git clone https://github.com/yotamleo-org/Himmel.git
 cd himmel
 node scripts/himmelctl/bin.js install
 ```
@@ -1668,7 +1668,7 @@ Or install the entire manifest (the himmel plugins plus the official ones it
 builds on) in one shot from a clone, at a chosen scope:
 
 ```bash
-git clone https://github.com/yotamleo/himmel
+git clone https://github.com/yotamleo-org/Himmel
 bash himmel/scripts/machine-setup/install-plugins.sh --scope project
 ```
 
