@@ -92,7 +92,9 @@ trap 'rm -rf "$SUITE_LOCK_SANDBOX"' EXIT
 # own `env -u`. A case that wants to exercise these vars still sets them
 # explicitly on its own invocation, which overrides an unset ambient value the
 # same way it would override an inherited one.
-unset SUITE_TIER_MODE SUITE_CHANGED_SINCE
+# SUITE_STOP_ON_FAIL joins them: ci.yml exports it on pull_request, and a nested
+# run that stops at its first failing suite hides the later suites a case checks.
+unset SUITE_TIER_MODE SUITE_CHANGED_SINCE SUITE_STOP_ON_FAIL
 
 # Case 18m-R's mutation control goes through the
 # RED-control contract helper rather than a hand-rolled inequality — the helper

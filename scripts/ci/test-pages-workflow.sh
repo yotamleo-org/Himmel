@@ -7,8 +7,9 @@
 #   1. triggers are exactly a daily schedule (cron 17 3 * * *) plus
 #      workflow_dispatch (no push, no pull_request, no tags);
 #   2. permissions pages:write + id-token:write + contents:read, nothing wider;
-#   3. the three Pages actions run (configure, upload, deploy), upload path is
-#      docs, and docs/.nojekyll exists (plain static == the legacy output);
+#   3. the three Pages actions run (configure, upload, deploy), the site is
+#      built (npm run build), the upload path is site/dist, and docs/.nojekyll
+#      exists;
 #   4. concurrency group pages, never cancelling a running deploy;
 #   5. a timeout-minutes on the job; the workflow is not named `CI`
 #      (cut-tag.sh keys on a workflow named exactly CI).
@@ -44,7 +45,8 @@ check_file() {
     grep -qE 'uses:[[:space:]]*actions/configure-pages@' <<< "$s" || echo "no-configure-pages"
     grep -qE 'uses:[[:space:]]*actions/upload-pages-artifact@' <<< "$s" || echo "no-upload-pages-artifact"
     grep -qE 'uses:[[:space:]]*actions/deploy-pages@' <<< "$s" || echo "no-deploy-pages"
-    grep -qE '^[[:space:]]+path:[[:space:]]*docs[[:space:]]*$' <<< "$s" || echo "upload-path-not-docs"
+    grep -qE '^[[:space:]]+path:[[:space:]]*site/dist[[:space:]]*$' <<< "$s" || echo "upload-path-not-site-dist"
+    grep -qE '^[[:space:]]+npm run build[[:space:]]*$' <<< "$s" || echo "no-site-build"
     grep -qE '^[[:space:]]+group:[[:space:]]*pages[[:space:]]*$' <<< "$s" || echo "no-pages-group"
     grep -qE '^[[:space:]]+cancel-in-progress:[[:space:]]*false' <<< "$s" || echo "cancels-running-deploy"
     grep -qE '^[[:space:]]+timeout-minutes:[[:space:]]*[0-9]+' <<< "$s" || echo "no-timeout"
@@ -78,6 +80,8 @@ if [ -f "$WF" ]; then
     mutate name-not-Pages "s#^name: Pages#name: CI#"
     mutate extra-trigger "s#^  workflow_dispatch:#  workflow_run:\n  workflow_dispatch:#"
     mutate extra-trigger "s#^  workflow_dispatch:#  create:\n  workflow_dispatch:#"
+    mutate upload-path-not-site-dist "s#path: site/dist#path: docs#"
+    mutate no-site-build "s#npm run build#npm run lint#"
     mutate extra-write-permission "s#^  contents: read#  contents: read\n  issues: write#"
 fi
 
