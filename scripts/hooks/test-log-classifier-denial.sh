@@ -19,7 +19,7 @@ pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 # Token-shaped fixtures are BUILT at run time, so no literal token sits in this
 # file for the PostToolUse detector (detect-token-in-output.sh) to flag on a Read.
-rep() { local s="" i; for ((i = 0; i < $2; i++)); do s="$s$1"; done; printf '%s' "$s"; }
+rep() { local ch="$1" n="$2" s="" i; for ((i = 0; i < n; i++)); do s="$s$ch"; done; printf '%s' "$s"; }
 
 run_hook() {
     local input="$1" out="$2"
