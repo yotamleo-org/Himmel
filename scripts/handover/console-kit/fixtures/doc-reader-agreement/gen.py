@@ -259,7 +259,10 @@ def build_console_doc(rng, template, name):
     toks = list(entries)
     malformed = []
     for _ in range(rng.randrange(0, 4)):
-        toks.append(span_prose(rng))
+        tok = span_prose(rng)
+        toks.append(tok)
+        if tok == "`N2:only-two`":
+            malformed.append("N2")
     for _ in range(rng.randrange(0, 3)):
         lab = "N%d" % rng.randrange(3000, 3500)
         toks.append(span_malformed(rng, lab))
