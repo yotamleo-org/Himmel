@@ -91,4 +91,23 @@ check 'a free leg is never busedge-missing' '' "$(field busedge "$(run "$free")"
 rm -rf "$W/peers"
 check 'no bus peers dir (bus not in use): busedge is absent' '' "$(field busedge "$(run "$held")")"
 
+export TICK_BUS_WAKER_DIR="$W/wstate"
+mkdir -p "$W/wstate"
+check 'no waker state file: wakerstate is absent' '' "$(field wakerstate "$(run "$held")")"
+
+printf 'rc4\n' > "$W/wstate/HIMMEL-9810-N810-held"
+check 'a held leg whose waker ended rc4 reads wakerstate=<label>:rc4' 'N810:rc4' "$(field wakerstate "$(run "$held")")"
+
+printf 'rc3\n' > "$W/wstate/HIMMEL-9811-N811-other"
+check 'several legs list rc3 and rc4 side by side' 'N810:rc4,N811:rc3' "$(field wakerstate "$(run "$held,$held2")")"
+
+printf 'rc3\n' > "$W/wstate/HIMMEL-9801-N801-free"
+check 'a free leg is never wakerstate-flagged' '' "$(field wakerstate "$(run "$free")")"
+
+printf 'junk\n' > "$W/wstate/HIMMEL-9810-N810-held"
+check 'an unknown state value is not reported' '' "$(field wakerstate "$(run "$held")")"
+
+rm -rf "$W/wstate"
+check 'no waker state dir: wakerstate is absent' '' "$(field wakerstate "$(run "$held")")"
+
 [ "$fails" -eq 0 ] && printf 'all passed\n' || { printf '%s failed\n' "$fails"; exit 1; }

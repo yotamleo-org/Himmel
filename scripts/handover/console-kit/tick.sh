@@ -1635,6 +1635,26 @@ if [ -d "$bus_peers_dir" ]; then
     done <<< "$leg_candmap"
     [ -z "$busedge_val" ] || busedge_tail=" busedge=MISSING:$busedge_val"
 fi
+# wakerstate=<label>:rc3|rc4[,...]: a held leg whose bus-idle-waker ended on
+# rc=3 (konsole refuses sendText) or rc=4 (the session is not the named claude), so
+# its mail wakes nothing. bus-idle-waker.sh leaves the state file; ABSENT when none.
+# Env seam: TICK_BUS_WAKER_DIR.
+wakerstate_tail=""
+bus_waker_dir="${TICK_BUS_WAKER_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"
+if [ -d "$bus_waker_dir" ]; then
+    wakerstate_val=""
+    while IFS=$'\t' read -r ws_label ws_lock ws_cands; do
+        [ -n "$ws_label" ] || continue
+        case "$ws_lock" in FRESH|STALE) ;; *) continue ;; esac
+        for ws_cand in ${ws_cands//,/ }; do
+            [ -f "$bus_waker_dir/$ws_cand" ] || continue
+            ws_state="$(head -n 1 "$bus_waker_dir/$ws_cand" 2>/dev/null)" # swallow-ok: an unreadable state file reads as none
+            case "$ws_state" in rc3|rc4) wakerstate_val="$(csv_add "$wakerstate_val" "$ws_label:$ws_state")" ;; esac
+            break
+        done
+    done <<< "$leg_candmap"
+    [ -z "$wakerstate_val" ] || wakerstate_tail=" wakerstate=$wakerstate_val"
+fi
 # deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
 # HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)
 # and the window sits on "program crashed". ONE ps read, no per-window probe.
@@ -2072,6 +2092,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     [ -z "$deadwin_tail" ] || printf 'dead windows: %s\n' "${deadwin_tail# deadwin=}"
     [ -z "$busedge_tail" ] || printf 'bus edges: %s\n' "${busedge_tail# busedge=}"
+    [ -z "$wakerstate_tail" ] || printf 'bus wakers: %s\n' "${wakerstate_tail# wakerstate=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
@@ -2128,7 +2149,7 @@ else
     compact_field fails "$fails_summary"
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$stall_tail$station_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;

@@ -32,6 +32,11 @@ STALE) with no himmel-bus peer record has no edge to the live console. It is
 absent when every held leg has a record or the bus has no peers dir, and
 `console-wait.sh` does not wake on it, so read it at the next tick.
 
+`wakerstate=<label>:rc3|rc4[,...]` is conditional the same way: a held worker whose
+`bus-idle-waker` ended on rc 3 (konsole refuses sendText: the window predates
+`EnableSecuritySensitiveDBusAPI`, relaunch it) or rc 4 (the session is not the
+named claude). Its mail wakes nothing. Absent when no waker left a state file.
+
 `console-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <leg>` Telegram per classifier-denied `headed-arm-leg.sh` launch (leg, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
 
 Five, and no more — every event wakes a full-context turn, so each one filters
