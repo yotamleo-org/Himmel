@@ -29,6 +29,7 @@
 # At most --max-cancels (default 100, 1-500) runs are cancelled per invocation.
 # Cancels are paced: at most 10 in any minute and 30 in any 10 minutes (failed
 # attempts count); the loop waits, so a full drain of 100 takes about 30 minutes.
+# The stamps persist in <git-common-dir>/cancel-runs-pace, so a re-run keeps the limits.
 #
 # Prints: cancelled=<n> failed=<n> kept=<comma list of head shas, - if none>
 # [protected=<n>] (a dry run appends would-cancel=<n>).
@@ -190,7 +191,15 @@ protected="$(printf '%s\n' "$rows" | grep -c '^P')"
 # and a wait advances it instead of sleeping.
 PACE_PER_MIN=10
 PACE_PER_WINDOW=30
+PACE_STATE="${CANCEL_RUNS_PACE_STATE:-$(git rev-parse --git-common-dir)/cancel-runs-pace}"
 stamps=""
+if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then
+    fake_now=""
+    [ ! -r "$CANCEL_RUNS_FAKE_CLOCK" ] || IFS= read -r fake_now < "$CANCEL_RUNS_FAKE_CLOCK"
+    printf '%s' "$fake_now" | grep -Eq '^[0-9]+$' \
+        || { echo "cancel-runs: CANCEL_RUNS_FAKE_CLOCK must name a file holding an integer" >&2; exit 2; }
+    echo "cancel-runs: CANCEL_RUNS_FAKE_CLOCK is set - the pacing clock is faked, nothing really waits" >&2
+fi
 pace_now() {
     if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then cat "$CANCEL_RUNS_FAKE_CLOCK"; else date +%s; fi
 }
@@ -200,6 +209,18 @@ pace_nap() {
     else
         sleep "$1"
     fi
+}
+# pace_load: take the stamps of the last 10 minutes from the state file, so a re-run keeps the limits.
+pace_load() {
+    now="$(pace_now)"
+    if [ -r "$PACE_STATE" ]; then
+        while IFS= read -r t; do
+            case "$t" in ''|*[!0-9]*) continue ;; esac
+            [ "$t" -gt $((now - 600)) ] && stamps="$stamps $t"
+        done < "$PACE_STATE"
+    fi
+    for t in $stamps; do echo "$t"; done > "$PACE_STATE" \
+        || echo "cancel-runs: cannot write $PACE_STATE; pacing will not carry over to a re-run" >&2
 }
 # pace_wait: block until one more cancel fits both windows; stamps holds each cancel's time, oldest first.
 pace_wait() {
@@ -228,6 +249,7 @@ pace_wait() {
     done
 }
 TAB="$(printf '\t')"
+[ "$LIVE" = 0 ] || pace_load
 cancelled=0
 failed=0
 would=0
@@ -246,7 +268,9 @@ while IFS="$TAB" read -r class id br sha ev; do
     pace_wait
     err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
     rc=$?
-    stamps="$stamps $(pace_now)"
+    stamp="$(pace_now)"
+    stamps="$stamps $stamp"
+    echo "$stamp" >> "$PACE_STATE" || echo "cancel-runs: cannot write $PACE_STATE; pacing will not carry over to a re-run" >&2
     printf 'cancel-runs: cancel run=%s branch=%s sha=%s event=%s rc=%s\n' "$id" "$br" "$sha" "$ev" "$rc" >&2
     if [ "$rc" -eq 0 ]; then
         cancelled=$((cancelled + 1))

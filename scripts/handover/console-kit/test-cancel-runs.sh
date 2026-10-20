@@ -72,7 +72,7 @@ case "$1 $2" in
     "run cancel")
         [ "$3" = "${STUB_FAIL_ID:-}" ] && { echo "gh: cannot cancel $3" >&2; exit 1; }
         printf '%s\n' "$3" >> "$STUB_CANCEL_LOG"
-        [ -n "${STUB_TIME_LOG:-}" ] && printf '%s %s\n' "$3" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")" >> "$STUB_TIME_LOG" ;;
+        if [ -n "${STUB_TIME_LOG:-}" ]; then printf '%s %s\n' "$3" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")" >> "$STUB_TIME_LOG"; fi ;;
     "pr view")
         case "$3" in
             3221) echo "$STUB_KEEP_SHA" ;;
@@ -105,7 +105,7 @@ export PATH="$WORK/bin:$PATH"
 export STUB_RUNS="$WORK/runs.json" STUB_CANCEL_LOG="$WORK/cancel.log"
 export STUB_KEEP_SHA="$KEEP" STUB_KEEP2_SHA="$KEEP2"
 # a fake clock: cancel-runs.sh reads the time from this file and "sleeps" by advancing it, so no test waits for real
-export CANCEL_RUNS_FAKE_CLOCK="$WORK/clock" STUB_TIME_LOG="$WORK/times.log"
+export CANCEL_RUNS_FAKE_CLOCK="$WORK/clock" STUB_TIME_LOG="$WORK/times.log" CANCEL_RUNS_PACE_STATE="$WORK/pace"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
 # run <args>: dry by default. T_LEG=1 / T_RELAY=1 set the leg / relay markers; T_DIR the cwd.
@@ -113,6 +113,9 @@ run() {
     : > "$STUB_CANCEL_LOG"
     : > "$STUB_TIME_LOG"
     echo 1000 > "$CANCEL_RUNS_FAKE_CLOCK"
+    if [ -n "${T_BAD_CLOCK:-}" ]; then echo abc > "$CANCEL_RUNS_FAKE_CLOCK"; fi
+    # T_PACE_SEED: cancel times (seconds) a previous invocation left in the pacing state
+    printf '%s' "${T_PACE_SEED:-}" | tr ' ' '\n' | grep . > "$CANCEL_RUNS_PACE_STATE" || : > "$CANCEL_RUNS_PACE_STATE"
     (
         unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
         [ -n "${T_LEG:-}" ] && export HIMMEL_CONSOLE_LEG=1
@@ -343,8 +346,14 @@ check "pacing: the 31st cancel waits for the 10-minute window" "1600" "$(time_of
 check "pacing: all 31 cancels happen" "31" "$(wc -l < "$STUB_CANCEL_LOG" | tr -d ' ')"
 out="$(live --keep-sha "$KEEP" --max-cancels 5)"; rc=$?
 check "pacing: a run under the limits never waits" "5" "$(times_at 1000)"
-out="$(run --keep-sha "$KEEP")"; rc=$?
-check "pacing: a dry run never waits" "1000" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")"
+out="$(T_PACE_SEED="1000 1000 1000 1000 1000 1000 1000 1000 1000 1000" live --keep-sha "$KEEP" --max-cancels 1)"; rc=$?
+check "pacing: a re-run keeps the limits of the last invocation (10 cancels at 1000, the next waits)" "1060" "$(time_of 1000)"
+out="$(T_PACE_SEED="100 1000" live --keep-sha "$KEEP" --max-cancels 1)"; rc=$?
+# read-sink-ok: CANCEL_RUNS_PACE_STATE is the state file this suite exports under its own $WORK
+check "pacing: the state file drops stamps older than 10 minutes and keeps the new cancel" "1000 1000 " "$(tr '\n' ' ' < "$CANCEL_RUNS_PACE_STATE")"
+out="$(T_BAD_CLOCK=1 live --keep-sha "$KEEP")"; rc=$?
+check "pacing: a fake clock that is not an integer refuses, exit 2" "2" "$rc"
+check "pacing: a refused fake clock cancels nothing" "" "$(cancelled)"
 export STUB_RUNS="$WORK/runs.json"
 
 if [ "$fails" -eq 0 ]; then printf 'ALL PASS\n'; exit 0; fi
