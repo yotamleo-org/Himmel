@@ -196,6 +196,8 @@ export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
 # ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
+# ciguard= runs this probe; the default is a missing one (ciguard=unknown), never a live fetch.
+export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
 export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
@@ -217,7 +219,7 @@ mkdir -p "$W/console-work/chain"
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' legset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown vmrun=off'
+expected='TICK 12:34 legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' legset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -2157,6 +2159,57 @@ printf '#!/bin/sh\necho DISAGREE:2/2,online=0\n' > "$W/vmrun-probe-disagree.sh"
 vmrun_disagree="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-disagree.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe that reports units up with no runner online reads vmrun=DISAGREE (HIMMEL-6034)' "$vmrun_disagree" ' vmrun=DISAGREE:2/2,online=0'
 mkdir -p "$W/vd-mirror"
+# --- ciguard= (ci-guardrail.sh -> compact field + one ACTION per ALERT line).
+# The stub prints $STUB_CIG_OUT on its first call and $STUB_CIG_OUT2 on later ones.
+cat > "$W/ciguard-probe.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'x\n' >> "${STUB_CIG_CALLS:-/dev/null}"
+n="$(wc -l < "${STUB_CIG_CALLS:-/dev/null}" | tr -d '[:space:]')"  # read-sink-ok: test stub counting its own call file
+if [ "${n:-1}" -le 1 ]; then printf '%s\n' "$STUB_CIG_OUT"; else printf '%s\n' "${STUB_CIG_OUT2:-$STUB_CIG_OUT}"; fi
+[ -z "${STUB_CIG_SLEEP:-}" ] || sleep "$STUB_CIG_SLEEP"
+STUB
+chmod +x "$W/ciguard-probe.sh"
+cig_calls="$W/ciguard-calls.txt"
+cig_alert=$'ciguard=OVER:runs-h\nALERT runs-h=160>150 (14:00)'
+cig_tick() { : > "$cig_calls"; TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_CALLS="$cig_calls" STUB_CIG_OUT="$1" bash "$SUT" "${@:2}" 2>/dev/null; }
+cig_ok="$(cig_tick 'ciguard=ok')"
+contains 'a quiet guardrail prints ciguard=ok (HIMMEL-6733)' "$cig_ok" ' ciguard=ok'
+not_contains 'a quiet guardrail prints no ACTION ci-guardrail line (HIMMEL-6733)' "$cig_ok" 'ACTION ci-guardrail'
+calls="$(wc -l < "$cig_calls" | tr -d '[:space:]')"
+if [ "$calls" = 1 ]; then pass 'one tick runs the guardrail exactly once (HIMMEL-6733)'; else fail "guardrail calls per tick = $calls, want 1"; fi
+cig_over="$(cig_tick "$cig_alert")"
+contains 'an OVER guardrail prints ciguard=OVER:<metric> (HIMMEL-6733)' "$cig_over" ' ciguard=OVER:runs-h'
+contains 'one ALERT line prints an ACTION ci-guardrail line carrying it (HIMMEL-6733)' "$cig_over" 'ACTION ci-guardrail runs-h=160>150 (14:00): '
+case "$(printf '%s\n' "$cig_over" | grep -c '^ACTION ci-guardrail')" in 1) pass 'one ALERT line prints exactly one ACTION (HIMMEL-6733)' ;; *) fail 'one ALERT line prints exactly one ACTION (HIMMEL-6733)' ;; esac
+case "$(printf '%s\n' "$cig_over" | grep -c '^TICK ')" in 1) pass 'the ciguard ACTION line adds no second TICK line (HIMMEL-6733)' ;; *) fail 'the ciguard ACTION line adds no second TICK line (HIMMEL-6733)' ;; esac
+cig_two="$(cig_tick $'ciguard=OVER:runs-h,reruns-h\nALERT runs-h=160>150 (14:00)\nALERT reruns-h=11>10 (14:00)')"
+case "$(printf '%s\n' "$cig_two" | grep -c '^ACTION ci-guardrail')" in 2) pass 'two ALERT lines print two ACTION lines (HIMMEL-6733)' ;; *) fail 'two ALERT lines print two ACTION lines (HIMMEL-6733)' ;; esac
+cig_a="$(cig_tick "$cig_alert")"
+cig_b="$(STUB_CIG_CALLS="$cig_calls" TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_OUT="$cig_alert" STUB_CIG_OUT2='ciguard=OVER:runs-h' bash "$SUT" 2>/dev/null)"
+contains 'the first read of a crossing prints its ACTION (HIMMEL-6733)' "$cig_a" 'ACTION ci-guardrail runs-h=160>150'
+not_contains 'the next read of the same crossing prints no ACTION (HIMMEL-6733)' "$cig_b" 'ACTION ci-guardrail'
+contains 'the next read of the same crossing still shows ciguard=OVER (HIMMEL-6733)' "$cig_b" ' ciguard=OVER:runs-h'
+cig_unk="$(cig_tick 'ciguard=unknown')"
+contains 'an unknown guardrail prints ciguard=unknown (HIMMEL-6733)' "$cig_unk" ' ciguard=unknown'
+not_contains 'an unknown guardrail prints no ACTION ci-guardrail line (HIMMEL-6733)' "$cig_unk" 'ACTION ci-guardrail'
+cig_junk="$(cig_tick 'ALERT runs-h=160>150 (14:00)')"
+contains 'output with no status line reads ciguard=unknown (HIMMEL-6733)' "$cig_junk" ' ciguard=unknown'
+not_contains 'an ALERT with no status line prints no ACTION (HIMMEL-6733)' "$cig_junk" 'ACTION ci-guardrail'
+cig_miss="$(TICK_CIGUARD_PROBE="$W/no-such-probe" bash "$SUT" 2>/dev/null)"
+contains 'a missing guardrail script reads ciguard=unknown (HIMMEL-6733)' "$cig_miss" ' ciguard=unknown'
+if [ -n "$_TIMEOUT_BIN" ]; then
+    t0="$(date +%s)"
+    cig_hung="$(STUB_CIG_SLEEP=30 TICK_CIQ_TIMEOUT=1 TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_CALLS="$cig_calls" STUB_CIG_OUT="$cig_alert" bash "$SUT" 2>/dev/null)"
+    t1="$(date +%s)"
+    contains 'a hung guardrail reads ciguard=unknown (HIMMEL-6733)' "$cig_hung" ' ciguard=unknown'
+    if [ $((t1 - t0)) -lt 15 ]; then pass 'a hung guardrail is cut off inside the bound (HIMMEL-6733)'; else fail "hung guardrail took $((t1 - t0))s"; fi
+else
+    skip 'guardrail timeout rows: no timeout binary'
+fi
+cig_verbose="$(cig_tick "$cig_alert" --verbose)"
+contains 'verbose output names the ci guardrail reading (HIMMEL-6733)' "$cig_verbose" 'ci guardrail: OVER:runs-h'
+contains 'verbose output keeps the new ALERT line (HIMMEL-6733)' "$cig_verbose" 'ALERT runs-h=160>150 (14:00)'
+
 printf '#!/bin/sh\necho 3\n' > "$W/vd-probe-3.sh"
 printf '#!/bin/sh\necho 0\n' > "$W/vd-probe-0.sh"
 printf '#!/bin/sh\necho oops\n' > "$W/vd-probe-bad.sh"

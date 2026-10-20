@@ -4,7 +4,9 @@
 # Run it:   bash qmd-bounded.sh <qmd verb> [args...]
 #   runs qmd (resolved as qmd-bin.sh's qmd_cmd does) under a deadline of
 #   $QMD_TIMEOUT_SECS, else 300 s — the ad-hoc path block-bare-qmd-query.sh
-#   sends agents to.
+#   sends agents to. A query or search question is first asked in both fleet
+#   vocabularies by scripts/qmd/vocab-expand.py (an expanded search runs as a
+#   lex-only query with --no-rerank); QMD_VOCAB_EXPAND=0 turns that off.
 # Source it, then: qmd_bounded <secs> <cmd> [args...]
 #   rc      the command's own rc, or 124 when the deadline fired (as timeout(1))
 #   <secs>  whole seconds; 0 runs the command unbounded
@@ -138,6 +140,16 @@ if [ "${BASH_SOURCE[0]}" = "$0" ] && [ -z "${_QMD_BOUNDED_MAIN:-}" ]; then
     exit 2
   fi
   export QMD_TIMEOUT_SECS="${QMD_TIMEOUT_SECS:-300}"
+  # no python3, or no output from it, runs the argv as given
+  case "$1" in
+    query | search)
+      if [ "${QMD_VOCAB_EXPAND:-1}" != 0 ] && command -v python3 >/dev/null 2>&1; then
+        _qmd_vx=()
+        while IFS= read -r -d '' _qmd_a; do _qmd_vx+=("$_qmd_a"); done \
+          < <(python3 -I "$(dirname "${BASH_SOURCE[0]}")/../qmd/vocab-expand.py" argv "$@" 2>/dev/null)
+        [ "${#_qmd_vx[@]}" -gt 0 ] && set -- "${_qmd_vx[@]}"
+      fi ;;
+  esac
   # shellcheck source=scripts/lib/qmd-bin.sh
   . "$(dirname "${BASH_SOURCE[0]}")/qmd-bin.sh"
   qmd_cmd "$@"

@@ -5,8 +5,9 @@
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
 # kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
-# (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is).
-# direction: old-to-new | keep for identifier, marker and do-not-rename; warn | fail for prose; for env and env-prefix
+# (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is), other-sense (a name that
+# already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it).
+# direction: old-to-new | keep for identifier, marker, do-not-rename and other-sense; warn | fail for prose; for env and env-prefix
 # the scripts/lib/env-alias.sh function that resolves OLD against NEW: restrict (env_alias_restrict, a guard ON switch),
 # permit (env_alias_permit, an *_OK override), value (alias_env, a path, model or timeout).
 # First match wins: the R1 block below lists every exact name above the prefix that would swallow it, then the
@@ -40,6 +41,9 @@ HEADED_ARM_LEG_	HEADED_ARM_WORKER_	env-prefix	value	V4a	pending-N2892
 LEG_	WORKER_SESSION_	env-prefix	value	V4a	pending-N2892
 HIMMEL_WORKER	HIMMEL_WORKER	do-not-rename	keep	none	never
 HIMMEL_CONSOLE_	HIMMEL_CONSOLE_	do-not-rename	keep	none	never
+stop-worker	stop-worker	other-sense	keep	none	never
+await-glm-worker	await-glm-worker	other-sense	keep	none	never
+reconcile-workers	reconcile-workers	other-sense	keep	none	never
 ACTION_ZERO_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 ACTION_ZERO_BANK_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 ARM_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892

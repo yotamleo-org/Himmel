@@ -587,3 +587,159 @@ describe('create --residual-of', () => {
     expect(created()).toBeUndefined();
   });
 });
+
+// The cap gate: filing into the current unreleased version is
+// refused at the residual cap unless --over-cap <reason> is given; an
+// operator-directed ticket is exempt. The mock plays Jira: a version list and
+// a search whose hit count is the open residuals in the current version.
+describe('create — cap gate (HIMMEL-6485)', () => {
+  type Opts = { open?: number; budgetDesc?: string; noNext?: boolean; searchFails?: boolean };
+  let searches: string[];
+  const play = (o: Opts = {}) => {
+    searches = [];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false, description: o.budgetDesc },
+          ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false }]),
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        if (o.searchFails) throw new Error('search boom');
+        searches.push(decodeURIComponent(path));
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+      }
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'g', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const exitSpy = () =>
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+  const stderr = () => (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('refuses a filing into the current version at the cap, without POSTing', async () => {
+    play({ open: 15 });
+    const exit = exitSpy();
+    await expect(file('--fix-version', 'v1.1.3')).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(stderr()).toMatch(/v1\.1\.3.*15\/15.*--over-cap/s);
+    expect(created()).toBeUndefined();
+    exit.mockRestore();
+  });
+
+  it('counts only open residuals in the current version', async () => {
+    play({ open: 3 });
+    await file('--fix-version', 'v1.1.3');
+    expect(searches[0]).toMatch(/fixVersion = "v1\.1\.3".*labels = residual.*statusCategory != Done/s);
+  });
+
+  it('files under the cap', async () => {
+    play({ open: 14 });
+    await file('--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('a residual-budget line in the version description moves the cap', async () => {
+    play({ open: 3, budgetDesc: 'residual-budget:3' });
+    const exit = exitSpy();
+    await expect(file('--fix-version', 'v1.1.3')).rejects.toThrow('exit');
+    exit.mockRestore();
+  });
+
+  it('files at the cap with --over-cap, labels it and records the reason', async () => {
+    play({ open: 15 });
+    await file('--fix-version', 'v1.1.3', '--over-cap', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['labels']).toContain('over-cap');
+    const comment = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue/HIMMEL-77/comment');
+    expect(JSON.stringify(comment![2])).toContain('blocks the v1 gate');
+  });
+
+  it('an operator-directed ticket is not refused at the cap', async () => {
+    play({ open: 15 });
+    await file('--fix-version', 'v1.1.3', '--labels', 'operator-directed');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['labels']).not.toContain('over-cap');
+  });
+
+  it('a filing into a later version is not gated', async () => {
+    play({ open: 15 });
+    await file('--fix-version', 'v1.1.4');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
+    expect(searches).toEqual([]);
+  });
+
+  it('a versionless Bug over the cap gets the next version, and says so', async () => {
+    play({ open: 15 });
+    await file('--type', 'Bug');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
+    expect(stderr()).toMatch(/over its cap.*v1\.1\.4/s);
+    expect(stderr()).not.toMatch(/earliest unreleased|defaults to fixVersion/);
+  });
+
+  it('a versionless Bug over the cap with no next version files with no fixVersion', async () => {
+    play({ open: 15, noNext: true });
+    await file('--type', 'Bug');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(stderr()).not.toMatch(/no unreleased version found/);
+  });
+
+  it('a versionless Bug under the cap still defaults to the current version', async () => {
+    play({ open: 2 });
+    await file('--type', 'Bug');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('a Bug --over-cap defaults to the current version past the cap', async () => {
+    play({ open: 15 });
+    await file('--type', 'Bug', '--over-cap', 'release blocker');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['labels']).toContain('over-cap');
+  });
+
+  it('files unguarded, with a warning, when the open count cannot be read', async () => {
+    play({ searchFails: true });
+    await file('--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(stderr()).toMatch(/cap check skipped/);
+  });
+
+  it('--follow-up-of stamps the residual label and links the parent', async () => {
+    play({ open: 0 });
+    await file('--follow-up-of', 'HIMMEL-50', '--labels', 'standalone');
+    expect(created()!['labels']).toEqual(expect.arrayContaining(['residual', 'standalone']));
+    const link = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issueLink');
+    expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50/s);
+  });
+
+  it('--follow-up-of into the current version at the cap is gated like any filing', async () => {
+    play({ open: 15 });
+    const exit = exitSpy();
+    await expect(file('--follow-up-of', 'HIMMEL-50', '--fix-version', 'v1.1.3')).rejects.toThrow('exit');
+    expect(created()).toBeUndefined();
+    exit.mockRestore();
+  });
+
+  it('--follow-up-of cannot be combined with --residual-of', async () => {
+    play();
+    await expect(file('--follow-up-of', 'HIMMEL-50', '--residual-of', 'HIMMEL-50')).rejects.toThrow(/--residual-of/);
+  });
+});

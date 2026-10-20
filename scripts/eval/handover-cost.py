@@ -16,19 +16,24 @@ Pieces per handover (turns/cost):
   prep   P's turns from its last `console.sh next` call up to S's first turn
   relay  P's turns from S's first turn on (relay + wrap)
   az     S's turns up to P's last turn (successor ACTION ZERO + wait)
-  leg    per non-console session that received a SUCCESSION message naming P in [P's last
-         `console.sh next`, P's last turn]: the turns after the delivery up to and including the one
-         that says `SUCCESSION accepted`, at most 4. --legs-after drops legs whose first record is
+  leg    per non-console session that received a SUCCESSION message naming P at or after P's last
+         `console.sh next` (no upper bound: a relay drained after P wrapped is the normal case),
+         as a user message or a queued_command attachment: the turns after the delivery up to and
+         including the one that says `SUCCESSION accepted`, at most 4. --legs-after drops legs whose first record is
          earlier than the cutoff (count only legs launched after the fast path merged).
 
 gross = every turn in the four pieces (the HIMMEL-6491 method, an upper bound: overlap turns include work
 that would have happened anyway). net = only the turns that touch the handover machinery (their tool
 input or text names console.sh, action-zero, console-wait, live-state, HANDOFF, SUCCESSION, RELAYED,
 ListAgents or succession.md).
+Mechanical columns (not priced): p_after_s = P's turns from S's first turn on; s_to_marker = S's
+turns up to and including its first `append-results.sh` call ("-" when S made none).
+
 ponytail: net is a name-match on handover scripts, upgrade path = hand-label a sample and compare.
 
-Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost leg=t/cost legs=n gross=G net=N` row per
-pair, then `MEAN n=<pairs> ...` (integer means) and a `legs_skipped_before_cutoff=<n>` line.
+Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost leg=t/cost legs=n p_after_s=a
+s_to_marker=m gross=G net=N` row per pair, then `MEAN n=<pairs> ...` (integer means; legs is the
+mean legs per handover to one decimal; s_to_marker over the pairs that have one) and a `legs_skipped_before_cutoff=<n>` line.
 
 Exit: 0 ok, 2 usage error (argparse), unreadable dir or fewer than two consoles (the message says which).
 """
@@ -48,6 +53,7 @@ W_OUT = float(os.environ.get("LEG_BURN_W_OUTPUT", "5"))
 DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
 LEG_TURN_CAP = 4
 NEXT_RE = re.compile(r"console\.sh\s+next\b")
+MARKER_RE = re.compile(r"\bbash\s+\S*append-results\.sh")
 MECH_RE = re.compile(
     r"console\.sh|action-zero|console-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
 )
@@ -81,7 +87,7 @@ def turn_text(msg):
 
 
 def load(path):
-    """-> dict(name, first, turns=[(ts, cost, mech, nxt, accepted)], deliveries=[ts])"""
+    """-> dict(name, first, turns=[(ts, cost, mech, nxt, accepted, marker)], deliveries=[ts])"""
     name = first = None
     turns = {}
     deliveries = []
@@ -98,8 +104,8 @@ def load(path):
         t = d.get("type")
         if t == "agent-name":
             name = d.get("agentName") or name
-        elif t == "user" and ts:
-            body = json.dumps(d.get("message", ""))
+        elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type") == "queued_command")):
+            body = json.dumps(d.get("message", "") if t == "user" else d["attachment"].get("prompt", ""))
             if "SUCCESSION" in body:
                 deliveries.append((ts, body))
         elif t == "assistant" and ts and not d.get("isSidechain"):
@@ -112,10 +118,13 @@ def load(path):
                     + u.get("cache_creation_input_tokens", 0) * W_CC + u.get("output_tokens", 0) * W_OUT)
             # one message id spans several records (one per content block): keep the first ts, the
             # last usage, and every flag any block raised
-            prev = turns.get(msg["id"], (ts, 0, False, False, False))
+            called = any(isinstance(b, dict) and b.get("type") == "tool_use"
+                         and MARKER_RE.search(json.dumps(b.get("input", {}))) for b in msg.get("content") or [])
+            prev = turns.get(msg["id"], (ts, 0, False, False, False, False))
             turns[msg["id"]] = (prev[0], cost, prev[2] or bool(MECH_RE.search(text)),
                                 prev[3] or bool(NEXT_RE.search(text)),
-                                prev[4] or "SUCCESSION accepted" in text)
+                                prev[4] or "SUCCESSION accepted" in text,
+                                prev[5] or called)
     return {"name": name, "first": first, "turns": sorted(turns.values(), key=lambda x: x[0]),
             "deliveries": sorted(deliveries, key=lambda x: x[0])}
 
@@ -137,7 +146,7 @@ def handover(p, s, legs, legs_after):
     }
     leg_turns, nlegs, skipped = [], 0, 0
     for lg in legs:
-        got = [x[0] for x in lg["deliveries"] if nxt <= x[0] <= p_last and p["name"] in x[1]]
+        got = [x[0] for x in lg["deliveries"] if nxt <= x[0] and p["name"] in x[1]]
         if not got:
             continue
         if legs_after and (not lg["first"] or lg["first"] < legs_after):
@@ -151,6 +160,9 @@ def handover(p, s, legs, legs_after):
                 break
         leg_turns.extend(taken)
         nlegs += 1
+    marked = [i for i, t in enumerate(s["turns"]) if t[5]]
+    out["p_after_s"] = out["relay"][0]
+    out["s_to_marker"] = marked[0] + 1 if marked else None
     out["leg"] = piece(leg_turns)
     out["legs"] = nlegs
     out["skipped"] = skipped
@@ -189,15 +201,18 @@ def main(argv=None):
         gross = sum(h[k][1] for k in PIECES)
         net = sum(h[k][2] for k in PIECES)
         rows.append((h, gross, net))
-        print("HANDOVER %s->%s %s legs=%d gross=%d net=%d" % (
+        print("HANDOVER %s->%s %s legs=%d p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
             p["name"], s["name"],
-            " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["legs"], round(gross), round(net)))
+            " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["legs"], h["p_after_s"],
+            "-" if h["s_to_marker"] is None else h["s_to_marker"], round(gross), round(net)))
     n = len(rows)
     if n:
         mean = lambda xs: round(sum(xs) / n)
-        print("MEAN n=%d %s gross=%d net=%d" % (
+        marked = [r[0]["s_to_marker"] for r in rows if r[0]["s_to_marker"] is not None]
+        print("MEAN n=%d %s legs=%.1f p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
             n, " ".join("%s=%d/%d" % (k, mean([r[0][k][0] for r in rows]), mean([r[0][k][1] for r in rows]))
                         for k in PIECES),
+            sum(r[0]["legs"] for r in rows) / n, mean([r[0]["p_after_s"] for r in rows]), round(sum(marked) / len(marked)) if marked else "-",
             mean([r[1] for r in rows]), mean([r[2] for r in rows])))
     print("legs_skipped_before_cutoff=%d" % sum(r[0]["skipped"] for r in rows))
     return 0

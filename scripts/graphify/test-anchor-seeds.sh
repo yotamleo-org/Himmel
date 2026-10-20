@@ -140,6 +140,31 @@ if grep -q -- "--seed other_go " <<<"$calls" && ! grep -q -- "--seed go_sh " <<<
   pass "A10 anchors resolve in the --graph graph"
 else fail "A10 calls='$calls'"; fi
 
+# A11-A13: a file named in the other fleet vocabulary resolves through the rename registry
+# (headed-arm-worker.sh is headed-arm-leg.sh, console-relay.sh is chief-relay.sh), never onto a
+# lane-worker file the registry marks other-sense, and a name as written still wins.
+python3 -I - "$T/alias.json" <<'PY'
+import json, sys
+def node(i, label, src):
+    return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "code", "source_file": src, "source_location": "L1"}
+nodes = [
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/console-kit/headed-arm-leg.sh"),
+    node("chief_relay", "chief-relay.sh", "scripts/handover/chief-relay.sh"),
+    node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
+]
+json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
+PY
+aseeds() { python3 -I "$ANCHOR" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
+got="$(aseeds "how does headed-arm-worker.sh start a session")|$(aseeds "what does console-relay.sh send")"
+if [ "$got" = "arm_leg |chief_relay " ]; then pass "A11 a name in either vocabulary resolves through the registry"
+else fail "A11 got='$got'"; fi
+got="$(aseeds "what does stop-leg.sh do")"
+if [ "$got" = "" ]; then pass "A12 a renamed word never resolves onto an other-sense lane-worker file"
+else fail "A12 got='$got'"; fi
+got="$(aseeds "how does stop-worker.sh stop a lane worker")"
+if [ "$got" = "stop_w " ]; then pass "A13 a lane-worker file named as written resolves"
+else fail "A13 got='$got'"; fi
+
 # A8: the real graphify on the fixture: the bare query never reaches go.sh's file, the wrapper
 # starts from it.
 if command -v graphify >/dev/null 2>&1; then
