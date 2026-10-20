@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Development graph</title>
+<meta name="description" content="How himmel moves a change from a console's dispatch to a merged pull request: the console, the legs, the judges, the gates and the decisions between them.">
+<link rel="stylesheet" href="dev-graph/tokens.css">
+<link rel="stylesheet" href="dev-graph/dev-graph.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: var(--fs-base); line-height: 1.55; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: var(--s4); }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; padding-bottom: var(--s3); border-bottom: 1px solid var(--rule); }
+  .topbar nav { display: flex; gap: var(--s4); flex-wrap: wrap; font-size: var(--fs-sm); }
+  a { color: var(--accent); }
+  .theme-btn { font: inherit; font-size: var(--fs-sm); color: var(--muted); background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 999px; padding: var(--s1) var(--s3); cursor: pointer; }
+  .theme-btn:hover { color: var(--ink); }
+  .hero { padding: var(--s5) 0 var(--s4); }
+  .kicker { margin: 0; color: var(--muted); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .08em; }
+  h1 { margin: var(--s1) 0 var(--s3); font-size: var(--fs-xl); line-height: 1.2; }
+  .lede { margin: 0; max-width: 70ch; color: var(--muted); }
+  #graph-error { margin: var(--s4) 0; padding: var(--s3) var(--s4); border: 1px solid var(--crit); border-radius: var(--radius); background: var(--crit-soft); color: var(--ink); }
+  #graph-error[hidden] { display: none; }
+  .note { margin-top: var(--s4); font-size: var(--fs-sm); color: var(--muted); max-width: 70ch; }
+  code { font-family: var(--font-mono); font-size: .92em; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  @media (max-width: 599px) { h1 { font-size: var(--fs-lg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <nav aria-label="Site">
+      <a href="../README.md">Docs home</a>
+      <a href="loops-and-graphs.html">Loops and graphs</a>
+      <a href="installer-journey.html">Installer journey</a>
+    </nav>
+    <button class="theme-btn" id="theme" type="button" aria-label="Switch colour theme">Theme: auto</button>
+  </div>
+
+  <header class="hero">
+    <p class="kicker">himmel guide</p>
+    <h1>The development graph</h1>
+    <p class="lede">How a change travels from a console's dispatch to a merged pull request. Five lanes, six phases: the operator rules, the console dispatches and verifies, the leg builds, the judge rules when a trust path is touched, and the gates refuse what is not ready. Dashed red edges are refusals, numbered by the exit code that takes them.</p>
+  </header>
+
+  <!-- source: docs/guide/dev-graph/graph.json, checked against the scripts it names by scripts/docs/check-dev-graph.sh -->
+  <main id="graph" aria-label="Development graph">
+    <noscript><p>The graph is drawn by a script. Turn scripts on, or read <a href="dev-graph/graph.json">the data file</a>.</p></noscript>
+  </main>
+  <div id="graph-error" role="alert" hidden></div>
+
+  <p class="note">This page loads its data over http, so open it from the docs site or a local static server (<code>python3 -m http.server</code> in <code>docs/guide</code>), not from a file.</p>
+</div>
+
+<script type="module">
+  import { mount } from './dev-graph/dev-graph.js';
+  var err = document.getElementById('graph-error');
+  fetch('dev-graph/graph.json')
+    .then(function (r) { if (!r.ok) throw new Error('graph.json: HTTP ' + r.status); return r.json(); })
+    .then(function (data) { mount(document.getElementById('graph'), data); })
+    .catch(function (e) { err.textContent = 'The development graph did not load: ' + e.message; err.hidden = false; });
+</script>
+<script>
+(function () {
+  var tb = document.getElementById('theme');
+  var mode;
+  try { mode = localStorage.getItem('himmel-guide-theme') || 'auto'; } catch (e) { mode = 'auto'; }
+  function apply() {
+    if (mode === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', mode);
+    tb.textContent = 'Theme: ' + mode;
+  }
+  tb.addEventListener('click', function () {
+    mode = mode === 'auto' ? 'light' : mode === 'light' ? 'dark' : 'auto';
+    try { localStorage.setItem('himmel-guide-theme', mode); } catch (e) { /* private window */ }
+    apply();
+  });
+  apply();
+})();
+</script>
+</body>
+</html>

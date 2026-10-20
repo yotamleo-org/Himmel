@@ -5,27 +5,27 @@
     {
       "id": "operator",
       "label": "Operator",
-      "token": "--alpha"
+      "token": "--note"
     },
     {
       "id": "console",
       "label": "Console",
-      "token": "--beta"
+      "token": "--alpha"
     },
     {
       "id": "judge",
       "label": "Judge",
-      "token": "--gamma"
+      "token": "--road"
     },
     {
       "id": "leg",
       "label": "Leg",
-      "token": "--delta"
+      "token": "--accent"
     },
     {
       "id": "gates",
       "label": "Gates & CI",
-      "token": "--epsilon"
+      "token": "--camp"
     }
   ],
   "phases": [
@@ -69,11 +69,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 220
+          "x": 128,
+          "y": 142
         },
         "narrow": {
-          "y": 80
+          "y": 432
         }
       }
     },
@@ -91,11 +91,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 220
+          "x": 128,
+          "y": 198
         },
         "narrow": {
-          "y": 170
+          "y": 52
         }
       }
     },
@@ -113,11 +113,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 220
+          "x": 128,
+          "y": 254
         },
         "narrow": {
-          "y": 260
+          "y": 494
         }
       }
     },
@@ -135,11 +135,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 220
+          "x": 328,
+          "y": 142
         },
         "narrow": {
-          "y": 350
+          "y": 136
         }
       }
     },
@@ -157,11 +157,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 220
+          "x": 328,
+          "y": 198
         },
         "narrow": {
-          "y": 440
+          "y": 220
         }
       }
     },
@@ -179,11 +179,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 220
+          "x": 328,
+          "y": 254
         },
         "narrow": {
-          "y": 530
+          "y": 304
         }
       }
     },
@@ -201,11 +201,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 140,
-          "y": 80
+          "x": 328,
+          "y": 66
         },
         "narrow": {
-          "y": 620
+          "y": 578
         }
       }
     },
@@ -223,11 +223,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 340,
-          "y": 500
+          "x": 528,
+          "y": 462
         },
         "narrow": {
-          "y": 710
+          "y": 674
         }
       }
     },
@@ -245,11 +245,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 340,
-          "y": 500
+          "x": 528,
+          "y": 518
         },
         "narrow": {
-          "y": 800
+          "y": 758
         }
       }
     },
@@ -271,11 +271,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 340,
-          "y": 500
+          "x": 528,
+          "y": 574
         },
         "narrow": {
-          "y": 890
+          "y": 842
         }
       }
     },
@@ -297,11 +297,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 340,
-          "y": 640
+          "x": 528,
+          "y": 650
         },
         "narrow": {
-          "y": 980
+          "y": 926
         }
       }
     },
@@ -319,11 +319,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 340,
-          "y": 640
+          "x": 528,
+          "y": 706
         },
         "narrow": {
-          "y": 1070
+          "y": 1010
         }
       }
     },
@@ -345,11 +345,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 540,
-          "y": 500
+          "x": 728,
+          "y": 462
         },
         "narrow": {
-          "y": 1160
+          "y": 1128
         }
       }
     },
@@ -367,11 +367,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 540,
-          "y": 640
+          "x": 728,
+          "y": 650
         },
         "narrow": {
-          "y": 1250
+          "y": 1318
         }
       }
     },
@@ -389,11 +389,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 540,
-          "y": 220
+          "x": 728,
+          "y": 142
         },
         "narrow": {
-          "y": 1340
+          "y": 1402
         }
       }
     },
@@ -411,11 +411,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 540,
-          "y": 500
+          "x": 728,
+          "y": 518
         },
         "narrow": {
-          "y": 1430
+          "y": 1234
         }
       }
     },
@@ -433,8 +433,8 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 640
+          "x": 928,
+          "y": 650
         },
         "narrow": {
           "y": 1520
@@ -455,11 +455,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 500
+          "x": 928,
+          "y": 462
         },
         "narrow": {
-          "y": 1610
+          "y": 2196
         }
       }
     },
@@ -477,11 +477,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 500
+          "x": 928,
+          "y": 518
         },
         "narrow": {
-          "y": 1700
+          "y": 1626
         }
       }
     },
@@ -499,11 +499,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 220
+          "x": 928,
+          "y": 142
         },
         "narrow": {
-          "y": 1790
+          "y": 1710
         }
       }
     },
@@ -521,11 +521,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 360
+          "x": 928,
+          "y": 330
         },
         "narrow": {
-          "y": 1880
+          "y": 1944
         }
       }
     },
@@ -543,11 +543,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 360
+          "x": 928,
+          "y": 386
         },
         "narrow": {
-          "y": 1970
+          "y": 2028
         }
       }
     },
@@ -565,11 +565,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 220
+          "x": 928,
+          "y": 198
         },
         "narrow": {
-          "y": 2060
+          "y": 2112
         }
       }
     },
@@ -587,11 +587,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 740,
-          "y": 220
+          "x": 928,
+          "y": 254
         },
         "narrow": {
-          "y": 2150
+          "y": 1816
         }
       }
     },
@@ -609,11 +609,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 940,
-          "y": 500
+          "x": 1128,
+          "y": 462
         },
         "narrow": {
-          "y": 2240
+          "y": 2314
         }
       }
     },
@@ -631,11 +631,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 940,
-          "y": 640
+          "x": 1128,
+          "y": 650
         },
         "narrow": {
-          "y": 2330
+          "y": 2734
         }
       }
     },
@@ -653,8 +653,8 @@
       ],
       "pos": {
         "wide": {
-          "x": 940,
-          "y": 500
+          "x": 1128,
+          "y": 518
         },
         "narrow": {
           "y": 2420
@@ -675,11 +675,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 940,
-          "y": 220
+          "x": 1128,
+          "y": 142
         },
         "narrow": {
-          "y": 2510
+          "y": 2504
         }
       }
     },
@@ -697,11 +697,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 940,
-          "y": 220
+          "x": 1128,
+          "y": 198
         },
         "narrow": {
-          "y": 2600
+          "y": 2672
         }
       }
     },
@@ -723,11 +723,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 940,
-          "y": 220
+          "x": 1128,
+          "y": 254
         },
         "narrow": {
-          "y": 2690
+          "y": 2610
         }
       }
     },
@@ -749,11 +749,11 @@
       ],
       "pos": {
         "wide": {
-          "x": 1140,
-          "y": 220
+          "x": 1328,
+          "y": 142
         },
         "narrow": {
-          "y": 2780
+          "y": 2830
         }
       }
     }
@@ -770,7 +770,10 @@
           "file": "scripts/handover/console-kit/console-wait.sh",
           "anchor": "WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M203,184 H228 V142 H253"
+      }
     },
     {
       "id": "e.arm.ok",
@@ -783,7 +786,10 @@
           "file": "scripts/handover/console-kit/headed-arm-leg.sh",
           "anchor": "Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through."
         }
-      ]
+      ],
+      "path": {
+        "wide": "M403,240 H428 V462 H453"
+      }
     },
     {
       "id": "e.arm.cap",
@@ -797,7 +803,10 @@
           "file": "scripts/handover/console-kit/headed-arm-leg.sh",
           "anchor": "refusing to launch $NAME - fleet-size cap reached"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M253,254 H228 V191 H203"
+      }
     },
     {
       "id": "e.arm.bank",
@@ -811,7 +820,10 @@
           "file": "scripts/handover/console-kit/headed-arm-leg.sh",
           "anchor": "lane bank exhausted (park and retry later"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M403,247 H423 V56 H403"
+      }
     },
     {
       "id": "e.arm.denial",
@@ -825,7 +837,10 @@
           "file": "scripts/handover/console-kit/headed-arm-leg.sh",
           "anchor": "launch a leg even though it has an un-acked"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M403,254 H433 V62 H403"
+      }
     },
     {
       "id": "e.arm.tier",
@@ -839,7 +854,10 @@
           "file": "scripts/handover/console-kit/headed-arm-leg.sh",
           "anchor": "has no '> **Tier:** $TIER_GATE — <category>: <reason>' line"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M328,234 V218"
+      }
     },
     {
       "id": "e.tick.nolive",
@@ -852,7 +870,10 @@
           "file": "scripts/handover/console-kit/tick.sh",
           "anchor": "nolive_min=\"${TICK_NOLIVE_MIN:-10}\""
         }
-      ]
+      ],
+      "path": {
+        "wide": "M128,234 V218"
+      }
     },
     {
       "id": "e.commit.reject",
@@ -865,7 +886,10 @@
           "file": "scripts/hooks/check-commit-msg.sh",
           "anchor": "COMMIT REJECTED: message does not match conventional commit format."
         }
-      ]
+      ],
+      "path": {
+        "wide": "M603,558 H628 V563 H603"
+      }
     },
     {
       "id": "e.push.marker",
@@ -878,7 +902,10 @@
           "file": "scripts/hooks/check-cr-before-push.sh",
           "anchor": "reviewable_docs=$(echo \"$files\" | grep -Ev"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M528,670 V686"
+      }
     },
     {
       "id": "e.pr.blocked",
@@ -891,7 +918,10 @@
           "file": "scripts/hooks/check-cr-marker-on-pr-create.sh",
           "anchor": "Automated review pending for ${branch} (HEAD=${short_head}). Run"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M728,498 V482"
+      }
     },
     {
       "id": "e.round.clean",
@@ -904,7 +934,10 @@
           "file": ".claude/commands/pr-check.md",
           "anchor": "5. **Clear.** Only if step 4.9 did not already clear the marker"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M728,482 V498"
+      }
     },
     {
       "id": "e.round.findings",
@@ -917,7 +950,10 @@
           "file": ".claude/commands/pr-check.md",
           "anchor": "4. **Cross-check.** Recompute the Critical/Important counts"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M653,458 H623 V569 H603"
+      }
     },
     {
       "id": "e.round.cap",
@@ -931,7 +967,10 @@
           "file": "scripts/cr/panel-first-pass.sh",
           "anchor": "ABORT - the three-round /pr-check cap refused another round"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M803,446 H828 V643 H803"
+      }
     },
     {
       "id": "e.cap.delta",
@@ -944,7 +983,10 @@
           "file": "scripts/cr/panel-first-pass.sh",
           "anchor": "delta round blocking set: Critical or escape-class only"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M803,650 H823 V452 H803"
+      }
     },
     {
       "id": "e.cap.console",
@@ -958,7 +1000,10 @@
           "file": "scripts/handover/console-kit/grant-round.sh",
           "anchor": "A PR parks at the round-3 cap (review-round.sh)"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M803,657 H833 V138 H803"
+      }
     },
     {
       "id": "e.ci.green",
@@ -972,7 +1017,10 @@
           "file": "scripts/check-ci.sh",
           "anchor": "all checks green AND all review threads resolved"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M928,630 V538"
+      }
     },
     {
       "id": "e.ci.red",
@@ -986,7 +1034,10 @@
           "file": "scripts/check-ci.sh",
           "anchor": "at least one check failed (--fail-fast: returns on the first red)"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,646 H1028 V462 H1003"
+      }
     },
     {
       "id": "e.ci.threads",
@@ -1000,7 +1051,10 @@
           "file": "scripts/check-ci.sh",
           "anchor": "checks green but the review state blocks the merge"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M853,643 H818 V459 H803"
+      }
     },
     {
       "id": "e.ci.blocked",
@@ -1014,7 +1068,10 @@
           "file": "scripts/check-ci.sh",
           "anchor": "GitHub will BLOCK this merge and waiting cannot fix it"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M853,650 H838 V358 H418 V70 H403"
+      }
     },
     {
       "id": "e.cired.fix",
@@ -1027,7 +1084,10 @@
           "file": "docs/handover/running-a-console.md",
           "anchor": "The automated review ledger is keyed by head sha, so **every push needs its own review"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M853,462 H813 V490 H633 V574 H603"
+      }
     },
     {
       "id": "e.verify.fail",
@@ -1041,7 +1101,10 @@
           "file": "scripts/handover/console-kit/ready-check.sh",
           "anchor": "1 — READY-CHECK FAIL (one or more checks failed)"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,128 H1023 V508 H1003"
+      }
     },
     {
       "id": "e.verify.trust",
@@ -1054,7 +1117,10 @@
           "file": "scripts/handover/console-kit/ready-check.sh",
           "anchor": "Prints `TRUST-PATH: yes|no` just"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,135 H1028 V316 H1003"
+      }
     },
     {
       "id": "e.verdict.nogo",
@@ -1067,7 +1133,10 @@
           "file": "scripts/handover/console-kit/verdict-go.sh",
           "anchor": "A NO-GO runs steps 1 and 3 only."
         }
-      ]
+      ],
+      "path": {
+        "wide": "M853,386 H843 V485 H618 V579 H603"
+      }
     },
     {
       "id": "e.verdict.go",
@@ -1080,7 +1149,10 @@
           "file": "scripts/handover/console-kit/verdict-go.sh",
           "anchor": "--trust-reviewed \"$QID\" \"$PR\" \"$HEAD_SHA\" || step_fail"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,382 H1033 V194 H1003"
+      }
     },
     {
       "id": "e.go.trustplain",
@@ -1094,7 +1166,10 @@
           "file": "scripts/handover/console-kit/go.sh",
           "anchor": "only --trust-reviewed <judge qid> may write it"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M928,274 V310"
+      }
     },
     {
       "id": "e.go.nodisposition",
@@ -1108,7 +1183,10 @@
           "file": "scripts/handover/console-kit/go.sh",
           "anchor": "has no valid disposition"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M928,274 V310"
+      }
     },
     {
       "id": "e.go.notready",
@@ -1122,7 +1200,10 @@
           "file": "scripts/handover/console-kit/go.sh",
           "anchor": "refused: ready-check.sh did not PASS for <pr> at <head>"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,238 H1018 V142 H1003"
+      }
     },
     {
       "id": "e.go.leg",
@@ -1136,7 +1217,10 @@
           "file": "scripts/handover/console-kit/go.sh",
           "anchor": "a leg never writes its own GO"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,242 H1038 V246 H1003"
+      }
     },
     {
       "id": "e.go.ok",
@@ -1150,7 +1234,10 @@
           "file": "scripts/handover/console-kit/go.sh",
           "anchor": "Prints the written path."
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1003,250 H1018 V452 H1053"
+      }
     },
     {
       "id": "e.mog.nogo",
@@ -1164,7 +1251,10 @@
           "file": "scripts/handover/merge-on-green.sh",
           "anchor": "policy-refused by the console-GO gate"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1053,458 H1033 V514 H1003"
+      }
     },
     {
       "id": "e.mog.trust",
@@ -1178,7 +1268,10 @@
           "file": "scripts/handover/merge-on-green.sh",
           "anchor": "trust-path gate: the PR changes a path matching the"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1053,466 H1038 V254 H1003"
+      }
     },
     {
       "id": "e.mog.mainred",
@@ -1192,7 +1285,10 @@
           "file": "scripts/handover/merge-on-green.sh",
           "anchor": "main-red gate: the newest COMPLETED, non-cancelled run"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1053,472 H1013 V291 H438 V76 H403"
+      }
     },
     {
       "id": "e.mog.ok",
@@ -1206,7 +1302,10 @@
           "file": "scripts/handover/merge-on-green.sh",
           "anchor": "--squash --match-head-commit"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1128,482 V498"
+      }
     },
     {
       "id": "e.wrap.withheld",
@@ -1219,7 +1318,10 @@
           "file": "scripts/handover/wrap-subtree-check.sh",
           "anchor": "WITHHELD: <n> process(es) still alive under claude pid <pid>"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1203,508 H1228 V514 H1203"
+      }
     },
     {
       "id": "e.event.handled",
@@ -1232,7 +1334,10 @@
           "file": "scripts/handover/console-kit/leg-event.sh",
           "anchor": "MERGED / WRAPPED  -> wrap-merged.sh"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1203,135 H1228 V254 H1203"
+      }
     },
     {
       "id": "e.event.residual",
@@ -1246,7 +1351,10 @@
           "file": "scripts/handover/console-kit/leg-event.sh",
           "anchor": "A WRAPPED line that mentions deferred, follow-up or residual with"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1128,162 V178"
+      }
     },
     {
       "id": "e.event.escalate",
@@ -1259,7 +1367,10 @@
           "file": "scripts/handover/console-kit/leg-event.sh",
           "anchor": "or say ESCALATE"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1053,142 H1043 V323 H1003"
+      }
     },
     {
       "id": "e.next.fill",
@@ -1272,7 +1383,10 @@
           "file": "scripts/handover/console/console.sh",
           "anchor": "fill_percent=\"${CONSOLE_FILL_PERCENT:-45}\""
         }
-      ]
+      ],
+      "path": {
+        "wide": "M203,198 H223 V170 H1223 V138 H1253"
+      }
     },
     {
       "id": "e.next.wrapblocked",
@@ -1286,7 +1400,10 @@
           "file": "scripts/handover/console/console.sh",
           "anchor": "wrap refused: this session has live subagents (above)"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1403,138 H1428 V146 H1403"
+      }
     },
     {
       "id": "e.next.complete",
@@ -1299,7 +1416,10 @@
           "file": "scripts/handover/console-kit/console-wait.sh",
           "anchor": "WAKE succession complete <k/n>   with --succession <successor>"
         }
-      ]
+      ],
+      "path": {
+        "wide": "M1253,146 H1233 V165 H233 V205 H203"
+      }
     },
     {
       "id": "f.c.pick.c.brief",
@@ -1307,7 +1427,10 @@
       "to": "c.brief",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M328,162 V178"
+      }
     },
     {
       "id": "f.c.brief.c.arm",
@@ -1315,7 +1438,10 @@
       "to": "c.arm",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M328,218 V234"
+      }
     },
     {
       "id": "f.l.live.l.red",
@@ -1323,7 +1449,10 @@
       "to": "l.red",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M528,482 V498"
+      }
     },
     {
       "id": "f.l.red.l.commit",
@@ -1331,7 +1460,10 @@
       "to": "l.commit",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M528,538 V554"
+      }
     },
     {
       "id": "f.l.commit.g.prepush",
@@ -1339,7 +1471,10 @@
       "to": "g.prepush",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M528,594 V630"
+      }
     },
     {
       "id": "f.g.marker.l.prcheck",
@@ -1347,7 +1482,10 @@
       "to": "l.prcheck",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M603,702 H638 V466 H653"
+      }
     },
     {
       "id": "f.l.pr.g.ci",
@@ -1355,7 +1493,10 @@
       "to": "g.ci",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M803,511 H813 V657 H853"
+      }
     },
     {
       "id": "f.l.ready.c.verify",
@@ -1363,7 +1504,10 @@
       "to": "c.verify",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M1003,522 H1008 V149 H1003"
+      }
     },
     {
       "id": "f.c.verify.c.go",
@@ -1371,7 +1515,10 @@
       "to": "c.go",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M1003,156 H1013 V258 H1003"
+      }
     },
     {
       "id": "f.l.wrap.c.legevent",
@@ -1379,7 +1526,10 @@
       "to": "c.legevent",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M1203,522 H1218 V142 H1203"
+      }
     },
     {
       "id": "f.j.judge.j.verdict",
@@ -1387,7 +1537,10 @@
       "to": "j.verdict",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M928,350 V366"
+      }
     },
     {
       "id": "f.c.verdictgo.c.go",
@@ -1395,7 +1548,10 @@
       "to": "c.go",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M928,218 V234"
+      }
     },
     {
       "id": "f.c.grant.l.prcheck",
@@ -1403,7 +1559,10 @@
       "to": "l.prcheck",
       "kind": "flow",
       "condition": "next step",
-      "sources": []
+      "sources": [],
+      "path": {
+        "wide": "M728,162 V442"
+      }
     }
   ],
   "walkthroughs": [
@@ -1776,6 +1935,67 @@
         "PARKED-BANK": "leg status: bank park, no graph decision",
         "RESUMED": "leg status: resume, no graph decision"
       }
+    }
+  },
+  "view": {
+    "wide": {
+      "w": 1464,
+      "h": 744,
+      "box": [
+        150,
+        40
+      ],
+      "slot": 200,
+      "lm": 28,
+      "hdr": 28,
+      "lanes": {
+        "operator": [
+          28,
+          76
+        ],
+        "console": [
+          104,
+          188
+        ],
+        "judge": [
+          292,
+          132
+        ],
+        "leg": [
+          424,
+          188
+        ],
+        "gates": [
+          612,
+          132
+        ]
+      },
+      "phases": [
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          1
+        ]
+      ]
     }
   }
 }
