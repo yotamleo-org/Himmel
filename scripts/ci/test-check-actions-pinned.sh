@@ -81,6 +81,10 @@ printf 'jobs:\n  a:\n    container: ghcr.io/o/img@sha256:%s\n    services:\n    
 expect "digest-pinned container: and services: image:" 0 "$tmp/ctr-digest.yml"
 printf "jobs:\n  a:\n    container:\n      image: \${{ vars.CI_IMAGE || 'ghcr.io/o/img@sha256:%s' }}\n" "$dig" > "$tmp/ctr-expr-digest.yml"
 expect "expression whose default is digest-pinned" 0 "$tmp/ctr-expr-digest.yml"
+printf "jobs:\n  a:\n    container:\n      image: \${{ vars.X == 'on' && 'ubuntu' || 'ghcr.io/o/img@sha256:%s' }}\n" "$dig" > "$tmp/ctr-expr-bare.yml"
+expect "expression with a bare-name image branch" 1 "$tmp/ctr-expr-bare.yml"
+printf "jobs:\n  a:\n    container:\n      image: \"\${{ vars.X == 'on' && '' || 'ghcr.io/o/img@sha256:%s' }}\"\n" "$dig" > "$tmp/ctr-expr-quoted.yml"
+expect "YAML-quoted expression with a digest default and an empty branch" 0 "$tmp/ctr-expr-quoted.yml"
 
 echo "== unreadable file is a scan failure, not a clean pass =="
 printf '    steps:\n      - uses: actions/checkout@v7\n' > "$tmp/locked.yml"

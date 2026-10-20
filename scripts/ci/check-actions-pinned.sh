@@ -68,8 +68,9 @@ fi
 
 # Container images: a `container: <ref>` or `image: <ref>` line (job container,
 # services:) must carry `@sha256:<64 hex>`. A `${{ ... }}` value passes when it
-# names at least one single-quoted image literal and every one is digest-pinned:
-# the vars.CI_IMAGE override itself is a repo setting, not file content.
+# names at least one non-empty single-quoted literal outside an == / != comparison
+# and every such literal is digest-pinned: the vars.CI_IMAGE override itself is a
+# repo setting, not file content.
 # `container:` with no value (the mapping form) is checked on its `image:` line.
 found=$(grep -rnHE --null --include='*.yml' --include='*.yaml' \
   '^[[:space:]]*-?[[:space:]]*(container|image):[[:space:]]*[^[:space:]#]' "${existing[@]}" | tr '\0' "$sep")
@@ -84,15 +85,18 @@ unpinned=()
 while IFS= read -r line; do
   [ -n "$line" ] || continue
   value=$(printf '%s\n' "${line#*"$sep"}" | sed -E 's/^[0-9]+:[[:space:]]*-?[[:space:]]*(container|image):[[:space:]]*//; s/[[:space:]]+#.*$//')
+  if [[ "$value" == \"*\" ]]; then value=${value#\"}; value=${value%\"}; fi
   if [[ "$value" == \$\{\{* ]]; then
-    literals=$(grep -oE "'[^']*[/:][^']*'" <<< "$value" | tr -d "'")
+    # An == / != operand is a comparison, not an image; '' means no container.
+    literals=$(sed -E "s/(==|!=)[[:space:]]*'[^']*'//g; s/'[^']*'[[:space:]]*(==|!=)//g; s/''//g" <<< "$value" \
+      | grep -oE "'[^']+'" | tr -d "'")
     ok=1
     [ -n "$literals" ] || ok=0
     while IFS= read -r lit; do
       [ -n "$lit" ] && ! [[ "$lit" =~ $digest_re ]] && ok=0
     done <<< "$literals"
   else
-    value=${value#[\"\']}; value=${value%[\"\']}
+    value=${value#\'}; value=${value%\'}
     ok=0
     [[ "$value" =~ $digest_re ]] && ok=1
   fi
