@@ -39,6 +39,7 @@ mkrow() { # <mins-ago> <session_title> <session_id> <tool> <input_head> <input_s
     printf '{"ts":"%s","session_id":"%s","session_title":"%s","cwd":"/x/.claude/worktrees/%s","tool":"%s","reason_tag":"SECRETREASON","input_sha":"%s","input_head":"%s"}\n' \
         "$ts" "$3" "$2" "$2" "$4" "$6" "$5" >> "$HIMMEL_CLASSIFIER_DENIALS_LOG"
 }
+has() { grep -q "$@"; case $? in 0) echo yes ;; 1) echo no ;; *) echo error ;; esac; }  # a grep error is neither yes nor no
 sent() { wc -l < "$SENT_LOG" | tr -d ' '; }
 
 # --- (a) a denied launch alerts once -----------------------------------------
@@ -50,8 +51,8 @@ check "(a) it names the leg" "yes" "$(grep -q 'feat+leg-a' "$SENT_LOG" && echo y
 check "(a) it says launch denied" "yes" "$(grep -qi 'launch denied' "$SENT_LOG" && echo yes)"
 check "(a) it names the tool" "yes" "$(grep -q 'Bash' "$SENT_LOG" && echo yes)"
 check "(a) it points at the local log path" "yes" "$(grep -qF "$HIMMEL_CLASSIFIER_DENIALS_LOG" "$SENT_LOG" && echo yes)"
-check "(a) it carries no command text" "no" "$(grep -q 'SECRETCMD\|headed-arm-leg' "$SENT_LOG" && echo yes || echo no)"
-check "(a) it carries no reason" "no" "$(grep -q 'SECRETREASON' "$SENT_LOG" && echo yes || echo no)"
+check "(a) it carries no command text" "no" "$(has 'SECRETCMD\|headed-arm-leg' "$SENT_LOG")"
+check "(a) it carries no reason" "no" "$(has 'SECRETREASON' "$SENT_LOG")"
 
 # --- (b) a repeat scan is deduplicated ---------------------------------------
 bash "$SUT" >/dev/null 2>&1
@@ -98,6 +99,31 @@ bash "$SUT" >/dev/null 2>&1
 check "(h) a stale abandoned claim is sent once" "4" "$(sent)"
 bash "$SUT" >/dev/null 2>&1
 check "(h) and never again" "4" "$(sent)"
+
+# --- (i) two scans racing on one stale claim alert exactly once ----------------
+# A find shim widens the window between the stale check and the reclaim: the first
+# caller waits 0.1s, the second 0.6s, so an unserialized second scan removes the
+# first one's fresh claim and both send.
+mkrow 1 feat+leg-i sid-i Bash 'bash scripts/handover/console-kit/headed-arm-leg.sh --i' sha-i
+MERGE_BLOCK_ALERT_CMD="$WORK/kill.sh" bash "$SUT" >/dev/null 2>&1
+find "$HIMMEL_DENIAL_ALERT_DIR" -type f -size 0 -exec touch -d '-10 minutes' {} + 2>/dev/null
+mkdir -p "$WORK/shim"
+cat > "$WORK/shim/find" <<'EOF'
+#!/usr/bin/env bash
+out="$("$REAL_FIND" "$@")"
+if mkdir "$FIND_FIRST" 2>/dev/null; then sleep 0.1; else sleep 0.6; fi
+[ -z "$out" ] || printf '%s\n' "$out"
+EOF
+chmod +x "$WORK/shim/find"
+export REAL_FIND FIND_FIRST="$WORK/find-first"
+REAL_FIND="$(command -v find)"
+before="$(sent)"
+PATH="$WORK/shim:$PATH" timeout 30 bash "$SUT" >/dev/null 2>&1 &
+pid_a=$!
+PATH="$WORK/shim:$PATH" timeout 30 bash "$SUT" >/dev/null 2>&1 &
+pid_b=$!
+wait "$pid_a" "$pid_b"
+check "(i) two concurrent scans of one stale claim send once" "$((before + 1))" "$(sent)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
