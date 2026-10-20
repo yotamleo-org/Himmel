@@ -207,6 +207,7 @@ nodes = [
     node("rec_fn", "reconcile_worker_rows()", "scripts/handover/reconcile-workers.sh"),
     node("await_w", "await-glm-worker.sh", "scripts/lanes/await-glm-worker.sh"),
     node("pc", "prompt-cache.md", "docs/internals/prompt-cache.md", "document"),
+    node("hud_w", "git-worker.ts", "plugins/hud/src/git-worker.ts", rationale="A worker thread polls git status for the worker pool."),
 ]
 json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
 PY
@@ -225,6 +226,11 @@ case "$got" in preface\ *) pass "S15 worker/chief question leads with the leg pr
 # S16: a question about the lane worker itself still leads with it.
 got="$(aseeds "how does stop-worker.sh stop a lane worker")"
 case "$got" in stop_w\ *) pass "S16 a lane-worker question keeps stop-worker.sh first" ;; *) fail "S16 got='$got'" ;; esac
+
+# S17: registry words alone never bring a file in: an old-term question asked in the new
+# vocabulary seeds no file whose only match is "worker" in another sense.
+got="$(aseeds "what is a wave of legs")"
+case "$got" in *_w\ *) fail "S17 got='$got'" ;; *) pass "S17 swapped-in words alone seed no worker-sense file" ;; esac
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

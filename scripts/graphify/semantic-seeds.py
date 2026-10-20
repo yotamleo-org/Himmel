@@ -12,9 +12,11 @@ such as Need or Token and the file that answers it is missing. leg-graph.sh uses
       across all files. Prints nothing when no file scores or the graph cannot be read.
       Files under EVAL_DIR are never candidates. The question is also asked in the other fleet
       vocabulary (scripts/qmd/vocab-expand.py swaps console/chief, leg/worker, ... from the rename
-      registry) and a file keeps its best score over the versions. A file the registry marks
-      other-sense (stop-worker.sh: a lane worker, not a renamed leg) earns no path bonus from a
-      registry word, so "worker" in either sense never seeds it by its name alone.
+      registry) and a file keeps its best score over the versions. A swapped version only
+      re-ranks a file that already shares a non-registry word with the question, so swapped-in
+      words alone never bring a file in ("wave of legs" never seeds a worker thread). A file the
+      registry marks other-sense (stop-worker.sh: a lane worker, not a renamed leg) earns no path
+      bonus from a registry word, so "worker" in either sense never seeds it by its name alone.
 
   scored <graph.json> <question>
       The same ids, preceded by one line "<weak|strong> <top score> <top file>". A match is weak
@@ -134,11 +136,13 @@ def ranked(graph, question):
             s *= TEST_FACTOR
         return s
 
+    core = qs[0] - alias
     scored = []
     for src, d in docs.items():
         if src not in filenode:
             continue
-        best = [s for s in (score(src, d, q) for q in qs) if s is not None]
+        swapped = qs[1:] if any(t in d for t in core) else []
+        best = [s for s in (score(src, d, q) for q in qs[:1] + swapped) if s is not None]
         if best:
             scored.append((max(best), src))
     scored.sort(key=lambda x: (-x[0], x[1]))
