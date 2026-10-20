@@ -100,6 +100,26 @@ def logical_lines(text):
         yield first, pending
 
 
+def mask_single_quotes(line):
+    """Blank single-quoted spans, ignoring apostrophes that are escaped or inside double quotes."""
+    out, i, double = list(line), 0, False
+    while i < len(line):
+        char = line[i]
+        if char == "\\":
+            i += 2
+            continue
+        if char == '"':
+            double = not double
+        elif char == "'" and not double:
+            end = line.find("'", i + 1)
+            if end < 0:
+                break
+            out[i:end + 1] = " " * (end + 1 - i)
+            i = end
+        i += 1
+    return "".join(out)
+
+
 def shell_launches(text):
     errors = []
     # Require the owned runner path at the call site, never a mutable binding.
@@ -130,7 +150,7 @@ def shell_launches(text):
         positions = {m.start() for m in reference.finditer(line)}
         # Single-quoted text is literal payload data, so it cannot name a variable
         # an interpreter runs; hook-named references above are still scanned raw.
-        masked = re.sub(r"'[^']*'", lambda m: " " * len(m.group()), line)
+        masked = mask_single_quotes(line)
         positions |= {m.start("ref") for m in runs_variable.finditer(masked)}
         for position in sorted(positions):
             if any(start <= position < end for start, end in owned):

