@@ -23,8 +23,8 @@ cat > "$TMP/bin/gh" <<'EOF'
 [ -n "${FAKE_GH_FAIL:-}" ] && { echo "fake-gh: simulated API failure" >&2; exit 1; }
 shift; path="$1"; shift
 echo "$path $*" >> "$FX/calls.log"
-expr=""
-while [ $# -gt 0 ]; do case "$1" in --jq) expr="$2"; shift 2 ;; *) shift ;; esac; done
+expr=""; paginate=""
+while [ $# -gt 0 ]; do case "$1" in --jq) expr="$2"; shift 2 ;; --paginate) paginate=1; shift ;; *) shift ;; esac; done
 case "$path" in
   *status=in_progress*) f="$FX/runs-in_progress.json" ;;
   *status=queued*)      f="$FX/runs-queued.json" ;;
@@ -33,7 +33,9 @@ case "$path" in
   *) echo "fake-gh: unsupported $path" >&2; exit 1 ;;
 esac
 [ -f "$f" ] || { echo "fake-gh: no fixture $f" >&2; exit 1; }
-jq -r "$expr" < "$f"
+jq -r "$expr" < "$f" || exit 1
+# --paginate reads a second page too when its fixture exists, as gh runs --jq per page
+if [ -n "$paginate" ] && [ -f "${f%.json}-p2.json" ]; then jq -r "$expr" < "${f%.json}-p2.json"; fi
 EOF
 chmod +x "$TMP/bin/gh"
 
@@ -160,6 +162,14 @@ reset
 runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
 out="$(run)"
 is "runs listings carry --paginate" "3" "$(grep -c 'actions/runs?status=.*--paginate' "$TMP/fx/calls.log")"
+
+# a run that is only on the second page of a listing is still counted
+reset
+runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json in_progress 2 > "$TMP/fx/runs-in_progress-p2.json"
+runs_json queued > "$TMP/fx/runs-queued.json"
+jobs_json 3 0 0 "$t3" > "$TMP/fx/jobs-1.json"; jobs_json 4 0 0 "$t3" > "$TMP/fx/jobs-2.json"
+out="$(run)"
+is "run on listing page two counted" "ci-queue: jobs_in_progress=7/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
 
 # a jobs page that is shorter than the run's total_count is not a full count
 reset
