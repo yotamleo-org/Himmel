@@ -1353,8 +1353,9 @@ reclaim_detached() {
 load_fresh_lock_docs() (
     # shellcheck source=handover/queue-lock.sh
     # shellcheck disable=SC1091
-    . "$SCRIPT_DIR/handover/queue-lock.sh"
-    _ql_lock_roots | while IFS= read -r root; do
+    . "$SCRIPT_DIR/handover/queue-lock.sh" || exit 1
+    roots=$(_ql_lock_roots) || exit 1
+    while IFS= read -r root; do
         [ -d "$root/.locks/queue" ] || continue
         for lockdir in "$root"/.locks/queue/*.lock; do
             [ -f "$lockdir/owner.json" ] || continue
@@ -1364,22 +1365,27 @@ load_fresh_lock_docs() (
                 *"status: FRESH"*) printf '%s\n' "$doc" ;;
             esac
         done
-    done
+    done <<<"$roots"
 )
 FRESH_LOCK_DOCS=""
 FRESH_LOCK_DOCS_LOADED=0
-# branch_in_fresh_lock_doc <branch> — 0 when a FRESH-locked leg doc names it.
+FRESH_LOCK_DOCS_FAILED=0
+# branch_in_fresh_lock_doc <branch> — 0 when a FRESH-locked leg doc names it,
+# and also when the docs cannot be listed or read: a delete path fails closed.
 branch_in_fresh_lock_doc() {
-    local pat doc
+    local pat doc rc
     if [ "$FRESH_LOCK_DOCS_LOADED" -eq 0 ]; then
         FRESH_LOCK_DOCS_LOADED=1
-        FRESH_LOCK_DOCS=$(load_fresh_lock_docs) || FRESH_LOCK_DOCS=""
+        FRESH_LOCK_DOCS=$(load_fresh_lock_docs) || FRESH_LOCK_DOCS_FAILED=1
     fi
+    [ "$FRESH_LOCK_DOCS_FAILED" -eq 0 ] || return 0
     [ -n "$FRESH_LOCK_DOCS" ] || return 1
     # shellcheck disable=SC2016  # the sed script is a literal bracket class
     pat=$(printf '%s' "$1" | sed 's/[][\.*^$()+?{}|/]/\\&/g')
     while IFS= read -r doc; do
-        grep -qE "(^|[^A-Za-z0-9._/-])${pat}([^A-Za-z0-9._/-]|\$)" "$doc" 2>/dev/null && return 0
+        rc=0
+        grep -qE "(^|[^A-Za-z0-9._/-])${pat}([^A-Za-z0-9._/-]|\$)" "$doc" 2>/dev/null || rc=$?
+        [ "$rc" -eq 1 ] || return 0
     done <<<"$FRESH_LOCK_DOCS"
     return 1
 }

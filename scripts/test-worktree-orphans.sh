@@ -294,6 +294,17 @@ expect "7: a tree whose branch a live leg doc names is kept" "$out" is_dir "$WT_
 expect "7: a branch that only shares the doc's branch prefix is reclaimed" "$out" is_gone "$WT_PARK_DOC2"
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-live.md" >/dev/null 2>&1 || true
 
+# a lock doc that cannot be read leaves "no live leg names this branch" unproven
+WT_PARK_UNREAD=$(mk_wt parkunread fix/park-unread 1) || exit 1
+printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/other\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-unread.md"
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-unread.md" "orphans-test-unread-$$" >/dev/null 2>&1 \
+    || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
+chmod 000 "$HANDOVER_ROOT/leg-unread.md"
+out=$(run_wt prune)
+chmod 600 "$HANDOVER_ROOT/leg-unread.md"
+expect "7: a parked tree is kept when a live lock doc cannot be read" "$out" is_dir "$WT_PARK_UNREAD"
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-unread.md" >/dev/null 2>&1 || true
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
