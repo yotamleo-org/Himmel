@@ -464,6 +464,41 @@ assert_rc "non-busy update failure rc 3" 3 "$rc"
 got_calls=$(calls | tr '\n' ',')
 if [ "$got_calls" = "update," ]; then pass "non-busy update failure runs update once"; else fail "non-busy update failure runs update once" "$got_calls"; fi
 
+echo "TEST: a non-numeric or negative wait/retry value falls back to the default instead of looping"
+reset_state
+echo 1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=abc QMD_REINDEX_BUSY_RETRY_SECS=0 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "bad wait value still finishes" 0 "$rc"
+assert_contains "bad wait value is called out" "ignoring non-numeric seconds value 'abc'" "$out"
+reset_state
+echo 1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=2 QMD_REINDEX_BUSY_RETRY_SECS=-5 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "bad retry value still finishes" 0 "$rc"
+assert_contains "bad retry value is called out" "ignoring non-numeric seconds value '-5'" "$out"
+
+echo "TEST: a leading-zero retry value is decimal, not octal"
+reset_state
+echo 1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=08 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "08 retry is accepted" 0 "$rc"
+assert_contains "08 retry is clamped to the remaining wait" "retrying in 5s" "$out"
+
+echo "TEST: one sleep never overshoots the wait bound"
+reset_state
+echo -1 > "$STATE/busy-update"
+start=$SECONDS
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "short bound still ends rc 3" 3 "$rc"
+if [ $((SECONDS - start)) -le 5 ]; then pass "30s retry under a 1s bound ends within 5s"; else fail "30s retry under a 1s bound ends within 5s" "took $((SECONDS - start))s"; fi
+
+echo "TEST: the hash-count relabel still applies to an update that succeeds after a retry"
+reset_state
+echo 1 > "$STATE/busy-update"
+touch "$STATE/hash-count"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "retry plus hash count rc 0" 0 "$rc"
+assert_contains "retried update output is relabelled" "not a pending chunk count" "$out"
+
 echo "TEST: 'qmd embed' failure exits 4 and says vectors are stale"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true

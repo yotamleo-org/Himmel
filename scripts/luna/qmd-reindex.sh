@@ -231,18 +231,32 @@ run_embed() {
     done
 }
 
-# Best-effort: who has the index open right now, for the rc 3 log line.
+# Best-effort: who has the index (or its WAL side files) open right now, for
+# the busy log lines.
 index_holders() {
     local h=""
     if command -v fuser >/dev/null 2>&1; then
-        h=$(fuser "$QMD_INDEX_PATH" 2>/dev/null | tr -s ' ' || true)
-        [ -z "$h" ] || { printf 'pids:%s' "$h"; return 0; }
+        h=$(fuser "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | tr -s ' \n' ' ' || true)
+        h="${h# }"; h="${h% }"
+        [ -z "$h" ] || { printf 'pids: %s' "$h"; return 0; }
     fi
     if command -v lsof >/dev/null 2>&1; then
-        h=$(lsof -t -- "$QMD_INDEX_PATH" 2>/dev/null | tr '\n' ' ' || true)
+        h=$(lsof -t -- "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | sort -u | tr -s ' \n' ' ' || true)
+        h="${h# }"; h="${h% }"
         [ -z "$h" ] || { printf 'pids: %s' "$h"; return 0; }
     fi
     printf 'unknown'
+}
+
+# A non-negative decimal integer, else the default (a bad env value must not
+# turn the bounded wait into an endless loop).
+secs_or_default() {
+    case "$1" in
+        ''|*[!0-9]*)
+            [ -z "$1" ] || echo "WARN qmd-reindex: ignoring non-numeric seconds value '$1'; using $2." >&2
+            printf '%s' "$2" ;;
+        *) printf '%s' "$((10#$1))" ;;
+    esac
 }
 
 # `qmd update` dies with SQLITE_BUSY ("database is locked") while another writer
@@ -251,9 +265,9 @@ index_holders() {
 # QMD_REINDEX_BUSY_WAIT_SECS in total. Any other failure, and a lock held past
 # the bound, return nonzero at once so the caller still exits 3.
 run_update() {
-    local wait_max="${QMD_REINDEX_BUSY_WAIT_SECS:-180}"
-    local step="${QMD_REINDEX_BUSY_RETRY_SECS:-10}"
-    local waited=0 out rc
+    local wait_max step waited out rc nap t0="$SECONDS"
+    wait_max=$(secs_or_default "${QMD_REINDEX_BUSY_WAIT_SECS:-}" 180)
+    step=$(secs_or_default "${QMD_REINDEX_BUSY_RETRY_SECS:-}" 10)
     while :; do
         rc=0
         out=$(run_qmd update 2>&1) || rc=$?
@@ -261,19 +275,19 @@ run_update() {
             relabel_hash_count <<<"$out"
             return 0
         fi
-        printf '%s\n' "$out" >&2
+        relabel_hash_count <<<"$out" >&2
         if ! grep -qE -- 'SQLITE_BUSY|database is locked' <<<"$out"; then
             return "$rc"
         fi
+        waited=$((SECONDS - t0))
         if [ "$waited" -ge "$wait_max" ]; then
             echo "ERR qmd-reindex: index still busy after ${waited}s (SQLITE_BUSY); lock holder: $(index_holders)" >&2
             return "$rc"
         fi
-        echo "qmd-reindex: index busy (SQLITE_BUSY; holder: $(index_holders)); retrying in ${step}s (waited ${waited}s of ${wait_max}s)" >&2
-        sleep "$step"
-        waited=$((waited + step))
-        # A zero step must still advance, or a held lock would loop forever.
-        [ "$step" -gt 0 ] || waited=$((waited + 1))
+        nap="$step"
+        [ "$nap" -le $((wait_max - waited)) ] || nap=$((wait_max - waited))
+        echo "qmd-reindex: index busy (SQLITE_BUSY; holder: $(index_holders)); retrying in ${nap}s (waited ${waited}s of ${wait_max}s)" >&2
+        sleep "$nap"
     done
 }
 
