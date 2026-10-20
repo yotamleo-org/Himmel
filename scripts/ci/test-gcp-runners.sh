@@ -47,7 +47,12 @@ case "$*" in
         [ "${STUB_GONE:-}" = 1 ] && { echo "ERROR: (gcloud.compute.instances.describe) Could not fetch resource:" >&2; echo " - The resource 'projects/himmel-ci/zones/us-central1-a/instances/$d' was not found" >&2; exit 1; }
         [ "${STUB_GONE:-}" = other ] && { echo "ERROR: (gcloud.compute.instances.describe) Could not fetch resource:" >&2; echo " - The resource 'projects/himmel-ci/zones/us-central1-a/instances/x' was not found" >&2; exit 1; }
         [ "${STUB_GONE:-}" = err ] && { echo "ERROR: (gcloud.compute.instances.describe) HTTPError 503: backend error" >&2; exit 1; } ;;
-    *"regions describe"*) [ "${STUB_FAIL:-}" = quota ] && exit 1; printf '%s\n' "${STUB_QUOTA:-8.0	1.0}" ;;
+    *"regions describe"*)
+        # the installed gcloud rejects --filter on regions describe (unrecognized arguments)
+        case "$*" in *--filter*) echo "ERROR: (gcloud.compute.regions.describe) unrecognized arguments: --filter=quotas.metric=CPUS" >&2; exit 2 ;; esac
+        [ "${STUB_FAIL:-}" = quota ] && exit 1
+        # --flatten=quotas --format=value(quotas.metric,quotas.limit,quotas.usage): one tab-separated row per quota
+        printf 'INSTANCES\t24000.0\t2.0\nCPUS\t%s\nCPUS_ALL_REGIONS\t12.0\t3.0\n' "${STUB_QUOTA:-8.0	1.0}" ;;
 esac
 exit 0
 STUB
@@ -57,6 +62,9 @@ printf 'GH %s\n' "$*" >> "$STUB_LOG"
 case "$*" in
     *generate-jitconfig*) [ "${STUB_FAIL:-}" = jit ] && exit 1; echo "JITCFG-abc123" ;;
     *'status=="online"'*) [ "${STUB_ONLINE:-}" = none ] || grep -o 'name=himmel-ci-[^ ]*' "$STUB_LOG" | cut -d= -f2 ;;
+    *"actions/runners --jq"*'select(.name=='*)
+        rn="$(printf '%s' "$*" | sed -n 's/.*select(\.name=="\([^"]*\)").*/\1/p')"
+        [ -n "$rn" ] && grep -qF "name=$rn" "$STUB_LOG" && printf '4242\n' ;;
     *"actions/runners --jq"*) printf '4242\n' ;;
     *"variable get CI_GCP"*) cat "$STUB_VAR" ;;
 esac
@@ -94,7 +102,7 @@ rc="$(run up)";   if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "up defa
 
 # 3. every create carries the safety flags; every gcloud call is impersonated.
 rc="$(run up 1)"
-for f in '--provisioning-model=SPOT' '--max-run-duration=45m' '--instance-termination-action=DELETE' \
+for f in '--provisioning-model=SPOT' '--max-run-duration=75m' '--instance-termination-action=DELETE' \
          '--labels=himmel-ci-runner=gcp' '--impersonate-service-account=himmel-ci-runner@himmel-ci.iam.gserviceaccount.com' \
          '--machine-type=e2-standard-4' '--boot-disk-type=pd-balanced' '--boot-disk-size=50GB' '--project=himmel-ci' '--no-service-account' '--no-scopes' '--network=himmel-ci-net' '--subnet=himmel-ci-net' '--no-address' '--zone=us-central1-a'; do
     n="$(grep 'instances create' "$STUB_LOG" | grep -cF -- "$f")"
@@ -258,6 +266,10 @@ export STUB_QUOTA="8.0	4.0"
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "quota with exactly 4 vCPU headroom creates the VM"; else bad "exact headroom: rc=$rc"; fi
 export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=e2-custom-4-8192
 rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "a custom machine type counts its vCPU field, not the memory"; else bad "custom machine: rc=$rc"; fi
+export STUB_QUOTA="8.0	4.0" GCP_RUNNERS_MACHINE=n2-custom-4-32768-ext
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "an extended-memory custom type (-ext suffix) counts its vCPU field"; else bad "custom -ext machine: rc=$rc"; fi
+export STUB_QUOTA="8.0	0.0" GCP_RUNNERS_MACHINE=n2-custom-08-32768-ext
+rc="$(run up 1)"; if [ "$rc" -eq 0 ] && [ "$(creates)" -eq 1 ]; then ok "a zero-padded vCPU field is read as decimal, not octal"; else bad "custom 08 machine: rc=$rc"; fi
 unset STUB_QUOTA GCP_RUNNERS_MACHINE
 export STUB_FAIL=quota
 rc="$(run up 1)"; if [ "$rc" -ne 0 ] && [ "$(creates)" -eq 0 ]; then ok "an unreadable quota refuses to create"; else bad "quota read fail: rc=$rc"; fi

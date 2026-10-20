@@ -19,8 +19,10 @@ FENCE="$HOOKS/block-terminal-write-fence.sh"
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
-_REAL_HOME="$HOME"
-FIX=$(mktemp -d "${_REAL_HOME}/.himmel-2526-fencefix-XXXXXX") || exit 1
+# shellcheck source=lib-fixture-root.sh
+. "$HOOKS/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || exit 1
+FIX=$(mktemp -d "$_FROOT/.himmel-2526-fencefix-XXXXXX") || exit 1
 TMPFIX=""
 trap 'rm -rf "$FIX" "$TMPFIX"' EXIT
 

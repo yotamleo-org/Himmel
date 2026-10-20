@@ -10,7 +10,8 @@
 # (`bash block-write-into-main-checkout.sh` with the JSON payload on stdin)
 # and sourced (`bash block-terminal-write-fence.sh`, the codex adapter).
 #
-# FIXTURE RULE (load-bearing): fixtures are rooted under the REAL $HOME, NOT
+# FIXTURE RULE (load-bearing): fixtures are rooted under a non-temp home
+# (lib-fixture-root.sh), NOT
 # a bare `mktemp -d`. `/tmp` paths are exempted by is_temp_or_devnull, so a
 # DENY row rooted under mktemp -d would pass as ALLOW for the wrong reason.
 set -uo pipefail
@@ -23,8 +24,10 @@ FENCE="$HOOKS/block-terminal-write-fence.sh"
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
-_REAL_HOME="$HOME"
-FIX=$(mktemp -d "${_REAL_HOME}/.himmel-4329-fencefix-XXXXXX") || exit 1
+# shellcheck source=lib-fixture-root.sh
+. "$HOOKS/lib-fixture-root.sh"
+_FROOT=$(fixture_root) || exit 1
+FIX=$(mktemp -d "$_FROOT/.himmel-4329-fencefix-XXXXXX") || exit 1
 trap 'rm -rf "$FIX"' EXIT
 
 export HOME="$FIX/home"
