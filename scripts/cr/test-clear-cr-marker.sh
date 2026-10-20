@@ -3668,7 +3668,7 @@ write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "12a judge-go clears a fixed Important at the reviewed head -> exit 0"
 if marker_exists "$tmp"; then fail "12a: marker must be cleared"; else pass; fi
-if grep -F 'JUDGE-GO' "$tmp/.git/clear-cr-marker.log" | grep -qF 'source=judge:jTEST/GO'; then pass; else fail "12a: the audit must carry the JUDGE-GO line with the judge qid"; fi
+if grep -F ' JUDGE-GO ' "$tmp/.git/clear-cr-marker.log" | grep -qF 'source=judge:jTEST/GO'; then pass; else fail "12a: the audit must carry the JUDGE-GO line with the judge qid"; fi
 if grep -F 'FIXED-UNDER-JUDGE-GO' "$tmp/.git/clear-cr-marker.log" | grep -qF 'codex-1'; then pass; else fail "12a: the audit must name the fixed finding the judge GO covered"; fi
 rm -rf "$tmp"
 
