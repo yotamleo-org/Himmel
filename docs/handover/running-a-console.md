@@ -633,8 +633,8 @@ bash scripts/handover/console-kit/vm-runner.sh status
   budget plus ten minutes; `FAILING` is a loop whose newest log line is an
   error, or a GitHub runner count that could not be read; `DISAGREE` is more units
   with a registered, unfinished runner than GitHub shows himmel-vm runners
-  online (fewer online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD` or
-  `STUCK`; answer with `status`, then `off` and a note to the operator.
+  online (fewer online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD`,
+  `STUCK` or `DISAGREE`; answer with `status`, then `off` and a note to the operator.
 - With the variable `on`, `ci.yml` runs the `shell-unit-shard` matrix on the VM
   runner for a same-repo `pull_request` whose author and actor are the operator
   accounts; everything else (fork PRs, other authors, push, schedule, dispatch)
