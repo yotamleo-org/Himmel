@@ -148,6 +148,11 @@ O=$(bash "$SCRIPT" --data-dir "$TMP/cap-fail" "${CAP[@]}" 2>&1); RC=$?
 has "cap-check FAIL: verdict" "$O" "Verdict: FAIL"
 has "cap-check FAIL: per-minute row" "$O" "| 2026-10-20T10:00:00Z | 60 | 10 |"
 eq "cap-check FAIL: exit 1" "$RC" "1"
+# Jobs cancelled while queued waited for a runner until the cancel: that wait is cap-check demand.
+mk "$TMP/cap-cq" "$(jq -n --argjson r "$(capjobs 60 0)" '$r + [range(0; 10) as $i | {run_id: 1, name: "c\($i)", status: "completed", conclusion: "cancelled", created_at: "2026-10-20T10:00:00Z", started_at: "2026-10-20T10:00:00Z", completed_at: "2026-10-20T10:30:00Z", rest: true, ran: false}]')"
+O=$(bash "$SCRIPT" --data-dir "$TMP/cap-cq" "${CAP[@]}" 2>&1); RC=$?
+has "cap-check FAIL: jobs cancelled while queued count as queued demand" "$O" "| 2026-10-20T10:00:00Z | 60 | 10 |"
+eq "cap-check FAIL with cancelled-while-queued jobs: exit 1" "$RC" "1"
 mk "$TMP/cap-inc" "$(capjobs 10 0)"
 O=$(bash "$SCRIPT" --data-dir "$TMP/cap-inc" "${CAP[@]}" 2>&1); RC=$?
 has "cap-check INCONCLUSIVE: verdict" "$O" "Verdict: INCONCLUSIVE"
@@ -183,6 +188,8 @@ has "default repo is the org slug" "$(cat "$TMP/gh-empty.log")" "repos/yotamleo-
 O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-live.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" \
   bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1); RC=$?
 eq "live run: exit code" "$RC" "0"
+has "live run: GraphQL asked for the run's node id" "$(cat "$TMP/gh-live.log")" "ids[]=WFR_kwLOS8WKNM8AAAAJKutYBA"
+has "live run: REST jobs read for the cancelled run" "$(cat "$TMP/gh-live.log")" "repos/yotamleo-org/Himmel/actions/runs/39374772228/jobs"
 has "live run: 50 jobs" "$O" "| jobs | 50 |"
 # 20 jobs ran (REST steps); the 5 cancelled with started == created never did; 25 were skipped.
 has "live run: runner-min from the 20 jobs that ran (2298 s)" "$O" "| runner-min total | 38.3 |"

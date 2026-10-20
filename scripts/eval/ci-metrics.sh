@@ -371,8 +371,9 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
   def perminute($iv): (reduce $iv[] as $x ([range(0; $nm + 1) | 0]; mi($x.s) as $a | mi($x.e) as $b | if $a < $b then .[$a] += 1 | .[$b] -= 1 else . end))
     | . as $D | reduce range(0; $nm) as $i ({c: 0, a: []}; .c += $D[$i] | .a += [.c]) | .a;
   ($J | map(select(.started) | {s: (.started_at | t), e: .e} | select(.e > .s)) | perminute(.)) as $RUN
-| ($J | map(select((.never | not) and .conclusion != "skipped")
-      | if .started and .rest == true then {s: (.created_at | t), e: (.started_at | t)}
+| ($J | map(select(.conclusion != "skipped")
+      | if .never then (if .rest == true and .completed_at != null then {s: (.created_at | t), e: ([(.completed_at | t), $now] | min)} else empty end)
+        elif .started and .rest == true then {s: (.created_at | t), e: (.started_at | t)}
         elif (.started | not) and .started_at == null and (.status | IN("queued", "waiting", "pending", "requested")) then {s: (.created_at | t), e: $now}
         else empty end
       | select(.e > .s)) | perminute(.)) as $QUE
