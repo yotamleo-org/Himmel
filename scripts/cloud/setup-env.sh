@@ -230,7 +230,7 @@ if have graphify && { [ -z "$GV" ] || [ -z "$GCUR" ] || [ "$GCUR" = "$GV" ]; }; 
 elif [ -z "$GV" ]; then
   plan graphify skip "no graphify pin in this tree"
 elif [ -n "$GREF" ]; then
-  GSPEC="graphifyy @ git+https://github.com/yotamleo-org/graphify@$GREF"
+  GSPEC="graphifyy @ git+https://github.com/yotamleo-org/graphify@$GREF"  # env-literal-ok: the carried graphify fork
   build_step graphify install "$GSPEC (himmel fork, pip, no backend extra)" -- $TMO 180 python3 -m pip install --disable-pip-version-check --break-system-packages "$GSPEC"
 else
   build_step graphify install "graphifyy==$GV (pip, no backend extra)" -- $TMO 180 python3 -m pip install --disable-pip-version-check --break-system-packages "graphifyy==$GV"

@@ -61,7 +61,7 @@ _graphify_spec() {
   if [ -n "${GRAPHIFY_VERSION:-}" ]; then
     printf '%s%s==%s\n' "$(_graphify_pypi_name)" "$1" "$GRAPHIFY_VERSION"
   else
-    printf '%s%s @ git+https://github.com/yotamleo-org/graphify@%s\n' "$(_graphify_pypi_name)" "$1" "$(_graphify_fork_ref)"
+    printf '%s%s @ git+https://github.com/yotamleo-org/graphify@%s\n' "$(_graphify_pypi_name)" "$1" "$(_graphify_fork_ref)"  # env-literal-ok: the carried graphify fork
   fi
 }
 # The one default extra is `[ollama]`:
