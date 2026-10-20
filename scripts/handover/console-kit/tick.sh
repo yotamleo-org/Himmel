@@ -1374,11 +1374,12 @@ fi
 # open PR, nothing holding them) and the live worktree count once it reaches
 # HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
 # takes ~20s on a 50-tree fleet, so its output is cached under TICK_STATE_DIR
-# for TICK_WT_ORPHANS_TTL minutes (default 30). Not in console-wait's wake key.
+# for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so consoles
+# on different checkouts never share a reading. Not in console-wait's wake key.
 wto_summary=0
 wtc_summary=""
 wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
-wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans"
+wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
 wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
 case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
 if [ -f "$wto_probe" ]; then

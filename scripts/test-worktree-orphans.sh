@@ -96,10 +96,10 @@ chmod +x "$STUB_DIR/gh"
 # commit off main so the tip is not on main.
 mk_wt() {
     local name="$1" branch="$2" wt="$WT_HOME/$1"
-    git -C "$REPO" worktree add -q "$wt" -b "$branch" >/dev/null 2>&1
+    git -C "$REPO" worktree add -q "$wt" -b "$branch" >/dev/null 2>&1 || { echo "setup: worktree add $name failed" >&2; exit 1; }
     if [ "${3:-0}" = "1" ]; then
         printf '%s\n' "$name" > "$wt/$name.txt"
-        git -C "$wt" add "$name.txt" && git -C "$wt" commit -q -m "$name"
+        { git -C "$wt" add "$name.txt" && git -C "$wt" commit -q -m "$name"; } || { echo "setup: commit in $name failed" >&2; exit 1; }
     fi
     echo "$wt"
 }
@@ -107,10 +107,10 @@ mk_wt() {
 # commit no ref points at (the shepherd/judge shape after its run).
 mk_detached() {
     local name="$1" wt="$WT_HOME/$1"
-    git -C "$REPO" worktree add -q --detach "$wt" main >/dev/null 2>&1
+    git -C "$REPO" worktree add -q --detach "$wt" main >/dev/null 2>&1 || { echo "setup: worktree add $name failed" >&2; exit 1; }
     if [ "${2:-0}" = "1" ]; then
         printf '%s\n' "$name" > "$wt/$name.txt"
-        git -C "$wt" add "$name.txt" && git -C "$wt" commit -q -m "$name"
+        { git -C "$wt" add "$name.txt" && git -C "$wt" commit -q -m "$name"; } || { echo "setup: commit in $name failed" >&2; exit 1; }
     fi
     echo "$wt"
 }
@@ -132,21 +132,21 @@ run_wt() {
 
 # ── case 1: prune reclaims a detached tree ───────────────────────────────────
 echo "CASE 1: fleet prune reclaims an idle detached tree"
-WT_DET=$(mk_detached det-off 1)
+WT_DET=$(mk_detached det-off 1) || exit 1
 DET_TIP=$(git -C "$WT_DET" rev-parse HEAD)
-WT_DET_MAIN=$(mk_detached det-main)
-WT_DET_DIRTY=$(mk_detached det-dirty)
+WT_DET_MAIN=$(mk_detached det-main) || exit 1
+WT_DET_DIRTY=$(mk_detached det-dirty) || exit 1
 printf 'changed\n' >> "$WT_DET_DIRTY/README"
-WT_DET_IGN=$(mk_detached det-ignored)
+WT_DET_IGN=$(mk_detached det-ignored) || exit 1
 printf '.env\n' >> "$(git -C "$WT_DET_IGN" rev-parse --git-common-dir)/info/exclude"
 printf 'SECRET=1\n' > "$WT_DET_IGN/.env"
-WT_MERGED=$(mk_wt merged feat/merged 1)
+WT_MERGED=$(mk_wt merged feat/merged 1) || exit 1
 # An unpushed local-only ref is a ticket's only copy: neither its own
 # worktree's reclaim nor a detached tree sitting on its tip may drop it.
-WT_LOCALONLY=$(mk_wt localonly fix/local-only 1)
+WT_LOCALONLY=$(mk_wt localonly fix/local-only 1) || exit 1
 LOCAL_TIP=$(git -C "$WT_LOCALONLY" rev-parse HEAD)
 WT_DET_ONLOCAL="$WT_HOME/det-onlocal"
-git -C "$REPO" worktree add -q --detach "$WT_DET_ONLOCAL" "$LOCAL_TIP" >/dev/null 2>&1
+git -C "$REPO" worktree add -q --detach "$WT_DET_ONLOCAL" "$LOCAL_TIP" >/dev/null 2>&1 || { echo "setup: worktree add det-onlocal failed" >&2; exit 1; }
 BRANCHES_BEFORE=$(git -C "$REPO" for-each-ref --format='%(refname)' refs/heads | grep -v '^refs/heads/feat/merged$')
 
 out=$(run_wt prune)
@@ -170,7 +170,7 @@ expect_not "1: a tip a local ref reaches gets no extra pin" "$out" has_ref "refs
 
 # ── case 2: the idle gate keeps a fresh detached tree ────────────────────────
 echo "CASE 2: idle gate"
-WT_FRESH=$(mk_detached det-fresh)
+WT_FRESH=$(mk_detached det-fresh) || exit 1
 out=$(WORKTREE_ORPHAN_HOURS=1 run_wt prune)
 expect "2: rc=0" "$out" rc_is "$out" 0
 expect "2: freshly used detached tree kept under a 1h gate" "$out" is_dir "$WT_FRESH"
@@ -194,7 +194,7 @@ fi
 exec "$REAL_GIT" "$@"
 SHIM
 chmod +x "$RACE_DIR/git"
-WT_RACE=$(mk_detached det-race)
+WT_RACE=$(mk_detached det-race) || exit 1
 out=$(RACE_ON="for-each-ref --contains" REAL_GIT="$(command -v git)" RACE_WT="$WT_RACE" RACE_DONE="$TMP_ROOT/race-done" RACE_PATH="$RACE_DIR" run_wt prune --only "$WT_RACE")
 RACE_TIP=$(git -C "$WT_RACE" rev-parse HEAD 2>/dev/null || true)
 expect "3: the race fired" "$out" test -e "$TMP_ROOT/race-done"
@@ -203,7 +203,7 @@ expect "3: its new commit is still checked out" "$out" test "$(git -C "$WT_RACE"
 expect "3: the moved tree is reported" "$out" grepq "$out" "moved during prune"
 [ -z "$RACE_TIP" ] || git -C "$REPO" worktree remove --force "$WT_RACE" >/dev/null 2>&1
 # The same race on a merged branch tree: branch -D would take the new commit.
-WT_BRACE=$(mk_wt brace feat/brace 1)
+WT_BRACE=$(mk_wt brace feat/brace 1) || exit 1
 out=$(RACE_ON="status --porcelain --untracked-files=no" REAL_GIT="$(command -v git)" RACE_WT="$WT_BRACE" RACE_DONE="$TMP_ROOT/brace-done" RACE_PATH="$RACE_DIR" run_wt prune --only "$WT_BRACE")
 expect "3: the branch race fired" "$out" test -e "$TMP_ROOT/brace-done"
 expect "3: a merged tree whose branch moved during the prune is kept" "$out" is_dir "$WT_BRACE"
@@ -213,17 +213,18 @@ git -C "$REPO" worktree remove --force "$WT_BRACE" >/dev/null 2>&1
 
 # ── case 4: --orphans flags every unheld leftover ────────────────────────────
 echo "CASE 4: prune --orphans"
-WT_NOPR=$(mk_wt nopr fix/no-pr 1)
-WT_MDIRTY=$(mk_wt mdirty feat/mdirty 1)
+WT_NOPR=$(mk_wt nopr fix/no-pr 1) || exit 1
+WT_MDIRTY=$(mk_wt mdirty feat/mdirty 1) || exit 1
 printf 'changed\n' >> "$WT_MDIRTY/README"
-WT_OPEN=$(mk_wt openpr open/live 1)
-WT_LOCKED=$(mk_wt locked fix/locked 1)
+WT_OPEN=$(mk_wt openpr open/live 1) || exit 1
+WT_LOCKED=$(mk_wt locked fix/locked 1) || exit 1
 git -C "$REPO" worktree lock "$WT_LOCKED" >/dev/null 2>&1
-WT_RESUME=$(mk_wt resumed fix/resumed 1)
+WT_RESUME=$(mk_wt resumed fix/resumed 1) || exit 1
 printf -- '---\nresume_cwd: %s\n---\n\n# resume\n' "$WT_RESUME" > "$HANDOVER_ROOT/HIMMEL-1-N1b-x-RESUME.md"
-WT_OLDRESUME=$(mk_wt oldresume fix/old-resume 1)
+WT_OLDRESUME=$(mk_wt oldresume fix/old-resume 1) || exit 1
 printf -- '---\nresume_cwd: %s\n---\n' "$WT_OLDRESUME" > "$HANDOVER_ROOT/HIMMEL-2-N2b-x-RESUME.md"
-touch -d '30 days ago' "$HANDOVER_ROOT/HIMMEL-2-N2b-x-RESUME.md"
+old_ts=$(date -d '30 days ago' +%Y%m%d%H%M 2>/dev/null || date -v-30d +%Y%m%d%H%M) || { echo "setup: no date form for 30 days ago" >&2; exit 1; }
+touch -t "$old_ts" "$HANDOVER_ROOT/HIMMEL-2-N2b-x-RESUME.md" || { echo "setup: touch -t failed" >&2; exit 1; }
 
 out=$(run_wt prune --orphans)
 expect "4: rc=1 on an orphan" "$out" rc_is "$out" 1
