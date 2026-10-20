@@ -1114,6 +1114,9 @@ cat > "$sv/hooks/hooks.json" <<'EOF'
 EOF
 out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'served-gone-hook.sh'; then pass "C13 -> WARN (missing hook in the served hooks.json)"; else fail "C13 served missing -> $(printf '%s' "$out" | grep C13)"; fi
+rm "$sv/hooks/hooks.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'block-rogue-codex-wsl.sh'; then pass "C13 -> WARN (served plugin has no hooks.json, stale pins are not skipped)"; else fail "C13 served no hooks.json -> $(printf '%s' "$out" | grep C13)"; fi
 rm -rf "$t"
 
 # ── C14: ollama zero-egress defense-in-depth pin (OLLAMA_NO_CLOUD) ────────────

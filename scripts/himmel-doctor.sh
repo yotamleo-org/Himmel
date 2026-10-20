@@ -630,7 +630,7 @@ check_c13() {
             served="$(jq -r '.himmel.source | select(.source == "directory") | .path // empty' "$known" 2>/dev/null)"
             [ -n "$served" ] && served="$served/plugins/himmel-ops"
         fi
-        [ -n "$served" ] && served_ver="$(jq -r '.version // empty' "$served/.claude-plugin/plugin.json" 2>/dev/null)"
+        [ -n "$served" ] && [ -f "$served/hooks/hooks.json" ] && served_ver="$(jq -r '.version // empty' "$served/.claude-plugin/plugin.json" 2>/dev/null)"
         [ -r "$installed" ] && { pins="$(jq -r '.plugins["himmel-ops@himmel"][]? | [.installPath // empty, .version // "", .scope // "", .projectPath // ""] | join("|")' "$installed" 2>/dev/null)" || pins=""; }
         if [ -n "$pins" ]; then
             while IFS='|' read -r f pin_ver pin_scope pin_proj; do
@@ -640,7 +640,7 @@ check_c13() {
                    && [ "$(printf '%s\n%s\n' "$pin_ver" "$served_ver" | sort -V | head -n1)" = "$pin_ver" ]; then
                     stale="$stale $pin_ver${pin_proj:+@$pin_proj}"
                     pin_fix="claude plugin uninstall himmel-ops@himmel --scope ${pin_scope:-user}"
-                    stale_fix="$stale_fix${stale_fix:+; }${pin_proj:+cd $pin_proj && }$pin_fix"
+                    stale_fix="$stale_fix${stale_fix:+; }${pin_proj:+cd $(printf '%q' "$pin_proj") && }$pin_fix"
                     continue
                 fi
                 if [ -f "$f/hooks/hooks.json" ]; then cache_hooks+=("$f/hooks/hooks.json"); else unverified="$unverified $f"; fi
