@@ -47,18 +47,18 @@ check "control: is() fails on a mismatch" fails is "a" "b"
 # --- host sweep: the docs site and repo live under the org, so no tracked file may name the old host or slug
 old_host='yotamleo\.github\.io'
 old_repo='github\.com/yotamleo/himmel'
-clean() { grep -qE -- "$old_host|$old_repo" "$@" >/dev/null 2>&1; [ $? -eq 1 ]; } # exit 2 (unreadable) is not clean
+clean() { grep -qiE -- "$old_host|$old_repo" "$@" >/dev/null 2>&1; [ $? -eq 1 ]; } # exit 2 (unreadable) is not clean
 sweep_ctl=$(mktemp -d -t site-host-ctl.XXXXXX) || exit 1
 trap 'rm -rf "$sweep_ctl"' EXIT
 printf 'see https://yotamleo%s\n' '.github.io/Himmel/' >"$sweep_ctl/planted-host"
-printf 'see https://github.com/yotamleo%s\n' '/himmel' >"$sweep_ctl/planted-repo"
+printf 'see https://github.com/yotamleo%s\n' '/Himmel' >"$sweep_ctl/planted-repo"
 printf 'see %s\n' 'https://yotamleo-org.github.io/Himmel/' >"$sweep_ctl/org"
 check "control: sweep flags a planted old site host" fails clean "$sweep_ctl/planted-host"
 check "control: sweep flags a planted old repo slug" fails clean "$sweep_ctl/planted-repo"
 check "control: sweep passes the org URLs" clean "$sweep_ctl/org"
 check "control: sweep fails on an unreadable file" fails clean "$sweep_ctl/no-such-file"
 sweep_files=()
-while read -r f; do sweep_files+=("$repo/$f"); done < <(git -C "$repo" ls-files -- docs site README.md scripts/docs-site scripts/himmelctl scripts/jira/reconcile-lib.test.mjs)
+while read -r f; do sweep_files+=("$repo/$f"); done < <(git -C "$repo" ls-files -- docs site README.md scripts/docs-site scripts/himmelctl/bin.js scripts/himmelctl/test/test-wizard-contributor-profile.sh scripts/jira/reconcile-lib.test.mjs)
 for d in docs site; do
   n=0
   for f in "${sweep_files[@]}"; do case "$f" in "$repo/$d/"*) n=$((n + 1)) ;; esac; done

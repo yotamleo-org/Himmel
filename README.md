@@ -159,9 +159,9 @@ Telegram bridge and the vault triage tools. Per-platform install steps are in
 `npm install`):
 
 ```bash
-V=X.Y.Z   # a release that ships the tarball: https://github.com/yotamleo/Himmel/releases
-curl -fsSLO "https://github.com/yotamleo/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz"
-curl -fsSLO "https://github.com/yotamleo/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz.sha256"
+V=X.Y.Z   # a release that ships the tarball: https://github.com/yotamleo-org/Himmel/releases
+curl -fsSLO "https://github.com/yotamleo-org/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz"
+curl -fsSLO "https://github.com/yotamleo-org/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz.sha256"
 sha256sum -c "himmel-$V-linux.tar.gz.sha256" \
   && mkdir -p ~/.local/share/himmel/"$V" \
   && tar -xzf "himmel-$V-linux.tar.gz" -C ~/.local/share/himmel/"$V" --strip-components=1 \
@@ -191,7 +191,7 @@ this layout: move it aside and install once with the recipe above.
 **Linux or macOS, from a clone:**
 
 ```bash
-git clone https://github.com/yotamleo/Himmel himmel
+git clone https://github.com/yotamleo-org/Himmel himmel
 cd himmel
 node scripts/himmelctl/bin.js install
 ```
@@ -234,8 +234,8 @@ are welcome, but nothing about Windows is claimed as working.
 
 | Tier | Platforms | What it promises |
 |---|---|---|
-| **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). The adopter round trip is verified. |
-| **Supported** | macOS | Checked on a scheduled run twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). A macOS-only failure is fixed as its own change ([`docs/internals/testing.md`](docs/internals/testing.md)). |
+| **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). The adopter round trip is verified. |
+| **Supported** | macOS | Checked on a scheduled run twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). A macOS-only failure is fixed as its own change ([`docs/internals/testing.md`](docs/internals/testing.md)). |
 | **Not supported** | Windows (Git Bash), WSL | Code paths exist but are unverified: no CI gate, no guarantee. |
 
 **Install channels:**
@@ -395,7 +395,7 @@ build on itself across sessions without re-explaining the context each time.
   [`docs/setup/new-machine.md`](docs/setup/new-machine.md) (required
   environment and per-platform notes).
 - **Adopting himmel in your own repo:** `git clone
-  https://github.com/yotamleo/Himmel himmel`, then
+  https://github.com/yotamleo-org/Himmel himmel`, then
   `node himmel/scripts/himmelctl/bin.js install --scope project` (or
   `--scope user`). Leave out `--scope` to walk the wizard. What each scope and
   install profile brings, and the checklist for a repo that is not himmel:
