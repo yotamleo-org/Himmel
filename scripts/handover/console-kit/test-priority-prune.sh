@@ -79,9 +79,9 @@ same "--apply prunes a CRLF line" "$(grep -c '^priority: 5993.$' "$WORK/crlf.md"
 
 # --apply keeps the doc's file mode.
 printf '%s\n' '## Live state' 'priority: 6127 5993' > "$WORK/mode.md"
-chmod 600 "$WORK/mode.md"
+chmod 640 "$WORK/mode.md"
 run --doc "$WORK/mode.md" --apply >/dev/null
-same "--apply keeps the doc's file mode" "$(find "$WORK/mode.md" -perm 600)" "$WORK/mode.md"
+same "--apply keeps the doc's file mode" "$(find "$WORK/mode.md" -perm 640)" "$WORK/mode.md"
 
 # No line, no doc, no mirror: exit 1 and print nothing.
 printf '%s\n' '## Live state' 'legs: none' > "$WORK/none.md"
