@@ -24,7 +24,8 @@
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
-#                               the pool) (CONSOLE_WAIT_DISPATCH
+#                               the pool, then a second pass without it lists the
+#                               version backlog) (CONSOLE_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CONSOLE_WAIT_TRACKER_STALE_MIN (default 30); once
@@ -507,11 +508,16 @@ dispatch_cmd="${CONSOLE_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
     [ -r "$dispatch_cmd" ] || return 0
-    local lf=(--priority-pool-only)  # free slots fill only from the operator's priority pool
+    local lf=() out  # free slots fill from the operator's priority pool first
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
+    out="$(timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" --priority-pool-only "${lf[@]}" </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: a failed dispatch leaves out empty, the wake block still prints
+    [ -z "$out" ] || printf '%s\n' "$out"
+    # an empty pool leaves the slots idle: a second pass without --priority-pool-only lists the version backlog
+    case $'\n'"$out"$'\n' in *$'\nPOOL-EMPTY\n'*)
+        timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true ;;  # gnu-ok: Linux-only kit
+    esac
 }
 
 # unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is

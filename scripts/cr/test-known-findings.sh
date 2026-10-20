@@ -468,6 +468,8 @@ not_contains "feed: rows from different repositories never form one cluster" "$(
 check "feed: two clusters sharing a phrase get distinct ids" "$(lrun id "$tmp/l-id.csv" | sed -n 's/^PROPOSE-CLASS id=\([^ ]*\) .*/\1/p' | sort -u | wc -l | tr -d ' ')" "2"
 { echo "$LHDR"; lrow 'A very popular quuzmarker rule.' "$LFILE" 120; } > "$tmp/l-hot.csv"
 contains "feed: a row with 100+ uses gets a promotion hint" "$(lrun hot "$tmp/l-hot.csv")" "PROMOTE-HINT row=1 uses=120"
+{ echo "$LHDR"; lrow 'Do not use the for any of all.' "$LFILE" 30; } > "$tmp/l-stop.csv"
+not_contains "feed: a 25+ use row of only stop words proposes no empty-phrase class" "$(lrun stop "$tmp/l-stop.csv")" "PROPOSE-CLASS "
 
 for rcf in "$tmp"/rc-*; do check "feed: refresh exits 0 ($(basename "$rcf"))" "$(cat "$rcf")" "0"; done
 

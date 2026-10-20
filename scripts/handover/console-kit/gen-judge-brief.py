@@ -62,8 +62,9 @@ def validate(s):
     missing = [k for k in REQUIRED if not s.get(k)]
     if missing:
         die('spec missing: %s' % ', '.join(missing))
-    if not isinstance(s['qid'], str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', s['qid']):
-        die('qid %r must be letters, digits, - or _' % (s['qid'],))
+    # the label slot of the handover-token grammar (docs/internals/handover-token-grammar.md)
+    if not isinstance(s['qid'], str) or not re.fullmatch(r'(?:[A-Za-z]{1,4}[0-9]{1,5}[A-Za-z]{0,2}|[A-Z]{2,8}-[0-9]{1,6})(?:_[a-z]{1,8})?', s['qid']):
+        die('qid %r must be up to 4 letters, 1-5 digits and up to 2 letters (j2599a) or a ticket key (HIMMEL-4999), optionally ending _<up to 8 lower-case letters>' % (s['qid'],))
     if s.get('tickets') is not None and not isinstance(s['tickets'], list):
         die('tickets must be a list of ticket keys')
     keys = [s['ticket']] + list(s.get('tickets') or [])
