@@ -3305,7 +3305,7 @@ fi
 # --------------------------------------------------------------------------
 suites_file=$(mktemp)
 suites_raw=$(mktemp)
-trap 'rm -f "$suites_file" "$suites_raw"; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
+trap 'rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
 
 # Check EVERY discovery stage so a partial-output-then-fail can't mask an
 # incomplete scan (ran>0 with the guard below passing → green on a scan that
@@ -4092,6 +4092,117 @@ fi
 # remaining suite paths — the runner then reported OK over a list it had
 # silently eaten. Suites now get /dev/null (below), which also means an
 # unattended run can never block on a prompt.
+# Live operator state. On the station a leg's shell carries HIMMEL_CONSOLE_DOC,
+# HANDOVER_DIR and friends, and a suite that inherits them writes the live
+# console doc, handover tree, claude/codex config or crontab; CI has none of
+# that, so the class was invisible there. Every suite gets the same set of
+# sentinels instead (set even where the caller had nothing, so CI sees the
+# escape too), and a recording shim heads PATH for the scheduler commands. A
+# sentinel file must keep its seed, a sentinel dir must stay empty, the shim log
+# must stay empty; whatever a suite dirtied is named, fails it, and is reset
+# before the next suite. The checks are builtins only: no fork on a clean suite.
+live_root=""
+live_seed='# sentinel console doc
+
+## Results
+'
+live_files="HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_JUDGE_DOC"
+live_dirs="HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE_RUNDIR HANDOVER_DIR CLAUDE_CONFIG_DIR CODEX_HOME"
+live_sched="crontab at atq atrm"
+_live_reset() {
+  local _v
+  rm -rf "$live_root/state" "$live_root/scheduler-calls.log" 2>/dev/null
+  mkdir -p "$live_root/state" || return 1
+  for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
+  for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
+}
+# _live_env — run inside the suite's subshell: point the live-state env at the
+# sentinels. Every other HIMMEL_CONSOLE_* / HIMMEL_INBOX* value is dropped;
+# none of them is a path a suite may write.
+_live_env() {
+  local _v
+  [ -n "$live_root" ] || return 0
+  for _v in ${!HIMMEL_CONSOLE_@} ${!HIMMEL_INBOX@}; do unset "$_v"; done
+  for _v in $live_files $live_dirs; do export "$_v=$live_root/state/$_v"; done
+  export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
+  export PATH="$live_root/bin:$PATH"
+}
+# _live_check <suite-pgid> — collect one line per thing the suite left behind
+# in live_msgs and return 1 if there was any. Survivors go first, so none can
+# write a sentinel after it was read; the dirty sentinels are reset last.
+_live_check() {
+  local _v _e _c _dirty=0 _grace _members=""
+  live_msgs=""
+  [ -n "$live_root" ] || return 0
+  # The suite ran as its own process group; anything still in it is a process
+  # the suite started and left behind. kill -0 first, a builtin, so a clean
+  # suite pays no ps; a zombie answers it too, so the process table decides.
+  # A short grace covers a child the suite's own trap killed but did not reap.
+  # ponytail: a descendant that moves to its own group (setsid, set -m) escapes
+  # this census; a per-suite env marker scanned in /proc would catch it.
+  if [ -n "${1:-}" ] && ! proc_tree_is_windows && kill -0 -- "-$1" 2>/dev/null; then
+    _grace=0
+    while _members=$(proc_tree_group_members "$1") && [ -n "$_members" ] && [ "$_grace" -lt 5 ]; do
+      sleep 0.2
+      _grace=$((_grace + 1))
+    done
+    if [ -n "$_members" ]; then
+      for _e in $_members; do
+        # swallow-ok: the args are a label; a pid that exited meanwhile prints none
+        live_msgs="${live_msgs}process survived the suite: pid $_e ($(ps -o args= -p "$_e" 2>/dev/null | cut -c1-120))
+"
+      done
+      proc_tree_group_terminate "$1" 1 >/dev/null 2>&1
+      _dirty=1
+    fi
+  fi
+  for _v in $live_files; do
+    _c=""
+    [ -f "$live_root/state/$_v" ] && IFS= read -r -d '' _c < "$live_root/state/$_v"
+    [ "$_c" = "$live_seed" ] && continue
+    live_msgs="${live_msgs}wrote the $_v sentinel (a suite inheriting the live value writes the live file)
+"
+    _dirty=1
+  done
+  for _v in $live_dirs; do
+    if [ ! -d "$live_root/state/$_v" ]; then
+      live_msgs="${live_msgs}removed the $_v sentinel dir
+"
+      _dirty=1
+      continue
+    fi
+    for _e in "$live_root/state/$_v"/* "$live_root/state/$_v"/.[!.]* "$live_root/state/$_v"/..?*; do
+      [ -e "$_e" ] || [ -L "$_e" ] || continue
+      live_msgs="${live_msgs}wrote into the $_v sentinel dir: ${_e##*/}
+"
+      _dirty=1
+      break
+    done
+  done
+  if [ -s "$live_root/scheduler-calls.log" ]; then
+    while IFS= read -r _c; do
+      live_msgs="${live_msgs}scheduler call: $_c (the real scheduler is live operator state)
+"
+    done < "$live_root/scheduler-calls.log"
+    _dirty=1
+  fi
+  [ "$_dirty" -eq 0 ] || _live_reset
+  [ "$_dirty" -eq 0 ]
+}
+if [ "$list_only" -eq 0 ]; then
+  # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root prints the NOTE below
+  live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
+  if [ -n "$live_root" ] && mkdir "$live_root/bin" && _live_reset; then
+    for _ls_t in $live_sched; do
+      printf '#!/usr/bin/env bash\nprintf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q\necho "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2\nexit 1\n' \
+        "$_ls_t" "$live_root/scheduler-calls.log" "$_ls_t" > "$live_root/bin/$_ls_t" && chmod +x "$live_root/bin/$_ls_t"
+    done
+  else
+    [ -z "$live_root" ] || rm -rf "$live_root"
+    live_root=""
+    printf '[NOTE] could not create the live-state sentinels; suites inherit the caller'"'"'s live-state env unchecked\n'
+  fi
+fi
 # FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass
 # or fail); a killed run never writes it, so a consumer can tell a partial log
 # set from a complete one. Cleared first so a stale one cannot vouch for this run.
@@ -4258,6 +4369,7 @@ while IFS= read -r suite <&3; do
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
+    _live_env
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
   suite_pid=$!
   # Its own group as well, so cancelling it below takes its `sleep` too —
@@ -4298,7 +4410,24 @@ while IFS= read -r suite <&3; do
   # rm -rf fail, and that leftover is exactly what tmp-sweep.sh collects later.
   [ -n "$suite_tmp" ] && rm -rf "$suite_tmp" 2>/dev/null
 
-  if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
+  # A capped suite's group is the watchdog's to clean up, so no census there.
+  # A live-state write fails the suite outright: a retry would only write again.
+  live_fail=0
+  _live_pgid="$suite_pid"
+  [ "$capped" -eq 0 ] || _live_pgid=""
+  if ! _live_check "$_live_pgid"; then
+    live_fail=1
+    while IFS= read -r _lm; do
+      [ -n "$_lm" ] || continue
+      printf '[LIVE-STATE] %s — %s\n' "$suite" "$_lm"
+      printf '[LIVE-STATE] %s\n' "$_lm" >> "$log"
+    done <<LIVEMSGS
+$live_msgs
+LIVEMSGS
+    [ "$rc" -ne 0 ] || rc=1
+  fi
+
+  if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
     printf '[RETRY] %s failed (rc=%s); re-running it once (HIMMEL-5116)\n' "$suite" "$rc"
     echo '----- first attempt, last 40 lines -----'
     tail -n 40 "$log" | sed 's/^/    /'
