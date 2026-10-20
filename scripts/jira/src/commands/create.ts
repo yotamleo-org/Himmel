@@ -181,9 +181,11 @@ async function applyVersions(
   if (!o.residual && options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
     const st = gated ? await capState(project) : undefined;
     let defaultVersion: string | undefined;
+    let redirected = false;
     if (st) {
       const full = st.open >= st.cap;
       const redirect = full && options.overCap === undefined;
+      redirected = redirect;
       defaultVersion = redirect ? st.next : st.current;
       if (full && !redirect) markOverCap(st);
       if (redirect) {
@@ -201,8 +203,10 @@ async function applyVersions(
       }
     }
     // stderr: stdout stays the bare `Created KEY` line scripted callers capture.
+    if (defaultVersion) fields['fixVersions'] = [{ name: defaultVersion }];
+    // A cap redirect already said where the Bug went.
+    if (redirected) return overCapReason;
     if (defaultVersion) {
-      fields['fixVersions'] = [{ name: defaultVersion }];
       console.error(`jira: Bug defaults to fixVersion ${defaultVersion}; --fix-version overrides`);
     } else {
       console.error('jira: no unreleased version found; filing the Bug with no fixVersion');

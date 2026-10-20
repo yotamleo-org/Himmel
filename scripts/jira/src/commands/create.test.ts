@@ -692,12 +692,14 @@ describe('create — cap gate (HIMMEL-6485)', () => {
     await file('--type', 'Bug');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
     expect(stderr()).toMatch(/over its cap.*v1\.1\.4/s);
+    expect(stderr()).not.toMatch(/earliest unreleased|defaults to fixVersion/);
   });
 
   it('a versionless Bug over the cap with no next version files with no fixVersion', async () => {
     play({ open: 15, noNext: true });
     await file('--type', 'Bug');
     expect(created()!['fixVersions']).toBeUndefined();
+    expect(stderr()).not.toMatch(/no unreleased version found/);
   });
 
   it('a versionless Bug under the cap still defaults to the current version', async () => {

@@ -1052,17 +1052,17 @@ crchanged() {
         node "$SUT" --doc "$CL/console-c.md" --repo "$W/repo" --out "$CL/cap-board.html" --json "$CL/cap-board.json" --changed 2>"$W/stderr.log"
 }
 rm -f "$CL/cap-board.html"
-out="$(crchanged)"
-same 'cap --changed: first render reports CHANGED' "$out" "CHANGED $CL/cap-board.html"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: first render reports CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
 contains 'cap: an over-cap version is embedded as a board signature' "$(cat "$CL/cap-board.html")" 'name="console-board-cap-fp" content="v1.1.4=16"'
-out="$(crchanged)"
-same 'cap --changed: a re-render with the same over-run reports UNCHANGED' "$out" "UNCHANGED $CL/cap-board.html"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a re-render with the same over-run reports UNCHANGED' "$out rc=$rc" "UNCHANGED $CL/cap-board.html rc=0"
 rm -f "$CL/mirror/HIMMEL/HIMMEL-9124.md" "$CL/mirror/HIMMEL/HIMMEL-9125.md"
-out="$(crchanged)"
-same 'cap --changed: a version dropping back under the cap flips CHANGED on an unchanged tick fingerprint' "$out" "CHANGED $CL/cap-board.html"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a version dropping back under the cap flips CHANGED on an unchanged tick fingerprint' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
 for n in 9124 9125; do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"]' 'To Do' 30; done
-out="$(crchanged)"
-same 'cap --changed: a version crossing the cap again flips CHANGED' "$out" "CHANGED $CL/cap-board.html"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a version crossing the cap again flips CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
 
 # --- ICE-parked follow-ups: keys cited as follow-ups in the last 14 days of
 # comments that moved to ICE, from the mirror. RED control (pre-change board.mjs): no
