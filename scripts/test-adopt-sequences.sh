@@ -162,14 +162,14 @@ new_fixture() {
   chmod 755 "$d/proj/.git/hooks/pre-commit"
 }
 
-# snapshot <X> <out>: type+mode+path for everything under home/ and proj/,
+# snapshot <X> <out>: type+mode+symlink target+path for everything under home/ and proj/,
 # plus sha256 of each file; proj/.git is limited to hooks/ and config.
 snapshot() {
   ( cd "$1" || exit 1
     find home proj -mindepth 1 \
       \( -path 'proj/.git/*' ! -path 'proj/.git/hooks' ! -path 'proj/.git/hooks/*' ! -path 'proj/.git/config' \) -prune \
       -o -type d \
-      -o -printf '%y %m %p\n' | sort -k3
+      -o -printf '%y %m %l %p\n' | sort -k3
     find home proj -type f \
       \( -path 'proj/.git/*' ! -path 'proj/.git/hooks/*' ! -path 'proj/.git/config' \) -prune \
       -o -type f -exec sha256sum {} + | sort -k2 ) > "$2"
@@ -187,7 +187,10 @@ norm_settings() {
 remaining() {
   local d="$1" after="$1/snap.now" p pre
   snapshot "$d" "$after"
-  diff "$2" "$after" | grep -E '^[<>]' | awk '{print $NF}' | sort -u | grep -vE "$ALLOWLIST_RE" | while IFS= read -r p; do
+  if [ ! -s "$2" ] || [ ! -s "$after" ]; then echo "snapshot-unreadable"; return; fi
+  diff "$2" "$after" > "$d/snap.diff"
+  if [ "$?" -gt 1 ]; then echo "snapshot-diff-failed"; return; fi
+  grep -E '^[<>]' "$d/snap.diff" | awk '{print $NF}' | sort -u | grep -vE "$ALLOWLIST_RE" | while IFS= read -r p; do
     if [ "$STRICT" -ne 1 ]; then
       [ "$p" = home/.claude/.i-have-adhd-always ] && continue
       [ "$p" = proj/.gitignore ] && [ "$(cat "$d/$p")" = ".claude/worktrees/" ] && continue
@@ -355,7 +358,11 @@ for entry in "${SEQS[@]}"; do
   fi
   bad="$(grep '^bad ' "$D/rows" || true)"
   if [ -n "$xf" ]; then
-    other="$(printf '%s\n' "$bad" | grep -vE '^bad [^ ]+#[0-9]+ [UWX]: ' | grep . || true)"
+    case "$xf" in
+      HIMMEL-3767) pin='rc=[0-9]+ but nothing remains|a clean install must uninstall clean' ;;
+      *) pin='rc 0 but [0-9]+ path\(s\) differ' ;;
+    esac
+    other="$(printf '%s\n' "$bad" | grep -vE "^bad [^ ]+#[0-9]+ [UWX]: ($pin)" | grep . || true)"
     if [ -n "$other" ]; then echo "FAIL  $id [$verbs]: known-red row failed for another reason: $(printf '%s' "$other" | head -1 | cut -c5-)"; FAILED=$((FAILED + 1))
     elif [ -n "$bad" ]; then echo "XFAIL $id [$verbs] ($xf): $(printf '%s' "$bad" | head -1 | cut -c5-)"; PASS=$((PASS + 1))
     else echo "FAIL  $id [$verbs]: XPASS — known-red row passes; $xf is fixed, drop the tag from this row"; FAILED=$((FAILED + 1)); fi
