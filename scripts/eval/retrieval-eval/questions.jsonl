@@ -44,7 +44,7 @@
 {"id":"q44","kind":"why","src":"grep","q":"why must a gate command never be piped into tail","gold":["scripts/hooks/block-tail-pipe-on-gates.sh"],"reason":["status of tail"]}
 {"id":"q45","kind":"why","src":"selfq","q":"why do attestation trailers belong in the first commit","gold":["CLAUDE.md","AGENTS.md","docs/setup/install.md"],"reason":["too late to teach"]}
 {"id":"q46","kind":"where","src":"grep","q":"guard that refuses a bare qmd search command","gold":["scripts/hooks/block-bare-qmd-query.sh"],"reason":[]}
-{"id":"q47","kind":"how","src":"graphify","q":"how is the stored rationale added to graphify query output","gold":["scripts/graphify/append-rationale.py","scripts/graphify/leg-graph.sh"],"reason":[]}
+{"id":"q47","kind":"how","src":"graphify","q":"how is the stored rationale added to graphify query output","gold":["scripts/graphify/leg-graph.sh"],"reason":[]}
 {"id":"q48","kind":"what","src":"graphify","q":"what does the MUST_RUN chain do when a security guard times out","gold":["marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js","docs/internals/enforcement.md"],"reason":["deny"]}
 {"id":"q49","kind":"where","src":"grep","q":"which CI jobs run on self-hosted runners","gold":[".github/workflows/ci.yml"],"reason":[]}
 {"id":"q50","kind":"where","src":"qmd","q":"definition of console, leg, judge, relay and chain","gold":["docs/glossary.md"],"reason":[]}

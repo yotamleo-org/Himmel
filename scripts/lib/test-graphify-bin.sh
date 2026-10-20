@@ -126,16 +126,14 @@ build_hermetic_bin "$utils_bin" node python3 python
 # read the committed default). Tests derive from this so a pin bump never breaks
 # them: "our" install uses this version; foreign installs use a guaranteed-different one.
 pinned_ver="$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')"
+# The stub uv reports this version for an install from the fork git ref.
+export STUB_UV_GIT_VERSION="$pinned_ver"
 
-echo "[test-graphify-bin] graphify_install_hint (HIMMEL-1048: PyPI version pin)"
-hint="$(graphify_install_hint)"
+echo "[test-graphify-bin] graphify_install_hint (HIMMEL-6056: yotamleo-org/graphify fork pinned by commit sha)"
+hint="$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install_hint')"
 assert "hint uses uv tool install" grep -q '^uv tool install ' <<<"$hint"
-assert "hint pins graphifyy[ollama] to a specific PyPI version, single-quoted (no [kimi] extra, HIMMEL-2481/4513)" \
-  grep -qE "'graphifyy\[ollama\]==[0-9]+\.[0-9]+\.[0-9]+'" <<<"$hint"
-# shellcheck disable=SC2016
-# Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
-assert "hint does NOT install from a git source (de-forked)" \
-  bash -c '! grep -q "git+" <<<"$1"' _ "$hint"
+assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, single-quoted (no [kimi] extra, HIMMEL-2481/4513)" \
+  grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
 assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
   grep -q -- '--with mcp' <<<"$hint"
 
@@ -147,10 +145,17 @@ echo "[test-graphify-bin] pin policy (HIMMEL-1048): the configured version IS a 
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "default GRAPHIFY_VERSION is a semver (X.Y.Z...)" \
   bash -c 'printf "%s" "$1" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+"' _ "$pinned_ver"
+# shellcheck disable=SC2016
+assert "default pin is a fork build stamp (X.Y.Z+himmel.N)" \
+  bash -c 'printf "%s" "$1" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\+himmel\.[0-9]+$"' _ "$pinned_ver"
 
 echo "[test-graphify-bin] GRAPHIFY_VERSION override"
 override_hint="$(GRAPHIFY_VERSION=9.9.9 graphify_install_hint)"
-assert "hint honors GRAPHIFY_VERSION override" grep -q 'graphifyy\[ollama\]==9.9.9' <<<"$override_hint"
+assert "hint honors GRAPHIFY_VERSION override (PyPI == spec, no git source)" grep -q 'graphifyy\[ollama\]==9.9.9' <<<"$override_hint"
+# shellcheck disable=SC2016
+assert "GRAPHIFY_VERSION override carries no git source" bash -c '! grep -q "git+" <<<"$1"' _ "$override_hint"
+ref_hint="$(env -u GRAPHIFY_VERSION GRAPHIFY_FORK_REF=abc123 bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install_hint')"
+assert "hint honors GRAPHIFY_FORK_REF override" grep -q 'yotamleo-org/graphify@abc123' <<<"$ref_hint"
 
 echo "[test-graphify-bin] has_graphify is presence-only"
 noreal_home="$tmpdir/noreal"; mkdir -p "$noreal_home"
@@ -211,6 +216,8 @@ if [ "$1" = "tool" ] && [ "$2" = "install" ]; then
   ver="0.0.0"; has_openai=0
   for a in "$@"; do
     case "$a" in
+      graphifyy\[*\]\ @\ git+*) ver="${STUB_UV_GIT_VERSION:?}"       # fork git ref: the stamped version
+                          case "$a" in *ollama*) has_openai=1 ;; esac ;;
       graphifyy==*)       ver="${a#graphifyy==}" ;;     # bare pin: graphifyy==X
       graphifyy\[*\]==*)  ver="${a##*==}"               # extras pin: graphifyy[all]==X
                           case "$a" in *ollama*) has_openai=1 ;; esac ;;
@@ -267,8 +274,10 @@ out=$(HOME="$fresh_home" GRAPHIFY_PLUGIN_DIR="$fresh_home/gplug" PATH="$fresh_pa
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install; echo "RC=$?"' 2>&1)
 assert "missing: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "missing: exactly one uv tool install call" test "$(grep -c 'UV tool install' "$fresh_log")" -eq 1
-assert "missing: install argv carries --with mcp + graphifyy[ollama] at the version pin (no [kimi] extra)" \
-  grep -qE 'UV tool install --with mcp graphifyy\[ollama\]==[0-9]' "$fresh_log"
+assert "missing: install argv carries --with mcp + graphifyy[ollama] from the fork git ref (no [kimi] extra)" \
+  grep -qE 'UV tool install --with mcp graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$fresh_log"
+assert "missing: the installed version reads back as the pin (graphify_source=himmel-pin)" \
+  grep -qx "graphifyy v$pinned_ver" "$fresh_list"
 assert "missing: graphify shim landed on PATH" test -x "$fresh_bin/graphify"
 assert "missing: has_graphify true post-install" \
   env PATH="$fresh_path" HOME="$fresh_home" GRAPHIFY_PLUGIN_DIR="$fresh_home/gplug" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; has_graphify'
@@ -801,7 +810,24 @@ out=$(HOME="$gud_home" GRAPHIFY_PLUGIN_DIR="$gud_home/gplug" PATH="$gud_bin:$stu
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update diff-ver: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "update diff-ver: force-reinstalls at pin preserving [all] extras plus [ollama] (HIMMEL-4513)" \
-  grep -qE 'tool install --force --with mcp graphifyy\[all,ollama\]==[0-9]' "$gud_log"
+  grep -qE 'tool install --force --with mcp graphifyy\[all,ollama\] @ git\+' "$gud_log"
+
+echo "[test-graphify-bin] graphify_update: the upstream base 0.9.93 is behind its +himmel.1 fork build -> reinstall from the fork (HIMMEL-6056)"
+gub_home="$tmpdir/gup-upbase"; mkdir -p "$gub_home"
+gub_tools="$tmpdir/gup-upbase-tools"; mkdir -p "$gub_tools/graphifyy"
+printf 'requirements = [{ name = "graphifyy" }]\n' > "$gub_tools/graphifyy/uv-receipt.toml"
+gub_list="$tmpdir/gup-upbase-list"; printf 'graphifyy v0.9.93\n' > "$gub_list"
+gub_bin="$tmpdir/gup-upbase-bin"; mkdir -p "$gub_bin"
+printf '#!/usr/bin/env bash\necho x\n' > "$gub_bin/graphify"
+chmod +x "$gub_bin/graphify"
+gub_log="$tmpdir/gup-upbase-log"; : > "$gub_log"
+out=$(HOME="$gub_home" GRAPHIFY_PLUGIN_DIR="$gub_home/gplug" PATH="$gub_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$gub_tools" UV_LIST_FILE="$gub_list" \
+      UV_BIN_DIR="$gub_bin" UV_LOG="$gub_log" GRAPHIFY_MCP_HOLDERS=0 \
+      bash -c 'unset GRAPHIFY_VERSION; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
+assert "update upstream-base: rc 0" grep -q '^RC=0$' <<<"$out"
+assert "update upstream-base: reinstalls from the fork git ref" \
+  grep -qE 'tool install --force --with mcp graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$gub_log"
+assert "update upstream-base: the uv list now shows the fork build" grep -qx "graphifyy v$pinned_ver" "$gub_list"
 
 echo "[test-graphify-bin] _graphify_installed_extras: a recorded [kimi]-only extra is dropped (HIMMEL-2481)"
 # Existing machines installed with the old [kimi]-by-default spec have "kimi"
@@ -858,7 +884,7 @@ assert "held: gives the manual repair command" grep -q "uv tool install --force 
 # instead of installing (public-PR CR). Assert the WHOLE spec is single-quoted:
 # matching only the opening quote would still pass if the closing one were lost.
 assert "held: the repair command single-quotes the [all] spec (zsh globs it otherwise)" \
-  grep -qE "uv tool install --force --with mcp 'graphifyy\[all,ollama\]==[0-9][^']*'" <<<"$out"
+  grep -qE "uv tool install --force --with mcp 'graphifyy\[all,ollama\] @ git\+[^']*'" <<<"$out"
 # THE POINT: no uv install was attempted, so the entry points were never removed.
 # shellcheck disable=SC2016
 assert "held: NO uv install attempted (this is what keeps graphify working)" \
@@ -1243,7 +1269,7 @@ out=$(HOME="$gb_home" GRAPHIFY_PLUGIN_DIR="$gb_home/gplug" PATH="$gb_bin:$stub_d
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "broken-after-install: rc 1 (presence is not proof it runs)" grep -q '^RC=1$' <<<"$out"
 assert "empty recorded extras: upgrade spec is just [ollama] (no [kimi] extra, HIMMEL-2481/4513)" \
-  grep -qE 'tool install --force --with mcp graphifyy\[ollama\]==[0-9]' "$gb_log"
+  grep -qE 'tool install --force --with mcp graphifyy\[ollama\] @ git\+' "$gb_log"
 assert "broken-after-install: names it BROKEN" grep -q 'BROKEN' <<<"$out"
 assert "broken-after-install: gives the repair command" grep -q "uv tool install --force --with mcp 'graphifyy" <<<"$out"
 # Assert BOTH quotes, like the held scenario above. Matching
@@ -1256,7 +1282,7 @@ assert "broken-after-install: gives the repair command" grep -q "uv tool install
 # [ollama] (no [kimi] default). The two
 # scenarios pin quoting for both the operator-preserved and the default shape.
 assert "broken-after-install: the repair command single-quotes the whole spec" \
-  grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\]==[0-9][^']*'" <<<"$out"
+  grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\] @ git\+[^']*'" <<<"$out"
 
 # The fourth corner of the state matrix (public-PR CR): install FAILED but the
 # binary SURVIVED. The other three are covered above and below; without this one
@@ -1320,7 +1346,7 @@ assert "unprobeable: NO uv install attempted (this is the whole fix)" \
 # operator is told exactly how to get unstuck. A silent decline would recreate
 # the permanent-staleness failure of the Windows self-match bug.
 assert "unprobeable: gives the manual install command" \
-  grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\]==[0-9][^']*'" <<<"$out"
+  grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\] @ git\+[^']*'" <<<"$out"
 assert "unprobeable: names the GRAPHIFY_UNPROBED_OK override" grep -q 'GRAPHIFY_UNPROBED_OK=1' <<<"$out"
 
 # CodeRabbit PR #792 finding (PRRT_kwDOS8WKNM6jZ-8T): the unprobeable branch
@@ -1534,7 +1560,7 @@ if [ "$lf_posix" -eq 1 ]; then
   out=$(lf_run GRAPHIFY_MCP_HOLDERS=0)
   assert "posix holders=0: rc 0" grep -q '^RC=0$' <<<"$out"
   assert "posix holders=0: staged into a scoped scratch tool dir first" grep -q 'scoped=1' "$lf_log"
-  assert "posix holders=0: then swapped the live install" grep -qE 'tool install --force --with mcp graphifyy\[ollama\]==' "$lf_log"
+  assert "posix holders=0: then swapped the live install" grep -qE 'tool install --force --with mcp graphifyy\[ollama\] @ git\+' "$lf_log"
   assert "posix holders=0: the stage ran BEFORE the swap" \
     test "$(grep -n 'scoped=1' "$lf_log" | head -1 | cut -d: -f1)" -lt "$(grep -n -- '--force' "$lf_log" | head -1 | cut -d: -f1)"
   # shellcheck disable=SC2016
@@ -1605,7 +1631,7 @@ if [ "$lf_posix" -eq 1 ]; then
   printf 'requirements = [{ name = "graphifyy", extras = ["all", "ollama"] }]\n' > "$lf_tools/graphifyy/uv-receipt.toml"
   out=$(lf_run GRAPHIFY_MCP_HOLDERS=0)
   assert "dedup: rc 0" grep -q '^RC=0$' <<<"$out"
-  assert "dedup: spec is exactly graphifyy[all,ollama]" grep -qE -- '--force --with mcp graphifyy\[all,ollama\]==' "$lf_log"
+  assert "dedup: spec is exactly graphifyy[all,ollama]" grep -qE -- '--force --with mcp graphifyy\[all,ollama\] @ git\+' "$lf_log"
 
   echo "[test-graphify-bin] graphify_update (POSIX): AT the pin but the [ollama] extra is missing -> upgraded in place"
   lf_setup atpin-noollama "$pinned_ver"
@@ -1616,7 +1642,7 @@ if [ "$lf_posix" -eq 1 ]; then
   assert "at-pin no-ollama: rc 0" grep -q '^RC=0$' <<<"$out"
   assert "at-pin no-ollama: says why" grep -q 'lacks the \[ollama\] extra' <<<"$out"
   assert "at-pin no-ollama: reinstalls graphifyy[ollama] at the SAME pin" \
-    grep -qE -- "--force --with mcp graphifyy\[ollama\]==$pinned_ver\$" "$lf_log"
+    grep -qE -- "--force --with mcp graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}\$" "$lf_log"
 
   echo "[test-graphify-bin] graphify_update (POSIX): AT the pin WITH the [ollama] extra -> up to date, no install"
   lf_setup atpin-ollama "$pinned_ver"
@@ -1684,6 +1710,32 @@ assert "version_lt: empty installed -> NOT lower (rc 1)" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; ! _graphify_version_lt "" "0.9.22"'
 assert "version_lt: genuine behind -> lower (rc 0)" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.1" "0.9.22"'
+
+echo "[test-graphify-bin] _graphify_version_lt: +himmel.N is newer than the same base (HIMMEL-6056)"
+# shellcheck disable=SC2016
+assert "version_lt: upstream base is behind its own +himmel.1 build" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.93" "0.9.93+himmel.1"'
+# shellcheck disable=SC2016
+assert "version_lt: +himmel.1 is behind +himmel.2" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.93+himmel.1" "0.9.93+himmel.2"'
+# shellcheck disable=SC2016
+assert "version_lt: equal +himmel.1 -> NOT lower" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; ! _graphify_version_lt "0.9.93+himmel.1" "0.9.93+himmel.1"'
+# shellcheck disable=SC2016
+assert "version_lt: +himmel.2 is not behind +himmel.1" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; ! _graphify_version_lt "0.9.93+himmel.2" "0.9.93+himmel.1"'
+# shellcheck disable=SC2016
+assert "version_lt: the next upstream patch is ahead of +himmel.1 -> NOT lower" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; ! _graphify_version_lt "0.9.94" "0.9.93+himmel.1"'
+# shellcheck disable=SC2016
+assert "version_lt: the previous PyPI pin is behind the fork build" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.92" "0.9.93+himmel.1"'
+
+echo "[test-graphify-bin] _graphify_installed_version keeps the +himmel.N local part (HIMMEL-6056)"
+ivl_list="$tmpdir/installed-version-list"; printf 'graphifyy v0.9.93+himmel.1\n- graphify\n' > "$ivl_list"
+ivl_out="$(PATH="$stub_dir/bin:$base_path" UV_LOG="$tmpdir/ivl-log" UV_LIST_FILE="$ivl_list" UV_TOOL_DIR="$tmpdir/ivl-tools" \
+  bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_installed_version')"
+assert "installed_version: uv tool list v0.9.93+himmel.1 -> 0.9.93+himmel.1" test "$ivl_out" = "0.9.93+himmel.1"
 
 echo "[test-graphify-bin] graphify_update: uv graphifyy with UNPARSEABLE version -> left as-is, no install (CR HIMMEL-1048)"
 guu_home="$tmpdir/gup-unparse"; mkdir -p "$guu_home"

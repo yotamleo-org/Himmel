@@ -8,20 +8,22 @@
 # himmel neither vendors nor redistributes graphify -- `uv tool install` fetches it
 # from PyPI onto the operator's own machine -- so the relicense carries no bundled-
 # notice obligation here; it is a pin-review fact, not a compliance gate.
-# This resolver installs it from PyPI pinned to a specific version via
-# `uv tool install --with mcp 'graphifyy[ollama]==<version>'`. uv tool installs are already
+# This resolver installs it from the himmel fork (yotamleo-org/graphify, branch
+# himmel-main) pinned to a commit sha via
+# `uv tool install --with mcp 'graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>'`.
+# uv tool installs are already
 # self-isolating (their own venv + a shim in uv's tool bin dir), so — unlike
 # scripts/lib/qmd-bin.sh's bun-global junction — there is no separate PATH-provider
 # step here: the shim lands in uv's tool bin dir, which setup.sh/adopt.sh already
 # put on PATH for uv/pre-commit/jira.
 #
-# De-fork: this resolver previously installed from a
-# himmel fork (yotamleo/graphify) pinned to a commit SHA. The fork
-# carried ZERO delta over upstream — its only reason to exist (declaring the `mcp`
-# python dep, which upstream keeps optional) is already handled by the `--with mcp`
-# install flag below — so it was dropped and we track upstream PyPI directly. A pin
-# bump (when the nightly fork-drift guard reports a newer upstream release) is now a
-# one-line change to _graphify_version() here + `synced_base` in scripts/upstreams.json.
+# Fork: the fork carries one delta over upstream, `graphify query|explain
+# --rationale` (upstream PR #4576), which leg-graph.sh passes. Each fork build stamps its
+# version `<upstream base>+himmel.N` in pyproject.toml, a PEP 440 local version that sorts
+# above the same base, so the installed-vs-pinned compares below see a fork build as newer
+# than the upstream release it is cut from. A pin bump is a change to _graphify_fork_ref()
+# and _graphify_version() here + the `fork` block in scripts/upstreams.json. Once upstream
+# ships --rationale, drop the fork and return to a PyPI `==` pin (the GRAPHIFY_VERSION path).
 #
 # Foreign-install safety (operator requirement, 2026-07-11): before installing,
 # detect whether graphify is ALREADY present — either as a `uv tool list` entry for
@@ -38,26 +40,36 @@
 # success, and never an auto-reinstall over existing uv metadata (that could clobber
 # a foreign install's state).
 #
-# The pinned version is overridable via GRAPHIFY_VERSION for testing / a private
-# index (mirrors the QMD_* overrides).
+# The pin is overridable for testing / a private index (mirrors the QMD_* overrides):
+# GRAPHIFY_FORK_REF swaps the fork commit; GRAPHIFY_VERSION installs that PyPI
+# version instead (`graphifyy[ollama]==<version>`, no git source).
 
 # Version config -- overridable per call (env var set before sourcing/calling).
 #
-# PIN: the install ref is a specific PyPI VERSION of graphifyy, not
-# `latest`. A published PyPI version is immutable (PyPI forbids re-uploading a
-# version with different content), so pinning the version gives the same
-# content-addressed, reproducible new-machine bootstrap the old fork-SHA pin gave
-#  -- without carrying a fork. A pin bump is a reviewed change to this
-# line, paired with `synced_base` in scripts/upstreams.json so the nightly
-# fork-drift guard stays truthful.
-_graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.92}"; }
+# PIN: the install ref is a fork COMMIT SHA, which is immutable, so a new machine
+# gets reproducible content. _graphify_version is the version string that build
+# reports (`uv tool list`, importlib.metadata); installed-vs-pinned compares use it.
+# A pin bump is a reviewed change to the two lines below, paired with the `fork`
+# block in scripts/upstreams.json so the nightly fork-drift guard stays truthful.
+_graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.93+himmel.1}"; }
+_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-02e7e4a9b2eeb4570fa2e926a5f44bdebde4690d}"; }
 _graphify_pypi_name() { printf '%s\n' "graphifyy"; }
+# _graphify_spec <extras> -- the requirement spec for the pin, e.g.
+# `graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>`. With
+# GRAPHIFY_VERSION set it is the PyPI form `graphifyy[ollama]==<version>`.
+_graphify_spec() {
+  if [ -n "${GRAPHIFY_VERSION:-}" ]; then
+    printf '%s%s==%s\n' "$(_graphify_pypi_name)" "$1" "$GRAPHIFY_VERSION"
+  else
+    printf '%s%s @ git+https://github.com/yotamleo-org/graphify@%s\n' "$(_graphify_pypi_name)" "$1" "$(_graphify_fork_ref)"
+  fi
+}
 # The one default extra is `[ollama]`:
 # graph-cadence's semantic step runs `--backend ollama`, and graphify's ollama
 # backend needs the `openai` client that only this extra installs. No `[kimi]`
 # himmel has no Kimi backend. graphify_update preserves any
 # other recorded extras and adds ollama to them.
-_graphify_pinned_source() { printf '%s[ollama]==%s\n' "$(_graphify_pypi_name)" "$(_graphify_version)"; }
+_graphify_pinned_source() { _graphify_spec '[ollama]'; }
 _graphify_bin_name() { printf '%s\n' "graphify"; }
 
 # Prints the manual install recipe (best-effort documentation text embedded
@@ -108,7 +120,7 @@ _graphify_installed_version() {
   uv tool list 2>/dev/null \
     | grep -E "^$(_graphify_pypi_name)[[:space:]]" \
     | head -1 \
-    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*' | head -1
+    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*' | head -1
 }
 
 # Reports the provenance of an existing graphify install:
@@ -423,6 +435,9 @@ def key(v):
     for p in parts:
         m = re.match(r'\d+', p)
         out.append(int(m.group()) if m else 0)
+    # A fork build X.Y.Z+himmel.N sorts above the upstream X.Y.Z it is cut from.
+    m = re.search(r'\+himmel\.(\d+)', v)
+    out.append(int(m.group(1)) if m else 0)
     return tuple(out)
 sys.exit(0 if key(sys.argv[1]) < key(sys.argv[2]) else 1)
 PY
@@ -820,7 +835,7 @@ _graphify_stage_install() {
     reason="uv could not install $spec (output above)"
   else
     got="$(GRAPHIFY_NO_AUTO_REFRESH=1 "$s/bin/graphify" --version 2>/dev/null \
-      | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*' | head -1)"
+      | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*' | head -1)"
     if [ "$got" != "$pin" ]; then
       reason="the staged graphify reports '${got:-nothing}', not $pin"
     elif ! "$s/tools/$(_graphify_pypi_name)/bin/python" -c 'import mcp, openai' >/dev/null 2>&1; then
@@ -1386,7 +1401,7 @@ graphify_update() {
   fi
   # Recorded extras are preserved, and [ollama] is added to them.
   extras="$(_graphify_extras_with_ollama "$(_graphify_installed_extras)")"
-  spec="$(_graphify_pypi_name)${extras}==${pin}"
+  spec="$(_graphify_spec "$extras")"
   # Every place this spec is PRINTED as a copy-paste repair command single-quotes
   # it (public-PR CR). It reads `graphifyy[ollama]==0.9.31`, and
   # zsh — the macOS default — globs the brackets: pasting the unquoted form dies

@@ -28,7 +28,7 @@ run() { (cd "$T/wt" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
 
 # T1: query from the worktree resolves to the primary's graphify-out.
 out="$(run query "what is X")"; rc=$?
-if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query what is X --budget 8000" ]; then
+if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query what is X --rationale --budget 8000" ]; then
   pass "T1 query from a worktree targets the primary graph"
 else fail "T1 rc=$rc out='$out'"; fi
 

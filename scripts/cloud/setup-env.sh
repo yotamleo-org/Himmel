@@ -213,21 +213,25 @@ fi
 # parses code locally and calls no model, so no repo content leaves the VM. The
 # graph lands in $ROOT/graphify-out (the setup clone, frozen with the cache); a
 # session queries it with --graph or rebuilds its own clone the same way.
-GV=""
+GV=""; GREF=""
 while IFS= read -r line; do
-  if [[ "$line" =~ GRAPHIFY_VERSION:-([0-9][0-9.]*)\} ]]; then GV="${BASH_REMATCH[1]}"; break; fi
+  if [ -z "$GV" ] && [[ "$line" =~ GRAPHIFY_VERSION:-([0-9][0-9A-Za-z.+-]*)\} ]]; then GV="${BASH_REMATCH[1]}"; fi
+  if [ -z "$GREF" ] && [[ "$line" =~ GRAPHIFY_FORK_REF:-([0-9a-f]{40})\} ]]; then GREF="${BASH_REMATCH[1]}"; fi
 done < "$ROOT/scripts/lib/graphify-bin.sh" 2>/dev/null
 # A cached image can ship graphify at another version than the pin (0.9.77 against
 # 0.9.80): a parsed version that differs from the pin is reinstalled;
 # one that cannot be parsed counts as present.
 GCUR=""
 if have graphify; then
-  GCUR="$("$TMO" 20 graphify --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1)"
+  GCUR="$("$TMO" 20 graphify --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+(\+himmel\.[0-9]+)?' | head -n 1)"
 fi
 if have graphify && { [ -z "$GV" ] || [ -z "$GCUR" ] || [ "$GCUR" = "$GV" ]; }; then
   plan graphify skip "present"
 elif [ -z "$GV" ]; then
   plan graphify skip "no graphify pin in this tree"
+elif [ -n "$GREF" ]; then
+  GSPEC="graphifyy @ git+https://github.com/yotamleo-org/graphify@$GREF"
+  build_step graphify install "$GSPEC (himmel fork, pip, no backend extra)" -- $TMO 180 python3 -m pip install --disable-pip-version-check --break-system-packages "$GSPEC"
 else
   build_step graphify install "graphifyy==$GV (pip, no backend extra)" -- $TMO 180 python3 -m pip install --disable-pip-version-check --break-system-packages "graphifyy==$GV"
 fi

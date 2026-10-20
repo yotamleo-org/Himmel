@@ -79,8 +79,8 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 out="$(run query "how does a console hand work to a leg")"; rc=$?
 calls="$(cat "$T/calls")"
 if [ "$rc" = 0 ] && [ "$(wc -l < "$T/calls")" = 2 ] \
-  && grep -qx -- "query how does a console hand work to a leg --seed glossary --seed runc --seed go_sh --budget 4000" <<<"$calls" \
-  && grep -qx -- "query how does a console hand work to a leg --budget 4000" <<<"$calls"; then
+  && grep -qx -- "query how does a console hand work to a leg --rationale --seed glossary --seed runc --seed go_sh --budget 4000" <<<"$calls" \
+  && grep -qx -- "query how does a console hand work to a leg --rationale --budget 4000" <<<"$calls"; then
   pass "S4 semantic seed passed to graphify query"
 else fail "S4 rc=$rc calls='$calls'"; fi
 if grep -m1 '^NODE ' <<<"$out" | grep -q '^NODE glossary.md ' && grep -q '^NODE Need ' <<<"$out"; then pass "S4b merged answer leads with the glossary, keeps the keyword node"
@@ -95,13 +95,13 @@ else fail "S5 first='$first' calls='$(cat "$T/calls")'"; fi
 # S6: a caller's own --seed is left alone.
 run query "how does a console hand work to a leg" --seed need >/dev/null
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query how does a console hand work to a leg --seed need --budget 8000" ]; then pass "S6 explicit --seed runs unchanged"
+if [ "$calls" = "query how does a console hand work to a leg --rationale --seed need --budget 8000" ]; then pass "S6 explicit --seed runs unchanged"
 else fail "S6 calls='$calls'"; fi
 
 # S7: a question matching nothing runs as before: one call.
 run query "what colour are the planets" >/dev/null
 calls="$(cat "$T/calls")"
-if [ "$calls" = "query what colour are the planets --budget 8000" ]; then pass "S7 no match, one unchanged call"
+if [ "$calls" = "query what colour are the planets --rationale --budget 8000" ]; then pass "S7 no match, one unchanged call"
 else fail "S7 calls='$calls'"; fi
 
 # W: a small corpus for the weak-seed and eval-corpus rows. effort.ts and check-best-effort.sh are the

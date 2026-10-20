@@ -11,8 +11,8 @@
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
-#   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
-#   under its NODE line (query) or as a Rationale line (explain).
+#   query and explain run with graphify's --rationale: a semantic node's stored `rationale` text
+#   follows its NODE line as ` WHY <text>` (query) or is printed as a Rationale line (explain).
 #   A query naming a file or identifier also starts from that node (anchor-seeds.py); the files
 #   whose content best matches its words are added after any anchors (semantic-seeds.py).
 #   A query with no anchor whose best file match is weak (semantic-seeds.py scored) and no --budget
@@ -49,8 +49,9 @@ fi
 
 # The question is the first argument after the verb that is neither a flag nor a flag's value.
 WEAK_BUDGET=2000
-has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() graph="$out/graph.json" lowconf="" conf="" score="" file=""
+has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() args=() graph="$out/graph.json" lowconf="" conf="" score="" file=""
 for a in "${@:2}"; do
+  args+=("$a")
   if [ -n "$want" ]; then
     if [ "$want" = budget ]; then budget="$a"; else rest+=("$a"); fi
     [ "$want" = graph ] && graph="$a"
@@ -65,10 +66,15 @@ for a in "${@:2}"; do
     --graph=*) graph="${a#--graph=}" ;;
     --context) want=value ;;
     -*) ;;
-    *) [ -n "$question" ] || question="$a" ;;
+    *) if [ -z "$question" ]; then
+         question="$a"
+         # graphify reads the question first, so --rationale goes right after it.
+         [ "$sub" = path ] || { args+=(--rationale); rest+=("$a" --rationale); continue; }
+       fi ;;
   esac
   rest+=("$a")
 done
+set -- "$sub" "${args[@]}"
 
 # graphify seeds on the question's words and never on a file or identifier it names (go.sh,
 # leg_tail_status), so anchor-seeds.py resolves those names; the named nodes and graphify's own
@@ -112,15 +118,10 @@ if [ "${#seeds[@]}" -gt 0 ]; then
 else
   ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
 fi
-# graphify stores a semantic node's WHY as `rationale` but neither verb prints it, so a "why"
-# question got a pointer to a doc section; append-rationale.py adds the stored text.
-if command -v python3 >/dev/null 2>&1; then
-  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$graph")" && ans="$withwhy"
-  # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
-  # doc and rationale nodes first for those questions and leaves any other question untouched.
-  if [ "$sub" = query ]; then
-    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
-  fi
+# graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
+# doc and rationale nodes first for those questions and leaves any other question untouched.
+if [ "$sub" = query ] && command -v python3 >/dev/null 2>&1; then
+  ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
 fi
 [ -z "$lowconf" ] || [ -z "$ans" ] || printf '%s\n' "$lowconf"
 printf '%s\n' "$ans"
@@ -132,7 +133,7 @@ if [ -n "$need" ]; then
   for a in "$@"; do
     if [ "$skip" = 1 ]; then skip=0; continue; fi
     [ "$a" = "--budget" ] && { skip=1; continue; }
-    case "$a" in --budget=*) continue ;; esac
+    case "$a" in --budget=*|--rationale) continue ;; esac
     q="$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"
     rerun="$rerun '$q'"
   done

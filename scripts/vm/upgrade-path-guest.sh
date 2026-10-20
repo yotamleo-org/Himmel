@@ -171,7 +171,7 @@ note "baseline: graphify (tree pin)"
 if [ "$irc" -eq 0 ]; then pass "baseline graphify installer rc=0"; else fail "baseline graphify installer rc=$irc (see $WORK/graphify-base.log)"; fi
 BASE_GRAPHIFY="$(graphify --version 2>&1)"; grc=$?
 BASE_GRAPHIFY="$(first_semver "$BASE_GRAPHIFY")"
-TREE_GRAPHIFY="$( . scripts/lib/graphify-bin.sh && _graphify_version )"
+TREE_GRAPHIFY="$( . scripts/lib/graphify-bin.sh && _graphify_version )"; TREE_GRAPHIFY="${TREE_GRAPHIFY%%+*}"   # graphify --version is read as x.y.z, so the +himmel.N stamp drops
 if [ "$grc" -eq 0 ] && [ -n "$TREE_GRAPHIFY" ] && [ "$BASE_GRAPHIFY" = "$TREE_GRAPHIFY" ]; then pass "baseline graphify: $BASE_GRAPHIFY (tree pin $TREE_GRAPHIFY)"; else fail "baseline graphify '${BASE_GRAPHIFY:-none}' is not the tree pin '${TREE_GRAPHIFY:-?}' (see $WORK/graphify-base.log)"; fi
 
 note "baseline: cli-proxy-api (tree pin)"
