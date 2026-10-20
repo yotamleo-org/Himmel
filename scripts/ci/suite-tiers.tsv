@@ -903,6 +903,7 @@ scripts/qmd/test-ensure-qmd-daemon-leak.sh	pr	guard
 scripts/qmd/test-ensure-qmd-daemon.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/qmd/test-qmd-auth-headers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/qmd/test-qmd-jina-gate.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/qmd/test-vocab-expand.sh	local	new since the audit, behaviour suite
 scripts/release/test-build-tarball.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/release/test-check-version-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/release/test-followup-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window

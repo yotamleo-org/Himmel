@@ -895,6 +895,7 @@ scripts/qmd/test-ensure-qmd-daemon-leak.sh	11
 scripts/qmd/test-ensure-qmd-daemon.sh	46
 scripts/qmd/test-qmd-auth-headers.sh	0
 scripts/qmd/test-qmd-jina-gate.sh	14
+scripts/qmd/test-vocab-expand.sh	1
 scripts/release/test-build-tarball.sh	3
 scripts/release/test-check-version-tag.sh	0
 scripts/release/test-followup-report.sh	1

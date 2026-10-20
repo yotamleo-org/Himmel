@@ -8,8 +8,10 @@ question asked about. leg-graph.sh uses the two verbs below to fix that from out
   seeds <graph.json> <question>
       Prints one node id per line for each anchor that resolves. An anchor is a question token
       carrying a path, an extension, '-' or '_'. It resolves to a file node by path, path
-      suffix, basename or stem, else to a node whose label without '()' is the token (case
-      ignored). A test file loses to a non-test one unless the token names a test. At most
+      suffix, basename or stem; else to a file named in the other fleet vocabulary (the rename
+      registry's swaps via scripts/qmd/vocab-expand.py: headed-arm-worker.sh is headed-arm-leg.sh),
+      never one the registry marks other-sense; else to a node whose label without '()' is the
+      token (case ignored). A test file loses to a non-test one unless the token names a test. At most
       MAX_PER_ANCHOR ids per anchor. Prints nothing when nothing resolves.
 
   merge <given-answer> <keyword-answer> <budget>
@@ -22,9 +24,11 @@ Fails open: an unreadable graph prints no seeds and says so on stderr.
 ponytail: names only, not meaning; a question with no file or identifier is seeded by
 semantic-seeds.py beside these anchors.
 """
+import importlib.util
 import json
 import re
 import sys
+from pathlib import Path
 
 MAX_PER_ANCHOR = 2
 TOKEN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]*[A-Za-z0-9_]")
@@ -32,6 +36,7 @@ TEST = re.compile(r"(^|/)(tests?|fixtures?)/|(^|/)test[-_]|[._-]test\.[a-z]+$|\.
 HEADER = re.compile(r"^(?P<pre>.*?\| Start(?: \(given\))?: )(?P<start>\[.*\])(?P<rest>.*?) \| (?P<n>\d+) nodes found$")
 NOTICE = re.compile(r"^\[!\] TRUNCATED: showing (\d+) of (\d+) nodes .*?--budget (\d+)")
 END_MARK = re.compile(r"^\.\.\. \(truncated — (\d+) more nodes cut")
+VOCAB = Path(__file__).resolve().parent.parent / "qmd" / "vocab-expand.py"
 
 
 def anchors(question):
@@ -40,6 +45,34 @@ def anchors(question):
         if ("/" in t or "_" in t or "-" in t or re.search(r"\.[A-Za-z]{1,4}$", t)) and t not in out:
             out.append(t)
     return out
+
+
+def renamed(anchor):
+    """The anchor in each other fleet vocabulary, and the other-sense names it must not land on."""
+    try:
+        sys.dont_write_bytecode = True
+        spec = importlib.util.spec_from_file_location("vocab_expand", VOCAB)
+        vx = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vx)
+        prs = vx.pairs()
+        alts = [vx.swap(anchor, d, prs).lower() for d in ("to-new", "to-old")]
+        return [a for a in dict.fromkeys(alts) if a != anchor], vx.other_sense()
+    except Exception as exc:  # fail open: the anchor as written still resolves
+        print(f"anchor-seeds: {exc}; anchor not renamed", file=sys.stderr)
+        return [], set()
+
+
+def file_hits(files, al, skip=()):
+    hits = []
+    for src, ns in files.items():
+        low = src.lower()
+        base = low.rsplit("/", 1)[-1]
+        stem = base.rsplit(".", 1)[0]
+        if stem in skip:
+            continue
+        if al in (low, base, stem) or low.endswith("/" + al):
+            hits.extend(ns)
+    return hits
 
 
 def seeds(graph, question):
@@ -52,12 +85,11 @@ def seeds(graph, question):
     picked = []
     for a in anchors(question):
         al = a.lower()
-        hits = []
-        for src, ns in files.items():
-            low = src.lower()
-            base = low.rsplit("/", 1)[-1]
-            if al in (low, base, base.rsplit(".", 1)[0]) or low.endswith("/" + al):
-                hits.extend(ns)
+        hits = file_hits(files, al)
+        if not hits:
+            alts, other = renamed(al)
+            for alt in alts:
+                hits.extend(file_hits(files, alt, other))
         if not hits:
             hits = [n for n in nodes if n.get("source_file") and (n.get("label") or "").removesuffix("()").lower() == al]
         if "test" not in al:
