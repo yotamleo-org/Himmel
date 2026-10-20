@@ -701,6 +701,11 @@ trap 'rm -f "$EMPTY_ROOT_HOOK" "$CYGLESS_HOOK"; rm -rf "$SPACED_ROOT" "$VAULT_FI
 mkdir -p "$VAULT_FIXTURE/real"
 ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/escape"
 ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/real/escape2"
+# A symlink leaf that points at a FILE outside the vault: the leaf guard must refuse it.
+printf 'x\n' > "$OUTSIDE_FIXTURE/outside-file"
+ln -s "$OUTSIDE_FIXTURE/outside-file" "$VAULT_FIXTURE/filelink"
+assert "6449 symlink to a file outside the vault as arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" filelink" "$VAULT_FIXTURE")")"
 assert "6449 symlinked dir as relative arg -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" escape/notes" "$VAULT_FIXTURE")")"
 assert "6449 symlinked dir as absolute arg -> refused" PASS \
