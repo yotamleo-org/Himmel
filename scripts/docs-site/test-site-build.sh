@@ -38,6 +38,9 @@ check "h1Of: code and link markers are still stripped" is "$(h1 "# \`code\` and 
 check "control: h1Of keeps an intraword underscore" is "$(h1 '# snake_case_name stays')" "snake_case_name stays"
 check "control: h1Of keeps intraword double underscores" is "$(h1 '# snake__case__name stays')" "snake__case__name stays"
 check "h1Of: emphasis markers inside a code span survive" is "$(h1 "# The \`*ptr*\` field")" "The *ptr* field"
+check "h1Of: a code-formatted link label is stripped to its text" is "$(h1 "# [\`foo\`](x.md) page")" "foo page"
+check "h1Of: a lone backtick is dropped" is "$(h1 "# Use the \` key")" "Use the  key"
+check "h1Of: a double-backtick span keeps its inner backtick" is "$(h1 "# The \`\`a\`b\`\` span")" "The a\`b span"
 check "control: is() fails on a mismatch" fails is "a" "b"
 
 if [ ! -d "$here/node_modules/astro" ]; then
@@ -136,7 +139,7 @@ for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/
   depth += m[1] ? -1 : 1;
   if (depth === 0) break;
 }
-process.stdout.write(out.join('|'));" "$(route_of getting-started.md)")
+process.stdout.write(out.join('|'));" "$(route_of getting-started.md)") || groups='<node failed>'
 check "IA: top-level sidebar groups equal the F1 list (got: $groups)" is "$groups" "Get started|Use it|Run many sessions|Reference|For contributors"
 home="$dist/index.html"
 check "IA: Home is the hero page, not the docs map" grep -q 'Let Claude Code work on its own' "$home"
