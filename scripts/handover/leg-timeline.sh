@@ -55,6 +55,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 # pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
 # bank-preflight.sh for the failure mode).

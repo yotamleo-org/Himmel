@@ -77,6 +77,7 @@ index 0000000..1111111 100644
 T1_ROOT="$tmp/t1-root"; mkdir -p "$T1_ROOT/scripts/cr" "$T1_ROOT/scripts/lib"
 cp "$PANEL" "$T1_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$T1_ROOT/scripts/lib/load-dotenv.sh"
+cp "$HERE/../lib/prim.sh" "$T1_ROOT/scripts/lib/prim.sh"
 SENTINEL="sentinel-zai-9f3a7c"
 printf 'ZAI_API_KEY=%s\n' "$SENTINEL" > "$T1_ROOT/.env"
 printf '%s' '{"panel":[{"slug":"glm","model":"glm-5.2","provider":"zai","tier":"free","route_provider":"glm"}]}' > "$tmp/t1-reg.json"

@@ -1977,7 +1977,8 @@ check "PV3: anchor-only fallback threads --provider ANCHOR_PROVIDER" "$(grep -c 
 # survives; CRITICS_JSON env still wins over both (no merge). Run a COPY of the
 # panel from a tmp dir so the repo tree is never polluted with a local overlay
 # file (concurrent sessions share this checkout).
-mkdir -p "$tmp/panelcopy"
+mkdir -p "$tmp/panelcopy" "$tmp/lib"
+cp "$HERE/../lib/prim.sh" "$tmp/lib/prim.sh"
 cp "$PANEL" "$tmp/panelcopy/critic-panel.sh"
 printf '%s' '{"panel":[{"slug":"repodefault","model":"fake/repo","provider":"test","tier":"free"}]}' > "$tmp/panelcopy/critics.json"
 printf '%s' '{"panel":[{"slug":"localoverlay","model":"fake/local","provider":"test","tier":"free"}]}' > "$tmp/panelcopy/critics.local.json"
@@ -2210,6 +2211,7 @@ check "W7c: the clamp never emits a 0 or negative timeout" \
 P1648_ROOT="$tmp/p1648-root"; mkdir -p "$P1648_ROOT/scripts/cr" "$P1648_ROOT/scripts/lib"
 cp "$PANEL" "$P1648_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$P1648_ROOT/scripts/lib/load-dotenv.sh"
+cp "$HERE/../lib/prim.sh" "$P1648_ROOT/scripts/lib/prim.sh"
 printf 'GLM_API_KEY=zk-himmel-root\n' > "$P1648_ROOT/.env"
 P1648_CWX="$tmp/p1648-cwd"; mkdir -p "$P1648_CWX"; git init -q "$P1648_CWX"
 git -C "$P1648_CWX" config user.name test
@@ -2258,6 +2260,7 @@ check "HIMMEL-1648: panel preserves the live process env key over .env" "$(cat "
 P1065_ROOT="$tmp/p1065-root"; mkdir -p "$P1065_ROOT/scripts/cr" "$P1065_ROOT/scripts/lib"
 cp "$PANEL" "$P1065_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$P1065_ROOT/scripts/lib/load-dotenv.sh"
+cp "$HERE/../lib/prim.sh" "$P1065_ROOT/scripts/lib/prim.sh"
 printf 'CLIPROXY_API_KEY=cpx-himmel-root\n' > "$P1065_ROOT/.env"
 P1065_CWX="$tmp/p1065-cwd"; mkdir -p "$P1065_CWX"; git init -q "$P1065_CWX"
 git -C "$P1065_CWX" config user.name test
