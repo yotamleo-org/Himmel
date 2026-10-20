@@ -811,6 +811,8 @@ def _skip_process_substitution(text: str, i: int) -> int:
             continue
         if c == "`" or text[i:i + 2] in ("$(", "${"):
             raise ValueError("unclassified shell construct")
+        if c == "#" and text[i - 1] in " \t\n" or text[i:i + 5] == "case ":
+            raise ValueError("unclassified shell construct")
         if c in "'\"":
             i += 1
             while i < n and text[i] != c:

@@ -628,6 +628,9 @@ gcr "gh pr create <(echo hi) --head feat/w (process substitution), allowed" allo
 gcr "gh pr create <(echo \";\") --head feat/y (process substitution), refused" block 'gh pr create <(echo ";") --head feat/y'
 gcr "gh pr create >(cat) --head feat/y (output process substitution), refused" block 'gh pr create >(cat) --head feat/y'
 gcr "gh pr create >(cat) --head feat/w (output process substitution), allowed" allow 'gh pr create >(cat) --head feat/w'
+gcr "gh pr create <(echo hi # )<newline>) --head feat/y (paren inside a comment in a process substitution), refused" block 'gh pr create <(echo hi # )
+) --head feat/y'
+gcr "gh pr create <(case x in x) echo;; esac) --head feat/y (case pattern paren in a process substitution), refused" block 'gh pr create <(case x in x) echo;; esac) --head feat/y'
 gcr "gh pr create<newline>gh pr create --head feat/y (second call on the next line), refused" block 'gh pr create
 gh pr create --head feat/y'
 }
