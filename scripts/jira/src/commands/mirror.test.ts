@@ -225,11 +225,14 @@ describe('renderIssue', () => {
     ) as Record<string, MirrorIssue>;
     const render = (key: string): string =>
       renderIssue({ ...real[key], fields: { summary: 's', ...real[key].fields } } as MirrorIssue, []);
-    const fm = (md: string, field: string): string[] =>
-      JSON.parse(new RegExp(`  ${field}: (.*)`).exec(md)![1]) as string[];
+    const fm = (md: string, field: string): string[] => {
+      const m = new RegExp(`  ${field}: (.*)`).exec(md);
+      return m ? (JSON.parse(m[1]) as string[]) : [];
+    };
     for (const key of ['HIMMEL-6494', 'HIMMEL-5556', 'HIMMEL-6572']) {
       const md = render(key);
-      const reads = formatIssueLinks(key, real[key].fields.issuelinks as never).split('\n').map((l) => l.split('\t')[4]);
+      const links = real[key].fields.issuelinks as unknown as Parameters<typeof formatIssueLinks>[1];
+      const reads = formatIssueLinks(key, links).split('\n').map((l) => l.split('\t')[4]);
       expect(reads.filter((r) => r.startsWith(`${key} blocks `)).map((r) => r.split(' ')[2])).toEqual(fm(md, 'blocks'));
       expect(reads.filter((r) => r.startsWith(`${key} is blocked by `)).map((r) => r.split(' ')[4])).toEqual(fm(md, 'blocked_by'));
     }
