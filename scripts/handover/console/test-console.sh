@@ -2629,5 +2629,13 @@ mk87 dec87g "$(printf '%s\n%s\n%s' '(1) TOP of v1.1.3 = the audit items as ticke
 printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87g/specs/decisions/console-decisions-2026-10-19.md"
 run81 dec87g
 check "87 pointer line carrying its predecessor's file entries forward passes" "$rc81" "0"
+mk87 dec87h "$(printf '%s\n%s\n%s' '(1) TOP of v1.1.3 = the audit items as tickets.' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+printf '%s\n%s\n' '# Console decisions 2026-10-19' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87h/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87h
+check "87 a heading in the predecessor's decisions file is not part of an entry" "$rc81" "0"
+mk81 dec87i "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5" "$e87_3 $e87_4 $e87_5 (7) Fleet cap 50; fill free slots from the FOCUS v1.1.3 To Do pool after draining owner-less In Progress."
+mkdir -p "$root/tester/dec87i/specs/decisions"; printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87i/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87i
+check "87 a longer line that drops its predecessor's decisions file refuses" "$rc81" "1"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

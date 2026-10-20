@@ -1456,11 +1456,13 @@ decisions_files_text() {
     [ "$n" -gt 0 ]
 }
 
-# A shorter decisions: line keeps every operator ruling when it names a bucket
+# A decisions: line keeps every operator ruling when it names a bucket
 # decisions file and every numbered "(N) " entry of the predecessor's line, and
 # of the decisions files that line names, is found verbatim in the outgoing line
-# or the files it names. Fails closed: an unreadable file or no numbered entry
-# fails, and the first entry not found is printed to stderr.
+# or the files it names. An entry runs to the next "(N) " or the end of its
+# line, so a heading in a decisions file is part of no entry. Fails closed: an
+# unreadable file or no numbered entry fails, and the first entry not found is
+# printed to stderr.
 # Args: predecessor line, outgoing line, bucket dir.
 decisions_kept_verbatim() {
     local prev="$1" out="$2" dir="$3" have need
@@ -1472,23 +1474,24 @@ decisions_kept_verbatim() {
     esac
     awk '
         FNR == NR { have = have $0 "\n"; next }
-        { need = need $0 "\n" }
-        END {
-            rest = need; n = 0
+        {
+            rest = $0
             while (match(rest, /\([0-9]+\) /)) {
                 rest = substr(rest, RSTART); len = RLENGTH
                 if (match(substr(rest, len + 1), /\([0-9]+\) /)) {
                     entry = substr(rest, 1, len + RSTART - 1); rest = substr(rest, len + RSTART)
                 } else { entry = rest; rest = "" }
                 sub(/[[:space:]]+$/, "", entry); n++
-                if (!index(have, entry)) { print "  not found verbatim: " substr(entry, 1, 100) > "/dev/stderr"; exit 1 }
+                if (!index(have, entry)) { print "  not found verbatim: " substr(entry, 1, 100) > "/dev/stderr"; bad = 1; exit 1 }
             }
-            if (!n) { print "  no numbered (N) entry in the predecessor decisions" > "/dev/stderr"; exit 1 }
-        }' <(printf '%s\n%s\n' "$out" "$have") <(printf '%s\n' "$need")
+        }
+        END { if (!bad && !n) { print "  no numbered (N) entry in the predecessor decisions" > "/dev/stderr"; exit 1 } }
+        ' <(printf '%s\n%s\n' "$out" "$have") <(printf '%s\n' "$need")
 }
 
 # Refuse a handover whose <field>: Live-state line is missing or a
-# placeholder (for `decisions:`, also shorter, unless decisions_kept_verbatim)
+# placeholder (for `decisions:`, also shorter or, once the predecessor's names
+# a decisions file, any length, unless decisions_kept_verbatim)
 # where the doc the outgoing console itself succeeded (named on its first line)
 # had a real one, unless its Results carry a `<MARKER>: <reason>` bullet. No
 # predecessor, or one without a real line, passes. `priority:` shrinks as its
@@ -1509,7 +1512,8 @@ check_live_line_kept() {
     out_line="$(printf '%s\n' "$live" | sed -n "s/^$field:[[:space:]]*//p" | head -n 1)"
     case "$out_line" in
         ""|none|"none "*|"<"*) ;;
-        *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0
+        *) case "$field:$prev_line" in decisions:*specs/decisions/console-decisions-*) ;;
+               *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0 ;; esac
            if [ "$field" = decisions ]; then
                why="$(decisions_kept_verbatim "$prev_line" "$out_line" "$(dirname "$outgoing")" 2>&1 >/dev/null)" && return 0
            fi ;;

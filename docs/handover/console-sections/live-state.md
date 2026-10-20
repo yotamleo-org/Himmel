@@ -85,8 +85,12 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > `specs/decisions/console-decisions-<date>.md` in the bucket, then keep only the
 > active rulings plus that path on the line, e.g. `decisions:
 > specs/decisions/console-decisions-2026-10-20.md holds #1-#60; active: (61) …`.
-> `next` accepts the shorter line only when every numbered entry of your
-> predecessor's line, and of any decisions file that line names, is found verbatim
-> in your line or the files it names; a missing file or a changed word reads
-> `DECISIONS-DROP`. Name every older decisions file on the line, or copy its
-> entries into today's.
+> `next` accepts the shorter line only when it names at least one decisions file
+> and every numbered entry of your predecessor's line, and of any decisions file
+> that line names, is found verbatim in your line or the files it names; a missing
+> file or a changed word reads `DECISIONS-DROP`. Once your predecessor's line names
+> a decisions file, `next` runs this check whatever your line's length. An entry
+> runs from its `(N) ` to the next `(N) ` or the end of its line, so a heading in a
+> decisions file is fine; text before the first `(N) ` is not checked, so number
+> every ruling. Name every older decisions file on the line, or copy its entries
+> into today's.
