@@ -6951,6 +6951,13 @@ if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no semantic-run
 
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_OUT="$c70_t/no-such-out")"
 if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no cadence graphify-out'; then pass "C70 no cadence corpus -> OK skip"; else fail "C70 no corpus -> $(printf '%s' "$out" | head -3)"; fi
+c70_rows "x.md" "x.md" "x.md"
+printf '#!/bin/sh\nexit 127\n' > "$c70_t/missing-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/missing-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 127'; then pass "C70 checker exits 127 -> INFO, not a healthy OK"; else fail "C70 rc 127 -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\necho "graph-freshness: FAIL corpus orphaned: gone" >&2\nexit 2\n' > "$c70_t/orphan-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/orphan-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'corpus orphaned'; then pass "C70 other rc 2 -> INFO with the reason"; else fail "C70 rc 2 -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c70_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

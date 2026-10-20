@@ -4168,10 +4168,13 @@ check_c68_konsole_dbus() {
 # "graph-freshness: semantic ..." line verbatim (last run, failed, refused,
 # backed-off, oldest unstamped file). A file failed or refused in each of the
 # last 3 runs (the script's rc 2 "semantic refresh stuck") is WARN. No cadence
-# corpus or no semantic-runs.jsonl is an OK skip; any other rc 2 is INFO, the
-# graph's own staleness being C33's. Seam: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out dir).
+# corpus or no semantic-runs.jsonl is an OK skip; any other rc 2, or an rc the
+# script does not define (it could not run), is INFO -- never a healthy OK -- the
+# graph's own staleness being C33's. Seams: HIMMEL_DOCTOR_GRAPH_OUT (graphify-out
+# dir), HIMMEL_DOCTOR_GRAPH_CHECK (the freshness script).
 check_c70_graph_semantic() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-${HOME:-}/.claude/graph-cadence/himmel/graphify-out}"
+    local check="${HIMMEL_DOCTOR_GRAPH_CHECK:-$SELF_DIR/graphify/check-graph-freshness.sh}"
     local res rc=0 line fail_line
     if [ ! -d "$out" ]; then
         emit OK C70-graph-semantic "no cadence graphify-out at $out -- semantic freshness check skipped"
@@ -4181,14 +4184,14 @@ check_c70_graph_semantic() {
         emit OK C70-graph-semantic "no semantic-runs.jsonl in $out -- no semantic run recorded, check skipped"
         return 0
     fi
-    res="$(bash "$SELF_DIR/graphify/check-graph-freshness.sh" --out "$out" 2>&1)" || rc=$?
+    res="$(bash "$check" --out "$out" 2>&1)" || rc=$?
     line="$(printf '%s\n' "$res" | grep -m1 '^graph-freshness: semantic ')" || true
     fail_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: FAIL //p' | head -1)"
     if [ "$rc" -eq 2 ] && grep -q 'semantic refresh stuck' <<< "$res"; then
         emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $fail_line" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out   # names the stuck files; python3 scripts/graphify/semantic-merge.py status shows the backoff state"
-    elif [ "$rc" -eq 2 ]; then
-        emit INFO C70-graph-semantic "graph-freshness check failed (rc 2), semantic freshness not judged: $fail_line" \
+    elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out"
     elif [ -n "$line" ]; then
         emit OK C70-graph-semantic "$line"
