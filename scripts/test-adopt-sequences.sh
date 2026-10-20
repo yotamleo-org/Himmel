@@ -145,21 +145,21 @@ STUB_EOF
 # new_fixture <dir>: HOME + project + hermetic bin, holding operator state the
 # restore must give back.
 new_fixture() {
-  local X="$1" t
-  mkdir -p "$X/home/.claude" "$X/proj/.claude" "$X/bin" "$X/state"
+  local d="$1" t
+  mkdir -p "$d/home/.claude" "$d/proj/.claude" "$d/bin" "$d/state"
   for t in bash git jq python3 grep sed cat cp mv rm ln mkdir chmod diff wc tr head tail \
            basename dirname mktemp dd sort cut xargs date stat uname id awk cmp find \
            sha256sum readlink env ls; do
-    link_hermetic_tool "$t" "$X/bin"
+    link_hermetic_tool "$t" "$d/bin"
   done
-  write_stub "$X/bin"
-  printf '{"env":{"OPERATOR_KEY":"keep"},"model":"opus"}\n' > "$X/home/.claude/settings.json"
-  printf '# operator notes\nkeep me\n' > "$X/home/.claude/CLAUDE.md"
-  printf '{"permissions":{"allow":["Bash(ls:*)"]}}\n' > "$X/proj/.claude/settings.json"
-  git -C "$X/proj" init -q -b main
-  git -C "$X/proj" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-  printf '#!/bin/sh\n# foreign hook\nexit 0\n' > "$X/proj/.git/hooks/pre-commit"
-  chmod 755 "$X/proj/.git/hooks/pre-commit"
+  write_stub "$d/bin"
+  printf '{"env":{"OPERATOR_KEY":"keep"},"model":"opus"}\n' > "$d/home/.claude/settings.json"
+  printf '# operator notes\nkeep me\n' > "$d/home/.claude/CLAUDE.md"
+  printf '{"permissions":{"allow":["Bash(ls:*)"]}}\n' > "$d/proj/.claude/settings.json"
+  git -C "$d/proj" init -q -b main
+  git -C "$d/proj" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  printf '#!/bin/sh\n# foreign hook\nexit 0\n' > "$d/proj/.git/hooks/pre-commit"
+  chmod 755 "$d/proj/.git/hooks/pre-commit"
 }
 
 # snapshot <X> <out>: type+mode+path for everything under home/ and proj/,
@@ -185,18 +185,18 @@ norm_settings() {
 
 # remaining <X> <before> -> prints the paths that differ from the pre-install snapshot, allowlist aside
 remaining() {
-  local X="$1" after="$1/snap.now" p pre
-  snapshot "$X" "$after"
+  local d="$1" after="$1/snap.now" p pre
+  snapshot "$d" "$after"
   diff "$2" "$after" | grep -E '^[<>]' | awk '{print $NF}' | sort -u | grep -vE "$ALLOWLIST_RE" | while IFS= read -r p; do
     if [ "$STRICT" -ne 1 ]; then
       [ "$p" = home/.claude/.i-have-adhd-always ] && continue
-      [ "$p" = proj/.gitignore ] && [ "$(cat "$X/$p")" = ".claude/worktrees/" ] && continue
+      [ "$p" = proj/.gitignore ] && [ "$(cat "$d/$p")" = ".claude/worktrees/" ] && continue
       case "$p" in
-        home/.claude/settings.json) pre="$X/pre/home-settings.json" ;;
-        proj/.claude/settings.json) pre="$X/pre/proj-settings.json" ;;
+        home/.claude/settings.json) pre="$d/pre/home-settings.json" ;;
+        proj/.claude/settings.json) pre="$d/pre/proj-settings.json" ;;
         *) pre="" ;;
       esac
-      [ -z "$pre" ] || [ "$(norm_settings "$pre")" != "$(norm_settings "$X/$p")" ] || continue
+      [ -z "$pre" ] || [ "$(norm_settings "$pre")" != "$(norm_settings "$d/$p")" ] || continue
     fi
     echo "$p"
   done || true
@@ -265,7 +265,9 @@ v_tamper() { # corrupt every backup holding the JSON null a container is restore
 
 run_seq() { # <id> <verbs...>   (runs in a subshell; results in $X/rows)
   local id="$1" verb i=0; shift
-  X="$TMP/$id"; new_fixture "$X"; fixture_env
+  X="$(mktemp -d "$TMP/seq.XXXXXX")" || exit 1
+  printf '%s' "$X" > "$TMP/$id.dir"
+  new_fixture "$X"; fixture_env
   if [ "${1:-}" = N ]; then # explicit-null container, seeded before the pre-install snapshot
     shift
     jq '.hooks = null' "$X/home/.claude/settings.json" > "$X/s.n" && mv "$X/s.n" "$X/home/.claude/settings.json"
@@ -345,17 +347,18 @@ for entry in "${SEQS[@]}"; do
   IFS='|' read -r id xf verbs <<< "$entry"
   [ "$id" = control-broken-restore ] && [ "$BREAK" -ne 1 ] && continue
   [ -z "$ONLY" ] || [ "$ONLY" = "$id" ] || continue
-  if [ ! -e "$TMP/$id/done" ]; then
+  D="$(cat "$TMP/$id.dir" 2>/dev/null)"
+  if [ -z "$D" ] || [ ! -e "$D/done" ]; then
     echo "FAIL  $id [$verbs]: sequence did not complete: $(tail -3 "$TMP/$id.log" | tr '\n' ';')"; FAILED=$((FAILED + 1)); continue
   fi
-  bad="$(grep '^bad ' "$TMP/$id/rows" || true)"
+  bad="$(grep '^bad ' "$D/rows" || true)"
   if [ -n "$xf" ]; then
     if [ -n "$bad" ]; then echo "XFAIL $id [$verbs] ($xf): $(printf '%s' "$bad" | head -1 | cut -c5-)"; PASS=$((PASS + 1))
     else echo "FAIL  $id [$verbs]: XPASS — known-red row passes; $xf is fixed, drop the tag from this row"; FAILED=$((FAILED + 1)); fi
   elif [ -n "$bad" ]; then
     echo "FAIL  $id [$verbs]"; printf '%s\n' "$bad" | cut -c5- | sed 's/^/        /'; FAILED=$((FAILED + 1))
   else
-    echo "ok    $id [$verbs] ($(grep -c '^ok ' "$TMP/$id/rows") checks)"; PASS=$((PASS + 1))
+    echo "ok    $id [$verbs] ($(grep -c '^ok ' "$D/rows") checks)"; PASS=$((PASS + 1))
   fi
 done
 ELAPSED=$((SECONDS - START))
