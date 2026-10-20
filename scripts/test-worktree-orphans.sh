@@ -271,6 +271,7 @@ WT_PARK_DOC2=$(mk_wt parkdoc2 fix/park-doc-2 1) || exit 1
 printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/park-doc\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-live.md"
 HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-live.md" "orphans-test-$$" >/dev/null 2>&1 \
     || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
+mkdir -p "$REPO/.git/info"
 printf '.env.local\nnode_modules/\n' >> "$REPO/.git/info/exclude"
 WT_PARK_IGN=$(mk_wt parkign fix/park-ign 1) || exit 1
 printf 'secret\n' > "$WT_PARK_IGN/.env.local"
