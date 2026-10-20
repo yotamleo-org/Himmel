@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # test-quality-sample.sh — the REAL graphify and qmd on a 50-file sample.
 #
 # WHY: the stub suites prove each script's branches; none proves the output stays
