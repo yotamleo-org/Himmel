@@ -162,7 +162,7 @@ GREEN_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody"
 GREEN_FILES="scripts/x/run.sh"
 GREEN_BODY='## Summary\nthing\n\n## Ticket coverage\n- ask one: done\n- ask two: done\n\n## Test plan\nx\n'
 JIRA_DB="$tmp/jira.db"
-printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
+printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-100\tTo Do\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
 
 seed_ledger_ok() {
     printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","model":"codex","status":"ok"}\n' "$SHA" > "$LEDGER"
@@ -754,6 +754,22 @@ STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50
 rc=0; out="$(run7)" || rc=$?
 check "only 7: matching sets pass: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-100\n'
+seed_deferral HIMMEL-100
+printf 'HIMMEL-100\tHIMMEL-1\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "self: a deferral to the PR's own ticket is refused though its links name it: exit 1" "$rc" "1"
+contains "self: names the own ticket" "$out" "HIMMEL-100 is the PR's own ticket"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-201\n'
+seed_deferral HIMMEL-201
+STUB_PR_BRANCH='feat/himmel-201-thing'
+rc=0; out="$(run)" || rc=$?
+check "self: a residual-labelled own ticket is no deferral target either: exit 1" "$rc" "1"
+contains "self: residual-labelled own ticket: names it" "$out" "HIMMEL-201 is the PR's own ticket"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'

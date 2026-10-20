@@ -405,7 +405,7 @@ jira_links() { jira_run links "$1"; }
 # cov_linked <own-key> <target-key>: the PR's own ticket has an issue link to the target, either direction, any type.
 # Returns 0 linked, 1 not linked (or no own ticket), 2 the links lookup failed.
 cov_linked() {
-    [ -n "$1" ] || return 1
+    [ -n "$1" ] && [ "$1" != "$2" ] || return 1
     cov_links_out=$(jira_links "$1") || return 2
     printf '%s\n' "$cov_links_out" | awk -F'\t' -v t="$2" '{ for (i = 1; i <= NF; i++) if ($i == "inward=" t || $i == "outward=" t) f = 1 } END { exit !f }'
 }
@@ -471,6 +471,8 @@ else
                     cov_bad="$cov_bad; $cov_key UNKNOWN (jira returned no status)"
                 elif printf '%s\n' "$cov_status" | grep -qiE '^(done|closed|resolved|won.?t do)$'; then
                     cov_bad="$cov_bad; $cov_key already $cov_status"
+                elif [ "$cov_key" = "$cov_own" ]; then
+                    cov_bad="$cov_bad; $cov_key is the PR's own ticket and cannot be its own deferral target"
                 elif ! printf '%s\n' "$cov_out" | jq -e '(.fields.labels // []) | any(. == "residual")' >/dev/null 2>&1 \
                     && ! { [ -n "$cov_own" ] && [ "${cov_key%-*}" = "${cov_own%-*}" ] && [ "${cov_key##*-}" -lt "${cov_own##*-}" ]; } \
                     && ! { cov_linked "$cov_own" "$cov_key" && cov_rc=0 || cov_rc=$?; [ "$cov_rc" -eq 0 ]; }; then
