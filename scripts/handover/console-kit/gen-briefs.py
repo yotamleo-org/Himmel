@@ -403,7 +403,9 @@ def main():
             with open(re.sub(r'\.json$', '', a.manifest) + '.launchers.sha256', 'a') as f:
                 f.write('%s  %s\n' % (digest, os.path.abspath(launcher)))
 
-    json.dump(legs, open(a.legs + '.out', 'w'), indent=1)
+    with open(a.legs + '.out', 'w') as f:
+        json.dump(legs, f, indent=1)
+        f.write('\n')
     for l in legs:
         doc = os.path.join(a.bucket, l['stem'] + '.md')
         print('%s %s %s' % (l['label'], l['nonce'], doc))

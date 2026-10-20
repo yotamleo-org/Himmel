@@ -342,6 +342,7 @@ scripts/handover/console-kit/test-ice-followups.sh	local	new since the audit, be
 scripts/handover/console-kit/test-inbox-audit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-inbox-follow.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-inbox-send.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-json-writers-final-newline.sh	local	behaviour suite, new for HIMMEL-6767
 scripts/handover/console-kit/test-judge-ladder.sh	pr	trust-path
 scripts/handover/console-kit/test-launch-cloud.sh	pr	trust-path
 scripts/handover/console-kit/test-leg-doc-lock.sh	pr	trust-path
