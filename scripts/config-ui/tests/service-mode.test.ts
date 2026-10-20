@@ -23,14 +23,47 @@ const spawnService = (home: string, extra: Record<string, string> = {}) =>
     env: { ...process.env, HOME: home, CONFIG_UI_HIMMELCTL: STUB, ...extra }, stdout: "pipe", stderr: "pipe",
   });
 
+// The first stdout line of a child, however many chunks it arrives in.
+async function readUrlLine(stream: ReadableStream<Uint8Array>, deadlineMs = 10_000) {
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  const end = Date.now() + deadlineMs;
+  let buf = "";
+  try {
+    while (!buf.includes("\n")) {
+      const left = end - Date.now();
+      if (left <= 0) break;
+      const r = await Promise.race([reader.read(), sleep(left).then(() => null)]);
+      if (!r || r.done) break;
+      buf += dec.decode(r.value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return buf.split("\n")[0].trim();
+}
+
 async function launch(home: string, extra: Record<string, string> = {}) {
   const p = spawnService(home, extra);
   cleanups.push(() => p.kill());
-  const url = new TextDecoder().decode((await p.stdout.getReader().read()).value).trim();
+  const url = await readUrlLine(p.stdout);
   const m = /^(http:\/\/127\.0\.0\.1:\d+)\/(?:agui\/)?#t=([0-9a-f]{64})$/.exec(url);
   expect(m).not.toBeNull();
   return { p, base: m![1], token: m![2] };
 }
+
+test("readUrlLine: a URL line split across stdout chunks is read whole", async () => {
+  const line = `http://127.0.0.1:41873/agui/#t=${"0123456789abcdef".repeat(4)}\n`;
+  const enc = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(c) {
+      c.enqueue(enc.encode(line.slice(0, 20)));
+      await sleep(20);
+      c.enqueue(enc.encode(line.slice(20)));
+    },
+  });
+  expect(await readUrlLine(stream)).toBe(line.trim());
+});
 
 test("service: two starts on one token file serve the same token, and the file is mode 600", async () => {
   const home = tmp();

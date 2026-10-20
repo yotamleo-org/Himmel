@@ -38,6 +38,7 @@
 #   6  <text> leads with an all-caps word that is neither a status
 #      marker nor a documented non-status bullet - nothing written
 #   5  write failed (e.g. disk full) after the heading/newline checks passed
+#   7  bucket-gitleaks.sh finds a secret in the bullet - nothing written
 #
 # Platform guard: POSIX bash 3.2+, no GNU-only flags.
 set -u
@@ -88,6 +89,21 @@ esac
 
 stamp="$(date +%H:%M)"
 bullet="- ${stamp} ${TEXT}"
+
+# the vault's pre-commit gitleaks would refuse the doc and stall the autosync
+# commit, so scan the bullet first (bucket-gitleaks.sh, the vault's config) and
+# refuse a FINDING. No gitleaks or an unusable scan (rc 2) appends unscanned.
+scan="$(mktemp "${TMPDIR:-/tmp}/append-results.XXXXXX")" || scan=""
+if [ -n "$scan" ]; then
+    printf '%s\n' "$bullet" > "$scan"
+    verdict="$(bash "$(dirname "${BASH_SOURCE[0]}")/bucket-gitleaks.sh" "$scan")"
+    vrc=$?
+    rm -f "$scan"
+    if [ "$vrc" -eq 1 ]; then
+        echo "append-results: $verdict - refusing; reword the bullet (break the key=value shape, drop the secret-like value) and re-run" >&2
+        exit 7
+    fi
+fi
 
 # append under the lock every doc writer shares (leg-doc-lock.sh),
 # so a rewrite in flight (the launcher's session_ids:, inbox-send.sh,

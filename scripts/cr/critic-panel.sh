@@ -1428,6 +1428,16 @@ process_member() {
     _fb_out=""
     _fb_err=""
 
+    # cfp exit 5 = SKIPPED, a clean no-op (api lane off, no key, bank not
+    # PROCEED): not a failure, so no attempt error row and no fallback chain.
+    if [ "$_pm_rc" -eq 5 ]; then
+        _pm_detail="$(_pm_redact_detail "$(_pm_err_line "$_pm_err_file")")"
+        [ -n "$_pm_detail" ] || _pm_detail="critic SKIPPED (rc=5, no stderr captured)"
+        echo "panel-availability: $_pm_slug unavailable (rc=5) reason=critic-skipped${_pm_detail:+: $_pm_detail}" >&2
+        _queue_avail "$_pm_slug" unavailable "" critic-skipped "$_pm_detail"
+        return
+    fi
+
     _pm_is_timeout=0
     if [ "$_pm_rc" -eq 124 ] || [ "$_pm_rc" -eq 137 ]; then
         _pm_is_timeout=1

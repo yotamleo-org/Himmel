@@ -58,6 +58,8 @@ is_quota_exhaustion() {
 # digit runs that look like an HTTP status (e.g. a ticket ID) without being
 # one. Classify it as usage-error before any text scan runs, so
 # a member's malformed invocation never gets reported as a transport failure.
+# rc=5 is its documented SKIPPED clean no-op (no key, lane off, bank not
+# PROCEED): critic-skipped, never a failure class.
 # ---------------------------------------------------------------------------
 classify_failure() {
     _cf_rc="${1:-1}"
@@ -67,6 +69,7 @@ classify_failure() {
     case "$_cf_rc" in
         124|137) echo timeout; return 0 ;;
         2) echo usage-error; return 0 ;;
+        5) echo critic-skipped; return 0 ;;
     esac
 
     _cf_blob=""
