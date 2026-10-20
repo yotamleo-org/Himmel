@@ -204,11 +204,15 @@ if grep -q 'a GitHub token (' "$TMP/out" && grep -q 'variable B' "$TMP/out"; the
 # can page on must be built at run time (prefix + repeated char) and named in
 # labels, never printed. git grep exits 1 on a clean "no match".
 ROOT=$(cd "$(dirname "$HOOK")/../.." && pwd)
-lit=$(git -C "$ROOT" grep -lE '(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})' -- ':(glob)scripts/**/test-*' ':(glob)scripts/**/*.test.*' 2>/dev/null)
-g=$?
-if [ "$g" = 1 ]; then pass "no suite under scripts/ holds a token-shaped literal"
-elif [ "$g" = 0 ]; then fail "token-shaped literal in: $lit"
-else pass "token-literal scan skipped (not a git checkout, rc=$g)"; fi
+if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    pass "token-literal scan skipped (not a git checkout)"
+else
+    g=0
+    lit=$(git -C "$ROOT" grep -lE '(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})' -- ':(glob)scripts/**/test-*' ':(glob)scripts/**/*.test.*' 2>/dev/null) || g=$?
+    if [ "$g" = 1 ]; then pass "no suite under scripts/ holds a token-shaped literal"
+    elif [ "$g" = 0 ]; then fail "token-shaped literal in: $lit"
+    else fail "token-literal scan errored (git grep rc=$g)"; fi
+fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then echo "All cases passed."; exit 0; fi
