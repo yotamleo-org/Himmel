@@ -80,9 +80,11 @@ case "$ERR" in
 esac
 run_case "$(j_bash "$RUNNER_CMD")"
 assert_rc "run-shell-tests.sh suggested form passes the hook" 0 "$RC"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-QR_OUT=$(cd "$REPO_ROOT" && bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh --list 2>&1)
-assert_rc "run-shell-tests.sh suggested form is accepted by quiet-run" 0 "$?"
+QUIET_RUN="$(cd "$(dirname "$0")/.." && pwd)/quiet-run.sh"
+QR_OUT=$(bash "$QUIET_RUN" suite -- bash scripts/ci/run-shell-tests.sh 2>&1)
+assert_rc "quiet-run refuses the runner under label suite" 2 "$?"
+QR_OUT=$(bash "$QUIET_RUN" shell-unit -- true 2>&1)
+assert_rc "quiet-run accepts label shell-unit" 0 "$?"
 case "$QR_OUT" in
     "OK quiet-run shell-unit "*) echo "PASS quiet-run reports OK for the shell-unit label" ;;
     *) echo "FAIL quiet-run shell-unit label - got: $QR_OUT"; FAILED=$((FAILED + 1)) ;;
