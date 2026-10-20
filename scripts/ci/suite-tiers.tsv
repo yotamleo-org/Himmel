@@ -403,6 +403,7 @@ scripts/handover/test-leg-timeline.sh	local	behaviour suite, 0 catches in the 40
 scripts/handover/test-lessons-sweep.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard
 scripts/handover/test-pr-merge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
