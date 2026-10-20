@@ -22,6 +22,9 @@
 # (`rc=0; env_alias_restrict A B || rc=$?`) and treats anything but 1 as "on".
 # restrict and permit return 0 (true) or 1 (false); the JS and Python twins
 # (env-alias.mjs, env_alias.py) answer the same rows, fixtures/env-alias-rows.tsv.
+# Sibling rename helpers: status-marker.sh (+ status-marker.mjs, status_marker.py)
+# parses PARKED-BANK / PARKED-USAGE; deprecated-forwarder.sh is the template for an
+# old script path that forwards to its renamed script.
 # Bash 3.2-safe (indirect expansion, no namerefs).
 
 # _env_alias_valid NAME: [A-Z_][A-Z0-9_]*, spelled out so no locale widens A-Z.
