@@ -298,27 +298,28 @@ describe('fix-version and affects-version verbs land', () => {
   });
 });
 
-// KNOWN GAPS: these writes print success and exit 0 when Jira drops the write,
-// because only `edit` reads back. `it.fails` passes while the gap stands and
-// turns red the day the op fails loud, so the row is then swapped for a plain one.
-describe('writes with no read-back yet fail loud when Jira drops them', () => {
-  it.fails('transition', async () => {
+// The 4640 class again: Jira answers 2xx and keeps the old value, so each write
+// reads the issue back and fails loud instead of printing success.
+describe('writes fail loud when Jira drops them', () => {
+  it('transition', async () => {
     jira.dropped.add('status');
-    await expect(run('transition', 'HIMMEL-1', 'In Review')).rejects.toThrow();
+    await expect(run('transition', 'HIMMEL-1', 'In Review')).rejects.toThrow(/was not changed/);
+    expect(out.join('\n')).not.toContain('→');
   });
 
-  it.fails('fix-version verb', async () => {
+  it('fix-version verb', async () => {
     jira.dropped.add('fixVersions');
-    await expect(run('fix-version', 'HIMMEL-1', '--add', 'v1.0.41')).rejects.toThrow();
+    await expect(run('fix-version', 'HIMMEL-1', '--add', 'v1.0.41')).rejects.toThrow(/was not changed/);
   });
 
-  it.fails('affects-version verb', async () => {
+  it('affects-version verb', async () => {
     jira.dropped.add('versions');
-    await expect(run('affects-version', 'HIMMEL-1', '--add', 'v1.1.3')).rejects.toThrow();
+    await expect(run('affects-version', 'HIMMEL-1', '--add', 'v1.1.3')).rejects.toThrow(/was not changed/);
   });
 
-  it.fails('link', async () => {
+  it('link', async () => {
     jira.dropped.add('issuelinks');
-    await expect(run('link', 'HIMMEL-1', '--blocks', 'HIMMEL-2')).rejects.toThrow();
+    await expect(run('link', 'HIMMEL-1', '--blocks', 'HIMMEL-2')).rejects.toThrow(/was not changed/);
+    expect(out.join('\n')).not.toContain('Linked');
   });
 });
