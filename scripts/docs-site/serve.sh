@@ -24,7 +24,13 @@ check_port_free() {
 check_port_free
 
 cd "$site" || exit 1
-if [ ! -d node_modules/astro ]; then npm ci >&2 || exit 1; fi
+# the stamp holds the lockfile hash of the last install, so a dependency bump reinstalls
+stamp=node_modules/.lockfile.sha256
+lock_sha=$(sha256sum package-lock.json | cut -d' ' -f1)
+if [ ! -d node_modules/astro ] || [ "$(cat "$stamp" 2>/dev/null)" != "$lock_sha" ]; then
+  npm ci >&2 || exit 1
+  echo "$lock_sha" >"$stamp"
+fi
 npm run build >&2 || exit 1
 
 # the build takes seconds; a process may have claimed the port meanwhile

@@ -95,6 +95,33 @@ rm -f "$tmp/racer.pid"
 wait_free ::1
 wait_free 127.0.0.1
 
+# --- lockfile change: serve.sh reinstalls only when package-lock.json differs from the install stamp
+fake="$tmp/fake"
+mkdir -p "$fake/scripts/docs-site" "$fake/site" "$tmp/lbin"
+cp "$repo/scripts/docs-site/serve.sh" "$fake/scripts/docs-site/serve.sh"
+echo '{"lock":1}' >"$fake/site/package-lock.json"
+cat >"$tmp/lbin/npm" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  ci) echo ci >>"$J1_NPM_LOG"; mkdir -p node_modules/astro; exit 0 ;;
+  "run build") exit 0 ;;
+  *) echo "stub npm: unexpected args: $*" >&2; exit 97 ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/lbin/npx"
+chmod +x "$tmp/lbin/npm" "$tmp/lbin/npx"
+serve_fake() { PATH="$tmp/lbin:$PATH" J1_NPM_LOG="$tmp/lock.log" bash "$fake/scripts/docs-site/serve.sh" >/dev/null 2>&1; }
+installs() { [ -f "$tmp/lock.log" ] && wc -l <"$tmp/lock.log" || echo 0; }
+serve_fake
+if [ "$(installs)" -eq 1 ]; then ok "lockfile: first serve installs"; else ko "lockfile: first serve installs (got $(installs))"; fi
+serve_fake
+if [ "$(installs)" -eq 1 ]; then ok "lockfile: unchanged lockfile does not reinstall"; else ko "lockfile: unchanged lockfile does not reinstall (got $(installs))"; fi
+echo '{"lock":2}' >"$fake/site/package-lock.json"
+serve_fake
+if [ "$(installs)" -eq 2 ]; then ok "lockfile: changed lockfile reinstalls"; else ko "lockfile: changed lockfile reinstalls (got $(installs))"; fi
+serve_fake
+if [ "$(installs)" -eq 2 ]; then ok "lockfile: reinstall is stamped, next serve skips"; else ko "lockfile: reinstall is stamped, next serve skips (got $(installs))"; fi
+
 if [ ! -d "$repo/site/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); real serve not run in the hermetic shell shards"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
