@@ -81,7 +81,9 @@ has "(b) block says READY-CANDIDATE" "SHEPHERD 7 $HEADSHA READY-CANDIDATE" "$out
 has "(b) steering skipped" "steering: skipped" "$out"
 has "(b) suite verdict line" "suite test-a.sh: PASS" "$out"
 check "(b) clean run removes its own worktree" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
-check "(b) worktree no longer listed" "" "$(git -C "$WORK/repo" worktree list | grep shepherd-7)"
+wtl=$(git -C "$WORK/repo" worktree list 2>&1)
+has "(b) worktree list probe ran" "[main]" "$wtl"
+case "$wtl" in *shepherd-7*) fail "(b) worktree no longer listed (still in: $wtl)" ;; *) pass "(b) worktree no longer listed" ;; esac
 
 # (c) failed suite -> needs leg
 setup yes ok 0
