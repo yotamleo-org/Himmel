@@ -222,8 +222,8 @@ fixture_env() {
 status_unexpected_red() { # <status output>: the red lines that are not graphify
   grep -E '(^|[[:space:]])red([[:space:]]|$)' "$1" | grep -vE '(^|[[:space:]])red[[:space:]]+graphify([[:space:]]|$)'
 }
-doctor_unexpected_item() { # <doctor output>: the bullet items that are not codex-cli or the jira dist build
-  grep -E '^ +· ' "$1" | grep -vE '^ +· (degraded/codex-cli|red/jira-cli-dist-build)([: ]|$)'
+doctor_unexpected_item() { # <doctor output>: the bullet items that are not graphify, codex-cli or the jira dist build
+  grep -E '^ +· ' "$1" | grep -vE '^ +· (red/graphify|degraded/codex-cli|red/jira-cli-dist-build)([: ]|$)'
 }
 
 # a fake red must still fail the filters while the host-tool reds pass them
@@ -235,6 +235,8 @@ filter_selftest() {
   [ -n "$(status_unexpected_red "$f")" ] || { echo "FAIL: filter self-test: a fake red foo passed the status filter"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '   · red/jira-cli-dist-build: x\n   · degraded/codex-cli: y\n' > "$f"
   [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the host-tool doctor items must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '   · red/graphify: w\n' > "$f"
+  [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the doctor red/graphify item must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
   printf '   · red/jira-cli-dist-build: x\n   · red/foo: z\n' > "$f"
   [ -n "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: a fake red/foo passed the doctor filter"; return 1; }  # vacuous-path-ok: parent shell, real PATH
 }
