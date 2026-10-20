@@ -1,13 +1,9 @@
 {
   "jobs": {
-    "ci:secret-scan": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
     "ci:leak-classes": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
-    "ci:bwk-awk-mktemp-gate": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
     "ci:git-env-scrub": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
-    "ci:commit-lint": { "fidelity": "needs-shim", "os": ["linux"], "heavy": false, "shim": "act lacks the pull_request base.sha context; supply the range base via an -e event.json / ACT_* env so check-commit-range.sh has a base to walk." },
     "ci:lint": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
     "ci:node-suites": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
-    "ci:jira-cli-smoke": { "fidelity": "act-faithful", "os": ["linux"], "heavy": false },
     "ci:bun-suites": { "fidelity": "needs-shim", "os": ["linux"], "heavy": true, "shim": "oven-sh/setup-bun needs bun present in the act container image; provision bun (custom image or a pre-step) or the job errors on setup-bun." },
     "ci:security-scan": { "fidelity": "needs-shim", "os": ["linux"], "heavy": true, "shim": "needs bun (setup-bun) AND network egress for the pinned gitleaks download; provision bun + allow the gitleaks release fetch in the act image." },
     "ci:shell-unit-shard": { "fidelity": "act-faithful", "os": ["linux", "windows", "macos"], "heavy": true, "shim": "only the linux leg is act-eligible; the windows/macos legs are gha-only (act is Linux/Docker-only) and route to native GHA." },
@@ -17,12 +13,17 @@
     "ci:pr-fail-fast": "HIMMEL-6121: pull_request-only watcher that cancels a hosted GHA run via the Actions API (github.run_id, actions: write); meaningless under act, which has no hosted run to cancel.",
     "ci:plan":"HIMMEL-5524: pull_request-only planner (skipped on push/cron/dispatch); needs the pull_request base.sha context, same shim shape as ci:plugin-version-bump below; falls through to hosted routing without an act-exec fast path.",
     "ci:plugin-version-bump": "HIMMEL-3551: not yet act-classified — needs the pull_request base.sha context, same shim shape as ci:commit-lint above; falls through to hosted routing without an act-exec fast path until someone verifies it under act.",
-    "ci:unchecked-mktemp-range": "HIMMEL-4301: not yet act-classified — needs the pull_request base.sha context and a full-history checkout, same shim shape as ci:commit-lint above; falls through to hosted routing without an act-exec fast path until someone verifies it under act.",
+    "ci:unchecked-mktemp-range": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
     "ci:home-canary": "HIMMEL-6037: not yet act-classified — needs the pull_request base.sha context, a full-history checkout and a filesystem that tracks atime (HOME_CANARY_REQUIRE_ATIME=1), none of which act replicates; falls through to hosted routing without an act-exec fast path until someone verifies it under act.",
     "ci:lanes-and-trust-suites": "HIMMEL-2880: not yet act-classified — needs a full-history checkout (fetch-depth 0) act does not replicate; falls through to hosted routing without an act-exec fast path until someone verifies it under act.",
-    "ci:guardrail-matrices": "HIMMEL-2880: not yet act-classified — no known act blocker, just never surveyed; falls through to hosted routing without an act-exec fast path until classified.",
-    "ci:claude-startup": "HIMMEL-4410: not act-classified — needs a real npm-installed claude CLI and unshare -rn (user namespaces) that act containers do not give; falls through to hosted routing without an act-exec fast path.",
+    "ci:guardrail-matrices": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
+    "ci:claude-startup": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
     "ci:guard-corpus-full": "HIMMEL-4912: schedule-only job (about 143 min, bwrap needs unprivileged user namespaces act containers do not give); never routed on a PR, so no act-exec fast path.",
-    "ci:doc-invariants":"HIMMEL-2880: not yet act-classified — no-ops without the gitignored .himmel-dev marker and only meaningfully gates the public post-propagation tree, not a private PR; falls through to hosted routing without an act-exec fast path until classified."
+    "ci:doc-invariants": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
+    "ci:ci-quick": "HIMMEL-5675: runs the short checks as step groups of one job; its commit-lint and unchecked-mktemp-range groups need the pull_request base.sha context and a full-history checkout act does not replicate; falls through to hosted routing without an act-exec fast path.",
+    "ci:bwk-awk-mktemp-gate": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
+    "ci:commit-lint": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
+    "ci:jira-cli-smoke": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec.",
+    "ci:secret-scan": "HIMMEL-5675: required-context sentinel of its ci-quick step group; alone under act it has no ci-quick outputs and would run exit 1, so it is never routed to act-exec."
   }
 }

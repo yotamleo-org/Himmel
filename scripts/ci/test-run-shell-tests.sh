@@ -2222,7 +2222,7 @@ fi
 ci23="$repo23/.github/workflows/ci.yml"
 dep_ln=$(grep -n 'run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh' "$ci23" | cut -d: -f1)
 # shellcheck disable=SC2016 # the ${{ }} is literal workflow text, not a shell expansion
-shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/8 \.$' "$ci23" | cut -d: -f1)
+shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/\${{ needs.plan.outputs.shard_total || 8 }} \.$' "$ci23" | cut -d: -f1)
 if [ -n "$dep_ln" ] && [ -n "$shard_ln" ] && [ "$dep_ln" -lt "$shard_ln" ]; then
   pass "23f: ci.yml installs the tool deps before the shard run, and the shard run passes root ."
 else
