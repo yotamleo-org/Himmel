@@ -6877,6 +6877,11 @@ rm -f "$c69_t/home/.himmel/state/qmd-daemon.env"
 out="$(c69_run C69_CODE=200)"
 if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 missing key -> FAIL"; else fail "C69 missing key -> $(printf '%s' "$out" | head -3)"; fi
 
+echo "== C69: no key file but a session key, as the CLI accepts -> OK =="
+out="$(c69_run C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 session key without a file -> OK"; else fail "C69 session key without a file -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the session key"; else pass "C69 session key never printed"; fi
+
 echo "== C69: key file readable by others -> FAIL =="
 printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 644 "$c69_t/home/.himmel/state/qmd-daemon.env"
 out="$(c69_run C69_CODE=200)"

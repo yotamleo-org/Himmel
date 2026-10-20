@@ -4187,11 +4187,12 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
     out="$(
         # shellcheck disable=SC1090
         . "$lib"  # t13b-ok: sources the key loader, starts nothing
-        rc=0
+        rc=0 sess_key="${QMD_OPENAI_API_KEY:-}"
         qmd_daemon_key_load "$cfg" || rc=$?  # t13b-ok: calls the key loader, starts nothing
         case "$rc" in
             10) echo "readable-by-others:$QMD_KEY_FILE_PATH"; exit 0 ;;
-            11) echo "missing:$QMD_KEY_FILE_PATH"; exit 0 ;;
+            11) # the CLI also accepts a session key when the file holds none
+                if [ -n "$sess_key" ]; then QMD_OPENAI_API_KEY="$sess_key"; else echo "missing:$QMD_KEY_FILE_PATH"; exit 0; fi ;;
         esac
         if ! command -v "$curl_bin" >/dev/null 2>&1; then echo "no-curl"; exit 0; fi
         code="$(printf 'header = "Authorization: Bearer %s"\n' "$QMD_OPENAI_API_KEY" | "$curl_bin" -K - -s -o /dev/null -m 10 -w '%{http_code}' "$url" 2>/dev/null)" || true
@@ -4209,7 +4210,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
         code:401|code:403)
             code="${out#code:}"
             emit FAIL C69-qmd-cli-key "OpenRouter answered HTTP $code for the qmd provider key -- every CLI generate and embed fails" \
-                "replace the QMD_OPENAI_API_KEY line (mode 0600) in ${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}, then restart the qmd daemon" ;;
+                "replace the QMD_OPENAI_API_KEY (the line in the qmd daemon env file, mode 0600, or your session's value), then restart the qmd daemon" ;;
         *) emit INFO C69-qmd-cli-key "could not verify the qmd provider key with OpenRouter (${out#code:}) -- not a credential verdict" ;;
     esac
 }
