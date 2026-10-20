@@ -2,6 +2,7 @@
   "user": {
     "enabled": [
       "find-docs@himmel",
+      "graphify@himmel",
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
@@ -155,8 +156,6 @@
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
-      "i-have-adhd@himmel",
-      "pr-review-toolkit-himmel@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 35000
@@ -166,8 +165,6 @@
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
-      "i-have-adhd@himmel",
-      "pr-review-toolkit-himmel@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 35000
@@ -177,8 +174,6 @@
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
-      "i-have-adhd@himmel",
-      "pr-review-toolkit-himmel@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 35000
@@ -188,8 +183,6 @@
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
-      "i-have-adhd@himmel",
-      "pr-review-toolkit-himmel@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 40000
