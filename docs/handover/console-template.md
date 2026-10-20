@@ -89,7 +89,7 @@ Run these, in order, and write the result as the first bullet under
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
     or `UNCHANGED <path>`; on `CHANGED` publish the file with the `Artifact` tool
     and record the URL on `board:` below. A successor's first publish to a carried
-    URL goes to a subagent. Roadmap tracker (when `tracker:` is set):
+    URL goes to a medium-effort haiku subagent. Roadmap tracker (if `tracker:` set):
     `console-sections/board-tracker.md`.
 
 ## Live state
