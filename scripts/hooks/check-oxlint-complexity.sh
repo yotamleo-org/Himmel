@@ -33,7 +33,7 @@ OXLINT_COMPLEXITY_MAX="${OXLINT_COMPLEXITY_MAX:-58}"
 # Same literal as check-oxlint-hardening.sh's OXLINT_VERSION —
 # keep the two pins in lockstep; test-check-oxlint-complexity.sh asserts
 # parity so a future bump of one without the other goes red.
-OXLINT_VERSION=1.88.0
+OXLINT_VERSION=1.89.0
 # -------------------------------------------------------------------------
 
 # ---- changed-files mode ---------------------------------
