@@ -14,8 +14,7 @@ depth*, not a prerequisite — the steps below stand on their own.
 
 > **Before you start:** himmel is a harness *for* Claude Code, so you need
 > [Claude Code](https://claude.com/claude-code) installed —
-> `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS) or
-> `irm https://claude.ai/install.ps1 | iex` (Windows). The install wizard
+> `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). The install wizard
 > checks for it — and for the other prerequisites, failing fast with install
 > hints (the node-less bootstrap step below installs Node itself).
 

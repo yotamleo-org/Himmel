@@ -8,8 +8,7 @@
 > 2. **An active Claude Code session in the repo root** — run `claude` in your
 >    terminal (or use your IDE's Claude extension). Need
 >    [Claude Code](https://claude.com/claude-code) first?
->    `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS) /
->    `irm https://claude.ai/install.ps1 | iex` (Windows). Every hook behaviour
+>    `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). Every hook behaviour
 >    below fires *inside* a session; the steps assume you are already in one.
 
 This page walks one complete loop — a toy change from worktree creation
@@ -164,7 +163,7 @@ the subject line. They are required only in certain circumstances:
 
 | Change type | Trailer required |
 |---|---|
-| Touches `*.sh`, `*.bash`, `*.ps1`, `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
+| Touches `*.sh`, `*.bash`, PowerShell files, `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
 | Touches any non-docs code (non-`*.md`/`*.txt`/`docs/`/`handovers/`) | `Security reviewed: <token>` |
 | Docs-only (`*.md`, `*.txt`, `docs/**`, `handovers/**`) | _neither required_ |
 

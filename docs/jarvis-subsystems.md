@@ -8,58 +8,25 @@ subsystems that make that up — what each is, whether it's on by default, how t
 enable it, and where the deep docs live.
 
 > **Default posture: every optional *lane* is OFF until you configure it** —
-> GLM, the escalation channel, the statusline, and the clipper pipeline each
+> the escalation channel, the statusline, and the clipper pipeline each
 > need a key, flag, or vault before they do anything. The root `CLAUDE.md`
 > delegation table directs skipping absent lanes. Enable only the subsystems
 > you want.
 
 | Subsystem | Status | Default | Enable with |
 |---|---|---|---|
-| [GLM offload lane](#glm-offload-lane) | dormant (operator-dropped 2026-08-19) | **off** | `ZAI_API_KEY` + `GLM_LANE_OK` |
 | [Quota-gauge (cross-lane quota observability)](#quota-gauge--cross-lane-quota-observability) | shipped | **on** (passive) | no setup — reads only |
-| [Escalation channel](#escalation-channel) | shipped | **off** | rides the GLM lane |
+| [Escalation channel](#escalation-channel) | shipped | **off** | needs a sandboxed worker lane (none shipped) |
 | [Statusline](#statusline) | shipped | opt-in | `scripts/lib/wire-statusline.sh` |
 | [Clipper pipeline](#clipper-pipeline) | shipped | opt-in | luna vault + `/harvest-clips` |
 | [Mission Control / C&C](#mission-control--cc) | shipped (Phase 1, read-only) | opt-in | `bun scripts/fleet-control/server.ts serve` |
 
 ---
 
-## GLM offload lane
-
-**What it is.** A way to offload well-scoped implementation chunks to a GLM
-(Z.ai) worker running `claude` against the Z.ai Anthropic-compatible endpoint,
-under himmel's full hook/guardrail set. The worker spawns into its own git
-worktree, is inspected, and its output is validated before anything merges.
-
-**Gating (dormant by operator ruling).** The lane was dropped 2026-08-19:
-implementation work routes to native Claude subagents only, and
-this lane needs `GLM_LANE_OK` to opt back in, on top of `ZAI_API_KEY`.
-`scripts/telegram/glm-env.ts` **throws** if the key is absent, so `spawn-glm.ts`
-/ the `claude-glm` launchers simply cannot start without it — but per
-`scripts/lanes/lanes.json`'s `readiness.passesRequired`, the lane must also show
-10 consecutive verify-return passes before dispatch routes work toward it
-(the startup-hang class). There is no SessionStart auto-activation.
-
-**Safety.** Third-party lanes have no auto-mode classifier and usually run under
-`--permission-mode bypassPermissions`, so himmel substitutes a **deterministic
-deny hook** (`scripts/hooks/block-glm-external-writes.sh`): on the GLM lane
-(detected via `ANTHROPIC_BASE_URL` containing `api.z.ai`) it hard-blocks
-`git push`, remote-url rewrites, PR/merge, and network CLIs. Audited-and-
-recoverable actions (the Jira CLI, `gh issue`, read-only `gh pr view`, qmd KB
-reads) are carved out.
-
-**Use it.** Once opted in via `GLM_LANE_OK` (and past the readiness bar above),
-`bun scripts/telegram/spawn-glm.ts <task>` spawns a worker; the runbook was
-removed with the lane. Chunk large plans — GLM workers choke on 500+-line
-plans.
-
-**Cost.** Pay via the GLM Coding Plan usage bank; per-token router lanes are
-deliberately off (see **[token-economy.md](token-economy.md)**).
-
 ## Quota-gauge — cross-lane quota observability
 
 **What it is.** A passive observability layer that answers "how much quota is
-left, per lane (Claude / GLM / Codex / Alibaba)?" — an append-only JSONL
+left, per lane (Claude / Codex / Alibaba)?" — an append-only JSONL
 ledger, fail-open (a write failure never breaks a session), that **never**
 routes, arms, spawns, or blocks.
 
@@ -68,7 +35,7 @@ live in **`scripts/telegram/quota-gauge.ts`** (TS twin) and
 **`scripts/lib/quota-gauge-ledger.sh`** (bash twin, byte-identical canonical
 record), with the shared path resolver in
 **`scripts/lib/quota-gauge-ledger-path.sh`**. Lane writers piggyback existing
-touchpoints (e.g. GLM's cap-guard) — no new fetch, no new poll — so there is
+touchpoints (e.g. a lane's cap-guard) — no new fetch, no new poll — so there is
 no separate enable step; the ledger just accumulates as those touchpoints run.
 
 **Name history.** Originally shipped as "headroom" (WS9). Renamed
@@ -77,7 +44,7 @@ unrelated tool-adoption candidate.
 
 ## Escalation channel
 
-**What it is.** A way for a sandboxed GLM worker that hits a gated capability
+**What it is.** A way for a sandboxed worker that hits a gated capability
 (e.g. it needs a push the deny hook blocks) to **ask** the parent/operator for a
 scoped grant instead of deadlocking or running under blanket bypass.
 
@@ -96,8 +63,8 @@ A **grant** whitelists exactly one command shape on one deny arm
 folds valid grant patterns into its allowed-count, so a grant re-enables one
 narrow capability without lifting the wall. A refusal clears the escalation.
 
-**Enable.** It rides the GLM lane — no separate setup; it's live whenever GLM
-workers are running.
+**Enable.** It needs a sandboxed worker lane that appends to `outbox.jsonl`;
+no such lane ships today, so it stays dormant.
 
 ## Statusline
 
@@ -145,7 +112,7 @@ on a cadence.
 ## Mission Control / C&C
 
 **What it is.** A read-only web console for observing the fleet — worker
-status per lane (GLM / Codex / Hermes / armed slots), pending escalations, and
+status per lane (Codex / Hermes / armed slots), pending escalations, and
 quota/posture gauges, with live updates over SSE so the page refetches as
 state changes.
 

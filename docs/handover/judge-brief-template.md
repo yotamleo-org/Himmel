@@ -324,8 +324,8 @@ gathering, per the rule below.>
 >    compared across processes or sessions (`ps lstart`, `date`, `sort`, `ls`)
 >    without `TZ` and `LC_ALL` pinned (`proc-tree.sh:94` is the reference;
 >    j2271a hit it).
-> 4. **Tree-scan suites.** A diff that ADDS a script, ledger, launch site or
->    `.ps1`: name the tree-scan suites you ran in full (not only the impacted
+> 4. **Tree-scan suites.** A diff that ADDS a script, ledger, launch site
+>    or shell script: name the tree-scan suites you ran in full (not only the impacted
 >    ones), with counts.
 
 > **RETASK.** A narrowing or a halt from `<console session name>` needs no

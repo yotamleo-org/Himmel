@@ -35,7 +35,7 @@ value that isn't backed by one of these links.
 
 ## 1. Required environment
 
-`scripts/setup.sh` and `scripts/setup.ps1` verify these at step 0 and fail fast with install hints. Run `bash scripts/setup.sh` (or `scripts/setup.ps1`) and the script tells you exactly what's missing.
+`scripts/setup.sh` verifies these at step 0 and fails fast with install hints. Run `bash scripts/setup.sh` and the script tells you exactly what's missing.
 
 ### Foundational (every platform — verified at setup)
 
@@ -45,13 +45,13 @@ value that isn't backed by one of these links.
 | `git` | 2.30+ | Worktrees + `--show-toplevel` |
 | `node` | 18+ to build · **20.17+ to push** | Jira plugin build + plugin-install workflow. The pre-push signature gate needs npm 11, whose own engine floor is `^20.17.0 \|\| >=22.9.0`, so a node-18 box can build and commit but cannot push. |
 | `npm` | 11+ (needs node `^20.17.0 \|\| >=22.9.0`) | Lockfile audit hooks + plugin install. NOT bundled on Debian/Ubuntu, and apt's own `npm` is 9.2 — old enough that its expired registry key fails `npm audit signatures` on every push. See the Linux table. |
-| `bun` | 1.0+ | Runs the handover armed-resume resolver, the qmd search index, the Telegram bridge, and the obsidian-triage tools. Install: `curl -fsSL https://bun.sh/install \| bash` (Linux/macOS) or `irm bun.sh/install.ps1 \| iex` (Windows) |
+| `bun` | 1.0+ | Runs the handover armed-resume resolver, the qmd search index, the Telegram bridge, and the obsidian-triage tools. Install: `curl -fsSL https://bun.sh/install \| bash` |
 | `python3` | 3.10+ | `realpath -m` fallback (macOS) + JSON helpers in 28 scripts. PEP 668 (Ubuntu 24.04+) blocks system pip — use `uv` or `pipx` for pre-commit. |
 | `jq` | 1.6+ | Hook input parsing (13 scripts incl. all Claude PreToolUse hooks) |
 | `gh` | 2.x | Issue + PR + CR workflows (12 scripts) |
 | `mktemp` | BSD or GNU (both fine) | 19 scripts |
 | `pre-commit` | 3.5+ | Pre-commit framework |
-| `claude` (CLI) | latest | Native installer: `curl -fsSL https://claude.ai/install.sh \| bash` (Linux/macOS) or `irm https://claude.ai/install.ps1 \| iex` (Windows) |
+| `claude` (CLI) | latest | Native installer: `curl -fsSL https://claude.ai/install.sh \| bash` |
 
 ### Per-platform additions
 
@@ -468,9 +468,8 @@ These tools show up in only one script — easy to drop if not on PATH (the affe
 
 ### Required `.env` values (per-variable walkthrough)
 
-`scripts/setup.sh` / `setup.ps1` copy `.env.example` → `.env` for you (§4); you
-then fill in your own values. Run setup with `--fill-env` (PowerShell:
-`-FillEnv`) to be **prompted** for each one — the prompt prints a short help
+`scripts/setup.sh` copies `.env.example` → `.env` for you (§4); you
+then fill in your own values. Run setup with `--fill-env` to be **prompted** for each one — the prompt prints a short help
 blurb (what the value is + where to get it, sourced from the `.env.example`
 comments) before each field, so you don't have to read the file first. Press
 Enter at a prompt to keep the current value; non-interactive shells skip the
@@ -506,7 +505,7 @@ documented at the top of [`.env.example`](../../.env.example):
 | `JIRA_API_TOKEN` | Jira / Confluence CLI auth token. | id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_PROJECT_KEY` | Default project for `jira` ops. | Your Jira project key (e.g. `ACME`). |
 | `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the `getAccessibleAtlassianResources` API. |
-| `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` overflow launcher (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm-ps1-twin)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
+| `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` overflow launcher (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
 
 #### Jira Sector (optional)
 
@@ -621,7 +620,7 @@ only (gate `scripts/ci/check-claude-md-budget.sh`). They ship at
 | Variant | Who gets it | How |
 |---|---|---|
 | **Operator** | this machine and any other operator station | the manual `cp` above — `global-claude-md.md` is the full personal file, including `@RTK.md` |
-| **Adopter** | `bash scripts/adopt.sh --profile core --scope user` (or `adopt.ps1`), **user scope only** | `wire_user_claude_md` appends the fenced block from [`user-scope-claude-md-template.md`](user-scope-claude-md-template.md) to **both** `~/.claude/CLAUDE.md` (Claude Code) and `~/.codex/AGENTS.md` (Codex), creating each file if absent |
+| **Adopter** | `bash scripts/adopt.sh --profile core --scope user`, **user scope only** | `wire_user_claude_md` appends the fenced block from [`user-scope-claude-md-template.md`](user-scope-claude-md-template.md) to **both** `~/.claude/CLAUDE.md` (Claude Code) and `~/.codex/AGENTS.md` (Codex), creating each file if absent |
 
 The adopter path is idempotent and never destructive: it skips when the
 `HIMMEL:working-principles` marker is already present, appends (never
@@ -738,13 +737,13 @@ Flags: `--dry-run` prints the derived plan without executing; `--from-profile
 answers, so the same install replays verbatim); `--scope project|user` (below)
 runs non-interactively too, from a shipped profile rather than a saved one;
 `--contribute` layers the
-contributor-dev `setup.sh`/`setup.ps1` primitive on top of the install (never a
+contributor-dev `setup.sh` primitive on top of the install (never a
 question); `--lanes <csv|none>`,
 `--with-codex` and `--with-hermes` answer the lane question up front (all three
 are refused alongside `--from-profile` — a saved profile already carries its
 lane selection and stays the sole authority on a replay). To offboard later:
 `node scripts/himmelctl/bin.js uninstall` — a thin wrapper over
-`scripts/uninstall.sh` / `uninstall.ps1` (§8.7).
+`scripts/uninstall.sh` (§8.7).
 
 **Non-interactive install.** `--default-scope` only presets a
 *wizard* answer — the wizard still prompts. To skip the wizard entirely, run
@@ -832,7 +831,7 @@ bash scripts/himmelctl/bootstrap.sh --dry-run    # Linux/macOS: preview the plan
 bash scripts/himmelctl/bootstrap.sh              # then run for real
 ```
 
-> **Deprecated setup shims — `scripts/machine-setup/win11.ps1` / `ubuntu.sh`.** These full-machine provisioning scripts are **soft-deprecated**
+> **Deprecated setup shim — `scripts/machine-setup/ubuntu.sh`.** This full-machine provisioning script is **soft-deprecated**
 > as an install entry point. They still provision the complete toolchain (git /
 > python / jq / shellcheck / gitleaks, nvm+node, uv, the Claude CLI, rtk — zero
 > capability loss, locked O4) but no longer do himmel/luna *wiring* themselves;
@@ -1083,7 +1082,6 @@ bash scripts/setup-hooks.sh --guardrail-mode global        # add --yes to skip t
 bash scripts/setup-hooks.sh --guardrail-mode project
 ```
 
-Windows/PowerShell twin: `pwsh scripts/setup-hooks.ps1 -GuardrailMode global`.
 A bare `bash scripts/setup-hooks.sh` installs the git hooks and only *prints* the
 current mode. `/himmel-update` reports if a global block's baked node path drifts.
 
@@ -1239,7 +1237,7 @@ command).
 ### 4d. Optional — PHI vault marker for claude-glm
 
 If you use the `claude-glm` overflow launcher (Claude Code on the Z.ai GLM
-flat-rate lane — see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm-ps1-twin)),
+flat-rate lane — see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
 drop a `.salus` marker file at the root of every PHI-bearing vault (e.g.
 `~/Documents/salus`). The launcher **refuses to start (exit 3, no override)**
 when the marker sits in the directory you launch from — the check is
@@ -1340,7 +1338,7 @@ The resulting `~/.bashrc` line sources the checkout's absolute
 
 > **Skip** if you don't use the Luna vault (the author's personal Obsidian vault). §§5a, 6, 7, 8, 8.6 all depend on it — skip those too.
 
-> Canonical layout (after the layout fix): the vault lives at `~/Documents/luna` — flat, not double-nested. If your machine has `~/Documents/luna/luna` from a pre-fix clone, `scripts/machine-setup/{ubuntu.sh,win11.ps1}` includes a migration step that flattens it.
+> Canonical layout (after the layout fix): the vault lives at `~/Documents/luna` — flat, not double-nested. If your machine has `~/Documents/luna/luna` from a pre-fix clone, `scripts/machine-setup/ubuntu.sh` includes a migration step that flattens it.
 
 ```bash
 # Clone (or restore from backup) — flat path, NOT ~/Documents/luna/luna
@@ -1431,7 +1429,7 @@ into three tiers — its own `_enabledPluginsComment` / `_onDemandPluginsComment
 
 #### Toggling the on-demand tier — `plugin-profile.sh` / `/profile`
 
-`scripts/machine-setup/plugin-profile.sh` (`.ps1` twin) is the **only**
+`scripts/machine-setup/plugin-profile.sh` is the **only**
 sanctioned writer for an on-demand flip. It writes solely through
 `claude plugin enable|disable <spec> --scope user` — never a hand-edited
 settings.json (hook-blocked: `block-edit-live-settings`). The `/profile` slash
@@ -1538,8 +1536,8 @@ Turn any of these back on with one command
 | `security-guidance@claude-plugins-official` | `claude plugin install security-guidance@claude-plugins-official --scope user` | **redundant with himmel's CR gate — see the note below.** Enable only if you are running himmel without the critic panel / CodeRabbit |
 | `obsidian@obsidian-skills` | `claude plugin marketplace add kepano/obsidian-skills` then `claude plugin install obsidian@obsidian-skills --scope user` | `obsidian-triage` falls back to plain markdown when this isn't enabled (documented in the command body) — enable if you need proper OFM parity |
 
-> **Note:** `scripts/machine-setup/install-plugins.sh` /
-> `install-plugins.ps1` call `claude plugin install` for the union of
+> **Note:** `scripts/machine-setup/install-plugins.sh`
+> calls `claude plugin install` for the union of
 > `enabledPlugins` entries flagged `true` and `onDemandPlugins` keys (mirrored
 > `false` in `enabledPlugins`). A fresh adopt/re-provision therefore installs
 > the ALWAYS and ON-DEMAND tiers, not the NOT INSTALLED table above or the
@@ -1626,7 +1624,8 @@ Note: `claude-obsidian` is pinned to an immutable **tag** in himmel's `marketpla
 
 The `/plugin install` flow above records the plugin at **user scope** (`~/.claude/settings.json`) — enabled for you across every project. That's the right default for personal-workflow plugins. The alternative is **project scope**: declare the marketplace + plugins in a *repo's* `.claude/settings.json`, so anyone who clones that repo gets them auto-known and enabled (each person is still prompted to trust the marketplace on first use).
 
-The setup scripts let you pick: `scripts/machine-setup/install-plugins.{sh,ps1}` take `--scope user|project|local` (default `user`), and the top-level `ubuntu.sh` / `win11.ps1` setup prompts you to choose. For project/local the target is the **current directory**, so run from the repo you want the plugins scoped to. The CLI does it directly too — `claude plugin install <name>@himmel --scope project` writes the block below for you. Same keys, different file:
+The setup scripts let you pick: `scripts/machine-setup/install-plugins.sh` takes `--scope user|project|local` (default `user`).
+The top-level setup script prompts you to choose. For project/local the target is the **current directory**, so run from the repo you want the plugins scoped to. The CLI does it directly too — `claude plugin install <name>@himmel --scope project` writes the block below for you. Same keys, different file:
 
 ```jsonc
 // <repo>/.claude/settings.json
@@ -1713,10 +1712,7 @@ claude plugin install claude-obsidian@himmel --scope user
 
 Every Claude Code session is auto-captured to the Luna vault as a structured note under `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md` via a `SessionEnd` hook. Built by epic #7 — full schema + opt-out in [`docs/luna/end-session-wiki.md`](../luna/end-session-wiki.md).
 
-**Prompted during setup.** `scripts/machine-setup/win11.ps1` and `scripts/machine-setup/ubuntu.sh` both prompt to register the hook into `~/.claude/settings.json`:
-
-- **Win11:** `[P]owerShell only / [B]ash only (Git Bash) / Both / [S]kip [default: Both]` — Windows machines usually have both interpreters; pick what you actually use.
-- **Ubuntu:** `[Y]es / [n]o [default: Y]` — bash-only (no pwsh by default).
+**Prompted during setup.** `scripts/machine-setup/ubuntu.sh` prompts to register the hook into `~/.claude/settings.json`: `[Y]es / [n]o [default: Y]`.
 
 The setup also handles the existing-config case: if `hooks.SessionEnd` already exists in your `settings.json`, the script asks `[O]verwrite / [A]ppend / [S]kip`. A backup is written to `~/.claude/settings.json.bak.YYYYMMDD-HHMMSS` before any modification.
 
@@ -1726,12 +1722,6 @@ The setup also handles the existing-config case: if `hooks.SessionEnd` already e
 "SessionEnd": [
   {
     "hooks": [
-      {
-        "type": "command",
-        "command": "bash \"<himmel-path>/scripts/lib/run-pwsh.sh\" \"<himmel-path>/scripts/hooks/end-session-wiki.ps1\"",
-        "shell": "bash",
-        "timeout": 30
-      },
       {
         "type": "command",
         "command": "bash \"<himmel-path>/scripts/hooks/end-session-wiki.sh\"",
@@ -1847,9 +1837,7 @@ run standalone. It:
   `{"allowFrom":["<your-telegram-user-id>"]}`;
 - **never starts the bridge** (one `getUpdates` owner per token — a blind
   start could 409-conflict a live poller). Bring-up after token + pairing:
-  `pwsh -File scripts/telegram/restart-bridge.ps1` (Windows) or
-  `bash scripts/telegram/restart-bridge.sh start` (Linux/macOS — the
-  POSIX twin of the PS1 script). Reboot persistence + full ops:
+  `bash scripts/telegram/restart-bridge.sh start`. Reboot persistence + full ops:
   [`scripts/telegram/README.md`](../../scripts/telegram/README.md) /
   [`docs/internals/telegram-bridge.md`](../internals/telegram-bridge.md).
 
@@ -1947,7 +1935,7 @@ its backup copies). Not touched: the himmel clone + `.env`, your non-himmel
 
 ## `core.hooksPath` gate
 
-Both machine-setup scripts (`ubuntu.sh`, `win11.ps1`) gate the post-clone
+The machine-setup script (`ubuntu.sh`) gates the post-clone
 flow on `git config --get core.hooksPath` being either unset OR set to
 an existing path inside the himmel working tree. If neither holds, setup
 aborts before `pre-commit install` runs.
@@ -1959,7 +1947,7 @@ for an unknown duration (`no-push-to-main`, `npm-audit`, `npm-licenses`,
 `code-review-before-push`, `platforms-tested`). PR #100 caught
 it manually mid-overnight. This gate prevents recurrence.
 
-The same script (`scripts/hooks/check-hookspath.sh` / `.ps1`) is wired in
+The same script (`scripts/hooks/check-hookspath.sh`) is wired in
 three other places:
 
 1. `.pre-commit-config.yaml` pre-commit stage — every commit fails if
@@ -1967,12 +1955,8 @@ three other places:
 2. Claude Code `~/.claude/settings.json` SessionStart array — prints a
    one-line warning when a session starts on a misconfigured repo.
    Non-blocking. The shared `docs/setup/settings-template.json` does
-   NOT carry this entry; instead each platform setup script appends
-   the right interpreter sibling so a Windows machine without Git Bash
-   (or a Linux machine without pwsh) doesn't get a "command not found"
-   line every session start. `scripts/machine-setup/win11.ps1` appends
-   the `pwsh` entry; `scripts/machine-setup/ubuntu.sh` appends the
-   `bash` entry.
+   NOT carry this entry; instead `scripts/machine-setup/ubuntu.sh`
+   appends the `bash` entry.
 3. The smoke test at `scripts/hooks/test-check-hookspath.sh` covers
    eleven cases: unset, set-inside-repo (absolute + relative), set-but-
    missing, set-outside-repo, bypass-via-env, outside-any-git-repo,
@@ -1982,31 +1966,17 @@ three other places:
 
 ### Existing machines (not freshly cloned)
 
-The machine-setup scripts patch `~/.claude/settings.json` on every run, so
+The machine-setup script patches `~/.claude/settings.json` on every run, so
 the SessionStart entries land automatically. If you have an EXISTING
-`~/.claude/settings.json` you don't want re-patched, copy ONE of the
-following fragments manually into the `SessionStart[0].hooks` array
-(replacing `<himmel-path>` with the absolute path to your himmel clone) —
-pick the interpreter that's actually on PATH on this machine:
-
-Linux / macOS / Windows-with-Git-Bash:
+`~/.claude/settings.json` you don't want re-patched, copy the
+following fragment manually into the `SessionStart[0].hooks` array
+(replacing `<himmel-path>` with the absolute path to your himmel clone):
 
 ```json
 {
   "type": "command",
   "command": "bash \"<himmel-path>/scripts/hooks/check-hookspath.sh\"",
   "shell": "bash",
-  "timeout": 10
-}
-```
-
-Windows-with-pwsh:
-
-```json
-{
-  "type": "command",
-  "command": "pwsh -NoProfile -File \"<himmel-path>/scripts/hooks/check-hookspath.ps1\"",
-  "shell": "powershell",
   "timeout": 10
 }
 ```

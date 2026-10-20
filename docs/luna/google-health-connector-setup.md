@@ -165,7 +165,7 @@ bun scripts/luna-vitals/cli.ts write /tmp/merged.json --dir /path/to/50-Vitals
 
 ## Scheduling (opt-in)
 
-`scripts/luna-vitals/connectors/pull-cadence.sh` (plus a `.ps1` twin for Windows) is a
+`scripts/luna-vitals/connectors/pull-cadence.sh` is a
 thin wrapper that:
 
 - Defaults the pull window to yesterday → today (UTC).
@@ -182,7 +182,6 @@ himmel):
 0 6 * * * LUNA_VITALS_ARTIFACT_DIR=/path/to/artifacts \
   /path/to/scripts/luna-vitals/connectors/pull-cadence.sh
 
-# On Windows, use pull-cadence.ps1 scheduled via Task Scheduler / schtasks.
 ```
 
 **Date overrides** (useful for backfill or testing):

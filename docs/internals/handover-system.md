@@ -298,8 +298,7 @@ for a fresh cold-start. Test: `bash scripts/handover/test-leg-resume-brief.sh`.
 
 `scripts/handover/reconcile-workers.sh` used to run only when a dispatch or an
 arm triggered it, so an idle fleet never noticed a dead worker seat.
-`scripts/handover/reconcile-cadence.sh arm [--interval-min N]` (cron;
-`reconcile-cadence.ps1 -Action Arm` registers the Task Scheduler twin) runs
+`scripts/handover/reconcile-cadence.sh arm [--interval-min N]` (cron) runs
 `reconcile-workers.sh --report` every N minutes (default 10; N must divide 60,
 and arm requires `timeout` so a hung tick cannot overlap the next), appending to
 `~/.claude/handover/reconcile-cadence.log`; arming twice replaces the one

@@ -205,7 +205,7 @@ Claude Code loads it directly, Codex and Hermes load the `AGENTS.md` generated
 from it — and it had grown to 19,018 B. Every rule was re-sorted by layer
 (hook/gate → one line naming the enforcer; reference detail → `docs/internals/`;
 recovery → the stuck-playbook; general engineering defaults → a user-scope
-block installed once by `adopt.sh`/`adopt.ps1`/`himmel-update`), and a
+block installed once by `adopt.sh`/`himmel-update`), and a
 pre-commit byte gate (`scripts/ci/check-claude-md-budget.sh`, ≤ 6,144 B since HIMMEL-5512) keeps
 it from re-accreting.
 

@@ -97,8 +97,6 @@ Non-blocking minor items from the PR #222 heavy automated review:
   `supervisor.pid` file (its own pid + the current poller child pid) under the
   bridge root. `bun supervisor.ts --kill` reads it and stops the supervisor
   first (so it can't respawn the poller) then the poller, and removes the file.
-  (On Windows the scoped `restart-bridge.ps1` remains the preferred lever — it
-  also clears 409-conflicting duplicate pollers left by older launches.)
 - **Registry changes need no restart.** Every
   dispatch resolves the `telegram` plugin profile (`--settings` and
   `--mcp-config`) through `loadPluginProfilesModule`, which re-imports
@@ -176,15 +174,12 @@ cd scripts/telegram && bun supervisor.ts
 
 The supervisor keeps `bun poller.ts` alive.
 
-**Restart (Windows):** `pwsh -File scripts/telegram/restart-bridge.ps1` kills
-ONLY the bridge's bun processes (matched on `supervisor.ts`/`poller.ts` command
-line — never a blanket `/IM bun.exe`), starts exactly one supervisor detached,
-and verifies it settled with no 409. `-StatusOnly` reports without touching
-anything. **Restart (POSIX — Linux/macOS):** `bash
-scripts/telegram/restart-bridge.sh start` is the Stage-1 sibling — same
-bun-process-only kill scoping and a token-scoped `flock` for serialization,
-but it does NOT verify no-409/settled progress after launch (that remaining
-PS1 parity is a known gap). `status` reports without touching
+**Restart (Linux/macOS):** `bash
+scripts/telegram/restart-bridge.sh start` kills ONLY the bridge's bun
+processes (matched on `supervisor.ts`/`poller.ts` command line), with a
+token-scoped `flock` for serialization, and starts exactly one supervisor
+detached. It does NOT verify no-409/settled progress after launch (a known
+gap). `status` reports without touching
 anything; `--repo <path>` points at a non-default checkout. **Stop
 (cross-platform):** `bun supervisor.ts --kill` (reads the `supervisor.pid`
 file written under the bridge root) or `bash
@@ -230,7 +225,7 @@ process's environment), so running exactly one bridge per token stays an
 operator responsibility.
 
 **Staleness, not cwd, is what makes both halves safe at once**, and it is not
-novel here: `restart-bridge.ps1`'s `Test-LedgerPidValid` already refuses any
+novel here: the restart script's ledger-pid check already refuses any
 ledger pid whose process was created after the ledger was written. Drop the
 staleness check and honouring the ledger across checkouts would license
 `kill -9` on another checkout's supervisor that merely inherited a recycled

@@ -29,7 +29,6 @@ Repository files read for this draft:
 - `scripts/codex/startup-health.sh`
 - `scripts/codex/companion-liveness.sh`
 - `scripts/codex/reap-mcp-fleet.sh`
-- `scripts/codex/reap-mcp-fleet.ps1`
 - `docs/internals/harness-compat.md`
 - `docs/internals/lane-parity.md`
 - `docs/hermes-runbook.md`

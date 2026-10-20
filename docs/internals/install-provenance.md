@@ -11,7 +11,7 @@ for the helpers that write it. The helpers ship in two dialects that emit
 | bash | `scripts/lib/provenance.sh` | shell writers (`source` it) |
 | node | `scripts/himmelctl/lib/provenance.js` | `himmelctl` writers (`require` it, or run it as a CLI) |
 
-The PowerShell dialect (for `.ps1` writers) is not shipped: Windows is not supported.
+The PowerShell dialect is not shipped: Windows is not supported.
 
 Tests: `scripts/lib/test-provenance.sh` (bash) and
 `scripts/himmelctl/test/test-provenance-js.sh` (node, plus the bash-vs-node
@@ -230,7 +230,7 @@ path is a flock on the file around both steps (planned follow-up)`. The helper's
 `<path>.himmel-uninstall-backup` sidecar are reused; `restore` is not supported
 for a block (there is no pre-state to restore).
 
-**No ledger row** (a pre-S2d install, or an install by `adopt.ps1`, which does
+**No ledger row** (a pre-S2d install, which does
 not record a block yet): the block is stripped only when it is byte-identical to
 `docs/setup/user-scope-claude-md-template.md`. Any other text is kept and
 reported as `kept (block-unrecorded-modified)`. The standalone uninstall bundle

@@ -780,7 +780,7 @@ and enabled on every machine), **ON-DEMAND** (a key of the template's
 `onDemandPlugins` object, `false` in `enabledPlugins` — installed but
 disabled, so it costs no session-start context until you ask for it), and
 **NOT INSTALLED** (a plain `false` entry, the pre-existing lean
-floor). `scripts/machine-setup/plugin-profile.sh` (`.ps1` twin; `/profile`
+floor). `scripts/machine-setup/plugin-profile.sh` (`/profile`
 wraps it) is the sole writer for an on-demand flip — `list` prints both
 tiers' live state, while `lean`/`full` bulk-disable/enable only installed
 on-demand plugins at user scope (project/local-only or absent entries are
@@ -822,7 +822,7 @@ tables; this is the layer level.)
 | A scheduled resume | `scripts/handover/arm-resume.sh --dry-run` to inspect; delete the `HIMMEL-Resume-*` scheduled task (schtasks / `at` / crontab) | OS scheduler |
 | Recurring vault cadence | `scripts/luna/pipeline-cadence.sh disarm` | OS scheduler |
 | An overnight run in flight | `/stop` (graceful, marker-based; `--hard` also stops subagents) | marker file |
-| Telegram bridge | never started unless you start it; stop: `bun --cwd scripts/telegram supervisor.ts --kill`; remove the optional logon task: `pwsh -File scripts/telegram/install-logon-task.ps1 -Remove` | process / scheduler |
+| Telegram bridge | never started unless you start it; stop: `bun --cwd scripts/telegram supervisor.ts --kill` | process / scheduler |
 | Telegram privileged ops | default OFF — but there are now TWO sources, so "unset it" is not enough: clear/empty `TELEGRAM_AUTO_ACTIONS` in the bridge `.env` **and** unset any process override. For one run without editing the file, launch the bridge with `TELEGRAM_AUTO_ACTIONS=` (defined-but-empty beats the file). (`merge-public` needs explicit naming even when enabled) | bridge .env *or* process env (process wins) |
 | An on-demand plugin you enabled | `bash scripts/machine-setup/plugin-profile.sh lean` (all) or `disable <spec>` (one) — see [§4.7](#47-plugin-profile--two-tiers-one-toggle) | user scope |
 | An external lane | `node scripts/lanes/set-lane-override.mjs <lane> never`, or unset its API key / remove its CLI from PATH | machine |
