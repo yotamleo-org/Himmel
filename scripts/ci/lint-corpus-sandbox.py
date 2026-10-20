@@ -115,19 +115,22 @@ def code_positions(line):
         if stack[-1] == "dq":
             if char == '"':
                 stack.pop()
-            elif char == "(" and line[i - 1] == "$":
-                stack.append("paren")
+            elif char == "(" and line[i - 1] == "$" or char == "`":
+                stack.append("tick" if char == "`" else "paren")
                 code[i] = True
         else:
             code[i] = True
             if char == "'":
                 end = line.find("'", i + 1)
                 if end < 0:
+                    code[i:] = [True] * (len(line) - i)
                     break
                 code[i:end + 1] = [False] * (end + 1 - i)
                 i = end
             elif char == '"':
                 stack.append("dq")
+            elif char == "`":
+                stack.pop() if stack[-1] == "tick" else stack.append("tick")
             elif char == "(":
                 stack.append("paren")
             elif char == ")" and stack[-1] == "paren":
