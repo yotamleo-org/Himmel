@@ -72,7 +72,7 @@ case "$1 $2" in
     "run cancel")
         [ "$3" = "${STUB_FAIL_ID:-}" ] && { echo "gh: cannot cancel $3" >&2; exit 1; }
         printf '%s\n' "$3" >> "$STUB_CANCEL_LOG"
-        if [ -n "${STUB_TIME_LOG:-}" ]; then printf '%s %s\n' "$3" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")" >> "$STUB_TIME_LOG"; fi ;;
+        if [ -n "${STUB_TIME_LOG:-}" ]; then printf '%s %s %s\n' "$3" "$(cat "$CANCEL_RUNS_FAKE_CLOCK")" "$(wc -l < "$CANCEL_RUNS_PACE_STATE" | tr -d ' ')" >> "$STUB_TIME_LOG"; fi ;;
     "pr view")
         case "$3" in
             3221) echo "$STUB_KEEP_SHA" ;;
@@ -354,6 +354,12 @@ check "pacing: the state file drops stamps older than 10 minutes and keeps the n
 out="$(T_BAD_CLOCK=1 live --keep-sha "$KEEP")"; rc=$?
 check "pacing: a fake clock that is not an integer refuses, exit 2" "2" "$rc"
 check "pacing: a refused fake clock cancels nothing" "" "$(cancelled)"
+out="$(live --keep-sha "$KEEP" --max-cancels 2)"; rc=$?
+check "pacing: the cancel is in the state file before gh runs (first cancel sees 1 stamp)" "1" "$(awk 'NR == 1 {print $3}' "$STUB_TIME_LOG")"
+check "pacing: the second cancel sees 2 stamps" "2" "$(awk 'NR == 2 {print $3}' "$STUB_TIME_LOG")"
+out="$(CANCEL_RUNS_PACE_STATE="$WORK/no-such-dir/pace" live --keep-sha "$KEEP")"; rc=$?
+check "pacing: a state file that cannot be written refuses, exit 1" "1" "$rc"
+check "pacing: an unwritable state file cancels nothing" "" "$(cancelled)"
 export STUB_RUNS="$WORK/runs.json"
 
 if [ "$fails" -eq 0 ]; then printf 'ALL PASS\n'; exit 0; fi

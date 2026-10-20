@@ -70,7 +70,8 @@ Cancels are paced at 10 per minute and 30 per 10 minutes (failed attempts
 count): past a limit the verb waits and says so on stderr (`pacing - waiting
 <n>s`), so a drain of 100 runs takes about half an hour; a dry run never waits.
 The cancel times persist in the git common dir (`cancel-runs-pace`), so a
-re-run after a tool timeout keeps the limits. Two drains running at once do
+re-run after a tool timeout keeps the limits (a state file that cannot be
+written refuses the live run, exit 1, before anything is cancelled). Two drains running at once do
 not see each other's cancels live, so run one drain at a time. A
 listing that fills `CANCEL_RUNS_LIMIT` (500), or the cancel cap, exits 1 after
 cancelling what it could: re-run until it exits 0. It refuses (exit 3) in a leg

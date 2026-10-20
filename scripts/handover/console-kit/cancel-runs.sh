@@ -220,7 +220,7 @@ pace_load() {
         done < "$PACE_STATE"
     fi
     for t in $stamps; do echo "$t"; done > "$PACE_STATE" \
-        || echo "cancel-runs: cannot write $PACE_STATE; pacing will not carry over to a re-run" >&2
+        || { echo "cancel-runs: cannot write $PACE_STATE; nothing cancelled" >&2; exit 1; }
 }
 # pace_wait: block until one more cancel fits both windows; stamps holds each cancel's time, oldest first.
 pace_wait() {
@@ -266,11 +266,11 @@ while IFS="$TAB" read -r class id br sha ev; do
         break
     fi
     pace_wait
-    err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
-    rc=$?
     stamp="$(pace_now)"
     stamps="$stamps $stamp"
     echo "$stamp" >> "$PACE_STATE" || echo "cancel-runs: cannot write $PACE_STATE; pacing will not carry over to a re-run" >&2
+    err="$(gh run cancel "$id" -R "$GHREPO" 2>&1 >/dev/null)"
+    rc=$?
     printf 'cancel-runs: cancel run=%s branch=%s sha=%s event=%s rc=%s\n' "$id" "$br" "$sha" "$ev" "$rc" >&2
     if [ "$rc" -eq 0 ]; then
         cancelled=$((cancelled + 1))
