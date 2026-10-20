@@ -1111,6 +1111,11 @@ rc=0; out="$(run)" || rc=$?
 contains "trust: scripts/lib/env-alias.sh diff (PR 2885 shape) prints yes whatever the body claims" "$out" "TRUST-PATH: yes"
 
 reset_stubs
+STUB_FILES="scripts/handover/console-kit/cr-disposition.sh"
+rc=0; out="$(run)" || rc=$?
+contains "trust: cr-disposition.sh (go.sh signs and decides exit 9 through it) prints yes" "$out" "TRUST-PATH: yes"
+
+reset_stubs
 STUB_TRUST_LIST_FAIL=1
 rc=0; out="$(run)" || rc=$?
 check "trust: unreadable list exits 1" "$rc" "1"
