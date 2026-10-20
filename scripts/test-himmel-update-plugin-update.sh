@@ -542,9 +542,15 @@ out_prof=$(USERPROFILE='' HOME="$fake_home_prof" HIMMEL_UPDATE_CLAUDE_BIN="$clau
 assert_contains "check mode lists the profile-enabled plugin" "      find-docs@himmel" "$out_prof"
 assert_not_contains "check mode installs nothing" "plugin install" "$(cat "$log_prof")"
 : > "$log_prof"
+rc_prof=0
 out_prof=$(USERPROFILE='' HOME="$fake_home_prof" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_prof" HERMES_HOME="$TMP/no-hermes" \
       CLAUDE_USER_SETTINGS="$fake_home_prof/.claude/settings.json" \
-      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc_prof=$?
+if [ "$rc_prof" -eq 0 ]; then
+    assert_pass "profile apply run exits 0"
+else
+    assert_fail "profile apply run exited $rc_prof: $out_prof"
+fi
 log_prof_content="$(cat "$log_prof")"
 assert_contains "installs the plugin only a profile enables" "plugin install find-docs@himmel" "$log_prof_content"
 assert_contains "installs a base-enabled plugin" "plugin install from-base@himmel" "$log_prof_content"
@@ -558,9 +564,15 @@ assert_not_contains "a profile never overrides an explicit false in settings" "p
 printf '%s\n' '{not json' > "$CHECKOUT_DIR/scripts/lanes/plugin-profiles.json"
 printf '%s\n' '{"enabledPlugins":{"in-no-profile@himmel":true}}' > "$fake_home_prof/.claude/settings.json"
 : > "$log_prof"
+rc_prof=0
 out_prof=$(USERPROFILE='' HOME="$fake_home_prof" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_prof" HERMES_HOME="$TMP/no-hermes" \
       CLAUDE_USER_SETTINGS="$fake_home_prof/.claude/settings.json" \
-      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc_prof=$?
+if [ "$rc_prof" -eq 0 ]; then
+    assert_pass "corrupt-registry run exits 0"
+else
+    assert_fail "corrupt-registry run exited $rc_prof: $out_prof"
+fi
 log_prof_content="$(cat "$log_prof")"
 assert_contains "a corrupt profile registry still installs the settings-enabled plugin" "plugin install in-no-profile@himmel" "$log_prof_content"
 assert_not_contains "a corrupt profile registry adds no profile plugin" "plugin install find-docs@himmel" "$log_prof_content"
