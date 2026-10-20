@@ -29,7 +29,7 @@ check "every upstream is an owner/name" "$(jq -r '[.[] | select((.upstream | typ
 check "pin_site is null or a non-empty string" "$(jq -r '[.[] | select(.pin_site != null and ((.pin_site | type) != "string" or .pin_site == ""))] | length' "$REG" 2>/dev/null)" "0"
 check "merge_allowed true only for the forks we merge into" "$(jq -r '[.[] | select(.merge_allowed) | .nwo] | sort | join(" ")' "$REG" 2>/dev/null)" "$MERGE_TRUE"
 # a fork block in upstreams.json drives /fork-resync and the drift check's fork-behind probe
-check "every upstreams.json fork block names its registry row's himmel_branch" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$HERE/../upstreams.json" '[$up[0].entries[] | select(.fork) | .name as $n | (.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) as $r | ([$reg[0][] | select((.nwo | split("/")[1]) == $r) | .himmel_branch] | first) as $b | select($b == null or $b != .fork.branch) | "\($n):\(.fork.branch)"] | join(" ")' 2>/dev/null)" ""
+check "every upstreams.json fork block names its registry row's himmel_branch" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$HERE/../upstreams.json" '[$up[0].entries[] | select(.fork) | .name as $n | (.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) as $r | ([$reg[0][] | select((.nwo | split("/")[1]) == $r) | .himmel_branch] | first) as $b | select($b == null or $b != .fork.branch) | "\($n):\(.fork.branch)"] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
 
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-himmel-adapters.sh"
