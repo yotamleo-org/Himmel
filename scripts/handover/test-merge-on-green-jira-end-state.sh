@@ -67,7 +67,7 @@ case "$1" in
         printf '{"fields":{"issuetype":{"name":"Task"},"status":{"name":"%s"},"fixVersions":[%s]}}\n' "$(cat "$s/status")" "$fv" ;;
     comment)
         [ "$3" = "--comment-file" ] && [ -f "$4" ] || exit 1
-        { cat "$4"; echo; } >> "$s/comments" ;;
+        { cat "$4"; echo; } >> "$s/comments" ;; # read-sink-ok: stub reads the comment file the script under test just wrote
     transition) printf '%s' "$3" > "$s/status" ;;
     versions) printf 'v1.1.2\ttrue\t2026-10-11\nv1.1.4\tfalse\t\nv1.1.3\tfalse\t2026-10-22\n' ;;
     edit)
