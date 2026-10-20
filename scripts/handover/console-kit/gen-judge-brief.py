@@ -215,6 +215,8 @@ def main():
     if not letter:
         m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.console)
         letter = m.group(1) if m else 'X'
+    if not re.fullmatch(r'[A-Z]{1,3}', letter):
+        die('console letter %r must be 1-3 upper-case letters (the vault token grammar); pass --letter' % (letter,))
     spec['_nonce'] = '%s-%s-%s' % (letter, spec['qid'], secrets.token_hex(4))
     scratch = os.path.abspath(os.path.join(a.scratch_root, spec['qid'], 'scratch'))
     root = os.path.realpath(a.handover_root)

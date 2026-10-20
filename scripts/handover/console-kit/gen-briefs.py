@@ -140,8 +140,8 @@ def validate(leg, i):
     missing = [k for k in REQUIRED if not leg.get(k)]
     if missing:
         die('leg #%d (%s) missing: %s' % (i, leg.get('label', '?'), ', '.join(missing)))
-    if not re.match(r'^N\d+$', leg['label']):
-        die('leg #%d: label %r is not N<k>' % (i, leg['label']))
+    if not re.fullmatch(r'N[0-9]{1,5}', leg['label']):
+        die('leg #%d: label %r is not N<k> with 1-5 digits (the vault token grammar)' % (i, leg['label']))
     if not isinstance(leg['keys'], list) or not all(re.match(r'^[A-Z]+-\d+$', k) for k in leg['keys']):
         die('leg %s: keys must be a list of ticket keys' % leg['label'])
     if not re.match(r'^(feat|fix|chore|docs|refactor|test)/[a-z0-9][a-z0-9-]*$', leg['branch']):
@@ -328,6 +328,8 @@ def main():
     if not letter:
         m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.console)
         letter = m.group(1) if m else 'X'
+    if not re.fullmatch(r'[A-Z]{1,3}', letter):
+        die('console letter %r must be 1-3 upper-case letters (the vault token grammar); pass --letter' % (letter,))
     if not a.handover_root:
         die('--handover-root (or HANDOVER_DIR) is required', 2)
     try:

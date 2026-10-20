@@ -110,7 +110,22 @@ mutate badtl 'd["tickets"]=123';                          refuse "a non-list tic
 mutate crq 'd["question"]="one line\rsecond"';            refuse "a question with a CR is refused" crq "question"
 mutate falsyev 'd["evidence"]={}';                        refuse "a falsy non-list evidence value is refused" falsyev "evidence"
 mutate falsyat 'd["attack"]=0';                           refuse "a falsy non-list attack value is refused" falsyat "attack"
+mutate longqid 'd["qid"]="j2599a_"+"a"*42';                refuse "a 49-char qid is refused" longqid "qid"
 mutate badtk 'd["tickets"]=["not-a-key"]';                refuse "a malformed ticket key is refused" badtk "ticket"
+
+# The nonce <letter>-<qid>-<hex> must stay inside the vault token grammar (1-3 upper-case letters).
+jletter() { # <label> <stderr fragment> <args...>: refused, rc 1, nothing written
+    local n="$1" frag="$2"; shift 2
+    rm -rf "$BUCKET"
+    python3 "$SUT" "$WORK/spec.json" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" "$@" >/dev/null 2>"$WORK/jl.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/jl.err" && ! ls "$BUCKET"/*.md >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/jl.err"))"; fi
+}
+jletter "a 4-letter --letter is refused" "letter" --console "$CONSOLE" --letter ABCD
+jletter "a lower-case --letter is refused" "letter" --console "$CONSOLE" --letter z
+jletter "a letter derived from the console name that is 4 letters long is refused" "letter" --console HIMMEL-nextleg-2026-10-13ABCD-roadmap-console
+rm -rf "$BUCKET"
+python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?
+[ "$rc" = 0 ] && grep -q 'ABC-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
