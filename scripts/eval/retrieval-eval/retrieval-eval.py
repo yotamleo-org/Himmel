@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """scripts/eval/retrieval-eval/retrieval-eval.py - retrieval eval + usage census (HIMMEL-6143).
 
-Asks the same questions of five retrieval arms and scores each against a gold
+Asks the same questions of seven retrieval arms and scores each against a gold
 file set, then counts how sessions really use qmd and graphify.
 
   run     --questions Q --out DIR [--repo R] [--arms A,B] [--k 5] [--timeout 60]
@@ -12,13 +12,19 @@ file set, then counts how sessions really use qmd and graphify.
 Arms (all read-only):
   grep        git grep over the repo's tracked files for the question's words,
               files ranked by distinct words matched; shows <=8 lines per file
+  path        the tracked file paths, ranked by distinct question words in the path
+              (a filename-only baseline)
+  ident-grep  git grep -w for the question's identifier-shaped tokens (snake_case,
+              kebab-case, camelCase, file.ext); files holding a definition line
+              rank first
   qmd-lex     qmd BM25 (lex search), rerank off
   qmd-hybrid  qmd lex + vec with qmd's default rerank: the shape agents send
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
               --arms, not in the default five and not fused into combined
   graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
-  combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify; its
-              tokens and time are the sum of the three
+  combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
+              path and ident-grep baselines); its tokens and time are the sum
+              of the three
 Metrics per arm: recall@5 (a gold file is among the first k distinct files),
 reason_carried (every reason phrase appears in the arm's output; only questions
 with a reason count), tokens (output chars / 4: what the caller has to read),
@@ -55,11 +61,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
 
-ARMS = ["grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+ARMS = ["grep", "path", "ident-grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
-# The question set holds every question and reason phrase verbatim.
-GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/"]
+# The question set holds every question and reason phrase verbatim; vendored
+# plugin bundles and minified files fill a top 5 with one-line noise.
+GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/", ":(exclude,glob)templates/**/.obsidian/plugins/**",
+              ":(exclude)*.min.js", ":(exclude)*.min.css"]
 STOP = set("""a an and are as at be by can do does for from has have how i in is it its
 of on or that the this to was what when where which who whom why will with without
 while into than then them there their not no my me we our you your does do did
@@ -131,6 +139,74 @@ def arm_grep(q, repo, timeout, k):
         to, err = to or t, err or (not t and rc not in (0, 1))
         text += out.splitlines()[:8]
     return files, "\n".join(text), to, err
+
+
+def arm_path(q, repo, timeout, k):
+    kws = []
+    for w in words(q):  # leg_tail_status names leg-tail-status.sh: match its parts
+        for p in re.split(r"[_.\-]", w):
+            if len(p) >= 3 and p not in STOP and p not in kws:
+                kws.append(p)
+    out, to, rc = run_cmd(["git", "-C", repo, "ls-files", "--"] + GREP_SCOPE, timeout)
+    if to:
+        return [], "", True, False
+    if rc != 0:
+        return [], "", False, True
+    score = {}
+    for f in out.splitlines():
+        low = f.lower()
+        base = low.rsplit("/", 1)[-1]
+        hit = [w for w in kws if w in low]
+        if hit:
+            score[f] = (len(hit), sum(w in base for w in hit), -len(f))
+    files = sorted(score, key=lambda f: (score[f], f), reverse=True)[:k]
+    return files, "\n".join(files), False, False
+
+
+IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:[-.][A-Za-z0-9_]+)*")
+
+
+def idents(q):
+    """Identifier-shaped tokens of a question: snake_case, kebab-case, camelCase or file.ext."""
+    out = []
+    for w in IDENT.findall(q):
+        if len(w) >= 3 and w.lower() not in STOP and w not in out and (
+                re.search(r"[_.\-]", w) or re.search(r"[a-z][A-Z]", w)):
+            out.append(w)
+    return out
+
+
+def definition(ident):
+    """A line that defines ident: a function, class or variable, in shell, python or js."""
+    i = re.escape(ident)
+    return re.compile(r"^\s*(?:(?:export\s+)?(?:async\s+)?(?:def|class|function|const|let|var|func|fn)\s+%s\b"
+                      r"|%s\s*\(\s*\)\s*\{|(?:export\s+)?%s=)" % (i, i, i))
+
+
+def arm_ident_grep(q, repo, timeout, k):
+    t0 = time.time()
+    score, lines = {}, {}
+    for ident in idents(q):
+        out, to, rc = run_cmd(["git", "-C", repo, "grep", "-n", "-I", "-w", "-F", "-e", ident, "--"] + GREP_SCOPE,
+                              max(1, timeout - (time.time() - t0)))
+        if to:
+            return [], "", True, False
+        if rc not in (0, 1):
+            return [], "", False, True
+        dre = definition(ident)
+        seen = set()
+        for line in out.splitlines():
+            f, _, rest = line.partition(":")
+            body = rest.partition(":")[2]
+            d, n, c = score.get(f, (0, 0, 0))
+            if f not in seen:
+                seen.add(f)
+                n += 1
+            score[f] = (d or int(bool(dre.search(body))), n, c + 1)
+            lines.setdefault(f, []).append(line)
+    files = sorted(score, key=lambda f: (-score[f][0], -score[f][1], -score[f][2], f))[:k]
+    text = [ln for f in files for ln in lines[f][:8]]
+    return files, "\n".join(text), False, False
 
 
 @functools.lru_cache(maxsize=None)
@@ -337,6 +413,10 @@ def cmd_run(a):
                 t0 = time.time()
                 if arm == "grep":
                     files, text, to, err = arm_grep(q["q"], repo, a.timeout, a.k)
+                elif arm == "path":
+                    files, text, to, err = arm_path(q["q"], repo, a.timeout, a.k)
+                elif arm == "ident-grep":
+                    files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, a.k)
                 elif arm == "graphify":
                     files, text, to, err = arm_graphify(q["q"], repo, a.timeout, a.k)
                 else:
