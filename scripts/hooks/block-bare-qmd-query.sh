@@ -655,6 +655,8 @@ nest_mode() {
 # `${V:-qmd}` default) and `--query` begin a word. `_` counts as a boundary
 # because a quoted blank reads as `_` in qmd_words' first line. So a file name
 # (block-bare-qmd-query.sh, qmd-notes.sh) or a host (research) is no qmd or verb.
+# The verbs are QMDVERB's closed set. Only names_verb reads qmd-bounded.sh as
+# qmd: names_verb_nb sets it aside before calling.
 _qmd_verb_words() {
     local LC_ALL=C
     [[ $1 =~ (^|[^[:alnum:]-]|(^|[^[:alnum:]])-)qmd(-bounded\.sh|-fork)?([^[:alnum:]-]|$) ]] &&
