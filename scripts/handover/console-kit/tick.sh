@@ -1387,7 +1387,8 @@ if [ -f "$wto_probe" ]; then
     else
         wto_rc=0
         wto_out="$(cd "$REPO" && timeout -k 2 90 bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
-        if [ "$wto_rc" -gt 1 ]; then
+        # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
+        if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
             wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
         elif [[ "$wto_out" != *SWEEP-ERROR* ]]; then
             mkdir -p "${wto_cache%/*}" 2>/dev/null && printf '%s\n' "$wto_out" > "$wto_cache.$$" 2>/dev/null && mv -f "$wto_cache.$$" "$wto_cache" 2>/dev/null || rm -f "$wto_cache.$$" 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a fresh read; the rename keeps a concurrent tick from reading a half-written cache
