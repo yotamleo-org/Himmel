@@ -111,7 +111,7 @@ def shell_launches(text):
     reference = re.compile(r'\$\{?' + name, re.I)
     runs_variable = re.compile(
         r'(?:\b(?:bash|sh|dash|zsh|ksh|env|python3?|exec|source)|(?<![\w$.])\.)\s+'
-        r'(?:[^\s$`"\'();|&]+\s+)*["\']?(?P<ref>\$)')
+        r'(?:(?:[^\s$`"\'();|&]+|"[^"$`]*")\s+)*["\']?(?P<ref>\$)')
     # The one shared lib the owned suites source, by its exact path expression.
     lib_source = '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"'
     ref = r'["\']?\$\{?' + name

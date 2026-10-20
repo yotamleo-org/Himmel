@@ -178,7 +178,7 @@ printf '# sandbox-run.sh marker is not a wrapper\n"$HO\\\nOK"\n' > "$SHELL_FIXTU
 if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then bad 'variable name split by a continuation accepted'; else ok 'variable name split by a continuation rejected'; fi
 # exec, source and dot run any variable, whatever it is named.
 # shellcheck disable=SC2016
-for launch in 'exec "$TARGET"' 'source "$TARGET"' '. "$TARGET"' 'exec -a name "${TARGET}"'; do
+for launch in 'exec "$TARGET"' 'source "$TARGET"' '. "$TARGET"' 'exec -a name "${TARGET}"' 'exec -a "name" "$TARGET"'; do
     printf '# sandbox-run.sh marker is not a wrapper\n%s\n' "$launch" > "$SHELL_FIXTURE"
     if python3 -I "$LINT" "$TMP" >/dev/null 2>&1; then
         bad "unwrapped exec/source variable launch accepted: $launch"
