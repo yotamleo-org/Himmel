@@ -62,7 +62,7 @@ N0=$(nodes) E0=$(edges)
 [ "$N0" -ge "$NFILES" ] && [ "$E0" -gt 0 ] && pass "G1 baseline $N0 nodes, $E0 edges" || fail "G1 degenerate baseline $N0 nodes, $E0 edges"
 
 echo "G2: refresh after edits keeps >= 0.9 x baseline"
-for f in ast-update.sh graph-cadence.sh semantic-update.sh; do [ -f "$C/scripts/graphify/$f" ] || fail "G2 $f missing from the sample"; printf '\n# edited by test\n' >> "$C/scripts/graphify/$f"; done
+for f in ast-update.sh graph-cadence.sh semantic-update.sh; do [ -f "$C/scripts/graphify/$f" ] && printf '\n# edited by test\n' >> "$C/scripts/graphify/$f" || fail "G2 $f missing from the sample"; done
 bash "$HERE/ast-update.sh" "$C" >"$WS/g2.out" 2>&1; rc=$?
 [ "$rc" -eq 0 ] && pass "G2 refresh exit 0" || fail "G2 refresh exit $rc"
 N1=$(nodes) E1=$(edges)
@@ -128,7 +128,7 @@ env -u GRAPHIFY_OUT -u OLLAMA_HOST -u OLLAMA_BASE_URL -u OLLAMA_MODEL -u OLLAMA_
 [ "$rc" -eq 5 ] && pass "S1 failed chunks exit 5" || fail "S1 failed chunks exited $rc, want 5 (old behaviour: exit 0): $(tail -3 "$WS/s1.out")"
 N4=$(nodes)
 ge90 "$N4" "$N3" && pass "S1 good chunks merged, $N4 nodes vs $N3 before" || fail "S1 graph degraded: $N4 vs $N3"
-grep -q '"id": "sem_' "$C/graphify-out/graph.json" && pass "S1 a semantic node from the good chunks survived" || fail "S1 no sem_ node in the merged graph"
+python3 -c 'import json,sys;sys.exit(0 if any(n["id"].startswith("sem_") for n in json.load(open(sys.argv[1]))["nodes"]) else 1)' "$C/graphify-out/graph.json" && pass "S1 a semantic node from the good chunks survived" || fail "S1 no sem_ node in the merged graph"
 
 echo "Q1: qmd reindex on the sample docs keeps the document count and finds the planted marker"
 QD="$WS/qmd" ; mkdir -p "$QD/cfg/qmd" "$QD/cache"
@@ -172,11 +172,13 @@ echo "Q3: injected failures exit non-zero and leave no stamp"
 rm -f "$QMD_REFRESH_STAMP"
 out=$(QS_EMBED=pending reindex); rc=$?
 [ "$rc" -eq 5 ] && pass "Q3 incomplete embed exit 5" || fail "Q3 incomplete embed exit $rc, want 5"
+[ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after the incomplete embed" || fail "Q3 stamp written after the incomplete embed"
 out=$(QS_EMBED=fail reindex); rc=$?
 [ "$rc" -eq 4 ] && pass "Q3 embed failure exit 4" || fail "Q3 embed failure exit $rc, want 4"
+[ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after the embed failure" || fail "Q3 stamp written after the embed failure"
 out=$(QS_UPDATE_FAIL=1 reindex); rc=$?
 [ "$rc" -eq 3 ] && pass "Q3 update failure exit 3" || fail "Q3 update failure exit $rc, want 3"
-[ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after any failure" || fail "Q3 stamp written on a failed run"
+[ ! -e "$QMD_REFRESH_STAMP" ] && pass "Q3 no stamp after the update failure" || fail "Q3 stamp written after the update failure"
 
 echo
 if [ "$FAILS" -eq 0 ]; then echo "test-quality-sample: all passed"; else echo "test-quality-sample: $FAILS FAILED"; exit 1; fi
