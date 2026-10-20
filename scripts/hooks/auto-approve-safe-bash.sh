@@ -1764,26 +1764,29 @@ EOF
     impacted_suites_is_anchored "$root"
 }
 
-impacted_suites_is_anchored() {   # $1 root — subshell: the unsets stay local
+impacted_suites_is_anchored() {   # $1 root, $2.. script paths (default impacted-suites.sh) — subshell: the unsets stay local
     (
         unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_REPLACE_REF_BASE
         g() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false "$@" 2>/dev/null; }
-        f=scripts/cr/impacted-suites.sh
         repo="${HIMMEL_REPO:-}"; repo="${repo%/}"
         [ -n "$repo" ] || exit 1
         anchor_git=$(cd -P "$repo/.git" 2>/dev/null && pwd -P) || exit 1
         root=$(cd -P "$1" 2>/dev/null && pwd -P) || exit 1
+        shift
+        [ "$#" -gt 0 ] || set -- scripts/cr/impacted-suites.sh
         common=$(g -C "$root" rev-parse --path-format=absolute --git-common-dir) || exit 1
         common=$(cd -P "$common" 2>/dev/null && pwd -P) || exit 1
         [ "$common" = "$anchor_git" ] || exit 1
         prefix=$(g -C "$root" rev-parse --show-prefix) || exit 1
         [ -z "$prefix" ] || exit 1
-        [ -f "$root/$f" ] && [ ! -L "$root/$f" ] && [ -f "$repo/$f" ] && [ ! -L "$repo/$f" ] || exit 1
         [ "$(g -C "$repo" symbolic-ref -q HEAD)" = refs/heads/main ] || exit 1
-        want=$(g -C "$repo" rev-parse --verify -q "refs/heads/main:$f") || exit 1
-        [ -n "$want" ] || exit 1
-        [ "$(g -C "$repo" hash-object --no-filters -- "$f")" = "$want" ] || exit 1
-        [ "$(g -C "$root" hash-object --no-filters -- "$f")" = "$want" ]
+        for f in "$@"; do
+            [ -f "$root/$f" ] && [ ! -L "$root/$f" ] && [ -f "$repo/$f" ] && [ ! -L "$repo/$f" ] || exit 1
+            want=$(g -C "$repo" rev-parse --verify -q "refs/heads/main:$f") || exit 1
+            [ -n "$want" ] || exit 1
+            [ "$(g -C "$repo" hash-object --no-filters -- "$f")" = "$want" ] || exit 1
+            [ "$(g -C "$root" hash-object --no-filters -- "$f")" = "$want" ] || exit 1
+        done
     )
 }
 
@@ -1793,12 +1796,18 @@ impacted_suites_is_anchored() {   # $1 root — subshell: the unsets stay local
 # allow-listed in settings.json, and quiet-run only wraps it with a log, so the
 # wrapped form is the same trust; without this a leg told to run the full
 # shell-unit locally hit a prompt nobody answers. Arguments are plain words
-# (no expansion, quote, glob or `~`) and none carries `..`.
+# (no expansion, quote, glob or `~`) and none carries `..`. Both scripts are
+# named relative to the cwd, so the cwd must be an anchored worktree root whose
+# quiet-run.sh and run-shell-tests.sh are main's bytes (impacted_suites_is_anchored):
+# otherwise a clone or an edited worktree would run its own copy unprompted.
 SR_RE='^bash scripts/quiet-run\.sh shell-unit -- bash scripts/ci/run-shell-tests\.sh( [-A-Za-z0-9_][-A-Za-z0-9_.=,:/@+]*)*$'
 cmd_is_shell_unit_runner() {
-    local c="${1%$'\n'}"
-    case "$c" in *..*) return 1 ;; esac
-    [[ "$c" =~ $SR_RE ]]
+    local LC_ALL=C c="${1%$'\n'}" root
+    case "$c" in *$'\n'*|*$'\r'*|*..*) return 1 ;; esac
+    [[ "$c" =~ $SR_RE ]] || return 1
+    root=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || return 1  # swallow-ok: an unreadable cwd is refused, never allowed
+    case "$root" in /*) ;; *) return 1 ;; esac
+    impacted_suites_is_anchored "$root" scripts/quiet-run.sh scripts/ci/run-shell-tests.sh
 }
 
 emit_allow() {
