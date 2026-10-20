@@ -26,9 +26,22 @@ Arms (all read-only):
               path and ident-grep baselines); its tokens and time are the sum
               of the three
 Metrics per arm: recall@5 (a gold file is among the first k distinct files),
+recall_any@5 (a gold or gold1 file is), ndcg@5 (graded: gold = 2, gold1 = 1,
+each file counted once, the ideal list holds every graded file),
 reason_carried (every reason phrase appears in the arm's output; only questions
 with a reason count), tokens (output chars / 4: what the caller has to read),
-ms (wall time). A question row is {id, kind, q, gold: [paths], reason: [phrases]}.
+ms (wall time).
+
+A question row is {id, kind, q, gold: [paths], reason: [phrases]} plus the
+optional gold1: [paths] (plausible docs, grade 1; gold files are grade 2: the
+file defines or decides the answer) and split: "insample" (the default) or
+"heldout". A held-out question is frozen: it is never used to tune an arm, a
+query or a seed, and nothing outside this directory may quote it. Every run
+reports the two slices separately: scores-by-slice.tsv, the printed slice table
+and, per arm, <arm>.insample.* and <arm>.heldout.* ledger metrics (n, recall@k,
+recall_any@k, ndcg@k, reason_carried; null where the slice has no question to
+score). The unsliced columns pool both slices: read them only as a continuity
+series.
 
 qmd is reached the way agents reach it: the MCP server (QMD_URL, default
 http://localhost:8181/mcp, bearer token from the qmd plugin's helper). The
@@ -46,7 +59,9 @@ import argparse
 import datetime
 import functools
 import glob
+import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -61,6 +76,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
 
+SPLITS = ("insample", "heldout")
 ARMS = ["grep", "path", "ident-grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
@@ -341,6 +357,25 @@ def is_hit(files, gold):
     return any(f == g or f.endswith("/" + g) for f in fl for g in gl)
 
 
+def is_hit_any(files, q):
+    return is_hit(files, q["gold"] + q.get("gold1", []))
+
+
+def ndcg(files, q, k):
+    """nDCG@k with gain 2 for a gold file and 1 for a gold1 file; a graded file is counted once."""
+    left = [(g.lower(), 2) for g in q["gold"]] + [(g.lower(), 1) for g in q.get("gold1", [])]
+    ideal = sum(g / math.log2(i + 2) for i, g in enumerate(sorted((g for _, g in left), reverse=True)[:k]))
+    dcg = 0.0
+    for i, f in enumerate(files[:k]):
+        fl = f.lower()
+        m = [e for e in left if fl == e[0] or fl.endswith("/" + e[0])]
+        if m:
+            e = max(m, key=lambda e: e[1])
+            left.remove(e)
+            dcg += e[1] / math.log2(i + 2)
+    return dcg / ideal if ideal else 0.0
+
+
 def carried(text, reason):
     if not reason:
         return None
@@ -373,6 +408,13 @@ def cmd_check(a):
         if r.get("id") in seen:
             bad.append("%s: duplicate id" % r.get("id"))
         seen.add(r.get("id"))
+        if r.get("split", "insample") not in SPLITS:
+            bad.append("%s: split '%s' is not one of %s" % (r.get("id"), r.get("split"), "/".join(SPLITS)))
+        for g in r.get("gold1", []):
+            if not os.path.isfile(os.path.join(a.repo, g)):
+                bad.append("%s: gold1 file %s does not exist" % (r.get("id"), g))
+            if g in r.get("gold", []):
+                bad.append("%s: %s is graded both 2 and 1" % (r.get("id"), g))
         texts = []
         for g in r.get("gold", []):
             p = os.path.join(a.repo, g)
@@ -396,6 +438,9 @@ def cmd_run(a):
         if x not in ARMS + OPT_IN:
             raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS + OPT_IN)))
     qs = load_questions(a.questions)
+    for q in qs:
+        if q.get("split", "insample") not in SPLITS:
+            raise Usage("question %s has split '%s' (known: %s)" % (q.get("id"), q.get("split"), ",".join(SPLITS)))
     repo = os.path.abspath(a.repo)
     os.makedirs(a.out, exist_ok=True)
     need = list(arms)
@@ -428,8 +473,10 @@ def cmd_run(a):
                                 error=bool(err))
         for arm in arms:
             g = got[arm]
-            row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), arm=arm, files=g["files"],
-                       hit=is_hit(g["files"], q["gold"]), reason=carried(g["_text"], q.get("reason", [])),
+            row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
+                       arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
+                       hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
+                       reason=carried(g["_text"], q.get("reason", [])),
                        tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"])
             rows.append(row)
         print("%s %s" % (q["id"], " ".join("%s=%s" % (r["arm"], int(r["hit"])) for r in rows[-len(arms):])),
@@ -441,6 +488,9 @@ def cmd_run(a):
     cols = ["arm", "n", rk,"reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts",
             "errors"]
     lines = ["\t".join(cols)]
+    slice_cols = ["arm", "slice", "n", rk, "recall_any@%d" % a.k, "ndcg@%d" % a.k, "reason_carried", "reason_n"]
+    slice_lines = ["\t".join(slice_cols)]
+    mean = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
     metrics, cases = {}, {}
     for arm in arms:
         rs = [r for r in rows if r["arm"] == arm]
@@ -456,15 +506,33 @@ def cmd_run(a):
                                 "%d" % tk, "%d" % msm, "%d" % mst, str(to), str(er)]))
         metrics.update({arm + "." + rk: rec, arm + ".reason_carried": rea, arm + ".tokens_mean": tk,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
+        for sl in SPLITS:
+            sr = [r for r in rs if r["split"] == sl]
+            srr = [r for r in sr if r["reason"] is not None]
+            vals = [mean([r["hit"] for r in sr]), mean([r["hit_any"] for r in sr]),
+                    mean([r["ndcg"] for r in sr]), mean([r["reason"] for r in srr])]
+            slice_lines.append("\t".join([arm, sl, str(len(sr))] + ["-" if v is None else "%.2f" % v for v in vals]
+                                         + [str(len(srr))]))
+            pre = "%s.%s." % (arm, sl)
+            metrics.update({pre + "n": len(sr), pre + rk: vals[0], pre + "recall_any@%d" % a.k: vals[1],
+                            pre + "ndcg@%d" % a.k: vals[2], pre + "reason_carried": vals[3]})
         for r in rs:
             cases.setdefault(r["id"], {})[arm + ".hit"] = r["hit"]
+            cases[r["id"]]["heldout"] = r["split"] == "heldout"
     with open(os.path.join(a.out, "scores.tsv"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
+    with open(os.path.join(a.out, "scores-by-slice.tsv"), "w") as fh:
+        fh.write("\n".join(slice_lines) + "\n")
     print("\n".join(lines))
+    print()
+    print("\n".join(slice_lines))
     with open(a.questions, "rb") as fh:
-        qhash = __import__("hashlib").sha256(fh.read()).hexdigest()[:16]
+        qhash = hashlib.sha256(fh.read()).hexdigest()[:16]
     config = dict(arms=arms, k=a.k, timeout=a.timeout, collection=a.collection, questions=qhash)
-    meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=graph_built(repo))
+    held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
+    meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=graph_built(repo),
+                n_heldout=len(held),
+                heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,
                              n=len(qs), cases=cases, artifact=os.path.abspath(a.out), meta=meta, repo=repo)
     eval_runs.append_safe(row, who="retrieval-eval")

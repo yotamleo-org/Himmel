@@ -197,10 +197,58 @@ eq "unknown arm exits 64" "64" "$?"
 py "$EV" run --repo "$R" --questions "$W/missing.jsonl" --out "$W/o9" > /dev/null 2>&1
 eq "missing question file exits 64" "64" "$?"
 
-# 10. the shipped question set is well-formed: 50 rows, unique ids, gold files exist.
+# 9b. every ledger row carries an in-sample and a held-out slice; a row with no split is in-sample.
+cat > "$W/qh.jsonl" <<'EOF'
+{"id":"s1","kind":"why","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[]}
+{"id":"h1","kind":"where","split":"heldout","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}
+{"id":"h2","kind":"how","split":"heldout","q":"queue lock one session per handover doc","gold":["bin/run.sh"],"gold1":["docs/lock.md"],"reason":[]}
+EOF
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-9b.jsonl" py "$EV" run --repo "$R" --questions "$W/qh.jsonl" --out "$W/outh" --arms grep --label slices > "$W/outh.txt" 2>&1
+eq "slice run exits 0" "0" "$?"
+lm() { py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readlines()[-1])["metrics"]
+v = m.get(sys.argv[2], "absent")
+print("%.2f" % v if isinstance(v, float) else v)' "$1" "$2"; }
+eq "ledger row: in-sample n" "1" "$(lm "$W/ledger-9b.jsonl" grep.insample.n)"
+eq "ledger row: held-out n" "2" "$(lm "$W/ledger-9b.jsonl" grep.heldout.n)"
+eq "ledger row: in-sample recall@5" "1.00" "$(lm "$W/ledger-9b.jsonl" 'grep.insample.recall@5')"
+eq "ledger row: held-out recall@5" "0.50" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.recall@5')"
+eq "ledger row: held-out recall_any@5 counts a grade-1 file" "1.00" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.recall_any@5')"
+eq "ledger row: held-out ndcg@5 is graded" "0.69" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.ndcg@5')"
+eq "ledger row validates" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$W/ledger-9b.jsonl" > /dev/null 2>&1; echo $?)"
+eq "ledger row names the frozen held-out set" "2" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["meta"]["n_heldout"])' "$W/ledger-9b.jsonl")"
+eq "scores-by-slice.tsv has one row per arm and slice" "3" "$(wc -l < "$W/outh/scores-by-slice.tsv" | tr -d ' ')"
+eq "the run prints both slices" "2" "$(grep -cE '^grep	(insample|heldout)	' "$W/outh.txt")"
+eq "results.jsonl rows carry their split" "insample heldout heldout" "$(py -c 'import json,sys; print(" ".join(json.loads(l)["split"] for l in open(sys.argv[1])))' "$W/outh/results.jsonl")"
+# A run over a set with no held-out question still carries the held-out keys: n 0, scores null.
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-9c.jsonl" py "$EV" run --repo "$R" --questions "$Q" --out "$W/outq" --arms grep > /dev/null 2>&1
+eq "no held-out question: held-out n is 0" "0" "$(lm "$W/ledger-9c.jsonl" grep.heldout.n)"
+eq "no held-out question: held-out recall is null" "None" "$(lm "$W/ledger-9c.jsonl" 'grep.heldout.recall@5')"
+# check refuses a bad split, a missing grade-1 file and a file graded twice.
+chk() { printf '%s\n' "$1" > "$W/qc.jsonl"; py "$EV" check --repo "$R" --questions "$W/qc.jsonl" > /dev/null 2>&1; echo $?; }
+eq "check refuses an unknown split" "1" "$(chk '{"id":"c1","split":"dev","q":"x","gold":["docs/lock.md"],"reason":[]}')"
+eq "check refuses a missing grade-1 file" "1" "$(chk '{"id":"c2","q":"x","gold":["docs/lock.md"],"gold1":["docs/nope.md"],"reason":[]}')"
+eq "check refuses a file graded 2 and 1" "1" "$(chk '{"id":"c3","q":"x","gold":["docs/lock.md"],"gold1":["docs/lock.md"],"reason":[]}')"
+eq "check accepts a held-out row with a grade-1 file" "0" "$(chk '{"id":"c4","split":"heldout","q":"x","gold":["docs/lock.md"],"gold1":["docs/other.md"],"reason":[]}')"
+
+# 10. the shipped question set is well-formed: 75 rows, unique ids, gold and gold1 files exist.
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 n="$(py "$EV" check --repo "$REPO_ROOT" --questions "$HERE/questions.jsonl")"
-eq "shipped question set checks clean" "50 rc=0" "$n rc=$?"
+eq "shipped question set checks clean" "75 rc=0" "$n rc=$?"
+
+# 10b. the frozen held-out slice: at least 20 questions, at least half with no path or identifier word,
+# none quoted verbatim outside this directory (a quoted question could be tuned against).
+eq "shipped held-out slice: at least 20, half with no path or identifier word, none quoted elsewhere" "ok" "$(py -c 'import importlib.util,json,re,subprocess,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+rows = [json.loads(l) for l in open(sys.argv[2]) if l.strip()]
+held = [r for r in rows if r.get("split") == "heldout"]
+plain = [r for r in held if not m.idents(r["q"]) and not re.search(r"[/.]", r["q"])]
+quoted = [r["id"] for r in held if subprocess.run(["git", "-C", sys.argv[3], "grep", "-q", "-F", "-e", r["q"], "--", ".", ":(exclude)scripts/eval/retrieval-eval/"]).returncode == 0]
+print("ok" if len(held) >= 20 and 2 * len(plain) >= len(held) and not quoted else "held=%d plain=%d quoted=%s" % (len(held), len(plain), quoted))' "$EV" "$HERE/questions.jsonl" "$REPO_ROOT")"
+eq "shipped set widens golds: graded rows exist in both slices" "True True" "$(py -c 'import json,sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+g = lambda sp: any(r.get("gold1") for r in rows if r.get("split", "insample") == sp)
+print(g("insample"), g("heldout"))' "$HERE/questions.jsonl")"
 
 # 11. census: a qmd call that errors, then a grep, is a fallback; graphify via leg-graph counts.
 P="$W/projects/-home-x-himmel"; mkdir -p "$P"
