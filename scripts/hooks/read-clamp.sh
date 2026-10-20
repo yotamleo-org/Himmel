@@ -48,7 +48,10 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat) || exit 0
 [ -n "$input" ] || exit 0
 
-LIMIT_LINES="${HIMMEL_READ_CLAMP_LINES:-400}"
+# 2000 = the Read tool's own page size. Measured over 1715 whole-file denials in
+# 604 worker transcripts: at a 400 cap the median denied file was 625 lines and
+# 96% of denials were files of <=2000 lines, i.e. one ordinary Read.
+LIMIT_LINES="${HIMMEL_READ_CLAMP_LINES:-2000}"
 
 # SOH (not tab): bash's `read` treats tab as an IFS-whitespace class char and
 # COLLAPSES consecutive tab delimiters, silently shifting empty offset/limit
@@ -95,9 +98,18 @@ file_line_count() {
 }
 
 # clamp_deny: the one deny message both the Read whole-file path and the Bash
-# shapes share (brief: "deny with the same message").
+# shapes share. It names the exact offset/limit pages that cover the file (the
+# first 8, then the continuation step) so every lane retries in one step and
+# none treats the denial as a stop.
 clamp_deny() {  # $1 = path, $2 = line count
-    echo "⛔ read-clamp: $1 has $2 lines (> ${LIMIT_LINES}); read a range instead of the whole file: offset=<n> limit=<m>. Retry: Read file_path=$1 offset=1 limit=${LIMIT_LINES} (then offset=$((LIMIT_LINES + 1)) for the next range)" >&2
+    local pages="" off=1 n=0
+    while [ "$off" -le "$2" ] && [ "$n" -lt 8 ]; do
+        pages="${pages:+$pages; }offset=$off limit=${LIMIT_LINES}"
+        off=$((off + LIMIT_LINES))
+        n=$((n + 1))
+    done
+    [ "$off" -le "$2" ] && pages="$pages; then offset=$off limit=${LIMIT_LINES} and so on up to line $2"
+    echo "⛔ read-clamp: $1 has $2 lines (> ${LIMIT_LINES}); read it in pages, not whole: offset=<n> limit=<m>. Retry: Read file_path=$1 offset=1 limit=${LIMIT_LINES}. Pages: $pages" >&2
     exit 2
 }
 

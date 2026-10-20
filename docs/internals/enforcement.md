@@ -4102,8 +4102,11 @@ worker system prompt's read-range sentence, #692) — this is the structural esc
 second drift.
 
 Denies (a) a `Read` without `offset`/`limit` of a file over
-`HIMMEL_READ_CLAMP_LINES` (default 400) lines, naming the file's line count
-and the `offset=<n> limit=<m>` shape to use instead; (b) a `Read` whose exact
+`HIMMEL_READ_CLAMP_LINES` (default 2000, the Read tool's page size — HIMMEL-6783
+sized it from 1715 denials across 604 worker transcripts, 96 % of them files of
+2000 lines or fewer) lines, naming the file's line count and the exact
+`offset=<n> limit=<m>` pages that cover it (the first 8, then the continuation
+step) so any lane retries in one step; (b) a `Read` whose exact
 `(path, offset, limit)` triple was already read this session, naming the
 recorded timestamp — a *different* range of the same file is allowed and
 recorded; (c) the equivalent `Bash` shapes (`cat <file>`, `sed -n '1,$p'
