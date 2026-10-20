@@ -196,16 +196,19 @@ PACE_STATE="${CANCEL_RUNS_PACE_STATE:-$(git rev-parse --git-common-dir)/cancel-r
 stamps=""
 if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then
     fake_now=""
+    # read-sink-ok: the fake-clock seam reads one integer from the file the test suite names
     [ ! -r "$CANCEL_RUNS_FAKE_CLOCK" ] || IFS= read -r fake_now < "$CANCEL_RUNS_FAKE_CLOCK"
     printf '%s' "$fake_now" | grep -Eq '^[0-9]+$' \
         || { echo "cancel-runs: CANCEL_RUNS_FAKE_CLOCK must name a file holding an integer" >&2; exit 2; }
     echo "cancel-runs: CANCEL_RUNS_FAKE_CLOCK is set - the pacing clock is faked, nothing really waits" >&2
 fi
 pace_now() {
+    # read-sink-ok: the fake-clock seam reads one integer from the file the test suite names
     if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then cat "$CANCEL_RUNS_FAKE_CLOCK"; else date +%s; fi
 }
 pace_nap() {
     if [ -n "${CANCEL_RUNS_FAKE_CLOCK:-}" ]; then
+        # read-sink-ok: the fake-clock seam reads one integer from the file the test suite names
         echo $(($(cat "$CANCEL_RUNS_FAKE_CLOCK") + $1)) > "$CANCEL_RUNS_FAKE_CLOCK"
     else
         sleep "$1"
