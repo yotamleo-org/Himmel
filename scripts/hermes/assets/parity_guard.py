@@ -905,6 +905,55 @@ def _pr_head_branches(cmd: str, m) -> list:
     return heads
 
 
+_COMMENT_CONTINUATION = re.compile(r"(?:^|[\s;|&(])#[^\n]*\\\r?\n")
+_GH_PR_CREATE_MAIN = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$|(?=[;&|()<>]))", re.IGNORECASE)
+
+
+def _unquoted_segment_main(text: str) -> str:
+    """The base lock's scanner, kept as arm 1 so the lock is at least as
+    strict as it was before the wider arm below."""
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c in "'\"":
+            i += 1
+            while i < n and text[i] != c:
+                i += 2 if (c == '"' and text[i] == "\\") else 1
+            if i >= n:
+                raise ValueError("unterminated quote")
+        elif c in "$`" or (c in "<>" and text[i + 1:i + 2] in ("(", "|")):
+            raise ValueError("unclassified shell construct")
+        elif c in ";|()\n":
+            return text[:i]
+        elif c == "&" and not (i and text[i - 1] in "<>") and text[i + 1:i + 2] != ">":
+            return text[:i]
+        i += 1
+    return text
+
+
+def _pr_head_branches_main(cmd: str) -> list:
+    """The base lock's head scan over every `gh pr create` in `cmd`."""
+    heads = []
+    for m in _GH_PR_CREATE_MAIN.finditer(cmd):
+        toks = shlex.split(_unquoted_segment_main(cmd[m.end():]))
+        for i, t in enumerate(toks):
+            val = ""
+            if t in ("--head", "-H"):
+                val = toks[i + 1] if i + 1 < len(toks) else ""
+            elif t.startswith("--head="):
+                val = t[len("--head="):]
+            elif t.startswith("-") and not t.startswith("--") and "H" in t:
+                val = t.split("H", 1)[1].lstrip("=")
+                if not val:
+                    val = toks[i + 1] if i + 1 < len(toks) else ""
+            if val:
+                heads.append(val.rsplit(":", 1)[-1])
+    return heads
+
+
 def _pending_cr_reason(start: str, head_branches: list = ()):
     """Block reason if the repo at `start` has a pending CR marker for any of
     `head_branches` (the PR's explicit heads) or its checked-out branch, else
@@ -1974,9 +2023,27 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     # Pending-CR marker lock: independent of the engine fence below, so a
     # trusted engine cannot open a PR over an unfinished review. EVERY
     # `gh pr create` is judged in its own directory: only a cd before a call
-    # moves it, one after it must not. The command is read under both joins (a
-    # comment keeps its newline in one, a quote or heredoc the scanner cannot
-    # model cannot hide a line break in the other); either finding blocks.
+    # moves it, one after it must not. Two arms, and either one blocks: arm 1
+    # is the base lock unchanged (first call's directory, base scanner); arm 2
+    # reads the command under both joins (a comment keeps its newline in one,
+    # a quote or heredoc the scanner cannot model cannot hide a line break in
+    # the other).
+    if _COMMENT_CONTINUATION.search(raw_cmd) and (
+            _GH_PR_CREATE_MAIN.search(cmd) or _GH_PR_CREATE_MAIN.search(norm(_join_continuations(raw_cmd)))):
+        base_joined = _join_continuations(raw_cmd)
+        base_m = _GH_PR_CREATE_MAIN.search(base_joined)
+        base_dir = _commit_dir(base_joined[:base_m.start()] if base_m else base_joined,
+                               _agent_cwd(payload, args), None)
+        if base_dir:
+            # A shape the base scanner refuses is judged by arm 2, which
+            # reads the constructs the base scanner over-blocked.
+            try:
+                base_heads = _pr_head_branches_main(base_joined)
+            except ValueError:
+                base_heads = None
+            reason = _pending_cr_reason(base_dir, base_heads) if base_heads is not None else ""
+            if reason:
+                block(reason)
     joins = {_join_continuations(raw_cmd), _join_continuations_commented(raw_cmd)}
     for joined in sorted(joins):
         pr_calls = [(m.start(), m) for m in GH_PR_CREATE.finditer(joined)]

@@ -325,7 +325,9 @@ for opener in '(' '$('; do
 done
 # A command word of expansion characters is one anchor, not a quadratic split.
 t0=$SECONDS
-pad=$("$PY" -c 'print("$" * 20000)')
+pad=$("$PY" -c 'print("$" * 20000)') || pad=""
+if [ "${#pad}" -ne 20000 ]; then
+  echo "  FAIL: dollar x20000 input generation failed" >&2; fails=$((fails + 1)); fi
 g "dollar x20000 word (linear)" allow "$("$PY" -c 'import json,sys; print(json.dumps({"tool_name": "terminal", "tool_input": {"command": sys.argv[1] + " x"}}))' "$pad")"
 if [ $((SECONDS - t0)) -gt 3 ]; then
   echo "  FAIL: dollar x20000 word took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
@@ -654,6 +656,10 @@ gcr "echo \$'it\\'s'; gh pr create --title t \\<newline>--head feat/y (ANSI-C qu
 gcr "echo \$'it\\'s'; gh pr create --title t \\<newline>--head feat/w (ANSI-C quote before a continuation), allowed" allow $'echo $\'it\\\'s\'; gh pr create --title t \\\n--head feat/w'
 gcr "cat <<EOF with an apostrophe, then gh pr create --title t \\<newline>--head feat/y (heredoc before a continuation), refused" block $'cat <<EOF\nit\'s\nEOF\ngh pr create --title t \\\n--head feat/y'
 gcr "cat <<EOF with an apostrophe, then gh pr create --title t \\<newline>--head feat/w (heredoc before a continuation), allowed" allow $'cat <<EOF\nit\'s\nEOF\ngh pr create --title t \\\n--head feat/w'
+gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \\<newline>gh pr create --head feat/y (stray double quote in an ANSI-C string), refused" block $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c \\\ngh pr create --head feat/y'
+gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \\<newline>gh pr create --head feat/w2 (stray double quote in an ANSI-C string), allowed" allow $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c \\\ngh pr create --head feat/w2'
+gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # c \\<newline>gh pr create --head feat/y (heredoc double quote), refused" block $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # c \\\ngh pr create --head feat/y'
+gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # c \\<newline>gh pr create --head feat/w2 (heredoc double quote), allowed" allow $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # c \\\ngh pr create --head feat/w2'
 }
 rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
 # Each `gh pr create` is judged in ITS OWN directory: the first one's dir used
