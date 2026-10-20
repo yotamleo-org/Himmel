@@ -2799,6 +2799,28 @@ if [ "$rc27" -eq 0 ] && [ "$ran27" = "pr quar unlisted " ]; then
 else
   fail "27g: rc=$rc27 ran='$ran27' (want pr quar unlisted) output: $out27"
 fi
+
+# The sandbox has no impacted-selection.sh, so a base-sourced run takes the
+# selector's fail-open `mode full` header.
+: > "$T27_LOG"
+out27=$(cd "$sb27" && SUITE_TIER_MODE="pr" SUITE_IMPACTED_FROM_BASE="$base27" bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$rc27" -eq 0 ] && [ "$ran27" = "local-hit local-miss pr quar unlisted " ]; then
+  pass "27h: pr mode under a base-sourced 'mode full' header runs every tier, local included"
+else
+  fail "27h: rc=$rc27 ran='$ran27' (want local-hit local-miss pr quar unlisted) output: $out27"
+fi
+
+mk27 test-prfail.sh prfail '# a failing pr-tier suite' 1
+printf 'scripts/test-prfail.sh\tpr\tguard\n' >> "$sb27/scripts/ci/suite-tiers.tsv"
+: > "$T27_LOG"
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
+if [ "$rc27" -eq 1 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh' \
+   && ! grepq "$out27" '\[QUARANTINE\].*test-prfail\.sh'; then
+  pass "27i: a failing pr-tier suite fails a pr-mode run; only the quarantine row is forgiven"
+else
+  fail "27i: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
+fi
 rm -rf "$sb27"
 fi
 
