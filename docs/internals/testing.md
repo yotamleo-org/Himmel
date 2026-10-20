@@ -249,7 +249,8 @@ The short checks (`secret-scan`, `bwk-awk-mktemp-gate`, `unchecked-mktemp-range`
 `doc-invariants`) run as step groups of one job, `ci-quick` (HIMMEL-5675). A
 gated group skips its own steps. Each old job name stays as a sentinel. It
 carries the required context. It is skipped (green) when ci-quick reports its
-group as `pass`. Otherwise it runs `exit 1`. That includes a cancelled,
+group as `pass`, or when the run was cancelled (`!cancelled()`: eight runners
+would only paint a dead run red). Otherwise it runs `exit 1`. That includes a
 timed-out or skipped ci-quick, and a failed shared step. A red group fails only
 its own sentinel. `scripts/ci/test-ci-quick.sh` pins the shape.
 
