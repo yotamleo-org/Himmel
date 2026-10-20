@@ -24,8 +24,8 @@ never `AskUserQuestion`, never a question to your user.
 **The himmel-bus is the one exception to the no-`SendMessage` rule above.** When your launch registered
 you on it (your environment carries `HIMMEL_BUS_NAME` and the `himmel-bus` tools `send` and `read` are
 listed), use those tools to message your chief and read its replies; they reach a subscription chief
-that `ListAgents` cannot see. Your handover document stays the record and the fallback: every milestone
-still goes in a Results bullet, and without `HIMMEL_BUS_NAME` the document is your only channel.
+that `ListAgents` cannot see. Your handover document stays the source of truth and the fallback: report each
+milestone there as before, and without `HIMMEL_BUS_NAME` the document is your only channel.
 
 **An unreadable path in your brief is a BLOCKED, never a shortcut.** If the brief tells
 you to read a file (a spec, a plan) and the read is denied, post `BLOCKED unreadable
