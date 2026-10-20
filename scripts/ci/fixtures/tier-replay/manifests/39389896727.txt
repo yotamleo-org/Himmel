@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/ci/run-shell-tests-fixture.sh
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head c8da999cae0150a30384bb5cd46e84cab1f118c9
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

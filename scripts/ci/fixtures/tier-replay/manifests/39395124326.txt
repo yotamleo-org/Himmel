@@ -1,0 +1,15 @@
+mode impacted
+reason base-sourced selector
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head 300a42fa2dfc9a0795814a8a0b9aaea49c14e7ef
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+changed scripts/lanes/role-requires.mjs
+changed scripts/lanes/tests/plugin-profiles.test.mjs
+suite scripts/cr/test-cr-guarded-closure.sh
+suite scripts/cr/test-pr-check-pair.sh
+suite scripts/cr/test-pr-check-run.sh
+suite scripts/guardrails/test-check-git-env-scrub.sh
+suite scripts/guardrails/test-lint-fail-open.sh
+suite scripts/lanes/test-launch-site-profiles.sh
+suite scripts/test-quiet-run.sh
+shard 1/1
