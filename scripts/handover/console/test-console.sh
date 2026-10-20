@@ -26,6 +26,8 @@ QL="$REPO_REAL/scripts/handover/queue-lock.sh"
 . "$HERE/../../lib/permission-test.sh"
 # shellcheck source=../../lib/host-caps.sh
 . "$HERE/../../lib/host-caps.sh"
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
 # Cases 27/29/30/40 need a real symlink, 31/32/33/36/39/41/42 a
 # chmod / `mkdir -m` that sticks -- neither holds on Git Bash / NTFS, so those
 # cases SKIP there (measured, not keyed off uname) rather than fail.
@@ -2698,11 +2700,15 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(tok
 # BUS_EXEC_SECS is killed and claude starts unbound; and a line whose
 # console-bus-exec.sh is gone runs claude directly.
 out89a="$(print88 in new bus89hang)"
-rc89=0
-paste88 "$out89a" BUS88_HANG=1 BUS_EXEC_SECS=1 timeout 20 || rc89=$?
-check "89 stuck bus: the pasted line does not hang" "$rc89" "0"
-check "89 stuck bus: claude starts unbound" \
-    "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=<unset> extra=<unset>"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    rc89=0
+    paste88 "$out89a" BUS88_HANG=1 BUS_EXEC_SECS=1 "$_TIMEOUT_BIN" 20 || rc89=$?
+    check "89 stuck bus: the pasted line does not hang" "$rc89" "0"
+    check "89 stuck bus: claude starts unbound" \
+        "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=<unset> extra=<unset>"
+else
+    echo "ok - SKIPPED: 89 stuck bus: no timeout or gtimeout on this host"
+fi
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89hang/$s88a.md" "$(token_of "$out89a")" >/dev/null 2>&1
 out89b="$(print88 in new bus89gone)"
 paste88 "$(printf '%s\n' "$out89b" | sed 's/console-bus-exec\.sh/console-bus-exec-gone.sh/g')"
