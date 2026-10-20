@@ -227,6 +227,19 @@ else
     fail "expected exit 2, got rc=$rc" "out: $out"
 fi
 
+# Test 2g: a dash word inside a title/body must not throw away an earlier
+# authoritative --head. cwd = the primary on unmarked main; only feat/X holds a
+# marker, so every spelling below must still BLOCK on it.
+for spelling in "--title \\\"x -Hfoo\\\"" "--title \\\"-Hotfix release\\\"" "--body \\\"see -Hfoo\\\"" "-t -Hfoo" "--title \\\"diff against -HEAD~1\\\""; do
+    echo "TEST: --head feat/X $spelling, cwd on unmarked main -> BLOCK"
+    run_hook "gh pr create --head feat/X --base main $spelling"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling did not replace the head"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
 echo "TEST: --head feat/X, no marker -> allow"
 rm -f "$(marker_for feat/X)"

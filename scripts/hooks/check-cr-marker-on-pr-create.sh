@@ -343,6 +343,7 @@ fi
 # (do not regress that path — a missed block beats a false block).
 head_branch=""
 head_from_short=0
+long_head=""
 repo_nwo=""
 # Disable pathname expansion before the unquoted split: we want word-splitting
 # of $cmd into argv, but NOT glob expansion — a title like `--title "fix *.md"`
@@ -353,9 +354,9 @@ set -- $cmd
 set +f
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --head=*) head_branch="${1#--head=}"; head_from_short=0 ;;
+        --head=*) head_branch="${1#--head=}"; head_from_short=0; long_head="$head_branch" ;;
         --head)
-            if [ "$#" -ge 2 ]; then head_branch="$2"; head_from_short=0; fi
+            if [ "$#" -ge 2 ]; then head_branch="$2"; head_from_short=0; long_head="$2"; fi
             ;;
         # gh (pflag) shorthand: -H x, -Hx, -H=x, and stacked forms (-dH x,
         # -dHx, -dH=x). The value is the text after the first H, else the
@@ -364,7 +365,8 @@ while [ "$#" -gt 0 ]; do
         # word, grep -nH, -SHA), so the whole token is ignored. A word such as
         # `-Hfoo` is still ambiguous without a value-aware walk, so a head read
         # from a short flag is advisory: with no marker of its own the check
-        # falls back to the cwd branch, as it did before short heads were read.
+        # falls back to the last long --head, else the cwd branch, so it is
+        # never laxer than before short heads were read.
         -H*|-[!-]*H*)
             _short_rest="${1#-}"
             while [ -n "$_short_rest" ]; do
@@ -464,10 +466,14 @@ esac
 marker="${git_dir}/cr-pending/${branch}"
 
 # A head read from a short flag may be a title word, not a head: with no marker
-# for it, judge the cwd branch instead.
+# for it, judge an earlier long --head, else the cwd branch.
 if [ ! -f "$marker" ] && [ "$head_from_short" = "1" ]; then
-    branch=$(git -C "$repo_dir" branch --show-current 2>/dev/null || true) # swallow-ok: empty branch falls through to allow, same as the no-head path
-    resolved_from_head=0
+    if [ -n "$long_head" ]; then
+        branch="${long_head##*:}"
+    else
+        branch=$(git -C "$repo_dir" branch --show-current 2>/dev/null || true) # swallow-ok: empty branch falls through to allow, same as the no-head path
+        resolved_from_head=0
+    fi
     marker="${git_dir}/cr-pending/${branch}"
 fi
 
