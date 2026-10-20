@@ -199,6 +199,8 @@ console_context_leg_env_unset_names() {
     printf '%s\n' \
         HANDOVER_DIR \
         CR_TRIGGER_SUPPRESS \
+        HIMMEL_API_LANE \
+        HIMMEL_API_ACCOUNT \
         IMPL_GUARD_OK \
         INLINE_IMPL_OK \
         HIMMEL_CONSOLE_LEG \
