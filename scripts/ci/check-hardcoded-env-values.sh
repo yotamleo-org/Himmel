@@ -4,7 +4,7 @@
 # check-hardcoded-env-values.sh [<base>] — refuse NEW hardcoded environment
 # values (repo/owner slugs, Pages URLs, GHCR image paths, absolute home paths,
 # Atlassian hosts, Jira field ids) in the lines added by <base>...HEAD
-# (default origin/main). Existing hits are the inventory in
+# (default origin/main, else main; tip is PRE_COMMIT_TO_REF, else HEAD). Existing hits are the inventory in
 # docs/internals/hardcoded-env-values.md; this gate only stops the class growing.
 #
 # Skipped: paths matching an ERE in hardcoded-env-values-allow.txt (tests,
@@ -18,12 +18,19 @@ set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 allow="$here/hardcoded-env-values-allow.txt"
-base="${1:-origin/main}"
+tip="${PRE_COMMIT_TO_REF:-HEAD}"
+base="${1:-}"
+if [ -z "$base" ]; then
+    for candidate in origin/main main; do
+        if git rev-parse --verify -q "$candidate^{commit}" >/dev/null; then base="$candidate"; break; fi
+    done
+fi
 
 [ -f "$allow" ] || { echo "check-hardcoded-env-values: allowlist missing: $allow" >&2; exit 2; }
+[ -n "$base" ] || { echo "check-hardcoded-env-values: no usable base ref" >&2; exit 2; }
 git rev-parse --verify -q "$base^{commit}" >/dev/null || { echo "check-hardcoded-env-values: unknown base '$base'" >&2; exit 2; }
 
-diff_out=$(git diff -U0 --no-color --diff-filter=AMR "$base"...HEAD) || { echo "check-hardcoded-env-values: git diff failed" >&2; exit 2; }
+diff_out=$(git diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "$base...$tip") || { echo "check-hardcoded-env-values: git diff failed" >&2; exit 2; }
 [ -n "$diff_out" ] || exit 0
 
 printf '%s\n' "$diff_out" | awk -v allowfile="$allow" '
@@ -44,7 +51,7 @@ BEGIN {
     nclass = k
 }
 /^\+\+\+ / {
-    file = $0; sub(/^\+\+\+ (b\/)?/, "", file)
+    file = $0; sub(/^\+\+\+ b\//, "", file)
     skip = 0
     for (i = 0; i < n; i++) if (file ~ allow[i]) { skip = 1; break }
     next

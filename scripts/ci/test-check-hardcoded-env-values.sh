@@ -31,18 +31,20 @@ git -C "$repo" config user.name t
 git -C "$repo" config commit.gpgsign false
 printf '#!/usr/bin/env bash\necho base\n' > "$repo/scripts/base.sh"
 git -C "$repo" add -A
-git -C "$repo" commit -q -m base
-base=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m base || { echo "FAIL: base commit failed"; exit 1; }
+base=$(git -C "$repo" rev-parse HEAD) || { echo "FAIL: base HEAD lookup failed"; exit 1; }
 
 # run_case <name> <expected rc> <path> <content>: commit <content> at <path> on a
 # fresh branch off base, run the lint from the repo cwd, restore to base.
 run_case() {
-    local name="$1" want="$2" path="$3" content="$4" rc out
-    git -C "$repo" checkout -q -B case "$base"
-    mkdir -p "$repo/$(dirname "$path")"
-    printf '%s\n' "$content" > "$repo/$path"
-    git -C "$repo" add -A
-    git -C "$repo" commit -q -m "case $name"
+    local name="$1" want="$2" path="$3" content="$4" rc out head
+    git -C "$repo" checkout -q -B case "$base" || { fail "$name: setup checkout failed"; return; }
+    mkdir -p "$repo/$(dirname "$path")" || { fail "$name: setup mkdir failed"; return; }
+    printf '%s\n' "$content" > "$repo/$path" || { fail "$name: setup write failed"; return; }
+    git -C "$repo" add -A || { fail "$name: setup add failed"; return; }
+    git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "case $name" || { fail "$name: setup commit failed"; return; }
+    head=$(git -C "$repo" rev-parse HEAD) || { fail "$name: setup HEAD lookup failed"; return; }
+    [ "$head" != "$base" ] || { fail "$name: setup produced no commit"; return; }
     out=$(cd "$repo" && bash "$LINT" "$base" 2>&1); rc=$?
     if [ "$rc" -eq "$want" ]; then pass "$name (rc=$rc)"; else fail "$name: want rc=$want got rc=$rc: $out"; fi
     LAST_OUT="$out"
@@ -60,12 +62,12 @@ echo "== a literal added while renaming a file is refused =="
 git -C "$repo" checkout -q -B case "$base"
 for i in 1 2 3 4 5 6; do printf 'echo line %s\n' "$i"; done > "$repo/scripts/ren-src.sh"
 git -C "$repo" add -A
-git -C "$repo" commit -q -m "rename src"
-rbase=$(git -C "$repo" rev-parse HEAD)
-git -C "$repo" mv scripts/ren-src.sh scripts/ren-dst.sh
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "rename src" || { echo "FAIL: rename src commit failed"; exit 1; }
+rbase=$(git -C "$repo" rev-parse HEAD) || { echo "FAIL: rename base lookup failed"; exit 1; }
+git -C "$repo" mv scripts/ren-src.sh scripts/ren-dst.sh || { echo "FAIL: rename mv failed"; exit 1; }
 printf '%s\n' "$SLUG_LINE" >> "$repo/scripts/ren-dst.sh"
 git -C "$repo" add -A
-git -C "$repo" commit -q -m "rename dst"
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "rename dst" || { echo "FAIL: rename dst commit failed"; exit 1; }
 out=$(cd "$repo" && bash "$LINT" "$rbase" 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "rename plus literal (rc=$rc)"; else fail "rename plus literal: want rc=1 got rc=$rc: $out"; fi
 
