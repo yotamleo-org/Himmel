@@ -252,6 +252,27 @@ for spelling in "-H feat/X --base main --title \\\"x -Hfoo\\\"" "-H feat/X --bas
     fi
 done
 
+# Test 2i: a short-flag word ending in ':' strips to an empty branch; that must
+# not exit 0 before the fall-back runs. Marker present for feat/X only.
+for spelling in "--head feat/X --body \\\"see -Hint: y\\\"" "--head feat/X -H: --base main" "--head feat/X -dH=: --base main" "-H feat/X --body \\\"see -Hint: y\\\""; do
+    echo "TEST: gh pr create $spelling, cwd on unmarked main -> BLOCK"
+    run_hook "gh pr create $spelling"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling kept the head"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+for spelling in "--body \\\"see -Hint: y\\\"" "-H: --base main" "-dH=: --base main"; do
+    echo "TEST: gh pr create $spelling, marker on the cwd branch -> BLOCK"
+    run_hook "gh pr create $spelling" "$WORKTREE"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling judged the cwd branch"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
 echo "TEST: --head feat/X, no marker -> allow"
 rm -f "$(marker_for feat/X)"

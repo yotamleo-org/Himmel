@@ -446,7 +446,7 @@ if [ -n "$head_branch" ]; then
 else
     branch=$(git -C "$repo_dir" branch --show-current 2>/dev/null || true)
 fi
-if [ -z "$branch" ]; then
+if [ -z "$branch" ] && [ "$head_from_short" != "1" ]; then
     warn "WARNING: no branch resolved (no --head, detached HEAD?); fail-open"
     exit 0
 fi
