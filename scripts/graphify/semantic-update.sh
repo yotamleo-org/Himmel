@@ -388,7 +388,10 @@ PY
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
 fi
 
-"${MERGE[@]}" merge --name "$NAME" --out "$OUT_DIR" --scratch "$SCRATCH" --plan "$PLAN" \
+# A failed or refused file's cache entry is evicted from both copies, or the cp-back below would restore it.
+EVICT=()
+[ -z "${CACHE_SUB:-}" ] || EVICT=(--evict-cache "$SCRATCH/graphify-out/cache/semantic" --evict-cache "$OUT_DIR/cache/$CACHE_SUB")
+"${MERGE[@]}" merge --name "$NAME" --out "$OUT_DIR" --scratch "$SCRATCH" --plan "$PLAN" ${EVICT[@]+"${EVICT[@]}"} \
   --runtime-s "$(( $(date +%s) - START ))" --tokens-in "$TOKENS_IN" --tokens-out "$TOKENS_OUT" \
   --backend "$BACKEND" --cost-usd "$(spent_usd)" --cap-usd "$([ "$BACKEND" = "claude-api" ] && echo "$RUN_CAP" || echo 0)" \
   || {
