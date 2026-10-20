@@ -2430,7 +2430,8 @@ scripts/guardrails/test-lesson-write-fence.sh	98
 scripts/handover/console-kit/test-board.sh	16
 scripts/handover/console-kit/test-close-wrapped-leg.sh	20
 scripts/handover/console-kit/test-console-kit-e2e.sh	16
-scripts/handover/console-kit/test-console-wait.sh	492
+scripts/handover/console-kit/test-console-wait-b.sh	238
+scripts/handover/console-kit/test-console-wait.sh	254
 scripts/handover/console-kit/test-go.sh	13
 scripts/handover/console-kit/test-headed-arm-leg.sh	126
 scripts/handover/console-kit/test-judge-ladder.sh	10
