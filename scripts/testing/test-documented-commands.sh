@@ -164,7 +164,10 @@ chain_verdict() { # chain_verdict <cwd> <command>
         < "$SB/payload.json" > "$SB/out" 2> "$SB/err" )
     rc=$?
     dec=$(jq -r '.hookSpecificOutput.permissionDecision // empty' "$SB/out" 2>/dev/null)
-    if [ "$rc" -ne 0 ] || [ "$dec" = deny ]; then
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+        printf 'launcher exited rc=%s: %s' "$rc" "$(head -c 500 "$SB/err")" > "$SB/reason"
+        echo ERROR
+    elif [ "$rc" -eq 2 ] || [ "$dec" = deny ]; then
         { head -c 1000 "$SB/err"; jq -r '.hookSpecificOutput.permissionDecisionReason // empty' "$SB/out" 2>/dev/null; } | head -c 1000 > "$SB/reason"
         echo DENY
     elif [ "$dec" = allow ]; then
@@ -195,6 +198,7 @@ subst() { # subst <text> -- fixture tokens and the newline marker
 }
 
 ROWS=0
+RAN=0
 declare -a ROW_IDS=()
 while IFS=$'\t' read -r id doc cwdk verdict key cmd; do
     case $id in '' | '#'*) continue ;; esac
@@ -209,6 +213,11 @@ while IFS=$'\t' read -r id doc cwdk verdict key cmd; do
     [ -n "$ONLY" ] && ! [[ $id =~ $ONLY ]] && continue
     cwd=$(cwd_for "$cwdk") || { fail "$id: unknown cwd kind '$cwdk'"; continue; }
     got=$(chain_verdict "$cwd" "$(subst "$cmd")")
+    RAN=$((RAN + 1))
+    if [ "$got" = ERROR ]; then
+        fail "$id: the chain did not run to a verdict: $(tr '\n' ' ' < "$SB/reason")"
+        continue
+    fi
     case $verdict in
         xfail:*)
             if [ "$got" = DENY ]; then
@@ -227,6 +236,7 @@ while IFS=$'\t' read -r id doc cwdk verdict key cmd; do
     esac
 done < "$MANIFEST"
 [ "$ROWS" -gt 0 ] || fail "manifest has no rows"
+[ -z "$ONLY" ] || [ "$RAN" -gt 0 ] || fail "DOCCMD_ONLY=$ONLY matched no row that runs"
 
 # ---- lint: every shell fence in the documented-command docs has a row ---------
 if [ -n "$ONLY" ]; then
