@@ -720,9 +720,9 @@ r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
             printf '%s %s %s\n' "$label" "${what:-handled}" "${pr:--}" >> "$digest_file"
             continue
         fi
-        case "$out" in
+        case "$rc:$out" in
             *"step pr-state"*) ;;
-            *-failed\ rc=[3467]\ *) continue ;;
+            10:*-failed\ rc=[3467]\ *) continue ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
         printf 'WAKE leg-event %s out=%s\n' "$(printf '%s\n' "$out" | head -n 1)" "$outf"

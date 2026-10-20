@@ -9,6 +9,7 @@
 #         re-arm does not wake for the same bullet again
 #   (r0c) a refusal that only means "not yet" (rc=3 lock held): no WAKE leg-event,
 #         retried on the next sample; a standing one falls back to WAKE tick
+#   (r0h) the same refusal text on another rc (a timeout) is a leg-event wake
 #   (r0d) a RETASK token in the bullet never reaches leg-event, the WAKE line or
 #         the out file
 #   (r0e) without --legs-from the waiter never calls leg-event
@@ -168,6 +169,18 @@ wait_exit "$WPID"
 lacks "(r0c) a lock-held refusal is not a leg-event wake" "$(cat "$WORK/r0c.out")" "WAKE leg-event"
 check "(r0c) it was asked again on the next sample" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
 check "(r0c) the standing refusal falls back to the tick wake" "WAKE tick changed=tails bank=PROCEED" "$(head -n 1 "$WORK/r0c.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0h) the same refusal text on a non-10 rc (a timeout) wakes at once -----
+reset_stub
+fleet r0h
+printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-leg: refusing - queue lock held\n' > "$STUB/le.out"; echo 124 > "$STUB/le.rc"
+start "$I" "$WORK/r0h.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(r0h) no baseline heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED"
+wait_exit "$WPID"
+check "(r0h) rc 124 is a leg-event wake, not a retry" "WAKE leg-event ESCALATE wrap-merged-failed rc=3 close-wrapped-leg: refusing - queue lock held out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0h.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0d) no RETASK token reaches leg-event, the wake or the out file -------
