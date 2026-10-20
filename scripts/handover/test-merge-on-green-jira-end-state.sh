@@ -26,6 +26,8 @@ MOG="$REPLAY_TREE/scripts/handover/merge-on-green.sh"
 CHECK_CI="$REPLAY_TREE/scripts/check-ci.sh"
 MOG_TEST="$SCRIPT_DIR/test-merge-on-green.sh"
 CHECK_CI_TEST="$REPO_ROOT/scripts/test-check-ci.sh"
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$REPO_ROOT/scripts/lib/timeout-bin.sh"
 
 SUITE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/mog-jira-end.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 if [ -z "$SUITE_TMP" ] || [ ! -d "$SUITE_TMP" ]; then echo "FAIL: no suite tmp" >&2; exit 1; fi
@@ -154,6 +156,9 @@ assert_eq "3 versionless: final status" "$(state_status)" "Done"
 assert_eq "3 versionless: gets the current version" "$(state_versions)" "v1.1.3"
 
 # --- 4 In Review ticket: check-ci moves it to IN CI, the merge then closes it ------------
+if [ -z "${_TIMEOUT_BIN:-}" ]; then
+    echo "SKIP: case 4 needs GNU timeout/gtimeout (macOS: brew install coreutils)" >&2
+else
 new_case "In Review" "v1.1.3"
 CC_DIR="$TMP/cc"; mkdir -p "$CC_DIR"
 # the check-ci gh stub, lifted from test-check-ci.sh (the heredoc that writes $STUBDIR/gh)
@@ -177,13 +182,14 @@ PATH="$CC_DIR:$PATH" GH_STUB_MODE=cr-completed GH_STUB_ARGS="$CC_DIR/args" GH_ST
     MERGE_BLOCK_ALERT_DIR="$CC_DIR/alert-sentinels" MERGE_BLOCK_ALERT_CMD=true TELEGRAM_ACCESS_PATH="$CC_DIR/access.json" \
     MERGE_WATCH_ALERT_BRIDGE_ROOT="$CC_DIR/bridge" \
     LEG_JIRA_STATUS=1 LEG_JIRA_CLI="$TMP/jira-stub" JIRA_STATE="$TMP/state" \
-    timeout -k 5 120 bash "$CHECK_CI" --grace 30 >"$CC_DIR/out" 2>"$CC_DIR/err"
+    "$_TIMEOUT_BIN" -k 5 120 bash "$CHECK_CI" --grace 30 >"$CC_DIR/out" 2>"$CC_DIR/err"
 cc_rc=$?
 if [ "$cc_rc" -eq 0 ]; then pass; else fail "4 check-ci exit 0 expected, got $cc_rc (err: $(head -c 600 "$CC_DIR/err"))"; fi
 assert_eq "4 In Review ticket after the CI wait" "$(state_status)" "IN CI"
 run_merge 0 --jira-transition
 assert_eq "4 IN CI ticket after the merge close" "$(state_status)" "Done"
 assert_eq "4 fixVersion after the merge close" "$(state_versions)" "v1.1.3"
+fi
 
 echo "test-merge-on-green-jira-end-state: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
