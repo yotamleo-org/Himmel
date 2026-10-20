@@ -265,8 +265,6 @@
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
-      "i-have-adhd@himmel",
-      "pr-review-toolkit-himmel@himmel",
       "pyright-lsp@claude-plugins-official",
       "qmd@himmel",
       "typescript-lsp@claude-plugins-official"
@@ -278,9 +276,7 @@
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
-      "i-have-adhd@himmel",
       "playwright@claude-plugins-official",
-      "pr-review-toolkit-himmel@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 45000

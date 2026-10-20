@@ -1578,7 +1578,17 @@ test('HIMMEL-4024: no non-kit profile enables a code kit plugin; the kit compose
   }
   const both = resolveProfile(REG, 'leg-impl,code,code-ui', { installed: [] }).enabledPlugins;
   for (const id of kitIds) assert.equal(both[id], true, id);
-  assert.equal(both['pr-review-toolkit-himmel@himmel'], true);
+});
+
+test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins back; other members keep them', () => {
+  const dropped = ['pr-review-toolkit-himmel@himmel', 'i-have-adhd@himmel'];
+  for (const list of ['leg-impl,code', 'leg-impl,code-ui', 'leg-impl,code,code-ui', 'leg-e2e,code']) {
+    const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
+    for (const id of dropped) assert.notEqual(p[id], true, `${list} must not enable ${id}`);
+  }
+  assert.equal(resolveProfile(REG, 'lane-impl,code', { installed: [] }).enabledPlugins['pr-review-toolkit-himmel@himmel'], true);
+  const user = resolveProfile(REG, 'user,code-ui', { installed: [] }).enabledPlugins;
+  for (const id of dropped) assert.equal(user[id], true, `user,code-ui keeps ${id}`);
 });
 
 test('HIMMEL-4024: code kit CLIs (ast-grep, shfmt, bats) have drift rows, a catalog entry and an install step', () => {
