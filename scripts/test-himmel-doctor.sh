@@ -6934,7 +6934,7 @@ with open(sys.argv[1], "w") as f:
                             "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
 PY
 }
-c70_run() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" "$@" bash "$DOC" --no-color --only C70 2>&1; }
+c70_run() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= "$@" bash "$DOC" --no-color --only C70 2>&1; }
 
 c70_rows "x.md" "x.md" "x.md"
 out="$(c70_run)"
