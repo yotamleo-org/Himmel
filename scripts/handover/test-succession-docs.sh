@@ -75,7 +75,11 @@ contains 'leg-preface.md S1 fast path: adopt a fresh token' "$(flat "$(cat "$PRE
 contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$(flat "$(cat "$PREFACE")")" 'SUCCESSION accepted: <new console session> replaces <old>'
 contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$(flat "$(cat "$PREFACE")")" 'the console you last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is your named console and that quotes your token is accepted; no further reads'
+contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is the console you last accepted and that quotes your token is accepted; no further reads'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface-claudex.md: the sender rule binds to the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'carry `from=` the console you last accepted'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-sections/succession.md")")" 'the console you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
 
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
