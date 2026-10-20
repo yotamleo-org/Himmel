@@ -381,7 +381,7 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 | ([range(0; $nm) | if $QUE[.] > 0 and $RUN[.] <= 60 then "q" else null end] | streak) as $sq
 | ([range(0; $nm) | if $QUE[.] > 0 and ($RUN[.] | IN(20, 40, 60)) then $RUN[.] else null end] | streak) as $sf
 | (if $sf >= 10 and $maxrun <= 60 then ["FAIL", "running sat flat at the ceiling for \($sf) min with jobs queued"]
-   elif $maxrun > 60 and $sq < 10 then ["PASS", "\($maxrun) jobs ran in one minute and no 10-minute stretch has jobs queued while running <= 60"]
+   elif $maxrun > 60 and $sq < 10 then ["PASS", "\($maxrun) jobs ran in one minute and no observed 10-minute stretch has jobs queued while running <= 60 (the queue is a lower bound, see the window note)"]
    elif $maxdem <= 60 then ["INCONCLUSIVE", "demand (running + queued) never exceeded 60 (max \($maxdem)); re-run after the next busy window, never create load"]
    elif $maxrun <= 60 then ["INCONCLUSIVE", "demand reached \($maxdem) but running was never flat at 20, 40 or 60 for 10 minutes while jobs queued"]
    else ["INCONCLUSIVE", "running reached \($maxrun) but jobs stayed queued for \($sq) min while running <= 60"] end) as $V

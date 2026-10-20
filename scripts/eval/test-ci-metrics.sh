@@ -140,6 +140,7 @@ CAP=(--cap-check --hours 1 --now 2026-10-20T11:00:00Z)
 mk "$TMP/cap-pass" "$(capjobs 65 0)"
 O=$(bash "$SCRIPT" --data-dir "$TMP/cap-pass" "${CAP[@]}" 2>&1); RC=$?
 has "cap-check PASS: verdict" "$O" "Verdict: PASS"
+has "cap-check PASS: says the queue evidence is a lower bound" "$O" "queue is a lower bound"
 has "cap-check PASS: per-minute row" "$O" "| 2026-10-20T10:00:00Z | 65 | 0 |"
 eq "cap-check PASS: exit 0" "$RC" "0"
 mk "$TMP/cap-fail" "$(capjobs 60 10)"
