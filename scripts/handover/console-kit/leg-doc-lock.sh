@@ -38,6 +38,7 @@ doc_lock() {
     command -v flock >/dev/null 2>&1 || return 3
     # realpath -e is GNU-only; check existence, then canonicalize without it.
     [ -e "$1" ] || { printf '%s: cannot lock %s: no such file\n' "$2" "$1" >&2; return 1; }
+    # prim-ok: canon_path resolves directories only; the lock key must follow the doc file's own symlink so every writer shares one lock
     _dl_doc="$(realpath -- "$1")" || return 1
     _dl_dir="${TMPDIR:-/tmp}/himmel-inbox-doc-$UID"
     # shellcheck disable=SC2174 # Only the final, per-user directory is ours.
