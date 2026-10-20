@@ -74,7 +74,7 @@ fi
 # file content.
 # `container:` with no value (the mapping form) is checked on its `image:` line.
 found=$(grep -rnHE --null --include='*.yml' --include='*.yaml' \
-  '^[[:space:]]*-?[[:space:]]*(container|image):[[:space:]]*[^[:space:]#]' "${existing[@]}" | tr '\0' "$sep")
+  "^[[:space:]]*-?[[:space:]]*[\"']?(container|image)[\"']?[[:space:]]*:[[:space:]]*[^[:space:]#]" "${existing[@]}" | tr '\0' "$sep")
 rc=$?
 if [ "$rc" -gt 1 ]; then
   printf 'ERROR: scanning for container image lines failed (grep rc=%s)\n' "$rc" >&2
@@ -86,7 +86,7 @@ ref_re='(vars|github)\.[A-Za-z0-9_.]+'
 unpinned=()
 while IFS= read -r line; do
   [ -n "$line" ] || continue
-  value=$(printf '%s\n' "${line#*"$sep"}" | sed -E 's/^[0-9]+:[[:space:]]*-?[[:space:]]*(container|image):[[:space:]]*//; s/[[:space:]]+#.*$//')
+  value=$(printf '%s\n' "${line#*"$sep"}" | sed -E "s/^[0-9]+:[[:space:]]*-?[[:space:]]*[\"']?(container|image)[\"']?[[:space:]]*:[[:space:]]*//; s/[[:space:]]+#.*\$//")
   if [[ "$value" == \"*\" ]]; then value=${value#\"}; value=${value%\"}; fi
   if [[ "$value" == \'\$\{\{*\' ]]; then value=${value#\'}; value=${value%\'}; value=${value//\'\'/\'}; fi
   if [[ "$value" == \$\{\{* ]]; then
@@ -96,6 +96,8 @@ while IFS= read -r line; do
     cond=$(sed -E "s/^\\$\\{\\{//; s/\\}\\}\$//; s/${ref_re}[[:space:]]*(==|!=)[[:space:]]*('[^']*'|${ref_re})//g; s/'[^']*'[[:space:]]*(==|!=)[[:space:]]*${ref_re}//g" <<< "$value")
     literals=$(grep -oE "'[^']*'" <<< "$cond" | tr -d "'")
     ok=1
+    # A plain scalar continued on the next line folds more operands in unread.
+    [[ "$value" == *\}\} ]] || ok=0
     [ -n "$literals" ] || ok=0
     [ -z "$(sed -E "s/'[^']*'//g; s/vars\.[A-Za-z0-9_]+//g; s/&&|\|\||[!()[:space:]]//g" <<< "$cond")" ] || ok=0
     while IFS= read -r lit; do
