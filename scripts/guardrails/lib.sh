@@ -58,7 +58,42 @@ guard_call() {
 # branch). Callers MUST distinguish empty branch from a valid branch name -
 # `is_on_main` does this via the string compare to main/master.
 _branch() {
-    local dir="${1:-.}"
+    _branch_set "${1:-.}"
+    local rc=$?
+    printf '%s' "$_BRANCH_OUT"
+    return "$rc"
+}
+
+# _branch_set [DIR] — _branch without the subshell: the branch lands in
+# _BRANCH_OUT (empty on rc 1/2), the rc is _branch's. With GUARD_MEMO=1, which
+# only a one-shot hook sets, each DIR is read once per process, so a command
+# with many targets in one repo forks git once. rc 2 is never memoized.
+_BRANCH_OUT=""
+_BRANCH_MEMO=""
+_branch_set() {
+    local dir="${1:-.}" memo=0 hit rc
+    _BRANCH_OUT=""
+    case "$dir" in *$'\n'*|*$'\t'*) ;; *) [ "${GUARD_MEMO:-0}" = "1" ] && memo=1 ;; esac
+    if [ "$memo" = 1 ]; then
+        case "$_BRANCH_MEMO" in
+            *$'\n'"$dir"$'\t'*)
+                hit="${_BRANCH_MEMO#*$'\n'"$dir"$'\t'}"
+                hit="${hit%%$'\n'*}"
+                _BRANCH_OUT="${hit#*$'\t'}"
+                return "${hit%%$'\t'*}"
+                ;;
+        esac
+    fi
+    rc=0
+    _branch_read "$dir" || rc=$?
+    if [ "$memo" = 1 ] && [ "$rc" -ne 2 ]; then
+        _BRANCH_MEMO="${_BRANCH_MEMO}"$'\n'"$dir"$'\t'"$rc"$'\t'"$_BRANCH_OUT"
+    fi
+    return "$rc"
+}
+
+_branch_read() {
+    local dir="$1"
     local git_dir
     # `--absolute-git-dir` ensures the HEAD file resolves correctly even when
     # the caller's PWD differs from DIR (the plain `--git-dir` returns a
@@ -72,13 +107,12 @@ _branch() {
     ref=$(cat "$head_file") || return 2
     case "$ref" in
         "ref: refs/heads/"*)
-            printf '%s' "${ref#ref: refs/heads/}"
+            _BRANCH_OUT="${ref#ref: refs/heads/}"
             ;;
         *)
             # Detached HEAD: HEAD contains a raw SHA, not `ref: refs/heads/X`.
-            # Emit empty stdout + return 1 (no current branch) so callers
-            # cannot mistake a SHA for a branch name.
-            printf ''
+            # Empty branch + rc 1 (no current branch) so callers cannot
+            # mistake a SHA for a branch name.
             return 1
             ;;
     esac
@@ -127,10 +161,10 @@ default_branch() {
 # True iff current branch is a protected default branch (main OR master).
 # Returns 1 on detached HEAD / feature branch; rc=2 if branch can't be read.
 is_on_main() {
-    local b rc
-    b=$(_branch "${1:-.}"); rc=$?
+    local rc=0
+    _branch_set "${1:-.}" || rc=$?
     if [ "$rc" -eq 2 ]; then return 2; fi
-    [ "$b" = "main" ] || [ "$b" = "master" ]
+    [ "$_BRANCH_OUT" = "main" ] || [ "$_BRANCH_OUT" = "master" ]
 }
 
 # is_main_ref REF
@@ -758,10 +792,11 @@ _guard_resolve_existing_prefix() {
     [ -n "$existing" ] || return 1
     while [ ! -d "$existing" ] && [ "$existing" != "$prev" ] && [ "$existing" != "/" ] \
           && ! _guard_is_drive_root "$existing"; do
-        comp=$(basename "$existing")
+        _basename_set "$existing" || return 1
+        comp="$_BASENAME_OUT"
         tail="$comp/$tail"
         prev="$existing"
-        existing=$(dirname "$existing") || existing="$prev"
+        _dirname_set "$existing" && existing="$_DIRNAME_OUT" || existing="$prev"
     done
 
     local resolved
@@ -952,22 +987,61 @@ guard_canon_path_nofollow() {
 # `<primary>/.git` entirely — silently escaping the fence for the "write the
 # checkout root itself" shape.
 repo_root_for_path() {
+    _repo_root_for_path_set "${1:-}" || return 1
+    printf '%s\n' "$_RRFP_OUT"
+}
+
+# _basename_set PATH — basename(1) without the fork: the result lands in
+# _BASENAME_OUT. A leading `-` or an empty PATH keeps the external command,
+# so those corners are unchanged.
+_BASENAME_OUT=""
+_basename_set() {
+    local x="$1" y
+    case "$x" in
+        -*|"") _BASENAME_OUT=$(basename "$x") || return 1; return 0 ;;
+    esac
+    y="${x%"${x##*[!/]}"}"
+    if [ -z "$y" ]; then _BASENAME_OUT="/"; else _BASENAME_OUT="${y##*/}"; fi
+}
+
+# _dirname_set PATH — dirname(1) without the fork: the result lands in
+# _DIRNAME_OUT. Same `-` / empty-PATH fallback as _basename_set.
+_DIRNAME_OUT=""
+_dirname_set() {
+    local x="$1" y
+    case "$x" in
+        -*|"") _DIRNAME_OUT=$(dirname "$x") || return 1; return 0 ;;
+    esac
+    y="${x%"${x##*[!/]}"}"
+    if [ -z "$y" ]; then _DIRNAME_OUT="/"; return 0; fi
+    case "$y" in
+        */*) y="${y%/*}"; y="${y%"${y##*[!/]}"}"; _DIRNAME_OUT="${y:-/}" ;;
+        *) _DIRNAME_OUT="." ;;
+    esac
+}
+
+# _repo_root_for_path_set PATH — repo_root_for_path without the subshells: the
+# root lands in _RRFP_OUT, rc 1 when PATH is inside no repo.
+_RRFP_OUT=""
+_repo_root_for_path_set() {
     local p="${1:-}"
+    _RRFP_OUT=""
     [ -n "$p" ] || return 1
     local d
     if [ -d "$p" ]; then
         d="$p"
     else
-        d=$(dirname "$p") || return 1
+        _dirname_set "$p" || return 1
+        d="$_DIRNAME_OUT"
     fi
     local prev=""
     while [ "$d" != "$prev" ]; do
         if [ -e "$d/.git" ]; then
-            printf '%s\n' "${d%/}"
+            _RRFP_OUT="${d%/}"
             return 0
         fi
         prev="$d"
-        d=$(dirname "$d") || d="$prev"
+        _dirname_set "$d" && d="$_DIRNAME_OUT" || d="$prev"
     done
     return 1
 }
@@ -1013,15 +1087,29 @@ repo_root_for_path() {
 # contract, same as every other predicate in this file) needs the caller's
 # own `|| rc=$?` guard.
 main_checkout_verdict() {
+    local rc=0
+    main_checkout_verdict_set "${1:-}" || rc=$?
+    if [ -n "$_MCV_ROOT" ]; then printf '%s\n' "$_MCV_ROOT"; fi
+    return "$rc"
+}
+
+# main_checkout_verdict_set PATH — main_checkout_verdict without the subshell:
+# same rc, the root lands in _MCV_ROOT (empty when it would print nothing). A
+# hook that sets GUARD_MEMO=1 calls this directly so the per-directory branch
+# memo survives between targets; a `$(main_checkout_verdict ...)` forks first
+# and drops it.
+_MCV_ROOT=""
+main_checkout_verdict_set() {
     local file_real="${1:-}"
     local repo_real=""
-    repo_real=$(repo_root_for_path "$file_real") || repo_real=""
+    _MCV_ROOT=""
+    _repo_root_for_path_set "$file_real" && repo_real="$_RRFP_OUT" || repo_real=""
     [ -n "$repo_real" ] || return 0
     repo_real="${repo_real%/}"
 
     case "$file_real" in
         "$repo_real"/handovers/*)
-            printf '%s\n' "$repo_real"
+            _MCV_ROOT="$repo_real"
             return 0
             ;;
     esac
@@ -1032,14 +1120,14 @@ main_checkout_verdict() {
     local block_reason=""
     if [ "$branch_rc" -eq 1 ]; then
         if [ ! -d "$repo_real/.git" ]; then
-            printf '%s\n' "$repo_real"
+            _MCV_ROOT="$repo_real"
             return 0
         fi
         block_reason="primary-feature"
     elif [ "$branch_rc" -eq 0 ]; then
         block_reason="main"
     else
-        printf '%s\n' "$repo_real"
+        _MCV_ROOT="$repo_real"
         return 3
     fi
 
@@ -1048,22 +1136,22 @@ main_checkout_verdict() {
         local ls_rc=0
         git -C "$repo_real" ls-files --error-unmatch -- "$file_real" >/dev/null 2>&1 || ls_rc=$?
         if [ "$ls_rc" -eq 1 ] && git -C "$repo_real" check-ignore -q -- "$file_real" >/dev/null 2>&1; then
-            printf '%s\n' "$repo_real"
+            _MCV_ROOT="$repo_real"
             return 0
         fi
     fi
 
     if [ "${EDIT_ON_MAIN_OK:-0}" = "1" ]; then
-        printf '%s\n' "$repo_real"
+        _MCV_ROOT="$repo_real"
         return 0
     fi
 
     if [ -f "$repo_real/.single-writer" ]; then
-        printf '%s\n' "$repo_real"
+        _MCV_ROOT="$repo_real"
         return 0
     fi
 
-    printf '%s\n' "$repo_real"
+    _MCV_ROOT="$repo_real"
     if [ "$block_reason" = "primary-feature" ]; then
         return 2
     fi

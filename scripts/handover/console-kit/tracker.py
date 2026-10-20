@@ -513,7 +513,7 @@ def ledger_lines(rows, vers, unthemed=0, released=()):
     if un:
         att.append('%d open %s in a version but not in the plan' % (un, 'ticket sits' if un == 1 else 'tickets sit'))
     if unthemed:
-        att.append('%d open %s no theme' % (unthemed, 'ticket has' if unthemed == 1 else 'tickets have'))
+        att.append('%d open %s no sector' % (unthemed, 'ticket has' if unthemed == 1 else 'tickets have'))
     if att:
         out.append('Needs attention: ' + '; '.join(att) + '.')
     return out, cur
@@ -595,7 +595,8 @@ def jira_parity(tk, vers, cur):
         return 'parity: unavailable (no version worked on)'
     v, cli = vers[cur]['n'], jira_cli()
     cmd = (['node', cli] if cli.endswith('.js') else [cli]) + [
-        'list', '--jql', 'project = HIMMEL AND fixVersion = "%s"' % v, '--limit', '5000']
+        'list', '--jql', 'project = HIMMEL AND fixVersion = "%s" AND NOT (statusCategory = Done AND resolution is not EMPTY '
+        'AND resolution not in (Done, Fixed))' % v, '--limit', '5000']
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
                            env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY') or 'HIMMEL'))
@@ -613,10 +614,20 @@ def jira_parity(tk, vers, cur):
             if b != 'wont':
                 c['rev' if b == 'ci' else b] += 1
         return '/'.join(str(c[b]) for b in order)
-    page = tally(t['b'] for t in tk if t['v'] == cur)
-    jira = tally(BUCKETS[f[2].strip().lower()] for f in lines)
+    rank = {'todo': 0, 'prog': 1, 'rev': 2, 'ci': 2, 'done': 3}
+    pg = {t['k']: (t['b'], t['s']) for t in tk if t['v'] == cur}
+    jr = {num(f[0]): (BUCKETS[f[2].strip().lower()], f[2].strip()) for f in lines if BUCKETS[f[2].strip().lower()] != 'wont'}
+    page = tally(b for b, _ in pg.values())
+    jira = tally(b for b, _ in jr.values())
     tail = ' (done/in progress/in review/to do)'
-    return 'parity: %s ok %s%s' % (v, page, tail) if page == jira else 'parity: %s DRIFT page %s jira %s%s' % (v, page, jira, tail)
+    diff = [k for k in sorted(set(pg) | set(jr)) if k not in pg or k not in jr or rank[pg[k][0]] != rank[jr[k][0]]]
+    if not diff:
+        return 'parity: %s ok %s%s' % (v, page, tail)
+    # a page status earlier in the workflow than Jira's is the mirror trailing a live move; anything else is a real mismatch
+    lag = all(k not in pg or (k in jr and rank[pg[k][0]] < rank[jr[k][0]]) for k in diff)
+    names = ', '.join('HIMMEL-%d page %s jira %s' % (k, pg[k][1] if k in pg else '(absent)', jr[k][1] if k in jr else '(absent)')
+                      for k in diff[:8]) + (' (+%d more)' % (len(diff) - 8) if len(diff) > 8 else '')
+    return 'parity: %s %s page %s jira %s%s: %s' % (v, 'lag' if lag else 'DRIFT', page, jira, tail, names)
 
 
 def jira_view(mir, legs, vers, prows, vnames):
@@ -857,7 +868,11 @@ def read_mirror():
             res = json.loads(fm.get('resolution', 'null'))
         except ValueError:
             res = None
-        out[key] = dict(st=2 if cat == 'Done' else 1 if cat == 'In Progress' else 0, sn=sn if isinstance(sn, str) else '', cat=cat, fv=fv,
+        try:
+            sec = json.loads(fm.get('sector', 'null'))
+        except ValueError:
+            sec = None
+        out[key] = dict(sector=sec if isinstance(sec, str) else '',st=2 if cat == 'Done' else 1 if cat == 'In Progress' else 0, sn=sn if isinstance(sn, str) else '', cat=cat, fv=fv,
                         res=res if isinstance(res, str) else '',
                         upd=fm.get('updated', '').strip('"'), title=m.group(1) if m else '',
                         type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]),
@@ -1127,23 +1142,13 @@ def main():
     vload = [[round(float(r['load_' + l] or 0), 3) for l in
               ('bugs', 'enhancements', 'features', 'misc', 'audit')] +
              [round(float(r['load_total'] or 0), 3), round(float(r['est_legs'] or 0), 1)] for r in vrows]
-    theme, impact, uimp, plain, ready, erange = {}, {}, {}, {}, {}, {}
+    impact, uimp, plain, ready, erange = {}, {}, {}, {}, {}
     for p in sorted(glob.glob(os.path.join(ROOT, 'stage1', 'C??.tsv'))):
         for r in read_tsv(p)[1]:
-            theme[r['key']] = r.get('theme', '') or '(no theme)'
             if (r.get('impact') or '').isdigit():
                 impact[r['key']] = int(r['impact'])
-    # the reconcile overlay themes tickets no stage1 file covers; it never overrides a stage1 theme.
-    ovp = os.path.join(ROOT, 'stage1', 'themes-overlay.tsv')
-    for r in read_tsv(ovp)[1] if os.path.exists(ovp) else []:
-        if r.get('theme') and theme.get(r['key'], '(no theme)') == '(no theme)':
-            theme[r['key']] = r['theme']
-    # a Jira `theme-<slug>` label wins over the plan (the Kanban writes it); a slug matching a plan theme shows its name.
-    by_slug = {re.sub(r'[^a-z0-9]+', '-', t.lower()).strip('-'): t for t in set(theme.values())}
-    for k, m in mir.items():
-        lab = next((x for x in m.get('labels', []) if isinstance(x, str) and x.startswith('theme-') and len(x) > 6), '')
-        if lab:
-            theme[k] = by_slug.get(lab[6:], lab[6:])
+    # a ticket's group is its Jira Sector, read from the mirror; no plan theme, overlay or label feeds it.
+    theme = {k: m['sector'] or '(no sector)' for k, m in mir.items()}
     # user-facing impact (stage1 explain), readiness + T-shirt range (stage2).
     for p in sorted(glob.glob(os.path.join(ROOT, 'stage1', 'C??.explain.tsv'))):
         for r in read_tsv(p)[1]:
@@ -1167,7 +1172,7 @@ def main():
         # the ticket's own plain Impact block wins; the stage1 explain sidecar is the fallback.
         pi = clip((mir.get(k) or {}).get('impact', ''), 400)
         return [pi or uimp.get(k, ''), erange.get(k, ''), ready.get(k), impact.get(k), sl, plain.get(k, ''), ld]
-    themes = sorted(set(theme.values()) | {'(no theme)'})
+    themes = sorted(set(theme.values()) | {'(no sector)'})
     tidx = {t: i for i, t in enumerate(themes)}
 
     placed = read_tsv(os.path.join(S, 'placement.tsv'))[1]
@@ -1194,7 +1199,7 @@ def main():
         fl = 1 if (m and m['fv'] and r['version'] not in m['fv']) else 0  # drift
         rows.append([num(k), clip(m['title'] if m else '(not in mirror)', 62),
                      m['st'] if m else 0, vidx[r['version']], LAYERS.index(lay) if lay in LAYERS else 3,
-                     tidx[theme.get(k, '(no theme)')], round(float(r['effort_mid'] or 0), 1), fl,
+                     tidx[theme.get(k, '(no sector)')], round(float(r['effort_mid'] or 0), 1), fl,
                      [note_id(n) for n in lmap.get(k, [])]] +
                     fields(k, (r.get('slice_effort') or 'S') if r.get('commit') == 'plan-first' else '',
                            float(r['effort_mid'] or 0)))
@@ -1205,7 +1210,7 @@ def main():
         hit = [v for v in m['fv'] if TRAIN_RE.match(v) and v in vidx]
         if hit:
             rows.append([num(k), clip(m['title'], 62), m['st'], vidx[hit[0]],
-                         0 if m['type'] == 'Bug' else 3, tidx[theme.get(k) or '(no theme)'],
+                         0 if m['type'] == 'Bug' else 3, tidx[theme.get(k) or '(no sector)'],
                          0, 2, []] + fields(k)[:-1] + [0])
     unpl = []
     for r in read_tsv(os.path.join(S, 'unplaced.tsv'))[1]:
@@ -1225,7 +1230,7 @@ def main():
                      clip(r.get('close_evidence', ''), 70)])
 
     upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
-    nothm = sum(1 for r in rows if r[5] == tidx['(no theme)'] and r[2] != 2)  # open only
+    nothm = sum(1 for r in rows if r[5] == tidx['(no sector)'] and r[2] != 2)  # open only
     seq = rules['seq']
     jv, ru = read_versions(VERSIONS, mir)
     lg, cur = ledger_lines(rows, vers, nothm, {x['n'] for x in jv if x['rel']})
@@ -1554,13 +1559,10 @@ __KANBAN__</section>
 </div>
 <section class="plan" aria-label="The plan">
 <h2 class="jh">The plan, folded</h2>
-<p class="jsub">The forecast behind the versions above: what the plan expects, what finished work took, and the decisions it waits on.</p>
-<details class="fold" id="pdec"><summary id="decs">Plan decisions that need your input</summary><ol class="decl" id="decl"></ol></details>
+<p class="jsub">The forecast behind the versions above: what the plan expects, what finished work took, and the sectors the running version spans.</p>
 <details class="fold"><summary>How long finished tickets took, against their estimate</summary><div class="acc" id="accb"></div></details>
-<details class="fold"><summary id="themh">Themes in the plan's running version</summary><div id="themb"></div></details>
-<details class="fold"><summary>What users gained</summary><div class="gains" id="gains"></div></details>
+<details class="fold"><summary id="themh">Sectors in the running version</summary><div id="themb"></div></details>
 <footer>
-<details class="fold" id="pvj"><summary id="pvjs">Plan vs Jira</summary><div id="pvjb"></div></details>
 <details class="fold"><summary>Budget rules</summary><div class="rules" id="rules"></div></details>
 <details class="fold"><summary>Terms</summary>
 <dl class="terms" id="terms"></dl></details>
@@ -1736,7 +1738,7 @@ function more(p){
  if(p[11]!=null)u.appendChild(el("li",null,"Ready to build: "+M.READY[p[11]]+" ("+p[11]+" of 4)."));
  if(p[10])u.appendChild(el("li",null,"Size "+p[10]+(p[6]?", about "+p[6]+" S-equivalents":"")+(p[15]?"; uses "+p[15].toFixed(3)+" of "+V[p[3]]+"'s budget":"")+"."));
  if(p[13])u.appendChild(el("li",null,"Planning slice only ("+p[13]+"): not ready enough to build, so "+V[p[3]]+" schedules the plan, not the fix."));
- u.appendChild(el("li",null,"Theme: "+T[p[5]]+" · kind: "+M.KIND[p[4]]+" · "+V[p[3]]+"."));
+ u.appendChild(el("li",null,"Sector: "+T[p[5]]+" · kind: "+M.KIND[p[4]]+" · "+V[p[3]]+"."));
  if(p[7]==1)u.appendChild(el("li",null,"Jira names a different version than the plan."));
  if(p[7]==2)u.appendChild(el("li",null,"Not in the plan: Jira puts it in "+V[p[3]]+"."));
  var lg=M.leg(p);if(lg)u.appendChild(el("li",null,"Leg "+lg[0]+" is on it; its last marker is "+lg[1]+(lg[2]?", PR "+lg[2]:"")+"."));
@@ -1792,7 +1794,6 @@ function versionBody(i,host){
  if(w.length){host.appendChild(add(el("h3","grp"),"Working now",el("span",null,pl(w.length,"leg","legs"))));
   var ul=el("ul","work");w.forEach(function(p){ul.appendChild(add(el("li"),chip(M.leg(p)),impactText(p,el("span"))))});host.appendChild(ul)}
  ticketList(host,a,5,function(k){return T[k]})}
-var WI={},ALL=false,BAND=["Stops now","Blocks release","Queue health"];
 function num(x){return x==null?"–":x===Math.round(x)?String(x):f2(x)}
 function bw(b){return b.what+" "+num(b.used)+" of "+num(b.cap)}
 function fmtMin(m){return m==null?"–":m<60?Math.round(m)+" min":(Math.round(m/6)/10)+" h"}
@@ -1820,84 +1821,13 @@ function renderAcc(){var h=$("accb"),ac=M.accuracy(),mx=1;h.textContent="";
   m.style.left=(100*x.med/mx)+"%";tr.appendChild(m);
   add(r,add(el("span","as"),el("span","sz",x.size),el("span","fact","×"+x.n)),tr,el("span","am",fmtMin(x.med)+" · "+pl(x.legs,"leg","legs")));h.appendChild(r)});
  h.appendChild(add(el("div","aax"),el("span",null,"0"),el("span",null,fmtMin(mx))))}
-function renderThemes(){var i=D.CUR!=null?D.CUR:0,h=$("themb"),a=M.inV(i,REM),g={};h.textContent="";$("themh").textContent="Themes in "+D.V[i];
+function renderSectors(){var i=D.CUR!=null?D.CUR:0,h=$("themb"),a=M.inV(i,REM),g={};h.textContent="";$("themh").textContent="Sectors in "+D.V[i];
  a.forEach(function(p){var k=p[5];g[k]=g[k]||{k:k,d:0,n:0};g[k].n++;if(p[2]==2)g[k].d++});
  var gs=Object.keys(g).map(function(k){return g[k]}).sort(function(x,y){return y.n-x.n||String(T[x.k]).localeCompare(String(T[y.k]))}).slice(0,8),mx=gs.length?gs[0].n:1;
  gs.forEach(function(x){var bar=el("span","thb"),d=el("i","d"),l=el("i","t");d.style.width=(100*x.d/mx)+"%";l.style.width=(100*(x.n-x.d)/mx)+"%";add(bar,d,l);
   bar.setAttribute("role","img");bar.setAttribute("aria-label",x.d+" of "+x.n+" done");
   h.appendChild(add(el("div","thr"),nb(T[x.k],"all",{t:x.k},T[x.k]+" across v1.0.x"),bar,el("span","fact",x.d+"/"+x.n)))});
  if(!gs.length)h.appendChild(el("p","fact","No tickets here."))}
-// copyLine: the instruction to paste to the console. The page never acts on it.
-function copyLine(lines){var w=el("div","copy"),pre=el("pre",null,lines.join("\n")),b=el("button","lv","Copy");b.type="button";
- b.addEventListener("click",function(){function sel(){var r=document.createRange();r.selectNodeContents(pre);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent="Selected, press copy"}
-  try{navigator.clipboard.writeText(pre.textContent).then(function(){b.textContent="Copied"},sel)}catch(e){sel()}});
- return add(w,pre,b)}
-function wiTable(name,x,c){var tb=el("table","ld"),hr=el("tr");[name,"Now","After","Cap"].forEach(function(h){hr.appendChild(el("th",null,h))});tb.appendChild(hr);
- function row(lab,b,a,cap){var r=el("tr");add(r,el("td",null,lab),el("td",null,num(b)),el("td",cap==null||a==null?null:a>cap+1e-9?"ovr":"met",num(a)),el("td",null,cap==null?"no cap":num(cap)));tb.appendChild(r)}
- row("Planned",x.before.n,x.after.n,c?c.t:null);row("Mean",x.before.m,x.after.m,c?c.tot:null);row("P90 ≈",x.before.p9,x.after.p9,c?c.p9:null);return tb}
-function verdict(name,b){return b.length?name+" still over: "+b.map(bw).join(", ")+".":name+": every cap met."}
-function wiBox(w,fromName,toName){var box=el("div","wi"),two=el("div","two");
- add(two,wiTable(fromName,w.from,D.VC[w.from.i]),wiTable(toName,w.to,w.to.caps));box.appendChild(two);
- box.appendChild(el("p","fact",verdict(fromName,w.from.after.b)+" "+verdict(toName,w.to.after.b)));return box}
-function lever(label,on,pressed,f){var b=el("button","lv",label);b.type="button";b.setAttribute("aria-pressed",pressed?"true":"false");b.dataset.f=f;b.addEventListener("click",on);return b}
-function tline(p){return add(el("span","t"),el("code",null,keyOf(p))," ",p[9]?p[9].replace(/^internal:\s*/i,""):p[1])}
-function toggle(a,k){var j=a.indexOf(k);if(j<0)a.push(k);else a.splice(j,1)}
-// capCard: peel the lowest-return tickets to the trail or to v2/v3; each ticket's box keeps it here (pin) or releases a plan pin.
-function capBody(d,li,id,paint){var i=d.i,st=WI[id]||(WI[id]={lv:null,keep:[],unpin:[]}),tr=M.trail(i),cut=D.V.indexOf("v2/v3");
- add(li,el("div","ctl",D.V[i]+" is over its cap"),el("div","fact",d.b.map(bw).join(" · ")));
- var lv=el("div","levers");function pick(k){return function(){st.lv=st.lv==k?null:k;paint("lv-"+k)}}
- if(tr)lv.appendChild(lever("Move to "+tr.name,pick("trail"),st.lv=="trail","lv-trail"));
- if(cut>=0&&cut!=i)lv.appendChild(lever("Cut to v2/v3",pick("cut"),st.lv=="cut","lv-cut"));
- lv.appendChild(lever("Open "+D.V[i],function(){openDrill("version",{v:i},V[i],this)},false,"lv-open"));li.appendChild(lv);
- if(!st.lv)return;
- var to=st.lv=="trail"?tr.i:cut,toName=st.lv=="trail"?tr.name:"v2/v3",pe=M.peel(i,{keep:st.keep,unpin:st.unpin}),box=wiBox(M.whatIf(i,pe.moved,to),D.V[i],toName);
- var seen={},rows=[];pe.moved.concat(M.inV(i).filter(function(p){return st.keep.indexOf(p[0])>=0||st.unpin.indexOf(p[0])>=0}),pe.held).forEach(function(p){if(!seen[p[0]]){seen[p[0]]=1;rows.push(p)}});
- if(rows.length){box.appendChild(el("h4",null,"What moves, lowest return first"));var ul=el("ul","fall");
-  rows.forEach(function(p){var pin=M.pinned(p),cb=el("input"),lb=el("label"),f="cb-"+p[0],mv=pe.moved.indexOf(p)>=0;cb.type="checkbox";cb.dataset.f=f;
-   cb.checked=pin?st.unpin.indexOf(p[0])<0:st.keep.indexOf(p[0])>=0;
-   cb.addEventListener("change",function(){toggle(pin?st.unpin:st.keep,p[0]);paint(f)});add(lb,cb,pin?"pinned":"keep here");
-   ul.appendChild(add(el("li"),lb,tline(p),el("span",mv?"ovr":"met",mv?"→ "+toName:"stays")))});box.appendChild(ul)}
- var lines=[];if(pe.moved.length&&to<0)lines.push("open trail "+toName);
- pe.moved.forEach(function(p){lines.push((st.lv=="cut"?"defer ":"move ")+keyOf(p)+" "+D.V[i]+" → "+toName)});
- st.keep.forEach(function(k){lines.push("pin HIMMEL-"+k+" "+D.V[i])});st.unpin.forEach(function(k){lines.push("unpin HIMMEL-"+k+" "+D.V[i])});
- if(!pe.moved.length)box.appendChild(el("p","fact","Nothing can move: every open ticket here is pinned, has a leg, or eases no broken cap."));
- if(lines.length)box.appendChild(copyLine(lines));li.appendChild(box)}
-function one(p,li,f,label){li.appendChild(el("div","levers")).appendChild(lever(label||"Open the ticket",function(){openDrill("one",{k:p[0]},keyOf(p),this)},false,f))}
-function body(d,li,id,paint){li.appendChild(el("span","band b"+d.band,BAND[d.band]));
- if(d.type=="cap")return capBody(d,li,id,paint);
- var st=WI[id]||(WI[id]={lv:null});function pick(k){return function(){st.lv=st.lv==k?null:k;paint("lv-"+k)}}
- if(d.type=="leg"){var lg=M.leg(d.p);add(li,el("div","ctl","Leg "+lg[0]+" is "+lg[1]+" on "+keyOf(d.p)),impactText(d.p,el("div","fact")));
-  li.appendChild(el("p","fact","The leg waits on its console; its ruling unblocks "+D.V[d.p[3]]+"."));one(d.p,li,"lv-one");return}
- if(d.type=="drift"){var p=d.p,v=D.V[p[3]],lv=el("div","levers"),k=keyOf(p);
-  add(li,el("div","ctl",p[7]==1?k+": the plan and Jira name different versions":k+": in Jira's "+v+", not in the plan"),impactText(p,el("div","fact")));
-  var opts=p[7]==1?[["plan","Adopt plan","set-fixversion "+k+" "+v],["jira","Adopt Jira","place "+k]]:[["jira","Place in "+v,"place "+k+" "+v],["plan","Adopt plan","set-fixversion "+k+" none"]];
-  opts.forEach(function(o){lv.appendChild(lever(o[1],pick(o[0]),st.lv==o[0],"lv-"+o[0]))});li.appendChild(lv);
-  opts.forEach(function(o){if(st.lv==o[0])li.appendChild(add(el("div","wi"),el("p","fact",o[0]=="plan"?"Jira follows the plan; no budget moves.":"The plan follows Jira; the placer re-weighs "+v+"."),copyLine([o[2]])))});return}
- if(d.type=="fold"){var pr=M.parent(d.i),w=M.whatIf(d.i,d.f,pr);
-  add(li,el("div","ctl",D.V[pr]+" can take back "+pl(d.f.length,"ticket","tickets")+" from "+D.V[d.i]),el("div","fact","Its caps hold with them; the best return comes first."));
-  var fl=el("div","levers");fl.appendChild(lever("Fold back",pick("fold"),st.lv=="fold","lv-fold"));li.appendChild(fl);
-  if(st.lv=="fold"){var bx=wiBox(w,D.V[d.i],D.V[pr]),ul=el("ul","fall");d.f.forEach(function(p){ul.appendChild(add(el("li"),el("span"),tline(p),el("span","met","→ "+D.V[pr])))});
-   add(bx,ul,copyLine(d.f.map(function(p){return "move "+keyOf(p)+" "+D.V[d.i]+" → "+D.V[pr]})));li.appendChild(bx)}return}
- if(d.type=="unplaced"){add(li,el("div","ctl",pl(d.u.length,"open ticket has","open tickets have")+" no version"),el("div","fact","Parked or never placed: none of them counts against a cap."));
-  var ul2=el("div","levers");ul2.appendChild(lever("Place",pick("place"),st.lv=="place","lv-place"));li.appendChild(ul2);
-  if(st.lv=="place"){var b2=el("div","wi"),l2=el("ul","fall");d.u.forEach(function(x){l2.appendChild(add(el("li"),el("span"),add(el("span","t"),el("code",null,"HIMMEL-"+x[0])," ",x[1]),el("span","fact",x[3])))});
-   add(b2,l2,copyLine(d.u.map(function(x){return "place HIMMEL-"+x[0]})));li.appendChild(b2)}}}
-function card(d,id){var li=el("li","card");function paint(f){li.textContent="";body(d,li,id,paint);if(f){var x=li.querySelector('[data-f="'+f+'"]');if(x)x.focus()}}paint();return li}
-function renderDecisions(ds){var ol=$("decl"),s=$("decs");ol.textContent="";s.textContent="Plan decisions that need your input ("+ds.length+")";
- s.className=ds.some(function(d){return d.band<2})?"hot":"";
- if(!ds.length){ol.appendChild(el("li","card fact","Nothing needs a decision: every cap holds, no leg waits, Jira and the plan agree."));return}
- var id={};(ALL?ds:ds.slice(0,40)).forEach(function(d){var k=d.type+":"+d.i+":"+(d.p?d.p[0]:"");id[k]=(id[k]||0)+1;ol.appendChild(card(d,k+":"+id[k]))});
- if(!ALL&&ds.length>40){var b=el("button","lv","+"+(ds.length-40)+" more");b.type="button";b.addEventListener("click",function(){ALL=true;renderDecisions(ds)});ol.appendChild(add(el("li","card"),b))}}
-function renderGains(){var h=$("gains");h.textContent="";
- var g=M.gains().sort(function(x,y){return y.done.filter(M.isUser).length-x.done.filter(M.isUser).length||y.done.length-x.done.length||x.i-y.i}).slice(0,4);
- if(!g.length){h.appendChild(el("p","fact","Nothing has shipped on the v1.0.x train yet."));return}
- g.forEach(function(x){var c=el("article","gain"),u=el("ul");
-  add(c,el("h3",null,D.V[x.i]),add(el("p","gl"),nb(x.done.length+" of "+x.n+" done","done",{v:x.i},V[x.i]+": done"),". "+x.s.lead));
-  x.done.filter(M.isUser).slice(0,3).forEach(function(p){u.appendChild(el("li",null,p[9]))});if(u.firstChild)c.appendChild(u);h.appendChild(c)})}
-function renderPvj(){var a=M.inTrain(REM),dr=a.filter(function(p){return p[7]==1}),off=a.filter(function(p){return p[7]==2&&p[2]!=2}),b=$("pvjb");
- $("pvjs").textContent="Plan vs Jira: "+(dr.length+off.length?(dr.length+off.length)+" differ ›":"they agree");b.textContent="";
- if(dr.length){b.appendChild(el("p",null,pl(dr.length,"ticket is","tickets are")+" planned for one version while Jira names another."));M.order(dr).forEach(function(p){b.appendChild(ticket(p))})}
- if(off.length){b.appendChild(el("p",null,pl(off.length,"open ticket sits","open tickets sit")+" in a version in Jira but not in the plan."));M.order(off).forEach(function(p){b.appendChild(ticket(p))})}}
 // The version-first view: Jira's own versions and status names, built from D.JV / D.JT; the plan's views sit folded below.
 var JV=D.JV,JT=D.JT,JB=[["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]],
  RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JC>=0?D.JC:JV.length-1;
@@ -1970,7 +1900,7 @@ function jrender(flashI){jhero();jboard();jversions(flashI);jgrow();$("hide").se
 // Hide-done: fade the outgoing columns and rows, then re-render; the board keeps its height, so nothing jumps.
 $("hide").addEventListener("click",function(){HIDE=!HIDE;try{localStorage.setItem("hide3990",HIDE?"1":"0")}catch(e){}
  if(RMO){jrender();return}document.querySelectorAll(".jcol,#vt tr").forEach(function(e){e.classList.remove("enter");e.classList.add("leave")});setTimeout(jrender,180)});
-function render(){var ds=M.decisions();jrender();renderDecisions(ds);renderAcc();renderThemes();renderGains();renderPvj()}
+function render(){jrender();renderAcc();renderSectors()}
 // drawer: numbers open it; focus moves in, Tab is trapped, Esc closes and focus returns to the number that opened it.
 function openDrill(kind,scope,title,from){
  var db=$("db");db.textContent="";$("dh").textContent=title;if($("drawer").hidden)opener=from;
