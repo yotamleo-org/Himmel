@@ -12,7 +12,8 @@
 # step. Closed = statusCategory Done in the Jira mirror (Done, Closed, wont do,
 # wont fix, In Public); a key missing from the mirror is open. A closed key
 # goes with its attached `(...)` note unless the note holds an open key; an
-# emptied `|` group goes; a line with no key left reads `none`. The dropped
+# emptied `|` group goes; prose with no key (`rest of v1.1.3`) is an
+# instruction and stays; a line with nothing left reads `none`. The dropped
 # keys are named on stderr. Pruning is not re-ranking, but the console runs
 # --apply only with an operator OK and logs a `PRIORITY-PRUNE: <keys>` Results
 # bullet (console.sh next accepts it for a line pruned to none).
