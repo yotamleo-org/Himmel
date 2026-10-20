@@ -309,7 +309,6 @@ scripts/handover/artifact-sync.sh	prim-atomic	2
 scripts/handover/artifact-sync.sh	prim-lock	1
 scripts/handover/auto-commit.sh	errexit	1
 scripts/handover/auto-commit.sh	mktemp	1
-scripts/handover/auto-commit.sh	prim-canon	1
 scripts/handover/breadcrumb.sh	prim-atomic	1
 scripts/handover/bug.sh	prim-atomic	2
 scripts/handover/cap-reset-time.sh	errexit	1
@@ -321,15 +320,12 @@ scripts/handover/console-kit/fleet-manifest.sh	prim-lock	1
 scripts/handover/console-kit/go.sh	prim-atomic	2
 scripts/handover/console-kit/grant-round.sh	prim-atomic	2
 scripts/handover/console-kit/inbox-send.sh	prim-atomic	1
-scripts/handover/console-kit/inbox-send.sh	prim-canon	1
 scripts/handover/console-kit/inbox-send.sh	prim-lock	1
 scripts/handover/console-kit/judge-ladder.sh	prim-lock	1
 scripts/handover/console-kit/launch-cloud.sh	errexit	1
 scripts/handover/console-kit/leg-digest-step.sh	gnu-flag	10
 scripts/handover/console-kit/leg-doc-lock.sh	prim-atomic	1
-scripts/handover/console-kit/leg-doc-lock.sh	prim-canon	1
 scripts/handover/console-kit/leg-doc-lock.sh	prim-lock	1
-scripts/handover/console-kit/leg-pretrust.sh	prim-canon	1
 scripts/handover/console-kit/leg-pretrust.sh	prim-lock	1
 scripts/handover/console-kit/live-state.sh	prim-atomic	1
 scripts/handover/console-kit/ops-run.sh	gnu-flag	1

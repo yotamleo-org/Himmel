@@ -10,6 +10,7 @@
 # Its one write is a detached worktree of the PR head under
 # <repo>/.claude/worktrees/shepherd-<pr> (git, not _new-worktree.sh: that helper
 # cuts a NEW branch from origin/main, and a shepherd needs the PR head as is).
+# A tree it created is removed on exit when clean; a modified one is kept.
 # The console still reads the diff, GOs and merges.
 #
 # Usage: shepherd.sh <pr-number>
@@ -126,6 +127,15 @@ else
     git fetch --quiet origin "$BASE_REF" >/dev/null 2>&1 || true
     git worktree add --quiet --detach "$WT" "$HEAD_SHA" >/dev/null 2>&1 || { echo "shepherd: git worktree add $WT failed" >&2; exit 2; }
     add_line "worktree: created $WT"
+    # Own tree only, and only while clean AND free of ignored files (git worktree remove would
+    # delete those): any other tree is left for worktree.sh prune to checkpoint.
+    # ponytail: any ignored file keeps the tree, upgrade path the disposable-class allowlist in worktree.sh.
+    # shellcheck disable=SC2329 # invoked from the EXIT trap below
+    remove_clean_wt() {
+        st=$(git -C "$WT" status --porcelain --ignored 2>&1) || return 0
+        [ -z "$st" ] && git worktree remove "$WT" >/dev/null 2>&1
+    }
+    trap remove_clean_wt EXIT
 fi
 
 # ── 4. ticket coverage ──────────────────────────────────────────────────────
