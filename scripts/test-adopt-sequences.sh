@@ -22,7 +22,7 @@
 # PR promotes the row by deleting its tag.
 #
 # Fixture HOME only: every sequence runs under its own mktemp HOME with a
-# hermetic PATH (no qmd/bun/npm/node, so adopt never reaches the network) and
+# hermetic PATH (no qmd/bun/npm/node/pre-commit, so adopt never reaches the network or a host hook framework) and
 # a stateful pure-bash `claude` stub. Sequences run in parallel (<=8 at once).
 #
 # Usage: bash scripts/test-adopt-sequences.sh [--seed N] [--break-restore]
@@ -215,7 +215,7 @@ row() { echo "$1 $2" >> "$X/rows"; }
 fixture_env() {
   export HOME="$X/home" CLAUDE_CONFIG_DIR="$X/home/.claude" STUB_STATE="$X/state" STUB_TEMPLATE="$R/docs/setup/settings-template.json"
   local scrubbed
-  scrubbed="$(scrub_path "$PATH" qmd bun npm node uv pipx)"
+  scrubbed="$(scrub_path "$PATH" qmd bun npm node uv pipx pre-commit)"
   export PATH="$X/bin:$scrubbed"
   unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT
 }
