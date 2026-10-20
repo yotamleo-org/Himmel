@@ -743,6 +743,24 @@ test('every shipped profile declares its role requirements and resolves them (HI
   }
 });
 
+test('no role requires a himmel plugin whose skills are all disable-model-invocation (HIMMEL-4017)', () => {
+  // such a skill never reaches the model's skill listing, so the live probe's
+  // listing check could never pass for the row that names it
+  const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const hidden = (plugin) => {
+    const dir = join(REPO_ROOT, 'marketplace', 'plugins', plugin, 'skills');
+    if (!existsSync(dir)) return false;
+    const skills = readdirSync(dir).map((s) => join(dir, s, 'SKILL.md')).filter((f) => existsSync(f));
+    return skills.length > 0 && skills.every((f) => /^disable-model-invocation:\s*true\s*$/m.test(readFileSync(f, 'utf8').split(/^---\s*$/m)[1] ?? ''));
+  };
+  for (const [name, ids] of Object.entries(ROLE_REQUIRES)) {
+    for (const id of ids) {
+      const [plugin, marketplace] = id.split('@');
+      assert.ok(!(marketplace === 'himmel' && hidden(plugin)), `${name} requires ${id}, whose skills are all hidden from the model listing`);
+    }
+  }
+});
+
 test('every himmel-marketplace catalog id exists in the himmel marketplace (HIMMEL-4012)', () => {
   const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const mp = JSON.parse(readFileSync(join(REPO_ROOT, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
