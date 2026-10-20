@@ -70,6 +70,6 @@
 {"id":"h20","kind":"where","src":"heldout","split":"heldout","q":"himmel-adapters.json registry of fork adapters","gold":["scripts/guardrails/himmel-adapters.json"],"gold1":["docs/internals/fork-adapters.md"],"reason":[]}
 {"id":"h21","kind":"where","src":"heldout","split":"heldout","q":"where is HIMMEL_EVAL_RUNS_LEDGER resolved to a path","gold":["scripts/eval/lib/eval_runs.py"],"gold1":["scripts/eval/README.md"],"reason":[]}
 {"id":"h22","kind":"what","src":"heldout","split":"heldout","q":"what is the uv.lock pinning rule for python dependencies","gold":["docs/security/python-policy.md"],"reason":[]}
-{"id":"h23","kind":"how","src":"heldout","split":"heldout","q":"when does ci-image.yml rebuild the image","gold":["docs/internals/ci-image.md",".github/workflows/ci-image.yml"],"reason":[]}
+{"id":"h23","kind":"what","src":"heldout","split":"heldout","q":"where are the recurring review finding classes recorded that a diff is checked against before the critics run","gold":["docs/internals/known-findings.md"],"gold1":["scripts/cr/known-findings.json"],"reason":[]}
 {"id":"h24","kind":"how","src":"heldout","split":"heldout","q":"what does ready-check.sh verify before a leg reports READY","gold":["scripts/handover/console-kit/ready-check.sh"],"gold1":["docs/internals/ship-tail-model-free.md","docs/handover/leg-preface.md"],"reason":[]}
 {"id":"h25","kind":"what","src":"heldout","split":"heldout","q":"how does ci-orchestrator prioritize and throttle jobs","gold":["docs/internals/ci-orchestrator.md"],"reason":[]}
