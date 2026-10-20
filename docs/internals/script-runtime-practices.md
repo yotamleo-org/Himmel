@@ -14,9 +14,12 @@ every rule traces to a ticket with a measurement or an incident behind it.
 | Target | Rule | Why |
 |---|---|---|
 | Shell scripts | bash 3.2-safe (macOS floor). `scripts/hooks/CLAUDE.md` is normative for this repo's hooks. | Same rule as the hooks subtree; a bash-4-only construct (`mapfile`, associative arrays) silently breaks on macOS. |
-| Here-strings / growing content in MSYS bash | Temp file or case-membership once content can exceed ~64 KiB, never a herestring. | A herestring ≥ 64 KiB wedges MSYS bash forever. |
+| Here-strings / growing content in MSYS bash (historical: Windows is unsupported) | Temp file or case-membership once content can exceed ~64 KiB, never a herestring. | A herestring ≥ 64 KiB wedges MSYS bash forever. |
 
 ## 2. What it costs — MSYS spawn economics
+
+> Historical: measured on the Windows MSYS host, which is no longer supported.
+> The numbers show the shape of the cost, not Linux figures.
 
 External-process spawn from a bash script is not free, and the cost is not
 flat — it rises under contention. Measured on the PreToolUse Bash hook chain:

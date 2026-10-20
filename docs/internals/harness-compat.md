@@ -118,6 +118,8 @@ which is what is under test.
 
 Exit 0 = all ran legs clean, 1 = a leg failed, 2 = nothing ran, or an agent leg
 ran without its replay leg (both vacuous-pass guards), or a usage error.
+While `codex-replay` is unavailable (HIMMEL-6813 removes it), a run that includes
+`codex-exec` exits 2 under that rule.
 `scripts/codex/test-hook-smoke-demo.sh` pins the runner's own contract with
 stubbed `claude`/`codex`/`pwsh` — it never spends a token.
 

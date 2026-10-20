@@ -65,11 +65,9 @@ preserved byte-identical, the version stamp advances, and a re-run is
 idempotent). Deterministic — no claude call. It runs the suite + roundtrip under the Ubuntu guest shell (`… 2222 …`).
 
 The engine's real deps are a **working python + git + sha256sum** — NOT `node`
-(it is never invoked; the prior node gate was vestigial). On Windows `python3` is
-the Microsoft Store stub (on PATH but emits no stdout), so the engine and the
-harness resolve a working interpreter by probing stdout, not `command -v`, and
-fall back `python3 → python → py`. A bootstrap-floor Linux VM lacking python3
-gets a best-effort `sudo apt-get install python3` (scoped NOPASSWD).
+(it is never invoked; the prior node gate was vestigial). A bootstrap-floor Linux
+VM lacking python3 gets a best-effort `sudo apt-get install python3` (scoped
+NOPASSWD).
 Both VM e2e scripts exit 3 (not 1) when the VM is unreachable.
 
 ### Skill-pass VM e2e

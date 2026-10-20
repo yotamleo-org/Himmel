@@ -8,9 +8,10 @@
 Local speech for the agent: it speaks replies aloud, and it can listen.
 
 > **Platform.** The install steps and `push-to-talk.py` below were written for a
-> Windows desktop and have not been ported; the shell snippets are PowerShell.
-> Windows is otherwise unsupported, so treat this page as a reference for that
-> one setup.
+> Windows desktop and have not been ported; the install, listening and
+> microphone commands are PowerShell, while the `speak.sh` workflows are bash.
+> Windows is otherwise unsupported, so treat the Windows parts as a reference
+> for that one setup.
 
 **What stays local, precisely.** Speech recognition and synthesis both run on
 this machine, so **the audio never leaves it** — no recording, no voice, nothing

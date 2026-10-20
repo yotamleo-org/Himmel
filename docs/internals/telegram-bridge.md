@@ -177,8 +177,9 @@ The supervisor keeps `bun poller.ts` alive.
 **Restart (Linux/macOS):** `bash
 scripts/telegram/restart-bridge.sh start` kills ONLY the bridge's bun
 processes (matched on `supervisor.ts`/`poller.ts` command line), with a
-token-scoped `flock` for serialization, and starts exactly one supervisor
-detached. It does NOT verify no-409/settled progress after launch (a known
+token-scoped `flock` for serialization where `flock` exists (macOS ships none by
+default, so there the script continues without it), and starts exactly one
+supervisor detached. It does NOT verify no-409/settled progress after launch (a known
 gap). `status` reports without touching
 anything; `--repo <path>` points at a non-default checkout. **Stop
 (cross-platform):** `bun supervisor.ts --kill` (reads the `supervisor.pid`

@@ -88,7 +88,7 @@ value that isn't backed by one of these links.
 | `MSYS_NO_PATHCONV` awareness | Documented in CLAUDE.md handover section. |
 | WSL2 / Docker resource caps | If WSL or Docker Desktop is installed, cap them before multi-agent runs. Start with `%UserProfile%\.wslconfig` `memory=16GB`, `processors=8`, `swap=4GB` on a 48 GB / 32-logical-core class host, then tune after measuring. Docker gets separate Desktop/per-container caps. See [environment gotchas](../internals/environment-gotchas.md#windows-wsl--docker-resource-budget). |
 
-PowerShell-only is **NOT sufficient** — most operator-facing tooling needs bash. WSL as a *shell swap* under Windows-native Claude Code is not possible either (see the WSL station profile subsection below); native Git Bash is the tested path.
+Windows is unsupported; himmel's operator-facing tooling needs bash.
 
 #### WSL on Windows — two readings, only one of them real
 
@@ -1419,7 +1419,7 @@ into three tiers — its own `_enabledPluginsComment` / `_onDemandPluginsComment
   transcripts, it now opts in per design/UI work instead of paying its ~630
   tok cost on every session.
 - **ON-DEMAND** (a key of the top-level `onDemandPlugins` object, also `false`
-  in `enabledPlugins`): INSTALLED by `install-plugins.{sh,ps1}` but left
+  in `enabledPlugins`): INSTALLED by `install-plugins.sh` but left
   DISABLED — reachable in one command, costing no session-start context. Table
   + toggle command below.
 - **NOT INSTALLED** (an `enabledPlugins` `false` entry absent from
@@ -1712,11 +1712,7 @@ claude plugin install claude-obsidian@himmel --scope user
 
 Every Claude Code session is auto-captured to the Luna vault as a structured note under `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md` via a `SessionEnd` hook. Built by epic #7 — full schema + opt-out in [`docs/luna/end-session-wiki.md`](../luna/end-session-wiki.md).
 
-**Prompted during setup.** `scripts/machine-setup/ubuntu.sh` prompts to register the hook into `~/.claude/settings.json`: `[Y]es / [n]o [default: Y]`.
-
-The setup also handles the existing-config case: if `hooks.SessionEnd` already exists in your `settings.json`, the script asks `[O]verwrite / [A]ppend / [S]kip`. A backup is written to `~/.claude/settings.json.bak.YYYYMMDD-HHMMSS` before any modification.
-
-**Skipped during setup?** Re-run the setup script (it's idempotent on this step) or manually add the block to `~/.claude/settings.json`:
+**Register it by hand.** `bash scripts/setup.sh` hands off to `himmel install`, whose wire targets do not include `SessionEnd`, so add the block to `~/.claude/settings.json` yourself (back the file up first):
 
 ```json
 "SessionEnd": [
@@ -1732,8 +1728,6 @@ The setup also handles the existing-config case: if `hooks.SessionEnd` already e
   }
 ]
 ```
-
-The PowerShell twin routes through `scripts/lib/run-pwsh.sh` (rather than a bare `pwsh …`) so that on a host **without** PowerShell it exits silently instead of printing `pwsh: command not found` every session — the bash twin does the capture there. Both twins self-guard by platform, so exactly one writes the note.
 
 For per-repo opt-out, env-var disable, dry-run mode, and full operational reference, see [`docs/luna/end-session-wiki.md`](../luna/end-session-wiki.md).
 
@@ -1783,15 +1777,11 @@ installers call — pass the scope explicitly (`user` or `project`, not both;
 `[user|project]` below is a placeholder):
 `bash scripts/lib/graphify-bin.sh register-mcp user`. For `user`/`local` it
 resolves the entry point from the directory `uv tool dir --bin` reports
-(usually `~/.local/bin` on Linux/macOS; on Windows the executable is copied
-there as `graphify-mcp.exe`). The raw equivalent (user scope):
+(usually `~/.local/bin` on Linux/macOS). The raw equivalent (user scope):
 
 ```bash
 claude mcp add --scope user graphify -- "$(uv tool dir --bin)/graphify-mcp"
 ```
-
-(PowerShell:
-`claude mcp add --scope user graphify -- "$(uv tool dir --bin)\graphify-mcp.exe"`.)
 
 Claude Code is the only agent graphify needs — the MCP registration above is
 the whole integration (no codex/other-CLI prerequisite).
@@ -1825,8 +1815,8 @@ Configure in Claude Code settings (`~/.claude/settings.json`):
 
 > **Skip** if you don't use the Telegram bridge for sending messages to Claude. This is operator-specific infrastructure; it is not required for any core himmel workflow.
 
-`scripts/setup.{sh,ps1}` step `[7/8]` runs
-`scripts/setup/onboard-telegram.{sh,ps1}` — **scaffold-only**, also safe to
+`scripts/setup.sh` step `[7/8]` runs
+`scripts/setup/onboard-telegram.sh` — **scaffold-only**, also safe to
 run standalone. It:
 
 - creates `~/.claude/channels/telegram/` + a `TELEGRAM_BOT_TOKEN=` `.env`
@@ -1855,7 +1845,7 @@ the rest of setup it **never writes `access.json` itself**. Full walkthrough:
 
 ## 8.7. Uninstall / offboard
 
-`scripts/uninstall.{sh,ps1}` is the symmetric teardown of setup +
+`scripts/uninstall.sh` is the symmetric teardown of setup +
 install-plugins. Run it through the wizard — `node scripts/himmelctl/bin.js
 uninstall` — which adds its own one confirm then execs the script below with
 `--yes`/`-Yes` (see §4); or invoke the script directly. **Destructive and
@@ -2006,8 +1996,6 @@ git config core.hooksPath /tmp/nope
 git commit --allow-empty -m "should be blocked"
 # Expect: exit nonzero, "⛔ check-hookspath: core.hooksPath points
 # at a path that does not exist" in stderr, no new commit created.
-# (The pre-commit framework invokes the bash sibling, which uses ⛔.
-# The pwsh sibling — triggered from Claude SessionStart on Windows —
-# uses the [BLOCK] prefix instead, same semantics.)
+# (The pre-commit framework invokes the bash script, which uses ⛔.)
 git config --unset core.hooksPath
 ```

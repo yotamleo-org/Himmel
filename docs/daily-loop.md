@@ -163,7 +163,7 @@ the subject line. They are required only in certain circumstances:
 
 | Change type | Trailer required |
 |---|---|
-| Touches `*.sh`, `*.bash`, PowerShell files, `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
+| Touches `*.sh`, `*.bash`, `scripts/**`, `**/bin/*` (a PowerShell file counts only under `scripts/**` or `**/bin/*`) | `Platforms tested: <os>` |
 | Touches any non-docs code (non-`*.md`/`*.txt`/`docs/`/`handovers/`) | `Security reviewed: <token>` |
 | Docs-only (`*.md`, `*.txt`, `docs/**`, `handovers/**`) | _neither required_ |
 

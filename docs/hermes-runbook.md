@@ -110,6 +110,10 @@ below.
 
 ## Install layout (Windows)
 
+> Windows is unsupported. This section, and the `%LOCALAPPDATA%` and Git Bash
+> paths elsewhere on this page, are historical reference until HIMMEL-6813
+> replaces them.
+
 - Install root: `%LOCALAPPDATA%\hermes\` — config.yaml, SOUL.md,
   `agent-hooks/luna_vault_guard.py` (fail-closed vault write fence),
   `.env` (API keys), venv at `hermes-agent\venv\Scripts\hermes`.
@@ -220,7 +224,7 @@ profile default moves and that inference stops holding; pin the model itself
 with `HERMES_CRITIC_MODEL` (`--provider openai-codex` is then applied only for
 codex-family ids).
 
-**Proven invocation** (Windows / Git Bash, live-verified 2026-08-22 — a real
+**Proven invocation** (historical: Windows / Git Bash, unsupported; live-verified 2026-08-22 — a real
 JSON verdict, exit 1, no `rc=3`):
 
 ```bash
