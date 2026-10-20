@@ -6,8 +6,10 @@
 #   ./scripts/worktree.sh prune [flags]
 #
 # prune: removes any non-primary worktree whose branch tip exactly matches the
-# recorded head of a merged PR. After pruning, every kept worktree is accounted
-# for and origin's unmerged remote branches are classified.
+# recorded head of a merged PR, and any idle detached HEAD worktree that is
+# clean and not held (its tip pinned to wip/detached-<sha12> first when no ref
+# reaches it). After pruning, every kept worktree is accounted for and
+# origin's unmerged remote branches are classified.
 #
 # new: creates the worktree via scripts/_new-worktree.sh. `new` prunes FIRST,
 # then creates (the default clean-garden.sh always had); pass --no-prune to
@@ -30,7 +32,11 @@
 #                        lines — LOST-COMMITS / SWEEP-ERROR (from unlanded-work.sh)
 #                        and STUCK (a worktree/branch prior sweeps skipped for N
 #                        sweeps or >24h) — empty output = healthy; exit 0/1.
-#   --verbose, -v        Stream subprocess output.
+#   --orphans            (prune) Read-only leftover monitor: print an ORPHAN line
+#                        per worktree that backs no open PR and is not held,
+#                        and a CEILING line once the live count reaches the
+#                        alarm — empty output = healthy; exit 0/1.
+#   --verbose, -v       Stream subprocess output.
 #   -h, --help           Print usage.
 set -euo pipefail
 
@@ -82,6 +88,15 @@ Flags:
   --health              Read-only: print only alarm lines (LOST-COMMITS, STUCK,
                         SWEEP-ERROR); empty output = healthy. Exit 1 on any
                         alarm. Takes no other flag; never prunes.
+  --orphans             Read-only: print an ORPHAN line per worktree that backs
+                        no open PR and is not held (git worktree lock, FRESH
+                        queue lock, live process, a RESUME brief naming it in
+                        its resume_cwd within WORKTREE_RESUME_HOLD_DAYS (7), or
+                        git activity within WORKTREE_ORPHAN_HOURS (6)), and a
+                        CEILING line once the live count under
+                        .claude/worktrees reaches HIMMEL_WORKTREE_ALARM (70).
+                        Empty output = healthy. Exit 1 on any line. Takes no
+                        other flag; never prunes.
   --verbose, -v         Stream subprocess output.
   -h, --help            This message.
 
@@ -111,6 +126,7 @@ NO_INSTALL=0
 DRY_RUN=0
 VERBOSE=0
 HEALTH=0
+ORPHANS=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --prune-only) PRUNE_ONLY=1; shift ;;
@@ -125,6 +141,7 @@ while [ $# -gt 0 ]; do
         --no-install) NO_INSTALL=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         --health)            HEALTH=1; shift ;;
+        --orphans)           ORPHANS=1; shift ;;
         --verbose|-v)        VERBOSE=1; shift ;;
         -h|--help)    print_help ;;
         -*)           echo "Unknown flag: $1" >&2; usage_err ;;
@@ -144,7 +161,7 @@ if [ "$SUBCMD" = "prune" ]; then
         echo "ERR clean-garden: prune takes no branch-name (use: worktree.sh new $BRANCH)" >&2
         exit 2
     fi
-    [ "$HEALTH" -eq 1 ] || PRUNE_ONLY=1   # --health is its own read-only path
+    [ "$HEALTH" -eq 1 ] || [ "$ORPHANS" -eq 1 ] || PRUNE_ONLY=1   # --health / --orphans are their own read-only paths
 elif [ "$SUBCMD" = "new" ] && [ -z "$BRANCH" ]; then
     echo "ERR clean-garden: new needs a branch-name" >&2
     usage_err
@@ -156,6 +173,10 @@ fi
 
 if [ "$HEALTH" -eq 1 ] && { [ -n "$BRANCH" ] || [ -n "$ONLY_TARGET" ] || [ "$PRUNE_ONLY" -eq 1 ] || [ "$NO_PRUNE" -eq 1 ] || [ "$DRY_RUN" -eq 1 ] || [ "$NO_INSTALL" -eq 1 ]; }; then
     echo "ERR clean-garden: --health is a read-only monitor and takes no other flag or branch-name" >&2
+    exit 1
+fi
+if [ "$ORPHANS" -eq 1 ] && { [ "$HEALTH" -eq 1 ] || [ -n "$BRANCH" ] || [ -n "$ONLY_TARGET" ] || [ "$PRUNE_ONLY" -eq 1 ] || [ "$NO_PRUNE" -eq 1 ] || [ "$DRY_RUN" -eq 1 ] || [ "$NO_INSTALL" -eq 1 ]; }; then
+    echo "ERR clean-garden: --orphans is a read-only monitor and takes no other flag or branch-name" >&2
     exit 1
 fi
 if [ "$NO_PRUNE" -eq 1 ] && [ "$PRUNE_ONLY" -eq 1 ]; then
@@ -347,10 +368,12 @@ ORIGIN_PR_CACHE_OK=0
 # Rows key on the PR's BASE repo (== nwo) plus head.ref, so a PR opened from a
 # fork still matches a local branch of the same name; the exact-tip check in
 # resolve_pr_state (head.sha == refs/pull/<n>/head) keeps a coincidental name
-# match from pruning anything.
+# match from pruning anything. --orphans needs only the open PRs: a few pages
+# instead of the whole history.
 fetch_github_pr_cache() {
-    local nwo="$1"
-    forge_in_primary _gh api --paginate "repos/$nwo/pulls?state=all&per_page=100" \
+    local nwo="$1" state="all"
+    [ "$ORPHANS" -eq 0 ] || state="open"
+    forge_in_primary _gh api --paginate "repos/$nwo/pulls?state=$state&per_page=100" \
         --jq '.[] | [.base.repo.full_name, .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
 }
 
@@ -824,17 +847,21 @@ checkpoint_worktree() {
 WT_PATHS=()
 WT_BRANCHES=()
 WT_LOCKED=()
+WT_HEADS=()
 current_path=""
 current_branch=""
 current_locked=0
+current_head=""
 flush_record() {
     if [ -n "$current_path" ]; then
         WT_PATHS+=("$current_path")
         WT_BRANCHES+=("$current_branch")
         WT_LOCKED+=("$current_locked")
+        WT_HEADS+=("$current_head")
         current_path=""
         current_branch=""
         current_locked=0
+        current_head=""
     fi
 }
 while IFS= read -r line; do
@@ -842,6 +869,9 @@ while IFS= read -r line; do
         "worktree "*)
             flush_record
             current_path="${line#worktree }"
+            ;;
+        "HEAD "*)
+            current_head="${line#HEAD }"
             ;;
         "branch refs/heads/"*)
             current_branch="${line#branch refs/heads/}"
@@ -901,6 +931,11 @@ last_commit_age() {
     now=$(date +%s)
     elapsed=$((now - committed))
     [ "$elapsed" -lt 0 ] && elapsed=0
+    fmt_age "$elapsed"
+}
+
+fmt_age() {
+    local elapsed="$1"
     if [ "$elapsed" -ge 86400 ]; then
         printf '%dd' "$((elapsed / 86400))"
     elif [ "$elapsed" -ge 3600 ]; then
@@ -1153,6 +1188,200 @@ report_remote_orphans() {
         --format='%(refname:strip=3) %(objectname)' "refs/remotes/$remote")
 }
 
+# ---------------------------------------------------------------------------
+# Leftover-worktree invariant: every registered worktree is, within
+# WORKTREE_ORPHAN_HOURS of its last git activity, either backing an open PR,
+# held (worktree_held), reclaimed by this prune, or reported by
+# `prune --orphans`, which the console tick surfaces; and the live count under
+# .claude/worktrees alarms from HIMMEL_WORKTREE_ALARM, well below the
+# HIMMEL_WORKTREE_CEILING that _new-worktree.sh refuses at.
+num_or() {
+    case "$1" in ''|*[!0-9]*) printf '%s' "$2" ;; *) printf '%s' "$((10#$1))" ;; esac
+}
+ORPHAN_SECS=$(( $(num_or "${WORKTREE_ORPHAN_HOURS:-}" 6) * 3600 ))
+RESUME_HOLD_DAYS=$(num_or "${WORKTREE_RESUME_HOLD_DAYS:-}" 7)
+
+# wt_idle_secs <wt> — seconds since the newest of the tree's directory and its
+# git admin files (index, HEAD, logs/HEAD) changed. 0 when none can be read,
+# so an unreadable age counts as fresh (held), never as idle.
+wt_idle_secs() {
+    local wt="$1" gd f m newest=0 now
+    gd=$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null) || gd=""
+    for f in "$wt" "$gd/index" "$gd/HEAD" "$gd/logs/HEAD"; do
+        m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+        case "$m" in ''|*[!0-9]*) continue ;; esac
+        [ "$m" -le "$newest" ] || newest="$m"
+    done
+    now=$(date +%s)
+    if [ "$newest" -eq 0 ] || [ "$now" -le "$newest" ]; then echo 0; else echo $((now - newest)); fi
+}
+
+# load_resume_hold_cwds — the resume_cwd of every *RESUME*.md under the known
+# handover roots modified within RESUME_HOLD_DAYS, one normalized path a line.
+load_resume_hold_cwds() (
+    # shellcheck source=handover/queue-lock.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/handover/queue-lock.sh"
+    _ql_roots_all | while IFS= read -r root; do
+        [ -d "$root" ] || continue
+        find "$root" -maxdepth 6 -type f -name '*RESUME*.md' -mtime "-$RESUME_HOLD_DAYS" \
+            -not -path '*/.locks/*' -not -path '*/.git/*' 2>/dev/null
+    done | sort -u | while IFS= read -r doc; do
+        rcwd=$(_wfl_resume_cwd "$doc")
+        [ -n "$rcwd" ] || continue
+        (cd "$rcwd" 2>/dev/null && pwd) || printf '%s\n' "$rcwd"
+    done
+)
+RESUME_HOLD_CWDS=""
+RESUME_HOLD_LOADED=0
+resume_held() {
+    local wt_norm
+    if [ "$RESUME_HOLD_LOADED" -eq 0 ]; then
+        RESUME_HOLD_LOADED=1
+        RESUME_HOLD_CWDS=$(load_resume_hold_cwds) || RESUME_HOLD_CWDS=""
+    fi
+    [ -n "$RESUME_HOLD_CWDS" ] || return 1
+    wt_norm=$(cd "$1" 2>/dev/null && pwd || echo "$1")
+    grep -qxF -- "$wt_norm" <<<"$RESUME_HOLD_CWDS"
+}
+
+# worktree_held <wt> <locked> <check_idle> — 0 and WORKTREE_HOLD=<why> while
+# something still owns the tree. The open-PR hold is the caller's.
+WORKTREE_HOLD=""
+worktree_held() {
+    local wt="$1" locked="$2" check_idle="$3" idle
+    WORKTREE_HOLD=""
+    if [ "$locked" -eq 1 ]; then WORKTREE_HOLD="git worktree lock"; return 0; fi
+    if [ "$check_idle" -eq 1 ]; then
+        idle=$(wt_idle_secs "$wt")
+        if [ "$idle" -lt "$ORPHAN_SECS" ]; then WORKTREE_HOLD="git activity $(fmt_age "$idle") ago"; return 0; fi
+    fi
+    if resume_held "$wt"; then WORKTREE_HOLD="named by a RESUME brief"; return 0; fi
+    if worktree_fresh_locked "$wt"; then WORKTREE_HOLD="$WORKTREE_FRESH_LOCK_DETAIL"; return 0; fi
+    if worktree_in_use "$wt"; then WORKTREE_HOLD="in use by a live process"; return 0; fi
+    return 1
+}
+
+# reclaim_detached <wt> <head> <locked> — the prune arm for a detached HEAD
+# tree (shepherd, judge, lane-quality runs). No PR ever merges one, so the
+# merged-PR gate cannot apply: it is reclaimed once nothing holds it (the idle
+# gate is skipped under --only, which names the tree on purpose) and it holds
+# no work. A dirty tree is checkpointed and kept; a tip no ref reaches is
+# pinned to refs/heads/wip/detached-<sha12> before the remove. No branch is
+# deleted.
+reclaim_detached() {
+    local wt="$1" head="$2" locked="$3" check_idle=1 verdict ig strays="" pin="" have
+    local label="detached ${head:0:12}" remove_args=()
+    [ -z "$ONLY_TARGET" ] || check_idle=0
+    if [ -z "$head" ]; then
+        log "  keep detached (no HEAD recorded): $wt"
+        return 0
+    fi
+    if worktree_held "$wt" "$locked" "$check_idle"; then
+        log "  keep $label ($WORKTREE_HOLD): $wt"
+        [ -z "$ONLY_TARGET" ] || echo "WARN clean-garden: $label is held ($WORKTREE_HOLD) — skipped ($wt)" >&2
+        return 0
+    fi
+    verdict=$(classify_worktree "$wt") || verdict="scanfail"
+    case "$verdict" in
+        clean) ;;
+        "strays "*) strays="${verdict#strays }"; remove_args=(--force) ;;
+        *)
+            [ "$verdict" = "scanfail" ] || checkpoint_worktree "$wt" "$label" || true
+            echo "WARN clean-garden: $label has uncommitted work ($verdict) — kept ($wt)" >&2
+            note_stuck "$wt" "detached, and the worktree has uncommitted work"
+            SKIPPED=$((SKIPPED+1)); return 0 ;;
+    esac
+    ig=$(stray_ignored_verdict "$wt") || ig="scanfail"
+    case "$ig" in
+        clean|disposable) ;;
+        *)
+            echo "WARN clean-garden: $label holds ignored files that may be user data ($ig) — kept ($wt)" >&2
+            note_stuck "$wt" "detached, and the worktree holds ignored files that may be user data"
+            SKIPPED=$((SKIPPED+1)); return 0 ;;
+    esac
+    if [ -z "$(git -C "$PRIMARY_WORKTREE" for-each-ref --contains "$head" --count=1 --format=x refs/heads refs/remotes refs/tags 2>/dev/null)" ]; then
+        pin="refs/heads/wip/detached-${head:0:12}"
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY clean-garden: would reclaim $label ($wt)${pin:+, pinning its tip to ${pin#refs/heads/}}${strays:+, discarding untracked strays: $strays}"
+        PRUNED=$((PRUNED+1)); return 0
+    fi
+    if [ -n "$pin" ] && ! git -C "$PRIMARY_WORKTREE" update-ref "$pin" "$head" "" 2>/dev/null; then
+        have=$(git -C "$PRIMARY_WORKTREE" rev-parse --verify -q "$pin" 2>/dev/null || true)
+        if [ "$have" != "$head" ]; then
+            echo "WARN clean-garden: could not pin $label to ${pin#refs/heads/} — kept ($wt)" >&2
+            note_stuck "$wt" "detached, and its tip could not be pinned to a wip ref"
+            SKIPPED=$((SKIPPED+1)); return 0
+        fi
+    fi
+    # Re-classify right before a forced remove, as the branch arm does.
+    if [ -n "$strays" ]; then
+        verdict=$(classify_worktree "$wt") || verdict="scanfail"
+        case "$verdict" in
+            "strays "*) echo "NOTE clean-garden: $label — reclaiming, discarding untracked strays: $strays ($wt)" >&2 ;;
+            clean) remove_args=() ;;
+            *)
+                echo "WARN clean-garden: $label changed during prune ($verdict) — kept ($wt)" >&2
+                note_stuck "$wt" "detached, and the worktree changed during the prune ($verdict)"
+                SKIPPED=$((SKIPPED+1)); return 0 ;;
+        esac
+    fi
+    if git -C "$PRIMARY_WORKTREE" worktree remove ${remove_args[@]+"${remove_args[@]}"} "$wt" >/dev/null 2>&1; then
+        echo "OK clean-garden: reclaimed $label ($wt)${pin:+; tip kept on ${pin#refs/heads/}}"
+        PRUNED=$((PRUNED+1))
+    elif worktree_intact "$PRIMARY_WORKTREE" "$wt"; then
+        note_stuck "$wt" "detached, but git refused the worktree removal"
+        echo "ERR clean-garden: failed to remove detached worktree $wt — git refused the removal; the worktree is still registered with its .git link present. Run with --verbose to investigate." >&2
+        FAILED=$((FAILED+1))
+    else
+        note_stuck "$wt" "removal failed partway — the tree may be gutted"
+        echo "ERR clean-garden: removal of detached worktree $wt FAILED PARTWAY — the tree may be GUTTED. Recover from the primary checkout: 1) git -C '$PRIMARY_WORKTREE' worktree prune  2) make sure '$wt' is empty or removed  3) git -C '$PRIMARY_WORKTREE' worktree add --detach '$wt' $head" >&2
+        FAILED=$((FAILED+1))
+    fi
+}
+
+# orphans_report — `prune --orphans`: alarm lines only, never mutates.
+orphans_report() {
+    local i wt br tip wt_norm label dirty live=0 alarms=0 ceiling alarm
+    ceiling=$(num_or "${HIMMEL_WORKTREE_CEILING:-}" 100)
+    alarm=$(num_or "${HIMMEL_WORKTREE_ALARM:-}" 70)
+    if [ "$HAVE_FORGE" -eq 0 ] || [ "$FORGE_KIND" != "github" ] || [ "$ORIGIN_PR_CACHE_OK" -eq 0 ]; then
+        echo "SWEEP-ERROR (orphans) the open-PR list is unavailable — branch worktrees not checked"
+        alarms=1
+    fi
+    for i in "${!WT_PATHS[@]}"; do
+        wt="${WT_PATHS[$i]}"; br="${WT_BRANCHES[$i]}"; tip="${WT_HEADS[$i]}"
+        wt_norm=$(cd "$wt" 2>/dev/null && pwd || echo "$wt")
+        [ "$wt_norm" != "$PRIMARY_WORKTREE" ] || continue
+        case "$wt" in "$PRIMARY_WORKTREE/.claude/worktrees/"*) live=$((live+1)) ;; esac
+        if [ -n "$br" ]; then
+            [ "$ORIGIN_PR_CACHE_OK" -eq 1 ] || continue
+            resolve_pr_state origin "$br" "$tip"
+            [ "$PR_STATE" != "open" ] || continue
+            label="$br"
+        else
+            label="detached:${tip:0:12}"
+        fi
+        if worktree_held "$wt" "${WT_LOCKED[$i]}" 1; then continue; fi
+        scan_worktree_counts "$wt"
+        dirty="?"
+        [ "$WT_SCAN_OK" -eq 0 ] || dirty=$((WT_DIRTY_COUNT + WT_UNTRACKED_COUNT))
+        printf 'ORPHAN %s branch=%s dirty=%s ahead=%s idle=%s\n' "$wt" "$label" "$dirty" \
+            "$(commits_not_on_main "$tip")" "$(fmt_age "$(wt_idle_secs "$wt")")"
+        alarms=1
+    done
+    if [ "$live" -ge "$alarm" ]; then
+        printf 'CEILING %s/%s worktrees (alarm at %s)\n' "$live" "$ceiling" "$alarm"
+        alarms=1
+    fi
+    [ "$alarms" -eq 0 ]
+}
+
+if [ "$ORPHANS" -eq 1 ]; then
+    if orphans_report; then exit 0; else exit 1; fi
+fi
+
 PRUNED=0
 PARTIAL=0
 SKIPPED=0
@@ -1199,7 +1428,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             continue
         fi
         if [ -z "$br" ]; then
-            log "  skip detached: $wt"
+            reclaim_detached "$wt" "${WT_HEADS[$i]}" "$locked"
             continue
         fi
         if [ "$locked" -eq 1 ]; then
