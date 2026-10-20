@@ -194,6 +194,14 @@ describe('setFixVersion', () => {
     expect(calls[0].body).toEqual({ update: { fixVersions: [{ remove: { name: 'v1.0.0' } }] } });
     expect(out).toBe('HIMMEL-374 fixVersion -v1.0.0');
   });
+
+  it('fails when the read-back carries no fixVersions list', async () => {
+    stubJira({
+      'PUT /issue/HIMMEL-374': '',
+      'GET /issue/HIMMEL-374?fields=fixVersions': { fields: {} },
+    });
+    await expect(setFixVersion('HIMMEL-374', 'remove', 'v1.0.0')).rejects.toThrow(/was not changed/);
+  });
 });
 
 describe('earliestUnreleased (HIMMEL-4489)', () => {

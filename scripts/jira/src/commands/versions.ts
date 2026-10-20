@@ -256,7 +256,10 @@ async function verifyVersionField(
 ): Promise<void> {
   const got = await request<{ fields?: Record<string, unknown> }>('GET', `/issue/${key}?fields=${field}`);
   const raw = got.fields?.[field];
-  const names = Array.isArray(raw) ? (raw as Array<{ name?: string }>).map((v) => v.name ?? '') : [];
+  if (!Array.isArray(raw)) {
+    throw new Error(`${label} ${key}: ${field} was not changed — the read-back returned no ${field} list to check.`);
+  }
+  const names = (raw as Array<{ name?: string }>).map((v) => v.name ?? '');
   if (names.includes(name) !== (op === 'add')) {
     throw new Error(
       `${label} ${key}: ${field} was not changed — requested ${op} '${name}' but the issue ` +
