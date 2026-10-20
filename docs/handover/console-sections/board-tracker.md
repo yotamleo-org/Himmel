@@ -71,7 +71,15 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     successor's FIRST publish to a carried `tracker:` URL must `Artifact read`
     it first, exactly as for `board:`. The vault-map cache refreshes
     incrementally (only keys that are missing or older than 7 days), so a render
-    is cheap.
+    is cheap. After each Artifact publish, `touch <handover bucket>/roadmap-tracker.html.published`:
+    a page newer than that stamp reads `tracker=REPUBLISH:<age>` (rendered, not yet
+    republished); without the stamp file the tick keeps reading plain `ok`.
+    The page reads the Jira mirror alone and groups tickets by the Jira Sector
+    field (the mirror's `sector:` frontmatter, written when `jira.sectorField` is
+    set in `~/.himmel/config.json`; `(no sector)` otherwise). It carries no plan
+    decisions, no "What users gained" and no plan-vs-Jira section. The parity line
+    names each differing key with both statuses and reads `lag` when the mirror
+    trails live Jira, `DRIFT` otherwise.
 
 - **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh --legs-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released
