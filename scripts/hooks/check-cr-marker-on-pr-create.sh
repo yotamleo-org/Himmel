@@ -416,6 +416,14 @@ if [ -z "$branch" ]; then
     exit 0
 fi
 
+# claude/backup-<ticket>-<slug> is a worktree backup ref: check-cr-before-push.sh
+# writes it no marker, so the marker lookup below cannot gate it. It is never a
+# PR (same shape as that hook's is_backup_branch).
+if [[ "$branch" =~ ^claude/backup-[0-9]+-[A-Za-z0-9._+-]+$ ]]; then
+    echo "${branch} is a worktree backup ref, never a PR head — it carries no review. Open the PR from the real feature branch." >&2
+    exit 2
+fi
+
 git_dir=$(git -C "$repo_dir" rev-parse --git-common-dir 2>/dev/null || true)
 if [ -z "$git_dir" ]; then
     warn "WARNING: could not resolve .git dir; fail-open"

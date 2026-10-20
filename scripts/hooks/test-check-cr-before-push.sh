@@ -2242,6 +2242,90 @@ else
     fail "skew: expected rc=0 and '2 commits ahead of origin/main'" "rc=$rc out: $out"
 fi
 
+# - worktree backup refs are exempt from the CR marker: a backup ref is never a
+# PR, its only job is to keep a commit safe before a worktree is removed. Only
+# the exact refs/heads/claude/backup-<ticket>-<slug> destination is exempt;
+# every other branch is still gated.
+echo "TEST: HIMMEL-6587 -- claude/backup-<ticket>-<slug> pushes write no CR marker; other branches still do"
+BK_ORIGIN="$TMP_ROOT/bk-origin.git"
+git init -q --bare -b main "$BK_ORIGIN"
+BK_P="$TMP_ROOT/bk-pusher"
+git init -q -b main "$BK_P"
+echo base > "$BK_P/README.txt"
+git -C "$BK_P" add -A
+git -C "$BK_P" -c user.email=a@t -c user.name=a commit -q -m base
+git -C "$BK_P" remote add origin "$BK_ORIGIN"
+git -C "$BK_P" push -q origin main
+git -C "$BK_P" checkout -qb bk-seed
+mkdir -p "$BK_P/scripts"
+echo 'echo hi' > "$BK_P/scripts/x.sh"
+git -C "$BK_P" add -A
+git -C "$BK_P" -c user.email=b@t -c user.name=b commit -q -m "wip: x"
+bk_tip=$(git -C "$BK_P" rev-parse HEAD)
+# bk_push BRANCH: push BRANCH (a local branch at bk_tip) -> sets rc/out/bk_marker.
+bk_push() {
+    local br="$1"
+    git -C "$BK_P" branch -qf "$br" "$bk_tip"
+    git -C "$BK_P" checkout -q "$br"
+    rc=0
+    out=$(cd "$BK_P" && bash "$HOOK" origin "$BK_ORIGIN" <<< "refs/heads/$br $bk_tip refs/heads/$br $Z40" 2>&1) || rc=$?
+    bk_marker="$BK_P/.git/cr-pending/$br"
+}
+bk_push claude/backup-6584-fix+himmel-1843-hook-matcher
+if [ "$rc" -eq 0 ] && [ ! -f "$bk_marker" ]; then
+    pass "backup: claude/backup-6584-<slug> with a code diff -> rc=0 and no CR marker written"
+else
+    fail "backup: expected rc=0 and no marker" "rc=$rc marker-exists=$([ -f "$bk_marker" ] && echo yes || echo no) out: $out"
+fi
+for bk_branch in claude/feature-x claude/backup-x claude/backup-6584 claude/backup-6584- claude/backup-abc-slug claude/backup-6584-a/b claude/backup2-6584-x feat/claude/backup-6584-x; do
+    bk_push "$bk_branch"
+    if [ "$rc" -eq 0 ] && [ -f "$bk_marker" ]; then
+        pass "backup: '$bk_branch' is not a backup ref -> still gated (marker written)"
+    else
+        fail "backup: '$bk_branch' must still be gated" "rc=$rc marker-exists=$([ -f "$bk_marker" ] && echo yes || echo no) out: $out"
+    fi
+done
+# the destination decides, not the local name: a backup-named local branch
+# pushed onto a feature destination is still gated.
+git -C "$BK_P" branch -qf claude/backup-6584-local "$bk_tip"
+git -C "$BK_P" branch -qf feat/bk-dest "$bk_tip"
+git -C "$BK_P" checkout -q feat/bk-dest
+rc=0
+out=$(cd "$BK_P" && bash "$HOOK" origin "$BK_ORIGIN" <<< "refs/heads/claude/backup-6584-local $bk_tip refs/heads/feat/bk-dest $Z40" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] || { [ "$rc" -eq 0 ] && [ -f "$BK_P/.git/cr-pending/feat/bk-dest" ]; }; then
+    pass "backup: a backup-named LOCAL branch pushed to a feature destination is still gated"
+else
+    fail "backup: destination decides the exemption, not the local name" "rc=$rc out: $out"
+fi
+# multi-ref push: the exemption is per ref, so a backup ref cannot carry a feature ref past the gate.
+git -C "$BK_P" branch -qf claude/backup-6584-multi "$bk_tip"
+git -C "$BK_P" branch -qf feat/bk-multi "$bk_tip"
+git -C "$BK_P" checkout -q feat/bk-multi
+rc=0
+out=$(cd "$BK_P" && bash "$HOOK" origin "$BK_ORIGIN" <<< "refs/heads/claude/backup-6584-multi $bk_tip refs/heads/claude/backup-6584-multi $Z40
+refs/heads/feat/bk-multi $bk_tip refs/heads/feat/bk-multi $Z40" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$BK_P/.git/cr-pending/feat/bk-multi" ] && [ ! -f "$BK_P/.git/cr-pending/claude/backup-6584-multi" ]; then
+    pass "backup: in a multi-ref push the backup ref is exempt and the feature ref is still marked"
+else
+    fail "backup: exemption must be per ref" "rc=$rc out: $out"
+fi
+# the foreign-ref refusal runs before the exemption, so it still fires on a backup ref.
+git -C "$BK_P" checkout -q main
+rc=0
+out=$(cd "$BK_P" && env -u PUSH_FOREIGN_REF_OK bash "$HOOK" origin "$BK_ORIGIN" <<< "refs/heads/claude/backup-6584-multi $bk_tip refs/heads/claude/backup-6584-multi $Z40" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && [[ "$out" == *"refusing"* ]]; then
+    pass "backup: the foreign-ref refusal still fires on a backup ref pushed from another checkout"
+else
+    fail "backup: foreign-ref refusal must still apply" "rc=$rc out: $out"
+fi
+# gitleaks is its own pre-commit hook; the carve-out lives only in this hook.
+gl_block=$(awk '/repo: https:\/\/github.com\/gitleaks\/gitleaks/{f=1;next} f&&/^  - repo:/{exit} f' "$SCRIPT_DIR/../../.pre-commit-config.yaml")
+if [[ "$gl_block" == *"id: gitleaks"* ]] && [[ "$gl_block" != *backup* ]] && [[ "$gl_block" != *exclude* ]]; then
+    pass "backup: the gitleaks hook is still configured and carries no backup exemption"
+else
+    fail "backup: gitleaks must keep scanning backup pushes" "block: $gl_block"
+fi
+
 # Summary ------------------------------------------------------------
 
 echo

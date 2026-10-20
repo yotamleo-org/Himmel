@@ -192,6 +192,33 @@ else
     fail "expected exit 0, got rc=$rc" "out: $out"
 fi
 
+# A claude/backup-<ticket>-<slug> ref carries no CR marker (the pre-push gate
+# exempts it), so the marker lookup can never protect it: refuse it as a PR head.
+echo "TEST: --head claude/backup-6584-x (no marker by design) -> BLOCK"
+rm -f "$(marker_for claude/backup-6584-x)"
+run_hook "gh pr create --head claude/backup-6584-x --base main"
+if [ "$rc" -eq 2 ] && [[ "$out" == *"backup"* ]]; then
+    pass "a worktree backup ref is refused as a PR head even with no marker"
+else
+    fail "expected exit 2 naming the backup ref, got rc=$rc" "out: $out"
+fi
+echo "TEST: --head owner:claude/backup-6584-x (fork form) -> BLOCK"
+run_hook "gh pr create --head somefork:claude/backup-6584-x --base main"
+if [ "$rc" -eq 2 ]; then
+    pass "fork-form backup head is refused too"
+else
+    fail "expected exit 2, got rc=$rc" "out: $out"
+fi
+echo "TEST: --head claude/feature-x and claude/backup-x (not the backup shape), no marker -> allow"
+run_hook "gh pr create --head claude/feature-x --base main"
+rc_feature=$rc
+run_hook "gh pr create --head claude/backup-x --base main"
+if [ "$rc_feature" -eq 0 ] && [ "$rc" -eq 0 ]; then
+    pass "only the exact backup shape is refused"
+else
+    fail "expected exit 0 for both, got feature=$rc_feature backup-x=$rc" "out: $out"
+fi
+
 # Test 4: no --head, marker present on project_dir branch + SHA match -> BLOCK
 # (fall-back path: branch resolved from project_dir, SHA-match refinement kept)
 echo "TEST: no --head, marker on current branch (SHA match) -> BLOCK (fall-back not regressed)"
