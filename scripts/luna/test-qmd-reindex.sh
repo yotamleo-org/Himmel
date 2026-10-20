@@ -470,6 +470,7 @@ holder_pid=$!
 sleep 1
 echo -1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+pkill -P "$holder_pid" 2>/dev/null || true
 kill "$holder_pid" 2>/dev/null || true
 wait "$holder_pid" 2>/dev/null || true
 rm -f "$HOME/.cache/qmd/index.sqlite"
