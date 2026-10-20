@@ -184,7 +184,7 @@ fi
 
 # --- 3f. RED-shaped redaction control: a github_pat_ token was uncovered
 # by the gh[pousr]_-only pattern set. ---
-SECRET4="github""_pat_11$(rep A 20)_$(rep A 74)"
+SECRET4="github""_pat_11$(rep A 20)_$(rep B 74)"
 LOG2F="$WORKDIR/c2f.jsonl"
 run_hook "$(payload s2f /tmp/repo Bash 'ls' "denied because $SECRET4 was found")" "$LOG2F" >/dev/null
 if grep -qF "$SECRET4" "$LOG2F" 2>/dev/null; then
@@ -384,7 +384,7 @@ detect() {
             TELEGRAM_ACCESS_PATH="$WORKDIR/access.json" bash "$DETECTOR" 2>/dev/null
 }
 if [ -z "$(detect "$0")" ]; then pass "the detector finds no token shape in this file"; else fail "the detector finds no token shape in this file"; fi
-printf 'X=%s\n' "gh""p_$(printf 'F%.0s' $(seq 1 36))" >"$WORKDIR/live.txt"
+printf 'X=%s\n' "gh""p_$(rep F 36)" >"$WORKDIR/live.txt"
 if detect "$WORKDIR/live.txt" | grep -q 'TOKEN-IN-OUTPUT'; then pass "a run-time built token still alerts"; else fail "a run-time built token still alerts"; fi
 
 echo "----"
