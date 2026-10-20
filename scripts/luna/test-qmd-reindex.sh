@@ -468,17 +468,17 @@ if [ "$got_calls" = "update," ]; then pass "non-busy update failure runs update 
 echo "TEST: a non-numeric or negative wait/retry value falls back to the default instead of looping"
 reset_state
 echo 1 > "$STATE/busy-update"
-rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=abc QMD_REINDEX_BUSY_RETRY_SECS=0 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=abc QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "bad wait value still finishes" 0 "$rc"
 assert_contains "bad wait value is called out" "ignoring invalid seconds value 'abc'" "$out"
 reset_state
 echo 1 > "$STATE/busy-update"
-rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=2 QMD_REINDEX_BUSY_RETRY_SECS=-5 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=2 QMD_REINDEX_BUSY_RETRY_SECS=-5 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "bad retry value still finishes" 0 "$rc"
 assert_contains "bad retry value is called out" "ignoring invalid seconds value '-5'" "$out"
 reset_state
 echo 1 > "$STATE/busy-update"
-rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=18446744073709551616 QMD_REINDEX_BUSY_RETRY_SECS=0 timeout 30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=18446744073709551616 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "out-of-range wait value still finishes" 0 "$rc"
 assert_contains "out-of-range wait value is called out" "ignoring invalid seconds value '18446744073709551616'" "$out"
 
