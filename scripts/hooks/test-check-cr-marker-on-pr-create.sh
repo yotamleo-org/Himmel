@@ -240,6 +240,18 @@ for spelling in "--title \\\"x -Hfoo\\\"" "--title \\\"-Hotfix release\\\"" "--b
     fi
 done
 
+# Test 2h: the bare `-H <value>` is as authoritative as --head, so a later dash
+# word must not discard it either, nor an unmarked earlier --head hide it.
+for spelling in "-H feat/X --base main --title \\\"x -Hfoo\\\"" "-H feat/X --base main -t -Hfoo" "-H feat/X --base main --body \\\"see -Hfoo\\\"" "-H feat/X --base main --title \\\"diff against -HEAD~1\\\"" "--head other -H feat/X --base main --title \\\"x -Hfoo\\\""; do
+    echo "TEST: gh pr create $spelling, cwd on unmarked main -> BLOCK"
+    run_hook "gh pr create $spelling"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2): $spelling kept the bare -H head"
+    else
+        fail "expected exit 2 on $spelling, got rc=$rc" "out: $out"
+    fi
+done
+
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
 echo "TEST: --head feat/X, no marker -> allow"
 rm -f "$(marker_for feat/X)"

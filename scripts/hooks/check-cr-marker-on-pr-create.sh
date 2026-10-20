@@ -368,6 +368,8 @@ while [ "$#" -gt 0 ]; do
         # falls back to the last long --head, else the cwd branch, so it is
         # never laxer than before short heads were read.
         -H*|-[!-]*H*)
+            # A bare `-H <value>` is authoritative, like --head.
+            if [ "$1" = "-H" ] && [ "$#" -ge 2 ]; then long_head="$2"; fi
             _short_rest="${1#-}"
             while [ -n "$_short_rest" ]; do
                 _short_ch="${_short_rest%"${_short_rest#?}"}"
