@@ -39,6 +39,17 @@
 #                               (default 3) in a row, then it wakes (the streak shows
 #                               in the heartbeat as pred_hangs=<n>); any other
 #                               refusal wakes once (CONSOLE_WAIT_CLOSE = seam).
+#   WAKE leg-event <line> out=<file>  with --doc and --legs-from (the script relay,
+#                               R0): a leg whose tails= is WRAPPED or acts= MERGED is
+#                               wrapped by `timeout 90 leg-event.sh --doc --fleet` on
+#                               a line built from its newest such bullet; HANDLED is a
+#                               digest line, no wake; a lock-held / not-yet-WRAPPED /
+#                               subtree-alive refusal retries next sample; any other
+#                               ESCALATE or rc wakes once per bullet, <line> being
+#                               leg-event's first output line, the tick line after it
+#                               (its key is saved) (CONSOLE_WAIT_LEG_EVENT = seam). Every WAKE block ends with `absorbed since last
+#                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` when
+#                               the relay absorbed anything, and the digest clears.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <console doc>
 #   <tracker output>            (the successor's waiter): every inherited leg quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -146,6 +157,11 @@
 #                        Written atomically: temp file in the same dir, then
 #                        `mv`, so a kill mid-write never leaves it torn.
 #   <inbox>.wait.lock    the one-waiter flock (the file stays; the lock does not).
+#   <inbox>.wait.digest  the relay's absorbed wraps since the last wake, one
+#                        `<label> <wrap-merged|close-wrapped> <pr|->` line each.
+#   <inbox>.wait.r0      the bullets the relay already handled or woke for
+#                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
+#                        leg-event's last output for that leg, tokens scrubbed.
 #   <inbox>.handover     handover mode: while it is fresh (younger
 #                        than CONSOLE_WAIT_HANDOVER_MIN, default 60) the waiter
 #                        skips tick/bank/page sampling and wakes only on Telegram.
@@ -225,7 +241,17 @@ heartbeat() { # <state> [exit reason]
     [ -n "${2:-}" ] && line="$line exit=$2"
     printf '%s\n' "$line" > "$hb_file.tmp" 2>/dev/null && mv -f "$hb_file.tmp" "$hb_file" 2>/dev/null
 }
-trap 'heartbeat exited "$exit_reason"' EXIT
+# digest_flush: every WAKE block ends with what the relay absorbed since the last
+# wake (labels and PR numbers only), then the digest starts over.
+digest_file="$inbox.wait.digest"
+digest_flush() {
+    case "$exit_reason" in wake-*) ;; *) return 0 ;; esac
+    [ -s "$digest_file" ] || return 0
+    awk '{ n++; l = l (n > 1 ? "," : "") $1; if ($3 != "-") { m++; p = p (m > 1 ? "," : "") "#" $3 } }
+         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)\n", n, l, m, p }' "$digest_file"
+    : > "$digest_file"
+}
+trap 'digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
@@ -639,6 +665,72 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     return 1
 }
 
+# r0_relay (the script relay, R0): with --doc and --legs-from, a leg whose tails= is
+# WRAPPED or whose acts= is MERGED#<n> is wrapped here instead of waking the console:
+# leg-event.sh runs once on a line built from the leg doc's newest bullet of that
+# marker (labelled with N<k>, else the doc stem; a WRAPPED is preferred, its residual
+# check runs). HANDLED appends `<label> <what> <pr|->` to the digest and sets
+# r0_handled; rc 10 with a `-failed rc=3/4/6/7` that is not `step pr-state` (lock held,
+# tail not WRAPPED, subtree or subagent alive) is retried next sample; anything else
+# prints `WAKE leg-event <first line> out=<file>` and returns 0. HANDLED and WAKE record
+# `<label> <marker> <cksum>` in $r0_file, so one bullet is never run or woken twice.
+# R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
+# line it passes and the output it keeps.
+r0_file="$inbox.wait.r0"
+leg_event_cmd="${CONSOLE_WAIT_LEG_EVENT:-$HERE/leg-event.sh}"
+r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
+r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
+    local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "
+    r0_handled=""
+    [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
+    cands="$( { field tails "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):WRAPPED$/\1 WRAPPED/p'
+                field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } )"
+    while read -r label marker; do
+        [ -n "$label" ] || continue
+        case "$seen" in *" $label "*) continue ;; esac
+        seen="$seen$label "
+        ldoc="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
+        [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
+        bullet="$(grep -E "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?$marker([^A-Za-z]|$)" "$ldoc" | tail -n 1)"
+        [ -n "$bullet" ] || continue
+        sum="$label $marker $(printf '%s\n' "$bullet" | cksum | cut -d' ' -f1)"
+        grep -qxF "$sum" "$r0_file" 2>/dev/null && continue
+        line="$(printf '%s\n' "$bullet" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?//; s/^\*\*//' | r0_scrub)"
+        if [[ $label =~ ^N[0-9]+$ ]]; then
+            line="$label $line"
+        else
+            stem="${ldoc##*/}"; line="$line ${stem%.md}"
+        fi
+        outf="$inbox.wait.le-$label"
+        out="$(printf '%s\n' "$line" | timeout -k 5 90 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        out="$(printf '%s\n' "$out" | r0_scrub)"
+        printf '%s\n' "$out" > "$outf" 2>/dev/null
+        if [ "$rc" -eq 0 ]; then
+            printf '%s\n' "$sum" >> "$r0_file"
+            r0_handled=1
+            what="$(printf '%s\n' "$out" | sed -n 's/^HANDLED \([a-z-]*\).*/\1/p' | head -n 1)"
+            [ "$what" = noop ] && continue
+            pr=""
+            if [ "$what" != close-wrapped ]; then
+                pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)"
+                [ -n "$pr" ] || pr="$(grep -oE '^- .*(READY|PR) #?[0-9]+' "$ldoc" | tail -n 1 | grep -oE '[0-9]+$')"
+            fi
+            printf '%s %s %s\n' "$label" "${what:-handled}" "${pr:--}" >> "$digest_file"
+            continue
+        fi
+        case "$out" in
+            *"step pr-state"*) ;;
+            *-failed\ rc=[3467]\ *) continue ;;
+        esac
+        printf '%s\n' "$sum" >> "$r0_file"
+        printf 'WAKE leg-event %s out=%s\n' "$(printf '%s\n' "$out" | head -n 1)" "$outf"
+        return 0
+    done <<EOF
+$cands
+EOF
+    return 1
+}
+
 saved=""
 if [ -f "$key_file" ] && [ "$(sed -n 1p "$key_file")" = "$args_hash" ]; then
     saved="$(sed -n 2p "$key_file")"
@@ -755,6 +847,11 @@ while :; do
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
+            # the leg-event wake carries the tick line and saves its key, so a re-arm
+            # does not wake again on the same tails=/acts= move
+            if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-leg-event'; exit 0; fi
+            # a wrap the relay absorbed moved tails=/acts=: this sample is the new baseline
+            [ -z "$r0_handled" ] || { saved=""; pending=""; }
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then
