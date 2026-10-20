@@ -513,7 +513,8 @@ cat > "$CHECKOUT_DIR/marketplace/.claude-plugin/marketplace.json" <<'EOF'
     {"name": "find-docs", "source": "./plugins/find-docs"},
     {"name": "from-base", "source": "./plugins/from-base"},
     {"name": "from-floor", "source": "./plugins/from-floor"},
-    {"name": "in-no-profile", "source": "./plugins/in-no-profile"}
+    {"name": "in-no-profile", "source": "./plugins/in-no-profile"},
+    {"name": "user-disabled", "source": "./plugins/user-disabled"}
   ]
 }
 EOF
@@ -523,13 +524,13 @@ cat > "$CHECKOUT_DIR/scripts/lanes/plugin-profiles.json" <<'EOF'
   "base": ["from-base@himmel"],
   "profiles": {
     "operator": null,
-    "user": {"enable": ["find-docs@himmel", "ghost@nowhere"]}
+    "user": {"enable": ["find-docs@himmel", "ghost@nowhere", "user-disabled@himmel"]}
   }
 }
 EOF
 fake_home_prof="$TMP/fake-home-profile"
 mkdir -p "$fake_home_prof/.claude/plugins"
-printf '%s\n' '{"enabledPlugins":{}}' > "$fake_home_prof/.claude/settings.json"
+printf '%s\n' '{"enabledPlugins":{"user-disabled@himmel":false}}' > "$fake_home_prof/.claude/settings.json"
 printf '%s\n' '{"version":2,"plugins":{}}' > "$fake_home_prof/.claude/plugins/installed_plugins.json"
 log_prof="$TMP/claude-invocations-profile.log"
 : > "$log_prof"
@@ -548,6 +549,19 @@ assert_contains "installs a base-enabled plugin" "plugin install from-base@himme
 assert_contains "installs a floor plugin" "plugin install from-floor@himmel" "$log_prof_content"
 assert_not_contains "never installs a plugin no profile or setting enables" "plugin install in-no-profile@himmel" "$log_prof_content"
 assert_not_contains "never installs a non-@himmel profile entry" "plugin install ghost@nowhere" "$log_prof_content"
+assert_not_contains "a profile never overrides an explicit false in settings" "plugin install user-disabled@himmel" "$log_prof_content"
+
+# A registry that does not parse adds nothing, and the settings-enabled specs
+# still install.
+printf '%s\n' '{not json' > "$CHECKOUT_DIR/scripts/lanes/plugin-profiles.json"
+printf '%s\n' '{"enabledPlugins":{"in-no-profile@himmel":true}}' > "$fake_home_prof/.claude/settings.json"
+: > "$log_prof"
+out_prof=$(USERPROFILE='' HOME="$fake_home_prof" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_prof" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_prof/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
+log_prof_content="$(cat "$log_prof")"
+assert_contains "a corrupt profile registry still installs the settings-enabled plugin" "plugin install in-no-profile@himmel" "$log_prof_content"
+assert_not_contains "a corrupt profile registry adds no profile plugin" "plugin install find-docs@himmel" "$log_prof_content"
 
 echo "Test: one failing plugin update is reported and does not stop the others (HIMMEL-3563)"
 make_mock_clone

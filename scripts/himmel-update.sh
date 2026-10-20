@@ -2455,16 +2455,19 @@ install_missing_himmel_plugins() {
     [ -n "$mp_name" ] || mp_name="himmel"
     # A shipped profile's plugins are injected per launch (--settings), never
     # written to settings.json, so they count as enabled too: base + floor +
-    # every profile's enable list. A missing registry adds none.
+    # every profile's enable list. A missing or unreadable registry adds none,
+    # and a spec the user settings name explicitly (true or false) is never
+    # overridden by a profile.
     local profiles="$ROOT/scripts/lanes/plugin-profiles.json"
-    [ -f "$profiles" ] || profiles=/dev/null
+    jq -e . "$profiles" >/dev/null 2>&1 || profiles=/dev/null
     specs=$(jq -r --arg mp "$mp_name" --slurpfile s "$settings" --slurpfile i "$installed" --slurpfile p "$profiles" '
         ($i[0].plugins | if type == "object" then . else empty end) as $have
         | ($s[0].enabledPlugins // {}) as $on
-        | ((($p[0].base // []) + ($p[0].floor // []) + [($p[0].profiles // {})[]? | (.enable // [])[]])
-            | map({key: ., value: true}) | from_entries) as $prof
+        | (try ((($p[0].base // []) + ($p[0].floor // []) + [($p[0].profiles // {})[]? | (.enable // [])[]])
+            | map({key: ., value: true}) | from_entries) catch {}) as $prof
         | .plugins[]?.name | (. + "@" + $mp) as $spec
-        | select(($on[$spec] == true or $prof[$spec] == true) and ($have | has($spec) | not))
+        | select((if ($on | has($spec)) then $on[$spec] == true else $prof[$spec] == true end)
+            and ($have | has($spec) | not))
         | $spec' "$manifest" 2>/dev/null | tr -d '\r' || true)
     if [ -z "$specs" ]; then
         echo "    none."
