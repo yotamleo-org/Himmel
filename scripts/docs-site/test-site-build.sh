@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # scripts/docs-site/test-site-build.sh — docs-site go/no-go: builds the docs site from
 # docs/ as-is and asserts the four criteria of the docs-site plan.
 #   1 titles come from the H1, no duplicate H1, no docs/ file edited
