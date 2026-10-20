@@ -217,6 +217,28 @@ fixture_env() {
   unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT
 }
 
+# graphify and the built jira CLI are host tools adopt neither writes nor removes, and a CI runner
+# lacks both; codex-cli "never provisioned" is the fixture's missing codex cache. Every other red stays.
+status_unexpected_red() { # <status output>: the red lines that are not graphify
+  grep -E '(^|[[:space:]])red([[:space:]]|$)' "$1" | grep -vE '(^|[[:space:]])red[[:space:]]+graphify([[:space:]]|$)'
+}
+doctor_unexpected_item() { # <doctor output>: the bullet items that are not codex-cli or the jira dist build
+  grep -E '^ +· ' "$1" | grep -vE '^ +· (degraded/codex-cli|red/jira-cli-dist-build)([: ]|$)'
+}
+
+# a fake red must still fail the filters while the host-tool reds pass them
+filter_selftest() {
+  local f="$TMP/filter.out"
+  printf '  red  graphify  not found\n' > "$f"
+  [ -z "$(status_unexpected_red "$f")" ] || { echo "FAIL: filter self-test: a graphify red must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '  red  graphify  not found\n  red  foo  broken\n' > "$f"
+  [ -n "$(status_unexpected_red "$f")" ] || { echo "FAIL: filter self-test: a fake red foo passed the status filter"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '   · red/jira-cli-dist-build: x\n   · degraded/codex-cli: y\n' > "$f"
+  [ -z "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: the host-tool doctor items must be tolerated"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+  printf '   · red/jira-cli-dist-build: x\n   · red/foo: z\n' > "$f"
+  [ -n "$(doctor_unexpected_item "$f")" ] || { echo "FAIL: filter self-test: a fake red/foo passed the doctor filter"; return 1; }  # vacuous-path-ok: parent shell, real PATH
+}
+
 check_green() { # <scope> <label>
   local scope="$1" label="$2" cwd="$R" out rc
   mkdir -p "$HOME/.claude/himmel"
@@ -226,12 +248,11 @@ check_green() { # <scope> <label>
   out="$X/status.out"
   ( cd "$cwd" && env PATH="$X/bin:$ORIG_PATH" HIMMELCTL_REPO_ROOT="$R" HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" "$REALNODE" "$R/scripts/himmelctl/bin.js" status ) > "$out" 2>&1
   rc=$?
-  if [ "$rc" -eq 0 ] && ! grep -qE '(^|[[:space:]])red([[:space:]]|$)' "$out"; then row ok "$label: status green"
+  if [ "$rc" -eq 0 ] && [ -z "$(status_unexpected_red "$out")" ]; then row ok "$label: status green"  # vacuous-path-ok: grep is linked into the fixture bin dir
   else row bad "$label: status not green (rc=$rc): $(grep -E 'red' "$out" | head -3 | tr '\n' ';')"; fi
   out="$X/doctor.out"
   ( cd "$cwd" && env PATH="$X/bin:$ORIG_PATH" HIMMELCTL_REPO_ROOT="$R" HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" bash "$R/scripts/himmel-doctor.sh" --no-color --only C1,C6,C13,C15,C16 ) > "$out" 2>&1
-  # codex-cli "never provisioned" is the fixture's missing codex cache, not an adopt result
-  if grep -q 'Summary: 0 FAIL' "$out" && ! grep -E '^ +· ' "$out" | grep -vq 'degraded/codex-cli'; then row ok "$label: doctor green"
+  if grep -q 'Summary: 0 FAIL' "$out" && [ -z "$(doctor_unexpected_item "$out")" ]; then row ok "$label: doctor green"  # vacuous-path-ok: grep is linked into the fixture bin dir
   else row bad "$label: doctor not green: $(grep -E 'FAIL|·' "$out" | cut -c1-200 | head -3 | tr '\n' ';')"; fi
 }
 
@@ -348,6 +369,7 @@ done
 wait
 
 PASS=0; FAILED=0
+if filter_selftest; then echo "ok    filter-selftest"; else FAILED=$((FAILED + 1)); fi
 for entry in "${SEQS[@]}"; do
   IFS='|' read -r id xf verbs <<< "$entry"
   [ "$id" = control-broken-restore ] && [ "$BREAK" -ne 1 ] && continue
