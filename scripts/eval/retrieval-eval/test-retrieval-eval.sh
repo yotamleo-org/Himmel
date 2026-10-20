@@ -243,8 +243,12 @@ s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.uti
 rows = [json.loads(l) for l in open(sys.argv[2]) if l.strip()]
 held = [r for r in rows if r.get("split") == "heldout"]
 plain = [r for r in held if not m.idents(r["q"]) and not re.search(r"[/.]", r["q"])]
-quoted = [r["id"] for r in held if subprocess.run(["git", "-C", sys.argv[3], "grep", "-q", "-F", "-e", r["q"], "--", ".", ":(exclude)scripts/eval/retrieval-eval/"]).returncode == 0]
-print("ok" if len(held) >= 20 and 2 * len(plain) >= len(held) and not quoted else "held=%d plain=%d quoted=%s" % (len(held), len(plain), quoted))' "$EV" "$HERE/questions.jsonl" "$REPO_ROOT")"
+def grep_rc(text):
+    return subprocess.run(["git", "-C", sys.argv[3], "grep", "-q", "-F", "-e", text, "--", ".", ":(exclude)scripts/eval/retrieval-eval/"]).returncode
+rcs = {r["id"]: grep_rc(r["q"]) for r in held}
+quoted = [i for i, rc in rcs.items() if rc != 1]
+control = grep_rc("#!/usr/bin/env bash")
+print("ok" if control == 0 and len(held) >= 20 and 2 * len(plain) >= len(held) and not quoted else "control=%d held=%d plain=%d quoted_or_error=%s" % (control, len(held), len(plain), quoted))' "$EV" "$HERE/questions.jsonl" "$REPO_ROOT")"
 eq "shipped set widens golds: graded rows exist in both slices" "True True" "$(py -c 'import json,sys
 rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 g = lambda sp: any(r.get("gold1") for r in rows if r.get("split", "insample") == sp)
