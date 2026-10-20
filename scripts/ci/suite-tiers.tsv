@@ -98,6 +98,7 @@ scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
 scripts/ci/test-check-cr-terminology.sh	pr	trust-path
 scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
+scripts/ci/test-check-hardcoded-env-values.sh	pr	trust-path
 scripts/ci/test-check-hooks-on-pr-range.sh	pr	trust-path
 scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
 scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
@@ -182,6 +183,7 @@ scripts/copilot/test-dispatch-copilot.sh	local	behaviour suite, 0 catches in the
 scripts/cr/test-advisory-rows.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-anchor-handoff.sh	pr	trust-path
 scripts/cr/test-artifact-critic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-class-recurrence.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/cr/test-claude-floor-review.sh	pr	trust-path
 scripts/cr/test-clear-cr-marker.sh	pr	trust-path
 scripts/cr/test-coderabbit-yaml-carveouts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -212,6 +214,7 @@ scripts/cr/test-known-findings.sh	pr	trust-path
 scripts/cr/test-lane-classify.sh	pr	trust-path
 scripts/cr/test-ledger-append.sh	pr	static-gate
 scripts/cr/test-live-gate-e2e.sh	pr	trust-path
+scripts/cr/test-mark-deferred-escape.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/cr/test-orphan-check.sh	pr	trust-path
 scripts/cr/test-panel-first-pass.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-context.sh	pr	trust-path
@@ -223,6 +226,7 @@ scripts/cr/test-pr-check-run.sh	local	behaviour suite, 0 catches in the 400-PR a
 scripts/cr/test-pr-check-step0.sh	pr	trust-path
 scripts/cr/test-residue-scan.sh	pr	trust-path
 scripts/cr/test-ship-tail-model-free.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-standards-cadence.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/cr/test-triviality-gate.sh	pr	trust-path
 scripts/cr/test-write-verdicts.sh	pr	trust-path
 scripts/docs-site/test-serve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -230,6 +234,7 @@ scripts/docs-site/test-site-build.sh	local	behaviour suite, 0 catches in the 400
 scripts/docs/test-adoption-trail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-check-doc-terms.sh	pr	static-gate
 scripts/docs/test-check-llms-links.sh	pr	static-gate
+scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -259,6 +264,7 @@ scripts/eval/test-ci-metrics.sh	local	behaviour suite, 0 catches in the 400-PR a
 scripts/eval/test-console-load-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-context-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/eval/test-harness-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-judge-cache-row.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-session-retro.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -281,6 +287,7 @@ scripts/graphify/test-harden-graph.sh	pr	guard
 scripts/graphify/test-leg-graph-rationale.sh	pr	guard
 scripts/graphify/test-leg-graph.sh	pr	guard
 scripts/graphify/test-no-windows-indexed.sh	pr	guard
+scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-scratch.sh	pr	guard
@@ -313,7 +320,9 @@ scripts/handover/console-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/console-kit/test-console-budget.sh	pr	static-gate
 scripts/handover/console-kit/test-console-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-console-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
+scripts/handover/console-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/console-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-denied-launch-alert.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/console-kit/test-fleet-manifest.sh	pr	static-gate
 scripts/handover/console-kit/test-fleet.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-gen-briefs.sh	pr	catch:2887
@@ -348,6 +357,7 @@ scripts/handover/console-kit/test-relay-batch.sh	local	behaviour suite, 0 catche
 scripts/handover/console-kit/test-run-suite.sh	pr	trust-path
 scripts/handover/console-kit/test-shepherd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/console-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/console-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/console-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -356,10 +366,12 @@ scripts/handover/console-kit/test-tick.sh	local	behaviour suite, 0 catches in th
 scripts/handover/console-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-vault-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-verdict-go.sh	pr	trust-path
+scripts/handover/console-kit/test-version-status-audit.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/console-kit/test-versionless-done.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-vm-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-wrap-merged.sh	pr	trust-path
 scripts/handover/console-kit/test-write-verdict.sh	pr	trust-path
+scripts/handover/console/test-console-handoff-roundtrip.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/console/test-console.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-append-cr-bugs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-append-cr-findings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -506,7 +518,10 @@ scripts/hooks/test-block-backend-tier.sh	pr	guard
 scripts/hooks/test-block-bank-lift-writes.sh	pr	guard
 scripts/hooks/test-block-bare-qmd-query.sh	pr	guard
 scripts/hooks/test-block-chokepoint-env-prefix.sh	pr	guard
-scripts/hooks/test-block-destructive-commands.sh	pr	guard
+scripts/hooks/test-block-destructive-commands-a.sh	pr	guard
+scripts/hooks/test-block-destructive-commands-b.sh	pr	guard
+scripts/hooks/test-block-destructive-commands-c.sh	pr	guard
+scripts/hooks/test-block-destructive-commands-d.sh	pr	guard
 scripts/hooks/test-block-docker-privesc.sh	pr	guard
 scripts/hooks/test-block-edit-live-settings.sh	pr	guard
 scripts/hooks/test-block-edit-on-main.sh	pr	guard
@@ -608,6 +623,7 @@ scripts/hooks/test-guard-empty-expansion.sh	pr	guard
 scripts/hooks/test-guard-identical-denied-retry.sh	pr	guard
 scripts/hooks/test-guard-implementor-dispatch.sh	pr	guard
 scripts/hooks/test-guard-judge-writes.sh	pr	guard
+scripts/hooks/test-guard-leg-cache-ttl.sh	pr	guard
 scripts/hooks/test-guard-leg-context-handoff.sh	pr	guard
 scripts/hooks/test-guard-leg-wakeup.sh	pr	guard
 scripts/hooks/test-guard-memory-capture.sh	pr	guard
@@ -694,6 +710,7 @@ scripts/lib/test-bank-preflight-dotenv-root.sh	pr	trust-path
 scripts/lib/test-bank-preflight-fleet.sh	pr	trust-path
 scripts/lib/test-bank-preflight-openrouter.sh	pr	trust-path
 scripts/lib/test-bank-preflight.sh	pr	trust-path
+scripts/lib/test-bash-ast.sh	pr	trust-path
 scripts/lib/test-branch-shipped.sh	pr	trust-path
 scripts/lib/test-cadence-format.sh	pr	trust-path
 scripts/lib/test-canon-path.sh	pr	trust-path
@@ -714,6 +731,7 @@ scripts/lib/test-cr-high-risk-diff.sh	pr	trust-path
 scripts/lib/test-cr-ledger-evidence.sh	pr	static-gate
 scripts/lib/test-cr-merge-gate.sh	pr	trust-path
 scripts/lib/test-dedupe-path.sh	pr	trust-path
+scripts/lib/test-deprecated-forwarder.sh	pr	trust-path
 scripts/lib/test-detach.sh	pr	trust-path
 scripts/lib/test-detect-hook-dup.sh	pr	trust-path
 scripts/lib/test-doc-freshness.sh	pr	trust-path
@@ -721,6 +739,7 @@ scripts/lib/test-doc-guard-map.sh	pr	trust-path
 scripts/lib/test-ensure-workspace-trust.sh	pr	guard
 scripts/lib/test-env-alias.sh	pr	trust-path
 scripts/lib/test-env-append.sh	pr	trust-path
+scripts/lib/test-env-value.sh	pr	trust-path
 scripts/lib/test-fix-qmd-stub.sh	pr	trust-path
 scripts/lib/test-fixture-trap-clean.sh	pr	trust-path
 scripts/lib/test-fleet-reservation-key.sh	pr	trust-path
@@ -784,6 +803,7 @@ scripts/lib/test-session-note.sh	pr	trust-path
 scripts/lib/test-setup-wire.sh	pr	trust-path
 scripts/lib/test-sha256-bin.sh	pr	trust-path
 scripts/lib/test-shared-branch-lock.sh	pr	trust-path
+scripts/lib/test-status-marker.sh	pr	trust-path
 scripts/lib/test-suite-semaphore.sh	pr	trust-path
 scripts/lib/test-telemetry.sh	pr	trust-path
 scripts/lib/test-timeout-bin.sh	pr	trust-path
