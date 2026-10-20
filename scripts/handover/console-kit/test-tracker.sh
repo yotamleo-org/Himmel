@@ -898,5 +898,146 @@ ahtml="$(cat "$W/split-all.html" 2>/dev/null)"
 contains 'a render with no split outputs keeps the Done tickets (HIMMEL-6514)' "$ahtml" 'splitmark done in target'
 contains 'a render with no split outputs keeps the future tickets (HIMMEL-6514)' "$ahtml" 'splitmark open in future'
 
+# --- blocker scan: only a ticket's own dependency line counts, from the description alone.
+# bsfile <n> <statusCategory> <status> <title> <blocked_by json> <description lines...>
+bs="$W/bs"
+mkdir -p "$bs"
+bsfile() {
+    local n="$1" cat="$2" st="$3" title="$4" blk="$5"
+    shift 5
+    printf '%s\n' '---' "key: \"HIMMEL-$n\"" "statusCategory: \"$cat\"" "status: \"$st\"" 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        'links:' '  blocks: []' "  blocked_by: $blk" '---' "# HIMMEL-$n: $title" '' '## Description' '' "$@" '' '## Comments' '' '_(none)_' \
+        > "$bs/HIMMEL-$n.md"
+}
+# 1481 and 6577: the real description sentences that produced false blockers.
+bsfile 1481 'To Do' 'To Do' 'real 1481 prose' '[]' \
+    'The /cr-tune feed (D3b-3) is HIMMEL-6553, blocked by HIMMEL-6378. The D19 kill-criterion (repair share flat after four weeks) stays an operator judgement and is recorded here, not built.'
+bsfile 6577 'To Do' 'To Do' 'real 6577 quoted command' '[]' \
+    'Two of our readers disagree on one Blocks link. Link 19697 was created by jira link HIMMEL-6494 --blocked-by HIMMEL-5556. jira links HIMMEL-6494 prints "HIMMEL-6494 is blocked by HIMMEL-5556".'
+bsfile 202 'To Do' 'To Do' 'negated mentions' '[]' 'Not blocked by HIMMEL-300.' 'No longer blocked by HIMMEL-301.' 'It was blocked by HIMMEL-302.'
+bsfile 203 'To Do' 'To Do' 'odd spacing' '[]' 'Depends  on HIMMEL-303' 'BLOCKED-BY:HIMMEL-304'
+bsfile 204 'To Do' 'To Do' 'blocked by HIMMEL-305 in the title' '[]' 'Nothing here.'
+bsfile 205 'To Do' 'To Do' 'wont blocker' '[]' 'Blocked by: HIMMEL-306'
+bsfile 306 'Done' 'Wont Do' 'closed as wont' '[]' 'x'
+bsfile 207 'To Do' 'To Do' 'links line' '[]' 'Links: relates to HIMMEL-310, blocked by HIMMEL-311'
+bsfile 208 'To Do' 'To Do' 'yaml list' '' 'x'
+awk '$0 == "  blocked_by: " { print "  blocked_by:"; print "    - \"HIMMEL-312\""; print "    - \"HIMMEL-313\""; next } { print }' \
+    "$bs/HIMMEL-208.md" > "$bs/yaml.tmp" && mv "$bs/yaml.tmp" "$bs/HIMMEL-208.md"
+# 6535 and 6538: the link says 6538 blocks 6535, 6538's own text says it starts after 6535.
+bsfile 6535 'To Do' 'To Do' 'real 6535 link' '["HIMMEL-6538"]' 'Make stuck work structural.'
+bsfile 6538 'To Do' 'To Do' 'real 6538 text' '[]' \
+    '- Depends on (merge order, plan §10(b)): for console-wait.sh the order is PR 3219 (HIMMEL-6478) → HIMMEL-6535 phase B → this → HIMMEL-6461 → slice 3. For waiter.md it is this → HIMMEL-6499 → slice 3. Start after HIMMEL-6478 and HIMMEL-6535 merge.'
+bsout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bs" 2>&1)"$'\n'
+contains 'prose about another ticket is no blocker (HIMMEL-6749, 1481)' "$bsout" 'HIMMEL-1481 [To Do] real 1481 prose'$'\n'
+contains 'a quoted command is no blocker (HIMMEL-6749, 6577)' "$bsout" 'HIMMEL-6577 [To Do] real 6577 quoted command'$'\n'
+contains 'a negated or past-tense mention is no blocker (HIMMEL-6561)' "$bsout" 'HIMMEL-202 [To Do] negated mentions'$'\n'
+contains 'odd spacing and BLOCKED-BY:KEY are read (HIMMEL-6561)' "$bsout" 'HIMMEL-203 [To Do] odd spacing {blocked-by: HIMMEL-303 open, HIMMEL-304 open}'
+contains 'the title is not scanned (HIMMEL-6561)' "$bsout" 'HIMMEL-204 [To Do] blocked by HIMMEL-305 in the title'$'\n'
+contains 'a blocker closed as wont reads wont (HIMMEL-6561)' "$bsout" 'HIMMEL-205 [To Do] wont blocker {blocked-by: HIMMEL-306 wont}'
+contains 'a Links: line names its blocked-by key only (HIMMEL-6749)' "$bsout" 'HIMMEL-207 [To Do] links line {blocked-by: HIMMEL-311 open}'
+contains 'a multi-line blocked_by YAML list is read (HIMMEL-6561)' "$bsout" 'HIMMEL-208 [To Do] yaml list {blocked-by: HIMMEL-312 open, HIMMEL-313 open}'
+contains 'a link the blocker text contradicts reads direction? (HIMMEL-6749)' "$bsout" 'HIMMEL-6535 [To Do] real 6535 link {blocked-by: HIMMEL-6538 direction?}'
+
+# --- one tracker page per version (--version): the FOCUS design from the Jira mirror.
+vp="$W/vp"
+mkdir -p "$vp"
+mdir="$vp"
+mk 400 'To Do' '["v1.1.3"]' 'vp todo in group' 'To Do' '' 'Ship loop'
+mk 401 'In Progress' '["v1.1.3"]' 'vp progress with pr' 'In Progress' '' Visibility
+mk 402 'In Progress' '["v1.1.3"]' 'vp review no pr' 'In Review'
+mk 404 'To Do' '["v1.1.4"]' 'vp next version' 'To Do'
+mk 405 Done '["v1.1.3"]' 'vpdone ticket' Done Done
+mk 406 Done '["v1.1.3"]' 'vp closed' Closed
+mk 407 'To Do' '["v1.1.3"]' 'vp rest' 'To Do'
+mk 410 'To Do' '["v1.1.3"]' 'vp direction blocker' 'To Do'
+mdir="$mir"
+printf '%s\n' '---' 'key: "HIMMEL-403"' 'statusCategory: "In Progress"' 'status: "IN CI"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+    'links:' '  blocked_by: ["HIMMEL-404"]' '---' '# HIMMEL-403: vp ci blocked' > "$vp/HIMMEL-403.md"
+printf '%s\n' '---' 'key: "HIMMEL-409"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+    'links:' '  blocked_by: ["HIMMEL-410"]' '---' '# HIMMEL-409: vp direction card' > "$vp/HIMMEL-409.md"
+printf '%s\n' '' '## Description' '' 'Start after HIMMEL-409 merges.' >> "$vp/HIMMEL-410.md"
+printf '%s\n' 'priority: 400 | rest of v1.1.3 | 9999' > "$W/vp-plan.md"
+cat > "$W/vp-prs.json" <<'EOF'
+[{"number":500,"title":"feat: [HIMMEL-401] x","headRefName":"feat/himmel-401-x","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]},
+ {"number":501,"title":"fix: y","headRefName":"fix/himmel-403-y","isDraft":true,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"}]}]
+EOF
+cat > "$W/vp-chains.json" <<'EOF'
+[{"name":"0 — wave one","note":"land first","steps":[{"key":"HIMMEL-405","label":"chain step one","state":"work"},
+ {"key":"HIMMEL-400","pr":502,"label":"chain step two","state":"next","owner":"N9"}]}]
+EOF
+printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Review\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\n' > "$W/vp-jira.tsv"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s"\ncat "%s"\n' "$W/vp-jira-args" "$W/vp-jira.tsv" > "$W/vpjira"
+chmod +x "$W/vpjira"
+vout="$W/vp-v113.html"
+vrender() {
+    TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$vp" --priority-file "$W/vp-plan.md" \
+        --prs-file "$W/vp-prs.json" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$vout" 2>&1
+}
+vstdout="$(vrender)"
+vrc=$?
+vhtml="$(cat "$vout" 2>/dev/null)"
+card() { grep -F "data-key=\"HIMMEL-$1\"" "$vout" 2>/dev/null; }
+if [ "$vrc" -eq 0 ]; then pass '--version renders and exits 0 (HIMMEL-6769)'; else fail "--version exited $vrc: $vstdout"; fi
+contains 'the page is titled by its version (HIMMEL-6769)' "$vhtml" '<title>v1.1.3 Tracker</title>'
+contains 'an open ticket of the version is a card (HIMMEL-6769)' "$vhtml" 'vp todo in group'
+not_contains 'a ticket of another version is no card (HIMMEL-6769)' "$vhtml" 'vp next version'
+not_contains 'a Done ticket is no card (HIMMEL-6769)' "$vhtml" 'vpdone ticket'
+not_contains 'a Closed ticket is no card (HIMMEL-6769)' "$vhtml" 'vp closed'
+contains 'a column per status with its count (HIMMEL-6769)' "$vhtml" 'data-col="To Do"><h2>To Do <span class="n">4</span></h2>'
+contains 'the IN CI column counts its card (HIMMEL-6769)' "$vhtml" 'data-col="IN CI"><h2>IN CI <span class="n">1</span></h2>'
+contains 'the header counts the Done tickets of the version (HIMMEL-6769)' "$vhtml" '1 Done'
+contains 'each column carries a Jira parity line (HIMMEL-6769)' "$vhtml" '<div class="parity ok">Jira 4 · ok</div>'
+contains 'stdout prints the per-column parity (HIMMEL-6769)' "$vstdout" 'parity v1.1.3: To Do 4/4 ok, In Progress 1/1 ok, In Review 1/1 ok, IN CI 1/1 ok'
+contains 'parity asks Jira for the open tickets of the version (HIMMEL-6769)' "$(cat "$W/vp-jira-args" 2>/dev/null)" \
+    'project = HIMMEL AND fixVersion = "v1.1.3" AND statusCategory != Done'
+contains 'a card sits in its plan priority block (HIMMEL-6769, 6735)' "$(card 400)" 'data-block="0 critical"'
+contains 'a card on no priority line sits in rest of version (HIMMEL-6769, 6735)' "$(card 407)" 'data-block="rest of version"'
+contains 'a sector chip renders in the sector colour (HIMMEL-6769)' "$(card 400)" '<span class="sec" style="--s:#16a34a">Ship loop</span>'
+contains 'a card with no sector says so (HIMMEL-6769)' "$(card 402)" 'no sector'
+contains 'an open PR badge carries its CI state (HIMMEL-6769)' "$(card 401)" 'href="https://github.com/yotamleo-org/Himmel/pull/500">#500 · CI green</a>'
+contains 'a PR found by its branch name, red and draft (HIMMEL-6769)' "$(card 403)" '#501 · CI red · draft'
+contains 'a started card with no open PR is flagged (HIMMEL-6769)' "$(card 402)" 'no open PR'
+not_contains 'a To Do card with no PR is not flagged (HIMMEL-6769)' "$(card 407)" 'no open PR'
+contains 'a card with an open blocker is flagged (HIMMEL-6769)' "$(card 403)" 'BLOCKED by open HIMMEL-404'
+contains 'a contradicted link reads direction?, not BLOCKED (HIMMEL-6769, 6749)' "$(card 409)" 'direction? HIMMEL-410'
+not_contains 'a contradicted link does not hold the card (HIMMEL-6769, 6749)' "$(card 409)" 'BLOCKED'
+contains 'the card key links to Jira (HIMMEL-6769)' "$(card 400)" 'href="https://jira.example.test/browse/HIMMEL-400"'
+contains 'a chain step renders (HIMMEL-6769)' "$vhtml" 'chain step two'
+contains 'a chain step whose ticket is Done reads merged (HIMMEL-6769)' "$(grep -F 'chain step one' "$vout")" '<b>merged</b>'
+contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 2 · N9'
+if [ ! -e "$vout.fp" ]; then pass 'a --version page without --plan-dir writes no .fp (HIMMEL-6769)'; else fail 'a --version page without --plan-dir wrote a .fp'; fi
+# a column that differs from Jira reads DRIFT and names the key.
+printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\n' > "$W/vp-jira.tsv"
+vstdout="$(vrender)"
+contains 'a column Jira counts differently reads DRIFT (HIMMEL-6769)' "$vstdout" 'In Progress 1/2 DRIFT, In Review 1/0 DRIFT'
+contains 'the DRIFT line names the key and its Jira status (HIMMEL-6769)' "$(cat "$vout")" 'HIMMEL-402 Jira In Progress'
+# a failing Jira CLI or gh reads unavailable, never a failed render or a false flag.
+printf '#!/bin/sh\nexit 1\n' > "$W/vpnogh"
+chmod +x "$W/vpnogh"
+vstdout="$(TRACKER_GH="$W/vpnogh" TRACKER_JIRA="$W/nojira" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$vp" --out "$vout" 2>&1)"
+vrc=$?
+if [ "$vrc" -eq 0 ]; then pass 'no Jira and no gh still render (HIMMEL-6769)'; else fail "no Jira and no gh exited $vrc: $vstdout"; fi
+contains 'a failed parity read says unavailable (HIMMEL-6769)' "$vstdout" 'parity v1.1.3: unavailable'
+contains 'a failed gh read says PR state unavailable (HIMMEL-6769)' "$(cat "$vout")" 'PR state unavailable'
+not_contains 'a failed gh read flags no card as PR-less (HIMMEL-6769)' "$(cat "$vout")" 'no open PR'
+# a later version gets its own page.
+TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.4 --mirror-dir "$vp" --chains-file "$W/vp-chains.json" --out "$W/vp-v114.html" >/dev/null 2>&1
+contains 'the v1.1.4 page holds its own ticket (HIMMEL-6769)' "$(cat "$W/vp-v114.html" 2>/dev/null)" 'vp next version'
+not_contains 'the v1.1.4 page holds no v1.1.3 ticket (HIMMEL-6769)' "$(cat "$W/vp-v114.html" 2>/dev/null)" 'vp todo in group'
+not_contains 'the v1.1.4 page holds no chain of another version (HIMMEL-6769)' "$(cat "$W/vp-v114.html" 2>/dev/null)" 'chain step two'
+# a missing mirror fails instead of writing an empty page.
+if TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$W/no-such-mirror" --out "$W/vp-missing.html" >/dev/null 2>&1; then
+    fail 'a missing mirror fails the --version render (HIMMEL-6769)'
+else
+    pass 'a missing mirror fails the --version render (HIMMEL-6769)'
+fi
+# with --plan-dir the page carries the tick fingerprint, so tick reads tracker=ok from it.
+vfout="$W/vfp/roadmap-tracker.html"
+TRACKER_GH="$W/vpnogh" python3 "$HERE/tracker.py" --version v1.1.3 --mirror-dir "$vp" --out "$vfout" --plan-dir "$plan" \
+    --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" >/dev/null 2>&1
+vfp="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$plan" --out "$vfout" --luna-map "$W/luna-map.json" --mirror-dir "$vp" \
+    --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" 2>&1)"
+if [ -n "$vfp" ] && [ "$(cat "$vfout.fp" 2>/dev/null)" = "$vfp" ]; then pass 'the --version page .fp equals --emit-fp (HIMMEL-6769)'; else fail "--version .fp '$(cat "$vfout.fp" 2>/dev/null)' differs from --emit-fp '$vfp'"; fi
+
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

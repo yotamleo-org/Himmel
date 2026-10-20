@@ -18,6 +18,10 @@ USAGE
     python3 tracker.py --plan-dir <HIMMEL-3882 plan dir> --out <tracker.html> --luna-map <luna-map.json>
         [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--jira-base-url URL] [--refresh-luna]
     python3 tracker.py ... --emit-fp     print the freshness fingerprint and exit
+    python3 tracker.py --version <v> --out <page.html> [--priority-file PLAN] [--chains-file FILE] [--prs-file FILE]
+        [--mirror-dir DIR] [--jira-base-url URL] [--plan-dir DIR --luna-root DIR [--handovers DIR]]
+                                         the FOCUS page of one version (HIMMEL-6769): status columns, priority blocks,
+                                         sectors, PR + CI, blockers, merge chains, per-column Jira parity on stdout
 
 --versions-file defaults to <mirror-dir>.versions.tsv; its bytes (or '-' when missing) are a fingerprint input, so a
 release moves tracker= to STALE.
@@ -710,21 +714,59 @@ def priority_groups(path):
     return [(n, [int(k) for k in PRIO_KEY_RE.findall(sg)]) for n, sg in zip(names, segs)]
 
 
-_DEP_RE = re.compile(r'\b(?:depends[ -]on|blocked[ -]by):?\s+(HIMMEL-\d+(?:\s*(?:,(?:\s*and)?|and|\+)\s*HIMMEL-\d+)*)', re.I)
+_KEYS = r'(HIMMEL-\d+(?:\s*(?:,(?:\s*and)?|and|\+)\s*HIMMEL-\d+)*)'
+# a ticket's own dependency line: `Depends on` / `Blocked by` at line start (after a list bullet), or a `Links:` line
+# naming one. Prose about another ticket, a quoted command and a negated mention never start a line with the phrase.
+_DEP_RE = re.compile(r'^\s*(?:[-*]\s+)?[*_]*(?:links\s*:.*?)?(?:depends\s+on|blocked[\s-]*by)[*_]*\s*:?\s*' + _KEYS,
+                     re.I | re.M)
+_AFTER_RE = re.compile(r'\bafter\s+' + _KEYS, re.I)
 
 
-def blockers(mir, m):
-    """HIMMEL-6556: ' {blocked-by: HIMMEL-n open, HIMMEL-m done}' for a ticket's blockers, or ''.
+def description(m):
+    """The ticket's description alone: no title heading, no comments."""
+    return re.sub(r'^# [A-Z]+-\d+:.*$', '', m['otext'].split('\n', 1)[-1], count=1, flags=re.M)
 
-    Blockers are the mirror's links.blocked_by plus `Depends on` / `blocked by` / `BLOCKED-BY` description lines; a
-    blocker is done once it is a closed bucket, and open when not (a key missing from the mirror reads open)."""
-    ks = list(m['blk'])
-    for hit in _DEP_RE.findall(m['otext']):
-        ks += [num(x) for x in KEY_RE.findall(hit)]
-    seen = [k for i, k in enumerate(ks) if k not in ks[:i]]
-    return ' {blocked-by: %s}' % ', '.join(
-        'HIMMEL-%d %s' % (k, 'done' if 'HIMMEL-%d' % k in mir and bucket(mir['HIMMEL-%d' % k]) in ('done', 'wont') else 'open')
-        for k in seen) if seen else ''
+
+def dep_keys(m, rx=_DEP_RE):
+    return [num(x) for hit in rx.findall(description(m)) for x in KEY_RE.findall(hit)]
+
+
+def blocker_list(mir, n):
+    """HIMMEL-6556: [(blocker number, open|done|wont|direction?)] for ticket n.
+
+    Blockers are the mirror's links.blocked_by plus the description's own dependency lines (_DEP_RE). A closed blocker
+    reads done or wont by its bucket; a link blocker whose own text puts it after this ticket (its dependency line or an
+    `after HIMMEL-n` names n) reads direction?, never open; any other reads open (a key missing from the mirror too)."""
+    m = mir['HIMMEL-%d' % n]
+    ks = list(m['blk']) + dep_keys(m)
+    out = []
+    for k in [k for i, k in enumerate(ks) if k not in ks[:i]]:
+        b = mir.get('HIMMEL-%d' % k)
+        st = bucket(b) if b else 'open'
+        if st not in ('done', 'wont'):
+            st = 'direction?' if b and k in m['blk'] and n in dep_keys(b) + dep_keys(b, _AFTER_RE) else 'open'
+        out.append((k, st))
+    return out
+
+
+def blockers(mir, n):
+    """' {blocked-by: HIMMEL-n open, HIMMEL-m done}' for ticket n's blockers, or ''."""
+    bl = blocker_list(mir, n)
+    return ' {blocked-by: %s}' % ', '.join('HIMMEL-%d %s' % x for x in bl) if bl else ''
+
+
+def priority_rows(keys, groups):
+    """(group names, {name: [ticket numbers]}): each key in the first group naming it, else 'rest of version'."""
+    placed = set()
+    names = [g[0] for g in groups] or ['rest of version']
+    rows = {n: [] for n in names}
+    for n, gk in groups:
+        for k in gk:
+            if k in keys and k not in placed:
+                placed.add(k)
+                rows[n].append(k)
+    rows['rest of version' if 'rest of version' in rows else names[0]] += sorted(k for k in keys if k not in placed)
+    return names, rows
 
 
 def remaining_board(mir, version, groups):
@@ -734,21 +776,12 @@ def remaining_board(mir, version, groups):
     (and in the rest group, ahead of the bottom group); a ticket named in two groups stays in the first."""
     opn = {num(k): m for k, m in mir.items()
            if version in m['fv'] and bucket(m) not in ('done', 'wont')}
-    placed, out = set(), []
-    names = [g[0] for g in groups] or ['rest of version']
-    rows = {n: [] for n in names}
-    for n, keys in groups:
-        for k in keys:
-            if k in opn and k not in placed:
-                placed.add(k)
-                rows[n].append(k)
-    rest = 'rest of version' if 'rest of version' in rows else names[0]
-    rows[rest] += sorted(k for k in opn if k not in placed)
-    out.append('# %s remaining board: %d open' % (version, len(opn)))
+    names, rows = priority_rows(opn, groups)
+    out = ['# %s remaining board: %d open' % (version, len(opn))]
     for n in names:
         if rows[n]:
             out.append('\n## %s (%d)' % (n, len(rows[n])))
-            out += ['- HIMMEL-%d [%s] %s%s' % (k, opn[k]['sn'] or opn[k]['cat'], clip(opn[k]['title'], 90), blockers(mir, opn[k]))
+            out += ['- HIMMEL-%d [%s] %s%s' % (k, opn[k]['sn'] or opn[k]['cat'], clip(opn[k]['title'], 90), blockers(mir, k))
                     for k in rows[n]]
     return '\n'.join(out) + '\n'
 
@@ -1161,13 +1194,224 @@ def split_pages(rows, notes, dirs, jt, jc, ja, jw, jf, unpl, vers, tname, paths,
     return pages
 
 
+SECTOR_COLORS = {'Fleet orchestration': '#2563eb', 'Ship loop': '#16a34a', 'Safety & enforcement': '#dc2626',
+                 'Cost & efficiency': '#ca8a04', 'Visibility': '#0891b2', 'Quality & proof': '#7c3aed',
+                 'Deployment': '#ea580c', 'Knowledge & steering': '#db2777', 'Planning & tracking': '#65a30d',
+                 'Memory & retrieval': '#0d9488'}
+VCOLS = ['To Do', 'In Progress', 'In Review', 'IN CI']
+
+
+def open_prs(path, repo):
+    """{ticket number: [(pr, ci, draft)]} from a `gh pr list --json number,title,headRefName,isDraft,statusCheckRollup`
+    file, else one live gh read (TRACKER_GH is the test seam); None when gh cannot be read. A PR belongs to every key
+    its title or branch names; ci is running, red, cancelled, green or none."""
+    try:
+        if path:
+            prs = json.load(open(path, encoding='utf-8'))
+        else:
+            prs = json.loads(subprocess.run(
+                [os.environ.get('TRACKER_GH', 'gh'), 'pr', 'list', '--repo', repo, '--state', 'open', '--limit', '300',
+                 '--json', 'number,title,headRefName,isDraft,statusCheckRollup'],
+                capture_output=True, text=True, timeout=60, check=True).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        if path:
+            raise SystemExit('tracker: --prs-file %s is unreadable' % path)
+        return None
+    out = {}
+    for pr in prs:
+        st = [(r.get('status'), r.get('conclusion') or r.get('state')) for r in pr.get('statusCheckRollup') or []]
+        if any(a in ('IN_PROGRESS', 'QUEUED', 'PENDING') or b in ('PENDING', 'EXPECTED') for a, b in st):
+            ci = 'running'
+        elif any(b in ('FAILURE', 'ERROR', 'TIMED_OUT') for _, b in st):
+            ci = 'red'
+        elif any(b == 'CANCELLED' for _, b in st):
+            ci = 'cancelled'
+        else:
+            ci = 'green' if st else 'none'
+        for k in set(re.findall(r'HIMMEL-(\d+)', pr['title'] + ' ' + pr['headRefName'], re.I)):
+            out.setdefault(int(k), []).append((pr['number'], ci, bool(pr.get('isDraft'))))
+    return out
+
+
+def column_parity(version, cols):
+    """{column: (jira count, [differing keys as text])} from one live `jira list` of the version's open tickets, compared
+    with the page's {column: [ticket numbers]}; None when the CLI fails or answers garbled."""
+    cli = jira_cli()
+    cmd = (['node', cli] if cli.endswith('.js') else [cli]) + [
+        'list', '--jql', 'project = HIMMEL AND fixVersion = "%s" AND statusCategory != Done' % version, '--limit', '5000']
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                           env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY') or 'HIMMEL'))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = [l.split('\t') for l in r.stdout.splitlines() if l.strip()]
+    if r.returncode != 0 or any(len(f) < 3 or not KEY_RE.fullmatch(f[0]) for f in lines):
+        return None
+    jr = {num(f[0]): f[2].strip() for f in lines}
+    pg = {k: c for c, ks in cols.items() for k in ks}
+    out = {}
+    for c in list(cols) + sorted(set(jr.values()) - set(cols)):
+        diff = ['HIMMEL-%d Jira %s' % (k, jr.get(k, '(absent)')) for k in cols.get(c, []) if jr.get(k) != c]
+        diff += ['HIMMEL-%d page %s' % (k, pg.get(k, '(absent)')) for k in sorted(jr) if jr[k] == c and pg.get(k) != c]
+        out[c] = (sum(1 for v in jr.values() if v == c), diff)
+    return out
+
+
+def version_page(mir, version, groups, prs, chains, base, repo):
+    """(html, stdout parity line): the FOCUS page of one version (HIMMEL-6769).
+
+    Columns are the Jira status names of the version's open tickets, each split into the plan's priority blocks; a card
+    carries its open PRs with CI state (a started card with none is flagged), its blockers, its FAST-TRACK chain step and
+    its sector. Each column ends its header with a parity line against a live JQL count."""
+    base = base.strip().rstrip('/') if re.match(r'^https?://', base.strip()) else ''
+    opn = {num(k): m for k, m in mir.items() if version in m['fv'] and bucket(m) not in ('done', 'wont')}
+    done = sum(1 for m in mir.values() if version in m['fv'] and bucket(m) == 'done')
+    names, rows = priority_rows(opn, groups)
+    block = {k: n for n in names for k in rows[n]}
+    order = {k: i for i, k in enumerate(k for n in names for k in rows[n])}
+    cols = {c: [] for c in VCOLS}
+    for k in sorted(opn, key=order.get):
+        cols.setdefault(opn[k]['sn'] or opn[k]['cat'], []).append(k)
+    par = column_parity(version, cols)
+    chains = [ch for ch in chains if any(version in mir.get(st.get('key', ''), {}).get('fv', []) for st in ch['steps'])]
+    inchain = {}
+    for ch in chains:
+        for i, st in enumerate(ch['steps'], 1):
+            if st.get('key'):
+                inchain.setdefault(st['key'], '%s · step %d%s' % (ch['name'], i, ' · ' + st['owner'] if st.get('owner') else ''))
+
+    def key_html(k):
+        return '<a href="%s/browse/HIMMEL-%d">HIMMEL-%d</a>' % (esc(base), k, k) if base else '<b>HIMMEL-%d</b>' % k
+
+    def card(k):
+        m = opn[k]
+        badges = ''.join('<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>'
+                         % (ci, esc(repo), n, n, ci, ' · draft' if d else '') for n, ci, d in sorted((prs or {}).get(k, [])))
+        if prs is not None and not badges and bucket(m) != 'todo':
+            badges = '<span class="pr nopr">no open PR</span>'
+        sec = m['sector']
+        sc = SECTOR_COLORS.get(sec, 'var(--muted)')
+        bl = blocker_list(mir, k)
+        live = ['HIMMEL-%d' % b for b, st in bl if st == 'open']
+        dirq = ['HIMMEL-%d' % b for b, st in bl if st == 'direction?']
+        shut = ['HIMMEL-%d (%s)' % (b, st) for b, st in bl if st in ('done', 'wont')]
+        ft = inchain.get('HIMMEL-%d' % k)
+        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s<div>%s</div>%s%s%s%s'
+                '<span class="sec" style="--s:%s">%s</span></div>\n'
+                % (' isblocked' if live else '', ' isft' if ft else '', sc, k, esc(block[k]), key_html(k), badges, esc(clip(m['title'], 120)),
+                   '<div class="ft">FAST-TRACK · %s</div>' % esc(ft) if ft else '',
+                   '<div class="blk">BLOCKED by open %s</div>' % ', '.join(live) if live else '',
+                   '<div class="dirq">direction? %s: the link and the blocker\'s own text disagree</div>' % ', '.join(dirq) if dirq else '',
+                   '<div class="dep">after %s</div>' % ', '.join(shut) if shut else '', sc, esc(sec or 'no sector')))
+    colhtml, tally = [], []
+    for c, ks in cols.items():
+        if par is None:
+            pl = '<div class="parity na">Jira unavailable</div>'
+        else:
+            jn, diff = par.get(c, (0, []))
+            pl = '<div class="parity %s">Jira %d · %s</div>' % ('ok' if not diff else 'drift', jn, 'ok' if not diff else
+                                                               'DRIFT: ' + esc(', '.join(diff[:8]) + (' (+%d more)' % (len(diff) - 8) if len(diff) > 8 else '')))
+            tally.append('%s %d/%d %s' % (c, len(ks), jn, 'ok' if not diff else 'DRIFT'))
+        parts = []
+        for bi, n in enumerate(names):
+            bk = [k for k in ks if block[k] == n]
+            if bk:
+                parts.append('<div class="block b%d"><div class="bh">%s <span>%d</span></div>\n%s</div>'
+                             % (min(bi, 7), esc(n), len(bk), ''.join(card(k) for k in bk)))
+        colhtml.append('<section class="col" data-col="%s"><h2>%s <span class="n">%d</span></h2>%s%s</section>'
+                       % (esc(c), esc(c), len(ks), pl, ''.join(parts) or '<div class="empty">none</div>'))
+    if par is not None:
+        tally += ['%s 0/%d DRIFT' % (c, jn) for c, (jn, diff) in par.items() if c not in cols]
+    parline = 'parity %s: %s' % (version, ', '.join(tally) if par is not None else 'unavailable')
+
+    def step(st):
+        k = st.get('key', '')
+        state = 'merged' if k in mir and bucket(mir[k]) == 'done' else st.get('state', 'next')
+        return '<li class="st-%s"><b>%s</b> %s%s %s%s</li>\n' % (
+            esc(state), esc(state), '<a href="https://github.com/%s/pull/%d">#%d</a> ' % (esc(repo), st['pr'], st['pr']) if st.get('pr') else '',
+            key_html(num(k)) if KEY_RE.fullmatch(k) else esc(k), esc(st.get('label', '')),
+            ' <span class="own">%s</span>' % esc(st['owner']) if st.get('owner') else '')
+    chainhtml = ''.join('<div class="chain"><h3>%s</h3>%s<ol>\n%s</ol></div>' % (
+        esc(ch['name']), '<div class="dep">%s</div>' % esc(ch['note']) if ch.get('note') else '', ''.join(step(st) for st in ch['steps']))
+        for ch in chains)
+    legend = ''.join('<span class="lg b%d">%s</span>' % (min(i, 7), esc(n)) for i, n in enumerate(names))
+    seclegend = ''.join('<span class="sec" style="--s:%s">%s %d</span>' % (c, esc(n), sum(1 for m in opn.values() if m['sector'] == n))
+                        for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))
+    upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
+    html = VERSION_TEMPLATE.format(
+        v=esc(version), n=len(opn), d=done, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
+        prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
+        chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
+        legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml))
+    return html, parline
+
+
+VERSION_TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{v} Tracker</title>
+<style>
+:root{{--bg:#f5f5f4;--panel:#fff;--fg:#1c1917;--muted:#78716c;--line:#e7e5e4;--acc:#2563eb;
+--p0:#dc2626;--p1:#ea580c;--p2:#ca8a04;--p3:#16a34a;--p4:#0891b2;--p5:#2563eb;--p6:#7c3aed;--p7:#a8a29e}}
+@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{--bg:#0c0a09;--panel:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#44403c;--acc:#60a5fa}}}}
+:root[data-theme="dark"]{{--bg:#0c0a09;--panel:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#44403c;--acc:#60a5fa}}
+*{{box-sizing:border-box}}
+body{{background:var(--bg);color:var(--fg);font:13px/1.45 system-ui,sans-serif;margin:0;padding:16px}}
+h1{{font-size:20px;margin:0 0 4px}} .sub{{color:var(--muted);margin-bottom:10px}} .sh{{font-size:14px;margin:0 0 8px}}
+a{{color:var(--acc);text-decoration:none}}
+.legend,.seclegend{{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}}
+.lg{{font-size:11px;padding:2px 8px;border-radius:10px;border-left:4px solid var(--c);background:var(--panel)}}
+.board{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;align-items:start}}
+.col{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0}}
+.col h2{{font-size:14px;margin:0 0 2px;display:flex;justify-content:space-between}}
+.col h2 span,.bh span{{color:var(--muted);font-weight:400}}
+.parity{{font-size:11px;margin-bottom:8px}}.parity.ok{{color:#16a34a}}.parity.drift{{color:#dc2626;font-weight:600}}.parity.na{{color:var(--muted)}}
+.block{{border-left:4px solid var(--c);padding-left:8px;margin-bottom:12px}}
+.bh{{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--c);margin-bottom:4px;display:flex;justify-content:space-between;gap:6px}}
+.card{{background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--s);border-radius:6px;padding:6px 8px;margin-bottom:6px;overflow-wrap:anywhere}}
+.card b,.card a{{font-variant-numeric:tabular-nums;font-size:12px}}
+.pr{{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;margin-left:4px;border:1px solid var(--line)}}
+.ci-green{{color:#16a34a}}.ci-red{{color:#dc2626}}.ci-running{{color:#ca8a04}}.ci-cancelled,.ci-none{{color:var(--muted)}}
+.nopr{{color:#dc2626;border-color:#dc2626}}
+.sec{{display:inline-block;font-size:10px;font-weight:600;padding:0 6px;margin-top:3px;border-radius:8px;color:#fff;background:var(--s)}}
+.seclegend .sec{{font-size:11px;padding:2px 8px}}
+.blk{{color:#fff;background:#dc2626;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}.isblocked{{border-color:#dc2626}}
+.dirq{{color:#fff;background:#ca8a04;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}
+.dep{{color:var(--muted);font-size:11px}} .empty{{color:var(--muted);font-style:italic}}
+.chains{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px}}
+.chain{{background:var(--panel);border:1px solid var(--line);border-left:4px solid #7c3aed;border-radius:8px;padding:8px 10px}}
+.chain h3{{font-size:13px;margin:0 0 4px}}.chain ol{{margin:4px 0 0;padding-left:20px}}.chain li{{margin-bottom:3px}}
+.chain li b{{font-size:10px;text-transform:uppercase;padding:0 5px;border-radius:6px;margin-right:4px}}
+.st-merged b{{background:#16a34a;color:#fff}}.st-work b{{background:#7c3aed;color:#fff}}.st-next b{{background:#ca8a04;color:#fff}}.st-held b{{background:var(--line);color:var(--fg)}}
+.st-merged{{color:var(--muted)}}.own{{font-size:11px;color:var(--muted)}}
+.ft{{color:#fff;background:#7c3aed;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}.isft{{outline:2px solid #7c3aed}}
+.b0{{--c:var(--p0)}}.b1{{--c:var(--p1)}}.b2{{--c:var(--p2)}}.b3{{--c:var(--p3)}}.b4{{--c:var(--p4)}}.b5{{--c:var(--p5)}}.b6{{--c:var(--p6)}}.b7{{--c:var(--p7)}}
+</style></head><body>
+<h1>{v} tracker</h1>
+<div class="sub">{n} open · {d} Done. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, each split into the
+approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
+state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}</div>
+{chains}
+<div class="legend">Priority blocks: {legend}</div>
+<div class="seclegend">Sectors (card edge and chip): {seclegend}</div>
+<div class="board">{board}</div>
+</body></html>
+"""
+
+
 def main():
     global MIRROR, LUNA, HANDOVERS, ROOT, OUT, LUNA_MAP, VERSIONS
     ap = argparse.ArgumentParser(description='Render the HIMMEL-3882 roadmap tracker page.')
     ap.add_argument('--remaining', metavar='VERSION', default=None,
                     help='write the open tickets of one version grouped by the plan priority line (--priority-file) to '
                          '--out (else stdout), then exit; needs only --mirror-dir')
-    ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining)')
+    ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining, --version)')
+    ap.add_argument('--version', default=None, help='write the FOCUS page of one version to --out, then exit (HIMMEL-6769); with '
+                                                     '--plan-dir it also writes <out>.fp, the value --emit-fp prints for tick')
+    ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,isDraft,'
+                                                     'statusCheckRollup` file (default: one live gh read)')
+    ap.add_argument('--chains-file', default=None, help='--version: the merge chains and waves JSON '
+                                                        '([{name, note, steps: [{key, pr, label, state, owner}]}])')
+    ap.add_argument('--repo', default='yotamleo-org/Himmel', help='--version: the GitHub repo the PR badges link to')
     ap.add_argument('--plan-dir', help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
     ap.add_argument('--out', help='tracker.html to write (with --target-version, --out-done or --out-future: the focus page, '
                                   'the open tickets of the target version)')
@@ -1205,8 +1449,35 @@ def main():
         else:
             print(text, end='')
         return
+    if a.version:
+        if not a.out:
+            ap.error('--version needs --out')
+        MIRROR, OUT = os.path.abspath(a.mirror_dir), os.path.abspath(a.out)
+        if not os.path.isdir(MIRROR):
+            raise SystemExit('tracker: --mirror-dir %s is not a directory' % MIRROR)
+        fp0 = ''
+        if a.plan_dir:  # the tick reads tracker= from this page's .fp, the same value --emit-fp derives
+            ROOT, LUNA = os.path.abspath(a.plan_dir), os.path.abspath(a.luna_root)
+            VERSIONS = os.path.abspath(a.versions_file) if a.versions_file else MIRROR + '.versions.tsv'
+            HANDOVERS = os.path.abspath(a.handovers) if a.handovers else os.path.join(LUNA, 'handovers', 'yotamleo', 'himmel')
+            fp0 = fingerprint()
+        grp = priority_groups(a.priority_file) if a.priority_file else []
+        if a.priority_file and not grp:
+            raise SystemExit('tracker: --priority-file %s is unreadable or has no priority: line' % a.priority_file)
+        try:
+            chains = json.load(open(a.chains_file, encoding='utf-8')) if a.chains_file else []
+        except (OSError, ValueError):
+            raise SystemExit('tracker: --chains-file %s is unreadable' % a.chains_file)
+        html, par = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, a.repo), chains, a.jira_base_url, a.repo)
+        os.makedirs(os.path.dirname(OUT), exist_ok=True)
+        open(OUT, 'w', encoding='utf-8').write(html)
+        if fp0:
+            open(OUT + '.fp', 'w', encoding='utf-8').write(fp0 + '\n')
+        print('wrote %s (%.1f KB)' % (OUT, os.path.getsize(OUT) / 1024))
+        print(par)
+        return
     if not (a.plan_dir and a.out and a.luna_map):
-        ap.error('--plan-dir, --out and --luna-map are required unless --remaining is given')
+        ap.error('--plan-dir, --out and --luna-map are required unless --remaining or --version is given')
     ROOT, OUT, LUNA_MAP, MIRROR, LUNA = (os.path.abspath(a.plan_dir), os.path.abspath(a.out),
                                          os.path.abspath(a.luna_map), os.path.abspath(a.mirror_dir),
                                          os.path.abspath(a.luna_root))

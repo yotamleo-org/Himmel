@@ -58,44 +58,49 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     48 h are read. Nonces and lock tokens never reach the JSON.
 
     **Keep the roadmap tracker current** (only when `## Live state`
-    has a `tracker:` URL, else skip). On every MERGED and WRAPPED, and whenever
+    has a `tracker:` URL, else skip). The tracker is one page per version in
+    the FOCUS design, and there is no all-versions page: `tracker:` is the
+    current version's page and `tracker-<version>:` (for example
+    `tracker-v1.1.4:`) each later version's. On every MERGED and WRAPPED, and whenever
     the tick reads `tracker=STALE:<age>` or `tracker=MISSING`: refresh the Jira
     mirror (`node <primary>/scripts/jira/dist/index.js mirror`) and the version
     release state (`node <primary>/scripts/jira/dist/index.js versions` redirected to
-    `<mirror-dir>.versions.tsv`, i.e. `~/.himmel/state/jira-mirror/HIMMEL.versions.tsv`;
-    without it the page says "release state unknown"), re-render with
-    `python3 "<kit>/tracker.py" --plan-dir <plan dir> --out <handover bucket>/roadmap-tracker.html --out-done <handover bucket>/roadmap-tracker-done.html --out-future <handover bucket>/roadmap-tracker-future.html --focus-url <tracker: URL> --done-url <tracker-done: URL> --future-url <tracker-future: URL>`
-    plus the vault-map cache argument (`tracker.py --help` names every
-    argument; `--out` and `--plan-dir` must be the paths the tick reads, so the
-    render then reports `tracker=ok`), and republish that file to the `tracker:` URL with the `Artifact` tool. A
-    successor's FIRST publish to a carried `tracker:` URL must `Artifact read`
-    it first, exactly as for `board:`. The vault-map cache refreshes
-    incrementally (only keys that are missing or older than 7 days), so a render
-    is cheap. After each Artifact publish, `touch <handover bucket>/roadmap-tracker.html.published`:
+    `<mirror-dir>.versions.tsv`, i.e. `~/.himmel/state/jira-mirror/HIMMEL.versions.tsv`),
+    then render the current version with
+    `python3 "<kit>/tracker.py" --version <version> --priority-file <approved plan> --chains-file <handover bucket>/focus-chains.json --jira-base-url <site> --out <handover bucket>/roadmap-tracker.html --plan-dir <plan dir>`
+    (`tracker.py --help` names every argument; `--out` and `--plan-dir` must be
+    the paths the tick reads, because with `--plan-dir` the render also writes
+    `<out>.fp`, the value `--emit-fp` prints, so the tick then reports `tracker=ok`).
+    Render a later version the same way to its own file, without `--plan-dir`.
+    Republish each file to its URL with the `Artifact` tool. A
+    successor's FIRST publish to a carried tracker URL must `Artifact read`
+    it first, exactly as for `board:`; update each URL in place, never a new
+    URL. After each publish of the current page, `touch <handover bucket>/roadmap-tracker.html.published`:
     a page newer than that stamp reads `tracker=REPUBLISH:<age>` (rendered, not yet
     republished); without the stamp file the tick keeps reading plain `ok`.
 
-    **Three artifacts, three URLs.** The tracker is three pages, so a handover
-    carries three URLs in `## Live state`: `tracker:` (the focus page: the open
-    tickets of the target version, `--target-version`, default the earliest
-    unreleased version in the versions file), `tracker-done:` (every Done ticket,
-    folded to the version it shipped in, with the accuracy tables) and
-    `tracker-future:` (the open tickets of the later versions, and the unplaced
-    list). `--out` is the focus page, so `--emit-fp` and the `.fp` file stay bound
-    to it and the tick reads `tracker=ok` from the focus page alone. The `*-url`
-    flags make each page link to the other two. Republish `tracker:` as above; republish
-    `tracker-done:` and `tracker-future:` on a MERGED or when the target version
-    changes (the Done page and the later versions' plan rows move only then); a
-    ticket edit in a later version shows on the future page at its next
-    republish, or sooner when a republish is wanted. Update each URL in place with
-    `Artifact read` first, never a new URL. A render with none of the split flags
-    writes the one full page, as before.
-    The page reads the Jira mirror alone and groups tickets by the Jira Sector
-    field (the mirror's `sector:` frontmatter, written when `jira.sectorField` is
-    set in `~/.himmel/config.json`; `(no sector)` otherwise). It carries no plan
-    decisions, no "What users gained" and no plan-vs-Jira section. The parity line
-    names each differing key with both statuses and reads `lag` when the mirror
-    trails live Jira, `DRIFT` otherwise.
+    **What a version page shows.** Columns are the Jira statuses of the
+    version's open tickets (To Do, In Progress, In Review, IN CI), each split
+    into the priority blocks of the plan's `priority:` line (a ticket on no
+    block line sits in `rest of version`). A card carries its sector colour (the
+    mirror's `sector:` frontmatter, written when `jira.sectorField` is set in
+    `~/.himmel/config.json`), its open PRs with their CI state (one live
+    `gh pr list`, or `--prs-file`; a started card with no open PR is flagged), its
+    blockers (an open blocker is flagged; a link whose blocker's own text puts it
+    after this ticket reads `direction?`), and its FAST-TRACK step when a merge
+    chain names it. The merge chains and parallel waves of `--chains-file`
+    (`[{name, note, steps: [{key, pr, label, state, owner}]}]`) render above the
+    board, a step whose ticket is Done reading merged; a page shows only the
+    chains with a step in its version. Each column header carries a parity line
+    against one live JQL count of the version's open tickets (`Jira n · ok`, or
+    `DRIFT` naming each differing key with both statuses), and stdout prints the
+    same per column; a DRIFT right after a render usually means Jira moved since
+    the mirror refresh, so refresh and render again. When `gh` or Jira cannot be
+    read the page says so and flags no card for a missing PR.
+
+    The bucket `render-focus.py` and the split focus, Done and future pages
+    (`--out-done`, `--out-future`, `tracker-done:`, `tracker-future:`) are retired;
+    drop those URLs from `## Live state` at the next handover.
 
 - **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh --legs-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released
