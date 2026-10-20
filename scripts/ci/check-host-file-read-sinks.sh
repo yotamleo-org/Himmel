@@ -113,18 +113,20 @@ while IFS= read -r -d '' path; do
         hit = ""
         s = l
         while (match(s, CMD OPER "([ \t;|&)]|$)")) {
-          tok = substr(s, RSTART, RLENGTH); sub(/^.*[ \t]+("|\047)?\$/, "$", tok)
+          ms = RSTART; ml = RLENGTH
+          tok = substr(s, ms, ml); sub(/^.*[ \t]+("|\047)?\$/, "$", tok)
           v = varname(tok); hit = v
           if (v ~ /^[1-9@*]$/ || (v in tainted) || (v ~ /^[A-Z][A-Z0-9_]*$/ && !(v in assigned))) break
-          hit = ""; s = substr(s, RSTART + RLENGTH)
+          hit = ""; s = substr(s, ms + ml)
         }
         if (hit == "") {
           s = l
           while (match(s, RED OPER "([ \t;|&)]|$)")) {
-            tok = substr(s, RSTART, RLENGTH); sub(/^[^$]*\$/, "$", tok)
+            ms = RSTART; ml = RLENGTH
+            tok = substr(s, ms, ml); sub(/^[^$]*\$/, "$", tok)
             v = varname(tok); hit = v
             if (v ~ /^[1-9@*]$/ || (v in tainted) || (v ~ /^[A-Z][A-Z0-9_]*$/ && !(v in assigned))) break
-            hit = ""; s = substr(s, RSTART + RLENGTH)
+            hit = ""; s = substr(s, ms + ml)
           }
         }
         if (hit == "") continue

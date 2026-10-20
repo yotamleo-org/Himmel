@@ -1,0 +1,3 @@
+# fixture, not executable
+echo hi
+for ((i = 0; i < ${#b}; i++)); do :; done
