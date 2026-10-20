@@ -314,6 +314,7 @@ scripts/handover/console-kit/test-console-budget.sh	pr	static-gate
 scripts/handover/console-kit/test-console-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-console-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
 scripts/handover/console-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-doc-reader-agreement.sh	local	behaviour suite, new generator-driven reader agreement
 scripts/handover/console-kit/test-fleet-manifest.sh	pr	static-gate
 scripts/handover/console-kit/test-fleet.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-gen-briefs.sh	pr	catch:2887
