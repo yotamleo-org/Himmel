@@ -519,7 +519,8 @@ function walk(root, data, uid, reduced) {
     timer = 0;
     if (!playing || hover || focus || document.hidden) return;
     timer = setTimeout(() => {
-      show(wi, step + 1, { forward: true, reveal: true });
+      const r = stage.getBoundingClientRect();
+      show(wi, step + 1, { forward: true, reveal: r.bottom > 0 && r.top < window.innerHeight });
       if (step >= last()) setPlaying(false); else schedule();
     }, STEP_MS);
   }

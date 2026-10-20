@@ -141,6 +141,26 @@ test.describe("phone", () => {
   });
 });
 
+test.describe("phone autoplay", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("J-DG1. autoplay does not scroll the page back once the reader has left the graph", async ({ page }) => {
+    await open(page, "#w=w1&s=1");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.evaluate(() => {
+      (document.querySelector(".dg-conditions") as HTMLDetailsElement).open = true;
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await page.mouse.move(5, 5);
+    const y = await page.evaluate(() => window.scrollY);
+    expect(y).toBeGreaterThan(0);
+    expect(await page.evaluate(() => document.querySelector(".dg-stage")!.getBoundingClientRect().bottom)).toBeLessThan(0);
+    await page.waitForTimeout(5500);
+    expect(await stepOf(page)).toBeGreaterThanOrEqual(2);
+    expect(await page.evaluate(() => window.scrollY)).toBe(y);
+  });
+});
+
 test.describe("dark", () => {
   test.use({ colorScheme: "dark" });
 
