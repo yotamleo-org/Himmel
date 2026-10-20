@@ -4112,10 +4112,15 @@ live_dirs="HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE_RUNDIR HANDOVER_DIR CLAUDE_CONF
 live_sched="crontab at atq atrm"
 _live_reset() {
   local _v
-  rm -rf "$live_root/state" "$live_root/scheduler-calls.log" 2>/dev/null
-  mkdir -p "$live_root/state" || return 1
+  rm -rf "${live_root:?}/state" "${live_root:?}/bin" "${live_root:?}/scheduler-calls.log" 2>/dev/null
+  mkdir -p "$live_root/state" "$live_root/bin" || return 1
   for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
   for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
+  for _v in $live_sched; do
+    printf '#!/usr/bin/env bash\nprintf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q\necho "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2\nexit 1\n' \
+      "$_v" "$live_root/scheduler-calls.log" "$_v" > "$live_root/bin/$_v" || return 1
+    chmod +x "$live_root/bin/$_v" || return 1
+  done
 }
 # _live_env — run inside the suite's subshell: point the live-state env at the
 # sentinels. Every other HIMMEL_CONSOLE_* / HIMMEL_INBOX* value is dropped;
@@ -4126,6 +4131,7 @@ _live_env() {
   for _v in ${!HIMMEL_CONSOLE_@} ${!HIMMEL_INBOX@}; do unset "$_v"; done
   for _v in $live_files $live_dirs; do export "$_v=$live_root/state/$_v"; done
   export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
+  export HIMMEL_SUITE_SHIM_DIR="$live_root/bin"
   export PATH="$live_root/bin:$PATH"
 }
 # _live_check <suite-pgid> — collect one line per thing the suite left behind
@@ -4180,6 +4186,12 @@ _live_check() {
       break
     done
   done
+  for _v in $live_sched; do
+    [ -x "$live_root/bin/$_v" ] && continue
+    live_msgs="${live_msgs}removed the $_v scheduler shim (later suites would reach the real one)
+"
+    _dirty=1
+  done
   if [ -s "$live_root/scheduler-calls.log" ]; then
     while IFS= read -r _c; do
       live_msgs="${live_msgs}scheduler call: $_c (the real scheduler is live operator state)
@@ -4193,18 +4205,7 @@ _live_check() {
 if [ "$list_only" -eq 0 ]; then
   # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root aborts the run below
   live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
-  _live_ok=0
-  if [ -n "$live_root" ] && mkdir "$live_root/bin" && _live_reset; then
-    _live_ok=1
-    for _ls_t in $live_sched; do
-      if ! printf '#!/usr/bin/env bash\nprintf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q\necho "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2\nexit 1\n' \
-        "$_ls_t" "$live_root/scheduler-calls.log" "$_ls_t" > "$live_root/bin/$_ls_t" || ! chmod +x "$live_root/bin/$_ls_t"; then
-        _live_ok=0
-        break
-      fi
-    done
-  fi
-  if [ "$_live_ok" -eq 0 ]; then
+  if [ -z "$live_root" ] || ! _live_reset; then
     [ -z "$live_root" ] || rm -rf "$live_root"
     live_root=""
     echo "run-shell-tests.sh: could not create the live-state sentinels — refusing to run suites against the caller's live state" >&2

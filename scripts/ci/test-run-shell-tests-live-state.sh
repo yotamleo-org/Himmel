@@ -12,7 +12,10 @@
 #       terminated.
 #   L4. A dirty sentinel is reset, so the next suite is not blamed; a suite
 #       that points the variable at its own file is not flagged.
-#   L5. Sentinels that cannot be set up abort the run before any suite.
+#   L5. Sentinels or scheduler shims that cannot be set up abort the run
+#       before any suite.
+#   L6. A suite that removes the scheduler shims fails, and the next suite
+#       meets recreated shims.
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -89,6 +92,16 @@ SHEOF
 cat > "$sb/scripts/test-h-workdir.sh" <<'SHEOF'
 #!/usr/bin/env bash
 : > "$HIMMEL_CONSOLE_WORKDIR/precompact-1.snap"
+exit 0
+SHEOF
+cat > "$sb/scripts/test-i-rm-shims.sh" <<'SHEOF'
+#!/usr/bin/env bash
+rm -rf "${HIMMEL_SUITE_CRONTAB_LOG%/*}/bin"
+exit 0
+SHEOF
+cat > "$sb/scripts/test-j-cron-after.sh" <<'SHEOF'
+#!/usr/bin/env bash
+crontab -l >/dev/null 2>&1
 exit 0
 SHEOF
 chmod +x "$sb/scripts/"*.sh
@@ -183,6 +196,18 @@ else
   pass "L4: no [LIVE-STATE] line for a clean suite"
 fi
 
+echo "== L6: a suite that removes the scheduler shims fails, and the shims return =="
+if grepq "$out" -E '\[LIVE-STATE\] .*test-i-rm-shims\.sh .*removed the crontab scheduler shim'; then
+  pass "L6: removing the shims names them"
+else
+  fail "L6: no [LIVE-STATE] shim line for test-i; out: $out"
+fi
+if grepq "$out" -E '\[LIVE-STATE\] .*test-j-cron-after\.sh .*crontab -l'; then
+  pass "L6: the next suite's crontab call hits a recreated shim"
+else
+  fail "L6: test-j's crontab call was not recorded by the shim; out: $out"
+fi
+
 echo "== L3: a process left in the suite's group fails the suite =="
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*) echo "SKIP L3: the runner takes no process census on Git Bash" ;;
@@ -225,5 +250,12 @@ out5=$(PATH="$sb/mkfail:$PATH" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RU
 rc5=$?
 if [ "$rc5" -eq 2 ]; then pass "L5: run exits 2"; else fail "L5: expected rc=2, got $rc5; out: $out5"; fi
 if [ ! -e "$sb/ran5" ]; then pass "L5: no suite ran"; else fail "L5: a suite ran without sentinels; out: $out5"; fi
+mkdir -p "$sb/chmodfail"
+printf '#!/usr/bin/env bash\ncase "$*" in *himmel-live-sentinel*) exit 1 ;; esac\nexec %q "$@"\n' "$(command -v chmod)" > "$sb/chmodfail/chmod"
+chmod +x "$sb/chmodfail/chmod"
+out5b=$(PATH="$sb/chmodfail:$PATH" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts5" 2>&1)
+rc5b=$?
+if [ "$rc5b" -eq 2 ]; then pass "L5: a shim that cannot be made executable exits 2"; else fail "L5: shim chmod failure: expected rc=2, got $rc5b; out: $out5b"; fi
+if [ ! -e "$sb/ran5" ]; then pass "L5: no suite ran without its shims"; else fail "L5: a suite ran without its shims; out: $out5b"; fi
 
 rst_tally

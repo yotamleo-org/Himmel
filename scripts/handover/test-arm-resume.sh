@@ -229,18 +229,19 @@ export ARM_ISOLATION_ROOT="$TMP/no-primary"
 # to silently touch the operator's REAL scheduler. Snapshot now, before any
 # case runs, and diff again right before the summary -- a change either way
 # fails the suite outright, regardless of --only. Under run-shell-tests.sh the
-# scheduler on PATH is the runner's recording shim, which fails any call, so the
-# runner is the guard there and the snapshot is skipped.
-if [ -z "${HIMMEL_SUITE_CRONTAB_LOG:-}" ]; then
-    CRONTAB_SNAPSHOT_BEFORE=$(crontab -l 2>/dev/null || true)
-    ATQ_SNAPSHOT_BEFORE=$(atq 2>/dev/null || true)
-fi
+# snapshot reads past the runner's recording shim (HIMMEL_SUITE_SHIM_DIR): the
+# shim sees only PATH lookups, this diff also sees an absolute or reset-PATH one.
+SCHED_REAL_PATH=":$PATH:"
+[ -z "${HIMMEL_SUITE_SHIM_DIR:-}" ] || SCHED_REAL_PATH="${SCHED_REAL_PATH//":$HIMMEL_SUITE_SHIM_DIR:"/:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH#:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH%:}"
+CRONTAB_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
+ATQ_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
 # A dry-run arm lists already-armed jobs with `atq`; an empty queue keeps cases
 # without their own scheduler stub off the operator's real one.
 mkdir -p "$TMP/empty-atq-bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/empty-atq-bin/atq"
 chmod +x "$TMP/empty-atq-bin/atq"
-ATQ_REAL_PATH="$PATH"
 export PATH="$TMP/empty-atq-bin:$PATH"
 # every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
@@ -6632,19 +6633,17 @@ if [ -z "$ONLY_FILTERS" ]; then
         FAILED=$((FAILED + 1))
     fi
 fi
-if [ -z "${HIMMEL_SUITE_CRONTAB_LOG:-}" ]; then
-    CRONTAB_SNAPSHOT_AFTER=$(crontab -l 2>/dev/null || true)
-    if [ "$CRONTAB_SNAPSHOT_AFTER" != "$CRONTAB_SNAPSHOT_BEFORE" ]; then
-        echo "FAIL the real crontab changed during this run -- a case leaked into the operator's live crontab:"
-        diff <(printf '%s\n' "$CRONTAB_SNAPSHOT_BEFORE") <(printf '%s\n' "$CRONTAB_SNAPSHOT_AFTER") || true
-        FAILED=$((FAILED + 1))
-    fi
-    ATQ_SNAPSHOT_AFTER=$(PATH="$ATQ_REAL_PATH" atq 2>/dev/null || true)
-    if [ "$ATQ_SNAPSHOT_AFTER" != "$ATQ_SNAPSHOT_BEFORE" ]; then
-        echo "FAIL the real at queue changed during this run -- a case leaked into the operator's live at queue:"
-        diff <(printf '%s\n' "$ATQ_SNAPSHOT_BEFORE") <(printf '%s\n' "$ATQ_SNAPSHOT_AFTER") || true
-        FAILED=$((FAILED + 1))
-    fi
+CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
+if [ "$CRONTAB_SNAPSHOT_AFTER" != "$CRONTAB_SNAPSHOT_BEFORE" ]; then
+    echo "FAIL the real crontab changed during this run -- a case leaked into the operator's live crontab:"
+    diff <(printf '%s\n' "$CRONTAB_SNAPSHOT_BEFORE") <(printf '%s\n' "$CRONTAB_SNAPSHOT_AFTER") || true
+    FAILED=$((FAILED + 1))
+fi
+ATQ_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
+if [ "$ATQ_SNAPSHOT_AFTER" != "$ATQ_SNAPSHOT_BEFORE" ]; then
+    echo "FAIL the real at queue changed during this run -- a case leaked into the operator's live at queue:"
+    diff <(printf '%s\n' "$ATQ_SNAPSHOT_BEFORE") <(printf '%s\n' "$ATQ_SNAPSHOT_AFTER") || true
+    FAILED=$((FAILED + 1))
 fi
 
 if [ "$FAILED" -gt 0 ]; then
