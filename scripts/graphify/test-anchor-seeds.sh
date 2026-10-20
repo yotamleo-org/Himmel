@@ -53,7 +53,7 @@ if [ "$got" = "go_sh " ]; then pass "A1 go.sh resolves to its file node"
 else fail "A1 got='$got'"; fi
 
 # A2: a snake_case identifier resolves to the symbol, not to tail() or status().
-got="$(seeds "where is leg_tail_status defined")"
+got="$(seeds "which file defines leg_tail_status")"
 if [ "$got" = "lts_fn " ]; then pass "A2 leg_tail_status resolves to its function"
 else fail "A2 got='$got'"; fi
 
@@ -63,7 +63,7 @@ if [ "$got" = "ql_sh " ]; then pass "A3 queue-lock resolves to the non-test file
 else fail "A3 got='$got'"; fi
 
 # A4: plain words, and a name that matches nothing, give no seeds.
-got="$(seeds "how do a console and a leg relate") $(seeds "what does foo-bar do")"
+got="$(seeds "how does a console hand work to a leg") $(seeds "what does foo-bar do")"
 if [ "$got" = " " ]; then pass "A4 no name, or an unknown name, seeds nothing"
 else fail "A4 got='$got'"; fi
 
