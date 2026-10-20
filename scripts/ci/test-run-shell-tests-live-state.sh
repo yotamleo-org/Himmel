@@ -18,6 +18,9 @@
 #       meets recreated shims.
 #   L7. Sentinels that cannot be reset after a suite abort the run, naming
 #       that suite, before a later suite runs.
+#   L8. Under the default hard-fail list a listed suite still fails on a leak,
+#       and any other suite gets a [LIVE-STATE] WARN and passes. L1-L7 run
+#       with every suite hard (SUITE_LIVE_HARD='*').
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -30,6 +33,7 @@ set -uo pipefail
 # shellcheck source=run-shell-tests-fixture.sh
 # shellcheck disable=SC1091
 . "$(cd "$(dirname "$0")" && pwd)/run-shell-tests-fixture.sh"
+export SUITE_LIVE_HARD='*'
 
 sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-live.XXXXXX") || { fail "L: mktemp failed"; rst_tally; }
 trap 'rm -rf "$SUITE_LOCK_SANDBOX" "$sb"' EXIT
@@ -285,6 +289,28 @@ SHEOF
     fail "L7: no reset error naming test-a-stuck.sh; out: $out7"
   fi
   if [ ! -e "$sb/ran7" ]; then pass "L7: no later suite ran"; else fail "L7: a later suite ran on unreset sentinels; out: $out7"; fi
+fi
+
+echo "== L8: only a hard-fail suite fails on a leak; any other suite WARNs and passes =="
+# The call test-arm-resume-proxy.sh made on CI shard 8, copied from its log.
+mkdir -p "$sb/root8/scripts/handover" "$sb/root8/scripts/cloud"
+printf '#!/usr/bin/env bash\ncrontab -l >/dev/null 2>&1\nexit 0\n' > "$sb/root8/scripts/handover/test-merge-on-green.sh"
+printf '#!/usr/bin/env bash\ncrontab -l >/dev/null 2>&1\nexit 0\n' > "$sb/root8/scripts/cloud/test-x-leaks.sh"
+chmod +x "$sb/root8/scripts/handover/test-merge-on-green.sh" "$sb/root8/scripts/cloud/test-x-leaks.sh"
+out8=$(SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE -u SUITE_LIVE_HARD bash "$RUNNER" "$sb/root8" 2>&1)
+rc8=$?
+if [ "$rc8" -eq 1 ]; then pass "L8: run exits 1"; else fail "L8: expected rc=1, got $rc8; out: $out8"; fi
+if grepq "$out8" -E '\[FAIL\] .*scripts/handover/test-merge-on-green\.sh' \
+  && grepq "$out8" -E '\[LIVE-STATE\] [^W].*test-merge-on-green\.sh .*crontab -l'; then
+  pass "L8: a hard-fail suite still fails on a scheduler call"
+else
+  fail "L8: test-merge-on-green.sh did not fail on its crontab call; out: $out8"
+fi
+if grepq "$out8" -E '\[LIVE-STATE\] WARN .*test-x-leaks\.sh .*crontab -l' \
+  && grepq "$out8" -E '\[PASS\] .*test-x-leaks\.sh'; then
+  pass "L8: a suite off the list WARNs and passes"
+else
+  fail "L8: test-x-leaks.sh did not WARN and pass; out: $out8"
 fi
 
 rst_tally

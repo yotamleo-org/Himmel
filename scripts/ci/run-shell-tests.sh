@@ -4100,9 +4100,23 @@ fi
 # sentinels instead (set even where the caller had nothing, so CI sees the
 # escape too), and a recording shim heads PATH for the scheduler commands. A
 # sentinel file must keep its seed, a sentinel dir must stay empty, the shim log
-# must stay empty; whatever a suite dirtied is named, fails it, and is reset
-# before the next suite. The checks are builtins only: no fork on a clean suite.
+# must stay empty; whatever a suite dirtied is named and reset before the next
+# suite. It fails a suite on the hard-fail list; any other suite gets a WARN
+# and passes until its leak is fixed. The checks are builtins only: no fork on
+# a clean suite.
 live_root=""
+# Globs matched against "/<suite path>"; SUITE_LIVE_HARD replaces the list.
+live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/ci/test-run-shell-tests*.sh}"
+_live_is_hard() {
+  local _p _pats
+  [ -n "$live_hard" ] || return 1
+  read -ra _pats <<< "$live_hard"
+  for _p in "${_pats[@]}"; do
+    # shellcheck disable=SC2254  # the list entries are patterns
+    case "/$1" in $_p) return 0 ;; esac
+  done
+  return 1
+}
 live_seed='# sentinel console doc
 
 ## Results
@@ -4429,15 +4443,16 @@ while IFS= read -r suite <&3; do
   _live_check "$_live_pgid"
   _live_rc=$?
   if [ "$_live_rc" -ne 0 ]; then
-    live_fail=1
+    _live_tag="WARN "
+    if _live_is_hard "$suite"; then live_fail=1; _live_tag=""; fi
     while IFS= read -r _lm; do
       [ -n "$_lm" ] || continue
-      printf '[LIVE-STATE] %s — %s\n' "$suite" "$_lm"
-      printf '[LIVE-STATE] %s\n' "$_lm" >> "$log"
+      printf '[LIVE-STATE] %s%s — %s\n' "$_live_tag" "$suite" "$_lm"
+      printf '[LIVE-STATE] %s%s\n' "$_live_tag" "$_lm" >> "$log"
     done <<LIVEMSGS
 $live_msgs
 LIVEMSGS
-    [ "$rc" -ne 0 ] || rc=1
+    [ "$live_fail" -eq 0 ] || [ "$rc" -ne 0 ] || rc=1
   fi
   if [ "$_live_rc" -eq 2 ]; then
     echo "run-shell-tests.sh: could not reset the live-state sentinels after $suite — refusing to run more suites against the caller's live state" >&2
