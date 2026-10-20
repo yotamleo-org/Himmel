@@ -52,6 +52,7 @@ describe('link / links / unlink', () => {
       inwardIssue: { key: 'B-2' },
       outwardIssue: { key: 'A-1' },
     });
+    expect(writeJiraBreadcrumb).toHaveBeenCalledWith('A-1');
     expect(console.log).toHaveBeenCalledWith('Linked: B-2 blocks A-1');
   });
 
