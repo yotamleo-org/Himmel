@@ -54,7 +54,7 @@ red is yours to triage, as on the native lane: read
 `docs/handover/leg-sections/ci-red.md`. The wait is bounded: after at most 3
 `DEADLINE-PENDING` re-runs or 90 minutes, whichever comes first, post
 `BLOCKED ci-pending: <pr> <head> <pending checks>` to Results and take the
-bounded inbox hold below; never wrap. If `check-ci` reports no checks registered
+bounded inbox hold below; never wrap before the hold deadline. If `check-ci` reports no checks registered
 (the workflow never triggered), do not wait for it: escalate the same way at once.
 
 Resolve `<handover-root>` through `scripts/lib/handover-path.sh`'s
