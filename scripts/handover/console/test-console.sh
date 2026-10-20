@@ -266,7 +266,7 @@ check "5d launch line forces session persistence" \
 # The env prefix must precede the binary, not trail it -- `claude ... env -u X`
 # would pass the flags to claude as arguments instead of scrubbing anything.
 check "5d env prefix precedes the claude binary" \
-    "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; (bash [^;]*console-bus-exec.sh [^;]* -- )?env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
+    "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; (if \[ -f [^;]*console-bus-exec.sh \]; then bash [^;]*console-bus-exec.sh [^;]* -- )?env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
 
 # --- 6: next writes the successor stub + predecessor HANDOFF ----------
 doc6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-console.md"
@@ -2653,6 +2653,7 @@ STUB
 cat > "$b88/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -z "${BUS88_HANG:-}" ] || exec sleep 30
 [ -z "${BUS88_FAIL:-}" ]
 STUB
 chmod +x "$b88/bin/claude" "$b88/bus"
@@ -2692,5 +2693,21 @@ paste88 "$out88d" BUS88_FAIL=1
 check "88 failed register: no bind, claude starts unbound" \
     "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
+
+# --- 89: the pasted line never hangs on the bus: a bus call stuck past
+# BUS_EXEC_SECS is killed and claude starts unbound; and a line whose
+# console-bus-exec.sh is gone runs claude directly.
+out89a="$(print88 in new bus89hang)"
+rc89=0
+paste88 "$out89a" BUS88_HANG=1 BUS_EXEC_SECS=1 timeout 20 || rc89=$?
+check "89 stuck bus: the pasted line does not hang" "$rc89" "0"
+check "89 stuck bus: claude starts unbound" \
+    "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=<unset> extra=<unset>"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89hang/$s88a.md" "$(token_of "$out89a")" >/dev/null 2>&1
+out89b="$(print88 in new bus89gone)"
+paste88 "$(printf '%s\n' "$out89b" | sed 's/console-bus-exec\.sh/console-bus-exec-gone.sh/g')"
+check "89 wrapper missing: claude still starts" "$([ -s "$b88/seen" ] && echo started || echo not-started)" "started"
+check "89 wrapper missing: bus never called" "$([ -e "$b88/calls" ] && echo called || echo none)" "none"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89gone/$s88a.md" "$(token_of "$out89b")" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

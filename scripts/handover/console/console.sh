@@ -937,17 +937,21 @@ launch_cmd() {
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
         || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server (HIMMEL-5310)"; exit 2; }
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
+    local claude_cmd
+    claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \
+        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
     # No launcher binds a pasted console on the bus, so the line runs claude
-    # through console-bus-exec.sh, which registers and binds it first.
-    local bus_exec=""
+    # through console-bus-exec.sh, which registers and binds it first; a line
+    # pasted after that file is gone runs claude directly.
     if console_bus_opted_in; then
+        local bus_exec
         bus_exec="$(printf 'bash %q %q ' "$HERE/console-bus-exec.sh" "$1")"
         [ -z "$CONSOLE_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CONSOLE_BUS_PREDECESSOR")"
-        bus_exec+="-- "
+        claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/console-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
     fi
-    printf 'cd %q && { bash %q %s %s %s %s; %s%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"; }' \
+    printf 'cd %q && { bash %q %s %s %s %s; %s; }' \
         "$repo" "$HERE/record-launch.sh" "$1" "$CONSOLE_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
-        "$bus_exec" "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2"
+        "$claude_cmd"
 }
 
 # _console_sha256_8 <string> -- first 8 hex chars of sha256(<string>). Small
