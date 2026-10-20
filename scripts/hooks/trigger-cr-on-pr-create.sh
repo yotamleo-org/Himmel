@@ -99,7 +99,7 @@ fi
 # `gh release create`) reach the anchored regex below, which correctly
 # rejects them.
 case "$payload" in
-    *create*) ;;  # might be real — fall through to the slow path
+    *create* | *new*) ;;  # might be real (`pr create` / `pr new`) — fall through to the slow path
     *) exit 0 ;;
 esac
 
@@ -249,7 +249,7 @@ strip_quoted_spans() {
 # same line; it is not duplicated here so the two cannot drift in prose either.
 stripped=$(strip_quoted_spans "$cmd")
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
-if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh[[:space:]]+pr[[:space:]]+create([^[:alnum:]_-]|$)'; then
+if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]-][^[:space:]]*)?)*[[:space:]]+pr[[:space:]]+(create|new)([^[:alnum:]_-]|$)'; then
     exit 0
 fi
 
