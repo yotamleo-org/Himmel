@@ -1,6 +1,7 @@
-# Pages built from docs/ (paths relative to docs/). DS1 proof-of-concept scope:
-# the Get-started IA plus one mermaid page. The three standalone HTML pages are
-# passed through byte-identical (see HTML_PASSTHROUGH in astro.config.mjs).
+# Pages built from docs/ (paths relative to docs/): the approved IA (docs-site
+# plan section 3). Each entry is also copied byte-identical to its docs/ path
+# (see RAW_FILES in astro.config.mjs). Repo-only material (handover templates,
+# prefaces and sections, patches/, operator ledgers) is deliberately absent.
 README.md
 why-himmel.md
 getting-started.md
@@ -9,5 +10,63 @@ setup/profiles/README.md
 setup/new-machine.md
 setup/updating.md
 setup/migrating.md
-architecture.md
+daily-loop.md
+commands-catalog.md
+himmelctl.md
+configuration.md
+cadences.md
+ui.md
+launchers.md
+setup/codex.md
+setup/cli-proxy-lane.md
+hermes-runbook.md
+setup/cloud-environment.md
 telegram-bridge.md
+luna/README.md
+luna/compounding.md
+luna/end-session-wiki.md
+luna/end-session-wiki-schema.md
+luna/google-health-connector-setup.md
+luna/pr-lane-guard.md
+jarvis-subsystems.md
+himmel-bus.md
+voice.md
+handover/overnight-mode.md
+handover/running-a-console.md
+internals/handover-system.md
+orchestration-patterns.md
+token-economy.md
+system-design.md
+architecture.md
+internals/context-architecture.md
+glossary.md
+internals/enforcement.md
+internals/stuck-playbook.md
+internals/egress-matrix.md
+internals/harness-compat.md
+internals/headless-modes.md
+internals/jira-plugin.md
+internals/testing.md
+internals/environment-gotchas.md
+internals/lane-calibration.md
+internals/lane-parity.md
+internals/retask-channel.md
+internals/prompt-cache.md
+internals/config-layers.md
+internals/mcp-servers.md
+internals/ponytail-convention.md
+contributing.md
+security-review.md
+security/npm-policy.md
+security/python-policy.md
+tool-adoption/rubric.md
+tool-adoption/registry.md
+tool-adoption/telemetry.md
+tool-adoption/lane-adoption-playbook.md
+evals/prompt-cache.md
+evals/review-panel.md
+release/v1.1.2-notes.md
+release/v1.0.0-notes.md
+release/versioning-scheme.md
+license-audit.md
+third-party-licenses.md

@@ -10,6 +10,11 @@
 #   merge --out O --scratch S --plan P --runtime-s T --tokens-in I --tokens-out J
 #   restore --out O --before B     put back the semantic items an AST rebuild
 #                                  (ast-update.sh) dropped from B's snapshot
+#   status --root R --out O        backed-off, unstamped and oldest-unstamped counts
+#
+# A batch file that fails or is shrink-refused gets a manifest "stuck" record
+# {hash, attempts, reason, since}. After MAX_ATTEMPTS on the same content it is
+# backed off: plan skips it until its content changes, so it is not re-billed.
 #
 # Ownership rule for the merge: the AST pass (`graphify update`, hourly) owns
 # every `_origin: ast` node/edge; this step owns only `_origin: semantic` ones.
@@ -30,6 +35,19 @@ RUNS = "semantic-runs.jsonl"
 # Sonnet list price per 1M tokens (in, out): the GRAPHIFY_CLAUDE_CLI_MODEL pin.
 # A cost EQUIVALENT only -- claude-cli bills the subscription bank, not dollars.
 PRICE_IN, PRICE_OUT = 3.0, 15.0
+MAX_ATTEMPTS = 3
+# Directory names graphify's detect never scans: a .md under one is never
+# extracted, so listing it would fail it on every run.
+# ponytail: a copy of graphify detect._SKIP_DIRS (graphifyy at 2026-10-19), re-sync on a graphify bump.
+GRAPHIFY_SKIP_DIRS = {
+    "venv", ".venv", "node_modules", "__pycache__", ".git", "dist", "build", "target",
+    "site-packages", "lib64", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", ".eggs",
+    "graphify-out", "lcov-report", "visual-tests", "visual-test", "__snapshots__", "storybook-static",
+    "dist-protected", ".next", ".nuxt", ".turbo", ".angular", ".idea", ".cache", ".parcel-cache",
+    ".svelte-kit", ".terraform", ".serverless", ".graphify", ".obsidian", ".smart-env", ".worktrees",
+}
+# Test fixtures are data for a suite, not knowledge; a large mirror of them crowds every chunk.
+SEMANTIC_SKIP_DIRS = GRAPHIFY_SKIP_DIRS | {"fixtures"}
 
 
 def die(msg, rc=1):
@@ -98,7 +116,7 @@ def corpus_files(root, out_name):
     keep = []
     for rel in files:
         rel = rel.replace(os.sep, "/")
-        if any(rel.startswith(d) for d in skip):
+        if any(rel.startswith(d) for d in skip) or SEMANTIC_SKIP_DIRS & set(rel.split("/")[:-1]):
             continue
         full = os.path.join(root, rel)
         if os.path.isfile(full) and not os.path.islink(full):
@@ -106,21 +124,44 @@ def corpus_files(root, out_name):
     return sorted(set(keep))
 
 
+def load_manifest(out):
+    return load_json(os.path.join(out, MANIFEST), {"version": 1, "files": {}})
+
+
 def manifest_files(out):
-    return load_json(os.path.join(out, MANIFEST), {"version": 1, "files": {}}).get("files", {})
+    return load_manifest(out).get("files", {})
+
+
+def backed_off(rec, digest):
+    return bool(rec) and rec.get("hash") == digest and rec.get("attempts", 0) >= MAX_ATTEMPTS
+
+
+def unstamped(a):
+    # (corpus hashes, unstamped files, backed-off files) against the manifest.
+    m = load_manifest(a.out)
+    old, stuck = m.get("files", {}), m.get("stuck", {})
+    now = {rel: sha256(os.path.join(a.root, rel)) for rel in corpus_files(a.root, os.path.basename(a.out))}
+    changed = [rel for rel in sorted(now) if old.get(rel) != now[rel]]
+    return now, changed, [rel for rel in changed if backed_off(stuck.get(rel), now[rel])]
 
 
 def cmd_plan(a):
-    old = manifest_files(a.out)
-    now = {rel: sha256(os.path.join(a.root, rel)) for rel in corpus_files(a.root, os.path.basename(a.out))}
-    changed = [rel for rel in sorted(now) if old.get(rel) != now[rel]]
-    deleted = sorted(rel for rel in old if rel not in now)
+    now, changed, skipped = unstamped(a)
+    changed = [rel for rel in changed if rel not in skipped]
+    deleted = sorted(rel for rel in manifest_files(a.out) if rel not in now)
     batch = changed[:a.max_files]
     plan = {"changed_total": len(changed), "batch": batch, "deleted": deleted,
-            "backlog": len(changed) - len(batch)}
+            "backlog": len(changed) - len(batch), "backed_off": skipped}
     write_json_atomic(a.plan, plan)
-    print("plan: changed=%d batch=%d deleted=%d backlog=%d"
-          % (len(changed), len(batch), len(deleted), plan["backlog"]))
+    print("plan: changed=%d batch=%d deleted=%d backlog=%d backed_off=%d"
+          % (len(changed), len(batch), len(deleted), plan["backlog"], len(skipped)))
+
+
+def cmd_status(a):
+    _, changed, skipped = unstamped(a)
+    now = time.time()
+    oldest = max((now - os.path.getmtime(os.path.join(a.root, rel)) for rel in changed), default=0)
+    print("backed_off=%d unstamped=%d oldest_unstamped=%dd" % (len(skipped), len(changed), oldest // 86400))
 
 
 def cmd_seed(a):
@@ -149,6 +190,27 @@ def shrinks(old_nodes, new_nodes, rel):
     # decide "this file lost too much" here. A single old node cannot shrink.
     old = count_semantic(old_nodes, rel)
     return old >= 2 and count_semantic(new_nodes, rel) < old * SHRINK_RATIO
+
+
+def evict_cache(dirs, rels, scratch):
+    # graphify caches one entry per source file: drop the entries that hold only
+    # these files, so their retry is a fresh extraction, not a cached replay.
+    for d in dirs:
+        for dp, _, fns in os.walk(d):
+            for fn in fns:
+                p = os.path.join(dp, fn)
+                try:
+                    with open(p, encoding="utf-8") as f:
+                        entry = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                srcs = {norm_src(i.get("source_file"), scratch) for b in ("nodes", "edges", "hyperedges")
+                        for i in entry.get(b) or [] if isinstance(i, dict) and i.get("source_file")}
+                if len(srcs) == 1 and srcs <= rels:
+                    os.remove(p)
+                    print("semantic-merge: evicted cache entry %s for %s" % (p, srcs.pop()), file=sys.stderr)
 
 
 def edge_key(e):
@@ -226,8 +288,8 @@ def cmd_merge(a):
 
     # A batch file the extraction produced nothing for is a failed chunk (the
     # model omitted it): it keeps its old semantic items and stays unstamped,
-    # so the next run retries it. Only produced and deleted files are replaced.
-    # ponytail: a file the model always omits is retried (and billed) every run, add a per-file failure count to the manifest once semantic-runs.jsonl shows `failed` not draining.
+    # so the next run retries it (up to MAX_ATTEMPTS, see the stuck record
+    # below). Only produced and deleted files are replaced.
     #
     # Shrink guard: a produced file whose extraction holds under
     # SHRINK_RATIO of its old semantic nodes is refused like a failed chunk --
@@ -236,14 +298,18 @@ def cmd_merge(a):
     # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there.
     produced = {n.get("source_file") for n in new_nodes}
     refused = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f))
+    reasons = {}
     for f in refused:
+        reasons[f] = "shrink guard: new %d vs old %d semantic nodes" % (count_semantic(new_nodes, f), count_semantic(g["nodes"], f))
         print("semantic-merge: shrink guard REFUSED %s: new extraction has %d semantic nodes, old has %d; keeping the old ones, file stays unstamped"
               % (f, count_semantic(new_nodes, f), count_semantic(g["nodes"], f)), file=sys.stderr)
     produced -= set(refused)
     new_nodes = [n for n in new_nodes if n.get("source_file") not in refused]
     new_edges = [e for e in new_edges if e.get("source_file") not in refused]
     new_hyper = [h for h in new_hyper if h.get("source_file") not in refused]
-    failed = sorted(batch - produced)
+    failed = sorted(batch - produced - set(refused))
+    for f in failed:
+        reasons[f] = "not extracted: graphify skipped the file or the model omitted it"
     touched = (batch & produced) | set(plan["deleted"])
 
     def owned(item):
@@ -285,19 +351,41 @@ def cmd_merge(a):
     # manifest: a file is stamped only once its graph content landed, and a
     # crash between the two leaves it unstamped, so the next run re-replaces it
     # by source_file (idempotent).
-    files = manifest_files(a.out)
+    m = load_manifest(a.out)
+    files, stuck = m.get("files", {}), m.get("stuck", {})
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for rel in plan["deleted"]:
         files.pop(rel, None)
-    for rel in batch - set(failed):
-        files[rel] = sha256(os.path.join(a.scratch, rel))
+        stuck.pop(rel, None)
+    newly_backed_off = []
+    for rel in sorted(batch):
+        digest = sha256(os.path.join(a.scratch, rel))
+        if rel not in reasons:
+            files[rel] = digest
+            stuck.pop(rel, None)
+            continue
+        rec = stuck.get(rel)
+        if not rec or rec.get("hash") != digest:
+            rec = {"hash": digest, "attempts": 0, "since": ts}
+        rec["attempts"] += 1
+        rec["reason"] = reasons[rel]
+        stuck[rel] = rec
+        if rec["attempts"] == MAX_ATTEMPTS:
+            newly_backed_off.append(rel)
+            print("semantic-merge: BACKED OFF %s after %d attempts (%s); not retried until its content changes"
+                  % (rel, MAX_ATTEMPTS, reasons[rel]), file=sys.stderr)
     write_json_atomic(graph_path, g)
-    write_json_atomic(os.path.join(a.out, MANIFEST), {"version": 1, "files": files})
+    write_json_atomic(os.path.join(a.out, MANIFEST), {"version": 1, "files": files, "stuck": stuck})
+    if reasons:
+        evict_cache(a.evict_cache, set(reasons), a.scratch)
 
     run = {
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "ts": ts,
         "name": a.name, "changed_total": plan["changed_total"], "batch": len(batch),
         "deleted": len(plan["deleted"]), "backlog": plan["backlog"], "failed": len(failed),
-        "shrink_refused": len(refused),
+        "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
+        "backed_off": len(plan.get("backed_off", [])) + len(newly_backed_off),
+        "backed_off_files": sorted(set(plan.get("backed_off", [])) | set(newly_backed_off)),
         "nodes_added": nodes_added, "nodes_removed": nodes_removed,
         "edges_added": edges_added, "edges_removed": edges_removed,
         "runtime_s": a.runtime_s, "tokens_in": a.tokens_in, "tokens_out": a.tokens_out,
@@ -340,6 +428,7 @@ def main():
     m.add_argument("--backend", default="")
     m.add_argument("--cost-usd", type=float, default=0.0)
     m.add_argument("--cap-usd", type=float, default=0.0)
+    m.add_argument("--evict-cache", action="append", default=[])
     f = sub.add_parser("failrow")
     f.add_argument("--name", required=True)
     f.add_argument("--out", required=True)
@@ -349,8 +438,12 @@ def main():
     r = sub.add_parser("restore")
     r.add_argument("--out", required=True)
     r.add_argument("--before", required=True)
+    st = sub.add_parser("status")
+    st.add_argument("--root", required=True)
+    st.add_argument("--out", required=True)
     a = ap.parse_args()
-    {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore}[a.cmd](a)
+    {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore,
+     "status": cmd_status}[a.cmd](a)
 
 
 if __name__ == "__main__":
