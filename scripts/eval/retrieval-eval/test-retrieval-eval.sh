@@ -27,6 +27,10 @@ printf 'unrelated words only\n' > "$R/docs/other.md"
 mkdir -p "$R/templates/vault/.obsidian/plugins/p"
 printf 'relay_batch queue lock halt token relay_batch\n' > "$R/templates/vault/.obsidian/plugins/p/main.js"
 printf 'relay_batch queue lock halt token relay_batch\n' > "$R/docs/vendor.min.js"
+# A Python variable definition must outrank a file that merely uses the name more often.
+mkdir -p "$R/lib"
+printf 'retry_limit: int = 3\n' > "$R/lib/conf.py"
+printf 'retry_limit retry_limit retry_limit\n' > "$R/docs/a-use.md"
 # The question set itself is tracked; grep must never rank it.
 mkdir -p "$R/scripts/eval/retrieval-eval"
 printf 'why does a halt need no token mild DoS relay_batch defined\n' > "$R/scripts/eval/retrieval-eval/questions.jsonl"
@@ -84,6 +88,11 @@ for l in open(sys.argv[1]):
 eq "path hits the file whose name holds the question words" "1 docs/lock.md" "$(hit p1 path)"
 eq "ident-grep ranks the defining file first and skips vendored bundles" "1 bin/run.sh" "$(hit p2 ident-grep)"
 eq "ident-grep finds nothing in a question with no identifier" "0 -" "$(hit p1 ident-grep)"
+printf '{"id":"p3","kind":"where","q":"where is retry_limit set","gold":["lib/conf.py"],"reason":[]}\n' > "$W/qp3.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-2b.jsonl" py "$EV" run --repo "$R" --questions "$W/qp3.jsonl" --out "$W/outp3" --arms ident-grep > /dev/null 2>&1
+eq "ident-grep ranks a Python variable definition first" "1 lib/conf.py" "$(py -c 'import json,sys; r=json.loads(open(sys.argv[1]).readline()); print(int(r["hit"]), r["files"][0])' "$W/outp3/results.jsonl")"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-2b.jsonl" py "$EV" run --repo "$R" --questions "$W/qp3.jsonl" --out "$W/outp4" --arms ident-grep --timeout 0 > /dev/null 2>&1
+eq "ident-grep with an exhausted budget is a timeout row, not a late search" "True" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["timeout"])' "$W/outp4/results.jsonl")"
 
 # 3. graphify: q1 hit with its rationale, q2 miss (RED control: a wrong file is no hit).
 eq "graphify recall@5 is 0.50" "0.50" "$(s graphify recall@5)"

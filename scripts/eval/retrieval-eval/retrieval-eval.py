@@ -180,13 +180,15 @@ def definition(ident):
     """A line that defines ident: a function, class or variable, in shell, python or js."""
     i = re.escape(ident)
     return re.compile(r"^\s*(?:(?:export\s+)?(?:async\s+)?(?:def|class|function|const|let|var|func|fn)\s+%s\b"
-                      r"|%s\s*\(\s*\)\s*\{|(?:export\s+)?%s=)" % (i, i, i))
+                      r"|%s\s*\(\s*\)\s*\{|(?:export\s+)?%s\s*(?::[^=]+)?=(?!=))" % (i, i, i))
 
 
 def arm_ident_grep(q, repo, timeout, k):
     t0 = time.time()
     score, lines = {}, {}
     for ident in idents(q):
+        if time.time() - t0 > timeout:
+            return [], "", True, False
         out, to, rc = run_cmd(["git", "-C", repo, "grep", "-n", "-I", "-w", "-F", "-e", ident, "--"] + GREP_SCOPE,
                               max(1, timeout - (time.time() - t0)))
         if to:
