@@ -3,7 +3,7 @@
 # scripts/handover/console-kit/test-cr-disposition.sh - suite for
 # cr-disposition.sh and the go.sh refusal it drives (exit 9): a Critical or
 # Important finding the leg deferred on its own never gets a GO.
-#   1. a leg-deferred Important (a row copied from the real CR ledger) -> exit 9.
+#   1. a leg-deferred Important (shaped like a real CR ledger row) -> exit 9.
 #   2. record: refused from a leg, follow-up needs all three attests.
 #   3. a console follow-up naming a key that does not exist -> exit 9.
 #   4. a console follow-up with three attests and a real key -> GO written.
@@ -17,7 +17,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 GOSH="$HERE/go.sh"
 DISP="$HERE/cr-disposition.sh"
-FIX="$HERE/fixtures/cr-disposition/ledger-deferred-imp.jsonl"
+LA="$HERE/../../cr/ledger-append.sh"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CONSOLE_SESSION_NAME 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/cr-disp-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -78,7 +78,15 @@ SHA=2222222222222222222222222222222222222222
 SHA2=3333333333333333333333333333333333333333
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
 ready_pass_ledger "$REPO" "$SHA"
-cat "$FIX" >> "$LEDGER"
+# defer_finding <id> <severity> <text> - a leg-deferred finding at $FHEAD, written
+# through the ledger's single writer (test-pr-check-run invariant 7).
+defer_finding() {
+  CR_LEDGER="$LEDGER" bash "$LA" finding --branch "$BR" --head "$FHEAD" --model gpt-6.1-sol --id "$1" \
+    --severity "$2" --file scripts/config-ui/agui-web/src/main.tsx --line 23 --verdict deferred \
+    --reason "Pre-existing production lifecycle defect outside approved e2e-only repair scope; console-directed Bug follow-up verified and linked" \
+    --deferred-to HIMMEL-6352 --fu-class hardening --text "$3" 2>/dev/null
+}
+defer_finding census-reset-1 imp "Fleet census rerender recreates source and resets active transcript"
 HDIR="$tmp/root"; mkdir -p "$HDIR"
 export HANDOVER_DIR="$HDIR"
 gos() { rc=0; out="$(bash "$GOSH" "$@" 2>&1)" || rc=$?; }
@@ -136,7 +144,7 @@ cp "$tmp/ledger.bak" "$LEDGER"
 nogo     "5: refusals"
 
 # --- 6. a Critical needs a judge --------------------------------------------
-printf '%s\n' "{\"kind\":\"finding\",\"ts\":\"2026-10-19T00:00:00Z\",\"branch\":\"$BR\",\"head\":\"$FHEAD\",\"model\":\"codex\",\"finding_id\":\"codex-9\",\"severity\":\"crit\",\"file\":\"a.sh\",\"line\":1,\"verdict\":\"deferred\",\"artifact\":\"diff\",\"perspective\":\"off\",\"deferred_to\":\"HIMMEL-6352\",\"fu_class\":\"hardening\"}" >> "$LEDGER"
+defer_finding codex-9 crit "A deferred Critical"
 gos 90 "$SHA"
 check "6: leg-deferred Critical -> exit 9" "$rc" "9"
 bash "$DISP" record 90 "$SHA" "codex-9@$FHEAD" follow-up:HIMMEL-6352 \
