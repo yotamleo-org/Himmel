@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -882,6 +882,27 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
   it('refuses the override without a --fix-version to admit into', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
     await expect(file('--console-override', 'because')).rejects.toThrow(/--fix-version/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override when the ledger is readable but not writable, before any ticket is created', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    const path = join(dir, 'admissions-ledger.jsonl');
+    writeFileSync(path, '');
+    chmodSync(path, 0o444);
+    try {
+      if (process.getuid?.() === 0) return;
+      await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+      expect(created()).toBeUndefined();
+    } finally {
+      chmodSync(path, 0o644);
+    }
+  });
+
+  it('refuses the override when the ledger location cannot be opened for append, before any ticket is created', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
     expect(created()).toBeUndefined();
   });
 });

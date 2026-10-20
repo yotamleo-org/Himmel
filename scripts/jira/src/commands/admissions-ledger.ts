@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -34,6 +34,13 @@ export function appendAdmission(row: AdmissionInput): Admission {
   mkdirSync(dirname(path), { recursive: true });
   appendFileSync(path, JSON.stringify(admission) + '\n');
   return admission;
+}
+
+/** Throws unless the ledger can take an append, so a refusal lands before the ticket is filed. Writes no row. */
+export function assertAdmissionsWritable(): void {
+  const path = admissionsLedgerPath();
+  mkdirSync(dirname(path), { recursive: true });
+  closeSync(openSync(path, 'a'));
 }
 
 /** Every row, oldest first; with a version, only that version's rows. Throws when no ledger location is set. */

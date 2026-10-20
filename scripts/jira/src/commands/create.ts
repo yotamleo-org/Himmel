@@ -11,7 +11,7 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAI
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink } from './link.js';
-import { appendAdmission, readAdmissions } from './admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable } from './admissions-ledger.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -231,7 +231,8 @@ interface PlacementOptions {
 
 /**
  * A console override needs a reason, the console marker and a ledger location.
- * Returns the trimmed reason; the ledger probe throws when no location is set.
+ * Returns the trimmed reason; the ledger probe throws when no location is set
+ * or the ledger cannot take an append, so no ticket is filed without its row.
  */
 function checkConsoleOverride(reason: string): string {
   const trimmed = reason.trim();
@@ -240,7 +241,7 @@ function checkConsoleOverride(reason: string): string {
   if (process.env['HIMMEL_CONSOLE'] !== '1') {
     throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
   }
-  readAdmissions();
+  assertAdmissionsWritable();
   return trimmed;
 }
 

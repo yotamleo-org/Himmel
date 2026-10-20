@@ -256,13 +256,15 @@ label and priority.
 
 **Override and admissions ledger.** `create --fix-version <v>
 --console-override "<reason>"` is honoured only with `HIMMEL_CONSOLE=1` set, a
-non-empty reason and a ledger location (`HANDOVER_DIR`, or
-`HIMMEL_ADMISSIONS_LEDGER`); any miss refuses before the ticket is filed. After
+non-empty reason and a ledger that can take an append (`HANDOVER_DIR`, or
+`HIMMEL_ADMISSIONS_LEDGER`); any miss, including an unwritable ledger, refuses
+before the ticket is filed. After
 the create it appends one JSON row `{ts, version, key, gate|kind, actor, reason}`
 (`kind: "override"`) to `$HANDOVER_DIR/admissions-ledger.jsonl`. The marker is
 spoofable by any same-uid caller (ponytail, upgrade path HIMMEL-6796). Code:
-`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)` and
-`readAdmissions(version?)`, the whole API).
+`scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)`,
+`readAdmissions(version?)` and the preflight `assertAdmissionsWritable()`, the
+whole API).
 
 ## Confluence CLI
 

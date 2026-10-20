@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendAdmission, readAdmissions } from './admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions } from './admissions-ledger.js';
 
 describe('admissions ledger (HIMMEL-6776)', () => {
   let dir: string;
@@ -56,6 +56,18 @@ describe('admissions ledger (HIMMEL-6776)', () => {
     appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' });
     appendAdmission({ version: 'v1.1.4', key: 'HIMMEL-2', gate: 'regression' });
     expect(readAdmissions('v1.1.4').map((r) => r.key)).toEqual(['HIMMEL-2']);
+  });
+
+  it('assertAdmissionsWritable passes on a writable ledger and writes no row', () => {
+    process.env['HANDOVER_DIR'] = dir;
+    assertAdmissionsWritable();
+    expect(readAdmissions()).toEqual([]);
+  });
+
+  it('assertAdmissionsWritable throws with no location, and when the location cannot be opened for append', () => {
+    expect(() => assertAdmissionsWritable()).toThrow(/HANDOVER_DIR/);
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    expect(() => assertAdmissionsWritable()).toThrow();
   });
 
   it('reads an absent ledger as empty', () => {
