@@ -297,6 +297,7 @@ run_update() {
             return "$rc"
         fi
         nap="$step"
+        [ "$nap" -ge 1 ] || nap=1
         [ "$nap" -le $((wait_max - waited)) ] || nap=$((wait_max - waited))
         echo "qmd-reindex: index busy (SQLITE_BUSY; holder: $(index_holders)); retrying in ${nap}s (waited ${waited}s of ${wait_max}s)" >&2
         sleep "$nap"
