@@ -54,11 +54,12 @@
 </div>
 
 <script type="module">
-  import { mount } from './dev-graph/dev-graph.js';
   var err = document.getElementById('graph-error');
-  fetch('dev-graph/graph.json')
-    .then(function (r) { if (!r.ok) throw new Error('graph.json: HTTP ' + r.status); return r.json(); })
-    .then(function (data) { mount(document.getElementById('graph'), data); })
+  Promise.all([
+    import('./dev-graph/dev-graph.js'),
+    fetch('dev-graph/graph.json').then(function (r) { if (!r.ok) throw new Error('graph.json: HTTP ' + r.status); return r.json(); }),
+  ])
+    .then(function (both) { both[0].mount(document.getElementById('graph'), both[1]); })
     .catch(function (e) { err.textContent = 'The development graph did not load: ' + e.message; err.hidden = false; });
 </script>
 <script>

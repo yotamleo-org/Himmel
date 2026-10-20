@@ -209,6 +209,7 @@ function renderNarrow(root, data, uid, reduced) {
     }
     const lane = lanes.get(n.lane);
     const g = nodeGroup(svg, n, lane);
+    g.setAttribute('tabindex', '-1');
     nodeEls.set(n.id, g);
     svgEl('rect', { class: 'dg-box', x: N.x, y: top, width: N.nodeW, height: N.nodeH, rx: 6 }, g);
     svgEl('rect', { class: 'dg-stripe', x: N.x, y: top + 6, width: 4, height: N.nodeH - 12 }, g);
@@ -232,6 +233,7 @@ function renderNarrow(root, data, uid, reduced) {
           if (!to) return;
           ev.preventDefault();
           to.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' });
+          to.focus({ preventScroll: true });
         };
         a.addEventListener('click', go);
         a.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') go(ev); });

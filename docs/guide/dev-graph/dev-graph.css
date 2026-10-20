@@ -59,7 +59,7 @@
 .dg-stub.dg-decision rect { stroke: var(--muted); }
 .dg-stub.dg-refusal rect { stroke: var(--crit); fill: var(--crit-soft); }
 .dg-stub.dg-loop rect { stroke: var(--beta); stroke-dasharray: 2 3; }
-.dg-stub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dg-stub:focus-visible, .dg-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .dg-key .dg-edge path { stroke-width: 2; }
 

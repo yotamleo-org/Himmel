@@ -302,6 +302,12 @@ if [ -f "$REAL" ]; then
     *"$first_id"*) ok "paths: a start moved 10 px off its box fails, naming $first_id" ;;
     *) bad "paths: a start moved 10 px off its box still passes (vacuous)" ;;
   esac
+  # two edges on one path stack their exit-code badges and hide one
+  shared_paths() { jq -r '[.edges[] | {id, p: .path.wide}] | group_by(.p) | map(select(length > 1) | map(.id) | join("+")) | .[]' "$1"; }
+  dups=$(shared_paths "$REAL")
+  if [ -z "$dups" ]; then ok "paths: no two edges share one wide path"; else bad "paths: edges share a path: $dups"; fi
+  jq '.edges[1].path.wide = .edges[0].path.wide' "$REAL" > "$D/shared.json"
+  if [ -n "$(shared_paths "$D/shared.json")" ]; then ok "paths: two edges copied onto one path fail the shared-path check"; else bad "paths: a shared path still passes (vacuous)"; fi
   jq 'del(.edges[1].path)' "$REAL" > "$D/missing.json"
   second_id=$(jq -r '.edges[1].id' "$REAL")
   case $(paths_bad "$D/missing.json") in
