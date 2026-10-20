@@ -128,7 +128,9 @@ sys.stdout.buffer.write((new + '\n').encode('utf-8', 'surrogateescape'))
 if mode == 'apply' and new + eol != lines[at]:
     lines[at] = new + eol
     tmp = doc + '.prune.%d' % os.getpid()
-    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape', newline='') as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.fchmod(fd, os.stat(doc).st_mode & 0o7777)
+    with os.fdopen(fd, 'w', encoding='utf-8', errors='surrogateescape', newline='') as f:
         f.write('\n'.join(lines))
     os.replace(tmp, doc)
 PY
