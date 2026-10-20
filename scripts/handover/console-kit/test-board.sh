@@ -296,6 +296,13 @@ fpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/f-board.html")"
 same 'a decisions: pointer lists the file entries, not one pointer row (HIMMEL-6498)' "$(printf '%s\n' "$fpanel" | grep -c '<li>')" '2'
 contains 'a decisions: pointer renders each numbered file entry (HIMMEL-6498)' "$fpanel" '<li>(2) ship the board first (then the tracker)</li>'
 lacks 'a decisions: pointer does not render the path as a decision (HIMMEL-6498)' "$fpanel" 'console-decisions-2026-09-21.md'
+sed 's|^decisions: .*|decisions: specs/decisions/console-decisions-2026-09-21.md; specs/decisions/console-decisions-2026-09-20.md|' "$DOC" > "$DOCF"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-g.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOCF" --repo "$W/repo" --out "$W/g-board.html" >/dev/null 2>"$W/stderr.log"
+gpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/g-board.html")"
+contains 'a missing decisions file shows as a row, not silently dropped' "$gpanel" '<li>missing decisions file: specs/decisions/console-decisions-2026-09-20.md</li>'
 
 # --- epics: merged/total from the declared total + the merged PRs citing the key
 contains 'a declared epic shows merged/total' "$html" 'data-epic="HIMMEL-3332" data-merged="2" data-total="4"'

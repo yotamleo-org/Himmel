@@ -173,14 +173,16 @@ const splitTopLevel = (s) => {
     return out;
 };
 // A `decisions:` line naming bucket decisions files lists the `(N) ` entries of
-// those files and of the line itself, never the path as one row.
+// those files and of the line itself, never the path as one row; a named file
+// that does not exist is one row saying so.
 // ponytail: every numbered entry is listed, superseded ones too; an open/closed mark on the entry is the upgrade.
 const numberedEntries = (text) => text.split('\n')
     .flatMap((l) => l.split(/(?=\(\d+\) )/)).filter((e) => /^\(\d+\) /.test(e)).map((e) => e.trim());
 const decisionsLine = liveField('decisions');
 const decisionFiles = decisionsLine.match(/specs\/decisions\/console-decisions-[0-9-]+\.md/g) || [];
 const fileDecisions = [
-    ...decisionFiles.flatMap((f) => (existsSync(join(bucket, f)) ? numberedEntries(readFileSync(join(bucket, f), 'utf8')) : [])),
+    ...decisionFiles.flatMap((f) => (existsSync(join(bucket, f))
+        ? numberedEntries(readFileSync(join(bucket, f), 'utf8')) : [`missing decisions file: ${f}`])),
     ...(decisionFiles.length ? numberedEntries(decisionsLine) : []),
 ];
 const decisions = fileDecisions.length ? fileDecisions
