@@ -12,7 +12,11 @@ import sys
 
 ENFORCED = (
     "scripts/eval/guard-corpus/diff",
-    "scripts/hooks/test-block-destructive-commands.sh",
+    "scripts/hooks/lib-test-block-destructive.sh",
+    "scripts/hooks/test-block-destructive-commands-a.sh",
+    "scripts/hooks/test-block-destructive-commands-b.sh",
+    "scripts/hooks/test-block-destructive-commands-c.sh",
+    "scripts/hooks/test-block-destructive-commands-d.sh",
 )
 FOLLOW_UPS = (
     "scripts/hooks/test-hook-chain-latency.sh",

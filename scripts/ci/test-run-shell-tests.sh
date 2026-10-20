@@ -722,7 +722,8 @@ if [ -n "$sb13d" ]; then
 mkdir -p "$sb13d/bin" "$sb13d/scripts/lib" "$sb13d/scripts/eval/guard-corpus" "$sb13d/scripts/hooks"
 printf '#!/bin/bash\nprintf "Darwin\\n"\n' > "$sb13d/bin/uname"
 printf '#!/bin/bash\nexit 0\n' > "$sb13d/bin/sandbox-exec"
-for suite in lib/test-sandbox-run.sh eval/guard-corpus/test-guard-corpus.sh hooks/test-block-destructive-commands.sh; do
+for suite in lib/test-sandbox-run.sh eval/guard-corpus/test-guard-corpus.sh hooks/test-block-destructive-commands-a.sh \
+    hooks/test-block-destructive-commands-b.sh hooks/test-block-destructive-commands-c.sh hooks/test-block-destructive-commands-d.sh; do
   printf '#!/bin/bash\nprintf "DARWIN_SUITE_RAN\\n"\nexit 0\n' > "$sb13d/scripts/$suite"
   chmod +x "$sb13d/scripts/$suite"
 done
@@ -737,8 +738,8 @@ for tool in awk basename bash cat chmod cp cut date dirname env find flock git g
   ln -s "$tool_path" "$sb13d/bin/$tool"
 done
 out13d=$(PATH="$sb13d/bin" bash "$RUNNER" "$sb13d/scripts" 2>&1); rc13d=$?
-if [ "$rc13d" = 0 ] && grepq "$out13d" 'PASS: 3' && ! grepq "$out13d" 'capability: bwrap'; then
-  pass '13d: all three Darwin corpus suites run, not bwrap capability skip'
+if [ "$rc13d" = 0 ] && grepq "$out13d" 'PASS: 6' && ! grepq "$out13d" 'capability: bwrap'; then
+  pass '13d: all six Darwin corpus suites run, not bwrap capability skip'
 else fail "13d: Darwin coverage lost: rc=$rc13d out: $out13d"; fi
 rm -f "$sb13d/bin/sandbox-exec"
 out13e=$(PATH="$sb13d/bin" bash "$RUNNER" "$sb13d/scripts" 2>&1); rc13e=$?
@@ -1195,8 +1196,12 @@ else
   # The nightly shards run tier all with GUARD_CORPUS_TIER=fast (the full replay lives in
   # the guard-corpus-full job), so the subset cap applies there too.
   check_timeout_2267 "scripts/eval/guard-corpus/test-guard-corpus.sh" "1800" all fast
-  check_timeout_2267 "scripts/hooks/test-block-destructive-commands.sh" "3000"
-  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands.sh" "3000"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-a.sh" "1200"
+  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands-a.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-b.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-c.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-d.sh" "1200"
+  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands-d.sh" "1200"
 
   # Nightly #843: the 1879 suite previously had no dedicated arm,
   # so the 600s default killed it on every OS (603s on ubuntu). Its tier comment
@@ -2457,7 +2462,10 @@ scripts/himmelctl/test/test-wizard-statusreport.sh	13
 scripts/hooks/test-auto-approve-safe-bash.sh	43
 scripts/hooks/test-block-bare-qmd-query.sh	54
 scripts/hooks/test-block-chokepoint-env-prefix.sh	122
-scripts/hooks/test-block-destructive-commands.sh	2304
+scripts/hooks/test-block-destructive-commands-a.sh	563
+scripts/hooks/test-block-destructive-commands-b.sh	540
+scripts/hooks/test-block-destructive-commands-c.sh	608
+scripts/hooks/test-block-destructive-commands-d.sh	590
 scripts/hooks/test-block-edit-live-settings.sh	151
 scripts/hooks/test-block-glm-external-writes.sh	26
 scripts/hooks/test-block-jira-compound-write.sh	17
