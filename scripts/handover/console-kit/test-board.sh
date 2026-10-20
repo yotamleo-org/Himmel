@@ -1042,6 +1042,28 @@ contains 'cr-loop: an absent ledger and mirror never fail the render (rc 0)' "rc
 jcheck 'cr-loop --json: absent ledger and mirror read n/a (null), the before row stays' 'M.trends.cr_loop.rounds.mean === null && M.trends.cr_loop.residual.inflow === null && M.trends.cr_loop.before.rounds_mean === 2.71'
 jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 'M.trends.cr_loop.preflight.per_pr === null'
 
+# --- Cap over-run is a --changed signal: a version crossing the soft cap
+# flips CHANGED although tick's fingerprint is unchanged (the stub's is constant).
+# RED control (pre-change board.mjs): the cap move reads UNCHANGED.
+crchanged() {
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" CR_LEDGER="$CL/ledger.jsonl" BOARD_MIRROR="$CL/mirror/HIMMEL" \
+        GH_OPEN="$W/open.json" GH_MERGED="$CL/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$CL/console-c.md" --repo "$W/repo" --out "$CL/cap-board.html" --json "$CL/cap-board.json" --changed 2>"$W/stderr.log"
+}
+rm -f "$CL/cap-board.html"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: first render reports CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
+contains 'cap: an over-cap version is embedded as a board signature' "$(cat "$CL/cap-board.html")" 'name="console-board-cap-fp" content="v1.1.4=16"'
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a re-render with the same over-run reports UNCHANGED' "$out rc=$rc" "UNCHANGED $CL/cap-board.html rc=0"
+rm -f "$CL/mirror/HIMMEL/HIMMEL-9124.md" "$CL/mirror/HIMMEL/HIMMEL-9125.md"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a version dropping back under the cap flips CHANGED on an unchanged tick fingerprint' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
+for n in 9124 9125; do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"]' 'To Do' 30; done
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a version crossing the cap again flips CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
+
 # --- ICE-parked follow-ups: keys cited as follow-ups in the last 14 days of
 # comments that moved to ICE, from the mirror. RED control (pre-change board.mjs): no
 # data-ice-followups section and no trends.ice_followups.

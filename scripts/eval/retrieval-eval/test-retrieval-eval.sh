@@ -176,7 +176,7 @@ n = []
 m.subprocess.run = lambda *a, **k: n.append(1) or type("R", (), {"stdout": "t"})()
 m.qmd_token(); m.qmd_token(); print(len(n))' "$EV")"
 
-# 8i. qmd-hybrid-norerank: --arms accepts it, it sends lex+vec with rerank false; qmd-hybrid sends no rerank key.
+# 8i. qmd-hybrid-norerank: --arms accepts it, it sends lex+vec with rerank false; qmd-hybrid sends rerank true explicitly.
 cat > "$W/qmd-log" <<'EOF'
 #!/usr/bin/env bash
 cat >> "$(dirname "$0")/qmd-in.log"; echo >> "$(dirname "$0")/qmd-in.log"
@@ -188,7 +188,7 @@ RETRIEVAL_EVAL_QMD_CMD="$W/qmd-log" py "$EV" run --repo "$R" --questions "$W/q8.
 eq "norerank arm is accepted by --arms" "0" "$?"
 eq "norerank arm scores a hit" "1.00" "$(awk -F'\t' '$1=="qmd-hybrid-norerank"{print $3}' "$W/out8/scores.tsv")"
 eq "norerank sends lex+vec with rerank false" "lex,vec False" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[1]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
-eq "qmd-hybrid sends lex+vec and no rerank key" "lex,vec absent" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
+eq "qmd-hybrid sends lex+vec with rerank true" "lex,vec True" "$(py -c 'import json,sys; a=json.loads(open(sys.argv[1]).readlines()[0]); print(",".join(s["type"] for s in a["searches"]), a.get("rerank", "absent"))' "$W/qmd-in.log")"
 eq "default arms are the seven" "8" "$(wc -l < "$W/out/scores.tsv" | tr -d ' ')"
 
 # 9. usage errors.

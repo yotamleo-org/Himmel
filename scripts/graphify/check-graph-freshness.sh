@@ -17,8 +17,15 @@
 #               corpus orphaned (no --corpus-root AND no .graphify_root marker,
 #               OR >50% of manifest.json's checkable paths do not resolve
 #               under the corpus root);
-#               semantic refresh stuck (one file failed or shrink-refused in
-#               each of the last 3 merge rows of semantic-runs.jsonl).
+#               semantic refresh stuck (one file failed, was shrink-refused or
+#               stayed backed off in each of the last 3 merge rows of
+#               semantic-runs.jsonl). A backed-off file is not retried until
+#               its content changes, so this stays rc=2 until then; to clear it
+#               without a content change, delete the file's entry under "stuck"
+#               in semantic-manifest.json (the next run retries it). Rows
+#               written before backed_off_files existed name no backed-off
+#               files, so one backed off at upgrade time counts as stuck only
+#               once 3 newer rows carry it.
 #   rc=1 WARN — age is older than --max-age-days. Age is measured from
 #               graph.json's embedded built_at_commit (via that commit's
 #               committer date in the resolved corpus, when available),
@@ -231,7 +238,7 @@ PYEOF
   SEM_LINE="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^LINE //p')"
   [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE $SEM_STATUS"
   SEM_STUCK="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^STUCK //p')"
-  [ -z "$SEM_STUCK" ] || fail "semantic refresh stuck: $SEM_STUCK failed or refused in each of the last 3 runs."
+  [ -z "$SEM_STUCK" ] || fail "semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes or its stuck record in semantic-manifest.json is deleted)."
 fi
 
 # --- 4. age check: build identity (built_at_commit) preferred over mtime ---

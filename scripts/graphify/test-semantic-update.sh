@@ -655,5 +655,13 @@ C59="$WS/c59"; new_corpus "$C59"; mkdir -p "$C59/scripts/kit/fixtures/mirror"; p
 out=$(run --name t59 --corpus-root "$C59" --corpus-class himmel-code); rc=$?
 [ "$(lastrun "$C59" batch)" = 3 ] && pass "T59 fixtures file skipped" || fail "T59 (rc=$rc): $(tail -1 "$C59/graphify-out/semantic-runs.jsonl")"
 
+echo "T60: a never-stamped file removed from the corpus loses its stuck record"
+C60="$WS/c60"; new_corpus "$C60"
+for _ in 1 2 3; do out=$(GRAPHIFY_STUB_SKIP=a.md run --name t60 --corpus-root "$C60" --corpus-class himmel-code); done
+[ "$(stuck "$C60" a.md attempts)" = 3 ] || fail "T60 setup: a.md not backed off: $(cat "$C60/graphify-out/semantic-manifest.json")"
+rm -f "$C60/a.md"
+out=$(run --name t60 --corpus-root "$C60" --corpus-class himmel-code); rc=$?
+[ -z "$(stuck "$C60" a.md attempts)" ] && pass "T60 the removed file's stuck record is pruned" || fail "T60 (rc=$rc): $(cat "$C60/graphify-out/semantic-manifest.json")"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
