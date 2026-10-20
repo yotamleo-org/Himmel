@@ -2494,6 +2494,9 @@ head -c 12000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.m
 not_contains 'a HANDOFF of exactly 12000 bytes is within the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'handoff-over-budget'
 printf 'x' >> "$W/handover/HIMMEL-6603-console-HANDOFF.md"
 contains 'a HANDOFF of 12001 bytes is over the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
+contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6603)' "$(HANDOFF_BUDGET_BYTES=12k TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
+printf '%s\n' '# console' '' 'decisions: a brief note above Live state, not the line' '' '## Live state' 'decisions: (1) short.' > "$d6603"
+contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECISIONS_BUDGET_BYTES=10 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION decisions-over-budget=21/10: '
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"
 
 if [ "$fails" -eq 0 ]; then

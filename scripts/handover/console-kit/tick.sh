@@ -1355,10 +1355,12 @@ handoff_bytes=0
 decisions_bytes=0
 handoff_budget="${HANDOFF_BUDGET_BYTES:-12000}"
 decisions_budget="${DECISIONS_BUDGET_BYTES:-4000}"
+case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=12000 ;; esac
+case "$decisions_budget" in ''|*[!0-9]*) decisions_budget=4000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
-    decisions_bytes="$(grep -m1 '^decisions:' "$console_doc" | tr -d '\n' | wc -c | tr -d '[:space:]')"
+    decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
 fi
 
 # the luna vault's commit health. vault-status.sh owns the derivation

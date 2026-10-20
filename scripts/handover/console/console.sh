@@ -1459,8 +1459,9 @@ decisions_files_text() {
 # A decisions: line keeps every operator ruling when it names a bucket
 # decisions file and every numbered "(N) " entry of the predecessor's line, and
 # of the decisions files that line names, is found verbatim in the outgoing line
-# or the files it names. An entry runs to the next "(N) " or the end of its
-# line, so a heading in a decisions file is part of no entry. Fails closed: an
+# or the files it names, as a whole entry: an entry runs to the next "(N) " or
+# the end of its line, so a heading in a decisions file is part of no entry and
+# a ruling with words appended is not the ruling. Fails closed: an
 # unreadable file or no numbered entry fails, and the first entry not found is
 # printed to stderr.
 # Args: predecessor line, outgoing line, bucket dir.
@@ -1473,16 +1474,23 @@ decisions_kept_verbatim() {
             need="$need"$'\n'"$(decisions_files_text "$prev" "$dir")" || return 1 ;;
     esac
     awk '
-        FNR == NR { have = have $0 "\n"; next }
-        {
-            rest = $0
+        function entries(line,    rest, len, entry, k) {
+            rest = line; k = 0
             while (match(rest, /\([0-9]+\) /)) {
                 rest = substr(rest, RSTART); len = RLENGTH
                 if (match(substr(rest, len + 1), /\([0-9]+\) /)) {
                     entry = substr(rest, 1, len + RSTART - 1); rest = substr(rest, len + RSTART)
                 } else { entry = rest; rest = "" }
-                sub(/[[:space:]]+$/, "", entry); n++
-                if (!index(have, entry)) { print "  not found verbatim: " substr(entry, 1, 100) > "/dev/stderr"; bad = 1; exit 1 }
+                sub(/[[:space:]]+$/, "", entry); got[++k] = entry
+            }
+            return k
+        }
+        FNR == NR { for (i = entries($0); i > 0; i--) have[got[i]] = 1; next }
+        {
+            k = entries($0)
+            for (i = 1; i <= k; i++) {
+                n++
+                if (!(got[i] in have)) { print "  not found verbatim: " substr(got[i], 1, 100) > "/dev/stderr"; bad = 1; exit 1 }
             }
         }
         END { if (!bad && !n) { print "  no numbered (N) entry in the predecessor decisions" > "/dev/stderr"; exit 1 } }
@@ -1520,7 +1528,7 @@ check_live_line_kept() {
     esac
     awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing" \
         | grep -Eq "^- .*$marker:[[:space:]]*[^[:space:]<]" && return 0
-    err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder or shorter than its predecessor's ($prev_name):"
+    err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder, shorter than its predecessor's or drops one of its rulings ($prev_name):"
     err "  predecessor: $field: $prev_line"
     [ -z "$why" ] || err "$why"
     err "  restore it, or record a Results bullet '$marker: <reason>' and retry"

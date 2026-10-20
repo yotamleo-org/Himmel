@@ -2637,5 +2637,7 @@ mk81 dec87i "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $
 mkdir -p "$root/tester/dec87i/specs/decisions"; printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87i/specs/decisions/console-decisions-2026-10-19.md"
 run81 dec87i
 check "87 a longer line that drops its predecessor's decisions file refuses" "$rc81" "1"
+mk87 dec87j "$(printf '%s\n%s' "$e87_3" "$e87_4 Only on Sundays.")"; run81 dec87j
+check "87 pointer line whose file extended an entry refuses" "$rc81" "1"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

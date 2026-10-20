@@ -88,7 +88,7 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > `next` accepts the shorter line only when it names at least one decisions file
 > and every numbered entry of your predecessor's line, and of any decisions file
 > that line names, is found verbatim in your line or the files it names; a missing
-> file or a changed word reads `DECISIONS-DROP`. Once your predecessor's line names
+> file, a changed word or words appended to an entry read `DECISIONS-DROP`. Once your predecessor's line names
 > a decisions file, `next` runs this check whatever your line's length. An entry
 > runs from its `(N) ` to the next `(N) ` or the end of its line, so a heading in a
 > decisions file is fine; text before the first `(N) ` is not checked, so number
