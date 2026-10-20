@@ -34,19 +34,22 @@ dotenv_get() {
   done < "$file"
 }
 
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" || return 1
+
 # dotenv_set <file> <key> <value> -- replace the FIRST uncommented `KEY=` line in
 # place (CRLF on that line tolerated); append `KEY=value` if absent. Idempotent.
 dotenv_set() {
-  local file="$1" key="$2" val="$3" tmp
+  local file="$1" key="$2" val="$3" out
   if [ -f "$file" ] && grep -qE "^${key}=" "$file"; then
-    tmp="$(mktemp)"
     # Pass key/value via ENVIRON, NOT `awk -v` -- `-v` escape-processes the value
     # (a backslash or \n in a Windows path would silently corrupt the .env).
     # ENVIRON[] values are taken literally. Replace the FIRST `KEY=` line.
-    FE_K="$key" FE_V="$val" awk '
+    out="$(FE_K="$key" FE_V="$val" awk '
       !done && index($0, ENVIRON["FE_K"] "=") == 1 { print ENVIRON["FE_K"] "=" ENVIRON["FE_V"]; done=1; next }
       { print }
-    ' "$file" > "$tmp" && mv "$tmp" "$file"
+    ' "$file" && printf x)" && printf '%s' "${out%x}" | atomic_write "$file"
   else
     # Ensure the file ends in a newline before appending -- a final line with no
     # trailing \n would otherwise fuse with the new KEY=value.

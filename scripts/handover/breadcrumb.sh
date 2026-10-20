@@ -136,6 +136,7 @@ cmd_write() {
       fs.writeFileSync(e.OUT, s);
       JSON.parse(fs.readFileSync(e.OUT,"utf8"));   // verify round-trip before commit
     ' || { rm -f "$tmp"; die "write: failed to serialize/verify breadcrumb (node error)"; }
+    # prim-ok: node writes and verifies the temp file itself, so there is no stdin stream for atomic_write
     mv -f "$tmp" "$out" || { rm -f "$tmp"; die "write: failed to install breadcrumb at $out"; }
     echo "breadcrumb write: $out (ticket=$ticket head=${head_sha:0:12})"
 }

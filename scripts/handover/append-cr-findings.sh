@@ -4,6 +4,10 @@
 # Exit: 0 = appended, 9 = already present (deduped), 2 = error.
 set -uo pipefail
 
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || exit 2
+
 notes="" head="" date="" pr="" id="" severity="" file="" line="" title="" verdict=""
 while [ $# -gt 0 ]; do case "$1" in
   --notes) notes="$2"; shift 2;; --head) head="$2"; shift 2;;
@@ -53,13 +57,10 @@ hdr="### ${date} — HEAD ${head}"
 grep -qxF "## CR Findings" "$notes" 2>/dev/null || printf '\n## CR Findings\n' >> "$notes"
 
 if grep -qxF "$hdr" "$notes" 2>/dev/null; then
-  # Insert the bullet immediately after the existing header line. Use a temp
-  # file next to $notes (same filesystem -> atomic mv) created via mktemp so a
-  # crash never leaves a predictable stray in the committed state dir; trap
-  # cleans it up. A failed awk/mv must surface, not silently drop the finding.
-  tmpf="$(mktemp "${notes}.cr.XXXXXX")" || { echo "append-cr-findings.sh: cannot create temp next to $notes" >&2; exit 2; }
-  trap 'rm -f "$tmpf"' EXIT
-  if ! { awk -v hdr="$hdr" -v b="$bullet" '{print} $0==hdr && !d {print b; d=1}' "$notes" > "$tmpf" && mv "$tmpf" "$notes"; }; then
+  # Insert the bullet immediately after the existing header line. atomic_write
+  # publishes by a same-directory rename, so a crash never leaves a stray in the
+  # committed state dir. A failed awk/write must surface, not silently drop the finding.
+  if ! { out="$(awk -v hdr="$hdr" -v b="$bullet" '{print} $0==hdr && !d {print b; d=1}' "$notes" && printf x)" && printf '%s' "${out%x}" | atomic_write "$notes"; }; then
     echo "append-cr-findings.sh: failed to write $notes" >&2; exit 2
   fi
 else

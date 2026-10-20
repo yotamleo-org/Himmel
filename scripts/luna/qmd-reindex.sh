@@ -444,6 +444,7 @@ write_refresh_stamp() {
         rm -f "$tmp" "$QMD_REFRESH_STAMP" 2>/dev/null || true
         return 0
     fi
+    # prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
     if ! mv -f "$tmp" "$QMD_REFRESH_STAMP" 2>/dev/null; then
         echo "WARN qmd-reindex: could not install the refresh stamp; qmd-staleness.sh will fall back to its proxy." >&2
         rm -f "$tmp" "$QMD_REFRESH_STAMP" 2>/dev/null || true
