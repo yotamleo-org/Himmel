@@ -24,7 +24,8 @@
 #               committer date in the resolved corpus, when available),
 #               else falls back to graph.json's (or
 #               manifest.json's) filesystem mtime.
-#   rc=0 OK   — fresh AND corpus verified; prints exactly one line:
+#   rc=0 OK   — fresh AND corpus verified; prints exactly one OK line (after the
+#               semantic line below, when there is one):
 #               "graph-freshness: OK (<age-days>d old, corpus verified)"
 #   With a semantic-runs.jsonl, every verdict past the orphan check is preceded
 #   by "graph-freshness: semantic last=<ts> failed=<n> refused=<n> [backed_off=<n>
@@ -214,7 +215,7 @@ if not rows:
 
 
 def stuck(row):
-    return set(row.get("failed_files") or []) | set(row.get("refused_files") or [])
+    return set(row.get("failed_files") or []) | set(row.get("refused_files") or []) | set(row.get("backed_off_files") or [])
 
 
 last = rows[-1]

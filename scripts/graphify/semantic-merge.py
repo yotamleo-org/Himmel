@@ -385,6 +385,7 @@ def cmd_merge(a):
         "deleted": len(plan["deleted"]), "backlog": plan["backlog"], "failed": len(failed),
         "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
         "backed_off": len(plan.get("backed_off", [])) + len(newly_backed_off),
+        "backed_off_files": sorted(set(plan.get("backed_off", [])) | set(newly_backed_off)),
         "nodes_added": nodes_added, "nodes_removed": nodes_removed,
         "edges_added": edges_added, "edges_removed": edges_removed,
         "runtime_s": a.runtime_s, "tokens_in": a.tokens_in, "tokens_out": a.tokens_out,

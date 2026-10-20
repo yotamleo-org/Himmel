@@ -223,9 +223,10 @@ semantic_rows() {  # $1=out dir, $2...=rows
 import json, sys
 with open(sys.argv[1], "w") as f:
     for i, spec in enumerate(sys.argv[2:]):
-        failed, refused = (s.split(",") if s else [] for s in spec.split("|"))
+        failed, refused, backed = (s.split(",") if s else [] for s in (spec.split("|") + [""])[:3])
         f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed),
-                            "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused}) + "\n")
+                            "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
+                            "backed_off_files": backed}) + "\n")
         f.write(json.dumps({"ts": "2026-10-19T0%d:30:00Z" % i, "name": "ast-update", "ast_restored_nodes": 1}) + "\n")
 PY
 }
@@ -243,6 +244,13 @@ printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
 semantic_rows "$OUT" "|y.md" "|y.md" "x.md|y.md"
 bash "$SCRIPT" --out "$OUT" --max-age-days 7 >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && pass "T10b a refused file stuck for 3 runs -> rc=2" || fail "T10b rc=2 (got $rc)"
+
+# --- T10e: a file that failed twice and is then backed off stays stuck while it stays backed off ---
+OUT="$WS/t10e/graphify-out"; CORPUS="$WS/t10e/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "x.md||" "x.md||" "||x.md"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"x.md"* ]] && pass "T10e a backed-off file keeps the check failing" || fail "T10e rc=2 (got $rc): $out"
 
 # --- T10c: failures that drain (different files) stay OK and print the semantic line ---
 OUT="$WS/t10c/graphify-out"; CORPUS="$WS/t10c/corpus"; build_out "$OUT" "$CORPUS"

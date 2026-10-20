@@ -623,6 +623,7 @@ for _ in 1 2 3; do out=$(GRAPHIFY_STUB_SKIP=a.md run --name t56 --corpus-root "$
 out=$(GRAPHIFY_STUB_SKIP=a.md run --name t56 --corpus-root "$C56" --corpus-class himmel-code); rc=$?
 [ "$rc" -eq 0 ] && ! grep -q '^graphify' "$WS/calls.log" && [[ "$out" == *"backed_off=1"* ]] && [[ "$out" != *"BACKED OFF"* ]] \
   && pass "T56 a backed-off file is not re-extracted (no graphify call, no repeat alert)" || fail "T56 run 4 (rc=$rc): $out / $(cat "$WS/calls.log")"
+[ "$(lastrun "$C56" backed_off_files)" = "['a.md']" ] && pass "T56 the run row names the backed-off file" || fail "T56 backed_off_files: $(lastrun "$C56" backed_off_files)"
 printf 'aleph\n' > "$C56/a.md"; : > "$WS/calls.log"
 out=$(run --name t56 --corpus-root "$C56" --corpus-class himmel-code); rc=$?
 case " $(ids "$C56") " in *" sem_a.md_aleph "*) pass "T56 changed content is retried and lands" ;; *) fail "T56 retry (rc=$rc): $(ids "$C56") $out" ;; esac
