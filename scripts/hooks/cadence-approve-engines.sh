@@ -501,10 +501,11 @@ path_is_physically_in_vault() {
     # canon_path takes a directory. A directory resolves whole; a file resolves
     # its parent and keeps the leaf, and a symlink leaf is refused rather than
     # followed out of the vault.
-    if [ -d "$p" ]; then
+    if [ -L "$p" ]; then
+        return 1
+    elif [ -d "$p" ]; then
         real=$(canon_path "$p") || return 1 # swallow-ok: failure refuses the grant
     else
-        [ ! -L "$p" ] || return 1
         real=$(canon_path "$(dirname "$p")") || return 1 # swallow-ok: failure refuses the grant
         real="$real/$(basename "$p")"
     fi
