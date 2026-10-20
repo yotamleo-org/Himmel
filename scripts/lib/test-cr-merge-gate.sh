@@ -718,6 +718,12 @@ has "$TMP/out-M10-best-effort-claude-finding-holds" '^HOLD: .*claude.*claude-1' 
 # ...a tracked deferral disposes it.
 led "$CRIT_OK" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-1","severity":"imp","verdict":"deferred","deferred_to":"HIMMEL-9001","reason":"tracked"}'
 CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-deferred-finding-go 0
+# ...a posted finding holds whatever the reviewer's availability row says.
+led "$(av abc123 codex ok)" "$(av abc123 claude unavailable claude-credit-exhausted)" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-2","severity":"imp","verdict":""}'
+CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-finding-without-ok-row-holds 1
+has "$TMP/out-M10-finding-without-ok-row-holds" '^HOLD: .*claude.*claude-2' "M10 HOLD names the finding without an ok row"
+led "$(av abc123 codex ok)" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-3","severity":"crit","verdict":""}'
+CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-finding-without-avail-row-holds 1
 # M11 — overlay drops claude: the Codex-only gate.
 led "$(av abc123 codex ok)"
 cfg "$TMP/m11.json" '{"panel":[{"slug":"claude","drop":true}]}'

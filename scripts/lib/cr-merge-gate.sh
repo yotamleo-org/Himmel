@@ -177,7 +177,7 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # from the CR ledger: one `slug<TAB>state<TAB>detail` line per slug, or one
 # `degraded<TAB><why>` line when the ledger cannot be read.
 #   pass           an avail ok row, and no open crit/imp finding of its own
-#   findings-open  an avail ok row, but open finding(s); detail = their ids
+#   findings-open  open finding(s), whatever the avail rows say; detail = their ids
 #   absent         a critic-skipped row whose detail matches _FC_ABSENT_RE
 #                  (cannot run on this machine); detail = the matched phrase
 #   not-selected   tier-excluded / keep-one-skipped: not picked for this PR
@@ -258,14 +258,15 @@ for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
     let rows = own(avail(slug, head));
     if (rows.length === 0 && carry) { head = carry[1]; rows = own(avail(slug, head)); }
     let state, detail = "";
-    if (rows.length === 0) {
+    const open = recs.filter((o) => o.kind === "finding" && model(o) === slug && atHead(o, head)
+        && (o.severity === "crit" || o.severity === "imp") && o.verdict !== "disproved"
+        && !(o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(str(o.deferred_to)) && str(o.reason)));
+    if (open.length) {
+        state = "findings-open"; detail = open.map((o) => o.finding_id || "?").join(",");
+    } else if (rows.length === 0) {
         state = "not-yet-run";
     } else if (rows.some((o) => o.status === "ok")) {
-        const open = recs.filter((o) => o.kind === "finding" && model(o) === slug && atHead(o, head)
-            && (o.severity === "crit" || o.severity === "imp") && o.verdict !== "disproved"
-            && !(o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(str(o.deferred_to)) && str(o.reason)));
-        if (open.length) { state = "findings-open"; detail = open.map((o) => o.finding_id || "?").join(","); }
-        else state = "pass";
+        state = "pass";
     } else {
         const absent = rows.map((o) => String(o.reason || "").startsWith("critic-skipped")
             ? String(o.detail || "").match(ABSENT) : null).find(Boolean);
