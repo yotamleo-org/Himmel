@@ -96,6 +96,19 @@ contains 'a gate workflow never counts as a CI run' "$out" 'ciguard=ok'
 jq 'map(.created_at = "2026-10-18T01:00:00Z" | .updated_at = "2026-10-18T01:01:00Z")' "$W/b11.json" > "$W/b11-old.json"
 fresh; out="$(run "$W/b11-old.json")"
 contains 'runs older than 24 h are outside the day' "$out" 'ciguard=ok'
+fresh; out="$(run "$W/b11.json" "$W/state" 2026-10-19T12:00:00Z)"
+contains 'runs created after the clock are outside the day' "$out" 'ciguard=ok'
+
+# --- a report row that does not parse is unknown, never below the line
+cat > "$W/metrics-garble.sh" <<STUB
+#!/usr/bin/env bash
+bash "$METRICS" "\$@" | sed 's/| *OVER *|\$/| ??? |/'
+STUB
+fresh; run "$W/h151.json" >/dev/null
+out="$(CIGUARD_METRICS="$W/metrics-garble.sh" run "$W/h151.json")"
+contains 'a garbled status column reads unknown' "$out" 'ciguard=unknown'
+out="$(run "$W/h151.json")"
+not_contains 'a garbled read left the alerted state alone' "$out" 'ALERT'
 
 # --- the real replays (runs copied from the GitHub API for those windows)
 gzip -dc "$FIX/runs-2026-10-19-19Z.json.gz" > "$W/r1019.json"

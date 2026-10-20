@@ -139,6 +139,8 @@ add_row() { # <metric> <report> <label>
   local r
   r="$(row "$2" "$3")"
   [ -n "$r" ] || unknown
+  # a row that parses but is not "<count> <where> OK|OVER <line>" must not read as below the line
+  printf '%s\n' "$r" | awk -F'\t' '$1 ~ /^[0-9]+$/ && ($3 == "OK" || $3 == "OVER") && $4 ~ /^[0-9]+$/ { ok = 1 } END { exit !ok }' || unknown
   rows="$rows$1"$'\t'"$r"$'\n'
 }
 add_row runs-h "$report2" "runs per hour, max"
@@ -147,7 +149,7 @@ add_row cancels-10m "$report2" "cancels per rolling 10 min, max"
 add_row reruns-h "$report2" "reruns per hour, max"
 
 b="$(jq -r --argjson now "$NOW" '
-      map(select(.name == "CI" and .head_branch != "main" and (.created_at | fromdateiso8601) > $now - 86400))
+      map(select(.name == "CI" and .head_branch != "main" and (.created_at | fromdateiso8601) > $now - 86400 and (.created_at | fromdateiso8601) <= $now))
       | group_by(.head_branch) | map({b: .[0].head_branch, n: length}) | max_by(.n) // {b: "-", n: 0}
       | "\(.n)\t\(.b)"' "$RUNS" 2>/dev/null)" || unknown
 bn="${b%%$'\t'*}"; bb="${b#*$'\t'}"
