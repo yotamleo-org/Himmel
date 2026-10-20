@@ -238,7 +238,7 @@ PYEOF
   SEM_LINE="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^LINE //p')"
   [ -z "$SEM_LINE" ] || echo "graph-freshness: semantic $SEM_LINE $SEM_STATUS"
   SEM_STUCK="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^STUCK //p')"
-  [ -z "$SEM_STUCK" ] || fail "semantic refresh stuck: $SEM_STUCK failed or refused in each of the last 3 runs (a backed-off file stays stuck until its content changes or its stuck record in semantic-manifest.json is deleted)."
+  [ -z "$SEM_STUCK" ] || fail "semantic refresh stuck: $SEM_STUCK failed, was refused or stayed backed off in each of the last 3 runs (a backed-off file stays stuck until its content changes or its stuck record in semantic-manifest.json is deleted)."
 fi
 
 # --- 4. age check: build identity (built_at_commit) preferred over mtime ---

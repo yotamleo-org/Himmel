@@ -250,7 +250,7 @@ OUT="$WS/t10e/graphify-out"; CORPUS="$WS/t10e/corpus"; build_out "$OUT" "$CORPUS
 printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
 semantic_rows "$OUT" "x.md||" "x.md||" "||x.md"
 out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
-[ "$rc" -eq 2 ] && [[ "$out" == *"semantic refresh stuck: x.md failed or refused in each of the last 3 runs"* ]] \
+[ "$rc" -eq 2 ] && [[ "$out" == *"semantic refresh stuck: x.md failed, was refused or stayed backed off in each of the last 3 runs"* ]] \
   && pass "T10e a backed-off file keeps the check failing" || fail "T10e rc=2 (got $rc): $out"
 [[ "$out" == *"stuck record in semantic-manifest.json"* ]] && pass "T10e the failure says how to clear a back-off" || fail "T10e no clear hint: $out"
 

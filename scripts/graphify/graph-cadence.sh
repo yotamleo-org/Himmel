@@ -977,7 +977,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     # exit (the merge prints it before the steps that can still fail). A clean run with no new back-off
     # re-arms that leg, so the next back-off alerts again.
     _sem_backoff=0
-    ! printf '%s\n' "$_sem_out" | grep -q 'BACKED OFF' || _sem_backoff=1
+    case "$_sem_out" in *'BACKED OFF'*) _sem_backoff=1 ;; esac
     [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" "semantic-file-backed-off" "$LOG_FILE"
     case "$_sem_rc" in
         0)
