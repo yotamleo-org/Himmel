@@ -479,9 +479,11 @@ contains "coverage nonexistent key: names the key" "$out" "HIMMEL-99999"
 for st in 51 52 53; do
     reset_stubs
     STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred \xe2\x86\x92 HIMMEL-'"$st"'\n'
+    seed_deferral "HIMMEL-$st"
     rc=0; out="$(run)" || rc=$?
     check "coverage deferred to closed key HIMMEL-$st: exit 1" "$rc" "1"
     contains "coverage closed key HIMMEL-$st: check 7 fails" "$out" "[FAIL] 7."
+    contains "coverage closed key HIMMEL-$st: names the closed status" "$out" "HIMMEL-$st already"
 done
 
 reset_stubs
@@ -507,8 +509,10 @@ contains "coverage residual-labelled ticket: check 7 passes" "$out" "[PASS] 7."
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-202\n'
+seed_deferral HIMMEL-202
 rc=0; out="$(run)" || rc=$?
 check "coverage deferred to a residual-depth-only label: exit 1" "$rc" "1"
+contains "coverage residual-depth-only label: names the raw-create refusal" "$out" "HIMMEL-202 was made by a raw jira create"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
@@ -528,8 +532,10 @@ reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
 STUB_PR_TITLE='feat(x): [HIMMEL-300] a title that names a newer key'
 STUB_PR_BRANCH=''
+seed_deferral HIMMEL-200
 rc=0; out="$(run)" || rc=$?
 check "coverage: an empty branch name leaves no own key, only the residual label passes: exit 1" "$rc" "1"
+contains "coverage empty branch: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-203\n'
@@ -583,8 +589,10 @@ contains "coverage blank jira status: reads UNKNOWN" "$out" "UNKNOWN"
 # a deferral must also END the line, and a delimiter-free jira reply is not a status
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50 pending verification\n'
+seed_deferral HIMMEL-50
 rc=0; out="$(run)" || rc=$?
 check "coverage deferral with trailing prose: exit 1" "$rc" "1"
+contains "coverage deferral with trailing prose: names the unmarked line" "$out" "unmarked line"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50.\n- ask two: deferred \xe2\x86\x92 **HIMMEL-50**\n'
