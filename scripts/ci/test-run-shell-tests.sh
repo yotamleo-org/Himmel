@@ -722,7 +722,8 @@ if [ -n "$sb13d" ]; then
 mkdir -p "$sb13d/bin" "$sb13d/scripts/lib" "$sb13d/scripts/eval/guard-corpus" "$sb13d/scripts/hooks"
 printf '#!/bin/bash\nprintf "Darwin\\n"\n' > "$sb13d/bin/uname"
 printf '#!/bin/bash\nexit 0\n' > "$sb13d/bin/sandbox-exec"
-for suite in lib/test-sandbox-run.sh eval/guard-corpus/test-guard-corpus.sh hooks/test-block-destructive-commands.sh; do
+for suite in lib/test-sandbox-run.sh eval/guard-corpus/test-guard-corpus.sh hooks/test-block-destructive-commands-a.sh \
+    hooks/test-block-destructive-commands-b.sh hooks/test-block-destructive-commands-c.sh hooks/test-block-destructive-commands-d.sh; do
   printf '#!/bin/bash\nprintf "DARWIN_SUITE_RAN\\n"\nexit 0\n' > "$sb13d/scripts/$suite"
   chmod +x "$sb13d/scripts/$suite"
 done
@@ -737,8 +738,8 @@ for tool in awk basename bash cat chmod cp cut date dirname env find flock git g
   ln -s "$tool_path" "$sb13d/bin/$tool"
 done
 out13d=$(PATH="$sb13d/bin" bash "$RUNNER" "$sb13d/scripts" 2>&1); rc13d=$?
-if [ "$rc13d" = 0 ] && grepq "$out13d" 'PASS: 3' && ! grepq "$out13d" 'capability: bwrap'; then
-  pass '13d: all three Darwin corpus suites run, not bwrap capability skip'
+if [ "$rc13d" = 0 ] && grepq "$out13d" 'PASS: 6' && ! grepq "$out13d" 'capability: bwrap'; then
+  pass '13d: all six Darwin corpus suites run, not bwrap capability skip'
 else fail "13d: Darwin coverage lost: rc=$rc13d out: $out13d"; fi
 rm -f "$sb13d/bin/sandbox-exec"
 out13e=$(PATH="$sb13d/bin" bash "$RUNNER" "$sb13d/scripts" 2>&1); rc13e=$?
@@ -1195,8 +1196,12 @@ else
   # The nightly shards run tier all with GUARD_CORPUS_TIER=fast (the full replay lives in
   # the guard-corpus-full job), so the subset cap applies there too.
   check_timeout_2267 "scripts/eval/guard-corpus/test-guard-corpus.sh" "1800" all fast
-  check_timeout_2267 "scripts/hooks/test-block-destructive-commands.sh" "3000"
-  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands.sh" "3000"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-a.sh" "1200"
+  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands-a.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-b.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-c.sh" "1200"
+  check_timeout_2267 "scripts/hooks/test-block-destructive-commands-d.sh" "1200"
+  check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands-d.sh" "1200"
 
   # Nightly #843: the 1879 suite previously had no dedicated arm,
   # so the 600s default killed it on every OS (603s on ubuntu). Its tier comment
@@ -2222,7 +2227,7 @@ fi
 ci23="$repo23/.github/workflows/ci.yml"
 dep_ln=$(grep -n 'run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh' "$ci23" | cut -d: -f1)
 # shellcheck disable=SC2016 # the ${{ }} is literal workflow text, not a shell expansion
-shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/8 \.$' "$ci23" | cut -d: -f1)
+shard_ln=$(grep -n 'run: bash scripts/ci/run-shell-tests.sh --shard \${{ matrix.shard }}/\${{ needs.plan.outputs.shard_total || 8 }} \.$' "$ci23" | cut -d: -f1)
 if [ -n "$dep_ln" ] && [ -n "$shard_ln" ] && [ "$dep_ln" -lt "$shard_ln" ]; then
   pass "23f: ci.yml installs the tool deps before the shard run, and the shard run passes root ."
 else
@@ -2457,7 +2462,10 @@ scripts/himmelctl/test/test-wizard-statusreport.sh	13
 scripts/hooks/test-auto-approve-safe-bash.sh	43
 scripts/hooks/test-block-bare-qmd-query.sh	54
 scripts/hooks/test-block-chokepoint-env-prefix.sh	122
-scripts/hooks/test-block-destructive-commands.sh	2304
+scripts/hooks/test-block-destructive-commands-a.sh	563
+scripts/hooks/test-block-destructive-commands-b.sh	540
+scripts/hooks/test-block-destructive-commands-c.sh	608
+scripts/hooks/test-block-destructive-commands-d.sh	590
 scripts/hooks/test-block-edit-live-settings.sh	151
 scripts/hooks/test-block-glm-external-writes.sh	26
 scripts/hooks/test-block-jira-compound-write.sh	17
@@ -2577,6 +2585,102 @@ else
   fail "22w: slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nfix22w suites placed, $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
 fi
 rm -rf "$sb22w"
+fi
+
+# --------------------------------------------------------------------------
+# Case 26 — SUITE_STOP_ON_FAIL=1 ends the shard at its first
+# failing suite; unset, every suite still runs. ci.yml passes it on
+# pull_request only.
+# --------------------------------------------------------------------------
+echo "== Case 26: SUITE_STOP_ON_FAIL stops a shard at its first failing suite =="
+sb26=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26.XXXXXX") || { fail "26: mktemp failed"; sb26=""; }
+if [ -n "$sb26" ]; then
+cat > "$sb26/test-a-fail.sh" <<'SHEOF'
+#!/usr/bin/env bash
+exit 1
+SHEOF
+cat > "$sb26/test-b-after.sh" <<'SHEOF'
+#!/usr/bin/env bash
+touch "$(dirname "$0")/after.sentinel"
+exit 0
+SHEOF
+chmod +x "$sb26/test-a-fail.sh" "$sb26/test-b-after.sh"
+
+out26=$(SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26" 2>&1)
+rc26=$?
+if [ "$rc26" -eq 1 ] && [ ! -e "$sb26/after.sentinel" ] && grepq "$out26" 'STOPPED:' && grepq "$out26" 'test-b-after.sh'; then
+  pass "26a: SUITE_STOP_ON_FAIL=1 -> exit 1, the suite after the failure never ran, and is named"
+else
+  fail "26a: expected exit 1, no after.sentinel, test-b-after.sh named; rc=$rc26 sentinel=$([ -e "$sb26/after.sentinel" ] && echo present || echo absent) output: $out26"
+fi
+rm -f "$sb26/after.sentinel"
+
+out26=$(env -u SUITE_STOP_ON_FAIL bash "$RUNNER" "$sb26" 2>&1)
+rc26=$?
+if [ "$rc26" -eq 1 ] && [ -e "$sb26/after.sentinel" ]; then
+  pass "26b: SUITE_STOP_ON_FAIL unset -> every suite still runs after a failure"
+else
+  fail "26b: expected exit 1 with after.sentinel present; rc=$rc26 output: $out26"
+fi
+rm -rf "$sb26"
+fi
+
+ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
+stop_line26="          SUITE_STOP_ON_FAIL: \${{ github.event_name == 'pull_request' && '1' || '' }}"
+shard_step26() {
+  awk '/^      - run: bash scripts\/ci\/run-shell-tests\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1"
+}
+stop_on_fail_set26() { shard_step26 "$1" | grep -qxF "$stop_line26"; }
+if stop_on_fail_set26 "$ci_yml26"; then
+  pass "26c: ci.yml passes SUITE_STOP_ON_FAIL on pull_request only"
+else
+  fail "26c: ci.yml does not set SUITE_STOP_ON_FAIL to '1' on pull_request only"
+fi
+
+sb26c=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26c.XXXXXX") || { fail "26c: mktemp failed"; sb26c=""; }
+if [ -n "$sb26c" ]; then
+# Fixtures are the real ci.yml with one mutation each.
+awk -v l="$stop_line26" '$0 == l {next} {print} /- name: Upload shard manifest/ {print "        env:"; print l}' "$ci_yml26" > "$sb26c/moved.yml"
+awk '{print} /^          FAIL_LOG_DIR: failed-suite-logs$/ {print "          UNRELATED_26C: x"}' "$ci_yml26" > "$sb26c/unrelated.yml"
+if ! grep -qxF "$stop_line26" "$sb26c/moved.yml"; then
+  fail "26c-moved: the fixture mutation did not move the line (it is gone from moved.yml)"
+elif stop_on_fail_set26 "$sb26c/moved.yml"; then
+  fail "26c-moved: SUITE_STOP_ON_FAIL moved out of the shard run step still passes 26c"
+else
+  pass "26c-moved: SUITE_STOP_ON_FAIL moved to another step fails 26c"
+fi
+if shard_step26 "$sb26c/unrelated.yml" | grep -qxF "          UNRELATED_26C: x" && stop_on_fail_set26 "$sb26c/unrelated.yml"; then
+  pass "26c-unrelated: an unrelated env change in the shard step still passes 26c"
+else
+  fail "26c-unrelated: an unrelated env change broke 26c or did not apply"
+fi
+rm -rf "$sb26c"
+fi
+
+# shellcheck disable=SC2016
+left26=$(env SUITE_STOP_ON_FAIL=1 bash -c '. "$1"; printf "[%s]" "${SUITE_STOP_ON_FAIL-}"' _ "$RST_FIXTURE_DIR/run-shell-tests-fixture.sh" 2>&1)
+if [ "$left26" = "[]" ]; then
+  pass "26d: the fixture clears an inherited SUITE_STOP_ON_FAIL for the family's nested runs"
+else
+  fail "26d: sourcing the fixture left SUITE_STOP_ON_FAIL set: $left26"
+fi
+
+sb26e=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26e.XXXXXX") || { fail "26e: mktemp failed"; sb26e=""; }
+if [ -n "$sb26e" ]; then
+cat > "$sb26e/test-env.sh" <<'SHEOF'
+#!/usr/bin/env bash
+printf '[%s]' "${SUITE_STOP_ON_FAIL-}" > "$(dirname "$0")/seen.txt"
+exit 0
+SHEOF
+chmod +x "$sb26e/test-env.sh"
+SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26e" > /dev/null 2>&1
+seen26=$(cat "$sb26e/seen.txt" 2>/dev/null || echo missing)
+if [ "$seen26" = "[]" ]; then
+  pass "26e: a suite the runner launches does not inherit SUITE_STOP_ON_FAIL"
+else
+  fail "26e: the suite saw SUITE_STOP_ON_FAIL=$seen26"
+fi
+rm -rf "$sb26e"
 fi
 
 rst_tally

@@ -1030,6 +1030,21 @@ rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 print('yes' if rows and all(r.get('branch') == 'feature' for r in rows) else 'no')
 PYEOF
 )" "yes"
+PR_STUB="$tmp/stub-dump-pr.sh"
+cat > "$PR_STUB" <<'EOS'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '%s\n' "${CR_TARGET_PR:-}" > "$PR_DUMP"
+printf '# pr First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
+EOS
+chmod +x "$PR_STUB"
+PR_BIN="$tmp/pr-bin"; mkdir -p "$PR_BIN"
+printf '#!/bin/sh\necho 4242\n' > "$PR_BIN/gh"; chmod +x "$PR_BIN/gh"
+PR_DUMP="$tmp/pr-dump.txt"; export PR_DUMP
+PATH="$PR_BIN:$PATH" CR_LEDGER="$tmp/pr-ledger.jsonl" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+    CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PR_STUB" \
+    bash "$PANEL" --worktree "$WT_REPO" --head "$wt_head" --branch feature > /dev/null 2>&1 || true  # swallow-ok: asserted on the dump below
+check "HIMMEL-6490: the critic receives the branch's open PR number" "$(cat "$PR_DUMP" 2>/dev/null)" "4242"
 check "PIN1: the critic saw the diff of the PINNED range" \
     "$(cat "$PIN_DUMP" 2>/dev/null)" "$(git -C "$WT_REPO" diff "main...$wt_head")"
 check "PIN1: ledger rows stamp the pinned head" \

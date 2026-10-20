@@ -40,7 +40,8 @@ cat > "$TMP/bin/gh" <<'EOF'
 # fake gh. Fixtures live in $FX; reruns are appended to $FX/reruns and, with
 # every other call, to $FX/order. FAKE_GH_FAIL=prs|runs|view|rerun:<id> makes
 # that call fail. A second `pr list` serves prs-after.json when it exists (a
-# push landing between the reads and the write).
+# push landing between the reads and the write). runs-after-<n>.json likewise
+# serves the n-th `run list` (the head run changing between plan and write).
 echo "gh $*" >> "$FX/calls"
 id=""; for a in "${@:3}"; do case "$a" in ''|*[!0-9]*) ;; *) id="$a"; break ;; esac; done
 case " $* " in *" -R acme/widgets "*|*" -R other/slug "*) ;; *) echo "fake-gh: no -R on: $*" >> "$FX/no-R" ;; esac
@@ -55,7 +56,9 @@ case "$1 $2" in
     jq -c --arg h "$head" 'map(select($h == "" or .headRefName == $h))' "$f" ;;
   "run list")
     [ "${FAKE_GH_FAIL:-}" = runs ] && { echo "fake-gh: run list failed" >&2; exit 1; }
-    cat "$FX/runs.json" ;;
+    n=$(grep -c '^gh run list' "$FX/calls")
+    f="$FX/runs.json"; [ -f "$FX/runs-after-$n.json" ] && f="$FX/runs-after-$n.json"
+    cat "$f" ;;
   "run view")
     [ "${FAKE_GH_FAIL:-}" = view ] && { echo "fake-gh: run view failed" >&2; exit 1; }
     jq -c --argjson id "${id:-0}" 'map(select(.databaseId == $id)) | .[0] // empty' "$FX/runs.json" | { read -r l || { echo "fake-gh: no run $id" >&2; exit 1; }; echo "$l"; } ;;
@@ -282,6 +285,34 @@ echo "[$(p 10 feat/a ffffffff66666666ffffffff66666666ffffffff)]" > "$TMP/fx/prs-
 out="$(run 10)"; rc=$?
 is "<pr>, head moved after the reads: refused" "none" "$(reruns)"
 rc_nz "  non-zero exit" "$rc"
+
+# the head run changing between the plan and the write: a stale plan must not rerun it
+setpr "$(r 5 completed failure feat/a $H 1)"
+echo "[$(r 5 completed failure feat/a $H 1),$(r 9 in_progress '' feat/a $H 1)]" > "$TMP/fx/runs-after-2.json"
+out="$(run 10)"; rc=$?
+is "<pr>, a newer live head run appeared after the plan: not rerun" "none" "$(reruns)"
+rc_nz "  non-zero exit" "$rc"
+setpr "$(r 5 completed failure feat/a $H 1)"
+echo "[$(r 5 completed failure feat/a $H 2)]" > "$TMP/fx/runs-after-2.json"
+out="$(run 10)"; rc=$?
+is "<pr>, the head run was rerun by someone else (attempt 2) after the plan: not rerun again" "none" "$(reruns)"
+rc_nz "  non-zero exit" "$rc"
+setpr "$(r 5 completed failure feat/a $H 1)"
+echo "[$(r 5 in_progress '' feat/a $H 1)]" > "$TMP/fx/runs-after-2.json"
+out="$(run 10)"; rc=$?
+is "<pr>, the head run went live after the plan: not rerun" "none" "$(reruns)"
+rc_nz "  non-zero exit" "$rc"
+setpr "$(r 5 completed failure feat/a $H 1)"
+echo "[$(r 5 completed failure feat/a $H 1)]" > "$TMP/fx/runs-after-2.json"
+out="$(run 10)"; rc=$?
+is "<pr>, the head run unchanged on the re-read: rerun" "5" "$(reruns)"
+rc_is "  exit 0" 0 "$rc"
+setfleet
+echo "[$(r 1 completed cancelled feat/a $H 1),$(r 2 in_progress '' feat/b $O 1),$(r 3 completed success feat/c cccccccc33333333cccccccc33333333cccccccc 1),$(r 4 completed failure feat/d dddddddd44444444dddddddd44444444dddddddd 1)]" > "$TMP/fx/runs.json"
+echo "[$(r 1 completed cancelled feat/a $H 2),$(r 4 completed failure feat/d dddddddd44444444dddddddd44444444dddddddd 1)]" > "$TMP/fx/runs-after-5.json"
+out="$(run --fleet)"; rc=$?
+is "--fleet, run 1 rerun elsewhere after the plan: only run 4 is rerun" "4" "$(reruns)"
+rc_is "  fleet pass moves on, exit 0" 0 "$rc"
 
 # a failed rerun is reported, the rest still go, exit 1
 setfleet

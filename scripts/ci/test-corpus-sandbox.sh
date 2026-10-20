@@ -11,7 +11,11 @@ ok() { pass=$((pass + 1)); printf 'PASS %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
 if [ ! -f "$LINT" ]; then bad 'corpus sandbox lint missing'; exit 1; fi
 mkdir -p "$TMP/scripts/hooks" "$TMP/scripts/eval/guard-corpus"
-SHELL_FIXTURE="$TMP/scripts/hooks/test-block-destructive-commands.sh"
+SHELL_FIXTURE="$TMP/scripts/hooks/lib-test-block-destructive.sh"
+# The enforced parts only need to exist and name the runner; the launches live in the lib.
+for part in a b c d; do
+    printf '# every case runs through sandbox-run.sh\n' > "$TMP/scripts/hooks/test-block-destructive-commands-$part.sh"
+done
 PY_FIXTURE="$TMP/scripts/eval/guard-corpus/diff"
 cat > "$PY_FIXTURE" <<'PY'
 import subprocess

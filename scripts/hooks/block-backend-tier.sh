@@ -454,6 +454,17 @@ EOF
 
     # Build refusal message and block (return 2).
     replacement=$(replacement_for "$matched_service" "$verb")
+    if [ "$matched_service" = "jira" ] && [ "$suffix" = "addOrEditJiraIssueComment" ]; then
+        # A commentId marks an edit: name the --edit form with the real key and id.
+        edit_id=$(printf '%s' "$input" | jq -r '.tool_input.commentId // empty | tostring' 2>/dev/null) || edit_id=""  # swallow-ok: no readable id keeps the add hint
+        edit_key=$(printf '%s' "$input" | jq -r '.tool_input.issueIdOrKey // empty | tostring' 2>/dev/null) || edit_key=""  # swallow-ok: no readable key falls back to HIMMEL-N
+        case "$edit_id$edit_key" in
+            *[!A-Za-z0-9_-]*) edit_id="" ;;  # keep shell metacharacters out of the printed command
+        esac
+        if [ -n "$edit_id" ]; then
+            replacement="node scripts/jira/dist/index.js comment ${edit_key:-HIMMEL-N} --edit ${edit_id} \"<text>\""
+        fi
+    fi
     api_advisory=""
     if [ "$api_in_chain" -eq 1 ]; then
         api_advisory="

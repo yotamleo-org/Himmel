@@ -242,6 +242,13 @@ mirror on this machine). `versionless-done.sh --backfill` lists the fix; it neve
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 
+With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
+when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (12000), and
+`ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
+DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
+specs/decisions/console-decisions-<date>.md the superseded rulings move to verbatim
+(console-sections/live-state.md).
+
 --burn adds a per-leg context-burn field (first-turn/avg-ctx, via
 scripts/lanes/leg-burn.sh) for every doc in --legs. OPT-IN because it scans
 the Claude Code transcript root, which a plain tick must never do: a tick runs
@@ -340,11 +347,14 @@ csv_add() {
 # `COUNT <ready> <flagged> <judged> <nogo> <unchecked>`, one `MODEL <m> <judged> <nogo>`
 # row per model, and `ALERT <reason>` rows. rc 1 = nothing to read (no bucket, no list).
 #   M1a  the READY head is the head a judge record NO-GO'd: any <bucket>/verdicts/<qid>/*.md
-#        carrying a `pr: <n>` line and a `**NO-GO** for head` line at the full head
+#        carrying a `pr: <n>` line and a `**NO-GO** for head` line at the full head;
+#        listed and counted in the nogo rate, not in <flagged>: a NO-GO is the review loop working
 # A scan past TICK_READY_BUDGET_SEC (default 30) stops reading gh, counts the rest
 # unchecked and prints a `PARTIAL` row.
 #   M1b  the READY says it touches no trust path, the PR's files hit ci-trust-paths.txt
 #   M1c  the PR's files hit ci-trust-paths.txt, the READY never mentions trust
+# M1b/M1c skip a PR that is already merged (one `gh pr view --json state` per candidate, a
+# MERGED answer cached as <pr>-<head>.merged); a failed state read leaves the row flagged.
 # Changed-file lists come from the ready-files cache under TICK_STATE_DIR (keyed
 # <pr>-<head>, so a re-pushed head is a fresh row); a miss costs one `gh pr view`,
 # at most 20 per scan, and past that the READY is counted unchecked, never clean.
@@ -412,6 +422,19 @@ ready_mismatch_scan() {
             if [ -z "$files" ]; then hit="?"
             elif printf '%s\n' "$files" | grep -Eq -f "$pats"; then hit=1
             else hit=0; fi
+            if [ "$hit" = 1 ] && [ "$claim" != named ]; then
+                if [ -e "$cache/$pr-$head.merged" ]; then
+                    hit=0
+                elif [ "$budget" -gt 0 ] && [ $((SECONDS - t0)) -lt "$cap" ]; then
+                    budget=$((budget - 1))
+                    left=$((cap - (SECONDS - t0)))
+                    [ "$left" -gt 10 ] && left=10
+                    if [ "$(cd "$REPO" && timeout -k 2 "$left" "$ghcmd" pr view "$pr" --json state -q .state 2>/dev/null)" = MERGED ]; then  # swallow-ok: a failed state read leaves the READY flagged, never clean
+                        : > "$cache/$pr-$head.merged" 2>/dev/null
+                        hit=0
+                    fi
+                fi
+            fi
             jv=none
             if grep -qx "$pr $head NO-GO" "$vidx"; then jv=NO-GO
             elif grep -qx "$pr $head GO" "$vidx"; then jv=GO; fi
@@ -423,7 +446,7 @@ ready_mismatch_scan() {
           if ($6 != "none") { j++; mj[$3]++ }
           if ($6 == "NO-GO") { n++; mn[$3]++ }
           f = 0
-          if ($6 == "NO-GO") { f = 1; printf "M1a\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3 }
+          if ($6 == "NO-GO") printf "M1a\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3
           if ($5 == "1" && $4 == "none") { f = 1; printf "M1b\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3; tm++ }
           if ($5 == "1" && $4 == "silent") { f = 1; printf "M1c\t%s\t%s\t%s\n", $1, substr($2, 1, 12), $3; tm++ }
           flagged += f }
@@ -1344,6 +1367,21 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
     esac
 fi
 
+# This console's own HANDOFF (<doc stem>-HANDOFF.md, written by console.sh next)
+# over HANDOFF_BUDGET_BYTES, and its decisions: line over DECISIONS_BUDGET_BYTES.
+# Shown only as ACTION lines after the TICK line; not in console-wait's wake key.
+handoff_bytes=0
+decisions_bytes=0
+handoff_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+decisions_budget="${DECISIONS_BUDGET_BYTES:-4000}"
+case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=12000 ;; esac
+case "$decisions_budget" in ''|*[!0-9]*) decisions_budget=4000 ;; esac
+if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+    handoff_file="${console_doc%.md}-HANDOFF.md"
+    [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
+    decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
+fi
+
 # the luna vault's commit health. vault-status.sh owns the derivation
 # (and is fail-soft); a missing or failing helper reads unknown, never a failed tick.
 vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.sh" 2>/dev/null)" || vault_summary=unknown
@@ -2098,6 +2136,13 @@ else
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;
     esac
+    decisions_file="${console_doc%/*}/specs/decisions/console-decisions-$(date +%F).md"
+    if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
+        printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (console-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
+    fi
+    if [ "$decisions_bytes" -gt "$decisions_budget" ]; then
+        printf 'ACTION decisions-over-budget=%s/%s: move superseded rulings verbatim to %q and keep the active ones plus that path on the line (console-sections/live-state.md)\n' "$decisions_bytes" "$decisions_budget" "$decisions_file"
+    fi
 fi
 if [ "$emit_fp" -eq 1 ]; then
     printf 'board-fp=%s\n' "$board_fp"

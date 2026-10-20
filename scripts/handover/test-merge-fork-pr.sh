@@ -26,7 +26,7 @@ export USER_SLUG=u
 
 SHA=0123456789abcdef0123456789abcdef01234567
 OLD=89abcdef0123456789abcdef0123456789abcdef
-FORK=yotamleo/qmd
+FORK=yotamleo-org/qmd
 BASE=himmel/pin-http-auth
 # The harness repo is whatever the checkout under test names as origin; the stub's
 # gh repo view answers the FORK as the default repo to prove nothing reads that.
@@ -43,7 +43,7 @@ case "$1 $2" in
     "repo view")
         case "$*" in
             *defaultBranchRef*) printf 'main' ;;
-            *) printf 'yotamleo/qmd' ;;
+            *) printf 'yotamleo-org/qmd' ;;
         esac ;;
     "api repos/"*"/contents/scripts/guardrails/himmel-adapters.json?ref=main")
         case "$2" in "repos/$STUB_ORIGIN_NWO/contents/"*) cat "$STUB_ALLOW" 2>/dev/null || exit 1 ;; *) exit 1 ;; esac ;;
@@ -62,7 +62,7 @@ STUB
 chmod +x "$tmp/bin/gh"
 export PATH="$tmp/bin:$PATH"
 
-printf '%s\n' '[{"nwo":"yotamleo/qmd","upstream":"tobi/qmd","himmel_branch":"himmel/pin-http-auth","pin_site":"scripts/lib/qmd-bin.sh","role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo/off","upstream":"x/off","himmel_branch":"himmel/x","pin_site":null,"role":"dormant","merge_allowed":false}]' > "$STUB_ALLOW"
+printf '%s\n' '[{"nwo":"yotamleo-org/qmd","upstream":"tobi/qmd","himmel_branch":"himmel/pin-http-auth","pin_site":"scripts/lib/qmd-bin.sh","role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo-org/off","upstream":"x/off","himmel_branch":"himmel/x","pin_site":null,"role":"dormant","merge_allowed":false}]' > "$STUB_ALLOW"
 GOODCHK='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]'
 prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s","mergeStateStatus":"%s","statusCheckRollup":%s}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" "${5:-CLEAN}" "${6:-$GOODCHK}" > "$STUB_PRVIEW"; }
 prview
@@ -110,7 +110,7 @@ rc=0; go --repo 'a/b/c' --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo malformed nwo -> exit 2" "$rc" 2
 rc=0; go --repo other/repo --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo non-allowlisted repo -> exit 6" "$rc" 6
-rc=0; go --repo yotamleo/off --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; go --repo yotamleo-org/off --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo merge_allowed false -> exit 6" "$rc" 6
 rc=0; STUB_ALLOW="$tmp/none.json" go --repo "$FORK" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo unreadable allowlist -> exit 6" "$rc" 6
@@ -176,7 +176,7 @@ rc=0; HIMMEL_CONSOLE_RELAY=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge from a relay -> exit 3" "$rc" 3
 rc=0; merge other/repo 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge non-allowlisted repo -> exit 6" "$rc" 6
-rc=0; merge yotamleo/off 18 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; merge yotamleo-org/off 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge merge_allowed false -> exit 6" "$rc" 6
 check "merge refusals so far merged nothing" "$(merged)" 0
 
@@ -273,8 +273,8 @@ check "merge: absolute entry runs local" "$out" "RAN:branch"
 rc=0; (cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/merge-fork-pr.sh >/dev/null 2>&1) || rc=$?
 check "merge: relative entry with the anchor unset exits 2" "$rc" 2
 
-out=$(jq -r '.[] | select(.nwo == "yotamleo/qmd") | .himmel_branch' "$HERE/../guardrails/himmel-adapters.json" 2>/dev/null)
-check "registry: yotamleo/qmd himmel_branch is the fork main the pin tracks" "$out" "main"
+out=$(jq -r '.[] | select(.nwo == "yotamleo-org/qmd") | .himmel_branch' "$HERE/../guardrails/himmel-adapters.json" 2>/dev/null)
+check "registry: yotamleo-org/qmd himmel_branch is the fork main the pin tracks" "$out" "main"
 
 # --- 4. go.sh clears and load-checks go_fork_ready ---------------------------------
 # A go_fork_ready inherited from the caller's env must not stand in for one the

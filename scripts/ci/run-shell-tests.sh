@@ -107,6 +107,11 @@
 # piling on. Knobs, all env:
 #
 #   SUITE_TIMEOUT      per-suite wall-clock cap, seconds (default 600)
+#   SUITE_STOP_ON_FAIL 1 = stop at the first failing suite and name every suite
+#                      still on this shard's list as not run (exit 1). ci.yml
+#                      sets it on pull_request only, so a red shard frees its
+#                      runner; push, schedule and dispatch leave it empty and
+#                      run everything, keeping a red attributable.
 #   SUITE_RUN_BUDGET   whole-run wall-clock cap, seconds (default 7200); the
 #                      runner stops BETWEEN suites once it is spent and names
 #                      what did not run, instead of running until morning
@@ -335,14 +340,13 @@ _suite_timeout_for() {
       # The nightly shards run tier all with GUARD_CORPUS_TIER=fast: the full
       # replay runs in the scheduled-only guard-corpus-full job, not a 60-min shard.
       if [ "${SUITE_TIER_MODE:-all}" = fast ] || [ "${GUARD_CORPUS_TIER:-}" = fast ]; then printf '1800'; else printf '10800'; fi ;;
-    scripts/hooks/test-block-destructive-commands.sh|*/scripts/hooks/test-block-destructive-commands.sh)
-      # Every fixture now starts a fresh bwrap sandbox. Linux with
-      # bwrap working measured 263s alone (2026-10-08). On the CI runner (bwrap
-      # working after the ci.yml userns sysctl) the suite was killed at the
-      # 1200s cap with ~80% of its fixtures done (PR 2177 shard 1, run
-      # 37828342755), so ~1500s there; 3000s is that x2 (the loaded-budget rule,
-      # same as the guard-corpus arm above).
-      printf '3000' ;;
+    scripts/hooks/test-block-destructive-commands-[abcd].sh|*/scripts/hooks/test-block-destructive-commands-[abcd].sh)
+      # Every fixture starts a fresh bwrap sandbox. The former single suite
+      # needed ~1500s on the CI runner (3000s cap = that x2, the loaded-budget
+      # rule, same as the guard-corpus arm above); it is now four case-range
+      # parts of 239-269 of its 1018 cases each, so ~400s each at most there,
+      # x2 loaded with margin = 1200s.
+      printf '1200' ;;
     scripts/handover/test-arm-resume-identity.sh|*/scripts/handover/test-arm-resume-identity.sh)
       # Fresh-boot idle benchmark (2026-08-27): new idle
       # 814s, rc=0 (reproduced at 802s, rc=0, same day). The prior 08-26 idle
@@ -857,7 +861,10 @@ esac
 SUITE_REQUIRE_TOOL_DEFAULT="
 scripts/lib/test-sandbox-run.sh  $_sandbox_tool  # real corpus confinement boundary (HIMMEL-4912)
 scripts/eval/guard-corpus/test-guard-corpus.sh  $_sandbox_tool  # every replay hook runs confined (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-a.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-b.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-c.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-d.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
 scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-glm vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
 scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
@@ -3420,6 +3427,13 @@ if [ "$list_only" -eq 0 ]; then
 fi
 
 pass=0 fail=0 skip=0 ran=0
+# SUITE_STOP_ON_FAIL=1: set once a suite has failed; the rest of this shard's
+# list is then recorded as stopped_suites instead of run. The value is read once
+# and cleared, so a suite that runs this runner itself never inherits the stop.
+stop_on_fail="${SUITE_STOP_ON_FAIL:-}"
+unset SUITE_STOP_ON_FAIL
+stopped=0
+stopped_suites=""
 # PASSING suites whose output holds a SKIP line. `skip` above is
 # the runner's own filter (SKIP_LIST, --skip-extra, tiers); this is a suite that
 # RAN, exited 0, and told us it skipped something — counted in `pass`, so the
@@ -4116,6 +4130,13 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
+  if [ "$stopped" -eq 1 ]; then
+    stopped_suites="${stopped_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
   # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
   # suite mid-assertion. Everything still on the list is named as unrun —
   # stopping quietly here would be the same false green the discovery guards
@@ -4358,9 +4379,10 @@ while IFS= read -r suite <&3; do
   fi
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
+  [ "$rc" -eq 0 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 done 3< "$suites_file"
 
-if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ]; then
+if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
   mkdir -p "$FAIL_LOG_DIR" && : > "$FAIL_LOG_DIR/.run-complete"
 fi
 
@@ -4405,6 +4427,9 @@ if [ "$cap_exceeded_clean" -gt 0 ]; then
   # in _suite_timeout_for first, but this is a heuristic over one line
   # convention, not proof of health (see the detector's own comment above).
   printf ' CAP EXCEEDED (assertions passing): %s\n' "$cap_exceeded_clean"
+fi
+if [ -n "$stopped_suites" ]; then
+  printf 'STOPPED: SUITE_STOP_ON_FAIL=1 — a suite failed, so these suites never ran:\n%s' "$stopped_suites" >&2
 fi
 if [ "$budget_expired" -eq 1 ]; then
   printf 'ERROR: run budget of %ss expired — these suites never ran:\n%s' \
@@ -4575,7 +4600,7 @@ if [ "$SUITE_ROTATE" != "0" ]; then
           "$SUITE_ROTATE_STATE" >&2
       fi
     fi
-  elif [ "$budget_expired" -eq 0 ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
+  elif [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
     # Same empty-path guard as above, for `rm -f ""` — a no-op in practice,
     # but the CLEARED-only comment above already draws the correct line, so
     # this stays consistent with it rather than relying on rm's leniency.

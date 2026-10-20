@@ -65,7 +65,8 @@ cat > "$LAUNCH" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$REC/argv"
 pwd > "$REC/cwd"
-printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" > "$REC/env"
+printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
+    "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" > "$REC/env"
 if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit 2; fi
 [ -z "${FAKE_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
 [ -z "${FAKE_RC5:-}" ] || { echo "boom" >&2; exit 5; }
@@ -97,6 +98,11 @@ has "1 json output" "json" "$REC/argv"
 hasnt "1 never bypassPermissions" "bypassPermissions" "$REC/argv"
 has "1 read-only tool grant" "HIMMEL_API_TOOLS=Read,Glob,Grep" "$REC/env"
 has "1 cost logged from the usage block" "cost_usd=0.1234" "$W/err"
+fresh_rec 1k
+CR_TARGET_BRANCH=feat/keyed CR_TARGET_HEAD=abc1234 CR_TARGET_PR=4242 run_cfp claude-api
+has "1k branch reaches the launcher" "HIMMEL_API_BRANCH=feat/keyed" "$REC/env"
+has "1k head reaches the launcher" "HIMMEL_API_HEAD=abc1234" "$REC/env"
+has "1k PR reaches the launcher" "HIMMEL_API_PR=4242" "$REC/env"
 
 # --- 2. api provider refusal (lane off / no key / exhausted) is a clean skip ---
 fresh_rec 2; export FAKE_REFUSE="api lane is OFF (set HIMMEL_API_LANE=on)"

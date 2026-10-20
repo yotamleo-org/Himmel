@@ -20,7 +20,8 @@
 #
 # ponytail: residual_added counts every ticket created in the window on the current version (SCORECARD_VERSION, default v1.1.3), upgrade path = count only residual-depth labels once HIMMEL-6115 ships
 # ponytail: shipped_strict counts Done non-Epic tickets resolved in the window whose key is in a main squash subject `(#N)` of the last 30 days, so fork-repo PRs and body-only keys are missed, upgrade path = the fresh/broad forms in throughput-model-2026-10-17.md section 1 once the undercount matters
-# ponytail: deferred_escapes counts the `deferred-escape` label in total, no class/severity split, upgrade path = split once HIMMEL-1481 defines the class labels
+# ponytail: the per-class and per-priority escape split rides the free-text note cell (the column schema stays fixed), upgrade path = own columns once a reader parses it
+# Escapes are labelled by scripts/cr/mark-deferred-escape.sh (class-<id> copied from the residual).
 # OFF by default: only `arm` installs the cron entry. Platform: cron (Linux/macOS).
 set -uo pipefail
 
@@ -70,7 +71,7 @@ count_rows() {
 }
 
 cmd_run() {
-    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc bad=0 jira primary row locked all dn mk shipped admin
+    local date_arg="" tsv ts since ci q50 q90 share jobs fail pct red den resid esc escrows escnote bycls byp p n got bad=0 jira primary row locked all dn mk shipped admin
     while [ $# -gt 0 ]; do
         case "$1" in
             --date) [ $# -ge 2 ] || { echo "ERR scorecard: --date needs a value" >&2; return 64; }; date_arg="$2"; shift 2 ;;
@@ -114,7 +115,24 @@ cmd_run() {
     else
         jira=(node "$primary/scripts/jira/dist/index.js")
         resid="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND fixVersion = \"$VERSION\" AND created >= -24h" --limit 500)" || resid=""
-        esc="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND labels = deferred-escape' --limit 500)" || esc=""
+        escrows="$(cd "$primary" && src SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql 'project = HIMMEL AND labels = deferred-escape' --labels --limit 500 2>/dev/null)" \
+            && esc="$(printf '%s\n' "$escrows" | grep -c . || true)" && [ "$esc" -lt 500 ] || { esc=""; escrows=""; }
+    fi
+
+    # Escapes split per class-<id> label (unclassified when none) and per priority, carried in the note cell.
+    escnote=""
+    if [[ "$esc" =~ ^[0-9]+$ && "$esc" -gt 0 ]]; then
+        bycls="$(printf '%s\n' "$escrows" | awk -F'\t' 'NF { n = split($5, l, ","); c = 0; for (i = 1; i <= n; i++) { gsub(/ /, "", l[i]); if (l[i] ~ /^class-/) { t[l[i]]++; c = 1 } } if (!c) t["unclassified"]++ }
+            END { for (k in t) print t[k], k }' | sort -k1,1nr -k2 | awk '{ printf "%s%s=%s", (NR > 1 ? " " : ""), $2, $1 }')"
+        byp=""; got=0
+        for p in Highest High Medium Low Lowest; do
+            n="$(cd "$primary" && count_rows SCORECARD_JIRA_CMD env JIRA_PROJECT_KEY=HIMMEL "${jira[@]}" list --jql "project = HIMMEL AND labels = deferred-escape AND priority = $p" --limit 500)" || { n=unknown; bad=1; got=""; }
+            [ "$n" = 0 ] || byp="$byp${byp:+ }$p=$n"
+            [ -z "$got" ] || got=$((got + n))
+        done
+        # An escape with no priority matches none of the five queries.
+        [[ -n "$got" && "$esc" -gt "$got" ]] && byp="$byp${byp:+ }unprioritized=$((esc - got))"
+        escnote="; escapes by class: $bycls; by priority: $byp"
     fi
 
     if [ -n "$primary" ]; then
@@ -130,8 +148,8 @@ cmd_run() {
     for v in q50 q90 share pct red den resid esc shipped admin; do
         [[ "${!v}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { printf -v "$v" unknown; bad=1; }
     done
-    row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\tn/a\t%s\t%s\t%s\t%s\t%s\tdaily, 24h window ending %s' \
-        "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$shipped" "$admin" "$ts")"
+    row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\tn/a\t%s\t%s\t%s\t%s\t%s\tdaily, 24h window ending %s%s' \
+        "$date_arg" "$ts" "$q50" "$q90" "$pct" "$red" "$den" "$resid" "$esc" "$share" "$shipped" "$admin" "$ts" "$escnote")"
     mkdir -p "$(dirname "$tsv")" || return 1
     # ponytail: mkdir lock, 30s wait; a kill -9 mid-append leaves tsv.lock to remove by hand, upgrade to flock if it recurs
     locked=0

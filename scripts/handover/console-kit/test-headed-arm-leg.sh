@@ -1422,6 +1422,18 @@ assert.ok(cmd.includes(contractPath), `command does not name the contract file: 
 NODE
 check "compact-hook: settings JSON carries a SessionStart compact hook naming the contract file" "$rc" "0"
 
+rc=0
+node --input-type=module - "$d17b3/HIMMEL-9999-hook.leg-settings.json" <<'NODE' || rc=$?
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+const settings = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const cmds = (settings.hooks?.Stop ?? []).flatMap((e) => (e.hooks ?? []).map((h) => h.command ?? ''));
+const cmd = cmds.find((c) => c.includes('guard-leg-cache-ttl.sh'));
+assert.ok(cmd, `no Stop hook runs guard-leg-cache-ttl.sh: ${JSON.stringify(cmds)}`);
+assert.ok(existsSync(cmd.replace(/^bash /, '')), `Stop hook path does not exist: ${cmd}`);
+NODE
+check "cache-ttl: settings JSON carries a Stop hook running guard-leg-cache-ttl.sh" "$rc" "0"
+
 # --- 17b-4. 17b-3 only checks that the
 # generated command STRING names the contract path as a substring; it never
 # actually runs the command, so it would not have caught an unescaped path
@@ -1542,13 +1554,13 @@ not_contains "no --profile: no HIMMEL_LEAN_LEG in the launched environment" "$en
 
 noprof="$(LEG_PROFILE='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)"
 noprof_lines="$(printf '%s\n' "$noprof" | wc -l | tr -d '[:space:]')"
-check "no --profile: dry-run report is still exactly three lines" "$noprof_lines" "3"
+check "no --profile: dry-run report is still exactly four lines (effort line + three)" "$noprof_lines" "4"
 not_contains "no --profile: dry-run report has no profile line" "$noprof" "profile="
 not_contains "--no-profile: no profile name is propagated" "$noprof" "HIMMEL_LEG_PROFILE="
 
 prof="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/leg.log" claude-sonnet-5 2>&1)"
 prof_lines="$(printf '%s\n' "$prof" | wc -l | tr -d '[:space:]')"
-check "--profile: dry-run report adds exactly one line" "$prof_lines" "4"
+check "--profile: dry-run report adds exactly one line" "$prof_lines" "5"
 contains "--profile: dry-run names the profile, the settings path and the lean flag" "$prof" \
   "profile=leg-impl settings=$tmp/HIMMEL-9999-leg.leg-settings.json"
 contains "--profile: dry-run reports lean=1" "$prof" "lean=1"
@@ -2508,7 +2520,7 @@ check "27b refused launch wrote no settings file" "$([ -e "$d27/HIMMEL-2727-leg.
 # shellcheck disable=SC2086
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile "${args27[@]}" 2>&1)" || rc=$?
 check "27c --no-profile: launches (dry-run exit 0)" "$rc" "0"
-check "27c --no-profile: dry-run report is exactly three lines" "$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')" "3"
+check "27c --no-profile: dry-run report is exactly four lines (effort line + three)" "$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')" "4"
 not_contains "27c --no-profile: no profile line" "$out" "profile="
 
 d27c="$tmp/c27c"; mk_launch_stubs "$d27c" "HIMMEL-2728-leg"; mkdir -p "$tmp/repo27c"
@@ -3167,6 +3179,55 @@ not_contains "34c the registry's medium never overwrites the ambient value" "$le
 out34d="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg-34d some/doc.md /tmp/nosig 99999999999 "$tmp/leg34d.log" 2>&1)"
 lenv34d="$(printf '%s\n' "$out34d" | grep '^headed-arm-leg: lane=')"
 contains "34d claudex lane still exports its own LEG_EFFORT-default effort" "$lenv34d" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+
+# 34e-34h. On the native lane LEG_EFFORT sits between an explicit
+# CLAUDE_CODE_EFFORT_LEVEL and the registry default. A registry whose opus row
+# is medium keeps 34e from passing on the registry value alone.
+lanes_fixture_med="$tmp/lanes-fixture-med.json"
+cat > "$lanes_fixture_med" <<'LANES_JSON_EOF'
+{"lanes":[{"id":"sonnet","class":"claude-tier","effort":"medium"},{"id":"opus","class":"claude-tier","effort":"medium"}]}
+LANES_JSON_EOF
+
+rc34e=0
+out34e="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34e "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34e.log" claude-opus-5-5 2>&1)" || rc34e=$?
+lenv34e="$(printf '%s\n' "$out34e" | grep '^headed-arm-leg: lane=')"
+check "34e dry run exits 0" "$rc34e" "0"
+contains "34e native LEG_EFFORT=high beats the registry's medium" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=high"
+not_contains "34e the registry's medium is not what propagates" "$lenv34e" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+
+rc34f=0
+out34f="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=xhigh bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34f "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34f.log" claude-opus-5-5 2>&1)" || rc34f=$?
+lenv34f="$(printf '%s\n' "$out34f" | grep '^headed-arm-leg: lane=')"
+check "34f dry run exits 0" "$rc34f" "0"
+contains "34f an explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh beats LEG_EFFORT=high" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
+not_contains "34f LEG_EFFORT does not displace the explicit value" "$lenv34f" "CLAUDE_CODE_EFFORT_LEVEL=high"
+
+rc34g=0
+out34g="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=bogus CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g.log" claude-opus-5-5 2>&1)" || rc34g=$?
+lenv34g="$(printf '%s\n' "$out34g" | grep '^headed-arm-leg: lane=')"
+check "34g dry run exits 0" "$rc34g" "0"
+contains "34g an unrecognised LEG_EFFORT falls through to the registry" "$lenv34g" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+
+# 34g2. A caller-preset launcher token wins on a name clash; the effort line reports it.
+rc34g2=0
+out34g2="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g2 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g2.log" claude-opus-5-5 2>&1)" || rc34g2=$?
+check "34g2 dry run exits 0" "$rc34g2" "0"
+contains "34g2 the effort line reports the launcher token's value and source" "$out34g2" "headed-arm-leg: effort=low source=HEADED_ARM_LAUNCHER_ENV"
+not_contains "34g2 the effort line does not claim LEG_EFFORT won" "$out34g2" "source=LEG_EFFORT"
+
+contains "34h the launch states the effective effort and its source" "$out34e" "headed-arm-leg: effort=high source=LEG_EFFORT"
+contains "34h an explicit value is reported as its own source" "$out34f" "headed-arm-leg: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
+contains "34h a registry value is reported as the lane default" "$out34a" "headed-arm-leg: effort=medium source=lanes.json"
+check "34h the effort line is the first line of the launch output" "$(printf '%s\n' "$out34e" | head -1)" "headed-arm-leg: effort=high source=LEG_EFFORT"
+
+# 34i. A full native launch with LEG_EFFORT=high puts high into the armed process env.
+d34i="$tmp/c34i"; mk_launch_stubs "$d34i" "HIMMEL-9999-leg-34i"; mkdir -p "$tmp/repo34i"
+rc=0
+LEG_EFFORT=high run_leg "$d34i" "$tmp/repo34i" "HIMMEL-9999-leg-34i" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d34i" || true
+env34i="$(cat "$d34i/env-record" 2>/dev/null || true)"
+check "34i full native launch, LEG_EFFORT=high: exit 0" "$rc" "0"
+contains "34i full native launch, LEG_EFFORT=high: the armed process env carries high" "$env34i" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
 # --- 35. HANDOVER_DIR unset, but a root IS
 # self-resolvable (case 26's shape: a console-like cwd with an

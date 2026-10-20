@@ -969,6 +969,16 @@ write_marker_for_branch() {
     fi
 }
 
+# is_backup_branch BRANCH — the exact worktree-backup shape
+# claude/backup-<ticket>-<slug>: its only job is to keep a commit safe before a
+# worktree is removed, it is never a PR (check-cr-marker-on-pr-create.sh
+# refuses it as a PR head), so no review is owed. Anchored, with no further '/'
+# in the slug: claude/backup-x, claude/feature-x and feat/claude/backup-1-x all
+# stay gated. Every other pre-push gate still runs on it.
+is_backup_branch() {
+    [[ "$1" =~ ^claude/backup-[0-9]+-[A-Za-z0-9._+-]+$ ]]
+}
+
 # certify_pushed_ref REMOTE_REF LOCAL_SHA
 # The ONE identity gate every ref-derived marker write passes through — shared
 # by the stdin loop below (raw .git/hooks/pre-push install + direct-invocation
@@ -1001,6 +1011,11 @@ certify_pushed_ref() {
 
     # Pushing the protected default is gated elsewhere; nothing to review.
     if [ "$branch" = "$db" ]; then
+        return 0
+    fi
+
+    if is_backup_branch "$branch"; then
+        echo "→ code-review: ${branch} is a worktree backup ref (never a PR) — no review-owed marker" >&2
         return 0
     fi
 
@@ -1146,6 +1161,9 @@ if [ "$rc" -eq 2 ]; then
     exit 2
 fi
 if [ -z "$branch" ] || is_on_main; then
+    exit 0
+fi
+if is_backup_branch "$branch"; then
     exit 0
 fi
 head_sha=$(git rev-parse HEAD)

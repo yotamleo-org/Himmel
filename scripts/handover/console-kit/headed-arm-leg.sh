@@ -1455,6 +1455,8 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # instead of the registry's declared value. Mirrored rather than imported:
 # run.ts is TS/bun-only and off the leg's Do-not list to edit; jq is already
 # a direct dependency of this file (the --profile settings merge below).
+# Precedence: an explicit CLAUDE_CODE_EFFORT_LEVEL, then a valid LEG_EFFORT,
+# then the registry row; the winner and its source print as one stderr line.
 # An explicit CLAUDE_CODE_EFFORT_LEVEL from the LAUNCHING shell always wins
 # over the registry - checked here, before the lookup, because
 # leg_propagate_env's own `export` would otherwise silently overwrite it with
@@ -1463,9 +1465,29 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # no-op), so it reaches HEADED_ARM_LAUNCHER_ENV's token list and shows up in
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
+    EFFORT_SOURCE=""
+    # A caller-preset launcher token wins over leg_propagate_env, so the print
+    # below reports it; read before the resolver appends its own token.
+    PRESET_EFFORT=""
+    set -f
+    for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_effort_tok" in
+            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}" ;;
+        esac
+    done
+    set +f
     if [ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ]; then
+        EFFORT_SOURCE="CLAUDE_CODE_EFFORT_LEVEL"
         leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$CLAUDE_CODE_EFFORT_LEVEL"
     else
+        case "${LEG_EFFORT:-}" in
+            low | medium | high | xhigh | max)
+                EFFORT_SOURCE="LEG_EFFORT"
+                leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$LEG_EFFORT"
+                ;;
+        esac
+    fi
+    if [ -z "$EFFORT_SOURCE" ]; then
         LANES_JSON="${HEADED_ARM_LEG_LANES_JSON:-$HERE/../../lanes/lanes.json}"
         if [ -f "$LANES_JSON" ]; then
             NATIVE_EFFORT="$(jq -r --arg model "$MODEL" '
@@ -1475,11 +1497,19 @@ if [ "$LANE" = "native" ]; then
             ' "$LANES_JSON" 2>/dev/null)"
             case "$NATIVE_EFFORT" in
                 low | medium | high | xhigh | max)
+                    EFFORT_SOURCE="lanes.json"
                     leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$NATIVE_EFFORT"
                     ;;
             esac
         fi
     fi
+    if [ -n "$PRESET_EFFORT" ]; then
+        EFFORT_SOURCE="HEADED_ARM_LAUNCHER_ENV"
+        EFFORT_SHOWN="$PRESET_EFFORT"
+    else
+        EFFORT_SHOWN="${CLAUDE_CODE_EFFORT_LEVEL:-}"
+    fi
+    [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
 fi
 
 # the leg's own bank-preflight reads CADENCE_BANK_LANE before
@@ -1943,6 +1973,17 @@ EOF_CS_FILES
             '.hooks.SessionStart = ((.hooks.SessionStart // []) + [{matcher:"compact", hooks:[{type:"command", command:$cmd, timeout:10}]}])')"; then
             echo "headed-arm-leg: --profile $PROFILE: cannot add compact-hook to settings JSON" >&2
             exit 2
+        fi
+        # Stop hook: an idle lock-holding leg keeps the prompt cache warm or
+        # wraps (docs/handover/leg-sections/cache-keepalive.md). A consult is
+        # a read-only one-question session with its own lifecycle: no hook.
+        if [ "$CONSULT" -eq 0 ]; then
+            _leg_ttl_cmd="$(printf 'bash %q' "$(cd "$HERE/../../hooks" && pwd)/guard-leg-cache-ttl.sh")"
+            if ! PROFILE_JSON="$(printf '%s' "$PROFILE_JSON" | jq --arg cmd "$_leg_ttl_cmd" \
+                '.hooks.Stop = ((.hooks.Stop // []) + [{hooks:[{type:"command", command:$cmd, timeout:10}]}])')"; then
+                echo "headed-arm-leg: --profile $PROFILE: cannot add cache-TTL Stop hook to settings JSON" >&2
+                exit 2
+            fi
         fi
     fi
     # The shim reads these; propagate so they survive both konsole's

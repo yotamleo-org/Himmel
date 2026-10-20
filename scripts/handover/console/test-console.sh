@@ -2594,4 +2594,50 @@ check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc8
 check "86 refusal quotes the predecessor's priority line" \
     "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
 
+# --- 87. a shorter decisions: line that points at a bucket decisions file ----
+# It passes only when the file exists and every numbered "(N) " entry of the
+# predecessor's line (and of any decisions file that line names) is found
+# verbatim in the outgoing line or the file(s) it names; else DECISIONS-DROP.
+# The entries are copied from a live console's decisions: line.
+p87='OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.'
+e87_3='(3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched.'
+e87_4='(4) qmd fork: version with tags + main (bump main too, tag releases).'
+e87_5='(6) Use more fleet + Claude API + claudex budget; LEG_EFFORT high on claudex legs.'
+f87='specs/decisions/console-decisions-2026-10-20.md'
+o87="$f87 holds #3-#4; active: $e87_5"
+# mk87 <bucket> <file body|-> [pred-line]; "-" = no decisions file.
+mk87() {
+    mk81 "$1" "${3:-$p87}" "$o87"
+    [ "$2" = "-" ] || { mkdir -p "$root/tester/$1/specs/decisions"; printf '%s\n' "$2" > "$root/tester/$1/$f87"; }
+}
+mk87 dec87a "$(printf '%s\n%s' "$e87_3" "$e87_4")"; run81 dec87a
+check "87 pointer line whose file holds the moved entries verbatim passes" "$rc81" "0"
+mk87 dec87b -; run81 dec87b
+check "87 pointer line whose file is missing refuses" "$rc81" "1"
+mk87 dec87c "$e87_3"; run81 dec87c
+check "87 pointer line whose file lacks an entry refuses" "$rc81" "1"
+check "87 refusal names the entry not found verbatim" "$(printf '%s\n' "$out81" | grep -cF 'not found verbatim: (4) qmd fork')" "1"
+mk87 dec87d "$(printf '%s\n%s' "$e87_3" "${e87_4/tag releases/tag release}")"; run81 dec87d
+check "87 pointer line whose file reworded an entry refuses" "$rc81" "1"
+mk81 dec87e "$p87" "$e87_3 $e87_4 $e87_5"; run81 dec87e
+check "87 shorter line with every entry but no decisions file refuses" "$rc81" "1"
+mk87 dec87f "$(printf '%s\n%s' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+mkdir -p "$root/tester/dec87f/specs/decisions"; printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87f/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87f
+check "87 pointer line dropping its predecessor's decisions file entries refuses" "$rc81" "1"
+mk87 dec87g "$(printf '%s\n%s\n%s' '(1) TOP of v1.1.3 = the audit items as tickets.' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87g/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87g
+check "87 pointer line carrying its predecessor's file entries forward passes" "$rc81" "0"
+mk87 dec87h "$(printf '%s\n%s\n%s' '(1) TOP of v1.1.3 = the audit items as tickets.' "$e87_3" "$e87_4")" "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5"
+printf '%s\n%s\n' '# Console decisions 2026-10-19' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87h/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87h
+check "87 a heading in the predecessor's decisions file is not part of an entry" "$rc81" "0"
+mk81 dec87i "specs/decisions/console-decisions-2026-10-19.md holds #1; active: $e87_3 $e87_4 $e87_5" "$e87_3 $e87_4 $e87_5 (7) Fleet cap 50; fill free slots from the FOCUS v1.1.3 To Do pool after draining owner-less In Progress."
+mkdir -p "$root/tester/dec87i/specs/decisions"; printf '%s\n' '(1) TOP of v1.1.3 = the audit items as tickets.' > "$root/tester/dec87i/specs/decisions/console-decisions-2026-10-19.md"
+run81 dec87i
+check "87 a longer line that drops its predecessor's decisions file refuses" "$rc81" "1"
+mk87 dec87j "$(printf '%s\n%s' "$e87_3" "$e87_4 Only on Sundays.")"; run81 dec87j
+check "87 pointer line whose file extended an entry refuses" "$rc81" "1"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

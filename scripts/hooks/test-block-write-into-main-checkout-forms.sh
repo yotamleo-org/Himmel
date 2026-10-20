@@ -638,9 +638,21 @@ _t_row "5747 5 KB plain echo baseline allows" allow "echo $_blob" 60
 _el_b5=$_T_EL
 _t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $(( (_el_b5 > 0 ? _el_b5 : 1) * 6 + 3 ))
 _el_k20=$_T_EL
-# a command with no quote, redirect or pipe is one linear pass: decided in
-# under 1 s (whole-second timer, so the bound is 1)
-_t_row "5747 20 KB plain echo is decided in under 1 s" allow "echo $_k20" 1
+# a command with no quote, redirect or pipe is one linear pass. The bound is
+# CPU time (user+sys of the hook, in ms), not wall clock: runner load stretches
+# wall time but barely moves CPU time. Idle ~0.65 s; the per-character walk
+# before the one-pass paths cost ~5.2 s.
+_cpu_row() { # _cpu_row <label> <want> <command> <bound-ms>
+    local out got cpu u s ms
+    out=$( export LC_NUMERIC=C; TIMEFORMAT='%3U %3S'
+        { time { _run "$DIRECT" "$(_j5747 "$3")" "$_WR"; echo; }; } 2>&1 )
+    got=${out%%$'\n'*}; cpu=${out##*$'\n'}
+    u=${cpu%% *}; s=${cpu##* }; u=${u//[.,]/}; s=${s//[.,]/}
+    ms=$(( 10#$u + 10#$s ))
+    if [ "$got" = "$2" ] && [ "$ms" -le "$4" ]; then ok "$1: $got in ${ms} ms CPU (bound ${4} ms)"
+    else bad "$1: got $got in ${ms} ms CPU (want $2 within ${4} ms)"; fi
+}
+_cpu_row "5747 20 KB plain echo is decided within 2500 ms of CPU" allow "echo $_k20" 2500
 if _lin_ok "$_el_c20" "$_el_c5"; then ok "5747 20 KB clauses ${_el_c20}s grow linearly from the 5 KB run ${_el_c5}s"
 else bad "5747 20 KB clauses ${_el_c20}s exceed 6x + 2s of the 5 KB run ${_el_c5}s"; fi
 _c20p="${_c20}echo x > $_PR/f5747"

@@ -164,6 +164,7 @@ QSCREEN="$FIX/screen-trust.txt" BUS_N=2 run 8 0
 QSCREEN="$FIX/screen-busy.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn (spinner above the input box) gets no keystroke" || fail "typed into a busy turn: $(cat "$QLOG")"
 sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle.txt" > "$tmp/draft-screen"
+grep -qFx '❯ half-typed reply' "$tmp/draft-screen" || fail "draft fixture was not generated"
 QSCREEN="$tmp/draft-screen" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "an input box holding a draft gets no keystroke (Enter would submit it)" || fail "typed onto a draft: $(cat "$QLOG")"
 : > "$tmp/empty-screen"
@@ -173,6 +174,13 @@ BUS_N=2 run 3 0
 if grep -q sendText "$QLOG" && ! sed 's/.*sendText //' "$QLOG" | grep -q '[0-9]'; then
   pass "the idle prompt is woken, and the typed line carries no digit"
 else fail "idle wake or digit-free text: $(cat "$QLOG")"; fi
+# A leg name wider than the window truncates the box's top rule to ` <name>… ─`.
+QSCREEN="$FIX/screen-idle-longname.txt" BUS_N=2 run 3 0
+grep -qF "$FIXED" "$QLOG" && pass "an idle prompt under a truncated session-name rule is woken" || fail "long-name idle prompt not woken: $(cat "$QLOG")"
+sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle-longname.txt" > "$tmp/draft-longname"
+grep -qFx '❯ half-typed reply' "$tmp/draft-longname" || fail "long-name draft fixture was not generated"
+QSCREEN="$tmp/draft-longname" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a draft under a truncated session-name rule gets no keystroke" || fail "typed onto a long-name draft: $(cat "$QLOG")"
 
 QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"

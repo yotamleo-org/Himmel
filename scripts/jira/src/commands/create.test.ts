@@ -449,3 +449,141 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
     expect(posted()).toBeUndefined();
   });
 });
+
+// The one residual writer. The mock plays Jira: a parent with labels, a
+// version list, and a search whose hit count is the open residuals.
+describe('create --residual-of', () => {
+  type Opts = { parentLabels?: string[]; open?: number; budgetDesc?: string; dup?: string; noVersion?: boolean };
+  let searches: string[];
+  const play = (o: Opts = {}) => {
+    searches = [];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return { fields: { labels: o.parentLabels ?? [] } };
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return o.noVersion
+          ? []
+          : [{ name: 'v1.1.3', released: false, description: o.budgetDesc }, { name: 'v1.1.4', released: false }];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        const jql = decodeURIComponent(path);
+        searches.push(jql);
+        if (jql.includes('area-')) return { issues: o.dup ? [{ key: o.dup }] : [] };
+        return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}` })) };
+      }
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'r', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const RES = ['--residual-of', 'HIMMEL-50', '--class', 'shell-quoting'];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('polish goes to the backlog: no fixVersion, labels residual, depth 1, class', async () => {
+    play();
+    await file(...RES, '--fu-class', 'polish');
+    const f = created()!;
+    expect(f['fixVersions']).toBeUndefined();
+    expect(f['labels']).toEqual(expect.arrayContaining(['residual', 'residual-depth-1', 'class-shell-quoting']));
+    expect(f['labels']).not.toContain('residual-overflow');
+  });
+
+  it('escape goes to the current version even with the version full, and stamps affectsVersion', async () => {
+    play({ open: 40 });
+    await file(...RES, '--fu-class', 'escape');
+    const f = created()!;
+    expect(f['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('hardening under the budget lands in the current version', async () => {
+    play({ open: 14 });
+    await file(...RES, '--fu-class', 'hardening');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('hardening at 15/15 goes to the backlog with residual-overflow', async () => {
+    play({ open: 15 });
+    await file(...RES, '--fu-class', 'hardening');
+    const f = created()!;
+    expect(f['fixVersions']).toBeUndefined();
+    expect(f['labels']).toContain('residual-overflow');
+  });
+
+  it('a residual-budget:N line in the version description overrides the default', async () => {
+    play({ open: 3, budgetDesc: 'sprint goal\nresidual-budget:3' });
+    await file(...RES, '--fu-class', 'hardening');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('residual-overflow');
+  });
+
+  it('depth 2 or more goes to the backlog even for an escape', async () => {
+    play({ parentLabels: ['residual-depth-1'] });
+    await file(...RES, '--fu-class', 'escape');
+    const f = created()!;
+    expect(f['labels']).toContain('residual-depth-2');
+    expect(f['fixVersions']).toBeUndefined();
+  });
+
+  it('an open residual with the same class and area gets a comment and a link, not a ticket', async () => {
+    play({ dup: 'HIMMEL-31' });
+    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    expect(created()).toBeUndefined();
+    const posts = mockRequest.mock.calls.filter((x) => x[0] === 'POST').map((x) => x[1]);
+    expect(posts).toEqual(['/issue/HIMMEL-31/comment', '/issueLink']);
+    const comment = mockRequest.mock.calls.find((x) => x[1] === '/issue/HIMMEL-31/comment');
+    expect(JSON.stringify(comment![2])).toContain('filled');
+    expect(searches.join('\n')).toMatch(/class-shell-quoting.*area-cr-scripts/s);
+  });
+
+  it('a new residual is linked to its parent', async () => {
+    play();
+    await file(...RES, '--fu-class', 'polish');
+    const link = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issueLink');
+    expect(JSON.stringify(link![2])).toMatch(/HIMMEL-77.*HIMMEL-50|HIMMEL-50.*HIMMEL-77/s);
+  });
+
+  it('a failed parent link still names the created key and exits non-zero', async () => {
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (m: string, path: string, b?: unknown) => {
+      if (path === '/issueLink') throw new Error('link boom');
+      return base(m, path, b);
+    });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    const err = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(err).toMatch(/HIMMEL-77 but linking to HIMMEL-50 failed: link boom/);
+    exit.mockRestore();
+  });
+
+  it('the duplicate search leaves out the parent itself', async () => {
+    play();
+    await file(...RES, '--fu-class', 'hardening', '--area', 'cr scripts');
+    expect(searches.find((j) => j.includes('area-'))).toMatch(/key != "?HIMMEL-50"?/);
+  });
+
+  it('refuses a missing --fu-class or --class, an unknown fu-class, and an explicit --fix-version', async () => {
+    play();
+    await expect(file('--residual-of', 'HIMMEL-50', '--class', 'x')).rejects.toThrow(/--fu-class/);
+    await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'polish')).rejects.toThrow(/--class/);
+    await expect(file(...RES, '--fu-class', 'nit')).rejects.toThrow(/polish, escape, hardening/);
+    await expect(file(...RES, '--fu-class', 'polish', '--fix-version', 'v1.1.3')).rejects.toThrow(/--fix-version/);
+    expect(created()).toBeUndefined();
+  });
+});

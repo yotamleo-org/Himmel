@@ -6850,4 +6850,70 @@ out="$(env -u XDG_CONFIG_HOME DOCTOR_KONSOLE=konsole-not-installed CLAUDE_DIR="$
 if grepq "$out" -F 'INFO C68-konsole-dbus'; then pass "C68 no konsole -> INFO"; else fail "C68 no konsole -> $(printf '%s' "$out" | grep -A1 C68)"; fi
 rm -rf "$c68_t"
 
+# --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is present and accepted ---
+# Seams: HIMMEL_DOCTOR_QMD_CURL (the stub answers C69_CODE and ignores the key on stdin), HOME (config + key file).
+echo "== C69: OpenRouter config, key file present and accepted -> OK =="
+c69_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c69.XXXXXX")" || { fail "C69: mktemp -d failed"; exit 1; }
+mkdir -p "$c69_t/home/.config/qmd" "$c69_t/home/.himmel/state"
+printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c69_t/home/.config/qmd/index.yml"
+C69_SENTINEL=sk-test-sentinel-c69
+# the stub answers C69_CODE only when the key arrives as an Authorization header on stdin, else 403
+printf "#!/bin/sh\nin=\"\$(cat)\"\ncase \"\$in\" in *'Authorization: Bearer $C69_SENTINEL\"'*) printf \"%%s\" \"\${C69_CODE:-200}\" ;; *) printf 403 ;; esac\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
+c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 key accepted -> OK"; else fail "C69 key accepted -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key"; else pass "C69 never prints the key"; fi
+
+echo "== C69: provider answers 401 -> FAIL =="
+out="$(c69_run C69_CODE=401)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key rejected -> FAIL"; else fail "C69 key rejected -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: provider unreachable (000) -> INFO, not a credential verdict =="
+out="$(c69_run C69_CODE=000)"
+if grepq "$out" -F 'INFO C69-qmd-cli-key'; then pass "C69 unreachable -> INFO"; else fail "C69 unreachable -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: no key file -> FAIL =="
+rm -f "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 missing key -> FAIL"; else fail "C69 missing key -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: no key file but a session key, as the CLI accepts -> OK =="
+out="$(c69_run C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 session key without a file -> OK"; else fail "C69 session key without a file -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the session key"; else pass "C69 session key never printed"; fi
+
+echo "== C69: a traced doctor run never prints the key =="
+out="$(c69_run_x C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 traced, session key -> OK"; else fail "C69 traced, session key -> $(printf '%s' "$out" | grep -F C69 | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the session key"; else pass "C69 trace never prints the session key"; fi
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run_x C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 traced, file key -> OK"; else fail "C69 traced, file key -> $(printf '%s' "$out" | grep -F C69 | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the file key"; else pass "C69 trace never prints the file key"; fi
+
+echo "== C69: provider answers 403 -> FAIL =="
+out="$(c69_run C69_CODE=403)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key forbidden -> FAIL"; else fail "C69 key forbidden -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: OpenRouter named only by QMD_OPENAI_BASE_URL, no key anywhere -> FAIL =="
+printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"
+rm -f "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200 QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 env base URL -> FAIL"; else fail "C69 env base URL -> $(printf '%s' "$out" | head -3)"; fi
+printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c69_t/home/.config/qmd/index.yml"
+
+echo "== C69: key file readable by others -> FAIL =="
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 644 "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 group-readable key file -> FAIL"; else fail "C69 group-readable key file -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key (refused file)"; else pass "C69 refused file never prints the key"; fi
+
+echo "== C69: local-model config -> silent =="
+printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"
+out="$(c69_run C69_CODE=401)"
+if grepq "$out" -F 'C69-qmd-cli-key'; then fail "C69 local config should be silent -> $(printf '%s' "$out" | head -3)"; else pass "C69 local config -> silent"; fi
+rm -rf "$c69_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

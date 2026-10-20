@@ -9,8 +9,11 @@
 #   990 unique suites; no row is local-measured. Timings are a snapshot, not a
 #   worst-case bound. Replay on run 39180908042: max/min 2.454 before, 1.304 after;
 #   slowest shard 2800s before, 2304s after (suite time only, excluding setup/waits).
-#   2304s is the floor: scripts/hooks/test-block-destructive-commands.sh alone
-#   runs ~2300s, so no split lowers the slowest shard below it.
+#   2304s was the floor: scripts/hooks/test-block-destructive-commands.sh alone
+#   ran ~2300s. It is now four case-range parts (-a..-d); their rows split the
+#   2301s mean in proportion to each part's case count (249/239/269/261 of 1018).
+#   With that suite no longer the floor, the 22w balance check sees the stale
+#   test-stop-worker.sh row (117s here, 317s measured); it is refreshed to 317.
 # The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -511,7 +514,10 @@ scripts/hooks/test-block-backend-tier.sh	4
 scripts/hooks/test-block-bank-lift-writes.sh	6
 scripts/hooks/test-block-bare-qmd-query.sh	51
 scripts/hooks/test-block-chokepoint-env-prefix.sh	133
-scripts/hooks/test-block-destructive-commands.sh	2301
+scripts/hooks/test-block-destructive-commands-a.sh	563
+scripts/hooks/test-block-destructive-commands-b.sh	540
+scripts/hooks/test-block-destructive-commands-c.sh	608
+scripts/hooks/test-block-destructive-commands-d.sh	590
 scripts/hooks/test-block-docker-privesc.sh	1
 scripts/hooks/test-block-edit-live-settings.sh	151
 scripts/hooks/test-block-edit-on-main.sh	4
@@ -690,7 +696,7 @@ scripts/lanes/test-profile-settings.sh	1
 scripts/lanes/tests/test-await-glm-worker.sh	61
 scripts/lanes/tests/test-await-liveness.sh	1
 scripts/lanes/tests/test-leg-burn.sh	0
-scripts/lanes/tests/test-stop-worker.sh	117
+scripts/lanes/tests/test-stop-worker.sh	317
 scripts/lib/test-api-credit-state.sh	6
 scripts/lib/test-bank-attribution.sh	0
 scripts/lib/test-bank-monitor.sh	6

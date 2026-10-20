@@ -40,3 +40,17 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   dispute that triggers a convening mints work on the scarcest bank. A finding class of
   `guard-no-fire` or `invariant-regression` skips the ladder and the budget:
   `judge-ladder.sh breakglass <class>` routes it to the operator at once.
+- **A deferred Critical or Important finding needs a disposition before GO**
+  (HIMMEL-6377): past the round cap such a finding is never dropped. `go.sh` runs
+  `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any
+  Critical/Important on the PR's branch is deferred with no valid row at that head.
+  The judge rules one of two, which the console (never the leg) records with
+  `bash scripts/handover/console-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source judge:<qid>|console [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`:
+  (a) **fix-here**: fixed in this PR, so the finding's own ledger verdict must
+  read fixed or disproved; (b) **follow-up:<KEY>**: merge now with the follow-up
+  ticket already filed, and only if the merge cannot break main. The record must
+  carry all three attests (CI green at the head, no data loss, no weakened guard)
+  or it is refused. **Who decides:** a Critical always needs a judge verdict
+  (`judge:<qid>`, a signed GO at the same head whose verdict carries the line
+  `<fid>@<finding head> <disposition>`); an Important on a trust-path PR
+  needs one too; any other Important may take `console`.

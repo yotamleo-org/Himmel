@@ -2,7 +2,7 @@ import { test, expect, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
+import { DOCS_URL, fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
 import { LANDING, launchUrl, startServer } from "../server";
 
 // the config console and the AG-UI pages are one app with one rail. These pin the page list, the
@@ -18,9 +18,17 @@ const tokenOnlyInFragment = (href: string) => {
 };
 
 test("the rail lists Config, Health and Fleet on every page, plus Run when a run is open", () => {
-  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Run"]);
+  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Docs"]);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Docs"]);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Run", "Docs"]);
+});
+
+test("the rail ends with Docs, an external link to DOCS_URL that is never the current page and carries no token", () => {
+  for (const here of ["console", "agui"] as const) {
+    const docs = navLinks({ here, token: TOKEN, current: "config" }).at(-1)!;
+    expect(docs).toMatchObject({ id: "docs", label: "Docs", href: DOCS_URL, current: false, external: true });
+    expect(docs.href).not.toContain(TOKEN);
+  }
 });
 
 test("exactly the current page is marked current", () => {
@@ -90,7 +98,7 @@ test("the shared rail files are served like every other page: same headers, no t
   const home = mkdtempSync(join(tmpdir(), "nav-home-"));
   const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } });
   stops.push(() => { s.stop(); rmSync(home, { recursive: true, force: true }); });
-  for (const [path, type] of [["/nav.js", "application/javascript; charset=utf-8"], ["/theme.css", "text/css; charset=utf-8"]]) {
+  for (const [path, type] of [["/nav.js", "application/javascript; charset=utf-8"], ["/theme.css", "text/css; charset=utf-8"], ["/tokens.css", "text/css; charset=utf-8"]]) {
     const r = await fetch(`http://127.0.0.1:${s.port}${path}`);
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toBe(type);

@@ -137,7 +137,9 @@ key_err=$(node "$SCRIPT_DIR/claude-floor.mjs" key-check 2>&1) ||
     die "not eligible: ${key_err#claude-floor: } Nothing spent." 3
 
 # --- 2. the reviewer's inputs: a snapshot of the head + the diff, nothing else ---
-work=$(mktemp -d "${TMPDIR:-/tmp}/cr-floor.XXXXXX") || die "mktemp failed" 1
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || die "cannot source scripts/lib/prim.sh" 1
+work=$(tmpdir) || die "tmpdir failed" 1
 trap 'rm -rf "$work"' EXIT
 snap="$work/snap"
 mkdir -p "$snap" || die "mkdir failed" 1

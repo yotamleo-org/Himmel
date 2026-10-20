@@ -530,6 +530,90 @@ rs_shift_glob_secret() {
     return 1
 }
 
+# rs_ast_proves_safe CMD: 0 only when the shfmt command-position model
+# (scripts/lib/bash-ast.sh) names every directory each glob in CMD can expand
+# in, every one resolves from this cwd, and no match there is a secret, so the
+# shifted directory is as visible as the cwd. Anything it cannot read (no
+# shfmt, an opaque command, an expansion, an unknown cd, a quoted or exotic
+# glob, a child render of guard_unwrap whose cwd is not ours) is not proved,
+# with the reason in RS_AST_WHY.
+rs_ast_proves_safe() {
+    local lib pos pats dirs chain d pat m ms
+    RS_AST_WHY=''
+    if [ "${GUARD_UNWRAP_CWD:-}" = unknown ]; then
+        RS_AST_WHY='a nested body runs after a cwd change this pass cannot see'
+        return 1
+    fi
+    case "${BASH_SOURCE[0]}" in
+        */*) lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh ;;
+        *) lib=../lib/bash-ast.sh ;;
+    esac
+    # shellcheck source=../lib/bash-ast.sh
+    if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+        RS_AST_WHY="cannot load $lib"
+        return 1
+    fi
+    pos=$(bash_ast_positions "$1" 2>/dev/null) # swallow-ok: the rc is read next and every nonzero keeps the deny
+    case $? in
+        0) ;;
+        2) RS_AST_WHY='shfmt not on PATH (install it; a station install goes to a test VM first)'; return 1 ;;
+        *) RS_AST_WHY='the model could not read the command'; return 1 ;;
+    esac
+    RS_AST_WHY=$(printf '%s' "$pos" | jq -r '
+        [.[] | (.opaque // empty),
+               (.argv[], (.redirs[] | .w // empty) | select(.t != "lit") | "the expansion " + .raw),
+               ((.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g)
+                | select((.raw | test("^[A-Za-z0-9._/*?+@%,:-]+$") | not) or (.raw | contains("**")))
+                | "the glob " + .raw),
+               (select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g))
+                | (.cwd + .ecwd)[] | select(. == null or any(.[]; test("\n"))) | "a cd target this hook cannot resolve"),
+               (select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g))
+                | (.cwd + .ecwd)[] | select(. != null and any(.[]; test("(^|/)\\.\\.(/|$)")))
+                | "a .. hop, which cd -P and cd -L resolve differently")]
+        | first // ""') || RS_AST_WHY='the model output could not be read'
+    [ -z "$RS_AST_WHY" ] || return 1
+    pats=$(printf '%s' "$pos" | jq -r '[.[] | (.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g) | .v] | unique | .[]') ||
+        { RS_AST_WHY='the model output could not be read'; return 1; }
+    [ -n "$pats" ] || return 0
+    # bash searches an inherited CDPATH before ./sub, so the cd this proof
+    # resolves can land elsewhere than the shell that runs the command
+    if [ -n "${CDPATH:-}" ]; then
+        RS_AST_WHY='an exported CDPATH can redirect a cd this proof resolves from here'
+        return 1
+    fi
+    dirs=$(printf '%s' "$pos" | jq -c '[.[] | select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g)) | (.cwd + .ecwd)[]] | unique | .[]') ||
+        { RS_AST_WHY='the model output could not be read'; return 1; }
+    while IFS= read -r chain; do
+        ms=$(printf '%s' "$chain" | jq -r '.[]') || { RS_AST_WHY='the model output could not be read'; return 1; }
+        d=$(
+            unset CDPATH
+            while IFS= read -r m; do [ -z "$m" ] || cd -- "$m" 2>/dev/null || exit 1; done <<<"$ms"
+            pwd -P
+        ) || { RS_AST_WHY='a cd target that does not resolve from here'; return 1; }
+        while IFS= read -r pat; do
+            # compgen -G exits 1 on no match, so a failed setup step or an rc above 1
+            # (a missing compgen is 127) fails the proof; bash 3.2 has no globstar to
+            # unset, and zsh ignores GLOBIGNORE, which would hide a match here
+            ms=$(
+                cd -- "$d" && shopt -s dotglob nocaseglob && shopt -u failglob nullglob || exit 3
+                shopt -u globstar 2>/dev/null
+                unset GLOBIGNORE
+                compgen -G "$pat" || [ "$?" -le 1 ] || exit 3
+                exit 0
+            ) || { RS_AST_WHY="the glob $pat could not be expanded in $d"; return 1; }
+            while IFS= read -r m; do
+                [ -n "$m" ] || continue
+                case "$m" in /*) ;; *) m=$d/$m ;; esac
+                if is_secret_path "$m"; then
+                    RS_AST_WHY="the glob $pat matches $m"
+                    return 1
+                fi
+            done <<<"$ms"
+        done <<<"$pats"
+    done <<<"$dirs"
+    return 0
+}
+
 rs_tokens() {
     local raw q='' tq c pre rest off=0 g glob=1
     RS_TOKS=()
@@ -1509,10 +1593,11 @@ case "$tool" in
                 exit 2
             fi
             GU_QUOTE_ARGS=1 guard_unwrap "${BASH_SOURCE[0]}" "$cmd" || exit 2
-            if [ "$GU_CWD_UNKNOWN" = 1 ] && rs_shift_glob_secret "$cmd"; then
+            if [ "$GU_CWD_UNKNOWN" = 1 ] && rs_shift_glob_secret "$cmd" && ! rs_ast_proves_safe "$cmd"; then
                 echo "⛔ block-read-secrets: refusing a secret-shaped glob read after a cwd change (cd/pushd/env -C):" >&2
                 echo "    $cmd" >&2
                 echo "    The glob expands in the new directory, which this hook cannot see. Name the file." >&2
+                echo "    The shfmt command model could not prove it safe: $RS_AST_WHY" >&2
                 bypass_hint
                 exit 2
             fi

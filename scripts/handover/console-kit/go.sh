@@ -70,6 +70,8 @@
 #   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
 #      only --trust-reviewed <judge qid> may write it. The leg's READY text is never read.
+#   9  refused: cr-disposition.sh check found a deferred Critical or Important
+#      finding on the PR's branch with no valid disposition at <head>
 #
 # A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -274,6 +276,19 @@ if [ "$FORK_SET" -eq 0 ] && [ "$TRUST_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ] \
    && printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes'; then
     echo "go: refusing the plain GO for PR #$PR at $SHA - ready-check computed TRUST-PATH: yes (the diff touches a CI trust path). Have an independent judge rule GO on this head, then run: go.sh --trust-reviewed <judge qid> $PR $SHA. No GO written." >&2
     exit 8
+fi
+
+# a Critical or Important finding the leg deferred on its own never merges:
+# cr-disposition.sh check refuses unless a judge (or, for an Important off a
+# trust path, the console) recorded a follow-up with its three risk attests.
+if [ "$FORK_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ]; then
+    DTRUST=no
+    printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes' && DTRUST=yes
+    if ! DISP_OUT=$(bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1); then
+        printf '%s\n' "$DISP_OUT" >&2
+        echo "go: refusing the GO for PR #$PR at $SHA - a Critical or Important finding has no valid disposition (above). A judge (or the console, for an Important off a trust path) records one with cr-disposition.sh record, or the PR fixes it. No GO written." >&2
+        exit 9
+    fi
 fi
 
 # the mac binds the repo (himmel-go-v2|<nwo>|<pr>|<sha>) - a GO

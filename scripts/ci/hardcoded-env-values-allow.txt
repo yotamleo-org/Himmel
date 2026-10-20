@@ -1,0 +1,19 @@
+# Paths exempt from check-hardcoded-env-values.sh: one ERE per line, matched
+# against the repo-relative path.
+
+# tests and fixtures keep literals on purpose
+(^|/)test-[^/]*$
+\.test\.[A-Za-z]+$
+(^|/)tests?/
+(^|/)fixtures?/
+# docs, templates, vendored bundles
+\.md$
+^docs/
+^templates/
+\.obsidian/
+^site/
+# placeholders and the detectors themselves
+^\.env\.example$
+^scripts/ci/check-hardcoded-env-values\.sh$
+^scripts/ci/hardcoded-env-values-allow\.txt$
+^scripts/guardrails/leak-classes\.sh$

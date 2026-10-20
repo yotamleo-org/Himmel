@@ -5,7 +5,7 @@
 # skip its heavy setup (apt, bun, ffmpeg, gitleaks, pre-commit) when a
 # pull_request's impacted selection leaves this shard empty.
 #
-# Usage: shard-has-work.sh <i/n> [<scan root>]      (root defaults .)
+# Usage: shard-has-work.sh <i/n> [<scan root>] [-- <runner args>]   (root defaults .)
 #
 # It asks run-shell-tests.sh itself (`--list`, which executes nothing), under
 # the SAME SUITE_* env the run step gets, so the probe and the run cannot
@@ -17,11 +17,14 @@
 set -uo pipefail
 
 shard="${1:-}"
-root="${2:-.}"
-[ -n "$shard" ] || { echo "usage: shard-has-work.sh <i/n> [<root>]" >&2; exit 2; }
+[ -n "$shard" ] || { echo "usage: shard-has-work.sh <i/n> [<root>] [-- <runner args>]" >&2; exit 2; }
+shift
+root=.
+if [ "$#" -gt 0 ] && [ "$1" != "--" ]; then root="$1"; shift; fi
+[ "${1:-}" = "--" ] && shift
 here="$(cd "$(dirname "$0")" && pwd)"
 
-if ! out=$(bash "$here/run-shell-tests.sh" --list --shard "$shard" "$root" 2>&1); then
+if ! out=$(bash "$here/run-shell-tests.sh" --list --shard "$shard" "$@" "$root" 2>&1); then
   echo "shard-has-work: --list failed, assuming work" >&2
   echo "has_work=true"
   exit 0

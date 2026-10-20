@@ -27,9 +27,27 @@ absent() { # absent <fixed-string> <file>: pass only when grep ran and found not
 }
 fails() { ! "$@"; }
 
+is() { [ "$1" = "$2" ]; }
+h1() { node --input-type=module -e "import { pathToFileURL } from 'node:url'; const { h1Of } = await import(pathToFileURL(process.argv[2]).href); process.stdout.write(h1Of(process.argv[1]));" "$1" "$here/src/loaders/docs-loader.mjs"; }
+
+# --- h1Of: markup in a heading never reaches the page title (pure node, runs without node_modules)
+check "h1Of: *em* is stripped" is "$(h1 '# The *daily* loop')" "The daily loop"
+check "h1Of: _em_ is stripped" is "$(h1 '# The _daily_ loop')" "The daily loop"
+check "h1Of: **strong** and __strong__ are stripped" is "$(h1 '# A **bold** and __bold__ head')" "A bold and bold head"
+check "h1Of: code and link markers are still stripped" is "$(h1 "# \`code\` and [link](x.md)")" "code and link"
+check "control: h1Of keeps an intraword underscore" is "$(h1 '# snake_case_name stays')" "snake_case_name stays"
+check "control: h1Of keeps intraword double underscores" is "$(h1 '# snake__case__name stays')" "snake__case__name stays"
+check "h1Of: emphasis markers inside a code span survive" is "$(h1 "# The \`*ptr*\` field")" "The *ptr* field"
+check "h1Of: a code-formatted link label is stripped to its text" is "$(h1 "# [\`foo\`](x.md) page")" "foo page"
+check "h1Of: a lone backtick is dropped" is "$(h1 "# Use the \` key")" "Use the  key"
+check "h1Of: a double-backtick span keeps its inner backtick" is "$(h1 "# The \`\`a\`b\`\` span")" "The a\`b span"
+check "control: is() fails on a mismatch" fails is "a" "b"
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
-  exit 0
+  printf '\n%d passed, %d failed (site build not run)\n' "$pass" "$fail"
+  [ "$fail" -eq 0 ]
+  exit
 fi
 
 ctl=$(mktemp -d -t site-build-ctl.XXXXXX) || exit 1
@@ -48,8 +66,9 @@ fi
 dist="$here/dist"
 allow=$(grep -vE '^[[:space:]]*(#|$)' "$here/allowlist.txt")
 
-route_of() { # docs-relative .md path -> dist html path
+route_of() { # docs-relative .md path -> dist html path (docs/README.md is the docs map; Home is the hero page)
   local r=${1%.md}
+  [ "$r" = README ] && r=docs-map
   r=${r%README}
   r=${r%/}
   if [ -z "$r" ]; then echo "$dist/index.html"; else echo "$dist/$r/index.html"; fi
@@ -108,6 +127,25 @@ check "criterion 4: mermaid renderer is bundled" grep -rlq 'mermaid' "$dist/_ast
 for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
+
+# --- IA v4: sidebar groups equal the F1 list, hero Home with the F2 copy and CTA
+groups=$(node --input-type=module -e "
+import fs from 'node:fs';
+const html = fs.readFileSync(process.argv[1], 'utf8');
+let depth = 0;
+const out = [];
+for (const m of html.slice(html.indexOf('<ul class=\"top-level')).matchAll(/<(\/?)ul\b|<span class=\"large[^\"]*\">([^<]*)</g)) {
+  if (m[2] !== undefined) { if (depth === 1) out.push(m[2]); continue; }
+  depth += m[1] ? -1 : 1;
+  if (depth === 0) break;
+}
+process.stdout.write(out.join('|'));" "$(route_of getting-started.md)") || groups='<node failed>'
+check "IA: top-level sidebar groups equal the F1 list (got: $groups)" is "$groups" "Get started|Use it|Run many sessions|Reference|For contributors"
+home="$dist/index.html"
+check "IA: Home is the hero page, not the docs map" grep -q 'Let Claude Code work on its own' "$home"
+check "IA: Home carries the Try it on a throwaway project CTA" grep -q 'Try it on a throwaway project' "$home"
+check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d ' ')" 1
+check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
 
 # --- J1: full site (one page per IA section, trail page, raw passthrough, search)
 for r in daily-loop handover/overnight-mode glossary internals/stuck-playbook contributing; do

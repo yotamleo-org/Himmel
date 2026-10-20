@@ -51,6 +51,10 @@ check "native leg gets a printed SendMessage payload" "1" "$(printf '%s\n' "$out
 check "the payload names the successor" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -c 'your console is now DEMO-nextleg-2026-10-08B-console')"
 check "the payload quotes the leg's current token" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -c 'tok-seven')"
 check "native relay gives the exact acknowledgement with no trailing text" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -c 'SUCCESSION accepted: DEMO-nextleg-2026-10-08B-console replaces DEMO-nextleg-2026-10-08A-console$')"
+check "the payload no longer asks the leg to verify the relay" "0" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -cF 'Verify this relay')"
+check "the payload names itself an S1 relay" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -cF 'S1 relay')"
+# shellcheck disable=SC2016  # literal backticks in the pattern
+check "the payload quotes only the leg's current token" "\`tok-seven\`" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -o '`[^`]*`' | tr -d '\n')"
 check "native relay forbids anything after the acknowledgement on its line" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -cF 'nothing after it on that line')"
 check "claudex relay gives the same exact acknowledgement before the send flags" "1" "$(grep -cF 'SUCCESSION accepted: DEMO-nextleg-2026-10-08B-console replaces DEMO-nextleg-2026-10-08A-console --token tok-eight' "$WORK/send.log")"
 check "claudex relay forbids anything after the acknowledgement on its line" "1" "$(grep -cF 'nothing after it on that line' "$WORK/send.log")"

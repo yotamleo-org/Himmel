@@ -32,6 +32,8 @@ STALE) with no himmel-bus peer record has no edge to the live console. It is
 absent when every held leg has a record or the bus has no peers dir, and
 `console-wait.sh` does not wake on it, so read it at the next tick.
 
+`console-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <leg>` Telegram per classifier-denied `headed-arm-leg.sh` launch (leg, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
+
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,
@@ -71,6 +73,14 @@ minutes, default 5; a failed probe reads the last cached value, else `stall=?`),
 and the waiter wakes once per new `conflict` or `no-ci` token and keeps its saved
 set on `?`: run the command above for the detail. `ci-slow` and `idle` show on
 the tick line but never wake.
+
+**Stuck tickets.** The tick's `orphans-wip=` field counts In Progress / In Review
+tickets nobody holds. To see every stuck In Progress / In Review / IN CI ticket with
+its age, run `<kit>/stuck-scan.sh [--version vX]` by hand: `STUCK <key> <status> <age>`
+for work no live leg or open PR holds, `BLOCKED-BY <key> <ref>` while the blocker named
+by the ticket's latest `DISPOSITION` comment is still open (it prints `STUCK` again once
+that PR merges or closes). Give each one a disposition:
+`<kit>/stuck-scan.sh dispose <KEY> RESUME <leg> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
 
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads

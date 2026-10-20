@@ -79,6 +79,21 @@ eq "qmd-lex reason not carried" "0.00" "$(s qmd-lex reason_carried)"
 # 5. combined fuses the three lists: every gold file is in its top 5.
 eq "combined recall@5 is 1.00" "1.00" "$(s combined recall@5)"
 
+# 5b. the live qmd server names a file himmel/docs/lock.md (no qmd:// scheme); grep names docs/lock.md.
+# The combined top 5 holds that file once, not twice.
+cat > "$W/qmd-bare" <<'EOF'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '[{"file":"himmel/docs/lock.md","snippet":"queue lock"}]\n'
+EOF
+chmod +x "$W/qmd-bare"
+printf '{"id":"q9","kind":"why","q":"queue lock one session per handover doc","gold":["docs/lock.md"],"reason":[]}\n' > "$W/q9.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-5b.jsonl" RETRIEVAL_EVAL_QMD_CMD="$W/qmd-bare" py "$EV" run --repo "$R" --questions "$W/q9.jsonl" --out "$W/out9" --arms combined > /dev/null 2>&1
+eq "combined holds a file named by qmd and grep once" "1" "$(py -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])][0]; print(sum(1 for f in r["files"] if f.lower().endswith("docs/lock.md")))' "$W/out9/results.jsonl")"
+eq "fuse merges paths that differ only in case" "1" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+print(len(m.fuse([["Docs/X.md"], ["docs/x.md"]], 5)))' "$EV")"
+
 # 6. per-case rows: one per question x arm, with tokens and ms.
 eq "results.jsonl has 10 rows" "10" "$(wc -l < "$W/out/results.jsonl" | tr -d ' ')"
 eq "every row carries tokens and ms" "10" "$(py -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if {"tokens","ms","files","hit","reason"} <= set(json.loads(l))))' "$W/out/results.jsonl")"

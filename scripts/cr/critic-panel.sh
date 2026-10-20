@@ -792,6 +792,11 @@ if [ "${_SKIP_LEDGER:-0}" != "1" ]; then
     # writes a `score` row keyed on the head the panel reviewed. Hand it the
     # panel's own head/branch/ledger — this cwd need not be the review root.
     export CR_TARGET_HEAD="$REVIEW_HEAD" CR_TARGET_BRANCH="$REVIEW_BRANCH" CR_LEDGER="$PANEL_LEDGER"
+    # the reviewed branch's open PR keys the critic's launch record; none yet leaves it empty.
+    if [ -z "${CR_TARGET_PR:-}" ]; then
+        CR_TARGET_PR="$(gh pr list --state open --head "$REVIEW_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)"  # swallow-ok: no PR (or no gh) leaves the key empty
+    fi
+    export CR_TARGET_PR
 fi
 
 # Triviality gate: a diff classified 'trivial' skips the PAID tier

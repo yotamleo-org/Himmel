@@ -69,10 +69,10 @@ jobs:
     steps:
       # fetch-depth: 0 so `git merge-base origin/main HEAD` can resolve on a
       # dispatched feature branch.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - name: Install obsidian-triage tool deps (marketplace suites)
@@ -101,7 +101,7 @@ jobs:
           fi
       - name: Upload failed-suite logs
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: os-verify-failed-logs-${{ matrix.os }}-shard${{ matrix.shard }}
           path: failed-suite-logs/
