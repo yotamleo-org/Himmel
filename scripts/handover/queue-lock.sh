@@ -326,7 +326,16 @@ _ql_hostname() {
     printf '%s' "$h"
 }
 
-_ql_default_session() { printf '%s-pid%s' "$(_ql_hostname)" "$$"; }
+# _ql_token_host <host> -- the host as it appears in a release token: lower
+# case, every non-alphanumeric run folded to one "-", so the token stays in
+# the handover-token grammar (docs/internals/handover-token-grammar.md).
+_ql_token_host() {
+    local h
+    h=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9][^a-z0-9]*/-/g' -e 's/^-//' -e 's/-$//')
+    printf '%s' "${h:-host}"
+}
+
+_ql_default_session() { printf '%s-pid%s' "$(_ql_token_host "$(_ql_hostname)")" "$$"; }
 
 # _ql_strip_backticks <token> -- acquire prints the token
 # backticked ("release-token: `<token>`") so a leg copy-pasting the line
@@ -912,12 +921,19 @@ _ql_lock_is_fresh() {
 # ever release a lock whose owner is demonstrably dead.
 # ponytail: the token's pid is the acquiring shell, which dies with its Bash call, so pid-gone alone proves nothing -- the claude-process-names-the-doc check carries the proof, upgrade path: record the claude pid in owner.json when the harness exposes it
 _ql_owner_provably_dead() {
-    local lk="$1" ttl="$2" host session pid doc stem procs line cpid cargs
+    local lk="$1" ttl="$2" host raw session pid doc stem procs line cpid cargs
     [ -f "$lk/owner.json" ] || return 1
     host=$(_ql_json_field "$lk/owner.json" host)
     [ -n "$host" ] && [ "$host" = "$(_ql_hostname)" ] || return 1
     session=$(_ql_json_field "$lk/owner.json" session)
-    case "$session" in "$host"-pid*) pid="${session#"$host"-pid}" ;; *) return 1 ;; esac
+    raw="$host"
+    host=$(_ql_token_host "$host")
+    # a token minted before the hostname fold still carries the raw hostname
+    case "$session" in
+        "$host"-pid*) pid="${session#"$host"-pid}" ;;
+        "$raw"-pid*) pid="${session#"$raw"-pid}" ;;
+        *) return 1 ;;
+    esac
     case "$pid" in ''|*[!0-9]*) return 1 ;; esac
     command -v ps >/dev/null 2>&1 || return 1
     kill -0 "$pid" 2>/dev/null && return 1

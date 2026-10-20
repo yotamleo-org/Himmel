@@ -2,14 +2,20 @@
 """semantic-seeds.py -- start a graph query from the files whose content matches the question's meaning.
 
 graphify seeds on the question's words matched against node labels, so a plain-language question
-that names no file or identifier ("how do a console and a leg relate") starts from one-word labels
-such as Need or Token and the file that answers it is missing. leg-graph.sh uses this verb:
+that names no file or identifier ("who closes the ticket after a merge") starts from one-word labels
+such as Need or Token and the file that answers it is missing. leg-graph.sh uses these verbs:
 
   seeds <graph.json> <question>
       Prints one node id per line: the file node of each of the TOP_FILES files that score best
       against the question. A file is scored as one document: its path words, its document,
       concept and rationale labels, its rationale text and its code labels, TF-IDF weighted
       across all files. Prints nothing when no file scores or the graph cannot be read.
+      Files under EVAL_DIR are never candidates.
+
+  scored <graph.json> <question>
+      The same ids, preceded by one line "<weak|strong> <top score> <top file>". A match is weak
+      when the best file scores under WEAK_IDF x ln(1 + files), about what one shared word earns:
+      a seed that weak starts graphify from a common word, not from the answer.
 
 Fails open: an unreadable graph prints no seeds and says so on stderr.
 ponytail: word overlap with stemming over graph.json text, no embeddings; a paraphrase sharing no
@@ -25,6 +31,8 @@ TOP_FILES = 3
 K1, B = 1.2, 0.75
 PATH_BONUS = 10.0
 TEST_FACTOR = 0.4
+WEAK_IDF = 1.6
+EVAL_DIR = "scripts/eval/retrieval-eval/"
 TEST = re.compile(r"(^|/)(tests?|fixtures?)/|(^|/)test[-_]|[._-]test\.[a-z]+$|\.test\.")
 GENERIC = {"doc", "script", "internal", "test", "src", "lib", "md", "sh", "py", "json", "marketplace", "plugin"}
 WEIGHT = {"path": 3.0, "doc": 2.0, "rationale": 1.0, "code": 0.4}
@@ -50,7 +58,7 @@ def file_docs(graph):
     docs, filenode = {}, {}
     for n in graph.get("nodes", []):
         src = n.get("source_file")
-        if not src or n.get("id") is None:
+        if not src or n.get("id") is None or src.removeprefix("./").startswith(EVAL_DIR):
             continue
         d = docs.setdefault(src, Counter())
         label = n.get("label") or ""
@@ -69,11 +77,12 @@ def file_docs(graph):
     return docs, filenode, paths
 
 
-def seeds(graph, question):
+def ranked(graph, question):
+    """The TOP_FILES best files as (score, file, node id), and the score under which a match is weak."""
     docs, filenode, paths = file_docs(graph)
     q = set(terms(question))
     if not q:
-        return []
+        return [], 0.0
     df = Counter(t for d in docs.values() for t in d)
     n = len(docs)
     avg = sum(sum(d.values()) for d in docs.values()) / max(n, 1)
@@ -94,21 +103,24 @@ def seeds(graph, question):
             s *= TEST_FACTOR
         scored.append((s, src))
     scored.sort(key=lambda x: (-x[0], x[1]))
-    return [filenode[src] for s, src in scored[:TOP_FILES]]
+    return [(s, src, filenode[src]) for s, src in scored[:TOP_FILES]], WEAK_IDF * math.log(1 + n)
 
 
 def main():
-    if len(sys.argv) == 4 and sys.argv[1] == "seeds":
+    if len(sys.argv) == 4 and sys.argv[1] in ("seeds", "scored"):
         try:
             with open(sys.argv[2], encoding="utf-8") as fh:
                 graph = json.load(fh)
         except Exception as exc:  # fail open: graphify's own seeding still answers
             print(f"semantic-seeds: {exc}; no semantic seeds", file=sys.stderr)
             return 0
-        for nid in seeds(graph, sys.argv[3]):
+        top, weak_under = ranked(graph, sys.argv[3])
+        if top and sys.argv[1] == "scored":
+            print("weak" if top[0][0] < weak_under else "strong", f"{top[0][0]:.1f}", top[0][1])
+        for _, _, nid in top:
             print(nid)
         return 0
-    print("usage: semantic-seeds.py seeds <graph.json> <question>", file=sys.stderr)
+    print("usage: semantic-seeds.py seeds|scored <graph.json> <question>", file=sys.stderr)
     return 2
 
 
