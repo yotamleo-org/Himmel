@@ -3008,6 +3008,24 @@ if grepq "$(cat "$D_QDIR/takeovers.log" 2>/dev/null)" "REAPED STALE-DEAD.*dead-l
 else
     fail "T100: reap not logged (log=$(cat "$D_QDIR/takeovers.log" 2>/dev/null))"
 fi
+# On a host whose name folds (Ubuntu_VM.local mints ubuntu-vm-local-pid<N>), both
+# the folded token and one minted before the fold are provably dead.
+F_ROOT="$TMPDIR_ROOT/fold-root"
+F_QDIR="$F_ROOT/.locks/queue"
+mkdir -p "$F_QDIR" "$TMPDIR_ROOT/fold-bin"
+printf '#!/bin/sh\necho Ubuntu_VM.local\n' > "$TMPDIR_ROOT/fold-bin/hostname"
+chmod +x "$TMPDIR_ROOT/fold-bin/hostname"
+for f in "folded-leg ubuntu-vm-local" "raw-leg Ubuntu_VM.local"; do
+    mkdir -p "$F_QDIR/${f%% *}.lock"
+    printf '{"session":"%s-pid%s","host":"Ubuntu_VM.local","handover":"/x/HIMMEL-4999-fixture-%s.md","started":"%s","heartbeat":"%s"}\n' \
+        "${f#* }" "$D_DEAD_PID" "${f%% *}" "$D_OLD_HB" "$D_OLD_HB" > "$F_QDIR/${f%% *}.lock/owner.json"
+done
+out="$(HANDOVER_DIR="$F_ROOT" PATH="$TMPDIR_ROOT/fold-bin:$PATH" bash "$LIB" status --sweep 2>/dev/null)"
+if grepq "$out" "slug=folded-leg .*status=STALE-DEAD" && grepq "$out" "slug=raw-leg .*status=STALE-DEAD"; then
+    pass "T100b: folded and pre-fold release tokens on a folding hostname both read STALE-DEAD"
+else
+    fail "T100b: a folding-host token is not provably dead (out=$out)"
+fi
 out="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"
 if ! grepq "$out" "STALE-DEAD"; then
     pass "T101: nothing reads STALE-DEAD after the reap"
