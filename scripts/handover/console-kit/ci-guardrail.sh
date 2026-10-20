@@ -13,6 +13,7 @@
 #
 # Usage: ci-guardrail.sh [--runs FILE] [--now ISO8601] [--state-dir DIR]
 #   --runs FILE      read a runs.json (the ci-metrics.sh shape) instead of fetching; replays
+#                    (a replay keeps its state in a throwaway dir unless --state-dir is given)
 #   --now ISO        fixed clock (tests, replays); default the current time
 #   --state-dir DIR  alerted set + runs cache (default $TICK_STATE_DIR, else ~/.himmel/state)
 # Env: CIGUARD_METRICS (ci-metrics.sh), CIGUARD_BUDGET (api-budget.sh), CIGUARD_REPO (owner/repo),
@@ -43,12 +44,12 @@ case "$MIN_REMAINING" in ''|*[!0-9]*) MIN_REMAINING=1500 ;; esac
 case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=10 ;; esac
 case "$SLICE_TIMEOUT" in ''|*[!0-9]*) SLICE_TIMEOUT=25 ;; esac
 
-RUNS="" ; NOW_ISO="" ; STATE_DIR="${TICK_STATE_DIR:-$HOME/.himmel/state}"
+RUNS="" ; NOW_ISO="" ; STATE_DIR="${TICK_STATE_DIR:-$HOME/.himmel/state}" ; STATE_GIVEN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --runs) [ $# -ge 2 ] || { echo "ci-guardrail: --runs needs a value" >&2; exit 2; }; RUNS="$2"; shift 2 ;;
     --now) [ $# -ge 2 ] || { echo "ci-guardrail: --now needs a value" >&2; exit 2; }; NOW_ISO="$2"; shift 2 ;;
-    --state-dir) [ $# -ge 2 ] || { echo "ci-guardrail: --state-dir needs a value" >&2; exit 2; }; STATE_DIR="$2"; shift 2 ;;
+    --state-dir) [ $# -ge 2 ] || { echo "ci-guardrail: --state-dir needs a value" >&2; exit 2; }; STATE_DIR="$2"; STATE_GIVEN=1; shift 2 ;;
     *) echo "usage: ci-guardrail.sh [--runs FILE] [--now ISO8601] [--state-dir DIR]" >&2; exit 2 ;;
   esac
 done
@@ -77,6 +78,8 @@ NOW_ISO="$(jq -rn --argjson n "$NOW" '$n | todate')"
 
 WORK="$(tmpdir)" || unknown
 trap 'rm -rf "$WORK"' EXIT
+# a replay without its own --state-dir must not read or move the live alerted set
+[ -z "$RUNS" ] || [ "$STATE_GIVEN" = 1 ] || STATE_DIR="$WORK/state"
 mkdir -p "$STATE_DIR" 2>/dev/null || true  # swallow-ok: an unwritable state dir only costs the once-per-crossing memory
 
 # fetch_runs <out>: the last 24 h of runs as a ci-metrics.sh runs.json, or non-zero.

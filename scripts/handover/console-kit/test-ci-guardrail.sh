@@ -130,6 +130,12 @@ contains 'a read below the line clears the state' "$out3" 'ciguard=ok'
 out4="$(run "$W/h151.json")"
 contains 'the next crossing alerts again (re-armed)' "$out4" 'ALERT runs-h=151>150'
 
+# --- a replay with no --state-dir of its own leaves the live state alone
+mkdir -p "$W/live"
+out="$(TICK_STATE_DIR="$W/live" bash "$SUT" --runs "$W/h151.json" --now "$NOW" 2>&1)"
+contains 'a replay without --state-dir still alerts' "$out" 'ALERT runs-h=151>150'
+[ ! -e "$W/live/tick-ciguard-state" ] && pass 'a replay without --state-dir writes no live state' || fail 'a replay wrote the live state file'
+
 # --- unknown never changes the state
 fresh
 run "$W/h151.json" >/dev/null
