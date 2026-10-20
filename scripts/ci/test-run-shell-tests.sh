@@ -2618,10 +2618,32 @@ rm -rf "$sb26"
 fi
 
 ci_yml26="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
-if grep -qE "^[[:space:]]+SUITE_STOP_ON_FAIL: \\$\\{\\{ github\\.event_name == 'pull_request' && '1' \\|\\| '' \\}\\}\$" "$ci_yml26"; then
+stop_line26="          SUITE_STOP_ON_FAIL: \${{ github.event_name == 'pull_request' && '1' || '' }}"
+stop_on_fail_set26() {
+  awk '/^      - run: bash scripts\/ci\/run-shell-tests\.sh --shard / {in_step=1; next} in_step && /^      - / {exit} in_step' "$1" | grep -qxF "$stop_line26"
+}
+if stop_on_fail_set26 "$ci_yml26"; then
   pass "26c: ci.yml passes SUITE_STOP_ON_FAIL on pull_request only"
 else
   fail "26c: ci.yml does not set SUITE_STOP_ON_FAIL to '1' on pull_request only"
+fi
+
+sb26c=$(mktemp -d "${TMPDIR:-/tmp}/rst-case26c.XXXXXX") || { fail "26c: mktemp failed"; sb26c=""; }
+if [ -n "$sb26c" ]; then
+# Fixtures are the real ci.yml with one mutation each.
+awk -v l="$stop_line26" '$0 == l {next} {print} /- name: Upload shard manifest/ {print "        env:"; print l}' "$ci_yml26" > "$sb26c/moved.yml"
+awk '{print} /^          FAIL_LOG_DIR: failed-suite-logs$/ {print "          UNRELATED_26C: x"}' "$ci_yml26" > "$sb26c/unrelated.yml"
+if stop_on_fail_set26 "$sb26c/moved.yml"; then
+  fail "26c-moved: SUITE_STOP_ON_FAIL moved out of the shard run step still passes 26c"
+else
+  pass "26c-moved: SUITE_STOP_ON_FAIL moved to another step fails 26c"
+fi
+if ! cmp -s "$ci_yml26" "$sb26c/unrelated.yml" && stop_on_fail_set26 "$sb26c/unrelated.yml"; then
+  pass "26c-unrelated: an unrelated env change in the shard step still passes 26c"
+else
+  fail "26c-unrelated: an unrelated env change broke 26c or did not apply"
+fi
+rm -rf "$sb26c"
 fi
 
 # shellcheck disable=SC2016
