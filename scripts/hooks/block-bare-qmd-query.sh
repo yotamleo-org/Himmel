@@ -663,12 +663,22 @@ _qmd_verb_words() {
 # _nv_fold TEXT — print TEXT lower-cased, quotes and backslashes removed.
 # shellcheck disable=SC1003 # a literal backslash in the tr set
 _nv_fold() { printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
-# names_verb TEXT — succeed when TEXT, quotes and backslashes removed, names
-# qmd and a search verb as words: the fail-closed test for text a shell
-# will run that cannot be read as words (a pipe's output, a substitution).
+# _nv_fold_esc TEXT — _nv_fold with each backslash escape (\n, \t, \x20, \040,
+# `\ `) read as a blank instead of removed: printf and echo -e turn those into
+# the word boundary the removal would glue a letter onto qmd or the verb across.
+_nv_fold_esc() {
+    printf '%s' "$1" | LC_ALL=C sed -E 's/\\([xX][0-9a-fA-F]{1,2}|[0-7]{1,3}|.)/ /g' |
+        LC_ALL=C tr -d '"'\''' | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
+# names_verb TEXT — succeed when TEXT, quotes and backslashes removed (or a
+# backslash escape read as a blank), names qmd and a search verb as words: the
+# fail-closed test for text a shell will run that cannot be read as words (a
+# pipe's output, a substitution).
 names_verb() {
     local s
     s=$(_nv_fold "$1")
+    if _qmd_verb_words "$s"; then return 0; fi
+    s=$(_nv_fold_esc "$1")
     _qmd_verb_words "$s"
 }
 # names_verb_cat TEXT — names_verb as a substring test, for text whose words

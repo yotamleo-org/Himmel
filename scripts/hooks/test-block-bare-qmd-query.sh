@@ -1160,6 +1160,15 @@ deny 'echo "${Q:-qmd} query x" | sh'
 deny 'echo "qmd ${V:--query} x" | sh'
 deny 'timeout -k 5 $f $(echo tmux) new -d x'
 deny "ssh research 'qmd query x'"
+# A backslash escape the shell or printf turns into a blank or newline is a word
+# boundary, not a letter glued onto qmd or the verb.
+deny 'printf "x\nqmd query" | sh'
+deny 'printf "qmd\tquery" | sh'
+deny 'printf "a\x20qmd query" | sh'
+deny 'printf "qmd\x20query" | sh'
+deny 'printf "qmd query\nx" | sh'
+# Pinned over-deny (the tmux/screen launcher text keeps a substring test): no
+# search verb runs here, yet it is refused until that test is word-bounded.
 deny "tmux new -s research 'qmd status'"
 deny "tmux new -s research 'qmd search x'"
 deny "tmux new -s research 'qmd.ts query x'"
