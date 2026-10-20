@@ -17,19 +17,23 @@
 #
 # DETECT: staged paths exist AND the newest commit is older than
 # VAULT_STALL_MIN minutes (default 25, two missed syncs). The refusal is
-# reproduced with `git hook run pre-commit` (the vault's own wrapper) with
-# SKIP=trailing-whitespace,end-of-file-fixer: those two are fixers, so running
-# them would rewrite content, and their refusals self-heal anyway (the next
-# sync's `git add` stages the fixed file). They are a template-exclude-only
-# class, never remediated here.
+# reproduced by running the vault's own pre-commit hook, fixers included, in a
+# scratch repo holding the vault's index and a checkout of only the STAGED
+# blobs (plus the hook's config and scripts/): what the sync's commit saw. The
+# no-stash hook reads the working tree, which may have moved on since the sync
+# staged it. The fixers rewrite only the scratch copy; a fixer refusal (a
+# writer that keeps emitting a file without its final newline) is named and
+# alerted, never remediated here.
 #
 # CLASSIFY: failed hook ids come from pre-commit's `- hook id:` lines, files from
-# the `In <file> line <n>:` lines of shellcheck and check-json's `<file>: Failed…`. gitleaks
+# the `In <file> line <n>:` lines of shellcheck, check-json's `<file>: Failed…`
+# and the fixers' `Fixing <file>`. gitleaks
 # findings come from a second gitleaks scan whose JSON report goes straight
 # into jq; jq emits only rule/file/line and the id of the CLOSED shape the
 # secret fully matches. The secret never reaches a shell variable, a file or a
-# log. The raw hook output is never written anywhere either (shellcheck echoes
-# source lines).
+# log. last-run.log, rewritten on every stall, keeps only the hook output's
+# structural lines (hook ids, statuses, file names, gitleaks RuleID/File/Line),
+# never a source line (shellcheck echoes source) or a match.
 #
 # REMEDIATE, all-or-nothing: only when EVERY finding is benign —
 #   a shellcheck / check-json finding on a file under handovers/
@@ -65,6 +69,8 @@ LEG="vault-stall"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/observability-registry.sh
 . "$SCRIPT_DIR/../lib/observability-registry.sh"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 STATE_DIR="${VAULT_STALL_STATE_DIR:-${HOME:-}/.himmel/state/vault-stall}"
 CRONTAB_BIN="${VAULT_STALL_CRONTAB:-crontab}"
 RUNNER_DIR="${VAULT_STALL_RUNNER_DIR:-${HOME:-}/.claude/vault-stall-cadence}"
@@ -141,11 +147,51 @@ classify() {
                 else
                     rows="$(row alert gitleaks gitleaks classify-failed "" "")"$'\n'
                 fi ;;
+            end-of-file-fixer | trailing-whitespace)
+                files="$(printf '%s\n' "$out" | awk -v h="- hook id: $hook" '
+                    $0 == h { on = 1; next } /\.\.\.+(Passed|Failed|Skipped)$/ { on = 0 }
+                    on && sub(/^Fixing /, "")' | sort -u)"
+                while IFS= read -r f; do
+                    [ -n "$f" ] || continue
+                    rows="$rows$(row alert "$hook" "$hook" "" "$f" "")"$'\n'
+                done <<<"$files" ;;
         esac
         # A failed hook this script cannot attribute to a file is never benign.
         [ -n "$rows" ] || rows="$(row alert "$hook" "$hook" no-file-reported "" "")"$'\n'
         FINDINGS="$FINDINGS$rows"
     done < <(printf '%s\n' "$out" | sed -n 's/^- hook id: //p' | sort -u)
+}
+
+# replay_hook <vault> <gitdir> — sets HOOK_OUT to the vault's pre-commit output
+# over a scratch checkout of the staged blobs (see DETECT); rc = the hook's.
+# The scratch repo borrows the vault's objects read-only and is removed after.
+# REPLAY_ERR is set when the scratch could not be built.
+replay_hook() {
+    local vault="$1" gitdir="$2" hooks scratch ref rc
+    HOOK_OUT="" REPLAY_ERR=""
+    hooks="$(git -C "$vault" rev-parse --path-format=absolute --git-path hooks)"
+    ref="$(git -C "$vault" symbolic-ref -q HEAD)" || ref=refs/heads/main
+    scratch="$(tmpdir)" || { REPLAY_ERR="replay-failed (no scratch dir)"; return 1; }
+    if ! { git init -q "$scratch" >/dev/null 2>&1 \
+        && printf '%s\n' "$gitdir/objects" > "$scratch/.git/objects/info/alternates" \
+        && git -C "$scratch" symbolic-ref HEAD "$ref" \
+        && git -C "$scratch" update-ref HEAD "$(git -C "$vault" rev-parse HEAD)" \
+        && git -C "$vault" ls-files -s -z | git -C "$scratch" update-index -z --index-info \
+        && { git -C "$vault" diff --cached --name-only --diff-filter=ACMR -z \
+             && git -C "$scratch" ls-files -z -- .pre-commit-config.yaml .gitleaks.toml scripts; } \
+            | git -C "$scratch" checkout-index -f -z --stdin \
+        && cp -R "$hooks/." "$scratch/.git/hooks/"; } >/dev/null 2>&1; then
+        rm -rf "$scratch"; REPLAY_ERR="replay-failed (cannot build the staged-blob scratch repo)"; return 1
+    fi
+    [ -e "$vault/.single-writer" ] && cp "$vault/.single-writer" "$scratch/"
+    HOOK_OUT="$(cd "$scratch" && git hook run pre-commit </dev/null 2>&1)"; rc=$?
+    rm -rf "$scratch"
+    return "$rc"
+}
+
+# hook_log <hook-output> — its structural lines only (see CLASSIFY).
+hook_log() {
+    printf '%s\n' "$1" | grep -E '^([^ ].*\.{3,}(Passed|Failed|Skipped)$|- hook id: |- exit code: |- files were modified by this hook$|Fixing |In .+ line [0-9]+:$|.+: Failed to json decode|(RuleID|File|Line|Fingerprint):|[0-9:]+(AM|PM) (ERR|FTL|WRN) )'
 }
 
 # describe <row> — "hook [rule] file:line", the only shape that leaves this script.
@@ -362,15 +408,20 @@ cmd_run() {
     fi
     echo "vault-stall: STALL ($staged staged, newest commit ${age}m old)"
 
-    out="$(cd "$vault" && SKIP="$SKIP_FIXERS" git hook run pre-commit </dev/null 2>&1)"; hook_rc=$?
+    [ "$dry" -eq 1 ] || (umask 077 && : > "$STATE_DIR/last-run.log")
+    replay_hook "$vault" "$gitdir"; hook_rc=$?
+    if [ -n "$REPLAY_ERR" ]; then alert "$REPLAY_ERR" "$dry"; return 0; fi
+    out="$HOOK_OUT"; HOOK_OUT=""
+    local hook_lines
+    hook_lines="$(hook_log "$out")"
     if [ "$hook_rc" -eq 0 ]; then
         out=""
+        [ "$dry" -eq 1 ] || printf -- '--- hook output\n%s\n' "$hook_lines" >> "$STATE_DIR/last-run.log"
         alert "stall-but-pre-commit-passes ($staged staged, ${age}m)" "$dry"
         return 0
     fi
     classify "$vault" "$out"
     out=""
-    [ "$dry" -eq 1 ] || : > "$STATE_DIR/last-run.log"
     local bad="" classes="" nbad=0 r
     while IFS= read -r r; do
         [ -n "$r" ] || continue
@@ -384,6 +435,7 @@ cmd_run() {
             [ "$nbad" -le 4 ] && bad="$bad$(describe "$r"); "
         fi
     done <<<"$FINDINGS"
+    [ "$dry" -eq 1 ] || printf -- '--- hook output\n%s\n' "$hook_lines" >> "$STATE_DIR/last-run.log"
     if [ -n "$bad" ]; then alert "unremediable: ${bad%; }" "$dry"; return 0; fi
     [ -n "$classes" ] || { alert "unclassified refusal" "$dry"; return 0; }
 

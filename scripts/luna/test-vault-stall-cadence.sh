@@ -75,8 +75,18 @@ fi
 if [ -n "$cj_out" ]; then
     printf 'check json...Failed\n- hook id: check-json\n- exit code: 1\n\n%s\n' "$cj_out"; rc=1
 fi
-if ! gitleaks git --pre-commit --redact --staged --no-banner --log-level error --config .gitleaks.toml . >/dev/null 2>&1; then
-    printf 'Detect hardcoded secrets...Failed\n- hook id: gitleaks\n- exit code: 1\n\n'; rc=1
+if ! gl_out="$(gitleaks git --pre-commit --redact --staged --verbose --no-banner --log-level error --config .gitleaks.toml . 2>&1)"; then
+    printf 'Detect hardcoded secrets...Failed\n- hook id: gitleaks\n- exit code: 1\n\n%s\n' "$gl_out"; rc=1
+fi
+if ! skipped end-of-file-fixer; then
+    eof_out=""
+    for f in "${files[@]}"; do
+        case "$f" in *.sh|*.json|*.yaml|*.toml) ;; *) continue ;; esac
+        if [ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ]; then echo >>"$f"; eof_out="${eof_out}Fixing $f"$'\n'; fi
+    done
+    if [ -n "$eof_out" ]; then
+        printf 'fix end of files...Failed\n- hook id: end-of-file-fixer\n- exit code: 1\n- files were modified by this hook\n\n%s\n' "$eof_out"; rc=1
+    fi
 fi
 if ! skipped trailing-whitespace; then
     echo "fixer-ran" >>.git/fixer-ran.log
@@ -583,6 +593,55 @@ shapes_missing_from() { # <toml> -> ids of closed shapes whose regex the toml la
 assert_eq "T29 every closed shape is in the template allowlist" "" "$(shapes_missing_from "$TEMPLATE_TOML")"
 grep -vF '[0-9a-f]{40}' "$TEMPLATE_TOML" >"$TMP/t29.toml"
 assert_eq "T29 the drift check names a shape the toml lacks" "handover-token " "$(shapes_missing_from "$TMP/t29.toml")"
+
+# --- T30 the refused blob is the STAGED one: the working tree moved on --------
+mkvault
+before="$(head_sha)"
+printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/scripts/y.sh"
+git -C "$V" add scripts/y.sh
+printf '#!/usr/bin/env bash\necho fixed\n' >"$V/scripts/y.sh"
+out="$(run_sut)"; rc=$?
+assert_eq "T30 run exits 0" "0" "$rc"
+assert_eq "T30 no commit" "$before" "$(head_sha)"
+assert_has "T30 alert names the staged blob's refusal" "shellcheck scripts/y.sh:2" "$(sent)"
+assert_not_has "T30 not reported as passing" "stall-but-pre-commit-passes" "$(sent)"
+assert_has "T30 last-run.log keeps the hook's own output" "- hook id: shellcheck" "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_not_has "T30 last-run.log carries no source line" 'for f in' "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_eq "T30 the working tree is left as it was" "echo fixed" "$(sed -n 2p "$V/scripts/y.sh")"
+
+# --- T31 a fixer refusal on a staged blob is named, never run on the vault ----
+mkvault
+before="$(head_sha)"
+printf '{"legs": []}' >"$V/handovers/legs.json"
+git -C "$V" add handovers/legs.json
+out="$(run_sut)"; rc=$?
+assert_eq "T31 run exits 0" "0" "$rc"
+assert_eq "T31 no commit" "$before" "$(head_sha)"
+assert_has "T31 alert names the fixer and file" "end-of-file-fixer handovers/legs.json" "$(sent)"
+assert_not_has "T31 not reported as passing" "stall-but-pre-commit-passes" "$(sent)"
+assert_has "T31 last-run.log keeps the fixer's output" "Fixing handovers/legs.json" "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_eq "T31 the vault file is not rewritten" '{"legs": []}' "$(cat "$V/handovers/legs.json")"
+assert_eq "T31 the backlog is untouched" "handovers/legs.json " "$(staged)"
+
+# --- T32 a staged gitleaks hit the working tree no longer has ----------------
+mkvault
+printf 'aws_key = "%s"\n' "$AWS_KEY" >"$V/notes.md"
+git -C "$V" add notes.md
+echo clean >"$V/notes.md"
+out="$(run_sut)"
+assert_has "T32 alert names the rule and staged file" "gitleaks aws-access-token notes.md:1" "$(sent)"
+assert_has "T32 last-run.log keeps the hook's rule line" "RuleID:" "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_eq "T32 no state file carries the secret" "" "$(grep -rl "$AWS_KEY" "$S" "$TMP/home" 2>/dev/null)"
+assert_not_has "T32 run output never carries the secret" "$AWS_KEY" "$out"
+
+# --- T33 a stall whose hook passes still rewrites last-run.log ---------------
+mkvault
+mkdir -p "$S"; echo "alert gitleaks gitleaks no-file-reported" >"$S/last-run.log"
+echo note >"$V/notes.md"
+git -C "$V" add notes.md
+out="$(run_sut)"
+assert_has "T33 alerts the passing stall" "stall-but-pre-commit-passes" "$(sent)"
+assert_not_has "T33 the stale log is replaced" "no-file-reported" "$(cat "$S/last-run.log" 2>/dev/null)"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi
