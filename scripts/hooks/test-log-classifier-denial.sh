@@ -377,15 +377,16 @@ fi
 # built at run time must still alert, so the silence is not a dead detector. ---
 DETECTOR="$(dirname "$HOOK")/detect-token-in-output.sh"
 printf '{"allowFrom":["12345"]}' >"$WORKDIR/access.json"
-printf '#!/usr/bin/env bash\ntrue\n' >"$WORKDIR/send.sh"; chmod +x "$WORKDIR/send.sh"
+printf '#!/usr/bin/env bash\nprintf sent >>"%s"\n' "$WORKDIR/sent.mark" >"$WORKDIR/send.sh"; chmod +x "$WORKDIR/send.sh"
 detect() {
     jq -cn --rawfile r "$1" '{session_id:"s15",tool_name:"Read",tool_response:{stdout:$r}}' \
         | TOKEN_ALERT_DIR="$WORKDIR/alerts" MERGE_BLOCK_ALERT_CMD="$WORKDIR/send.sh" \
             TELEGRAM_ACCESS_PATH="$WORKDIR/access.json" bash "$DETECTOR" 2>/dev/null
 }
-if [ -z "$(detect "$0")" ]; then pass "the detector finds no token shape in this file"; else fail "the detector finds no token shape in this file"; fi
+quiet=$(detect "$0"); quiet_rc=$?
+if [ "$quiet_rc" = "0" ] && [ -z "$quiet" ]; then pass "the detector finds no token shape in this file"; else fail "the detector finds no token shape in this file"; fi
 printf 'X=%s\n' "gh""p_$(rep F 36)" >"$WORKDIR/live.txt"
-if detect "$WORKDIR/live.txt" | grep -q 'TOKEN-IN-OUTPUT'; then pass "a run-time built token still alerts"; else fail "a run-time built token still alerts"; fi
+if detect "$WORKDIR/live.txt" | grep -q 'TOKEN-IN-OUTPUT' && [ -s "$WORKDIR/sent.mark" ]; then pass "a run-time built token still alerts"; else fail "a run-time built token still alerts"; fi
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then
