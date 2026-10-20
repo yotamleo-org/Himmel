@@ -214,7 +214,7 @@ fi
 # --- CONTROL: the STEPS check must fail on a renamed step ----------------------
 if [ -f "$ROOT/docs/guide/installer-journey.html" ]; then
   sed "s/{ id: 'bridge'/{ id: 'dropped'/" "$ROOT/docs/guide/installer-journey.html" > "$tmp/installer-journey.html"
-  if [ "$(wizard_steps)" != "$(guide_steps "$tmp/installer-journey.html")" ]; then
+  if [ -n "$(wizard_steps)" ] && [ "$(wizard_steps)" != "$(guide_steps "$tmp/installer-journey.html")" ]; then
     ok "control: a guide with a renamed step differs from the wizard"
   else
     bad "control: the STEPS check accepted a guide with a renamed step"
