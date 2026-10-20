@@ -104,17 +104,15 @@ else
     fx_d='WDarjtT1zdp7dc'
     printf 'token="%s%s%s%s"\n' "$fx_a" "$fx_b" "$fx_c" "$fx_d" > "$FIX/nonce-suffixed.txt"
 
-    # Baseline config = the template's own .gitleaks.toml with the new
-    # RETASK-nonce allowlist regex stripped out, so it still carries
-    # useDefault + every OTHER allowlist entry — isolating just the one
-    # line this ticket adds.
-    # Match on 'N[0-9]+' alone (not the full '...N[0-9]+-[0-9a-f]' shape):
-    # inserted an optional '[a-z]?' between the leg digits and
-    # the trailing hyphen, so the longer literal stopped matching that line
-    # and silently left it in the "baseline", making the RED control below
-    # vacuous. 'N[0-9]+' is still unique to this one regex line.
+    # Baseline config = the template's own .gitleaks.toml with the
+    # handover-token grammar regex (docs/internals/handover-token-grammar.md)
+    # stripped out, so it still carries useDefault + every OTHER allowlist
+    # entry — isolating just the line that admits the nonce.
+    # '[A-Z]{1,3}-' is unique to that one regex line; if the grammar line
+    # stops matching it, the strip is a no-op and the RED control below
+    # reports itself vacuous.
     BASELINE_CFG="$WORK/gitleaks-baseline.toml"
-    grep -vF 'N[0-9]+' "$TMPL/.gitleaks.toml" > "$BASELINE_CFG"
+    grep -vF '[A-Z]{1,3}-' "$TMPL/.gitleaks.toml" > "$BASELINE_CFG"
 
     # run_gitleaks <source> <config> <report-path>; sets GITLEAKS_RC to
     # gitleaks' own exit code (0 clean, 1 leak found, anything else a
