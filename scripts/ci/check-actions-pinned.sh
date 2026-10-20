@@ -83,6 +83,7 @@ fi
 
 digest_re='^[^[:space:]@]+@sha256:[0-9a-f]{64}$'
 ref_re='(vars|github)\.[A-Za-z0-9_.]+'
+key_re="^[[:space:]]*-?[[:space:]]*[\"']?[A-Za-z0-9_.-]+[\"']?[[:space:]]*:([[:space:]]|\$)"
 unpinned=()
 while IFS= read -r line; do
   [ -n "$line" ] || continue
@@ -108,6 +109,14 @@ while IFS= read -r line; do
     ok=0
     [[ "$value" =~ $digest_re ]] && ok=1
   fi
+  # YAML folds a deeper-indented next line (past blank lines) into the scalar
+  # unless it is itself a `key:` line, so such a line is refused unread.
+  rest=${line#*"$sep"}
+  key_prefix=$(sed -E 's/^([[:space:]]*-?[[:space:]]*).*/\1/' <<< "${rest#*:}")
+  folded=$(awk -v n="${rest%%:*}" -v kc="${#key_prefix}" -v kre="$key_re" '
+    NR <= n || /^[[:space:]]*$/ { next }
+    { match($0, /^[ \t]*/); if (RLENGTH > kc && $0 !~ kre) print "y"; exit }' "${line%%"$sep"*}")
+  [ -z "$folded" ] || ok=0
   [ "$ok" -eq 1 ] || unpinned+=("$line")
 done <<< "$found"
 
