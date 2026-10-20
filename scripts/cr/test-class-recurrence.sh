@@ -110,7 +110,7 @@ case "$sub" in
     echo "Created $key  title" ;;
   comment)
     [ "${JIRA_COMMENT_FAIL:-}" = 1 ] && { echo "boom" >&2; exit 1; }
-    key="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = --comment-file ] && cat "$2" >>"$JLOG"; shift; done ;;
+    key="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = --comment-file ] && cat "$2" >>"$JLOG"; shift; done ;; # read-sink-ok: the comment file is the script's own mktemp body in this suite's sandbox
   fix-version)
     [ "${JIRA_FIXVER_FAIL:-}" = 1 ] && { echo "boom" >&2; exit 1; }
     : ;;
