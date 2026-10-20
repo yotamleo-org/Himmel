@@ -58,6 +58,12 @@ test("trackerSources: empty with no tracker source configured, and no gh call is
   expect(s.ghCalls()).toEqual([]);
 });
 
+test("trackerSources: himmel.tracker is read from the supplied env's HOME, not the process's", async () => {
+  const s = scratch();
+  writeFileSync(join(s.d, ".gitconfig"), "[himmel]\n\ttracker = github\n");
+  expect(await trackerSources(s.env, s.d)).toEqual(["github"]);
+});
+
 test("trackerSources: the Jira mirror, once it holds tickets, is a source", async () => {
   expect(await trackerSources(scratch({ mirror: true }).env, "/")).toEqual(["jira"]);
 });

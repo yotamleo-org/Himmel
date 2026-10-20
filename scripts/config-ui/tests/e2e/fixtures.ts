@@ -124,7 +124,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const env: Record<string, string | undefined> = {
     ...process.env, HOME: home, CONFIG_UI_HIMMELCTL: join(__dirname, "e2e-stub.js"), CONFIG_UI_IDLE_MS: "300000",
     HIMMEL_REPORT_CADENCE_ROOT: cad, E2E_FEED: feed, STUB_ARGV: argv, STUB_STATE: state,
-    TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, ...(tracker === "github" ? { GH_CMD: gh } : {}),
+    TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}),
     HANDOVER_DIR: hroot, HIMMEL_PROMETHEUS_URL: promUrl, HIMMEL_FLOW_EXPORTER_PORT: "1", E2E_FEED_DELAY_MS: String(o.feedDelayMs ?? 0),
   };
   delete env.CADENCE_BANK_LEDGER; // the operator's own ledger, root and monitoring never reach the child
