@@ -1466,9 +1466,10 @@ decisions_kept_verbatim() {
     local prev="$1" out="$2" dir="$3" have need
     have="$(decisions_files_text "$out" "$dir")" || return 1
     need="$prev"
-    if printf '%s\n' "$prev" | grep -q 'specs/decisions/console-decisions-'; then
-        need="$need"$'\n'"$(decisions_files_text "$prev" "$dir")" || return 1
-    fi
+    case "$prev" in
+        *specs/decisions/console-decisions-*)
+            need="$need"$'\n'"$(decisions_files_text "$prev" "$dir")" || return 1 ;;
+    esac
     awk '
         FNR == NR { have = have $0 "\n"; next }
         { need = need $0 "\n" }
