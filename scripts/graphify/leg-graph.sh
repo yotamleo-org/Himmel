@@ -122,7 +122,7 @@ if command -v python3 >/dev/null 2>&1; then
     ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
   fi
 fi
-[ -z "$lowconf" ] || printf '%s\n' "$lowconf"
+[ -z "$lowconf" ] || [ -z "$ans" ] || printf '%s\n' "$lowconf"
 printf '%s\n' "$ans"
 need="$(printf '%s\n' "$ans" | grep -m1 'TRUNCATED: showing' | sed -n 's/.*--budget \([0-9][0-9]*\).*/\1/p')"
 if [ -n "$need" ]; then

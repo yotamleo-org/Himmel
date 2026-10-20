@@ -58,7 +58,7 @@ def file_docs(graph):
     docs, filenode = {}, {}
     for n in graph.get("nodes", []):
         src = n.get("source_file")
-        if not src or n.get("id") is None or src.startswith(EVAL_DIR):
+        if not src or n.get("id") is None or src.removeprefix("./").startswith(EVAL_DIR):
             continue
         d = docs.setdefault(src, Counter())
         label = n.get("label") or ""

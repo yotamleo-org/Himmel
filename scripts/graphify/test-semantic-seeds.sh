@@ -121,7 +121,7 @@ nodes = [
     node("ci_md", "check-ci.md", "commands/check-ci.md", "document", rationale="CI exit codes and the effort of waiting."),
     node("gl", "glossary.md", "docs/glossary.md", "document"),
     node("hk", "block-edit.sh", "scripts/hooks/block-edit.sh"),
-    node("tok", "token.ts", "scripts/auth/token.ts"),
+    node("lib", "lib.sh", "scripts/lib/lib.sh"),
     node("ev", "queue-lock-handover-document.py", "scripts/eval/retrieval-eval/queue-lock-handover-document.py"),
 ]
 json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
@@ -131,9 +131,9 @@ WEAKQ="what does the effort setting change for a session"
 
 # S8: files under the retrieval-eval directory never seed, even when they match best.
 got="$(python3 -I "$SEM" seeds "$T/weak.json" "$STRONGQ" | tr '\n' ' ')"
-case "$got" in
-  *ev*) fail "S8 eval directory seeded: '$got'" ;;
-  ql_doc\ *) pass "S8 the eval directory is not a seed candidate" ;;
+case " $got" in
+  *" ev "*) fail "S8 eval directory seeded: '$got'" ;;
+  " ql_doc "*) pass "S8 the eval directory is not a seed candidate" ;;
   *) fail "S8 got='$got'" ;;
 esac
 
@@ -145,12 +145,17 @@ for line in open(sys.argv[1], encoding="utf-8"):
         print(json.loads(line)["q"])
 PY
 hits=""
+grepbad=""
 while IFS= read -r q; do
-  h="$(git -C "$HERE" grep -i -l -F -e "$q" -- . 2>/dev/null)"
-  [ -z "$h" ] || hits="$hits $h"
+  h="$(git -C "$HERE" grep -i -l -F -e "$q" -- . 2>/dev/null)"; grc=$?
+  case "$grc" in
+    0) hits="$hits $h" ;;
+    1) ;;
+    *) grepbad="$grepbad rc=$grc" ;;
+  esac
 done <"$T/questions.txt"
-if [ -s "$T/questions.txt" ] && [ -z "$hits" ]; then pass "S9 no eval question text under scripts/graphify"
-else fail "S9 eval question text found in:$hits"; fi
+if [ -s "$T/questions.txt" ] && [ -z "$hits" ] && [ -z "$grepbad" ]; then pass "S9 no eval question text under scripts/graphify"
+else fail "S9 eval question text found in:$hits (git grep errors:$grepbad)"; fi
 
 # S10: a weak seed (one shared word, a low score for this corpus) gets 2000 tokens, not 8000, and a header naming the seed.
 out="$(run query "$WEAKQ" --graph "$T/weak.json")"; rc=$?
@@ -175,9 +180,9 @@ if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && [ "$(grep -c -- '--b
 else fail "S12 rc=$rc calls='$calls' out='$out'"; fi
 
 # S13: a named file anchors the query, so a weak semantic match does not shrink it.
-out="$(run query "does queue-lock.sh care about the effort setting for a session" --graph "$T/weak.json")"; rc=$?
+out="$(run query "does lib.sh care about the effort setting for a session" --graph "$T/weak.json")"; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && grep -q -- '--seed ql_sh' <<<"$calls" && ! grep -q -- '--budget 1000$' <<<"$calls"; then
+if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && grep -q -- '--seed lib' <<<"$calls" && ! grep -q -- '--budget 1000$' <<<"$calls"; then
   pass "S13 an anchored query keeps the full budget"
 else fail "S13 rc=$rc calls='$calls' out='$out'"; fi
 
