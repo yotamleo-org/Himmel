@@ -666,11 +666,11 @@ _qmd_verb_words() {
 # shellcheck disable=SC1003 # a literal backslash in the tr set
 _nv_fold() { printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
 # _nv_fold_esc TEXT — _nv_fold with each backslash escape (\n, \t, \x20, \040,
-# `\ `) read as a blank instead of removed: printf and echo -e turn those into
+# \0040,  , `\ `) read as a blank instead of removed: printf and echo -e turn those into
 # the word boundary the removal would glue a letter onto qmd or the verb across.
 # qmd_words prints a quoted backslash as `_`, so `_n`, `_t`, `_x20` read the same.
 _nv_fold_esc() {
-    printf '%s' "$1" | LC_ALL=C sed -E 's/\\([xX][0-9a-fA-F]{1,2}|[0-7]{1,3}|.)/ /g; s/_([xX][0-9a-fA-F]{1,2}|[0-7]{1,3}|[ntrvabfe])/ /g' |
+    printf '%s' "$1" | LC_ALL=C sed -E 's/\\([xX][0-9a-fA-F]{1,2}|[uU][0-9a-fA-F]{1,8}|0[0-7]{1,3}|[0-7]{1,3}|.)/ /g; s/_([xX][0-9a-fA-F]{1,2}|[uU][0-9a-fA-F]{1,8}|0[0-7]{1,3}|[0-7]{1,3}|[ntrvabfe])/ /g' |
         LC_ALL=C tr -d '"'\''' | LC_ALL=C tr '[:upper:]' '[:lower:]'
 }
 # names_verb TEXT — succeed when TEXT, quotes and backslashes removed (or a

@@ -1175,6 +1175,14 @@ deny "printf 'x\nqmd query' > f.sh; sh f.sh"
 deny "printf 'qmd\tquery' > f.sh; bash f.sh"
 deny "printf 'qmd\x20query' > f.py; python3 f.py"
 deny "printf \"x\nqmd query\" > f.sh; sh f.sh"
+# A \u or \U code point and a four-digit \0nnn octal are one escape too: the
+# digits after a three-digit read must not stay glued to the verb.
+deny "printf 'qmd\u0020query x' | sh"
+deny "printf 'qmd\0040query x' | sh"
+deny "printf 'qmd\U00000020query x' | sh"
+deny "printf 'qmd\u0020query x' > f.sh; sh f.sh"
+deny "printf 'qmd\0040query x' > f.sh; bash f.sh"
+deny "ssh research \"printf 'qmd\u0020query x'\""
 # Pinned over-deny (the tmux/screen launcher text keeps a substring test): no
 # search verb runs here, yet it is refused until that test is word-bounded.
 deny "tmux new -s research 'qmd status'"
