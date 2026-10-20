@@ -1125,6 +1125,25 @@ contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
 PATH="$W/bin:$PATH" node "$SUT" --doc "$B/nope.md" >/dev/null 2>&1; rc=$?
 contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
 
+# --- the first publish to a carried URL must not put the live page in the console's context
+# An unviewed publish is refused and the refusal returns the whole live page (about 23k
+# tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
+# send that first read+publish to a haiku subagent.
+DOCS="$HERE/../../../docs/handover"
+BT="$(tr '\n' ' ' < "$DOCS/console-sections/board-tracker.md" | tr -s ' ')"
+CT="$(tr '\n' ' ' < "$DOCS/console-template.md" | tr -s ' ')"
+contains 'board-tracker.md: the first publish to a carried URL goes to a haiku subagent' "$BT" 'haiku subagent'
+contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
+contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
+contains 'board-tracker.md: the delegation is marked unverified with a ponytail line' "$BT" 'ponytail: subagent cost absorption is not yet measured'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: tracker URL no longer says the console reads it first' "$BT" 'must `Artifact read` it first, exactly as for `board:`'
+contains 'console-template.md step 12: the first publish to a carried URL is delegated' "$CT" 'goes to a subagent'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'console-template.md step 12: no bare Artifact read in the console context' "$CT" 'must `Artifact read` it first'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
     exit 0
