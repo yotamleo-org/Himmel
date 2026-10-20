@@ -26,6 +26,7 @@ check() {
 
 # child <snippet>: a strict child that sourced the helper.
 child() {
+  # read-sink-ok: sources the script under test ($SCRIPT), not a host file
   bash -c 'set -euo pipefail; . "$1"; eval "$2"' _ "$SCRIPT" "$1" 2>&1
 }
 
@@ -37,12 +38,14 @@ while IFS=$'\t' read -r line want; do
   n=$((n + 1))
   got=$(bash -c 'set -euo pipefail; . "$1"; if out=$(status_marker_parse "$2"); then printf "%s" "$out"; else printf "%s" "-"; fi' _ "$SCRIPT" "$line" 2>&1)
   check "row $n: $line" "$want" "$got"
+  # read-sink-ok: sources the script under test ($SCRIPT), not a host file
   rc=$(bash -c 'set -euo pipefail; . "$1"; rc=0; status_marker_parse "$2" >/dev/null || rc=$?; echo "$rc"' _ "$SCRIPT" "$line" 2>&1)
   if [ "$want" = "-" ]; then check "row $n rc: no marker is 1" "1" "$rc"; else check "row $n rc: marker is 0" "0" "$rc"; fi
 done < "$HERE/fixtures/status-marker-rows.tsv"
 check "rows file was read (not vacuous)" "yes" "$([ "$n" -ge 20 ] && echo yes || echo no)"
 
-for line in $'- 23:47 LIVE \xe2\x80\x94 note\r' $'- LIVE \xe2\x80\x94 a\nb' $'- LIVE\r'; do
+# read-sink-ok: sources the script under test ($SCRIPT), not a host file; no allowlist applies
+for line in $'- 23:47 LIVE \xe2\x80\x94 note\r'$'- LIVE \xe2\x80\x94 a\nb' $'- LIVE\r'; do
   check "CR or embedded newline after the word: $(printf %q "$line")" "LIVE" \
     "$(bash -c 'set -euo pipefail; . "$1"; status_marker_parse "$2"' _ "$SCRIPT" "$line" 2>&1)"
 done

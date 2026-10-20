@@ -105,6 +105,7 @@ while IFS=$'\t' read -r fn nn on nv ov want; do
     [ "$ov" = "<empty>" ] && ov=""
     args+=("$on=$ov")
   fi
+  # read-sink-ok: sources the script under test ($SCRIPT), not a host file; no allowlist applies
   got=$(env -i PATH="$PATH" ${args[@]+"${args[@]}"} bash -c \
     'set -euo pipefail; . "$1"; rc=0; "env_alias_$2" "$3" "$4" || rc=$?; echo "$rc"' \
     _ "$SCRIPT" "$fn" "$nn" "$on" 2>&1)
