@@ -12,7 +12,7 @@ Developing himmel *itself* is a different path:
 ## Install
 
 ```bash
-git clone https://github.com/yotamleo-org/Himmel
+git clone https://github.com/yotamleo-org/Himmel himmel
 node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 ```
 
