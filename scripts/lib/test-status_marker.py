@@ -38,6 +38,12 @@ class Rows(unittest.TestCase):
                 self.assertEqual(r.returncode, 1 if want == "-" else 0, r.stderr)
                 self.assertEqual(r.stdout, "" if want == "-" else want + "\n")
 
+    def test_cr_and_embedded_newline_after_the_word(self):
+        for line in ("- 23:47 LIVE \u2014 note\r", "- LIVE \u2014 a\nb", "- LIVE\r"):
+            with self.subTest(line=line):
+                self.assertEqual(status_marker.parse(line), "LIVE")
+                self.assertEqual(run("parse", line).stdout, "LIVE\n")
+
     def test_is_parked(self):
         self.assertTrue(status_marker.is_parked("PARKED-BANK"))
         self.assertTrue(status_marker.is_parked("PARKED-USAGE"))

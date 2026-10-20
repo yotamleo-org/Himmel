@@ -105,7 +105,7 @@ while IFS=$'\t' read -r fn nn on nv ov want; do
     [ "$ov" = "<empty>" ] && ov=""
     args+=("$on=$ov")
   fi
-  got=$(env ${args[@]+"${args[@]}"} bash -c \
+  got=$(env -i PATH="$PATH" ${args[@]+"${args[@]}"} bash -c \
     'set -euo pipefail; . "$1"; rc=0; "env_alias_$2" "$3" "$4" || rc=$?; echo "$rc"' \
     _ "$SCRIPT" "$fn" "$nn" "$on" 2>&1)
   check "row $n: $fn '$nn'=$nv '$on'=$ov" "$want" "$got"
@@ -114,12 +114,12 @@ check "rows file was read (not vacuous)" "yes" "$([ "$n" -ge 40 ] && echo yes ||
 
 # --- the JS and Python twins run the same rows ---
 if command -v node >/dev/null 2>&1; then
-  node --test "$HERE/env-alias.test.mjs" >/dev/null 2>&1 || { echo "FAIL: env-alias.test.mjs" >&2; FAIL=$((FAIL + 1)); }
+  out=$(node --test "$HERE/env-alias.test.mjs" 2>&1) || { echo "FAIL: env-alias.test.mjs" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else
   echo "FAIL: node missing, env-alias.test.mjs not run" >&2; FAIL=$((FAIL + 1))
 fi
 if command -v python3 >/dev/null 2>&1; then
-  python3 -I "$HERE/test-env_alias.py" >/dev/null 2>&1 || { echo "FAIL: test-env_alias.py" >&2; FAIL=$((FAIL + 1)); }
+  out=$(python3 -I "$HERE/test-env_alias.py" 2>&1) || { echo "FAIL: test-env_alias.py" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else
   echo "FAIL: python3 missing, test-env_alias.py not run" >&2; FAIL=$((FAIL + 1))
 fi

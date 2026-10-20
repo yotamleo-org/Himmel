@@ -49,6 +49,13 @@ for (const [fn, nnRaw, onRaw, nv, ov, want] of ROWS) {
   });
 }
 
+test('cli: a function name inherited from Object.prototype exits 2', () => {
+  for (const fn of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+    const r = spawnSync(process.execPath, [join(HERE, 'env-alias.mjs'), fn, 'A', 'B'], { encoding: 'utf8' });
+    assert.equal(r.status, 2, fn);
+  }
+});
+
 test('cli: an unknown function or wrong argument count exits 2', () => {
   for (const args of [['bogus', 'A', 'B'], ['restrict', 'A'], []]) {
     const r = spawnSync(process.execPath, [join(HERE, 'env-alias.mjs'), ...args], { encoding: 'utf8' });

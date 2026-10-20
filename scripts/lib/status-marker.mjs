@@ -11,7 +11,7 @@
 // when there is none; is-parked WORD -> exit 0 or 1; bad usage exits 2.
 import { isMain } from './is-main.mjs';
 
-const MARKER = /^- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)(?:[^A-Za-z0-9_].*)?$/;
+const MARKER = /^- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)(?:[^A-Za-z0-9_][\s\S]*)?$/;
 
 export function statusMarkerParse(line) {
   const m = MARKER.exec(line);

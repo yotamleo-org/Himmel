@@ -13,7 +13,8 @@
 // env defaults to process.env.
 //
 // CLI: node env-alias.mjs restrict|permit NEW OLD -> exit 0 true, 1 false,
-// 2 invalid name or usage (message on stderr).
+// 2 invalid name, usage or any other error (message on stderr), so a caller that
+// fails closed never reads an error as a plain false.
 import { isMain } from './is-main.mjs';
 
 const NAME = /^[A-Z_][A-Z0-9_]*$/;
@@ -45,16 +46,16 @@ export function envAliasPermit(newName, oldName, env = process.env) {
 
 function main(argv) {
   const [fn, newName, oldName] = argv;
-  const fns = { restrict: envAliasRestrict, permit: envAliasPermit };
-  if (!fns[fn] || argv.length !== 3) {
+  const fns = new Map([['restrict', envAliasRestrict], ['permit', envAliasPermit]]);
+  if (!fns.has(fn) || argv.length !== 3) {
     process.stderr.write('usage: env-alias.mjs restrict|permit NEW OLD\n');
     return 2;
   }
   try {
-    return fns[fn](newName, oldName) ? 0 : 1;
+    return fns.get(fn)(newName, oldName) ? 0 : 1;
   } catch (e) {
     process.stderr.write(`${e.message}\n`);
-    return e.code === 2 ? 2 : 1;
+    return 2;
   }
 }
 

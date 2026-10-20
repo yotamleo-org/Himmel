@@ -19,7 +19,8 @@
 # "Set" means non-empty. "Truthy" means set and not 0, false, no or off (any
 # case). Every function validates both names as [A-Z_][A-Z0-9_]* and returns 2
 # when one is invalid, so a caller that must fail closed reads the status
-# (`rc=0; env_alias_restrict A B || rc=$?`) and treats anything but 1 as "on".
+# (`rc=0; env_alias_restrict A B || rc=$?`). A restrict caller treats anything but
+# 1 as "on"; a permit caller treats anything but 0 as "denied".
 # restrict and permit return 0 (true) or 1 (false); the JS and Python twins
 # (env-alias.mjs, env_alias.py) answer the same rows, fixtures/env-alias-rows.tsv.
 # Sibling rename helpers: status-marker.sh (+ status-marker.mjs, status_marker.py)

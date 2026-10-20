@@ -33,7 +33,7 @@ check() {
   fi
 }
 
-mkdir -p "$T/lib" "$T/sub"
+mkdir -p "$T/sub"
 sed -e 's|__OLD__|old-name.sh|g' -e 's|__NEW__|sub/new-name.sh|g' "$TEMPLATE" > "$T/old-name.sh"
 cat > "$T/sub/new-name.sh" <<'TARGET'
 #!/usr/bin/env bash
@@ -43,7 +43,7 @@ cat
 exit "${FWD_RC:-0}"
 TARGET
 
-run() {  # run <rc> <args...>: prints nothing; fills ARGV_GOT, RC_GOT, OUT_GOT, ERR_GOT
+run() {  # run <rc> <args...>: prints nothing; fills ARGV_GOT, RC_GOT, OUT_GOT
   local rc="$1"; shift
   FWD_RC="$rc" FWD_ARGV="$T/argv" bash "$T/old-name.sh" "$@" < "$T/stdin" > "$T/out" 2> "$T/err"
   RC_GOT=$?

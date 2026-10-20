@@ -31,6 +31,14 @@ for (const [line, want] of ROWS) {
   });
 }
 
+test('a trailing CR or an embedded newline after the word still parses', () => {
+  for (const line of ['- 23:47 LIVE \u2014 note\r', '- LIVE \u2014 a\nb', '- LIVE\r']) {
+    assert.equal(statusMarkerParse(line), 'LIVE', JSON.stringify(line));
+    const r = spawnSync(process.execPath, [join(HERE, 'status-marker.mjs'), 'parse', line], { encoding: 'utf8' });
+    assert.equal(r.stdout, 'LIVE\n', JSON.stringify(line));
+  }
+});
+
 test('isParked accepts both spellings and nothing else', () => {
   assert.equal(statusMarkerIsParked('PARKED-BANK'), true);
   assert.equal(statusMarkerIsParked('PARKED-USAGE'), true);

@@ -42,6 +42,11 @@ while IFS=$'\t' read -r line want; do
 done < "$HERE/fixtures/status-marker-rows.tsv"
 check "rows file was read (not vacuous)" "yes" "$([ "$n" -ge 20 ] && echo yes || echo no)"
 
+for line in $'- 23:47 LIVE \xe2\x80\x94 note\r' $'- LIVE \xe2\x80\x94 a\nb' $'- LIVE\r'; do
+  check "CR or embedded newline after the word: $(printf %q "$line")" "LIVE" \
+    "$(bash -c 'set -euo pipefail; . "$1"; status_marker_parse "$2"' _ "$SCRIPT" "$line" 2>&1)"
+done
+
 for m in PARKED-BANK PARKED-USAGE; do
   check "is_parked $m" "yes" "$(child "if status_marker_is_parked $m; then echo yes; else echo no; fi")"
 done
@@ -52,12 +57,12 @@ check "is_parked with no argument is false and survives set -u" "no" \
   "$(child 'if status_marker_is_parked; then echo yes; else echo no; fi')"
 
 if command -v node >/dev/null 2>&1; then
-  node --test "$HERE/status-marker.test.mjs" >/dev/null 2>&1 || { echo "FAIL: status-marker.test.mjs" >&2; FAIL=$((FAIL + 1)); }
+  out=$(node --test "$HERE/status-marker.test.mjs" 2>&1) || { echo "FAIL: status-marker.test.mjs" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else
   echo "FAIL: node missing, status-marker.test.mjs not run" >&2; FAIL=$((FAIL + 1))
 fi
 if command -v python3 >/dev/null 2>&1; then
-  python3 -I "$HERE/test-status_marker.py" >/dev/null 2>&1 || { echo "FAIL: test-status_marker.py" >&2; FAIL=$((FAIL + 1)); }
+  out=$(python3 -I "$HERE/test-status_marker.py" 2>&1) || { echo "FAIL: test-status_marker.py" >&2; printf '%s\n' "$out" | tail -40 >&2; FAIL=$((FAIL + 1)); }
 else
   echo "FAIL: python3 missing, test-status_marker.py not run" >&2; FAIL=$((FAIL + 1))
 fi

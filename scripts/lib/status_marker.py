@@ -17,7 +17,8 @@ import sys
 _MARKER = re.compile(
     r"- (?:[0-9]{1,2}:[0-9]{2}[ \t\n\v\f\r]+)?(?:\*\*)?"
     r"(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)"
-    r"(?:[^A-Za-z0-9_].*)?"
+    r"(?:[^A-Za-z0-9_].*)?",
+    re.DOTALL,
 )
 
 
