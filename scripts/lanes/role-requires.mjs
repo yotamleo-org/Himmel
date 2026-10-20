@@ -4,7 +4,7 @@
 // them) and profile-context-probe.mjs (the live init event actually exposes
 // their skills/commands/agents). A profile with no row here is untested.
 export const ROLE_REQUIRES = {
-  // pstack@himmel is enabled by `user` too but cannot be listed here: all seven of its skills are
+  // pstack@himmel is enabled by `user` too but cannot be listed here: all of its skills are
   // disable-model-invocation, so none reaches the post-cap skill listing the probe checks.
   user: ['lean-skills@himmel'],
   design: ['plannotator-effective-html@himmel', 'frontend-design@claude-plugins-official',

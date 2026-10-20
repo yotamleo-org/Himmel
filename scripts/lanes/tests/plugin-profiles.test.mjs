@@ -751,8 +751,9 @@ test('no role requires a himmel plugin whose skills are all disable-model-invoca
     const dir = join(REPO_ROOT, 'marketplace', 'plugins', plugin, 'skills');
     if (!existsSync(dir)) return false;
     const skills = readdirSync(dir).map((s) => join(dir, s, 'SKILL.md')).filter((f) => existsSync(f));
-    return skills.length > 0 && skills.every((f) => /^disable-model-invocation:\s*true\s*$/m.test(readFileSync(f, 'utf8').split(/^---\s*$/m)[1] ?? ''));
+    return skills.length > 0 && skills.every((f) => /^disable-model-invocation:\s*["']?true["']?\s*$/m.test(readFileSync(f, 'utf8').split(/^---\s*$/m)[1] ?? ''));
   };
+  assert.ok(hidden('pstack'), 'positive control: the matcher must fire on the plugin that motivated this test');
   for (const [name, ids] of Object.entries(ROLE_REQUIRES)) {
     for (const id of ids) {
       const [plugin, marketplace] = id.split('@');
