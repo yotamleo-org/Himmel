@@ -42,7 +42,7 @@ for (const [fn, nnRaw, onRaw, nv, ov, want] of ROWS) {
   });
   test(`cli: ${label}`, () => {
     const r = spawnSync(process.execPath, [join(HERE, 'env-alias.mjs'), fn, nn, on], {
-      env: { PATH: process.env.PATH, ...rowEnv(nn, on, nv, ov) },
+      env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT, ...rowEnv(nn, on, nv, ov) },
       encoding: 'utf8',
     });
     assert.equal(r.status, Number(want), r.stderr);

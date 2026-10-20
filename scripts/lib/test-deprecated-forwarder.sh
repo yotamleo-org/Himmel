@@ -45,6 +45,7 @@ TARGET
 
 run() {  # run <rc> <args...>: prints nothing; fills ARGV_GOT, RC_GOT, OUT_GOT
   local rc="$1"; shift
+  : > "$T/argv"
   FWD_RC="$rc" FWD_ARGV="$T/argv" bash "$T/old-name.sh" "$@" < "$T/stdin" > "$T/out" 2> "$T/err"
   RC_GOT=$?
   ARGV_GOT=$(od -An -c "$T/argv")

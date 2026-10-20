@@ -54,7 +54,7 @@ class Rows(unittest.TestCase):
             with self.subTest(label, via="cli"):
                 r = subprocess.run(
                     [sys.executable, "-I", os.path.join(HERE, "env_alias.py"), fn, nn, on],
-                    env={"PATH": os.environ.get("PATH", ""), **env},
+                    env={"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), **env},
                     capture_output=True, text=True,
                 )
                 self.assertEqual(r.returncode, int(want), r.stderr)

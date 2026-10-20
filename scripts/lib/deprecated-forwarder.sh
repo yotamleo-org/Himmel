@@ -5,8 +5,9 @@
 # __NEW__ with the new script's path relative to this file's directory, and
 # drop this banner for a one-line note naming the replacement. It prints one
 # stderr line, then runs the new script with the same argv, stdin and stdout;
-# its exit code is the new script's. scripts/lib/test-deprecated-forwarder.sh
-# proves the pass-through.
+# its exit code is the new script's. The target always runs under bash, whatever
+# its shebang says, so copy this only for a bash target.
+# scripts/lib/test-deprecated-forwarder.sh proves the pass-through.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
