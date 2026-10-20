@@ -107,6 +107,11 @@
 # piling on. Knobs, all env:
 #
 #   SUITE_TIMEOUT      per-suite wall-clock cap, seconds (default 600)
+#   SUITE_STOP_ON_FAIL 1 = stop at the first failing suite and name every suite
+#                      still on this shard's list as not run (exit 1). ci.yml
+#                      sets it on pull_request only, so a red shard frees its
+#                      runner; push, schedule and dispatch leave it empty and
+#                      run everything, keeping a red attributable.
 #   SUITE_RUN_BUDGET   whole-run wall-clock cap, seconds (default 7200); the
 #                      runner stops BETWEEN suites once it is spent and names
 #                      what did not run, instead of running until morning
@@ -3420,6 +3425,13 @@ if [ "$list_only" -eq 0 ]; then
 fi
 
 pass=0 fail=0 skip=0 ran=0
+# SUITE_STOP_ON_FAIL=1: set once a suite has failed; the rest of this shard's
+# list is then recorded as stopped_suites instead of run. The value is read once
+# and cleared, so a suite that runs this runner itself never inherits the stop.
+stop_on_fail="${SUITE_STOP_ON_FAIL:-}"
+unset SUITE_STOP_ON_FAIL
+stopped=0
+stopped_suites=""
 # PASSING suites whose output holds a SKIP line. `skip` above is
 # the runner's own filter (SKIP_LIST, --skip-extra, tiers); this is a suite that
 # RAN, exited 0, and told us it skipped something — counted in `pass`, so the
@@ -4116,6 +4128,13 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
+  if [ "$stopped" -eq 1 ]; then
+    stopped_suites="${stopped_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
   # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
   # suite mid-assertion. Everything still on the list is named as unrun —
   # stopping quietly here would be the same false green the discovery guards
@@ -4358,9 +4377,10 @@ while IFS= read -r suite <&3; do
   fi
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
+  [ "$rc" -eq 0 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 done 3< "$suites_file"
 
-if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ]; then
+if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
   mkdir -p "$FAIL_LOG_DIR" && : > "$FAIL_LOG_DIR/.run-complete"
 fi
 
@@ -4405,6 +4425,9 @@ if [ "$cap_exceeded_clean" -gt 0 ]; then
   # in _suite_timeout_for first, but this is a heuristic over one line
   # convention, not proof of health (see the detector's own comment above).
   printf ' CAP EXCEEDED (assertions passing): %s\n' "$cap_exceeded_clean"
+fi
+if [ -n "$stopped_suites" ]; then
+  printf 'STOPPED: SUITE_STOP_ON_FAIL=1 — a suite failed, so these suites never ran:\n%s' "$stopped_suites" >&2
 fi
 if [ "$budget_expired" -eq 1 ]; then
   printf 'ERROR: run budget of %ss expired — these suites never ran:\n%s' \
@@ -4575,7 +4598,7 @@ if [ "$SUITE_ROTATE" != "0" ]; then
           "$SUITE_ROTATE_STATE" >&2
       fi
     fi
-  elif [ "$budget_expired" -eq 0 ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
+  elif [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
     # Same empty-path guard as above, for `rm -f ""` — a no-op in practice,
     # but the CLEARED-only comment above already draws the correct line, so
     # this stays consistent with it rather than relying on rm's leniency.
