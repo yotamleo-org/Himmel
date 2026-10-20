@@ -315,6 +315,21 @@ contains 'a leg whose lock is free still owns nothing, so its PR is flagged' "$o
 contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
 contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" 'unowned-prs=? ext-prs=?'
 contains '--verbose names unowned PRs' "$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --verbose)" 'unowned-prs: #3002:125m'
+# --- an orphan PR with a failed check is dispatch-owed: red CI has no other owner.
+# The 7th gh row field is the failed-check count; a pending/green orphan, an owned
+# red PR and a red draft keep today's output.
+rows_6358="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\\n' \
+    3011 feat/himmel-991-red-orphan false me false "$(iso_ago 125)" 1 \
+    3012 feat/himmel-992-pending-orphan false me false "$(iso_ago 125)" 0 \
+    3013 feat/himmel-111-red-owned false me false "$(iso_ago 125)" 2 \
+    3014 feat/himmel-993-red-draft true me false "$(iso_ago 125)" 1)"
+red_out="$(STUB_PR_ROWS="$rows_6358" bash "$SUT")"
+contains 'an orphan PR with a failed check is dispatch-owed (HIMMEL-6358)' "$red_out" '#3011:125m:dispatch-owed'
+contains 'a pending or green orphan stays a plain unowned PR' "$red_out" '#3012:125m '
+not_contains 'a pending or green orphan is not dispatch-owed' "$red_out" '#3012:125m:dispatch-owed'
+not_contains 'a red PR owned by a held lock is not flagged' "$red_out" '#3013:'
+not_contains 'a red draft is not flagged' "$red_out" '#3014:'
+contains '--verbose names the dispatch-owed PR' "$(STUB_PR_ROWS="$rows_6358" bash "$SUT" --verbose)" 'unowned-prs: #3011:125m:dispatch-owed'
 mkdir -p "$W/cloudbucket"
 printf '%s\n' '# console' > "$W/cloudbucket/console.md"
 printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"

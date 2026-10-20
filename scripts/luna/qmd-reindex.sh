@@ -231,6 +231,17 @@ run_embed() {
     done
 }
 
+# "pids: <pid> (<command>), ..." for a space-separated pid list: a bare pid is
+# gone by the time anyone reads the cron log, which is the only evidence kept.
+name_holders() {
+    local pid cmd out=""
+    for pid in $1; do
+        cmd=$(ps -o args= -p "$pid" 2>/dev/null | cut -c1-100 || true)
+        out="${out:+$out, }$pid (${cmd:-gone})"
+    done
+    printf 'pids: %s' "$out"
+}
+
 # Best-effort: who has the index (or its WAL side files) open right now, for
 # the busy log lines.
 index_holders() {
@@ -238,12 +249,12 @@ index_holders() {
     if command -v fuser >/dev/null 2>&1; then
         h=$(fuser "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | tr -s ' \n' ' ' || true)
         h="${h# }"; h="${h% }"
-        [ -z "$h" ] || { printf 'pids: %s' "$h"; return 0; }
+        [ -z "$h" ] || { name_holders "$h"; return 0; }
     fi
     if command -v lsof >/dev/null 2>&1; then
         h=$(lsof -t -- "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | sort -u | tr -s ' \n' ' ' || true)
         h="${h# }"; h="${h% }"
-        [ -z "$h" ] || { printf 'pids: %s' "$h"; return 0; }
+        [ -z "$h" ] || { name_holders "$h"; return 0; }
     fi
     printf 'unknown'
 }
