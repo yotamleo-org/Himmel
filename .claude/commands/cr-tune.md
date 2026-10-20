@@ -18,4 +18,9 @@ description: Mine the CR ledger for disproved classes per critic and draft citat
    ```
    It writes `<handover-root>/cr-tune/proposals-YYYY-MM-DD.md` (when step 4 already wrote that name today it writes `proposals-YYYY-MM-DD-standards.md` instead; a re-run replaces its own file). Read it first: review the lessons already learned (known-findings, this file) before a CR round re-finds them. Each class that recurred in the window gets exactly ONE target (lint or check, standard line, critic rule, CodeRabbit rule, rebuttal), and each promoted class shows its findings per week before and after promotion. A class whose rate did not fall is demoted to restructure (S5).
    Approval: `.coderabbit.yaml` and `critics.json` changes (the CodeRabbit rule and critic rule targets) are operator-approved; the catalog, lint and standard-line targets go through a console GO with an opus judge. A proposal expires after 14 days unbuilt and is REFIRED by the next run while its class keeps recurring. Detail: [`docs/internals/known-findings.md`](../../docs/internals/known-findings.md).
-6. Re-run note: the miner is read-only and idempotent; re-running after new /pr-check rounds refreshes the clusters.
+6. Deferred-escape classes: fixes whose root cause was a deferred review residual carry the `deferred-escape` label and the residual's `class-<id>` (written by `scripts/cr/mark-deferred-escape.sh`). Tally them:
+   ```bash
+   bash scripts/cr/escape-classes.sh
+   ```
+   Read the `top escape class:` line and propose ONE calibration change for that class: a tighter defer rule in `scripts/cr/critics.json` or `.coderabbit.yaml`, or a promotion on the known-findings ladder. A ticket listed as `unclassified` is reported as such and never assigned a class. Approval follows step 5: critic and CodeRabbit rules are operator-approved, a ladder promotion takes the catalog/lint/standard-line route (GO with an opus judge); write the proposal into the step 4 file, never apply it in this run.
+7. Re-run note: the miner is read-only and idempotent; re-running after new /pr-check rounds refreshes the clusters.
