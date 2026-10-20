@@ -846,6 +846,16 @@ rs_shopt32() {
     run_in_shiftdir "$1"
 }
 assert_rc "6014 a shell with no globstar keeps the deny" 2 "$(rs_shopt32 'cd sub && cat .en*')"
+# bash reads CDPATH in cd and GLOBIGNORE in compgen; zsh ignores GLOBIGNORE, and a
+# missing compgen (rc 127) is not "no match"
+mkdir -p "$SHIFTDIR/cdp/sub"
+run_in_cdp() { (cd "$SHIFTDIR/cdp" && printf '%s' "$(j_bash "$1")" | bash "$HOOK" >/dev/null 2>&1; echo "$?"); }
+assert_rc "6014 an exported CDPATH keeps the deny"        2 "$(CDPATH=$SHIFTDIR run_in_cdp 'cd sub && cat .en*')"
+assert_rc "6014 control: no CDPATH proves ./sub clean"    "$rs_proved" "$(run_in_cdp 'cd sub && cat .en*')"
+assert_rc "6014 an exported GLOBIGNORE keeps the deny"    2 "$(GLOBIGNORE=.env run_in_shiftdir 'cd sub && cat .en*')"
+# shellcheck disable=SC2329
+rs_nocompgen() { compgen() { return 127; }; export -f compgen; run_in_shiftdir "$1"; }
+assert_rc "6014 a shell with no compgen keeps the deny"   2 "$(rs_nocompgen 'cd empty && cat .en*')"
 assert_rc "6014 pushd -n leaves the read in a secret dir" 2 "$(run_in_shiftdir "cd sub && pushd -n $SHIFTDIR/empty && cat .en*")"
 assert_rc "6014 brace redirect reads a secret glob"     2 "$(run_in_shiftdir 'cd sub && { cat; } < .en*')"
 assert_rc "6014 subshell redirect reads a secret glob"  2 "$(run_in_shiftdir 'cd sub && (cat) < .en*')"

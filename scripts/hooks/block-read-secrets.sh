@@ -575,6 +575,12 @@ rs_ast_proves_safe() {
     pats=$(printf '%s' "$pos" | jq -r '[.[] | (.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g) | .v] | unique | .[]') ||
         { RS_AST_WHY='the model output could not be read'; return 1; }
     [ -n "$pats" ] || return 0
+    # bash searches an inherited CDPATH before ./sub, so the cd this proof
+    # resolves can land elsewhere than the shell that runs the command
+    if [ -n "${CDPATH:-}" ]; then
+        RS_AST_WHY='an exported CDPATH can redirect a cd this proof resolves from here'
+        return 1
+    fi
     dirs=$(printf '%s' "$pos" | jq -c '[.[] | select(any(.argv[], (.redirs[] | .w // empty); .t == "lit" and .g)) | (.cwd + .ecwd)[]] | unique | .[]') ||
         { RS_AST_WHY='the model output could not be read'; return 1; }
     while IFS= read -r chain; do
@@ -585,12 +591,14 @@ rs_ast_proves_safe() {
             pwd -P
         ) || { RS_AST_WHY='a cd target that does not resolve from here'; return 1; }
         while IFS= read -r pat; do
-            # compgen -G exits 1 on no match, so only a failed setup step fails the proof;
-            # bash 3.2 has no globstar to unset
+            # compgen -G exits 1 on no match, so a failed setup step or an rc above 1
+            # (a missing compgen is 127) fails the proof; bash 3.2 has no globstar to
+            # unset, and zsh ignores GLOBIGNORE, which would hide a match here
             ms=$(
                 cd -- "$d" && shopt -s dotglob nocaseglob && shopt -u failglob nullglob || exit 3
                 shopt -u globstar 2>/dev/null
-                compgen -G "$pat"
+                unset GLOBIGNORE
+                compgen -G "$pat" || [ "$?" -le 1 ] || exit 3
                 exit 0
             ) || { RS_AST_WHY="the glob $pat could not be expanded in $d"; return 1; }
             while IFS= read -r m; do
