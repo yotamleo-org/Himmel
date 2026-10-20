@@ -2164,7 +2164,7 @@ mkdir -p "$W/vd-mirror"
 cat > "$W/ciguard-probe.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'x\n' >> "${STUB_CIG_CALLS:-/dev/null}"
-n="$(wc -l < "${STUB_CIG_CALLS:-/dev/null}" | tr -d '[:space:]')"
+n="$(wc -l < "${STUB_CIG_CALLS:-/dev/null}" | tr -d '[:space:]')"  # read-sink-ok: test stub counting its own call file
 if [ "${n:-1}" -le 1 ]; then printf '%s\n' "$STUB_CIG_OUT"; else printf '%s\n' "${STUB_CIG_OUT2:-$STUB_CIG_OUT}"; fi
 [ -z "${STUB_CIG_SLEEP:-}" ] || sleep "$STUB_CIG_SLEEP"
 STUB
