@@ -124,14 +124,16 @@ def shell_launches(text):
     errors = []
     # Require the owned runner path at the call site, never a mutable binding.
     command = 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
-    # Fail closed: any reference to a hook-like variable, and any variable an
-    # interpreter or exec/source runs, is a launch unless it sits after a
-    # wrapper's `--` or is one of the listed non-launch uses.
+    # Fail closed: any reference to a hook-like variable, and any variable run
+    # directly by bash/sh/dash/zsh/ksh/env/python/exec/source/dot, is a launch
+    # unless it sits after a wrapper's `--` or is one of the listed non-launch
+    # uses. Other launch verbs (eval, command, timeout, nohup, xargs, a bare
+    # "$T") are caught only when the variable is hook-named.
     name = r'[A-Za-z_0-9]*hook[A-Za-z_0-9]*'
     reference = re.compile(r'\$\{?' + name, re.I)
     runs_variable = re.compile(
         r'(?:\b(?:bash|sh|dash|zsh|ksh|env|python3?|exec|source)|(?<![\w$.])\.)\s+'
-        r'(?:(?:[^\s$`"\'();|&]+|"[^"$`]*")\s+)*["\']?(?P<ref>\$)')
+        r'(?:(?:[^\s$`"\'();|&]|"[^"$`]*")+\s+)*["\']?(?P<ref>\$)')
     # The one shared lib the owned suites source, by its exact path expression.
     lib_source = '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"'
     ref = r'["\']?\$\{?' + name
