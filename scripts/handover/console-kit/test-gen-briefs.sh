@@ -227,6 +227,15 @@ python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$
 lacks "a claudex leg with no model key passes no native model argument" "$(cat "$WORK/b20/launch-N901.sh")" "claude-sonnet-5-5"
 lacks "a claudex leg with no model key leaves the lane default to headed-arm-leg" "$(cat "$WORK/b20/launch-N901.sh")" "gpt-6.1-sol"
 has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMMEL-9001-N901-*.md)" "gpt-6.1-sol, claudex"
+# A claudex leg's named model is the launcher's trailing model argument, and headed-arm-leg.sh hands it to
+# scripts/claude-codex as CODEX_MODEL: the launcher's own arguments, run as a dry run.
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-astra.json"
+python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --console BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
+has "a claudex leg with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-leg.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
+mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
+rc=0; astra_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --lane claudex --profile leg-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-leg.sh rc=$rc: $astra_out"
+has "and the named model reaches the leg as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 # An effort key exports LEG_EFFORT in the launcher.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-effort.json"
 python3 "$SUT" "$WORK/lane-effort.json" --base 4ccb59d --console BZ --bucket "$WORK/b21" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
