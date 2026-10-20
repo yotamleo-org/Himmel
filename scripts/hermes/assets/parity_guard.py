@@ -1974,22 +1974,25 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     # Pending-CR marker lock: independent of the engine fence below, so a
     # trusted engine cannot open a PR over an unfinished review. EVERY
     # `gh pr create` is judged in its own directory: only a cd before a call
-    # moves it, one after it must not.
-    joined = _join_continuations_commented(raw_cmd)
-    pr_calls = [(m.start(), m) for m in GH_PR_CREATE.finditer(joined)]
-    if not pr_calls and (GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(joined))):
-        pr_calls = [(len(joined), None)]
-    for start, pr_m in pr_calls:
-        pr_dir = _commit_dir(joined[:start], _agent_cwd(payload, args), None)
-        if pr_dir:
-            try:
-                heads = _pr_head_branches(joined, pr_m) if pr_m else []
-            except ValueError:
-                block("The `gh pr create` arguments cannot be parsed to find "
-                      "their --head — refused fail-closed.")
-            reason = _pending_cr_reason(pr_dir, heads)
-            if reason:
-                block(reason)
+    # moves it, one after it must not. The command is read under both joins (a
+    # comment keeps its newline in one, a quote or heredoc the scanner cannot
+    # model cannot hide a line break in the other); either finding blocks.
+    joins = {_join_continuations(raw_cmd), _join_continuations_commented(raw_cmd)}
+    for joined in sorted(joins):
+        pr_calls = [(m.start(), m) for m in GH_PR_CREATE.finditer(joined)]
+        if not pr_calls and (GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(joined))):
+            pr_calls = [(len(joined), None)]
+        for start, pr_m in pr_calls:
+            pr_dir = _commit_dir(joined[:start], _agent_cwd(payload, args), None)
+            if pr_dir:
+                try:
+                    heads = _pr_head_branches(joined, pr_m) if pr_m else []
+                except ValueError:
+                    block("The `gh pr create` arguments cannot be parsed to find "
+                          "their --head — refused fail-closed.")
+                reason = _pending_cr_reason(pr_dir, heads)
+                if reason:
+                    block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh
     # PR-mutation / network CLIs unless the engine is an affirmed trusted
     # main tier (fail-closed on an unknown engine).

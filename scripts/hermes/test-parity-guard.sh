@@ -650,6 +650,10 @@ gcr "gh pr create <(echo;# )) --head feat/w (comment after a semicolon in a proc
 gcr "gh pr create --body \"a # b \\<newline>c\" --head feat/y (hash inside a string is no comment), refused" block $'gh pr create --body "a # b \\\nc" --head feat/y'
 gcr "gh pr create --body \"a # b \\<newline>c\" --head feat/w (hash inside a string is no comment), allowed" allow $'gh pr create --body "a # b \\\nc" --head feat/w'
 gcr "gh pr create --title a\\ #b \\<newline>--head feat/y (escaped space makes no comment), refused" block $'gh pr create --title a\\ #b \\\n--head feat/y'
+gcr "echo \$'it\\'s'; gh pr create --title t \\<newline>--head feat/y (ANSI-C quote before a continuation), refused" block $'echo $\'it\\\'s\'; gh pr create --title t \\\n--head feat/y'
+gcr "echo \$'it\\'s'; gh pr create --title t \\<newline>--head feat/w (ANSI-C quote before a continuation), allowed" allow $'echo $\'it\\\'s\'; gh pr create --title t \\\n--head feat/w'
+gcr "cat <<EOF with an apostrophe, then gh pr create --title t \\<newline>--head feat/y (heredoc before a continuation), refused" block $'cat <<EOF\nit\'s\nEOF\ngh pr create --title t \\\n--head feat/y'
+gcr "cat <<EOF with an apostrophe, then gh pr create --title t \\<newline>--head feat/w (heredoc before a continuation), allowed" allow $'cat <<EOF\nit\'s\nEOF\ngh pr create --title t \\\n--head feat/w'
 }
 rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
 # Each `gh pr create` is judged in ITS OWN directory: the first one's dir used
