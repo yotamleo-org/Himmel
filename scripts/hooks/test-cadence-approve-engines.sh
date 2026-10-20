@@ -126,8 +126,8 @@ assert "python3 interpreter"         ALLOW "$(decide "$(j_bash "python3 \"${ABS}
 assert "variable vault arg (unprovable, now refused)" PASS "$(decide "$(j_bash 'python "'"${ABS}"'" "$VAULT"')")"
 assert "flag after script"           ALLOW "$(decide "$(j_bash "python \"${ABS}\" --json vault")")"
 assert "engine alone (no vault arg)" ALLOW "$(decide "$(j_bash "python \"${ABS}\"")")"
-assert "cd && engine"                ALLOW "$(decide "$(j_bash "cd /himmel && python \"${ABS}\" vault")")"
-assert "pushd && engine"             ALLOW "$(decide "$(j_bash "pushd /himmel && python \"${ABS}\" vault")")"
+assert "cd && engine"                ALLOW "$(decide "$(j_bash "cd \"${ROOT_MIXED}\" && python \"${ABS}\" vault")")"
+assert "pushd && engine"             ALLOW "$(decide "$(j_bash "pushd \"${ROOT_MIXED}\" && python \"${ABS}\" vault")")"
 
 # --- PASS: the grant stays narrow (this is the test that keeps the fix honest) ---
 assert "wrong script"                PASS "$(decide "$(j_bash 'python /tmp/evil.py vault')")"
@@ -676,6 +676,95 @@ fi
 # JSON payload on stdin must still be read and decided as before.
 assert "normal invocation (no flag) untouched by the new flag" ALLOW \
     "$(decide "$(j_bash "python \"${ABS}\" vault")")"
+
+# --- nav, symlink and model-download containment ---
+# (1) cd is granted only into the vault (session cwd) or this checkout.
+assert "6449 cd outside vault + relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd /tmp && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into vault + engine" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${VAULT_FIXTURE_MIXED}\" && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into this checkout + engine" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${ROOT_MIXED}\" && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd - (OLDPWD) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd - && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into vault subdir (re-roots relative args) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd real && python \"${ABS}\" escape2/notes" "$VAULT_FIXTURE")")"
+assert "6449 cd outside vault, no session cwd -> refused" PASS \
+    "$(decide "$(j_bash "cd /tmp && python \"${ABS}\" vault")")"
+# (2) a symlinked dir inside the vault must not carry a path out of it.
+OUTSIDE_FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/cadence-outside.XXXXXX") || exit 1
+OUTSIDE_FIXTURE=$(canon_path "$OUTSIDE_FIXTURE") || { echo "setup: canon_path failed for the outside fixture" >&2; exit 1; }
+trap 'rm -f "$EMPTY_ROOT_HOOK" "$CYGLESS_HOOK"; rm -rf "$SPACED_ROOT" "$VAULT_FIXTURE" "$FAKE_HOME" "$OUTSIDE_FIXTURE"' EXIT
+mkdir -p "$VAULT_FIXTURE/real"
+ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/escape"
+ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/real/escape2"
+assert "6449 symlinked dir as relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" escape/notes" "$VAULT_FIXTURE")")"
+assert "6449 symlinked dir as absolute arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"${VAULT_FIXTURE}/real/escape2\"" "$VAULT_FIXTURE")")"
+assert "6449 cd into vault + relative arg through a nested symlink -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd \"${VAULT_FIXTURE_MIXED}\" && python \"${ABS}\" real/escape2/notes" "$VAULT_FIXTURE")")"
+assert "6449 cd through symlinked dir -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd escape && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 real vault subdir arg still granted" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" real" "$VAULT_FIXTURE")")"
+assert "6449 not-yet-existing vault path still granted" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" real/new/dir" "$VAULT_FIXTURE")")"
+# (3) --whisper-model: a known faster-whisper size name or an existing vault dir.
+assert "6449 --whisper-model org/repo (HF download) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model evil/model" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model unknown bare name -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model evilmodel" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model large-v3 (known size)" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model large-v3" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model existing vault dir" ALLOW \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model real" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model=org/repo (joined form) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model=evil/model" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 --whisper-model size name shadowed by a vault symlink -> refused" PASS \
+    "$(mkdir -p "$VAULT_FIXTURE/shadow" && ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/shadow/tiny" && decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" \"${VAULT_FIXTURE_MIXED}/shadow\" --whisper-model tiny" "$VAULT_FIXTURE_MIXED/shadow")")"
+# A cd into the checkout re-roots later relative args there, so a symlink in the checkout must not carry one out.
+ln -s "$OUTSIDE_FIXTURE" "$SPACED_ROOT/esc"
+assert "6449 cd into checkout + arg through a checkout symlink -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ABS}\" esc/notes" "$VAULT_FIXTURE")")"
+assert "6449 cd into checkout + plain relative arg still granted" ALLOW \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 argumentless cd (goes to HOME) + relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 argumentless pushd + relative arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "pushd && python \"${ABS}\" vault" "$VAULT_FIXTURE")")"
+assert "6449 cd into checkout, cd . then arg through a checkout symlink -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd . && python \"${SPACED_ABS}\" esc/notes" "$VAULT_FIXTURE")")"
+ln -s "$OUTSIDE_FIXTURE" "$SPACED_ROOT/tiny"
+assert "6449 cd into checkout + --whisper-model size name shadowed by a checkout symlink -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model tiny" "$VAULT_FIXTURE_MIXED")")"
+# Non-space whitespace splits argv in bash but not in the hook's space tokeniser.
+TAB=$(printf '\t')
+assert "6449 tab-joined vault token carrying --whisper-model evil/model -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${IG_MEDIA_FETCH_ABS}\" vault${TAB}--whisper-model${TAB}evil/model" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 tab-joined vault token carrying an outside path -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" vault${TAB}/tmp/outside" "$VAULT_FIXTURE_MIXED")")"
+# After cd into the checkout the model dir is judged where bash will look for it.
+mkdir -p "$VAULT_FIXTURE/vonly" || { echo "setup: mkdir vonly failed" >&2; exit 1; }
+# In a pipeline the engine keeps the session cwd, so a dir that exists only under the checkout must not pass either.
+assert "6449 cd into checkout piped to engine + --whisper-model dir existing only in the checkout -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model scripts" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd checkout && piped cd vault, engine runs in the checkout + vault-only model dir -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd \"${VAULT_FIXTURE_MIXED}\" | python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
+mkdir -p "$VAULT_FIXTURE/vo/nly" || { echo "setup: mkdir vo/nly failed" >&2; exit 1; }
+assert "6449 cd checkout || cd vault + slash-shaped vault-only model dir (the cd can be skipped) -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" || cd \"${VAULT_FIXTURE_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vo/nly" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd checkout && cd vault + slash-shaped vault-only model dir -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && cd \"${VAULT_FIXTURE_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vo/nly" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd into checkout + --whisper-model dir existing only in the vault -> refused" PASS \
+    "$(decide_with_hook "$SPACED_HOOK" "$(j_bash_cwd "cd \"${SPACED_ROOT_MIXED}\" && python \"${SPACED_ROOT_MIXED}/${IG_MEDIA_FETCH_ENG}\" \"${VAULT_FIXTURE_MIXED}\" --whisper-model vonly" "$VAULT_FIXTURE_MIXED")")"
+assert "6449 cd target with a backslash (bash drops it) -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "cd ${VAULT_FIXTURE_MIXED}\\. && python \"${ABS}\" vault" "$VAULT_FIXTURE_MIXED")")"
+# (5) bare python / python3 on a non-enumerated or relative script.
+assert "6449 bare python, no script" PASS "$(decide "$(j_bash "python")")"
+assert "6449 python3 non-enumerated script" PASS "$(decide "$(j_bash "python3 /tmp/evil.py vault")")"
+assert "6449 python3 relative engine path" PASS "$(decide "$(j_bash "python3 ${ENG} vault")")"
+assert "6449 python3 -c" PASS "$(decide "$(j_bash "python3 -c \"import os\"")")"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "OK cadence-approve-engines: all cases passed"

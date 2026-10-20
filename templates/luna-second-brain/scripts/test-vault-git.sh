@@ -356,13 +356,13 @@ UNEXCLUDED_FIXTURE
   assert_eq "D17 RETASK-nonce note IS in committed tree" "1" \
     "$(git_in "$VC" ls-tree -r HEAD --name-only | grep -c 'retask-token\.md' || true)"
 
-  # D18-D19: a near-miss of the SAME shape — two trailing
-  # letters on the leg number, which no real leg number ever carries (verified
-  # against the live handover corpus) — must still be blocked. The widened
-  # regex must not have opened the anchor past one optional trailing letter.
+  # D18-D19: a near-miss of the SAME shape — a four-letter console prefix,
+  # outside the handover-token grammar's [A-Z]{1,3} (docs/internals/
+  # handover-token-grammar.md) — must still be blocked: the grammar rule is
+  # anchored, so a token one character off it is scanned like any other value.
   # Same printf-argument split as D16, for the same reason.
   d18_before=$(git_in "$VC" rev-parse HEAD)
-  printf 'retask-token: %s\n' 'V-N236bb-1d281f74' >"$VC/30-Resources/retask-token-nearmiss.md"
+  printf 'retask-token: %s\n' 'VVVV-N236b-1d281f74' >"$VC/30-Resources/retask-token-nearmiss.md"
   d18_out=$( (cd "$VC" && LUNA_VAULT_AUTOSYNC=1 bash "$VC/scripts/vault-autosync.sh") 2>&1 ); d18_rc=$?
   assert_nz "D18 RETASK-nonce near-miss (double letter) still blocked (non-zero)" "$d18_rc"
   # pipefail-ok note (known-findings grep-q-pipe-under-pipefail): captured

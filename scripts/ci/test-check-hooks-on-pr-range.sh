@@ -257,16 +257,16 @@ job_has_full_fetch() {
     END { exit !found }' "$1"
 }
 CI="$REPO_ROOT/.github/workflows/ci.yml"
-for job in commit-lint doc-invariants; do
-  job_has_full_fetch "$CI" "$job"; rc=$?
-  expect "ci.yml $job pins fetch-depth: 0" 0 "$rc" "$job"
-  # the fixture is the real job block with its fetch-depth line removed
-  fx="$(mk)/ci.yml"
-  grep -v -E "^[[:space:]]*fetch-depth:[[:space:]]*0[[:space:]]*(#.*)?$" "$CI" > "$fx"
-  job_has_full_fetch "$fx" "$job"; rc=$?
-  expect "ci.yml without fetch-depth: 0 fails the pin ($job)" 1 "$rc" "$job"
-  rm -rf "$(dirname "$fx")"
-done
+# commit-lint and doc-invariants run as step groups of ci-quick
+job=ci-quick
+job_has_full_fetch "$CI" "$job"; rc=$?
+expect "ci.yml $job pins fetch-depth: 0" 0 "$rc" "$job"
+# the fixture is the real job block with its fetch-depth line removed
+fx="$(mk)/ci.yml"
+grep -v -E "^[[:space:]]*fetch-depth:[[:space:]]*0[[:space:]]*(#.*)?$" "$CI" > "$fx"
+job_has_full_fetch "$fx" "$job"; rc=$?
+expect "ci.yml without fetch-depth: 0 fails the pin ($job)" 1 "$rc" "$job"
+rm -rf "$(dirname "$fx")"
 
 echo
 if [ "$failures" -gt 0 ]; then echo "$failures FAILED"; exit 1; fi

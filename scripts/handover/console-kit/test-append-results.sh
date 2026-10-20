@@ -26,6 +26,11 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/append-results-test.XXXXXX")" || { echo "FAIL:
 trap 'rm -rf "$tmp"' EXIT
 tmp="$(cd "$tmp" && pwd)"
 fails=0
+# bucket-gitleaks.sh scans every bullet against the vault's config: point it
+# at a temp vault holding the template's.
+mkdir -p "$tmp/vault/.git"
+cp "$HERE/../../../templates/luna-second-brain/.gitleaks.toml" "$tmp/vault/.gitleaks.toml"
+export TICK_VAULT_DIR="$tmp/vault"
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
 
@@ -141,6 +146,30 @@ for real in LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-BANK RESUM
 done
 rc=0; bash "$SCRIPT" "$d9" "A single capital then prose" >/dev/null 2>&1 || rc=$?
 check "9: a one-letter lead is prose, appends" "$rc" 0
+
+# --- 10. a bullet gitleaks would refuse in the vault is refused before the write ---
+if command -v gitleaks >/dev/null 2>&1; then
+    d10="$tmp/d10.md"
+    printf '# leg\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d10"
+    lock_tok="cachyos-x8664""-pid2124755"
+    rc=0; bash "$SCRIPT" "$d10" "LIVE — release-token: \`$lock_tok\`, base 96101f2c32c0ca668ba9e1e5f3415cb14db9572e" >/dev/null 2>&1 || rc=$?
+    check "10: a grammar token and a sha append rc 0" "$rc" 0
+    cp "$d10" "$tmp/d10.before"
+    key="AKIA""Z4X7Q2M3KDLPW3NB"
+    rc=0; err="$(bash "$SCRIPT" "$d10" "FINDING aws_access_key_id = $key" 2>&1 >/dev/null)" || rc=$?
+    check "10: a secret-shaped bullet is refused rc 7" "$rc" 7
+    contains "10: the refusal carries the reword hint" "$err" "reword the bullet"
+    case "$err" in *"$key"*) echo "FAIL - 10: the refusal echoes the secret"; fails=$((fails+1)) ;; *) echo "ok - 10: the refusal never echoes the secret" ;; esac
+    cmp -s "$d10" "$tmp/d10.before" && echo "ok - 10: refused doc unchanged" || { echo "FAIL - 10: refused doc unchanged"; fails=$((fails+1)); }
+else
+    echo "ok - 10: skipped (gitleaks not installed)"
+fi
+mkdir -p "$tmp/badgl"
+printf '#!/bin/sh\nexit 3\n' > "$tmp/badgl/gitleaks"; chmod +x "$tmp/badgl/gitleaks"
+d10b="$tmp/d10b.md"
+printf '# leg\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d10b"
+rc=0; PATH="$tmp/badgl:$PATH" bash "$SCRIPT" "$d10b" "READY unscanned" >/dev/null 2>&1 || rc=$?
+check "10: an unusable gitleaks still appends rc 0" "$rc" 0
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
