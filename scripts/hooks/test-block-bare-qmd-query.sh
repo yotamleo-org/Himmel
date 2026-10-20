@@ -1136,6 +1136,33 @@ deny "grep -h 'qmd query' commands.txt | perl -ne 'readpipe(\$_)'"
 deny "grep -h 'qmd query' commands.txt | ruby -ne 'spawn(\$_)'"
 allow "grep -h 'qmd query' commands.txt | perl -ne 'print'"
 
+# A command that never runs qmd is no business of the guard. The fail-closed
+# text tests read qmd and a search verb as words, not as substrings of a file
+# name (block-bare-qmd-query.sh), a host name (research) or a path.
+allow "cd /repo && JIRA_PROJECT_KEY=HIMMEL timeout 60 node scripts/jira/dist/index.js search 'block-bare-qmd-query' | head; sed -n 1,40p scripts/hooks/block-bare-qmd-query.sh | rtk proxy grep -n -E 'qmd|grep|case|=~'"
+allow "sed -n 1,40p scripts/hooks/block-bare-qmd-query.sh | rtk proxy grep -n -E 'qmd|grep|case|=~'"
+allow "node scripts/jira/dist/index.js search 'qmd-notes' | python3 -c 'import sys; print(sys.stdin.read())'"
+allow "cat scripts/lib/qmd-search-notes.sh | sh"
+allow "ssh research qmd status"
+# A duration is timeout's operand, so the program after it is read as the
+# program and its for-bound arguments are data, not a program position.
+allow 'for f in a b; do timeout 60 chromium --headless --disable-gpu --no-sandbox --window-size=1200,1500 --screenshot=/tmp/$f.png file:///tmp/$f.html; done'
+allow 'for f in a b; do timeout 60 chromium /tmp/$f.html; done'
+allow 'for f in a b; do timeout 2m chromium /tmp/$f.html; done'
+# The same shapes stay refused where qmd is the word run, or the program after
+# the duration is itself a dynamic word.
+deny 'for f in a b; do timeout 60 qmd query /tmp/$f.html; done'
+deny 'for f in tmux x; do timeout 60 $f new -d "qmd query x"; done'
+deny 'for f in a b; do timeout -k 5 60 $f /tmp/x; done'
+deny "bash scripts/lib/qmd-bounded.sh query -c luna x | sh"
+deny "cat scripts/lib/qmd_search_notes.sh | sh"
+deny "ssh research 'qmd query x'"
+deny "tmux new -s research 'qmd search x'"
+deny "tmux new -s research 'qmd.ts query x'"
+deny "ssh host bun /opt/qmd/src/cli/qmd.ts query x"
+deny "ssh host '~/.bun/bin/qmd vsearch x'"
+deny "ssh host bunx @tobilu/qmd search x"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0
