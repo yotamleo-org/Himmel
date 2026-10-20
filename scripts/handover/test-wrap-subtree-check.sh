@@ -67,7 +67,10 @@ FIX
 
 # /proc stand-in: <pid>/cwd symlinks. A pid with no cwd link has an unreadable cwd.
 mkdir -p "$W/proc"
-setcwd() { mkdir -p "$W/proc/$1"; ln -s "$2" "$W/proc/$1/cwd"; }
+setcwd() {
+    mkdir -p "$W/proc/$1" || { fail "fixture setup: mkdir for pid $1 failed"; return 1; }
+    ln -s "$2" "$W/proc/$1/cwd" || { fail "fixture setup: cwd link for pid $1 -> $2 failed"; return 1; }
+}
 
 run() { # run <fixture> [args...] — SUT under the hermetic seams, self = 901
     local fx="$1"; shift

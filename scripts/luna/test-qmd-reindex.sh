@@ -457,6 +457,27 @@ assert_contains "persistent update lock is explicit" "'qmd update' failed" "$out
 assert_contains "persistent update lock names the lock" "index still busy after" "$out"
 assert_not_contains "no embed attempted while the index stays locked" "embed" "$(calls)"
 
+echo "TEST: the busy log names each lock holder by pid AND command, not a bare pid"
+reset_state
+mkdir -p "$HOME/.cache/qmd"
+: > "$HOME/.cache/qmd/index.sqlite"
+holder_cmd="$TMP_ROOT/qmd-holder-probe"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nexec 9< "$1"\nsleep 30\n' > "$holder_cmd"
+chmod +x "$holder_cmd"
+"$holder_cmd" "$HOME/.cache/qmd/index.sqlite" &
+holder_pid=$!
+sleep 1
+echo -1 > "$STATE/busy-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+pkill -P "$holder_pid" 2>/dev/null || true
+kill "$holder_pid" 2>/dev/null || true
+wait "$holder_pid" 2>/dev/null || true
+rm -f "$HOME/.cache/qmd/index.sqlite"
+assert_rc "named-holder case still rc 3" 3 "$rc"
+assert_contains "busy line names the holder pid" "$holder_pid (" "$out"
+assert_contains "busy line names the holder command" "qmd-holder-probe" "$out"
+
 echo "TEST: a non-BUSY 'qmd update' failure is not retried"
 reset_state
 touch "$STATE/fail-update"
