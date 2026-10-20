@@ -324,6 +324,7 @@ echo "== part 3: workflow static assertions =="
 
 # wf_violations <yaml> — one line per violation, nothing when clean.
 # Comments are stripped first so prose explaining a rule never trips the rule.
+OWNER_IF="    if: github.event.pull_request.user.login != 'yotamleo'"
 wf_violations() {
   local f="$1" s
   s="$TMP/stripped.yml"
@@ -374,9 +375,12 @@ wf_violations() {
   grep -qE '^[[:space:]]*cancel-in-progress:[[:space:]]*true' "$s" && echo "has cancel-in-progress: true"
   # Collapse duplicate runs BEFORE they create jobs. With
   # cancel-in-progress: false and no `queue: max`, a newer pending run replaces
-  # an older pending one. A job-level `if:` skip is forbidden: a skipped job
-  # reports success under the required context and masks an earlier red run.
-  grep -qE '^    if:' "$s" && echo "job-level if: on the required job (a skip masks a red run)"
+  # an older pending one. The only job-level `if:` allowed is the owner-only
+  # skip: rule (a) passes the admin owner before any review is read, so a
+  # SKIPPED (success) context is the result the job would produce. Any other
+  # skip reports success under the required context and masks a red run.
+  grep -E '^    if:' "$s" | grep -vxF "$OWNER_IF" | grep -q . && echo "job-level if: on the required job (a skip masks a red run)"
+  grep -qxF "$OWNER_IF" "$s" || echo "owner-only job-level if: is missing"
   grep -qE '^[[:space:]]*queue:' "$s" && echo "has queue: (pending runs must be replaced, not queued)"
   grep -qE '^[[:space:]]*cancel-in-progress:[[:space:]]*false' "$s" || echo "cancel-in-progress: false is missing"
   return 0
@@ -407,6 +411,7 @@ concurrency:
 jobs:
   gate:
     name: codeowner-review-gate
+    if: github.event.pull_request.user.login != 'yotamleo'
     runs-on: ubuntu-latest
     steps:
       - name: Fetch
@@ -443,6 +448,8 @@ mutate "cancel-in-progress restored" "has cancel-in-progress" 's/cancel-in-progr
 mutate "cancel-in-progress dropped"  "cancel-in-progress: false is missing" '/cancel-in-progress/d'
 mutate "queue: max restored"         "has queue:"          's/^  cancel-in-progress: false/  cancel-in-progress: false\n  queue: max/'
 mutate "a job-level if: skip"        "job-level if"        's/^    name: codeowner-review-gate$/    name: codeowner-review-gate\n    if: github.event.action != '"'"'edited'"'"'/'
+mutate "a widened owner skip"        "job-level if"        "s/!= 'yotamleo'\$/!= 'yotamleo11-test'/"
+mutate "a dropped owner skip"        "owner-only job-level if: is missing" '/^    if: github.event.pull_request.user.login/d'
 # shellcheck disable=SC2016  # the literal $BASE_REF text must reach sed
 mutate "a default-branch exemption" "404/bootstrap"       's|^    steps:|    steps:\n      - run: test "$BASE_REF" = "$DEFAULT_BRANCH"|'
 mutate "a step gated on the fetch"   "404/bootstrap"       's|^    steps:|    steps:\n      - if: steps.fetch.outputs.present == '"'"'true'"'"'\n        run: true|'

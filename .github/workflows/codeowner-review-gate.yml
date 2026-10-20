@@ -41,8 +41,11 @@ permissions:
 # (a burst of body edits and bot reviews queued dozens of runs during an
 # Actions stall). With cancel-in-progress: false GitHub keeps one running and
 # one pending run per group; a newer pending run replaces an older PENDING one
-# before it creates any job. No job-level `if:` skip either: a skipped job
-# reports success under the required context and would mask a red run.
+# before it creates any job. The one job-level `if:` skips the owner's own PRs:
+# rule (a) passes the admin owner before any review is read, so the SKIPPED
+# (success) context is the result the job would produce, and body edits and
+# bot reviews start no runner. Any wider skip reports success under the
+# required context and would mask a red run.
 concurrency:
   group: codeowner-review-gate-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -50,6 +53,7 @@ concurrency:
 jobs:
   gate:
     name: codeowner-review-gate
+    if: github.event.pull_request.user.login != 'yotamleo'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
