@@ -63,6 +63,8 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 [ "$_QMDBIN_LIB_DIR" = "${BASH_SOURCE[0]}" ] && _QMDBIN_LIB_DIR=.
 # shellcheck source=scripts/lib/qmd-bounded.sh
 . "$_QMDBIN_LIB_DIR/qmd-bounded.sh"
+# shellcheck source=scripts/lib/qmd-daemon-env.sh
+. "$_QMDBIN_LIB_DIR/qmd-daemon-env.sh"  # t13b-ok: sources the key loader, starts nothing
 
 # Fork config -- overridable per call (env var set before sourcing/calling).
 # ponytail: carried fork until tobi/qmd#1030 merges (or tobi/qmd main gains
@@ -806,6 +808,24 @@ _qmd_egress_ok() {
       done <"$cfg"
       [ "$found" -eq 0 ] || return 0 ;;
   esac
+  # the provider key is the daemon's: a CLI call reads it from the same env file, else
+  # the fork sends no Authorization header and OpenRouter answers 401.
+  # No file key: a session key still counts, but an OpenRouter config with neither refuses here.
+  local sess_key="${QMD_OPENAI_API_KEY:-}" key_rc=0
+  qmd_daemon_key_load "$cfg" || key_rc=$?  # t13b-ok: calls the key loader, starts nothing
+  if [ "$key_rc" -eq 10 ]; then
+    echo "qmd-bin: $QMD_KEY_FILE_PATH holds the provider key but is readable by others - qmd not started (chmod 600 it)." >&2
+    return 10
+  elif [ "$key_rc" -eq 11 ]; then
+    if [ -n "$sess_key" ]; then
+      QMD_OPENAI_API_KEY="$sess_key"
+      export QMD_OPENAI_API_KEY
+    else
+      echo "qmd-bin: an OpenRouter config but no provider key - qmd not started. Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_KEY_FILE_PATH." >&2
+      return 10
+    fi
+  fi
+  sess_key=""
   gate="$_QMDBIN_LIB_DIR/../qmd/qmd-jina-gate.mjs"
   if [ ! -f "$gate" ] || ! command -v node >/dev/null 2>&1; then
     echo "qmd-bin: a remote model is configured but the egress gate or node is missing - qmd not started." >&2
