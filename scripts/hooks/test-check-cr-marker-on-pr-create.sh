@@ -493,7 +493,10 @@ for gneg_cmd in \
     'gh --repo a/b pr view --head feat/X' \
     'gh -R a/b pr newest --head feat/X' \
     'gh --repo a/b release create --head feat/X' \
-    'gh api -X POST pr create --head feat/X'
+    'gh api -X POST pr create --head feat/X' \
+    'gh --version; echo pr create --head feat/X' \
+    'gh --version && echo pr new --head feat/X' \
+    'gh --version | grep pr create --head feat/X'
 do
     run_hook "$gneg_cmd"
     if [ "$rc" -eq 0 ]; then

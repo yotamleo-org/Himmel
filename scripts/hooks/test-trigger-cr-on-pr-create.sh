@@ -747,7 +747,10 @@ for gneg_cmd in \
     'gh --repo a/b pr view 12' \
     'gh -R a/b pr newest' \
     'gh --repo a/b release create v1' \
-    'gh api -X POST pr create'
+    'gh api -X POST pr create' \
+    'gh --version; echo pr create' \
+    'gh --version && echo pr new' \
+    'gh --version | grep pr create'
 do
     reset_state
     run_hook "$gneg_cmd" "https://github.com/acme/widget/pull/2202"
