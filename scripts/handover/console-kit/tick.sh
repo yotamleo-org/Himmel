@@ -1382,7 +1382,7 @@ wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans"
 wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
 case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
 if [ -f "$wto_probe" ]; then
-    if [ -f "$wto_cache" ] && [ -n "$(find "$wto_cache" -mmin "-$wto_ttl" 2>/dev/null)" ]; then  # swallow-ok: an unreadable cache age reads stale, so the tick reads afresh
+    if [ -s "$wto_cache" ] && [ -n "$(find "$wto_cache" -mmin "-$wto_ttl" 2>/dev/null)" ]; then  # swallow-ok: an unreadable cache age reads stale, so the tick reads afresh
         wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
     else
         wto_rc=0
@@ -1390,7 +1390,7 @@ if [ -f "$wto_probe" ]; then
         if [ "$wto_rc" -gt 1 ]; then
             wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
         elif [[ "$wto_out" != *SWEEP-ERROR* ]]; then
-            mkdir -p "${wto_cache%/*}" 2>/dev/null && printf '%s\n' "$wto_out" > "$wto_cache" 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a fresh read
+            mkdir -p "${wto_cache%/*}" 2>/dev/null && printf '%s\n' "$wto_out" > "$wto_cache.$$" 2>/dev/null && mv -f "$wto_cache.$$" "$wto_cache" 2>/dev/null || rm -f "$wto_cache.$$" 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a fresh read; the rename keeps a concurrent tick from reading a half-written cache
         fi
     fi
     case "$wto_out" in
