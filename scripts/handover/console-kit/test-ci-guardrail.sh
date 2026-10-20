@@ -135,6 +135,10 @@ mkdir -p "$W/live"
 out="$(TICK_STATE_DIR="$W/live" bash "$SUT" --runs "$W/h151.json" --now "$NOW" 2>&1)"
 contains 'a replay without --state-dir still alerts' "$out" 'ALERT runs-h=151>150'
 [ ! -e "$W/live/tick-ciguard-state" ] && pass 'a replay without --state-dir writes no live state' || fail 'a replay wrote the live state file'
+printf '%s\n' 'cancels' > "$W/live/tick-ciguard-state"
+out="$(TICK_STATE_DIR="$W/live" bash "$SUT" --runs "$W/h151.json" --now "$NOW" 2>&1)"
+contains 'a replay alerts whatever the live state holds' "$out" 'ALERT runs-h=151>150'
+[ "$(cat "$W/live/tick-ciguard-state" 2>/dev/null)" = cancels ] && pass 'a replay leaves an existing live state file as it was' || fail 'a replay rewrote or removed the live state file'
 
 # --- unknown never changes the state
 fresh
