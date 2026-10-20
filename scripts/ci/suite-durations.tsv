@@ -326,6 +326,7 @@ scripts/handover/console-kit/test-action-zero.sh	4
 scripts/handover/console-kit/test-append-results.sh	0
 scripts/handover/console-kit/test-board.sh	15
 scripts/handover/console-kit/test-brief-lint.sh	3
+scripts/handover/console-kit/test-ci-guardrail.sh	3
 scripts/handover/console-kit/test-close-wrapped-leg.sh	20
 scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1

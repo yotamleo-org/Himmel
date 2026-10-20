@@ -308,6 +308,7 @@ scripts/handover/console-kit/test-append-results.sh	local	behaviour suite, 0 cat
 scripts/handover/console-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/console-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-close-wrapped-leg.sh	pr	trust-path
 scripts/handover/console-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/console-kit/test-console-budget.sh	pr	static-gate
