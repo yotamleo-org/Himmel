@@ -400,12 +400,17 @@ cat > "$P3/s3.jsonl" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"h","name":"Read","input":{"file_path":"/r/docs/other.md"}}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"i","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"zzz"}]}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"i","content":"{\"results\":[]}"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"j","name":"mcp__qmd__multi_get","input":{"pattern":"himmel/docs/*.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"j","content":"[Resource from qmd at qmd://himmel/docs/glob.md] 1: x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"k","name":"Read","input":{"file_path":"/r/docs/glob.md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"l","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"yyy"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"l","content":"{\"results\": []}"}]}}
 EOF
 py "$EV" census --projects "$W/projects3" --days 0 --out "$W/census3.json" > /dev/null 2>&1
 c3() { py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"][sys.argv[2]])' "$W/census3.json" "$1"; }
-eq "census: qmd get and multi_get (either prefix) are counted" "4" "$(c3 qmd_calls)"
-eq "census: only the empty results envelope fails; a body with error: and is_error false does not" "1 0" "$(c3 qmd_failed) $(c3 graphify_failed)"
-eq "census: a README.md in another directory is not used; get is used by its input path (worktree read)" "1" "$(c3 qmd_used)"
+eq "census: qmd get and multi_get (either prefix) are counted" "6" "$(c3 qmd_calls)"
+eq "census: only an empty results envelope (any spacing) fails; a body with error: and is_error false does not" "2 0" "$(c3 qmd_failed) $(c3 graphify_failed)"
+eq "census: a README.md in another directory is not used; get is used by its input path, a glob multi_get by its result headers" "2" "$(c3 qmd_used)"
 eq "census: graphify answer with error: in the body is used when its file is read" "1" "$(c3 graphify_used)"
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"

@@ -625,7 +625,8 @@ SWEEP = re.compile(r"(?:^|[;&|(\n]\s*)(?:git\s+grep\b|grep\s+-\w*[rR]|rg\s|find\
 QMD_BASH = re.compile(r"(?:qmd-bounded\.sh|(?:^|[;&|(\n]\s*)qmd)\s+(?:query|search|vsearch)\b")
 GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|leg-graph\.sh)\s+(?:query|explain)\b")
 PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s\]]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
-QMD_TOOL = re.compile(r"^mcp__(?:plugin_qmd_)?qmd__(?:query|get|multi_get)$")
+RESOURCE = re.compile(r"\[Resource from [^\]]*?qmd://[^/\s\]]+/([^\s\]]+)\]")
+QMD_TOOL =re.compile(r"^mcp__(?:plugin_qmd_)?qmd__(?:query|get|multi_get)$")
 FEATURE = re.compile(r"qmd|graphify|retrieval|graph-|semantic", re.I)
 
 
@@ -696,16 +697,24 @@ def kind_of(cl):
 
 def failed(cl):
     r = cl["result"].strip()
-    return cl["error"] or not r or r in ("[]", "{}", '{"results":[]}')
+    if cl["error"] or not r:
+        return True
+    try:
+        d = json.loads(r)
+    except ValueError:
+        return False
+    return d in ([], {}) or (isinstance(d, dict) and d.get("results") == [])
 
 
 def result_paths(cl):
     """Paths a retrieval call surfaced; a qmd path also counts without its leading collection name."""
     qmd = cl["name"].startswith("mcp__")
     if qmd and not cl["name"].endswith("__query"):
-        # get/multi_get echo the document body, which names unrelated paths: the input names the documents.
+        # get/multi_get echo the document body, which names unrelated paths: the input and the
+        # per-document "[Resource from ...]" headers (a glob pattern expands there) name the documents.
         inp = cl["input"]
         found = [x.strip() for x in str(inp.get("file") or inp.get("pattern") or "").split(",")]
+        found += RESOURCE.findall(cl["result"])
     else:
         found = [next(g for g in m.groups() if g) for m in PATHS.finditer(cl["result"])]
     paths = set(found)
