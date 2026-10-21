@@ -665,13 +665,13 @@ py_out="$STATE_DIR/auto-arm-py-out"
 # no lift: both windows keep $THRESHOLD, exactly as before (fail-open).
 FH_THRESHOLD="$THRESHOLD"
 SD_THRESHOLD="$THRESHOLD"
-_lift_lib="$hook_dir/../lib/bank-lift.sh"
-[ -r "$_lift_lib" ] || _lift_lib="$project_dir/scripts/lib/bank-lift.sh"
-# shellcheck source=../lib/bank-lift.sh
+_lift_lib="$hook_dir/../lib/usage-lift.sh"
+[ -r "$_lift_lib" ] || _lift_lib="$project_dir/scripts/lib/usage-lift.sh"
+# shellcheck source=../lib/usage-lift.sh
 # shellcheck disable=SC1091
-if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null && bank_lift_valid "$CACHE_PATH" 2>/dev/null; then
+if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null && usage_lift_valid "$CACHE_PATH" 2>/dev/null; then
     SD_THRESHOLD=100
-    if [ "${BANK_LIFT_STANDING:-}" = true ] && [ -z "${CADENCE_BANK_MAX_PCT:-}" ]; then FH_THRESHOLD=100; fi
+    if [ "${USAGE_LIFT_STANDING:-}" = true ] && [ -z "${CADENCE_BANK_MAX_PCT:-}" ]; then FH_THRESHOLD=100; fi
 fi
 set +e
 py_armor - "$CACHE_PATH" "$THRESHOLD" "$FH_THRESHOLD" "$SD_THRESHOLD" <<'PY' >"$py_out" 2>"$py_err"

@@ -266,6 +266,8 @@ contains 'a held-lock leg doc marks its ticket live with label, phase and PR (HI
 not_contains 'a WRAPPED leg is not live even while its lock lingers (HIMMEL-3990)' "$html6" '"6":["N56"'
 not_contains 'a leg doc with no held lock is not live (HIMMEL-3990)' "$html6" '"7":["N57"'
 contains 'a marker-shaped brief bullet above Results sets neither phase nor PR (HIMMEL-3990)' "$html6" '"9":["N59","LIVE",null]'
+printf '%s\n' '# leg' '## Results' '- 08:00 LIVE — started' '- 08:30 PARKED-USAGE — committed, waiting for RESUME' > "$W/parked-usage-leg.md"
+contains 'a PARKED-USAGE tail is the leg phase, not the earlier LIVE' "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import tracker; print(tracker.leg_marker(sys.argv[2])[0])' "$HERE" "$W/parked-usage-leg.md")" 'PARKED-USAGE'
 contains 'a wrapped leg counts toward what its ticket took: [legs, wall, active, dated]; a gap over 3 h is idle, not active (HIMMEL-5453)' "$html6" '"ACT":{"6":[2,280,40,2]'
 contains 'a timestamped line above ## Results is not counted as work (HIMMEL-4441)' "$html6" '"8":[1,10,10,1]'
 contains 'the actuals carry the newest wrapped-leg doc stamp (HIMMEL-4930)' "$html6" '"ATS":"20'

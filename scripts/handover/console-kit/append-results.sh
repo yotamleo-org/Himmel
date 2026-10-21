@@ -80,9 +80,9 @@ esac
 case "$is_leg:$lead" in
     1:??*)
         case "$lead" in
-            LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED|CONSULT|CONSULT-ANSWER|ANSWER|SUCCESSION|MAIN-RED|PARK-BANK) ;;
+            LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|CONSULT|CONSULT-ANSWER|ANSWER|SUCCESSION|MAIN-RED|PARK-BANK) ;;
             *)
-                echo "append-results: '$lead' is not in the marker vocabulary (LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-BANK RESUMED) - refusing" >&2
+                echo "append-results: '$lead' is not in the marker vocabulary (LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-USAGE PARKED-BANK RESUMED) - refusing" >&2
                 exit 6 ;;
         esac ;;
 esac

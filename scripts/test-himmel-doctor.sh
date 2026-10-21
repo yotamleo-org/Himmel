@@ -72,7 +72,7 @@ export CODEX_HOME=""
 HIMMEL_DOCTOR_NOOP_HANDOVER="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-tests-handover.XXXXXX")"
 export HANDOVER_DIR="$HIMMEL_DOCTOR_NOOP_HANDOVER"
 # Never inspect the operator's bank policy in unrelated doctor fixtures.
-export BANK_LIFT_FILE="$HIMMEL_DOCTOR_NOOP_HANDOVER/no-lift.json"
+export USAGE_LIFT_FILE="$HIMMEL_DOCTOR_NOOP_HANDOVER/no-lift.json"; unset BANK_LIFT_FILE
 
 # Hermeticity: C14 reads OLLAMA_NO_CLOUD from the live env — never let an
 # inherited value from the launching shell leak into the default test runs.
@@ -4150,14 +4150,19 @@ echo "== C34: configured lift reports validation reason =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-lift.XXXXXX")" || exit 1
 c32_fixture_base "$t"
 mkdir -p "$t/scripts/lib" "$t/home/.himmel/state"
-cp "$REPO_ROOT/scripts/lib/bank-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$t/scripts/lib/"
+cp "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$t/scripts/lib/"
+printf '%s' '{broken' > "$t/home/.himmel/state/usage-lift.json"
+chmod 600 "$t/home/.himmel/state/usage-lift.json"
+out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
+if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 explains malformed lift"; else fail "C34 missing invalid lift reason"; fi
+chmod 666 "$t/home/.himmel/state/usage-lift.json"
+out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
+if grepq "$out" -F 'lift set but INVALID: trust'; then pass "C34 explains untrusted lift"; else fail "C34 missing trust reason"; fi
+rm -f "$t/home/.himmel/state/usage-lift.json"
 printf '%s' '{broken' > "$t/home/.himmel/state/bank-lift.json"
 chmod 600 "$t/home/.himmel/state/bank-lift.json"
-out="$(BANK_LIFT_FILE="$t/home/.himmel/state/bank-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
-if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 explains malformed lift"; else fail "C34 missing invalid lift reason"; fi
-chmod 666 "$t/home/.himmel/state/bank-lift.json"
-out="$(BANK_LIFT_FILE="$t/home/.himmel/state/bank-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
-if grepq "$out" -F 'lift set but INVALID: trust'; then pass "C34 explains untrusted lift"; else fail "C34 missing trust reason"; fi
+out="$( (unset USAGE_LIFT_FILE BANK_LIFT_FILE; CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home") )"
+if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 still reads the old bank-lift.json"; else fail "C34 ignored the old bank-lift.json"; fi
 rm -rf "$t"
 
 echo "== C34: everything wired (real copies of the 3 target files) -> all three rows OK =="

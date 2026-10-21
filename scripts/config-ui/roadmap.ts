@@ -13,7 +13,7 @@ const TREND_ROWS = 30;
 const NO_THEME = "(no theme)";
 const THEME_PREFIX = "theme-"; // the Jira label `theme-<slug>`, read before the plan overlay
 const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-const STUCK = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK"]);
+const STUCK = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK", "PARKED-USAGE"]);
 const CLEARING = new Set(["LIVE", "RESUMED", "RESOLVED", "READY", "WRAPPED"]);
 const NOTED = new Set(["READY", "WRAPPED"]);
 // tracker.py BUCKETS: the status NAME decides, the category only a name not listed.

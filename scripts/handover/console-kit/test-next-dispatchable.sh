@@ -477,6 +477,9 @@ has "fix1: a ticket on a file named only in READ ONLY prose is listed" "$f1" "HI
 lacks "fix1: a ticket on a live leg's write scope is held" "$f1" "HIMMEL-703	"
 has "fix1: a ticket on a file after Other live legs is listed" "$f1" "HIMMEL-704	"
 lacks "fix1: a directory scope with prose in parentheses still holds the directory" "$f1" "HIMMEL-705	"
+# shellcheck disable=SC2016
+printf '# parked\n> **Scope / do not:** writes confined to `scripts/lib/wrapped-held.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 12:00 WRAPPED - merged\n- 13:00 PARKED-USAGE - relaunched, waiting for RESUME\n' > "$LEGW"
+lacks "a PARKED-USAGE tail after an old WRAPPED still holds the leg's files" "$(run20)" "HIMMEL-701	"
 
 # --- fix 2: a ticket a live leg or an open PR already owns is not offered ---
 M21="$WORK/jira-mirror21/HIMMEL"; mkdir -p "$M21"

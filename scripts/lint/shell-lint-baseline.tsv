@@ -702,7 +702,6 @@ scripts/lanes/stop-worker.sh	gnu-flag	1
 scripts/lanes/stop-worker.sh	prim-tmpdir	1
 scripts/lib/bank-attribution.sh	errexit	1
 scripts/lib/bank-attribution.sh	prim-tmpdir	1
-scripts/lib/bank-lift.sh	prim-atomic	1
 scripts/lib/bank-monitor.sh	prim-atomic	2
 scripts/lib/branch-shipped.sh	mktemp	1
 scripts/lib/claude-headless.sh	prim-lock	4
@@ -799,6 +798,7 @@ scripts/lib/unwire-luna-vault.sh	errexit	1
 scripts/lib/unwire-pretooluse-hooks.sh	errexit	1
 scripts/lib/unwire-statusline.sh	errexit	1
 scripts/lib/unwire-user-claude-md.sh	errexit	1
+scripts/lib/usage-lift.sh	prim-atomic	1
 scripts/lib/wire-handover-dir.sh	errexit	1
 scripts/lib/wire-himmel-repo.sh	errexit	1
 scripts/lib/wire-luna-vault.sh	errexit	1

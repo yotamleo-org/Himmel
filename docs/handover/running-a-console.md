@@ -575,16 +575,16 @@ means the cache is still the old account's — refresh again, or check the login
 
 **4. Confirm the weekly budget override voided itself.** An override is bound to the
 account that set it, so it is no override under the new login; only the operator can
-set one (`bank-lift.sh set`). Verify:
+set one (`usage-lift.sh set`, old name `bank-lift.sh`). Verify:
 
 ```bash
-bash scripts/lib/bank-lift.sh show
+bash scripts/lib/usage-lift.sh show
 ```
 
-Expect `bank-lift: INVALID: account` after an account switch. Other invalid
+Expect `usage-lift: INVALID: account` after an account switch. Other invalid
 reasons are `expired`, `window`, `trust`, `parse` (or `missing` when unset).
 The doctor reports `lift set but INVALID: <reason>`. A stale file is harmless
-and can be removed with `bash scripts/lib/bank-lift.sh clear`.
+and can be removed with `bash scripts/lib/usage-lift.sh clear`.
 
 A one-window weekly budget override skips only the weekly ceiling; `five_hour` still binds.
 Whole-second reset values tolerate up to one second of fractional API jitter,
@@ -592,7 +592,7 @@ not a different weekly window. Only the operator can enable the standing
 "spend to 100 %" policy:
 
 ```bash
-bash scripts/lib/bank-lift.sh set --standing
+bash scripts/lib/usage-lift.sh set --standing
 ```
 
 It records `standing:true` in the same operator-only, account-bound override file

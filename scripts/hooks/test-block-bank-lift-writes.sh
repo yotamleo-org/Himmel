@@ -245,7 +245,7 @@ if [ "$got" = 2 ]; then ok "jq missing denies"; else bad "jq missing denies — 
 echo "== deny message names the operator remedy =="
 err=$(printf '%s' "$(bash_json "bash $S set")" | bash "$HOOK" 2>&1 >/dev/null)
 case "$err" in
-    *'! bash scripts/lib/bank-lift.sh set'*) ok "remedy named in deny" ;;
+    *'! bash scripts/lib/usage-lift.sh set'*) ok "remedy named in deny" ;;
     *) bad "remedy missing from deny: $(printf '%s' "$err" | head -c 200)" ;;
 esac
 
@@ -339,6 +339,61 @@ row "rsync -aR state dir into ~"       deny "rsync -aR .himmel/state ~"
 row "rsync -a --relative state dir into \$HOME" deny "rsync -a --relative .himmel/state \$HOME"
 row "cp --parents other path into ~ (allow)" allow "cp --parents docs/x.md ~"
 row "cd; cp --parents state-dir file (writes no lift, allow)" allow "cd /tmp && cp --parents .himmel/state/x.json overlord"
+
+echo "== usage-lift.json / usage-lift.sh are the lift too, the old names stay fenced (HIMMEL-6639) =="
+: > "$REPO/scripts/lib/usage-lift.sh"
+printf '{}\n' > "$T/src/usage-lift.json"
+ln -s "$ST/usage-lift.json" "$T/ufilelink"
+# shellcheck disable=SC2088  # the literal ~ is the spelling under test
+UP='~/.himmel/state/usage-lift.json'
+UL="$ST/usage-lift.json"
+US=scripts/lib/usage-lift.sh
+row "usage: redirect >"            deny "echo '{}' > $UP"
+row "usage: tee"                   deny "printf '{}' | tee $UP"
+row "usage: cp"                    deny "cp $T/src/usage-lift.json $UP"
+row "usage: mv rename-replace"     deny "mv /tmp/b.json $UP"
+row "usage: ln -s src (alias)"     deny "ln -s $UP /tmp/alias.json"
+row "usage: sed -i"                deny "sed -i 's/1/2/' $UP"  # gnu-ok: a command string the hook reads, never run
+row "usage: sed w command"         deny "sed -n 'w $UL' /tmp/x.json"
+row "usage: dd of="                deny "dd if=/tmp/x.json of=$UP"
+row "usage: python3 one-liner"     deny "python3 -c \"open('$UL','w').write('{}')\""
+row "usage: curl -o"               deny "curl -s -o $UP https://example.invalid/x"
+row "usage: \$HOME"                deny "echo x > \$HOME/.himmel/state/usage-lift.json"
+row "usage: relative from state/"  deny "echo x > usage-lift.json" "$ST"
+row "usage: glob usage-l?ft.json"  deny "echo x > ~/.himmel/state/usage-l?ft.json"
+row "usage: case USAGE-LIFT.JSON"  deny "echo x > ~/.himmel/state/USAGE-LIFT.JSON"
+row "usage: quote split 'usage'-lift" deny "echo x > ~/.himmel/state/'usage'-lift.json"
+row "usage: file symlink → lift"   deny "echo x > $T/ufilelink"
+row "usage: cp lift-named file into state/" deny "cp $T/src/usage-lift.json ~/.himmel/state/"
+row "usage: cd state; cp lift-named src ." deny "cd ~/.himmel/state && cp /tmp/usage-lift.json ."
+row "usage: cp --parents into ~"   deny "cp --parents .himmel/state/usage-lift.json ~"
+row "usage: bash set"              deny "bash $US set"
+row "usage: direct set"            deny "$US set"
+row "usage: source set"            deny "source $US set"
+row "usage: glob usage-l?ft.sh set" deny "bash scripts/lib/usage-l?ft.sh set"
+row "usage: quoted script path"    deny "bash 'scripts/lib/usage'-lift.sh set"
+row "usage: sourced function"      deny "source $US; _usage_lift_cmd set"
+row "usage: copy of usage-lift.sh (alias)" deny "cp $US /tmp/x.sh"
+row "usage: python heredoc naming usage-lift.sh" deny "python3 - <<'EOF'
+import subprocess; subprocess.run(['bash','scripts/lib/usage-lift.sh','set'])
+EOF"
+tool_row "usage: Write lift"       deny  Write file_path "$UL"
+tool_row "usage: Edit lift"        deny  Edit file_path "$UL"
+tool_row "usage: Write via dir symlink" deny Write file_path "$T/dirlink/usage-lift.json"
+row "usage: show"                  allow "bash $US show"
+row "usage: clear"                 allow "bash $US clear"
+row "usage: cat the lift"          allow "cat $UP"
+row "usage: commit msg names set"  allow "git commit -m 'docs: usage-lift.sh set is operator-only'"
+row "usage: write lift-named file elsewhere" allow "echo x > /tmp/x/usage-lift.json"
+row "usage: lookalike name"        allow "echo x > ~/.himmel/state/usage-lift.json.bak"
+row "usage: test suite name"       allow "bash scripts/lib/test-usage-lift.sh"
+row "old name still fenced: redirect" deny "echo x > ~/.himmel/state/bank-lift.json"
+row "old name still fenced: set"   deny "bash scripts/lib/bank-lift.sh set"
+err=$(printf '%s' "$(bash_json "bash $US set")" | bash "$HOOK" 2>&1 >/dev/null)
+case "$err" in
+    *'! bash scripts/lib/usage-lift.sh set'*) ok "usage: remedy names usage-lift.sh" ;;
+    *) bad "usage: remedy names usage-lift.sh: $(printf '%s' "$err" | head -c 200)" ;;
+esac
 
 echo "== tokenizer failure denies =="
 mkdir -p "$T/noawk"

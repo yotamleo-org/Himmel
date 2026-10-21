@@ -36,16 +36,16 @@ B="$W/bucket"
 mkdir -p "$B" "$W/bin" "$W/repo"
 # the failures panel reads these ledgers; never the operator's own.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
-# the bank lift row reads the lift's `show` output through this stub,
-# never the operator's lift file or account. BANK_LIFT_STUB_OUT is a fixture file
+# the usage lift row reads the lift's `show` output through this stub,
+# never the operator's lift file or account. USAGE_LIFT_STUB_OUT is a fixture file
 # of `show` output; unset prints the no-lift output.
-cat > "$W/bin/bank-lift-stub" <<'STUB'
+cat > "$W/bin/usage-lift-stub" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = show ] || exit 2
-if [ -n "${BANK_LIFT_STUB_OUT:-}" ]; then cat "$BANK_LIFT_STUB_OUT"; else printf 'bank-lift: none\nbank-lift: INVALID: missing\n'; fi
+if [ -n "${USAGE_LIFT_STUB_OUT:-}" ]; then cat "$USAGE_LIFT_STUB_OUT"; else printf 'usage-lift: none\nusage-lift: INVALID: missing\n'; fi
 STUB
-chmod +x "$W/bin/bank-lift-stub"
-export BOARD_BANK_LIFT="$W/bin/bank-lift-stub"
+chmod +x "$W/bin/usage-lift-stub"
+export BOARD_USAGE_LIFT="$W/bin/usage-lift-stub"
 # Session transcripts (console cost, succession eval) come from BOARD_TRANSCRIPTS: an
 # empty dir here, so no row ever reads the operator's own ~/.claude/projects.
 mkdir -p "$W/tx-none"
@@ -271,6 +271,19 @@ ow_html="$(run_ow 0)"
 lacks 'zero orphans adds no orphan row' "$(ow_panel "$ow_html")" 'data-orphan'
 ow_html="$(run_ow '?')"
 lacks 'an unknown orphan read adds no orphan row' "$(ow_panel "$ow_html")" 'data-orphan'
+# a parked tail, under either marker name, is the PARKED-USAGE phase.
+cat > "$W/bin/tick-stub-park" <<'STUB'
+#!/usr/bin/env bash
+"$(dirname "$0")/tick-stub" "$@" | sed "s/N7:BLOCKED/N7:$TICK_STUB_PARK/"
+STUB
+chmod +x "$W/bin/tick-stub-park"
+for park in PARKED-USAGE PARKED-BANK; do
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-park" TICK_STUB_PARK="$park" TICK_ARGV_LOG="$W/argv-park.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --out "$W/park-board.html" >/dev/null 2>"$W/stderr.log"
+    contains "a $park tail reads the PARKED-USAGE phase" "$(cat "$W/park-board.html")" 'data-label="N7" data-phase="PARKED-USAGE"'
+done
 # a ';' inside parentheses does not split a decision.
 DOCD="$B/HIMMEL-nextleg-2026-09-21V-console-d.md"
 sed 's/^decisions: .*/decisions: A (x; y); B?/' "$DOC" > "$DOCD"  # gnu-ok: console kit is Linux-only
@@ -822,28 +835,38 @@ contains 'and reads gh unavailable' "$(cat "$W/p-board.html")" 'gh unavailable'
 # --- bank lift: the lift's `show` output, read-only -- the same
 # reason source as the doctor's C34 row. Not part of the fingerprint; never fatal.
 BL="$W/bank-lift-show.txt"
-bl_html() { BANK_LIFT_STUB_OUT="$1" mrun >/dev/null; rc=$?; cat "$M/board.html"; }
+bl_html() { USAGE_LIFT_STUB_OUT="$1" mrun >/dev/null; rc=$?; cat "$M/board.html"; }
 html="$(bl_html '')"
 same 'bank lift: no lift renders, rc 0' "$rc" "0"
 contains 'bank lift: no lift reads "no lift set"' "$html" '<p class="sub" data-bank-lift="none">weekly budget override: no lift set</p>'
 for reason in expired account window trust parse; do
-    printf '{\n  "window": "seven_day",\n  "until": 1791000000\n}\nbank-lift: INVALID: %s\n' "$reason" > "$BL"
+    printf '{\n  "window": "seven_day",\n  "until": 1791000000\n}\nusage-lift: INVALID: %s\n' "$reason" > "$BL"
     contains "bank lift: a set lift that is INVALID shows its reason ($reason)" "$(bl_html "$BL")" \
         "<p class=\"sub\" data-bank-lift=\"invalid\">weekly budget override: lift set but INVALID: $reason</p>"
 done
-printf '{\n  "window": "seven_day",\n  "until": 1791000000,\n  "standing": false,\n  "account": "0123456789abcdef"\n}\nbank-lift: VALID\n' > "$BL"
+printf '{\n  "window": "seven_day",\n  "until": 1791000000,\n  "standing": false,\n  "account": "0123456789abcdef"\n}\nusage-lift: VALID\n' > "$BL"
 html="$(TZ=UTC bl_html "$BL")"
 contains 'bank lift: a valid window lift shows its until' "$html" '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · window</p>'
 lacks 'bank lift: the account hash never reaches the board' "$html" '0123456789abcdef'
-printf '{"window":"seven_day","until":1791000000,"standing":true}\nbank-lift: VALID\n' > "$BL"
+printf '{"window":"seven_day","until":1791000000,"standing":true}\nusage-lift: VALID\n' > "$BL"
 contains 'bank lift: a valid standing lift says standing' "$(TZ=UTC bl_html "$BL")" \
     '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · standing</p>'
-printf 'bank-lift: INVALID: <b>x</b>\n' > "$BL"
+printf 'usage-lift: INVALID: <b>x</b>\n' > "$BL"
 contains 'bank lift: an unexpected reason is escaped' "$(bl_html "$BL")" 'INVALID: &lt;b&gt;x&lt;/b&gt;'
 printf 'garbage\n' > "$BL"
 contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">weekly budget override: unavailable</p>'
-html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
+html="$(BOARD_USAGE_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
+# The old bank-lift: prefix and the old BOARD_BANK_LIFT seam still read.
+printf '{"window":"seven_day","until":1791000000,"standing":true}\nbank-lift: VALID\n' > "$BL"
+contains 'usage lift: the old bank-lift: prefix still reads VALID' "$(TZ=UTC bl_html "$BL")" \
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · standing</p>'
+printf 'bank-lift: none\nbank-lift: INVALID: missing\n' > "$BL"
+contains 'usage lift: the old bank-lift: none still reads no lift' "$(bl_html "$BL")" 'data-bank-lift="none">weekly budget override: no lift set</p>'
+html="$( (unset BOARD_USAGE_LIFT; export BOARD_BANK_LIFT="$W/bin/usage-lift-stub"; mrun >/dev/null; cat "$M/board.html") )"
+contains 'usage lift: BOARD_BANK_LIFT alone still names the script' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
+html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
+contains 'usage lift: BOARD_USAGE_LIFT wins over BOARD_BANK_LIFT' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
 
 # --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real
