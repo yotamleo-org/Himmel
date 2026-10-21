@@ -874,7 +874,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
 
   it('refuses the override when there is no ledger location, rather than writing elsewhere', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    delete process.env['HANDOVER_DIR'];
+    process.env['HANDOVER_DIR'] = join(dir, 'missing');
     await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/HANDOVER_DIR/);
     expect(created()).toBeUndefined();
   });

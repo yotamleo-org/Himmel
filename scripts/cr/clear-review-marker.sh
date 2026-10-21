@@ -61,6 +61,10 @@
 #      — including `sug`, which gate 4 never blocks on. `amend`
 #      records are applied first, same as gate 4. A cleared head must carry a
 #      decision for every finding, not just crit|imp.
+#   4e. A lane=full marker needs, on a branch with `score` rows, a
+#      `preflight` row (/pr-check step 2.8) stamped before the first `score`
+#      row. The docs-audit lane and a branch whose first `score` row predates
+#      the gate are exempt (reason=missing-preflight).
 #   4d. Every finding stamped with this branch whose effective verdict is
 #      agreed or fixed, at ANY round head, has a class-sweep record in
 #      <git-common-dir>/cr-class-sweeps/<branch> (written by
@@ -1438,6 +1442,48 @@ case "$missing_sweep" in
         audit "REFUSED reason=class-sweep-unreadable branch=$branch sha=$tip path=$git_dir/cr-class-sweeps/$branch"
         exit 14 ;;
 esac
+
+# 4e. Pre-round lessons pass (/pr-check step 2.8). A lane=full
+# marker on a branch whose ledger holds `score` rows (a panel round ran) needs
+# a `preflight` row stamped before its first `score` row, so known finding
+# classes are closed before a critic spends a round. The docs-audit lane owes
+# no pass. A branch whose first `score` row predates PREFLIGHT_GATE_SINCE (or
+# carries no ts) was in flight when this gate shipped and is exempt. Rows are
+# matched on the branch stamp, so a legacy unstamped row never counts either
+# way. Read-only, so it runs under --dry-run too.
+# ponytail: the cutoff is a constant, not a ledger-recorded ship date. Upgrade
+# path: drop it once no in-flight branch predates it.
+if [ "$marker_lane" = "full" ]; then
+    preflight_verdict=$(LEDGER="$ledger" BRANCH="$branch" PREFLIGHT_GATE_SINCE="2026-10-22T00:00:00Z" node -e '
+      const fs = require("fs"), e = process.env;
+      const rows = fs.existsSync(e.LEDGER)
+          ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
+      const t = (r) => Date.parse(r.ts);
+      let firstScore = Infinity, firstPreflight = Infinity, bad = 0;
+      for (const l of rows) {
+          let r;
+          try { r = JSON.parse(l); } catch { continue; }
+          if (!r || r.branch !== e.BRANCH) continue;
+          if (r.kind === "score") firstScore = Math.min(firstScore, Number.isNaN(t(r)) ? -Infinity : t(r));
+          else if (r.kind === "preflight" && !Number.isNaN(t(r))) firstPreflight = Math.min(firstPreflight, t(r));
+      }
+      const since = Date.parse(e.PREFLIGHT_GATE_SINCE);
+      console.log(firstScore === Infinity || firstScore < since || firstPreflight < firstScore ? "ok" : "missing");' 2>/dev/null || echo "error")
+    case "$preflight_verdict" in
+        ok) ;;
+        missing)
+            echo "clear-cr-marker: $branch has critic score rows but no pre-round lessons pass — /pr-check step 2.8 (the known-findings preflight) was skipped, so known finding classes reached the panel. Refusing." >&2
+            echo "  Run: bash scripts/cr/known-findings.sh --diff --area   (close every hit: fixed, waived or checked)" >&2
+            echo "  Then record it: bash scripts/cr/ledger-append.sh preflight --head $tip --duration-secs <s> --hit <class>=fixed|checked|waived:<reason>   (a clean pass is the same call with no --hit)" >&2
+            echo "  The row must be stamped BEFORE the branch's first score row. If a panel round already ran without it, a row recorded now does not satisfy this gate: ask the console." >&2
+            audit "REFUSED reason=missing-preflight branch=$branch sha=$tip"
+            exit 14 ;;
+        *)
+            echo "clear-cr-marker: could not evaluate the pre-round lessons pass from $ledger — refusing closed." >&2
+            audit "REFUSED reason=preflight-unreadable branch=$branch sha=$tip"
+            exit 14 ;;
+    esac
+fi
 
 # 4c. Branch-wide still-open gate. Gate 4b above only sees the
 # TIP; a finding left unadjudicated (or un-re-raised after an `agreed`) at an

@@ -35,7 +35,8 @@ describe('admissions ledger (HIMMEL-6776)', () => {
     expect(readFileSync(join(dir, 'x.jsonl'), 'utf8')).toContain('HIMMEL-1');
   });
 
-  it('throws with neither set, on append and on read', () => {
+  it('throws on append and on read when HANDOVER_DIR is set to a missing directory', () => {
+    process.env['HANDOVER_DIR'] = join(dir, 'missing');
     expect(() => appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' })).toThrow(/HANDOVER_DIR/);
     expect(() => readAdmissions()).toThrow(/HANDOVER_DIR/);
   });
@@ -65,6 +66,7 @@ describe('admissions ledger (HIMMEL-6776)', () => {
   });
 
   it('assertAdmissionsWritable throws with no location, and when the location cannot be opened for append', () => {
+    process.env['HANDOVER_DIR'] = join(dir, 'missing');
     expect(() => assertAdmissionsWritable()).toThrow(/HANDOVER_DIR/);
     process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
     expect(() => assertAdmissionsWritable()).toThrow();

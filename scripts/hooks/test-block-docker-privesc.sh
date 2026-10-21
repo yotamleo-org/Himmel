@@ -125,6 +125,90 @@ assert_rc "--device /dev/fuse (char dev)"      0 "$(run_case "$(j_bash 'docker r
 assert_rc "--mount source=/usr,readonly (ro)"  0 "$(run_case "$(j_bash 'docker run --mount type=bind,source=/usr,target=/u,readonly img app')")"
 assert_rc "docker cp ctr:/x ./local (dst ok)"  0 "$(run_case "$(j_bash 'docker cp ctr:/x ./local')")"
 
+# --- command-position model (scripts/lib/bash-ast.sh): a program or flag spelled
+# through quotes, a backslash or a line continuation is still that program or flag.
+# The model only adds denials: the regex reader runs on the whole command whatever
+# the model says, so a string or heredoc naming docker keeps the regex verdict.
+assert_rc "echo string naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash 'echo "docker run --privileged img sh"')")"
+assert_rc "grep pattern naming a docker bind mount keeps the regex verdict" 2 "$(run_case "$(j_bash "grep -n 'docker run -v /etc:/h' notes.txt")")"
+assert_rc "heredoc body naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash "cat <<'EOF' > notes.txt
+docker run --privileged img sh
+EOF")")"
+assert_rc "jq string naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash "jq '.[] | docker run --privileged' notes.json")")"
+assert_rc "quote-split program (dock'er' run --privileged)" 2 "$(run_case "$(j_bash "dock'er' run --privileged img sh")")"
+assert_rc "backslash-split program (d\\ocker run --privileged)" 2 "$(run_case "$(j_bash 'd\ocker run --privileged img sh')")"
+assert_rc "quote-split program (pod\"man\" run -v /etc:/h:rw)" 2 "$(run_case "$(j_bash 'pod"man" run -v /etc:/h:rw img sh')")"
+assert_rc "line continuation before the flag" 2 "$(run_case "$(j_bash "docker run \\
+  --privileged img sh")")"
+assert_rc "line continuation inside the subcommand (ru\\<newline>n)" 2 "$(run_case "$(j_bash "docker ru\\
+n --privileged img sh")")"
+assert_rc "line continuation inside the program (dock\\<newline>er)" 2 "$(run_case "$(j_bash "dock\\
+er run --privileged img sh")")"
+assert_rc "mount source with a space is one word" 2 "$(run_case "$(j_bash 'docker run -v "/etc:/h dir:rw" img sh')")"
+assert_rc "command substitution runs docker run --privileged" 2 "$(run_case "$(j_bash 'echo $(docker run --privileged img sh)')")"
+assert_rc "sudo -E docker run --privileged still reaches the program" 2 "$(run_case "$(j_bash 'sudo -E docker run --privileged img sh')")"
+assert_rc "bash -c body runs docker run --privileged" 2 "$(run_case "$(j_bash "bash -c 'docker run --privileged img sh'")")"
+assert_rc "heredoc fed to bash is a script" 2 "$(run_case "$(j_bash "bash <<'EOF'
+docker run --privileged img sh
+EOF")")"
+assert_rc "ssh to a host naming docker run --privileged stays denied" 2 "$(run_case "$(j_bash "ssh host 'docker run --privileged img sh'")")"
+assert_rc "docker run of a safe image after data naming a privilege flag" 0 "$(run_case "$(j_bash 'echo "--privileged"; docker run --rm img sh')")"
+assert_rc "sudo -u docker docker run --privileged: the user name is not the program" 2 "$(run_case "$(j_bash 'sudo -u docker docker run --privileged img sh')")"
+assert_rc "sudo -u podman podman run --privileged: the user name is not the program" 2 "$(run_case "$(j_bash 'sudo -u podman podman run --privileged img sh')")"
+assert_rc "ssh docker docker run --privileged: the host name is not the program" 2 "$(run_case "$(j_bash 'ssh docker docker run --privileged img sh')")"
+assert_rc "sudo -u docker docker run of a safe image" 0 "$(run_case "$(j_bash 'sudo -u docker docker run --rm img sh')")"
+# a launcher the model does not list as opaque still runs the docker it is given
+assert_rc "numactl -N 0 docker run --privileged" 2 "$(run_case "$(j_bash 'numactl -N 0 docker run --privileged img sh')")"
+assert_rc "prlimit --nproc=10 docker run -v /etc:/h:rw" 2 "$(run_case "$(j_bash 'prlimit --nproc=10 docker run -v /etc:/h:rw img sh')")"
+assert_rc "tmux new-session 'docker run --privileged'" 2 "$(run_case "$(j_bash "tmux new-session 'docker run --privileged img sh'")")"
+assert_rc "screen -dm docker run --privileged" 2 "$(run_case "$(j_bash 'screen -dm docker run --privileged img sh')")"
+assert_rc "systemd-inhibit docker run --privileged" 2 "$(run_case "$(j_bash 'systemd-inhibit docker run --privileged img sh')")"
+assert_rc "setpriv --reuid 0 docker run --privileged" 2 "$(run_case "$(j_bash 'setpriv --reuid 0 docker run --privileged img sh')")"
+assert_rc "rtk proxy docker run --privileged" 2 "$(run_case "$(j_bash 'rtk proxy docker run --privileged img sh')")"
+assert_rc "git rebase -x runs docker run --privileged" 2 "$(run_case "$(j_bash 'git rebase -x "true; docker run --privileged img sh" HEAD~1')")"
+assert_rc "numactl -N 0 docker run of a safe image" 0 "$(run_case "$(j_bash 'numactl -N 0 docker run --rm img sh')")"
+assert_rc "git log --grep naming docker run --privileged keeps the regex verdict" 0 "$(run_case "$(j_bash 'git log --grep="docker run --privileged" --oneline')")"
+# no program is exempt: any other position naming docker keeps the regex verdict
+assert_rc "git bisect run docker run --privileged" 2 "$(run_case "$(j_bash 'git bisect run docker run --privileged img sh')")"
+assert_rc "git filter-branch --tree-filter runs docker run --privileged" 2 "$(run_case "$(j_bash 'git filter-branch --tree-filter "docker run --privileged img sh" HEAD')")"
+assert_rc "git send-email --to-cmd runs docker run --privileged" 2 "$(run_case "$(j_bash 'git send-email --to-cmd "docker run --privileged img sh" p')")"
+assert_rc "git rebase --exe (abbreviated --exec) runs docker run --privileged" 2 "$(run_case "$(j_bash 'git rebase --exe "docker run --privileged img sh" HEAD~1')")"
+assert_rc "GIT_SSH_COMMAND value runs docker run --privileged" 2 "$(run_case "$(j_bash "GIT_SSH_COMMAND='true; docker run --privileged -v /:/h img sh' git fetch origin")")"
+# the regex reader always runs on the whole command: stdin handed to a program the
+# model does not read as a shell still runs the docker text it carries
+assert_rc "at now heredoc carries docker run --privileged" 2 "$(run_case "$(j_bash "at now <<EOF
+docker run --privileged img sh
+EOF")")"
+assert_rc "at now here-string carries docker run --privileged" 2 "$(run_case "$(j_bash 'at now <<< "docker run --privileged img sh"')")"
+assert_rc "crontab - here-string carries docker run --privileged" 2 "$(run_case "$(j_bash 'crontab - <<< "* * * * * docker run --privileged img sh"')")"
+assert_rc "bash -c at now with a here-string carries docker run --privileged" 2 "$(run_case "$(j_bash "bash -c 'at now' <<< \"docker run --privileged img sh\"")")"
+assert_rc "xargs docker run with the flags in a here-string" 2 "$(run_case "$(j_bash "xargs docker run <<< '--privileged -v /:/h img'")")"
+assert_rc "ssh heredoc runs docker run --privileged on the host" 2 "$(run_case "$(j_bash "ssh host <<'EOF'
+docker run --privileged img sh
+EOF")")"
+
+# --- a missing shfmt denies a command that names docker/podman, and the message
+# names shfmt; a command that names neither never pays for it.
+NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-docker-privesc-nosh.XXXXXX") || exit 1
+trap 'rm -rf "$NOSH"' EXIT
+oifs=$IFS; IFS=:
+for d in $PATH; do
+    for t in "$d"/*; do
+        case "${t##*/}" in shfmt) ;; *) [ -e "$NOSH/${t##*/}" ] || ln -s "$t" "$NOSH/${t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$oifs
+[ -x "$NOSH/jq" ] && [ ! -e "$NOSH/shfmt" ] || { echo "FAIL no shfmt fixture is wrong (jq must be present, shfmt absent)"; exit 1; }
+# stderr is the captured stream here, stdout is discarded
+# shellcheck disable=SC2069
+nosh_case() { printf '%s' "$(j_bash "$1")" | PATH="$NOSH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?"; }
+out=$(nosh_case 'docker run --rm img sh')
+case "$out" in *shfmt*"rc=2") echo "PASS no shfmt: a docker command is denied and the message names shfmt" ;; *) echo "FAIL no shfmt: a docker command is denied and the message names shfmt - $out"; FAILED=$((FAILED + 1)) ;; esac
+out=$(nosh_case 'git status')
+case "$out" in "rc=0") echo "PASS no shfmt: a command without docker/podman is not denied" ;; *) echo "FAIL no shfmt: a command without docker/podman is not denied - $out"; FAILED=$((FAILED + 1)) ;; esac
+out=$(printf '%s' "$(j_bash 'docker run --rm img sh')" | PATH="$NOSH" DOCKER_PRIVESC_OK=1 bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+case "$out" in *"rc=0") echo "PASS no shfmt: the bypass still allows" ;; *) echo "FAIL no shfmt: the bypass still allows - $out"; FAILED=$((FAILED + 1)) ;; esac
+
 # --- BYPASS case (expect rc=0 with DOCKER_PRIVESC_OK=1) ---
 assert_rc "Bypass --privileged"                0 "$(run_case "$(j_bash 'docker run --privileged img sh')" "DOCKER_PRIVESC_OK=1")"
 assert_rc "Bypass -v /etc:/h:rw"               0 "$(run_case "$(j_bash 'docker run -v /etc:/h:rw img sh')" "DOCKER_PRIVESC_OK=1")"
