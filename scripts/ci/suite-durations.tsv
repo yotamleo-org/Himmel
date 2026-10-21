@@ -374,6 +374,7 @@ scripts/handover/console-kit/test-relay-batch.sh	1
 scripts/handover/console-kit/test-run-suite.sh	1
 scripts/handover/console-kit/test-shepherd.sh	1
 scripts/handover/console-kit/test-station-sync.sh	3
+scripts/handover/console-kit/test-status-drift.sh	10
 scripts/handover/console-kit/test-succession-tracker.sh	0
 scripts/handover/console-kit/test-tick-deadwin.sh	5
 scripts/handover/console-kit/test-tick-nolive.sh	9

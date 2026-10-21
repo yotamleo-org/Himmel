@@ -18,6 +18,17 @@
 #     TS_PR_STATE  "<pr>\t<head>\t<class>\t<red latch>" per open PR
 #     TS_WORKER_STATE  live | idle | IDLE-HELD | wrapped | unknown | none
 #   status_event <k=v>...           one JSON row in status-events.jsonl
+#   ts_worker_comment <KEY> <status> <move>
+#                                   keeps the WORKER Jira comment current: edited in
+#                                   place by id, one new post when it has no id or the
+#                                   edit 404s, nothing written for an unchanged class.
+#                                   Sets TS_CID and TS_CHASH for the record.
+#
+# A caller that holds one batched snapshot sets TS_SNAPSHOT_DIR (the status sweep,
+# console-kit/status-sweep.sh): the readers then take Jira, the open PRs, their
+# checks and their review threads from files in it (jira.tsv, prs.json,
+# rows-<pr>.tsv, prows-<pr>.tsv, threads.tsv), so a derive over many keys makes no
+# per-key Jira or PR call. TS_EVENT=sweep lets a derive project the lock-gone count.
 #
 # Rules (first match wins; an unreadable input is no-write + miss, never a move):
 #   D0  Jira Done or off the ladder              no-write (only merge-on-green writes Done)
@@ -98,8 +109,15 @@ ts_jira() {
 
 # ts_read_jira <KEY> — TS_J_STATUS, TS_J_TYPE; rc 1 = unreadable or either empty.
 ts_read_jira() {
-    local json
+    local json row
     TS_J_STATUS=""; TS_J_TYPE=""
+    if [ -n "${TS_SNAPSHOT_DIR:-}" ]; then
+        row=$(awk -F'\t' -v k="$1" '$1 == k { print $2 "\t" $3; exit }' "$TS_SNAPSHOT_DIR/jira.tsv" 2>/dev/null)
+        TS_J_TYPE=${row%%$'\t'*}
+        TS_J_STATUS=${row#*$'\t'}
+        [ -n "$row" ] && [ -n "$TS_J_STATUS" ] && [ -n "$TS_J_TYPE" ]
+        return
+    fi
     json=$(ts_jira get "$1" --json 2>/dev/null) || return 1
     TS_J_STATUS=$(jq -r '.fields.status.name // empty' <<<"$json" 2>/dev/null)
     TS_J_TYPE=$(jq -r '.fields.issuetype.name // empty' <<<"$json" 2>/dev/null)
@@ -113,8 +131,13 @@ ts_read_prs() {
     local limit="${TICKET_STATUS_PR_LIMIT:-50}" json n rows num title head base rd k
     TS_PRS=""
     TS_HEADS=""
-    json=$(gh pr list --state open --search "$1 in:title" --limit "$limit" \
-        --json number,title,headRefOid,baseRefName,reviewDecision 2>/dev/null) || { TS_STAGE=gh; return 1; }
+    if [ -n "${TS_SNAPSHOT_DIR:-}" ]; then
+        limit=300
+        json=$(cat "$TS_SNAPSHOT_DIR/prs.json" 2>/dev/null) || { TS_STAGE=gh; return 1; }
+    else
+        json=$(gh pr list --state open --search "$1 in:title" --limit "$limit" \
+            --json number,title,headRefOid,baseRefName,reviewDecision 2>/dev/null) || { TS_STAGE=gh; return 1; }
+    fi
     n=$(jq 'length' <<<"$json" 2>/dev/null) || { TS_STAGE=gh; return 1; }
     case "$n" in ''|*[!0-9]*) TS_STAGE=gh; return 1 ;; esac
     [ "$n" -lt "$limit" ] || { TS_STAGE=pr-limit; return 1; }
@@ -144,17 +167,34 @@ ts_required_set() {
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
 
+# _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
+_ts_snap_required_set() {
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}"
+    if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
+        if ts_required_set "$1" >"$f.t" 2>/dev/null; then mv "$f.t" "$f"; else rm -f "$f.t"; : >"$f.fail"; fi
+    fi
+    [ -e "$f" ] || return 1
+    cat "$f"
+}
+
 # ts_pr_class <pr> <head> <base> — red | pending | green | none (no required
 # check started), judged on the REQUIRED checks only, so an optional red never
 # pins D1. Prints "!<stage>" and returns 1 when an input is unreadable.
 ts_pr_class() {
     local reqs out rows prows="" st
-    reqs=$(ts_required_set "$3") || { echo "!required-set"; return 1; }
-    out=$(gh pr checks "$1" --json bucket,name 2>&1)
-    if rows=$(jq -r '.[] | "\(.bucket)\t\(.name)"' <<<"$out" 2>/dev/null); then
-        :
+    if [ -n "${TS_SNAPSHOT_DIR:-}" ]; then
+        reqs=$(_ts_snap_required_set "$3") || { echo "!required-set"; return 1; }
+        [ -e "$TS_SNAPSHOT_DIR/rows-$1.tsv" ] || { echo "!gh"; return 1; }
+        rows=$(cat "$TS_SNAPSHOT_DIR/rows-$1.tsv")
+        prows=$(cat "$TS_SNAPSHOT_DIR/prows-$1.tsv" 2>/dev/null)
     else
-        case "$out" in *"no checks reported"*) rows="" ;; *) echo "!gh"; return 1 ;; esac
+        reqs=$(ts_required_set "$3") || { echo "!required-set"; return 1; }
+        out=$(gh pr checks "$1" --json bucket,name 2>&1)
+        if rows=$(jq -r '.[] | "\(.bucket)\t\(.name)"' <<<"$out" 2>/dev/null); then
+            :
+        else
+            case "$out" in *"no checks reported"*) rows="" ;; *) echo "!gh"; return 1 ;; esac
+        fi
     fi
     if [ -z "$reqs" ]; then
         if [ -z "$rows" ]; then echo none
@@ -163,7 +203,7 @@ ts_pr_class() {
         fi
         return 0
     fi
-    if _has_producer_ids "$reqs"; then
+    if [ -z "${TS_SNAPSHOT_DIR:-}" ] && _has_producer_ids "$reqs"; then
         out=$(gh api "repos/{owner}/{repo}/commits/$2/check-runs?per_page=100" --paginate 2>/dev/null) || { echo "!gh"; return 1; }
         prows=$(jq -r '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' <<<"$out" 2>/dev/null) || { echo "!gh"; return 1; }
     fi
@@ -184,6 +224,10 @@ ts_pr_class() {
 # unreadable, a further page included (a partial count could miss one).
 ts_unresolved_threads() {
     local out n
+    if [ -n "${TS_SNAPSHOT_DIR:-}" ]; then
+        awk -F'\t' -v n="$1" '$1 == n { print $2; f = 1; exit } END { exit !f }' "$TS_SNAPSHOT_DIR/threads.tsv" 2>/dev/null
+        return
+    fi
     # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL variables
     out=$(gh api graphql -F owner='{owner}' -F name='{repo}' -F number="$1" \
         -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}' 2>/dev/null) || return 1
@@ -227,18 +271,27 @@ _ts_epoch_of_iso() {
 # evidence: a free lock with no end marker (a hand-off, a cloud or
 # other-station leg) is unknown, which still counts as an owner.
 ts_worker_state() {
+    _ts_worker_state "$1"
+    echo "$TS_WORKER_STATE"
+}
+
+# _ts_worker_state <doc> — ts_worker_state without the subshell: sets
+# TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read).
+_ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    [ -n "$1" ] || { echo unknown; return 0; }
+    TS_LOCK_HELD=""
+    [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     marker=$(ts_marker_newest "$1")
-    case "$marker" in WRAPPED|HALTED) echo wrapped; return 0 ;; esac
+    case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else
         out=$(bash "$_TS_LIB_DIR/../handover/queue-lock.sh" status "$1" 2>/dev/null); rc=$?
     fi
     case "$rc" in
-        11|12) ;;
-        *) echo unknown; return 0 ;;
+        11|12) TS_LOCK_HELD=yes ;;
+        0) TS_LOCK_HELD=no; TS_WORKER_STATE=unknown; return 0 ;;
+        *) TS_WORKER_STATE=unknown; return 0 ;;
     esac
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
     if [ -n "$hb" ] && hb_epoch=$(_ts_epoch_of_iso "$hb"); then
@@ -246,11 +299,11 @@ ts_worker_state() {
     fi
     warn="${QUEUE_LOCK_IDLE_WARN_SECONDS:-2700}"
     case "$warn" in ''|*[!0-9]*) warn=2700 ;; esac
-    if [ "$rc" -eq 12 ] || [ "$age" -ge "$warn" ]; then echo IDLE-HELD; return 0; fi
+    if [ "$rc" -eq 12 ] || [ "$age" -ge "$warn" ]; then TS_WORKER_STATE=IDLE-HELD; return 0; fi
     case "$marker" in
-        READY|BLOCKED) echo idle ;;
-        LIVE|FINDING|RESOLVED|RESUMED|SUCCESSION) echo live ;;
-        *) echo unknown ;;
+        READY|BLOCKED) TS_WORKER_STATE=idle ;;
+        LIVE|FINDING|RESOLVED|RESUMED|SUCCESSION) TS_WORKER_STATE=live ;;
+        *) TS_WORKER_STATE=unknown ;;
     esac
 }
 
@@ -271,12 +324,25 @@ _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none
+    TS_LOCK_HELD=""; TS_LOCK_SEEN=false; TS_GONE=0
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
     [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || { _ts_no_write skip D0; return 0; }
     [ "$TS_J_TYPE" != Epic ] || { _ts_no_write skip D0e; return 0; }
     ts_record_read "$key" || { _ts_no_write miss "" record; return 0; }
     doc=$(jq -r '.doc // ""' <<<"$TS_REC")
-    [ -z "$doc" ] || TS_WORKER_STATE=$(ts_worker_state "$doc")
+    TS_LOCK_SEEN=$(jq -r '.lock_seen // false' <<<"$TS_REC")
+    TS_GONE=$(jq -r '.lock_gone_sweeps // 0' <<<"$TS_REC")
+    if [ -n "$doc" ]; then
+        _ts_worker_state "$doc"
+        # A held lock is seen and resets the count; only a sweep counts a gone lock,
+        # and only for a lock this station saw held, so a cloud leg never reaches D6.
+        if [ "$TS_LOCK_HELD" = yes ]; then
+            TS_LOCK_SEEN=true; TS_GONE=0
+        elif [ "$TS_LOCK_HELD" = no ] && [ "$TS_LOCK_SEEN" = true ]; then
+            [ "${TS_EVENT:-}" != sweep ] || TS_GONE=$((TS_GONE + 1))
+            [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
+        fi
+    fi
     ts_read_prs "$key" || { _ts_no_write miss "" "$TS_STAGE"; return 0; }
     if [ -n "$TS_PRS" ]; then
         while IFS=$'\t' read -r num head base rd; do
@@ -286,6 +352,8 @@ ts_derive() {
             latch=$(jq -r --arg n "$num" '.prs[$n].red_latch // false' <<<"$TS_REC")
             [ "$class" = red ] && latch=true
             [ "$class" = green ] && latch=false
+            # A PR the record closed and GitHub shows open again starts clean.
+            [ "$(jq -r --arg n "$num" '.prs[$n].open' <<<"$TS_REC")" != false ] || [ "$class" = red ] || latch=false
             if [ "$latch" = true ]; then s="In Progress"; rule=D1
             elif [ "$rd" = CHANGES_REQUESTED ] || [ "$threads" -gt 0 ]; then s="In Review"; rule=D2
             elif [ "$class" = pending ] || [ "$class" = green ]; then s="IN CI"; rule=D3
@@ -307,4 +375,36 @@ ts_derive() {
     if [ "$TS_WORKER_STATE" = wrapped ]; then TS_DERIVED="To Do"; TS_RULE=D6
     else TS_DERIVED="In Progress"; TS_RULE=D5
     fi
+}
+
+# ts_worker_comment <KEY> <status> <move> — the WORKER comment shows the owner,
+# its state, the open PRs and the status. Reads TS_REC (the record) and the TS_
+# outputs of the last derive; sets TS_CID and TS_CHASH. An unchanged class
+# (owner, state, PR heads, status) writes nothing; a changed one edits the
+# stored comment in place, and a 404 or a missing id posts one new comment.
+# rc 1 = the Jira write failed (TS_CID, TS_CHASH unchanged, so the next event retries).
+ts_worker_comment() {
+    local key=$1 status=$2 move=$3 leg heads hash cid body out rc=1
+    TS_CID=$(jq -r '.comment_id // ""' <<<"$TS_REC")
+    TS_CHASH=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
+    leg=$(jq -r '.leg // ""' <<<"$TS_REC")
+    [ -n "$leg$(jq -r '.doc // ""' <<<"$TS_REC")" ] || return 0
+    heads=$(printf '%s' "$TS_PR_STATE" | awk -F'\t' 'NF { printf "%s#%s@%s", (n++ ? "," : ""), $1, substr($2, 1, 9) }')
+    hash=$(printf '%s|%s|%s|%s' "$leg" "$TS_WORKER_STATE" "$heads" "$status" | cksum | awk '{ print $1 }')
+    [ "$hash" != "$TS_CHASH" ] || return 0
+    body=$(mktemp "${TMPDIR:-/tmp}/ts-worker-comment.XXXXXX") || return 1
+    printf 'WORKER %s (%s)\n\nPRs: %s\n\nJira status: %s\n\nlast move: %s\n' \
+        "${leg:-?}" "$TS_WORKER_STATE" "${heads:-none}" "$status" "${move:-none}" > "$body"
+    if [ -n "$TS_CID" ]; then
+        out=$(ts_jira comment "$key" --edit "$TS_CID" --comment-file "$body" --print-id 2>&1) && rc=0
+        case "$out" in *404*) [ "$rc" -eq 0 ] || TS_CID="" ;; esac
+    fi
+    if [ -z "$TS_CID" ]; then
+        # The id is the last stdout line; stderr carries the success line.
+        out=$(ts_jira comment "$key" --comment-file "$body" --print-id 2>/dev/null) && rc=0
+        [ "$rc" -ne 0 ] || TS_CID=$(printf '%s\n' "$out" | tail -n 1 | tr -cd '0-9')
+    fi
+    rm -f "$body"
+    [ "$rc" -eq 0 ] && TS_CHASH=$hash
+    return "$rc"
 }

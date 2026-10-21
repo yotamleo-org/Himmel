@@ -133,12 +133,22 @@ if [ -n "$DOC$RESUME" ] && ts_record_read "$KEY"; then
         && ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot record the $KEY owner" >&2
 fi
 
-update_record() { # [the move, "<from> -> <to>"]
-    local rec
+update_record() { # <Jira status now> [the move, "<from> -> <to>"]
+    local rec cid chash
     ts_record_read "$KEY" || return 0
+    cid=$(jq -r '.comment_id // ""' <<<"$TS_REC") chash=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
+    if ts_worker_comment "$KEY" "$1" "${2:-$(jq -r '.last_move // ""' <<<"$TS_REC")}"; then
+        cid=$TS_CID chash=$TS_CHASH
+    else
+        row result=miss stage=comment rule="$TS_RULE" from="$1"
+    fi
     rec=$(jq -c --arg k "$KEY" --arg ev "$EVENT" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        --arg ws "$TS_WORKER_STATE" --arg mv "${1:-}" --arg prs "$TS_PR_STATE" '
+        --arg ws "$TS_WORKER_STATE" --arg mv "${2:-}" --arg prs "$TS_PR_STATE" \
+        --arg seen "$TS_LOCK_SEEN" --argjson gone "$TS_GONE" --arg cid "$cid" --arg chash "$chash" '
         .key = $k | .last_event = $ev | .last_event_ts = $ts | .state = $ws
+        | .lock_seen = ($seen == "true") | .lock_gone_sweeps = $gone
+        | if $cid != "" then .comment_id = $cid else del(.comment_id) end
+        | if $chash != "" then .comment_hash = $chash else del(.comment_hash) end
         | if $mv != "" then .last_move = $mv else . end
         | .prs = (((.prs // {}) | with_entries(.value.open = false))
             + ($prs | split("\n") | map(select(length > 0) | split("\t")
@@ -151,6 +161,8 @@ update_record() { # [the move, "<from> -> <to>"]
 # conditional transition, so a change in between re-derives once, and a second
 # change leaves the write to the next event.
 changes=0
+# shellcheck disable=SC2034  # read by ts_derive
+TS_EVENT="$EVENT"
 while :; do
     ts_derive "$KEY"
     if [ "$TS_DERIVED" = no-write ]; then
@@ -159,7 +171,7 @@ while :; do
         exit 0
     fi
     if [ "$TS_DERIVED" = "$TS_J_STATUS" ]; then
-        update_record
+        update_record "$TS_J_STATUS"
         row result=noop rule="$TS_RULE" from="$TS_J_STATUS"
         exit 0
     fi
@@ -185,7 +197,7 @@ if ! ts_read_jira "$KEY" || [ "$TS_J_STATUS" != "$to" ]; then
     row result=miss rule="$TS_RULE" stage=readback from="$from" to="$to"
     warn "$KEY reads '${TS_J_STATUS:-?}' after the move to '$to'"
 fi
-update_record "$from -> $to"
+update_record "$to" "$from -> $to"
 row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir"
 echo "leg-jira-status: $KEY $from -> $to ($TS_RULE)"
 exit 0

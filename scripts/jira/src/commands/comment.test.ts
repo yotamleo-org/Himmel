@@ -125,6 +125,29 @@ describe('comment', () => {
     expect(mockRequest.mock.calls[0][1]).toBe('/issue/HIMMEL-1/comment/10042%2F..%2F10043');
   });
 
+  it('--print-id prints only the created comment id on stdout', async () => {
+    mockRequest.mockResolvedValue({ id: '10077' });
+    await run(['HIMMEL-1', 'hello', '--print-id']);
+    expect(mockRequest.mock.calls[0][0]).toBe('POST');
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith('10077');
+    expect(console.error).toHaveBeenCalledWith('Comment added to HIMMEL-1');
+  });
+
+  it('--print-id with --edit prints the edited comment id', async () => {
+    await run(['HIMMEL-1', 'again', '--edit', '10042', '--print-id']);
+    expect(mockRequest.mock.calls[0][0]).toBe('PUT');
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith('10042');
+  });
+
+  it('--print-id with no id in the response prints nothing and warns on stderr', async () => {
+    mockRequest.mockResolvedValue({});
+    await run(['HIMMEL-1', 'hello', '--print-id']);
+    expect(console.log).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('jira: the response carried no comment id');
+  });
+
   it('--edit with an empty id exits 1 and never POSTs a new comment', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('exit');

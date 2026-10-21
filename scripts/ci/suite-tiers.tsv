@@ -369,6 +369,7 @@ scripts/handover/console-kit/test-relay-batch.sh	local	behaviour suite, 0 catche
 scripts/handover/console-kit/test-run-suite.sh	pr	trust-path
 scripts/handover/console-kit/test-shepherd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-status-drift.sh	pr	trust-path
 scripts/handover/console-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/console-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/console-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
