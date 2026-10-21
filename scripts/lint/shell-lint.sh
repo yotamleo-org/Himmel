@@ -316,7 +316,7 @@ PRIM_CANON='(^|[^[:alnum:]_-])(readlink[[:space:]]+-f|realpath)([[:space:]]|$)'
 # A probe for the tool (`command -v flock`) is not a use of it.
 PRIM_PROBE='(^|[^[:alnum:]_./-])(command[[:space:]]+-v|type|which)[[:space:]]+(flock|realpath)($|[[:space:];&|()<>])'
 # Literal echo/printf arguments are messages, not calls; keep expansions visible.
-PRIM_MESSAGE="(^|[;&|({[:space:]])(echo|printf)([[:space:]]+(\"[^\"\$\`]*\"|'[^']*'))+"
+PRIM_MESSAGE="(^|[;&|({[:space:]])(echo|printf)([[:space:]]+(-v[[:space:]]+[[:alpha:]_][[:alnum:]_]*|--|-[[:alpha:]]+))*([[:space:]]+(\"[^\"\$\`]*\"|'[^']*'))+"
 
 STAGED=0
 CHANGED=""

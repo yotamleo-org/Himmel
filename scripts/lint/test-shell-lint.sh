@@ -123,18 +123,23 @@ command -v realpath && p=$(realpath "$1") # prim-ok:
 type flock;which realpath
 command -v flock;type flock;which realpath
 type flock;which realpath;flock -x 9
+command -v flock || echo -e "flock unavailable"
+command -v realpath || printf -- '%s\n' 'realpath unavailable'
+command -v flock || printf -v message '%s\n' 'flock unavailable'
+command -v realpath || echo -n "$(realpath "$1")"
+command -v flock || { echo -en "flock unavailable"; flock -x 9; }
 PRIMEOF
     out="$(bash "$LINT" "$fixture" 2>&1)"
-    for line in 4 9 11 13 14 18 25; do
+    for line in 4 9 11 13 14 18 25 30; do
         assert_contains "probe filter keeps raw flock on line $line" "[prim-lock] line $line:" "$out"
     done
-    for line in 5 19 22; do
+    for line in 5 19 22 29; do
         assert_contains "probe filter keeps realpath on line $line" "[prim-canon] line $line:" "$out"
     done
-    for line in 3 6 7 15 17 20 23 24; do
+    for line in 3 6 7 15 17 20 23 24 26 28; do
         assert_not_contains "probe filter ignores probes, messages and reasoned exemptions on line $line" "[prim-lock] line $line:" "$out"
     done
-    for line in 8 21 23 24 25; do
+    for line in 8 21 23 24 25 27; do
         assert_not_contains "probe filter ignores realpath probes and messages on line $line" "[prim-canon] line $line:" "$out"
     done
 }
