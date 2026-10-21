@@ -1305,6 +1305,7 @@ fi
 # could contain changes the comparison.
 _path_in_diff() {
     local _p
+    # read-sink-ok: $2 is this script's own mktemp of git diff --name-only -z
     while IFS= read -r -d '' _p; do [ "$_p" = "$1" ] && return 0; done < "$2"
     return 1
 }
