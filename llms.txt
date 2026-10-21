@@ -16,30 +16,31 @@ node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 
 Four independent axes:
 
-- **Scope** — `project` wires the target repo's `.claude/settings.json` (commit it and everyone who clones the repo gets the harness); `user` wires `~/.claude/settings.json` (you, in every project). Change it later with `himmelctl scope set <project|user>`.
+- **Scope** — `project` wires the target repo's `.claude/settings.json`; `user` wires `~/.claude/settings.json` (you, in every project). Change it later with `himmelctl scope set <project|user>`.
 - **Install profile** — `core` (hooks, git gates, worktree workflow, marketplace plugins), `luna` (companion-vault scaffold), or `all`. Membership: `scripts/install/manifest.json`.
 - **Saved install-profile file** — a `*.install-profile.json` preset of every wizard answer, including the release channel; `--scope` loads a shipped one, `--from-profile <file>` your own. Detail: [docs/setup/profiles/README.md](docs/setup/profiles/README.md).
 - **Release channel** — `stable` (highest `vX.Y.Z` tag) or `pre` (prereleases too), from `HIMMEL_UPDATE_CHANNEL` or the saved file's `channel`; neither set means a plain `git pull`. Detail: [docs/setup/updating.md](docs/setup/updating.md).
 
-Full walkthrough and the adaptation checklist for a non-himmel repo: [docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
+Walkthrough and non-himmel adaptation checklist: [docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
+
+## After install: check for duplicates
+
+Run `bash himmel/scripts/install/scan-duplicates.sh <target-repo>` (read-only). Show its output to the user verbatim and change nothing without their OK. It flags doubled hooks and plugins and pre-1.1.3 leftovers.
 
 ## Lifecycle verbs
 
-`/himmel-doctor` (read-only health report; `--fix` repairs the node wiring), `/himmel-update` (harness `git pull` plus a marketplace re-sync; Claude Code's `autoUpdate` does **not** deliver himmel), `node scripts/himmelctl/bin.js ensure` (reconcile a drifted install) and `uninstall`, `/luna-upgrade` (upgrade a companion vault). All paths: [docs/setup/updating.md](docs/setup/updating.md).
+`/himmel-doctor` (read-only health report; `--fix` repairs the node wiring), `/himmel-update` (harness `git pull` plus marketplace re-sync; Claude Code's `autoUpdate` does **not** deliver himmel), `node scripts/himmelctl/bin.js ensure` (reconcile a drifted install) and `uninstall`, `/luna-upgrade` (upgrade a companion vault). All paths: [docs/setup/updating.md](docs/setup/updating.md).
 
 ## Enforcement
 
 Structural, not prose: Claude Code PreToolUse/PostToolUse hooks plus `pre-commit` / `commit-msg` / `pre-push` git gates. **Do not read an enumerated hook list from any document; it drifts.** The live inventory is `.claude/settings.json` and `.pre-commit-config.yaml`; every gate's class (HARD / auth-gated / warn-only) and off-switch is in [docs/configuration.md](docs/configuration.md). Off switches are session env vars set in the *launching* shell, never a per-call prefix.
 
-Data egress from graph extraction is fenced by one policy file, `scripts/guardrails/egress-matrix.json`.
-
-## Docs site
-
-The published [docs site](https://yotamleo-org.github.io/Himmel/) and its [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html) are the human front door. Also: [glossary](docs/glossary.md), [stuck playbook](marketplace/plugins/himmel-ops/skills/stuck-playbook/SKILL.md), [contributing](docs/contributing.md). <!-- env-literal-ok: published docs site -->
+Graph-extraction data egress is fenced by `scripts/guardrails/egress-matrix.json`.
 
 ## Guide map
 
-- [README.md](README.md) — human overview: what you get, who it is for, the core loop.
+- [README.md](README.md) — human overview; the published [docs site](https://yotamleo-org.github.io/Himmel/) and [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html) are its front door. <!-- env-literal-ok: published docs site -->
+- [glossary](docs/glossary.md) · [stuck playbook](marketplace/plugins/himmel-ops/skills/stuck-playbook/SKILL.md) · [contributing](docs/contributing.md).
 - [docs/why-himmel.md](docs/why-himmel.md) — the five failure modes the harness exists for.
 - [docs/getting-started.md](docs/getting-started.md) — install to first PR-gated loop, ~15 minutes.
 - [docs/daily-loop.md](docs/daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), each gate explained where it fires.

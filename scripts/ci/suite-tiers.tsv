@@ -700,6 +700,7 @@ scripts/install/test-mcp-profile-providers.sh	local	behaviour suite, 0 catches i
 scripts/install/test-observability-grafana-manifest.sh	pr	static-gate
 scripts/install/test-observability-stack-manifest.sh	pr	static-gate
 scripts/install/test-operator-profile-staleness.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/install/test-scan-duplicates.sh	local	behaviour suite, new in HIMMEL-6972
 scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-agg-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/bench/scorecard/test-dead-parts.sh	local	behaviour suite, 0 catches in the 400-PR audit window

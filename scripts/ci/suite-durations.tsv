@@ -694,6 +694,7 @@ scripts/install/test-mcp-profile-providers.sh	0
 scripts/install/test-observability-grafana-manifest.sh	1
 scripts/install/test-observability-stack-manifest.sh	2
 scripts/install/test-operator-profile-staleness.sh	0
+scripts/install/test-scan-duplicates.sh	1
 scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	0
 scripts/lanes/bench/scorecard/test-agg-burn.sh	3
 scripts/lanes/bench/scorecard/test-dead-parts.sh	5
