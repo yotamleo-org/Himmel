@@ -3,6 +3,7 @@ import { render, renderNav, renderHeader, renderProbe } from "/render.js";
 import { renderHealth, verdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
+import { renderWorkflow, mountWorkflow } from "/workflow.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -37,7 +38,9 @@ const PAGES = [
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: () => renderRoadmap(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: () => renderKanban(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
+  { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
 ];
+let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
 
 function route() {
@@ -48,6 +51,7 @@ function route() {
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
   roadmapUi.ver = ver;
+  if (unmountPage) { unmountPage(); unmountPage = null; } // the branch below can replace #main without a paint
   renderPages();
   loadFleet();
   if (currentPage.onVisit) currentPage.onVisit();
@@ -78,7 +82,9 @@ function paint() {
   const keep = document.activeElement && document.activeElement.id === "q" ? document.activeElement.selectionStart : null;
   const focusK = document.activeElement && document.activeElement.matches && document.activeElement.matches(".row-head") ? document.activeElement.dataset.k : null;
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
+  if (unmountPage) { unmountPage(); unmountPage = null; }
   $("#main").innerHTML = currentPage.render(feed);
+  if (currentPage.afterPaint) unmountPage = currentPage.afterPaint();
   $("#nav").innerHTML = currentPage.regions && feed ? renderNav(feed, current) : "";
   $("#top").innerHTML = renderHeader(feed);
   renderPages(); // the Health dot follows the feed and the health read
