@@ -1066,7 +1066,7 @@ tree_oid=$(git -C "$BASE/multiwt-a" rev-parse 'HEAD^{tree}')
 unpublished_oid=$(git -C "$BASE/multiwt-a" commit-tree -m "unpublished, from the linked worktree" -p "$main_oid" "$tree_oid")
 multiwt_out=$(git -C "$BASE/multiwt-a" update-ref refs/heads/main "$unpublished_oid" 2>&1)
 multiwt_rc=1
-grep -q "reference-transaction hook" <<< "$multiwt_out" && multiwt_rc=0
+grep -Eq "reference-transaction hook|ref updates aborted by hook" <<< "$multiwt_out" && multiwt_rc=0
 after_oid=$(git -C "$work" rev-parse main)
 if [ "$multiwt_rc" -eq 0 ] && [ "$after_oid" = "$main_oid" ]; then
     ok "the linked worktree that did NOT run the installer still genuinely refuses an update to refs/heads/main (main unchanged)"
