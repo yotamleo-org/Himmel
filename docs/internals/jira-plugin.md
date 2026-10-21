@@ -244,8 +244,8 @@ config.json writes are operator-only); `--opt-out` prints the `none` snippet. Co
 
 **Bug placement (HIMMEL-6776).** `create --type Bug` without `--fix-version` is
 placed at filing, never defaulted silently. `--backlog` files it with the
-`backlog` label and no fixVersion. `--priority Highest` or `--gate
-critical|regression` sets the earliest unreleased, unarchived version from the
+`backlog` label and no fixVersion. `--priority Highest` or a valid `--gate`
+(see the intake gate below) sets the earliest unreleased, unarchived version from the
 project's versions and prints one stderr line saying so (no readable unreleased
 version: filed with no fixVersion and a warning). With none of those the create
 is refused, naming both choices and the `--sector` given. An explicit
@@ -266,6 +266,22 @@ spoofable by any same-uid caller (ponytail, upgrade path HIMMEL-6796). Code:
 `scripts/jira/src/commands/admissions-ledger.ts` (`appendAdmission(row)`,
 `readAdmissions(version?)` and the preflight `assertAdmissionsWritable()`, the
 whole API).
+
+**Intake gate for a frozen version (HIMMEL-6775).** A version whose description
+has a line `frozen: <date>` takes no new ticket without a reason. `create` checks
+the version the ticket will land in, whether from `--fix-version`, a Highest or
+`--gate` Bug's default, or a `--residual-of` escape or hardening route, and
+refuses unless `--gate critical|regression|must:<decision-ref>|receipt` is given
+(`must:` needs a non-empty ref). The refusal comes before the ticket is filed, and
+a gated filing also needs a ledger that can take an append. After the create it
+appends the row `{ts, version, key, gate, actor}` to the admissions ledger.
+`--console-override "<reason>"` (rules above) admits past the gate and writes its
+override row instead. A version without the `frozen:` line behaves as before and
+writes no row; `--backlog` files a Bug with no version, so it needs no gate. The
+gate reason is recorded, not verified (ponytail, upgrade path HIMMEL-6796).
+`jira fix-version --add` is not gated yet (HIMMEL-6828). Code:
+`scripts/jira/src/commands/intake-gate.ts` (`frozenDate`, `assertIntakeGate`,
+`checkIntakeGate`).
 
 ## Confluence CLI
 
