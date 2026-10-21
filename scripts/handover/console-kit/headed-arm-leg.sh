@@ -1114,7 +1114,7 @@ unset -v _ab_in
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
 # The release-manager marker, binding and effort override are the same class:
 # a release manager arming a leg must not hand that leg its mode-2 fence.
-LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT"
+LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
 for _leg_env_scrub in $LEG_ENV_SCRUB; do
     unset "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"

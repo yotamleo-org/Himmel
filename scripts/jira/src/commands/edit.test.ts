@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildEditFields } from './edit.js';
 
 vi.mock('../client.js', async (importOriginal) => {
@@ -543,5 +546,120 @@ describe('edit read-back of every field it sends (HIMMEL-4644)', () => {
     readBack({ description: null });
     await runEdit(['--desc', '']);
     expect(console.log).toHaveBeenCalledWith('HIMMEL-1 edited');
+  });
+});
+
+describe('edit into a frozen version (HIMMEL-6918)', () => {
+  let mockRequest: ReturnType<typeof vi.fn>;
+  let dir: string;
+  const ENV = ['JIRA_PROJECT_KEY', 'HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+  const saved: Record<string, string | undefined> = {};
+  const VERSIONS = [
+    { id: '1', name: 'v1.1.3', description: 'frozen: 2026-10-20' },
+    { id: '2', name: 'v1.1.4' },
+  ];
+
+  const ledger = (): Array<Record<string, unknown>> => {
+    try {
+      return readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+  const puts = () => mockRequest.mock.calls.filter((c) => c[0] === 'PUT');
+  const edit = async (...args: string[]) => {
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', ...args]);
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    process.env.JIRA_PROJECT_KEY = 'HIMMEL';
+    dir = mkdtempSync(join(tmpdir(), 'edit-admissions-'));
+    process.env.HANDOVER_DIR = dir;
+    const { request } = await import('../client.js');
+    mockRequest = request as unknown as ReturnType<typeof vi.fn>;
+    let landed = 'v1.1.3';
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'PUT') {
+        const b = body as {
+          fields?: { fixVersions?: Array<{ name: string }> };
+          update?: { fixVersions?: Array<{ add: { name: string } }> };
+        };
+        landed = b.fields?.fixVersions?.[0]?.name ?? b.update?.fixVersions?.[0]?.add.name ?? landed;
+        return {};
+      }
+      if (path.endsWith('/versions')) return VERSIONS;
+      return { fields: { fixVersions: [{ name: landed }], priority: { name: 'High' } } };
+    });
+  });
+
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses --fix-version into a frozen version without --gate, before any PUT', async () => {
+    await expect(edit('--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3 is frozen.*--gate/);
+    expect(puts()).toHaveLength(0);
+    expect(ledger()).toEqual([]);
+  });
+
+  it('refuses --add-fix-version into a frozen version without --gate, before any PUT', async () => {
+    await expect(edit('--add-fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3 is frozen.*--gate/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('admits with --gate and appends the gate row after the edit', async () => {
+    await edit('--fix-version', 'v1.1.3', '--gate', 'critical');
+    expect(puts()).toHaveLength(1);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-1', version: 'v1.1.3', gate: 'critical' }]);
+  });
+
+  it('refuses an unknown --gate, before any PUT', async () => {
+    await expect(edit('--fix-version', 'v1.1.3', '--gate', 'urgent')).rejects.toThrow(/--gate/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('refuses a --gate when the ledger cannot take an append, before any PUT', async () => {
+    delete process.env.HANDOVER_DIR;
+    process.env.HIMMEL_ADMISSIONS_LEDGER = join(dir, 'blocked', 'x.jsonl');
+    writeFileSync(join(dir, 'blocked'), 'a file where the ledger directory should be');
+    await expect(edit('--add-fix-version', 'v1.1.3', '--gate', 'critical')).rejects.toThrow();
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('lets the console override with a reason, and records an override row', async () => {
+    process.env.HIMMEL_CONSOLE = '1';
+    await edit('--add-fix-version', 'v1.1.3', '--console-override', 'fixes the broken console flow');
+    expect(puts()).toHaveLength(1);
+    expect(ledger()).toMatchObject([
+      { key: 'HIMMEL-1', version: 'v1.1.3', kind: 'override', reason: 'fixes the broken console flow' },
+    ]);
+  });
+
+  it('refuses --console-override without HIMMEL_CONSOLE=1, a reason, or a fix-version flag', async () => {
+    await expect(edit('--fix-version', 'v1.1.3', '--console-override', 'why')).rejects.toThrow(/HIMMEL_CONSOLE=1/);
+    process.env.HIMMEL_CONSOLE = '1';
+    await expect(edit('--fix-version', 'v1.1.3', '--console-override', ' ')).rejects.toThrow(/needs a reason/);
+    await expect(edit('--priority', 'High', '--console-override', 'why')).rejects.toThrow(/--fix-version/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('leaves an unfrozen version and a non-version edit ungated, writing no row', async () => {
+    await edit('--fix-version', 'v1.1.4');
+    await edit('--priority', 'High');
+    expect(puts()).toHaveLength(2);
+    expect(ledger()).toEqual([]);
   });
 });

@@ -229,7 +229,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -453,7 +453,7 @@ contains "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: names the allowed modes" "$out"
 # this exact assertion, not a vaguer one.
 rc=0; out="$(CONSOLE_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CONSOLE_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
-contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT CONSOLE_CONTEXT=<unset>"
+contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CONSOLE_CONTEXT=<unset>"
 not_contains "dry-run, ambient CONSOLE_CONTEXT=1m: never reported as still set" "$out" "CONSOLE_CONTEXT=1m"
 
 # --- HIMMEL_CONSOLE_NAME resolution (--console, launching
@@ -2812,6 +2812,18 @@ env28h="$(cat "$d28h/env-record" 2>/dev/null || true)"
 check "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: exit 0" "$rc" "0"
 contains "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the override wins" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the high default is not also present" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=high"
+
+# The console marker a console session carries must never reach a leg it arms;
+# admission authority is the console's alone.
+d28j="$tmp/c28j"; mk_launch_stubs "$d28j" "HIMMEL-6918-N1-consolemarker"; mkdir -p "$tmp/repo28j"
+rc=0
+HIMMEL_CONSOLE=1 \
+  RUN_LEG_ARGS='--profile leg-impl' run_leg "$d28j" "$tmp/repo28j" "HIMMEL-6918-N1-consolemarker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d28j" || true
+env28j="$(cat "$d28j/env-record" 2>/dev/null || true)"
+check "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: exit 0" "$rc" "0"
+contains "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: env-record was actually produced" "$env28j" "HIMMEL_CONSOLE_LEG=1"
+not_contains "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: the console marker never reaches the leg" "$env28j" "HIMMEL_CONSOLE=1"
 
 # Control (console ruling): the two new seam names themselves
 # (HEADED_ARM_LEG_CLAUDE_BIN, HIMMEL_CONSOLE_JUDGE_EFFORT) must not reach the

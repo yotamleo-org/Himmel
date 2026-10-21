@@ -6122,9 +6122,13 @@ assert_contains "2973 cron: the entry exports HIMMEL_CONSOLE_DOC" "export HIMMEL
 assert_contains "2973 cron: the entry exports HIMMEL_CONSOLE_WORKDIR (basename slug + path-hash suffix)" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
 _wd_c=$(printf '%s\n' "$out" | sed -n 's/.*\(HIMMEL_CONSOLE_WORKDIR=[^ ]*\).*/\1/p' | head -n 1)
 assert_contains "2973 cron: the entry CLEARS an ambient pair first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
+assert_contains "2973 cron: the entry exports the HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 cron: the entry CLEARS an ambient console marker first (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
 out=$(env CONSOLE_WORK_DIR="$CW_2973" PATH="$MACBIN_2973:$PATH" OSTYPE=darwin23 bash "$ARM" --time "$(future_time)" --handover "$HO_2973" --dry-run 2>&1)
 assert_not_contains "2973 cron: a non-console arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
 assert_contains "2973 cron: a non-console arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
+assert_not_contains "2973 cron: a non-console arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 cron: a non-console arm still CLEARS an ambient console marker (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
 
 # Two console docs sharing a basename (different repos' handovers/) must not
 # share a workdir: the checker picks the highest-numbered snap without checking
@@ -6143,10 +6147,12 @@ assert_rc "2973 at: console arm dry-run exits 0" 0 "$rc"
 assert_contains "2973 at: the job body exports HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC=$HO_2973C" "$out"
 assert_contains "2973 at: the job body exports HIMMEL_CONSOLE_WORKDIR (basename slug + path-hash suffix)" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
 assert_contains "2973 at: the job body CLEARS an ambient pair first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
+assert_contains "2973 at: the job body exports the HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
 out=$(SCHED_DB="$TMP/h2973-sched.db" SCHED_DB_DIR="$DBD_2973" CONSOLE_WORK_DIR="$CW_2973" PATH="$STATEFUL_STUB:$PATH" OSTYPE=linux-gnu \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2973" --dry-run 2>&1)
 assert_not_contains "2973 at: a non-console arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
 assert_contains "2973 at: a non-console arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
+assert_not_contains "2973 at: a non-console arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
 fi
 
 # ---------------------------------------------------------------------------

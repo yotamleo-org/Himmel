@@ -2,7 +2,9 @@ import type { Command } from 'commander';
 import { request, severityField } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
+import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
@@ -270,7 +272,15 @@ export function registerEdit(program: Command): void {
       'REPLACE the issue affectsVersions with this single version (validated against the ' +
         "project's versions; `current` = the earliest unreleased version)",
     )
-    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string }) => {
+    .option(
+      '--gate <reason>',
+      `Required to move a ticket into a frozen version (${INTAKE_GATES}); recorded in the admissions ledger`,
+    )
+    .option(
+      '--console-override <reason>',
+      'Console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
+    )
+    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; consoleOverride?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
       // last by commander's option-order). `--desc-file` overrides both — it
@@ -290,6 +300,20 @@ export function registerEdit(program: Command): void {
       if (options.addFixVersion !== undefined) {
         await assertVersionExists(projectFromKey(key), options.addFixVersion);
       }
+      const target = options.fixVersion ?? options.addFixVersion;
+      if (options.gate !== undefined) assertIntakeGate(options.gate);
+      let overrideReason: string | undefined;
+      if (options.consoleOverride !== undefined) {
+        overrideReason = checkConsoleOverride(options.consoleOverride);
+        if (target === undefined) throw new Error('--console-override needs the --fix-version or --add-fix-version to admit into');
+      }
+      const admission =
+        target === undefined
+          ? undefined
+          : await checkIntakeGate(projectFromKey(key), [{ name: target }], {
+              gate: options.gate,
+              override: overrideReason !== undefined,
+            });
       const body: { fields?: Record<string, unknown>; update?: Record<string, unknown> } = {};
       if (Object.keys(fields).length > 0) body.fields = fields;
       const update: Record<string, unknown> = {};
@@ -316,6 +340,13 @@ export function registerEdit(program: Command): void {
         );
         const mismatches = verifyReadBack(key, options, fields, got.fields ?? {});
         if (mismatches.length > 0) throw new Error(mismatches.join('\n'));
+      }
+      try {
+        if (overrideReason !== undefined) appendAdmission({ version: target!, key, kind: 'override', reason: overrideReason });
+        if (admission) appendAdmission({ ...admission, key });
+      } catch (e) {
+        console.error(`Edited ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
+        process.exit(1);
       }
       writeJiraBreadcrumb(key);
       console.log(`${key} edited`);

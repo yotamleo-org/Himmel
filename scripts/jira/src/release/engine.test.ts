@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -64,9 +64,17 @@ const admit = (req: string, extra: Partial<Parameters<typeof rule>[1]> = {}) => 
   ground: 'regression', reason: 'breaks the console', supersedes: [], authority: { kind: 'rm', ref: null }, ...extra,
 });
 
+const savedLedger = process.env.HIMMEL_ADMISSIONS_LEDGER;
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'release-engine-'));
   jira = new FakeJira();
+  process.env.HIMMEL_ADMISSIONS_LEDGER = join(root, 'admissions-ledger.jsonl');
+});
+
+afterEach(() => {
+  if (savedLedger === undefined) delete process.env.HIMMEL_ADMISSIONS_LEDGER;
+  else process.env.HIMMEL_ADMISSIONS_LEDGER = savedLedger;
 });
 
 describe('release engine (HIMMEL-6796)', () => {
@@ -87,6 +95,17 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(s.records.find((x) => x.key === 'K-2' && x.version === 'v1')).toMatchObject({ placement: 'in', ruling: 'R-R1-0001' });
     expect(s.leaks).toEqual({ unauthorized: [], ruled_in_non_member: [] });
     expect(s.trend['2026-10-21']).toEqual({ ruled: 1 });
+  });
+
+  it('an applied INTAKE ADMIT appends one rm-admit ledger row, and a replay adds no second (HIMMEL-6918)', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    await apply(ctx(rmEnv), r.id);
+    await apply(ctx(rmEnv), r.id);
+    const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    expect(rows).toMatchObject([{ version: 'v1', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1' }]);
   });
 
   it('a replayed apply never posts a second comment', async () => {

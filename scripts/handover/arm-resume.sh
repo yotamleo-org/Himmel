@@ -5021,12 +5021,12 @@ fi"
     [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="export AUTO_ARM_SAFETY_CHILD=1 && "
     # same always-clear-then-grant shape for the console
     # PreCompact pair. `%` is escaped for cron like q_log_file below.
-    q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR && "
+    q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE && "
     if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
         local q_cp_doc q_cp_wd
         q_cp_doc=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC"); q_cp_doc=${q_cp_doc//%/\\%}
         q_cp_wd=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR"); q_cp_wd=${q_cp_wd//%/\\%}
-        q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd && "
+        q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd HIMMEL_CONSOLE=1 && "
     fi
     # the headless shape (function header). The redirects hang
     # off the flow-ledger `{ ...; }` group so the ledger writes, the launch and
@@ -6234,7 +6234,7 @@ fi"
                 # always-clear-then-grant shape (`at` snapshots the submitting
                 # env, so a console arm's own pair must not leak into a
                 # non-console relaunch).
-                at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR
+                at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE
 "
                 # same always-clear for the launch-seam vars a
                 # leg or consult carries (LEG_PROFILE_NO_SETTING_SOURCES, the
@@ -6242,7 +6242,7 @@ fi"
                 at_safety_child="${at_safety_child}unset $(console_context_launch_seam_env_names | tr '\n' ' ')
 "
                 if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
-                    at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR")
+                    at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1
 "
                 fi
                 # atd runs the job with stdin=/dev/null and no tty,

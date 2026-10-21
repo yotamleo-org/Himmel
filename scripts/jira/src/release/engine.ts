@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
+import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
@@ -481,6 +482,14 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 
     if (last.phase === 'applied') {
       event('ok');
+      // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
+      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
+        const version = last.op.to_v;
+        const key = last.key;
+        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key)) {
+          appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm' });
+        }
+      }
       const marker = `[release-ruling ${id}]`;
       const authority = last.authority.kind === 'rm' ? 'rm' : `${last.authority.kind} ${last.authority.ref}`;
       const commentId = await ctx.jira.findComment(last.key, marker)
