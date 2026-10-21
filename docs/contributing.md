@@ -162,7 +162,7 @@ Each runner in `scripts/cleanup/` has a fixed cap and refuses a batch over it.
 
 | Area | Runner | Cap per batch |
 |---|---|---|
-| Cleanup tickets and PRs | `cleanup-batch.sh plan <paths>` queues the work; `cleanup-batch.sh check` refuses a branch over the cap | 20 files, one directory family |
+| Cleanup tickets and PRs | `cleanup-batch.sh plan [<paths-file>]` queues the work; `cleanup-batch.sh check` refuses a branch over the cap | 20 files, one directory family |
 | Worktree reclaim | `worktree-batch.sh plan`, then `worktree-batch.sh apply <file>` (each path goes through `worktree.sh prune --only`) | 10 worktrees |
 | Jira hygiene | `jira-batch.sh plan stale\|version\|status`, then `jira-batch.sh apply <file>` (adds a `stale`, `version-drift` or `status-drift` label) | 20 tickets |
 

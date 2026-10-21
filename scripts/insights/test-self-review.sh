@@ -60,6 +60,17 @@ out="$(bash "$SCRIPT" --repo "$REPO" --ref main --since 2025-01-01 --until 2025-
 check "an empty window prints zero shares" grepq "$out" -x 'fix-share: fix=0 feat=0 share=0%'
 check "an empty window names no sprawl" grepq "$out" -x 'sprawl: none'
 
+REPO="$TMP/skew"
+git init -q -b main "$REPO"
+git -C "$REPO" config user.email t@example.com
+git -C "$REPO" config user.name t
+git -C "$REPO" config commit.gpgsign false
+merge 2026-09-10 'feat: [HIMMEL-20] in the window, under skewed history'
+for i in $(seq 1 8); do merge 2020-01-01 "chore: [HIMMEL-21] skewed date $i"; done
+merge 2026-09-20 'feat: [HIMMEL-22] in the window at the tip'
+out="$(bash "$SCRIPT" --repo "$REPO" --ref main --since 2026-09-01 --until 2026-09-30 2>&1)"
+check "a run of skewed older dates does not stop the walk" grepq "$out" -x 'merges: 2'
+
 out="$(bash "$SCRIPT" --bogus 2>&1)"
 rc=$?
 check "an unknown flag exits 2" [ "$rc" -eq 2 ]

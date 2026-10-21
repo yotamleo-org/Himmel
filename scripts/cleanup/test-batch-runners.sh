@@ -71,7 +71,8 @@ case " $* " in
   *" --dry-run "*)
     [ -z "${WT_DRY_FAIL:-}" ] || { echo "ERR clean-garden: boom" >&2; exit 1; }
     echo "KEEP clean-garden: branch=main verdict=ACTIVE"
-    for i in $(seq 1 12); do echo "DRY clean-garden: would prune fix/b$i ($WT_ROOT/$i)"; done
+    echo "DRY clean-garden: would prune fix/b1 ($WT_ROOT/1), discarding untracked strays: a.log"
+    for i in $(seq 2 12); do echo "DRY clean-garden: would prune fix/b$i ($WT_ROOT/$i)"; done
     echo "clean-garden: prune summary — 12 pruned" ;;
   *" --only "*)
     echo "$*" >> "$log"
@@ -87,6 +88,7 @@ printf '%s\n' "$out" > "$TMP/wt-plan.txt"
 check "worktree plan exits 0" [ "$rc" -eq 0 ]
 check "worktree plan lists at most 10" [ "$(grep -vc '^#' "$TMP/wt-plan.txt")" -eq 10 ]
 check "worktree plan names what waits for the next run" grepq "$out" -x '# candidates=12 batch=10 next-run=2'
+check "worktree plan keeps a candidate with untracked strays" grepq "$out" -x "$WT_ROOT/1"
 check "worktree plan removes nothing" [ "$(lines "$FIX/worktree.log")" -eq 0 ]
 for i in $(seq 1 11); do echo "$WT_ROOT/$i"; done > "$TMP/wt-11.txt"
 out="$(bash "$WB" apply "$TMP/wt-11.txt" 2>&1)"; rc=$?

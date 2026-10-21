@@ -25,7 +25,7 @@ case "${1:-}" in
       echo "worktree-batch: prune --dry-run failed; no plan" >&2
       exit 1
     }
-    cands="$(printf '%s\n' "$dry" | sed -n 's/^DRY clean-garden: would prune .* (\(.*\))$/\1/p')"
+    cands="$(printf '%s\n' "$dry" | sed -n 's/^DRY clean-garden: would prune [^ ]* (\([^)]*\)).*$/\1/p')"
     n="$(printf '%s\n' "$cands" | grep -c . || true)"
     k=$(( n < CAP ? n : CAP ))
     printf '%s\n' "$cands" | grep . | head -n "$CAP" || true

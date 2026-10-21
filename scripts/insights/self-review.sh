@@ -39,7 +39,7 @@ if [ -z "$ref" ]; then
   if git -C "$repo" rev-parse -q --verify origin/main >/dev/null; then ref=origin/main; else ref=main; fi
 fi
 
-git -C "$repo" log "$ref" --first-parent --since="$since" --until="$until" --format='%x1e%s%n%b' |
+git -C "$repo" log "$ref" --first-parent --since-as-filter="$since" --until="$until" --format='%x1e%s%n%b' |
   awk 'BEGIN { RS = "\036" }
     NF == 0 { next }
     {
