@@ -229,7 +229,8 @@ head>`). The PR's own green rollup is not the question here: main is.
    main's latest completed red run: after another sweep goes red, or the PR
    head moves, write a new one. It replaces only this declaration; the
    ordinary GO file (merge approval) (and a trust-reviewed GO on a trust path) is still required.
-3. **Your PR is unrelated:** do not merge. Report `MAIN-RED <job> <case>` to the
+3. **Your PR is unrelated:** do not merge. Report `MAIN-RED <job> <case> caused-by: #<pr>`
+   (`caused-by: unknown` when no PR in the range can be named) to the
    supervisor session (or confirm one is open), and merge after the fix lands. Main stays
    "red" until the next cron sweep or a manual
    `gh workflow run ci.yml --ref main` completes green; dispatching one is the

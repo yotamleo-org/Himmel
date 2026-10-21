@@ -131,7 +131,7 @@ if [ "$RC" -eq 0 ] || { [ "$STATUS" = ERROR ] && [ -s "$RAW" ]; }; then
   fi
   if [ "$STATUS" = VERDICT ]; then
     if VPATH="$(bash "$REPO/scripts/handover/console-kit/write-verdict.sh" "$QID" "$VERDICT" "$HEAD" --pr "$PR" \
-        --evidence-file "$EVID" --judge "$NAME" 2>"$WORK/wv.err")"; then
+        --evidence-file "$EVID" --judge "$NAME" --model "$MODEL" --effort "${EFFORT:-default}" 2>"$WORK/wv.err")"; then
       STATUS=RECORDED REASON="verdict recorded"
     else
       STATUS=UNRECORDED REASON="write-verdict.sh refused: $(tr '\n' ' ' < "$WORK/wv.err" | cut -c1-240)"

@@ -81,8 +81,9 @@ by hand, so use the sanctioned writer (HIMMEL-4689):
    decision; a same-uid file-access claim belongs at the OS layer.
 2. Run the primary checkout's copy (the absolute path, as for `judge-dir.sh`
    below):
-   `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <full 40-hex head> --pr <the PR number> --evidence-file <that file>`
-   (`--pr` is required, HIMMEL-4928: go.sh refuses a verdict naming another PR).
+   `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <full 40-hex head> --pr <the PR number> --evidence-file <that file> --model <your model id> --effort <your effort level>`
+   (`--pr` is required, HIMMEL-4928: go.sh refuses a verdict naming another PR;
+   `--model` and `--effort` are required, HIMMEL-6944: the writer refuses a verdict without them).
    It writes `verdicts/<qid>/judge.md` (`--judge <name>` renames it;
    `judge-<head>.md` when `judge.md` holds a NO-GO for another head) under the
    exact root and `<user>/<bucket>` that `go.sh` reads, emits the line go.sh

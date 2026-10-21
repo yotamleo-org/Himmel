@@ -21,7 +21,9 @@ Read on demand: `leg-preface.md` names this file when a required CI job goes red
   If the evidence shows a GENERAL red (an advisory, an outage, a runner or
   registry failure, the same case failing on main or on unrelated PRs), do NOT
   fix it in your PR and do not loop on it. Send the console one
-  `MAIN-RED <job> <failing case>` with that evidence, then carry on with
+  `MAIN-RED <job> <failing case> caused-by: #<pr>` (or `caused-by: unknown` when
+  no PR in the range since the last green main run can be named) with that
+  evidence, then carry on with
   whatever does not depend on it; the console has it fixed once, and after that
   merges you merge forward per the merge-forward rule below (never rebase, never force-push). If you suspect it is general but the data
   does not settle it, report `MAIN-RED? <job> <case> inconclusive` with what you

@@ -14,6 +14,13 @@
 #        go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
 # Prints the written path. Re-running overwrites (idempotent).
 #
+# Every merge GO (not --fix-main-red) is also persisted as a signed verdict record
+# through write-verdict.sh: <root>/<user>/<bucket>/verdicts/go-pr-<n>/console-go-<head>.md,
+# a qid no judge uses. It carries the deciding session's model and effort, from
+# --model <id> / --effort <level> or the HIMMEL_VERDICT_MODEL / HIMMEL_VERDICT_EFFORT
+# env (effort also CLAUDE_CODE_EFFORT_LEVEL), else `unknown`. Logging never blocks
+# the GO: a failed record only warns on stderr.
+#
 # --fix-main-red: writes a FIX-GO instead of a GO - the console's
 # way to let the PR that fixes a red main past merge-on-green.sh's main-red gate
 # (exit 22) without a forged `Fixes-main-red:` commit line. It is a separate
@@ -107,7 +114,7 @@ GH_READ="$(cd "$_csg_dir/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-o
 [ -f "$GH_READ" ] || GH_READ=gh
 
 usage() {
-    echo "usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
+    echo "usage: go.sh [--model <id>] [--effort <level>] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
@@ -118,9 +125,17 @@ FIXRUN=""
 FIX_SET=0
 FORK=""
 FORK_SET=0
+GO_MODEL=""
+GO_EFFORT=""
 # Each option, in any order, at most once (a repeat is a usage error).
 while :; do
     case "${1:-}" in
+        --model)
+            GO_MODEL="${2:-}"
+            shift 2 2>/dev/null || shift "$#" ;;
+        --effort)
+            GO_EFFORT="${2:-}"
+            shift 2 2>/dev/null || shift "$#" ;;
         --trust-reviewed)
             [ "$TRUST_SET" -eq 0 ] || { usage; exit 2; }
             TRUST="${2:-}"; TRUST_SET=1
@@ -382,5 +397,30 @@ if ! { printf 'pr=%s\nhead=%s\nby=%s\nat=%s\n' "$PR" "$SHA" "$BY" "$AT" \
     rm -f "$TMP"
     echo "go: could not write $DEST" >&2
     exit 1
+fi
+
+# persist the GO as a verdict record under its own qid, go-pr-<n>,
+# one file per head, so it never shares a directory with a judge's verdicts/<qid>/.
+# The deciding session's model and effort come from --model / --effort or the
+# HIMMEL_VERDICT_* env, else `unknown`. Logging never blocks the GO: a failure
+# only warns, the GO file above is already written.
+if [ "$FIX_SET" -eq 0 ]; then
+    [ -n "$GO_MODEL" ] || GO_MODEL="${HIMMEL_VERDICT_MODEL:-}"
+    [ -n "$GO_EFFORT" ] || GO_EFFORT="${HIMMEL_VERDICT_EFFORT:-${CLAUDE_CODE_EFFORT_LEVEL:-}}"
+    case "$GO_MODEL" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._:/\[\]-]*) GO_MODEL=unknown ;; esac
+    case "$GO_EFFORT" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._:/\[\]-]*) GO_EFFORT=unknown ;; esac
+    GO_SCRATCH="/tmp/claude-$(id -u)"
+    GO_EVD=""
+    { [ -d "$GO_SCRATCH" ] || mkdir -m 700 "$GO_SCRATCH" 2>/dev/null; } &&
+        GO_EVD=$(mktemp -d "$GO_SCRATCH/go-persist.XXXXXX") # prim-ok: write-verdict.sh takes evidence only from /tmp/claude-<uid>
+    if [ -n "$GO_EVD" ] \
+       && printf 'console GO for %s PR #%s\nby: %s\nat: %s\ntrust-reviewed: %s\n' "$NWO" "$PR" "$BY" "$AT" "${TRUST:-none}" > "$GO_EVD/evidence.md" \
+       && GO_WV=$(bash "$HERE/write-verdict.sh" "go-pr-$PR" GO "$SHA" --pr "$PR" --judge "console-go-$SHA" \
+            --evidence-file "$GO_EVD/evidence.md" --model "$GO_MODEL" --effort "$GO_EFFORT" 2>&1); then
+        :
+    else
+        echo "go: warning - the GO is written but its verdict record was not persisted: ${GO_WV:-could not stage the evidence under $GO_SCRATCH}" >&2
+    fi
+    [ -z "${GO_EVD:-}" ] || rm -rf "$GO_EVD"
 fi
 printf '%s\n' "$DEST"

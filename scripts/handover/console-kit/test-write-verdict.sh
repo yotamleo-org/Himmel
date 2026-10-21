@@ -35,6 +35,9 @@
 #  15. an ls -ld that fails or prints nothing refuses the scratch root
 #  16. a long --judge name is bounded so no redirect target exceeds 255 bytes
 #  17. an ls -ld that exits 0 with no mode string refuses the scratch root
+#  24. a verdict without a model and an effort is refused; both
+#      come from --model/--effort or the HIMMEL_VERDICT_* env, land in the signed
+#      header, and cannot be typed in the evidence
 #
 # Hermetic: temp dir only; the guard scripts are run, never edited.
 # Platform guard: POSIX bash 3.2+.
@@ -58,6 +61,8 @@ tmp="$(cd "$tmp" && pwd -P)"
 root="$tmp/root"
 mkdir -p "$root" || exit 1
 export USER_SLUG=tuser
+# every verdict records its judge; section 24 unsets these to test the refusal
+export HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
 # the writer signs with the GO key under $HOME/.config/himmel; a
 # scratch HOME with a fixed key keeps the run off the operator's real one.
 KEYHOME="$tmp/home"
@@ -807,6 +812,46 @@ legacy_mac=$(
 { cat "$tmp/legacy.body"; printf 'mac: %s\n' "$legacy_mac"; } > "$scope_dir/q21legacy/judge.md"
 rc=0; verdict_rc q21legacy "$SHA_A" || rc=$?
 check "21: a legacy signed GO (no prior, no flipped, no trailing period) is still accepted" "$rc" 0
+
+# --- 24. model and effort are required and recorded -----------------------
+# no flags and no env: refused, nothing written
+wv_bare() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY \
+        -u HIMMEL_VERDICT_MODEL -u HIMMEL_VERDICT_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL \
+        HANDOVER_DIR="$root" USER_SLUG=tuser CLAUDE_CODE_SESSION_ID=sess-6944 \
+        "$@" bash "$SCRIPT" "${WV_ARGS[@]}" --pr 501
+}
+rc=0; out=$(WV_ARGS=(q24a GO "$SHA_A" --evidence-file "$ev"); wv_bare 2>&1) || rc=$?
+check "24: a verdict with no model and no effort is refused" "$rc" 2
+contains "24: the refusal names model" "$out" "model"
+check "24: nothing written for the refused verdict" "$(find "$scope_dir/q24a" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" 0
+rc=0; out=$(WV_ARGS=(q24b GO "$SHA_A" --evidence-file "$ev" --model m-x); wv_bare 2>&1) || rc=$?
+check "24: a model without an effort is refused" "$rc" 2
+rc=0; out=$(WV_ARGS=(q24c GO "$SHA_A" --evidence-file "$ev" --effort high); wv_bare 2>&1) || rc=$?
+check "24: an effort without a model is refused" "$rc" 2
+rc=0; out=$(WV_ARGS=(q24d GO "$SHA_A" --evidence-file "$ev" --model 'bad model' --effort high); wv_bare 2>&1) || rc=$?
+check "24: a model that is not one token is refused" "$rc" 2
+# flags are recorded in the header, inside the signed body
+rc=0; out=$(WV_ARGS=(q24e GO "$SHA_A" --evidence-file "$ev" --model claude-opus-5-5 --effort xhigh); wv_bare 2>&1) || rc=$?
+check "24: flags accepted" "$rc" 0
+f24="$scope_dir/q24e/judge.md"
+contains "24: model line recorded" "$(cat "$f24")" "model: claude-opus-5-5"
+contains "24: effort line recorded" "$(cat "$f24")" "effort: xhigh"
+rc=0; verdict_rc q24e "$SHA_A" || rc=$?
+check "24: go_trust_verdict still accepts a record carrying model and effort" "$rc" 0
+# the env is the fallback, and the flag wins over it
+rc=0; out=$(WV_ARGS=(q24f GO "$SHA_A" --evidence-file "$ev"); wv_bare HIMMEL_VERDICT_MODEL=env-m HIMMEL_VERDICT_EFFORT=low 2>&1) || rc=$?
+check "24: the HIMMEL_VERDICT_* env is the fallback" "$rc" 0
+contains "24: env model recorded" "$(cat "$scope_dir/q24f/judge.md")" "model: env-m"
+rc=0; out=$(WV_ARGS=(q24g GO "$SHA_A" --evidence-file "$ev" --model flag-m); wv_bare HIMMEL_VERDICT_MODEL=env-m HIMMEL_VERDICT_EFFORT=low 2>&1) || rc=$?
+contains "24: the flag wins over the env" "$(cat "$scope_dir/q24g/judge.md")" "model: flag-m"
+contains "24: effort falls back per field" "$(cat "$scope_dir/q24g/judge.md")" "effort: low"
+rc=0; out=$(WV_ARGS=(q24h GO "$SHA_A" --evidence-file "$ev" --model m-y); wv_bare CLAUDE_CODE_EFFORT_LEVEL=medium 2>&1) || rc=$?
+contains "24: effort falls back to CLAUDE_CODE_EFFORT_LEVEL" "$(cat "$scope_dir/q24h/judge.md")" "effort: medium"
+# a model/effort line typed in the evidence is refused (the writer emits them)
+printf 'class: option-parsing\nmodel: forged\n' > "$evd/forged.md"
+rc=0; out=$(wv q24i NO-GO "$SHA_A" --evidence-file "$evd/forged.md" 2>&1) || rc=$?
+check "24: evidence carrying a model: line is refused" "$rc" 2
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"

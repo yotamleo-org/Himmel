@@ -34,6 +34,14 @@ body:
       placeholder: scripts/jira CLI
     validations:
       required: false
+  - type: input
+    id: caused-by
+    attributes:
+      label: caused-by
+      description: For a regression or a red main, the PR that introduced it as `#<pr>`; `unknown` when no PR can be named.
+      placeholder: "#1234"
+    validations:
+      required: false
   - type: textarea
     id: environment
     attributes:

@@ -7,7 +7,13 @@
 # generates that line itself; the judge's prose comes from a file it wrote to
 # its scratch, so the command a judge types names nothing the guards key on.
 #
-# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>]
+# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--model <id>] [--effort <level>]
+#
+# --model / --effort name the judge that ruled and are recorded as `model:` and
+# `effort:` header lines (inside the signed body); a verdict without both is
+# refused (exit 2). A flag wins, else HIMMEL_VERDICT_MODEL / HIMMEL_VERDICT_EFFORT
+# (effort also CLAUDE_CODE_EFFORT_LEVEL). An in-process judge call sees no model
+# env, so it passes the flags.
 #
 # Writes <root>/<user>/<bucket>/verdicts/<qid>/<name>.md (name defaults to
 # `judge`; <name>-<head>.md beside a NO-GO for another head), where <root>
@@ -115,7 +121,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>] [--residual-of <KEY>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]" >&2
     exit 2
 }
 seg_ok() {
@@ -125,9 +131,11 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR="" RESIDUAL_OF=""
+EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --model) [ "$#" -ge 2 ] || usage; MODEL=$2; shift 2 ;;
+        --effort) [ "$#" -ge 2 ] || usage; EFFORT=$2; shift 2 ;;
         --bind-reviewed)
             [ "$#" -ge 2 ] || usage
             [ -n "$2" ] || { echo "write-verdict: --bind-reviewed needs the full 40-char lowercase hex sha (got an empty value)" >&2; exit 2; }
@@ -167,6 +175,17 @@ if [ -n "$BIND" ]; then
     fi
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
+# the record names the model and effort that ruled, so judge accuracy is measurable.
+# A flag wins; an in-process judge call has no model env, so it passes the flags.
+[ -n "$MODEL" ] || MODEL=${HIMMEL_VERDICT_MODEL:-}
+[ -n "$EFFORT" ] || EFFORT=${HIMMEL_VERDICT_EFFORT:-${CLAUDE_CODE_EFFORT_LEVEL:-}}
+for wv_f in model:"$MODEL" effort:"$EFFORT"; do
+    case "${wv_f#*:}" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._:/\[\]-]*)
+            echo "write-verdict: a verdict records the judge's ${wv_f%%:*}: pass --${wv_f%%:*} <value> (or set HIMMEL_VERDICT_$(printf '%s' "${wv_f%%:*}" | tr '[:lower:]' '[:upper:]')), one token of [A-Za-z0-9._:/[]-], got '${wv_f#*:}'" >&2
+            exit 2 ;;
+    esac
+done
 if [ -n "$RESIDUAL_OF" ] && ! [[ $RESIDUAL_OF =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
     echo "write-verdict: --residual-of must be a ticket key like PROJ-123 (got '$RESIDUAL_OF')" >&2
     exit 2
@@ -276,6 +295,10 @@ if grep -Eq '^## Verdict[[:space:]]*$' "$EVIDENCE"; then
 fi
 if grep -Eq '^\*\*(GO|NO-GO)\*\*' "$EVIDENCE"; then
     echo "write-verdict: the evidence carries a bold **GO** / **NO-GO** verdict line; the writer emits the one verdict line" >&2
+    exit 2
+fi
+if grep -Eq '^(model|effort):' "$EVIDENCE"; then
+    echo "write-verdict: the evidence carries a model: or effort: line; pass --model / --effort and the writer records them" >&2
     exit 2
 fi
 if grep -Eq '^(flipped|prior):' "$EVIDENCE"; then
@@ -453,6 +476,7 @@ if ! {
     { [ -z "$PR" ] || printf 'pr: %s\n' "$PR"; } &&
     { [ -z "$BRANCH" ] || printf 'branch: %s\n' "$BRANCH"; } &&
     { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
+    printf 'model: %s\neffort: %s\n' "$MODEL" "$EFFORT" &&
     printf '\n' &&
     { [ -z "$REVIEWED" ] || printf 'reviewed-head: %s\nbound-by: write-verdict --bind-reviewed; the delta from the reviewed head is test-path-only or comment-only\n\n' "$REVIEWED"; } &&
     cat "$EVIDENCE" &&

@@ -73,7 +73,9 @@ under your scratch dir (`bash <primary checkout>/scripts/judge-dir.sh <PR>
 [suffix a-z]` makes it; never `mkdir` it yourself), keep the verdict line out
 of the file, then run
 `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid>
-<GO|NO-GO> <full 40-hex head> --pr <PR> --evidence-file <file>` and put the
-path it prints in your reply. `<primary checkout>` is the directory holding
+<GO|NO-GO> <full 40-hex head> --pr <PR> --evidence-file <file> --model <your
+model id> --effort <your effort level>` (the dispatch names both; the writer
+refuses a verdict without them, HIMMEL-6944) and put the path it prints in your
+reply. `<primary checkout>` is the directory holding
 the `.git` that `git rev-parse --path-format=absolute --git-common-dir`
 prints. The writer never mints a GO; the console runs `go.sh`.

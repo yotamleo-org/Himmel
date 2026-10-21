@@ -599,6 +599,48 @@ check    "6033: unreadable trust list -> ready-check refuses, exit 4" "$rc" "4"
 check    "6033: unreadable trust list -> nothing written for 87" "$(compgen -G "$ROOT21/.locks/go/87.*" | wc -l | tr -d ' ')" "0"
 unset READY_CHECK_ANCHOR
 
+# --- 22. every merge GO is persisted as a verdict record ----------
+# a plain GO writes verdicts/go-pr-<n>/console-go-<head>.md through write-verdict.sh,
+# beside no judge's file; the GO is never blocked by logging
+ROOT22="$tmp/root22"; mkdir -p "$ROOT22"
+REC22="$ROOT22/$VSCOPE/verdicts/go-pr-77/console-go-$SHA.md"
+rc=0; out="$(HANDOVER_DIR="$ROOT22" CONSOLE_SESSION_NAME=console-x bash "$SCRIPT" --model claude-opus-5-5 --effort high 77 "$SHA" 2>&1)" || rc=$?
+check "22: a plain GO exits 0" "$rc" "0"
+check "22: the GO file is still written" "$(test -f "$ROOT22/.locks/go/77.$SHA" && echo yes)" "yes"
+check "22: the GO leaves a persisted record" "$(test -f "$REC22" && echo yes)" "yes"
+rec22="$(cat "$REC22" 2>/dev/null || true)"
+contains "22: the record rules GO on the head" "$rec22" "**GO** for head \`$SHA\`."
+contains "22: the record carries the model" "$rec22" "model: claude-opus-5-5"
+contains "22: the record carries the effort" "$rec22" "effort: high"
+contains "22: the record names the PR" "$rec22" "pr: 77"
+rc=0; ( export HANDOVER_DIR="$ROOT22"; . "$HERE/../../lib/go-gate.sh"; go_trust_verdict "$ROOT22" go-pr-77 "$SHA" "$HERE/../../.." 77 >/dev/null ) || rc=$?
+check "22: the record is signed so go_trust_verdict accepts it" "$rc" "0"
+check "22: the printed path is still the GO file" "$(printf '%s\n' "$out" | tail -n 1)" "$ROOT22/.locks/go/77.$SHA"
+# model and effort fall back to the env, then to unknown: a GO is never refused for them
+ROOT22B="$tmp/root22b"; mkdir -p "$ROOT22B"
+rc=0; HANDOVER_DIR="$ROOT22B" HIMMEL_VERDICT_MODEL=env-model HIMMEL_VERDICT_EFFORT=low bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
+check "22: a GO with the env model exits 0" "$rc" "0"
+contains "22: the env model is recorded" "$(cat "$ROOT22B/$VSCOPE/verdicts/go-pr-77/console-go-$SHA.md" 2>/dev/null)" "model: env-model"
+ROOT22C="$tmp/root22c"; mkdir -p "$ROOT22C"
+rc=0; env -u HIMMEL_VERDICT_MODEL -u HIMMEL_VERDICT_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL HANDOVER_DIR="$ROOT22C" bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
+check "22: a GO with no model or effort anywhere still exits 0" "$rc" "0"
+check "22: that GO file is written" "$(test -f "$ROOT22C/.locks/go/77.$SHA" && echo yes)" "yes"
+rec22c="$(cat "$ROOT22C/$VSCOPE/verdicts/go-pr-77/console-go-$SHA.md" 2>/dev/null || true)"
+contains "22: model falls back to unknown" "$rec22c" "model: unknown"
+contains "22: effort falls back to unknown" "$rec22c" "effort: unknown"
+# a record that cannot be written warns and the GO still goes through
+ROOT22D="$tmp/root22d"; mkdir -p "$ROOT22D/$VSCOPE/verdicts" "$tmp/elsewhere22"
+ln -s "$tmp/elsewhere22" "$ROOT22D/$VSCOPE/verdicts/go-pr-77"
+rc=0; out="$(HANDOVER_DIR="$ROOT22D" bash "$SCRIPT" --model m --effort e 77 "$SHA" 2>&1)" || rc=$?
+check "22: an unwritable record does not block the GO" "$rc" "0"
+check "22: the GO file is written despite it" "$(test -f "$ROOT22D/.locks/go/77.$SHA" && echo yes)" "yes"
+contains "22: the failure is a warning" "$out" "verdict record was not persisted"
+# a fix-main-red GO is not a merge GO and persists no record
+ROOT22E="$tmp/root22e"; mkdir -p "$ROOT22E"
+rc=0; HANDOVER_DIR="$ROOT22E" bash "$SCRIPT" --fix-main-red 4242 77 "$SHA" >/dev/null 2>&1 || rc=$?
+check "22: a fix-main-red GO exits 0" "$rc" "0"
+check "22: a fix-main-red GO persists no verdict record" "$(test -e "$ROOT22E/$VSCOPE/verdicts/go-pr-77" && echo yes || echo no)" "no"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-go.sh"

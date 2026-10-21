@@ -11,6 +11,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 tmp="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 fails=0
+# the fixture's verdict writer refuses a verdict without the judge's model and effort
+export HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1" >&2; fails=$((fails + 1)); }
 assert_has() {
