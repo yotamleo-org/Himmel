@@ -8,11 +8,13 @@ vi.mock('../client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client.js')>();
   return { ...actual, request: vi.fn() };
 });
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 vi.mock('./admissions-ledger.js', () => ({ appendAdmission: vi.fn(), readAdmissions: vi.fn(() => []) }));
 
 import { request } from '../client.js';
 import { appendAdmission, readAdmissions } from './admissions-ledger.js';
-import { registerVersionFreeze, probes } from './version-freeze.js';
+import { execFileSync } from 'node:child_process';
+import { registerVersionFreeze, probes, mainCiGreen } from './version-freeze.js';
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 const mockAppend = appendAdmission as unknown as ReturnType<typeof vi.fn>;
@@ -110,6 +112,36 @@ describe('version-freeze / version-ready / version-defer', () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new')] });
     await run(['version-ready', 'v1.1.3']);
     expect(out()).toMatch(/FAIL\s+frozen-set.*HIM-2/);
+  });
+
+  it('version-ready FAILs the frozen-set row for a frozen key the search no longer returns', async () => {
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done')] });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+frozen-set.*open: HIM-2/);
+  });
+
+  it('the done-fold query also catches a Done frozen key whose fixVersion is empty', async () => {
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')] });
+    await run(['version-ready', 'v1.1.3']);
+    const jqls = mockRequest.mock.calls.map((c) => decodeURIComponent(String(c[1])));
+    expect(jqls.some((j) => j.includes('fixVersion != "v1.1.3" OR fixVersion is EMPTY'))).toBe(true);
+  });
+
+  it('main-ci checks the CI runs of main\'s actual head, not of the newest run', () => {
+    const exec = execFileSync as unknown as ReturnType<typeof vi.fn>;
+    exec.mockImplementation((_cmd: string, args: string[]) =>
+      args[0] === 'api'
+        ? 'newhead111\n'
+        : JSON.stringify([{ conclusion: 'success', headSha: 'oldhead000', workflowName: 'ci' }]),
+    );
+    expect(mainCiGreen()).toEqual({ ok: false, detail: 'no CI run found for newhead111' });
+  });
+
+  it('version-freeze labels the set before it writes frozen:, so a failed label leaves the version retryable', async () => {
+    world({ description: 'notes', open: [issue('HIM-1', 'new')] });
+    await run(['version-freeze', 'v1.1.3', '--at', '2026-10-20']);
+    const puts = mockRequest.mock.calls.filter((c) => c[0] === 'PUT').map((c) => String(c[1]));
+    expect(puts).toEqual(['/issue/HIM-1', '/version/7']);
   });
 
   it('version-ready PASSes the frozen-set row once the key is Done or labelled deferred', async () => {

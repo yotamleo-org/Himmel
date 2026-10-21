@@ -48,9 +48,10 @@ export function mainCiGreen(sha?: string): CiResult {
         encoding: 'utf8',
       }),
     ) as Array<{ conclusion: string; headSha: string; workflowName: string }>;
-    const head = sha ?? runs[0]?.headSha;
-    const mine = runs.filter((r) => head !== undefined && r.headSha.startsWith(head));
-    if (mine.length === 0) return { ok: false, detail: `no CI run found for ${head ?? 'main'}` };
+    const head =
+      sha ?? execFileSync('gh', ['api', 'repos/{owner}/{repo}/commits/main', '--jq', '.sha'], { encoding: 'utf8' }).trim();
+    const mine = runs.filter((r) => r.headSha.startsWith(head));
+    if (mine.length === 0) return { ok: false, detail: `no CI run found for ${head}` };
     const bad = mine.filter((r) => r.conclusion !== 'success' && r.conclusion !== 'skipped');
     return bad.length === 0
       ? { ok: true, detail: `${mine.length} run(s) green at ${head?.slice(0, 9)}` }
@@ -108,8 +109,9 @@ export async function freezeVersion(
   const base = (version.description ?? '').trimEnd();
   const description = base === '' ? block : `${base}\n${block}`;
   if (opts.dryRun) return `Would freeze ${name} on ${date}: ${keys.length} ticket(s) labelled scope-${name}\n${keys.join(',')}`;
-  await request('PUT', `/version/${version.id}`, { description });
+  // Label first: a failed label leaves the version unfrozen, so the freeze can be retried.
   for (const key of keys) await addLabel(key, `scope-${name}`);
+  await request('PUT', `/version/${version.id}`, { description });
   return `Froze ${name} on ${date}: ${keys.length} ticket(s) labelled scope-${name}`;
 }
 
@@ -159,7 +161,11 @@ async function readinessRows(
   } else {
     const issues = frozen.keys.length === 0 ? [] : ((await searchAllIssues(inKeys(frozen.keys), SEARCH_LIMIT, request, true)) as Issue[]);
     const deferred = (i: Issue) => (i.fields.labels ?? []).includes('deferred');
-    const open = issues.filter((i) => !done(i) && !deferred(i)).map((i) => i.key);
+    const seen = new Set(issues.map((i) => i.key));
+    const open = [
+      ...issues.filter((i) => !done(i) && !deferred(i)).map((i) => i.key),
+      ...frozen.keys.filter((k) => !seen.has(k)),
+    ];
     openCount = open.length;
     const inVersion = (await searchAllIssues(
       `project=${project} AND fixVersion="${name}"`,
@@ -200,7 +206,7 @@ async function readinessRows(
   // that lacks it means the fold has not run for the range.
   const unfolded =
     frozen && frozen.keys.length > 0
-      ? await searchAllIssues(`${inKeys(frozen.keys)} AND statusCategory = Done AND fixVersion != "${name}"`, SEARCH_LIMIT, request)
+      ? await searchAllIssues(`${inKeys(frozen.keys)} AND statusCategory = Done AND (fixVersion != "${name}" OR fixVersion is EMPTY)`, SEARCH_LIMIT, request)
       : [];
   rows.push({
     id: 'done-fold',
