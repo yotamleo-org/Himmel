@@ -20,7 +20,7 @@
 #   finding with no ledger disposition at this exact head, does.
 #
 #   A clone without the CodeRabbit app has the coderabbit row absent: no
-#   CodeRabbit call is made (scripts/lib/cr-available.sh).
+#   CodeRabbit call is made (scripts/lib/coderabbit-available.sh).
 #   A config error (a critics file that does not parse, a bad mode, no hard
 #   reviewer without "review": "no_code_review") BLOCKS: rc 2,
 #   `cr-reviewer-gate: config error: <file>: <why>` on stdout.
@@ -186,7 +186,7 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # head (clear-review-marker.sh writes it once, as model claude): a slug with no
 # row of its own at <head> is read at the reviewed head instead, and a
 # finding posted at <head> itself still counts. Heads, amends and tracked deferrals
-# match as in cr-ledger-evidence.sh; a malformed line is a degraded read,
+# match as in review-ledger-evidence.sh; a malformed line is a degraded read,
 # never a skip. The ledger path is fixed (never env-overridable).
 _crg_critic_states() {
     local head="$1" common node
@@ -619,7 +619,7 @@ cr_merge_gate() {
     if [ -n "$crg_out" ]; then printf '%s\n' "$crg_out"; fi
 
     # 3) CodeRabbit review-BODY findings (S1 — see
-    # cr-body-findings.sh header): outside-diff-range comments carry NO
+    # coderabbit-body-findings.sh header): outside-diff-range comments carry NO
     # thread, so every gate above is blind to them by construction. Read only
     # now that CodeRabbit has concluded and the thread set above is final —
     # same ordering rationale as (1)/(2). Read only while the coderabbit row is

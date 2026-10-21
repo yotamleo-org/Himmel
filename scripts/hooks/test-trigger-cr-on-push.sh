@@ -6,7 +6,7 @@
 # trigger-cr-on-pr-create.sh's old per-PR dedup silently blackholed every fix
 # round after the first review (PRs #1717/#1718). This suite exercises the
 # hook with a STUBBED `gh` on PATH (no network) and the shared ledger
-# (scripts/lib/cr-trigger-ledger.sh) redirected to a throwaway file via
+# (scripts/lib/coderabbit-trigger-ledger.sh) redirected to a throwaway file via
 # CR_TRIGGER_LEDGER_PATH, so no test writes into this repo's real .git/.
 #
 # Covers (acceptance):
@@ -191,7 +191,7 @@ fi
 # Test 3b: a stale @coderabbitai comment from the FIRST head does not block --
 # the SECOND head's legitimate trigger. This is the exact bug the ledger
 # fixes: the per-PR comment scan is repo-wide, not per-head, so it must not
-# gate the push path (see scan_existing=0 in the hook / cr-trigger-ledger.sh).
+# gate the push path (see scan_existing=0 in the hook / coderabbit-trigger-ledger.sh).
 echo "TEST: a stale trigger comment from an OLDER head does not block a NEW head's trigger"
 reset_state
 printf '@coderabbitai review\n' > "$COMMENTS_FILE"
@@ -228,7 +228,7 @@ fi
 
 # Test 3d: CR_TRIGGER_SUPPRESS=1 -> no post, head NOT recorded --
 # Same seam as trigger-cr-on-pr-create.sh — both hooks route through
-# cr_trigger_post_review in scripts/lib/cr-trigger-ledger.sh, so ONE knob
+# cr_trigger_post_review in scripts/lib/coderabbit-trigger-ledger.sh, so ONE knob
 # covers both. Not recorded in the ledger: the review is deferred, not
 # satisfied, so a later un-suppressed push for the same head must still post.
 echo "TEST: CR_TRIGGER_SUPPRESS=1 -> no post, head not recorded"
@@ -399,7 +399,7 @@ fi
 # Test F: a push advancing a PR on a FOREIGN repo -> NO post, advisory -------
 # The same exposure as the `gh pr create` hook — a push to an
 # upstream/fork branch advances a PR that is not ours to summon CodeRabbit on.
-# The guard lives in cr_trigger_post_review (scripts/lib/cr-trigger-ledger.sh),
+# The guard lives in cr_trigger_post_review (scripts/lib/coderabbit-trigger-ledger.sh),
 # the one seam both hooks post through; this asserts it holds from here.
 echo "TEST: push advancing a FOREIGN repo's PR -> no post, advisory on stderr"
 reset_state

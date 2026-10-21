@@ -333,9 +333,9 @@ Two kinds of reviewer look at a change:
   the claude-only floor. There is never "no review".
 - **CodeRabbit** is a GitHub App. It reviews the PR after `gh pr create`,
   posts review threads and a `CodeRabbit` commit status, and is read by
-  `check-ci.sh` and the merge gate through `scripts/lib/cr-signal.sh`. A repo
+  `check-ci.sh` and the merge gate through `scripts/lib/coderabbit-signal.sh`. A repo
   without the App is detected (`git config --local himmel.coderabbit`,
-  `scripts/lib/cr-available.sh`) and its CodeRabbit gate is a no-op.
+  `scripts/lib/coderabbit-available.sh`) and its CodeRabbit gate is a no-op.
 
 **Today CodeRabbit is a best-effort reviewer.** A thread it posts must be
 resolved before the merge: fix it in a commit, or reply with why it is fixed

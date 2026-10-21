@@ -6,7 +6,7 @@ set -uo pipefail
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). cr_merge_gate short-circuits to allow on CR_MERGE_GATE_OK=1
-# (cr-merge-gate.sh:166) before any gh call, so without this scrub every
+# (review-merge-gate.sh:166) before any gh call, so without this scrub every
 # block-case below inherits the bypass and reads rc 0.
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
@@ -29,7 +29,7 @@ esac
 # otherwise route every graphql call through the reviewThreads fixtures keyed
 # on GH_STUB_MODE). Driven by GH_STUB_FRESHNESS, default 'fresh' (anchored to
 # abc123, this suite's head) so every UNRELATED case below is unaffected —
-# same "default keeps old assertions" convention cr-body-findings.sh's tests
+# same "default keeps old assertions" convention coderabbit-body-findings.sh's tests
 # use for the reviews REST endpoint.
 #
 # Every BOT node carries a non-empty `body` and a non-zero `comments.totalCount`
@@ -274,7 +274,7 @@ grep -q "^BLOCK:" "$TMP/out-cr-status-absent-allows" && { echo "FAIL cr-status-a
 GH_STUB_MODE=cr-skipped    t cr-status-skipped-allows 0
 GH_STUB_MODE=cr-completed  t cr-status-completed-allows 0
 # mirror check-ci's 34d near-miss guard here. Both gates read
-# the same cr-signal.sh, so a loosened skip regex must fail in BOTH suites —
+# the same coderabbit-signal.sh, so a loosened skip regex must fail in BOTH suites —
 # and this is the gate that actually stops a merge.
 GH_STUB_MODE=cr-nearmiss   t cr-status-skipish-wording-allows 0
 GH_STUB_MODE=cr-failure    t cr-status-failure-allows 0

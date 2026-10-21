@@ -1345,7 +1345,7 @@ fi
 # LEG_SUPPRESS_CR_TRIGGER: opt-out-by-console seam for the
 # CodeRabbit auto-trigger hooks (trigger-cr-on-pr-create.sh,
 # trigger-cr-on-push.sh - both route their post through
-# cr_trigger_post_review in scripts/lib/cr-trigger-ledger.sh, so this ONE
+# cr_trigger_post_review in scripts/lib/coderabbit-trigger-ledger.sh, so this ONE
 # knob covers both; see that function for why). Set in the LAUNCHING shell
 # (e.g. `LEG_SUPPRESS_CR_TRIGGER=1 bash headed-arm-leg.sh ...`), same
 # pattern as LEG_REPO above, and folded here into CR_TRIGGER_SUPPRESS, the

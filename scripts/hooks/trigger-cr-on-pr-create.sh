@@ -29,7 +29,7 @@
 # so the per-PR scan always short-circuited, the merge gate correctly refused
 # the "Review skipped" head, and nothing ever re-triggered (PRs #1717/#1718).
 # Dedup is now keyed by head SHA via the shared ledger in
-# scripts/lib/cr-trigger-ledger.sh — the SAME ledger a sibling hook,
+# scripts/lib/coderabbit-trigger-ledger.sh — the SAME ledger a sibling hook,
 # trigger-cr-on-push.sh, uses to trigger a review on a PUSH that advances an
 # open PR's head. The per-PR comment scan is kept here ONLY as a secondary
 # guard (a reused/reopened PR number can carry a stale trigger comment); it no
@@ -53,23 +53,23 @@ set -euo pipefail
 # ─── helpers ────────────────────────────────────────────────────────────────
 warn() { echo "trigger-cr-on-pr-create: $*" >&2; }
 
-# Shared per-head-SHA ledger — see scripts/lib/cr-trigger-ledger.sh
+# Shared per-head-SHA ledger — see scripts/lib/coderabbit-trigger-ledger.sh
 # for the dedup contract, and for cr_trigger_repo_armed, the
 # foreign-repo guard. Sourcing failure fails CLOSED for the POST specifically
 # (warn + exit 0, post nothing): without the lib this hook can neither dedup
 # nor tell whose repo the PR is on. The hook itself still exits 0, so a
 # successful PR create is never stranded.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/cr-trigger-ledger.sh
+# shellcheck source=../lib/coderabbit-trigger-ledger.sh
 # shellcheck disable=SC1091
-if ! { [ -r "$SCRIPT_DIR/../lib/cr-trigger-ledger.sh" ] && . "$SCRIPT_DIR/../lib/cr-trigger-ledger.sh"; } 2>/dev/null; then
+if ! { [ -r "$SCRIPT_DIR/../lib/coderabbit-trigger-ledger.sh" ] && . "$SCRIPT_DIR/../lib/coderabbit-trigger-ledger.sh"; } 2>/dev/null; then
     # Was: fall back to a per-PR comment scan and post anyway. That fallback is
     # gone — this lib now also owns cr_trigger_repo_armed, the
     # check that keeps the trigger off FOREIGN repos, so a run without it
     # cannot tell whose PR it is about to comment on. Not posting is the cheap
     # failure: the merge gate refuses green until a review lands at head, which
     # is loud, whereas a comment on a stranger's PR is not ours to make.
-    warn "WARNING: could not load cr-trigger-ledger.sh — cannot verify this PR's repo is ours; not triggering CodeRabbit. Post '@coderabbitai review' manually if this PR is on one of our repos"
+    warn "WARNING: could not load coderabbit-trigger-ledger.sh — cannot verify this PR's repo is ours; not triggering CodeRabbit. Post '@coderabbitai review' manually if this PR is on one of our repos"
     exit 0
 fi
 

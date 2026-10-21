@@ -150,7 +150,7 @@ Act on the exit code:
   non-head commit is no longer a distinct exit — see `0` above.
 
 `CR_PROFILE=none` / `CR_APP=0` skip reading CodeRabbit's status + body
-findings together (see `scripts/lib/cr-available.sh`).
+findings together (see `scripts/lib/coderabbit-available.sh`).
 
 **A repo that never armed hears nothing about CodeRabbit** — that silence is
 deliberate (HIMMEL-1125: nothing was configured, so nothing is missing, and an
@@ -162,7 +162,7 @@ repo reads as unarmed — so a clone that genuinely HAS CodeRabbit silently lose
 the signal gate and every subsequent green certifies a review nobody checked
 for. That state, and only that state, prints a WARNING naming the fix. It does
 not block: exit 0 is unchanged, because a typo in a config value must not wedge
-a merge (`scripts/lib/cr-available.sh`'s `cr_app_state`).
+a merge (`scripts/lib/coderabbit-available.sh`'s `cr_app_state`).
 
 `merge-on-green.sh` records the same answer as a `cr=armed|not-configured|disabled|broken`
 field on its audit line. An unattended `ARMAUTOMERGE` chain has no operator

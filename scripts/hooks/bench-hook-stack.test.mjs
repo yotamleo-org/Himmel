@@ -266,7 +266,7 @@ const OUTBOUND_MARKERS = [
   // orchestrator-inline-guard.sh names dispatch-lane.sh in its advisory copy
   // without ever running it, and that is a message about a command, not a send.
   /scripts\/telegram\/session-status\.ts/,
-  /cr-trigger-ledger/,     // posts `@coderabbitai review`, dedup keyed per head SHA
+  /(cr|coderabbit)-trigger-ledger/,     // posts `@coderabbitai review`, dedup keyed per head SHA
   /gh (pr|issue) comment/,
   // Deliberately NOT `gh pr create|merge|...`: this repo's hooks guard those
   // commands rather than run them, so the string is everywhere in guard prose
@@ -276,7 +276,7 @@ const OUTBOUND_MARKERS = [
   /gh (issue|release|api)[^\n]*(--method|-X) *(POST|PUT|PATCH|DELETE)/,
   // `gh api -f/--field` on a REST endpoint implies POST without naming a
   // method. `gh api graphql -f query=...` is excluded: -f is just how every
-  // GraphQL variable is passed, so cr-merge-gate.sh's reviewThreads READ
+  // GraphQL variable is passed, so review-merge-gate.sh's reviewThreads READ
   // false-positived on it (measured). A graphql WRITE says `mutation`.
   /gh api (?!graphql\b)[^\n]*(-f |--field |--raw-field )/,
   /gh api graphql[^\n]*mutation/,
@@ -287,7 +287,7 @@ const OUTBOUND_MARKERS = [
 ];
 
 // A hook's own source plus the scripts/lib helpers it names. Hooks reach
-// outbound through a lib (trigger-cr-* through cr-trigger-ledger.sh), so the
+// outbound through a lib (trigger-cr-* through coderabbit-trigger-ledger.sh), so the
 // scan follows one hop; deeper than that no hook in this repo goes.
 // Comment lines are stripped first, and that is load-bearing: a guard hook
 // necessarily NAMES the command it guards, so check-cr-marker-on-pr-create.sh's

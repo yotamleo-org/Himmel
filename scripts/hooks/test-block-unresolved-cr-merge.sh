@@ -6,7 +6,7 @@ set -uo pipefail
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). This hook sources cr_merge_gate, which short-circuits to allow
-# on CR_MERGE_GATE_OK=1 (cr-merge-gate.sh:166), so without this scrub every CR
+# on CR_MERGE_GATE_OK=1 (review-merge-gate.sh), so without this scrub every CR
 # block-case below inherits the bypass and reads rc 0 (the CI-gate-only cases
 # still block — the CI gate is independent of CR_MERGE_GATE_OK).
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
@@ -175,7 +175,7 @@ payload() { # payload <tool_name> <command>
   printf '{"tool_name":"%s","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$2" "${PAYLOAD_CWD:-$TMP}"
 }
 
-# cr-merge-gate.sh now fails closed on a missing nested helper, so a
+# review-merge-gate.sh now fails closed on a missing nested helper, so a
 # fixture lib dir that holds a copy of it must hold its helpers too (and the hook's
 # own timeout-bin.sh, which it now also refuses to run without).
 cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
@@ -499,7 +499,7 @@ GH_STUB_MODE=clean t quoted-other-word-denies 2 Bash "gh pr merge 42 --squash \\
 GH_STUB_MODE=unresolved t ghc-is-not-gh-allows 0 Bash "ghc pr merge 42 --squash"
 GH_STUB_MODE=unresolved t xgh-is-not-gh-allows 0 Bash "xgh pr merge 42 --squash"
 # (4) a gate library that will not load DENIES on a real merge (was `|| exit 0`).
-for _lib in cr-merge-gate ci-green-gate; do
+for _lib in review-merge-gate ci-green-gate; do
     _root="$TMP/nolib-$_lib"
     mkdir -p "$_root/scripts/hooks"
     cp -R "$SCRIPT_DIR/../lib" "$_root/scripts/lib"
@@ -525,10 +525,10 @@ for _lib in cr-merge-gate ci-green-gate; do
         fail=$((fail+1)); echo "FAIL lib-unparseable-$_lib-denies (rc=$_rc want 2) err=$(cat "$TMP/err-badlib-$_lib")"
     fi
 done
-# the NESTED sources (cr-merge-gate's five helpers) and the hook's
+# the NESTED sources (review-merge-gate's five helpers) and the hook's
 # own timeout-bin.sh fail closed too; each row names the lib that is missing.
-for _row in "coderabbit-signal|cr-merge-gate" "coderabbit-body-findings|cr-merge-gate" "coderabbit-available|cr-merge-gate" \
-            "review-ledger-evidence|cr-merge-gate" "review-merge-gate|cr-merge-gate" "nwo|cr-merge-gate" "timeout-bin|timeout-bin"; do
+for _row in "coderabbit-signal|review-merge-gate" "coderabbit-body-findings|review-merge-gate" "coderabbit-available|review-merge-gate" \
+            "review-ledger-evidence|review-merge-gate" "review-merge-gate|review-merge-gate" "nwo|review-merge-gate" "timeout-bin|timeout-bin"; do
     _lib=${_row%%|*}; _want=${_row#*|}
     _root="$TMP/nolib-nested-$_lib"
     mkdir -p "$_root/scripts/hooks"
@@ -560,7 +560,7 @@ GH_STUB_MODE=cr-absent  t absent-review-allows           0 Bash "gh pr merge 42 
 GH_STUB_MODE=cr-spoofed t spoofed-creator-id-allows      0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 GH_STUB_MODE=other-author t other-author-thread-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 # the review-FRESHNESS mechanism is removed from
-# cr-merge-gate.sh entirely — a stale-anchored review object no longer blocks.
+# review-merge-gate.sh entirely — a stale-anchored review object no longer blocks.
 # Regression pin: allow, and the freshness endpoint is never even queried.
 GH_STUB_MODE=clean GH_STUB_FRESHNESS=stale t freshness-stale-no-longer-blocks 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 grep -qi "reviews(last:" "$TMP/calls-freshness-stale-no-longer-blocks.log" && { echo "FAIL freshness-stale-no-longer-blocks still queries the removed freshness endpoint"; fail=$((fail+1)); }

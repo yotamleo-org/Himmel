@@ -35,6 +35,7 @@ CONSOLE_DISPATCH_DISABLE	CHIEF_DISPATCH_DISABLE	env	restrict	V5	pending-N2892
 LEG_CONTEXT_HANDOFF_OK	WORKER_SESSION_CONTEXT_HANDOFF_OK	env	permit	V4a	pending-N2892
 HIMMEL_LEAN_LEG	HIMMEL_LEAN_WORKER_SESSION	env	value	V4a	pending-N2892
 PARKED-BANK	PARKED-USAGE	marker	old-to-new	V1	never
+missing-class-sweep	missing-variant-sweep	marker	old-to-new	V2	X
 OVERNIGHT_	AFK_	env-prefix	value	V3	X
 CADENCE_BANK_	CADENCE_USAGE_	env-prefix	value	V1	X
 BANK_LIFT_	USAGE_LIFT_	env-prefix	value	V1	X

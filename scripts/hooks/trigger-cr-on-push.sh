@@ -11,13 +11,13 @@
 # real review), the merge gate correctly refuses it, and nothing re-triggers
 # because a trigger comment from the FIRST head already exists on the PR
 # (PRs #1717/#1718). This sibling hook + the shared per-head-SHA ledger in
-# scripts/lib/cr-trigger-ledger.sh close that gap: trigger AT MOST ONCE per
+# scripts/lib/coderabbit-trigger-ledger.sh close that gap: trigger AT MOST ONCE per
 # head SHA, on push as well as on create.
 #
 # Sibling, not a merge into trigger-cr-on-pr-create.sh: the two fire on
 # different command shapes (`gh pr create` vs `git push`) and need different
 # fast-path tokens; the two files stay double-post-safe because BOTH read and
-# write the SAME ledger (scripts/lib/cr-trigger-ledger.sh) — whichever hook
+# write the SAME ledger (scripts/lib/coderabbit-trigger-ledger.sh) — whichever hook
 # runs first for a given head SHA wins, the other becomes a no-op. Hooks
 # under one PostToolUse matcher run sequentially, so there is no race between
 # a `git push && gh pr create` compound command hitting both hooks in one
@@ -56,7 +56,7 @@
 #
 # FOREIGN REPOS: a push can advance a PR on an upstream or on
 # someone else's fork, and CodeRabbit is not ours to summon there. The guard
-# lives in cr_trigger_post_review (scripts/lib/cr-trigger-ledger.sh) rather
+# lives in cr_trigger_post_review (scripts/lib/coderabbit-trigger-ledger.sh) rather
 # than here — that one function is the single seam every trigger post in this
 # repo goes through, so scoping it there covers this hook, the `gh pr create`
 # hook, and the forge seam at once.
@@ -66,10 +66,10 @@ set -euo pipefail
 warn() { echo "trigger-cr-on-push: $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/cr-trigger-ledger.sh
+# shellcheck source=../lib/coderabbit-trigger-ledger.sh
 # shellcheck disable=SC1091
-if ! { [ -r "$SCRIPT_DIR/../lib/cr-trigger-ledger.sh" ] && . "$SCRIPT_DIR/../lib/cr-trigger-ledger.sh"; } 2>/dev/null; then
-    warn "WARNING: could not load cr-trigger-ledger.sh — cannot dedup safely; skipping this run"
+if ! { [ -r "$SCRIPT_DIR/../lib/coderabbit-trigger-ledger.sh" ] && . "$SCRIPT_DIR/../lib/coderabbit-trigger-ledger.sh"; } 2>/dev/null; then
+    warn "WARNING: could not load coderabbit-trigger-ledger.sh — cannot dedup safely; skipping this run"
     exit 0
 fi
 
@@ -173,7 +173,7 @@ if [ -z "$repo_path" ] || [ "$repo_path" = "$pr_url" ]; then
     exit 0
 fi
 
-# scan_existing=0 (see scripts/lib/cr-trigger-ledger.sh header): the per-PR
+# scan_existing=0 (see scripts/lib/coderabbit-trigger-ledger.sh header): the per-PR
 # comment scan cannot tell which head an old comment targeted, so it must not
 # gate a new-head trigger here — the ledger's per-SHA check above already
 # owns that decision.

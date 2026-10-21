@@ -683,7 +683,7 @@ at 60 s would protect nothing.
 `auto-arm-on-subagent-cap.sh` (`py_armor` + `arm-resume.sh` → `schtasks`),
 `trigger-cr-on-pr-create.sh` / `trigger-cr-on-push.sh` (`gh api --paginate` +
 `gh pr comment`), `block-merged-pr-commit.sh` / `block-unresolved-cr-merge.sh`
-(gh-backed `branch-shipped.sh` / `cr-merge-gate.sh` / `ci-green-gate.sh`).
+(gh-backed `branch-shipped.sh` / `review-merge-gate.sh` / `ci-green-gate.sh`).
 Hooks that already carried an operator-chosen bound
 (the 10 s ledger legs, the 10–30 s SessionStart injectors, the 10 s Stop hook)
 keep it — all measured with ≥8× headroom. The same convention already lives in
@@ -722,11 +722,11 @@ unchanged; only the launcher's own process count falls.
   Both post only on a **himmel-armed** repo (HIMMEL-2034, after the pair
   commented `@coderabbitai review` on an upstream PR opened from this machine):
   the PR's `owner/repo` must be this clone's armed origin (`git config --local
-  himmel.coderabbit true`, `cr-available.sh`) or be named in `CR_TRIGGER_REPOS`
+  himmel.coderabbit true`, `coderabbit-available.sh`) or be named in `CR_TRIGGER_REPOS`
   (comma-separated `owner/repo` allowlist). Anything else gets a stderr advisory
   and no comment — the sanctioned review path for a foreign diff is the
   hermes/codex critic (`scripts/cr/critic-first-pass.sh`). The guard sits in
-  `cr_trigger_post_review` (`scripts/lib/cr-trigger-ledger.sh`), the one seam
+  `cr_trigger_post_review` (`scripts/lib/coderabbit-trigger-ledger.sh`), the one seam
   both hooks and the forge seam post through.
 - **Our stdout stays one JSON object or empty.** One JSON emitter passes through
   byte-for-byte; two or more merge (`ask` > `allow`, reasons joined with `" | "`,
@@ -867,7 +867,7 @@ fields, a `gh api graphql` carrying a `mutation`, a `curl` with
 `-X POST`/`--data`) and fails if one is missing from `SKIP`. *Reads* are
 deliberately not markers — replaying a `gh api` GET is harmless, and
 `gh api graphql -f query=…` is a read despite the `-f` (that is simply how
-GraphQL variables are passed; `cr-merge-gate.sh`'s reviewThreads query
+GraphQL variables are passed; `review-merge-gate.sh`'s reviewThreads query
 false-positived on it) — and neither is
 bare `gh pr create`, because this repo's hooks **guard** that command rather than
 run it, so the string lives in guard prose and heredoc advisories (both
@@ -1337,7 +1337,7 @@ onto another finding, head or branch does not verify.
 - `clear-cr-marker.sh`;
 - `review-round.sh` (ledger query, promote, and the defer/cap analysis);
 - the chief's `cr-disposition.sh`;
-- the merge-gate lib `scripts/lib/cr-ledger-evidence.sh`.
+- the merge-gate lib `scripts/lib/review-ledger-evidence.sh`.
 
 The helper drops a lowering amend that fails to verify, so the finding stays
 open. Amends that do not lower a finding (`agreed`, crit, a reason) pass
@@ -3092,11 +3092,11 @@ finding; CodeRabbit's verdict on the head SHA is a NOTE, never a block
 (HIMMEL-3360, best effort) — structural enforcement of
 the operator's "never merge over unresolved CodeRabbit remarks" rule (HIMMEL-195:
 structural > instructional). The signal is `cr_merge_gate <pr-selector>
-[<owner/repo>]` from `scripts/lib/cr-merge-gate.sh`, which runs a GraphQL
+[<owner/repo>]` from `scripts/lib/review-merge-gate.sh`, which runs a GraphQL
 `reviewThreads` query (counts unresolved threads whose first-comment author
 matches `coderabbit`, covering both `coderabbitai` and `coderabbitai[bot]`
 login forms) and reads CodeRabbit's commit **status** on the head SHA via
-`scripts/lib/cr-signal.sh`. The same predicate is
+`scripts/lib/coderabbit-signal.sh`. The same predicate is
 called from `scripts/handover/pr-merge.sh` (GitHub forge only) before its
 mergeability poll, so machines without the plugin hook still get the gate on
 that path (a block there exits `pr-merge.sh` with code 5, distinct from a
@@ -3195,10 +3195,10 @@ Known residual, exactly two shapes: BOTH the program word AND the verb
 shell-computed (or a `bash -c` fed from a variable holding both), or a computed
 merge path such as `gh api -X PUT "$U"`; each is undecidable by text and is not detected;
 the structural backstop (a gh- or credential-level merge gate) is HIMMEL-3945.
-Fail closed also for the nested sources: `scripts/lib/cr-merge-gate.sh` returns 1
+Fail closed also for the nested sources: `scripts/lib/review-merge-gate.sh` returns 1
 (so the hook's load check denies) when one of its five helpers is missing, and the
 hook denies when `timeout-bin.sh` will not load. Fixtures that copy
-`cr-merge-gate.sh` into a scratch tree must copy its helpers too.
+`review-merge-gate.sh` into a scratch tree must copy its helpers too.
 
 **HIMMEL-3918 — six residuals closed, by ONE deny rule rather than parsing**
 (five panel rounds each found a new redirect/prefix shape; every parse rule in
@@ -3349,7 +3349,7 @@ own. The history below explains why it is a config value and not a file.
 armed gate blocks every merge there *forever*. HIMMEL-1072 shipped exactly that:
 the gate was armed by default on repos it could never pass on, and adopters had
 to discover `CR_PROFILE=none` to work at all. So the gate is now
-**availability-gated** — `scripts/lib/cr-available.sh` answers "is CodeRabbit's
+**availability-gated** — `scripts/lib/coderabbit-available.sh` answers "is CodeRabbit's
 App configured for THIS repo?", and the gate arms only when it says yes.
 
 **The signal is a repo-scoped, NON-VERSIONED git config value** — deliberately
@@ -3476,8 +3476,8 @@ exec-if-exists `$CLAUDE_PROJECT_DIR` pattern as `block-docker-privesc` /
 `block-merged-pr-commit`); live only after `/himmel-update` (marketplace
 re-sync) + a fresh session.
 
-Paired artifacts: `scripts/lib/cr-merge-gate.sh` (predicate),
-`scripts/lib/cr-signal.sh` (the ONE reader for CodeRabbit's verdict — shared with
+Paired artifacts: `scripts/lib/review-merge-gate.sh` (predicate),
+`scripts/lib/coderabbit-signal.sh` (the ONE reader for CodeRabbit's verdict — shared with
 `ci-green-gate.sh` and `check-ci.sh`, so all three agree on the bot's identity by
 construction), `scripts/lib/test-cr-merge-gate.sh` and
 `scripts/hooks/test-block-unresolved-cr-merge.sh` (smoke suites).
@@ -3531,7 +3531,7 @@ the opens"; that was the second drift, so the rule became a gate.
    until it is dispositioned in the CR ledger at the head it was posted at.
 2. **Its commit status is informational.** CodeRabbit posts a commit
    **status**, never a check-run (verified live on five PRs — see
-   `scripts/lib/cr-signal.sh`), so it is matched by creator id, not display name.
+   `scripts/lib/coderabbit-signal.sh`), so it is matched by creator id, not display name.
    `absent`, `pending`, `paged`, `skipped` (a `success` whose description reads
    `Review skipped: automatic reviews are disabled`, HIMMEL-1317) and a stale
    review anchor are all the same thing to the gate: a NOTE naming the state,
@@ -3544,7 +3544,7 @@ the opens"; that was the second drift, so the rule became a gate.
    review` comment that `scripts/hooks/trigger-cr-on-pr-create.sh` and
    `trigger-cr-on-push.sh` post structurally — a head move DISCARDS the
    in-flight review, so the post follows every push. `cr_trigger_repo_armed`
-   (HIMMEL-2034, in `scripts/lib/cr-trigger-ledger.sh`) gates that comment so the
+   (HIMMEL-2034, in `scripts/lib/coderabbit-trigger-ledger.sh`) gates that comment so the
    harness never summons the bot onto a repo it does not own the CR gate for.
    That post is the whole of the harness's relationship with the App's rate
    limit: nothing counts, rations or sequences reviews, and `check-ci.sh`

@@ -35,7 +35,7 @@
      "summary": "{sub}: legs call it wrong in {legs} legs, fix its usage text or the brief that teaches the call",
      "row": "error/Bash:usage:<script> in 3 or more legs: the script's arguments are not self-evident"},
     {"match": "error/Bash:cr-gate-exit-14", "route": "ticket", "threshold": 5,
-     "summary": "{sub}: clear-cr-marker refused in {legs} legs, the class-sweep step is not taught early enough",
+     "summary": "{sub}: clear-cr-marker refused in {legs} legs, the variant-sweep step is not taught early enough",
      "row": "error/Bash:cr-gate-exit-14 in 5 or more legs: the gate catches correctly, the teaching does not land"},
     {"match": "error/Bash:zsh-nomatch", "route": "ticket", "threshold": 3,
      "summary": "{sub}: an unquoted glob failed under zsh in {legs} legs, quote the glob or teach the quoted form",

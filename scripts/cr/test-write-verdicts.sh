@@ -196,7 +196,7 @@ chmod 644 "$tmp/ff14.txt"
 check "$?" "0" "T15 rc (empty --from-file path)"
 check "$(wc -c <"$git_dir/cr-prior-blocking/t15" | tr -d ' ')" "0" "T15 empty target file"
 
-# 16. Sweep mode APPENDS class-sweep records to
+# 16. Sweep mode APPENDS variant-sweep records to
 # cr-class-sweeps/<branch> (never truncates — a later round must not erase an
 # earlier round's record), in both accepted shapes.
 ( cd "$repo" && printf 'SWEEP [codex-1@abc1234] class=unquoted path :: sites=a.sh:1, b.sh:4\n' | bash "$SCRIPT" sweep --branch feat/t16 )

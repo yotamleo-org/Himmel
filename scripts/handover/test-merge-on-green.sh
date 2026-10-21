@@ -279,7 +279,7 @@ mog_build_fixture() {
     # defines go_gate) while merge-on-green.sh itself stays whichever copy
     # MOG_SRC picked. Defaults to the real file.
     cp "${GO_GATE_SRC:-$SCRIPT_DIR/../lib/go-gate.sh}" "$tmp/scripts/lib/go-gate.sh"
-    # The GitHub-blocked alert lib (sourced next to cr-available.sh).
+    # The GitHub-blocked alert lib (sourced next to coderabbit-available.sh).
     # Its sender is a stub that only logs, so the suite can never DM the operator.
     cp "$SCRIPT_DIR/../lib/merge-block-alert.sh" "$tmp/scripts/lib/merge-block-alert.sh"
     # Every chokepoint fails closed without its seam-guard lib.

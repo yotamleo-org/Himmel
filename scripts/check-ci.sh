@@ -77,11 +77,11 @@
 # still REQUIRES zero unresolved PR review threads (any author, CodeRabbit
 # included — review_state_gate, generic, NOT availability-gated) and zero
 # undispositioned outside-diff-range CodeRabbit body findings (see cr_body_gate / _cr_outside_gate, in
-# scripts/lib/cr-body-findings.sh). Runs on BOTH the full path and
+# scripts/lib/coderabbit-body-findings.sh). Runs on BOTH the full path and
 # --threads-only (the latter binds its own head to do so).
 #
 # CodeRabbit's status is read only when AVAILABILITY-GATED armed:
-# it arms only on a repo that declares CodeRabbit (scripts/lib/cr-available.sh).
+# it arms only on a repo that declares CodeRabbit (scripts/lib/coderabbit-available.sh).
 # On a repo without it, cr_signal_gate is a silent no-op — an adopter without
 # CodeRabbit must not notice a CodeRabbit gate exists.
 #
@@ -102,7 +102,7 @@
 #       within --grace / gh error on the probe or the watch / thread-state
 #       query failed or returned a malformed page / PR head moved during the run
 #       / the review-body-findings reader could not evaluate (infra failure
-#       or an anti-drift canary — both fail closed here, see cr-body-findings.sh)
+#       or an anti-drift canary — both fail closed here, see coderabbit-body-findings.sh)
 #       (CodeRabbit's own commit status never lands here: unreadable, paged,
 #       absent and every other non-success state are advisory)
 #   3 — checks green but the review state blocks the merge: unresolved review
@@ -169,9 +169,9 @@
 #                            longer something an adopter must discover — see
 #                            the availability gate below.
 #   CR_APP=1|0             — force the CodeRabbit status read on/off, overriding
-#                            the probe (see scripts/lib/cr-available.sh)
-#   CR_BOT_USER_ID         — creator.id to trust as CodeRabbit (see cr-signal.sh
-#                            and cr-body-findings.sh; REST identity)
+#                            the probe (see scripts/lib/coderabbit-available.sh)
+#   CR_BOT_USER_ID         — creator.id to trust as CodeRabbit (see coderabbit-signal.sh
+#                            and coderabbit-body-findings.sh; REST identity)
 #
 # The zombie-check-run override is GONE: it keyed off a CodeRabbit
 # CHECK-RUN, which CodeRabbit never posts (it posts a commit STATUS), so it had
@@ -217,7 +217,7 @@ exit codes: 0 = checks green + all review threads resolved
                 deadline (the DEADLINE-PENDING verdict that is otherwise 2). Never a red.
             --max-wait below --settle is a usage error (64, HIMMEL-4136).
 env: CR_PROFILE=none skips reading CodeRabbit's status + body findings entirely (repos without CodeRabbit)
-     CR_APP=1|0 forces that same read on/off, overriding the automatic probe (see scripts/lib/cr-available.sh)
+     CR_APP=1|0 forces that same read on/off, overriding the automatic probe (see scripts/lib/coderabbit-available.sh)
      CHECK_CI_SLEEP_CMD replaces the command every wall-clock wait runs (default sleep; hermetic suites set it to :)
      CHECK_CI_MAX_WAIT sets --max-wait's default (default 900 seconds, 0 = unbounded; HIMMEL-2062, raised in HIMMEL-2907)
      CHECK_CI_DISTINCT_DEADLINE=1 makes a DEADLINE-PENDING verdict exit 7 instead of 2 (HIMMEL-4136)
@@ -1489,7 +1489,7 @@ cr_signal_gate() {
     esac
 }
 
-# cr_body_gate (see cr-body-findings.sh header):
+# cr_body_gate (see coderabbit-body-findings.sh header):
 # CodeRabbit posts findings the thread gate above cannot see at all — outside-
 # diff-range / nitpick / additional comments living only in the review BODY
 # text, never as a resolvable thread. Runs after cr_signal_gate (concluded)
@@ -1560,7 +1560,7 @@ _cr_body_read() {
 
 cr_body_gate() {
     # Availability gate, same posture as cr_signal_gate above:
-    # cr_body_findings lives in cr-body-findings.sh, which is only SOURCED when
+    # cr_body_findings lives in coderabbit-body-findings.sh, which is only SOURCED when
     # CR_ARMED=1 (see the sourcing block near the top of this script) — reaching
     # past this early return while disarmed would call an undefined function.
     [ "$CR_ARMED" -eq 1 ] || return 0

@@ -262,8 +262,8 @@ _budget_left() {
 }
 gh_to_flag=$(mktemp "${TMPDIR:-/tmp}/block-unresolved-cr-merge-timeout.XXXXXX" 2>/dev/null) || gh_to_flag=""
 trap 'rm -f "$go_tmp" "$gh_to_flag" "${trust_tmp:-}"' EXIT
-# every gh call the sourced gate libraries make (cr-merge-gate,
-# ci-green-gate and the cr-signal / cr-body-findings helpers they call) goes
+# every gh call the sourced gate libraries make (review-merge-gate,
+# ci-green-gate and the coderabbit-signal / coderabbit-body-findings helpers they call) goes
 # through this shadow function, bounded (10s) like the lookup above. The libs
 # fail OPEN on a gh error, and an unbounded hang would run out the
 # hook budget, which Claude Code reads as non-blocking - so a timeout is recorded
@@ -366,9 +366,9 @@ fi
 # CR and CI gates). Readability first, per scripts/hooks/CLAUDE.md: on bash 3.2 a
 # failed `.` exits the shell regardless of an `||` guard.
 # shellcheck disable=SC1091
-if ! { [ -r "$SCRIPT_DIR/../lib/cr-merge-gate.sh" ] && . "$SCRIPT_DIR/../lib/cr-merge-gate.sh"; } 2>/dev/null \
+if ! { [ -r "$SCRIPT_DIR/../lib/review-merge-gate.sh" ] && . "$SCRIPT_DIR/../lib/review-merge-gate.sh"; } 2>/dev/null \
         || ! declare -F cr_merge_gate >/dev/null 2>&1; then
-    _deny "cannot load scripts/lib/cr-merge-gate.sh — refusing (the CR gate must fail closed, not silently no-op)"
+    _deny "cannot load scripts/lib/review-merge-gate.sh — refusing (the CR gate must fail closed, not silently no-op)"
 fi
 
 reason=""

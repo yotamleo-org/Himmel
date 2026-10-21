@@ -9,7 +9,7 @@
 # its shebang says, so copy this only for a bash target. Sourced, it refuses
 # with status 2 before the exec, so the caller's shell survives.
 # scripts/lib/test-deprecated-forwarder.sh proves the pass-through.
-if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+if (return 0 2>/dev/null); then
   echo "__OLD__ is deprecated: run '__NEW__', do not source it" >&2
   return 2
 fi

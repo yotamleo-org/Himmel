@@ -333,7 +333,7 @@ FORGE=github GH_CMD="$TRIG_STUB" CR_APP=1 TRIG_HEAD=sha-ccc forge_pr_set_body 42
 assert_eq "pr_set_body at a new head triggers (script-advanced PR)" "3" "$(trig_count)"
 
 # 5/6. disarmed repos post NOTHING — CR_PROFILE=none (the documented opt-out)
-#      and an adopter clone with no CodeRabbit App (cr-available.sh default).
+#      and an adopter clone with no CodeRabbit App (coderabbit-available.sh default).
 FORGE=github GH_CMD="$TRIG_STUB" CR_APP=1 CR_PROFILE=none TRIG_HEAD=sha-ddd forge_pr_create T B main feat/x >/dev/null 2>&1
 assert_eq "CR_PROFILE=none posts nothing" "3" "$(trig_count)"
 FORGE=github GH_CMD="$TRIG_STUB" CR_APP=0 TRIG_HEAD=sha-eee forge_pr_create T B main feat/x >/dev/null 2>&1

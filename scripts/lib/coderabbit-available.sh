@@ -18,7 +18,7 @@
 # 2026-09-07) himmel uses exactly ONE:
 #
 #   the App  -> reviews the PR AFTER `gh pr create`. It is the ONLY surface that
-#               posts the commit status cr-signal.sh reads and the review threads
+#               posts the commit status coderabbit-signal.sh reads and the review threads
 #               check-ci gates on. THIS is what the probe below describes.
 #   the CLI  -> RETIRED. It reviewed a local diff at pre-push and posted nothing
 #               to GitHub: no commit status, no review thread. Its wrapper
@@ -75,7 +75,7 @@
 #                        config; loses to CR_PROFILE=none.
 #
 # SCOPE: this describes the LOCAL clone. It cannot speak for a different repo —
-# see cr-merge-gate.sh, which refuses to apply the local answer to a foreign
+# see review-merge-gate.sh, which refuses to apply the local answer to a foreign
 # `--repo` target rather than guessing (codex-adv-2).
 #
 # Sourceable from hooks and scripts: uses only `return`, never `exit`; does not

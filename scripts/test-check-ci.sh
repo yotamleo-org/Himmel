@@ -846,7 +846,7 @@ CR_PROFILE_OVERRIDE=""
 # = "this repo has CodeRabbit", which is what every pre-1125 case assumed. It is
 # set rather than left to the probe on purpose: the probe reads the checkout's
 # repo-local `git config himmel.coderabbit` (NOT the committed .coderabbit.yaml
-# — rejected as a signal, see cr-available.sh), so an un-pinned suite would
+# — rejected as a signal, see coderabbit-available.sh), so an un-pinned suite would
 # silently flip the meaning of ~30 cases with the arming state of whichever
 # clone the tests happen to run from.
 # CR_APP_OVERRIDE=0 = the adopter WITHOUT CodeRabbit (cases 35+).
@@ -1316,7 +1316,7 @@ assert_err_has "NOTE — CodeRabbit paged" "34 paged NOTE"
 # 34b/34c: a SKIPPED review (state=success, refusal only in
 # .description — automatic reviews disabled) used to fail CLOSED; a later change
 # made every CodeRabbit-status shape advisory. cr_signal_state's own
-# classification (scripts/lib/cr-signal.sh) still projects this payload to
+# classification (scripts/lib/coderabbit-signal.sh) still projects this payload to
 # state=skipped — cr_signal_gate no longer branches on it, it just prints the
 # advisory NOTE. 34b proves the skip stays green with the NOTE, 34c proves an
 # ordinary review still passes too, so the fix cannot be satisfied by breaking
@@ -1338,12 +1338,12 @@ assert_rc 0 "34d skip-ish wording on a COMPLETED review does not block"
 
 # 34e/34f —, the SECOND drift of the 34b class, now retired by
 # a rate-limited decline (34e) and a wholly UNENUMERATED success
-# wording (34f) both project to the same state=skipped as 34b (cr-signal.sh's
+# wording (34f) both project to the same state=skipped as 34b (coderabbit-signal.sh's
 # classification is unchanged; only cr_signal_gate's reaction to it is), so
 # both now print the identical advisory NOTE and stay green — enumerated or
 # not, CodeRabbit's status never blocks. Pin the DEFAULT allow/deny lists: an
 # ambient CR_OK_DESC_RE / CR_SKIP_DESC_RE in the operator's shell must not
-# leak into cr-signal.sh's classification of $state.
+# leak into coderabbit-signal.sh's classification of $state.
 unset CR_OK_DESC_RE CR_SKIP_DESC_RE
 
 # Exact-head ledger fixtures — still consumed by the outside-diff
@@ -1363,7 +1363,7 @@ printf '%s\n' '{"kind":"avail","ts":"2026-08-03T00:00:00Z","branch":"feat/x","he
 # a repo whose himmel.coderabbit marker git cannot parse as a
 # boolean. `ture` is a real typo, not a synthetic value — and the failure it
 # provokes is git's own: `git config --bool --get` exits 128 with "bad boolean
-# config value", where an UNSET key exits 1. Both leave cr-available.sh's
+# config value", where an UNSET key exits 1. Both leave coderabbit-available.sh's
 # capture empty, which is why the two states were indistinguishable before
 # cr_app_state and why this fixture must use a value the real git binary
 # rejects rather than a stub. Cases 2380-a / 2380-c run here.
@@ -1402,7 +1402,7 @@ run cr-unknownword
 assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (HIMMEL-3360)"
 
 # 34j/k/l: a state=success with a MISSING / null / EMPTY
-# description is not an affirmative review. cr-signal.sh used to keep the
+# description is not an affirmative review. coderabbit-signal.sh used to keep the
 # earlier reading (green) for these because the allow-list applied only
 # to a non-empty description; they now project to state=skipped and take the
 # same advisory NOTE as 34b/34e/34f. Positive control (34m): the SAME state
@@ -2396,7 +2396,7 @@ assert_rc 3 "2278-k CHANGES_REQUESTED still blocks a machine-generated PR"
 # ── the honest line, and the silence it must not break ──────────
 # Console ruling 88. An earlier change asked for an unconditional "CodeRabbit: not
 # configured" line on every disarmed run; case 57 above forbids the word
-# "CodeRabbit" anywhere in a clean adopter run, and cr-available.sh's header
+# "CodeRabbit" anywhere in a clean adopter run, and coderabbit-available.sh's header
 # calls that silence the point ("an adopter must not notice it exists"). The
 # ruling narrowed the line to the states where a review was actually EXPECTED,
 # so a pass is called vacuous only when something is genuinely missing.

@@ -50,7 +50,7 @@ fi
 # by the time this runs, and check-ci's skipped/absent arms remain the backstop
 # that refuses green until a genuine review lands at head.
 _gh_trigger_cr() {
-    # The repo's ONE armed-CodeRabbit predicate (scripts/lib/cr-available.sh):
+    # The repo's ONE armed-CodeRabbit predicate (scripts/lib/coderabbit-available.sh):
     # honours CR_PROFILE=none and stays silent on a clone with no CodeRabbit App.
     # This seam runs inside SHIPPED scripts an adopter executes, so an unarmed
     # repo must not collect stray @coderabbitai comments on every PR it opens.
@@ -77,7 +77,7 @@ _gh_trigger_cr() {
     # scan_existing=0: the ledger's per-head key already owns the dedup, and the
     # per-PR comment scan is repo-wide — it cannot tell which head an old comment
     # targeted, so it would suppress a legitimate new-head trigger (the exact
-    # bug the ledger prevents; see scripts/lib/cr-trigger-ledger.sh).
+    # bug the ledger prevents; see scripts/lib/coderabbit-trigger-ledger.sh).
     cr_trigger_post_review "$sha" "$num" "$repo" 0
     return 0
 }

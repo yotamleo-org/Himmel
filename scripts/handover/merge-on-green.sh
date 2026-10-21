@@ -251,7 +251,7 @@
 # HIMMEL_REPO anchor, NEVER as a sibling of this script's own BASH_SOURCE:
 # a sibling resolution would let the worktree copy of those
 # files decide the merge. This closes the MALICIOUS-branch half: every
-# other helper (cr-available.sh, merge-block-alert.sh, worktree-inuse.sh,
+# other helper (coderabbit-available.sh, merge-block-alert.sh, worktree-inuse.sh,
 # clear-review-marker.sh) is sourced or executed from the anchor too, and only
 # after it resolved — nothing of this script's own tree is read, so the entry
 # script is the only branch-controllable byte left. HIMMEL_REPO is a registered

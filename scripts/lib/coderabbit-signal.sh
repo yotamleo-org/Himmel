@@ -236,7 +236,7 @@ cr_signal_state() {
 #   from the state alone. This reader exposes the description so the MERGE
 #   gates can make that policy call themselves — it stays a NEUTRAL reader and
 #   owns no panel-carriable vocabulary (the rate-limit discrimination lives in
-#   check-ci.sh / cr-merge-gate.sh, where the merge verdict does).
+#   check-ci.sh / review-merge-gate.sh, where the merge verdict does).
 cr_signal_description() {
     local owner="$1" name="$2" sha="$3"
     local uid ctx

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # nwo.sh — repo "name-with-owner" canonicalization + comparison.
 #
-# MOVED VERBATIM out of scripts/lib/cr-merge-gate.sh, which grew these helpers
+# MOVED VERBATIM out of scripts/lib/review-merge-gate.sh, which grew these helpers
 # for the merge gate. They are now shared: the CodeRabbit TRIGGER
-# path (scripts/lib/cr-trigger-ledger.sh) has to answer the same question the
+# path (scripts/lib/coderabbit-trigger-ledger.sh) has to answer the same question the
 # merge gate does — "is this PR's repo OUR repo?" — and re-deriving origin-URL
 # parsing there would be a second implementation of the ssh/https/userinfo/port
 # cases these already handle.
 #
 # Sourced (not run); its own file rather than sourced-from-cr-merge-gate.sh
-# because cr-merge-gate.sh pulls in five further libs, each behind a
+# because review-merge-gate.sh pulls in five further libs, each behind a
 # `$(cd … && pwd)` fork — ~1s each on Git Bash (see the perf note in
 # _cmg_canon_nwo below) — and the trigger path runs inside a PostToolUse hook.
 #

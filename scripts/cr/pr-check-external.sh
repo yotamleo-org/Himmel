@@ -19,7 +19,7 @@
 # CodeRabbit is the GitHub APP ONLY (operator ruling 2026-09-07).
 # There is no local CodeRabbit pass on this path any more: the App reviews the
 # PR AFTER `gh pr create`, and its verdict is read post-PR by check-ci.sh (the
-# commit status via cr-signal.sh + zero unresolved review threads). The CLI leg
+# commit status via coderabbit-signal.sh + zero unresolved review threads). The CLI leg
 # that used to run here is retired along with
 # scripts/cr/coderabbit-review.sh; every CodeRabbit signal now arrives on the
 # PR, where it is commented on and tracked in GitHub.

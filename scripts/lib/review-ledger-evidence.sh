@@ -3,8 +3,8 @@
 #
 # WHY THIS EXISTS. CodeRabbit's App review is rate limited at times, and when it
 # is it posts state=success + description="Review rate limited" — a DECLINED
-# review that cr-signal.sh projects to state=skipped. Both the
-# certifier (check-ci.sh) and the merge hook (cr-merge-gate.sh, the CR gate
+# review that coderabbit-signal.sh projects to state=skipped. Both the
+# certifier (check-ci.sh) and the merge hook (review-merge-gate.sh, the CR gate
 # behind block-unresolved-cr-merge.sh) fail CLOSED on that, so a rate-limited
 # App blocks a merge even when the critic PANEL (codex+glm) had already reviewed
 # the exact head cleanly and recorded that in the CR ledger. The operator's
@@ -47,9 +47,9 @@
 # environment-overridable here. ledger-append.sh honors a CR_LEDGER override for
 # its WRITES, but this GATE must never read a caller-pointed ledger — that would
 # let a contaminated environment forge the evidence the carry depends on.
-# check-ci.sh / cr-merge-gate.sh / gh are likewise not overridable from here.
+# check-ci.sh / review-merge-gate.sh / gh are likewise not overridable from here.
 #
-# Sourceable from check-ci.sh and cr-merge-gate.sh: uses only `return`, never
+# Sourceable from check-ci.sh and review-merge-gate.sh: uses only `return`, never
 # `exit`; does not toggle set -e. bash 3.2-safe.
 
 # Past the cutover only a signed lowering amend counts; resolved once, at source time.

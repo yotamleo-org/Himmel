@@ -18,7 +18,7 @@ NITPICK_COLON_BODY="$FIXDIR/pr-2549-nitpick-colon.body.txt" # real (HIMMEL-5583)
 CLEAN_BODY='**Actionable comments posted: 0**'
 # DRIFT-CANARY: contains the literal phrase "Outside diff" but the count never
 # parses (no "(N)" immediately after "range comments") — the anti-silent-
-# regression guard this reader exists to enforce (see cr-body-findings.sh
+# regression guard this reader exists to enforce (see coderabbit-body-findings.sh
 # header). Must read as cannot-evaluate, never a silent outside=0.
 DRIFT_BODY='Something changed. Outside diff range comments were noted but the section header lost its count during a CodeRabbit format change.'
 # MARKERS-WITHOUT-SECTION: a per-comment cr-comment:v1:<id> marker present

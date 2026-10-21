@@ -210,7 +210,7 @@ check_contains "HIMMEL-1871: second dropped finding is recoverable" "$ad_out" "u
 #      member slug; its rejected bullets were never validated.
 #   2. the guard is blocking evidence — exactly one finding row identified as
 #      the citation-guard blocker AND matching the GATE's blocking definition.
-# `blocking` mirrors scripts/lib/cr-ledger-evidence.sh verbatim (crit|imp,
+# `blocking` mirrors scripts/lib/review-ledger-evidence.sh verbatim (crit|imp,
 # verdict neither `disproved` nor a TRACKED deferral: ticket key + reason), so
 # this asserts the gate's semantics rather than a local re-invention of them.
 ad_ledger="$(python3 - "$AD_LEDGER" <<'PYEOF'

@@ -33,7 +33,7 @@
 # made set -e-safe with a trailing `|| true` inside the subshell so that a
 # caller running `set -e` (pr-merge.sh) does not abort on a jq parse failure
 # (a parse failure is a normal fail-open input here, not a hard error).
-# Mirrors scripts/lib/cr-merge-gate.sh in structure + conventions.
+# Mirrors scripts/lib/review-merge-gate.sh in structure + conventions.
 
 _cig_degrade() { echo "ci-green-gate: degraded ($*) - failing open" >&2; }
 
@@ -123,7 +123,7 @@ ci_green_gate() {
     #
     # This used to read the COMBINED /status endpoint and block on its aggregate
     # .state. That silently defeated the CodeRabbit exclusion this gate documents
-    # above: CodeRabbit publishes a commit STATUS (see cr-signal.sh), the combined
+    # above: CodeRabbit publishes a commit STATUS (see coderabbit-signal.sh), the combined
     # .state folds every context together, so a pending CodeRabbit review turned
     # the aggregate pending and false-blocked HERE — precisely the "hung
     # CodeRabbit must not block the CI gate" case the .check_runs exclusion was

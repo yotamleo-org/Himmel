@@ -522,7 +522,7 @@ title.
 <a id="reviewer-modes"></a>
 **Reviewer modes — who must pass before a merge.** Every row of
 `scripts/cr/critics.json` is a reviewer with a `mode`, and the merge gate
-(`cr_reviewer_gate` in `scripts/lib/cr-merge-gate.sh`, shared with the release
+(`cr_reviewer_gate` in `scripts/lib/review-merge-gate.sh`, shared with the release
 check) holds each one to it at the PR's head:
 
 | Field | Values | Default | Effect |

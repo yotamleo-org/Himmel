@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # DEPRECATED forwarder, kept so old callers keep working: use usage-monitor.sh.
-if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+if (return 0 2>/dev/null); then
   echo "bank-monitor.sh is deprecated: run 'usage-monitor.sh', do not source it" >&2
   return 2
 fi

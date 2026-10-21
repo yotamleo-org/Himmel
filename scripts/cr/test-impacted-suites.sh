@@ -1012,7 +1012,7 @@ else
 fi
 
 # --- no range argument defaults to merge-base(default)..HEAD ----
-# The default branch is resolved by scripts/lib/cr-default-base.sh (origin/HEAD,
+# The default branch is resolved by scripts/lib/review-default-base.sh (origin/HEAD,
 # else origin/main).
 run_is_err() { ( cd "$FX" && { bash "$IS" "$@" >/dev/null; } 2>&1 ); }
 # (a) no origin ref at all: refuse non-zero, name the filled fetch command.

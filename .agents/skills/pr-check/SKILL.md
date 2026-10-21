@@ -486,7 +486,7 @@ post-PR contract is enforced by `scripts/check-ci.sh`, not here, and
 CodeRabbit is best effort (HIMMEL-3360): zero unresolved review THREADS (a
 green check-run is NOT clean — PR #2209 carried six unresolved threads under
 a `pass` rollup on 2026-09-06) and zero undispositioned outside-diff body
-findings are the gate; CodeRabbit's commit status (`scripts/lib/cr-signal.sh`;
+findings are the gate; CodeRabbit's commit status (`scripts/lib/coderabbit-signal.sh`;
 `absent` / `pending` / `paged` / `skipped` / rate-limited / unreadable) is
 printed as a NOTE and never blocks. The CI hooks post one `@coderabbitai
 review` trigger per new head (a head move discards the in-flight review);

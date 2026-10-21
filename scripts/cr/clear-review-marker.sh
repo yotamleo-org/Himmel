@@ -66,7 +66,7 @@
 #      row. The docs-audit lane and a branch whose first `score` row predates
 #      the gate are exempt (reason=missing-preflight).
 #   4d. Every finding stamped with this branch whose effective verdict is
-#      agreed or fixed, at ANY round head, has a class-sweep record in
+#      agreed or fixed, at ANY round head, has a variant-sweep record in
 #      <git-common-dir>/cr-class-sweeps/<branch> (written by
 #      write-verdicts.sh sweep). A legacy row with no branch stamp is exempt.
 #      `--check-sweeps <file>` runs only this gate's record
@@ -112,9 +112,9 @@
 #       Also (4b): a finding at that SHA has no recorded verdict
 #       (agree/disprove/defer it, then re-run).
 #       Also (4d): an agreed-and-fixed finding on this branch has
-#       no valid class-sweep record (reason=missing-class-sweep:
+#       no valid variant-sweep record (reason=missing-variant-sweep:
 #       its sites exist at the tip, its search re-runs clean there), or the
-#       record file is unreadable (reason=class-sweep-unreadable).
+#       record file is unreadable (reason=variant-sweep-unreadable).
 #       Also (4c): review-round.sh promote found a still-open
 #       (unadjudicated or un-re-raised) finding at an EARLIER round head on
 #       this branch — adjudicate it, then re-run. A promote exit other than
@@ -839,7 +839,7 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
           unadjudicated.push({ id: v.id, severity: v.severity, file: v.file, artifact: v.artifact, perspective: v.perspective });
       }
   }
-  // The class-sweep records write-verdicts.sh sweep
+  // The variant-sweep records write-verdicts.sh sweep
   // appended. JS twin of its sweep_re - keep the two in step. A line that
   // does not match is not a record. A record covers a finding when the id is
   // equal and one head is a prefix of the other (ledger heads are often
@@ -847,7 +847,7 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   const SWEEP_RE = /^SWEEP \[([^\]@]+)@([0-9a-f]{7,64})\] class=\S.* :: (sites=[^,]*[^\s,][^,]*(,[^,]*[^\s,][^,]*)+|single-site search=\S.*)$/;
   // A sweep file that exists but cannot be read (a directory, no
   // permission) is not "no records" - it leaves missingSweep null, which the
-  // shell audits as class-sweep-unreadable naming the sweep path.
+  // shell audits as variant-sweep-unreadable naming the sweep path.
   const sweeps = [];
   let sweepsUnreadable = false;
   if (e.SWEEPS && fs.existsSync(e.SWEEPS)) {
@@ -1428,19 +1428,19 @@ fi
 case "$missing_sweep" in
     ok|"ok ") ;;
     ok\ *)
-        echo "clear-cr-marker: agreed-and-fixed finding(s) on $branch have no valid class-sweep record — refusing:${missing_sweep#ok}" >&2
+        echo "clear-cr-marker: agreed-and-fixed finding(s) on $branch have no valid variant-sweep record — refusing:${missing_sweep#ok}" >&2
         echo "  Sweep each finding's whole class across the tree, then record it at the finding's OWN head:" >&2
         echo "    SWEEP [<id>@<head>] class=<the class> :: sites=<path>[:<line>], <path>[:<line>][, ...]" >&2
         echo "    SWEEP [<id>@<head>] class=<the class> :: single-site search=git grep [-n -i -w -E -F -e <pat>] <pat> [-- <paths>]" >&2
         echo "  Each site is a repo path that exists at the tip (or the finding head), and the sites include the finding's own file." >&2
         echo "  A single-site search is a plain git grep the gate re-runs at the tip; it may hit only the finding's own file." >&2
         echo "  Write those lines to a file, then: bash scripts/cr/write-verdicts.sh sweep --branch '$branch' --from-file <path>" >&2
-        audit "REFUSED reason=missing-class-sweep branch=$branch sha=$tip findings=${missing_sweep#ok }"
+        audit "REFUSED reason=missing-variant-sweep branch=$branch sha=$tip findings=${missing_sweep#ok }"
         exit 14 ;;
     *)
         # The record file exists but could not be read.
-        echo "clear-cr-marker: could not read the class-sweep records at $git_dir/cr-class-sweeps/$branch — refusing." >&2
-        audit "REFUSED reason=class-sweep-unreadable branch=$branch sha=$tip path=$git_dir/cr-class-sweeps/$branch"
+        echo "clear-cr-marker: could not read the variant-sweep records at $git_dir/cr-class-sweeps/$branch — refusing." >&2
+        audit "REFUSED reason=variant-sweep-unreadable branch=$branch sha=$tip path=$git_dir/cr-class-sweeps/$branch"
         exit 14 ;;
 esac
 

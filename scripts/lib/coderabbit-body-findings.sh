@@ -2,7 +2,7 @@
 # coderabbit-body-findings.sh — reads CodeRabbit's REVIEW-BODY findings for a head SHA
 #
 # WHY THIS EXISTS — S1, the shape the thread gates cannot see:
-# cr-merge-gate.sh and cr-signal.sh both gate
+# review-merge-gate.sh and coderabbit-signal.sh both gate
 # on evidence with its own GraphQL/REST identity: unresolved review THREADS,
 # and the commit STATUS. Neither of those surfaces sees findings CodeRabbit
 # posts only inside the review BODY's collapsible sections — "Outside diff
@@ -18,13 +18,13 @@
 #     defects the thread gate never saw. Callers treat outside>0 as BLOCKING
 #     UNLESS every one carries an adjudicated disposition in the CR ledger at
 # this exact head (cr_body_outside_findings below lists them
-#     per finding; cr-ledger-evidence.sh's cr_ledger_outside_dispositioned is
+#     per finding; review-ledger-evidence.sh's cr_ledger_outside_dispositioned is
 #     the reader). Undispositioned, they still block.
 # - "nitpick" findings are lower-severity by CodeRabbit's own
 #     classification. Callers treat nitpick>0 as SURFACED / non-blocking
 #     (report it, do not deny the merge on it alone).
 #
-# IDENTITY (same rationale as cr-signal.sh): match the review's
+# IDENTITY (same rationale as coderabbit-signal.sh): match the review's
 # AUTHOR by `.user.id`, never by login. `coderabbitai` (no `[bot]` suffix) is
 # a bare-login match that has nearly missed findings twice before — logins
 # are mutable and spoofable, the numeric id is not. `.user.id == 136622811`
@@ -64,7 +64,7 @@
 # exists so a caller can apply a different fail posture to "the query broke"
 # (rc 1) than to "CodeRabbit said something the parser could not count"
 # (rc 2): see check-ci.sh (fails closed on both, identically) and
-# cr-merge-gate.sh (fails OPEN on rc 1, BLOCKS on rc 2 — spec §4).
+# review-merge-gate.sh (fails OPEN on rc 1, BLOCKS on rc 2 — spec §4).
 #
 # WHAT COUNTS AS "AT HEAD": a review's `.commit_id` is the SHA it reviewed.
 # outside/nitpick/additional/markers are derived from the LATEST SUBSTANTIVE
@@ -124,13 +124,13 @@
 #
 # Env:
 #   CR_BOT_USER_ID   creator/author id to trust (default 136622811, via
-#                    cr_signal_bot_id — shared with cr-signal.sh so every
+#                    cr_signal_bot_id — shared with coderabbit-signal.sh so every
 #                    gate agrees on what "CodeRabbit" means by construction).
-#   GH_CMD           gh override (test seam, matches cr-signal.sh / cr-merge-gate.sh)
+#   GH_CMD           gh override (test seam, matches coderabbit-signal.sh / review-merge-gate.sh)
 #
 # Sourceable from hooks and scripts: uses only `return`, never `exit`; does
 # not toggle set -e. Each jq command substitution is set -e-safe with a
-# trailing `|| true` inside the subshell, matching cr-merge-gate.sh, so a
+# trailing `|| true` inside the subshell, matching review-merge-gate.sh, so a
 # `set -e` caller never aborts on a parse failure. bash 3.2-safe (no
 # mapfile/assoc arrays).
 
@@ -143,7 +143,7 @@ _cbf_gh() { "${GH_CMD:-gh}" "$@"; }
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/coderabbit-signal.sh"
 
 # The jq program is a single argument (no embedded single-quotes) so it can
-# stay a plain single-quoted string like cr-merge-gate.sh's GraphQL query.
+# stay a plain single-quoted string like review-merge-gate.sh's GraphQL query.
 # Every section-count pattern uses `[(]`/`[)]` rather than `\(`/`\)` — inside
 # a jq string literal `\(` opens string interpolation, so a backslash-escaped
 # literal paren would need to survive an extra layer of escaping for no
@@ -279,7 +279,7 @@ _cbf_reviews_json() {
     raw=$(_cbf_gh api "repos/$owner/$name/pulls/$num/reviews" --paginate 2>/dev/null) || return 1
     json=$(printf '%s' "$raw" | jq -s 'add // []' 2>/dev/null) || return 1
 
-    # Canary (mirrors cr-signal.sh): a valid payload is a JSON array
+    # Canary (mirrors coderabbit-signal.sh): a valid payload is a JSON array
     # (possibly empty). An error object or a parse failure is cannot-evaluate,
     # distinct from a well-formed empty array (which is legitimately "no
     # reviews yet").

@@ -294,7 +294,7 @@ append_ledger() {
 
 marker_exists() { [ -f "$1/.git/cr-pending/feat/x" ]; }
 
-# write_sweeps <tmp> <SWEEP-lines...> — the class-sweep records
+# write_sweeps <tmp> <SWEEP-lines...> — the variant-sweep records
 # write-verdicts.sh sweep appends for branch feat/x.
 write_sweeps() {
     local tmp="$1" l; shift
@@ -2626,7 +2626,7 @@ write_ledger "$tmp" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-sug","severity":"sug","file":"a.sh","line":2,"verdict":""}' "$_r1")" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r2-fixed","severity":"sug","file":"a.sh","line":3,"verdict":"fixed"}' "${_tip:0:8}")" \
     "$(avail_ok "${_tip:0:8}")"
-# r2-fixed carries its class-sweep record, so gate 4d passes and
+# r2-fixed carries its variant-sweep record, so gate 4d passes and
 # this case still reaches the gate 4c it exists to test.
 write_sweeps "$tmp" "SWEEP [r2-fixed@${_tip:0:8}] class=typo :: single-site search=git grep -n teh -- a.sh b.sh c.sh"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
@@ -2658,7 +2658,7 @@ write_ledger "$tmp" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r2-fixed","severity":"sug","file":"a.sh","line":3,"verdict":"fixed"}' "${_tip:0:8}")" \
     "$(avail_ok "${_tip:0:8}")"
 # Both rows are agreed-and-fixed on this branch, so gate 4d needs
-# their class-sweep records before this dry run can report a pass.
+# their variant-sweep records before this dry run can report a pass.
 write_sweeps "$tmp" "SWEEP [r1-agreed@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4" \
     "SWEEP [r2-fixed@${_tip:0:8}] class=typo :: single-site search=git grep -n typo -- a.sh b.sh c.sh"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
@@ -2673,7 +2673,7 @@ if grepq "$LAST_CLEAR_OUT" -F 'skipping the branch-wide still-open check'; then 
 rm -rf "$tmp"
 
 # 8g-8l. Gate 4d: a finding on this branch whose effective verdict
-# is agreed or fixed needs a class-sweep record (write-verdicts.sh sweep) in
+# is agreed or fixed needs a variant-sweep record (write-verdicts.sh sweep) in
 # <git-common-dir>/cr-class-sweeps/<branch>, keyed <id>@<head>. Shared fixture:
 # the first round at $sha raised r1 (agreed, fixed by the second round), the
 # second round at the tip recorded r2 as fixed within the round.
@@ -2692,21 +2692,21 @@ sweep_fixture() {
 
 # 8g. No sweep record -> refused exit 14, naming both rows; marker stays.
 sweep_fixture
-run_clear "$tmp" 14 "8g agreed-and-fixed findings with no class-sweep record -> exit 14"
-if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-class-sweep'; then pass; else
-    fail "8g must refuse with reason=missing-class-sweep: $LAST_CLEAR_OUT"; fi
+run_clear "$tmp" 14 "8g agreed-and-fixed findings with no variant-sweep record -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep'; then pass; else
+    fail "8g must refuse with reason=missing-variant-sweep: $LAST_CLEAR_OUT"; fi
 if grepq "$LAST_CLEAR_OUT" -F "r1@$_r1" && grepq "$LAST_CLEAR_OUT" -F "r2@${_tip:0:8}"; then pass; else
     fail "8g must name every finding missing a sweep as <id>@<head>: $LAST_CLEAR_OUT"; fi
 if marker_exists "$tmp"; then pass; else fail "8g: marker must REMAIN"; fi
 # 8h. --dry-run refuses the same way (gate 4d is read-only).
-run_clear "$tmp" 14 "8h --dry-run also refuses a missing class-sweep record" --dry-run
+run_clear "$tmp" 14 "8h --dry-run also refuses a missing variant-sweep record" --dry-run
 rm -rf "$tmp"
 
 # 8i. Both records present (multi-site and single-site shapes) -> clears.
 sweep_fixture
 write_sweeps "$tmp" "SWEEP [r1@${sha:0:12}] class=unquoted path :: sites=a.sh:1, b.sh:4, c.sh:9" \
     "SWEEP [r2@$_tip] class=typo :: single-site search=git grep -n teh -- a.sh b.sh c.sh"
-run_clear "$tmp" 0 "8i every agreed-and-fixed finding has a class-sweep record -> exit 0"
+run_clear "$tmp" 0 "8i every agreed-and-fixed finding has a variant-sweep record -> exit 0"
 if marker_exists "$tmp"; then fail "8i: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
@@ -2714,7 +2714,7 @@ rm -rf "$tmp"
 sweep_fixture
 write_sweeps "$tmp" "SWEEP [r1@${_tip:0:8}] class=unquoted path :: sites=a.sh:1, b.sh:4" \
     "SWEEP [r2@$_tip] class=typo :: single-site search=git grep -n teh -- a.sh b.sh c.sh"
-run_clear "$tmp" 14 "8j class-sweep record at a sha that is not the finding head -> exit 14"
+run_clear "$tmp" 14 "8j variant-sweep record at a sha that is not the finding head -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F "r1@$_r1" && ! grepq "$LAST_CLEAR_OUT" -F "r2@${_tip:0:8}"; then pass; else
     fail "8j must name r1 only: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
@@ -2804,17 +2804,17 @@ rm -rf "$tmp"
 sweep_fixture
 printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r3","severity":"sug","file":"a.sh","line":7,"verdict":"Agreed"}\n' "${_tip:0:8}" >> "$tmp/.git/cr-critic-scores.jsonl"
 write_sweeps "$tmp" "SWEEP [r1@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4" "${_r2_ok/\$_tip/$_tip}"
-run_clear "$tmp" 14 "8r a raw verdict spelled Agreed still needs a class-sweep record -> exit 14"
+run_clear "$tmp" 14 "8r a raw verdict spelled Agreed still needs a variant-sweep record -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F "r3@${_tip:0:8}"; then pass; else fail "8r must name r3: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
-# 8s. a class-sweep path that cannot be read is audited as a
+# 8s. a variant-sweep path that cannot be read is audited as a
 # sweep failure naming the sweep path, not as an unreadable ledger.
 sweep_fixture
 mkdir -p "$tmp/.git/cr-class-sweeps/feat/x"
-run_clear "$tmp" 14 "8s an unreadable class-sweep record refuses -> exit 14"
-if grepq "$LAST_CLEAR_OUT" -F 'reason=class-sweep-unreadable' && grepq "$LAST_CLEAR_OUT" -F 'cr-class-sweeps/feat/x' \
+run_clear "$tmp" 14 "8s an unreadable variant-sweep record refuses -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=variant-sweep-unreadable' && grepq "$LAST_CLEAR_OUT" -F 'cr-class-sweeps/feat/x' \
     && ! grepq "$LAST_CLEAR_OUT" -F 'reason=ledger-unreadable'; then pass; else
-    fail "8s must audit class-sweep-unreadable naming the sweep path: $LAST_CLEAR_OUT"; fi
+    fail "8s must audit variant-sweep-unreadable naming the sweep path: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 # 8t. r1 agreed at the abbreviated head, then disproved at the
 # full head of the same commit. The later row wins, so r1 needs no record.

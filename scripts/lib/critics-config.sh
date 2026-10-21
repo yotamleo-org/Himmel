@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # critics-config.sh — the ONE resolver for "which reviewers gate this repo, and
-# how hard?". critic-panel.sh (who runs) and cr-merge-gate.sh (who must pass)
+# how hard?". critic-panel.sh (who runs) and review-merge-gate.sh (who must pass)
 # both read the effective reviewer set from here, so they cannot disagree.
 #
 # critics_config_resolve [<cr-dir>]

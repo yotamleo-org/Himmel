@@ -81,7 +81,7 @@ TMP_ROOT=$(mktemp -d)
 # Dispatches on the subcommand the hook issues:
 #   gh api repos/<o>/<r>/issues/<n>/comments   -> dump $FAKE_GH_COMMENTS_FILE
 #   gh api repos/<o>/<r>/commits/<sha>/statuses -> dump $FAKE_GH_STATUSES_FILE
-#                                                  (cr-signal.sh's reader, used
+#                                                  (coderabbit-signal.sh's reader, used
 #                                                  by cr_trigger_rate_limited)
 #   gh pr view <n> --repo <o>/<r> --json headRefOid --jq .headRefOid
 #                                               -> $FAKE_GH_HEAD_SHA (exit 1 if unset,
@@ -136,7 +136,7 @@ export FAKE_GH_COMMENT_LOG="$COMMENT_LOG"
 export FAKE_GH_COMMENTS_FILE="$COMMENTS_FILE"
 export FAKE_GH_STATUSES_FILE="$STATUSES_FILE"
 
-# Per-head-SHA ledger: point cr-trigger-ledger.sh at a throwaway
+# Per-head-SHA ledger: point coderabbit-trigger-ledger.sh at a throwaway
 # file instead of this repo's real .git/ — see cr_trigger_ledger_path's
 # CR_TRIGGER_LEDGER_PATH override.
 LEDGER_PATH="$TMP_ROOT/cr-triggered-heads"
@@ -271,7 +271,7 @@ else
 fi
 
 # Test 4d: CR_TRIGGER_SUPPRESS=1 -> no post, head NOT recorded --
-# The seam lives in cr_trigger_post_review (scripts/lib/cr-trigger-ledger.sh),
+# The seam lives in cr_trigger_post_review (scripts/lib/coderabbit-trigger-ledger.sh),
 # shared with the push twin. Deliberately not recorded in the ledger: the
 # review is DEFERRED, not satisfied, so a later un-suppressed call for the
 # same head must still be free to post.
@@ -308,7 +308,7 @@ fi
 # prior (repo, PR, sha) directly — exactly what a real prior trigger would have
 # written — and stub ITS commit status as CodeRabbit's own rate-limit wording
 # (state=success description="Review rate limited", the SAME vocabulary
-# cr-signal.sh already parses for the rate-limited=NOTE gate — no
+# coderabbit-signal.sh already parses for the rate-limited=NOTE gate — no
 # new parser here, just the existing reader pointed at the prior head).
 echo "TEST: a rate-limited PRIOR head for this repo -> no post for the NEW head, logged why"
 reset_state
@@ -500,7 +500,7 @@ mkdir -p "$NOJQ_BIN"
 REAL_BASH=$(command -v bash)
 # Minimal PATH that hides jq but keeps what the hook (and the gh stub, should
 # a regression let the hook reach it) needs. `dirname` is needed for the
-# SCRIPT_DIR computation that locates cr-trigger-ledger.sh,
+# SCRIPT_DIR computation that locates coderabbit-trigger-ledger.sh,
 # reached before the jq check. Wrapper scripts, not symlinks — Git Bash
 # "symlinks" are file copies, and a copied bash.exe loses its DLLs.
 for tool in bash cat grep head tail sed dirname; do

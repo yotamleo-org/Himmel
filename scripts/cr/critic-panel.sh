@@ -164,7 +164,7 @@ fi
 # critics.json is the BASE and critics.local.json (gitignored per-operator
 # overlay — ACCOUNT state like exhausted free quotas / upgraded models) is
 # merged FIELD-WISE per slug on top by scripts/lib/critics-config.sh, the one
-# resolver cr-merge-gate.sh also reads, so who runs and who must pass cannot
+# resolver review-merge-gate.sh also reads, so who runs and who must pass cannot
 # disagree. A local row overrides fields of, or appends, a slug; "drop":true
 # removes it. The overlay is found in the himmelctl cache dir, then the
 # PRIMARY checkout (so a linked worktree resolves it too). Test hooks:
@@ -184,7 +184,7 @@ elif [ -r "$SCRIPT_DIR/../lib/critics-config.sh" ] && . "$SCRIPT_DIR/../lib/crit
         grep -q '"local":null' "$REG" || echo "critic-panel.sh: merged critics.local.json over critics.json" >&2
     else
         # Fail-open to the base: a broken overlay must not stop the panel.
-        # cr-merge-gate.sh reports the same error as a config error.
+        # review-merge-gate.sh reports the same error as a config error.
         echo "critic-panel.sh: critics config error (${_reg_err}) — using $_REG_BASE" >&2
         rm -f "$_MERGED_REG"; _MERGED_REG=""; REG="$_REG_BASE"
     fi

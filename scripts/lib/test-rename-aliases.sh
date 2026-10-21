@@ -214,6 +214,9 @@ forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
   out="$(bash -c '. "$1"; echo "rc=$?"' _ "$d/$old" 2> "$d/err")"
   check "$old refuses to be sourced and runs nothing" "rc=2" "$out"
   check "$old names the run spelling when sourced" "$old is deprecated: run '$new', do not source it" "$(cat "$d/err")"
+  # shellcheck disable=SC2016 # $0 is expanded by the inner bash, not here
+  out="$(bash -c '. "$0"; echo "rc=$?"' "$d/$old" 2> "$d/err")"
+  check "$old refuses to be sourced as \$0 and runs nothing" "rc=2" "$out"
 }
 # shellcheck disable=SC2016 # the stub body is expanded by the stub, not here
 SH_STUB='printf "NEW:%s|%s" "$1" "$2"; exit 7'
@@ -286,6 +289,26 @@ while IFS= read -r want; do
 done <<EOF
 $V2B_ROWS
 EOF
+
+# --- slice V2c: the sweep gate's refusal reason, read in both spellings ---
+V2C_ROWS='missing-class-sweep|missing-variant-sweep|marker|old-to-new|V2|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V2c row '$old'" "$tabbed" "$got"
+done <<EOF
+$V2C_ROWS
+EOF
+check "clear-review-marker.sh refuses with reason=missing-variant-sweep" yes \
+  "$(grep -q 'REFUSED reason=missing-variant-sweep ' "$ROOT/scripts/cr/clear-review-marker.sh" && echo yes || echo no)"
+for spelling in missing-class-sweep missing-variant-sweep; do
+  got="$(python3 -I -c 'import re, sys
+sys.path.insert(0, sys.argv[1])
+import friction
+print(" ".join(r[2] for r in friction.DOC_RULES if re.search(r[0], sys.argv[2])))' "$ROOT/scripts/eval/friction" "clear-cr-marker refused: $spelling" 2>&1)"
+  check "friction reads $spelling as missing-variant-sweep" "missing-variant-sweep" "$got"
+done
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '

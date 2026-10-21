@@ -160,7 +160,7 @@ _cr_trigger_allowlisted() {
 # cr_trigger_repo_armed <owner/repo> — rc 0 iff we may post a CodeRabbit
 # trigger comment on that repo. Two ways to be armed:
 #   (a) the cwd's clone has CodeRabbit armed (`git config --local
-#       himmel.coderabbit true`, the ONE predicate in cr-available.sh) AND the
+#       himmel.coderabbit true`, the ONE predicate in coderabbit-available.sh) AND the
 #       PR's repo IS that clone's origin. A repo we hold the arming signal for
 #       is a repo whose CR gate is ours to trigger.
 #   (b) the PR's repo is named in CR_TRIGGER_REPOS (comma-separated nwo) — the
@@ -210,7 +210,7 @@ cr_trigger_repo_armed() {
 # status on the LAST head this repo already triggered. A brand
 # new PR's own head carries no CodeRabbit status yet, so there is no local
 # evidence to read from IT — the account-wide limit only shows up on whatever
-# head we most recently asked CodeRabbit to review. Reuses cr-signal.sh's
+# head we most recently asked CodeRabbit to review. Reuses coderabbit-signal.sh's
 # EXISTING reader (no new parser): the same rate-limit wording check-ci.sh
 # already trusts for the rate-limited=NOTE gate.
 #
