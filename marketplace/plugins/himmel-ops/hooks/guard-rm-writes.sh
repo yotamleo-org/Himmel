@@ -28,9 +28,10 @@
 #   Write|Edit|MultiEdit|NotebookEdit — the path, lexically normalised or
 #     resolved, is an authority file.
 #   Bash — a redirect (>, >>, >|, &>, N>) targets an authority file; or a
-#     command segment (split on ; | & ( ) ` and newlines) that is not a Jira
-#     CLI invocation runs tee, cp, mv, or sed with -i/--in-place and names an
-#     authority file. ~/, $HOME/ and ${HOME}/ expand to $HOME.
+#     command segment (split on ; | & ( ) ` and newlines) runs tee, cp, mv, or
+#     sed with -i/--in-place and names an authority file, unless the segment's
+#     command (after VAR=value prefixes and an optional node) is the Jira CLI
+#     with `release` as its op. ~/, $HOME/ and ${HOME}/ expand to $HOME.
 # TRIP CONDITION, mode 2 (HIMMEL_RELEASE_MANAGER=1, on top of mode 1):
 #   Bash — the text names HIMMEL_RELEASE_MANAGER, leg-pr-open, merge-on-green,
 #     console-kit/go.sh, inbox-send or leg-jira-status; a mutating git verb; a
@@ -59,8 +60,8 @@
 # RESIDUAL (deliberate): the Bash checks are textual, not a shell parser —
 # eval, variables, `cd` then a relative name, a quoted path with spaces, a
 # wrapper script, an interpreter -c, or a writer verb outside this list (rm,
-# dd, install, truncate) still pass; JSON unicode escapes in a path skip the
-# mode-1 prefilter. The authority files carry signed, chained rows (design
+# dd, install, truncate) still pass; JSON unicode escapes in a path, or a
+# symlink alias whose name lacks "release", skip the mode-1 prefilter. The authority files carry signed, chained rows (design
 # §5.2), so a raw write is detected by every reader even when it passes here.
 # ponytail: those shell shapes pass, a sandboxed lane (HIMMEL-4607) closes them.
 # Over-matching is the safe direction: in mode 2 a read that names
@@ -287,13 +288,18 @@ EOF
         # shellcheck disable=SC2020
         segments=$(printf '%s\n' "$bare" | tr ';|&()`' '\n\n\n\n\n\n')
         while IFS= read -r seg; do
-            words=$(printf '%s' "$seg" | tr '<>=\t\r' '     ')
-            release_cli=0; prev=""
-            for t in $words; do
-                [ "$t" = "release" ] && is_jira_word "$prev" && release_cli=1
-                prev="$t"
+            # The segment's command, after VAR=value prefixes and an optional
+            # node, must be the Jira CLI with `release` as its op.
+            set -f
+            # shellcheck disable=SC2046
+            set -- $(printf '%s' "$seg" | tr '\t\r' '  ')
+            set +f
+            while [ "$#" -gt 0 ]; do
+                case "$1" in [A-Za-z_]*=*) shift ;; *) break ;; esac
             done
-            [ "$release_cli" -eq 1 ] && continue
+            case "${1:-}" in node | */node) shift ;; esac
+            is_jira_word "${1:-}" && [ "${2:-}" = "release" ] && continue
+            words=$(printf '%s' "$seg" | tr '<>=\t\r' '     ')
             writer=0
             has_word tee cp mv && writer=1
             if [ "$writer" -eq 0 ] && has_word sed; then

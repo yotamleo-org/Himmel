@@ -134,10 +134,13 @@ any_row "cp onto operator.jsonl" 2 "$(bash_payload "cp /tmp/x $REL/operator.json
 any_row "mv onto ~/.config/himmel/release" 2 "$(bash_payload 'mv /tmp/k ~/.config/himmel/release/R113.key')"
 # gnu-ok: payload text for the hook, never run.
 any_row "sed -i on rulings.jsonl" 2 "$(bash_payload "sed -i 's/a/b/' $REL/rulings.jsonl")"
+any_row "tee naming jira release as arguments" 2 "$(bash_payload "tee $REL/rulings.jsonl jira release")"
+any_row "cp with the release CLI later in the segment" 2 "$(bash_payload "cp /tmp/x $REL/lease.json $JIRA release state")"
 
 # --- mode 1: allowed ---
 any_row "release state" 0 "$(bash_payload "$JIRA release state R113")"
 any_row "the release CLI writing its own files" 0 "$(bash_payload "$JIRA release rule R113 --verbatim-file $REL/proposals/x.md | tee /tmp/out")"
+any_row "the release CLI under an env prefix" 0 "$(bash_payload "JIRA_PROJECT_KEY=HIMMEL $JIRA release rule R113 --note tee $REL/rulings.jsonl")"
 any_row "an Edit elsewhere" 0 "$(file_payload Edit "$TMP/repo/x.sh")"
 any_row "an Edit of a status report" 0 "$(file_payload Edit "$REL/status-3.md")"
 any_row "reading lease.json" 0 "$(bash_payload "jq . $REL/lease.json 2>/dev/null")"
