@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync,
+  appendFileSync, closeSync, existsSync, fstatSync, futimesSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -137,8 +138,11 @@ export function loadKey(path: string): Buffer {
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 // One O_EXCL lock file per release directory serializes every writer. A lock
-// older than staleMs is a crashed writer's and is broken.
-function acquireLock(dir: string, waitMs: number, staleMs: number): () => void {
+// older than staleMs is a crashed writer's and is broken; a live async holder
+// keeps its lock fresh, and a release unlinks only the lock it created.
+interface LockHandle { lock: string; fd: number; ino: number }
+
+function acquireLock(dir: string, waitMs: number, staleMs: number): LockHandle {
   const lock = `${dir}/.lock`;
   const deadline = Date.now() + waitMs;
   let fd: number | null = null;
@@ -154,26 +158,37 @@ function acquireLock(dir: string, waitMs: number, staleMs: number): () => void {
       sleep(50);
     }
   }
-  return () => {
-    closeSync(fd as number);
-    unlinkSync(lock);
-  };
+  return { lock, fd, ino: fstatSync(fd).ino };
+}
+
+function releaseLock(h: LockHandle): void {
+  closeSync(h.fd);
+  try {
+    if (statSync(h.lock).ino === h.ino) unlinkSync(h.lock);
+  } catch { /* already broken and gone */ }
 }
 
 export function withLock<T>(dir: string, fn: () => T, waitMs = 10_000, staleMs = 60_000): T {
-  const release = acquireLock(dir, waitMs, staleMs);
+  const h = acquireLock(dir, waitMs, staleMs);
   try {
     return fn();
   } finally {
-    release();
+    releaseLock(h);
   }
 }
 
 export async function withLockAsync<T>(dir: string, fn: () => Promise<T>, waitMs = 10_000, staleMs = 60_000): Promise<T> {
-  const release = acquireLock(dir, waitMs, staleMs);
+  const h = acquireLock(dir, waitMs, staleMs);
+  const beat = setInterval(() => {
+    const now = new Date();
+    try {
+      futimesSync(h.fd, now, now);
+    } catch { /* the fd closes with the release */ }
+  }, Math.max(10, Math.floor(staleMs / 3)));
   try {
     return await fn();
   } finally {
-    release();
+    clearInterval(beat);
+    releaseLock(h);
   }
 }

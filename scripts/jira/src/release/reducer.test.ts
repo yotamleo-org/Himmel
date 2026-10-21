@@ -88,6 +88,21 @@ describe('release reducer (HIMMEL-6796)', () => {
     expect(back.leaks.unauthorized).toEqual([]);
   });
 
+  it('moving one baseline key out leaves the rest of the baseline in', () => {
+    const moved = rule('R-1', 'K-1', 'move', 'v1', null, { verb: 'REVERSION', outcome: 'MOVE', supersedes: ['baseline-v1-g1'] });
+    const s = reduce(input({
+      baselines: [{ ...base, keys: ['K-1', 'K-3'] }], rulingRows: [moved],
+      issueList: [issue('K-1', []), issue('K-3', ['v1'])],
+    }));
+    expect(recordOf(s, 'K-3', 'v1')).toMatchObject({ placement: 'in', obligation: 'baseline', ruling: 'baseline-v1-g1' });
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('a placed key missing from a synced mirror is an integrity finding', () => {
+    const s = reduce(input({ rulingRows: [rule('R-1', 'K-2', 'add', null, 'v1')] }));
+    expect(s.integrity).toContain('K-2@v1: not in the Jira mirror');
+  });
+
   it('authorizes only the exact key, versions and operation', () => {
     const s = reduce(input({ rulingRows: [rule('R-1', 'K-2', 'add', null, 'v2')], issueList: [issue('K-1', ['v1']), issue('K-2', ['v2'])] }));
     expect(authorizes(s, 'K-2', null, 'v2', 'add')).toBe(true);

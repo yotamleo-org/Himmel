@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, freeze, leaseAcquire, leaseRelease, operatorDecision, request, rule, state, takeover,
   type Ctx, type JiraPort,
 } from './engine.js';
+import { withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
   fv = new Map<string, string[]>();
@@ -180,6 +181,40 @@ describe('release engine (HIMMEL-6796)', () => {
     writeFileSync(p, readFileSync(p, 'utf8').replace('"v2"', '"v9"'));
     expect(state(ctx()).status).toBe('UNKNOWN');
     expect(() => claim(ctx(rmEnv))).toThrow(/UNKNOWN/);
+  });
+
+  it('an applied DISCHARGE keeps the fixVersion it discharges', async () => {
+    await setup();
+    jira.fv.set('K-1', ['v1']);
+    const q = request(ctx(), { verb: 'DISCHARGE', key: 'K-1', from_v: 'v1', to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'ACCEPT', op: { kind: 'discharge', from_v: 'v1', to_v: 'v1' }, supersedes: ['baseline-v1-g1'] });
+    await apply(ctx(rmEnv), r.id);
+    expect(jira.fv.get('K-1')).toEqual(['v1']);
+  });
+
+  it('an emergency ruling may cite the standing emergency record', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'red main', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    expect(admit(q.req, { authority: { kind: 'operator', ref: 'O-R1-emergency' } }).id).toBe('R-R1-0001');
+  });
+
+  it('declares observe only: live waits for the activation barrier', () => {
+    expect(() => declare(ctx(), { project: 'HIMMEL', versions: ['v1'], decision: '1', verbatim: 'v', mode: 'live' }))
+      .toThrow(/activation barrier/);
+  });
+
+  it('a long async lock holder keeps its lock fresh and never unlinks a successor', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-lock-'));
+    const lock = join(dir, '.lock');
+    await withLockAsync(dir, async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      expect(Date.now() - statSync(lock).mtimeMs).toBeLessThan(200);
+      unlinkSync(lock);
+      writeFileSync(lock, 'another writer');
+    }, 1000, 200);
+    expect(readFileSync(lock, 'utf8')).toBe('another writer');
   });
 
   it('a frozen baseline is immutable: editing it breaks verification', async () => {

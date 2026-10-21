@@ -86,12 +86,12 @@ export const unknownState = (release: string, why: string): ReleaseState => ({
 interface Partition {
   effective: Map<string, RulingRow>;
   pendingIntents: RulingRow[];
-  superseded: Set<string>;
+  superseded: Map<string, Set<string>>;
   unknownKeys: Set<string>;
 }
 
 // Authority scope (§4): an operator ruling must match its record exactly.
-function scopeOk(r: RulingRow, ops: Map<string, OperatorRow>, current: string): boolean {
+export function scopeOk(r: Pick<RulingRow, 'authority' | 'key' | 'op'>, ops: Map<string, OperatorRow>, current: string): boolean {
   if (r.authority.kind !== 'operator') return true;
   const o = r.authority.ref ? ops.get(r.authority.ref) : undefined;
   if (!o) return false;
@@ -122,10 +122,18 @@ function partition(inp: ReduceInput, integrity: string[]): Partition {
     else if (r.phase === 'void') voided.add(r.id);
     else if (!effective.has(r.id)) effective.set(r.id, r);
   }
+  // A ruling supersedes only for its own key: moving one baseline key out
+  // leaves the rest of that baseline in.
+  const superseded = new Map<string, Set<string>>();
+  for (const r of effective.values()) {
+    const set = superseded.get(r.key) ?? new Set<string>();
+    for (const id of r.supersedes) set.add(id);
+    superseded.set(r.key, set);
+  }
   return {
     effective,
     pendingIntents: [...intents.values()].filter((r) => !effective.has(r.id) && !voided.has(r.id)),
-    superseded: new Set([...effective.values()].flatMap((r) => r.supersedes)),
+    superseded,
     unknownKeys,
   };
 }
@@ -178,11 +186,12 @@ function bookkeepingOf(events: EventRow[], key: string, v: string, terminal: Key
 function recordFor(c: VersionCtx, key: string): { rec: KeyRecord; isIn: boolean; everOut: boolean } {
   const { inp, p, v } = c;
   const issue = inp.issues?.get(key);
+  const gone = p.superseded.get(key) ?? new Set<string>();
   const mine = [...p.effective.values()].filter((r) => r.key === key && effectOn(r.op, v));
   const live: Live[] = mine
-    .filter((r) => !p.superseded.has(r.id))
+    .filter((r) => !gone.has(r.id))
     .map((r) => ({ id: r.id, effect: effectOn(r.op, v) as 'in' | 'out', r }));
-  if (c.bId && c.baseKeys.has(key) && !p.superseded.has(c.bId)) live.push({ id: c.bId, effect: 'in', r: null });
+  if (c.bId && c.baseKeys.has(key) && !gone.has(c.bId)) live.push({ id: c.bId, effect: 'in', r: null });
   const everOut = mine.some((r) => effectOn(r.op, v) === 'out');
   const placement = placementOf(c, key, live);
   const settled = live.length === 1 ? live[0] : null;
@@ -210,6 +219,7 @@ type Leaks = ReleaseState['leaks'];
 function tally(c: VersionCtx, out: { rec: KeyRecord; isIn: boolean; everOut: boolean }, bd: Burndown, leaks: Leaks): void {
   const { rec, isIn, everOut } = out;
   const at = `${rec.key}@${c.v}`;
+  if (c.inp.issues && !c.inp.issues.has(rec.key) && rec.expected_member === true) c.integrity.push(`${at}: not in the Jira mirror`);
   if (rec.expected_member !== null && rec.actual_member !== 'unknown') {
     if (rec.actual_member && !rec.expected_member && !rec.bookkeeping) leaks.unauthorized.push(at);
     if (!rec.actual_member && rec.expected_member) leaks.ruled_in_non_member.push(at);

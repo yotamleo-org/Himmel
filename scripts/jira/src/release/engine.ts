@@ -3,7 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
-import { baselineId, effectOn, reduce, recordOf, unknownState, type ReleaseState } from './reducer.js';
+import { baselineId, effectOn, reduce, recordOf, scopeOk, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -99,6 +99,18 @@ function loadOrThrow(ctx: Ctx): Loaded {
   return l;
 }
 
+// Every writer decides on the state it reads under the lock. The load before
+// the lock only turns a release that is not declared into a clear error.
+function locked<T>(ctx: Ctx, fn: (l: Loaded) => T): T {
+  loadOrThrow(ctx);
+  return withLock(ctx.dir, () => fn(loadOrThrow(ctx)));
+}
+
+function lockedAsync<T>(ctx: Ctx, fn: (l: Loaded) => Promise<T>): Promise<T> {
+  loadOrThrow(ctx);
+  return withLockAsync(ctx.dir, () => fn(loadOrThrow(ctx)));
+}
+
 function frontmatter(text: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const lines = text.split('\n');
@@ -173,6 +185,7 @@ export function declare(ctx: Ctx, o: { project: string; versions: string[]; deci
   operatorFence(ctx);
   if (!/^[A-Za-z0-9._-]+$/.test(ctx.release)) throw new Error(`release: bad release name '${ctx.release}'`);
   if (!o.versions.length) throw new Error('release operator declare: --versions needs at least one version');
+  if (o.mode === 'live') throw new Error('release operator declare: a release is declared observe; live waits for the signed activation barrier');
   if (existsSync(f(ctx, 'release.json'))) throw new Error(`release ${ctx.release} is already declared`);
   mkdirSync(ctx.dir, { recursive: true });
   const k = mintKey(ctx.keyPath);
@@ -193,9 +206,8 @@ export function declare(ctx: Ctx, o: { project: string; versions: string[]; deci
 
 export function freeze(ctx: Ctx, o: { version: string; keys: string[]; decision: string; verbatim: string }): Baseline {
   operatorFence(ctx);
-  const l = loadOrThrow(ctx);
-  if (!l.decl.versions.includes(o.version)) throw new Error(`release operator freeze: ${o.version} is not a version of ${ctx.release}`);
-  return withLock(ctx.dir, () => {
+  return locked(ctx, (l) => {
+    if (!l.decl.versions.includes(o.version)) throw new Error(`release operator freeze: ${o.version} is not a version of ${ctx.release}`);
     const gen = 1 + l.operator.verified.filter((x) => x.kind === 'freeze' && x.file?.startsWith(`baseline-${o.version}-g`)).length;
     const b: Baseline = { release: ctx.release, version: o.version, gen, keys: [...new Set(o.keys)].sort(), decision: o.decision, ts: ts(ctx) };
     const file = `${baselineId(b)}.json`;
@@ -208,26 +220,23 @@ export function freeze(ctx: Ctx, o: { version: string; keys: string[]; decision:
 
 export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]; op: string; from_v: string | null; to_v: string | null; verbatim: string }): OperatorRow {
   operatorFence(ctx);
-  const l = loadOrThrow(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
-  return withLock(ctx.dir, () => appendOperator(ctx, l.k, {
+  return locked(ctx, (l) => appendOperator(ctx, l.k, {
     kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim,
   }));
 }
 
 export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorRow {
   operatorFence(ctx);
-  const l = loadOrThrow(ctx);
   if (!isAbsolute(o.doc)) throw new Error('release operator takeover: the successor doc must be an absolute path');
-  return withLock(ctx.dir, () => appendOperator(ctx, l.k, { kind: 'takeover', decision: null, epoch: o.epoch, doc: o.doc }));
+  return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'takeover', decision: null, epoch: o.epoch, doc: o.doc }));
 }
 
 // --- the request queue (the console writes, the RM claims) ---------------------
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the console writes requests; the RM claims them');
-  const l = loadOrThrow(ctx);
-  return withLock(ctx.dir, () => {
+  return locked(ctx, (l) => {
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
     const dup = [...latest.values()].find((r) => !r.state.startsWith('ruled:') && r.key === o.key && r.verb === o.verb
       && r.from_v === o.from_v && r.to_v === o.to_v);
@@ -255,8 +264,7 @@ function rmFence(ctx: Ctx, l: Loaded): Lease {
 export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; session: string }): Lease {
   if (ctx.env.HIMMEL_RELEASE_MANAGER !== '1') throw new Error('release lease: only the release-manager session (HIMMEL_RELEASE_MANAGER=1) holds the lease');
   if (!isAbsolute(o.doc) || ctx.env.HIMMEL_RM_DOC !== o.doc) throw new Error('release lease acquire: --doc must be this session\'s absolute HIMMEL_RM_DOC');
-  const l = loadOrThrow(ctx);
-  return withLock(ctx.dir, () => {
+  return locked(ctx, (l) => {
     const cur = readLease(ctx, l.k);
     if (cur.epoch !== o.expectEpoch) throw new Error(`release lease: epoch is ${cur.epoch}, expected ${o.expectEpoch}`);
     const takeoverRow = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), l.k).verified
@@ -274,8 +282,7 @@ export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; se
 }
 
 export function leaseRelease(ctx: Ctx): Lease {
-  const l = loadOrThrow(ctx);
-  return withLock(ctx.dir, () => {
+  return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
     const next = { ...lease, released: true };
     writeSigned(f(ctx, 'lease.json'), l.k, next);
@@ -286,8 +293,7 @@ export function leaseRelease(ctx: Ctx): Lease {
 // --- claim, rule, apply (§5.6, §5.7) ------------------------------------------------
 
 export function claim(ctx: Ctx): RequestRow[] {
-  const l = loadOrThrow(ctx);
-  return withLock(ctx.dir, () => {
+  return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
     const mine = `claimed:${lease.epoch}`;
@@ -335,8 +341,7 @@ export interface RuleOptions {
 }
 
 export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
-  const l = loadOrThrow(ctx);
-  return withLock(ctx.dir, () => {
+  return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
     const req = latest.get(o.req);
@@ -369,10 +374,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       }
     }
     if (o.authority.kind === 'operator') {
-      const rec = l.operator.verified.find((x) => x.id === o.authority.ref);
-      const covers = rec?.kind === 'decision' && (rec.keys ?? []).includes(req.key) && rec.op === o.op.kind
-        && (rec.from_v ?? null) === o.op.from_v && (rec.to_v ?? null) === o.op.to_v;
-      if (!covers) throw new Error(`release rule: ${o.authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
+      const ops = new Map(l.operator.verified.map((x) => [x.id, x]));
+      if (!scopeOk({ authority: o.authority, key: req.key, op: o.op }, ops, l.decl.current)) throw new Error(`release rule: ${o.authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
     }
     if (o.authority.kind === 'import' && !o.authority.ref) throw new Error('release rule: an import names its source in --ref');
 
@@ -413,8 +416,7 @@ function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Part
 // in the receipted row is the idempotency key, and a replay finds the comment
 // by its marker before it would post another.
 export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['phase']; line: string }> {
-  const l = loadOrThrow(ctx);
-  return withLockAsync(ctx.dir, async () => {
+  return lockedAsync(ctx, async (l) => {
     const lease = rmFence(ctx, l);
     const rows = readChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k);
     if (rows.bad.length) throw new Error(`release: rulings.jsonl does not verify (${rows.bad[0]})`);
@@ -448,7 +450,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
       const cur = await ctx.jira.fixVersions(k);
-      if (op.kind !== 'add' && op.kind !== 'keep' && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
+      if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
       if (!landed(op, await ctx.jira.fixVersions(k))) {
         event('mismatch');
