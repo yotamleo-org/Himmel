@@ -93,6 +93,7 @@ check_file() {
     if [ -n "$b_line" ] && [ -n "$u_line" ] && [ "$u_line" -lt "$b_line" ]; then echo "upload-before-build"; fi
 
     # deploy job: the Pages actions, no repo code, no npm
+    grep -qE "^    if:[[:space:]]*github\.ref == 'refs/heads/main'[[:space:]]*\$" <<< "$deploy" || echo "deploy-not-main-gated"
     grep -qE 'uses:[[:space:]]*actions/configure-pages@' <<< "$deploy" || echo "no-configure-pages"
     grep -qE 'uses:[[:space:]]*actions/deploy-pages@' <<< "$deploy" || echo "no-deploy-pages"
     grep -qE 'uses:[[:space:]]*actions/(checkout|setup-node)@|^[[:space:]]+(-[[:space:]]+)?(run|working-directory):' <<< "$deploy" && echo "deploy-job-runs-repo-code"
@@ -139,6 +140,8 @@ if [ -f "$WF" ]; then
     mutate extra-write-permission "s#^  contents: read#  contents: read\n  pages: write#"
     mutate extra-write-permission "s#^      id-token: write#      id-token: write\n      issues: write#"
     mutate build-job-writes "s#^  build:#  build:\n    permissions:\n      id-token: write#"
+    mutate deploy-not-main-gated "/^    if: github.ref == 'refs\/heads\/main'\$/d"
+    mutate deploy-not-main-gated "s#^    if: github.ref == 'refs/heads/main'#    if: github.ref == 'refs/heads/dev'#"
     mutate extra-write-permission "s#^permissions:#permissions: write-all#"
     mutate build-job-writes "s#^  build:#  build:\n    permissions: write-all#"
     mutate no-id-token "s#id-token: write#id-token: read#"

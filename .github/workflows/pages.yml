@@ -51,6 +51,8 @@ jobs:
 
   deploy:
     needs: build
+    # The github-pages environment allows only main: a branch run builds and skips the deploy.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
