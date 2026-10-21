@@ -45,6 +45,7 @@ root="$tmp/root"
 mkdir -p "$root" "$tmp/home/.config/himmel" || exit 1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
 export HOME="$tmp/home" USER_SLUG=tuser
+export HIMMEL_VERDICT_MODEL=test-model HIMMEL_VERDICT_EFFORT=high
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
