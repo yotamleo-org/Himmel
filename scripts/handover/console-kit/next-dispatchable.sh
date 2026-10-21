@@ -22,7 +22,7 @@
 # like K1, is skipped; a key marked `(CLOUD)` is dropped from the output); 2 label
 # operator-directed; 3 a Bug of High or above, or a security / data-integrity /
 # data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
-# tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review, no leg, no open PR)
+# tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no leg, no open PR)
 # lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
 # the RESUME rows need a leg source (--owners or --legs-from, plus the cloud-sessions.tsv
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
@@ -34,6 +34,11 @@
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
 # line of its own (security, data loss or a broken operator flow only). No label
 # means depth 0.
+#
+# IN CI tickets: one nobody holds (no leg, no open PR) that a merged PR cites prints a
+# `MERGED-NOT-CLOSED` row (same columns as RESUME, nothing to dispatch: it needs closing);
+# with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
+# `merged PRs unknown` header and no IN CI row.
 #
 # Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
 # $TICKET_STATUS_STATE_DIR/workers or ~/.himmel/state/workers) is in state wrapped
@@ -390,14 +395,35 @@ try:
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
+# An IN CI ticket nobody holds is merged-not-closed when a merged PR cites it, else a RESUME row.
+# One bounded search per candidate key (a merged-PR list capped at N would miss an older merge).
+merged_unknown = False
+merged_keys = set()
+inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Story', 'Sub-task')
+             and i['key'] not in leg_keys and i['key'] not in pr_keys]
+if inci_keys and not (pr_unknown or legs_unknown):
+    def merged_cites(key):
+        out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],  # env-literal-ok: the repo the open-PR reads above query
+                             capture_output=True, text=True, timeout=60, check=True).stdout
+        return key in {k.upper() for k in re.findall(r'[A-Za-z]+-\d+', out)}
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(inci_keys))) as pool:
+            merged_keys = {k for k, hit in zip(inci_keys, pool.map(merged_cites, inci_keys)) if hit}
+    except (OSError, subprocess.SubprocessError):
+        merged_unknown = True
+
 # In-work tickets nobody holds (and wrapped To Do ones): no leg, no open PR, not parked or blocked.
 resume = []
 for i in issues.values():
     if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
         continue
     wrapped = i['status'] == 'To Do' and i['key'] in briefs
-    if not (wrapped or i['status'] in ('In Progress', 'In Review')) or i['type'] in ('Epic', 'Story', 'Sub-task'):
+    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Story', 'Sub-task'):
         continue
+    if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
+        continue
+    i['merged'] = i['status'] == 'IN CI' and i['key'] in merged_keys
     if i['key'] in done_pending:
         continue
     if i['labels'] & excl or any('parked' in l for l in i['labels']):
@@ -408,9 +434,12 @@ for i in issues.values():
         continue
     if i['key'] in leg_keys or i['key'] in pr_keys:
         continue
-    if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
-        continue
     if pr_unknown or legs_unknown:  # an unread PR set or leg set could hide the ticket's owner
+        continue
+    if i['merged']:  # nothing to dispatch: the ticket only needs closing
+        resume.append(i)
+        continue
+    if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
     if any(collides(f, h) for f in i['files'] for h, _ in held):
         continue
@@ -448,7 +477,7 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
@@ -467,6 +496,10 @@ def emit_resume(rows):
     for i in rows:
         if n >= top:
             break
+        if i['merged']:
+            print('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
+            n += 1
+            continue
         if not resume_only and any(collides(f, h) for f in i['files'] for h in picked):
             continue
         picked.extend(i['files'])
