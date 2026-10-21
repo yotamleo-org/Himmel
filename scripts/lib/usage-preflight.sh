@@ -599,6 +599,7 @@ _fleet_cmdline_name() {
   while IFS= read -r -d '' _fcn_arg || [ -n "$_fcn_arg" ]; do
     if [ "$_fcn_want" -eq 1 ]; then _fleet_argv_name="$_fcn_arg"; return 0; fi
     [ "$_fcn_arg" = -n ] && _fcn_want=1
+    # read-sink-ok: a procfs cmdline path built from a pid; FLEET_PROC is the /proc test seam
   done 2>/dev/null <"$_fcn_file"
   return 2
 }
