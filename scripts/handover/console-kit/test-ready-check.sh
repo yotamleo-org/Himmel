@@ -762,6 +762,14 @@ check "ledger: a moved deferral absent from the body: exit 1" "$rc" "1"
 contains "ledger: moved deferral absent from body: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
 
 reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50
+printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"verdict":"fixed"}}\n' "$SHA" >> "$LEDGER"
+seed_deferral HIMMEL-50
+rc=0; out="$(run)" || rc=$?
+check "ledger: an amend does not reach a finding row written after it: exit 0" "$rc" "0"
+
+reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
 seed_deferral HIMMEL-50
 printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"head":"%s"}}\n' "$SHA" "$OLDHEAD" >> "$LEDGER"

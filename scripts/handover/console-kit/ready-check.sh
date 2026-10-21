@@ -420,7 +420,8 @@ cov_linked() {
 
 # cov_ledger_keys <ledger> <head>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
 # A finding's effective row is its own row with every amend written against its original head merged over it, in file
-# order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); the
+# order, only those written after the finding row (an amend's set.head re-keys the finding, and later amends keep the
+# original head as their target_head), so a replacement finding row written after an amend is not overridden by it; the
 # finding counts at the head when its effective head matches, and only an effective verdict of deferred counts.
 # A head matches when either spelling is a prefix of the other.
 # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
@@ -430,11 +431,11 @@ cov_ledger_keys() {
         def hm($x; $y): ($x | type == "string") and ($y | type == "string") and ($x | length >= 7) and ($y | length >= 7) and (($x | ascii_downcase) as $a | ($y | ascii_downcase) as $b | ($a | startswith($b)) or ($b | startswith($a)));
         def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
-        [inputs | fromjson? | select(type == "object")] as $rows
+        [inputs | fromjson? | select(type == "object")] | to_entries | map(.value + {_ln: .key}) as $rows
         | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
-            (reduce (($amends[ak($f; $f.head)] // [])[] | select(hm(.target_head; $f.head))) as $a ($f; . + $a.set)) as $e
+            (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head))) as $a ($f; . + $a.set)) as $e
             | if hm($e.head; $h) then .[fk($f)] = vd($e) else . end)
         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
         | .deferred_to | ascii_upcase' "$1") || return 1
