@@ -422,6 +422,42 @@ assert_eq "bun via relative PATH entry → gate passes (exit 0)" "0" "$rc"
 assert_says "bun via relative PATH entry → the frozen-lockfile check still runs" \
     "frozen-lockfile" "$out"
 
+# --- site/ is in the gate's scope ---------
+
+# A repo whose only npm project is site/ (no scripts/ tree at all).
+make_site_repo() {
+    local dir
+    dir=$(fixture_mktemp_dir) || return 1
+    (
+        fixture_enter_git_init_dir "$dir" || exit 1
+        git init -q -b main
+        git config user.email t@t
+        git config user.name t
+        mkdir -p site
+        echo '{"name":"site"}' > site/package.json
+        echo '# docs' > README.md
+        git add -A
+        git -c commit.gpgsign=false commit -q -m "init"
+    ) || { rm -rf "$dir"; return 1; }
+    echo "$dir"
+}
+
+# Case 11: site/package.json with no sibling lockfile → blocked, naming it.
+SITE_REPO=$(make_site_repo) || exit 1
+rc=0
+out=$(cd "$SITE_REPO" && "$BASH_ABS" "$GATE" 2>&1) || rc=$?
+assert_eq "site/package.json without a lockfile → gate blocks (exit 1)" "1" "$rc"
+assert_says "site/package.json without a lockfile → names site/package-lock.json" \
+    "missing lockfile: site/package-lock.json" "$out"
+
+# Case 12: site/package-lock.json present but untracked → blocked, naming it.
+echo '{}' > "$SITE_REPO/site/package-lock.json"
+rc=0
+out=$(cd "$SITE_REPO" && "$BASH_ABS" "$GATE" 2>&1) || rc=$?
+assert_eq "untracked site/package-lock.json → gate blocks (exit 1)" "1" "$rc"
+assert_says "untracked site/package-lock.json → says it is not tracked" \
+    "lockfile not tracked in git: site/package-lock.json" "$out"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
