@@ -157,6 +157,43 @@ assert_err_has "R13: stderr names the missing check" "missing from the merge res
 SR_SIB=wire SR_PR=allow sr_run 24 "R14: --dry-run reports the refusal" --dry-run
 assert_clear_not_invoked "R14: nothing mutated"
 
+# R15-R17 — the per-check ceiling needs a timeout tool: gtimeout stands in for
+# timeout, with neither the gate refuses, and the tool gets a kill-after grace.
+# sr_path_without <dir> — links every tool on PATH except timeout and gtimeout.
+sr_path_without() {
+    local d="$1" p f IFS=:
+    mkdir -p "$d" || return 1
+    for p in $PATH; do
+        [ -d "$p" ] || continue
+        for f in "$p"/*; do
+            { [ -f "$f" ] && [ -x "$f" ]; } || continue
+            case "${f##*/}" in timeout|gtimeout) continue ;; esac
+            [ -e "$d/${f##*/}" ] || ln -s "$f" "$d/${f##*/}"
+        done
+    done
+}
+# sr_timeout_stub <dir> <name> — logs its ceiling arguments, then runs the command.
+sr_timeout_stub() {
+    mkdir -p "$1" || return 1
+    printf '#!/usr/bin/env bash\necho "$1 $2 $3" >> "$SR_TO_LOG"\nshift 3\nexec "$@"\n' > "$1/$2" && chmod +x "$1/$2"
+}
+SR_NT="$MOG_SUITE_TMP/sr-notimeout"
+SR_TO_LOG="$MOG_SUITE_TMP/sr-timeout.log"
+export SR_TO_LOG
+sr_path_without "$SR_NT"
+sr_timeout_stub "$MOG_SUITE_TMP/sr-gt" gtimeout
+sr_timeout_stub "$MOG_SUITE_TMP/sr-to" timeout
+PATH="$SR_NT" SR_SIB=none SR_PR=clean-b sr_run 24 "R15: neither timeout nor gtimeout on PATH → exit 24"
+assert_err_has "R15: stderr names the missing tool" "gtimeout"
+assert_audit_has "R15: audited as a missing ceiling tool" "phase=no-timeout"
+no_merge_call "R15: no merge call"
+: > "$SR_TO_LOG"
+PATH="$MOG_SUITE_TMP/sr-gt:$SR_NT" SR_SIB=none SR_PR=clean-b sr_run 0 "R16: gtimeout stands in for timeout → merged"
+if grep -q -- '^-k 10 150$' "$SR_TO_LOG"; then pass; else fail "R16: gtimeout was not run with -k 10 150"; fi
+: > "$SR_TO_LOG"
+PATH="$MOG_SUITE_TMP/sr-to:$SR_NT" SR_SIB=none SR_PR=clean-b sr_run 0 "R17: timeout is run with a kill-after grace → merged"
+if grep -q -- '^-k 10 150$' "$SR_TO_LOG"; then pass; else fail "R17: timeout was not run with -k 10 150"; fi
+
 echo
 echo "merge-on-green static re-check: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

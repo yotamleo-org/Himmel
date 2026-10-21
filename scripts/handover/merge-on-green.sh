@@ -199,7 +199,8 @@
 #       are red together; the message names every failing check. Also when the
 #       base or head fetch, the certified-head match, git merge-tree, the
 #       scratch repo or a check script (missing, or over its 150 s ceiling)
-#       fails. A textual conflict is not refused here: it defers to the
+#       fails, or neither timeout nor gtimeout is on PATH to enforce that
+#       ceiling. A textual conflict is not refused here: it defers to the
 #       behind-main path. After the plugin-bump gate, before any mutation, on
 #       --dry-run too.
 #
@@ -1258,8 +1259,6 @@ fi
 # window); upgrade path is a server-side merge queue or required up-to-date
 # branch. MERGE_STATIC_RECHECK is a registered chokepoint seam
 # (scripts/chokepoints.json), so a per-call prefix is denied by the seam guard.
-# ponytail: the 150 s ceiling per check needs the timeout binary; without it the
-# checks run unbounded; upgrade path is a bash watchdog around sr_run.
 sr_ns="refs/himmel-mog-static/$pr_num"
 sr_tmp=""
 sr_cleanup() {
@@ -1288,7 +1287,7 @@ sr_run() {
     fi
     ( cd "$sr_tmp/work" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE ${sr_timeout:+$sr_timeout} bash "$script" "$@" ) > "$sr_tmp/$name.out" 2>&1 || rc=$?
     if [ "$rc" -ne 0 ]; then
-        [ "$rc" -ne 124 ] || printf 'timed out after 150s\n' >> "$sr_tmp/$name.out"
+        case "$rc" in 124|137) printf 'timed out after 150s\n' >> "$sr_tmp/$name.out" ;; esac
         sr_failed="${sr_failed:+$sr_failed,}$name"
     fi
     return 0
@@ -1333,8 +1332,13 @@ else
             sr_ok=1
         fi
         [ "$sr_ok" -eq 1 ] || static_refuse "cannot check out the merge result ${sr_commit:0:12}" "phase=checkout"
-        sr_timeout=""
-        ! command -v timeout >/dev/null 2>&1 || sr_timeout="timeout 150"
+        if command -v timeout >/dev/null 2>&1; then
+            sr_timeout="timeout -k 10 150"
+        elif command -v gtimeout >/dev/null 2>&1; then
+            sr_timeout="gtimeout -k 10 150"
+        else
+            static_refuse "neither timeout nor gtimeout is on PATH, so the 150 s per-check ceiling cannot be enforced (install coreutils, or set MERGE_STATIC_RECHECK=0)" "phase=no-timeout"
+        fi
         sr_skipped=""
         sr_run test-unwired-hooks scripts/testing/test-unwired-hooks.sh
         sr_run test-ledgers-registry scripts/observability/test-ledgers-registry.sh
