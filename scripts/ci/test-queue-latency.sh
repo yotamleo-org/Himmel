@@ -118,7 +118,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
   out="$(FAKE_GH_SLOW=1 run)"
   elapsed=$((SECONDS - started))
   is "slow jobs call times out as unknown" "ci-queue: unknown" "$out"
-  if [ "$elapsed" -lt 8 ]; then ok "slow jobs call cut off before completion"; else bad "slow jobs call took ${elapsed}s"; fi
+  if [ "$elapsed" -lt 7 ]; then ok "slow jobs call cut off before completion"; else bad "slow jobs call took ${elapsed}s"; fi
 fi
 
 # Both GNU timeout spellings exist but are unusable; never fall back to unbounded gh.

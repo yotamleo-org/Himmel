@@ -236,7 +236,9 @@ not_contains 'a below-cap sampled probe is not an exact count' "$sampled_tick" '
 not_contains 'a below-cap sampled probe cannot claim saturation' "$sampled_tick" 'SATURATED'
 # Proven saturation keeps a parser-compatible count and a separate sample label.
 sampled_out=$'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true'
-STUB_CIQ_OUT="$sampled_out" bash "$SUT" >/dev/null 2>&1
+rm -rf "$W/state"
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'one proven sampled breach does not raise SATURATED' "$sampled_tick" 'SATURATED'
 sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
 contains 'two proven sampled breaches still raise SATURATED' "$sampled_tick" 'ciq=64/60,mac=0/5,q=32,wait=10m,SATURATED'
 rm -f "$W/repo/scripts/ci/queue-latency.sh"
