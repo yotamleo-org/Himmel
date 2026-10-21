@@ -14,8 +14,9 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   `bash scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
   --pr <n> --evidence-file <path> --model <id> --effort <level>` writes
   `verdicts/<qid>/`. `--model` and `--effort` are required and signed into the
-  file; `HIMMEL_VERDICT_MODEL` / `HIMMEL_VERDICT_EFFORT` are the fallback when the
-  flags are absent, and a write with neither is refused (exit 2). A verdict that
+  file; the values may come from the flags or from the environment
+  (`HIMMEL_VERDICT_MODEL`; `HIMMEL_VERDICT_EFFORT`, then `CLAUDE_CODE_EFFORT_LEVEL`),
+  and a write with no value for either is refused (exit 2). A verdict that
   lives only in your context dies with it; the file is what a successor reads.
   Prefer `bash scripts/handover/console-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
   --model <id> --effort <level>
