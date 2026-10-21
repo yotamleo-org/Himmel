@@ -160,7 +160,7 @@ function FailureList({ view, items, at, onGo }: { view: View; items: FailureItem
       <ol className="fnav-list" aria-label="Every failure">
         {items.map((f, i) => (
           <li key={fkey(f.ref)}>
-            <a href={`#${targetId(f.ref)}`} aria-current={i === at ? "true" : undefined} onClick={(e) => { e.preventDefault(); onGo(i); }}>
+            <a href={`#${targetId(f.ref)}`} aria-current={i === at ? "true" : undefined} onClick={(e) => { if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; e.preventDefault(); onGo(i); }}>
               <span className="fk">{f.n}</span><span className={`fw ${f.kind}`}>{f.word}</span>{f.agent} · {callLabel(view, f.ref)}
             </a>
           </li>

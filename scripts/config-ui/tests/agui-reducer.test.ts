@@ -442,6 +442,16 @@ describe("failure navigator", () => {
     expect(failureSentence({ ...first, n: 3 }, 3, "x", true)).toContain("(back to the last)");
   });
 
+  test("calls that start together keep their start order, whichever result lands first", () => {
+    const w = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 },
+      { type: "TOOL_CALL_START", toolCallId: "a", toolCallName: "Bash", timestamp: 5 },
+      { type: "TOOL_CALL_START", toolCallId: "b", toolCallName: "Bash", timestamp: 5 },
+      { type: "TOOL_CALL_RESULT", toolCallId: "b", isError: true, content: "failed", timestamp: 6 },
+      { type: "TOOL_CALL_RESULT", toolCallId: "a", isError: true, content: "failed", timestamp: 7 }] as any);
+    expect(w.failures.map((f) => f.id)).toEqual(["b", "a"]);
+    expect(failureList(w).map((f) => f.ref.id)).toEqual(["a", "b"]);
+  });
+
   test("a failed message sorts by when it arrived, among the calls", () => {
     const w = reduceAll(mapFile(join(import.meta.dir, "fixtures", "agui", "agents.jsonl")).events as any);
     const list = failureList(w);

@@ -276,9 +276,12 @@ export const settledCount = (findings: { verdict?: string }[]) => findings.filte
 export const FAILURE_WORD: Record<Failure, string> = { denied: "denied", suite: "suite failed", blocked: "blocked", error: "error" };
 export type FailureItem = { n: number; ref: FailureRef; kind: Failure; word: string; agentId: string; agent: string; at: number };
 export function failureList(v: View): FailureItem[] {
+  // equal times: calls keep their start-event order (the strip's), then messages in arrival order
+  const started = Object.keys(v.tools);
+  const rank = (ref: FailureRef, i: number) => (ref.kind === "tool" ? started.indexOf(ref.id) : started.length + i);
   return v.failures
-    .map((ref, i) => ({ ref, i }))
-    .sort((a, b) => a.ref.at - b.ref.at || a.i - b.i)
+    .map((ref, i) => ({ ref, o: rank(ref, i) }))
+    .sort((a, b) => a.ref.at - b.ref.at || a.o - b.o)
     .map(({ ref }, k) => {
       const src = ref.kind === "tool" ? v.tools[ref.id] : v.texts[ref.id];
       const kind = src.failure ?? "error";
