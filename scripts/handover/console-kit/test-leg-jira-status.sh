@@ -345,6 +345,12 @@ d7="$tmp/plain.md"; mkdoc "$d7"; : > "$STUB_LOG"
 bash "$APPEND" "$d7" "LIVE — x" >/dev/null 2>&1
 check "no ticket in the doc name -> no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 
+# --- wiring: the WRAPPED bullet ---------------------------------------------------------------
+reset "In Review"; owned LIVE 0
+bash "$APPEND" "$DOC" "WRAPPED — done" >/dev/null 2>&1
+check "WRAPPED: an owned ticket with no PR moves back" "$(moved)" "transition $K To Do"
+check "WRAPPED: row event" "$(row event)" wrapped
+
 # --- opt-out and bad keys ----------------------------------------------------------------------
 reset "To Do"; owned
 LEG_JIRA_STATUS=0 bash "$APPEND" "$DOC" "LIVE — y" >/dev/null 2>&1

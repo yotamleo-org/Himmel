@@ -258,12 +258,18 @@ else
     esac
 fi
 
-# An open PR moves the ticket in the title's first [KEY] to In
-# Review. Best-effort: leg-jira-status.sh warns and exits 0 on any Jira
-# failure; LEG_JIRA_STATUS=0 opts out. Its stdout is kept off this script's
-# one-line `PR ...` contract.
-if [ "${LEG_JIRA_STATUS:-1}" != "0" ] && [[ $title =~ \[([A-Za-z][A-Za-z]*-[0-9]+)\] ]]; then
-    bash "$HERE/../handover/console-kit/leg-jira-status.sh" "${BASH_REMATCH[1]}" "In Review" >/dev/null || true
+# An open PR asks the status funnel to re-derive the title's first [KEY].
+# Best-effort: the funnel warns and exits 0 on any Jira failure;
+# LEG_JIRA_STATUS=0 opts out. Its stdout is kept off this script's one-line
+# `PR ...` contract.
+if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+    # shellcheck source=../lib/ticket-status.sh
+    # shellcheck disable=SC1091
+    . "$HERE/../lib/ticket-status.sh"
+    if jira_key=$(ticket_key_from_title "$title"); then
+        bash "${TICKET_STATUS_FUNNEL:-$HERE/../handover/console-kit/leg-jira-status.sh}" "$jira_key" \
+            --event pr-open --pr "$number" --head "$head_sha" >/dev/null || true
+    fi
 fi
 
 echo "PR ${number} ${url} ${head_sha}"

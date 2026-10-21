@@ -2937,32 +2937,41 @@ assert_rc 0 "3473-g --threads-only is unaffected by a BLOCKED merge state"
 _ms_args=$(cat "$STUBDIR/args.log")
 assert_grep_lacks "3473-g --threads-only makes no mergeStateStatus read" "found a mergeStateStatus read" -F mergeStateStatus <<<"$_ms_args"
 
-# 6430 - waiting on CI moves the PR title's ticket In Review -> IN CI (best effort,
-# forward-only via leg-jira-status.sh); --threads-only is not a CI wait and never moves it.
-cat > "$STUBDIR/jira-cli" <<'EOF2'
+# 6430 - waiting on CI re-derives the Jira status of the PR title's FIRST [KEY] through
+# the status funnel, at the start and at the exit of the wait (--event ci-start / ci-exit,
+# with --pr and --head); a red exit fires too and keeps its exit code; --threads-only is
+# not a CI wait and never calls it.
+check_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "got [$3] want [$2]"; fi; }
+cat > "$STUBDIR/funnel" <<'EOF2'
 #!/usr/bin/env bash
 echo "$*" >> "$STUBDIR_JIRA_LOG"
-case "$*" in
-    "get HIMMEL-9430"*) echo '{"fields":{"status":{"name":"In Review"}}}' ;;
-    "transition HIMMEL-9430 IN CI") ;;
-    *) echo "unexpected jira-cli args: $*" >&2; exit 1 ;;
-esac
 exit 0
 EOF2
-chmod +x "$STUBDIR/jira-cli"
-export LEG_JIRA_CLI="$STUBDIR/jira-cli" STUBDIR_JIRA_LOG="$STUBDIR/jira.log"
-export GH_STUB_TITLE="fix(x): [HIMMEL-9430] a thing"
+export TICKET_STATUS_FUNNEL="$STUBDIR/funnel" STUBDIR_JIRA_LOG="$STUBDIR/jira.log"
+export GH_STUB_TITLE="fix(x): [HIMMEL-9430] follows [HIMMEL-9431]"
 : > "$STUBDIR/jira.log"
 export LEG_JIRA_STATUS=1
 run cr-completed --grace 30
 assert_rc 0 "6430-a checks green with a ticket-tagged PR -> exit 0"
-if grep -qF -- "transition HIMMEL-9430 IN CI" "$STUBDIR/jira.log"; then pass "6430-a CI wait transitions the ticket to IN CI"; else fail "6430-a CI wait transitions the ticket to IN CI" "log: $(cat "$STUBDIR/jira.log")"; fi
+check_eq "6430-a the wait starts with a ci-start event for the first key" \
+    "HIMMEL-9430 --event ci-start --pr 42 --head sha1" "$(head -n 1 "$STUBDIR/jira.log")"
+check_eq "6430-c the wait ends with a ci-exit event" \
+    "HIMMEL-9430 --event ci-exit --pr 42 --head sha1" "$(tail -n 1 "$STUBDIR/jira.log")"
+assert_out_has "check-ci: verdict exit=0" "6430-c the verdict line still prints"
+: > "$STUBDIR/jira.log"
+RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests
+fail:codeowner-review-gate"
+run cr-completed
+assert_rc 1 "6430-d a red exit keeps exit 1"
+check_eq "6430-d a red exit fires ci-exit" \
+    "HIMMEL-9430 --event ci-exit --pr 42 --head sha1" "$(tail -n 1 "$STUBDIR/jira.log")"
+RULES_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"
 : > "$STUBDIR/jira.log"
 run cr-completed --threads-only
-assert_grep_lacks "6430-b --threads-only never moves the ticket" "unexpected transition" -F -- "transition" "$STUBDIR/jira.log"
-unset LEG_JIRA_CLI STUBDIR_JIRA_LOG GH_STUB_TITLE LEG_JIRA_STATUS
+check_eq "6430-b --threads-only never calls the funnel" "0" "$(wc -c < "$STUBDIR/jira.log" | tr -d ' ')"
+unset TICKET_STATUS_FUNNEL STUBDIR_JIRA_LOG GH_STUB_TITLE LEG_JIRA_STATUS
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 210 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 210"; exit 1; fi
+if [ "$COUNT" -ne 211 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 211"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
