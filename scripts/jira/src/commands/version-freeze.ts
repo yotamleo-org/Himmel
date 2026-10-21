@@ -25,8 +25,8 @@ const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 
 export function parseFrozen(description: string | undefined): { date: string; keys: string[] } | undefined {
   const date = FROZEN_LINE.exec(description ?? '')?.[1];
-  if (date === undefined) return undefined;
-  const raw = KEYS_LINE.exec(description ?? '')?.[1] ?? '';
+  const raw = KEYS_LINE.exec(description ?? '')?.[1];
+  if (date === undefined || raw === undefined) return undefined;
   return { date, keys: raw.split(',').map((k) => k.trim()).filter((k) => k.length > 0) };
 }
 
@@ -43,13 +43,15 @@ export interface CiResult {
 
 export function mainCiGreen(sha?: string): CiResult {
   try {
-    const runs = JSON.parse(
-      execFileSync('gh', ['run', 'list', '--branch', 'main', '--limit', '30', '--json', 'conclusion,headSha,workflowName'], {
-        encoding: 'utf8',
-      }),
-    ) as Array<{ conclusion: string; headSha: string; workflowName: string }>;
     const head =
       sha ?? execFileSync('gh', ['api', 'repos/{owner}/{repo}/commits/main', '--jq', '.sha'], { encoding: 'utf8' }).trim();
+    const runs = JSON.parse(
+      execFileSync(
+        'gh',
+        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', '200', '--json', 'conclusion,headSha,workflowName'],
+        { encoding: 'utf8' },
+      ),
+    ) as Array<{ conclusion: string; headSha: string; workflowName: string }>;
     const mine = runs.filter((r) => r.headSha.startsWith(head));
     if (mine.length === 0) return { ok: false, detail: `no CI run found for ${head}` };
     const bad = mine.filter((r) => r.conclusion !== 'success' && r.conclusion !== 'skipped');
@@ -157,7 +159,7 @@ async function readinessRows(
   const leaks: string[] = [];
   let folded = 0;
   if (!frozen) {
-    rows.push({ id: 'frozen-set', ok: false, detail: `${name} is not frozen (no frozen: line in its description)` });
+    rows.push({ id: 'frozen-set', ok: false, detail: `${name} is not frozen (no frozen: and frozen-keys: lines in its description)` });
   } else {
     const issues = frozen.keys.length === 0 ? [] : ((await searchAllIssues(inKeys(frozen.keys), SEARCH_LIMIT, request, true)) as Issue[]);
     const deferred = (i: Issue) => (i.fields.labels ?? []).includes('deferred');

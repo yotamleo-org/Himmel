@@ -14,7 +14,7 @@ vi.mock('./admissions-ledger.js', () => ({ appendAdmission: vi.fn(), readAdmissi
 import { request } from '../client.js';
 import { appendAdmission, readAdmissions } from './admissions-ledger.js';
 import { execFileSync } from 'node:child_process';
-import { registerVersionFreeze, probes, mainCiGreen } from './version-freeze.js';
+import { registerVersionFreeze, probes, mainCiGreen, parseFrozen } from './version-freeze.js';
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 const mockAppend = appendAdmission as unknown as ReturnType<typeof vi.fn>;
@@ -135,6 +135,25 @@ describe('version-freeze / version-ready / version-defer', () => {
         : JSON.stringify([{ conclusion: 'success', headSha: 'oldhead000', workflowName: 'ci' }]),
     );
     expect(mainCiGreen()).toEqual({ ok: false, detail: 'no CI run found for newhead111' });
+  });
+
+  it('main-ci asks gh for every run of main\'s head, not only the newest 30 of the branch', () => {
+    const exec = execFileSync as unknown as ReturnType<typeof vi.fn>;
+    exec.mockReset();
+    exec.mockImplementation((_cmd: string, args: string[]) =>
+      args[0] === 'api' ? 'abc123\n' : JSON.stringify([{ conclusion: 'success', headSha: 'abc123', workflowName: 'ci' }]),
+    );
+    expect(mainCiGreen().ok).toBe(true);
+    const listArgs = exec.mock.calls.map((c) => c[1] as string[]).find((a) => a[0] === 'run') ?? [];
+    expect(listArgs).toEqual(expect.arrayContaining(['--commit', 'abc123']));
+    expect(Number(listArgs[listArgs.indexOf('--limit') + 1])).toBeGreaterThan(30);
+  });
+
+  it('a description with frozen: but no frozen-keys: line is not a freeze, an empty frozen-keys: line is', async () => {
+    world({ description: 'frozen: 2026-10-20' });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+frozen-set.*not frozen/);
+    expect(parseFrozen('frozen: 2026-10-20\nfrozen-keys:')).toEqual({ date: '2026-10-20', keys: [] });
   });
 
   it('version-freeze labels the set before it writes frozen:, so a failed label leaves the version retryable', async () => {
