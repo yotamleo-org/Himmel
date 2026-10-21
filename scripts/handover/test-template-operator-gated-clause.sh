@@ -128,11 +128,11 @@ done
 
 # The launch preamble is the single copy every armed run reads, so it carries
 # the same operator-gated wrap clause.
-OVERNIGHT_DOC="$ROOT/docs/handover/overnight-mode.md"
-if carries_clause "$OVERNIGHT_DOC"; then
-  ok "docs/handover/overnight-mode.md carries the operator-gated wrap clause"
+AFK_DOC="$ROOT/docs/handover/afk-mode.md"
+if carries_clause "$AFK_DOC"; then
+  ok "docs/handover/afk-mode.md carries the operator-gated wrap clause"
 else
-  ko "docs/handover/overnight-mode.md is MISSING the clause (or it has drifted from the canonical text in this suite)"
+  ko "docs/handover/afk-mode.md is MISSING the clause (or it has drifted from the canonical text in this suite)"
 fi
 
 # Negative control: prove the check can actually fail.

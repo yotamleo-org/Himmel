@@ -2619,6 +2619,11 @@ rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-next
 check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc86" "1"
 check "86 refusal quotes the predecessor's priority line" \
     "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
+# A prune that closed every key leaves `priority: none`; a PRIORITY-PRUNE bullet accepts it.
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
+rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
+check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
 
 # --- 87. a shorter decisions: line that points at a bucket decisions file ----
 # It passes only when the file exists and every numbered "(N) " entry of the

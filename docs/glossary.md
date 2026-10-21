@@ -64,7 +64,7 @@ the plain name, and say the old name once, the first time, in brackets.
 | **warn-only** | advisory | |
 | **worker system prompt** | preface | There are five prefaces (worker, worker claudex, worker openrouter, judge, consult). |
 | **usage-cap auto-relaunch** | watchdog | Only where the README, getting-started and why-himmel mean the auto-arm hooks. A wall-clock killer is a "run timeout". |
-| **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` are renamed by slice V3 (`afk-shift`, `afk-mode.md`); old names work until the removal release. |
+| **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` are renamed by slice V3 to `/afk-shift` and `afk-mode.md`; the old names are an alias command and a redirect stub until the removal release. |
 | **soft block (speed bump)** | speed bump | Stops only the accidental form. |
 | **revision** | RETASK | The `RETASK` block keyword stays: code parses it. |
 | **token** | nonce | "Nonce" stays an alias here; ids keep it. |

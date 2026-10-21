@@ -118,7 +118,7 @@ shape is a shape denial (`block-jira-compound-write.sh` now
 bounces loop, `$J` and `xargs` shapes itself with that recipe). If the single
 literal write is still denied, that is not a shape problem — defer to the
 operator (a review-thread write goes to the console instead, above), do **not** reshape again to dodge the classifier. See
-[`overnight-mode.md`](../handover/overnight-mode.md) § Auto-mode classifier &
+[`afk-mode.md`](../handover/afk-mode.md) § Auto-mode classifier &
 attestation. Multi-line bodies: use `--comment-file <path>` / `--desc-file
 <path>` so the shell command stays single-line.
 

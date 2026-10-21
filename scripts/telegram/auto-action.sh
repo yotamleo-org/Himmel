@@ -32,6 +32,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 6
 
 OP="${1:-}"; ARG="${2:-}"; TIME="${3:-}"
 if [ -z "$OP" ] || [ -z "$ARG" ] || [ -z "$TIME" ]; then
@@ -130,10 +133,8 @@ if [ "$OP" = "cr-grant-delta" ]; then
         bash "$LOCK_LIB" acquire-wait . "$BRANCH" telegram-cr-grant 10 300 >&2 || exit 6
     LOCK_OWNER=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCK_LIB" status . "$BRANCH" || true)
     case "$LOCK_OWNER" in '{"pid":'*) ;; *) echo "ERR auto-action: unreadable counter lock owner" >&2; exit 6 ;; esac
-    HEAD_TMP=""
     # shellcheck disable=SC2317,SC2329 # invoked by the EXIT trap
     release_grant_lock() {
-        [ -z "$HEAD_TMP" ] || rm -f "$HEAD_TMP"
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCK_LIB" release-if-owner . "$BRANCH" "$LOCK_OWNER" >/dev/null 2>&1
     }
     trap release_grant_lock EXIT
@@ -203,9 +204,7 @@ NODE
     done
     CURRENT_OWNER=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCK_LIB" status . "$BRANCH" || true)
     [ "$CURRENT_OWNER" = "$LOCK_OWNER" ] || { echo "ERR auto-action: counter lock changed owner" >&2; exit 6; }
-    HEAD_TMP=$(mktemp "$STATE.head.grant.XXXXXXXX") || exit 6
-    printf '%s\n' "$TIME" > "$HEAD_TMP" && mv -f "$HEAD_TMP" "$STATE.head" || exit 6
-    HEAD_TMP=""
+    printf '%s\n' "$TIME" | atomic_write "$STATE.head" || exit 6
     if [ -e "$STATE.delta" ]; then rm "$STATE.delta" || exit 6; fi
     echo "reviewed=$TIME"
     exit 0

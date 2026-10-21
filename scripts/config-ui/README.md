@@ -329,6 +329,13 @@ imports, so its suite runs in CI without an install.
   ends with a Docs link to the public site in a new tab with
   `rel="noopener noreferrer"` and no session token, and the console reads the
   shared tokens (`public/tokens.css`) in light and dark with system fonts.
+- Development graph docs page e2e (`dev-graph-docs.e2e.ts`, journey J-DG1,
+  same suite): it needs no himmelctl. It serves `docs/guide` over `node:http`
+  and walks `dev-graph.html`: node count, the W2 NO-GO step as refused with its
+  condition and source, the `#w=&s=` deep link, autoplay, reduced motion (no
+  autoplay, no `animate` call, no running animation), no horizontal scroll at
+  390 px, dark `--bg`, and the error banner for an unknown id or an unjoined
+  step. A spec must be named `*.e2e.ts` to be picked up.
 
 ## Manual pass (the same 7 items)
 

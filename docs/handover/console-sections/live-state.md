@@ -82,7 +82,11 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > hand over when your `decisions:` or `priority:` line is missing or a
 > placeholder while your predecessor's was real (`decisions:` also when shorter),
 > unless a Results bullet carries `DECISIONS-DROP: <reason>` or
-> `PRIORITY-DROP: <reason>`.
+> `PRIORITY-DROP: <reason>` (or `PRIORITY-PRUNE: <keys>`).
+> **Prune closed keys** (tick prints `pool-closed=<closed>/<total>` when the Jira mirror
+> reads any key on your `priority:` line closed): `bash scripts/handover/console-kit/priority-prune.sh --doc <your doc>`
+> prints the line without them, the rest in order; with an operator OK run it with
+> `--apply` and log `PRIORITY-PRUNE: <the dropped keys it names>` in Results.
 > **Bound `decisions:`** (tick prints `ACTION decisions-over-budget=<bytes>/<limit>`
 > past `DECISIONS_BUDGET_BYTES`, default 4000, and `ACTION handoff-over-budget` when
 > your HANDOFF is past `HANDOFF_BUDGET_BYTES`, default 6000): copy each superseded

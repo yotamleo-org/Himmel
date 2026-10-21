@@ -2504,6 +2504,20 @@ owe="$(ow_of "$(ow_tick)")"
 [ "$owe" = "6" ] && pass 'orphans-wip= names no keys above five' || fail "orphans-wip= with six is '$owe'"
 contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
 
+# --- pool-closed=<closed>/<total>: Done or wont-do keys on the Live state priority: line.
+mk_ow 911 "Done" Task
+mk_ow 912 "wont do" Task
+for n in 911 912; do sed 's/^statusCategory: "x"$/statusCategory: "Done"/' "$OW/HIMMEL-$n.md" > "$OW/HIMMEL-$n.md.new" && mv "$OW/HIMMEL-$n.md.new" "$OW/HIMMEL-$n.md"; done
+pc_doc="$W/handover/HIMMEL-6602-console.md"
+printf '%s\n' '# console' '' '## Live state' 'priority: 911 | 912(K1) 904 | 901(+911) 9999' '' '## Results' > "$pc_doc"
+pc_tick() { NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" TOKEN='' bash "$SUT" "$@" 2>/dev/null; }
+contains 'closed keys on the priority line show as pool-closed=<closed>/<total> (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc")" ' pool-closed=2/5'
+contains '--verbose labels pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc" --verbose)" 'pool-closed: 2/5'
+printf '%s\n' '## Live state' 'priority: 904 901' > "$pc_doc"
+not_contains 'a priority line with no closed key hides pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc")" 'pool-closed'
+not_contains 'no --doc hides pool-closed (HIMMEL-6602)' "$(pc_tick)" 'pool-closed'
+rm -f "$pc_doc"
+
 # --- ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] ---
 # A READY claim a judge or the diff contradicts. Fixtures only: the changed-file lists are
 # pre-recorded in the ready-files cache and the gh stub fails, so no live gh runs.

@@ -44,7 +44,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/handover-system.md](internals/handover-system.md) — the full cross-session handover system + user-slug resolution.
 - [internals/jira-plugin.md](internals/jira-plugin.md) — the local Jira CLI ↔ Atlassian MCP op mapping.
 - [internals/stuck-playbook.md](internals/stuck-playbook.md) — guardrail-recovery escape hatches.
-- [handover/overnight-mode.md](handover/overnight-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
+- [handover/afk-mode.md](handover/afk-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
 - [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a supervisor session with `/console new|next`; the supervisor session + worker-session-brief templates.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
 - [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses — the compatibility matrix + per-feature port/guard/accept decisions.

@@ -121,6 +121,8 @@ export function buildGlmEnv(repoRoot: string, context?: "big" | "small"): Record
     // Interactive claude-glm{,.ps1} launchers deliberately NOT mirrored: an
     // operator at the keyboard may want these injections; workers never do.
     HIMMEL_INITIATIVE: "0",
+    HIMMEL_INITIATIVE_AFK: "0",
+    HIMMEL_AFK: "0",
     HIMMEL_INITIATIVE_OVERNIGHT: "0",
     HIMMEL_OVERNIGHT: "0",
     HIMMEL_WHERE_ARE_WE: "0",

@@ -359,6 +359,7 @@ scripts/handover/console-kit/test-ops-run.sh	local	behaviour suite, 0 catches in
 scripts/handover/console-kit/test-orphan-loops.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-parked-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/console-kit/test-pr-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/console-kit/test-priority-prune.sh	local	behaviour suite, new in HIMMEL-6602
 scripts/handover/console-kit/test-ready-check.sh	pr	trust-path
 scripts/handover/console-kit/test-ready-go.sh	pr	trust-path
 scripts/handover/console-kit/test-relay-batch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
