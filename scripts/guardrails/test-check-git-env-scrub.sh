@@ -349,6 +349,52 @@ else
     printf '%s\n' "$REAL_OUT" | sed 's/^/    /'
 fi
 
+# F1..F8 -- --files scans only the named trust-path files.
+# Isolated repo: an unscrubbed trust-path file, a scrubbed one, and an
+# unscrubbed file outside every trust path.
+F_REPO="$(mktemp -d "${TMPDIR:-/tmp}/git-env-scrub-files-repo.XXXXXX")" || exit 2
+(
+    cd "$F_REPO" || exit 1
+    git init -q && git config user.email t@t && git config user.name t
+    mkdir -p scripts/hooks scripts/other
+    cp "$REPO_ROOT/$CASES/unscrubbed-entry.sh" scripts/hooks/bad.sh
+    cp "$REPO_ROOT/$CASES/unscrubbed-entry.sh" scripts/other/outside.sh
+    cp "$REPO_ROOT/$CASES/unset-scrubbed.sh" scripts/hooks/good.sh
+    git add -A && git commit -q -m fixture
+) >/dev/null 2>&1
+files_run() {
+    OUT="$(cd "$F_REPO" && bash "$CHECKER" --baseline "$EMPTY_BASELINE" --files "$@" 2>&1)"
+    return $?
+}
+files_expect() {
+    local label="$1" want="$2"; shift 2
+    files_run "$@"
+    local rc=$?
+    if [ "$rc" -eq "$want" ]; then
+        pass "$label"
+    else
+        fail "$label (rc=$rc, want $want)"
+        printf '%s\n' "$OUT" | sed 's/^/    /'
+    fi
+}
+files_expect "F1 --files: an unscrubbed listed trust-path file is flagged" 1 scripts/hooks/bad.sh
+if grep -qF "scripts/hooks/bad.sh" <<<"$OUT"; then pass "F1b the finding names the file"; else fail "F1b the finding names the file"; fi
+files_expect "F2 --files: an unlisted unscrubbed file is not scanned" 0 scripts/hooks/good.sh
+files_expect "F3 --files: a file outside every trust path is skipped" 0 scripts/other/outside.sh
+files_expect "F4 --files with no operands is clean, not a whole-tree scan" 0
+files_expect "F5 --files: a missing operand fails closed" 2 scripts/hooks/gone.sh
+F_BASE="$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-files-baseline.XXXXXX")" || exit 2
+printf 'SHELL:scripts/hooks/good.sh\n' > "$F_BASE"
+OUT="$(cd "$F_REPO" && bash "$CHECKER" --baseline "$F_BASE" --files scripts/hooks/good.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 1 ] && grep -qF "stale baseline" <<<"$OUT"; then pass "F6 --files: a stale baseline entry for a named file is flagged"; else fail "F6 --files: a stale baseline entry for a named file is flagged (rc=$rc)"; fi
+OUT="$(cd "$F_REPO" && bash "$CHECKER" --baseline "$F_BASE" --files scripts/other/outside.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "F7 --files: a stale entry for an unnamed file is left to the full scan"; else fail "F7 --files: a stale entry for an unnamed file is left to the full scan (rc=$rc)"; fi
+printf 'SHELL:scripts/hooks/gone.sh\n' > "$F_BASE"
+OUT="$(cd "$F_REPO" && bash "$CHECKER" --baseline "$F_BASE" --files scripts/other/outside.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 1 ]; then pass "F8 --files: a baseline entry for a deleted file is flagged"; else fail "F8 --files: a baseline entry for a deleted file is flagged (rc=$rc)"; fi
+rm -f "$F_BASE"
+rm -rf "$F_REPO"
+
 echo
 echo "== summary =="
 if [ "$failures" -eq 0 ]; then
