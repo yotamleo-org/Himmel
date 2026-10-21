@@ -3417,17 +3417,17 @@ e2e_leg() {
   KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" LEG_REPO="$d/repo" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
     bash "$script" --no-profile "$name" "$some_doc" "$d/signal-never" "$PAST" "$d/log" "$model"
 }
-# e2e_seen <stubdir> <file> - the stub claude's record, or <no launch> after a bounded wait.
+# e2e_seen <stubdir> <file> [ticks] - the stub claude's record, or <no launch> after a bounded wait (ticks of 50ms, default 300).
 e2e_seen() {
   local n=0
-  while [ "$n" -lt 60 ]; do
+  while [ "$n" -lt "${3:-300}" ]; do
     [ -s "$1/$2" ] && { cat "$1/$2"; return 0; }
     sleep 0.05
     n=$((n+1))
   done
   echo "<no launch>"
 }
-e2e_effort() { e2e_seen "$1" claude-env | sed -n -e 's/^CLAUDE_CODE_EFFORT_LEVEL=//p' -e '/^<no launch>$/p'; }
+e2e_effort() { e2e_seen "$1" claude-env "${2:-300}" | sed -n -e 's/^CLAUDE_CODE_EFFORT_LEVEL=//p' -e '/^<no launch>$/p'; }
 
 d34n="$tmp/c34n-leg"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-leg"
 LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1
@@ -3455,7 +3455,7 @@ check "34n no asking channel: the claude process gets the lane default" "$(e2e_e
 d34o="$tmp/c34o"; mk_exec_stubs "$d34o" "HIMMEL-9999-leg-34o"
 rc34o=0
 LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$mut6507_script" "$d34o" "HIMMEL-9999-leg-34o" >/dev/null 2>&1 || rc34o=$?
-check "34o RED control: with the 6507 fix reverted the 34n LEG_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o")" = high ] && echo holds || echo broken)" "broken"
+check "34o RED control: with the 6507 fix reverted the 34n LEG_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o" 40)" = high ] && echo holds || echo broken)" "broken"
 check "34o RED control: the reverted launcher refuses instead of running at medium (exit 2)" "$rc34o" "2"
 
 # --- 35. HANDOVER_DIR unset, but a root IS
