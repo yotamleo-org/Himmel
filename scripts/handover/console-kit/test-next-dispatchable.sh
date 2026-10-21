@@ -561,6 +561,20 @@ lacks "fix5: a ticket naming an existing file draws none" "$f5" "# warn: HIMMEL-
 
 # --- replay: the 10-19T console state (doc priority line, 28-leg manifest, open PRs, v1.1.3 Jira slice) frozen under fixtures/ ---
 RP="$HERE/fixtures/dispatcher-replay"
+# Corpus inputs must not contain the evaluation queries verbatim.
+eval_corpus_clean() {
+    local root="$HERE/../../.." rc
+    jq -er '.q' "$root/scripts/eval/retrieval-eval/questions.jsonl" > "$WORK/eval-questions.txt" || return 2
+    grep -i -n -F -f "$WORK/eval-questions.txt" \
+        "$root/scripts/himmel-doctor.sh" "$RP/mirror/HIMMEL/HIMMEL-6140.md"
+    rc=$?
+    [ "$rc" -eq 1 ]
+}
+if eval_corpus_clean; then
+    pass "replay: corpus inputs do not contain retrieval-eval question text"
+else
+    fail "replay: corpus inputs contain retrieval-eval question text or could not be checked"
+fi
 sed "s#@@FIXTURE@@#$RP#" "$RP/fleet.json" > "$WORK/replay-fleet.json"
 cat > "$WORK/replay-gh" <<EOF
 #!/usr/bin/env bash

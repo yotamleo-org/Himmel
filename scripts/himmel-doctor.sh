@@ -3115,7 +3115,7 @@ check_c40_qmd_vec() {
     fi
 
     local init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-doctor","version":"1"}}}'
-    local vec_payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"searches":[{"type":"vec","query":"himmel doctor vector probe"}],"limit":1,"rerank":false}}}'
+    local vec_payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"searches":[{"type":"vec","query":"qmd semantic search health check"}],"limit":1,"rerank":false}}}'
     local init init_rc init_code=""
     # the daemon requires a bearer token; it goes to
     # curl as a config on stdin (never argv), read through the plugin's helper.
