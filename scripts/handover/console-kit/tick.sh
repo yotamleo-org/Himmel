@@ -258,6 +258,11 @@ timed out or printed no status line. Not part of console-wait's wake key.
 versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
 mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.
+vmismatch=<n|?> (HIMMEL-6549) is the RESET-row count of one bounded version-status-audit.sh read
+(owners = the tick's live legs; TICK_VMISMATCH_PROBE seam): started tickets whose fixVersion is
+later than the active one, released-but-not-Done tickets, versionless started ones. ? = no count
+or an UNKNOWN row (a gh read failed); hidden when there is no mirror. The waiter wakes on a
+positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 
@@ -1418,6 +1423,22 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
     esac
 fi
 
+# vmismatch=<n|?|skip>: RESET rows of one bounded version-status-audit.sh read on
+# the Jira mirror, owners = this tick's live legs. ? = the audit printed no count or an
+# UNKNOWN row (a gh read failed); skip = no mirror on this machine. In console-wait's wake key.
+vmismatch_summary=skip
+vm_probe="${TICK_VMISMATCH_PROBE:-$HERE/version-status-audit.sh}"
+if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
+    vm_owners="${owner_keys# }"
+    [ -n "${vm_owners// }" ] || vm_owners=NONE-0  # the audit reads an empty owner list as ownership unknown
+    vm_out="$(timeout -k 2 30 bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || true  # gnu-ok: console kit is Linux-only; swallow-ok: exit 1 = RESET rows, exit 3 = warnings; the count line decides
+    if printf '%s\n' "$vm_out" | grep -q '^vmismatch=[0-9][0-9]*$' && ! printf '%s\n' "$vm_out" | grep -q "$(printf '\tUNKNOWN$')"; then
+        vmismatch_summary="$(printf '%s\n' "$vm_out" | grep -c "$(printf '\tRESET$')")" || true  # swallow-ok: grep -c exits 1 and prints 0 on no match
+    else
+        vmismatch_summary='?'
+    fi
+fi
+
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
 # the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in console-wait's wake key.
 pool_closed=skip
@@ -2255,6 +2276,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session failures: %s\n' "$fails_summary"
     printf 'vm runner: %s\n' "$vmrun_summary"
     printf 'versionless-done: %s\n' "$vdone_summary"
+    printf 'version mismatch: %s\n' "$vmismatch_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
@@ -2280,7 +2302,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
+            versionless-done=0|versionless-done=skip|vmismatch=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -2326,6 +2348,7 @@ else
     compact_field fails "$fails_summary"
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
+    compact_field vmismatch "$vmismatch_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$station_tail$spare_tail"

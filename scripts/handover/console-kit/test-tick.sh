@@ -2374,6 +2374,30 @@ vd_space="$(NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/
 contains 'the ACTION line escapes a script path with a space (HIMMEL-6416)' "$vd_space" 'vd\ dir/versionless-done.sh --backfill'
 case "$vd_zero$vd_bad" in *'ACTION versionless-done'*) fail "a zero or unknown count prints no ACTION line (out='$vd_zero$vd_bad')" ;; *) pass 'a zero or unknown count prints no ACTION line (HIMMEL-6416)' ;; esac
 case "$(printf '%s\n' "$vd_three" | grep -c '^TICK ')" in 1) pass 'the ACTION line adds no second TICK line (HIMMEL-6416)' ;; *) fail 'the ACTION line adds no second TICK line (HIMMEL-6416)' ;; esac
+# --- vmismatch=<n|?>: RESET rows of version-status-audit.sh on the mirror.
+vm_dir="$W/vm"; vm_m="$vm_dir/HIMMEL"; mkdir -p "$vm_m"
+printf 'v1.0.0\ttrue\t2026-01-01\tfalse\nv1.0.1\tfalse\t\tfalse\nv1.0.2\tfalse\t\tfalse\n' > "$vm_dir/HIMMEL.versions.tsv"
+vm_mk() { # <key> <status> <fixVersions json>
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "In Progress"\npriority: "Medium"\nlabels: []\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: fixture\n' "$1" "$2" "$3" "$1" > "$vm_m/$1.md"
+}
+printf '#!/bin/sh\nprintf "9999\\tfeat: [HIMMEL-77] x\\tfeat/himmel-77-x\\n"\n' > "$W/vm-gh.sh"; chmod +x "$W/vm-gh.sh"
+vm_tick() { NEXT_DISPATCH_MIRROR="$vm_m" VSA_GH_CMD="$W/vm-gh.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null; }
+vm_mk HIMMEL-71 "In Progress" '["v1.0.1"]'
+vm_clean="$(vm_tick)"
+contains 'a clean mirror reads vmismatch=0 (HIMMEL-6549)' "$vm_clean" ' vmismatch=0'
+vm_mk HIMMEL-72 "In Progress" '["v1.0.2"]'
+vm_one="$(vm_tick)"
+contains 'one started later-version ticket reads vmismatch=1 (HIMMEL-6549)' "$vm_one" ' vmismatch=1'
+vm_mk HIMMEL-77 "In Progress" '["v1.0.2"]'
+vm_owned="$(vm_tick)"
+contains 'a later-version ticket held by an open PR is not counted (HIMMEL-6549)' "$vm_owned" ' vmismatch=1'
+rm -f "$vm_dir/HIMMEL.versions.tsv"
+vm_bad="$(vm_tick)"
+contains 'a failed audit read reads vmismatch=? (HIMMEL-6549)' "$vm_bad" ' vmismatch=?'
+vm_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+not_contains 'no mirror hides vmismatch (HIMMEL-6549)' "$vm_skip" 'vmismatch'
+vm_t0="$(date +%s)"; vm_tick >/dev/null; vm_t1="$(date +%s)"
+if [ $((vm_t1 - vm_t0)) -lt 30 ]; then pass 'the audit read stays inside the tick budget (HIMMEL-6549)'; else fail "audit read took $((vm_t1 - vm_t0))s"; fi
 case "$vd_zero" in *wt-orphans*|*wt-ceiling*) fail "no worktree.sh under REPO reads no wt-orphans field (out='$vd_zero')" ;; *) pass 'no worktree.sh under REPO reads no wt-orphans field (HIMMEL-6584)' ;; esac
 mkdir -p "$REPO"
 printf '#!/bin/sh\nprintf "ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\\nORPHAN /w/b branch=detached:0123456789ab dirty=1 ahead=0 idle=9h\\nCEILING 72/100 worktrees (alarm at 70)\\n"\nexit 1\n' > "$W/wto-probe-2.sh"

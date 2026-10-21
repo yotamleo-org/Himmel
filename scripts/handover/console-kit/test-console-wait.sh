@@ -124,6 +124,22 @@ if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null;
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(wt-ceiling) an unchanged alarm keeps waiting" "124" "$rc"
 check "(wt-ceiling) an unchanged alarm does not re-wake" "" "$(cat "$WORK/wt-ceiling-rearm.out")"
+# vmismatch= wakes only as a positive count; 0 and ? stay out of the key.
+reset_stub
+I="$(new_inbox vmismatch-quiet)"
+start "$I" "$WORK/vmismatch-quiet.out" --legs "N1.md"
+wait_hb "$I" || fail "(vmismatch) no baseline heartbeat"
+sed -i 's/ denials=none/ vmismatch=? denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(vmismatch) a failed audit read (?) keeps waiting" "running" "$rc"
+sed -i 's/ vmismatch=?/ vmismatch=0/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(vmismatch) a clean count (0) keeps waiting" "running" "$rc"
+sed -i 's/ vmismatch=0/ vmismatch=2/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(vmismatch) a positive count ends the wait" "0" "$rc"
+check "(vmismatch) the wake names vmismatch" "WAKE tick changed=vmismatch bank=PROCEED" "$(head -n1 "$WORK/vmismatch-quiet.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 if [ "${1:-}" = --worktree-ceiling-only ]; then
     printf '\n%d failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]; exit $?

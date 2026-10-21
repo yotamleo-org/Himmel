@@ -107,3 +107,11 @@ the TICK line, with one `ACTION ci-guardrail <metric>=<count>><line> (<where>)` 
 crossing. The next tick of the same crossing prints `ciguard=OVER:…` and no ACTION; on an
 ACTION, hold new dispatches and find the run, cancel or rerun burst. The waiter's wake key
 does not carry `ciguard`.
+
+**Version mismatch.** Each tick runs `<kit>/version-status-audit.sh` once (owners = the tick's
+live workers, 30 s bound) and carries `vmismatch=<n|?>` on the TICK line: `n` is the count of RESET rows
+(a started ticket in a later version than the active one, a released ticket not Done, a started
+ticket with no version, no worker or open PR holding it), `0` is clean, `?` is no count or an
+UNKNOWN row (a gh read failed), and the field is absent when this machine has no Jira mirror.
+The waiter wakes while `vmismatch` is positive and on any change of the count (not on `0` or `?`).
+On a wake, run the audit by hand and reset each RESET row to To Do with a reason comment.

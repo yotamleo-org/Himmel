@@ -88,6 +88,8 @@
 # orphans-wip= (in-work tickets with no leg and no open PR; `n:KEY,...`, `?` or
 # `skip`) is in the key whole, so any change of its value wakes; absent from an older
 # tick line, never a failure.
+# vmismatch= (tick.sh: RESET rows of the version-status audit) wakes while it is a positive
+# count and on any change of that count; 0, ? and an absent field are left out of the key.
 # wt-ceiling= (the live/cap alarm) is in the key whole: reaching the ceiling
 # wakes once, while an unchanged alarm stays silent; absent is not a failure.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
@@ -343,18 +345,20 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails acts legset board tracker vault cloud orphans-wip wt-ceiling vmrun parked stall denials closable deadwin; do
+    for f in legs livestate prs tails acts legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
         # vmrun= keeps its class only, not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
+        # vmismatch= stays in the key only as a positive count: 0 and ? (a failed audit read) leave it out.
+        if [ "$f" = vmismatch ]; then case "$v" in 0|'?') continue ;; esac; fi
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
         [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
