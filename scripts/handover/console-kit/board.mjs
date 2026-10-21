@@ -583,7 +583,9 @@ const bankLiftLine = (() => {
                 else blocks[blocks.length - 1].push(l);
             }
             const js = blocks.filter((b) => b.join('').trim()).map((b) => JSON.parse(b.join('\n')));
-            const untils = js.map((j) => j.until).filter((u) => typeof u === 'number' && Number.isFinite(u));
+            // A standing policy's stored until is ignored by the validator: a window lift's binds.
+            const windows = js.filter((j) => j.standing !== true);
+            const untils = (windows.length ? windows : js).map((j) => j.until).filter((u) => typeof u === 'number' && Number.isFinite(u));
             if (untils.length) {
                 const u = new Date(Math.min(...untils) * 1000);
                 const p2 = (n) => String(n).padStart(2, '0');

@@ -871,6 +871,9 @@ contains 'usage lift: BOARD_USAGE_LIFT wins over BOARD_BANK_LIFT' "$html" 'data-
 printf '{"window":"seven_day","until":1791000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1790000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
 contains 'usage lift: with both files the earlier until and no standing show' "$(TZ=UTC bl_html "$BL")" \
     '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-09-21 14:13 · window</p>'
+printf '{"window":"seven_day","until":1700000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1791000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
+contains 'usage lift: a standing policy'"'"'s old until never shows beside a window lift' "$(TZ=UTC bl_html "$BL")" \
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · window</p>'
 
 # --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real
