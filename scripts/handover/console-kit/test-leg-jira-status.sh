@@ -46,8 +46,12 @@ case "$1" in
             head -n 1 "$FX/status.seq" > "$FX/status.cur"
             tail -n +2 "$FX/status.seq" > "$FX/status.seq.t"; mv "$FX/status.seq.t" "$FX/status.seq"
         fi
-        printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[]}}\n' \
-            "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)" ;;
+        if [ -e "$FX/type" ] && [ ! -s "$FX/type" ]; then
+            printf '{"fields":{"status":{"name":"%s"},"labels":[]}}\n' "$(cat "$FX/status.cur")"
+        else
+            printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[]}}\n' \
+                "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)"
+        fi ;;
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
         if [ -e "$FX/workflow" ] && [ -z "$(cut -f2 "$FX/workflow" | grep -xF "$3")" ]; then
@@ -151,6 +155,10 @@ for ev in live ci-start pr-open merge; do
     check "D0e: an Epic is never touched ($ev)" "$(ntrans)" 0
     check "D0e: Epic row rule ($ev)" "$(row rule)" D0e
 done
+reset "To Do"; owned; : > "$FX/type"
+fn "$K" --event live
+check "D0e: an unreadable issue type is never moved" "$(ntrans)" 0
+check "D0e: an unreadable issue type logs a get miss" "$(row result)/$(row stage)" miss/get
 
 # --- D1: a required check red -> In Progress ----------------------------------
 reset "IN CI"; owned

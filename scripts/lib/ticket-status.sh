@@ -96,14 +96,14 @@ ts_jira() {
     esac
 }
 
-# ts_read_jira <KEY> — TS_J_STATUS; rc 1 = unreadable.
+# ts_read_jira <KEY> — TS_J_STATUS, TS_J_TYPE; rc 1 = unreadable or either empty.
 ts_read_jira() {
     local json
     TS_J_STATUS=""; TS_J_TYPE=""
     json=$(ts_jira get "$1" --json 2>/dev/null) || return 1
     TS_J_STATUS=$(jq -r '.fields.status.name // empty' <<<"$json" 2>/dev/null)
     TS_J_TYPE=$(jq -r '.fields.issuetype.name // empty' <<<"$json" 2>/dev/null)
-    [ -n "$TS_J_STATUS" ]
+    [ -n "$TS_J_STATUS" ] && [ -n "$TS_J_TYPE" ]
 }
 
 # ts_read_prs <KEY> — the open PRs whose title's first [KEY] is <KEY>:
