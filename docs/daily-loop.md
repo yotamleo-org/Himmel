@@ -345,40 +345,31 @@ disposition at that head instead. But when CodeRabbit is absent, skipped or
 rate-limited, `check-ci.sh` and the merge gate print a NOTE and carry on:
 an unavailable CodeRabbit never makes you wait.
 
-### Reviewer modes (planned, HIMMEL-6580)
+### Reviewer modes
 
-> Not live yet. This describes the design under build for v1.1.3. Until it
-> lands, the rules above are the ones that run.
-
-Every reviewer gets a **mode** in config, `hard` or `best-effort`, in any
-combination. The mode decides what happens when the reviewer cannot review.
+Every reviewer, a row of `scripts/cr/critics.json`, has a **mode** in
+config, `hard` or `best-effort`, in any combination. The merge gate holds each
+one to its mode at the PR's head. Full table: `docs/configuration.md`
+[Reviewer modes](configuration.md#reviewer-modes).
 
 | Mode | It posted findings at this head | It is unavailable at this head |
 |---|---|---|
-| `hard` | each finding fixed or dispositioned, then it passes | **hold**: nothing moves on until it reviews, and you are told why |
-| `best-effort` | each finding fixed or explained, exactly as for hard | **relaxed**: it is skipped, provided every hard reviewer passed |
+| `hard` | each finding fixed or dispositioned, then it must pass | **hold**: the merge waits until it reviews, one `ALERT` per head |
+| `best-effort` | each finding fixed or explained, exactly as for hard | **relaxed**: a NOTE, and the head carries on |
 
 - *Unavailable* means the lane is configured but could not review this head:
-  it errored, ran out of credit, or is rate-limited. A rate-limited CodeRabbit
-  is its own state, never read as clean.
-- *Absent* means the lane is not set up on this machine at all (no key, no
-  App). An absent reviewer leaves the set; it neither passes nor holds.
-- *Not selected* means `/pr-check` did not run that critic for this head
-  (a trivial or docs-only diff, or your `CR_PROFILE`). It leaves the set for
-  that head too.
-- The **claude-only floor** counts as a hard reviewer, so a machine with no
-  critic lane still has one.
-- A config with no hard reviewer, or a mode other than `hard` and
-  `best-effort`, is a config error: the gate refuses, it never guesses.
+  it errored, ran out of credit, or is rate limited.
+- *Absent* means the lane cannot run on this machine (the claude API lane is
+  off, no key, the CodeRabbit app is not armed). An absent reviewer leaves the
+  set, unless its row says `"required": true`: then it is unavailable.
+- *Not selected* means the tier excluded that critic for this PR. It leaves
+  the set too.
+- A set with no hard reviewer left is a config error and the gate refuses,
+  unless the config says `"review": "no_code_review"`, which makes CI alone
+  decide.
 
-**Defaults.**
-
-- **Shipped (`scripts/cr/critics.json`):** `codex` hard, `claude` hard,
-  `coderabbit` best-effort. Because an unconfigured lane is absent, an
-  install with one lane gets one critic, codex or claude, plus the floor.
-  That is the adopter default.
-- **himmel's own repo:** both lanes are configured, so codex and claude (on
-  the Claude API lane) are hard on every PR and CodeRabbit is best-effort.
+**As shipped:** `codex` hard and required, `claude` hard (absent while the
+claude API lane is off), `coderabbit` best-effort.
 
 **Change a mode for one machine** in the overlay `scripts/cr/critics.local.json`
 (gitignored), one row per reviewer you change:
@@ -391,18 +382,15 @@ combination. The mode decides what happens when the reviewer cannot review.
 ```
 
 The first row makes CodeRabbit hard; the second removes the claude critic,
-which gives a codex-only gate. A row that cannot be read is a config error,
-not a silent fallback to the shipped file.
+which gives a codex-only gate. A `required` row cannot be dropped, and a row or
+a mode that cannot be read is a config error, not a silent fallback.
 
-**On a rate limit.** CodeRabbit runs at a per-account limit, and most heads
-are limited. A limited head is a best-effort CodeRabbit unavailable at that
-head: it is relaxed, and the head moves on once the hard critics pass.
-Nothing waits for the limit to reset and nothing re-requests the review. If
-CodeRabbit posts later, its threads still have to be resolved before the
-merge. A **hard** reviewer that is rate-limited or out of credit holds the
-head and says so in `check-ci.sh` and `ready-check.sh`; the levers are to
-restore the lane, or (an operator decision) to set that reviewer to
-`best-effort` or drop it in the overlay for the duration.
+**On a rate limit.** A rate-limited best-effort CodeRabbit is relaxed: the head
+moves on once the hard reviewers pass. If CodeRabbit posts later, its threads
+still have to be resolved before the merge. A **hard** reviewer that is rate
+limited or out of credit holds the head; the levers are to restore the lane, or
+(an operator decision) to set that reviewer to `best-effort` in the overlay for
+the duration.
 
 ### CI release: heavy CI after review (planned, HIMMEL-6581 and HIMMEL-6582)
 
