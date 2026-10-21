@@ -136,9 +136,27 @@ failed() { # <stage> - the run stops here; the page and the generation stay as t
 
 BUDGET="${FOCUS_REFRESH_BUDGET:-240}"
 case "$BUDGET" in '' | *[!0-9]*) BUDGET=240 ;; esac
+
+MIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
+mkdir -p "${MIR%/*}" 2>/dev/null # swallow-ok: an unwritable mirror parent fails the mirror step by name
+
+# the supervising process takes the lock before the budgeted child starts, so a killed child never frees it early
+if [ -z "${FOCUS_REFRESH_LOCK_HELD:-}" ]; then
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>>"$MIR.lock" || { echo "focus-refresh: cannot open $MIR.lock" >&2; exit 2; }
+        if ! flock -n 9; then # prim-ok: a non-blocking single-instance guard, not a wait
+            # swallow-ok: an unwritable marker only loses the request to re-run, the state file is unaffected
+            now > "$AGAIN" 2>/dev/null
+            echo "focus=busy"
+            exit 0
+        fi
+    fi
+    rm -f "$AGAIN" # a request made before this run is served by it
+fi
+
 if [ -z "${FOCUS_REFRESH_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     rc=0
-    FOCUS_REFRESH_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$BUDGET" bash "${BASH_SOURCE[0]}" "${ORIG[@]}" || rc=$?
+    FOCUS_REFRESH_LOCK_HELD=1 FOCUS_REFRESH_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$BUDGET" bash "${BASH_SOURCE[0]}" "${ORIG[@]}" || rc=$?
     case "$rc" in 124 | 137) load_state; failed timeout ;; esac
     exit "$rc"
 fi
@@ -155,20 +173,6 @@ if [ -n "${FR_JIRA:-}" ]; then JIRA=("$FR_JIRA"); else JIRA=(node "$PRIMARY/scri
 if [ -n "${FR_SWEEP:-}" ]; then SWEEP=("$FR_SWEEP"); else SWEEP=(bash "$HERE/status-sweep.sh"); fi
 if [ -n "${FR_TRACKER:-}" ]; then TRACKER=("$FR_TRACKER"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${FR_DRIFT:-}" ]; then DRIFT=("$FR_DRIFT"); else DRIFT=(bash "$HERE/status-drift.sh"); fi
-
-MIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
-mkdir -p "${MIR%/*}" 2>/dev/null # swallow-ok: an unwritable mirror parent fails the mirror step by name
-
-if command -v flock >/dev/null 2>&1; then
-    exec 9>>"$MIR.lock" || { echo "focus-refresh: cannot open $MIR.lock" >&2; exit 2; }
-    if ! flock -n 9; then # prim-ok: a non-blocking single-instance guard, not a wait
-        # swallow-ok: an unwritable marker only loses the request to re-run, the state file is unaffected
-        now > "$AGAIN" 2>/dev/null
-        echo "focus=busy"
-        exit 0
-    fi
-fi
-rm -f "$AGAIN" # a request made before this run is served by it
 
 bounded() {
     local s=$1
