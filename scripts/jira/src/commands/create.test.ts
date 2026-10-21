@@ -1167,4 +1167,11 @@ describe('create — blocker version placement', () => {
     await expect(file('--split-from', 'HIMMEL-1620')).rejects.toThrow(/Jira unavailable/);
     expect(writes()).toEqual([]);
   });
+
+  it.each(['--blocks', '--split-from'])('reports the inherited residual destination for %s', async (relation) => {
+    await file('--residual-of', 'HIMMEL-3', '--fu-class', 'polish', '--class', 'routing', relation, 'HIMMEL-1620');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
+    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
+  });
 });

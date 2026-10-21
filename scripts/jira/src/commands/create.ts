@@ -507,7 +507,7 @@ export function registerCreate(program: Command): void {
         if (residual) {
           if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
           if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
-          console.error(`jira: residual routed to ${residual.fixVersion ?? 'the backlog'}`);
+          console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
         }
         const overCapReason = await applyVersions(options.project ?? projectKey(), versionOptions, fields, {
           labels,
