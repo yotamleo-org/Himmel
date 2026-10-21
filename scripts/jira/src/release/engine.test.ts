@@ -201,6 +201,21 @@ describe('release engine (HIMMEL-6796)', () => {
     await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/readback does not match/);
   });
 
+  it('a rejected DISCHARGE supersedes nothing and leaves the baseline in', async () => {
+    await setup();
+    jira.fv.set('K-1', ['v1']);
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    const q = request(ctx(), { verb: 'DISCHARGE', key: 'K-1', from_v: 'v1', to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    expect(() => admit(q.req, { outcome: 'REJECT', op: { kind: 'none', from_v: 'v1', to_v: 'v1' }, supersedes: ['baseline-v1-g1'] }))
+      .toThrow(/supersedes nothing/);
+    const r = admit(q.req, { outcome: 'REJECT', op: { kind: 'none', from_v: 'v1', to_v: 'v1' } });
+    await apply(ctx(rmEnv), r.id);
+    const s = state(ctx());
+    expect(s.leaks.unauthorized).toEqual([]);
+    expect(s.burndown.v1.baseline).toBe(1);
+  });
+
   it('a successor never voids an old-epoch move Jira half applied', async () => {
     await setup();
     jira.fv.set('K-1', ['v1']);

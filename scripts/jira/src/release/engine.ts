@@ -362,11 +362,13 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     for (const id of o.supersedes) {
       if (!applied.has(id) && !baselineIds.has(id)) throw new Error(`release rule: supersedes names ${id}, which is not an effective ruling`);
     }
+    if (o.op.kind === 'none' && o.supersedes.length) throw new Error('release rule: a ruling that changes nothing supersedes nothing');
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
       const rec = recordOf(s, req.key, v);
       if (rec?.placement === 'unknown') throw new Error(`release rule: ${req.key}@${v} is UNKNOWN`);
       if (rec?.placement === 'pending') throw new Error(`release rule: ${req.key}@${v} has a pending intent; apply or void it first`);
+      if (o.op.kind === 'none') continue;
       if (rec?.ruling && !o.supersedes.includes(rec.ruling)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
       const prior = rec?.ruling ? applied.get(rec.ruling) : undefined;
       if (prior?.authority.kind === 'operator' && o.authority.kind !== 'operator') {

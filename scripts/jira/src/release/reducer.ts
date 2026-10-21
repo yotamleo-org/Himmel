@@ -123,9 +123,11 @@ function partition(inp: ReduceInput, integrity: string[]): Partition {
     else if (!effective.has(r.id)) effective.set(r.id, r);
   }
   // A ruling supersedes only for its own key: moving one baseline key out
-  // leaves the rest of that baseline in.
+  // leaves the rest of that baseline in. A ruling that changes nothing
+  // supersedes nothing.
   const superseded = new Map<string, Set<string>>();
   for (const r of effective.values()) {
+    if (r.op.kind === 'none') continue;
     const set = superseded.get(r.key) ?? new Set<string>();
     for (const id of r.supersedes) set.add(id);
     superseded.set(r.key, set);
