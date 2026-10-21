@@ -224,6 +224,9 @@ reset
 out=$( STUB_CHUNKS=12 STUB_GIVEUP_ALL=1 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R10 an all-give-up run exits 5" || fail "R10 all-give-up should exit 5 (got $rc): $out"
 [ ! -e "$OUTD/cache/c12.json" ] && pass "R10 the run stopped before the last chunk" || fail "R10 the all-give-up run went through every chunk"
+# read-sink-ok: test-owned stub call log under the suite tmpdir
+n=$(wc -l < "$STUB_CALLS" 2>/dev/null || echo 0)
+[ "$n" -ge 3 ] && [ "$n" -le 4 ] && pass "R10 it stopped after $n chunks (limit 3 give-ups)" || fail "R10 should stop after 3 give-ups (4 chunks at most), saw $n"
 reset
 out=$( STUB_CHUNKS=4 STUB_GIVEUP_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && pass "R10 a single give-up among real completions does not stop the run" || fail "R10 a single give-up should exit 0 (got $rc): $out"

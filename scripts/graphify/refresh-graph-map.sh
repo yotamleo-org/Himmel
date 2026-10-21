@@ -2358,9 +2358,13 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # Exit 4 = stopped at the chunk cap (resumable); exit 5 = a chunk kept coming
   # back hollow (recorded in .graphify_failed_chunks).
   # ponytail: graphify exposes no per-chunk skip, so a persistently hollow chunk
-  # is retried hollow-retry-max times EACH run and the corpus cannot finish past
-  # it (its retry line names only the batch size, so the count is a no-progress
-  # count that any finished chunk resets, not a per-chunk one); upgrade path: split the chunk (backfill split design) or an upstream skip flag.
+  # is retried hollow-retry-max times EACH run. A run stops (exit 5) only when
+  # hollow retries or give-ups pile up with no clean completion between them (the
+  # retry line names only the batch size, so the count is a no-progress count,
+  # not a per-chunk one). A single give-up among real completions is promoted
+  # with that chunk partial and graphify re-extracts it next run; upgrade path:
+  # do not promote when any give-up occurred (or prove completeness first), split
+  # the chunk (backfill split design) or an upstream skip flag.
   GRAPHIFY_SECONDS_PER_CHUNK="${GRAPHIFY_SECONDS_PER_CHUNK:-130}"
   GRAPHIFY_HOLLOW_RETRY_MAX="${GRAPHIFY_HOLLOW_RETRY_MAX:-5}"
   case "$GRAPHIFY_SECONDS_PER_CHUNK" in
