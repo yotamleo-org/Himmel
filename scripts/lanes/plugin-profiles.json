@@ -419,6 +419,15 @@
       "autocompact": 200000,
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged legs in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
+    "release-manager": {
+      "_comment": "HIMMEL-6796: the release-manager session (headed-arm-leg.sh --profile release-manager). Judge-shaped: drops the implement/review plugins; no gateAllow; jira writes fenced by guard-rm-writes.sh. mcpServers qmd only.",
+      "enable": [],
+      "drop": ["pr-review-toolkit-himmel@himmel", "lean-skills@himmel", "i-have-adhd@himmel"],
+      "mcpServers": ["qmd"],
+      "contextBudget": 35000,
+      "contextMode": "standard",
+      "autocompact": 200000
+    },
     "console": {
       "_comment": "HIMMEL-4013: a console session (console.sh new/next arm, and a resume of a console doc). Floor (handover, himmel-ops, qmd) plus base's lean-skills; drops pr-review-toolkit-himmel, which a console never runs (it dispatches legs, it does not review its own diff). gateAllow stays false: the leg-shaped gateAllow rules are for legs, and a console runs under the operator's own permission config. Not a leg profile, so it is not in plugin-profiles.mjs LEG_PROFILES.",
       "enable": [],

@@ -1303,6 +1303,25 @@ test('console-judge resolves via resolveProfileByName/resolveProfile to the floo
   assert.ok(!REG.profiles['console-judge'].gateAllow, 'console-judge must not set gateAllow');
 });
 
+// ── release-manager ───────────────────────────────────────────
+// Judge-shaped role session (headed-arm-leg.sh --profile release-manager):
+// floor plus qmd, no gateAllow, never composed into a profile list.
+test('release-manager resolves to the floor plus qmd, no gateAllow, and requires himmel-ops', () => {
+  const settings = resolveProfileByName('release-manager', {}, REGISTRY_PATH);
+  const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
+  assert.deepEqual(enabled.sort(), [...REG.floor].sort());
+  assert.deepEqual(mcpServersForProfile(REG, 'release-manager'), ['qmd']);
+  assert.ok(!Object.hasOwn(settings, 'permissions'), 'release-manager must not emit gateAllow permissions');
+  assert.ok(PP.NON_ADDITIVE_PROFILES.includes('release-manager'));
+  assert.ok(enabled.includes('himmel-ops@himmel'), 'the guard ships in himmel-ops');
+});
+
+for (const list of ['release-manager,design', 'leg-impl,release-manager']) {
+  test(`release-manager refuses to compose in a profile list (${list})`, () => {
+    assert.throws(() => resolveProfile(REG, list), /cannot be composed/);
+  });
+}
+
 test('validateRegistry: the shipped registry (console-relay included) validates clean', () => {
   assert.deepEqual(validateRegistry(REG), []);
 });
