@@ -2806,12 +2806,16 @@ printf '%s\n' '# leg' '- 09:00 LIVE — started effort=high model=claude-sonnet-
 printf '%s\n' '# leg' '- 09:00 LIVE — started, no effort token' > "$ef_none"
 for ef_l in N77 N78 N79; do printf '%s\n' '#!/usr/bin/env bash' 'export LEG_EFFORT=high' > "$W/handover/launch-$ef_l.sh"; done
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N77","lockless":true},{"doc":"%s","label":"N78","lockless":true},{"doc":"%s","label":"N79","lockless":true}]}\n' "$ef_doc" "$ef_ok" "$ef_none" > "$fm"
-ef_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"
+ef_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc=$?
+if [ "$ef_rc" -eq 0 ]; then pass 'the effort fixture tick exits 0'; else fail "the effort fixture tick exits 0 (rc=$ef_rc)"; fi
 contains 'a leg asked for high whose LIVE bullet says medium reads effort=MISMATCH:N77 (HIMMEL-6588)' "$ef_out" ' effort=MISMATCH:N77'
 not_contains 'a leg whose LIVE effort matches the asked one is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N78'
 not_contains 'a LIVE bullet with no effort= token is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N79'
 printf '%s\n' '- 09:30 LIVE — resumed effort=high model=claude-sonnet-5-5' >> "$ef_doc"
-not_contains 'only the newest LIVE bullet decides the effort (HIMMEL-6588)' "$(LEGS='' bash "$SUT" --legs-from "$fm")" 'effort=MISMATCH'
+ef_out2="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc2=$?
+if [ "$ef_rc2" -eq 0 ]; then pass 'the re-run effort fixture tick exits 0'; else fail "the re-run effort fixture tick exits 0 (rc=$ef_rc2)"; fi
+contains 'the re-run effort fixture tick prints its TICK line' "$ef_out2" 'TICK '
+not_contains 'only the newest LIVE bullet decides the effort (HIMMEL-6588)' "$ef_out2" 'effort=MISMATCH'
 rm -f "$ef_doc" "$ef_ok" "$ef_none" "$W/handover/launch-N77.sh" "$W/handover/launch-N78.sh" "$W/handover/launch-N79.sh" "$fm"
 
 if [ "$fails" -eq 0 ]; then
