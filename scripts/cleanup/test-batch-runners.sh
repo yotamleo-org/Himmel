@@ -15,7 +15,7 @@ check() { # <name> <cmd...>
   local name="$1"; shift
   if "$@"; then ok "$name"; else bad "$name: $out"; fi
 }
-lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; } # read-sink-ok: counts lines of fixture logs this test writes under $TMP
 
 TMP="$(mktemp -d -t test-batch-runners.XXXXXX)" || { echo "FAIL - mktemp -d failed (rc=$?)" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
