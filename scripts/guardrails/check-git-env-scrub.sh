@@ -729,6 +729,10 @@ else
                 echo "check-git-env-scrub: --files path does not exist: $p" >&2
                 exit 2
             fi
+            if ! git ls-files --error-unmatch -- ":(literal)$p" > /dev/null 2>&1; then
+                echo "check-git-env-scrub: --files path is not tracked: $p" >&2
+                exit 2
+            fi
             scan_one "$p" "$p"
         done
     elif [ "${#TREE_PATHS[@]}" -gt 0 ]; then

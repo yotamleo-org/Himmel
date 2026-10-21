@@ -393,6 +393,8 @@ printf 'SHELL:scripts/hooks/gone.sh\n' > "$F_BASE"
 OUT="$(cd "$F_REPO" && bash "$CHECKER" --baseline "$F_BASE" --files scripts/other/outside.sh 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ]; then pass "F8 --files: a baseline entry for a deleted file is flagged"; else fail "F8 --files: a baseline entry for a deleted file is flagged (rc=$rc)"; fi
 files_expect "F9 --files: a non-regular path outside the scan scope is skipped, not a missing file" 0 scripts/other
+cp "$REPO_ROOT/$CASES/unscrubbed-entry.sh" "$F_REPO/scripts/hooks/untracked.sh"
+files_expect "F10 --files: an untracked trust-path file fails closed" 2 scripts/hooks/untracked.sh
 rm -f "$F_BASE"
 rm -rf "$F_REPO"
 
