@@ -397,7 +397,7 @@ ts_worker_comment() {
         "${leg:-?}" "$TS_WORKER_STATE" "${heads:-none}" "$status" "${move:-none}" > "$body"
     if [ -n "$TS_CID" ]; then
         out=$(ts_jira comment "$key" --edit "$TS_CID" --comment-file "$body" --print-id 2>&1) && rc=0
-        case "$out" in *404*) [ "$rc" -eq 0 ] || TS_CID="" ;; esac
+        case "$out" in *"HTTP 404:"*) [ "$rc" -eq 0 ] || TS_CID="" ;; esac
     fi
     if [ -z "$TS_CID" ]; then
         # The id is the last stdout line; stderr carries the success line.

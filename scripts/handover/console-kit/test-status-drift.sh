@@ -56,6 +56,7 @@ case "$1" in
         [ -n "$file" ] && cp "$file" "$FX/comment-body.last"
         if [ -n "$edit" ]; then
             [ -e "$FX/comment.404" ] && { echo "Error: HTTP 404: comment not found" >&2; exit 1; }
+            [ -e "$FX/comment.err404" ] && { echo "Error: HTTP 500: upstream saw 404 in the path" >&2; exit 1; }
             echo "$edit"
             exit 0
         fi
@@ -186,6 +187,11 @@ touch "$FX/comment.404"
 fn "$K" --event live
 check "2a: the 404 edit was tried once, then one new post" "$(ncomment)" 2
 check "2a: the stored id is the new comment's" "$(rjq "$K" '.comment_id')" 5001
+reset "In Progress"; owned "$K" LIVE '{"comment_id":"4242","comment_hash":"stale"}'
+touch "$FX/comment.err404"
+fn "$K" --event live
+check "2a: a non-404 error mentioning 404 posts no new comment" "$(ncomment)" 1
+check "2a: and keeps the stored id" "$(rjq "$K" '.comment_id')" 4242
 
 reset "To Do"; owned "$K"
 touch "$FX/comment.noid"
@@ -243,6 +249,8 @@ touch "$FX/graphql.more"
 : > "$STUB_LOG"
 sweep
 check "2b: a saturated GraphQL read is unknown too" "$(grep -c '^get \|^transition' "$STUB_LOG")" 0
+contains "2b: a saturated read reports unknown" "$(cat "$tmp/sout")" "unknown (snapshot gh)"
+check "2b: the saturated miss row names the stage" "$(tail -n 1 "$LOG" | jq -r '[.event, .result, .stage] | join(" ")')" "sweep miss gh"
 rm -f "$FX/graphql.more"
 
 # A hung Jira search is cut off at the hard cap: a timeout row, one wake, then silence.
