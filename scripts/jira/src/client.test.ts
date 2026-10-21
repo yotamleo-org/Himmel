@@ -253,19 +253,4 @@ describe('loadEnvFile', () => {
     loadEnvFile(file);
     expect(process.env.JIRA_BASE_URL).toBe('https://live.example');
   });
-
-  it('loads HANDOVER_DIR from the file when unset, and keeps an exported value (HIMMEL-6917)', () => {
-    const origRoot = process.env.HANDOVER_DIR;
-    try {
-      delete process.env.HANDOVER_DIR;
-      writeFileSync(file, 'HANDOVER_DIR=/from/dotenv\n');
-      loadEnvFile(file);
-      expect(process.env.HANDOVER_DIR).toBe('/from/dotenv');
-      process.env.HANDOVER_DIR = '/live/root';
-      loadEnvFile(file);
-      expect(process.env.HANDOVER_DIR).toBe('/live/root');
-    } finally {
-      if (origRoot === undefined) delete process.env.HANDOVER_DIR; else process.env.HANDOVER_DIR = origRoot;
-    }
-  });
 });

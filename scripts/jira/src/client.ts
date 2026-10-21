@@ -27,7 +27,6 @@ function repoRoot(): string {
 const DOTENV_KEYS = new Set([
   'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY',
   'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN',
-  'HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER',
 ]);
 
 export function loadEnvFile(envPath: string): void {
