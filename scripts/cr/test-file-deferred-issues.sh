@@ -335,6 +335,29 @@ assert_contains "override parent" "$(grep '^create' "$JLOG")" "--residual-of TST
 assert_contains "override fu-class" "$(grep '^create' "$JLOG")" "--fu-class hardening"
 assert_contains "override class" "$(grep '^create' "$JLOG")" "--class shell-quoting"
 
+echo "TEST: the batch carries the class its findings hold in the CR ledger (RED: always unclassified)"
+LEDGER_CLS="$TMP_ROOT/ledger-class.jsonl"
+printf '%s\n' \
+    '{"kind":"finding","head":"aaaaaaa","branch":"feat/tst-5-fixture","finding_id":"c1","file":"src/a.ts","line":10,"verdict":"deferred"}' \
+    '{"kind":"amend","target_head":"aaaaaaa","branch":"feat/tst-5-fixture","finding_id":"c1","set":{"class":"unattributed"}}' \
+    '{"kind":"amend","target_head":"aaaaaaa","branch":"feat/tst-5-fixture","finding_id":"c1","set":{"class":"shell-quoting"}}' \
+    '{"kind":"finding","head":"aaaaaaa","branch":"feat/other","finding_id":"c9","file":"docs/readme.md","line":1,"verdict":"deferred"}' \
+    '{"kind":"amend","target_head":"aaaaaaa","branch":"feat/other","finding_id":"c9","set":{"class":"other-branch-class"}}' >"$LEDGER_CLS"
+out=$(CR_LEDGER="$LEDGER_CLS" run_mode jira github); rc=$?
+assert_eq "ledger class → exit 0" "0" "$rc"
+assert_contains "create passes the ledger class" "$(grep '^create' "$JLOG")" "--class shell-quoting"
+assert_not_contains "another branch's class is not used" "$(grep '^create' "$JLOG")" "other-branch-class"
+out=$(CR_LEDGER="$LEDGER_CLS" run_mode jira github --class explicit-class); rc=$?
+assert_contains "an explicit --class beats the ledger" "$(grep '^create' "$JLOG")" "--class explicit-class"
+printf '%s\n' \
+    '{"kind":"finding","head":"aaaaaaa","branch":"feat/tst-5-fixture","finding_id":"c2","file":"docs/readme.md","line":1,"verdict":"deferred"}' \
+    '{"kind":"amend","target_head":"aaaaaaa","branch":"feat/tst-5-fixture","finding_id":"c2","set":{"class":"new:doc-drift"}}' >>"$LEDGER_CLS"
+out=$(CR_LEDGER="$LEDGER_CLS" run_mode jira github); rc=$?
+assert_contains "two classes in one batch stay unclassified" "$(grep '^create' "$JLOG")" "--class unclassified"
+out=$(CR_LEDGER="$TMP_ROOT/no-such-ledger.jsonl" run_mode jira github); rc=$?
+assert_eq "an unreadable ledger still files" "0" "$rc"
+assert_contains "no ledger class falls back to unclassified" "$(grep '^create' "$JLOG")" "--class unclassified"
+
 echo "TEST: the writer reports an existing residual as a duplicate"
 out=$(JIRA_CREATE_DUP=1 run_mode jira github); rc=$?
 assert_eq "dup → exit 0" "0" "$rc"

@@ -221,6 +221,15 @@ printf 'TST-301\tTask\tTo Do\tp1\tresidual,class-two-class\nTST-302\tTask\tTo Do
 out=$(run --merged-file "$MERGED"); rc=$?
 assert_not_contains "2 residuals do not trigger" "$(cat "$JLOG")" "two-class"
 
+echo "TEST: open residuals labelled class-unclassified or class-unattributed never trigger"
+reset
+printf 'TST-311\tTask\tTo Do\tp1\tresidual,class-unclassified\nTST-312\tTask\tTo Do\tp2\tresidual,class-unclassified\nTST-313\tTask\tTo Do\tp3\tresidual,class-unclassified\nTST-321\tTask\tTo Do\tp4\tresidual,class-unattributed\nTST-322\tTask\tTo Do\tp5\tresidual,class-unattributed\nTST-323\tTask\tTo Do\tp6\tresidual,class-unattributed\n' >"$JSTATE/residuals"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_eq "placeholder-residual run exits 0" "0" "$rc"
+assert_not_contains "3 unclassified residuals file no restructure ticket" "$(cat "$JLOG")" "restructure-class-unclassified"
+assert_not_contains "3 unattributed residuals file no restructure ticket" "$(cat "$JLOG")" "restructure-class-unattributed"
+assert_not_contains "the dry-run output never lists the placeholder" "$(run --merged-file "$MERGED" --dry-run)" "unclassified"
+
 echo "TEST: weekly cap of 2 new tickets"
 reset
 printf 'TST-90\nTST-91\n' >"$JSTATE/week"

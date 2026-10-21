@@ -1076,8 +1076,10 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     }
     // A fixed or deferred amend carries the class it belongs to. The session
     // supplies class= only when this attribution (the globs + match test the
-    // known-findings ladder uses) finds none; a finding no class claims is
-    // recorded as "unattributed" so a later slice can count them.
+    // known-findings ladder uses) finds none. A fixed amend no class claims is
+    // recorded as "unattributed" so a later slice can count them; a deferral
+    // no class claims is refused, since a residual filed from it would carry
+    // a placeholder class the recurrence detector cannot count.
     if((set.verdict==="fixed"||set.verdict==="deferred"||set.deferred_to)&&!set.class){
       set.class="unattributed";
       try{
@@ -1085,6 +1087,10 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
         const hit=(JSON.parse(fs.readFileSync(e.KF_FILE,"utf8")).classes||[]).find(c=>c.match&&target.file&&(c.globs||[]).some(g=>globRe(g).test(target.file))&&typeof target.text==="string"&&new RegExp(c.match,"i").test(target.text));
         if(hit) set.class=hit.id;
       }catch(err){ /* no readable catalog: the row stays unattributed */ }
+      if(set.class==="unattributed"&&(set.verdict==="deferred"||set.deferred_to)){
+        process.stderr.write("ledger-append.sh: finding "+e.ID+" matches no known-findings class, so a deferral of it needs --set class=<known-findings class id> or --set class=new:<slug> (lowercase letters, digits, hyphens). NOTHING was written.\n");
+        process.exit(2);
+      }
     }
     // By this point e.BRANCH has already been resolved above - explicit
     // --branch if given, else (for the "" case) the unique real candidate

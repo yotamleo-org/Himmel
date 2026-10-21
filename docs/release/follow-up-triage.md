@@ -35,6 +35,11 @@ scripts/cr/ledger-append.sh finding ... --verdict deferred --deferred-to <TICKET
 scripts/cr/ledger-append.sh amend ... --set verdict=deferred --set deferred_to=<TICKET> --set fu_class=<escape|hardening|polish> --set "reason=<why>" --reason "<why>"
 ```
 
+The amend also needs a finding class: it is attributed from the known-findings
+catalog, and when no class claims the finding the amend is refused until it
+carries `--set class=<id>` or `--set class=new:<slug>`. A fixed amend stays
+auto-only (`unattributed` when nothing claims it).
+
 `review-round.sh defer` (the three-round cap path) records `polish`: it only
 defers Suggestions. Deferring an Important always needs an explicit class.
 Panel batch rows (`--batch-file`) are not enforced; they are not deferrals a

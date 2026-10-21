@@ -62,7 +62,7 @@ LABEL="cr-deferred"
 DRY_RUN=0
 RESIDUAL_OF=""
 FU_CLASS="polish"
-CR_CLASS="unclassified"
+CR_CLASS=""
 SEVERITIES_REGEX='NIT|LOW|SUGGESTION|IMPROVEMENT|DEFERRED'
 
 usage() {
@@ -81,7 +81,8 @@ Optional:
                         ticket key in the branch name). The Jira ticket is filed by
                         `jira create --residual-of`, which picks version and depth.
   --fu-class <c>        Jira only: polish (default) | escape | hardening.
-  --class <id>          Jira only: CR class id (default: unclassified).
+  --class <id>          Jira only: CR class id (default: the one class the CR ledger holds
+                        for these findings on this branch, else unclassified).
 
 Tracker (printed as tracker=jira|forge|none): jira when Jira is configured
 (one ticket per run), else forge issues on a github/bitbucket forge, else
@@ -396,6 +397,29 @@ if [ "$TRACKER_MODE" = jira ]; then
     if [ -z "$RESIDUAL_OF" ]; then
         echo "ERR file-deferred-issues: no parent ticket: pass --residual-of <KEY> (the branch name carries no ${JIRA_PROJECT_KEY}-<n> key); nothing filed." >&2
         exit 1
+    fi
+
+    # No --class: take the one real class the CR ledger holds for these files on
+    # this branch (an amend's last class= wins; unattributed is no class). Two
+    # classes, none or an unreadable ledger leave the placeholder.
+    if [ -z "$CR_CLASS" ]; then
+        fdi_ledger="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}" # swallow-ok: an unresolvable git dir leaves a path the node read below treats as no ledger
+        fdi_branch=$(git rev-parse --abbrev-ref HEAD) || fdi_branch=""
+        CR_CLASS=$(printf '%s\n' "$candidates" | LEDGER="$fdi_ledger" BRANCH="$fdi_branch" node -e '
+const fs = require("fs"), e = process.env;
+const files = new Set(fs.readFileSync(0, "utf8").split("\n").map(l => l.replace(/^\s*[-*]\s+/, "").replace(/^`+/, "").split(":")[0]).filter(Boolean));
+const file = {}, cls = {};
+let raw = ""; try { raw = fs.readFileSync(e.LEDGER, "utf8"); } catch { /* no ledger: the placeholder stays */ }
+for (const l of raw.split("\n")) {
+  let r; try { r = JSON.parse(l); } catch { continue; }
+  if (r.branch !== e.BRANCH) continue;
+  if (r.kind === "finding") file[r.head + "\0" + r.finding_id] = r.file;
+  else if (r.kind === "amend" && r.set && r.set.class && r.set.class !== "unattributed") cls[r.target_head + "\0" + r.finding_id] = r.set.class;
+}
+const found = new Set(Object.keys(cls).filter(k => files.has(file[k])).map(k => cls[k]));
+console.log(found.size === 1 ? [...found][0] : "");
+') || CR_CLASS=""
+        [ -n "$CR_CLASS" ] || CR_CLASS="unclassified"
     fi
 
     # printf, not a heredoc: the findings are review text and must not be

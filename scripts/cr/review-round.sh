@@ -1852,7 +1852,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         --branch "$branch" --head "$full_head" --id "$finding_id" \
         --artifact "$artifact" --perspective "$perspective" \
         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" \
-        --set "reason=$defer_reason" \
+        --set class=unattributed --set "reason=$defer_reason" \
         --reason 'deferred by review-round.sh after the three-round cap'; then
         amend_rc=5
         break

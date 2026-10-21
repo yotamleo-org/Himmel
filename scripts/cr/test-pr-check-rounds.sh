@@ -553,7 +553,7 @@ postcap_setup postcapdef suggestion
 postcap_amend postcapdef "$postcap_d_head" stub-1 fixed
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch postcapdef --head "$postcap_d_head" --id stub-2 --set verdict=deferred --set deferred_to=HIMMEL-9 \
-    --set fu_class=polish --set 'reason=deferred in the delta round' --reason 'postcap fixture deferred' \
+    --set fu_class=polish --set class=new:postcap-fixture --set 'reason=deferred in the delta round' --reason 'postcap fixture deferred' \
     >/dev/null 2>"$tmp/postcapdef-amend.err" || fail "postcapdef defer stub-2"
 postcap_fix postcapdef
 postcap_out="$(postcap_start postcapdef)"; postcap_rc=$?
@@ -638,7 +638,7 @@ assert_has "$disproved_out" "neither answers a round-3 finding nor only merges" 
 three_rounds deferredr3 suggestion
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch deferredr3 --head "$cap_r3_head" --id stub-1 --set verdict=deferred --set deferred_to=HIMMEL-9 \
-    --set fu_class=polish --set 'reason=deferred at round 3' --reason 'deferred by /pr-check step 4.5' >/dev/null 2>"$tmp/deferredr3-amend.err" \
+    --set fu_class=polish --set class=new:round3-fixture --set 'reason=deferred at round 3' --reason 'deferred by /pr-check step 4.5' >/dev/null 2>"$tmp/deferredr3-amend.err" \
     || fail "deferred round-3 finding disposition"
 fix_commit deferredr3
 (cd "$repo" && bash "$SCRIPT" --head "$cap_fix_head" --branch deferredr3 >/dev/null 2>&1); deferredr3_rc=$?
@@ -1118,7 +1118,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture delta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-d \
-    --set verdict=deferred --set deferred_to=HIMMEL-9010 --set fu_class=hardening --reason "deferred by hand"
+    --set verdict=deferred --set deferred_to=HIMMEL-9010 --set fu_class=hardening --set class=new:promote-fixture --reason "deferred by hand"
 
 # (h) agreed at an earlier head, its fingerprint reappears at the clean head
 # but that reappearance is deferred, not resolved
