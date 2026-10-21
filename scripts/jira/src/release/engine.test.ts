@@ -108,6 +108,20 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(rows).toMatchObject([{ version: 'v1', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1' }]);
   });
 
+  it('an INTAKE ADMIT with an unwritable ledger refuses before Jira is touched (HIMMEL-6918)', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    writeFileSync(join(root, 'not-a-dir'), 'a file where the ledger directory should be');
+    process.env.HIMMEL_ADMISSIONS_LEDGER = join(root, 'not-a-dir', 'ledger.jsonl');
+    await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow();
+    expect(jira.fv.get('K-2')).toBeUndefined();
+    process.env.HIMMEL_ADMISSIONS_LEDGER = join(root, 'admissions-ledger.jsonl');
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+  });
+
   it('a replayed apply never posts a second comment', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });

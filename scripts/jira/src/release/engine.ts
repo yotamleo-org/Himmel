@@ -3,7 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
-import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
@@ -470,6 +470,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
+      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT') assertAdmissionsWritable();
       const cur = await ctx.jira.fixVersions(k);
       if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
