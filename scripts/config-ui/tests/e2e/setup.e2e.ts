@@ -75,15 +75,49 @@ test("J5. a saved secret is set in the store and its value is nowhere else", asy
   expect(await leaks(page, secret)).toEqual([]);
 });
 
-// the control for the scan above: a value left in the browser's stores, the markup, the audit log or argv must be named.
+// the control for the scan above: a value left in any place the scan looks must be named.
 test("J5. the leak scan names every place a value is left", async ({ page }) => {
   await open(page);
   const secret = canary();
-  await page.evaluate((v) => { localStorage.setItem("x", v); sessionStorage.setItem("x", v); document.body.append(v); }, secret);
+  await page.evaluate((v) => {
+    localStorage.setItem("x", v); sessionStorage.setItem("x", v); document.cookie = `x=${v}`; document.body.append(v);
+    (document.querySelector("input") as HTMLInputElement).value = v;
+  }, secret);
   const mark = join(h.home, ".himmel", "state", "config-ui");
   mkdirSync(mark, { recursive: true });
   writeFileSync(join(mark, "actions.jsonl"), `${secret}\n`);
-  expect(await leaks(page, secret)).toEqual(expect.arrayContaining(["markup", "localStorage", "sessionStorage", "audit log"]));
+  writeFileSync(h.argvFile, `${secret}\n`);
+  expect((await leaks(page, secret)).sort()).toEqual(["a field", "argv", "audit log", "cookie", "localStorage", "markup", "sessionStorage"]);
+});
+
+// the field is emptied before the request is sent, so a slow or stalled request never leaves the value in the page.
+test("J5. the field is empty while the save is still in flight", async ({ page }) => {
+  await open(page);
+  const secret = canary();
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route("**/api/setup/secret", async (route) => { await held; await route.continue(); });
+  const row = page.locator(".srow", { has: page.locator(`input[data-secret="${NAME}"]`) });
+  await row.locator("input").fill(secret);
+  await row.locator('button[type="submit"]').click();
+  await expect(row.locator("input")).toHaveValue("");
+  expect(await leaks(page, secret)).toEqual([]);
+  release();
+  await expect(row.locator(".st")).toHaveText("set");
+});
+
+// the remove button sits inside the save form: it must remove and nothing else, even with text typed in the field.
+test("J5. remove with text in the field removes and does not save", async ({ page }) => {
+  await open(page);
+  const row = page.locator(".srow", { has: page.locator(`input[data-secret="${NAME}"]`) });
+  await row.locator("input").fill(canary());
+  await row.locator('button[type="submit"]').click();
+  await expect(row.locator(".st")).toHaveText("set");
+  await row.locator("input").fill(canary());
+  await row.locator('button[data-act="setup-remove"]').click();
+  await expect(row).toContainText("removed");
+  await expect(row.locator(".st")).toHaveText("not set");
+  expect(readFileSync(store(), "utf8")).not.toContain(NAME);
 });
 
 test("J5. a refused value shows the reason, writes nothing and is not echoed", async ({ page }) => {

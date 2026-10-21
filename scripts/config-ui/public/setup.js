@@ -10,7 +10,7 @@ function secretRow(s, msg) {
   const status = `<span class="st ${s.status === "set" ? "ok" : "warn"}">${esc(STATUS[s.status] || s.status)}</span>`;
   const what = `<span class="id">${esc(s.name)}</span><span class="det">${esc(s.feature)}${s.required ? ` · ${esc(s.required)}` : ""}</span>`;
   if (s.collect !== "file") return `<div class="srow">${what}${status}<span class="ro">set in the terminal</span></div>`;
-  const remove = s.status === "set" ? `<button class="btn" data-act="setup-remove" data-name="${esc(s.name)}">remove</button>` : "";
+  const remove = s.status === "set" ? `<button class="btn" type="button" data-act="setup-remove" data-name="${esc(s.name)}">remove</button>` : "";
   return `<div class="srow">${what}${status}
     <form class="sform" data-setup-form data-name="${esc(s.name)}" autocomplete="off">
       <input type="password" data-secret="${esc(s.name)}" autocomplete="off" spellcheck="false" aria-label="${esc(s.name)} value">

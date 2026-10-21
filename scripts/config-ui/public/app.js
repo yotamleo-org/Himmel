@@ -236,9 +236,8 @@ async function loadSetup() {
 // The value leaves the field in this one request and the field is cleared whatever the answer is.
 async function saveSecret(name, op, input) {
   const body = { name, op };
-  if (input) { if (!input.value) { setupMsgs[name] = "type a value first"; return paint(); } body.value = input.value; }
+  if (input) { if (!input.value) { setupMsgs[name] = "type a value first"; return paint(); } body.value = input.value; input.value = ""; }
   const { ok, j } = await post("/api/setup/secret", body);
-  if (input) input.value = "";
   setupMsgs[name] = ok ? (op === "set" ? "saved" : "removed") : (j.error || "failed");
   const s = ok && setup && setup.secrets && setup.secrets.find((x) => x.name === name);
   if (s) s.status = j.status;

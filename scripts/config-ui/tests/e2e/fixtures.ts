@@ -74,7 +74,7 @@ export const GH_ISSUES = [
   { number: 22, title: "Closed gh issue", state: "CLOSED", stateReason: "COMPLETED", labels: [], milestone: { number: 1, title: "m1" }, updatedAt: "2026-10-02T00:00:00Z" },
 ];
 export type Harness = {
-  url: string; home: string; argv: () => string[]; stateFiles: () => string[]; stop: () => Promise<void>;
+  url: string; home: string; argv: () => string[]; argvFile: string; stateFiles: () => string[]; stop: () => Promise<void>;
   ledgerLines: () => number; writeLedger: (rows: object[]) => void; setBullet: (bullet: string) => void; legDoc: string;
 };
 
@@ -153,6 +153,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   return {
     url, home,
     argv: () => readFileSync(argv, "utf8").split("\n").filter(Boolean),
+    argvFile: argv,
     stateFiles: () => (existsSync(state) ? readdirSync(state) : []),
     ledgerLines: () => (existsSync(ledger) ? readFileSync(ledger, "utf8").split("\n").filter(Boolean).length : 0),
     writeLedger: (rows) => writeRows(ledger, rows),
