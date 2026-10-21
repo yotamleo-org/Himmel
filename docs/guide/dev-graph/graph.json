@@ -1847,7 +1847,8 @@
         "18": "GitHub-blocked: shown by e.ci.blocked",
         "19": "no anchor: operational",
         "20": "PR title fails the conventional-commit gate: operational",
-        "23": "plugin-bump recheck: operational"
+        "23": "plugin-bump recheck: operational",
+        "24": "static re-check refusal: operational"
       }
     },
     "scripts/handover/console-kit/go.sh": {
