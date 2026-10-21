@@ -529,7 +529,7 @@ export function contextForProfile(registry, name) {
 // Profiles that cannot be members of a `--profile a,b` list: operator
 // injects nothing, bare skips base, and the role profiles carry guard semantics, so
 // none of them is additive. Shared with the launcher's --consult refusal.
-export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'console', 'console-relay', 'console-judge'];
+export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'console', 'console-relay', 'console-judge', 'release-manager'];
 
 // A comma list resolves to the UNION of its members. enabledPlugins is
 // an OR (a member's drop never switches off another member's enable), the floor

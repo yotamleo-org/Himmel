@@ -129,6 +129,16 @@
   .nav button:disabled { opacity: .4; cursor: default; }
   footer { padding: 30px 0 60px; color: var(--faint); font-size: 14px; border-top: 1px solid var(--line); margin-top: 36px; }
   footer nav { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+  /* no-JS fallback: every step as a <details>; the script adds .js and the interactive stepper replaces it */
+  html:not(.js) .path, html:not(.js) .journey { display: none; }
+  .js .static-steps, .js .nojs-skip, html:not(.js) .js-skip { display: none; }
+  .static-steps { margin: 0 0 18px; }
+  .static-steps > p { color: var(--muted); max-width: 66ch; }
+  .sstep { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 4px 18px; margin: 0 0 10px; }
+  .sstep summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+  .sstep summary small { color: var(--faint); font-weight: 400; margin-left: 6px; }
+  .sstep .n { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 6px; border-radius: 50%; border: 2px solid var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 700; }
+  .sstep .term { margin: 0 0 4px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   @media (max-width: 1000px) { .choices { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (max-width: 860px) {
@@ -150,7 +160,8 @@
 </style>
 </head>
 <body>
-<a class="skiplink" href="#journey">Skip to the steps</a>
+<a class="skiplink js-skip" href="#journey">Skip to the steps</a>
+<a class="skiplink nojs-skip" href="#static-steps">Skip to the steps</a>
 <div class="wrap">
   <div class="topbar">
     <nav aria-label="Site">
@@ -167,6 +178,234 @@
     <h1>The installer, step by step</h1>
     <p class="lede">One command asks you a short series of questions, shows you a summary, and only then changes anything. Pick your path below to see exactly which questions you will meet, what the terminal shows, and what each answer does.</p>
   </header>
+
+  <!-- no-JS fallback: generated from the steps array in the script below, one example answer per question -->
+  <section class="static-steps" id="static-steps" aria-labelledby="static-h">
+    <h2 id="static-h">Every step</h2>
+    <p>These are all the questions the installer can ask, in order, each with an example answer; the prompt names the default. Which of the later ones you meet depends on your earlier answers: for example, choosing no companion vault skips every vault question. With scripts enabled, this becomes an interactive stepper for your own path.</p>
+      <details class="sstep" open>
+        <summary><span class="n">1</span> Prerequisites <small>tools + one command</small></summary>
+        <p class="intro">himmel is a harness for Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="d"># 1. Claude Code itself (Linux/macOS)</span>
+<span class="in">$ curl -fsSL https://claude.ai/install.sh | bash</span>
+<span class="d"># 2. clone himmel once, then run the installer from the repo you want it in</span>
+<span class="in">$ git clone https://github.com/yotamleo-org/Himmel himmel</span>
+<span class="in">$ node himmel/scripts/himmelctl/bin.js install --scope project</span>
+<span class="d"># no Node yet? run this first, then re-run install:</span>
+<span class="in">$ bash himmel/scripts/himmelctl/bootstrap.sh</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>A hard check for bash, git, jq and python3, plus npm or bun (npm is the one it recommends).</li><li>A missing tool stops the run before the first question, with the command to install it.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Nothing yet. No question has been answered, and nothing on your machine has changed.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">2</span> Profile <small>how much to set up</small></summary>
+        <p class="intro">The first question picks a starting point. A profile only fills in the default answers for the questions after it; it never skips a question.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? profile [starter|luna|operator|custom] (default: starter)</span>
+<span>  1) starter (recommended — press Enter) — core harness: hooks, guardrails, worktrees, statusline, jira CLI</span>
+<span>  2) luna — starter + the second-brain surface, nothing else (vault/qmd/cadences/PHI/secrets/bridge questions)</span>
+<span>  3) operator — the maintainer machine as a consumable profile (seeds defaults ONLY; lanes and every has-it-or-not feature are still asked)</span>
+<span>  4) custom — walk every question from scratch, no seeding</span>
+<span class="in">&gt; starter</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>Four numbered options. Press Enter for starter, or type a number or a name.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>The core harness only: hooks, guardrails, worktrees, the status line and the Jira CLI.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">3</span> Scope <small>this repo or every repo</small></summary>
+        <p class="intro">Where the installed config lives. The --scope flag you passed fills in the default.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? scope [project|user] (default: project)</span>
+<span>  1) project (recommended — press Enter) — this install's config lives inside this repo's own .claude/ — wire it again separately for another project</span>
+<span>  2) user — this install's config lives at ~/.claude/ — applies once, to every project you open</span>
+<span class="in">&gt; project</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>Two options; Enter keeps the value from --scope.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>project wires this repo only. user wires your user-level Claude Code config, so every project you open gets the harness.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">4</span> Companion vault <small>with or without notes</small></summary>
+        <p class="intro">himmel can run with a companion vault: an Obsidian folder of notes, clips and daily entries that its scheduled jobs keep indexed. Saying none skips every vault question below.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? vault [none|default-template|existing] (default: none)</span>
+<span>  1) none (recommended — press Enter) — no second brain on this machine; every vault question below is skipped</span>
+<span>  2) default-template — scaffold a fresh vault from templates/luna-second-brain</span>
+<span>  3) existing — point at the Obsidian vault you already have (in-place, STAMPED-gated upgrade)</span>
+<span class="in">&gt; none</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>The vault menu only.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>No vault. The privacy and Telegram questions are skipped, and only the general scheduled jobs are offered.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">5</span> Handover notes <small>where sessions save state</small></summary>
+        <p class="intro">Each session can end by writing a handover: what it did and what is next, so the next session picks up the thread. This is where those notes live.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? handover [inline|external] (default: inline)</span>
+<span>  1) inline (recommended — press Enter) — no-op — handover state stays in this repo's own handovers/ (adopt.sh/setup.sh default)</span>
+<span>  2) external — persists HANDOVER_DIR to an external state repo you point at next</span>
+<span class="in">&gt; inline</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>The menu only.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Notes stay in this repo’s handovers/ folder. Nothing is written for this answer.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">6</span> Extra lanes <small>other model families</small></summary>
+        <p class="intro">A lane is another model family himmel can hand work to. Both are opt-in and need their own tools and logins. They matter mostly for review: a second model family catches what Claude misses.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="d">note: codex and hermes add cross-model review to /pr-check — Claude tiers</span>
+<span class="d">  remain the only v1 implementation lanes (select codex/hermes below, or use</span>
+<span class="d">  --with-codex / --with-hermes non-interactively). Without one, the /pr-check</span>
+<span class="d">  review panel runs Claude-only, and CR_REQUIRE_CROSS_MODEL cannot be satisfied</span>
+<span class="d">  (see docs/configuration.md).</span>
+<span class="q">? lanes [codex,hermes|none] (default: none)</span>
+<span>  1) codex — requires the codex CLI + its own login; skip if you don't have it</span>
+<span>  2) hermes — gateway lane; own opt-in, own install profile, own credentials</span>
+<span>  (Enter accepts the recommended default; comma-separate multiple numbers)</span>
+<span class="in">&gt; none</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>A note on what lanes change, printed once, then a multi-select. Enter means none.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>No extra lanes. Review is Claude-only, which always runs; a policy that demands a second model family cannot be met.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">7</span> Always-on machine <small>unattended runs</small></summary>
+        <p class="intro">Will this machine run work while you are away, such as scheduled jobs or overnight shifts?</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? always-on machine (unattended/scheduled runs) [yes|no] (default: no)</span>
+<span>  1) yes — print the unattended/scheduled-run hardening checklist (nothing is executed either way)</span>
+<span>  2) no (recommended — press Enter) — print a one-line pointer to the checklist instead</span>
+<span class="in">&gt; no</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>Two options.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>yes prints a hardening checklist for unattended machines; no prints a one-line pointer to it. Neither runs anything.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">8</span> Test VM <small>where risky steps are proved</small></summary>
+        <p class="intro">Some jobs change your machine on a timer, so himmel wants them proved on a throwaway test VM first. Tell it where that VM is.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? vm.mode — where VM-proof steps run [local|remote|none] (default: local)</span>
+<span>  1) local (recommended — press Enter) — the local test VM (ssh localhost:2222) — the default</span>
+<span>  2) remote — a VM you reach over ssh (asks for user@host, port, identity)</span>
+<span>  3) none — no VM available — VM-proof steps need an operator ack + rollback point</span>
+<span class="in">&gt; local</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>Three options; remote asks three more fields.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>VM-proof steps run on the local test VM over ssh on port 2222.</li><li>Saved as vm in ~/.himmel/config.json.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">9</span> Scheduled jobs <small>what runs on a timer</small></summary>
+        <p class="intro">A menu of recurring jobs you can arm now. Only jobs whose requirement your answers meet are listed, and nothing arms unless you choose it.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor|none] (default: none)</span>
+<span>  1) drift-fix — nightly /drift-fix (bump auto-bumpable pins, open an ordinary PR)</span>
+<span>  2) upstream-watch — daily scan of himmel's open upstream PRs/issues for a delta</span>
+<span>  3) doctor — daily himmel-doctor run from the primary checkout</span>
+<span>  (Enter accepts the recommended defaults; comma-separate multiple numbers)</span>
+<span class="in">&gt; none</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>3 jobs on offer for your path.</li><li>If you decline a job that is already armed from an earlier install, one more question asks whether to disarm it now.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Each chosen job is armed with its own script; the rest are recorded as off. See the loops and graphs guide for what each job does.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">10</span> Health data <small>privacy declaration</small></summary>
+        <p class="intro">If your vault will hold health records, himmel keeps them away from models outside your machine. It asks you to declare that, and prints the checklist you complete by hand.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="d">── PHI checklist — READ ONLY, himmelctl creates none of this ──────────────</span>
+<span class="d">  [ ] 1. drop a `.salus` marker file at the vault root (or an ancestor dir)</span>
+<span class="d">  [ ] 2. add the vault's absolute path as a line in ~/.config/claude-glm/phi-roots</span>
+<span class="d">  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist</span>
+<span class="q">? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)</span>
+<span class="in">&gt; no</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>A read-only checklist, then a yes/no question you must type in words. A bare number is not accepted here.</li><li>A second question asks about a separate personal or medical vault.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Records your answer only. The markers themselves are yours to create.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">11</span> Telegram bridge <small>voice and text notes</small></summary>
+        <p class="intro">An optional bridge that turns Telegram voice and text messages into vault notes, transcribed locally with whisper.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? configure the telegram bridge (voice/text ingestion)? [off|on] (default: off)</span>
+<span>  1) off (recommended — press Enter) — no telegram bridge configured</span>
+<span>  2) on — configure telegram voice/text ingestion (.env path, whisper CLI/model, optional persistence)</span>
+<span class="in">&gt; off</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>Two options; on asks for the bridge’s own .env path, the whisper program, the model and whether to keep it running.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Off writes nothing. The bridge keeps its token in its own .env file.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">12</span> Secrets <small>tokens stay yours</small></summary>
+        <p class="intro">Tokens and API keys stay out of the answers file. The installer can walk you through them: it shows each secret's status, then you keep, set or skip it. A value you type is hidden as you type and goes to a private file only you can read.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? walk through secrets now (status, then keep/set/skip per secret with a masked prompt; the answers file records status only) [run|skip] (default: skip)</span>
+<span>  1) run — show each secret status, then keep / set / skip it; a typed value goes to the 0600 store, never the answers file</span>
+<span>  2) skip (recommended — press Enter) — skip the walk-through</span>
+<span class="in">&gt; run</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>A menu, then for each secret its status and a keep, set or skip choice. A value you set is typed at a masked prompt.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>The answers file records each status only, never the value. Skip it and add what you use to .env by hand; the .env.example file lists every optional secret. Every integration is optional.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">13</span> Commit rules <small>tracker and ticket IDs</small></summary>
+        <p class="intro">The last question sets how commits name their work: which tracker you use and whether every commit must carry a ticket ID. Nothing is written until you say yes.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="q">? tracker [jira|local|none] (default: jira)</span>
+<span>  1) jira (recommended — press Enter) — commits name a ticket like ABC-123; the Jira secrets are offered later</span>
+<span>  2) local — commits name a ticket from your local ticket files; no Jira secrets asked</span>
+<span>  3) none — no ticket tracker; a commit needs no ticket ID</span>
+<span class="in">&gt; jira</span>
+<span class="q">? ticket ID required [yes|no] (default: yes)</span>
+<span>  1) yes (recommended — press Enter) — the commit-msg gate refuses a commit that names no ticket</span>
+<span>  2) no — a commit may omit the ticket ID</span>
+<span class="in">&gt; yes</span>
+<span class="q">? ticket ID pattern (regex; blank = the commit gate's own default)</span>
+<span class="in">&gt; </span>
+<span class="q">? write these commit rules to ~/.himmel/himmel.conf now (TRACKER=jira, TICKET_ID_REQUIRED=1; consented, --dry-run shows it) [yes|no] (default: no)</span>
+<span class="in">&gt; yes</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>A tracker menu, a yes/no for required ticket IDs (skipped when the tracker is none), an optional pattern, then a typed yes or no before anything is written.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Yes agrees to the write: once you confirm the plan, TRACKER, TICKET_ID_REQUIRED and any pattern go to ~/.himmel/himmel.conf as KEY=value lines. No leaves the file untouched.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">14</span> Summary <small>nothing is installed before this</small></summary>
+        <p class="intro">Every answer so far, apart from a secret you chose to set, was only collected. Now you see the full plan and the exact command it will run, and you confirm once.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="d">…your answers, one per line…</span>
+<span>derived: adopt.sh --scope project …</span>
+<span class="q">Proceed? [Y/n]</span>
+<span class="in">&gt; </span>
+<span class="ok">✓ installed — re-run any time: it converges, it does not duplicate</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>A summary of your answers, the derived command, and one confirm that defaults to yes.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Add --dry-run to the install command to see the same plan and stop there.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">15</span> Your config file <small>rules you can edit</small></summary>
+        <p class="intro">The commit rules you confirmed land in a plain file you can read and edit: ~/.himmel/himmel.conf. Re-running the installer updates those lines and leaves every other line alone.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="ok">himmelctl: wrote TRACKER, TICKET_ID_REQUIRED to ~/.himmel/himmel.conf</span>
+<span class="d"># the file</span>
+<span>TRACKER=jira</span>
+<span>TICKET_ID_REQUIRED=1</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>One line naming the file and the keys written.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>Everyday settings are KEY=value lines in himmel.conf; an environment variable still wins over the file.</li></ul></div>
+        </div>
+      </details>
+      <details class="sstep">
+        <summary><span class="n">16</span> Your first session <small>the loop starts</small></summary>
+        <p class="intro">The harness only acts inside a Claude Code session. Open one at the repo root and run one change through the loop.</p>
+        <div class="term"><pre aria-label="What the terminal shows"><span class="in">$ claude</span>
+<span class="in">&gt; /worktree my-first-change</span>
+<span class="d">  …edit, commit, push…</span>
+<span class="in">&gt; /pr-check</span>
+<span class="in">&gt; /handover</span>
+<span class="d"># later, to steer many sessions from one:</span>
+<span class="in">&gt; /console new</span></pre></div>
+        <div class="means">
+          <div><h3>What you see</h3><ul><li>Hooks fire on every tool call from here on: editing on main is refused, commits are checked, a review is required before a pull request.</li></ul></div>
+          <div><h3>What it does</h3><ul><li>/worktree gives you an isolated branch, /pr-check reviews the diff, /handover saves where you stopped.</li></ul></div>
+        </div>
+      </details>
+  </section>
 
   <!-- source: scripts/himmelctl/bin.js askQuestions() + PROFILE_PRESETS; scripts/himmelctl/lib/adopter-profile.js (lanes) -->
   <section class="card path" aria-labelledby="path-h">
@@ -551,6 +790,7 @@
   reset();
   renderChoices();
   render();
+  document.documentElement.classList.add('js');
 })();
 </script>
 </body>

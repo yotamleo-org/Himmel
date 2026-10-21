@@ -35,4 +35,5 @@ export const ROLE_REQUIRES = {
   telegram: ['obsidian-triage@himmel'],
   console: ['lean-skills@himmel'],
   bare: [], 'console-relay': ['himmel-ops@himmel'], 'console-judge': ['himmel-ops@himmel'],
+  'release-manager': ['himmel-ops@himmel'],
 };

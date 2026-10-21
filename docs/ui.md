@@ -42,7 +42,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
   librarian, live from the Jira mirror; click a version for its kanban at
   `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
-  hideable), and **Fleet** at `/agui/`.
+  hideable), `#/workflow` (the development graph and its guided walkthroughs,
+  the same graph as the docs page), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant
   text, tool-call cards, subagents, failures. The page needs a one-time build
