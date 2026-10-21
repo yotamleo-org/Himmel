@@ -280,8 +280,9 @@ case "$tool" in
         # swallow-ok: a jq failure takes the fail branch.
         cmd=$(printf '%s' "$input" | jq -r '.tool_input.command' 2>/dev/null) \
             || fail "unparseable-payload" "cannot read command"
-        # Quotes dropped once; every check below reads the unquoted text.
-        bare=$(printf '%s' "$cmd" | tr -d '"'"'")
+        # Quotes and backslashes dropped once; every check below reads the
+        # unquoted text, so gh uplo\ad reads as gh upload.
+        bare=$(printf '%s' "$cmd" | tr -d "\"'\\\\")
 
         # Mode 1: redirect targets.
         # swallow-ok: no match means no redirect targets.

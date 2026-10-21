@@ -86,6 +86,7 @@ rm_row "release apply of another release" 2 "$(bash_payload "$JIRA release apply
 rm_row "release lease acquire of another release" 2 "$(bash_payload "$JIRA release lease acquire R200")"
 rm_row "release state with no release" 2 "$(bash_payload "$JIRA release state")"
 rm_row "gh release upload --clobber" 2 "$(bash_payload 'gh release upload v1.1.3 dist.tgz --clobber')"
+rm_row "gh release uplo\\ad escaped verb" 2 "$(bash_payload 'gh release uplo\ad v1.1.3 dist.tgz --clobber')"
 rm_row "leg-jira-status" 2 "$(bash_payload 'bash scripts/handover/console-kit/leg-jira-status.sh HIMMEL-1 Done')"
 rm_row "git commit" 2 "$(bash_payload 'git commit -m x')"
 rm_row "git push" 2 "$(bash_payload 'git push origin HEAD')"
