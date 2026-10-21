@@ -4,7 +4,10 @@
 # no event announced: a PR closed or reopened in the UI, a worker whose lock
 # vanished. It never writes a status or the worker record itself.
 #
-# Usage: status-sweep.sh
+# Usage: status-sweep.sh [--repo <owner/repo>]   (default yotamleo-org/Himmel)
+#
+# A ticket whose recorded open PR is not in that repo (a fork PR) is left as it is,
+# never moved back to In Progress or To Do.
 #
 # One batched snapshot per sweep (one `gh pr list` with the check rollup, one
 # GraphQL read of the review threads and check apps, one JQL search); the
@@ -42,6 +45,17 @@ command -v jq >/dev/null 2>&1 || { echo "status-sweep: jq not found (continuing;
 . "$HERE/../../lib/timeout-bin.sh"
 
 export LC_ALL=C
+# The sweep reads one repo: every gh call (this script's and the lib's) resolves
+# it from GH_REPO, so a cwd that is a fork checkout cannot change what is swept.
+REPO="yotamleo-org/Himmel"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --repo) [ "$#" -ge 2 ] || { echo "status-sweep: --repo needs a value" >&2; exit 2; }; REPO="$2"; shift 2 ;;
+        *) echo "usage: status-sweep.sh [--repo <owner/repo>]" >&2; exit 2 ;;
+    esac
+done
+[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "status-sweep: '$REPO' is not an owner/repo" >&2; exit 2; }
+export GH_REPO="$REPO"
 BUDGET="${TICKET_STATUS_SWEEP_BUDGET:-60}"
 case "$BUDGET" in ''|*[!0-9]*) BUDGET=60 ;; esac
 STATE="$(ts_state_dir)"
@@ -57,7 +71,7 @@ GRACE="${TICKET_STATUS_SWEEP_GRACE:-60}"
 case "$GRACE" in ''|*[!0-9]*) GRACE=60 ;; esac
 if [ -z "${TICKET_STATUS_SWEEP_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     rc=0
-    TICKET_STATUS_SWEEP_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 $((BUDGET + GRACE)) bash "${BASH_SOURCE[0]}" || rc=$?
+    TICKET_STATUS_SWEEP_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 $((BUDGET + GRACE)) bash "${BASH_SOURCE[0]}" --repo "$REPO" || rc=$?
     case "$rc" in
         124|137)
             status_event event=sweep key=- result=miss stage=timeout
@@ -85,6 +99,18 @@ bounded() {
     local s=$1
     shift
     if [ -n "$_TIMEOUT_BIN" ]; then "$_TIMEOUT_BIN" -k 2 "$s" "$@"; else "$@"; fi
+}
+
+# outside_repo <KEY> - rc 0 when a PR the record holds open is not provably this
+# repo's: with no open PR in the snapshot, D5/D6 would read a fork PR as gone.
+# A PR this repo shows with the key in its title is genuinely closed.
+outside_repo() {
+    local n t
+    for n in $(jq -r '(.prs // {}) | to_entries[] | select(.value.open != false) | .key' <<<"$TS_REC"); do
+        t=$(bounded 30 gh pr view "$n" --json title -q .title 2>/dev/null) || return 0 # swallow-ok: an unreadable PR is not proof it is this repo's, so the key is left unchanged
+        [ "$(ticket_key_from_title "$t")" = "$1" ] || return 0
+    done
+    return 1
 }
 
 fails="" # newline-separated "result:stage:class" triples
@@ -205,10 +231,11 @@ while IFS= read -r key; do
     want="$state_now"$'\t'"$TS_LOCK_SEEN"$'\t'"$TS_GONE"
     TS_SNAPSHOT_DIR="" TS_EVENT=""
     if [ "$derived" = "$jstatus" ] && [ "$rec_view" = "$want" ]; then continue; fi
+    if { [ "$TS_RULE" = D5 ] || [ "$TS_RULE" = D6 ]; } && outside_repo "$key"; then continue; fi
     funnel=$((funnel + 1))
     before=0
     [ ! -e "$LOG" ] || before=$(wc -l < "$LOG")
-    bash "$HERE/leg-jira-status.sh" "$key" --event sweep >/dev/null 2>&1
+    bash "$HERE/leg-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
     outcome=""
     [ ! -e "$LOG" ] || outcome=$(tail -n "+$((before + 1))" "$LOG" | jq -rs --arg k "$key" \
         '[.[] | select(.key == $k)] | ((map(select(.result == "miss" or .result == "deferred")) | first) // last) | select(. != null) | [.result, (.stage // "")] | @tsv' 2>/dev/null)

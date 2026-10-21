@@ -69,7 +69,10 @@ EOS
 cat >"$tmp/bin/gh" <<'EOS'
 #!/usr/bin/env bash
 printf 'gh %s\n' "$*" >> "$STUB_LOG"
+printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
+    "pr view")
+        if [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
     "pr list")
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         cat "$FX/pr-list.json" ;;
@@ -152,7 +155,7 @@ checks() { # <num> <pass|pending|fail> - the PR's one required check, in gh pr c
         "$FX/pr-list.json" > "$FX/p.t" && mv "$FX/p.t" "$FX/pr-list.json"
 }
 fn()     { bash "$SUT" "$@" >"$tmp/out" 2>&1; }
-sweep()  { bash "$SWEEP" >"$tmp/sout" 2>&1; }
+sweep()  { bash "$SWEEP" "$@" >"$tmp/sout" 2>&1; }
 ntrans() { grep -c '^transition' "$STUB_LOG" || true; }
 ncomment() { grep -c '^comment' "$STUB_LOG" || true; }
 rjq()    { jq -r "$2" "$(rec_of "$1")" 2>/dev/null; }
@@ -204,8 +207,30 @@ check "2a: and never re-posts for an unchanged class" "$(ncomment)" 1
 # UI close: the record has an open PR, GitHub has none, the owner is live.
 reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
 jl "$K" "In Review"
+printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
 sweep
 check "2b: a UI close with a live owner is applied (D5)" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+
+# A record whose open PR is not in the swept repo (a fork PR) is left alone, not moved back.
+reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
+jl "$K" "In Review"
+sweep
+check "2b: a record PR outside the swept repo is not moved back" "$(ntrans)" 0
+check "2b: and its PR stays open in the record" "$(rjq "$K" '.prs["7"].open')" true
+
+# The sweep reads the named repo, the himmel repo by default, and hands it to the funnel.
+reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
+jl "$K" "In Review"
+printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
+sweep
+check "2b: every gh call defaults to the himmel repo" "$(sort -u "$FX/gh-repo.log")" "yotamleo-org/Himmel"
+reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
+jl "$K" "In Review"
+printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
+sweep --repo acme/fork
+check "2b: --repo names the repo for the snapshot and the funnel" "$(sort -u "$FX/gh-repo.log")" "acme/fork"
+sweep --repo nonsense
+contains "2b: a malformed --repo is refused" "$(cat "$tmp/sout")" "not an owner/repo"
 
 # Reopen: an open PR is back, the old red latch resets, the status goes to In Review.
 reset "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"red","red_latch":true,"open":false}}}'
@@ -287,6 +312,14 @@ check "2b: the count restarts at 1" "$(rjq "$K" '.lock_gone_sweeps')" 1
 check "2b: still no D6 after the reset" "$(ntrans)" 0
 sweep
 check "2b: two consecutive lock-gone sweeps reach D6 (To Do)" "$(grep '^transition' "$STUB_LOG")" "transition $K To Do"
+
+# A non-numeric lock_gone_sweeps is read as 0, never evaluated.
+reset "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":"1+1"}'
+printf '0\n' > "$FX/lock.rc"
+jl "$K" "In Progress"
+sweep
+check "2b: a non-numeric count does not reach D6" "$(ntrans)" 0
+check "2b: and is rewritten as a count of 1" "$(rjq "$K" '.lock_gone_sweeps')" 1
 
 # A leg with no local lock seen (cloud or another station) never reaches D6.
 reset "In Progress"; owned "$K" LIVE '{"state":"unknown","lock_seen":false,"lock_gone_sweeps":0}'

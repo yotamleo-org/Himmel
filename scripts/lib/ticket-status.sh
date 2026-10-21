@@ -333,6 +333,7 @@ ts_derive() {
     doc=$(jq -r '.doc // ""' <<<"$TS_REC")
     TS_LOCK_SEEN=$(jq -r '.lock_seen // false' <<<"$TS_REC")
     TS_GONE=$(jq -r '.lock_gone_sweeps // 0' <<<"$TS_REC")
+    case "$TS_GONE" in ''|*[!0-9]*) TS_GONE=0 ;; esac
     if [ -n "$doc" ]; then
         _ts_worker_state "$doc"
         # A held lock is seen and resets the count; only a sweep counts a gone lock,
