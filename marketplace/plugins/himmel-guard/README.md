@@ -13,6 +13,26 @@ pushes, hard resets and similar before the Bash call runs.
 Needs `bash` and `jq` on the machine. A missing `jq` or a malformed payload
 fails closed (the call is denied).
 
+## On by default, and how to opt out
+
+The starter install enables this plugin: `himmel-guard@himmel` is `true` in
+the `enabledPlugins` map of `docs/setup/settings-template.json`, so a fresh
+install refuses destructive commands with no extra step. To opt out:
+
+```text
+/profile disable himmel-guard@himmel
+```
+
+(or `claude plugin disable himmel-guard@himmel --scope user`). A later
+`/himmel-update` with `HIMMEL_RECONCILE_PLUGINS=1` rewrites the template map
+verbatim and turns it back on, so to keep it off permanently also record
+`"himmel-guard@himmel": false` under `enabledPlugins` in
+`~/.claude/settings.local.json`. Claude Code does not read that file at
+runtime; himmel's reconcile reads it as an override input and copies the
+`false` into `settings.json` on its next run. To turn it back on, run
+`/profile enable himmel-guard@himmel` and remove that `false` override from
+`~/.claude/settings.local.json` too, or the next reconcile disables it again.
+
 ## Layout
 
 The hook and its libraries are copies of `scripts/hooks/` and

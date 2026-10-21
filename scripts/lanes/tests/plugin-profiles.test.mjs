@@ -131,7 +131,7 @@ for (const name of ['operator', 'user', 'bare']) {
       'lean-skills@himmel',
       // i-have-adhd@himmel rides base beside lean-skills.
       'i-have-adhd@himmel',
-      // pstack@himmel is user-only and added below.
+      // pstack@himmel and himmel-guard@himmel are user-only and added below.
       // The operator's interactive profile works the vault.
       'obsidian-second-brain@himmel',
       // find-docs was a user-scope skill; the user profile carries it.
@@ -140,7 +140,7 @@ for (const name of ['operator', 'user', 'bare']) {
       'graphify@himmel',
     ];
     const expected = name === 'operator' ? null : {
-      enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && id === 'pstack@himmel')])),
+      enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && (id === 'pstack@himmel' || id === 'himmel-guard@himmel'))])),
     };
     const settings = resolveProfile(REG, name);
     assert.equal(JSON.stringify(settings), JSON.stringify(expected));
@@ -2038,4 +2038,12 @@ test('the claudex and openrouter lane prefaces let a registered leg use the bus 
     assert.match(text, /HIMMEL_BUS_NAME/, `${lane}: gates the bus on the registered name`);
     assert.match(text, /handover document stays/i, `${lane}: the doc stays the fallback and the record`);
   }
+});
+
+test('himmel-guard is on by default in the starter install and the user profile (HIMMEL-6958)', () => {
+  const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const tmpl = JSON.parse(readFileSync(join(REPO_ROOT, 'docs', 'setup', 'settings-template.json'), 'utf8'));
+  assert.equal(tmpl.enabledPlugins['himmel-guard@himmel'], true, 'the starter install template must enable himmel-guard');
+  assert.ok(!Object.hasOwn(tmpl.onDemandPlugins, 'himmel-guard@himmel'), 'himmel-guard is the always tier, not on-demand');
+  assert.equal(resolveProfile(REG, 'user').enabledPlugins['himmel-guard@himmel'], true, 'the user profile must enable himmel-guard');
 });

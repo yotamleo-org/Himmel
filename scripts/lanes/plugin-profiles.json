@@ -156,7 +156,8 @@
         "obsidian-second-brain@himmel",
         "find-docs@himmel",
         "graphify@himmel",
-        "pstack@himmel"
+        "pstack@himmel",
+        "himmel-guard@himmel"
       ],
       "contextBudget": 50000,
       "contextMode": "standard",
