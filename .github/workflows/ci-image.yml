@@ -38,7 +38,7 @@ jobs:
         run: docker build --pull -t "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" -t "$IMAGE:latest" .github/ci-image
       - name: Smoke the tools the jobs call
         run: |
-          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo ps pgrep rsync xxd sqlite3 column file lsof make nc ip wget zip tree; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null; [ "$(id -u runner):$(id -g runner)" = 1001:1001 ]; su runner -c "sudo -n true"'
+          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo ps pgrep rsync xxd sqlite3 column file lsof make nc ip wget zip tree bison gcc cc crontab zsh shfmt uv; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null; [ "$(id -u runner):$(id -g runner)" = 1001:1001 ]; su runner -c "sudo -n true"'
       - name: Push
         env:
           GH_TOKEN: ${{ github.token }}
