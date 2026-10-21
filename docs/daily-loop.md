@@ -376,13 +376,13 @@ claude API lane is off), `coderabbit` best-effort.
 
 ```json
 { "panel": [
-  { "slug": "coderabbit", "mode": "hard" },
+  { "slug": "coderabbit", "drop": true },
   { "slug": "claude", "drop": true }
 ] }
 ```
 
-The first row makes CodeRabbit hard; the second removes the claude critic,
-which gives a codex-only gate. A `required` row cannot be dropped, and a row or
+Both rows drop a reviewer, which gives a codex-only gate. To make CodeRabbit
+hard instead, give its row `"mode": "hard"`. A `required` row cannot be dropped, and a row or
 a mode that cannot be read is a config error, not a silent fallback.
 
 **On a rate limit.** A rate-limited best-effort CodeRabbit is relaxed: the head
@@ -472,7 +472,8 @@ legs, judges) is the development graph.
 A merge does not close the ticket by itself. If the PR finishes the ticket,
 move it to Done and note the PR number and merge commit on it; if work
 remains, leave it open. `merge-on-green.sh --jira-transition` closes the
-first `[KEY]` in the PR title at merge, and only when you pass the flag;
+first `[KEY]` in the PR title at merge, only when you pass the flag, and
+not when the brief document declares `> **Completes ticket:** no`;
 the `ticket` step in `HIMMEL_INITIATIVE` does it for you.
 
 ---
