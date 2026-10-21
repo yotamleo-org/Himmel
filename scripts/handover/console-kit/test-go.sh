@@ -640,6 +640,13 @@ ROOT22E="$tmp/root22e"; mkdir -p "$ROOT22E"
 rc=0; HANDOVER_DIR="$ROOT22E" bash "$SCRIPT" --fix-main-red 4242 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "22: a fix-main-red GO exits 0" "$rc" "0"
 check "22: a fix-main-red GO persists no verdict record" "$(test -e "$ROOT22E/$VSCOPE/verdicts/go-pr-77" && echo yes || echo no)" "no"
+# a repeated --model or --effort is a usage error, like every other option
+ROOT22F="$tmp/root22f"; mkdir -p "$ROOT22F"
+rc=0; HANDOVER_DIR="$ROOT22F" bash "$SCRIPT" --model m1 --model m2 78 "$SHA" >/dev/null 2>&1 || rc=$?
+check "22: a repeated --model -> exit 2" "$rc" "2"
+rc=0; HANDOVER_DIR="$ROOT22F" bash "$SCRIPT" --effort high --effort low 78 "$SHA" >/dev/null 2>&1 || rc=$?
+check "22: a repeated --effort -> exit 2" "$rc" "2"
+check "22: a repeated option writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA" && echo yes || echo no)" "no"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

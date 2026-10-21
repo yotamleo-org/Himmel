@@ -126,15 +126,19 @@ FIX_SET=0
 FORK=""
 FORK_SET=0
 GO_MODEL=""
+GO_MODEL_SET=0
 GO_EFFORT=""
+GO_EFFORT_SET=0
 # Each option, in any order, at most once (a repeat is a usage error).
 while :; do
     case "${1:-}" in
         --model)
-            GO_MODEL="${2:-}"
+            [ "$GO_MODEL_SET" -eq 0 ] || { usage; exit 2; }
+            GO_MODEL="${2:-}"; GO_MODEL_SET=1
             shift 2 2>/dev/null || shift "$#" ;;
         --effort)
-            GO_EFFORT="${2:-}"
+            [ "$GO_EFFORT_SET" -eq 0 ] || { usage; exit 2; }
+            GO_EFFORT="${2:-}"; GO_EFFORT_SET=1
             shift 2 2>/dev/null || shift "$#" ;;
         --trust-reviewed)
             [ "$TRUST_SET" -eq 0 ] || { usage; exit 2; }
