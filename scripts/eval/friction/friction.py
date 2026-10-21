@@ -426,8 +426,9 @@ def render_section(tx, prior_tx, docs, days, top=5):
     return '\n'.join(out) + '\n'
 
 
-def record(tx, docs, days, since, repo, ledger=None):
-    """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class."""
+def record(tx, docs, days, since, repo, ledger=None, projects=None):
+    """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class.
+    An explicit --projects scope joins the config, so a run over other transcripts is its own series."""
     verdicts = collections.Counter(r['verdict'] for r in tx)
     metrics = {'refusals': len(tx), 'over_deny': verdicts['over-deny'], 'true_positive': verdicts['true-positive'],
                'unclear': verdicts['unclear'], 'over_deny_share': None}
@@ -437,8 +438,11 @@ def record(tx, docs, days, since, repo, ledger=None):
     for (src, cls), n in collections.Counter((r['source'], r['class']) for r in tx
                                              if r['verdict'] == 'over-deny').items():
         metrics['over_deny:%s/%s' % (src, cls)] = n
-    row = eval_runs.make_row('friction', 'scripts/eval/friction/friction.py', {'friction_v': 1, 'days': days},
-                             metrics, n=len(tx), repo=repo, meta={'since': since.isoformat(), 'doc_rows': len(docs)})
+    config = {'friction_v': 1, 'days': days}
+    if projects:
+        config['projects'] = projects
+    row = eval_runs.make_row('friction', 'scripts/eval/friction/friction.py', config, metrics, n=len(tx), repo=repo,
+                             meta={'since': since.isoformat(), 'doc_rows': len(docs)})
     return eval_runs.append_safe(row, ledger, who='friction')
 
 
@@ -466,7 +470,7 @@ def main(argv=None):
     tx = scan_all(projects, since, now)
     docs = scan_docs(a.docs, since, names)
     if a.record:
-        record(tx, docs, a.days, since, a.repo, a.eval_ledger)
+        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects)
     if a.section:
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))

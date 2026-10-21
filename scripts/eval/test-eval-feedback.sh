@@ -48,6 +48,7 @@ eq "friction --record: one eval-runs row" "$(rows "$L")" "1"
 eq "friction row: eval" "$(field "$L" 0 eval)" "friction"
 eq "friction row: over_deny" "$(field "$L" 0 metrics.over_deny)" "1"
 eq "friction row: per-class over-deny metric" "$(field "$L" 0 "metrics.$CLS")" "1"
+eq "friction row: an explicit --projects scope is part of the config" "$(field "$L" 0 config.projects)" "[\"$HERE/friction/fixtures/proj\"]"
 python3 -I "$RUNS" validate "$L" >/dev/null 2>&1
 eq "friction row: a valid eval-runs row" "$?" "0"
 RUN1="$(field "$L" 0 run_id)"
@@ -73,7 +74,8 @@ eq "rerun: no second inbox line" "$(rows "$IN")" "1"
 
 # --- run 2: the next run of the same series re-measures the change ----------------------------------
 python3 -I "$RUNS" append --ledger "$L" --eval friction --source scripts/eval/friction/friction.py \
-  --config-json '{"friction_v":1,"days":7}' --metrics-json '{"refusals":2,"over_deny":0,"over_deny_share":0}' >/dev/null 2>&1
+  --config-json "{\"friction_v\":1,\"days\":7,\"projects\":[\"$HERE/friction/fixtures/proj\"]}" \
+  --metrics-json '{"refusals":2,"over_deny":0,"over_deny_share":0}' >/dev/null 2>&1
 out=$(python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" 2>&1)
 eq "run 2: a measured record" "$(rows "$C")" "2"
 eq "measured: status" "$(field "$C" 1 status)" "measured"
