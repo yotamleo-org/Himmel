@@ -48,7 +48,7 @@ case "$1" in
         printf '{"fields":{"status":{"name":"%s"},"labels":[]}}\n' "$(cat "$FX/status.cur")" ;;
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
-        if [ -e "$FX/workflow" ] && ! cut -f2 "$FX/workflow" | grep -qxF "$3"; then
+        if [ -e "$FX/workflow" ] && [ -z "$(cut -f2 "$FX/workflow" | grep -xF "$3")" ]; then
             echo "no transition to $3" >&2; exit 1
         fi
         [ -e "$FX/transition.noop" ] || printf '%s\n' "$3" > "$FX/status.cur"

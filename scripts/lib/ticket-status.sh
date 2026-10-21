@@ -154,7 +154,7 @@ ts_pr_class() {
     fi
     if [ -z "$reqs" ]; then
         if [ -z "$rows" ]; then echo none
-        elif printf '%s\n' "$rows" | grep -q '^pending'; then echo pending
+        elif grep -q '^pending' <<<"$rows"; then echo pending
         else echo green
         fi
         return 0
@@ -164,9 +164,9 @@ ts_pr_class() {
         prows=$(jq -r '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' <<<"$out" 2>/dev/null) || { echo "!gh"; return 1; }
     fi
     st=$(_required_status "$reqs" "$rows" "$prows")
-    if printf '%s\n' "$st" | grep -q '^fail'; then echo red; return 0; fi
-    if ! printf '%s\n' "$st" | grep -qv '^missing'; then echo none; return 0; fi
-    if printf '%s\n' "$st" | grep -q '^missing\|^pending'; then echo pending; return 0; fi
+    if grep -q '^fail' <<<"$st"; then echo red; return 0; fi
+    if ! grep -qv '^missing' <<<"$st"; then echo none; return 0; fi
+    if grep -q '^missing\|^pending' <<<"$st"; then echo pending; return 0; fi
     # "seen" on a name-only requirement still covers a running check.
     if awk -F'\t' 'NR == FNR { if ($2 == "") n[$1] = 1; next } $1 == "pending" && ($2 in n) { f = 1 } END { exit !f }' \
         <(printf '%s\n' "$reqs") <(printf '%s\n' "$rows"); then
