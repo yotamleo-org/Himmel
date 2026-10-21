@@ -52,7 +52,7 @@ SERIES = ("merges", "tickets", "fix_share_pct", "cost_eq_per_ticket",
 NO_SOURCE = ["failure_rate_pct", "denial_rate_pct", "ship_stage_median_min"]
 STABLE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 TICKET = re.compile(r"\[([A-Z][A-Z0-9]*-\d+)\]")
-COST_EQ = re.compile(r"^leg-burn\b(?:(?![^\n]*cost-eq=)[^\n]*\n)?[^\n]*?\bcost-eq=([0-9.]+)(k?)", re.M)
+COST_EQ = re.compile(r"^leg-burn\b(?:(?![^\n]*cost-eq=)[^\n]*\n)?[^\n]*?\bcost-eq=([0-9]+(?:\.[0-9]+)?)(k?)", re.M)
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 

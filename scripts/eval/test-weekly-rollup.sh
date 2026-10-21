@@ -66,7 +66,7 @@ echo "red-main: $r"
 E
 
 # Cache history: two runs in W37 (90 and 94), none elsewhere.
-ts() { date -u -d "$1" +%s; }
+ts() { python3 -c 'import sys, datetime as d; print(int(d.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")).timestamp()))' "$1"; }
 printf '{"ts": %s, "overall": 90.0, "roles": {}}\n{"ts": %s, "overall": 94.0, "roles": {}}\n' \
   "$(ts 2026-09-09T10:00:00Z)" "$(ts 2026-09-10T10:00:00Z)" >"$W/cache.jsonl"
 # Flake ledger (run-shell-tests.sh schema): one row in W36, two in W37, one other repo.
@@ -147,8 +147,10 @@ check "review exits 0" 0 $?
 check "review prints three lines" 3 "$(wc -l <"$W/review.out" | tr -d ' ')"
 check "review velocity line" "velocity: merges=3 (+1 vs v1.0.0) tickets=2 (+0) fix-share=33.33% (-16.67) window=8d" \
   "$(sed -n 1p "$W/review.out")"
-case "$(sed -n 2p "$W/review.out")" in "cost: "*) pass "review cost line" ;; *) fail "review cost line: $(sed -n 2p "$W/review.out")" ;; esac
-case "$(sed -n 3p "$W/review.out")" in "health: "*) pass "review health line" ;; *) fail "review health line: $(sed -n 3p "$W/review.out")" ;; esac
+check "review cost line" "cost: cost-eq=400k legs=3 per-ticket=200k (+125k vs v1.0.0)" \
+  "$(sed -n 2p "$W/review.out")"
+check "review health line" "health: red-main=0 (+0) cache-hit=92% (n/a) flakes=2 (+2); failure and denial rates: no source yet" \
+  "$(sed -n 3p "$W/review.out")"
 run review --version v9.9.9 --file "$OUT" >"$W/review2.out" 2>&1
 check "an unknown version reads no data yet" "velocity: no data yet cost: no data yet health: no data yet" \
   "$(tr '\n' ' ' <"$W/review2.out" | sed 's/ $//')"
