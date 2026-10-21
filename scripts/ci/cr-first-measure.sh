@@ -31,6 +31,9 @@
 # ponytail: a run belongs to a PR by its head being in the PR's commit list (a
 # closed PR's runs carry an empty pull_requests), so runs on a head a force-push
 # dropped are not counted; himmel forbids force-push, upgrade = a PR-event key.
+# ponytail: "last N merged" is gh pr list's order, newest created first, not
+# newest merged; a long-lived PR merging late can fall outside the window,
+# upgrade = fetch a wider page and sort on mergedAt before the limit.
 set -uo pipefail
 
 usage() { echo "usage: cr-first-measure.sh [-R owner/repo] [--limit N] [--dump FILE] | --bundle FILE" >&2; exit 2; }
