@@ -94,6 +94,54 @@ if [ "$HAVE_SHELLCHECK" -eq 0 ]; then
     PATH="$STUB_SC_BIN:$PATH"
 fi
 
+# Probe filtering and exemptions must leave real calls visible, not message text.
+_test_prim_probes() {
+    local fixture="$TMP_ROOT/probe-filter.sh" out line
+    cat > "$fixture" <<'PRIMEOF'
+#!/usr/bin/env bash
+set -uo pipefail
+command -v flock >/dev/null 2>&1 || exit 1
+command -v flock >/dev/null 2>&1 && flock -x 9
+if command -v realpath >/dev/null 2>&1; then p=$(realpath "$1"); fi
+command -v flock >/dev/null 2>&1 || { echo "ERR vault-stall: flock not on PATH (install util-linux)" >&2; exit 1; }
+command -v flock >/dev/null 2>&1 || { echo 'ERR vault-stall: flock not on PATH' >&2; exit 1; }
+command -v realpath >/dev/null 2>&1 || printf '%s\n' 'ERR: realpath not on PATH' >&2
+command -v flock && flock -x 9 # prim-ok
+# prim-ok:
+flock -x 9
+# prim-ok:
+flock -x 9
+printf '%s\n' prim-ok; flock -x 9
+flock -x 9 # prim-ok: descriptor intentionally owned here
+# prim-ok: descriptor intentionally owned here
+flock -x 9
+command -v flock || { echo "ERR: flock not on PATH"; flock -x 9; }
+command -v realpath || echo "$(realpath "$1")"
+type flock >/dev/null 2>&1
+which realpath >/dev/null 2>&1
+command -v realpath && p=$(realpath "$1") # prim-ok:
+PRIMEOF
+    out="$(bash "$LINT" "$fixture" 2>&1)"
+    for line in 4 9 11 13 14 18; do
+        assert_contains "probe filter keeps raw flock on line $line" "[prim-lock] line $line:" "$out"
+    done
+    for line in 5 19 22; do
+        assert_contains "probe filter keeps realpath on line $line" "[prim-canon] line $line:" "$out"
+    done
+    for line in 3 6 7 15 17 20; do
+        assert_not_contains "probe filter ignores probes, messages and reasoned exemptions on line $line" "[prim-lock] line $line:" "$out"
+    done
+    for line in 8 21; do
+        assert_not_contains "probe filter ignores realpath probes and messages on line $line" "[prim-canon] line $line:" "$out"
+    done
+}
+
+if [ "${1:-}" = --prim-probes ]; then
+    _test_prim_probes
+    printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
+    [ "$FAIL" -eq 0 ]; exit "$?"
+fi
+
 # Write a UTF-8 BOM (EF BB BF) then the given body to $1.
 _write_bom_file() {
     local path="$1"; shift
@@ -455,6 +503,8 @@ OUT15W="$(bash "$LINT" "$PRIM_PROBE_F" 2>&1)"
 if grepq "$OUT15W" -F '[prim-lock] line 3:'; then fail "15p a probe-only line must not be flagged" "$OUT15W"; else pass "15p a probe-only line is not flagged"; fi
 if grepq "$OUT15W" -F '[prim-lock] line 4:'; then pass "15p a flock call sharing a line with its probe is flagged"; else fail "15p a flock call sharing a line with its probe must be flagged" "$OUT15W"; fi
 if grepq "$OUT15W" -F '[prim-canon] line 5:'; then pass "15p a realpath call sharing a line with its probe is flagged"; else fail "15p a realpath call sharing a line with its probe must be flagged" "$OUT15W"; fi
+
+_test_prim_probes
 
 # Case 16: BOM policy is split by file type. A BOM is CORRECT for
 # *.ps1 (PS5.1 needs it to decode UTF-8) -> [BOM] is never reported on a .ps1.
