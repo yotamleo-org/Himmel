@@ -131,7 +131,8 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   `bash scripts/handover/console-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
 - **A red CI job on your PR is yours to triage; tell the console only if it is
-  not the PR's fault** (`MAIN-RED <job> <failing case>`, once). Merge-forward
+  not the PR's fault** (`MAIN-RED <job> <failing case> caused-by: #<pr>`, or
+  `caused-by: unknown`, once). Merge-forward
   (never past a red you introduced), `suite-coverage.sh` and the
   loaded-budget rule: `leg-sections/ci-red.md`. [prose]
 - On an agreed review finding **sweep the whole class** across every site and
