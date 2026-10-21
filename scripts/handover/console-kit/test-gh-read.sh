@@ -111,7 +111,7 @@ GH_READ_ENV_ROOT="$W/root" bash "$REPO/scripts/handover/console-kit/ready-check.
 check "B4 ready-check's first read used the read token" "$READTOK" "$(sed -n '1p' "$GHLOG" | sed 's/^tok=\([^ ]*\) .*/\1/')"
 # check-ci: the first PR read rides the read token, and no merge/comment shape ever shows up
 : > "$GHLOG"
-GH_READ_ENV_ROOT="$W/root" CHECK_CI_CACHE_DIR="$W/ci-cache" CHECK_CI_SLEEP_CMD=: GH_BUDGET_PREFLIGHT=0 bash "$REPO/scripts/check-ci.sh" 99 --max-wait 5 --settle 0 >"$W/ci.out" 2>&1
+GH_READ_ENV_ROOT="$W/root" CHECK_CI_CACHE_DIR="$W/ci-cache" CR_APP=0 CHECK_CI_SLEEP_CMD=: GH_BUDGET_PREFLIGHT=0 bash "$REPO/scripts/check-ci.sh" 99 --max-wait 5 --settle 0 >"$W/ci.out" 2>&1
 ci_rc=$?
 # the stub answers no PR url, so check-ci stops at its first read with exit 2; any other
 # status means it died elsewhere and the read count below proves nothing
