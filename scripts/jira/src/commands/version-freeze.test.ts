@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 vi.mock('../client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client.js')>();
@@ -38,6 +41,7 @@ interface World {
   frozen?: ReturnType<typeof issue>[];
   blockers?: ReturnType<typeof issue>[];
   unfolded?: ReturnType<typeof issue>[];
+  inVersion?: ReturnType<typeof issue>[];
 }
 
 // Routes the mocked REST calls by URL/JQL so each command sees one coherent Jira.
@@ -49,7 +53,8 @@ function world(w: World): void {
     if (method === 'GET' && path.startsWith('/search/jql')) {
       const jql = decodeURIComponent(path.split('jql=')[1].split('&')[0]);
       let issues: unknown[];
-      if (jql.includes('priority = Highest')) issues = w.blockers ?? [];
+      if (jql === 'project=HIM AND fixVersion="v1.1.3"') issues = w.inVersion ?? w.frozen ?? [];
+      else if (jql.includes('priority = Highest')) issues = w.blockers ?? [];
       else if (jql.includes('fixVersion != ')) issues = w.unfolded ?? [];
       else if (jql.includes('key in (')) issues = w.frozen ?? [];
       else issues = w.open ?? [];
@@ -67,8 +72,7 @@ describe('version-freeze / version-ready / version-defer', () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     process.env.JIRA_PROJECT_KEY = 'HIM';
-    delete process.env.HIMMEL_CONSOLE_LEG;
-    delete process.env.HIMMEL_CONSOLE_RELAY;
+    process.env.HIMMEL_CONSOLE = '1';
     probes.mainCi = () => ({ ok: true, detail: 'green' });
     mockRead.mockReturnValue([]);
   });
@@ -81,7 +85,7 @@ describe('version-freeze / version-ready / version-defer', () => {
 
   it('version-freeze writes frozen: and the key list into the description and labels the open set', async () => {
     world({ description: 'Release notes', open: [issue('HIM-1', 'new'), issue('HIM-2', 'new')] });
-    await run(['version-freeze', 'v1.1.3', '--date', '2026-10-20']);
+    await run(['version-freeze', 'v1.1.3', '--at', '2026-10-20']);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/version/7', {
       description: 'Release notes\nfrozen: 2026-10-20\nfrozen-keys: HIM-1,HIM-2',
     });
@@ -91,7 +95,7 @@ describe('version-freeze / version-ready / version-defer', () => {
 
   it('version-freeze --dry-run prints the plan and writes nothing', async () => {
     world({ open: [issue('HIM-1', 'new')] });
-    await run(['version-freeze', 'v1.1.3', '--date', '2026-10-20', '--dry-run']);
+    await run(['version-freeze', 'v1.1.3', '--at', '2026-10-20', '--dry-run']);
     expect(mockRequest.mock.calls.every((c) => c[0] === 'GET')).toBe(true);
     expect(out()).toContain('HIM-1');
   });
@@ -137,17 +141,27 @@ describe('version-freeze / version-ready / version-defer', () => {
 
   it('--console-override with a reason turns a FAIL row into an overridden PASS and writes a ledger row', async () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', 'HIM-2 ships in v1.1.4']);
+    await run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set', 'HIM-2 ships in v1.1.4']);
     expect(out()).toMatch(/PASS\s+frozen-set.*overridden.*HIM-2 ships in v1.1.4/);
     expect(mockAppend).toHaveBeenCalledWith(
       expect.objectContaining({ version: 'v1.1.3', key: 'frozen-set', kind: 'override', reason: 'HIM-2 ships in v1.1.4' }),
     );
   });
 
-  it('--console-override from a leg (no console marker) stays FAIL and writes no ledger row', async () => {
-    process.env.HIMMEL_CONSOLE_LEG = '1';
+  it('--console-override overrules only the named row; it is repeatable, one ledger row each', async () => {
+    probes.mainCi = () => ({ ok: false, detail: 'ci red' });
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new')], blockers: [issue('HIM-9', 'new')] });
+    await run(['version-ready', 'v1.1.3', '--console-override', 'main-ci', 'flaky', '--console-override', 'frozen-set', 'moves']);
+    expect(out()).toMatch(/PASS\s+main-ci.*flaky/);
+    expect(out()).toMatch(/PASS\s+frozen-set.*moves/);
+    expect(out()).toMatch(/FAIL\s+no-blocker-bug/);
+    expect(mockAppend).toHaveBeenCalledTimes(2);
+  });
+
+  it('--console-override without the console marker stays FAIL and writes no ledger row', async () => {
+    delete process.env.HIMMEL_CONSOLE;
     world({ description: FROZEN_DESC, frozen: [issue('HIM-2', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', 'because']);
+    await run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set', 'because']);
     expect(out()).toMatch(/FAIL\s+frozen-set/);
     expect(out()).toMatch(/console marker/);
     expect(mockAppend).not.toHaveBeenCalled();
@@ -155,14 +169,63 @@ describe('version-freeze / version-ready / version-defer', () => {
 
   it('--console-override with a blank reason stays FAIL and writes no ledger row', async () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-2', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', '   ']);
+    await run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set', '   ']);
     expect(out()).toMatch(/FAIL\s+frozen-set/);
     expect(mockAppend).not.toHaveBeenCalled();
   });
 
-  it('version-ready lists recorded overrides and deferrals and prints the burn-down counts', async () => {
+  it('--console-override with an odd number of values is refused', async () => {
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-2', 'new')] });
+    await expect(run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set'])).rejects.toThrow(/pairs/);
+  });
+
+  it('version-ready prints no time-box roll date', async () => {
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')] });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).not.toMatch(/time-box|72 h/);
+  });
+
+  it('a key in the version but not in the frozen list with no ledger row is a leak: the frozen-set row FAILs', async () => {
+    world({
+      description: FROZEN_DESC,
+      frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')],
+      inVersion: [issue('HIM-1', 'done'), issue('HIM-2', 'done'), issue('HIM-7', 'new')],
+    });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+frozen-set.*leak.*HIM-7/);
+    expect(out()).toMatch(/admitted-after-freeze: 1/);
+  });
+
+  it('an rm-admit ledger row clears the leak and the key is printed with its reason and the ruling session', async () => {
     mockRead.mockReturnValue([
-      { ts: '2026-10-21T01:00:00Z', version: 'v1.1.3', key: 'HIM-5', gate: 'must:98', actor: 'f', reason: 'x' },
+      { ts: '2026-10-21T01:00:00Z', version: 'v1.1.3', key: 'HIM-7', kind: 'rm-admit', actor: 'c', reason: 'found work, P1', by: 'rm-N3063' },
+    ]);
+    world({
+      description: FROZEN_DESC,
+      frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')],
+      inVersion: [issue('HIM-1', 'done'), issue('HIM-2', 'done'), issue('HIM-7', 'new')],
+    });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/PASS\s+frozen-set/);
+    expect(out()).toMatch(/admitted\tHIM-7\tfound work, P1\trm-N3063/);
+    expect(out()).toMatch(/admitted-after-freeze: 1/);
+  });
+
+  it('a gate-filed ledger row also counts as an admission, and an unrecorded Done key is a Done-fold, not a leak', async () => {
+    mockRead.mockReturnValue([{ ts: '2026-10-21T01:00:00Z', version: 'v1.1.3', key: 'HIM-5', gate: 'critical', actor: 'f' }]);
+    world({
+      description: FROZEN_DESC,
+      frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')],
+      inVersion: [issue('HIM-1', 'done'), issue('HIM-2', 'done'), issue('HIM-5', 'new'), issue('HIM-8', 'done')],
+    });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/PASS\s+frozen-set/);
+    expect(out()).toMatch(/admitted\tHIM-5\tcritical/);
+    expect(out()).toMatch(/done-folded: 1/);
+  });
+
+  it('version-ready lists recorded overrides and deferrals and prints the frozen-open count', async () => {
+    mockRead.mockReturnValue([
       { ts: '2026-10-21T02:00:00Z', version: 'v1.1.3', key: 'frozen-set', kind: 'override', actor: 'c', reason: 'because' },
       { ts: '2026-10-21T03:00:00Z', version: 'v1.1.3', key: 'HIM-2', kind: 'deferral', actor: 'c', reason: 'later' },
     ]);
@@ -171,7 +234,46 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(out()).toMatch(/override.*frozen-set.*because/);
     expect(out()).toMatch(/deferral.*HIM-2.*later/);
     expect(out()).toMatch(/frozen-open: 1/);
-    expect(out()).toMatch(/admitted-after-freeze: 1/);
+    expect(out()).toMatch(/admitted-after-freeze: 0/);
+  });
+
+  it('version-admit writes an rm-admit ledger row with the ruling session', () => {
+    return run(['version-admit', 'HIM-7', '--version', 'v1.1.3', '--reason', 'found work', '--by', 'rm-N3063']).then(() => {
+      expect(mockAppend).toHaveBeenCalledWith(
+        expect.objectContaining({ version: 'v1.1.3', key: 'HIM-7', kind: 'rm-admit', reason: 'found work', by: 'rm-N3063' }),
+      );
+    });
+  });
+
+  it('version-admit without the console marker, a reason or --by is refused before any write', async () => {
+    const argv = ['version-admit', 'HIM-7', '--version', 'v1.1.3'];
+    await expect(run([...argv, '--reason', 'r'])).rejects.toThrow(/--by/);
+    await expect(run([...argv, '--by', 'rm'])).rejects.toThrow(/--reason/);
+    delete process.env.HIMMEL_CONSOLE;
+    await expect(run([...argv, '--reason', 'r', '--by', 'rm'])).rejects.toThrow(/console marker/);
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('version-freeze --keys-file freezes the listed keys at --at and labels each', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vf-'));
+    const file = join(dir, 'keys.txt');
+    writeFileSync(file, 'HIM-1\n\n# a comment\nHIM-2\nHIM-1\n');
+    world({ description: 'notes', open: [issue('HIM-99', 'new')] });
+    await run(['version-freeze', 'v1.1.3', '--keys-file', file, '--at', '2026-10-20']);
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/version/7', { description: 'notes\nfrozen: 2026-10-20\nfrozen-keys: HIM-1,HIM-2' });
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIM-2', { update: { labels: [{ add: 'scope-v1.1.3' }] } });
+    expect(mockRequest).not.toHaveBeenCalledWith('PUT', '/issue/HIM-99', expect.anything());
+    rmSync(dir, { recursive: true });
+  });
+
+  it('version-freeze --keys-file refuses a line that is not a ticket key', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vf-'));
+    const file = join(dir, 'keys.txt');
+    writeFileSync(file, 'HIM-1\nnot a key\n');
+    world({});
+    await expect(run(['version-freeze', 'v1.1.3', '--keys-file', file])).rejects.toThrow(/not a ticket key/);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
+    rmSync(dir, { recursive: true });
   });
 
   it('version-defer labels the ticket deferred and writes a deferral ledger row', async () => {
@@ -183,8 +285,8 @@ describe('version-freeze / version-ready / version-defer', () => {
     );
   });
 
-  it('version-defer from a leg is refused before any write', async () => {
-    process.env.HIMMEL_CONSOLE_LEG = '1';
+  it('version-defer without the console marker is refused before any write', async () => {
+    delete process.env.HIMMEL_CONSOLE;
     await expect(
       run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--reason', 'x']),
     ).rejects.toThrow(/console marker/);
