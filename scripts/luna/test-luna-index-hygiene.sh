@@ -118,6 +118,14 @@ touch -d '3 days ago' "$V/graphify-out/d/GRAPH_REPORT.md"; mkdir "$V/graphify-ou
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off7" --apply >/dev/null 2>&1
 check "a held promote lock blocks the offload" 0 "$([ -d "$V/graphify-out/.promote.lock" ] && echo 0 || echo 1)"
 
+# --- an ignore list indented four spaces is refused, not corrupted ------------
+V="$W/v10"; make_vault "$V"; CFG="$W/c10.yml"; write_cfg "$CFG" "$V"
+awk '{print} /^  luna:/{f=1} f&&/pattern:/{print "    ignore:"; print "    - \"Clippings/_raw/**\""; f=0}' "$CFG" > "$CFG.n" && mv "$CFG.n" "$CFG"
+cp "$CFG" "$W/c10.orig"
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
+check "a four-space ignore list exits 4" 4 "$?"
+check "and the config is left as it was" 0 "$(cmp -s "$CFG" "$W/c10.orig" && echo 0 || echo 1)"
+
 # --- failure paths: a missing value, an unwritable ignore file, an unreadable tree
 timeout 5 bash "$SUT" --vault >/dev/null 2>&1
 check "an option with no value exits 2 instead of looping" 2 "$?"

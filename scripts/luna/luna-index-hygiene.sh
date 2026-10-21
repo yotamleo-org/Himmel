@@ -17,7 +17,8 @@
 #
 # Usage: luna-index-hygiene.sh --vault DIR --qmd-config FILE [--collection luna]
 #                              [--offload-root DIR] [--apply]
-# Exit: 0 ok, 2 usage, 3 collection not in the config, 4 unsupported config shape.
+# Exit: 0 ok, 1 a file write or the offload move failed, 2 usage, 3 collection
+# not in the config, 4 unsupported config shape.
 set -uo pipefail
 
 VAULT=""; CFG=""; COLLECTION="luna"; OFFLOAD_ROOT=""; APPLY=0
@@ -79,6 +80,10 @@ if ig is None:
     insert_at = len(block)
 else:
     insert_at = ig + 1
+    first = block[insert_at] if insert_at < len(block) else ""
+    if first.lstrip().startswith("- ") and not first.startswith("      - "):
+        print("luna-index-hygiene: '%s' ignore items are not indented six spaces; refusing to edit" % coll, file=sys.stderr)
+        sys.exit(4)
     while insert_at < len(block) and block[insert_at].startswith("      - "):
         have.append(block[insert_at][8:].strip().strip('"').strip("'"))
         insert_at += 1
