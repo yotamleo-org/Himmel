@@ -308,7 +308,9 @@ echo "ok: core/project idempotent on re-run"
 # never wired the hook silently ignored the setting.
 ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | .[0] // empty' "$s")
 [ -n "$ss_cmd" ] || fail "HIMMEL-6956: core/project did not wire the inject-initiative SessionStart hook"
-ss_out=$(cd "$proj" && HIMMEL_INITIATIVE=pr HIMMEL_REPO="$repo_root" bash -c "$ss_cmd" </dev/null)
+mkdir -p "$work/ss-clone"
+printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
+ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
 grepq "$ss_out" 'Active steps: pr' \
   || fail "HIMMEL-6956: the project-scope SessionStart hook did not name the active step (got: $ss_out)"
 ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
