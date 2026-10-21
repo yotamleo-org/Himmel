@@ -120,8 +120,8 @@ gh_read() {
         gh "$@"
         return $?
     fi
-    cat "$outf"; rm -f "$outf"
-    cat "$errf" >&2
+    cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
+    cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
     rm -f "$errf"
     return "$rc"
 }
