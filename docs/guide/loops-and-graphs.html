@@ -231,7 +231,6 @@
     .diagram .center-s { font-size: 17px; }
   }
 </style>
-<script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
 <a class="skip" href="#explorer">Skip to the loop explorer</a>
@@ -886,6 +885,7 @@
   s = JSON.parse(JSON.stringify(defaults));
   sync();
   render();
+  document.documentElement.classList.add('js');
 })();
 </script>
 </body>
