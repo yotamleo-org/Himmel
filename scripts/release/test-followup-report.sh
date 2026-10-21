@@ -38,7 +38,7 @@ has "escape: 2 created, 1 done" "$out" "escape 2 1"
 has "hardening: 2 created, 1 done" "$out" "hardening 2 1"
 has "polish: 1 created, 0 done" "$out" "polish 1 0"
 has "unclassified follow-up counted" "$out" "unclassified-followups 1"
-has "deferred escapes counted (claim B)" "$out" "deferred-escapes 1"
+check "deferred escapes counted exactly (claim B)" "$(printf '%s\n' "$out" | grep -E '^deferred-escapes ')" "deferred-escapes 1"
 has "cap: 2 hardening of 5 load = 40 pct, over the 20 pct cap" "$out" "hardening-share 40% cap 20% OVER"
 has "claim A joins only this version's tickets, mean rounds 3" "$out" "usage-tickets 2 mean-rounds 3"
 has "claim A sums tokens" "$out" "input 11 output 22 cache_create 33 cache_read 44"
@@ -48,6 +48,11 @@ printf '#!/usr/bin/env bash\nprintf "HIMMEL-1\\tTask\\tDone\\tfeature\\t\\n"\n' 
 out2="$(FOLLOWUP_JIRA_CMD="$tmp/jira2" bash "$RPT" --version v1 --store "$tmp/store" 2>&1)"; rc=$?
 check "no follow-ups: exits 0" "$rc" "0"
 has "no follow-ups: hardening share 0" "$out2" "hardening-share 0% cap 20% ok"
+
+# The deferred-escape label counts on its own, with no fu-escape class label.
+printf '#!/usr/bin/env bash\nprintf "HIMMEL-12\\tTask\\tDone\\tfix: late catch\\tdeferred-escape\\n"\n' >"$tmp/jira6"; chmod +x "$tmp/jira6"
+out8="$(FOLLOWUP_JIRA_CMD="$tmp/jira6" bash "$RPT" --version v1 --store "$tmp/store" 2>&1)"
+check "deferred-escape without a class label counts" "$(printf '%s\n' "$out8" | grep -E '^deferred-escapes ')" "deferred-escapes 1"
 
 # Hardening with zero base load is OVER, never a vacuous ok (review codex-1).
 printf '#!/usr/bin/env bash\nprintf "HIMMEL-7\\tTask\\tDone\\tdeferred: x\\tfu-hardening\\n"\n' >"$tmp/jira4"; chmod +x "$tmp/jira4"
