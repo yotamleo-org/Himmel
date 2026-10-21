@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-fleet-reservation-key.sh. Pins the ONE
 # source of truth for a fleet reservation's on-disk key
-# (scripts/lib/fleet-reservation-key.sh): bank-preflight.sh reserves under it
+# (scripts/lib/fleet-reservation-key.sh): usage-preflight.sh reserves under it
 # and arm-resume.sh releases by it, so the two can never disagree.
 #
 # No .ps1 twin: the reservation dir is a POSIX tmpfs construct (same
@@ -9,7 +9,7 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 LIB="$REPO/scripts/lib/fleet-reservation-key.sh"
-PREFLIGHT="$REPO/scripts/lib/bank-preflight.sh"
+PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh"
 PASS=0; FAIL=0
 W="$(mktemp -d -t fleet-resv-key.XXXXXX)" || { echo "FAIL - could not create scratch dir via mktemp" >&2; exit 1; }
 if [ -z "$W" ] || [ ! -d "$W" ]; then echo "FAIL - mktemp returned an empty/invalid scratch dir" >&2; exit 1; fi
@@ -45,7 +45,7 @@ mb="$(printf 'é%.0s' $(seq 1 200))"
 check "(b) a multibyte name over 255 BYTES hashes (byte length, not char length)" "$(hash_of "$mb")" "$(LC_ALL=en_US.UTF-8 fleet_reservation_key "$mb")"
 check "(b) fleet_hash_key is the plain cksum" "$(hash_of abc)" "$(fleet_hash_key abc)"
 
-# --- (c) bank-preflight.sh RESERVES under exactly that key — one source of
+# --- (c) usage-preflight.sh RESERVES under exactly that key — one source of
 # truth, so a drift in either copy fails here rather than in production.
 NOW="$(date +%s)"
 printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}' "$NOW" > "$W/c.json"

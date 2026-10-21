@@ -10,10 +10,10 @@ PHASE="${1:?usage: 06-bank-delta.sh before|after}"
 REPO_ROOT="$(cd "$PROBE_DIR/../../.." && pwd)"
 CACHE="${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}"
 
-VERDICT="$(bash "$REPO_ROOT/scripts/lib/bank-preflight.sh" 2>"$OUT_DIR/06-$PHASE-preflight.err")"
+VERDICT="$(bash "$REPO_ROOT/scripts/lib/usage-preflight.sh" 2>"$OUT_DIR/06-$PHASE-preflight.err")"
 PREFLIGHT_RC=$?
 if [ "$PREFLIGHT_RC" -ne 0 ]; then
-  echo "06: ERROR: bank-preflight.sh failed (rc=$PREFLIGHT_RC): $(cat "$OUT_DIR/06-$PHASE-preflight.err" 2>/dev/null)" >&2
+  echo "06: ERROR: usage-preflight.sh failed (rc=$PREFLIGHT_RC): $(cat "$OUT_DIR/06-$PHASE-preflight.err" 2>/dev/null)" >&2
   exit 1
 fi
 echo "06: $PHASE verdict=$VERDICT"

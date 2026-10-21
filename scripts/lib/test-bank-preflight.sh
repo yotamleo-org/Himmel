@@ -2,7 +2,7 @@
 # test-bank-preflight.sh — Hermetic: fixture caches, stub producer.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-SUT="$REPO/scripts/lib/bank-preflight.sh"
+SUT="$REPO/scripts/lib/usage-preflight.sh"
 PASS=0; FAIL=0
 W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 # All bank reads prune reservations, so isolate even bank-only cases.
@@ -315,7 +315,7 @@ fleet_verdict() {
   # call into the next call's "duplicate" refusal, and would pollute this
   # machine's real fleet slots besides.
   # An unchecked mktemp failure here
-  # left HIMMEL_FLEET_SLOTS empty, and bank-preflight.sh's own
+  # left HIMMEL_FLEET_SLOTS empty, and usage-preflight.sh's own
   # `${HIMMEL_FLEET_SLOTS:-default}` treats a set-but-empty var the same as
   # unset — silently falling BACK to this machine's real fleet slot dir,
   # exactly the pollution this fresh-per-call dir exists to avoid. Fail loud
@@ -552,7 +552,7 @@ fi
 # --- CADENCE_BANK_LANE=claudex parks on the codex bank -------
 # claudex_verdict <status-stub-output> - same shape as verdict(), but with
 # CADENCE_BANK_LANE=claudex and CADENCE_BANK_STATUS_CMD pointed at a stub
-# that just echoes the given line (mirroring scripts/lanes/bank-status.ts's
+# that just echoes the given line (mirroring scripts/lanes/usage-status.ts's
 # own "<lane> <state> <detail>" stdout contract). NO_FLEET keeps this
 # isolated from the fleet gate, which runs first regardless of lane.
 claudex_verdict() {
@@ -579,7 +579,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - unmeasurable claudex bank did not WARN by name"
 fi
 
-# A missing/empty status line (e.g. the probe crashed outright, bank-status.ts
+# A missing/empty status line (e.g. the probe crashed outright, usage-status.ts
 # itself errored) must fall to the SAME unknown/WARN/PROCEED path, never a
 # crash or a false refusal.
 check "claudex lane, status command produces nothing -> PROCEED (WARN)" PROCEED \
@@ -709,7 +709,7 @@ check "OpenRouter lane, native bank 99 -> PROCEED" PROCEED \
      CADENCE_BANK_LEDGER="$W/ledger.jsonl" FLEET_PS_CMD="$NO_FLEET" \
      LEG_LANE=openrouter CADENCE_BANK_LANE=openrouter CADENCE_BANK_STATUS_CMD="$OR_STATUS" \
      OPENROUTER_MIN_CREDIT_USD=3 \
-       bash "$W/openrouter-repo/scripts/lib/bank-preflight.sh" </dev/null 2>"$W/err.log")"
+       bash "$W/openrouter-repo/scripts/lib/usage-preflight.sh" </dev/null 2>"$W/err.log")"
 check "OpenRouter skips codex status read" absent "$(if [ -e "$W/or-status-calls" ]; then echo present; else echo absent; fi)"
 check "native lane without lane env, native bank 99 -> SKIPPED-BANK" SKIPPED-BANK \
   "$(env -u LEG_LANE -u CADENCE_BANK_LANE CADENCE_BANK_CACHE="$W/c.json" \

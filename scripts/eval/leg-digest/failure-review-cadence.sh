@@ -16,7 +16,7 @@
 # `arm --live` also bakes the current JIRA_PROJECT_KEY into the runner (cron has none) and refuses
 # when it is unset or not a project key; dry-run needs no key.
 #
-# `run` asks scripts/lib/bank-preflight.sh first, like every pipeline cadence leg, and branches on
+# `run` asks scripts/lib/usage-preflight.sh first, like every pipeline cadence leg, and branches on
 # its verdict token: SKIPPED-BANK skips the night (logged, rc 0); every other verdict runs. It then
 # runs failure_review.py from the PRIMARY checkout (the runner bakes that path) and, on a router
 # failure, alerts through scripts/luna/cadence-alert.sh; a clean run clears that alert.
@@ -45,7 +45,7 @@ resolve_primary() {
 # cmd_run takes failure_review.py's own flags (the runner passes --vault and, when armed so, --live).
 cmd_run() {
     local verdict rc
-    verdict="$(bash "${FAILURE_REVIEW_PREFLIGHT:-$ROOT/scripts/lib/bank-preflight.sh}" 2>/dev/null | tail -n 1)"
+    verdict="$(bash "${FAILURE_REVIEW_PREFLIGHT:-$ROOT/scripts/lib/usage-preflight.sh}" 2>/dev/null | tail -n 1)"
     echo "failure-review-cadence: bank preflight ${verdict:-<none>}"
     if [ "$verdict" = "SKIPPED-BANK" ]; then
         echo "failure-review-cadence: SKIPPED-BANK, no run tonight"

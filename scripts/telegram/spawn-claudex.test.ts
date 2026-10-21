@@ -1173,7 +1173,7 @@ test("fetchCodexWeeklyUsedPercent: FAIL-CLOSED on a missing/stale/window-less ca
   // Missing (the read throws) — null WITH a reason naming the probe.
   const missing = fetchCodexWeeklyUsedPercent("/home/t", NOW, 21600, () => { throw new Error("ENOENT"); });
   expect(missing.usedPct).toBeNull();
-  expect(missing.reason).toMatch(/codex-bank-probe/);
+  expect(missing.reason).toMatch(/codex-usage-probe/);
 
   // Stale past the TTL.
   const stale = fetchCodexWeeklyUsedPercent("/home/t", NOW, 1, () => bankCacheText(42));

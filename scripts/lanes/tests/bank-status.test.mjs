@@ -16,7 +16,7 @@ import {
 import { formatQuotaAnnotation, resolveActiveAccessPath, resolveBankTargets } from '../resolve.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const BANK_STATUS = join(TEST_DIR, '..', 'bank-status.ts');
+const BANK_STATUS = join(TEST_DIR, '..', 'usage-status.ts');
 const RESOLVER = join(TEST_DIR, '..', 'resolve.mjs');
 
 // The public CI job `lanes-and-trust-suites` runs this suite with
@@ -121,7 +121,7 @@ test('bank-status CLI names an unreadable Codex bank instead of silently reporti
     encoding: 'utf8',
     env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: join(dir, 'missing.json') },
   });
-  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
+  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });
 
 // A canonical quota-gauge ledger row for the GLM lane. `resetAt` is an ISO
@@ -210,7 +210,7 @@ test('/lanes output surfaces limit structure, binding windows, and measured bank
 });
 
 test('bank probe surfaces an overlay-only quota bank instead of "no status returned" (HIMMEL-1690)', () => {
-  // bank-status.ts emits one status line per lane in withBank. A lane ABSENT
+  // usage-status.ts emits one status line per lane in withBank. A lane ABSENT
   // from withBank is exactly what renders as "[bank: unmeasurable — no status
   // returned]" in /lanes (formatBankAnnotation(undefined) in
   // bank-status-core.mjs), so "real status" vs "no status returned" reduces to
@@ -657,5 +657,5 @@ test('bank-status stays unmeasurable, without spinning, when the cache directory
 test('bank-status does not refresh when CODEX_BANK_CACHE is overridden without a probe command', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-bank-refresh-seam-');
   const { out } = runBankStatus(dir, { CODEX_BANK_CACHE: join(dir, 'missing.json') });
-  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
+  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });

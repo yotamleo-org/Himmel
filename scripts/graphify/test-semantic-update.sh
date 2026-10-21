@@ -28,7 +28,7 @@ cat > "$REPO/scripts/graphify/seed-claude-config.sh" <<'EOF'
 exit 0
 EOF
 # Bank stub: verdict from $WS/bank (default PROCEED); every call logged.
-cat > "$REPO/scripts/lib/bank-preflight.sh" <<EOF
+cat > "$REPO/scripts/lib/usage-preflight.sh" <<EOF
 #!/usr/bin/env bash
 echo bank >> "$WS/calls.log"
 cat "$WS/bank" 2>/dev/null || echo PROCEED

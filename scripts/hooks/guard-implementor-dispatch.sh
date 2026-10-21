@@ -44,7 +44,7 @@
 # non-numeric, zero, or negative override is warned and replaced with its
 # documented default rather than reaching the awk ratio math below as a
 # divide-by-zero.
-#   IMPL_GUARD_USAGE_STATUS_CMD    override the funded-bank probe command (tests stub it; default `bun scripts/lanes/bank-status.ts`);
+#   IMPL_GUARD_USAGE_STATUS_CMD    override the funded-bank probe command (tests stub it; default `bun scripts/lanes/usage-status.ts`);
 #                                  the old IMPL_GUARD_BANK_STATUS_CMD is still read
 #   IMPL_GUARD_USAGE_BUDGET_SECS   funded-bank probe wall-clock budget (default 4); old IMPL_GUARD_BANK_BUDGET_SECS still read
 #   IMPL_GUARD_READINESS_CMD       override the lane-readiness probe command (tests stub it; default `node scripts/lanes/lane-readiness.mjs`)
@@ -436,11 +436,11 @@ lane_funded() {
             warn "lane '$id' bank-status probe needs bun, which is not on PATH — bank UNKNOWN; skipping it"
             return 1
         fi
-        if [ ! -f "$repo_root/scripts/lanes/bank-status.ts" ]; then
-            warn "lane '$id' bank-status probe is missing ($repo_root/scripts/lanes/bank-status.ts) — bank UNKNOWN; skipping it"
+        if [ ! -f "$repo_root/scripts/lanes/usage-status.ts" ]; then
+            warn "lane '$id' bank-status probe is missing ($repo_root/scripts/lanes/usage-status.ts) — bank UNKNOWN; skipping it"
             return 1
         fi
-        cmd="bun \"$repo_root/scripts/lanes/bank-status.ts\""
+        cmd="bun \"$repo_root/scripts/lanes/usage-status.ts\""
     fi
     rc=0
     out=$(_run_bounded "$budget" "$cmd") || rc=$?

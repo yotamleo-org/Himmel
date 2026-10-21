@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/test-bank-attribution.sh -- fixture test for bank-attribution.sh.
+# scripts/lib/test-bank-attribution.sh -- fixture test for usage-attribution.sh.
 # Builds synthetic sessions under mktemp -d projects roots
 # (never a live vault) covering: a named session (customTitle) with all three
 # wake sources plus a streamed turn with a duplicate usage row plus an inline
@@ -23,7 +23,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # BANK_ATTRIBUTION_SCRIPT lets a caller point the fixture at a different copy
 # of the script (e.g. a pre-fix revision extracted via `git show`) to prove a
 # RED-before-GREEN transition without touching the working tree.
-SCRIPT="${BANK_ATTRIBUTION_SCRIPT:-$HERE/bank-attribution.sh}"
+SCRIPT="${BANK_ATTRIBUTION_SCRIPT:-$HERE/usage-attribution.sh}"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-bank-attribution.XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
@@ -300,8 +300,8 @@ OUT_H="$(bash "$SCRIPT" "$ROOT5")"
 assert_contains "$OUT_H" "| Session-H | test-slug | n/a | 7 | 160 | 0 | 0 | 0 | 3/2/2 | 0 | 111/5/24 |" "session H: rendered cross-session text, queued_command attachment, skill-body exclusion, isMeta-gated command-body exclusion vs genuine operator slash command, idle-notice classification, first-resp-input"
 
 if [ "$FAIL" -eq 0 ]; then
-  echo "OK: bank-attribution.sh fixture assertions passed"
+  echo "OK: usage-attribution.sh fixture assertions passed"
 else
-  echo "FAIL: bank-attribution.sh fixture assertions failed" >&2
+  echo "FAIL: usage-attribution.sh fixture assertions failed" >&2
   exit 1
 fi

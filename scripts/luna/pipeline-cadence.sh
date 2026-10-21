@@ -115,11 +115,11 @@ SETTINGS_FRAGMENT="$BAT_DIR/cadence-settings.json"
 # The bank guard the three claude legs launch behind (CLAUDE.md's billing rule:
 # a scheduled or unattended site preflights before spending the shared
 # 5h/weekly subscription bank). The generated runners
-# branch on the helper's VERDICT TOKEN, never its exit code: bank-preflight.sh
+# branch on the helper's VERDICT TOKEN, never its exit code: usage-preflight.sh
 # always exits 0 by design, and its BANK-STALE / BANK-UNKNOWN verdicts are
 # deliberately fail-open (a box with no usage cache must still run its cadence).
 # Only SKIPPED-BANK stops a leg.
-BANK_PREFLIGHT="$HIMMEL_ROOT/scripts/lib/bank-preflight.sh"
+BANK_PREFLIGHT="$HIMMEL_ROOT/scripts/lib/usage-preflight.sh"
 
 # The free precondition for the synthesize leg. Answers NEW/NONE
 # from the filesystem so a night with no newly triaged clips costs no session.
@@ -695,7 +695,7 @@ emit_bat() {
     #
     # NO `timeout` wrapper here, unlike refresh-graph-map.sh's call site. That
     # one guards a multi-HOUR extraction where an unbounded precondition check
-    # is a real hazard. bank-preflight.sh's only network work is
+    # is a real hazard. usage-preflight.sh's only network work is
     # usage-cache-producer.sh, whose single curl is already `--max-time 5`, and
     # this leg's own budget is ~20 minutes -- a second bound would be
     # speculative, and emitting one through the cmd -> bash boundary costs more
@@ -1293,7 +1293,7 @@ cmd_arm() {
     # escaping the moment it crosses the cmd -> bash boundary.
     local bank_lib_m gate_lib_m
     if ! bank_lib_m=$(cygpath -m "$BANK_PREFLIGHT" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -m failed for bank-preflight.sh: $bank_lib_m" >&2
+        echo "ERR pipeline-cadence: cygpath -m failed for usage-preflight.sh: $bank_lib_m" >&2
         exit 4
     fi
     if ! gate_lib_m=$(cygpath -m "$SYNTH_GATE" 2>&1); then

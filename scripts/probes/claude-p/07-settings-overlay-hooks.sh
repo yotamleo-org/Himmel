@@ -38,7 +38,7 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 echo "07-settings-overlay-hooks: bank preflight..."
-BANK_VERDICT="$(CADENCE_USAGE_LEG=probe-3e-settings-overlay-hooks bash "$REPO_ROOT/scripts/lib/bank-preflight.sh")"
+BANK_VERDICT="$(CADENCE_USAGE_LEG=probe-3e-settings-overlay-hooks bash "$REPO_ROOT/scripts/lib/usage-preflight.sh")"
 echo "07-settings-overlay-hooks: bank verdict = $BANK_VERDICT"
 if [ "$BANK_VERDICT" != "PROCEED" ]; then
   echo "07-settings-overlay-hooks: SKIP - bank preflight verdict '$BANK_VERDICT', not spending"

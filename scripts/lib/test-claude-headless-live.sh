@@ -12,7 +12,7 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/lib/claude-headless.sh"
 
-BANK_VERDICT="$(CADENCE_BANK_LEG=claude-headless-live-selftest bash "$REPO/scripts/lib/bank-preflight.sh")"
+BANK_VERDICT="$(CADENCE_BANK_LEG=claude-headless-live-selftest bash "$REPO/scripts/lib/usage-preflight.sh")"
 if [ "$BANK_VERDICT" != "PROCEED" ]; then
   echo "test-claude-headless-live: SKIP - bank preflight verdict '$BANK_VERDICT', not spending on the live self-test"
   exit 0

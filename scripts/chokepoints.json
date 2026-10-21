@@ -14,6 +14,9 @@
   "scripts/lanes/stop-worker.sh": {
     "seam_env_vars": ["STOP_WORKER_GRACE_SECS", "STOP_WORKER_BRIDGE_ROOT_OVERRIDE"]
   },
+  "scripts/lib/usage-preflight.sh": {
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE"]
+  },
   "scripts/lib/bank-preflight.sh": {
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE"]
   },

@@ -329,5 +329,10 @@ TICK_BANK_CACHE_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N
 WAVE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 bank-lift.json	usage-lift.json	identifier	old-to-new	V1	X
 bank-lift.sh	usage-lift.sh	identifier	old-to-new	V1	X
+bank-attribution.sh	usage-attribution.sh	identifier	old-to-new	V1	X
+bank-monitor.sh	usage-monitor.sh	identifier	old-to-new	V1	X
+bank-preflight.sh	usage-preflight.sh	identifier	old-to-new	V1	X
+bank-status.ts	usage-status.ts	identifier	old-to-new	V1	X
+codex-bank-probe.ts	codex-usage-probe.ts	identifier	old-to-new	V1	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X

@@ -271,10 +271,10 @@ is_block_device() {
     return 1
 }
 
-# scan a `docker cp` clause: block if a host-path arg is secret-bearing.
+# scan the words of a `docker cp` command: block if a host-path arg is secret-bearing.
 scan_cp() {
-    local clause="$1" tok seensub=0
-    for tok in $clause; do
+    local tok seensub=0
+    for tok in "$@"; do
         tok=$(strip_quotes "$tok")
         if [ "$seensub" = "0" ]; then
             [ "$tok" = "cp" ] && seensub=1
@@ -293,10 +293,10 @@ scan_cp() {
     return 1
 }
 
-# scan a docker/podman run|exec|create clause → 0 block / 1 allow.
-scan_docker_clause() {
-    local clause="$1" tok cmdtok="" sub="" expectsub=0 skipval=0
-    for tok in $clause; do
+# scan the words of a docker/podman run|exec|create command → 0 block / 1 allow.
+scan_docker_words() {
+    local tok cmdtok="" sub="" expectsub=0 skipval=0
+    for tok in "$@"; do
         # Strip surrounding quotes so a quoted flag TOKEN (`docker run "-v"
         # /etc:/h`, `"--privileged"`) cannot dodge the case match below.
         tok=$(strip_quotes "$tok")
@@ -325,13 +325,13 @@ scan_docker_clause() {
     done
     [ -z "$cmdtok" ] && return 1
     case "$sub" in
-        cp) scan_cp "$clause"; return $? ;;
+        cp) scan_cp "$@"; return $? ;;
         run|exec|create) ;;
         *) return 1 ;;
     esac
 
     local pending="" seensub=0
-    for tok in $clause; do
+    for tok in "$@"; do
         tok=$(strip_quotes "$tok")
         if [ "$seensub" = "0" ]; then
             [ "$tok" = "$sub" ] && seensub=1
@@ -372,19 +372,30 @@ scan_docker_clause() {
     return 1
 }
 
-# Split into clauses at shell separators (mount specs contain none of these).
-normalized=$(printf '%s' "$cmd" | sed -e 's/[;|&()`]/\
-/g')
+# Tokenise one clause line the way the shell splits an unquoted string.
+scan_docker_clause() {
+    local -a w=()
+    read -ra w <<<"$1"
+    scan_docker_words ${w[@]+"${w[@]}"}
+}
 
-block=0
-while IFS= read -r clause; do
-    [ -z "$clause" ] && continue
-    if scan_docker_clause "$clause"; then block=1; fi
-done <<EOF
+# FALLBACK reader (PowerShell, or text shfmt cannot parse): split into clauses at
+# shell separators (mount specs contain none of these) and scan each clause.
+# Returns 0 when some clause blocks.
+legacy_blocked() {
+    local normalized clause hit=1
+    normalized=$(printf '%s' "$1" | sed -e 's/[;|&()`]/\
+/g')
+    while IFS= read -r clause; do
+        [ -z "$clause" ] && continue
+        if scan_docker_clause "$clause"; then hit=0; fi
+    done <<EOF
 $normalized
 EOF
+    return "$hit"
+}
 
-if [ "$block" = "1" ]; then
+deny_priv() {
     [ "${DOCKER_PRIVESC_OK:-0}" = "1" ] && exit 0
     echo "⛔ block-docker-privesc: refusing $tool command — root-equivalent container access" >&2
     echo "    $cmd" >&2
@@ -395,6 +406,76 @@ if [ "$block" = "1" ]; then
     echo "    DOCKER_PRIVESC_OK=1 claude" >&2
     echo "Session-sticky. Restart Claude without it to re-enable the guard." >&2
     exit 2
+}
+
+# The words each docker/podman invocation runs with, one line per invocation
+# (words joined by US). A wrapper the model cannot see through (sudo, xargs, ssh,
+# find -exec) hands over its argv from each docker word on, so a user or host named
+# docker is not taken for the program. The model only adds denials: the regex
+# reader below always runs on the whole command, so a position the model cannot
+# read (a stdin-running program, an assignment value, a control byte) keeps the
+# regex verdict.
+# swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' DP_JQ <<'DP_JQ_EOF' || true
+def b: (. // "") | sub("^.*[/\\\\]"; "");
+def w: if .t == "lit" then .v else (.raw // "") end;
+def isd: .t == "lit" and (.v | b | IN("docker", "podman"));
+def words: map(w) | if any(test("[\u001f\n]")) then empty else join("\u001f") end;
+.[]
+| if (.prog | b | IN("docker", "podman")) then (.argv | words)
+  elif .opaque != null then
+    .argv as $a
+    | ([range(0; $a | length) | select($a[.] | isd)] | .[]) as $g
+    | $a[$g:] | words
+  else empty end
+DP_JQ_EOF
+
+# A command that names neither docker nor podman (quotes, backslashes and line
+# continuations dropped, as the shell joins d\ocker and dock<newline>er) cannot
+# run one, so it never pays for shfmt.
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr -d "'\"\\\\")
+case "$cmd_nq" in
+    *docker* | *podman*) ;;
+    *) exit 0 ;;
+esac
+
+# The command-position model (scripts/lib/bash-ast.sh) reads where each command
+# runs, so command / exec / nohup / env / sudo / ssh / bash -c / eval reach the
+# docker they run, and a program or flag spelled through quotes or a backslash is
+# still that program. It only adds denials: the regex reader runs on the whole
+# command afterwards, whatever the model says, so this guard is never weaker than
+# the regex alone. PowerShell (which shfmt cannot read) goes to the regex reader.
+if [ "$tool" != PowerShell ]; then
+    lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+    # shellcheck source=../lib/bash-ast.sh
+    if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+        echo "block-docker-privesc: cannot load $lib - refusing to evaluate" >&2
+        exit 2
+    fi
+    ast_rc=0
+    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    case "$ast_rc" in
+        0)
+            # swallow-ok: a jq failure falls through to the regex verdict, never weaker
+            if verdict=$(printf '%s' "$pos" | jq -r "$DP_JQ" 2>/dev/null); then
+                blocked=0
+                while IFS= read -r line; do
+                    [ -n "$line" ] || continue
+                    toks=()
+                    IFS=$'\037' read -r -a toks <<<"$line"
+                    if scan_docker_words "${toks[@]}"; then blocked=1; fi
+                done <<<"$verdict"
+                [ "$blocked" = 1 ] && deny_priv
+            fi
+            ;;
+        2)
+            [ "${DOCKER_PRIVESC_OK:-0}" = "1" ] && exit 0
+            echo "block-docker-privesc: shfmt not on PATH, so this command that names docker or podman cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with DOCKER_PRIVESC_OK=1." >&2
+            exit 2
+            ;;
+    esac
 fi
 
+legacy_blocked "$cmd" && deny_priv
+legacy_blocked "$cmd_nq" && deny_priv
 exit 0

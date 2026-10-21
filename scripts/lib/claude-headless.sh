@@ -69,7 +69,7 @@ Env:
   HIMMEL_CLAUDE_BIN               claude binary/command (default: claude; tests inject a fake)
   HIMMEL_REGISTRY_DIR             registry root (default: $HOME/.himmel/registry)
   HIMMEL_DISPATCH_MAX_CONCURRENT  concurrency cap (default: 3)
-  CADENCE_USAGE_*                 forwarded to scripts/lib/bank-preflight.sh (old CADENCE_BANK_* still read)
+  CADENCE_USAGE_*                 forwarded to scripts/lib/usage-preflight.sh (old CADENCE_BANK_* still read)
 
 On Windows/Git Bash: --worktree/--cwd/--artifact are checked with bash's own
 file tests, which tolerate a POSIX-style /tmp/... path fine. But if your
@@ -591,7 +591,7 @@ trap 'finalize_on_exit 143' TERM
 mkdir -p "$LIVE_DIR" || die "could not create registry dir: $LIVE_DIR"
 
 # --- bank preflight (mandatory, before anything is dispatched) ---
-BANK_VERDICT="$(CADENCE_USAGE_LEG="${CADENCE_USAGE_LEG:-${CADENCE_BANK_LEG:-claude-headless:$ROLE}}" bash "$REPO_ROOT/scripts/lib/bank-preflight.sh")"
+BANK_VERDICT="$(CADENCE_USAGE_LEG="${CADENCE_USAGE_LEG:-${CADENCE_BANK_LEG:-claude-headless:$ROLE}}" bash "$REPO_ROOT/scripts/lib/usage-preflight.sh")"
 [ "$BANK_VERDICT" = "PROCEED" ] || die "bank preflight refused dispatch (verdict: $BANK_VERDICT); refusing to spend"
 
 # --- capture the artifact's pre-dispatch state, so a stale pre-existing

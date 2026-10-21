@@ -1,4 +1,4 @@
-// Pure helpers for scripts/lanes/codex-bank-probe.ts. Kept in a
+// Pure helpers for scripts/lanes/codex-usage-probe.ts. Kept in a
 // plain .mjs — importable by node --test — so the framing parser and the
 // rateLimits normalizer are unit-testable without ever spawning `codex`.
 

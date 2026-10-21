@@ -44,12 +44,12 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin/bun"
 printf '%s\n' '    1     0 40-00:00:01 /sbin/init' > "$W/ps-none.txt"
 cp "$HERE/../../lanes/ceiling-conformance.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh"
 cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-sessions.sh"
-cat > "$W/repo/scripts/lib/bank-preflight.sh" <<'STUB'
+cat > "$W/repo/scripts/lib/usage-preflight.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' 'bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/8' >&2
 printf '%s\n' PROCEED
 STUB
-chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/bank-preflight.sh" "$W/bin/"*
+chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/usage-preflight.sh" "$W/bin/"*
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
 
 export PATH="$W/bin:$PATH"

@@ -3,7 +3,7 @@
 # arm with an explicit HH:MM must not run the usage-cache producer refresh;
 # --time auto / smart-on-the-live-cache keep it (the slot lookup reads the cache).
 #
-# arm-resume.sh calls scripts/lib/bank-preflight.sh only to enforce the
+# arm-resume.sh calls scripts/lib/usage-preflight.sh only to enforce the
 # fleet-size cap and discards every verdict but SKIPPED-FLEET. bank-preflight's
 # own producer refresh (USAGE_OAUTH_TTL=0, session-less) rewrites the shared
 # usage cache and stamps it with whatever identity the caller's environment
@@ -22,7 +22,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ARM="$SCRIPT_DIR/arm-resume.sh"
-PREFLIGHT="$SCRIPT_DIR/../lib/bank-preflight.sh"
+PREFLIGHT="$SCRIPT_DIR/../lib/usage-preflight.sh"
 
 TMP=$(mktemp -d) || { echo "FAIL: mktemp -d failed; refusing to run without a scratch dir" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
@@ -142,7 +142,7 @@ unset CADENCE_BANK_SKIP_REFRESH CLAUDE_USAGE_CACHE RESUME_SLOT_CACHE 2>/dev/null
 rm -f "$MARKER"
 bash "$PREFLIGHT" </dev/null >/dev/null 2>&1
 if [ -f "$MARKER" ]; then ctl=0; else ctl=1; fi
-check "control: bank-preflight.sh (no skip) invokes the producer stub" "$ctl"
+check "control: usage-preflight.sh (no skip) invokes the producer stub" "$ctl"
 
 # --- a real arm must NOT ---------------------------------------------------------
 future_time() { python3 -c 'import datetime; print((datetime.datetime.now()+datetime.timedelta(minutes=30)).strftime("%H:%M"))'; }

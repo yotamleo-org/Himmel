@@ -3,13 +3,13 @@
 # 30-minute bank sample ring, burn projections, wake-up suppression, resets,
 # missing data, and the claudex/codex bank input.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. bank-monitor.sh is a POSIX/Git-Bash
+# PLATFORM GUARD: no .ps1 twin, by design. usage-monitor.sh is a POSIX/Git-Bash
 # Bash 3.2 monitor consumed by the Linux console kit; this suite uses its
 # explicit cache, clock, state, and command seams.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SUT="$HERE/bank-monitor.sh"
+SUT="$HERE/usage-monitor.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/bank-monitor-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
@@ -35,7 +35,7 @@ export BANK_STUB_ROW_FILE="$W/codex-row"
 export REPO="$W/repo"
 
 # every fixture below stamps the matching current-session account
-# hash so the new usage_cache_account_mismatch() check in bank-monitor.sh
+# hash so the new usage_cache_account_mismatch() check in usage-monitor.sh
 # stays out of the way of the pre-existing rate/state coverage below — this
 # suite is about sampling math, not identity. A dedicated account-mismatch
 # case is added separately, at the end.
