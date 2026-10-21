@@ -42,6 +42,7 @@ export const liveJira: JiraPort = {
 };
 
 export function ctxFor(release: string, mirrorRoot?: string): Ctx {
+  if (!/^[A-Za-z0-9._-]+$/.test(release) || release === '.' || release === '..') throw new Error(`release: bad release name '${release}'`);
   return {
     release, dir: releaseDir(release), keyPath: releaseKeyPath(release), env: process.env, now: () => new Date(),
     jira: liveJira, mirrorRoot: mirrorRoot ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null),

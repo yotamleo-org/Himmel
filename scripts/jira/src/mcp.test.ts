@@ -478,6 +478,12 @@ describe('release tool (HIMMEL-6796)', () => {
     }
   });
 
+  it('refuses a release name that would leave the release root', async () => {
+    for (const release of ['..', '.', '../other', 'a/b']) {
+      await expect(run({ sub: 'state', release })).rejects.toThrow(/bad release name/);
+    }
+  });
+
   it('rule goes through the engine fence: a session that is not the release manager is refused', async () => {
     await expect(run({
       sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', sector: 'Planning & tracking', ground: 'regression', reason: 'r',
