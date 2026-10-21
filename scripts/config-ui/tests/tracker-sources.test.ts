@@ -119,7 +119,7 @@ test("the Roadmap page says when the issue list is truncated, as the Kanban does
 
 test("the rail hides Roadmap and Kanban when the sources are empty, keeps them otherwise or while unknown", () => {
   const labels = (sources?: string[]) => navLinks({ here: "console", token: TOKEN, current: "config", sources }).map((l: { label: string }) => l.label);
-  expect(labels([])).toEqual(["Config", "Health", "Tool health", "Fleet", "Docs"]);
+  expect(labels([])).toEqual(["Config", "Health", "Tool health", "Fleet", "Workflow", "Docs"]);
   expect(labels(["github"])).toContain("Kanban");
   expect(labels(["jira"])).toContain("Roadmap");
   expect(labels(undefined)).toContain("Roadmap");
