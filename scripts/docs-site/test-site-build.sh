@@ -66,6 +66,64 @@ for d in docs site; do
 done
 check "host sweep: no tracked docs/site/wizard file names the old docs host or repo slug" clean "${sweep_files[@]}"
 
+# --- docs edits: rename-safe. --no-renames lists a rename as a delete plus an add, so both paths are checked
+docs_edits() { # docs_edits <repo>: one edited docs path per line; a git failure is a failure
+  local out
+  out=$(git -C "$1" status --porcelain --no-renames -- docs) || return 1
+  printf '%s\n' "$out" | sed -e '/^$/d' -e 's/^...//'
+}
+docs_ok() { # docs_ok <repo>: only the permitted docs files are edited
+  local edits
+  edits=$(docs_edits "$1") || return 1
+  ! printf '%s' "$edits" | grep -qvxE 'docs/(README\.md|internals/handover-system\.md|security-review\.md)'
+}
+docs_fixture() { # docs_fixture <dir>: a throwaway repo with one permitted and one other docs file
+  mkdir -p "$1/docs" && git init -q "$1" || return 1
+  echo a >"$1/docs/README.md" && echo b >"$1/docs/other.md"
+  git -C "$1" add docs && git -C "$1" -c user.name=ctl -c user.email=ctl@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -qm init
+}
+docs_fixture "$sweep_ctl/docs-clean" || exit 1
+check "control: docs_ok passes a clean docs tree" docs_ok "$sweep_ctl/docs-clean"
+docs_fixture "$sweep_ctl/docs-permitted" || exit 1
+echo more >>"$sweep_ctl/docs-permitted/docs/README.md"
+check "control: docs_ok passes an edit to a permitted file" docs_ok "$sweep_ctl/docs-permitted"
+docs_fixture "$sweep_ctl/docs-other" || exit 1
+echo more >>"$sweep_ctl/docs-other/docs/other.md"
+check "control: docs_ok fails an edit to another docs file" fails docs_ok "$sweep_ctl/docs-other"
+docs_fixture "$sweep_ctl/docs-rename" || exit 1
+git -C "$sweep_ctl/docs-rename" mv docs/README.md docs/stray.md
+check "control: docs_ok fails a permitted file renamed to a stray path" fails docs_ok "$sweep_ctl/docs-rename"
+check "control: docs_ok fails when git status fails" fails docs_ok "$sweep_ctl/no-such-repo"
+
+# --- Pagefind hit: DIST goes through the environment, stderr stays out of the hit text, the exit status counts
+pf_hit() { # pf_hit <dist>: print the top result urls for 'stuck playbook'
+  (cd "$here" && DIST="$1" node --input-type=module -e "
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const base = pathToFileURL(process.env.DIST + '/pagefind/').href;
+const pf = await import(base + 'pagefind.js');
+const origFetch = globalThis.fetch;
+globalThis.fetch = (u, o) => String(u).startsWith('file:') ? Promise.resolve(new Response(fs.readFileSync(new URL(u)))) : origFetch(u, o);
+await pf.options({ basePath: base });
+const r = await pf.search('stuck playbook');
+const d = await Promise.all(r.results.slice(0, 5).map((x) => x.data()));
+console.log(d.map((x) => x.url).join(' '));")
+}
+hit_ok() { # hit_ok <rc> <urls>: the search exited 0 and found the page
+  [ "$1" -eq 0 ] || return 1
+  case "$2" in *stuck-playbook*) return 0 ;; *) return 1 ;; esac
+}
+pf_run() { # pf_run <dist>: pf_hit then hit_ok, stderr dropped
+  local out rc
+  out=$(pf_hit "$1" 2>/dev/null)
+  rc=$?
+  hit_ok "$rc" "$out"
+}
+check "control: hit_ok passes a zero exit with the page url" hit_ok 0 "/internals/stuck-playbook/"
+check "control: hit_ok fails a nonzero exit even when the text names the page" fails hit_ok 1 "/internals/stuck-playbook/"
+check "control: hit_ok fails an empty result" fails hit_ok 0 ""
+check "control: a missing index under a stuck-playbook path fails the search, the path text is no hit" fails pf_run "$sweep_ctl/it's a stuck-playbook dist"
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
   printf '\n%d passed, %d failed (site build not run)\n' "$pass" "$fail"
@@ -107,11 +165,7 @@ while IFS= read -r f; do
   [ "$(grep -o '<h1' "$page" | wc -l)" -eq 1 ] || { c1=0; echo "  $f: h1 count != 1"; }
 done <<<"$allow"
 if [ "$c1" -eq 1 ]; then ok "criterion 1: titles from H1, exactly one h1 per page"; else ko "criterion 1: titles from H1, exactly one h1 per page"; fi
-if docs_status=$(git -C "$repo" status --porcelain -- docs); then
-  check "criterion 1: only the permitted docs files are edited" test -z "$(printf '%s\n' "$docs_status" | awk 'NF {print $2}' | grep -vxE 'docs/(README\.md|internals/handover-system\.md|security-review\.md)')"
-else
-  ko "criterion 1: git status of docs failed"
-fi
+check "criterion 1: only the permitted docs files are edited" docs_ok "$repo"
 
 # --- criterion 2: links
 md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; echo "rc=$?")
@@ -196,16 +250,9 @@ while IFS= read -r f; do
 done <<<"$allow"
 if [ "$c_raw" -eq 1 ]; then ok "J1: every allowlisted .md is served raw at its path"; else ko "J1: every allowlisted .md is served raw at its path"; fi
 check "J1: Pagefind index built" test -f "$dist/pagefind/pagefind.js"
-hit=$(cd "$here" && node --input-type=module -e "
-import fs from 'node:fs';
-const pf = await import('file://$dist/pagefind/pagefind.js');
-const origFetch = globalThis.fetch;
-globalThis.fetch = (u, o) => String(u).startsWith('file:') ? Promise.resolve(new Response(fs.readFileSync(new URL(u)))) : origFetch(u, o);
-await pf.options({ basePath: 'file://$dist/pagefind/' });
-const r = await pf.search('stuck playbook');
-const d = await Promise.all(r.results.slice(0, 5).map((x) => x.data()));
-console.log(d.map((x) => x.url).join(' '));" 2>&1)
-case "$hit" in *stuck-playbook*) ok "J1: Pagefind hit for 'stuck playbook' ($hit)" ;; *) ko "J1: Pagefind hit for 'stuck playbook' (got: $hit)" ;; esac
+hit=$(pf_hit "$dist")
+hit_rc=$?
+if hit_ok "$hit_rc" "$hit"; then ok "J1: Pagefind hit for 'stuck playbook' ($hit)"; else ko "J1: Pagefind hit for 'stuck playbook' (exit $hit_rc, got: $hit)"; fi
 
 rm -f "$here/.build.log"
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
