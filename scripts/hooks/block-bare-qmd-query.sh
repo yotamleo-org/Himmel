@@ -1942,6 +1942,7 @@ def runq:
     elif ((.prog | b) | IN(wrapper)) or (($a[0] | wv | b) | IN(wrapper)) then
       ([range(0; $a | length) | select($a[.] | isq)] | first) as $j
       | if $j == null then null
+        elif ($a[1:$j] | all(.[]; .t == "lit" and (.v | (test("^-|^[0-9.]+[smhd]?$|=") or (b | IN(wrapper)))))) | not then null
         else {r: $a[$j + 1:], stop: (((.prog | b) | IN(runtime)) or (($a[0] | wv | b) | IN(runtime)))} end
     else null end;
 def qverdict($q):

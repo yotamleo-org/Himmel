@@ -1217,6 +1217,13 @@ deny "git -c core.pager='qmd query' log"
 deny 'grep --pre="qmd query" x f'
 deny 'ssh host "qmd query x"'
 allow 'qmd_bounded 60 qmd query x'
+# qmd is the wrapped program only after the wrapper's own options and operands
+allow "timeout 5 printf '%s %s\n' qmd query"
+allow "nice -n 5 printf '%s %s\n' qmd query"
+deny 'nice -n 5 qmd query x'
+deny 'env FOO=bar qmd query x'
+deny 'timeout -k 5 10 qmd query x'
+deny 'sudo -u bob qmd query x'
 allow 'qmd status; qmd collection list'
 
 # --- a missing shfmt denies a command that names qmd and a search verb, and the
