@@ -4,7 +4,7 @@
 # no event announced: a PR closed or reopened in the UI, a worker whose lock
 # vanished. It never writes a status or the worker record itself.
 #
-# Usage: status-sweep.sh [--repo <owner/repo>]   (default yotamleo-org/Himmel)
+# Usage: status-sweep.sh [--repo <owner/repo>]   (default this checkout's origin)
 #
 # A ticket whose recorded open PR is not in that repo (a fork PR) is left as it is,
 # never moved back to In Progress or To Do.
@@ -47,13 +47,20 @@ command -v jq >/dev/null 2>&1 || { echo "status-sweep: jq not found (continuing;
 export LC_ALL=C
 # The sweep reads one repo: every gh call (this script's and the lib's) resolves
 # it from GH_REPO, so a cwd that is a fork checkout cannot change what is swept.
-REPO="yotamleo-org/Himmel"
+REPO=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --repo) [ "$#" -ge 2 ] || { echo "status-sweep: --repo needs a value" >&2; exit 2; }; REPO="$2"; shift 2 ;;
         *) echo "usage: status-sweep.sh [--repo <owner/repo>]" >&2; exit 2 ;;
     esac
 done
+# shellcheck source=../../lib/env-value.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/env-value.sh"
+# The default is this checkout's origin (not the cwd's), or the operator's config.
+# shellcheck disable=SC2329  # called by name through env_value
+origin_slug() { git -C "$HERE" remote get-url origin | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##'; }
+[ -n "$REPO" ] || REPO=$(env_value HIMMEL_REPO origin_slug) || { echo "status-sweep: cannot resolve the himmel repo; pass --repo <owner/repo>" >&2; exit 2; }
 [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "status-sweep: '$REPO' is not an owner/repo" >&2; exit 2; }
 export GH_REPO="$REPO"
 BUDGET="${TICKET_STATUS_SWEEP_BUDGET:-60}"

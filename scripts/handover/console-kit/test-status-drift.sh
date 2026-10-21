@@ -17,6 +17,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/leg-jira-status.sh"
 SWEEP="$HERE/status-sweep.sh"
+# shellcheck source=../../lib/env-value.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/env-value.sh"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/status-drift-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
@@ -223,7 +226,8 @@ reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_
 jl "$K" "In Review"
 printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
 sweep
-check "2b: every gh call defaults to the himmel repo" "$(sort -u "$FX/gh-repo.log")" "yotamleo-org/Himmel"
+expected_repo=$(env_value HIMMEL_REPO git -C "$HERE" remote get-url origin | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##')
+check "2b: every gh call defaults to the himmel repo" "$(sort -u "$FX/gh-repo.log")" "$expected_repo"
 reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
 jl "$K" "In Review"
 printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
