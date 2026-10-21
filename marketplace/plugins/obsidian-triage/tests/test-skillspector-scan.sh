@@ -34,7 +34,7 @@ cat > "$stub" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$STUB_ARGV"
 printf '%s\n' "${SKILLSPECTOR_PROVIDER-unset}" > "$STUB_PROVIDER"
-if [ -n "${STUB_REPLAY-}" ]; then cat "$STUB_REPLAY"; else printf '{"risk_assessment":{"score":0},"issues":[]}\n'; fi
+if [ -n "${STUB_REPLAY-}" ]; then cat "$STUB_REPLAY"; else printf '{"risk_assessment":{"score":0},"issues":[]}\n'; fi # read-sink-ok: hermetic test stub, replays a fixture path the test itself set
 exit "${STUB_RC:-0}"
 EOF
 chmod +x "$stub"
