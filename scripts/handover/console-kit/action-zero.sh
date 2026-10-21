@@ -147,7 +147,7 @@ if [ "$acquire" -eq 1 ]; then
         tok="$(printf '%s\n' "$aout" | sed -n 's/^release-token: `\(.*\)`$/\1/p' | tail -n 1)"
         if [ -n "$tok" ] && grep -q '^   none yet — acquire your own' "$doc"; then
             rec="$(awk -v t="   $tok" '!d && /^   none yet — acquire your own/ { print t; d = 1; next } { print }' "$doc")" \
-                && printf '%s\n' "$rec" > "$doc" && echo "token recorded in the doc"
+                && printf '%s\n' "$rec" > "$doc.tok" && mv "$doc.tok" "$doc" && echo "token recorded in the doc"
         elif [ -n "$tok" ]; then
             echo "token not recorded: the doc has no none-yet line, write it in step 8"
         fi

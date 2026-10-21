@@ -20,6 +20,7 @@
 # ${TMPDIR:-/tmp}/himmel-console-<uid>; an override is validated the same as
 # the default — see below), CONSOLE_HEADED_ARM, ACTION_ZERO_SCRIPT (the
 # action-zero.sh that `next` pre-computes into the successor doc),
+# ACTION_ZERO_SECS (its bound, default 300),
 # CONSOLE_ARM_FOREGROUND (test seam: run the arm in the foreground instead of
 # detaching it).
 # Flag seams: --name (both commands; on next it selects which console
@@ -1601,11 +1602,12 @@ seed_live_fields() {
 # instead of spending turns on them. Read-only: the successor acquires its own
 # lock (step 8, --lock-only). The DOC section is dropped, the doc carries its
 # own Live state, and so is C29: it must see the successor's own session,
-# which does not exist yet. A failing run leaves an unavailable line, never
-# stops next.
+# which does not exist yet. A failing run, or one cut at ACTION_ZERO_SECS
+# (default 300), leaves an unavailable line, never stops next.
 precompute_action_zero() {
-    local doc="$1" az="${ACTION_ZERO_SCRIPT:-$kit/action-zero.sh}" out arc=0
-    out="$(bash "$az" --doc "$doc" --root "$root" --prefix "$prefix" --repo "$repo" 2>&1)" || arc=$?
+    local doc="$1" az="${ACTION_ZERO_SCRIPT:-$kit/action-zero.sh}" out arc=0 tb
+    tb="$(bash -c '. "$1" >/dev/null 2>&1; printf %s "$_TIMEOUT_BIN"' _ "$HERE/../../lib/timeout-bin.sh" 2>/dev/null)" # swallow-ok: no timeout binary = an unbounded run
+    out="$(${tb:+"$tb" -k 2 "${ACTION_ZERO_SECS:-300}"} bash "$az" --doc "$doc" --root "$root" --prefix "$prefix" --repo "$repo" 2>&1)" || arc=$?
     out="$(printf '%s\n' "$out" | awk '/^== (DOC|C29)$/ { s = 1; next } /^== / { s = 0 } !s')"
     [ "$arc" -eq 0 ] || out="$out
 unavailable (action-zero.sh exited $arc): run it yourself"

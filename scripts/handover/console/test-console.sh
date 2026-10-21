@@ -2785,5 +2785,17 @@ check "90 a failing action-zero does not stop next" "$rc90" "0"
 check "90 a failing action-zero marks the block unavailable" \
     "$(grep -c '^unavailable (action-zero.sh exited 3): run it yourself$' "$root/tester/az90fail/DEMO-nextleg-${today}B-console.md")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90fail/DEMO-nextleg-${today}A-console.md" "$token90c" >/dev/null 2>&1
+if [ -n "$_TIMEOUT_BIN" ]; then
+    printf '#!/usr/bin/env bash\necho partial\nsleep 10\n' > "$tmp/az-hang.sh"
+    out90d="$(console new --bucket az90hang)"
+    rc90=0
+    ACTION_ZERO_SCRIPT="$tmp/az-hang.sh" ACTION_ZERO_SECS=1 console next --bucket az90hang >/dev/null 2>&1 || rc90=$?
+    check "90 a hung action-zero does not stop next" "$rc90" "0"
+    check "90 a hung action-zero is cut at ACTION_ZERO_SECS and marked unavailable" \
+        "$(grep -c '^unavailable (action-zero.sh exited 124): run it yourself$' "$root/tester/az90hang/DEMO-nextleg-${today}B-console.md")" "1"
+    HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90hang/DEMO-nextleg-${today}A-console.md" "$(token_of "$out90d")" >/dev/null 2>&1
+else
+    echo "ok - SKIPPED: 90 hung action-zero: no timeout or gtimeout on this host"
+fi
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
