@@ -32,6 +32,7 @@ mkdir -p "$ST" "$REPO/scripts/lib" "$REPO/scripts/hooks" "$T/src/sub"
 : > "$REPO/scripts/lib/bank-lift.sh"
 # The hook under test runs from a copy inside the scratch repo.
 cp "$HOOK" "$REPO/scripts/hooks/block-bank-lift-writes.sh" || exit 1
+cp "$HOOKS/../lib/bash-ast.sh" "$REPO/scripts/lib/bash-ast.sh" || exit 1
 HOOK="$REPO/scripts/hooks/block-bank-lift-writes.sh"
 printf '{}\n' > "$T/src/bank-lift.json"
 printf 'x\n' > "$T/src/other.txt"
@@ -388,6 +389,20 @@ row "usage: commit msg names set"  allow "git commit -m 'docs: usage-lift.sh set
 row "usage: write lift-named file elsewhere" allow "echo x > /tmp/x/usage-lift.json"
 row "usage: lookalike name"        allow "echo x > ~/.himmel/state/usage-lift.json.bak"
 row "usage: test suite name"       allow "bash scripts/lib/test-usage-lift.sh"
+echo "== a pipeline feeding a stdin shell (the command-position model) =="
+row "usage: echo set | bash"         deny "echo 'bash $US set x' | bash"
+row "usage: printf set | sh -s"      deny "printf '%s\\n' 'bash $US set x' | sh -s"
+row "usage: echo set | tee | bash"   deny "echo 'bash $US set x' | tee g | bash"
+row "usage: { echo set; } | bash"    deny "{ echo 'bash $US set x'; } | bash"
+row "usage: echo redirect | bash"    deny "echo 'echo hi > $UP' | bash"
+row "usage: echo set | bash in bash -c" deny "bash -c \"echo 'bash $US set x' | bash\""
+row "usage: heredoc set into bash"   deny "bash <<'EOF'
+bash $US set x
+EOF"
+row "usage: echo show | bash"        allow "echo 'bash $US show' | bash"
+row "usage: cat f | bash"            allow "cat f | bash"
+row "usage: echo set | grep"         allow "echo 'bash $US set x' | grep set"
+row "usage: echo set, then bash"     allow "echo 'bash $US set x'; bash -c 'echo hi'"
 row "old name still fenced: redirect" deny "echo x > ~/.himmel/state/bank-lift.json"
 row "old name still fenced: set"   deny "bash scripts/lib/bank-lift.sh set"
 err=$(printf '%s' "$(bash_json "bash $US set")" | bash "$HOOK" 2>&1 >/dev/null)
