@@ -202,6 +202,17 @@ deny  "tmux runs its string" "$(bash_json "tmux new -d 'bus register x'")"
 deny  "expect spawns its string" "$(bash_json "expect -c 'spawn bus register x'")"
 deny  "an alias defined then used" "$(bash_json $'alias r=\'bus register x\'\nr')"
 allow "a verb before the bus word in one word (text reader, as on main)" "$(bash_json 'git commit -m "register the bus"')"
+deny  "a split string whose verb and bus words are both in one word (text reader)" \
+    "$(bash_json "tmux send-keys bus 'register x; bus'")"
+deny  "make reads its makefile from a heredoc" "$(bash_json $'make -f - <<\'EOF\'\nall:\n\tbus register x\nEOF')"
+deny  "at reads its job from a here-string" "$(bash_json "at now <<< 'bus register x'")"
+deny  "at reads a here-string with an expansion (text reader)" "$(bash_json 'at now <<< "$X bus register x"')"
+deny  "a heredoc written to a file that the next command runs" \
+    "$(bash_json $'cat > /tmp/m.mk <<\'EOF\'\nall:\n\tbus register x\nEOF\nmake -f /tmp/m.mk')"
+deny  "crontab reads its table from a heredoc" "$(bash_json $'crontab - <<\'EOF\'\n* * * * * bus register x\nEOF')"
+deny  "batch reads its job from a heredoc" "$(bash_json $'batch <<\'EOF\'\nbus register x\nEOF')"
+deny  "expect reads its script from a heredoc" "$(bash_json $'expect <<\'EOF\'\nspawn bus register x\nEOF')"
+allow "tee writes a heredoc body to a file" "$(bash_json $'tee /tmp/notes.md <<\'EOF\'\nbus register x\nEOF')"
 
 echo "== model failures: the text reader decides =="
 # A heredoc body naming bus register is allowed by the model and denied by the
