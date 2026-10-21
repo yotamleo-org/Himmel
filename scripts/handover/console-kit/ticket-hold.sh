@@ -89,7 +89,11 @@ if [ "$(jq -r "$jqf" <<<"$json" 2>/dev/null)" != true ]; then
 fi
 
 row result=moved
-body=$(mktemp "${TMPDIR:-/tmp}/ticket-hold.XXXXXX") || exit 0
+if ! body=$(mktemp "${TMPDIR:-/tmp}/ticket-hold.XXXXXX"); then
+    status_event event=audit-gap key="$KEY" result=miss stage=comment action="$EVENT"
+    echo "ticket-hold: $KEY: audit-gap: no temp file for the HOLD comment (the label stands)" >&2
+    exit 0
+fi
 if [ "$RELEASE" -eq 1 ]; then
     printf 'HOLD released%s\n' "${OWNER:+ by $OWNER}" > "$body"
 else

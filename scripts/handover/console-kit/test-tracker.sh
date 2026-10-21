@@ -1120,6 +1120,14 @@ vfp_is same 'the original worker record restores the focus fingerprint (HIMMEL-6
 sed 's/prog step/prog step two/' "$W/vp-chains2.json" > "$W/vp-chains3.json"
 V2CH="$W/vp-chains3.json" v2render >/dev/null
 vfp_is differ 'a chain change moves the focus fingerprint (HIMMEL-6829)'
+jq '. + [{"number":505,"title":"feat: [HIMMEL-401] more","headRefName":"feat/more","isDraft":false,"statusCheckRollup":[]}]' "$W/vp-prs.json" > "$W/vp-prs-more.json"
+V2PRS="$W/vp-prs-more.json" v2render >/dev/null
+vfp_is differ 'a new open PR moves the focus fingerprint (HIMMEL-6829)'
+jq '.[0].isDraft = true' "$W/vp-prs.json" > "$W/vp-prs-draft.json"
+V2PRS="$W/vp-prs-draft.json" v2render >/dev/null
+vfp_is differ 'a draft flip moves the focus fingerprint (HIMMEL-6829)'
+v2render >/dev/null
+vfp_is same 'the original PR snapshot restores the focus fingerprint (HIMMEL-6829)'
 printf '%s\n' 'priority: 407 | rest of v1.1.3 | 9999' > "$W/vp-plan2.md"
 V2PLAN="$W/vp-plan2.md" v2render >/dev/null
 vfp_is differ 'a priority change moves the focus fingerprint (HIMMEL-6829)'

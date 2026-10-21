@@ -1410,6 +1410,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         'tickets': [[k, opn[k]['sn'], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k]] for k in sorted(opn)],
         'chains': [[ch['name'], [[st.get('key', ''), st.get('label', ''), step_state(st), st.get('pr'), st.get('owner')]
                                  for st in ch['steps']]] for ch in chains],
+        'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
         'workers': [[k, r.get('leg'), r.get('state'), open_worker_prs(r)] for k, r in sorted(workers.items())]},
         sort_keys=True)
     return html, parline, hashlib.sha256(fp.encode('utf-8')).hexdigest()[:16]

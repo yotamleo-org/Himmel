@@ -662,7 +662,7 @@ sweep_wake() {
     fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state wakes nothing
     fstat="${fstat#focus=}"
     case "$fstat" in
-        FAILED:*) ;;
+        FAILED:* | DIRTY:unknown) ;;
         DIRTY:*m)
             age="${fstat#DIRTY:}"; age="${age%m}"
             case "$age" in ''|*[!0-9]*) rm -f "$sweep_focus_file"; return 1 ;; esac

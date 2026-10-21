@@ -772,6 +772,11 @@ reset_stub; I="$(new_inbox sw10)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.swe
 start "$I" "$WORK/sw10.out" --doc "$SWDOC" --legs "N1.md"
 wait_exit "$WPID"
 check "(sw10) DIRTY for 10 minutes or more wakes" "WAKE focus DIRTY:12m" "$(head -n1 "$WORK/sw10.out")"
+printf 'focus=DIRTY:unknown\n' > "$STUB/focus.out"
+reset_stub; I="$(new_inbox sw11)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+start "$I" "$WORK/sw11.out" --doc "$SWDOC" --legs "N1.md"
+wait_exit "$WPID"
+check "(sw11) DIRTY with no readable age wakes" "WAKE focus DIRTY:unknown" "$(head -n1 "$WORK/sw11.out")"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 unset WAIT_SWEEP_SEC
 

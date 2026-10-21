@@ -436,6 +436,14 @@ check "3a: the failed comment is an audit-gap row" "$(rowq 'select(.event == "au
 contains "3a: and warns on stderr" "$(cat "$tmp/hout")" "audit-gap"
 
 reset "To Do"
+TMPDIR="$tmp/no-such-dir" hold "$K" --reason r --owner o; rc=$?
+check "3a: no temp file for the HOLD comment still holds" "$rc" 0
+check "3a: and the label stands" "$(cat "$FX/labels.$K")" held
+check "3a: and no comment is posted" "$(ncomment)" 0
+check "3a: and the lost comment is an audit-gap row" "$(rowq 'select(.event == "audit-gap") | .key + ":" + .stage')" "$K:comment"
+contains "3a: and warns on stderr" "$(cat "$tmp/hout")" "audit-gap"
+
+reset "To Do"
 hold "$K" --owner o; rc=$?
 check "3a: a hold without --reason is a usage error" "$rc" 2
 hold "$K" --reason r; rc=$?
@@ -618,7 +626,7 @@ case "$(cat "$FX/fr.fail" 2>/dev/null)" in
     sweep) exit 1 ;;
     sweep-unknown) echo "status-sweep: unknown (gh unreadable) keys=0 sig=x wake=1"; exit 0 ;;
 esac
-echo "status-sweep: keys=2 served=2 moved=1 miss=0 funnel=1 sig=abc wake=1"
+echo "status-sweep: keys=2 served=2 moved=$(cat "$FX/sweep.moved" 2>/dev/null || echo 0) miss=0 funnel=1 sig=abc wake=1"
 EOS
 cat >"$tmp/frbin/tracker" <<'EOS'
 #!/usr/bin/env bash
@@ -635,6 +643,10 @@ cat >"$tmp/frbin/drift" <<'EOS'
 #!/usr/bin/env bash
 echo "drift" >> "$FX/fr.log"
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = drift ] && exit 1
+if [ "$(cat "$FX/fr.fail" 2>/dev/null)" = drift-unknown ]; then
+    echo "sdrift=unknown"
+    exit 0
+fi
 echo "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 echo "sdrift=1:0a1b2c3d"
 EOS
@@ -711,6 +723,21 @@ done
 fr_reset; echo sweep-unknown > "$FX/fr.fail"
 fr
 check "3c: an unknown sweep is FAILED:sweep" "$(frout)" "focus=FAILED:sweep"
+fr_reset; echo drift-unknown > "$FX/fr.fail"
+fr
+check "3c: an unknown drift pass is FAILED:drift" "$(frout)" "focus=FAILED:drift"
+check "3c: and the page is not published" "$([ -e "$PAGE" ] && echo set || echo none)" none
+fr_reset; echo 2 > "$FX/sweep.moved"
+fr
+check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift"
+check "3c: and the refresh is ok" "$(frout)" "focus=ok"
+fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
+fr
+check "3c: a failed re-read after a move is FAILED:mirror" "$(frout)" "focus=FAILED:mirror"
+fr_reset
+( cd "$FR/doc" && bash "$FOCUS" --doc console.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
+check "3c: a bare doc filename resolves beside the doc" "$(frout)" "focus=ok"
+check "3c: and the page lands beside the doc" "$(cat "$PAGE")" "render 1"
 fr_reset; touch "$FX/pr-list.fail"
 fr
 check "3c: an unreadable PR snapshot is FAILED:prs" "$(frout)" "focus=FAILED:prs"

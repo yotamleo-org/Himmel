@@ -83,7 +83,7 @@ VER=$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)
 case "$VER" in '' | none*) echo "focus=skip"; exit 0 ;; esac
 [[ "$VER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "focus-refresh: '$VER' is not a version name" >&2; exit 2; }
 
-DIR="${DOC%/*}"
+DIR=$(dirname "$DOC")
 STATEF="$DIR/focus-state"
 OUT="$DIR/roadmap-tracker.html"
 now() { date +%s; }
@@ -185,6 +185,10 @@ fi
 
 sweep_out=$(bounded 90 "${SWEEP[@]}" --repo "$REPO" 2>&1) || failed sweep
 case "$sweep_out" in *"status-sweep: unknown"*) failed sweep ;; esac
+moved=$(printf '%s\n' "$sweep_out" | sed -n 's/.* moved=\([0-9][0-9]*\).*/\1/p' | tail -n 1)
+if [ "${moved:-0}" -gt 0 ]; then
+    JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 120 "${JIRA[@]}" mirror --root "$MIR" >/dev/null 2>&1 || failed mirror
+fi
 
 bounded 60 gh pr list --state open --limit 300 --json number,title,headRefName,isDraft,statusCheckRollup > "$stage/prs.json" 2>/dev/null || failed prs
 
@@ -200,13 +204,13 @@ vfp=$(cat "$stage/page.html.vfp")
 
 bounded 120 "${DRIFT[@]}" --repo "$REPO" > "$stage/drift.txt" 2>/dev/null || failed drift
 sdrift=$(tail -n 1 "$stage/drift.txt")
-case "$sdrift" in sdrift=*) ;; *) failed drift ;; esac
+case "$sdrift" in sdrift=unknown | sdrift=) failed drift ;; sdrift=*) ;; *) failed drift ;; esac
 
 oldvfp=""
 [ ! -f "$OUT.vfp" ] || oldvfp=$(cat "$OUT.vfp")
 if [ ! -f "$OUT" ] || [ "$oldvfp" != "$vfp" ]; then
-    mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
     mv -f "$stage/page.html" "$OUT" || failed publish
+    mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
 S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}"
