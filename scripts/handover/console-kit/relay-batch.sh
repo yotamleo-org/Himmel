@@ -15,6 +15,8 @@
 #   every other leg: the SendMessage payload is PRINTED, one `SENDMESSAGE to=<leg
 #     session> :: <text>` line per leg, for the console to send. A SendMessage
 #     cannot be issued from a script; the console's `from` is what authenticates it.
+#     Each such leg also gets a token-free himmel-bus record naming the successor
+#     (`BUS-RELAY <label> ok` / `BUS-RELAY-FAIL <label> (<reason>)`, never an error).
 # What it never does: mint a token or nonce, rotate one, adopt one, write a leg's
 # Live state entry, or send LIVE. It copies the nonce the console already holds
 # and the console still waits for each leg's quote-back before it sends LIVE.
@@ -30,7 +32,7 @@
 # legs (the live fleet), so a tick can flag drift.
 #
 # Seams (tests): INBOX_SEND replaces inbox-send.sh; RELAY_BATCH_CENSUS is a script
-# printing claude_sessions-format census lines.
+# printing claude_sessions-format census lines; RELAY_BATCH_BUS replaces the bus CLI.
 # Exit: 0 ok (skips are not errors); 1 a claudex delivery failed; 2 usage.
 # PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 set -uo pipefail
@@ -57,6 +59,21 @@ send="${INBOX_SEND:-$HERE/inbox-send.sh}"
 # wrapped <leg doc>: lock free and newest marker WRAPPED (close-wrapped-leg.sh's gate).
 wrapped() { bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(leg_tail_status "$1")" = WRAPPED ]; }
 manifest="${doc%.md}.fleet.json"
+bus="${RELAY_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
+# relay_bus <label> <session>: the token-free bus record that lets the leg's
+# `bus adopt` prove this hop while the outgoing console is still live. Fail-soft:
+# the printed SendMessage is the relay; a refused record only costs the proof.
+relay_bus() {
+    local body err
+    body="$(mktemp "${TMPDIR:-/tmp}/relay-bus.XXXXXX")" || { echo "BUS-RELAY-FAIL $1 (mktemp failed)"; return 0; }
+    printf 'SUCCESSION bus record from %s: your console is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor" > "$body"
+    if err="$("$bus" send "$2" "$body" 2>&1 >/dev/null)"; then
+        echo "BUS-RELAY $1 ok"
+    else
+        echo "BUS-RELAY-FAIL $1 (${err%%$'\n'*})"
+    fi
+    rm -f "$body"
+}
 # The live process census (pid<TAB>name<TAB>model<TAB>autocompact), taken once.
 if [ -n "${RELAY_BATCH_CENSUS:-}" ]; then
     census_lines="$(bash "$RELAY_BATCH_CENSUS")" || { echo "relay-batch: census failed" >&2; exit 1; }
@@ -163,7 +180,8 @@ EOC
             else
                 echo "FAILED-INBOX $label ($lsession)"; rc=1
             fi ;;
-        *) printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$text"; sent=$((sent + 1)) ;;
+        *) printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$text"; sent=$((sent + 1))
+           relay_bus "$label" "$lsession" ;;
     esac
 done <<EOF
 $entries

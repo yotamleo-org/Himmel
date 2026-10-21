@@ -39,12 +39,14 @@ that is the successor the relay names (the sender is the outgoing console,
 which is leaving), on a chain (2) it is the sender. Adopt a fresh token as your
 token if one came. If none did (a relay may omit it), keep the one you hold and
 you are fully authenticated to the new console: a fresh token adds no
-authentication, so its absence is not a gap and needs no rotation. If you hold a himmel-bus identity, run `bus adopt <new console>` as the leg
-before the bullet, so the new console has an edge to you (without it `bus send`
-to you is refused: `no edge to <you>`). Add its printed line (`adopted: …`) or its
-refusal text (`old console … is not gone and sent no relay naming …`, `identity
-unbound`) to a separate `LIVE` Results bullet. A refusal is a recorded fact, not a
-reason to park, and you retry `bus adopt` once the old console is gone. Write
+authentication, so its absence is not a gap and needs no rotation. If you hold a himmel-bus identity, `append-results.sh` writing the bullet below
+runs `bus adopt <new console>` for you, so the new chief has an edge to you
+(without it `bus send` to you is refused: `no edge to <you>`). Its printed line
+(`adopted: …`) or refusal text (`identity unbound`, or
+`old console … is not gone and sent no relay naming …`)
+lands as a `bus-adopt:` bullet just above. A refusal is a recorded fact, not a
+reason to park: once the old chief is gone,
+run `bus adopt <new console>` as the leg yourself. <!-- old-term-ok: the phrase test-bus-idle-waker.sh asserts --> Write
 `- SUCCESSION accepted: <new console session> replaces <old>` under
 `## Results` (names and grammar only, no token), with **nothing after it on that
 line** — no explanation, punctuation, or bus output after the old console's name.

@@ -45,8 +45,19 @@ printf '#!/usr/bin/env bash\ncat "%s/census.txt"\n' "$WORK" > "$CENSUS"
 export RELAY_BATCH_CENSUS="$CENSUS"
 census() { : > "$WORK/census.txt"; for n in "$@"; do printf '100\t%s\topus\t200000\n' "$n" >> "$WORK/census.txt"; done; }
 census DEMO-1-N7-alpha DEMO-2-N8-beta
+# The himmel-bus CLI: logs `<verb> <to>` and the body file it was handed.
+BUS="$WORK/bus.sh"
+# shellcheck disable=SC2016  # $1-$3 expand in the stub, not here
+LOGBUS="$(printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1 $2" >> "%s/bus.log"; cat "$3" >> "%s/bus.body"\n' "$WORK" "$WORK")"
+printf '%s\n' "$LOGBUS" > "$BUS"
+chmod +x "$BUS"
+export RELAY_BATCH_BUS="$BUS"
 
 out="$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)"
+check "a native leg also gets a bus record from the outgoing console" "send DEMO-1-N7-alpha" "$(cat "$WORK/bus.log" 2>/dev/null)"
+check "the bus record names the successor as a whole word" "1" "$(grep -c 'your console is now DEMO-nextleg-2026-10-08B-console ' "$WORK/bus.body" 2>/dev/null)"
+check "the bus record carries no token" "0" "$(grep -c 'tok-' "$WORK/bus.body" 2>/dev/null)"
+check "the bus send is reported" "1" "$(printf '%s\n' "$out" | grep -c '^BUS-RELAY N7 ok$')"
 check "native leg gets a printed SendMessage payload" "1" "$(printf '%s\n' "$out" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"
 check "the payload names the successor" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -c 'your console is now DEMO-nextleg-2026-10-08B-console')"
 check "the payload quotes the leg's current token" "1" "$(printf '%s\n' "$out" | grep '^SENDMESSAGE' | grep -c 'tok-seven')"
@@ -66,6 +77,13 @@ check "a leg with no manifest row is skipped, not guessed" "1" "$(printf '%s\n' 
 check "no token other than the held ones appears (nothing minted)" "0" "$(printf '%s\n' "$out" | grep -o '`[^`]*`' | grep -vc 'tok-seven\|tok-eight')"
 check "the relay never sends LIVE" "0" "$(printf '%s\n' "$out" | grep -c ' LIVE')"
 check "usage without --successor exits 2" "2" "$(bash "$RB" "$DOC" >/dev/null 2>&1; echo $?)"
+# shellcheck disable=SC2016  # $2 expands in the stub, not here
+printf '#!/usr/bin/env bash\necho "bus: no edge to $2" >&2; exit 1\n' > "$BUS"
+outb="$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)"; rcb=$?
+check "a refused bus send is reported with its reason" "1" "$(printf '%s\n' "$outb" | grep -c '^BUS-RELAY-FAIL N7 (bus: no edge to DEMO-1-N7-alpha)$')"
+check "a refused bus send still prints the SendMessage" "1" "$(printf '%s\n' "$outb" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"
+check "a refused bus send does not fail the run" "0" "$rcb"
+printf '%s\n' "$LOGBUS" > "$BUS"
 # Each leg's session is resolved from the LIVE process census, never guessed: the full
 # doc stem first, then leg_identity's names; exactly one live match or UNRESOLVED.
 LEG3="$WORK/DEMO-3-N10-gamma-2026-10-08.md"

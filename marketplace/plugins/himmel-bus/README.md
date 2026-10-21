@@ -69,6 +69,7 @@ pid-reused claude is `identity unbound`. Names are single-use once bound (re-reg
 `rebind` only when the bound pid is gone; `adopt <new console>` (run as the leg)
 only when the old console is `gone` or its own record names the new one;
 `adopt` prints `adopted: <leg> console <old> -> <new>` (a leg with no bus binding gets `identity unbound`, expected: only legs launched on the `leg-bus` profile are registered); `unread <name>` prints `1` when a record is undelivered, else `0`, without consuming it or touching the cursor (a presence flag, not a count; a halted log is `0`; the idle waker `bus-idle-waker.sh` under `scripts/handover/` uses it and types one fixed, digit-free `You have unread himmel messages: read them now.` line into an idle headed leg's konsole, never message content, only while its screen shows the idle input box and only into a konsole session whose claude was launched as `-n <name>`); `status <name>` prints `live|gone|unbound`; `peers` prints the caller's own edges.
+`peers` prints a live edge bare and any other suffixed ` (gone)` or ` (unbound)`. `adopt` onto the chief already held is a no-op; a worker that missed a succession adopts the newest chief in one step when every chief on its predecessor chain is gone or sent the worker a record naming its successor, and none but the target is live.
 `lib/edges.mjs` is the single edge table the server and CLI share.
 
 ## Tests

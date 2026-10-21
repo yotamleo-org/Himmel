@@ -31,6 +31,11 @@ fails=0
 mkdir -p "$tmp/vault/.git"
 cp "$HERE/../../../templates/luna-second-brain/.gitleaks.toml" "$tmp/vault/.gitleaks.toml"
 export TICK_VAULT_DIR="$tmp/vault"
+# The himmel-bus CLI a SUCCESSION acknowledgement adopts through: never the real one here.
+# shellcheck disable=SC2016  # $* and $2 expand in the stub, not here
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "adopted: legx console old -> $2"\n' "$tmp" > "$tmp/bus"
+chmod +x "$tmp/bus"
+export APPEND_RESULTS_BUS="$tmp/bus"
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
 
@@ -174,6 +179,26 @@ d10b="$tmp/d10b.md"
 printf '# leg\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d10b"
 rc=0; PATH="$tmp/badgl:$PATH" bash "$SCRIPT" "$d10b" "READY unscanned" >/dev/null 2>&1 || rc=$?
 check "10: an unusable gitleaks still appends rc 0" "$rc" 0
+
+# --- 11. a leg's SUCCESSION acknowledgement also adopts the new console on the bus ---
+d11="$tmp/HIMMEL-9-N2-fixture-2026-10-21.md"
+printf '# leg\n\nYour RETASK token is X-2.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d11"
+: > "$tmp/bus.log"
+rc=0; bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-B-console replaces CON-A-console" >/dev/null 2>&1 || rc=$?
+check "11: the acknowledgement appends rc 0" "$rc" 0
+check "11: the bus adopts the new console" "$(cat "$tmp/bus.log")" "adopt CON-B-console"
+check "11: the adopt result is a bullet, its arrow never a '>'" "$(grep -c '^- [0-9:]* bus-adopt: adopted: legx console old → CON-B-console$' "$d11")" 1
+check "11: the SUCCESSION bullet stays the newest line" "$(tail -n 1 "$d11" | sed 's/^- [0-9:]* //')" "SUCCESSION accepted: CON-B-console replaces CON-A-console"
+printf '#!/bin/sh\necho "bus: CON-C-console does not succeed CON-B-console" >&2\nexit 1\n' > "$tmp/bus"
+rc=0; bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-C-console replaces CON-B-console" >/dev/null 2>&1 || rc=$?
+check "11: a refused adopt still appends rc 0" "$rc" 0
+check "11: a refused adopt is recorded with its reason" "$(grep -c '^- [0-9:]* bus-adopt: refused (bus: CON-C-console does not succeed CON-B-console)$' "$d11")" 1
+check "11: after a refusal the SUCCESSION bullet stays the newest line" "$(tail -n 1 "$d11" | sed 's/^- [0-9:]* //')" "SUCCESSION accepted: CON-C-console replaces CON-B-console"
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\n' "$tmp" > "$tmp/bus"
+: > "$tmp/bus.log"
+bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-D-console replaces CON-C-console and more" >/dev/null 2>&1
+bash "$SCRIPT" "$d8" "SUCCESSION accepted: CON-D-console replaces CON-C-console" >/dev/null 2>&1
+check "11: no adopt for trailing text or a console doc" "$(cat "$tmp/bus.log")" ""
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1

@@ -90,6 +90,18 @@ esac
 stamp="$(date +%H:%M)"
 bullet="- ${stamp} ${TEXT}"
 
+# A leg's exact SUCCESSION acknowledgement also moves its himmel-bus console edge
+# (`bus adopt`, which checks the succession itself). The result lands as a
+# non-status bullet above it, so the acknowledgement stays the newest line; a
+# refusal never blocks the acknowledgement. APPEND_RESULTS_BUS replaces the CLI.
+if [ "$is_leg" -eq 1 ] && [[ $TEXT =~ ^SUCCESSION\ accepted:\ ([A-Za-z0-9][A-Za-z0-9._-]*)\ replaces\ [A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    bus="${APPEND_RESULTS_BUS:-$(dirname "${BASH_SOURCE[0]}")/../../../marketplace/plugins/himmel-bus/bin/bus}"
+    wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout 15"
+    if adopted="$($wait_for "$bus" adopt "${BASH_REMATCH[1]}" 2>&1)"; then :; else adopted="refused (${adopted%%$'\n'*})"; fi
+    adopted="${adopted%%$'\n'*}"
+    bullet="- ${stamp} bus-adopt: ${adopted//->/→}"$'\n'"$bullet"
+fi
+
 # the vault's pre-commit gitleaks would refuse the doc and stall the autosync
 # commit, so scan the bullet first (bucket-gitleaks.sh, the vault's config) and
 # refuse a FINDING. No gitleaks or an unusable scan (rc 2) appends unscanned.

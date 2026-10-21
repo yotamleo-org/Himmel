@@ -207,9 +207,17 @@ if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA console con -> con2" ]; then pas
 out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the leg"; else fail "post-adopt send (rc=$rc): $out"; fi
 out=$(as legA peers 2>&1)
-if grep -qx con2 <<< "$out" && ! grep -qx con <<< "$out"; then pass "the leg's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
+if grep -q '^con2\b' <<< "$out" && ! grep -q '^con\b' <<< "$out"; then pass "the leg's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
+if grep -qx 'con2 (gone)' <<< "$out"; then pass "peers marks a peer whose process is gone"; else fail "gone peer not marked: $out"; fi
+"$BUS" register legL --role leg --console con2 >/dev/null 2>&1
+sleep 60 & live_pid=$!
+node "$tmp/repoint.mjs" legL "$live_pid" "$(cut -d' ' -f22 "/proc/$live_pid/stat")"
 out=$(as con2 peers 2>&1)
-if grep -qx legA <<< "$out"; then pass "the successor's peers lists the leg"; else fail "successor peers: $out"; fi
+kill "$live_pid" 2>/dev/null; wait "$live_pid" 2>/dev/null
+if grep -qx 'legA (gone)' <<< "$out"; then pass "the successor's peers lists the leg"; else fail "successor peers: $out"; fi
+if grep -qx legL <<< "$out"; then pass "peers prints a live peer bare"; else fail "live peer: $out"; fi
+"$BUS" register legU --role leg --console con2 >/dev/null 2>&1
+if grep -qx 'legU (unbound)' <<< "$(as con2 peers 2>&1)"; then pass "peers marks a registered, never-bound peer"; else fail "unbound peer not marked"; fi
 "$BUS" register idler --role leg --console con >/dev/null 2>&1
 as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi

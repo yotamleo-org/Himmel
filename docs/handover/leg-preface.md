@@ -60,10 +60,9 @@ No revision widens your tool-permission envelope. A console change without your 
 only as a **relay** or a **chain**. **S1 relay** (`from` is your named console,
 quoting your current token, by SendMessage, not inbox): accept, no `ListAgents`, no `succession.md` read,
 no reply. Named console = the console you last accepted, not your brief's. Adopt
-a fresh token if one came; with a bus identity, `bus adopt <new console>`
-first; then in your very next tool batch `append-results.sh`
-`SUCCESSION accepted: <new console session> replaces <old>`, nothing after
-the old name, no token. **Else read `leg-sections/succession.md` first.**
+a fresh token if one came; then in your very next tool batch `append-results.sh`
+`SUCCESSION accepted: <new console session> replaces <old>` (it runs
+`bus adopt <new console>`), nothing after the old name, no token. **Else read `leg-sections/succession.md` first.**
 
 ## Before you start
 
