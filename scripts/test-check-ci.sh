@@ -2942,6 +2942,8 @@ assert_grep_lacks "3473-g --threads-only makes no mergeStateStatus read" "found 
 # with --pr and --head); a red exit fires too and keeps its exit code; --threads-only is
 # not a CI wait and never calls it.
 check_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "got [$3] want [$2]"; fi; }
+# check-ci calls the funnel only under timeout/gtimeout; without one it never fires.
+funnel_eq() { if [ -n "$_TIMEOUT_BIN" ]; then check_eq "$@"; else echo "  SKIP: $1 (no timeout binary)"; fi; }
 cat > "$STUBDIR/funnel" <<'EOF2'
 #!/usr/bin/env bash
 echo "$*" >> "$STUBDIR_JIRA_LOG"
@@ -2953,9 +2955,9 @@ export GH_STUB_TITLE="fix(x): [HIMMEL-9430] follows [HIMMEL-9431]"
 export LEG_JIRA_STATUS=1
 run cr-completed --grace 30
 assert_rc 0 "6430-a checks green with a ticket-tagged PR -> exit 0"
-check_eq "6430-a the wait starts with a ci-start event for the first key" \
+funnel_eq "6430-a the wait starts with a ci-start event for the first key" \
     "HIMMEL-9430 --event ci-start --pr 42 --head sha1 --repo octo/demo" "$(head -n 1 "$STUBDIR/jira.log")"
-check_eq "6430-c the wait ends with a ci-exit event" \
+funnel_eq "6430-c the wait ends with a ci-exit event" \
     "HIMMEL-9430 --event ci-exit --pr 42 --head sha1 --repo octo/demo" "$(tail -n 1 "$STUBDIR/jira.log")"
 assert_out_has "check-ci: verdict exit=0" "6430-c the verdict line still prints"
 : > "$STUBDIR/jira.log"
@@ -2963,7 +2965,7 @@ RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests
 fail:codeowner-review-gate"
 run cr-completed
 assert_rc 1 "6430-d a red exit keeps exit 1"
-check_eq "6430-d a red exit fires ci-exit" \
+funnel_eq "6430-d a red exit fires ci-exit" \
     "HIMMEL-9430 --event ci-exit --pr 42 --head sha1 --repo octo/demo" "$(tail -n 1 "$STUBDIR/jira.log")"
 RULES_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"
 : > "$STUBDIR/jira.log"

@@ -233,6 +233,16 @@ printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result"
 fn "$K" --event wrapped --doc "$DOC"
 check "D4b: a failed Done then WRAPPED is never To Do" "$(ntrans)" 0
 check "D4b: miss stage" "$(row stage)" done-pending
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result":"miss","stage":"transition"}\n' "$K" >> "$LOG"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D4b: a Done that landed, then a reopen, is not pending -> D6" "$(row rule)" D6
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result":"miss","stage":"transition"}\n' "$K" >> "$LOG"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D4b: only the latest merge row counts -> D6" "$(row rule)" D6
 
 # --- D5 / D6 / D7 ------------------------------------------------------------------
 reset "To Do"; owned LIVE 11 0
@@ -387,6 +397,9 @@ contains "LIVE: bullet still landed" "$(tail -n 1 "$DOC")" "LIVE — again"
 d7="$tmp/plain.md"; mkdoc "$d7"; : > "$STUB_LOG"
 bash "$APPEND" "$d7" "LIVE — x" >/dev/null 2>&1
 check "no ticket in the doc name -> no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
+d8="$tmp/AB2-7-N1-slug-2026-10-21.md"; mkdoc "$d8"; : > "$STUB_LOG"
+bash "$APPEND" "$d8" "LIVE — x" >/dev/null 2>&1
+contains "a key with a digit in the project part is extracted" "$(head -n 1 "$STUB_LOG")" "AB2-7"
 
 # --- wiring: the WRAPPED bullet ---------------------------------------------------------------
 reset "In Review"; owned LIVE 0

@@ -138,7 +138,7 @@ case "$TEXT" in
 esac
 if [ -n "$event" ] && [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
     base="${DOC##*/}"
-    if [[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]]; then
+    if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
         bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
     fi
 fi
