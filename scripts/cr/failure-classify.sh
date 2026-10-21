@@ -158,23 +158,6 @@ $(cat "$_cf_err" 2>/dev/null)"
 }
 
 # ---------------------------------------------------------------------------
-# skip_class <text>
-#
-# Splits a critic-skipped (rc 5) detail into the reviewer-gate state it means:
-# `absent` when the critic is not set up on this machine at all (the API lane
-# is off, or no key exists anywhere), so it leaves the reviewer set; else
-# `unavailable` (it is set up but refused this run: credit, reservation, bank
-# not PROCEED, auth pin), which a hard row holds on. The phrases are
-# scripts/api-lane/claude-api.sh's own refusals. The ledger keeps the
-# critic-skipped reason, so rows written before this split classify the same.
-# ---------------------------------------------------------------------------
-_FC_ABSENT_RE='api lane is OFF|roster has no key_id|HIMMEL_API_KEY_ID is absent|no ANTHROPIC_API_KEY and no key file|has no ANTHROPIC_API_KEY line'
-
-skip_class() {
-    if printf '%s' "${1:-}" | grep -qE "$_FC_ABSENT_RE"; then echo absent; else echo unavailable; fi
-}
-
-# ---------------------------------------------------------------------------
 # first_signal_line <file>
 #
 # Echoes the FIRST line of <file> that carries a provider-failure signature,

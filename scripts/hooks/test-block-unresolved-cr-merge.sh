@@ -184,7 +184,7 @@ cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
     cp "$SCRIPT_DIR/../lib/$_d.sh" "$1/"
   done
   mkdir -p "$1/../cr"
-  cp "$SCRIPT_DIR/../cr/failure-classify.sh" "$SCRIPT_DIR/../cr/critics.json" "$1/../cr/"
+  cp "$SCRIPT_DIR/../cr/critics.json" "$1/../cr/"
 }
 
 pass=0; fail=0

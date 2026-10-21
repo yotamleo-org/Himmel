@@ -171,16 +171,13 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/critics-config.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 { [ -r "$_cmg_dir/critics-config.sh" ] && . "$_cmg_dir/critics-config.sh"; } || return 1
-# shellcheck source=scripts/cr/failure-classify.sh
-# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-{ [ -r "$_cmg_dir/../cr/failure-classify.sh" ] && . "$_cmg_dir/../cr/failure-classify.sh"; } || return 1
 
 # _crg_critic_states <head> <slug>... — each critic's state at <head>, read
 # from the CR ledger: one `slug<TAB>state<TAB>detail` line per slug, or one
 # `degraded<TAB><why>` line when the ledger cannot be read.
 #   pass           an avail ok row, and no open crit/imp finding of its own
 #   findings-open  open finding(s), whatever the avail rows say; detail = their ids
-#   absent         a critic-skipped row whose detail matches _FC_ABSENT_RE
+#   absent         a critic-skipped row whose detail matches _CCFG_ABSENT_RE
 #                  (cannot run on this machine); detail = the matched phrase
 #   not-selected   tier-excluded / keep-one-skipped: not picked for this PR
 #   unavailable    any other refusal or failure; detail = its reason
@@ -197,7 +194,7 @@ _crg_critic_states() {
     node=$(_ccfg_node) || { printf 'degraded\tnode not found\n'; return 0; }
     common=$(git rev-parse --git-common-dir 2>/dev/null) || { printf 'degraded\tnot in a git repository\n'; return 0; }
     RG_LEDGER="$common/cr-critic-scores.jsonl" RG_HEAD="$head" RG_SLUGS="$*" \
-    RG_ABSENT_RE="$_FC_ABSENT_RE" "$node" -e '
+    RG_ABSENT_RE="$_CCFG_ABSENT_RE" "$node" -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 let txt;
 try { txt = fs.readFileSync(e.RG_LEDGER, "utf8"); }
