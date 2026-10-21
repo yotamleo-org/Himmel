@@ -9,6 +9,8 @@ W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
 # a launching shell that exports the 95 workaround must not move the ceiling under test.
 export CADENCE_BANK_MAX_PCT=85 CADENCE_BANK_MAX_AGE=600
+# the rows below set the old CADENCE_BANK_* names inline; an exported new name would win over them.
+for _v in $(compgen -v CADENCE_USAGE_); do unset "$_v"; done
 
 # NO_FLEET: an empty-output ps stub, isolating every bank-only case below
 # from this machine's OWN running fleet (a real `ps -eo args` would count
@@ -881,6 +883,7 @@ check "standing default ceiling permits both banks at 99" PROCEED "$(CADENCE_BAN
 check "standing ceiling still refuses full five-hour bank" SKIPPED-BANK "$(CADENCE_BANK_MAX_PCT='' verdict "$(lfx 100 99 "$NOW" "")")"
 check "standing ceiling still refuses full weekly bank" SKIPPED-BANK "$(CADENCE_BANK_MAX_PCT='' verdict "$(lfx 99 100 "$NOW" "")")"
 check "standing preserves explicit five-hour ceiling" SKIPPED-BANK "$(verdict "$(lfx 90 99 "$NOW" "")")"
+check "standing preserves an explicit CADENCE_USAGE_MAX_PCT five-hour ceiling" SKIPPED-BANK "$(CADENCE_BANK_MAX_PCT='' CADENCE_USAGE_MAX_PCT=85 verdict "$(lfx 90 99 "$NOW" "")")"
 jq '.account="deadbeef"' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 check "standing remains account bound after renewal" 1 "$(lift_rc "$W/lc.json")"
 jq --arg a "$ACCT" '.account=$a' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 666 "$USAGE_LIFT_FILE"
@@ -1016,5 +1019,55 @@ if date -d @0 +%s >/dev/null 2>&1; then  # gnu-ok: probing for GNU date
 fi
 # the BSD stub must not lean on GNU-only `date -d`.
 check "BSD stub is portable (no GNU date -d)" 0 "$(grep -cE 'date .*-u -d|date -d' "$W/bsddate/date")"
+
+# --- the CADENCE_USAGE_* names ---
+lift_cache() { bash -c '. "$1/scripts/lib/usage-lift.sh"; _usage_lift_default_cache' _ "$REPO"; }
+check "usage-lift default cache: CADENCE_USAGE_CACHE wins over the old name" "$W/u.json" \
+  "$(CADENCE_USAGE_CACHE="$W/u.json" CADENCE_BANK_CACHE="$W/b.json" lift_cache)"
+check "usage-lift default cache: the old CADENCE_BANK_CACHE is still read" "$W/b.json" \
+  "$(unset CADENCE_USAGE_CACHE; CADENCE_BANK_CACHE="$W/b.json" lift_cache)"
+# New names alone are read; a set new name wins for a value key; for the
+# MAX_PCT cap the narrower value wins, so neither name can widen the other.
+verdict_new() {
+  printf '%s' "$(stamp_account "$1")" > "$W/c.json"
+  env -u CADENCE_BANK_LANE CADENCE_BANK_CACHE="$W/missing.json" \
+  CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+  CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg CADENCE_USAGE_LANE=native \
+  FLEET_PS_CMD="$NO_FLEET" \
+    bash "$SUT" </dev/null 2>"$W/err.log"
+}
+check "new names alone: CADENCE_USAGE_CACHE is read, over the old name" PROCEED \
+  "$(unset CADENCE_BANK_MAX_PCT; verdict_new "$(fx 10 20 "$NOW" "")")"
+check "new names alone: ledger row goes to CADENCE_USAGE_LEDGER with CADENCE_USAGE_LEG" newleg \
+  "$(tail -1 "$W/ledger-new.jsonl" 2>/dev/null | jq -r '.leg' 2>/dev/null)"
+check "CADENCE_USAGE_MAX_PCT alone is the ceiling" SKIPPED-BANK \
+  "$(unset CADENCE_BANK_MAX_PCT; CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 60 20 "$NOW" "")")"
+check "CADENCE_USAGE_MAX_PCT=99 cannot widen CADENCE_BANK_MAX_PCT=50" SKIPPED-BANK \
+  "$(CADENCE_BANK_MAX_PCT=50 CADENCE_USAGE_MAX_PCT=99 verdict_new "$(fx 60 20 "$NOW" "")")"
+check "CADENCE_BANK_MAX_PCT=99 cannot widen CADENCE_USAGE_MAX_PCT=50" SKIPPED-BANK \
+  "$(CADENCE_BANK_MAX_PCT=99 CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 60 20 "$NOW" "")")"
+check "both caps set, below the narrower -> PROCEED (control)" PROCEED \
+  "$(CADENCE_BANK_MAX_PCT=99 CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 40 20 "$NOW" "")")"
+check "non-numeric CADENCE_USAGE_MAX_PCT beside a numeric old one -> BANK-UNKNOWN" BANK-UNKNOWN \
+  "$(CADENCE_BANK_MAX_PCT=85 CADENCE_USAGE_MAX_PCT=abc verdict_new "$(fx 10 20 "$NOW" "")")"
+check "non-numeric CADENCE_BANK_MAX_PCT beside a numeric new one -> BANK-UNKNOWN" BANK-UNKNOWN \
+  "$(CADENCE_BANK_MAX_PCT=abc CADENCE_USAGE_MAX_PCT=85 verdict_new "$(fx 10 20 "$NOW" "")")"
+check "CADENCE_USAGE_MAX_AGE is read" BANK-STALE \
+  "$(CADENCE_USAGE_MAX_AGE=5 verdict_new "$(fx 10 20 "$((NOW-60))" "")")"
+check "CADENCE_USAGE_LAUNCH=1 with the fleet at cap -> SKIPPED-FLEET" SKIPPED-FLEET \
+  "$(printf '%s' "$(stamp_account "$(fx 10 20 "$NOW" "")")" > "$W/c.json"; CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg CADENCE_USAGE_LAUNCH=1 HIMMEL_FLEET_CAP=4 \
+     FLEET_PS_CMD="$p4/ps" FLEET_PROC="$p4/proc" HIMMEL_FLEET_SLOTS="$(mktemp -d "$W/slots.XXXXXX")" \
+     env -u FLEET_CAP_OK -u CADENCE_BANK_LAUNCH bash -o pipefail "$SUT" </dev/null 2>"$W/err.log")"
+_new_stub="$W/claudex-status-new.sh"
+printf '%s\n' '#!/usr/bin/env bash' "printf '%s\n' 'claudex spent measured weekly used=99% free=1%'" > "$_new_stub"; chmod +x "$_new_stub"
+check "CADENCE_USAGE_LANE=claudex with CADENCE_USAGE_STATUS_CMD parks on the codex bank" SKIPPED-BANK \
+  "$(printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; env -u CADENCE_BANK_LANE CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg FLEET_PS_CMD="$NO_FLEET" \
+     CADENCE_USAGE_LANE=claudex CADENCE_USAGE_STATUS_CMD="$_new_stub" bash "$SUT" </dev/null 2>"$W/err.log")"
+check "CADENCE_USAGE_LANE=native wins over an inherited CADENCE_BANK_LANE=claudex" PROCEED \
+  "$(printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg FLEET_PS_CMD="$NO_FLEET" \
+     CADENCE_BANK_LANE=claudex CADENCE_USAGE_LANE=native CADENCE_BANK_STATUS_CMD="$_new_stub" bash "$SUT" </dev/null 2>"$W/err.log")"
 
 echo "passed=$PASS failed=$FAIL"; [ "$FAIL" -eq 0 ]

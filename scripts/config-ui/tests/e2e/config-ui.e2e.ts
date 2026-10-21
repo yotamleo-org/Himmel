@@ -16,11 +16,9 @@ const titles = (page: Page, region: string) => page.locator(`${heads(region)} .b
 const head = (page: Page, title: string) => page.locator(`#inventory .bhead`, { has: page.locator(".bt", { hasText: new RegExp(`^${title}$`) }) });
 const ALL = BUNDLES.map((b) => b.title);
 
-test("1. Controls and Inventory render as bundles in table order", async ({ page }) => {
+test("1. Inventory renders as bundles in table order", async ({ page }) => {
   await open(page);
   expect(await titles(page, "inventory")).toEqual(ALL);
-  // Controls lists only bundles that hold a toggle, in the same table order.
-  expect(await titles(page, "controls")).toEqual(["Vault & capture", "Ship workflow"]);
 });
 
 test("2. a bundle with no fail or warn row is collapsed; one with a fail or warn row opens", async ({ page }) => {
@@ -99,9 +97,8 @@ test("7. Unsorted is absent with 0 unmapped rows; with one it is always open and
 
 test("safety: a toggle shows only a dry-run plan; nothing runs without the typed consent; cancel clears it", async ({ page }) => {
   await open(page);
-  await page.locator("#controls .bhead", { hasText: "Vault & capture" }).click(); // healthy bundle: collapsed by default
-  await page.locator('#controls button[data-act="plan"][data-target="pipeline"]').click();
-  const plan = page.locator("#controls .plan");
+  await page.locator('#settings button[data-act="plan"][data-target="pipeline"]').click();
+  const plan = page.locator("#settings .plan");
   await expect(plan).toContainText("dry-run · nothing has changed");
   await expect(plan.locator("pre")).toContainText("--dry-run");
   const confirm = plan.locator('button[data-act="run"]');
@@ -111,7 +108,7 @@ test("safety: a toggle shows only a dry-run plan; nothing runs without the typed
   await plan.locator('input[data-act="consent"]').fill((await plan.locator("label b").innerText()).trim());
   await expect(confirm).toBeEnabled(); // typed consent matches; still nothing has run: cancel, never confirm
   await plan.locator('button[data-act="close"]').click();
-  await expect(page.locator("#controls .plan")).toHaveCount(0);
+  await expect(page.locator("#settings .plan")).toHaveCount(0);
   const ran = h.argv();
   expect(ran.length).toBeGreaterThan(0);
   expect(ran.every((l) => l.endsWith("--dry-run")), ran.join("\n")).toBe(true);
@@ -134,10 +131,10 @@ test("header without feed.himmel reads version unknown, never blank", async ({ p
   await expect(page.locator("header.top")).toContainText("version unknown (feed has no himmel identity)");
 });
 
-test("rail page links are [Config, Health, Tool health, Fleet, Roadmap, Kanban, Workflow, Docs]; Config is current and the hash is #/config", async ({ page }) => {
+test("rail page links are [Fleet, Health, Tool health, Settings, Setup, Roadmap, Kanban, Workflow, Docs]; Config is current and the hash is #/config", async ({ page }) => {
   await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
 });
 
@@ -165,14 +162,14 @@ const verdictWord = (page: Page) => page.locator("#verdict .word");
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await page.getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");
   await expect(page.locator("header.top")).toHaveCount(1);
   await expect(page.locator("header.top")).toContainText(HIMMEL_ID.describe);
   await page.goBack();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   await expect(page.locator("#inventory .bhead").first()).toBeVisible();
 });
 
@@ -199,7 +196,7 @@ test("health: fail first with remedy; open in Config lands on the row", async ({
   await expect(rows.first()).toContainText("fix-guard-cmd");
   await expect(rows.first().locator('[data-act="copy"]')).toBeVisible();
   await rows.first().locator('[data-act="open-config"]').click();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   await expect(page.locator("#q")).toHaveValue("guard-fail");
   await expect(page.locator("#inventory .row-head", { hasText: "guard-fail" })).toBeVisible();
 });
@@ -255,8 +252,8 @@ test("health: returning to Config before the feed lands shows loading, not Healt
   await page.goto(h.url);
   await page.evaluate(() => { location.hash = "#/health"; });
   await expect(verdictWord(page)).toHaveText("No data");
-  await page.locator("nav.pages a", { hasText: "Config" }).click();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
+  await page.locator("nav.pages a", { hasText: "Settings" }).click();
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   await expect(page.locator("main #verdict")).toHaveCount(0);
   // the pending state is the probe status (or plain loading before its first step).
   await expect(page.locator("#status")).toHaveText(/^(loading…|probing .*)/);

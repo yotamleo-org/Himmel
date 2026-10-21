@@ -249,7 +249,7 @@ usage() {
 # A caller-preset HEADED_ARM_LAUNCHER_ENV is preserved (appended to, never
 # replaced) and wins on a name clash: this function only ever adds a NAME not
 # already present as a token. HEADED_ARM_LAUNCHER_ENV is a whitespace-split
-# token list (same contract as CODEX_BANK_PROBE_CMD) with no quoting scheme,
+# token list (same contract as CODEX_USAGE_PROBE_CMD) with no quoting scheme,
 # so a value containing whitespace cannot become a token: it would silently
 # mis-split into extra bogus tokens. On macOS (HEADED_ARM_UNAME=Darwin), the
 # token list is the ONLY channel to the leg, so such a value is refused
@@ -838,6 +838,9 @@ if [ "$RM" -eq 1 ]; then
     [ -z "$MODEL" ] && MODEL=claude-opus-5-5
     CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_RM_EFFORT:-high}"
 fi
+# The model the console asked for, defaults applied; the check before the exec
+# refuses a native launch whose --model to claude has drifted from it.
+ASKED_MODEL="$MODEL"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HEADED_ARM="${HEADED_ARM_LEG_TARGET:-$HERE/../headed-arm.sh}"
@@ -1530,13 +1533,18 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
     EFFORT_SOURCE=""
+    # headed-arm.sh defaults an omitted model to this; the registry lookup must
+    # match the model the leg launches.
+    MODEL="${MODEL:-claude-opus-5-5}"
     # A caller-preset launcher token wins over leg_propagate_env, so the print
     # below reports it; read before the resolver appends its own token.
+    # A presence flag, not -n: an empty preset is still the token the leg gets.
     PRESET_EFFORT=""
+    PRESET_EFFORT_SET=0
     set -f
     for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
         case "$_effort_tok" in
-            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}" ;;
+            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}"; PRESET_EFFORT_SET=1 ;;
         esac
     done
     set +f
@@ -1567,22 +1575,44 @@ if [ "$LANE" = "native" ]; then
             esac
         fi
     fi
-    if [ -n "$PRESET_EFFORT" ]; then
+    if [ "$PRESET_EFFORT_SET" -eq 1 ]; then
         EFFORT_SOURCE="HEADED_ARM_LAUNCHER_ENV"
         EFFORT_SHOWN="$PRESET_EFFORT"
     else
         EFFORT_SHOWN="${CLAUDE_CODE_EFFORT_LEVEL:-}"
     fi
     [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
+    # Asked equals effective: a valid LEG_EFFORT is what the leg must run at
+    # unless an explicit CLAUDE_CODE_EFFORT_LEVEL or launcher token names the
+    # override (the line above prints that source). Effective is read back from
+    # the final token list, last token wins, as `env` applies it.
+    EFFORT_ASKED=""
+    case "${LEG_EFFORT:-}" in
+        low | medium | high | xhigh | max) EFFORT_ASKED="$LEG_EFFORT" ;;
+    esac
+    EFFORT_EFFECTIVE="${CLAUDE_CODE_EFFORT_LEVEL:-}"
+    set -f
+    for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_effort_tok" in
+            CLAUDE_CODE_EFFORT_LEVEL=*) EFFORT_EFFECTIVE="${_effort_tok#*=}" ;;
+        esac
+    done
+    set +f
+    if [ -n "$EFFORT_ASKED" ] && [ "$EFFORT_SOURCE" != "CLAUDE_CODE_EFFORT_LEVEL" ] && [ "$EFFORT_SOURCE" != "HEADED_ARM_LAUNCHER_ENV" ] && [ "$EFFORT_EFFECTIVE" != "$EFFORT_ASKED" ]; then
+        echo "headed-arm-leg: refusing launch: asked effort=$EFFORT_ASKED (LEG_EFFORT) but the leg would run effort=$EFFORT_EFFECTIVE (source=${EFFORT_SOURCE:-none}); set CLAUDE_CODE_EFFORT_LEVEL explicitly if that is intended" >&2
+        exit 2
+    fi
 fi
 
-# the leg's own bank-preflight reads CADENCE_BANK_LANE before
-# LEG_LANE. Propagate the resolved registry values, including DeepSeek's
-# existing openrouter bank gate, rather than inheriting the console's lane.
-# Native launches keep their environment unchanged.
+# Propagate the resolved registry values, including DeepSeek's existing
+# openrouter bank gate, rather than inheriting the console's lane.
+# Only the old name is propagated: bank-preflight reads CADENCE_USAGE_LANE first,
+# so a propagated new name would override an inline CADENCE_BANK_LANE in the leg.
+# Both names are still dropped. Native launches keep their environment unchanged.
 if [ "$LANE" != "native" ]; then
     leg_env_drop_token LEG_LANE
     leg_env_drop_token CADENCE_BANK_LANE
+    leg_env_drop_token CADENCE_USAGE_LANE
     leg_propagate_env LEG_LANE "$LANE"
     leg_propagate_env CADENCE_BANK_LANE "$LANE_BANK_GATE"
 fi
@@ -2154,6 +2184,11 @@ else
     LEG_SCOPE=("$LEG_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$LEG_MEMORY_MAX" -p "MemorySwapMax=$LEG_MEMORY_MAX" --)
 fi
 
+if [ "$LANE" = "native" ] && [ -n "$ASKED_MODEL" ] && [ "$MODEL" != "$ASKED_MODEL" ]; then
+    echo "headed-arm-leg: refusing launch: asked model=$ASKED_MODEL but claude would be passed --model $MODEL" >&2
+    exit 2
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm-leg: would exec: %s %s %s %s %s %s %s %s\n' \
         "$HEADED_ARM" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT"
@@ -2316,7 +2351,7 @@ fi
 # signal/deadline wait loop even starts - refusing now is cheaper than
 # refusing after waiting out the deadline. SKIPPED-FLEET refuses the launch
 # outright. SKIPPED-BANK also refuses: we set
-# CADENCE_BANK_LANE="$LANE" above specifically so bank-preflight.sh checks
+# CADENCE_USAGE_LANE="$LANE" above specifically so bank-preflight.sh checks
 # the bank this lane actually draws on (the codex weekly bank for claudex,
 # the CLAUDE five_hour/seven_day bank for native) - unlike arm-resume.sh,
 # this wrapper has no separate bank-aware scheduling path to fall back on,
@@ -2339,7 +2374,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # this call launches a leg, so it declares launch intent —
     # the fleet cap must be able to actually refuse it, unlike a plain
     # bank-status READ.
-    preflight_token="$(CADENCE_BANK_LEG="$NAME" CADENCE_BANK_LANE="$LANE_BANK_GATE" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
+    preflight_token="$(CADENCE_USAGE_LEG="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
     if [ "$preflight_token" = SKIPPED-FLEET ]; then
         # NOT a reservation release here — bank-preflight.sh
         # only ever returns SKIPPED-FLEET from its admission block itself

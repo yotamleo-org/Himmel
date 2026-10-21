@@ -112,6 +112,7 @@ echo "free-watch: catalog has $FREE_COUNT ':free' models"
 # are the author/slug form; on non-openrouter rows only those count.
 jq -r '.panel[] as $r
        | [$r.model, ($r.fallback_models[]?), ($r.fallback_model // empty)]
+       | map(select(type == "string"))
        | if $r.provider == "openrouter" then . else map(select(contains("/"))) end
        | .[]' "$REGISTRY" \
   | tr -d '\r' | sort -u > "$TMP_DIR/pins" \

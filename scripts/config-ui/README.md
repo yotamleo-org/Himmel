@@ -37,16 +37,17 @@ the page.
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
 | What is broken | feed rows with health `fail` or `warn`, worst first, plus firing alerts | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Legs and the usage bank | bank: the newest row with bank numbers in the last 64 KiB of `$CADENCE_BANK_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; legs: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with bank numbers; no handover root or fleet manifest |
+| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
 The **Bank windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
-probe: the Claude usage cache (`$CADENCE_BANK_CACHE`, else `$CLAUDE_USAGE_CACHE`,
+probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,
 default `/tmp/claude/statusline-usage-cache.json`, stale after
-`$CADENCE_BANK_MAX_AGE`, default 600 s) and the Codex bank cache
-(`$CODEX_BANK_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
-`$CODEX_BANK_CACHE_TTL_SECONDS`, default 6 h). Per bank and window it returns
+`$CADENCE_USAGE_MAX_AGE`, default 600 s) and the Codex usage cache
+(`$CODEX_USAGE_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
+`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). The old `CADENCE_BANK_*` and
+`CODEX_BANK_*` names are still read. Per usage source and window it returns
 `{used_pct|null, resets_at|null, captured_at, age_s, state: ok|stale|unknown,
 possibly_reset, reason}`. A missing or unreadable cache, or a window the plan
 does not report (Codex 5h is often null), is `unknown (why)`, never 0 %; a
@@ -341,6 +342,17 @@ imports, so its suite runs in CI without an install.
   direct landing on Kanban shows the plain-words empty state, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
+- Settings e2e (`settings.e2e.ts`, journey J3, same opt-in suite): the page and
+  rail entry read Settings with the seven groups in order, every row shows its
+  command, when it takes effect and a Learn more link to the docs site, Commit
+  rules offer no switch, a switch previews its dry-run first, and Roadmap and
+  Kanban follow the tracker source.
+- Setup e2e (`setup.e2e.ts`, same opt-in suite): the page is `public/setup.js`,
+  its state and secret writes are `setup.ts` (`GET /api/setup`, `POST
+  /api/setup/secret`). A runtime-computed canary token is saved and removed
+  through the page against the temp-HOME store, and a scan of the markup, fields,
+  browser storage, audit log and argv must never find it (a control test plants
+  it to prove the scan sees each place). Commit rules preview before they apply.
 - Development graph docs page e2e (`dev-graph-docs.e2e.ts`, journey J-DG1,
   same suite): it needs no himmelctl. It serves `docs/guide` over `node:http`
   and walks `dev-graph.html`: node count, the W2 NO-GO step as refused with its

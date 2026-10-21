@@ -19,9 +19,33 @@
 # DRA_READERS=<repo root> points the readers at another tree (a RED replay on a
 # parent commit: git archive <parent> scripts | tar -x -C <dir>); the generator,
 # reference parser and this suite always come from the checkout.
-# Not exercised: a leg doc whose stem carries a non-N<k> prefix (tick keys the raw
-# stem, board and fleet derive N<k>); leg-relaunch.sh does not exist; the stability
-# scorecard (scripts/eval/stability-scorecard.sh) reads no handover doc.
+# Stem labels are deliberately reader-specific: tick's console entry set keeps
+# raw stems; board and fleet normalize ticket-prefixed stems to N<k>. Generated
+# entries and canonical/legacy leg filenames pin both sides of this distinction.
+# Deliberately not covered (different document contracts, with dedicated suites):
+#   relay-batch.sh, succession-tracker.sh: succession delivery/acknowledgement,
+#     malformed-input refusal and manifest joins, not just an entry/tail set.
+#   live-state.sh, action-zero.sh, leg-event.sh: mutate live state / route events;
+#     running them on the corpus would change the documents being compared.
+#   append-results.sh, leg-doc-lock.sh: append/lock/frontmatter write contracts.
+#   headed-arm-leg.sh: real relaunch reader (brief/frontmatter/run-history gates);
+#     launching sessions is outside this offline parser corpus. No leg-relaunch.sh exists.
+#   brief-lint.sh: validates prior-art brief fields, absent from this grammar.
+#   compacted-check.sh: COMPACTED snapshot contract, not the final marker.
+#   consult-relay.sh: ANSWER/WRAPPED consult protocol, not a leg status parser.
+#   handoff-facts.sh: full handoff facts/priority/queue/decision sections.
+#   next-dispatchable.sh, priority-prune.sh: priority fields and Jira scheduling.
+#   tracker.py: ticket/manifest/lock joins and its own PR/empty-tail semantics.
+#   version-status-audit.sh: ticket status joined with frontmatter resume paths.
+#   parked-on-prompt.sh: session_ids joined with denial events, not status tails.
+#   console-wait.sh: predecessor header and lifecycle/PR routing, invokes tick.
+#   wrap-merged.sh: merge/close/append workflow and tracker metadata fields.
+#   leg-digest-step.sh: frontmatter/session/timing/PR ledger extraction.
+#   pr-stall.sh: broad PR/ticket attribution, not canonical PR extraction.
+#   inbox-send.sh: inserts Console Rulings; never a fleet/tail verdict.
+#   residual-lines.sh: residual-ticket sections, not entry/tail/PR grammar.
+#   gen-briefs.py, gen-judge-brief.py, smoke-consult-sandbox.sh write fixtures/briefs;
+#     stability-scorecard.sh reads no handover doc, so none is a missing reader.
 #
 # PLATFORM GUARD: Linux-only like the kit (tick.sh reads pgrep, atq, /proc).
 set -uo pipefail
@@ -74,6 +98,12 @@ if [ "${1:-}" = --one ]; then
     fleet-console)
         printf 'fleet-legs\t%s\t%s\n' "$base" "$(node "$CK/fleet.mjs" --doc "$doc" --json 2>/dev/null | jq -r '[.legs[].label] | unique | join(",")' 2>/dev/null || echo '?')"
         ;;
+    tail-leg)
+        # Exercise the shared parser directly as well as its tick/close consumers.
+        . "$READERS/scripts/lib/leg-tail-status.sh"
+        v="$(leg_tail_status "$doc")"
+        printf 'shared-tail\t%s\t%s\n' "$base" "${v:-?}"
+        ;;
     close-leg)
         bash "$CK/close-wrapped-leg.sh" --check "$doc" >/dev/null 2>&1
         rc=$?
@@ -92,10 +122,28 @@ done
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/dra.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
+mkdir -p "$W/home" || exit 1
+export HOME="$W/home" XDG_CACHE_HOME="$W/home/.cache" XDG_CONFIG_HOME="$W/home/.config" XDG_STATE_HOME="$W/home/.local/state"
+export CLAUDE_CONFIG_DIR="$W/home/.claude"
 
 fails=0
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
+
+if ! python3 -I - "$W/home" <<'PY'
+import os, sys
+home = sys.argv[1]
+assert os.environ['HOME'] == home
+assert os.environ['CLAUDE_CONFIG_DIR'] == home + '/.claude'
+for key, suffix in [('XDG_CACHE_HOME', '/.cache'), ('XDG_CONFIG_HOME', '/.config'), ('XDG_STATE_HOME', '/.local/state')]:
+    assert os.environ[key] == home + suffix
+PY
+then
+    fail "readers and console template setup use a temporary HOME"
+    echo "FAILED: $fails"
+    exit 1
+fi
+pass "readers and console template setup use a temporary HOME"
 
 # ---- offline stubs and seams (as test-console-kit-e2e.sh) -------------------
 export HANDOVER_DIR="$W/root"
@@ -129,6 +177,8 @@ mkdir -p "$W/tpl"
         USER_SLUG=u JIRA_PROJECT_KEY=HIMMEL CONSOLE_WORK_DIR="$W/work"
     bash "$REPO/scripts/handover/console/console.sh" new --name tpl-console --bucket himmel >/dev/null 2>&1
 )
+tpl_rc=$?
+if [ "$tpl_rc" -ne 0 ]; then fail "console.sh new exited $tpl_rc"; echo "FAILED: $fails"; exit 1; fi
 TPL="$(find "$W/tpl" -name 'HIMMEL-nextleg-*-console.md' | head -1)"
 if [ -z "$TPL" ]; then fail "console.sh new produced a console doc"; echo "FAILED: 1"; exit 1; fi
 pass "console.sh new produced the template console doc"
@@ -150,7 +200,7 @@ done < "$EXPECT"
 t0=$SECONDS
 {
     for d in "${CONS[@]}"; do printf '%s\t%s\n' tick-console "$d"; printf '%s\t%s\n' board-console "$d"; printf '%s\t%s\n' fleet-console "$d"; done
-    for d in "${LEGS[@]}"; do printf '%s\t%s\n' close-leg "$d"; done
+    for d in "${LEGS[@]}"; do printf '%s\t%s\n' close-leg "$d"; printf '%s\t%s\n' tail-leg "$d"; done
 } | xargs -d '\n' -P "$JOBS" -I{} bash "$0" --one {} 2>/dev/null | sort > "$W/readers.tsv" &
 bg=$!
 
@@ -164,8 +214,14 @@ wait "$bg"
 
 # ---- compare with the reference parser --------------------------------------
 cmp_out="$(python3 -I - "$EXPECT" "$W/readers.tsv" "$W/tails.txt" "$W/out/all.json" "$ABSENT" <<'PY'
-import csv, json, re, sys
+import csv, html, json, re, sys
 expect, readers, tails, board = sys.argv[1:5]
+try:
+    archive = open(board[:-5] + '-archive.html').read()
+    archived = {html.unescape(label): html.unescape(re.sub(r'<[^>]+>', '', text))
+                for label, text in re.findall(r'<li data-archive-leg="([^"]+)">(.*?)</li>', archive)}
+except OSError:
+    archived = {}
 absent = sys.argv[5].split()
 read = {}
 for ln in open(readers):
@@ -196,8 +252,12 @@ for row in csv.reader(open(expect), delimiter="\t"):
             if {"board-legs": "board.mjs", "fleet-legs": "fleet.mjs"}.get(key) in absent:
                 continue
             got = read.get((key, doc), "<no output>")
-            if got != legs:
-                disagree(doc, key, got, legs)
+            want = legs
+            if key != "tick-legs":
+                want = ",".join(sorted({re.sub(r'^[A-Za-z]+-\d+-(N\d+[a-z]*)(?:-.*)?$', r'\1', lab)
+                                        for lab in legs.split(',') if lab}))
+            if got != want:
+                disagree(doc, key, got, want)
         got = read.get(("tick-malformed", doc), "<no output>")
         if got != mal:
             disagree(doc, "tick-malformed", got, mal)
@@ -207,6 +267,9 @@ for row in csv.reader(open(expect), delimiter="\t"):
         got = tick_tail.get(label, "<absent>")
         if got != tail:
             disagree(doc, "tick-tails", got, tail)
+        got = read.get(("shared-tail", doc), "<no output>")
+        if got != tail:
+            disagree(doc, "leg-tail-status", got, tail)
         got = read.get(("close-tail", doc), "<no output>")
         want = "WRAPPED" if tail == "WRAPPED" else "notwrapped"
         if "close-wrapped-leg.sh" not in absent and got != want:
@@ -216,8 +279,14 @@ for row in csv.reader(open(expect), delimiter="\t"):
         elif board_pr is None:
             disagree(doc, "board-pr", "<no json>", pr)
         elif label not in board_pr and tail in ("WRAPPED", "MERGED"):
-            # a finished leg moves to the board's archive, out of legs[]
-            pass
+            # A finished leg must be present in the archive, with its PR intact.
+            if label not in archived:
+                disagree(doc, "board-archive", "<leg absent>", label)
+            else:
+                match = re.search(r'\bPR #(\d+)\b', archived[label])
+                got = match.group(1) if match else "-"
+                if got != pr:
+                    disagree(doc, "board-archive-pr", got, pr)
         elif label not in board_pr:
             disagree(doc, "board-pr", "<leg absent>", pr)
         else:

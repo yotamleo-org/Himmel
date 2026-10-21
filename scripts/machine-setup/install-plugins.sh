@@ -100,12 +100,37 @@ command -v claude  >/dev/null || { echo "ERROR: claude CLI required on PATH" >&2
 PROV_STEP="preflight"
 prov_finish() {
   local rc=$?
+  if [[ $DRY_RUN -eq 0 ]]; then
+    if [[ -n "${PROV_PRE_ENABLED_JSON:-}" ]]; then
+      local keys spec ptr
+      keys=$(jq -r --argjson pre "$PROV_PRE_ENABLED_JSON" \
+        '(.enabledPlugins // {}) | to_entries[] | select(.value == false and (.key as $k | $pre | has($k) | not)) | .key' \
+        "$PROV_SETTINGS_FILE" 2>/dev/null) || keys=""
+      while IFS= read -r spec; do
+        [[ -n "$spec" ]] || continue
+        ptr=${spec//\~/\~0}; ptr=${ptr//\//\~1}
+        # shellcheck disable=SC2016  # $n is a jq variable
+        prov_settings_created "/enabledPlugins/$ptr" '.enabledPlugins[$n]' "$spec"
+      done <<< "$keys"
+    fi
+    [[ "${MKT_CONTAINER_ABSENT:-false}" == true ]] && prov_settings_created /extraKnownMarketplaces .extraKnownMarketplaces
+    [[ "${EP_CONTAINER_ABSENT:-false}" == true ]] && prov_settings_created /enabledPlugins .enabledPlugins
+  fi
   if [[ $rc -eq 0 ]]; then prov_end ok || true; else prov_end failed "$PROV_STEP" || true; fi
 }
 trap prov_finish EXIT
 prov_begin --writer install-plugins.sh --target "$PWD" -- ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"} \
   || echo "  warn: provenance session not opened (non-fatal)" >&2
 prov_note() { prov_record "$@" || echo "  warn: provenance record failed (non-fatal)" >&2; }
+
+# A created-when-absent settings key, including containers on a failed install.
+prov_settings_created() {
+  local post
+  post=$(jq -c --arg n "${3:-}" "$2" "$PROV_SETTINGS_FILE" 2>/dev/null) || return 0
+  [[ -n "$post" && "$post" != null ]] || return 0
+  prov_note create json-key "$PROV_SETTINGS_FILE" --unit "$1" --pre-absent --post-json "$post" \
+    --scope "$PROV_SCOPE" --class code --row "$PROV_SCOPE-settings" --writer install-plugins.sh
+}
 
 # ── Helper: run-or-print ────────────────────────────────────────────────────
 run() {
@@ -313,6 +338,10 @@ MKT_DRIFT=()
 AU_PRE_NAMES=$(jq -r '(.extraKnownMarketplaces // {}) | keys[]' "$SETTINGS_FILE" 2>/dev/null | tr -d '\r') || AU_PRE_NAMES=""
 MKT_CONTAINER_ABSENT=true; settings_declares_top extraKnownMarketplaces && MKT_CONTAINER_ABSENT=false
 EP_CONTAINER_ABSENT=true; settings_declares_top enabledPlugins && EP_CONTAINER_ABSENT=false
+PROV_PRE_ENABLED_JSON='{}'
+if [[ -f "$PROV_SETTINGS_FILE" ]]; then
+  PROV_PRE_ENABLED_JSON=$(jq -c '.enabledPlugins // {}' "$PROV_SETTINGS_FILE" 2>/dev/null) || PROV_PRE_ENABLED_JSON=""
+fi
 MKT_SCOPE_ENTRY_NAMES=()
 while IFS= read -r MKT_LINE; do
   MKT_NAME="${MKT_LINE%%$'\t'*}"; SRC="${MKT_LINE#*$'\t'}"
@@ -448,17 +477,7 @@ while IFS= read -r NAME; do
   fi
 done <<< "$AUTO_NAMES"
 
-# prov_settings_created <unit> <jq-path> [<$n>] — a created-when-absent json-key row
-# for what the CLI just wrote into this scope's settings file.
-prov_settings_created() {
-  local post
-  post=$(jq -c --arg n "${3:-}" "$2" "$PROV_SETTINGS_FILE" 2>/dev/null) || return 0
-  [[ -n "$post" && "$post" != null ]] || return 0
-  prov_note create json-key "$PROV_SETTINGS_FILE" --unit "$1" --pre-absent --post-json "$post" \
-    --scope "$PROV_SCOPE" --class code --row "$PROV_SCOPE-settings" --writer install-plugins.sh
-}
 if [[ $DRY_RUN -eq 0 ]]; then
-  [[ "$MKT_CONTAINER_ABSENT" == true ]] && prov_settings_created /extraKnownMarketplaces .extraKnownMarketplaces
   for MKT_NAME in ${MKT_SCOPE_ENTRY_NAMES[@]+"${MKT_SCOPE_ENTRY_NAMES[@]}"}; do
     MKT_PTR=${MKT_NAME//\~/\~0}; MKT_PTR=${MKT_PTR//\//\~1}
     # shellcheck disable=SC2016  # $n is a jq variable (--arg), not a shell expansion
@@ -751,12 +770,15 @@ esac
 # ── i-have-adhd always-on flag ─────────────────────────────────
 # Idempotent; HIMMEL_NO_ADHD_ALWAYS=1 opts out. Best-effort, never fails install.
 if [[ $DRY_RUN -eq 0 && -f "$SCRIPT_DIR/enable-i-have-adhd-always.sh" ]]; then
+  ADHD_FLAG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.i-have-adhd-always"
+  ADHD_FLAG_ABSENT=true
+  [[ -e "$ADHD_FLAG" || -L "$ADHD_FLAG" ]] && ADHD_FLAG_ABSENT=false
   bash "$SCRIPT_DIR/enable-i-have-adhd-always.sh" || true
+  if [[ "$ADHD_FLAG_ABSENT" == true && -f "$ADHD_FLAG" && ! -L "$ADHD_FLAG" ]]; then
+    prov_note create file "$ADHD_FLAG" --pre-absent --post-file "$ADHD_FLAG" \
+      --scope user --class code --row plugin-flags --writer install-plugins.sh
+  fi
 fi
-
-# The enabledPlugins container the CLI created in this scope's
-# settings file, so uninstall can drop it once its plugins are gone.
-[[ $DRY_RUN -eq 0 && "$EP_CONTAINER_ABSENT" == true ]] && prov_settings_created /enabledPlugins .enabledPlugins
 
 # ── Install summary: on-demand tier ────────────────────────────
 # Discoverability, not enforcement: name what just landed installed-but-

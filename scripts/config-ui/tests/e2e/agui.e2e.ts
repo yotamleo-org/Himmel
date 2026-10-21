@@ -344,14 +344,14 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
   page.on("request", (r) => lines.push(r.url()));
   await page.goto(h.url.replace("/agui/#t=", "/#t="));
   const rail = page.locator("nav.pages a");
-  await expect(rail).toHaveText(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
+  await expect(rail).toHaveText(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
   await expect(rail.filter({ hasText: "Fleet" }).locator(".st-dot")).toHaveClass(/\bok\b/);
 
   await rail.filter({ hasText: "Fleet" }).click();
   await expect(page).toHaveURL(new RegExp(`/agui/#t=${tok}$`));
-  await expect(rail).toHaveText(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  await expect(rail).toHaveText(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Fleet");
   const leg = card(page, FLEET.leg.name);
   await expand(page, FLEET.leg.name);
@@ -359,13 +359,13 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
 
   await leg.locator("a.fleet-head").click();
   await expect(page).toHaveURL(new RegExp(`&run=${FLEET.leg.run}$`));
-  await expect(rail).toHaveText(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
+  await expect(rail).toHaveText(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Run");
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
 
-  await rail.filter({ hasText: "Config" }).click();
+  await rail.filter({ hasText: "Settings" }).click();
   await expect(page).toHaveURL(/\/#\/config$/);
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
   await page.goBack();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Run");
 

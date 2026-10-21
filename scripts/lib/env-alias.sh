@@ -7,6 +7,10 @@
 #                         is non-empty; otherwise leave both alone. For VALUE
 #                         keys (paths, models, timeouts) only: a set NEW wins,
 #                         so it must never gate a guard.
+#   alias_env_cap NEW OLD as alias_env, for a numeric cap (*_MAX_PCT): when both
+#                         are set, NEW becomes the narrower (smaller) value, and a
+#                         value that is not a plain number wins so the reader's own
+#                         check rejects it. Neither name can widen the other.
 #   env_alias_any NEW OLD true when either name is non-empty.
 #   env_alias_restrict NEW OLD
 #                         true when either name is truthy. For markers that
@@ -52,6 +56,28 @@ alias_env() {
     export "$new=${!old}"
   fi
   return 0
+}
+
+_env_alias_num() {
+  case "$1" in
+    ''|.|*[!0-9.]*|*.*.*) return 1 ;;
+  esac
+  return 0
+}
+
+alias_env_cap() {
+  local new="${1-}" old="${2-}" n o
+  _env_alias_valid "$new" && _env_alias_valid "$old" || return 2
+  n="${!new:-}" o="${!old:-}"
+  if [ -n "$n" ] && [ -n "$o" ]; then
+    if ! _env_alias_num "$n"; then
+      :
+    elif ! _env_alias_num "$o" || awk -v a="$o" -v b="$n" 'BEGIN{exit !(a+0<b+0)}'; then
+      export "$new=$o"
+    fi
+    return 0
+  fi
+  alias_env "$new" "$old"
 }
 
 env_alias_any() {

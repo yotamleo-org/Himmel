@@ -1,7 +1,9 @@
 // pure rendering, no DOM. render(feed, state) → HTML string.
 // state: { open: Set<string>, bundles: { "<region>|<bundle>": { open, rank } }, filt: { health, kind, q, problems }, plans: { [k]: plan } }.
-// A toggle in Controls opens a plan: preview (dry-run) → consent → run →
+// A toggle in Settings opens a plan: preview (dry-run) → consent → run →
 // before/after. Confirm stays disabled until a typed consent matches.
+import { docsHref } from "./nav.js";
+
 const ST = { ok: "● ok", warn: "◐ warn", fail: "✕ fail", off: "○ off", info: "· info" };
 const READ_ONLY = {
   "launch-shell variable": "set in launching shell",
@@ -20,7 +22,7 @@ const isCopy = (r) => r.control.class === "fix-command" || (isTriage(r) && remed
 function slot(r, where) {
   const c = r.control;
   if (c.class === "toggle") {
-    if (where !== "controls") return `<span class="ro">control ↗</span>`;
+    if (where !== "settings") return `<span class="ro">control ↗</span>`;
     const on = r.installed && r.installed.state === "present";
     const a = (v) => `data-act="plan" data-k="${esc(`${where}|${r.id}`)}" data-action="${esc(c.action)}" data-target="${esc(c.target)}"${v ? ` data-value="${v}"` : ""}`;
     // The feed does not know a lane's current value, so a lane offers both.
@@ -37,7 +39,7 @@ function firesText(f) {
   return f.state === "yes" ? `yes · ${esc(f.at)} · ${esc(f.evidence)}` : esc(f.state);
 }
 
-function planHtml(k, p) {
+export function planHtml(k, p) {
   const dk = `data-k="${esc(k)}"`;
   const cancel = `<button class="btn" data-act="close" ${dk}>${p.stage === "done" || p.stage === "error" ? "close" : "cancel"}</button>`;
   if (p.stage === "loading") return `<div class="plan"><span class="ro">running dry-run…</span></div>`;
@@ -136,7 +138,7 @@ function bundled(list, base, where, state, feed, q) {
 const sets = (feed) => {
   const rows = feed.rows || [];
   const triage = rows.filter(isTriage).sort((a, b) => (a.health === "fail" ? 0 : 1) - (b.health === "fail" ? 0 : 1));
-  return { rows, triage, controls: rows.filter((r) => r.control.class === "toggle") };
+  return { rows, triage, toggles: rows.filter((r) => r.control.class === "toggle") };
 };
 
 // The one shared header, from the feed envelope only (feed.himmel, feed.generatedAt). An older feed has no himmel.
@@ -163,8 +165,8 @@ export function renderProbe(j) {
 }
 
 export function renderNav(feed, current) {
-  const { rows, triage, controls } = sets(feed);
-  return [["triage", "Triage", triage.length, 1], ["controls", "Controls", controls.length, 2], ["inventory", "Inventory", rows.length, 3]]
+  const { rows, triage, toggles } = sets(feed);
+  return [["triage", "Triage", triage.length, 1], ["settings", "Settings", toggles.length, 2], ["inventory", "Inventory", rows.length, 3]]
     .map(([id, label, n, key]) => `<button data-go="${id}" aria-current="${id === current}"><span>${label} ${n}</span><kbd>${key}</kbd></button>`).join("");
 }
 
@@ -187,8 +189,104 @@ export function renderVm(vm) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
 }
 
+// Settings: what can be changed and where it lives. Each row shows the himmelctl command it runs, when it takes
+// effect and a Learn more link into the docs site. Switches come from the feed's toggle rows; the rest only show.
+const HIMMEL_HOME = "~/himmel";
+const CTL = `node ${HIMMEL_HOME}/scripts/himmelctl/bin.js`;
+const CADENCE_PATH = {
+  pipeline: "scripts/luna/pipeline-cadence.sh",
+  graphmap: "scripts/luna/graphmap-cadence.sh",
+  qmd: "scripts/luna/qmd-cadence.sh",
+  doctor: "scripts/doctor-cadence.sh",
+};
+const EFFECT = {
+  "cadence.arm": "at the next scheduled run", "cadence.disarm": "at the next scheduled run",
+  "plugin.enable": "next Claude launch", "plugin.disable": "next Claude launch", "profile.set": "next Claude launch",
+  "config.lanes": "next time work is handed to a lane", "config.initiative": "next Claude launch", "config.commitRules": "your next commit",
+};
+
+// The command an action runs, spelled as the action table builds its argv; root is the himmel download.
+export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
+  const ctl = ["node", `${root}/scripts/himmelctl/bin.js`];
+  const [ns, verb] = action.split(".");
+  if (ns === "cadence") return ["bash", `${root}/${CADENCE_PATH[target]}`, verb].join(" ");
+  if (ns === "plugin") return [...ctl, "profile", verb, target].join(" ");
+  if (action === "profile.set") return [...ctl, "profile", target].join(" ");
+  if (!value) return ["on", "off"].map((v) => settingsCommand({ action, target }, root, v)).join("\n");
+  const key = action === "config.commitRules" ? (target === "tracker" ? "commit.tracker" : "commit.ticketIdRequired") : `${verb}.${target}`;
+  return [...ctl, "config", "set", key, value].join(" ");
+}
+export const settingsEffect = (action) => EFFECT[action] || "";
+
+const feedCommand = (r) => {
+  const on = r.installed && r.installed.state === "present";
+  return settingsCommand(r.control, HIMMEL_HOME, r.control.action === "config.initiative" ? (on ? "off" : "on") : undefined);
+};
+
+const SHOWN = (title, detail, cmd, effect) => ({ title, detail, cmd, effect, slot: `<span class="ro">shown here, set in the terminal</span>` });
+const SETTINGS_GROUPS = [
+  { id: "plugins", title: "Plugins", feed: ["plugin.enable", "plugin.disable"], learn: "/himmelctl/",
+    intro: "Claude Code plugins himmel installed. Three cannot be switched off, because the rest depends on them: handover, himmel-ops and qmd.",
+    first: [{ id: "profile-set", title: "Plugin set", detail: "lean or full; asks you to type the name to confirm", effect: EFFECT["profile.set"],
+      cmd: ["lean", "full"].map((t) => settingsCommand({ action: "profile.set", target: t })).join("\n"),
+      keys: ["lean", "full"].map((t) => `settings|profile-set-${t}`),
+      slot: ["lean", "full"].map((t) => `<button class="btn" data-act="plan" data-k="settings|profile-set-${t}" data-action="profile.set" data-target="${t}">${t}</button>`).join(" ") }] },
+  { id: "review", title: "Review by a second model", feed: ["config.lanes"], learn: "/setup/codex/",
+    intro: "Which extra reviewers join Claude on /pr-check. Off unless you turn one on." },
+  { id: "auto-ship", title: "Auto-ship steps", feed: ["config.initiative"], learn: "/configuration/",
+    intro: "Each step is its own switch; merging is never one of them here. Saved as HIMMEL_INITIATIVE in the .env of the himmel download." },
+  { id: "scheduled-jobs", title: "Scheduled jobs", feed: ["cadence.arm", "cadence.disarm"], learn: "/cadences/",
+    intro: "Arming or disarming asks you to type a confirmation, and says what the job costs." },
+  { id: "commit-rules", title: "Commit rules", learn: "/configuration/",
+    intro: "Read by the git gates in your project. Set them in ~/.himmel/himmel.conf.",
+    shown: [
+      SHOWN("Ticket reference", "TICKET_ID_REQUIRED=0 drops the ticket reference from the commit rule", "TICKET_ID_REQUIRED=0", "your next commit"),
+      SHOWN("Ticket pattern", "your own pattern, or KEY-123 from the project key; with neither, #123", "TICKET_ID_PATTERN=<pattern>\nJIRA_PROJECT_KEY=<KEY>", "your next commit"),
+    ] },
+  { id: "session-switches", title: "Session switches", learn: "/internals/enforcement/",
+    intro: "Each guard has a bypass you set when you start Claude. It lasts for that session only.",
+    shown: [
+      SHOWN("Edit on main", "allow edits on the main branch", "EDIT_ON_MAIN_OK=1 claude", "that session only"),
+      SHOWN("Read secrets", "allow reading secret files", "READ_SECRETS_OK=1 claude", "that session only"),
+      SHOWN("Destructive commands", "allow commands the guard blocks", "DESTRUCTIVE_OK=1 claude", "that session only"),
+      SHOWN("Single writer", "opt a repo out of the single-writer rule; keep the file out of git", "touch .single-writer", "that repo, until you delete the file"),
+    ] },
+  { id: "install-answers", title: "Your install answers", learn: "/setup/profiles/",
+    intro: "The wizard saves your answers so you can replay them on another machine, or switch scope later.",
+    shown: [
+      SHOWN("Saved answers", "replay them elsewhere, or move the install between user and project scope",
+        `${CTL} install --from-profile <file>\n${CTL} scope set user --dry-run`, "when you run the command"),
+      SHOWN("Machine settings", "where himmel keeps your machine-wide answers", "~/.himmel/config.json", "your next Claude launch"),
+    ] },
+];
+
+function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }) {
+  const ks = keys || [`settings|${id}`];
+  const open = ks.filter((k) => state.plans && state.plans[k]);
+  return `<div class="setrow"><div class="sethead">${health ? `<span class="st ${esc(health)}">${ST[health] || esc(health)}</span>` : ""}<span class="id">${esc(title)}</span><span class="det">${esc(detail)}</span><span class="slot">${slot}</span></div>
+    <pre><code>${esc(cmd)}</code></pre>
+    <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
+}
+
+export function renderSettings(feed, state) {
+  const toggles = (feed.rows || []).filter((r) => r.control.class === "toggle");
+  const groups = SETTINGS_GROUPS.map((g) => {
+    const fed = toggles.filter((r) => g.feed && g.feed.includes(r.control.action)).map((r) => ({
+      id: r.id, title: r.id, detail: (r.installed && r.installed.detail) || "", cmd: feedCommand(r), effect: settingsEffect(r.control.action), slot: slot(r, "settings"), health: r.health,
+    }));
+    const all = [...(g.first || []), ...fed, ...(g.shown || [])];
+    return `<div class="setgroup"><h3 id="sg-${g.id}">${esc(g.title)}</h3><p class="sub">${esc(g.intro)}</p>
+    ${all.map((x) => setRow(g, state, x)).join("")}</div>`;
+  }).join("");
+  return `<section id="settings" aria-labelledby="h-settings">
+  <h2 id="h-settings">Settings</h2>
+  <p class="sub">What you can change, and where it lives. Each row says when a change takes effect. Toggles here run the same himmelctl command shown under them, so the terminal and this page never disagree. Every switch previews its dry-run first; nothing changes until you confirm.</p>
+  ${groups}
+</section>`;
+}
+
 export function render(feed, state) {
-  const { rows, triage, controls } = sets(feed);
+  const { rows, triage } = sets(feed);
   const filt = state.filt || {};
   const nf = triage.filter((r) => r.health === "fail").length;
   const okOf = (src) => { const l = rows.filter((r) => r.source === src); return `${l.filter((r) => r.health === "ok").length}/${l.length}`; };
@@ -205,11 +303,7 @@ export function render(feed, state) {
   <div class="summary"><span class="st fail">${nf} fail</span><span class="st warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
   ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
 </section>
-<section id="controls" aria-labelledby="h-controls">
-  <h2 id="h-controls">Controls</h2>
-  <p class="sub">Everything that can be switched. Every switch previews its dry-run first; nothing changes until you confirm.</p>
-  ${bundled(controls, controls, "controls", state, feed, "")}
-</section>
+${renderSettings(feed, state)}
 ${renderVm(state.vm)}
 <section id="inventory" aria-labelledby="h-inv">
   <h2 id="h-inv">Inventory</h2>

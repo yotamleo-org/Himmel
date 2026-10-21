@@ -597,7 +597,7 @@ bash scripts/lib/usage-lift.sh set --standing
 
 It records `standing:true` in the same operator-only, account-bound override file
 (no new state path or hook bypass). The policy applies to every fresh window
-for that account and defaults `CADENCE_BANK_MAX_PCT` to 100 for launch checks.
+for that account and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
 An explicit ceiling still controls `five_hour`; either usage budget at 100 refuses,
 so extra usage is never spent. Plain `set` replaces it with a one-window weekly budget override;
 `clear` disables it. Agents must never run either form of `set`.

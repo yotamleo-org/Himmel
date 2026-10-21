@@ -362,4 +362,32 @@ if command -v python3 >/dev/null 2>&1; then
 else
     echo "skip - 15-18 tracker rows: no python3"
 fi
+
+# --- 24-26. focus refresh ---------------------------------------------------
+# The console doc's focus-version: line opts in; the refresh never fails the wrap.
+printf '#!/usr/bin/env bash\necho "focus $*" >> "$WM_CALLS"\n[ -z "${WM_FOCUS_OUT:-}" ] || echo "$WM_FOCUS_OUT"\nexit "${WM_FOCUS_RC:-0}"\n' > "$W/bin/focus"; chmod +x "$W/bin/focus"
+export WM_FOCUS="$W/bin/focus"
+fixture
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+contains "24: no focus-version: line prints focus=skip" "$out" "focus=skip"
+lacks "24: and runs nothing" "$calls" "focus --doc"
+fixture
+printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+contains "25: the happy path prints focus=ok" "$out" "focus=ok"
+contains "25: the refresh is asked with the console doc" "$calls" "focus --doc $CONSOLE"
+check "25: rc 0" "$rc" 0
+fixture
+printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+WM_FOCUS_OUT="focus=FAILED:render" WM_FOCUS_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "26: a failed focus refresh still exits the wrap 0" "$rc" 0
+contains "26: and the line names the stage" "$out" "focus=FAILED:render"
+contains "26: the board still ran" "$calls" "board --doc"
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$W/bin/focus-hang"; chmod +x "$W/bin/focus-hang"
+fixture
+printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+WM_FOCUS="$W/bin/focus-hang" WM_FOCUS_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "26b: a hung focus refresh never fails the wrap" "$rc" 0
+contains "26b: it is cut at the timeout" "$out" "focus=FAILED:timeout"
+unset WM_FOCUS
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }

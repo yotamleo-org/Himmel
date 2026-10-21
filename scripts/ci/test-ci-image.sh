@@ -138,24 +138,43 @@ fi
 # 10. tools the suites call that a GitHub-hosted runner carries and ci.yml never
 #     installs, so a container without them fails or SKIPs rows: bison + gcc +
 #     libc6-dev build the bwk awk, cron gives crontab, zsh the escape-corpus zsh
-#     shapes, shfmt the bash-ast engine, uv check-uv-lock. Each is installed and
+#     shapes, shfmt the bash-ast engine, uv check-uv-lock, python-is-python3 the
+#     bare `python` the obsidian-triage suites call, python3-yaml the PyYAML a
+#     suite imports, jq 1.8 the bash-ast engine's jq programs (jq 1.7 rejects an
+#     object value that is a bare binary expression). Each is installed and
 #     smoke-checked.
-for p in bison gcc libc6-dev cron zsh; do
+for p in bison gcc libc6-dev cron zsh python-is-python3 python3-yaml; do
   if has "$p" "$apt_text"; then ok "Dockerfile installs suite tool package $p"
   else bad "Dockerfile lacks suite tool package $p"; fi
 done
 if has 'zsh=5.9-*' "$apt_text"; then ok "Dockerfile pins zsh 5.9"
 else bad "Dockerfile does not pin zsh=5.9-*"; fi
-for v in SHFMT UV; do
+if grep -Eq '^ARG JQ_VERSION=(1\.([89]|[1-9][0-9])|[2-9]|[1-9][0-9]+)(\.[0-9]+)*$' <<< "$df_text"; then
+  ok "Dockerfile pins jq 1.8 or later"
+else bad "Dockerfile pins no jq 1.8 or later (the bash-ast jq programs do not compile on 1.7)"; fi
+if grep -Fq "jq -n '{a: [1] + [2]}'" <<< "$df_text"; then ok "Dockerfile build compiles a bare binary-expression object value with jq"
+else bad "Dockerfile build does not check that jq compiles {a: [1] + [2]}"; fi
+for v in SHFMT UV JQ; do
   if grep -Eq "^ARG ${v}_VERSION=[0-9.]+$" <<< "$df_text" && grep -Eq "^ARG ${v}_SHA256=[0-9a-f]{64}$" <<< "$df_text"; then
     ok "Dockerfile pins ${v}_VERSION with a sha256"
   else bad "Dockerfile does not pin ${v}_VERSION with ${v}_SHA256"; fi
+  if grep -Eq "curl -fsSL -o [^ ]+ \"https://github\.com/[^\"]*[$][{]${v}_VERSION[}]" <<< "$df_text"; then
+    ok "Dockerfile downloads the pinned ${v}_VERSION from github.com"
+  else bad "Dockerfile does not download the pinned ${v}_VERSION from github.com"; fi
+  if grep -Eq "echo \"[$][{]${v}_SHA256[}]  [^\"]+\" [|] sha256sum -c -" <<< "$df_text"; then
+    ok "Dockerfile checks ${v}_SHA256 with sha256sum -c"
+  else bad "Dockerfile does not check ${v}_SHA256 with sha256sum -c"; fi
 done
+if grep -E 'tar -x[a-z]*f /tmp/uv\.tgz' <<< "$df_text" | grep -q -- '--no-same-owner'; then
+  ok "Dockerfile untars uv with --no-same-owner"
+else bad "Dockerfile untars uv keeping the archive owner (no --no-same-owner)"; fi
 smoke="$(grep -oE 'for t in [^;]+' "$WORKFLOW" 2>/dev/null | head -n 1)"
-for t in bison gcc crontab shfmt uv zsh; do
+for t in bison gcc crontab shfmt uv zsh python; do
   if has "$t" "$smoke"; then ok "workflow smoke-checks $t"
   else bad "workflow smoke list lacks $t"; fi
 done
+if grep -v '^ *#' "$WORKFLOW" 2>/dev/null | grep -Fq 'python -c "import yaml"'; then ok "workflow smoke-checks the PyYAML import"
+else bad "workflow does not smoke-check import yaml"; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2

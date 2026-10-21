@@ -147,6 +147,8 @@ red:
 plan without executing anything — use it to check what a change would trigger
 before committing to the long run.
 
+`bash scripts/ci/cr-first-measure.sh` measures how many CI runs were superseded by CodeRabbit fix pushes (read-only GitHub API) and is the HIMMEL-6575 before/after baseline.
+
 ## Running a brand-new suite before its first commit
 
 `bash scripts/quiet-run.sh suite -- bash <path>` accepts a git-tracked

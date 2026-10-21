@@ -119,7 +119,7 @@ scripts/cr/live-gate-e2e.sh -> scripts/handover/console-kit/ready-check.sh"
 # must match the file, proving the dist path there is anchored on the PRIMARY
 # checkout (git-common-dir / its repo root) or is only prompt text, not run
 # relative to the script (checked below, so a pin cannot rot silently).
-DIST_PRIMARY="scripts/handover/console-kit/leg-jira-status.sh::dirname \"\\\$common\"\\)/scripts/jira/dist/index\\.js
+DIST_PRIMARY="scripts/lib/ticket-status.sh::dirname \"\\\$common\"\\)/scripts/jira/dist/index\\.js
 scripts/handover/merge-on-green.sh::(\\\$repo_root/|cd \"\\\$repo_root\" && node )scripts/jira/dist/index\\.js
 scripts/telegram/run.ts::\\\$\\{p\\.cwd\\}/scripts/jira/dist/index\\.js
 scripts/telegram/spawn-glm.ts::Jira updates .*via node scripts/jira/dist/index\\.js"
@@ -251,9 +251,9 @@ mkdir -p "$fx/scripts/jira/dist" "$fx/scripts/handover/console-kit"
 # shellcheck disable=SC2016  # fixture text, the $ must stay literal
 printf '%s\n' '_jira="${X_CLI:-$SCRIPT_DIR/../jira/dist/index.js}"' > "$fx/scripts/handover/relative-dist.sh"
 # shellcheck disable=SC2016  # fixture text, the $ must stay literal
-printf '%s\n' 'node "$repo_root/scripts/jira/dist/index.js" get' > "$fx/scripts/handover/console-kit/leg-jira-status.sh"
+printf '%s\n' 'node "$repo_root/scripts/jira/dist/index.js" get' > "$fx/scripts/lib/ticket-status.sh"
 check "$(ROOT="$fx" edges scripts/handover/relative-dist.sh)" "scripts/jira/dist/index.js" "edges() keeps a script-relative scripts/jira/dist edge"
-check "$(ROOT="$fx" edges scripts/handover/console-kit/leg-jira-status.sh)" "" "edges() drops the dist edge of a DIST_PRIMARY-pinned parent"
+check "$(ROOT="$fx" edges scripts/lib/ticket-status.sh)" "" "edges() drops the dist edge of a DIST_PRIMARY-pinned parent"
 rm -rf "$fx"
 
 # Every pinned NOT_RUN edge is still a real edge of its parent.

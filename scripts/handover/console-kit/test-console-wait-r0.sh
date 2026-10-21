@@ -78,6 +78,8 @@ EOF
 export STUB
 export CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
 export CONSOLE_WAIT_LEG_EVENT="$STUB/leg-event.sh" CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
+export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2 CONSOLE_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 

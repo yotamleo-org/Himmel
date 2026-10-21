@@ -1127,9 +1127,9 @@ bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [
 `"secondary":{"used_percent":<N>` occurrence from a bounded tail read of
 `~/.codex/logs_2.sqlite` (the rollout log; `secondary` = weekly, `primary` =
 5h) — fail-**OPEN** on any read error (a cold/absent log never bricks a
-dispatch). WARNs to stderr at `CLAUDEX_BANK_WARN_PCT` (default `80`);
-**REFUSES (exit 2) BEFORE any worktree side-effect** at `CLAUDEX_BANK_REFUSE_PCT`
-(default `90`; the same shared threshold `bank-status` uses via `LANE_FUNDED_MAX_PCT`, which takes precedence) unless overridden (`CLAUDEX_BANK_OK=1` or `--force`) — a
+dispatch). WARNs to stderr at `CLAUDEX_USAGE_WARN_PCT` (default `80`);
+**REFUSES (exit 2) BEFORE any worktree side-effect** at `CLAUDEX_USAGE_REFUSE_PCT`
+(default `90`; the same shared threshold `bank-status` uses via `LANE_FUNDED_MAX_PCT`, which takes precedence) unless overridden (`CLAUDEX_USAGE_OK=1` or `--force`) — a
 capped worker dies mid-run, so the tree survives but the work is lost.
 
 **Effort:** `--effort` is optional; unset lets the launcher's

@@ -20,7 +20,7 @@ const LEGS_TIMEOUT_MS = 5000;
 
 // The newest ledger row that carries bank numbers, read from the file's last 64 KiB.
 export function readBank(env: Env): Section {
-  const file = env.CADENCE_BANK_LEDGER || join(env.HOME || homedir(), ".himmel", "cadence-ledger.jsonl");
+  const file = env.CADENCE_USAGE_LEDGER || env.CADENCE_BANK_LEDGER || join(env.HOME || homedir(), ".himmel", "cadence-ledger.jsonl");
   let text: string;
   try {
     const fd = openSync(file, "r");

@@ -53,6 +53,14 @@ test("bank: CADENCE_BANK_LEDGER overrides the default path", async () => {
   expect((await body(s.port)).bank.row.seven_day).toBe("42.0");
 });
 
+test("bank: CADENCE_USAGE_LEDGER wins over the old CADENCE_BANK_LEDGER", async () => {
+  const own = boot();
+  const alt = join(own.dir, "alt-usage.jsonl");
+  writeFileSync(alt, bankRow({ seven_day: "43.0" }) + "\n");
+  const s = boot({ CADENCE_USAGE_LEDGER: alt, CADENCE_BANK_LEDGER: join(own.dir, "absent.jsonl") });
+  expect((await body(s.port)).bank.row.seven_day).toBe("43.0");
+});
+
 test("bank: only the last 64 KiB is read (a 44k-line ledger; numbers only beyond the tail read as absent)", async () => {
   const s = boot();
   const empty = bankRow({ five_hour: "", seven_day: "" });

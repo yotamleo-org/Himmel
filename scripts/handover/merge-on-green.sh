@@ -192,9 +192,22 @@
 #       success line (empty or unrelated output), or the fetched
 #       head is not the certified sha. After the main-red gate, before
 #       any mutation, on --dry-run too.
+#   24  static re-check: the merge of the live base tip and the certified PR head
+#       (built in a throwaway repo) fails test-unwired-hooks,
+#       test-ledgers-registry, check-host-file-read-sinks --merge-ref or
+#       shell-lint --changed HEAD^1..HEAD, so two PRs that are each green alone
+#       are red together; the message names every failing check. Also when the
+#       base or head fetch, the certified-head match, git merge-tree, the
+#       scratch repo or a check script (missing, or over its 150 s ceiling)
+#       fails, or neither timeout nor gtimeout is on PATH to enforce that
+#       ceiling. A textual conflict is not refused here: it defers to the
+#       behind-main path. After the plugin-bump gate, before any mutation, on
+#       --dry-run too.
 #
 # Environment:
 #   ARMAUTOMERGE           Must be truthy (1/true/on/yes) to enable at all.
+#   MERGE_STATIC_RECHECK   0 turns the static re-check (exit 24) off; unset or
+#                          anything else leaves it on. The one off switch.
 #   MERGE_ON_GREEN_LOG     Audit-log path override. Default:
 #                          "$(git rev-parse --git-dir)/merge-on-green.log".
 #   HIMMEL_CONSOLE_LEG     Exported (=1) by console-kit/headed-arm-leg.sh into
@@ -564,6 +577,17 @@ fi
 . "$himmel_repo/scripts/lib/merge-block-alert.sh" 2>/dev/null || merge_block_alert() { echo "MERGE-BLOCKED ${1:-?}#${2:-?} @${3:0:12}: ${*:4}" >&2; return 0; }
 # block_alert <rule> — one DM per (repo, PR, head); never changes an exit code.
 block_alert() { merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${sha:-}" "$@"; }
+# The status lib: the one ticket-key extractor, the status-event log and the
+# per-key lock the status funnel also takes. Every use checks it loaded.
+# shellcheck source=scripts/lib/ticket-status.sh
+# shellcheck disable=SC1091
+. "$himmel_repo/scripts/lib/ticket-status.sh" 2>/dev/null || true
+# _status_event <key> <event> <pr> [head] — the status funnel re-derives the
+# ticket's status; best-effort, never changes an exit code.
+_status_event() {
+    bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
+        ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
+}
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
 gh_pr_view() {
@@ -599,14 +623,12 @@ sha=${_rest%%|*}; _rest=${_rest#*|}
 # rather than truncating it — base branches here are the repo default and never
 # contain one.
 pr_base=${_rest%%|*}; head_branch=${_rest#*|}
-# Comment on a ticket and, for a PR closed unmerged, return it to To Do:
-# comment first, then transition (no comment means no breadcrumb, so no move).
-# Prints ok | skip=already-done | skip=comment-failed | failed.
-# Never touches a ticket already Done/Closed; callers screen Epics. A sixth
-# argument of comment-only is the partial-merge mode: it posts the breadcrumb
-# and never transitions.
-_jira_return_to_todo() {
-    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" mode="${6:-}" status
+# _jira_breadcrumb <repo_root> <key> <issue_json> <text> — comment on a ticket;
+# the status is the funnel's to move. Prints ok | skip=already-done |
+# skip=status-unreadable | skip=comment-failed | failed. Never touches a ticket
+# already Done/Closed; callers screen Epics.
+_jira_breadcrumb() {
+    local repo_root="$1" key="$2" issue_json="$3" text="$4" status
     status=$(printf '%s' "$issue_json" | node -e '
         try {
             const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -618,33 +640,23 @@ _jira_return_to_todo() {
         Done|Closed) echo "skip=already-done"; return 0 ;;
         '') echo "skip=status-unreadable"; return 0 ;;
     esac
-    # A caller may restrict the move to one status (a closed PR must not pull a
-    # ticket whose work moved to another PR out of In Progress).
-    if [ -n "$only_status" ] && [ "$status" != "$only_status" ]; then
-        echo "skip=not-$only_status"; return 0
-    fi
     local tmp rc=0
     tmp=$(mktemp "${TMPDIR:-/tmp}/merge-on-green-jira-todo.XXXXXX") || { echo "failed"; return 0; }
     printf '%s\n' "$text" >"$tmp"
     ( cd "$repo_root" && node scripts/jira/dist/index.js comment "$key" --comment-file "$tmp" ) >/dev/null 2>&1 || rc=$?
     rm -f "$tmp"
     [ "$rc" -eq 0 ] || { echo "skip=comment-failed"; return 0; }
-    # The breadcrumb is posted; a ticket already in To Do needs no move.
-    if [ "$status" = "To Do" ] || [ "$mode" = "comment-only" ]; then echo "ok"; return 0; fi
-    if ( cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "To Do" ) >/dev/null 2>&1; then
-        echo "ok"
-    else
-        echo "failed"
-    fi
+    echo "ok"
 }
 
-# A PR closed unmerged leaves its ticket In Review: send it back to To Do with
-# a comment. Best-effort like jira_auto_transition_on_merge; never fails the run.
-jira_return_closed_pr_to_todo() {
-    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type todo open_prs
+# A PR closed unmerged: leave a breadcrumb, then the status funnel re-derives
+# the ticket from its open PRs and its owner. Best-effort like
+# jira_auto_transition_on_merge; never fails the run.
+jira_closed_pr_event() {
+    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type crumb
     title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) || return 0
-    key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]')
-    [ -n "$key" ] || return 0
+    declare -F ticket_key_from_title >/dev/null || return 0
+    key=$(ticket_key_from_title "$title") || return 0
     common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
     repo_root=$(cd "$(dirname "$common")" 2>/dev/null && pwd) || return 0
     [ -f "$repo_root/scripts/jira/dist/index.js" ] || return 0
@@ -658,13 +670,10 @@ jira_return_closed_pr_to_todo() {
     ' 2>/dev/null)
     # Fail safe like the merge path: an Epic or an unreadable type is left alone.
     case "$issue_type" in Epic|"") return 0 ;; esac
-    # Another open PR for the same ticket means the work moved on: leave it be.
-    # A failed lookup is treated the same way (cannot show the ticket is orphaned).
-    open_prs=$("$GH" pr list --repo "$nwo" --state open --search "$key in:title" --json number -q '.[].number' 2>/dev/null) || return 0
-    [ -z "$open_prs" ] || return 0
-    todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_json" \
-        "PR #$pr_num ($nwo) was closed without merging; the work it carried is not done, so the ticket returns to To Do." "In Review")
-    echo "merge-on-green: PR #$pr_num closed unmerged, $key to To Do: $todo" >&2
+    crumb=$(_jira_breadcrumb "$repo_root" "$key" "$issue_json" \
+        "PR #$pr_num ($nwo) was closed without merging; the ticket's status is re-derived from its open PRs and its owner.")
+    _status_event "$key" closed "$pr_num"
+    echo "merge-on-green: PR #$pr_num closed unmerged, $key breadcrumb: $crumb; status re-derived" >&2
     return 0
 }
 
@@ -674,7 +683,7 @@ case "$pr_state" in
         echo "merge-on-green: PR is ${pr_state:-<unknown>} (not OPEN) — nothing to merge."
         if [ "$pr_state" = "CLOSED" ]; then
             _closed_nwo=$(printf '%s' "$pr_url" | sed -n 's|^https://[^/]*/\([^/]*/[^/]*\)/pull/.*|\1|p')
-            [ -z "$_closed_nwo" ] || jira_return_closed_pr_to_todo "$_closed_nwo" "$pr_num"
+            [ -z "$_closed_nwo" ] || jira_closed_pr_event "$_closed_nwo" "$pr_num"
         fi
         audit "NOOP reason=pr-not-open state=${pr_state:-unknown} selector=${selector:-<cwd-branch>}"
         exit 0 ;;
@@ -1218,6 +1227,168 @@ if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     esac
     bp_cleanup
     audit "PLUGIN-BUMP ok repo=$nwo pr=#$pr_num sha=$sha base=$bp_base"
+fi
+
+# STATIC RE-CHECK GATE — two PRs that are each green alone can be red together
+# (a hook one wires and the other allowlists; a registry row one adds and the
+# other's new file breaks). CI judged each against the base it saw, and main's
+# sweep finds the pair only after the second merge. This is the one place that
+# sees the live base, so it builds the merge of the freshly fetched base tip and
+# the certified PR head in a throwaway repo (git merge-tree, the same tree the
+# squash will land) and runs the four static checks there:
+#   test-unwired-hooks, test-ledgers-registry, check-host-file-read-sinks
+#   --merge-ref, and shell-lint --changed HEAD^1..HEAD with the pinned shellcheck.
+# The scripts run are the merge result's own copies, which is what main's sweep
+# runs after the merge. Fail CLOSED (exit 24, naming every failing check): an
+# unfetchable base or head, a head that is not the certified one, a merge-tree
+# error, a missing check script, a check that times out. A textual conflict is
+# not this gate's to judge: it defers (audited, skipped) to the existing
+# behind-main path, where GitHub's mergeStateStatus refuses. shell-lint is
+# skipped, loudly and audited, when the shellcheck on PATH is not the version
+# .pre-commit-config.yaml pins. MERGE_STATIC_RECHECK=0 turns the gate off;
+# nothing else does. The wall cost is printed on stderr and on the audit line.
+# Fetch targets are private refs under refs/himmel-mog-static/ in the anchor,
+# deleted again. Placed after the plugin-bump gate and before the marker clear /
+# DRY_RUN, so a refusal mutates nothing and a dry run reports it.
+# ponytail: a PR can edit a check it is judged by (the merge result's copy runs,
+# as main's sweep will run it) and its code runs here with the merger's rights;
+# acceptable because the gate is same-repo and private-repo only and CI already
+# ran that head; upgrade path is overlaying the base tip's check scripts.
+# ponytail: the base tip is read once here, so a sibling PR that merges between
+# this recheck and `gh pr merge` is not seen (a re-fetch would only narrow that
+# window); upgrade path is a server-side merge queue or required up-to-date
+# branch. MERGE_STATIC_RECHECK is a registered chokepoint seam
+# (scripts/chokepoints.json), so a per-call prefix is denied by the seam guard.
+sr_ns="refs/himmel-mog-static/$pr_num"
+sr_tmp=""
+sr_cleanup() {
+    git -C "$himmel_repo" update-ref -d "$sr_ns/base" >/dev/null 2>&1 || true
+    git -C "$himmel_repo" update-ref -d "$sr_ns/head" >/dev/null 2>&1 || true
+    [ -z "$sr_tmp" ] || rm -rf "$sr_tmp"
+    sr_tmp=""
+}
+static_refuse() {
+    sr_cleanup
+    echo "merge-on-green: static re-check: $1 — not merging." >&2
+    audit "REFUSED reason=static-recheck repo=$nwo pr=#$pr_num sha=$sha $2"
+    exit 24
+}
+sr_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$sr_tmp/work" -c core.hooksPath=/dev/null "$@"; }
+sr_failed=""
+# sr_run <name> <script under the merge result> [args...] — one check, run from
+# the merge result's root with a per-check ceiling; a failing one is named.
+sr_run() {
+    local name="$1" script="$2" rc=0
+    shift 2
+    if [ ! -f "$sr_tmp/work/$script" ]; then
+        printf '%s is missing from the merge result\n' "$script" > "$sr_tmp/$name.out"
+        sr_failed="${sr_failed:+$sr_failed,}$name"
+        return 0
+    fi
+    ( cd "$sr_tmp/work" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE ${sr_timeout:+$sr_timeout} bash "$script" "$@" ) > "$sr_tmp/$name.out" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        case "$rc" in 124|137) printf 'timed out after 150s\n' >> "$sr_tmp/$name.out" ;; esac
+        sr_failed="${sr_failed:+$sr_failed,}$name"
+    fi
+    return 0
+}
+# sr_other_repo — rc 0 only when the anchor's origin POSITIVELY names a github.com
+# repo other than $nwo (the same test as go-gate's trust check). The recheck runs
+# the harness's own registries on a merge fetched from the anchor's origin, so it
+# has nothing to say about a PR on another repo; an origin that cannot prove it
+# (unreadable, SSH alias, non-github host) is not "other" and the recheck runs.
+sr_other_repo() {
+    local url
+    case "$nwo" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
+    url=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" config --get remote.origin.url) || return 1
+    url=${url%/}; url=${url%.git}
+    case "$url" in
+        https://github.com/*) url=${url#https://github.com/} ;;
+        ssh://git@github.com/*) url=${url#ssh://git@github.com/} ;;
+        git@github.com:*) url=${url#git@github.com:} ;;
+        *) return 1 ;;
+    esac
+    case "$url" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
+    [ "$(printf '%s' "$url" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]
+}
+if [ "${MERGE_STATIC_RECHECK:-1}" = "0" ]; then
+    echo "merge-on-green: static re-check is OFF (MERGE_STATIC_RECHECK=0)." >&2
+    audit "STATIC-RECHECK off repo=$nwo pr=#$pr_num sha=$sha"
+elif sr_other_repo; then
+    echo "merge-on-green: static re-check skipped — PR #$pr_num is on $nwo, not the anchor's repo; the harness registries do not apply." >&2
+    audit "STATIC-RECHECK skipped reason=other-repo repo=$nwo pr=#$pr_num sha=$sha"
+else
+    sr_t0=$SECONDS
+    sr_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-static.XXXXXX") || sr_tmp="" # prim-ok: private scratch the gate removes itself
+    { [ -n "$sr_tmp" ] && [ -d "$sr_tmp" ]; } || static_refuse "cannot create a scratch directory" "phase=scratch"
+    sr_fetch_rc=0
+    git -C "$himmel_repo" fetch --no-tags --quiet origin \
+        "+refs/heads/$default_branch:$sr_ns/base" "+refs/pull/$pr_num/head:$sr_ns/head" >/dev/null 2>"$sr_tmp/fetch.err" || sr_fetch_rc=$?
+    [ "$sr_fetch_rc" -eq 0 ] || static_refuse "cannot fetch $default_branch and PR #$pr_num's head from the anchor's origin (exit $sr_fetch_rc)" "phase=fetch rc=$sr_fetch_rc"
+    sr_base=$(git -C "$himmel_repo" rev-parse --verify --quiet "$sr_ns/base^{commit}") || sr_base=""
+    sr_head=$(git -C "$himmel_repo" rev-parse --verify --quiet "$sr_ns/head^{commit}") || sr_head=""
+    { [ -n "$sr_base" ] && [ -n "$sr_head" ]; } || static_refuse "the fetched base or PR head does not resolve to a commit" "phase=resolve"
+    [ "$sr_head" = "$sha" ] || static_refuse "PR #$pr_num's head on origin is ${sr_head:0:12}, not the certified ${sha:0:12}, so the recheck would not judge the head being merged" "phase=head-moved fetched=$sr_head"
+    sr_gc=$(git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir) || sr_gc=""
+    sr_ok=0
+    if [ -n "$sr_gc" ] && mkdir -p "$sr_tmp/work" && sr_git init -q >/dev/null 2>&1 \
+            && printf '%s\n' "$sr_gc/objects" > "$sr_tmp/work/.git/objects/info/alternates"; then
+        sr_ok=1
+    fi
+    [ "$sr_ok" -eq 1 ] || static_refuse "cannot build the scratch repo for the recheck" "phase=scratch-repo"
+    sr_mt_rc=0
+    sr_mt=$(sr_git merge-tree --write-tree --no-messages "$sr_base" "$sr_head" 2>"$sr_tmp/merge-tree.err") || sr_mt_rc=$?
+    if [ "$sr_mt_rc" -eq 1 ]; then
+        sr_secs=$((SECONDS - sr_t0))
+        echo "merge-on-green: static re-check skipped — PR #$pr_num does not merge cleanly into ${sr_base:0:12}; the behind-main path decides (${sr_secs}s)." >&2
+        audit "STATIC-RECHECK skipped reason=conflict repo=$nwo pr=#$pr_num sha=$sha base=$sr_base secs=$sr_secs"
+        sr_cleanup
+    else
+        [ "$sr_mt_rc" -eq 0 ] || static_refuse "git merge-tree failed (exit $sr_mt_rc): $(head -c 300 "$sr_tmp/merge-tree.err")" "phase=merge-tree rc=$sr_mt_rc"
+        sr_tree=${sr_mt%%$'\n'*}
+        sr_commit=$(sr_git -c user.name=mog -c user.email=mog@example.invalid -c commit.gpgsign=false \
+            commit-tree -p "$sr_base" -p "$sr_head" -m "static re-check merge" "$sr_tree" 2>/dev/null) || sr_commit=""
+        [ -n "$sr_commit" ] || static_refuse "cannot commit the merge tree ${sr_tree:0:12}" "phase=commit-tree"
+        sr_ok=0
+        if sr_git update-ref --no-deref HEAD "$sr_commit" && sr_git checkout -q -f HEAD >/dev/null 2>&1; then
+            sr_ok=1
+        fi
+        [ "$sr_ok" -eq 1 ] || static_refuse "cannot check out the merge result ${sr_commit:0:12}" "phase=checkout"
+        if command -v timeout >/dev/null 2>&1; then
+            sr_timeout="timeout -k 10 150"
+        elif command -v gtimeout >/dev/null 2>&1; then
+            sr_timeout="gtimeout -k 10 150"
+        else
+            static_refuse "neither timeout nor gtimeout is on PATH, so the 150 s per-check ceiling cannot be enforced (install coreutils, or set MERGE_STATIC_RECHECK=0)" "phase=no-timeout"
+        fi
+        sr_skipped=""
+        sr_run test-unwired-hooks scripts/testing/test-unwired-hooks.sh
+        sr_run test-ledgers-registry scripts/observability/test-ledgers-registry.sh
+        sr_run check-host-file-read-sinks scripts/ci/check-host-file-read-sinks.sh --range --merge-ref
+        # The same pin CI installs: shellcheck-py's rev from the pre-commit config,
+        # compared on its first three fields against what `shellcheck --version` says.
+        sr_pin=$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$sr_tmp/work/.pre-commit-config.yaml") || sr_pin=""
+        sr_scver=""
+        ! command -v shellcheck >/dev/null 2>&1 || sr_scver=$(shellcheck --version | sed -n 2p)
+        if [ -n "$sr_pin" ] && [ "$sr_scver" = "version: ${sr_pin%.*}" ]; then
+            sr_run shell-lint scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
+        else
+            sr_skipped="shell-lint"
+            echo "merge-on-green: static re-check: shell-lint SKIPPED — shellcheck on PATH is '${sr_scver:-absent}', the pin is '${sr_pin:-unreadable}'." >&2
+        fi
+        sr_secs=$((SECONDS - sr_t0))
+        if [ -n "$sr_failed" ]; then
+            sr_detail=""
+            for sr_name in ${sr_failed//,/ }; do
+                sr_detail="$sr_detail"$'\n'"--- $sr_name ---"$'\n'"$(tail -n 20 "$sr_tmp/$sr_name.out" 2>/dev/null)"
+            done
+            echo "merge-on-green: static re-check took ${sr_secs}s." >&2
+            static_refuse "the merge of PR #$pr_num into ${sr_base:0:12} fails: ${sr_failed//,/, }$sr_detail" "phase=check failed=$sr_failed base=$sr_base secs=$sr_secs"
+        fi
+        echo "merge-on-green: static re-check passed on the merge of PR #$pr_num into ${sr_base:0:12} in ${sr_secs}s${sr_skipped:+ (skipped: $sr_skipped)}." >&2
+        audit "STATIC-RECHECK ok repo=$nwo pr=#$pr_num sha=$sha base=$sr_base secs=$sr_secs${sr_skipped:+ skipped=$sr_skipped}"
+        sr_cleanup
+    fi
 fi
 
 # MARKER CLEAR — a merge used to leave the branch's cr-pending
@@ -1861,7 +2032,7 @@ record_after_report_pending_marker() {
 # check-commit-msg) and the target status from reconcile-config.json, so
 # this and `reconcile-backlog.mjs` share one source of truth for "what
 # status does a closed ticket move to" per project.
-jira_auto_transition_on_merge() {
+_jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
 
@@ -1869,9 +2040,12 @@ jira_auto_transition_on_merge() {
     title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) \
         || { JIRA_AUTO_TRANSITION_RESULT="skip=no-title"; return 0; }
 
-    local key
-    key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]')
+    local key=""
+    if declare -F ticket_key_from_title >/dev/null; then
+        key=$(ticket_key_from_title "$title") || key=""
+    fi
     [ -n "$key" ] || { JIRA_AUTO_TRANSITION_RESULT="skip=no-ticket-tag"; return 0; }
+    _MERGE_KEY="$key"
 
     local common repo_root
     common=$(git rev-parse --git-common-dir 2>/dev/null) \
@@ -1936,6 +2110,7 @@ jira_auto_transition_on_merge() {
     elif [ "$brief_completes" = "yes" ] && ! _truthy "$opt_in"; then
         echo "merge-on-green: brief expects the ticket to close (completes-ticket: yes) but --jira-transition is missing; taking the partial path" >&2
     fi
+    if _truthy "$opt_in"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
 
     if ! _truthy "$opt_in"; then
         JIRA_AUTO_TRANSITION_RESULT="skip=partial key=$key status-unchanged"
@@ -1952,11 +2127,23 @@ jira_auto_transition_on_merge() {
         remaining=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null \
             | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
-        todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_type_json" \
+        todo=$(_jira_breadcrumb "$repo_root" "$key" "$issue_type_json" \
             "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.
-$remaining" "" comment-only)
+$remaining")
         JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT comment=$todo"
         return 0
+    fi
+
+    # The Done write holds the per-key lock the status funnel takes, so a
+    # status event in flight cannot land after it and pull the ticket back.
+    if declare -F ts_state_dir >/dev/null && command -v flock >/dev/null 2>&1; then
+        local lockdir
+        lockdir="$(ts_state_dir)/status-locks"
+        mkdir -p "$lockdir" 2>/dev/null
+        if exec 8>>"$lockdir/$key"; then
+            # the per-key status lock, shared with the funnel
+            flock -w "${TICKET_STATUS_LOCK_WAIT:-10}" 8 || { JIRA_AUTO_TRANSITION_RESULT="deferred stage=lock key=$key"; return 0; }  # prim-ok: the funnel holds this same flock
+        fi
     fi
 
     local comment_tmp comment_rc=0
@@ -2027,6 +2214,41 @@ $remaining" "" comment-only)
         fi
     else
         JIRA_AUTO_TRANSITION_RESULT="failed key=$key status=$target_status rc=$transition_rc out=${transition_out//$'\n'/ }"
+    fi
+    return 0
+}
+
+# jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
+# one status-event row for it, written before the per-key lock is released so
+# an event queued behind it reads done-pending. A merge that does not complete
+# the ticket asks the status funnel to re-derive it, after the release.
+jira_auto_transition_on_merge() {
+    local result stage="" first
+    _MERGE_KEY=""
+    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
+    _jira_close_on_merge "$@"
+    case "$JIRA_AUTO_TRANSITION_RESULT" in
+        ok*) result=moved ;;
+        failed*) result=miss stage=transition ;;
+        deferred*) result=deferred stage=lock ;;
+        *comment=ok*|*comment=skip=already-done*) result=noop ;;
+        skip=partial*) result=miss stage=comment ;;
+        skip=no-title*) result=miss stage=gh ;;
+        skip=no-repo-root*|skip=no-jira-cli-build*) result=miss stage=cli ;;
+        skip=cannot-verify-type*) result=miss stage=get ;;
+        skip=comment-failed*|skip=no-tmpfile*) result=miss stage=comment ;;
+        skip=*)
+            first=${JIRA_AUTO_TRANSITION_RESULT%% *}
+            result=skip stage=${first#skip=} ;;
+        *) exec 8>&-; return 0 ;;
+    esac
+    if declare -F status_event >/dev/null; then
+        status_event event=merge key="$_MERGE_KEY" pr="$2" head="$3" contract="$_MERGE_CONTRACT" \
+            result="$result" ${stage:+stage="$stage"}
+    fi
+    exec 8>&-
+    if [ "$_MERGE_CONTRACT" != yes ] && [ -n "$_MERGE_KEY" ]; then
+        _status_event "$_MERGE_KEY" merge "$2" "$3"
     fi
     return 0
 }

@@ -37,7 +37,6 @@ F35	scripts/cr/pr-check-ref/70-step7-nits.md	wt	xfail:HIMMEL-6784	pr_num="" #282
 F36	scripts/cr/pr-check-ref/70-step7-nits.md	wt	ask	bash "<himmel_dir>/scripts/cr/file-deferred-issues.sh" --pr <pr-num> --input '<review-tmpfile>' --dry-run #4263634063	bash scripts/cr/file-deferred-issues.sh --pr 1 --input '@SCRATCH@' --dry-run
 L37	docs/handover/leg-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/console-kit/append-results.sh @SCRATCH@ "LIVE — ok"
 L38	docs/handover/leg-preface.md	wt	ask	-	bash @WT@/scripts/handover/console-kit/append-results.sh @SCRATCH@ "LIVE — ok"
-L39	docs/handover/leg-preface.md	wt	ask	-	bash scripts/handover/console-kit/leg-jira-status.sh HIMMEL-6617 "In Progress" --allow-back
 L40	docs/handover/leg-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/queue-lock.sh acquire @SCRATCH@
 L41	docs/handover/leg-preface.md	wt	ask	-	bash @WT@/scripts/handover/queue-lock.sh acquire @SCRATCH@
 L42	docs/handover/leg-preface.md	wt	ask	-	git log -1 --format=%H

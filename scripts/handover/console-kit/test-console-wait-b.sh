@@ -76,6 +76,9 @@ cat > "$STUB/budget-off.sh" <<'EOF'
 exit 2
 EOF
 export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+# Nor does any test run the real status sweep or read a real FOCUS state: both seams answer nothing.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
+export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 
 # tick_line <legs> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
@@ -693,6 +696,92 @@ printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
 export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+
+# --- (sw): the status sweep runs every WAIT_SWEEP_SEC with --doc, bounded, and wakes only when
+# it moved a ticket or its failure signature is new; the same pass wakes once per FAILED or stale-DIRTY
+# FOCUS state. The stamp <inbox>.wait.sweep outlives the waiter; no stamp means the first sweep is an
+# interval away.
+cat > "$STUB/sweep.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'sweep budget=%s\n' "${TICKET_STATUS_SWEEP_BUDGET:-}" >> "$STUB/sweep.calls"
+cat "$STUB/sweep.out"; exit 0
+EOF
+cat > "$STUB/focus.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'focus %s\n' "$*" >> "$STUB/focus.calls"
+cat "$STUB/focus.out"; exit 0
+EOF
+export WAIT_SWEEP_CMD="$STUB/sweep.sh" WAIT_FOCUS_CMD="$STUB/focus.sh" WAIT_SWEEP_SEC=60
+SWDOC="$WORK/hb1/consoles/HB.md"
+printf 'status-sweep: keys=3 served=3 moved=1 miss=0 funnel=1 sig= wake=0\n' > "$STUB/sweep.out"; printf 'focus=ok\n' > "$STUB/focus.out"
+reset_stub; : > "$STUB/sweep.calls"; I="$(new_inbox sw1)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+start "$I" "$WORK/sw1.out" --doc "$SWDOC" --legs "N1.md"
+wait_exit "$WPID"
+check "(sw1) a due sweep that moved a ticket wakes with its line" "WAKE status-sweep status-sweep: keys=3 served=3 moved=1 miss=0 funnel=1 sig= wake=0" "$(head -n1 "$WORK/sw1.out")"
+check "(sw1) and the waiter exits 0" "0" "$rc"
+check "(sw1b) the sweep runs under a budget below its 60 s bound" "sweep budget=50" "$(head -n1 "$STUB/sweep.calls")"
+check "(sw1c) the stamp was refreshed" "fresh" "$([ $(( $(date +%s) - $(cat "$I.wait.sweep") )) -lt 30 ] && echo fresh || echo old)"
+printf 'status-sweep: keys=3 served=3 moved=0 miss=0 funnel=0 sig= wake=0\n' > "$STUB/sweep.out"
+reset_stub; : > "$STUB/sweep.calls"; I="$(new_inbox sw2)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw2) a sweep that moved nothing and has no new failure wakes nothing" "124:" "$rc:$(cat "$WORK/sw2.out")"
+check "(sw2b) and it ran once, not every sample" "1" "$(wc -l < "$STUB/sweep.calls" | tr -d ' ')"
+printf 'status-sweep: keys=3 served=3 moved=0 miss=1 funnel=1 sig=get:x wake=1\n' > "$STUB/sweep.out"
+reset_stub; I="$(new_inbox sw3)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+start "$I" "$WORK/sw3.out" --doc "$SWDOC" --legs "N1.md"
+wait_exit "$WPID"
+check "(sw3) a new failure signature (wake=1) wakes" "WAKE status-sweep status-sweep: keys=3 served=3 moved=0 miss=1 funnel=1 sig=get:x wake=1" "$(head -n1 "$WORK/sw3.out")"
+printf 'status-sweep: keys=3 served=3 moved=0 miss=1 funnel=1 sig=get:x wake=0\n' > "$STUB/sweep.out"
+reset_stub; : > "$STUB/sweep.calls"; I="$(new_inbox sw4)"; date +%s > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw4) a standing failure (wake=0) and a recent stamp: no sweep, no wake" "0:" "$(wc -l < "$STUB/sweep.calls" | tr -d ' '):$(cat "$WORK/sw4.out")"
+reset_stub; : > "$STUB/sweep.calls"; I="$(new_inbox sw5)"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw5) with no stamp the first sweep waits one interval: not run, stamp created" "0:present" "$(wc -l < "$STUB/sweep.calls" | tr -d ' '):$([ -s "$I.wait.sweep" ] && echo present || echo absent)"
+reset_stub; : > "$STUB/sweep.calls"; I="$(new_inbox sw6)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/sw6.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw6) without --doc the sweep does not run" "0" "$(wc -l < "$STUB/sweep.calls" | tr -d ' ')"
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$STUB/sweep.hang.sh"
+reset_stub; I="$(new_inbox sw7)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+WAIT_SWEEP_CMD="$STUB/sweep.hang.sh" WAIT_SWEEP_TIMEOUT=1 start "$I" "$WORK/sw7.out" --doc "$SWDOC" --legs "N1.md"
+sleep 0.5
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+n=0
+while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(sw7) a hung sweep is killed at WAIT_SWEEP_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/sw7.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+printf 'status-sweep: keys=3 served=3 moved=0 miss=0 funnel=0 sig= wake=0\n' > "$STUB/sweep.out"
+printf 'focus=FAILED:render\n' > "$STUB/focus.out"
+reset_stub; : > "$STUB/focus.calls"; I="$(new_inbox sw8)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+start "$I" "$WORK/sw8.out" --doc "$SWDOC" --legs "N1.md"
+wait_exit "$WPID"
+check "(sw8) a FAILED focus refresh wakes with its stage" "WAKE focus FAILED:render" "$(head -n1 "$WORK/sw8.out")"
+check "(sw8b) and the status is read for the console doc" "focus --doc $SWDOC --status" "$(head -n1 "$STUB/focus.calls")"
+echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw8c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw8c) the same FAILED state does not wake twice" "124:" "$rc:$(cat "$WORK/sw8c.out")"
+printf 'focus=ok\n' > "$STUB/focus.out"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw8d.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw8d) a focus back to ok clears the marker" "absent" "$([ -e "$I.wait.focus" ] && echo present || echo absent)"
+printf 'focus=DIRTY:9m\n' > "$STUB/focus.out"
+reset_stub; I="$(new_inbox sw9)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw9.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw9) DIRTY for under 10 minutes does not wake" "124:" "$rc:$(cat "$WORK/sw9.out")"
+printf 'focus=DIRTY:12m\n' > "$STUB/focus.out"
+reset_stub; I="$(new_inbox sw10)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+start "$I" "$WORK/sw10.out" --doc "$SWDOC" --legs "N1.md"
+wait_exit "$WPID"
+check "(sw10) DIRTY for 10 minutes or more wakes" "WAKE focus DIRTY:12m" "$(head -n1 "$WORK/sw10.out")"
+printf 'focus=DIRTY:27m\n' > "$STUB/focus.out"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/sw10b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(sw10b) the same DIRTY state, older, does not wake twice" "124:" "$rc:$(cat "$WORK/sw10b.out")"
+printf 'focus=DIRTY:unknown\n' > "$STUB/focus.out"
+reset_stub; I="$(new_inbox sw11)"; echo $(( $(date +%s) - 1000 )) > "$I.wait.sweep"
+start "$I" "$WORK/sw11.out" --doc "$SWDOC" --legs "N1.md"
+wait_exit "$WPID"
+check "(sw11) DIRTY with no readable age wakes" "WAKE focus DIRTY:unknown" "$(head -n1 "$WORK/sw11.out")"
+export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
+unset WAIT_SWEEP_SEC
 
 # --- (st) stall= wakes once per NEW conflict/no-ci token; ci-slow/idle are report-only,
 # a token leaving the set and an unchanged set never wake, absence is a valid sample

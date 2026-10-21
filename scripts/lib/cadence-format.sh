@@ -119,7 +119,7 @@
 # stamp v14 too, so one version answers "is this runner current".
 # v15: the three pipeline CLAUDE legs gate before they spend.
 # Every one of them now runs scripts/lib/bank-preflight.sh first (with
-# CADENCE_BANK_LEG set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
+# CADENCE_USAGE_LEG set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
 # spend instead of logging leg:"unknown") and passes an explicit
 # --permission-mode; the synthesize leg additionally runs the free
 # scripts/luna/synth-input-check.sh and skips the session outright on a night

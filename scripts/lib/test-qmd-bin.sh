@@ -56,12 +56,12 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.2" \
-  test "$default_ref" = "2d8589c6ace332c351e9f6e1ac7400aab7a4ee02"
+assert "default QMD_FORK_REF is the fork main merge commit tagged v2.8.3-himmel.3" \
+  test "$default_ref" = "5490d8947d3d8c9edbb6c1288174005d35f44e81"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment names the tag and HIMMEL-5952" \
-  bash -c 'grep -q "v2.8.3-himmel.2" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
+  bash -c 'grep -q "v2.8.3-himmel.3" "$1" && grep -q "HIMMEL-5952" "$1"' _ "$SCRIPT_DIR/qmd-bin.sh"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "the pin comment no longer calls the pin the pin-http-auth tip" \

@@ -236,4 +236,13 @@ if bash "$SUT" --registry > "$TMP/out" 2>&1; then
 fi
 expect T18-msg "$TMP/out" "requires a value"
 
+# T19 a model-less row (a github-app reviewer) is skipped, not a jq crash that
+# ends the run before any pin is checked.
+cat > "$TMP/registry.json" <<'EOF'
+{"panel":[{"slug":"qwenor","model":"qwen/gone-model:free","provider":"openrouter","tier":"free"},
+  {"slug":"coderabbit","provider":"github-app","mode":"best-effort"}]}
+EOF
+run "$TMP/catalog2.json" --no-probe
+expect T19-pin "$TMP/out" "FLAG delisted-pin: qwen/gone-model:free"
+
 [ "$fail" -eq 0 ] && echo "PASS test-free-watch" || exit 1

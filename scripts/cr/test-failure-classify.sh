@@ -123,6 +123,13 @@ check "22: whitespace-only blob -> empty-response" "$(classify 1 '
 # ── rc=5 is critic-first-pass.sh's SKIPPED clean no-op, not a failure ──────
 check "HIMMEL-6475: rc=5 -> critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF) — clean no-op')" "critic-skipped"
 check "HIMMEL-6475: rc=5 with no text -> critic-skipped" "$(classify 5 '' '')" "critic-skipped"
+# The rc-5 detail splits into absent (not set up) vs unavailable.
+# shellcheck source=scripts/lib/critics-config.sh disable=SC1090
+check "HIMMEL-6580: lane OFF skip -> absent" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) — clean no-op')" "absent"
+# shellcheck disable=SC1090
+check "HIMMEL-6580: no key file skip -> absent" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'refused: no ANTHROPIC_API_KEY and no key file for account A')" "absent"
+# shellcheck disable=SC1090
+check "HIMMEL-6580: bank not PROCEED skip -> unavailable" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (bank not PROCEED) — clean no-op')" "unavailable"
 
 # ── generic-rc-N fallback (no signature matches anything) ──────────────────
 check "23: unrecognized text -> generic-rc-N" "$(classify 42 '' 'connection refused')" "generic-rc-42"
