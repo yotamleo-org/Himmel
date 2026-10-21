@@ -34,7 +34,6 @@ export function hasConsoleMarker(): boolean {
   return !process.env.HIMMEL_CONSOLE_LEG && !process.env.HIMMEL_CONSOLE_RELAY;
 }
 
-const actor = (): string => process.env.HIMMEL_CONSOLE_NAME || 'console';
 
 export interface CiResult {
   ok: boolean;
@@ -170,7 +169,7 @@ export async function versionReady(
     else {
       rows = rows.map((r) => {
         if (r.ok) return r;
-        appendAdmission({ ts: new Date().toISOString(), version: name, key: r.id, kind: 'override', actor: actor(), reason });
+        appendAdmission({ version: name, key: r.id, kind: 'override', reason });
         return { id: r.id, ok: true, detail: `overridden: ${reason} (was: ${r.detail})` };
       });
     }
@@ -195,7 +194,7 @@ export async function deferTicket(key: string, version: string, reason: string |
   if (!hasConsoleMarker()) throw new Error('version-defer needs the console marker: only the console defers a frozen ticket');
   if (!reason?.trim()) throw new Error('version-defer: --reason is mandatory');
   await addLabel(key, 'deferred');
-  appendAdmission({ ts: new Date().toISOString(), version, key, kind: 'deferral', actor: actor(), reason: reason.trim() });
+  appendAdmission({ version, key, kind: 'deferral', reason: reason.trim() });
   return `${key} deferred from ${version}: ${reason.trim()}`;
 }
 

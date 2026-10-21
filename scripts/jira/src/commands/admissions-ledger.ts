@@ -9,7 +9,7 @@ export interface Admission {
   version: string;
   key: string;
   gate?: string;
-  kind?: 'override';
+  kind?: 'override' | 'deferral';
   actor: string;
   reason?: string;
 }
