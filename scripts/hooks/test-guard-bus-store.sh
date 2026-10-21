@@ -179,7 +179,7 @@ deny  "a separator inside a quoted option value does not hide the verb (model)" 
     "$(bash_json 'bus --note "a;b" register legX')"
 
 echo "== command-position model: a quoted string is one word, a heredoc body is data =="
-allow "a commit message naming bus and register is one word" "$(bash_json 'git commit -m "fix bus register retry"')"
+deny  "a commit message naming bus and register" "$(bash_json 'git commit -m "fix bus register retry"')"
 allow "bus send with a summary that says rebind" "$(bash_json 'bus send console /tmp/b.txt --summary "rebind done"')"
 allow "a heredoc body naming bus register is data" "$(bash_json $'cat > /tmp/notes.md <<\'EOF\'\nbus register x\nEOF')"
 deny  "bus register inside a bash -c body" "$(bash_json 'bash -c "bus register x"')"
@@ -194,8 +194,44 @@ deny  "a script file run by a shell (text reader)" "$(bash_json 'echo "bus regis
 deny  "a script file run by path (text reader)" \
     "$(bash_json 'echo "bus register x" > /tmp/f.sh; chmod +x /tmp/f.sh; /tmp/f.sh')"
 deny  "a script file sourced (text reader)" "$(bash_json 'echo "bus register x" > /tmp/f.sh; . /tmp/f.sh')"
-allow "residual: a quoted string written to a file is data until a later call runs it" \
-    "$(bash_json 'echo "bus register x" > /tmp/f.sh')"
+deny  "a quoted string written to a file for a later call to run" "$(bash_json 'echo "bus register x" > /tmp/f.sh')"
+deny  "a trap string runs later" "$(bash_json "trap 'bus register x' EXIT")"
+deny  "a git alias runs its string" "$(bash_json "git -c alias.r='!bus register x' r")"
+deny  "prlimit then bash -c" "$(bash_json "prlimit --as=100000000 bash -c 'bus register x'")"
+deny  "tmux runs its string" "$(bash_json "tmux new -d 'bus register x'")"
+deny  "expect spawns its string" "$(bash_json "expect -c 'spawn bus register x'")"
+deny  "an alias defined then used" "$(bash_json $'alias r=\'bus register x\'\nr')"
+allow "a verb before the bus word in one word (text reader, as on main)" "$(bash_json 'git commit -m "register the bus"')"
+
+echo "== model failures: the text reader decides =="
+# A heredoc body naming bus register is allowed by the model and denied by the
+# text reader, so a deny here proves the call fell back.
+HDOC=$'cat > /tmp/notes.md <<\'EOF\'\nbus register x\nEOF'
+STUBS="$(mktemp -d "${TMPDIR:-/tmp}/busstore-stubs.XXXXXX")" || exit 1
+REAL_JQ="$(command -v jq)"
+stub_path() { # stub_path <name> -> a dir of real cat/tr/readlink, plus jq and shfmt per <name>
+    local d="$STUBS/$1" t
+    mkdir -p "$d"
+    for t in cat tr readlink; do ln -s "$(command -v "$t")" "$d/$t"; done
+    printf '%s\n' "$d"
+}
+stub_run() { # stub_run <dir> <json>
+    OUT="$(printf '%s' "$2" | env -i PATH="$1" "$BASH" "$HOOK" 2>/dev/null)"
+    RC=$?
+}
+D="$(stub_path rc3)"; ln -s "$REAL_JQ" "$D/jq"; ln -s "$(command -v shfmt || echo /nonexistent)" "$D/shfmt"
+stub_run "$D" "$(bash_json "$HDOC"$'\n)')"
+if [ "$RC" = 2 ]; then ok "parse failure (rc 3) -> text reader denies"; else bad "parse failure (rc 3): rc=$RC"; fi
+D="$(stub_path rc4)"; ln -s "$REAL_JQ" "$D/jq"
+printf '#!/bin/sh\necho not-json\n' > "$D/shfmt"; chmod +x "$D/shfmt"
+stub_run "$D" "$(bash_json "$HDOC")"
+if [ "$RC" = 2 ]; then ok "model error (rc 4) -> text reader denies"; else bad "model error (rc 4): rc=$RC"; fi
+D="$(stub_path jqfail)"; ln -s "$(command -v shfmt || echo /nonexistent)" "$D/shfmt"
+printf '#!/bin/sh\nfor a; do case "$a" in *"def isbus"*) exit 5 ;; esac; done\nexec "%s" "$@"\n' "$REAL_JQ" > "$D/jq"
+chmod +x "$D/jq"
+stub_run "$D" "$(bash_json "$HDOC")"
+if [ "$RC" = 2 ]; then ok "verdict jq failure -> text reader denies"; else bad "verdict jq failure: rc=$RC"; fi
+rm -rf "$STUBS"
 
 echo "== no shfmt: the text reader decides, exactly as before the model =="
 NOSHFMT="$(mktemp -d "${TMPDIR:-/tmp}/busstore-noshfmt.XXXXXX")" || exit 1

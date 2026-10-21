@@ -22,12 +22,14 @@
 #     (b) calls `bus register`, `bus bind` or `bus rebind` (the identity verbs
 #         the launcher owns; `bus` bounded the same way, so `bin/bus register`
 #         counts). When the text names bus and a verb, the command-position
-#         model (scripts/lib/bash-ast.sh) reads it first: a quoted string or a
-#         heredoc body is one word of data, and `bash -c` / `eval` bodies are
-#         read. A position it cannot read (a runner such as nice or xargs, an
-#         interpreter with no body, a file run by path or sourced, a command
-#         reached through env, an expansion or glob word) hands the call to the
-#         word walker below.
+#         model (scripts/lib/bash-ast.sh) reads it first: a heredoc body is
+#         data, `bash -c` / `eval` bodies are read, and a quoted string whose
+#         tokens put bus before a verb denies (trap, git -c alias, tmux and
+#         expect run such strings). A position it cannot read (a runner such
+#         as nice or xargs, an interpreter with no body, a file run by path or
+#         sourced, a command reached through env, set/alias/trap and the like,
+#         an expansion or glob word, a string with a verb before bus) hands
+#         the call to the word walker below.
 #     (c) assigns a HIMMEL_BUS_* variable (`HIMMEL_BUS_NAME=x claude`, `export
 #         ...`, `env ...`), including a name built by quoting or expansion
 #         (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_${x}=1`, `$'HIMMEL_BUS_NAME=x'`).
@@ -59,8 +61,8 @@
 # Also not caught: a separator inside a quoted option value when the model
 # cannot read the command, the verb fed on stdin to xargs, the verb or the store
 # path held in a shell variable (`v=register; bus $v x`, `$S/bus`: a bare
-# expansion carries no literal character to match), a quoted string written to
-# a file that a later tool call runs, and a symlinked payload cwd or a relative file path against it (all tracked).
+# expansion carries no literal character to match), an alias for the bare bus
+# word (`alias b=bus`), and a symlinked payload cwd or a relative file path against it (all tracked).
 # Deliberately over-denied (the safe direction): when the model hands the call
 # to the word walker, a verb word anywhere after a bus-able word in one segment
 # (`bus send ... --summary "rebind done" $x`), a glob or expansion under `himmel/`
@@ -379,22 +381,31 @@ deny() {
 # words hold a bus word (`bus`, or a path component `bus`) and, later, a word that
 # is exactly register|bind|rebind. A position the model cannot read (a runner, an
 # interpreter with no body, a file run by path or sourced, one reached through
-# env) or one with an expansion or glob word leaves the verdict "legacy": the
-# word walker reads the text then.
+# env, a builtin that changes how later text runs) or one with an expansion or
+# glob word leaves the verdict "legacy": the word walker reads the text then.
+# One literal word is a string some command may run (trap, git -c alias, tmux,
+# expect): a bus token followed by a verb token inside it denies, and both in
+# the other order leave the verdict "legacy".
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' BS_JQ <<'BS_JQ_EOF' || true
 def base: (. // "") | sub("^.*/"; "");
 def interp: (.prog | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
 def runsfile: (.argv[0].v // "") | contains("/");
-def unread: (.opaque != null) or (interp and (.body == null)) or runsfile;
+def taints: (.prog | base) | IN("set", "shopt", "alias", "unalias", "enable", "trap");
+def unread: (.opaque != null) or (interp and (.body == null)) or runsfile or taints;
 def viaenv: (.via // []) | any(. == "env");
 def lit: .t == "lit" and (.g | not);
 def isbus: lit and (.v | split("/") | any(. == "bus"));
-def isverb: lit and (.v | IN("register", "bind", "rebind"));
+def verb: IN("register", "bind", "rebind");
+def isverb: lit and (.v | verb);
+def tokens: [.v | scan("[A-Za-z0-9_.-]+")];
+def mixed: lit and (tokens | any(. == "bus") and any(verb));
+def ordered: lit and (tokens as $t | any(range(0; $t | length); $t[.] == "bus" and any($t[. + 1:][]; verb)));
 def bad: .argv as $a
-  | any(range(0; $a | length); ($a[.] | isbus) and any($a[. + 1:][]; isverb));
+  | any(range(0; $a | length); ($a[.] | isbus) and any($a[. + 1:][]; isverb))
+  or any($a[]; ordered);
 if any(.[]; bad) then "deny"
-elif any(.[]; unread or viaenv or any(.argv[]; lit | not)) then "legacy"
+elif any(.[]; unread or viaenv or any(.argv[]; (lit | not) or mixed)) then "legacy"
 else "allow" end
 BS_JQ_EOF
 
