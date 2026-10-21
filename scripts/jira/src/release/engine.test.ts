@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -290,6 +290,28 @@ describe('release engine (HIMMEL-6796)', () => {
       successorIno = statSync(lock).ino;
     });
     expect(statSync(lock).ino).toBe(successorIno);
+  });
+
+  it('a breaker leaves the lock in place while another breaker holds the break mutex', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-lock-'));
+    const lock = join(dir, '.lock');
+    writeFileSync(lock, 'crashed writer');
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    writeFileSync(`${lock}.break`, 'another breaker');
+    const ino = statSync(lock).ino;
+    breakStaleLock(lock, 60_000);
+    expect(statSync(lock).ino).toBe(ino);
+  });
+
+  it('a break removes the stale lock and leaves no mutex or tombstone behind', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-lock-'));
+    const lock = join(dir, '.lock');
+    writeFileSync(lock, 'crashed writer');
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    breakStaleLock(lock, 60_000);
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it('a crash between the applied row and its event is repaired by the retry', async () => {

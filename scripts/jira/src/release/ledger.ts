@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  appendFileSync, closeSync, existsSync, fstatSync, futimesSync, linkSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync,
+  appendFileSync, closeSync, existsSync, fstatSync, futimesSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
@@ -142,30 +142,41 @@ const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(
 // keeps its lock fresh, and a release unlinks only the lock it created.
 interface LockHandle { lock: string; fd: number; ino: number }
 
-// Breaks a crashed writer's lock by renaming it away, then checks what was taken:
-// a lock that is a different file, or fresh again, belongs to a live writer and
-// is linked back. `beforeBreak` is a test seam: it runs after the staleness
-// decision, where a second breaker can interleave.
-// ponytail: between the rename and the link-back a third writer can take the
-// vacated name; upgrade path is a break-mutex file around the whole step.
+// Breaks a crashed writer's lock. Breakers are serialized by an O_EXCL mutex file, and
+// under it the lock is unlinked only if it is still the file whose staleness was judged:
+// the lock name is never vacated for anyone but its own breaker. A breaker that finds the
+// mutex held leaves the lock alone and lets the acquire loop retry. `beforeBreak` is a
+// test seam: it runs under the mutex, between the staleness decision and the recheck.
+// ponytail: a live holder that releases between the recheck and the unlink lets a new
+// writer's lock be removed (microseconds, and only for a holder slower than staleMs);
+// upgrade path is an advisory flock held for the life of the writer.
 export function breakStaleLock(lock: string, staleMs: number, beforeBreak?: () => void): void {
   let seen;
   try {
     seen = statSync(lock);
   } catch { return; }
   if (Date.now() - seen.mtimeMs <= staleMs) return;
-  beforeBreak?.();
-  const tomb = `${lock}.${process.pid}.${randomBytes(4).toString('hex')}.broken`;
+  const mutex = `${lock}.break`;
+  let fd: number;
   try {
-    renameSync(lock, tomb);
-  } catch { return; }
+    fd = openSync(mutex, 'wx');
+  } catch {
+    // a breaker that crashed holding the mutex must not wedge every later break
+    try {
+      if (Date.now() - statSync(mutex).mtimeMs > staleMs) unlinkSync(mutex);
+    } catch { /* released meanwhile */ }
+    return;
+  }
   try {
-    const took = statSync(tomb);
-    if (took.ino !== seen.ino || Date.now() - took.mtimeMs <= staleMs) linkSync(tomb, lock);
-  } catch { /* the name was retaken: that writer holds it */ }
-  try {
-    unlinkSync(tomb);
-  } catch { /* already gone */ }
+    beforeBreak?.();
+    const now = statSync(lock);
+    if (now.ino === seen.ino && Date.now() - now.mtimeMs > staleMs) unlinkSync(lock);
+  } catch { /* the lock is already gone */ } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(mutex);
+    } catch { /* already gone */ }
+  }
 }
 
 function acquireLock(dir: string, waitMs: number, staleMs: number): LockHandle {
