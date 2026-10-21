@@ -10,7 +10,7 @@ Skip this entire phase unless `--skill-scan` was passed. Runs after Phase 3.6 an
    skill_tmp="$(mktemp -d "${TMPDIR:-/tmp}/luna-ingest-skill.XXXXXX")" || exit 1
    ```
 
-   The directory name is the slugified repository-relative skill path (`[a-z0-9-]`, `/` becomes `-`), so two skills with the same name in different directories never share a report; a root skill uses `root`.
+   The directory name is the slugified repository-relative skill path (`[a-z0-9-]`, `/` becomes `-`) followed by `-` and the first 8 hex characters of the sha256 of the unslugified path, so `skills/a-b` and `skills/a/b` never share a report; a root skill uses `root`.
 4. **Scan through the one wrapper.** The provider must be the no-egress value: upstream defaults an unset provider to `nv_build`, which sends the skill text to build.nvidia.com, so the wrapper refuses to run unless `SKILLSPECTOR_PROVIDER=ollama`.
 
    ```bash
@@ -20,5 +20,5 @@ Skip this entire phase unless `--skill-scan` was passed. Runs after Phase 3.6 an
 
    Create `<repo-slug>.skillspector/` next to the note first and apply the Phase 4 path-safety check to it. The wrapper prints `skillspector-scan: score=<n> issues=<k> high=<h>`. Remove `$skill_tmp` afterwards. SkillSpector is never installed here: a missing binary (rc 3) or refused provider (rc 2) is `unavailable`. Install it only in a throwaway sandbox or the test VM.
 5. **Record in the synthesis:**
-   - Frontmatter `skill_scan: clean | flagged | unavailable`: `flagged` when any scanned skill has `issues` above 0, `unavailable` on a wrapper rc 2 or 3 for any skill or no skill found, else `clean`. A partial run is never `clean`.
+   - Frontmatter `skill_scan: clean | flagged | unavailable`: `flagged` when any scanned skill has `issues` above 0, `unavailable` on a wrapper rc 2 or 3 for any skill or no skill found, else `clean`. A partial run is never `clean`: when the cap left skills unscanned, the result is `flagged` if any scanned skill has `issues` above 0, else `unavailable`.
    - A `## Skill scan (advisory)` section: one line per skill as `` `<skill>`: score=<n> issues=<k> high=<h>, report [[<repo-slug>.skillspector/<skill-slug>.json]] ``. When `high` is above 0 add `read the flagged line before adopting`. Quote nothing from the skill text; the report holds the detail.

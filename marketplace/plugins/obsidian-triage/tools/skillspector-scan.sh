@@ -51,12 +51,14 @@ summary="$(node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const score = r && r.risk_assessment && r.risk_assessment.score;
 if (!Array.isArray(r && r.issues) || typeof score !== "number") process.exit(1);
+if (r.execution_successful === false) process.exit(1);
+if (r.analysis_completeness && r.analysis_completeness.is_complete === false) process.exit(1);
 const issues = r.issues;
 const high = issues.filter((i) => i.severity === "HIGH").length;
 console.log("score=" + score + " issues=" + issues.length + " high=" + high);
 ' "$out" 2>/dev/null)" || summary=""
 if [ -z "$summary" ]; then
-    echo "skillspector-scan: unavailable: skillspector produced no scan report (need risk_assessment.score and an issues array)" >&2
+    echo "skillspector-scan: unavailable: skillspector produced no complete scan report (need risk_assessment.score, an issues array, and no failed or incomplete run)" >&2
     exit 3
 fi
 

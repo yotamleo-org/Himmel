@@ -109,7 +109,9 @@ assert "no arguments is a usage error (rc 1)" 1 "$rc"
 # -- Test 5: JSON that is not a scan report must never read as a clean scan
 echo "Test 5: a non-report JSON is unavailable, not clean"
 n=0
-for body in '{"error":"failed"}' '{"risk_assessment":{"score":5}}' '{"issues":[]}' '[]'; do
+for body in '{"error":"failed"}' '{"risk_assessment":{"score":5}}' '{"issues":[]}' '[]' \
+    '{"risk_assessment":{"score":5},"issues":[],"execution_successful":false}' \
+    '{"risk_assessment":{"score":5},"issues":[],"analysis_completeness":{"is_complete":false}}'; do
     n=$((n+1))
     printf '%s\n' "$body" > "$tmpdir/bad$n.json"
     run "$tmpdir/rb$n.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/bad$n.json"; rc=$?
