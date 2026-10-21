@@ -223,6 +223,9 @@ deny  "tmux sends bus and a spaced verb as two words (text reader)" \
 allow "tee writes a heredoc body to a file" "$(bash_json $'tee /tmp/notes.md <<\'EOF\'\nbus register x\nEOF')"
 deny  "a prefix assignment on a bus status call loads a written file (text reader)" \
     "$(bash_json $'tee /tmp/r.js <<\'EOF\'\nrequire("child_process").execSync(`\nbus register x\n`)\nEOF\nNODE_OPTIONS=--require=/tmp/r.js bus status')"
+deny  "a path-qualified cat may run its heredoc (text reader)" "$(bash_json $'./cat <<\'EOF\'\nbus register x\nEOF')"
+deny  "a path-qualified bus status runs a file the same call wrote (text reader)" \
+    "$(bash_json $'tee ./bus <<\'EOF\'\nbus register x\nEOF\n./bus status')"
 
 echo "== model failures: the text reader decides =="
 # A heredoc body naming bus register is allowed by the model and denied by the

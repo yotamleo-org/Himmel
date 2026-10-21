@@ -382,14 +382,14 @@ deny() {
 # alias, tmux, expect, at): a bus token followed by a verb token inside it
 # denies too.
 # The model allows only a call whose every position is cat, tee or a bus
-# status|peers|wait|send|adopt with literal words and no prefix assignment (an
+# status|peers|wait|send|adopt, named by that bare word (a path such as ./cat
+# may be any program), with literal words and no prefix assignment (an
 # env value such as NODE_OPTIONS can load code): none of them runs a string, so
 # a heredoc or a --summary naming bus and a verb is data.
 # Every other call is "legacy": the word walker reads the text then, with its
 # own quote and backslash handling and its split across words.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' BS_JQ <<'BS_JQ_EOF' || true
-def base: (. // "") | sub("^.*/"; "");
 def lit: .t == "lit" and (.g | not);
 def isbus: lit and (.v | split("/") | any(. == "bus"));
 def verb: IN("register", "bind", "rebind");
@@ -399,8 +399,8 @@ def ordered: lit and (tokens as $t | any(range(0; $t | length); $t[.] == "bus" a
 def rwords: [(.redirs // [])[] | .w | select(. != null)];
 def sink: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
   and all(.argv[], rwords[]; lit)
-  and (((.prog | base) | IN("cat", "tee"))
-    or ((.prog | base) == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
+  and ((.argv[0].v // "" | IN("cat", "tee"))
+    or (.argv[0].v == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
 def bad: .argv as $a
   | any(range(0; $a | length); ($a[.] | isbus) and any($a[. + 1:][]; isverb))
   or any($a[], rwords[]; ordered);
