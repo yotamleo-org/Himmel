@@ -422,10 +422,11 @@ not_routed "a heredoc body naming graphify is data" "cat <<'EOF' > notes.txt${nl
 routed "a graphify command right of a pipe and a cd reaches the fence" "echo x | cd sub && graphify update $T/luna/journal.md --backend claude"
 routed "a graphify command behind || reaches the fence" "cd R || cd V && graphify update $T/luna/journal.md --backend claude"
 routed "an eval body reaches the fence" "eval 'graphify update $T/luna/journal.md --backend claude'"
-routed "a quoted part of the word (g'raphify') reaches the fence" "g'raphify' update $T/luna/journal.md --backend claude"
-routed "empty single quotes in the word (graph''ify) reach the fence" "graph''ify update $T/luna/journal.md --backend claude"
-routed "empty double quotes in the word (graph\"\"ify) reach the fence" "graph\"\"ify update $T/luna/journal.md --backend claude"
-routed "a backslash in the word (gra\\phify) reaches the fence" "gra\\phify update $T/luna/journal.md --backend claude"
+routed "a quoted part of the word (g'raphify') reaches the fence" "g'raphify' update luna/journal.md --backend claude"
+routed "empty single quotes in the word (graph''ify) reach the fence" "graph''ify update luna/journal.md --backend claude"
+routed "empty double quotes in the word (graph\"\"ify) reach the fence" "graph\"\"ify update luna/journal.md --backend claude"
+routed "a backslash in the word (gra\\phify) reaches the fence" "gra\\phify update luna/journal.md --backend claude"
+routed "a line continuation in the word (gra\\<newline>phify) reaches the fence" "gra\\${nl}phify update luna/journal.md --backend claude"
 not_routed "a quote-split word that is not graphify stays skipped" "ls ''$T"
 
 # A missing shfmt denies a command that mentions graphify, with a message naming

@@ -236,6 +236,8 @@ assert_rc "backslash-split verb (s\\tash drop)" 2 "$(run_case "$(j_bash 'git s\t
 assert_rc "empty single quotes in the verb (sta''sh drop)" 2 "$(run_case "$(j_bash "git sta''sh drop")")"
 assert_rc "empty double quotes in the verb (sta\"\"sh pop)" 2 "$(run_case "$(j_bash 'git sta""sh pop')")"
 assert_rc "empty single quotes in the program (g''it stash drop)" 2 "$(run_case "$(j_bash "g''it stash drop")")"
+assert_rc "line continuation inside the verb (sta\\<newline>sh drop)" 2 "$(run_case "$(j_bash "git sta\\
+sh drop")")"
 assert_rc "quote-split verb with an allowed subcommand (sta''sh list)" 0 "$(run_case "$(j_bash "git sta''sh list")")"
 
 # --- a missing shfmt denies a command that names the guarded verb, and the

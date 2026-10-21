@@ -101,10 +101,10 @@ esac
 # `<<<`, feeds it: several patterns below anchor on `$` and a herestring's
 # synthetic trailing newline would fold to an unexpected trailing ';'.
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;')
-# The same text with quotes and backslashes dropped: the shell joins sta''sh and
-# s\tash back into one word, so the prefilter and the regex fallback read this
-# spelling as well.
-cmd_nq=$(printf '%s' "$cmd_lc" | LC_ALL=C tr -d "'\"\\\\")
+# The same text with line continuations, quotes and backslashes dropped: the
+# shell joins sta''sh, s\tash and sta\<newline>sh back into one word, so the
+# prefilter and the regex fallback read this spelling as well.
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;' | LC_ALL=C tr -d "'\"\\\\")
 
 # In-process ERE match, zero spawns per call -- see block-destructive-commands.sh
 # for why this is `[[ =~ ]]` and not `grep -Eq`. The pattern MUST

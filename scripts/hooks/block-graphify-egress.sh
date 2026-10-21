@@ -175,9 +175,9 @@ QUIETRUN_TAIL='quiet-run\.sh.*[^[:alnum:]_.-]graphify(\.exe)?([^[:alnum:]_.-]|$)
 # text with no size cap, and a here-string over ~64 KiB wedges Git Bash
 # which would trade this fail-open for a different large-input
 # failure on the exact kind of pathological input this bug needs.
-# The text with quotes and backslashes dropped is read too: the shell joins
-# g''raphify and gra\phify back into one word.
-cmd_nq=$(printf '%s' "$cmd_lc" | LC_ALL=C tr -d "'\"\\\\")
+# The text with line continuations, quotes and backslashes dropped is read too:
+# the shell joins g''raphify, gra\phify and gra\<newline>phify back into one word.
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;' | LC_ALL=C tr -d "'\"\\\\")
 cmdpos_hit=$(printf '%s\n%s' "$cmd_lc" "$cmd_nq" | grep -E "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)")
 quietrun_hit=$(printf '%s\n%s' "$cmd_lc" "$cmd_nq" | grep -E "$QUIETRUN_TAIL")
 route=no
