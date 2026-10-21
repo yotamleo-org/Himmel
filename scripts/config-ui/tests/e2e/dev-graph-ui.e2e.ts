@@ -86,7 +86,8 @@ test("J-DG2. a deep link to another walkthrough step restores it", async ({ page
 test("J-DG2. leaving the page and coming back does not stack a second graph", async ({ page }) => {
   await open(page, "#/workflow&w=w1&s=1");
   await page.locator('#pages a[href="#/config"]').click();
-  await expect(page.locator(".dg")).toHaveCount(0);  await page.locator("#pages a", { hasText: "Workflow" }).click();
+  await expect(page.locator(".dg")).toHaveCount(0);
+  await page.locator("#pages a", { hasText: "Workflow" }).click();
   await page.locator(".dg-wide .dg-node").first().waitFor({ state: "attached" });
   await expect(page.locator(".dg")).toHaveCount(1);
 });
