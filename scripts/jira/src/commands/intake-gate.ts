@@ -5,7 +5,7 @@ export const INTAKE_GATES = 'critical|regression|must:<decision-ref>|receipt';
 
 /** The `frozen: <date>` line of a version description; absent means the version takes intakes as before. */
 export function frozenDate(description: string | undefined): string | undefined {
-  return /^\s*frozen:\s*(\S+)\s*$/m.exec(description ?? '')?.[1];
+  return /^[ \t]*frozen:[ \t]*(\S+)[ \t]*\r?$/m.exec(description ?? '')?.[1];
 }
 
 // ponytail: the gate reason is recorded in the ledger, not verified against a decision or receipt, upgrade path: the RM signed-row design (HIMMEL-6796)

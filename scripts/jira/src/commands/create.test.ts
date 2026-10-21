@@ -1043,4 +1043,15 @@ describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
     await file('Task', '--fix-version', 'v1.1.3');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
   });
+
+  it('reads a frozen: line from a CRLF description', async () => {
+    play('Release train.\r\nfrozen: 2026-10-20\r\n');
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/frozen \(2026-10-20\)/);
+  });
+
+  it('ignores a frozen: marker whose date is on the next line', async () => {
+    play('Release train.\nfrozen:\nnotes');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
 });
