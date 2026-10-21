@@ -66,7 +66,8 @@ write_uses_main() { # <helper path> -> prints "ok" when EVERY write shape used t
     local helper="$1" bad=0 shape
     for shape in "pr merge 12 --squash" "pr comment 12 --body x" "pr review 12 --approve" \
                  "api -X POST repos/o/r/issues/1/comments -f body=x" "api graphql -f query=mutation{x}" \
-                 "api --method=PUT repos/o/r/pulls/1/merge" "pr create --title t --body b"; do
+                 "api --method=PUT repos/o/r/pulls/1/merge" "pr create --title t --body b" \
+                 "api graphql --input q.json" "api graphql -F query=@q.graphql" "api graphql --field query=@q.graphql"; do
         : > "$GHLOG"
         # shellcheck disable=SC2086  # the shape is a word list on purpose
         GH_READ_ENV_ROOT="$W/root" bash "$helper" $shape >/dev/null 2>&1

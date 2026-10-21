@@ -82,8 +82,10 @@ _ghr_is_read() {
     for a in "$@"; do
         case "$prev" in -X|--method) [ "$a" = GET ] || return 1 ;; esac
         case "$a" in
+            # a document or body read from a file cannot be inspected here
+            --input|--input=*|*=@*) return 1 ;;
             graphql) graphql=1 ;;
-            -f|-F|--field|--raw-field|--input|-f?*|-F?*|--field=*|--raw-field=*|--input=*) field=1 ;;
+            -f|-F|--field|--raw-field|-f?*|-F?*|--field=*|--raw-field=*) field=1 ;;
             -XGET|--method=GET) ;;
             -X?*|--method=*) return 1 ;;
             *mutation*) return 1 ;;
@@ -110,7 +112,7 @@ gh_read() {
     # a paginated read can print pages before the budget runs out: hold its stdout
     # so a refused attempt is discarded instead of doubled by the retry
     for a in "$@"; do
-        [ "$a" = --paginate ] && { outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || outf=""; break; }
+        [ "$a" = --paginate ] && { outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; gh "$@"; return $?; }; break; }
     done
     if [ -n "$outf" ]; then
         GH_TOKEN="$_GHR_TOK" gh "$@" >"$outf" 2>"$errf"
