@@ -279,6 +279,25 @@ case_inv5() {
 INV7_OWNER='scripts/cr/ledger-append.sh'
 INV7_RESOLVES='cr-critic-scores\.jsonl|CR_LEDGER|PANEL_LEDGER'
 INV7_APPEND='appendFileSync|>>[[:space:]]*"?\$\{?(CR_LEDGER|PANEL_LEDGER|LEDGER|ledger|led)([^[:alnum:]_]|$)|>>[[:space:]]*[^|&]*cr-critic-scores\.jsonl'
+# Test suites only: a throwaway fixture ledger is by design not the real one.
+inv7_exempt() {
+    case "$1" in
+        scripts/cr/test-*.sh|scripts/handover/test-*.sh|scripts/handover/console-kit/test-*.sh|*.test.mjs) return 0 ;;
+    esac
+    return 1
+}
+case_inv7x() {
+    local rel bad=0
+    for rel in scripts/handover/console-kit/test-ready-check.sh scripts/handover/test-x.sh scripts/cr/test-x.sh scripts/x/y.test.mjs; do
+        inv7_exempt "$rel" || { echo "FAIL: invariant7x -- $rel is a test suite and must stay exempt" >&2; bad=1; }
+    done
+    for rel in scripts/handover/console-kit/ready-check.sh scripts/handover/console-kit/lib/test-x.sh scripts/handover/console-kit/x-test.sh scripts/handover/console-kit/test-x.mjs scripts/hooks/test-x.sh scripts/handover/ready-check.sh; do
+        inv7_exempt "$rel" && { echo "FAIL: invariant7x -- $rel is not a test suite and must still be scanned" >&2; bad=1; }
+    done
+    [ "$bad" -eq 0 ] || return 1
+    echo "PASS: invariant7x (the ledger-append scan exempts test suites only -- a non-test console-kit script stays scanned)"
+    return 0
+}
 case_inv7() {
     local rel hits listing owner_sites=0 violation=0
     listing=$(cd "$ROOT" && git ls-files -- scripts 2>/dev/null)
@@ -291,9 +310,7 @@ case_inv7() {
             *.sh|*.mjs|*.js) ;;
             *) continue ;;
         esac
-        case "$rel" in
-            scripts/cr/test-*.sh|scripts/handover/test-*.sh|*.test.mjs) continue ;;
-        esac
+        inv7_exempt "$rel" && continue
         [ -f "$ROOT/$rel" ] || continue
         grep -qE "$INV7_RESOLVES" "$ROOT/$rel" 2>/dev/null || continue
         hits=$(grep -nE "$INV7_APPEND" "$ROOT/$rel" 2>/dev/null) || continue
@@ -325,6 +342,7 @@ dispatch_case() {
         inv3) case_inv3 ;;
         inv5) case_inv5 ;;
         inv7) case_inv7 ;;
+        inv7x) case_inv7x ;;
         *) echo "test-pr-check-run: unknown case '$1'" >&2; return 10 ;;
     esac
 }
@@ -363,7 +381,7 @@ if [ ! -f "$CLEAR" ]; then
     exit 1
 fi
 
-CASES=(inv1 inv3 inv5 inv7)
+CASES=(inv1 inv3 inv5 inv7 inv7x)
 
 echo "== /pr-check orchestration invariants (HIMMEL-1944, retargeted by HIMMEL-2226) =="
 

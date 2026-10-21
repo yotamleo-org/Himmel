@@ -156,6 +156,18 @@ check "(vm3) a vmrun move to DISAGREE ends the wait" "0" "$rc"
 check "(vm3) the DISAGREE wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm3.out")"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
+reset_stub
+vmrun_line ok:2/2,busy=0
+I="$(new_inbox vm3b)"
+start "$I" "$WORK/vm3b.out" --legs "N1.md"
+wait_hb "$I" || fail "(vm3b) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+vmrun_line DISAGREE:2/2,online=1
+wait_exit "$WPID"
+check "(vm3b) a vmrun move to a partial-outage DISAGREE ends the wait" "0" "$rc"
+check "(vm3b) the partial-outage DISAGREE wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm3b.out")"
+[ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
+
 for recovery in ok:2/2,busy=0 off FAILING; do
     reset_stub
     vmrun_line DISAGREE:2/2,online=0

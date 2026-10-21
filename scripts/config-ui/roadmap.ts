@@ -5,6 +5,7 @@
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, readSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Section } from "./health-sources";
+import type { GhIssue } from "./tracker-sources";
 
 export const SYNC_LABEL = "leg-blocked";
 const TRAIN_RE = /^v1\.\d+\.\d+[a-z]?$/;
@@ -24,7 +25,7 @@ const SHIPPED = new Set(["", "done", "fixed"]); // a Done ticket resolved any ot
 export type Bucket = "todo" | "prog" | "rev" | "ci" | "done" | "wont";
 export type Leg = { label: string; marker: string; reason: string };
 export type Ticket = {
-  k: number; t: string; s: string; b: Bucket; v: number; theme: number; pv: string | null; drift: 0 | 1 | 2;
+  k: number; id?: string; t: string; s: string; b: Bucket; v: number; theme: number; pv: string | null; drift: 0 | 1 | 2; // id: the shown id when it is not HIMMEL-<k> (a GitHub issue's #<k>)
   labels: string[]; leg: Leg | null; noted?: string; // noted: the mirror body, for the sync dedupe; non-enumerable, never shipped
 };
 export type Version = { n: string; rel: boolean; date: string; counts: Record<Bucket, number>; open: number[] };
@@ -32,7 +33,7 @@ export type Proposal = { k: number; title: string; proposal: string; needsApprov
 export type DupProposal = { keys: number[]; title: string; proposal: string; needsApproval: true };
 export type SyncOp = { k: number; marker: string; argv: string[]; why: string };
 export type Roadmap = {
-  state: "ok" | "absent"; reason?: string;
+  state: "ok" | "absent"; reason?: string; source: "jira" | "github";
   mirror: { dir: string; count: number; newest: string };
   releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[]; themeSlugs: string[]; // themeSlugs: the label slug per theme ("" for no theme)
   plan: { state: "ok" | "absent"; reason?: string; dir?: string };
@@ -40,7 +41,7 @@ export type Roadmap = {
   drift: { now: { drift: number; unplanned: number; unthemed: number }; trend: [string, number, number, number][] };
   librarian: { staleInProgress: Proposal[]; drift: Proposal[]; unthemed: Proposal[]; releasedOpen: Proposal[]; duplicates: DupProposal[] };
 };
-type Opts = { mirrorDir: string; versionsFile?: string; planDir?: string; driftLog?: string; legs: Section };
+type Opts = { mirrorDir: string; versionsFile?: string; planDir?: string; driftLog?: string; legs: Section; github?: GhIssue[] };
 type M = { k: number; sn: string; cat: string; res: string; fv: string[]; labels: string[]; upd: string; title: string; body: string };
 
 const text = (f: string) => { try { return readFileSync(f, "utf8"); } catch { return ""; } };
@@ -79,6 +80,27 @@ function readMirror(dir: string): M[] {
       upd: unq(fm.updated), title: /^# [A-Z]+-\d+:\s*(.*)$/m.exec(body)?.[1] ?? "", body });
   }
   return out;
+}
+
+// GitHub issues as mirror rows: an open issue's status comes from an in-progress / in-review / ci label, a closed one from its
+// state reason; the milestone is the version and a `theme-<slug>` label the theme, as for Jira.
+const NO_MILESTONE = "(no milestone)";
+const GH_STATUS: Record<string, string> = { "in-progress": "In Progress", "in-review": "In Review", ci: "IN CI", "in-ci": "IN CI" };
+function fromIssues(issues: GhIssue[]): M[] {
+  return issues.map((i) => {
+    const labels = (i.labels ?? []).map((l) => l.name);
+    const open = i.state.toUpperCase() === "OPEN";
+    const live = labels.map((l) => { const s = slugOf(l).replace(/^status-/, ""); return Object.hasOwn(GH_STATUS, s) ? GH_STATUS[s] : undefined; }).find(Boolean);
+    const sn = open ? live ?? "To Do" : i.stateReason?.toUpperCase() === "NOT_PLANNED" ? "Closed" : "Done";
+    return { k: i.number, sn, cat: "", res: "", fv: [i.milestone?.title ?? NO_MILESTONE], labels, upd: i.updatedAt ?? "", title: i.title, body: "" };
+  });
+}
+function ghVersions(issues: GhIssue[]): { n: string; rel: boolean; date: string }[] {
+  const ms = new Map<string, number>();
+  for (const i of issues) if (i.milestone) ms.set(i.milestone.title, i.milestone.number);
+  const names = [...ms].sort((a, b) => a[1] - b[1]).map(([n]) => n);
+  if (issues.some((i) => !i.milestone)) names.push(NO_MILESTONE);
+  return names.map((n) => ({ n, rel: false, date: "" }));
 }
 
 const bucketOf = (m: M): Bucket => {
@@ -141,13 +163,15 @@ function readTrend(f: string): [string, number, number, number][] {
 const normTitle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 export function readRoadmap(o: Opts): Roadmap {
-  const mir = readMirror(o.mirrorDir);
-  const empty: Roadmap = { state: "absent", mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_THEME], themeSlugs: [""],
+  const gh = o.github;
+  const mir = gh ? fromIssues(gh) : readMirror(o.mirrorDir);
+  const source = gh ? "github" : "jira";
+  const empty: Roadmap = { state: "absent", source, mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_THEME], themeSlugs: [""],
     plan: { state: "absent" }, cur: -1, next: -1, drift: { now: { drift: 0, unplanned: 0, unthemed: 0 }, trend: [] },
     librarian: { staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] } };
-  if (!mir.length) return { ...empty, reason: `no Jira mirror at ${o.mirrorDir}; build one with: node scripts/jira/dist/index.js mirror` };
+  if (!mir.length) return { ...empty, reason: gh ? "no issues in this GitHub repository" : `no Jira mirror at ${o.mirrorDir}; build one with: node scripts/jira/dist/index.js mirror` };
 
-  const { list, unknown } = readVersions(o.versionsFile ?? o.mirrorDir + ".versions.tsv", mir);
+  const { list, unknown } = gh ? { list: ghVersions(gh), unknown: false } : readVersions(o.versionsFile ?? o.mirrorDir + ".versions.tsv", mir);
   const vi = new Map(list.map((v, i) => [v.n, i]));
 
   // Plan: placement.tsv (version per ticket) and the themes; absent plan = every drift 0.
@@ -184,7 +208,7 @@ export function readRoadmap(o: Opts): Roadmap {
     const v = un.length ? un.reduce((a, b) => (vi.get(b)! < vi.get(a)! ? b : a)) : hit.reduce((a, b) => (vi.get(b)! > vi.get(a)! ? b : a));
     const b = bucketOf(m), pv = place?.get(m.k) ?? null;
     const drift = !place ? 0 : pv !== null ? (pv !== v ? 1 : 0) : isOpen(b) ? 2 : 0;
-    const t: Ticket = { k: m.k, t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_THEME), pv, drift: drift as 0 | 1 | 2,
+    const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_THEME), pv, drift: drift as 0 | 1 | 2,
       labels: m.labels, leg: isOpen(b) ? legs.get(m.k) ?? null : null };
     Object.defineProperty(t, "noted", { value: m.body, enumerable: false });
     tickets.push(t);
@@ -220,7 +244,7 @@ export function readRoadmap(o: Opts): Roadmap {
   };
 
   return {
-    state: "ok", mirror: { dir: o.mirrorDir, count: mir.length, newest: mir.reduce((a, m) => (m.upd > a ? m.upd : a), "") },
+    state: "ok", source, mirror: { dir: o.mirrorDir, count: mir.length, newest: mir.reduce((a, m) => (m.upd > a ? m.upd : a), "") },
     releaseUnknown: unknown, versions, tickets, themes, themeSlugs,
     plan: place ? { state: "ok", dir: o.planDir } : { state: "absent", reason: planReason },
     cur, next, drift: { now, trend: o.driftLog ? readTrend(o.driftLog) : [] }, librarian,

@@ -20,9 +20,18 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     yourself and record the artifact URL on the `board:` line of `## Live
     state` — `console.sh next` carries it to your successor, who updates the
     same artifact instead of minting a new one. **A successor's FIRST publish
-    to a carried `board:` URL must `Artifact read` it before it `Artifact
-    publish`es** — the tool refuses a publish to an artifact this session
-    has not viewed. The tick's `board=` field is your reminder:
+    to a carried `board:` URL goes to a haiku subagent, never your own
+    context.** The tool refuses a publish to an artifact this session has not
+    viewed and the refusal returns the whole live page (about 23k tokens for a
+    46 KB page, paid on every later call), and `Artifact read` costs the same.
+    Dispatch `Agent` with `model: haiku`, effort medium: "`Artifact` `read` `<url>`
+    (no `path`), then `Artifact` `publish` `<url>` from `<local file>`; reply with
+    one line: `PUBLISHED <url>`, or the first 200 characters of the error. Never
+    paste page content." It returns one line, not the page; if a later publish
+    of your own is refused, send that to the subagent too and never read the URL
+    yourself. A `path` read or `overwrite_unread` does not count as viewing.
+    <!-- ponytail: subagent cost absorption is not yet measured (HIMMEL-6756), the first console publish that uses it records the parent-context delta on that ticket; old-term-ok: this section is the console's own runbook -->
+    The tick's `board=` field is your reminder:
     `board=MISSING` (never rendered) or `board=STALE:<age>` (the state moved
     since the last render) means re-run it now. `board=ok` proves only that the
     LOCAL file matches the current state; republishing the artifact stays your
@@ -73,9 +82,9 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     `<out>.fp`, the value `--emit-fp` prints, so the tick then reports `tracker=ok`).
     Render a later version the same way to its own file, without `--plan-dir`.
     Republish each file to its URL with the `Artifact` tool. A
-    successor's FIRST publish to a carried tracker URL must `Artifact read`
-    it first, exactly as for `board:`; update each URL in place, never a new
-    URL. After each publish of the current page, `touch <handover bucket>/roadmap-tracker.html.published`:
+    successor's FIRST publish to a carried tracker URL goes to the same haiku
+    subagent as for `board:` (FOCUS and tracker pages are the 46 KB ones);
+    update each URL in place, never a new URL. After each publish of the current page, `touch <handover bucket>/roadmap-tracker.html.published`:
     a page newer than that stamp reads `tracker=REPUBLISH:<age>` (rendered, not yet
     republished); without the stamp file the tick keeps reading plain `ok`.
 
