@@ -1767,6 +1767,17 @@ else
     fail "F5 --files: a glob operand is not expanded (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
+# F6: a directory operand never expands to the tracked files under it.
+mkdir -p "$r/sub"
+printf 'See /home/alexphantom/data for details.\n' > "$r/sub/inner.txt"  # leak-allow: home-path test fixture
+git -C "$r" add sub/inner.txt
+scan "$r" --files sub
+if [ "$SCAN_RC" -eq 2 ] && ! grepq "$SCAN_OUT" -F "inner.txt:1"; then
+    pass "F6 --files: a directory operand is not expanded"
+else
+    fail "F6 --files: a directory operand is not expanded (rc=$SCAN_RC) out=$SCAN_OUT"
+fi
+
 echo
 echo "== summary =="
 if [ "$failures" -eq 0 ]; then
