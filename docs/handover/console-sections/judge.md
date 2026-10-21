@@ -12,9 +12,13 @@ Read on demand from `console-template.md` `## Standing rules`. Moved verbatim fr
   `prior:` and `flipped: y|n` lines; evidence carrying either line is refused.
 - **Every judge call persists its verdict, trust path or not**:
   `bash scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
-  --pr <n> --evidence-file <path>` writes `verdicts/<qid>/`. A verdict that
+  --pr <n> --evidence-file <path> --model <id> --effort <level>` writes
+  `verdicts/<qid>/`. `--model` and `--effort` are required and signed into the
+  file; `HIMMEL_VERDICT_MODEL` / `HIMMEL_VERDICT_EFFORT` are the fallback when the
+  flags are absent, and a write with neither is refused (exit 2). A verdict that
   lives only in your context dies with it; the file is what a successor reads.
   Prefer `bash scripts/handover/console-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
+  --model <id> --effort <level>
   --pr <n> --evidence-file <path> --doc <console doc>`: it runs `write-verdict.sh`,
   `go.sh`, the Results bullet and the board in one call and prints the message to
   send the leg. The hand steps are for a verdict it refuses.

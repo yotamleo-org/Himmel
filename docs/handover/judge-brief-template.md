@@ -364,7 +364,7 @@ gathering, per the rule below.>
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through
-> `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name>`
+> `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name> --model <your model id> --effort <your effort level>`
 > (`--pr` is required), which emits the exact line `go.sh --trust-reviewed` parses
 > and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, append a
 > closing bullet to your own doc with
