@@ -428,6 +428,16 @@ full runbook.
 - Findings carry a fixed `kind` / `detail` and a sanitized path, never a quote of the repo text. A scan that cannot run is `fetch_error` / `unavailable`, never `clean`.
 - Tests: `tests/test-repo-security-scan.sh` (hermetic; `REPO_SCAN_GH_FIXTURE` swaps `gh`).
 
+### Advisory skill scan: SkillSpector Stage 1 (HIMMEL-5913)
+
+`tools/skillspector-scan.sh <skill-dir> <report.json>` runs NVIDIA SkillSpector Stage 1 (static, `--no-llm`) over one skill directory and stores the JSON report. It is advisory: a finding means "read the flagged line before adopting or using the skill" (the HIMMEL-5860 pilot saw false positives on clean skills, and Stage 1 never returns SAFE alone). Stage 2 (LLM) is not wired.
+
+- **Ingest:** `/luna-ingest <url> --skill-scan` runs Phase 3.7 over each skill directory of the source repo and writes `skill_scan:` plus a `## Skill scan (advisory)` section, with the reports in `<repo-slug>.skillspector/` beside the note.
+- **Clips:** `/harvest-clips` passes `--skill-scan` for a clipped `/tree/<branch>/.../skills/...` URL, so a clipped skill is scanned before it is used.
+- **No egress:** the wrapper refuses (rc 2) unless `SKILLSPECTOR_PROVIDER=ollama`; upstream defaults an unset provider to `nv_build`, which sends skill text to build.nvidia.com.
+- **No install:** the wrapper never installs SkillSpector (rc 3 when missing). `pip install` belongs in a throwaway sandbox or the test VM.
+- Tests: `tests/test-skillspector-scan.sh` (hermetic stub; replays two real reports captured from skillspector 2.12.0 @182a4753 on the pilot fixtures under `tests/fixtures/skillspector/`).
+
 ### Opt-in web search: DeepSeek (HIMMEL-6269)
 
 The claim-check web rung (`tools/lib/follow-web.mjs`) can search with DeepSeek

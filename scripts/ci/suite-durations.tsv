@@ -96,6 +96,7 @@ marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	0
 marketplace/plugins/obsidian-triage/tests/test-repo-security-scan.sh	1
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	2
 marketplace/plugins/obsidian-triage/tests/test-scrape-backends.sh	0
+marketplace/plugins/obsidian-triage/tests/test-skillspector-scan.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-densify.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-edge.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-invariants.sh	0
