@@ -34,7 +34,7 @@ cat > "$stub" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$STUB_ARGV"
 printf '%s\n' "${SKILLSPECTOR_PROVIDER-unset}" > "$STUB_PROVIDER"
-if [ -n "${STUB_REPLAY-}" ]; then cat "$STUB_REPLAY"; else printf '{"stub":true}\n'; fi
+if [ -n "${STUB_REPLAY-}" ]; then cat "$STUB_REPLAY"; else printf '{"risk_assessment":{"score":0},"issues":[]}\n'; fi
 exit "${STUB_RC:-0}"
 EOF
 chmod +x "$stub"
@@ -73,7 +73,7 @@ run "$tmpdir/r4.json" SKILLSPECTOR_PROVIDER=ollama; rc=$?
 assert "ollama provider runs (rc 0)" 0 "$rc"
 assert "argv is scan <dir> --no-llm --format json" "scan $skill --no-llm --format json" "$(cat "$tmpdir/argv" 2>/dev/null)"
 assert "skillspector saw the no-egress provider" ollama "$(cat "$tmpdir/provider" 2>/dev/null)"
-assert "report stored verbatim at the requested path" '{"stub":true}' "$(cat "$tmpdir/r4.json" 2>/dev/null)"
+assert "report stored verbatim at the requested path" '{"risk_assessment":{"score":0},"issues":[]}' "$(cat "$tmpdir/r4.json" 2>/dev/null)"
 
 # -- Test 3: the two pilot fixtures, replaying reports captured from a real
 #    skillspector 2.12.0 @182a4753 run on the ubuntu_new VM (--no-llm).
@@ -105,6 +105,18 @@ assert "non-directory skill path is a usage error (rc 1)" 1 "$rc"
 env -u SKILLSPECTOR_PROVIDER SKILLSPECTOR_PROVIDER=ollama SKILLSPECTOR_BIN="$stub" \
     bash "$SUT" 2>/dev/null; rc=$?
 assert "no arguments is a usage error (rc 1)" 1 "$rc"
+
+# -- Test 5: JSON that is not a scan report must never read as a clean scan
+echo "Test 5: a non-report JSON is unavailable, not clean"
+n=0
+for body in '{"error":"failed"}' '{"risk_assessment":{"score":5}}' '{"issues":[]}' '[]'; do
+    n=$((n+1))
+    printf '%s\n' "$body" > "$tmpdir/bad$n.json"
+    run "$tmpdir/rb$n.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/bad$n.json"; rc=$?
+    assert "non-report JSON $body is unavailable (rc 3)" 3 "$rc"
+    [ -e "$tmpdir/rb$n.json" ] && r=written || r=none
+    assert "non-report JSON $body writes no report" none "$r"
+done
 
 echo "skillspector-scan tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

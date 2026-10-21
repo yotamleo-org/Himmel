@@ -3,14 +3,14 @@
 Skip this entire phase unless `--skill-scan` was passed. Runs after Phase 3.6 and before Phase 4. **Advisory and opt-in**: it runs SkillSpector Stage 1 (static, `--no-llm`) over each skill directory in the source repo and stores the JSON reports with the note. A finding means "read the flagged line before adopting or using the skill". It never blocks, never changes `trust_tier`, `safety_flag`, `repo_scan` or the Phase 1.5 outcome, and never changes rc. Stage 2 (LLM) is out of scope. The pilot (HIMMEL-5860) found Stage 1 flags real patterns but also false positives on clean skills, and it never returns SAFE alone; do not read a clean report as a pass.
 
 1. **Dry-run short-circuit.** With `--dry-run`, print `DRY luna-ingest: would run skill scan for <owner_repo>` to stderr, set `skill_scan: unavailable`, and continue to Phase 4.
-2. **Find the skills.** A skill is a directory holding a `SKILL.md`. List them from the repo tree through `gh api` (`git/trees/<default-branch>?recursive=1`, entries ending `/SKILL.md` or a root `SKILL.md`). When the input URL named a `/tree/<branch>/<path>` directory, scan only the skill directories under that path. Scan at most 5 skills; list the rest in the section as `not scanned (cap)`.
-3. **Fetch text only.** For each skill, make a throwaway directory and write that skill's files into it through `gh api` contents (files up to 200 KB, no clone, nothing executed):
+2. **Find the skills.** A skill is a directory holding a `SKILL.md`. List them from the repo tree through `gh api` (`git/trees/<ref>?recursive=1`, entries ending `/SKILL.md` or a root `SKILL.md`). `<ref>` is the default branch, or the `<branch>` of a `/tree/<branch>/<path>` input URL; use that same `<ref>` for the contents fetch in step 3, so the scanned text is the clipped text. When the input URL named a `/tree/<branch>/<path>` directory, scan only the skill directories under that path. Scan at most 5 skills; list the rest in the section as `not scanned (cap)`.
+3. **Fetch text only.** For each skill, make a throwaway directory and write that skill's files into it through `gh api` contents at `?ref=<ref>` (files up to 200 KB, no clone, nothing executed):
 
    ```bash
    skill_tmp="$(mktemp -d "${TMPDIR:-/tmp}/luna-ingest-skill.XXXXXX")" || exit 1
    ```
 
-   The directory name is the slugified skill name (`[a-z0-9-]`).
+   The directory name is the slugified repository-relative skill path (`[a-z0-9-]`, `/` becomes `-`), so two skills with the same name in different directories never share a report; a root skill uses `root`.
 4. **Scan through the one wrapper.** The provider must be the no-egress value: upstream defaults an unset provider to `nv_build`, which sends the skill text to build.nvidia.com, so the wrapper refuses to run unless `SKILLSPECTOR_PROVIDER=ollama`.
 
    ```bash

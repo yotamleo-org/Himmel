@@ -49,13 +49,14 @@ trap 'rm -f "$out"' EXIT
 "$bin" scan "$skill_dir" --no-llm --format json > "$out" 2>/dev/null
 summary="$(node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-const issues = Array.isArray(r.issues) ? r.issues : [];
+const score = r && r.risk_assessment && r.risk_assessment.score;
+if (!Array.isArray(r && r.issues) || typeof score !== "number") process.exit(1);
+const issues = r.issues;
 const high = issues.filter((i) => i.severity === "HIGH").length;
-const score = r.risk_assessment && r.risk_assessment.score;
 console.log("score=" + score + " issues=" + issues.length + " high=" + high);
 ' "$out" 2>/dev/null)" || summary=""
 if [ -z "$summary" ]; then
-    echo "skillspector-scan: unavailable: skillspector produced no JSON report" >&2
+    echo "skillspector-scan: unavailable: skillspector produced no scan report (need risk_assessment.score and an issues array)" >&2
     exit 3
 fi
 
