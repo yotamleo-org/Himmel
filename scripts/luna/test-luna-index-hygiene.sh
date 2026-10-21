@@ -118,5 +118,25 @@ touch -d '3 days ago' "$V/graphify-out/d/GRAPH_REPORT.md"; mkdir "$V/graphify-ou
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off7" --apply >/dev/null 2>&1
 check "a held promote lock blocks the offload" 0 "$([ -d "$V/graphify-out/.promote.lock" ] && echo 0 || echo 1)"
 
+# --- failure paths: a missing value, an unwritable ignore file, an unreadable tree
+timeout 5 bash "$SUT" --vault >/dev/null 2>&1
+check "an option with no value exits 2 instead of looping" 2 "$?"
+
+if [ "$(id -u)" -eq 0 ]; then
+  SKIP=$((SKIP+1)); echo "skip - running as root: permission rows"
+else
+  V="$W/v8"; make_vault "$V"; CFG="$W/c8.yml"; write_cfg "$CFG" "$V"
+  : > "$V/.graphifyignore"; chmod 444 "$V/.graphifyignore"
+  bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
+  check "an unwritable .graphifyignore fails the run" 1 "$?"
+  chmod 644 "$V/.graphifyignore"
+
+  V="$W/v9"; make_vault "$V"; CFG="$W/c9.yml"; write_cfg "$CFG" "$V"
+  chmod 000 "$V/graphify-out/d"
+  bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off9" --apply >/dev/null 2>&1
+  chmod 755 "$V/graphify-out/d"
+  check "an unreadable subtree blocks the offload" 0 "$([ -d "$V/graphify-out" ] && echo 0 || echo 1)"
+fi
+
 echo "pass=$PASS fail=$FAIL skip=$SKIP"
 [ "$FAIL" -eq 0 ]

@@ -23,6 +23,10 @@ set -uo pipefail
 VAULT=""; CFG=""; COLLECTION="luna"; OFFLOAD_ROOT=""; APPLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --vault|--qmd-config|--collection|--offload-root)
+      [ $# -ge 2 ] || { echo "luna-index-hygiene: $1 needs a value" >&2; exit 2; } ;;
+  esac
+  case "$1" in
     --vault) VAULT="${2:-}"; shift 2 ;;
     --qmd-config) CFG="${2:-}"; shift 2 ;;
     --collection) COLLECTION="${2:-}"; shift 2 ;;
@@ -109,8 +113,10 @@ else
   echo "luna-index-hygiene: .graphifyignore +${gi_missing[*]}"
   if [ "$APPLY" -eq 1 ]; then
     # a file without a trailing newline would fuse its last line with ours
-    if [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ]; then printf '\n' >> "$GI"; fi
-    printf '%s\n' "${gi_missing[@]}" >> "$GI"
+    if [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ]; then
+      printf '\n' >> "$GI" || { echo "luna-index-hygiene: cannot write $GI" >&2; exit 1; }
+    fi
+    printf '%s\n' "${gi_missing[@]}" >> "$GI" || { echo "luna-index-hygiene: cannot write $GI" >&2; exit 1; }
   fi
 fi
 
@@ -121,7 +127,9 @@ if [ -n "$OFFLOAD_ROOT" ]; then
     echo "luna-index-hygiene: offload: no $SRC, nothing to move"
   elif [ -e "$SRC/.promote.lock" ]; then
     echo "luna-index-hygiene: offload REFUSED: promote lock held in $SRC" >&2
-  elif [ -n "$(find "$SRC" -type f -mmin -1440 -print -quit 2>/dev/null)" ]; then
+  elif ! recent="$(find "$SRC" -type f -mmin -1440 -print -quit)"; then
+    echo "luna-index-hygiene: offload REFUSED: could not scan $SRC for recent writes" >&2
+  elif [ -n "$recent" ]; then
     echo "luna-index-hygiene: offload REFUSED: $SRC has a file written in the last 24 h, a writer may still target it" >&2
   else
     DEST="$OFFLOAD_ROOT/graphify-snapshots/graphify-out-$(date +%Y%m%d-%H%M%S)"
