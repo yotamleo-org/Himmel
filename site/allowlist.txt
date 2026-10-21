@@ -31,7 +31,7 @@ luna/pr-lane-guard.md
 jarvis-subsystems.md
 himmel-bus.md
 voice.md
-handover/overnight-mode.md
+handover/afk-mode.md
 handover/running-a-console.md
 internals/handover-system.md
 orchestration-patterns.md

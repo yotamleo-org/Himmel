@@ -249,7 +249,7 @@ read_round() {
 # and no row ever deferred or disproved it. "row" prints "row"
 # when any critic finding row exists there, whatever its verdict.
 ledger_query() {
-    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" node -e '
+    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch { process.exit(0); }
@@ -269,7 +269,8 @@ const note = (id, v) => {
   verdicts.set(id, v);
   if (v === "deferred" || v === "disproved") settled.add(id);
 };
-for (const line of lines) {
+// Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
   let o;
   try { o = JSON.parse(line); } catch { continue; }
   if (!o || o.branch !== e.BRANCH) continue;
@@ -1463,7 +1464,7 @@ if [ "$verb" = "promote" ]; then
         exit 5
     fi
     decisions_tmp="$(mktemp -t cr-promote-decisions.XXXXXX)" || { echo "review-round: cannot create scratch state" >&2; exit 1; }
-    analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DECISIONS_FILE="$decisions_tmp" node -e '
+    analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DECISIONS_FILE="$decisions_tmp" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31);
@@ -1528,7 +1529,8 @@ function isAncestorOfHead(commit) {
 // branch-specific amend exists (branch-specific merges LAST and wins field
 // conflicts, since every branch-specific amend post-dates the legacy ones).
 const amendsByKey = new Map();
-for (const o of rows) {
+// Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+for (const o of require(e.AMEND_AUTH).filterRows(rows)) {
   if (o.kind !== "amend" || !o.set || typeof o.set !== "object") continue;
   const k = [o.branch || "", o.target_head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
   amendsByKey.set(k, Object.assign({}, amendsByKey.get(k) || {}, o.set));
@@ -1694,12 +1696,13 @@ else
     round_label="round $round"
 fi
 
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DELTA_REASON="$delta_reason" node -e '
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
 let malformed = 0;
-for (const line of lines) {
+// Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
   let o;
   try { o = JSON.parse(line); } catch { malformed++; continue; }
   if (o.kind === "amend" && o.set && typeof o.set === "object") {

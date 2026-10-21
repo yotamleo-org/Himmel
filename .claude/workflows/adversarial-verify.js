@@ -98,9 +98,19 @@ if (toJudge.length) {
       `Read the code at each location before judging.\n${list}`,
     ].join('\n'),
     { label: 'judge', phase: 'Judge', model: 'opus', effort: 'high', schema: JUDGMENTS })
-  const byKey = new Map((judged?.judgments ?? []).map(j => [j.key, j]))
+  const answers = judged?.judgments ?? []
+  const byKey = new Map(answers.map(j => [j.key, j]))
+  // The judge may echo a corrected line. An answer no finding owns is matched by file alone, and only
+  // when that file has exactly one unanswered finding and one stray answer, so it is never guessed.
+  const strays = answers.filter(j => !toJudge.some(m => m.key === j.key))
+  const unanswered = toJudge.filter(m => !byKey.has(m.key))
+  const judgmentFor = m => {
+    if (byKey.has(m.key)) return byKey.get(m.key)
+    const sameFile = strays.filter(j => j.key.slice(0, j.key.lastIndexOf(':')) === m.file)
+    return sameFile.length === 1 && unanswered.filter(u => u.file === m.file).length === 1 ? sameFile[0] : undefined
+  }
   for (const m of toJudge) {
-    const j = byKey.get(m.key)
+    const j = judgmentFor(m)
     const agreed = m.raisedBy.length >= 2 && j?.sameDefect === true
     let bucket = j?.bucket ?? 'consider'
     let rationale = j?.rationale ?? 'not judged; defaulted to consider'

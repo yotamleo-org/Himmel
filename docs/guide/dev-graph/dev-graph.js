@@ -143,6 +143,7 @@ function renderWide(root, data, uid) {
     svgEl('rect', { class: 'dg-stripe', x: p.x - bw / 2, y: p.y - bh / 2 + 6, width: 4, height: bh - 12 }, g);
     const t = svgEl('text', { class: 'dg-label', x: p.x - bw / 2 + 14, y: p.y + 4 }, g);
     t.textContent = n.label;
+    svgEl('text', { class: 'dg-glyph', x: p.x + bw / 2 - 10, y: p.y - bh / 2 + 15, 'text-anchor': 'middle', 'aria-hidden': 'true' }, g);
   }
   return svg;
 }
@@ -217,6 +218,7 @@ function renderNarrow(root, data, uid, reduced) {
     t.textContent = n.label;
     const chip = svgEl('text', { class: 'dg-chip', x: N.x + N.nodeW - 10, y: top + N.nodeH / 2 + 4, 'text-anchor': 'end' }, g);
     chip.textContent = lane ? lane.label : n.lane;
+    svgEl('text', { class: 'dg-glyph', x: N.x + N.nodeW - 10, y: top + 15, 'text-anchor': 'middle', 'aria-hidden': 'true' }, g);
 
     stubs.get(n.id).forEach((row, r) => {
       const y = top + N.nodeH + 4 + r * (N.stubH + N.stubGap);
@@ -281,17 +283,327 @@ function conditions(root, data) {
   }
 }
 
+const GLYPH = { active: ['●', 'Active'], passed: ['✓', 'Passed'], refused: ['✕', 'Refused'], hold: ['⏸', 'On hold'] };
+const STEP_STATES = ['refused', 'hold'];
+const SOURCE_BASE = 'https://github.com/yotamleo-org/Himmel/blob/main/';
+const STEP_MS = 2400;
+const TRAVEL_MS = 600;
+
+// The edge a walkthrough takes from node a to node b: a decision or loop beats a refusal.
+function takenEdge(data, a, b) {
+  const hits = data.edges.filter((e) => e.from === a && e.to === b);
+  return hits.find((e) => e.kind !== 'refusal') || hits[0] || null;
+}
+
+// Every problem that would make a walkthrough lie. An empty list means the walkthroughs can run.
+function validate(data) {
+  const bad = [];
+  const nodes = new Set(data.nodes.map((n) => n.id));
+  const edges = new Set(data.edges.map((e) => e.id));
+  for (const e of data.edges) if (!nodes.has(e.from) || !nodes.has(e.to)) bad.push('edge ' + e.id + ' joins an unknown node');
+  if (!Array.isArray(data.walkthroughs) || !data.walkthroughs.length) return bad.concat('the data has no walkthroughs');
+  const seen = new Set();
+  for (const w of data.walkthroughs) {
+    if (seen.has(w.id)) bad.push('walkthrough ' + w.id + ' appears twice');
+    seen.add(w.id);
+    if (!Array.isArray(w.steps) || !w.steps.length) { bad.push(w.id + ': no steps'); continue; }
+    w.steps.forEach((s, i) => {
+      const where = w.id + ' step ' + (i + 1) + ': ';
+      if (!nodes.has(s.at)) bad.push(where + 'unknown node ' + s.at);
+      if (s.ghost != null && !edges.has(s.ghost)) bad.push(where + 'unknown edge ' + s.ghost);
+      if (s.state != null && STEP_STATES.indexOf(s.state) < 0) bad.push(where + 'unknown state ' + s.state);
+      const prev = i ? w.steps[i - 1].at : null;
+      if (prev && nodes.has(prev) && nodes.has(s.at) && prev !== s.at && !takenEdge(data, prev, s.at)) bad.push(where + 'no edge from ' + prev + ' to ' + s.at);
+    });
+  }
+  return bad;
+}
+
+function banner(root, problems) {
+  const box = htmlEl('div', 'dg-banner', null, root);
+  box.setAttribute('role', 'alert');
+  htmlEl('p', null, 'The walkthroughs are switched off: the graph data has ' + problems.length + (problems.length === 1 ? ' problem.' : ' problems.'), box);
+  const ul = htmlEl('ul', null, null, box);
+  for (const p of problems) htmlEl('li', null, p, ul);
+}
+
+function button(text, cls, parent) {
+  const b = htmlEl('button', 'dg-btn ' + cls, text, parent);
+  b.type = 'button';
+  return b;
+}
+
+function controls(root, data, uid) {
+  const bar = htmlEl('div', 'dg-controls', null, root);
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', 'Playback');
+  const lab = htmlEl('label', 'dg-pick', null, bar);
+  lab.setAttribute('for', uid + '-walk');
+  htmlEl('span', null, 'Walkthrough', lab);
+  const select = htmlEl('select', 'dg-walk', null, lab);
+  select.id = uid + '-walk';
+  for (const w of data.walkthroughs) {
+    const o = htmlEl('option', null, w.title || w.id, select);
+    o.value = w.id;
+  }
+  const restart = button('Restart', 'dg-restart', bar);
+  const prev = button('Prev', 'dg-prev', bar);
+  const play = button('Play', 'dg-play', bar);
+  const next = button('Next', 'dg-next', bar);
+  const scrub = htmlEl('input', 'dg-scrub', null, bar);
+  scrub.type = 'range';
+  scrub.min = '0';
+  scrub.setAttribute('aria-label', 'Step');
+  return { bar, select, restart, prev, play, next, scrub };
+}
+
+function caption(root) {
+  const box = htmlEl('div', 'dg-caption', null, root);
+  box.setAttribute('aria-live', 'polite');
+  box.setAttribute('aria-atomic', 'true');
+  const c = { box };
+  c.no = htmlEl('p', 'dg-stepno', null, box);
+  c.title = htmlEl('h3', 'dg-cap-title', null, box);
+  c.state = htmlEl('p', 'dg-state', null, box);
+  const dl = htmlEl('dl', null, null, box);
+  htmlEl('dt', null, 'What happened', dl);
+  c.what = htmlEl('dd', null, null, dl);
+  htmlEl('dt', null, 'Why', dl);
+  c.why = htmlEl('dd', null, null, dl);
+  htmlEl('dt', null, 'Source', dl);
+  c.src = htmlEl('dd', null, null, dl);
+  c.ghost = htmlEl('p', 'dg-ghost-note', null, box);
+  return c;
+}
+
+function edgeText(e) {
+  return (e.exit != null ? 'exit ' + e.exit + ': ' : '') + e.condition;
+}
+
+// Plays the walkthroughs: step state on the drawn nodes and edges, the caption, the controls,
+// autoplay, the #w=&s= link. Returns a function that undoes every listener it added.
+function walk(root, data, uid, reduced) {
+  const stage = root.querySelector('.dg-stage');
+  const ui = controls(root, data, uid);
+  const body = htmlEl('div', 'dg-body', null, null);
+  root.insertBefore(body, stage);
+  body.appendChild(stage);
+  root.insertBefore(ui.bar, body);
+  const cap = caption(body);
+  const byId = new Map(data.nodes.map((n) => [n.id, n]));
+  const group = (list, key) => {
+    const m = new Map();
+    for (const el of list) {
+      const id = el.getAttribute(key);
+      if (!m.has(id)) m.set(id, []);
+      m.get(id).push(el);
+    }
+    return m;
+  };
+  const nodeEls = group(stage.querySelectorAll('.dg-node'), 'data-id');
+  const edgeEls = group(stage.querySelectorAll('.dg-edge'), 'data-id');
+  for (const [id, els] of group(stage.querySelectorAll('.dg-stub'), 'data-edge')) edgeEls.set(id, (edgeEls.get(id) || []).concat(els));
+  stage.tabIndex = 0;
+  stage.setAttribute('role', 'group');
+  stage.setAttribute('aria-label', 'Graph. Left and right arrows step, space plays or pauses, Home restarts.');
+
+  let wi = 0;
+  let step = 0;
+  let playing = false;
+  let hover = false;
+  let focus = false;
+  let timer = 0;
+  const cur = () => data.walkthroughs[wi];
+  const last = () => cur().steps.length - 1;
+
+  function writeHash() {
+    const keep = location.hash.slice(1).split('&').filter((p) => p && !/^(w|s)=/.test(p));
+    keep.push('w=' + cur().id, 's=' + (step + 1));
+    try { history.replaceState(null, '', '#' + keep.join('&')); } catch (e) { /* a sandboxed frame has no history */ }
+  }
+
+  function travel(id) {
+    for (const el of edgeEls.get(id) || []) {
+      const p = el.querySelector('path');
+      if (!p || !p.animate || !p.getTotalLength) continue;
+      const len = p.getTotalLength();
+      const dash = len + ' ' + len;
+      p.animate([{ strokeDasharray: dash, strokeDashoffset: len }, { strokeDasharray: dash, strokeDashoffset: 0 }], { duration: TRAVEL_MS, easing: 'ease-in-out' });
+      if (el.classList.contains('dg-refusal')) el.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: TRAVEL_MS / 2, iterations: 2 });
+    }
+  }
+
+  function paint() {
+    const w = cur();
+    const nodeState = new Map();
+    const edgeState = new Map();
+    for (let j = 0; j <= step; j++) {
+      const s = w.steps[j];
+      nodeState.set(s.at, j === step || s.state === 'refused' ? s.state || 'active' : 'passed');
+      const e = j ? takenEdge(data, w.steps[j - 1].at, s.at) : null;
+      if (e) edgeState.set(e.id, j === step ? 'active' : 'passed');
+    }
+    const now = w.steps[step];
+    if (now.ghost && !edgeState.has(now.ghost)) edgeState.set(now.ghost, 'ghost');
+    for (const [id, els] of nodeEls) {
+      const st = nodeState.get(id) || 'idle';
+      for (const el of els) {
+        el.setAttribute('data-state', st);
+        const g = el.querySelector('.dg-glyph');
+        if (g) g.textContent = GLYPH[st] ? GLYPH[st][0] : '';
+      }
+    }
+    for (const [id, els] of edgeEls) for (const el of els) el.setAttribute('data-state', edgeState.get(id) || 'idle');
+    return edgeState;
+  }
+
+  function describe() {
+    const w = cur();
+    const s = w.steps[step];
+    const node = byId.get(s.at);
+    const st = s.state || 'active';
+    const into = step ? takenEdge(data, w.steps[step - 1].at, s.at) : null;
+    let why = into && into.kind !== 'flow' ? into : null;
+    if (!why && s.state === 'refused' && step < last()) {
+      const out = takenEdge(data, s.at, w.steps[step + 1].at);
+      if (out && out.kind !== 'flow') why = out;
+    }
+    cap.no.textContent = 'Step ' + (step + 1) + ' of ' + w.steps.length + ' · ' + w.title;
+    cap.title.textContent = node.label;
+    cap.state.textContent = GLYPH[st][0] + ' ' + GLYPH[st][1];
+    cap.what.textContent = s.caption || node.summary;
+    cap.why.textContent = why ? edgeText(why) : node.summary;
+    cap.src.replaceChildren();
+    const src = (node.sources || [])[0];
+    if (src) {
+      const a = htmlEl('a', null, src.file, cap.src);
+      a.href = SOURCE_BASE + src.file;
+      a.rel = 'noopener';
+      htmlEl('span', 'dg-anchor', ' — “' + src.anchor + '”', cap.src);
+    } else {
+      cap.src.textContent = 'not tied to a file';
+    }
+    const ghost = s.ghost ? data.edges.find((e) => e.id === s.ghost) : null;
+    cap.ghost.textContent = ghost ? 'Not taken: ' + edgeText(ghost) : '';
+    cap.ghost.hidden = !ghost;
+  }
+
+  function reveal() {
+    for (const el of nodeEls.get(cur().steps[step].at) || []) {
+      if (el.getClientRects().length && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
+    }
+  }
+
+  // opts: forward (animate the edge just taken), hash (write the link), reveal (scroll the node into view)
+  function show(w, s, opts) {
+    wi = Math.max(0, Math.min(w, data.walkthroughs.length - 1));
+    step = Math.max(0, Math.min(s, last()));
+    const o = opts || {};
+    const taken = paint();
+    describe();
+    ui.select.value = cur().id;
+    ui.scrub.max = String(last());
+    ui.scrub.value = String(step);
+    ui.scrub.setAttribute('aria-valuetext', 'Step ' + (step + 1) + ' of ' + (last() + 1) + ': ' + byId.get(cur().steps[step].at).label);
+    ui.prev.setAttribute('aria-disabled', String(step === 0));
+    ui.next.setAttribute('aria-disabled', String(step === last()));
+    if (o.forward && !reduced()) {
+      for (const [id, st] of taken) if (st === 'active') travel(id);
+    }
+    if (o.hash !== false) writeHash();
+    if (o.reveal) reveal();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = 0;
+    if (!playing || hover || focus || document.hidden) return;
+    timer = setTimeout(() => {
+      const r = stage.getBoundingClientRect();
+      show(wi, step + 1, { forward: true, reveal: r.bottom > 0 && r.top < window.innerHeight });
+      if (step >= last()) setPlaying(false); else schedule();
+    }, STEP_MS);
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    ui.play.textContent = on ? 'Pause' : 'Play';
+    schedule();
+  }
+
+  const goto = (s) => { setPlaying(false); show(wi, s, { forward: s === step + 1, reveal: true }); };
+  const toggle = () => {
+    if (playing) { setPlaying(false); return; }
+    focus = false;
+    if (step >= last()) show(wi, 0, { reveal: true });
+    setPlaying(true);
+  };
+
+  ui.restart.addEventListener('click', () => goto(0));
+  ui.prev.addEventListener('click', () => goto(step - 1));
+  ui.next.addEventListener('click', () => goto(step + 1));
+  ui.play.addEventListener('click', toggle);
+  ui.select.addEventListener('change', () => { setPlaying(false); show(data.walkthroughs.findIndex((x) => x.id === ui.select.value), 0, { reveal: true }); });
+  ui.scrub.addEventListener('input', () => goto(Number(ui.scrub.value)));
+  stage.addEventListener('mouseenter', () => { hover = true; schedule(); });
+  stage.addEventListener('mouseleave', () => { hover = false; schedule(); });
+  stage.addEventListener('focusin', () => { focus = true; schedule(); });
+  stage.addEventListener('focusout', () => { focus = false; schedule(); });
+
+  const onKey = (ev) => {
+    if (ev.defaultPrevented || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    const tag = ev.target.tagName;
+    const field = tag === 'SELECT' || tag === 'INPUT';
+    if ((ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') && !field) goto(step + (ev.key === 'ArrowRight' ? 1 : -1));
+    else if (ev.key === 'Home' && !field) goto(0);
+    else if (ev.key === ' ' && !field && tag !== 'BUTTON' && tag !== 'SUMMARY' && tag !== 'A') toggle();
+    else return;
+    ev.preventDefault();
+  };
+  root.addEventListener('keydown', onKey);
+
+  const fromHash = () => {
+    const parts = location.hash.slice(1).split('&');
+    const get = (k) => { const p = parts.find((x) => x.indexOf(k + '=') === 0); return p ? p.slice(k.length + 1) : null; };
+    const w = data.walkthroughs.findIndex((x) => x.id === get('w'));
+    const s = parseInt(get('s'), 10);
+    return { w: Math.max(0, w), s: s > 0 ? s - 1 : 0, has: Number.isFinite(s), ours: w >= 0 || Number.isFinite(s) };
+  };
+  const onHash = () => {
+    const h = fromHash();
+    if (!h.ours) return;
+    setPlaying(false);
+    show(h.w, h.s, { hash: false, reveal: true });
+  };
+  const onVisible = () => schedule();
+  window.addEventListener('hashchange', onHash);
+  document.addEventListener('visibilitychange', onVisible);
+
+  const start = fromHash();
+  show(start.w, start.s, { hash: false });
+  if (!start.has && !reduced()) setPlaying(true);
+
+  return () => {
+    clearTimeout(timer);
+    window.removeEventListener('hashchange', onHash);
+    document.removeEventListener('visibilitychange', onVisible);
+  };
+}
+
 export function mount(el, data) {
   if (!data || data.version !== 1 || !data.view || !data.view.wide) throw new Error('dev-graph: not a version 1 graph with a view');
   const mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduced = () => !!(mq && mq.matches);
   const uid = 'dg' + Math.random().toString(36).slice(2, 8);
   const root = htmlEl('div', 'dg', null);
+  const problems = validate(data);
+  if (problems.length) banner(root, problems);
   legend(root, data.lanes);
   const stage = htmlEl('div', 'dg-stage', null, root);
   renderWide(stage, data, uid);
   renderNarrow(stage, data, uid, reduced);
+  const stop = problems.length ? null : walk(root, data, uid, reduced);
   conditions(root, data);
   el.replaceChildren(root);
-  return { el: root, destroy() { root.remove(); } };
+  return { el: root, destroy() { if (stop) stop(); root.remove(); } };
 }

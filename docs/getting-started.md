@@ -92,8 +92,8 @@ a real toy change? The **[daily-loop walkthrough](daily-loop.md)** runs the real
 workflow on a real branch (≈15 min). Optional, but the best way to build trust in
 what each guard does.
 
-Going unattended later: `/overnight-shift --limit 5` dispatches scoped tickets as
-parallel agents that open PRs while you sleep ([AFK (unattended) mode](handover/overnight-mode.md)).
+Going unattended later: `/afk-shift --limit 5` dispatches scoped tickets as
+parallel agents that open PRs while you sleep ([AFK (unattended) mode](handover/afk-mode.md)).
 
 ## Initiative mode + planning pipelines
 
@@ -219,7 +219,7 @@ guard is yours to lift:
 | Understand every hook + gate | [internals/enforcement.md](internals/enforcement.md) |
 | Browse the slash commands | [commands-catalog.md](commands-catalog.md) |
 | Browse every tool/script | [tooling-catalog.md](tooling-catalog.md) |
-| Run unattended overnight | [handover/overnight-mode.md](handover/overnight-mode.md) |
+| Run unattended overnight | [handover/afk-mode.md](handover/afk-mode.md) |
 | Adopt the core in another repo | [setup/install.md](setup/install.md) |
 | Full machine setup + gotchas | [setup/new-machine.md](setup/new-machine.md) |
 | Update the harness + upgrade the vault | [setup/updating.md](setup/updating.md) |

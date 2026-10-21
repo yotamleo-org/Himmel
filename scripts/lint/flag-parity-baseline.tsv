@@ -4,8 +4,8 @@
 docs/configuration.md	scripts/check-ci.sh	--match-head-commit
 docs/handover/console-sections/waiter.md	scripts/handover/console-kit/console-wait.sh	--token
 docs/handover/console-template.md	scripts/handover/console-kit/console-wait.sh	--token
-docs/handover/overnight-mode.md	scripts/check-ci.sh	--dangerously-skip-permissions
-docs/handover/overnight-mode.md	scripts/check-ci.sh	--match-head-commit
+docs/handover/afk-mode.md	scripts/check-ci.sh	--dangerously-skip-permissions
+docs/handover/afk-mode.md	scripts/check-ci.sh	--match-head-commit
 docs/internals/enforcement.md	scripts/handover/console-kit/go.sh	--judge
 docs/internals/enforcement.md	scripts/hooks/trigger-cr-on-push.sh	--paginate
 docs/internals/enforcement.md	scripts/lib/forge.sh	--head

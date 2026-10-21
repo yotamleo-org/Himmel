@@ -234,6 +234,7 @@ scripts/cr/test-impacted-suites.sh	33
 scripts/cr/test-install-cr-gate.sh	2
 scripts/cr/test-known-findings.sh	4
 scripts/cr/test-lane-classify.sh	0
+scripts/cr/test-ledger-amend-auth.sh	1
 scripts/cr/test-ledger-append.sh	18
 scripts/cr/test-live-gate-e2e.sh	0
 scripts/cr/test-orphan-check.sh	0
@@ -332,6 +333,7 @@ scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1
 scripts/handover/console-kit/test-console-kit-e2e.sh	14
 scripts/handover/console-kit/test-console-wait-b.sh	265
+scripts/handover/console-kit/test-console-wait-r0.sh	26
 scripts/handover/console-kit/test-console-wait.sh	283
 scripts/handover/console-kit/test-cut-tag.sh	2
 scripts/handover/console-kit/test-fleet-manifest.sh	1
@@ -347,6 +349,7 @@ scripts/handover/console-kit/test-hook-copy-reaper.sh	0
 scripts/handover/console-kit/test-inbox-audit.sh	0
 scripts/handover/console-kit/test-inbox-follow.sh	1
 scripts/handover/console-kit/test-inbox-send.sh	1
+scripts/handover/console-kit/test-json-writers-final-newline.sh	1
 scripts/handover/console-kit/test-judge-ladder.sh	10
 scripts/handover/console-kit/test-launch-cloud.sh	2
 scripts/handover/console-kit/test-leg-doc-lock.sh	3
@@ -360,6 +363,7 @@ scripts/handover/console-kit/test-ops-run.sh	1
 scripts/handover/console-kit/test-orphan-loops.sh	0
 scripts/handover/console-kit/test-parked-on-prompt.sh	0
 scripts/handover/console-kit/test-pr-stall.sh	1
+scripts/handover/console-kit/test-priority-prune.sh	0
 scripts/handover/console-kit/test-ready-check.sh	36
 scripts/handover/console-kit/test-ready-go.sh	2
 scripts/handover/console-kit/test-relay-batch.sh	1
@@ -627,6 +631,7 @@ scripts/hooks/test-guard-leg-wakeup.sh	0
 scripts/hooks/test-guard-memory-capture.sh	1
 scripts/hooks/test-guard-pr-check-literal.sh	32
 scripts/hooks/test-guard-relay-writes.sh	5
+scripts/hooks/test-guard-rm-writes.sh	2
 scripts/hooks/test-guard-subagent-model.sh	0
 scripts/hooks/test-guard-unwrap-nested-xargs.sh	2
 scripts/hooks/test-hook-chain-latency.sh	143
@@ -998,6 +1003,7 @@ scripts/test-user-slug-resolve.sh	0
 scripts/test-vm-e2e-mode-guard.sh	1
 scripts/test-worktree-verbs.sh	7
 scripts/testing/test-added-unwired-prepush.sh	0
+scripts/testing/test-documented-commands.sh	66
 scripts/testing/test-unwired-hooks.sh	1
 scripts/tests/test-setup-hooks-guardrail.sh	0
 scripts/upstream/test-run-target-tests.sh	0

@@ -961,7 +961,7 @@ run with no profile (the probes, `claude-headless.sh`, the cadence runners)
 carry a `launch-profile-ok:` reason; `scripts/lanes/test-launch-site-profiles.sh`
 scans `scripts/` and fails on any other claude exec.
 
-**Fanout and overnight-shift subagents inherit the parent's plugins** (see
+**Fanout and afk-shift subagents inherit the parent's plugins** (see
 "Subagents inherit" above - there is no per-subagent plugin control). So the
 parent must be armed with the profile its CHILDREN need, not just the one it
 needs itself: a supervisor session that dispatches design work arms with a profile that

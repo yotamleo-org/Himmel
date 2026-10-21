@@ -8,8 +8,9 @@ export const PAGES = [
   { id: "fleet", label: "Fleet" },
   { id: "roadmap", label: "Roadmap" },
   { id: "kanban", label: "Kanban" },
+  { id: "workflow", label: "Workflow" },
 ];
-const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban"];
+const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
@@ -26,9 +27,14 @@ export function pageHref({ here, token, id, run }) {
   return here === "console" ? "#/" + id : "/" + frag({ t: token, page: id });
 }
 
+// Roadmap and Kanban read a tracker; with none the UI can read they are not offered.
+const TRACKER_PAGES = ["roadmap", "kanban"];
+
 // run: the session the run page shows, which adds a Run entry.
-export function navLinks({ here, token, current, run }) {
-  const pages = run ? [...PAGES, { id: "run", label: "Run" }] : PAGES;
+// sources: GET /api/sources; an empty list hides the tracker pages, and not knowing it yet (undefined) hides nothing.
+export function navLinks({ here, token, current, run, sources }) {
+  const shown = sources && sources.length === 0 ? PAGES.filter((p) => !TRACKER_PAGES.includes(p.id)) : PAGES;
+  const pages = run ? [...shown, { id: "run", label: "Run" }] : shown;
   return [
     ...pages.map((p) => ({ ...p, href: pageHref({ here, token, id: p.id, run }), current: p.id === current })),
     { id: "docs", label: "Docs", href: docsHref("/"), current: false, external: true },

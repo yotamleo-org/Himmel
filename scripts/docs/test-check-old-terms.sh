@@ -166,6 +166,26 @@ if [ "$rc" -eq 1 ]; then pass "same stage without MERGE_HEAD is linted (rc=$rc)"
 git -C "$repo" reset -q
 rm -f "$repo/scripts/mg.sh"
 
+echo "== a doc moved behind a redirect stub is read as a copy =="
+git -C "$repo" checkout -q -B movebase "$base"
+mkdir -p "$repo/docs"
+{ printf '# Old page\n\n'; for i in 1 2 3 4 5 6 7 8; do printf 'Line %s: the console arms a leg.\n' "$i"; done; } > "$repo/docs/old.md"
+git -C "$repo" add docs/old.md
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "old page"
+mvbase=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" checkout -q -B moved "$mvbase"
+git -C "$repo" mv docs/old.md docs/new.md
+printf '# Moved\n\nSee [new.md](new.md).\n' > "$repo/docs/old.md"
+git -C "$repo" add -A
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "move behind a stub"
+out=$(cd "$repo" && bash "$LINT" "$mvbase" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "moved lines are not re-linted (rc=$rc)"; else fail "moved doc: want rc=0 got rc=$rc: $out"; fi
+printf 'Line 9: a new console line.\n' >> "$repo/docs/new.md"
+git -C "$repo" add -A
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "new line in the moved doc"
+out=$(cd "$repo" && bash "$LINT" "$mvbase" 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "a line added to the moved doc is linted (rc=$rc)"; else fail "moved doc new line: want rc=1 got rc=$rc: $out"; fi
+
 echo "== the registry is read from the checked snapshot =="
 reg_row() { printf '%s\t%s\tidentifier\tkeep\tnone\tnever\n' "$1" "$1"; }
 git -C "$repo" checkout -q -B regsnap "$base"

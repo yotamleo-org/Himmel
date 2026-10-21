@@ -1,7 +1,7 @@
 // scripts/lanes/fanout-plan.mjs
 // Deterministic work-type -> lane routing for /fanout.
 //
-// Fan-out has been a per-dispatch HABIT, not a primitive: /overnight-shift
+// Fan-out has been a per-dispatch HABIT, not a primitive: /afk-shift
 // dispatches with no model named at all, and a destructive worktree cleanup
 // was once fanned out to Sonnet (judgement/irreversible work belongs at
 // Fable). buildFanoutPlan() is the REFUSAL mechanism — it throws no

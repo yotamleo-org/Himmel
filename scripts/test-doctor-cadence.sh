@@ -25,8 +25,9 @@ unset HIMMEL_DOCTOR_STATE_DIR CADENCE_ALERT_FILE CADENCE_ALERT_DEDUPE_DIR
 
 # A primary checkout with a linked worktree; both carry the script under test.
 P="$W/primary"; WT="$W/wt"
-mkdir -p "$P/scripts/luna"
+mkdir -p "$P/scripts/luna" "$P/scripts/lib"
 git init -q "$P"
+cp "$REAL_ROOT/scripts/lib/prim.sh" "$REAL_ROOT/scripts/lib/canon-path.sh" "$P/scripts/lib/"
 cp "$DIR/doctor-cadence.sh" "$P/scripts/doctor-cadence.sh" 2>/dev/null || true
 cp "$DIR/doctor-counts.sh" "$P/scripts/doctor-counts.sh" 2>/dev/null || true
 cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/cadence-alert.sh"

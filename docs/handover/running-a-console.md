@@ -19,11 +19,11 @@ new. This page is how to run one.
   supervisor session a ticket and a brief; never pass it a ruling by way of a relay. A
   ruling reaches the supervisor session from you directly, or not at all.
 
-## Console vs. `/overnight-shift`
+## Console vs. `/afk-shift` <!-- old-term-ok: console is renamed in slice V5 -->
 
 They look adjacent and are not interchangeable.
 
-| | `/overnight-shift` | supervisor session |
+| | `/afk-shift` | supervisor session |
 |---|---|---|
 | Shape | one session fans out N subagents inside itself | one session dispatches N *separate* sessions |
 | Lifetime | one run, then done | a succession — each supervisor session arms its successor |
@@ -32,7 +32,7 @@ They look adjacent and are not interchangeable.
 | Rulings | none — the plan is fixed at fanout | RETASK channel, mid-flight, authenticated |
 | Handover | none | `/console next` writes the successor + a HANDOFF |
 
-Reach for `/overnight-shift` when you have a fixed list of well-scoped tickets
+Reach for `/afk-shift` when you have a fixed list of well-scoped tickets
 and want them done unattended. Reach for a supervisor session when the work will need
 decisions you cannot pre-write, or will outlive one context window.
 
@@ -628,13 +628,13 @@ bash scripts/handover/console-kit/vm-runner.sh status
   writes the stop file and stops the units; a job already running is not
   re-queued but no new runner is minted.
 - `status` prints the variable, per-VM up/idle/busy state and the last error.
-- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING | DISAGREE:<up>/<want>,online=0>`.
+- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING | DISAGREE:<up>/<want>,online=<n>>`.
   `DEAD` is variable on with no unit up; `STUCK` is a job running past its
   budget plus ten minutes; `FAILING` is a loop whose newest log line is an
-  error, or a GitHub runner count that could not be read; `DISAGREE` is a unit
-  with a registered, unfinished runner while GitHub shows no himmel-vm runner
-  online (zero online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD` or
-  `STUCK`; answer with `status`, then `off` and a note to the operator.
+  error, or a GitHub runner count that could not be read; `DISAGREE` is more units
+  with a registered, unfinished runner than GitHub shows himmel-vm runners
+  online (fewer online between jobs is normal and reads `ok`). `console-wait.sh` wakes only on a move to `DEAD`,
+  `STUCK` or `DISAGREE`; answer with `status`, then `off` and a note to the operator.
 - With the variable `on`, `ci.yml` runs the `shell-unit-shard` matrix on the VM
   runner for a same-repo `pull_request` whose author and actor are the operator
   accounts; everything else (fork PRs, other authors, push, schedule, dispatch)
@@ -654,6 +654,6 @@ bash scripts/handover/console-kit/vm-runner.sh status
 - [`console-template.md`](console-template.md) — the supervisor session's operating contract
 - [`console-handoff-template.md`](console-handoff-template.md) — the handover skeleton
 - [`leg-brief-template.md`](leg-brief-template.md) — what a dispatched worker session gets
-- [`overnight-mode.md`](overnight-mode.md) — the unattended-pipeline alternative
+- [`afk-mode.md`](afk-mode.md) — the unattended-pipeline alternative
 - [`../internals/retask-channel.md`](../internals/retask-channel.md) — authenticated re-tasking
 - [`../internals/lane-calibration.md`](../internals/lane-calibration.md) — tiers, effort, wake-up budget

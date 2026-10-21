@@ -30,6 +30,10 @@
 # Env overrides: CODEX_HOME (default ~/.codex).
 set -euo pipefail
 
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || exit 2
+
 DRY_RUN=0
 for arg in "$@"; do
   case "$arg" in
@@ -57,17 +61,12 @@ while IFS= read -r f; do
     if [ "$DRY_RUN" = "1" ]; then
       echo "WOULD STRIP : $f"
     else
-      # Temp beside the target so the replace is an atomic same-filesystem
-      # rename (a $TMPDIR temp could be a cross-fs, non-atomic copy).
-      tmp="$(mktemp "$(dirname "$f")/.hooks.json.XXXXXX")"
       # `has("description")` already proved this file parses, so a del failure
       # here is an I/O error (disk full / unwritable), never a parse error —
       # keep jq's stderr visible and label it as a write failure.
-      if jq 'del(.description)' "$f" > "$tmp"; then
-        mv "$tmp" "$f"
+      if out="$(jq 'del(.description)' "$f" && printf x)" && printf '%s' "${out%x}" | atomic_write "$f"; then
         echo "STRIPPED    : $f"
       else
-        rm -f "$tmp"
         echo "SKIP (write failed): $f" >&2
         continue
       fi

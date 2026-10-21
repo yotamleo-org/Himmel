@@ -140,8 +140,8 @@ def validate(leg, i):
     missing = [k for k in REQUIRED if not leg.get(k)]
     if missing:
         die('leg #%d (%s) missing: %s' % (i, leg.get('label', '?'), ', '.join(missing)))
-    if not re.match(r'^N\d+$', leg['label']):
-        die('leg #%d: label %r is not N<k>' % (i, leg['label']))
+    if not re.fullmatch(r'N[0-9]{1,5}', leg['label']):
+        die('leg #%d: label %r is not N<k> with 1-5 digits (the vault token grammar)' % (i, leg['label']))
     if not isinstance(leg['keys'], list) or not all(re.match(r'^[A-Z]+-\d+$', k) for k in leg['keys']):
         die('leg %s: keys must be a list of ticket keys' % leg['label'])
     if not re.match(r'^(feat|fix|chore|docs|refactor|test)/[a-z0-9][a-z0-9-]*$', leg['branch']):
@@ -249,7 +249,7 @@ template_version: 3
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix. {extra}{envline}
 > 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
-> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Run them, and the full suite of every file you touched, BEFORE opening the PR: a CI fix after the third review round cannot be re-reviewed without the operator.
+> 3. Impacted suites: `scripts/cr/impacted-suites.sh` over your diff, a verdict per suite. Locally run only the RED rows of the item you build; a VM-only check goes through the VM queue; list every other impacted suite as `SKIP CI-gated per decision 101 (GitHub CI is the gate)`; never run run-shell-tests.sh full or sharded locally.
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the console quoting your token. {judge} Merge only on GO with {shipmerge}. MERGED, `cd` out, WRAPPED, release the lock, `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
@@ -325,9 +325,11 @@ def main():
     if not re.match(r'^\d{4}-\d\d-\d\d$', a.date):
         die('--date must be YYYY-MM-DD', 2)
     letter = a.letter
-    if not letter:
+    if letter is None:
         m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.console)
         letter = m.group(1) if m else 'X'
+    if not re.fullmatch(r'[A-Z]{1,3}', letter):
+        die('console letter %r must be 1-3 upper-case letters (the vault token grammar); pass --letter' % (letter,))
     if not a.handover_root:
         die('--handover-root (or HANDOVER_DIR) is required', 2)
     try:
@@ -403,7 +405,9 @@ def main():
             with open(re.sub(r'\.json$', '', a.manifest) + '.launchers.sha256', 'a') as f:
                 f.write('%s  %s\n' % (digest, os.path.abspath(launcher)))
 
-    json.dump(legs, open(a.legs + '.out', 'w'), indent=1)
+    with open(a.legs + '.out', 'w') as f:
+        json.dump(legs, f, indent=1)
+        f.write('\n')
     for l in legs:
         doc = os.path.join(a.bucket, l['stem'] + '.md')
         print('%s %s %s' % (l['label'], l['nonce'], doc))

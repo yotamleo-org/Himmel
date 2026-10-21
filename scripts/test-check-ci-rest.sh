@@ -32,6 +32,8 @@ esac
 [ "${REST_ERROR:-0}" = 0 ] || { echo 'REST unavailable' >&2; exit 1; }
 if [ "${MALFORMED:-0}" = 1 ]; then body='{"total_count":1,"check_runs":[]}'; fi
 if [ "${PAGED:-0}" = 1 ]; then body='{"total_count":101,"check_runs":[]}'; fi
+if [ "${BIG:-0}" = 1 ] && [[ " $* " == *"/check-runs?"* ]]; then body=$(jq -nc '{total_count:100,check_runs:[range(100)|{id:.,name:"unit\(.)",status:"completed",conclusion:"success",pad:("x"*2500)}]}'); fi
+if [ "${BADJSON:-0}" = 1 ]; then body='{not json'; fi
 case " $* " in
     *'If-None-Match:'*) printf 'HTTP/2.0 304 Not Modified\r\nETag: "v1"\r\n\r\n'; printf '304\n' >> "$CASE/responses" ;;
     *) printf 'HTTP/2.0 200 OK\r\nETag: "v1"\r\n\r\n%s\n' "$body"; printf '200\n' >> "$CASE/responses" ;;
@@ -50,7 +52,7 @@ new_case() {
     : > "$CASE/calls"; : > "$CASE/responses"; : > "$CASE/sleeps"
     printf '1000000000\n' > "$CASE/clock"
     export CIC_CLOCK_FILE="$CASE/clock" CHECK_CI_CACHE_DIR="$CASE/cache"
-    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED ACTUAL_GQL
+    unset CORE GQL REST_ERROR GQL_ERROR MALFORMED PAGED BIG BADJSON ACTUAL_GQL
     cic_init 42 sha1 || exit 1
 }
 count() { grep -c -- "$1" "$CASE/calls" || true; }
@@ -113,6 +115,17 @@ new_case
 export PAGED=1
 cic_get 60; rc=$?
 if [ "$rc" = 0 ] && [ "$(count 'pr checks')" = 1 ]; then ok 'truncated REST page falls back instead of dropping checks'; else bad 'pagination ceiling failed'; fi
+
+new_case
+export BIG=1 GQL_ERROR=1
+cic_get 60; rc=$?
+nrows=$(printf '%s\n' "$CIC_ROWS" | grep -c '^pass')
+if [ "$rc" = 0 ] && [ "$nrows" -ge 100 ]; then ok 'check-runs body over 200 KB reads through jq without argv'; else bad "large check-runs body: rc=$rc rows=$nrows err=$CIC_ERR"; fi
+
+new_case
+export BADJSON=1 GQL_ERROR=1
+cic_get 60; rc=$?
+if [ "$rc" != 0 ] && [ -z "$CIC_ROWS" ] && [[ "$CIC_ERR" == *"malformed REST checks JSON"* ]]; then ok 'non-JSON REST body still fails closed as malformed'; else bad "non-JSON body: rc=$rc err=$CIC_ERR"; fi
 
 # Startup snapshot: an EMPTY reviewDecision (no review yet) must not collapse the
 # tab-separated read and shift head/base out of their fields.

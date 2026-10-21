@@ -4,6 +4,7 @@
 # or HIMMEL_WORKER_ not followed by SESSION_. A direction of keep marks a name owned elsewhere that is never renamed.
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
+# remove-at X is the removal release after v1.1.3, which deletes the read-both path.
 # kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
 # (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is), other-sense (a name that
 # already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it).
@@ -20,8 +21,8 @@ worker session	worker	prose	warn	D	never
 ticket sequence	dependency chain	prose	fail	R2	never
 batch of workers	parallel wave	prose	fail	R2	never
 wave	parallel wave	prose	fail	R2	never
-HIMMEL_OVERNIGHT	HIMMEL_AFK	env	permit	V3	pending-N2892
-HIMMEL_INITIATIVE_OVERNIGHT	HIMMEL_INITIATIVE_AFK	env	value	V3	pending-N2892
+HIMMEL_OVERNIGHT	HIMMEL_AFK	env	permit	V3	X
+HIMMEL_INITIATIVE_OVERNIGHT	HIMMEL_INITIATIVE_AFK	env	value	V3	X
 CADENCE_BANK_MAX_PCT	CADENCE_USAGE_MAX_PCT	env	permit	V1	pending-N2892
 CONSOLE_FG_OK	CHIEF_FG_OK	env	permit	V5	pending-N2892
 CONSOLE_DISPATCH_OK	CHIEF_DISPATCH_OK	env	permit	V5	pending-N2892
@@ -29,7 +30,7 @@ CONSOLE_DISPATCH_DISABLE	CHIEF_DISPATCH_DISABLE	env	restrict	V5	pending-N2892
 LEG_CONTEXT_HANDOFF_OK	WORKER_SESSION_CONTEXT_HANDOFF_OK	env	permit	V4a	pending-N2892
 HIMMEL_LEAN_LEG	HIMMEL_LEAN_WORKER_SESSION	env	value	V4a	pending-N2892
 PARKED-BANK	PARKED-USAGE	marker	old-to-new	V1	never
-OVERNIGHT_	AFK_	env-prefix	value	V3	pending-N2892
+OVERNIGHT_	AFK_	env-prefix	value	V3	X
 CADENCE_BANK_	CADENCE_USAGE_	env-prefix	value	V1	pending-N2892
 BANK_LIFT_	USAGE_LIFT_	env-prefix	value	V1	pending-N2892
 CODEX_BANK_	CODEX_USAGE_	env-prefix	value	V1	pending-N2892
@@ -164,6 +165,7 @@ CONSOLE_WAIT_DISPATCH_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	
 CONSOLE_WAIT_FAIL_WAKE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_HANDOVER_MIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_INTERVAL	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+CONSOLE_WAIT_LEG_EVENT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_LOCK_STATUS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_PAGE_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 CONSOLE_WAIT_PAGE_TIMEOUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -208,7 +210,7 @@ HIMMEL_LEG_MEMORY_MAX	pending-N2892	identifier	old-to-new	pending-N2892	pending-
 HIMMEL_LEG_PROFILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_STOP_GUARD_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 HIMMEL_WORKER_	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-IL_OVERNIGHT_ALL	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+IL_OVERNIGHT_ALL	IL_AFK_ALL	identifier	old-to-new	V3	X
 IMPL_GUARD_BANK_BUDGET_SECS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 IMPL_GUARD_BANK_STATUS_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 LANE_BANK_GATE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -308,13 +310,13 @@ M_LEG_E1	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 M_LEG_E2	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 M_LEG_F	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 OTHER_BANK_FUNDED_MAX_PCT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_DOC	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_LIMIT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_PRIORITY	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_PROJECT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_STATUS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-OVERNIGHT_STOP_DIR	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+OVERNIGHT	AFK	identifier	old-to-new	V3	X
+OVERNIGHT_DOC	AFK_DOC	identifier	old-to-new	V3	X
+OVERNIGHT_LIMIT	AFK_LIMIT	identifier	old-to-new	V3	X
+OVERNIGHT_PRIORITY	AFK_PRIORITY	identifier	old-to-new	V3	X
+OVERNIGHT_PROJECT	AFK_PROJECT	identifier	old-to-new	V3	X
+OVERNIGHT_STATUS	AFK_STATUS	identifier	old-to-new	V3	X
+OVERNIGHT_STOP_DIR	AFK_STOP_DIR	identifier	old-to-new	V3	X
 PIPELINE_BANK	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 REQUEST_STATE_ONLY_LEG_PACING_MS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 RUN_LEG_ARGS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -324,3 +326,5 @@ SKIPPED_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending
 STUB_BANK_ROW	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 TICK_BANK_CACHE_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 WAVE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
+overnight-shift	afk-shift	identifier	old-to-new	V3	X

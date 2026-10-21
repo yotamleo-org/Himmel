@@ -281,6 +281,28 @@ PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-d.log" 
 dpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/d-board.html")"
 same 'a parenthetical ; keeps one decision whole: exactly two items (HIMMEL-3944)' "$(printf '%s\n' "$dpanel" | grep -c '<li>')" '2'
 contains 'the parenthetical decision renders whole (HIMMEL-3944)' "$dpanel" '<li>A (x; y)</li>'
+# a decisions: pointer lists the numbered entries of the bucket file it names.
+DOCF="$B/HIMMEL-nextleg-2026-09-21V-console-f.md"
+mkdir -p "$B/specs/decisions"
+printf '%s\n' '# Console decisions' '' '## Results' \
+    '- 10:00 (1) keep the fleet at 15 legs' '- 10:05 (2) ship the board first (then the tracker)' \
+    > "$B/specs/decisions/console-decisions-2026-09-21.md"
+sed 's|^decisions: .*|decisions: specs/decisions/console-decisions-2026-09-21.md (latest #2)|' "$DOC" > "$DOCF"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-f.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOCF" --repo "$W/repo" --out "$W/f-board.html" >/dev/null 2>"$W/stderr.log"
+fpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/f-board.html")"
+same 'a decisions: pointer lists the file entries, not one pointer row (HIMMEL-6498)' "$(printf '%s\n' "$fpanel" | grep -c '<li>')" '2'
+contains 'a decisions: pointer renders each numbered file entry (HIMMEL-6498)' "$fpanel" '<li>(2) ship the board first (then the tracker)</li>'
+lacks 'a decisions: pointer does not render the path as a decision (HIMMEL-6498)' "$fpanel" 'console-decisions-2026-09-21.md'
+sed 's|^decisions: .*|decisions: specs/decisions/console-decisions-2026-09-21.md; specs/decisions/console-decisions-2026-09-20.md|' "$DOC" > "$DOCF"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-g.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOCF" --repo "$W/repo" --out "$W/g-board.html" >/dev/null 2>"$W/stderr.log"
+gpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/g-board.html")"
+contains 'a missing decisions file shows as a row, not silently dropped' "$gpanel" '<li>missing decisions file: specs/decisions/console-decisions-2026-09-20.md</li>'
 
 # --- epics: merged/total from the declared total + the merged PRs citing the key
 contains 'a declared epic shows merged/total' "$html" 'data-epic="HIMMEL-3332" data-merged="2" data-total="4"'
@@ -1124,6 +1146,31 @@ PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?
 contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
 PATH="$W/bin:$PATH" node "$SUT" --doc "$B/nope.md" >/dev/null 2>&1; rc=$?
 contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
+
+# --- the first publish to a carried URL must not put the live page in the console's context
+# An unviewed publish is refused and the refusal returns the whole live page (about 23k
+# tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
+# send that first read+publish to a haiku subagent.
+DOCS="$HERE/../../../docs/handover"
+BT="$(tr '\n' ' ' < "$DOCS/console-sections/board-tracker.md" | tr -s ' ')"
+CT="$(tr '\n' ' ' < "$DOCS/console-template.md" | tr -s ' ')"
+BT_BOARD="${BT%%Keep the roadmap tracker current*}"
+BT_TRACKER="${BT#*Keep the roadmap tracker current}"
+contains 'board-tracker.md: the board publish goes to a haiku subagent' "$BT_BOARD" 'goes to a haiku subagent'
+contains 'board-tracker.md: the board subagent is dispatched with model haiku' "$BT_BOARD" 'model: haiku'
+contains 'board-tracker.md: the board subagent runs at effort medium' "$BT_BOARD" 'effort medium'
+contains 'board-tracker.md: the tracker publish goes to the same haiku subagent' "$BT_TRACKER" 'goes to the same haiku subagent'
+contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
+contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
+contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
+contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first console publish that uses it records the parent-context delta'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: tracker URL no longer says the console reads it first' "$BT" 'must `Artifact read` it first, exactly as for `board:`'
+contains 'console-template.md step 12: the first publish to a carried URL goes to a medium-effort haiku subagent' "$CT" 'goes to a medium-effort haiku subagent'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'console-template.md step 12: no bare Artifact read in the console context' "$CT" 'must `Artifact read` it first'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'

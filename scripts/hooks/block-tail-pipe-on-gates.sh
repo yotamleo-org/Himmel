@@ -82,7 +82,9 @@
 #     unparseable stdin, a non-Bash tool, a command containing an UNQUOTED
 #     heredoc (`<<`), whose body text a scanner this flat cannot tell from syntax
 #     and which in this repo very often documents this exact shape (the variant
-#     forms below still judge it with the bodies cut out), or a
+#     forms below still judge it with the bodies cut out; an unquoted body with
+#     a live `$` beside a command that names a gate fails CLOSED instead,
+#     because `${x@P}` or `$[a[$_]]` can re-expand a quoted gate), or a
 #     command over the 16KB cost bound (see below). Per
 #     scripts/hooks/CLAUDE.md a workflow
 #     nudge fails open: a hook that cannot parse its input must not deny
@@ -133,6 +135,14 @@
 #     from syntax and which in this repo very often documents this exact shape;
 #     only the variant forms (st_expand) judge the command with the
 #     bodies cut out and each `$(...)` of an unquoted body lifted to its own line.
+#     A live `$` in an unquoted body beside a named gate is denied
+#     (heredoc_reexpands_gate). Its body walk reads a delimiter by its text alone;
+#     when its opener count differs from normalise()'s count of unquoted `<<`,
+#     or a body never terminates (a `<<` in a quote, a delimiter with a space,
+#     a fake delimiter swallowing the real body), it falls back to the coarse
+#     rule: any `$` after the first `<<` plus a gate anywhere in the command.
+#     The `# tail-pipe-ok:` marker exempts only a line that carries a heredoc
+#     opener or names a gate.
 #   * a command over the 16KB cost bound (see below).
 #   * a backslash-separated Windows path to a gate — nothing here writes one.
 # A real tokenizer stays the upgrade path if a genuine command ever trips on it.
@@ -200,6 +210,8 @@ cmd="${result#*$'\n'}"
 # newline, so `gate \<CR><LF> | tail` would read as an escaped CR followed by a
 # line break — the continuation lost, the pipeline split in two, the guard
 # silently blind. Drop CRs before anything treats the text as syntax.
+_tp_crhd=0 # a CR beside a heredoc: the CR-stripped text below can end a body early
+case $cmd in *$'\r'*'<<'* | *'<<'*$'\r'*) _tp_crhd=1 ;; esac
 cmd=${cmd//$'\r'/}
 
 # set by this hook on the child it runs over an expanded form of
@@ -245,7 +257,8 @@ GATE_ANY=${GATE_ANY%'$'}
 # relieves nothing.
 # shellcheck disable=SC2317,SC2329 # called by cmdpos_clean_for as its <names-fn>
 tp_names_gate() { [[ $1 =~ $GATE_ANY ]]; } # tp_names_gate <word> - names a registered gate
-if { [ -r "$SCRIPT_DIR/lib-cmdpos-clean.sh" ] && . "$SCRIPT_DIR/lib-cmdpos-clean.sh"; } 2>/dev/null \
+if [ "$_tp_crhd" = 0 ] \
+    && { [ -r "$SCRIPT_DIR/lib-cmdpos-clean.sh" ] && . "$SCRIPT_DIR/lib-cmdpos-clean.sh"; } 2>/dev/null \
     && cmdpos_clean_for tp_names_gate "$cmd"; then
     exit 0
 fi
@@ -254,7 +267,7 @@ SG=0            # stmt_gate_flag's result
 SURF_VAR=''     # status_surfaced's result
 TAB=$'\t'
 MARK='#tail-pipe-ok:'      # the opt-out, reduced to one operator-free token
-HEREDOC_MARK='HEREDOCSEEN' # an UNQUOTED `<<`; the guard withdraws on it
+HEREDOC_MARK='HEREDOCSEEN' # an UNQUOTED `<<`; heredoc_reexpands_gate judges its body
 offender=""
 kind=pipe     # pipe: gate | tail/head; trailing: gate followed by a later segment (HIMMEL-2082)
 
@@ -1132,11 +1145,94 @@ stage_invokes_gate() {
 # LOGICAL line, which is what "the offending line" means to whoever wrote it.
 normalised=$(normalise "$cmd")
 
+# heredoc_reexpands_gate TEXT CRHD NREAL — 0 when an UNQUOTED heredoc body of TEXT
+# has a live `$` and the rest of TEXT names a gate. `${_@P}`, `${x@P}` and
+# `$[a[$_]]` re-expand text an earlier word only quoted, so such a body is code.
+# A quoted body, and an unquoted one with no `$`, stay data. The coarse rule: any
+# `$` after the first `<<` is live and a gate anywhere in TEXT counts. It applies
+# when CRHD=1 (a CR beside a heredoc, so the walk's body edges may differ from the
+# shell's) and when the walk is unreliable: its opener count differs from NREAL,
+# the `<<` count normalise() marked outside quotes, or a body never terminated (a
+# `<<` inside a quote queues a fake delimiter that swallows the real body).
+heredoc_reexpands_gate() {
+    local line rest word delim tabs outside='' live=0 q s re
+    local -a hd_d hd_s hd_q
+    local hd_n=0 hd_i=0
+    re='<<(-?)[[:space:]]*([^[:space:];&|<>()]+)'
+    while IFS= read -r line; do
+        if [ "$hd_i" -lt "$hd_n" ]; then
+            tabs=$line
+            if [ "${hd_s[hd_i]}" = 1 ]; then
+                while [ "${tabs:0:1}" = $'\t' ]; do tabs=${tabs:1}; done
+            fi
+            if [ "$tabs" = "${hd_d[hd_i]}" ]; then
+                hd_i=$((hd_i + 1))
+            elif [ "${hd_q[hd_i]}" = 0 ]; then
+                case $line in *'$'*) live=1 ;; esac
+            fi
+            continue
+        fi
+        outside=$outside$NL$line
+        rest=${line//<<</ }
+        while [[ $rest =~ $re ]]; do
+            word=${BASH_REMATCH[2]} s=0 q=0
+            [ -z "${BASH_REMATCH[1]}" ] || s=1
+            case $word in *["'\"\\"]*) q=1 ;; esac
+            delim=${word//[\'\"\\]/}
+            case $word in '$'["'\""]*) delim=${delim#\$} ;; esac
+            hd_d[hd_n]=$delim hd_s[hd_n]=$s hd_q[hd_n]=$q
+            hd_n=$((hd_n + 1))
+            rest=${rest#*"${BASH_REMATCH[0]}"}
+        done
+    done <<EOF
+$1
+EOF
+    if [ "$2" = 1 ] || [ "$hd_n" != "$3" ] || [ "$hd_i" != "$hd_n" ]; then
+        live=0
+        case ${1#*'<<'} in *'$'*) live=1 ;; esac
+        [ "$live" = 1 ] && [[ $1 =~ $GATE_ANY ]]
+        return
+    fi
+    [ "$live" = 1 ] && [[ $outside =~ $GATE_ANY ]]
+}
+
+# marker_on_relevant_line TEXT — 0 when a `# tail-pipe-ok:` marker sits on a
+# normalised line that carries a heredoc opener or names a gate. A marker on an
+# unrelated command exempts nothing.
+marker_on_relevant_line() {
+    local mk_line
+    while IFS= read -r mk_line; do
+        case $mk_line in
+            *"$MARK"*)
+                case $mk_line in *"$HEREDOC_MARK"*) return 0 ;; esac
+                [[ $mk_line =~ $GATE_ANY ]] && return 0 ;;
+        esac
+    done <<EOF
+$1
+EOF
+    return 1
+}
+
 # A heredoc makes BODY TEXT indistinguishable from syntax to a scanner this flat
 # — and the body of a heredoc in this repo is very often documentation OF this
-# very shape (panel r3, codex-3). Withdraw rather than risk denying a command
-# whose only `| tail` is data. Same posture as the other fail-open branches.
-case $normalised in *"$HEREDOC_MARK"*) exit 0 ;; esac
+# very shape (panel r3, codex-3). So the line scan below does not read a command
+# that carries one: the variant forms above judge it with the bodies cut out and
+# each `$(...)` of an unquoted body lifted. What they cannot see is a live `$`
+# re-expanding text an earlier word quoted; that fails closed.
+case $normalised in
+    *"$HEREDOC_MARK"*)
+        marker_on_relevant_line "$normalised" && exit 0
+        _tp_hd_tmp=${normalised//"$HEREDOC_MARK"/}
+        _tp_hd_real=$(((${#normalised} - ${#_tp_hd_tmp}) / ${#HEREDOC_MARK}))
+        heredoc_reexpands_gate "$cmd" "$_tp_crhd" "$_tp_hd_real" || exit 0
+        printf '%s\n' \
+          "block-tail-pipe-on-gates: DENIED — an unquoted heredoc body with a live \$ beside a command that names a himmel gate. \${x@P}, \${_@P} or an arithmetic subscript in the body can re-expand a quoted gate, so the body is code, and a gate piped to tail/head there loses its exit code (HIMMEL-2082)." \
+          "Quote the delimiter so the body is data:" \
+          "    cat <<'EOF'" \
+          "or run the gate on its own, redirecting: <gate> > <file> 2>&1; echo \"RC=\$?\"; tail -80 <file>" \
+          "If the exit code genuinely does not matter here, add a same-line marker: \`# tail-pipe-ok: <reason>\`." >&2
+        exit 2 ;;
+esac
 
 # a gate followed by a later segment loses its status too. Decided
 # over the WHOLE command (newlines and lone `&` included), once, before the

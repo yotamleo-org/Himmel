@@ -12,9 +12,9 @@
 #   vm-runner.sh status          units up/idle/busy, current job, last error
 #   vm-runner.sh status --tick   the one tick token (tick.sh's vmrun= field):
 #                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING
-#                                | DISAGREE:<up>/<want>,online=0 (a unit has a
-#                                registered, unfinished runner but GitHub shows
-#                                no himmel-vm runner online)
+#                                | DISAGREE:<up>/<want>,online=<n> (more units have
+#                                a registered, unfinished runner than GitHub
+#                                shows himmel-vm runners online)
 #   vm-runner.sh doctor          `<OK|WARN|FAIL><TAB><id><TAB><message>` rows
 #                                for himmel-doctor's C64 check
 #
@@ -246,9 +246,9 @@ runner_counts() {
     printf '%s\n' "$val"
 }
 
-# tick_token — off | ok:<up>/<want>,busy=<n> | DISAGREE:<up>/<want>,online=0 | DEAD | STUCK | FAILING
+# tick_token — off | ok:<up>/<want>,busy=<n> | DISAGREE:<up>/<want>,online=<n> | DEAD | STUCK | FAILING
 tick_token() {
-    local var up=0 want i=1 stuck=0 failing=0 inflight=-1 j counts busy online
+    local var up=0 want i=1 stuck=0 failing=0 expect=0 j counts busy online
     # Never set up on this station: no gh call, nothing to report.
     [ -e "$UNIT_DIR/$UNIT_PREFIX@.service" ] || { echo off; return; }
     var="$(vmrun_var)" || var=""
@@ -258,7 +258,7 @@ tick_token() {
             up=$((up + 1))
             ! unit_failing "$i" || failing=1
             j="$(unit_job "$i")"
-            case "$j" in idle) ;; *) [ "$j" -le "$inflight" ] || inflight="$j"; [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
+            case "$j" in idle) ;; *) [ "$j" -le $((CACHE_TTL + 60)) ] || expect=$((expect + 1)); [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
         fi
         i=$((i + 1))
     done
@@ -278,12 +278,12 @@ tick_token() {
     # The unit count is this station's claim; GitHub's online-runner count is
     # the check. An unreadable count is never ok. A loop mints its JIT runner
     # late and deletes it after each job, so zero online is normal between jobs:
-    # it disagrees only while a unit has a registered, unfinished runner that
-    # has had CACHE_TTL + 60 s to connect: inflight is the oldest such age, -1 if none.
+    # it disagrees only when fewer runners are online than units with a registered,
+    # unfinished runner that has had CACHE_TTL + 60 s to connect (expect).
     counts="$(runner_counts)"
     if [ -z "$counts" ]; then echo FAILING; return; fi
     read -r busy online <<< "$counts"
-    if [ "$online" -eq 0 ] && [ "$inflight" -gt $((CACHE_TTL + 60)) ]; then echo "DISAGREE:$up/$want,online=0"; return; fi
+    if [ "$online" -lt "$expect" ]; then echo "DISAGREE:$up/$want,online=$online"; return; fi
     echo "ok:$up/$want,busy=$busy"
 }
 

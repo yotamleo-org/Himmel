@@ -161,7 +161,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do listening ::1 && break; sleep 0.3; done
 listening ::1 || { kill "$foreign" 2>/dev/null; foreign=""; echo "SKIP: no IPv6 loopback; foreign-listener row not run"; }
 if [ "$(grep -c '^docs site: http://127.0.0.1:4321/Himmel/$' "$tmp/out")" -eq 1 ]; then ok "serve.sh prints exactly the one URL line"; else ko "serve.sh prints the URL line"; fi
 
-for p in "" why-himmel/ getting-started/ setup/install/ adoption-trail.html; do
+for p in "" why-himmel/ getting-started/ setup/install/ adoption-trail.html guide/dev-graph.html guide/dev-graph; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4321/Himmel/$p")
   if [ "$code" = 200 ]; then ok "200 /Himmel/$p"; else ko "200 /Himmel/$p (got $code)"; fi
 done

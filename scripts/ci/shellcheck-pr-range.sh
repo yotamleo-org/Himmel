@@ -18,7 +18,8 @@
 #     rc shadows the root one for untouched files), the CI workflow or this script changed,
 #   - a changed path contains a newline anywhere, or a neighbour path needs quoting.
 # Renames are split into delete+add (--no-renames) so the old path's consumers are
-# found, and `# shellcheck source=` directive edges count as source edges.
+# found, a directory a rename left also selects the files naming it, and
+# `# shellcheck source=` directive edges count as source edges.
 #
 # Usage: shellcheck-pr-range.sh [--dry-run] <base-sha>
 #   --dry-run prints "ALL <reason>" or "FILES" + the file list, runs nothing.
@@ -128,11 +129,11 @@ trap 'rm -f "$dz"' EXIT
 # branch tip (^1) and the PR head (^2): a rerun reuses the event's stale base.sha, so base..HEAD
 # would span every main commit since, while ^1...^2 is exactly the PR's own change.
 t_sel=$SECONDS
+rng="$base...HEAD"
 if [ "${GITHUB_EVENT_NAME:-}" = pull_request ] && git rev-parse -q --verify 'HEAD^2' > /dev/null && ! git rev-parse -q --verify 'HEAD^3' > /dev/null; then
-  git diff -z --no-renames --name-only --diff-filter=ACMRTD 'HEAD^1...HEAD^2' > "$dz" || run_all "git diff failed"
-else
-  git diff -z --no-renames --name-only --diff-filter=ACMRTD "$base...HEAD" > "$dz" || run_all "git diff failed"
+  rng='HEAD^1...HEAD^2'
 fi
+git diff -z --no-renames --name-only --diff-filter=ACMRTD "$rng" > "$dz" || run_all "git diff failed"
 changed=$(tr '\0' '\n' < "$dz")
 [ "$(tr -d '\0' < "$dz" | wc -c)" -eq "$(tr -d '\0\n' < "$dz" | wc -c)" ] || run_all "newline in a changed path"
 [ -n "$changed" ] || { echo "shellcheck-pr-range: no changed files" >&2; [ "$dry" = 1 ] && echo "FILES"; exit 0; }
@@ -154,6 +155,12 @@ shellcheckrc
 scripts/ci/shellcheck-pr-range.sh
 "*) run_all "lint config, workflow or the range script changed" ;;
 esac
+
+# A moved file's consumers may name its OLD directory (a glob or loop over it), which the
+# basename lookup below cannot see. Each directory a rename left (status R, -M) has its
+# consumers selected too; the output is NUL-delimited status, old, new triples.
+git diff -z -M --name-status --diff-filter=R "$rng" > "$dz" || run_all "git diff -M failed"
+olddirs=$(tr '\0' '\n' < "$dz" | awk 'NR % 3 == 2 { o = $0 } NR % 3 == 0 { od = o; nd = $0; sub(/[^\/]*$/, "", od); sub(/[^\/]*$/, "", nd); if (od != "" && od != nd) print od }' | sort -u)
 
 tracked=$(git ls-files) || run_all "git ls-files failed"
 list=$(mktemp "${TMPDIR:-/tmp}/shellcheck-pr-range.XXXXXX") ||run_all "mktemp failed"
@@ -182,6 +189,15 @@ cmd_pos() {
 consumers() { ( set -o pipefail; N="$1" awk '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, ENVIRON["N"])) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n" ); }
 
 printf '%s\n' "$changed" > "$list"
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
+  consumers "$d"
+  rc=$?
+  [ "$rc" -le 1 ] || run_all "git grep failed on $d"
+  cat "$list.n" >> "$list"
+done <<EOF
+$olddirs
+EOF
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   b=$(basename "$f")

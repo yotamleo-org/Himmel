@@ -250,6 +250,11 @@ mirror on this machine). `versionless-done.sh --backfill` lists the fix; it neve
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
 
+pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
+`priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
+non-zero. `priority-prune.sh --doc <doc>` prints the line without them; the console runs
+its --apply only with an operator OK and logs a PRIORITY-PRUNE bullet.
+
 wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> (HIMMEL-6584) come from one
 `scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
 worktrees with no open PR and nothing holding them, and the live worktree count once it
@@ -257,7 +262,7 @@ reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non
 alarming, each with an `ACTION wt-orphans=…` line after the TICK line.
 
 With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
-when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (12000), and
+when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000), and
 `ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
 DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
 specs/decisions/console-decisions-<date>.md the superseded rulings move to verbatim
@@ -1381,6 +1386,13 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
     esac
 fi
 
+# pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
+# the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in console-wait's wake key.
+pool_closed=skip
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
+fi
+
 # wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
 # open PR, nothing holding them) and the live worktree count once it reaches
 # HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
@@ -1418,9 +1430,9 @@ fi
 # Shown only as ACTION lines after the TICK line; not in console-wait's wake key.
 handoff_bytes=0
 decisions_bytes=0
-handoff_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+handoff_budget="${HANDOFF_BUDGET_BYTES:-6000}"
 decisions_budget="${DECISIONS_BUDGET_BYTES:-4000}"
-case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=12000 ;; esac
+case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=6000 ;; esac
 case "$decisions_budget" in ''|*[!0-9]*) decisions_budget=4000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     handoff_file="${console_doc%.md}-HANDOFF.md"
@@ -2043,15 +2055,15 @@ if [ -f "$ciguard_probe" ]; then
     fi
 fi
 
-# vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=0|DEAD|STUCK|
+# vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
 # --tick` call. DEAD = the repo variable is on but no unit is up; STUCK = a job
 # past JOB_MAX+600 s; FAILING = a unit is up but its newest ci-runner journal
 # line is an error, its journal is unreadable, or GitHub's runner count is
-# unreadable; DISAGREE = a unit has had a registered, unfinished runner for
-# over CACHE_TTL+60 s and GitHub reports no himmel-vm runner online (a fresher
-# registration is still connecting and reads ok). Zero online with every
-# runner idle or finished is normal and reads ok.
+# unreadable; DISAGREE = more units have had a registered, unfinished runner for
+# over CACHE_TTL+60 s than GitHub reports himmel-vm runners online (a fresher
+# registration is still connecting and reads ok). Fewer online than units, with
+# every runner idle or finished, is normal and reads ok.
 # console-wait.sh wakes only on a move to DEAD or STUCK; FAILING and DISAGREE
 # are shown in the tick line but do not wake it. unknown = the probe is missing, failed or timed out.
 vmrun_summary=unknown
@@ -2061,7 +2073,7 @@ if [ -f "$vmrun_probe" ]; then
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
     vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
     case "$vmrun_out" in
-        off|DEAD|STUCK|FAILING|DISAGREE:[0-9]*/[0-9]*,online=0|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
+        off|DEAD|STUCK|FAILING|DISAGREE:[0-9]*/[0-9]*,online=[0-9]*|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
     esac
 fi
 
@@ -2169,6 +2181,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
+    printf 'pool-closed: %s\n' "$pool_closed"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
@@ -2181,7 +2194,7 @@ else
             *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|wt-orphans=0) return ;;
+            versionless-done=0|versionless-done=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -2215,6 +2228,7 @@ else
     compact_field vault "$vault_summary"
     compact_field cloud "$cloud_summary"
     compact_field orphans-wip "$orphans_wip"
+    compact_field pool-closed "$pool_closed"
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
     compact_field ciguard "$ciguard_summary"

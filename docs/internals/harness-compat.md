@@ -974,7 +974,7 @@ is lost is the structured-choice UI, **not** the question/answer exchange — no
 gate** instead of narrating. himmel mitigates this on the **3 gates where
 failing to ask would matter** with a one-line "if `AskUserQuestion` is unavailable,
 ask the same question as plain text and act on the typed answer" guard:
-`/overnight-shift` dispatch confirm (`.claude/commands/overnight-shift.md`),
+`/afk-shift` dispatch confirm (`.claude/commands/afk-shift.md`),
 handover repo-resolution (`…/handover/SKILL.md` + `…/references/routing.md`). The
 handover **bucket** prompt (`…/references/buckets.md`) already shipped a
 degradation-aware line (its safe default is the *opposite* pattern — auto-apply

@@ -59,6 +59,9 @@ console-kit-lock-helper HIMMEL-5063"
 usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' >&2; }
 die() { echo "class-recurrence: $*" >&2; exit 2; }
 
+# shellcheck source=../lib/prim.sh
+. "$(cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --days)        [ $# -ge 2 ] || die "--days needs a value"; DAYS="$2"; shift 2 ;;
@@ -78,7 +81,7 @@ PROJECT="$JIRA_PROJECT_KEY"
 [ -n "$LEDGER" ] || LEDGER="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}" # swallow-ok: an unresolvable git dir leaves a path the next line refuses as unreadable
 [ -r "$LEDGER" ] || die "ledger not readable: $LEDGER"
 
-W="$(mktemp -d "${TMPDIR:-/tmp}/class-recurrence.XXXXXX")" || exit 2
+W="$(tmpdir)" || exit 2
 trap 'rm -rf "$W"' EXIT
 
 jira_run() {

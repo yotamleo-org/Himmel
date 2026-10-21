@@ -1666,7 +1666,8 @@
         },
         {
           "at": "j.verdict",
-          "caption": "NO-GO recorded for this head"
+          "caption": "NO-GO recorded for this head",
+          "state": "refused"
         },
         {
           "at": "l.commit",
@@ -1745,7 +1746,8 @@
         },
         {
           "at": "g.cap",
-          "caption": "A 4th full round exits 8"
+          "caption": "A 4th full round exits 8",
+          "state": "refused"
         },
         {
           "at": "c.grant",
@@ -1761,7 +1763,8 @@
         },
         {
           "at": "g.ci",
-          "caption": "check-ci exit 1"
+          "caption": "check-ci exit 1",
+          "state": "refused"
         },
         {
           "at": "l.cired",
@@ -1904,6 +1907,7 @@
       "table": "wake",
       "floor": 9,
       "mapped": {
+        "leg-event": "c.legevent",
         "underfilled": "e.wake.underfilled",
         "succession complete": "e.next.complete",
         "handover-budget": "e.next.fill"

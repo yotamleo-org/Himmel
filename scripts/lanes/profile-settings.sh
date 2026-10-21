@@ -81,6 +81,7 @@ if [ "$MODE" = mcp-config ]; then
     JSON="$MCP"
 fi
 TMP="$OUT.tmp.$$"
+# prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
 if ! printf '%s\n' "$JSON" > "$TMP" || ! mv -f "$TMP" "$OUT"; then
     rm -f "$TMP"
     echo "profile-settings: cannot write $OUT" >&2

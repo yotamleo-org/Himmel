@@ -35,7 +35,8 @@ Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost leg=t/cost legs=n 
 s_to_marker=m gross=G net=N` row per pair, then `MEAN n=<pairs> ...` (integer means; legs is the
 mean legs per handover to one decimal; s_to_marker over the pairs that have one) and a `legs_skipped_before_cutoff=<n>` line.
 
-Exit: 0 ok, 2 usage error (argparse), unreadable dir or fewer than two consoles (the message says which).
+Exit: 0 ok, 2 usage error (argparse, including an invalid --name-re), unreadable dir, fewer than two consoles
+or no measurable handover (the message says which).
 """
 
 import argparse
@@ -70,6 +71,14 @@ def iso_arg(s):
         return parse_ts(s)
     except ValueError:
         raise argparse.ArgumentTypeError("not an ISO 8601 timestamp: %r" % s)
+
+
+def regex_arg(s):
+    try:
+        re.compile(s)
+    except re.error as e:
+        raise argparse.ArgumentTypeError("not a valid regular expression: %r (%s)" % (s, e))
+    return s
 
 
 def turn_text(msg):
@@ -172,7 +181,7 @@ def handover(p, s, legs, legs_after):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", default=DEFAULT_DIR)
-    ap.add_argument("--name-re", default=r"-roadmap-console$")
+    ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-console$")
     ap.add_argument("--since", type=iso_arg)
     ap.add_argument("--legs-after", type=iso_arg)
     a = ap.parse_args(argv)
@@ -206,6 +215,10 @@ def main(argv=None):
             " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["legs"], h["p_after_s"],
             "-" if h["s_to_marker"] is None else h["s_to_marker"], round(gross), round(net)))
     n = len(rows)
+    if not n:
+        print("handover-cost: no measurable handover among %d consoles in %s "
+              "(each pair needs a console.sh next call and assistant turns)" % (len(consoles), d), file=sys.stderr)
+        return 2
     if n:
         mean = lambda xs: round(sum(xs) / n)
         marked = [r[0]["s_to_marker"] for r in rows if r[0]["s_to_marker"] is not None]
