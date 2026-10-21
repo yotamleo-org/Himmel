@@ -8,8 +8,9 @@
 Local speech for the agent: it speaks replies aloud, and it can listen.
 
 > **Platform.** The install steps and `push-to-talk.py` below were written for a
-> Windows desktop and have not been ported; the install, listening and
-> microphone commands are PowerShell, while the `speak.sh` workflows are bash.
+> Windows desktop and have not been ported; the install, daemon-launch,
+> listening and microphone commands are PowerShell, while the `speak.sh`
+> workflows are bash.
 > Windows is otherwise unsupported, so treat the Windows parts as a reference
 > for that one setup.
 

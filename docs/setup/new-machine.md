@@ -1848,9 +1848,9 @@ the rest of setup it **never writes `access.json` itself**. Full walkthrough:
 `scripts/uninstall.sh` is the symmetric teardown of setup +
 install-plugins. Run it through the wizard — `node scripts/himmelctl/bin.js
 uninstall` — which adds its own one confirm then execs the script below with
-`--yes`/`-Yes` (see §4); or invoke the script directly. **Destructive and
+`--yes` (see §4); or invoke the script directly. **Destructive and
 fail-closed**: interactive runs prompt; non-interactive runs abort without
-`--yes`/`-Yes`. Preview first:
+`--yes`. Preview first:
 
 ```bash
 bash scripts/uninstall.sh --dry-run
