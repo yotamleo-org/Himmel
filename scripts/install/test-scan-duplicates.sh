@@ -241,5 +241,21 @@ out=$(HOME="$FX_HOME" bash "$scan" "$FX_HOME" 2>&1; echo "$?" > "$work/rc")
 if printf '%s' "$out" | grep -q 'homedup.sh'; then ok "row 20: project equal to HOME still scans settings.local.json"
 else bad "row 20: settings.local.json skipped when project is HOME, got: $out"; fi
 
+# ── row 21: a false hooks / enabledPlugins value is not an empty object ─────
+fixture false-shape
+echo '{"hooks":false}' > "$FX_HOME/.claude/settings.json"
+echo '{"enabledPlugins":false}' > "$FX_PROJ/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'incomplete' && ! printf '%s' "$out" | grep -q 'scan-duplicates: clean'; then ok "row 21: false hooks and enabledPlugins read incomplete, not clean"
+else bad "row 21: false-valued keys reported clean, got: $out"; fi
+
+# ── row 22: a character class holding a pipe or paren stays one token ───────
+fixture class-matcher
+hook_settings PreToolUse '[)|]' 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/cls.sh"' > "$FX_HOME/.claude/settings.json"
+hook_settings PreToolUse Bash 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/cls.sh"' > "$FX_PROJ/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'scan-duplicates: clean' && ! printf '%s' "$out" | grep -qi 'partial'; then ok "row 22: character-class matcher does not abort the comparison"
+else bad "row 22: character-class matcher mishandled, got: $out"; fi
+
 echo "$(basename "$0"): $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

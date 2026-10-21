@@ -43,14 +43,14 @@ fi
 FILES="$FILES${NL}local|$PROJECT/.claude/settings.local.json"
 
 # shellcheck disable=SC2016
-HOOK_Q='def must($t): if type == $t then . else error("expected " + $t) end;
-  ((.hooks // {}) | must("object")) | to_entries[] | .key as $e
-  | ((.value | must("array")) | to_entries[]) as $g
-  | (($g.value.hooks // []) | must("array")) | to_entries[] | .key as $h | .value | select((.command // "") != "")
+HOOK_Q='def must($t; $d): if . == null then $d elif type == $t then . else error("expected " + $t) end;
+  (.hooks | must("object"; {})) | to_entries[] | .key as $e
+  | ((.value | must("array"; [])) | to_entries[]) as $g
+  | ($g.value.hooks | must("array"; [])) | to_entries[] | .key as $h | .value | select((.command // "") != "")
   | [$e, (($g.value.matcher // "") | if . == "" then "*" else . end), .command, $kind, $src,
      ($file + "#" + $e + "[" + ($g.key | tostring) + "." + ($h | tostring) + "]")] | @tsv'
 # shellcheck disable=SC2016
-PLUGIN_Q='((.enabledPlugins // {}) | if type == "object" then . else error("expected object") end) | to_entries[] | [.key, (.value | tostring), $scope, $file] | @tsv'
+PLUGIN_Q='(.enabledPlugins | if . == null then {} elif type == "object" then . else error("expected object") end) | to_entries[] | [.key, (.value | tostring), $scope, $file] | @tsv'
 
 hook_rows=""   # event, matcher, command, kind (S|P), source label, location
 plugin_rows="" # key, value, scope, file
@@ -131,13 +131,16 @@ NF {
   }
 }
 # Matchers are regexes. Split on top-level "|" only, so (Bash|Read) stays one token.
-function splittop(s, out,   n, i, c, d, cur) {
-  n = 0; d = 0; cur = ""
+function splittop(s, out,   n, i, c, d, cls, cur) {
+  n = 0; d = 0; cls = 0; cur = ""
   for (i = 1; i <= length(s); i++) {
     c = substr(s, i, 1)
-    if (c == "(" || c == "[") d++
-    else if ((c == ")" || c == "]") && d > 0) d--
-    if (c == "|" && d == 0) { out[++n] = cur; cur = "" } else cur = cur c
+    if (c == "\\") { cur = cur c substr(s, i + 1, 1); i++; continue }
+    if (cls) { if (c == "]") cls = 0 }
+    else if (c == "[") cls = 1
+    else if (c == "(") d++
+    else if (c == ")" && d > 0) d--
+    if (c == "|" && d == 0 && !cls) { out[++n] = cur; cur = "" } else cur = cur c
   }
   out[++n] = cur
   return n
@@ -193,7 +196,7 @@ END {
       if (nm < 2) continue
       printf "[hook] %s on %s is wired %d times in %s:\n", gsc[g], gev[g], nm, slabel[g, j]
       for (x = 1; x <= ne[g, j]; x++) if (x in mark) printf "  - %s (matcher %s)\n", eloc[g, j, x], emat[g, j, x]
-      print "  fix: keep one entry and delete the others."
+      print "  fix: keep one entry whose matcher covers every tool the others matched, and delete the rest."
       print ""
     }
   }
