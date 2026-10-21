@@ -149,4 +149,42 @@ check "DOC digest remains present and under 60 lines for a long document" 1 "$([
 missing_out="$(bash "$AZ" --doc "$DOC" --root "$ROOT" 2>&1)"
 check "missing Live state prints DOC unavailable and later sections still run" 2 "$(printf '%s\n' "$missing_out" | grep -cE '^DOC unavailable$|^== LOCK \(this document\)$')"
 
+# A console doc carries no status:, head: or lock: line in its Live state, so the
+# digest leaves those out instead of printing them as unavailable.
+CDOC="$ROOT/plain-console.md"
+# shellcheck disable=SC2016 # literal backticks
+printf '# console\n\n## Live state\nlegs: `N61:nonce:lock:7`\nqueue: none\n\n## Results\n' > "$CDOC"
+cdigest="$(bash "$AZ" --doc "$CDOC" --root "$ROOT" 2>&1 | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
+check "DOC digest of a console doc prints no unavailable field" "0" "$(printf '%s\n' "$cdigest" | grep -c 'unavailable')"
+check "DOC digest still prints the legs: and queue: lines" "2" "$(printf '%s\n' "$cdigest" | grep -cE '^(legs|queue): ')"
+
+# A flagged lock makes the sweep exit 20: its lines are the result, not a failure.
+SROOT="$WORK/sweeproot"; mkdir -p "$SROOT/.locks/queue/stale.lock"
+touch -t 202001010000 "$SROOT/.locks/queue/stale.lock"
+sout="$(bash "$AZ" --doc "$DOC" --root "$SROOT" 2>&1 | sed -n '/^== LOCKS/,/^== HEAD/p')"
+check "a flagged sweep lists the lock" "1" "$(printf '%s\n' "$sout" | grep -c 'status=CORRUPT')"
+check "a flagged sweep prints no unavailable line" "0" "$(printf '%s\n' "$sout" | grep -c '^unavailable$')"
+
+# PROCS prints one short row per leg process: pid, command and session name.
+exec -a "claude --settings /very/long/settings.json --append-system-prompt-file /very/long/brief.md -n DEMOAZ-N1-leg-2026-10-21 --model x" sleep 30 &
+fake=$!
+pout="$(bash "$AZ" --doc "$DOC" --root "$ROOT" --prefix DEMOAZ 2>&1 | sed -n '/^== PROCS/,/^== C29/p')"
+kill "$fake" 2>/dev/null; wait "$fake" 2>/dev/null
+check "PROCS prints pid, command and session name" "1" "$(printf '%s\n' "$pout" | grep -cx "$fake claude DEMOAZ-N1-leg-2026-10-21")"
+check "PROCS drops the argv" "0" "$(printf '%s\n' "$pout" | grep -c 'settings.json')"
+
+# --acquire records the release token in the doc's step 8 block; --lock-only
+# runs the LOCK section alone (the successor's one call once next pre-computed
+# the rest).
+TDOC="$ROOT/token-console.md"
+# shellcheck disable=SC2016 # literal backticks
+printf '# console\n\n   ```text\n   none yet — acquire your own at ACTION ZERO and record it here\n   ```\n\n## Live state\nlegs: none\n' > "$TDOC"
+tout="$(bash "$AZ" --doc "$TDOC" --root "$ROOT" --acquire --lock-only 2>&1)"
+# shellcheck disable=SC2016 # literal backticks
+ttok="$(printf '%s\n' "$tout" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+check "--lock-only prints the LOCK section alone" "== LOCK (this document)" "$(printf '%s\n' "$tout" | grep '^== ')"
+check "--acquire writes the token into the doc" "1" "$(grep -cx "   $ttok" "$TDOC")"
+check "--acquire leaves no none-yet placeholder" "0" "$(grep -c 'none yet — acquire your own' "$TDOC")"
+check "--acquire says the token was recorded" "1" "$(printf '%s\n' "$tout" | grep -c '^token recorded in the doc$')"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

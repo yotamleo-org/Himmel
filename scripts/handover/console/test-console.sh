@@ -65,6 +65,11 @@ export BRIDGE_ROOT="$tmp/bridge"
 printf '#!/usr/bin/env bash\necho "bank-preflight: leg=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
 printf '#!/usr/bin/env bash\necho "#5 [DEMO-1] stub pr (feat/x)"\n' > "$tmp/facts-prs.sh"
 export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs.sh"
+# `next` pre-computes ACTION ZERO through action-zero.sh. A stub keeps every case
+# fast and keeps the lock sweep's host names out of case 8's leak scan; case 90
+# runs the real script.
+printf '#!/usr/bin/env bash\necho "== STUB action-zero"\n' > "$tmp/az-stub.sh"
+export ACTION_ZERO_SCRIPT="$tmp/az-stub.sh"
 
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
@@ -2746,5 +2751,37 @@ paste88 "$(printf '%s\n' "$out89b" | sed 's/console-bus-exec\.sh/console-bus-exe
 check "89 wrapper missing: claude still starts" "$([ -s "$b88/seen" ] && echo started || echo not-started)" "started"
 check "89 wrapper missing: bus never called" "$([ -e "$b88/calls" ] && echo called || echo none)" "none"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus89gone/$s88a.md" "$(token_of "$out89b")" >/dev/null 2>&1
+
+# --- 90: next pre-computes ACTION ZERO into the successor doc: the probes run
+# with the successor's lock left free, the block leads with the verify-only
+# instruction, and the DOC digest (the doc's own Live state) is not repeated.
+printf '#!/usr/bin/env bash\necho "bank ok 9%%"\necho PROCEED\n' > "$tmp/az-bank.sh"
+printf '#!/usr/bin/env bash\necho "OK   C29-child-session: none"\n' > "$tmp/az-doctor.sh"
+printf '#!/usr/bin/env bash\necho partial\nexit 3\n' > "$tmp/az-fail.sh"
+out90a="$(console new --bucket az90)"
+token90a="$(token_of "$out90a")"
+doc90A="$root/tester/az90/DEMO-nextleg-${today}A-console.md"
+doc90B="$root/tester/az90/DEMO-nextleg-${today}B-console.md"
+ACTION_ZERO_SCRIPT="$fixture_repo/scripts/handover/console-kit/action-zero.sh" ACTION_ZERO_BANK="$tmp/az-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az-doctor.sh" \
+    console next --bucket az90 >/dev/null
+block90="$(awk '/^### Pre-computed by console.sh next/ {s = 1} s && /^## / {exit} s' "$doc90B")"
+check "90 next writes the pre-computed block" "$(printf '%s\n' "$block90" | grep -c '^### Pre-computed by console.sh next at ')" "1"
+check "90 the block tells the successor to verify, not re-run" "$(printf '%s\n' "$block90" | grep -c 'verify these results, do not re-run them')" "1"
+check "90 the block carries every probe" "$(printf '%s\n' "$block90" | grep -cE '^== (LOCKS|HEAD|BANK|PROCS|C29|LOAD|LOCK)( |$)')" "7"
+check "90 the block carries the bank result" "$(printf '%s\n' "$block90" | grep -c '^bank ok 9%$')" "1"
+check "90 the block reads the successor's lock as free" "$(printf '%s\n' "$block90" | sed -n '/^== LOCK (this document)/,$p' | grep -cx 'free')" "1"
+check "90 the block omits the DOC digest" "$(printf '%s\n' "$block90" | grep -c '^== DOC')" "0"
+check "90 next leaves the successor's lock free" "$(HANDOVER_DIR="$root" bash "$QL" status "$doc90B" 2>&1 | head -1)" "free"
+check "90 the block sits inside ACTION ZERO, before the Live state" \
+    "$(awk '/^## ACTION ZERO/ {a = NR} /^### Pre-computed by console.sh next/ {b = NR} $0 == "## Live state" {c = NR} END {print (a && a < b && b < c) ? "yes" : "no"}' "$doc90B")" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$doc90A" "$token90a" >/dev/null 2>&1
+out90c="$(console new --bucket az90fail)"
+token90c="$(token_of "$out90c")"
+rc90=0
+ACTION_ZERO_SCRIPT="$tmp/az-fail.sh" console next --bucket az90fail >/dev/null 2>&1 || rc90=$?
+check "90 a failing action-zero does not stop next" "$rc90" "0"
+check "90 a failing action-zero marks the block unavailable" \
+    "$(grep -c '^unavailable (action-zero.sh exited 3): run it yourself$' "$root/tester/az90fail/DEMO-nextleg-${today}B-console.md")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90fail/DEMO-nextleg-${today}A-console.md" "$token90c" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

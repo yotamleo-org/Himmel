@@ -9,6 +9,7 @@
 #
 # --digest is read-only, needs no manifest, and prints status, head, legs,
 # queue, lock and open ruling titles (at most 55 lines, never ruling bodies).
+# status, head and lock print only when present: a console doc carries none.
 # Open rulings are ### headings or unchecked top-level checklist entries.
 #
 # An entry is `<label>:<nonce>:<lock-token>:<pid>` (console-template.md). Where
@@ -102,11 +103,11 @@ block_awk='
     END {
         if (digest) {
             if (!seen) exit 1
-            print (status ? status : "status: unavailable")
-            print (head ? head : "head: unavailable")
+            if (status) print status
+            if (head) print head
             print (legs ? legs : "legs: unavailable")
             print (queue ? queue : "queue: unavailable")
-            print (lock ? lock : "lock: unavailable")
+            if (lock) print lock
             print "open rulings: " count + 0
             for (i = 1; i <= count && i <= 48; i++) print "- " titles[i]
             if (count > 48) print "additional ruling titles omitted: " count - 48
