@@ -140,7 +140,8 @@ named in `feedback-rules.json`, over that eval's newest `ok` row:
 2. **Change.** When that row is not yet the baseline of a change, the first
    rule with a metric worse than its threshold raises one `open` change record
    on the worst such metric. The change is a `learning` (a memory-inbox
-   candidate line, written when `--inbox` is given), a `routing` change or a
+   candidate line, written once when `--inbox` is given; a failed write is
+   retried on the next run with `--inbox`), a `routing` change or a
    `tool-ruling` (keep, slim or retire), aimed at the rule's `target`.
 
 Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else
@@ -148,7 +149,7 @@ Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else
 (`leg-digest/failure_review.py`) runs this step after the friction
 subsection and shows what it wrote under `### Eval feedback`. Its friction
 run passes `--record`, so `friction.py` appends one `eval: friction` row per
-day (refusals by verdict, `over_deny_share`, `over_deny:<source>/<class>`).
+run (refusals by verdict, `over_deny_share`, `over_deny:<source>/<class>`).
 
 ## lane-quality: repeats and judge calibration
 

@@ -9,16 +9,18 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
   2. CHANGE: when that row is not yet the baseline of any change, the first rule (file order) with a
      metric worse than its threshold and no open change of the same confighash raises ONE "open" change
      record for the worst such metric. A "learning" change also appends one candidate line to the failure-loop memory inbox
-     (the HIMMEL-4670 loop's own learnings queue) when an inbox is given.
+     (the HIMMEL-4670 loop's own learnings queue) when an inbox is given, once per change: a failed write is
+     marked with an "inbox" record (inbox_written false) and retried on the next run given an inbox.
 
   Path: $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/eval-changes.jsonl.
 
 RULE  {eval, metric (fnmatch pattern), threshold, better "lower"|"higher", absent (value of a metric the
       row lacks, or null), change "learning"|"routing"|"tool-ruling", target (inbox topic, route or tool)}
 CHANGE ROW (v 1): v, ts, host, source, kind "eval-change", id "<baseline run_id>:<metric>", eval, metric,
-  status "open" | "measured", then
+  status "open" | "measured" | "inbox", then
   open      value, threshold, better, absent, change, target, baseline_run_id, confighash
   measured  before, after, delta, verdict, after_run_id
+  inbox     inbox_written (false: the inbox line failed and is due again; true: a retry wrote it)
 
   eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P]
 Prints one line per record written. Exit 0, 2 on unreadable rules.
@@ -99,6 +101,18 @@ def inbox_line(c):
                                             c["target"]))
 
 
+def write_inbox(inbox, line):
+    """Append one line to the memory inbox; False when it cannot be written."""
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(inbox)), exist_ok=True)
+        with open(inbox, "a", encoding="utf-8") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.write(line + "\n")
+        return True
+    except OSError:
+        return False
+
+
 def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
     """Measure, then change, for each eval; returns the records written."""
     rules = load_rules(rules)
@@ -112,6 +126,13 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
         recs = read_changes(path)
         measured = {c["id"] for c in recs if c.get("status") == "measured"}
         opened = [c for c in recs if c.get("status") == "open"]
+        if inbox:
+            marks = {c["id"]: c["inbox_written"] for c in recs if c.get("status") == "inbox"}
+            for c in opened:
+                line = inbox_line(c) if marks.get(c["id"]) is False else None
+                if line and write_inbox(inbox, line):
+                    append(path, envelope(id=c["id"], eval=c["eval"], metric=c["metric"], status="inbox",
+                                          inbox_written=True))
         for ev in evals or sorted({r["eval"] for r in rules}):
             series = [r for r in runs if r["eval"] == ev]
             if not series:
@@ -150,11 +171,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 opened.append(c)
                 written.append(c)
                 line = inbox_line(c) if inbox and rule["change"] == "learning" else None
-                if line:
-                    os.makedirs(os.path.dirname(os.path.abspath(inbox)), exist_ok=True)
-                    with open(inbox, "a", encoding="utf-8") as fh:
-                        fcntl.flock(fh, fcntl.LOCK_EX)
-                        fh.write(line + "\n")
+                if line and not write_inbox(inbox, line):
+                    append(path, envelope(id=c["id"], eval=ev, metric=metric, status="inbox", inbox_written=False))
                 break
     return written
 

@@ -119,6 +119,20 @@ ok "threshold row" python3 -I "$RUNS" append --ledger "$L4" --eval friction --so
 ok "threshold feedback" python3 -I "$FB" run --ledger "$L4" --changes "$C4" --rules "$RULES"
 eq "a result at the threshold makes no change record" "$(rows "$C4")" "0"
 
+# --- an inbox write that fails after the ledger write is marked, then retried once on the next run ------
+L5="$TMP/runs5.jsonl"; C5="$TMP/changes5.jsonl"; IN5="$TMP/inbox5.md"
+ok "inbox-fail row" python3 -I "$RUNS" append --ledger "$L5" --eval friction --source s \
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":2,\"$CLS\":2}"
+mkdir -p "$IN5"
+ok "failed inbox write" python3 -I "$FB" run --ledger "$L5" --changes "$C5" --rules "$RULES" --inbox "$IN5"
+eq "failed inbox write: the change is marked unwritten" "$(field "$C5" 1 inbox_written)" "false"
+rmdir "$IN5"
+ok "inbox retry" python3 -I "$FB" run --ledger "$L5" --changes "$C5" --rules "$RULES" --inbox "$IN5"
+eq "inbox retry: the next run writes the line once" "$(rows "$IN5")" "1"
+eq "inbox retry: the change is marked written" "$(field "$C5" 2 inbox_written)" "true"
+ok "after retry" python3 -I "$FB" run --ledger "$L5" --changes "$C5" --rules "$RULES" --inbox "$IN5"
+eq "a written change is not retried" "$(rows "$IN5")" "1"
+
 # --- the daily failure review runs the feedback step and shows it ------------------------------------
 D="$TMP/review"; mkdir -p "$D"
 : >"$D/ledger.jsonl"
@@ -132,6 +146,20 @@ digest="$(cat "$D"/out/failure-review-*.md 2>/dev/null)"
 has "failure review: eval feedback subsection" "$digest" "### Eval feedback"
 has "failure review: names the new change" "$digest" "$CLS"
 eq "failure review: the change record is written" "$(rows "$D/changes.jsonl")" "1"
+eq "failure review dry run: no memory-inbox line" "$(rows "$D/inbox.md")" "0"
+
+# --- only a --live review writes the inbox line, once per opened change ---------------------------------
+E="$TMP/review-live"; mkdir -p "$E"
+: >"$E/ledger.jsonl"
+ok "live review row" python3 -I "$RUNS" append --ledger "$E/runs.jsonl" --eval friction --source s \
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":500,\"$CLS\":500}"
+for i in 1 2; do
+  HIMMEL_EVAL_RUNS_LEDGER="$E/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$E/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
+    JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$E/ledger.jsonl" --state "$E/state.json" --log "$E/log.jsonl" \
+    --inbox "$E/inbox.md" --out-dir "$E/out" --now 2026-10-07T12:00:00Z --notify-cmd true --live >"$E/run$i.out" 2>&1
+  eq "live review $i: exit 0" "$?" "0"
+  eq "live review $i: exactly one memory-inbox line" "$(rows "$E/inbox.md")" "1"
+done
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
