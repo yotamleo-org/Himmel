@@ -226,6 +226,15 @@ if [ "$TRUST_SET" -eq 1 ] && ! go_trust_id_ok "$TRUST"; then
     echo "go: --trust-reviewed needs a reviewer id of 1-128 chars from [A-Za-z0-9._:-] (got '$TRUST')" >&2
     exit 2
 fi
+# go-pr-<n> is the qid of a persisted console GO below, never a judge's verdict.
+if [ "$TRUST_SET" -eq 1 ]; then
+    case "$TRUST" in
+        go-pr-*)
+            usage
+            echo "go: --trust-reviewed cannot name a go-pr-* record: that namespace is a persisted console GO, not a judge verdict (got '$TRUST')" >&2
+            exit 2 ;;
+    esac
+fi
 if console_leg; then
     echo "go: refusing - this is a console-spawned leg (HIMMEL_CONSOLE_LEG is set); only the console writes a GO. Send READY to your console and wait for GO." >&2
     exit 3

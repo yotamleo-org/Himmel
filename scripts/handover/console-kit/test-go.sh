@@ -647,6 +647,11 @@ check "22: a repeated --model -> exit 2" "$rc" "2"
 rc=0; HANDOVER_DIR="$ROOT22F" bash "$SCRIPT" --effort high --effort low 78 "$SHA" >/dev/null 2>&1 || rc=$?
 check "22: a repeated --effort -> exit 2" "$rc" "2"
 check "22: a repeated option writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA" && echo yes || echo no)" "no"
+# a persisted console GO (qid go-pr-<n>) is not a judge: --trust-reviewed refuses that namespace
+rc=0; out="$(HANDOVER_DIR="$ROOT22F" bash "$SCRIPT" --trust-reviewed go-pr-78 78 "$SHA" 2>&1)" || rc=$?
+check "22: --trust-reviewed go-pr-78 -> exit 2" "$rc" "2"
+contains "22: the refusal names the reserved namespace" "$out" "go-pr-"
+check "22: the reserved qid writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA" && echo yes || echo no)" "no"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
