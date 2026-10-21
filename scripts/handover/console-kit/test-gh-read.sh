@@ -114,6 +114,8 @@ check "B4 ready-check's first read used the read token" "$READTOK" "$(sed -n '1p
 GH_READ_ENV_ROOT="$W/root" CHECK_CI_SLEEP_CMD=: GH_BUDGET_PREFLIGHT=0 bash "$REPO/scripts/check-ci.sh" 99 --max-wait 5 --settle 0 >/dev/null 2>&1
 check "B5 check-ci's reads used the read token" "" "$(grep -v "^tok=$READTOK " "$GHLOG")"
 check "B5b check-ci made at least one read (B5 is not vacuous)" "yes" "$([ "$(grep -c . "$GHLOG")" -gt 0 ] && echo yes)"
+# the watcher stays an exec'd gh so check-ci's recorded pid is the real gh, never a wrapper
+check "B5c check-ci's two --watch calls exec gh directly" "2" "$(grep -c 'exec gh pr checks .*--watch' "$REPO/scripts/check-ci.sh")"
 # go.sh: both of its reads (fork PR view, repo name) go through the helper variable
 check "B6 go.sh reads via the helper" "2" "$(grep -c '"\$GH_READ" \(pr\|repo\) view' "$REPO/scripts/handover/console-kit/go.sh")"
 

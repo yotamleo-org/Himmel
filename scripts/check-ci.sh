@@ -1023,8 +1023,8 @@ watch_round() {
                 exec env CHECK_CI_WATCH_INTERVAL="$WATCH_INTERVAL" CHECK_CI_WATCH_INTERVAL_MAX="$WATCH_INTERVAL_MAX" \
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
-            elif [ -n "$selector" ]; then exec bash "$_GHR_HERE/gh-read.sh" pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
-            else exec bash "$_GHR_HERE/gh-read.sh" pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+            elif [ -n "$selector" ]; then exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+            else exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
         gh_pid=$!
