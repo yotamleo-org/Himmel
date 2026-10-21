@@ -2353,7 +2353,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   #   GRAPHIFY_SECONDS_PER_CHUNK  measured wall per claude-cli chunk (default 130)
   #   GRAPHIFY_MAX_CHUNKS_PER_RUN override; default deadline / seconds-per-chunk, 0 = no cap
   #   GRAPHIFY_HOLLOW_RETRY_MAX   hollow retries of one chunk before it is failed (default 5);
-  #                               the run stops at this times the concurrent API workers
+  #                               the run stops at this times the concurrent API workers, or after
+  #                               this many chunks graphify gave up on with none finishing cleanly
   # Exit 4 = stopped at the chunk cap (resumable); exit 5 = a chunk kept coming
   # back hollow (recorded in .graphify_failed_chunks).
   # ponytail: graphify exposes no per-chunk skip, so a persistently hollow chunk
@@ -2406,17 +2407,25 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # graphify ($1 = its pid) at the chunk cap or after too many hollow retries,
   # recording why in $_STOP_FILE. The last chunk of the run never trips the cap.
   _extract_monitor() {
-    local gpid="$1" line done_n=0 hollow_n=0 k n
+    local gpid="$1" line done_n=0 hollow_n=0 giveup_n=0 pending_g=0 k n
     while IFS= read -r line; do
       printf '%s\n' "$line" >&2
       [ -s "$_STOP_FILE" ] && continue
       case "$line" in
         '[graphify extract] chunk '*' done'*)
           done_n=$((done_n + 1)); hollow_n=0
+          # A chunk graphify gave up on still reports done; that done is not progress.
+          if [ "$pending_g" -gt 0 ]; then pending_g=$((pending_g - 1)); else giveup_n=0; fi
           k="${line#'[graphify extract] chunk '}"; n="${k#*/}"; k="${k%%/*}"; n="${n%% *}"
           case "$k$n" in ''|*[!0-9]*) continue ;; esac
           if [ "$GRAPHIFY_MAX_CHUNKS_PER_RUN" -gt 0 ] && [ "$done_n" -ge "$GRAPHIFY_MAX_CHUNKS_PER_RUN" ] && [ "$k" -lt "$n" ]; then
             printf 'cap %s\n' "$done_n" > "$_STOP_FILE"
+            kill -TERM "$gpid" 2>/dev/null || true
+          fi ;;
+        '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
+          giveup_n=$((giveup_n + 1)); pending_g=$((pending_g + 1))
+          if [ "$giveup_n" -ge "$GRAPHIFY_HOLLOW_RETRY_MAX" ]; then
+            printf 'hollow %s %s\n' "$done_n" "$giveup_n" > "$_STOP_FILE"
             kill -TERM "$gpid" 2>/dev/null || true
           fi ;;
         *'after a hollow response'*)

@@ -82,6 +82,9 @@ for i in "${todo[@]}"; do
       echo "[graphify] retrying the same chunk of 38 in 0s after a hollow response" >&2
     done
   fi
+  if [ -n "${STUB_GIVEUP_ALL:-}" ] || [ "${STUB_GIVEUP_AT:-0}" = "$i" ]; then
+    echo "[graphify] chunk of 38 still hollow after 3 attempt(s) — giving up on this chunk. Its files are marked for re-extraction on the next run." >&2
+  fi
   printf '{}' > "$target/graphify-out/cache/c$i.json"
   k=$((k+1))
   echo "[graphify extract] chunk $k/$m done" >&2
@@ -211,6 +214,19 @@ out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_C
 # read-sink-ok: test-owned stub count file under the suite tmpdir
 n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
 [ "$n" -ge 6 ] && [ "$n" -le 7 ] && pass "R9 it stopped after $n lines (limit 3 x concurrency 2)" || fail "R9 should stop at 6 lines (7 at most), saw $n"
+
+# --- R10: graphify gives up on a chunk that stays hollow after its own retries,
+# marks it partial and carries on, so a completion line can still follow. A
+# give-up is not progress: an all-give-up run stops at exit 5, while one give-up
+# among real completions does not. ---
+echo "R10: a give-up on a hollow chunk counts as hollow, never as progress"
+reset
+out=$( STUB_CHUNKS=12 STUB_GIVEUP_ALL=1 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 5 ] && pass "R10 an all-give-up run exits 5" || fail "R10 all-give-up should exit 5 (got $rc): $out"
+[ ! -e "$OUTD/cache/c12.json" ] && pass "R10 the run stopped before the last chunk" || fail "R10 the all-give-up run went through every chunk"
+reset
+out=$( STUB_CHUNKS=4 STUB_GIVEUP_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && pass "R10 a single give-up among real completions does not stop the run" || fail "R10 a single give-up should exit 0 (got $rc): $out"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
