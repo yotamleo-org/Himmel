@@ -820,14 +820,21 @@ const crLoopSection = (() => {
     let deferred = null;
     try {
         const ledger = process.env.CR_LEDGER || join(primaryRoot(), '.git', 'cr-critic-scores.jsonl');
-        const heads = new Map(), pre = new Map(), deferrals = new Set();
+        const heads = new Map(), pre = new Map(), deferrals = new Set(), rows = [], owner = new Map();
         for (const line of readFileSync(ledger, 'utf8').split('\n')) {
-            if (!line.includes('"kind":"score"') && !line.includes('"kind":"preflight"') && !line.includes('"deferred_to"')) continue;
+            if (!line.includes('"kind":"score"') && !line.includes('"kind":"preflight"') && !line.includes('"deferred_to"') && !line.includes('"kind":"finding"')) continue;
             let r;
             try { r = JSON.parse(line); } catch { continue; }
-            if (!r || !branches.has(r.branch)) continue;
-            if (r.kind === 'score') (heads.get(r.branch) || heads.set(r.branch, new Set()).get(r.branch)).add(r.head);
-            else if (r.kind === 'preflight') pre.set(r.branch, Array.isArray(r.hits) ? r.hits.length : 0);
+            if (!r) continue;
+            if (r.kind === 'finding') owner.set(`${r.head}|${r.finding_id}`, r.branch);
+            rows.push(r);
+        }
+        for (const r of rows) {
+            // an amend row can carry an empty branch; its finding row names the branch
+            const branch = r.branch || (r.kind === 'amend' ? owner.get(`${r.target_head}|${r.finding_id}`) : r.branch);
+            if (!branches.has(branch)) continue;
+            if (r.kind === 'score') (heads.get(branch) || heads.set(branch, new Set()).get(branch)).add(r.head);
+            else if (r.kind === 'preflight') pre.set(branch, Array.isArray(r.hits) ? r.hits.length : 0);
             const to = r.deferred_to || (r.set && r.set.deferred_to);
             if (typeof to === 'string' && to) deferrals.add(to);
         }

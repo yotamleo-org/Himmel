@@ -1167,16 +1167,19 @@ CL_DEF="$CL/ledger-deferred.jsonl"
     printf '{"kind":"finding","ts":"%s","branch":"feat/b","head":"h4","finding_id":"f5","verdict":"deferred","deferred_to":"HIMMEL-9107"}\n' "$(ago 1)"
     printf '{"kind":"finding","ts":"%s","branch":"feat/b","head":"h4","finding_id":"f6","verdict":"deferred","deferred_to":"HIMMEL-9108"}\n' "$(ago 1)"
     printf '{"kind":"finding","ts":"%s","branch":"feat/x","head":"hx","finding_id":"f4","verdict":"deferred","deferred_to":"HIMMEL-9102"}\n' "$(ago 1)"
+    printf '{"kind":"amend","ts":"%s","branch":"","target_head":"h5","finding_id":"f7","set":{"verdict":"deferred","deferred_to":"HIMMEL-9301"}}\n' "$(ago 1)"
+    printf '{"kind":"finding","ts":"%s","branch":"feat/a","head":"h5","finding_id":"f7","verdict":"open"}\n' "$(ago 1)"
 } > "$CL_DEF"
 mirror_issue HIMMEL-9107 '["theme"]' '["v1.1.3"]' 'To Do' 2
 mirror_issue HIMMEL-9108 '["theme"]' '["v1.1.3"]' 'To Do' 2
+mirror_issue HIMMEL-9301 '["theme"]' '["v1.1.3"]' 'To Do' 2
 CL_LEDGER="$CL_DEF" crrun >/dev/null; rc=$?
 contains 'cr-loop deferred-keys run: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 chtml="$(cat "$CL/board.html" 2>/dev/null)"
-jcheck 'cr-loop --json: residuals per merged PR count distinct deferred_to keys created in the window (4 keys, 2 PRs), labelled or not' 'M.trends.cr_loop.residual.per_merged_pr === 2'
-jcheck 'cr-loop --json: labelled share is the residual-labelled part of those keys (1 of 4)' 'M.trends.cr_loop.residual.labelled_share === 0.25'
-contains 'cr-loop html: the labelled inflow is a second figure' "$chtml" 'labelled 25 %'
+jcheck 'cr-loop --json: residuals per merged PR count distinct deferred_to keys created in the window (5 keys, 2 PRs; one recorded only by an amend row with an empty branch), labelled or not' 'M.trends.cr_loop.residual.per_merged_pr === 2.5'
+jcheck 'cr-loop --json: labelled share is the residual-labelled part of those keys (1 of 5)' 'M.trends.cr_loop.residual.labelled_share === 0.2'
+contains 'cr-loop html: the labelled inflow is a second figure' "$chtml" 'labelled 20 %'
 
 # --- Cap over-run is a --changed signal: a version crossing the soft cap
 # flips CHANGED although tick's fingerprint is unchanged (the stub's is constant).
