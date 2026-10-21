@@ -28,13 +28,22 @@ describe('handoverRoot (HIMMEL-6917)', () => {
   });
 
   it('falls back to the HANDOVER_DIR line of the .env when the env is unset', () => {
-    writeFileSync(dotenv, '# comment\nJIRA_PROJECT_KEY=HIMMEL\nHANDOVER_DIR=/from/dotenv\n');
-    expect(handoverRoot({}, dotenv)).toBe('/from/dotenv');
+    const root = join(dir, 'from-dotenv');
+    mkdirSync(root);
+    writeFileSync(dotenv, `# comment\nJIRA_PROJECT_KEY=HIMMEL\nHANDOVER_DIR=${root}\n`);
+    expect(handoverRoot({}, dotenv)).toBe(root);
+  });
+
+  it('a HANDOVER_DIR from the .env that is not a directory throws', () => {
+    writeFileSync(dotenv, 'HANDOVER_DIR=/missing/from/dotenv\n');
+    expect(() => handoverRoot({}, dotenv)).toThrow(/is not a directory/);
   });
 
   it('strips surrounding quotes from the .env value', () => {
-    writeFileSync(dotenv, 'HANDOVER_DIR="/quoted/dotenv"\n');
-    expect(handoverRoot({}, dotenv)).toBe('/quoted/dotenv');
+    const root = join(dir, 'quoted');
+    mkdirSync(root);
+    writeFileSync(dotenv, `HANDOVER_DIR="${root}"\n`);
+    expect(handoverRoot({}, dotenv)).toBe(root);
   });
 
   it('an empty HANDOVER_DIR line in the .env does not win over the default', () => {

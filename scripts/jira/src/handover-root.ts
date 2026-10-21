@@ -15,7 +15,10 @@ export function handoverRoot(
     return explicit;
   }
   const fromFile = readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), 'HANDOVER_DIR');
-  if (fromFile) return fromFile;
+  if (fromFile) {
+    if (!isDirectory(fromFile)) throw new Error(`handover-path: HANDOVER_DIR='${fromFile}' is not a directory`);
+    return fromFile;
+  }
   return join(primaryCheckout(), 'handovers');
 }
 
