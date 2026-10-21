@@ -88,6 +88,26 @@ describe('release reducer (HIMMEL-6796)', () => {
     expect(back.leaks.unauthorized).toEqual([]);
   });
 
+  it('a newer baseline generation is the latest word on the keys it lists', () => {
+    const moved = rule('R-1', 'K-1', 'move', 'v1', null, { verb: 'REVERSION', outcome: 'MOVE', supersedes: ['baseline-v1-g1'] });
+    const g2: Baseline = { ...base, gen: 2, keys: ['K-1', 'K-2'], ts: '2026-10-21T11:00:00.000Z' };
+    const s = reduce(input({
+      baselines: [g2], rulingRows: [moved, rule('R-2', 'K-2', 'add', null, 'v1')],
+      issueList: [issue('K-1', ['v1']), issue('K-2', ['v1'])],
+    }));
+    expect(s.integrity).toEqual([]);
+    expect(recordOf(s, 'K-1', 'v1')).toMatchObject({ placement: 'in', obligation: 'baseline', ruling: 'baseline-v1-g2' });
+    expect(recordOf(s, 'K-2', 'v1')).toMatchObject({ placement: 'in', obligation: 'baseline', ruling: 'baseline-v1-g2' });
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('a failed apply readback is not counted as a ruling in the trend', () => {
+    const ev = (readback: 'ok' | 'mismatch'): EventRow =>
+      ({ ts: TS, kind: 'ruled', key: 'K-1', from: null, to: 'v1', ruling: 'R-1', readback });
+    const s = reduce(input({ eventRows: [ev('mismatch'), ev('mismatch'), ev('ok')] }));
+    expect(s.trend['2026-10-21']).toEqual({ ruled: 1 });
+  });
+
   it('moving one baseline key out leaves the rest of the baseline in', () => {
     const moved = rule('R-1', 'K-1', 'move', 'v1', null, { verb: 'REVERSION', outcome: 'MOVE', supersedes: ['baseline-v1-g1'] });
     const s = reduce(input({

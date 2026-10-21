@@ -93,9 +93,11 @@ export function registerRelease(program: Command): void {
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
     .action((release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
+      const evidence: unknown = JSON.parse(o.evidence);
+      if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
       const r = releaseRequest(ctxFor(release), {
         verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why,
-        evidence: JSON.parse(o.evidence) as Record<string, unknown>, from: 'console',
+        evidence: evidence as Record<string, unknown>, from: 'console',
       });
       console.log(`REQ ${r.req}`);
     });
@@ -123,6 +125,7 @@ export function registerRelease(program: Command): void {
     .option('--authority <kind>', 'rm | operator | import', 'rm')
     .option('--ref <id>', 'The O- record (operator) or source (import)')
     .action((release: string, o: Record<string, string | undefined>) => {
+      if (!['rm', 'operator', 'import'].includes(o.authority as string)) throw new Error('release rule: --authority is rm, operator or import');
       const reason = o.reasonFile ? readBodyFile(o.reasonFile, '--reason-file').trim() : o.reason ?? '';
       const r = rule(ctxFor(release), {
         req: o.req as string, outcome: o.outcome as string, op: op(o.op as string, o.from, o.to), sector: o.sector as string,

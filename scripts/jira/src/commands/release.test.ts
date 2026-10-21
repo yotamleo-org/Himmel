@@ -48,6 +48,20 @@ describe('jira release (HIMMEL-6796)', () => {
     expect(s.burndown.v1.baseline).toBe(2);
   });
 
+  it('refuses request evidence that is not a JSON object', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
+    for (const bad of ['[1]', 'null', '3']) {
+      await expect(run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'w', '--evidence', bad))
+        .rejects.toThrow(/--evidence is a JSON object/);
+    }
+  });
+
+  it('refuses a ruling authority outside rm, operator and import', async () => {
+    await expect(run('rule', 'R1', '--req', 'Q-R1-0001', '--outcome', 'ADMIT', '--op', 'add', '--to', 'v1',
+      '--sector', 's', '--ground', 'regression', '--authority', 'RM')).rejects.toThrow(/--authority is rm, operator or import/);
+  });
+
   it('refuses an operator act from a console-spawned leg', async () => {
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
     await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt')))

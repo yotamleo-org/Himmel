@@ -630,6 +630,10 @@ contains 'M4: every version of the release has a line' "$rhtml" 'data-burndown="
 contains 'a leak is listed by key and version' "$rhtml" 'data-leak="HIMMEL-9201@v1"'
 contains 'M1 trend: one row per day, by kind' "$rhtml" 'data-trend="2026-10-21">2026-10-21: out-of-band 1 · ruled 1'
 contains 'the release fingerprint meta is present' "$rhtml" 'console-board-versions-fp'
+RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed >/dev/null
+same 'an unchanged release state: --changed reports UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed)" "UNCHANGED $W/r-chg.html"
+sed 's/"out-of-band":1/"out-of-band":2/' "$W/rm-state.json" > "$W/rm-state-trend.json"
+same 'a trend-only change: --changed reports CHANGED' "$(RM_STATE="$W/rm-state-trend.json" runr --out "$W/r-chg.html" --changed)" "CHANGED $W/r-chg.html"
 RM_STATE="$W/rm-state.json" RM_RC=3 runr --out "$W/r-unknown.html" >/dev/null; rc=$?
 contains 'a not-OK state (exit 3) still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a not-OK state still shows its JSON' "$(cat "$W/r-unknown.html")" 'data-rm-release="R1" data-status="OK"'

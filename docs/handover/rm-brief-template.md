@@ -1,7 +1,10 @@
 # Release-manager brief template
 
-The document the chief writes to arm a **release-manager (RM) session**
-(`headed-arm-leg.sh --profile release-manager`) for one release. File it in
+The document the chief writes to arm a **release-manager (RM) session** for
+one release. The `release-manager` launch profile is not shipped yet, so arm
+the RM with plain `headed-arm-leg.sh` from a shell that exports
+`HIMMEL_RELEASE_MANAGER=1`. The session inherits it, and `release lease
+acquire` refuses without it. File it in
 the chief's bucket as `<PREFIX>-rm-<R>-<date>.md`, filled by hand from the
 block below. The RM is a worker kind: it holds the queue lock on this
 document **and** the release lease, rules placements with the

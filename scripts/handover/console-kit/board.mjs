@@ -397,7 +397,7 @@ const rmState = (() => {
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
 const releaseSig = releases.map((r) => (r.unavailable ? `${r.version}=unavailable`
     : `${r.version}=${r.done}/${r.total}:${LEG_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
-    .concat(rmState ? [`rm:${rmState.unavailable ? 'unavailable' : JSON.stringify([rmState.status, rmState.burndown, rmState.leaks])}`] : []).join(',');
+    .concat(rmState ? [`rm:${rmState.unavailable ? 'unavailable' : JSON.stringify([rmState.status, rmState.burndown, rmState.leaks, rmState.trend])}`] : []).join(',');
 const ciOf = (pr) => {
     const rollup = (pr && pr.statusCheckRollup) || [];
     // No checks reported yet is not a green build: it reads pending.

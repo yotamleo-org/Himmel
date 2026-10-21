@@ -155,6 +155,7 @@ interface VersionCtx {
   v: string;
   baseKeys: Set<string>;
   bId: string | null;
+  bTs: number;
   staleKeys: Set<string>;
   integrity: string[];
 }
@@ -189,7 +190,10 @@ function recordFor(c: VersionCtx, key: string): { rec: KeyRecord; isIn: boolean;
   const { inp, p, v } = c;
   const issue = inp.issues?.get(key);
   const gone = p.superseded.get(key) ?? new Set<string>();
-  const mine = [...p.effective.values()].filter((r) => r.key === key && effectOn(r.op, v));
+  // The newest baseline is the operator's latest word on the keys it lists: a
+  // ruling on such a key that predates it no longer counts.
+  const mine = [...p.effective.values()].filter((r) => r.key === key && effectOn(r.op, v)
+    && !(c.baseKeys.has(key) && Date.parse(r.ts) < c.bTs));
   const live: Live[] = mine
     .filter((r) => !gone.has(r.id))
     .map((r) => ({ id: r.id, effect: effectOn(r.op, v) as 'in' | 'out', r }));
@@ -236,7 +240,7 @@ function tally(c: VersionCtx, out: { rec: KeyRecord; isIn: boolean; everOut: boo
 function trendOf(decl: Declaration, events: EventRow[]): ReleaseState['trend'] {
   const trend: ReleaseState['trend'] = {};
   for (const e of events) {
-    if (!decl.versions.some((v) => v === e.from || v === e.to)) continue;
+    if (!decl.versions.some((v) => v === e.from || v === e.to) || e.readback === 'mismatch') continue;
     const day = e.ts.slice(0, 10);
     trend[day] ??= {};
     trend[day][e.kind] = (trend[day][e.kind] ?? 0) + 1;
@@ -257,7 +261,7 @@ export function reduce(inp: ReduceInput): ReleaseState {
   const burndown: Record<string, Burndown> = {};
   for (const v of decl.versions) {
     const base = inp.baselines.find((b) => b.version === v);
-    const c: VersionCtx = { inp, p, v, baseKeys: new Set(base?.keys ?? []), bId: base ? baselineId(base) : null, staleKeys, integrity };
+    const c: VersionCtx = { inp, p, v, baseKeys: new Set(base?.keys ?? []), bId: base ? baselineId(base) : null, bTs: base ? Date.parse(base.ts) : 0, staleKeys, integrity };
     const bd: Burndown = { baseline: c.baseKeys.size, baseline_open: 0, admitted_open: 0, emergency_open: 0, deferred_out: 0 };
     for (const key of universeOf(c)) {
       const out = recordFor(c, key);
