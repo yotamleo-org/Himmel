@@ -286,7 +286,9 @@ esac
 exec /usr/bin/timeout "$@"
 STUB
     chmod +x "$bin/date" "$bin/timeout"
-    export PRUNE_CLOCK="$W/prune-clock" PRUNE_BUDGET="$W/prune-budget" PRUNE_WRAPPER="$repo/scripts/worktree.sh"
+    export PRUNE_CLOCK="$W/prune-clock"
+    export PRUNE_BUDGET="$W/prune-budget"
+    export PRUNE_WRAPPER="$repo/scripts/worktree.sh"
     /bin/date +%s > "$PRUNE_CLOCK"
     touch -d '61 minutes ago' "$stamp"
     rm -f "$state/tick-wt-orphans-$(printf '%s' "$repo" | cksum | cut -d' ' -f1)"
