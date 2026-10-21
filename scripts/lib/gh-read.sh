@@ -107,26 +107,20 @@ gh_read() {
         gh "$@"
         return $?
     fi
-    local errf outf="" rc a
+    local errf outf rc
     errf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { gh "$@"; return $?; }
-    # a paginated read can print pages before the budget runs out: hold its stdout
-    # so a refused attempt is discarded instead of doubled by the retry
-    for a in "$@"; do
-        [ "$a" = --paginate ] && { outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; gh "$@"; return $?; }; break; }
-    done
-    if [ -n "$outf" ]; then
-        GH_TOKEN="$_GHR_TOK" gh "$@" >"$outf" 2>"$errf"
-    else
-        GH_TOKEN="$_GHR_TOK" gh "$@" 2>"$errf"
-    fi
+    # a refused call can already have printed pages or an error body: hold stdout so
+    # a refused attempt is discarded instead of doubled by the retry
+    outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; gh "$@"; return $?; }
+    GH_TOKEN="$_GHR_TOK" gh "$@" >"$outf" 2>"$errf"
     rc=$?
-    if [ "$rc" -ne 0 ] && grep -qiE 'rate limit|bad credentials|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; then
+    if [ "$rc" -ne 0 ] && grep -qiE 'rate limit|bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; then
         rm -f "$errf" "$outf"
         _ghr_warn "read token refused"
         gh "$@"
         return $?
     fi
-    [ -z "$outf" ] || { cat "$outf"; rm -f "$outf"; }
+    cat "$outf"; rm -f "$outf"
     cat "$errf" >&2
     rm -f "$errf"
     return "$rc"

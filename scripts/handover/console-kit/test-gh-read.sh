@@ -40,7 +40,10 @@ cat > "$W/bin/gh" <<'STUB'
 printf 'tok=%s argv=%s\n' "${GH_TOKEN:-main}" "$*" >> "$GHLOG"
 if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-}" ]; then
     echo "partial-page"
-    echo "gh: HTTP 403: API rate limit exceeded for user" >&2
+    case "$GH_STUB_READFAIL" in
+        scope) echo "gh: Resource not accessible by personal access token" >&2 ;;
+        *) echo "gh: HTTP 403: API rate limit exceeded for user" >&2 ;;
+    esac
     exit 1
 fi
 case "$*" in
@@ -131,6 +134,13 @@ lacks "C3c the warning never carries the token" "$READTOK" "$(cat "$W/err")"
 # a paginated read refused after it printed a page: the retry must not double the output
 GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api repos/o/r/pulls --paginate >"$W/out" 2>/dev/null
 lacks "C3d a refused paginated attempt leaves no partial page behind" "partial-page" "$(cat "$W/out")"
+# an error body printed on stdout by a refused non-paginated call is discarded too
+GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api repos/o/r >"$W/out" 2>/dev/null
+lacks "C3f a refused plain api call leaves no error body behind" "partial-page" "$(cat "$W/out")"
+# a permission refusal that is not a rate limit also falls back
+: > "$GHLOG"
+GH_STUB_READFAIL=scope GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api graphql -f 'query={viewer{login}}' >/dev/null 2>"$W/err"
+check "C3g a token-permission refusal retries on the main token" "tok=$READTOK argv=api graphql -f query={viewer{login}}|tok=main argv=api graphql -f query={viewer{login}}" "$(tr '\n' '|' < "$GHLOG" | sed 's/|$//')"
 # init with a good token must not silence a later refusal
 ( GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash -c '. "$1"; gh_read_init; gh_read pr view 1' _ "$HELPER" ) >/dev/null 2>"$W/err"
 check "C3e a refusal after a successful init still warns once" "1" "$(grep -c 'gh-read: read token refused' "$W/err")"
