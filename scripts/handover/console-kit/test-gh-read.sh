@@ -134,11 +134,19 @@ check "C3 exhausted read token -> retried once on the main token" "tok=$READTOK 
 check "C3b one warning line" "1" "$(grep -c 'gh-read:' "$W/err")"
 lacks "C3c the warning never carries the token" "$READTOK" "$(cat "$W/err")"
 # a paginated read refused after it printed a page: the retry must not double the output
+: > "$GHLOG"
 GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api repos/o/r/pulls --paginate >"$W/out" 2>/dev/null
+rc=$?
 lacks "C3d a refused paginated attempt leaves no partial page behind" "partial-page" "$(cat "$W/out")"
+check "C3d2 the paginated read exits 0 after the retry" "0" "$rc"
+check "C3d3 the paginated read retried on the main token" "tok=$READTOK argv=api repos/o/r/pulls --paginate|tok=main argv=api repos/o/r/pulls --paginate" "$(tr '\n' '|' < "$GHLOG" | sed 's/|$//')"
 # an error body printed on stdout by a refused non-paginated call is discarded too
+: > "$GHLOG"
 GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api repos/o/r >"$W/out" 2>/dev/null
+rc=$?
 lacks "C3f a refused plain api call leaves no error body behind" "partial-page" "$(cat "$W/out")"
+check "C3f2 the plain api read exits 0 after the retry" "0" "$rc"
+check "C3f3 the plain api read retried on the main token" "tok=$READTOK argv=api repos/o/r|tok=main argv=api repos/o/r" "$(tr '\n' '|' < "$GHLOG" | sed 's/|$//')"
 # a permission refusal that is not a rate limit also falls back
 : > "$GHLOG"
 GH_STUB_READFAIL=scope GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api graphql -f 'query={viewer{login}}' >/dev/null 2>"$W/err"
