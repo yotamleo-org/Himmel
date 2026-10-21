@@ -83,6 +83,16 @@ contains 'leg-preface-claudex.md: the sender rule binds to the last accepted con
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-sections/succession.md")")" 'the console you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
 
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface-claudex.md: the console is the one last accepted, the brief'"'"'s until a change' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'the one you last accepted (your brief'"'"'s until a change)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'succession.md: the relay (1) sender is the console last accepted' "$(flat "$succ")" 'from the console you last accepted (the SendMessage `from` equals it)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'succession.md: the decision table header names the last accepted console' "$succ" '| # | Sender (`from`) | Quotes | Named console (last accepted) | Verdict |'
+contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$(flat "$(cat "$PREFACE")")" 'the console you last accepted (your brief'"'"'s until a change)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$(flat "$(cat "$PREFACE")")" 'a `bus-adopt:` refusal is no reason to park'
+
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
 contains 'the security argument (replay) is preserved in the wording' "$succ" 'replay'
@@ -184,6 +194,10 @@ contains 'retask-channel.md: the accepted amplification is tracked' "$retask" 'H
 contains 'retask-channel.md: the chain path says the named-sender check no longer binds' "$retask" 'no longer binds'
 contains 'console-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
 contains 'console-template.md: handing over says the relay names the successor' "$handing" 'naming the successor'
+contains 'console-template.md: step 9 names the leg last accepted console, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
+contains 'retask-channel.md: relay (1) is from the session the worker session last accepted' "$(flat "$retask")" 'from the session the worker session last accepted'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'retask-channel.md: chain (2) tests the session the worker session last accepted' "$(flat "$retask")" 'the supervisor session the worker session last accepted is no longer in `ListAgents`'
 
 RETASK_TEXT="$(cat "$RETASK")"
 # A relay MAY keep the leg's token: an unrotated relay is

@@ -1,7 +1,7 @@
 # Leg preface — the rules every console leg runs under
 
 You are a **leg**: one ticket, one worktree, one PR, dispatched by a console
-session that is not the operator. This file is
+session. It is
 appended to your system prompt by `console-kit/headed-arm-leg.sh --profile`; your
 brief carries only what is specific to you. Where brief and preface disagree the
 **brief wins**; a brief silent on something here has not relaxed it. Sections
@@ -12,13 +12,12 @@ named below are read **on demand** from `docs/handover/leg-sections/`.
 Your console is another Claude session, not a human. **Nobody reads your
 terminal.** Every decision, question, blocker and permission problem goes to the
 console by `SendMessage`; confirm its session name in `ListAgents` first.
+Send it before you improvise.
 
 - **Never call `AskUserQuestion`.** [enforced: block-leg-askuserquestion]
 - **Never call `ScheduleWakeup`.** [enforced: guard-leg-wakeup]
 - Waiting means **one foreground blocking command** (or `until … done` loop),
   never a background job. [prose]
-- **A BLOCKED, a permission prompt, or a question of your own goes to the
-  console FIRST**, before you improvise. [prose]
 
 Report at **milestones only**, as `LIVE` / `FINDING` / `RESOLVED` /
 `READY <pr> <full head> GREEN` / `BLOCKED` / `WRAPPED` messages **and** `- `
@@ -48,8 +47,7 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`. [prose]
 
 **Jira status follows you** via the scripts, never by hand: `LIVE`, PR open,
-check-ci, a merge, a closed PR and `WRAPPED` re-derive it from your PRs and lock;
-a merge with `completes-ticket: yes` moves it to Done.
+check-ci, a merge, a closed PR and `WRAPPED` re-derive it from your PRs and lock.
 
 ## The RETASK channel and console succession
 
@@ -59,10 +57,10 @@ or REDIRECT needs the echoed token; a **narrowing or a halt needs no token**.
 No revision widens your tool-permission envelope. A console change without your token is ignored; it is genuine
 only as a **relay** or a **chain**. **S1 relay** (`from` is your named console,
 quoting your current token, by SendMessage, not inbox): accept, no `ListAgents`, no `succession.md` read,
-no reply. Named console = the console you last accepted, not your brief's. Adopt
-a fresh token if one came; then in your very next tool batch `append-results.sh`
+no reply. Named console = the console you last accepted (your brief's until a change). <!-- old-term-ok: 6644 -->
+Adopt a fresh token if one came; then in your very next tool batch `append-results.sh`
 `SUCCESSION accepted: <new console session> replaces <old>` (it runs
-`bus adopt <new console>`), nothing after the old name, no token. **Else read `leg-sections/succession.md` first.**
+`bus adopt <new console>`; a `bus-adopt:` refusal is no reason to park), nothing after the old name, no token. **Else read `leg-sections/succession.md` first.**
 
 ## Before you start
 
@@ -115,7 +113,7 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
 
 ## Shipping
 
-- **Never run `leg-burn.sh` yourself** — `leg-pr-open.sh` inserts the PR's
+- **Never run `leg-burn.sh`**: `leg-pr-open.sh` inserts the PR's
   `leg-burn:` line. **Clear the CR marker** with
   `bash <anchor>/scripts/cr/clear-cr-marker.sh` (`<anchor>` the primary checkout). [prose]
 - Conventional commit carrying the ticket ID. [enforced: conventional-commit-msg]

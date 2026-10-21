@@ -52,7 +52,7 @@ Run these, in order, and write the result as the first bullet under
    `held` with `none yet` means another console runs on this doc: find it, never
    take it over.
 9. **Re-brief every inherited leg BEFORE you announce yourself**: each leg's brief
-   names the predecessor, and until it verifies the succession it can only refuse
+   names the predecessor (the one it last accepted), and until it verifies the succession it can only refuse
    you. Per leg, ask the predecessor to re-brief that leg **from its own socket**,
    naming you (your session name) and quoting the leg's current token. That relay
    is complete on its own: it MAY also carry a fresh `{{LETTER}}-<leg>-<hex>`
