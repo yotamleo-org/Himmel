@@ -99,11 +99,16 @@ case "$MAX_FILES" in ''|*[!0-9]*) MAX_FILES=0 ;; *) MAX_FILES=$((10#$MAX_FILES))
 [ "$MAX_FILES" -gt 0 ] || { echo "semantic-update: --max-files must be a positive integer" >&2; exit 1; }
 [ -d "$CORPUS_ROOT" ] || { echo "semantic-update: --corpus-root '$CORPUS_ROOT' is not a directory" >&2; exit 1; }
 CORPUS_ROOT="$(cd "$CORPUS_ROOT" && pwd -P)"
-# ponytail: only the default out dir, a GRAPHIFY_OUT override is refused; add it if a corpus ever needs one.
-if [ -n "${GRAPHIFY_OUT:-}" ] && [ "$GRAPHIFY_OUT" != "graphify-out" ]; then
-  echo "semantic-update: GRAPHIFY_OUT overrides are not supported (got '$GRAPHIFY_OUT')" >&2; exit 1
-fi
-OUT_DIR="$CORPUS_ROOT/graphify-out"
+# Same out dir ast-update.sh resolves: an absolute GRAPHIFY_OUT (the luna AST wrapper keeps its graph outside the
+# vault) is used as-is, a relative one must be a single directory name under the corpus.
+_out_name="${GRAPHIFY_OUT:-graphify-out}"
+case "$_out_name" in
+  /*) OUT_DIR="$_out_name" ;;
+  *)
+    printf '%s' "$_out_name" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' \
+      || { echo "semantic-update: a relative GRAPHIFY_OUT must be a single directory name (got '$_out_name')" >&2; exit 1; }
+    OUT_DIR="$CORPUS_ROOT/$_out_name" ;;
+esac
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 if [ "$BACKEND" = "claude-api" ]; then

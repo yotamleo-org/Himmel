@@ -1447,4 +1447,77 @@ assert_not_contains "cron_payload leaves GRAPHIFY_OUT_ROOT alone when --out-root
 assert_contains "ast_cron_payload unsets GRAPHIFY_OUT when GRAPHIFY_OUT= is omitted" "unset GRAPHIFY_OUT" "$acp_no_dir"
 assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$acp_with_dir"
 
+# Luna semantic leg: HIMMEL-GraphSemantic-Luna, POSIX/cron path. Reuses the publish
+# fixture's fake crontab and runner dir, disarmed first so nothing from that block leaks in.
+# The GRAPHIFY_OUT shape asserted below is the one the station's armed graphmap-ast-luna.sh carries
+# (~/.local/share/himmel/graphify/luna/graphify-out), copied from that runner.
+# ============================================================================
+run_cron3 disarm >/dev/null 2>&1
+rm -f "$CRON_DIR3/semantic-luna.paused"
+
+echo "TEST: cron arm --ast-only without --with-luna-semantic arms no luna semantic leg"
+run_cron3 arm --vault "$VAULT" --ast-only >/dev/null 2>&1
+tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_not_contains "no luna semantic entry by default" "HIMMEL-GraphSemantic-Luna" "$tab4"
+run_cron3 disarm >/dev/null 2>&1
+
+echo "TEST: cron arm --ast-only --with-luna-semantic registers the luna semantic leg PAUSED"
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic 2>&1) || rc=$?
+assert_rc "arm --with-luna-semantic succeeds" 0 "$rc"
+tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_contains "luna semantic crontab entry present" "# HIMMEL-GraphSemantic-Luna" "$tab4"
+assert_contains "luna semantic entry fires every 2h" "50 */2 * * *" "$tab4"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_contains "luna semantic runner fires semantic-update.sh" "scripts/graphify/semantic-update.sh" "$sem_sh"
+assert_contains "luna semantic runner names the luna corpus" "--name luna" "$sem_sh"
+assert_contains "luna semantic runner pins the luna-personal class" "--corpus-class luna-personal" "$sem_sh"
+assert_contains "luna semantic runner pins the claude-api backend" "--backend claude-api" "$sem_sh"
+assert_contains "luna semantic runner caps the batch" "--max-files 20" "$sem_sh"
+assert_contains "luna semantic runner caps the run spend" "--max-run-usd 2.00" "$sem_sh"
+assert_contains "luna semantic runner sets the api lane" "HIMMEL_API_LANE=on" "$sem_sh"
+assert_contains "luna semantic runner sets the api account" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
+assert_contains "luna semantic runner targets the live luna graph, not the vault copy" "GRAPHIFY_OUT=" "$sem_sh"
+assert_contains "luna semantic runner uses the AST leg's out dir" "graphify/luna/graphify-out" "$sem_sh"
+assert_contains "luna semantic runner reads its own pause marker" "semantic-luna.paused" "$sem_sh"
+assert_contains "luna semantic runner format stamp present" "# himmel-cadence-runner-format: $FMT" "$sem_sh"
+if [ -e "$CRON_DIR3/semantic-luna.paused" ]; then
+    pass "arm --with-luna-semantic writes the pause marker itself"
+else
+    fail "arm --with-luna-semantic left no semantic-luna.paused marker" "$(ls "$CRON_DIR3" 2>/dev/null)"
+fi
+assert_contains "arm banner says the luna semantic leg is armed paused" "semantic armed PAUSED" "$out"
+assert_registry "luna semantic flow registers a 2h cadence" \
+    '.flows[] | select(.name == "graphmap-semantic-luna" and .cadence_seconds == 7200)'
+assert_registry "luna semantic task name registered" '.expected_tasks[] | select(. == "HIMMEL-GraphSemantic-Luna")'
+
+echo "TEST: the luna semantic runner runs nothing while paused and the capped command once resumed"
+stub_su="$TMP_ROOT/stub-semantic-update.sh"
+stub_su_out="$TMP_ROOT/stub-semantic-update.out"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "ARGV: $*" >> "%s"\necho "LANE: ${HIMMEL_API_LANE:-unset}" >> "%s"\necho "OUT: ${GRAPHIFY_OUT:-unset}" >> "%s"\n' "$stub_su_out" "$stub_su_out" "$stub_su_out" > "$stub_su"
+sed "s#[^ ]* [^ ]*scripts/graphify/semantic-update.sh#sh $stub_su#g" "$CRON_DIR3/graphmap-semantic-luna.sh" > "$TMP_ROOT/semantic-luna-stubbed.sh"
+rm -f "$stub_su_out"
+sh "$TMP_ROOT/semantic-luna-stubbed.sh" >/dev/null 2>&1 || true
+stub_paused=$(cat "$stub_su_out" 2>/dev/null || echo NOT-RUN)
+assert_rc "paused fire does not call semantic-update" "NOT-RUN" "$stub_paused"
+rm -f "$CRON_DIR3/semantic-luna.paused"
+sh "$TMP_ROOT/semantic-luna-stubbed.sh" >/dev/null 2>&1 || true
+stub_active=$(cat "$stub_su_out" 2>/dev/null || echo MISSING)
+assert_contains "active fire passes the luna corpus class" "--corpus-class luna-personal" "$stub_active"
+assert_contains "active fire passes the batch cap" "--max-files 20" "$stub_active"
+assert_contains "active fire sets the api lane" "LANE: on" "$stub_active"
+assert_contains "active fire exports the live luna out dir" "graphify/luna/graphify-out" "$stub_active"
+
+echo "TEST: cron status and disarm cover the luna semantic leg"
+out=$(run_cron3 status 2>&1)
+assert_contains "status shows the luna semantic task armed" "ARMED      HIMMEL-GraphSemantic-Luna (cron: 50 */2 * * *)" "$out"
+run_cron3 disarm >/dev/null 2>&1
+tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_not_contains "luna semantic entry removed by disarm" "HIMMEL-GraphSemantic-Luna" "$tab4"
+if [ ! -f "$CRON_DIR3/graphmap-semantic-luna.sh" ]; then
+    pass "luna semantic runner removed by disarm"
+else
+    fail "luna semantic runner survived disarm"
+fi
+
 summary

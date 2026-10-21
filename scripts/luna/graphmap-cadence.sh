@@ -132,6 +132,9 @@ TASK_AST_HIMMEL="${TASK_AST_PREFIX}Himmel"
 # touch the --ast-only semantics of the other two pairs).
 TASK_PUBLISH_PREFIX="HIMMEL-GraphPublish-"
 TASK_PUBLISH_HIMMEL="${TASK_PUBLISH_PREFIX}Himmel"
+# Luna semantic leg: batch-capped claude-api semantic-update.sh over the vault.
+# Opt-in (--with-luna-semantic), cron-only, arms PAUSED. Own prefix, same exact-name rule as above.
+TASK_SEMANTIC_LUNA="HIMMEL-GraphSemantic-Luna"
 # Exact-name match for "does this task/cron-entry belong to THIS cadence"
 # is built from the owned names only, used by
 # list_existing/cron_existing/the crontab own-entry filters so arm/status/
@@ -140,7 +143,7 @@ TASK_PUBLISH_HIMMEL="${TASK_PUBLISH_PREFIX}Himmel"
 # "HIMMEL-GraphMap*" task/cron-entry too — collateral delete on disarm, or a
 # false dedup-block on arm. Adding a task later means adding it to this
 # alternation, not widening a prefix.
-TASK_MATCH_RE="(${TASK_LUNA}|${TASK_HIMMEL}|${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL})"
+TASK_MATCH_RE="(${TASK_LUNA}|${TASK_HIMMEL}|${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL}|${TASK_SEMANTIC_LUNA})"
 SCHTASKS_BIN="${GRAPHMAP_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${GRAPHMAP_CRONTAB:-crontab}"
 
@@ -185,6 +188,8 @@ AST_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/ast-update.sh"
 # Publish leg: fires by absolute path, same rationale as
 # AST_UPDATE_SCRIPT/REFRESH_SCRIPT above.
 PUBLISH_CADENCE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/graph-cadence.sh"
+# Luna semantic leg: graph-cadence.sh only wires himmel, so this leg calls semantic-update.sh directly.
+SEMANTIC_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/semantic-update.sh"
 # The observability-registry FLOW NAME must be DERIVED from the same
 # corpus-slug computation graph-cadence.sh itself uses (basename(HIMMEL_ROOT),
 # sanitized) -- never hardcoded separately: a LITERAL
@@ -253,6 +258,13 @@ AST_HIMMEL_TIME="00:15"
 # the same hour as the other himmel legs (readable in `status`) without
 # landing on either one's own minute.
 GRAPH_PUBLISH_TIME="00:35"
+# Luna semantic leg: every 2h at :50 (publish is :35), capped per fire. ponytail: the cap and the 2.00 USD run
+# cap are the proposed defaults awaiting the operator's spend ruling; make them flags if the ruling differs.
+LUNA_SEMANTIC_MINUTE="50"
+LUNA_SEMANTIC_EVERY_HOURS=2
+LUNA_SEMANTIC_MAX_FILES=20
+LUNA_SEMANTIC_RUN_USD="2.00"
+LUNA_SEMANTIC_PAUSE_MARKER="semantic-luna.paused"
 
 # Default vault resolution (cross-platform; mirrors pipeline-cadence). Honors
 # LUNA_VAULT_PATH first, else <home>/Documents/luna. Explicit --vault overrides.
@@ -283,6 +295,7 @@ WITH_PUBLISH=0
 PUBLISH_EVERY_HOURS=6
 PUBLISH_SEMANTIC=0
 SEMANTIC_ACTIVE=0
+WITH_LUNA_SEMANTIC=0
 
 # Fixed per-corpus map identity (titles/slugs/tags). ASCII-only: the .bat is
 # parsed by cmd.exe under the OEM codepage where UTF-8 punctuation mojibakes.
@@ -367,8 +380,14 @@ Flags (arm only, except --dry-run):
                          claude-api semantic pass (graph-cadence --semantic).
                          Cron only. Arms PAUSED: arm writes the
                          semantic.paused marker; rm it to resume.
-  --semantic-active      With --publish-semantic: arm without the marker, so
-                         the semantic pass runs from the first fire.
+  --semantic-active      With --publish-semantic or --with-luna-semantic: arm
+                         without the marker, so the semantic pass runs from the
+                         first fire.
+  --with-luna-semantic   Also register the luna semantic leg
+                         (HIMMEL-GraphSemantic-Luna, every 2h): capped
+                         claude-api semantic-update over the vault. Cron only.
+                         Arms PAUSED: arm writes semantic-luna.paused; rm it
+                         to resume.
 
 The structural (AST) pair's offsets (luna daily 00:05, himmel hourly at :15)
 are NOT flags — see WEEKLY_DAY_*/AST_*_TIME in this script.
@@ -417,6 +436,7 @@ while [ $# -gt 0 ]; do
         --publish-every-hours=*) PUBLISH_EVERY_HOURS="${1#--publish-every-hours=}"; shift ;;
         --publish-semantic)      PUBLISH_SEMANTIC=1; shift ;;
         --semantic-active)       SEMANTIC_ACTIVE=1; shift ;;
+        --with-luna-semantic)    WITH_LUNA_SEMANTIC=1; shift ;;
         -h|--help)       usage; exit 0 ;;
         *)
             echo "ERR graphmap-cadence: unknown arg: $1" >&2
@@ -462,6 +482,9 @@ if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$WITH_PUBLISH" -ne 1 ]; then
 fi
 if [ "$PLATFORM" = "windows" ] && { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$PUBLISH_EVERY_HOURS" -ne 6 ]; }; then
     echo "ERR graphmap-cadence: --publish-every-hours / --publish-semantic are cron-only" >&2; exit 1
+fi
+if [ "$PLATFORM" = "windows" ] && [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
+    echo "ERR graphmap-cadence: --with-luna-semantic is cron-only" >&2; exit 1
 fi
 
 # MSYS_NO_PATHCONV=1 per call: without it gitbash mangles /query, /create etc.
@@ -581,6 +604,7 @@ task_summary() {
         "$TASK_AST_LUNA")   printf ' -> graphify update luna (daily, structural, free)' ;;
         "$TASK_AST_HIMMEL") printf ' -> graphify update himmel (hourly, structural, free)' ;;
         "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (auto-merge; interval = cron schedule; --publish-semantic adds a billed claude-api pass)' ;;
+        "$TASK_SEMANTIC_LUNA") printf ' -> semantic-update luna (every 2h, billed claude-api, capped; pause marker %s)' "$LUNA_SEMANTIC_PAUSE_MARKER" ;;
     esac
 }
 
@@ -1794,6 +1818,7 @@ CRON_RUNNER_HIMMEL="$BAT_DIR/graphmap-himmel.sh"
 CRON_RUNNER_AST_LUNA="$BAT_DIR/graphmap-ast-luna.sh"
 CRON_RUNNER_AST_HIMMEL="$BAT_DIR/graphmap-ast-himmel.sh"
 CRON_RUNNER_PUBLISH_HIMMEL="$BAT_DIR/graphmap-publish-himmel.sh"
+CRON_RUNNER_SEMANTIC_LUNA="$BAT_DIR/graphmap-semantic-luna.sh"
 
 # Shell-quote a value for a cron command line (mirrors pipeline-cadence
 # cron_escape): printf %q survives the /bin/sh re-parse; the extra % -> \% pass
@@ -1909,6 +1934,19 @@ publish_cron_payload() {
     printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; %s; else echo "[semantic active]"; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api %s --semantic; fi' "$q_pause" "$base" "$base"
 }
 
+# Luna semantic leg payload, POSIX form: semantic-update.sh on the live luna graph (GRAPHIFY_OUT, the same
+# out dir the luna AST leg writes), batch- and spend-capped, behind its own pause marker read at fire time.
+luna_semantic_cron_payload() {
+    local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}"
+    local q_pause base
+    q_pause=$(printf '%q' "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER")
+    base=$(printf '%s %s --name luna --corpus-root %s --corpus-class luna-personal --backend claude-api --max-files %s --max-run-usd %s' \
+        "$q_bash" "$q_script" "$q_corpus" "$LUNA_SEMANTIC_MAX_FILES" "$LUNA_SEMANTIC_RUN_USD")
+    local env_prefix='HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto'
+    if [ -n "$q_out_dir" ]; then env_prefix="$env_prefix GRAPHIFY_OUT=$q_out_dir"; fi
+    printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; else %s %s; fi' "$q_pause" "$env_prefix" "$base"
+}
+
 # Emit the runner .sh body for one cadence task: stamp the format version,
 # rotate the run log, stamp the fire time, cd into the himmel root, then fire the
 # payload with output captured to the log. PATH prepends for nvm-managed node
@@ -1970,13 +2008,14 @@ cron_status() {
     cron_read
     echo "graphmap-cadence status:"
     local name log entry sched
-    for name in "$TASK_LUNA" "$TASK_HIMMEL" "$TASK_AST_LUNA" "$TASK_AST_HIMMEL" "$TASK_PUBLISH_HIMMEL"; do
+    for name in "$TASK_LUNA" "$TASK_HIMMEL" "$TASK_AST_LUNA" "$TASK_AST_HIMMEL" "$TASK_PUBLISH_HIMMEL" "$TASK_SEMANTIC_LUNA"; do
         case "$name" in
             "$TASK_LUNA")       log="$BAT_DIR/graphmap-luna.log" ;;
             "$TASK_HIMMEL")     log="$BAT_DIR/graphmap-himmel.log" ;;
             "$TASK_AST_LUNA")   log="$BAT_DIR/graphmap-ast-luna.log" ;;
             "$TASK_AST_HIMMEL") log="$BAT_DIR/graphmap-ast-himmel.log" ;;
             "$TASK_PUBLISH_HIMMEL") log="$BAT_DIR/graphmap-publish-himmel.log" ;;
+            "$TASK_SEMANTIC_LUNA") log="$BAT_DIR/graphmap-semantic-luna.log" ;;
         esac
         entry=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${name}\$" | head -1 || true)
         if [ -n "$entry" ]; then
@@ -1995,7 +2034,7 @@ cron_disarm() {
     existing=$(cron_existing)
     if [ -z "$existing" ]; then
         if [ "$DRY_RUN" -eq 0 ]; then
-            rm -f "$CRON_RUNNER_LUNA" "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_LUNA" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL"
+            rm -f "$CRON_RUNNER_LUNA" "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_LUNA" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL" "$CRON_RUNNER_SEMANTIC_LUNA"
         fi
         echo "graphmap-cadence: nothing armed — disarm is a no-op"
         return 0
@@ -2015,12 +2054,13 @@ cron_disarm() {
     # Install must succeed BEFORE the runners are removed — a failed install
     # leaves the entries live and they must keep pointing at existing runners.
     cron_install "$newtab" || exit 4
-    rm -f "$CRON_RUNNER_LUNA" "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_LUNA" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL"
+    rm -f "$CRON_RUNNER_LUNA" "$CRON_RUNNER_HIMMEL" "$CRON_RUNNER_AST_LUNA" "$CRON_RUNNER_AST_HIMMEL" "$CRON_RUNNER_PUBLISH_HIMMEL" "$CRON_RUNNER_SEMANTIC_LUNA"
     observability_unregister_cadence graphmap-luna "$TASK_LUNA"
     observability_unregister_cadence graphmap-himmel "$TASK_HIMMEL"
     observability_unregister_cadence graphmap-ast-luna "$TASK_AST_LUNA"
     observability_unregister_cadence graphmap-ast-himmel "$TASK_AST_HIMMEL"
     observability_unregister_cadence "$PUBLISH_FLOW_NAME" "$TASK_PUBLISH_HIMMEL"
+    observability_unregister_cadence graphmap-semantic-luna "$TASK_SEMANTIC_LUNA"
     echo "graphmap-cadence: cadence disarmed"
 }
 
@@ -2051,11 +2091,10 @@ cron_arm() {
     # comment -- the publish leg is grouped with the AST pair here too, but
     # only when --with-publish is also asking for it this run.
     if [ "$AST_ONLY" -eq 1 ]; then
-        if [ "$WITH_PUBLISH" -eq 1 ]; then
-            existing=$(printf '%s\n' "$existing" | grep -E "# (${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL})\$" || true)
-        else
-            existing=$(printf '%s\n' "$existing" | grep -E "# (${TASK_AST_LUNA}|${TASK_AST_HIMMEL})\$" || true)
-        fi
+        local ast_scope_re="${TASK_AST_LUNA}|${TASK_AST_HIMMEL}"
+        [ "$WITH_PUBLISH" -ne 1 ] || ast_scope_re="${ast_scope_re}|${TASK_PUBLISH_HIMMEL}"
+        [ "$WITH_LUNA_SEMANTIC" -ne 1 ] || ast_scope_re="${ast_scope_re}|${TASK_SEMANTIC_LUNA}"
+        existing=$(printf '%s\n' "$existing" | grep -E "# (${ast_scope_re})\$" || true)
     fi
     if [ -n "$existing" ]; then
         if [ "$FORCE" -eq 1 ]; then
@@ -2081,11 +2120,12 @@ cron_arm() {
         fi
     fi
 
-    local q_bash q_script q_ast_script q_publish_script q_node_dir q_graphify_dir q_claude_dir q_vault q_himmel q_maps q_luna_title q_himmel_title q_log_luna q_log_himmel q_log_ast_luna q_log_ast_himmel q_log_publish_himmel
+    local q_bash q_script q_ast_script q_publish_script q_node_dir q_graphify_dir q_claude_dir q_vault q_himmel q_maps q_luna_title q_himmel_title q_log_luna q_log_himmel q_log_ast_luna q_log_ast_himmel q_log_publish_himmel q_semantic_script q_log_semantic_luna
     q_bash=$(printf '%q' "$bash_bin")
     q_script=$(printf '%q' "$REFRESH_SCRIPT")
     q_ast_script=$(printf '%q' "$AST_UPDATE_SCRIPT")
     q_publish_script=$(printf '%q' "$PUBLISH_CADENCE_SCRIPT")
+    q_semantic_script=$(printf '%q' "$SEMANTIC_UPDATE_SCRIPT")
     q_node_dir=$([ -n "$node_dir" ] && printf '%q' "$node_dir" || printf '')
     q_graphify_dir=$(printf '%q' "$GRAPHIFY_DIR")
     # CLAUDE_DIR is only resolved (validate_arm_inputs) for the semantic pair
@@ -2102,6 +2142,7 @@ cron_arm() {
     q_log_ast_luna=$(printf '%q' "$BAT_DIR/graphmap-ast-luna.log")
     q_log_ast_himmel=$(printf '%q' "$BAT_DIR/graphmap-ast-himmel.log")
     q_log_publish_himmel=$(printf '%q' "$BAT_DIR/graphmap-publish-himmel.log")
+    q_log_semantic_luna=$(printf '%q' "$BAT_DIR/graphmap-semantic-luna.log")
 
     # luna's out-of-corpus destination, resolved ONCE and shared
     # by both the semantic (--out-root) and structural (GRAPHIFY_OUT=) legs
@@ -2116,7 +2157,7 @@ cron_arm() {
         q_out_dir_ast_luna=$(printf '%q' "$luna_out_root/graphify-out")
     fi
 
-    local payload_luna payload_himmel payload_ast_luna payload_ast_himmel payload_publish_himmel
+    local payload_luna payload_himmel payload_ast_luna payload_ast_himmel payload_publish_himmel payload_semantic_luna
     payload_luna=$(cron_payload "$q_bash" "$q_script" luna "$q_vault" "$q_maps" "$q_luna_title" "$LUNA_SLUG" "$LUNA_TAG" "$q_out_root_luna")
     payload_himmel=$(cron_payload "$q_bash" "$q_script" himmel "$q_himmel" "$q_maps" "$q_himmel_title" "$HIMMEL_SLUG" "$HIMMEL_TAG")
     # Structural (AST) payloads (routed through the
@@ -2126,6 +2167,8 @@ cron_arm() {
     payload_ast_himmel=$(ast_cron_payload "$q_bash" "$q_ast_script" "$q_himmel")
     # Publish leg: himmel repo only (v1).
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
+    # Luna semantic leg: writes the same out dir the luna AST leg does.
+    payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna")
 
     local luna_hh luna_mm himmel_hh himmel_mm
     luna_hh="${LUNA_TIME%:*}"; luna_mm="${LUNA_TIME#*:}"
@@ -2135,13 +2178,14 @@ cron_arm() {
     ast_himmel_mm="${AST_HIMMEL_TIME#*:}"
     local publish_himmel_mm
     publish_himmel_mm="${GRAPH_PUBLISH_TIME#*:}"
-    local q_runner_luna q_runner_himmel q_runner_ast_luna q_runner_ast_himmel q_runner_publish_himmel
+    local q_runner_luna q_runner_himmel q_runner_ast_luna q_runner_ast_himmel q_runner_publish_himmel q_runner_semantic_luna
     q_runner_luna=$(cron_escape "$CRON_RUNNER_LUNA")
     q_runner_himmel=$(cron_escape "$CRON_RUNNER_HIMMEL")
     q_runner_ast_luna=$(cron_escape "$CRON_RUNNER_AST_LUNA")
     q_runner_ast_himmel=$(cron_escape "$CRON_RUNNER_AST_HIMMEL")
     q_runner_publish_himmel=$(cron_escape "$CRON_RUNNER_PUBLISH_HIMMEL")
-    local entry_luna entry_himmel entry_ast_luna entry_ast_himmel entry_publish_himmel
+    q_runner_semantic_luna=$(cron_escape "$CRON_RUNNER_SEMANTIC_LUNA")
+    local entry_luna entry_himmel entry_ast_luna entry_ast_himmel entry_publish_himmel entry_semantic_luna
     # Weekly (semantic pair): day-of-week field pinned to
     # WEEKLY_DAY_CRON instead of "*".
     entry_luna="$luna_mm $luna_hh * * $WEEKLY_DAY_CRON $q_runner_luna # $TASK_LUNA"
@@ -2153,6 +2197,7 @@ cron_arm() {
     # Publish leg: every 6h at its fixed minute (cron's
     # `*/6` hour-field step, standard vixie-cron syntax).
     entry_publish_himmel="$publish_himmel_mm */$PUBLISH_EVERY_HOURS * * * $q_runner_publish_himmel # $TASK_PUBLISH_HIMMEL"
+    entry_semantic_luna="$LUNA_SEMANTIC_MINUTE */$LUNA_SEMANTIC_EVERY_HOURS * * * $q_runner_semantic_luna # $TASK_SEMANTIC_LUNA"
 
     if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$AST_ONLY" -eq 1 ]; then
@@ -2173,6 +2218,12 @@ cron_arm() {
         else
             echo "DRY graphmap-cadence: --with-publish not set; $TASK_PUBLISH_HIMMEL is skipped entirely (HIMMEL-3075)"
         fi
+        if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
+            echo "DRY graphmap-cadence: would write $CRON_RUNNER_SEMANTIC_LUNA:"
+            emit_runner "$TASK_SEMANTIC_LUNA" "$payload_semantic_luna" "$q_log_semantic_luna" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-semantic-luna "3 4" | sed 's/^/    /'
+        else
+            echo "DRY graphmap-cadence: --with-luna-semantic not set; $TASK_SEMANTIC_LUNA is skipped entirely"
+        fi
         echo "DRY graphmap-cadence: would add crontab entries:"
         if [ "$AST_ONLY" -eq 0 ]; then
             echo "    $entry_luna"
@@ -2182,6 +2233,9 @@ cron_arm() {
         echo "    $entry_ast_himmel"
         if [ "$WITH_PUBLISH" -eq 1 ]; then
             echo "    $entry_publish_himmel"
+        fi
+        if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
+            echo "    $entry_semantic_luna"
         fi
         echo "graphmap-cadence: dry-run complete (no changes made)"
         return 0
@@ -2194,6 +2248,11 @@ cron_arm() {
         : > "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
         echo "graphmap-cadence: semantic armed PAUSED ($BAT_DIR/$SEMANTIC_PAUSE_MARKER); rm it to resume"
     fi
+    # --with-luna-semantic arms PAUSED the same way: billed semantic never starts on its own.
+    if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && [ "$SEMANTIC_ACTIVE" -ne 1 ]; then
+        : > "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER"
+        echo "graphmap-cadence: luna semantic armed PAUSED ($BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER); rm it to resume"
+    fi
     # Stage the runners at temp paths and promote (mv) them only after the
     # crontab install succeeds: writing them in place first would let a failed
     # install (exit 4) leave the OLD crontab live while the runner files already
@@ -2203,7 +2262,7 @@ cron_arm() {
     # PRE-EXISTING semantic pair's crontab lines and runner files survive an
     # --ast-only (re-)arm untouched.
     local tmp_ast_luna="$CRON_RUNNER_AST_LUNA.tmp.$$" tmp_ast_himmel="$CRON_RUNNER_AST_HIMMEL.tmp.$$"
-    local tmp_publish_himmel=""
+    local tmp_publish_himmel="" tmp_semantic_luna=""
     emit_runner "$TASK_AST_LUNA" "$payload_ast_luna" "$q_log_ast_luna" "$q_himmel" "" "$q_graphify_dir" 1 "" graphmap-ast-luna 4 > "$tmp_ast_luna"
     emit_runner "$TASK_AST_HIMMEL" "$payload_ast_himmel" "$q_log_ast_himmel" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-ast-himmel 4 > "$tmp_ast_himmel"
     chmod +x "$tmp_ast_luna" "$tmp_ast_himmel"
@@ -2219,6 +2278,14 @@ cron_arm() {
         chmod +x "$tmp_publish_himmel"
         own_match_re="(${own_match_re}|${TASK_PUBLISH_HIMMEL})"
         new_entries="$new_entries"$'\n'"$entry_publish_himmel"
+    fi
+    # --with-luna-semantic: opt-in like --with-publish; a pre-existing entry survives an arm that does not ask.
+    if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
+        tmp_semantic_luna="$CRON_RUNNER_SEMANTIC_LUNA.tmp.$$"
+        emit_runner "$TASK_SEMANTIC_LUNA" "$payload_semantic_luna" "$q_log_semantic_luna" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-semantic-luna "3 4" > "$tmp_semantic_luna"
+        chmod +x "$tmp_semantic_luna"
+        own_match_re="(${own_match_re}|${TASK_SEMANTIC_LUNA})"
+        new_entries="$new_entries"$'\n'"$entry_semantic_luna"
     fi
     local tmp_luna="" tmp_himmel=""
     if [ "$AST_ONLY" -eq 0 ]; then
@@ -2242,7 +2309,7 @@ cron_arm() {
         printf '%s\n' "$new_entries"
     } > "$newtab"
     if ! cron_install "$newtab"; then
-        rm -f "$tmp_luna" "$tmp_himmel" "$tmp_ast_luna" "$tmp_ast_himmel" "$tmp_publish_himmel"
+        rm -f "$tmp_luna" "$tmp_himmel" "$tmp_ast_luna" "$tmp_ast_himmel" "$tmp_publish_himmel" "$tmp_semantic_luna"
         echo "    existing runner files left untouched" >&2
         exit 4
     fi
@@ -2274,6 +2341,11 @@ cron_arm() {
         mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"
         observability_register_cadence "$PUBLISH_FLOW_NAME" $((PUBLISH_EVERY_HOURS * 3600)) "$TASK_PUBLISH_HIMMEL"
         cadence_prov_record "$TASK_PUBLISH_HIMMEL"
+    fi
+    if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
+        mv -f "$tmp_semantic_luna" "$CRON_RUNNER_SEMANTIC_LUNA"  # prim-ok: same stage-then-promote as the sibling runners above
+        observability_register_cadence graphmap-semantic-luna $((LUNA_SEMANTIC_EVERY_HOURS * 3600)) "$TASK_SEMANTIC_LUNA"
+        cadence_prov_record "$TASK_SEMANTIC_LUNA"
     fi
 
     local semantic_lines arming_note
@@ -2317,6 +2389,10 @@ $himmel_line"
         if [ "$PUBLISH_SEMANTIC" -eq 1 ]; then
             publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (+ claude-api semantic, auto-merge)"
         fi
+    fi
+    if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
+        publish_lines="$publish_lines
+  $TASK_SEMANTIC_LUNA  every ${LUNA_SEMANTIC_EVERY_HOURS}h at :$LUNA_SEMANTIC_MINUTE   -> semantic-update luna (claude-api, max ${LUNA_SEMANTIC_MAX_FILES} files / ${LUNA_SEMANTIC_RUN_USD} USD per fire)"
     fi
     cat <<EOF
 

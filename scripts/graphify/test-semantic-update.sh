@@ -663,5 +663,16 @@ rm -f "$C60/a.md"
 out=$(run --name t60 --corpus-root "$C60" --corpus-class himmel-code); rc=$?
 [ -z "$(stuck "$C60" a.md attempts)" ] && pass "T60 the removed file's stuck record is pruned" || fail "T60 (rc=$rc): $(cat "$C60/graphify-out/semantic-manifest.json")"
 
+echo "T61: an absolute GRAPHIFY_OUT outside the corpus (the luna AST wrapper's shape) is where the pass reads and writes"
+C61="$WS/c61"; new_corpus "$C61"; O61="$WS/state/himmel/graphify/luna/graphify-out"
+mkdir -p "$(dirname "$O61")"; mv "$C61/graphify-out" "$O61"
+out=$(GRAPHIFY_OUT="$O61" run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$C61/graphify-out" ] && [ -f "$O61/semantic-manifest.json" ] && [ -f "$O61/semantic-runs.jsonl" ] \
+  && pass "T61 absolute GRAPHIFY_OUT honoured, nothing written under the corpus" || fail "T61 (rc=$rc): $out"
+
+echo "T62: a relative GRAPHIFY_OUT that is not a single directory name is still refused"
+out=$(GRAPHIFY_OUT=../elsewhere run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_OUT"* ]] && pass "T62 refused" || fail "T62 (rc=$rc): $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
