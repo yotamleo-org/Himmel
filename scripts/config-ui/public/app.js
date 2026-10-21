@@ -1,5 +1,5 @@
 // thin DOM glue. All markup comes from render.js.
-import { render, renderNav, renderHeader, renderProbe } from "/render.js";
+import { render, renderNav, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
@@ -8,7 +8,7 @@ import { renderSetup } from "/setup.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
-const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null };
+const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null };
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 let current = "triage";
@@ -39,7 +39,7 @@ let sources; // GET /api/sources: the trackers the UI can read; undefined until 
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
-  { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
+  { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); } },
   { id: "setup", label: "Setup", needsFeed: false, render: () => renderSetup(setup, state.plans, setupMsgs), onVisit: () => loadSetup() },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
@@ -203,6 +203,30 @@ async function saveVm() {
   paint();
 }
 
+// the review gate card. The draft is the per-reviewer choice being edited; a saved or loaded answer resets it.
+let reviewGateLoadGen = 0, reviewGateSaving = false;
+async function loadReviewGate() {
+  const gen = ++reviewGateLoadGen;
+  state.reviewGate = { data: null, error: null };
+  try {
+    const r = await fetch("/api/review-gate", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = await r.json();
+    if (gen !== reviewGateLoadGen) return;
+    state.reviewGate = r.ok ? { data: j, error: null, draft: reviewGateDraft(j) } : { data: null, error: j.error || `review gate failed (${r.status})` };
+  } catch (_) { if (gen !== reviewGateLoadGen) return; state.reviewGate = { data: null, error: "review gate: server unreachable" }; }
+  if (currentPage.id === "config" && feed) paint();
+}
+async function saveReviewGate() {
+  const rg = state.reviewGate;
+  if (!rg || !rg.draft || reviewGateSaving) return;
+  reviewGateSaving = true;
+  let res;
+  try { res = await post("/api/review-gate", { reviewers: rg.draft }); } finally { reviewGateSaving = false; }
+  const { ok, j } = res;
+  state.reviewGate = ok ? { data: j, error: null, draft: reviewGateDraft(j), msg: { ok: true, text: "saved" } } : { ...state.reviewGate, msg: { ok: false, text: j.error || "save failed" } };
+  paint();
+}
+
 // Only the newest call may paint, as with the feed.
 async function loadHealth() {
   const gen = ++healthGen;
@@ -308,6 +332,11 @@ document.addEventListener("drop", (e) => {
 document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, theme: e.target.value === "" ? null : e.target.value });
+  const rgf = e.target.dataset.rg, rgd = state.reviewGate && state.reviewGate.draft;
+  if (rgf && rgd) {
+    const x = rgd.find((y) => y.slug === e.target.dataset.slug);
+    if (x) { x[rgf] = rgf === "mode" ? e.target.value : e.target.checked; state.reviewGate.msg = null; return paint(); }
+  }
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;
@@ -366,6 +395,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth();
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
   if (b.dataset.act === "vm-save") return void saveVm();
+  if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") {

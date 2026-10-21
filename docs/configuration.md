@@ -567,6 +567,10 @@ reviewer and claude advisory only:
 ] }
 ```
 
+The himmel config UI (Settings, "Review gate") edits the same overlay: each reviewer's
+mode, required flag and on/off, validated by the resolver before anything is written.
+It never writes `scripts/cr/critics.json`. See [ui.md](ui.md).
+
 A Codex-only gate drops the other two:
 
 ```json

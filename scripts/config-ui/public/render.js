@@ -189,6 +189,41 @@ export function renderVm(vm) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
 }
 
+// the review gate card. rg = { data: GET /api/review-gate, error, draft: [{ slug, mode, required, enabled }], msg }.
+// The server validates and writes only the critics.local.json overlay; this only shows its answer.
+export const reviewGateDraft = (d) => [
+  ...d.reviewers.map((r) => ({ slug: r.slug, mode: r.mode, required: r.required, enabled: true })),
+  ...(d.dropped || []).map((slug) => ({ slug, mode: "best-effort", required: false, enabled: false })),
+];
+const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note" };
+export function renderReviewGate(rg) {
+  const head = `<h2 id="h-review-gate">Review gate</h2><p class="sub">Who reviews a pull request before it merges, in what order, and what happens when one of them cannot.</p>`;
+  if (!rg || (!rg.data && !rg.error)) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="empty">loading…</div></section>`;
+  if (!rg.data) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="nodata">${esc(rg.error)}</div></section>`;
+  const d = rg.data, draft = rg.draft || reviewGateDraft(d);
+  const by = Object.fromEntries(d.reviewers.map((r) => [r.slug, r]));
+  const rows = draft.map((x) => {
+    const r = by[x.slug], rec = r ? r.recommended : null;
+    const isRec = rec && rec.mode === x.mode && rec.required === x.required && rec.enabled === x.enabled;
+    const modes = ["hard", "best-effort"].map((m) => `<option value="${m}"${x.mode === m ? " selected" : ""}>${m}</option>`).join("");
+    return `<div class="setrow"><div class="sethead"><span class="id">${r ? `${r.order}. ` : ""}${esc(x.slug)}</span>
+      <span class="det">${r && r.provider ? `${esc(r.provider)} · ` : ""}${x.enabled ? esc(MODE_SAYS[x.mode]) : "turned off on this machine"}</span>
+      <span class="slot"><label>mode <select data-rg="mode" data-slug="${esc(x.slug)}" aria-label="${esc(x.slug)} mode">${modes}</select></label>
+      <label><input type="checkbox" data-rg="required" data-slug="${esc(x.slug)}"${x.required ? " checked" : ""}> required</label>
+      <label><input type="checkbox" data-rg="enabled" data-slug="${esc(x.slug)}"${x.enabled ? " checked" : ""}> on</label></span></div>
+      <div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
+  }).join("");
+  const env = d.env.map((e) => `<div class="setrow"><div class="sethead"><span class="id">${esc(e.name)}</span><span class="det">${esc(e.means)}</span></div>
+    <div class="ro">now: ${e.value === null ? "not set" : esc(e.value)} · default: ${esc(e.default)} · set in .env or the launching shell, read-only here</div></div>`).join("");
+  const msg = rg.msg ? `<div class="${rg.msg.ok ? "ro" : "nodata"}" role="status">${esc(rg.msg.text)}</div>` : "";
+  return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="card">
+    <p class="sub">Reviewers run in this order. Changes are saved to <code>${esc(d.overlay)}</code> on this machine; the shared critics.json is never written.</p>
+    ${rows}
+    <p class="sub">${esc(d.rateLimit)}</p>
+    <button class="btn" data-act="review-gate-save">save</button>${msg}</div>
+    <div class="card"><h3>Timeouts and tiers</h3>${env}</div></section>`;
+}
+
 // Settings: what can be changed and where it lives. Each row shows the himmelctl command it runs, when it takes
 // effect and a Learn more link into the docs site. Switches come from the feed's toggle rows; the rest only show.
 const HIMMEL_HOME = "~/himmel";
@@ -304,6 +339,7 @@ export function render(feed, state) {
   ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
 </section>
 ${renderSettings(feed, state)}
+${renderReviewGate(state.reviewGate)}
 ${renderVm(state.vm)}
 <section id="inventory" aria-labelledby="h-inv">
   <h2 id="h-inv">Inventory</h2>
