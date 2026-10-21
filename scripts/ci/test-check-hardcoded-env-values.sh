@@ -94,6 +94,9 @@ GHCR_LITERAL='      IMAGE: ghcr.io/yotamleo-org/himmel-ci'
 run_case "ghcr path with a literal owner" 1 .github/workflows/ci-image.yml "$GHCR_LITERAL"
 run_case "ghcr path with the owner derived" 0 .github/workflows/ci-image.yml "$GHCR_DERIVED"
 run_case "the CI runner user's home" 0 scripts/ci/gcp-runner-startup.sh 'chown -R runner:runner /home/runner/.bun'
+run_case "the CI runner user's home alone" 0 scripts/ci/gcp-runner-startup.sh 'cd /home/runner'
+run_case "a user whose name starts with runner (digit)" 1 scripts/ci/gcp-runner-startup.sh 'cp x /ho''me/runner2/.bun'
+run_case "a user whose name starts with runner (dash)" 1 scripts/ci/gcp-runner-startup.sh 'cp x /ho''me/runner-admin/.bun'
 # shellcheck disable=SC2016
 run_case "a path variable ending in home" 0 scripts/probe.sh 'echo z > "$ROOT/home/outside.txt"'
 run_case "pages url in first-party site config" 1 site/astro.config.mjs "const u = 'https://someone.github.io/Repo/';"

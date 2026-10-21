@@ -98,7 +98,7 @@ inhdr && /^\+\+\+ / {
     for (c = 0; c < nclass; c++) {
         if (tree && cls[c] == "repo-slug") continue
         scan = body
-        if (cls[c] == "home-path") gsub(/\/home\/runner/, "", scan)
+        if (cls[c] == "home-path") gsub(/\/home\/runner([^a-z0-9_-]|$)/, " ", scan)
         if (scan ~ re[c]) {
             printf "%s:%d: %s: %s\n", file, cur, cls[c], body
             bad++

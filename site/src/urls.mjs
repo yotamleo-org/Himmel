@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const NWO = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/;
-const ORIGIN = /github\.com[:/]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/;
+const ORIGIN = /^(?:(?:https?|ssh|git):\/\/(?:[^@/]+@)?|[A-Za-z0-9_.-]+@)github\.com[:/]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/;
 
 function repoNwo() {
   const fromEnv = process.env.GITHUB_REPOSITORY;

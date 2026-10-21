@@ -69,12 +69,14 @@ check "host sweep: no tracked docs/site/wizard file names the old docs host or r
 # --- site URLs: derived from the repo (GITHUB_REPOSITORY, else the git origin), never written in site/
 # 'yotamleo-org/Himmel' is GITHUB_REPOSITORY of this repo's own CI runs (the real value, not hand-written).
 urls() { node --input-type=module -e "import { pathToFileURL } from 'node:url'; const u = await import(pathToFileURL(process.argv[1]).href); process.stdout.write(u.SITE_ORIGIN + ' ' + u.REPO_URL);" "$here/src/urls.mjs"; }
-mkdir "$sweep_ctl/origin-repo" "$sweep_ctl/bare-repo" || exit 1
+mkdir "$sweep_ctl/origin-repo" "$sweep_ctl/bare-repo" "$sweep_ctl/lookalike-repo" || exit 1
 git init -q "$sweep_ctl/origin-repo" && git -C "$sweep_ctl/origin-repo" remote add origin git@github.com:Acme-Org/Widgets.git || exit 1
+git init -q "$sweep_ctl/lookalike-repo" && git -C "$sweep_ctl/lookalike-repo" remote add origin https://notgithub.com/acme/widgets.git || exit 1
 git init -q "$sweep_ctl/bare-repo" || exit 1
 check "site urls: the CI repository gives the current Pages origin and repo URL" is "$(GITHUB_REPOSITORY=yotamleo-org/Himmel urls 2>/dev/null)" "https://yotamleo-org.github.io https://github.com/yotamleo-org/Himmel"
 check "site urls: another repository gives its own, host lowercased" is "$(GITHUB_REPOSITORY=Acme-Org/Widgets urls 2>/dev/null)" "https://acme-org.github.io https://github.com/Acme-Org/Widgets"
 check "site urls: no GITHUB_REPOSITORY falls back to the git origin" is "$(unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/origin-repo/.git" urls 2>/dev/null)" "https://acme-org.github.io https://github.com/Acme-Org/Widgets"
+check "site urls: an origin on a lookalike host is not github.com" is "$(unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/lookalike-repo/.git" urls 2>/dev/null)" ""
 check "site urls: neither source fails closed with no value" is "$(unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/bare-repo/.git" urls 2>/dev/null)" ""
 check "site urls: a malformed GITHUB_REPOSITORY is not trusted" is "$(GITHUB_REPOSITORY='x/y;z' GIT_DIR="$sweep_ctl/bare-repo/.git" urls 2>/dev/null)" ""
 
