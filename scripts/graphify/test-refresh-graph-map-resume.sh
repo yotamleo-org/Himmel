@@ -51,6 +51,7 @@ BIN="$WS/bin"; mkdir -p "$BIN"
 cat > "$BIN/graphify" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then echo "graphify 0.9.93"; exit 0; fi
+[ -z "${STUB_IGNORE_TERM:-}" ] || trap '' TERM
 if [ "$1" = "cluster-only" ]; then
   [ -z "${STUB_CLUSTER_FAIL:-}" ] || exit 1
   mkdir -p "$2/graphify-out"
@@ -142,6 +143,7 @@ calls=$(tr '\n' ' ' < "$STUB_CALLS" 2>/dev/null)
 echo "R4: the cap is the run deadline divided by the seconds per chunk"
 reset
 out=$( STUB_CHUNKS=1 GRAPHIFY_RUN_DEADLINE_SECONDS=7200 GRAPHIFY_SECONDS_PER_CHUNK=130 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && pass "R4 the run itself completes (rc 0)" || fail "R4 should exit 0 (got $rc): $out"
 echo "$out" | grep -q 'chunk cap=55' && pass "R4 7200 / 130 prints chunk cap=55" || fail "R4 stderr should print chunk cap=55: $out"
 
 # --- R5: a deadline that needed timeout's SIGKILL (rc 137) keeps the finished
@@ -174,6 +176,15 @@ cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
 [ "$cached" = "c1.json c2.json c3.json " ] \
   && pass "R7 the extraction cache is kept" || fail "R7 cache should hold c1..c3: $cached"
 [ ! -e "$OUTD/graph.json" ] && pass "R7 nothing partial was promoted" || fail "R7 a partial graph.json was promoted"
+
+# --- R8: a graphify that ignores the stop TERM is SIGKILLed after the grace, so
+# the cap still ends the run. ---
+echo "R8: a TERM-ignoring graphify is killed after the grace at the cap"
+reset
+out=$( STUB_CHUNKS=12 STUB_IGNORE_TERM=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=2 GRAPHIFY_STOP_KILL_GRACE_SECONDS=1 timeout 60 bash -c 'bash "$0" --name luna --corpus-root "$1" --backend claude --maps-dir "$2" --title "Graphify Luna Map" --slug graphify-luna-map --corpus-tag luna --scratch "$3"' "$SCRIPT" "$CORPUS" "$MAPS" "$SP" 2>&1 ); rc=$?
+[ "$rc" -eq 4 ] && pass "R8 exits 4 despite the ignored TERM" || fail "R8 should exit 4 (got $rc): $out"
+[ -f "$OUTD/cache/c2.json" ] && [ ! -e "$OUTD/cache/c12.json" ] \
+  && pass "R8 the run was cut short after the cap (c2 cached, c12 never reached)" || fail "R8 the TERM-ignoring graphify ran to the end or lost its chunks"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

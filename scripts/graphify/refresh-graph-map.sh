@@ -2357,7 +2357,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # back hollow (recorded in .graphify_failed_chunks).
   # ponytail: graphify exposes no per-chunk skip, so a persistently hollow chunk
   # is retried hollow-retry-max times EACH run and the corpus cannot finish past
-  # it; upgrade path: split the chunk (backfill split design) or an upstream skip flag.
+  # it (its retry line names only the batch size, so the count is a no-progress
+  # count that any finished chunk resets, not a per-chunk one); upgrade path: split the chunk (backfill split design) or an upstream skip flag.
   GRAPHIFY_SECONDS_PER_CHUNK="${GRAPHIFY_SECONDS_PER_CHUNK:-130}"
   GRAPHIFY_HOLLOW_RETRY_MAX="${GRAPHIFY_HOLLOW_RETRY_MAX:-5}"
   case "$GRAPHIFY_SECONDS_PER_CHUNK" in
@@ -2386,6 +2387,13 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   GRAPHIFY_MAX_CHUNKS_PER_RUN=$((10#$GRAPHIFY_MAX_CHUNKS_PER_RUN))
   GRAPHIFY_HOLLOW_RETRY_MAX=$((10#$GRAPHIFY_HOLLOW_RETRY_MAX))
   _STOP_FILE="$SCRATCH/.graphify-extract-stop"
+  # Seconds graphify gets to exit after the TERM that stops it at the cap or on
+  # hollow retries before it is SIGKILLed (timeout -k does not cover a TERM we send).
+  _STOP_KILL_GRACE="${GRAPHIFY_STOP_KILL_GRACE_SECONDS:-30}"
+  case "$_STOP_KILL_GRACE" in
+    ''|*[!0-9]*) echo "refresh-graph-map: GRAPHIFY_STOP_KILL_GRACE_SECONDS must be a non-negative integer (got '$_STOP_KILL_GRACE')" >&2; exit 1 ;;
+  esac
+  _STOP_KILL_GRACE=$((10#$_STOP_KILL_GRACE))
 
   # Reads graphify's merged output on stdin, relays it to stderr, and kills
   # graphify ($1 = its pid) at the chunk cap or after too many hollow retries,
@@ -2418,7 +2426,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # the monitor can kill it (the pid is the timeout wrapper's, which forwards
   # the TERM); a leaked grandchild holding the pipe open cannot hang the run.
   _run_extract() {
-    local rem fifo="$SCRATCH/.graphify-extract.fifo" gpid mpid rc=0 i
+    local rem fifo="$SCRATCH/.graphify-extract.fifo" gpid mpid rc=0 i stop_at="" killed=0
     rm -f "$fifo" "$_STOP_FILE"
     rem="$(_deadline_left)"
     if [ "$rem" != unbounded ] && [ "$rem" -eq 0 ]; then
@@ -2434,6 +2442,17 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     gpid=$!
     _extract_monitor "$gpid" < "$fifo" &
     mpid=$!
+    while kill -0 "$gpid" 2>/dev/null; do
+      if [ -s "$_STOP_FILE" ]; then
+        [ -n "$stop_at" ] || stop_at=$SECONDS
+        if [ "$killed" -eq 0 ] && [ $((SECONDS - stop_at)) -ge "$_STOP_KILL_GRACE" ]; then
+          pkill -KILL -P "$gpid" 2>/dev/null || true
+          kill -KILL "$gpid" 2>/dev/null || true
+          killed=1
+        fi
+      fi
+      sleep 0.2
+    done
     wait "$gpid" || rc=$?
     for i in 1 2 3 4 5 6 7 8 9 10; do
       kill -0 "$mpid" 2>/dev/null || break
