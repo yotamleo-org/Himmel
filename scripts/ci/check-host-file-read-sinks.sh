@@ -135,7 +135,7 @@ while IFS= read -r -d '' path; do
           hd = substr(l, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", hd)
         }
         for (k = 1; k <= ACNT; k++) {
-          if (AV[k] ~ /^"?(\$\([ \t]*|`[ \t]*)mktemp[^)`]*[)`]"?([ \t;&|)}]|$)/) delete tainted[AN[k]]
+          if (AV[k] ~ /^"(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]"([ \t;&|)}]|$)/ || AV[k] ~ /^(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]([ \t;&|)}]|$)/) delete tainted[AN[k]]
           else if (substr(l, AP[k] + 1) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ &&((k == 1 && AN[k] == hd) || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
         }
         hit = ""
