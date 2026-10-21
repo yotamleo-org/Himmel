@@ -947,6 +947,7 @@ WFDIR="$tmp/wf"; RUNDIR="$tmp/runs"
 mkdir -p "$WFDIR" "$RUNDIR"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci.yml > "$WFDIR/ci.yml"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/pr-title-lint.yml > "$WFDIR/pr-title-lint.yml"
+git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci-image.yml > "$WFDIR/ci-image.yml"
 cp "$WFDIR/pr-title-lint.yml" "$WFDIR/new-thing.yml"
 real_run() {  # <status> <conclusion> <headSha>
     printf '[{"conclusion":"%s","databaseId":38329960360,"event":"workflow_dispatch","headSha":"%s","status":"%s","workflowName":"CI"}]' "$2" "$3" "$1"
@@ -1002,6 +1003,19 @@ contains "workflow with no workflow_dispatch trigger: names the missing trigger"
 wf_run ".github/workflows/pr-title-lint.yml"
 check "exempted workflow without a trigger: exit 0" "$rc" "0"
 contains "exempted workflow without a trigger: check 10 passes" "$out" "[PASS] 10."
+
+wf_run ".github/workflows/ci-image.yml"
+check "exempted workflow with a trigger, no dispatch run: exit 0" "$rc" "0"
+contains "exempted workflow with a trigger, no dispatch run: check 10 passes" "$out" "[PASS] 10."
+
+# Not on the list, though its name matches an entry as a regex: a skipped
+# branch dispatch still fails.
+cp "$WFDIR/ci-image.yml" "$WFDIR/ci.image.yml"
+real_run completed skipped "$SHA" > "$RUNDIR/ci.image.yml.json"
+wf_run ".github/workflows/ci.image.yml"
+check "unlisted workflow with a trigger, skipped dispatch at head: exit 1" "$rc" "1"
+contains "unlisted workflow with a trigger, skipped dispatch at head: check 10 fails" "$out" "[FAIL] 10."
+contains "unlisted workflow with a trigger, skipped dispatch at head: fails on the run, not the trigger" "$out" "ci.image.yml has no completed successful workflow_dispatch run"
 
 wf_run ".github/workflows/ci.yml" "removed .github/workflows/ci.yml"
 contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."

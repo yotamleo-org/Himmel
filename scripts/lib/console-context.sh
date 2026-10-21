@@ -211,6 +211,9 @@ console_context_leg_env_unset_names() {
         HIMMEL_CONSOLE_JUDGE \
         HIMMEL_CONSOLE_JUDGE_DOC \
         HIMMEL_CONSOLE_JUDGE_QID \
+        HIMMEL_RELEASE_MANAGER \
+        HIMMEL_RM_DOC \
+        HIMMEL_RM_RELEASE \
         HIMMEL_LEG_CONTEXT_MODE \
         HIMMEL_LEG_AUTOCOMPACT \
         CLAUDE_CODE_EFFORT_LEVEL \

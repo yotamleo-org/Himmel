@@ -906,3 +906,152 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
     expect(created()).toBeUndefined();
   });
 });
+
+describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+
+  const play = (description?: string) =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false, description },
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/')) return { fields: { labels: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  const file = async (type: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 't', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const ledger = () => {
+    try {
+      return readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'admissions-'));
+    process.env['HANDOVER_DIR'] = dir;
+    play('Release train.\nfrozen: 2026-10-20');
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses a Task into a frozen version with no gate, naming the gates, without POSTing', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3 is frozen.*--gate critical\|regression\|must:/s);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('admits a Task with --gate must:98 and writes a ledger row', async () => {
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    const [row] = ledger();
+    expect(row).toMatchObject({ key: 'HIMMEL-77', version: 'v1.1.3', gate: 'must:98' });
+    expect(row.kind).toBeUndefined();
+    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it.each(['critical', 'regression', 'receipt'])('admits a Task with --gate %s', async (gate) => {
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', gate);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', gate }]);
+  });
+
+  it.each(['must:', 'must:  ', 'urgent'])('refuses the malformed gate "%s"', async (gate) => {
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--gate', gate)).rejects.toThrow(/--gate/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('files a --backlog Bug on a frozen version with no gate and no row', async () => {
+    await file('Bug', '--backlog');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('backlog');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('holds a Highest Bug, whose default is the frozen version, to the gate', async () => {
+    await expect(file('Bug', '--priority', 'Highest')).rejects.toThrow(/frozen/);
+    expect(created()).toBeUndefined();
+    await file('Bug', '--priority', 'Highest', '--gate', 'critical');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'critical' }]);
+  });
+
+  it('holds an escape residual, routed to the frozen version, to the gate', async () => {
+    const residual = ['--residual-of', 'HIMMEL-1', '--fu-class', 'escape', '--class', 'c'];
+    await expect(file('Task', ...residual)).rejects.toThrow(/frozen/);
+    expect(created()).toBeUndefined();
+    await file('Task', ...residual, '--gate', 'receipt');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'receipt' }]);
+  });
+
+  it('lets the console past the gate with a reason, and writes an override row carrying it', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('Bug', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' }]);
+  });
+
+  it('refuses the override on a frozen version without a reason or without the console marker', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', ' ')).rejects.toThrow(/reason/);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('refuses a gated filing when the ledger cannot take the row, before any ticket is created', async () => {
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('behaves as before on a version without a frozen: line', async () => {
+    play('Release train.');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('ignores a frozen: line that is not on a line of its own', async () => {
+    play('not yet frozen: 2026-10-20');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('reads a frozen: line from a CRLF description', async () => {
+    play('Release train.\r\nfrozen: 2026-10-20\r\n');
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/frozen \(2026-10-20\)/);
+  });
+
+  it('ignores a frozen: marker whose date is on the next line', async () => {
+    play('Release train.\nfrozen:\nnotes');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+});

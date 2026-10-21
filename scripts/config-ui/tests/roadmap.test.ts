@@ -190,7 +190,7 @@ test("the page renders every section and escapes ticket text", () => {
 
 test("the rail lists Roadmap and Kanban after Fleet, and both are console routes", () => {
   const labels = navLinks({ here: "console", token: TOKEN, current: "roadmap" }).map((l) => l.label);
-  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Roadmap", "Kanban", "Docs"]);
+  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
   expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "roadmap" });
   expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "kanban" });
 });

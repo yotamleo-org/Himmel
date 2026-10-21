@@ -5,6 +5,7 @@
 #
 # Who bumps what (HIMMEL-4258) — one owner per pin, never two:
 #   Dependabot     npm manifests (above) and every workflow `uses:` (github-actions).
+#                  The CI image's base digest (docker, .github/ci-image/Dockerfile).
 #   drift loop     scripts/upstreams.json `version_pin` entries (the nightly
 #                  /drift-fix bump): .bun-version (bun-ci), graphify, ast-grep, ...
 #   pin-scan.py    reports (a chore(deps) PR bumps): pre-commit revs (Dependabot's
@@ -41,3 +42,13 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Digest bumps of the CI image's ubuntu:24.04 base only: a release jump
+  # (24.10, 26.04) is a deliberate Dockerfile change, not a weekly bump.
+  - package-ecosystem: "docker"
+    directory: "/.github/ci-image"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
