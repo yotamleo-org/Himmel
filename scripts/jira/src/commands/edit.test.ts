@@ -632,6 +632,17 @@ describe('edit into a frozen version (HIMMEL-6918)', () => {
     expect(ledger()).toMatchObject([{ key: 'HIMMEL-1', version: 'v1.1.3', gate: 'critical' }]);
   });
 
+  it('writes no admission row when Jira drops the fixVersions field', async () => {
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'PUT') return {};
+      if (path.endsWith('/versions')) return VERSIONS;
+      return { fields: { fixVersions: [{ name: 'v1.1.4' }] } };
+    });
+    await expect(edit('--add-fix-version', 'v1.1.3', '--gate', 'critical')).rejects.toThrow(/add-fix-version was not changed/);
+    expect(puts()).toHaveLength(1);
+    expect(ledger()).toEqual([]);
+  });
+
   it('refuses an unknown --gate, before any PUT', async () => {
     await expect(edit('--fix-version', 'v1.1.3', '--gate', 'urgent')).rejects.toThrow(/--gate/);
     expect(puts()).toHaveLength(0);

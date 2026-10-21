@@ -328,14 +328,6 @@ export function registerEdit(program: Command): void {
       }
       if (Object.keys(update).length > 0) body.update = update;
       await request('PUT', `/issue/${key}`, body);
-      // The row is written once the PUT lands, so another field failing its read-back cannot leave the admission unrecorded.
-      try {
-        if (overrideReason !== undefined) appendAdmission({ version: target!, key, kind: 'override', reason: overrideReason });
-        if (admission) appendAdmission({ ...admission, key });
-      } catch (e) {
-        console.error(`Edited ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
-        process.exit(1);
-      }
       // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority
       // back and fail loud instead of reporting a silent no-op as "edited".
@@ -347,6 +339,19 @@ export function registerEdit(program: Command): void {
           `/issue/${key}?fields=${names.join(',')}`,
         );
         const mismatches = verifyReadBack(key, options, fields, got.fields ?? {});
+        // The admission row is written once the target version reads back, so a dropped fixVersions
+        // field leaves no row and another field failing its read-back cannot leave the admission unrecorded.
+        const landed = Array.isArray(got.fields?.['fixVersions']) &&
+          (got.fields['fixVersions'] as Array<{ name?: string }>).some((v) => v.name === target);
+        if (target !== undefined && landed) {
+          try {
+            if (overrideReason !== undefined) appendAdmission({ version: target, key, kind: 'override', reason: overrideReason });
+            if (admission) appendAdmission({ ...admission, key });
+          } catch (e) {
+            console.error(`Edited ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
+            process.exit(1);
+          }
+        }
         if (mismatches.length > 0) throw new Error(mismatches.join('\n'));
       }
       writeJiraBreadcrumb(key);
