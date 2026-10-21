@@ -410,7 +410,8 @@ deny_priv() {
 
 # The words each docker/podman invocation runs with, one line per invocation
 # (words joined by US). A wrapper the model cannot see through (sudo, xargs, ssh,
-# find -exec) hands over its argv from the docker word on; an invocation it
+# find -exec) hands over its argv from each docker word on, so a user or host named
+# docker is not taken for the program; an invocation it
 # cannot read (a shell or interpreter with no parsed body, a wrapper with no
 # literal docker word, a word holding a control byte) is "@legacy": the regex
 # reader decides, so the model only ever adds a verdict and never hides a deny.
@@ -429,8 +430,8 @@ def scan: words, (if winpath then "@legacy" else empty end);
 | if (.prog | b | IN("docker", "podman")) then (.argv | scan)
   elif .opaque != null then
     .argv as $a
-    | ([range(0; $a | length) | select($a[.] | isd)] | first) as $g
-    | if $g == null then "@legacy" else ($a[$g:] | scan) end
+    | [range(0; $a | length) | select($a[.] | isd)] as $gs
+    | if ($gs | length) == 0 then "@legacy" else ($gs[] as $g | $a[$g:] | scan) end
   elif interp and .body == null then "@legacy"
   else empty end
 DP_JQ_EOF

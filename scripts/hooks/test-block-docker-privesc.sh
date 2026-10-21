@@ -152,6 +152,10 @@ docker run --privileged img sh
 EOF")")"
 assert_rc "ssh to a host naming docker run --privileged stays denied" 2 "$(run_case "$(j_bash "ssh host 'docker run --privileged img sh'")")"
 assert_rc "docker run of a safe image after data naming a privilege flag" 0 "$(run_case "$(j_bash 'echo "--privileged"; docker run --rm img sh')")"
+assert_rc "sudo -u docker docker run --privileged: the user name is not the program" 2 "$(run_case "$(j_bash 'sudo -u docker docker run --privileged img sh')")"
+assert_rc "sudo -u podman podman run --privileged: the user name is not the program" 2 "$(run_case "$(j_bash 'sudo -u podman podman run --privileged img sh')")"
+assert_rc "ssh docker docker run --privileged: the host name is not the program" 2 "$(run_case "$(j_bash 'ssh docker docker run --privileged img sh')")"
+assert_rc "sudo -u docker docker run of a safe image" 0 "$(run_case "$(j_bash 'sudo -u docker docker run --rm img sh')")"
 
 # --- a missing shfmt denies a command that names docker/podman, and the message
 # names shfmt; a command that names neither never pays for it.
