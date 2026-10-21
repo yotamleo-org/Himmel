@@ -771,6 +771,14 @@ check "ledger: an amend does not reach a finding row written after it: exit 0" "
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
+seed_deferral HIMMEL-50 "$OLDHEAD"
+printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"head":"%s"}}\n' "$OLDHEAD" "$SHA" >> "$LEDGER"
+printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-HIMMEL-50","severity":"sug","verdict":"fixed","artifact":"diff","perspective":"off"}\n' "$OLDHEAD" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a replacement row at the original head supersedes the moved finding: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
 seed_deferral HIMMEL-50
 printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"head":"%s"}}\n' "$SHA" "$OLDHEAD" >> "$LEDGER"
 rc=0; out="$(run)" || rc=$?
