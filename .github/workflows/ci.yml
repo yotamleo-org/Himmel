@@ -550,7 +550,10 @@ jobs:
       guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
       claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
       doc-invariants: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__dev.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__guard.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__self.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__desc-cap.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__positional.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__catalog.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__secrets-doc.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__llms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__terms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__hermetic.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__stage.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__agents-md.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__debrand.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__lanes.outcome) && 'pass' || 'fail' }}
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
     env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
       CLAUDE_CLI_VERSION: '2.1.296'
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
@@ -1121,6 +1124,10 @@ jobs:
       contents: read
       packages: read
     timeout-minutes: 25 # p95 736s (12m); 2x
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -1402,6 +1409,10 @@ jobs:
       contents: read
       packages: read
     timeout-minutes: 15 # p95 423s (7m); 2x
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -1506,6 +1517,10 @@ jobs:
         password: ${{ github.token }}
       options: --init --user 1001
     timeout-minutes: 15 # p95 269s (4.5m); 2x = 9m, kept 15
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     defaults:
       run:
         shell: bash
@@ -1628,6 +1643,10 @@ jobs:
     # `npm ci` across ~9 packages); cap it so a hung download/install can't
     # burn a full 6h runner slot (codex-3 CR hardening).
     timeout-minutes: 15
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -1741,10 +1760,10 @@ jobs:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.shards != '[]' }}
     strategy:
-      # HIMMEL-5036: a PR stops at its first red shard (siblings are cancelled and
-      # the shell-unit aggregator reads the rollup as failure); push-to-main and
-      # the nightly keep the full red set so a red stays attributable.
-      fail-fast: ${{ github.event_name == 'pull_request' }}
+      # Every shard runs to the end, a PR's too, so one run reports every red
+      # shard; the fail-fast-shell-unit-shard twin still cancels the rest of
+      # the run once the matrix has finished red.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         # shard: [1..N] fans run-shell-tests.sh across N runners (HIMMEL-2872).
@@ -1805,6 +1824,10 @@ jobs:
     # 28m, over 10 green PR runs); the main sweep runs the full set per shard and
     # the p95 measured here does not cover it, so 60 stays until sweep data does.
     timeout-minutes: 60
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -2207,6 +2230,10 @@ jobs:
       contents: read
       packages: read
     timeout-minutes: 240
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:

@@ -17,6 +17,8 @@
 #   K5  in those jobs every host setup step (setup-node, setup-bun, apt, pip,
 #       the gitleaks download) is gated on !job.container.id, and
 #       shell-unit-shard starts atd in the container
+#   K6  each containerized job sets LANG and LC_ALL to C.UTF-8 in its job env:
+#       the image sets no locale, so bash would count bytes, not characters
 #
 # Usage: bash scripts/ci/test-ci-container-jobs.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -47,6 +49,15 @@ k1_shell_ok() {
        r && /^      [^ ]/ { r = 0 }
        r && /^        shell: bash( -e [{]0[}])?$/ { f = 1 }
        END { exit !f }' <<< "$1"
+}
+
+# k6_locale_ok <job block>: the job-level env sets LANG and LC_ALL to C.UTF-8.
+k6_locale_ok() {
+  awk '$0 == "    env:" { e = 1; next }
+       e && !/^      / { e = 0 }
+       e && $0 == "      LANG: C.UTF-8" { l = 1 }
+       e && $0 == "      LC_ALL: C.UTF-8" { a = 1 }
+       END { exit !(l && a) }' <<< "$1"
 }
 
 # evaluate <expr> <event> <head_repo> <actor> <ci_image> <vm_runner> <ci_gcp>
@@ -161,6 +172,18 @@ if grep -qxF '        if: ${{ job.container.id }}' <<< "$atd_step" && grep -qE '
 else
   bad "K5 shell-unit-shard has no 'Start atd (CI image)' step gated on job.container.id"
 fi
+
+# K6
+for j in $JOBS; do
+  b="$(job_block "$j")"
+  [ -n "$b" ] || continue
+  if k6_locale_ok "$b"; then ok "K6 $j sets LANG and LC_ALL to C.UTF-8"
+  else bad "K6 $j has no job-level LANG/LC_ALL C.UTF-8, so the image's POSIX locale counts bytes"; fi
+done
+# K6: a step-level env is not the job env.
+mut=$'  lint:\n    steps:\n      - run: true\n        env:\n          LANG: C.UTF-8\n          LC_ALL: C.UTF-8'
+if k6_locale_ok "$mut"; then bad "K6 a step-level LANG passes for the job env"
+else ok "K6 a step-level LANG is not the job env"; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
