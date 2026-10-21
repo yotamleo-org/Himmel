@@ -101,11 +101,22 @@ describe('release reducer (HIMMEL-6796)', () => {
     expect(s.leaks.unauthorized).toEqual([]);
   });
 
-  it('an intent that predates a newer baseline listing its key is not pending', () => {
+  it('an unapplied intent stays pending under a newer baseline listing its key', () => {
     const moving = rule('R-1', 'K-1', 'move', 'v1', null, { verb: 'REVERSION', outcome: 'MOVE', phase: 'intent' });
     const g2: Baseline = { ...base, gen: 2, ts: '2026-10-21T11:00:00.000Z' };
     const s = reduce(input({ baselines: [g2], rulingRows: [moving] }));
-    expect(recordOf(s, 'K-1', 'v1')).toMatchObject({ placement: 'in', expected_member: true, ruling: 'baseline-v1-g2' });
+    expect(recordOf(s, 'K-1', 'v1')?.placement).toBe('pending');
+  });
+
+  it('an intent applied after a newer baseline counts against it', () => {
+    const extra = { verb: 'REVERSION' as const, outcome: 'MOVE', supersedes: ['baseline-v1-g1'] };
+    const g2: Baseline = { ...base, gen: 2, ts: '2026-10-21T11:00:00.000Z' };
+    const s = reduce(input({
+      baselines: [g2],
+      rulingRows: [rule('R-1', 'K-1', 'move', 'v1', null, { ...extra, phase: 'intent' }),
+        rule('R-1', 'K-1', 'move', 'v1', null, { ...extra, ts: '2026-10-21T12:00:00.000Z' })],
+    }));
+    expect(s.integrity).toEqual(['K-1@v1: two live rulings (R-1, baseline-v1-g2)']);
   });
 
   it('a failed apply readback is not counted as a ruling in the trend', () => {

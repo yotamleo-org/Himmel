@@ -125,6 +125,28 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(() => claim(ctx({ HIMMEL_RM_DOC: DOC }))).toThrow(/HIMMEL_RELEASE_MANAGER/);
   });
 
+  it('refuses a new ruling on a key while its intent is pending', async () => {
+    await setup();
+    const a = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    admit(a.req);
+    const b = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'again', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    expect(() => admit(b.req)).toThrow(/K-2@v1 has a pending intent/);
+  });
+
+  it('refuses to freeze a baseline over a pending intent on a key it lists', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'REVERSION', key: 'K-1', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' }, supersedes: ['baseline-v1-g1'] });
+    const refreeze = () => freeze(ctx(), { version: 'v1', keys: ['K-1'], decision: '107', verbatim: 'refrozen' });
+    expect(refreeze).toThrow(/R-R1-0001 is a pending intent on K-1@v1; apply or void it first/);
+    expect(() => freeze(ctx(), { version: 'v2', keys: ['K-9'], decision: '107', verbatim: 'other key' })).not.toThrow();
+    await apply(ctx(rmEnv), r.id);
+    expect(refreeze().gen).toBe(2);
+  });
+
   it('requires supersedes when a ruling is already in effect, baseline included', async () => {
     await setup();
     const q = request(ctx(), { verb: 'REVERSION', key: 'K-1', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });

@@ -210,6 +210,10 @@ export function freeze(ctx: Ctx, o: { version: string; keys: string[]; decision:
     if (!l.decl.versions.includes(o.version)) throw new Error(`release operator freeze: ${o.version} is not a version of ${ctx.release}`);
     const gen = 1 + l.operator.verified.filter((x) => x.kind === 'freeze' && x.file?.startsWith(`baseline-${o.version}-g`)).length;
     const b: Baseline = { release: ctx.release, version: o.version, gen, keys: [...new Set(o.keys)].sort(), decision: o.decision, ts: ts(ctx) };
+    const resolved = new Set(l.rulings.verified.filter((r) => r.phase !== 'intent').map((r) => r.id));
+    const pending = l.rulings.verified.find((r) => r.phase === 'intent' && !resolved.has(r.id)
+      && b.keys.includes(r.key) && effectOn(r.op, o.version));
+    if (pending) throw new Error(`release operator freeze: ${pending.id} is a pending intent on ${pending.key}@${o.version}; apply or void it first`);
     const file = `${baselineId(b)}.json`;
     if (existsSync(f(ctx, file))) throw new Error(`release: ${file} exists; a baseline is immutable`);
     writeSigned(f(ctx, file), l.k, b);

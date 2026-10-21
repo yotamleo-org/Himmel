@@ -171,18 +171,13 @@ function universeOf(c: VersionCtx): string[] {
 
 interface Live { id: string; effect: 'in' | 'out'; r: RulingRow | null }
 
-// The newest baseline is the operator's latest word on the keys it lists: a
-// ruling or intent on such a key that predates it no longer counts.
-const counts = (c: VersionCtx, r: RulingRow): boolean => effectOn(r.op, c.v) !== null
-  && !(c.baseKeys.has(r.key) && Date.parse(r.ts) < c.bTs);
-
 function placementOf(c: VersionCtx, key: string, live: Live[]): Placement {
   if (c.p.unknownKeys.has(key)) return 'unknown';
   if (live.length > 1) {
     c.integrity.push(`${key}@${c.v}: two live rulings (${live.map((l) => l.id).join(', ')})`);
     return 'unknown';
   }
-  if (c.p.pendingIntents.some((r) => r.key === key && counts(c, r))) return 'pending';
+  if (c.p.pendingIntents.some((r) => r.key === key && effectOn(r.op, c.v))) return 'pending';
   return live[0]?.effect ?? 'out';
 }
 
@@ -195,7 +190,10 @@ function recordFor(c: VersionCtx, key: string): { rec: KeyRecord; isIn: boolean;
   const { inp, p, v } = c;
   const issue = inp.issues?.get(key);
   const gone = p.superseded.get(key) ?? new Set<string>();
-  const mine = [...p.effective.values()].filter((r) => r.key === key && counts(c, r));
+  // The newest baseline is the operator's latest word on the keys it lists: a
+  // ruling on such a key that predates it no longer counts.
+  const mine = [...p.effective.values()].filter((r) => r.key === key && effectOn(r.op, v)
+    && !(c.baseKeys.has(key) && Date.parse(r.ts) < c.bTs));
   const live: Live[] = mine
     .filter((r) => !gone.has(r.id))
     .map((r) => ({ id: r.id, effect: effectOn(r.op, v) as 'in' | 'out', r }));
