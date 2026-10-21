@@ -435,6 +435,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: no-new-hardcoded-env-values-staged
+        name: no new hardcoded repo/owner slug, Pages URL, GHCR path, home path or Jira host (staged)
+        entry: bash scripts/ci/check-hardcoded-env-values.sh --staged
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
       - id: no-new-hardcoded-env-values
         name: no new hardcoded repo/owner slug, Pages URL, GHCR path, home path or Jira host
         entry: bash scripts/ci/check-hardcoded-env-values.sh

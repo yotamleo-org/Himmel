@@ -51,7 +51,11 @@ env_value() {
         *) return 1 ;;
     esac
     [ "$#" -gt 0 ] || return 1
-    val=$("$@" 2>/dev/null) || return 1
+    # The trailing x keeps command substitution from stripping every trailing
+    # newline, so `value` plus a blank line is seen as two lines, not one.
+    val=$("$@" 2>/dev/null; rc=$?; printf x; exit "$rc") || return 1
+    val=${val%x}
+    val=${val%$'\n'}
     case "$val" in ''|*[[:cntrl:]]*) return 1 ;; esac
     printf '%s\n' "$val"
 }

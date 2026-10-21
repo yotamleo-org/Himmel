@@ -27,6 +27,9 @@ disc_ok() { printf 'discovered-value\n'; }
 disc_empty() { :; }
 disc_multiline() { printf 'line1\nline2\n'; }
 disc_cr() { printf 'value\r\n'; }
+disc_blank_line() { printf 'value\n\n'; }
+disc_one_newline() { printf 'value\n'; }
+disc_no_newline() { printf 'value'; }
 
 echo "== config wins =="
 printf '{"env_values":{"PAGES_URL":"https://configured.example/docs/"}}\n' > "$HOME/.himmel/config.json"
@@ -44,6 +47,12 @@ out=$(env_value OTHER_KEY disc_multiline); rc=$?
 check "multiline discovery output prints nothing" "" "$out"; check "multiline discovery rc" "1" "$rc"
 out=$(env_value OTHER_KEY disc_cr); rc=$?
 check "carriage-return discovery output rc" "1" "$rc"
+out=$(env_value OTHER_KEY disc_blank_line); rc=$?
+check "value plus a blank line prints nothing" "" "$out"; check "value plus a blank line rc" "1" "$rc"
+out=$(env_value OTHER_KEY disc_one_newline); rc=$?
+check "control: one trailing newline is accepted" "value" "$out"; check "control: one trailing newline rc" "0" "$rc"
+out=$(env_value OTHER_KEY disc_no_newline); rc=$?
+check "control: no trailing newline is accepted" "value" "$out"; check "control: no trailing newline rc" "0" "$rc"
 
 echo "== no environment seam =="
 out=$(PAGES_URL=https://evil.example/ env_value OTHER_KEY disc_empty); rc=$?

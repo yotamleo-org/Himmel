@@ -31,7 +31,7 @@ jobs:
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     env:
-      IMAGE: ghcr.io/yotamleo-org/himmel-ci
+      IMAGE: ghcr.io/${{ github.repository_owner }}/himmel-ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build

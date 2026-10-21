@@ -48,7 +48,7 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
     if (!field) {
       throw new Error(
         'Edit --severity requires the JIRA_SEVERITY_FIELD env var to name the ' +
-          'custom field ID (e.g. customfield_10016). Set it in .env and retry.',
+          'custom field ID (e.g. customfield_10016). Set it in .env and retry.', // env-literal-ok: example id in user-facing help text
       );
     }
     fields[field] = { value: opts.severity };

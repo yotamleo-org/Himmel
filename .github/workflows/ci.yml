@@ -1209,6 +1209,30 @@ jobs:
             exit 1
           fi
           bash "$gate" --range "$BASE_SHA"
+      # The hardcoded-env-values lint, same two shapes: the PR range from the BASE
+      # copy of the script and its allowlist (a PR cannot widen the allowlist that
+      # judges it), then the whole tree at the tip from this checkout on every
+      # event. A missing base sha or base copy is a red job, never a silent pass.
+      - name: hardcoded-env-values lint (PR range)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ]; then
+            echo "hardcoded-env-values lint: PR base sha missing, cannot evaluate" >&2
+            exit 1
+          fi
+          gate="$RUNNER_TEMP/base-env-lint/scripts/ci"
+          mkdir -p "$gate"
+          for f in check-hardcoded-env-values.sh hardcoded-env-values-allow.txt; do
+            if ! git show "$BASE_SHA:scripts/ci/$f" > "$gate/$f" || [ ! -s "$gate/$f" ]; then
+              echo "hardcoded-env-values lint: $f absent at base $BASE_SHA, cannot evaluate" >&2
+              exit 1
+            fi
+          done
+          bash "$gate/check-hardcoded-env-values.sh" "$BASE_SHA"
+      - name: hardcoded-env-values lint (whole tree)
+        run: bash scripts/ci/check-hardcoded-env-values.sh --tree
       # The whole-tree pre-commit gates with no other CI copy, in ONE step (not a
       # job per hook): a session without hooks, or a --no-verify commit, never ran
       # them. Each runs from its BASE copy so a PR cannot weaken the gate that

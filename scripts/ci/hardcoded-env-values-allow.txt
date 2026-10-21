@@ -11,9 +11,13 @@
 ^docs/
 ^templates/
 \.obsidian/
-^site/
+# recorded data and golden output
+(^|/)testdata/
+^scripts/eval/scrape-bench/results/
 # placeholders and the detectors themselves
 ^\.env\.example$
+^scripts/himmelctl/lib/secrets-manifest\.json$
 ^scripts/ci/check-hardcoded-env-values\.sh$
 ^scripts/ci/hardcoded-env-values-allow\.txt$
 ^scripts/guardrails/leak-classes\.sh$
+^scripts/hooks/check-settings-portability\.sh$

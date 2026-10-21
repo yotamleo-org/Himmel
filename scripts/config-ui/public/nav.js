@@ -15,7 +15,7 @@ const CONSOLE = ["config", "setup", "health", "toolhealth", "roadmap", "kanban",
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
-export const DOCS_URL = "https://yotamleo-org.github.io/Himmel/";
+export const DOCS_URL = "https://yotamleo-org.github.io/Himmel/"; // env-literal-ok: link to the public docs site of the product itself
 export const DOCS_PATHS = ["/", "/himmelctl/", "/setup/codex/", "/configuration/", "/cadences/", "/internals/enforcement/", "/setup/profiles/"];
 export const docsHref = (path) => DOCS_URL + path.replace(/^\//, "");
 
