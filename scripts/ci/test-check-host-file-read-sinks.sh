@@ -77,6 +77,10 @@ case_repo base flag-mktemp-reassigned
 run_check
 [ "$RC" -eq 1 ] && ok "a mktemp variable reassigned from \$1 is flagged" || bad "reassigned mktemp var not flagged (rc=$RC): $OUT"
 
+case_repo base flag-mktemp-substring
+run_check
+[ "$RC" -eq 1 ] && ok "the word mktemp inside an argv-built path is flagged" || bad "mktemp substring cleared the taint (rc=$RC): $OUT"
+
 # --- must-pass --------------------------------------------------------------------
 # Real lines from PRs 3460 and 3461 (each needed a read-sink-ok marker before).
 case_repo base pass-tempdir-multi-export
@@ -86,6 +90,10 @@ run_check
 case_repo base pass-env-prefix-stub
 run_check
 [ "$RC" -eq 0 ] && ok "a name assigned as a NAME=value argument counts as assigned" || bad "env-prefix stub read flagged (rc=$RC): $OUT"
+
+case_repo base pass-nonleading-argv-assign
+run_check
+[ "$RC" -eq 0 ] && ok "taint still starts only from an assignment at the head of a line" || bad "non-leading argv assignment newly flagged (rc=$RC): $OUT"
 
 case_repo base pass-mktemp-argv
 run_check

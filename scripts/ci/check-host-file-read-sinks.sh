@@ -12,8 +12,10 @@
 # A line is a sink when a reader (cat head tail less more source `.` or a `<`
 # redirect) takes, as its whole operand, one of:
 #   - an argv expansion       $1  ${1:-}  $@  $*
-#   - a variable assigned from argv in the same added lines (path laundering),
-#     unless it was last assigned from mktemp (a file the script made itself)
+#   - a variable assigned from argv in the same added lines (path laundering; the
+#     name at the head of a line, or a later UPPER_CASE name never assigned at a line head),
+#     unless it was last assigned a value that IS a mktemp substitution (a file
+#     the script made itself); a value that merely contains the word does not count
 #   - an UPPER_CASE variable the file never assigns (environment-supplied path);
 #     a NAME=value token anywhere in the file counts as an assignment, including
 #     the second name on an `export A=.. B=..` line and a `cmd NAME=value` argument
@@ -108,6 +110,9 @@ while IFS= read -r -d '' path; do
     { line[NR] = $0; total = NR
       scan_assigns($0)
       for (k = 1; k <= ACNT; k++) assigned[AN[k]] = 1
+      if (match($0, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
+        a = substr($0, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", a); headassigned[a] = 1
+      }
     }
     # ponytail: any assignment, anywhere on any line, clears an UPPER_CASE name (X="${X:-}" then cat "$X" passes; so does the word NAME=x inside an echo), upgrade by tracking env-preserving assignments if it matters
     END {
@@ -118,12 +123,18 @@ while IFS= read -r -d '' path; do
         if (!is_added(n)) continue
         l = line[n]
         if (l ~ /^[ \t]*#/) continue
-        # taint: x=...$1... / x="${2:-}" / x=$(realpath "$1"), on any name of the line;
+        # taint: x=...$1... / x="${2:-}" / x=$(realpath "$1") at the head of a line, plus
+        # a later UPPER_CASE name on the line that is never assigned at a line head (the
+        # old check flagged those as unassigned);
         # a mktemp result is a file the script made itself, so it clears the taint
         scan_assigns(l)
+        hd = ""
+        if (match(l, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
+          hd = substr(l, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", hd)
+        }
         for (k = 1; k <= ACNT; k++) {
-          if (AV[k] ~ /mktemp/) delete tainted[AN[k]]
-          else if (AV[k] ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/) tainted[AN[k]] = 1
+          if (AV[k] ~ /^"?(\$\(|`)[ \t]*mktemp([ \t)"`]|$)/) delete tainted[AN[k]]
+          else if (AV[k] ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ && ((k == 1 && AN[k] == hd) || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
         }
         hit = ""
         s = l
