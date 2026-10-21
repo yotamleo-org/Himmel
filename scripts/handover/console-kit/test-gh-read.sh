@@ -39,6 +39,7 @@ cat > "$W/bin/gh" <<'STUB'
 # logs "tok=<GH_TOKEN or main> argv=<args>"; GH_STUB_READFAIL makes the read token's calls fail
 printf 'tok=%s argv=%s\n' "${GH_TOKEN:-main}" "$*" >> "$GHLOG"
 if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-}" ]; then
+    echo "partial-page"
     echo "gh: HTTP 403: API rate limit exceeded for user" >&2
     exit 1
 fi
@@ -126,6 +127,12 @@ GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/nu
 check "C3 exhausted read token -> retried once on the main token" "tok=$READTOK argv=pr view 12|tok=main argv=pr view 12" "$(tr '\n' '|' < "$GHLOG" | sed 's/|$//')"
 check "C3b one warning line" "1" "$(grep -c 'gh-read:' "$W/err")"
 lacks "C3c the warning never carries the token" "$READTOK" "$(cat "$W/err")"
+# a paginated read refused after it printed a page: the retry must not double the output
+GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api repos/o/r/pulls --paginate >"$W/out" 2>/dev/null
+lacks "C3d a refused paginated attempt leaves no partial page behind" "partial-page" "$(cat "$W/out")"
+# init with a good token must not silence a later refusal
+( GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" bash -c '. "$1"; gh_read_init; gh_read pr view 1' _ "$HELPER" ) >/dev/null 2>"$W/err"
+check "C3e a refusal after a successful init still warns once" "1" "$(grep -c 'gh-read: read token refused' "$W/err")"
 # sourced form: two calls, one warning
 : > "$GHLOG"
 ( GH_READ_ENV_ROOT="$W/emptyroot" bash -c '. "$1"; gh_read pr view 1; gh_read pr view 2' _ "$HELPER" ) >/dev/null 2>"$W/err"
