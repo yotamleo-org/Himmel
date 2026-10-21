@@ -396,9 +396,11 @@ check "LIVE: a Jira failure -> append rc 0" "$rc" 0
 contains "LIVE: bullet still landed" "$(tail -n 1 "$DOC")" "LIVE — again"
 d7="$tmp/plain.md"; mkdoc "$d7"; : > "$STUB_LOG"
 bash "$APPEND" "$d7" "LIVE — x" >/dev/null 2>&1
+# read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 check "no ticket in the doc name -> no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 d8="$tmp/AB2-7-N1-slug-2026-10-21.md"; mkdoc "$d8"; : > "$STUB_LOG"
 bash "$APPEND" "$d8" "LIVE — x" >/dev/null 2>&1
+# read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 contains "a key with a digit in the project part is extracted" "$(head -n 1 "$STUB_LOG")" "AB2-7"
 
 # --- wiring: the WRAPPED bullet ---------------------------------------------------------------
@@ -410,13 +412,16 @@ check "WRAPPED: row event" "$(row event)" wrapped
 # --- opt-out and bad keys ----------------------------------------------------------------------
 reset "To Do"; owned
 LEG_JIRA_STATUS=0 bash "$APPEND" "$DOC" "LIVE — y" >/dev/null 2>&1
+# read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 check "opt-out via append: no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 LEG_JIRA_STATUS=0 fn "$K" --event live
+# read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 check "opt-out direct: no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 check "opt-out direct: a disabled row" "$(row result)" disabled
 for bad in HIMMEL-123junk HIMMEL-x-1 "HIMMEL-1 2"; do
     reset "To Do"
     fn "$bad" --event live
+    # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
     check "bad key '$bad': no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 done
 
