@@ -29,6 +29,10 @@
 #   IS21 a template root file edit selects test-vault-git.sh
 #   IS22 a suite naming a changed script by its stem, without .sh, is selected
 #   IS15b a planted unmarked tree-walking suite is flagged by the real walk list
+#   IS23 a hooks-only PR (the real trust list, run 39384886008's diff) is full
+#        outside SUITE_TIER_MODE=pr
+#   IS24 the same PR under SUITE_TIER_MODE=pr is impacted, its suite selected
+#   IS25 a selector-integrity path is full under every tier mode
 #
 # Platform guard: bash-only, no .ps1 twin; git + tar, Linux CI is the caller.
 #
@@ -157,7 +161,8 @@ H_TPLGI=$(branch tplgi templates/luna-second-brain/.gitignore '# edit')
 H_TPLRM=$(branch tplrm templates/luna-second-brain/README.md '# edit')
 g checkout -q "$BASE" 2>/dev/null
 
-sel() { (cd "$SB" && bash "$SEL" "$@" 2>&1); }
+# The verdict depends on SUITE_TIER_MODE, and the runner exports it to this suite.
+sel() { (cd "$SB" && env -u SUITE_TIER_MODE bash "$SEL" "$@" 2>&1); }
 
 # --- IS1 --------------------------------------------------------------------
 out=$(sel "$BASE" "$H_TRUST"); rc=$?
@@ -462,5 +467,57 @@ case "$o" in
   *) pass "IS15b: a marked planted suite is not flagged" ;;
 esac
 rm -rf "$P15"
+
+# IS23-IS25 run under the real trust list. The hooks-only diff is run
+# 39384886008's (PR base 7ec658ea9, a full sweep on main for trust-path:
+# scripts/hooks/check-cr-marker-on-pr-create.sh).
+TP="$(fixture_mktemp_dir)" || exit 1
+HOOK=scripts/hooks/check-cr-marker-on-pr-create.sh
+HOOK_T=scripts/hooks/test-check-cr-marker-on-pr-create.sh
+(
+  cd "$TP" && git init -q && git config user.email t@e && git config user.name t \
+    && mkdir -p scripts/ci scripts/cr scripts/hooks \
+    && cp "$SEL_SRC" scripts/ci/impacted-selection.sh \
+    && cp "$SRC_ROOT/scripts/cr/impacted-suites.sh" "$SRC_ROOT/scripts/cr/anchor-handoff.sh" scripts/cr/ \
+    && cp "$SRC_ROOT/scripts/ci/ci-trust-paths.txt" scripts/ci/ci-trust-paths.txt \
+    && printf '# runner\n' > scripts/ci/run-shell-tests.sh \
+    && printf '# hook\n' > "$HOOK" \
+    && printf '#!/usr/bin/env bash\n# drives %s\nexit 0\n' "$HOOK" > "$HOOK_T" \
+    && git add -A && git commit -q -m base && git update-ref refs/remotes/origin/main HEAD \
+    && git checkout -q -b hook && printf '# edit\n' | tee -a "$HOOK" >> "$HOOK_T" \
+    && git commit -q -am hook \
+    && git checkout -q -b runner refs/remotes/origin/main \
+    && printf '# edit\n' >> scripts/ci/run-shell-tests.sh && git commit -q -am runner
+) || exit 1
+TP_BASE=$(git -C "$TP" rev-parse refs/remotes/origin/main)
+tsel() { # <tier-mode|-> <branch>
+  if [ "$1" = - ]; then
+    (cd "$TP" && env -u SUITE_TIER_MODE bash scripts/ci/impacted-selection.sh "$TP_BASE" "$2" 2>&1)
+  else
+    (cd "$TP" && SUITE_TIER_MODE="$1" bash scripts/ci/impacted-selection.sh "$TP_BASE" "$2" 2>&1)
+  fi
+}
+
+for m in - fast all; do
+  out=$(tsel "$m" hook); rc=$?
+  if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode full' \
+     && grepq "$out" -x "reason trust-path: $HOOK"; then
+    pass "IS23: a hooks-only PR is full under tier mode $m"
+  else fail "IS23: tier mode $m: rc=$rc out: $out"; fi
+done
+
+out=$(tsel pr hook); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' \
+   && grepq "$out" -x "suite $HOOK_T" && grepq "$out" -x "changed $HOOK"; then
+  pass "IS24: a hooks-only PR under SUITE_TIER_MODE=pr is impacted and selects its suite"
+else fail "IS24: rc=$rc out: $out"; fi
+
+for m in - fast pr; do
+  out=$(tsel "$m" runner); rc=$?
+  if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode full' && ! grepq "$out" '^suite '; then
+    pass "IS25: a run-shell-tests.sh PR is full under tier mode $m"
+  else fail "IS25: tier mode $m: rc=$rc out: $out"; fi
+done
+rm -rf "$TP"
 
 rst_tally
