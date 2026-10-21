@@ -4,6 +4,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { agileRequest, request, projectKey, uploadAttachment } from './client.js';
 import { roadmapGet, roadmapSet, type RoadmapSetOptions } from './commands/roadmap.js';
 import { rankIssue } from './commands/rank.js';
+import { ctxFor, list as releaseList, op as releaseOp, renderState, ver } from './commands/release.js';
+import { apply, claim, leaseAcquire, leaseRelease, request as releaseRequest, rule, state } from './release/engine.js';
+import type { Authority, Verb } from './release/types.js';
 import { markdownToAdf } from './adf.js';
 import { formatIssue, formatIssueWithDescription } from './output.js';
 import { resolveListJql } from './commands/list.js';
@@ -473,7 +476,95 @@ export function createTools(): JiraTool[] {
         return rankIssue(key, { before, after }, deps.agileRequest);
       },
     },
+    {
+      name: 'release',
+      description: 'Release ledger twin of `jira release <sub>`: state, request, claim, rule, apply, lease-acquire, lease-release (HIMMEL-6796). The operator verbs stay CLI-only',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sub: { type: 'string', enum: [...RELEASE_SUBS], description: 'The release sub-verb' },
+          release: str('Release name'),
+          json: { type: 'boolean', description: 'state: print the full state as JSON' },
+          mirrorRoot: str('state: Jira mirror directory'),
+          verb: str('request: INTAKE | REVERSION | DISCHARGE'),
+          key: str('request: issue key'),
+          from: str('request, rule: source version, or backlog'),
+          to: str('request, rule: target version, or backlog'),
+          why: str('request: one line'),
+          evidence: { type: 'object', description: 'request: evidence object' },
+          req: str('rule: request id'),
+          outcome: str('rule: ADMIT | BACKLOG | AD-HOC | MOVE | KEEP | ACCEPT | REJECT'),
+          op: str('rule: add | remove | move | keep | discharge | none'),
+          sector: str('rule: the ticket sector'),
+          ground: str('rule: the ground of the ruling'),
+          reason: str('rule: one-line reason'),
+          supersedes: str('rule: comma-separated rulings this replaces'),
+          authority: str('rule: rm | operator | import'),
+          ref: str('rule: the O- record or import source'),
+          ruling: str('apply: ruling id'),
+          expectEpoch: { type: 'number', description: 'lease-acquire: the epoch the brief names' },
+          doc: str('lease-acquire: this session\'s absolute handover doc'),
+          session: str('lease-acquire: this session\'s name'),
+        },
+        required: ['sub', 'release'],
+        additionalProperties: false,
+      },
+      async handler(args) {
+        return runRelease(args);
+      },
+    },
   ];
+}
+
+const RELEASE_SUBS = ['state', 'request', 'claim', 'rule', 'apply', 'lease-acquire', 'lease-release'] as const;
+
+// Calls the same engine functions as `jira release`, so the fences and the
+// validator inside them apply to this twin unchanged.
+async function runRelease(args: Record<string, unknown>): Promise<string> {
+  const a = args as Record<string, string | boolean | number | Record<string, unknown> | undefined>;
+  const s = (k: string) => a[k] as string | undefined;
+  const need = (k: string) => {
+    const v = s(k);
+    if (!v) throw new Error(`release ${a.sub}: ${k} is required`);
+    return v;
+  };
+  if (!(RELEASE_SUBS as readonly string[]).includes(a.sub as string)) throw new Error(`release: sub is one of ${RELEASE_SUBS.join('|')}`);
+  const release = need('release');
+  const ctx = ctxFor(release, a.sub === 'state' ? s('mirrorRoot') : undefined);
+  switch (a.sub) {
+    case 'state': {
+      const st = state(ctx);
+      return a.json ? JSON.stringify(st, null, 2) : renderState(st);
+    }
+    case 'request': {
+      if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(need('verb'))) throw new Error('release request: verb is INTAKE, REVERSION or DISCHARGE');
+      const r = releaseRequest(ctx, {
+        verb: need('verb') as Verb, key: need('key'), from_v: ver(s('from')), to_v: ver(s('to')), why: need('why'),
+        evidence: (a.evidence as Record<string, unknown> | undefined) ?? {}, from: 'console',
+      });
+      return `REQ ${r.req}`;
+    }
+    case 'claim':
+      return claim(ctx).map((r) => `${r.req} ${r.verb} ${r.key} ${r.from_v ?? 'backlog'}→${r.to_v ?? 'backlog'} — ${r.why}`).join('\n');
+    case 'rule': {
+      const authority = s('authority') ?? 'rm';
+      if (!['rm', 'operator', 'import'].includes(authority)) throw new Error('release rule: authority is rm, operator or import');
+      const r = rule(ctx, {
+        req: need('req'), outcome: need('outcome'), op: releaseOp(need('op'), s('from'), s('to')), sector: need('sector'),
+        ground: need('ground'), reason: s('reason') ?? '', supersedes: releaseList(s('supersedes')),
+        authority: { kind: authority as Authority['kind'], ref: s('ref') ?? null },
+      });
+      return `${r.id} intent (${r.class}); run: release apply ${release} ${r.id}`;
+    }
+    case 'apply':
+      return (await apply(ctx, need('ruling'))).line;
+    case 'lease-acquire': {
+      const l = leaseAcquire(ctx, { expectEpoch: Number(a.expectEpoch), doc: need('doc'), session: need('session') });
+      return `LEASE ${release} epoch ${l.epoch} held by ${l.owner_doc}`;
+    }
+    default:
+      return `LEASE ${release} epoch ${leaseRelease(ctx).epoch} released`;
+  }
 }
 
 /** Build the MCP server with all ten tools registered. */

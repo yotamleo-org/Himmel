@@ -426,6 +426,44 @@ git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9002-hook
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$WORK/hr/tester/nw2" --repo "$NWREPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/nw2.err") || rc=$?
 [ "$rc" = 0 ] && pass "RED control: --no-worktree with existing worktrees works unchanged" || fail "existing worktrees rc=$rc: $(cat "$WORK/nw2.err")"
 
+# --- the rm kind: a release-manager brief filled from docs/handover/rm-brief-template.md ---
+cat > "$WORK/rm.json" <<EOF
+[
+ {"kind":"rm","label":"N910","keys":["HIMMEL-9010"],"slug":"rm","release":"R1","versions":"v1 + v2, current v1","epoch":3,"state_dir":"$WORK/hr/tester/himmel/release/R1","mode":"observe"}
+]
+EOF
+: > "$WT_LOG"
+rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "an rm leg generates (rc 0)" || fail "rm rc=$rc: $rmout"
+RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"
+[ -f "$RMD" ] && [ -f "$WORK/rmb/launch-N910.sh" ] && pass "an rm leg writes <KEY>-<label>-rm-<R>-<date>.md and its launcher" || fail "rm files missing in $WORK/rmb"
+[ ! -s "$WT_LOG" ] && pass "an rm leg creates no worktree" || fail "worktree stub called: $(cat "$WT_LOG")"
+RMB="$(sed 's/^> *//' "$RMD" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+has "the rm brief carries the release and its versions" "$RMB" 'Release manager for R1 (v1 + v2, current v1)'
+has "the rm brief names the lease epoch to acquire" "$RMB" '--expect-epoch 3'
+has "the rm brief names the state directory" "$RMB" "State directory \`$WORK/hr/tester/himmel/release/R1\`"
+has "the rm brief carries a minted token in the RM shape" "$RMB" 'BZ-RM-R1-'
+has "the rm brief carries the opus tier line" "$RMB" '**Tier:** opus'
+has "the rm brief resumes in the release scratch dir" "$(head -3 "$RMD" 2>/dev/null)" "/.cache/himmel/rm/R1/scratch"
+if sed 's/REQ <id>/REQ/' "$RMD" 2>/dev/null | grep -Eq '<[A-Za-z$]'; then fail "the rm brief keeps an unfilled placeholder: $(sed 's/REQ <id>/REQ/' "$RMD" | grep -E '<[A-Za-z$]' | head -2)"; else pass "the rm brief keeps no unfilled placeholder"; fi
+RML="$(cat "$WORK/rmb/launch-N910.sh" 2>/dev/null)"
+has "the rm launcher arms the release-manager profile for its release" "$RML" '--profile release-manager --rm-release R1'
+has "the rm launcher skips the prior-art lint an rm brief has no field for" "$RML" '--no-prior-art-check'
+has "the printed manifest line is native" "$rmout" "--lane native"
+rmbad() { # <name> <python edit> <stderr fragment>: refused, rc 1, nothing written
+    local n="$1" edit="$2" frag="$3"
+    rm -rf "$WORK/rmbad"
+    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); d=l[0]; $edit; json.dump(l,open(sys.argv[2],'w'))" "$WORK/rm.json" "$WORK/rmbad.json"
+    python3 "$SUT" "$WORK/rmbad.json" --base 4ccb59d --console BZ --bucket "$WORK/rmbad" --repo "$REPO" --handover-root /h >/dev/null 2>"$WORK/rmbad.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/rmbad.err" && ! ls "$WORK/rmbad"/* >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/rmbad.err"))"; fi
+}
+rmbad "an rm leg with a release holding a slash is refused" 'd["release"]="a/b"' "release"
+rmbad "an rm leg with a non-integer epoch is refused" 'd["epoch"]="three"' "epoch"
+rmbad "an rm leg with a negative epoch is refused" 'd["epoch"]=-1' "epoch"
+rmbad "an rm leg with a mode other than observe or live is refused" 'd["mode"]="dry"' "mode"
+rmbad "an rm leg missing its state_dir is refused" 'del d["state_dir"]' "state_dir"
+rmbad "an rm leg on a non-native lane is refused" 'd["lane"]="claudex"' "lane"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

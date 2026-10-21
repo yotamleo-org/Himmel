@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  appendFileSync, closeSync, existsSync, fstatSync, futimesSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync,
+  appendFileSync, closeSync, existsSync, fstatSync, futimesSync, linkSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
@@ -142,6 +142,32 @@ const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(
 // keeps its lock fresh, and a release unlinks only the lock it created.
 interface LockHandle { lock: string; fd: number; ino: number }
 
+// Breaks a crashed writer's lock by renaming it away, then checks what was taken:
+// a lock that is a different file, or fresh again, belongs to a live writer and
+// is linked back. `beforeBreak` is a test seam: it runs after the staleness
+// decision, where a second breaker can interleave.
+// ponytail: between the rename and the link-back a third writer can take the
+// vacated name; upgrade path is a break-mutex file around the whole step.
+export function breakStaleLock(lock: string, staleMs: number, beforeBreak?: () => void): void {
+  let seen;
+  try {
+    seen = statSync(lock);
+  } catch { return; }
+  if (Date.now() - seen.mtimeMs <= staleMs) return;
+  beforeBreak?.();
+  const tomb = `${lock}.${process.pid}.${randomBytes(4).toString('hex')}.broken`;
+  try {
+    renameSync(lock, tomb);
+  } catch { return; }
+  try {
+    const took = statSync(tomb);
+    if (took.ino !== seen.ino || Date.now() - took.mtimeMs <= staleMs) linkSync(tomb, lock);
+  } catch { /* the name was retaken: that writer holds it */ }
+  try {
+    unlinkSync(tomb);
+  } catch { /* already gone */ }
+}
+
 function acquireLock(dir: string, waitMs: number, staleMs: number): LockHandle {
   const lock = `${dir}/.lock`;
   const deadline = Date.now() + waitMs;
@@ -151,9 +177,7 @@ function acquireLock(dir: string, waitMs: number, staleMs: number): LockHandle {
       fd = openSync(lock, 'wx');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > staleMs) unlinkSync(lock);
-      } catch { /* raced with its owner's unlink */ }
+      breakStaleLock(lock, staleMs);
       if (Date.now() > deadline) throw new Error(`release: ${lock} is held; retry`);
       sleep(50);
     }

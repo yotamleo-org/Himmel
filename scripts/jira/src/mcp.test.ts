@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
 import { markdownToAdf } from './adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 import { SECTORS, resetSectorCache } from './commands/sector.js';
+import { declare, type Ctx } from './release/engine.js';
 
 // The Sector field is opt-in: these tests run with it configured unless one deletes the variable.
 beforeEach(() => {
@@ -45,6 +48,7 @@ const TOOL_NAMES = [
   'roadmap-set',
   'roadmap-get',
   'rank',
+  'release',
 ];
 
 function tool(name: string): JiraTool {
@@ -436,6 +440,46 @@ describe('roadmap + rank tools (HIMMEL-3890)', () => {
       { issues: ['HIMMEL-2'], rankAfterIssue: 'HIMMEL-1' },
     );
     expect(out).toBe('HIMMEL-2 ranked after HIMMEL-1');
+  });
+});
+
+describe('release tool (HIMMEL-6796)', () => {
+  const saved = { ...process.env };
+  beforeEach(() => {
+    const root = mkdtempSync(join(tmpdir(), 'mcp-release-'));
+    process.env.HIMMEL_RELEASE_STATE_DIR = join(root, 'release');
+    process.env.HIMMEL_RELEASE_KEY_DIR = join(root, 'keys');
+    delete process.env.HIMMEL_RELEASE_MANAGER;
+    delete process.env.HIMMEL_CONSOLE_LEG;
+    const ctx: Ctx = {
+      release: 'R1', dir: join(root, 'release', 'R1'), keyPath: join(root, 'keys', 'R1.key'),
+      env: {}, now: () => new Date('2026-10-21T10:00:00.000Z'), jira: {} as Ctx['jira'], mirrorRoot: null,
+    };
+    declare(ctx, { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  });
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  const run = (args: Record<string, unknown>) => tool('release').handler({ release: 'R1', ...args }, mockDeps().deps);
+
+  it('state prints what the CLI prints, or the full JSON', async () => {
+    expect(await run({ sub: 'state' })).toContain('release R1: ');
+    expect(JSON.parse(await run({ sub: 'state', json: true })).release).toBe('R1');
+  });
+
+  it('request queues a console request', async () => {
+    expect(await run({ sub: 'request', verb: 'INTAKE', key: 'K-2', to: 'v1', why: 'found work' })).toBe('REQ Q-R1-0001');
+  });
+
+  it('rule goes through the engine fence: a session that is not the release manager is refused', async () => {
+    await expect(run({
+      sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', sector: 'Planning & tracking', ground: 'regression', reason: 'r',
+    })).rejects.toThrow(/only the release-manager session/);
+  });
+
+  it('refuses a sub the twin does not expose', async () => {
+    await expect(run({ sub: 'operator-declare' })).rejects.toThrow(/sub is one of/);
   });
 });
 
