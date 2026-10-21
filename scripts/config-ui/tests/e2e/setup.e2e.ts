@@ -52,7 +52,7 @@ test("J5. Setup sits after Settings in the rail and recommends the terminal", as
   await expect(page.locator("#main")).toContainText("Typing a secret in the terminal");
   const field = page.locator(`input[data-secret="${NAME}"]`);
   await expect(field).toHaveAttribute("type", "password");
-  await expect(field).toHaveAttribute("autocomplete", "off");
+  await expect(field).toHaveAttribute("autocomplete", "new-password");
 });
 
 test("J5. a saved secret is set in the store and its value is nowhere else", async ({ page }) => {

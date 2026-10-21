@@ -575,13 +575,14 @@ run_cfg_q set commit.tracker none
 grep -qE '^TRACKER=none$' "$confQ" || fail "caseQ: himmel.conf should carry TRACKER=none (got: $(cat "$confQ" 2>&1))"
 grep -q '^TICKET_ID_REQUIRED=' "$confQ" && fail "caseQ: tracker none must drop TICKET_ID_REQUIRED (got: $(cat "$confQ"))"
 grep -qE '^OTHER_KEY=keepme$' "$confQ" || fail "caseQ: a line other than the commit rules must survive (got: $(cat "$confQ" 2>&1))"
+cp "$confQ" "$confQ.before"
 run_cfg_q set commit.ticketIdRequired on
 [ "$CFG_RC" -eq 2 ] || fail "caseQ: ticketIdRequired with tracker none should exit 2 (got rc=$CFG_RC): $CFG_OUT"
 run_cfg_q set commit.tracker github
 [ "$CFG_RC" -eq 2 ] || fail "caseQ: an unknown tracker should exit 2 (got rc=$CFG_RC): $CFG_OUT"
 run_cfg_q set commit.ticketIdPattern '^X-1$'
 [ "$CFG_RC" -eq 2 ] || fail "caseQ: the ticket pattern is never settable through config (got rc=$CFG_RC): $CFG_OUT"
-grep -qE '^TRACKER=none$' "$confQ" || fail "caseQ: a refused set must leave himmel.conf untouched (got: $(cat "$confQ" 2>&1))"
+cmp -s "$confQ.before" "$confQ" || fail "caseQ: a refused set must leave himmel.conf untouched (got: $(cat "$confQ" 2>&1))"
 echo "ok: caseQ commit.tracker / commit.ticketIdRequired reuse the commit-rules writer; refusals write nothing"
 
 echo "PASS"

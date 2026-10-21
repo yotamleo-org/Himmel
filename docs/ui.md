@@ -1,7 +1,7 @@
 # The himmel UI surfaces
 
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
-command you run yourself. Only the Settings switches of the first one change anything. If a user asks "the himmel UI",
+command you run yourself. Only the Settings switches and the Setup page of the first one change anything. If a user asks "the himmel UI",
 they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
@@ -14,7 +14,7 @@ they almost always mean the first one.
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
 same data as `himmelctl report --json`. Every page is read-only except the
-switches on Settings, and each switch shows its dry-run before anything changes.
+switches on Settings and the Setup page, and each switch shows its dry-run before anything changes.
 A confirmed switch runs the `himmelctl` command printed under it, and writes:
 
 | Switch | What it writes | Takes effect |
@@ -23,10 +23,12 @@ A confirmed switch runs the `himmelctl` command printed under it, and writes:
 | Review by a second model | the local lane overlay `lanes.local.json`, through `himmelctl config set lanes.<id>` | next time work is handed to a lane |
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
+| Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
 
-Commit rules, Session switches and Your install answers are shown, never written:
-commit rules live in `~/.himmel/himmel.conf`, session switches are set when you
-start Claude.
+The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
+secret store only and is never shown, logged or returned), and a save is refused while the page runs
+as the always-on service. Session switches and Your install answers are shown, never written:
+session switches are set when you start Claude.
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token

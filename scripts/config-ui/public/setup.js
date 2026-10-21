@@ -13,7 +13,7 @@ function secretRow(s, msg) {
   const remove = s.status === "set" ? `<button class="btn" type="button" data-act="setup-remove" data-name="${esc(s.name)}">remove</button>` : "";
   return `<div class="srow">${what}${status}
     <form class="sform" data-setup-form data-name="${esc(s.name)}" autocomplete="off">
-      <input type="password" data-secret="${esc(s.name)}" autocomplete="off" spellcheck="false" aria-label="${esc(s.name)} value">
+      <input type="password" data-secret="${esc(s.name)}" autocomplete="new-password" spellcheck="false" aria-label="${esc(s.name)} value">
       <button class="btn primary" type="submit">save</button>${remove}</form>
     ${msg ? `<span class="ro" role="status">${esc(msg)}</span>` : ""}</div>`;
 }
