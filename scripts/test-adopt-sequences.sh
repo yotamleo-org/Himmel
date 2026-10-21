@@ -57,10 +57,10 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-# --check-budget <elapsed>: exit 0 iff that elapsed time is within the CI budget
-# (the budget check, run without the 5-minute suite)
+# --check-budget <elapsed>: exit 0 iff that elapsed time is within the budget
+# (SEQ_BUDGET_SECS when set, else the CI budget); runs without the 5-minute suite
 within_budget() { [ "$1" -le "$2" ]; }
-[ -z "$CHECK" ] || { within_budget "$CHECK" "$CI_BUDGET"; exit $?; }
+[ -z "$CHECK" ] || { within_budget "$CHECK" "${SEQ_BUDGET_SECS:-$CI_BUDGET}"; exit $?; }
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 # shellcheck source=lib/hermetic-path.sh
