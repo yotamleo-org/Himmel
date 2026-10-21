@@ -3256,9 +3256,10 @@ rm -f "$TP_GO/77.$GO_SHA"
 
 # 3895-g — another repo with no list has not adopted the gate: unchanged, but
 # audited so the absence is visible.
-STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
+MERGE_STATIC_RECHECK=1 STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
     tp_run 0 "3895-g: no trust list on a non-harness repo → merged"
 assert_audit_has "3895-g: not-adopted is audited" "trust=not-adopted"
+assert_audit_has "3895-g: the static re-check is skipped for another repo" "STATIC-RECHECK skipped reason=other-repo"
 # 3895-h — an origin that does not positively name another github.com repo (an
 # SSH host alias) cannot prove the 404 is off the harness's own repo: refuse.
 MOG_ANCHOR_URL=git@gh-alias:owner/repo.git STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \

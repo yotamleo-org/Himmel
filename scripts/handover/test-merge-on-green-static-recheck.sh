@@ -157,6 +157,16 @@ assert_err_has "R13: stderr names the missing check" "missing from the merge res
 SR_SIB=wire SR_PR=allow sr_run 24 "R14: --dry-run reports the refusal" --dry-run
 assert_clear_not_invoked "R14: nothing mutated"
 
+# R18 — a PR on a repo other than the anchor's (the supported not-adopted path)
+# is not judged by the harness registries: skipped and audited, never exit 24.
+# The wire/allow pair would refuse on the anchor's own repo, so a pass proves the skip.
+STUB_NWO=other/repo SR_SIB=wire SR_PR=allow sr_run 0 "R18: PR on another repo → merged, recheck skipped"
+assert_audit_has "R18: audited as skipped for another repo" "STATIC-RECHECK skipped reason=other-repo"
+# R18b — an origin that cannot prove another repo (SSH alias) still runs the recheck.
+MOG_ANCHOR_URL=git@gh-alias:owner/repo.git STUB_NWO=other/repo SR_SIB=wire SR_PR=allow sr_run 24 "R18b: unprovable origin → recheck runs, refuses"
+# R18c — the same repo with a different case is not "other".
+STUB_NWO=Owner/Repo SR_SIB=wire SR_PR=allow sr_run 24 "R18c: same repo, other case → recheck runs"
+
 # R15-R17 — the per-check ceiling needs a timeout tool: gtimeout stands in for
 # timeout, with neither the gate refuses, and the tool gets a kill-after grace.
 # sr_path_without <dir> — links every tool on PATH except timeout and gtimeout.

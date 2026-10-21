@@ -1292,9 +1292,31 @@ sr_run() {
     fi
     return 0
 }
+# sr_other_repo — rc 0 only when the anchor's origin POSITIVELY names a github.com
+# repo other than $nwo (the same test as go-gate's trust check). The recheck runs
+# the harness's own registries on a merge fetched from the anchor's origin, so it
+# has nothing to say about a PR on another repo; an origin that cannot prove it
+# (unreadable, SSH alias, non-github host) is not "other" and the recheck runs.
+sr_other_repo() {
+    local url
+    case "$nwo" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
+    url=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" config --get remote.origin.url) || return 1
+    url=${url%/}; url=${url%.git}
+    case "$url" in
+        https://github.com/*) url=${url#https://github.com/} ;;
+        ssh://git@github.com/*) url=${url#ssh://git@github.com/} ;;
+        git@github.com:*) url=${url#git@github.com:} ;;
+        *) return 1 ;;
+    esac
+    case "$url" in ''|*/*/*|*[!A-Za-z0-9._/-]*) return 1 ;; */*) ;; *) return 1 ;; esac
+    [ "$(printf '%s' "$url" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ]
+}
 if [ "${MERGE_STATIC_RECHECK:-1}" = "0" ]; then
     echo "merge-on-green: static re-check is OFF (MERGE_STATIC_RECHECK=0)." >&2
     audit "STATIC-RECHECK off repo=$nwo pr=#$pr_num sha=$sha"
+elif sr_other_repo; then
+    echo "merge-on-green: static re-check skipped — PR #$pr_num is on $nwo, not the anchor's repo; the harness registries do not apply." >&2
+    audit "STATIC-RECHECK skipped reason=other-repo repo=$nwo pr=#$pr_num sha=$sha"
 else
     sr_t0=$SECONDS
     sr_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-static.XXXXXX") || sr_tmp="" # prim-ok: private scratch the gate removes itself
