@@ -175,8 +175,11 @@ QUIETRUN_TAIL='quiet-run\.sh.*[^[:alnum:]_.-]graphify(\.exe)?([^[:alnum:]_.-]|$)
 # text with no size cap, and a here-string over ~64 KiB wedges Git Bash
 # which would trade this fail-open for a different large-input
 # failure on the exact kind of pathological input this bug needs.
-cmdpos_hit=$(printf '%s' "$cmd_lc" | grep -E "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)")
-quietrun_hit=$(printf '%s' "$cmd_lc" | grep -E "$QUIETRUN_TAIL")
+# The text with quotes and backslashes dropped is read too: the shell joins
+# g''raphify and gra\phify back into one word.
+cmd_nq=$(printf '%s' "$cmd_lc" | LC_ALL=C tr -d "'\"\\\\")
+cmdpos_hit=$(printf '%s\n%s' "$cmd_lc" "$cmd_nq" | grep -E "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)")
+quietrun_hit=$(printf '%s\n%s' "$cmd_lc" "$cmd_nq" | grep -E "$QUIETRUN_TAIL")
 route=no
 if [ -n "$cmdpos_hit" ] || [ -n "$quietrun_hit" ]; then
     route=yes
@@ -184,7 +187,7 @@ fi
 
 # A command that never says graphify cannot reach the fence, so it never pays
 # for shfmt (a station without shfmt only loses the commands that name it).
-case "$cmd_lc" in
+case "$cmd_nq" in
     *graphify*) ;;
     *) exit 0 ;;
 esac

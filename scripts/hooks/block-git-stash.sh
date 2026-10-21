@@ -101,6 +101,10 @@ esac
 # `<<<`, feeds it: several patterns below anchor on `$` and a herestring's
 # synthetic trailing newline would fold to an unexpected trailing ';'.
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;')
+# The same text with quotes and backslashes dropped: the shell joins sta''sh and
+# s\tash back into one word, so the prefilter and the regex fallback read this
+# spelling as well.
+cmd_nq=$(printf '%s' "$cmd_lc" | LC_ALL=C tr -d "'\"\\\\")
 
 # In-process ERE match, zero spawns per call -- see block-destructive-commands.sh
 # for why this is `[[ =~ ]]` and not `grep -Eq`. The pattern MUST
@@ -298,7 +302,7 @@ GS_JQ_EOF
 # A command that names none of the guarded words cannot be a stash mutation, so
 # it never pays for shfmt (and a station without shfmt only loses the commands
 # that name them).
-case "$cmd_lc" in
+case "$cmd_nq" in
     *stash* | *update-ref* | *symbolic-ref*) ;;
     *) exit 0 ;;
 esac
@@ -332,5 +336,7 @@ if [ "$tool" != PowerShell ]; then
     esac
 fi
 
+legacy_denied && deny_stash
+cmd_lc=$cmd_nq
 legacy_denied && deny_stash
 exit 0

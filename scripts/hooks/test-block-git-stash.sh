@@ -231,6 +231,13 @@ assert_rc "cd behind ||, then git stash drop" 2 "$(run_case "$(j_bash 'cd R || c
 assert_rc "cd right of a pipe, then git stash list" 0 "$(run_case "$(j_bash 'echo x | cd sub && git stash list')")"
 assert_rc "cd behind ||, then git stash list" 0 "$(run_case "$(j_bash 'cd R || cd V && git stash list')")"
 
+# --- quote- and backslash-split spellings of the verb reach the same denial
+assert_rc "backslash-split verb (s\\tash drop)" 2 "$(run_case "$(j_bash 'git s\tash drop')")"
+assert_rc "empty single quotes in the verb (sta''sh drop)" 2 "$(run_case "$(j_bash "git sta''sh drop")")"
+assert_rc "empty double quotes in the verb (sta\"\"sh pop)" 2 "$(run_case "$(j_bash 'git sta""sh pop')")"
+assert_rc "empty single quotes in the program (g''it stash drop)" 2 "$(run_case "$(j_bash "g''it stash drop")")"
+assert_rc "quote-split verb with an allowed subcommand (sta''sh list)" 0 "$(run_case "$(j_bash "git sta''sh list")")"
+
 # --- a missing shfmt denies a command that names the guarded verb, and the
 # message names shfmt; a command that does not mention it never pays for it.
 NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-git-stash-nosh.XXXXXX") || exit 1
