@@ -21,7 +21,7 @@ Four independent axes:
 - **Saved install-profile file** — a `*.install-profile.json` preset of every wizard answer, including the release channel; `--scope` loads a shipped one, `--from-profile <file>` your own. Detail: [docs/setup/profiles/README.md](docs/setup/profiles/README.md).
 - **Release channel** — `stable` (highest `vX.Y.Z` tag) or `pre` (prereleases too), from `HIMMEL_UPDATE_CHANNEL` or the saved file's `channel`; neither set means a plain `git pull`. Detail: [docs/setup/updating.md](docs/setup/updating.md).
 
-Full walkthrough and the adaptation checklist for a non-himmel repo:[docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
+Full walkthrough and the adaptation checklist for a non-himmel repo: [docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
 
 ## Lifecycle verbs
 
