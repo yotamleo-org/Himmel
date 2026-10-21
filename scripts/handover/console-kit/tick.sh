@@ -1722,19 +1722,23 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     case "$stall_val" in ""|*[!0-9a-z:,?-]*) ;; *) stall_tail=" stall=$stall_val" ;; esac
 fi
 # busedge=MISSING:<label>[,...]: a held leg (lock FRESH or STALE) none of whose
-# session names has a himmel-bus peer record, so it has no bus edge to the live console.
+# session names has a himmel-bus peer record naming this console (the console doc's stem),
+# so it has no bus edge to the live console: never registered, or never adopted it.
 # ABSENT when every held leg has a record, or when the bus has no peers dir (bus not in use).
 # console-wait.sh's wake key does not name it, so it wakes nothing. Env seam: TICK_BUS_PEERS_DIR.
 busedge_tail=""
 bus_peers_dir="${TICK_BUS_PEERS_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus/peers}"
 if [ -d "$bus_peers_dir" ]; then
     busedge_val=""
+    be_console=""
+    [ -z "$console_doc" ] || be_console="\"console\":\"$(basename "$console_doc" .md)\""
     while IFS=$'\t' read -r be_label be_lock be_cands; do
         [ -n "$be_label" ] || continue
         case "$be_lock" in FRESH|STALE) ;; *) continue ;; esac
         be_found=""
         for be_cand in ${be_cands//,/ }; do
-            [ -f "$bus_peers_dir/$be_cand.json" ] && { be_found=1; break; }
+            [ -f "$bus_peers_dir/$be_cand.json" ] || continue
+            if [ -z "$be_console" ] || grep -qF -- "$be_console" "$bus_peers_dir/$be_cand.json"; then be_found=1; break; fi
         done
         [ -n "$be_found" ] || busedge_val="$(csv_add "$busedge_val" "$be_label")"
     done <<< "$leg_candmap"

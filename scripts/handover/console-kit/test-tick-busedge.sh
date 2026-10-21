@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-tick-busedge.sh — tick.sh reports busedge=MISSING:<label>[,...] for a held
-# fleet leg whose himmel-bus peer record is missing; the field is absent when
+# fleet leg whose himmel-bus peer record is missing or names another console; the field is absent when
 # every held leg has a record, when the bus has no peers dir, or for a free leg.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.
 #
@@ -67,8 +67,9 @@ field() { # <field> <tick output>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
 run() { bash "$SUT" --legs "$1" 2>/dev/null; }
-# peer <name>: a bus peer record in the shape `bus register` writes.
-peer() { printf '{"n":"%s","role":"leg","launched":"2026-10-19T00:00:00.000Z","console":"c"}\n' "$1" > "$W/peers/$1.json"; }
+# peer <name> [<console>]: a bus peer record in the shape `bus register` writes; its
+# console defaults to this tick's own (the console doc's stem).
+peer() { printf '{"n":"%s","role":"leg","launched":"2026-10-19T00:00:00.000Z","console":"%s"}\n' "$1" "${2:-console}" > "$W/peers/$1.json"; }
 
 held="$(mkleg 810-N810-held)"
 held2="$(mkleg 811-N811-other)"
@@ -87,6 +88,13 @@ out="$(run "$held,$held2")"
 check 'only the leg without a record is listed' 'MISSING:N811' "$(field busedge "$out")"
 
 check 'a free leg is never busedge-missing' '' "$(field busedge "$(run "$free")")"
+
+peer HIMMEL-9811-N811-other console-before
+check 'a held leg whose record names another console (never adopted) is listed' 'MISSING:N811' "$(field busedge "$(run "$held,$held2")")"
+peer HIMMEL-9811-N811-other console.x
+check 'a console name is matched whole, never as a pattern' 'MISSING:N811' "$(field busedge "$(run "$held2")")"
+peer HIMMEL-9811-N811-other
+check 'once it adopts this console the leg drops out' '' "$(field busedge "$(run "$held,$held2")")"
 
 rm -rf "$W/peers"
 check 'no bus peers dir (bus not in use): busedge is absent' '' "$(field busedge "$(run "$held")")"
