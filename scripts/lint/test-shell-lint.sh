@@ -120,18 +120,21 @@ command -v realpath || echo "$(realpath "$1")"
 type flock >/dev/null 2>&1
 which realpath >/dev/null 2>&1
 command -v realpath && p=$(realpath "$1") # prim-ok:
+type flock;which realpath
+command -v flock;type flock;which realpath
+type flock;which realpath;flock -x 9
 PRIMEOF
     out="$(bash "$LINT" "$fixture" 2>&1)"
-    for line in 4 9 11 13 14 18; do
+    for line in 4 9 11 13 14 18 25; do
         assert_contains "probe filter keeps raw flock on line $line" "[prim-lock] line $line:" "$out"
     done
     for line in 5 19 22; do
         assert_contains "probe filter keeps realpath on line $line" "[prim-canon] line $line:" "$out"
     done
-    for line in 3 6 7 15 17 20; do
+    for line in 3 6 7 15 17 20 23 24; do
         assert_not_contains "probe filter ignores probes, messages and reasoned exemptions on line $line" "[prim-lock] line $line:" "$out"
     done
-    for line in 8 21; do
+    for line in 8 21 23 24 25; do
         assert_not_contains "probe filter ignores realpath probes and messages on line $line" "[prim-canon] line $line:" "$out"
     done
 }

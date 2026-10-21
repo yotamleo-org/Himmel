@@ -197,7 +197,8 @@ _prim_report() {
     # (`command -v flock && flock -x 9`) still matches the pattern.
     while IFS=: read -r _pln _prest; do
         [ -n "$_pln" ] || continue
-        _pstrip="$(printf '%s\n' "$_prest" | sed -E "s/$PRIM_MESSAGE/\1\2 /g; s/$PRIM_PROBE/\1\4/g")"
+        _pstrip="$(printf '%s\n' "$_prest" | sed -E -e "s/$PRIM_MESSAGE/\1\2 /g" \
+            -e ':probe' -e "s/$PRIM_PROBE/\1\4/g" -e 't probe')"
         printf '%s\n' "$_pstrip" | grep -qE "$_ppat" || continue
         _ph="${_ph}${_pln}:${_prest}"$'\n'
     done <<EOF
