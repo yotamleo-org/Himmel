@@ -48,6 +48,9 @@ case "$1" in
         printf '{"fields":{"status":{"name":"%s"},"labels":[]}}\n' "$(cat "$FX/status.cur")" ;;
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
+        if [ -e "$FX/workflow" ] && ! cut -f2 "$FX/workflow" | grep -qxF "$3"; then
+            echo "no transition to $3" >&2; exit 1
+        fi
         [ -e "$FX/transition.noop" ] || printf '%s\n' "$3" > "$FX/status.cur"
         exit 0 ;;
 esac
@@ -325,6 +328,24 @@ check "transition failure: miss stage=transition" "$(row result)/$(row stage)" m
 reset "To Do"; owned; touch "$FX/transition.noop"
 fn "$K" --event live
 check "readback: a transition that did not land -> miss stage=readback" "$(row result)/$(row stage)" miss/readback
+
+# --- workflow edges: the live `jira transitions` listing, the same from all four statuses -------
+live_edges() { printf '11\tTo Do\n4\tBacklog\n21\tIn Progress\n2\tIn Review\n3\tIN CI\n31\tDone\n5\tClosed\n6\tIn Public\n7\twont do\n8\twont fix\n41\tPlanning\n'; }
+reset "IN CI"; owned; live_edges > "$FX/workflow"
+pr 11 "feat: [$K] x" aaa; checks 11 fail:shell-unit
+fn "$K" --event ci-exit --pr 11 --head aaa
+check "edge IN CI to In Progress (D1) is in the live workflow" "$(moved)" "transition $K In Progress"
+reset "IN CI"; owned; live_edges > "$FX/workflow"
+pr 11 "feat: [$K] x" ccc
+fn "$K" --event ci-start --pr 11 --head ccc
+check "edge IN CI to In Review (D4) is in the live workflow" "$(moved)" "transition $K In Review"
+reset "In Review"; owned WRAPPED 0; live_edges > "$FX/workflow"
+fn "$K" --event wrapped --doc "$DOC"
+check "edge In Review to To Do (D6) is in the live workflow" "$(moved)" "transition $K To Do"
+check "edge D6: the move landed" "$(row result)" moved
+reset "In Review"; owned WRAPPED 0; live_edges | grep -v 'To Do' > "$FX/workflow"
+fn "$K" --event wrapped --doc "$DOC"
+check "a missing edge is reported: miss stage=transition" "$(row result)/$(row stage)" miss/transition
 
 # --- wiring: the LIVE bullet ------------------------------------------------------------------
 reset "To Do"; mkdoc "$DOC"
