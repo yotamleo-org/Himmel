@@ -18,6 +18,54 @@ py() { python3 -I "$@"; }
 EV="$HERE/retrieval-eval.py"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/ledger.jsonl"
 
+# A one-second subprocess floor must not extend a sub-second arm budget.
+if py - "$EV" "$W" <<'PY'
+import json, os, pathlib, shutil, subprocess, sys
+
+ev, work = sys.argv[1], pathlib.Path(sys.argv[2])
+slow = work / "slow"
+slow.mkdir()
+real_git = shutil.which("git")
+stub = slow / "git"
+stub.write_text('''#!/usr/bin/env bash
+case " $* " in
+*" grep "*)
+    if [ "$BUDGET_PHASE" = snippet ] && [[ " $* " == *" -c "* ]]; then
+        printf 'bin/run.sh:1\\n'
+        exit 0
+    fi
+    exec sleep 5 ;;
+esac
+exec "$REAL_GIT" "$@"
+''')
+stub.chmod(0o755)
+questions = work / "budget.jsonl"
+questions.write_text(json.dumps(dict(id="budget", q="relay_batch", gold=["bin/run.sh"], reason=[])) + "\n")
+failed = False
+for phase, arm in (("count", "grep"), ("ident", "ident-grep"), ("snippet", "grep")):
+    out = work / ("budget-" + phase)
+    env = dict(os.environ, PATH=str(slow) + os.pathsep + os.environ["PATH"],
+               REAL_GIT=real_git, BUDGET_PHASE=phase,
+               HIMMEL_EVAL_RUNS_LEDGER=str(work / "budget-ledger.jsonl"))
+    result = subprocess.run([sys.executable, "-I", ev, "run", "--repo", str(work),
+                             "--questions", str(questions), "--out", str(out),
+                             "--arms", arm, "--timeout", "0.3"], env=env,
+                            capture_output=True, text=True, timeout=10)
+    if result.returncode:
+        print("FAIL - %s sub-second timeout: rc=%s %s" % (phase, result.returncode, result.stderr.strip()))
+        failed = True
+        continue
+    row = json.loads((out / "results.jsonl").read_text().splitlines()[0])
+    ok = row["timeout"] and not row["error"] and row["ms"] < 600
+    print("%s - %s honours 0.3 s budget: timeout=%s error=%s ms=%s" %
+          ("ok" if ok else "FAIL", phase, row["timeout"], row["error"], row["ms"]))
+    failed = failed or not ok
+sys.exit(int(failed))
+PY
+then pass "grep count, identifier and snippet subprocesses honour a sub-second budget"
+else fail "grep count, identifier and snippet subprocesses honour a sub-second budget"; fi
+if [ "${1:-}" = --budget-only ]; then exit "$fails"; fi
+
 # A scratch repo: the reason for q1 is in docs/lock.md, q2's answer in bin/run.sh.
 R="$W/repo"; mkdir -p "$R/docs" "$R/bin"
 printf 'The queue lock keeps one session per handover doc.\nA halt needs no token: a mild DoS, not a compromise.\n' > "$R/docs/lock.md"

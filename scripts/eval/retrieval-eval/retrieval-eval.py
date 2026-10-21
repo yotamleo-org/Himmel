@@ -20,7 +20,7 @@ Arms (all read-only):
   qmd-lex     qmd BM25 (lex search), rerank off
   qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
-              --arms, not in the default five and not fused into combined
+              --arms, not in the default seven and not fused into combined
   graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
               path and ident-grep baselines); its tokens and time are the sum
@@ -137,10 +137,11 @@ def arm_grep(q, repo, timeout, k):
     score = {}
     t0 = time.time()
     for w in kws:
-        if time.time() - t0 > timeout:
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
             return [], "", True, False
         out, to, rc = run_cmd(["git", "-C", repo, "grep", "-I", "-i", "-c", "-F", "-e", w, "--"] + GREP_SCOPE,
-                              max(1, timeout - (time.time() - t0)))
+                              remaining)
         if to:
             return [], "", True, False
         if rc not in (0, 1):
@@ -155,7 +156,10 @@ def arm_grep(q, repo, timeout, k):
         argv = ["git", "-C", repo, "grep", "-n", "-I", "-i", "-F"]
         for w in kws:
             argv += ["-e", w]
-        out, t, rc = run_cmd(argv + ["--", f], max(1, timeout - (time.time() - t0)))
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
+            return files, "\n".join(text), True, err
+        out, t, rc = run_cmd(argv + ["--", f], remaining)
         to, err = to or t, err or (not t and rc not in (0, 1))
         text += out.splitlines()[:8]
     return files, "\n".join(text), to, err
@@ -207,10 +211,11 @@ def arm_ident_grep(q, repo, timeout, k):
     t0 = time.time()
     score, lines = {}, {}
     for ident in idents(q):
-        if time.time() - t0 > timeout:
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
             return [], "", True, False
         out, to, rc = run_cmd(["git", "-C", repo, "grep", "-n", "-I", "-w", "-F", "-e", ident, "--"] + GREP_SCOPE,
-                              max(1, timeout - (time.time() - t0)))
+                              remaining)
         if to:
             return [], "", True, False
         if rc not in (0, 1):
@@ -773,7 +778,7 @@ def main(argv=None):
     r.add_argument("--repo", default=".")
     r.add_argument("--arms", default=",".join(ARMS))
     r.add_argument("--k", type=int, default=5)
-    r.add_argument("--timeout", type=int, default=60)
+    r.add_argument("--timeout", type=float, default=60)
     r.add_argument("--collection", default="himmel")
     r.add_argument("--label", default="")
     c = sub.add_parser("check")
