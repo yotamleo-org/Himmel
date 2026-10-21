@@ -107,7 +107,7 @@
     "obsidian-triage@himmel": false,
     "telegram-himmel@himmel": false,
     "himmel-bus@himmel": false,
-    "himmel-guard@himmel": false,
+    "himmel-guard@himmel": true,
     "humanizer@himmel": false,
     "domain-modeling@himmel": false
   },
@@ -136,9 +136,6 @@
     },
     "himmel-bus@himmel": {
       "neededBy": "The himmel-bus skill and MCP server (send/read) for the leg-bus and console lane profiles (HIMMEL-4830). Opt-in is per profile via mcpServers; installed but disabled by default."
-    },
-    "himmel-guard@himmel": {
-      "neededBy": "Standalone destructive-command guard for machines with no himmel checkout. The harness already wires the same hook from its own settings, so it stays disabled here; enable with /profile enable himmel-guard@himmel."
     },
     "humanizer@himmel": {
       "neededBy": "/humanizer, the opt-in rewrite pass for AI-sounding prose. Installed but disabled by default; enable with /profile enable humanizer@himmel."

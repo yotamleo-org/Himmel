@@ -162,6 +162,11 @@ wired, or the hook id from `.pre-commit-config.yaml`.
   friends from reaching the model as tool results) and
   `block-destructive-commands.sh`. These are the two that fail *closed* around
   irreversible harm, and they cost nothing when nothing dangerous is happening.
+- **The `himmel-guard` plugin is on by default.** The starter install enables
+  `himmel-guard@himmel`, which carries the same destructive-command guard as a
+  plugin. To opt out run `/profile disable himmel-guard@himmel`; the
+  [plugin README](../../marketplace/plugins/himmel-guard/README.md#on-by-default-and-how-to-opt-out)
+  covers keeping it off across a reconcile.
 
 **6. Operator-personal subsystems — skip all of these.** None of them is part of
 the portable core, and skipping them changes nothing about the hooks or the

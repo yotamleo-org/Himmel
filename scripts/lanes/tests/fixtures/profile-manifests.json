@@ -3,6 +3,7 @@
     "enabled": [
       "find-docs@himmel",
       "graphify@himmel",
+      "himmel-guard@himmel",
       "handover@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
