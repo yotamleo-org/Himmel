@@ -163,18 +163,18 @@ cp "$HERE/../../lanes/ceiling-conformance.sh" "$W/repo/scripts/lanes/ceiling-con
 # source by $REPO-relative path.
 cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-sessions.sh"
 
-# fleet=/capacity= reuse bank-preflight.sh's FLEET line. This stub
+# fleet=/capacity= reuse usage-preflight.sh's FLEET line. This stub
 # prints the same stderr line shape (STUB_FLEET_LINE overrides it) and records
 # the env tick ran it under, so the suite can pin that tick never asks it for a
 # ledger row or a launch refusal.
-cat > "$W/repo/scripts/lib/bank-preflight.sh" <<'STUB'
+cat > "$W/repo/scripts/lib/usage-preflight.sh" <<'STUB'
 #!/usr/bin/env bash
 [ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-${CADENCE_BANK_LEDGER:-unset}}" "${CADENCE_USAGE_LAUNCH:-${CADENCE_BANK_LAUNCH:-unset}}" > "$STUB_PF_SEEN"
 printf '%s\n' "${STUB_FLEET_LINE-bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/8}" >&2
 printf '%s\n' "${STUB_PF_VERDICT:-PROCEED}"
 STUB
 
-chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/leg-burn.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/bank-preflight.sh" "$W/bin/"*
+chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/leg-burn.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/usage-preflight.sh" "$W/bin/"*
 
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/HIMMEL-111-legN61.md"
@@ -718,7 +718,7 @@ mkdir -p "$W/foreign-repo/scripts/handover" "$W/foreign-repo/scripts/lib" "$W/fo
 cp "$W/repo/scripts/handover/queue-lock.sh" "$W/foreign-repo/scripts/handover/queue-lock.sh"
 cp "$W/repo/scripts/context-fill.sh" "$W/foreign-repo/scripts/context-fill.sh"
 cp "$W/repo/scripts/lanes/leg-burn.sh" "$W/foreign-repo/scripts/lanes/leg-burn.sh"
-cp "$W/repo/scripts/lib/bank-preflight.sh" "$W/foreign-repo/scripts/lib/bank-preflight.sh"
+cp "$W/repo/scripts/lib/usage-preflight.sh" "$W/foreign-repo/scripts/lib/usage-preflight.sh"
 # every chokepoint fails closed without its seam-guard lib.
 cp "$W/repo/scripts/lib/chokepoint-seam-guard.sh" "$W/foreign-repo/scripts/lib/chokepoint-seam-guard.sh"
 foreign_out="$(REPO="$W/foreign-repo" PATH="$W/bin:$PATH" bash "$SUT" --legs 'HIMMEL-111-legN61')"
@@ -943,7 +943,7 @@ case "$no_legs_out" in
 esac
 
 # --- fleet=<live>/<cap> + capacity= ------------------------------
-# fleet= is bank-preflight.sh's own census (its FLEET total=n/cap line), never a
+# fleet= is usage-preflight.sh's own census (its FLEET total=n/cap line), never a
 # second count. capacity=UNDERFILLED:<slack> fires when live < cap AND no leg has
 # launched for TICK_UNDERFILL_MIN (default 10) minutes, judged by the newest
 # <name>.launch.log mtime under the console work dir.
@@ -972,10 +972,10 @@ case "$fail_out" in
     *'capacity=ok'*|*UNDERFILLED*) fail 'a failed fleet census must not claim ok/UNDERFILLED (HIMMEL-3167)' ;;
     *) pass 'a failed fleet census must not claim ok/UNDERFILLED (HIMMEL-3167)' ;;
 esac
-mv "$W/repo/scripts/lib/bank-preflight.sh" "$W/bank-preflight.sh.away"
+mv "$W/repo/scripts/lib/usage-preflight.sh" "$W/usage-preflight.sh.away"
 gone_out="$(bash "$SUT")"
-contains 'a missing bank-preflight.sh reports fleet=? (HIMMEL-3167)' "$gone_out" 'fleet=? capacity=unknown'
-mv "$W/bank-preflight.sh.away" "$W/repo/scripts/lib/bank-preflight.sh"
+contains 'a missing usage-preflight.sh reports fleet=? (HIMMEL-3167)' "$gone_out" 'fleet=? capacity=unknown'
+mv "$W/usage-preflight.sh.away" "$W/repo/scripts/lib/usage-preflight.sh"
 STUB_PF_SEEN="$W/pf-seen" bash "$SUT" >/dev/null
 contains 'tick asks bank-preflight for no ledger row and no launch refusal (HIMMEL-3167)' "$(cat "$W/pf-seen" 2>/dev/null)" 'ledger=/dev/null launch=unset'
 rm -f "$launch_log"
@@ -2166,9 +2166,9 @@ contains 'OpenRouter funded verdict surfaces without changing raw balance' \
   "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' bank=openrouter:PROCEED '
 
 # --- spare=<pct>@<h>h ---------------------------------------------
-# tick reads bank-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
+# tick reads usage-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
 # projection maths is test-bank-monitor.sh's), so only tick's gating is pinned.
-cat > "$W/repo/scripts/lib/bank-monitor.sh" <<'STUB'
+cat > "$W/repo/scripts/lib/usage-monitor.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "${1:-}" = "--spare" ] || exit 2
 printf '%s\n' "${STUB_SPARE-seven_day_reset_in=?  unspent_at_reset=?}"
@@ -2185,8 +2185,8 @@ contains 'TICK_SPARE_HOURS moves the reset window (HIMMEL-4421)' \
   "$(TICK_SPARE_HOURS=48 STUB_SPARE='seven_day_reset_in=30.0h unspent_at_reset=60.0' bash "$SUT")" ' spare=60@30h'
 contains 'verbose labels spare (HIMMEL-4421)' \
   "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT" --verbose)" 'spare: 33@6h'
-rm -f "$W/repo/scripts/lib/bank-monitor.sh"
-spare_has 'a missing bank-monitor.sh leaves spare= absent and the tick intact (HIMMEL-4421)' "$(bash "$SUT")"
+rm -f "$W/repo/scripts/lib/usage-monitor.sh"
+spare_has 'a missing usage-monitor.sh leaves spare= absent and the tick intact (HIMMEL-4421)' "$(bash "$SUT")"
 
 # --- a READY with no GO file for 30 minutes is a wake. tails= is in the
 # console-wait action key, so the entry moving READY -> READY!stale wakes it once.

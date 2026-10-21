@@ -16,7 +16,7 @@ import {
 import { formatQuotaAnnotation, resolveActiveAccessPath, resolveBankTargets } from '../resolve.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const BANK_STATUS = join(TEST_DIR, '..', 'bank-status.ts');
+const BANK_STATUS = join(TEST_DIR, '..', 'usage-status.ts');
 const RESOLVER = join(TEST_DIR, '..', 'resolve.mjs');
 
 // The public CI job `lanes-and-trust-suites` runs this suite with
@@ -210,7 +210,7 @@ test('/lanes output surfaces limit structure, binding windows, and measured bank
 });
 
 test('bank probe surfaces an overlay-only quota bank instead of "no status returned" (HIMMEL-1690)', () => {
-  // bank-status.ts emits one status line per lane in withBank. A lane ABSENT
+  // usage-status.ts emits one status line per lane in withBank. A lane ABSENT
   // from withBank is exactly what renders as "[bank: unmeasurable — no status
   // returned]" in /lanes (formatBankAnnotation(undefined) in
   // bank-status-core.mjs), so "real status" vs "no status returned" reduces to

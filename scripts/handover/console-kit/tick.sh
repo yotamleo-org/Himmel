@@ -63,7 +63,7 @@ NOTFOUND in legs=, never as MISSING -- MISSING is reserved for a lock that is
 actually gone.
 
 fleet=<live>/<cap> and capacity= (HIMMEL-3167) are always appended, last on the
-line. fleet= is bank-preflight.sh's own census (native + claudex + reserved,
+line. fleet= is usage-preflight.sh's own census (native + claudex + reserved,
 HIMMEL_FLEET_CAP) -- never a second count; fleet=? when that census cannot be
 read. capacity=UNDERFILLED:<slack> means live < cap AND no leg launched for
 TICK_UNDERFILL_MIN minutes (default 10); capacity=ok otherwise, capacity=unknown
@@ -88,7 +88,7 @@ wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
 spare=<pct>@<h>h (HIMMEL-4421) is the very last field and is ABSENT unless the
-weekly quota the current burn leaves unspent at the reset (bank-monitor.sh
+weekly quota the current burn leaves unspent at the reset (usage-monitor.sh
 --spare) is >= TICK_SPARE_MIN percent (default 10) and the reset is <=
 TICK_SPARE_HOURS hours away (default 24). Advisory: it is not in console-wait's
 action key and wakes nothing.
@@ -1546,7 +1546,7 @@ wk="$(jq -r '.seven_day.utilization | if type == "number" then floor else empty 
 case "$fh" in ''|*[!0-9]*) fh='?' ;; esac
 case "$wk" in ''|*[!0-9]*) wk='?' ;; esac
 
-bank_status="$(bun "$REPO/scripts/lanes/bank-status.ts" 2>/dev/null | grep '^claudex ' | head -n 1)" || bank_status=""
+bank_status="$(bun "$REPO/scripts/lanes/usage-status.ts" 2>/dev/null | grep '^claudex ' | head -n 1)" || bank_status=""
 codex_fh="$(printf '%s\n' "$bank_status" | sed -n 's/.*5h used=\([0-9][0-9.]*\)%.*/\1/p')"
 codex_wk="$(printf '%s\n' "$bank_status" | sed -n 's/.*weekly used=\([0-9][0-9.]*\)%.*/\1/p')"
 if [ -n "$codex_fh" ] || [ -n "$codex_wk" ]; then
@@ -1567,7 +1567,7 @@ fi
 bank="5h${fh}/wk${wk}/codex=${codex}"
 
 # spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
-# at the reset (bank-monitor.sh --spare). Shown only when the spare is >=
+# at the reset (usage-monitor.sh --spare). Shown only when the spare is >=
 # TICK_SPARE_MIN percent (default 10) and the reset is <= TICK_SPARE_HOURS hours
 # away (default 24); otherwise the field is absent. Advisory only: console-wait's
 # action key is a field whitelist that does not name spare=, so it never wakes.
@@ -1576,7 +1576,7 @@ spare_hours="${TICK_SPARE_HOURS:-24}"
 case "$spare_min" in ''|*[!0-9]*) spare_min=10 ;; esac
 case "$spare_hours" in ''|*[!0-9]*) spare_hours=24 ;; esac
 spare_tail=""
-spare_out="$(USAGE_MONITOR_CACHE_FILE="$bank_cache" bash "$REPO/scripts/lib/bank-monitor.sh" --spare 2>/dev/null)" || spare_out=""
+spare_out="$(USAGE_MONITOR_CACHE_FILE="$bank_cache" bash "$REPO/scripts/lib/usage-monitor.sh" --spare 2>/dev/null)" || spare_out=""
 spare_in="$(printf '%s\n' "$spare_out" | sed -n 's/.*seven_day_reset_in=\([0-9][0-9.]*\)h.*/\1/p')"
 spare_pct="$(printf '%s\n' "$spare_out" | sed -n 's/.*unspent_at_reset=\([0-9][0-9.]*\).*/\1/p')"
 if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
@@ -1868,7 +1868,7 @@ if [ -n "$root" ] && [ -d "$root/inbox" ]; then
 fi
 [ -n "$inbox_summary" ] || inbox_summary=none
 
-# fleet=<live>/<cap> + capacity=. The census is bank-preflight.sh's
+# fleet=<live>/<cap> + capacity=. The census is usage-preflight.sh's
 # own -- it counts native + claudex + reserved against HIMMEL_FLEET_CAP inline,
 # in a script that exits, so its `FLEET ... total=<n>/<cap>` line is the seam
 # (a second count here would be the drift this field exists to end). Run as a
@@ -1876,7 +1876,7 @@ fi
 # and the ledger goes to /dev/null so a tick writes no cadence-ledger row.
 # ponytail: bank-preflight still takes its fleet admission lock and prunes
 # expired/consumed reservations while it counts, exactly as any bank read does.
-fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/bank-preflight.sh" 2>&1)" || fleet_out=""
+fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # bank= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
 if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${LEG_LANE:-native}}}" = openrouter ]; then

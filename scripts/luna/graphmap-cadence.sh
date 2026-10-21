@@ -13,7 +13,7 @@
 #   - SEMANTIC (refresh-graph-map.sh: LLM extraction of markdown docs + curated
 #     MOC/community naming): the only tier that costs anything. Runs WEEKLY on
 #     the claude-cli backend (see BACKEND below), drawing the SAME interactive
-#     5h/weekly Anthropic bank as a live session, gated by bank-preflight.sh
+#     5h/weekly Anthropic bank as a live session, gated by usage-preflight.sh
 #     inside refresh-graph-map.sh (SKIPPED-BANK stops the run instead of
 #     draining the bank unattended).
 # Cheap+free runs often, expensive+paid runs rarely: a daily semantic tier that
@@ -37,7 +37,7 @@
 # refresh-graph-map.sh) is what shells the local `claude` CLI headlessly for
 # extraction, so claude invocation billing DOES apply (the same
 # 5h/weekly interactive bank as a live session), and refresh-graph-map.sh
-# gates every claude-cli fire on bank-preflight.sh before it shells `claude`
+# gates every claude-cli fire on usage-preflight.sh before it shells `claude`
 # (SKIPPED-BANK stops the run rather than draining the bank unattended). The
 # structural pair never talks to any provider and needs no gate.
 #
@@ -50,7 +50,7 @@
 # extraction per corpus (no bank, no egress) AND a WEEKLY semantic extraction
 # per corpus on the claude-cli backend (draws the SAME
 # interactive 5h/weekly Anthropic bank as a live session, gated by
-# bank-preflight.sh inside refresh-graph-map.sh). It never auto-arms —
+# usage-preflight.sh inside refresh-graph-map.sh). It never auto-arms —
 # `arm` registers all five tasks only when explicitly invoked, so the
 # operator decides.
 #
@@ -293,7 +293,7 @@ HIMMEL_TITLE="Graphify Himmel Map"
 HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
 # The semantic legs run WEEKLY on the `claude-cli` backend: a semantic leg once
-# a week, gated by bank-preflight.sh inside refresh-graph-map.sh (SKIPPED-BANK
+# a week, gated by usage-preflight.sh inside refresh-graph-map.sh (SKIPPED-BANK
 # stops the run instead of draining the bank unattended), avoids a daily-drain
 # failure mode without needing a second provider. claude-cli authenticates via
 # the operator's own Claude Code subscription (no API key) and needs no
@@ -329,7 +329,7 @@ via the promote-lock wrapper — no bank, no claude session) AND a WEEKLY
 semantic refresh per corpus (fence-safe incremental extraction + curated-MOC
 republish, `bash refresh-graph-map.sh ...` on the claude-cli backend — draws
 the SAME interactive 5h/weekly Anthropic bank as a live session, gated by
-bank-preflight.sh inside refresh-graph-map.sh). The structural pair never
+usage-preflight.sh inside refresh-graph-map.sh). The structural pair never
 opens a claude session; the semantic pair's claude-cli fire does (headless,
 HIMMEL-128).
 

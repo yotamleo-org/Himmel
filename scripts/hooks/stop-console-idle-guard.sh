@@ -58,12 +58,12 @@
 # FAIL-OPEN CONTRACT: every step below that cannot positively confirm
 # "console session, first stop this turn, lock still held" allows the stop.
 # A malformed or missing payload, an unresolvable handover root, an
-# unreadable/corrupt lock dir, a missing sha256 tool, a `bank-preflight.sh`
+# unreadable/corrupt lock dir, a missing sha256 tool, a `usage-preflight.sh`
 # or `queue-lock.sh status --sweep` that fails or hangs — all of these
 # `exit 0` with NO stdout, which Claude Code reads as allow. The block JSON
 # is built and printed only as the LAST statement, once every input it
 # depends on has already succeeded — nothing partial is ever emitted. Every
-# subprocess this hook shells out to (`git`, `bank-preflight.sh`,
+# subprocess this hook shells out to (`git`, `usage-preflight.sh`,
 # `queue-lock.sh status --sweep`) is wrapped with a hard `timeout` so a
 # hung dependency degrades to "allow" rather than trapping the session.
 set -u
@@ -71,7 +71,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 # TOTAL budget shared across every subprocess this hook calls (root
-# resolution, bank-preflight.sh, queue-lock.sh status --sweep), not a
+# resolution, usage-preflight.sh, queue-lock.sh status --sweep), not a
 # per-call allowance -- three sequential 6s-per-call timeouts could sum past
 # the harness's own 10s Stop timeout, killing the hook before it ever
 # printed a decision. Left with ~2s margin
@@ -83,7 +83,7 @@ GUARD_DEADLINE_EPOCH=$(( $(date +%s) + GUARD_TIMEOUT_SECS ))
 # point these at a stub without PATH tricks, the same convention as tick.sh's
 # TICK_BANK_CACHE_FILE / FLEET_PS_CMD. HIMMEL_STOP_GUARD_USAGE_PREFLIGHT wins over
 # the old HIMMEL_STOP_GUARD_BANK_PREFLIGHT, which is still read.
-BANK_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_USAGE_PREFLIGHT:-${HIMMEL_STOP_GUARD_BANK_PREFLIGHT:-$REPO/scripts/lib/bank-preflight.sh}}"
+BANK_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_USAGE_PREFLIGHT:-${HIMMEL_STOP_GUARD_BANK_PREFLIGHT:-$REPO/scripts/lib/usage-preflight.sh}}"
 QUEUE_LOCK_SH="${HIMMEL_STOP_GUARD_QUEUE_LOCK:-$REPO/scripts/handover/queue-lock.sh}"
 
 # _bounded <cmd...> -- run under whatever remains of the SHARED

@@ -1,9 +1,9 @@
-// Pure formatting/parsing helpers for scripts/lanes/bank-status.ts and /lanes.
+// Pure formatting/parsing helpers for scripts/lanes/usage-status.ts and /lanes.
 
 // The remedy every fail-closed codex reason names: the ONLY way
 // to refresh the codex bank reading is to run the bounded probe — bank-status
 // itself never spawns it.
-export const CODEX_BANK_PROBE_REMEDY = 'run: bun scripts/lanes/codex-bank-probe.ts';
+export const CODEX_BANK_PROBE_REMEDY = 'run: bun scripts/lanes/codex-usage-probe.ts';
 
 // Mirrors windowLabel() in scripts/observability/quota-sources.ts (300->5h,
 // 10080->weekly, 43200->monthly). This .mjs copy exists because this module
@@ -43,7 +43,7 @@ function parseCacheTimestampMs(v) {
  *          | { kind: 'unmeasurable', reason: string }} CodexBankCacheResult
  */
 /**
- * The `kind` literals above are load-bearing: TS consumers (bank-status.ts,
+ * The `kind` literals above are load-bearing: TS consumers (usage-status.ts,
  * spawn-claudex.ts) discriminate on them. A widened `kind: string` gives
  * nothing to narrow on, and `.reason` / `.readings` then silently read as
  * `undefined` — in the dispatch preflight that is exactly how a fail-closed
@@ -173,7 +173,7 @@ export function guardState(result, active, maxPct) {
   }
   // flat-rate is a POSITIVE not-applicable determination by the
   // bank reader (the z.ai GLM plan is flat-rate — see readGlmDisplay in
-  // bank-status.ts), not missing evidence, so `unknown` would be the wrong
+  // usage-status.ts), not missing evidence, so `unknown` would be the wrong
   // word: it reads as a bug while the lane is in fact always-available. This
   // is NOT a fail-open: that would flip a measured,
   // EXHAUSTED bank to funded; here no metered reading exists to ignore.

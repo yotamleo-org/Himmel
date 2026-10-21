@@ -15,8 +15,8 @@ import { encodeJsonRpcLine, normalizeRateLimits, takeJsonRpcMessage } from '../c
 import { CODEX_BANK_PROBE_REMEDY, formatMeasured, readCodexBankCache } from '../bank-status-core.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const PROBE = join(TEST_DIR, '..', 'codex-bank-probe.ts');
-const BANK_STATUS = join(TEST_DIR, '..', 'bank-status.ts');
+const PROBE = join(TEST_DIR, '..', 'codex-usage-probe.ts');
+const BANK_STATUS = join(TEST_DIR, '..', 'usage-status.ts');
 const STUB = join(TEST_DIR, 'fixtures', 'codex-appserver-stub.mjs');
 
 // Same guard as bank-status.test.mjs: public CI runs plain
@@ -261,7 +261,7 @@ test('bank-status CLI: fresh cache measured, missing/stale cache unmeasurable â€
   assert.match(missing, /^claudex unknown unmeasurable reason="codex bank cache missing â€” run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
   assert.doesNotMatch(missing, /^claudex funded /m);
 
-  // The TTL env var is honored end-to-end (its parsing lives in bank-status.ts).
+  // The TTL env var is honored end-to-end (its parsing lives in usage-status.ts).
   writeFileSync(cache, JSON.stringify({
     limits: [{ limitId: 'primary', usedPercent: 20, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 86400 }],
     capturedAt: new Date(Date.now() - 3600_000).toISOString(),

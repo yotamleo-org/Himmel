@@ -1,7 +1,7 @@
 // scripts/lanes/profile-context-probe.mjs
 // Measured half of the profile context-budget architecture
 // tests. Spawns REAL `claude` calls (billed, subject to the 5h/weekly bank —
-// see scripts/lib/bank-preflight.sh), so this file is NEVER part of the CI
+// see scripts/lib/usage-preflight.sh), so this file is NEVER part of the CI
 // node --test glob. It exists to (a) prove plugin injection actually landed
 // (init event `plugins[].source` == the resolved enabled set) and (b) catch
 // context-footprint regressions against each profile's registry contextBudget.
@@ -44,7 +44,7 @@ export { runtimeNamesOf };
 
 // The SAME interpreter resolution the wired hooks get. On Windows an unresolved
 // shell can be the WSL launcher or a 0-byte WindowsApps alias, so we need the
-// resolved one to reliably run bank-preflight.sh.
+// resolved one to reliably run usage-preflight.sh.
 const { resolveBash } = createRequire(import.meta.url)('../hooks/run-hook-with-bash.js');
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -498,7 +498,7 @@ function main() {
     process.exitCode = 3;
     return;
   }
-  const preflight = spawnSync(bash, ['scripts/lib/bank-preflight.sh'], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 30_000 });
+  const preflight = spawnSync(bash, ['scripts/lib/usage-preflight.sh'], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 30_000 });
   if (preflight.error) {
     process.stdout.write(`profile-context-probe: skipped — bank-preflight failed to run (${preflight.error.message})\n`);
     process.exitCode = 3;

@@ -401,7 +401,7 @@ api_dry_run() {
 init_env() { # the claude binary, the repo, the bank preflight and the native-auth pin
   CLAUDE_BIN="${LQ_CLAUDE_BIN:-claude}"
   REPO="${LQ_REPO:-$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")}"
-  PREFLIGHT="${LQ_PREFLIGHT:-$REPO/scripts/lib/bank-preflight.sh}"
+  PREFLIGHT="${LQ_PREFLIGHT:-$REPO/scripts/lib/usage-preflight.sh}"
   # shellcheck source=../../lib/native-auth-pin.sh
   . "$HERE/../../lib/native-auth-pin.sh" || die "cannot source native-auth-pin.sh"
 }

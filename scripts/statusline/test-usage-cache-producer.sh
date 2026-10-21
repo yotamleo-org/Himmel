@@ -329,7 +329,7 @@ run_test "(9) HIMMEL-3364: both stdin windows stamp primaries_refreshed_at=now, 
   [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(( $(date +%s) + 1 ))" ] || exit 1;
   noflt="$W/no-fleet-ps.sh"; printf "%s\n" "#!/usr/bin/env bash" "true" > "$noflt"; chmod +x "$noflt";
   v=$(CADENCE_BANK_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" \
-      CADENCE_BANK_LEG=test3364 FLEET_PS_CMD="$noflt" bash "$STATUSLINE_DIR/../lib/bank-preflight.sh" </dev/null 2>/dev/null | tail -n1);
+      CADENCE_BANK_LEG=test3364 FLEET_PS_CMD="$noflt" bash "$STATUSLINE_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n1);
   [ "$v" = "PROCEED" ] || exit 1;
 '
 

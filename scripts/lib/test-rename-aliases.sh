@@ -175,6 +175,50 @@ stub() {
 stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
 stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
 
+# --- slice V1c: the five usage scripts, each old path a forwarder to the new one ---
+V1C_ROWS='bank-attribution.sh|usage-attribution.sh|identifier|old-to-new|V1|X
+bank-monitor.sh|usage-monitor.sh|identifier|old-to-new|V1|X
+bank-preflight.sh|usage-preflight.sh|identifier|old-to-new|V1|X
+bank-status.ts|usage-status.ts|identifier|old-to-new|V1|X
+codex-bank-probe.ts|codex-usage-probe.ts|identifier|old-to-new|V1|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V1c row '$old'" "$tabbed" "$got"
+done <<EOF
+$V1C_ROWS
+EOF
+# The shipped forwarder runs beside a stub of its target: argv, stdout and the
+# exit code pass through, stderr is the one deprecation line.
+# shellcheck source=fixture-tempdir.sh
+# shellcheck disable=SC1091
+. "$HERE/fixture-tempdir.sh"
+FT=$(fixture_mktemp_dir) || exit 1
+trap 'rm -rf "$FT"' EXIT
+forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
+  local runner="$1" dir="$2" old="$3" new="$4" src="$5" d out rc err
+  d="$FT/$old"
+  mkdir -p "$d"
+  check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
+  cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
+  printf '%s\n' "$src" > "$d/$new"
+  out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
+  rc=$?
+  err="$(cat "$d/err")"
+  check "$old forwards argv and stdout to $new" "NEW:a b|c" "$out"
+  check "$old keeps the exit code of $new" 7 "$rc"
+  check "$old prints one deprecation line" "$old is deprecated: use '$new' instead" "$err"
+}
+# shellcheck disable=SC2016 # the stub body is expanded by the stub, not here
+SH_STUB='printf "NEW:%s|%s" "$1" "$2"; exit 7'
+TS_STUB='process.stdout.write("NEW:" + process.argv.slice(2).join("|")); process.exit(7);'
+forwards bash scripts/lib bank-preflight.sh usage-preflight.sh "$SH_STUB"
+forwards bash scripts/lib bank-monitor.sh usage-monitor.sh "$SH_STUB"
+forwards bash scripts/lib bank-attribution.sh usage-attribution.sh "$SH_STUB"
+forwards bun scripts/lanes bank-status.ts usage-status.ts "$TS_STUB"
+forwards bun scripts/lanes codex-bank-probe.ts codex-usage-probe.ts "$TS_STUB"
+
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
   { line[NR] = $1; old[NR] = $2; kind[NR] = $4; n = NR }
