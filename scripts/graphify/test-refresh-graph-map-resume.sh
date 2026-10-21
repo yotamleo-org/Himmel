@@ -115,6 +115,7 @@ echo "R1: a persistently hollow chunk is retried a bounded number of times"
 reset
 out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=1 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R1 exits 5 (chunk failed)" || fail "R1 should exit 5 (got $rc): $out"
+# read-sink-ok: test-owned stub count file under the suite tmpdir
 n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
 [ "$n" -ge 3 ] && [ "$n" -le 4 ] && pass "R1 the hollow retry stopped after $n lines (limit 3, stub would emit 60)" \
   || fail "R1 the hollow retry should stop at 3 lines (4 at most), saw $n"
@@ -202,6 +203,7 @@ out=$( STUB_CHUNKS=4 STUB_HOLLOW_BLIP_AT=2 STUB_HOLLOW_BLIP=5 GRAPHIFY_HOLLOW_RE
 reset
 out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=2 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R9 an all-hollow run at concurrency 2 still exits 5" || fail "R9 all-hollow should exit 5 (got $rc): $out"
+# read-sink-ok: test-owned stub count file under the suite tmpdir
 n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
 [ "$n" -ge 6 ] && [ "$n" -le 7 ] && pass "R9 it stopped after $n lines (limit 3 x concurrency 2)" || fail "R9 should stop at 6 lines (7 at most), saw $n"
 
