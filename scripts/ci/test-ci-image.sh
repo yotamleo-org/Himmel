@@ -138,9 +138,10 @@ fi
 # 10. tools the suites call that a GitHub-hosted runner carries and ci.yml never
 #     installs, so a container without them fails or SKIPs rows: bison + gcc +
 #     libc6-dev build the bwk awk, cron gives crontab, zsh the escape-corpus zsh
-#     shapes, shfmt the bash-ast engine, uv check-uv-lock. Each is installed and
-#     smoke-checked.
-for p in bison gcc libc6-dev cron zsh; do
+#     shapes, shfmt the bash-ast engine, uv check-uv-lock, python-is-python3 the
+#     bare `python` the obsidian-triage suites call, python3-yaml the PyYAML a
+#     suite imports. Each is installed and smoke-checked.
+for p in bison gcc libc6-dev cron zsh python-is-python3 python3-yaml; do
   if has "$p" "$apt_text"; then ok "Dockerfile installs suite tool package $p"
   else bad "Dockerfile lacks suite tool package $p"; fi
 done
@@ -152,10 +153,12 @@ for v in SHFMT UV; do
   else bad "Dockerfile does not pin ${v}_VERSION with ${v}_SHA256"; fi
 done
 smoke="$(grep -oE 'for t in [^;]+' "$WORKFLOW" 2>/dev/null | head -n 1)"
-for t in bison gcc crontab shfmt uv zsh; do
+for t in bison gcc crontab shfmt uv zsh python; do
   if has "$t" "$smoke"; then ok "workflow smoke-checks $t"
   else bad "workflow smoke list lacks $t"; fi
 done
+if grep -q "import yaml" "$WORKFLOW" 2>/dev/null; then ok "workflow smoke-checks the PyYAML import"
+else bad "workflow does not smoke-check import yaml"; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
