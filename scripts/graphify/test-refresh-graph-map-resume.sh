@@ -187,10 +187,15 @@ cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
 # the cap still ends the run. ---
 echo "R8: a TERM-ignoring graphify is killed after the grace at the cap"
 reset
-out=$( STUB_CHUNKS=12 STUB_IGNORE_TERM=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=2 GRAPHIFY_STOP_KILL_GRACE_SECONDS=1 timeout 60 bash -c 'bash "$0" --name luna --corpus-root "$1" --backend claude --maps-dir "$2" --title "Graphify Luna Map" --slug graphify-luna-map --corpus-tag luna --scratch "$3"' "$SCRIPT" "$CORPUS" "$MAPS" "$SP" 2>&1 ); rc=$?
+_tmo=$(command -v timeout || command -v gtimeout || true)
+if [ -z "$_tmo" ]; then
+  echo "SKIP R8: neither timeout nor gtimeout is on PATH to bound the run"
+else
+out=$( STUB_CHUNKS=12 STUB_IGNORE_TERM=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=2 GRAPHIFY_STOP_KILL_GRACE_SECONDS=1 "$_tmo" 60 bash -c 'bash "$0" --name luna --corpus-root "$1" --backend claude --maps-dir "$2" --title "Graphify Luna Map" --slug graphify-luna-map --corpus-tag luna --scratch "$3"' "$SCRIPT" "$CORPUS" "$MAPS" "$SP" 2>&1 ); rc=$?
 [ "$rc" -eq 4 ] && pass "R8 exits 4 despite the ignored TERM" || fail "R8 should exit 4 (got $rc): $out"
 [ -f "$OUTD/cache/c2.json" ] && [ ! -e "$OUTD/cache/c12.json" ] \
   && pass "R8 the run was cut short after the cap (c2 cached, c12 never reached)" || fail "R8 the TERM-ignoring graphify ran to the end or lost its chunks"
+fi
 
 # --- R9: the hollow limit scales with the effective concurrency: with several
 # API workers, retries from different chunks interleave with no completion
