@@ -42,7 +42,7 @@ One of two kinds:
   `See which tickets are system work`.
 
 No commit prefix (`feat(x):`), no ticket id, no internal names (`--flag`,
-`field_name`, file paths, backticked code), under 90 characters. `jira create`
+`field_name`, file paths, backticked code), at most 90 characters. `jira create`
 warns with this template for a Task, Story or Bug that breaks it (exit 0, the
 ticket is still filed); an Epic or Subtask is not checked.
 

@@ -170,7 +170,7 @@ export function createTools(): JiraTool[] {
         });
         let out = `Created ${result.key}`;
         if (home.action === 'warn') out += `\n  ${home.message}`;
-        const titleCheck = titleVerdict(args.type as string, args.title as string);
+        const titleCheck = titleVerdict(args.type as string, args.title as string, sectors);
         if (titleCheck.action === 'warn') out += `\n  ${titleCheck.message}`;
 
         const attachments = (args.attach as string[] | undefined) ?? [];

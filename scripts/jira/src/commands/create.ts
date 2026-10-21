@@ -451,11 +451,11 @@ export function registerCreate(program: Command): void {
           process.exit(1);
         }
         if (verdict.action === 'warn') console.error(verdict.message);
-        const titleCheck = titleVerdict(options.type, resolveTitle(options));
-        if (titleCheck.action === 'warn') console.error(titleCheck.message);
         // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
         const sectorId = sectorField();
         const sectors = sectorId ? await sectorOptions() : undefined;
+        const titleCheck = titleVerdict(options.type, resolveTitle(options), sectors);
+        if (titleCheck.action === 'warn') console.error(titleCheck.message);
         if (options.sector !== undefined && !sectors) {
           console.error('jira: warning: --sector ignored, Sector is not configured (run `jira sector setup`)');
         }

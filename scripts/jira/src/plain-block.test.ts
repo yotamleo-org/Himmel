@@ -211,6 +211,9 @@ describe('titleVerdict (HIMMEL-6968)', () => {
     ['a file path', 'Edit scripts/jira/src/mcp.ts', /internal name/],
     ['an over-long title', 'x '.repeat(60).trim(), /long/],
     ['an empty title', '   ', /empty/],
+    ['a sector with no result', 'Ship loop:  ', /no result/],
+    ['an unknown sector prefix', 'Unknown sector: merge waits for approval', /not a Sector/],
+    ['91 characters', 'x'.repeat(91), /at most 90/],
   ];
   for (const [why, t, re] of BREAKING) {
     it(`warns on ${why} and prints the template`, () => {
@@ -220,6 +223,17 @@ describe('titleVerdict (HIMMEL-6968)', () => {
       expect(v.message).toContain(TITLE_TEMPLATE);
     });
   }
+
+  it('accepts exactly 90 characters', () => {
+    expect(titleVerdict('Task', 'x'.repeat(90)).action).toBe('ok');
+  });
+
+  it('judges a sector-led title against the configured options', () => {
+    expect(titleVerdict('Task', 'platform: requests finish safely', ['platform'])).toEqual({ action: 'ok', message: '' });
+    const v = titleVerdict('Task', 'Ship loop: merge waits', ['platform']);
+    expect(v.action).toBe('warn');
+    expect(v.message).toContain('Sectors: platform');
+  });
 
   it('warns for Story and Bug too, never refuses', () => {
     expect(titleVerdict('Story', 'feat: x').action).toBe('warn');

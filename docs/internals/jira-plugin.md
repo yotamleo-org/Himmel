@@ -174,8 +174,9 @@ A title is one of two kinds:
   `See which tickets are system work`.
 
 Neither kind carries a commit prefix (`feat(x):`), a ticket id, or an internal name
-(a `--flag`, a `field_name`, a file path, backticked code), and a title stays under
-90 characters. `create` checks this for a Task, Story or Bug and **warns** with the
+(a `--flag`, a `field_name`, a file path, backticked code), and a title stays at most
+90 characters. A system title needs a result after the sector, and a capitalised
+`Name:` opening that is not one of the Sector options is flagged. `create` checks this for a Task, Story or Bug and **warns** with the
 template on stderr (the MCP tool appends the warning to its reply); it never
 refuses, and an Epic or Subtask is not checked. The check is `titleVerdict` in
 `scripts/jira/src/plain-block.ts`. Existing titles are retitled in approved
