@@ -74,6 +74,14 @@ test("the plugin set row offers lean and full through profile.set, the action th
   for (const t of ["lean", "full"]) expect(settings).toMatch(new RegExp(`data-act="plan"[^>]*data-action="profile.set" data-target="${t}"`));
 });
 
+test("the plugin set row shows every open preview, so clicking full while lean is open never leaves lean's confirm on screen alone", () => {
+  const plan = (target: string) => ({ stage: "plan", command: `himmelctl profile ${target}`, output: `would set ${target}`, effect: "next Claude launch", typed: "", consent: { kind: "typed", expect: target } });
+  const html = R.renderSettings(feed, { plans: { "settings|profile-set-lean": plan("lean"), "settings|profile-set-full": plan("full") } });
+  expect(html).toContain("would set lean");
+  expect(html).toContain("would set full");
+  expect(html).toContain('data-k="settings|profile-set-full"');
+});
+
 test("Commit rules and Session switches are display-only; their home is ~/.himmel/himmel.conf, not the shell profile", () => {
   const g = (id: string) => settings.split('<div class="setgroup">').find((s) => s.includes(`id="sg-${id}"`))!;
   const commit = g("commit-rules"), session = g("session-switches");

@@ -260,10 +260,10 @@ const SETTINGS_GROUPS = [
 
 function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }) {
   const ks = keys || [`settings|${id}`];
-  const pk = ks.find((k) => state.plans && state.plans[k]);
+  const open = ks.filter((k) => state.plans && state.plans[k]);
   return `<div class="setrow"><div class="sethead">${health ? `<span class="st ${esc(health)}">${ST[health] || esc(health)}</span>` : ""}<span class="id">${esc(title)}</span><span class="det">${esc(detail)}</span><span class="slot">${slot}</span></div>
     <pre><code>${esc(cmd)}</code></pre>
-    <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${pk ? planHtml(pk, state.plans[pk]) : ""}</div>`;
+    <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
 }
 
 export function renderSettings(feed, state) {
