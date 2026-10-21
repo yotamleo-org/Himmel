@@ -2327,6 +2327,33 @@ rm -rf "$VARIANTS"
 g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
 g -C "$WT" reset -q --hard "$ORIG_MAIN"
 
+# git mv only renames a path, it executes none of its arguments, so renaming a
+# guarded script is safe on a branch; the subcommands that run an argument stay
+# denied.
+# shellcheck disable=SC2016 # literal payloads, never expanded here
+for v in \
+    'git mv scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
+    'git mv -f scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
+    'git mv -k scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
+    'git mv -v scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
+    'git mv -- scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
+    'git mv scripts/cr/clear-cr-marker.sh docs/'; do
+    run "HIMMEL-6927 git mv [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+# shellcheck disable=SC2016 # literal attack payloads, never expanded here
+for v in \
+    'git bisect run scripts/cr/clear-cr-marker.sh' \
+    "git -c alias.x='!bash scripts/cr/clear-cr-marker.sh' x" \
+    'git rebase -x scripts/cr/clear-cr-marker.sh main' \
+    'git rebase --exec scripts/cr/clear-cr-marker.sh main' \
+    'git submodule foreach scripts/cr/clear-cr-marker.sh' \
+    'git filter-branch --tree-filter scripts/cr/clear-cr-marker.sh' \
+    'git mv x y && bash scripts/cr/clear-cr-marker.sh' \
+    'git mv --exec-path=scripts/cr/clear-cr-marker.sh x y' \
+    'git -c core.hooksPath=scripts/cr/clear-cr-marker.sh mv x y'; do
+    run "HIMMEL-6927 exec control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*
 # must pass (a mention, or a himmel-gate run from the anchor), deny-* must stay

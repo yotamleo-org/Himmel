@@ -1465,7 +1465,7 @@ seg_edhook() { # seg_edhook <first> <end> - 0 when segment words [first,end) run
     done
     [ -n "$sub" ] || return 1
     case "$sub" in
-        commit | add | status | diff | log | show | grep | fetch | push | pull | switch | checkout | branch | rev-parse | merge-base) ;;
+        commit | add | mv | status | diff | log | show | grep | fetch | push | pull | switch | checkout | branch | rev-parse | merge-base) ;;
         worktree) [ "${ST_W[i + 1]}" = list ] || return 0 ;;
         *) return 0 ;;
     esac
