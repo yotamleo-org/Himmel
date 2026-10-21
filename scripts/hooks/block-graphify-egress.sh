@@ -224,16 +224,22 @@ if any(.[];
      ((.prog | base) == "graphify")
      or (words as $w | any($w[1:][]; isg) and ((.opaque != null) or shellish or flagprog))
      or (words as $w | tail_has($w; quiet($w))))
-then "route" else "skip" end
+then "route"
+elif any(.[]; .opaque != null) then "legacy"
+else "skip" end
 GA_JQ_EOF
     ast_rc=0
     pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
+            # A position the model cannot read (a shell reading stdin, an eval or
+            # source of an expansion, a runner such as ssh) leaves the verdict
+            # "legacy", and so does a jq failure or an empty verdict: the regex
+            # route above stands, so the model only ever adds routes.
             # swallow-ok: a jq failure keeps the legacy regex route, never weaker
             if verdict=$(printf '%s' "$pos" | jq -r "$GA_JQ" 2>/dev/null); then
-                route=no
                 [ "$verdict" = route ] && route=yes
+                [ "$verdict" = skip ] && route=no
             fi
             ;;
         2)

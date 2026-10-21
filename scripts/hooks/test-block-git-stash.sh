@@ -226,6 +226,21 @@ EOF")")"
 assert_rc "heredoc body feeding wc is data" 0 "$(run_case "$(j_bash "wc -l <<EOF
 git stash pop
 EOF")")"
+# A heredoc fed to a shell is a script, not data: the model marks such a
+# position opaque and the regex keeps reading the text.
+assert_rc "heredoc into bash runs git stash drop" 2 "$(run_case "$(j_bash "bash <<'EOF'
+git stash drop
+EOF")")"
+assert_rc "heredoc into sh -s runs git stash drop" 2 "$(run_case "$(j_bash "sh -s <<EOF
+git stash drop
+EOF")")"
+assert_rc "eval of a command substitution runs git stash drop" 2 "$(run_case "$(j_bash "eval \"\$(cat <<'EOF'
+git stash drop
+EOF
+)\"")")"
+assert_rc "heredoc into bash, no stash in it" 0 "$(run_case "$(j_bash "bash <<'EOF'
+git stash list
+EOF")")"
 assert_rc "cd right of a pipe, then git stash drop" 2 "$(run_case "$(j_bash 'echo x | cd sub && git stash drop')")"
 assert_rc "cd behind ||, then git stash drop" 2 "$(run_case "$(j_bash 'cd R || cd V && git stash drop')")"
 assert_rc "cd right of a pipe, then git stash list" 0 "$(run_case "$(j_bash 'echo x | cd sub && git stash list')")"

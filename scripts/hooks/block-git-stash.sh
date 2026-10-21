@@ -296,7 +296,9 @@ def bad($w):
              or (.t != "lit" and (.raw | lcs | contains("refs/stash")))
              or ($sub == "update-ref" and .t == "lit" and (.v | lcs | test("^--stdin($|[^a-z0-9_-])"))))
          else false end));
-if any(.[]; gitwords as $w | bad($w)) then "deny" else "allow" end
+if any(.[]; gitwords as $w | bad($w)) then "deny"
+elif any(.[]; .opaque != null) then "legacy"
+else "allow" end
 GS_JQ_EOF
 
 # A command that names none of the guarded words cannot be a stash mutation, so
@@ -323,10 +325,14 @@ if [ "$tool" != PowerShell ]; then
     pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
+            # A position the model cannot read (a shell reading stdin, an eval or
+            # source of an expansion, a runner such as ssh) leaves the verdict
+            # "legacy", and so does a jq failure or an empty verdict: the regex
+            # below reads the text, so the model only ever adds denials.
             # swallow-ok: a jq failure falls through to the legacy regex verdict, never weaker
             if verdict=$(printf '%s' "$pos" | jq -r "$GS_JQ" 2>/dev/null); then
                 [ "$verdict" = deny ] && deny_stash
-                exit 0
+                [ "$verdict" = allow ] && exit 0
             fi
             ;;
         2)
