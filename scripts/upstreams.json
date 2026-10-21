@@ -26,7 +26,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "AgriciDaniel/claude-obsidian",
-      "synced_base": "v2.2.0",
+      "synced_base": "v3.0.1",
       "tier": "A",
       "note": "DE-FORKED in HIMMEL-2925: yotamleo/claude-obsidian carried a strictly-additive delta (PR #178 UTF-8 test-stdout guards, a README attribution banner) that upstream fully absorbed by v2.2.0 (#178 merged, #179 CRLF-frontmatter fix shipped) — resync-fork.sh then had nothing left to rebase (rc=4, conflicts against our own merged change), so the fork is retired (kept as an archive at yotamleo/claude-obsidian, not deleted) and marketplace.json pins straight to upstream. Installed from marketplace/.claude-plugin/marketplace.json at an immutable tag; keep synced_base equal to scripts/plugin-upstreams.json on every bump."
     },
