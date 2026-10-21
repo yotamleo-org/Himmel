@@ -132,5 +132,30 @@ after=$(snap)
 if [ "$ro_rc" -eq 0 ] && [ -n "$ro_out" ] && [ "$before" = "$after" ]; then ok "row 8: scan left the fixture byte-identical"
 else bad "row 8: scan changed the fixture"; fi
 
+# ── row 9: plugin install path containing a space is still scanned ──────────
+fixture "sp ace"
+cp "$guard_hooks" "$work/guard-hooks.json"
+add_plugin himmel-guard@himmel "$work/guard-hooks.json"
+jq '{hooks:{PreToolUse:[.hooks.PreToolUse[0]]}}' "$work/guard-hooks.json" > "$FX_PROJ/.claude/settings.json"
+echo '{"enabledPlugins":{"himmel-guard@himmel":true}}' > "$FX_HOME/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'block-destructive-commands.sh'; then ok "row 9: plugin under a path with a space is scanned"
+else bad "row 9: spaced install path skipped, got: $out"; fi
+
+# ── row 10: the same script twice inside ONE matcher group is flagged ────────
+fixture same-group
+jq -n '{hooks:{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:"bash x/twice.sh"},{type:"command",command:"bash y/twice.sh"}]}]}}' > "$FX_HOME/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'twice.sh'; then ok "row 10: duplicate inside one matcher group is flagged"
+else bad "row 10: same-group duplicate missed, got: $out"; fi
+
+# ── row 11: the same script under disjoint matchers is not a duplicate ───────
+fixture disjoint
+hook_settings PreToolUse Bash 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/guard.sh"' > "$FX_HOME/.claude/settings.json"
+hook_settings PreToolUse Read 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/guard.sh"' > "$FX_PROJ/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -qi 'clean'; then ok "row 11: disjoint matchers are not flagged"
+else bad "row 11: false positive on disjoint matchers, got: $out"; fi
+
 echo "$(basename "$0"): $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

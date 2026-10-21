@@ -43,8 +43,9 @@ fi
 # shellcheck disable=SC2016
 HOOK_Q='(.hooks // {}) | to_entries[] | .key as $e
   | (.value | to_entries[]) as $g
-  | ($g.value.hooks // [])[] | select((.command // "") != "")
-  | [$e, ($g.value.matcher // "*"), .command, $kind, $src, ($file + "#" + $e + "[" + ($g.key | tostring) + "]")] | @tsv'
+  | ($g.value.hooks // []) | to_entries[] | .key as $h | .value | select((.command // "") != "")
+  | [$e, (($g.value.matcher // "") | if . == "" then "*" else . end), .command, $kind, $src,
+     ($file + "#" + $e + "[" + ($g.key | tostring) + "." + ($h | tostring) + "]")] | @tsv'
 # shellcheck disable=SC2016
 PLUGIN_Q='(.enabledPlugins // {}) | to_entries[] | [.key, (.value | tostring), $scope, $file] | @tsv'
 
@@ -70,12 +71,15 @@ enabled_keys=$(printf '%s' "$plugin_rows" | awk -F'\t' 'NF { v[$1] = $2 } END { 
 if [ -f "$INSTALLED" ]; then
   while IFS= read -r key; do
     [ -n "$key" ] || continue
-    for ipath in $(jq -r --arg k "$key" --arg proj "$PROJECT" \
-      '.plugins[$k][]? | select((.projectPath // "") == "" or .projectPath == $proj) | .installPath' "$INSTALLED" 2>/dev/null); do
+    ipaths=$(jq -r --arg k "$key" --arg proj "$PROJECT" \
+      '.plugins[$k][]? | select((.projectPath // "") == "" or .projectPath == $proj) | .installPath' "$INSTALLED" 2>/dev/null)
+    while IFS= read -r ipath; do
       hf="$ipath/hooks/hooks.json"
-      [ -f "$hf" ] || continue
+      [ -n "$ipath" ] && [ -f "$hf" ] || continue
       hook_rows="$hook_rows$(jq -r --arg kind P --arg src "plugin $key" --arg file "$hf" "$HOOK_Q" "$hf" 2>/dev/null)$NL"
-    done
+    done <<EOF2
+$ipaths
+EOF2
   done <<EOF
 $enabled_keys
 EOF
@@ -101,9 +105,11 @@ NF {
   sk = g SUBSEP $5
   if (!(sk in sseen)) {
     sseen[sk] = 1; ns[g]++
+    sidx[sk] = ns[g]
     slabel[g, ns[g]] = $5; sfile[g, ns[g]] = $6; sub(/#.*/, "", sfile[g, ns[g]])
-    if ($4 == "S") hasS[g] = 1
+    skind[g, ns[g]] = $4
   }
+  smat[g, sidx[sk]] = smat[g, sidx[sk]] "|" $2
   mk = g SUBSEP $5 SUBSEP $2
   lk = mk SUBSEP $6
   if (!(lk in lseen)) {
@@ -111,12 +117,28 @@ NF {
     if (nl[mk] == 1) { mord[++mn] = mk; mg[mk] = g; msrc[mk] = $5; mm[mk] = $2 }
   }
 }
+# Two matcher sets overlap when they share a token; "*" matches every tool.
+function overlap(x, y,   xs, ys, nx, ny, i, j) {
+  nx = split(x, xs, "|"); ny = split(y, ys, "|")
+  for (i = 1; i <= nx; i++) {
+    if (xs[i] == "") continue
+    for (j = 1; j <= ny; j++) if (ys[j] != "" && (xs[i] == ys[j] || xs[i] == "*" || ys[j] == "*")) return 1
+  }
+  return 0
+}
 END {
   for (i = 1; i <= gn; i++) {
     g = gord[i]
-    if (ns[g] < 2 || !hasS[g]) continue
-    printf "[hook] %s on %s is wired %d times:\n", gsc[g], gev[g], ns[g]
-    for (j = 1; j <= ns[g]; j++) printf "  - %s: %s\n", slabel[g, j], sfile[g, j]
+    if (ns[g] < 2) continue
+    delete inv
+    for (a = 1; a <= ns[g]; a++)
+      for (b = a + 1; b <= ns[g]; b++)
+        if ((skind[g, a] == "S" || skind[g, b] == "S") && overlap(smat[g, a], smat[g, b])) { inv[a] = 1; inv[b] = 1 }
+    ninv = 0
+    for (a = 1; a <= ns[g]; a++) if (a in inv) ninv++
+    if (ninv < 2) continue
+    printf "[hook] %s on %s is wired %d times:\n", gsc[g], gev[g], ninv
+    for (j = 1; j <= ns[g]; j++) if (j in inv) printf "  - %s: %s\n", slabel[g, j], sfile[g, j]
     print "  fix: keep one copy - remove the hook entry from the settings file, or disable the plugin that ships it."
     print ""
   }
