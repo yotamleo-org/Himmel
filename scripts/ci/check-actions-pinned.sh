@@ -12,8 +12,8 @@
 # a `docker://` ref without a digest is flagged.
 #
 # Line-based: a `uses:` is recognised at the start of a line (`uses:` or
-# `- uses:`). YAML flow mappings (`- {uses: ...}`) are not scanned; this repo
-# does not use them.
+# `- uses:`). A YAML flow mapping (`- {uses: ...}`) is not parsed, so a
+# `uses:`, `container:` or `image:` key inside one is refused.
 #
 # Usage:
 #   check-actions-pinned.sh [scan-path ...]   # default: .github
@@ -63,6 +63,81 @@ if [ -n "$matches" ]; then
   printf 'ERROR: GitHub Action not pinned to a full 40-hex commit SHA:\n'
   printf '%s\n' "$matches" | tr "$sep" ':'
   printf 'Pin as: uses: owner/repo@<40-hex-sha> # vX.Y.Z  (gh api repos/owner/repo/commits/<tag> --jq .sha)\n'
+  exit 1
+fi
+
+# Container images: a `container: <ref>` or `image: <ref>` line (job container,
+# services:) must carry `@sha256:<64 hex>`. A `${{ ... }}` value passes when it
+# names at least one non-empty single-quoted literal outside a vars.* / github.*
+# == / != comparison, every such literal is digest-pinned, and its only other
+# operands are vars.*: the vars.CI_IMAGE override itself is a repo setting, not
+# file content.
+# `container:` with no value (the mapping form) is checked on its `image:` line.
+found=$(grep -rnHE --null --include='*.yml' --include='*.yaml' \
+  "^[[:space:]]*-?[[:space:]]*[\"']?(container|image)[\"']?[[:space:]]*:[[:space:]]*[^[:space:]#]" "${existing[@]}" | tr '\0' "$sep")
+rc=$?
+if [ "$rc" -gt 1 ]; then
+  printf 'ERROR: scanning for container image lines failed (grep rc=%s)\n' "$rc" >&2
+  exit 2
+fi
+
+digest_re='^[^[:space:]@]+@sha256:[0-9a-f]{64}$'
+ref_re='(vars|github)\.[A-Za-z0-9_.]+'
+key_re="^[[:space:]]*-?[[:space:]]*[\"']?[A-Za-z0-9_.-]+[\"']?[[:space:]]*:([[:space:]]|\$)"
+unpinned=()
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  value=$(printf '%s\n' "${line#*"$sep"}" | sed -E "s/^[0-9]+:[[:space:]]*-?[[:space:]]*[\"']?(container|image)[\"']?[[:space:]]*:[[:space:]]*//; s/[[:space:]]+#.*\$//")
+  if [[ "$value" == \"*\" ]]; then value=${value#\"}; value=${value%\"}; fi
+  if [[ "$value" == \'\$\{\{*\' ]]; then value=${value#\'}; value=${value%\'}; value=${value//\'\'/\'}; fi
+  if [[ "$value" == \$\{\{* ]]; then
+    # A vars.* / github.* == / != comparison is a condition, not an image; '' means
+    # no container. What is left may hold only vars.*, literals and && || ! ( ):
+    # any other operand (matrix.*, needs.*, a bare github.*) can yield an image.
+    cond=$(sed -E "s/^\\$\\{\\{//; s/\\}\\}\$//; s/${ref_re}[[:space:]]*(==|!=)[[:space:]]*('[^']*'|${ref_re})//g; s/'[^']*'[[:space:]]*(==|!=)[[:space:]]*${ref_re}//g" <<< "$value")
+    literals=$(grep -oE "'[^']*'" <<< "$cond" | tr -d "'")
+    ok=1
+    # A plain scalar continued on the next line folds more operands in unread.
+    [[ "$value" == *\}\} ]] || ok=0
+    [ -n "$literals" ] || ok=0
+    [ -z "$(sed -E "s/'[^']*'//g; s/vars\.[A-Za-z0-9_]+//g; s/&&|\|\||[!()[:space:]]//g" <<< "$cond")" ] || ok=0
+    while IFS= read -r lit; do
+      [ -n "$lit" ] && ! [[ "$lit" =~ $digest_re ]] && ok=0
+    done <<< "$literals"
+  else
+    value=${value#\'}; value=${value%\'}
+    ok=0
+    [[ "$value" =~ $digest_re ]] && ok=1
+  fi
+  # YAML folds a deeper-indented next line (past blank lines) into the scalar
+  # unless it is itself a `key:` line, so such a line is refused unread.
+  rest=${line#*"$sep"}
+  key_prefix=$(sed -E 's/^([[:space:]]*-?[[:space:]]*).*/\1/' <<< "${rest#*:}")
+  folded=$(awk -v n="${rest%%:*}" -v kc="${#key_prefix}" -v kre="$key_re" '
+    NR <= n || /^[[:space:]]*$/ { next }
+    { match($0, /^[ \t]*/); if (RLENGTH > kc && $0 !~ kre) print "y"; exit }' "${line%%"$sep"*}")
+  [ -z "$folded" ] || ok=0
+  [ "$ok" -eq 1 ] || unpinned+=("$line")
+done <<< "$found"
+
+if [ "${#unpinned[@]}" -gt 0 ]; then
+  printf 'ERROR: container image not pinned by @sha256: digest:\n'
+  printf '%s\n' "${unpinned[@]}" | tr "$sep" ':'
+  printf 'Pin as: image: registry/name@sha256:<64-hex>  (docker buildx imagetools inspect <ref>)\n'
+  exit 1
+fi
+
+# The scan above is line-based, so a flow mapping (`db: {image: ...}`) is refused
+# outright rather than passed unread. `${{` is an expression, not a mapping.
+flow=$(grep -rnHE --include='*.yml' --include='*.yaml' \
+  '(^|[^{$])\{[[:space:]]*([^}]*,[[:space:]]*)?(uses|container|image)[[:space:]]*:' "${existing[@]}")
+rc=$?
+if [ "$rc" -gt 1 ]; then
+  printf 'ERROR: scanning for flow-mapping keys failed (grep rc=%s)\n' "$rc" >&2
+  exit 2
+fi
+if [ -n "$flow" ]; then
+  printf 'ERROR: uses/container/image key in a YAML flow mapping (not scanned; write it in block form):\n%s\n' "$flow"
   exit 1
 fi
 

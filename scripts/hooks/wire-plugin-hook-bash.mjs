@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 15,
+  PreToolUse: 16,
   SessionStart: 5,
   SessionEnd: 3,
   Notification: 1,
@@ -49,6 +49,9 @@ const EXPECTED_HOOKS = Object.freeze([
   // plugin-shipped because a judge's cwd is under ~/.cache, outside
   // any checkout, where project settings and $CLAUDE_PROJECT_DIR never load.
   { event: 'PreToolUse', script: 'guard-judge-writes.sh', source: 'plugin' },
+  // plugin-shipped so its release-state file fence fires in every session,
+  // checkout or not.
+  { event: 'PreToolUse', script: 'guard-rm-writes.sh', source: 'plugin' },
   { event: 'SessionStart', script: 'inject-where-are-we.sh' },
   { event: 'SessionStart', script: 'inject-doc-freshness.sh' },
   { event: 'SessionStart', script: 'inject-worktree-nudge.sh' },

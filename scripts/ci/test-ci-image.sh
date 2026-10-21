@@ -26,9 +26,13 @@ if [ ! -f "$DOCKERFILE" ]; then
   echo "$fails failed" >&2
   exit 1
 fi
-df_text="$(cat "$DOCKERFILE")"
+# dockerfile_text: the Dockerfile with full-line and trailing comments stripped, so a
+# pin written only in a comment satisfies no row.
+dockerfile_text() { sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]#.*$//'; }
+df_text="$(dockerfile_text < "$DOCKERFILE")"
 # the apt-get install stanza only: a package named by a later RUN line is not installed by apt.
-apt_text="$(awk '/apt-get install/ {f=1} f {print} f && !/\\$/ {exit}' <<< "$df_text")"
+apt_stanza() { awk '/apt-get install/ {f=1} f {print} f && !/\\$/ {exit}'; }
+apt_text="$(apt_stanza <<< "$df_text")"
 # has <token> [haystack]: the token as a whole word, so BUN_VERSION=1.4.3 does not match =1.4.30.
 has() {
   local esc
@@ -37,8 +41,13 @@ has() {
 }
 
 # 1. every apt package ci.yml hands to apt-install.sh (version pin stripped to the name)
-ci_pkgs="$(grep -E '^ +bash \.github/scripts/apt-install\.sh ' "$CI_YML" \
-  | sed -E "s/^ +bash \.github\/scripts\/apt-install\.sh //; s/'//g" | tr ' ' '\n' | sed -E 's/=.*//' | sort -u)"
+# apt_install_pkgs: the package names every apt-install.sh call on stdin passes, in a
+# `run: |` body or a single-line `run:` alike.
+apt_install_pkgs() {
+  grep -E '^ +(- )?(run: )?bash \.github/scripts/apt-install\.sh ' \
+    | sed -E "s/[[:space:]]#.*$//; s/^.*bash \.github\/scripts\/apt-install\.sh //; s/'//g" | tr ' ' '\n' | sed -E 's/=.*//' | grep -v '^$' | sort -u
+}
+ci_pkgs="$(apt_install_pkgs < "$CI_YML")"
 [ -n "$ci_pkgs" ] || bad "no apt-install.sh packages found in ci.yml (parse failure)"
 for p in $ci_pkgs; do
   if has "$p" "$apt_text"; then ok "Dockerfile installs ci.yml apt package $p"
@@ -69,8 +78,14 @@ pc_pin="$(grep -oE 'pre-commit==[0-9.]+' "$CI_YML" | head -n 1)"
 if [ -n "$pc_pin" ] && has "$pc_pin"; then ok "Dockerfile pins $pc_pin"
 else bad "Dockerfile does not pin ${pc_pin:-pre-commit (none found in ci.yml)}"; fi
 node_major="$(grep -oE "node-version: '[0-9]+'" "$CI_YML" | head -n 1 | grep -oE '[0-9]+')"
-if [ -n "$node_major" ] && has "NODE_MAJOR=${node_major}"; then ok "Dockerfile pins node major $node_major"
-else bad "Dockerfile does not pin NODE_MAJOR=${node_major:-?}"; fi
+node_ver="$(sed -n 's/^ARG NODE_VERSION=//p' <<< "$df_text")"
+if [ -n "$node_major" ] && [ "${node_ver%%.*}" = "$node_major" ] && grep -Eq '^ARG NODE_SHA256=[0-9a-f]{64}$' <<< "$df_text"; then
+  ok "Dockerfile pins node $node_ver (major $node_major) with a sha256"
+else bad "Dockerfile does not pin a node ${node_major:-?}.x NODE_VERSION with NODE_SHA256 (found ${node_ver:-none})"; fi
+
+# 5b. the base image is pinned by digest, not a mutable tag
+if grep -Eq '^FROM [^[:space:]@]+@sha256:[0-9a-f]{64}$' <<< "$df_text"; then ok "Dockerfile FROM is pinned by @sha256: digest"
+else bad "Dockerfile FROM is not pinned by @sha256: digest"; fi
 
 # 6. gitleaks: the version and sha256 ci.yml verifies
 gl_ver="$(grep -oE '^ +ver=[0-9.]+' "$CI_YML" | head -n 1 | sed 's/.*=//')"
@@ -83,6 +98,17 @@ else bad "Dockerfile does not pin gitleaks ${gl_ver:-?} / ${gl_sha:-?}"; fi
 sc_rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$ROOT/.pre-commit-config.yaml")"
 if [ -n "$sc_rev" ] && has "shellcheck-py==${sc_rev}"; then ok "Dockerfile pins shellcheck-py $sc_rev"
 else bad "Dockerfile does not pin shellcheck-py==${sc_rev:-?}"; fi
+
+# 9. the parsers themselves, on inline fixtures: a single-line `run:` call is read,
+#    and a pin that appears only in a comment satisfies nothing.
+if apt_install_pkgs <<< "        run: bash .github/scripts/apt-install.sh fixture-pkg socat" | grep -qx fixture-pkg; then
+  ok "parser reads a single-line run: apt-install.sh call"
+else bad "parser misses a single-line run: apt-install.sh call"; fi
+fx_df="$(printf '%s\n' 'FROM scratch' '# ARG BUN_VERSION=9.9.9' "RUN apt-get install -y \\" '      git # fixture-pkg')"
+if has "BUN_VERSION=9.9.9" "$(dockerfile_text <<< "$fx_df")"; then bad "a pin written only in a Dockerfile comment satisfies has()"
+else ok "a pin written only in a Dockerfile comment does not count"; fi
+if has fixture-pkg "$(dockerfile_text <<< "$fx_df" | apt_stanza)"; then bad "a package named only in an apt-install comment satisfies has()"
+else ok "a package named only in an apt-install comment does not count"; fi
 
 # 8. the build workflow
 if [ ! -f "$WORKFLOW" ]; then
