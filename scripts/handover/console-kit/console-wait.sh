@@ -357,8 +357,12 @@ sample() {
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
         # vmrun= keeps its class only, not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
-        # vmismatch= stays in the key only as a positive count: 0 and ? (a failed audit read) leave it out.
-        if [ "$f" = vmismatch ]; then case "$v" in 0|'?') continue ;; esac; fi
+        # vmismatch= stays in the key only as a positive count: 0 leaves it out, and ? (a failed
+        # audit read) keeps the saved count, so a blip after a positive count is not a change.
+        if [ "$f" = vmismatch ]; then
+            [ "$v" != '?' ] || v="$(key_field vmismatch "$saved")"
+            case "$v" in ''|0) continue ;; esac
+        fi
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
         # The names are sorted: the doc order must not decide the key.
         [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"

@@ -140,6 +140,12 @@ wait_exit "$WPID"
 check "(vmismatch) a positive count ends the wait" "0" "$rc"
 check "(vmismatch) the wake names vmismatch" "WAKE tick changed=vmismatch bank=PROCEED" "$(head -n1 "$WORK/vmismatch-quiet.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+start "$I" "$WORK/vmismatch-blip.out" --legs "N1.md"
+wait_hb "$I" || fail "(vmismatch) no re-armed heartbeat"
+sed -i 's/ vmismatch=2/ vmismatch=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(vmismatch) a failed read after a positive count keeps waiting" "running" "$rc"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 if [ "${1:-}" = --worktree-ceiling-only ]; then
     printf '\n%d failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]; exit $?

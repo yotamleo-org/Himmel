@@ -259,7 +259,7 @@ versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersio
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
 mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.
 vmismatch=<n|?> (HIMMEL-6549) is the RESET-row count of one bounded version-status-audit.sh read
-(owners = the tick's live legs; TICK_VMISMATCH_PROBE seam): started tickets whose fixVersion is
+(owners = the tick's live legs; TICK_VMISMATCH_PROBE and TICK_VMISMATCH_TIMEOUT seams, default 30 s): started tickets whose fixVersion is
 later than the active one, released-but-not-Done tickets, versionless started ones. ? = no count
 or an UNKNOWN row (a gh read failed); hidden when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
@@ -1431,7 +1431,7 @@ vm_probe="${TICK_VMISMATCH_PROBE:-$HERE/version-status-audit.sh}"
 if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
     vm_owners="${owner_keys# }"
     [ -n "${vm_owners// }" ] || vm_owners=NONE-0  # the audit reads an empty owner list as ownership unknown
-    vm_out="$(timeout -k 2 30 bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || true  # gnu-ok: console kit is Linux-only; swallow-ok: exit 1 = RESET rows, exit 3 = warnings; the count line decides
+    vm_out="$(timeout -k 2 "${TICK_VMISMATCH_TIMEOUT:-30}" bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || true  # gnu-ok: console kit is Linux-only; swallow-ok: exit 1 = RESET rows, exit 3 = warnings; the count line decides
     if printf '%s\n' "$vm_out" | grep -q '^vmismatch=[0-9][0-9]*$' && ! printf '%s\n' "$vm_out" | grep -q "$(printf '\tUNKNOWN$')"; then
         vmismatch_summary="$(printf '%s\n' "$vm_out" | grep -c "$(printf '\tRESET$')")" || true  # swallow-ok: grep -c exits 1 and prints 0 on no match
     else

@@ -2396,8 +2396,16 @@ vm_bad="$(vm_tick)"
 contains 'a failed audit read reads vmismatch=? (HIMMEL-6549)' "$vm_bad" ' vmismatch=?'
 vm_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 not_contains 'no mirror hides vmismatch (HIMMEL-6549)' "$vm_skip" 'vmismatch'
-vm_t0="$(date +%s)"; vm_tick >/dev/null; vm_t1="$(date +%s)"
-if [ $((vm_t1 - vm_t0)) -lt 30 ]; then pass 'the audit read stays inside the tick budget (HIMMEL-6549)'; else fail "audit read took $((vm_t1 - vm_t0))s"; fi
+if [ -n "$_TIMEOUT_BIN" ]; then
+    printf '#!/bin/sh\nexec sleep 30\n' > "$W/vm-hung.sh"
+    vm_t0="$(date +%s)"
+    vm_hung="$(TICK_VMISMATCH_TIMEOUT=1 TICK_VMISMATCH_PROBE="$W/vm-hung.sh" vm_tick)"
+    vm_t1="$(date +%s)"
+    contains 'a hung audit reads vmismatch=? (HIMMEL-6549)' "$vm_hung" ' vmismatch=?'
+    if [ $((vm_t1 - vm_t0)) -lt 15 ]; then pass 'a hung audit is cut off inside the bound (HIMMEL-6549)'; else fail "hung audit took $((vm_t1 - vm_t0))s"; fi
+else
+    skip 'audit timeout rows: no timeout binary'
+fi
 case "$vd_zero" in *wt-orphans*|*wt-ceiling*) fail "no worktree.sh under REPO reads no wt-orphans field (out='$vd_zero')" ;; *) pass 'no worktree.sh under REPO reads no wt-orphans field (HIMMEL-6584)' ;; esac
 mkdir -p "$REPO"
 printf '#!/bin/sh\nprintf "ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\\nORPHAN /w/b branch=detached:0123456789ab dirty=1 ahead=0 idle=9h\\nCEILING 72/100 worktrees (alarm at 70)\\n"\nexit 1\n' > "$W/wto-probe-2.sh"
