@@ -47,7 +47,8 @@ import vbox
 
 HOST = "127.0.0.1"
 OWNER_REPO = "yotamleo/himmel"  # leak-allow: hostname the actual private repo this SDK clones from
-PAT_ENV = "himmel_github_token_vm"
+# First present wins; either key is a valid clone credential.
+PAT_ENVS = ("himmel_github_token_vm", "himmel_github_token_vm2")
 # Standard Git-for-Windows bash, used both to drive the host e2e (avoiding WSL's
 # bash, whose ssh can't read a Windows key path) and as the guest's git launcher.
 GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
@@ -551,7 +552,10 @@ class VM:
         """Shallow-clone the private repo onto the guest. ref = branch/tag (not a SHA)."""
         if not re.fullmatch(r"[A-Za-z0-9._/-]+", ref):
             raise VMError(f"invalid ref {ref!r}: branch/tag characters only")
-        token = self._req_env(PAT_ENV)
+        _load_dotenv_into_env(list(PAT_ENVS))
+        token = next((os.environ[k] for k in PAT_ENVS if os.environ.get(k)), None)
+        if not token:
+            raise VMError(f"required env key {' or '.join(PAT_ENVS)} not set (check primary .env)")
         token_url = f"https://x-access-token:{token}@github.com/{OWNER_REPO}.git"
         bare_url = f"https://github.com/{OWNER_REPO}.git"
         if dest is None:

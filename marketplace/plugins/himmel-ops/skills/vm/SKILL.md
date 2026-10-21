@@ -28,7 +28,8 @@ Do NOT use this as an always-on rule.
 - **Power the VM OFF when done** — `python scripts/lib/vmsdk.py <vm> down`
   (after-report.sh does this itself for its own clones, at the end of every
   run).
-- Creds and the GitHub PAT (`himmel_github_token_vm`) live in the **primary
+- Creds and the GitHub PAT (`himmel_github_token_vm`, or `himmel_github_token_vm2`
+  when the first is absent; `vmsdk.py` clone takes the first present) live in the **primary
   checkout's `.env`** — the gitignored `.env` is NOT copied into worktrees.
   The SDK resolves it automatically via `git rev-parse --git-common-dir`, but
   always invoke `vmsdk.py` from the primary checkout root to be safe.
