@@ -80,13 +80,15 @@ if ig is None:
     insert_at = len(block)
 else:
     insert_at = ig + 1
-    first = block[insert_at] if insert_at < len(block) else ""
-    if first.lstrip().startswith("- ") and not first.startswith("      - "):
-        print("luna-index-hygiene: '%s' ignore items are not indented six spaces; refusing to edit" % coll, file=sys.stderr)
-        sys.exit(4)
-    while insert_at < len(block) and block[insert_at].startswith("      - "):
-        have.append(block[insert_at][8:].strip().strip('"').strip("'"))
-        insert_at += 1
+    j = ig + 1
+    while j < len(block) and (block[j].strip() == "" or block[j].lstrip().startswith(("#", "- "))):
+        if block[j].lstrip().startswith("- "):
+            if not block[j].startswith("      - "):
+                print("luna-index-hygiene: '%s' ignore items are not indented six spaces; refusing to edit" % coll, file=sys.stderr)
+                sys.exit(4)
+            have.append(block[j][8:].strip().strip('"').strip("'"))
+            insert_at = j + 1
+        j += 1
 missing = [w for w in want if w not in have]
 if not missing:
     print("luna-index-hygiene: qmd ignore list already complete")

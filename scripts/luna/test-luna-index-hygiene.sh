@@ -126,6 +126,20 @@ bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
 check "a four-space ignore list exits 4" 4 "$?"
 check "and the config is left as it was" 0 "$(cmp -s "$CFG" "$W/c10.orig" && echo 0 || echo 1)"
 
+V="$W/v11"; make_vault "$V"; CFG="$W/c11.yml"; write_cfg "$CFG" "$V"
+awk '{print} /^  luna:/{f=1} f&&/pattern:/{print "    ignore:"; print "    # kept"; print ""; print "    - \"Clippings/_raw/**\""; f=0}' "$CFG" > "$CFG.n" && mv "$CFG.n" "$CFG"
+cp "$CFG" "$W/c11.orig"
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
+check "a four-space list behind a comment and a blank line is refused too" 4 "$?"
+check "and that config is left as it was" 0 "$(cmp -s "$CFG" "$W/c11.orig" && echo 0 || echo 1)"
+
+V="$W/v12"; make_vault "$V"; CFG="$W/c12.yml"; write_cfg "$CFG" "$V"
+awk '{print} /^  luna:/{f=1} f&&/pattern:/{print "    ignore:"; print "      # kept"; print "      - \"Clippings/_raw/**\""; print "      - \"graphify-out/**\""; f=0}' "$CFG" > "$CFG.n" && mv "$CFG.n" "$CFG"
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1
+luna_ign="$(awk '/^  luna:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^      - /{print $2}' "$CFG" | tr '\n' ' ')"
+check "a comment inside a six-space list: no duplicate, new entries after the last item" \
+  '"Clippings/_raw/**" "graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" ' "$luna_ign"
+
 # --- failure paths: a missing value, an unwritable ignore file, an unreadable tree
 timeout 5 bash "$SUT" --vault >/dev/null 2>&1
 check "an option with no value exits 2 instead of looping" 2 "$?"
