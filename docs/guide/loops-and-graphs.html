@@ -85,7 +85,8 @@
   .explorer { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
   .stage { padding: 18px; min-width: 0; }
-  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .tabrow { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .tab { font: inherit; font-size: 14px; font-weight: 500; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
   .tab[aria-selected="true"] { color: var(--surface); background: var(--accent); border-color: var(--accent); }
   .tab:hover:not([aria-selected="true"]) { color: var(--ink); }
@@ -249,7 +250,7 @@
   <header class="hero">
     <p class="kicker">himmel guide</p>
     <h1>Loops and graphs</h1>
-    <p class="lede">himmel keeps work moving with a few loops: AFK (unattended) runs and scheduled jobs that keep everything fresh. How one change travels from a supervisor session's dispatch to a merged pull request has its own page, the development graph. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
+    <p class="lede">himmel keeps work moving with a few loops: AFK (unattended) runs and scheduled jobs that keep everything fresh. How one change travels from a supervisor session's dispatch to a merged pull request has its own page, <a href="dev-graph.html">the development graph</a>. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
   </header>
 
   <!-- source: docs/internals/config-layers.md (new layout, in review), docs/configuration.md §4.1 -->
@@ -358,7 +359,10 @@
 
     <div class="explorer">
       <div class="card stage">
-        <div class="tabs" role="tablist" aria-label="Loops" id="tabs"></div>
+        <div class="tabrow">
+          <div class="tabs" role="tablist" aria-label="Loops" id="tabs"></div>
+          <a class="tab" href="dev-graph.html">See the development graph</a>
+        </div>
         <div id="loop-panel" role="tabpanel" aria-live="polite">
           <div class="loop-head"><div><h3 id="loop-title"></h3><p id="loop-blurb"></p></div><span class="loop-meta" id="loop-meta"></span></div>
           <svg class="diagram" id="diagram" viewBox="0 0 720 600" role="group" aria-labelledby="loop-title"></svg>
@@ -693,9 +697,6 @@
       });
       t.appendChild(b);
     });
-    var dg = el('a', { href: 'dev-graph.html' }, 'See the development graph');
-    dg.className = 'tab';
-    t.appendChild(dg);
   }
 
   function select(k) {
