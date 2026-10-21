@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pre-commit hook: enforce lockfile integrity (npm + bun).
 #
-# For every package.json under scripts/ (same scoping as check-npm-audit.sh):
+# For every package.json under scripts/ and site/ (scripts/ is the same scoping
+# as check-npm-audit.sh):
 #   1. A sibling package-lock.json (npm) or bun.lock (bun) must exist.
 #   2. That lockfile must be tracked in git.
 #   3. Package manager ci/install verification succeeds (catches lock drift).
@@ -11,11 +12,17 @@ set -euo pipefail
 
 # Scoped to scripts/ so we don't recurse into nested worktrees under .claude/.
 # bash 3.2-safe (macOS): no mapfile.
+roots=()
+for _root in scripts site; do
+    if [ -d "$_root" ]; then roots+=("$_root"); fi
+done
 pkgs=()
-while IFS= read -r _line; do pkgs+=("$_line"); done < <(find scripts -maxdepth 3 -name package.json -not -path '*/node_modules/*')
+if [ ${#roots[@]} -gt 0 ]; then
+    while IFS= read -r _line; do pkgs+=("$_line"); done < <(find "${roots[@]}" -maxdepth 3 -name package.json -not -path '*/node_modules/*')
+fi
 
 if [ ${#pkgs[@]} -eq 0 ]; then
-    echo "→ lockfile-integrity: no npm/bun projects under scripts/, skipping"
+    echo "→ lockfile-integrity: no npm/bun projects under scripts/ or site/, skipping"
     exit 0
 fi
 

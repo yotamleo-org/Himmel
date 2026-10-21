@@ -101,6 +101,10 @@ esac
 # `<<<`, feeds it: several patterns below anchor on `$` and a herestring's
 # synthetic trailing newline would fold to an unexpected trailing ';'.
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;')
+# The same text with line continuations, quotes and backslashes dropped: the
+# shell joins sta''sh, s\tash and sta\<newline>sh back into one word, so the
+# prefilter and the regex fallback read this spelling as well.
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;' | LC_ALL=C tr -d "'\"\\\\")
 
 # In-process ERE match, zero spawns per call -- see block-destructive-commands.sh
 # for why this is `[[ =~ ]]` and not `grep -Eq`. The pattern MUST
@@ -110,8 +114,10 @@ contains() {
     [[ $cmd_lc =~ $re ]]
 }
 
-# COMMAND-POSITION grammar, copied verbatim from block-destructive-commands.sh
-# (shared shape). It is what keeps `grep -rn "git stash drop" src/`
+# FALLBACK reader (PowerShell, or text shfmt cannot parse); a Bash command that
+# parses is read by the command-position model below, which has none of the
+# residuals listed here. COMMAND-POSITION grammar, copied verbatim from
+# block-destructive-commands.sh (shared shape). It is what keeps `grep -rn "git stash drop" src/`
 # and a `# git stash` comment ALLOWED: `git` only counts when it is the invoked
 # program, i.e. at the start of the command or right after a separator, behind
 # an optional bounded prefix of env assignments / launcher wrappers / an
@@ -212,11 +218,15 @@ GITUPDATEREF_STDIN="${CMDPOS}"'git(\.exe)?'"${GITOPTS}${SEP}"'update-ref[^|;&`]*
 #   3. no verb, only options/pathspec (`git stash -u`, `git stash -m "wip"`,
 #      `git stash -- path`): also `push`. The first-letter class excludes `h`,
 #      so `git stash -h` / `git stash --help` stay allowed as documentation.
-if contains "${GITSTASH}${SEP}"'(push|save|pop|drop|clear|branch|store)([^[:alnum:]_-]|$)' \
-    || contains "${GITSTASH}"'[[:space:]]*(($|[|;&#)]|[0-9]*[<>])|\\[[:space:]]*;+[[:space:]]*$)' \
-    || contains "${GITSTASH}${SEP}"'(--?[a-gi-z]|--([[:space:]]|$))' \
-    || contains "${GITREFVERB}${REFSTASH_IN_CLAUSE}" \
-    || contains "${GITUPDATEREF_STDIN}"; then
+legacy_denied() {
+    contains "${GITSTASH}${SEP}"'(push|save|pop|drop|clear|branch|store)([^[:alnum:]_-]|$)' \
+        || contains "${GITSTASH}"'[[:space:]]*(($|[|;&#)]|[0-9]*[<>])|\\[[:space:]]*;+[[:space:]]*$)' \
+        || contains "${GITSTASH}${SEP}"'(--?[a-gi-z]|--([[:space:]]|$))' \
+        || contains "${GITREFVERB}${REFSTASH_IN_CLAUSE}" \
+        || contains "${GITUPDATEREF_STDIN}"
+}
+
+deny_stash() {
     cat >&2 <<'DENY'
 block-git-stash: git stash MUTATION refused (HIMMEL-1755).
 
@@ -241,6 +251,102 @@ Reads stay allowed: `git stash list`, `git stash show`, `git stash apply`.
 Bypass (deliberate, session-sticky): launch with GIT_STASH_OK=1.
 DENY
     exit 2
+}
+
+# The verdict over bash_ast_positions output: deny when some position runs a git
+# whose subcommand is a stash mutation, or an update-ref / symbolic-ref that
+# names refs/stash. The subcommand is reachable the way the regex above reads it
+# (global dash-options, each with one optional value word), and a verb the model
+# cannot read (an expansion) is a deny. A git whose words include an expansion
+# leaves the verdict "legacy": the model cannot tell an option from a value there.
+# swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' GS_JQ <<'GS_JQ_EOF' || true
+def lcs: (. // "") | ascii_downcase;
+def base: lcs | sub("^.*[/\\\\]"; "") | sub("\\.exe$"; "");
+def isgit: .t == "lit" and (.v | base) == "git";
+def interp: ((.prog // "") | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def unread: (.opaque != null) or (interp and (.body == null));
+def isopt: .t == "lit" and (.v | startswith("-"));
+def reach($w):
+  reduce range(0; $w | length) as $i ([true];
+    if (.[$i] // false) and ($w[$i] | isopt)
+    then (.[$i + 1] = true)
+      | if ($w[$i + 1] != null) and (($w[$i + 1] | isopt) | not) then .[$i + 2] = true else . end
+    else . end);
+def split_words:
+  [.[] | if .t == "lit" then (.v | split(" ") | map(select(length > 0) | {t: "lit", v: ., raw: .})) else [.] end] | add // [];
+def gitwords:
+  .argv as $a0
+  | (if (.prog | IN("cmd", "cmd.exe", "powershell", "pwsh", "powershell.exe", "pwsh.exe")) then ($a0 | split_words) else $a0 end) as $a
+  | if (.prog | base) == "git" then $a[1:]
+    elif (.opaque != null) or (.prog | IN("cmd", "cmd.exe", "powershell", "pwsh", "powershell.exe", "pwsh.exe")) then
+      ([range(0; $a | length) | select($a[.] | isgit)] | first) as $g
+      | if $g == null then empty else $a[$g + 1:] end
+    else empty end;
+def bad($w):
+  reach($w) as $r
+  | any(range(0; $w | length);
+      ($r[.] // false) and ($w[.].t == "lit") and
+      (($w[.].v | lcs) as $sub
+       | if $sub == "stash" then
+           ($w[. + 1]) as $n
+           | $n == null or $n.t != "lit"
+             or ($n.v | lcs | test("^(push|save|pop|drop|clear|branch|store)($|[^a-z0-9_-])"))
+             or ($n.v | lcs | test("^--?[a-gi-z]|^--$"))
+         elif $sub == "update-ref" or $sub == "symbolic-ref" then
+           any($w[. + 1:][];
+             (.t == "lit" and (.v | lcs | test("refs/stash($|[^a-z0-9_./-])")))
+             or (.t != "lit" and (.raw | lcs | contains("refs/stash")))
+             or ($sub == "update-ref" and .t == "lit" and (.v | lcs | test("^--stdin($|[^a-z0-9_-])"))))
+         else false end));
+def dynargs: [gitwords | any(.[]; .t != "lit")] | any;
+if any(.[]; gitwords as $w | bad($w)) then "deny"
+elif any(.[]; unread or dynargs) then "legacy"
+else "allow" end
+GS_JQ_EOF
+
+# A command that names none of the guarded words cannot be a stash mutation, so
+# it never pays for shfmt (and a station without shfmt only loses the commands
+# that name them).
+case "$cmd_nq" in
+    *stash* | *update-ref* | *symbolic-ref*) ;;
+    *) exit 0 ;;
+esac
+
+# The command-position model (scripts/lib/bash-ast.sh) reads where each command
+# runs: a heredoc body or a quoted string is data, and command / exec / nohup /
+# time / timeout / sudo / xargs / find -exec / bash -c / eval reach the git they
+# run. Not for PowerShell, which shfmt cannot read, and not when shfmt cannot
+# parse the text: the regex above stays the reader for both.
+if [ "$tool" != PowerShell ]; then
+    lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+    # shellcheck source=../lib/bash-ast.sh
+    if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+        echo "block-git-stash: cannot load $lib - refusing to evaluate" >&2
+        exit 2
+    fi
+    ast_rc=0
+    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    case "$ast_rc" in
+        0)
+            # A position the model cannot read (a shell reading stdin, an eval or
+            # source of an expansion, a runner such as ssh) leaves the verdict
+            # "legacy", and so does a jq failure or an empty verdict: the regex
+            # below reads the text, so the model only ever adds denials.
+            # swallow-ok: a jq failure falls through to the legacy regex verdict, never weaker
+            if verdict=$(printf '%s' "$pos" | jq -r "$GS_JQ" 2>/dev/null); then
+                [ "$verdict" = deny ] && deny_stash
+                [ "$verdict" = allow ] && exit 0
+            fi
+            ;;
+        2)
+            echo "block-git-stash: shfmt not on PATH, so this command that names a git stash verb cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with GIT_STASH_OK=1." >&2
+            exit 2
+            ;;
+    esac
 fi
 
+legacy_denied && deny_stash
+cmd_lc=$cmd_nq
+legacy_denied && deny_stash
 exit 0

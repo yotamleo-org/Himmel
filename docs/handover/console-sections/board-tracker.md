@@ -132,4 +132,6 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
   read, ownership is unknown: unowned started rows print UNKNOWN and the run exits
   3, never RESET (released-version rows still print RESET). A mirror file missing
   its key or status, or a bad version, also exits 3; an unreadable mirror prints
-  no rows and exits 3, an unreadable versions file exits 4.
+  no rows and exits 3, an unreadable versions file exits 4. A `BLOCKER-NO-VERSION`
+  row is an open versionless Task, Story or Bug that blocks an open ticket in the
+  active version; give it that version (or the `backlog` label, which opts out).

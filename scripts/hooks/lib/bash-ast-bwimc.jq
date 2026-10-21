@@ -234,7 +234,7 @@ def opt_scan($t):
     elif islong("no-dereference"; $t) then {smalln: true}
     elif islong("remove-destination"; $t) then {rmdest: true}
     elif islong("force"; $t) then {force: true}
-    elif islong("target-directory"; $t) then (lval($t) as $v | if ($v // "") != "" then {tdirs: ($t | length) - ($v | length)} else {twant: true} end)
+    elif islong("target-directory"; $t) then (lval($t) as $v | if ($v // "") != "" then {tdirs: (($t | length) - ($v | length))} else {twant: true} end)
     else {} end
   elif ($t | test("^-.")) then
     ($t[1:] | explode | map([.] | implode)) as $b

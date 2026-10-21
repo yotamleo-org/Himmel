@@ -548,7 +548,7 @@ jobs:
       commit-lint: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__platforms.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__security.outcome) && 'pass' || 'fail' }}
       jira-cli-smoke: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke__npm.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke.outcome) && 'pass' || 'fail' }}
       guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
-      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
+      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__shfmt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
       doc-invariants: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__dev.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__guard.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__self.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__desc-cap.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__positional.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__catalog.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__secrets-doc.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__llms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__terms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__hermetic.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__stage.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__agents-md.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__debrand.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__lanes.outcome) && 'pass' || 'fail' }}
     # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
     env:
@@ -716,6 +716,20 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: bash scripts/testing/test-mock-hook-smoke.sh
+      # The live turn denies `git stash drop` through block-git-stash.sh, which reads
+      # the command with shfmt; without it the deny text names shfmt, not the stash.
+      # Same pinned, sha-verified release as the shell-unit job; keep in lockstep.
+      # The sandboxed claude run rebuilds PATH from /usr/local/bin:/usr/bin:/bin
+      # (fakekey-claude.sh), so the binary goes to /usr/local/bin, not GITHUB_PATH.
+      - id: claude-startup__shfmt
+        name: Install pinned shfmt (live-turn deny text)
+        if: ${{ !cancelled() }}
+        run: |
+          shfmt_ver=3.14.1
+          shfmt_sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${shfmt_ver}/shfmt_v${shfmt_ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt"
+          echo "${shfmt_sha}  $RUNNER_TEMP/shfmt" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
       - id: claude-startup__live-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
@@ -1962,6 +1976,23 @@ jobs:
           mkdir -p "$RUNNER_TEMP/gitleaks-bin"
           tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
           echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
+      # HIMMEL-6548: scripts/lib/test-bash-ast.sh SKIPs its model rows without
+      # shfmt, and the guards migrated onto bash-ast.sh deny without it. Put the
+      # SAME pinned, sha-verified release the CI image carries
+      # (.github/ci-image/Dockerfile) on PATH for every ubuntu shard, and set
+      # HIMMEL_REQUIRE_SHFMT=1 so a missing binary fails the suite, not skips it.
+      # Keep ver/sha in lockstep with the Dockerfile.
+      - name: Put pinned shfmt on PATH (Linux — bash-ast model rows)
+        if: runner.os == 'Linux'
+        run: |
+          ver=3.14.1
+          sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+          mkdir -p "$RUNNER_TEMP/shfmt-bin"
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt-bin/shfmt"
+          echo "${sha}  $RUNNER_TEMP/shfmt-bin/shfmt" | sha256sum -c -
+          chmod 755 "$RUNNER_TEMP/shfmt-bin/shfmt"
+          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
+          echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
       # HIMMEL-2223 codex-3: scripts/test-template-nostash-hooks.sh hard-SKIPs
       # (exit 0) without pre-commit on PATH — the exact vacuous-SKIP shape
       # called out for the Windows vault suites above (LUNA-131) — so without

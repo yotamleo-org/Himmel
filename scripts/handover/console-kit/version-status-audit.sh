@@ -11,8 +11,11 @@
 #   LATER-VERSION       started, and every unreleased fixVersion is after the active one
 #   RELEASED-NOT-DONE   every fixVersion is released and the status category is not Done
 #   NO-VERSION          a Task, Story or Bug with no fixVersion is started (Epics exempt)
+#   BLOCKER-NO-VERSION  an open Task, Story or Bug with no fixVersion blocks an open ticket in the
+#                       active version; the `backlog` label opts out. The console gives it
+#                       the active version (never reset: it is not started)
 #
-# Ownership: a LATER-VERSION or NO-VERSION row held by a live leg (--legs-from
+# Ownership: a LATER-VERSION, NO-VERSION or BLOCKER-NO-VERSION row held by a live leg (--legs-from
 # manifest, leg doc not WRAPPED, or --owners) or an open PR (gh title or head
 # branch names the key) is OWNED and not to be reset; the console moves it into
 # the active version. A RELEASED-NOT-DONE row is always RESET.
@@ -50,6 +53,10 @@ STARTED = {'in progress', 'in review', 'in ci'}
 def fm_val(fm, name):
     m = re.search(r'^%s: (.*)$' % re.escape(name), fm, re.M)
     return m.group(1).strip().strip('"') if m else ''
+
+def link_keys(fm, side):  # the keys under `links.<side>` of a mirror file
+    m = re.search(r'^  %s: (.*)$' % side, fm, re.M)
+    return re.findall(r'"([A-Z]+-\d+)"', m.group(1)) if m else []
 
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
@@ -131,6 +138,7 @@ if legs_unknown or gh_unknown:
     print('version-status-audit: ownership unknown; unowned started rows print UNKNOWN, not RESET')
 
 rows, audited, skipped, badver = [], 0, 0, []
+info = {}  # key -> (type, status, done, fixVersions, labels, blocks, blocked_by)
 for n in names:
     try:
         m = re.match(r'^---\n(.*?)\n---\n', open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read(), re.S)
@@ -160,12 +168,26 @@ for n in names:
             cls = 'RELEASED-NOT-DONE'
     elif not vers and started and typ in ('Task', 'Story', 'Bug'):
         cls = 'NO-VERSION'
+    info[key] = (typ, status, done, vers, fm_val(fm, 'labels'), link_keys(fm, 'blocks'), link_keys(fm, 'blocked_by'))
     if cls:
         own = owner.get(key) if cls != 'RELEASED-NOT-DONE' else None
         rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if (legs_unknown or gh_unknown) and cls != 'RELEASED-NOT-DONE' else 'RESET')))
 
 if not audited:
     print('version-status-audit: no ticket in %s has front matter' % mirror, file=sys.stderr); sys.exit(3)
+
+# BLOCKER-NO-VERSION: an open versionless Task, Story or Bug that blocks an open ticket in the active
+# version (either side of the link names it); the `backlog` label is the explicit opt-out
+if active:
+    current_open = {k for k, v in info.items() if active in v[3] and not v[2]}
+    blockers = {b for k in current_open for b in info[k][6]} | {k for k, v in info.items() if current_open.intersection(v[5])}
+    have_row = {r[1] for r in rows}
+    for key in blockers - have_row:
+        typ, status, done, vers, labels, _, _ = info.get(key, ('', '', True, [], '', [], []))
+        if done or vers or typ not in ('Task', 'Story', 'Bug') or 'backlog' in re.findall(r'"([^"]+)"', labels):
+            continue
+        own = owner.get(key)
+        rows.append(('BLOCKER-NO-VERSION', key, status, '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if legs_unknown or gh_unknown else 'RESET')))
 rows.sort(key=lambda r: (r[0], int(r[1].split('-')[1])))
 for r in rows:
     print('\t'.join(r))

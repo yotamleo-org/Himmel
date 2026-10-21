@@ -169,7 +169,7 @@ is_authority() {
 # through its existing parent. Returns 1 when neither resolves.
 resolve() {
     local p="$1" parent leaf r
-    # gnu-ok: prim-ok: swallow-ok: the same resolver as guard-judge-writes.sh; a failure falls through to the parent.
+    # prim-ok: gnu-ok: swallow-ok: the same resolver as guard-judge-writes.sh; a failure falls through to the parent.
     r=$(readlink -f -- "$p" 2>/dev/null) && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
     case "$p" in */) return 1 ;; esac
     [ -L "$p" ] && return 1
@@ -177,7 +177,7 @@ resolve() {
     parent="${p%/*}"
     [ -n "$parent" ] || parent="/"
     [ -d "$parent" ] || return 1
-    # gnu-ok: prim-ok: swallow-ok: an unresolvable parent returns 1, which the callers deny.
+    # prim-ok: gnu-ok: swallow-ok: an unresolvable parent returns 1, which the callers deny.
     r=$(readlink -f -- "$parent" 2>/dev/null) && [ -n "$r" ] || return 1
     [ "$r" = "/" ] && r=""
     printf '%s\n' "$r/$leaf"
