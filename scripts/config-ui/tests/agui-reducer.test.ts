@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { join } from "node:path";
 import { mapFile } from "../agui/journal-mapper.ts";
-import { agentBadge, bandCollapsed, initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningAgents, runningCount, liveness, turnEnded, type View } from "../agui-web/src/reducer";
+import { agentBadge, bandCollapsed, initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningAgents, runningCount, liveness, turnEnded, failureList, failureStep, failureSentence, type View } from "../agui-web/src/reducer";
 import fixture from "../agui-web/src/fixture.json";
 
 // the page is a pure fold of AG-UI events into view state; these cases pin it on the
@@ -206,8 +206,9 @@ describe("agents and failures", () => {
 
   test("failures keep their kind, in stream order, and count against their agent", () => {
     expect(v.failures).toEqual([
-      { kind: "tool", id: "toolu_suite" }, { kind: "tool", id: "toolu_push" }, { kind: "tool", id: "toolu_msg" },
-      { kind: "tool", id: "toolu_cat" }, { kind: "text", id: expect.any(String) },
+      { kind: "tool", id: "toolu_suite", at: expect.any(Number) }, { kind: "tool", id: "toolu_push", at: expect.any(Number) },
+      { kind: "tool", id: "toolu_msg", at: expect.any(Number) }, { kind: "tool", id: "toolu_cat", at: expect.any(Number) },
+      { kind: "text", id: expect.any(String), at: expect.any(Number) },
     ]);
     expect([v.tools.toolu_suite.failure, v.tools.toolu_push.failure, v.tools.toolu_msg.failure, v.tools.toolu_cat.failure])
       .toEqual(["suite", "denied", "blocked", "error"]);
@@ -227,7 +228,7 @@ describe("agents and failures", () => {
   test("RUN_ERROR fails the calls it cuts off", () => {
     const w = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 }, { type: "TOOL_CALL_START", toolCallId: "a", toolCallName: "Bash", timestamp: 1 },
       { type: "RUN_ERROR", message: "lost", timestamp: 2 }]);
-    expect(w.failures).toEqual([{ kind: "tool", id: "a" }]);
+    expect(w.failures).toEqual([{ kind: "tool", id: "a", at: expect.any(Number) }]);
   });
 
   test("a later START with a better name or model updates the agent, keeping its counts", () => {
@@ -266,7 +267,7 @@ describe("agents and failures", () => {
   test("a call failed twice (a run error, then its failed result) is one failure", () => {
     const w = reduceAll([{ type: "RUN_STARTED", runId: "r", timestamp: 0 }, { type: "TOOL_CALL_START", toolCallId: "a", toolCallName: "Bash", timestamp: 1 },
       { type: "RUN_ERROR", message: "lost", timestamp: 2 }, { type: "TOOL_CALL_RESULT", toolCallId: "a", content: "boom", isError: true, timestamp: 3 }]);
-    expect(w.failures).toEqual([{ kind: "tool", id: "a" }]);
+    expect(w.failures).toEqual([{ kind: "tool", id: "a", at: expect.any(Number) }]);
     expect(w.agents.main.failures).toBe(1);
   });
 
@@ -413,4 +414,39 @@ test("turnEnded resets when a new run starts", () => {
   expect(seq(["RUN_STARTED", "RUN_FINISHED"])).toBe(true);
   expect(seq(["RUN_STARTED", "RUN_FINISHED", "RUN_STARTED", "TOOL_CALL_START"])).toBe(false);
   expect(seq(["RUN_STARTED", "RUN_ERROR"])).toBe(true);
+});
+
+// the failure navigator: the order the reader sees on the strip, "k of n" that wraps out loud
+describe("failure navigator", () => {
+  test("failures run in the order they started, as the strip lays them out, not the order their results landed", () => {
+    expect(end.failures.map((f) => f.id)).toEqual(["c3b", "c2a", "t4"]); // result order: the stream's own
+    const list = failureList(end);
+    expect(list.map((f) => f.ref.id)).toEqual(["t4", "c2a", "c3b"]);
+    expect(list.map((f) => f.n)).toEqual([1, 2, 3]);
+    expect(list.map((f) => [f.word, f.agent])).toEqual([["error", "HIMMEL-1957-N1290-check-ci-cap"], ["suite failed", "tests"], ["denied", "security"]]);
+  });
+
+  test("stepping wraps at both ends and says so; the first press from nowhere is not a wrap", () => {
+    expect(failureStep(-1, 3, 1)).toEqual({ to: 0, wrapped: false });
+    expect(failureStep(-1, 3, -1)).toEqual({ to: 2, wrapped: false });
+    expect(failureStep(0, 3, -1)).toEqual({ to: 2, wrapped: true });
+    expect(failureStep(2, 3, 1)).toEqual({ to: 0, wrapped: true });
+    expect(failureStep(1, 3, 1)).toEqual({ to: 2, wrapped: false });
+    expect(failureStep(0, 1, 1)).toEqual({ to: 0, wrapped: true });
+  });
+
+  test("the sentence names the failure, its agent and its call", () => {
+    const [first] = failureList(end);
+    expect(failureSentence(first, 3, "Agent security review", false)).toBe("Failure 1 of 3: error, in HIMMEL-1957-N1290-check-ci-cap, at Agent security review");
+    expect(failureSentence(first, 3, "x", true)).toBe("Failure 1 of 3: error, in HIMMEL-1957-N1290-check-ci-cap, at x (back to the first)");
+    expect(failureSentence({ ...first, n: 3 }, 3, "x", true)).toContain("(back to the last)");
+  });
+
+  test("a failed message sorts by when it arrived, among the calls", () => {
+    const w = reduceAll(mapFile(join(import.meta.dir, "fixtures", "agui", "agents.jsonl")).events as any);
+    const list = failureList(w);
+    expect(list.map((f) => f.n)).toEqual([1, 2, 3, 4, 5]);
+    expect(new Set(list.map((f) => f.ref.id)).size).toBe(5);
+    expect(list.map((f) => f.at)).toEqual([...list.map((f) => f.at)].sort((a, b) => a - b));
+  });
 });

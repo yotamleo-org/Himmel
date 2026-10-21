@@ -29,6 +29,7 @@ export function Shell({ token, run, fleet, children, console: selected = null }:
             ))}
           </nav>
         )}
+        {!token && <p className="rail-hint">Open the URL printed by <code>himmelctl ui</code> to reach Config, Health, Fleet and the other pages.</p>}
         {token && <FleetMenu token={token} state={fleet} selected={selected} />}
       </aside>
       <div className="pane">{children}</div>
