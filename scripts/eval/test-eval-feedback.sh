@@ -68,7 +68,8 @@ C="$TMP/changes.jsonl"
 IN="$TMP/inbox.md"
 out=$(python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" 2>&1); rc=$?
 eq "run 1: exit 0" "$rc" "0"
-eq "run 1: one change record" "$(rows "$C")" "1"
+eq "run 1: one change record and its inbox mark" "$(rows "$C")" "2"
+eq "inbox mark: written" "$(field "$C" 1 inbox_written)" "true"
 eq "change: status open" "$(field "$C" 0 status)" "open"
 eq "change: metric" "$(field "$C" 0 metric)" "$CLS"
 eq "change: kind" "$(field "$C" 0 change)" "learning"
@@ -80,7 +81,7 @@ has "inbox line names the metric and topic" "$(cat "$IN" 2>/dev/null)" "eval/fri
 
 # --- the same run again changes nothing --------------------------------------------------------------
 ok "rerun" python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN"
-eq "rerun on the same eval run: no second record" "$(rows "$C")" "1"
+eq "rerun on the same eval run: no second record" "$(rows "$C")" "2"
 eq "rerun: no second inbox line" "$(rows "$IN")" "1"
 
 # --- run 2: the next run of the same series re-measures the change ----------------------------------
@@ -89,16 +90,16 @@ ok "run 2 row" python3 -I "$RUNS" append --ledger "$L" --eval friction --source 
   --metrics-json '{"refusals":2,"over_deny":0,"over_deny_share":0}'
 out=$(python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" 2>&1); rc=$?
 eq "run 2: exit 0" "$rc" "0"
-eq "run 2: a measured record" "$(rows "$C")" "2"
-eq "measured: status" "$(field "$C" 1 status)" "measured"
-eq "measured: same change id" "$(field "$C" 1 id)" "$(field "$C" 0 id)"
-eq "measured: before" "$(field "$C" 1 before)" "1"
-eq "measured: after (absent metric counts as 0)" "$(field "$C" 1 after)" "0"
-eq "measured: delta" "$(field "$C" 1 delta)" "-1"
-eq "measured: verdict" "$(field "$C" 1 verdict)" "improved"
+eq "run 2: a measured record" "$(rows "$C")" "3"
+eq "measured: status" "$(field "$C" 2 status)" "measured"
+eq "measured: same change id" "$(field "$C" 2 id)" "$(field "$C" 0 id)"
+eq "measured: before" "$(field "$C" 2 before)" "1"
+eq "measured: after (absent metric counts as 0)" "$(field "$C" 2 after)" "0"
+eq "measured: delta" "$(field "$C" 2 delta)" "-1"
+eq "measured: verdict" "$(field "$C" 2 verdict)" "improved"
 has "run 2: prints the before and after" "$out" "before=1 after=0 delta=-1 improved"
 ok "rerun after measure" python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN"
-eq "a measured change is not measured again" "$(rows "$C")" "2"
+eq "a measured change is not measured again" "$(rows "$C")" "3"
 
 # --- a run of another config is another series: it neither measures nor is measured ------------------
 L3="$TMP/runs3.jsonl"; C3="$TMP/changes3.jsonl"
@@ -147,6 +148,14 @@ has "failure review: eval feedback subsection" "$digest" "### Eval feedback"
 has "failure review: names the new change" "$digest" "$CLS"
 eq "failure review: the change record is written" "$(rows "$D/changes.jsonl")" "1"
 eq "failure review dry run: no memory-inbox line" "$(rows "$D/inbox.md")" "0"
+for i in 1 2; do
+  HIMMEL_EVAL_RUNS_LEDGER="$D/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$D/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
+    JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$D/ledger.jsonl" --state "$D/state.json" --log "$D/log.jsonl" \
+    --inbox "$D/inbox.md" --out-dir "$D/out" --now 2026-10-07T12:00:00Z --notify-cmd true --live >"$D/live$i.out" 2>&1
+  eq "live review $i after a dry run: exit 0" "$?" "0"
+  eq "live review $i after a dry run: the dry-run change is delivered once" "$(rows "$D/inbox.md")" "1"
+done
+has "the delivered line names the metric and topic" "$(cat "$D/inbox.md" 2>/dev/null)" "eval/friction $CLS value=500 threshold=100 topic=shell-and-gate-traps.md"
 
 # --- only a --live review writes the inbox line, once per opened change ---------------------------------
 E="$TMP/review-live"; mkdir -p "$E"
@@ -160,6 +169,7 @@ for i in 1 2; do
   eq "live review $i: exit 0" "$?" "0"
   eq "live review $i: exactly one memory-inbox line" "$(rows "$E/inbox.md")" "1"
 done
+has "live review: the line names the metric and topic" "$(cat "$E/inbox.md" 2>/dev/null)" "eval/friction $CLS value=500 threshold=100 topic=shell-and-gate-traps.md"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

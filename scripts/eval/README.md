@@ -140,8 +140,9 @@ named in `feedback-rules.json`, over that eval's newest `ok` row:
 2. **Change.** When that row is not yet the baseline of a change, the first
    rule with a metric worse than its threshold raises one `open` change record
    on the worst such metric. The change is a `learning` (a memory-inbox
-   candidate line, written once when `--inbox` is given; a failed write is
-   retried on the next run with `--inbox`), a `routing` change or a
+   candidate line, written once when `--inbox` is given; a change opened
+   without `--inbox`, or whose write failed, is delivered by the next run
+   with `--inbox`), a `routing` change or a
    `tool-ruling` (keep, slim or retire), aimed at the rule's `target`.
 
 Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else

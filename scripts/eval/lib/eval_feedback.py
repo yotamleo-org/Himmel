@@ -9,8 +9,9 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
   2. CHANGE: when that row is not yet the baseline of any change, the first rule (file order) with a
      metric worse than its threshold and no open change of the same confighash raises ONE "open" change
      record for the worst such metric. A "learning" change also appends one candidate line to the failure-loop memory inbox
-     (the HIMMEL-4670 loop's own learnings queue) when an inbox is given, once per change: a failed write is
-     marked with an "inbox" record (inbox_written false) and retried on the next run given an inbox.
+     (the HIMMEL-4670 loop's own learnings queue) when an inbox is given, once per change: each write leaves an
+     "inbox" record, and a run given an inbox first delivers every open, unmeasured learning change whose latest
+     inbox record is not inbox_written true (one opened without an inbox, or whose write failed).
 
   Path: $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/eval-changes.jsonl.
 
@@ -20,7 +21,7 @@ CHANGE ROW (v 1): v, ts, host, source, kind "eval-change", id "<baseline run_id>
   status "open" | "measured" | "inbox", then
   open      value, threshold, better, absent, change, target, baseline_run_id, confighash
   measured  before, after, delta, verdict, after_run_id
-  inbox     inbox_written (false: the inbox line failed and is due again; true: a retry wrote it)
+  inbox     inbox_written (true: the line is in the inbox; false: the write failed and is due again)
 
   eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P]
 Prints one line per record written. Exit 0, 2 on unreadable rules.
@@ -129,7 +130,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
         if inbox:
             marks = {c["id"]: c["inbox_written"] for c in recs if c.get("status") == "inbox"}
             for c in opened:
-                line = inbox_line(c) if marks.get(c["id"]) is False else None
+                due = c["change"] == "learning" and c["id"] not in measured and marks.get(c["id"]) is not True
+                line = inbox_line(c) if due else None
                 if line and write_inbox(inbox, line):
                     append(path, envelope(id=c["id"], eval=c["eval"], metric=c["metric"], status="inbox",
                                           inbox_written=True))
@@ -171,8 +173,9 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 opened.append(c)
                 written.append(c)
                 line = inbox_line(c) if inbox and rule["change"] == "learning" else None
-                if line and not write_inbox(inbox, line):
-                    append(path, envelope(id=c["id"], eval=ev, metric=metric, status="inbox", inbox_written=False))
+                if line:
+                    append(path, envelope(id=c["id"], eval=ev, metric=metric, status="inbox",
+                                          inbox_written=write_inbox(inbox, line)))
                 break
     return written
 
