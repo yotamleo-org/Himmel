@@ -1018,6 +1018,60 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "score row + real responder clears exactly as before → exit 0"
 rm -rf "$tmp"
 
+# 4a-1. a lane=full marker on a branch with `score` rows but no
+# `preflight` row stamped before its first `score` row is refused (/pr-check
+# step 2.8 was skipped). Rows carry the branch + ts the real writer stamps.
+_pf_score() { printf '{"kind":"score","ts":"%s","branch":"feat/x","head":"%s","model":"codex","critical":0,"important":0,"suggestions":0,"raw_path":"/x/y.raw"}' "$1" "$2"; }
+_pf_row()   { printf '{"kind":"preflight","ts":"%s","branch":"feat/x","head":"%s","hits":[],"hit_n":0,"fixed":0,"waived":0,"checked":0}' "$1" "$2"; }
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:05:00Z deadbeef0)" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "score rows and no preflight row on a full lane → exit 14"
+if marker_exists "$tmp"; then pass; else fail "no preflight row: marker must REMAIN"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'step 2.8' && grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh preflight --head'; then pass; else fail "refusal must name step 2.8 and the exact preflight command: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# Control: a preflight row stamped before the first score row clears as before.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_row 2026-11-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "preflight row before the first score row → exit 0"
+rm -rf "$tmp"
+
+# A preflight row stamped AFTER the first score row does not count.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(_pf_row 2026-11-01T11:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "preflight row only after the first score row → exit 14"
+rm -rf "$tmp"
+
+# A preflight row of ANOTHER branch does not count.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_row 2026-11-01T09:00:00Z "$sha" | sed 's|feat/x|feat/other|')" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "another branch's preflight row does not count → exit 14"
+rm -rf "$tmp"
+
+# Exempt: a branch whose first score row predates the gate.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-10-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "first score row predates the gate → exit 0"
+rm -rf "$tmp"
+
+# Exempt: the docs-audit lane owes no step 2.8 pass.
+make_repo || exit 1
+write_marker "$tmp" "$sha" docs-audit
+write_ledger "$tmp" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "docs-audit lane with score rows and no preflight → exit 0"
+rm -rf "$tmp"
+
 # 4b. Empty ledger → no evidence /pr-check ever ran → refuse.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp"
