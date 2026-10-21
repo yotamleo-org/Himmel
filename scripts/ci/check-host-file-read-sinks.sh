@@ -125,7 +125,8 @@ while IFS= read -r -d '' path; do
         if (l ~ /^[ \t]*#/) continue
         # taint: x=...$1... / x="${2:-}" / x=$(realpath "$1") at the head of a line, plus
         # a later UPPER_CASE name on the line that is never assigned at a line head (the
-        # old check flagged those as unassigned);
+        # old check flagged those as unassigned); argv anywhere after the name counts, so
+        # assignment-shaped text inside a quoted value cannot hide it;
         # a mktemp result is a file the script made itself, so it clears the taint
         scan_assigns(l)
         hd = ""
@@ -134,7 +135,7 @@ while IFS= read -r -d '' path; do
         }
         for (k = 1; k <= ACNT; k++) {
           if (AV[k] ~ /^"?(\$\(|`)[ \t]*mktemp([ \t)"`]|$)/) delete tainted[AN[k]]
-          else if (AV[k] ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ && ((k == 1 && AN[k] == hd) || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
+          else if (substr(l, AP[k] + 1) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ &&((k == 1 && AN[k] == hd) || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
         }
         hit = ""
         s = l

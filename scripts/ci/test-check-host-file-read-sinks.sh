@@ -81,6 +81,10 @@ case_repo base flag-mktemp-substring
 run_check
 [ "$RC" -eq 1 ] && ok "the word mktemp inside an argv-built path is flagged" || bad "mktemp substring cleared the taint (rc=$RC): $OUT"
 
+case_repo base flag-quoted-assign-argv
+run_check
+[ "$RC" -eq 1 ] && ok "assignment-shaped text inside a quoted value does not hide argv" || bad "quoted NAME=\$1 hid the taint (rc=$RC): $OUT"
+
 # --- must-pass --------------------------------------------------------------------
 # Real lines from PRs 3460 and 3461 (each needed a read-sink-ok marker before).
 case_repo base pass-tempdir-multi-export
