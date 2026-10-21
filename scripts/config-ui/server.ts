@@ -23,6 +23,7 @@ import { readFleet } from "./agui/fleet";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
+import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 
@@ -433,11 +434,21 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readQuota(env, now())));
       }
-      // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the legs on every request.
-      // Read-only: the sync list is a plan the console kit executes, never run here.
+      // the tracker sources the rail gates Roadmap and Kanban on.
+      if (path === "/api/sources") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json({ sources: await trackerSources(env, root) });
+      }
+      // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the legs on every request, or from the
+      // GitHub issues when that is the only source. Read-only: the sync list is a plan the console kit executes, never run here.
       if (path === "/api/roadmap") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
+        const mirrorDir = jiraMirrorDir(env);
+        if ((await trackerSources(env, root))[0] === "github") {
+          const issues = await readGithubIssues(env, root);
+          const r = readRoadmap({ mirrorDir, github: issues ?? [], legs: { state: "absent" } });
+          return json(redactOut({ ...r, ...(issues ? {} : { reason: "gh issue list failed" }), truncated: (issues?.length ?? 0) >= ISSUE_LIMIT, sync: [] }));
+        }
         const legs = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/legs.sh"), env, opts.legsTimeoutMs);
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
         const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, legs });

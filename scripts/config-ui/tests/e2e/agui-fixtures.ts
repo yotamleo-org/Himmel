@@ -108,8 +108,13 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
   mkdirSync(slug, { recursive: true });
   const journal = join(slug, `${RUN}.jsonl`);
   writeFileSync(journal, initial);
+  // the rail lists Roadmap and Kanban only when a tracker source is readable: a one-ticket Jira mirror makes it so.
+  const mirror = join(dir, "mirror");
+  mkdirSync(mirror, { recursive: true });
+  writeFileSync(join(mirror, "HIMMEL-1.md"), '---\nkey: "HIMMEL-1"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"]\nupdated: "2026-10-01T00:00:00.000+0000"\nresolution: null\n---\n\n# HIMMEL-1: e2e ticket\n');
   const env: Record<string, string | undefined> = {
     ...process.env, HOME: home, CONFIG_UI_HIMMELCTL: join(__dirname, "e2e-stub.js"), CONFIG_UI_IDLE_MS: "300000",
+    TRACKER: "jira", HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL",
     HANDOVER_DIR: join(dir, "handover"), HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1",
     E2E_FEED: join(dir, "feed.json"), STUB_ARGV: join(dir, "argv"), ...fleet?.env,
   };

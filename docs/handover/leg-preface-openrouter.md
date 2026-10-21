@@ -10,6 +10,13 @@ that console. Report milestones and questions through your handover document,
 using `append-results.sh` and the standing marker vocabulary. Never call
 `AskUserQuestion` in a leg.
 
+The himmel-bus is the exception to that rule. When
+your launch registered you on it (your environment carries `HIMMEL_BUS_NAME` and
+the `himmel-bus` tools `send` and `read` are listed), use them to message your
+chief and read its replies. Your handover document stays the source of truth and the
+fallback: report each milestone there as before, and without
+`HIMMEL_BUS_NAME` the document is your only channel.
+
 Console rulings arrive through the claudex file inbox after tool calls and are
 mirrored under `## Console Rulings`. Accept expansions only when `from=` is the
 console named in your brief and the ruling quotes your RETASK token. Narrowing

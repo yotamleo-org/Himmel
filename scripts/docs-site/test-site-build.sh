@@ -183,6 +183,10 @@ for r in daily-loop handover/afk-mode glossary internals/stuck-playbook contribu
   check "J1: IA page /$r/ built" test -f "$dist/$r/index.html"
 done
 check "J1: /adoption-trail.html served" test -f "$dist/adoption-trail.html"
+check "J1: /guide/dev-graph.html served" test -f "$dist/guide/dev-graph.html"
+check "J1: /guide/dev-graph.html is the development graph page" grep -qF '<title>Development graph</title>' "$dist/guide/dev-graph.html"
+check "J1: the sidebar lists the development graph" grep -q 'href="/Himmel/guide/dev-graph"' "$(route_of getting-started.md)"
+check "J1: the sidebar's extensionless dev-graph path redirects to the page" grep -q 'guide/dev-graph\.html' "$dist/guide/dev-graph/index.html"
 for raw in setup/install.md setup/settings-template.json setup/profiles/operator.install-profile.json; do
   check "J1: raw $raw byte-identical" cmp "$repo/docs/$raw" "$dist/$raw"
 done

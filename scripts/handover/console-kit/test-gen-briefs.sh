@@ -154,6 +154,23 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); d=dict(l[0]); d[
 python3 "$SUT" "$WORK/dupbr.json" --base 4ccb59d --console BZ --bucket "$WORK/b4" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/dupbr.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'duplicate leg branches' "$WORK/dupbr.err" && pass "two legs sharing a branch are refused" || fail "dup branch rc=$rc"
 
+# The nonce <letter>-<label>-<hex> must stay inside the vault token grammar (1-3 upper-case letters, label N + 1-5 digits).
+tok() { # <name> <stderr fragment> <gen-briefs args...>: refused, rc 1, nothing written
+    local n="$1" frag="$2"; shift 2
+    rm -rf "$WORK/bt-tok"
+    python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --bucket "$WORK/bt-tok" --repo "$REPO" --handover-root /h --no-worktree "$@" >/dev/null 2>"$WORK/tok.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/tok.err" && ! ls "$WORK/bt-tok"/* >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/tok.err"))"; fi
+}
+tok "a 4-letter --letter is refused" "letter" --console BZ --letter ABCD
+tok "a lower-case --letter is refused" "letter" --console BZ --letter bz
+tok "an explicitly empty --letter is refused" "letter" --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console --letter ""
+tok "a letter derived from the console name that is 4 letters long is refused" "letter" --console HIMMEL-nextleg-2026-10-08ABCD-roadmap-console
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --letter ABC --bucket "$WORK/bt-ok" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
+[ "$rc" = 0 ] && grep -q 'ABC-N901-' "$WORK/bt-ok"/HIMMEL-9001-N901-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["label"]="N123456"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lbl6.json"
+python3 "$SUT" "$WORK/lbl6.json" --base 4ccb59d --console BZ --bucket "$WORK/bt-lbl" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lbl6.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'label' "$WORK/lbl6.err" && pass "a 6-digit leg label is refused" || fail "6-digit label rc=$rc"
+
 # A per-leg lane key is carried through and validated.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
 lout="$(python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b5" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5.json" 2>&1)"
