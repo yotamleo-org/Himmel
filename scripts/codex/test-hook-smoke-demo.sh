@@ -175,6 +175,7 @@ export CADENCE_BANK_CACHE="$TMP/bank.json"
 export CADENCE_BANK_LEDGER="$TMP/ledger.jsonl"
 export CADENCE_BANK_MAX_AGE=99999999
 export HOME="$TMP/home"; mkdir -p "$HOME"
+export CODEX_HOME="$HOME/.codex"
 # Ambient credentials the runner must blank before any hook runs, plus the one
 # token it must NOT blank. The fixture hook exits 9 on any of these being wrong.
 export TELEGRAM_BOT_TOKEN="leak-if-you-see-me"

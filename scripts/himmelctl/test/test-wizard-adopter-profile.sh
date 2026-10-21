@@ -820,6 +820,11 @@ grepq "$out" 'always-on hardening: skipped' \
   || fail "caseF: alwaysOn=false should print the one-line pointer: $out"
 grepq "$out" 'powercfg' \
   && fail "caseF: alwaysOn=false must not dump the checklist: $out"
+grepq "$out" 'Phase 6 hardening steps' \
+  && fail "caseF: the pointer must be user-facing copy, not the internal 'Phase 6 hardening steps' label: $out"
+for f in "$wizard" "$repo_root/scripts/himmelctl/lib/adopter-profile.js"; do
+  grep -q 'Phase 6 hardening steps' "$f" && fail "caseF: the internal 'Phase 6 hardening steps' label is still in $f"
+done
 echo "ok: caseF alwaysOn=false -> pointer line only, no checklist"
 
 # ── Case G: --contribute gets its own report AND the ──────────
