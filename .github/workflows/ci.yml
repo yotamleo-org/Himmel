@@ -531,7 +531,7 @@ jobs:
     # same tools on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1040,7 +1040,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1317,7 +1317,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1420,7 +1420,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1536,7 +1536,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1694,7 +1694,7 @@ jobs:
     # A self-hosted route (himmel-vm, gcp) keeps its own baked tools: '' too.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -2108,7 +2108,7 @@ jobs:
     # same tools on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }}
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:f384b372675a0b25f2aff837bd9c2ad56448fea814ad0414f8c8f2867aabfba8') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

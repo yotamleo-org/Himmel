@@ -33,7 +33,8 @@ FORK="github.event_name == 'pull_request' && github.event.pull_request.head.repo
 ROUTES=" || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on'"
 REF_RE='^ghcr\.io/yotamleo-org/himmel-ci@sha256:[0-9a-f]{64}$'
 
-job_block() { awk -v job="$1" '$0 == "  " job ":" { j = 1; print; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI_YML"; }
+# The hardcoded-env-values gate's marker is the one trailing comment an image line may carry.
+job_block() { awk -v job="$1" '$0 == "  " job ":" { j = 1; print; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI_YML" | sed 's/ # env-literal-ok: .*$//'; }
 in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 image_of() { sed -n 's/^      image: //p' <<< "$1"; }
 

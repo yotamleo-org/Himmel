@@ -74,7 +74,7 @@ jobs:
           NEW: ${{ needs.build.outputs.digest }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          old="$(grep -oE 'ghcr\.io/yotamleo-org/himmel-ci@sha256:[0-9a-f]{64}' .github/workflows/ci.yml | sort -u)"
+          old="$(grep -oE 'ghcr\.io/yotamleo-org/himmel-ci@sha256:[0-9a-f]{64}' .github/workflows/ci.yml | sort -u)" # env-literal-ok: the CI image's own GHCR path, pinned by digest
           [ "$(printf '%s\n' "$old" | grep -c .)" -eq 1 ] || { echo "::error::ci.yml must name exactly one default image ref, found: $old" >&2; exit 1; }
           if [ "$old" = "$NEW" ]; then echo "ci.yml already pins $NEW"; exit 0; fi
           title="ci-image: bump ci.yml to the rebuilt image digest"
