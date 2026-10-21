@@ -362,6 +362,15 @@ test("the codex bank row reads CODEX_USAGE_CACHE over the old CODEX_BANK_CACHE",
   expect((await (await fleet(s.port)).json()).banks.codex).toMatchObject({ weeklyPct: 47 });
 });
 
+test("a non-positive CODEX_USAGE_CACHE_TTL_SECONDS falls back to the old name's TTL, as quota-sources does", async () => {
+  const now = Date.now();
+  const bankDir = mkdtempSync(join(tmpdir(), "agui-usage-ttl-")), bank = join(bankDir, "codex-usage.json");
+  cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));
+  const s = boot({ CODEX_USAGE_CACHE: bank, CODEX_USAGE_CACHE_TTL_SECONDS: "-1", CODEX_BANK_CACHE_TTL_SECONDS: "60" });
+  writeFileSync(bank, JSON.stringify({ capturedAt: new Date(now - 120_000).toISOString(), limits: [{ limitId: "codex/primary", usedPercent: 47, windowDurationMins: 10080, resetsAt: now / 1000 + 86400 }] }));
+  expect((await (await fleet(s.port)).json()).banks.codex).toBeNull();
+});
+
 test("HIMMEL-4817: a claudex leg renders lane, backend model, codex-bank cost row and eval row", async () => {
   const now = Date.now();
   const bankDir = mkdtempSync(join(tmpdir(), "agui-bank-")), bank = join(bankDir, "codex-bank.json");

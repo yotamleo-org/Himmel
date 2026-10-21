@@ -305,7 +305,7 @@ async function fold(journal: string): Promise<Folded> {
 export async function readFleet(opts: { script: string; env: Record<string, string | undefined>; home: string; now: number; redact: (s: string) => string }): Promise<Fleet> {
   const census = await runScript(opts.script, opts.env);
   // the codex probe's cache, read once per request; unreadable, stale or reset is null.
-  const ttl = Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) || Number(opts.env.CODEX_BANK_CACHE_TTL_SECONDS);
+  const ttl = Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) > 0 ? Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) : Number(opts.env.CODEX_BANK_CACHE_TTL_SECONDS);
   let codex: CodexBank | null = null;
   try {
     codex = readCodexBank(await readFile(opts.env.CODEX_USAGE_CACHE || opts.env.CODEX_BANK_CACHE || join(opts.home, ".himmel", "cache", "codex-bank.json"), "utf8"), opts.now, ttl > 0 ? ttl : undefined);
