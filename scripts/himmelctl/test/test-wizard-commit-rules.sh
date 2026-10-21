@@ -147,6 +147,47 @@ grepq "$out" 'would write TRACKER=jira, TICKET_ID_REQUIRED=1 to .*/\.himmel/himm
 [ ! -e "$h3/.himmel/himmel.conf" ] || fail "case3: dry-run must not write himmel.conf"
 echo "ok: case3 --dry-run prints the would-write line and writes nothing"
 
+# ── Case 3b: the tracker defaults to none without JIRA_PROJECT_KEY ───────────
+# A blank answer at the tracker prompt takes the default; the run with
+# JIRA_PROJECT_KEY set is the unchanged control (still jira).
+h3b="$work/h3b"; mkdir -p "$h3b"
+out=$(unset JIRA_PROJECT_KEY; run_wizard "$h3b" --dry-run <<INPUT
+starter
+project
+none
+inline
+
+no
+none
+no
+
+
+yes
+INPUT
+)
+grepq "$out" 'would write TRACKER=none to ' \
+  || fail "case3b: a blank tracker answer with JIRA_PROJECT_KEY unset must default to none: $out"
+h3c="$work/h3c"; mkdir -p "$h3c"
+out=$(JIRA_PROJECT_KEY=ABC run_wizard "$h3c" --dry-run <<INPUT
+starter
+project
+none
+inline
+
+no
+none
+no
+
+
+yes
+
+yes
+INPUT
+)
+grepq "$out" 'would write TRACKER=jira, TICKET_ID_REQUIRED=1 to ' \
+  || fail "case3b: a blank tracker answer with JIRA_PROJECT_KEY set must stay jira: $out"
+echo "ok: case3b the tracker defaults to none without JIRA_PROJECT_KEY and stays jira with it"
+
 # ── Case 4: declining consent writes nothing ─────────────────────────────────
 h4="$work/h4"; mkdir -p "$h4"
 out=$(run_apply "$h4" '')
