@@ -914,6 +914,15 @@ REAL_HOOK="$HOOK"
 HOOK="$NOVAL_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
 assert_rc 'lib without validator still refuses weekly 90 (fail closed)' 2 "$(lift_hook lift-noval)"
 HOOK="$REAL_HOOK"
+# an unloadable env-alias.sh must keep the default HARD 80, not drop the old cap to 100.
+NOALIAS_ROOT="$TMP/noalias-repo"
+mkdir -p "$NOALIAS_ROOT/scripts/hooks" "$NOALIAS_ROOT/scripts/lib"
+cp "$REAL_HOOK" "$NOALIAS_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$NOALIAS_ROOT/scripts/lib/"
+lift_cache 82 10
+HOOK="$NOALIAS_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+assert_rc 'an unloadable env-alias.sh keeps HARD 80 under a standing lift' 2 "$(lift_hook lift-noalias CADENCE_BANK_MAX_PCT=85)"
+HOOK="$REAL_HOOK"
 if grepq "$(cat "$TMP/err-lift-noval")" -F 'unbound variable'; then
     echo "FAIL lib without validator must not hit an unbound variable"; fail=$((fail + 1))
 else

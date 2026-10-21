@@ -1087,7 +1087,7 @@ contains "dry-run --lane claudex: resolved launcher names claude-codex" "$out" "
 contains "dry-run --lane claudex: env carries CLAUDEX_LANE_OK=1" "$out" "CLAUDEX_LANE_OK=1"
 contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "LEG_LANE=claudex"
 contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_BANK_LANE=claudex"
-contains "dry-run --lane claudex: usage lane is claudex" "$out" "CADENCE_USAGE_LANE=claudex"
+not_contains "dry-run --lane claudex: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
 contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
@@ -1099,8 +1099,8 @@ not_contains "claudex: stale lane token is absent" "$out" "LEG_LANE=native"
 not_contains "claudex: stale bank token is absent" "$out" "CADENCE_BANK_LANE=native"
 rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "claudex: a stale CADENCE_USAGE_LANE token does not refuse launch" "$rc" "0"
-contains "claudex: resolved usage lane replaces the stale launcher token" "$out" "CADENCE_USAGE_LANE=claudex"
-not_contains "claudex: stale usage lane token is absent" "$out" "CADENCE_USAGE_LANE=native"
+contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_BANK_LANE=claudex"
+not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE="
 
 rc=0; out="$(LEG_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: LEG_EFFORT overrides the medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
@@ -1143,7 +1143,7 @@ rc=0; out="$(LEG_LANE=native bash "$SCRIPT" --dry-run --no-profile --lane openro
 check "openrouter: flag selects lane" "$rc" "0"
 contains "openrouter: lane reported" "$out" "lane=openrouter"
 contains "openrouter: bank lane remains openrouter" "$out" "CADENCE_BANK_LANE=openrouter"
-contains "openrouter: usage lane remains openrouter" "$out" "CADENCE_USAGE_LANE=openrouter"
+not_contains "openrouter: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
 contains "openrouter: default Sonnet slug pinned" "$out" "OPENROUTER_MODEL=anthropic/claude-sonnet-5.5"
 contains "openrouter: backend is claude-openrouter" "$out" "claude-openrouter"
 contains "openrouter: alias route uses sonnet" "$out" " sonnet "

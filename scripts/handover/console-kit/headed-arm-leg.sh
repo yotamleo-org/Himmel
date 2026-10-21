@@ -1576,18 +1576,17 @@ if [ "$LANE" = "native" ]; then
     [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
 fi
 
-# the leg's own bank-preflight reads CADENCE_USAGE_LANE, then CADENCE_BANK_LANE,
-# before LEG_LANE; older leg code reads only the old name, so both are set.
 # Propagate the resolved registry values, including DeepSeek's existing
 # openrouter bank gate, rather than inheriting the console's lane.
-# Native launches keep their environment unchanged.
+# Only the old name is propagated: bank-preflight reads CADENCE_USAGE_LANE first,
+# so a propagated new name would override an inline CADENCE_BANK_LANE in the leg.
+# Both names are still dropped. Native launches keep their environment unchanged.
 if [ "$LANE" != "native" ]; then
     leg_env_drop_token LEG_LANE
     leg_env_drop_token CADENCE_BANK_LANE
     leg_env_drop_token CADENCE_USAGE_LANE
     leg_propagate_env LEG_LANE "$LANE"
     leg_propagate_env CADENCE_BANK_LANE "$LANE_BANK_GATE"
-    leg_propagate_env CADENCE_USAGE_LANE "$LANE_BANK_GATE"
 fi
 
 # claudex lane: see the --lane header comment above.
