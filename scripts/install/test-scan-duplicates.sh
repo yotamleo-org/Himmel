@@ -21,7 +21,11 @@ trap 'rm -rf "$work"' EXIT
 
 pass=0
 fail=0
-ok() { echo "ok: $1"; pass=$((pass + 1)); }
+scan_rc() { cat "$work/rc" 2>/dev/null || echo missing; }
+ok() {
+  if [ "$(scan_rc)" != 0 ]; then bad "$1 (but the scan exited $(scan_rc))"; return; fi
+  echo "ok: $1"; pass=$((pass + 1))
+}
 bad() { echo "FAIL: $1" >&2; fail=$((fail + 1)); }
 
 # fixture <name> — fresh HOME + project, echoes nothing; sets FX_HOME / FX_PROJ.
@@ -37,10 +41,12 @@ add_plugin() {
   local key=$1 hooks=$2 name=${1%@*} dir
   dir="$FX_HOME/.claude/plugins/cache/${1#*@}/$name/1.0.0"
   mkdir -p "$dir/hooks"
-  [ "$hooks" = "-" ] || cp "$hooks" "$dir/hooks/hooks.json"
+  [ "$hooks" = "-" ] || cp "$hooks" "$dir/hooks/hooks.json" || { echo "add_plugin: cannot copy $hooks" >&2; exit 1; }
   local tmp="$FX_HOME/.claude/plugins/installed_plugins.json"
   jq --arg k "$key" --arg p "$dir" \
-    '.plugins[$k] = ((.plugins[$k] // []) + [{scope:"user",installPath:$p}])' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+    '.plugins[$k] = ((.plugins[$k] // []) + [{scope:"user",installPath:$p}])' "$tmp" > "$tmp.new" \
+    || { echo "add_plugin: cannot register $key" >&2; exit 1; }
+  mv "$tmp.new" "$tmp" || { echo "add_plugin: cannot write $tmp" >&2; exit 1; }
 }
 
 hook_settings() { # <event> <matcher> <command>
@@ -48,7 +54,7 @@ hook_settings() { # <event> <matcher> <command>
     '{hooks:{($e):[{matcher:$m,hooks:[{type:"command",command:$c}]}]}}'
 }
 
-run_scan() { HOME="$FX_HOME" bash "$scan" "$FX_PROJ" 2>&1; }
+run_scan() { HOME="$FX_HOME" bash "$scan" "$FX_PROJ" 2>&1; echo "$?" > "$work/rc"; }
 
 # ── row 1: a clean fixture prints one clean line ─────────────────────────────
 fixture clean
@@ -114,10 +120,12 @@ fixture not-dups
 echo '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\""}]}]}}' > "$work/shared-hooks.json"
 add_plugin alpha@mkt "$work/shared-hooks.json"
 add_plugin beta@mkt "$work/shared-hooks.json"
-add_plugin gamma@mkt "$work/shared-hooks.json"
+echo '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gamma-only.sh\""}]}]}}' > "$work/gamma-hooks.json"
+add_plugin gamma@mkt "$work/gamma-hooks.json"
 echo '{"enabledPlugins":{"alpha@mkt":true,"beta@mkt":true,"gamma@mkt":false}}' > "$FX_HOME/.claude/settings.json"
+hook_settings SessionStart '' 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/gamma-only.sh"' > "$FX_PROJ/.claude/settings.json"
 out=$(run_scan)
-if printf '%s' "$out" | grep -qi 'clean' && ! printf '%s' "$out" | grep -q 'session-start.sh'; then
+if printf '%s' "$out" | grep -qi 'clean' && ! printf '%s' "$out" | grep -q -e 'session-start.sh' -e 'gamma-only.sh'; then
   ok "row 7: disabled plugin and plugin-vs-plugin shared basename are not flagged"
 else bad "row 7: false positive, got: $out"; fi
 
@@ -125,11 +133,11 @@ else bad "row 7: false positive, got: $out"; fi
 fixture ro
 hook_settings PreToolUse Bash "$cmd" > "$FX_HOME/.claude/settings.json"
 hook_settings PreToolUse Bash "$cmd" > "$FX_PROJ/.claude/settings.json"
-snap() { (cd "$work/ro" && find . -type f -exec sha256sum {} + | sort; find . | sort); }
-before=$(snap)
-ro_out=$(run_scan); ro_rc=$?
-after=$(snap)
-if [ "$ro_rc" -eq 0 ] && [ -n "$ro_out" ] && [ "$before" = "$after" ]; then ok "row 8: scan left the fixture byte-identical"
+snap() { cd "$work/ro" || return 1; find . -type f -exec cksum {} + | sort; find . | sort; }
+before=$(snap); b_rc=$?
+ro_out=$(run_scan); ro_rc=$(scan_rc)
+after=$(snap); a_rc=$?
+if [ "$ro_rc" -eq 0 ] && [ "$b_rc" -eq 0 ] && [ "$a_rc" -eq 0 ] && [ -n "$ro_out" ] && [ -n "$before" ] && [ "$before" = "$after" ]; then ok "row 8: scan left the fixture byte-identical"
 else bad "row 8: scan changed the fixture"; fi
 
 # ── row 9: plugin install path containing a space is still scanned ──────────
@@ -181,7 +189,7 @@ jq --arg p "$FX_PROJ" '.plugins["himmel-guard@himmel"][0].projectPath = $p' "$FX
   > "$work/ip.new" && mv "$work/ip.new" "$FX_HOME/.claude/plugins/installed_plugins.json"
 jq '{hooks:{PreToolUse:[.hooks.PreToolUse[0]]}}' "$work/guard-hooks-rel.json" > "$FX_PROJ/.claude/settings.json"
 echo '{"enabledPlugins":{"himmel-guard@himmel":true}}' > "$FX_HOME/.claude/settings.json"
-out=$(cd "$FX_PROJ" && HOME="$FX_HOME" bash "$scan" . 2>&1)
+out=$(cd "$FX_PROJ" && HOME="$FX_HOME" bash "$scan" . 2>&1; echo "$?" > "$work/rc")
 if printf '%s' "$out" | grep -q 'block-destructive-commands.sh'; then ok "row 14: relative project path still finds the project-scoped plugin"
 else bad "row 14: relative project path missed the plugin, got: $out"; fi
 
@@ -224,6 +232,14 @@ hook_settings PreToolUse Write 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/alt.sh"'
 out2=$(run_scan)
 if printf '%s' "$out" | grep -q 'alt.sh' && printf '%s' "$out2" | grep -q 'scan-duplicates: clean'; then ok "row 19: grouped alternation matcher overlaps Read, not Write"
 else bad "row 19: grouped alternation mishandled, got: $out / $out2"; fi
+
+# ── row 20: project == $HOME still scans settings.local.json ─────────────────
+fixture home-project
+hook_settings PreToolUse Bash 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/homedup.sh"' > "$FX_HOME/.claude/settings.json"
+hook_settings PreToolUse Bash 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/homedup.sh"' > "$FX_HOME/.claude/settings.local.json"
+out=$(HOME="$FX_HOME" bash "$scan" "$FX_HOME" 2>&1; echo "$?" > "$work/rc")
+if printf '%s' "$out" | grep -q 'homedup.sh'; then ok "row 20: project equal to HOME still scans settings.local.json"
+else bad "row 20: settings.local.json skipped when project is HOME, got: $out"; fi
 
 echo "$(basename "$0"): $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

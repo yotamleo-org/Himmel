@@ -34,12 +34,13 @@ TAB=$(printf '\t')
 USER_FILE="$HOME/.claude/settings.json"
 INSTALLED="$HOME/.claude/plugins/installed_plugins.json"
 
-# "<label>|<path>" per settings file, lowest precedence first. The project files
-# are skipped when the project IS $HOME (same files as user scope).
+# "<label>|<path>" per settings file, lowest precedence first. When the project IS
+# $HOME its settings.json is the user file; only settings.local.json is distinct.
 FILES="user|$USER_FILE"
 if [ "$PROJECT/.claude/settings.json" != "$USER_FILE" ]; then
-  FILES="$FILES${NL}project|$PROJECT/.claude/settings.json${NL}local|$PROJECT/.claude/settings.local.json"
+  FILES="$FILES${NL}project|$PROJECT/.claude/settings.json"
 fi
+FILES="$FILES${NL}local|$PROJECT/.claude/settings.local.json"
 
 # shellcheck disable=SC2016
 HOOK_Q='def must($t): if type == $t then . else error("expected " + $t) end;
