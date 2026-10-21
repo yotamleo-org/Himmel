@@ -11,6 +11,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
 | `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm | `table.tsv`, `results.jsonl` (no ledger row) |
 | `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
+| `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; no ledger row) |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
 ## The eval-runs ledger
