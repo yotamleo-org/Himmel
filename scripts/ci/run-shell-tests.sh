@@ -4096,9 +4096,11 @@ fi
 # Live operator state. On the station a leg's shell carries HIMMEL_CONSOLE_DOC,
 # HANDOVER_DIR and friends, and a suite that inherits them writes the live
 # console doc, handover tree, claude/codex config or crontab; CI has none of
-# that, so the class was invisible there. Every suite gets the same set of
-# sentinels instead (set even where the caller had nothing, so CI sees the
-# escape too), and a recording shim heads PATH for the scheduler commands. A
+# that, so the class was invisible there. Every suite gets sentinels instead:
+# the console-doc files even where the caller had none, so CI sees that escape
+# too, and a dir sentinel wherever the caller has that value (an unset one
+# stays unset, as on main; CI's home-canary job covers the $HOME fallback). A
+# recording shim heads PATH for the scheduler commands. A
 # sentinel file must keep its seed, a sentinel dir must stay empty, the shim log
 # must stay empty; whatever a suite dirtied is named and reset before the next
 # suite. It fails a suite on the hard-fail list; any other suite gets a WARN
@@ -4153,10 +4155,14 @@ exit 1
 # sentinels. Every other HIMMEL_CONSOLE_* / HIMMEL_INBOX* value is dropped;
 # none of them is a path a suite may write.
 _live_env() {
-  local _v
+  local _v _set=""
   [ -n "$live_root" ] || return 0
+  # A dir sentinel replaces only a value the caller has. An unset one stays
+  # unset, as on main, so a suite that redirects HOME still reads its fixture.
+  for _v in $live_dirs; do [ -z "${!_v:-}" ] || _set="$_set $_v"; done
   for _v in ${!HIMMEL_CONSOLE_@} ${!HIMMEL_INBOX@}; do unset "$_v"; done
-  for _v in $live_files $live_dirs; do export "$_v=$live_root/state/$_v"; done
+  for _v in $live_dirs; do unset "$_v"; done
+  for _v in $live_files $_set; do export "$_v=$live_root/state/$_v"; done
   if _live_is_hard "$1"; then unset HIMMEL_SUITE_SCHED_REAL; else export HIMMEL_SUITE_SCHED_REAL=1; fi
   export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
   export HIMMEL_SUITE_SHIM_DIR="$live_root/bin"

@@ -3,7 +3,8 @@
 # the operator's live state and fails a suite that writes into it.
 #
 #   L1. Live-state env (HIMMEL_CONSOLE_*, HIMMEL_INBOX*, HANDOVER_DIR,
-#       CLAUDE_CONFIG_DIR, CODEX_HOME) points at the runner's sentinels; a write
+#       CLAUDE_CONFIG_DIR, CODEX_HOME) the caller has points at the runner's
+#       sentinels; a write
 #       into one fails that suite and names the variable, and the caller's own
 #       paths are never reached.
 #   L2. A crontab/at/atq/atrm call reaches the runner's recording shim, never
@@ -23,6 +24,9 @@
 #       with every suite hard (SUITE_LIVE_HARD='*').
 #   L9. An unlisted suite's scheduler call is recorded and then reaches the
 #       next scheduler on PATH; a hard-fail suite's call is refused.
+#  L10. A dir sentinel replaces only a value the caller has: with none the
+#       var stays unset and a suite's HOME fixture is read; with one the
+#       suite sees the sentinel, never the caller's value.
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -280,7 +284,7 @@ exit 0
 SHEOF
   printf '#!/usr/bin/env bash\n: > %q\nexit 0\n' "$sb/ran7" > "$sb/scripts7/test-b-later.sh"
   chmod +x "$sb/scripts7/"*.sh
-  out7=$(SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts7" 2>&1)
+  out7=$(HANDOVER_DIR="$sb/live/handovers" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts7" 2>&1)
   rc7=$?
   _stuck=$(cat "$sb/stuck7" 2>/dev/null)
   if [ -n "$_stuck" ]; then chmod 700 "$_stuck" 2>/dev/null; rm -rf "${_stuck%/state/*}"; fi
@@ -338,6 +342,42 @@ if grepq "$out9" -E '\[FAIL\] .*scripts/handover/test-merge-on-green\.sh'; then
   pass "L9: a hard-fail suite is still refused"
 else
   fail "L9: test-merge-on-green.sh was not refused; out: $out9"
+fi
+
+echo "== L10: a dir sentinel replaces only a caller's value; an unset one stays unset =="
+mkdir -p "$sb/root10/scripts" "$sb/root10b/scripts"
+# himmel-update.sh's settings lookup, as test-himmel-update-plugin-update.sh meets it on CI.
+cat > "$sb/root10/scripts/test-home-fixture.sh" <<'SHEOF'
+#!/usr/bin/env bash
+HOME=$(mktemp -d "${TMPDIR:-/tmp}/rst-home.XXXXXX") || exit 1
+mkdir -p "$HOME/.claude" && echo fixture > "$HOME/.claude/settings.json"
+settings="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
+grep -q fixture "$settings" 2>/dev/null || { echo "read $settings, not the HOME fixture"; rm -rf "$HOME"; exit 1; }
+rm -rf "$HOME"
+for v in CLAUDE_CONFIG_DIR CODEX_HOME HANDOVER_DIR HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE_RUNDIR; do
+  [ -z "${!v+x}" ] || { echo "$v is set to ${!v}"; exit 1; }
+done
+exit 0
+SHEOF
+cat > "$sb/root10b/scripts/test-sees-sentinel.sh" <<'SHEOF'
+#!/usr/bin/env bash
+for v in HANDOVER_DIR CLAUDE_CONFIG_DIR; do
+  case "${!v-}" in */himmel-live-sentinel.*/state/"$v") ;; *) echo "$v=${!v-unset} is not the sentinel"; exit 1 ;; esac
+done
+exit 0
+SHEOF
+chmod +x "$sb/root10/scripts/test-home-fixture.sh" "$sb/root10b/scripts/test-sees-sentinel.sh"
+out10=$(env -u HANDOVER_DIR -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HIMMEL_CONSOLE_WORKDIR -u HIMMEL_CONSOLE_RUNDIR -u CLAUDE_USER_SETTINGS -u SUITE_TIER_MODE SUITE_TIMEOUT=60 bash "$RUNNER" "$sb/root10" 2>&1)
+if grepq "$out10" -E '\[PASS\] .*test-home-fixture\.sh'; then
+  pass "L10: with no caller value the var stays unset and a suite's HOME fixture is read"
+else
+  fail "L10: test-home-fixture.sh did not read its HOME fixture; out: $out10"
+fi
+out10b=$(HANDOVER_DIR="$sb/live/handovers" CLAUDE_CONFIG_DIR="$sb/live/claude" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/root10b" 2>&1)
+if grepq "$out10b" -E '\[PASS\] .*test-sees-sentinel\.sh'; then
+  pass "L10: with a caller value the suite sees the sentinel, never the live value"
+else
+  fail "L10: test-sees-sentinel.sh saw a non-sentinel value; out: $out10b"
 fi
 
 rst_tally
