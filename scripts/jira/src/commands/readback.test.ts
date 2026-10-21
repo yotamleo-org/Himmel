@@ -253,7 +253,7 @@ describe('link: the printed line and both ends read back the same direction', ()
   });
 
   it('--blocked-by: A is blocked by B, B blocks A', async () => {
-    const printed = await run('link', 'HIMMEL-1', '--blocked-by', 'HIMMEL-2');
+    const printed = await run('link', 'HIMMEL-1', '--blocked-by', 'HIMMEL-2', '--backlog');
     await stored('HIMMEL-2', 'HIMMEL-1');
     await reads('HIMMEL-1', 'HIMMEL-2', 'is blocked by');
     await reads('HIMMEL-2', 'HIMMEL-1', 'blocks');
