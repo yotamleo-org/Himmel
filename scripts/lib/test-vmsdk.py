@@ -302,6 +302,44 @@ class TestClone(unittest.TestCase):
         self.assertIn("--branch main", joined)
         self.assertIn("set-url origin https://github.com/yotamleo/himmel.git", joined)  # leak-allow: hostname assertion on the post-clone origin rewrite
 
+    def _clone_joined(self, env):
+        vm = self._vm()
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return (1, "") if cmd.startswith("test -e") else (0, "")
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(vm, "run", side_effect=fake_run):
+            for k in ("himmel_github_token_vm", "himmel_github_token_vm2"):
+                if k not in env:
+                    os.environ.pop(k, None)
+            vm.clone_himmel()
+        return "\n".join(calls)
+
+    def test_clone_token_only_vm2(self):
+        joined = self._clone_joined({"himmel_github_token_vm2": "TKN2"})
+        self.assertIn("x-access-token:TKN2@", joined)
+
+    def test_clone_token_vm_wins_over_vm2(self):
+        joined = self._clone_joined({"himmel_github_token_vm": "TKN1",
+                                     "himmel_github_token_vm2": "TKN2"})
+        self.assertIn("x-access-token:TKN1@", joined)
+        self.assertNotIn("TKN2", joined)
+
+    def test_clone_token_neither_names_both(self):
+        with self.assertRaises(vmsdk.VMError) as cm:
+            self._clone_joined({})
+        self.assertIn("himmel_github_token_vm or", str(cm.exception))
+        self.assertIn("himmel_github_token_vm2", str(cm.exception))
+
+    def test_clone_loads_both_token_keys_from_dotenv(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env") as ld, \
+             mock.patch.object(vm, "run",
+                               side_effect=lambda cmd, **kw: (1, "") if cmd.startswith("test -e") else (0, "")):
+            vm.clone_himmel()
+        ld.assert_called_with(["himmel_github_token_vm", "himmel_github_token_vm2"])
+
     def test_clone_refuses_existing_dest(self):
         vm = self._vm()
         with mock.patch.object(vm, "run", return_value=(0, "")):  # test -e => exists
