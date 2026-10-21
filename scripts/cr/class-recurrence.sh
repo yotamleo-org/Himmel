@@ -153,6 +153,7 @@ if ! jira_run list --project "$PROJECT" --limit 500 --labels \
     echo "class-recurrence: residual lookup failed — fail-closed: $(cat "$W/err")" >&2
     exit 4
 fi
+[ "$(grep -c . "$W/residuals.raw")" -lt 500 ] || echo "WARN class-recurrence: the query hit its 500-row cap, the residual results below are partial" >&2
 awk -F'\t' '
     NF >= 5 && $5 !~ /(^|,)folded-into-/ {
         n = split($5, L, ","); for (i = 1; i <= n; i++) if (L[i] ~ /^class-./) print substr(L[i], 7) "\t" $1 "\t" $4
