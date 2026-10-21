@@ -28,6 +28,9 @@
 # Read-only. Any API error exits 1: a measurement with holes is not a number.
 # ponytail: one page (100) of runs per branch and of statuses per head; a PR
 # with more is undercounted, add --paginate there if one ever does.
+# ponytail: a run belongs to a PR by its head being in the PR's commit list (a
+# closed PR's runs carry an empty pull_requests), so runs on a head a force-push
+# dropped are not counted; himmel forbids force-push, upgrade = a PR-event key.
 set -uo pipefail
 
 usage() { echo "usage: cr-first-measure.sh [-R owner/repo] [--limit N] [--dump FILE] | --bundle FILE" >&2; exit 2; }
