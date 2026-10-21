@@ -83,6 +83,11 @@ outb="$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex
 check "a refused bus send is reported with its reason" "1" "$(printf '%s\n' "$outb" | grep -c '^BUS-RELAY-FAIL N7 (bus: no edge to DEMO-1-N7-alpha)$')"
 check "a refused bus send still prints the SendMessage" "1" "$(printf '%s\n' "$outb" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"
 check "a refused bus send does not fail the run" "0" "$rcb"
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$BUS"
+outs="$(RELAY_BATCH_BUS_TIMEOUT=1 bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)"; rcs=$?
+check "a stalled bus send is cut off and reported" "1" "$(printf '%s\n' "$outs" | grep -c '^BUS-RELAY-FAIL N7 (timed out after 1s)$')"
+check "a stalled bus send still prints the SendMessage" "1" "$(printf '%s\n' "$outs" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"
+check "a stalled bus send does not fail the run" "0" "$rcs"
 printf '%s\n' "$LOGBUS" > "$BUS"
 # Each leg's session is resolved from the LIVE process census, never guessed: the full
 # doc stem first, then leg_identity's names; exactly one live match or UNRESOLVED.

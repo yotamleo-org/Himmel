@@ -32,7 +32,8 @@
 # legs (the live fleet), so a tick can flag drift.
 #
 # Seams (tests): INBOX_SEND replaces inbox-send.sh; RELAY_BATCH_CENSUS is a script
-# printing claude_sessions-format census lines; RELAY_BATCH_BUS replaces the bus CLI.
+# printing claude_sessions-format census lines; RELAY_BATCH_BUS replaces the bus CLI;
+# RELAY_BATCH_BUS_TIMEOUT bounds each bus send (seconds, default 15).
 # Exit: 0 ok (skips are not errors); 1 a claudex delivery failed; 2 usage.
 # PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 set -uo pipefail
@@ -67,9 +68,13 @@ relay_bus() {
     local body err
     body="$(mktemp "${TMPDIR:-/tmp}/relay-bus.XXXXXX")" || { echo "BUS-RELAY-FAIL $1 (mktemp failed)"; return 0; }
     printf 'SUCCESSION bus record from %s: your console is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor" > "$body"
-    if err="$("$bus" send "$2" "$body" 2>&1 >/dev/null)"; then
+    local wait_for="" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}" rc
+    command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
+    if err="$($wait_for "$bus" send "$2" "$body" 2>&1 >/dev/null)"; then
         echo "BUS-RELAY $1 ok"
     else
+        rc=$?
+        [ "$rc" -eq 124 ] && [ -n "$wait_for" ] && err="timed out after ${limit}s"
         echo "BUS-RELAY-FAIL $1 (${err%%$'\n'*})"
     fi
     rm -f "$body"
