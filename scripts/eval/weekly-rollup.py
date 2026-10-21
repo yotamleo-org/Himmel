@@ -39,6 +39,7 @@ WEEKLY_ROLLUP_NOW fixes the clock (tests).
 """
 import argparse
 import datetime as dt
+import fcntl
 import json
 import os
 import re
@@ -51,7 +52,7 @@ SERIES = ("merges", "tickets", "fix_share_pct", "cost_eq_per_ticket",
 NO_SOURCE = ["failure_rate_pct", "denial_rate_pct", "ship_stage_median_min"]
 STABLE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 TICKET = re.compile(r"\[([A-Z][A-Z0-9]*-\d+)\]")
-COST_EQ = re.compile(r"cost-eq=([0-9.]+)(k?)")
+COST_EQ = re.compile(r"^leg-burn\b(?:[^\n]*\n)?[^\n]*?\bcost-eq=([0-9.]+)(k?)", re.M)
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 
@@ -140,6 +141,8 @@ def cache_hit(path, t0, t1):
 def flake_total(script, epoch):
     p = subprocess.run(["bash", script, "--since", str(epoch), "--format", "counts"],
                        capture_output=True, text=True)
+    if p.returncode != 0:
+        return None
     total = 0
     for line in p.stdout.splitlines():
         if line.strip() == "?":
@@ -256,6 +259,9 @@ def cmd_write(a):
     a.flake_script = os.environ.get("FLAKE_SUMMARY_SCRIPT") or str(ROOT / "scripts/observability/suite-flake-summary.sh")
     end = dt.date.fromisoformat(a.end) if a.end else a.now.date()
     out = Path(a.out or os.environ.get("WEEKLY_ROLLUP_FILE") or Path.home() / ".himmel/state/rollup/weekly.jsonl")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    lock = open(out.with_name(out.name + ".lock"), "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
     rows = load(out)
     try:
         for key, t0, t1 in (week_windows(end, a.weeks) if a.weeks else ()):
