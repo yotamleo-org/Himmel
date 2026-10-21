@@ -15,7 +15,7 @@ import { formatTransitions } from './commands/transitions.js';
 import { buildEditFields } from './commands/edit.js';
 import { parseLabels } from './commands/labels.js';
 import { uploadAll } from './commands/attach-helper.js';
-import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict } from './plain-block.js';
+import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleVerdict } from './plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './commands/sector.js';
 import type {
   JiraIssue,
@@ -170,6 +170,8 @@ export function createTools(): JiraTool[] {
         });
         let out = `Created ${result.key}`;
         if (home.action === 'warn') out += `\n  ${home.message}`;
+        const titleCheck = titleVerdict(args.type as string, args.title as string, sectors);
+        if (titleCheck.action === 'warn') out += `\n  ${titleCheck.message}`;
 
         const attachments = (args.attach as string[] | undefined) ?? [];
         if (attachments.length > 0) {

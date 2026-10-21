@@ -298,6 +298,18 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(msg).toMatch(/"## Plan" has no bullet.*"## DoD" has no bullet/s);
   });
 
+  it('warns, and still files, a Task whose title breaks the template (HIMMEL-6968)', async () => {
+    await run(['--type', 'Task', '--title', 'feat(jira): add a thing', '--desc', PLAIN, ...HOME]);
+    expect(posted()).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning: title.*commit prefix/s));
+  });
+
+  it('does not warn about the title of a fitting Task (HIMMEL-6968)', async () => {
+    await run(['--type', 'Task', '--title', 'Ship loop: merge waits for the signed GO', '--desc', PLAIN, ...HOME]);
+    expect(posted()).toBe(true);
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringMatching(/warning: title/));
+  });
+
   it('refuses a body-less Task', async () => {
     await expect(run(['--type', 'Task'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBe(false);
