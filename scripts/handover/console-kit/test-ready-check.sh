@@ -745,6 +745,29 @@ printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"c
 rc=0; out="$(run)" || rc=$?
 check "ledger: a deferral later amended to fixed is not a deferral: exit 0" "$rc" "0"
 
+OLDHEAD=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"head":"%s"}}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$OLDHEAD" "$OLDHEAD" "$SHA" "$OLDHEAD" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a deferral on a finding an amend moved to the PR head counts: exit 0" "$rc" "0"
+contains "ledger: moved deferral: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"head":"%s"}}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$OLDHEAD" "$OLDHEAD" "$SHA" "$OLDHEAD" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a moved deferral absent from the body: exit 1" "$rc" "1"
+contains "ledger: moved deferral absent from body: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+seed_deferral HIMMEL-50
+printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"head":"%s"}}\n' "$SHA" "$OLDHEAD" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a deferral an amend moved off the PR head is not a deferral there: exit 0" "$rc" "0"
+
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n'
 printf 'not json\n' >> "$LEDGER"
