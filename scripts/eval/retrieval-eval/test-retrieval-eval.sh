@@ -378,5 +378,35 @@ EOF
 py "$EV" census --projects "$W/projects2" --days 7 --out "$W/census2.json" > /dev/null 2>&1
 eq "census: a call older than the window is not counted" "0" "$(py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"]["qmd_calls"])' "$W/census2.json")"
 
+# 13. census used/failed heuristics: a full path decides used, the is_error flag decides failed,
+# and qmd get / multi_get (either tool prefix) are counted.
+P3="$W/projects3/-home-x-himmel"; mkdir -p "$P3"
+cat > "$P3/s3.jsonl" <<'EOF'
+{"type":"custom-title","customTitle":"HIMMEL-3-N3-z"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"x"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a","content":"{\"results\":[{\"file\":\"himmel/docs/a/README.md\"}]}"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Read","input":{"file_path":"/r/docs/b/README.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"bash scripts/graphify/leg-graph.sh query \"hooks\""}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"c","is_error":false,"content":"NODE h [src=docs/h.md loc=L1] error: handler not found, request denied"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"d","name":"Read","input":{"file_path":"/r/docs/h.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"d","content":"x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"e","name":"mcp__qmd__get","input":{"file":"himmel/docs/g.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"e","content":"[Resource from qmd at qmd://himmel/docs/g.md] 1: see docs/unrelated/README.md"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f","name":"Read","input":{"file_path":"/r/.claude/worktrees/w/docs/g.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"f","content":"x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"g","name":"mcp__plugin_qmd_qmd__multi_get","input":{"pattern":"himmel/docs/m1.md,himmel/docs/m2.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"g","content":"[Resource from qmd at qmd://himmel/docs/m1.md] 1: x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"h","name":"Read","input":{"file_path":"/r/docs/other.md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"i","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"zzz"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"i","content":"{\"results\":[]}"}]}}
+EOF
+py "$EV" census --projects "$W/projects3" --days 0 --out "$W/census3.json" > /dev/null 2>&1
+c3() { py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"][sys.argv[2]])' "$W/census3.json" "$1"; }
+eq "census: qmd get and multi_get (either prefix) are counted" "4" "$(c3 qmd_calls)"
+eq "census: only the empty results envelope fails; a body with error: and is_error false does not" "1 0" "$(c3 qmd_failed) $(c3 graphify_failed)"
+eq "census: a README.md in another directory is not used; get is used by its input path (worktree read)" "1" "$(c3 qmd_used)"
+eq "census: graphify answer with error: in the body is used when its file is read" "1" "$(c3 graphify_used)"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"
