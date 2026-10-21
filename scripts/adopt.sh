@@ -1369,6 +1369,10 @@ do_core() {
     # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
     # shellcheck disable=SC2016
     wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
+    # The initiative SessionStart hook is not a portable file: it reads THIS
+    # clone's .env, which is where `himmelctl config set initiative.*` writes, so
+    # it is referenced by the clone's path (like the statusline), not copied.
+    wire_sessionstart_hook "$TARGET/.claude/settings.json" "$HIMMEL_ROOT" "inject-initiative.sh" "$DRY_RUN"
     echo "  worktree commands: bash $TARGET/scripts/worktree.sh feat/slug"
   else
     # user scope: reference this himmel clone, don't copy per-repo. Wire the full
