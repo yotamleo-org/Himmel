@@ -280,9 +280,13 @@ case "$tool" in
         # swallow-ok: a jq failure takes the fail branch.
         cmd=$(printf '%s' "$input" | jq -r '.tool_input.command' 2>/dev/null) \
             || fail "unparseable-payload" "cannot read command"
-        # Quotes and backslashes dropped once; every check below reads the
-        # unquoted text, so gh uplo\ad reads as gh upload.
-        bare=$(printf '%s' "$cmd" | tr -d "\"'\\\\")
+        command -v awk >/dev/null 2>&1 || fail "unparseable-payload" "awk not on PATH"
+        # Line continuations joined (an odd run of trailing backslashes), then
+        # quotes and backslashes dropped once; every check below reads the
+        # unquoted text, so gh uplo\ad and gh up\<newline>load read as gh upload.
+        bare=$(printf '%s' "$cmd" \
+            | awk '{ if (match($0, /\\+$/) && RLENGTH % 2 == 1) { sub(/\\$/, ""); printf "%s", $0 } else print }' \
+            | tr -d "\"'\\\\")
 
         # Mode 1: redirect targets.
         # swallow-ok: no match means no redirect targets.

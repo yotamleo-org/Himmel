@@ -87,6 +87,8 @@ rm_row "release lease acquire of another release" 2 "$(bash_payload "$JIRA relea
 rm_row "release state with no release" 2 "$(bash_payload "$JIRA release state")"
 rm_row "gh release upload --clobber" 2 "$(bash_payload 'gh release upload v1.1.3 dist.tgz --clobber')"
 rm_row "gh release uplo\\ad escaped verb" 2 "$(bash_payload 'gh release uplo\ad v1.1.3 dist.tgz --clobber')"
+rm_row "gh release up<backslash-newline>load continued verb" 2 "$(bash_payload $'gh release up\\\nload v1.1.3 dist.tgz --clobber')"
+rm_row "even backslashes before a newline stay a separator" 2 "$(bash_payload $'echo a\\\\\ngh release upload v1.1.3 dist.tgz')"
 rm_row "leg-jira-status" 2 "$(bash_payload 'bash scripts/handover/console-kit/leg-jira-status.sh HIMMEL-1 Done')"
 rm_row "git commit" 2 "$(bash_payload 'git commit -m x')"
 rm_row "git push" 2 "$(bash_payload 'git push origin HEAD')"
