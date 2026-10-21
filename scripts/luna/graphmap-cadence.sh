@@ -2247,15 +2247,11 @@ cron_arm() {
     if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$SEMANTIC_ACTIVE" -ne 1 ]; then
         : > "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
         echo "graphmap-cadence: semantic armed PAUSED ($BAT_DIR/$SEMANTIC_PAUSE_MARKER); rm it to resume"
-    elif [ "$PUBLISH_SEMANTIC" -eq 1 ]; then
-        rm -f "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
     fi
     # --with-luna-semantic arms PAUSED the same way: billed semantic never starts on its own.
     if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && [ "$SEMANTIC_ACTIVE" -ne 1 ]; then
         : > "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER"
         echo "graphmap-cadence: luna semantic armed PAUSED ($BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER); rm it to resume"
-    elif [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
-        rm -f "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER"
     fi
     # Stage the runners at temp paths and promote (mv) them only after the
     # crontab install succeeds: writing them in place first would let a failed
@@ -2316,6 +2312,11 @@ cron_arm() {
         rm -f "$tmp_luna" "$tmp_himmel" "$tmp_ast_luna" "$tmp_ast_himmel" "$tmp_publish_himmel" "$tmp_semantic_luna"
         echo "    existing runner files left untouched" >&2
         exit 4
+    fi
+    # --semantic-active lifts a pause marker only once the live crontab carries the new entries.
+    if [ "$SEMANTIC_ACTIVE" -eq 1 ]; then
+        [ "$PUBLISH_SEMANTIC" -eq 1 ] && rm -f "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
+        [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && rm -f "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER"
     fi
     if [ -n "$tmp_luna" ]; then
         mv -f "$tmp_luna" "$CRON_RUNNER_LUNA"

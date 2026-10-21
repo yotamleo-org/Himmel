@@ -1188,7 +1188,13 @@ case "${1:-}" in
             exit 1
         fi
         ;;
-    -) cat > "$CSTATE/crontab" ;;
+    -)
+        if [ -e "$CSTATE/fail-write" ]; then
+            echo "error writing new crontab" >&2
+            exit 1
+        fi
+        cat > "$CSTATE/crontab"
+        ;;
     *) echo "crontab-fake: unsupported argv: $*" >&2; exit 64 ;;
 esac
 FAKE
@@ -1532,5 +1538,20 @@ for _m in semantic-luna.paused semantic.paused; do
     fi
 done
 run_cron3 disarm >/dev/null 2>&1
+
+echo "TEST: --semantic-active re-arm whose crontab install fails keeps the pause markers"
+: > "$CRON_DIR3/semantic-luna.paused"
+: > "$CRON_DIR3/semantic.paused"
+touch "$CSTATE3/fail-write"
+rc=0; run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || rc=$?
+assert_rc "semantic-active re-arm install failure rc 4" 4 "$rc"
+for _m in semantic-luna.paused semantic.paused; do
+    if [ -e "$CRON_DIR3/$_m" ]; then
+        pass "failed --semantic-active re-arm kept $_m"
+    else
+        fail "failed --semantic-active re-arm removed $_m" "$(ls "$CRON_DIR3" 2>/dev/null)"
+    fi
+done
+rm -f "$CSTATE3/fail-write" "$CRON_DIR3/semantic-luna.paused" "$CRON_DIR3/semantic.paused"
 
 summary
