@@ -299,6 +299,19 @@ assert_rc "line continuation inside the verb (sta\\<newline>sh drop)" 2 "$(run_c
 sh drop")")"
 assert_rc "quote-split verb with an allowed subcommand (sta''sh list)" 0 "$(run_case "$(j_bash "git sta''sh list")")"
 
+# --- an env NAME=value operand is read by the regex, not dropped: the model
+# unwraps env and never sees the value, so a position reached through env leaves
+# the verdict to the regex unless the model itself denies it.
+assert_rc "env NAME='x; git stash drop' prog"        2 "$(run_case "$(j_bash "env NAME='x; git stash drop' prog")")"
+assert_rc "env -i NAME='x; git stash drop' prog"     2 "$(run_case "$(j_bash "env -i NAME='x; git stash drop' prog")")"
+assert_rc "command env NAME='x; git stash drop' prog" 2 "$(run_case "$(j_bash "command env NAME='x; git stash drop' prog")")"
+assert_rc "timeout env NAME='x; git stash drop' prog" 2 "$(run_case "$(j_bash "timeout 5 env NAME='x; git stash drop' prog")")"
+assert_rc "env NAME='x; update-ref refs/stash' prog"  2 "$(run_case "$(j_bash "env NAME='x; git update-ref refs/stash HEAD' prog")")"
+assert_rc "bash -c env NAME='x; git stash drop' prog" 2 "$(run_case "$(j_bash "bash -c \"env NAME='x; git stash drop' prog\"")")"
+assert_rc "env NAME=1 git stash still denies"         2 "$(run_case "$(j_bash 'env NAME=1 git stash')")"
+assert_rc "env NAME='git stash' printenv stays allowed" 0 "$(run_case "$(j_bash "env NAME='git stash' printenv NAME")")"
+assert_rc "env NAME='x; git stash list' prog stays allowed" 0 "$(run_case "$(j_bash "env NAME='x; git stash list' prog")")"
+
 # --- a missing shfmt denies a command that names the guarded verb, and the
 # message names shfmt; a command that does not mention it never pays for it.
 NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-git-stash-nosh.XXXXXX") || exit 1

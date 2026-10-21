@@ -300,8 +300,9 @@ def bad($w):
              or ($sub == "update-ref" and .t == "lit" and (.v | lcs | test("^--stdin($|[^a-z0-9_-])"))))
          else false end));
 def dynargs: [gitwords | any(.[]; .t != "lit")] | any;
+def viaenv: (.via // []) | any(. == "env");
 if any(.[]; gitwords as $w | bad($w)) then "deny"
-elif any(.[]; unread or dynargs) then "legacy"
+elif any(.[]; unread or dynargs or viaenv) then "legacy"
 else "allow" end
 GS_JQ_EOF
 

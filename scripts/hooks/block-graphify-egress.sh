@@ -222,12 +222,13 @@ def words: if shellish then (.argv | split_words) else .argv end;
 def quiet($w): [range(0; $w | length) | select($w[.].t == "lit" and ($w[.].v | lcs | contains("quiet-run")))] | first;
 def tail_has($w; $q): $q != null and any($w[$q + 1:][]; isg);
 def flagprog: (.prog // "") | startswith("-");
+def viaenv: (.via // []) | any(. == "env");
 if any(.[];
      ((.prog | base) == "graphify")
      or (words as $w | any($w[1:][]; isg) and ((.opaque != null) or shellish or flagprog))
      or (words as $w | tail_has($w; quiet($w))))
 then "route"
-elif any(.[]; unread) then "legacy"
+elif any(.[]; unread or viaenv) then "legacy"
 else "skip" end
 GA_JQ_EOF
     ast_rc=0

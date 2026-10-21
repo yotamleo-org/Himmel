@@ -438,6 +438,17 @@ routed "a backslash in the word (gra\\phify) reaches the fence" "gra\\phify upda
 routed "a line continuation in the word (gra\\<newline>phify) reaches the fence" "gra\\${nl}phify update luna/journal.md --backend claude"
 not_routed "a quote-split word that is not graphify stays skipped" "ls ''$T"
 
+# An env NAME=value operand is read by the regex, not dropped: the model unwraps
+# env and never sees the value, so a position reached through env keeps the
+# regex route unless the model itself routes it.
+routed "env NAME='x; graphify ...' prog reaches the fence" "env NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "env -i NAME='x; graphify ...' prog reaches the fence" "env -i NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "command env NAME='x; graphify ...' prog reaches the fence" "command env NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "timeout env NAME='x; graphify ...' prog reaches the fence" "timeout 5 env NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "bash -c env NAME='x; graphify ...' prog reaches the fence" "bash -c \"env NAME='x; graphify update $T/luna/journal.md --backend claude' prog\""
+routed "env NAME=1 graphify still reaches the fence" "env NAME=1 graphify update $T/luna/journal.md --backend claude"
+not_routed "env NAME=ok prog stays skipped" "env NAME=ok prog $T/luna/graphify-notes.md"
+
 # A missing shfmt denies a command that mentions graphify, with a message naming
 # it; a command that does not mention graphify never pays for shfmt.
 NOSH="$T/no-shfmt-bin"; mkdir -p "$NOSH"
