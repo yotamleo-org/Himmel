@@ -29,8 +29,9 @@ verbatim and turns it back on, so to keep it off permanently also record
 `"himmel-guard@himmel": false` under `enabledPlugins` in
 `~/.claude/settings.local.json`. Claude Code does not read that file at
 runtime; himmel's reconcile reads it as an override input and copies the
-`false` into `settings.json` on its next run. Turn it back on with
-`/profile enable himmel-guard@himmel`.
+`false` into `settings.json` on its next run. To turn it back on, run
+`/profile enable himmel-guard@himmel` and remove that `false` override from
+`~/.claude/settings.local.json` too, or the next reconcile disables it again.
 
 ## Layout
 
