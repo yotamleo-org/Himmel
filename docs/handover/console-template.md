@@ -210,6 +210,9 @@ bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` 
   call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`. [prose]
 - **With a release declared, every placement is a request to the release
   manager**, never a direct fixVersions write: `console-sections/release-manager.md`. [prose]
+- **Weekly standards duty:** run `class-recurrence.sh --days 14` then
+  `standards-cadence.sh --since 7d` when the board's cadence line is stale:
+  `console-sections/weekly-duty.md`. [prose]
 
 ## Handing over
 
