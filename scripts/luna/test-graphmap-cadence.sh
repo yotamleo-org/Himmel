@@ -1455,12 +1455,18 @@ assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" 
 
 # The luna semantic payload reads GRAPHIFY_OUT from its environment too; without an out dir it must clear an ambient one.
 LSP_SRC="$(sed -n '/^luna_semantic_cron_payload()/,/^}/p' "$SCRIPT")"
-run_lsp() { bash -c "$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
+run_lsp() { bash -c "BAT_DIR=$TMP_ROOT/no-such-bat LUNA_SEMANTIC_PAUSE_MARKER=semantic-luna.paused"$'\n'"$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
 lsp_no_dir=$(run_lsp bash script.sh corpus)
 assert_contains "luna_semantic_cron_payload unsets GRAPHIFY_OUT when no out dir is given" "unset GRAPHIFY_OUT" "$lsp_no_dir"
 lsp_with_dir=$(run_lsp bash script.sh corpus /out/root/graphify-out)
 assert_contains "luna_semantic_cron_payload prefixes GRAPHIFY_OUT= when set" "GRAPHIFY_OUT=/out/root/graphify-out" "$lsp_with_dir"
 assert_not_contains "luna_semantic_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$lsp_with_dir"
+# Run the no-dir payload with an ambient GRAPHIFY_OUT: the updater itself must not receive it.
+lsp_stub="$TMP_ROOT/lsp-stub.sh"
+# shellcheck disable=SC2016  # literal ${GRAPHIFY_OUT} — the stub expands it when it runs
+printf '#!/bin/sh\necho "OUT: ${GRAPHIFY_OUT:-unset}"\n' > "$lsp_stub"
+lsp_run=$(GRAPHIFY_OUT=/ambient/override sh -c "$(run_lsp bash "$lsp_stub" corpus)" 2>&1)
+assert_contains "no-dir payload hands the updater no ambient GRAPHIFY_OUT" "OUT: unset" "$lsp_run"
 
 # Luna semantic leg: HIMMEL-GraphSemantic-Luna, POSIX/cron path. Reuses the publish
 # fixture's fake crontab and runner dir, disarmed first so nothing from that block leaks in.
