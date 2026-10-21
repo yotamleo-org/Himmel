@@ -54,6 +54,9 @@ w scripts/zzj-consumer.sh '#!/usr/bin/env bash
 w scripts/zzj-revc.sh '#!/usr/bin/env bash
 echo hi
 '
+w scripts/zzj-glob.sh '#!/usr/bin/env bash
+for f in scripts/zzj/*.sh; do . "$f"; done
+'
 git add -A && git commit -q -m base || exit 1
 BASE=$(git rev-parse HEAD)
 
@@ -82,6 +85,11 @@ verdict() {
 # rename_lib: a renamed lib is a delete + add, so its consumers are found
 reset; git mv scripts/lib/gh-ci-cache.sh scripts/lib/gh-ci-cache-v2.sh; commit_case rename_lib
 verdict rename_lib FILES scripts/lib/check-ci-watch.sh scripts/lib/gh-ci-cache-v2.sh
+
+# rename_dir: a directory rename also selects an untouched consumer that names the OLD directory
+# (a glob), which no basename lookup can find
+reset; git mv scripts/zzj scripts/zzk; commit_case rename_dir
+verdict rename_dir FILES scripts/zzk/zzjlib.sh scripts/zzj-consumer.sh scripts/zzj-glob.sh
 
 # rename_rc: moving the root rc away changes lint config
 reset; mkdir -p docs; git mv .shellcheckrc docs/shellcheckrc.bak; commit_case rename_rc

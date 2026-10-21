@@ -119,7 +119,7 @@ Stages currently wired:
 - **Oxlint ratchets (pre-commit):** oxlint-complexity-ratchet (no NEW
   function above the audited max; HIMMEL-2154),
   oxlint-hardening-zero-violations (bug-class hardening — zero violations;
-  pinned oxlint 1.88.0, with root/cwd diagnostics; findings and tool/JSON
+  pinned oxlint 1.89.0, with root/cwd diagnostics; findings and tool/JSON
   failures block, while only a missing `bunx` fails open; HIMMEL-2163/2802).
 - **Doctor check-ID + unchecked-mktemp gates (pre-commit):**
   doctor-check-ids (`check-doctor-check-ids.sh`, scoped to
@@ -1314,6 +1314,53 @@ Known limitations (accepted, both fail-open by design):
   for an upstream PR, put the audit line in the handover.
 
 Spec: `scripts/cr/test-install-cr-gate.sh`, `scripts/cr/test-pr-check-pair.sh`.
+
+### CR ledger amends — only a signed adjudication lowers a finding (HIMMEL-6511)
+
+The ledger is an append-only JSONL file, so anything that can append a line
+could once append `{"kind":"amend","set":{"verdict":"disproved"}}` and clear a
+Critical or Important finding. Now a **lowering amend** counts only when it is
+signed. An amend is lowering when its `set` does any of these:
+
+- names a severity other than crit;
+- sets the verdict to `disproved`, `fixed` or `deferred`;
+- carries a `deferred_to`;
+- moves the finding to another `head`.
+
+**Who signs.** `ledger-append.sh` is the only amend writer, and it signs every
+amend it writes. It stamps `src: "ledger-append"` and `amend_mac`, an
+HMAC-SHA256 under the GO key (`~/.config/himmel/go-hmac.key`, domain
+`himmel-amend-v1`). The mac covers the branch, the target head, the finding
+id, the artifact, the perspective, the sorted `set` and `src`. So a mac copied
+onto another finding, head or branch does not verify.
+
+**Who checks.** Each gate reader runs its amend rows through
+`scripts/cr/ledger-amend-auth.js` before merging them:
+
+- `clear-cr-marker.sh`;
+- `review-round.sh` (ledger query, promote, and the defer/cap analysis);
+- the chief's `cr-disposition.sh`;
+- the merge-gate lib `scripts/lib/cr-ledger-evidence.sh`.
+
+The helper drops a lowering amend that fails to verify, so the finding stays
+open. Amends that do not lower a finding (`agreed`, crit, a reason) pass
+unsigned. If the helper is missing, the reader fails closed.
+
+**Cutover.** The cutover is the file position of the first amend in that
+ledger that carries an `amend_mac`. Rows above it were written before signing
+existed and are honoured unsigned, so in-flight work is not re-blocked. Below
+it, every lowering amend must verify. With no GO key on the host (CI, a fresh
+station), nothing is signed and every amend is honoured, as before.
+
+- **Ceiling.** The signer shares the operator's uid. Any process running as
+  that uid can read the key, or call `ledger-append.sh amend` itself. The
+  check therefore stops a hand-appended or tool-forged line, not a same-uid
+  writer that goes through the sanctioned path. The upgrade is a separate-uid
+  signer that only a judge or the chief can drive (HIMMEL-6772).
+
+Spec: `scripts/cr/test-ledger-amend-auth.sh`, plus the HIMMEL-6511 rows in
+`test-clear-cr-marker.sh`, `test-pr-check-rounds.sh` and
+`console-kit/test-cr-disposition.sh`.
 
 ### `block-jira-compound-write.sh` — jira write-shape bounce (HIMMEL-1077)
 
@@ -3205,7 +3252,7 @@ thread is evidence even when the status endpoint is down (observed live — GitH
 
 **Review freshness (HIMMEL-1181, B2) — retired (HIMMEL-3360).** The gate once
 denied on a *latest bot review* anchored to an older commit than the head
-(`scripts/lib/cr-review-freshness.sh`, GraphQL; live instance PR #1273: status
+(the `cr-review-freshness` library, GraphQL, now deleted; live instance PR #1273: status
 success + 0 unresolved threads over a head nobody reviewed, because a clean
 incremental posts no review object and GitHub outdates the old threads).
 CodeRabbit is best effort, so a stale anchor is now the same NOTE as an
@@ -3441,8 +3488,8 @@ construction), `scripts/lib/test-cr-merge-gate.sh` and
 ### CodeRabbit is the App, and only the App (HIMMEL-2704)
 
 **Operator ruling 2026-09-07: the GitHub App is the CodeRabbit surface. There is
-no CLI.** `scripts/cr/coderabbit-review.sh` (the CLI wrapper) and
-`scripts/cr/coderabbit-gate.sh` (the `/pr-check` conserve-or-run gate) are
+no CLI.** The `coderabbit-review` wrapper (the CLI wrapper) and
+`coderabbit-gate` (the `/pr-check` conserve-or-run gate) are
 DELETED, together with `CODERABBIT_BIN`, `CODERABBIT_WSL`,
 `CODERABBIT_TIMEOUT_SECS`, `CODERABBIT_CLI_DISABLE` and `CODERABBIT_ALLOW_WSL`.
 HIMMEL-2683 ("arm the CodeRabbit CLI") is closed won't-do.
@@ -4102,8 +4149,9 @@ worker system prompt's read-range sentence, #692) — this is the structural esc
 second drift.
 
 Denies (a) a `Read` without `offset`/`limit` of a file over
-`HIMMEL_READ_CLAMP_LINES` (default 400) lines, naming the file's line count
-and the `offset=<n> limit=<m>` shape to use instead; (b) a `Read` whose exact
+`HIMMEL_READ_CLAMP_LINES` (default 2000, the Read tool's page size) lines, naming the file's line count and the exact
+`offset=<n> limit=<m>` pages that cover it (the first 8, then the continuation
+step) so any lane retries in one step; (b) a `Read` whose exact
 `(path, offset, limit)` triple was already read this session, naming the
 recorded timestamp — a *different* range of the same file is allowed and
 recorded; (c) the equivalent `Bash` shapes (`cat <file>`, `sed -n '1,$p'
@@ -4374,7 +4422,7 @@ allows. **FAIL-OPEN** (unlike the block-* hooks): it only ever exits 0 with
 either the injection envelope or empty stdout, so it never blocks a Skill call
 on its own error (a PreToolUse exit 2 would block the tool). Kill switch:
 `MINERVA_HOOK_DISABLE=1` in the launching shell (bypass convention as above).
-Paired smoke test: `hooks/test-inject-minerva-critic.sh`.
+Paired smoke test: `marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh`.
 
 ## Claude SessionStart Hooks
 
@@ -5717,7 +5765,7 @@ usage counters, so counting lines instead of requests inflates the total by
 declares `CADENCE_BANK_LAUNCH=1` (an actual arm/launch); a plain usage budget read
 (a `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the
 same verdict and FLEET line but is never refused by it — detail:
-[lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident-himmel-2765).
+[lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident).
 
 Refs: HIMMEL-1748; `scripts/graphify/refresh-graph-map.sh`;
 `scripts/lib/bank-preflight.sh`;

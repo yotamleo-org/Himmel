@@ -29,6 +29,11 @@ run_case() {  # $1 = json, $2 = extra env assigns (space-separated VAR=val), $3 
     echo "$?"
 }
 
+run_case_default() {  # $1 = json; runs with HIMMEL_READ_CLAMP_LINES unset, exercising the shipped default
+    printf '%s' "$1" | env -u HIMMEL_READ_CLAMP_LINES XDG_RUNTIME_DIR="$RUNTIME_DIR" HIMMEL_CONSOLE_LEG=1 bash "$HOOK" >"$WORK/stdout" 2>"$WORK/stderr"
+    echo "$?"
+}
+
 assert_rc() {
     local label="$1" expected="$2" actual="$3"
     if [ "$actual" = "$expected" ]; then
@@ -77,6 +82,9 @@ assert_rc "whole-file read over limit denies" 2 "$rc"
 assert_stderr_contains "whole-file deny names line count" "10 lines"
 assert_stderr_contains "whole-file deny names range shape" "offset=<n> limit=<m>"
 assert_stderr_contains "whole-file deny names the literal retry (HIMMEL-4815)" "Retry: Read file_path=$BIG_FILE offset=1 limit=5"
+assert_stderr_contains "whole-file deny names the first page" "offset=1 limit=5"
+assert_stderr_contains "whole-file deny names the second page (HIMMEL-6783)" "offset=6 limit=5"
+assert_stderr_contains "whole-file deny says read in pages, not stop (HIMMEL-6783)" "read it in pages"
 
 # 3. whole-file read <= N lines -> allow.
 rc=$(run_case "$(j_read "$SMALL_FILE" sess-smallfile)" "HIMMEL_CONSOLE_LEG=1")
@@ -162,6 +170,38 @@ assert_rc "read of a FIFO allows without blocking" 0 "$rc"
 rc=$(run_case "$(j_read "$BIG_FILE" sess-escape)" "HIMMEL_CONSOLE_LEG=1 HIMMEL_READ_CLAMP_OK=1")
 assert_rc "escape env allows" 0 "$rc"
 assert_stderr_contains "escape env logs bypass" "HIMMEL_READ_CLAMP_OK=1"
+
+# 11. the shipped default: a 1613-line file (the docs mockup) is
+# readable whole; a file over 2000 lines is denied with the exact page ranges.
+MOCKUP_FILE="$WORK/mockup.txt"
+seq 1 1613 > "$MOCKUP_FILE"
+rc=$(run_case_default "$(j_read "$MOCKUP_FILE" sess-default-mockup)")
+assert_rc "default allows a 1613-line whole-file read" 0 "$rc"
+
+HUGE_FILE="$WORK/huge.txt"
+seq 1 4500 > "$HUGE_FILE"
+rc=$(run_case_default "$(j_read "$HUGE_FILE" sess-default-huge)")
+assert_rc "default denies a 4500-line whole-file read" 2 "$rc"
+assert_stderr_contains "default deny names line count" "4500 lines"
+assert_stderr_contains "default deny names page 1" "offset=1 limit=2000"
+assert_stderr_contains "default deny names page 2" "offset=2001 limit=2000"
+assert_stderr_contains "default deny names page 3" "offset=4001 limit=2000"
+
+# 11b. more pages than fit in one message: the first 8 are listed, then the
+# continuation step.
+PAGED_FILE="$WORK/paged.txt"
+seq 1 100 > "$PAGED_FILE"
+rc=$(run_case "$(j_read "$PAGED_FILE" sess-paged)" "HIMMEL_CONSOLE_LEG=1")
+assert_rc "many-page file denies" 2 "$rc"
+assert_stderr_contains "page 8 is listed" "offset=36 limit=5"
+assert_stderr_contains "continuation names the next offset" "then offset=41 limit=5"
+
+# 11c. the repeated-read deny is unchanged under the default.
+rc=$(run_case_default "$(j_read_ranged "$MOCKUP_FILE" 1 800 sess-default-repeat)")
+assert_rc "default: first ranged read allows" 0 "$rc"
+rc=$(run_case_default "$(j_read_ranged "$MOCKUP_FILE" 1 800 sess-default-repeat)")
+assert_rc "default: identical repeat read still denies" 2 "$rc"
+assert_stderr_contains "default: repeat deny names 'already read'" "already read"
 
 echo "==============================="
 if [ "$FAILED" -eq 0 ]; then

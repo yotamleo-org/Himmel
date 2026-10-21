@@ -57,6 +57,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 
 MESSAGE=""
 DO_PUSH=1     # HIMMEL-140: push is on by default on the branched path.
@@ -181,20 +184,14 @@ fi
 # pathologically points inside it — defense in depth against a typo
 # that made it past handover_mode's "B if env var set" check.
 #
-# Canonicalize both sides via realpath -m so Windows case-insensitive
-# paths (C:/Users vs c:/users), trailing slashes, symlinks, and 8.3
-# short names all normalize to the same string. Falls back to python
-# on platforms missing GNU realpath (matches block-edit-on-main.sh's
-# convention).
+# Canonicalize both sides via canon_path (scripts/lib/prim.sh) so trailing
+# slashes and symlinks normalize to the same string. Every path given to
+# canon() is an existing directory; one that is not stays as given.
 himmel_repo=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC2329  # used after definition below for handover_repo + root canonicalisation
 canon() {
     local p="$1"
-    if command -v realpath >/dev/null 2>&1; then
-        p=$(realpath -m "$p" 2>/dev/null || echo "$p")
-    elif command -v python3 >/dev/null 2>&1; then
-        p=$(python3 -c "import sys, pathlib; print(pathlib.Path(sys.argv[1]).resolve(strict=False))" "$p")
-    fi
+    p=$(canon_path "$p" 2>/dev/null || printf '%s' "$p")
     # On Git Bash / Cygwin, coerce to mixed-Windows style (C:/...) so paths
     # that arrived in msys form (/tmp/..., /c/...) line up with paths git
     # reports via `rev-parse --show-toplevel` (which resolves /tmp symlinks

@@ -156,7 +156,7 @@ let p = process.env.WT_CONFIG;
 const seam = process.env.WT_SEAM === "1";
 const refuseLink = () => { console.error("leg-pretrust: " + p + " is a symlink (seam mode) - refusing"); process.exit(3); };
 try { if (seam && fs.lstatSync(p).isSymbolicLink()) refuseLink(); } catch (e) { if (e.code !== "ENOENT") throw e; }
-// Seam mode never resolves the path (a second lstat/realpath is itself a race window).
+// Seam mode never resolves the path (a second lstat or link resolution is itself a race window).
 if (!seam) try { if (fs.lstatSync(p).isSymbolicLink()) p = fs.realpathSync(p); } catch (e) {
     if (e.code !== "ENOENT") { console.error("leg-pretrust: cannot resolve " + p + " (" + e.message + ")"); process.exit(4); }
     try { fs.lstatSync(p); console.error("leg-pretrust: " + p + " is a dangling symlink - refusing to write"); process.exit(4); } catch (_) {}

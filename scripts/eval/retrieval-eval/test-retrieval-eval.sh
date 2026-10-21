@@ -47,7 +47,7 @@ EOF
 cat > "$W/graph" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
-*halt*) printf 'NODE Halt rule [src=docs/lock.md loc=L2 community=x]\n  RATIONALE: a mild DoS, not a compromise\nNODE other [src=docs/other.md loc=L1 community=x]\n' ;;
+*halt*) printf 'NODE Halt rule [src=docs/lock.md loc=L2 community=x] WHY a mild DoS, not a compromise\nNODE other [src=docs/other.md loc=L1 community=x]\n' ;;
 *) printf 'NODE nothing [src=docs/other.md loc=L1 community=x]\n' ;;
 esac
 EOF
@@ -74,7 +74,7 @@ eq "scores.tsv lists the path and ident-grep arms" "ident-grep path" "$(awk -F'\
 s() { awk -F'\t' -v a="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==a{print $h[c]}' "$W/out/scores.tsv"; }
 
 # 2. grep finds both gold files from the question words.
-eq "grep recall@5 is 1.00" "1.00" "$(s grep recall@5)"
+eq "grep hit@5 is 1.00" "1.00" "$(s grep hit@5)"
 eq "grep carries the q1 reason" "1.00" "$(s grep reason_carried)"
 
 # 2b. path ranks tracked file names by the question words; ident-grep ranks the defining file of an identifier first.
@@ -95,15 +95,46 @@ HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-2b.jsonl" py "$EV" run --repo "$R" --question
 eq "ident-grep with an exhausted budget is a timeout row, not a late search" "True" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["timeout"])' "$W/outp4/results.jsonl")"
 
 # 3. graphify: q1 hit with its rationale, q2 miss (RED control: a wrong file is no hit).
-eq "graphify recall@5 is 0.50" "0.50" "$(s graphify recall@5)"
+eq "graphify hit@5 is 0.50" "0.50" "$(s graphify hit@5)"
 eq "graphify carries the q1 reason" "1.00" "$(s graphify reason_carried)"
 
 # 4. qmd: qmd:// paths map to repo paths; q1 names a wrong file.
-eq "qmd-hybrid recall@5 is 0.50" "0.50" "$(s qmd-hybrid recall@5)"
+eq "qmd-hybrid hit@5 is 0.50" "0.50" "$(s qmd-hybrid hit@5)"
 eq "qmd-lex reason not carried" "0.00" "$(s qmd-lex reason_carried)"
 
 # 5. combined fuses the three lists: every gold file is in its top 5.
-eq "combined recall@5 is 1.00" "1.00" "$(s combined recall@5)"
+eq "combined hit@5 is 1.00" "1.00" "$(s combined hit@5)"
+
+# 5a. rank-aware metrics: hit@5 forgives noise, so precision@5, MRR, gold-share and tokens-per-hit are scored too.
+# qmd-hybrid: q1 misses (other.md), q2 hits at rank 1; graphify: q1 hits at rank 1 beside one wrong file, q2 misses.
+hdr() { head -1 "$W/out/scores.tsv" | tr '\t' '\n' | grep -cx "$1"; }
+eq "scores.tsv names hit@5" "1" "$(hdr 'hit@5')"
+eq "scores.tsv no longer names recall@5" "0" "$(hdr 'recall@5')"
+eq "qmd-hybrid precision@5 is 0.10" "0.10" "$(s qmd-hybrid precision@5)"
+eq "qmd-hybrid mrr is 0.50" "0.50" "$(s qmd-hybrid mrr)"
+eq "qmd-hybrid gold_share is 0.50" "0.50" "$(s qmd-hybrid gold_share)"
+eq "qmd-hybrid tokens_per_hit is its tokens over its one hit" "18.0" "$(s qmd-hybrid tokens_per_hit)"
+eq "graphify precision@5 is 0.10" "0.10" "$(s graphify precision@5)"
+eq "graphify gold_share pools returned files: 1 of 3" "0.33" "$(s graphify gold_share)"
+eq "an arm with no hit has no tokens_per_hit" "-" "$(s path tokens_per_hit)"
+eq "ledger row carries the four metrics" "0.10 0.50 0.50 18" "$(py -c 'import json,sys
+m = json.loads(open(sys.argv[1]).readlines()[0])["metrics"]
+print("%.2f %.2f %.2f %d" % (m["qmd-hybrid.precision@5"], m["qmd-hybrid.mrr"], m["qmd-hybrid.gold_share"], m["qmd-hybrid.tokens_per_hit"]))' "$HIMMEL_EVAL_RUNS_LEDGER")"
+eq "precision counts a grade-1 file; mrr and gold_share count only gold" "0.2 0.0 0.5" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+q = {"gold": ["bin/run.sh"], "gold1": ["docs/lock.md"]}
+print(m.precision(["Docs/Lock.md"], q, 5), m.reciprocal_rank(["Docs/Lock.md"], q, 5), m.gold_share(["docs/lock.md", "bin/run.sh"], q, 5))' "$EV")"
+eq "a graded path is counted once however many returned files match it" "0.2 0.5" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+q = {"gold": ["docs/lock.md"], "gold1": []}
+f = ["docs/lock.md", "archive/docs/lock.md"]
+print(m.precision(f, q, 5), m.gold_share(f, q, 5))' "$EV")"
+printf '{"id":"f1","kind":"where","q":"where is relay_batch defined","gold":["bin/run.sh"],"reason":[]}\n{"id":"f2","kind":"where","q":"where is relay_batch set","gold":["bin/run.sh"],"reason":[]}\n{"id":"f3","kind":"why","q":"why does a halt need no token","gold":["docs/lock.md"],"reason":[]}\n' > "$W/qf.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-5a.jsonl" py "$EV" run --repo "$R" --questions "$W/qf.jsonl" --out "$W/outf" --arms qmd-hybrid > /dev/null 2>&1
+eq "tokens_per_hit keeps its fraction" "13.5" "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} {print $h["tokens_per_hit"]}' "$W/outf/scores.tsv")"
+eq "mrr is the reciprocal of the first gold rank" "0.33" "$(py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+print("%.2f" % m.reciprocal_rank(["a.md", "b.md", "bin/run.sh"], {"gold": ["bin/run.sh"]}, 5))' "$EV")"
 
 # 5b. the live qmd server names a file himmel/docs/lock.md (no qmd:// scheme); grep names docs/lock.md.
 # The combined top 5 holds that file once, not twice.
@@ -160,9 +191,9 @@ eq "MCP isError result raises" "raised" "$(mcp '{"result":{"isError":true,"conte
 eq "MCP JSON-RPC error raises" "raised" "$(mcp '{"error":{"code":-32603,"message":"boom"}}')"
 eq "MCP results parse" "ok" "$(mcp '{"result":{"structuredContent":{"results":[]}}}')"
 
-# 8f. the recall column names the --k cutoff.
+# 8f. the hit column names the --k cutoff.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/out6" --arms grep --k 3 > /dev/null 2>&1
-eq "recall column follows --k" "recall@3" "$(head -1 "$W/out6/scores.tsv" | cut -f3)"
+eq "hit column follows --k" "hit@3" "$(head -1 "$W/out6/scores.tsv" | cut -f3)"
 
 # 8g. qmd lowercases paths: qmd://himmel/claude.md is a hit for gold CLAUDE.md; the row keeps the question's src.
 printf '{"id":"q7","kind":"where","src":"selfq","q":"casefold rules","gold":["CLAUDE.md"],"reason":[]}\n' > "$W/q7.jsonl"
@@ -211,9 +242,9 @@ v = m.get(sys.argv[2], "absent")
 print("%.2f" % v if isinstance(v, float) else v)' "$1" "$2"; }
 eq "ledger row: in-sample n" "1" "$(lm "$W/ledger-9b.jsonl" grep.insample.n)"
 eq "ledger row: held-out n" "2" "$(lm "$W/ledger-9b.jsonl" grep.heldout.n)"
-eq "ledger row: in-sample recall@5" "1.00" "$(lm "$W/ledger-9b.jsonl" 'grep.insample.recall@5')"
-eq "ledger row: held-out recall@5" "0.50" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.recall@5')"
-eq "ledger row: held-out recall_any@5 counts a grade-1 file" "1.00" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.recall_any@5')"
+eq "ledger row: in-sample hit@5" "1.00" "$(lm "$W/ledger-9b.jsonl" 'grep.insample.hit@5')"
+eq "ledger row: held-out hit@5" "0.50" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.hit@5')"
+eq "ledger row: held-out hit_any@5 counts a grade-1 file" "1.00" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.hit_any@5')"
 eq "ledger row: held-out ndcg@5 is graded" "0.69" "$(lm "$W/ledger-9b.jsonl" 'grep.heldout.ndcg@5')"
 eq "ledger row validates" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$W/ledger-9b.jsonl" > /dev/null 2>&1; echo $?)"
 eq "ledger row names the frozen held-out set" "2" "$(py -c 'import json,sys; print(json.loads(open(sys.argv[1]).readlines()[-1])["meta"]["n_heldout"])' "$W/ledger-9b.jsonl")"
@@ -223,7 +254,7 @@ eq "results.jsonl rows carry their split" "insample heldout heldout" "$(py -c 'i
 # A run over a set with no held-out question still carries the held-out keys: n 0, scores null.
 HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-9c.jsonl" py "$EV" run --repo "$R" --questions "$Q" --out "$W/outq" --arms grep > /dev/null 2>&1
 eq "no held-out question: held-out n is 0" "0" "$(lm "$W/ledger-9c.jsonl" grep.heldout.n)"
-eq "no held-out question: held-out recall is null" "None" "$(lm "$W/ledger-9c.jsonl" 'grep.heldout.recall@5')"
+eq "no held-out question: held-out hit is null" "None" "$(lm "$W/ledger-9c.jsonl" 'grep.heldout.hit@5')"
 # check refuses a bad split, a missing grade-1 file and a file graded twice.
 chk() { printf '%s\n' "$1" > "$W/qc.jsonl"; py "$EV" check --repo "$R" --questions "$W/qc.jsonl" > /dev/null 2>&1; echo $?; }
 eq "check refuses an unknown split" "1" "$(chk '{"id":"c1","split":"dev","q":"x","gold":["docs/lock.md"],"reason":[]}')"

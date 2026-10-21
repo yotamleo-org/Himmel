@@ -26,7 +26,9 @@
 # live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
 # is appended as ` live-state=failed <why>` (the wrap is done, so rc stays 0).
 #
-# Output: one line. `HANDLED wrap-merged|close-wrapped <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0) or
+# Output: one line. `HANDLED wrap-merged|close-wrapped <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0),
+# `HANDLED noop <label>` (rc 0) when the leg is out of the manifest and the console doc
+# already records `<label> WRAPPED, window closed.` (a re-run on a closed leg), or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
 # marker-<X>, unfiled-residual: <line>, or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it.
 # Usage errors exit 2 before anything runs.
@@ -89,6 +91,13 @@ if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
     leg="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || leg=""
+    # a leg already wrapped has left the manifest; wrap-merged's console-doc bullet
+    # (`<label> WRAPPED, window closed.`) says so, and a re-run is then a noop.
+    # ponytail: a leg closed by close-wrapped (no such bullet) or named only by its
+    # stem still escalates, upgrade to a closed-legs record if such a re-run ever wakes a console
+    if [ -z "$leg" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
+        echo "HANDLED noop $label"; exit 0
+    fi
     [ -n "$leg" ] || escalate "not-in-manifest $label"
 else
     legs=""

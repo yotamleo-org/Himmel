@@ -43,10 +43,15 @@ describe('--affects-version (HIMMEL-6236)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     process.env.JIRA_PROJECT_KEY = 'HIMMEL';
-    mockRequest.mockImplementation(async (method: string, path: string) => {
+    let affects = [{ name: 'v1.1.3' }];
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
       if (method === 'POST') return { key: 'HIMMEL-1' };
+      if (method === 'PUT') {
+        const ops = (body as { update?: { versions: Array<{ add?: { name: string } }> } }).update?.versions ?? [];
+        affects = [...affects, ...ops.flatMap((o) => (o.add ? [o.add] : []))];
+      }
       if (method !== 'GET') return {};
-      return path.endsWith('/versions') ? VERSIONS : { fields: { versions: [{ name: 'v1.1.3' }] } };
+      return path.endsWith('/versions') ? VERSIONS : { fields: { versions: affects } };
     });
   });
 

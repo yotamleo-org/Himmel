@@ -192,9 +192,9 @@ else
   row tool:qmd "<absent>"
 fi
 GPIN=""
-[ -f "$ROOT/scripts/lib/graphify-bin.sh" ] && GPIN="$(grep -oE 'GRAPHIFY_VERSION:-[0-9][0-9.]*' "$ROOT/scripts/lib/graphify-bin.sh" | head -n 1 | sed 's/.*:-//')"
+[ -f "$ROOT/scripts/lib/graphify-bin.sh" ] && GPIN="$(grep -oE 'GRAPHIFY_VERSION:-[0-9][0-9A-Za-z.+-]*[0-9A-Za-z]' "$ROOT/scripts/lib/graphify-bin.sh" | head -n 1 | sed 's/.*:-//')"
 row graphify-pin "${GPIN:-<none>}"
-GCUR="$(bounded 20 graphify --version 2>/dev/null | first_line | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1)"
+GCUR="$(bounded 20 graphify --version 2>/dev/null | first_line | grep -oE '[0-9]+(\.[0-9]+)+(\+himmel\.[0-9]+)?' | head -n 1)"
 if [ -z "$GCUR" ] || [ -z "$GPIN" ]; then row graphify-at-pin "n/a"; elif [ "$GCUR" = "$GPIN" ]; then row graphify-at-pin "yes"; else row graphify-at-pin "NO installed=$GCUR pin=$GPIN"; fi
 row graphify-graph "$([ -f "$ROOT/graphify-out/graph.json" ] && echo present || echo absent)"
 if [ "$QMD_OK" -eq 1 ] && [ -f "$ROOT/scripts/lib/qmd-bounded.sh" ]; then

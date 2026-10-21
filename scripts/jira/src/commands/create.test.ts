@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Mock the network + breadcrumb layers so the command action resolves without
 // a real Jira or a real breadcrumb file write (same pattern as
@@ -149,7 +152,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('defaults a Bug to the earliest unreleased version and says so', async () => {
     withVersions(VERSIONS);
-    await createFields(['--type', 'Bug']);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
     expect(postedFields().fixVersions).toEqual([{ name: 'v1.0.2' }]);
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/defaults to fixVersion v1\.0\.2/));
   });
@@ -162,7 +165,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('files with no fixVersion and a warning when no unreleased version can be found', async () => {
     withVersions([{ id: '1', name: 'v1.0.0', released: true }]);
-    await createFields(['--type', 'Bug']);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
     expect(postedFields().fixVersions).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/no unreleased version.*no fixVersion/));
   });
@@ -172,7 +175,7 @@ describe('create — Bug default fixVersion wiring', () => {
       if (method === 'GET') throw new Error('boom');
       return { key: 'HIMMEL-1' };
     });
-    await createFields(['--type', 'Bug']);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
     expect(postedFields().fixVersions).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/no unreleased version.*no fixVersion/));
   });
@@ -689,7 +692,7 @@ describe('create — cap gate (HIMMEL-6485)', () => {
 
   it('a versionless Bug over the cap gets the next version, and says so', async () => {
     play({ open: 15 });
-    await file('--type', 'Bug');
+    await file('--type', 'Bug', '--priority', 'Highest');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
     expect(stderr()).toMatch(/over its cap.*v1\.1\.4/s);
     expect(stderr()).not.toMatch(/earliest unreleased|defaults to fixVersion/);
@@ -697,20 +700,20 @@ describe('create — cap gate (HIMMEL-6485)', () => {
 
   it('a versionless Bug over the cap with no next version files with no fixVersion', async () => {
     play({ open: 15, noNext: true });
-    await file('--type', 'Bug');
+    await file('--type', 'Bug', '--priority', 'Highest');
     expect(created()!['fixVersions']).toBeUndefined();
     expect(stderr()).not.toMatch(/no unreleased version found/);
   });
 
   it('a versionless Bug under the cap still defaults to the current version', async () => {
     play({ open: 2 });
-    await file('--type', 'Bug');
+    await file('--type', 'Bug', '--priority', 'Highest');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
   });
 
   it('a Bug --over-cap defaults to the current version past the cap', async () => {
     play({ open: 15 });
-    await file('--type', 'Bug', '--over-cap', 'release blocker');
+    await file('--type', 'Bug', '--priority', 'Highest', '--over-cap', 'release blocker');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
     expect(created()!['labels']).toContain('over-cap');
   });
@@ -741,5 +744,314 @@ describe('create — cap gate (HIMMEL-6485)', () => {
   it('--follow-up-of cannot be combined with --residual-of', async () => {
     play();
     await expect(file('--follow-up-of', 'HIMMEL-50', '--residual-of', 'HIMMEL-50')).rejects.toThrow(/--residual-of/);
+  });
+});
+
+// A Bug is placed at filing: backlog, or the active version for a Highest or
+// gated one; the console can overrule with a reason that lands in the ledger.
+describe('create — Bug placement (HIMMEL-6776)', () => {
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+
+  const play = () =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false },
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      return { key: 'HIMMEL-77' };
+    });
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Bug', '--title', 'b', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const ledger = () => {
+    try {
+      return readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'admissions-'));
+    process.env['HANDOVER_DIR'] = dir;
+    play();
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses a Bug with no placement, naming both choices and the sector hint, without POSTing', async () => {
+    await expect(file()).rejects.toThrow(/Ship loop.*--backlog.*--fix-version/s);
+    expect(created()).toBeUndefined();
+  });
+
+  it('files a --backlog Bug with the backlog label and no fixVersion', async () => {
+    await file('--backlog');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('backlog');
+  });
+
+  it('puts a Highest Bug in the earliest unreleased version', async () => {
+    await file('--priority', 'Highest');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(created()!['priority']).toEqual({ name: 'Highest' });
+    expect(created()!['labels'] ?? []).not.toContain('backlog');
+  });
+
+  it.each(['critical', 'regression'])('puts a --gate %s Bug in the earliest unreleased version', async (gate) => {
+    await file('--gate', gate);
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('refuses an unknown --gate', async () => {
+    await expect(file('--gate', 'urgent')).rejects.toThrow(/--gate/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses --backlog together with a gate or a --fix-version', async () => {
+    await expect(file('--backlog', '--gate', 'critical')).rejects.toThrow(/--backlog/);
+    await expect(file('--backlog', '--fix-version', 'v1.1.3')).rejects.toThrow(/--backlog/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('still files a Medium Bug with an explicit --fix-version', async () => {
+    await file('--priority', 'Medium', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toEqual([]);
+  });
+
+  it('does not touch a Task', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 't', '--desc', PLAIN, ...HOME]);
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toBeUndefined();
+  });
+
+  it('lets the console put a Medium Bug into a version, and records the reason in the ledger', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('--priority', 'Medium', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    const [row] = ledger();
+    expect(row).toMatchObject({ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' });
+    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(typeof row.actor).toBe('string');
+  });
+
+  it('refuses the override without a reason', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', '  ')).rejects.toThrow(/reason/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override without the console marker', async () => {
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('refuses the override when there is no ledger location, rather than writing elsewhere', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    delete process.env['HANDOVER_DIR'];
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/HANDOVER_DIR/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override without a --fix-version to admit into', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('--console-override', 'because')).rejects.toThrow(/--fix-version/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('refuses the override when the ledger is readable but not writable, before any ticket is created', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    const path = join(dir, 'admissions-ledger.jsonl');
+    writeFileSync(path, '');
+    chmodSync(path, 0o444);
+    try {
+      if (process.getuid?.() === 0) return;
+      await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+      expect(created()).toBeUndefined();
+    } finally {
+      chmodSync(path, 0o644);
+    }
+  });
+
+  it('refuses the override when the ledger location cannot be opened for append, before any ticket is created', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+});
+
+describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV = ['HANDOVER_DIR', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONSOLE', 'HIMMEL_CONSOLE_NAME'];
+
+  const play = (description?: string) =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          { name: 'v1.1.2', released: true },
+          { name: 'v1.1.3', released: false, description },
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/')) return { fields: { labels: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  const file = async (type: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 't', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const ledger = () => {
+    try {
+      return readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const k of ENV) saved[k] = process.env[k];
+    for (const k of ENV) delete process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'admissions-'));
+    process.env['HANDOVER_DIR'] = dir;
+    play('Release train.\nfrozen: 2026-10-20');
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses a Task into a frozen version with no gate, naming the gates, without POSTing', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3 is frozen.*--gate critical\|regression\|must:/s);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('admits a Task with --gate must:98 and writes a ledger row', async () => {
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    const [row] = ledger();
+    expect(row).toMatchObject({ key: 'HIMMEL-77', version: 'v1.1.3', gate: 'must:98' });
+    expect(row.kind).toBeUndefined();
+    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it.each(['critical', 'regression', 'receipt'])('admits a Task with --gate %s', async (gate) => {
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', gate);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', gate }]);
+  });
+
+  it.each(['must:', 'must:  ', 'urgent'])('refuses the malformed gate "%s"', async (gate) => {
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--gate', gate)).rejects.toThrow(/--gate/);
+    expect(created()).toBeUndefined();
+  });
+
+  it('files a --backlog Bug on a frozen version with no gate and no row', async () => {
+    await file('Bug', '--backlog');
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('backlog');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('holds a Highest Bug, whose default is the frozen version, to the gate', async () => {
+    await expect(file('Bug', '--priority', 'Highest')).rejects.toThrow(/frozen/);
+    expect(created()).toBeUndefined();
+    await file('Bug', '--priority', 'Highest', '--gate', 'critical');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'critical' }]);
+  });
+
+  it('holds an escape residual, routed to the frozen version, to the gate', async () => {
+    const residual = ['--residual-of', 'HIMMEL-1', '--fu-class', 'escape', '--class', 'c'];
+    await expect(file('Task', ...residual)).rejects.toThrow(/frozen/);
+    expect(created()).toBeUndefined();
+    await file('Task', ...residual, '--gate', 'receipt');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'receipt' }]);
+  });
+
+  it('lets the console past the gate with a reason, and writes an override row carrying it', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('Bug', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' }]);
+  });
+
+  it('refuses the override on a frozen version without a reason or without the console marker', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', ' ')).rejects.toThrow(/reason/);
+    expect(created()).toBeUndefined();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('refuses a gated filing when the ledger cannot take the row, before any ticket is created', async () => {
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('behaves as before on a version without a frozen: line', async () => {
+    play('Release train.');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    await file('Task', '--fix-version', 'v1.1.3', '--gate', 'must:98');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('ignores a frozen: line that is not on a line of its own', async () => {
+    play('not yet frozen: 2026-10-20');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+
+  it('reads a frozen: line from a CRLF description', async () => {
+    play('Release train.\r\nfrozen: 2026-10-20\r\n');
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/frozen \(2026-10-20\)/);
+  });
+
+  it('ignores a frozen: marker whose date is on the next line', async () => {
+    play('Release train.\nfrozen:\nnotes');
+    await file('Task', '--fix-version', 'v1.1.3');
+    expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
   });
 });

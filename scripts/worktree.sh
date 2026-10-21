@@ -1348,6 +1348,109 @@ reclaim_detached() {
     fi
 }
 
+# load_fresh_lock_docs — every handover doc whose queue lock is FRESH, one path
+# a line. A branch such a doc names belongs to a live leg.
+load_fresh_lock_docs() (
+    # shellcheck source=handover/queue-lock.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/handover/queue-lock.sh" || exit 1
+    roots=$(_ql_lock_roots) || exit 1
+    while IFS= read -r root; do
+        [ -d "$root/.locks/queue" ] || continue
+        { [ -r "$root/.locks/queue" ] && [ -x "$root/.locks/queue" ]; } || exit 1
+        for lockdir in "$root"/.locks/queue/*.lock; do
+            [ -d "$lockdir" ] || continue
+            [ -x "$lockdir" ] || exit 1
+            [ -e "$lockdir/owner.json" ] || continue
+            [ -r "$lockdir/owner.json" ] || exit 1
+            doc=$(_ql_json_field "$lockdir/owner.json" handover)
+            [ -n "$doc" ] && [ -f "$doc" ] || continue
+            case "$(queue_lock_status "$doc" 2>/dev/null)" in
+                *"status: FRESH"*) printf '%s\n' "$doc" ;;
+            esac
+        done
+    done <<<"$roots"
+)
+FRESH_LOCK_DOCS=""
+FRESH_LOCK_DOCS_LOADED=0
+FRESH_LOCK_DOCS_FAILED=0
+# branch_in_fresh_lock_doc <branch> — 0 when a FRESH-locked leg doc names it,
+# and also when the docs cannot be listed or read: a delete path fails closed.
+branch_in_fresh_lock_doc() {
+    local pat doc rc
+    if [ "$FRESH_LOCK_DOCS_LOADED" -eq 0 ]; then
+        FRESH_LOCK_DOCS_LOADED=1
+        FRESH_LOCK_DOCS=$(load_fresh_lock_docs) || FRESH_LOCK_DOCS_FAILED=1
+    fi
+    [ "$FRESH_LOCK_DOCS_FAILED" -eq 0 ] || return 0
+    [ -n "$FRESH_LOCK_DOCS" ] || return 1
+    # shellcheck disable=SC2016  # the sed script is a literal bracket class
+    pat=$(printf '%s' "$1" | sed 's/[][\.*^$()+?{}|/]/\\&/g')
+    while IFS= read -r doc; do
+        rc=0
+        grep -qE "(^|[^A-Za-z0-9._/-])${pat}([^A-Za-z0-9._/-]|\$)" "$doc" 2>/dev/null || rc=$?
+        [ "$rc" -eq 1 ] || return 0
+    done <<<"$FRESH_LOCK_DOCS"
+    return 1
+}
+
+# reclaim_parked <wt> <br> <locked> — the prune arm for a branch tree whose PR
+# is not merged at its tip (closed, none, or merged elsewhere): nothing ever
+# prunes it, so it would sit until the 100 ceiling. Only the WORKTREE goes: the
+# branch ref is kept, so its commits stay reachable, and the log line names how
+# many are on no remote. Anything not provably idle, held, clean (untracked
+# files included) or PR-free is left for `prune --orphans` to report.
+reclaim_parked() {
+    local wt="$1" br="$2" locked="$3" br_tip unpushed ig
+    [ -z "$ONLY_TARGET" ] || return 0
+    [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ] && [ "$ORIGIN_PR_CACHE_OK" -eq 1 ] || return 0
+    case "$PR_STATE" in closed|none|merged) ;; *) return 0 ;; esac
+    if [ "$locked" -eq 1 ] || worktree_held "$wt" "$locked" 1; then
+        log "  keep parked ${br} (${WORKTREE_HOLD:-git worktree lock}): $wt"
+        return 0
+    fi
+    if branch_in_fresh_lock_doc "$br"; then
+        log "  keep parked $br (named by a live leg doc): $wt"
+        return 0
+    fi
+    br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null) || return 0
+    [ "$(classify_worktree "$wt")" = "clean" ] || return 0
+    [ "$(git -C "$wt" status --porcelain 2>/dev/null | wc -l)" -eq 0 ] || return 0
+    ig=$(stray_ignored_verdict "$wt") || ig="scanfail"
+    case "$ig" in
+        clean|disposable) ;;
+        *)
+            log "  keep parked $br (ignored files that may be user data: $ig): $wt"
+            return 0 ;;
+    esac
+    unpushed=$(git -C "$PRIMARY_WORKTREE" rev-list --count "$br_tip" --not --remotes 2>/dev/null) || unpushed="?"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY clean-garden: would reclaim parked $br ($wt); branch kept, $unpushed unpushed commit(s)"
+        PRUNED=$((PRUNED+1)); return 0
+    fi
+    # The checks above were for $br_tip; a commit or change since would be left behind.
+    if [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" != "refs/heads/$br" ] \
+        || [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" != "$br_tip" ] \
+        || [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] \
+        || ! case "$(stray_ignored_verdict "$wt")" in clean|disposable) true ;; *) false ;; esac; then
+        echo "WARN clean-garden: parked $br changed during prune — kept ($wt)" >&2
+        note_stuck "$wt" "parked, and the worktree changed during the prune"
+        SKIPPED=$((SKIPPED+1)); return 0
+    fi
+    if git -C "$PRIMARY_WORKTREE" worktree remove "$wt" >/dev/null 2>&1; then
+        echo "OK clean-garden: reclaimed parked $br ($wt); branch $br kept ($unpushed unpushed commit(s))"
+        PRUNED=$((PRUNED+1))
+    elif worktree_intact "$PRIMARY_WORKTREE" "$wt"; then
+        note_stuck "$wt" "parked, but git refused the worktree removal"
+        echo "ERR clean-garden: failed to remove parked worktree $wt — git refused the removal; the worktree is still registered with its .git link present. Run with --verbose to investigate." >&2
+        FAILED=$((FAILED+1))
+    else
+        note_stuck "$wt" "removal failed partway — the tree may be gutted"
+        echo "ERR clean-garden: removal of parked worktree $wt FAILED PARTWAY — the tree may be GUTTED. Recover from the primary checkout: 1) git -C '$PRIMARY_WORKTREE' worktree prune  2) make sure '$wt' is empty or removed  3) git -C '$PRIMARY_WORKTREE' worktree add '$wt' '$br'" >&2
+        FAILED=$((FAILED+1))
+    fi
+}
+
 # orphans_report — `prune --orphans`: alarm lines only, never mutates.
 orphans_report() {
     local i wt br tip wt_norm label dirty live=0 alarms=0 ceiling alarm
@@ -1448,6 +1551,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
         br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null || true)
         if ! is_branch_mergeable_for_prune "$br"; then
             log "  keep (PR not merged): $br @ $wt"
+            reclaim_parked "$wt" "$br" "$locked"
             continue
         fi
 

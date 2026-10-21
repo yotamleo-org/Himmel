@@ -196,6 +196,7 @@ if [ -n "$doc" ]; then
         printf 'inbox-send: --doc %s: No such file or directory\n' "$doc" >&2
         exit 2
     fi
+    # prim-ok: canon_path resolves directories only; the doc is a file whose own symlink is followed, and the result is also the write target
     doc="$(realpath -- "$doc")" || exit 2
     # the lock (directory, key, flock -x on fd 9) is leg-doc-lock.sh's,
     # shared with append-results.sh, live-state.sh and the launcher's

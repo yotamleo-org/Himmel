@@ -1,0 +1,115 @@
+/* dev-graph.css — styles for dev-graph.js. Token names only (tokens.css defines
+   them); no colour value appears here. --lane is set per lane by the script. */
+
+.dg { container-type: inline-size; font-family: var(--font-ui); color: var(--ink); }
+
+.dg-legend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); list-style: none; margin: 0 0 var(--s3); padding: 0; font-size: var(--fs-sm); color: var(--muted); }
+.dg-key { display: inline-flex; align-items: center; gap: var(--s2); }
+.dg-key svg { overflow: visible; }
+.dg-swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--lane); display: inline-block; }
+
+.dg-stage { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--bg); overflow-x: auto; }
+.dg-svg { display: block; width: 100%; height: auto; font-family: var(--font-ui); }
+.dg-wide { min-width: 880px; }
+.dg-narrow { display: none; max-width: 480px; margin: 0 auto; }
+
+@container (max-width: 599px) {
+  .dg-wide { display: none; }
+  .dg-narrow { display: block; }
+}
+
+/* the edge tooltips' conditions as text, readable by keyboard and screen reader */
+.dg-conditions { margin-top: var(--s3); font-size: var(--fs-sm); color: var(--muted); }
+.dg-conditions summary { cursor: pointer; color: var(--ink); }
+.dg-conditions ul + ul { margin-top: var(--s3); }
+.dg-conditions ul { margin: var(--s2) 0 0; padding-left: var(--s4); display: grid; gap: var(--s1); }
+.dg-cond-refusal { color: var(--crit); }
+
+/* lanes and headers */
+.dg-band { fill: var(--surface-2); }
+.dg-band-alt { fill: var(--bg); }
+.dg-rule, .dg-stripe { fill: var(--lane); }
+.dg-lane-label { fill: var(--lane); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.dg-phase { fill: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.dg-phase-narrow { fill: var(--ink); }
+
+/* nodes */
+.dg-box { fill: var(--surface); stroke: var(--rule-strong); stroke-width: 1; }
+.dg-label { fill: var(--ink); font-size: var(--fs-sm); }
+.dg-chip { fill: var(--lane); font-size: var(--fs-xs); }
+.dg-node[data-state="active"] .dg-box { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.dg-node[data-state="passed"] .dg-box { stroke: var(--ship); }
+.dg-node[data-state="refused"] .dg-box { stroke: var(--crit); stroke-width: 2; }
+.dg-node[data-state="hold"] .dg-box { stroke: var(--beta); stroke-dasharray: 4 3; }
+
+/* edges */
+.dg-edge path { fill: none; stroke-width: 1.5; }
+.dg-edge.dg-flow path, .dg-flow.dg-edge { stroke: var(--rule-strong); }
+.dg-edge.dg-decision path, .dg-decision.dg-edge { stroke: var(--muted); stroke-width: 1.75; }
+.dg-edge.dg-refusal path, .dg-refusal.dg-edge { stroke: var(--crit); stroke-dasharray: 6 3; }
+.dg-edge.dg-loop path, .dg-loop.dg-edge { stroke: var(--beta); stroke-dasharray: 2 3; }
+.dg-edge[data-state="active"] path { stroke: var(--accent); stroke-width: 2.5; }
+.dg-edge[data-state="passed"] path { stroke: var(--ship); }
+
+.dg-arrow-flow { fill: var(--rule-strong); }
+.dg-arrow-decision { fill: var(--muted); }
+.dg-arrow-refusal { fill: var(--crit); }
+.dg-arrow-loop { fill: var(--beta); }
+
+.dg-badge rect { fill: var(--crit-soft); stroke: var(--crit); stroke-width: 1; }
+.dg-badge text { fill: var(--crit); font-size: var(--fs-xs); font-weight: 700; font-family: var(--font-mono); }
+
+/* phone stubs */
+.dg-stub { cursor: pointer; }
+.dg-stub rect { fill: var(--surface-2); stroke: var(--rule-strong); stroke-width: 1; }
+.dg-stub text { fill: var(--ink); font-size: var(--fs-xs); }
+.dg-stub.dg-decision rect { stroke: var(--muted); }
+.dg-stub.dg-refusal rect { stroke: var(--crit); fill: var(--crit-soft); }
+.dg-stub.dg-loop rect { stroke: var(--beta); stroke-dasharray: 2 3; }
+.dg-stub:focus-visible, .dg-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.dg-key .dg-edge path { stroke-width: 2; }
+
+/* state is never colour alone: the glyph and the caption name it too */
+.dg-glyph { fill: var(--ink); font-size: var(--fs-sm); font-weight: 700; pointer-events: none; }
+.dg-node[data-state="refused"] .dg-glyph { fill: var(--crit); }
+.dg-node[data-state="active"] .dg-glyph { fill: var(--accent); }
+.dg-node[data-state="passed"] .dg-glyph { fill: var(--ship); }
+.dg-edge[data-state="ghost"] path { stroke: var(--muted); stroke-dasharray: 1 5; opacity: .7; }
+.dg-stub[data-state="active"] rect { stroke: var(--accent); stroke-width: 2; }
+.dg-stub[data-state="passed"] rect { stroke: var(--ship); }
+.dg-stub[data-state="ghost"] rect { stroke-dasharray: 1 4; }
+
+/* controls */
+.dg-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: 0 0 var(--s3); font-size: var(--fs-sm); }
+.dg-pick { display: inline-flex; align-items: center; gap: var(--s2); color: var(--muted); }
+.dg-walk, .dg-btn { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); padding: var(--s1) var(--s3); }
+.dg-btn { cursor: pointer; }
+.dg-btn:hover { border-color: var(--accent); }
+.dg-btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+.dg-btn:focus-visible, .dg-walk:focus-visible, .dg-scrub:focus-visible, .dg-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dg-scrub { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+
+/* caption beside the stage when there is room, under it otherwise */
+.dg-body { display: grid; gap: var(--s3); align-items: start; margin-bottom: var(--s3); }
+.dg-body > .dg-stage { min-width: 0; }
+@container (min-width: 900px) {
+  .dg-body { grid-template-columns: minmax(0, 1fr) 300px; }
+}
+.dg-caption { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: var(--s3) var(--s4); font-size: var(--fs-sm); }
+.dg-caption p, .dg-caption h3, .dg-caption dl, .dg-caption dd { margin: 0; }
+.dg-stepno { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; }
+.dg-caption .dg-cap-title { font-size: var(--fs-base); margin-top: var(--s1); }
+.dg-caption .dg-state { font-weight: 600; margin: var(--s1) 0 var(--s2); }
+.dg-caption dt { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; margin-top: var(--s2); }
+.dg-anchor { color: var(--muted); }
+.dg-caption .dg-ghost-note { margin-top: var(--s2); color: var(--muted); font-style: italic; }
+
+/* load-time validation */
+.dg-banner { margin: 0 0 var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--crit); border-radius: var(--radius); background: var(--crit-soft); color: var(--ink); font-size: var(--fs-sm); }
+.dg-banner p { margin: 0 0 var(--s1); font-weight: 600; }
+.dg-banner ul { margin: 0; padding-left: var(--s4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dg *, .dg { transition-duration: 0ms !important; animation-duration: 0ms !important; scroll-behavior: auto; }
+}

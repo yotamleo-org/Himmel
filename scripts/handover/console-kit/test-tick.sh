@@ -1166,6 +1166,16 @@ wrap_case 'prose bullets directly under legs: (no blank line) are not entries or
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' \
     '- **N192** BLOCKED — see `stuck-playbook.md:408`, `tick.sh:234`, worktree `.claude/worktrees/fix+himmel-3273-stop-queue-race`, head `798a4bda26487e04140d0b7aee715be51c7e7247`' \
     'queue: none' 'last GO: none' 'acked: none'
+# A successor stub as `console.sh next` seeds it: the two-line preamble (its
+# format span sits on a `>` line), the predecessor's legs: line verbatim and a
+# decisions: pointer to the bucket file. None of it is a malformed entry.
+# shellcheck disable=SC2016  # backtick leg spans, literal fixture text
+wrap_case 'a seeded stub with a decisions: pointer reads no MALFORMED (HIMMEL-6498)' 'livestate=ok ' \
+    '> **Authority-bearing state, not a summary.** One `<leg>:<nonce>:<lock-token>:<pid>` span per leg.' \
+    '> Format and optional fields: `console-sections/live-state.md`.' '' \
+    'legs: `N191:J-N191-0a1b2c:tok-191:120` `N192:J-N192-3d4e5f:tok-192:121`' \
+    'queue: none' 'last GO: none' 'acked: none' 'board: none yet' 'tracker: none' \
+    'decisions: specs/decisions/console-decisions-2026-10-20.md (latest #91)'
 # --- a `<name>.md:<line>` cite ON the legs: line is prose. RED
 # control (pre-fix tick.sh, first fixture below): both locks held
 # (legs=N191:FRESH,N192:FRESH, asserted by wrap_case) and
@@ -2158,6 +2168,9 @@ contains 'a probe that prints a non-token reads vmrun=unknown (HIMMEL-5641)' "$v
 printf '#!/bin/sh\necho DISAGREE:2/2,online=0\n' > "$W/vmrun-probe-disagree.sh"
 vmrun_disagree="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-disagree.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe that reports units up with no runner online reads vmrun=DISAGREE (HIMMEL-6034)' "$vmrun_disagree" ' vmrun=DISAGREE:2/2,online=0'
+printf '#!/bin/sh\necho DISAGREE:2/2,online=1\n' > "$W/vmrun-probe-partial.sh"
+vmrun_partial="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-partial.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a probe that reports fewer runners online than registered units reads vmrun=DISAGREE:2/2,online=1 (HIMMEL-6034)' "$vmrun_partial" ' vmrun=DISAGREE:2/2,online=1'
 mkdir -p "$W/vd-mirror"
 # --- ciguard= (ci-guardrail.sh -> compact field + one ACTION per ALERT line).
 # The stub prints $STUB_CIG_OUT on its first call and $STUB_CIG_OUT2 on later ones.
@@ -2494,6 +2507,20 @@ owe="$(ow_of "$(ow_tick)")"
 [ "$owe" = "6" ] && pass 'orphans-wip= names no keys above five' || fail "orphans-wip= with six is '$owe'"
 contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
 
+# --- pool-closed=<closed>/<total>: Done or wont-do keys on the Live state priority: line.
+mk_ow 911 "Done" Task
+mk_ow 912 "wont do" Task
+for n in 911 912; do sed 's/^statusCategory: "x"$/statusCategory: "Done"/' "$OW/HIMMEL-$n.md" > "$OW/HIMMEL-$n.md.new" && mv "$OW/HIMMEL-$n.md.new" "$OW/HIMMEL-$n.md"; done
+pc_doc="$W/handover/HIMMEL-6602-console.md"
+printf '%s\n' '# console' '' '## Live state' 'priority: 911 | 912(K1) 904 | 901(+911) 9999' '' '## Results' > "$pc_doc"
+pc_tick() { NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" TOKEN='' bash "$SUT" "$@" 2>/dev/null; }
+contains 'closed keys on the priority line show as pool-closed=<closed>/<total> (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc")" ' pool-closed=2/5'
+contains '--verbose labels pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc" --verbose)" 'pool-closed: 2/5'
+printf '%s\n' '## Live state' 'priority: 904 901' > "$pc_doc"
+not_contains 'a priority line with no closed key hides pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc")" 'pool-closed'
+not_contains 'no --doc hides pool-closed (HIMMEL-6602)' "$(pc_tick)" 'pool-closed'
+rm -f "$pc_doc"
+
 # --- ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] ---
 # A READY claim a judge or the diff contradicts. Fixtures only: the changed-file lists are
 # pre-recorded in the ready-files cache and the gh stub fails, so no live gh runs.
@@ -2625,11 +2652,11 @@ contains 'the HANDOFF ACTION names the HANDOFF file (HIMMEL-6603)' "$hb_over" 'H
 contains 'a decisions: line over DECISIONS_BUDGET_BYTES prints an ACTION line (HIMMEL-6603)' "$hb_over" 'ACTION decisions-over-budget=336/200: '
 contains 'the decisions ACTION names the bucket decisions file (HIMMEL-6603)' "$hb_over" "$W/handover/specs/decisions/console-decisions-"
 case "$(printf '%s\n' "$hb_over" | grep -c '^TICK ')" in 1) pass 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; *) fail 'the size ACTION lines add no second TICK line (HIMMEL-6603)' ;; esac
-head -c 12000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
-not_contains 'a HANDOFF of exactly 12000 bytes is within the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'handoff-over-budget'
+head -c 6000 /dev/zero | tr '\0' x > "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+not_contains 'a HANDOFF of exactly 6000 bytes is within the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'handoff-over-budget'
 printf 'x' >> "$W/handover/HIMMEL-6603-console-HANDOFF.md"
-contains 'a HANDOFF of 12001 bytes is over the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
-contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6603)' "$(HANDOFF_BUDGET_BYTES=12k TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=12001/12000: '
+contains 'a HANDOFF of 6001 bytes is over the default budget (HIMMEL-6603)' "$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=6001/6000: '
+contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6603)' "$(HANDOFF_BUDGET_BYTES=12k TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION handoff-over-budget=6001/6000: '
 printf '%s\n' '# console' '' 'decisions: a brief note above Live state, not the line' '' '## Live state' 'decisions: (1) short.' > "$d6603"
 contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECISIONS_BUDGET_BYTES=10 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION decisions-over-budget=21/10: '
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"

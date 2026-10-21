@@ -87,7 +87,8 @@ is_exempt_path() {
     return 1
 }
 
-diff_out=$(git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "${diff_args[@]}") \
+# -C: a doc moved behind a redirect stub reads as a copy, so only its changed lines count.
+diff_out=$(git -c core.quotePath=false diff -U0 -C --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=ACMR "${diff_args[@]}") \
     || { echo "$me: git diff failed" >&2; exit 2; }
 [ -n "$diff_out" ] || exit 0
 

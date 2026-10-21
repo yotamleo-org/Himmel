@@ -721,6 +721,46 @@ else
 fi
 export CR_TRIGGER_REPOS="$saved_allow"
 
+# Test 22: gh global options before `pr`, and the `pr new` alias -> POSTS ------
+# Same spellings the PreToolUse twin gates; the trigger must fire for them too.
+echo "TEST: gh global options and the pr new alias -> POSTS"
+for gopt_cmd in \
+    'gh --repo a/b pr create --base main' \
+    'gh -R a/b pr create --base main' \
+    'gh --repo=a/b pr create --base main' \
+    'gh --repo a/b --hostname h.example pr create --base main' \
+    'gh pr new --base main' \
+    'gh -R a/b pr new --base main' \
+    'sudo gh --repo a/b pr create --base main'
+do
+    reset_state
+    run_hook "$gopt_cmd" "https://github.com/acme/widget/pull/2201"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ]; then
+        pass "posted for '$gopt_cmd'"
+    else
+        fail "expected 1 post for '$gopt_cmd', got rc=$rc posted=$(posted_count)" "out: $out"
+    fi
+done
+
+echo "TEST: gh global options on other subcommands stay negative"
+for gneg_cmd in \
+    'gh --repo a/b pr view 12' \
+    'gh -R a/b pr newest' \
+    'gh --repo a/b release create v1' \
+    'gh api -X POST pr create' \
+    'gh --version; echo pr create' \
+    'gh --version && echo pr new' \
+    'gh --version | grep pr create'
+do
+    reset_state
+    run_hook "$gneg_cmd" "https://github.com/acme/widget/pull/2202"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 0 ]; then
+        pass "no post for '$gneg_cmd'"
+    else
+        fail "expected 0 posts for '$gneg_cmd', got rc=$rc posted=$(posted_count)" "out: $out"
+    fi
+done
+
 # Summary --------------------------------------------------------------------
 echo
 echo "===================================="

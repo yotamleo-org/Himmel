@@ -53,7 +53,10 @@
 #      section, one list line per ask, each `done` or `deferred → HIMMEL-<n>`
 #      (`->` accepted). FAIL on a missing/empty section, an unmarked line, a
 #      deferred key that does not exist or is already Done/Closed/Resolved/
-#      Won't Do. A Jira error reads UNKNOWN and fails — never a PASS.
+#      Won't Do, or is neither residual-labelled, older than the PR's own
+#      ticket, nor linked (either direction, any type) from it. The deferral
+#      keys must also equal the CR ledger's deferred_to rows for the PR head.
+#      A Jira error reads UNKNOWN and fails — never a PASS.
 #   9. Plugin version bump vs CURRENT origin/main: every plugin
 #      under marketplace/plugins/ the PR touches must be versioned strictly
 #      above origin/main's manifest (same rule as check-plugin-drift.sh
@@ -382,15 +385,48 @@ fi  # ONLY7 == 0: checks 1-6
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
 # Whether a line's "done" is TRUE stays the console's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
-# deferred key must exist and still be open. A Jira error reads UNKNOWN and
+# deferred key must exist and still be open, and the deferral keys must equal
+# the CR ledger's deferred_to rows for the PR head. A Jira error reads UNKNOWN and
 # fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
-jira_get() {
+jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
-        "$JIRA_CMD" get "$1" --json 2>&1
+        "$JIRA_CMD" "$@" 2>&1
     else
         cov_primary=$(cd "$(dirname "$0")" && cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)
-        node "$cov_primary/scripts/jira/dist/index.js" get "$1" --json 2>&1
+        node "$cov_primary/scripts/jira/dist/index.js" "$@" 2>&1
     fi
+}
+
+jira_get() { jira_run get "$1" --json; }
+
+# `links <KEY>` rows are tab-separated, with inward=<KEY> and outward=<KEY> fields.
+jira_links() { jira_run links "$1"; }
+
+# cov_linked <own-key> <target-key>: the PR's own ticket has an issue link to the target, either direction, any type.
+# Returns 0 linked, 1 not linked (or no own ticket), 2 the links lookup failed.
+cov_linked() {
+    [ -n "$1" ] && [ "$1" != "$2" ] || return 1
+    cov_links_out=$(jira_links "$1") || return 2
+    printf '%s\n' "$cov_links_out" | awk -F'\t' -v t="$2" '{ for (i = 1; i <= NF; i++) if ($i == "inward=" t || $i == "outward=" t) f = 1 } END { exit !f }'
+}
+
+# cov_ledger_keys <ledger> <head>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
+# A finding row at the head sets its verdict and deferral; an amend row targeting the head merges over it; only a
+# finding whose effective verdict is deferred counts. A head matches when either spelling is a prefix of the other.
+# A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
+cov_ledger_keys() {
+    [ -f "$1" ] || return 0
+    cov_led_out=$(jq -R -n -r --arg h "$2" '
+        def hm($x): ($x | type == "string") and ($x | length >= 7) and (($x | ascii_downcase) as $l | ($l | startswith($h)) or ($h | startswith($l)));
+        def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
+        def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
+        reduce (inputs | fromjson? | select(type == "object")) as $r ({};
+            if $r.kind == "finding" and hm($r.head) then .[fk($r)] = vd($r)
+            elif $r.kind == "amend" and hm($r.target_head) and ($r.set | type == "object") then .[fk($r)] = ((.[fk($r)] // {}) + vd($r.set))
+            else . end)
+        | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
+        | .deferred_to | ascii_upcase' "$1") || return 1
+    printf '%s\n' "$cov_led_out" | sort -u
 }
 
 cov_shape_help() {
@@ -415,7 +451,7 @@ if [ -z "$cov_lines" ]; then
     cov_shape_help
     mark_fail
 else
-    cov_bad=""; cov_shape=0
+    cov_bad=""; cov_shape=0; cov_body_keys=""
     # A deferral must land on a residual-verb ticket or one that predates this PR's own.
     # ponytail: key order stands for creation order (the branch name's first key is the
     # PR's ticket; the title is author text and not read); upgrade: compare Jira's created to the first commit date once
@@ -431,14 +467,26 @@ else
             cov_key=$(printf '%s\n' "$cov_def" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]')
             if cov_out=$(jira_get "$cov_key"); then
                 cov_status=$(printf '%s\n' "$cov_out" | jq -r '.fields.status.name // empty' 2>/dev/null || true) # swallow-ok: unparseable output leaves the status empty, which reads UNKNOWN below
-                if [ -z "$cov_status" ]; then
+                cov_canon=$(printf '%s\n' "$cov_out" | jq -r '(.key // empty) | ascii_upcase' 2>/dev/null || true) # swallow-ok: unparseable output leaves the key empty, which reads UNKNOWN below
+                [ -z "$cov_canon" ] || cov_key="$cov_canon"
+                if [ -z "$cov_canon" ]; then
+                    cov_bad="$cov_bad; $cov_key UNKNOWN (jira returned no key)"
+                elif [ -z "$cov_status" ]; then
                     cov_bad="$cov_bad; $cov_key UNKNOWN (jira returned no status)"
                 elif printf '%s\n' "$cov_status" | grep -qiE '^(done|closed|resolved|won.?t do)$'; then
                     cov_bad="$cov_bad; $cov_key already $cov_status"
+                elif [ "$cov_key" = "$cov_own" ]; then
+                    cov_bad="$cov_bad; $cov_key is the PR's own ticket and cannot be its own deferral target"
                 elif ! printf '%s\n' "$cov_out" | jq -e '(.fields.labels // []) | any(. == "residual")' >/dev/null 2>&1 \
-                    && ! { [ -n "$cov_own" ] && [ "${cov_key%-*}" = "${cov_own%-*}" ] && [ "${cov_key##*-}" -lt "${cov_own##*-}" ]; }; then
-                    cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}) - file it with: jira create --residual-of <parent> --fu-class <c> --class <id>"
+                    && ! { [ -n "$cov_own" ] && [ "${cov_key%-*}" = "${cov_own%-*}" ] && [ "${cov_key##*-}" -lt "${cov_own##*-}" ]; } \
+                    && ! { cov_linked "$cov_own" "$cov_key" && cov_rc=0 || cov_rc=$?; [ "$cov_rc" -eq 0 ]; }; then
+                    if [ "$cov_rc" -eq 2 ]; then
+                        cov_bad="$cov_bad; $cov_key UNKNOWN (jira links failed for $cov_own)"
+                    else
+                        cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class <c> --class <id>"
+                    fi
                 fi
+                cov_body_keys="$cov_body_keys $cov_key"
             elif printf '%s\n' "$cov_out" | grep -qiE '404|does not exist'; then
                 cov_bad="$cov_bad; $cov_key does not exist"
             else
@@ -452,6 +500,34 @@ else
     done <<EOF
 $cov_lines
 EOF
+    # The ledger's deferrals at the PR head and the body's deferral lines must name the same tickets.
+    cov_head="$SHA"
+    if [ "$ONLY7" -eq 1 ]; then
+        cov_head=$("$GH" pr view "$PR" --repo "$nwo" --json headRefOid --jq '.headRefOid' 2>/dev/null | tr -d '\r') || cov_head="" # swallow-ok: an unreadable head is reported below
+    fi
+    if [ -z "$cov_head" ]; then
+        cov_bad="$cov_bad; cannot read the PR head, so the CR ledger's deferrals cannot be compared"
+    else
+        cov_common=$(git rev-parse --git-common-dir 2>/dev/null) || cov_common="" # swallow-ok: no repo reads as no ledger, so a body deferral fails below
+        cov_h12=$(printf '%.12s' "$cov_head")
+        if cov_led_out=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head"); then
+            cov_led_keys=$(printf '%s\n' "$cov_led_out" | tr '\n' ' ')
+            for cov_k in $cov_led_keys; do
+                case " $cov_body_keys " in
+                    *" $cov_k "*) ;;
+                    *) cov_bad="$cov_bad; $cov_k is deferred in the CR ledger for $cov_h12 but no coverage line defers to it" ;;
+                esac
+            done
+            for cov_k in $cov_body_keys; do
+                case " $cov_led_keys " in
+                    *" $cov_k "*) ;;
+                    *) cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12" ;;
+                esac
+            done
+        else
+            cov_bad="$cov_bad; the CR ledger could not be read, so its deferrals cannot be compared"
+        fi
+    fi
     if [ -z "$cov_bad" ]; then
         echo "[PASS] 7. ticket coverage: every ask is done or deferred to an open ticket"
     else
@@ -535,11 +611,17 @@ if [ "$ONLY7" -eq 0 ]; then
 # workflow_dispatch trigger FAILs and names the missing trigger, unless it is
 # listed below: those cannot be dispatched (their trigger is pull_request_target,
 # workflow_run or a tag push), so the exemption is explicit and reviewed here.
+# ci-image.yml has a trigger, but its build job is gated to refs/heads/main so a
+# branch cannot move :latest, and a branch dispatch concludes skipped. Its push
+# trigger fires only on .github/ci-image/** paths, so a change to ci-image.yml
+# alone gets no push run: its proof is the weekly cron or a workflow_dispatch on
+# main. A listed workflow is skipped either way.
 # A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
 # to is not on the default branch, which GitHub requires to dispatch a workflow,
 # so neither can be dispatched before merge and both are skipped. A PR touching no workflow
 # never reaches the run API; a read/list failure FAILs.
 WF_DISPATCH_EXEMPT="
+.github/workflows/ci-image.yml
 .github/workflows/codeowner-review-gate.yml
 .github/workflows/main-sweep-red.yml
 .github/workflows/pr-title-lint.yml
@@ -562,13 +644,13 @@ else
         while IFS= read -r wf; do
             [ -n "$wf" ] || continue
             printf '%s\n' "$wf_undispatchable" | grep -qxF "$wf" && continue
+            printf '%s' "$WF_DISPATCH_EXEMPT" | grep -qxF "$wf" && continue
             wf_base="${wf##*/}"
             if ! wf_body=$("$GH" api -H "Accept: application/vnd.github.raw" "repos/$owner/$repo/contents/$wf?ref=$SHA" 2>/dev/null); then
                 wf_err="$wf_err; $wf cannot be read at $SHA"
                 continue
             fi
             if ! printf '%s\n' "$wf_body" | grep -qE '^[[:space:]]*workflow_dispatch[[:space:]]*:|^[[:space:]]*-[[:space:]]*workflow_dispatch[[:space:]]*(#.*)?$|^"?on"?[[:space:]]*:.*workflow_dispatch'; then
-                printf '%s' "$WF_DISPATCH_EXEMPT" | grep -qxF "$wf" && continue
                 wf_err="$wf_err; $wf has no workflow_dispatch trigger — add one, or list it in WF_DISPATCH_EXEMPT in ready-check.sh"
                 continue
             fi

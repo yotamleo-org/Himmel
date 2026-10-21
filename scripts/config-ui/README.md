@@ -86,6 +86,11 @@ sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<versio
 theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
 hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
 
+The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
+`graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files
+are `docs/guide/dev-graph/`'s `.json`, `.js` and `.css` only). A walkthrough step rides the fragment beside the
+route, `#/workflow&w=<id>&s=<n>`.
+
 - **Sources.** The Jira mirror (`HIMMEL_JIRA_MIRROR`, else `~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY or HIMMEL>`)
   plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
   `stage1/themes-overlay.tsv`, `stage3/placement.tsv`; without it the board still renders and drift is 0); the drift
@@ -329,6 +334,28 @@ imports, so its suite runs in CI without an install.
   ends with a Docs link to the public site in a new tab with
   `rel="noopener noreferrer"` and no session token, and the console reads the
   shared tokens (`public/tokens.css`) in light and dark with system fonts.
+- Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
+  takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
+  default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
+  The rail lists Roadmap and Kanban only for `jira` and `github`; with `none` a
+  direct landing on Kanban shows the plain-words empty state, and with `github`
+  the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
+  predicate behind it.
+- Development graph docs page e2e (`dev-graph-docs.e2e.ts`, journey J-DG1,
+  same suite): it needs no himmelctl. It serves `docs/guide` over `node:http`
+  and walks `dev-graph.html`: node count, the W2 NO-GO step as refused with its
+  condition and source, the `#w=&s=` deep link, autoplay, reduced motion (no
+  autoplay, no `animate` call, no running animation), no horizontal scroll at
+  390 px, dark `--bg`, and the error banner for an unknown id or an unjoined
+  step. A spec must be named `*.e2e.ts` to be picked up.
+- Workflow page e2e (`dev-graph-ui.e2e.ts`, journey J-DG2, same suite): the rail
+  shows Workflow, the page loads `/dev-graph/graph.json` and draws every node,
+  W1 steps to its last step with `#/workflow&w=&s=` riding the fragment, a deep
+  link restores a step, leaving and coming back does not stack a second graph,
+  and the page runs under the server's CSP with zero violations (a planted
+  inline style proves the detector fires). `/dev-graph/` serves only the
+  `.json`/`.js`/`.css` files of `docs/guide/dev-graph/`: traversal, a path
+  outside the directory, the directory itself and a POST are refused.
 
 ## Manual pass (the same 7 items)
 

@@ -315,6 +315,26 @@ if [ -e "$base_home/.codex/AGENTS.md" ]; then
 fi
 echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md (HIMMEL-3309)"
 
+# ── 1c2. the adopted commit gate honours the project's .env ─────────────────
+# check-commit-msg.sh sources scripts/lib/load-dotenv.sh to read
+# TICKET_ID_REQUIRED from the project .env; a target without that lib silently
+# ignores the documented opt-out and refuses every commit.
+printf 'chore: add himmel\n' > "$work/msg-noticket.txt"
+gate_noticket() {  # run the adopted gate on a ticket-less message, rule vars scrubbed from the env
+  (cd "$proj" && export HOME="$base_home" \
+    && unset TICKET_ID_REQUIRED TICKET_ID_PATTERN TICKET_ID_EXEMPT_AUTHORS JIRA_PROJECT_KEY TRACKER \
+    && bash scripts/hooks/check-commit-msg.sh "$work/msg-noticket.txt" >/dev/null 2>&1)
+}
+set +e
+gate_noticket; rc_no_env=$?
+printf 'TICKET_ID_REQUIRED=0\n' > "$proj/.env"
+gate_noticket; rc_env=$?
+rm -f "$proj/.env"
+set -e
+[ "$rc_no_env" -ne 0 ] || fail "HIMMEL-6327: control: a ticket-less message passed with no opt-out"
+[ "$rc_env" -eq 0 ] || fail "HIMMEL-6327: TICKET_ID_REQUIRED=0 in the adopter project's .env did not reach the commit gate (rc=$rc_env)"
+echo "ok: adopted commit gate reads TICKET_ID_REQUIRED=0 from the project .env (HIMMEL-6327)"
+
 # ── 1d. trial path: no-origin repo on main ──────────────────────────────────
 # Install, commit the install on main (the one allowed commit), then cut a
 # worktree with no origin: it must carry scripts/ and .claude/worktrees/ must
@@ -2407,8 +2427,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "27" ] \
-  || fail "HIMMEL-3332 S4: expected 27 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "28" ] \
+  || fail "HIMMEL-3332 S4: expected 28 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

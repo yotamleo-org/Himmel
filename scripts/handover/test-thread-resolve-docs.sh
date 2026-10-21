@@ -22,7 +22,7 @@ SHELL_SECTION="$DOCS/handover/leg-sections/shell-and-tests.md"
 CONSOLE="$DOCS/handover/console-template.md"
 MERGES="$DOCS/handover/console-sections/merges.md"
 PLAYBOOK="$DOCS/internals/stuck-playbook.md"
-OVERNIGHT="$DOCS/handover/overnight-mode.md"
+AFK="$DOCS/handover/afk-mode.md"
 RESOLVE_CMD="$PLUGIN/commands/gh-pr-resolve.md"
 fails=0
 
@@ -41,7 +41,7 @@ section() {
     ' "$1"
 }
 
-for f in "$PREFACE" "$SHELL_SECTION" "$CONSOLE" "$MERGES" "$PLAYBOOK" "$OVERNIGHT" "$RESOLVE_CMD"; do
+for f in "$PREFACE" "$SHELL_SECTION" "$CONSOLE" "$MERGES" "$PLAYBOOK" "$AFK" "$RESOLVE_CMD"; do
     [ -r "$f" ] || { printf 'FAIL - unreadable %s\n' "$f"; exit 1; }
 done
 
@@ -75,8 +75,8 @@ contains 'merges section names the ruling it codifies' "$merges" 'N2224'
 # --- 4. stuck-playbook + overnight-mode: the carve-out from "defer to the operator"
 contains 'stuck-playbook carves review-thread writes out of the operator defer' "$(cat "$PLAYBOOK")" 'review-thread resolve or reply'
 contains 'stuck-playbook sends them to the console' "$(cat "$PLAYBOOK")" 'a review-thread write goes to the console instead'
-contains 'overnight-mode step 11: a review-thread resolve is never an operator action' "$(cat "$OVERNIGHT")" 'review-thread resolve is never an operator action'
-contains 'overnight-mode external writes: the review-thread exception' "$(cat "$OVERNIGHT")" 'A review-thread resolve is the exception'
+contains 'afk-mode step 11: a review-thread resolve is never an operator action' "$(cat "$AFK")" 'review-thread resolve is never an operator action'
+contains 'afk-mode external writes: the review-thread exception' "$(cat "$AFK")" 'A review-thread resolve is the exception'
 
 # --- 5. /gh-pr-resolve passes the reason the CLI now requires --------------
 # shellcheck disable=SC2016  # the literal "$2" is the needle

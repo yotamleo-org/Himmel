@@ -759,7 +759,17 @@ def _edit_on_main_reason(start: str):
 # push's own output and every fix round pushes again. FAIL-CLOSED on an
 # unreadable marker; an undeterminable repo/branch is skipped (same stance as
 # the commit lock — judging this process's cwd would be wrong).
-GH_PR_CREATE = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$|(?=[;&|()<>]))", re.IGNORECASE)
+# Quotes and backslashes may sit between the letters of any word (`"gh"`,
+# `g\h`), and a command word holding `$` or a backtick (`$GH`, `${GH}`) is an
+# unknowable expansion, read as gh so the lock errs closed. The trailing
+# boundary is a lookahead so a newline stays available as the next command's
+# separator.
+_QW = r"[\"'\\]*"
+GH_PR_CREATE = re.compile(
+    _CMDPOS + r"(?:" + _QW + _QW.join("gh") + _QW + r"(?:\.exe)?|[^\s;&|()<>$`]*[$`][^\s;&|()<>]*)"
+    r"(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+" + _QW + _QW.join("pr") + _QW
+    + r"\s+" + _QW + r"(?:" + _QW.join("create") + "|" + _QW.join("new") + r")" + _QW
+    + r"(?=\s|$|[;&|()<>])", re.IGNORECASE)
 
 
 def _common_git_dir(git_path: str) -> str:
@@ -786,11 +796,122 @@ def _common_git_dir(git_path: str) -> str:
     return cd if os.path.isabs(cd) else os.path.normpath(os.path.join(gd, cd))
 
 
+_REDIRECT_VAR = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*")
+_CASE_WORD = re.compile(r"(?<![\w-])case(?![\w-])")
+
+
+def _skip_process_substitution(text: str, i: int) -> int:
+    """Index just past the `)` closing the `<(` / `>(` whose `(` is at `i`.
+    Quoted and nested parens do not count. A substitution or an unterminated
+    group inside it (constructs this scanner does not parse) raises ValueError."""
+    depth, n, esc = 0, len(text), -1
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            esc = i
+            continue
+        if c == "`" or text[i:i + 2] in ("$(", "${"):
+            raise ValueError("unclassified shell construct")
+        if (c == "\n" or c == "#" and i != esc and text[i - 1] in " \t;|&(" or text[i:i + 2] in (";;", "$'")
+                or _CASE_WORD.match(text, i)):
+            raise ValueError("unclassified shell construct")
+        if c in "'\"":
+            i += 1
+            while i < n and text[i] != c:
+                if c == '"':
+                    if text[i] == "\\":
+                        i += 2
+                        continue
+                    if text[i] == "`" or text[i:i + 2] in ("$(", "${"):
+                        raise ValueError("unclassified shell construct")
+                i += 1
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    raise ValueError("unterminated process substitution")
+
+
 def _unquoted_segment(text: str) -> str:
     """`text` up to the first shell operator that is neither quoted nor
-    escaped. A `&` that belongs to a redirection (`2>&1`, `&>f`) does not end
-    it. An unterminated quote, or an unquoted `$`, backtick, `<(`, `>(` or `>|`
-    (constructs this scanner does not parse), raises ValueError."""
+    escaped, or the first `#` that starts a comment. A `&` that belongs to a
+    redirection (`2>&1`, `&>f`) does not end it; a `<(...)` / `>(...)` group
+    and a `$NAME` redirect target are skipped. An unterminated quote, a `$(`,
+    `${` or backtick inside double quotes, or an unquoted `$`, backtick or
+    `>|` (constructs this scanner does not parse), raises ValueError."""
+    i, n, esc = 0, len(text), -1
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            esc = i
+            continue
+        if c in "'\"":
+            i += 1
+            while i < n and text[i] != c:
+                if c == '"':
+                    if text[i] == "\\":
+                        i += 2
+                        continue
+                    if text[i] == "`" or text[i:i + 2] in ("$(", "${"):
+                        raise ValueError("unclassified shell construct")
+                i += 1
+            if i >= n:
+                raise ValueError("unterminated quote")
+        elif c in "<>" and text[i + 1:i + 2] == "(":
+            i = _skip_process_substitution(text, i + 1)
+            continue
+        elif c == "$" and _REDIRECT_VAR.match(text, i) and text[:i].rstrip(" \t")[-1:] in ("<", ">"):
+            i = _REDIRECT_VAR.match(text, i).end()
+            continue
+        elif c in "$`" or (c in "<>" and text[i + 1:i + 2] == "|"):
+            raise ValueError("unclassified shell construct")
+        elif c == "#" and i != esc and i and text[i - 1] in " \t":
+            return text[:i]
+        elif c in ";|()\n":
+            return text[:i]
+        elif c == "&" and not (i and text[i - 1] in "<>") and text[i + 1:i + 2] != ">":
+            return text[:i]
+        i += 1
+    return text
+
+
+def _pr_head_branches(cmd: str, m) -> list:
+    """Every branch named by a `--head`/`-H` token among the arguments of the
+    `gh pr create` that match `m` found in `cmd` (`owner:branch` reduced to
+    `branch`). A token that is really another option's value is included too,
+    so the lock errs closed. Raises ValueError when the arguments cannot be
+    tokenised or a head value is still an expansion; the caller must refuse."""
+    heads = []
+    toks = shlex.split(_unquoted_segment(cmd[m.end():]))
+    for i, t in enumerate(toks):
+        val = ""
+        if t in ("--head", "-H"):
+            val = toks[i + 1] if i + 1 < len(toks) else ""
+        elif t.startswith("--head="):
+            val = t[len("--head="):]
+        elif t.startswith("-") and not t.startswith("--") and "H" in t:
+            val = t.split("H", 1)[1].lstrip("=")
+            if not val:
+                val = toks[i + 1] if i + 1 < len(toks) else ""
+        if val:
+            if "$" in val or "`" in val:
+                raise ValueError("expanded --head value")
+            heads.append(val.rsplit(":", 1)[-1])
+    return heads
+
+
+_COMMENT_CONTINUATION = re.compile(r"(?:^|[\s;|&(])#[^\n]*\\\r?\n")
+_GH_PR_CREATE_MAIN = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+pr\s+(?:create|new)(?:\s|$|(?=[;&|()<>]))", re.IGNORECASE)
+
+
+def _unquoted_segment_main(text: str) -> str:
+    """The base lock's scanner, kept as arm 1 so the lock is at least as
+    strict as it was before the wider arm below."""
     i, n = 0, len(text)
     while i < n:
         c = text[i]
@@ -813,15 +934,11 @@ def _unquoted_segment(text: str) -> str:
     return text
 
 
-def _pr_head_branches(cmd: str) -> list:
-    """Every branch named by a `--head`/`-H` token among the arguments of
-    `gh pr create` (`owner:branch` reduced to `branch`). A token that is
-    really another option's value is included too, so the lock errs closed.
-    Every `gh pr create` in the command string is scanned. Raises ValueError
-    when the arguments cannot be tokenised; the caller must refuse."""
+def _pr_head_branches_main(cmd: str) -> list:
+    """The base lock's head scan over every `gh pr create` in `cmd`."""
     heads = []
-    for m in GH_PR_CREATE.finditer(cmd):
-        toks = shlex.split(_unquoted_segment(cmd[m.end():]))
+    for m in _GH_PR_CREATE_MAIN.finditer(cmd):
+        toks = shlex.split(_unquoted_segment_main(cmd[m.end():]))
         for i, t in enumerate(toks):
             val = ""
             if t in ("--head", "-H"):
@@ -1533,6 +1650,35 @@ def _join_continuations(s: str) -> str:
     return _LINE_CONT.sub(r"\1", s)
 
 
+def _join_continuations_commented(s: str) -> str:
+    """`_join_continuations` that keeps the newline of a comment: bash ends a
+    comment at the raw newline even after a trailing backslash, so the next
+    line is a command of its own. Quotes are tracked so a `#` inside a string
+    is not taken for a comment; a backslash is literal inside single quotes."""
+    out, i, n, q, comment = [], 0, len(s), "", False
+    while i < n:
+        c = s[i]
+        if comment:
+            comment = c != "\n"
+        elif c == "\\" and q != "'":
+            nl = 2 if s[i + 1:i + 2] == "\n" else 3 if s[i + 1:i + 3] == "\r\n" else 0
+            if nl:
+                i += nl
+                continue
+            out.append(s[i:i + 2])
+            i += 2
+            continue
+        elif q:
+            q = "" if c == q else q
+        elif c in "'\"":
+            q = c
+        elif c == "#" and (not out or len(out[-1]) == 1 and out[-1] in " \t\n;|&("):
+            comment = True
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def terminal_external_write_reason(cmd_norm: str, raw_cmd: str = ""):
     """Return a block reason if `cmd_norm` (already norm()-ed) is an external-write
     shape (git push / remote-URL rewrite / gh PR-mutation / network CLI), else
@@ -1875,22 +2021,44 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
             if reason:
                 block(reason)
     # Pending-CR marker lock: independent of the engine fence below, so a
-    # trusted engine cannot open a PR over an unfinished review.
-    if GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(_join_continuations(raw_cmd))):
-        joined = _join_continuations(raw_cmd)
-        pr_m = GH_PR_CREATE.search(joined)
-        # Only a cd before the gh call moves it; one after it must not.
-        pr_dir = _commit_dir(joined[:pr_m.start()] if pr_m else joined,
-                             _agent_cwd(payload, args), None)
-        if pr_dir:
+    # trusted engine cannot open a PR over an unfinished review. EVERY
+    # `gh pr create` is judged in its own directory: only a cd before a call
+    # moves it, one after it must not. Two arms, and either one blocks: arm 1
+    # is the base lock unchanged (first call's directory, base scanner); arm 2
+    # reads the command under both joins (a comment keeps its newline in one,
+    # a quote or heredoc the scanner cannot model cannot hide a line break in
+    # the other).
+    if _COMMENT_CONTINUATION.search(raw_cmd) and (
+            _GH_PR_CREATE_MAIN.search(cmd) or _GH_PR_CREATE_MAIN.search(norm(_join_continuations(raw_cmd)))):
+        base_joined = _join_continuations(raw_cmd)
+        base_m = _GH_PR_CREATE_MAIN.search(base_joined)
+        base_dir = _commit_dir(base_joined[:base_m.start()] if base_m else base_joined,
+                               _agent_cwd(payload, args), None)
+        if base_dir:
             try:
-                heads = _pr_head_branches(joined)
+                base_heads = _pr_head_branches_main(base_joined)
             except ValueError:
                 block("The `gh pr create` arguments cannot be parsed to find "
                       "their --head — refused fail-closed.")
-            reason = _pending_cr_reason(pr_dir, heads)
+            reason = _pending_cr_reason(base_dir, base_heads)
             if reason:
                 block(reason)
+    joins = {_join_continuations(raw_cmd), _join_continuations_commented(raw_cmd)}
+    for joined in sorted(joins):
+        pr_calls = [(m.start(), m) for m in GH_PR_CREATE.finditer(joined)]
+        if not pr_calls and (GH_PR_CREATE.search(cmd) or GH_PR_CREATE.search(norm(joined))):
+            pr_calls = [(len(joined), None)]
+        for start, pr_m in pr_calls:
+            pr_dir = _commit_dir(joined[:start], _agent_cwd(payload, args), None)
+            if pr_dir:
+                try:
+                    heads = _pr_head_branches(joined, pr_m) if pr_m else []
+                except ValueError:
+                    block("The `gh pr create` arguments cannot be parsed to find "
+                          "their --head — refused fail-closed.")
+                reason = _pending_cr_reason(pr_dir, heads)
+                if reason:
+                    block(reason)
     # Engine-specific external-write fence: block push / remote-URL / gh
     # PR-mutation / network CLIs unless the engine is an affirmed trusted
     # main tier (fail-closed on an unknown engine).

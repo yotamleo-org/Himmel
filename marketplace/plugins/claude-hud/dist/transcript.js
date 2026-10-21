@@ -1,11 +1,17 @@
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as readline from 'node:readline';
+import { createHash } from 'node:crypto';
+import { getHudPluginDir } from './claude-config-dir.js';
 import { createDebug } from './debug.js';
 import { sanitizeDisplayText } from './utils/sanitize.js';
 import { sanitizeTranscriptModel } from './model-source.js';
 const debug = createDebug('transcript');
 const TOOLS_KEPT = 20;
 const AGENTS_KEPT = 10;
+// Tools are tracked beyond those shown so an MCP call's late error still counts, but
+// bounded so the saved parser state stays small however long the session runs.
+const TOOLS_TRACKED = 256;
 const NAME_MAX_LEN = 64;
 const ADVISOR_MODEL_MAX_LEN = 64;
 const MESSAGE_ID_MAX_LEN = 128;
@@ -78,6 +84,7 @@ function toTodo(value) {
     return content && status ? [{ content, status }] : [];
 }
 class Parser {
+    // Every field must round-trip through save() and load(), or a resumed read loses it.
     tools = new Map();
     agents = new Map();
     skills = new Set();
@@ -144,8 +151,9 @@ class Parser {
             const toolUseId = /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(notice)?.[1] ??
                 (taskId ? this.agentIdToToolUseId.get(taskId) : undefined);
             // Both carriers can log the same notice; the earliest is when the agent finished.
+            // Background Bash and Monitor tasks send the same notice; only agents' are kept.
             const prev = toolUseId && this.agentCompletions.get(toolUseId);
-            if (toolUseId && taskId && !(prev && prev <= at))
+            if (toolUseId && taskId && this.agents.has(toolUseId) && !(prev && prev <= at))
                 this.agentCompletions.set(toolUseId, at);
         }
         if (Array.isArray(entry.message?.content)) {
@@ -221,6 +229,15 @@ class Parser {
                 startTime: at,
                 background: input?.run_in_background === true,
             });
+            if (cap(this.agents, AGENTS_KEPT)) {
+                // Completions and launch ids only matter for agents still tracked.
+                for (const id of this.agentCompletions.keys())
+                    if (!this.agents.has(id))
+                        this.agentCompletions.delete(id);
+                for (const [agentId, id] of this.agentIdToToolUseId)
+                    if (!this.agents.has(id))
+                        this.agentIdToToolUseId.delete(agentId);
+            }
         }
         else if (toolName === 'TodoWrite') {
             if (Array.isArray(input?.todos))
@@ -252,6 +269,7 @@ class Parser {
                 status: 'running',
                 startTime: at,
             });
+            cap(this.tools, TOOLS_TRACKED);
         }
     }
     toolResult(block, entry, at) {
@@ -263,8 +281,7 @@ class Parser {
             const server = mcpServer(tool.name);
             if (server && block.is_error) {
                 this.mcpErrors.add(server);
-                if (this.mcpErrors.size > MCP_ERRORS_MAX)
-                    this.mcpErrors.delete(this.mcpErrors.values().next().value);
+                cap(this.mcpErrors, MCP_ERRORS_MAX);
             }
             else if (server) {
                 this.mcpErrors.delete(server);
@@ -273,8 +290,10 @@ class Parser {
         const agent = this.agents.get(id);
         if (agent) {
             const agentId = entry.toolUseResult?.agentId;
-            if (typeof agentId === 'string' && agentId)
+            if (typeof agentId === 'string' && agentId) {
                 this.agentIdToToolUseId.set(agentId, id);
+                agent.agentId = agentId;
+            }
             // resolvedModel is what the subagent actually ran on, so it beats the caller's alias.
             agent.model = sanitizeTranscriptModel(entry.toolUseResult?.resolvedModel) ?? agent.model;
             if (entry.toolUseResult?.isAsync === true || entry.toolUseResult?.status === 'async_launched') {
@@ -313,6 +332,43 @@ class Parser {
         const position = /^\d+$/.test(key) ? Number(key) - 1 : -1;
         return position >= 0 && position < this.todos.length ? position : null;
     }
+    // Maps and Sets become arrays so the state round-trips through JSON.
+    save() {
+        return {
+            tools: [...this.tools],
+            agents: [...this.agents],
+            skills: [...this.skills],
+            mcpServers: [...this.mcpServers],
+            mcpErrors: [...this.mcpErrors],
+            todos: this.todos,
+            taskIndex: [...this.taskIndex],
+            agentCompletions: [...this.agentCompletions],
+            agentIdToToolUseId: [...this.agentIdToToolUseId],
+            usageById: [...this.usageById],
+            settled: this.settled,
+            lastIdlessUsage: this.lastIdlessUsage,
+            data: this.data,
+        };
+    }
+    // `s` comes from JSON read with reviveDates; Map entries are [key, value] pairs the
+    // reviver can't see, so their Dates are rebuilt here.
+    static load(s) {
+        const parser = new Parser();
+        parser.tools = new Map(s.tools);
+        parser.agents = new Map(s.agents);
+        parser.skills = new Set(s.skills);
+        parser.mcpServers = new Set(s.mcpServers);
+        parser.mcpErrors = new Set(s.mcpErrors);
+        parser.todos = s.todos;
+        parser.taskIndex = new Map(s.taskIndex);
+        parser.agentCompletions = new Map(s.agentCompletions.map(([id, at]) => [id, new Date(at)]));
+        parser.agentIdToToolUseId = new Map(s.agentIdToToolUseId);
+        parser.usageById = new Map(s.usageById);
+        parser.settled = s.settled;
+        parser.lastIdlessUsage = s.lastIdlessUsage;
+        parser.data = s.data;
+        return parser;
+    }
     finish() {
         for (const [id, endTime] of this.agentCompletions) {
             const agent = this.agents.get(id);
@@ -329,7 +385,7 @@ class Parser {
         return {
             ...this.data,
             tools: [...this.tools.values()].slice(-TOOLS_KEPT),
-            agents: [...this.agents.values()].slice(-AGENTS_KEPT),
+            agents: [...this.agents.values()],
             skills: [...this.skills],
             mcpServers: [...this.mcpServers],
             mcpErrors: [...this.mcpErrors],
@@ -337,6 +393,19 @@ class Parser {
             sessionTokens,
         };
     }
+}
+// The Date fields of ToolEntry, AgentEntry, and TranscriptData.
+const DATE_KEYS = new Set(['startTime', 'endTime', 'sessionStart', 'lastAssistantResponseAt']);
+const reviveDates = (key, value) => DATE_KEYS.has(key) && typeof value === 'string' ? new Date(value) : value;
+/** Drops the oldest entries past `max`, returning whether any went. */
+function cap(collection, max) {
+    const over = collection.size > max;
+    for (const key of collection.keys()) {
+        if (collection.size <= max)
+            break;
+        collection.delete(key);
+    }
+    return over;
 }
 function maxUsage(a, b) {
     return {
@@ -346,25 +415,213 @@ function maxUsage(a, b) {
         cacheReadTokens: Math.max(a.cacheReadTokens, b.cacheReadTokens),
     };
 }
-export async function parseTranscript(transcriptPath) {
+const CURSORS_KEPT = 32;
+const CHUNK_BYTES = 1 << 20;
+// A first read of a huge file can outlast Claude Code's wait, so it saves as it goes
+// and the next run carries on from there.
+const CHECKPOINT_BYTES = 32 << 20;
+const NEWLINE = 0x0a;
+// A release may parse differently, so its state starts over.
+let hudVersion;
+function getHudVersion() {
+    if (hudVersion === undefined) {
+        try {
+            hudVersion = String(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+        }
+        catch {
+            hudVersion = '';
+        }
+    }
+    return hudVersion;
+}
+function cursorPath(homeDir, transcriptPath) {
+    const key = createHash('sha256').update(path.resolve(transcriptPath)).digest('hex');
+    return path.join(getHudPluginDir(homeDir), 'transcript-cursors', `${key}.json`);
+}
+function readCursor(file) {
+    let cursor;
     try {
-        if (!transcriptPath || !fs.statSync(transcriptPath).isFile())
+        cursor = JSON.parse(fs.readFileSync(file, 'utf8'), reviveDates);
+    }
+    catch {
+        return null;
+    }
+    if (typeof cursor !== 'object' || cursor === null)
+        return null;
+    if (cursor.version !== getHudVersion() || typeof cursor.ino !== 'number')
+        return null;
+    if (typeof cursor.offset !== 'number' || !Number.isSafeInteger(cursor.offset) || cursor.offset < 0)
+        return null;
+    return cursor;
+}
+function writeCursor(file, cursor) {
+    try {
+        const dir = path.dirname(file);
+        const isNew = !fs.existsSync(file);
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const tmp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(cursor), { mode: 0o600 });
+        fs.renameSync(tmp, file);
+        if (isNew)
+            pruneCursors(dir);
+    }
+    catch (err) {
+        // Without a cursor the next run just rereads the whole file.
+        debug('Transcript cursor write failed:', err instanceof Error ? err.message : err);
+    }
+}
+// Keeps the 32 most recently written files, stray temp files from a killed run included.
+function pruneCursors(dir) {
+    const files = fs.readdirSync(dir).map((name) => path.join(dir, name));
+    if (files.length <= CURSORS_KEPT)
+        return;
+    const byAge = files.map((file) => ({ file, mtime: fs.statSync(file).mtimeMs })).sort((a, b) => a.mtime - b.mtime);
+    for (const { file } of byAge.slice(0, files.length - CURSORS_KEPT))
+        fs.rmSync(file, { force: true });
+}
+// The saved state still fits the file only if it is the same file, no shorter, and the
+// offset still sits just past a newline (a rewritten file usually breaks that).
+async function resumes(file, stat, cursor) {
+    if (cursor.ino !== stat.ino || cursor.offset > stat.size)
+        return false;
+    if (cursor.offset === 0)
+        return true;
+    const { bytesRead, buffer } = await file.read(Buffer.alloc(1), 0, 1, cursor.offset - 1);
+    return bytesRead === 1 && buffer[0] === NEWLINE;
+}
+/**
+ * Feeds each complete line from `start` on, with the offset just past it. Returns the
+ * offset after the last newline and the unterminated rest.
+ */
+async function readLines(file, start, onLine) {
+    const buffer = Buffer.alloc(CHUNK_BYTES);
+    let pending = [];
+    let end = start;
+    let position = start;
+    while (true) {
+        let bytesRead;
+        try {
+            ({ bytesRead } = await file.read(buffer, 0, CHUNK_BYTES, position));
+        }
+        catch (err) {
+            // A read cut short still renders, and saves, what was parsed.
+            debug('Transcript read failed:', err instanceof Error ? err.message : err);
+            break;
+        }
+        if (bytesRead === 0)
+            break;
+        const chunk = buffer.subarray(0, bytesRead);
+        let from = 0;
+        let newline;
+        while ((newline = chunk.indexOf(NEWLINE, from)) !== -1) {
+            const piece = chunk.subarray(from, newline);
+            end = position + newline + 1;
+            onLine((pending.length > 0 ? Buffer.concat([...pending, piece]) : piece).toString('utf8'), end);
+            pending = [];
+            from = newline + 1;
+        }
+        // Copied, since the buffer is reused for the next chunk.
+        if (from < bytesRead)
+            pending.push(Buffer.from(chunk.subarray(from)));
+        position += bytesRead;
+    }
+    return { end, rest: Buffer.concat(pending).toString('utf8') };
+}
+/** Parses from `offset` to the end, saving the state as it goes. */
+async function parseFrom(file, parser, offset, save) {
+    let saved = offset;
+    const { end, rest } = await readLines(file, offset, (line, lineEnd) => {
+        parser.line(line);
+        if (lineEnd - saved >= CHECKPOINT_BYTES) {
+            save(parser, lineEnd);
+            saved = lineEnd;
+        }
+    });
+    if (end > saved)
+        save(parser, end);
+    // An unterminated last line may still be being written: it counts for this
+    // render but isn't saved, and the next run reads it again once it ends.
+    if (rest)
+        parser.line(rest);
+    return parser.finish();
+}
+export async function parseTranscript(transcriptPath, homeDir) {
+    let file;
+    try {
+        // Checked before opening, which would block on a pipe.
+        if (!transcriptPath || !(await fs.promises.stat(transcriptPath)).isFile())
             return emptyTranscript();
+        file = await fs.promises.open(transcriptPath, 'r');
     }
     catch {
         return emptyTranscript();
     }
-    const parser = new Parser();
     try {
-        const input = fs.createReadStream(transcriptPath);
-        for await (const raw of readline.createInterface({ input, crlfDelay: Infinity })) {
-            parser.line(raw);
+        const stat = await file.stat();
+        const cursorFile = cursorPath(homeDir, transcriptPath);
+        const save = (parser, offset) => writeCursor(cursorFile, { version: getHudVersion(), ino: stat.ino, offset, state: parser.save() });
+        const cursor = readCursor(cursorFile);
+        if (cursor && (await resumes(file, stat, cursor))) {
+            try {
+                return await parseFrom(file, Parser.load(cursor.state), cursor.offset, save);
+            }
+            catch (err) {
+                debug('Saved transcript state unusable, rereading:', err instanceof Error ? err.message : err);
+            }
         }
+        return await parseFrom(file, new Parser(), 0, save);
     }
     catch (err) {
-        // A read cut short still renders what was parsed.
         debug('Transcript read failed:', err instanceof Error ? err.message : err);
+        return emptyTranscript();
     }
-    return parser.finish();
+    finally {
+        await file.close();
+    }
+}
+// The id comes from the transcript and names a file, so only a plain token is used.
+const AGENT_ID = /^[\w-]{1,64}$/;
+/** A subagent's effort, from the first assistant record of `<session>/subagents/agent-<id>.jsonl`. */
+async function subagentEffort(transcriptPath, agentId) {
+    if (!AGENT_ID.test(agentId))
+        return undefined;
+    const file = path.join(path.dirname(transcriptPath), path.basename(transcriptPath, '.jsonl'), 'subagents', `agent-${agentId}.jsonl`);
+    try {
+        // Checked before opening, which would block on a pipe.
+        if (!(await fs.promises.stat(file)).isFile())
+            return undefined;
+    }
+    catch {
+        return undefined;
+    }
+    // A stream rather than readLines, so the scan stops at the first reply.
+    const input = fs.createReadStream(file);
+    try {
+        for await (const raw of readline.createInterface({ input, crlfDelay: Infinity })) {
+            let entry = null;
+            try {
+                entry = JSON.parse(raw);
+            }
+            catch {
+                continue;
+            }
+            if (entry?.type === 'assistant')
+                return typeof entry.effort === 'string' ? entry.effort : undefined;
+        }
+    }
+    catch {
+        // Gone mid-read.
+    }
+    finally {
+        input.destroy();
+    }
+    return undefined;
+}
+/** Sets each agent's effort in place; agents without a known id or first reply stay without one. */
+export async function addSubagentEfforts(transcriptPath, agents) {
+    await Promise.all(agents.map(async (agent) => {
+        if (agent.agentId)
+            agent.effort = await subagentEffort(transcriptPath, agent.agentId);
+    }));
 }
 //# sourceMappingURL=transcript.js.map

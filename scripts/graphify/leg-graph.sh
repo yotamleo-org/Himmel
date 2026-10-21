@@ -11,8 +11,8 @@
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
-#   A semantic node's stored `rationale` text (the WHY graphify keeps but never prints) is added
-#   under its NODE line (query) or as a Rationale line (explain).
+#   query and explain run with graphify's --rationale when the installed graphify has it: a semantic node's stored `rationale` text
+#   follows its NODE line as ` WHY <text>` (query) or is printed as a Rationale line (explain).
 #   A query naming a file or identifier also starts from that node (anchor-seeds.py); the files
 #   whose content best matches its words are added after any anchors (semantic-seeds.py).
 #   A query with no anchor whose best file match is weak (semantic-seeds.py scored) and no --budget
@@ -21,6 +21,14 @@
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
+
+# A hung graphify must not hang the leg: the probe and every real call run under a deadline
+# that kills the process group. Without GNU timeout they run unbounded.
+# shellcheck source=../lib/timeout-bin.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/timeout-bin.sh" 2>/dev/null
+PROBE_SECS="${GRAPH_WRAP_PROBE_SECS:-10}"
+CALL_SECS="${GRAPH_WRAP_CALL_SECS:-120}"
+bounded() { local secs="$1"; shift; ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$secs"} "$@"; }
 
 sub="${1:-}"
 case "$sub" in
@@ -49,8 +57,13 @@ fi
 
 # The question is the first argument after the verb that is neither a flag nor a flag's value.
 WEAK_BUDGET=2000
-has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() graph="$out/graph.json" lowconf="" conf="" score="" file=""
+# --rationale exists only in the fork build until upstream ships it; an older graphify reads it as
+# part of the question and finds no nodes, so it is passed only when the installed graphify lists it.
+rationale=0
+GRAPHIFY_NO_AUTO_REFRESH=1 bounded "$PROBE_SECS" graphify --help 2>&1 | grep -q -- '--rationale' && rationale=1
+has_budget=0 budget=8000 has_seed=0 question="" want="" rest=() args=() graph="$out/graph.json" lowconf="" conf="" score="" file=""
 for a in "${@:2}"; do
+  args+=("$a")
   if [ -n "$want" ]; then
     if [ "$want" = budget ]; then budget="$a"; else rest+=("$a"); fi
     [ "$want" = graph ] && graph="$a"
@@ -65,10 +78,15 @@ for a in "${@:2}"; do
     --graph=*) graph="${a#--graph=}" ;;
     --context) want=value ;;
     -*) ;;
-    *) [ -n "$question" ] || question="$a" ;;
+    *) if [ -z "$question" ]; then
+         question="$a"
+         # graphify reads the question first, so --rationale goes right after it.
+         [ "$sub" = path ] || [ "$rationale" = 0 ] || { args+=(--rationale); rest+=("$a" --rationale); continue; }
+       fi ;;
   esac
   rest+=("$a")
 done
+set -- "$sub" "${args[@]}"
 
 # graphify seeds on the question's words and never on a file or identifier it names (go.sh,
 # leg_tail_status), so anchor-seeds.py resolves those names; the named nodes and graphify's own
@@ -101,26 +119,22 @@ if [ "${#seeds[@]}" -gt 0 ]; then
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-graph.XXXXXX")" || exit 1
   trap 'rm -rf "$tmp"' EXIT
   half=$((budget / 2))
-  GRAPHIFY_OUT="$out" graphify query "${rest[@]}" "${seeds[@]}" --budget "$half" >"$tmp/given" 2>"$tmp/given.err" &
+  GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify query "${rest[@]}" "${seeds[@]}" --budget "$half" >"$tmp/given" 2>"$tmp/given.err" &
   pid=$!
-  ans="$(GRAPHIFY_OUT="$out" graphify query "${rest[@]}" --budget "$((budget - half))")"; rc=$?
+  ans="$(GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify query "${rest[@]}" --budget "$((budget - half))")"; rc=$?
   wait "$pid"
   cat "$tmp/given.err" >&2
   printf '%s\n' "$ans" >"$tmp/keyword"
   if merged="$(python3 -I "$(dirname "${BASH_SOURCE[0]}")/anchor-seeds.py" merge "$tmp/given" "$tmp/keyword" "$budget")"; then ans="$merged"
-  else ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?; fi
+  else ans="$(GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify "$@")"; rc=$?; fi
 else
-  ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
+  ans="$(GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify "$@")"; rc=$?
 fi
-# graphify stores a semantic node's WHY as `rationale` but neither verb prints it, so a "why"
-# question got a pointer to a doc section; append-rationale.py adds the stored text.
-if command -v python3 >/dev/null 2>&1; then
-  withwhy="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/append-rationale.py" "$graph")" && ans="$withwhy"
-  # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
-  # doc and rationale nodes first for those questions and leaves any other question untouched.
-  if [ "$sub" = query ]; then
-    ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
-  fi
+case "$rc" in 124|137) echo "leg-graph: graphify ran past ${CALL_SECS}s and was stopped" >&2 ;; esac
+# graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
+# doc and rationale nodes first for those questions and leaves any other question untouched.
+if [ "$sub" = query ] && command -v python3 >/dev/null 2>&1; then
+  ranked="$(printf '%s' "$ans" | python3 -I "$(dirname "${BASH_SOURCE[0]}")/rank-why-how.py" "$graph" "$question" "$budget")" && ans="$ranked"
 fi
 [ -z "$lowconf" ] || [ -z "$ans" ] || printf '%s\n' "$lowconf"
 printf '%s\n' "$ans"
@@ -132,7 +146,7 @@ if [ -n "$need" ]; then
   for a in "$@"; do
     if [ "$skip" = 1 ]; then skip=0; continue; fi
     [ "$a" = "--budget" ] && { skip=1; continue; }
-    case "$a" in --budget=*) continue ;; esac
+    case "$a" in --budget=*|--rationale) continue ;; esac
     q="$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"
     rerun="$rerun '$q'"
   done

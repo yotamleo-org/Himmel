@@ -228,7 +228,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -435,7 +435,7 @@ contains "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: names the allowed modes" "$out"
 # this exact assertion, not a vaguer one.
 rc=0; out="$(CONSOLE_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CONSOLE_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
-contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID CONSOLE_CONTEXT=<unset>"
+contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT CONSOLE_CONTEXT=<unset>"
 not_contains "dry-run, ambient CONSOLE_CONTEXT=1m: never reported as still set" "$out" "CONSOLE_CONTEXT=1m"
 
 # --- HIMMEL_CONSOLE_NAME resolution (--console, launching
@@ -790,6 +790,55 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --judge --relay HIMMEL-9999-leg some/doc.m
 check "dry-run --judge --relay: refused with exit 2" "$rc" "2"
 contains "dry-run --judge --relay: refusal names console-judge" "$out" "console-judge"
 
+# --- 6d. --profile release-manager: a judge-shaped role session. Read-only
+# (READONLY_ROLE=1, no IMPL_GUARD_OK/INLINE_IMPL_OK), bound to its release by a
+# required --rm-release, and marked HIMMEL_RELEASE_MANAGER=1 so
+# guard-rm-writes.sh's mode 2 fences it. Opus at high effort by default, native
+# lane only, rm-preface.md as the preface source.
+doc_tier_rm="$tmp/tier-doc-rm.md"
+fx_brief '# fixture brief' '> **Tier:** opus — operator-ruling: release manager' > "$doc_tier_rm"
+doc_tier_rm_phys="$(cd -P "$(dirname "$doc_tier_rm")" && pwd -P)/$(basename "$doc_tier_rm")"
+
+rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9999-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "dry-run release-manager: exit 0" "$rc" "0"
+contains "dry-run release-manager: reports HIMMEL_CONSOLE_LEG=1" "$out" "HIMMEL_CONSOLE_LEG=1"
+contains "dry-run release-manager: exports HIMMEL_RELEASE_MANAGER=1" "$out" "HIMMEL_RELEASE_MANAGER=1"
+contains "dry-run release-manager: exports HIMMEL_RM_DOC as the absolute doc" "$out" "HIMMEL_RM_DOC=$doc_tier_rm_phys"
+contains "dry-run release-manager: exports HIMMEL_RM_RELEASE" "$out" "HIMMEL_RM_RELEASE=v1.1.3"
+contains "dry-run release-manager: READONLY_ROLE=1" "$out" "readonly-role=1"
+contains "dry-run release-manager: withholds IMPL_GUARD_OK" "$out" "IMPL_GUARD_OK=<unset>"
+contains "dry-run release-manager: withholds INLINE_IMPL_OK" "$out" "INLINE_IMPL_OK=<unset>"
+contains "dry-run release-manager: defaults the model to claude-opus-5-5" "$out" "claude-opus-5-5"
+contains "dry-run release-manager: defaults the effort to high" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
+contains "dry-run release-manager: raises the read-clamp line limit" "$out" "read-clamp-lines=4000"
+contains "dry-run release-manager: preface source is rm-preface.md" "$out" "docs/handover/rm-preface.md"
+contains "dry-run release-manager: profile=release-manager" "$out" "profile=release-manager"
+contains "dry-run release-manager: the marker rides the launcher env" "$out" "HIMMEL_RELEASE_MANAGER=1 "
+
+rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK HIMMEL_RM_EFFORT=max bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9999-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "dry-run release-manager, HIMMEL_RM_EFFORT=max: exit 0" "$rc" "0"
+contains "dry-run release-manager, HIMMEL_RM_EFFORT=max: overrides the effort" "$out" "CLAUDE_CODE_EFFORT_LEVEL=max"
+
+# An ambient marker from a launching shell is never inherited by an ordinary leg.
+rc=0; out="$(HIMMEL_RELEASE_MANAGER=1 HIMMEL_RM_RELEASE=v1.1.3 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+check "dry-run ordinary leg, ambient RM marker: exit 0" "$rc" "0"
+not_contains "dry-run ordinary leg, ambient RM marker: never reaches the leg" "$out" "HIMMEL_RELEASE_MANAGER=1"
+
+rm_refuses() {  # <label> <want-substring> <args...>
+    local label="$1" want="$2"; shift 2
+    rc=0; out="$(bash "$SCRIPT" --dry-run "$@" HIMMEL-9999-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+    check "dry-run release-manager $label: refused with exit 2" "$rc" "2"
+    contains "dry-run release-manager $label: refusal names the cause" "$out" "$want"
+}
+rm_refuses "without --rm-release" "--rm-release" --profile release-manager
+rm_refuses "--judge" "console-judge" --judge --profile release-manager --rm-release v1.1.3
+rm_refuses "--relay" "console-relay" --relay --profile release-manager --rm-release v1.1.3
+rm_refuses "--consult" "release-manager" --consult --profile release-manager --rm-release v1.1.3
+rm_refuses "in a profile list" "release-manager" --profile release-manager,design --rm-release v1.1.3
+rm_refuses "--lane claudex" "native" --lane claudex --profile release-manager --rm-release v1.1.3
+rm_refuses "--rm-release with a slash" "--rm-release" --profile release-manager --rm-release ../x
+rm_refuses "--rm-release on another profile" "--rm-release" --profile leg-impl --rm-release v1.1.3
+
 # --- 7. LEG_REPO folded into HEADED_ARM_REPO --------------------------------
 rc=0; out="$(LEG_REPO=/some/other/repo bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run: LEG_REPO folded into HEADED_ARM_REPO" "$out" "HEADED_ARM_REPO=/some/other/repo"
@@ -1037,13 +1086,25 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-le
 contains "dry-run --lane claudex: an explicit model is NOT overridden" "$out" "claude-sonnet-5"
 not_contains "dry-run --lane claudex: an explicit model is NOT overridden" "$out" "gpt-6.1-sol"
 
+# scripts/claude-codex reads only CODEX_MODEL, so the model the console names
+# has to reach the launcher as CODEX_MODEL.
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log gpt-6-astra 2>&1)" || rc=$?
+contains "dry-run --lane claudex: a named model reaches the launcher as CODEX_MODEL" "$out" "CODEX_MODEL=gpt-6-astra"
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+contains "dry-run --lane claudex: no model names the default as CODEX_MODEL" "$out" "CODEX_MODEL=gpt-6.1-sol"
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV='CODEX_MODEL=preset-model' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log gpt-6-astra 2>&1)" || rc=$?
+contains "dry-run --lane claudex: an inherited CODEX_MODEL token is scrubbed, the named model wins" "$out" "CODEX_MODEL=gpt-6-astra"
+not_contains "dry-run --lane claudex: an inherited CODEX_MODEL token does not survive" "$out" "CODEX_MODEL=preset-model"
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
+not_contains "dry-run, native lane: CODEX_MODEL is never set" "$out" "CODEX_MODEL"
+
 # A claudex leg-impl leg gets the native leg's knowledge access: the same profile
 # settings, MCP allowlist (qmd), lean switch and handover root.
 _access_env() { printf '%s\n' "$1" | tr ' ' '\n' | grep -E '^(LEG_PROFILE_SETTINGS|LEG_PROFILE_MCP_CONFIG|HIMMEL_LEAN_LEG|HANDOVER_DIR)=' | sort; }
 rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 rc_x=0; out_x="$(bash "$SCRIPT" --dry-run --profile leg-impl --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc_x=$?
 check "dry-run --profile leg-impl: native and claudex both exit 0" "$rc/$rc_x" "0/0"
-contains "dry-run --profile leg-impl --lane claudex: carries the qmd MCP allowlist" "$out_x" 'mcp=["qmd"] mcp-config=/tmp/HIMMEL-9999-leg.leg-mcp.json'
+contains "dry-run --profile leg-impl --lane claudex: carries the qmd and himmel-bus MCP allowlist" "$out_x" 'mcp=["qmd","himmel-bus"] mcp-config=/tmp/HIMMEL-9999-leg.leg-mcp.json'
 check "dry-run --profile leg-impl: claudex access env equals native" "$(_access_env "$out_x")" "$(_access_env "$out_n")"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
@@ -1254,6 +1315,8 @@ env16="$(cat "$d16/env-record" 2>/dev/null || true)"
 contains "full launch, --lane claudex: lane reaches child env" "$env16" "LEG_LANE=claudex"
 contains "full launch, --lane claudex: bank lane reaches child env" "$env16" "CADENCE_BANK_LANE=claudex"
 contains "full launch, --lane claudex: CLAUDE_CODE_EFFORT_LEVEL=medium reaches the konsole argv" "$rec16" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+contains "full launch, --lane claudex: CODEX_MODEL=gpt-6.1-sol reaches the konsole argv" "$rec16" "CODEX_MODEL=gpt-6.1-sol"
+contains "full launch, --lane claudex: CODEX_MODEL reaches child env" "$env16" "CODEX_MODEL=gpt-6.1-sol"
 
 # --- 17. --profile <name>: a plugin profile + the standing leg
 # preface, applied WITHOUT editing headed-arm.sh. headed-arm.sh builds a fixed

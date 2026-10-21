@@ -3168,7 +3168,7 @@ assert_not_contains "T-wsl body never quotes the -d value" 'wsl.exe -d "' "$out"
 # rather than left to assert a launch line arm-resume.sh no longer emits.
 assert_contains "T-wsl body has in-distro cd+unset+claude" "cd '$WSL_CWD' && unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM AUTO_ARM_SAFETY_CHILD CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 && claude" "$out"
 assert_not_contains "T-wsl no caret escapes inside CMD quotes" '^&' "$out"
-assert_contains "T-wsl prompt precedes channels" "'load $WSL_HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1.' --channels 'plugin:test@local'" "$out"
+assert_contains "T-wsl prompt precedes channels" "'load $WSL_HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1.' --channels 'plugin:test@local'" "$out"
 assert_not_contains "T-wsl body drops Windows cd" "cd /d" "$out"
 # Regression (s52/s53 live fire): the flow-run tmp path must carry a LITERAL
 # backslash-f — a mangled printf escape (\f form feed) makes an invalid
@@ -5236,7 +5236,7 @@ fi
 # ---------------------------------------------------------------------------
 # --- -
 # C1 delivery fix: RESUME_PROMPT carries a single-line pointer clause naming
-# § Launch preamble in docs/handover/overnight-mode.md, so every armed
+# § Launch preamble in docs/handover/afk-mode.md, so every armed
 # relaunch names the standing instructions (the template preamble copies are
 # retired — the doc is the single source). Guards: exactly one line (the
 # prompt is re-quoted via printf %q / _bash_single_quote into schtasks .bat
@@ -5248,7 +5248,7 @@ fi
 if _sec_selected "1719" "HIMMEL-1719"; then
 echo "--- 1719 ---"
 HO=$(make_handover "$WORK_REPO")
-EXPECTED_1719="load $HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
+EXPECTED_1719="load $HO overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 
 # Single-line + charset invariants on the fixture itself (pins the contract
 # any future rewording must keep).
@@ -5279,7 +5279,7 @@ out=$(win_env "$SCHED_STUB_T17" \
 rc=$?
 assert_rc "1719d pointer-clause dry-run exits 0" 0 "$rc"
 assert_contains "1719d .bat carries the full prompt incl. pointer clause" "$EXPECTED_1719" "$out"
-if grepq "$out" -E 'overnight mode\. Apply the Launch preamble standing instructions in docs/handover/overnight-mode\.md before Phase 1\.'; then
+if grepq "$out" -E 'overnight mode\. Apply the Launch preamble standing instructions in docs/handover/afk-mode\.md before Phase 1\.'; then
     echo "PASS 1719e trigger phrase and pointer clause share one line"
 else
     echo "FAIL 1719e pointer clause split from the trigger phrase (embedded newline?)"
@@ -5293,7 +5293,7 @@ fi
 # divergence this check exists to catch. Per-file also sidesteps `grep -c`'s
 # `file:count` prefix, which an `awk -F:` split mis-parses on a Windows
 # `C:/...` path. -F keeps the literal dots literal.
-_clause_1719="overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
+_clause_1719="overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 # `|| true`, NOT `|| echo 0`: grep -c ALREADY prints its count (0) and exits 1
 # on no-match, so an `echo 0` fallback appends a SECOND line and the numeric
 # test below dies with "integer expected" instead of failing cleanly. The

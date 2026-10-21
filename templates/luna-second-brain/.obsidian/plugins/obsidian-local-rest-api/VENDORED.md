@@ -5,7 +5,7 @@ the upstream release assets of
 [coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api),
 copied VERBATIM. himmel did not author them; do not edit them in place.
 
-vendored_from=coddingtonbear/obsidian-local-rest-api@5.5.0
+vendored_from=coddingtonbear/obsidian-local-rest-api@5.5.2
 
 Upstream advance is tracked by the `luna-obsidian-local-rest-api` row in
 `scripts/upstreams.json` (`synced_base` must match `manifest.json`'s
