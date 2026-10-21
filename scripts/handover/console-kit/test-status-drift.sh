@@ -761,6 +761,7 @@ rm -f "$FX/fr.fail"; fr
 fr --status
 check "3c: --status after the next good refresh is ok" "$(frout)" "focus=ok"
 fr --mark-dirty
+check "3c: --mark-dirty leaves a request marker for a running refresh" "$([ -s "$FR/doc/focus-state.again" ] && echo set || echo none)" set
 fr --status
 contains "3c: --mark-dirty makes the state DIRTY" "$(frout)" "focus=DIRTY:0m"
 printf 'status=ok\ngen=3\ndirty=%s\n' "$(( $(date +%s) - 1500 ))" > "$FR/doc/focus-state"
@@ -775,6 +776,13 @@ FOCUS_REFRESH_BUDGET=1 fr
 check "3c: a hung render is cut off as FAILED:timeout" "$(frout)" "focus=FAILED:timeout"
 check "3c: and exits 1" "$(frrc)" 1
 check "3c: the state records the timeout" "$(fst stage)" timeout
+rm -f "$FX/fr.sleep"
+fr_reset; echo 5 > "$FX/fr.sleep"
+( sleep 1; printf 'status=ok\nstage=\ngen=7\ndirty=\nsha8=zz\nsdrift=\n' > "$FR/doc/focus-state" ) &
+FOCUS_REFRESH_BUDGET=2 fr
+wait
+check "3c: a timeout keeps the generation a concurrent writer stored" "$(fst gen)" 7
+check "3c: and still records the timeout" "$(fst stage)" timeout
 rm -f "$FX/fr.sleep"
 
 if command -v flock >/dev/null 2>&1; then

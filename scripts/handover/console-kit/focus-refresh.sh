@@ -121,6 +121,8 @@ fi
 if [ "$MODE" = dirty ]; then
     [ -n "$S_dirty" ] || S_dirty=$(now)
     save_state
+    # swallow-ok: an unwritable marker only loses the request that a running refresh stays DIRTY
+    now > "$AGAIN" 2>/dev/null
     exit 0
 fi
 
@@ -137,7 +139,7 @@ case "$BUDGET" in '' | *[!0-9]*) BUDGET=240 ;; esac
 if [ -z "${FOCUS_REFRESH_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     rc=0
     FOCUS_REFRESH_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$BUDGET" bash "${BASH_SOURCE[0]}" "${ORIG[@]}" || rc=$?
-    case "$rc" in 124 | 137) failed timeout ;; esac
+    case "$rc" in 124 | 137) load_state; failed timeout ;; esac
     exit "$rc"
 fi
 
