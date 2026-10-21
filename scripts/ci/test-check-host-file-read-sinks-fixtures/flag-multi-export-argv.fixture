@@ -1,0 +1,5 @@
+# fixture, not executable
+echo hi
+WS="$(mktemp -d "${TMPDIR:-/tmp}/rgm-resume.XXXXXX")"
+export STUB_CALLS="$WS/calls.log" CFG_FILE="$1"
+cat "$CFG_FILE"

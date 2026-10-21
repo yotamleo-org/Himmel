@@ -302,6 +302,23 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$proj" 
 diff -q "$work/before.json" "$s" >/dev/null || fail "core/project not idempotent"
 echo "ok: core/project idempotent on re-run"
 
+# ── 1b2. project scope wires the initiative SessionStart hook ───
+# `himmelctl config set initiative.<step> on` writes the himmel clone's .env,
+# which only the inject-initiative hook reads -- a project-scope install that
+# never wired the hook silently ignored the setting.
+ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | .[0] // empty' "$s")
+[ -n "$ss_cmd" ] || fail "HIMMEL-6956: core/project did not wire the inject-initiative SessionStart hook"
+mkdir -p "$work/ss-clone"
+printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
+ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
+grepq "$ss_out" 'Active steps: pr' \
+  || fail "HIMMEL-6956: the project-scope SessionStart hook did not name the active step (got: $ss_out)"
+ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
+[ -z "$ss_idle" ] || fail "HIMMEL-6956: the project-scope SessionStart hook injected with no step set: $ss_idle"
+[ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "1" ] \
+  || fail "HIMMEL-6956: idempotent re-run left more than one inject-initiative hook"
+echo "ok: HIMMEL-6956 core/project wires inject-initiative; a set step reaches the session, an unset one injects nothing"
+
 # ── 1c. --scope project must not write home rule files ─────────
 # wire_user_claude_md's two do_core() calls (~/.claude/CLAUDE.md, ~/.codex/
 # AGENTS.md) were unconditional in BOTH scopes -- the flag's name promises

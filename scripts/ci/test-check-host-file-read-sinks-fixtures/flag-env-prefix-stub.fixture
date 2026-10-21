@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+if [ -n "${STUB_REPLAY-}" ]; then cat "$STUB_REPLAY"; else printf '{"risk_assessment":{"score":0},"issues":[]}\n'; fi
+run "$tmpdir/$name.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$FX/reports/$name.json" STUB_RC="$src_rc"; rc=$?

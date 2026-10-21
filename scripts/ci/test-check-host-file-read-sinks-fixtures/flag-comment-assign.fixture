@@ -1,0 +1,3 @@
+# fixture, not executable
+#   X_FILE=<path>
+cat "$X_FILE"

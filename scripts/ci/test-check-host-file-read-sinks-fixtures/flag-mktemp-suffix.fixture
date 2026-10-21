@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+out="$(mktemp -d)/$1"
+cat "$out"

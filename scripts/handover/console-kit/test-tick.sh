@@ -2654,7 +2654,7 @@ mk_ow() { # <num> <status> <type>
 cat > "$W/ow-gh" <<'STUB'
 #!/usr/bin/env bash
 [ -z "${OW_GH_FAIL:-}" ] || exit 1
-[ "$2" = list ] && case "$*" in *headRefName*) printf '%b' "${OW_PR_ROWS:-}" ;; esac
+[ "$2" = list ] && case "$*" in *merged*) [ -z "${OW_MERGED_FAIL:-}" ] || exit 1; printf '%b' "${OW_MERGED_ROWS:-}" ;; *headRefName*) printf '%b' "${OW_PR_ROWS:-}" ;; esac
 exit 0
 STUB
 chmod +x "$W/ow-gh"
@@ -2676,6 +2676,19 @@ for n in 905 906 907 908; do mk_ow "$n" "In Progress" Task; done
 owe="$(ow_of "$(ow_tick)")"
 [ "$owe" = "6" ] && pass 'orphans-wip= names no keys above five' || fail "orphans-wip= with six is '$owe'"
 contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
+
+# IN CI tickets count too: one a merged PR cites (merged-not-closed) and one with no PR at all.
+OW_SAVE="$OW"; OW="$W/ow-inci-mirror/HIMMEL"; mkdir -p "$OW"
+mk_ow 921 "IN CI" Task
+mk_ow 922 "IN CI" Task
+OW_MERGED_ROWS='4400\tfix: [HIMMEL-921] x\tfix/himmel-921-x\n'
+owi="$(ow_of "$(OW_MERGED_ROWS="$OW_MERGED_ROWS" ow_tick)")"
+[ "$owi" = "2:HIMMEL-921,HIMMEL-922" ] && pass 'orphans-wip= counts an IN CI ticket with a merged PR and one with no PR' || fail "orphans-wip= with IN CI tickets is '$owi'"
+owj="$(ow_of "$(OW_MERGED_ROWS="$OW_MERGED_ROWS" OW_PR_ROWS='4401\tfix: [HIMMEL-921] y\tfix/himmel-921-y\n' ow_tick)")"
+[ "$owj" = "1:HIMMEL-922" ] && pass 'orphans-wip= drops an IN CI ticket an open PR cites' || fail "orphans-wip= with an IN CI open PR is '$owj'"
+owk="$(ow_of "$(OW_MERGED_FAIL=1 ow_tick)")"
+[ "$owk" = "?" ] && pass 'orphans-wip= is ? when the merged-PR read fails, not an all-clear' || fail "orphans-wip= on merged read failure is '$owk'"
+OW="$OW_SAVE"
 
 # --- pool-closed=<closed>/<total>: Done or wont-do keys on the Live state priority: line.
 mk_ow 911 "Done" Task

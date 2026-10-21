@@ -12,8 +12,17 @@
 # A line is a sink when a reader (cat head tail less more source `.` or a `<`
 # redirect) takes, as its whole operand, one of:
 #   - an argv expansion       $1  ${1:-}  $@  $*
-#   - a variable assigned from argv in the same added lines (path laundering)
-#   - an UPPER_CASE variable the file never assigns (environment-supplied path)
+#   - a variable assigned from argv in the same added lines (path laundering; the first
+#     name of the NAME=value run at the head of a line, or a later UPPER_CASE one), unless it was last assigned a
+#     value that IS a mktemp substitution (a file the script made itself); a value
+#     that merely contains the word, appends anything after the closing of the
+#     substitution, or is followed by a command word (out=$(mktemp) env true) does
+#     not count
+#   - an UPPER_CASE variable the file never assigns (environment-supplied path);
+#     a name counts as assigned only from the NAME=value run at the head of a line:
+#     plain, a command prefix (NAME=x cmd), or an export / local / readonly /
+#     declare / typeset list. NAME=x in a comment, a quoted or heredoc usage text,
+#     a case arm or as a command argument (run x NAME=1) is not an assignment
 # An operand with a suffix ("$ROOT/x", "$(dirname "$0")/lib.sh") is rooted and
 # passes. A sink passes when, within 3 lines either side, there is an allowlist
 # signal (`case ... in`, the word allowlist/allowed, or a realpath/readlink -f
@@ -90,12 +99,26 @@ while IFS= read -r -d '' path; do
       }
       return 0
     }
-    { line[NR] = $0; total = NR
-      if (match($0, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
-        a = substr($0, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", a); assigned[a] = 1
-      }
+    BEGIN {
+      VAL = "^(\"[^\"]*\"|\047[^\047]*\047|\\$\\([^)]*\\)|\\$\\{[^}]*\\}|\\$[A-Za-z0-9_@*#?!-]|`[^`]*`|[^ \t\"\047`$;&|)}])*"
+      HPRE = "^[ \t]*((local|export|readonly|declare|typeset)([ \t]+-[A-Za-z]+)*[ \t]+)?"
     }
-    # ponytail: any assignment clears an UPPER_CASE name (X="${X:-}" then cat "$X" passes), upgrade by tracking env-preserving assignments if it matters
+    function hrun(l,   s, nm) {   # the NAME=value run at the head of a line, after an optional export/local/readonly/declare/typeset
+      HCNT = 0; HREST = ""; s = l
+      match(s, HPRE); s = substr(s, RLENGTH + 1)
+      while (match(s, /^[A-Za-z_][A-Za-z0-9_]*=/)) {
+        nm = substr(s, 1, RLENGTH - 1); s = substr(s, RLENGTH + 1)
+        HCNT++; HN[HCNT] = nm; HP[HCNT] = length(l) - length(s) + 1
+        match(s, VAL); HV[HCNT] = substr(s, 1, RLENGTH); s = substr(s, RLENGTH + 1)
+        if (match(s, /^[ \t]+/)) s = substr(s, RLENGTH + 1); else break
+      }
+      HREST = s
+    }
+    { line[NR] = $0; total = NR
+      hrun($0)
+      for (k = 1; k <= HCNT; k++) assigned[HN[k]] = 1
+    }
+    # ponytail: a name counts as assigned only from the head of a line (plain, command-prefix or an export/local/readonly/declare/typeset list); NAME=x anywhere else (a run argument, a case arm, a comment, a usage string) is not, so such a read is flagged and takes a read-sink-ok marker, upgrade path is real shell parsing
     END {
       OPER = "\"?\\$(\\{[^}]*\\}|[A-Za-z0-9_@*]+)\"?"
       CMD  = "(^|[;&|({`]|[ \t](then|do|else))[ \t]*(cat|head|tail|less|more|source|\\.)([ \t]+(-[A-Za-z0-9]+([ \t]+[0-9]+)?|--))*[ \t]+"
@@ -104,11 +127,15 @@ while IFS= read -r -d '' path; do
         if (!is_added(n)) continue
         l = line[n]
         if (l ~ /^[ \t]*#/) continue
-        # taint: x=...$1... / x="${2:-}" / x=$(realpath "$1")
-        if (match(l, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
-          lhs = substr(l, 1, RLENGTH); rhs = substr(l, RLENGTH + 1)
-          gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", lhs)
-          if (rhs ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/) tainted[lhs] = 1
+        # taint: the first name of the line-head run, or a later UPPER_CASE one, whose value or the
+        # rest of the line after it holds argv (x="${2:-}", x=$(realpath "$1"), export A=1 CFG="$1");
+        # a later lowercase name (local p="$1" f="$2") stays untainted as on main; a mktemp
+        # result is a file the script made itself, so a lasting assignment of one clears the taint
+        hrun(l)
+        lasting = (HREST == "" || HREST ~ /^[;&|)}#]/)   # a run followed by a command word only sets that command environment
+        for (k = 1; k <= HCNT; k++) {
+          if (lasting && HV[k] ~ /^"?(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]"?$/) delete tainted[HN[k]]
+          else if (substr(l, HP[k]) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ && (k == 1 || HN[k] ~ /^[A-Z][A-Z0-9_]*$/)) tainted[HN[k]] = 1
         }
         hit = ""
         s = l

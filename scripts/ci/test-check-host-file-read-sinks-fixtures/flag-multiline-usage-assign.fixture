@@ -1,0 +1,5 @@
+# fixture, not executable
+echo hi
+echo "usage:
+  see PROMPT_FILE=<path> for the prompt"
+cat "$PROMPT_FILE"

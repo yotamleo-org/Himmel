@@ -1,0 +1,4 @@
+# fixture, not executable
+echo hi
+[ "$1" = --discovered ] && discovered="${2:-}"
+while IFS= read -r line; do echo "$line"; done < "$discovered"
