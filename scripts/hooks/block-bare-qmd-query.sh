@@ -86,11 +86,11 @@
 #
 # The command-position model (scripts/lib/bash-ast.sh) reads the command first
 # when it names qmd: a position that runs qmd with a search verb (brace
-# expansion included) is refused, and qmd named only as data to git, gh, curl,
-# jq, cat, grep or ls (a commit message, a jq filter, a heredoc) is allowed.
-# Anything it cannot fully read — an opaque position, an interpreter with no
-# literal body, echo/printf, a pipe consumer beside a mention, a PATH
-# assignment, a command over 8 KiB — is left to the regex reader below.
+# expansion included) is refused, and a command in which no position names qmd
+# except a wrapper that runs another program is allowed. Anything else — any
+# other position naming qmd in its arguments or heredoc, an assignment, an opaque
+# position, an interpreter with no literal body, a pipe consumer beside a
+# mention, a command over 8 KiB — is left to the regex reader below.
 # ponytail: Bash only — a PowerShell `qmd query` is unguarded; wire a
 # PowerShell twin if a Windows station starts running qmd ad hoc.
 #

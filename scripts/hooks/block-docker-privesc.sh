@@ -411,36 +411,23 @@ deny_priv() {
 # The words each docker/podman invocation runs with, one line per invocation
 # (words joined by US). A wrapper the model cannot see through (sudo, xargs, ssh,
 # find -exec) hands over its argv from each docker word on, so a user or host named
-# docker is not taken for the program. A position the model cannot read is
-# "@legacy": the regex reader decides, so the model never hides a deny the regex
-# gave. That covers a shell or interpreter with no parsed body, a wrapper with no
-# literal docker word, a word holding a control byte, and any other program whose
-# arguments name docker or podman (numactl, tmux, git rebase -x, git bisect run,
-# echo ...), and any position carrying an assignment, whose value the model does
-# not expose. No program is exempt: such a command keeps the regex verdict.
+# docker is not taken for the program. The model only adds denials: the regex
+# reader below always runs on the whole command, so a position the model cannot
+# read (a stdin-running program, an assignment value, a control byte) keeps the
+# regex verdict.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' DP_JQ <<'DP_JQ_EOF' || true
 def b: (. // "") | sub("^.*[/\\\\]"; "");
 def w: if .t == "lit" then .v else (.raw // "") end;
 def isd: .t == "lit" and (.v | b | IN("docker", "podman"));
-def interp: (.prog | b) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
-def words: map(w) | if any(test("[\u001f\n]")) then "@legacy" else join("\u001f") end;
-# A backslash in an argument is a Windows path (`-v C:\Users\me:/d`) to the regex
-# reader and an escape to the model, so the regex reads such a command as well.
-def winpath: any(.[1:][]; .t == "lit" and ((.raw // "") | contains("\\")));
-def scan: words, (if winpath then "@legacy" else empty end);
-def mention: any(.argv[1:][]; w | ascii_downcase | test("docker|podman"));
-def assigned: ((.assigns // []) | length) > 0;
+def words: map(w) | if any(test("[\u001f\n]")) then empty else join("\u001f") end;
 .[]
-| (if assigned then "@legacy" else empty end),
-  (if (.prog | b | IN("docker", "podman")) then (.argv | scan)
-   elif .opaque != null then
-     .argv as $a
-     | [range(0; $a | length) | select($a[.] | isd)] as $gs
-     | if ($gs | length) == 0 then "@legacy" else ($gs[] as $g | $a[$g:] | scan) end
-   elif interp then (if .body == null then "@legacy" else empty end)
-   elif mention then "@legacy"
-   else empty end)
+| if (.prog | b | IN("docker", "podman")) then (.argv | words)
+  elif .opaque != null then
+    .argv as $a
+    | ([range(0; $a | length) | select($a[.] | isd)] | .[]) as $g
+    | $a[$g:] | words
+  else empty end
 DP_JQ_EOF
 
 # A command that names neither docker nor podman (quotes, backslashes and line
@@ -453,10 +440,11 @@ case "$cmd_nq" in
 esac
 
 # The command-position model (scripts/lib/bash-ast.sh) reads where each command
-# runs: a heredoc body is data, and command / exec / nohup / env / bash -c / eval
-# reach the docker they run. Any other position that names docker goes to the
-# regex reader, as does PowerShell (which shfmt cannot read) and any text shfmt
-# cannot parse.
+# runs, so command / exec / nohup / env / sudo / ssh / bash -c / eval reach the
+# docker they run, and a program or flag spelled through quotes or a backslash is
+# still that program. It only adds denials: the regex reader runs on the whole
+# command afterwards, whatever the model says, so this guard is never weaker than
+# the regex alone. PowerShell (which shfmt cannot read) goes to the regex reader.
 if [ "$tool" != PowerShell ]; then
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh
@@ -468,18 +456,16 @@ if [ "$tool" != PowerShell ]; then
     pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
-            # swallow-ok: a jq failure falls through to the legacy regex verdict, never weaker
+            # swallow-ok: a jq failure falls through to the regex verdict, never weaker
             if verdict=$(printf '%s' "$pos" | jq -r "$DP_JQ" 2>/dev/null); then
-                legacy=0 blocked=0
+                blocked=0
                 while IFS= read -r line; do
                     [ -n "$line" ] || continue
-                    if [ "$line" = "@legacy" ]; then legacy=1; continue; fi
                     toks=()
                     IFS=$'\037' read -r -a toks <<<"$line"
                     if scan_docker_words "${toks[@]}"; then blocked=1; fi
                 done <<<"$verdict"
                 [ "$blocked" = 1 ] && deny_priv
-                [ "$legacy" = 0 ] && exit 0
             fi
             ;;
         2)

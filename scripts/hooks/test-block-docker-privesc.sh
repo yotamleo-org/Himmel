@@ -125,13 +125,13 @@ assert_rc "--device /dev/fuse (char dev)"      0 "$(run_case "$(j_bash 'docker r
 assert_rc "--mount source=/usr,readonly (ro)"  0 "$(run_case "$(j_bash 'docker run --mount type=bind,source=/usr,target=/u,readonly img app')")"
 assert_rc "docker cp ctr:/x ./local (dst ok)"  0 "$(run_case "$(j_bash 'docker cp ctr:/x ./local')")"
 
-# --- command-position model (scripts/lib/bash-ast.sh): a heredoc body is not a
-# command, a program or flag spelled through quotes, a backslash or a line
-# continuation is still that program or flag, and any other position naming docker
-# keeps the regex verdict.
+# --- command-position model (scripts/lib/bash-ast.sh): a program or flag spelled
+# through quotes, a backslash or a line continuation is still that program or flag.
+# The model only adds denials: the regex reader runs on the whole command whatever
+# the model says, so a string or heredoc naming docker keeps the regex verdict.
 assert_rc "echo string naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash 'echo "docker run --privileged img sh"')")"
 assert_rc "grep pattern naming a docker bind mount keeps the regex verdict" 2 "$(run_case "$(j_bash "grep -n 'docker run -v /etc:/h' notes.txt")")"
-assert_rc "heredoc body naming docker run --privileged is data" 0 "$(run_case "$(j_bash "cat <<'EOF' > notes.txt
+assert_rc "heredoc body naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash "cat <<'EOF' > notes.txt
 docker run --privileged img sh
 EOF")")"
 assert_rc "jq string naming docker run --privileged keeps the regex verdict" 2 "$(run_case "$(j_bash "jq '.[] | docker run --privileged' notes.json")")"
@@ -174,6 +174,15 @@ assert_rc "git filter-branch --tree-filter runs docker run --privileged" 2 "$(ru
 assert_rc "git send-email --to-cmd runs docker run --privileged" 2 "$(run_case "$(j_bash 'git send-email --to-cmd "docker run --privileged img sh" p')")"
 assert_rc "git rebase --exe (abbreviated --exec) runs docker run --privileged" 2 "$(run_case "$(j_bash 'git rebase --exe "docker run --privileged img sh" HEAD~1')")"
 assert_rc "GIT_SSH_COMMAND value runs docker run --privileged" 2 "$(run_case "$(j_bash "GIT_SSH_COMMAND='true; docker run --privileged -v /:/h img sh' git fetch origin")")"
+# the regex reader always runs on the whole command: stdin handed to a program the
+# model does not read as a shell still runs the docker text it carries
+assert_rc "at now heredoc carries docker run --privileged" 2 "$(run_case "$(j_bash "at now <<EOF
+docker run --privileged img sh
+EOF")")"
+assert_rc "at now here-string carries docker run --privileged" 2 "$(run_case "$(j_bash 'at now <<< "docker run --privileged img sh"')")"
+assert_rc "crontab - here-string carries docker run --privileged" 2 "$(run_case "$(j_bash 'crontab - <<< "* * * * * docker run --privileged img sh"')")"
+assert_rc "bash -c at now with a here-string carries docker run --privileged" 2 "$(run_case "$(j_bash "bash -c 'at now' <<< \"docker run --privileged img sh\"")")"
+assert_rc "xargs docker run with the flags in a here-string" 2 "$(run_case "$(j_bash "xargs docker run <<< '--privileged -v /:/h img'")")"
 assert_rc "ssh heredoc runs docker run --privileged on the host" 2 "$(run_case "$(j_bash "ssh host <<'EOF'
 docker run --privileged img sh
 EOF")")"
