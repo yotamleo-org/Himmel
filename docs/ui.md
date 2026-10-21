@@ -6,7 +6,7 @@ they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config console | One local web app: Settings, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude | <!-- old-term-ok: console is renamed in slice V5 -->
+| Config console | One local web app: Settings, Setup, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude | <!-- old-term-ok: console is renamed in slice V5 -->
 | Console board | One generated HTML page: the fleet, each worker session's phase, what needs the supervisor session | `node scripts/handover/console-kit/board.mjs --doc <console doc> --changed` | a running himmel supervisor session |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/console-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
@@ -53,7 +53,11 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   change, each row with its command, when it takes effect and a Learn more link
   to the docs site; then triage of failing items and the inventory of install
   items, doctor checks, scheduled jobs, lanes, flags and secrets by presence;
-  Roadmap and Kanban only appear when the UI can read a tracker), `#/health` (one verdict:
+  Roadmap and Kanban only appear when the UI can read a tracker), `#/setup`
+  (which secrets are set, never their values; a file-stored secret can be saved or
+  removed here, though typing it in the terminal with `himmelctl install` is the
+  safest path; plus the commit rules, tracker and ticket-id-required, each with a
+  dry-run before it changes), `#/health` (one verdict:
   All clear / Needs a look / Act now), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
   librarian, live from the Jira mirror; click a version for its kanban at

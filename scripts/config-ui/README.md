@@ -346,6 +346,12 @@ imports, so its suite runs in CI without an install.
   command, when it takes effect and a Learn more link to the docs site, Commit
   rules offer no switch, a switch previews its dry-run first, and Roadmap and
   Kanban follow the tracker source.
+- Setup e2e (`setup.e2e.ts`, same opt-in suite): the page is `public/setup.js`,
+  its state and secret writes are `setup.ts` (`GET /api/setup`, `POST
+  /api/setup/secret`). A runtime-computed canary token is saved and removed
+  through the page against the temp-HOME store, and a scan of the markup, fields,
+  browser storage, audit log and argv must never find it (a control test plants
+  it to prove the scan sees each place). Commit rules preview before they apply.
 - Development graph docs page e2e (`dev-graph-docs.e2e.ts`, journey J-DG1,
   same suite): it needs no himmelctl. It serves `docs/guide` over `node:http`
   and walks `dev-graph.html`: node count, the W2 NO-GO step as refused with its

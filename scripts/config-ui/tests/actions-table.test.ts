@@ -24,6 +24,9 @@ const cases: [string, string, string | undefined, string[]][] = [
   ["config.lanes", "l1", "off", [...H, "config", "set", "lanes.l1", "off"]],
   ["config.initiative", "pr", "on", [...H, "config", "set", "initiative.pr", "on"]],
   ["config.initiative", "handover", "off", [...H, "config", "set", "initiative.handover", "off"]],
+  ["config.commitRules", "tracker", "jira", [...H, "config", "set", "commit.tracker", "jira"]],
+  ["config.commitRules", "tracker", "none", [...H, "config", "set", "commit.tracker", "none"]],
+  ["config.commitRules", "ticket-id-required", "off", [...H, "config", "set", "commit.ticketIdRequired", "off"]],
 ];
 
 for (const [action, target, value, argv] of cases) {
@@ -60,6 +63,11 @@ const refused: [string, string, string | undefined][] = [
   ["config.lanes", "l2", "on"],
   ["config.initiative", "merge", "on"], // guard-class, never a target
   ["cadence.arm", "graphmap", "on"], // value only for config.*
+  ["config.commitRules", "tracker", "on"], // each target has its own value set
+  ["config.commitRules", "tracker", "github"],
+  ["config.commitRules", "ticket-id-required", "jira"],
+  ["config.commitRules", "ticketIdPattern", "^X-1$"], // the pattern is typed in the terminal, never a UI target
+  ["config.commitRules", "tracker", undefined],
 ];
 for (const [action, target, value] of refused) {
   test(`${action} ${target} ${value ?? ""} is refused`, () => {

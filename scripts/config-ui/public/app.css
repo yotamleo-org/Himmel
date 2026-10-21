@@ -102,4 +102,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .rm-rel.cur{border-color:var(--accent)}
 .rm-sync{width:100%;border-collapse:collapse}
 .rm-sync th,.rm-sync td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere;vertical-align:top}
+.srow{display:grid;grid-template-columns:minmax(160px,240px) minmax(0,1fr) auto auto;gap:12px;align-items:center;min-height:30px;padding:4px;border-bottom:1px solid var(--line)}
+.sform{display:flex;gap:6px;align-items:center;margin:0}
+.sform input{background:var(--bg);color:var(--fg);border:1px solid var(--line);font:12px var(--mono);padding:4px 6px;width:min(260px,100%)}
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}

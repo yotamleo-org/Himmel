@@ -7,8 +7,8 @@ let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
 
 const RAIL = (tracker: TrackerKind) => tracker === "local" || tracker === "none"
-  ? ["Settings", "Health", "Tool health", "Fleet", "Workflow", "Docs"]
-  : ["Settings", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"];
+  ? ["Fleet", "Health", "Tool health", "Settings", "Setup", "Workflow", "Docs"]
+  : ["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"];
 
 // landing: a console page id opened straight from the landing fragment (#t=<token>&page=<id>), as a bookmark would.
 async function open(page: Page, tracker: TrackerKind, landing = "") {

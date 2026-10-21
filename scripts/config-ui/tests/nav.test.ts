@@ -17,10 +17,16 @@ const tokenOnlyInFragment = (href: string) => {
   return !u.pathname.includes(TOKEN) && !u.search.includes(TOKEN);
 };
 
-test("the rail lists Settings, Health and Fleet on every page, plus Run when a run is open", () => {
-  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Settings", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Settings", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Settings", "Health", "Tool health", "Fleet", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
+test("the rail lists Fleet first, then Health, Tool health, Settings and Setup, on every page, plus Run when a run is open", () => {
+  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
+});
+
+test("Setup is a console route, in the fragment from the AG-UI pages too", () => {
+  expect(navLinks({ here: "console", token: TOKEN, current: "setup" }).find((l) => l.id === "setup")).toMatchObject({ href: "#/setup", current: true });
+  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).find((l) => l.id === "setup")!.href).toBe(`/#t=${TOKEN}&page=setup`);
+  expect(parseLanding(`#t=${TOKEN}&page=setup`)).toEqual({ token: TOKEN, page: "setup" });
 });
 
 test("the rail ends with Docs, an external link to DOCS_URL that is never the current page and carries no token", () => {
