@@ -699,10 +699,10 @@ jobs:
         name: Install pinned shfmt (live-turn deny text)
         if: ${{ !cancelled() }}
         run: |
-          ver=3.14.1
-          sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
-          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt"
-          echo "${sha}  $RUNNER_TEMP/shfmt" | sha256sum -c -
+          shfmt_ver=3.14.1
+          shfmt_sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${shfmt_ver}/shfmt_v${shfmt_ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt"
+          echo "${shfmt_sha}  $RUNNER_TEMP/shfmt" | sha256sum -c -
           sudo install -m 0755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
       - id: claude-startup__live-turn
         if: ${{ !cancelled() }}
