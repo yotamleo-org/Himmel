@@ -372,7 +372,7 @@ EOF
 
         [ "$RM" -eq 1 ] || exit 0
 
-        case "$cmd" in
+        case "$bare" in
             *HIMMEL_RELEASE_MANAGER*) deny "marker-override" "command names HIMMEL_RELEASE_MANAGER" ;;
             *leg-pr-open*) deny "pr-open" "leg-pr-open" ;;
             *merge-on-green*) deny "merge" "merge-on-green" ;;
