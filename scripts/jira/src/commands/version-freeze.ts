@@ -79,6 +79,25 @@ const addLabel = (key: string, label: string) =>
 
 const inKeys = (keys: string[]) => `key in (${keys.join(',')})`;
 
+// Jira rejects the whole `key in (...)` query with HTTP 400 when one key no longer
+// exists; retry key by key so a deleted key is absent from the result (read as open).
+async function searchKeys(keys: string[], tail = '', labels = false): ReturnType<typeof searchAllIssues> {
+  try {
+    return await searchAllIssues(`${inKeys(keys)}${tail}`, SEARCH_LIMIT, request, labels);
+  } catch (e) {
+    if (!/^HTTP 400\b/.test(e instanceof Error ? e.message : '')) throw e;
+  }
+  const found: Awaited<ReturnType<typeof searchAllIssues>> = [];
+  for (const k of keys) {
+    try {
+      found.push(...(await searchAllIssues(`key = ${k}${tail}`, SEARCH_LIMIT, request, labels)));
+    } catch (e) {
+      if (!/^HTTP 400\b/.test(e instanceof Error ? e.message : '')) throw e;
+    }
+  }
+  return found;
+}
+
 function keysFromFile(path: string): string[] {
   const keys = readFileSync(path, 'utf8')
     .split('\n')
@@ -163,7 +182,7 @@ async function readinessRows(
   if (!frozen) {
     rows.push({ id: 'frozen-set', ok: false, detail: `${name} is not frozen (no frozen: and frozen-keys: lines in its description)` });
   } else {
-    const issues = frozen.keys.length === 0 ? [] : ((await searchAllIssues(inKeys(frozen.keys), SEARCH_LIMIT, request, true)) as Issue[]);
+    const issues = frozen.keys.length === 0 ? [] : ((await searchKeys(frozen.keys, '', true)) as Issue[]);
     const deferred = (i: Issue) =>
       (i.fields.labels ?? []).includes('deferred') &&
       ledger.some((l) => l.kind === 'deferral' && l.key === i.key && l.version === name);
@@ -212,7 +231,7 @@ async function readinessRows(
   // that lacks it means the fold has not run for the range.
   const unfolded =
     frozen && frozen.keys.length > 0
-      ? await searchAllIssues(`${inKeys(frozen.keys)} AND statusCategory = Done AND (fixVersion != "${name}" OR fixVersion is EMPTY)`, SEARCH_LIMIT, request)
+      ? await searchKeys(frozen.keys, ` AND statusCategory = Done AND (fixVersion != "${name}" OR fixVersion is EMPTY)`)
       : [];
   rows.push({
     id: 'done-fold',

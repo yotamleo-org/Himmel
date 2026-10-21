@@ -120,6 +120,19 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(out()).toMatch(/FAIL\s+frozen-set.*open: HIM-2/);
   });
 
+  it('a deleted frozen key (HTTP 400 on the bulk key query) reads as open, not as a crash', async () => {
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done')] });
+    const routed = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      const jql = decodeURIComponent(path.split('jql=')[1]?.split('&')[0] ?? '');
+      if (jql.includes('HIM-2') && jql.startsWith('key')) throw new Error("HTTP 400: An issue with key 'HIM-2' does not exist");
+      if (jql === 'key = HIM-1') return { issues: [issue('HIM-1', 'done')], total: 1 };
+      return routed(method, path);
+    });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+frozen-set.*open: HIM-2/);
+  });
+
   it('the done-fold query also catches a Done frozen key whose fixVersion is empty', async () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'done')] });
     await run(['version-ready', 'v1.1.3']);

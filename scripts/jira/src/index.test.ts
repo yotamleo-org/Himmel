@@ -69,6 +69,18 @@ describe('--list-commands introspection contract', () => {
     expect(listCommands(process.env)).not.toContain('help');
   });
 
+  it('hands a subcommand its own --version flag instead of printing the CLI version', () => {
+    const env = { ...process.env, JIRA_PROJECT_KEY: 'HIM' };
+    delete env.HIMMEL_CONSOLE;
+    let out = '';
+    try {
+      execFileSync('node', [distIndex, 'version-defer', 'HIM-1', '--version', 'v9', '--reason', 'x'], { encoding: 'utf8', env, stdio: 'pipe' });
+    } catch (e) {
+      out = String((e as { stderr?: string }).stderr ?? '');
+    }
+    expect(out).toContain('needs the console marker');
+  });
+
   it('works without JIRA_PROJECT_KEY (no network / env dependency)', () => {
     const env = { ...process.env };
     delete env.JIRA_PROJECT_KEY;

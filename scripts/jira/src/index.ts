@@ -32,6 +32,7 @@ const program = new Command();
 program
   .name('jira')
   .version('1.0.0')
+  .enablePositionalOptions()
   .description('Jira CLI for himmel project');
 
 registerGet(program);
