@@ -254,7 +254,7 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
 
 ## Luna graph freshness (HIMMEL-6551)
 
-The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphAst-Luna`), so
+The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
 its markdown only gets LLM extraction from a separate job:
 `graphmap-cadence.sh arm --ast-only --with-luna-semantic` adds
 `HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh

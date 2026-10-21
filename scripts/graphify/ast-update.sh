@@ -144,10 +144,11 @@ case "$_graphify_out_name" in
     # a disagreement -- it resolves OUTSIDE the corpus root, so the lock and
     # the write would land somewhere the operator never named. The absolute
     # form stays supported: this leg runs graphify in place and can honour it.
-    if ! printf '%s' "$_graphify_out_name" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-      echo "ast-update: FAILED -- a relative GRAPHIFY_OUT must be a single directory name matching [A-Za-z0-9][A-Za-z0-9._-]* (got '$_graphify_out_name'); refresh-graph-map.sh applies the same rule, and a multi-segment or dot-dot value would put the two cadence legs on different directories. Exiting 3, not 4" >&2
-      exit 3
-    fi
+    case "$_graphify_out_name" in
+      [!A-Za-z0-9]*|*[!A-Za-z0-9._-]*)
+        echo "ast-update: FAILED -- a relative GRAPHIFY_OUT must be a single directory name matching [A-Za-z0-9][A-Za-z0-9._-]* (got '$_graphify_out_name'); refresh-graph-map.sh applies the same rule, and a multi-segment or dot-dot value would put the two cadence legs on different directories. Exiting 3, not 4" >&2
+        exit 3 ;;
+    esac
     OUT_DIR="$CORPUS_ROOT/$_graphify_out_name" ;;
 esac
 # Refuse to write into somebody's SOURCE directory (CR r10). The semantic leg

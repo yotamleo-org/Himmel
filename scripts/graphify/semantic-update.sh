@@ -105,8 +105,10 @@ _out_name="${GRAPHIFY_OUT:-graphify-out}"
 case "$_out_name" in
   /*) OUT_DIR="$_out_name" ;;
   *)
-    printf '%s' "$_out_name" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' \
-      || { echo "semantic-update: a relative GRAPHIFY_OUT must be a single directory name (got '$_out_name')" >&2; exit 1; }
+    case "$_out_name" in
+      [!A-Za-z0-9]*|*[!A-Za-z0-9._-]*)
+        echo "semantic-update: a relative GRAPHIFY_OUT must be a single directory name (got '$_out_name')" >&2; exit 1 ;;
+    esac
     OUT_DIR="$CORPUS_ROOT/$_out_name" ;;
 esac
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"

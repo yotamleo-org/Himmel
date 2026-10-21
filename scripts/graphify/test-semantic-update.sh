@@ -674,5 +674,9 @@ echo "T62: a relative GRAPHIFY_OUT that is not a single directory name is still 
 out=$(GRAPHIFY_OUT=../elsewhere run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
 [ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_OUT"* ]] && pass "T62 refused" || fail "T62 (rc=$rc): $out"
 
+echo "T63: a multi-line relative GRAPHIFY_OUT whose later line is a traversal is refused"
+out=$(GRAPHIFY_OUT=$'ok\n../elsewhere' run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_OUT"* ]] && pass "T63 refused" || fail "T63 (rc=$rc): $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
