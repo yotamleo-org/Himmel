@@ -102,11 +102,11 @@ assert_rc "update-ref -d via -C worktree" 2 "$(run_case "$(j_bash 'git -C /c/rep
 # opaque to a command-string regex).
 assert_rc "update-ref --stdin (refs/stash via piped data)" 2 "$(run_case "$(j_bash "printf 'delete refs/stash\n' | git update-ref --stdin")")"
 assert_rc "update-ref --stdin (unrelated target, still refused)" 2 "$(run_case "$(j_bash "printf 'delete refs/heads/foo\n' | git update-ref --stdin")")"
-# Quoting evasions (backslash, quote concatenation) of refs/stash
-# or --stdin are not chased; they are accepted misses.
-assert_rc 'update-ref -d refs/sta\sh (accepted miss)' 0 "$(run_case "$(j_bash 'git update-ref -d refs/sta\sh')")"
-assert_rc 'update-ref -d refs/"stash" (accepted miss)' 0 "$(run_case "$(j_bash 'git update-ref -d refs/"stash"')")"
-assert_rc 'update-ref --st"d"in (accepted miss)' 0 "$(run_case "$(j_bash 'printf "delete refs/stash\n" | git update-ref --st"d"in')")"
+# The command-position model reads words after quote removal, so a quoted or
+# backslashed spelling of refs/stash or --stdin is the same word.
+assert_rc 'update-ref -d refs/sta\sh' 2 "$(run_case "$(j_bash 'git update-ref -d refs/sta\sh')")"
+assert_rc 'update-ref -d refs/"stash"' 2 "$(run_case "$(j_bash 'git update-ref -d refs/"stash"')")"
+assert_rc 'update-ref --st"d"in' 2 "$(run_case "$(j_bash 'printf "delete refs/stash\n" | git update-ref --st"d"in')")"
 
 # --- ALLOW cases (expect rc=0) ---
 assert_rc "git stash list"            0 "$(run_case "$(j_bash 'git stash list')")"
@@ -173,9 +173,19 @@ assert_rc "command:false + cmd:ls" 2 "$(run_case '{"tool_name":"Bash","tool_inpu
 # A null command still reads cmd, as `//` did: never allow what main refused.
 assert_rc "command:null + cmd:stash drop" 2 "$(run_case '{"tool_name":"Bash","tool_input":{"command":null,"cmd":"git stash drop"}}')"
 
-# --- wrapper/quote normalisation is not chased (accepted misses) ---
-assert_rc "5745 bash -c 'git stash' (accepted miss)"  0 "$(run_case "$(j_bash "bash -c 'git stash'")")"
-assert_rc "5745 g'i't stash (accepted miss)"          0 "$(run_case "$(j_bash "g'i't stash")")"
+# --- wrappers and quote splitting are read as the shell runs them ---
+assert_rc "bash -c 'git stash'"  2 "$(run_case "$(j_bash "bash -c 'git stash'")")"
+assert_rc "g'i't stash"          2 "$(run_case "$(j_bash "g'i't stash")")"
+assert_rc "command git stash drop" 2 "$(run_case "$(j_bash 'command git stash drop')")"
+assert_rc "exec git stash pop"   2 "$(run_case "$(j_bash 'exec git stash pop')")"
+assert_rc "nohup git stash"      2 "$(run_case "$(j_bash 'nohup git stash')")"
+assert_rc "time git stash clear" 2 "$(run_case "$(j_bash 'time git stash clear')")"
+assert_rc "timeout 5 git stash drop" 2 "$(run_case "$(j_bash 'timeout 5 git stash drop')")"
+assert_rc "xargs git stash drop" 2 "$(run_case "$(j_bash 'echo x | xargs git stash drop')")"
+assert_rc "find -exec git stash drop" 2 "$(run_case "$(j_bash 'find . -maxdepth 0 -exec git stash drop \;')")"
+assert_rc "eval 'git stash pop'" 2 "$(run_case "$(j_bash "eval 'git stash pop'")")"
+# shellcheck disable=SC2016  # the literal $v is the payload under test
+assert_rc "git stash \$v (a verb the model cannot read)" 2 "$(run_case "$(j_bash 'v=drop; git stash $v')")"
 assert_rc "5745 echo 'git stash' (data)"              0 "$(run_case "$(j_bash "echo 'git stash'")")"
 
 # --- The path prefix stops at an open paren (linear on a `(` run) ---
@@ -196,13 +206,49 @@ if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ]; then
     echo "FAIL open-paren run x20000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms)"; FAILED=$((FAILED + 1)); fi
 # A `(` or `)` inside the path must still reach the program name.
 assert_rc 'path with (b) then git stash drop'         2 "$(run_case "$(j_bash '/tmp/a(b)/git stash drop')")"
-assert_rc 'quoted path with (b) git stash drop (accepted miss, ICE-222)' 0 "$(run_case "$(j_bash '"/tmp/a(b)/git" stash drop')")"
+assert_rc 'quoted path with (b) git stash drop' 2 "$(run_case "$(j_bash '"/tmp/a(b)/git" stash drop')")"
 assert_rc 'path with ) then git stash drop'           2 "$(run_case "$(j_bash '/tmp/a)/git stash drop')")"
 assert_rc 'path with )) then git stash drop'          2 "$(run_case "$(j_bash '/tmp/a))/git stash drop')")"
 assert_rc 'path with ){ then git stash drop'          2 "$(run_case "$(j_bash '/tmp/a){/git stash drop')")"
 assert_rc 'c: path with (x86) then git stash drop'    2 "$(run_case "$(j_bash 'c:/p(x86)/git stash drop')")"
 assert_rc 'sudo path with (b) then git stash drop'    2 "$(run_case "$(j_bash 'sudo /tmp/a(b)/git stash drop')")"
 assert_rc 'path with (b) then git stash list allowed' 0 "$(run_case "$(j_bash '/tmp/a(b)/git stash list')")"
+
+# --- the command-position corpus: the command-position model reads where a command
+# runs, so quoted data and heredoc bodies are not commands and a cd never hides
+# one. The cwd rows pin the verdict: refs/stash is shared by every worktree, so
+# no cd changes it.
+assert_rc "jq string '.[] | git stash drop' is data" 0 "$(run_case "$(j_bash "jq '.[] | git stash drop' notes.json")")"
+assert_rc "gh --jq string with a pipe and git stash" 0 "$(run_case "$(j_bash "gh run view 5 --json jobs --jq '(.jobs | git stash pop)'")")"
+assert_rc "heredoc body naming git stash drop is data" 0 "$(run_case "$(j_bash "cat <<'EOF' > notes.txt
+git stash drop
+EOF")")"
+assert_rc "heredoc body feeding wc is data" 0 "$(run_case "$(j_bash "wc -l <<EOF
+git stash pop
+EOF")")"
+assert_rc "cd right of a pipe, then git stash drop" 2 "$(run_case "$(j_bash 'echo x | cd sub && git stash drop')")"
+assert_rc "cd behind ||, then git stash drop" 2 "$(run_case "$(j_bash 'cd R || cd V && git stash drop')")"
+assert_rc "cd right of a pipe, then git stash list" 0 "$(run_case "$(j_bash 'echo x | cd sub && git stash list')")"
+assert_rc "cd behind ||, then git stash list" 0 "$(run_case "$(j_bash 'cd R || cd V && git stash list')")"
+
+# --- a missing shfmt denies a command that names the guarded verb, and the
+# message names shfmt; a command that does not mention it never pays for it.
+NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-git-stash-nosh.XXXXXX") || exit 1
+trap 'rm -rf "$NOSH"' EXIT
+oifs=$IFS; IFS=:
+for d in $PATH; do
+    for t in "$d"/*; do
+        case "${t##*/}" in shfmt) ;; *) [ -e "$NOSH/${t##*/}" ] || ln -s "$t" "$NOSH/${t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$oifs
+# stderr is the captured stream here, stdout is discarded
+# shellcheck disable=SC2069
+nosh_case() { printf '%s' "$(j_bash "$1")" | PATH="$NOSH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?"; }
+out=$(nosh_case 'git stash drop')
+case "$out" in *shfmt*"rc=2") echo "PASS no shfmt: the verb is denied and the message names shfmt" ;; *) echo "FAIL no shfmt: the verb is denied and the message names shfmt - $out"; FAILED=$((FAILED + 1)) ;; esac
+out=$(nosh_case 'git status')
+case "$out" in "rc=0") echo "PASS no shfmt: a command without the verb is not denied" ;; *) echo "FAIL no shfmt: a command without the verb is not denied - $out"; FAILED=$((FAILED + 1)) ;; esac
 
 # --- BYPASS case ---
 assert_rc "GIT_STASH_OK bypass"       0 "$(run_case "$(j_bash 'git stash drop')" "GIT_STASH_OK=1")"

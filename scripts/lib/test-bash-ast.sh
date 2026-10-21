@@ -42,7 +42,9 @@ if [ "$rc" = 2 ] && [[ $err == *"shfmt not on PATH"* ]]; then ok "no shfmt: rc 2
 else bad "no shfmt: rc 2 and the message names shfmt — rc=$rc err=$err"; fi
 
 if ! command -v shfmt >/dev/null 2>&1; then
-    echo "SKIP: shfmt not on PATH — the model rows did not run"
+    # CI sets HIMMEL_REQUIRE_SHFMT=1 after installing shfmt, so a runner that lost it fails here instead of skipping
+    if [ "${HIMMEL_REQUIRE_SHFMT:-}" = 1 ]; then bad "HIMMEL_REQUIRE_SHFMT=1 but shfmt is not on PATH — the model rows did not run"
+    else echo "SKIP: shfmt not on PATH — the model rows did not run"; fi
     printf '\n%d passed, %d failed\n' "$pass" "$fail"
     [ "$fail" -eq 0 ]
     exit
