@@ -22,6 +22,8 @@ SUT="$HERE/tick.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tick-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
+# A leg launch exports the new lane name; it would shadow the rows that pin the old one.
+unset CADENCE_USAGE_LANE
 
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }

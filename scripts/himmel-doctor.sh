@@ -4018,8 +4018,13 @@ check_c57_dotenv_allowlists() {
 # probe timing out). Read-only: it never runs the probe.
 check_c59_codex_bank_cache() {
     local cache="${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}}"
-    local ttl="${CODEX_USAGE_CACHE_TTL_SECONDS:-${CODEX_BANK_CACHE_TTL_SECONDS:-21600}}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
+    local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
     local at captured now age
+    # the new name counts only when it is a positive number, as bank-status reads it.
+    case "${CODEX_USAGE_CACHE_TTL_SECONDS:-}" in
+        '' | *[!0-9]*) ;;
+        *) if [ "$((10#$CODEX_USAGE_CACHE_TTL_SECONDS))" -gt 0 ]; then ttl="$CODEX_USAGE_CACHE_TTL_SECONDS"; fi ;;
+    esac
     case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; *) ttl=$((10#$ttl)) ;; esac
     if [ ! -f "$cache" ]; then
         emit INFO C59-codex-bank-cache "no codex bank cache at $cache — the codex lane reads unmeasurable until the probe has run once" "run: $cmd"

@@ -6545,6 +6545,10 @@ out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" c59_run)"
 if grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 reads CODEX_USAGE_CACHE"; else fail "C59 CODEX_USAGE_CACHE -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS=999999 CODEX_BANK_CACHE_TTL_SECONDS=60 c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 reads CODEX_USAGE_CACHE_TTL_SECONDS"; else fail "C59 CODEX_USAGE_CACHE_TTL_SECONDS -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+for c59_new in 0 -5 junk; do
+  out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS="$c59_new" CODEX_BANK_CACHE_TTL_SECONDS=999999 c59_run)"
+  if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 new TTL '$c59_new' falls back to the old TTL"; else fail "C59 new TTL '$c59_new' -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+done
 rm -f "$c59_t/codex-usage.json"
 
 echo "== C59-codex-bank-cache: no cache file -> INFO, not a WARN =="
