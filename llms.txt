@@ -35,7 +35,7 @@ Data egress from graph extraction is fenced by one policy file, `scripts/guardra
 
 ## Docs site
 
-The published [docs site](https://yotamleo-org.github.io/Himmel/) and its [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html) are the human front door. Also: [glossary](docs/glossary.md), [stuck playbook](marketplace/plugins/himmel-ops/skills/stuck-playbook/SKILL.md), [contributing](docs/contributing.md).
+The published [docs site](https://yotamleo-org.github.io/Himmel/) and its [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html) are the human front door. Also: [glossary](docs/glossary.md), [stuck playbook](marketplace/plugins/himmel-ops/skills/stuck-playbook/SKILL.md), [contributing](docs/contributing.md). <!-- env-literal-ok: published docs site -->
 
 ## Guide map
 
