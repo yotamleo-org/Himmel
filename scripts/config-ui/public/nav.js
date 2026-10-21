@@ -2,7 +2,7 @@
 // the same rail. app.js imports it as /nav.js; agui-web bundles it. The session token rides only the URL
 // fragment (#t=<token>), never a path or query, so it never reaches a request line.
 export const PAGES = [
-  { id: "config", label: "Config" },
+  { id: "config", label: "Settings" },
   { id: "health", label: "Health" },
   { id: "toolhealth", label: "Tool health" },
   { id: "fleet", label: "Fleet" },
@@ -15,7 +15,7 @@ const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban", "workflo
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
 export const DOCS_URL = "https://yotamleo-org.github.io/Himmel/";
-export const DOCS_PATHS = ["/"];
+export const DOCS_PATHS = ["/", "/himmelctl/", "/setup/codex/", "/configuration/", "/cadences/", "/internals/enforcement/", "/setup/profiles/"];
 export const docsHref = (path) => DOCS_URL + path.replace(/^\//, "");
 
 const frag = (o) => "#" + new URLSearchParams(o).toString();
