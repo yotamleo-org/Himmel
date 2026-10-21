@@ -201,5 +201,29 @@ out=$(run_scan)
 if printf '%s' "$out" | grep -q 'incomplete'; then ok "row 16: unparsable plugin hooks.json reads incomplete, not clean"
 else bad "row 16: corrupt plugin hooks.json reported clean, got: $out"; fi
 
+# ── row 17: valid JSON with the wrong structure is never reported as clean ───
+fixture bad-shape
+echo '{"hooks":[]}' > "$FX_HOME/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'incomplete' && ! printf '%s' "$out" | grep -q 'scan-duplicates: clean'; then ok "row 17: structurally invalid settings read incomplete, not clean"
+else bad "row 17: bad-shape settings reported clean, got: $out"; fi
+
+# ── row 18: one file wiring a script under overlapping but different matchers
+fixture same-file-overlap
+jq -n '{hooks:{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:"bash x/ovl.sh"}]},{matcher:".*",hooks:[{type:"command",command:"bash x/ovl.sh"}]}]}}' > "$FX_HOME/.claude/settings.json"
+out=$(run_scan)
+if printf '%s' "$out" | grep -q 'ovl.sh'; then ok "row 18: same-file overlapping matchers are flagged"
+else bad "row 18: same-file overlapping matchers missed, got: $out"; fi
+
+# ── row 19: a grouped alternation matcher is one regex, not split on its pipe
+fixture grouped-alt
+hook_settings PreToolUse '(Bash|Read)' 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/alt.sh"' > "$FX_HOME/.claude/settings.json"
+hook_settings PreToolUse Read 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/alt.sh"' > "$FX_PROJ/.claude/settings.json"
+out=$(run_scan)
+hook_settings PreToolUse Write 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/alt.sh"' > "$FX_PROJ/.claude/settings.json"
+out2=$(run_scan)
+if printf '%s' "$out" | grep -q 'alt.sh' && printf '%s' "$out2" | grep -q 'scan-duplicates: clean'; then ok "row 19: grouped alternation matcher overlaps Read, not Write"
+else bad "row 19: grouped alternation mishandled, got: $out / $out2"; fi
+
 echo "$(basename "$0"): $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
