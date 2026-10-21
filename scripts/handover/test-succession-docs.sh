@@ -89,9 +89,13 @@ contains 'leg-preface-claudex.md: the console is the one last accepted, the brie
 contains 'succession.md: the relay (1) sender is the console last accepted' "$(flat "$succ")" 'from the console you last accepted (the SendMessage `from` equals it)'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'succession.md: the decision table header names the last accepted console' "$succ" '| # | Sender (`from`) | Quotes | Named console (last accepted) | Verdict |'
-contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$(flat "$(cat "$PREFACE")")" 'the console you last accepted (your brief'"'"'s until a change)'
+s1="$(flat "$(cat "$PREFACE")")"
+s1="${s1#*'**S1 relay**'}"
+s1="${s1%%'**Else read'*}"
+contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$s1" 'the console you last accepted (your brief'"'"'s until a change)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$(flat "$(cat "$PREFACE")")" 'a `bus-adopt:` refusal is no reason to park'
+contains 'leg-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$s1" 'a `bus-adopt:` refusal is no reason to park'
+contains 'leg-preface.md S1 fast path: after a bus-adopt refusal the leg runs bus adopt itself once the old console is gone' "$s1" 'once the old one is gone, run it yourself'
 
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
