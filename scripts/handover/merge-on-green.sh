@@ -1256,9 +1256,10 @@ fi
 # ponytail: the base tip is read once here, so a sibling PR that merges between
 # this recheck and `gh pr merge` is not seen (a re-fetch would only narrow that
 # window); upgrade path is a server-side merge queue or required up-to-date
-# branch. MERGE_STATIC_RECHECK is not a registered chokepoint seam
-# (scripts/chokepoints.json), so a per-call prefix is not denied by the seam
-# guard; upgrade path is registering it.
+# branch. MERGE_STATIC_RECHECK is a registered chokepoint seam
+# (scripts/chokepoints.json), so a per-call prefix is denied by the seam guard.
+# ponytail: the 150 s ceiling per check needs the timeout binary; without it the
+# checks run unbounded; upgrade path is a bash watchdog around sr_run.
 sr_ns="refs/himmel-mog-static/$pr_num"
 sr_tmp=""
 sr_cleanup() {
