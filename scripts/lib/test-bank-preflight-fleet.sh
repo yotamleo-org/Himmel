@@ -15,11 +15,11 @@
 #
 # No .ps1 twin: the atomic mkdir admission/reservation mechanism it exercises
 # is a POSIX tmpfs (${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>) construct
-# with no Windows equivalent in bank-preflight.sh (project convention: a
+# with no Windows equivalent in usage-preflight.sh (project convention: a
 # documented platform guard suffices for a test harness).
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-SUT="${FLEET_SUT:-$REPO/scripts/lib/bank-preflight.sh}"
+SUT="${FLEET_SUT:-$REPO/scripts/lib/usage-preflight.sh}"
 PASS=0; FAIL=0
 # codex-7 (this round): an unchecked mktemp failure leaves $W empty under
 # `set -u`-adjacent `-o pipefail` (no `-e` here) — every later fixture path
@@ -180,7 +180,7 @@ e_out="$(run_pf "$slots_e" "$p3" CADENCE_BANK_LEG=HIMMEL-9005-infoleg HIMMEL_FLE
 check "(e) informational read (no CADENCE_BANK_LAUNCH), 3 live, cap 4 -> PROCEED" PROCEED "$e_out"
 # Portable count of reservation dirs (no find -mindepth/-maxdepth): the
 # glob's default no-dotglob behaviour already excludes .admit, matching
-# bank-preflight.sh's own `for … in "$SLOTS"/*/` census idiom (~line 299).
+# usage-preflight.sh's own `for … in "$SLOTS"/*/` census idiom (~line 299).
 e_entries=0
 for _e_dir in "$slots_e"/*/; do
   [ -d "$_e_dir" ] || continue

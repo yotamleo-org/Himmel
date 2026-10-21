@@ -16,7 +16,7 @@
 #   3. scripts/handover/resume-slot.sh      --cache <c> --max-age 0
 #      shape guard (~line 154): at least one of five_hour/seven_day must
 #      be a JSON object, else "schema mismatch" die.
-#   4. scripts/lib/bank-preflight.sh        via CADENCE_BANK_CACHE=<c>
+#   4. scripts/lib/usage-preflight.sh        via CADENCE_BANK_CACHE=<c>
 #      reads numeric .five_hour/.seven_day.utilization plus the Branch-B
 #      primaries_refreshed_at provenance stamp.
 #
@@ -49,7 +49,7 @@ unset AUTO_ARM_STALE_ESCALATE_AGE AUTO_ARM_STALE_MIN_CHECKS AUTO_ARM_BIN
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # mk_empty_fleet_stub <dir> — hermetic FLEET_PS_CMD/FLEET_PROC fixture with
-# ZERO candidate legs, so the bank-preflight.sh fleet-cap census below reads
+# ZERO candidate legs, so the usage-preflight.sh fleet-cap census below reads
 # a deterministic empty fleet instead of the real ambient process table
 # (these cases test the BANK threshold, not the
 # fleet cap, and must not depend on how many legs happen to be running on
@@ -67,7 +67,7 @@ COMPOSER="$STATUSLINE_DIR/hud-custom-lines.sh"   # HIMMEL-718 Task 2.3 real driv
 CAP_RESET="$STATUSLINE_DIR/../handover/cap-reset-time.sh"
 AUTO_ARM="$STATUSLINE_DIR/../hooks/auto-arm-on-cap.sh"
 RESUME_SLOT="$STATUSLINE_DIR/../handover/resume-slot.sh"
-PREFLIGHT="$STATUSLINE_DIR/../lib/bank-preflight.sh"
+PREFLIGHT="$STATUSLINE_DIR/../lib/usage-preflight.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "FATAL: jq required for this test"; exit 1; }
 for f in "$PRODUCER" "$CAP_RESET" "$AUTO_ARM" "$RESUME_SLOT" "$PREFLIGHT"; do
@@ -294,7 +294,7 @@ run_test "(7c) HIMMEL-1712: resume-slot.sh treats an account-mismatched cache as
   grep -q "ERR resume-slot: usage cache account does not match the current session" "$W/stderr.log" || exit 1;
 '
 
-run_test "(7d) HIMMEL-1712: bank-preflight.sh treats an account-mismatched cache as BANK-UNKNOWN (same emit() shape as no usable primary)" '
+run_test "(7d) HIMMEL-1712: usage-preflight.sh treats an account-mismatched cache as BANK-UNKNOWN (same emit() shape as no usable primary)" '
   W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-contract-7d.XXXXXX"); export HOME="$W/home-a"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-account-A\"}}" > "$HOME/.claude.json";
   produce_cache_oauth "$W" 10 20;

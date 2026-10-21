@@ -247,7 +247,7 @@
 #      --provisional-base-ok to arm anyway — this WARNS loudly and prints
 #      the warning text (paste it into the leg's first message per ruling
 #      66) instead of refusing.
-#   22 fleet-size cap refused — scripts/lib/bank-preflight.sh
+#   22 fleet-size cap refused — scripts/lib/usage-preflight.sh
 #      reported SKIPPED-FLEET: the number of live LEG sessions is already at
 #      or above HIMMEL_FLEET_CAP (default 4; concurrency, not bank
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
@@ -1245,7 +1245,7 @@ _arm_profile_report() {
 _arm_fleet_release_pending() {
     # shellcheck disable=SC2317  # Invoked indirectly by the EXIT trap.
     [ -n "${_ARM_FLEET_RESERVED_LEG:-}" ] || return 0
-    # bank-preflight.sh reserves under
+    # usage-preflight.sh reserves under
     # fleet_reservation_key <name> — a HASH of the name when it is over
     # NAME_MAX or leads with '.' — not under the name itself, and on a
     # filesystem with a stricter limit it retries under fleet_hash_key. Release
@@ -1258,7 +1258,7 @@ _arm_fleet_release_pending() {
         [ -n "$_arm_fleet_key" ] || continue
         # shellcheck disable=SC2317  # Invoked indirectly by the EXIT trap.
         _arm_fleet_resv="${_ARM_FLEET_SLOTS:?}/$_arm_fleet_key"
-        # codex-3 (this round): bank-preflight.sh returning non-SKIPPED-FLEET
+        # codex-3 (this round): usage-preflight.sh returning non-SKIPPED-FLEET
         # does not guarantee IT created this reservation (the admission-lock-
         # failure bypass under FLEET_CAP_OK=1 proceeds without creating one) —
         # if a reservation for this same name already existed from an unrelated
@@ -1296,14 +1296,14 @@ _arm_mktemp_or_fail() {
 # entry is even created) — concurrency, not bank exhaustion, burned the
 # fleet on 2026-09-07. --dry-run is exempt (side-effect-free
 # preview, same exemption the worker-census block below carries). Only the
-# SKIPPED-FLEET token refuses; every other bank-preflight.sh verdict
+# SKIPPED-FLEET token refuses; every other usage-preflight.sh verdict
 # (PROCEED, SKIPPED-BANK, BANK-STALE, BANK-UNKNOWN) is out of scope for this
 # check and falls through — arm-resume.sh does not otherwise consult the
 # bank guard. FLEET_CAP_OK=1 in the LAUNCHING shell bypasses (registered in
 # scripts/chokepoints.json so a per-call prefix cannot forge it).
 #
 # refinements (disclosed in the PR body):
-#   - CADENCE_USAGE_LEG must be a bare name (bank-preflight.sh's reservation
+#   - CADENCE_USAGE_LEG must be a bare name (usage-preflight.sh's reservation
 #     directory is `mkdir "$SLOTS/$LEG"`) — HANDOVER_PATH almost always
 #     contains '/', which the pre-fix caller passed straight through. Under
 #     the fixed script that would hit its defensive `*/*` guard and proceed
@@ -1324,7 +1324,7 @@ _arm_mktemp_or_fail() {
 #     is released immediately rather than sitting for the full TTL.
 if [ "$DRY_RUN" -eq 0 ]; then
     _arm_phase_t0 "fleet-preflight"
-    _ARM_BANK_PREFLIGHT="$SCRIPT_DIR/../lib/bank-preflight.sh"
+    _ARM_BANK_PREFLIGHT="$SCRIPT_DIR/../lib/usage-preflight.sh"
     if [ -f "$_ARM_BANK_PREFLIGHT" ]; then
         # the shared leg-name -> reservation-key helper, which
         # _arm_fleet_release_pending (EXIT trap) releases by. Fail closed: a
@@ -1336,7 +1336,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-reservation-key.sh — refusing to arm without a releasable fleet reservation." >&2
             exit 22
         }
-        # </dev/null: bank-preflight.sh's own producer reads stdin to EOF
+        # </dev/null: usage-preflight.sh's own producer reads stdin to EOF
         # (its held-open-stdin regression test exists for exactly this) - an
         # unattended arm must never inherit an open stdin here.
         # this call arms a new leg, so it declares launch intent
@@ -1361,7 +1361,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another leg. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
             exit 22
         fi
-        # Not SKIPPED-FLEET: bank-preflight.sh either created a reservation
+        # Not SKIPPED-FLEET: usage-preflight.sh either created a reservation
         # for $_arm_fleet_leg or (rarely, an admission-lock failure under
         # FLEET_CAP_OK=1) created none -- either way `rm -rf` on a name that
         # was never created is a safe no-op, so track it unconditionally

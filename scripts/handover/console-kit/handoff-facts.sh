@@ -10,7 +10,7 @@
 #
 # Fields:
 #   head     `<sha>` on `<branch>` at `<repo>`, remote `<url>`
-#   bank     5-hour / 7-day utilisation (bank-preflight.sh)
+#   bank     5-hour / 7-day utilisation (usage-preflight.sh)
 #   legs     one line per fleet-manifest leg: label, last marker, last bullet
 #            (backtick spans stripped: a leg bullet may quote a token)
 #   prs      the open PR set (gh); `unavailable` when gh fails
@@ -64,7 +64,7 @@ case "$field" in
         if [ -n "${HANDOFF_FACTS_BANK:-}" ]; then
             out="$(bash "$HANDOFF_FACTS_BANK" 2>/dev/null)" || out=""
         else
-            out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 60 bash "$repo/scripts/lib/bank-preflight.sh" 2>/dev/null)" || out=""  # gnu-ok: Linux-only kit
+            out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 60 bash "$repo/scripts/lib/usage-preflight.sh" 2>/dev/null)" || out=""  # gnu-ok: Linux-only kit
         fi
         five="$(printf '%s\n' "$out" | tr ' ' '\n' | sed -n 's/^five_hour=//p' | head -n 1)"
         seven="$(printf '%s\n' "$out" | tr ' ' '\n' | sed -n 's/^seven_day=//p' | head -n 1)"
@@ -72,7 +72,7 @@ case "$field" in
         if [ -n "$five" ] && [ -n "$seven" ]; then
             printf '5-hour %s %%, 7-day %s %% (%s).\n' "$five" "$seven" "$verdict"
         else
-            echo "unavailable — run bank-preflight.sh"
+            echo "unavailable — run usage-preflight.sh"
         fi
         ;;
     legs)

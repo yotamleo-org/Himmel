@@ -801,17 +801,39 @@ const flakesSection = (() => {
 // residuals per merged PR as the CR_BEFORE baseline counted them (distinct ledger `deferred_to` keys on merged
 // branches, created in the window, over merged PRs; the residual-labelled part is `labelled_share`),
 // residual inflow/outflow from the Jira mirror, each version's residual slots against the
-// soft cap (a warning colour, never a refusal), open restructure tickets, and the plan's
-// "before" row. CR_LEDGER and BOARD_MIRROR are the seams. Anything unreadable is n/a (null),
+// soft cap (a warning colour, never a refusal), open restructure tickets, cadence staleness
+// (days since the newest cr-tune/proposals-*.md and since the newest restructure-class ticket
+// created or updated, stale past CR_CADENCE_STALE_DAYS; CR_TUNE_DIR is the proposals seam),
+// and the plan's "before" row. CR_LEDGER and BOARD_MIRROR are the seams. Anything unreadable is n/a (null),
 // never a failure; not part of the fingerprint. The mirror's `updated` is no proxy for Done.
 // ponytail: outflow and net read n/a while any Done residual lacks a `resolved:` mirror date, upgrade path: HIMMEL-6390 (mirror writer emits it).
 const CR_SOFT_CAP = 15;
+const CR_CADENCE_STALE_DAYS = 8;
 const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
 const crLoopSection = (() => {
     const out = { window_days: 7, soft_cap: CR_SOFT_CAP, rounds: { prs: 0, mean: null, p90: null }, preflight: { hits: null, per_pr: null, prs: null, merged: null },
         residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror (HIMMEL-6390)' },
-        versions: [], restructure_open: null, before: CR_BEFORE };
+        versions: [], restructure_open: null, before: CR_BEFORE,
+        cadence: { stale_after_days: CR_CADENCE_STALE_DAYS, proposals_days: null, proposals_stale: true, restructure_days: null, restructure_stale: true } };
     trend.cr_loop = out;
+    const dayStart = (t) => Math.floor(t / 86400e3);
+    const setCadence = (key, newestMs) => {
+        if (newestMs === null) return;
+        const days = Math.max(0, dayStart(Date.now()) - dayStart(newestMs));
+        out.cadence[key + '_days'] = days;
+        out.cadence[key + '_stale'] = days > CR_CADENCE_STALE_DAYS;
+    };
+    try {
+        const tune = process.env.CR_TUNE_DIR || (process.env.HANDOVER_DIR ? join(process.env.HANDOVER_DIR, 'cr-tune') : '');
+        let newest = null;
+        for (const name of readdirSync(tune)) {
+            const m = /^proposals-(\d{4}-\d{2}-\d{2})(-standards)?\.md$/.exec(name);
+            const t = m ? Date.parse(m[1] + 'T00:00:00Z') : NaN;
+            if (!Number.isNaN(t) && (newest === null || t > newest)) newest = t;
+        }
+        setCadence('proposals', newest);
+    } catch { /* no proposals dir: never run, stale */ }
+    let newestRestructure = null;
     const since = Date.now() - 7 * 86400e3;
     const round2 = (v) => Math.round(v * 100) / 100;
     const merged = ghJson(['pr', 'list', '--state', 'merged', '--limit', '1000', '--search', `merged:>=${new Date(since).toISOString().slice(0, 10)}`, '--json', 'number,headRefName,mergedAt']);
@@ -863,7 +885,13 @@ const crLoopSection = (() => {
             const labels = val('labels') || [], status = String(val('status') || ''), cat = String(val('statusCategory') || '');
             const out = OUT_STATUS.test(status) || OUT_STATUS.test(cat);
             const done = !out && (DONE_STATUS.test(status) || DONE_STATUS.test(cat));
-            if (labels.some((x) => /^restructure-class-/.test(x)) && !done && !out) restructure += 1;
+            if (labels.some((x) => /^restructure-class-/.test(x))) {
+                for (const k of ['created', 'updated']) {
+                    const t = Date.parse(val(k));
+                    if (!Number.isNaN(t) && (newestRestructure === null || t > newestRestructure)) newestRestructure = t;
+                }
+                if (!done && !out) restructure += 1;
+            }
             const isResidual = labels.some((x) => /(^|-)residual(-|$)/.test(x));
             tickets.set(name.slice(0, -3), { created: Date.parse(val('created')), isResidual });
             if (!isResidual) continue;
@@ -884,13 +912,15 @@ const crLoopSection = (() => {
             if (fresh.length) out.residual.labelled_share = round2(fresh.filter((t) => t.isResidual).length / fresh.length);
         }
         out.restructure_open = restructure;
+        setCadence('restructure', newestRestructure);
         out.versions = [...slots].filter(([v]) => !released.has(v)).sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
             .map(([version, n]) => ({ version: redact(version), slots: n, over: n > CR_SOFT_CAP }));
     } catch { /* no readable mirror: residual fields stay n/a */ }
     const na = (v, f) => (v === null ? 'n/a' : f(v));
+    const cadenceTxt = (days, stale) => (days === null ? 'never' : days + 'd') + (stale ? ' (stale)' : '');
     const r = out.residual;
     const dark = out.rounds.mean === null && out.preflight.per_pr === null && r.inflow === null;
-    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight ${na(out.preflight.prs, String)}/${na(out.preflight.merged, String)} PRs · ${na(out.preflight.per_pr, (v) => v.toFixed(1))} hits/PR · residuals/PR ${na(r.per_merged_pr, (v) => v.toFixed(2))} (labelled ${na(r.labelled_share, (v) => Math.round(v * 100))} %) · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs HIMMEL-6390)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
+    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight ${na(out.preflight.prs, String)}/${na(out.preflight.merged, String)} PRs · ${na(out.preflight.per_pr, (v) => v.toFixed(1))} hits/PR · residuals/PR ${na(r.per_merged_pr, (v) => v.toFixed(2))} (labelled ${na(r.labelled_share, (v) => Math.round(v * 100))} %) · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs HIMMEL-6390)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · cadence ${cadenceTxt(out.cadence.proposals_days, out.cadence.proposals_stale)} · restructure seen ${cadenceTxt(out.cadence.restructure_days, out.cadence.restructure_stale)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
     const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();

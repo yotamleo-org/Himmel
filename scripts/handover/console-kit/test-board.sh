@@ -1181,6 +1181,34 @@ jcheck 'cr-loop --json: residuals per merged PR count distinct deferred_to keys 
 jcheck 'cr-loop --json: labelled share is the residual-labelled part of those keys (1 of 5)' 'M.trends.cr_loop.residual.labelled_share === 0.2'
 contains 'cr-loop html: the labelled inflow is a second figure' "$chtml" 'labelled 20 %'
 
+# --- Cadence staleness: days since the newest cr-tune/proposals-*.md and since the newest
+# restructure-class ticket (created or updated, so a comment counts); older than 8 days is
+# stale. RED control (pre-change board.mjs): cr_loop has no cadence field.
+mkdir -p "$CL/tune"
+: > "$CL/tune/proposals-$(ago 20 | cut -c1-10).md"
+: > "$CL/tune/proposals-$(ago 30 | cut -c1-10).md"
+sed -i "s/^updated: .*/updated: \"$(ago 3)\"/" "$CL/mirror/HIMMEL/HIMMEL-9104.md"  # gnu-ok: console kit is Linux-only
+CR_TUNE_DIR="$CL/tune" crrun >/dev/null
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+jcheck 'cr-loop cadence --json: proposals 20 days old is stale (newest file wins)' 'M.trends.cr_loop.cadence.proposals_days === 20 && M.trends.cr_loop.cadence.proposals_stale === true'
+jcheck 'cr-loop cadence --json: a restructure ticket updated 3 days ago is fresh' 'M.trends.cr_loop.cadence.restructure_days === 3 && M.trends.cr_loop.cadence.restructure_stale === false'
+contains 'cr-loop cadence html: stale proposals read "cadence 20d (stale)"' "$chtml" 'cadence 20d (stale)'
+: > "$CL/tune/proposals-$(ago 0 | cut -c1-10).md"
+CR_TUNE_DIR="$CL/tune" crrun >/dev/null
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+jcheck 'cr-loop cadence --json: a proposals file from today is fresh' 'M.trends.cr_loop.cadence.proposals_days === 0 && M.trends.cr_loop.cadence.proposals_stale === false'
+contains 'cr-loop cadence html: fresh proposals read "cadence 0d" with no stale flag' "$chtml" 'cadence 0d ·'
+sed -i "s/^updated: .*/updated: \"$(ago 12)\"/; s/^created: .*/created: \"$(ago 20)\"/" "$CL/mirror/HIMMEL/HIMMEL-9104.md"  # gnu-ok: console kit is Linux-only
+CR_TUNE_DIR="$CL/tune" crrun >/dev/null
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+jcheck 'cr-loop cadence --json: a restructure ticket untouched 12 days is stale' 'M.trends.cr_loop.cadence.restructure_days === 12 && M.trends.cr_loop.cadence.restructure_stale === true'
+CR_TUNE_DIR="$W/none" CL_MIRROR="$W/none" crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+contains 'cr-loop cadence: no proposals dir and no mirror never fail the render (rc 0)' "rc=$rc" 'rc=0'
+jcheck 'cr-loop cadence --json: nothing ever run is null days and stale' 'M.trends.cr_loop.cadence.proposals_days === null && M.trends.cr_loop.cadence.proposals_stale === true && M.trends.cr_loop.cadence.restructure_days === null && M.trends.cr_loop.cadence.restructure_stale === true'
+
 # --- Cap over-run is a --changed signal: a version crossing the soft cap
 # flips CHANGED although tick's fingerprint is unchanged (the stub's is constant).
 # RED control (pre-change board.mjs): the cap move reads UNCHANGED.

@@ -416,7 +416,7 @@ fi
 
 # ========================================================= claude-print ======
 if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    BANK=$(bash "$REPO/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -1)
+    BANK=$(bash "$REPO/scripts/lib/usage-preflight.sh" 2>/dev/null | tail -1)
     # Ambient proxy exports must not redirect this Max-plan launch
     # FAIL CLOSED: an unpinned launch can be routed through a
     # local proxy - wrong auth, wrong billing, no error - so if the pin cannot

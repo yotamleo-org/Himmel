@@ -563,7 +563,7 @@ _cfp_claude_invoke() {
             cat "$_cc_err" >&2
             ;;
         claude-subscription)
-            _cc_bank="$(CADENCE_USAGE_LEG=claude-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
+            _cc_bank="$(CADENCE_USAGE_LEG=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
             case "$_cc_bank" in
                 PROCEED*) ;;
                 *) echo "critic-first-pass.sh: claude critic SKIPPED (${_cc_bank:-no bank verdict}) — clean no-op" >&2

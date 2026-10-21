@@ -19,18 +19,18 @@ trap 'rm -rf "$TMP"' EXIT
 
 # T1: bank refuses (SKIPPED-BANK) — the script must exit 1 WITHOUT ever
 # invoking `claude` at all (bank check gates before the version check).
-# A fake lib/bank-preflight.sh forces the refusal deterministically; a
+# A fake lib/usage-preflight.sh forces the refusal deterministically; a
 # failing PATH-stub `claude` proves it was never reached — if the script
 # called it, the stub's own failure would surface as a DIFFERENT error
 # than the expected bank-refusal message.
 mkdir -p "$TMP/t1/scripts/lib" "$TMP/t1/bin"
 cp "$SCRIPT" "$TMP/t1/scripts/plugin-eval-preflight.sh"
-cat > "$TMP/t1/scripts/lib/bank-preflight.sh" <<'EOF'
+cat > "$TMP/t1/scripts/lib/usage-preflight.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "SKIPPED-BANK"
 exit 0
 EOF
-chmod +x "$TMP/t1/scripts/lib/bank-preflight.sh"
+chmod +x "$TMP/t1/scripts/lib/usage-preflight.sh"
 cat > "$TMP/t1/bin/claude" <<'EOF'
 #!/usr/bin/env bash
 echo "claude: should never have been invoked" >&2
@@ -48,17 +48,17 @@ fi
 # T2: bank proceeds — a deterministic PROCEED stub, same pattern as T1, so
 # this non-billing test never depends on the REAL bank's live state (it did
 # fail this way once: the ambient bank hit its 85% cap mid-session and T2/T3
-# both read the real scripts/lib/bank-preflight.sh, which returned
+# both read the real scripts/lib/usage-preflight.sh, which returned
 # SKIPPED-BANK instead of PROCEED) — but claude reports a version below the
 # 2.1.269 floor, so the script must refuse.
 mkdir -p "$TMP/t2/scripts/lib" "$TMP/t2/bin"
 cp "$SCRIPT" "$TMP/t2/scripts/plugin-eval-preflight.sh"
-cat > "$TMP/t2/scripts/lib/bank-preflight.sh" <<'EOF'
+cat > "$TMP/t2/scripts/lib/usage-preflight.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROCEED"
 exit 0
 EOF
-chmod +x "$TMP/t2/scripts/lib/bank-preflight.sh"
+chmod +x "$TMP/t2/scripts/lib/usage-preflight.sh"
 cat > "$TMP/t2/bin/claude" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then
@@ -82,12 +82,12 @@ fi
 # means "safe to run", it does not itself run `claude plugin eval`).
 mkdir -p "$TMP/t3/scripts/lib" "$TMP/t3/bin"
 cp "$SCRIPT" "$TMP/t3/scripts/plugin-eval-preflight.sh"
-cat > "$TMP/t3/scripts/lib/bank-preflight.sh" <<'EOF'
+cat > "$TMP/t3/scripts/lib/usage-preflight.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROCEED"
 exit 0
 EOF
-chmod +x "$TMP/t3/scripts/lib/bank-preflight.sh"
+chmod +x "$TMP/t3/scripts/lib/usage-preflight.sh"
 cat > "$TMP/t3/bin/claude" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then

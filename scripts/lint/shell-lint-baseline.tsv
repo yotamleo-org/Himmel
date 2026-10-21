@@ -700,9 +700,9 @@ scripts/lanes/srt-poc/render-settings.sh	errexit	1
 scripts/lanes/srt-poc/test-recorded-run.sh	mktemp	2
 scripts/lanes/stop-worker.sh	gnu-flag	1
 scripts/lanes/stop-worker.sh	prim-tmpdir	1
-scripts/lib/bank-attribution.sh	errexit	1
-scripts/lib/bank-attribution.sh	prim-tmpdir	1
-scripts/lib/bank-monitor.sh	prim-atomic	2
+scripts/lib/usage-attribution.sh	errexit	1
+scripts/lib/usage-attribution.sh	prim-tmpdir	1
+scripts/lib/usage-monitor.sh	prim-atomic	2
 scripts/lib/branch-shipped.sh	mktemp	1
 scripts/lib/claude-headless.sh	prim-lock	4
 scripts/lib/claudex-inbox.sh	prim-atomic	1

@@ -164,7 +164,7 @@ op_station_status() {
     echo "primary $(git -C "$PRIMARY" symbolic-ref --quiet --short HEAD 2>/dev/null || echo detached)" \
         "$(git -C "$PRIMARY" rev-parse --short HEAD 2>/dev/null)" \
         "$( [ -z "$(git -C "$PRIMARY" status --porcelain --untracked-files=no 2>/dev/null)" ] && echo clean || echo dirty)"
-    bank="${BREAK_GLASS_BANK_CMD:-bash $PRIMARY/scripts/lib/bank-preflight.sh}"
+    bank="${BREAK_GLASS_BANK_CMD:-bash $PRIMARY/scripts/lib/usage-preflight.sh}"
     echo "bank:"
     # shellcheck disable=SC2086 # the seam is a command line by design
     timeout 20 $bank 2>&1 | head -n 8 | sed 's/^/  /' # gnu-ok: the bridge runs only on the Linux station

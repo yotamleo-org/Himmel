@@ -13,7 +13,7 @@
 // READ-ONLY. The server binds 127.0.0.1 (there is no flag to change that), answers
 // GET/HEAD only, and has no route that runs anything or writes anywhere. Sources:
 // the console doc's `## Live state` legs: block, each leg doc's `## Results`, the
-// queue-lock sweep, /proc, bank-preflight.sh, gh, and the launch logs. Nonces, lock
+// queue-lock sweep, /proc, usage-preflight.sh, gh, and the launch logs. Nonces, lock
 // tokens and token spans are redacted from every string BEFORE it is put in the
 // snapshot (so the JSON endpoint is as clean as the page); the page renders with
 // textContent only, and the embedded snapshot has `<` escaped.
@@ -109,7 +109,7 @@ const logsDir = resolve(opt.logs || (process.env.XDG_RUNTIME_DIR
     ? join(process.env.XDG_RUNTIME_DIR, 'himmel-console')
     : join(process.env.TMPDIR || '/tmp', `himmel-console-${process.getuid ? process.getuid() : 0}`)));
 const QUEUE_LOCK = process.env.FLEET_QUEUE_LOCK || join(repo, 'scripts', 'handover', 'queue-lock.sh');
-const BANK = process.env.FLEET_BANK || join(repo, 'scripts', 'lib', 'bank-preflight.sh');
+const BANK = process.env.FLEET_BANK || join(repo, 'scripts', 'lib', 'usage-preflight.sh');
 const GH = process.env.FLEET_GH || 'gh';
 const PROC = process.env.FLEET_PROC || '/proc';
 const LEGID = process.env.FLEET_LEGID || join(repo, 'scripts', 'lib', 'leg-identity.sh');

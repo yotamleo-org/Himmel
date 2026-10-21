@@ -142,7 +142,7 @@ TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 # Arms record a provenance row; never into the operator's ledger.
 export HIMMEL_PROVENANCE_DIR="$TMP_ROOT/provenance"
-# The generated claude runners shell bank-preflight.sh before
+# The generated claude runners shell usage-preflight.sh before
 # launching, and the fire tests below EXECUTE those runners. Left alone, every
 # fire would do a live usage-API fetch through usage-cache-producer.sh — slow,
 # networked, and dependent on the arming machine's real bank state, which is
@@ -745,7 +745,7 @@ echo "TEST: cron claude runners preflight the bank, attribute the leg, pin the m
 for _leg in harvest:pipeline-harvest synth:pipeline-synthesize health:pipeline-health; do
     _name=${_leg%%:*}; _flow=${_leg#*:}
     _body=$(eval "printf '%s' \"\$${_name}_sh\"")
-    assert_contains "$_name runner calls bank-preflight" "bank-preflight.sh" "$_body"
+    assert_contains "$_name runner calls bank-preflight" "usage-preflight.sh" "$_body"
     assert_contains "$_name runner sets CADENCE_USAGE_LEG=$_flow" "CADENCE_USAGE_LEG=$_flow" "$_body"
     assert_contains "$_name runner refuses on SKIPPED-BANK" "SKIPPED-BANK" "$_body"
     assert_contains "$_name runner pins --permission-mode" "--permission-mode" "$_body"

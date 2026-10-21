@@ -430,7 +430,7 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 // claudex row to the shared quota-gauge ledger.
 
 // SOURCE: the TTL'd cache written by
-// scripts/lanes/codex-bank-probe.ts, whose source of truth is
+// scripts/lanes/codex-usage-probe.ts, whose source of truth is
 // `codex -s read-only -a untrusted app-server` -> JSON-RPC
 // account/rateLimits/read. That is the ONLY surface that reports codex quota.
 //
@@ -445,7 +445,7 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 // dispatch leaks a process whenever the kill fails, and the dispatch path is
 // exactly where that would compound. A stale/absent cache refuses, and the
 // refusal names the probe as the remedy.
-const CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches bank-status.ts
+const CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches usage-status.ts
 
 export function codexBankCachePath(home: string, env: Record<string, string | undefined> = process.env): string {
   return env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");

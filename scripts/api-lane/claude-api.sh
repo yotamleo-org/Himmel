@@ -131,7 +131,7 @@ LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_LEG: it coul
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 LEG_LANE=api \
   CADENCE_USAGE_LEG="$LEG_NAME" CADENCE_USAGE_CALLER_PID="$$" \
-  bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
+  bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
 # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (what keeps the key out of Bash-tool children) forces

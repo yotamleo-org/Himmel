@@ -32,7 +32,7 @@
 #
 # OFF by default: only `arm` installs it; arming on a station is an operator
 # step after a VM proof. Unattended claude -p draws the same subscription
-# budget as interactive use, so a run first asks scripts/lib/bank-preflight.sh
+# budget as interactive use, so a run first asks scripts/lib/usage-preflight.sh
 # and skips (rc 0) unless it prints PROCEED.
 #
 # Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-cli
@@ -116,7 +116,7 @@ cmd_run() {
         claude-cli)
             # bank-preflight gate: anything but PROCEED is a quiet skip, not a failure.
             if [ -n "${STEERING_CULL_PREFLIGHT_CMD:-}" ]; then pf="$("$STEERING_CULL_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
-            else pf="$(bash "$repo/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -n 1)"; fi
+            else pf="$(bash "$repo/scripts/lib/usage-preflight.sh" 2>/dev/null | tail -n 1)"; fi
             case "$pf" in
                 PROCEED*) ;;
                 *) echo "steering-cull: skipped, bank-preflight said: ${pf:-<nothing>}"; return 0 ;;

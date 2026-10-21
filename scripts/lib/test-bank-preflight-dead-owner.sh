@@ -33,7 +33,7 @@ run() {
   local slots="$1"; shift
   # Grace 0 keeps the pre-cases about identity, not timing; the
   # grace cases below pass their own value ("$@" comes later, so it wins).
-  env FLEET_RECLAIM_GRACE_SECS=0 "$@" HOME="$W/home" HIMMEL_FLEET_CAP=1 HIMMEL_FLEET_SLOTS="$W/$slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" PS_DATA="$W/ps.data" CADENCE_BANK_LEDGER="$W/ledger" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LANE=openrouter CADENCE_BANK_LEG=HIMMEL-9001-test CADENCE_BANK_CALLER_PID="$$" FLEET_CAP_OK= bash "$W/repo/scripts/lib/bank-preflight.sh" 2>"$W/err"
+  env FLEET_RECLAIM_GRACE_SECS=0 "$@" HOME="$W/home" HIMMEL_FLEET_CAP=1 HIMMEL_FLEET_SLOTS="$W/$slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" PS_DATA="$W/ps.data" CADENCE_BANK_LEDGER="$W/ledger" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LANE=openrouter CADENCE_BANK_LEG=HIMMEL-9001-test CADENCE_BANK_CALLER_PID="$$" FLEET_CAP_OK= bash "$W/repo/scripts/lib/usage-preflight.sh" 2>"$W/err"
 }
 check() {
   if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: expected $2 got $3"; fails=$((fails+1)); fi
@@ -99,7 +99,7 @@ printf '%s\n' 08 > "$W/grace-octal/HIMMEL-9001-test/dead_seen"
 check 'leading-zero stamp reads as decimal, not octal' PROCEED "$(run grace-octal FLEET_RECLAIM_GRACE_SECS=08)"
 check 'leading-zero stamp raises no arithmetic error' absent "$(if grep -q 'value too great' "$W/err"; then echo present; else echo absent; fi)"
 # Exercise the reclaim helper with a large fresh census: grep must drain it.
-awk '/^_fleet_reclaim_dead_reservation\(\)/,/^}/' "$REPO/scripts/lib/bank-preflight.sh" > "$W/reclaim.sh" || exit 1
+awk '/^_fleet_reclaim_dead_reservation\(\)/,/^}/' "$REPO/scripts/lib/usage-preflight.sh" > "$W/reclaim.sh" || exit 1
 seed large-census "$dead"
 (
   source "$W/reclaim.sh" || exit 2

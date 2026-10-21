@@ -129,7 +129,7 @@ check "hrule + triaged_at, no frontmatter -> NONE" NONE "$(verdict "$V")"
 # Committed non-executable, every POSIX invocation dies "Permission denied",
 # the runner's fail-open branch swallows it, and the bank guard / input gate
 # silently never run — a guard that reads as armed and is not.
-for _rel in luna/synth-input-check.sh lib/bank-preflight.sh lib/flow-run-ledger.sh; do
+for _rel in luna/synth-input-check.sh lib/usage-preflight.sh lib/flow-run-ledger.sh; do
     _mode=$(git -C "$REPO" ls-files -s -- "scripts/$_rel" 2>/dev/null | awk '{print $1}')
     check "scripts/$_rel is committed executable" 100755 "${_mode:-missing}"
 done
