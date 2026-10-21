@@ -137,10 +137,9 @@ for j in $JOBS; do
   done <<< "$steps"
   ok "K5 $j: checked $n host setup step(s)"
 done
-su="$(job_block shell-unit-shard)"
+atd_step="$(job_block shell-unit-shard | awk '/^      - name: Start atd \(CI image\)$/ { f = 1; next } f && /^      - / { exit } f')"
 # shellcheck disable=SC2016 # a literal ${{ }} GitHub expression
-if awk '/^      - name: Start atd \(CI image\)$/ { f = 1; next } f && /^      - / { exit } f' <<< "$su" | grep -qxF '        if: ${{ job.container.id }}' \
-   && awk '/^      - name: Start atd \(CI image\)$/ { f = 1; next } f && /^      - / { exit } f' <<< "$su" | grep -qE '^          sudo atd$'; then
+if grep -qxF '        if: ${{ job.container.id }}' <<< "$atd_step" && grep -qE '^          sudo atd$' <<< "$atd_step"; then
   ok "K5 shell-unit-shard starts atd in the container"
 else
   bad "K5 shell-unit-shard has no 'Start atd (CI image)' step gated on job.container.id"
