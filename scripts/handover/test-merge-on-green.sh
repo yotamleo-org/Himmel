@@ -3703,20 +3703,21 @@ STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMMEL-3
     run_mog 0 "status: Epic" -- --jira-transition
 assert_status_row "status: an Epic is a classified skip" '.event == "merge" and .result == "skip" and .stage == "never-touch-type"'
 # The Done write waits on the funnel's per-key lock: a held lock defers it, and
-# the deferral is a completes=yes row the derive reads as done-pending.
-mog_ts="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
-mkdir -p "$mog_ts/status-locks"; : > "$mog_ts/status-locks/HIMMEL-374"
-MOG_TS_DIR="$mog_ts" MOG_WRAP="flock $mog_ts/status-locks/HIMMEL-374" TICKET_STATUS_LOCK_WAIT=1 \
-    STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "status: Done write under a held status lock" -- --jira-transition
-assert_audit_has "status: a held lock defers the Done write" "jira-transition=deferred stage=lock key=HIMMEL-374"
-assert_jira_log_lacks "status: a deferred Done write makes no transition" "index.js transition"
-MOG_TS_DIR="$mog_ts" assert_status_row "status: the deferral is a completes=yes row" \
-    '.event == "merge" and .contract == "yes" and .result == "deferred" and .stage == "lock"'
-rm -rf "$mog_ts"
-# The completes=yes merge row lands while the per-key lock is still held, so a
-# WRAPPED event queued behind it already reads done-pending.
+# the deferral is a completes=yes row the derive reads as done-pending. Both
+# lock cases need a flock binary; without one (stock macOS) the write runs unlocked.
 if command -v flock >/dev/null 2>&1; then
+    mog_ts="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+    mkdir -p "$mog_ts/status-locks"; : > "$mog_ts/status-locks/HIMMEL-374"
+    MOG_TS_DIR="$mog_ts" MOG_WRAP="flock $mog_ts/status-locks/HIMMEL-374" TICKET_STATUS_LOCK_WAIT=1 \
+        STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        run_mog 0 "status: Done write under a held status lock" -- --jira-transition
+    assert_audit_has "status: a held lock defers the Done write" "jira-transition=deferred stage=lock key=HIMMEL-374"
+    assert_jira_log_lacks "status: a deferred Done write makes no transition" "index.js transition"
+    MOG_TS_DIR="$mog_ts" assert_status_row "status: the deferral is a completes=yes row" \
+        '.event == "merge" and .contract == "yes" and .result == "deferred" and .stage == "lock"'
+    rm -rf "$mog_ts"
+    # The completes=yes merge row lands while the per-key lock is still held, so a
+    # WRAPPED event queued behind it already reads done-pending.
     ts_probe="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts-probe.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
     cp "$SCRIPT_DIR/../lib/ticket-status.sh" "$ts_probe/ticket-status.sh"
     cat >>"$ts_probe/ticket-status.sh" <<'EOF'
