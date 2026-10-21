@@ -642,9 +642,10 @@ required_set() {
     local base rules classic
     base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
     [ -n "$base" ] || return 1
-    rules=$(gh_read api "repos/$owner/$repo/rules/branches/$base" \
+    # these two captures merge stderr into the data, so the helper's fallback warning stays off them
+    rules=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/rules/branches/$base" \
         --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' 2>&1) || return 1
-    if ! classic=$(gh_read api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
+    if ! classic=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
         --jq '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' 2>&1); then
         case "$classic" in *"(HTTP 404)"*) classic="" ;; *) return 1 ;; esac
     fi
@@ -1266,7 +1267,7 @@ watch_round() {
 # One startup snapshot supplies head, base, URL and the first review decision.
 # Post-watch review and head reads remain fresh: these facts can change while
 # the immutable commit endpoints are being watched.
-initial_pr=$(pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
+initial_pr=$(GH_READ_QUIET=1 pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
     echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2; exit 2
 }
 IFS=$'\t' read -r initial_url initial_decision initial_head initial_base <<EOF

@@ -122,6 +122,11 @@ check "B5b check-ci made at least one read (B5 is not vacuous)" "yes" "$([ "$(gr
 check "B5c check-ci's two --watch calls exec gh directly" "2" "$(grep -c 'exec gh pr checks .*--watch' "$REPO/scripts/check-ci.sh")"
 # go.sh: both of its reads (fork PR view, repo name) go through the helper variable
 check "B6 go.sh reads via the helper" "2" "$(grep -c '"\$GH_READ" \(pr\|repo\) view' "$REPO/scripts/handover/console-kit/go.sh")"
+# check-ci merges stderr into the data at three captures (required-check rules, classic
+# protection, the first PR snapshot); the fallback warning must stay off all three
+check "B7 check-ci mutes the fallback warning on its three 2>&1 captures" "3" "$(grep -c 'GH_READ_QUIET=1 \(gh_read api\|pr_view\)' "$REPO/scripts/check-ci.sh")"
+GH_STUB_READFAIL=1 GH_READ_ENV_ROOT="$W/root" GH_READ_QUIET=1 bash "$HELPER" api repos/o/r/rules >"$W/out" 2>&1
+lacks "B7b a muted refused read leaves no warning in a 2>&1 capture" "gh-read:" "$(cat "$W/out")"
 
 # ---- C: fallback -----------------------------------------------------------------
 run_gh_read "$W/emptyroot" pr view 12
