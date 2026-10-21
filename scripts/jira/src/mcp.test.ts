@@ -235,6 +235,18 @@ describe('MCP tool happy-path routing', () => {
     expect(out).toMatch(/warning: .*no home/);
   });
 
+  it('create warns about a title that breaks the template and still files (HIMMEL-6968)', async () => {
+    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
+    const { deps, request } = mockDeps({ key: 'HIMMEL-11', id: '3' });
+    const out = await tool('create').handler(
+      { type: 'Task', title: 'feat(jira): add a thing', desc: PLAIN_FILLED, sector: 'Ship loop', parent: 'ABC-1' },
+      deps,
+    );
+    expect(request).toHaveBeenCalled();
+    expect(out).toContain('Created HIMMEL-11');
+    expect(out).toMatch(/warning: title.*commit prefix/s);
+  });
+
   it('create with attach uploads each file via the injected uploadAttachment', async () => {
     // This path omits `project`, so the handler falls back to projectKey(),
     // which reads JIRA_PROJECT_KEY. Set it here so the test is hermetic and

@@ -4,6 +4,8 @@ import {
   lintPlainBlockAdf,
   plainBlockVerdict,
   homeVerdict,
+  titleVerdict,
+  TITLE_TEMPLATE,
   PLAIN_BLOCK_TEMPLATE,
 } from './plain-block.js';
 
@@ -183,5 +185,50 @@ describe('homeVerdict (HIMMEL-6223)', () => {
     expect(homeVerdict('Epic', { labels: [] }).action).toBe('warn');
     expect(homeVerdict('Subtask', { labels: [] }).action).toBe('warn');
     expect(homeVerdict('Epic', home).action).toBe('ok');
+  });
+});
+
+describe('titleVerdict (HIMMEL-6968)', () => {
+  const FITTING = [
+    'Ship loop: merge waits for the signed GO',
+    'Safety & enforcement: edits on main are blocked in every worktree',
+    'Tickets follow a title template',
+    'See which tickets are system work and which change what a user sees',
+  ];
+  for (const t of FITTING) {
+    it(`a fitting title does not warn: ${t}`, () => {
+      expect(titleVerdict('Task', t)).toEqual({ action: 'ok', message: '' });
+    });
+  }
+
+  const BREAKING: Array<[string, string, RegExp]> = [
+    ['a conventional-commit prefix', 'feat(jira): add a title check', /commit prefix/],
+    ['a bare commit prefix', 'fix: stale lock', /commit prefix/],
+    ['a ticket id', 'Stop retrying HIMMEL-6778 twice', /ticket id/],
+    ['a --flag', 'Create warns when --sector is missing', /internal name/],
+    ['a snake_case field name', 'Read the fix_versions list', /internal name/],
+    ['a backticked name', 'Rename `resolveTitle`', /internal name/],
+    ['a file path', 'Edit scripts/jira/src/mcp.ts', /internal name/],
+    ['an over-long title', 'x '.repeat(60).trim(), /long/],
+    ['an empty title', '   ', /empty/],
+  ];
+  for (const [why, t, re] of BREAKING) {
+    it(`warns on ${why} and prints the template`, () => {
+      const v = titleVerdict('Task', t);
+      expect(v.action).toBe('warn');
+      expect(v.message).toMatch(re);
+      expect(v.message).toContain(TITLE_TEMPLATE);
+    });
+  }
+
+  it('warns for Story and Bug too, never refuses', () => {
+    expect(titleVerdict('Story', 'feat: x').action).toBe('warn');
+    expect(titleVerdict('Bug', 'feat: x').action).toBe('warn');
+  });
+
+  it('exempts Epic and Subtask silently', () => {
+    expect(titleVerdict('Epic', 'feat(jira): x')).toEqual({ action: 'ok', message: '' });
+    expect(titleVerdict('Subtask', 'HIMMEL-1 --flag')).toEqual({ action: 'ok', message: '' });
+    expect(titleVerdict('Sub-task', 'fix: x').action).toBe('ok');
   });
 });

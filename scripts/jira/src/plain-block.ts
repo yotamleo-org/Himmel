@@ -7,6 +7,8 @@
 // Headings are matched by their words, not their level, so the same check runs
 // on markdown (`## Impact`) and on a pre-built ADF doc (heading nodes).
 
+import { SECTORS } from './commands/sector.js';
+
 export const PLAIN_SECTIONS = ['Impact', 'What', 'Why', 'Plan', 'DoD', 'Agent detail'] as const;
 
 /** Sections that must hold at least one bullet or numbered line beyond the template hint. */
@@ -168,4 +170,36 @@ export function homeVerdict(
     return { action: 'warn', message: `jira: warning: ${why} (${type} is exempt, filing anyway)` };
   }
   return { action: 'refuse', message: `jira: refused: ${why}.` };
+}
+
+export const TITLE_TEMPLATE = `Ticket title (system or user-facing):
+  system:       <Sector>: <the result>   e.g. "Ship loop: merge waits for the signed GO"
+  user-facing:  a short plain sentence of what the user can now do   e.g. "See which tickets are system work"
+  Sectors: ${SECTORS.join(", ")}
+  Leave out commit prefixes (feat(x):), ticket ids, and internal names (--flags, field_names, file paths).`;
+
+const TITLE_MAX = 90;
+const COMMIT_PREFIX = /^[a-z]+(\([^)]*\))?!?:/;
+const TICKET_ID = /\b[A-Z][A-Z0-9]+-\d+\b/;
+const INTERNAL_NAME = /`|(?:^|\s)--[a-z]|\b[a-z]+_[a-z_]+\b|\b(?:scripts|docs|src)\/|\S\.(?:ts|sh|md|json|tsv|ya?ml|js|py)\b/;
+
+/**
+ * Warn-only title check for a Task, Story or Bug: a system title opens with its
+ * Sector, a user-facing one is a plain sentence. Epic and Subtask are exempt.
+ */
+export function titleVerdict(type: string, title: string): PlainVerdict {
+  if (WARN_ONLY_TYPES.has(type.trim().toLowerCase())) return { action: 'ok', message: '' };
+  const t = title.trim();
+  const found: string[] = [];
+  if (!t) found.push('the title is empty');
+  const sectorLed = SECTORS.some((s) => t.toLowerCase().startsWith(s.toLowerCase() + ':'));
+  if (!sectorLed && COMMIT_PREFIX.test(t)) found.push('it opens with a commit prefix');
+  if (TICKET_ID.test(t)) found.push('it names a ticket id');
+  if (INTERNAL_NAME.test(t)) found.push('it uses an internal name (flag, field, path or code)');
+  if (t.length > TITLE_MAX) found.push(`it is too long (${t.length} characters, keep it under ${TITLE_MAX})`);
+  if (found.length === 0) return { action: 'ok', message: '' };
+  return {
+    action: 'warn',
+    message: `jira: warning: title does not fit the template: ${found.join('; ')} (filing anyway)\n${TITLE_TEMPLATE}`,
+  };
 }

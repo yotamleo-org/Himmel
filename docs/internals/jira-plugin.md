@@ -163,6 +163,24 @@ ticket's own facts and invent no impact. The roadmap tracker reads the
 `Impact` section as a card's impact line (`tracker.py`), falling back to the
 older stage-1 explain sidecar when a ticket has none.
 
+**Ticket title: system tickets name their sector, user-facing tickets are a plain sentence.**
+A title is one of two kinds:
+
+- **System:** `<Sector>: <the result>`, for example `Ship loop: merge waits for the
+  signed GO`. The sector is one of the Sector field's values (Fleet orchestration,
+  Ship loop, Safety & enforcement, Cost & efficiency, Visibility, Quality & proof,
+  Deployment, Knowledge & steering, Planning & tracking).
+- **User-facing:** a short plain sentence of what the user can now do, for example
+  `See which tickets are system work`.
+
+Neither kind carries a commit prefix (`feat(x):`), a ticket id, or an internal name
+(a `--flag`, a `field_name`, a file path, backticked code), and a title stays under
+90 characters. `create` checks this for a Task, Story or Bug and **warns** with the
+template on stderr (the MCP tool appends the warning to its reply); it never
+refuses, and an Epic or Subtask is not checked. The check is `titleVerdict` in
+`scripts/jira/src/plain-block.ts`. Existing titles are retitled in approved
+batches with `edit --title`, never in bulk without the operator's approval.
+
 **`create` has no `--priority`; `edit` does.** `create --help` does not list
 a priority flag — file the ticket, then `node <repo-root>/scripts/jira/dist/index.js
 edit <key> --priority High` to set the real field. A priority stated only in
