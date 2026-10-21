@@ -411,10 +411,12 @@ deny_priv() {
 # The words each docker/podman invocation runs with, one line per invocation
 # (words joined by US). A wrapper the model cannot see through (sudo, xargs, ssh,
 # find -exec) hands over its argv from each docker word on, so a user or host named
-# docker is not taken for the program; an invocation it
-# cannot read (a shell or interpreter with no parsed body, a wrapper with no
-# literal docker word, a word holding a control byte) is "@legacy": the regex
-# reader decides, so the model only ever adds a verdict and never hides a deny.
+# docker is not taken for the program. A position the model cannot read is
+# "@legacy": the regex reader decides, so the model never hides a deny the regex
+# gave. That covers a shell or interpreter with no parsed body, a wrapper with no
+# literal docker word, a word holding a control byte, and any other program whose
+# arguments name docker or podman (numactl, tmux, screen, git rebase -x ...) unless
+# it is a data program (echo, grep, git commit -m, jq ...) with no exec option.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' DP_JQ <<'DP_JQ_EOF' || true
 def b: (. // "") | sub("^.*[/\\\\]"; "");
@@ -426,30 +428,35 @@ def words: map(w) | if any(test("[\u001f\n]")) then "@legacy" else join("\u001f"
 # reader and an escape to the model, so the regex reads such a command as well.
 def winpath: any(.[1:][]; .t == "lit" and ((.raw // "") | contains("\\")));
 def scan: words, (if winpath then "@legacy" else empty end);
+def data: (.prog | b) | IN("git", "gh", "curl", "wget", "jq", "cat", "head", "tail", "wc", "ls", "diff", "grep", "egrep", "fgrep", "rg", "echo", "printf");
+def execarg: any(.argv[]; .t == "lit" and (.v | test("^-[A-Za-z]*[cxu]|^--(pre|exec|extcmd|upload-pack|receive-pack|use-askpass)|^foreach$")));
+def mention: any(.argv[1:][]; w | ascii_downcase | test("docker|podman"));
 .[]
 | if (.prog | b | IN("docker", "podman")) then (.argv | scan)
   elif .opaque != null then
     .argv as $a
     | [range(0; $a | length) | select($a[.] | isd)] as $gs
     | if ($gs | length) == 0 then "@legacy" else ($gs[] as $g | $a[$g:] | scan) end
-  elif interp and .body == null then "@legacy"
+  elif interp then (if .body == null then "@legacy" else empty end)
+  elif mention and ((data | not) or execarg) then "@legacy"
   else empty end
 DP_JQ_EOF
 
 # A command that names neither docker nor podman (quotes, backslashes and line
 # continuations dropped, as the shell joins d\ocker and dock<newline>er) cannot
 # run one, so it never pays for shfmt.
-cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | tr -d "'\"\\\\")
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr -d "'\"\\\\")
 case "$cmd_nq" in
     *docker* | *podman*) ;;
     *) exit 0 ;;
 esac
 
 # The command-position model (scripts/lib/bash-ast.sh) reads where each command
-# runs: a heredoc body or a quoted string is data, and command / exec / nohup /
-# time / bash -c / eval reach the docker they run. Not for PowerShell, which shfmt
-# cannot read, and not when shfmt cannot parse the text: the regex reader stays
-# for both.
+# runs: a heredoc body, or a string handed to a data program (echo, grep, jq,
+# git commit -m), is data, and command / exec / nohup / env / bash -c / eval reach
+# the docker they run. A launcher it does not unwrap that names docker goes to the
+# regex reader, as does PowerShell (which shfmt cannot read) and any text shfmt
+# cannot parse.
 if [ "$tool" != PowerShell ]; then
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh

@@ -1225,6 +1225,19 @@ deny 'env FOO=bar qmd query x'
 deny 'timeout -k 5 10 qmd query x'
 deny 'sudo -u bob qmd query x'
 allow 'qmd status; qmd collection list'
+# a data program that runs its option argument as a command is not data
+deny 'git rebase -x "cd docs; qmd query x" HEAD~1'
+deny 'git rebase --exec "qmd query x" HEAD~1'
+deny 'git difftool -x "qmd query x" a b'
+deny 'git difftool --extcmd="qmd query x" a b'
+deny 'git submodule foreach "qmd query x"'
+deny 'git clone --upload-pack="qmd query x" url dir'
+deny 'git clone -u "qmd query x" url dir'
+deny 'git fetch --receive-pack="qmd query x" origin'
+deny 'git archive --exec="qmd query x" HEAD'
+deny 'wget --use-askpass="qmd query x" http://example.invalid'
+allow 'git rebase -x "make test" HEAD~1'
+allow 'git log --grep="qmd query" --oneline'
 
 # --- a missing shfmt denies a command that names qmd and a search verb, and the
 # message names shfmt; a command that names no qmd never pays for it.

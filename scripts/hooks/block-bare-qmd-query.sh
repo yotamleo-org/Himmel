@@ -1922,7 +1922,8 @@ qmd_check() {
 # runs. qa_verdict is `deny` when a position runs qmd with a search verb (a verb
 # brace expansion splits out included), `allow` when every position is read and
 # qmd is named only as data to a program that does not run it (git commit -m,
-# curl -d, a jq filter, a heredoc to cat), and `legacy` for everything else: an
+# curl -d, a jq filter, a heredoc to cat) and takes no exec option (-c, -x, -u,
+# --exec, --extcmd, --pre, --upload-pack, foreach), and `legacy` for everything else: an
 # opaque position, an interpreter with no literal body, an echo or printf, a
 # launcher, a dynamic word after qmd. `legacy` leaves the verdict to qmd_check
 # below, so the model only adds a denial or clears a mention it fully read.
@@ -1955,7 +1956,7 @@ def qverdict($q):
        else empty end]
   | (first // "allow");
 def data: (.prog | b) | IN("git", "gh", "curl", "wget", "jq", "cat", "head", "tail", "wc", "ls", "diff", "grep", "egrep", "fgrep", "rg");
-def execarg: any(.argv[]; .t == "lit" and (.v == "-c" or (.v | startswith("--pre"))));
+def execarg: any(.argv[]; .t == "lit" and (.v | test("^-[A-Za-z]*[cxu]|^--(pre|exec|extcmd|upload-pack|receive-pack|use-askpass)|^foreach$")));
 def words: [.argv[] | wv] | join(" ") | ascii_downcase;
 def mention: ([.argv[] | wv] + [(.redirs // [])[] | ((.text // ""), (.w.raw // ""))]) | join(" ") | ascii_downcase | contains("qmd");
 def namesverb: words | test("qmd.*(^|[^a-z0-9_-])(query|search|vsearch)([^a-z0-9_-]|$)");

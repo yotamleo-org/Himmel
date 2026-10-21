@@ -156,6 +156,17 @@ assert_rc "sudo -u docker docker run --privileged: the user name is not the prog
 assert_rc "sudo -u podman podman run --privileged: the user name is not the program" 2 "$(run_case "$(j_bash 'sudo -u podman podman run --privileged img sh')")"
 assert_rc "ssh docker docker run --privileged: the host name is not the program" 2 "$(run_case "$(j_bash 'ssh docker docker run --privileged img sh')")"
 assert_rc "sudo -u docker docker run of a safe image" 0 "$(run_case "$(j_bash 'sudo -u docker docker run --rm img sh')")"
+# a launcher the model does not list as opaque still runs the docker it is given
+assert_rc "numactl -N 0 docker run --privileged" 2 "$(run_case "$(j_bash 'numactl -N 0 docker run --privileged img sh')")"
+assert_rc "prlimit --nproc=10 docker run -v /etc:/h:rw" 2 "$(run_case "$(j_bash 'prlimit --nproc=10 docker run -v /etc:/h:rw img sh')")"
+assert_rc "tmux new-session 'docker run --privileged'" 2 "$(run_case "$(j_bash "tmux new-session 'docker run --privileged img sh'")")"
+assert_rc "screen -dm docker run --privileged" 2 "$(run_case "$(j_bash 'screen -dm docker run --privileged img sh')")"
+assert_rc "systemd-inhibit docker run --privileged" 2 "$(run_case "$(j_bash 'systemd-inhibit docker run --privileged img sh')")"
+assert_rc "setpriv --reuid 0 docker run --privileged" 2 "$(run_case "$(j_bash 'setpriv --reuid 0 docker run --privileged img sh')")"
+assert_rc "rtk proxy docker run --privileged" 2 "$(run_case "$(j_bash 'rtk proxy docker run --privileged img sh')")"
+assert_rc "git rebase -x runs docker run --privileged" 2 "$(run_case "$(j_bash 'git rebase -x "true; docker run --privileged img sh" HEAD~1')")"
+assert_rc "numactl -N 0 docker run of a safe image" 0 "$(run_case "$(j_bash 'numactl -N 0 docker run --rm img sh')")"
+assert_rc "git log --grep naming docker run --privileged is data" 0 "$(run_case "$(j_bash 'git log --grep="docker run --privileged" --oneline')")"
 
 # --- a missing shfmt denies a command that names docker/podman, and the message
 # names shfmt; a command that names neither never pays for it.
