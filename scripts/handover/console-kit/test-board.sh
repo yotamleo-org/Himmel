@@ -570,6 +570,52 @@ printf 'HIMMEL-9008%sTask%sTo Do%sno labels column\n' "$T" "$T" "$T" >> "$JD/v1.
 runv --out "$W/v-nolabels.html" >/dev/null
 contains 'a row missing the labels column reads unavailable' "$(cat "$W/v-nolabels.html" 2>/dev/null)" 'data-release="v1.0.0" data-unavailable="1"'
 
+# --- `release: R1` renders the release manager's lines from ONE `jira release state R1
+# --json` call (the same BOARD_JIRA seam): M4 burn-down per version, the leaks, and the
+# M1 trend. The stub prints $RM_STATE and exits $RM_RC (3 = the CLI's not-OK exit).
+cat > "$W/bin/jira-rm-stub" <<'STUB'
+#!/usr/bin/env bash
+printf 'args=%s\n' "$*" >> "$JIRA_ARGV_LOG"
+[ -f "${RM_STATE:-}" ] && cat "$RM_STATE"
+exit "${RM_RC:-0}"
+STUB
+chmod +x "$W/bin/jira-rm-stub"
+cat > "$W/rm-state.json" <<'EOF'
+{"release":"R1","status":"OK","mode":"observe","versions":["v1","v2"],
+ "leaks":{"unauthorized":["HIMMEL-9201@v1"],"ruled_in_non_member":[]},"integrity":[],
+ "burndown":{"v1":{"baseline":5,"baseline_open":3,"admitted_open":2,"emergency_open":1,"deferred_out":1},
+             "v2":{"baseline":0,"baseline_open":0,"admitted_open":0,"emergency_open":0,"deferred_out":0}},
+ "trend":{"2026-10-20":{"ruled":2},"2026-10-21":{"ruled":1,"out-of-band":1}}}
+EOF
+DOCR="$B/HIMMEL-nextleg-2026-09-21V-console-r.md"
+sed 's/^epics: .*/&\nrelease: R1/' "$DOC" > "$DOCR"  # gnu-ok: console kit is Linux-only
+runr() {  # runr <extra args...> -- like run, on the console doc that carries a release: line
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" BOARD_JIRA="$W/bin/jira-rm-stub" \
+        JIRA_ARGV_LOG="$W/jira-argv.log" JIRA_PROJECT_KEY=HIMMEL \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOCR" --repo "$W/repo" "$@" 2>"$W/stderr.log"
+}
+rm -f "$W/jira-argv.log"
+RM_STATE="$W/rm-state.json" runr --out "$W/r-board.html" >/dev/null; rc=$?
+rhtml="$(cat "$W/r-board.html" 2>/dev/null)"
+contains 'a release: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
+same 'one release state call' "$(cat "$W/jira-argv.log" 2>/dev/null)" 'args=release state R1 --json'
+contains 'the release manager panel names the release and its status' "$rhtml" 'data-rm-release="R1" data-status="OK"'
+contains 'M4: a version line carries baseline open of baseline' "$rhtml" 'data-burndown="v1" data-baseline-open="3" data-baseline="5"'
+contains 'M4: and admitted, emergency and deferred counts' "$rhtml" 'admitted open 2 · emergency open 1 · deferred out 1'
+contains 'M4: every version of the release has a line' "$rhtml" 'data-burndown="v2"'
+contains 'a leak is listed by key and version' "$rhtml" 'data-leak="HIMMEL-9201@v1"'
+contains 'M1 trend: one row per day, by kind' "$rhtml" 'data-trend="2026-10-21">2026-10-21: out-of-band 1 · ruled 1'
+contains 'the release fingerprint meta is present' "$rhtml" 'console-board-versions-fp'
+RM_STATE="$W/rm-state.json" RM_RC=3 runr --out "$W/r-unknown.html" >/dev/null; rc=$?
+contains 'a not-OK state (exit 3) still renders the board (rc 0)' "rc=$rc" 'rc=0'
+contains 'a not-OK state still shows its JSON' "$(cat "$W/r-unknown.html")" 'data-rm-release="R1" data-status="OK"'
+RM_RC=1 runr --out "$W/r-fail.html" >/dev/null; rc=$?
+contains 'a failing release state call still renders the board (rc 0)' "rc=$rc" 'rc=0'
+contains 'a failing release state call reads unavailable' "$(cat "$W/r-fail.html")" 'data-rm-release="R1" data-unavailable="1"'
+lacks 'no release: line renders no release manager panel' "$(cat "$W/nov-board.html")" 'data-rm-release'
+
 # --- with no --legs, the leg set is the console's fleet manifest
 # (<console doc stem>.fleet.json, read through fleet-manifest.sh list -- the same
 # validation tick --legs-from uses); no manifest keeps the RESUME-doc scan; an

@@ -157,6 +157,8 @@ const epicsDeclared = liveField('epics').split(/[,\s]+/).filter(Boolean).map((e)
 }).filter(Boolean);
 // A version name lands inside a JQL string: only a plain release token is accepted.
 const versionsDeclared = liveField('versions').split(/[,\s]+/).filter((v) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v));
+// The release the release manager rules: the same plain-token rule.
+const releaseDeclared = [liveField('release')].find((v) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v)) || '';
 // Split on ';' only at parenthesis depth 0, so "A (x; y); B?" -> ["A (x; y)", "B?"].
 const splitTopLevel = (s) => {
     const out = [];
@@ -332,7 +334,7 @@ const primaryRoot = () => {
     } catch { /* fall through to the tree this script sits in */ }
     return resolve(HERE, '..', '..', '..');
 };
-const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length ? join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
+const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length || releaseDeclared ?join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
 // the legs' Jira ladder, in the order a Release panel shows it.
 const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
 const DONE_STATUS = /^(done|resolved)$/i;
@@ -357,9 +359,29 @@ const releaseOf = (version) => {
     return { version, done: counted.length - open.length, total: counted.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
 };
 const releases = versionsDeclared.map(releaseOf);
+// The release manager's state: ONE `release state <R> --json` call, the engine's own
+// counts. Exit 3 is the CLI's not-OK status and still prints the state; any other
+// failure reads unavailable.
+const rmState = (() => {
+    if (!releaseDeclared) return null;
+    const a = ['release', 'state', releaseDeclared, '--json'];
+    let out;
+    try {
+        out = execFileSync(...(JIRA_CLI.endsWith('.js') ? ['node', [JIRA_CLI, ...a]] : [JIRA_CLI, a]),
+            { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) {
+        if (e.status !== 3) return { release: releaseDeclared, unavailable: true };
+        out = e.stdout;
+    }
+    try {
+        const s = JSON.parse(out);
+        return s && s.burndown && s.trend && s.leaks ? s : { release: releaseDeclared, unavailable: true };
+    } catch { return { release: releaseDeclared, unavailable: true }; }
+})();
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
 const releaseSig = releases.map((r) => (r.unavailable ? `${r.version}=unavailable`
-    : `${r.version}=${r.done}/${r.total}:${LEG_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`)).join(',');
+    : `${r.version}=${r.done}/${r.total}:${LEG_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
+    .concat(rmState ? [`rm:${rmState.unavailable ? 'unavailable' : JSON.stringify([rmState.status, rmState.burndown, rmState.leaks])}`] : []).join(',');
 const ciOf = (pr) => {
     const rollup = (pr && pr.statusCheckRollup) || [];
     // No checks reported yet is not a green build: it reads pending.
@@ -515,6 +537,15 @@ const releasePanel = (r) => {
     const breakdown = LEG_STATUSES.map((st) => `<span data-status="${esc(st)}" data-count="${r.byStatus[st]}">${esc(st)} ${r.byStatus[st]}</span>`).join(' · ');
     const blockers = r.blockers.map((b) => `<li data-blocker="${esc(b.key)}"><b>${esc(b.key)}</b> ${safe(b.title, 90)} <span class="pr">${safe(b.status)}</span></li>`).join('\n');
     return `<section data-release="${esc(r.version)}" data-done="${r.done}" data-total="${r.total}"><h2>Release ${safe(r.version)}</h2><b>${r.done}/${r.total}</b><div class="bar"><i style="width:${pct}%"></i></div><p class="status">${breakdown}</p>${blockers ? `<ul>${blockers}</ul>` : '<p class="none">no open v1-blocker tickets</p>'}</section>`;
+};
+// M4 burn-down per version, the leaks and the M1 trend (last 7 days): display only, no count gate.
+const rmPanel = (s) => {
+    if (s.unavailable) return `<section data-rm-release="${esc(s.release)}" data-unavailable="1"><h2>Release manager ${safe(s.release)}</h2><p class="none">unavailable</p></section>`;
+    const n = Number;
+    const bd = Object.entries(s.burndown).map(([v, b]) => `<li data-burndown="${esc(v)}" data-baseline-open="${n(b.baseline_open)}" data-baseline="${n(b.baseline)}"><b>${safe(v)}</b> baseline open ${n(b.baseline_open)}/${n(b.baseline)} · admitted open ${n(b.admitted_open)} · emergency open ${n(b.emergency_open)} · deferred out ${n(b.deferred_out)}</li>`);
+    const leaks = [...(s.leaks.unauthorized || []), ...(s.leaks.ruled_in_non_member || [])].map((k) => `<li data-leak="${esc(k)}"><b>${safe(k)}</b> leak</li>`);
+    const trend = Object.keys(s.trend).sort().slice(-7).map((day) => `<li data-trend="${esc(day)}">${safe(day)}: ${Object.keys(s.trend[day]).sort().map((k) => `${safe(k)} ${n(s.trend[day][k])}`).join(' · ')}</li>`);
+    return `<section data-rm-release="${esc(s.release)}" data-status="${esc(s.status)}"><h2>Release manager ${safe(s.release)} · ${safe(s.status)}</h2><ul>${[...bd, ...leaks, ...trend].join('\n')}</ul></section>`;
 };
 const prRows = (openPrs || []).map((p) => `<li data-ci="${ciOf(p)}"><b>#${p.number}</b> ${safe(p.title, 90)} <span class="pr">${ciOf(p)}${p.isDraft ? ' · draft' : ''}</span></li>`).join('\n');
 // Done work never reaches the published page: a WRAPPED or MERGED leg and the merged PRs
@@ -945,7 +976,7 @@ ${iceFollowupsSection}
 ${overdueClassesSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
-${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
+${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}${rmState ? `\n${rmPanel(rmState)}` : ''}
 <section class="wide">
 <h2>Worker sessions</h2>
 ${liveLegs.length ? `<ul>${liveLegs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'worker-session labels unavailable' : 'no live worker sessions'}</p>`}

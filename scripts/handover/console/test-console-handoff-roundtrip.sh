@@ -43,7 +43,9 @@ epics
 decisions
 priority
 versions
-tracker-plan"
+tracker-plan
+release
+rm"
 handoff_fields="legs
 queue
 last GO
@@ -104,6 +106,8 @@ decisions: OPERATOR 10-20 (BINDING): drain owner-less In Progress first; FOCUS v
 priority: 6591 6592 | 6593(K2) | 6594
 versions: v1.1.3, v1.1.4
 tracker-plan: /fixture/plan/HIMMEL-3882
+release: v1.1.3-4
+rm: HIMMEL-rm-fixture /fixture/rm/doc.md epoch=2
 '
 awk -v live="$fixture_live" '
     $0 == "## Live state" { f = 1; print; next }
@@ -112,7 +116,7 @@ awk -v live="$fixture_live" '
     skip { next }
     { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"
 check "2 fixture doc carries every field" \
-    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(legs\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\):')" "11"
+    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(legs\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\):')" "13"
 
 rc=0
 console next --bucket rtdst --doc "$docA" >/dev/null 2>&1 || rc=$?
