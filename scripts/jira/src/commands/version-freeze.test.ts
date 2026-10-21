@@ -163,11 +163,38 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(puts).toEqual(['/issue/HIM-1', '/version/7']);
   });
 
-  it('version-ready PASSes the frozen-set row once the key is Done or labelled deferred', async () => {
+  it('version-ready PASSes the frozen-set row once the key is Done or deferred from this version', async () => {
+    mockRead.mockReturnValue([
+      { ts: '2026-10-21T03:00:00Z', version: 'v1.1.3', key: 'HIM-2', kind: 'deferral', actor: 'c', reason: 'later' },
+    ]);
     world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new', ['deferred'])] });
     await run(['version-ready', 'v1.1.3']);
     expect(out()).toMatch(/PASS\s+frozen-set/);
     expect(out()).not.toMatch(/FAIL/);
+  });
+
+  it('a deferred label without a deferral row for this version keeps the key open', async () => {
+    mockRead.mockReturnValue([
+      { ts: '2026-10-01T03:00:00Z', version: 'v1.1.2', key: 'HIM-2', kind: 'deferral', actor: 'c', reason: 'earlier release' },
+    ]);
+    world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new', ['deferred'])] });
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+frozen-set.*open: HIM-2/);
+  });
+
+  it('an empty frozen-keys: line followed by release notes parses as an empty freeze', () => {
+    expect(parseFrozen('frozen: 2026-10-20\nfrozen-keys:\nRelease notes HIM-5')).toEqual({ date: '2026-10-20', keys: [] });
+  });
+
+  it('main-ci fails closed when the run list may be truncated', () => {
+    const exec = execFileSync as unknown as ReturnType<typeof vi.fn>;
+    exec.mockReset();
+    exec.mockImplementation((_cmd: string, args: string[]) =>
+      args[0] === 'api'
+        ? 'abc123\n'
+        : JSON.stringify(Array.from({ length: 200 }, () => ({ conclusion: 'success', headSha: 'abc123', workflowName: 'ci' }))),
+    );
+    expect(mainCiGreen().ok).toBe(false);
   });
 
   it('version-ready FAILs on an open Highest bug, an unfolded Done key and a red main', async () => {

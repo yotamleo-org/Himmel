@@ -18,8 +18,9 @@ type Issue = JiraIssue & {
   fields: JiraIssue['fields'] & { labels?: string[]; status: { name: string; statusCategory?: { key?: string } } };
 };
 
-const FROZEN_LINE = /^\s*frozen:\s*(\d{4}-\d{2}-\d{2})\s*$/m;
-const KEYS_LINE = /^\s*frozen-keys:\s*(.*?)\s*$/m;
+const FROZEN_LINE = /^[ \t]*frozen:[ \t]*(\d{4}-\d{2}-\d{2})[ \t]*$/m;
+const KEYS_LINE = /^[ \t]*frozen-keys:[ \t]*(.*?)[ \t]*$/m;
+const CI_RUN_LIMIT = 200;
 const SEARCH_LIMIT = '5000';
 const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 
@@ -48,10 +49,11 @@ export function mainCiGreen(sha?: string): CiResult {
     const runs = JSON.parse(
       execFileSync(
         'gh',
-        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', '200', '--json', 'conclusion,headSha,workflowName'],
+        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', String(CI_RUN_LIMIT), '--json', 'conclusion,headSha,workflowName'],
         { encoding: 'utf8' },
       ),
     ) as Array<{ conclusion: string; headSha: string; workflowName: string }>;
+    if (runs.length >= CI_RUN_LIMIT) return { ok: false, detail: `${runs.length}+ runs at ${head.slice(0, 9)}: list may be truncated` };
     const mine = runs.filter((r) => r.headSha.startsWith(head));
     if (mine.length === 0) return { ok: false, detail: `no CI run found for ${head}` };
     const bad = mine.filter((r) => r.conclusion !== 'success' && r.conclusion !== 'skipped');
@@ -162,7 +164,9 @@ async function readinessRows(
     rows.push({ id: 'frozen-set', ok: false, detail: `${name} is not frozen (no frozen: and frozen-keys: lines in its description)` });
   } else {
     const issues = frozen.keys.length === 0 ? [] : ((await searchAllIssues(inKeys(frozen.keys), SEARCH_LIMIT, request, true)) as Issue[]);
-    const deferred = (i: Issue) => (i.fields.labels ?? []).includes('deferred');
+    const deferred = (i: Issue) =>
+      (i.fields.labels ?? []).includes('deferred') &&
+      ledger.some((l) => l.kind === 'deferral' && l.key === i.key && l.version === name);
     const seen = new Set(issues.map((i) => i.key));
     const open = [
       ...issues.filter((i) => !done(i) && !deferred(i)).map((i) => i.key),
