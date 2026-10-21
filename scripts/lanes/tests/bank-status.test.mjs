@@ -121,7 +121,7 @@ test('bank-status CLI names an unreadable Codex bank instead of silently reporti
     encoding: 'utf8',
     env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: join(dir, 'missing.json') },
   });
-  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
+  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });
 
 // A canonical quota-gauge ledger row for the GLM lane. `resetAt` is an ISO
@@ -657,5 +657,5 @@ test('bank-status stays unmeasurable, without spinning, when the cache directory
 test('bank-status does not refresh when CODEX_BANK_CACHE is overridden without a probe command', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-bank-refresh-seam-');
   const { out } = runBankStatus(dir, { CODEX_BANK_CACHE: join(dir, 'missing.json') });
-  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
+  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });

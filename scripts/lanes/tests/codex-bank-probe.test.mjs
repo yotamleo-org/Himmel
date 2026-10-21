@@ -258,7 +258,7 @@ test('bank-status CLI: fresh cache measured, missing/stale cache unmeasurable �
     encoding: 'utf8',
     env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: join(dir, 'absent.json') },
   });
-  assert.match(missing, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
+  assert.match(missing, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
   assert.doesNotMatch(missing, /^claudex funded /m);
 
   // The TTL env var is honored end-to-end (its parsing lives in usage-status.ts).
@@ -270,7 +270,7 @@ test('bank-status CLI: fresh cache measured, missing/stale cache unmeasurable �
     encoding: 'utf8',
     env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: cache, CODEX_BANK_CACHE_TTL_SECONDS: '1' },
   });
-  assert.match(stale, /^claudex unknown unmeasurable reason="codex bank cache stale \(age 60min > TTL 0min\) — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
+  assert.match(stale, /^claudex unknown unmeasurable reason="codex bank cache stale \(age 60min > TTL 0min\) — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });
 
 test('bank-status CLI and probe read the CODEX_USAGE_* names over the old ones', { skip: BUN_SKIP }, () => {
