@@ -67,7 +67,7 @@ sr_setup() {
     done
     : > "$a/scripts/lint/shell-lint-baseline.tsv"
     : > "$a/docs/.keep"
-    printf '#!/usr/bin/env bash\n[ ! -e docs/.fail-ledgers ] || { echo "FAIL: ledgers stub"; exit 1; }\necho "PASS ledgers stub"\n' > "$a/scripts/observability/test-ledgers-registry.sh"
+    printf '#!/usr/bin/env bash\n[ "$#" -eq 0 ] || { echo "FAIL: ledgers stub got arguments: $*"; exit 1; }\n[ ! -e docs/.fail-ledgers ] || { echo "FAIL: ledgers stub"; exit 1; }\necho "PASS ledgers stub"\n' > "$a/scripts/observability/test-ledgers-registry.sh"
     [ "${SR_NOCHK:-0}" != 1 ] || rm -f "$a/scripts/observability/test-ledgers-registry.sh"
     # check-commit-msg.sh is the hook mog_build_fixture already lays down.
     for f in bus-deliver-hook.sh bus-deliver-sessionstart.sh bus-deliver-run.js wired-hook.sh check-commit-msg.sh; do

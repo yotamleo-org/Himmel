@@ -1280,13 +1280,13 @@ sr_failed=""
 # the merge result's root with a per-check ceiling; a failing one is named.
 sr_run() {
     local name="$1" script="$2" rc=0
-    shift
+    shift 2
     if [ ! -f "$sr_tmp/work/$script" ]; then
         printf '%s is missing from the merge result\n' "$script" > "$sr_tmp/$name.out"
         sr_failed="${sr_failed:+$sr_failed,}$name"
         return 0
     fi
-    ( cd "$sr_tmp/work" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE ${sr_timeout:+$sr_timeout} bash "$@" ) > "$sr_tmp/$name.out" 2>&1 || rc=$?
+    ( cd "$sr_tmp/work" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE ${sr_timeout:+$sr_timeout} bash "$script" "$@" ) > "$sr_tmp/$name.out" 2>&1 || rc=$?
     if [ "$rc" -ne 0 ]; then
         [ "$rc" -ne 124 ] || printf 'timed out after 150s\n' >> "$sr_tmp/$name.out"
         sr_failed="${sr_failed:+$sr_failed,}$name"
@@ -1336,16 +1336,16 @@ else
         sr_timeout=""
         ! command -v timeout >/dev/null 2>&1 || sr_timeout="timeout 150"
         sr_skipped=""
-        sr_run test-unwired-hooks scripts/testing/test-unwired-hooks.sh scripts/testing/test-unwired-hooks.sh
-        sr_run test-ledgers-registry scripts/observability/test-ledgers-registry.sh scripts/observability/test-ledgers-registry.sh
-        sr_run check-host-file-read-sinks scripts/ci/check-host-file-read-sinks.sh scripts/ci/check-host-file-read-sinks.sh --range --merge-ref
+        sr_run test-unwired-hooks scripts/testing/test-unwired-hooks.sh
+        sr_run test-ledgers-registry scripts/observability/test-ledgers-registry.sh
+        sr_run check-host-file-read-sinks scripts/ci/check-host-file-read-sinks.sh --range --merge-ref
         # The same pin CI installs: shellcheck-py's rev from the pre-commit config,
         # compared on its first three fields against what `shellcheck --version` says.
         sr_pin=$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$sr_tmp/work/.pre-commit-config.yaml") || sr_pin=""
         sr_scver=""
         ! command -v shellcheck >/dev/null 2>&1 || sr_scver=$(shellcheck --version | sed -n 2p)
         if [ -n "$sr_pin" ] && [ "$sr_scver" = "version: ${sr_pin%.*}" ]; then
-            sr_run shell-lint scripts/lint/shell-lint.sh scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
+            sr_run shell-lint scripts/lint/shell-lint.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/shell-lint-baseline.tsv
         else
             sr_skipped="shell-lint"
             echo "merge-on-green: static re-check: shell-lint SKIPPED — shellcheck on PATH is '${sr_scver:-absent}', the pin is '${sr_pin:-unreadable}'." >&2
