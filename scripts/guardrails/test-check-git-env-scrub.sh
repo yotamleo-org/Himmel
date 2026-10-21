@@ -392,6 +392,7 @@ if [ "$rc" -eq 0 ]; then pass "F7 --files: a stale entry for an unnamed file is 
 printf 'SHELL:scripts/hooks/gone.sh\n' > "$F_BASE"
 OUT="$(cd "$F_REPO" && bash "$CHECKER" --baseline "$F_BASE" --files scripts/other/outside.sh 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ]; then pass "F8 --files: a baseline entry for a deleted file is flagged"; else fail "F8 --files: a baseline entry for a deleted file is flagged (rc=$rc)"; fi
+files_expect "F9 --files: a non-regular path outside the scan scope is skipped, not a missing file" 0 scripts/other
 rm -f "$F_BASE"
 rm -rf "$F_REPO"
 

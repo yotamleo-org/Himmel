@@ -723,12 +723,12 @@ if [ "$MODE" = staged ]; then
 else
     if [ "$FILES_MODE" -eq 1 ]; then
         for p in ${TREE_PATHS[@]+"${TREE_PATHS[@]}"}; do
+            scannable "$p" || continue
+            is_trust_path "$p" || continue
             if [ ! -f "$p" ]; then
                 echo "check-git-env-scrub: --files path does not exist: $p" >&2
                 exit 2
             fi
-            scannable "$p" || continue
-            is_trust_path "$p" || continue
             scan_one "$p" "$p"
         done
     elif [ "${#TREE_PATHS[@]}" -gt 0 ]; then
