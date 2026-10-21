@@ -61,9 +61,12 @@
 # eval, variables, `cd` then a relative name, a quoted path with spaces, a
 # wrapper script, an interpreter -c, or a writer verb outside this list (rm,
 # dd, install, truncate) still pass; JSON unicode escapes in a path, or a
-# symlink alias whose name lacks "release", skip the mode-1 prefilter. The authority files carry signed, chained rows (design
-# §5.2), so a raw write is detected by every reader even when it passes here.
-# ponytail: those shell shapes pass, a sandboxed lane (HIMMEL-4607) closes them.
+# symlink alias whose name lacks "release", skip the mode-1 prefilter. Mode 2
+# applies its file allowlist to the file tools only: a Bash write to a path
+# that is not an authority file is not screened. The authority files carry
+# signed, chained rows (design §5.2), so a raw write is detected by every
+# reader even when it passes here.
+# ponytail: those shell shapes pass, the leg OS sandbox (HIMMEL-6180) closes them.
 # Over-matching is the safe direction: in mode 2 a read that names
 # scripts/jira/ (cat, git grep) is checked as a Jira call and denies.
 #
