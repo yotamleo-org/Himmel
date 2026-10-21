@@ -173,6 +173,7 @@ new_fixture() {
   printf '{"permissions":{"allow":["Bash(ls:*)"]}}\n' > "$d/proj/.claude/settings.json"
   git -C "$d/proj" init -q -b main || return 1
   git -C "$d/proj" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || return 1
+  mkdir -p "$d/proj/.git/hooks" || return 1
   printf '#!/bin/sh\n# foreign hook\nexit 0\n' > "$d/proj/.git/hooks/pre-commit"
   chmod 755 "$d/proj/.git/hooks/pre-commit" || return 1
 }

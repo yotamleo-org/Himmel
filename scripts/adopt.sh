@@ -387,7 +387,14 @@ ensure_worktrees_ignored() {
   echo ".claude/worktrees/" >> "$TARGET/.gitignore"
   if ! prov_record "$op" file "$TARGET/.gitignore" --scope project --class code --row adopter-scripts \
       --writer adopt.sh "${pre[@]}" --post-file "$TARGET/.gitignore"; then
-    if [[ -n "$before" ]]; then cp -p "$before" "$TARGET/.gitignore"; else rm -f "$TARGET/.gitignore"; fi
+    if [[ -n "$before" ]]; then
+      if ! cp -p "$before" "$TARGET/.gitignore"; then
+        echo "ERROR: .gitignore restore failed; original retained at $before" >&2
+        return 1
+      fi
+    else
+      rm -f "$TARGET/.gitignore"
+    fi
     rm -f "$before"
     return 1
   fi

@@ -101,9 +101,9 @@ PROV_STEP="preflight"
 prov_finish() {
   local rc=$?
   if [[ $DRY_RUN -eq 0 ]]; then
-    if [[ -n "${PRE_INSTALL_ENABLED_JSON:-}" ]]; then
+    if [[ -n "${PROV_PRE_ENABLED_JSON:-}" ]]; then
       local keys spec ptr
-      keys=$(jq -r --argjson pre "$PRE_INSTALL_ENABLED_JSON" \
+      keys=$(jq -r --argjson pre "$PROV_PRE_ENABLED_JSON" \
         '(.enabledPlugins // {}) | to_entries[] | select(.value == false and (.key as $k | $pre | has($k) | not)) | .key' \
         "$PROV_SETTINGS_FILE" 2>/dev/null) || keys=""
       while IFS= read -r spec; do
@@ -338,6 +338,10 @@ MKT_DRIFT=()
 AU_PRE_NAMES=$(jq -r '(.extraKnownMarketplaces // {}) | keys[]' "$SETTINGS_FILE" 2>/dev/null | tr -d '\r') || AU_PRE_NAMES=""
 MKT_CONTAINER_ABSENT=true; settings_declares_top extraKnownMarketplaces && MKT_CONTAINER_ABSENT=false
 EP_CONTAINER_ABSENT=true; settings_declares_top enabledPlugins && EP_CONTAINER_ABSENT=false
+PROV_PRE_ENABLED_JSON='{}'
+if [[ -f "$PROV_SETTINGS_FILE" ]]; then
+  PROV_PRE_ENABLED_JSON=$(jq -c '.enabledPlugins // {}' "$PROV_SETTINGS_FILE" 2>/dev/null) || PROV_PRE_ENABLED_JSON=""
+fi
 MKT_SCOPE_ENTRY_NAMES=()
 while IFS= read -r MKT_LINE; do
   MKT_NAME="${MKT_LINE%%$'\t'*}"; SRC="${MKT_LINE#*$'\t'}"

@@ -2001,7 +2001,7 @@ $unit"
           if printf '%s' "$u" | jq -e '
             .row == "plugin-flags" or
             (.row == "adopter-scripts" and ((.path // "") | endswith("/.gitignore"))) or
-            (.kind == "json-key" and ((.unit // "") | startswith("/enabledPlugins/")))
+            (.kind == "json-key" and ((.unit // "") | startswith("/enabledPlugins/") or startswith("/extraKnownMarketplaces/")))
           ' >/dev/null; then
             echo "  NOT touched: $(printf '%s' "$u" | jq -r '.path') $unit ($reason)"
             fail_step "$_step NOT touched: $unit ($reason)"
