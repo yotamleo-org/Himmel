@@ -416,7 +416,7 @@ commit_install() {
   case "$branch" in main|master) ;; *) return 0 ;; esac
   if [[ $PRE_EDITED -eq 1 ]]; then
     echo "  .gitignore or .claude/settings.json already had uncommitted edits, so the install is not auto-committed (it would sweep them in)."
-    echo "  Commit your edits first, then re-run: bash $HIMMEL_ROOT/scripts/adopt.sh --scope project --target $TARGET --commit-install"
+    echo "  Commit your edits first, then re-run: bash $(printf '%q' "$HIMMEL_ROOT/scripts/adopt.sh") --scope project --target $(printf '%q' "$TARGET") --commit-install"
     return 0
   fi
   local -a paths=()
@@ -433,7 +433,7 @@ commit_install() {
     fi
     if [[ $COMMIT_INSTALL -ne 1 ]]; then
       echo "  The install is uncommitted on $branch, which the git gates now refuse commits on."
-      echo "  Commit it once with: bash $HIMMEL_ROOT/scripts/adopt.sh --scope project --target $TARGET --commit-install"
+      echo "  Commit it once with: bash $(printf '%q' "$HIMMEL_ROOT/scripts/adopt.sh") --scope project --target $(printf '%q' "$TARGET") --commit-install"
       [[ $DRY_RUN -eq 1 ]] || shared_file_hashes > "$(install_marker)"
       return 0
     fi
