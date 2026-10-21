@@ -42,7 +42,8 @@
 #     Jira CLI invocation (a word that is `jira`, ends in /jira, or names
 #     scripts/jira/) outside the allowlist:
 #       get, list, comments, links, mirror, versions, transitions;
-#       release state|claim|rule|apply|lease;
+#       release state|claim|rule|apply|lease acquire|lease release, each
+#         naming $HIMMEL_RM_RELEASE as its release;
 #       comment <KEY> --comment-file <path> (nothing else);
 #       edit <KEY> with only --add-labels/--remove-labels whose every label is
 #         backlog, deferred, needs-placement or scope-*;
@@ -223,8 +224,14 @@ jira_ok() {
     case "$op" in
         get | list | comments | links | mirror | versions | transitions) return 0 ;;
         release)
-            case "${1:-}" in state | claim | rule | apply | lease) return 0 ;; esac
-            return 1 ;;
+            case "${1:-}" in
+                state | claim | rule | apply) shift ;;
+                lease)
+                    shift
+                    case "${1:-}" in acquire | release) shift ;; *) return 1 ;; esac ;;
+                *) return 1 ;;
+            esac
+            [ -n "${HIMMEL_RM_RELEASE:-}" ] && [ "${1:-}" = "$HIMMEL_RM_RELEASE" ] ;;
         comment)
             while [ "$#" -gt 0 ]; do
                 a="$1"; shift
@@ -273,8 +280,13 @@ case "$tool" in
         # swallow-ok: a jq failure takes the fail branch.
         cmd=$(printf '%s' "$input" | jq -r '.tool_input.command' 2>/dev/null) \
             || fail "unparseable-payload" "cannot read command"
-        # Quotes dropped once; every check below reads the unquoted text.
-        bare=$(printf '%s' "$cmd" | tr -d '"'"'")
+        command -v awk >/dev/null 2>&1 || fail "unparseable-payload" "awk not on PATH"
+        # Line continuations joined (an odd run of trailing backslashes), then
+        # quotes and backslashes dropped once; every check below reads the
+        # unquoted text, so gh uplo\ad and gh up\<newline>load read as gh upload.
+        bare=$(printf '%s' "$cmd" \
+            | awk '{ if (match($0, /\\+$/) && RLENGTH % 2 == 1) { sub(/\\$/, ""); printf "%s", $0 } else print }' \
+            | tr -d "\"'\\\\")
 
         # Mode 1: redirect targets.
         # swallow-ok: no match means no redirect targets.
@@ -386,7 +398,7 @@ EOF
             deny "git-write" "mutating git verb"
         fi
         if has_word gh; then
-            has_word create comment review merge edit close reopen ready delete lock unlock transfer \
+            has_word create comment review merge edit close reopen ready delete lock unlock transfer upload \
                 && deny "gh-write" "gh write verb"
             if has_word api; then
                 for t in $words; do

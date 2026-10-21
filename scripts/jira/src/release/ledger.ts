@@ -142,6 +142,43 @@ const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(
 // keeps its lock fresh, and a release unlinks only the lock it created.
 interface LockHandle { lock: string; fd: number; ino: number }
 
+// Breaks a crashed writer's lock. Breakers are serialized by an O_EXCL mutex file, and
+// under it the lock is unlinked only if it is still the file whose staleness was judged:
+// the lock name is never vacated for anyone but its own breaker. A breaker that finds the
+// mutex held leaves the lock alone and lets the acquire loop retry. `beforeBreak` is a
+// test seam: it runs under the mutex, between the staleness decision and the recheck.
+// ponytail: a live holder that releases between the recheck and the unlink lets a new
+// writer's lock be removed (microseconds, and only for a holder slower than staleMs);
+// upgrade path is an advisory flock held for the life of the writer.
+export function breakStaleLock(lock: string, staleMs: number, beforeBreak?: () => void): void {
+  let seen;
+  try {
+    seen = statSync(lock);
+  } catch { return; }
+  if (Date.now() - seen.mtimeMs <= staleMs) return;
+  const mutex = `${lock}.break`;
+  let fd: number;
+  try {
+    fd = openSync(mutex, 'wx');
+  } catch {
+    // a breaker that crashed holding the mutex must not wedge every later break
+    try {
+      if (Date.now() - statSync(mutex).mtimeMs > staleMs) unlinkSync(mutex);
+    } catch { /* released meanwhile */ }
+    return;
+  }
+  try {
+    beforeBreak?.();
+    const now = statSync(lock);
+    if (now.ino === seen.ino && Date.now() - now.mtimeMs > staleMs) unlinkSync(lock);
+  } catch { /* the lock is already gone */ } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(mutex);
+    } catch { /* already gone */ }
+  }
+}
+
 function acquireLock(dir: string, waitMs: number, staleMs: number): LockHandle {
   const lock = `${dir}/.lock`;
   const deadline = Date.now() + waitMs;
@@ -151,9 +188,7 @@ function acquireLock(dir: string, waitMs: number, staleMs: number): LockHandle {
       fd = openSync(lock, 'wx');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > staleMs) unlinkSync(lock);
-      } catch { /* raced with its owner's unlink */ }
+      breakStaleLock(lock, staleMs);
       if (Date.now() > deadline) throw new Error(`release: ${lock} is held; retry`);
       sleep(50);
     }

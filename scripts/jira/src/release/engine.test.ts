@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync as closeFd, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, freeze, leaseAcquire, leaseRelease, operatorDecision, request, rule, state, takeover,
   type Ctx, type JiraPort,
 } from './engine.js';
-import { withLockAsync } from './ledger.js';
+import { breakStaleLock, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
   fv = new Map<string, string[]>();
@@ -274,6 +274,61 @@ describe('release engine (HIMMEL-6796)', () => {
       writeFileSync(lock, 'another writer');
     }, 1000, 200);
     expect(readFileSync(lock, 'utf8')).toBe('another writer');
+  });
+
+  it('a second breaker never unlinks the successor\'s fresh lock', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-lock-'));
+    const lock = join(dir, '.lock');
+    writeFileSync(lock, 'crashed writer');
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    let successorIno = 0;
+    breakStaleLock(lock, 60_000, () => {
+      // another breaker wins the race: it breaks the stale lock and takes a fresh one
+      unlinkSync(lock);
+      closeFd(openSync(lock, 'wx'));
+      successorIno = statSync(lock).ino;
+    });
+    expect(statSync(lock).ino).toBe(successorIno);
+  });
+
+  it('a breaker leaves the lock in place while another breaker holds the break mutex', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-lock-'));
+    const lock = join(dir, '.lock');
+    writeFileSync(lock, 'crashed writer');
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    writeFileSync(`${lock}.break`, 'another breaker');
+    const ino = statSync(lock).ino;
+    breakStaleLock(lock, 60_000);
+    expect(statSync(lock).ino).toBe(ino);
+  });
+
+  it('a break removes the stale lock and leaves no mutex or tombstone behind', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-lock-'));
+    const lock = join(dir, '.lock');
+    writeFileSync(lock, 'crashed writer');
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(lock, old, old);
+    breakStaleLock(lock, 60_000);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('a crash between the applied row and its event is repaired by the retry', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    const events = join(root, 'release', 'R1', 'events.jsonl');
+    writeFileSync(events, '', { mode: 0o444 });
+    chmodSync(events, 0o444);
+    await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow();
+    chmodSync(events, 0o644);
+    const out = await apply(ctx(rmEnv), r.id);
+    expect(out.phase).toBe('receipted');
+    const ruled = readFileSync(events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      .filter((e) => e.kind === 'ruled' && e.ruling === r.id);
+    expect(ruled).toHaveLength(1);
   });
 
   it('a frozen baseline is immutable: editing it breaks verification', async () => {

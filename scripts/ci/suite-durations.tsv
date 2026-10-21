@@ -127,6 +127,7 @@ scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
 scripts/ci/test-check-cr-terminology.sh	0
 scripts/ci/test-check-docs-decision-records.sh	0
+scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
@@ -387,6 +388,7 @@ scripts/handover/console-kit/test-write-verdict.sh	22
 scripts/handover/console/test-console.sh	59
 scripts/handover/test-append-cr-bugs.sh	0
 scripts/handover/test-append-cr-findings.sh	0
+scripts/handover/test-arm-resume-1879.sh	858
 scripts/handover/test-arm-resume-at-pty.sh	7
 scripts/handover/test-arm-resume-bank-refresh.sh	1
 scripts/handover/test-arm-resume-base.sh	4

@@ -564,6 +564,17 @@ fi
 . "$himmel_repo/scripts/lib/merge-block-alert.sh" 2>/dev/null || merge_block_alert() { echo "MERGE-BLOCKED ${1:-?}#${2:-?} @${3:0:12}: ${*:4}" >&2; return 0; }
 # block_alert <rule> — one DM per (repo, PR, head); never changes an exit code.
 block_alert() { merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${sha:-}" "$@"; }
+# The status lib: the one ticket-key extractor, the status-event log and the
+# per-key lock the status funnel also takes. Every use checks it loaded.
+# shellcheck source=scripts/lib/ticket-status.sh
+# shellcheck disable=SC1091
+. "$himmel_repo/scripts/lib/ticket-status.sh" 2>/dev/null || true
+# _status_event <key> <event> <pr> [head] — the status funnel re-derives the
+# ticket's status; best-effort, never changes an exit code.
+_status_event() {
+    bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
+        ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
+}
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
 gh_pr_view() {
@@ -599,14 +610,12 @@ sha=${_rest%%|*}; _rest=${_rest#*|}
 # rather than truncating it — base branches here are the repo default and never
 # contain one.
 pr_base=${_rest%%|*}; head_branch=${_rest#*|}
-# Comment on a ticket and, for a PR closed unmerged, return it to To Do:
-# comment first, then transition (no comment means no breadcrumb, so no move).
-# Prints ok | skip=already-done | skip=comment-failed | failed.
-# Never touches a ticket already Done/Closed; callers screen Epics. A sixth
-# argument of comment-only is the partial-merge mode: it posts the breadcrumb
-# and never transitions.
-_jira_return_to_todo() {
-    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" mode="${6:-}" status
+# _jira_breadcrumb <repo_root> <key> <issue_json> <text> — comment on a ticket;
+# the status is the funnel's to move. Prints ok | skip=already-done |
+# skip=status-unreadable | skip=comment-failed | failed. Never touches a ticket
+# already Done/Closed; callers screen Epics.
+_jira_breadcrumb() {
+    local repo_root="$1" key="$2" issue_json="$3" text="$4" status
     status=$(printf '%s' "$issue_json" | node -e '
         try {
             const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -618,33 +627,23 @@ _jira_return_to_todo() {
         Done|Closed) echo "skip=already-done"; return 0 ;;
         '') echo "skip=status-unreadable"; return 0 ;;
     esac
-    # A caller may restrict the move to one status (a closed PR must not pull a
-    # ticket whose work moved to another PR out of In Progress).
-    if [ -n "$only_status" ] && [ "$status" != "$only_status" ]; then
-        echo "skip=not-$only_status"; return 0
-    fi
     local tmp rc=0
     tmp=$(mktemp "${TMPDIR:-/tmp}/merge-on-green-jira-todo.XXXXXX") || { echo "failed"; return 0; }
     printf '%s\n' "$text" >"$tmp"
     ( cd "$repo_root" && node scripts/jira/dist/index.js comment "$key" --comment-file "$tmp" ) >/dev/null 2>&1 || rc=$?
     rm -f "$tmp"
     [ "$rc" -eq 0 ] || { echo "skip=comment-failed"; return 0; }
-    # The breadcrumb is posted; a ticket already in To Do needs no move.
-    if [ "$status" = "To Do" ] || [ "$mode" = "comment-only" ]; then echo "ok"; return 0; fi
-    if ( cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "To Do" ) >/dev/null 2>&1; then
-        echo "ok"
-    else
-        echo "failed"
-    fi
+    echo "ok"
 }
 
-# A PR closed unmerged leaves its ticket In Review: send it back to To Do with
-# a comment. Best-effort like jira_auto_transition_on_merge; never fails the run.
-jira_return_closed_pr_to_todo() {
-    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type todo open_prs
+# A PR closed unmerged: leave a breadcrumb, then the status funnel re-derives
+# the ticket from its open PRs and its owner. Best-effort like
+# jira_auto_transition_on_merge; never fails the run.
+jira_closed_pr_event() {
+    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type crumb
     title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) || return 0
-    key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]')
-    [ -n "$key" ] || return 0
+    declare -F ticket_key_from_title >/dev/null || return 0
+    key=$(ticket_key_from_title "$title") || return 0
     common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
     repo_root=$(cd "$(dirname "$common")" 2>/dev/null && pwd) || return 0
     [ -f "$repo_root/scripts/jira/dist/index.js" ] || return 0
@@ -658,13 +657,10 @@ jira_return_closed_pr_to_todo() {
     ' 2>/dev/null)
     # Fail safe like the merge path: an Epic or an unreadable type is left alone.
     case "$issue_type" in Epic|"") return 0 ;; esac
-    # Another open PR for the same ticket means the work moved on: leave it be.
-    # A failed lookup is treated the same way (cannot show the ticket is orphaned).
-    open_prs=$("$GH" pr list --repo "$nwo" --state open --search "$key in:title" --json number -q '.[].number' 2>/dev/null) || return 0
-    [ -z "$open_prs" ] || return 0
-    todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_json" \
-        "PR #$pr_num ($nwo) was closed without merging; the work it carried is not done, so the ticket returns to To Do." "In Review")
-    echo "merge-on-green: PR #$pr_num closed unmerged, $key to To Do: $todo" >&2
+    crumb=$(_jira_breadcrumb "$repo_root" "$key" "$issue_json" \
+        "PR #$pr_num ($nwo) was closed without merging; the ticket's status is re-derived from its open PRs and its owner.")
+    _status_event "$key" closed "$pr_num"
+    echo "merge-on-green: PR #$pr_num closed unmerged, $key breadcrumb: $crumb; status re-derived" >&2
     return 0
 }
 
@@ -674,7 +670,7 @@ case "$pr_state" in
         echo "merge-on-green: PR is ${pr_state:-<unknown>} (not OPEN) — nothing to merge."
         if [ "$pr_state" = "CLOSED" ]; then
             _closed_nwo=$(printf '%s' "$pr_url" | sed -n 's|^https://[^/]*/\([^/]*/[^/]*\)/pull/.*|\1|p')
-            [ -z "$_closed_nwo" ] || jira_return_closed_pr_to_todo "$_closed_nwo" "$pr_num"
+            [ -z "$_closed_nwo" ] || jira_closed_pr_event "$_closed_nwo" "$pr_num"
         fi
         audit "NOOP reason=pr-not-open state=${pr_state:-unknown} selector=${selector:-<cwd-branch>}"
         exit 0 ;;
@@ -1861,7 +1857,7 @@ record_after_report_pending_marker() {
 # check-commit-msg) and the target status from reconcile-config.json, so
 # this and `reconcile-backlog.mjs` share one source of truth for "what
 # status does a closed ticket move to" per project.
-jira_auto_transition_on_merge() {
+_jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
 
@@ -1869,9 +1865,12 @@ jira_auto_transition_on_merge() {
     title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) \
         || { JIRA_AUTO_TRANSITION_RESULT="skip=no-title"; return 0; }
 
-    local key
-    key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]')
+    local key=""
+    if declare -F ticket_key_from_title >/dev/null; then
+        key=$(ticket_key_from_title "$title") || key=""
+    fi
     [ -n "$key" ] || { JIRA_AUTO_TRANSITION_RESULT="skip=no-ticket-tag"; return 0; }
+    _MERGE_KEY="$key"
 
     local common repo_root
     common=$(git rev-parse --git-common-dir 2>/dev/null) \
@@ -1936,6 +1935,7 @@ jira_auto_transition_on_merge() {
     elif [ "$brief_completes" = "yes" ] && ! _truthy "$opt_in"; then
         echo "merge-on-green: brief expects the ticket to close (completes-ticket: yes) but --jira-transition is missing; taking the partial path" >&2
     fi
+    if _truthy "$opt_in"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
 
     if ! _truthy "$opt_in"; then
         JIRA_AUTO_TRANSITION_RESULT="skip=partial key=$key status-unchanged"
@@ -1952,11 +1952,23 @@ jira_auto_transition_on_merge() {
         remaining=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null \
             | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
-        todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_type_json" \
+        todo=$(_jira_breadcrumb "$repo_root" "$key" "$issue_type_json" \
             "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.
-$remaining" "" comment-only)
+$remaining")
         JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT comment=$todo"
         return 0
+    fi
+
+    # The Done write holds the per-key lock the status funnel takes, so a
+    # status event in flight cannot land after it and pull the ticket back.
+    if declare -F ts_state_dir >/dev/null && command -v flock >/dev/null 2>&1; then
+        local lockdir
+        lockdir="$(ts_state_dir)/status-locks"
+        mkdir -p "$lockdir" 2>/dev/null
+        if exec 8>>"$lockdir/$key"; then
+            # the per-key status lock, shared with the funnel
+            flock -w "${TICKET_STATUS_LOCK_WAIT:-10}" 8 || { JIRA_AUTO_TRANSITION_RESULT="deferred stage=lock key=$key"; return 0; }  # prim-ok: the funnel holds this same flock
+        fi
     fi
 
     local comment_tmp comment_rc=0
@@ -2027,6 +2039,41 @@ $remaining" "" comment-only)
         fi
     else
         JIRA_AUTO_TRANSITION_RESULT="failed key=$key status=$target_status rc=$transition_rc out=${transition_out//$'\n'/ }"
+    fi
+    return 0
+}
+
+# jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
+# one status-event row for it, written before the per-key lock is released so
+# an event queued behind it reads done-pending. A merge that does not complete
+# the ticket asks the status funnel to re-derive it, after the release.
+jira_auto_transition_on_merge() {
+    local result stage="" first
+    _MERGE_KEY=""
+    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
+    _jira_close_on_merge "$@"
+    case "$JIRA_AUTO_TRANSITION_RESULT" in
+        ok*) result=moved ;;
+        failed*) result=miss stage=transition ;;
+        deferred*) result=deferred stage=lock ;;
+        *comment=ok*|*comment=skip=already-done*) result=noop ;;
+        skip=partial*) result=miss stage=comment ;;
+        skip=no-title*) result=miss stage=gh ;;
+        skip=no-repo-root*|skip=no-jira-cli-build*) result=miss stage=cli ;;
+        skip=cannot-verify-type*) result=miss stage=get ;;
+        skip=comment-failed*|skip=no-tmpfile*) result=miss stage=comment ;;
+        skip=*)
+            first=${JIRA_AUTO_TRANSITION_RESULT%% *}
+            result=skip stage=${first#skip=} ;;
+        *) exec 8>&-; return 0 ;;
+    esac
+    if declare -F status_event >/dev/null; then
+        status_event event=merge key="$_MERGE_KEY" pr="$2" head="$3" contract="$_MERGE_CONTRACT" \
+            result="$result" ${stage:+stage="$stage"}
+    fi
+    exec 8>&-
+    if [ "$_MERGE_CONTRACT" != yes ] && [ -n "$_MERGE_KEY" ]; then
+        _status_event "$_MERGE_KEY" merge "$2" "$3"
     fi
     return 0
 }
