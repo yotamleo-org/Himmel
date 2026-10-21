@@ -271,6 +271,7 @@ scripts/eval/test-cache-probe.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/eval/test-ci-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-console-load-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-context-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/test-eval-feedback.sh	local	behaviour suite, new HIMMEL-6942
 scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/eval/test-harness-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window

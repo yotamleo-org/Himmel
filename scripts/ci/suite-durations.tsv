@@ -287,6 +287,7 @@ scripts/eval/test-cache-probe.sh	0
 scripts/eval/test-ci-metrics.sh	0
 scripts/eval/test-console-load-inventory.sh	0
 scripts/eval/test-context-replay.sh	0
+scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0

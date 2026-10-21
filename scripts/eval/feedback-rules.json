@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "doc": "Thresholds for the eval feedback step (scripts/eval/lib/eval_feedback.py), as data. A rule fires when an eval's newest ok run has a metric matching `metric` (fnmatch) worse than `threshold` (`better` says which way is worse); the first firing rule raises one change on the worst such metric. `absent` is the value of a metric the next run lacks (a refusal class that stopped is 0). `change` is learning, routing or tool-ruling; `target` is the memory-inbox topic file, the route or the tool.",
+  "rules": [
+    {"eval": "friction", "metric": "over_deny:*", "threshold": 100, "better": "lower", "absent": 0,
+     "change": "learning", "target": "shell-and-gate-traps.md"}
+  ]
+}

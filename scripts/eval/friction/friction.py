@@ -7,7 +7,10 @@ count, distinct legs (sessions), median recovery minutes, console turns,
 operator interrupts.  Output: JSON (machine) and Markdown (ranked table).
 
 usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR]
-                   [--json OUT] [--md OUT]
+                   [--json OUT] [--md OUT] [--record [--eval-ledger P]]
+--record also appends one eval-runs row (eval "friction": refusals, over_deny, true_positive,
+unclear, over_deny_share and over_deny:<source>/<class> per class), so the eval feedback step
+(scripts/eval/lib/eval_feedback.py) can raise a change on it and re-measure it on the next run.
 Transcript text is reduced to a normalised <=140 char snippet with token-shaped
 strings masked; raw tool output is never written out.
 """
@@ -20,6 +23,9 @@ import os
 import re
 import statistics
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib'))
+import eval_runs  # noqa: E402
 
 HOME = os.path.expanduser('~')
 DEFAULT_PROJECTS = [HOME + '/.claude/projects', HOME + '/.claude-codex/projects']
@@ -420,6 +426,22 @@ def render_section(tx, prior_tx, docs, days, top=5):
     return '\n'.join(out) + '\n'
 
 
+def record(tx, docs, days, since, repo, ledger=None):
+    """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class."""
+    verdicts = collections.Counter(r['verdict'] for r in tx)
+    metrics = {'refusals': len(tx), 'over_deny': verdicts['over-deny'], 'true_positive': verdicts['true-positive'],
+               'unclear': verdicts['unclear'], 'over_deny_share': None}
+    judged = verdicts['over-deny'] + verdicts['true-positive']
+    if judged:
+        metrics['over_deny_share'] = round(verdicts['over-deny'] / judged, 4)
+    for (src, cls), n in collections.Counter((r['source'], r['class']) for r in tx
+                                             if r['verdict'] == 'over-deny').items():
+        metrics['over_deny:%s/%s' % (src, cls)] = n
+    row = eval_runs.make_row('friction', 'scripts/eval/friction/friction.py', {'friction_v': 1, 'days': days},
+                             metrics, n=len(tx), repo=repo, meta={'since': since.isoformat(), 'doc_rows': len(docs)})
+    return eval_runs.append_safe(row, ledger, who='friction')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--section', action='store_true', help='print only the compact digest subsection')
@@ -430,6 +452,8 @@ def main(argv=None):
     ap.add_argument('--repo', default=os.getcwd())
     ap.add_argument('--json')
     ap.add_argument('--md')
+    ap.add_argument('--record', action='store_true', help='append one eval-runs row for this window')
+    ap.add_argument('--eval-ledger')
     a = ap.parse_args(argv)
     now = parse_ts(a.now) if a.now else dt.datetime.now(dt.timezone.utc)
     if now is None:
@@ -441,6 +465,8 @@ def main(argv=None):
     projects = a.projects or DEFAULT_PROJECTS
     tx = scan_all(projects, since, now)
     docs = scan_docs(a.docs, since, names)
+    if a.record:
+        record(tx, docs, a.days, since, a.repo, a.eval_ledger)
     if a.section:
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))
