@@ -11,7 +11,8 @@
 # Status history and creation date, not `updated`: bulk field edits touch
 # nearly every open ticket each week, so `updated` never ages.
 # plan prints "<KEY><TAB><label>" for the first 20 unlabelled candidates, then
-# "# candidates=<n> batch=<k> next-run=<m>". apply refuses a file with more
+# "# candidates=<n> batch=<k> next-run=<m>" (a "+" after both counts when the
+# 500-row list limit was hit). apply refuses a file with more
 # than 20 rows, or a label outside the three above, before writing anything;
 # then it adds each label with `jira edit --add-labels` (reversible with
 # --remove-labels) and ends with "jira-batch: labeled=<n> failed=<n>".
@@ -20,6 +21,7 @@ set -uo pipefail
 
 # ponytail: the cap lives in this runner, HIMMEL-6778 (bulk-edit guard in the jira CLI) replaces it.
 CAP=20
+LIST_LIMIT=500
 
 usage() { sed -n '4,5p' "$0" | sed 's/^# //'; }
 
@@ -37,16 +39,19 @@ case "${1:-}" in
       status) label=status-drift; jql="$p AND issuetype != Epic AND status = \"In Progress\" AND NOT status CHANGED AFTER -14d" ;;
       *) usage >&2; exit 2 ;;
     esac
-    jql="$jql AND (labels is EMPTY OR labels not in ($label)) ORDER BY created ASC"
-    listed="$("${JIRA[@]}" list --jql "$jql" --limit 500)" || exit 1
+    jql="$jql AND (labels is EMPTY OR labels not in (\"$label\")) ORDER BY created ASC"
+    listed="$("${JIRA[@]}" list --jql "$jql" --limit "$LIST_LIMIT")" || exit 1
     keys="$(printf '%s\n' "$listed" | cut -f1 | grep -E '^[A-Z][A-Z0-9]*-[0-9]+$' || true)"
     n="$(printf '%s\n' "$keys" | grep -c . || true)"
     k=$(( n < CAP ? n : CAP ))
+    more=""
+    [ "$n" -lt "$LIST_LIMIT" ] || more="+"
     printf '%s\n' "$keys" | grep . | head -n "$CAP" | sed "s/\$/$(printf '\t')$label/" || true
-    echo "# candidates=$n batch=$k next-run=$(( n - k ))"
+    echo "# candidates=$n$more batch=$k next-run=$(( n - k ))$more"
     ;;
   apply)
     list="${2:?apply needs the file plan wrote}"
+    [ -r "$list" ] || { echo "jira-batch: cannot read $list; nothing written" >&2; exit 2; }
     rows="$(grep -v -e '^#' -e '^[[:space:]]*$' "$list" || true)"
     n="$(printf '%s\n' "$rows" | grep -c . || true)"
     if [ "$n" -gt "$CAP" ]; then

@@ -69,6 +69,7 @@ cat > "$FIX/scripts/worktree.sh" <<'EOF'
 log="$(dirname "$0")/../worktree.log"
 case " $* " in
   *" --dry-run "*)
+    [ -z "${WT_DRY_FAIL:-}" ] || { echo "ERR clean-garden: boom" >&2; exit 1; }
     echo "KEEP clean-garden: branch=main verdict=ACTIVE"
     for i in $(seq 1 12); do echo "DRY clean-garden: would prune fix/b$i ($WT_ROOT/$i)"; done
     echo "clean-garden: prune summary — 12 pruned" ;;
@@ -100,6 +101,11 @@ printf '%s\n' "$WT_ROOT/gone" "$WT_ROOT/11" > "$TMP/wt-absent.txt"
 out="$(bash "$WB" apply "$TMP/wt-absent.txt" 2>&1)"; rc=$?
 check "an already-absent worktree is not counted as removed" grepq "$out" -x 'worktree-batch: removed=1 kept=0 absent=1'
 check "an already-absent worktree is not pruned" [ "$(lines "$FIX/worktree.log")" -eq 11 ]
+out="$(bash "$WB" apply "$TMP/no-such-file" 2>&1)"; rc=$?
+check "worktree apply refuses an unreadable file" [ "$rc" -eq 2 ]
+out="$(WT_DRY_FAIL=1 bash "$WB" plan 2>&1)"; rc=$?
+check "worktree plan fails when the dry run fails" [ "$rc" -eq 1 ]
+check "a failed dry run shows its diagnostics" grepq "$out" 'ERR clean-garden: boom'
 
 # --- jira-batch.sh ---------------------------------------------------------
 JB="$FIX/scripts/cleanup/jira-batch.sh"
@@ -108,7 +114,7 @@ const fs = require('fs');
 const path = require('path');
 const a = process.argv.slice(2);
 fs.appendFileSync(path.join(__dirname, 'calls.log'), a.join(' ') + '\n');
-if (a[0] === 'list') for (let i = 1; i <= 25; i++) console.log(`HIMMEL-${i}\tTask\tTo Do\tTitle ${i}`);
+if (a[0] === 'list') for (let i = 1; i <= Number(process.env.LIST_ROWS || 25); i++) console.log(`HIMMEL-${i}\tTask\tTo Do\tTitle ${i}`);
 EOF
 JLOG="$FIX/scripts/jira/dist/calls.log"
 out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" plan stale 2>&1)"; rc=$?
@@ -118,6 +124,11 @@ check "jira plan lists at most 20" [ "$(grep -vc '^#' "$TMP/j-plan.txt")" -eq 20
 check "jira plan labels each row" grepq "$out" -x "$(printf 'HIMMEL-1\tstale')"
 check "jira plan names what waits for the next run" grepq "$out" -x '# candidates=25 batch=20 next-run=5'
 check "jira plan only reads" [ "$(grep -c '^edit' "$JLOG")" -eq 0 ]
+check "jira plan quotes the label in its JQL" grepq "$(cat "$JLOG")" -F 'labels not in ("stale")'
+out="$(LIST_ROWS=500 JIRA_PROJECT_KEY=HIMMEL bash "$JB" plan version 2>&1)"; rc=$?
+check "jira plan marks counts cut by the list limit" grepq "$out" -x '# candidates=500+ batch=20 next-run=480+'
+out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" apply "$TMP/no-such-file" 2>&1)"; rc=$?
+check "jira apply refuses an unreadable file" [ "$rc" -eq 2 ]
 for i in $(seq 1 21); do printf 'HIMMEL-%s\tstale\n' "$i"; done > "$TMP/j-21.txt"
 out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" apply "$TMP/j-21.txt" 2>&1)"; rc=$?
 check "jira apply refuses 21" [ "$rc" -eq 1 ]

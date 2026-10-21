@@ -20,7 +20,12 @@ usage() { sed -n '4,5p' "$0" | sed 's/^# //'; }
 
 case "${1:-}" in
   plan)
-    cands="$(bash "$WORKTREE_SH" prune --dry-run 2>&1 | sed -n 's/^DRY clean-garden: would prune .* (\(.*\))$/\1/p')"
+    dry="$(bash "$WORKTREE_SH" prune --dry-run 2>&1)" || {
+      printf '%s\n' "$dry" >&2
+      echo "worktree-batch: prune --dry-run failed; no plan" >&2
+      exit 1
+    }
+    cands="$(printf '%s\n' "$dry" | sed -n 's/^DRY clean-garden: would prune .* (\(.*\))$/\1/p')"
     n="$(printf '%s\n' "$cands" | grep -c . || true)"
     k=$(( n < CAP ? n : CAP ))
     printf '%s\n' "$cands" | grep . | head -n "$CAP" || true
@@ -28,6 +33,7 @@ case "${1:-}" in
     ;;
   apply)
     list="${2:?apply needs the file plan wrote}"
+    [ -r "$list" ] || { echo "worktree-batch: cannot read $list; nothing removed" >&2; exit 2; }
     paths="$(grep -v -e '^#' -e '^[[:space:]]*$' "$list" || true)"
     n="$(printf '%s\n' "$paths" | grep -c . || true)"
     if [ "$n" -gt "$CAP" ]; then
