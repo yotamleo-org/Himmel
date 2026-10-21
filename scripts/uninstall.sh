@@ -3650,6 +3650,25 @@ EOF
 fi
 echo ""
 
+# Check owned plugin containers only after their child entries and marketplaces settle.
+if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] \
+    && [ "$SKIP_PLUGINS" -eq 0 ] && class_removes "$_ix_plug"; then
+  while IFS= read -r _u; do
+    [ -n "$_u" ] || continue
+    _verdict=$(prov_read_verdict "$_u") || { fail_step "[7/8] ledger container verdict failed"; continue; }
+    case "$_verdict" in
+      'keep user-modified'|'keep no-backup')
+        _unit=$(printf '%s' "$_u" | jq -r '.unit')
+        _path=$(printf '%s' "$_u" | jq -r '.path')
+        echo "  NOT touched: $_path $_unit (${_verdict#* })"
+        fail_step "[7/8] NOT touched: $_path $_unit (${_verdict#* })"
+        prov_read_outcome kept "$_u" "${_verdict#* }" ;;
+    esac
+  done <<EOF
+$(prov_read_units --kind json-key | jq -c 'select(.unit == "/enabledPlugins" or .unit == "/extraKnownMarketplaces")')
+EOF
+fi
+
 # --- [8/8] remove the himmelctl cache + state ------------------
 # install-profile.json + state.json survived a COMPLETE uninstall, so a
 # re-install started against the PREVIOUS install's profile and state ledger.
