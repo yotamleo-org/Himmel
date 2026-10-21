@@ -26,13 +26,14 @@ function choice(label, action, target, value, current, k, disabled) {
 function commitRules(c, plans) {
   const tk = "setup|tracker", rk = "setup|ticket-id-required";
   const none = c.tracker === "none";
+  const required = none || c.ticketIdRequired === false ? "off" : "on";
   return `<h3>Commit rules</h3>
     <p class="sub">Which tracker a commit's ticket ID comes from, and whether a commit needs one. Each change shows a dry run before it writes. The ID pattern is typed in the terminal.</p>
     <div class="srow"><span class="id">Tracker</span><span class="det">${c.tracker ? "" : "not set yet · "}takes effect on your next commit</span>
       <span>${TRACKERS.map(([v, l]) => choice(l, "config.commitRules", "tracker", v, c.tracker, tk)).join(" ")}</span></div>
     ${plans[tk] ? planHtml(tk, plans[tk]) : ""}
     <div class="srow"><span class="id">Ticket ID required</span><span class="det">${none ? "off while the tracker is None" : "takes effect on your next commit"}</span>
-      <span>${choice("on", "config.commitRules", "ticket-id-required", "on", c.ticketIdRequired === false ? "off" : "on", rk, none)} ${choice("off", "config.commitRules", "ticket-id-required", "off", c.ticketIdRequired === false ? "off" : "on", rk, none)}</span></div>
+      <span>${choice("on", "config.commitRules", "ticket-id-required", "on", required, rk, none)} ${choice("off", "config.commitRules", "ticket-id-required", "off", required, rk, none)}</span></div>
     ${plans[rk] ? planHtml(rk, plans[rk]) : ""}`;
 }
 

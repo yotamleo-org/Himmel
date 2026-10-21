@@ -161,6 +161,9 @@ test("J7. a commit-rules change shows its dry-run first and only confirm runs it
 test("J7. cancel runs nothing, and ticket-ID required is off-limits while the tracker is none", async ({ page }) => {
   await open(page, "TRACKER=none\n");
   await expect(page.locator('button[data-target="ticket-id-required"]').first()).toBeDisabled();
+  // the rule reads off while the tracker is none, so "off" is the pressed choice
+  await expect(page.locator('button[data-target="ticket-id-required"][data-value="off"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('button[data-target="ticket-id-required"][data-value="on"]')).toHaveAttribute("aria-pressed", "false");
   await page.locator('button[data-act="plan"][data-target="tracker"][data-value="jira"]').click();
   await page.locator('#main .plan button[data-act="close"]').click();
   await expect(page.locator("#main .plan")).toHaveCount(0);
