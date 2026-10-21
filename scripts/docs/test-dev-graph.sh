@@ -250,6 +250,13 @@ mut "$D" '.nodes[0].sources = [{"file": 7}]'
 run "$D"
 if [ "$rc" -eq 2 ]; then ok "integrity: a non-string source file is a usage error, not a pass"; else bad "integrity: file 7 rc=$rc, want 2 :: $out"; fi
 
+for entry in '.nodes[0]' '.edges[0]'; do
+  D=$TMP/false-source; fx "$D"
+  mut "$D" "$entry.sources = false"
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: $entry sources false is a usage error, not a pass"; else bad "integrity: $entry sources false rc=$rc, want 2 :: $out"; fi
+done
+
 # --- selection -------------------------------------------------------------
 D=$TMP/s1; fx "$D"
 printf 'tool.sh gate.sh preface.md\n' > "$D/suite.txt"
