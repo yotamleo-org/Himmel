@@ -7,8 +7,8 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
   1. MEASURE: every open change of the eval whose baseline row is older and has the same confighash gets
      one "measured" record: before, after, delta and improved | regressed | flat.
   2. CHANGE: when that row is not yet the baseline of any change, the first rule (file order) with a
-     metric worse than its threshold and no open change raises ONE "open" change record for the worst
-     such metric. A "learning" change also appends one candidate line to the failure-loop memory inbox
+     metric worse than its threshold and no open change of the same confighash raises ONE "open" change
+     record for the worst such metric. A "learning" change also appends one candidate line to the failure-loop memory inbox
      (the HIMMEL-4670 loop's own learnings queue) when an inbox is given.
 
   Path: $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/eval-changes.jsonl.
@@ -134,7 +134,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 written.append(m)
             if any(c["baseline_run_id"] == new["run_id"] for c in opened):
                 continue
-            still_open = {c["metric"] for c in opened if c["eval"] == ev and c["id"] not in measured}
+            still_open = {c["metric"] for c in opened if c["eval"] == ev and c["id"] not in measured
+                          and c["confighash"] == new["confighash"]}
             for rule in [r for r in rules if r["eval"] == ev]:
                 hits = [(m, v) for m, v in new["metrics"].items() if fnmatch.fnmatchcase(m, rule["metric"])
                         and eval_runs._num(v) and m not in still_open and worse(v, rule["threshold"], rule["better"])]

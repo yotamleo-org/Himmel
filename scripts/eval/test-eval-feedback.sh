@@ -92,9 +92,11 @@ python3 -I "$RUNS" append --ledger "$L3" --eval friction --source s --config-jso
   --metrics-json "{\"over_deny\":5,\"$CLS\":5}" >/dev/null 2>&1
 python3 -I "$FB" run --ledger "$L3" --changes "$C3" --rules "$RULES" >/dev/null 2>&1
 python3 -I "$RUNS" append --ledger "$L3" --eval friction --source s --config-json '{"friction_v":1,"days":14}' \
-  --metrics-json '{"over_deny":0}' >/dev/null 2>&1
+  --metrics-json "{\"over_deny\":3,\"$CLS\":3}" >/dev/null 2>&1
 python3 -I "$FB" run --ledger "$L3" --changes "$C3" --rules "$RULES" >/dev/null 2>&1
-eq "another config: the open change stays unmeasured" "$(rows "$C3")" "1"
+eq "another config: the open change stays unmeasured" "$(field "$C3" 1 status)" "open"
+eq "another config: its own change opens on the same metric" "$(rows "$C3")" "2"
+eq "another config: the new change is that config's" "$(field "$C3" 1 value)" "3"
 
 # --- under the threshold: no change ------------------------------------------------------------------
 L4="$TMP/runs4.jsonl"; C4="$TMP/changes4.jsonl"
