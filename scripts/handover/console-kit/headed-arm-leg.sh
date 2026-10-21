@@ -1531,6 +1531,9 @@ if [ "$LANE" = "claudex" ]; then
     leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${LEG_EFFORT:-medium}"
     export HEADED_ARM_RECORDER=1
     [ -z "$MODEL" ] && MODEL="gpt-6.1-sol"
+    # scripts/claude-codex reads only CODEX_MODEL; without this the positional
+    # MODEL names a model the leg never runs.
+    leg_propagate_env CODEX_MODEL "$MODEL"
 fi
 
 # OpenRouter: only the independently verified 1M tier slugs

@@ -19,11 +19,11 @@ new. This page is how to run one.
   supervisor session a ticket and a brief; never pass it a ruling by way of a relay. A
   ruling reaches the supervisor session from you directly, or not at all.
 
-## Console vs. `/overnight-shift`
+## Console vs. `/afk-shift` <!-- old-term-ok: console is renamed in slice V5 -->
 
 They look adjacent and are not interchangeable.
 
-| | `/overnight-shift` | supervisor session |
+| | `/afk-shift` | supervisor session |
 |---|---|---|
 | Shape | one session fans out N subagents inside itself | one session dispatches N *separate* sessions |
 | Lifetime | one run, then done | a succession — each supervisor session arms its successor |
@@ -32,7 +32,7 @@ They look adjacent and are not interchangeable.
 | Rulings | none — the plan is fixed at fanout | RETASK channel, mid-flight, authenticated |
 | Handover | none | `/console next` writes the successor + a HANDOFF |
 
-Reach for `/overnight-shift` when you have a fixed list of well-scoped tickets
+Reach for `/afk-shift` when you have a fixed list of well-scoped tickets
 and want them done unattended. Reach for a supervisor session when the work will need
 decisions you cannot pre-write, or will outlive one context window.
 
@@ -654,6 +654,6 @@ bash scripts/handover/console-kit/vm-runner.sh status
 - [`console-template.md`](console-template.md) — the supervisor session's operating contract
 - [`console-handoff-template.md`](console-handoff-template.md) — the handover skeleton
 - [`leg-brief-template.md`](leg-brief-template.md) — what a dispatched worker session gets
-- [`overnight-mode.md`](overnight-mode.md) — the unattended-pipeline alternative
+- [`afk-mode.md`](afk-mode.md) — the unattended-pipeline alternative
 - [`../internals/retask-channel.md`](../internals/retask-channel.md) — authenticated re-tasking
 - [`../internals/lane-calibration.md`](../internals/lane-calibration.md) — tiers, effort, wake-up budget

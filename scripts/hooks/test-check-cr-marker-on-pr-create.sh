@@ -463,14 +463,57 @@ for label in $neg2_labels; do
     shift
 done
 
+# Test 11b: gh global options before `pr`, and the `pr new` alias -> BLOCK
+# `gh --repo a/b pr create` is the same invocation as `gh pr create --repo a/b`;
+# the matcher must not require `pr` to follow `gh` directly. `pr new` is gh's
+# alias for `pr create`.
+echo "TEST: gh global options and the pr new alias -> BLOCK"
+write_marker "feat/X"
+for gopt_cmd in \
+    'gh --repo a/b pr create --head feat/X --base main' \
+    'gh -R a/b pr create --head feat/X --base main' \
+    'gh --repo=a/b pr create --head feat/X --base main' \
+    'gh --repo a/b --hostname h.example pr create --head feat/X --base main' \
+    'gh pr new --head feat/X --base main' \
+    'gh -R a/b pr new --head feat/X --base main' \
+    'sudo gh --repo a/b pr create --head feat/X --base main'
+do
+    run_hook "$gopt_cmd"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked (exit 2) on '$gopt_cmd'"
+    else
+        fail "'$gopt_cmd' slipped the gate (rc=$rc)" "out: $out"
+    fi
+done
+
+# The widened `gh` prefix stays anchored to `pr create|new`: other subcommands,
+# a longer word, and an option word that is not followed by `pr create` allow.
+echo "TEST: gh global options on other subcommands stay negative"
+for gneg_cmd in \
+    'gh --repo a/b pr view --head feat/X' \
+    'gh -R a/b pr newest --head feat/X' \
+    'gh --repo a/b release create --head feat/X' \
+    'gh api -X POST pr create --head feat/X' \
+    'gh --version; echo pr create --head feat/X' \
+    'gh --version && echo pr new --head feat/X' \
+    'gh --version | grep pr create --head feat/X'
+do
+    run_hook "$gneg_cmd"
+    if [ "$rc" -eq 0 ]; then
+        pass "allowed (exit 0) for '$gneg_cmd'"
+    else
+        fail "negative '$gneg_cmd' matched (rc=$rc)" "out: $out"
+    fi
+done
+
 # Test 12: the two twins carry the SAME matcher line (lockstep) --
 # They have diverged once already (the end-of-token class landed in this hook
 # and not in the sibling), and a divergence means the PostToolUse
 # trigger silently stops firing on shapes the PreToolUse gate blocks.
 echo "TEST: PreToolUse and PostToolUse matchers are byte-identical"
 twin="$SCRIPT_DIR/trigger-cr-on-pr-create.sh"
-this_matcher=$(grep -F "grep -qE" "$HOOK" | grep -F "pr[[:space:]]+create" || true)
-twin_matcher=$(grep -F "grep -qE" "$twin" | grep -F "pr[[:space:]]+create" || true)
+this_matcher=$(grep -F "grep -qE" "$HOOK" | grep -F "pr[[:space:]]+(create|new)" || true)
+twin_matcher=$(grep -F "grep -qE" "$twin" | grep -F "pr[[:space:]]+(create|new)" || true)
 if [ -z "$this_matcher" ] || [ -z "$twin_matcher" ]; then
     fail "could not locate the matcher line in one of the twins"
 elif [ "$this_matcher" = "$twin_matcher" ]; then

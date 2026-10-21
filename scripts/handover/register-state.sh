@@ -106,6 +106,7 @@ STATE_ROOT="$STATE_HOST/$USER_ARG"
 mkdir -p "$(dirname "$REG")"
 LOCK="$REG.lock"
 tries=0
+# prim-ok: a 10 s bounded wait ending in an explicit busy error naming the lock; with_lock waits without limit
 until mkdir "$LOCK" 2>/dev/null; do
     tries=$((tries + 1))
     [ "$tries" -le 100 ] || { echo "ERR register-state: registry lock busy: $LOCK (remove it if no other registration is running)" >&2; exit 2; }

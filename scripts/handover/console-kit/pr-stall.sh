@@ -138,6 +138,7 @@ sent_file="$sent_dir/pr-stall.sent"
 send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
 # one notifying run at a time, so check-send-record below cannot double-send
 if [ "$notify" = 1 ]; then
+    # prim-ok: a blocking lock held on fd 9 until the script exits; with_lock wraps one command
     if ! { mkdir -p "$sent_dir" && exec 9>"$sent_dir/pr-stall.lock" && flock 9; }; then
         printf 'pr-stall: cannot take the notify lock, listing without --notify\n' >&2
         notify=0

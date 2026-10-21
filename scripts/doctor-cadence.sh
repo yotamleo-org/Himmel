@@ -120,6 +120,7 @@ cmd_run() (
     # the kernel releases the descriptor lock even after SIGKILL or a reboot.
     exec 9>"$STATE_DIR/.run-lock" || return 2
     if command -v flock >/dev/null 2>&1; then
+        # prim-ok: a non-blocking try-lock held on fd 9 for the rest of cmd_run; with_lock blocks and wraps one command
         flock -n 9; lock_rc=$?
     else
         # macOS lacks the flock utility; Perl uses the same process-scoped lock

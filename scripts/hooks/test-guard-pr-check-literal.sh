@@ -1569,6 +1569,25 @@ for v in \
     "cat <<'EOF' | head -3${NL}run bash scripts/handover/console-kit/go.sh 12 abc${NL}EOF"; do
     run "HIMMEL-6015 inert cat heredoc [${v%%"$NL"*}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
+# An unquoted heredoc body expands $: prompt expansion (${_@P}, ${x@P}) and
+# array-subscript arithmetic re-expand a $(...) held in a variable or in the
+# previous command's last argument, so any live $ in such a body is not data.
+# shellcheck disable=SC2016 # the literal `$(...)` text, never expanded here
+for v in \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${_@P}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${x@P}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\$[a[\$_]]${NL}EOF" \
+    "echo 'a[\$(bash scripts/cr/write-verdicts.sh sweep)]'; cat <<EOF${NL}\$((\$_))${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${a[\$_]}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<-EOF${NL}	\\\\\${_@P}${NL}	EOF"; do
+    run "HIMMEL-6337 live \$ in an unquoted heredoc body [${v#*"$NL"}] -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
+done
+# A quoted heredoc body, or an escaped \$ in an unquoted one, expands nothing.
+for v in \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<'EOF'${NL}\${_@P}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\\\${_@P} costs \\\$5${NL}EOF"; do
+    run "HIMMEL-6337 inert heredoc body [${v#*"$NL"}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
+done
 # A list or pipeline of readers (grep, cat, sed with inert scripts, git
 # grep/log/show/diff, ...) runs nothing, whatever its patterns and file
 # operands name.

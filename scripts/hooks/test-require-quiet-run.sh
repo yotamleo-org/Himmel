@@ -66,10 +66,85 @@ run_case "$(j_bash 'bash scripts/test-check-ci.sh')" "QUIET_RUN_BYPASS=1"
 assert_rc "QUIET_RUN_BYPASS=1" 0 "$RC"
 
 # 4. scripts/ci/run-shell-tests.sh -> denied (special-cased path, no test- prefix).
+# The suggestion must be a form quiet-run.sh accepts: label `suite` refuses
+# anything that is not a tracked test-*.sh, so the runner gets its own label.
 run_case "$(j_bash 'bash scripts/ci/run-shell-tests.sh')"
 assert_rc "run-shell-tests.sh" 2 "$RC"
-assert_contains "run-shell-tests.sh replacement" \
-    "bash scripts/quiet-run.sh suite -- bash scripts/ci/run-shell-tests.sh" "$ERR"
+RUNNER_CMD="bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/run-shell-tests.sh"
+assert_contains "run-shell-tests.sh replacement" "$RUNNER_CMD" "$ERR"
+case "$ERR" in
+    *"quiet-run.sh suite -- bash scripts/ci/run-shell-tests.sh"*)
+        echo "FAIL run-shell-tests.sh replacement - still suggests the refused suite label"
+        FAILED=$((FAILED + 1)) ;;
+    *) echo "PASS run-shell-tests.sh replacement is not the suite label" ;;
+esac
+run_case "$(j_bash "$RUNNER_CMD")"
+assert_rc "run-shell-tests.sh suggested form passes the hook" 0 "$RC"
+QUIET_RUN="$(cd "$(dirname "$0")/.." && pwd)/quiet-run.sh"
+QR_OUT=$(bash "$QUIET_RUN" suite -- bash scripts/ci/run-shell-tests.sh 2>&1)
+assert_rc "quiet-run refuses the runner under label suite" 2 "$?"
+QR_OUT=$(bash "$QUIET_RUN" shell-unit -- true 2>&1)
+assert_rc "quiet-run accepts label shell-unit" 0 "$?"
+case "$QR_OUT" in
+    "OK quiet-run shell-unit "*) echo "PASS quiet-run reports OK for the shell-unit label" ;;
+    *) echo "FAIL quiet-run shell-unit label - got: $QR_OUT"; FAILED=$((FAILED + 1)) ;;
+esac
+
+# 4b. The suggested form needs no permission prompt: auto-approve-safe-bash.sh
+# allows exactly it (the bare runner is already allow-listed in settings.json),
+# and nothing wider than it, and only from an anchored worktree root whose
+# quiet-run.sh and run-shell-tests.sh are main's bytes. A throwaway anchor repo
+# stands in for HIMMEL_REPO so no row depends on the real primary's state.
+AUTO_HOOK="$(cd "$(dirname "$0")" && pwd)/auto-approve-safe-bash.sh"
+AU_TMP="$(mktemp -d "${TMPDIR:-/tmp}/qr-anchor.XXXXXX")" || { echo "FAIL mktemp for the auto-approve anchor fixture"; exit 1; }
+AU_A="$AU_TMP/anchor"; AU_W="$AU_TMP/wt"; AU_C="$AU_TMP/clone"
+aug() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@t "$@" >/dev/null 2>&1; }
+mkdir -p "$AU_A/scripts/ci"
+printf 'echo quiet\n' > "$AU_A/scripts/quiet-run.sh"
+printf 'echo runner\n' > "$AU_A/scripts/ci/run-shell-tests.sh"
+aug init -q -b main "$AU_A"; aug -C "$AU_A" add -A; aug -C "$AU_A" commit -qm base
+aug -C "$AU_A" worktree add -q -b feat "$AU_W"
+mkdir -p "$AU_W/sub"
+aug clone -q "$AU_A" "$AU_C"
+auto_decision() { # auto_decision <cwd> <command>
+    local out
+    out=$(printf '{"tool_name":"Bash","cwd":%s,"tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)" "$(printf '%s' "$2" | jq -Rs .)" | HIMMEL_REPO="$AU_A" bash "$AUTO_HOOK" 2>/dev/null)
+    case "$out" in *'"permissionDecision":"allow"'*) echo ALLOW ;; *) echo PASS ;; esac
+}
+assert_auto() { # assert_auto <label> <expected> <cwd> <command>
+    local label="$1" expected="$2" actual
+    actual=$(auto_decision "$3" "$4")
+    if [ "$actual" = "$expected" ]; then
+        echo "PASS $label ($actual)"
+    else
+        echo "FAIL $label - expected $expected, got $actual"
+        FAILED=$((FAILED + 1))
+    fi
+}
+assert_auto "precondition: anchor fixture built" ALLOW "$AU_W" "$RUNNER_CMD"
+assert_auto "auto-approve: shell-unit runner form (anchor root)" ALLOW "$AU_A" "$RUNNER_CMD"
+assert_auto "auto-approve: shell-unit runner form with literal args" ALLOW "$AU_W" "$RUNNER_CMD --changed-since origin/main"
+assert_auto "auto-approve: another label is not widened" PASS "$AU_W" "bash scripts/quiet-run.sh other -- bash scripts/ci/run-shell-tests.sh"
+assert_auto "auto-approve: other command under the label is not widened" PASS "$AU_W" "bash scripts/quiet-run.sh shell-unit -- bash scripts/ci/other.sh"
+assert_auto "auto-approve: chained command is not widened" PASS "$AU_W" "$RUNNER_CMD; rm -rf x"
+assert_auto "auto-approve: substitution arg is not widened" PASS "$AU_W" "$RUNNER_CMD \$(id)"
+assert_auto "auto-approve: leading ../ arg is not widened" PASS "$AU_W" "$RUNNER_CMD ../x"
+assert_auto "auto-approve: embedded ../ arg is not widened" PASS "$AU_W" "$RUNNER_CMD x/../y"
+assert_auto "auto-approve: embedded newline is not widened" PASS "$AU_W" "$RUNNER_CMD"$'\n'"touch x"
+assert_auto "auto-approve: carriage return is not widened" PASS "$AU_W" "$RUNNER_CMD x"$'\r'"y"
+assert_auto "auto-approve: trailing backslash is not widened" PASS "$AU_W" "$RUNNER_CMD x\\"
+# CONTROLS - where it runs, and the bytes it runs.
+assert_auto "ctl: runner from a sub-dir" PASS "$AU_W/sub" "$RUNNER_CMD"
+assert_auto "ctl: runner from outside any checkout" PASS "$AU_TMP" "$RUNNER_CMD"
+assert_auto "ctl: runner from a clone with its own scripts" PASS "$AU_C" "$RUNNER_CMD"
+printf 'echo edited\n' > "$AU_W/scripts/quiet-run.sh"
+assert_auto "ctl: worktree with an edited quiet-run.sh" PASS "$AU_W" "$RUNNER_CMD"
+aug -C "$AU_W" checkout -q -- scripts/quiet-run.sh
+printf 'echo edited\n' > "$AU_W/scripts/ci/run-shell-tests.sh"
+assert_auto "ctl: worktree with an edited run-shell-tests.sh" PASS "$AU_W" "$RUNNER_CMD"
+aug -C "$AU_W" checkout -q -- scripts/ci/run-shell-tests.sh
+assert_auto "ctl: restored worktree allows again" ALLOW "$AU_W" "$RUNNER_CMD"
+rm -rf "$AU_TMP"
 
 # 5. Non-suite commands are unaffected - the regression that matters most.
 run_case "$(j_bash 'git status')"

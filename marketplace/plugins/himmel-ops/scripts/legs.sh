@@ -37,4 +37,4 @@ _find_repo() {
 repo="$(_find_repo)" || { printf ''; exit 0; }   # fail-open: no reachable resolver
 # shellcheck source=/dev/null
 . "$repo/scripts/lib/initiative-legs.sh"
-resolve_legs "${HIMMEL_INITIATIVE:-}" "${HIMMEL_INITIATIVE_OVERNIGHT:-}" "${HIMMEL_OVERNIGHT:-}"
+resolve_legs_env

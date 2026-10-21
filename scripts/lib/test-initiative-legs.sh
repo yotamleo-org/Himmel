@@ -33,4 +33,13 @@ check "overnight subset"                "execute merge"               "$(resolve
 check "selector wins over initiative"   "execute"                     "$(resolve_legs all execute 1)"
 check "overnight falsy → empty"         ""                            "$(resolve_legs '' 0 1)"
 
+# resolve_legs_env over the live env: afk names, old overnight names, precedence.
+env_legs() { env -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
+  -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT "$@" \
+  bash -c ". '$here/initiative-legs.sh'; resolve_legs_env"; }
+check "env afk names → afk steps"       "execute merge"               "$(env_legs HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK='merge,execute')"
+check "env old names still work"        "execute"                     "$(env_legs HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE_OVERNIGHT=execute)"
+check "env afk step list wins over old" "merge"                       "$(env_legs HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK=merge HIMMEL_INITIATIVE_OVERNIGHT=execute)"
+check "env afk=0 blocks overnight=1"    "prcheck"                     "$(env_legs HIMMEL_AFK=0 HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_OVERNIGHT=execute)"
+
 [ "$fail" = 0 ] && echo "ALL PASS" || { echo "FAILURES"; exit 1; }

@@ -96,3 +96,18 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     yours, never read from the leg or the manifest). A manifest leg holding no
     lock is left out. The rest of `## Live state` is still yours to edit.
     **Your manifest:** `<your manifest>` — <note>.
+
+    **The waiter wraps workers; do not run `leg-event` / `close-wrapped-leg` by
+    hand; run any other bounded script as `timeout 90` in the foreground.** Armed
+    with both `--doc` and `--legs-from`, the waiter is the script relay (R0): a
+    worker whose `tails=` turns `WRAPPED` or whose `acts=` turns `MERGED` is
+    wrapped by `timeout 90 leg-event.sh --doc --fleet` on a line built from that
+    worker's bullet, with no wake. `HANDLED` lands in `<inbox>.wait.digest`; a
+    refusal that only means "not yet" (lock still held, tail not yet `WRAPPED`,
+    subtree alive) is retried next sample. Anything else wakes you once per
+    bullet with `WAKE leg-event <its line> out=<file>` plus the tick line: read
+    the out file and finish that wrap by hand (`wrapping.md`). Every WAKE block
+    ends with `absorbed since last wake: wraps=<n> (<labels>) merged=<n> (#<pr>,…)`
+    when the relay absorbed anything (labels and PR numbers only), and the
+    digest starts over. The relay takes no lock and sends nothing to a worker;
+    the chief keeps every authority write (GO, judge, dispatch, Jira).

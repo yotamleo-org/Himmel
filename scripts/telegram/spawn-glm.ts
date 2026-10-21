@@ -1707,7 +1707,7 @@ async function main(): Promise<void> {
     // a write-shaped grant — recording a pending operator escalation instead of a
     // grant. accumulated feeds nextGrantId so repeated --grant flags get distinct
     // ids (g1, g2, …) rather than all colliding on g1 against the empty file.
-    const autonomousEff = autonomous || !!process.env.HIMMEL_OVERNIGHT;
+    const autonomousEff = autonomous || !!process.env.HIMMEL_AFK || !!process.env.HIMMEL_OVERNIGHT;
     const grantsPath = join(sessionDir, "grants.jsonl");
     const seedOutbox = join(sessionDir, "outbox.jsonl");
     const accumulated: string[] = [];

@@ -31,6 +31,8 @@
 // Optional Live-state lines the console may keep (console-template.md):
 //   epics: HIMMEL-3332=4, HIMMEL-3340=2     declared totals; merged is counted from gh
 //   decisions: first?; second?              open operator decisions, ';'-separated
+//   decisions: specs/decisions/console-decisions-<date>.md (latest #<n>)
+//                                           the `(N) ` entries of the named bucket file(s)
 //   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion
 //
 // The published page shows live work only. WRAPPED and MERGED legs and the merged PRs
@@ -172,7 +174,21 @@ const splitTopLevel = (s) => {
     out.push(cur);
     return out;
 };
-const decisions = splitTopLevel(liveField('decisions')).map((d) => d.trim()).filter((d) => d && d !== 'none');
+// A `decisions:` line naming bucket decisions files lists the `(N) ` entries of
+// those files and of the line itself, never the path as one row; a named file
+// that does not exist is one row saying so.
+// ponytail: every numbered entry is listed, superseded ones too; an open/closed mark on the entry is the upgrade.
+const numberedEntries = (text) => text.split('\n')
+    .flatMap((l) => l.split(/(?=\(\d+\) )/)).filter((e) => /^\(\d+\) /.test(e)).map((e) => e.trim());
+const decisionsLine = liveField('decisions');
+const decisionFiles = decisionsLine.match(/specs\/decisions\/console-decisions-[0-9-]+\.md/g) || [];
+const fileDecisions = [
+    ...decisionFiles.flatMap((f) => (existsSync(join(bucket, f))
+        ? numberedEntries(readFileSync(join(bucket, f), 'utf8')) : [`missing decisions file: ${f}`])),
+    ...(decisionFiles.length ? numberedEntries(decisionsLine) : []),
+];
+const decisions = fileDecisions.length ? fileDecisions
+    : splitTopLevel(decisionsLine).map((d) => d.trim()).filter((d) => d && d !== 'none');
 const queueLine = liveField('queue');
 const lastGo = liveField('last GO').replace(/`/g, '');
 const consoleResults = section('## Results').filter((l) => l.startsWith('- ')).slice(-8);

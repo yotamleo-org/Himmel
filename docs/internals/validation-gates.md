@@ -274,7 +274,7 @@ gate; adopting it is a WS6-gated tool decision, not a WS7 build item.
 ## 9. Deferred structural enforcement
 
 The GLM-only lane-marker hook
-(`scripts/hooks/block-cheap-lane-pr-without-verdict.sh`) and its paired suite
+(`block-cheap-lane-pr-without-verdict`) and its paired suite
 were removed: the GLM implementation lane is gone, and the hook
 was never wired into either hook inventory. Removal changes no dispatched
 protection.

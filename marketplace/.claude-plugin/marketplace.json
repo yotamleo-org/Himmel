@@ -274,9 +274,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Leonxlnx/taste-skill.git",
-        "sha": "f624f37a8c650b9cc550253104925efe4c8de246"
+        "sha": "6010f91a9935f1c167dfc500fb1a475681892e6b"
       },
-      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything (HIMMEL-4067). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha f624f37a8c65 per himmel supply-chain policy (HIMMEL-3069). Design kit, design profile (HIMMEL-4012).",
+      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything (HIMMEL-4067). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 6010f91a9935 per himmel supply-chain policy (HIMMEL-3069). Design kit, design profile (HIMMEL-4012).",
       "strict": true,
       "author": {
         "name": "Leonxlnx",
@@ -352,9 +352,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/CloudAI-X/threejs-skills.git",
-        "sha": "b1c623076c661fc9b03dac19292e825a5d106823"
+        "sha": "0e181866f095b5f06d005133876e926515390d95"
       },
-      "description": "[CloudAI-X/threejs-skills, MIT per upstream README (no LICENSE file), vendor + attribution only, no carried delta] Three.js skills (animation, fundamentals, geometry, interaction, lighting, loaders, materials, postprocessing, shaders, textures). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha b1c623076c66 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-3d profile (HIMMEL-4012).",
+      "description": "[CloudAI-X/threejs-skills, MIT per upstream README (no LICENSE file), vendor + attribution only, no carried delta] Three.js skills (animation, fundamentals, geometry, interaction, lighting, loaders, materials, postprocessing, shaders, textures). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 0e181866f095 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-3d profile (HIMMEL-4012).",
       "strict": false,
       "author": {
         "name": "CloudAI-X",
@@ -367,9 +367,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "7c2ce42b6b555fc3eacbd74eeae890bfa6422e15"
+        "sha": "b985686f4d6b90c708ae56deed03355cef3c8e87"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 7c2ce42b6b555fc3eacbd74eeae890bfa6422e15 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha b985686f4d6b90c708ae56deed03355cef3c8e87 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
       "strict": false,
       "skills": [
         "./"
@@ -400,9 +400,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "550fd66edff058bc73056c3416b76d69cfe865ba"
+        "sha": "f2f4d49ea8d632f17cf196ba26599277a93f767b"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 550fd66edff058bc73056c3416b76d69cfe865ba per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha f2f4d49ea8d632f17cf196ba26599277a93f767b per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"
@@ -542,9 +542,9 @@
         "source": "git-subdir",
         "url": "https://github.com/upstash/context7.git",
         "path": "skills/find-docs",
-        "sha": "ae4871e9a8cbed00bc0f4a40b0b5b61e2d37378c"
+        "sha": "2dc35112ef1bea5d61f31b802b5764c931984508"
       },
-      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare (HIMMEL-4018). git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url (HIMMEL-549), pinned to upstream commit ae4871e9a8cbed00bc0f4a40b0b5b61e2d37378c per himmel supply-chain policy (HIMMEL-3069). Enabled by the `user` profile only.",
+      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare (HIMMEL-4018). git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url (HIMMEL-549), pinned to upstream commit 2dc35112ef1bea5d61f31b802b5764c931984508 per himmel supply-chain policy (HIMMEL-3069). Enabled by the `user` profile only.",
       "strict": false,
       "skills": [
         "./"

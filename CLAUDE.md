@@ -95,7 +95,7 @@ Per-repo opt-out: a gitignored `.single-writer` marker. Environment:
 
 All under `docs/`: `internals/claude-md-detail.md` (full wording of every
 rule condensed above), `internals/harness-compat.md`, `internals/testing.md`,
-`handover/overnight-mode.md`, `glossary.md`, `handover/running-a-console.md`,
+`handover/afk-mode.md`, `glossary.md`, `handover/running-a-console.md`,
 `internals/prompt-cache.md`, `internals/headless-modes.md`.
 
 ## graphify

@@ -11,7 +11,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const DOCS = path.resolve(here, '../docs');
 const BASE = '/Himmel';
 const ALLOW = readAllowlist(path.join(here, 'allowlist.txt'));
-const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html'];
+const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html', 'guide/dev-graph.html'];
+// The development graph page loads these next to itself.
+const GUIDE_ASSETS = ['guide/dev-graph/dev-graph.js', 'guide/dev-graph/dev-graph.css', 'guide/dev-graph/tokens.css', 'guide/dev-graph/graph.json'];
 
 // Raw files that keep resolving at their docs/ paths: every allowlisted .md
 // plus the install JSON files the setup pages link to.
@@ -26,7 +28,7 @@ const copyPassthrough = {
   name: 'copy-passthrough',
   hooks: {
     'astro:build:done': ({ dir }) => {
-      for (const rel of [...HTML_PASSTHROUGH, ...RAW_FILES]) {
+      for (const rel of [...HTML_PASSTHROUGH, ...GUIDE_ASSETS, ...RAW_FILES]) {
         const out = path.join(fileURLToPath(dir), rel);
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.copyFileSync(path.join(DOCS, rel), out);
@@ -143,7 +145,7 @@ export default defineConfig({
         {
           label: 'Run many sessions',
           items: [
-            { label: 'Unattended runs', slug: 'handover/overnight-mode' },
+            { label: 'Unattended runs', slug: 'handover/afk-mode' },
             { label: 'Supervisor sessions', slug: 'handover/running-a-console' },
             { label: 'Handover notes', slug: 'internals/handover-system' },
             { label: 'Orchestration patterns', slug: 'orchestration-patterns' },

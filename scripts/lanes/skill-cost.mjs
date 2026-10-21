@@ -416,7 +416,7 @@ const BARE_POSITIONAL_RE = /\$[0-9]+(?!\w)/;
 // top-level rule: this corpus's own numbered-list fences are
 // legitimately indented 5-6 spaces (list-relative, not absolute-column, per
 // CommonMark's container rules — e.g. .claude/commands/pr-check.md:1461,
-// .claude/commands/overnight-shift.md:73, both open AND close at that same
+// .claude/commands/afk-shift.md:73, both open AND close at that same
 // indent). Full container-relative indentation tracking is out of proportion
 // for this lint; staying permissive about what counts as an OPEN can only
 // ever over-scan. Closing is the opposite risk (ending protection too

@@ -759,6 +759,7 @@ _mechanical_reheal() { # <note> <transcript>
     # mv only on success — a failed/partial write never truncates the husk.
     [ -n "$markdown" ] || return 1
     local tmp="${note}.reheal.$$"
+    # prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
     if printf '%s' "$markdown" > "$tmp" 2>/dev/null && mv -f "$tmp" "$note" 2>/dev/null; then
         return 0
     fi

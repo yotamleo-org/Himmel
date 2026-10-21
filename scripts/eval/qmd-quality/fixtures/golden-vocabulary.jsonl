@@ -4,8 +4,8 @@
 {"id":"v2-new","query":"how does a worker report a blocker to the chief","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
 {"id":"v3-old","query":"where is the bank lift file guarded","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md","himmel/docs/glossary.md"]}
 {"id":"v3-new","query":"where is the usage lift file guarded","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md","himmel/docs/glossary.md"]}
-{"id":"v4-old","query":"what may merge in overnight mode","collections":["himmel"],"expect":["himmel/docs/handover/overnight-mode.md"]}
-{"id":"v4-new","query":"what may merge in afk mode","collections":["himmel"],"expect":["himmel/docs/handover/overnight-mode.md"]}
+{"id":"v4-old","query":"what may merge in overnight mode","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
+{"id":"v4-new","query":"what may merge in afk mode","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}
 {"id":"v5-old","query":"what is a chain and a wave of legs","collections":["himmel"],"expect":["himmel/docs/glossary.md"]}
 {"id":"v5-new","query":"what is a dependency chain and a parallel wave of workers","collections":["himmel"],"expect":["himmel/docs/glossary.md"]}
 {"id":"v6-old","query":"how does a console hand over to the next console","collections":["himmel"],"expect":["himmel/docs/handover/leg-sections/succession.md","himmel/docs/handover/running-a-console.md"]}

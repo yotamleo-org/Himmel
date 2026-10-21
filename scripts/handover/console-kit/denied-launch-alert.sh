@@ -20,8 +20,9 @@
 # created atomically BEFORE the send and removed again if the send fails, so a
 # later scan retries and the operator still gets at most one. A delivered row's
 # sentinel is non-empty; an empty one older than 5 min is a scan killed mid-send
-# and is reclaimed. A launch denied
-# again later is a new row and alerts again.
+# and is reclaimed under a lock in the same dir (with_lock), so two scans racing
+# on one stale claim cannot both reclaim it. A launch denied again later is a new
+# row and alerts again.
 #
 # Always exits 0: the alert is an addition, never a gate. Sender and operator
 # lookup are merge-block-alert.sh's (MERGE_BLOCK_ALERT_CMD,
@@ -51,6 +52,19 @@ dir="${HIMMEL_DENIAL_ALERT_DIR:-$HOME/.himmel/state/denied-launch-alerts}"
 chat="$(_mba_operator_chat)" || chat=""
 stale=5  # minutes before an empty claim (a scan killed mid-send) is reclaimed
 
+# shellcheck source=scripts/lib/prim.sh
+. "$REPO/scripts/lib/prim.sh" 2>/dev/null || exit 0
+
+# Runs under with_lock: staleness is re-checked once the lock is held, so of two
+# scans that both saw the stale claim only the first removes and recreates it.
+# shellcheck disable=SC2329  # invoked through with_lock's "$@"
+reclaim_claim() { # <claim path>
+    [ -s "$1" ] && return 1
+    [ -n "$(find "$1" -mmin "+$stale" 2>/dev/null)" ] || return 1  # swallow-ok: a failed find skips the reclaim, the claim stays held
+    rm -f "$1" 2>/dev/null
+    ( set -o noclobber; : > "$1" ) 2>/dev/null
+}
+
 # One TSV line per matching row: <leg>\t<tool>\t<row id>. The leg label and tool
 # are the only row fields that reach the alert.
 { [ -r "$log.1" ] && cat "$log.1"; cat "$log"; } 2>/dev/null | tail -n 2000 \
@@ -64,9 +78,7 @@ stale=5  # minutes before an empty claim (a scan killed mid-send) is reclaimed
         key="$(printf '%s' "$rowid" | sha256sum | cut -c1-40)"  # gnu-ok: Linux-only kit
         if ! ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null; then
             [ -s "$dir/$key" ] && continue
-            [ -n "$(find "$dir/$key" -mmin "+$stale" 2>/dev/null)" ] || continue  # swallow-ok: a failed find skips the reclaim, the claim stays held
-            rm -f "$dir/$key" 2>/dev/null
-            ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null || continue
+            with_lock "$dir/.reclaim.lock" reclaim_claim "$dir/$key" || continue
         fi
         if [ -z "$chat" ]; then
             rm -f "$dir/$key" 2>/dev/null

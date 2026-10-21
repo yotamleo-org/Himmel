@@ -79,7 +79,7 @@ Steps run in this canonical order; only the tokens on the pointer's
   A blocked gate on this branch parks it and moves to the next queue item —
   never retry-loop;
   see
-  [Park protocol](../../docs/handover/overnight-mode.md#park-protocol).
+  [Park protocol](../../docs/handover/afk-mode.md#park-protocol).
 
 - **public** — RETIRED at the HIMMEL-2705 cutover (2026-09-09): `origin` IS the
   public repo; a merge to `main` (the `merge` step above) is the public

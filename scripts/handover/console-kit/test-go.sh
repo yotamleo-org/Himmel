@@ -240,6 +240,7 @@ cp "$HERE/cr-disposition.sh" "$S10/scripts/handover/console-kit/cr-disposition.s
 ready_pass_ledger "$S10" "$SHA"
 cp -R "$HERE/../../lib" "$S10/scripts/lib"
 cp "$HERE/../../cr/anchor-handoff.sh" "$S10/scripts/cr/anchor-handoff.sh"
+cp "$HERE/../../cr/ledger-amend-auth.js" "$S10/scripts/cr/ledger-amend-auth.js"
 printf 'HANDOVER_DIR=%s\n' "$S10_REAL" > "$S10/.env"
 S10_GO=".locks/go/77.$SHA"
 

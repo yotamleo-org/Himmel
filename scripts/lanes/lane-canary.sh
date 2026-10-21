@@ -217,7 +217,7 @@ IFS="$OLDIFS"
 if [ "$DRY" -eq 0 ]; then
     tmp="$OUT.tmp.$$"
     if printf '{"ts":"%s","host":"%s","lanes":{%s}}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(json_str "$(hostname)")" "$rows" > "$tmp" \
-        && mv "$tmp" "$OUT"; then
+        && mv "$tmp" "$OUT"; then  # prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
         echo "lane-canary: report $OUT"
     else
         echo "lane-canary: cannot write report $OUT" >&2; any_fail=1
