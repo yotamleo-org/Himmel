@@ -52,6 +52,8 @@ LOGBUS="$(printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1 $2" >> "%s/bus.log"; 
 printf '%s\n' "$LOGBUS" > "$BUS"
 chmod +x "$BUS"
 export RELAY_BATCH_BUS="$BUS"
+# The outgoing console's own bus identity: without one, no bus record is sent.
+export HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-08A-console
 
 out="$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)"
 check "a native leg also gets a bus record from the outgoing console" "send DEMO-1-N7-alpha" "$(cat "$WORK/bus.log" 2>/dev/null)"
@@ -88,7 +90,32 @@ outs="$(RELAY_BATCH_BUS_TIMEOUT=1 bash "$RB" "$DOC" --successor DEMO-nextleg-202
 check "a stalled bus send is cut off and reported" "1" "$(printf '%s\n' "$outs" | grep -c '^BUS-RELAY-FAIL N7 (timed out after 1s)$')"
 check "a stalled bus send still prints the SendMessage" "1" "$(printf '%s\n' "$outs" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"
 check "a stalled bus send does not fail the run" "0" "$rcs"
+# Four native legs on a stalled bus: every relay prints before any bus send, and the
+# sends share one deadline, so the run ends well inside relay-on-live's 60 s kill.
+DOC9="$WORK/DEMO-nextleg-2026-10-08E-console.md"
+# shellcheck disable=SC2016  # the backticks are literal Live state markers
+printf '# console\n\n## Live state\n\nlegs: `N50:tok-a:l:1` `N51:tok-b:l:2` `N52:tok-c:l:3` `N53:tok-d:l:4`\nqueue: none\n\n## Results\n' > "$DOC9"
+printf '{"schema":1,"legs":[' > "${DOC9%.md}.fleet.json"
+for n in 50 51 52 53; do
+    : > "$WORK/DEMO-$n-N$n-four.md"
+    [ "$n" = 50 ] || printf ',' >> "${DOC9%.md}.fleet.json"
+    printf '{"doc":"%s","label":"N%s","lane":"native"}' "$WORK/DEMO-$n-N$n-four.md" "$n" >> "${DOC9%.md}.fleet.json"
+done
+printf ']}\n' >> "${DOC9%.md}.fleet.json"
+census DEMO-50-N50-four DEMO-51-N51-four DEMO-52-N52-four DEMO-53-N53-four
+out4="$(RELAY_BATCH_BUS_TIMEOUT=2 timeout 5 bash "$RB" "$DOC9" --successor DEMO-nextleg-2026-10-08F-console 2>&1)"; rc4=$?
+check "four stalled bus sends share one deadline (the run is not killed)" "0" "$rc4"
+check "four stalled bus sends: every SENDMESSAGE is printed" "4" "$(printf '%s\n' "$out4" | grep -c '^SENDMESSAGE to=DEMO-5[0-3]-N5[0-3]-four ::')"
+check "four stalled bus sends: the tally is printed" "1" "$(printf '%s\n' "$out4" | grep -c '^RELAYED 4 of 4$')"
+check "four stalled bus sends: each is reported timed out" "4" "$(printf '%s\n' "$out4" | grep -c '^BUS-RELAY-FAIL N5[0-3] (timed out after 2s)$')"
+check "every SENDMESSAGE precedes the first bus send" "4" "$(printf '%s\n' "$out4" | awk '/^BUS-RELAY/ { exit } /^SENDMESSAGE/ { n++ } END { print n + 0 }')"
+census DEMO-1-N7-alpha DEMO-2-N8-beta
 printf '%s\n' "$LOGBUS" > "$BUS"
+: > "$WORK/bus.log"
+outn="$(HIMMEL_BUS_NAME='' bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-console --claudex N8 2>&1)"
+check "a console with no bus identity sends no bus record" "" "$(cat "$WORK/bus.log")"
+check "a console with no bus identity prints no BUS-RELAY line" "0" "$(printf '%s\n' "$outn" | grep -c '^BUS-RELAY')"
+check "a console with no bus identity still prints the SendMessage" "1" "$(printf '%s\n' "$outn" | grep -c '^SENDMESSAGE to=DEMO-1-N7-alpha ::')"
 # Each leg's session is resolved from the LIVE process census, never guessed: the full
 # doc stem first, then leg_identity's names; exactly one live match or UNRESOLVED.
 LEG3="$WORK/DEMO-3-N10-gamma-2026-10-08.md"

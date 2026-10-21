@@ -22,6 +22,8 @@ lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-briefs-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
+# No bus identity, so relay-batch never reaches the real himmel-bus store.
+unset HIMMEL_BUS_NAME
 
 cat > "$WORK/wt.sh" <<'EOF'
 #!/usr/bin/env bash

@@ -36,6 +36,8 @@ export TICK_VAULT_DIR="$tmp/vault"
 printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "adopted: legx console old -> $2"\n' "$tmp" > "$tmp/bus"
 chmod +x "$tmp/bus"
 export APPEND_RESULTS_BUS="$tmp/bus"
+# The leg's own bus identity: without one, the acknowledgement adopts nothing.
+export HIMMEL_BUS_NAME=legx
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
 
@@ -199,6 +201,13 @@ printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\n' "$tmp" > "$tmp/bus"
 bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-D-console replaces CON-C-console and more" >/dev/null 2>&1
 bash "$SCRIPT" "$d8" "SUCCESSION accepted: CON-D-console replaces CON-C-console" >/dev/null 2>&1
 check "11: no adopt for trailing text or a console doc" "$(cat "$tmp/bus.log")" ""
+HIMMEL_BUS_NAME='' bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-E-console replaces CON-D-console" >/dev/null 2>&1
+check "11: a leg with no bus identity runs no adopt" "$(cat "$tmp/bus.log")" ""
+check "11: a leg with no bus identity gets no bus-adopt bullet" "$(tail -n 2 "$d11" | grep -c 'bus-adopt:')" 0
+printf '#!/bin/sh\nexec sleep 30\n' > "$tmp/bus"
+rc=0; APPEND_RESULTS_BUS_TIMEOUT=1 bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-F-console replaces CON-E-console" >/dev/null 2>&1 || rc=$?
+check "11: a stalled adopt still appends rc 0" "$rc" 0
+check "11: a stalled adopt is recorded as timed out" "$(grep -c '^- [0-9:]* bus-adopt: refused (timed out after 1s)$' "$d11")" 1
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
