@@ -612,8 +612,10 @@ if [ "$ONLY7" -eq 0 ]; then
 # listed below: those cannot be dispatched (their trigger is pull_request_target,
 # workflow_run or a tag push), so the exemption is explicit and reviewed here.
 # ci-image.yml has a trigger, but its build job is gated to refs/heads/main so a
-# branch cannot move :latest: a branch dispatch concludes skipped, and the proof
-# is the post-merge push run on main. A listed workflow is skipped either way.
+# branch cannot move :latest, and a branch dispatch concludes skipped. Its push
+# trigger fires only on .github/ci-image/** paths, so a change to ci-image.yml
+# alone gets no push run: its proof is the weekly cron or a workflow_dispatch on
+# main. A listed workflow is skipped either way.
 # A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
 # to is not on the default branch, which GitHub requires to dispatch a workflow,
 # so neither can be dispatched before merge and both are skipped. A PR touching no workflow

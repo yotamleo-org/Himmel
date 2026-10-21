@@ -1008,6 +1008,14 @@ wf_run ".github/workflows/ci-image.yml"
 check "exempted workflow with a trigger, no dispatch run: exit 0" "$rc" "0"
 contains "exempted workflow with a trigger, no dispatch run: check 10 passes" "$out" "[PASS] 10."
 
+# Not on the list, though its name matches an entry as a regex: a skipped
+# branch dispatch still fails.
+cp "$WFDIR/ci-image.yml" "$WFDIR/ci.image.yml"
+real_run completed skipped "$SHA" > "$RUNDIR/ci.image.yml.json"
+wf_run ".github/workflows/ci.image.yml"
+check "unlisted workflow with a trigger, skipped dispatch at head: exit 1" "$rc" "1"
+contains "unlisted workflow with a trigger, skipped dispatch at head: check 10 fails" "$out" "[FAIL] 10."
+
 wf_run ".github/workflows/ci.yml" "removed .github/workflows/ci.yml"
 contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."
 
