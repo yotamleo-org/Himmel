@@ -271,6 +271,7 @@ scripts/eval/leg-digest/test-leg-ledger.sh	3
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	0
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
+scripts/eval/retrieval-eval/test-answer-ab.sh	1
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	3
 scripts/eval/review-panel/test-review-panel.sh	3
 scripts/eval/sandbox-poc/test-probe.sh	5
