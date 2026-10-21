@@ -102,6 +102,18 @@ test("GET /api/roadmap: a full page of issues is flagged truncated, a short one 
   expect(r.tickets.length).toBe(4);
 });
 
+test("POST /api/roadmap/write: a valid request is refused with 403 when GitHub is the source, and the Jira CLI is never run", async () => {
+  const s = scratch();
+  const { srv } = serve({ ...s.env, TRACKER: "github" }, s.d);
+  const r = await fetch(`http://127.0.0.1:${srv.port}/api/roadmap/write`, {
+    method: "POST", headers: { "X-Himmel-Token": TOKEN, "Content-Type": "application/json", Origin: `http://127.0.0.1:${srv.port}` },
+    body: JSON.stringify({ key: "HIMMEL-1", status: "prog" }),
+  });
+  expect(r.status).toBe(403);
+  expect((await r.json()).error).toBe("GitHub roadmap is read-only");
+  expect(s.jiraCalls()).toBe(false);
+});
+
 test("an inherited-property label name is no status, and a malformed entry cannot break the board", async () => {
   const odd = { number: 31, title: "odd", state: "OPEN", labels: [{ name: "constructor" }, { name: "toString" }], milestone: null };
   const bad = { number: 32, state: "OPEN", labels: "x", milestone: { title: 3 } };
