@@ -57,7 +57,10 @@ block-form `container:` whose image is
 image: ${{ !(<fork or dependabot>[ || <self-hosted route>]) && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:<digest>') || '' }}
 ```
 
-with `credentials:` from `github.actor` / `secrets.GITHUB_TOKEN`, `--user 1001` (the
+with `credentials:` from `github.actor` / `github.token` (check-no-secrets.sh refuses a
+`secrets.*` interpolation), `--init` (without an init, PID 1 is the runner's
+`tail -f /dev/null`, which never reaps an orphan, so a killed process group stays
+visible as zombies), `--user 1001` (the
 image's `runner` user) and `--privileged` where bwrap needs user namespaces (`ci-quick`,
 `shell-unit-shard`, `guard-corpus-full`).
 

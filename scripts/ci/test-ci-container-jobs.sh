@@ -3,8 +3,9 @@
 # prebuilt CI image (.github/ci-image/Dockerfile, docs/internals/ci-image.md).
 #
 #   K1  each containerized job has a block-form container: with the canonical
-#       image expression, registry credentials from the job token, --user 1001
-#       (plus --privileged where bwrap needs it) and packages: read
+#       image expression, registry credentials from github.token, --init (so
+#       orphaned descendants are reaped), --user 1001 (plus --privileged where
+#       bwrap needs it) and packages: read
 #   K2  every job names the same default ref, pinned by digest
 #   K3  the image expression is EVALUATED (python3 translation of the GitHub
 #       expression subset): push, schedule, dispatch and a same-repo PR get the
@@ -66,11 +67,11 @@ for j in $JOBS; do
   ref="$(sed -nE "s/.*\(vars\.CI_IMAGE \|\| '([^']*)'\).*/\1/p" <<< "$img")"
   routes=""; in_list "$j" "$SELF_HOSTED" && routes="$ROUTES"
   want="\${{ !($FORK$routes) && (vars.CI_IMAGE || '$ref') || '' }}"
-  opts="--user 1001"; in_list "$j" "$PRIVILEGED" && opts="$opts --privileged"
+  opts="--init --user 1001"; in_list "$j" "$PRIVILEGED" && opts="$opts --privileged"
   # K1
   miss=""
   for l in "    container:" "      image: $want" "      credentials:" \
-           "        username: \${{ github.actor }}" "        password: \${{ secrets.GITHUB_TOKEN }}" \
+           "        username: \${{ github.actor }}" "        password: \${{ github.token }}" \
            "      options: $opts" "      packages: read"; do
     grep -qxF -- "$l" <<< "$b" || miss="$miss [$l]"
   done

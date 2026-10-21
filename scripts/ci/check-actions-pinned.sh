@@ -12,8 +12,8 @@
 # a `docker://` ref without a digest is flagged.
 #
 # Line-based: a `uses:` is recognised at the start of a line (`uses:` or
-# `- uses:`). A YAML flow mapping (`- {uses: ...}`) is not parsed, so a
-# `uses:`, `container:` or `image:` key inside one is refused.
+# `- uses:`, the key quoted or not). A YAML flow mapping (`- {uses: ...}`) is
+# not parsed, so a `uses:`, `container:` or `image:` key inside one is refused.
 #
 # Usage:
 #   check-actions-pinned.sh [scan-path ...]   # default: .github
@@ -44,7 +44,7 @@ done
 # pipefail keeps grep's rc.
 sep=$'\001'
 found=$(grep -rnHE --null --include='*.yml' --include='*.yaml' \
-  '^[[:space:]]*-?[[:space:]]*uses:' "${existing[@]}" | tr '\0' "$sep")
+  "^[[:space:]]*-?[[:space:]]*[\"']?uses[\"']?[[:space:]]*:" "${existing[@]}" | tr '\0' "$sep")
 rc=$?
 if [ "$rc" -gt 1 ]; then
   printf 'ERROR: scanning for uses: lines failed (grep rc=%s)\n' "$rc" >&2
@@ -53,7 +53,7 @@ fi
 
 # Every pattern is anchored to the start of the line's content (after the
 # grep file:line: prefix), so a `uses:` inside a trailing comment cannot match.
-head_re="^[^${sep}]*${sep}[0-9]+:[[:space:]]*-?[[:space:]]*uses:[[:space:]]*[\"']?"
+head_re="^[^${sep}]*${sep}[0-9]+:[[:space:]]*-?[[:space:]]*[\"']?uses[\"']?[[:space:]]*:[[:space:]]*[\"']?"
 matches=$(printf '%s\n' "$found" \
   | grep -vE "${head_re}(\./|docker://[^[:space:]]*@sha256:[0-9a-f]{64}[\"']?([[:space:]]|\$))" \
   | grep -vE "${head_re}[^[:space:]\"'@#]+@[0-9a-f]{40}[\"']?([[:space:]]|\$)" \
@@ -130,7 +130,7 @@ fi
 # The scan above is line-based, so a flow mapping (`db: {image: ...}`) is refused
 # outright rather than passed unread. `${{` is an expression, not a mapping.
 flow=$(grep -rnHE --include='*.yml' --include='*.yaml' \
-  '(^|[^{$])\{[[:space:]]*([^}]*,[[:space:]]*)?(uses|container|image)[[:space:]]*:' "${existing[@]}")
+  "(^|[^{\$])\{[[:space:]]*([^}]*,[[:space:]]*)?[\"']?(uses|container|image)[\"']?[[:space:]]*:" "${existing[@]}")
 rc=$?
 if [ "$rc" -gt 1 ]; then
   printf 'ERROR: scanning for flow-mapping keys failed (grep rc=%s)\n' "$rc" >&2
