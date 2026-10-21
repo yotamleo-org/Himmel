@@ -89,6 +89,7 @@
   .tab { font: inherit; font-size: 14px; font-weight: 500; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
   .tab[aria-selected="true"] { color: var(--surface); background: var(--accent); border-color: var(--accent); }
   .tab:hover:not([aria-selected="true"]) { color: var(--ink); }
+  a.tab { text-decoration: none; }
   .loop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .loop-head p { margin: 0 0 6px; color: var(--muted); max-width: 60ch; }
   .loop-meta { font-size: 13px; color: var(--faint); }
@@ -248,7 +249,7 @@
   <header class="hero">
     <p class="kicker">himmel guide</p>
     <h1>Loops and graphs</h1>
-    <p class="lede">himmel keeps work moving with a few loops: the loop one change goes through, a supervisor session steering many sessions at once, AFK (unattended) runs, and scheduled jobs that keep everything fresh. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
+    <p class="lede">himmel keeps work moving with a few loops: AFK (unattended) runs and scheduled jobs that keep everything fresh. How one change travels from a supervisor session's dispatch to a merged pull request has its own page, the development graph. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
   </header>
 
   <!-- source: docs/internals/config-layers.md (new layout, in review), docs/configuration.md §4.1 -->
@@ -288,40 +289,9 @@
 
     <!-- no-JS fallback: generated from the loops and explain data in the script below, at the default settings -->
     <div class="static-loops" id="static-loops">
-      <p class="section-lede">Each loop below shows who does every step at the default settings a fresh install has. With scripts enabled, this becomes an explorer where changing a setting lights up the steps it changes.</p>
+      <p class="section-lede">Each loop below shows who does every step at the default settings a fresh install has. With scripts enabled, this becomes an explorer where changing a setting lights up the steps it changes. For how one change travels from dispatch to merge, see <a href="dev-graph.html">the development graph</a>.</p>
       <details class="sloop" open>
-        <summary>One change <small>The loop one change goes through</small></summary>
-        <p class="blurb">From a fresh worktree to a merged pull request and a saved handover. Hooks and git gates fire at each step. <span class="loop-meta">source: daily-loop walkthrough</span></p>
-        <ol class="steps">
-          <li class="step manual"><span class="dot" aria-hidden="true">1</span><div><div><b>Worktree</b> <span class="sub">isolated branch</span><span class="who">you</span></div><p>You run /worktree. Editing on main is always refused.</p></div></li>
-          <li class="step gated"><span class="dot" aria-hidden="true">2</span><div><div><b>Commit</b> <span class="sub">message gate</span><span class="who">gate</span></div><p>The commit-message gate wants the conventional shape and a ticket ID in every subject.</p></div></li>
-          <li class="step gated"><span class="dot" aria-hidden="true">3</span><div><div><b>Push</b> <span class="sub">pre-push gates</span><span class="who">gate</span></div><p>Pre-push gates run and record that a review is owed before a pull request can open.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">4</span><div><div><b>Review</b> <span class="sub">/pr-check</span><span class="who">you</span></div><p>You run /pr-check. The free tier runs; with no free critic configured it falls back to the codex critic where that lane is set up, else a Claude review.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">5</span><div><div><b>Pull request</b> <span class="sub">opened</span><span class="who">you</span></div><p>You open it once review is clean.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">6</span><div><div><b>CI</b> <span class="sub">checks</span><span class="who">on its own</span></div><p>GitHub runs the checks; check-ci reads them for you.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">7</span><div><div><b>Merge</b> <span class="sub">squash</span><span class="who">you</span></div><p>You merge. With ARMAUTOMERGE off, merge-on-green refuses, so a merge is a plain squash merge.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">8</span><div><div><b>Ticket</b> <span class="sub">tracker</span><span class="who">you</span></div><p>You move the ticket.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">9</span><div><div><b>Handover</b> <span class="sub">saved notes</span><span class="who">you</span></div><p>You run /handover. Saved under handovers/ inside this repo.</p></div></li>
-        </ol>
-      </details>
-      <details class="sloop">
-        <summary>Console and legs <small>A console steering its legs</small></summary>
-        <p class="blurb">A supervisor session is a long-lived session you talk to. It dispatches each ticket as its own session, a worker session, with its own worktree and pull request, and merges only on its own go-ahead. <span class="loop-meta">source: running-a-console, glossary</span></p>
-        <ol class="steps">
-          <li class="step manual"><span class="dot" aria-hidden="true">1</span><div><div><b>Supervisor session</b> <span class="sub">doc + lock</span><span class="who">you</span></div><p>You start it with /console new. It holds a lock on its own document so two supervisor sessions never run one shift.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">2</span><div><div><b>Dispatch</b> <span class="sub">one worker session per ticket</span><span class="who">on its own</span></div><p>Each worker session gets a brief, a worktree and a one-time token for authenticated changes of plan.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">3</span><div><div><b>Worker session works</b> <span class="sub">LIVE</span><span class="who">on its own</span></div><p>The worker session implements, tests and reports milestones to its handover document.</p></div></li>
-          <li class="step gated"><span class="dot" aria-hidden="true">4</span><div><div><b>Questions</b> <span class="sub">FINDING</span><span class="who">gate</span></div><p>A worker session that needs a decision asks the supervisor session and keeps working on what does not depend on it.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">5</span><div><div><b>Review</b> <span class="sub">/pr-check</span><span class="who">on its own</span></div><p>The free tier runs; with no free critic configured it falls back to the codex critic where that lane is set up, else a Claude review.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">6</span><div><div><b>Ready</b> <span class="sub">READY</span><span class="who">on its own</span></div><p>Pull request open, review clean, CI green. The worker session reports and waits.</p></div></li>
-          <li class="step gated"><span class="dot" aria-hidden="true">7</span><div><div><b>Go-ahead</b> <span class="sub">GO</span><span class="who">gate</span></div><p>Only the supervisor session writes the GO file (merge approval). A worker session never merges without it.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">8</span><div><div><b>Merge</b> <span class="sub">merge-on-green</span><span class="who">you</span></div><p>With ARMAUTOMERGE off, merge-on-green refuses, so a merge is a plain squash merge.</p></div></li>
-          <li class="step auto"><span class="dot" aria-hidden="true">9</span><div><div><b>Wrap</b> <span class="sub">WRAPPED</span><span class="who">on its own</span></div><p>The worker session releases its lock, checks nothing is left running, and the supervisor session closes its window.</p></div></li>
-          <li class="step manual"><span class="dot" aria-hidden="true">10</span><div><div><b>Hand over</b> <span class="sub">succession</span><span class="who">you</span></div><p>Near its context limit the supervisor session starts its successor with /console next and writes a handoff.</p></div></li>
-        </ol>
-      </details>
-      <details class="sloop">
-        <summary>AFK mode <small>An unattended AFK shift</small></summary>
+        <summary>AFK mode<small>An unattended AFK shift</small></summary>
         <p class="blurb">/afk-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_AFK switches which steps run without asking. <span class="loop-meta">source: afk-mode</span></p>
         <ol class="steps">
           <li class="step auto"><span class="dot" aria-hidden="true">1</span><div><div><b>Queue lock</b> <span class="sub">one run per queue</span><span class="who">on its own</span></div><p>Taken first, so a second launch on the same queue stops instead of doubling the work.</p></div></li>
@@ -611,41 +581,6 @@
   }
 
   var loops = [
-    { id: 'work', tab: 'One change', title: 'The loop one change goes through',
-      blurb: 'From a fresh worktree to a merged pull request and a saved handover. Hooks and git gates fire at each step.',
-      meta: 'source: daily-loop walkthrough',
-      nodes: function () {
-        var r = reviewState();
-        return [
-          { k: 'worktree', l: 'Worktree', sub: 'isolated branch', st: 'manual', n: 'You run /worktree. Editing on main is always refused.' + (s.nudge ? ' The worktree nudge also reminds you before your first edit outside a worktree.' : '') },
-          { k: 'commit', l: 'Commit', sub: 'message gate', st: 'gated', n: s.ticket === '0' ? 'The commit-message gate checks the conventional shape only; a ticket ID is optional.' : 'The commit-message gate wants the conventional shape and a ticket ID in every subject.' },
-          { k: 'push', l: 'Push', sub: 'pre-push gates', st: 'gated', n: 'Pre-push gates run and record that a review is owed before a pull request can open.' },
-          { k: 'review', l: 'Review', sub: '/pr-check', st: r.st, n: (has('prcheck') ? 'Runs on its own when the work is done and verified. ' : 'You run /pr-check. ') + r.note },
-          { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'blocked' : (has('pr') ? 'auto' : 'manual'), n: r.st === 'blocked' ? 'Cannot open: the review-owed marker never clears.' : (has('pr') ? 'Opened or refreshed for you once review is clean.' : 'You open it once review is clean.') },
-          { k: 'ci', l: 'CI', sub: 'checks', st: r.st === 'blocked' ? 'off' : 'auto', n: 'GitHub runs the checks; check-ci reads them for you.' },
-          { k: 'merge', l: 'Merge', sub: 'squash', st: r.st === 'blocked' ? 'off' : (has('merge') ? 'auto' : 'manual'), n: (has('merge') ? 'The session merges on its own. ' : 'You merge. ') + mergeNote() },
-          { k: 'ticket', l: 'Ticket', sub: 'tracker', st: has('ticket') ? 'auto' : 'manual', n: has('ticket') ? 'The ticket is moved for you.' : 'You move the ticket.' },
-          { k: 'handover', l: 'Handover', sub: 'saved notes', st: has('handover') ? 'auto' : 'manual', n: (has('handover') ? 'Written for you at the end. ' : 'You run /handover. ') + (s.handover === 'set' ? 'Saved to your separate state repo, so it survives a fresh clone.' : 'Saved under handovers/ inside this repo.') }
-        ];
-      } },
-    { id: 'console', tab: 'Console and legs', title: 'A console steering its legs',
-      blurb: 'A supervisor session is a long-lived session you talk to. It dispatches each ticket as its own session, a worker session, with its own worktree and pull request, and merges only on its own go-ahead.',
-      meta: 'source: running-a-console, glossary',
-      nodes: function () {
-        var r = reviewState();
-        return [
-          { k: 'doc', l: 'Supervisor session', sub: 'doc + lock', st: 'manual', n: 'You start it with /console new. It holds a lock on its own document so two supervisor sessions never run one shift.' },
-          { k: 'dispatch', l: 'Dispatch', sub: 'one worker session per ticket', st: 'auto', n: 'Each worker session gets a brief, a worktree and a one-time token for authenticated changes of plan.' },
-          { k: 'live', l: 'Worker session works', sub: 'LIVE', st: 'auto', n: 'The worker session implements, tests and reports milestones to its handover document.' },
-          { k: 'finding', l: 'Questions', sub: 'FINDING', st: 'gated', n: 'A worker session that needs a decision asks the supervisor session and keeps working on what does not depend on it.' },
-          { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : 'auto', n: r.note },
-          { k: 'ready', l: 'Ready', sub: 'READY', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Pull request open, review clean, CI green. The worker session reports and waits.' },
-          { k: 'go', l: 'Go-ahead', sub: 'GO', st: r.st === 'blocked' ? 'off' : 'gated', n: 'Only the supervisor session writes the GO file (merge approval). A worker session never merges without it.' },
-          { k: 'merge', l: 'Merge', sub: 'merge-on-green', st: r.st === 'blocked' ? 'off' : (s.automerge ? 'auto' : 'manual'), n: mergeNote() },
-          { k: 'wrap', l: 'Wrap', sub: 'WRAPPED', st: 'auto', n: 'The worker session releases its lock, checks nothing is left running, and the supervisor session closes its window.' },
-          { k: 'next', l: 'Hand over', sub: 'succession', st: 'manual', n: 'Near its context limit the supervisor session starts its successor with /console next and writes a handoff.' }
-        ];
-      } },
     { id: 'overnight', tab: 'AFK mode', title: 'An unattended AFK shift',
       blurb: '/afk-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_AFK switches which steps run without asking.',
       meta: 'source: afk-mode',
@@ -723,7 +658,7 @@
     backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget) or ollama (local GPU). Any other value is refused before work starts.' }
   };
 
-  var current = 'work';
+  var current = 'overnight';
   var prevStates = {};
 
   function el(tag, attrs, text) {
@@ -758,6 +693,9 @@
       });
       t.appendChild(b);
     });
+    var dg = el('a', { href: 'dev-graph.html' }, 'See the development graph');
+    dg.className = 'tab';
+    t.appendChild(dg);
   }
 
   function select(k) {
