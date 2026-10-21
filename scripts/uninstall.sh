@@ -1996,6 +1996,17 @@ $unit"
         fi
       fi
       prov_read_outcome kept "$u" "$reason"
+      case "$reason" in
+        user-modified|no-backup)
+          if printf '%s' "$u" | jq -e '
+            .row == "plugin-flags" or
+            (.row == "adopter-scripts" and ((.path // "") | endswith("/.gitignore"))) or
+            (.kind == "json-key" and ((.unit // "") | startswith("/enabledPlugins/") or startswith("/extraKnownMarketplaces/")))
+          ' >/dev/null; then
+            echo "  NOT touched: $(printf '%s' "$u" | jq -r '.path') $unit ($reason)"
+            fail_step "$_step NOT touched: $unit ($reason)"
+          fi ;;
+      esac
       _LEDGER_PROTECTED="$_LEDGER_PROTECTED
 $unit"
       return 1 ;;
@@ -2694,6 +2705,16 @@ EOF
   fi
 fi
 echo ""
+
+if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && [ "$SKIP_PLUGINS" -eq 0 ] && class_removes "$_ix_plug"; then
+  while IFS= read -r _u; do
+    [ "$HALTED" -eq 0 ] || break
+    [ -n "$_u" ] || continue
+    ledger_apply_unit "$_u" "[4/8]"
+  done <<EOF
+$(prov_read_units --row plugin-flags --kind file)
+EOF
+fi
 
 # --- [5/8] uninstall git hooks -------------------------------------------------
 # Mirror of setup-hooks.sh / setup.sh step 2.
@@ -3628,6 +3649,25 @@ $(prov_read_units --kind json-key | jq -r 'select(.unit == "/extraKnownMarketpla
 EOF
 fi
 echo ""
+
+# Check owned plugin containers only after their child entries and marketplaces settle.
+if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] \
+    && [ "$SKIP_PLUGINS" -eq 0 ] && class_removes "$_ix_plug"; then
+  while IFS= read -r _u; do
+    [ -n "$_u" ] || continue
+    _verdict=$(prov_read_verdict "$_u") || { fail_step "[7/8] ledger container verdict failed"; continue; }
+    case "$_verdict" in
+      'keep user-modified'|'keep no-backup')
+        _unit=$(printf '%s' "$_u" | jq -r '.unit')
+        _path=$(printf '%s' "$_u" | jq -r '.path')
+        echo "  NOT touched: $_path $_unit (${_verdict#* })"
+        fail_step "[7/8] NOT touched: $_path $_unit (${_verdict#* })"
+        prov_read_outcome kept "$_u" "${_verdict#* }" ;;
+    esac
+  done <<EOF
+$(prov_read_units --kind json-key | jq -c 'select(.unit == "/enabledPlugins" or .unit == "/extraKnownMarketplaces")')
+EOF
+fi
 
 # --- [8/8] remove the himmelctl cache + state ------------------
 # install-profile.json + state.json survived a COMPLETE uninstall, so a

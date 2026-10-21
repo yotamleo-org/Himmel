@@ -37,6 +37,9 @@
 #   5b. remaining the console doc's `remaining-board: <version>` line renders that version's open tickets,
 #                 grouped by the plan's priority line, to <doc dir>/roadmap-remaining-<version>.md from the
 #                 mirror step 5 just refreshed. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
+#   5c. focus     best effort, never fails the wrap: the console doc's `focus-version:` line runs
+#                 focus-refresh.sh under WM_FOCUS_TIMEOUT (300 s) and prints focus=ok|busy|DIRTY:<age>|
+#                 FAILED:<stage>|skip. Seam: WM_FOCUS.
 #   6. board      (as above)
 # A re-run therefore finishes whatever an earlier run stopped before, and writes
 # nothing twice. Calls the existing console-kit scripts and modifies none.
@@ -55,6 +58,7 @@ GIT="${WM_GIT:-git}"
 if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-leg.sh"); fi
 if [ -n "${WM_BOARD:-}" ]; then BOARD=("$WM_BOARD"); else BOARD=(node "$HERE/board.mjs"); fi
 if [ -n "${WM_TRACKER_PY:-}" ]; then TRACKER=("$WM_TRACKER_PY"); else TRACKER=(python3 "$HERE/tracker.py"); fi
+if [ -n "${WM_FOCUS:-}" ]; then FOCUS=("$WM_FOCUS"); else FOCUS=(bash "$HERE/focus-refresh.sh"); fi
 
 usage() { echo "usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]" >&2; exit 2; }
 fail()  { echo "wrap-merged: step $1 failed: $2" >&2; exit "$3"; }
@@ -201,6 +205,23 @@ remaining_refresh() {
     return 0
 }
 remaining_refresh
+
+# 5c. focus - best effort, never fails the wrap. The console doc's `focus-version:` line opts in; the
+# refresh (focus-refresh.sh, bounded) reuses the mirror step 5 just refreshed.
+# Prints focus=ok|busy|DIRTY:<age>|FAILED:<stage>|skip.
+focus_refresh() {
+    local ver tmo got rc
+    ver="$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)"
+    case "$ver" in ''|none*) echo "focus=skip"; return 0 ;; esac
+    tmo="${WM_FOCUS_TIMEOUT:-300}"
+    # swallow-ok: only the focus= line and the exit code decide; a missing line prints FAILED:rc<n>
+    got="$(timeout -k 5 "$tmo" "${FOCUS[@]}" --doc "$DOC" ${MIRROR_FRESH:+--mirror-fresh "$MIRROR_FRESH"} 2>/dev/null)"; rc=$?  # gnu-ok: Linux-only kit
+    case "$rc" in 124|137) echo "focus=FAILED:timeout"; return 0 ;; esac
+    got="$(printf '%s\n' "$got" | tail -n 1)"
+    case "$got" in focus=*) echo "$got" ;; *) echo "focus=FAILED:rc$rc" ;; esac
+    return 0
+}
+focus_refresh
 
 # 6. board
 "${BOARD[@]}" --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7

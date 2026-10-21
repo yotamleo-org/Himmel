@@ -64,6 +64,11 @@
 #                               <the doc's basename> says HANDOVER (150 turns or 30M
 #                               cache-read); once per streak, the marker clears on OK
 #                               (CONSOLE_WAIT_BUDGET replaces the command, tests).
+#   WAKE status-sweep <line>    with --doc <console doc>: status-sweep.sh every 15 min
+#                               (WAIT_SWEEP_SEC), bounded at 60 s, woke only when it
+#                               moved a ticket or its failure signature is new.
+#   WAKE focus <state>          the same pass: focus-refresh.sh --status is FAILED:<stage>,
+#                               or DIRTY:<n>m with n of 10 or more; once per state.
 #   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -625,6 +630,52 @@ budget_wake() {
     printf 'WAKE handover-budget %s\n' "$out"
 }
 
+# sweep_wake: with --doc, the status sweep (status-sweep.sh) runs every WAIT_SWEEP_SEC
+# (default 900), bounded at WAIT_SWEEP_TIMEOUT (default 60; the sweep gets a 50 s budget so
+# it stops and logs its own miss first). It wakes only when the sweep moved a ticket or reports a
+# new failure signature (its own wake=1), never for an unchanged standing problem. The same pass
+# reads the FOCUS refresh state (focus-refresh.sh --status) and wakes once per state on FAILED or on
+# DIRTY for 10 minutes or more. The last-run stamp `<inbox>.wait.sweep` outlives the waiter; with no
+# stamp the first sweep is one interval away. WAIT_SWEEP_CMD and WAIT_FOCUS_CMD replace the
+# commands (tests).
+sweep_file="$inbox.wait.sweep"
+sweep_focus_file="$inbox.wait.focus"
+sweep_cmd="${WAIT_SWEEP_CMD:-$HERE/status-sweep.sh}"
+focus_cmd="${WAIT_FOCUS_CMD:-$HERE/focus-refresh.sh}"
+sweep_sec="${WAIT_SWEEP_SEC:-900}"
+sweep_timeout="${WAIT_SWEEP_TIMEOUT:-60}"
+sweep_wake() {
+    local last now out moved fstat age
+    [ -n "$console_doc" ] || return 1
+    now="$(date +%s)"
+    last="$(cat "$sweep_file" 2>/dev/null)"  # swallow-ok: no stamp yet reads empty and starts the interval
+    case "$last" in ''|*[!0-9]*) printf '%s\n' "$now" > "$sweep_file" 2>/dev/null; return 1 ;; esac
+    [ $((now - last)) -ge "$sweep_sec" ] || return 1
+    printf '%s\n' "$now" > "$sweep_file" 2>/dev/null
+    out="$(TICKET_STATUS_SWEEP_BUDGET=50 TICKET_STATUS_SWEEP_GRACE=5 timeout -k 2 "$sweep_timeout" bash "$sweep_cmd" 2>/dev/null 9>&-)" || out=""  # gnu-ok: Linux-only kit; swallow-ok: a cut-off or failed sweep logs its own miss row and wakes nothing here
+    out="$(printf '%s\n' "$out" | tail -n 1)"
+    moved="$(printf '%s\n' "$out" | sed -n 's/.* moved=\([0-9][0-9]*\).*/\1/p')"
+    case "$out" in
+        *"wake=1"*) printf 'WAKE status-sweep %s\n' "$out"; return 0 ;;
+    esac
+    if [ "${moved:-0}" -gt 0 ]; then printf 'WAKE status-sweep %s\n' "$out"; return 0; fi
+    fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state wakes nothing
+    fstat="${fstat#focus=}"
+    case "$fstat" in
+        FAILED:* | DIRTY:unknown) ;;
+        DIRTY:*m)
+            age="${fstat#DIRTY:}"; age="${age%m}"
+            case "$age" in ''|*[!0-9]*) rm -f "$sweep_focus_file"; return 1 ;; esac
+            [ "$age" -ge 10 ] || return 1 ;;
+        *) rm -f "$sweep_focus_file"; return 1 ;;
+    esac
+    fkey="$fstat"
+    case "$fstat" in DIRTY:*) fkey=DIRTY ;; esac
+    [ "$(cat "$sweep_focus_file" 2>/dev/null)" != "$fkey" ] || return 1  # swallow-ok: no marker reads empty, so the first sight wakes
+    printf '%s\n' "$fkey" > "$sweep_focus_file" 2>/dev/null
+    printf 'WAKE focus %s\n' "$fstat"
+}
+
 # predecessor_close: the console doc's first line names its predecessor
 # (`successor to <doc>.md`). Once that doc is WRAPPED and lock-free with exactly one
 # live session, close-wrapped-leg.sh --console closes it, once, and a Results bullet
@@ -924,6 +975,7 @@ while :; do
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi
+            if sweep_wake; then exit_reason='wake-status-sweep'; exit 0; fi
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then
                 saved="$key"; save_key "$key"

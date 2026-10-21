@@ -9,6 +9,11 @@ today, so a job starts from a ready environment that only changes when we change
   `:latest` on a push to main that touches `.github/ci-image/**`, weekly (Mon 04:17 UTC,
   fresh apt packages) and on `workflow_dispatch`. It never runs on `pull_request`. The Push
   step writes the pushed `@sha256:` digest to the run summary.
+- **Digest bump:** when the pushed digest differs from the one `ci.yml` names, the
+  `digest-bump` job (`contents: read`, `issues: write` only) opens, or refreshes, one issue
+  titled `ci-image: bump ci.yml to the rebuilt image digest` carrying the `sed` line for an
+  operator PR. The repo lets no workflow open a PR, and `ci.yml` keeps pulling the digest it
+  names until that PR merges, so a rebuild never changes CI by itself.
 - **Drift check:** `scripts/ci/test-ci-image.sh` reads the apt packages, ffmpeg, bun,
   pre-commit, node, gitleaks and shellcheck-py pins live from `ci.yml`, `.bun-version`,
   `.pre-commit-config.yaml` and `gcp-runner-startup.sh` and fails when the Dockerfile
@@ -19,8 +24,8 @@ today, so a job starts from a ready environment that only changes when we change
   has `packages: write` (a branch writer editing the workflow on their own branch) can push
   a tag, and an environment does not narrow that token. Tags are therefore overwritable by
   any write holder: consumers pin the image by `@sha256:` digest, never by tag.
-- **One-time step:** after the first push, set the `himmel-ci` package visibility to
-  public (GHCR defaults to private) so a job can pull it without a token.
+- **Visibility:** the `himmel-ci` package stays private. Each containerized job pulls it
+  with `credentials:` from the job's own `GITHUB_TOKEN` and `permissions: packages: read`.
 
 ## Contents
 
@@ -46,25 +51,41 @@ sha256), pre-commit 4.7.0, shellcheck-py 0.11.0.1 first on PATH. A `runner` user
   transitive closure pinned, which nothing here bumps. Upgrade path: a hashed
   `requirements.txt` beside the Dockerfile.
 
-## Not switched yet
+## How ci.yml uses it
 
-`ci.yml` is untouched (other legs hold it). Adopting the image means, in `ci.yml`:
+Seven Linux jobs run in the image: `ci-quick`, `lint`, `lanes-and-trust-suites`,
+`bun-suites`, `security-scan`, `shell-unit-shard` and `guard-corpus-full`. Each has a
+block-form `container:` whose image is
 
-- `shell-unit-shard` (job at line 1099): add `container: ghcr.io/yotamleo-org/himmel-ci@sha256:<digest>`
-  (the digest from the build's run summary; a tag can be repointed)
-  to the job, and delete these steps for the Linux legs: `Record runner image` /
-  `Cache apt debs (at/atd)` / `Install + enable at/atd` (1178-1203), `Allow unprivileged
-  user namespaces` (1204; needs `options: --security-opt seccomp=unconfined` or the
-  host sysctl, since a container cannot set it), `oven-sh/setup-bun` (1214), the ffmpeg
-  record/cache/install steps (1232-1248), `Put pinned gitleaks on PATH` (1262) and
-  `Install pre-commit` (1278). Keep `Install obsidian-triage tool deps` (1224): it installs
-  repo-versioned deps, not tooling. Add `service atd start || atd` as the first step: a
-  container has no systemd, so `systemctl enable --now atd` is gone.
-- `lint`, `claude-startup`, `lanes-and-trust-suites`, `node-suites`, `security-scan`:
-  drop their `setup-node` / `setup-bun` / `pip install pre-commit` / `apt-install.sh` steps
-  the same way, and pin the digest in each `container:`.
-- The self-hosted `himmel-vm` and `gcp` legs run the job on the host, not in a container;
-  gate `container:` on the hosted leg (an expression that yields no container for them).
+```yaml
+image: ${{ !(<fork or dependabot>[ || <self-hosted route>]) && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:<digest>') || '' }}
+```
+
+with `credentials:` from `github.actor` / `github.token` (check-no-secrets.sh refuses a
+`secrets.*` interpolation), `--init` (without an init, PID 1 is the runner's
+`tail -f /dev/null`, which never reaps an orphan, so a killed process group stays
+visible as zombies), `--user 1001` (the
+image's `runner` user) and `--privileged` where bwrap needs user namespaces (`ci-quick`,
+`shell-unit-shard`, `guard-corpus-full`).
+
+- **Host fallback:** an empty image means no container (the runner treats `image: ''` as
+  no job container), so the job runs on the host with its old setup steps. Those steps are
+  gated `!job.container.id`; the few container-only steps (start `atd`, the image's
+  gitleaks and shellcheck pins) are gated `job.container.id`.
+- **Who falls back:** a fork PR and a `dependabot[bot]` run. Both get a read-only
+  `GITHUB_TOKEN` and no secrets
+  ([automatic token authentication](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#permissions-for-the-github_token),
+  [Dependabot on Actions](https://docs.github.com/en/code-security/dependabot/troubleshooting-dependabot/troubleshooting-dependabot-on-github-actions)),
+  so they are not counted on to pull a private package; they run the host path instead of
+  a red job. `shell-unit-shard` also falls back on its self-hosted routes
+  (`vars.HIMMEL_VM_RUNNER`, `vars.CI_GCP`), which run on the VM itself.
+- **Override:** `vars.CI_IMAGE` replaces the default ref for owner runs (never for a fork).
+  Only a repo admin can set it, and it may name a tag: an accepted risk, since the same
+  admin can edit the workflow.
+- **The default ref** is digest-pinned and identical in every job; `check-actions-pinned.sh`
+  refuses a tag-pinned `container:` or `services:` image, and
+  `scripts/ci/test-ci-container-jobs.sh` checks the shape, evaluates the expression for each
+  event, and checks the host-step gating.
 
 ## GCP runners
 

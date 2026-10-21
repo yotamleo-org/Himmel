@@ -73,6 +73,8 @@ cat > "$STUB/budget-off.sh" <<'EOF'
 exit 2
 EOF
 export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
+export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 
 # tick_line <legs> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {

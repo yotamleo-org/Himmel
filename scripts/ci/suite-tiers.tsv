@@ -105,6 +105,7 @@ scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
 scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
 scripts/ci/test-check-no-secrets.sh	pr	guard
 scripts/ci/test-check-vacuous-path-assert.sh	pr	trust-path
+scripts/ci/test-ci-container-jobs.sh	pr	trust-path
 scripts/ci/test-ci-gcp-routing.sh	pr	trust-path
 scripts/ci/test-ci-image.sh	pr	trust-path
 scripts/ci/test-ci-job-timeouts.sh	pr	trust-path
@@ -117,6 +118,7 @@ scripts/ci/test-ci-quick.sh	pr	trust-path
 scripts/ci/test-ci-vm-routing.sh	pr	trust-path
 scripts/ci/test-codeowner-review-gate.sh	pr	trust-path
 scripts/ci/test-corpus-sandbox.sh	pr	guard
+scripts/ci/test-cr-first-measure.sh	pr	trust-path
 scripts/ci/test-fork-drift-issue.sh	pr	static-gate
 scripts/ci/test-gcp-net.sh	pr	trust-path
 scripts/ci/test-gcp-runner-autoscale.sh	pr	trust-path
@@ -430,6 +432,7 @@ scripts/handover/test-lessons-sweep.sh	local	behaviour suite, 0 catches in the 4
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
+scripts/handover/test-merge-on-green-static-recheck.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard
 scripts/handover/test-pr-merge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window

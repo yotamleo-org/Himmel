@@ -17,6 +17,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/leg-jira-status.sh"
 SWEEP="$HERE/status-sweep.sh"
+HOLD="$HERE/ticket-hold.sh"
+DRIFT="$HERE/status-drift.sh"
 # shellcheck source=../../lib/env-value.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/env-value.sh"
@@ -39,7 +41,22 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 statusf() { if [ -e "$FX/status.$1" ]; then echo "$FX/status.$1"; else echo "$FX/status.cur"; fi; }
 case "$1" in
     get)
-        printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":[]}}\n' "$(cat "$(statusf "$2")")" ;;
+        [ -e "$FX/get.nolabels" ] && { printf '{"fields":{"status":{"name":"To Do"}}}\n'; exit 0; }
+        printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":%s}}\n' "$(cat "$(statusf "$2")")" \
+            "$(cat "$FX/labels.$2" 2>/dev/null | jq -Rsc 'split("\n") | map(select(length > 0))')" ;;
+    edit)
+        [ -e "$FX/edit.fail" ] && { echo "boom" >&2; exit 1; }
+        prev=""
+        for a in "$@"; do
+            case "$prev" in
+                --add-labels) [ -e "$FX/edit.noop" ] || printf '%s\n' "$a" >> "$FX/labels.$2" ;;
+                --remove-labels)
+                    [ -e "$FX/edit.noop" ] || { grep -vx "$a" "$FX/labels.$2" > "$FX/labels.t" 2>/dev/null; mv "$FX/labels.t" "$FX/labels.$2"; } ;;
+            esac
+            prev="$a"
+        done
+        echo "$2 edited"
+        exit 0 ;;
     transition)
         [ -e "$FX/transition.sleep" ] && sleep "$(cat "$FX/transition.sleep")"
         printf '%s\n' "$3" > "$FX/status.$2"
@@ -379,6 +396,418 @@ contains "2b: a clean sweep does not wake" "$(cat "$tmp/sout")" "wake=0"
 touch "$FX/graphql.fail"
 sweep
 contains "2b: the miss after a clean sweep wakes again" "$(cat "$tmp/sout")" "wake=1"
+
+# --- 3a: holds ----------------------------------------------------------------
+hold()  { bash "$HOLD" "$@" >"$tmp/hout" 2>&1; }
+rowq()  { jq -r "$1" "$LOG" 2>/dev/null; }
+
+reset "To Do"
+hold "$K" --reason "waiting on legal" --owner chief --until 2026-11-01; rc=$?
+check "3a: hold exits 0" "$rc" 0
+check "3a: hold adds the held label with one edit" "$(grep -c "^edit $K --add-labels held" "$STUB_LOG")" 1
+check "3a: the label reads back on the ticket" "$(cat "$FX/labels.$K")" held
+contains "3a: the HOLD comment names the reason" "$(cat "$FX/comment-body.last")" "waiting on legal"
+contains "3a: the HOLD comment names the owner" "$(cat "$FX/comment-body.last")" "chief"
+contains "3a: the HOLD comment carries the advisory date" "$(cat "$FX/comment-body.last")" "2026-11-01"
+check "3a: hold writes one outcome row" "$(rowq 'select(.event == "hold") | .result')" moved
+check "3a: and no status transition" "$(ntrans)" 0
+
+hold "$K" --release --owner chief; rc=$?
+check "3a: release exits 0" "$rc" 0
+check "3a: release drops the label with one edit" "$(grep -c "^edit $K --remove-labels held" "$STUB_LOG")" 1
+check "3a: the label is gone on read-back" "$(cat "$FX/labels.$K")" ""
+check "3a: release writes its own outcome row" "$(rowq 'select(.event == "hold-release") | .result')" moved
+
+reset "To Do"; touch "$FX/edit.noop"
+hold "$K" --reason r --owner o; rc=$?
+check "3a: a label that does not read back exits 1" "$rc" 1
+check "3a: and logs miss at the readback stage" "$(rowq 'select(.event == "hold") | .result + ":" + .stage')" "miss:readback"
+check "3a: and posts no HOLD comment" "$(ncomment)" 0
+
+reset "To Do"; touch "$FX/get.nolabels"
+hold "$K" --release --owner o; rc=$?
+check "3a: a read-back with no labels field is not proof of a release" "$rc" 1
+check "3a: and logs miss at the readback stage" "$(rowq 'select(.event == "hold-release") | .result + ":" + .stage')" "miss:readback"
+
+reset "To Do"; touch "$FX/edit.fail"
+hold "$K" --reason r --owner o; rc=$?
+check "3a: a failed edit exits 1" "$rc" 1
+check "3a: and logs miss at the edit stage" "$(rowq 'select(.event == "hold") | .result + ":" + .stage')" "miss:edit"
+
+reset "To Do"; touch "$FX/comment.fail"
+hold "$K" --reason r --owner o; rc=$?
+check "3a: a failed HOLD comment still holds" "$rc" 0
+check "3a: the label stands" "$(cat "$FX/labels.$K")" held
+check "3a: the failed comment is an audit-gap row" "$(rowq 'select(.event == "audit-gap") | .key + ":" + .stage')" "$K:comment"
+contains "3a: and warns on stderr" "$(cat "$tmp/hout")" "audit-gap"
+
+reset "To Do"
+TMPDIR="$tmp/no-such-dir" hold "$K" --reason r --owner o; rc=$?
+check "3a: no temp file for the HOLD comment still holds" "$rc" 0
+check "3a: and the label stands" "$(cat "$FX/labels.$K")" held
+check "3a: and no comment is posted" "$(ncomment)" 0
+check "3a: and the lost comment is an audit-gap row" "$(rowq 'select(.event == "audit-gap") | .key + ":" + .stage')" "$K:comment"
+contains "3a: and warns on stderr" "$(cat "$tmp/hout")" "audit-gap"
+
+reset "To Do"
+hold "$K" --owner o; rc=$?
+check "3a: a hold without --reason is a usage error" "$rc" 2
+hold "$K" --reason r; rc=$?
+check "3a: a hold without --owner is a usage error" "$rc" 2
+hold not-a-key --reason r --owner o; rc=$?
+check "3a: a non-key is a usage error" "$rc" 2
+check "3a: usage errors call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0
+
+reset "To Do"; owned "$K"; printf 'held\n' > "$FX/labels.$K"
+fn "$K" --event live
+check "3a: derive ignores a hold: a held ticket still moves" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+
+# --- 3b: the drift check ------------------------------------------------------
+drift() { bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1; }
+drows() { grep -E "^$1 " "$tmp/dout"; }
+dcount() { drows "$1" | wc -l | tr -d ' '; }
+dlast() { tail -n 1 "$tmp/dout"; }
+nwrites() { grep -cE '^(transition|comment|edit)' "$STUB_LOG" || true; }
+wipe_docs() { rm -rf "$tmp/docs"; mkdir -p "$tmp/docs"; }
+logrow() { # <event> <key> <result> <pr> [contract] - a row appended to the outcome log
+    mkdir -p "$TICKET_STATUS_STATE_DIR"
+    jq -nc --arg e "$1" --arg k "$2" --arg r "$3" --arg p "$4" --arg c "${5:-}" \
+        '{ts: "2026-10-21T10:00:00Z", event: $e, key: $k, result: $r, pr: $p, contract: $c}' >> "$LOG"
+}
+
+wipe_docs
+reset "To Do"
+drift; rc=$?
+check "3b: a clean pass exits 0" "$rc" 0
+contains "3b: a clean pass reports no drift" "$(dlast)" "sdrift=0:"
+check "3b: a clean pass lists no class row" "$(grep -cE '^[A-Z]+(-[A-Z]+)* ' "$tmp/dout")" 0
+bash "$DRIFT" --bogus >/dev/null 2>&1; rc=$?
+check "3b: an unknown option is a usage error" "$rc" 2
+
+reset "In Progress"; owned "$K"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 pass
+before=$(cksum < "$(rec_of "$K")")
+drift
+contains "3b: a Jira status behind the derive is a DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
+contains "3b: the row names the D rule" "$(drows DERIVE-MISMATCH)" "rule=D3"
+contains "3b: the row names the forward direction" "$(drows DERIVE-MISMATCH)" "dir=forward"
+contains "3b: the row names both statuses" "$(drows DERIVE-MISMATCH)" "jira=In Progress derived=IN CI"
+contains "3b: the row names its writer and its recovery command" "$(drows DERIVE-MISMATCH)" "status-sweep.sh"
+sig1=$(dlast)
+drift
+check "3b: the same drift twice gives the same signature" "$(dlast)" "$sig1"
+check "3b: the drift check writes no Jira field, status or comment" "$(nwrites)" 0
+check "3b: and leaves the worker record as it was" "$(cksum < "$(rec_of "$K")")" "$before"
+
+reset "IN CI"; owned "$K"; jl "$K" "IN CI"; pr 7 "[$K] feat" aaa111; checks 7 fail
+drift
+contains "3b: a Jira status ahead of the derive is a DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
+contains "3b: the backward row names its rule" "$(drows DERIVE-MISMATCH)" "rule=D1"
+contains "3b: the backward row names its direction" "$(drows DERIVE-MISMATCH)" "dir=backward"
+check "3b: a flipped direction changes the signature" "$([ "$(dlast)" != "$sig1" ] && echo differs)" differs
+
+reset "In Progress"; owned "$K"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fail
+drift
+check "3b: a status equal to the derive is not drift" "$(dcount DERIVE-MISMATCH)" 0
+
+reset "Done"; pr 7 "[$K] feat" aaa111
+drift
+contains "3b: a Done ticket with an open PR is DONE-WITH-OPEN-PR" "$(drows DONE-WITH-OPEN-PR)" "DONE-WITH-OPEN-PR $K"
+contains "3b: the row names the PR" "$(drows DONE-WITH-OPEN-PR)" "#7"
+check "3b: and is not also a DERIVE-MISMATCH" "$(dcount DERIVE-MISMATCH)" 0
+
+reset "Done"; pr 7 "[HIMMEL-90019] feat" aaa111
+drift
+check "3b: a PR of another key (first [KEY] only) is not this ticket's" "$(drows DONE-WITH-OPEN-PR | grep -c "OPEN-PR $K ")" 0
+
+reset "In Review"; logrow merge "$K" miss 7 yes
+drift
+contains "3b: a contract-yes merge with the ticket not Done is a MERGE-MISMATCH" "$(drows MERGE-MISMATCH)" "MERGE-MISMATCH $K"
+reset "Done"; logrow merge "$K" miss 7 yes
+drift
+check "3b: a Done ticket after its merge row is not a MERGE-MISMATCH" "$(dcount MERGE-MISMATCH)" 0
+reset "In Review"; logrow merge "$K" moved 7 no
+drift
+check "3b: a contract-no merge row is not a MERGE-MISMATCH" "$(dcount MERGE-MISMATCH)" 0
+
+reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
+drift
+contains "3b: more merge keys than the check budget is reported, not dropped" "$(drows HEALTH)" "checked 20 of 21"
+
+reset "To Do"; logrow check-ci-exit "$K" miss 7
+drift
+contains "3b: a miss with no later moved or noop row is MISSED" "$(drows MISSED)" "MISSED $K"
+logrow check-ci-exit "$K" noop 7
+drift
+check "3b: a later noop row for the same key and PR clears it" "$(dcount MISSED)" 0
+reset "To Do"; logrow check-ci-exit "$K" miss 7; logrow check-ci-exit "$K" moved 8
+drift
+contains "3b: a later moved row for another PR does not clear it" "$(drows MISSED)" "MISSED $K"
+
+reset "In Progress"; owned "$K" WRAPPED '{"state":"live"}'; jl "$K" "In Progress"
+drift
+contains "3b: a live record whose doc is WRAPPED is WORKER-STALE" "$(drows WORKER-STALE)" "WORKER-STALE $K"
+reset "In Progress"; owned "$K" LIVE '{"state":"idle"}'; jl "$K" "In Progress"; printf '0\n' > "$FX/lock.rc"
+drift
+contains "3b: an idle record whose lock is released is WORKER-STALE" "$(drows WORKER-STALE)" "WORKER-STALE $K"
+reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
+drift
+check "3b: a live record with a held lock is not stale" "$(dcount WORKER-STALE)" 0
+
+reset "In Progress"; owned "$K" LIVE '{"state":"live","comment_id":"5001","comment_hash":"1"}'; jl "$K" "In Progress"
+drift
+contains "3b: a WORKER comment hash that differs from the class is WORKER-COMMENT" "$(drows WORKER-COMMENT)" "WORKER-COMMENT $K"
+reset "To Do"; owned "$K"
+fn "$K" --event live
+jl "$K" "In Progress"
+drift
+check "3b: the hash the funnel stored is the hash drift expects" "$(dcount WORKER-COMMENT)" 0
+check "3b: and the ticket the funnel moved is not drift" "$(dlast | cut -d: -f1)" "sdrift=0"
+
+reset "In Progress"; wipe_docs; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
+mkdoc "$tmp/docs/$K-N2-other-2026-10-21.md" LIVE
+drift
+contains "3b: two live docs for one key are TWO-OWNERS" "$(drows TWO-OWNERS)" "TWO-OWNERS $K"
+wipe_docs; mkdoc "$tmp/docs/$K-N2-other-2026-10-21.md" WRAPPED
+drift
+check "3b: a wrapped second doc is not an owner" "$(dcount TWO-OWNERS)" 0
+wipe_docs; mkdoc "$tmp/docs/HIMMEL-90019-N2-other-2026-10-21.md" LIVE
+drift
+check "3b: another key's doc is not an owner (exact key, not a prefix)" "$(dcount TWO-OWNERS)" 0
+wipe_docs
+
+reset "In Progress"; jl "$K" "In Progress"
+drift
+contains "3b: started, no open PR and no owner is UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
+drift
+check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
+reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fail
+drift
+check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
+
+reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; printf 'held\n' > "$FX/labels.$K"
+drift
+contains "3b: a held ticket with a live owner is HELD-IN-WORK" "$(drows HELD-IN-WORK)" "HELD-IN-WORK $K"
+reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fail; printf 'held\n' > "$FX/labels.$K"
+drift
+contains "3b: a held ticket with an open PR is HELD-IN-WORK" "$(drows HELD-IN-WORK)" "HELD-IN-WORK $K"
+reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
+drift
+check "3b: an unheld ticket is not HELD-IN-WORK" "$(dcount HELD-IN-WORK)" 0
+
+reset "To Do"; touch "$FX/pr-list.fail"
+drift
+contains "3b: an unreadable PR list is sdrift=unknown" "$(dlast)" "sdrift=unknown"
+contains "3b: and a HEALTH row names the PR list" "$(drows HEALTH)" "gh"
+reset "To Do"; touch "$FX/list.fail"
+drift
+contains "3b: an unreadable Jira search is sdrift=unknown" "$(dlast)" "sdrift=unknown"
+contains "3b: and a HEALTH row names Jira" "$(drows HEALTH)" "jira"
+reset "To Do"; i=0; while [ "$i" -lt 300 ]; do jl "HIMMEL-$((1000 + i))" "In Progress"; i=$((i + 1)); done
+drift
+contains "3b: a saturated Jira search is sdrift=unknown" "$(dlast)" "sdrift=unknown"
+contains "3b: and a HEALTH row names the limit" "$(drows HEALTH)" "limit"
+reset "In Progress"; jl "$K" "In Progress"; mkdir -p "$TICKET_STATUS_STATE_DIR/workers"; printf '{bad\n' > "$(rec_of "$K")"
+drift
+contains "3b: an unreadable worker record is a HEALTH row naming the key" "$(drows HEALTH)" "$K"
+check "3b: and the pass is not unknown" "$(dlast | grep -c unknown)" 0
+reset "To Do"; mkdir -p "$LOG"
+drift
+contains "3b: an unwritable outcome log is a HEALTH row" "$(drows HEALTH)" "unwritable"
+reset "To Do"; logrow leg-jira-status "$K" disabled ""
+drift
+contains "3b: a disabled row is a HEALTH row, never clean" "$(drows HEALTH)" "disabled"
+
+# --- 3c: the FOCUS refresh (focus-refresh.sh) ----------------------------------------
+FOCUS="$HERE/focus-refresh.sh"
+FR="$tmp/fr"
+mkdir -p "$tmp/frbin"
+cat >"$tmp/frbin/jira" <<'EOS'
+#!/usr/bin/env bash
+echo "jira $1" >> "$FX/fr.log"
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = "$1" ] && exit 1
+[ "$1" = versions ] && printf 'v1.1.3\tfalse\t-\n'
+exit 0
+EOS
+cat >"$tmp/frbin/sweep" <<'EOS'
+#!/usr/bin/env bash
+echo "sweep" >> "$FX/fr.log"
+case "$(cat "$FX/fr.fail" 2>/dev/null)" in
+    sweep) exit 1 ;;
+    sweep-unknown) echo "status-sweep: unknown (gh unreadable) keys=0 sig=x wake=1"; exit 0 ;;
+esac
+echo "status-sweep: keys=2 served=2 moved=$(cat "$FX/sweep.moved" 2>/dev/null || echo 0) miss=0 funnel=1 sig=abc wake=1"
+EOS
+cat >"$tmp/frbin/tracker" <<'EOS'
+#!/usr/bin/env bash
+echo "tracker $*" >> "$FX/fr.log"
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = render ] && exit 1
+[ -e "$FX/fr.sleep" ] && sleep "$(cat "$FX/fr.sleep")"
+[ -e "$FX/fr.again" ] && date +%s > "$(cat "$FX/fr.again")"
+out=""; prev=""
+for a in "$@"; do [ "$prev" = --out ] && out="$a"; prev="$a"; done
+n=$(( $(cat "$FX/render.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/render.n"
+echo "render $n" > "$out"
+cat "$FX/vfp" 2>/dev/null > "$out.vfp" || echo vfp1 > "$out.vfp"
+EOS
+cat >"$tmp/frbin/drift" <<'EOS'
+#!/usr/bin/env bash
+echo "drift" >> "$FX/fr.log"
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = drift ] && exit 1
+if [ "$(cat "$FX/fr.fail" 2>/dev/null)" = drift-unknown ]; then
+    echo "sdrift=unknown"
+    exit 0
+fi
+echo "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+echo "sdrift=1:0a1b2c3d"
+EOS
+chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift"
+export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift"
+export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
+fr_reset() { # fresh fixtures plus a console doc with a focus-version line
+    reset "To Do"
+    rm -rf "$FR"; mkdir -p "$FR/doc" "$FR/mir"
+    printf '# console\n\n## Live state\ntracker: https://example.invalid/t\nfocus-version: v1.1.3\n' > "$FR/doc/console.md"
+}
+fr() { bash "$FOCUS" --doc "$FR/doc/console.md" "$@" >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc"; }
+frrc() { cat "$tmp/frrc"; }
+frout() { cat "$tmp/frout"; }
+fst() { sed -n "s/^$1=//p" "$FR/doc/focus-state" | head -n 1; }
+frseq() { awk '{ print $1 }' "$FX/fr.log" 2>/dev/null | paste -sd, -; }
+PAGE="$FR/doc/roadmap-tracker.html"
+
+fr_reset; sed -i '/^focus-version:/d' "$FR/doc/console.md"  # gnu-ok: Linux-only kit
+fr
+check "3c: no focus-version line prints skip" "$(frout)" "focus=skip"
+check "3c: and exits 0" "$(frrc)" 0
+check "3c: and runs nothing" "$([ -e "$FX/fr.log" ] && echo ran || echo none)" none
+fr --status
+check "3c: --status without a focus-version line is skip" "$(frout)" "focus=skip"
+bash "$FOCUS" --bogus >/dev/null 2>&1
+check "3c: a usage error exits 2" "$?" 2
+
+fr_reset
+fr
+check "3c: a full refresh prints ok" "$(frout)" "focus=ok"
+check "3c: and exits 0" "$(frrc)" 0
+check "3c: the steps run in order: mirror, versions, sweep, render, drift" "$(frseq)" "jira,jira,sweep,tracker,drift"
+check "3c: the page is written" "$(cat "$PAGE")" "render 1"
+check "3c: the state records status ok" "$(fst status)" ok
+check "3c: the state records generation 1" "$(fst gen)" 1
+contains "3c: the state records the drift line" "$(fst sdrift)" "1:0a1b2c3d"
+check "3c: the state records the page fingerprint" "$(fst sha8)" vfp1
+check "3c: the versions snapshot sits next to the mirror" "$(cat "$FR/mir/HIMMEL.versions.tsv")" "$(printf 'v1.1.3\tfalse\t-')"
+trk=$(grep '^tracker ' "$FX/fr.log")
+contains "3c: the render names the version" "$trk" "--version v1.1.3"
+contains "3c: the render reads the worker records" "$trk" "--workers-dir $TICKET_STATUS_STATE_DIR/workers"
+contains "3c: the render reads the staged PR snapshot" "$trk" "--prs-file"
+contains "3c: the render reads the mirror it was given" "$trk" "--mirror-dir $FR/mir/HIMMEL"
+check "3c: the drift rows are kept beside the page" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+fr
+check "3c: a second refresh is generation 2" "$(fst gen)" 2
+check "3c: an unchanged fingerprint leaves the page alone" "$(cat "$PAGE")" "render 1"
+echo vfp2 > "$FX/vfp"
+fr
+check "3c: a changed fingerprint replaces the page" "$(cat "$PAGE")" "render 3"
+check "3c: and the stored fingerprint follows" "$(cat "$PAGE.vfp")" vfp2
+
+fr_reset
+mkdir -p "$FR/m2"
+fr --mirror-fresh "$FR/m2"
+check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift"
+contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
+
+for stage in mirror versions sweep render drift; do
+    fr_reset
+    fr
+    echo "page-before" > "$PAGE"
+    printf '%s\n' "$stage" > "$FX/fr.fail"
+    : > "$FX/fr.log"
+    fr
+    check "3c: a failed $stage step prints FAILED:$stage" "$(frout)" "focus=FAILED:$stage"
+    check "3c: and exits 1" "$(frrc)" 1
+    check "3c: the state records the stage" "$(fst stage)" "$stage"
+    check "3c: the state records FAILED" "$(fst status)" FAILED
+    check "3c: the generation is not advanced" "$(fst gen)" 1
+    check "3c: the published page is untouched" "$(cat "$PAGE")" "page-before"
+done
+fr_reset; echo sweep-unknown > "$FX/fr.fail"
+fr
+check "3c: an unknown sweep is FAILED:sweep" "$(frout)" "focus=FAILED:sweep"
+fr_reset; echo drift-unknown > "$FX/fr.fail"
+fr
+check "3c: an unknown drift pass is FAILED:drift" "$(frout)" "focus=FAILED:drift"
+check "3c: and the page is not published" "$([ -e "$PAGE" ] && echo set || echo none)" none
+fr_reset; echo 2 > "$FX/sweep.moved"
+fr
+check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift"
+check "3c: and the refresh is ok" "$(frout)" "focus=ok"
+fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
+fr
+check "3c: a failed re-read after a move is FAILED:mirror" "$(frout)" "focus=FAILED:mirror"
+fr_reset
+( cd "$FR/doc" && bash "$FOCUS" --doc console.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
+check "3c: a bare doc filename resolves beside the doc" "$(frout)" "focus=ok"
+check "3c: and the page lands beside the doc" "$(cat "$PAGE")" "render 1"
+fr_reset; touch "$FX/pr-list.fail"
+fr
+check "3c: an unreadable PR snapshot is FAILED:prs" "$(frout)" "focus=FAILED:prs"
+check "3c: and the render does not run" "$(grep -c '^tracker' "$FX/fr.log")" 0
+
+fr_reset; echo render > "$FX/fr.fail"; fr
+fr --status
+check "3c: --status after a failed render is FAILED:render" "$(frout)" "focus=FAILED:render"
+rm -f "$FX/fr.fail"; fr
+fr --status
+check "3c: --status after the next good refresh is ok" "$(frout)" "focus=ok"
+fr --mark-dirty
+check "3c: --mark-dirty leaves a request marker for a running refresh" "$([ -s "$FR/doc/focus-state.again" ] && echo set || echo none)" set
+fr --status
+contains "3c: --mark-dirty makes the state DIRTY" "$(frout)" "focus=DIRTY:0m"
+printf 'status=ok\ngen=3\ndirty=%s\n' "$(( $(date +%s) - 1500 ))" > "$FR/doc/focus-state"
+fr --status
+check "3c: a dirty mark reads its age in minutes" "$(frout)" "focus=DIRTY:25m"
+rm -f "$FR/doc/focus-state"
+fr --status
+check "3c: no state at all is DIRTY, never ok" "$(frout | cut -d: -f1)" "focus=DIRTY"
+
+fr_reset; echo 5 > "$FX/fr.sleep"
+FOCUS_REFRESH_BUDGET=1 fr
+check "3c: a hung render is cut off as FAILED:timeout" "$(frout)" "focus=FAILED:timeout"
+check "3c: and exits 1" "$(frrc)" 1
+check "3c: the state records the timeout" "$(fst stage)" timeout
+rm -f "$FX/fr.sleep"
+fr_reset; echo 5 > "$FX/fr.sleep"
+( sleep 1; printf 'status=ok\nstage=\ngen=7\ndirty=\nsha8=zz\nsdrift=\n' > "$FR/doc/focus-state" ) &
+FOCUS_REFRESH_BUDGET=2 fr
+wait
+check "3c: a timeout keeps the generation a concurrent writer stored" "$(fst gen)" 7
+check "3c: and still records the timeout" "$(fst stage)" timeout
+rm -f "$FX/fr.sleep"
+
+if command -v flock >/dev/null 2>&1; then
+    fr_reset
+    ( exec 9>"$FR/mir/HIMMEL.lock"; flock 9; sleep 3 ) &
+    holder=$!
+    n=0
+    while [ "$n" -lt 50 ] && ( exec 8>"$FR/mir/HIMMEL.lock"; flock -n 8 ); do sleep 0.1; n=$((n + 1)); done
+    fr
+    check "3c: a refresh that finds the lock held prints busy" "$(frout)" "focus=busy"
+    check "3c: and exits 0 without running a step" "$(frrc)$([ -e "$FX/fr.log" ] && echo ran)" 0
+    kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+    check "3c: a busy refresh leaves a request marker" "$([ -s "$FR/doc/focus-state.again" ] && echo set || echo none)" set
+    fr
+    check "3c: the next refresh with no new request clears the marker" "$([ -e "$FR/doc/focus-state.again" ] && echo set || echo none)" none
+    check "3c: and is clean" "$(fst dirty)" ""
+    echo "$FR/doc/focus-state.again" > "$FX/fr.again"
+    fr
+    rm -f "$FX/fr.again"
+    check "3c: a request that lands during a run leaves the state DIRTY" "$(fst dirty | grep -c '^[0-9][0-9]*$')" 1
+    fr --status
+    contains "3c: and --status reads DIRTY" "$(frout)" "focus=DIRTY:0m"
+    fr
+    check "3c: the next refresh clears the dirty mark" "$(fst dirty)" ""
+fi
 
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
