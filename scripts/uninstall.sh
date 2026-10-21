@@ -1996,6 +1996,17 @@ $unit"
         fi
       fi
       prov_read_outcome kept "$u" "$reason"
+      case "$reason" in
+        user-modified|no-backup)
+          if printf '%s' "$u" | jq -e '
+            .row == "plugin-flags" or
+            (.row == "adopter-scripts" and ((.path // "") | endswith("/.gitignore"))) or
+            (.kind == "json-key" and ((.unit // "") | startswith("/enabledPlugins/")))
+          ' >/dev/null; then
+            echo "  NOT touched: $(printf '%s' "$u" | jq -r '.path') $unit ($reason)"
+            fail_step "$_step NOT touched: $unit ($reason)"
+          fi ;;
+      esac
       _LEDGER_PROTECTED="$_LEDGER_PROTECTED
 $unit"
       return 1 ;;
@@ -2694,6 +2705,16 @@ EOF
   fi
 fi
 echo ""
+
+if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && [ "$SKIP_PLUGINS" -eq 0 ] && class_removes "$_ix_plug"; then
+  while IFS= read -r _u; do
+    [ "$HALTED" -eq 0 ] || break
+    [ -n "$_u" ] || continue
+    ledger_apply_unit "$_u" "[4/8]"
+  done <<EOF
+$(prov_read_units --row plugin-flags --kind file)
+EOF
+fi
 
 # --- [5/8] uninstall git hooks -------------------------------------------------
 # Mirror of setup-hooks.sh / setup.sh step 2.

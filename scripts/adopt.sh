@@ -273,7 +273,7 @@ copy_recorded() {
     op=replace
     if [[ $DRY_RUN -eq 1 ]]; then
       snap="$dest"   # a dry run never reads it: prov_record only prints the DRY line
-    elif tmp="$(mktemp)" && cp -p "$dest" "$tmp"; then
+    elif tmp="$(mktemp "${TMPDIR:-/tmp}/adopt-copy.XXXXXX")" && cp -p "$dest" "$tmp"; then
       snap="$tmp"
     else
       rm -f "$tmp"
@@ -372,11 +372,26 @@ ensure_worktrees_ignored() {
     echo "DRY: append .claude/worktrees/ to $TARGET/.gitignore"
     return 0
   fi
+  local before="" op=create
+  local -a pre=(--pre-absent)
+  if [[ -f "$TARGET/.gitignore" ]]; then
+    before="$(mktemp "${TMPDIR:-/tmp}/adopt-ignore.XXXXXX")" || return 1
+    cp -p "$TARGET/.gitignore" "$before" || { rm -f "$before"; return 1; }
+    op=replace
+    pre=(--pre-file "$before" --backup)
+  fi
   # a .gitignore without a final newline would fuse the rule onto its last line
   if [[ -s "$TARGET/.gitignore" && -n "$(tail -c1 "$TARGET/.gitignore")" ]]; then
     echo >> "$TARGET/.gitignore"
   fi
   echo ".claude/worktrees/" >> "$TARGET/.gitignore"
+  if ! prov_record "$op" file "$TARGET/.gitignore" --scope project --class code --row adopter-scripts \
+      --writer adopt.sh "${pre[@]}" --post-file "$TARGET/.gitignore"; then
+    if [[ -n "$before" ]]; then cp -p "$before" "$TARGET/.gitignore"; else rm -f "$TARGET/.gitignore"; fi
+    rm -f "$before"
+    return 1
+  fi
+  rm -f "$before"
   echo "  .gitignore: added .claude/worktrees/"
 }
 

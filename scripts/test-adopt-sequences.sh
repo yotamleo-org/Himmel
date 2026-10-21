@@ -48,7 +48,10 @@ ADHOC=
 CHECK=
 while [ $# -gt 0 ]; do
   case "$1" in
-    --seed) SEED="${2:?}"; shift 2 ;;
+    --seed)
+      SEED="${2:?}"
+      case "$SEED" in *[!0-9]*) echo "--seed needs a decimal number" >&2; exit 2 ;; esac
+      SEED=$((10#$SEED)); shift 2 ;;
     --only) ONLY="${2:?}"; shift 2 ;;
     --keep) KEEP="${2:?}"; shift 2 ;;
     --seq) ADHOC="${2:?}"; shift 2 ;;
@@ -91,6 +94,7 @@ st="$STUB_STATE"
 n=$(( $(cat "$st/calls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$st/calls"
 printf '%s\n' "$*" >> "$st/log"
 if [ -n "${STUB_FAIL_AT:-}" ] && [ "$n" -eq "$STUB_FAIL_AT" ]; then
+  echo "$n" > "$st/injected"
   echo "stub: injected failure at call $n" >&2; exit 1
 fi
 [ -s "$st/plugins.json" ] || echo '[]' > "$st/plugins.json"
@@ -149,7 +153,7 @@ case "${1:-} ${2:-} ${3:-}" in
   *) exit 0 ;;
 esac
 STUB_EOF
-  chmod 755 "$1/claude"
+  chmod 755 "$1/claude" || return 1
 }
 
 # ── fixture ─────────────────────────────────────────────────────────────────
@@ -163,14 +167,14 @@ new_fixture() {
            sha256sum readlink env ls; do
     link_hermetic_tool "$t" "$d/bin"
   done
-  write_stub "$d/bin"
+  write_stub "$d/bin" || return 1
   printf '{"env":{"OPERATOR_KEY":"keep"},"model":"opus"}\n' > "$d/home/.claude/settings.json"
   printf '# operator notes\nkeep me\n' > "$d/home/.claude/CLAUDE.md"
   printf '{"permissions":{"allow":["Bash(ls:*)"]}}\n' > "$d/proj/.claude/settings.json"
-  git -C "$d/proj" init -q -b main
-  git -C "$d/proj" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  git -C "$d/proj" init -q -b main || return 1
+  git -C "$d/proj" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || return 1
   printf '#!/bin/sh\n# foreign hook\nexit 0\n' > "$d/proj/.git/hooks/pre-commit"
-  chmod 755 "$d/proj/.git/hooks/pre-commit"
+  chmod 755 "$d/proj/.git/hooks/pre-commit" || return 1
 }
 
 # snapshot <X> <out>: type+mode+symlink target+path for everything under home/ and proj/,
@@ -182,16 +186,18 @@ snapshot() {
       -o -type d \
       -o -printf '%y %m %l %p\n' | sort -k3
     find home proj -type f \
-      \( -path 'proj/.git/*' ! -path 'proj/.git/hooks/*' ! -path 'proj/.git/config' \) -prune \
+      \( -path 'proj/.git/*' ! -path 'proj/.git/hooks' ! -path 'proj/.git/hooks/*' ! -path 'proj/.git/config' \) -prune \
       -o -type f -exec sha256sum {} + | sort -k2 ) > "$2"
 }
 
-# norm_settings <file>: the file with the on-demand `false` markers adopt writes
-# into enabledPlugins (known residue, see KNOWN_RESIDUE) dropped
+# Compare JSON values, not formatting; strict mode tolerates no leftover keys.
 norm_settings() {
-  jq -S 'if .enabledPlugins then .enabledPlugins |= with_entries(select(.value != false)) else . end
-         | if .enabledPlugins == {} then del(.enabledPlugins) else . end
-         | if .extraKnownMarketplaces == {} then del(.extraKnownMarketplaces) else . end' "$1" 2>/dev/null || cat "$1"
+  jq -S --argjson strict "$STRICT" '
+    if $strict == 1 then . else
+      (if .enabledPlugins then .enabledPlugins |= with_entries(select(.value != false)) else . end
+       | if .enabledPlugins == {} then del(.enabledPlugins) else . end
+       | if .extraKnownMarketplaces == {} then del(.extraKnownMarketplaces) else . end)
+    end' "$1" 2>/dev/null || cat "$1"
 }
 
 # remaining <X> <before> -> prints the paths that differ from the pre-install snapshot, allowlist aside
@@ -205,13 +211,15 @@ remaining() {
     if [ "$STRICT" -ne 1 ]; then
       [ "$p" = home/.claude/.i-have-adhd-always ] && continue
       [ "$p" = proj/.gitignore ] && [ "$(cat "$d/$p")" = ".claude/worktrees/" ] && continue
-      case "$p" in
-        home/.claude/settings.json) pre="$d/pre/home-settings.json" ;;
-        proj/.claude/settings.json) pre="$d/pre/proj-settings.json" ;;
-        *) pre="" ;;
-      esac
-      [ -z "$pre" ] || [ "$(norm_settings "$pre")" != "$(norm_settings "$d/$p")" ] || continue
     fi
+    case "$p" in
+      home/.claude/settings.json) pre="$d/pre/home-settings.json" ;;
+      proj/.claude/settings.json) pre="$d/pre/proj-settings.json" ;;
+      *) pre="" ;;
+    esac
+    if [ -n "$pre" ] && [ -f "$d/$p" ] && [ ! -L "$d/$p" ] \
+        && [ "$(stat -c %a "$pre" 2>/dev/null || stat -f %Lp "$pre")" = "$(stat -c %a "$d/$p" 2>/dev/null || stat -f %Lp "$d/$p")" ] \
+        && [ "$(norm_settings "$pre")" = "$(norm_settings "$d/$p")" ]; then continue; fi
     echo "$p"
   done || true
 }
@@ -223,7 +231,7 @@ row() { echo "$1 $2" >> "$X/rows"; }
 fixture_env() {
   export HOME="$X/home" CLAUDE_CONFIG_DIR="$X/home/.claude" STUB_STATE="$X/state" STUB_TEMPLATE="$R/docs/setup/settings-template.json"
   export PATH="$X/bin"
-  unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT
+  unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT STUB_UNDECLARED
 }
 
 # graphify, rtk, the hermes checkout and lanes, bun, uv, gitleaks, shellcheck, gh, the scheduler backend, npm and the built jira CLI are host tools adopt neither writes nor
@@ -279,11 +287,12 @@ check_green() { # <scope> <label>
 v_adopt() { # <scope> <label> [fail-at-k]
   local scope="$1" label="$2" k="${3:-}" rc
   : > "$X/state/calls"
+  rm -f "$X/state/injected"
   ( cd "$X/proj" && env ${k:+STUB_FAIL_AT=$k} bash "$R/scripts/adopt.sh" --profile core --scope "$scope" --target "$X/proj" </dev/null ) > "$X/adopt.out" 2>&1
   rc=$?
   if [ -n "$k" ]; then
-    if [ "$(cat "$X/state/calls")" -ge "$k" ]; then row ok "$label: adopt ran (rc=$rc, injected)"
-    else row bad "$label: injection at claude call $k never reached (only $(cat "$X/state/calls") calls)"; fi
+    if [ "$(cat "$X/state/injected" 2>/dev/null)" = "$k" ]; then row ok "$label: adopt ran (rc=$rc, injected)"
+    else row bad "$label: injection at claude call $k never fired (only $(cat "$X/state/calls") calls)"; fi
   elif [ "$rc" -eq 0 ]; then row ok "$label: adopt rc 0"; check_green "$scope" "$label"
   else row bad "$label: adopt rc=$rc: $(tail -3 "$X/adopt.out" | tr '\n' ';')"; fi
 }
@@ -303,25 +312,30 @@ v_uninstall() { # <label> [extra uninstall flags]
 }
 
 v_tamper() { # corrupt every backup holding the JSON null a container is restored from, so the restore is declined
-  local f
+  local f n=0
   for f in "$HOME"/.himmel/provenance-backups/*/*; do
-    [ -f "$f" ] && [ "$(jq -c . "$f" 2>/dev/null)" = null ] && printf 'CORRUPT' > "$f"
+    if [ -f "$f" ] && [ "$(jq -c . "$f" 2>/dev/null)" = null ]; then
+      printf 'CORRUPT' > "$f" && n=$((n + 1))
+    fi
   done
+  if [ "$n" -gt 0 ]; then row ok "tamper: corrupted $n null backup(s)"
+  else row bad "tamper: no null backup was corrupted"; fi
 }
 
 run_seq() { # <id> <verbs...>   (runs in a subshell; results in $X/rows)
   local id="$1" verb i=0; shift
   X="$(mktemp -d "$TMP/seq.XXXXXX")" || exit 1
   printf '%s' "$X" > "$TMP/$id.dir"
-  new_fixture "$X"; fixture_env
+  new_fixture "$X" || { echo "fixture setup failed" >&2; exit 1; }
+  fixture_env
   if [ "${1:-}" = N ]; then # explicit-null container, seeded before the pre-install snapshot
     shift
     jq '.hooks = null' "$X/home/.claude/settings.json" > "$X/s.n" && mv "$X/s.n" "$X/home/.claude/settings.json"
   fi
   snapshot "$X" "$X/snap.pre"
   mkdir -p "$X/pre"
-  cp "$X/home/.claude/settings.json" "$X/pre/home-settings.json"
-  cp "$X/proj/.claude/settings.json" "$X/pre/proj-settings.json"
+  cp -p "$X/home/.claude/settings.json" "$X/pre/home-settings.json"
+  cp -p "$X/proj/.claude/settings.json" "$X/pre/proj-settings.json"
   STRICT=0 MUST_PASS=0
   : > "$X/rows"
   for verb in "$@"; do
@@ -351,11 +365,11 @@ SEQS=(
   "both-scopes-one-uninstall||A P U"
   "project-then-user||P A U U"
   "purge-state||A X"
-  "fail-inject-3-then-uninstall||F3 U"
+  "fail-inject-3-then-uninstall||F3 S W"
   "fail-inject-9-then-uninstall||F9 U"
   "uninstall-on-clean||U A U"
   "declined-restore-HIMMEL-6110|HIMMEL-6110|N A T U"
-  "strict-residue-HIMMEL-6729|HIMMEL-6729|A P S U"
+  "strict-residue-HIMMEL-6729||A P S W"
   "reinstall-reuninstall-HIMMEL-3767|HIMMEL-3767|A U D A W"
 )
 
@@ -382,7 +396,7 @@ for entry in "${SEQS[@]}"; do
   IFS='|' read -r id xf verbs <<< "$entry"
   [ "$id" = control-broken-restore ] && [ "$BREAK" -ne 1 ] && continue
   [ -z "$ONLY" ] || [ "$ONLY" = "$id" ] || continue
-  while [ "$(jobs -rp | wc -l)" -ge 8 ]; do wait -n; done
+  while [ "$(jobs -rp | wc -l)" -ge 8 ]; do sleep 0.2; done
   # shellcheck disable=SC2086
   ( run_seq "$id" $verbs ) > "$TMP/$id.log" 2>&1 &
 done
@@ -403,7 +417,6 @@ for entry in "${SEQS[@]}"; do
     case "$xf" in
       HIMMEL-3767) pin='rc=[0-9]+ but nothing remains|a clean install must uninstall clean' ;;
       HIMMEL-6110) pin='rc 0 but [0-9]+ path\(s\) differ from the pre-install snapshot: (home/\.claude/settings\.json ?)+$' ;;
-      HIMMEL-6729) pin='rc 0 but [0-9]+ path\(s\) differ from the pre-install snapshot: ((home/\.claude/\.i-have-adhd-always|home/\.claude/settings\.json|proj/\.claude/settings\.json|proj/\.gitignore) ?)+$' ;;
       *) pin='no pin defined for this known-red row$' ;;
     esac
     other="$(printf '%s\n' "$bad" | grep -vE "^bad [^ ]+#[0-9]+ [UWX]: ($pin)" | grep . || true)"
