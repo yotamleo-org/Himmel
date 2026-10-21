@@ -216,6 +216,66 @@ export CLAUDE_SESSIONS_PROC="$W/proc"
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
 
+# Missing cadence, a fresh marker, and an overlapping tick must not be confused.
+worktree_prune_cases() (
+    local repo="$W/prune-repo" bin="$W/prune-bin" state="$W/prune-state" stamp out
+    mkdir -p "$repo/scripts" "$bin" "$state" || exit 1
+    git init -q -b main "$repo" || exit 1
+    git -C "$repo" config user.email test@example.com
+    git -C "$repo" config user.name test
+    printf 'base\n' > "$repo/README"
+    git -C "$repo" add README
+    git -C "$repo" commit -qm base || exit 1
+    git init -q --bare "$W/prune-origin.git" || exit 1
+    git -C "$repo" remote add origin "$W/prune-origin.git"
+    printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "$HERE/../../worktree.sh" > "$repo/scripts/worktree.sh"
+    cat > "$bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *'auth status'*) exit 0 ;;
+    *'repo view'*) echo owner/repo; exit 0 ;;
+    *'api --paginate repos/owner/repo/pulls'*)
+        case "$*" in *state=open*) exit 0 ;; esac
+        git for-each-ref --format='owner/repo%x09%(refname:short)%x09merged%x09%(objectname)' refs/heads/feat | sed 's/%x09/\t/g'
+        exit 0 ;;
+esac
+exit 0
+STUB
+    chmod +x "$bin/gh"
+    git -C "$repo" worktree add -qb feat/clean "$W/prune-clean" || exit 1
+    git -C "$repo" worktree add -qb feat/dirty "$W/prune-dirty" || exit 1
+    printf 'user work\n' >> "$W/prune-dirty/README"
+    # Age both fixture reflogs so the real prune's activity gate is satisfied.
+    touch -d '2 hours ago' "$repo/.git/worktrees/prune-clean/logs/HEAD" "$repo/.git/worktrees/prune-dirty/logs/HEAD"
+    prune_tick() {
+        PATH="$bin:$PATH" REPO="$repo" TICK_STATE_DIR="$state" TOKEN='' LEGS='' DOC='' \
+            FORGE=github WORKTREE_ORPHAN_HOURS=0 bash "$SUT" 2>/dev/null
+    }
+    out="$(prune_tick)"
+    [ ! -d "$W/prune-clean" ] && pass 'cadence reclaims an old merged clean worktree without manual clean' || fail 'cadence did not reclaim an old merged clean worktree'
+    [ -d "$W/prune-dirty" ] && grep -qx 'user work' "$W/prune-dirty/README" && pass 'cadence preserves a dirty worktree and its edits' || fail 'cadence lost dirty user work'
+    contains 'cadence keeps the tick output available' "$out" 'TICK '
+    stamp="$state/tick-wt-prune-$(printf '%s' "$repo/.git" | cksum | cut -d' ' -f1)"
+    git -C "$repo" worktree add -qb feat/later "$W/prune-later" || exit 1
+    out="$(prune_tick)"
+    [ -d "$W/prune-later" ] && pass 'a second tick inside the hour does not sweep again' || fail 'cadence swept twice inside an hour'
+    touch -d '61 minutes ago' "$stamp"
+    exec 7>>"$stamp.lock"
+    flock -n 7 || exit 1  # gnu-ok: console kit is Linux-only
+    out="$(prune_tick 7>&-)"
+    [ -d "$W/prune-later" ] && pass 'a concurrent sweep lock suppresses a due tick' || fail 'cadence ignored a held sweep lock'
+    exec 7>&-
+    out="$(prune_tick)"
+    [ ! -d "$W/prune-later" ] && pass 'the next due tick reclaims clean worktrees after the hour' || fail 'cadence did not sweep after the hour'
+    [ -d "$W/prune-dirty" ] && pass 'later sweeps still preserve the dirty worktree' || fail 'later cadence removed the dirty worktree'
+    [ "$fails" -eq 0 ]
+)
+if ! worktree_prune_cases; then fails=$((fails + 1)); fi
+if [ "${1:-}" = --worktree-prune-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
+
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
