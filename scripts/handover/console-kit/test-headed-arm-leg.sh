@@ -3415,7 +3415,7 @@ e2e_leg() {
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' PATH="$d:$PATH" HEADED_ARM_CLAUDE_CLI="$d/claude" \
   HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" LEG_REPO="$d/repo" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
-    bash "$script" --no-profile "$name" "$some_doc" "$d/signal-never" "$PAST" "$d/log" "$model"
+    bash "$script" --no-profile "$name" "$some_doc" "$d/signal-never" "$PAST" "$d/log" "$model" >"$d/leg-out" 2>&1
 }
 # e2e_seen <stubdir> <file> [ticks] - the stub claude's record, or <no launch> after a bounded wait (ticks of 50ms, default 300).
 e2e_seen() {
@@ -3425,9 +3425,9 @@ e2e_seen() {
     sleep 0.05
     n=$((n+1))
   done
-  echo "<no launch>"
+  echo "<no launch: $(tr '\n' ' ' < "$1/leg-out" 2>/dev/null | cut -c1-400)>"
 }
-e2e_effort() { e2e_seen "$1" claude-env "${2:-300}" | sed -n -e 's/^CLAUDE_CODE_EFFORT_LEVEL=//p' -e '/^<no launch>$/p'; }
+e2e_effort() { e2e_seen "$1" claude-env "${2:-300}" | sed -n -e 's/^CLAUDE_CODE_EFFORT_LEVEL=//p' -e '/^<no launch/p'; }
 
 d34n="$tmp/c34n-leg"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-leg"
 LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1
