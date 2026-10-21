@@ -47,10 +47,9 @@ marker on your **newest marker-bearing bullet** (`tails=`):
 - **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`. [prose]
 
-**Jira status follows you** via the scripts, never by hand (`LIVE` → In Progress,
-PR opened → In Review, merge with `completes-ticket: yes` → Done). After a merge
-with `completes-ticket: no` run
-`bash scripts/handover/console-kit/leg-jira-status.sh <KEY> "In Progress" --allow-back`.
+**Jira status follows you** via the scripts, never by hand: `LIVE`, PR open,
+check-ci start and exit, a merge, a closed PR and `WRAPPED` each re-derive it from
+your PRs and your lock, and a merge with `completes-ticket: yes` moves it to Done.
 
 ## The RETASK channel and console succession
 
