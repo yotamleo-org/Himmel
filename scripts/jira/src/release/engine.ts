@@ -441,7 +441,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     const membership = ['add', 'remove', 'move'].includes(last.op.kind);
     const event = (readback: 'ok' | 'mismatch') => {
       if (!membership) return;
-      appendChain<EventRow>(f(ctx, 'events.jsonl'), l.k, {
+      // The applied row lands before its event, so a retry re-creates a missing one.
+      const eventsPath = f(ctx, 'events.jsonl');
+      if (readback === 'ok' && readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === 'ok')) return;
+      appendChain<EventRow>(eventsPath, l.k, {
         ts: ts(ctx), kind: 'ruled', key: last.key, from: last.op.from_v, to: last.op.to_v, ruling: id, readback,
       });
     };
@@ -464,7 +467,6 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         return { phase: 'void', line: `VOID ${id} (epoch ${last.epoch} intent never reached Jira; ${last.req} reopened)` };
       }
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
-      event('ok');
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
       const cur = await ctx.jira.fixVersions(k);
@@ -475,10 +477,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         throw new Error(`release apply: ${id} readback does not match ${op.kind} ${vName(op.from_v)}→${vName(op.to_v)}`);
       }
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { readback: 'ok' }));
-      event('ok');
     }
 
     if (last.phase === 'applied') {
+      event('ok');
       const marker = `[release-ruling ${id}]`;
       const authority = last.authority.kind === 'rm' ? 'rm' : `${last.authority.kind} ${last.authority.ref}`;
       const commentId = await ctx.jira.findComment(last.key, marker)

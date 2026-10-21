@@ -67,6 +67,12 @@
 #   [--baseline FILE] --staged        scan trust-path files as STAGED.
 #   [--baseline FILE] --tree [PATH...] scan trust-path files on disk; PATH args
 #                                      override the default trust-path set.
+#   [--baseline FILE] --files [FILE...] scan only the named files, keeping those
+#                                      that are trust-path scannable (a PR's
+#                                      changed files). A missing file fails
+#                                      closed; no files scans nothing; a baseline
+#                                      entry is judged stale only for a named
+#                                      file or one gone from disk.
 #   --emit-baseline                   print every hit's baseline key; exit 0.
 #
 # Exit: 0 = clean; 1 = unscrubbed/unexempted hit(s) outside the baseline;
@@ -74,7 +80,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 [--baseline FILE] --staged | --tree [PATH...] | --emit-baseline" >&2
+    echo "usage: $0 [--baseline FILE] --staged | --tree [PATH...] | --files [FILE...] | --emit-baseline" >&2
     exit 2
 }
 
@@ -89,6 +95,7 @@ fi
 
 MODE=""
 TREE_PATHS=()
+FILES_MODE=0
 EMIT_BASELINE=0
 case "${1:-}" in
     --staged)
@@ -99,6 +106,12 @@ case "${1:-}" in
     --tree)
         shift
         MODE=tree
+        TREE_PATHS=("$@")
+        ;;
+    --files)
+        shift
+        MODE=tree
+        FILES_MODE=1
         TREE_PATHS=("$@")
         ;;
     --emit-baseline)
@@ -708,7 +721,21 @@ if [ "$MODE" = staged ]; then
         rm -f "$tmp_blob"
     done < "$tmp_list"
 else
-    if [ "${#TREE_PATHS[@]}" -gt 0 ]; then
+    if [ "$FILES_MODE" -eq 1 ]; then
+        for p in ${TREE_PATHS[@]+"${TREE_PATHS[@]}"}; do
+            scannable "$p" || continue
+            is_trust_path "$p" || continue
+            if [ ! -f "$p" ]; then
+                echo "check-git-env-scrub: --files path does not exist: $p" >&2
+                exit 2
+            fi
+            if ! git ls-files --error-unmatch -- ":(literal)$p" > /dev/null 2>&1; then
+                echo "check-git-env-scrub: --files path is not tracked: $p" >&2
+                exit 2
+            fi
+            scan_one "$p" "$p"
+        done
+    elif [ "${#TREE_PATHS[@]}" -gt 0 ]; then
         for p in "${TREE_PATHS[@]}"; do
             if [ -f "$p" ]; then
                 scannable "$p" && scan_one "$p" "$p"
@@ -753,15 +780,27 @@ if [ "$EMIT_BASELINE" -eq 1 ]; then
     exit 0
 fi
 
-# Stale baseline entries: in the full real-tree scan only, an
-# entry that grandfathered no hit is dead. USED_BASELINE has multiplicity.
+# Stale baseline entries: in the full real-tree scan (and, for the files it
+# names, --files) an entry that grandfathered no hit is dead. USED_BASELINE has multiplicity.
 STALE=()
-if [ "$FULL_SCAN" -eq 1 ] && [ "${#BASE_ENTRIES[@]}" -gt 0 ]; then
+if { [ "$FULL_SCAN" -eq 1 ] || [ "$FILES_MODE" -eq 1 ]; } && [ "${#BASE_ENTRIES[@]}" -gt 0 ]; then
     declare -a stale_pool=()
     if [ "${#USED_BASELINE[@]}" -gt 0 ]; then
         for u in "${USED_BASELINE[@]}"; do stale_pool+=("$u"); done
     fi
     for bline in "${BASE_ENTRIES[@]}"; do
+        if [ "$FILES_MODE" -eq 1 ]; then
+            # --files sees only the named files: judge an entry only when its
+            # file was named or no longer exists on disk (deleted or renamed).
+            bpath="${bline#*:}"
+            case "$bline" in JS:*) bpath="${bpath%:*}" ;; esac
+            relevant=0
+            [ -e "$bpath" ] || relevant=1
+            for p in ${TREE_PATHS[@]+"${TREE_PATHS[@]}"}; do
+                [ "$p" = "$bpath" ] && relevant=1
+            done
+            [ "$relevant" -eq 1 ] || continue
+        fi
         found=-1
         for idx in "${!stale_pool[@]}"; do
             if [ "${stale_pool[$idx]}" = "$bline" ]; then found=$idx; break; fi

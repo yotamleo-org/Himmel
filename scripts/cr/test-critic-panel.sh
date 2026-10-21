@@ -1979,6 +1979,7 @@ check "PV3: anchor-only fallback threads --provider ANCHOR_PROVIDER" "$(grep -c 
 # file (concurrent sessions share this checkout).
 mkdir -p "$tmp/panelcopy" "$tmp/lib"
 cp "$HERE/../lib/prim.sh" "$tmp/lib/prim.sh"
+cp "$HERE/../lib/critics-config.sh" "$tmp/lib/critics-config.sh"
 cp "$PANEL" "$tmp/panelcopy/critic-panel.sh"
 printf '%s' '{"panel":[{"slug":"repodefault","model":"fake/repo","provider":"test","tier":"free"}]}' > "$tmp/panelcopy/critics.json"
 printf '%s' '{"panel":[{"slug":"localoverlay","model":"fake/local","provider":"test","tier":"free"}]}' > "$tmp/panelcopy/critics.local.json"

@@ -3,11 +3,18 @@
 # fixVersion, read from a STATEFUL stub Jira CLI. test-merge-on-green.sh's stub
 # only logs argv, so a wrong end state with a "right" call sequence goes unseen.
 #
-# Four cases:
+# Cases:
 #   1 full merge (--jira-transition)      -> Done, held version kept        (green control)
 #   2 partial merge (completes-ticket: no) -> status/version untouched + Remaining comment
 #   3 versionless ticket                   -> Done + the current version
 #   4 In Review ticket through check-ci    -> IN CI, then Done at the merge
+#   5 PR closed, owner live                -> In Progress, then To Do once it WRAPPED
+#   6 partial merge, a second PR in CI     -> IN CI (that PR's state)
+#   7 Done write failed, then WRAPPED      -> unchanged (done-pending), never To Do
+#   8 a status event racing the Done write -> Done stands (one per-key lock)
+#
+# The status funnel and its lib are the real ones; a gh shim in front of the
+# fixture's stub answers the derive's reads from $TMP/derive.
 #
 # The fixture, the gh stub and the check-ci gh stub are lifted at runtime from
 # test-merge-on-green.sh / test-check-ci.sh, so they cannot drift from those suites.
@@ -74,7 +81,10 @@ case "$1" in
     comment)
         [ "$3" = "--comment-file" ] && [ -f "$4" ] || exit 1
         { cat "$4"; echo; } >> "$s/comments" ;; # read-sink-ok: stub reads the comment file the script under test just wrote
-    transition) printf '%s' "$3" > "$s/status" ;;
+    transition)
+        [ -e "$s/transition.fail" ] && exit 1
+        if [ "$3" = "IN CI" ] && [ -e "$s/slow-in-ci" ]; then : > "$s/in-ci.started"; sleep 3; fi
+        printf '%s' "$3" > "$s/status" ;;
     versions) printf 'v1.1.2\ttrue\t2026-10-11\nv1.1.4\tfalse\t\nv1.1.3\tfalse\t2026-10-22\n' ;;
     edit)
         case "$3" in
@@ -101,6 +111,41 @@ STUBNODE
     chmod +x "$tmp/bin/node"
 }
 
+# the real status funnel and its libs in the fixture anchor, a queue-lock stub
+# (derive/lock.rc: 0 free, 11 held) and the derive's gh shim
+install_status_funnel() {
+    local tmp="$1" f
+    for f in ticket-status.sh required-checks.sh prim.sh git-clean.sh timeout-bin.sh; do
+        cp "$REPLAY_TREE/scripts/lib/$f" "$tmp/scripts/lib/$f"
+    done
+    cp "$REPLAY_TREE/scripts/handover/console-kit/leg-jira-status.sh" "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
+    mkdir -p "$tmp/derive" "$tmp/dbin" "$tmp/ts"
+    printf '[]\n' > "$tmp/derive/prs.json"
+    echo 0 > "$tmp/derive/lock.rc"
+    cat > "$tmp/derive/lock-stub" <<'STUBLOCK'
+#!/usr/bin/env bash
+rc=$(cat "$(dirname "$0")/lock.rc")
+[ "$rc" = 0 ] && { echo free; exit 0; }
+printf '{\n  "heartbeat": "%s"\n}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exit "$rc"
+STUBLOCK
+    cat > "$tmp/dbin/gh" <<'STUBGH'
+#!/usr/bin/env bash
+d="$(dirname "$0")/../derive"
+case "$1 $2" in
+    "pr list") cat "$d/prs.json"; exit 0 ;;
+    "pr checks")
+        [ -e "$d/checks-$3.json" ] && { cat "$d/checks-$3.json"; exit 0; }
+        echo "no checks reported on the 'x' branch" >&2; exit 1 ;;
+    "api graphql") echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; exit 0 ;;
+    "api repos/{owner}/{repo}/rules/branches/"*) echo '[]'; exit 0 ;;
+    "api repos/{owner}/{repo}/branches/"*) echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
+esac
+exec "$(dirname "$0")/../bin/gh" "$@"
+STUBGH
+    chmod +x "$tmp/derive/lock-stub" "$tmp/dbin/gh"
+}
+
 # new_case <status> <fixversions, one per line>  -> sets TMP
 new_case() {
     TMP=$(mktemp -d "$SUITE_TMP/case.XXXXXX") || { echo "FAIL: mktemp" >&2; exit 1; }
@@ -108,7 +153,26 @@ new_case() {
     mog_build_fixture "$TMP"
     write_jira_stub "$TMP" "$1" "$2"
     install_stateful_node "$TMP"
+    install_status_funnel "$TMP"
     : > "$TMP/gh.log"; : > "$TMP/jira.log"; : > "$TMP/clear.log"
+}
+
+# own_ticket <marker> - the leg doc owning the fixture ticket gets a newest <marker>
+# bullet, and the worker record names it with PR 42 (the stub's PR).
+own_ticket() {
+    OWNER_DOC="$TMP/HIMMEL-9001-N1-thing.md"
+    [ -e "$OWNER_DOC" ] || printf '# leg\n\n## Results\n' > "$OWNER_DOC"
+    printf -- '- 10:%02d %s — x\n' "$(grep -c '^- ' "$OWNER_DOC")" "$1" >> "$OWNER_DOC"
+    mkdir -p "$TMP/ts/workers"
+    [ -e "$TMP/ts/workers/HIMMEL-9001.json" ] || printf '{"key":"HIMMEL-9001","doc":"%s","prs":{"42":{"open":true}}}\n' "$OWNER_DOC" \
+        > "$TMP/ts/workers/HIMMEL-9001.json"
+}
+
+# run_funnel <args...> - the status funnel as a caller fires it
+run_funnel() {
+    JIRA_STATE="$TMP/state" PATH="$TMP/dbin:$TMP/bin:$PATH" TICKET_STATUS_STATE_DIR="$TMP/ts" \
+        TICKET_STATUS_QUEUE_LOCK="$TMP/derive/lock-stub" GH_LOG="$TMP/gh.log" \
+        bash "$TMP/scripts/handover/console-kit/leg-jira-status.sh" HIMMEL-9001 "$@" >/dev/null 2>>"$TMP/funnel.err"
 }
 
 # run_merge <expected-exit> <args...>   (reads STUB_* from the environment)
@@ -116,7 +180,8 @@ run_merge() {
     local expected="$1"; shift
     local rc
     ARMAUTOMERGE=1 GH_LOG="$TMP/gh.log" CLEAR_LOG="$TMP/clear.log" MERGE_ON_GREEN_LOG="$TMP/audit.log" JIRA_LOG="$TMP/jira.log" \
-        JIRA_STATE="$TMP/state" PATH="$TMP/bin:$PATH" MERGE_ON_GREEN_SLEEP_CMD=: \
+        JIRA_STATE="$TMP/state" PATH="$TMP/dbin:$TMP/bin:$PATH" MERGE_ON_GREEN_SLEEP_CMD=: \
+        TICKET_STATUS_STATE_DIR="$TMP/ts" TICKET_STATUS_QUEUE_LOCK="$TMP/derive/lock-stub" \
         MERGE_BLOCK_ALERT_DIR="$TMP/alerts" MERGE_BLOCK_ALERT_CMD="$TMP/bin/alert-sender" \
         TELEGRAM_ACCESS_PATH="$TMP/access.json" CR_APP="" HIMMEL_REPO="$TMP" \
         bash -c 'cd "$1" || exit 1; shift; exec bash "$@"' _ "$TMP" "$TMP/scripts/handover/merge-on-green.sh" "$@" \
@@ -175,9 +240,22 @@ else
 new_case "In Review" "v1.1.3"
 CC_DIR="$TMP/cc"; mkdir -p "$CC_DIR"
 # the check-ci gh stub, lifted from test-check-ci.sh (the heredoc that writes $STUBDIR/gh)
-sed -n "/^cat > \"\$STUBDIR\/gh\" <<'EOF'\$/,/^EOF\$/p" "$CHECK_CI_TEST" | sed '1d;$d' > "$CC_DIR/gh"
-if [ ! -s "$CC_DIR/gh" ]; then echo "FAIL: could not lift the check-ci gh stub" >&2; exit 1; fi
-chmod +x "$CC_DIR/gh"
+sed -n "/^cat > \"\$STUBDIR\/gh\" <<'EOF'\$/,/^EOF\$/p" "$CHECK_CI_TEST" | sed '1d;$d' > "$CC_DIR/gh-checkci"
+if [ ! -s "$CC_DIR/gh-checkci" ]; then echo "FAIL: could not lift the check-ci gh stub" >&2; exit 1; fi
+# the status derive's reads (open PRs, raw checks, {owner}/{repo} api paths)
+# are answered here; check-ci's own calls go to its lifted stub
+cat > "$CC_DIR/gh" <<'STUBGH'
+#!/usr/bin/env bash
+case "$*" in
+    "pr list "*) echo '[{"number":42,"title":"feat(x): [HIMMEL-9001] a thing","headRefOid":"sha1","baseRefName":"main","reviewDecision":""}]'; exit 0 ;;
+    "pr checks 42 --json bucket,name") echo '[{"bucket":"pass","name":"unit-tests"}]'; exit 0 ;;
+    "api graphql -F owner={owner}"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; exit 0 ;;
+    "api repos/{owner}/{repo}/rules/branches/"*) echo '[]'; exit 0 ;;
+    "api repos/{owner}/{repo}/branches/"*) echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
+esac
+exec "$(dirname "$0")/gh-checkci" "$@"
+STUBGH
+chmod +x "$CC_DIR/gh" "$CC_DIR/gh-checkci"
 for f in args count watch api headc statuses reviews freshness-reads comments claims reqrows-count msc; do : > "$CC_DIR/$f"; done
 # shellcheck disable=SC2016
 printf '#!/usr/bin/env bash\nexec sleep "$1"\n' > "$CC_DIR/counting-sleep"; chmod +x "$CC_DIR/counting-sleep"
@@ -194,7 +272,7 @@ PATH="$CC_DIR:$PATH" GH_STUB_MODE=cr-completed GH_STUB_ARGS="$CC_DIR/args" GH_ST
     GH_BUDGET_PREFLIGHT=0 GH_BUDGET_JITTER_MAX=0 \
     MERGE_BLOCK_ALERT_DIR="$CC_DIR/alert-sentinels" MERGE_BLOCK_ALERT_CMD=true TELEGRAM_ACCESS_PATH="$CC_DIR/access.json" \
     MERGE_WATCH_ALERT_BRIDGE_ROOT="$CC_DIR/bridge" \
-    LEG_JIRA_STATUS=1 LEG_JIRA_CLI="$TMP/jira-stub" JIRA_STATE="$TMP/state" \
+    LEG_JIRA_STATUS=1 LEG_JIRA_CLI="$TMP/jira-stub" JIRA_STATE="$TMP/state" TICKET_STATUS_STATE_DIR="$TMP/ts" \
     "$_TIMEOUT_BIN" -k 5 120 bash "$CHECK_CI" --grace 30 >"$CC_DIR/out" 2>"$CC_DIR/err"
 cc_rc=$?
 if [ "$cc_rc" -eq 0 ]; then pass; else fail "4 check-ci exit 0 expected, got $cc_rc (err: $(head -c 600 "$CC_DIR/err"))"; fi
@@ -203,6 +281,53 @@ run_merge 0 --jira-transition
 assert_eq "4 IN CI ticket after the merge close" "$(state_status)" "Done"
 assert_eq "4 fixVersion after the merge close" "$(state_versions)" "v1.1.3"
 fi
+
+export STUB_PR_TITLE="feat(x): [HIMMEL-9001] a thing"
+
+# --- 5 PR closed unmerged, owner live: In Progress; after WRAPPED: To Do ------------------
+new_case "In Review" "v1.1.3"
+own_ticket LIVE
+echo 11 > "$TMP/derive/lock.rc"
+STUB_STATE=CLOSED STUB_NUM=42 run_merge 0
+assert_eq "5 closed PR, live owner" "$(state_status)" "In Progress"
+own_ticket WRAPPED
+echo 0 > "$TMP/derive/lock.rc"
+run_funnel --event wrapped --doc "$OWNER_DOC"
+assert_eq "5 closed PR, owner WRAPPED" "$(state_status)" "To Do"
+
+# --- 6 partial merge while a second PR for the ticket is in CI: IN CI -----------------------
+export STUB_PR_BODY="Remaining: slice 2 of 3"
+new_case "In Review" "v1.1.3"
+printf '[{"number":88,"title":"feat(x): [HIMMEL-9001] slice 2","headRefOid":"s88","baseRefName":"main","reviewDecision":""}]\n' > "$TMP/derive/prs.json"
+printf '[{"bucket":"pending","name":"unit-tests"}]\n' > "$TMP/derive/checks-88.json"
+STUB_NUM=42 run_merge 0
+assert_eq "6 partial merge, second PR in CI" "$(state_status)" "IN CI"
+unset STUB_PR_BODY
+
+# --- 7 the Done write fails, then the leg WRAPPED: done-pending, never To Do ---------------
+new_case "In Review" "v1.1.3"
+own_ticket LIVE
+: > "$TMP/state/transition.fail"
+STUB_NUM=42 run_merge 0 --jira-transition
+assert_eq "7 failed Done write leaves the status" "$(state_status)" "In Review"
+own_ticket WRAPPED
+run_funnel --event wrapped --doc "$OWNER_DOC"
+assert_eq "7 WRAPPED after a failed Done write is not To Do" "$(state_status)" "In Review"
+if jq -e -s 'map(select(.event == "wrapped" and .stage == "done-pending")) | length > 0' "$TMP/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+else fail "7 the WRAPPED event logs done-pending (rows: $(cat "$TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+
+# --- 8 a status event and the Done write race on one key: Done stands ----------------------
+new_case "In Review" "v1.1.3"
+printf '[{"number":42,"title":"feat(x): [HIMMEL-9001] a thing","headRefOid":"sha1","baseRefName":"main","reviewDecision":""}]\n' > "$TMP/derive/prs.json"
+printf '[{"bucket":"pending","name":"unit-tests"}]\n' > "$TMP/derive/checks-42.json"
+: > "$TMP/state/slow-in-ci"
+run_funnel --event ci-exit --pr 42 --head sha1 &
+race_pid=$!
+for _ in $(seq 1 100); do [ -e "$TMP/state/in-ci.started" ] && break; sleep 0.1; done
+[ -e "$TMP/state/in-ci.started" ] || fail "8 the racing funnel never reached its IN CI write"
+STUB_NUM=42 run_merge 0 --jira-transition
+wait "$race_pid"
+assert_eq "8 Done stands after the race" "$(state_status)" "Done"
 
 echo "test-merge-on-green-jira-end-state: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

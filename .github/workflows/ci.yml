@@ -934,8 +934,9 @@ jobs:
 
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
-  # hook (a --no-verify commit, a merge, a stale clone) by re-scanning the
-  # whole tracked tree. Public CI has no station-local denylist file, so the
+  # hook (a --no-verify commit, a merge, a stale clone). Main and the crons
+  # re-scan the whole tracked tree; a PR scans the files it changed
+  # (HIMMEL-3898). Public CI has no station-local denylist file, so the
   # hostname class self-skips here (see leak-classes.sh header) — the other
   # 4 classes still run.
   leak-classes:
@@ -948,12 +949,46 @@ jobs:
           # contributor code. The default persists the GITHUB_TOKEN into
           # .git/config, where that code can read it.
           persist-credentials: false
-      - run: bash scripts/guardrails/leak-classes.sh --tree
+          # Depth 2 keeps both parents of the PR merge commit, so HEAD^1 (the
+          # current base tip) is reachable for the changed-file list below.
+          fetch-depth: 2
+      - name: leak-classes (PR changed files)
+        if: github.event_name == 'pull_request'
+        # Fail closed: a checkout that is not a merge commit, a diff that cannot be
+        # computed, or a change to the scanner, its ignore list or this workflow
+        # scans the whole tree.
+        run: |
+          scope=all
+          changed="$RUNNER_TEMP/leak-changed.txt"
+          touched="$RUNNER_TEMP/leak-touched.txt"
+          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMRT HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
+            scope=files
+            # $touched keeps deletions and rename sources, so removing the
+            # scanner or its ignore list also scans the whole tree.
+            if grep -qzxE '\.github/workflows/ci\.yml|\.leak-classes-ignore|scripts/guardrails/leak-classes\.sh' "$touched"; then
+              scope=all
+            fi
+          fi
+          echo "leak-classes scope: $scope"
+          if [ "$scope" = files ]; then
+            set --
+            while IFS= read -r -d '' f; do
+              if [ -n "$f" ]; then set -- "$@" "$f"; fi
+            done < "$changed"
+            bash scripts/guardrails/leak-classes.sh --files "$@"
+          else
+            bash scripts/guardrails/leak-classes.sh --tree
+          fi
+      - name: leak-classes (whole tree)
+        if: github.event_name != 'pull_request'
+        run: bash scripts/guardrails/leak-classes.sh --tree
 
   # Trust-path git subprocess calls must scrub GIT_DIR/GIT_WORK_TREE/
   # GIT_COMMON_DIR/GIT_INDEX_FILE before invoking git — an attacker-set value
   # otherwise steers which repo/worktree/index the call answers about
   # (HIMMEL-3570; already caught twice as real bugs, PR 1212 and PR 1217).
+  # Main and the crons scan every trust-path file; a PR scans the files it
+  # changed (HIMMEL-3898).
   git-env-scrub:
     needs: plan
     if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
@@ -963,7 +998,39 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: bash scripts/guardrails/check-git-env-scrub.sh --tree
+          # Depth 2 keeps both parents of the PR merge commit, so HEAD^1 (the
+          # current base tip) is reachable for the changed-file list below.
+          fetch-depth: 2
+      - name: git-env-scrub (PR changed files)
+        if: github.event_name == 'pull_request'
+        # Fail closed: a checkout that is not a merge commit, a diff that cannot be
+        # computed, or a change to the scanner, its baseline, the scrub helpers or
+        # this workflow scans every trust-path file.
+        run: |
+          scope=all
+          changed="$RUNNER_TEMP/scrub-changed.txt"
+          touched="$RUNNER_TEMP/scrub-touched.txt"
+          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMRT HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
+            scope=files
+            # $touched keeps deletions and rename sources, so removing the
+            # scanner, its baseline or a scrub helper also scans every trust path.
+            if grep -qzxE '\.github/workflows/ci\.yml|scripts/guardrails/check-git-env-scrub\.sh|scripts/guardrails/git-env-baseline\.txt|scripts/lib/git-clean\.sh|scripts/lanes/git-clean\.mjs' "$touched"; then
+              scope=all
+            fi
+          fi
+          echo "git-env-scrub scope: $scope"
+          if [ "$scope" = files ]; then
+            set --
+            while IFS= read -r -d '' f; do
+              if [ -n "$f" ]; then set -- "$@" "$f"; fi
+            done < "$changed"
+            bash scripts/guardrails/check-git-env-scrub.sh --files "$@"
+          else
+            bash scripts/guardrails/check-git-env-scrub.sh --tree
+          fi
+      - name: git-env-scrub (whole tree)
+        if: github.event_name != 'pull_request'
+        run: bash scripts/guardrails/check-git-env-scrub.sh --tree
 
   # Commit-message governance (HIMMEL-594/1483): every non-exempt commit in the
   # PR range must be conventional and ticket-traceable. Reuses the local

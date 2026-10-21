@@ -28,7 +28,8 @@ at, bubblewrap, socat, ffmpeg 6.1, gh, git, jq, curl, sudo, unzip, python3-pip, 
 shellcheck 0.9.0; the hosted-runner base tools the suites call (procps, psmisc, rsync, xxd,
 sqlite3, bsdextrautils, file, gawk, lsof, make, netcat, iproute2, ping, ssh client, patch,
 tmux, expect, tree, wget, zip, zstd, less); the tools whose absence fails or SKIPs a suite
-row (bison, gcc and libc6-dev for the bwk awk build, cron, zsh 5.9, shfmt and uv, the last
+row (bison, gcc and libc6-dev for the bwk awk build, cron, python-is-python3 for a bare
+`python`, python3-yaml, zsh 5.9, shfmt and uv, the last
 two pinned + sha256); node (one exact nodejs.org release, sha256
 pinned in the Dockerfile), bun (pinned to `.bun-version`, sha256), gitleaks (pinned +
 sha256), pre-commit 4.7.0, shellcheck-py 0.11.0.1 first on PATH. A `runner` user, uid/gid

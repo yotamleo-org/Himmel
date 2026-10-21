@@ -342,6 +342,11 @@ imports, so its suite runs in CI without an install.
   direct landing on Kanban shows the plain-words empty state, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
+- Settings e2e (`settings.e2e.ts`, journey J3, same opt-in suite): the page and
+  rail entry read Settings with the seven groups in order, every row shows its
+  command, when it takes effect and a Learn more link to the docs site, Commit
+  rules offer no switch, a switch previews its dry-run first, and Roadmap and
+  Kanban follow the tracker source.
 - Development graph docs page e2e (`dev-graph-docs.e2e.ts`, journey J-DG1,
   same suite): it needs no himmelctl. It serves `docs/guide` over `node:http`
   and walks `dev-graph.html`: node count, the W2 NO-GO step as refused with its

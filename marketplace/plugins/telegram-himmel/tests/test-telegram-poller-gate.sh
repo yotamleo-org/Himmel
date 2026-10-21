@@ -64,18 +64,20 @@ reap_case() {
   # sees the first's bot.pid.
   local tmp a b verdict
   tmp="$(mktemp -d)"
+  # The stdin holders' pids go to files so cleanup can kill them too.
   TELEGRAM_STATE_DIR="$tmp" TELEGRAM_BOT_TOKEN="123:DUMMY" \
-    TELEGRAM_OWN_POLLER=1 bun "$SERVER_DIR/server.ts" < <(sleep 25) >/dev/null 2>&1 &
+    TELEGRAM_OWN_POLLER=1 bun "$SERVER_DIR/server.ts" < <(sleep 25 & echo $! > "$tmp/a.stdin"; wait) >/dev/null 2>&1 &
   a=$!
   sleep 3
   TELEGRAM_STATE_DIR="$tmp" TELEGRAM_BOT_TOKEN="123:DUMMY" \
-    TELEGRAM_OWN_POLLER=1 bun "$SERVER_DIR/server.ts" < <(sleep 25) >/dev/null 2>&1 &
+    TELEGRAM_OWN_POLLER=1 bun "$SERVER_DIR/server.ts" < <(sleep 25 & echo $! > "$tmp/b.stdin"; wait) >/dev/null 2>&1 &
   b=$!
   sleep 4
   if ! kill -0 "$b" 2>/dev/null; then verdict="B_DEAD"
   elif kill -0 "$a" 2>/dev/null; then verdict="ALIVE"
   else verdict="REAPED"; fi
   kill "$a" "$b" 2>/dev/null || true
+  kill "$(cat "$tmp/a.stdin" 2>/dev/null)" "$(cat "$tmp/b.stdin" 2>/dev/null)" 2>/dev/null || true
   wait "$a" "$b" 2>/dev/null || true
   rm -rf "$tmp"
   echo "$verdict"

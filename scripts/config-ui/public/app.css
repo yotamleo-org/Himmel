@@ -24,6 +24,10 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .row{border-bottom:1px solid var(--line)}
 .row-head{display:grid;grid-template-columns:86px 78px minmax(140px,240px) minmax(0,1fr) auto;gap:12px;align-items:center;min-height:30px;padding:2px 4px;cursor:pointer}
 .row-head:hover{background:var(--panel)}
+.setgroup{margin:0 0 22px}.setgroup h3{margin:0 0 4px;font-size:14px}
+.setrow{border-top:1px solid var(--line, var(--panel));padding:6px 4px}
+.sethead{display:flex;flex-wrap:wrap;gap:12px;align-items:center;min-height:30px}.sethead .det{flex:1;min-width:0;color:var(--dim)}
+.setrow pre{margin:4px 0;overflow-x:auto}.learn{color:var(--accent)}
 .st{white-space:nowrap}.st.ok{color:var(--ok)}.st.warn{color:var(--warn)}.st.fail{color:var(--fail)}.st.off,.st.info{color:var(--off)}
 .kind{color:var(--dim)}
 .id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
