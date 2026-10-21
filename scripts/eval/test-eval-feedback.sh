@@ -55,6 +55,14 @@ python3 -I "$RUNS" validate "$L" >/dev/null 2>&1
 eq "friction row: a valid eval-runs row" "$?" "0"
 RUN1="$(field "$L" 0 run_id)"
 
+# --- an unreadable transcript makes the scan partial: the row is never a baseline --------------------
+P2="$TMP/proj"; cp -R "$HERE/friction/fixtures/proj" "$P2"; mkdir -p "$P2/sess-x/unreadable.jsonl"
+L2="$TMP/runs-partial.jsonl"
+ok "partial scan" python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 --projects "$P2" \
+  --docs "$HERE/friction/fixtures/docs" --record --eval-ledger "$L2" --md "$TMP/f2.md"
+eq "partial scan: the row says partial" "$(field "$L2" 0 status)" "partial"
+eq "partial scan: names the unreadable count" "$(field "$L2" 0 meta.unreadable)" "1"
+
 # --- run 1: a result past the threshold produces one change record ---------------------------------
 C="$TMP/changes.jsonl"
 IN="$TMP/inbox.md"

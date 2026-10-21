@@ -154,7 +154,7 @@ def scan_transcript(path, lane, since, until=None):
     try:
         fh = open(path, errors='replace')
     except OSError:
-        return rows
+        return None
     with fh:
         for line in fh:
             if 'tool_result' not in line:
@@ -388,14 +388,20 @@ def render_md(agg, meta):
     return '\n'.join(lines) + '\n'
 
 
-def scan_all(projects, since, until=None):
+def scan_all(projects, since, until=None, unreadable=None):
+    """Rows from every transcript in the window; the path of each one that cannot be opened goes to unreadable."""
     rows = []
     for pdir in projects:
         lane = 'claudex' if 'codex' in pdir else 'native'
         for path in glob.glob(os.path.join(pdir, '*', '*.jsonl')):
             if os.path.getmtime(path) < since.timestamp():
                 continue
-            rows.extend(scan_transcript(path, lane, since, until))
+            got = scan_transcript(path, lane, since, until)
+            if got is None:
+                if unreadable is not None:
+                    unreadable.append(path)
+                continue
+            rows.extend(got)
     return rows
 
 
@@ -426,9 +432,10 @@ def render_section(tx, prior_tx, docs, days, top=5):
     return '\n'.join(out) + '\n'
 
 
-def record(tx, docs, days, since, repo, ledger=None, projects=None):
+def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0):
     """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class.
-    An explicit --projects scope joins the config, so a run over other transcripts is its own series."""
+    An explicit --projects scope joins the config, so a run over other transcripts is its own series. A scan
+    that could not open every transcript is "partial", never a baseline."""
     verdicts = collections.Counter(r['verdict'] for r in tx)
     metrics = {'refusals': len(tx), 'over_deny': verdicts['over-deny'], 'true_positive': verdicts['true-positive'],
                'unclear': verdicts['unclear'], 'over_deny_share': None}
@@ -442,7 +449,8 @@ def record(tx, docs, days, since, repo, ledger=None, projects=None):
     if projects:
         config['projects'] = projects
     row = eval_runs.make_row('friction', 'scripts/eval/friction/friction.py', config, metrics, n=len(tx), repo=repo,
-                             meta={'since': since.isoformat(), 'doc_rows': len(docs)})
+                             status='partial' if unreadable else 'ok',
+                             meta={'since': since.isoformat(), 'doc_rows': len(docs), 'unreadable': unreadable})
     return eval_runs.append_safe(row, ledger, who='friction')
 
 
@@ -467,10 +475,11 @@ def main(argv=None):
     since = now - dt.timedelta(days=a.days)
     names = known_names(a.repo)
     projects = a.projects or DEFAULT_PROJECTS
-    tx = scan_all(projects, since, now)
+    unreadable = []
+    tx = scan_all(projects, since, now, unreadable)
     docs = scan_docs(a.docs, since, names)
     if a.record:
-        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects)
+        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects, len(unreadable))
     if a.section:
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))
