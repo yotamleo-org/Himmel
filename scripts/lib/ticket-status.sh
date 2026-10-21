@@ -174,6 +174,7 @@ _ts_snap_required_set() {
         if ts_required_set "$1" >"$f.t" 2>/dev/null; then mv "$f.t" "$f"; else rm -f "$f.t"; : >"$f.fail"; fi
     fi
     [ -e "$f" ] || return 1
+    # read-sink-ok: $f is under the sweep's own snapshot dir, built from a base ref name, never from argv or a record
     cat "$f"
 }
 
