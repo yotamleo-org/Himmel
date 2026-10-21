@@ -42,6 +42,7 @@ case "$1" in
         printf '%s\n' "$3" > "$FX/status.$2"
         exit 0 ;;
     list)
+        [ -e "$FX/list.sleep" ] && sleep "$(cat "$FX/list.sleep")"
         [ -e "$FX/list.fail" ] && { echo "boom" >&2; exit 1; }
         cat "$FX/list.tsv" 2>/dev/null
         exit 0 ;;
@@ -242,6 +243,16 @@ touch "$FX/graphql.more"
 sweep
 check "2b: a saturated GraphQL read is unknown too" "$(grep -c '^get \|^transition' "$STUB_LOG")" 0
 rm -f "$FX/graphql.more"
+
+# A hung Jira search is cut off at the hard cap: a timeout row, one wake, then silence.
+printf '5\n' > "$FX/list.sleep"
+: > "$STUB_LOG"
+TICKET_STATUS_SWEEP_BUDGET=1 TICKET_STATUS_SWEEP_GRACE=0 sweep
+check "2b: a hung Jira search logs a timeout miss" "$(tail -n 1 "$LOG" | jq -r '[.event, .result, .stage] | join(" ")')" "sweep miss timeout"
+contains "2b: the timeout wakes once" "$(cat "$tmp/sout")" "wake=1"
+TICKET_STATUS_SWEEP_BUDGET=1 TICKET_STATUS_SWEEP_GRACE=0 sweep
+contains "2b: the same timeout does not wake twice" "$(cat "$tmp/sout")" "wake=0"
+rm -f "$FX/list.sleep" "$TICKET_STATUS_STATE_DIR/sweep/wake-sig"
 
 # Lock-gone counting: D6 only after lock_seen plus two sweeps; a held lock resets.
 reset "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":false,"lock_gone_sweeps":0}'

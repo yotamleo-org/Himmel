@@ -20,8 +20,9 @@
 # (result, stage, class) failures is new since the last sweep, so a caller waking
 # on it is not woken twice for one standing problem.
 #
-# Env: TICKET_STATUS_STATE_DIR, TICKET_STATUS_SWEEP_BUDGET, JIRA_PROJECT_KEY
-# (default HIMMEL); the rest is read by the lib.
+# Env: TICKET_STATUS_STATE_DIR, TICKET_STATUS_SWEEP_BUDGET, TICKET_STATUS_SWEEP_GRACE
+# (hard cap = budget + grace, default 60), JIRA_PROJECT_KEY (default HIMMEL); the
+# rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
 # shellcheck disable=SC2034  # TS_SNAPSHOT_DIR and TS_EVENT are read by the sourced lib
@@ -47,6 +48,26 @@ STATE="$(ts_state_dir)"
 SDIR="$STATE/sweep"
 LOG="$STATE/status-events.jsonl"
 mkdir -p "$SDIR" 2>/dev/null || { echo "status-sweep: cannot create $SDIR (continuing; nothing swept)" >&2; exit 0; }
+
+# The whole sweep runs in a re-exec under a hard cap of the budget plus
+# TICKET_STATUS_SWEEP_GRACE (default 60: one funnel run), so a hung Jira or gh
+# call cannot hold the sweep lock; a cut-off sweep logs `sweep miss timeout` and
+# wakes the caller once.
+GRACE="${TICKET_STATUS_SWEEP_GRACE:-60}"
+case "$GRACE" in ''|*[!0-9]*) GRACE=60 ;; esac
+if [ -z "${TICKET_STATUS_SWEEP_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
+    rc=0
+    TICKET_STATUS_SWEEP_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 $((BUDGET + GRACE)) bash "${BASH_SOURCE[0]}" || rc=$?
+    case "$rc" in
+        124|137)
+            status_event event=sweep key=- result=miss stage=timeout
+            prev=$(cat "$SDIR/wake-sig" 2>/dev/null) # swallow-ok: no prior signature reads empty, so the first timeout wakes
+            wake=0
+            [ "$prev" = timeout ] || { printf 'timeout\n' > "$SDIR/wake-sig"; wake=1; }
+            echo "status-sweep: unknown (timeout after $((BUDGET + GRACE))s) keys=0 sig=timeout wake=$wake" ;;
+    esac
+    exit 0
+fi
 
 # ponytail: no flock binary (stock macOS) runs unlocked, so two sweeps can
 # overlap; upgrade path = a mkdir lock.
@@ -123,6 +144,7 @@ jq -r '.[] | .number as $n | (.statusCheckRollup // [])[]
         else "fail" end),
        (.name // .context)] | @tsv' "$snap/prs.json" 2>/dev/null \
     | awk -F'\t' -v d="$snap" '{ f = d "/rows-" $1 ".tsv"; sub(/^[^\t]*\t/, ""); print >> f; close(f) }'
+[ "${PIPESTATUS[0]}" -eq 0 ] || unknown gh
 jq -r '.data.repository.pullRequests.nodes[] | .number as $n
     | (.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])[] | select(.__typename == "CheckRun" and .databaseId != null)
     | [$n,
@@ -131,6 +153,7 @@ jq -r '.data.repository.pullRequests.nodes[] | .number as $n
         elif .conclusion == "CANCELLED" then "cancel" else "fail" end),
        .name, (.checkSuite.app.databaseId // ""), (.startedAt // ""), .databaseId] | @tsv' "$snap/graphql.json" 2>/dev/null \
     | awk -F'\t' -v d="$snap" '{ f = d "/prows-" $1 ".tsv"; sub(/^[^\t]*\t/, ""); print >> f; close(f) }'
+[ "${PIPESTATUS[0]}" -eq 0 ] || unknown gh
 
 # --- the key set ------------------------------------------------------------------
 KEY_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
