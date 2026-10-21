@@ -1250,6 +1250,7 @@ for d in $PATH; do
     done
 done
 IFS=$oifs
+[ -x "$NOSH/jq" ] && [ ! -e "$NOSH/shfmt" ] || { echo "FAIL no shfmt fixture is wrong (jq must be present, shfmt absent)"; exit 1; }
 # stderr is the captured stream here, stdout is discarded
 # shellcheck disable=SC2069
 nosh_case() { printf '%s' "$(j_bash "$1")" | env -u QMD_UNBOUNDED_OK PATH="$NOSH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?"; }
