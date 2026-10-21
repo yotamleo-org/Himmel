@@ -65,12 +65,21 @@ export function readGate(env: Env): GateResult {
   const path = overlayPath(env, g.r);
   let dropped: string[] = [];
   try { dropped = readOverlay(path).panel.filter((x) => x.drop === true && typeof x.slug === "string").map((x) => x.slug as string); } catch { /* an unreadable overlay shows as no drops; the resolver already named it */ }
+  // a dropped row is off the resolved panel, so its shared settings come from the base file: turning it back on restores them.
+  const droppedBase: Record<string, { mode: string; required: boolean }> = {};
+  try {
+    for (const x of readOverlay(g.r.files.base).panel) {
+      if (typeof x.slug !== "string" || !dropped.includes(x.slug)) continue;
+      droppedBase[x.slug] = { mode: typeof x.mode === "string" ? x.mode : x.provider === "github-app" ? "best-effort" : "hard", required: x.required === true };
+    }
+  } catch { /* an unreadable base shows the plain defaults; the resolver already named it */ }
   return {
     status: 200,
     body: {
       review: g.r.review,
       overlay: path,
       dropped,
+      droppedBase,
       rateLimit: RATE_LIMIT,
       reviewers: g.r.panel.map((row, i) => ({
         slug: row.slug, order: i + 1, provider: row.provider ?? "", mode: row.mode, required: row.required, enabled: true,

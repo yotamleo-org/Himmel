@@ -193,7 +193,7 @@ export function renderVm(vm) {
 // The server validates and writes only the critics.local.json overlay; this only shows its answer.
 export const reviewGateDraft = (d) => [
   ...d.reviewers.map((r) => ({ slug: r.slug, mode: r.mode, required: r.required, enabled: true })),
-  ...(d.dropped || []).map((slug) => ({ slug, mode: "best-effort", required: false, enabled: false })),
+  ...(d.dropped || []).map((slug) => ({ slug, mode: (d.droppedBase?.[slug]?.mode) || "best-effort", required: d.droppedBase?.[slug]?.required === true, enabled: false })),
 ];
 const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note" };
 export function renderReviewGate(rg) {

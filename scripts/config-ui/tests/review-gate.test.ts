@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
 // @ts-ignore plain browser ES module, no types
-import { renderReviewGate } from "../public/render.js";
+import { renderReviewGate, reviewGateDraft } from "../public/render.js";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const REAL_BASE = join(import.meta.dir, "../../cr/critics.json");
@@ -83,6 +83,14 @@ test("POST writes the overlay only, and a read back equals what was written", as
   expect(overlay.panel).toContainEqual({ slug: "coderabbit", mode: "hard", required: false });
   expect(overlay.panel).toContainEqual({ slug: "claude", drop: true });
   expect(sha(base)).toBe(before);
+});
+
+test("a dropped reviewer keeps its shared settings, so turning it back on restores them", async () => {
+  const port = boot();
+  await post(port, { reviewers: [{ slug: "claude", mode: "best-effort", required: false, enabled: false }] });
+  const j = await (await get(port)).json();
+  expect(j.droppedBase.claude).toEqual({ mode: "hard", required: false });
+  expect(reviewGateDraft(j)).toContainEqual({ slug: "claude", mode: "hard", required: false, enabled: false });
 });
 
 test("POST refuses to write when the overlay path is the base critics.json", async () => {

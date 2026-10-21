@@ -220,10 +220,13 @@ async function saveReviewGate() {
   const rg = state.reviewGate;
   if (!rg || !rg.draft || reviewGateSaving) return;
   reviewGateSaving = true;
+  const sent = JSON.stringify(rg.draft);
   let res;
   try { res = await post("/api/review-gate", { reviewers: rg.draft }); } finally { reviewGateSaving = false; }
   const { ok, j } = res;
-  state.reviewGate = ok ? { data: j, error: null, draft: reviewGateDraft(j), msg: { ok: true, text: "saved" } } : { ...state.reviewGate, msg: { ok: false, text: j.error || "save failed" } };
+  // an edit made while the request was in flight stays in the draft instead of being overwritten by the saved answer.
+  const edited = state.reviewGate && state.reviewGate.draft && JSON.stringify(state.reviewGate.draft) !== sent;
+  state.reviewGate = ok ? { data: j, error: null, draft: edited ? state.reviewGate.draft : reviewGateDraft(j), msg: { ok: true, text: edited ? "saved; later edits not saved yet" : "saved" } } : { ...state.reviewGate, msg: { ok: false, text: j.error || "save failed" } };
   paint();
 }
 
