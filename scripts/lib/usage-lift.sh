@@ -158,7 +158,7 @@ _usage_lift_cmd() {
       echo "usage-lift: set until $until ($resets)"
       ;;
     show)
-      if [ -f "$f" ]; then cat "$f"; echo; fi
+      if [ -f "$f" ]; then cat "$f"; echo; fi # read-sink-ok: show prints the operator's own lift file, as bank-lift.sh did
       if [ -n "$old" ] && [ -f "$old" ]; then
         [ ! -f "$f" ] || echo "usage-lift: also read $old"
         cat "$old"; echo

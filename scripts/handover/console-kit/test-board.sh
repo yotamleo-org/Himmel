@@ -42,7 +42,7 @@ export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_FAILURE_ROUTES_
 cat > "$W/bin/usage-lift-stub" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = show ] || exit 2
-if [ -n "${USAGE_LIFT_STUB_OUT:-}" ]; then cat "$USAGE_LIFT_STUB_OUT"; else printf 'usage-lift: none\nusage-lift: INVALID: missing\n'; fi
+if [ -n "${USAGE_LIFT_STUB_OUT:-}" ]; then cat "$USAGE_LIFT_STUB_OUT"; else printf 'usage-lift: none\nusage-lift: INVALID: missing\n'; fi # read-sink-ok: the suite's own fixture file under $W
 STUB
 chmod +x "$W/bin/usage-lift-stub"
 export BOARD_USAGE_LIFT="$W/bin/usage-lift-stub"
