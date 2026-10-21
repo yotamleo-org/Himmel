@@ -298,6 +298,7 @@ scripts/graphify/test-no-windows-indexed.sh	pr	guard
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard
+scripts/graphify/test-refresh-graph-map-resume.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-scratch.sh	pr	guard
 scripts/graphify/test-refresh-graph-map.sh	pr	guard
 scripts/graphify/test-repo-map.sh	pr	guard
