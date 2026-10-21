@@ -38,6 +38,11 @@ unset HIMMEL_REPO
 # real .env's JIRA_PROJECT_KEY=HIMMEL, ci.yml's commit-lint job) rather than
 # threaded through every individual invocation site in this file.
 export JIRA_PROJECT_KEY=HIMMEL
+# The pre-merge static re-check builds the merge of the anchor's origin and the
+# PR head, so it needs a git anchor with a fetchable origin; nearly every case
+# here runs against a bare stub tree. It is off for them, and
+# test-merge-on-green-static-recheck.sh (which sources this file) turns it on.
+export MERGE_STATIC_RECHECK=0
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -920,6 +925,10 @@ assert_pinned_pr_view() {
     if grep -qF -- "pr view 77 --repo acme/private-repo --json $2" "$LAST_GH_LOG"; then pass
     else fail "$1 (no pinned 'pr view 77 --repo acme/private-repo --json $2' call found)"; fi
 }
+
+# Sourced with MOG_LIB_ONLY=1, this file stops here: the helpers above (run_mog,
+# the assert_* family, the PASS/FAIL tally) are all a sibling suite needs.
+[ -z "${MOG_LIB_ONLY:-}" ] || return 0
 
 echo "== merge-on-green.sh tests =="
 

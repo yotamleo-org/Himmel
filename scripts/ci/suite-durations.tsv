@@ -426,6 +426,7 @@ scripts/handover/test-leg-timeline.sh	5
 scripts/handover/test-lessons-sweep.sh	1
 scripts/handover/test-merge-fork-pr.sh	6
 scripts/handover/test-merge-forward-check.sh	5
+scripts/handover/test-merge-on-green-static-recheck.sh	9
 scripts/handover/test-merge-on-green.sh	96
 scripts/handover/test-pr-merge.sh	9
 scripts/handover/test-pr-open.sh	0
