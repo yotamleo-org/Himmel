@@ -56,7 +56,8 @@ eq "friction row: a valid eval-runs row" "$?" "0"
 RUN1="$(field "$L" 0 run_id)"
 
 # --- run 1: a result past the threshold produces one change record ---------------------------------
-C="$TMP/changes.jsonl"; IN="$TMP/inbox.md"
+C="$TMP/changes.jsonl"
+IN="$TMP/inbox.md"
 out=$(python3 -I "$FB" run --ledger "$L" --changes "$C" --rules "$RULES" --inbox "$IN" 2>&1); rc=$?
 eq "run 1: exit 0" "$rc" "0"
 eq "run 1: one change record" "$(rows "$C")" "1"
