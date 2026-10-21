@@ -273,7 +273,8 @@ if [ "${1:-}" = --residual-recovery-only ]; then
     [ "$fails" -eq 0 ]
     exit $?
 fi
-cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
+chmod +x "$fx/scripts/cr/clear-review-marker.sh"
 
 repo="$tmp/repo"
 mkdir -p "$repo"
