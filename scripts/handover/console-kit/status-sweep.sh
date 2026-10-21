@@ -211,7 +211,7 @@ while IFS= read -r key; do
     bash "$HERE/leg-jira-status.sh" "$key" --event sweep >/dev/null 2>&1
     outcome=""
     [ ! -e "$LOG" ] || outcome=$(tail -n "+$((before + 1))" "$LOG" | jq -rs --arg k "$key" \
-        '[.[] | select(.key == $k)] | last | select(. != null) | [.result, (.stage // "")] | @tsv' 2>/dev/null)
+        '[.[] | select(.key == $k)] | ((map(select(.result == "miss" or .result == "deferred")) | first) // last) | select(. != null) | [.result, (.stage // "")] | @tsv' 2>/dev/null)
     case "${outcome%%$'\t'*}" in
         moved) moved=$((moved + 1)) ;;
         miss|deferred)

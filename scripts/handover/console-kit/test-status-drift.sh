@@ -59,6 +59,7 @@ case "$1" in
             echo "$edit"
             exit 0
         fi
+        [ -e "$FX/comment.fail" ] && { echo "boom" >&2; exit 1; }
         n=$(( $(cat "$FX/comment.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/comment.n"
         [ -e "$FX/comment.noid" ] || echo "$((5000 + n))"
         exit 0 ;;
@@ -303,6 +304,15 @@ sweep
 check "2b: and the one after serves the tail" "$(grep '^transition' "$STUB_LOG" | tail -n 1)" "transition $K3 In Progress"
 check "2b: a fully served sweep clears the cursor" "$([ -e "$TICKET_STATUS_STATE_DIR/sweep/cursor" ] && echo set || echo clear)" clear
 unset TICKET_STATUS_SWEEP_BUDGET
+
+# A comment-write miss followed by the funnel's noop row still counts as a miss.
+reset "In Progress"; owned "$K" LIVE '{"lock_seen":false}'
+jl "$K" "In Progress"
+touch "$FX/comment.fail"
+sweep
+rm -f "$FX/comment.fail"
+contains "2b: a failed comment write counts as a miss" "$(cat "$tmp/sout")" "miss=1"
+contains "2b: and the failed comment wakes the caller" "$(cat "$tmp/sout")" "wake=1"
 
 # The wake is deduped on the (result, stage, class) signature.
 reset "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0}'
