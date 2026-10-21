@@ -577,10 +577,12 @@ test('bank-status reads the CODEX_USAGE_* names over the old CODEX_BANK_* ones',
   });
   assert.match(out, /^claudex funded measured weekly used=20% free=80% resets=/m);
   assert.ok(Date.parse(JSON.parse(readFileSync(cache, 'utf8')).capturedAt) > Date.now() - 60_000, 'CODEX_USAGE_CACHE was rewritten fresh');
-  const hang = runBankStatus(makeTmpDir('lane-bank-refresh-usage-box-'), {
-    CODEX_USAGE_CACHE: staleCodexCache(dir), CODEX_USAGE_PROBE_CMD: `node ${APPSERVER_STUB}`, STUB_SILENT: '1',
-    CODEX_USAGE_REFRESH_BOX_MS: '1500', CODEX_BANK_REFRESH_BOX_MS: '60000',
+  const boxDir = makeTmpDir('lane-bank-refresh-usage-box-');
+  const hang = runBankStatus(boxDir, {
+    CODEX_USAGE_CACHE: staleCodexCache(boxDir), CODEX_USAGE_PROBE_CMD: `node ${APPSERVER_STUB}`, STUB_SILENT: '1',
+    STUB_PID_FILE: join(boxDir, 'stub.pid'), CODEX_USAGE_REFRESH_BOX_MS: '1500', CODEX_BANK_REFRESH_BOX_MS: '60000',
   });
+  assert.ok(existsSync(join(boxDir, 'stub.pid')), 'the hanging probe never started');
   assert.ok(hang.ms < 10_000, `CODEX_USAGE_REFRESH_BOX_MS ignored: ${hang.ms}ms`);
 });
 
