@@ -2467,10 +2467,10 @@ p6proj="$work/p6-proj"; mkdir -p "$p6proj/scripts"
 printf '#!/bin/sh\necho user-owned worktree.sh\n' > "$p6proj/scripts/worktree.sh"
 chmod 0755 "$p6proj/scripts/worktree.sh"
 p6sha="$(prov_sha "$p6proj/scripts/worktree.sh")"
-# a mktemp that fails only for the bare snapshot call copy_recorded makes
+# a mktemp that fails only for the copy_recorded snapshot template
 p6bin="$work/p6-bin"; mkdir -p "$p6bin"
-# shellcheck disable=SC2016 # the stub's $# and $@ must stay literal
-printf '#!/bin/sh\n[ "$#" -eq 0 ] && exit 1\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$p6bin/mktemp"
+# shellcheck disable=SC2016 # the stub's $1 and $@ must stay literal
+printf '#!/bin/sh\ncase "${1:-}" in */adopt-copy.XXXXXX) exit 1;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$p6bin/mktemp"
 chmod +x "$p6bin/mktemp"
 set +e
 out=$(PATH="$p6bin:$PATH" HOME="$p6home" HIMMEL_PROVENANCE_DIR="$p6led" bash "$adopt" --profile core --scope project --target "$p6proj" 2>&1); rc=$?
