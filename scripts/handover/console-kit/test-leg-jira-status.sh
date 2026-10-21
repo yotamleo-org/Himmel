@@ -46,7 +46,8 @@ case "$1" in
             head -n 1 "$FX/status.seq" > "$FX/status.cur"
             tail -n +2 "$FX/status.seq" > "$FX/status.seq.t"; mv "$FX/status.seq.t" "$FX/status.seq"
         fi
-        printf '{"fields":{"status":{"name":"%s"},"labels":[]}}\n' "$(cat "$FX/status.cur")" ;;
+        printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[]}}\n' \
+            "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)" ;;
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
         if [ -e "$FX/workflow" ] && [ -z "$(cut -f2 "$FX/workflow" | grep -xF "$3")" ]; then
@@ -144,6 +145,12 @@ check "D0: row rule" "$(row rule)" D0
 reset "Backlog"; owned
 fn "$K" --event live
 check "D0: an off-ladder status is never touched" "$(ntrans)" 0
+for ev in live ci-start pr-open merge; do
+    reset "To Do"; owned; echo Epic > "$FX/type"
+    fn "$K" --event "$ev"
+    check "D0e: an Epic is never touched ($ev)" "$(ntrans)" 0
+    check "D0e: Epic row rule ($ev)" "$(row rule)" D0e
+done
 
 # --- D1: a required check red -> In Progress ----------------------------------
 reset "IN CI"; owned

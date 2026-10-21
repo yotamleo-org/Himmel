@@ -11,7 +11,7 @@
 #                                   through this one function.
 #   ts_derive <KEY>                 reads the inputs fresh and sets:
 #     TS_DERIVED   a ladder status, or "no-write"
-#     TS_RULE      D0..D7 (D4b = done-pending)
+#     TS_RULE      D0..D7 (D0e = Epic, D4b = done-pending)
 #     TS_RESULT    for no-write: skip | miss
 #     TS_STAGE     for a miss: the input that could not be read
 #     TS_J_STATUS  the Jira status the derive saw; TS_HEADS the "<pr>:<head>" list
@@ -21,6 +21,7 @@
 #
 # Rules (first match wins; an unreadable input is no-write + miss, never a move):
 #   D0  Jira Done or off the ladder              no-write (only merge-on-green writes Done)
+#   D0e an Epic                                  no-write (merge-on-green never touches one)
 #   D1  a PR's required check red, or its latch  In Progress
 #   D2  CHANGES_REQUESTED or unresolved threads  In Review
 #   D3  required checks running or green         IN CI
@@ -98,9 +99,10 @@ ts_jira() {
 # ts_read_jira <KEY> — TS_J_STATUS; rc 1 = unreadable.
 ts_read_jira() {
     local json
-    TS_J_STATUS=""
+    TS_J_STATUS=""; TS_J_TYPE=""
     json=$(ts_jira get "$1" --json 2>/dev/null) || return 1
     TS_J_STATUS=$(jq -r '.fields.status.name // empty' <<<"$json" 2>/dev/null)
+    TS_J_TYPE=$(jq -r '.fields.issuetype.name // empty' <<<"$json" 2>/dev/null)
     [ -n "$TS_J_STATUS" ]
 }
 
@@ -271,6 +273,7 @@ ts_derive() {
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
     [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || { _ts_no_write skip D0; return 0; }
+    [ "$TS_J_TYPE" != Epic ] || { _ts_no_write skip D0e; return 0; }
     ts_record_read "$key" || { _ts_no_write miss "" record; return 0; }
     doc=$(jq -r '.doc // ""' <<<"$TS_REC")
     [ -z "$doc" ] || TS_WORKER_STATE=$(ts_worker_state "$doc")
