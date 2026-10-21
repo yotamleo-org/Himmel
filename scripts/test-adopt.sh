@@ -349,7 +349,7 @@ out_tp=$(HOME="$base_home" bash "$adopt" --profile core --scope project --target
 grep -qx '.claude/worktrees/' "$tp/.gitignore" || fail "HIMMEL-6326: adopt did not add .claude/worktrees/ to .gitignore"
 printed_tp=$(sed -n 's/^.*Commit it once with: //p' <<< "$out_tp")
 [ -n "$printed_tp" ] || fail "HIMMEL-6852: install on main printed no 'Commit it once with:' line: $out_tp"
-read -r -a printed_argv <<< "$printed_tp"
+eval "printed_argv=($printed_tp)"
 case "${printed_argv[1]:-}" in /*) ;; *) fail "HIMMEL-6852: the printed adopt.sh path must be absolute (got: $printed_tp)" ;; esac
 ( cd "$tp" && HOME="$base_home" "${printed_argv[@]}" >/dev/null 2>&1 ) || fail "HIMMEL-6852: the printed line failed from the project cwd: $printed_tp"
 [ "$(git -C "$tp" status --porcelain -- scripts .gitignore .claude/settings.json | wc -l)" -eq 0 ] || fail "HIMMEL-6852: the printed line left the install uncommitted"
