@@ -31,7 +31,7 @@
 # ${!R} / zsh-flag expansion naming the lift; a brace-built or split ("bank"+
 # "-lift") name; the lift path handed to a writer through a reader, xargs or
 # find -exec; a shell reading a script a file or a non-literal word supplies
-# (`cat f | bash`, `echo "$x" | bash`); an archive extraction (tar/unzip/cpio/7z/…) into HOME or the
+# (`cat f | bash`, `echo "$x" | bash`) or an escape echo -e / printf decodes; an archive extraction (tar/unzip/cpio/7z/…) into HOME or the
 # state dir, with or without a symlink member; a variable command word; sed's
 # `e` command and `s///e` flag; `less --log-file=`.
 #
@@ -957,7 +957,10 @@ analyse "$CMD" 0
 # A shell reading its script from a pipe runs the text an earlier stage prints.
 # The command-position model (scripts/lib/bash-ast.sh) says which stage feeds
 # which: through tee and a bare cat back to the producer, and when that is an
-# echo or printf of literal words, its words are analysed as the script. It only
+# echo or printf of literal words, what it prints is analysed as the script: an
+# echo's words joined by spaces; a printf's format, each argument, and the
+# arguments joined, since the format is not rendered (an argument the format
+# would only print as data can still deny). Escapes are not decoded. It only
 # adds a deny; a missing lib, shfmt or jq, or a command shfmt cannot parse
 # leaves the tokenizer's verdict above. Pre-gated on a pipe beside a shell word.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
@@ -970,8 +973,8 @@ def thru: length == 1 and (.[0] | .prog == "tee"
         | [$ps[] | select(.pipe.id == $sh.pipe.id and .pipe.stage == $j)] | select(thru | not))
 | .[] | select(((.prog // "") | IN("echo", "printf")) and all(.argv[1:][]; .t == "lit"))
 | .prog as $p | [.argv[1:][] | .v] as $a
-| $a[], (if $p == "echo" then $a | until(length == 0 or (.[0] | test("^-[neE]+$") | not); .[1:])
-         else $a[1:] end | join(" "))
+| if $p == "echo" then $a | until(length == 0 or (.[0] | test("^-[neE]+$") | not); .[1:]) | join(" ")
+  else $a[], ($a[1:] | join(" ")) end
 BL_JQ_EOF
 if [[ $CMD == *'|'* ]] && [[ "$CMD" =~ (^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh)([^A-Za-z0-9_.-]|$) ]]; then
     bl_lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh

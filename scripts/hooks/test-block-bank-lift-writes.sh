@@ -400,6 +400,8 @@ row "usage: heredoc set into bash"   deny "bash <<'EOF'
 bash $US set x
 EOF"
 row "usage: echo show | bash"        allow "echo 'bash $US show' | bash"
+row "usage: echo echo set | bash"    allow "echo 'echo' 'bash $US set x' | bash"
+row "usage: echo split set | bash"   deny "echo 'bash $US' set x | bash"
 row "usage: cat f | bash"            allow "cat f | bash"
 row "usage: echo set | grep"         allow "echo 'bash $US set x' | grep set"
 row "usage: echo set, then bash"     allow "echo 'bash $US set x'; bash -c 'echo hi'"
