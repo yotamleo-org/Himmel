@@ -193,6 +193,28 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(jira.fv.get('K-1')).toEqual(['v1']);
   });
 
+  it('a DISCHARGE whose fixVersion is absent from Jira fails its readback', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'DISCHARGE', key: 'K-1', from_v: 'v1', to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'ACCEPT', op: { kind: 'discharge', from_v: 'v1', to_v: 'v1' }, supersedes: ['baseline-v1-g1'] });
+    await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/readback does not match/);
+  });
+
+  it('a successor never voids an old-epoch move Jira half applied', async () => {
+    await setup();
+    jira.fv.set('K-1', ['v1']);
+    const q = request(ctx(), { verb: 'REVERSION', key: 'K-1', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' }, supersedes: ['baseline-v1-g1'] });
+    jira.fv.set('K-1', []);
+    leaseRelease(ctx(rmEnv));
+    const next = { ...rmEnv, HIMMEL_RM_DOC: '/abs/b.md' };
+    leaseAcquire(ctx(next), { expectEpoch: 1, doc: '/abs/b.md', session: 'b' });
+    await expect(apply(ctx(next), r.id)).rejects.toThrow(/partly applied/);
+    expect(claim(ctx(next))).toEqual([]);
+  });
+
   it('an emergency ruling may cite the standing emergency record', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'red main', evidence: {}, from: 'console' });

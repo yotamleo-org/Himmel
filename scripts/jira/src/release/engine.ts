@@ -402,9 +402,16 @@ function landed(op: Op, cur: string[]): boolean {
     case 'add': return has(op.to_v);
     case 'remove': return !has(op.from_v);
     case 'move': return (op.to_v === null || has(op.to_v)) && !has(op.from_v);
-    case 'keep': return has(op.from_v);
+    case 'keep':
+    case 'discharge': return has(op.from_v);
     default: return true;
   }
+}
+
+// Jira still shows the state from before the ruling's write.
+function untouched(op: Op, cur: string[]): boolean {
+  const has = (v: string | null) => v !== null && cur.includes(v);
+  return op.kind !== 'move' || ((op.from_v === null || has(op.from_v)) && !has(op.to_v));
 }
 
 function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Partial<RulingRow>): Omit<RulingRow, 'prev' | 'mac'> {
@@ -435,7 +442,12 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 
     if (last.phase === 'intent' && last.epoch !== lease.epoch) {
       // An older epoch's intent: resolve by readback, never by re-writing Jira.
-      if (!landed(last.op, await ctx.jira.fixVersions(last.key))) {
+      const cur = await ctx.jira.fixVersions(last.key);
+      if (!landed(last.op, cur)) {
+        if (!untouched(last.op, cur)) {
+          event('mismatch');
+          throw new Error(`release apply: ${id} is partly applied in Jira; ${last.key} needs a hand fix before it is re-ruled`);
+        }
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
         const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
         const req = latest.get(last.req);
