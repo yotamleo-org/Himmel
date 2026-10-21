@@ -2406,6 +2406,12 @@ if [ -n "$_TIMEOUT_BIN" ]; then
 else
     skip 'audit timeout rows: no timeout binary'
 fi
+printf '#!/bin/sh\necho "vmismatch=0"\nexit 3\n' > "$W/vm-partial0.sh"
+vm_partial0="$(TICK_VMISMATCH_PROBE="$W/vm-partial0.sh" vm_tick)"
+contains 'an incomplete audit with no RESET row reads vmismatch=? (HIMMEL-6549)' "$vm_partial0" ' vmismatch=?'
+printf '#!/bin/sh\nprintf "LATER-VERSION\\tHIMMEL-72\\tIn Progress\\tv1.0.2\\tnone\\tRESET\\nvmismatch=1\\n"\nexit 3\n' > "$W/vm-partial1.sh"
+vm_partial1="$(TICK_VMISMATCH_PROBE="$W/vm-partial1.sh" vm_tick)"
+contains 'an incomplete audit still reports the RESET rows it found (HIMMEL-6549)' "$vm_partial1" ' vmismatch=1'
 case "$vd_zero" in *wt-orphans*|*wt-ceiling*) fail "no worktree.sh under REPO reads no wt-orphans field (out='$vd_zero')" ;; *) pass 'no worktree.sh under REPO reads no wt-orphans field (HIMMEL-6584)' ;; esac
 mkdir -p "$REPO"
 printf '#!/bin/sh\nprintf "ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\\nORPHAN /w/b branch=detached:0123456789ab dirty=1 ahead=0 idle=9h\\nCEILING 72/100 worktrees (alarm at 70)\\n"\nexit 1\n' > "$W/wto-probe-2.sh"

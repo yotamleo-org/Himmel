@@ -261,7 +261,8 @@ mirror on this machine). `versionless-done.sh --backfill` lists the fix; it neve
 vmismatch=<n|?> (HIMMEL-6549) is the RESET-row count of one bounded version-status-audit.sh read
 (owners = the tick's live legs; TICK_VMISMATCH_PROBE and TICK_VMISMATCH_TIMEOUT seams, default 30 s): started tickets whose fixVersion is
 later than the active one, released-but-not-Done tickets, versionless started ones. ? = no count
-or an UNKNOWN row (a gh read failed); hidden when there is no mirror. The waiter wakes on a
+or an UNKNOWN row (a gh read failed) or a zero count from a scan that skipped files; hidden
+when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
 line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
@@ -1424,16 +1425,20 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
 fi
 
 # vmismatch=<n|?|skip>: RESET rows of one bounded version-status-audit.sh read on
-# the Jira mirror, owners = this tick's live legs. ? = the audit printed no count or an
-# UNKNOWN row (a gh read failed); skip = no mirror on this machine. In console-wait's wake key.
+# the Jira mirror, owners = this tick's live legs. ? = the audit printed no count, an
+# UNKNOWN row (a gh read failed) or a zero count from a scan that skipped files; skip = no
+# mirror on this machine. In console-wait's wake key.
 vmismatch_summary=skip
 vm_probe="${TICK_VMISMATCH_PROBE:-$HERE/version-status-audit.sh}"
 if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
     vm_owners="${owner_keys# }"
     [ -n "${vm_owners// }" ] || vm_owners=NONE-0  # the audit reads an empty owner list as ownership unknown
-    vm_out="$(timeout -k 2 "${TICK_VMISMATCH_TIMEOUT:-30}" bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || true  # gnu-ok: console kit is Linux-only; swallow-ok: exit 1 = RESET rows, exit 3 = warnings; the count line decides
+    vm_rc=0
+    vm_out="$(timeout -k 2 "${TICK_VMISMATCH_TIMEOUT:-30}" bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || vm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in vm_rc and read below
     if printf '%s\n' "$vm_out" | grep -q '^vmismatch=[0-9][0-9]*$' && ! printf '%s\n' "$vm_out" | grep -q "$(printf '\tUNKNOWN$')"; then
         vmismatch_summary="$(printf '%s\n' "$vm_out" | grep -c "$(printf '\tRESET$')")" || true  # swallow-ok: grep -c exits 1 and prints 0 on no match
+        # exit 1 = RESET rows; any other non-zero exit is a scan that skipped files, so a zero count is not proof
+        [ "$vmismatch_summary" -gt 0 ] || [ "$vm_rc" -eq 0 ] || vmismatch_summary='?'
     else
         vmismatch_summary='?'
     fi
