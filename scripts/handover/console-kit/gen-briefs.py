@@ -167,10 +167,15 @@ def validate_rm(leg, i):
         die('rm leg %s: epoch %r must be an integer from 0' % (label, epoch))
     if not isinstance(leg['state_dir'], str) or not os.path.isabs(leg['state_dir']):
         die('rm leg %s: state_dir %r must be an absolute path' % (label, leg['state_dir']))
+    sd = leg['state_dir'].rstrip('/')
+    if '\n' in sd or os.path.basename(sd) != leg['release'] or os.path.basename(os.path.dirname(sd)) != 'release':
+        die('rm leg %s: state_dir %r must end in release/%s' % (label, leg['state_dir'], leg['release']))
     if leg['mode'] not in ('observe', 'live'):
         die('rm leg %s: mode %r must be observe or live' % (label, leg['mode']))
     if leg.get('lane', 'native') != 'native':
         die('rm leg %s: lane %r is refused; the release manager is native-lane only' % (label, leg['lane']))
+    if leg.get('model') is not None and (not isinstance(leg['model'], str) or tier_gate(leg['model']) != 'opus'):
+        die('rm leg %s: model %r must be an opus model (the release manager runs at opus; the brief carries an opus Tier line)' % (label, leg['model']))
     if leg.get('effort') not in (None,) + EFFORTS:
         die('rm leg %s: effort %r must be one of %s' % (label, leg.get('effort'), '|'.join(EFFORTS)))
 

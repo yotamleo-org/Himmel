@@ -314,7 +314,7 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
-  it('a crash between the applied row and its event is repaired by the retry', async () => {
+  it.skipIf(process.getuid?.() === 0)('a crash between the applied row and its event is repaired by the retry', async () => {
     await setup();
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));

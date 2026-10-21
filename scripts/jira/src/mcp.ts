@@ -538,9 +538,11 @@ async function runRelease(args: Record<string, unknown>): Promise<string> {
     }
     case 'request': {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(need('verb'))) throw new Error('release request: verb is INTAKE, REVERSION or DISCHARGE');
+      const evidence = a.evidence === undefined ? {} : a.evidence;
+      if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: evidence is a JSON object');
       const r = releaseRequest(ctx, {
         verb: need('verb') as Verb, key: need('key'), from_v: ver(s('from')), to_v: ver(s('to')), why: need('why'),
-        evidence: (a.evidence as Record<string, unknown> | undefined) ?? {}, from: 'console',
+        evidence: evidence as Record<string, unknown>, from: 'console',
       });
       return `REQ ${r.req}`;
     }

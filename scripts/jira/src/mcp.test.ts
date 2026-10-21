@@ -472,6 +472,12 @@ describe('release tool (HIMMEL-6796)', () => {
     expect(await run({ sub: 'request', verb: 'INTAKE', key: 'K-2', to: 'v1', why: 'found work' })).toBe('REQ Q-R1-0001');
   });
 
+  it('request refuses evidence that is not a JSON object, as the CLI does', async () => {
+    for (const evidence of [['x'], 'x', 3, null]) {
+      await expect(run({ sub: 'request', verb: 'INTAKE', key: 'K-3', to: 'v1', why: 'w', evidence })).rejects.toThrow(/evidence is a JSON object/);
+    }
+  });
+
   it('rule goes through the engine fence: a session that is not the release manager is refused', async () => {
     await expect(run({
       sub: 'rule', req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', to: 'v1', sector: 'Planning & tracking', ground: 'regression', reason: 'r',

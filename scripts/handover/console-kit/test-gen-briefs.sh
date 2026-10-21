@@ -463,6 +463,9 @@ rmbad "an rm leg with a negative epoch is refused" 'd["epoch"]=-1' "epoch"
 rmbad "an rm leg with a mode other than observe or live is refused" 'd["mode"]="dry"' "mode"
 rmbad "an rm leg missing its state_dir is refused" 'del d["state_dir"]' "state_dir"
 rmbad "an rm leg on a non-native lane is refused" 'd["lane"]="claudex"' "lane"
+rmbad "an rm leg whose state_dir names another release is refused" 'd["state_dir"]="/h/tester/himmel/release/R2"' "must end in release/R1"
+rmbad "an rm leg whose state_dir is not under a release directory is refused" 'd["state_dir"]="/h/tester/himmel/R1"' "must end in release/R1"
+rmbad "an rm leg on a non-opus model is refused" 'd["model"]="claude-sonnet-5-5"' "opus"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
