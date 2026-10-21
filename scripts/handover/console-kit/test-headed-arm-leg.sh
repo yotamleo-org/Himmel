@@ -3305,6 +3305,14 @@ lenv34g="$(printf '%s\n' "$out34g" | grep '^headed-arm-leg: lane=')"
 check "34g dry run exits 0" "$rc34g" "0"
 contains "34g an unrecognised LEG_EFFORT falls through to the registry" "$lenv34g" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
+# 34g1. An omitted model resolves the registry effort for the default model headed-arm.sh launches.
+lanes_fixture_opus_high="$tmp/lanes-fixture-opus-high.json"
+printf '%s\n' '{"lanes":[{"id":"opus","class":"claude-tier","effort":"high"}]}' > "$lanes_fixture_opus_high"
+rc34g1=0
+out34g1="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_opus_high" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g1 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g1.log" 2>&1)" || rc34g1=$?
+check "34g1 dry run exits 0" "$rc34g1" "0"
+contains "34g1 an omitted model takes the default model's registry effort" "$out34g1" "headed-arm-leg: effort=high source=lanes.json"
+
 # 34g2. A caller-preset launcher token wins on a name clash; the effort line reports it.
 rc34g2=0
 out34g2="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g2 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g2.log" claude-opus-5-5 2>&1)" || rc34g2=$?

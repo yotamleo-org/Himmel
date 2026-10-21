@@ -1533,6 +1533,9 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
     EFFORT_SOURCE=""
+    # headed-arm.sh defaults an omitted model to this; the registry lookup must
+    # match the model the leg launches.
+    MODEL="${MODEL:-claude-opus-5-5}"
     # A caller-preset launcher token wins over leg_propagate_env, so the print
     # below reports it; read before the resolver appends its own token.
     # A presence flag, not -n: an empty preset is still the token the leg gets.
