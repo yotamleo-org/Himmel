@@ -1398,6 +1398,9 @@ fi
 # The tick already owns the worktree census: reuse the existing reclaiming
 # sweep once an hour, under a lock shared by all checkouts of this repository.
 # Stamp attempts before running so a failing sweep cannot storm on every tick.
+# Sweep and census share the census's existing 90-second budget.
+wts_started="$(date +%s)"
+wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
 if [ -f "$REPO/scripts/worktree.sh" ]; then
     (
         cd "$REPO" || exit 0
@@ -1413,7 +1416,9 @@ if [ -f "$REPO/scripts/worktree.sh" ]; then
         flock -n 8 || exit 0  # prim-ok: Linux-only nonblocking sweep; with_lock would block the snapshot
         if [ -e "$wts_stamp" ] && [ -n "$(find "$wts_stamp" -mmin -60)" ]; then exit 0; fi
         touch "$wts_stamp" || exit 0
-        timeout -k 2 60 bash "$REPO/scripts/worktree.sh" prune >/dev/null 2>&1 || true  # gnu-ok: console kit is Linux-only; swallow-ok: a failed sweep never blocks the snapshot
+        if timeout -k 2 60 bash "$REPO/scripts/worktree.sh" prune >/dev/null 2>&1; then  # gnu-ok: console kit is Linux-only
+            rm -f "$wto_cache"
+        fi
     ) 2>/dev/null || true  # swallow-ok: an unavailable state directory or lock skips this attempt
 fi
 
@@ -1426,7 +1431,6 @@ fi
 wto_summary=0
 wtc_summary=""
 wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
-wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
 wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
 case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
 if [ -f "$wto_probe" ]; then
@@ -1434,7 +1438,12 @@ if [ -f "$wto_probe" ]; then
         wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
     else
         wto_rc=0
-        wto_out="$(cd "$REPO" && timeout -k 2 90 bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        wto_timeout=$((90 - $(date +%s) + wts_started))
+        if [ "$wto_timeout" -le 0 ]; then
+            wto_rc=2; wto_out=""
+        else
+            wto_out="$(cd "$REPO" && timeout -k 2 "$wto_timeout" bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        fi
         # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
         if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
             wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
