@@ -74,7 +74,7 @@ export function App({ source }: { source: Source }) {
     <FailCtx.Provider value={failCtx}>
       <div className="head">
         <TopBar view={view} now={now} source={source} closed={closed}
-          onReplay={() => { setOpen({}); setOnly(null); setCur(null); setEpoch((n) => n + 1); }} />
+          at={at} onReplay={() => { setOpen({}); setOnly(null); setCur(null); setEpoch((n) => n + 1); }} />
         <FailureBar view={view} items={items} at={at} wrapped={!!cur?.wrapped} onStep={stepFailure} />
       </div>
       <FailureList view={view} items={items} at={at} onGo={go} />
@@ -115,8 +115,8 @@ const secs = (ms: number) => (ms < 10000 ? (ms / 1000).toFixed(1) : Math.round(m
 const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
-function TopBar({ view, now, source, closed, onReplay }: {
-  view: View; now: number; source: Source; closed: boolean; onReplay: () => void;
+function TopBar({ view, now, source, closed, at, onReplay }: {
+  view: View; now: number; source: Source; closed: boolean; at: number; onReplay: () => void;
 }) {
   const n = view.failures.length;
   const state = liveness(view, { live: source.live, closed }, Date.now());
@@ -128,7 +128,7 @@ function TopBar({ view, now, source, closed, onReplay }: {
       <span className={`state ${state.cls}`} role="status">{state.word}</span>
       <span className="meta">{[view.t0 !== undefined && `started ${clockTime(view.t0)}`, plural(turns, "turn"), `${view.eventCount} events`, secs(now)]
         .filter(Boolean).join(" · ")}</span>
-      {n > 0 && <span className="fails">{plural(n, "failure")}</span>}
+      {n > 0 && <span className="fails fails-count">{plural(n, "failure")}{at >= 0 ? ` · ${at + 1} of ${n}` : ""}</span>}
       {!source.live && view.status === "finished" && <button className="btn replay" onClick={onReplay}>Replay</button>}
     </header>
   );
