@@ -52,7 +52,7 @@ SERIES = ("merges", "tickets", "fix_share_pct", "cost_eq_per_ticket",
 NO_SOURCE = ["failure_rate_pct", "denial_rate_pct", "ship_stage_median_min"]
 STABLE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 TICKET = re.compile(r"\[([A-Z][A-Z0-9]*-\d+)\]")
-COST_EQ = re.compile(r"^leg-burn\b(?:[^\n]*\n)?[^\n]*?\bcost-eq=([0-9.]+)(k?)", re.M)
+COST_EQ = re.compile(r"^leg-burn\b(?:(?![^\n]*cost-eq=)[^\n]*\n)?[^\n]*?\bcost-eq=([0-9.]+)(k?)", re.M)
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 
@@ -166,7 +166,7 @@ def flake_rows(script, t0, t1):
 def build_row(kind, key, t0, t1, a):
     since, until = stamp(t0), stamp(t1)
     sr, sr_state = self_review(a.self_review, a.repo, a.ref, since, until)
-    tickets, costed, cost, legs = set(), set(), 0.0, 0
+    tickets, costed, cost, ticket_cost, legs = set(), set(), 0.0, 0.0, 0
     for subject, rec in merge_bodies(a.repo, a.ref, since, until):
         m = TICKET.search(subject)
         if m:
@@ -176,6 +176,7 @@ def build_row(kind, key, t0, t1, a):
             legs += 1
             if m:
                 costed.add(m.group(1))
+                ticket_cost += float(v) * (1000 if k else 1)
     cache, cache_state = cache_hit(a.cache_history, t0.timestamp(), t1.timestamp())
     flakes, flake_state = flake_rows(a.flake_script, t0, t1)
     n_t = len(costed)
@@ -189,7 +190,7 @@ def build_row(kind, key, t0, t1, a):
         "fix_share_pct": (num(100.0 * sr["fix"] / sr["merges"]) if sr["merges"] else 0) if sr else None,
         "red_main": sr["red_main"] if sr else None,
         "cost_eq": num(cost) if legs else None,
-        "cost_eq_per_ticket": num(cost / n_t) if n_t else None,
+        "cost_eq_per_ticket": num(ticket_cost / n_t) if n_t else None,
         "legs": legs,
         "cache_hit_pct": cache,
         "flake_rows": flakes,
@@ -209,9 +210,9 @@ def week_windows(end, n):
         yield "%d-W%02d" % (iso[0], iso[1]), t0, t0 + dt.timedelta(days=7) - dt.timedelta(seconds=1)
 
 
-def version_windows(repo, n):
+def version_windows(repo, ref, n):
     tags = []
-    for t in git(repo, "tag", "--list").split():
+    for t in git(repo, "tag", "--merged", ref, "--list").split():
         m = STABLE_TAG.match(t)
         if m:
             tags.append((tuple(int(x) for x in m.groups()), t))
@@ -266,7 +267,7 @@ def cmd_write(a):
     try:
         for key, t0, t1 in (week_windows(end, a.weeks) if a.weeks else ()):
             rows[("week", key)] = build_row("week", key, t0, t1, a)
-        for key, t0, t1 in (version_windows(a.repo, a.versions) if a.versions else ()):
+        for key, t0, t1 in (version_windows(a.repo, a.ref, a.versions) if a.versions else ()):
             rows[("version", key)] = build_row("version", key, t0, t1, a)
     except RuntimeError as e:
         print("weekly-rollup: %s" % e, file=sys.stderr)
