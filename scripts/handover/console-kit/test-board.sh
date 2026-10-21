@@ -1147,6 +1147,31 @@ contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
 PATH="$W/bin:$PATH" node "$SUT" --doc "$B/nope.md" >/dev/null 2>&1; rc=$?
 contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
 
+# --- the first publish to a carried URL must not put the live page in the console's context
+# An unviewed publish is refused and the refusal returns the whole live page (about 23k
+# tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
+# send that first read+publish to a haiku subagent.
+DOCS="$HERE/../../../docs/handover"
+BT="$(tr '\n' ' ' < "$DOCS/console-sections/board-tracker.md" | tr -s ' ')"
+CT="$(tr '\n' ' ' < "$DOCS/console-template.md" | tr -s ' ')"
+BT_BOARD="${BT%%Keep the roadmap tracker current*}"
+BT_TRACKER="${BT#*Keep the roadmap tracker current}"
+contains 'board-tracker.md: the board publish goes to a haiku subagent' "$BT_BOARD" 'goes to a haiku subagent'
+contains 'board-tracker.md: the board subagent is dispatched with model haiku' "$BT_BOARD" 'model: haiku'
+contains 'board-tracker.md: the board subagent runs at effort medium' "$BT_BOARD" 'effort medium'
+contains 'board-tracker.md: the tracker publish goes to the same haiku subagent' "$BT_TRACKER" 'goes to the same haiku subagent'
+contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
+contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
+contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
+contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first console publish that uses it records the parent-context delta'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: tracker URL no longer says the console reads it first' "$BT" 'must `Artifact read` it first, exactly as for `board:`'
+contains 'console-template.md step 12: the first publish to a carried URL goes to a medium-effort haiku subagent' "$CT" 'goes to a medium-effort haiku subagent'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'console-template.md step 12: no bare Artifact read in the console context' "$CT" 'must `Artifact read` it first'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
     exit 0

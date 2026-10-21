@@ -31,12 +31,15 @@ let toolHealth = null, toolHealthGen = 0;
 const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
+let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides Roadmap and Kanban
+const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
+const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
   { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
-  { id: "roadmap", label: "Roadmap", needsFeed: false, render: () => renderRoadmap(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
-  { id: "kanban", label: "Kanban", needsFeed: false, render: () => renderKanban(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
+  { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
+  { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
 ];
 let currentPage = PAGES[0];
 
@@ -58,12 +61,22 @@ function route() {
 }
 addEventListener("hashchange", route);
 route();
+loadSources();
 
 // The rail (nav.js, shared with the AG-UI page): Config and Health are routes here, Fleet is /agui/.
 function renderPages() {
   const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
-  $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id }).map((l) =>
+  $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id, sources }).map((l) =>
     `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("");
+}
+
+async function loadSources() {
+  try {
+    const r = await fetch("/api/sources", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (r.ok) sources = (await r.json()).sources;
+  } catch (_) { /* unknown stays unknown: nothing is hidden */ }
+  renderPages();
+  if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
 
 async function loadFleet() {
@@ -220,6 +233,7 @@ async function loadRoadmap() {
   } catch (_) { data = { state: "error", reason: "server unreachable" }; }
   if (gen !== roadmapGen) return;
   roadmap = data;
+  roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
 // a drop or a theme select goes to Jira through the server. The board is redrawn from the server's data either way:
