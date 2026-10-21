@@ -19,7 +19,7 @@ const RECOMMENDED: Readonly<Record<string, { mode: string; required: boolean; en
   claude: { mode: "best-effort", required: false, enabled: false }, // the Claude API critic is off (decision 108)
   coderabbit: { mode: "best-effort", required: false, enabled: true },
 };
-export const RATE_LIMIT = "CodeRabbit rate limited or absent is a note and continue: the gate never waits for it. Heavy CI releases on a clean CodeRabbit or a clean critic at the head.";
+export const RATE_LIMIT = "CodeRabbit on best-effort (the default): rate limited or absent is a note and continue, the gate never waits for it. A reviewer set to hard holds the merge when it is rate limited or unavailable. Heavy CI releases on a clean CodeRabbit or a clean critic at the head.";
 const ENV_KNOBS: readonly { name: string; default: string; means: string }[] = [
   { name: "CR_PROFILE", default: "unset (paid codex anchor where configured)", means: "which critic tier /pr-check runs; none = Claude alone, no outside reviewer" },
   { name: "CR_REQUIRE_CROSS_MODEL", default: "off", means: "when on, at least one non-Claude critic must pass before the review marker clears" },

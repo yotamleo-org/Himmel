@@ -65,6 +65,8 @@ test("GET lists the reviewers in order with mode and required, and states the ru
   expect(j.rateLimit).toMatch(/rate.limited/i);
   expect(j.rateLimit).toMatch(/note/i);
   expect(j.rateLimit).toMatch(/never wait/i);
+  expect(j.rateLimit).toMatch(/best-effort/i);
+  expect(j.rateLimit).toMatch(/hard holds the merge/i);
   expect(j.env.map((e: { name: string }) => e.name)).toEqual(["CR_PROFILE", "CR_REQUIRE_CROSS_MODEL", "CR_FLOOR_FALLBACK", "CRITIC_PANEL_TIERS", "CRITIC_TIMEOUT_SECS", "CRITIC_PARALLEL"]);
 });
 
