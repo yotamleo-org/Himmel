@@ -72,9 +72,12 @@ export function App({ source }: { source: Source }) {
 
   return (
     <FailCtx.Provider value={failCtx}>
-      <TopBar view={view} now={now} source={source} closed={closed}
-        onReplay={() => { setOpen({}); setOnly(null); setCur(null); setEpoch((n) => n + 1); }} />
-      <FailureNav view={view} items={items} at={at} wrapped={!!cur?.wrapped} onGo={go} onStep={stepFailure} />
+      <div className="head">
+        <TopBar view={view} now={now} source={source} closed={closed}
+          onReplay={() => { setOpen({}); setOnly(null); setCur(null); setEpoch((n) => n + 1); }} />
+        <FailureBar view={view} items={items} at={at} wrapped={!!cur?.wrapped} onStep={stepFailure} />
+      </div>
+      <FailureList view={view} items={items} at={at} onGo={go} />
       <RunStrip key={epoch} view={view} now={now} only={only} onPick={(id) => { if (only && view.tools[id]?.agent !== only) setOnly(null); reveal(id); }} />
       <div className="layout">
         <main className="transcript" aria-label="Agent transcript">
@@ -131,10 +134,10 @@ function TopBar({ view, now, source, closed, onReplay }: {
   );
 }
 
-// Where you are among the failures: one sentence, worded buttons that wrap and say so, and every failure as a numbered
-// list (kind, agent, call) whose items link to their call.
-function FailureNav({ view, items, at, wrapped, onGo, onStep }: {
-  view: View; items: FailureItem[]; at: number; wrapped: boolean; onGo: (i: number) => void; onStep: (dir: 1 | -1) => void;
+// Where you are among the failures: one sentence and worded buttons that wrap and say so. It sits in the sticky head so
+// the controls stay in reach after a jump to a distant call.
+function FailureBar({ view, items, at, wrapped, onStep }: {
+  view: View; items: FailureItem[]; at: number; wrapped: boolean; onStep: (dir: 1 | -1) => void;
 }) {
   const n = items.length;
   if (!n) return null;
@@ -145,6 +148,15 @@ function FailureNav({ view, items, at, wrapped, onGo, onStep }: {
         <button className="btn" onClick={() => onStep(-1)}>← Previous failure</button>
         <button className="btn" onClick={() => onStep(1)}>Next failure →</button>
       </div>
+    </section>
+  );
+}
+
+// Every failure as a numbered list (kind, agent, call) whose items link to their call.
+function FailureList({ view, items, at, onGo }: { view: View; items: FailureItem[]; at: number; onGo: (i: number) => void }) {
+  if (!items.length) return null;
+  return (
+    <section className="fnav fnav-all">
       <ol className="fnav-list" aria-label="Every failure">
         {items.map((f, i) => (
           <li key={fkey(f.ref)}>
