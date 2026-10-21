@@ -84,6 +84,13 @@
 # models heredocs and can replace qmd_words once a third inlined
 # copy is wired into its sync suite.
 #
+# The command-position model (scripts/lib/bash-ast.sh) reads the command first
+# when it names qmd: a position that runs qmd with a search verb (brace
+# expansion included) is refused, and qmd named only as data to git, gh, curl,
+# jq, cat, grep or ls (a commit message, a jq filter, a heredoc) is allowed.
+# Anything it cannot fully read — an opaque position, an interpreter with no
+# literal body, echo/printf, a pipe consumer beside a mention, a PATH
+# assignment, a command over 8 KiB — is left to the regex reader below.
 # ponytail: Bash only — a PowerShell `qmd query` is unguarded; wire a
 # PowerShell twin if a Windows station starts running qmd ad hoc.
 #
@@ -1911,8 +1918,102 @@ qmd_check() {
     return 0
 }
 
+# The command-position model (scripts/lib/bash-ast.sh) reads where each command
+# runs. qa_verdict is `deny` when a position runs qmd with a search verb (a verb
+# brace expansion splits out included), `allow` when every position is read and
+# qmd is named only as data to a program that does not run it (git commit -m,
+# curl -d, a jq filter, a heredoc to cat), and `legacy` for everything else: an
+# opaque position, an interpreter with no literal body, an echo or printf, a
+# launcher, a dynamic word after qmd. `legacy` leaves the verdict to qmd_check
+# below, so the model only adds a denial or clears a mention it fully read.
+IFS= read -r -d '' QA_JQ <<'QA_JQ_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
+def lc: (. // "") | ascii_downcase;
+def b: lc | sub("^.*[/\\\\]"; "") | sub("\\.(exe|cmd)$"; "");
+def wv: if .t == "lit" then .v else (.raw // "") end;
+def isq: .t == "lit" and ((.v | b) | test("^qmd(\\.(ts|js|mjs|cjs))?$"));
+def isverb: .t == "lit" and ((.v | lc) | IN("query", "search", "vsearch"));
+def interp: (.prog | b) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def wrapper: "bun", "bunx", "node", "nodejs", "npx", "deno", "timeout", "nice", "ionice", "chrt", "taskset", "stdbuf", "setsid", "nohup", "time", "command", "builtin", "exec", "env", "sudo", "doas", "xargs", "watch", "unbuffer", "flock", "unshare", "nsenter", "chroot", "strace", "ltrace", "firejail", "bwrap", "systemd-run", "su", "runuser", "pkexec";
+def runtime: "bun", "bunx", "node", "nodejs", "npx", "deno";
+def runq:
+  .argv as $a
+  | if ($a | length) == 0 then null
+    elif ($a[0] | isq) then {r: $a[1:], stop: true}
+    elif ((.prog | b) | IN(wrapper)) or (($a[0] | wv | b) | IN(wrapper)) then
+      ([range(0; $a | length) | select($a[.] | isq)] | first) as $j
+      | if $j == null then null
+        else {r: $a[$j + 1:], stop: (((.prog | b) | IN(runtime)) or (($a[0] | wv | b) | IN(runtime)))} end
+    else null end;
+def qverdict($q):
+  $q.r as $w
+  | [range(0; $w | length) as $i | $w[$i] as $x
+     | if $x.t != "lit" then "legacy"
+       elif $q.stop and (($x.v // "") | length) == 0
+            and ($i == 0 or (($w[$i - 1].t == "lit") and (($w[$i - 1].v | startswith("-")) | not))) then "allow"
+       elif $x | isverb then "deny"
+       else empty end]
+  | (first // "allow");
+def data: (.prog | b) | IN("git", "gh", "curl", "wget", "jq", "cat", "head", "tail", "wc", "ls", "diff", "grep", "egrep", "fgrep", "rg");
+def execarg: any(.argv[]; .t == "lit" and (.v == "-c" or (.v | startswith("--pre"))));
+def words: [.argv[] | wv] | join(" ") | ascii_downcase;
+def mention: ([.argv[] | wv] + [(.redirs // [])[] | ((.text // ""), (.w.raw // ""))]) | join(" ") | ascii_downcase | contains("qmd");
+def namesverb: words | test("qmd.*(^|[^a-z0-9_-])(query|search|vsearch)([^a-z0-9_-]|$)");
+def inpipe: any((.in // [])[]; . == "pipe");
+def posv($men):
+  runq as $q
+  | if any((.assigns // [])[]; . == "PATH") then "legacy"
+    elif $q != null then qverdict($q)
+    elif (.opaque != null) or (interp and (.body == null)) then "legacy"
+    elif mention and ((data | not) or execarg) then
+      (if data and namesverb then "deny" else "legacy" end)
+    elif $men and inpipe and (data | not) then "legacy"
+    else "allow" end;
+([.[] | select(runq == null and mention)] | length > 0) as $men
+| [.[] | posv($men)] as $v
+| if any($v[]; . == "deny") then "deny"
+  elif any($v[]; . == "legacy") then "legacy"
+  else "allow" end
+QA_JQ_EOF
+
 deny=0 checks=0 nested=0 nofilt=0 wr="" allw="" rcmd=""
-qmd_check "$cmd" 0
+# A command naming no qmd (its quotes, backslashes and line continuations
+# removed) never pays for shfmt; qmd_check reads such a command itself.
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -d "'\"\\\\")
+qa_verdict=legacy
+# past 8 KiB shfmt and jq cost more than the budget the open-paren row pins;
+# qmd_check reads a command that long itself.
+[ "${#cmd}" -le 8192 ] || cmd_nq=
+case "$cmd_nq" in
+    *qmd*)
+        qa_lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+        # shellcheck source=../lib/bash-ast.sh
+        if ! { [ -r "$qa_lib" ] && . "$qa_lib"; } 2>/dev/null; then
+            echo "block-bare-qmd-query: cannot load $qa_lib - failing closed" >&2
+            exit 2
+        fi
+        qa_rc=0
+        qa_pos=$(bash_ast_positions "$cmd" 2>/dev/null) || qa_rc=$? # swallow-ok: the rc is read next
+        case "$qa_rc" in
+            0)
+                # swallow-ok: a jq failure leaves the verdict legacy, so qmd_check decides
+                qa_verdict=$(printf '%s' "$qa_pos" | jq -r "$QA_JQ" 2>/dev/null) || qa_verdict=legacy
+                ;;
+            2)
+                case "$cmd_nq" in
+                    *query* | *search*)
+                        echo "block-bare-qmd-query: shfmt not on PATH, so this command that names qmd and a search verb cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with QMD_UNBOUNDED_OK=1." >&2
+                        exit 2
+                        ;;
+                esac
+                ;;
+        esac
+        ;;
+esac
+case "$qa_verdict" in
+    deny) deny=1 ;;
+    allow) exit 0 ;;
+    *) qmd_check "$cmd" 0 ;;
+esac
 
 if [ "$deny" = 1 ]; then
     bounded="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/qmd-bounded.sh"
