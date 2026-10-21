@@ -219,18 +219,25 @@ stub_run() { # stub_run <dir> <json>
     OUT="$(printf '%s' "$2" | env -i PATH="$1" "$BASH" "$HOOK" 2>/dev/null)"
     RC=$?
 }
+verb_denied() { # true only for rc 2 with the identity-verb reason
+    [ "$RC" = 2 ] || return 1
+    case "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)" in
+        "bus store-deny: bus register|bind|rebind is the launcher's, not a session's."*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 D="$(stub_path rc3)"; ln -s "$REAL_JQ" "$D/jq"; ln -s "$(command -v shfmt || echo /nonexistent)" "$D/shfmt"
 stub_run "$D" "$(bash_json "$HDOC"$'\n)')"
-if [ "$RC" = 2 ]; then ok "parse failure (rc 3) -> text reader denies"; else bad "parse failure (rc 3): rc=$RC"; fi
+if verb_denied; then ok "parse failure (rc 3) -> text reader denies"; else bad "parse failure (rc 3): rc=$RC out=$OUT"; fi
 D="$(stub_path rc4)"; ln -s "$REAL_JQ" "$D/jq"
 printf '#!/bin/sh\necho not-json\n' > "$D/shfmt"; chmod +x "$D/shfmt"
 stub_run "$D" "$(bash_json "$HDOC")"
-if [ "$RC" = 2 ]; then ok "model error (rc 4) -> text reader denies"; else bad "model error (rc 4): rc=$RC"; fi
+if verb_denied; then ok "model error (rc 4) -> text reader denies"; else bad "model error (rc 4): rc=$RC out=$OUT"; fi
 D="$(stub_path jqfail)"; ln -s "$(command -v shfmt || echo /nonexistent)" "$D/shfmt"
 printf '#!/bin/sh\nfor a; do case "$a" in *"def isbus"*) exit 5 ;; esac; done\nexec "%s" "$@"\n' "$REAL_JQ" > "$D/jq"
 chmod +x "$D/jq"
 stub_run "$D" "$(bash_json "$HDOC")"
-if [ "$RC" = 2 ]; then ok "verdict jq failure -> text reader denies"; else bad "verdict jq failure: rc=$RC"; fi
+if verb_denied; then ok "verdict jq failure -> text reader denies"; else bad "verdict jq failure: rc=$RC out=$OUT"; fi
 rm -rf "$STUBS"
 
 echo "== no shfmt: the text reader decides, exactly as before the model =="
@@ -238,10 +245,10 @@ NOSHFMT="$(mktemp -d "${TMPDIR:-/tmp}/busstore-noshfmt.XXXXXX")" || exit 1
 for t in jq cat tr readlink; do ln -s "$(command -v "$t")" "$NOSHFMT/$t"; done
 OUT="$(printf '%s' "$(bash_json 'bus register x')" | env -i PATH="$NOSHFMT" "$BASH" "$HOOK" 2>/dev/null)"
 RC=$?
-if [ "$RC" = 2 ]; then ok "no shfmt, bus register -> deny"; else bad "no shfmt, bus register: rc=$RC"; fi
+if verb_denied; then ok "no shfmt, bus register -> deny"; else bad "no shfmt, bus register: rc=$RC out=$OUT"; fi
 OUT="$(printf '%s' "$(bash_json 'git commit -m "fix bus register retry"')" | env -i PATH="$NOSHFMT" "$BASH" "$HOOK" 2>/dev/null)"
 RC=$?
-if [ "$RC" = 2 ]; then ok "no shfmt, quoted bus register text -> deny (text reader)"; else bad "no shfmt, quoted text: rc=$RC"; fi
+if verb_denied; then ok "no shfmt, quoted bus register text -> deny (text reader)"; else bad "no shfmt, quoted text: rc=$RC out=$OUT"; fi
 OUT="$(printf '%s' "$(bash_json 'bus status')" | env -i PATH="$NOSHFMT" "$BASH" "$HOOK" 2>/dev/null)"
 RC=$?
 if [ "$RC" = 0 ] && [ -z "$OUT" ]; then ok "no shfmt, bus status -> allow, silent"; else bad "no shfmt, bus status: rc=$RC out=$OUT"; fi
