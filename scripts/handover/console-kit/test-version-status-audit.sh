@@ -64,6 +64,10 @@ has "later-version ticket owned by a live leg is OWNED" "$out" "HIMMEL-7	In Revi
 has "count line counts every row" "$out" "vmismatch=5"
 [ "$rc" = 1 ] && pass "exit 1 when a RESET row exists" || fail "exit 1 when a RESET row exists (rc=$rc)"
 
+printf '# leg\n\n## Results\n- 10:00 LIVE — up\n- 11:00 WRAPPED — merged\n- 12:00 PARKED-USAGE — relaunched, waiting for RESUME\n' > "$WORK/legs/HIMMEL-10-N2-x.md"
+printf '{"legs":[{"label":"N2","doc":"%s"}]}\n' "$WORK/legs/HIMMEL-10-N2-x.md" > "$WORK/fleet-parked.json"
+has "a PARKED-USAGE tail after an old WRAPPED still owns its ticket" "$(run --legs-from "$WORK/fleet-parked.json")" "HIMMEL-10	In Progress	v1.0.2	leg:N2	OWNED"
+
 # clean mirror
 C="$WORK/clean/HIMMEL"; mkdir -p "$C"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/clean/HIMMEL.versions.tsv"
 cp "$M/HIMMEL-5.md" "$M/HIMMEL-4.md" "$M/HIMMEL-8.md" "$M/HIMMEL-6.md" "$C/"

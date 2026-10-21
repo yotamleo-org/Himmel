@@ -21,16 +21,19 @@ import { registerWorklog } from './commands/worklog.js';
 import { registerWatchers } from './commands/watchers.js';
 import { registerSprint } from './commands/sprint.js';
 import { registerVersions } from './commands/versions.js';
+import { registerVersionFreeze } from './commands/version-freeze.js';
 import { registerMirror } from './commands/mirror.js';
 import { registerRoadmap } from './commands/roadmap.js';
 import { registerRank } from './commands/rank.js';
 import { registerResolution } from './commands/resolution.js';
+import { registerRelease } from './commands/release.js';
 
 const program = new Command();
 
 program
   .name('jira')
   .version('1.0.0')
+  .enablePositionalOptions()
   .description('Jira CLI for himmel project');
 
 registerGet(program);
@@ -54,10 +57,12 @@ registerWorklog(program);
 registerWatchers(program);
 registerSprint(program);
 registerVersions(program);
+registerVersionFreeze(program);
 registerMirror(program);
 registerRoadmap(program);
 registerRank(program);
 registerResolution(program);
+registerRelease(program);
 
 // Expose the CLI verbs over the Model Context Protocol on stdio.
 // The MCP SDK is heavy, so import it lazily inside the action — keeping it out

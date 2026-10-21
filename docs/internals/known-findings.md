@@ -161,7 +161,7 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
   half of them legitimate). What still re-raises: stale docs prose (21),
   GNU-vs-BSD portability (20), test-coverage gaps (16), fail-open/closed on
   hooks (10), markdownlint MD040/MD051 (~8), bare `mktemp -d` in new tests (6),
-  .sh/.ps1 twin drift (5). Those became the `fix` / `checklist` detectors; the
+  shell/PowerShell twin drift (5). Those became the `fix` / `checklist` detectors; the
   high-usage learnings became `rebuttal` prompt classes.
 - Our ledger (12,522 rows, 3,667 unique findings): 62 % agreed / 21 % disproved /
   14 % deferred of the adjudicated; 38 % of unique findings carry no verdict,

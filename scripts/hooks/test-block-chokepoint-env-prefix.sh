@@ -111,6 +111,10 @@ while IFS=$'\t' read -r reg_path reg_vars; do
     done
 done < <(jq -r 'to_entries[] | "\(.key)\t\((.value.seam_env_vars // []) | join(" "))"' "$REGISTRY" | tr -d '\r')
 
+# The lift file seam under its new name and the read-both old one.
+assert_deny "USAGE_LIFT_FILE= on bank-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/bank-preflight.sh")"
+assert_deny "BANK_LIFT_FILE= on bank-preflight.sh"  "$(j "BANK_LIFT_FILE=/tmp/x.json bash scripts/lib/bank-preflight.sh")"
+
 # --- DENIED: the named ticket shapes + wrapper/compound variants ---
 assert_deny "env wrapper on $MERGE_ON_GREEN"            "$(j "env ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny "env -u PATH wrapper (flag consumes value)" "$(j "env -u PATH ${MOG_VAR}=x bash $MERGE_ON_GREEN")"

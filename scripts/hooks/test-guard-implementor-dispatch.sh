@@ -282,7 +282,7 @@ run_hook() {
     # below re-adds IMPL_GUARD_OK=1 explicitly via "$@" to test the override
     # path on purpose, and that explicit assignment still wins (env applies
     # -u before later NAME=VALUE args in "$@").
-    printf '%s' "$json" | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_BANK_MAX_PCT HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" BANK_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$REPO_ROOT" LANES_REGISTRY="$registry" PATH="$STUB_BUN_DIR:$PATH" IMPL_GUARD_BANK_STATUS_CMD="$BANK_FUNDED_CMD" IMPL_GUARD_READINESS_CMD="$READY_ALL_CMD" "$@" "$BASH_ABS" "$HOOK" \
+    printf '%s' "$json" | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_BANK_MAX_PCT HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$REPO_ROOT" LANES_REGISTRY="$registry" PATH="$STUB_BUN_DIR:$PATH" IMPL_GUARD_BANK_STATUS_CMD="$BANK_FUNDED_CMD" IMPL_GUARD_READINESS_CMD="$READY_ALL_CMD" "$@" "$BASH_ABS" "$HOOK" \
         >"$TMP/out-$name" 2>"$TMP/err-$name"
     echo "$?"
 }
@@ -716,7 +716,7 @@ assert_rc "malformed input allows" 0 "$RC14"
 MISSING_ROOT="$TMP/no-repo"
 mkdir -p "$MISSING_ROOT"
 printf '%s' "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code.')" \
-    | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_BANK_MAX_PCT HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" BANK_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$MISSING_ROOT" LANES_REGISTRY="$REG_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW" bash "$HOOK" \
+    | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_BANK_MAX_PCT HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$MISSING_ROOT" LANES_REGISTRY="$REG_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW" bash "$HOOK" \
         >"$TMP/out-missing" 2>"$TMP/err-missing"
 RC15=$?
 assert_rc "missing resolver allows when bank cannot be checked" 0 "$RC15"
@@ -855,31 +855,31 @@ lift_policy() {
     chmod 600 "$LIFT_POLICY"
 }
 lift_hook() {
-    run_hook "$1" "$REG_NONE" "$LIFT_PAYLOAD" IMPL_GUARD_CACHE_PATH="$LIFT_CACHE" BANK_LIFT_FILE="$LIFT_POLICY" "${@:2}"
+    run_hook "$1" "$REG_NONE" "$LIFT_PAYLOAD" IMPL_GUARD_CACHE_PATH="$LIFT_CACHE" USAGE_LIFT_FILE="$LIFT_POLICY" "${@:2}"
 }
 lift_cache 10 90
 lift_policy 1 "$LIFT_ACCOUNT" true
 assert_rc 'standing lift allows weekly 90' 0 "$(lift_hook lift-standing)"
 assert_contains 'standing lift retains weekly WARN' '7-day bank at 90% (>= WARN 70%)' "$(cat "$TMP/out-lift-standing")"
 assert_rc 'explicit weekly HARD overrides standing lift' 2 "$(lift_hook lift-env-weekly IMPL_GUARD_WEEKLY_HARD=85)"
-assert_rc 'no lift retains weekly refusal' 2 "$(lift_hook lift-absent BANK_LIFT_FILE="$TMP/no-lift.json")"
+assert_rc 'no lift retains weekly refusal' 2 "$(lift_hook lift-absent USAGE_LIFT_FILE="$TMP/no-lift.json")"
 lift_policy "$LIFT_RESET" deadbeefdeadbeef true
 assert_rc 'other-account lift refuses weekly 90' 2 "$(lift_hook lift-account)"
-assert_contains 'other-account lift is loud' 'weekly budget override (bank lift) invalid (account)' "$(cat "$TMP/err-lift-account")"
+assert_contains 'other-account lift is loud' 'weekly budget override (usage lift) invalid (account)' "$(cat "$TMP/err-lift-account")"
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 chmod 666 "$LIFT_POLICY"
 assert_rc 'untrusted lift refuses weekly 90' 2 "$(lift_hook lift-trust)"
-assert_contains 'untrusted lift is loud' 'weekly budget override (bank lift) invalid (trust)' "$(cat "$TMP/err-lift-trust")"
+assert_contains 'untrusted lift is loud' 'weekly budget override (usage lift) invalid (trust)' "$(cat "$TMP/err-lift-trust")"
 lift_policy 1 "$LIFT_ACCOUNT" false
 assert_rc 'expired window lift refuses weekly 90' 2 "$(lift_hook lift-expired)"
-assert_contains 'expired lift is loud' 'weekly budget override (bank lift) invalid (expired)' "$(cat "$TMP/err-lift-expired")"
+assert_contains 'expired lift is loud' 'weekly budget override (usage lift) invalid (expired)' "$(cat "$TMP/err-lift-expired")"
 printf '%s' '{broken' > "$LIFT_POLICY"
 assert_rc 'malformed lift refuses weekly 90' 2 "$(lift_hook lift-parse)"
-assert_contains 'malformed lift is loud' 'weekly budget override (bank lift) invalid (parse)' "$(cat "$TMP/err-lift-parse")"
+assert_contains 'malformed lift is loud' 'weekly budget override (usage lift) invalid (parse)' "$(cat "$TMP/err-lift-parse")"
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 chmod 000 "$LIFT_POLICY"
 assert_rc 'unreadable lift refuses weekly 90' 2 "$(lift_hook lift-unreadable)"
-assert_contains 'unreadable lift is loud' 'weekly budget override (bank lift) invalid (parse)' "$(cat "$TMP/err-lift-unreadable")"
+assert_contains 'unreadable lift is loud' 'weekly budget override (usage lift) invalid (parse)' "$(cat "$TMP/err-lift-unreadable")"
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 printf '{"account":"deadbeefdeadbeef","five_hour":{"utilization":10,"resets_at":%s},"seven_day":{"utilization":90,"resets_at":%s}}' "$LIFT_RESET" "$LIFT_RESET" > "$TMP/lift-other-cache.json"
 assert_rc 'standing lift rejects other-account cache' 2 "$(lift_hook lift-cache-account IMPL_GUARD_CACHE_PATH="$TMP/lift-other-cache.json")"
@@ -904,7 +904,7 @@ NOVAL_ROOT="$TMP/noval-repo"
 mkdir -p "$NOVAL_ROOT/scripts/hooks" "$NOVAL_ROOT/scripts/lib"
 cp "$HOOK" "$NOVAL_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
 cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$NOVAL_ROOT/scripts/lib/py-armor.sh"
-printf '%s\n' '# fixture: sources fine, defines no bank_lift_valid' > "$NOVAL_ROOT/scripts/lib/bank-lift.sh"
+printf '%s\n' '# fixture: sources fine, defines no usage_lift_valid' > "$NOVAL_ROOT/scripts/lib/usage-lift.sh"
 lift_cache 10 90
 lift_policy 1 "$LIFT_ACCOUNT" true
 REAL_HOOK="$HOOK"

@@ -510,7 +510,7 @@ point a reader would check it
 
 ### GPT-6 Astra — the claudex launcher defaults to `medium`, `low` first
 
-The `claudex` launcher (`scripts/claude-codex` / `.ps1`, documented in
+The `claudex` launcher (`scripts/claude-codex`, documented in
 `scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`. It
 now defaults to **`medium`** (an explicitly exported value still wins). The
 reason is a vendor calibration note, recorded on the ticket as reported (we have

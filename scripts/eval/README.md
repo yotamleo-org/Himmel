@@ -9,6 +9,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
+| `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm | `table.tsv`, `results.jsonl` (no ledger row) |
 | `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
@@ -48,6 +49,38 @@ Tests always set `HIMMEL_EVAL_RUNS_LEDGER` to a temp path, so they never write
 the live ledger.
 
 Check a ledger: `python3 scripts/eval/lib/eval_runs.py validate <ledger>`.
+
+## Tokens to a correct answer (answer-ab)
+
+The retrieval token goal is the cost of reaching a correct answer, not the size of
+one call. `retrieval-eval/answer-ab.py run --questions retrieval-eval/questions.jsonl --out DIR`
+screens a sample with a haiku answerer and no retrieval, keeps the questions it fails,
+then answers each once per arm with that arm's output pasted in. The answer is a list
+of at most three file paths, correct when one is a gold file. `tokens_per_correct` is
+an arm's total session tokens (input, cache creation, cache read, output) over its
+correct answers.
+
+First run, 2026-10-21, claude-haiku-5-5, 20 sampled, 15 failed closed-book and kept
+(`--pool 20 --n 15`), one answer per question and arm, $0.21:
+
+| arm | correct | tokens total | tokens per correct | retrieval tokens (mean) |
+|---|---|---|---|---|
+| none (no retrieval) | 1/15 | 74879 | 74879 | 0 |
+| grep | 6/15 | 110554 | 18426 | 1217 |
+| path + ident-grep | 10/15 | 86152 | 8615 | 349 |
+| graphify | 11/15 | 286112 | 26010 | 6818 |
+| fused (grep + qmd-hybrid + graphify) | 12/15 | 335064 | 27922 | 8535 |
+
+The baseline is below 15/15, so the A/B has no ceiling. Every arm carries a fixed
+session overhead of about 4.2k tokens, which the none row shows. Reading the table:
+path + ident-grep costs the least per correct answer; graphify and fused answer one to
+two more questions but at about three times the tokens per correct answer.
+
+Limits: one sample of 15, one answer per cell (the none arm answered 1 of 15 here
+after failing all 15 in the screen, so a cell is noisy by about one question); the
+retrieval output is pasted into one turn rather than reached by tool calls, so it
+does not price a session that searches in several steps; fused uses qmd-hybrid, which
+returns nothing when the qmd server is down.
 
 ## eval-compare
 

@@ -208,6 +208,8 @@ bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` 
   WRAPPED (step 12); `board=STALE` is a skipped step. [prose]
 - **Every judge question leaves four fields and persists its verdict**, and a judge
   call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`. [prose]
+- **With a release declared, every placement is a request to the release
+  manager**, never a direct fixVersions write: `console-sections/release-manager.md`. [prose]
 
 ## Handing over
 

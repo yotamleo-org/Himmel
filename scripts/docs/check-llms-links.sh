@@ -6,7 +6,7 @@
 # the private working tree becomes a 404 for every reader who actually uses it.
 # Three invariants, all mechanical:
 #
-#   1. BUDGET   — <= 60 lines and <= 700 words. A router that grows an essay
+#   1. BUDGET   — <= 60 lines and <= 600 words. A router that grows an essay
 #                 stops being a router; the word cap is the one that bites (the
 #                 current file passed a naive line count while carrying ~600
 #                 words about one subsystem).
@@ -31,7 +31,7 @@
 set -eu
 
 MAX_LINES=60
-MAX_WORDS=700
+MAX_WORDS=600
 
 repo_root() {
   if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "${CLAUDE_PROJECT_DIR}/.git" ]; then

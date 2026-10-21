@@ -164,7 +164,7 @@ codex subscription behind an Anthropic-compatible surface; theo/t3.gg recipe,
 field evidence in luna) changed the feasibility AND the payoff: the swap keeps
 the FULL native himmel harness — every PreToolUse hook fires natively, exactly
 as in the `claude-glm` lane, so guard parity is native-column, not an adapter
-column. The launcher shipped as `scripts/claude-codex{,.ps1}`; the
+column. The launcher shipped as `scripts/claude-codex`; the
 old T14(a) invariant — which FAILED the suite whenever any `claude-codex`
 launcher file appeared in a branch diff — was retired in the same change. A
 full index row for the lane (guard x lane cells) is deferred to the next

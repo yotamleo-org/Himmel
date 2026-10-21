@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { agentBadge, bandCollapsed, agentState, currentCall, initialView, liveness, reduce, runClock, runningAgents, runningCount, settledCount, type Agent, type ClockAnchor, type Entry, type Failure, type Text, type Tool, type View } from "./reducer";
+import { createContext, useContext, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { agentBadge, bandCollapsed, agentState, currentCall, failureList, failureSentence, failureStep, FAILURE_WORD, initialView, liveness, reduce, runClock, runningAgents, runningCount, settledCount, type Agent, type ClockAnchor, type Entry, type FailureItem, type FailureRef, type Text, type Tool, type View } from "./reducer";
 import type { Source } from "./stream";
 
 // A transport failure ends the run the same way RUN_ERROR does, so calls still running are marked failed too.
@@ -13,12 +13,23 @@ const step = (v: View, a: Action): View =>
 // everything it did: its band in the strip, its row in the agent list, the rail beside its texts and calls.
 const agentStyle = (v: View, id: string): CSSProperties => ({ ["--ag" as string]: `var(--ag${Math.max(v.agentOrder.indexOf(id), 0) % 6})` });
 
+// The failure the reader is on: every failure's number by key, and the key and agent of the current one, so the
+// strip bar, the call card and the agent row all light up together.
+const FailCtx = createContext<{ no: Record<string, number>; cur: string | null; agent: string | null }>({ no: {}, cur: null, agent: null });
+const fkey = (r: FailureRef) => `${r.kind}:${r.id}`;
+const targetId = (r: FailureRef) => (r.kind === "tool" ? `call-${r.id}` : `msg-${r.id}`);
+const callLabel = (v: View, r: FailureRef) => (r.kind === "tool" ? `${v.tools[r.id].name} ${summarize(v.tools[r.id])}`.trim() : "a message");
+function FailChip({ k }: { k: string }) {
+  const n = useContext(FailCtx).no[k];
+  return n ? <em className="fk" aria-label={`failure ${n}`}>{n}</em> : null;
+}
+
 export function App({ source }: { source: Source }) {
   const [view, dispatch] = useReducer(step, undefined, initialView);
   const [epoch, setEpoch] = useState(0);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [only, setOnly] = useState<string | null>(null); // the one agent shown, or everyone
-  const [at, setAt] = useState(-1); // the failure last jumped to
+  const [cur, setCur] = useState<{ key: string; wrapped: boolean } | null>(null); // the failure last moved to, by key, so one arriving live does not shift it
   const [closed, setClosed] = useState(false); // the live stream ended (the server stopped tailing)
   // A live page between turns keeps ticking too, so "last event Ns ago" stays true.
   const now = useRunClock(view, view.status === "running" || (source.live && !closed && view.status === "finished"));
@@ -41,23 +52,35 @@ export function App({ source }: { source: Source }) {
     setOpen((o) => ({ ...o, [id]: true, ...(owner ? { [`fold-${owner}`]: true } : {}) })); // a folded block opens around its call
     focus(`call-${id}`);
   };
-  // Jumps through the failures in stream order, showing everyone if the filter hides the next one.
-  const jump = (dir: 1 | -1) => {
-    const n = view.failures.length;
-    if (!n) return;
-    const i = ((at < 0 && dir < 0 ? 0 : at + dir) % n + n) % n;
-    const f = view.failures[i];
-    const owner = f.kind === "tool" ? view.tools[f.id]?.agent : view.texts[f.id]?.agent;
-    if (only && owner !== only) setOnly(null);
-    setAt(i);
-    if (f.kind === "tool") reveal(f.id);
-    else focus(`msg-${f.id}`);
+  const items = failureList(view); // by time on the run, the order the strip lays them out
+  const at = cur ? items.findIndex((f) => fkey(f.ref) === cur.key) : -1;
+  // Moves to a failure, showing everyone if the filter hides its agent, and opens and focuses its call.
+  const go = (i: number, wrapped = false) => {
+    const f = items[i];
+    if (!f) return;
+    if (only && f.agentId !== only) setOnly(null);
+    setCur({ key: fkey(f.ref), wrapped });
+    if (f.ref.kind === "tool") reveal(f.ref.id);
+    else {
+      setOpen((o) => ({ ...o, [`fold-${f.agentId}`]: true })); // a folded block opens around its message
+      focus(`msg-${f.ref.id}`);
+    }
   };
+  const stepFailure = (dir: 1 | -1) => {
+    if (!items.length) return;
+    const s = failureStep(at, items.length, dir);
+    go(s.to, s.wrapped);
+  };
+  const failCtx = { no: Object.fromEntries(items.map((f) => [fkey(f.ref), f.n])), cur: at >= 0 ? fkey(items[at].ref) : null, agent: at >= 0 ? items[at].agentId : null };
 
   return (
-    <>
-      <TopBar view={view} now={now} source={source} closed={closed} at={at} onJump={jump}
-        onReplay={() => { setOpen({}); setOnly(null); setAt(-1); setEpoch((n) => n + 1); }} />
+    <FailCtx.Provider value={failCtx}>
+      <div className="head">
+        <TopBar view={view} now={now} source={source} closed={closed}
+          at={at} onReplay={() => { setOpen({}); setOnly(null); setCur(null); setEpoch((n) => n + 1); }} />
+        <FailureBar view={view} items={items} at={at} wrapped={!!cur?.wrapped} onStep={stepFailure} />
+      </div>
+      <FailureList view={view} items={items} at={at} onGo={go} />
       <RunStrip key={epoch} view={view} now={now} only={only} onPick={(id) => { if (only && view.tools[id]?.agent !== only) setOnly(null); reveal(id); }} />
       <div className="layout">
         <main className="transcript" aria-label="Agent transcript">
@@ -71,7 +94,7 @@ export function App({ source }: { source: Source }) {
           {view.state?.review && <ReviewPanel review={view.state.review} />}
         </aside>
       </div>
-    </>
+    </FailCtx.Provider>
   );
 }
 
@@ -95,8 +118,8 @@ const secs = (ms: number) => (ms < 10000 ? (ms / 1000).toFixed(1) : Math.round(m
 const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
-function TopBar({ view, now, source, closed, at, onJump, onReplay }: {
-  view: View; now: number; source: Source; closed: boolean; at: number; onJump: (dir: 1 | -1) => void; onReplay: () => void;
+function TopBar({ view, now, source, closed, at, onReplay }: {
+  view: View; now: number; source: Source; closed: boolean; at: number; onReplay: () => void;
 }) {
   const n = view.failures.length;
   const state = liveness(view, { live: source.live, closed }, Date.now());
@@ -108,15 +131,45 @@ function TopBar({ view, now, source, closed, at, onJump, onReplay }: {
       <span className={`state ${state.cls}`} role="status">{state.word}</span>
       <span className="meta">{[view.t0 !== undefined && `started ${clockTime(view.t0)}`, plural(turns, "turn"), `${view.eventCount} events`, secs(now)]
         .filter(Boolean).join(" · ")}</span>
-      {n > 0 && (
-        <span className="fails" role="group" aria-label="Failures">
-          <span className="fails-count" aria-live="polite">{plural(n, "failure")}{at >= 0 ? ` · ${Math.min(at, n - 1) + 1} of ${n}` : ""}</span>
-          <button className="btn" onClick={() => onJump(-1)} aria-label="Previous failure">↑</button>
-          <button className="btn" onClick={() => onJump(1)} aria-label="Next failure">↓ next</button>
-        </span>
-      )}
+      {n > 0 && <span className="fails fails-count">{plural(n, "failure")}{at >= 0 ? ` · ${at + 1} of ${n}` : ""}</span>}
       {!source.live && view.status === "finished" && <button className="btn replay" onClick={onReplay}>Replay</button>}
     </header>
+  );
+}
+
+// Where you are among the failures: one sentence and worded buttons that wrap and say so. It sits in the sticky head so
+// the controls stay in reach after a jump to a distant call.
+function FailureBar({ view, items, at, wrapped, onStep }: {
+  view: View; items: FailureItem[]; at: number; wrapped: boolean; onStep: (dir: 1 | -1) => void;
+}) {
+  const n = items.length;
+  if (!n) return null;
+  return (
+    <section className="fnav" role="group" aria-label="Failures">
+      <p className="fnav-now" aria-live="polite">{at >= 0 ? failureSentence(items[at], n, callLabel(view, items[at].ref), wrapped) : `${plural(n, "failure")} in this run`}</p>
+      <div className="fnav-btns">
+        <button className="btn" onClick={() => onStep(-1)}>← Previous failure</button>
+        <button className="btn" onClick={() => onStep(1)}>Next failure →</button>
+      </div>
+    </section>
+  );
+}
+
+// Every failure as a numbered list (kind, agent, call) whose items link to their call.
+function FailureList({ view, items, at, onGo }: { view: View; items: FailureItem[]; at: number; onGo: (i: number) => void }) {
+  if (!items.length) return null;
+  return (
+    <section className="fnav fnav-all">
+      <ol className="fnav-list" aria-label="Every failure">
+        {items.map((f, i) => (
+          <li key={fkey(f.ref)}>
+            <a href={`#${targetId(f.ref)}`} aria-current={i === at ? "true" : undefined} onClick={(e) => { if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; e.preventDefault(); onGo(i); }}>
+              <span className="fk">{f.n}</span><span className={`fw ${f.kind}`}>{f.word}</span>{f.agent} · {callLabel(view, f.ref)}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -125,6 +178,7 @@ function RunStrip({ view, now, only, onPick }: { view: View; now: number; only: 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const total = Math.max(now, 1);
   const tools = Object.values(view.tools).sort((a, b) => a.start - b.start);
+  const fail = useContext(FailCtx);
   const bands = view.agentOrder.filter((id) => view.agents[id].lanes > 0);
   return (
     <section className="strip" tabIndex={0} aria-label="Tool calls over time, by agent">
@@ -145,11 +199,11 @@ function RunStrip({ view, now, only, onPick }: { view: View; now: number; only: 
                 const left = (t.start / total) * 100;
                 const width = Math.max(((t.end ?? now) - t.start) / total * 100, 0.6);
                 return (
-                  <button key={t.id} className={`bar ${t.status}${t.failure ? ` failed ${t.failure}` : ""}`}
+                  <button key={t.id} className={`bar ${t.status}${t.failure ? ` failed ${t.failure}` : ""}${fail.cur === `tool:${t.id}` ? " on-f" : ""}`}
                     style={{ left: `${left}%`, width: `${width}%`, top: `calc(var(--lane) * ${t.lane})` }}
                     onClick={() => onPick(t.id)}
                     aria-label={`${a.name}: ${t.name} ${summarize(t)}, ${stateWord(t)}, ${secs((t.end ?? now) - t.start)}`}>
-                    <span>{t.name} <i>{summarize(t)}</i></span>
+                    <span><FailChip k={`tool:${t.id}`} />{t.name} <i>{summarize(t)}</i></span>
                   </button>
                 );
               })}
@@ -192,6 +246,7 @@ function NowPanel({ view, now, only, onOnly }: { view: View; now: number; only: 
 // The agent list doubles as the legend and the filter: click one to show only what it did.
 // each agent's state; a running one shows the call it is in and for how long, a finished one when it last acted.
 function Agents({ view, now, only, onOnly }: { view: View; now: number; only: string | null; onOnly: (id: string | null) => void }) {
+  const fail = useContext(FailCtx);
   if (view.agentOrder.length === 0) return null;
   const depth = (a: Agent) => (a.parentToolCallId ? 1 : 0);
   return (
@@ -203,7 +258,7 @@ function Agents({ view, now, only, onOnly }: { view: View; now: number; only: st
           const st = agentState(view, id);
           const cur = st === "running" ? currentCall(view, id) : undefined;
           return (
-            <li key={id} style={{ ...agentStyle(view, id), ["--depth" as string]: depth(a) }}>
+            <li key={id} className={fail.agent === id ? "on-f" : undefined} style={{ ...agentStyle(view, id), ["--depth" as string]: depth(a) }}>
               <button className="agent" aria-pressed={only === id} onClick={() => onOnly(only === id ? null : id)}
                 title={only === id ? "Show every agent" : `Show only ${a.name}`}>
                 <span className="agent-badge">{agentBadge(view.agentOrder.indexOf(id))}</span>
@@ -275,14 +330,16 @@ function FoldHead({ parent, count, open, onToggle }: { parent?: Tool; count: num
   );
 }
 
-const FAILURE: Record<Failure, string> = { denied: "denied", suite: "suite failed", blocked: "blocked", error: "error" };
+const FAILURE = FAILURE_WORD;
 
 // Inline `code` is the only markup a message gets; everything else stays text. A subagent's prompt is its brief.
 function Message({ t, sub }: { t: Text; sub: boolean }) {
   const parts = t.text.split("`");
   const kind = t.role === "user" ? (sub ? " brief" : " prompt") : "";
+  const fail = useContext(FailCtx);
   return (
-    <div id={`msg-${t.id}`} tabIndex={-1} className={`msg${kind}${t.failure ? ` failed ${t.failure}` : ""}`}>
+    <div id={`msg-${t.id}`} tabIndex={-1} className={`msg${kind}${t.failure ? ` failed ${t.failure}` : ""}${fail.cur === `text:${t.id}` ? " on-f" : ""}`}>
+      <FailChip k={`text:${t.id}`} />
       {t.failure && <span className={`badge ${t.failure}`}>{FAILURE[t.failure]}</span>}
       {kind === " brief" && <span className="msg-label">brief</span>}
       <p>
@@ -308,10 +365,11 @@ const STATE_WORD: Record<Tool["status"], string> = { running: "running", done: "
 const stateWord = (t: Tool) => (t.failure ? FAILURE[t.failure] : STATE_WORD[t.status]);
 
 function ToolCard({ tool, now, open, onToggle }: { tool: Tool; now: number; open: boolean; onToggle: () => void }) {
+  const fail = useContext(FailCtx);
   return (
-    <article className={`call ${tool.status}${tool.failure ? ` failed ${tool.failure}` : ""}`}>
+    <article className={`call ${tool.status}${tool.failure ? ` failed ${tool.failure}` : ""}${fail.cur === `tool:${tool.id}` ? " on-f" : ""}`}>
       <button id={`call-${tool.id}`} className="call-head" aria-expanded={open} onClick={onToggle}>
-        <span className="call-name">{tool.name}</span>
+        <span className="call-name"><FailChip k={`tool:${tool.id}`} />{tool.name}</span>
         <span className="call-sum">{summarize(tool)}</span>
         <span className="call-state">{tool.failure && <span className={`badge ${tool.failure}`}>{FAILURE[tool.failure]}</span>}
           {tool.failure ? "" : STATE_WORD[tool.status]} {secs((tool.end ?? now) - tool.start)}</span>

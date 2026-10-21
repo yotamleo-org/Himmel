@@ -38,7 +38,7 @@ HIMMEL_LEAN_LEG|HIMMEL_LEAN_WORKER_SESSION|env|value|V4a|pending-N2892
 PARKED-BANK|PARKED-USAGE|marker|old-to-new|V1|never
 OVERNIGHT_|AFK_|env-prefix|value|V3|X
 CADENCE_BANK_|CADENCE_USAGE_|env-prefix|value|V1|pending-N2892
-BANK_LIFT_|USAGE_LIFT_|env-prefix|value|V1|pending-N2892
+BANK_LIFT_|USAGE_LIFT_|env-prefix|value|V1|X
 CODEX_BANK_|CODEX_USAGE_|env-prefix|value|V1|pending-N2892
 CLAUDEX_BANK_|CLAUDEX_USAGE_|env-prefix|value|V1|pending-N2892
 CR_MARKER_|REVIEW_MARKER_|env-prefix|value|V2|pending-N2892
@@ -106,6 +106,26 @@ $V3_ROWS
 EOF
 LEFT="$(printf '%s\n' "$ROWS" | awk -F'\t' 'toupper($2) ~ /OVERNIGHT/ && $6 != "V3" { print $2 }' | tr '\n' ' ')"
 check "no overnight name left outside slice V3 ($LEFT)" "" "$LEFT"
+
+# --- slice V1a: every old name of the lift family names its usage successor ---
+V1A_ROWS='BANK_LIFT_BIN|USAGE_LIFT_BIN|identifier|old-to-new|V1|X
+BANK_LIFT_FILE|USAGE_LIFT_FILE|identifier|old-to-new|V1|X
+BANK_LIFT_REASON|USAGE_LIFT_REASON|identifier|old-to-new|V1|X
+BANK_LIFT_STANDING|USAGE_LIFT_STANDING|identifier|old-to-new|V1|X
+BANK_LIFT_STUB_OUT|USAGE_LIFT_STUB_OUT|identifier|old-to-new|V1|X
+BOARD_BANK_LIFT|BOARD_USAGE_LIFT|identifier|old-to-new|V1|X
+bank-lift.json|usage-lift.json|identifier|old-to-new|V1|X
+bank-lift.sh|usage-lift.sh|identifier|old-to-new|V1|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V1a row '$old'" "$tabbed" "$got"
+done <<EOF
+$V1A_ROWS
+EOF
+LEFT="$(printf '%s\n' "$ROWS" | awk -F'\t' 'toupper($2) ~ /BANK[-_]LIFT/ && $6 != "V1" { print $2 }' | tr '\n' ' ')"
+check "no lift name left outside slice V1 ($LEFT)" "" "$LEFT"
 
 # --- slice V3: the old command and doc stay as stubs that point at the new file ---
 ROOT="$HERE/../.."

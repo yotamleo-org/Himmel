@@ -38,10 +38,6 @@ The supervisor keeps `bun poller.ts` alive (restart-on-exit with backoff).
 cd scripts/telegram && bun supervisor.ts --kill
 ```
 
-**Restart (Windows):** `pwsh -File scripts/telegram/restart-bridge.ps1` (add
-`-StatusOnly` to just check). This is also the preferred lever on Windows
-since it clears any duplicate pollers left by an older launch.
-
 ## What you can do from a phone
 
 DM the bot once it's running:
@@ -224,6 +220,6 @@ returns `409 Conflict`, breaking delivery for both. If you need a manual
 
 - **`409 Conflict` in the poller log** — another poller holds the token
   (usually a stray hand-launched `--channels` session, or two supervisors).
-  Kill the extra poller; on Windows, `restart-bridge.ps1` clears this for you.
+  Kill the extra poller.
 - **No reply to a DM** — check that your Telegram user id is in
   `access.json`'s `allowFrom`, and that the bridge process is actually up.

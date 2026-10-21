@@ -1314,17 +1314,17 @@ codex_fig="$(_codex_bank_figure 2>/dev/null)" || codex_fig=""
 echo "bank-preflight: leg=$LEG five_hour=${fh:-n/a} seven_day=${sd:-n/a} extra_usage=${xu:-n/a} age=${age}s codex=${codex_fig}" >&2
 
 over() { is_num "$1" && awk -v a="$1" -v b="$MAX_PCT" 'BEGIN{exit !(a>=b)}'; }
-# per-window checks. A valid operator lift (bank-lift.sh) skips ONLY
+# per-window checks. A valid operator lift (usage-lift.sh) skips ONLY
 # the seven_day comparison; five_hour still binds. A missing, expired, malformed
-# or other-account lift is no lift (bank_lift_valid fails toward the ceiling).
+# or other-account lift is no lift (usage_lift_valid fails toward the ceiling).
 lift=false
-# shellcheck source=bank-lift.sh
+# shellcheck source=usage-lift.sh
 # shellcheck disable=SC1091
-if { . "$REPO/scripts/lib/bank-lift.sh"; } 2>/dev/null && bank_lift_valid "$CACHE"; then
+if { . "$REPO/scripts/lib/usage-lift.sh"; } 2>/dev/null && usage_lift_valid "$CACHE"; then
   lift=true
   # Standing operator policy spends both banks to 100 by default. Explicit
   # CADENCE_BANK_MAX_PCT still controls five_hour; neither bank spends extra_usage.
-  if [ "$BANK_LIFT_STANDING" = true ] && [ -z "${CADENCE_BANK_MAX_PCT:-}" ]; then MAX_PCT=100; fi
+  if [ "$USAGE_LIFT_STANDING" = true ] && [ -z "${CADENCE_BANK_MAX_PCT:-}" ]; then MAX_PCT=100; fi
 fi
 over_fh=false; over_sd=false
 over "$fh" && over_fh=true

@@ -113,8 +113,7 @@ aren't trusted/loaded — re-check §3/§4.
 - **statusLine** (where-are-we bar) is Claude-only; Codex status context is a
   separate follow-up.
 - **SessionEnd→`Stop`** hooks fire, but `end-session-wiki` capture
-  self-guards out on **Windows** (its `.ps1` twin can't ride the bash wrapper) —
-  capture works on Linux/macOS Codex.
+  works on Linux/macOS Codex.
 - **Live runtime probes** for some lifecycle events (auto-arm PostToolUse,
   `Stop` on `codex exec`) remain follow-ups; the security guards in §6 *are*
   live-verified.

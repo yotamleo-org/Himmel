@@ -1,9 +1,9 @@
 # Harness compatibility — running himmel under Codex (and beyond)
 
-> **Platform tier:** Windows is dropped (HIMMEL-5729); the `.ps1` twins live in
-> `archive/windows/`, unmaintained and unscanned. Linux and macOS are the **Supported**
+> **Platform tier:** Windows is dropped (HIMMEL-5729) and its PowerShell twins are
+> removed. Linux and macOS are the **Supported**
 > tier, see the [README support matrix](../../README.md#support-matrix). New scripts
-> target bash (still bash 3.2-safe, for macOS) and need no `.ps1` twin. Windows
+> target bash (still bash 3.2-safe, for macOS). Windows
 > content below is kept as history.
 
 himmel is built end-to-end around **Claude Code's** contract: PreToolUse
@@ -95,7 +95,7 @@ so a broken hook set can never touch the real checkout — and runs four legs:
 | leg | what it proves |
 |---|---|
 | `codex-exec` | a real `codex exec` turn (a shell call plus a file read) exits 0, proves both tool calls, and emits no hook-failure banner in stdout/stderr or the session rollout |
-| `codex-replay` | `probe-codex-hooks.ps1 -Replay` **executes** every project hook — the positive control that separates "clean" from "never fired" |
+| `codex-replay` | **unavailable**: it needs the hook-replay probe, which was Windows-only and is removed with Windows. It was the positive control that every project hook **executes** (separating "clean" from "never fired") |
 | `claude-print` | the same turn under `claude -p --model haiku` (gated on the subscription usage budget via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
 | `claude-replay` | every `run-hook-with-bash.js` PreToolUse entry in `.claude/settings.json` is fed a canned benign payload and must exit **0** |
 
@@ -118,6 +118,8 @@ which is what is under test.
 
 Exit 0 = all ran legs clean, 1 = a leg failed, 2 = nothing ran, or an agent leg
 ran without its replay leg (both vacuous-pass guards), or a usage error.
+While `codex-replay` is unavailable (HIMMEL-6813 removes it), a run that includes
+`codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
 `scripts/codex/test-hook-smoke-demo.sh` pins the runner's own contract with
 stubbed `claude`/`codex`/`pwsh` — it never spends a token.
 
@@ -437,7 +439,7 @@ and the adapter resolves `scripts/hooks/<name>.sh` only — a `bun` `.ts`
 entrypoint has no adapter shape).
 
 **Caveats (do not overclaim).** (1) `end-session-wiki.sh` self-guards out on
-`msys*/cygwin*/Windows_NT` (its `.ps1` twin is the Windows-Claude path), so
+`msys*/cygwin*/Windows_NT`, so
 under Codex on **Windows it captures nothing** —
 only `refresh-where-are-we-on-end` + `jira-nudge-on-end` (no platform guard) fire
 there (2/3). end-session-wiki capture works on **Linux/macOS/VM Codex**. (2) Even
@@ -488,13 +490,11 @@ was removed outright); `security-guidance` + `hookify` `enabled = false` for
 Codex (hookify is OFF in Claude; security-guidance is fatal under this runner);
 `codex exec` in himmel went from 180s+600s of stalls to **13s** wall.
 
-**Tooling (this ticket):** `scripts/codex/probe-codex-hooks.ps1` enumerates the
-*effective* Codex hook set (global + project + enabled plugins, with
-`${CLAUDE_PLUGIN_ROOT}` substituted), statically flags `bare-bash` /
-`quoted-path-start` / bash-without-timeout, and with `-Replay` re-runs each hook
-exactly like Codex (pwsh `-Command`, native PATH, per-event stdin, timeout) and
-prints the A/B table. `install-himmel-codex.ps1` runs the static lint as an
-advisory phase so a fresh machine sees the trap before its first 600s stall.
+**Tooling (this ticket):** a Windows-only probe (removed with Windows)
+enumerated the *effective* Codex hook set (global + project + enabled plugins,
+with `${CLAUDE_PLUGIN_ROOT}` substituted), statically flagged `bare-bash` /
+`quoted-path-start` / bash-without-timeout, and in replay mode re-ran each hook
+exactly like Codex (per-event stdin, timeout) and printed the A/B table.
 
 **Empirical event / tool-name matrix (codex-cli 0.149.0, Windows, `codex exec`
 `--sandbox danger-full-access`, a recorder hook on every event, prompt = shell +
@@ -728,7 +728,7 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
 - **`check-update-available` is NOT Claude-only** and stays wired: since its fix
   it reads local remote-tracking refs and detaches the fetch, replaying in 0.81s.
 - **The timeouts were load, amplified by the wrapper chain.** Replayed on a
-  healthy box (`probe-codex-hooks.ps1 -Replay`), every himmel-owned hook (project
+  healthy box (the hook-replay probe), every himmel-owned hook (project
   + plugin) runs **0.36–1.26s**; the only rc≠0 in the effective set is superpowers' quoted-path
   ParserError above. But sandbox-mode `run-hook.cmd` used to spawn a *separate*
   `bash -c "exit 0"` startup smoke test before the adapter — pwsh → cmd →
@@ -762,9 +762,9 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   `/scripts/hooks/x.sh`, misses, and exits 0 silently. The `.codex/hooks.json`
   entries that look like duplicates of the plugin's SessionStart/SessionEnd are
   therefore the *only* working copies — do not "de-duplicate" them.
-- Phase 4 of `install-himmel-codex.**sh**` now runs the probe advisorily on
+- Phase 4 of `install-himmel-codex.**sh**` ran the probe advisorily on
   Windows. `/himmel-update` calls the `.sh` installer, so wiring the lint only
-  into the `.ps1` twin meant it never fired on the update path.
+  into the Windows twin meant it never fired on the update path.
 
 **PreToolUse dispatcher (RAM program P0-2).** Codex launches a full
 `pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
@@ -786,7 +786,7 @@ launches drops:
   and the chain silently truncates to its first guardrail — every later guard
   quietly not running, with nothing downstream able to detect it. Measured on
   cmd.exe 10.0.26200 and pinned as a named canary in
-  `test-codex-run-hook.ps1`; `test-codex-hook-parity.sh` refuses a comma outright.
+  the Windows hook-runner test; `test-codex-hook-parity.sh` refuses a comma outright.
 - **First deny wins and short-circuits.** Codex ran every matched hook and then
   honoured the deny; the chain stops at the first. Safe because every himmel
   PreToolUse guardrail is a pure check — the one side-effecting hook,

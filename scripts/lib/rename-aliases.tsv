@@ -32,7 +32,7 @@ HIMMEL_LEAN_LEG	HIMMEL_LEAN_WORKER_SESSION	env	value	V4a	pending-N2892
 PARKED-BANK	PARKED-USAGE	marker	old-to-new	V1	never
 OVERNIGHT_	AFK_	env-prefix	value	V3	X
 CADENCE_BANK_	CADENCE_USAGE_	env-prefix	value	V1	pending-N2892
-BANK_LIFT_	USAGE_LIFT_	env-prefix	value	V1	pending-N2892
+BANK_LIFT_	USAGE_LIFT_	env-prefix	value	V1	X
 CODEX_BANK_	CODEX_USAGE_	env-prefix	value	V1	pending-N2892
 CLAUDEX_BANK_	CLAUDEX_USAGE_	env-prefix	value	V1	pending-N2892
 CR_MARKER_	REVIEW_MARKER_	env-prefix	value	V2	pending-N2892
@@ -64,11 +64,11 @@ BANK_FUNDED_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_GARBAGE_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_HANG_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_IDS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BANK_LIFT_BIN	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BANK_LIFT_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BANK_LIFT_REASON	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BANK_LIFT_STANDING	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BANK_LIFT_STUB_OUT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+BANK_LIFT_BIN	USAGE_LIFT_BIN	identifier	old-to-new	V1	X
+BANK_LIFT_FILE	USAGE_LIFT_FILE	identifier	old-to-new	V1	X
+BANK_LIFT_REASON	USAGE_LIFT_REASON	identifier	old-to-new	V1	X
+BANK_LIFT_STANDING	USAGE_LIFT_STANDING	identifier	old-to-new	V1	X
+BANK_LIFT_STUB_OUT	USAGE_LIFT_STUB_OUT	identifier	old-to-new	V1	X
 BANK_LINE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_NOW_EPOCH	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_NOW_HM	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -80,7 +80,7 @@ BANK_STATE_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_STATUS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_STUB_ROW_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BANK_VERDICT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
-BOARD_BANK_LIFT	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+BOARD_BANK_LIFT	BOARD_USAGE_LIFT	identifier	old-to-new	V1	X
 BREAK_GLASS_BANK_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BREAK_GLASS_CONSOLE_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 BREAK_GLASS_LEG_CMD	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
@@ -326,5 +326,7 @@ SKIPPED_BANK_PREFLIGHT	pending-N2892	identifier	old-to-new	pending-N2892	pending
 STUB_BANK_ROW	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 TICK_BANK_CACHE_FILE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
 WAVE	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+bank-lift.json	usage-lift.json	identifier	old-to-new	V1	X
+bank-lift.sh	usage-lift.sh	identifier	old-to-new	V1	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X

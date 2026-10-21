@@ -101,6 +101,10 @@ check "7: PARKED-BANK append rc 0" "$rc" 0
 check "7: leg_tail_status reads PARKED-BANK, not the earlier LIVE" "$(leg_tail_status "$d7")" "PARKED-BANK"
 bash "$SCRIPT" "$d7" "RESUMED bank lifted" >/dev/null 2>&1
 check "7: leg_tail_status reads RESUMED" "$(leg_tail_status "$d7")" "RESUMED"
+rc=0; bash "$SCRIPT" "$d7" "PARKED-USAGE committed and pushed, waiting for RESUME" >/dev/null 2>&1 || rc=$?
+check "7: PARKED-USAGE append rc 0" "$rc" 0
+check "7: leg_tail_status reads PARKED-USAGE, not the earlier RESUMED" "$(leg_tail_status "$d7")" "PARKED-USAGE"
+bash "$SCRIPT" "$d7" "RESUMED usage lifted" >/dev/null 2>&1
 before_d7="$tmp/d7.before"; cp "$d7" "$before_d7"
 rc=0; bash "$SCRIPT" "$d7" "SHIPPED the thing" >/dev/null 2>&1 || rc=$?
 check "7: a coined leading marker is refused rc 6" "$rc" 6
@@ -140,7 +144,7 @@ for coined in "WIP halfway" "OK done" "PR 12 open" "WIP"; do
     check "9: short coined '${coined%% *}' refused rc 6" "$rc" 6
 done
 cmp -s "$d9" "$before_d9" && echo "ok - 9: refused doc unchanged" || { echo "FAIL - 9: refused doc unchanged"; fails=$((fails+1)); }
-for real in LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-BANK RESUMED; do
+for real in LIVE FINDING RESOLVED READY BLOCKED HALTED WRAPPED PARKED-BANK PARKED-USAGE RESUMED; do
     rc=0; bash "$SCRIPT" "$d9" "$real x" >/dev/null 2>&1 || rc=$?
     check "9: marker $real still appends" "$rc" 0
 done

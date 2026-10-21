@@ -25,7 +25,7 @@ import random
 import re
 import sys
 
-MARKERS = "WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|RESUMED"
+MARKERS = "WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED"
 MARKER_RE = re.compile(r"^- (?:[0-9]{1,2}:[0-9]{2}\s+)?(?:\*\*)?(" + MARKERS + r")(?:[^A-Za-z0-9_].*)?$")
 WRAPPED_WORD_RE = re.compile(r"(?:^|[^A-Za-z0-9_])WRAPPED(?:[^A-Za-z0-9_]|$)")
 LABEL_CLASS_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -153,6 +153,8 @@ def bullet(rng, kind):
         return "HALTED — " + prose(rng), "HALTED", False, None
     if kind == "PARKED-BANK":
         return "PARKED-BANK — " + prose(rng), "PARKED-BANK", False, None
+    if kind == "PARKED-USAGE":
+        return "PARKED-USAGE — " + prose(rng), "PARKED-USAGE", False, None
     if kind == "RESUMED":
         return "RESUMED — " + prose(rng), "RESUMED", False, None
     if kind == "WRAPPED":
@@ -186,7 +188,7 @@ def bullet(rng, kind):
     raise ValueError(kind)
 
 
-CANON = ["LIVE", "LIVE-PR", "FINDING", "RESOLVED", "READY", "BLOCKED", "HALTED", "PARKED-BANK", "RESUMED", "WRAPPED",
+CANON = ["LIVE", "LIVE-PR", "FINDING", "RESOLVED", "READY", "BLOCKED", "HALTED", "PARKED-BANK", "PARKED-USAGE", "RESUMED", "WRAPPED",
          "SUCCESSION", "CONSULT", "MAIN-RED", "BUS-FAIL"]
 ADVERSARIAL = ["FINDING-LONG", "WRAPPED-COLON", "WRAPPED-BARE", "WRAPPED-BOLD", "LIVE-MENTIONS", "LIVE-TOKEN", "FINDING-CITE",
                "UNMARKED-WRAPPED", "UNMARKED", "NOT-A-MARKER"]

@@ -36,11 +36,6 @@ curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
 source ~/.bashrc            # or ~/.zshrc — reload PATH
 ```
 
-```powershell
-# Windows (PowerShell):
-iex (irm https://hermes-agent.nousresearch.com/install.ps1)
-```
-
 This installs a `hermes` CLI and a config home (upstream default `~/.hermes/`;
 this machine uses `%LOCALAPPDATA%\hermes` — see [Install layout](#install-layout-windows)
 below). Hermes requires a model with **≥64K context**.
@@ -115,6 +110,10 @@ below.
 
 ## Install layout (Windows)
 
+> Windows is unsupported. This section, and the `%LOCALAPPDATA%` and Git Bash
+> paths elsewhere on this page, are historical reference until HIMMEL-6813
+> replaces them.
+
 - Install root: `%LOCALAPPDATA%\hermes\` — config.yaml, SOUL.md,
   `agent-hooks/luna_vault_guard.py` (fail-closed vault write fence),
   `.env` (API keys), venv at `hermes-agent\venv\Scripts\hermes`.
@@ -140,7 +139,7 @@ main tier **without touching your existing setup**:
   creates, writes, or overwrites your `SOUL.md`, `config.yaml`, profiles, or
   `.env`. A fresh hermes with no `SOUL.md` uses hermes's own built-in identity.
 - **`himmel_agent`** — an **additive** profile provisioned on demand by
-  `scripts/hermes/install-himmel-profile.sh` (Windows: `.ps1`). It is himmel's
+  `scripts/hermes/install-himmel-profile.sh`. It is himmel's
   main-tier orchestrator (Codex / GPT-5.5): a generalist that does real
   engineering, research, vault, and writing work — the "main puller" when
   Claude capacity is scarce. It carries `agent-hooks/parity_guard.py` instead
@@ -225,7 +224,7 @@ profile default moves and that inference stops holding; pin the model itself
 with `HERMES_CRITIC_MODEL` (`--provider openai-codex` is then applied only for
 codex-family ids).
 
-**Proven invocation** (Windows / Git Bash, live-verified 2026-08-22 — a real
+**Proven invocation** (historical: Windows / Git Bash, unsupported; live-verified 2026-08-22 — a real
 JSON verdict, exit 1, no `rc=3`):
 
 ```bash

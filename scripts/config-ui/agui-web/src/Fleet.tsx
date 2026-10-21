@@ -39,7 +39,7 @@ const POLL_MS = 5000;
 const CLS: Record<Row["state"], string> = { running: "running", idle: "idle", "waiting for GO": "waiting", wrapped: "finished", unknown: "idle" };
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 // The markers worth a word beside the state; LIVE, READY and WRAPPED are what the state already says.
-const LOUD = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK"]);
+const LOUD = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK", "PARKED-USAGE"]);
 
 const ago = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));

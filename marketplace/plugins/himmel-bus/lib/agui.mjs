@@ -10,7 +10,7 @@ import * as store from './store.mjs';
 export const SUMMARY_CHARS = 120;
 export const EXPIRY_MS = 4 * 60 * 60 * 1000;
 
-const MARKER = /^(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)\b/;
+const MARKER = /^(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b/;
 const DIRECTIVE = /^(HALT|GO|RETASK)\b/;
 
 // Display classification only (spec §13.1); nothing reads `kind` to decide anything.
