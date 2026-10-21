@@ -32,6 +32,11 @@ describe('handoverRoot (HIMMEL-6917)', () => {
     expect(handoverRoot({}, dotenv)).toBe('/from/dotenv');
   });
 
+  it('strips surrounding quotes from the .env value', () => {
+    writeFileSync(dotenv, 'HANDOVER_DIR="/quoted/dotenv"\n');
+    expect(handoverRoot({}, dotenv)).toBe('/quoted/dotenv');
+  });
+
   it('an empty HANDOVER_DIR line in the .env does not win over the default', () => {
     writeFileSync(dotenv, 'HANDOVER_DIR=\n');
     expect(handoverRoot({}, dotenv)).toMatch(/handovers$/);

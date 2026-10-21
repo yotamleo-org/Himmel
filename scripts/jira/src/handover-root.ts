@@ -7,14 +7,14 @@ import { dirname, join } from 'node:path';
 // line, else <primary checkout>/handovers. Reads only that one key; never logs it.
 export function handoverRoot(
   env: Record<string, string | undefined> = process.env,
-  dotenvPath: string = join(primaryCheckout(), '.env'),
+  dotenvPath?: string,
 ): string {
   const explicit = env['HANDOVER_DIR'];
   if (explicit) {
     if (!isDirectory(explicit)) throw new Error(`handover-path: HANDOVER_DIR='${explicit}' is not a directory`);
     return explicit;
   }
-  const fromFile = readDotenvKey(dotenvPath, 'HANDOVER_DIR');
+  const fromFile = readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), 'HANDOVER_DIR');
   if (fromFile) return fromFile;
   return join(primaryCheckout(), 'handovers');
 }
@@ -22,6 +22,11 @@ export function handoverRoot(
 function primaryCheckout(): string {
   const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
   return dirname(common);
+}
+
+function unquote(value: string): string {
+  const first = value[0];
+  return value.length >= 2 && (first === '"' || first === "'") && value.endsWith(first) ? value.slice(1, -1) : value;
 }
 
 function isDirectory(path: string): boolean {
@@ -34,7 +39,7 @@ function readDotenvKey(path: string, key: string): string | undefined {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
     const [k, ...rest] = trimmed.split('=');
-    if (k.trim() === key) return rest.join('=').trim() || undefined;
+    if (k.trim() === key) return unquote(rest.join('=').trim()) || undefined;
   }
   return undefined;
 }
