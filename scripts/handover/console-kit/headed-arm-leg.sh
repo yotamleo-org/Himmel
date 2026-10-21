@@ -838,6 +838,9 @@ if [ "$RM" -eq 1 ]; then
     [ -z "$MODEL" ] && MODEL=claude-opus-5-5
     CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_RM_EFFORT:-high}"
 fi
+# The model the console asked for, defaults applied; the check before the exec
+# refuses a native launch whose --model to claude has drifted from it.
+ASKED_MODEL="$MODEL"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HEADED_ARM="${HEADED_ARM_LEG_TARGET:-$HERE/../headed-arm.sh}"
@@ -1532,11 +1535,13 @@ if [ "$LANE" = "native" ]; then
     EFFORT_SOURCE=""
     # A caller-preset launcher token wins over leg_propagate_env, so the print
     # below reports it; read before the resolver appends its own token.
+    # A presence flag, not -n: an empty preset is still the token the leg gets.
     PRESET_EFFORT=""
+    PRESET_EFFORT_SET=0
     set -f
     for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
         case "$_effort_tok" in
-            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}" ;;
+            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}"; PRESET_EFFORT_SET=1 ;;
         esac
     done
     set +f
@@ -1567,13 +1572,33 @@ if [ "$LANE" = "native" ]; then
             esac
         fi
     fi
-    if [ -n "$PRESET_EFFORT" ]; then
+    if [ "$PRESET_EFFORT_SET" -eq 1 ]; then
         EFFORT_SOURCE="HEADED_ARM_LAUNCHER_ENV"
         EFFORT_SHOWN="$PRESET_EFFORT"
     else
         EFFORT_SHOWN="${CLAUDE_CODE_EFFORT_LEVEL:-}"
     fi
     [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
+    # Asked equals effective: a valid LEG_EFFORT is what the leg must run at
+    # unless an explicit CLAUDE_CODE_EFFORT_LEVEL or launcher token names the
+    # override (the line above prints that source). Effective is read back from
+    # the final token list, last token wins, as `env` applies it.
+    EFFORT_ASKED=""
+    case "${LEG_EFFORT:-}" in
+        low | medium | high | xhigh | max) EFFORT_ASKED="$LEG_EFFORT" ;;
+    esac
+    EFFORT_EFFECTIVE="${CLAUDE_CODE_EFFORT_LEVEL:-}"
+    set -f
+    for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_effort_tok" in
+            CLAUDE_CODE_EFFORT_LEVEL=*) EFFORT_EFFECTIVE="${_effort_tok#*=}" ;;
+        esac
+    done
+    set +f
+    if [ -n "$EFFORT_ASKED" ] && [ "$EFFORT_SOURCE" != "CLAUDE_CODE_EFFORT_LEVEL" ] && [ "$EFFORT_SOURCE" != "HEADED_ARM_LAUNCHER_ENV" ] && [ "$EFFORT_EFFECTIVE" != "$EFFORT_ASKED" ]; then
+        echo "headed-arm-leg: refusing launch: asked effort=$EFFORT_ASKED (LEG_EFFORT) but the leg would run effort=$EFFORT_EFFECTIVE (source=${EFFORT_SOURCE:-none}); set CLAUDE_CODE_EFFORT_LEVEL explicitly if that is intended" >&2
+        exit 2
+    fi
 fi
 
 # Propagate the resolved registry values, including DeepSeek's existing
@@ -2154,6 +2179,11 @@ elif ! "$LEG_SYSTEMD_RUN" --user --scope --quiet -- true >/dev/null 2>&1; then
     LEG_SCOPE_WARN="systemd-run cannot start a user scope"
 else
     LEG_SCOPE=("$LEG_SYSTEMD_RUN" --user --scope --quiet -p "MemoryMax=$LEG_MEMORY_MAX" -p "MemorySwapMax=$LEG_MEMORY_MAX" --)
+fi
+
+if [ "$LANE" = "native" ] && [ -n "$ASKED_MODEL" ] && [ "$MODEL" != "$ASKED_MODEL" ]; then
+    echo "headed-arm-leg: refusing launch: asked model=$ASKED_MODEL but claude would be passed --model $MODEL" >&2
+    exit 2
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then

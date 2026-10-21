@@ -48,8 +48,8 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`. [prose]
 
 **Jira status follows you** via the scripts, never by hand: `LIVE`, PR open,
-check-ci start and exit, a merge, a closed PR and `WRAPPED` each re-derive it from
-your PRs and your lock, and a merge with `completes-ticket: yes` moves it to Done.
+check-ci, a merge, a closed PR and `WRAPPED` re-derive it from your PRs and lock;
+a merge with `completes-ticket: yes` moves it to Done.
 
 ## The RETASK channel and console succession
 
@@ -69,8 +69,9 @@ the old name, no token. **Else read `leg-sections/succession.md` first.**
 
 1. `bash <repo>/scripts/handover/queue-lock.sh acquire <doc>` — the launcher
    already exported `HANDOVER_DIR`, so type no prefix; `<doc>` is the
-   **absolute** path (a bare name is not relativized). Put the release-token in
-   your LIVE bullet in backticks; release it at WRAP.
+   **absolute** path (a bare name is not relativized). Your LIVE bullet carries
+   the release-token in backticks plus `effort=$CLAUDE_CODE_EFFORT_LEVEL`
+   `model=<id>` read from your env; release it at WRAP.
 2. Paste `git log -1 --format=%H` and `git merge-base --is-ancestor <base sha> HEAD`.
 3. Run `bash scripts/lib/bank-preflight.sh`.
 
