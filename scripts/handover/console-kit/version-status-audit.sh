@@ -93,7 +93,7 @@ owner = {}
 for k in os.environ.get('VSA_OWNERS', '').split():
     owner.setdefault(k, 'leg:' + k)
 legs_from = os.environ.get('VSA_LEGS_FROM', '')
-MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)\b')
+MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 legs_unknown = (bool(legs_from) and not os.path.isfile(legs_from)) or (not legs_from and not os.environ.get('VSA_OWNERS', '').split())  # manifest named but missing, or neither manifest nor owners: ownership coverage unknown
 if legs_from and os.path.isfile(legs_from):
     try:

@@ -135,6 +135,28 @@ else
   else ok "workflow does not trigger on pull_request"; fi
 fi
 
+# 10. tools the suites call that a GitHub-hosted runner carries and ci.yml never
+#     installs, so a container without them fails or SKIPs rows: bison + gcc +
+#     libc6-dev build the bwk awk, cron gives crontab, zsh the escape-corpus zsh
+#     shapes, shfmt the bash-ast engine, uv check-uv-lock. Each is installed and
+#     smoke-checked.
+for p in bison gcc libc6-dev cron zsh; do
+  if has "$p" "$apt_text"; then ok "Dockerfile installs suite tool package $p"
+  else bad "Dockerfile lacks suite tool package $p"; fi
+done
+if has 'zsh=5.9-*' "$apt_text"; then ok "Dockerfile pins zsh 5.9"
+else bad "Dockerfile does not pin zsh=5.9-*"; fi
+for v in SHFMT UV; do
+  if grep -Eq "^ARG ${v}_VERSION=[0-9.]+$" <<< "$df_text" && grep -Eq "^ARG ${v}_SHA256=[0-9a-f]{64}$" <<< "$df_text"; then
+    ok "Dockerfile pins ${v}_VERSION with a sha256"
+  else bad "Dockerfile does not pin ${v}_VERSION with ${v}_SHA256"; fi
+done
+smoke="$(grep -oE 'for t in [^;]+' "$WORKFLOW" 2>/dev/null | head -n 1)"
+for t in bison gcc crontab shfmt uv zsh; do
+  if has "$t" "$smoke"; then ok "workflow smoke-checks $t"
+  else bad "workflow smoke list lacks $t"; fi
+done
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1

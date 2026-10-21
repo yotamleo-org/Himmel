@@ -165,6 +165,7 @@ scripts/ci/test-queue-latency.sh	0
 scripts/ci/test-run-shell-tests-discovery.sh	16
 scripts/ci/test-run-shell-tests-flake.sh	12
 scripts/ci/test-run-shell-tests-impacted.sh	8
+scripts/ci/test-run-shell-tests-live-state.sh	3
 scripts/ci/test-run-shell-tests-manifest.sh	6
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	102
 scripts/ci/test-run-shell-tests-rotation-guards.sh	115
@@ -271,6 +272,7 @@ scripts/eval/leg-digest/test-leg-ledger.sh	3
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	0
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
+scripts/eval/retrieval-eval/test-answer-ab.sh	1
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	3
 scripts/eval/review-panel/test-review-panel.sh	3
 scripts/eval/sandbox-poc/test-probe.sh	5

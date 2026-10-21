@@ -279,14 +279,15 @@ test('--cancel never signals a reused pid: a stale pid file with a free lock is 
 test('--cancel signals only the process that holds the task lock, not a pid the pid file merely names', async () => {
   const f = fixture();
   const bystander = spawn('sleep', ['30'], { stdio: 'ignore' });
-  const holder = spawn('flock', [join(SCRATCH, `bulk-${f.id}.lock`), 'sleep', '30'], { stdio: 'ignore' });
+  // Its own process group, so the kill below also takes flock's sleep child.
+  const holder = spawn('flock', [join(SCRATCH, `bulk-${f.id}.lock`), 'sleep', '30'], { stdio: 'ignore', detached: true });
   mkdirSync(join(SCRATCH, `bulk-${f.id}`), { recursive: true });
   writeFileSync(join(SCRATCH, `bulk-${f.id}`, 'pid'), `${bystander.pid}\n`);
   await new Promise((r) => setTimeout(r, 500));
   const c = spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env, encoding: 'utf8' });
   const alive = spawnSync('kill', ['-0', String(bystander.pid)]).status === 0;
   bystander.kill('SIGKILL');
-  holder.kill('SIGKILL');
+  process.kill(-holder.pid, 'SIGKILL');
   assert.equal(c.status, 3, c.stderr);
   assert.match(c.stderr, /not the lock holder/);
   assert.ok(alive, 'the pid named by the pid file was signalled');

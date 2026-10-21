@@ -98,7 +98,7 @@ def files_in(text):
             out.append(f)
     return out
 
-MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)\b')
+MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 SCOPE_END_RE = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
 def write_scope(line):

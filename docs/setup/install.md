@@ -54,6 +54,14 @@ They are independent. A `starter` install profile with the `lean` plugin
 profile, recorded in a saved install-profile file, is the ordinary adopter
 setup — and is exactly what `--scope project` gives you.
 
+The plugin profile toggles with `/profile`; its registry is
+`scripts/lanes/plugin-profiles.json`. The always-on `base` carries
+`lean-skills@himmel` (vendored workflow skills) and `i-have-adhd@himmel`
+(vendored; the installer and updater create its flag file unless
+`HIMMEL_NO_ADHD_ALWAYS=1`). `design` adds the HTML/UI design kit and
+`domain-modeling@himmel` per dispatch, `user` enables the opt-in `pstack@himmel`,
+and `humanizer@himmel` is in no plugin profile.
+
 ## What you are opting into
 
 Four independent axes; pick one value from each. Nothing here is a package

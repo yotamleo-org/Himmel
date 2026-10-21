@@ -421,7 +421,7 @@ for (const n of new Set([...legInfo.values()].map((i) => i.pr).filter(Boolean)))
 }
 
 // ---------------------------------------------------------------- phases
-const LADDER = ['LIVE', 'PARKED-BANK', 'READY-TO-OPEN', 'PR open', 'READY', 'BLOCKED','MERGED', 'WRAPPED', 'WRAPPED, window still open'];
+const LADDER = ['LIVE', 'PARKED-USAGE', 'READY-TO-OPEN', 'PR open', 'READY', 'BLOCKED','MERGED', 'WRAPPED', 'WRAPPED, window still open'];
 const labels = [...new Set([...liveLabels, ...locks.keys(), ...tails.keys(), ...legInfo.keys()])]
     .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10) || a.localeCompare(b));
 const legs = labels.map((label) => {
@@ -436,7 +436,7 @@ const legs = labels.map((label) => {
     if (tail === 'WRAPPED' || lock === 'WRAPPED' || docDone) phase = 'WRAPPED';
     else if (info.pr && mergedNums.has(info.pr)) phase = 'MERGED';
     else if (tail === 'BLOCKED' || tail === 'HALTED') phase = 'BLOCKED';
-    else if (tail === 'PARKED-BANK') phase = 'PARKED-BANK';
+    else if (tail === 'PARKED-USAGE' || tail === 'PARKED-BANK') phase = 'PARKED-USAGE';
     else if (tail === 'READY') phase = info.pr ? 'READY' : 'READY-TO-OPEN';
     else if (info.pr && openByNum.has(info.pr)) phase = 'PR open';
     else phase = 'LIVE';
@@ -584,36 +584,45 @@ const cloudPanel = (() => {
     return panel('Cloud sessions', rows, 'no cloud session launched in the last 48 hours');
 })();
 
-// Bank lift: one read-only line from the lift's `show` output -- the
-// same reason source as the doctor's C34 row. BOARD_BANK_LIFT overrides the script
-// (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS). Never renders the account or any
+// Usage lift: one read-only line from the lift's `show` output -- the
+// same reason source as the doctor's C34 row. BOARD_USAGE_LIFT (old name
+// BOARD_BANK_LIFT) overrides the script (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS).
+// Reads the usage-lift: and the old bank-lift: prefix. Never renders the account or any
 // field but until/standing; not part of the fingerprint; never fatal.
-const BANK_LIFT_BIN = process.env.BOARD_BANK_LIFT || join(HERE, '..', '..', 'lib', 'bank-lift.sh');
+const USAGE_LIFT_BIN = process.env.BOARD_USAGE_LIFT || process.env.BOARD_BANK_LIFT || join(HERE, '..', '..', 'lib', 'usage-lift.sh');
 const bankLiftLine = (() => {
     const row = (kind, text) => `<p class="sub" data-bank-lift="${kind}">weekly budget override: ${text}</p>`;
     try {
         let out = '';
         try {
-            out = execFileSync('bash', [BANK_LIFT_BIN, 'show'], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] });
+            out = execFileSync('bash', [USAGE_LIFT_BIN, 'show'], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] });
         } catch (e) {
             out = e && e.stdout ? String(e.stdout) : '';
         }
         const lines = out.split('\n').map((l) => l.replace(/\r$/, ''));
         let status = null;
-        for (const l of lines) { const m = /^bank-lift: (VALID|INVALID: (.+))$/.exec(l); if (m) status = m; }
+        for (const l of lines) { const m = /^(?:usage|bank)-lift: (VALID|INVALID: (.+))$/.exec(l); if (m) status = m; }
         if (!status) return row('?', 'unavailable');
-        if (lines.includes('bank-lift: none') || status[2] === 'missing') return row('none', 'no lift set');
+        if (lines.some((l) => /^(?:usage|bank)-lift: none$/.test(l)) || status[2] === 'missing') return row('none', 'no lift set');
         if (status[1] !== 'VALID') return row('invalid', `lift set but INVALID: ${safe(status[2], 40)}`);
         let tail = '';
         try {
-            const idx = lines.findIndex((l) => l.startsWith('bank-lift:'));
-            const j = JSON.parse(lines.slice(0, idx).join('\n'));
-            if (typeof j.until === 'number' && Number.isFinite(j.until)) {
-                const u = new Date(j.until * 1000);
+            // With both lift files read, show the stricter of the two, as the validator does.
+            const blocks = [[]];
+            for (const l of lines) {
+                if (/^(?:usage|bank)-lift:/.test(l)) blocks.push([]);
+                else blocks[blocks.length - 1].push(l);
+            }
+            const js = blocks.filter((b) => b.join('').trim()).map((b) => JSON.parse(b.join('\n')));
+            // A standing policy's stored until is ignored by the validator: a window lift's binds.
+            const windows = js.filter((j) => j.standing !== true);
+            const untils = (windows.length ? windows : js).map((j) => j.until).filter((u) => typeof u === 'number' && Number.isFinite(u));
+            if (untils.length) {
+                const u = new Date(Math.min(...untils) * 1000);
                 const p2 = (n) => String(n).padStart(2, '0');
                 tail = ` until ${u.getFullYear()}-${p2(u.getMonth() + 1)}-${p2(u.getDate())} ${p2(u.getHours())}:${p2(u.getMinutes())}`;
             }
-            tail += j.standing === true ? ' · standing' : ' · window';
+            tail += js.length && js.every((j) => j.standing === true) ? ' · standing' : ' · window';
         } catch { tail = tail || ' · window'; }
         return row('valid', `VALID${tail}`);
     } catch { return row('?', 'unavailable'); }
