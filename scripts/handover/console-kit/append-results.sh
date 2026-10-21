@@ -128,15 +128,15 @@ fi
 [ "$locked" -eq 1 ] && doc_unlock
 echo "append-results: appended to $DOC"
 
-# a LIVE bullet moves the leg's ticket (the key in the doc name)
-# to In Progress. Best-effort - leg-jira-status.sh warns and exits 0 on any
-# Jira failure, and LEG_JIRA_STATUS=0 opts out.
+# a LIVE bullet records the doc as the ticket's owner (the key in the doc name)
+# and re-derives its Jira status. Best-effort - leg-jira-status.sh warns and
+# exits 0 on any Jira failure, and LEG_JIRA_STATUS=0 opts out.
 case "$TEXT" in
     LIVE|LIVE[!A-Za-z0-9]*)
         if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
             base="${DOC##*/}"
             if [[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]]; then
-                bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" "In Progress" || true
+                bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event live --doc "$DOC" || true
             fi
         fi ;;
 esac
