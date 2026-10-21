@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for cr_ledger_outside_dispositioned in scripts/lib/cr-ledger-evidence.sh.
+# Tests for cr_ledger_outside_dispositioned in scripts/lib/review-ledger-evidence.sh.
 # Hermetic: a throwaway git repo + ledger, no network, no gh.
 #
 # The positive fixture is written by the REAL scripts/cr/ledger-append.sh — the
@@ -36,7 +36,7 @@ pass=0; fail=0
 # chk <name> <want-rc> <head> <id> <file> <line> [current-head]
 chk() {
     local name="$1" want="$2" head="$3" id="$4" file="$5" line="$6" cur="${7:-}" rc=0 out
-    out=$(cd "$REPO" && . "$SCRIPT_DIR/cr-ledger-evidence.sh" \
+    out=$(cd "$REPO" && . "$SCRIPT_DIR/review-ledger-evidence.sh" \
         && cr_ledger_outside_dispositioned "$head" "$id" "$file" "$line" "$cur" 2>&1) || rc=$?
     if [ "$rc" = "$want" ]; then pass=$((pass+1)); echo "ok   $name"
     else fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want) out='$out'"; fi

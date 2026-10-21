@@ -207,7 +207,7 @@ if [ "$forge" = "github" ]; then
     fi
 
     # shellcheck disable=SC1091
-    if . "$SCRIPT_DIR/../lib/cr-merge-gate.sh" 2>/dev/null; then
+    if . "$SCRIPT_DIR/../lib/review-merge-gate.sh" 2>/dev/null; then
         _gate_reason=""
         _gate_rc=0
         _gate_reason=$(cr_merge_gate "$pr_num") || _gate_rc=$?

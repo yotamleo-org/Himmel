@@ -58,6 +58,13 @@ set -uo pipefail'
 anchor="$tmp/anchor"; wt="$tmp/wt"; bare="$tmp/bare"
 make_tree "$anchor" anchor
 make_tree "$wt" branch
+# The deprecated clear-cr-marker.sh forwarder, beside the writer it forwards to.
+for _t in "$anchor" "$wt"; do
+    mkdir -p "$_t/scripts/lib"
+    cp "$DIR/clear-cr-marker.sh" "$_t/scripts/cr/clear-cr-marker.sh"
+    cp "$DIR/../lib/chokepoint-seam-guard.sh" "$_t/scripts/lib/chokepoint-seam-guard.sh"
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$_t" add -A
+done
 mkdir -p "$bare"
 
 run() {  # <cwd> <HIMMEL_REPO or -> <entry path>
@@ -70,6 +77,8 @@ run() {  # <cwd> <HIMMEL_REPO or -> <entry path>
 
 # 1. Relative entry from an edited worktree runs the anchor's copy.
 check "$(run "$wt" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T1 relative entry hands off"
+# 1b. The deprecated forwarder's relative entry hands off too, then runs the anchor's writer.
+check "$(run "$wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T1b legacy relative entry hands off"
 # 2. `./` is relative too — decided on the path as invoked.
 check "$(run "$wt" "$anchor" ./scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T2 ./ entry hands off"
 # 3. Absolute entry runs the local copy (the deliberate open door).

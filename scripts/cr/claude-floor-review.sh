@@ -71,8 +71,8 @@ base=$(git rev-parse --verify "$base^{commit}" 2>/dev/null) || die "cannot resol
 [ "$base" != "$head" ] || die "--base equals --head: there is no diff to review"
 # Twin of clear-review-marker.sh floor_provenance_ok: the gate refuses an artifact
 # whose base is off the remote default branch (a partial range), so never spend one.
-# shellcheck source=scripts/lib/cr-default-base.sh
-. "$REPO_ROOT/scripts/lib/cr-default-base.sh" || die "cannot load scripts/lib/cr-default-base.sh" 1
+# shellcheck source=scripts/lib/review-default-base.sh
+. "$REPO_ROOT/scripts/lib/review-default-base.sh" || die "cannot load scripts/lib/review-default-base.sh" 1
 default_ref=$(cr_default_base_ref) || die "not eligible: no remote default branch (origin/HEAD or origin/main) to bind --base to. Nothing spent." 3
 git merge-base --is-ancestor "$base" "$default_ref" 2>/dev/null ||
     die "not eligible: --base ${base:0:8} is not on the default branch ($default_ref), so the review would cover only part of the branch. Nothing spent." 3

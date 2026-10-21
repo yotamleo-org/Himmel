@@ -9,12 +9,12 @@ _gh() { "${GH_CMD:-gh}" "$@"; }
 
 # ── CodeRabbit trigger at the seam ─────────────────────────────
 _FORGE_GH_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/cr-trigger-ledger.sh
+# shellcheck source=scripts/lib/coderabbit-trigger-ledger.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-. "$_FORGE_GH_LIB_DIR/cr-trigger-ledger.sh"
-# shellcheck source=scripts/lib/cr-available.sh
+. "$_FORGE_GH_LIB_DIR/coderabbit-trigger-ledger.sh"
+# shellcheck source=scripts/lib/coderabbit-available.sh
 # shellcheck disable=SC1091
-. "$_FORGE_GH_LIB_DIR/cr-available.sh"
+. "$_FORGE_GH_LIB_DIR/coderabbit-available.sh"
 
 # cr_trigger_post_review requires its caller to define warn(). The two hooks
 # define their own before sourcing the ledger; no forge consumer does, so

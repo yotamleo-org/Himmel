@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-body-findings.sh. Hermetic: gh
+# Tests for scripts/lib/coderabbit-body-findings.sh. Hermetic: gh
 # is stubbed. Mirrors test-cr-merge-gate.sh's hermetic-stub / t() shape.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -145,7 +145,7 @@ chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/cr-body-findings.sh"
+. "$SCRIPT_DIR/coderabbit-body-findings.sh"
 
 pass=0; fail=0
 t() { # t <name> <GH_STUB_MODE> <expected-rc> [<expected-stdout-line>]

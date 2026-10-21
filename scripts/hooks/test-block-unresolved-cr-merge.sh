@@ -180,7 +180,7 @@ payload() { # payload <tool_name> <command>
 # own timeout-bin.sh, which it now also refuses to run without).
 cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
   local _d
-  for _d in cr-signal cr-body-findings cr-available cr-ledger-evidence nwo timeout-bin critics-config resolve-node; do
+  for _d in cr-signal cr-body-findings cr-available cr-ledger-evidence coderabbit-signal coderabbit-body-findings coderabbit-available review-ledger-evidence review-merge-gate nwo timeout-bin critics-config resolve-node; do
     cp "$SCRIPT_DIR/../lib/$_d.sh" "$1/"
   done
   mkdir -p "$1/../cr"
@@ -527,8 +527,8 @@ for _lib in cr-merge-gate ci-green-gate; do
 done
 # the NESTED sources (cr-merge-gate's five helpers) and the hook's
 # own timeout-bin.sh fail closed too; each row names the lib that is missing.
-for _row in "cr-signal|cr-merge-gate" "cr-body-findings|cr-merge-gate" "cr-available|cr-merge-gate" \
-            "cr-ledger-evidence|cr-merge-gate" "nwo|cr-merge-gate" "timeout-bin|timeout-bin"; do
+for _row in "coderabbit-signal|cr-merge-gate" "coderabbit-body-findings|cr-merge-gate" "coderabbit-available|cr-merge-gate" \
+            "review-ledger-evidence|cr-merge-gate" "review-merge-gate|cr-merge-gate" "nwo|cr-merge-gate" "timeout-bin|timeout-bin"; do
     _lib=${_row%%|*}; _want=${_row#*|}
     _root="$TMP/nolib-nested-$_lib"
     mkdir -p "$_root/scripts/hooks"

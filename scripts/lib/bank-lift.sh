@@ -4,7 +4,7 @@
 # argv. Sourced it loads usage-lift.sh and keeps the old function names, with
 # BANK_LIFT_REASON and BANK_LIFT_STANDING copied from the USAGE_LIFT_* pair.
 
-_BL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+case "${BASH_SOURCE[0]}" in */*) _BL_DIR="${BASH_SOURCE[0]%/*}" ;; *) _BL_DIR=. ;; esac
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "bank-lift.sh is deprecated: use 'usage-lift.sh' instead" >&2

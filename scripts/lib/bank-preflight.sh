@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # DEPRECATED forwarder, kept so old callers keep working: use usage-preflight.sh.
 # The old path stays a registered chokepoint, so it runs the seam guard itself.
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  echo "bank-preflight.sh is deprecated: run 'usage-preflight.sh', do not source it" >&2
+  return 2
+fi
 set -uo pipefail
 
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick

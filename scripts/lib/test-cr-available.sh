@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-available.sh.
+# Tests for scripts/lib/coderabbit-available.sh.
 #
 # Hermetic: every case runs against a throwaway `git init` repo in a temp dir.
 # Never talks to GitHub. Never reads the real checkout's git config.
@@ -49,9 +49,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/cr-available.sh
+# shellcheck source=scripts/lib/coderabbit-available.sh
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/cr-available.sh"
+. "$SCRIPT_DIR/coderabbit-available.sh"
 
 PASS=0; FAIL=0; TMPROOT=""
 

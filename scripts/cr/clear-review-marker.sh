@@ -1160,8 +1160,8 @@ floor_provenance_ok() {
     # mid-PR commits. One resolver, shared with claude-floor-review.sh.
     case "$_base" in *[!0-9a-f]*|'') floor_provenance_why="floor artifact base '$_base' is not a commit sha"; return 1 ;; esac
     local _ref
-    # shellcheck source=scripts/lib/cr-default-base.sh
-    if ! { [ -f "$SCRIPT_DIR/../lib/cr-default-base.sh" ] && . "$SCRIPT_DIR/../lib/cr-default-base.sh" && _ref=$(cr_default_base_ref); }; then
+    # shellcheck source=scripts/lib/review-default-base.sh
+    if ! { [ -f "$SCRIPT_DIR/../lib/review-default-base.sh" ] && . "$SCRIPT_DIR/../lib/review-default-base.sh" && _ref=$(cr_default_base_ref); }; then
         floor_provenance_why="no remote default branch (origin/HEAD or origin/main) to bind the floor artifact base to"; return 1
     fi
     git merge-base --is-ancestor "$_base" "$_ref" 2>/dev/null ||

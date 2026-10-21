@@ -565,10 +565,10 @@ fi
 # only AFTER it resolved: a helper sourced earlier from this script's own tree
 # ran branch bytes inside the gate before any anchor check (it could export
 # HIMMEL_REPO=$PWD, or define functions shadowing `bash`/`printenv`/`gh`).
-# The repo's ONE CodeRabbit-availability answer (scripts/lib/cr-available.sh).
-# shellcheck source=scripts/lib/cr-available.sh
+# The repo's ONE CodeRabbit-availability answer (scripts/lib/coderabbit-available.sh).
+# shellcheck source=scripts/lib/coderabbit-available.sh
 # shellcheck disable=SC1091
-. "$himmel_repo/scripts/lib/cr-available.sh" 2>/dev/null || true
+. "$himmel_repo/scripts/lib/coderabbit-available.sh" 2>/dev/null || true
 # The ONE operator alert when GitHub blocks the merge. If it is
 # missing the fallback still prints the MERGE-BLOCKED line, so a block is never
 # silent.
