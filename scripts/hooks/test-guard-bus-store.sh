@@ -191,8 +191,11 @@ deny  "bus register behind env NAME=value" "$(bash_json 'env HOME=/tmp bus regis
 allow "an env value naming bus register is data (text reader)" "$(bash_json "env X='bus register x' true")"
 deny  "a heredoc fed to a shell (text reader)" "$(bash_json $'bash <<\'EOF\'\nbus register x\nEOF')"
 deny  "a script file run by a shell (text reader)" "$(bash_json 'echo "bus register x" > /tmp/f.sh; bash /tmp/f.sh')"
-allow "residual: a quoted string later run as an executable script is data" \
+deny  "a script file run by path (text reader)" \
     "$(bash_json 'echo "bus register x" > /tmp/f.sh; chmod +x /tmp/f.sh; /tmp/f.sh')"
+deny  "a script file sourced (text reader)" "$(bash_json 'echo "bus register x" > /tmp/f.sh; . /tmp/f.sh')"
+allow "residual: a quoted string written to a file is data until a later call runs it" \
+    "$(bash_json 'echo "bus register x" > /tmp/f.sh')"
 
 echo "== no shfmt: the text reader decides, exactly as before the model =="
 NOSHFMT="$(mktemp -d "${TMPDIR:-/tmp}/busstore-noshfmt.XXXXXX")" || exit 1

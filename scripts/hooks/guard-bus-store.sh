@@ -25,8 +25,9 @@
 #         model (scripts/lib/bash-ast.sh) reads it first: a quoted string or a
 #         heredoc body is one word of data, and `bash -c` / `eval` bodies are
 #         read. A position it cannot read (a runner such as nice or xargs, an
-#         interpreter with no body, a command reached through env, an expansion
-#         or glob word) hands the call to the word walker below.
+#         interpreter with no body, a file run by path or sourced, a command
+#         reached through env, an expansion or glob word) hands the call to the
+#         word walker below.
 #     (c) assigns a HIMMEL_BUS_* variable (`HIMMEL_BUS_NAME=x claude`, `export
 #         ...`, `env ...`), including a name built by quoting or expansion
 #         (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_${x}=1`, `$'HIMMEL_BUS_NAME=x'`).
@@ -59,8 +60,7 @@
 # cannot read the command, the verb fed on stdin to xargs, the verb or the store
 # path held in a shell variable (`v=register; bus $v x`, `$S/bus`: a bare
 # expansion carries no literal character to match), a quoted string written to
-# a file later run as an executable (`/tmp/f.sh`; the model reads it as data),
-# and a symlinked payload cwd or a relative file path against it (all tracked).
+# a file that a later tool call runs, and a symlinked payload cwd or a relative file path against it (all tracked).
 # Deliberately over-denied (the safe direction): when the model hands the call
 # to the word walker, a verb word anywhere after a bus-able word in one segment
 # (`bus send ... --summary "rebind done" $x`), a glob or expansion under `himmel/`
@@ -378,13 +378,15 @@ deny() {
 # The verdict over bash_ast_positions output: deny when one position's literal
 # words hold a bus word (`bus`, or a path component `bus`) and, later, a word that
 # is exactly register|bind|rebind. A position the model cannot read (a runner, an
-# interpreter with no body, one reached through env) or one with an expansion or
-# glob word leaves the verdict "legacy": the word walker reads the text then.
+# interpreter with no body, a file run by path or sourced, one reached through
+# env) or one with an expansion or glob word leaves the verdict "legacy": the
+# word walker reads the text then.
 # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
 IFS= read -r -d '' BS_JQ <<'BS_JQ_EOF' || true
 def base: (. // "") | sub("^.*/"; "");
 def interp: (.prog | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
-def unread: (.opaque != null) or (interp and (.body == null));
+def runsfile: (.argv[0].v // "") | contains("/");
+def unread: (.opaque != null) or (interp and (.body == null)) or runsfile;
 def viaenv: (.via // []) | any(. == "env");
 def lit: .t == "lit" and (.g | not);
 def isbus: lit and (.v | split("/") | any(. == "bus"));
