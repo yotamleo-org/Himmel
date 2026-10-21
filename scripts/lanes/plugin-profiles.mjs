@@ -70,7 +70,12 @@ const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-g
 // merge gate. Never a general $VAR admission: the script takes no arguments,
 // so this literal carries no ':*' tail at all.
 const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh")';
-const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT]);
+// pr-check-step0.sh is the no-arg step-0 entry /pr-check types today; it
+// execs the anchor's pr-check-context.sh. Same exact-string carve-out, no
+// tail. Without it the auto-mode classifier decides step 0, and the
+// client-side classifier claudex runs denies it.
+const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")';
+const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
 const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
 
 // The one rule only leg-vm adds: the sanctioned guest-launch script, relative,

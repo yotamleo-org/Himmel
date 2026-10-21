@@ -36,6 +36,10 @@ const GATE_RULES = [
   // yet, so like the merge gate it is an exact-string $HIMMEL_REPO literal,
   // no ':*' tail (the script takes no arguments).
   'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh")',
+  // pr-check-step0.sh is what /pr-check step 0 types today; it execs
+  // pr-check-context.sh from the anchor. Same exact no-arg literal, so no
+  // classifier (client-side on claudex) ever decides it.
+  'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")',
   'Bash(bash scripts/handover/queue-lock.sh:*)',
   'Bash(bash scripts/handover/console-kit/inbox-send.sh:*)',
   'Bash(bash scripts/cr/write-verdicts.sh:*)',
@@ -195,6 +199,14 @@ const BAD_GATE_RULES = [
   ['pr-check-context anchor literal with a different script under the anchor', 'Bash(bash "$HIMMEL_REPO/scripts/cr/write-verdicts.sh")'],
   ['pr-check-context anchor literal gains a wildcard tail', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh":*)'],
   ['pr-check-context anchor literal with an appended command', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh"; rm -rf /)'],
+  // The pr-check-step0 anchor literal is exact too: no argument, no tail,
+  // no other var, no other path, no relative spelling.
+  ['pr-check-step0 anchor literal with a different var', 'Bash(bash "$FOO/scripts/cr/pr-check-step0.sh")'],
+  ['pr-check-step0 anchor literal gains an argument', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh" --head)'],
+  ['pr-check-step0 anchor literal gains a wildcard tail', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh":*)'],
+  ['pr-check-step0 anchor literal with an appended command', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh"; rm -rf /)'],
+  ['pr-check-step0 at a different path under the anchor', 'Bash(bash "$HIMMEL_REPO/scripts/pr-check-step0.sh")'],
+  ['pr-check-step0 relative spelling', 'Bash(bash scripts/cr/pr-check-step0.sh)'],
   // resolve-active-item.sh is admitted exact-literal only — no
   // documented call site ever passes it an argument.
   ['resolve-active-item gains a wildcard', 'Bash(bash scripts/handover/resolve-active-item.sh:*)'],
