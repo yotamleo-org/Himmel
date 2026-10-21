@@ -1132,6 +1132,29 @@ describe('create — blocker version placement', () => {
     expect(writes()).toEqual([]);
   });
 
+  it('inherits a frozen version only with --gate must:<ruling>, recording the admission', async () => {
+    frozen = true;
+    const dir = mkdtempSync(join(tmpdir(), 'inherit-gate-'));
+    const prior = process.env['HIMMEL_ADMISSIONS_LEDGER'];
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = join(dir, 'admissions-ledger.jsonl');
+    try {
+      await file('--blocks', 'HIMMEL-1620', '--gate', 'must:RULING-1');
+      expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+      expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('"gate":"must:RULING-1"');
+    } finally {
+      if (prior === undefined) delete process.env['HIMMEL_ADMISSIONS_LEDGER'];
+      else process.env['HIMMEL_ADMISSIONS_LEDGER'] = prior;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('files a blocker of a frozen-version ticket with --backlog and no gate', async () => {
+    frozen = true;
+    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    expect(created()?.fixVersions).toBeUndefined();
+    expect(created()?.labels).toContain('backlog');
+  });
+
   it('does not bypass the residual cap through inheritance', async () => {
     full = true;
     await expect(file('--blocks', 'HIMMEL-1620')).rejects.toThrow(/exit 1/);
