@@ -23,7 +23,8 @@ ARG UV_SHA256=2b428396f12572d4429cf210ca234dd599a33b3af0958a4d5ed569d63e3f344f
 # the base tooling a GitHub-hosted runner carries and the suites call (ps, pgrep,
 # rsync, xxd, sqlite3, column, ...); the minimal ubuntu base has none of it. The third
 # line is what the suites need beyond that: bison + gcc + libc6-dev build the bwk awk,
-# cron gives crontab, zsh runs the escape-corpus zsh shapes.
+# cron gives crontab, python-is-python3 the bare `python` the obsidian-triage suites
+# call, python3-yaml the PyYAML a suite imports, zsh runs the escape-corpus zsh shapes.
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
       at bubblewrap ca-certificates curl ffmpeg=7:6.1.* gh git jq \
@@ -31,7 +32,7 @@ RUN apt-get update -qq \
       bsdextrautils expect file gawk iproute2 iputils-ping less lsof make \
       netcat-openbsd openssh-client patch procps psmisc rsync sqlite3 tmux tree \
       wget xxd zip zstd \
-      bison cron gcc libc6-dev zsh=5.9-* \
+      bison cron gcc libc6-dev python-is-python3 python3-yaml zsh=5.9-* \
  && rm -rf /var/lib/apt/lists/*
 
 # runner: uid/gid 1001 like the GitHub-hosted runner user, so a job that runs as it

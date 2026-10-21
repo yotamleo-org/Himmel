@@ -26,6 +26,10 @@ fi
 chokepoint_seam_guard scripts/handover/console-kit/tick.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# tick's gh reads (the PR list, the READY file lists) ride the read-only token
+# through gh-read.sh; plain gh when the helper is absent.
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
@@ -103,6 +107,13 @@ LEG_DIGEST_STATE_DIR.
 gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from
 the X-Ratelimit-* headers of ONE `gh api -i graphql` call
 (gh-graphql-budget.sh ghb_read); gql=? when the headers cannot be read.
+
+rest-main=<remaining>/<limit>@<reset HH:MM> and rest-read=... (HIMMEL-6837), right
+after gql: the REST core budget of the main token and of the read-only token
+(himmel_github_token_vm2) from `gh api rate_limit` (gh-read.sh gh_read_rates).
+Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
+read token is configured; the verbose view prints them as "rest main:" and
+"rest read:" lines. Advisory: not in console-wait's action key.
 
 orphans=<owner>:<count>/<oldest>m (HIMMEL-2761) is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
@@ -383,7 +394,7 @@ csv_add() {
 # token; a structured READY record would replace the regexes.
 ready_mismatch_scan() {
     local dir="$1" tp="$REPO/scripts/ci/ci-trust-paths.txt" days="${TICK_READY_WINDOW_DAYS:-1}"
-    local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-gh}"
+    local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-$GH_READ_BIN}"
     local budget=20 pats rec vidx cap t0 partial=0 left doc model line pr head claim files hit jv
     [ -d "$dir" ] && [ -r "$tp" ] || return 1
     case "$days" in ''|*[!0-9]*) days=1 ;; esac
@@ -1211,7 +1222,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no leg this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1910,6 +1921,22 @@ if [ -f "$HERE/../../lib/gh-graphql-budget.sh" ]; then
     fi
 fi
 
+# rest main / rest read: the REST core budget of each token, one line per token
+# (`gh api rate_limit` costs no budget); LOW under 10 %. A read token that is
+# absent or unreadable shows in --verbose only, so the compact line stays quiet.
+rest_main_line=''
+rest_read_line=''
+if [ -f "$HERE/../../lib/gh-read.sh" ]; then
+    # shellcheck source=../../lib/gh-read.sh
+    . "$HERE/../../lib/gh-read.sh"
+    rest_lines="$(gh_read_rates 2>/dev/null)" || rest_lines=""  # swallow-ok: an unreadable budget renders as no rest field, advisory only
+    rest_main_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^main: //p')"
+    rest_read_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^read: //p')"
+fi
+rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not a reading
+    case "$1" in [0-9]*) printf '%s' "$1" | sed -e 's/ reset /@/' -e 's/ LOW$/!LOW/' ;; esac
+}
+
 # denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]: rows
 # scripts/hooks/log-classifier-denial.sh appended to the jsonl within the
 # trailing window, grouped by the hook's own session_title (the worktree
@@ -2156,6 +2183,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
     printf 'gql: %s\n' "$gql"
+    case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
+    case "$rest_read_line" in ''|'?'*) ;; *) printf 'rest read: %s\n' "$rest_read_line" ;; esac
     printf 'orphans: %s\n' "$orphans"
     printf 'nonces: %s\n' "$nonces_summary"
     printf 'worker-session set: %s\n' "$legset_summary"
@@ -2220,6 +2249,8 @@ else
     compact_field fleet "$fleet"
     compact_field capacity "$capacity"
     compact_field gql "$gql"
+    compact_field rest-main "$(rest_compact "$rest_main_line")"
+    compact_field rest-read "$(rest_compact "$rest_read_line")"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
     compact_field legset "$legset_summary"

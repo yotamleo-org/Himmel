@@ -427,6 +427,12 @@ fi
 # shellcheck source=scripts/lib/gh-graphql-budget.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-graphql-budget.sh"
+# reads (pr view/checks, check-runs, status, review threads) ride the read-only token;
+# gh_read_init warns once if it is missing and the reads fall back to the main one
+# shellcheck source=scripts/lib/gh-read.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/gh-read.sh"
+gh_read_init
 RL_RECOVERIES=0
 # _rl_recover — after a gh failure that reads as a rate limit: wait for the
 # reset and tell the caller to retry (rc 0), at most 3 times per run. rc 1 =
@@ -544,7 +550,7 @@ pr_checks() {
 }
 
 pr_view() {
-    if [ -n "$selector" ]; then gh pr view "$selector" "$@"; else gh pr view "$@"; fi
+    if [ -n "$selector" ]; then gh_read pr view "$selector" "$@"; else gh_read pr view "$@"; fi
 }
 
 # The per-PR check rows through the shared cache.
@@ -622,6 +628,12 @@ _fail_count() {
 # registers used to read as green (or wait out --max-wait twice).
 _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "$@"; }
 
+# The pure classifier (_required_normalize, _has_producer_ids, _required_status,
+# _join_by_status) is shared with the Jira status derive.
+# shellcheck source=scripts/lib/required-checks.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/required-checks.sh"
+
 # required_set — one required check context per line. The EFFECTIVE set is the
 # union of rulesets (rules/branches/<base>, which covers protect-main's ruleset
 # checks) and classic branch protection. A failed read returns 1: the caller
@@ -636,34 +648,19 @@ required_set() {
     local base rules classic
     base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
     [ -n "$base" ] || return 1
-    rules=$(gh api "repos/$owner/$repo/rules/branches/$base" \
+    # these two captures merge stderr into the data, so the helper's fallback warning stays off them
+    rules=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/rules/branches/$base" \
         --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' 2>&1) || return 1
-    if ! classic=$(gh api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
+    if ! classic=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
         --jq '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' 2>&1); then
         case "$classic" in *"(HTTP 404)"*) classic="" ;; *) return 1 ;; esac
     fi
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
 
-# _required_normalize — "<name>\t<producer id>" in, the same out. An id of -1 is
-# classic protection's "any source", so it is no id. When a name
-# carries an id anywhere, its id-less rows drop: a producer-pinned requirement is
-# stricter, and the deprecated classic `contexts` list repeats every name id-less,
-# which must not weaken the pinned one back to a name-only match.
-_required_normalize() {
-    awk -F'\t' '
-        { n[NR] = $1; i[NR] = ($2 == "-1" ? "" : $2); if (i[NR] != "") pinned[$1] = 1 }
-        END { for (j = 1; j <= NR; j++) if (i[j] != "" || !(n[j] in pinned)) print n[j] "\t" i[j] }' | sort -u
-}
-
 # _required_rows — "<bucket>\t<name>" for every check on the PR.
 _required_rows() {
     pr_rows "$DECIDE_TTL"
-}
-
-# _has_producer_ids <reqs> — true when any required entry names a producer.
-_has_producer_ids() {
-    printf '%s\n' "$1" | awk -F'\t' '$2 != "" { f = 1 } END { exit !f }'
 }
 
 # _producer_rows — "<bucket>\t<name>\t<app id>\t<started_at>\t<id>" for every
@@ -676,46 +673,8 @@ _has_producer_ids() {
 # started_at is carried for diagnostics only — ordering uses `id` alone (see
 # `_required_status`).
 _producer_rows() {
-    gh api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
+    gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
         --jq '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' 2>/dev/null
-}
-
-# _required_status <reqs> <rows> <producer rows> — "<fail|pending|seen|missing>\t<label>"
-# per required check. A cancelled required check blocks a merge exactly as a
-# failed one does. An entry with no id matches by name over <rows> — already
-# latest-only, since `gh pr checks` reflects GitHub's own rollup, which judges
-# only the latest check suite per name. One with an id matches name AND app id
-# over <producer rows> — the raw check-runs API, which lists every run ever
-# created for the sha — so only the LATEST matching run is judged, not any run
-# that ever failed: a re-run or a close/reopen on an unchanged
-# head must be able to clear an earlier red, the same as GitHub's own merge
-# gate does. "Latest" is decided by `id` alone (always present, assigned
-# strictly in creation order by GitHub), not `started_at`: a queued run can
-# have a null started_at, and comparing timestamps with an id-only fallback
-# per pair is non-transitive — a null-started_at row sitting between two
-# timestamped rows in the API's (unordered) response array could make an
-# older real timestamp beat a newer one, depending on row order. `id` alone
-# is a single total order with no such gap. On an exact id tie (the same run
-# read twice across a --paginate page boundary), the completed row wins over
-# a pending duplicate, in either array order. If the latest matching run is
-# itself still pending, the label is "pending", never folded into "seen" —
-# a required check that has not settled yet must not read as satisfied.
-_required_status() {
-    local name id
-    while IFS=$'\t' read -r name id; do
-        [ -n "$name" ] || continue
-        if [ -z "$id" ]; then
-            printf '%s\t%s\n' "$(printf '%s\n' "$2" | awk -F'\t' -v n="$name" \
-                '$2 == n { f = 1; if ($1 == "fail" || $1 == "cancel") bad = 1 } END { print (bad ? "fail" : (f ? "seen" : "missing")) }')" "$name"
-        else
-            printf '%s\t%s\n' "$(printf '%s\n' "$3" | awk -F'\t' -v n="$name" -v a="$id" '
-                $2 == n && $3 == a {
-                    f = 1
-                    if (best_id == "" || $5 + 0 > best_id + 0 || ($5 + 0 == best_id + 0 && best_bucket == "pending" && $1 != "pending")) { best_id = $5; best_bucket = $1 }
-                }
-                END { print (f ? ((best_bucket == "fail" || best_bucket == "cancel") ? "fail" : (best_bucket == "pending" ? "pending" : "seen")) : "missing") }')" "$name (app $id)"
-        fi
-    done <<<"$1"
 }
 
 # _status_only <required status rows> — of the MISSING producer-pinned
@@ -732,7 +691,7 @@ _required_status() {
 # runs, so this fires only on another repo's pin.
 _status_only() {
     local ctx label name hit=""
-    ctx=$(gh api "repos/$owner/$repo/commits/$head0/status?per_page=100" --paginate \
+    ctx=$(gh_read api "repos/$owner/$repo/commits/$head0/status?per_page=100" --paginate \
         --jq '.statuses[].context' 2>/dev/null) || return 0
     while IFS= read -r label; do
         name=${label% (app *)}
@@ -756,8 +715,6 @@ _job_log_hint() {
         echo "check-ci: failed job '$name' — pull its log now: gh api --allow-escape-sequences repos/$owner/$repo/actions/jobs/$id/logs > <scratch file>" >&2
     done <<< "$links"
 }
-
-_join_by_status() { printf '%s\n' "$2" | awk -F'\t' -v s="$1" '$1 == s { print $2 }' | paste -sd, - | sed 's/,/, /g'; }
 
 # required_gate <wait> — 1 = a missing required check may register within
 # --grace (the stated bound, the same one "no checks registered" already uses) and
@@ -1260,7 +1217,7 @@ watch_round() {
 # One startup snapshot supplies head, base, URL and the first review decision.
 # Post-watch review and head reads remain fresh: these facts can change while
 # the immutable commit endpoints are being watched.
-initial_pr=$(pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
+initial_pr=$(GH_READ_QUIET=1 pr_view --json url,reviewDecision,headRefOid,baseRefName --jq '[.url, (if (.reviewDecision // "") == "" then "null" else .reviewDecision end), .headRefOid, .baseRefName] | @tsv' 2>&1) || {
     echo "check-ci: cannot resolve the PR — cannot evaluate: $initial_pr" >&2; exit 2
 }
 IFS=$'\t' read -r initial_url initial_decision initial_head initial_base <<EOF
@@ -1278,14 +1235,32 @@ export CHECK_CI_CACHE_REPO="${initial_url#https://github.com/}"
 CHECK_CI_CACHE_REPO="${CHECK_CI_CACHE_REPO%/pull/*}"
 
 if [ "$THREADS_ONLY" -eq 0 ]; then
-    # Waiting on CI moves the PR title's first [KEY] to IN CI. Best-effort and forward-only:
-    # leg-jira-status.sh warns and exits 0 on any Jira failure; LEG_JIRA_STATUS=0 opts out.
-    # The call is bounded by a fixed 30s timeout, and skipped when no timeout binary exists.
+    # The wait's start and end each ask the status funnel to re-derive the PR
+    # title's first [KEY]; the funnel, not this script, picks the status.
+    # Best-effort: the funnel warns and exits 0 on any Jira failure, each call
+    # is bounded by a fixed 30s timeout and skipped when no timeout binary
+    # exists, and the verdict exit code is unchanged. LEG_JIRA_STATUS=0 opts out.
     if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+        # shellcheck source=scripts/lib/ticket-status.sh
+        # shellcheck disable=SC1091
+        . "$(dirname "$0")/lib/ticket-status.sh"
         pr_title=$(pr_view --json title --jq .title 2>/dev/null) || pr_title=""
         jira_tb=$(. "$(dirname "$0")/lib/timeout-bin.sh" >/dev/null 2>&1; printf '%s' "${_TIMEOUT_BIN:-}")
-        if [ -n "$jira_tb" ] && [[ $pr_title =~ \[([A-Za-z][A-Za-z0-9]*-[0-9]+)\] ]]; then
-            "$jira_tb" -k 5 30 bash "$(dirname "$0")/handover/console-kit/leg-jira-status.sh" "${BASH_REMATCH[1]}" "IN CI" >/dev/null 2>&1 || true
+        if [ -n "$jira_tb" ] && jira_key=$(ticket_key_from_title "$pr_title"); then
+            _ticket_event() {
+                "$jira_tb" -k 5 30 bash "${TICKET_STATUS_FUNNEL:-$(dirname "$0")/handover/console-kit/leg-jira-status.sh}" \
+                    "$jira_key" --event "$1" --pr "${initial_url##*/pull/}" --head "$initial_head" \
+                    ${CHECK_CI_CACHE_REPO:+--repo "$CHECK_CI_CACHE_REPO"} >/dev/null 2>&1 || true
+            }
+            # shellcheck disable=SC2329  # invoked by the EXIT trap
+            _verdict_then_event() {
+                local rc=$?
+                echo "check-ci: verdict exit=$rc"
+                _ticket_event ci-exit
+                exit "$rc"
+            }
+            _ticket_event ci-start
+            trap _verdict_then_event EXIT
         fi
     fi
     # Grace window: probe (non-watch) until the PR has registered checks. gh exit
@@ -1428,7 +1403,7 @@ review_state_gate() {
         set -- -f o="$owner" -f r="$repo" -F n="$num"
         [ -n "$cursor" ] && set -- "$@" -f c="$cursor"
         # shellcheck disable=SC2016  # $o/$r/$n/$c are GraphQL variables — literal on purpose
-        page=$(gh api graphql \
+        page=$(gh_read api graphql \
             -f query='query($o:String!,$r:String!,$n:Int!,$c:String){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{isResolved}}}}}' \
             "$@" \
             --jq '.data.repository.pullRequest.reviewThreads | "\([.nodes[] | select(.isResolved | not)] | length) \(.pageInfo.hasNextPage) \(.pageInfo.endCursor)"' 2>/dev/null)
@@ -1755,7 +1730,7 @@ merge_state_gate() {
     case "$state" in
         BLOCKED|BEHIND|DIRTY|DRAFT)
             # Diagnosis only: which runs on the head did not pass. Never a verdict input.
-            runs=$(gh api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
+            runs=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
                 --jq '.check_runs[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") | "\(.name) \(.conclusion // .status)"' 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g')
             echo "check-ci: every gate passed but GitHub refuses the merge: mergeStateStatus=$state at ${head0}. Non-passing check runs on this head: ${runs:-none found}. GitHub's state is the verdict (HIMMEL-3473, exit 6)" >&2
             exit 6 ;;

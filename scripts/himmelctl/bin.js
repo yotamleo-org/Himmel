@@ -1158,7 +1158,8 @@ function applyCommitRulesStep(answers) {
 }
 
 async function askCommitRules(ask) {
-  const tracker = await askNumberedEnum(ask, 'tracker', ['jira', 'local', 'none'], 'jira', TRACKER_HELP);
+  const trackerDefault = (process.env.JIRA_PROJECT_KEY || '').trim() === '' ? 'none' : 'jira';
+  const tracker = await askNumberedEnum(ask, 'tracker', ['jira', 'local', 'none'], trackerDefault, TRACKER_HELP);
   const cr = { tracker: tracker };
   if (tracker !== 'none') {
     cr.ticketIdRequired = (await askNumberedEnum(ask, 'ticket ID required', ['yes', 'no'], 'yes', TICKET_REQUIRED_HELP)) === 'yes';

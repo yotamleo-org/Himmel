@@ -65,9 +65,15 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-cron.XXXXXX") || {
 trap 'rm -rf "$TMP"' EXIT
 # every case in this suite stubs crontab/at via mac_env, but the
 # suite-level guard is defense-in-depth against a case that doesn't. Snapshot
-# now, before any case runs, and diff again right before the summary.
-CRONTAB_SNAPSHOT_BEFORE=$(crontab -l 2>/dev/null || true)
-ATQ_SNAPSHOT_BEFORE=$(atq 2>/dev/null || true)
+# now, before any case runs, and diff again right before the summary. Under run-shell-tests.sh the
+# snapshot reads past the runner's recording shim (HIMMEL_SUITE_SHIM_DIR): the
+# shim sees only PATH lookups, this diff also sees an absolute or reset-PATH one.
+SCHED_REAL_PATH=":$PATH:"
+[ -z "${HIMMEL_SUITE_SHIM_DIR:-}" ] || SCHED_REAL_PATH="${SCHED_REAL_PATH//":$HIMMEL_SUITE_SHIM_DIR:"/:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH#:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH%:}"
+CRONTAB_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
+ATQ_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
 # every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 . "$(dirname "$ARM")/../lib/fleet-slots-shield.sh"
@@ -799,13 +805,13 @@ assert_contains "g5: the self-resume NOTE is present" "NOTE (self-resume only):"
 # run started with -- any case that reached the real scheduler despite its
 # stub is a leak into the operator's own crontab/at, not a test failure to
 # shrug off.
-CRONTAB_SNAPSHOT_AFTER=$(crontab -l 2>/dev/null || true)
+CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
 if [ "$CRONTAB_SNAPSHOT_AFTER" != "$CRONTAB_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real crontab changed during this run -- a case leaked into the operator's live crontab:"
     diff <(printf '%s\n' "$CRONTAB_SNAPSHOT_BEFORE") <(printf '%s\n' "$CRONTAB_SNAPSHOT_AFTER") || true
     FAILED=$((FAILED + 1))
 fi
-ATQ_SNAPSHOT_AFTER=$(atq 2>/dev/null || true)
+ATQ_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
 if [ "$ATQ_SNAPSHOT_AFTER" != "$ATQ_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real at queue changed during this run -- a case leaked into the operator's live at queue:"
     diff <(printf '%s\n' "$ATQ_SNAPSHOT_BEFORE") <(printf '%s\n' "$ATQ_SNAPSHOT_AFTER") || true

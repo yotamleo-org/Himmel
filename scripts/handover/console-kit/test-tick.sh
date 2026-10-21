@@ -117,6 +117,13 @@ STUB
 # default = a healthy header set) then exits STUB_GQL_RC (default 0).
 cat > "$W/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+# `gh api rate_limit` is the rest main / rest read budget probe: not logged
+# (it costs no budget), STUB_RATE_OUT for the main token, STUB_RATE_READ_OUT for the read
+# token (GH_TOKEN set by gh-read.sh); empty by default, so a tick shows no rest fields.
+if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then
+  if [ -n "${GH_TOKEN:-}" ]; then printf '%s\n' "${STUB_RATE_READ_OUT:-}"; else printf '%s\n' "${STUB_RATE_OUT:-}"; fi
+  exit 0
+fi
 if [ "${1:-}" = api ]; then
   [ -z "${STUB_GH_API_LOG:-}" ] || printf '%s\n' "$*" >> "$STUB_GH_API_LOG"
   printf '%b' "${STUB_GQL_OUT-HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4321\r\nX-Ratelimit-Reset: 1790000000\r\n\r\n}"
@@ -951,6 +958,20 @@ case "$gql_burn" in
     *' burn=N61:'*" capacity=UNDERFILLED:7 gql=4321/$gql_hm "*) pass 'gql= keeps its slot under --burn with healthy orphan fields omitted' ;;
     *) fail "gql=/orphans= order under --burn (out='$gql_burn')" ;;
 esac
+
+# --- rest-main= / rest-read= ---------------------
+# One REST budget per token from `gh api rate_limit` (no budget cost), LOW under 10 %.
+# The fixture .env supplies the read token; the stub tells the tokens apart by GH_TOKEN.
+mkdir -p "$W/readroot"
+printf 'himmel_github_token_vm2=ghp_TICKTEST0123456789\n' > "$W/readroot/.env"  # gitleaks:allow fixture token
+rest_out="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='450 5000 1790000000' bash "$SUT")"
+contains 'the tick shows the main token budget (HIMMEL-6837)' "$rest_out" " rest-main=4200/5000@$gql_hm"
+contains 'a read token at 9 % is flagged LOW (HIMMEL-6837)' "$rest_out" " rest-read=450/5000@$gql_hm!LOW"
+rest_v="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='450 5000 1790000000' bash "$SUT" --verbose)"
+contains '--verbose has one line per token, main (HIMMEL-6837)' "$rest_v" "rest main: 4200/5000 reset $gql_hm"
+contains '--verbose has one line per token, read with LOW (HIMMEL-6837)' "$rest_v" "rest read: 450/5000 reset $gql_hm LOW"
+rest_ok="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='4000 5000 1790000000' bash "$SUT")"
+case "$rest_ok" in *LOW*) fail "healthy budgets must not be flagged LOW (out='$rest_ok')" ;; *) pass 'healthy budgets carry no LOW flag (HIMMEL-6837)' ;; esac
 
 # --- orphans=<owner>:<count>/<oldest>m ---------------------------
 # A wrapper shell older than the floor under a live session is surfaced at the

@@ -228,9 +228,21 @@ export ARM_ISOLATION_ROOT="$TMP/no-primary"
 # any case below that fails to stub crontab/at must not be able
 # to silently touch the operator's REAL scheduler. Snapshot now, before any
 # case runs, and diff again right before the summary -- a change either way
-# fails the suite outright, regardless of --only.
-CRONTAB_SNAPSHOT_BEFORE=$(crontab -l 2>/dev/null || true)
-ATQ_SNAPSHOT_BEFORE=$(atq 2>/dev/null || true)
+# fails the suite outright, regardless of --only. Under run-shell-tests.sh the
+# snapshot reads past the runner's recording shim (HIMMEL_SUITE_SHIM_DIR): the
+# shim sees only PATH lookups, this diff also sees an absolute or reset-PATH one.
+SCHED_REAL_PATH=":$PATH:"
+[ -z "${HIMMEL_SUITE_SHIM_DIR:-}" ] || SCHED_REAL_PATH="${SCHED_REAL_PATH//":$HIMMEL_SUITE_SHIM_DIR:"/:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH#:}"
+SCHED_REAL_PATH="${SCHED_REAL_PATH%:}"
+CRONTAB_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
+ATQ_SNAPSHOT_BEFORE=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
+# A dry-run arm lists already-armed jobs with `atq`; an empty queue keeps cases
+# without their own scheduler stub off the operator's real one.
+mkdir -p "$TMP/empty-atq-bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/empty-atq-bin/atq"
+chmod +x "$TMP/empty-atq-bin/atq"
+export PATH="$TMP/empty-atq-bin:$PATH"
 # every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 # This file is also the body of test-arm-resume-fast.sh / -1879.sh (`--only`).
@@ -1410,6 +1422,11 @@ case "\${1:-}" in
     *) cat > /dev/null 2>&1 || true; exit 0 ;;
 esac
 EOF
+cat > "$ARMED_STUB/atrm" <<EOF
+#!/usr/bin/env bash
+rm -f "$TMP/armed-stub.atdir/job-\${1:-}" 2>/dev/null || true
+exit 0
+EOF
 # file-backed, like the mac cron suite's stub -- never touches
 # the real crontab, even on a Linux host where arm-resume.sh would otherwise
 # prefer `at` but a case still lists/reads via `crontab -l` first.
@@ -1435,7 +1452,7 @@ cat > "$ARMED_STUB/powershell" <<'EOF'
 # Probe "unavailable" -> verify fail-opens (see SCHED_STUB_T17 note).
 exit 1
 EOF
-chmod +x "$ARMED_STUB/schtasks" "$ARMED_STUB/atq" "$ARMED_STUB/at" "$ARMED_STUB/crontab" "$ARMED_STUB/claude" "$ARMED_STUB/powershell"
+chmod +x "$ARMED_STUB/schtasks" "$ARMED_STUB/atq" "$ARMED_STUB/at" "$ARMED_STUB/atrm" "$ARMED_STUB/crontab" "$ARMED_STUB/claude" "$ARMED_STUB/powershell"
 
 if _sec_selected "T23"; then
 TELEMETRY_T23="$TMP/telemetry-t23"
@@ -6616,13 +6633,13 @@ if [ -z "$ONLY_FILTERS" ]; then
         FAILED=$((FAILED + 1))
     fi
 fi
-CRONTAB_SNAPSHOT_AFTER=$(crontab -l 2>/dev/null || true)
+CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
 if [ "$CRONTAB_SNAPSHOT_AFTER" != "$CRONTAB_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real crontab changed during this run -- a case leaked into the operator's live crontab:"
     diff <(printf '%s\n' "$CRONTAB_SNAPSHOT_BEFORE") <(printf '%s\n' "$CRONTAB_SNAPSHOT_AFTER") || true
     FAILED=$((FAILED + 1))
 fi
-ATQ_SNAPSHOT_AFTER=$(atq 2>/dev/null || true)
+ATQ_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" atq 2>/dev/null || true)
 if [ "$ATQ_SNAPSHOT_AFTER" != "$ATQ_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real at queue changed during this run -- a case leaked into the operator's live at queue:"
     diff <(printf '%s\n' "$ATQ_SNAPSHOT_BEFORE") <(printf '%s\n' "$ATQ_SNAPSHOT_AFTER") || true

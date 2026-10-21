@@ -356,6 +356,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   async function roadmapWriteRoute(b: Record<string, unknown>): Promise<Response> {
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
+    // GitHub cards are read-only in the page; the server holds the same contract, before the write lock is taken.
+    if ((await trackerSources(env, root))[0] === "github") return json({ error: "GitHub roadmap is read-only" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");

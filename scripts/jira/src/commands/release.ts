@@ -41,17 +41,18 @@ export const liveJira: JiraPort = {
   },
 };
 
-function ctxFor(release: string, mirrorRoot?: string): Ctx {
+export function ctxFor(release: string, mirrorRoot?: string): Ctx {
+  if (!/^[A-Za-z0-9._-]+$/.test(release) || release === '.' || release === '..') throw new Error(`release: bad release name '${release}'`);
   return {
     release, dir: releaseDir(release), keyPath: releaseKeyPath(release), env: process.env, now: () => new Date(),
     jira: liveJira, mirrorRoot: mirrorRoot ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null),
   };
 }
 
-const list = (s?: string) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-const ver = (s?: string) => (!s || s === 'backlog' ? null : s);
+export const list = (s?: string) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+export const ver = (s?: string) => (!s || s === 'backlog' ? null : s);
 
-function op(kind: string, from?: string, to?: string): Op {
+export function op(kind: string, from?: string, to?: string): Op {
   const kinds: Op['kind'][] = ['add', 'remove', 'move', 'keep', 'discharge', 'none'];
   if (!kinds.includes(kind as Op['kind'])) throw new Error(`release: --op is one of ${kinds.join('|')}`);
   return { kind: kind as Op['kind'], from_v: ver(from), to_v: ver(to) };
