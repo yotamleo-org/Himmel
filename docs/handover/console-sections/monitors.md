@@ -30,7 +30,7 @@ waiter's persisted streaks. The compact format needs no reader change.
 `busedge=MISSING:<label>[,...]` is conditional too: a held leg (lock FRESH or
 STALE) whose himmel-bus peer record is missing or names another chief (never
 adopted) has no edge to the live chief. It is
-absent when every held leg has a record or the bus has no peers dir, and
+absent when every held worker has a record naming this chief or the bus has no peers dir, and
 `console-wait.sh` does not wake on it, so read it at the next tick.
 
 `wakerstate=<label>:rc3|rc4[,...]` is conditional the same way: a held worker whose
