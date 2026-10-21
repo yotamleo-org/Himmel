@@ -104,7 +104,16 @@ if [ "$rc" -ne 0 ] && grep -q 'max-usd' "$W/out-cap/STOPPED" 2>/dev/null; then p
 
 # 8. an unparseable claude reply is an incorrect, errored row, never a crash.
 STUB_MODE=garbage python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-garbage" > "$W/garbage.txt" 2>&1
+rc=$?
 if grep -q 'Traceback' "$W/garbage.txt"; then fail "garbage reply does not crash"; else pass "garbage reply does not crash"; fi
+if [ "$rc" -ne 0 ]; then pass "garbage reply exits nonzero (rc $rc)"; else fail "garbage reply exits nonzero (rc $rc)"; fi
+eq "garbage replies are errored, incorrect rows" "0" "$(python3 -I -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if not json.loads(l)["error"] or json.loads(l)["correct"]))' "$W/out-garbage/results.jsonl")"
+
+# 9. an empty --arms is a usage error before any call is billed; a rerun clears the old STOPPED.
+python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-empty" --arms "" > "$W/empty.txt" 2>&1
+eq "empty --arms is a usage error (rc 64)" "64" "$?"
+python3 -I "$AB" run --repo "$R" --questions "$Q" --out "$W/out-bank" > "$W/rerun.txt" 2>&1
+if [ ! -f "$W/out-bank/STOPPED" ]; then pass "a clean rerun clears the stale STOPPED marker"; else fail "a clean rerun clears the stale STOPPED marker"; fi
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

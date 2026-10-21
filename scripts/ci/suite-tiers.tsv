@@ -256,7 +256,7 @@ scripts/eval/qmd-quality/test-qmd-burst-proof.sh	local	behaviour suite, 0 catche
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/retrieval-eval/test-answer-ab.sh	local	behaviour suite, new eval with no catches yet
-scripts/eval/retrieval-eval/test-retrieval-eval.sh	localbehaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/retrieval-eval/test-retrieval-eval.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/review-panel/test-review-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/sandbox-poc/test-probe.sh	pr	guard
 scripts/eval/scrape-bench/test-scrape-bench.sh	local	behaviour suite, 0 catches in the 400-PR audit window

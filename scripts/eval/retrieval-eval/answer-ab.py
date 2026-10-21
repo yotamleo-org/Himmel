@@ -198,6 +198,8 @@ def table(rows, arms):
 
 def cmd_run(a):
     arms = [x for x in a.arms.split(",") if x]
+    if not arms:
+        raise Usage("--arms names no arm (known: %s)" % ",".join(ARMS))
     for x in arms:
         if x not in ARMS:
             raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS)))
@@ -207,6 +209,8 @@ def cmd_run(a):
         raise Usage("no question with a gold file in %s" % a.questions)
     repo = os.path.abspath(a.repo)
     os.makedirs(a.out, exist_ok=True)
+    if os.path.exists(os.path.join(a.out, "STOPPED")):
+        os.remove(os.path.join(a.out, "STOPPED"))
     sw = Sweep(a, ev)
 
     kept = []
