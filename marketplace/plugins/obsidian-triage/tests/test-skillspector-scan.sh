@@ -142,5 +142,8 @@ assert "Phase 3.7 no longer scans an uncreated subdirectory" gone "$s"
 grep -q '?ref=<sha>' "$DOC" && s=ok || s=missing
 assert "Phase 3.7 fetches contents at the pinned sha" ok "$s"
 
+grep -qF 'truncated' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 refuses a truncated tree listing" ok "$s"
+
 echo "skillspector-scan tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
