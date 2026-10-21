@@ -107,6 +107,12 @@ if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
             printf '%s\n' "${GH_PR_NUMBER:-1}"
             exit 0
         fi
+        if [ "$arg" = title ]; then
+            [ "${GH_PR_RC:-0}" = 0 ] || exit "$GH_PR_RC"
+            [ -z "${GH_PR_NONE:-}" ] || exit 0
+            printf '%s\n' "${GH_PR_TITLE:-}"
+            exit 0
+        fi
     done
 fi
 # review-round.sh reads the last reviewed head's check-runs through
@@ -173,6 +179,93 @@ write_real_marker() {
         "$marker_sha" "$marker_branch" "$tmp/origin.git" "$marker_base" \
         > "$git_dir/cr-pending/$marker_branch"
 }
+
+# Removing residual creation, choosing the wrong parent/class, or clearing the
+# marker after a failed create must fail these recovery checks.
+install_clear_stub
+mkdir -p "$fx/scripts/jira/dist"
+cp "$HERE/deferred-ticket-body.md" "$fx/scripts/cr/deferred-ticket-body.md"
+cat > "$fx/scripts/jira/dist/index.js" <<'STUB'
+const fs = require('fs');
+fs.appendFileSync(process.env.RECOVERY_JIRA_LOG, JSON.stringify(process.argv.slice(2)) + '\n');
+if (process.env.RECOVERY_JIRA_FAIL === '1') process.exit(1);
+if (!process.argv.includes('--class')) {
+    console.error('--residual-of requires --class <id>');
+    process.exit(1);
+}
+console.log('Created HIMMEL-9500');
+STUB
+recovery_repo="$tmp/residual-repo"
+mkdir -p "$recovery_repo"
+(
+    fixture_enter_git_init_dir "$recovery_repo" || exit 1
+    git -c init.defaultBranch=recovery init -q
+    git config user.email t@t.test
+    git config user.name tester
+    git config commit.gpgsign false
+    printf 'recovery\n' > f.txt
+    git add f.txt
+    git commit -q -m recovery
+) || exit 1
+recovery_head="$(git -C "$recovery_repo" rev-parse HEAD)"
+recovery_git="$recovery_repo/.git"
+mkdir -p "$recovery_git/cr-review-rounds" "$recovery_git/cr-pending"
+printf '4\n' > "$recovery_git/cr-review-rounds/recovery.round"
+printf '%s %s fix\n' "$recovery_head" "$recovery_head" > "$recovery_git/cr-review-rounds/recovery.delta"
+recovery_log="$tmp/residual-jira.log"
+for recovery_spec in 'sug polish' 'imp hardening'; do
+    recovery_severity="${recovery_spec%% *}"
+    recovery_class="${recovery_spec#* }"
+    printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"%s","fu_class":"%s","class":"reader-allowlist","artifact":"spec","perspective":"on"}\n' \
+        "$recovery_head" "$recovery_severity" "$recovery_class" > "$recovery_git/cr-critic-scores.jsonl"
+    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+    : > "$recovery_log"
+    recovery_rc=0
+    recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] follow-up [HIMMEL-456]' \
+        RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+        --branch recovery --head "$recovery_head" 2>&1)" || recovery_rc=$?
+    assert_eq "$recovery_rc" 0 "$recovery_class recovery files and dispositions without a supplied ticket"
+    recovery_args="$(cat "$recovery_log")"
+    assert_has "$recovery_args" '"--residual-of","HIMMEL-123"' "$recovery_class recovery uses the first PR-title key"
+    assert_has "$recovery_args" "\"--fu-class\",\"$recovery_class\"" "$recovery_class recovery delegates follow-up routing"
+    assert_has "$recovery_args" '"--class","reader-allowlist"' "$recovery_class recovery preserves the finding class"
+    assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"deferred_to":"HIMMEL-9500"' "$recovery_class recovery records the created ticket"
+    if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "$recovery_class recovery clears the marker"; else pass "$recovery_class recovery clears the marker"; fi
+    assert_lacks "$recovery_out" 'create --type Task' "$recovery_class recovery does not print a raw-create command"
+done
+for recovery_failure in create-failed classless no-parent; do
+    recovery_class_id=reader-allowlist
+    recovery_title='fix: [HIMMEL-123] recovery'
+    recovery_create_fail=0
+    case "$recovery_failure" in
+        create-failed) recovery_create_fail=1 ;;
+        classless) recovery_class_id='' ;;
+        no-parent) recovery_title='fix: recovery without a ticket' ;;
+    esac
+    printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","class":"%s"}\n' \
+        "$recovery_head" "$recovery_class_id" > "$recovery_git/cr-critic-scores.jsonl"
+    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+    : > "$recovery_log"
+    recovery_rc=0
+    recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE="$recovery_title" \
+        RECOVERY_JIRA_FAIL="$recovery_create_fail" RECOVERY_JIRA_LOG="$recovery_log" \
+        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" 2>&1)" || recovery_rc=$?
+    assert_eq "$recovery_rc" 6 "$recovery_failure recovery refuses unsafe disposition"
+    assert_lacks "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"verdict":"deferred"' "$recovery_failure recovery writes no terminal amend"
+    if [ -e "$recovery_git/cr-pending/recovery" ]; then pass "$recovery_failure recovery keeps the marker"; else fail "$recovery_failure recovery keeps the marker"; fi
+    case "$recovery_failure" in
+        no-parent) assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "missing parent never invokes Jira" ;;
+        classless)
+            assert_has "$recovery_out" 'omitting --class' "classless recovery warns instead of inventing a class"
+            assert_lacks "$(cat "$recovery_log")" '"--class"' "classless recovery omits the class option" ;;
+    esac
+done
+if [ "${1:-}" = --residual-recovery-only ]; then
+    printf 'residual recovery: %s failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]
+    exit $?
+fi
+cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
 
 repo="$tmp/repo"
 mkdir -p "$repo"
@@ -1036,8 +1129,8 @@ CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.s
 assert_eq "$defer_esc_rc" "4" "delta-round escape-class finding blocks disposition"
 assert_lacks "$(cat "$CLEAR_CALLS" 2>/dev/null)" "escape" "escape-class finding never invokes marker clearance"
 
-# Missing ticket stops after the producer writes findings, prints the exact Jira
-# command, and can be resumed against those rows without another panel call.
+# A missing parent ticket stops after the producer writes findings and can be
+# resumed against those rows with an explicit ticket, without another panel call.
 three_rounds capped suggestion
 fix_commit capped
 capped_head="$cap_fix_head"
@@ -1048,8 +1141,8 @@ assert_eq "$rc7" "0" "delta-round missing-ticket producer run completes"
 assert_has "$out7" "pr-check: delta round 4 on capped" "missing-ticket run still reports its round"
 (cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$capped_head" --branch capped >"$tmp/defer7.out" 2>"$tmp/defer7.err"); defer7_rc=$?
 if [ "$defer7_rc" -ne 0 ]; then pass "delta-round suggestions fail disposition without a defer ticket"; else fail "delta-round suggestions fail disposition without a defer ticket"; fi
-expected_jira="node '$fx/scripts/jira/dist/index.js' create --type Task --title 'Track deferred /pr-check round 4+ suggestions' --sector 'Ship loop' --labels standalone --desc-file '$fx/scripts/cr/deferred-ticket-body.md'"
-assert_has "$(cat "$tmp/defer7.err")" "$expected_jira" "missing ticket prints the exact non-executed Jira command"
+assert_has "$(cat "$tmp/defer7.err")" "no parent ticket" "missing parent explains why no residual can be filed"
+assert_lacks "$(cat "$tmp/defer7.err")" "create --type Task" "missing parent does not offer a raw-create command"
 after_missing_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
 assert_eq "$after_missing_calls" "$((before_missing_calls + 1))" "missing-ticket flow invokes the panel exactly once"
 if [ -e "$git_dir/cr-pending/capped" ]; then pass "missing ticket leaves the marker pending"; else fail "missing ticket leaves the marker pending"; fi

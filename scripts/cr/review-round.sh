@@ -1755,7 +1755,8 @@ for (const o of findings.values()) {
       id,
       artifact: o.artifact || "diff",
       perspective: o.perspective || "off",
-      fu_class: severity === "imp" ? fuClass : "polish"
+      fu_class: severity === "imp" ? fuClass : "polish",
+      class: typeof o.class === "string" ? o.class.trim() : ""
     });
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
     else if (!resolved && verdict !== "fixed") blocking.push(id);
@@ -1766,7 +1767,8 @@ for (const o of findings.values()) {
     id,
     artifact: o.artifact || "diff",
     perspective: o.perspective || "off",
-    fu_class: "polish"
+    fu_class: "polish",
+    class: typeof o.class === "string" ? o.class.trim() : ""
   });
   else if ((severity === "sug" || severity === "nit") && trackedDeferred &&
            reason === e.CAP_REASON) {
@@ -1812,7 +1814,9 @@ fi
 # defer_to is a single small ticket-key string (well under the pipe
 # buffer), so printf's write completes atomically before grep could exit
 # early and SIGPIPE it.
+auto_defer=0
 if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
+    auto_defer=1
     primary_root="$HIMMEL_ROOT"
     himmel_common="$(git -C "$HIMMEL_ROOT" rev-parse --git-common-dir 2>/dev/null)" || himmel_common=""
     if [ -n "$himmel_common" ]; then
@@ -1823,10 +1827,16 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
         resolved_primary="$(cd "$himmel_common/.." 2>/dev/null && pwd)" || resolved_primary=""
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
-    echo "review-round: $round_label has deferrable findings only, but no valid defer ticket was supplied." >&2
-    printf "node '%s/scripts/jira/dist/index.js' create --type Task --title 'Track deferred /pr-check round 4+ suggestions' --sector 'Ship loop' --labels standalone --desc-file '%s/scripts/cr/deferred-ticket-body.md'\n" "$primary_root" "$primary_root" >&2
-    printf "Then resume without rerunning the panel:\nCR_DEFER_TO=HIMMEL-NNNN bash '%s/review-round.sh' defer --head '%s' --branch '%s'\n" "$SCRIPT_DIR" "$full_head" "$branch" >&2
-    exit 6
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    pr_title="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+        --json title -q 'if length == 1 then .[0].title else "" end' 2>/dev/null)" || pr_title=""
+    residual_parent="$(printf '%s\n' "$pr_title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sed -n '1p')" || residual_parent=""
+    if [ -z "$residual_parent" ]; then
+        echo "review-round: $round_label cannot file residuals: no parent ticket in the one open PR title; supply --defer-to <ticket> to resume without rerunning the panel" >&2
+        exit 6
+    fi
 fi
 
 ids_tmp="$(mktemp -t cr-round-ids.XXXXXX)" || exit 5
@@ -1847,6 +1857,30 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     if [ -z "$finding_id" ] || [ -z "$artifact" ] || [ -z "$perspective" ] || [ -z "$fu_class" ]; then
         amend_rc=5
         break
+    fi
+    if [ "$auto_defer" -eq 1 ]; then
+        if ! finding_class="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).class))')"; then
+            amend_rc=5
+            break
+        fi
+        class_args=()
+        if [ -n "$finding_class" ]; then
+            class_args=(--class "$finding_class")
+        else
+            echo "review-round: finding $finding_id has no class id; omitting --class" >&2
+        fi
+        create_rc=0
+        created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
+            --type Task --title "Deferred /pr-check finding $finding_id" --sector 'Ship loop' --labels standalone \
+            --desc-file "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
+            --residual-of "$residual_parent" --fu-class "$fu_class" "${class_args[@]}")" || create_rc=$?
+        defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
+        if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+            echo "review-round: could not file residual for $finding_id; marker remains pending. ${created}" >&2
+            echo "review-round: supply --defer-to <ticket> to recover without rerunning the panel" >&2
+            amend_rc=6
+            break
+        fi
     fi
     if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
         --branch "$branch" --head "$full_head" --id "$finding_id" \
