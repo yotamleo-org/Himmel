@@ -20,7 +20,8 @@ DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
     HIMMEL-4698), which are left out of every count;
   - the friction subsection, whose run also appends the friction eval-runs row (friction.py --record);
   - the eval feedback subsection (scripts/eval/lib/eval_feedback.py run): the change a result past its
-    threshold raised and the before/after of an earlier change. Change records are written on every run;
+    threshold raised and the before/after of an earlier change. Change records (HIMMEL_EVAL_CHANGES_LEDGER,
+    default ~/.himmel/eval-changes.jsonl) are written on every run;
     the memory-inbox line of a learning change only on --live. FAILURE_REVIEW_FEEDBACK="" turns it off.
   Written to <out-dir>/failure-review-<local date>.md (the morning report reads it) and, with
   --vault, upserted into <vault>/50-Journal/Daily/<local date>.md.
