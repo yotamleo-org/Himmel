@@ -807,6 +807,13 @@ check guard-judge-writes Bash 2 "gi""t push" "deny push in a judge session" \
 check guard-judge-writes Bash 0 "gi""t status" "allow a read in a judge session" \
     HIMMEL_CONSOLE_JUDGE=1
 
+# ── guard-rm-writes.sh — release-manager fence ────────────────
+# Same verb split as the judge fence; a terminal CR must not hide "push".
+check guard-rm-writes Bash 2 "gi""t push" "deny push in a release-manager session" \
+    HIMMEL_RELEASE_MANAGER=1
+check guard-rm-writes Bash 0 "gi""t status" "allow a read in a release-manager session" \
+    HIMMEL_RELEASE_MANAGER=1
+
 # ── guard-console-foreground.sh — console long-script nudge ───
 # The listed-name match ends at a tail class; a terminal CR must not glue itself
 # to the script name.
