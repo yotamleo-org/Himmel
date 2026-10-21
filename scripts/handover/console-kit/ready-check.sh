@@ -611,11 +611,17 @@ if [ "$ONLY7" -eq 0 ]; then
 # workflow_dispatch trigger FAILs and names the missing trigger, unless it is
 # listed below: those cannot be dispatched (their trigger is pull_request_target,
 # workflow_run or a tag push), so the exemption is explicit and reviewed here.
+# ci-image.yml has a trigger, but its build job is gated to refs/heads/main so a
+# branch cannot move :latest, and a branch dispatch concludes skipped. Its push
+# trigger fires only on .github/ci-image/** paths, so a change to ci-image.yml
+# alone gets no push run: its proof is the weekly cron or a workflow_dispatch on
+# main. A listed workflow is skipped either way.
 # A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
 # to is not on the default branch, which GitHub requires to dispatch a workflow,
 # so neither can be dispatched before merge and both are skipped. A PR touching no workflow
 # never reaches the run API; a read/list failure FAILs.
 WF_DISPATCH_EXEMPT="
+.github/workflows/ci-image.yml
 .github/workflows/codeowner-review-gate.yml
 .github/workflows/main-sweep-red.yml
 .github/workflows/pr-title-lint.yml
@@ -638,13 +644,13 @@ else
         while IFS= read -r wf; do
             [ -n "$wf" ] || continue
             printf '%s\n' "$wf_undispatchable" | grep -qxF "$wf" && continue
+            printf '%s' "$WF_DISPATCH_EXEMPT" | grep -qxF "$wf" && continue
             wf_base="${wf##*/}"
             if ! wf_body=$("$GH" api -H "Accept: application/vnd.github.raw" "repos/$owner/$repo/contents/$wf?ref=$SHA" 2>/dev/null); then
                 wf_err="$wf_err; $wf cannot be read at $SHA"
                 continue
             fi
             if ! printf '%s\n' "$wf_body" | grep -qE '^[[:space:]]*workflow_dispatch[[:space:]]*:|^[[:space:]]*-[[:space:]]*workflow_dispatch[[:space:]]*(#.*)?$|^"?on"?[[:space:]]*:.*workflow_dispatch'; then
-                printf '%s' "$WF_DISPATCH_EXEMPT" | grep -qxF "$wf" && continue
                 wf_err="$wf_err; $wf has no workflow_dispatch trigger — add one, or list it in WF_DISPATCH_EXEMPT in ready-check.sh"
                 continue
             fi
