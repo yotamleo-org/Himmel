@@ -613,6 +613,7 @@ contains "22: the record rules GO on the head" "$rec22" "**GO** for head \`$SHA\
 contains "22: the record carries the model" "$rec22" "model: claude-opus-5-5"
 contains "22: the record carries the effort" "$rec22" "effort: high"
 contains "22: the record names the PR" "$rec22" "pr: 77"
+# shellcheck disable=SC2031  # the export is scoped to this subshell; the earlier uses are env prefixes
 rc=0; ( export HANDOVER_DIR="$ROOT22"; . "$HERE/../../lib/go-gate.sh"; go_trust_verdict "$ROOT22" go-pr-77 "$SHA" "$HERE/../../.." 77 >/dev/null ) || rc=$?
 check "22: the record is signed so go_trust_verdict accepts it" "$rc" "0"
 check "22: the printed path is still the GO file" "$(printf '%s\n' "$out" | tail -n 1)" "$ROOT22/.locks/go/77.$SHA"
