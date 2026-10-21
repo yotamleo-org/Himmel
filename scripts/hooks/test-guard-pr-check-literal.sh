@@ -2354,6 +2354,45 @@ for v in \
     run "HIMMEL-6927 exec control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 
+# slice 2: a long option directly before a guarded script, and subcommands
+# that only name one as a path, execute nothing.
+# shellcheck disable=SC2016 # literal payloads, never expanded here
+for v in \
+    'git log --follow scripts/cr/clear-cr-marker.sh' \
+    'git log --oneline scripts/cr/clear-cr-marker.sh' \
+    'git diff --stat scripts/cr/clear-cr-marker.sh' \
+    'git diff --name-only scripts/cr/clear-cr-marker.sh' \
+    'git show --stat HEAD scripts/cr/clear-cr-marker.sh' \
+    'git rm scripts/cr/clear-cr-marker.sh' \
+    'git rm -f scripts/cr/clear-cr-marker.sh' \
+    'git restore scripts/cr/clear-cr-marker.sh' \
+    'git reset scripts/cr/clear-cr-marker.sh' \
+    'git reset -q HEAD scripts/cr/clear-cr-marker.sh' \
+    'git ls-files scripts/cr/clear-cr-marker.sh' \
+    'git blame scripts/cr/clear-cr-marker.sh' \
+    'git cat-file -p HEAD:scripts/cr/clear-cr-marker.sh' \
+    'git tag -a v1 -m scripts/cr/clear-cr-marker.sh' \
+    'git notes add -m scripts/cr/clear-cr-marker.sh' \
+    'git blame --porcelain scripts/cr/clear-cr-marker.sh' \
+    'git ls-files --stage scripts/cr/clear-cr-marker.sh' \
+    'git ls-files --cached scripts/cr/clear-cr-marker.sh' \
+    'git tag --list scripts/cr/clear-cr-marker.sh' \
+    'git rm --force scripts/cr/clear-cr-marker.sh'; do
+    run "HIMMEL-6927 slice2 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+# shellcheck disable=SC2016 # literal attack payloads, never expanded here
+for v in \
+    'git bisect run scripts/cr/clear-cr-marker.sh' \
+    'git rebase -x scripts/cr/clear-cr-marker.sh main' \
+    'git rebase --exec scripts/cr/clear-cr-marker.sh main' \
+    'git log --exec-path=scripts/cr/clear-cr-marker.sh' \
+    'git diff --output=scripts/cr/clear-cr-marker.sh' \
+    'git fetch --upload-pack scripts/cr/clear-cr-marker.sh origin' \
+    'git blame --contents scripts/cr/clear-cr-marker.sh x' \
+    'git log --follow scripts/cr/clear-cr-marker.sh && bash scripts/cr/clear-cr-marker.sh'; do
+    run "HIMMEL-6927 slice2 exec control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*
 # must pass (a mention, or a himmel-gate run from the anchor), deny-* must stay
