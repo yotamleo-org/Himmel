@@ -36,5 +36,13 @@ done <<EOF
 $anchors
 EOF
 
+# Stage 1a asks an eighth grill question after the seven sizing questions: the
+# class of each follow-up. A re-word that drops it turns this RED.
+grill="$(awk '/^### 1a\./{f=1} f&&/^### 1b\./{exit} f{print}' "$skill" | tr '\n' ' ')"
+case "$grill" in
+  *"Is each follow-up an escape, hardening or polish, and why?"*) echo "ok - Stage 1a asks the follow-up class question" ;;
+  *) echo "FAIL - Stage 1a has no 'Is each follow-up an escape, hardening or polish, and why?' question"; fails=$((fails+1)) ;;
+esac
+
 if [ "$fails" -ne 0 ]; then echo "$fails FAILED"; exit 1; fi
 echo "ALL PASS"

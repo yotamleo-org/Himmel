@@ -204,8 +204,8 @@ How work is grouped, sized and shipped. The layers, widest first:
 | **Ticket** | A Story, Task or Bug: one phase or increment of an epic, or a standalone piece of work that the Sector field alone groups. One ticket = one worker = one worktree = one PR. |
 | **Subtask** | A step that shares its ticket's PR. |
 | **Version** | A focus bucket: a mix of phases from several sectors, with a soft cap of about 40 tickets. Every goal in it is near, real and backed by a proof of concept. A ticket carries a fixVersion only once a version pulls it; the rest wait in their sector's backlog. A version ships on a P80 target date (from `effort-assess`) **and** scope: on the date, what is Done ships, and the rest rolls to the next version unless a must-have is still open. Each release records planned versus delivered. |
-| **Intake** | How work enters a version once it is planned. Urgent work enters with a same-size swap. Derived work enters only if it blocks the version's done-condition, otherwise it goes to its epic's backlog. New ideas wait in an intake queue for the next planning. A bump always names its reason: blocked, swapped, over-estimate, superseded or proof failed. Work may also enter by using up the planning buffer; when the buffer is gone, the version is cut and the next one opens. |
-| **Cap gate** | The check `jira create` runs when a ticket would land in the current unreleased version: with 15 open `residual` tickets in it (a `residual-budget:N` line in the version description overrides the 15), the filing is refused unless `--over-cap <reason>` is passed, which labels the ticket `over-cap` and records the reason as a comment. An `operator-directed` ticket is exempt. A Bug with no `--fix-version` goes to the next version instead of a full current one. `--follow-up-of <key>` stamps the `residual` label and links the parent, so every follow-up is counted. A version past the cap flips the board's `--changed` signal. |
+| **Intake** | How work enters a version that is already frozen: the [intake gate](#follow-ups-and-intake). A frozen version takes a new ticket only with `--gate critical`, `regression`, `must:<decision>` or `receipt` (decision 99 P2), and each admission is recorded. Before the freeze, work enters through planning. |
+| **Cap gate** | The check `jira create` runs when a ticket would land in the current unreleased version. With 15 open `residual` tickets in it (a `residual-budget:N` line in the version description overrides the 15), a raw filing is refused today unless `--over-cap <reason>` is passed, which labels the ticket `over-cap` and records the reason as a comment. This refusal is being replaced (plan 9.3, ticket R6' HIMMEL-6924): a raw filing over the budget will warn and be labelled `over-cap`, and the follow-up verb (`--residual-of`) will rank and displace instead (plan 9.2). Until R6' merges, the refusal stands. An `operator-directed` ticket is exempt. A Bug with no `--fix-version` goes to the next version instead of a full current one. `--follow-up-of <key>` stamps the `residual` label and links the parent, so every follow-up is counted. A version past the cap flips the board's `--changed` signal. |
 
 **Maturity ladder.** A feature, and through its features a sector, climbs:
 Idea → POC → Usable → Proven (end-to-end or on a VM) → Hardened (monitored
@@ -229,6 +229,32 @@ dispatched, and feeds its priority and availability.
 | Deployment | Install, setup, update, uninstall, and the config UI and CLI. |
 | Knowledge & steering | Retrieval (qmd, graphify), the luna vault and knowledge capture, steering docs and skills. |
 | Planning & tracking | Jira and roadmap tooling, the version model, the ticket standard. |
+
+## Follow-ups and intake
+
+What happens to the work a review finds and leaves for later, and how work gets
+into a version that is already frozen. The three classes are defined in
+[`release/follow-up-triage.md`](release/follow-up-triage.md), which is where a
+reviewer decides the class. Plain word first, the industry name where one
+exists, the code word last.
+
+| Term | Meaning |
+|---|---|
+| **Follow-up** (code word: residual) | Work a review or a PR found and left for later, filed as its own ticket linked to the parent. Example: a review finding deferred at round 3. Used in `jira create --follow-up-of`, the `residual` label and `ledger-append.sh --verdict deferred`. Docs say "follow-up"; labels and flags keep "residual". |
+| **Follow-up depth** | 1 for a follow-up of shipped work, 2 for a follow-up of a follow-up, and so on. Depth 2 or more goes to the backlog. Label `residual-depth-N`. |
+| **Escape** (industry: escaped defect) | A real flow is broken today: a wrong result, lost or corrupted data, a flow that cannot finish, or a guard that refuses (or fails open on) an ordinary command someone typed. Fixed in the version in progress, which is not done while it is open. Example: every bash-AST guard failed closed under jq 1.7 (HIMMEL-6893). Flag `--fu-class escape`, label `fu-escape`. |
+| **Hardening** | The maturity-ladder step from Proven to Hardened (decision 112), never software-security hardening. The feature works, but nothing would tell us if it broke or decayed: no test goes red, the board shows nothing, the console is not told. The hardening fix adds the alarm. Every hardening follow-up carries one reason code. Example: a checksum row that cannot fail (HIMMEL-6887). Flag `--fu-class hardening --fu-why <code>`, labels `fu-hardening` and `fu-why-<code>`. |
+| **Reason code** | Why a follow-up is hardening, one of five: `unseen-failure` (a failure exits 0, is swallowed, or never reaches the board, the tick or the chief), `no-check` (nothing automated goes red if it breaks), `vacuous-check` (a check exists but cannot fail), `no-recovery` (a failure has no bounded recovery: no timeout, a non-atomic write, no retry, a lock that can strand), `silent-rot` (state degrades over time with no signal). Flag `--fu-why`, label `fu-why-<code>`. After R1' (HIMMEL-6919) a hardening filing without a code is a usage error. |
+| **Polish** | It works, and an existing check would catch it breaking. It could just be nicer: wording, tidier code, a cleaner screen, an extra figure, or a guard closed against a trick nobody types by accident. Backlog by default; polish never holds a version back. Example: leftover wording in an old doc (HIMMEL-6813). Flag `--fu-class polish`, label `fu-polish`. |
+| **Deferred escape** | A follow-up that was deferred and later caused an escape. Counted per version as claim B, "deferral lets bad bugs through". Recorded by `scripts/cr/mark-deferred-escape.sh`, label `deferred-escape`; read by the stability scorecard and `scripts/release/followup-report.sh`. |
+| **Frozen scope** (industry: scope freeze; code word: frozen set) | The tickets a version holds on its freeze date (`frozen: <date>` in the version description). After the freeze, new work enters only through the intake gate. |
+| **Intake gate** | The check a filing into a frozen version must pass, naming one of four kinds: `critical`, `regression`, `must:<decision>` (industry: release blocker) or `receipt`. Flag `jira create --gate`; the same flag is required to move a ticket into a frozen version. |
+| **Receipt** | A ticket filed to record work being dispatched now and closed within a day. It enters a frozen version through `--gate receipt`. |
+| **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a console override is recorded as such). |
+| **Follow-up budget** (code word: residual budget) | How many open follow-ups a version holds before new ones compete on rank: 15 unless a `residual-budget:N` line in the version description says otherwise. A monitor, not a quota. See Cap gate above for what a filing over it does today and after R6' (HIMMEL-6924). Labels `over-cap`, `residual-overflow`, `residual-displaced`. |
+| **Backlog** / **icebox** | Backlog: no version, waiting for planning. Icebox: parked indefinitely in the ICE project and out of every count (`ice-followups.sh`). |
+| **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped (plan 10.4). |
+| **Operator-directed** | Filed on the operator's explicit instruction. Exempt from the follow-up budget. Label `operator-directed`. |
 
 ## Industry terms
 

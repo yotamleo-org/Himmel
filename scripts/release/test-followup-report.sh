@@ -21,7 +21,7 @@ printf 'HIMMEL-7\tTask\tDone\tdeferred: edge case\tfu-hardening\n'
 printf 'HIMMEL-8\tTask\tTo Do\tdeferred: rare edge\tfu-hardening,roadmap\n'
 printf 'HIMMEL-9\tTask\tTo Do\tresidual: wording\tfu-polish\n'
 printf 'HIMMEL-10\tTask\tTo Do\tfollow-up: no class yet\tprocess\n'
-printf 'HIMMEL-11\tTask\tDone\tfollow-up: bit us later\tfu-escape,fu-slipped\n'
+printf 'HIMMEL-11\tTask\tDone\tfollow-up: bit us later\tfu-escape,deferred-escape\n'
 EOF
 chmod +x "$tmp/jira"
 
@@ -38,7 +38,7 @@ has "escape: 2 created, 1 done" "$out" "escape 2 1"
 has "hardening: 2 created, 1 done" "$out" "hardening 2 1"
 has "polish: 1 created, 0 done" "$out" "polish 1 0"
 has "unclassified follow-up counted" "$out" "unclassified-followups 1"
-has "slipped escapes counted" "$out" "slipped-escapes 1"
+has "deferred escapes counted (claim B)" "$out" "deferred-escapes 1"
 has "cap: 2 hardening of 5 load = 40 pct, over the 20 pct cap" "$out" "hardening-share 40% cap 20% OVER"
 has "claim A joins only this version's tickets, mean rounds 3" "$out" "usage-tickets 2 mean-rounds 3"
 has "claim A sums tokens" "$out" "input 11 output 22 cache_create 33 cache_read 44"

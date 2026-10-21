@@ -9,7 +9,7 @@
 #   - follow-ups with no class label yet (unclassified-followups): an ESTIMATE,
 #     found by summary keyword (follow-up, deferred, residual); there is no
 #     explicit marker yet, so load is an estimate too
-#   - slipped escapes (label fu-slipped): claim B's countable signal
+#   - deferred escapes (label deferred-escape): claim B's countable signal
 #   - hardening share of the version's load against the cap
 #   - claim A: mean CR rounds and token sums over the version's tickets, from
 #     the usage records (scripts/usage/usage-read.sh, read only)
@@ -51,15 +51,16 @@ rows="$(jira_list --jql "project = $PROJECT AND fixVersion = \"$VERSION\"" --lab
 # key \t type \t status \t summary \t labels
 counts="$(printf '%s\n' "$rows" | awk -F'\t' '
   NF >= 4 {
-    n = split($5, l, ","); cls = ""; slipped = 0
+    n = split($5, l, ","); cls = ""; dfe = 0
     for (i = 1; i <= n; i++) {
       if (l[i] == "fu-escape") cls = "escape"
       else if (l[i] == "fu-hardening") cls = "hardening"
       else if (l[i] == "fu-polish") cls = "polish"
-      if (l[i] == "fu-slipped") slipped = 1
+      if (l[i] == "deferred-escape") dfe = 1
     }
     done = ($3 == "Done")
-    if (cls != "") { created[cls]++; if (done) closed[cls]++ ; if (cls == "escape" && slipped) sl++ }
+    if (dfe) sl++
+    if (cls != "") { created[cls]++; if (done) closed[cls]++ }
     else {
       if (tolower($4) ~ /follow-up|followup|deferred|residual/) unc++
       else load++
@@ -67,14 +68,14 @@ counts="$(printf '%s\n' "$rows" | awk -F'\t' '
   }
   END {
     printf "escape %d %d\nhardening %d %d\npolish %d %d\n", created["escape"], closed["escape"], created["hardening"], closed["hardening"], created["polish"], closed["polish"]
-    printf "unclassified-followups %d\nslipped-escapes %d\nload %d\n", unc, sl, load
+    printf "unclassified-followups %d\ndeferred-escapes %d\nload %d\n", unc, sl, load
   }')"
 
 echo "followup-report version=$VERSION"
 echo "class created done"
 printf '%s\n' "$counts" | grep -E '^(escape|hardening|polish) '
 printf '%s\n' "$counts" | grep -E '^unclassified-followups ' | sed 's/$/ (estimate: summary keyword match, not a label)/'
-printf '%s\n' "$counts" | grep -E '^slipped-escapes '
+printf '%s\n' "$counts" | grep -E '^deferred-escapes '
 
 hard="$(printf '%s\n' "$counts" | awk '$1=="hardening"{print $2}')"
 load="$(printf '%s\n' "$counts" | awk '$1=="load"{print $2}')"

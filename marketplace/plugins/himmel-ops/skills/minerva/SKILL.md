@@ -78,7 +78,7 @@ block on it: only the questions downstream of a running exploration wait; ask
 the rest of the frontier now. The *decisions* are the operator's — put each to
 them and wait.
 
-**The seven sizing questions (HIMMEL-3996).** Besides the design tree, every
+**The eight standing questions (HIMMEL-3996, HIMMEL-6929).** Besides the design tree, every
 grill asks these, each with your recommended answer. Facts (open PRs, the
 version's headroom) you look up yourself; only the choices go to the operator.
 
@@ -96,6 +96,10 @@ version's headroom) you look up yourself; only the choices go to the operator.
    checking `gh pr list` against the scope files and serialising behind any hit.
 7. **Which version does it land in, and does that version still pass P90 <= 0.8?**
    Recommend running `effort-assess version` with this ticket added.
+8. **Is each follow-up an escape, hardening or polish, and why?** Recommend
+   running Q1-Q3 of `docs/release/follow-up-triage.md` in order; for hardening,
+   name the reason code (`unseen-failure`, `no-check`, `vacuous-check`,
+   `no-recovery` or `silent-rot`).
 
 Feed the answers to `effort-assess` (`ticket --low .. --high .. --g1 .. --deps ..
 --scope-file .. --red .. --goal .. --alternative ..`; skill: `himmel-ops:effort-assess`).
@@ -108,7 +112,7 @@ reached a shared understanding.
 
 `autonomous` mode has no operator to answer: still build the tree and still
 write the frontier out, but answer each question yourself with the recommended
-answer and carry the whole Q/A list (the seven sizing questions included) into
+answer and carry the whole Q/A list (the eight standing questions included) into
 the spec as an explicit ASSUMPTIONS section — the Stage-2 critic red-teams it
 (charter dimension 1, hidden assumptions).
 
