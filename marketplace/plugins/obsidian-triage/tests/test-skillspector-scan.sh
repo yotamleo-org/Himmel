@@ -120,5 +120,27 @@ for body in '{"error":"failed"}' '{"risk_assessment":{"score":5}}' '{"issues":[]
     assert "non-report JSON $body writes no report" none "$r"
 done
 
+# -- Test 6: a symlink at the report destination is refused, never followed
+echo "Test 6: report destination symlink"
+printf 'keep\n' > "$tmpdir/victim"
+ln -s "$tmpdir/victim" "$tmpdir/link.json"
+run "$tmpdir/link.json" SKILLSPECTOR_PROVIDER=ollama; rc=$?
+assert "symlink at the report destination is unavailable (rc 3)" 3 "$rc"
+assert "symlink target is left untouched" keep "$(cat "$tmpdir/victim")"
+
+# -- Test 7: Phase 3.7 maps every non-zero wrapper rc to not scanned
+echo "Test 7: Phase 3.7 reference rules"
+DOC="$SCRIPT_DIR/../references/luna-ingest/phase-3-7-skill-scan.md"
+grep -q 'any non-zero wrapper rc' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 treats any non-zero wrapper rc as unavailable" ok "$s"
+grep -q 'not scanned (rc <n>)' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 lists a failed skill as not scanned (rc <n>)" ok "$s"
+grep -qF 'skillspector-scan.sh" "' "$DOC" && grep -qF 'skill_tmp" "<vault>' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 scans the directory step 3 fills" ok "$s"
+grep -qF 'skill_tmp/<skill-slug>' "$DOC" && s=present || s=gone
+assert "Phase 3.7 no longer scans an uncreated subdirectory" gone "$s"
+grep -q '?ref=<sha>' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 fetches contents at the pinned sha" ok "$s"
+
 echo "skillspector-scan tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

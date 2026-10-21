@@ -62,6 +62,10 @@ if [ -z "$summary" ]; then
     exit 3
 fi
 
+if [ -L "$report" ]; then
+    echo "skillspector-scan: unavailable: report destination is a symlink: $report" >&2
+    exit 3
+fi
 cp "$out" "$report" || exit 3
 echo "skillspector-scan: report stored at $report"
 echo "skillspector-scan: $summary (advisory: read each flagged line before adopting or using)"
