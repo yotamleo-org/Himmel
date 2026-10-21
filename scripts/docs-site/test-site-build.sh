@@ -76,9 +76,15 @@ git init -q "$sweep_ctl/bare-repo" || exit 1
 check "site urls: the CI repository gives the current Pages origin and repo URL" is "$(GITHUB_REPOSITORY=yotamleo-org/Himmel urls 2>/dev/null)" "https://yotamleo-org.github.io https://github.com/yotamleo-org/Himmel"
 check "site urls: another repository gives its own, host lowercased" is "$(GITHUB_REPOSITORY=Acme-Org/Widgets urls 2>/dev/null)" "https://acme-org.github.io https://github.com/Acme-Org/Widgets"
 check "site urls: no GITHUB_REPOSITORY falls back to the git origin" is "$(unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/origin-repo/.git" urls 2>/dev/null)" "https://acme-org.github.io https://github.com/Acme-Org/Widgets"
-check "site urls: an origin on a lookalike host is not github.com" is "$(unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/lookalike-repo/.git" urls 2>/dev/null)" ""
-check "site urls: neither source fails closed with no value" is "$(unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/bare-repo/.git" urls 2>/dev/null)" ""
-check "site urls: a malformed GITHUB_REPOSITORY is not trusted" is "$(GITHUB_REPOSITORY='x/y;z' GIT_DIR="$sweep_ctl/bare-repo/.git" urls 2>/dev/null)" ""
+urls_closed() { local out rc; out=$(urls 2>/dev/null); rc=$?; [ "$rc" -ne 0 ] && [ -z "$out" ]; } # fail closed = nonzero exit AND no value
+closed_lookalike() ( unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/lookalike-repo/.git" urls_closed )
+closed_bare() ( unset GITHUB_REPOSITORY; GIT_DIR="$sweep_ctl/bare-repo/.git" urls_closed )
+closed_malformed() ( GITHUB_REPOSITORY='x/y;z' GIT_DIR="$sweep_ctl/bare-repo/.git" urls_closed )
+check "site urls: an origin on a lookalike host is not github.com" closed_lookalike
+check "site urls: neither source fails closed" closed_bare
+check "site urls: a malformed GITHUB_REPOSITORY is not trusted" closed_malformed
+closed_valid() ( GITHUB_REPOSITORY=yotamleo-org/Himmel urls_closed )
+check "control: urls_closed fails when urls succeeds" fails closed_valid
 
 # --- docs edits: rename-safe. --no-renames lists a rename as a delete plus an add, so both paths are checked
 docs_edits() { # docs_edits <repo>: one edited docs path per line; a git failure is a failure

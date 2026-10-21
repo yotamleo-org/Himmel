@@ -90,8 +90,9 @@ echo "== classes name the value, not the host =="
 # Real line from .github/workflows/ci-image.yml with the owner read from the workflow context.
 # shellcheck disable=SC2016
 GHCR_DERIVED='      IMAGE: ghcr.io/${{ github.repository_owner }}/himmel-ci'
-GHCR_LITERAL='      IMAGE: ghcr.io/yotamleo-org/himmel-ci'
+GHCR_LITERAL='      IMAGE: ghcr.io/someone/himmel-ci'
 run_case "ghcr path with a literal owner" 1 .github/workflows/ci-image.yml "$GHCR_LITERAL"
+case "$LAST_OUT" in *ci-image.yml*ghcr-image*) pass "ghcr finding names file and class" ;; *) fail "ghcr finding names file and class: $LAST_OUT" ;; esac
 run_case "ghcr path with the owner derived" 0 .github/workflows/ci-image.yml "$GHCR_DERIVED"
 run_case "the CI runner user's home" 0 scripts/ci/gcp-runner-startup.sh 'chown -R runner:runner /home/runner/.bun'
 run_case "the CI runner user's home alone" 0 scripts/ci/gcp-runner-startup.sh 'cd /home/runner'
@@ -114,8 +115,16 @@ out=$(cd "$repo" && PRE_COMMIT_TO_REF="$tipsha" bash "$LINT" "$base" 2>&1); rc=$
 if [ "$rc" -eq 1 ]; then pass "PRE_COMMIT_TO_REF is the scanned tip (rc=$rc)"; else fail "PRE_COMMIT_TO_REF is the scanned tip: want rc=1 got rc=$rc: $out"; fi
 out=$(cd "$repo" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true PRE_COMMIT_TO_REF="$tipsha" bash "$LINT" "$base" 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "diff.noprefix does not hide the file (rc=$rc)"; else fail "diff.noprefix does not hide the file: want rc=1 got rc=$rc: $out"; fi
-out=$(cd "$repo" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true PRE_COMMIT_TO_REF="$tipsha" bash "$LINT" "$base" 2>&1); rc=$?
-case "$out" in *scripts/tip.sh:1:*) pass "diff.noprefix finding names the file" ;; *) fail "diff.noprefix finding names the file: $out" ;; esac
+case "$out" in scripts/tip.sh:1:*|*$'\n'scripts/tip.sh:1:*) pass "diff.noprefix finding names the file" ;; *) fail "diff.noprefix finding names the file: $out" ;; esac
+git -C "$repo" checkout -q -B case "$base"
+mkdir -p "$repo/scripts/eval/scrape-bench/results"
+printf '%s\n' "$SLUG_LINE" > "$repo/scripts/eval/scrape-bench/results/tip.json"
+git -C "$repo" add -A
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "allowlisted tip case" || { echo "FAIL: allowlisted tip commit failed"; exit 1; }
+allowsha=$(git -C "$repo" rev-parse HEAD) || { echo "FAIL: allowlisted tip lookup failed"; exit 1; }
+git -C "$repo" checkout -q --detach "$base"
+out=$(cd "$repo" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true PRE_COMMIT_TO_REF="$allowsha" bash "$LINT" "$base" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "diff.noprefix keeps a ^-anchored allowlist path matching (rc=$rc)"; else fail "diff.noprefix keeps a ^-anchored allowlist path matching: want rc=0 got rc=$rc: $out"; fi
 
 mainrepo="$tmp/mainrepo"
 git init -q -b main "$mainrepo"
@@ -183,7 +192,9 @@ root="$(cd "$(dirname "$LINT")/../.." && pwd)"
 staged_stage=$(awk '/^ *- id: no-new-hardcoded-env-values-staged$/{f=1; next} f&&/^ *- id:/{exit} f&&/^ *stages:/{print; exit}' "$root/.pre-commit-config.yaml")
 case "$staged_stage" in *'[pre-commit]'*) pass "a pre-commit-stage hook runs the lint on the index" ;; *) fail "a pre-commit-stage hook runs the lint on the index: '$staged_stage'" ;; esac
 if grep -Eq 'entry: bash scripts/ci/check-hardcoded-env-values\.sh --staged$' "$root/.pre-commit-config.yaml"; then pass "the hook entry passes --staged"; else fail "the hook entry passes --staged"; fi
-if grep -Eq 'bash scripts/ci/check-hardcoded-env-values\.sh( |$)' "$root/.github/workflows/ci.yml"; then pass "ci.yml runs the lint"; else fail "ci.yml runs the lint"; fi
+if grep -Eq '^ +run: bash scripts/ci/check-hardcoded-env-values\.sh --tree$' "$root/.github/workflows/ci.yml"; then pass "ci.yml runs the whole-tree lint"; else fail "ci.yml runs the whole-tree lint"; fi
+# shellcheck disable=SC2016
+if grep -Eq '^ +bash "\$gate/check-hardcoded-env-values\.sh" "\$BASE_SHA"$' "$root/.github/workflows/ci.yml"; then pass "ci.yml runs the base copy of the lint over the PR range"; else fail "ci.yml runs the base copy of the lint over the PR range"; fi
 
 if [ "$failures" -ne 0 ]; then
     printf '\n%d case(s) failed\n' "$failures" >&2
