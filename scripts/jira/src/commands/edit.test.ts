@@ -136,6 +136,15 @@ describe('edit', () => {
     expect(buildEditFields({ addLabels: 'a,b' })).toEqual({});
   });
 
+  it('throws when --remove-labels is combined with --labels or --add-labels', () => {
+    expect(() => buildEditFields({ labels: 'a', removeLabels: 'b' })).toThrow(/mutually exclusive/);
+    expect(() => buildEditFields({ addLabels: 'a', removeLabels: 'b' })).toThrow(/mutually exclusive/);
+  });
+
+  it('does not throw "nothing to edit" when only --remove-labels is given', () => {
+    expect(buildEditFields({ removeLabels: 'held' })).toEqual({});
+  });
+
   it('maps --fix-version to a full-replace fixVersions array (HIMMEL-3713)', () => {
     const fields = buildEditFields({ fixVersion: 'v1.0.0' });
     expect(fields).toEqual({ fixVersions: [{ name: 'v1.0.0' }] });
@@ -203,6 +212,29 @@ describe('edit --add-labels (HIMMEL-3610)', () => {
       p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--labels', 'a', '--add-labels', 'b']),
     ).rejects.toThrow(/mutually exclusive/);
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('sends update.labels remove ops and NO fields.labels for --remove-labels', async () => {
+    mockRequest.mockImplementation(async (method: string) =>
+      method === 'GET' ? { fields: { labels: ['other'] } } : {},
+    );
+    const { registerEdit } = await import('./edit.js');
+    const p = freshProgram(registerEdit);
+    await p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--remove-labels', 'held']);
+    const [, path, body] = mockRequest.mock.calls.find((c) => c[0] === 'PUT')!;
+    expect(path).toBe('/issue/HIMMEL-1');
+    expect(body).toEqual({ update: { labels: [{ remove: 'held' }] } });
+  });
+
+  it('fails loud when --remove-labels reads back with the label still present', async () => {
+    mockRequest.mockImplementation(async (method: string) =>
+      method === 'GET' ? { fields: { labels: ['held'] } } : {},
+    );
+    const { registerEdit } = await import('./edit.js');
+    const p = freshProgram(registerEdit);
+    await expect(
+      p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--remove-labels', 'held']),
+    ).rejects.toThrow(/remove-labels was not changed/);
   });
 
   it('control: --labels alone still sends a full-replace fields.labels, unchanged', async () => {

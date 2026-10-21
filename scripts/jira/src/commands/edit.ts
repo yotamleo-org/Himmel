@@ -15,6 +15,7 @@ export interface EditOptions {
   parent?: string;
   labels?: string;
   addLabels?: string;
+  removeLabels?: string;
   fixVersion?: string;
   addFixVersion?: string;
   affectsVersion?: string;
@@ -26,6 +27,12 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
     throw new Error(
       'Edit --labels and --add-labels are mutually exclusive: --labels replaces the full ' +
         'label set, --add-labels appends to it — pick one.',
+    );
+  }
+  if (opts.removeLabels !== undefined && (opts.labels !== undefined || opts.addLabels !== undefined)) {
+    throw new Error(
+      'Edit --remove-labels is mutually exclusive with --labels and --add-labels: ' +
+        '--remove-labels drops the named labels only — pick one.',
     );
   }
   if (opts.fixVersion !== undefined && opts.addFixVersion !== undefined) {
@@ -75,11 +82,12 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
   if (
     Object.keys(fields).length === 0 &&
     opts.addLabels === undefined &&
+    opts.removeLabels === undefined &&
     opts.addFixVersion === undefined
   ) {
     throw new Error(
       'Edit requires at least one of --priority, --severity, --title, --desc, --parent, ' +
-        '--labels, --add-labels, --fix-version, --add-fix-version, --affects-version, or --sector',
+        '--labels, --add-labels, --remove-labels, --fix-version, --add-fix-version, --affects-version, or --sector',
     );
   }
   return fields;
@@ -90,6 +98,11 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
 // reading or replacing the issue's existing label set.
 export function buildAddLabelsUpdate(addLabels: string): { labels: Array<{ add: string }> } {
   return { labels: parseLabels(addLabels).map((label) => ({ add: label })) };
+}
+
+// The atomic counterpart of buildAddLabelsUpdate: drops only the named labels.
+export function buildRemoveLabelsUpdate(removeLabels: string): { labels: Array<{ remove: string }> } {
+  return { labels: parseLabels(removeLabels).map((label) => ({ remove: label })) };
 }
 
 // Jira field names edit sends, in read-back order.
@@ -104,7 +117,9 @@ function readBackFieldNames(o: EditOptions): string[] {
   if (o.description !== undefined) names.push('description');
   if (o.parent) names.push('parent');
   if (o.sector !== undefined) names.push(requireSectorField());
-  if (o.labels !== undefined || o.addLabels !== undefined) names.push('labels');
+  if (o.labels !== undefined || o.addLabels !== undefined || o.removeLabels !== undefined) {
+    names.push('labels');
+  }
   if (o.fixVersion !== undefined || o.addFixVersion !== undefined) names.push('fixVersions');
   if (o.affectsVersion !== undefined) names.push('versions');
   return [...new Set(names)];
@@ -180,6 +195,10 @@ function verifyReadBack(
     const want = parseLabels(o.addLabels);
     if (!want.every((l) => labels.includes(l))) bad('add-labels', want.join(', '), labels.join(', '));
   }
+  if (o.removeLabels !== undefined) {
+    const want = parseLabels(o.removeLabels);
+    if (want.some((l) => labels.includes(l))) bad('remove-labels', `without ${want.join(', ')}`, labels.join(', '));
+  }
   if (o.fixVersion !== undefined) {
     if (versions.length !== 1 || versions[0] !== o.fixVersion) {
       bad('fix-version', o.fixVersion, versions.join(', '));
@@ -231,6 +250,11 @@ export function registerEdit(program: Command): void {
         '(mutually exclusive with --labels)',
     )
     .option(
+      '--remove-labels <labels>',
+      'DROP these comma-separated labels without touching the others ' +
+        '(mutually exclusive with --labels and --add-labels)',
+    )
+    .option(
       '--fix-version <name>',
       'REPLACE the issue fixVersions with this single version (validated against the ' +
         "project's versions; full-replace)",
@@ -270,6 +294,9 @@ export function registerEdit(program: Command): void {
       const update: Record<string, unknown> = {};
       if (options.addLabels !== undefined) {
         Object.assign(update, buildAddLabelsUpdate(options.addLabels));
+      }
+      if (options.removeLabels !== undefined) {
+        Object.assign(update, buildRemoveLabelsUpdate(options.removeLabels));
       }
       if (options.addFixVersion !== undefined) {
         Object.assign(update, buildFixVersionBody('add', options.addFixVersion).update);

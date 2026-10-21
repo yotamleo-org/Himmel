@@ -1050,5 +1050,82 @@ vfp="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$plan" --out "$vfout" --
     --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" 2>&1)"
 if [ -n "$vfp" ] && [ "$(cat "$vfout.fp" 2>/dev/null)" = "$vfp" ]; then pass 'the --version page .fp equals --emit-fp (HIMMEL-6769)'; else fail "--version .fp '$(cat "$vfout.fp" 2>/dev/null)' differs from --emit-fp '$vfp'"; fi
 
+# --- the held chain step, the worker card and the focus fingerprint.
+printf '%s\n' '---' 'key: "HIMMEL-420"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["held"]' 'type: "Task"' \
+    '---' '# HIMMEL-420: vp held ticket' > "$vp/HIMMEL-420.md"
+cat > "$W/vp-chains2.json" <<'EOF'
+[{"name":"w2","steps":[{"key":"HIMMEL-420","label":"held step","state":"work"},
+ {"key":"HIMMEL-401","label":"prog step","state":"next"},
+ {"key":"HIMMEL-400","label":"todo step","state":"work"},
+ {"key":"HIMMEL-3","label":"missing step","state":"work"},
+ {"key":"HIMMEL-405","label":"done step","state":"next"},
+ {"label":"keyless step","state":"work"}]}]
+EOF
+wk="$W/wk"
+mkdir -p "$wk"
+ago="$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","last_event_ts":"%s","prs":{"500":{"head":"abc1234def5678","ci":"red","red_latch":true,"open":true},"499":{"head":"old","ci":"green","open":false}}}\n' "$ago" > "$wk/HIMMEL-401.json"
+printf '{"key":"HIMMEL-400","leg":"N2","state":"wrapped","prs":{}}\n' > "$wk/HIMMEL-400.json"
+printf '{bad json\n' > "$wk/HIMMEL-402.json"
+v2out="$W/vp-v2.html"
+v2render() {
+    TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --priority-file "${V2PLAN:-$W/vp-plan.md}" --prs-file "${V2PRS:-$W/vp-prs.json}" --chains-file "${V2CH:-$W/vp-chains2.json}" \
+        --workers-dir "$wk" --jira-base-url https://jira.example.test --out "$v2out" 2>&1
+}
+v2stdout="$(v2render)"
+v2rc=$?
+if [ "$v2rc" -eq 0 ]; then pass '--workers-dir renders and exits 0 (HIMMEL-6829)'; else fail "--workers-dir exited $v2rc: $v2stdout"; fi
+step() { grep -F "$1" "$v2out" 2>/dev/null; }
+wcard() { grep -F "data-key=\"HIMMEL-$1\"" "$v2out" 2>/dev/null; }
+contains 'a held keyed step reads held, not its hand-written state (HIMMEL-6829)' "$(step 'held step')" '<li class="st-held"><b>held</b>'
+contains 'an In Progress keyed step reads work, not its hand-written next (HIMMEL-6829)' "$(step 'prog step')" '<li class="st-work"><b>work</b>'
+contains 'a To Do keyed step reads next, not its hand-written work (HIMMEL-6829)' "$(step 'todo step')" '<li class="st-next"><b>next</b>'
+contains 'a keyed step missing from the mirror reads unknown (HIMMEL-6829)' "$(step 'missing step')" '<li class="st-unknown"><b>unknown</b>'
+contains 'a Done keyed step reads merged, not its hand-written next (HIMMEL-6829)' "$(step 'done step')" '<li class="st-merged"><b>merged</b>'
+contains 'a keyless step keeps its hand-written state (HIMMEL-6829)' "$(step 'keyless step')" '<li class="st-work"><b>work</b>'
+contains 'a worker line shows the leg, state, open PR, head, CI and age (HIMMEL-6829)' "$(wcard 401)" 'worker N3096 · live · #500 @abc1234 · CI red · 5 min'
+not_contains 'a closed PR of the record is not on the worker line (HIMMEL-6829)' "$(wcard 401)" '#499'
+contains 'a wrapped worker with no PR shows its state only (HIMMEL-6829)' "$(wcard 400)" 'worker N2 · wrapped'
+not_contains 'a card with no record has no worker line (HIMMEL-6829)' "$(wcard 407)" 'worker'
+not_contains 'an unreadable record adds no worker line (HIMMEL-6829)' "$(wcard 402)" 'worker'
+vfp1="$(cat "$v2out.vfp" 2>/dev/null)"
+case "$vfp1" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) pass 'a --version page writes a 16-hex focus fingerprint (HIMMEL-6829)' ;;
+    *) fail "the focus fingerprint is '$vfp1'" ;;
+esac
+vfp_is() {
+    local now=differ
+    [ "$(cat "$v2out.vfp" 2>/dev/null)" != "$vfp1" ] || now=same
+    if [ "$1" = "$now" ]; then pass "$2"; else fail "$2"; fi
+}
+sed 's/"conclusion":"SUCCESS"/"conclusion":"FAILURE"/' "$W/vp-prs.json" > "$W/vp-prs-red.json"
+V2PRS="$W/vp-prs-red.json" v2render >/dev/null
+vfp_is same 'a CI badge change leaves the focus fingerprint alone (HIMMEL-6829)'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","last_event_ts":"2026-01-01T00:00:00Z","prs":{"500":{"head":"abc1234def5678","ci":"green","red_latch":false,"open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2render >/dev/null
+vfp_is same 'a worker CI or age change leaves the focus fingerprint alone (HIMMEL-6829)'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"idle","last_event_ts":"2026-01-01T00:00:00Z","prs":{"500":{"head":"abc1234def5678","ci":"green","open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2render >/dev/null
+vfp_is differ 'a worker state change moves the focus fingerprint (HIMMEL-6829)'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"fff9999aaa","open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2render >/dev/null
+vfp_is differ 'a worker PR head change moves the focus fingerprint (HIMMEL-6829)'
+printf '{"key":"HIMMEL-401","leg":"N7","state":"live","prs":{"500":{"head":"abc1234def5678","open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2render >/dev/null
+vfp_is differ 'a worker owner change moves the focus fingerprint (HIMMEL-6829)'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","open":true}}}\n' > "$wk/HIMMEL-401.json"
+v2render >/dev/null
+vfp_is same 'the original worker record restores the focus fingerprint (HIMMEL-6829)'
+sed 's/prog step/prog step two/' "$W/vp-chains2.json" > "$W/vp-chains3.json"
+V2CH="$W/vp-chains3.json" v2render >/dev/null
+vfp_is differ 'a chain change moves the focus fingerprint (HIMMEL-6829)'
+printf '%s\n' 'priority: 407 | rest of v1.1.3 | 9999' > "$W/vp-plan2.md"
+V2PLAN="$W/vp-plan2.md" v2render >/dev/null
+vfp_is differ 'a priority change moves the focus fingerprint (HIMMEL-6829)'
+sed 's/labels: \["held"\]/labels: []/' "$vp/HIMMEL-420.md" > "$W/h420.md" && cp "$W/h420.md" "$vp/HIMMEL-420.md"
+v2render >/dev/null
+vfp_is differ 'releasing a hold moves the focus fingerprint (HIMMEL-6829)'
+
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
