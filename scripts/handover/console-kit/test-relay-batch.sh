@@ -47,6 +47,7 @@ census() { : > "$WORK/census.txt"; for n in "$@"; do printf '100\t%s\topus\t2000
 census DEMO-1-N7-alpha DEMO-2-N8-beta
 # The himmel-bus CLI: logs `<verb> <to>` and the body file it was handed.
 BUS="$WORK/bus.sh"
+# read-sink-ok: the stub's $3 is the body file relay-batch.sh mktemps for it
 # shellcheck disable=SC2016  # $1-$3 expand in the stub, not here
 LOGBUS="$(printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1 $2" >> "%s/bus.log"; cat "$3" >> "%s/bus.body"\n' "$WORK" "$WORK")"
 printf '%s\n' "$LOGBUS" > "$BUS"
