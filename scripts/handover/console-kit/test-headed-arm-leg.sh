@@ -3438,7 +3438,9 @@ e2e_seen() {
 e2e_effort() { e2e_seen "$1" claude-env "${2:-300}" | sed -n -e 's/^CLAUDE_CODE_EFFORT_LEVEL=//p' -e '/^<no launch/p'; }
 
 d34n="$tmp/c34n-leg"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-leg"
-LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1
+rc34n=0
+LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1 || rc34n=$?
+check "34n LEG_EFFORT=high: the launcher exits 0" "$rc34n" "0"
 check "34n LEG_EFFORT=high: the claude process gets high" "$(e2e_effort "$d34n")" "high"
 contains "34n LEG_EFFORT=high: claude is passed the asked model" "$(e2e_seen "$d34n" claude-argv)" "--model claude-sonnet-5-5 "
 
@@ -3451,19 +3453,27 @@ rm "$tree34n/scripts/lib"; mkdir "$tree34n/scripts/lib"
 for e34n in "$HERE"/../../lib/*; do ln -s "$(cd "$(dirname "$e34n")" && pwd)/$(basename "$e34n")" "$tree34n/scripts/lib/$(basename "$e34n")"; done
 rm "$tree34n/scripts/lib/chokepoint-seam-guard.sh"; cp "$HERE/../../lib/chokepoint-seam-guard.sh" "$tree34n/scripts/lib/chokepoint-seam-guard.sh"
 d34n="$tmp/c34n-explicit"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-explicit"
-CLAUDE_CODE_EFFORT_LEVEL=xhigh LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1
+rc34n=0
+CLAUDE_CODE_EFFORT_LEVEL=xhigh LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
+check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the launcher exits 0" "$rc34n" "0"
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the claude process gets xhigh" "$(e2e_effort "$d34n")" "xhigh"
 
 d34n="$tmp/c34n-token"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-token"
-HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-token" >/dev/null 2>&1
+rc34n=0
+HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-token" >/dev/null 2>&1 || rc34n=$?
+check "34n launcher token: the launcher exits 0" "$rc34n" "0"
 check "34n launcher token CLAUDE_CODE_EFFORT_LEVEL=low: the claude process gets low" "$(e2e_effort "$d34n")" "low"
 
 d34n="$tmp/c34n-empty"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-empty"
-HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-empty" >/dev/null 2>&1
+rc34n=0
+HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-empty" >/dev/null 2>&1 || rc34n=$?
+check "34n empty launcher token: the launcher exits 0" "$rc34n" "0"
 check "34n empty launcher token: the claude process gets the empty value the line reports" "$(e2e_seen "$d34n" claude-env)" "CLAUDE_CODE_EFFORT_LEVEL="
 
 d34n="$tmp/c34n-none"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-none"
-HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-none" >/dev/null 2>&1
+rc34n=0
+HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-none" >/dev/null 2>&1 || rc34n=$?
+check "34n no asking channel: the launcher exits 0" "$rc34n" "0"
 check "34n no asking channel: the claude process gets the lane default" "$(e2e_effort "$d34n")" "medium"
 
 # 34o. RED control: the same LEG_EFFORT=high launch through the launcher with
