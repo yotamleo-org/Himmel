@@ -32,17 +32,20 @@
 #   --keep DIR      build the fixtures in DIR and leave them (debugging)
 #   --break-restore  RED control: sabotage the restore in the control row so
 #                    it must fail a green row (not part of the normal run)
-#   SEQ_BUDGET_SECS  wall-clock budget in seconds (default 120, 300 when CI is set)
+#   SEQ_BUDGET_SECS  wall-clock budget in seconds (default 120, 640 when CI is set)
+#   --check-budget E  exit 0 iff elapsed E seconds is within the budget
 set -u
 
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# wall-clock budget: 120 s on a workstation; the shared CI runner measured 191-198 s, so CI gets 300 s
-BUDGET="${SEQ_BUDGET_SECS:-$([ -n "${CI:-}" ] && echo 300 || echo 120)}"
+# wall-clock budget: 120 s on a workstation; the shared CI runner measured 191-198 s, and up to 319 s under load on 2026-10-21, so CI gets 640 s (2x the loaded measurement)
+CI_BUDGET=640
+BUDGET="${SEQ_BUDGET_SECS:-$([ -n "${CI:-}" ] && echo "$CI_BUDGET" || echo 120)}"
 SEED=6626
 BREAK=0
 ONLY=
 KEEP=
 ADHOC=
+CHECK=
 while [ $# -gt 0 ]; do
   case "$1" in
     --seed) SEED="${2:?}"; shift 2 ;;
@@ -50,9 +53,14 @@ while [ $# -gt 0 ]; do
     --keep) KEEP="${2:?}"; shift 2 ;;
     --seq) ADHOC="${2:?}"; shift 2 ;;
     --break-restore) BREAK=1; shift ;;
+    --check-budget) CHECK="${2:?}"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+# --check-budget <elapsed>: exit 0 iff that elapsed time is within the budget
+# (SEQ_BUDGET_SECS when set, else the CI budget); runs without the 5-minute suite
+within_budget() { [ "$1" -le "$2" ]; }
+[ -z "$CHECK" ] || { within_budget "$CHECK" "${SEQ_BUDGET_SECS:-$CI_BUDGET}"; exit $?; }
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 # shellcheck source=lib/hermetic-path.sh
@@ -411,5 +419,5 @@ done
 [ $((PASS + FAILED)) -gt 0 ] || { echo "FAIL: no sequence matched${ONLY:+ --only $ONLY}"; FAILED=1; }
 ELAPSED=$((SECONDS - START))
 echo "sequences: $PASS ok/xfail, $FAILED failed, ${ELAPSED}s (seed $SEED)"
-[ "$ELAPSED" -le "$BUDGET" ] || { echo "FAIL: suite took ${ELAPSED}s, budget is ${BUDGET}s"; FAILED=$((FAILED + 1)); }
+within_budget "$ELAPSED" "$BUDGET" || { echo "FAIL: suite took ${ELAPSED}s, budget is ${BUDGET}s"; FAILED=$((FAILED + 1)); }
 [ "$FAILED" -eq 0 ]

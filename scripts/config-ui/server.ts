@@ -65,6 +65,7 @@ const STATIC: Record<string, [string, string]> = {
   "/health.js": ["health.js", "application/javascript; charset=utf-8"],
   "/tool-health.js": ["tool-health.js", "application/javascript; charset=utf-8"],
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
+  "/workflow.js": ["workflow.js", "application/javascript; charset=utf-8"],
   "/app.css": ["app.css", "text/css; charset=utf-8"],
   // the rail and theme the AG-UI pages share (agui-web bundles its own copy at build time).
   "/nav.js": ["nav.js", "application/javascript; charset=utf-8"],
@@ -147,6 +148,29 @@ function aguiFile(dist: string, path: string, web = AGUI_WEB): Response {
     }
   } catch { /* gone */ }
   return new Response("not found", { status: 404 });
+}
+
+// GET /dev-graph/<file>: the development graph's data, script and style, read-only from docs/guide/dev-graph, the
+// files the docs page loads. Not token-gated (static, like /agui/). Only a regular .json/.js/.css file whose real
+// path stays inside the directory; anything else (traversal, a symlink out, a directory) is a 404.
+const DEV_GRAPH_DIR = join(CHECKOUT, "docs/guide/dev-graph");
+const DEV_GRAPH_TYPES: Record<string, string> = {
+  ".json": "application/json", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+};
+function devGraphFile(dir: string, path: string): Response {
+  const gone = () => new Response("not found", { status: 404 });
+  let root: string, rel: string, real: string;
+  try {
+    root = realpathSync(dir);
+    rel = decodeURIComponent(path.slice("/dev-graph/".length));
+    real = realpathSync(join(root, rel));
+  } catch { return gone(); }
+  const type = DEV_GRAPH_TYPES[extname(real)];
+  if (!rel || !real.startsWith(root + sep) || !type) return gone();
+  try {
+    if (statSync(real).isFile()) return new Response(readFileSync(real), { headers: { "content-type": type, "cache-control": "no-store" } });
+  } catch { /* gone between realpath and read */ }
+  return gone();
 }
 
 type Env = Record<string, string | undefined>;
@@ -517,6 +541,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     }
     if (req.method === "GET" && path === "/agui") return new Response(null, { status: 308, headers: { location: "/agui/" } });
     if (req.method === "GET" && path.startsWith("/agui/")) return aguiFile(opts.aguiDist ?? AGUI_DIST, path, opts.aguiWeb ?? AGUI_WEB);
+    if (req.method === "GET" && path.startsWith("/dev-graph/")) return devGraphFile(DEV_GRAPH_DIR, path);
     const file = STATIC[path];
     if (req.method === "GET" && file) return new Response(readFileSync(join(publicRoot, file[0])), { headers: { "content-type": file[1], "cache-control": "no-store" } });
     return new Response("not found", { status: 404 });

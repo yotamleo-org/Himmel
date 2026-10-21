@@ -66,6 +66,10 @@ function unwire(text) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/guard-judge-writes.sh"';
       continue;
     }
+    if (command.includes('/hooks/guard-rm-writes.sh')) {
+      commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/guard-rm-writes.sh"';
+      continue;
+    }
     const match = command.match(/scripts\/hooks\/([A-Za-z0-9._-]+\.sh)"/);
     assert.ok(match, `could not extract project hook script from ${command}`);
     const script = match[1];
@@ -217,4 +221,14 @@ test('--check validates the live plugin inventory and writes nothing', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /already wired; no change needed.*wrote nothing/);
   assert.equal(readFileSync(PLUGIN_HOOKS, 'utf8'), before);
+});
+
+test('guard-rm-writes.sh is the 16th PreToolUse entry, plugin-sourced, right after guard-judge-writes.sh', () => {
+  const pre = JSON.parse(readFileSync(PLUGIN_HOOKS, 'utf8')).hooks.PreToolUse;
+  const scripts = pre.flatMap((g) => g.hooks.map((h) => h.command.match(/([A-Za-z0-9._-]+\.sh)"$/)[1]));
+  assert.equal(scripts.length, 16);
+  assert.equal(scripts.indexOf('guard-rm-writes.sh'), scripts.indexOf('guard-judge-writes.sh') + 1);
+  const entry = pre.find((g) => g.hooks.some((h) => h.command.endsWith('/hooks/guard-rm-writes.sh"')));
+  assert.equal(entry.matcher, 'Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*');
+  assert.equal(entry.hooks[0].command, `${WIRED_PREFIX}"\${CLAUDE_PLUGIN_ROOT}/hooks/guard-rm-writes.sh"`);
 });

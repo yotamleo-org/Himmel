@@ -8,8 +8,9 @@ export const PAGES = [
   { id: "fleet", label: "Fleet" },
   { id: "roadmap", label: "Roadmap" },
   { id: "kanban", label: "Kanban" },
+  { id: "workflow", label: "Workflow" },
 ];
-const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban"];
+const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
