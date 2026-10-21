@@ -1920,7 +1920,9 @@
         "predecessor-open": "succession housekeeping: operational",
         "succession partial": "succession progress report: operational",
         "relay-on-live": "succession relay housekeeping: operational",
-        "unowned-prs": "PR ownership housekeeping: operational"
+        "unowned-prs": "PR ownership housekeeping: operational",
+        "focus": "FOCUS page refresh failure or stale dirty state: operational",
+        "status-sweep": "Jira status sweep moved or missed tickets: operational"
       }
     },
     "docs/handover/leg-preface.md": {
