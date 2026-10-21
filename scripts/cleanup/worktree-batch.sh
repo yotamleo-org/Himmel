@@ -9,7 +9,8 @@
 # apply refuses a file listing more than 10 paths before touching any, then
 # runs `worktree.sh prune --only <path>` per path, so every prune gate
 # (dirty, locked, in use, open PR) still decides. A path still present after
-# its prune counts as kept. It ends with "worktree-batch: removed=<n> kept=<n>".
+# its prune counts as kept; a path already gone before its prune counts as absent.
+# It ends with "worktree-batch: removed=<n> kept=<n> absent=<n>".
 set -uo pipefail
 
 CAP=10
@@ -35,8 +36,12 @@ case "${1:-}" in
     fi
     removed=0
     kept=0
+    absent=0
     while IFS= read -r p; do
       [ -n "$p" ] || continue
+      if [ ! -e "$p" ]; then
+        echo "ABSENT $p (already gone)"; absent=$((absent + 1)); continue
+      fi
       rc=0
       bash "$WORKTREE_SH" prune --only "$p" >/dev/null 2>&1 || rc=$?
       if [ ! -e "$p" ]; then
@@ -45,7 +50,7 @@ case "${1:-}" in
         echo "KEPT $p (prune rc=$rc)"; kept=$((kept + 1))
       fi
     done <<< "$paths"
-    echo "worktree-batch: removed=$removed kept=$kept"
+    echo "worktree-batch: removed=$removed kept=$kept absent=$absent"
     ;;
   -h|--help) usage ;;
   *) usage >&2; exit 2 ;;

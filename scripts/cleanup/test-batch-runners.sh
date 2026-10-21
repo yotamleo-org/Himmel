@@ -94,8 +94,12 @@ check "the worktree refusal names the cap" grepq "$out" 'over the cap of 10'
 check "a refused worktree batch removes nothing" [ "$(lines "$FIX/worktree.log")" -eq 0 ]
 out="$(bash "$WB" apply "$TMP/wt-plan.txt" 2>&1)"; rc=$?
 check "worktree apply runs prune --only per path" [ "$(lines "$FIX/worktree.log")" -eq 10 ]
-check "worktree apply reports removed and kept" grepq "$out" -x 'worktree-batch: removed=9 kept=1'
+check "worktree apply reports removed and kept" grepq "$out" -x 'worktree-batch: removed=9 kept=1 absent=0'
 check "a gate-kept worktree is still there" [ -d "$WT_ROOT/2" ]
+printf '%s\n' "$WT_ROOT/gone" "$WT_ROOT/11" > "$TMP/wt-absent.txt"
+out="$(bash "$WB" apply "$TMP/wt-absent.txt" 2>&1)"; rc=$?
+check "an already-absent worktree is not counted as removed" grepq "$out" -x 'worktree-batch: removed=1 kept=0 absent=1'
+check "an already-absent worktree is not pruned" [ "$(lines "$FIX/worktree.log")" -eq 11 ]
 
 # --- jira-batch.sh ---------------------------------------------------------
 JB="$FIX/scripts/cleanup/jira-batch.sh"
