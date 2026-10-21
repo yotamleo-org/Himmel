@@ -7,7 +7,7 @@
 #
 #   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
 #                        [--held FILE] [--no-classify] [--doc CONSOLE_DOC]
-#                        [--priority-pool-only]
+#                        [--priority-pool-only] [--workers-dir DIR]
 #
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
 # candidate is a To Do issue that is not an Epic/Story/Sub-task, carries none of
@@ -34,6 +34,13 @@
 # panel residual and is excluded unless --doc records `residual-must <KEY>` on a
 # line of its own (security, data loss or a broken operator flow only). No label
 # means depth 0.
+#
+# Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
+# $TICKET_STATUS_STATE_DIR/workers or ~/.himmel/state/workers) is in state wrapped
+# with a resume_brief is a RESUME row carrying `brief=<path>`, filtered like the
+# In Progress / In Review RESUME rows, and is never an ordinary To Do row. A
+# ticket with a contract=yes merge row in the status-events.jsonl beside that dir
+# (its Done write is pending) is never a RESUME row.
 #
 # Collision (one writer per file): the files a candidate names in its
 # description are checked against (a) the files in the live legs' docs (the
@@ -63,8 +70,10 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
 legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0
+workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --workers-dir) workers="${2:-}"; shift 2 || exit 2 ;;
         --resume-only) resume_only=1; classify=0; shift ;;
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
         --top) top="${2:-}"; shift 2 || exit 2 ;;
@@ -74,19 +83,19 @@ while [ "$#" -gt 0 ]; do
         --no-classify) classify=0; shift ;;
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
         --priority-pool-only) pool_only=1; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CONSOLE_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"]" >&2; exit 2 ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CONSOLE_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
-    'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder').split(',')))
+    'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder,held').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
@@ -263,10 +272,37 @@ def load_platform_re():
     print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
 
 platform_re = load_platform_re()
+# worker records: a To Do ticket whose leg wrapped with a resume brief is resumed, not redispatched
+workers = os.environ.get('ND_WORKERS', '')
+briefs = {}
+try:
+    names = os.listdir(workers)
+except OSError:
+    names = []
+for name in names:
+    if not name.endswith('.json'):
+        continue
+    try:
+        rec = json.load(open(os.path.join(workers, name)))
+    except (OSError, ValueError):
+        continue
+    if isinstance(rec, dict) and rec.get('state') == 'wrapped' and rec.get('resume_brief'):
+        briefs[name[:-5].upper()] = str(rec['resume_brief'])
+done_pending = set()
+try:
+    for line in open(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') == 'yes':
+            done_pending.add(str(r.get('key', '')).upper())
+except OSError:
+    pass
 skipped_platform = []
 cands = []
 for i in issues.values():
-    if i['status'] != 'To Do' or i['type'] in ('Epic', 'Story', 'Sub-task'):
+    if i['status'] != 'To Do' or i['type'] in ('Epic', 'Story', 'Sub-task') or i['key'] in briefs:
         continue
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
         continue
@@ -354,12 +390,15 @@ try:
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
-# In-work tickets nobody holds: no leg, no open PR, not parked or blocked.
+# In-work tickets nobody holds (and wrapped To Do ones): no leg, no open PR, not parked or blocked.
 resume = []
 for i in issues.values():
     if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
         continue
-    if i['status'] not in ('In Progress', 'In Review') or i['type'] in ('Epic', 'Story', 'Sub-task'):
+    wrapped = i['status'] == 'To Do' and i['key'] in briefs
+    if not (wrapped or i['status'] in ('In Progress', 'In Review')) or i['type'] in ('Epic', 'Story', 'Sub-task'):
+        continue
+    if i['key'] in done_pending:
         continue
     if i['labels'] & excl or any('parked' in l for l in i['labels']):
         continue
@@ -432,7 +471,7 @@ def emit_resume(rows):
             continue
         picked.extend(i['files'])
         emitted.append(i)
-        print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
+        print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])))
         n += 1
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
