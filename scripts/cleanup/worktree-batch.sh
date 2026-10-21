@@ -34,7 +34,8 @@ case "${1:-}" in
   apply)
     list="${2:?apply needs the file plan wrote}"
     [ -r "$list" ] || { echo "worktree-batch: cannot read $list; nothing removed" >&2; exit 2; }
-    paths="$(grep -v -e '^#' -e '^[[:space:]]*$' "$list" || true)"
+    paths="$(grep -v -e '^#' -e '^[[:space:]]*$' "$list")"
+    [ $? -le 1 ] || { echo "worktree-batch: cannot read $list; nothing removed" >&2; exit 2; }
     n="$(printf '%s\n' "$paths" | grep -c . || true)"
     if [ "$n" -gt "$CAP" ]; then
       echo "worktree-batch: REFUSED — $n worktrees over the cap of $CAP; nothing removed" >&2

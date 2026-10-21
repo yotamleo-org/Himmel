@@ -52,7 +52,8 @@ case "${1:-}" in
   apply)
     list="${2:?apply needs the file plan wrote}"
     [ -r "$list" ] || { echo "jira-batch: cannot read $list; nothing written" >&2; exit 2; }
-    rows="$(grep -v -e '^#' -e '^[[:space:]]*$' "$list" || true)"
+    rows="$(grep -v -e '^#' -e '^[[:space:]]*$' "$list")"
+    [ $? -le 1 ] || { echo "jira-batch: cannot read $list; nothing written" >&2; exit 2; }
     n="$(printf '%s\n' "$rows" | grep -c . || true)"
     if [ "$n" -gt "$CAP" ]; then
       echo "jira-batch: REFUSED — $n tickets over the cap of $CAP; nothing written" >&2

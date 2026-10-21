@@ -103,6 +103,9 @@ check "an already-absent worktree is not counted as removed" grepq "$out" -x 'wo
 check "an already-absent worktree is not pruned" [ "$(lines "$FIX/worktree.log")" -eq 11 ]
 out="$(bash "$WB" apply "$TMP/no-such-file" 2>&1)"; rc=$?
 check "worktree apply refuses an unreadable file" [ "$rc" -eq 2 ]
+out="$(bash "$WB" apply "$TMP" 2>&1)"; rc=$?
+check "worktree apply refuses a list it cannot read through" [ "$rc" -eq 2 ]
+check "a failed list read prunes nothing" [ "$(lines "$FIX/worktree.log")" -eq 11 ]
 out="$(WT_DRY_FAIL=1 bash "$WB" plan 2>&1)"; rc=$?
 check "worktree plan fails when the dry run fails" [ "$rc" -eq 1 ]
 check "a failed dry run shows its diagnostics" grepq "$out" 'ERR clean-garden: boom'
@@ -129,6 +132,8 @@ out="$(LIST_ROWS=500 JIRA_PROJECT_KEY=HIMMEL bash "$JB" plan version 2>&1)"; rc=
 check "jira plan marks counts cut by the list limit" grepq "$out" -x '# candidates=500+ batch=20 next-run=480+'
 out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" apply "$TMP/no-such-file" 2>&1)"; rc=$?
 check "jira apply refuses an unreadable file" [ "$rc" -eq 2 ]
+out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" apply "$TMP" 2>&1)"; rc=$?
+check "jira apply refuses a list it cannot read through" [ "$rc" -eq 2 ]
 for i in $(seq 1 21); do printf 'HIMMEL-%s\tstale\n' "$i"; done > "$TMP/j-21.txt"
 out="$(JIRA_PROJECT_KEY=HIMMEL bash "$JB" apply "$TMP/j-21.txt" 2>&1)"; rc=$?
 check "jira apply refuses 21" [ "$rc" -eq 1 ]
