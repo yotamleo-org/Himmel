@@ -2361,11 +2361,17 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   GRAPHIFY_SECONDS_PER_CHUNK="${GRAPHIFY_SECONDS_PER_CHUNK:-130}"
   GRAPHIFY_HOLLOW_RETRY_MAX="${GRAPHIFY_HOLLOW_RETRY_MAX:-5}"
   case "$GRAPHIFY_SECONDS_PER_CHUNK" in
-    ''|*[!0-9]*|0) echo "refresh-graph-map: GRAPHIFY_SECONDS_PER_CHUNK must be a positive integer (got '$GRAPHIFY_SECONDS_PER_CHUNK')" >&2; exit 1 ;;
+    ''|*[!0-9]*) echo "refresh-graph-map: GRAPHIFY_SECONDS_PER_CHUNK must be a positive integer (got '$GRAPHIFY_SECONDS_PER_CHUNK')" >&2; exit 1 ;;
   esac
   case "$GRAPHIFY_HOLLOW_RETRY_MAX" in
-    ''|*[!0-9]*|0) echo "refresh-graph-map: GRAPHIFY_HOLLOW_RETRY_MAX must be a positive integer (got '$GRAPHIFY_HOLLOW_RETRY_MAX')" >&2; exit 1 ;;
+    ''|*[!0-9]*) echo "refresh-graph-map: GRAPHIFY_HOLLOW_RETRY_MAX must be a positive integer (got '$GRAPHIFY_HOLLOW_RETRY_MAX')" >&2; exit 1 ;;
   esac
+  if [ "$((10#$GRAPHIFY_SECONDS_PER_CHUNK))" -eq 0 ]; then
+    echo "refresh-graph-map: GRAPHIFY_SECONDS_PER_CHUNK must be a positive integer (got '$GRAPHIFY_SECONDS_PER_CHUNK')" >&2; exit 1
+  fi
+  if [ "$((10#$GRAPHIFY_HOLLOW_RETRY_MAX))" -eq 0 ]; then
+    echo "refresh-graph-map: GRAPHIFY_HOLLOW_RETRY_MAX must be a positive integer (got '$GRAPHIFY_HOLLOW_RETRY_MAX')" >&2; exit 1
+  fi
   if [ -z "${GRAPHIFY_MAX_CHUNKS_PER_RUN:-}" ]; then
     if [ -n "$_deadline_bin" ]; then
       GRAPHIFY_MAX_CHUNKS_PER_RUN=$(( GRAPHIFY_RUN_DEADLINE_SECONDS / 10#$GRAPHIFY_SECONDS_PER_CHUNK ))
@@ -2485,7 +2491,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       exit 5 ;;
   esac
   if [ "$_rc" -ne 0 ]; then
-    if [ "$_rc" -eq 124 ]; then
+    if [ "$_rc" -eq 124 ] || [ "$_rc" -eq 137 ]; then
       echo "refresh-graph-map: graphify --update exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline (HIMMEL-1901) -- graphify-out left unpromoted" >&2
       _keep_finished_chunks
     else
@@ -2512,7 +2518,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   _rc=0
   _run_bounded "$GRAPHIFY_MAP" cluster-only "$SCRATCH" --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" >&2 || _rc=$?
   if [ "$_rc" -ne 0 ]; then
-    if [ "$_rc" -eq 124 ]; then
+    if [ "$_rc" -eq 124 ] || [ "$_rc" -eq 137 ]; then
       echo "refresh-graph-map: cluster-only exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline (HIMMEL-1901) -- graphify-out left unpromoted" >&2
     else
       echo "refresh-graph-map: cluster-only failed" >&2

@@ -78,6 +78,7 @@ for i in "${todo[@]}"; do
   printf '{}' > "$target/graphify-out/cache/c$i.json"
   k=$((k+1))
   echo "[graphify extract] chunk $k/$m done" >&2
+  [ "${STUB_DIE_AFTER:-0}" = "$k" ] && exit 137
 done
 printf '{"nodes":[],"links":[]}' > "$target/graphify-out/graph.json"
 exit 0
@@ -141,6 +142,26 @@ echo "R4: the cap is the run deadline divided by the seconds per chunk"
 reset
 out=$( STUB_CHUNKS=1 GRAPHIFY_RUN_DEADLINE_SECONDS=7200 GRAPHIFY_SECONDS_PER_CHUNK=130 run_refresh 2>&1 ); rc=$?
 echo "$out" | grep -q 'chunk cap=55' && pass "R4 7200 / 130 prints chunk cap=55" || fail "R4 stderr should print chunk cap=55: $out"
+
+# --- R5: a deadline that needed timeout's SIGKILL (rc 137) keeps the finished
+# chunks just like a plain deadline (rc 124). ---
+echo "R5: a SIGKILL-escalated deadline stop keeps the finished chunks"
+reset
+out=$( STUB_CHUNKS=6 STUB_DIE_AFTER=2 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && pass "R5 exits 2" || fail "R5 should exit 2 (got $rc): $out"
+cached=$( cd "$OUTD/cache" 2>/dev/null && printf '%s ' *.json )
+[ "$cached" = "c1.json c2.json " ] \
+  && pass "R5 the 2 finished chunks are kept" || fail "R5 cache should hold c1 c2: $cached"
+[ ! -e "$OUTD/graph.json" ] && pass "R5 nothing partial was promoted" || fail "R5 a partial graph.json was promoted"
+
+# --- R6: an all-zero tunable is rejected, not divided by. ---
+echo "R6: all-zero tunables are usage errors"
+reset
+out=$( STUB_CHUNKS=1 GRAPHIFY_SECONDS_PER_CHUNK=00 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 1 ] && pass "R6 seconds-per-chunk 00 exits 1" || fail "R6 should exit 1 (got $rc): $out"
+echo "$out" | grep -q 'positive integer' && pass "R6 names the positive-integer rule" || fail "R6 should say positive integer: $out"
+out=$( STUB_CHUNKS=1 GRAPHIFY_HOLLOW_RETRY_MAX=00 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 1 ] && pass "R6 hollow-retry-max 00 exits 1" || fail "R6 hollow max 00 should exit 1 (got $rc): $out"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
