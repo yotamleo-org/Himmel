@@ -377,11 +377,12 @@ if hf and os.path.isfile(hf):
 pr_unknown = False
 pr_keys = set()
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
+gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
-    nums = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
+    nums = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=60, check=True).stdout.split()
     def pr_files(num):
-        return subprocess.run([gh, 'pr', 'diff', num, '--repo', 'yotamleo/Himmel', '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
+        return subprocess.run([gh, 'pr', 'diff', num, '--repo', gh_repo, '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
     pr_nums = [] if resume_only else nums
     if pr_nums:
         from concurrent.futures import ThreadPoolExecutor
@@ -389,7 +390,7 @@ try:
             for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
                 held += [(f, 'open PR %s' % num) for f in d]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
+    for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
         pr_keys.update(k.upper() for k in re.findall(r'[A-Za-z]+-\d+', line))
 except (OSError, subprocess.SubprocessError):
@@ -403,7 +404,7 @@ inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['
              and i['key'] not in leg_keys and i['key'] not in pr_keys]
 if inci_keys and not (pr_unknown or legs_unknown):
     def merged_cites(key):
-        out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],  # env-literal-ok: the repo the open-PR reads above query
+        out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
         return key in {k.upper() for k in re.findall(r'[A-Za-z]+-\d+', out)}
     try:

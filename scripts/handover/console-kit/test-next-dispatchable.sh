@@ -45,6 +45,7 @@ printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\nv1.0.0\ttrue\t2026-01-01\n' > "$WORK/j
 
 cat > "$WORK/gh" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_ARGS"
 [ -f "$GH_FAIL" ] && exit 1
 if [ "$2" = list ]; then
     case "$*" in *merged*) [ -f "$MERGED_FAIL" ] && exit 1; cat "$MERGED_TSV" ;; *headRefName*) cat "$PRS_TSV" ;; *) echo 4242 ;; esac
@@ -63,6 +64,8 @@ done
 EOF
 chmod +x "$WORK/gh" "$WORK/classify"
 export GH_FAIL="$WORK/gh.fail"
+export GH_ARGS="$WORK/gh.args"
+: > "$GH_ARGS"
 export PRS_TSV="$WORK/prs.tsv"
 export MERGED_TSV="$WORK/merged.tsv" MERGED_FAIL="$WORK/merged.fail"
 : > "$MERGED_TSV"
@@ -236,7 +239,13 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N9"}]}\n' "$LEG6" > "$WORK/flee
 printf '4300\tfix(x): [HIMMEL-70] merged\tfix/himmel-70-m\n4301\tfix(x): [HIMMEL-73] merged\tfix/himmel-73-m\n4302\tfix(x): [HIMMEL-71] earlier\tfix/himmel-71-e\n4303\tfix(x): [HIMMEL-740] lookalike\tfix/himmel-740-l\n' > "$MERGED_TSV"
 printf '4310\tfix(x): [HIMMEL-71] open\tfix/himmel-71-o\n' > "$PRS_TSV"
 rc6() { NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --legs-from "$WORK/fleet6.json" 2>/dev/null; }
+: > "$GH_ARGS"
 r6="$(rc6)"
+# --search does not follow a repo rename, so every gh read must name the canonical slug
+gh_repos="$(grep -o -e '--repo [^ ]*' "$GH_ARGS" | sort -u)"
+merged_repos="$(grep -e '--state merged' "$GH_ARGS" | grep -o -e '--repo [^ ]*' | sort -u)"
+if [ "$gh_repos" = "--repo yotamleo-org/Himmel" ] && [ "$merged_repos" = "--repo yotamleo-org/Himmel" ]; then pass "every gh read, the merged search included, names the canonical repo slug"
+else fail "every gh read, the merged search included, names the canonical repo slug (got: ${gh_repos//$'\n'/ } / merged: ${merged_repos//$'\n'/ })"; fi
 has "an IN CI ticket with a merged PR and no leg is a MERGED-NOT-CLOSED row" "$r6" "MERGED-NOT-CLOSED	HIMMEL-70"
 lacks "an IN CI ticket with an open PR is not listed (even with an earlier merged one)" "$r6" "HIMMEL-71	"
 has "an IN CI ticket with no PR is a RESUME row" "$r6" "RESUME	HIMMEL-72"
