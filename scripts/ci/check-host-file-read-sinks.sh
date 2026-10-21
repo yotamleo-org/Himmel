@@ -15,7 +15,8 @@
 #   - a variable assigned from argv in the same added lines (path laundering; the
 #     name at the head of a line, or a later UPPER_CASE name never assigned at a line head),
 #     unless it was last assigned a value that IS a mktemp substitution (a file
-#     the script made itself); a value that merely contains the word does not count
+#     the script made itself); a value that merely contains the word, or appends
+#     anything after the closing of the substitution, does not count
 #   - an UPPER_CASE variable the file never assigns (environment-supplied path);
 #     a NAME=value token anywhere in the file counts as an assignment, including
 #     the second name on an `export A=.. B=..` line and a `cmd NAME=value` argument
@@ -134,7 +135,7 @@ while IFS= read -r -d '' path; do
           hd = substr(l, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", hd)
         }
         for (k = 1; k <= ACNT; k++) {
-          if (AV[k] ~ /^"?(\$\(|`)[ \t]*mktemp([ \t)"`]|$)/) delete tainted[AN[k]]
+          if (AV[k] ~ /^"?(\$\([ \t]*|`[ \t]*)mktemp[^)`]*[)`]"?([ \t;&|)}]|$)/) delete tainted[AN[k]]
           else if (substr(l, AP[k] + 1) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ &&((k == 1 && AN[k] == hd) || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
         }
         hit = ""

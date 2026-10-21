@@ -81,6 +81,10 @@ case_repo base flag-mktemp-substring
 run_check
 [ "$RC" -eq 1 ] && ok "the word mktemp inside an argv-built path is flagged" || bad "mktemp substring cleared the taint (rc=$RC): $OUT"
 
+case_repo base flag-mktemp-suffix
+run_check
+[ "$RC" -eq 1 ] && ok "an argv suffix after a mktemp substitution is flagged" || bad "mktemp-rooted argv suffix cleared the taint (rc=$RC): $OUT"
+
 case_repo base flag-quoted-assign-argv
 run_check
 [ "$RC" -eq 1 ] && ok "assignment-shaped text inside a quoted value does not hide argv" || bad "quoted NAME=\$1 hid the taint (rc=$RC): $OUT"
