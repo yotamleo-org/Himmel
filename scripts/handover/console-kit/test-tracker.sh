@@ -1120,6 +1120,17 @@ vfp_is same 'the original worker record restores the focus fingerprint (HIMMEL-6
 sed 's/prog step/prog step two/' "$W/vp-chains2.json" > "$W/vp-chains3.json"
 V2CH="$W/vp-chains3.json" v2render >/dev/null
 vfp_is differ 'a chain change moves the focus fingerprint (HIMMEL-6829)'
+cp "$vp/HIMMEL-420.md" "$W/h420-keep.md"
+sed 's/^type: "Task"/sector: "Elsewhere"\n&/' "$W/h420-keep.md" > "$vp/HIMMEL-420.md"
+v2render >/dev/null
+vfp_is differ 'a sector change moves the focus fingerprint (HIMMEL-6829)'
+cp "$W/h420-keep.md" "$vp/HIMMEL-420.md"
+printf '%s\n' '---' 'key: "HIMMEL-421"' 'statusCategory: "Done"' 'status: "Done"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' '---' '# HIMMEL-421: vp finished ticket' > "$vp/HIMMEL-421.md"
+v2render >/dev/null
+vfp_is differ 'a new Done ticket of the version moves the focus fingerprint (HIMMEL-6829)'
+rm -f "$vp/HIMMEL-421.md"
+v2render >/dev/null
+vfp_is same 'restoring the mirror restores the focus fingerprint (HIMMEL-6829)'
 jq '. + [{"number":505,"title":"feat: [HIMMEL-401] more","headRefName":"feat/more","isDraft":false,"statusCheckRollup":[]}]' "$W/vp-prs.json" > "$W/vp-prs-more.json"
 V2PRS="$W/vp-prs-more.json" v2render >/dev/null
 vfp_is differ 'a new open PR moves the focus fingerprint (HIMMEL-6829)'

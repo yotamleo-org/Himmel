@@ -77,9 +77,9 @@ fi
 # swallow-ok: an unreadable ticket fails the read-back below as result=miss
 json=$(ts_jira get "$KEY" --json 2>/dev/null) || json=""
 if [ "$RELEASE" -eq 1 ]; then
-    jqf='(.fields.labels // []) | index("held") == null'
+    jqf='(.fields.labels | type == "array") and (.fields.labels | index("held") == null)'
 else
-    jqf='(.fields.labels // []) | index("held") != null'
+    jqf='(.fields.labels | type == "array") and (.fields.labels | index("held") != null)'
 fi
 # swallow-ok: anything but a literal true is the miss branch
 if [ "$(jq -r "$jqf" <<<"$json" 2>/dev/null)" != true ]; then

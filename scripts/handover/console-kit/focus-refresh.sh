@@ -85,6 +85,7 @@ case "$VER" in '' | none*) echo "focus=skip"; exit 0 ;; esac
 
 DIR=$(dirname "$DOC")
 STATEF="$DIR/focus-state"
+AGAIN="$DIR/focus-state.again"
 OUT="$DIR/roadmap-tracker.html"
 now() { date +%s; }
 
@@ -158,8 +159,14 @@ mkdir -p "${MIR%/*}" 2>/dev/null # swallow-ok: an unwritable mirror parent fails
 
 if command -v flock >/dev/null 2>&1; then
     exec 9>>"$MIR.lock" || { echo "focus-refresh: cannot open $MIR.lock" >&2; exit 2; }
-    flock -n 9 || { echo "focus=busy"; exit 0; } # prim-ok: a non-blocking single-instance guard, not a wait
+    if ! flock -n 9; then # prim-ok: a non-blocking single-instance guard, not a wait
+        # swallow-ok: an unwritable marker only loses the request to re-run, the state file is unaffected
+        now > "$AGAIN" 2>/dev/null
+        echo "focus=busy"
+        exit 0
+    fi
 fi
+rm -f "$AGAIN" # a request made before this run is served by it
 
 bounded() {
     local s=$1
@@ -214,6 +221,11 @@ if [ ! -f "$OUT" ] || [ "$oldvfp" != "$vfp" ]; then
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
 S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}"
+again=""
+[ ! -f "$AGAIN" ] || again=$(cat "$AGAIN")
+if [[ "$again" =~ ^[0-9]+$ ]]; then
+    S_dirty=$again # a request arrived while this run held the lock: its snapshot may predate it
+fi
 save_state || failed publish
 echo "focus=ok"
 exit 0

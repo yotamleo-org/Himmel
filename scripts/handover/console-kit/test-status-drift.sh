@@ -41,6 +41,7 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 statusf() { if [ -e "$FX/status.$1" ]; then echo "$FX/status.$1"; else echo "$FX/status.cur"; fi; }
 case "$1" in
     get)
+        [ -e "$FX/get.nolabels" ] && { printf '{"fields":{"status":{"name":"To Do"}}}\n'; exit 0; }
         printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":%s}}\n' "$(cat "$(statusf "$2")")" \
             "$(cat "$FX/labels.$2" 2>/dev/null | jq -Rsc 'split("\n") | map(select(length > 0))')" ;;
     edit)
@@ -423,6 +424,11 @@ check "3a: a label that does not read back exits 1" "$rc" 1
 check "3a: and logs miss at the readback stage" "$(rowq 'select(.event == "hold") | .result + ":" + .stage')" "miss:readback"
 check "3a: and posts no HOLD comment" "$(ncomment)" 0
 
+reset "To Do"; touch "$FX/get.nolabels"
+hold "$K" --release --owner o; rc=$?
+check "3a: a read-back with no labels field is not proof of a release" "$rc" 1
+check "3a: and logs miss at the readback stage" "$(rowq 'select(.event == "hold-release") | .result + ":" + .stage')" "miss:readback"
+
 reset "To Do"; touch "$FX/edit.fail"
 hold "$K" --reason r --owner o; rc=$?
 check "3a: a failed edit exits 1" "$rc" 1
@@ -522,6 +528,10 @@ check "3b: a Done ticket after its merge row is not a MERGE-MISMATCH" "$(dcount 
 reset "In Review"; logrow merge "$K" moved 7 no
 drift
 check "3b: a contract-no merge row is not a MERGE-MISMATCH" "$(dcount MERGE-MISMATCH)" 0
+
+reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
+drift
+contains "3b: more merge keys than the check budget is reported, not dropped" "$(drows HEALTH)" "checked 20 of 21"
 
 reset "To Do"; logrow check-ci-exit "$K" miss 7
 drift
@@ -633,6 +643,7 @@ cat >"$tmp/frbin/tracker" <<'EOS'
 echo "tracker $*" >> "$FX/fr.log"
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = render ] && exit 1
 [ -e "$FX/fr.sleep" ] && sleep "$(cat "$FX/fr.sleep")"
+[ -e "$FX/fr.again" ] && date +%s > "$(cat "$FX/fr.again")"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = --out ] && out="$a"; prev="$a"; done
 n=$(( $(cat "$FX/render.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/render.n"
@@ -775,6 +786,18 @@ if command -v flock >/dev/null 2>&1; then
     check "3c: a refresh that finds the lock held prints busy" "$(frout)" "focus=busy"
     check "3c: and exits 0 without running a step" "$(frrc)$([ -e "$FX/fr.log" ] && echo ran)" 0
     kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+    check "3c: a busy refresh leaves a request marker" "$([ -s "$FR/doc/focus-state.again" ] && echo set || echo none)" set
+    fr
+    check "3c: the next refresh with no new request clears the marker" "$([ -e "$FR/doc/focus-state.again" ] && echo set || echo none)" none
+    check "3c: and is clean" "$(fst dirty)" ""
+    echo "$FR/doc/focus-state.again" > "$FX/fr.again"
+    fr
+    rm -f "$FX/fr.again"
+    check "3c: a request that lands during a run leaves the state DIRTY" "$(fst dirty | grep -c '^[0-9][0-9]*$')" 1
+    fr --status
+    contains "3c: and --status reads DIRTY" "$(frout)" "focus=DIRTY:0m"
+    fr
+    check "3c: the next refresh clears the dirty mark" "$(fst dirty)" ""
 fi
 
 echo "---"

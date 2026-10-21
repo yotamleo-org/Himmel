@@ -1407,7 +1407,9 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml))
     fp = json.dumps({
         'v': version,
-        'tickets': [[k, opn[k]['sn'], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k]] for k in sorted(opn)],
+        'done': done,
+        'tickets': [[k, opn[k]['sn'], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
+                    for k in sorted(opn)],
         'chains': [[ch['name'], [[st.get('key', ''), st.get('label', ''), step_state(st), st.get('pr'), st.get('owner')]
                                  for st in ch['steps']]] for ch in chains],
         'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
