@@ -834,7 +834,9 @@ const crLoopSection = (() => {
         deferred = deferrals;
         const rounds = [...heads.values()].map((s) => s.size).sort((a, b) => a - b);
         if (rounds.length) out.rounds = { prs: rounds.length, mean: round2(rounds.reduce((s, n) => s + n, 0) / rounds.length), p90: rounds[Math.ceil(0.9 * rounds.length) - 1] };
-        if (pre.size) { const hits = [...pre.values()].reduce((s, n) => s + n, 0); out.preflight = { hits, per_pr: round2(hits / pre.size), prs: pre.size, merged: mergedWin ? mergedWin.length : null }; }
+        out.preflight.prs = pre.size;
+        out.preflight.merged = mergedWin ? mergedWin.length : null;
+        if (pre.size) { const hits = [...pre.values()].reduce((s, n) => s + n, 0); out.preflight.hits = hits; out.preflight.per_pr = round2(hits / pre.size); }
     } catch { /* no readable ledger: rounds and preflight stay n/a */ }
     try {
         const dir = process.env.BOARD_MIRROR || join(process.env.HOME || '', '.himmel', 'state', 'jira-mirror', 'HIMMEL');

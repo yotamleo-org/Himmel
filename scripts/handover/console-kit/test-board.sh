@@ -1153,6 +1153,11 @@ jtxt="$(cat "$CL/board.json" 2>/dev/null)"
 chtml="$(cat "$CL/board.html" 2>/dev/null)"
 jcheck 'cr-loop --json: preflight adoption is PRs with a pass over merged PRs' 'M.trends.cr_loop.preflight.prs === 2 && M.trends.cr_loop.preflight.merged === 2'
 contains 'cr-loop html: preflight adoption and hits per PR' "$chtml" 'preflight 2/2 PRs · 1.0 hits/PR'
+printf '{"kind":"score","ts":"%s","branch":"feat/a","head":"h1","model":"m","critical":0,"important":0,"suggestions":0}\n' "$(ago 1)" > "$CL/ledger-nopre.jsonl"
+CL_LEDGER="$CL/ledger-nopre.jsonl" crrun >/dev/null; rc=$?
+contains 'cr-loop no-preflight run: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+jcheck 'cr-loop --json: a readable ledger with no preflight pass reads adoption 0 of the merged PRs, hits per PR stays n/a' 'M.trends.cr_loop.preflight.prs === 0 && M.trends.cr_loop.preflight.merged === 2 && M.trends.cr_loop.preflight.per_pr === null'
 CL_DEF="$CL/ledger-deferred.jsonl"
 {
     printf '{"kind":"finding","ts":"%s","branch":"feat/a","head":"h1","finding_id":"f1","verdict":"deferred","deferred_to":"HIMMEL-9101"}\n' "$(ago 1)"
