@@ -27,6 +27,9 @@
 #  L10. A dir sentinel replaces only a value the caller has: with none the
 #       var stays unset and a suite's HOME fixture is read; with one the
 #       suite sees the sentinel, never the caller's value.
+#  L11. A shim forwards only for the runner that installed it: a nested
+#       runner's unlisted suite under a hard outer suite reaches no scheduler,
+#       and the two shims never exec each other in a loop.
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -378,6 +381,31 @@ if grepq "$out10b" -E '\[PASS\] .*test-sees-sentinel\.sh'; then
   pass "L10: with a caller value the suite sees the sentinel, never the live value"
 else
   fail "L10: test-sees-sentinel.sh saw a non-sentinel value; out: $out10b"
+fi
+
+echo "== L11: a nested runner's forwarding never passes through an outer hard suite's shim =="
+mkdir -p "$sb/root11/scripts/handover" "$sb/inner11/scripts/cloud"
+printf '#!/usr/bin/env bash\ncrontab -l >/dev/null 2>&1\nexit 0\n' > "$sb/inner11/scripts/cloud/test-x-leaks.sh"
+printf '#!/usr/bin/env bash\nbash %q %q > %q 2>&1\nexit 0\n' "$RUNNER" "$sb/inner11" "$sb/inner11.out" >"$sb/root11/scripts/handover/test-merge-on-green.sh"
+chmod +x "$sb/inner11/scripts/cloud/test-x-leaks.sh" "$sb/root11/scripts/handover/test-merge-on-green.sh"
+rm -f "$sb/real-crontab.log"
+out11=$(PATH="$sb/realbin:$PATH" SUITE_TIMEOUT=20 env -u SUITE_TIER_MODE -u SUITE_LIVE_HARD bash "$RUNNER" "$sb/root11" 2>&1)
+calls11=$(cat "$sb/real-crontab.log" 2>/dev/null)
+if [ -z "$calls11" ]; then
+  pass "L11: the nested unlisted suite's call never reached the next scheduler past the outer shim"
+else
+  fail "L11: the real crontab saw [$calls11] through an outer hard suite's shim; out: ${out11:0:2000}"
+fi
+n11=$(printf '%s\n' "$out11" | grep -c 'test-merge-on-green\.sh — scheduler call: crontab -l')
+if [ "$n11" = 1 ]; then
+  pass "L11: the outer shim recorded the forwarded call once and refused it"
+else
+  fail "L11: the outer shim recorded $n11 calls (a shim loop); out: ${out11:0:2000}"
+fi
+if grepq "$(cat "$sb/inner11.out" 2>/dev/null)" -E '\[LIVE-STATE\] WARN .*test-x-leaks\.sh .*crontab -l'; then
+  pass "L11: the nested runner ran its unlisted suite"
+else
+  fail "L11: the nested runner did not run test-x-leaks.sh; inner: $(cat "$sb/inner11.out" 2>/dev/null)"
 fi
 
 rst_tally

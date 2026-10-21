@@ -4134,13 +4134,16 @@ _live_reset() {
   for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
   for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
   # A shim records every call. For a suite off the hard-fail list it then runs
-  # the next scheduler on PATH, as main does; otherwise it refuses.
+  # the next scheduler on PATH, as main does; otherwise it refuses. Only the
+  # shim of the runner that set HIMMEL_SUITE_SHIM_DIR forwards, so a nested
+  # runner's call never passes an outer runner's shim.
   for _v in $live_sched; do
     # shellcheck disable=SC2016  # the shim body expands when the shim runs
     printf '#!/usr/bin/env bash
 printf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q
-if [ -n "${HIMMEL_SUITE_SCHED_REAL:-}" ]; then
-  _d=%q; _p=":$PATH:"; _p=${_p//":$_d:"/:}; _p=${_p#:}; _p=${_p%%:}
+_d=%q
+if [ -n "${HIMMEL_SUITE_SCHED_REAL:-}" ] && [ "${HIMMEL_SUITE_SHIM_DIR:-}" = "$_d" ]; then
+  _p=":$PATH:"; _p=${_p//":$_d:"/:}; _p=${_p#:}; _p=${_p%%:}
   _r=$(PATH=$_p; type -P %s) && exec "$_r" "$@"
   echo "%s: command not found" >&2; exit 127
 fi
