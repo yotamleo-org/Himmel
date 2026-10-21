@@ -15,7 +15,7 @@
 # GIT_GRAFT_FILE, GIT_REPLACE_REF_BASE, GIT_SHALLOW_FILE, GIT_CONFIG,
 # GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT. Deliberately NOT scrubbed:
 # GIT_NO_REPLACE_OBJECTS, which is in that list but redirects nothing — it is
-# a hardening switch callers set on purpose (clear-cr-marker.sh),
+# a hardening switch callers set on purpose (clear-review-marker.sh),
 # and clearing it would re-enable replace refs. scripts/lanes/git-clean.mjs
 # carries the identical set.
 #

@@ -48,7 +48,7 @@ echo 'echo env' >"$ORIGIN/scripts/cr/pr-check-env.sh"
 echo ': dotenv' >"$ORIGIN/scripts/lib/load-dotenv.sh"
 echo ': other lib' >"$ORIGIN/scripts/lib/other.sh"
 # every gate-allowed scripts/cr entry, and the hand-off each sources.
-for t in anchor-handoff.sh clear-cr-marker.sh \
+for t in anchor-handoff.sh clear-cr-marker.sh clear-review-marker.sh \
     cr-scores.sh doc-freshness-advisory.sh docs-audit-panel.sh impacted-suites.sh \
     known-findings.sh ledger-append.sh orphan-check.sh panel-first-pass.sh \
     review-round.sh write-verdicts.sh; do

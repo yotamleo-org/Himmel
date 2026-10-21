@@ -35,15 +35,15 @@ make_tree() {  # <root> <label>
     mkdir -p "$1/scripts/cr"
     git init -q "$1"
     cp "$DIR/anchor-handoff.sh" "$1/scripts/cr/anchor-handoff.sh"
-    awk -v src="$SOURCE_DOT" '{ print } $0 == src { exit }' "$DIR/clear-cr-marker.sh" > "$1/scripts/cr/clear-cr-marker.sh.head"
-    if grep -qxF "$SOURCE_DOT" "$1/scripts/cr/clear-cr-marker.sh.head"; then
-        head=$(cat "$1/scripts/cr/clear-cr-marker.sh.head")
+    awk -v src="$SOURCE_DOT" '{ print } $0 == src { exit }' "$DIR/clear-review-marker.sh" > "$1/scripts/cr/clear-review-marker.sh.head"
+    if grep -qxF "$SOURCE_DOT" "$1/scripts/cr/clear-review-marker.sh.head"; then
+        head=$(cat "$1/scripts/cr/clear-review-marker.sh.head")
     else
         head='#!/usr/bin/env bash
 set -uo pipefail'
     fi
-    rm -f "$1/scripts/cr/clear-cr-marker.sh.head"
-    printf '%s\necho "RAN:%s"\n' "$head" "$2" > "$1/scripts/cr/clear-cr-marker.sh"
+    rm -f "$1/scripts/cr/clear-review-marker.sh.head"
+    printf '%s\necho "RAN:%s"\n' "$head" "$2" > "$1/scripts/cr/clear-review-marker.sh"
     # anchor-handoff.sh requires the
     # anchor's own git index to TRACK the resolved relative path before
     # trusting a self-anchor match - stage every fixture file so the genuine
@@ -69,23 +69,23 @@ run() {  # <cwd> <HIMMEL_REPO or -> <entry path>
 }
 
 # 1. Relative entry from an edited worktree runs the anchor's copy.
-check "$(run "$wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T1 relative entry hands off"
+check "$(run "$wt" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T1 relative entry hands off"
 # 2. `./` is relative too — decided on the path as invoked.
-check "$(run "$wt" "$anchor" ./scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T2 ./ entry hands off"
+check "$(run "$wt" "$anchor" ./scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T2 ./ entry hands off"
 # 3. Absolute entry runs the local copy (the deliberate open door).
-check "$(run "$wt" "$anchor" "$wt/scripts/cr/clear-cr-marker.sh" | tr '\n' ' ')" "RAN:branch rc=0 " "T3 absolute entry runs local"
+check "$(run "$wt" "$anchor" "$wt/scripts/cr/clear-review-marker.sh" | tr '\n' ' ')" "RAN:branch rc=0 " "T3 absolute entry runs local"
 # 4. Relative entry with HIMMEL_REPO unset fails closed.
-check "$(run "$wt" - scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T4 unset HIMMEL_REPO exits 2"
+check "$(run "$wt" - scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T4 unset HIMMEL_REPO exits 2"
 # 5. Empty HIMMEL_REPO fails closed too.
-check "$(run "$wt" "" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T5 empty HIMMEL_REPO exits 2"
+check "$(run "$wt" "" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T5 empty HIMMEL_REPO exits 2"
 # 6. An anchor with no copy of the writer fails closed.
-check "$(run "$wt" "$bare" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T6 anchor lacks writer exits 2"
+check "$(run "$wt" "$bare" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T6 anchor lacks writer exits 2"
 # 7. One hop only: an already-handed-off process that is still not the anchor refuses.
-out=$(cd "$wt" && CR_ANCHOR_HANDED_OFF=1 HIMMEL_REPO="$anchor" bash scripts/cr/clear-cr-marker.sh 2>/dev/null; echo "rc=$?")
+out=$(cd "$wt" && CR_ANCHOR_HANDED_OFF=1 HIMMEL_REPO="$anchor" bash scripts/cr/clear-review-marker.sh 2>/dev/null; echo "rc=$?")
 check "$out" "rc=2" "T7 second hop refuses"
 # 8. Relative entry inside the anchor itself runs without a hand-off.
-err=$(cd "$anchor" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$anchor" bash scripts/cr/clear-cr-marker.sh 2>&1 >/dev/null)
-check "$(run "$anchor" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T8 anchor runs itself"
+err=$(cd "$anchor" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$anchor" bash scripts/cr/clear-review-marker.sh 2>&1 >/dev/null)
+check "$(run "$anchor" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T8 anchor runs itself"
 check "$err" "" "T8 no hand-off message in the anchor"
 # 9. Arguments survive the hand-off. The stub reports argc plus each arg
 # pipe-delimited (not "$*", which would make one spaced argument ("a b")
@@ -128,7 +128,7 @@ check "$red_rc:$red_out" "0:3|--diff|a|b|" "T9c RED control catches the unquoted
 
 # 9b. A tree whose helper is missing fails closed rather than running the local copy.
 rm -f "$wt/scripts/cr/anchor-handoff.sh"
-check "$(run "$wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T9b missing helper exits 2"
+check "$(run "$wt" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T9b missing helper exits 2"
 cp "$DIR/anchor-handoff.sh" "$wt/scripts/cr/anchor-handoff.sh"
 
 # 10. Every auto-allowed writer sources the helper as its first statement
@@ -172,7 +172,7 @@ check "$(run "$d3_wt" - scripts/handover/console-kit/go-stub.sh | tr '\n' ' ')" 
 real_wt="$tmp/real_wt"; link_wt="$tmp/link_wt"
 make_tree "$real_wt" branch
 ln -s "$real_wt" "$link_wt"
-check "$(run "$link_wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T14 symlinked worktree still hands off (F1)"
+check "$(run "$link_wt" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T14 symlinked worktree still hands off (F1)"
 
 # 15. A worktree nested INSIDE the anchor's own directory
 # tree, whose own .git is corrupted (git rev-parse fails for a bad reason,
@@ -183,9 +183,9 @@ check "$(run "$link_wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" 
 nested="$anchor/.claude/worktrees/nested_corrupt"
 mkdir -p "$nested/scripts/cr"
 cp "$DIR/anchor-handoff.sh" "$nested/scripts/cr/anchor-handoff.sh"
-printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:corrupted"\n' "$SOURCE_LINE" > "$nested/scripts/cr/clear-cr-marker.sh"
+printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:corrupted"\n' "$SOURCE_LINE" > "$nested/scripts/cr/clear-review-marker.sh"
 echo "gitdir: /nonexistent/path" > "$nested/.git"
-check "$(run "$nested" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T15 corrupted nested worktree fails closed instead of self-anchoring (F2)"
+check "$(run "$nested" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T15 corrupted nested worktree fails closed instead of self-anchoring (F2)"
 
 # 16. GIT_DIR / GIT_WORK_TREE pointed at the anchor from a
 # worktree must not let the resolver believe it is ALREADY the anchor: both
@@ -196,7 +196,7 @@ check "$(run "$nested" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "
 run_env_override() {  # <cwd> <HIMMEL_REPO> <entry path> <fake GIT_DIR/GIT_WORK_TREE root>
     (cd "$1" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$2" GIT_DIR="$4/.git" GIT_WORK_TREE="$4" GIT_COMMON_DIR="$4/.git" bash "$3" 2>/dev/null; echo "rc=$?")
 }
-check "$(run_env_override "$wt" "$anchor" scripts/cr/clear-cr-marker.sh "$anchor" | tr '\n' ' ')" "RAN:anchor rc=0 " "T16 GIT_DIR/GIT_WORK_TREE override cannot fake anchor status (F4)"
+check "$(run_env_override "$wt" "$anchor" scripts/cr/clear-review-marker.sh "$anchor" | tr '\n' ' ')" "RAN:anchor rc=0 " "T16 GIT_DIR/GIT_WORK_TREE override cannot fake anchor status (F4)"
 
 # 17 (CodeRabbit, PR #1212). Unlike T15's DANGLING .git file (git rev-parse
 # fails for a bad reason), a nested worktree whose .git entry is REMOVED
@@ -213,8 +213,8 @@ check "$(run_env_override "$wt" "$anchor" scripts/cr/clear-cr-marker.sh "$anchor
 nested_removed="$anchor/.claude/worktrees/nested_removed"
 mkdir -p "$nested_removed/scripts/cr"
 cp "$DIR/anchor-handoff.sh" "$nested_removed/scripts/cr/anchor-handoff.sh"
-printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:removed"\n' "$SOURCE_LINE" > "$nested_removed/scripts/cr/clear-cr-marker.sh"
-check "$(run "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T17 nested worktree with .git fully removed cannot fake anchor status via untracked ls-files"
+printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:removed"\n' "$SOURCE_LINE" > "$nested_removed/scripts/cr/clear-review-marker.sh"
+check "$(run "$nested_removed" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T17 nested worktree with .git fully removed cannot fake anchor status via untracked ls-files"
 
 # 18/19. T17's fix trusts `git -C "$_ah_anchor"
 # ls-files` to answer for the ANCHOR's own index — but that call ran with
@@ -226,19 +226,19 @@ check "$(run "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n'
 # real index does not track this untracked nested copy at all.
 fake="$tmp/fake_index"; mkdir -p "$fake/.claude/worktrees/nested_removed/scripts/cr"
 git init -q "$fake"
-touch "$fake/.claude/worktrees/nested_removed/scripts/cr/clear-cr-marker.sh"
+touch "$fake/.claude/worktrees/nested_removed/scripts/cr/clear-review-marker.sh"
 env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$fake" add -A
 run_index_override() {  # <cwd> <HIMMEL_REPO> <entry path> <extra env assignment...>
     local cwd="$1" repo="$2" entry="$3"; shift 3
     (cd "$cwd" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$repo" "$@" bash "$entry" 2>/dev/null; echo "rc=$?")
 }
-check "$(run_index_override "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh "GIT_DIR=$fake/.git" | tr '\n' ' ')" "rc=2 " "T18 GIT_DIR pointed at a crafted index cannot fake the ls-files tracked-path check"
-check "$(run_index_override "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh "GIT_INDEX_FILE=$fake/.git/index" | tr '\n' ' ')" "rc=2 " "T19 GIT_INDEX_FILE alone (no GIT_DIR) cannot fake the ls-files tracked-path check"
+check "$(run_index_override "$nested_removed" "$anchor" scripts/cr/clear-review-marker.sh "GIT_DIR=$fake/.git" | tr '\n' ' ')" "rc=2 " "T18 GIT_DIR pointed at a crafted index cannot fake the ls-files tracked-path check"
+check "$(run_index_override "$nested_removed" "$anchor" scripts/cr/clear-review-marker.sh "GIT_INDEX_FILE=$fake/.git/index" | tr '\n' ' ')" "rc=2 " "T19 GIT_INDEX_FILE alone (no GIT_DIR) cannot fake the ls-files tracked-path check"
 
 # 20. A relative HIMMEL_REPO (".") is refused regardless of cwd -
 # it would resolve against wherever `-ef` runs, letting it accidentally equal
 # $_ah_root and self-anchor a tampered branch.
-check "$(run "$wt" "." scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T20 relative HIMMEL_REPO (.) refused"
+check "$(run "$wt" "." scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T20 relative HIMMEL_REPO (.) refused"
 
 # 21. HIMMEL_REPO pointed at a genuine LINKED worktree (not the
 # primary checkout) must be refused - its git-common-dir points at some other
@@ -253,9 +253,9 @@ linked="$tmp/wt_linked"
 git -C "$wt_primary" worktree add -q "$linked" -b anchor-handoff-t21 >/dev/null 2>&1
 mkdir -p "$linked/scripts/cr"
 cp "$DIR/anchor-handoff.sh" "$linked/scripts/cr/anchor-handoff.sh"
-printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:linked"\n' "$SOURCE_LINE" > "$linked/scripts/cr/clear-cr-marker.sh"
+printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:linked"\n' "$SOURCE_LINE" > "$linked/scripts/cr/clear-review-marker.sh"
 git -C "$linked" add -A
-check "$(run "$wt" "$linked" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T21 HIMMEL_REPO pointed at a linked worktree (not the primary) refused"
+check "$(run "$wt" "$linked" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T21 HIMMEL_REPO pointed at a linked worktree (not the primary) refused"
 
 # 22. A tampered helper (this tree's own copy of
 # anchor-handoff.sh differs from the anchor's) is refused before it is
@@ -263,7 +263,7 @@ check "$(run "$wt" "$linked" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2
 tampered="$tmp/tampered"
 make_tree "$tampered" tampered
 printf '\n# tampered\n' >> "$tampered/scripts/cr/anchor-handoff.sh"
-check "$(run "$tampered" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T22 tampered anchor-handoff.sh itself refused before hand-off"
+check "$(run "$tampered" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T22 tampered anchor-handoff.sh itself refused before hand-off"
 
 # 23. A tampered scripts/guardrails/lib.sh (present locally,
 # differing from the anchor's copy at the same root-relative path) is refused
@@ -274,7 +274,7 @@ mkdir -p "$depmismatch/scripts/guardrails" "$anchor/scripts/guardrails"
 printf 'echo anchor-lib\n' > "$anchor/scripts/guardrails/lib.sh"
 git -C "$anchor" add -A
 printf 'echo local-lib\n' > "$depmismatch/scripts/guardrails/lib.sh"
-check "$(run "$depmismatch" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T23 tampered scripts/guardrails/lib.sh refused before hand-off"
+check "$(run "$depmismatch" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T23 tampered scripts/guardrails/lib.sh refused before hand-off"
 
 # 24. Depth-3 twin of T22: a depth-3 entry
 # (scripts/handover/console-kit/go-stub.sh, mirroring the real go.sh, which
@@ -329,7 +329,7 @@ for entry in $(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' --
 done
 # Pin the entry set: a bare count let a new entry script slip in
 # or an old one drop out unnoticed. Adding an entry script means adding it here.
-t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/console-kit/go.sh scripts/handover/console-kit/grant-round.sh scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh scripts/handover/merge-fork-pr.sh scripts/handover/merge-on-green.sh"
+t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/clear-review-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/console-kit/go.sh scripts/handover/console-kit/grant-round.sh scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh scripts/handover/merge-fork-pr.sh scripts/handover/merge-on-green.sh"
 t25_got=$(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' -- scripts/cr scripts/handover ':!*test-*' | sort | tr '\n' ' ' | sed 's/ $//')
 check "$t25_got" "$t25_want" "T25 hand-off entry set matches the pinned list ($t25_n found)"
 

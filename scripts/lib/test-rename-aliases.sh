@@ -42,7 +42,7 @@ CADENCE_BANK_|CADENCE_USAGE_|env-prefix|value|V1|X
 BANK_LIFT_|USAGE_LIFT_|env-prefix|value|V1|X
 CODEX_BANK_|CODEX_USAGE_|env-prefix|value|V1|X
 CLAUDEX_BANK_|CLAUDEX_USAGE_|env-prefix|value|V1|X
-CR_MARKER_|REVIEW_MARKER_|env-prefix|value|V2|pending-N2892
+CR_MARKER_|REVIEW_MARKER_|env-prefix|value|V2|X
 CONSOLE_|CHIEF_|env-prefix|value|V5|pending-N2892
 HIMMEL_LEG_|HIMMEL_WORKER_SESSION_|env-prefix|value|V4a|pending-N2892
 HEADED_ARM_LEG_|HEADED_ARM_WORKER_|env-prefix|value|V4a|pending-N2892
@@ -219,6 +219,37 @@ forwards bash scripts/lib bank-monitor.sh usage-monitor.sh "$SH_STUB"
 forwards bash scripts/lib bank-attribution.sh usage-attribution.sh "$SH_STUB"
 forwards bun scripts/lanes bank-status.ts usage-status.ts "$TS_STUB"
 forwards bun scripts/lanes codex-bank-probe.ts codex-usage-probe.ts "$TS_STUB"
+
+# --- slice V2a: the review marker clearer, its old path a forwarder ---
+V2A_ROWS='CLEAR_CR_MARKER_BUDGET_WAIT|CLEAR_REVIEW_MARKER_BUDGET_WAIT|env|value|V2|X
+clear-cr-marker.sh|clear-review-marker.sh|identifier|old-to-new|V2|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V2a row '$old'" "$tabbed" "$got"
+done <<EOF
+$V2A_ROWS
+EOF
+# The clearer forwarder hands off to the anchor and runs the seam guard before
+# it forwards, so the fixture carries both beside it in the scripts/ layout.
+d="$FT/v2a"
+mkdir -p "$d/cr" "$d/lib"
+check "scripts/cr/clear-review-marker.sh exists" "yes" "$([ -f "$ROOT/scripts/cr/clear-review-marker.sh" ] && echo yes || echo no)"
+if cp "$ROOT/scripts/cr/clear-cr-marker.sh" "$ROOT/scripts/cr/anchor-handoff.sh" "$d/cr/" 2>/dev/null &&
+   cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/lib/"; then
+  printf '%s\n' "$SH_STUB" > "$d/cr/clear-review-marker.sh"
+  out="$(cd "$d" && env -u HIMMEL_REPO bash "$d/cr/clear-cr-marker.sh" 'a b' c 2> "$d/err")"
+  rc=$?
+  check "clear-cr-marker.sh forwards argv and stdout to clear-review-marker.sh" "NEW:a b|c" "$out"
+  check "clear-cr-marker.sh keeps the exit code of clear-review-marker.sh" 7 "$rc"
+  check "clear-cr-marker.sh prints one deprecation line" \
+    "clear-cr-marker.sh is deprecated: use 'clear-review-marker.sh' instead" "$(cat "$d/err")"
+  check "clear-cr-marker.sh hands off to the anchor before it forwards" yes \
+    "$(awk '/anchor-handoff\.sh/ { h = NR } /^exec / { e = NR } END { print (h && e && h < e) ? "yes" : "no" }' "$d/cr/clear-cr-marker.sh")"
+else
+  check "scripts/cr/clear-cr-marker.sh exists" "yes" "no"
+fi
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '

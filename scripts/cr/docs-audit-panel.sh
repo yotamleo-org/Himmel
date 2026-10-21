@@ -99,7 +99,7 @@ done
 head="$HEAD_ARG"
 branch="$BRANCH_ARG"
 
-# Same truthiness as clear-cr-marker.sh gate 3b. Process env wins; .env is
+# Same truthiness as clear-review-marker.sh gate 3b. Process env wins; .env is
 # loaded from the primary checkout by load-dotenv.sh, same convention as the
 # full lane's CR_PROFILE bridge.
 # shellcheck source=../lib/load-dotenv.sh

@@ -31,14 +31,14 @@ cp "$HERE/base-resolver.sh" "$fx/scripts/cr/base-resolver.sh"
 cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
 cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
-cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
 cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
 # Every chokepoint fails closed without its seam-guard lib.
 cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guard.sh"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
 cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
-chmod +x "$fx/scripts/cr/panel-first-pass.sh" "$fx/scripts/cr/ledger-append.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+chmod +x "$fx/scripts/cr/panel-first-pass.sh" "$fx/scripts/cr/ledger-append.sh" "$fx/scripts/cr/clear-review-marker.sh"
 SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 
 PANEL_CALLS="$tmp/panel-calls"
@@ -154,14 +154,14 @@ PATH="$tmp/bin:$PATH"
 export PATH
 
 install_clear_stub() {
-    cat > "$fx/scripts/cr/clear-cr-marker.sh" <<'STUB'
+    cat > "$fx/scripts/cr/clear-review-marker.sh" <<'STUB'
 #!/usr/bin/env bash
 branch="$1"
 printf '%s\n' "$branch" >> "$CLEAR_CALLS"
 rm -f "$(git rev-parse --git-common-dir)/cr-pending/$branch"
 printf 'clear-cr-marker: CR clean — marker cleared for %s.\n' "$branch"
 STUB
-    chmod +x "$fx/scripts/cr/clear-cr-marker.sh"
+    chmod +x "$fx/scripts/cr/clear-review-marker.sh"
 }
 
 write_real_marker() {
@@ -487,13 +487,13 @@ printf '%s\n' "SWEEP [stub-1@$cap_r3_head] class=stub :: single-site search=git 
 fix_commit fixpath
 git -C "$repo" push -q -u origin fixpath
 write_real_marker fixpath "$cap_fix_head"
-(cd "$repo" && bash "$fx/scripts/cr/clear-cr-marker.sh" fixpath >"$tmp/fixpath-clear1.out" 2>&1); fixpath_clear1_rc=$?
+(cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" fixpath >"$tmp/fixpath-clear1.out" 2>&1); fixpath_clear1_rc=$?
 if [ "$fixpath_clear1_rc" -ne 0 ]; then pass "a fix after round 3 cannot clear before the delta round"; else fail "a fix after round 3 cannot clear before the delta round"; fi
 if [ -e "$git_dir/cr-pending/fixpath" ]; then pass "the unreviewed fix head keeps its marker"; else fail "the unreviewed fix head keeps its marker"; fi
 fixpath_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch fixpath 2>"$tmp/fixpath-delta.err")"; fixpath_rc=$?
 assert_eq "$fixpath_rc" "0" "a fix to a round-3 finding gets the one delta round"
 assert_has "$fixpath_out" "pr-check: delta round 4 on fixpath (from $cap_r3_head)" "fix delta round names its scope"
-(cd "$repo" && bash "$fx/scripts/cr/clear-cr-marker.sh" fixpath >"$tmp/fixpath-clear2.out" 2>&1); fixpath_clear2_rc=$?
+(cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" fixpath >"$tmp/fixpath-clear2.out" 2>&1); fixpath_clear2_rc=$?
 assert_eq "$fixpath_clear2_rc" "0" "the fix head clears after the one delta round"
 if [ -e "$git_dir/cr-pending/fixpath" ]; then fail "the delta round's rows clear the marker"; else pass "the delta round's rows clear the marker"; fi
 
@@ -979,7 +979,7 @@ assert_has "$(cat "$tmp/defer-polish.err")" "explicit fu_class amend" "polish Im
 if [ -e "$git_dir/cr-pending/polishimp" ]; then pass "polish Important leaves the marker pending"; else fail "polish Important leaves the marker pending"; fi
 
 # The delta Important deferral clears the new head through the
-# REAL clear-cr-marker.sh, not the stub installed below.
+# REAL clear-review-marker.sh, not the stub installed below.
 three_rounds important suggestion
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch important --head "$cap_r3_head" --id stub-1 --set verdict=fixed \
@@ -1238,7 +1238,7 @@ if [ -e "$bogus_ledger" ]; then fail "ambient CR_LEDGER redirected the amend wri
 assert_has "$(cat "$promote_ledger" 2>/dev/null)" '"finding_id":"find-j"' "find-j's fixed amend lands in the real ledger promote evaluated"
 
 # review-round.sh's own amendsByKey gains the branch dimension,
-# mirroring ledger-append.sh / clear-cr-marker.sh / handover-bridge.sh.
+# mirroring ledger-append.sh / clear-review-marker.sh / handover-bridge.sh.
 # Two branches can legitimately share a head, so
 # an amend recorded while judging one branch must never leak into another
 # branch's promote decision.
@@ -2539,7 +2539,7 @@ assert_has "$cired_out" "CI-red cap" "the textconv-hidden delta is measured and 
 # A signed judge GO at the exact head stands in for the review of a
 # post-cap delta. RED on main: the verb does not exist, so every clear is refused.
 printf 'class: other\nclass-reason: judge-go fixture\n\nreviewed the delta\n' > "$jev/judge-evidence.md"
-cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
+cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
 # The promote negative control above left an unparseable row in the shared ledger.
 grep -v '^not-json-at-all$' "$git_dir/cr-critic-scores.jsonl" > "$tmp/jgo-ledger.jsonl"
 cp "$tmp/jgo-ledger.jsonl" "$git_dir/cr-critic-scores.jsonl"
@@ -2553,7 +2553,7 @@ jgo_setup() {
     git -C "$repo" push -q -u origin "$1"
     write_real_marker "$1" "$jgo_head"
 }
-jgo_clear() { (cd "$repo" && bash "$fx/scripts/cr/clear-cr-marker.sh" "$1" >"$tmp/$1-clear.out" 2>&1); }
+jgo_clear() { (cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" "$1" >"$tmp/$1-clear.out" 2>&1); }
 jgo_verb() { (cd "$repo" && bash "$fx/scripts/cr/review-round.sh" judge-go --branch "$1" --head "$2" 2>&1); }
 
 jgo_setup jg63a

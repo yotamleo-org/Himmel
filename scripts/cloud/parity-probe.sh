@@ -162,7 +162,7 @@ if [ -f "$H/check-commit-msg.sh" ]; then
     row "attest:commit-msg-refuses-no-ticket" "ERR mktemp failed"
   fi
 fi
-row cr-ledger-scripts "$([ -f "$ROOT/scripts/cr/clear-cr-marker.sh" ] && echo present || echo MISSING)"
+row cr-ledger-scripts "$([ -f "$ROOT/scripts/cr/clear-review-marker.sh" ] && echo present || echo MISSING)"
 row pr-check-skill "$([ -e "$ROOT/.claude/skills/pr-check" ] || [ -e "$ROOT/.claude/commands/pr-check.md" ] || [ -e "$ROOT/marketplace/plugins/himmel-ops/skills/pr-check" ] && echo present || echo not-found)"
 
 # --------------------------------------------------------------------- tools

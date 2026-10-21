@@ -4436,7 +4436,7 @@ assert_contains "2128b WARN fires when CR_REQUIRE_CROSS_MODEL is on and CR_FLOOR
 
 # (b3) CR_FLOOR_FALLBACK set to an UNRECOGNIZED value ("claude_only" typo,
 # underscore not hyphen) -> WARN still fires. It never actually enables the
-# fallback (clear-cr-marker.sh only recognizes the exact "claude-only"
+# fallback (clear-review-marker.sh only recognizes the exact "claude-only"
 # string), so production SHOULD warn here too.
 printf 'CR_REQUIRE_CROSS_MODEL=1\nCR_FLOOR_FALLBACK=claude_only\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B3=$(make_handover "$WORK_REPO")

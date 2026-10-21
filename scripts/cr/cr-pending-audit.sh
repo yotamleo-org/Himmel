@@ -18,7 +18,7 @@
 # a refusal from the named remedy is a narrative, not a fact.
 #
 # READ-ONLY + ADVISORY by design. It never clears a marker and never certifies
-# a review — clear-cr-marker.sh keeps that authority, with its fail-closed
+# a review — clear-review-marker.sh keeps that authority, with its fail-closed
 # ledger read. That split is why this audit may use the cheaper prefix-based
 # head match and skip malformed ledger lines: its failure direction is
 # OVER-reporting NEEDS-ACTION, whose remedy is running the authoritative gate.
@@ -42,7 +42,7 @@
 #   findings-at-tip   blocking finding(s) recorded at the tip
 #                     -> address or defer them, re-run /pr-check
 #   gates-may-pass    review evidence exists, nothing blocking visible
-#                     -> run scripts/cr/clear-cr-marker.sh <branch> (it may
+#                     -> run scripts/cr/clear-review-marker.sh <branch> (it may
 #                        clear right now; it is also the authoritative check)
 #   unreadable-marker marker file exists but its SHA cannot be read
 #                     -> inspect the marker file
@@ -188,7 +188,7 @@ audit_branch() {
     counts=$(ledger_counts "$tip")
     responders="${counts%% *}"; blocking="${counts##* }"
     if [ "$responders" = "?" ]; then
-        echo "cr-pending-audit: branch=$branch class=NEEDS-ACTION reason=ledger-unreadable tip=${tip:0:8} remedy=\"run scripts/cr/clear-cr-marker.sh $branch from the worktree where $branch is checked out, for the authoritative verdict (node unavailable here)\""
+        echo "cr-pending-audit: branch=$branch class=NEEDS-ACTION reason=ledger-unreadable tip=${tip:0:8} remedy=\"run scripts/cr/clear-review-marker.sh $branch from the worktree where $branch is checked out, for the authoritative verdict (node unavailable here)\""
         needs_action=$((needs_action+1))
         return 0
     fi
@@ -202,7 +202,7 @@ audit_branch() {
         needs_action=$((needs_action+1))
         return 0
     fi
-    echo "cr-pending-audit: branch=$branch class=NEEDS-ACTION reason=gates-may-pass tip=${tip:0:8} remedy=\"run scripts/cr/clear-cr-marker.sh $branch from the worktree where $branch is checked out — evidence looks clean, the marker may clear right now\""
+    echo "cr-pending-audit: branch=$branch class=NEEDS-ACTION reason=gates-may-pass tip=${tip:0:8} remedy=\"run scripts/cr/clear-review-marker.sh $branch from the worktree where $branch is checked out — evidence looks clean, the marker may clear right now\""
     needs_action=$((needs_action+1))
 }
 

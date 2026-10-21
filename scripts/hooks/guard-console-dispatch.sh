@@ -154,7 +154,7 @@ grepq "$text" -Eqi '\.claude/worktrees|clean-garden\.sh|git worktree|/worktree|c
 pr_open_match=0
 grepq "$text" -Eqi 'gh pr create|open (the |a )pr([^[:alnum:]_]|$)|gh pr edit' && pr_open_match=1
 cr_gate_match=0
-grepq "$text" -Eqi '/pr-check|pr-check|cr-clean|clear-cr-marker|coderabbit' && cr_gate_match=1
+grepq "$text" -Eqi '/pr-check|pr-check|cr-clean|clear-cr-marker|clear-review-marker|coderabbit' && cr_gate_match=1
 family_count=$((worktree_match + pr_open_match + cr_gate_match))
 
 # ---- console detection (see header) ----

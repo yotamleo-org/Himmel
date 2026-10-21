@@ -844,7 +844,7 @@ anc_got=$(printf '%s' "$anc_out" | jq -r '[.files.base, (.panel[] | select(.slug
 if [ "$anc_got" = "$anc/scripts/cr/critics.json@main hard" ]; then pass=$((pass+1)); echo "ok   base-critics-json-anchored-to-main"
 else fail=$((fail+1)); echo "FAIL base-critics-json-anchored-to-main (got [$anc_got]; out: $anc_out)"; fi
 # A trivial-descendant carry row reads the reviewed head's critic states. As
-# clear-cr-marker.sh writes it (#3311): ONE row, model claude, for the whole
+# clear-review-marker.sh writes it (#3311): ONE row, model claude, for the whole
 # head; codex has no row of its own at the tip.
 led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (HIMMEL-5856)')" \
     "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 codex ok)" \

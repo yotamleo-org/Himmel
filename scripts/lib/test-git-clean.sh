@@ -54,7 +54,7 @@ for v in $VARS; do
     fi
 done
 # GIT_NO_REPLACE_OBJECTS is KEPT on purpose (git lists it as
-# a local var but it redirects nothing — it hardens: clear-cr-marker.sh sets it
+# a local var but it redirects nothing — it hardens: clear-review-marker.sh sets it
 # itself). A helper that "completed" the set by scrubbing it would
 # silently drop that hardening for every caller.
 if grep -q '^GIT_NO_REPLACE_OBJECTS=1$' "$STUB_DIR/sh-clean.out"; then

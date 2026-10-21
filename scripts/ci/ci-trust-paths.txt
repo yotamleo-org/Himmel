@@ -27,6 +27,7 @@
 ^scripts/check-plugin-drift\.sh$
 ^scripts/cr/anchor-handoff\.sh$
 ^scripts/cr/clear-cr-marker\.sh$
+^scripts/cr/clear-review-marker\.sh$
 ^scripts/cr/ledger-amend-auth\.js$
 ^scripts/hooks/check-commit-msg\.sh$
 

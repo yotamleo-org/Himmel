@@ -93,7 +93,7 @@ export function extractTicketKey(branch: string | undefined, name: string | unde
 // by their first 7 hex chars. Effective finding state includes append-only amend
 // records, matching the clearance gate's verdict semantics. Malformed lines are
 // skipped: this is a round COUNTER feeding a refusal-only workflow guard, not the
-// clearance gate (clear-cr-marker.sh keeps the fail-closed ledger read).
+// clearance gate (clear-review-marker.sh keeps the fail-closed ledger read).
 export function countReviewedRounds(ledgerLines: string[], ticketKey: string, activeBranch: string): { rounds: number; heads: string[] } {
   type LedgerRecord = {
     kind?: string; branch?: unknown; head?: unknown; target_head?: unknown;
@@ -233,7 +233,7 @@ export function hasSubstantiveInvariant(task: string): boolean {
 
 // Read the CR ledger for the repo at cwd. FAIL-OPEN: not a repo / no ledger /
 // unreadable -> [] (see the header). The ledger path is the same fixed
-// <git-common-dir>/cr-critic-scores.jsonl clear-cr-marker.sh reads — no
+// <git-common-dir>/cr-critic-scores.jsonl clear-review-marker.sh reads — no
 // CR_LEDGER seam here either, but for the opposite reason: this guard only
 // REFUSES, so a caller-pointed ledger could only make it stricter; the fixed
 // path is simply the one that holds the real history.

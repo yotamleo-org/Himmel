@@ -12,7 +12,7 @@
 # CLEAN panel at the PR's CURRENT head + 0 unresolved threads carries the gate.
 #
 # This lib is the ONE reader for that evidence. The verdict it derives MIRRORS
-# scripts/cr/clear-cr-marker.sh gates 3-4 exactly — the same amend application,
+# scripts/cr/clear-review-marker.sh gates 3-4 exactly — the same amend application,
 # the same atHead resolution (short SHAs resolved through git, never prefix
 # match — the prefix step only SKIPS heads that cannot match,
 # it never accepts one), the same responder floor (>=1 `avail ... status=ok`), and the same
@@ -42,7 +42,7 @@
 # "evidence absent -> current verdict stands": for
 #          check-ci that is exit 2, for cr-merge-gate it is rc 2 (block).
 #
-# GATE INTEGRITY (mirrors clear-cr-marker.sh / merge-on-green.sh): the ledger
+# GATE INTEGRITY (mirrors clear-review-marker.sh / merge-on-green.sh): the ledger
 # path is FIXED at `<git-common-dir>/cr-critic-scores.jsonl` and is NOT
 # environment-overridable here. ledger-append.sh honors a CR_LEDGER override for
 # its WRITES, but this GATE must never read a caller-pointed ledger — that would
@@ -70,7 +70,7 @@ cr_ledger_carries_gate() {
     # node reads + evaluates the ledger. Missing => cannot read => not carried.
     command -v node >/dev/null 2>&1 || { printf 'no-node\n'; return 1; }
 
-    # The evaluation mirrors clear-cr-marker.sh gates 3-4 verbatim (amend
+    # The evaluation mirrors clear-review-marker.sh gates 3-4 verbatim (amend
     # application, atHead resolution, responder floor, blocking definition). The
     # block is single-quoted for the shell, so NO apostrophes / backticks /
     # dollar-braces may appear inside it (same constraint as clear-cr-marker's
@@ -116,7 +116,7 @@ cr_ledger_carries_gate() {
           // the resolve path, where prefix collisions are the actual risk.
           if (e.FULL_SHA === h) return true;
           if (!isHex(h)) return false;
-          // PREFIX PRE-FILTER, identical to clear-cr-marker.sh (see
+          // PREFIX PRE-FILTER, identical to clear-review-marker.sh (see
           // the long note there). git resolves an abbreviation by object-name
           // prefix, so resolve(h) can only return FULL_SHA when h is a prefix of
           // it; a non-prefix head needs no git call. Performance only - the

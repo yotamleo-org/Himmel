@@ -35,7 +35,7 @@ const ID_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 // suite basename can absorb a different executed program plus a fake tail.
 // cr-scores.sh (relative form, args vary per call site — see
 // docs/configuration.md, minerva SKILL.md) joins the wildcard-tail group.
-const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/console-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
+const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/console-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|clear-review-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
 // The /pr-check external-critic steps that take no arguments (or
 // exactly `--diff`) are exact literals — no `:*` tail, so nothing can be
 // appended to them. Step 0's himmel-lane entry (pr-check-context) hands a
@@ -575,7 +575,7 @@ function listingSettings(registry, names, enabledPlugins, opts) {
 
 // The permission matcher compares literal command
 // text, so a gate script typed with the anchor's ABSOLUTE path (the
-// run-from-the-anchor spelling — merge-on-green.sh, clear-cr-marker.sh per
+// run-from-the-anchor spelling — merge-on-green.sh, clear-review-marker.sh per
 // guard-pr-check-literal.sh's own printed remedy)
 // matches neither the relative rule nor the
 // `$HIMMEL_REPO` one and falls to the auto-mode classifier. This validates the

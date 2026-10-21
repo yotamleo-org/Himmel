@@ -58,6 +58,8 @@ allow() { assert_rc "$1" 0 "$(j_bash "$2")"; }
 # --- DENY: the shapes that lose the gate's exit code -----------------------
 deny "clear-cr-marker piped to tail" \
      'bash scripts/cr/clear-cr-marker.sh x | tail -20'
+deny "clear-review-marker piped to tail" \
+     'bash scripts/cr/clear-review-marker.sh x | tail -20'
 deny "a scripts/*/test-*.sh suite piped to head with 2>&1" \
      'bash scripts/handover/test-merge-on-green.sh 2>&1 | head -50'
 # The leg-12 incident verbatim — the shape a bolded, worked-example brief failed

@@ -590,7 +590,7 @@ check "  ...it resolves to the finding currently at that head" "$(L="$RK2" node 
 
 # A unique matching finding row with an
 # EMPTY (legacy/branch-less) branch must resolve e.BRANCH="" (inherit the
-# finding's own scope), NOT the caller's checkout branch. clear-cr-marker.sh
+# finding's own scope), NOT the caller's checkout branch. clear-review-marker.sh
 # and handover-bridge.sh key amendSetFor on the TARGET FINDING ROW's own
 # branch (o.branch||"") - for a branch-less finding that collapses the
 # "scoped" and "legacy" lookup keys to the same "" bucket, so an amend

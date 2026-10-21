@@ -716,7 +716,7 @@ check "HIMMEL-1871 round 7: refused runs append NOTHING to the ledger but score 
 check "HIMMEL-1932: the refusal is recorded as exactly one avail unavailable certify-refused row" \
     "$(grep -c '"kind":"avail".*"status":"unavailable".*"reason":"certify-refused"' "$DIGF_LEDGER" || true)" "1"
 # CR_LEDGER pointed the run at an override ledger, but
-# clear-cr-marker.sh reads only the FIXED <git-common-dir> one, so the refusal
+# clear-review-marker.sh reads only the FIXED <git-common-dir> one, so the refusal
 # must land there too or the gate never sees it.
 check "HIMMEL-5110: the refusal is also recorded on the fixed git-common-dir ledger" \
     "$(grep -c '"kind":"avail".*"status":"unavailable".*"reason":"certify-refused"' "$DIGF_REPO/.git/cr-critic-scores.jsonl" 2>/dev/null || true)" "1"
@@ -1517,7 +1517,7 @@ check "F: kimi never actually consulted (no ok line)" \
 
 # Test FL: the tier-excluded critic (kimi,
 # tier=paid, deselected by the default free filter) lands a REAL ledger row
-# with a NON-exhaustion reason, so clear-cr-marker.sh's
+# with a NON-exhaustion reason, so clear-review-marker.sh's
 # CR_FLOOR_FALLBACK=claude-only exhaustion check can see it was deselected --
 # not silently absent, which looked identical to "never configured" before
 # this ticket. The two ACTUAL responders (qwen3coder, gptoss) are unaffected:

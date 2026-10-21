@@ -237,7 +237,7 @@ if :; then
 fi
 
 # Registered gate paths, anchored: the token must END with one, at a `/` boundary.
-GATE_RE='(^|/)scripts/(cr/clear-cr-marker\.sh|ci/run-shell-tests\.sh|check-ci\.sh|handover/merge-on-green\.sh|handover/pr-merge\.sh|[A-Za-z0-9._-]+/test-[A-Za-z0-9._-]*\.sh)$'
+GATE_RE='(^|/)scripts/(cr/clear-cr-marker\.sh|cr/clear-review-marker\.sh|ci/run-shell-tests\.sh|check-ci\.sh|handover/merge-on-green\.sh|handover/pr-merge\.sh|[A-Za-z0-9._-]+/test-[A-Za-z0-9._-]*\.sh)$'
 # invoked_program's env case returns this instead of a real
 # program name when it sees -S/--split-string — see that case's comment.
 # scan_line treats it as a gate match without consulting GATE_RE.

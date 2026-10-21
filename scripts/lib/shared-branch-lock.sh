@@ -55,7 +55,7 @@
 # NAMESPACE: <namespace> is "himmel-shared-branch" unless
 # SHARED_BRANCH_LOCK_NS names a different single path segment. A second
 # concern that needs branch-scoped mutual exclusion (the CR marker lock, which
-# serializes clear-cr-marker.sh against the pre-push marker writer) reuses this
+# serializes clear-review-marker.sh against the pre-push marker writer) reuses this
 # primitive under its OWN namespace instead of duplicating a lock library --
 # sharing one namespace would make an offload lane holding the shared-branch
 # COMMIT lock block an unrelated marker write for the whole wait.
@@ -274,7 +274,7 @@ shared_branch_lock_acquire() {
 # acquire it. This cannot be closed at this layer; it is closed at the layer
 # above, by the rule every caller follows: A HOLDER RE-VERIFIES THAT IT STILL
 # OWNS THE LOCK IMMEDIATELY BEFORE ITS DECISIVE ACTION and aborts if it does
-# not (clear-cr-marker.sh before the unlink, check-cr-before-push.sh around
+# not (clear-review-marker.sh before the unlink, check-cr-before-push.sh around
 # the marker write). A displaced holder therefore refuses instead of acting,
 # so "displaced" degrades to a refused operation, never to two writers
 # proceeding. Every path in this function fails toward "keep waiting".

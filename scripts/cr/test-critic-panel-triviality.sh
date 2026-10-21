@@ -254,7 +254,7 @@ check "6: dropped critic never actually consulted (no ok line)" \
 # 6c: the stderr diagnostic above is not
 # proof a REAL ledger row landed -- prove it against the real
 # ledger-append.sh (this file otherwise stubs CRITIC_LEDGER_APPEND to a
-# no-op), the same way clear-cr-marker.sh's CR_FLOOR_FALLBACK=claude-only
+# no-op), the same way clear-review-marker.sh's CR_FLOOR_FALLBACK=claude-only
 # check will read it: a non-exhaustion reason on a genuine avail row.
 LEDGER6="$tmp/ledger6.jsonl"
 : > "$LEDGER6"

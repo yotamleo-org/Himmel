@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // claude-floor.mjs — the claude-floor review's snapshot + provenance stamp
 // One file, so the signer (claude-floor-review.sh)
-// and the verifier (clear-cr-marker.sh floor_provenance_ok) share ONE
+// and the verifier (clear-review-marker.sh floor_provenance_ok) share ONE
 // definition of the signed payload.
 //
 //   snapshot <head> <dest>  materialise every tracked file at <head> from its

@@ -44,6 +44,7 @@ const GATE_RULES = [
   'Bash(bash scripts/handover/console-kit/inbox-send.sh:*)',
   'Bash(bash scripts/cr/write-verdicts.sh:*)',
   'Bash(bash scripts/cr/clear-cr-marker.sh:*)',
+  'Bash(bash scripts/cr/clear-review-marker.sh:*)',
   'Bash(bash scripts/cr/panel-first-pass.sh:*)',
   // Operator ruling 2026-09-21: legs may send review diffs to Codex; these are
   // the /pr-check external-critic steps. Exact literals except
@@ -1470,6 +1471,7 @@ const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/handover/console-kit/inbox-send.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/write-verdicts.sh:*)',
   MARKER_ANCHOR_RULE,
+  'Bash(bash /home/u/himmel/scripts/cr/clear-review-marker.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/panel-first-pass.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/docs-audit-panel.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/ledger-append.sh:*)',

@@ -204,7 +204,7 @@ LAST_GH_LOG=""; LAST_AUDIT=""; LAST_CLEAR_LOG=""; LAST_ERR=""; LAST_JIRA_LOG=""
 # mog_build_fixture <tmpdir>
 #
 # Build the scratch tree run_mog executes merge-on-green.sh in: copies of the
-# script + its lib siblings, a stub check-ci.sh, a stub clear-cr-marker.sh,
+# script + its lib siblings, a stub check-ci.sh, a stub clear-review-marker.sh,
 # and a stub `gh` FIRST on PATH. Pulled out of run_mog so a
 # RED control can build the SAME fixture around a MUTANT copy of
 # merge-on-green.sh and run it directly through red_control_run — going
@@ -337,7 +337,7 @@ STUBCI
     # Stub the CR-marker chokepoint at ITS fixed sibling path,
     # exactly like check-ci above — the wrapper has no env seam for it either.
     # The stub records its argv, so a case can prove the merge path went THROUGH
-    # clear-cr-marker.sh (never a raw `rm`) and with which branch.
+    # clear-review-marker.sh (never a raw `rm`) and with which branch.
     if [ "${STUB_NO_CLEARER:-0}" != "1" ]; then
         mkdir -p "$tmp/scripts/cr"
         # SC2016 is the point: "$*" / "$CLEAR_LOG" must reach the stub FILE
@@ -349,8 +349,8 @@ STUBCI
         # branch other than the one checked out where it runs, so the wrapper
         # must run it from that branch's own worktree.
         printf '#!/usr/bin/env bash\necho "clear-cr-marker $*" >> "$GH_LOG"\necho "$*" >> "$CLEAR_LOG"\npwd -P >> "$CLEAR_LOG.cwd"\nexit %s\n' \
-            "${STUB_CLEAR_RC:-0}" > "$tmp/scripts/cr/clear-cr-marker.sh"
-        chmod +x "$tmp/scripts/cr/clear-cr-marker.sh"
+            "${STUB_CLEAR_RC:-0}" > "$tmp/scripts/cr/clear-review-marker.sh"
+        chmod +x "$tmp/scripts/cr/clear-review-marker.sh"
     fi
 
     # Stub `gh`, FIRST on PATH (no GH_CMD seam). FAILS CLOSED: an
@@ -2583,7 +2583,7 @@ if prune_branch_gone "$P_REPO"; then fail "11k3: branch deleted despite a gutted
 # A merge used to leave the branch's cr-pending marker behind; the marker lives
 # in the SHARED git-common-dir while the pr-create guard resolves the branch
 # from the session cwd, so it then blocked `gh pr create` on UNRELATED branches.
-# The merge path must clear it THROUGH clear-cr-marker.sh (never a raw rm, which
+# The merge path must clear it THROUGH clear-review-marker.sh (never a raw rm, which
 # is the self-declare-clean pattern the clearer exists to stop) and record the
 # outcome on the MERGED audit line. Same prune fixture — a real throwaway repo.
 mk_marker() {
@@ -2597,7 +2597,7 @@ mk_marker() {
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 mk_marker "$P_REPO" "feat/mog-prune"
 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-    run_mog 0 "marker present → cleared via clear-cr-marker.sh, exit 0"
+    run_mog 0 "marker present → cleared via clear-review-marker.sh, exit 0"
 assert_clear_has "11L: the chokepoint was invoked for the merged branch" "feat/mog-prune"
 assert_audit_has "11L: audit records the marker outcome" "marker=cleared"
 # The clear must run BEFORE the merge, the one thing that keeps this feature
@@ -2613,7 +2613,7 @@ else
     fail "11L: the marker clear must precede the merge (clear@${clear_ln:-none} merge@${merge_ln:-none})"
 fi
 # 11L-wt. The run starts in the PRIMARY (on main) while the branch
-# lives in its own worktree. clear-cr-marker.sh refuses a branch other than the
+# lives in its own worktree. clear-review-marker.sh refuses a branch other than the
 # one checked out in its cwd (exit 12), so the clear must run from P_WT.
 # Resolved through the parent: the post-merge prune has removed P_WT itself.
 wt_real="$(cd "$(dirname "$P_WT")" && pwd -P)/$(basename "$P_WT")"
@@ -2630,7 +2630,7 @@ fi
 mk_prune_fixture_quoted; P_REPO="$QP_REPO"; P_WT="$QP_WT"; P_SHA="$QP_SHA"
 mk_marker "$P_REPO" "feat/mog-prune-q"
 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune-q" \
-    run_mog 0 "11L-q: quoted worktree path -> marker still cleared via clear-cr-marker.sh"
+    run_mog 0 "11L-q: quoted worktree path -> marker still cleared via clear-review-marker.sh"
 assert_clear_has "11L-q: the chokepoint was invoked for the merged branch" "feat/mog-prune-q"
 assert_audit_has "11L-q: audit records the marker outcome" "marker=cleared"
 
@@ -4177,13 +4177,13 @@ if mog3485_a=$(mog3485_anchor 0); then
     read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
     mk_marker "$P_REPO" "feat/mog-prune"
     MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-        MOG_HIMMEL_REPO="$mog3485_a" MOG_POISON=cr/clear-cr-marker.sh STUB_CI_RC=1 \
-        run_mog 0 "3485: a branch-side cr/clear-cr-marker.sh is never executed (anchor green → 0)"
+        MOG_HIMMEL_REPO="$mog3485_a" MOG_POISON=cr/clear-review-marker.sh STUB_CI_RC=1 \
+        run_mog 0 "3485: a branch-side cr/clear-review-marker.sh is never executed (anchor green → 0)"
     assert_audit_has "3485: the anchor's clearer cleared the marker" "marker=cleared"
-    mog3485_no_poison "3485: cr/clear-cr-marker.sh"
+    mog3485_no_poison "3485: cr/clear-review-marker.sh"
     rm -rf "$mog3485_a"
 else
-    fail "3485 setup: no anchor sandbox for cr/clear-cr-marker.sh"
+    fail "3485 setup: no anchor sandbox for cr/clear-review-marker.sh"
 fi
 
 # HIMMEL_REPO is a registered chokepoint seam: a per-call prefix that re-points

@@ -10,6 +10,7 @@
     "Bash(bash scripts/handover/console-kit/inbox-send.sh:*)",
     "Bash(bash scripts/cr/write-verdicts.sh:*)",
     "Bash(bash scripts/cr/clear-cr-marker.sh:*)",
+    "Bash(bash scripts/cr/clear-review-marker.sh:*)",
     "Bash(bash scripts/cr/panel-first-pass.sh:*)",
     "Bash(bash scripts/cr/docs-audit-panel.sh:*)",
     "Bash(bash scripts/cr/doc-freshness-advisory.sh)",

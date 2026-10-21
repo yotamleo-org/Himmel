@@ -255,7 +255,7 @@ PINABORTRETRY
             if [ "$panel_rc" -eq 6 ]; then
                 # exit 6 is a deliberate fail-closed refusal, not
                 # a failed panel. The panel recorded certify-refused on the
-                # ledger, so clear-cr-marker.sh holds this SHA closed. If that
+                # ledger, so clear-review-marker.sh holds this SHA closed. If that
                 # write failed there is nothing to hold, so ABORT instead.
                 case "$panel_avail_lines" in
                 *"could not record certify-refused"*)

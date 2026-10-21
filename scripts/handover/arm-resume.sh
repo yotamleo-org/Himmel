@@ -1737,7 +1737,7 @@ fi
 # non-Claude critic leaves clear-cr-marker gate 3b with no escape: it refuses
 # every subsequent branch until a human resets the bank or sets
 # CR_FLOOR_FALLBACK, which PARKS the whole armed chain rather than just the one
-# blocked item. Same load_dotenv bridge clear-cr-marker.sh uses (process env
+# blocked item. Same load_dotenv bridge clear-review-marker.sh uses (process env
 # wins), pinned to the PRIMARY checkout's .env the same way.
 if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # shellcheck disable=SC1091
@@ -1753,7 +1753,7 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
         case "$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
             1|true|on|yes)
                 # key on the RECOGNIZED value, not mere
-                # non-emptiness -- clear-cr-marker.sh only ever treats an exact
+                # non-emptiness -- clear-review-marker.sh only ever treats an exact
                 # (trim+lowercase) "claude-only" as the fallback; any other
                 # value (a typo like "claude_only", or unset) never actually
                 # enables it, so the operator must still see this WARN.

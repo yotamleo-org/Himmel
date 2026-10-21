@@ -183,7 +183,7 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #   unavailable    any other refusal or failure; detail = its reason
 #   not-yet-run    no avail row at the head
 # A row naming `trivial-descendant of reviewed head <sha>` carries the whole
-# head (clear-cr-marker.sh writes it once, as model claude): a slug with no
+# head (clear-review-marker.sh writes it once, as model claude): a slug with no
 # row of its own at <head> is read at the reviewed head instead, and a
 # finding posted at <head> itself still counts. Heads, amends and tracked deferrals
 # match as in cr-ledger-evidence.sh; a malformed line is a degraded read,

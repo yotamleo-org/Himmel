@@ -82,7 +82,7 @@
 # `prune=<outcome> branch=<outcome>` and NEVER changes the exit code.
 #
 # It also clears the branch's pending CR marker through the sanctioned
-# chokepoint `scripts/cr/clear-cr-marker.sh` — never a raw `rm`,
+# chokepoint `scripts/cr/clear-review-marker.sh` — never a raw `rm`,
 # so the ledger/CI gates still decide. Timing is forced: the clear runs right
 # after the check-ci gate and BEFORE the merge, because after a squash merge the
 # evidence the chokepoint needs is gone — GitHub's deleteBranchOnMerge removes
@@ -252,7 +252,7 @@
 # a sibling resolution would let the worktree copy of those
 # files decide the merge. This closes the MALICIOUS-branch half: every
 # other helper (cr-available.sh, merge-block-alert.sh, worktree-inuse.sh,
-# clear-cr-marker.sh) is sourced or executed from the anchor too, and only
+# clear-review-marker.sh) is sourced or executed from the anchor too, and only
 # after it resolved — nothing of this script's own tree is read, so the entry
 # script is the only branch-controllable byte left. HIMMEL_REPO is a registered
 # chokepoint seam (scripts/chokepoints.json), so a per-call `HIMMEL_REPO=. bash …`
@@ -1397,7 +1397,7 @@ fi
 # stale marker then HARD-BLOCKED `gh pr create` on unrelated branches (19 such
 # markers accumulated in this checkout by 2026-08-20).
 #
-# Always through clear-cr-marker.sh, never a raw `rm`: the ledger
+# Always through clear-review-marker.sh, never a raw `rm`: the ledger
 # + CI gates must still decide, and a bare `rm` is the self-declare-clean pattern
 # the auto-mode classifier flags. Ordering: HERE — after the green gate, before
 # the merge — not after it. Post-merge the chokepoint cannot pass at all: the
@@ -1421,16 +1421,16 @@ clear_cr_marker_for_branch() {
     # No marker => nothing to clear. Checked here rather than left to the
     # chokepoint's own no-op so the common case does not pay for its gates
     # (which include a second check-ci watch). Reading the path is not clearing
-    # it — the delete still only ever happens inside clear-cr-marker.sh.
+    # it — the delete still only ever happens inside clear-review-marker.sh.
     if [ ! -f "$common/cr-pending/$branch" ]; then MARKER_RESULT="absent"; return 0; fi
 
-    local clearer="$himmel_repo/scripts/cr/clear-cr-marker.sh"
+    local clearer="$himmel_repo/scripts/cr/clear-review-marker.sh"
     if [ ! -f "$clearer" ]; then
         MARKER_RESULT="no-clearer"
-        echo "merge-on-green: clear-cr-marker.sh not found at $clearer — the CR marker for '$branch' stays pending." >&2
+        echo "merge-on-green: clear-review-marker.sh not found at $clearer — the CR marker for '$branch' stays pending." >&2
         return 0
     fi
-    # clear-cr-marker.sh refuses a branch other than the one checked out in its
+    # clear-review-marker.sh refuses a branch other than the one checked out in its
     # cwd, and this script usually runs from the primary. Run it
     # from the worktree that has $branch checked out; with none, fail loud.
     # -z: `worktree list --porcelain` prints a path RAW, unquoted, so a path
@@ -1446,7 +1446,7 @@ clear_cr_marker_for_branch() {
     done < <(git worktree list --porcelain -z 2>/dev/null)
     if [ -z "$wt" ]; then
         MARKER_RESULT="no-worktree"
-        echo "merge-on-green: '$branch' is checked out in no worktree, so its CR marker in $common/cr-pending stays pending — run scripts/cr/clear-cr-marker.sh '$branch' from the worktree where $branch is checked out (HIMMEL-3495)." >&2
+        echo "merge-on-green: '$branch' is checked out in no worktree, so its CR marker in $common/cr-pending stays pending — run scripts/cr/clear-review-marker.sh '$branch' from the worktree where $branch is checked out." >&2
         return 0
     fi
     local rc=0

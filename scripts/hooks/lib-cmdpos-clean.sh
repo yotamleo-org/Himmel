@@ -30,7 +30,7 @@ if [ "$(type -t st_tokenize)" != function ]; then
 fi
 
 # >>> BEGIN cmdpos (verbatim from guard-pr-check-literal.sh) >>>
-TARGETS='clear-cr-marker.sh cr-scores.sh
+TARGETS='clear-cr-marker.sh clear-review-marker.sh cr-scores.sh
 doc-freshness-advisory.sh docs-audit-panel.sh impacted-suites.sh known-findings.sh
 ledger-append.sh orphan-check.sh panel-first-pass.sh pr-check-context.sh
 pr-check-env.sh review-round.sh write-verdicts.sh'

@@ -977,7 +977,7 @@ def _pending_cr_reason(start: str, head_branches: list = ()):
         except OSError:
             return ("The pending CR marker cannot be read — refused fail-closed.")
         return (f"A CR review is pending for branch {branch}: run /pr-check "
-                "(clear-cr-marker.sh) before `gh pr create` "
+                "(clear-review-marker.sh) before `gh pr create` "
                 "(check-cr-marker-on-pr-create parity).")
     return None
 
