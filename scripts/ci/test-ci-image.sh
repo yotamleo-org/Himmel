@@ -157,7 +157,7 @@ for t in bison gcc crontab shfmt uv zsh python; do
   if has "$t" "$smoke"; then ok "workflow smoke-checks $t"
   else bad "workflow smoke list lacks $t"; fi
 done
-if grep -q "import yaml" "$WORKFLOW" 2>/dev/null; then ok "workflow smoke-checks the PyYAML import"
+if grep -v '^ *#' "$WORKFLOW" 2>/dev/null | grep -Fq 'python -c "import yaml"'; then ok "workflow smoke-checks the PyYAML import"
 else bad "workflow does not smoke-check import yaml"; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
