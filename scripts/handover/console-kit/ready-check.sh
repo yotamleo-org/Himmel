@@ -134,6 +134,14 @@ if [ "$ONLY7" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
 fi
 
 GH="${GH_CMD:-gh}"
+# Every call below is a read: with no GH_CMD seam they ride the read-only token.
+GH_READ_LIB="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-read.sh"
+if [ -z "${GH_CMD:-}" ] && [ -f "$GH_READ_LIB" ]; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    . "$GH_READ_LIB"
+    gh_read_init
+    GH="$GH_READ_LIB"
+fi
 if ! command -v "$GH" >/dev/null 2>&1; then
     echo "ready-check: gh not found on PATH" >&2
     exit 2

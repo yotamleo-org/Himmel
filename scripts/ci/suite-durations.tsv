@@ -340,6 +340,7 @@ scripts/handover/console-kit/test-fleet-manifest.sh	1
 scripts/handover/console-kit/test-fleet.sh	3
 scripts/handover/console-kit/test-gen-briefs.sh	6
 scripts/handover/console-kit/test-gen-judge-brief.sh	1
+scripts/handover/console-kit/test-gh-read.sh	1
 scripts/handover/console-kit/test-go.sh	13
 scripts/handover/console-kit/test-grant-round.sh	7
 scripts/handover/console-kit/test-handoff-facts.sh	0

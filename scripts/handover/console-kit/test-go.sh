@@ -129,6 +129,15 @@ contains "write: by= is the console session name" "$body" "by=console-x"
 grepq "$body" -Ex 'at=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
   && echo "ok - write: at= is ISO-8601 UTC" || { echo "FAIL - write: at= not ISO-8601 UTC: [$body]"; fails=$((fails+1)); }
 
+# --- 2b. the read token is optional ------------------------------
+# go.sh reads through gh-read.sh; with no read token anywhere (an empty .env root)
+# the reads fall back to the main token and a GO is still written, never refused.
+mkdir -p "$tmp/no-read-token"; : > "$tmp/no-read-token/.env"
+ROOT2B="$tmp/root2b"; mkdir -p "$ROOT2B"
+rc=0; out="$(GH_READ_ENV_ROOT="$tmp/no-read-token" HANDOVER_DIR="$ROOT2B" CONSOLE_SESSION_NAME=console-x bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
+check "6837: read token unset -> go.sh still exits 0" "$rc" "0"
+check "6837: read token unset -> the GO is written" "$(test -f "$ROOT2B/.locks/go/77.$SHA" && echo yes)" "yes"
+
 # --- 3. by= fallback ---------------------------------------------------------
 rc=0; HANDOVER_DIR="$ROOT" bash "$SCRIPT" 78 "$SHA" >/dev/null 2>&1 || rc=$?
 check "fallback: exit 0" "$rc" "0"

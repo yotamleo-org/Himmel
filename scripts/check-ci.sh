@@ -427,6 +427,12 @@ fi
 # shellcheck source=scripts/lib/gh-graphql-budget.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-graphql-budget.sh"
+# reads (pr view/checks, check-runs, status, review threads) ride the read-only token;
+# gh_read_init warns once if it is missing and the reads fall back to the main one
+# shellcheck source=scripts/lib/gh-read.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/gh-read.sh"
+gh_read_init
 RL_RECOVERIES=0
 # _rl_recover — after a gh failure that reads as a rate limit: wait for the
 # reset and tell the caller to retry (rc 0), at most 3 times per run. rc 1 =
@@ -544,7 +550,7 @@ pr_checks() {
 }
 
 pr_view() {
-    if [ -n "$selector" ]; then gh pr view "$selector" "$@"; else gh pr view "$@"; fi
+    if [ -n "$selector" ]; then gh_read pr view "$selector" "$@"; else gh_read pr view "$@"; fi
 }
 
 # The per-PR check rows through the shared cache.
@@ -636,9 +642,9 @@ required_set() {
     local base rules classic
     base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
     [ -n "$base" ] || return 1
-    rules=$(gh api "repos/$owner/$repo/rules/branches/$base" \
+    rules=$(gh_read api "repos/$owner/$repo/rules/branches/$base" \
         --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' 2>&1) || return 1
-    if ! classic=$(gh api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
+    if ! classic=$(gh_read api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
         --jq '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' 2>&1); then
         case "$classic" in *"(HTTP 404)"*) classic="" ;; *) return 1 ;; esac
     fi
@@ -676,7 +682,7 @@ _has_producer_ids() {
 # started_at is carried for diagnostics only — ordering uses `id` alone (see
 # `_required_status`).
 _producer_rows() {
-    gh api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
+    gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
         --jq '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' 2>/dev/null
 }
 
@@ -732,7 +738,7 @@ _required_status() {
 # runs, so this fires only on another repo's pin.
 _status_only() {
     local ctx label name hit=""
-    ctx=$(gh api "repos/$owner/$repo/commits/$head0/status?per_page=100" --paginate \
+    ctx=$(gh_read api "repos/$owner/$repo/commits/$head0/status?per_page=100" --paginate \
         --jq '.statuses[].context' 2>/dev/null) || return 0
     while IFS= read -r label; do
         name=${label% (app *)}
@@ -1017,8 +1023,8 @@ watch_round() {
                 exec env CHECK_CI_WATCH_INTERVAL="$WATCH_INTERVAL" CHECK_CI_WATCH_INTERVAL_MAX="$WATCH_INTERVAL_MAX" \
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
-            elif [ -n "$selector" ]; then exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
-            else exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+            elif [ -n "$selector" ]; then exec bash "$_GHR_HERE/gh-read.sh" pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+            else exec bash "$_GHR_HERE/gh-read.sh" pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
         gh_pid=$!
@@ -1428,7 +1434,7 @@ review_state_gate() {
         set -- -f o="$owner" -f r="$repo" -F n="$num"
         [ -n "$cursor" ] && set -- "$@" -f c="$cursor"
         # shellcheck disable=SC2016  # $o/$r/$n/$c are GraphQL variables — literal on purpose
-        page=$(gh api graphql \
+        page=$(gh_read api graphql \
             -f query='query($o:String!,$r:String!,$n:Int!,$c:String){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{isResolved}}}}}' \
             "$@" \
             --jq '.data.repository.pullRequest.reviewThreads | "\([.nodes[] | select(.isResolved | not)] | length) \(.pageInfo.hasNextPage) \(.pageInfo.endCursor)"' 2>/dev/null)
@@ -1755,7 +1761,7 @@ merge_state_gate() {
     case "$state" in
         BLOCKED|BEHIND|DIRTY|DRAFT)
             # Diagnosis only: which runs on the head did not pass. Never a verdict input.
-            runs=$(gh api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
+            runs=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
                 --jq '.check_runs[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") | "\(.name) \(.conclusion // .status)"' 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g')
             echo "check-ci: every gate passed but GitHub refuses the merge: mergeStateStatus=$state at ${head0}. Non-passing check runs on this head: ${runs:-none found}. GitHub's state is the verdict (HIMMEL-3473, exit 6)" >&2
             exit 6 ;;
