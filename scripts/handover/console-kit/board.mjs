@@ -576,14 +576,20 @@ const bankLiftLine = (() => {
         if (status[1] !== 'VALID') return row('invalid', `lift set but INVALID: ${safe(status[2], 40)}`);
         let tail = '';
         try {
-            const idx = lines.findIndex((l) => /^(?:usage|bank)-lift:/.test(l));
-            const j = JSON.parse(lines.slice(0, idx).join('\n'));
-            if (typeof j.until === 'number' && Number.isFinite(j.until)) {
-                const u = new Date(j.until * 1000);
+            // With both lift files read, show the stricter of the two, as the validator does.
+            const blocks = [[]];
+            for (const l of lines) {
+                if (/^(?:usage|bank)-lift:/.test(l)) blocks.push([]);
+                else blocks[blocks.length - 1].push(l);
+            }
+            const js = blocks.filter((b) => b.join('').trim()).map((b) => JSON.parse(b.join('\n')));
+            const untils = js.map((j) => j.until).filter((u) => typeof u === 'number' && Number.isFinite(u));
+            if (untils.length) {
+                const u = new Date(Math.min(...untils) * 1000);
                 const p2 = (n) => String(n).padStart(2, '0');
                 tail = ` until ${u.getFullYear()}-${p2(u.getMonth() + 1)}-${p2(u.getDate())} ${p2(u.getHours())}:${p2(u.getMinutes())}`;
             }
-            tail += j.standing === true ? ' · standing' : ' · window';
+            tail += js.length && js.every((j) => j.standing === true) ? ' · standing' : ' · window';
         } catch { tail = tail || ' · window'; }
         return row('valid', `VALID${tail}`);
     } catch { return row('?', 'unavailable'); }

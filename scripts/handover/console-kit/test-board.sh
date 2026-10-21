@@ -867,6 +867,10 @@ html="$( (unset BOARD_USAGE_LIFT; export BOARD_BANK_LIFT="$W/bin/usage-lift-stub
 contains 'usage lift: BOARD_BANK_LIFT alone still names the script' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
 html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'usage lift: BOARD_USAGE_LIFT wins over BOARD_BANK_LIFT' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
+# Both lift files read: the board shows the stricter of the two, as the validator does.
+printf '{"window":"seven_day","until":1791000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1790000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
+contains 'usage lift: with both files the earlier until and no standing show' "$(TZ=UTC bl_html "$BL")" \
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-09-21 14:13 · window</p>'
 
 # --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real

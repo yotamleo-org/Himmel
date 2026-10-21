@@ -947,6 +947,10 @@ put_lift "$OLDL" $((NOW+3600))
 ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1 )
 check "set writes usage-lift.json and retires bank-lift.json" present:absent \
   "$([ -e "$NEWL" ] && echo present || echo absent):$([ -e "$OLDL" ] && echo present || echo absent)"
+mkdir -p "$OLDL/x"
+check "set fails when it cannot retire bank-lift.json" 1 \
+  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1; echo $? ) )"
+rm -rf "$OLDL"
 put_lift "$OLDL" $((NOW+3600))
 ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" clear >/dev/null 2>&1 )
 check "clear removes the lift under both names" absent:absent \
