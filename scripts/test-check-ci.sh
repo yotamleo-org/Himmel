@@ -2954,9 +2954,9 @@ export LEG_JIRA_STATUS=1
 run cr-completed --grace 30
 assert_rc 0 "6430-a checks green with a ticket-tagged PR -> exit 0"
 check_eq "6430-a the wait starts with a ci-start event for the first key" \
-    "HIMMEL-9430 --event ci-start --pr 42 --head sha1" "$(head -n 1 "$STUBDIR/jira.log")"
+    "HIMMEL-9430 --event ci-start --pr 42 --head sha1 --repo octo/demo" "$(head -n 1 "$STUBDIR/jira.log")"
 check_eq "6430-c the wait ends with a ci-exit event" \
-    "HIMMEL-9430 --event ci-exit --pr 42 --head sha1" "$(tail -n 1 "$STUBDIR/jira.log")"
+    "HIMMEL-9430 --event ci-exit --pr 42 --head sha1 --repo octo/demo" "$(tail -n 1 "$STUBDIR/jira.log")"
 assert_out_has "check-ci: verdict exit=0" "6430-c the verdict line still prints"
 : > "$STUBDIR/jira.log"
 RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests
@@ -2964,7 +2964,7 @@ fail:codeowner-review-gate"
 run cr-completed
 assert_rc 1 "6430-d a red exit keeps exit 1"
 check_eq "6430-d a red exit fires ci-exit" \
-    "HIMMEL-9430 --event ci-exit --pr 42 --head sha1" "$(tail -n 1 "$STUBDIR/jira.log")"
+    "HIMMEL-9430 --event ci-exit --pr 42 --head sha1 --repo octo/demo" "$(tail -n 1 "$STUBDIR/jira.log")"
 RULES_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"
 : > "$STUBDIR/jira.log"
 run cr-completed --threads-only

@@ -176,13 +176,15 @@ ts_pr_class() {
     fi
 }
 
-# ts_unresolved_threads <pr> — the unresolved review-thread count; rc 1 = unreadable.
+# ts_unresolved_threads <pr> — the unresolved review-thread count; rc 1 =
+# unreadable, a further page included (a partial count could miss one).
 ts_unresolved_threads() {
     local out n
     # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL variables
     out=$(gh api graphql -F owner='{owner}' -F name='{repo}' -F number="$1" \
-        -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}' 2>/dev/null) || return 1
-    n=$(jq -r '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved | not)) | length' <<<"$out" 2>/dev/null) || return 1
+        -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}' 2>/dev/null) || return 1
+    n=$(jq -r '.data.repository.pullRequest.reviewThreads
+        | if .pageInfo.hasNextPage != false then error("more threads") else .nodes | map(select(.isResolved | not)) | length end' <<<"$out" 2>/dev/null) || return 1
     case "$n" in ''|*[!0-9]*) return 1 ;; esac
     echo "$n"
 }

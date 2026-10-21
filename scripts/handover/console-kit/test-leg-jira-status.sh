@@ -26,6 +26,7 @@ LIB="$HERE/../../lib/ticket-status.sh"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-jira-status-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
+unset GH_REPO
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails+1)) ;; esac; }
@@ -58,6 +59,7 @@ EOS
 cat >"$tmp/bin/gh" <<'EOS'
 #!/usr/bin/env bash
 printf 'gh %s\n' "$*" >> "$STUB_LOG"
+printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr list")
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
@@ -69,7 +71,8 @@ case "$1 $2" in
         num=""; for a in "$@"; do case "$a" in number=*) num=${a#number=} ;; esac; done
         t=$(cat "$FX/threads-$num" 2>/dev/null || echo 0)
         nodes=""; i=0; while [ "$i" -lt "$t" ]; do nodes="${nodes:+$nodes,}{\"isResolved\":false}"; i=$((i+1)); done
-        printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[%s{"isResolved":true}]}}}}}\n' "${nodes:+$nodes,}" ;;
+        more=false; [ -e "$FX/threads-more-$num" ] && more=true
+        printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":%s},"nodes":[%s{"isResolved":true}]}}}}}\n' "$more" "${nodes:+$nodes,}" ;;
     "api repos/{owner}/{repo}/rules/branches/"*)
         cat "$FX/rules.json" ;;
     "api repos/{owner}/{repo}/branches/"*)
@@ -180,6 +183,20 @@ reset "IN CI"; owned
 pr 11 "feat: [$K] x" aaa; checks 11 pass:shell-unit; echo 2 > "$FX/threads-11"
 fn "$K" --event sweep
 check "D2: unresolved threads -> In Review" "$(moved)" "transition $K In Review"
+reset "IN CI"; owned
+pr 11 "feat: [$K] x" aaa; checks 11 pass:shell-unit; touch "$FX/threads-more-11"
+fn "$K" --event sweep
+check "threads: a further page is unreadable, never a count -> miss stage=gh" "$(row result)/$(row stage)" miss/gh
+
+# --- --repo: the derive reads the caller's PR repository ------------------------
+reset "In Review"; owned
+pr 11 "feat: [$K] x" aaa; checks 11 pending:shell-unit
+fn "$K" --event ci-start --pr 11 --head aaa --repo octo/fork
+check "--repo: every gh read targets that repository" "$(sort -u "$FX/gh-repo.log" 2>/dev/null)" octo/fork
+check "--repo: the derive still writes" "$(moved)" "transition $K IN CI"
+reset "In Review"; owned
+fn "$K" --event sweep --repo 'octo/fork;x'
+check "--repo: a malformed repository writes nothing" "$(ntrans)" 0
 
 # --- D3: checks running -> IN CI -----------------------------------------------
 reset "In Review"; owned

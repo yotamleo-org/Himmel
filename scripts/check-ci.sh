@@ -1242,7 +1242,8 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
         if [ -n "$jira_tb" ] && jira_key=$(ticket_key_from_title "$pr_title"); then
             _ticket_event() {
                 "$jira_tb" -k 5 30 bash "${TICKET_STATUS_FUNNEL:-$(dirname "$0")/handover/console-kit/leg-jira-status.sh}" \
-                    "$jira_key" --event "$1" --pr "${initial_url##*/pull/}" --head "$initial_head" >/dev/null 2>&1 || true
+                    "$jira_key" --event "$1" --pr "${initial_url##*/pull/}" --head "$initial_head" \
+                    ${CHECK_CI_CACHE_REPO:+--repo "$CHECK_CI_CACHE_REPO"} >/dev/null 2>&1 || true
             }
             # shellcheck disable=SC2329  # invoked by the EXIT trap
             _verdict_then_event() {

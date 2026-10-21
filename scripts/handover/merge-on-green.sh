@@ -572,7 +572,8 @@ block_alert() { merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${sha:-}" "$@"; }
 # _status_event <key> <event> <pr> [head] — the status funnel re-derives the
 # ticket's status; best-effort, never changes an exit code.
 _status_event() {
-    bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} >/dev/null 2>&1 || true
+    bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
+        ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
 }
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
@@ -2043,14 +2044,14 @@ $remaining")
 }
 
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
-# one status-event row for it. A merge that does not complete the ticket asks
-# the status funnel to re-derive it, after the lock is released.
+# one status-event row for it, written before the per-key lock is released so
+# an event queued behind it reads done-pending. A merge that does not complete
+# the ticket asks the status funnel to re-derive it, after the release.
 jira_auto_transition_on_merge() {
     local result stage="" first
     _MERGE_KEY=""
     if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
     _jira_close_on_merge "$@"
-    exec 8>&-
     case "$JIRA_AUTO_TRANSITION_RESULT" in
         ok*) result=moved ;;
         failed*) result=miss stage=transition ;;
@@ -2064,12 +2065,13 @@ jira_auto_transition_on_merge() {
         skip=*)
             first=${JIRA_AUTO_TRANSITION_RESULT%% *}
             result=skip stage=${first#skip=} ;;
-        *) return 0 ;;
+        *) exec 8>&-; return 0 ;;
     esac
     if declare -F status_event >/dev/null; then
         status_event event=merge key="$_MERGE_KEY" pr="$2" head="$3" contract="$_MERGE_CONTRACT" \
             result="$result" ${stage:+stage="$stage"}
     fi
+    exec 8>&-
     if [ "$_MERGE_CONTRACT" != yes ] && [ -n "$_MERGE_KEY" ]; then
         _status_event "$_MERGE_KEY" merge "$2" "$3"
     fi

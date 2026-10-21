@@ -254,7 +254,8 @@ mog_build_fixture() {
     cp "$SCRIPT_DIR/console-kit/append-results.sh" "$tmp/scripts/handover/console-kit/append-results.sh"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
-    cp "$SCRIPT_DIR/../lib/ticket-status.sh" "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
+    cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
+    cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
@@ -3689,6 +3690,7 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
 assert_status_row "status: a partial merge logs noop with completes=no" \
     '.event == "merge" and .key == "HIMMEL-374" and .contract == "no" and .result == "noop"'
 assert_funnel_has "status: a partial merge fires the funnel's merge event" "HIMMEL-374 --event merge --pr 77 --head abc123def456"
+assert_funnel_has "status: the funnel reads the merged PR's repository" "--repo owner/repo"
 STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "status: partial merge with a failed comment"
 assert_status_row "status: a partial merge whose comment failed is a miss" \
@@ -3712,6 +3714,26 @@ assert_jira_log_lacks "status: a deferred Done write makes no transition" "index
 MOG_TS_DIR="$mog_ts" assert_status_row "status: the deferral is a completes=yes row" \
     '.event == "merge" and .contract == "yes" and .result == "deferred" and .stage == "lock"'
 rm -rf "$mog_ts"
+# The completes=yes merge row lands while the per-key lock is still held, so a
+# WRAPPED event queued behind it already reads done-pending.
+if command -v flock >/dev/null 2>&1; then
+    ts_probe="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts-probe.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+    cp "$SCRIPT_DIR/../lib/ticket-status.sh" "$ts_probe/ticket-status.sh"
+    cat >>"$ts_probe/ticket-status.sh" <<'EOF'
+status_event() {
+    local a k=""
+    for a in "$@"; do case "$a" in key=*) k=${a#key=} ;; esac; done
+    if flock -n "$(ts_state_dir)/status-locks/$k" true; then echo free; else echo held; fi >> "$(ts_state_dir)/probe.log"
+}
+EOF
+    mog_ts="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+    TS_LIB_SRC="$ts_probe/ticket-status.sh" MOG_TS_DIR="$mog_ts" STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 \
+        STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        run_mog 0 "status: failed Done write with a lock probe" -- --jira-transition
+    if [ "$(cat "$mog_ts/probe.log" 2>/dev/null)" = held ]; then pass
+    else fail "status: the completes=yes merge row is written under the status lock (probe: $(cat "$mog_ts/probe.log" 2>/dev/null))"; fi
+    rm -rf "$mog_ts" "$ts_probe"
+fi
 
 # Never touch Epic/Story (standing project invariant) — the merge hook has no
 # classifyTicket call in its path, so it must check the issue type itself.

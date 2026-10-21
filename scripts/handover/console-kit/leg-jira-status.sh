@@ -6,8 +6,10 @@
 # late or duplicate event re-derives the same answer and a re-push after IN CI
 # moves the ticket back.
 #
-# Usage: leg-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--doc <path>] [--resume-brief <path>]
+# Usage: leg-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]
 #        leg-jira-status.sh <TICKET> <target-status> [--allow-back]
+#   --repo names the repository whose PRs and checks the derive reads (GH_REPO);
+#   without it gh reads the current checkout's.
 #   The second form is the legacy call: the target is a hint logged as
 #   event=legacy:<target>, never written.
 #
@@ -28,14 +30,14 @@
 set -u
 
 usage() {
-    echo "usage: leg-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--doc <path>] [--resume-brief <path>]" >&2
+    echo "usage: leg-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]" >&2
     echo "       leg-jira-status.sh <TICKET> <target-status> [--allow-back]" >&2
     exit 2
 }
 [ "$#" -ge 2 ] || usage
 KEY="$1"
 shift
-EVENT="" PR="" HEAD="" DOC="" RESUME=""
+EVENT="" PR="" HEAD="" REPO="" DOC="" RESUME=""
 if [ "${1#--}" = "$1" ]; then
     EVENT="legacy:$1"
     shift
@@ -48,6 +50,7 @@ while [ "$#" -gt 0 ]; do
         --event) EVENT="$2" ;;
         --pr) PR="$2" ;;
         --head) HEAD="$2" ;;
+        --repo) REPO="$2" ;;
         --doc) DOC="$2" ;;
         --resume-brief) RESUME="$2" ;;
         *) usage ;;
@@ -65,6 +68,10 @@ git_env_scrub
 warn() { echo "WARN leg-jira-status: $* (continuing; the leg is not blocked)" >&2; exit 0; }
 
 [[ "$KEY" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]] || warn "'$KEY' is not a ticket key"
+if [ -n "$REPO" ]; then
+    [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || warn "'$REPO' is not an owner/repo"
+    export GH_REPO="$REPO"
+fi
 command -v jq >/dev/null 2>&1 || warn "jq not found; $KEY not synced"
 
 # shellcheck source=../../lib/ticket-status.sh
@@ -90,7 +97,7 @@ if [ -z "${TICKET_STATUS_IN_BUDGET:-}" ] && [ -n "$_TIMEOUT_BIN" ]; then
     case "$budget" in ''|*[!0-9]*) budget=20 ;; esac
     rc=0
     TICKET_STATUS_IN_BUDGET=1 "$_TIMEOUT_BIN" -k 2 "$budget" bash "${BASH_SOURCE[0]}" "$KEY" --event "$EVENT" \
-        ${PR:+--pr "$PR"} ${HEAD:+--head "$HEAD"} ${DOC:+--doc "$DOC"} ${RESUME:+--resume-brief "$RESUME"} || rc=$?
+        ${PR:+--pr "$PR"} ${HEAD:+--head "$HEAD"} ${REPO:+--repo "$REPO"} ${DOC:+--doc "$DOC"} ${RESUME:+--resume-brief "$RESUME"} || rc=$?
     case "$rc" in
         124|137)
             row result=miss stage=timeout
