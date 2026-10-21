@@ -1888,7 +1888,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
             --type Task --title "Deferred /pr-check finding $finding_id" --sector 'Ship loop' --labels standalone \
             --desc-file "$body_file" \
-            --residual-of "$residual_parent" --fu-class "$fu_class" "${class_args[@]}")" || create_rc=$?
+            --residual-of "$residual_parent" --fu-class "$fu_class" ${class_args[@]+"${class_args[@]}"})" || create_rc=$?
         if [ -n "$body_tmp" ]; then rm -f "$body_tmp"; fi
         defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
         if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
