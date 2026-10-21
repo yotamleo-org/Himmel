@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions } from './admissions-ledger.js';
+import { writeFileSync } from 'node:fs';
+import { loadEnvFile } from '../client.js';
 
 describe('admissions ledger (HIMMEL-6776)', () => {
   let dir: string;
@@ -73,5 +75,12 @@ describe('admissions ledger (HIMMEL-6776)', () => {
   it('reads an absent ledger as empty', () => {
     process.env['HANDOVER_DIR'] = dir;
     expect(readAdmissions()).toEqual([]);
+  });
+
+  it('resolves the ledger path from a .env that sets HANDOVER_DIR (HIMMEL-6917)', () => {
+    writeFileSync(join(dir, '.env'), `HANDOVER_DIR=${dir}\n`);
+    loadEnvFile(join(dir, '.env'));
+    appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' });
+    expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('HIMMEL-1');
   });
 });
