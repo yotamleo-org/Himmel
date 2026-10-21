@@ -145,5 +145,35 @@ assert "Phase 3.7 fetches contents at the pinned sha" ok "$s"
 grep -qF 'truncated' "$DOC" && s=ok || s=missing
 assert "Phase 3.7 refuses a truncated tree listing" ok "$s"
 
+# -- Test 8: a scanner crash (rc other than 0 or 1) is unavailable even with valid JSON
+echo "Test 8: scanner rc other than 0/1"
+printf '%s\n' '{"risk_assessment":{"score":5},"issues":[]}' > "$tmpdir/ok-body.json"
+for src_rc in 2 3 127; do
+    run "$tmpdir/rc$src_rc.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/ok-body.json" STUB_RC="$src_rc"; rc=$?
+    assert "scanner rc $src_rc with valid JSON is unavailable (rc 3)" 3 "$rc"
+    [ -e "$tmpdir/rc$src_rc.json" ] && r=written || r=none
+    assert "scanner rc $src_rc writes no report" none "$r"
+done
+
+# -- Test 9: status fields that are present must be booleans, not strings
+echo "Test 9: string status fields"
+n=0
+for body in '{"risk_assessment":{"score":5},"issues":[],"execution_successful":"false"}' \
+    '{"risk_assessment":{"score":5},"issues":[],"analysis_completeness":{"is_complete":"false"}}' \
+    '{"risk_assessment":{"score":5},"issues":[],"execution_successful":"true"}'; do
+    n=$((n+1))
+    printf '%s\n' "$body" > "$tmpdir/str$n.json"
+    run "$tmpdir/rs$n.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/str$n.json"; rc=$?
+    assert "non-boolean status $body is unavailable (rc 3)" 3 "$rc"
+done
+
+# -- Test 10: harvest-clips decides the scan on the original tree URL
+echo "Test 10: harvest-clips dispatch uses the pre-canonical url"
+HC="$SCRIPT_DIR/../references/harvest-clips/phase-4-dispatch.md"
+grep -qF 'pre-canonical' "$HC" && s=ok || s=missing
+assert "dispatch decides --skill-scan on the pre-canonical source url" ok "$s"
+grep -qF 'canonicalization strips' "$HC" && s=ok || s=missing
+assert "dispatch states why the canonical url cannot carry the tree path" ok "$s"
+
 echo "skillspector-scan tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

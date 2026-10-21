@@ -44,15 +44,23 @@ fi
 out="$(mktemp "${TMPDIR:-/tmp}/skillspector-scan.XXXXXX")" || exit 3
 trap 'rm -f "$out"' EXIT
 
-# A finding makes skillspector exit non-zero (rc 1 on a HIGH report), so the
-# report decides, not rc.
+# rc 1 is skillspector's HIGH-finding exit, so the report decides there; any
+# other non-zero rc is a crash and never yields a stored report.
 "$bin" scan "$skill_dir" --no-llm --format json > "$out" 2>/dev/null
+scan_rc=$?
+if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 1 ]; then
+    echo "skillspector-scan: unavailable: skillspector failed (rc $scan_rc)" >&2
+    exit 3
+fi
 summary="$(node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const score = r && r.risk_assessment && r.risk_assessment.score;
 if (!Array.isArray(r && r.issues) || typeof score !== "number") process.exit(1);
+const ac = r.analysis_completeness;
+if (r.execution_successful !== undefined && typeof r.execution_successful !== "boolean") process.exit(1);
+if (ac && ac.is_complete !== undefined && typeof ac.is_complete !== "boolean") process.exit(1);
 if (r.execution_successful === false) process.exit(1);
-if (r.analysis_completeness && r.analysis_completeness.is_complete === false) process.exit(1);
+if (ac && ac.is_complete === false) process.exit(1);
 const issues = r.issues;
 const high = issues.filter((i) => i.severity === "HIGH").length;
 console.log("score=" + score + " issues=" + issues.length + " high=" + high);
