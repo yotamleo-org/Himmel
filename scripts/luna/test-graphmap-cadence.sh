@@ -1520,4 +1520,17 @@ else
     fail "luna semantic runner survived disarm"
 fi
 
+echo "TEST: --semantic-active on a re-arm lifts a pause marker left by the earlier paused arm"
+: > "$CRON_DIR3/semantic-luna.paused"
+: > "$CRON_DIR3/semantic.paused"
+run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+for _m in semantic-luna.paused semantic.paused; do
+    if [ -e "$CRON_DIR3/$_m" ]; then
+        fail "re-arm with --semantic-active left $_m" "$(ls "$CRON_DIR3" 2>/dev/null)"
+    else
+        pass "re-arm with --semantic-active removed $_m"
+    fi
+done
+run_cron3 disarm >/dev/null 2>&1
+
 summary
