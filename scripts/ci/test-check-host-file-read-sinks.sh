@@ -147,6 +147,10 @@ case_repo base pass-head-forms
 run_check
 [ "$RC" -eq 0 ] && ok "a line-head command prefix and a declare/typeset list count as assigned" || bad "line-head assignment forms flagged (rc=$RC): $OUT"
 
+case_repo base pass-local-later-lowercase
+run_check
+[ "$RC" -eq 0 ] && ok "a later lowercase name on a local list is not tainted by argv (taint reach unchanged from main)" || bad "later lowercase local name newly flagged (rc=$RC): $OUT"
+
 case_repo base pass-nonleading-argv-assign
 run_check
 [ "$RC" -eq 0 ] && ok "taint still starts only from an assignment at the head of a line" || bad "non-leading argv assignment newly flagged (rc=$RC): $OUT"

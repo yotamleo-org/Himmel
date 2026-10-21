@@ -12,8 +12,8 @@
 # A line is a sink when a reader (cat head tail less more source `.` or a `<`
 # redirect) takes, as its whole operand, one of:
 #   - an argv expansion       $1  ${1:-}  $@  $*
-#   - a variable assigned from argv in the same added lines (path laundering; a name
-#     in the NAME=value run at the head of a line), unless it was last assigned a
+#   - a variable assigned from argv in the same added lines (path laundering; the first
+#     name of the NAME=value run at the head of a line, or a later UPPER_CASE one), unless it was last assigned a
 #     value that IS a mktemp substitution (a file the script made itself); a value
 #     that merely contains the word, appends anything after the closing of the
 #     substitution, or is followed by a command word (out=$(mktemp) env true) does
@@ -127,14 +127,15 @@ while IFS= read -r -d '' path; do
         if (!is_added(n)) continue
         l = line[n]
         if (l ~ /^[ \t]*#/) continue
-        # taint: a name in the line-head run whose value, or the rest of the line after it,
-        # holds argv (x="${2:-}", x=$(realpath "$1"), export A=1 CFG="$1"); a mktemp result is a
-        # file the script made itself, so a lasting assignment of one clears the taint
+        # taint: the first name of the line-head run, or a later UPPER_CASE one, whose value or the
+        # rest of the line after it holds argv (x="${2:-}", x=$(realpath "$1"), export A=1 CFG="$1");
+        # a later lowercase name (local p="$1" f="$2") stays untainted as on main; a mktemp
+        # result is a file the script made itself, so a lasting assignment of one clears the taint
         hrun(l)
         lasting = (HREST == "" || HREST ~ /^[;&|)}#]/)   # a run followed by a command word only sets that command environment
         for (k = 1; k <= HCNT; k++) {
           if (lasting && HV[k] ~ /^"?(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]"?$/) delete tainted[HN[k]]
-          else if (substr(l, HP[k]) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/) tainted[HN[k]] = 1
+          else if (substr(l, HP[k]) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ && (k == 1 || HN[k] ~ /^[A-Z][A-Z0-9_]*$/)) tainted[HN[k]] = 1
         }
         hit = ""
         s = l

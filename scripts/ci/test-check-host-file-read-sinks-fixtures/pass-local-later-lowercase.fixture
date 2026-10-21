@@ -1,0 +1,6 @@
+# fixture, not executable
+echo hi
+f() {
+  local p="$1" listfile="$2" root
+  while read -r x; do echo "$x"; done < "$listfile"
+}
