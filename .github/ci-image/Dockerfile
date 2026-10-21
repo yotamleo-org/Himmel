@@ -70,7 +70,7 @@ RUN curl -fsSL -o /tmp/shfmt "https://github.com/mvdan/sh/releases/download/v${S
 # uv: check-uv-lock.sh and the graphify install path.
 RUN curl -fsSL -o /tmp/uv.tgz "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
  && echo "${UV_SHA256}  /tmp/uv.tgz" | sha256sum -c - \
- && tar -xzf /tmp/uv.tgz -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx \
+ && tar -xzf /tmp/uv.tgz --no-same-owner -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx \
  && rm -f /tmp/uv.tgz
 
 # pre-commit and the shellcheck rev the pre-commit hook pins; pip puts shellcheck in

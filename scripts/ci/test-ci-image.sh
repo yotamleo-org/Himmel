@@ -150,7 +150,16 @@ for v in SHFMT UV; do
   if grep -Eq "^ARG ${v}_VERSION=[0-9.]+$" <<< "$df_text" && grep -Eq "^ARG ${v}_SHA256=[0-9a-f]{64}$" <<< "$df_text"; then
     ok "Dockerfile pins ${v}_VERSION with a sha256"
   else bad "Dockerfile does not pin ${v}_VERSION with ${v}_SHA256"; fi
+  if grep -Eq "curl -fsSL -o [^ ]+ \"https://github\.com/[^\"]*[$][{]${v}_VERSION[}]" <<< "$df_text"; then
+    ok "Dockerfile downloads the pinned ${v}_VERSION from github.com"
+  else bad "Dockerfile does not download the pinned ${v}_VERSION from github.com"; fi
+  if grep -Eq "echo \"[$][{]${v}_SHA256[}]  [^\"]+\" [|] sha256sum -c -" <<< "$df_text"; then
+    ok "Dockerfile checks ${v}_SHA256 with sha256sum -c"
+  else bad "Dockerfile does not check ${v}_SHA256 with sha256sum -c"; fi
 done
+if grep -E 'tar -x[a-z]*f /tmp/uv\.tgz' <<< "$df_text" | grep -q -- '--no-same-owner'; then
+  ok "Dockerfile untars uv with --no-same-owner"
+else bad "Dockerfile untars uv keeping the archive owner (no --no-same-owner)"; fi
 smoke="$(grep -oE 'for t in [^;]+' "$WORKFLOW" 2>/dev/null | head -n 1)"
 for t in bison gcc crontab shfmt uv zsh; do
   if has "$t" "$smoke"; then ok "workflow smoke-checks $t"
