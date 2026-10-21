@@ -38,6 +38,11 @@ unset HIMMEL_REPO
 # real .env's JIRA_PROJECT_KEY=HIMMEL, ci.yml's commit-lint job) rather than
 # threaded through every individual invocation site in this file.
 export JIRA_PROJECT_KEY=HIMMEL
+# The pre-merge static re-check builds the merge of the anchor's origin and the
+# PR head, so it needs a git anchor with a fetchable origin; nearly every case
+# here runs against a bare stub tree. It is off for them, and
+# test-merge-on-green-static-recheck.sh (which sources this file) turns it on.
+export MERGE_STATIC_RECHECK=0
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -199,7 +204,7 @@ LAST_GH_LOG=""; LAST_AUDIT=""; LAST_CLEAR_LOG=""; LAST_ERR=""; LAST_JIRA_LOG=""
 # mog_build_fixture <tmpdir>
 #
 # Build the scratch tree run_mog executes merge-on-green.sh in: copies of the
-# script + its lib siblings, a stub check-ci.sh, a stub clear-cr-marker.sh,
+# script + its lib siblings, a stub check-ci.sh, a stub clear-review-marker.sh,
 # and a stub `gh` FIRST on PATH. Pulled out of run_mog so a
 # RED control can build the SAME fixture around a MUTANT copy of
 # merge-on-green.sh and run it directly through red_control_run — going
@@ -252,6 +257,12 @@ mog_build_fixture() {
     # The PARTIAL report appends to the console doc through this sibling.
     mkdir -p "$tmp/scripts/handover/console-kit"
     cp "$SCRIPT_DIR/console-kit/append-results.sh" "$tmp/scripts/handover/console-kit/append-results.sh"
+    # The status lib is sourced from the anchor; the status funnel at its anchor
+    # path is a stub that logs each event to funnel.log.
+    cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
+    cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
+    # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
@@ -326,7 +337,7 @@ STUBCI
     # Stub the CR-marker chokepoint at ITS fixed sibling path,
     # exactly like check-ci above — the wrapper has no env seam for it either.
     # The stub records its argv, so a case can prove the merge path went THROUGH
-    # clear-cr-marker.sh (never a raw `rm`) and with which branch.
+    # clear-review-marker.sh (never a raw `rm`) and with which branch.
     if [ "${STUB_NO_CLEARER:-0}" != "1" ]; then
         mkdir -p "$tmp/scripts/cr"
         # SC2016 is the point: "$*" / "$CLEAR_LOG" must reach the stub FILE
@@ -338,8 +349,8 @@ STUBCI
         # branch other than the one checked out where it runs, so the wrapper
         # must run it from that branch's own worktree.
         printf '#!/usr/bin/env bash\necho "clear-cr-marker $*" >> "$GH_LOG"\necho "$*" >> "$CLEAR_LOG"\npwd -P >> "$CLEAR_LOG.cwd"\nexit %s\n' \
-            "${STUB_CLEAR_RC:-0}" > "$tmp/scripts/cr/clear-cr-marker.sh"
-        chmod +x "$tmp/scripts/cr/clear-cr-marker.sh"
+            "${STUB_CLEAR_RC:-0}" > "$tmp/scripts/cr/clear-review-marker.sh"
+        chmod +x "$tmp/scripts/cr/clear-review-marker.sh"
     fi
 
     # Stub `gh`, FIRST on PATH (no GH_CMD seam). FAILS CLOSED: an
@@ -810,7 +821,7 @@ run_mog() {
           MERGE_ON_GREEN_SLEEP_CMD=: \
           MERGE_BLOCK_ALERT_DIR="$tmp/alerts" MERGE_BLOCK_ALERT_CMD="$tmp/bin/alert-sender" \
           TELEGRAM_ACCESS_PATH="$tmp/access.json" STUB_ALERT_FAIL="${STUB_ALERT_FAIL:-}" \
-          CR_APP="${MOG_CR_APP:-}" \
+          CR_APP="${MOG_CR_APP:-}" TICKET_STATUS_STATE_DIR="${MOG_TS_DIR:-$tmp/ts}" \
           HIMMEL_REPO="$himmel_repo_dir" \
           ${MOG_WRAP-} env ${MOG_UNSET_HIMMEL_REPO:+-u HIMMEL_REPO} ${MOG_SETUP_SHA:+STUB_SHA=$MOG_SETUP_SHA} \
           bash -c 'cd "$1" || exit 1; shift; exec bash "$@"' _ "${MOG_CWD:-$tmp}" \
@@ -846,6 +857,17 @@ assert_jira_log_lacks() {
 }
 assert_err_has() {
     if grepq "$LAST_ERR" -F -- "$2"; then pass; else fail "$1 (stderr lacks '$2')"; fi
+}
+assert_funnel_has() {
+    if grep -qF -- "$2" "$LAST_TMP/funnel.log" 2>/dev/null; then pass; else fail "$1 (funnel log: $(cat "$LAST_TMP/funnel.log" 2>/dev/null))"; fi
+}
+assert_funnel_not_called() {
+    if [ -s "$LAST_TMP/funnel.log" ]; then fail "$1 (funnel was called: $(cat "$LAST_TMP/funnel.log"))"; else pass; fi
+}
+# assert_status_row <name> <jq predicate> — a status-events row of the run matches.
+assert_status_row() {
+    if jq -e -s "map(select($2)) | length > 0" "${MOG_TS_DIR:-$LAST_TMP/ts}/status-events.jsonl" >/dev/null 2>&1; then pass
+    else fail "$1 (status rows: $(cat "${MOG_TS_DIR:-$LAST_TMP/ts}/status-events.jsonl" 2>/dev/null))"; fi
 }
 assert_err_lacks() {
     if grepq "$LAST_ERR" -F -- "$2"; then fail "$1 (stderr unexpectedly has '$2')"; else pass; fi
@@ -903,6 +925,10 @@ assert_pinned_pr_view() {
     if grep -qF -- "pr view 77 --repo acme/private-repo --json $2" "$LAST_GH_LOG"; then pass
     else fail "$1 (no pinned 'pr view 77 --repo acme/private-repo --json $2' call found)"; fi
 }
+
+# Sourced with MOG_LIB_ONLY=1, this file stops here: the helpers above (run_mog,
+# the assert_* family, the PASS/FAIL tally) are all a sibling suite needs.
+[ -z "${MOG_LIB_ONLY:-}" ] || return 0
 
 echo "== merge-on-green.sh tests =="
 
@@ -2557,7 +2583,7 @@ if prune_branch_gone "$P_REPO"; then fail "11k3: branch deleted despite a gutted
 # A merge used to leave the branch's cr-pending marker behind; the marker lives
 # in the SHARED git-common-dir while the pr-create guard resolves the branch
 # from the session cwd, so it then blocked `gh pr create` on UNRELATED branches.
-# The merge path must clear it THROUGH clear-cr-marker.sh (never a raw rm, which
+# The merge path must clear it THROUGH clear-review-marker.sh (never a raw rm, which
 # is the self-declare-clean pattern the clearer exists to stop) and record the
 # outcome on the MERGED audit line. Same prune fixture — a real throwaway repo.
 mk_marker() {
@@ -2571,7 +2597,7 @@ mk_marker() {
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 mk_marker "$P_REPO" "feat/mog-prune"
 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-    run_mog 0 "marker present → cleared via clear-cr-marker.sh, exit 0"
+    run_mog 0 "marker present → cleared via clear-review-marker.sh, exit 0"
 assert_clear_has "11L: the chokepoint was invoked for the merged branch" "feat/mog-prune"
 assert_audit_has "11L: audit records the marker outcome" "marker=cleared"
 # The clear must run BEFORE the merge, the one thing that keeps this feature
@@ -2587,7 +2613,7 @@ else
     fail "11L: the marker clear must precede the merge (clear@${clear_ln:-none} merge@${merge_ln:-none})"
 fi
 # 11L-wt. The run starts in the PRIMARY (on main) while the branch
-# lives in its own worktree. clear-cr-marker.sh refuses a branch other than the
+# lives in its own worktree. clear-review-marker.sh refuses a branch other than the
 # one checked out in its cwd (exit 12), so the clear must run from P_WT.
 # Resolved through the parent: the post-merge prune has removed P_WT itself.
 wt_real="$(cd "$(dirname "$P_WT")" && pwd -P)/$(basename "$P_WT")"
@@ -2604,7 +2630,7 @@ fi
 mk_prune_fixture_quoted; P_REPO="$QP_REPO"; P_WT="$QP_WT"; P_SHA="$QP_SHA"
 mk_marker "$P_REPO" "feat/mog-prune-q"
 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune-q" \
-    run_mog 0 "11L-q: quoted worktree path -> marker still cleared via clear-cr-marker.sh"
+    run_mog 0 "11L-q: quoted worktree path -> marker still cleared via clear-review-marker.sh"
 assert_clear_has "11L-q: the chokepoint was invoked for the merged branch" "feat/mog-prune-q"
 assert_audit_has "11L-q: audit records the marker outcome" "marker=cleared"
 
@@ -3230,9 +3256,10 @@ rm -f "$TP_GO/77.$GO_SHA"
 
 # 3895-g — another repo with no list has not adopted the gate: unchanged, but
 # audited so the absence is visible.
-STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
+MERGE_STATIC_RECHECK=1 STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
     tp_run 0 "3895-g: no trust list on a non-harness repo → merged"
 assert_audit_has "3895-g: not-adopted is audited" "trust=not-adopted"
+assert_audit_has "3895-g: the static re-check is skipped for another repo" "STATIC-RECHECK skipped reason=other-repo"
 # 3895-h — an origin that does not positively name another github.com repo (an
 # SSH host alias) cannot prove the 404 is off the harness's own repo: refuse.
 MOG_ANCHOR_URL=git@gh-alias:owner/repo.git STUB_NWO=other/repo STUB_TRUST_LIST_404=1 \
@@ -3612,24 +3639,17 @@ STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-37
     run_mog 0 "jira: partial merge with a failed comment"
 assert_jira_log_lacks "jira: failed comment means no To Do transition" "transition"
 
-# A PR closed unmerged returns its In Review ticket to To Do with a comment.
+# A PR closed unmerged gets a comment, and the status funnel re-derives the
+# ticket (its open PRs, its owner); merge-on-green writes no status itself.
 STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "jira: closed-unmerged PR returns the ticket to To Do"
-assert_jira_log_has "jira: closed PR transitions to To Do" "transition HIMMEL-374 To Do"
-assert_jira_log_has "jira: closed PR comments why" "comment-body: PR #"
-STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_JIRA_STATUS="In Progress" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "jira: closed-unmerged PR leaves an In Progress ticket alone"
-assert_jira_log_lacks "jira: In Progress ticket gets no transition on a closed PR" "index.js transition"
-
-# A replacement PR still open for the same ticket, or an unreadable PR list,
-# means the closed PR does not own the ticket any more: leave it alone.
-STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_OPEN_PRS="88" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "jira: closed PR whose ticket has a replacement open PR leaves it alone"
-assert_jira_log_lacks "jira: replacement PR open means no transition" "index.js transition"
-assert_jira_log_lacks "jira: replacement PR open means no comment" "comment-body:"
-STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_OPEN_PRS_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "jira: unreadable open-PR list leaves a closed PR's ticket alone"
-assert_jira_log_lacks "jira: open-PR lookup failure means no transition" "index.js transition"
+    run_mog 0 "jira: closed-unmerged PR fires the closed event"
+assert_jira_log_lacks "jira: closed PR makes no transition itself" "index.js transition"
+assert_jira_log_has "jira: closed PR comments why" "comment-body: PR #77"
+assert_funnel_has "jira: closed PR fires the funnel's closed event" "HIMMEL-374 --event closed --pr 77"
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed-unmerged PR on an Epic"
+assert_funnel_not_called "jira: an Epic's closed PR fires no event"
+assert_jira_log_lacks "jira: an Epic's closed PR gets no comment" "comment-body:"
 
 # A partial merge on a ticket already in To Do still posts its Remaining comment.
 STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="To Do" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
@@ -3665,6 +3685,66 @@ fi
 STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: opted-in failed transition does not fail the merge, and is surfaced" -- --jira-transition
 assert_audit_has "jira: failed-transition case records the failure" "jira-transition=failed key=HIMMEL-374 status=Done"
+assert_status_row "jira: a failed Done write logs a completes=yes miss" \
+    '.event == "merge" and .key == "HIMMEL-374" and .contract == "yes" and .result == "miss" and .stage == "transition"'
+
+# Every merge outcome is a status-events row, and only a completes=no merge
+# hands the ticket to the funnel (a completes=yes merge owns its Done write).
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "status: opted-in merge" -- --jira-transition
+assert_status_row "status: a Done write logs moved with completes=yes" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .contract == "yes" and .result == "moved"'
+assert_funnel_not_called "status: a completes=yes merge fires no funnel event"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "status: partial merge"
+assert_status_row "status: a partial merge logs noop with completes=no" \
+    '.event == "merge" and .key == "HIMMEL-374" and .contract == "no" and .result == "noop"'
+assert_funnel_has "status: a partial merge fires the funnel's merge event" "HIMMEL-374 --event merge --pr 77 --head abc123def456"
+assert_funnel_has "status: the funnel reads the merged PR's repository" "--repo owner/repo"
+STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "status: partial merge with a failed comment"
+assert_status_row "status: a partial merge whose comment failed is a miss" \
+    '.event == "merge" and .contract == "no" and .result == "miss" and .stage == "comment"'
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="chore: tidy things up HIMMEL-99" \
+    run_mog 0 "status: no ticket tag"
+assert_status_row "status: an early return is classified" '.event == "merge" and .result == "skip" and .stage == "no-ticket-tag"'
+assert_funnel_not_called "status: no key, no funnel event"
+STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "status: Epic" -- --jira-transition
+assert_status_row "status: an Epic is a classified skip" '.event == "merge" and .result == "skip" and .stage == "never-touch-type"'
+# The Done write waits on the funnel's per-key lock: a held lock defers it, and
+# the deferral is a completes=yes row the derive reads as done-pending. Both
+# lock cases need a flock binary; without one (stock macOS) the write runs unlocked.
+if command -v flock >/dev/null 2>&1; then
+    mog_ts="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+    mkdir -p "$mog_ts/status-locks"; : > "$mog_ts/status-locks/HIMMEL-374"
+    MOG_TS_DIR="$mog_ts" MOG_WRAP="flock $mog_ts/status-locks/HIMMEL-374" TICKET_STATUS_LOCK_WAIT=1 \
+        STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        run_mog 0 "status: Done write under a held status lock" -- --jira-transition
+    assert_audit_has "status: a held lock defers the Done write" "jira-transition=deferred stage=lock key=HIMMEL-374"
+    assert_jira_log_lacks "status: a deferred Done write makes no transition" "index.js transition"
+    MOG_TS_DIR="$mog_ts" assert_status_row "status: the deferral is a completes=yes row" \
+        '.event == "merge" and .contract == "yes" and .result == "deferred" and .stage == "lock"'
+    rm -rf "$mog_ts"
+    # The completes=yes merge row lands while the per-key lock is still held, so a
+    # WRAPPED event queued behind it already reads done-pending.
+    ts_probe="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts-probe.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+    cp "$SCRIPT_DIR/../lib/ticket-status.sh" "$ts_probe/ticket-status.sh"
+    cat >>"$ts_probe/ticket-status.sh" <<'EOF'
+status_event() {
+    local a k=""
+    for a in "$@"; do case "$a" in key=*) k=${a#key=} ;; esac; done
+    if flock -n "$(ts_state_dir)/status-locks/$k" true; then echo free; else echo held; fi >> "$(ts_state_dir)/probe.log"
+}
+EOF
+    mog_ts="$(mktemp -d "${TMPDIR:-/tmp}/mog-ts.XXXXXX")" || { echo "FAIL: mktemp -d" >&2; exit 1; }
+    TS_LIB_SRC="$ts_probe/ticket-status.sh" MOG_TS_DIR="$mog_ts" STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 \
+        STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        run_mog 0 "status: failed Done write with a lock probe" -- --jira-transition
+    if [ "$(cat "$mog_ts/probe.log" 2>/dev/null)" = held ]; then pass
+    else fail "status: the completes=yes merge row is written under the status lock (probe: $(cat "$mog_ts/probe.log" 2>/dev/null))"; fi
+    rm -rf "$mog_ts" "$ts_probe"
+fi
 
 # Never touch Epic/Story (standing project invariant) — the merge hook has no
 # classifyTicket call in its path, so it must check the issue type itself.
@@ -4097,13 +4177,13 @@ if mog3485_a=$(mog3485_anchor 0); then
     read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
     mk_marker "$P_REPO" "feat/mog-prune"
     MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-        MOG_HIMMEL_REPO="$mog3485_a" MOG_POISON=cr/clear-cr-marker.sh STUB_CI_RC=1 \
-        run_mog 0 "3485: a branch-side cr/clear-cr-marker.sh is never executed (anchor green → 0)"
+        MOG_HIMMEL_REPO="$mog3485_a" MOG_POISON=cr/clear-review-marker.sh STUB_CI_RC=1 \
+        run_mog 0 "3485: a branch-side cr/clear-review-marker.sh is never executed (anchor green → 0)"
     assert_audit_has "3485: the anchor's clearer cleared the marker" "marker=cleared"
-    mog3485_no_poison "3485: cr/clear-cr-marker.sh"
+    mog3485_no_poison "3485: cr/clear-review-marker.sh"
     rm -rf "$mog3485_a"
 else
-    fail "3485 setup: no anchor sandbox for cr/clear-cr-marker.sh"
+    fail "3485 setup: no anchor sandbox for cr/clear-review-marker.sh"
 fi
 
 # HIMMEL_REPO is a registered chokepoint seam: a per-call prefix that re-points

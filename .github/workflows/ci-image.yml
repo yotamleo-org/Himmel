@@ -28,6 +28,8 @@ jobs:
     if: github.repository == 'yotamleo-org/Himmel' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     env:
       IMAGE: ghcr.io/yotamleo-org/himmel-ci
     steps:
@@ -38,8 +40,9 @@ jobs:
         run: docker build --pull -t "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" -t "$IMAGE:latest" .github/ci-image
       - name: Smoke the tools the jobs call
         run: |
-          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo ps pgrep rsync xxd sqlite3 column file lsof make nc ip wget zip tree bison gcc cc crontab zsh shfmt uv; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; node --version; bun --version; shellcheck --version >/dev/null; [ "$(id -u runner):$(id -g runner)" = 1001:1001 ]; su runner -c "sudo -n true"'
+          docker run --rm "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}" bash -euo pipefail -c 'for t in at bwrap socat ffmpeg jq shellcheck node npm bun gitleaks pre-commit gh git sudo ps pgrep rsync xxd sqlite3 column file lsof make nc ip wget zip tree bison gcc cc crontab zsh shfmt uv python; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done; python -c "import yaml"; node --version; bun --version; shellcheck --version >/dev/null; [ "$(id -u runner):$(id -g runner)" = 1001:1001 ]; su runner -c "sudo -n true"'
       - name: Push
+        id: push
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -48,3 +51,44 @@ jobs:
           docker push "$IMAGE:latest"
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}")"
           echo "Pushed $digest" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  digest-bump:
+    # The repo lets no workflow open a PR, so a rebuilt digest that ci.yml does
+    # not name yet is filed as ONE open issue (refreshed on the next rebuild) for
+    # an operator PR. ci.yml keeps pulling the digest it names until that merges.
+    needs: build
+    if: needs.build.outputs.digest != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: File the ci.yml digest bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW: ${{ needs.build.outputs.digest }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          old="$(grep -oE 'ghcr\.io/yotamleo-org/himmel-ci@sha256:[0-9a-f]{64}' .github/workflows/ci.yml | sort -u)" # env-literal-ok: the CI image's own GHCR path, pinned by digest
+          [ "$(printf '%s\n' "$old" | grep -c .)" -eq 1 ] || { echo "::error::ci.yml must name exactly one default image ref, found: $old" >&2; exit 1; }
+          if [ "$old" = "$NEW" ]; then echo "ci.yml already pins $NEW"; exit 0; fi
+          title="ci-image: bump ci.yml to the rebuilt image digest"
+          {
+            echo "The CI image was rebuilt: $RUN_URL"
+            echo
+            echo "- ci.yml pins: \`$old\`"
+            echo "- rebuilt: \`$NEW\`"
+            echo
+            echo "Open a PR that runs:"
+            echo
+            echo '```'
+            echo "sed -i 's#$old#$NEW#g' .github/workflows/ci.yml"
+            echo '```'
+          } > "$RUNNER_TEMP/bump.md"
+          n="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$n" ]; then gh issue edit "$n" --body-file "$RUNNER_TEMP/bump.md"; else gh issue create --title "$title" --body-file "$RUNNER_TEMP/bump.md"; fi

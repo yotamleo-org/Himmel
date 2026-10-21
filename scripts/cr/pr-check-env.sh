@@ -30,7 +30,7 @@
 # When CR_REQUIRE_CROSS_MODEL is among the requested names, one extra line
 # follows it:
 #   pr-check-env: CR_REQUIRE_CROSS_MODEL_NORMALISED=<0|1>
-# using the exact truthiness rule as clear-cr-marker.sh gate 3b and the
+# using the exact truthiness rule as clear-review-marker.sh gate 3b and the
 # step-2.5 docs-audit fence (1|true|on|yes, case-insensitive, trimmed).
 #
 # Process env wins over .env - load_dotenv is non-clobbering, so a value
@@ -150,7 +150,7 @@ for v in "${VARS[@]}"; do
     echo "pr-check-env: $v=$val"
 
     if [ "$v" = "CR_REQUIRE_CROSS_MODEL" ]; then
-        # Same truthiness as clear-cr-marker.sh gate 3b / the step-2.5 fence.
+        # Same truthiness as clear-review-marker.sh gate 3b / the step-2.5 fence.
         norm="$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
         case "$norm" in
             1|true|on|yes) normalised=1 ;;

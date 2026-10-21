@@ -73,6 +73,8 @@ cat > "$STUB/budget-off.sh" <<'EOF'
 exit 2
 EOF
 export CONSOLE_WAIT_BUDGET="$STUB/budget-off.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
+export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 
 # tick_line <legs> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
@@ -108,6 +110,24 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+
+# A missing ceiling key loses the alarm; saving it must also suppress a re-arm.
+reset_stub
+I="$(new_inbox wt-ceiling)"
+start "$I" "$WORK/wt-ceiling.out" --legs "N1.md"
+wait_hb "$I" || fail "(wt-ceiling) no baseline heartbeat"
+sed -i 's/ denials=none/ wt-ceiling=72\/100 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(wt-ceiling) reaching the alarm ends the wait" "0" "$rc"
+check "(wt-ceiling) the wake names the ceiling" "WAKE tick changed=wt-ceiling bank=PROCEED" "$(head -n1 "$WORK/wt-ceiling.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(wt-ceiling) an unchanged alarm keeps waiting" "124" "$rc"
+check "(wt-ceiling) an unchanged alarm does not re-wake" "" "$(cat "$WORK/wt-ceiling-rearm.out")"
+if [ "${1:-}" = --worktree-ceiling-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
 
 # --- (a) idle: no event, no change -> no output, still waiting -------------
 reset_stub

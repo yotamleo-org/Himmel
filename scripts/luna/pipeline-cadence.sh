@@ -115,11 +115,11 @@ SETTINGS_FRAGMENT="$BAT_DIR/cadence-settings.json"
 # The bank guard the three claude legs launch behind (CLAUDE.md's billing rule:
 # a scheduled or unattended site preflights before spending the shared
 # 5h/weekly subscription bank). The generated runners
-# branch on the helper's VERDICT TOKEN, never its exit code: bank-preflight.sh
+# branch on the helper's VERDICT TOKEN, never its exit code: usage-preflight.sh
 # always exits 0 by design, and its BANK-STALE / BANK-UNKNOWN verdicts are
 # deliberately fail-open (a box with no usage cache must still run its cadence).
 # Only SKIPPED-BANK stops a leg.
-BANK_PREFLIGHT="$HIMMEL_ROOT/scripts/lib/bank-preflight.sh"
+BANK_PREFLIGHT="$HIMMEL_ROOT/scripts/lib/usage-preflight.sh"
 
 # The free precondition for the synthesize leg. Answers NEW/NONE
 # from the filesystem so a night with no newly triaged clips costs no session.
@@ -688,21 +688,21 @@ emit_bat() {
     fi
 
     # --- Gate 2: may we spend the bank? ---------------------
-    # CADENCE_BANK_LEG is what makes the spend ATTRIBUTABLE: before this every
+    # CADENCE_USAGE_LEG is what makes the spend ATTRIBUTABLE: before this every
     # row in ~/.himmel/cadence-ledger.jsonl read leg:"unknown". The flow name
     # (pipeline-harvest / -synthesize / -health) is already this leg's identity
     # in flow-runs.jsonl, so the two ledgers join on the same word.
     #
     # NO `timeout` wrapper here, unlike refresh-graph-map.sh's call site. That
     # one guards a multi-HOUR extraction where an unbounded precondition check
-    # is a real hazard. bank-preflight.sh's only network work is
+    # is a real hazard. usage-preflight.sh's only network work is
     # usage-cache-producer.sh, whose single curl is already `--max-time 5`, and
     # this leg's own budget is ~20 minutes -- a second bound would be
     # speculative, and emitting one through the cmd -> bash boundary costs more
     # quoting risk than it removes. Revisit if the producer ever grows an
     # unbounded call.
     if [ -n "$bank_lib_m_esc" ]; then
-        printf 'set "CADENCE_BANK_LEG=%s"\r\n' "$flow_esc"
+        printf 'set "CADENCE_USAGE_LEG=%s"\r\n' "$flow_esc"
         printf 'set "PIPELINE_BANK="\r\n'
         printf '"%s" "%s" > "%%FLOW_RUN_TMP%%" 2>> "%s"\r\n' "$bash_win_esc" "$bank_lib_m_esc" "$log_win_esc"
         printf 'if exist "%%FLOW_RUN_TMP%%" set /p PIPELINE_BANK=<"%%FLOW_RUN_TMP%%"\r\n'
@@ -1293,7 +1293,7 @@ cmd_arm() {
     # escaping the moment it crosses the cmd -> bash boundary.
     local bank_lib_m gate_lib_m
     if ! bank_lib_m=$(cygpath -m "$BANK_PREFLIGHT" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -m failed for bank-preflight.sh: $bank_lib_m" >&2
+        echo "ERR pipeline-cadence: cygpath -m failed for usage-preflight.sh: $bank_lib_m" >&2
         exit 4
     fi
     if ! gate_lib_m=$(cygpath -m "$SYNTH_GATE" 2>&1); then
@@ -1828,7 +1828,7 @@ emit_runner() {
     # helper's BANK-STALE / BANK-UNKNOWN verdicts are fail-open by design and
     # an empty capture means it could not run at all.
     if [ -n "$q_bank_lib" ]; then
-        printf '    _bank=$(CADENCE_BANK_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
+        printf '    _bank=$(CADENCE_USAGE_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
         printf '    if [ "$_bank" = SKIPPED-BANK ]; then\n'
         printf '        echo "[%s bank-at-threshold]"\n' "$LEG_SKIPPED_MARKER"
         # One skipped night is the guard working; two running is

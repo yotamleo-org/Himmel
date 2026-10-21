@@ -57,7 +57,7 @@ FINDINGS_BRIDGE="$HERE/../handover/append-cr-findings.sh" BUGS_BRIDGE="$HERE/../
 node -e '
   const fs=require("fs"), os=require("os"), path=require("path"), cp=require("child_process"), e=process.env;
   try {
-    const SEP=String.fromCharCode(31);   // same delimiter idiom as ledger-append.sh/clear-cr-marker.sh
+    const SEP=String.fromCharCode(31);   // same delimiter idiom as ledger-append.sh/clear-review-marker.sh
     const TAB=String.fromCharCode(9);
 
     let lines=[];
@@ -76,7 +76,7 @@ node -e '
     if (malformed) process.stderr.write("handover-bridge: "+malformed+" unparseable ledger row(s) skipped - finding set may be incomplete\n");
 
     // Same amendsByKey / amendSetFor shape as ledger-append.sh and
-    // clear-cr-marker.sh: collect amends FIRST, keyed by
+    // clear-review-marker.sh: collect amends FIRST, keyed by
     // (branch, target_head, finding_id, artifact, perspective), later amends
     // shallow-merged over earlier ones for the same key. Two branches can sit
     // at the same head and finding ids are minted in
@@ -93,7 +93,7 @@ node -e '
     }
     // AE round-2: keyed on the branch stamped on the FINDING ROW itself (the
     // caller passes o.branch below), not e.BRANCH (the branch this bridge
-    // run is for) - same fix as clear-cr-marker.sh amendSetFor. An
+    // run is for) - same fix as clear-review-marker.sh amendSetFor. An
     // escalation amend recorded FOR the rows own branch must apply here
     // regardless of which branch this particular bridge invocation targets.
     const amendSetFor=(branch,head,id,artifact,perspective)=>{
@@ -110,7 +110,7 @@ node -e '
 
     // Select finding rows for TARGET_HEAD only, applying any amend BEFORE
     // comparing the head -- an amend can re-key a finding onto a different
-    // head via set.head, exactly as clear-cr-marker.sh evaluates it.
+    // head via set.head, exactly as clear-review-marker.sh evaluates it.
     const findingsByKey=new Map();
     for (const o of rows) {
       if (o.kind!=="finding") continue;
@@ -143,7 +143,7 @@ node -e '
 
     // avail rows are not amendable; last row per model at this head wins.
     // Deliberately NOT branch-scoped, unlike findings above: the gate
-    // (clear-cr-marker.sh) keys availByModel on (head, model) alone -
+    // (clear-review-marker.sh) keys availByModel on (head, model) alone -
     // availability is a property of the critic+commit pair, not of which
     // review arm probed it. Filtering by branch here would
     // make this bridge see FEWER avail rows than the gate does, so the

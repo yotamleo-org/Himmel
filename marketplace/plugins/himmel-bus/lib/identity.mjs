@@ -152,20 +152,42 @@ export async function rebind(root, name, pid, { proc = '/proc' } = {}) {
   });
 }
 
+const MAX_HOPS = 64;
+
 // Console succession (spec §8.6): `name` follows `next` only if its old console
-// is gone, or the old console itself sent a record naming `next`.
+// is gone, or the old console itself sent a record naming `next`. A leg that
+// missed a succession walks `next`'s predecessor records back to its old
+// console: every console on that chain must be gone or have sent the leg a
+// record naming its own successor, and none but `next` may be live.
 export async function adopt(root, name, next, { proc = '/proc' } = {}) {
   checkName(next);
   return update(root, name, async peer => {
     const old = peer.console;
     if (!old) throw new Error(`${name} has no console to replace`);
+    if (old === next) return peer;
     const target = await readPeer(root, next);
     if (!target) throw new Error(`unknown session: ${next}`);
     if (target.role !== 'console') throw new Error(`${next} is not a console`);
-    if (target.predecessor !== old) throw new Error(`${next} does not succeed ${old}`);
-    const names = new RegExp(`(^|[^A-Za-z0-9._-])${next.replace(/[.]/g, '\\.')}($|[^A-Za-z0-9._-])`);
-    const relayed = async () => (await store.scan(root, name)).some(r => r.f === old && typeof r.b === 'string' && names.test(r.b));
-    if (await status(root, old, { proc }) !== 'gone' && !await relayed()) throw new Error(`old console ${old} is not gone and sent no relay naming ${next}`);
+    const hops = [];
+    for (let to = next, at = target; ; ) {
+      const from = at.predecessor;
+      if (!from || from === next || hops.length >= MAX_HOPS) throw new Error(`${next} does not succeed ${old}`);
+      hops.unshift({ from, to });
+      if (from === old) break;
+      at = await readPeer(root, from);
+      if (at?.role !== 'console') throw new Error(`${next} does not succeed ${old}`);
+      to = from;
+    }
+    const records = await store.scan(root, name);
+    const relayed = (from, to) => {
+      const names = new RegExp(`(^|[^A-Za-z0-9._-])${to.replace(/[.]/g, '\\.')}($|[^A-Za-z0-9._-])`);
+      return records.some(r => r.f === from && typeof r.b === 'string' && names.test(r.b));
+    };
+    for (const { from, to } of hops) {
+      const state = await status(root, from, { proc });
+      if (hops.length > 1 && state === 'live') throw new Error(`console ${from} on the chain to ${next} is still live`);
+      if (state !== 'gone' && !relayed(from, to)) throw new Error(`${from === old ? 'old ' : ''}console ${from} is not gone and sent no relay naming ${to}`);
+    }
     return { ...peer, console: next };
   });
 }

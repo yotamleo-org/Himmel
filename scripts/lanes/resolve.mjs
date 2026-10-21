@@ -146,7 +146,7 @@ export function mergeLocalOverlay(base, local) {
 }
 
 // resolveBankTargets(base, local, bankIds) -> { withBank, without }.
-// The bank probe (bank-status.ts) and /lanes must resolve quota-bank lanes
+// The bank probe (usage-status.ts) and /lanes must resolve quota-bank lanes
 // through the SAME overlay-aware merge the rest of the lane system uses, so a
 // lane that exists ONLY in lanes.local.json (an overlay-only quota bank)
 // reaches the probe and gets a real status instead of "no status returned".
@@ -335,7 +335,7 @@ export function formatContextAnnotation(context) {
 // EXPLICIT index that fails to select a path (out of range, fractional,
 // non-number) is a registry ERROR: !ok plus a reason, so every consumer
 // (guard verdict, /lanes display) reports unknown + a diagnostic instead of
-// silently gating on paths[0]. Shared by bank-status.ts and
+// silently gating on paths[0]. Shared by usage-status.ts and
 // formatQuotaAnnotation so the resolution rule cannot drift between them.
 export function resolveActiveAccessPath(quota) {
   const paths = Array.isArray(quota?.accessPaths) ? quota.accessPaths : [];
@@ -440,7 +440,7 @@ function runCodexHealth(repoRoot, env) {
 function runBankStatus(repoRoot, env, registry) {
   const statuses = new Map();
   try {
-    const out = execFileSync('bun', [join(repoRoot, 'scripts', 'lanes', 'bank-status.ts')], {
+    const out = execFileSync('bun', [join(repoRoot, 'scripts', 'lanes', 'usage-status.ts')], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 10000,

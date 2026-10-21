@@ -2,7 +2,9 @@ import type { Command } from 'commander';
 import { request, severityField } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
+import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey, resolveAffectsVersion } from './versions.js';
@@ -15,6 +17,7 @@ export interface EditOptions {
   parent?: string;
   labels?: string;
   addLabels?: string;
+  removeLabels?: string;
   fixVersion?: string;
   addFixVersion?: string;
   affectsVersion?: string;
@@ -26,6 +29,12 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
     throw new Error(
       'Edit --labels and --add-labels are mutually exclusive: --labels replaces the full ' +
         'label set, --add-labels appends to it — pick one.',
+    );
+  }
+  if (opts.removeLabels !== undefined && (opts.labels !== undefined || opts.addLabels !== undefined)) {
+    throw new Error(
+      'Edit --remove-labels is mutually exclusive with --labels and --add-labels: ' +
+        '--remove-labels drops the named labels only — pick one.',
     );
   }
   if (opts.fixVersion !== undefined && opts.addFixVersion !== undefined) {
@@ -75,11 +84,12 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
   if (
     Object.keys(fields).length === 0 &&
     opts.addLabels === undefined &&
+    opts.removeLabels === undefined &&
     opts.addFixVersion === undefined
   ) {
     throw new Error(
       'Edit requires at least one of --priority, --severity, --title, --desc, --parent, ' +
-        '--labels, --add-labels, --fix-version, --add-fix-version, --affects-version, or --sector',
+        '--labels, --add-labels, --remove-labels, --fix-version, --add-fix-version, --affects-version, or --sector',
     );
   }
   return fields;
@@ -90,6 +100,11 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
 // reading or replacing the issue's existing label set.
 export function buildAddLabelsUpdate(addLabels: string): { labels: Array<{ add: string }> } {
   return { labels: parseLabels(addLabels).map((label) => ({ add: label })) };
+}
+
+// The atomic counterpart of buildAddLabelsUpdate: drops only the named labels.
+export function buildRemoveLabelsUpdate(removeLabels: string): { labels: Array<{ remove: string }> } {
+  return { labels: parseLabels(removeLabels).map((label) => ({ remove: label })) };
 }
 
 // Jira field names edit sends, in read-back order.
@@ -104,7 +119,9 @@ function readBackFieldNames(o: EditOptions): string[] {
   if (o.description !== undefined) names.push('description');
   if (o.parent) names.push('parent');
   if (o.sector !== undefined) names.push(requireSectorField());
-  if (o.labels !== undefined || o.addLabels !== undefined) names.push('labels');
+  if (o.labels !== undefined || o.addLabels !== undefined || o.removeLabels !== undefined) {
+    names.push('labels');
+  }
   if (o.fixVersion !== undefined || o.addFixVersion !== undefined) names.push('fixVersions');
   if (o.affectsVersion !== undefined) names.push('versions');
   return [...new Set(names)];
@@ -180,6 +197,11 @@ function verifyReadBack(
     const want = parseLabels(o.addLabels);
     if (!want.every((l) => labels.includes(l))) bad('add-labels', want.join(', '), labels.join(', '));
   }
+  if (o.removeLabels !== undefined) {
+    const want = parseLabels(o.removeLabels);
+    if (!Array.isArray(got['labels'])) bad('remove-labels', `without ${want.join(', ')}`, 'labels not returned');
+    else if (want.some((l) => labels.includes(l))) bad('remove-labels', `without ${want.join(', ')}`, labels.join(', '));
+  }
   if (o.fixVersion !== undefined) {
     if (versions.length !== 1 || versions[0] !== o.fixVersion) {
       bad('fix-version', o.fixVersion, versions.join(', '));
@@ -231,6 +253,11 @@ export function registerEdit(program: Command): void {
         '(mutually exclusive with --labels)',
     )
     .option(
+      '--remove-labels <labels>',
+      'DROP these comma-separated labels without touching the others ' +
+        '(mutually exclusive with --labels and --add-labels)',
+    )
+    .option(
       '--fix-version <name>',
       'REPLACE the issue fixVersions with this single version (validated against the ' +
         "project's versions; full-replace)",
@@ -245,7 +272,15 @@ export function registerEdit(program: Command): void {
       'REPLACE the issue affectsVersions with this single version (validated against the ' +
         "project's versions; `current` = the earliest unreleased version)",
     )
-    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string }) => {
+    .option(
+      '--gate <reason>',
+      `Required to move a ticket into a frozen version (${INTAKE_GATES}); recorded in the admissions ledger`,
+    )
+    .option(
+      '--console-override <reason>',
+      'Console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
+    )
+    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; consoleOverride?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
       // last by commander's option-order). `--desc-file` overrides both — it
@@ -265,11 +300,28 @@ export function registerEdit(program: Command): void {
       if (options.addFixVersion !== undefined) {
         await assertVersionExists(projectFromKey(key), options.addFixVersion);
       }
+      const target = options.fixVersion ?? options.addFixVersion;
+      if (options.gate !== undefined) assertIntakeGate(options.gate);
+      let overrideReason: string | undefined;
+      if (options.consoleOverride !== undefined) {
+        overrideReason = checkConsoleOverride(options.consoleOverride);
+        if (target === undefined) throw new Error('--console-override needs the --fix-version or --add-fix-version to admit into');
+      }
+      const admission =
+        target === undefined
+          ? undefined
+          : await checkIntakeGate(projectFromKey(key), [{ name: target }], {
+              gate: options.gate,
+              override: overrideReason !== undefined,
+            });
       const body: { fields?: Record<string, unknown>; update?: Record<string, unknown> } = {};
       if (Object.keys(fields).length > 0) body.fields = fields;
       const update: Record<string, unknown> = {};
       if (options.addLabels !== undefined) {
         Object.assign(update, buildAddLabelsUpdate(options.addLabels));
+      }
+      if (options.removeLabels !== undefined) {
+        Object.assign(update, buildRemoveLabelsUpdate(options.removeLabels));
       }
       if (options.addFixVersion !== undefined) {
         Object.assign(update, buildFixVersionBody('add', options.addFixVersion).update);
@@ -287,6 +339,19 @@ export function registerEdit(program: Command): void {
           `/issue/${key}?fields=${names.join(',')}`,
         );
         const mismatches = verifyReadBack(key, options, fields, got.fields ?? {});
+        // The admission row is written once the target version reads back, so a dropped fixVersions
+        // field leaves no row and another field failing its read-back cannot leave the admission unrecorded.
+        const landed = Array.isArray(got.fields?.['fixVersions']) &&
+          (got.fields['fixVersions'] as Array<{ name?: string }>).some((v) => v.name === target);
+        if (target !== undefined && landed) {
+          try {
+            if (overrideReason !== undefined) appendAdmission({ version: target, key, kind: 'override', reason: overrideReason });
+            if (admission) appendAdmission({ ...admission, key });
+          } catch (e) {
+            console.error(`Edited ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
+            process.exit(1);
+          }
+        }
         if (mismatches.length > 0) throw new Error(mismatches.join('\n'));
       }
       writeJiraBreadcrumb(key);

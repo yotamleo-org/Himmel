@@ -17,8 +17,9 @@ REG="${RENAME_ALIASES_FILE:-$HERE/rename-aliases.tsv}"
 
 # The R1 seed rows, '|' separated: old|new|kind|direction|slice|remove-at.
 # kind prose|env|env-prefix|marker|do-not-rename; direction warn|fail for prose,
-# restrict|permit|value for env and env-prefix (the env-alias.sh function that
-# resolves OLD against NEW: env_alias_restrict, env_alias_permit, alias_env),
+# restrict|permit|value|cap for env and env-prefix (the env-alias.sh function that
+# resolves OLD against NEW: env_alias_restrict, env_alias_permit, alias_env,
+# alias_env_cap),
 # old-to-new for a marker, keep for do-not-rename. A prefix ends in '_'.
 SEED='console|chief|prose|fail|V5|never
 leg|worker|prose|fail|V4a|never
@@ -29,7 +30,7 @@ batch of workers|parallel wave|prose|fail|R2|never
 wave|parallel wave|prose|fail|R2|never
 HIMMEL_OVERNIGHT|HIMMEL_AFK|env|permit|V3|X
 HIMMEL_INITIATIVE_OVERNIGHT|HIMMEL_INITIATIVE_AFK|env|value|V3|X
-CADENCE_BANK_MAX_PCT|CADENCE_USAGE_MAX_PCT|env|permit|V1|pending-N2892
+CADENCE_BANK_MAX_PCT|CADENCE_USAGE_MAX_PCT|env|cap|V1|X
 CONSOLE_FG_OK|CHIEF_FG_OK|env|permit|V5|pending-N2892
 CONSOLE_DISPATCH_OK|CHIEF_DISPATCH_OK|env|permit|V5|pending-N2892
 CONSOLE_DISPATCH_DISABLE|CHIEF_DISPATCH_DISABLE|env|restrict|V5|pending-N2892
@@ -37,11 +38,11 @@ LEG_CONTEXT_HANDOFF_OK|WORKER_SESSION_CONTEXT_HANDOFF_OK|env|permit|V4a|pending-
 HIMMEL_LEAN_LEG|HIMMEL_LEAN_WORKER_SESSION|env|value|V4a|pending-N2892
 PARKED-BANK|PARKED-USAGE|marker|old-to-new|V1|never
 OVERNIGHT_|AFK_|env-prefix|value|V3|X
-CADENCE_BANK_|CADENCE_USAGE_|env-prefix|value|V1|pending-N2892
+CADENCE_BANK_|CADENCE_USAGE_|env-prefix|value|V1|X
 BANK_LIFT_|USAGE_LIFT_|env-prefix|value|V1|X
-CODEX_BANK_|CODEX_USAGE_|env-prefix|value|V1|pending-N2892
-CLAUDEX_BANK_|CLAUDEX_USAGE_|env-prefix|value|V1|pending-N2892
-CR_MARKER_|REVIEW_MARKER_|env-prefix|value|V2|pending-N2892
+CODEX_BANK_|CODEX_USAGE_|env-prefix|value|V1|X
+CLAUDEX_BANK_|CLAUDEX_USAGE_|env-prefix|value|V1|X
+CR_MARKER_|REVIEW_MARKER_|env-prefix|value|V2|X
 CONSOLE_|CHIEF_|env-prefix|value|V5|pending-N2892
 HIMMEL_LEG_|HIMMEL_WORKER_SESSION_|env-prefix|value|V4a|pending-N2892
 HEADED_ARM_LEG_|HEADED_ARM_WORKER_|env-prefix|value|V4a|pending-N2892
@@ -127,6 +128,42 @@ EOF
 LEFT="$(printf '%s\n' "$ROWS" | awk -F'\t' 'toupper($2) ~ /BANK[-_]LIFT/ && $6 != "V1" { print $2 }' | tr '\n' ' ')"
 check "no lift name left outside slice V1 ($LEFT)" "" "$LEFT"
 
+# --- slice V1b: every old usage env name the code reads both ways names its successor ---
+V1B_ROWS='CLAUDEX_BANK_OK|CLAUDEX_USAGE_OK|env|permit|V1|X
+CLAUDEX_BANK_REFUSE_PCT|CLAUDEX_USAGE_REFUSE_PCT|env|cap|V1|X
+CLAUDEX_BANK_WARN_PCT|CLAUDEX_USAGE_WARN_PCT|env|cap|V1|X
+BANK_CACHE_FILE|USAGE_MONITOR_CACHE_FILE|identifier|old-to-new|V1|X
+BANK_SAMPLES_FILE|USAGE_MONITOR_SAMPLES_FILE|identifier|old-to-new|V1|X
+BANK_STATE_FILE|USAGE_MONITOR_STATE_FILE|identifier|old-to-new|V1|X
+CADENCE_BANK_CACHE|CADENCE_USAGE_CACHE|identifier|old-to-new|V1|X
+CADENCE_BANK_CALLER_PID|CADENCE_USAGE_CALLER_PID|identifier|old-to-new|V1|X
+CADENCE_BANK_CODEX_TIMEOUT|CADENCE_USAGE_CODEX_TIMEOUT|identifier|old-to-new|V1|X
+CADENCE_BANK_LANE|CADENCE_USAGE_LANE|identifier|old-to-new|V1|X
+CADENCE_BANK_LAUNCH|CADENCE_USAGE_LAUNCH|identifier|old-to-new|V1|X
+CADENCE_BANK_LEDGER|CADENCE_USAGE_LEDGER|identifier|old-to-new|V1|X
+CADENCE_BANK_LEG|CADENCE_USAGE_LEG|identifier|old-to-new|V1|X
+CADENCE_BANK_MAX_AGE|CADENCE_USAGE_MAX_AGE|identifier|old-to-new|V1|X
+CADENCE_BANK_PRODUCER|CADENCE_USAGE_PRODUCER|identifier|old-to-new|V1|X
+CADENCE_BANK_SKIP_REFRESH|CADENCE_USAGE_SKIP_REFRESH|identifier|old-to-new|V1|X
+CADENCE_BANK_STATUS_CMD|CADENCE_USAGE_STATUS_CMD|identifier|old-to-new|V1|X
+CODEX_BANK_CACHE|CODEX_USAGE_CACHE|identifier|old-to-new|V1|X
+CODEX_BANK_CACHE_TTL_SECONDS|CODEX_USAGE_CACHE_TTL_SECONDS|identifier|old-to-new|V1|X
+CODEX_BANK_PROBE_CMD|CODEX_USAGE_PROBE_CMD|identifier|old-to-new|V1|X
+CODEX_BANK_PROBE_TIMEOUT_MS|CODEX_USAGE_PROBE_TIMEOUT_MS|identifier|old-to-new|V1|X
+CODEX_BANK_REFRESH_BACKOFF_MS|CODEX_USAGE_REFRESH_BACKOFF_MS|identifier|old-to-new|V1|X
+CODEX_BANK_REFRESH_BOX_MS|CODEX_USAGE_REFRESH_BOX_MS|identifier|old-to-new|V1|X
+HIMMEL_STOP_GUARD_BANK_PREFLIGHT|HIMMEL_STOP_GUARD_USAGE_PREFLIGHT|identifier|old-to-new|V1|X
+IMPL_GUARD_BANK_BUDGET_SECS|IMPL_GUARD_USAGE_BUDGET_SECS|identifier|old-to-new|V1|X
+IMPL_GUARD_BANK_STATUS_CMD|IMPL_GUARD_USAGE_STATUS_CMD|identifier|old-to-new|V1|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V1b row '$old'" "$tabbed" "$got"
+done <<EOF
+$V1B_ROWS
+EOF
+
 # --- slice V3: the old command and doc stay as stubs that point at the new file ---
 ROOT="$HERE/../.."
 stub() {
@@ -137,6 +174,82 @@ stub() {
 }
 stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
 stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
+
+# --- slice V1c: the five usage scripts, each old path a forwarder to the new one ---
+V1C_ROWS='bank-attribution.sh|usage-attribution.sh|identifier|old-to-new|V1|X
+bank-monitor.sh|usage-monitor.sh|identifier|old-to-new|V1|X
+bank-preflight.sh|usage-preflight.sh|identifier|old-to-new|V1|X
+bank-status.ts|usage-status.ts|identifier|old-to-new|V1|X
+codex-bank-probe.ts|codex-usage-probe.ts|identifier|old-to-new|V1|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V1c row '$old'" "$tabbed" "$got"
+done <<EOF
+$V1C_ROWS
+EOF
+# The shipped forwarder runs beside a stub of its target: argv, stdout and the
+# exit code pass through, stderr is the one deprecation line.
+# shellcheck source=fixture-tempdir.sh
+# shellcheck disable=SC1091
+. "$HERE/fixture-tempdir.sh"
+FT=$(fixture_mktemp_dir) || exit 1
+trap 'rm -rf "$FT"' EXIT
+forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
+  local runner="$1" dir="$2" old="$3" new="$4" src="$5" d out rc err
+  d="$FT/$old"
+  mkdir -p "$d"
+  check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
+  cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
+  [ "$old" = bank-preflight.sh ] && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/"
+  printf '%s\n' "$src" > "$d/$new"
+  out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
+  rc=$?
+  err="$(cat "$d/err")"
+  check "$old forwards argv and stdout to $new" "NEW:a b|c" "$out"
+  check "$old keeps the exit code of $new" 7 "$rc"
+  check "$old prints one deprecation line" "$old is deprecated: use '$new' instead" "$err"
+}
+# shellcheck disable=SC2016 # the stub body is expanded by the stub, not here
+SH_STUB='printf "NEW:%s|%s" "$1" "$2"; exit 7'
+TS_STUB='process.stdout.write("NEW:" + process.argv.slice(2).join("|")); process.exit(7);'
+forwards bash scripts/lib bank-preflight.sh usage-preflight.sh "$SH_STUB"
+forwards bash scripts/lib bank-monitor.sh usage-monitor.sh "$SH_STUB"
+forwards bash scripts/lib bank-attribution.sh usage-attribution.sh "$SH_STUB"
+forwards bun scripts/lanes bank-status.ts usage-status.ts "$TS_STUB"
+forwards bun scripts/lanes codex-bank-probe.ts codex-usage-probe.ts "$TS_STUB"
+
+# --- slice V2a: the review marker clearer, its old path a forwarder ---
+V2A_ROWS='CLEAR_CR_MARKER_BUDGET_WAIT|CLEAR_REVIEW_MARKER_BUDGET_WAIT|env|value|V2|X
+clear-cr-marker.sh|clear-review-marker.sh|identifier|old-to-new|V2|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V2a row '$old'" "$tabbed" "$got"
+done <<EOF
+$V2A_ROWS
+EOF
+# The clearer forwarder hands off to the anchor and runs the seam guard before
+# it forwards, so the fixture carries both beside it in the scripts/ layout.
+d="$FT/v2a"
+mkdir -p "$d/cr" "$d/lib"
+check "scripts/cr/clear-review-marker.sh exists" "yes" "$([ -f "$ROOT/scripts/cr/clear-review-marker.sh" ] && echo yes || echo no)"
+if cp "$ROOT/scripts/cr/clear-cr-marker.sh" "$ROOT/scripts/cr/anchor-handoff.sh" "$d/cr/" 2>/dev/null &&
+   cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/lib/"; then
+  printf '%s\n' "$SH_STUB" > "$d/cr/clear-review-marker.sh"
+  out="$(cd "$d" && env -u HIMMEL_REPO bash "$d/cr/clear-cr-marker.sh" 'a b' c 2> "$d/err")"
+  rc=$?
+  check "clear-cr-marker.sh forwards argv and stdout to clear-review-marker.sh" "NEW:a b|c" "$out"
+  check "clear-cr-marker.sh keeps the exit code of clear-review-marker.sh" 7 "$rc"
+  check "clear-cr-marker.sh prints one deprecation line" \
+    "clear-cr-marker.sh is deprecated: use 'clear-review-marker.sh' instead" "$(cat "$d/err")"
+  check "clear-cr-marker.sh hands off to the anchor before it forwards" yes \
+    "$(awk '/anchor-handoff\.sh/ { h = NR } /^exec / { e = NR } END { print (h && e && h < e) ? "yes" : "no" }' "$d/cr/clear-cr-marker.sh")"
+else
+  check "scripts/cr/clear-cr-marker.sh exists" "yes" "no"
+fi
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '

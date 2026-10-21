@@ -23,8 +23,8 @@ scripts/ci/workflow-red-issue.sh	cmdsub-devnull	1
 scripts/cr/anchor-handoff.sh	cmdsub-devnull	4
 scripts/cr/artifact-critic.sh	true-after-read	1
 scripts/cr/claude-floor-review.sh	cmdsub-devnull	4
-scripts/cr/clear-cr-marker.sh	cmdsub-devnull	45
-scripts/cr/clear-cr-marker.sh	true-after-read	28
+scripts/cr/clear-review-marker.sh	cmdsub-devnull	45
+scripts/cr/clear-review-marker.sh	true-after-read	28
 scripts/cr/cr-pending-audit.sh	cmdsub-devnull	3
 scripts/cr/cr-pending-audit.sh	true-after-read	2
 scripts/cr/cr-reset.sh	cmdsub-devnull	3

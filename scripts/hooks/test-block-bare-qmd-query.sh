@@ -1192,6 +1192,87 @@ deny "ssh host bun /opt/qmd/src/cli/qmd.ts query x"
 deny "ssh host '~/.bun/bin/qmd vsearch x'"
 deny "ssh host bunx @tobilu/qmd search x"
 
+# --- the command-position model (scripts/lib/bash-ast.sh): a word brace
+# expansion splits into the verb is the verb. A position that only names qmd (a
+# commit message, a jq filter, a heredoc to cat) keeps the regex verdict, so the
+# model is never weaker than the unmodified guard.
+deny 'qmd que{ry,} x'
+deny 'qmd {query,status} x'
+deny 'timeout 5 qmd que{ry,} x'
+deny 'git commit -m "x; qmd query y"'
+deny 'curl -d "a; qmd query b" http://example.invalid'
+deny "jq '.a | qmd query' f"
+deny "cat <<EOF
+qmd query x
+EOF"
+allow "git commit -F - <<EOF
+fix: run qmd query docs; more
+EOF"
+# what the model cannot read, or reads as a program that may run its argument,
+# stays with the regex reader
+deny 'echo "x; qmd query"'
+deny "bash <<EOF
+qmd query x
+EOF"
+deny "git -c core.pager='cd x; qmd query y' log"
+allow 'grep --pre="cd x; qmd query y" x f'
+deny 'ssh host "qmd query x"'
+allow 'qmd_bounded 60 qmd query x'
+# qmd is the wrapped program only after the wrapper's own options and operands
+allow "timeout 5 printf '%s %s\n' qmd query"
+allow "nice -n 5 printf '%s %s\n' qmd query"
+deny 'nice -n 5 qmd query x'
+deny 'env FOO=bar qmd query x'
+deny 'timeout -k 5 10 qmd query x'
+deny 'sudo -u bob qmd query x'
+allow 'qmd status; qmd collection list'
+# no program is exempt: a position whose arguments or assignment values name qmd
+# keeps the regex verdict, so a program that runs its option argument stays denied
+deny 'git rebase -x "cd docs; qmd query x" HEAD~1'
+deny 'git rebase --exec "cd x; qmd query y" HEAD~1'
+deny 'git rebase --exe "cd x; qmd query y" HEAD~1'
+deny 'git difftool -x "cd x; qmd query y" a b'
+deny 'git difftool --extcmd="cd x; qmd query y" a b'
+deny 'git submodule foreach "cd x; qmd query y"'
+deny 'git clone --upload-pack="cd x; qmd query y" url dir'
+deny 'git clone -u "cd x; qmd query y" url dir'
+deny 'git fetch --receive-pack="cd x; qmd query y" origin'
+deny 'git archive --exec="cd x; qmd query y" HEAD'
+deny 'wget --use-askpass="cd x; qmd query y" http://example.invalid'
+deny 'git bisect run sh -c "cd x; qmd query y"'
+deny 'git filter-branch --tree-filter "cd x; qmd query y" HEAD'
+deny 'git send-email --to-cmd "cd x; qmd query y" p'
+deny "GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+deny "env GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+deny "env -i GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+deny "command env GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
+allow 'git rebase -x "make test" HEAD~1'
+allow 'git log --grep="qmd query" --oneline'
+
+# --- a missing shfmt denies a command that names qmd and a search verb, and the
+# message names shfmt; a command that names no qmd never pays for it.
+NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-bare-qmd-nosh.XXXXXX") || exit 1
+trap 'rm -rf "$NOSH"' EXIT
+oifs=$IFS; IFS=:
+for d in $PATH; do
+    for t in "$d"/*; do
+        case "${t##*/}" in shfmt) ;; *) [ -e "$NOSH/${t##*/}" ] || ln -s "$t" "$NOSH/${t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$oifs
+[ -x "$NOSH/jq" ] && [ ! -e "$NOSH/shfmt" ] || { echo "FAIL no shfmt fixture is wrong (jq must be present, shfmt absent)"; exit 1; }
+# stderr is the captured stream here, stdout is discarded
+# shellcheck disable=SC2069
+nosh_case() { printf '%s' "$(j_bash "$1")" | env -u QMD_UNBOUNDED_OK PATH="$NOSH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?"; }
+out=$(nosh_case 'git commit -m "x; qmd query y"')
+case "$out" in *shfmt*"rc=2") echo "PASS no shfmt: a command naming qmd and a verb is denied and the message names shfmt" ;; *) echo "FAIL no shfmt: a command naming qmd and a verb is denied and the message names shfmt - $out"; FAILED=$((FAILED + 1)) ;; esac
+out=$(nosh_case 'qmd status')
+case "$out" in "rc=0") echo "PASS no shfmt: a non-search qmd verb is not denied" ;; *) echo "FAIL no shfmt: a non-search qmd verb is not denied - $out"; FAILED=$((FAILED + 1)) ;; esac
+out=$(nosh_case 'git status')
+case "$out" in "rc=0") echo "PASS no shfmt: a command without qmd is not denied" ;; *) echo "FAIL no shfmt: a command without qmd is not denied - $out"; FAILED=$((FAILED + 1)) ;; esac
+out=$(env PATH="$NOSH" QMD_UNBOUNDED_OK=1 bash "$HOOK" <<<"$(j_bash 'qmd query x')" 2>&1 >/dev/null; echo "rc=$?")
+case "$out" in *"rc=0") echo "PASS no shfmt: the bypass still allows" ;; *) echo "FAIL no shfmt: the bypass still allows - $out"; FAILED=$((FAILED + 1)) ;; esac
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0

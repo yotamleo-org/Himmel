@@ -114,6 +114,9 @@ done < <(jq -r 'to_entries[] | "\(.key)\t\((.value.seam_env_vars // []) | join("
 # The lift file seam under its new name and the read-both old one.
 assert_deny "USAGE_LIFT_FILE= on bank-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/bank-preflight.sh")"
 assert_deny "BANK_LIFT_FILE= on bank-preflight.sh"  "$(j "BANK_LIFT_FILE=/tmp/x.json bash scripts/lib/bank-preflight.sh")"
+assert_deny "USAGE_LIFT_FILE= on usage-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh")"
+assert_deny "BANK_LIFT_FILE= on usage-preflight.sh"  "$(j "BANK_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh")"
+assert_deny "HIMMEL_FLEET_CAP= on usage-preflight.sh" "$(j "HIMMEL_FLEET_CAP=99 bash scripts/lib/usage-preflight.sh")"
 
 # --- DENIED: the named ticket shapes + wrapper/compound variants ---
 assert_deny "env wrapper on $MERGE_ON_GREEN"            "$(j "env ${MOG_VAR}=x bash $MERGE_ON_GREEN")"

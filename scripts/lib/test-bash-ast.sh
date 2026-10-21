@@ -42,7 +42,9 @@ if [ "$rc" = 2 ] && [[ $err == *"shfmt not on PATH"* ]]; then ok "no shfmt: rc 2
 else bad "no shfmt: rc 2 and the message names shfmt — rc=$rc err=$err"; fi
 
 if ! command -v shfmt >/dev/null 2>&1; then
-    echo "SKIP: shfmt not on PATH — the model rows did not run"
+    # CI sets HIMMEL_REQUIRE_SHFMT=1 after installing shfmt, so a runner that lost it fails here instead of skipping
+    if [ "${HIMMEL_REQUIRE_SHFMT:-}" = 1 ]; then bad "HIMMEL_REQUIRE_SHFMT=1 but shfmt is not on PATH — the model rows did not run"
+    else echo "SKIP: shfmt not on PATH — the model rows did not run"; fi
     printf '\n%d passed, %d failed\n' "$pass" "$fail"
     [ "$fail" -eq 0 ]
     exit
@@ -143,6 +145,20 @@ row "pushd -n does not move the cwd; a dash target is unknown" \
 row "a redirect on a subshell, brace or loop is a position in the outer cwd" \
     'cd sub && (cat) < a*; { cat; } < b*; while read -r l; do :; done < c*' \
     '[.[] | select(.prog == null) | {w: .redirs[0].w.v, cwd}] == [{w: "a*", cwd: [["sub"]]}, {w: "b*", cwd: [[], ["sub"]]}, {w: "c*", cwd: [[], ["sub"]]}]'
+
+# jq 1.7 rejects a bare binary expression as an object value (jq -n '{a: [1] + [2]}'; jq 1.8 accepts it).
+# CI carries one jq, so these rows run where HIMMEL_JQ_171 names a real jq 1.7.1 binary.
+if [ -n "${HIMMEL_JQ_171:-}" ] && [ -x "$HIMMEL_JQ_171" ] && [ "$("$HIMMEL_JQ_171" --version 2>/dev/null)" = "jq-1.7.1" ]; then
+    mkdir -p "$FIX/jq171" && ln -s "$HIMMEL_JQ_171" "$FIX/jq171/jq"
+    out=$(PATH="$FIX/jq171:$PATH" bash_ast_positions 'for ((i = 0; i < 2; i++)); do cat x; done' 2>/dev/null); rc=$?
+    if [ "$rc" = 0 ]; then ok "jq 1.7.1: the model reads a C-style for loop"; else bad "jq 1.7.1: the model reads a C-style for loop — rc=$rc"; fi
+    for f in "$SCRIPT_DIR/../hooks/lib/bash-ast.jq" "$SCRIPT_DIR/../hooks/lib/bash-ast-bwimc.jq"; do
+        err=$("$HIMMEL_JQ_171" -n -f "$f" 2>&1)
+        if [[ $err == *"syntax error"* ]]; then bad "jq 1.7.1: ${f##*/} compiles — ${err%%$'\n'*}"; else ok "jq 1.7.1: ${f##*/} compiles"; fi
+    done
+else
+    echo "note: HIMMEL_JQ_171 is not a jq 1.7.1 binary — the jq 1.7 compile rows did not run"
+fi
 
 out=$(bash_ast_positions 'if then' 2>/dev/null); rc=$?
 if [ "$rc" = 3 ]; then ok "a parse error is rc 3"; else bad "a parse error is rc 3 — rc=$rc"; fi

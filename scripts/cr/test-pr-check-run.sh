@@ -17,8 +17,8 @@
 # drives the real scripts and asserts their OBSERVABLE behaviour.
 #
 # Four invariants, all real cases -- no stubs, no skips, nothing lifted:
-#   1  fail-closed on attempted-but-failed lanes   -> clear-cr-marker.sh
-#   3  zero responders refuses                     -> clear-cr-marker.sh
+#   1  fail-closed on attempted-but-failed lanes   -> clear-review-marker.sh
+#   3  zero responders refuses                     -> clear-review-marker.sh
 #   5  marker-clear authority is a chokepoint      -> structural scan
 #   7  ledger single-writer                        -> structural scan
 #
@@ -39,7 +39,7 @@
 #      rather than stubbed: a case that passes because its subject is absent
 #      certifies nothing.
 #   6  the Claude-only review floor at the ORCHESTRATION level.
-#      It has no executable home: the enforcing half is clear-cr-marker.sh
+#      It has no executable home: the enforcing half is clear-review-marker.sh
 #      gate 3 (covered by scripts/cr/test-clear-cr-marker.sh), and the
 #      orchestration half is the runbook's step-4.5 instruction to record
 #      `avail --model claude --status ok` -- an instruction to the agent, not
@@ -51,7 +51,7 @@
 #   7  "ledger single-writer" was scoped to a `record` phase that does not
 #      exist, so the ORIGINAL wiring was unrunnable -- but the predicate holds
 #      against the real codebase and is now asserted there (case_inv7 below).
-#      The other scripts that name the ledger (clear-cr-marker.sh,
+#      The other scripts that name the ledger (clear-review-marker.sh,
 #      critic-panel.sh, cr-scores.sh, cr-tune.sh, known-findings.sh,
 #      cr-pending-audit.sh) READ it, or shell out to ledger-append.sh -- which
 #      is evidence FOR the chokepoint, not against it.
@@ -71,7 +71,7 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL SKIP_CR CR_PROFILE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CLEAR="$SCRIPT_DIR/clear-cr-marker.sh"
+CLEAR="$SCRIPT_DIR/clear-review-marker.sh"
 # shellcheck source=scripts/lib/fixture-tempdir.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/fixture-tempdir.sh"
@@ -94,7 +94,7 @@ tracked_fixture_dir() {
 # ---------------------------------------------------------------------------
 # Fixture helpers -- the scripts/cr/test-clear-cr-marker.sh pattern (its
 # helper block, roughly lines 28-175), reused rather than reinvented.
-# clear-cr-marker.sh has NO env seams for the ledger/gh (gate integrity), so
+# clear-review-marker.sh has NO env seams for the ledger/gh (gate integrity), so
 # each case builds a REAL temp git repo, copies the script into it, and
 # writes the ledger/marker at the fixed paths under the temp repo's own
 # .git. `tmp`/`sha` are set as plain variables (not echoed for `read`) since
@@ -102,7 +102,7 @@ tracked_fixture_dir() {
 # ---------------------------------------------------------------------------
 
 # make_repo -- a temp git repo with one commit on branch `feat/x`, pushed to a
-# real bare `origin`, with a copy of clear-cr-marker.sh under scripts/cr/.
+# real bare `origin`, with a copy of clear-review-marker.sh under scripts/cr/.
 make_repo() {
     tmp=$(tracked_fixture_dir) || return 1
     (
@@ -122,7 +122,7 @@ make_repo() {
     sha=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x) || { rm -rf "$tmp"; return 1; }
     [ -n "$sha" ] || { rm -rf "$tmp"; return 1; }
     mkdir -p "$tmp/scripts/cr" "$tmp/scripts/lib"
-    cp "$CLEAR" "$tmp/scripts/cr/clear-cr-marker.sh" || { rm -rf "$tmp"; return 1; }
+    cp "$CLEAR" "$tmp/scripts/cr/clear-review-marker.sh" || { rm -rf "$tmp"; return 1; }
     cp "$(dirname "$CLEAR")/ledger-amend-auth.js" "$tmp/scripts/cr/ledger-amend-auth.js" || { rm -rf "$tmp"; return 1; }
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$tmp/scripts/lib/chokepoint-seam-guard.sh" || { rm -rf "$tmp"; return 1; }
@@ -170,7 +170,7 @@ case_inv1() {
     mp=$(marker_path "$tmp")
     write_marker "$tmp" "$sha"
     write_ledger "$tmp" "$(avail_bad "$sha")"
-    out=$(cd "$tmp" && bash "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) || rc=$?
+    out=$(cd "$tmp" && bash "$tmp/scripts/cr/clear-review-marker.sh" 2>&1) || rc=$?
     if [ "$rc" -ne 14 ]; then
         echo "FAIL: invariant1 -- expected exit 14 (fail-closed; sole evidence is status=unavailable), got $rc: $out" >&2
         rm -rf "$tmp"
@@ -197,7 +197,7 @@ case_inv3() {
     mp=$(marker_path "$tmp")
     write_marker "$tmp" "$sha"
     write_ledger "$tmp"
-    out=$(cd "$tmp" && bash "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) || rc=$?
+    out=$(cd "$tmp" && bash "$tmp/scripts/cr/clear-review-marker.sh" 2>&1) || rc=$?
     if [ "$rc" -ne 14 ]; then
         echo "FAIL: invariant3 -- expected exit 14 (present-but-empty ledger, zero responders), got $rc: $out" >&2
         rm -rf "$tmp"
@@ -214,7 +214,7 @@ case_inv3() {
 }
 
 # ---------------------------------------------------------------------------
-# Invariant 5 -- marker-clear authority stays with clear-cr-marker.sh
+# Invariant 5 -- marker-clear authority stays with clear-review-marker.sh
 # (structural). A bare removal of the marker is byte-identical to
 # self-declaring the review clean, which is why the chokepoint exists.
 #
@@ -232,11 +232,11 @@ case_inv5() {
     for f in "$ROOT"/scripts/cr/*.sh; do
         base=$(basename "$f")
         case "$base" in
-            clear-cr-marker.sh|test-*.sh) continue ;;
+            clear-review-marker.sh|test-*.sh) continue ;;
         esac
         hit=$(grep -nE "cr-pending" "$f" 2>/dev/null             | grep -E "(^|[^[:alnum:]_])($INV5_DESTRUCTIVE)([^[:alnum:]_]|$)|(^|[[:space:]]):?>[[:space:]]*[^|&]*cr-pending") || true
         if [ -n "$hit" ]; then
-            echo "FAIL: invariant5 -- $f names cr-pending/ beside a destructive verb outside clear-cr-marker.sh:" >&2
+            echo "FAIL: invariant5 -- $f names cr-pending/ beside a destructive verb outside clear-review-marker.sh:" >&2
             printf '%s
 ' "$hit" >&2
             violation=1
@@ -245,7 +245,7 @@ case_inv5() {
     if [ "$violation" -ne 0 ]; then
         return 1
     fi
-    echo "PASS: invariant5 (marker-clear authority stays with clear-cr-marker.sh -- no non-test scripts/cr/*.sh names cr-pending/ beside rm/unlink/shred/-delete/mv/truncation)"
+    echo "PASS: invariant5 (marker-clear authority stays with clear-review-marker.sh -- no non-test scripts/cr/*.sh names cr-pending/ beside rm/unlink/shred/-delete/mv/truncation)"
     return 0
 }
 

@@ -26,6 +26,7 @@ import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
+import { secretWrite, setupState } from "./setup";
 
 const LOOPBACK = "127.0.0.1";
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
@@ -66,6 +67,7 @@ const STATIC: Record<string, [string, string]> = {
   "/tool-health.js": ["tool-health.js", "application/javascript; charset=utf-8"],
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
   "/workflow.js": ["workflow.js", "application/javascript; charset=utf-8"],
+  "/setup.js": ["setup.js", "application/javascript; charset=utf-8"],
   "/app.css": ["app.css", "text/css; charset=utf-8"],
   // the rail and theme the AG-UI pages share (agui-web bundles its own copy at build time).
   "/nav.js": ["nav.js", "application/javascript; charset=utf-8"],
@@ -178,7 +180,7 @@ type Env = Record<string, string | undefined>;
 // only; the CLI entry below never sets them.
 export type ServerOpts = {
   port?: number; token?: string; hostname?: string; env?: Env; onIdle?: () => void;
-  root?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number;
+  root?: string; projectRoot?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number;
   backgroundFeed?: boolean; feedRefreshMs?: number; noIdle?: boolean;
   legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
@@ -266,6 +268,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const idleMs = Number(env.CONFIG_UI_IDLE_MS) > 0 ? Number(env.CONFIG_UI_IDLE_MS) : DEFAULT_IDLE_MS;
   const now = opts.now ?? Date.now;
   const root = opts.root ?? CHECKOUT;
+  // the project whose .env holds the project-scoped secrets; the directory the server was started in by default.
+  const projectRoot = opts.projectRoot ?? process.cwd();
+  const setupOpts = { env, home: env.HOME || homedir(), himmelRoot: root, projectRoot };
   const himmelctl = himmelctlBin(env);
   const stateDir = join(env.HOME || homedir(), ".himmel", "state", "config-ui");
   const lockPath = join(stateDir, "write.lock");
@@ -356,6 +361,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   async function roadmapWriteRoute(b: Record<string, unknown>): Promise<Response> {
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
+    // GitHub cards are read-only in the page; the server holds the same contract, before the write lock is taken.
+    if ((await trackerSources(env, root))[0] === "github") return json({ error: "GitHub roadmap is read-only" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
@@ -372,6 +379,22 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     } catch { audit = "failed"; }
     if (!res) return json({ error: "internal error", audit }, 500);
     return json(redactOut({ ...res.body, audit }), res.status);
+  }
+
+  // The value is in `b` only until secretWrite returns: the audit line and the answer carry the name and the outcome.
+  function setupSecretRoute(b: Record<string, unknown>): Response {
+    const lock = acquireLock(lockPath);
+    if ("busy" in lock) return json({ error: lock.busy }, 409);
+    let r;
+    try { r = secretWrite(b, { ...setupOpts, serviceMode: !!opts.noIdle }); } finally { lock.release(); }
+    if (r.audit) {
+      try {
+        appendAudit(auditPath, { time: new Date(now()).toISOString(), action: r.audit.action, target: r.audit.target, value: null, argv: [], rc: r.audit.ok ? 0 : 1,
+          before: null, after: null, ...(r.audit.ok ? {} : { outcome: "error" as const }) });
+      } catch { /* the answer below still carries the outcome */ }
+    }
+    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; }
+    return json(r.body, r.status);
   }
 
   let idle: ReturnType<typeof setTimeout> | undefined;
@@ -519,9 +542,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         });
         return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } });
       }
+      // which secrets are set (presence only) and the commit rules in effect, for the Setup page.
+      if (path === "/api/setup") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(setupState(setupOpts));
+      }
       // the vm section of the himmel config, validated and saved through luna-config.js.
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/roadmap/write") return new Response("not found", { status: 404 });
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -532,6 +560,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
+      if (path === "/api/setup/secret") return setupSecretRoute(b as Record<string, unknown>);
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });

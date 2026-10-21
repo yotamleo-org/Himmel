@@ -175,11 +175,84 @@ QUIETRUN_TAIL='quiet-run\.sh.*[^[:alnum:]_.-]graphify(\.exe)?([^[:alnum:]_.-]|$)
 # text with no size cap, and a here-string over ~64 KiB wedges Git Bash
 # which would trade this fail-open for a different large-input
 # failure on the exact kind of pathological input this bug needs.
-cmdpos_hit=$(printf '%s' "$cmd_lc" | grep -E "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)")
-quietrun_hit=$(printf '%s' "$cmd_lc" | grep -E "$QUIETRUN_TAIL")
-if [ -z "$cmdpos_hit" ] && [ -z "$quietrun_hit" ]; then
-    exit 0
+# The text with line continuations, quotes and backslashes dropped is read too:
+# the shell joins g''raphify, gra\phify and gra\<newline>phify back into one word.
+cmd_nq=$(printf '%s' "${cmd//\\$'\n'/}" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;' | LC_ALL=C tr -d "'\"\\\\")
+cmdpos_hit=$(printf '%s\n%s' "$cmd_lc" "$cmd_nq" | grep -E "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)")
+quietrun_hit=$(printf '%s\n%s' "$cmd_lc" "$cmd_nq" | grep -E "$QUIETRUN_TAIL")
+route=no
+if [ -n "$cmdpos_hit" ] || [ -n "$quietrun_hit" ]; then
+    route=yes
 fi
+
+# A command that never says graphify cannot reach the fence, so it never pays
+# for shfmt (a station without shfmt only loses the commands that name it).
+case "$cmd_nq" in
+    *graphify*) ;;
+    *) exit 0 ;;
+esac
+
+# The command-position model (scripts/lib/bash-ast.sh) is the router for a Bash
+# command: it routes to the fence a command whose program is graphify (through
+# any wrapper it unwraps, a bash -c / eval body, a subshell or a cd), a wrapper
+# that runs its arguments (timeout, nice, setsid, sudo, xargs, find -exec,
+# cmd / powershell, the quiet runner, a wrapper flag it read as the program)
+# with a graphify word, and skips quoted
+# data and heredoc bodies. Not for PowerShell, which shfmt cannot read, and not
+# when shfmt cannot parse the text: the regex verdict above stands for both.
+# Over-routing only costs one fence call, so an unreadable position routes.
+if [ "$tool" != PowerShell ]; then
+    lib="$SCRIPT_DIR/../lib/bash-ast.sh"
+    # shellcheck source=../lib/bash-ast.sh
+    if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+        echo "block-graphify-egress: cannot load $lib - refusing to evaluate" >&2
+        exit 2
+    fi
+    # swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' GA_JQ <<'GA_JQ_EOF' || true
+def lcs: (. // "") | ascii_downcase;
+def base: lcs | sub("^.*[/\\\\]"; "") | sub("\\.exe$"; "");
+def isg: .t == "lit" and (.v | base) == "graphify";
+def interp: ((.prog // "") | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def unread: (.opaque != null) or (interp and (.body == null));
+def shellish: .prog | IN("cmd", "cmd.exe", "powershell", "pwsh", "powershell.exe", "pwsh.exe");
+def split_words:
+  [.[] | if .t == "lit" then (.v | split(" ") | map(select(length > 0) | {t: "lit", v: ., raw: .})) else [.] end] | add // [];
+def words: if shellish then (.argv | split_words) else .argv end;
+def quiet($w): [range(0; $w | length) | select($w[.].t == "lit" and ($w[.].v | lcs | contains("quiet-run")))] | first;
+def tail_has($w; $q): $q != null and any($w[$q + 1:][]; isg);
+def flagprog: (.prog // "") | startswith("-");
+def viaenv: (.via // []) | any(. == "env");
+if any(.[];
+     ((.prog | base) == "graphify")
+     or (words as $w | any($w[1:][]; isg) and ((.opaque != null) or shellish or flagprog))
+     or (words as $w | tail_has($w; quiet($w))))
+then "route"
+elif any(.[]; unread or viaenv) then "legacy"
+else "skip" end
+GA_JQ_EOF
+    ast_rc=0
+    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    case "$ast_rc" in
+        0)
+            # A position the model cannot read (a shell reading stdin, an eval or
+            # source of an expansion, a runner such as ssh) leaves the verdict
+            # "legacy", and so does a jq failure or an empty verdict: the regex
+            # route above stands, so the model only ever adds routes.
+            # swallow-ok: a jq failure keeps the legacy regex route, never weaker
+            if verdict=$(printf '%s' "$pos" | jq -r "$GA_JQ" 2>/dev/null); then
+                [ "$verdict" = route ] && route=yes
+                [ "$verdict" = skip ] && route=no
+            fi
+            ;;
+        2)
+            echo "block-graphify-egress: shfmt not on PATH, so this command that mentions graphify cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or comment the hook." >&2
+            exit 2
+            ;;
+    esac
+fi
+
+[ "$route" = yes ] || exit 0
 
 # Tool-call cwd: the command's cwd (.tool_input.cwd) is where the
 # agent will actually run it; this hook process's own $PWD is the project root

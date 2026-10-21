@@ -281,13 +281,13 @@ do_install() {
         fi
     fi
 
-    # Non-github origin: clear-cr-marker.sh's post-PR gate is gh-only and
+    # Non-github origin: clear-review-marker.sh's post-PR gate is gh-only and
     # fail-closed. Warn and continue — never refuse on this alone.
     origin_url=$(git -C "$TARGET" remote get-url origin 2>/dev/null || true)
     if [ -n "$origin_url" ]; then
         case "$origin_url" in
             *github.com*) : ;;
-            *) echo "install-cr-gate: WARNING: origin ($origin_url) is not github.com — clear-cr-marker.sh's post-PR gate is gh-only and fail-closed, so the marker will not be clearable past PR-open on this host" >&2 ;;
+            *) echo "install-cr-gate: WARNING: origin ($origin_url) is not github.com — clear-review-marker.sh's post-PR gate is gh-only and fail-closed, so the marker will not be clearable past PR-open on this host" >&2 ;;
         esac
     fi
 

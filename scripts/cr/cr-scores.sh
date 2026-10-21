@@ -98,7 +98,7 @@ for (const r of records) {
 
 // unadjudicated[branch] = # findings at the LATEST head of that
 // branch (the head of the row with the max ts for that branch, across any
-// record kind) with no EFFECTIVE verdict. Mirrors clear-cr-marker.sh gate 4b:
+// record kind) with no EFFECTIVE verdict. Mirrors clear-review-marker.sh gate 4b:
 // amend supersede records are applied before a finding verdict is judged.
 const lastRow = {};
 for (const r of records) {

@@ -72,6 +72,8 @@ export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
 export TICK_WORKTREE_ORPHANS_PROBE="$W/no-wt-orphans-probe"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/routes.jsonl" SUITE_FLAKE_LEDGER="$W/flake.jsonl" SUITE_FLAKE_REPO_ID=ck-e2e
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
+# No bus identity, so append-results never adopts on the real himmel-bus store.
+unset HIMMEL_BUS_NAME
 export LEG_DIGEST_STATE_DIR="$W/digest" LEG_DIGEST_SETTLE_MAX=0 LEG_DIGEST_SETTLE_QUIET=0
 export CLOSE_WRAPPED_LEG_PROJECTS_DIR="$W/projects" CLOSE_WRAPPED_LEG_SESSIONS_DIR="$W/sessions"
 export CLOSE_WRAPPED_LEG_REAP_WAIT=0 CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT=30

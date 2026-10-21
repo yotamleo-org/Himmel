@@ -20,7 +20,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" >>"$MARK_FIX/calls"' \
   'case "$*" in "get HIMMEL-20") printf "HIMMEL-20\tTask\tTo Do\tr\n\nLabels: residual, class-fail-open, residual-depth-1, class-quoting\n" ;;' \
   '"get HIMMEL-21") printf "HIMMEL-21\tTask\tTo Do\tr\n\nLabels: residual\n" ;;' \
   '"get HIMMEL-22") exit 1 ;; esac' >"$td/jira.sh"
-export MARK_FIX="$td" MARK_ESCAPE_JIRA_CMD="bash $td/jira.sh"
+export MARK_FIX="$td" MARK_ESCAPE_JIRA_CMD="bash \"$td/jira.sh\""
 
 out="$(bash "$tool" HIMMEL-10 HIMMEL-20 2>&1)"; rc=$?
 check "classified residual exits 0" "$rc" 0

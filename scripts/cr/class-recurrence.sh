@@ -8,6 +8,7 @@
 # A pair is (area, class). area = the finding's directory cut to its first three
 # segments; class = the exact `class=` id an amend row carries
 # (unattributed rows are never counted; `new:<slug>` counts as `new-<slug>`).
+# The placeholder labels class-unclassified and class-unattributed never count either.
 # In the rolling window (--days, default 14) a class fires when either holds:
 #   - one pair appears in >= 5 distinct merged PRs and >= 2 of them deferred it;
 #   - >= 3 open, not-yet-folded residuals carry its `class-<id>` label, or one
@@ -153,16 +154,17 @@ if ! jira_run list --project "$PROJECT" --limit 500 --labels \
     echo "class-recurrence: residual lookup failed — fail-closed: $(cat "$W/err")" >&2
     exit 4
 fi
+[ "$(grep -c . "$W/residuals.raw")" -lt 500 ] || echo "WARN class-recurrence: the query hit its 500-row cap, the residual results below are partial" >&2
 awk -F'\t' '
     NF >= 5 && $5 !~ /(^|,)folded-into-/ {
-        n = split($5, L, ","); for (i = 1; i <= n; i++) if (L[i] ~ /^class-./) print substr(L[i], 7) "\t" $1 "\t" $4
+        n = split($5, L, ","); for (i = 1; i <= n; i++) if (L[i] ~ /^class-./ && L[i] !~ /^class-(unclassified|unattributed)$/) print substr(L[i], 7) "\t" $1 "\t" $4
     }' "$W/residuals.raw" >"$W/residuals.tsv"
 
 { cut -f1 "$W/pairs.tsv"
   awk -F'\t' -v m="$RESIDUAL_MIN" '
       NF >= 5 {
           folded = ($5 ~ /(^|,)folded-into-/); n = split($5, L, ",")
-          for (i = 1; i <= n; i++) if (L[i] ~ /^class-./) { k = substr(L[i], 7); if (folded) f[k]++; else u[k]++ }
+          for (i = 1; i <= n; i++) if (L[i] ~ /^class-./ && L[i] !~ /^class-(unclassified|unattributed)$/) { k = substr(L[i], 7); if (folded) f[k]++; else u[k]++ }
       }
       END { for (k in u) if (u[k] >= m || f[k] > 0) print k }' "$W/residuals.raw"; } \
     | sort -u >"$W/classes.txt"

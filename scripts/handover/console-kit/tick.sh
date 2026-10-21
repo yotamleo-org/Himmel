@@ -26,6 +26,10 @@ fi
 chokepoint_seam_guard scripts/handover/console-kit/tick.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# tick's gh reads (the PR list, the READY file lists) ride the read-only token
+# through gh-read.sh; plain gh when the helper is absent.
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
@@ -59,7 +63,7 @@ NOTFOUND in legs=, never as MISSING -- MISSING is reserved for a lock that is
 actually gone.
 
 fleet=<live>/<cap> and capacity= (HIMMEL-3167) are always appended, last on the
-line. fleet= is bank-preflight.sh's own census (native + claudex + reserved,
+line. fleet= is usage-preflight.sh's own census (native + claudex + reserved,
 HIMMEL_FLEET_CAP) -- never a second count; fleet=? when that census cannot be
 read. capacity=UNDERFILLED:<slack> means live < cap AND no leg launched for
 TICK_UNDERFILL_MIN minutes (default 10); capacity=ok otherwise, capacity=unknown
@@ -84,7 +88,7 @@ wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
 spare=<pct>@<h>h (HIMMEL-4421) is the very last field and is ABSENT unless the
-weekly quota the current burn leaves unspent at the reset (bank-monitor.sh
+weekly quota the current burn leaves unspent at the reset (usage-monitor.sh
 --spare) is >= TICK_SPARE_MIN percent (default 10) and the reset is <=
 TICK_SPARE_HOURS hours away (default 24). Advisory: it is not in console-wait's
 action key and wakes nothing.
@@ -103,6 +107,13 @@ LEG_DIGEST_STATE_DIR.
 gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, read from
 the X-Ratelimit-* headers of ONE `gh api -i graphql` call
 (gh-graphql-budget.sh ghb_read); gql=? when the headers cannot be read.
+
+rest-main=<remaining>/<limit>@<reset HH:MM> and rest-read=... (HIMMEL-6837), right
+after gql: the REST core budget of the main token and of the read-only token
+(himmel_github_token_vm2) from `gh api rate_limit` (gh-read.sh gh_read_rates).
+Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
+read token is configured; the verbose view prints them as "rest main:" and
+"rest read:" lines. Advisory: not in console-wait's action key.
 
 orphans=<owner>:<count>/<oldest>m (HIMMEL-2761) is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
@@ -259,7 +270,9 @@ wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> (HIMMEL-6584) come from one
 `scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
 worktrees with no open PR and nothing holding them, and the live worktree count once it
 reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non-zero or
-alarming, each with an `ACTION wt-orphans=…` line after the TICK line.
+alarming, each with an `ACTION wt-orphans=…` line after the TICK line. The tick also
+runs `scripts/worktree.sh prune` at most once an hour under a repository-shared lock;
+it reuses the existing sweep's dirty/locked/in-use gates without new removal logic.
 
 With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
 when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000), and
@@ -383,7 +396,7 @@ csv_add() {
 # token; a structured READY record would replace the regexes.
 ready_mismatch_scan() {
     local dir="$1" tp="$REPO/scripts/ci/ci-trust-paths.txt" days="${TICK_READY_WINDOW_DAYS:-1}"
-    local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-gh}"
+    local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-$GH_READ_BIN}"
     local budget=20 pats rec vidx cap t0 partial=0 left doc model line pr head claim files hit jv
     [ -d "$dir" ] && [ -r "$tp" ] || return 1
     case "$days" in ''|*[!0-9]*) days=1 ;; esac
@@ -586,9 +599,24 @@ leg_forked() {
     grep -v '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
 }
 
+# leg_effort_mismatch <doc> <label>: succeeds only when the effort the
+# console asked for (the LEG_EFFORT export in the launch-<label>.sh gen-briefs.py
+# writes beside the leg doc) differs from the effort= token on the leg's newest LIVE
+# bullet. A missing launcher, export or token leaves nothing to compare, so no flag.
+leg_effort_mismatch() {
+    local doc="$1" label="$2" launch asked live
+    launch="${doc%/*}/launch-$label.sh"
+    [ -r "$launch" ] || return 1
+    asked="$(sed -nE 's/^export LEG_EFFORT=(low|medium|high|xhigh|max)$/\1/p' "$launch" | tail -n 1)"  # pipefail-ok: tail reads sed to EOF
+    live="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' "$doc" 2>/dev/null | tail -n 1 \
+        | sed -nE 's/^(.*[[:space:]])?effort=(low|medium|high|xhigh|max)([^A-Za-z0-9_].*)?$/\2/p')"  # pipefail-ok: tail reads grep to EOF
+    [ -n "$asked" ] && [ -n "$live" ] && [ "$asked" != "$live" ]
+}
+
 legs_summary=""
 tails_summary=""
 acts_summary=""
+effort_summary=""
 leg_docmap=""
 # label<TAB>lock status<TAB>candidate session names, one line per leg (procs= below).
 leg_candmap=""
@@ -709,7 +737,11 @@ for leg in $LEGS_SPLIT; do
     tails_summary="$(csv_add "$tails_summary" "$label:$tail_status")"
     leg_docmap="$leg_docmap$label=$leg_doc"$'\n'
     leg_candmap="$leg_candmap$label"$'\t'"$lock_status"$'\t'"$leg_cands"$'\n'
+    if [ -f "$leg_doc" ] && leg_effort_mismatch "$leg_doc" "$label"; then
+        effort_summary="$(csv_add "$effort_summary" "MISMATCH:$label")"
+    fi
 done
+[ -n "$effort_summary" ] || effort_summary=ok
 # #1335: legs_summary's "none" default is resolved further down, once
 # the census (below) says whether it can back that up -- see the comment
 # there.
@@ -1211,7 +1243,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length)] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no leg this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1393,16 +1425,42 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
 fi
 
+# The tick already owns the worktree census: reuse the existing reclaiming
+# sweep once an hour, under a lock shared by all checkouts of this repository.
+# Stamp attempts before running so a failing sweep cannot storm on every tick.
+# Sweep and census share the census's existing 90-second budget.
+wts_started="$(date +%s)"
+wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
+if [ -f "$REPO/scripts/worktree.sh" ]; then
+    (
+        cd "$REPO" || exit 0
+        # shellcheck source=../../lib/git-clean.sh
+        . "$HERE/../../lib/git-clean.sh" || exit 0
+        git_env_scrub
+        wts_common="$(git rev-parse --git-common-dir)" || exit 0
+        wts_common="$(cd "$wts_common" && pwd -P)" || exit 0
+        wts_dir="${TICK_STATE_DIR:-$HOME/.himmel/state}"
+        mkdir -p "$wts_dir" || exit 0
+        wts_stamp="$wts_dir/tick-wt-prune-$(printf '%s' "$wts_common" | cksum | cut -d' ' -f1)"
+        exec 8>>"$wts_stamp.lock" || exit 0
+        flock -n 8 || exit 0  # prim-ok: Linux-only nonblocking sweep; with_lock would block the snapshot
+        if [ -e "$wts_stamp" ] && [ -n "$(find "$wts_stamp" -mmin -60)" ]; then exit 0; fi
+        touch "$wts_stamp" || exit 0
+        if timeout -k 2 60 bash "$REPO/scripts/worktree.sh" prune >/dev/null 2>&1; then  # gnu-ok: console kit is Linux-only
+            rm -f "$wto_cache"
+        fi
+    ) 2>/dev/null || true  # swallow-ok: an unavailable state directory or lock skips this attempt
+fi
+
 # wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
 # open PR, nothing holding them) and the live worktree count once it reaches
 # HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
 # takes ~20s on a 50-tree fleet, so its output is cached under TICK_STATE_DIR
 # for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so consoles
-# on different checkouts never share a reading. Not in console-wait's wake key.
+# on different checkouts never share a reading. wt-ceiling is in the waiter's wake key.
 wto_summary=0
 wtc_summary=""
 wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
-wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
 wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
 case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
 if [ -f "$wto_probe" ]; then
@@ -1410,7 +1468,12 @@ if [ -f "$wto_probe" ]; then
         wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
     else
         wto_rc=0
-        wto_out="$(cd "$REPO" && timeout -k 2 90 bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        wto_timeout=$((90 - $(date +%s) + wts_started))
+        if [ "$wto_timeout" -le 0 ]; then
+            wto_rc=2; wto_out=""
+        else
+            wto_out="$(cd "$REPO" && timeout -k 2 "$wto_timeout" bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        fi
         # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
         if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
             wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
@@ -1502,7 +1565,7 @@ wk="$(jq -r '.seven_day.utilization | if type == "number" then floor else empty 
 case "$fh" in ''|*[!0-9]*) fh='?' ;; esac
 case "$wk" in ''|*[!0-9]*) wk='?' ;; esac
 
-bank_status="$(bun "$REPO/scripts/lanes/bank-status.ts" 2>/dev/null | grep '^claudex ' | head -n 1)" || bank_status=""
+bank_status="$(bun "$REPO/scripts/lanes/usage-status.ts" 2>/dev/null | grep '^claudex ' | head -n 1)" || bank_status=""
 codex_fh="$(printf '%s\n' "$bank_status" | sed -n 's/.*5h used=\([0-9][0-9.]*\)%.*/\1/p')"
 codex_wk="$(printf '%s\n' "$bank_status" | sed -n 's/.*weekly used=\([0-9][0-9.]*\)%.*/\1/p')"
 if [ -n "$codex_fh" ] || [ -n "$codex_wk" ]; then
@@ -1523,7 +1586,7 @@ fi
 bank="5h${fh}/wk${wk}/codex=${codex}"
 
 # spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
-# at the reset (bank-monitor.sh --spare). Shown only when the spare is >=
+# at the reset (usage-monitor.sh --spare). Shown only when the spare is >=
 # TICK_SPARE_MIN percent (default 10) and the reset is <= TICK_SPARE_HOURS hours
 # away (default 24); otherwise the field is absent. Advisory only: console-wait's
 # action key is a field whitelist that does not name spare=, so it never wakes.
@@ -1532,7 +1595,7 @@ spare_hours="${TICK_SPARE_HOURS:-24}"
 case "$spare_min" in ''|*[!0-9]*) spare_min=10 ;; esac
 case "$spare_hours" in ''|*[!0-9]*) spare_hours=24 ;; esac
 spare_tail=""
-spare_out="$(BANK_CACHE_FILE="$bank_cache" bash "$REPO/scripts/lib/bank-monitor.sh" --spare 2>/dev/null)" || spare_out=""
+spare_out="$(USAGE_MONITOR_CACHE_FILE="$bank_cache" bash "$REPO/scripts/lib/usage-monitor.sh" --spare 2>/dev/null)" || spare_out=""
 spare_in="$(printf '%s\n' "$spare_out" | sed -n 's/.*seven_day_reset_in=\([0-9][0-9.]*\)h.*/\1/p')"
 spare_pct="$(printf '%s\n' "$spare_out" | sed -n 's/.*unspent_at_reset=\([0-9][0-9.]*\).*/\1/p')"
 if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
@@ -1678,19 +1741,23 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     case "$stall_val" in ""|*[!0-9a-z:,?-]*) ;; *) stall_tail=" stall=$stall_val" ;; esac
 fi
 # busedge=MISSING:<label>[,...]: a held leg (lock FRESH or STALE) none of whose
-# session names has a himmel-bus peer record, so it has no bus edge to the live console.
+# session names has a himmel-bus peer record naming this console (the console doc's stem),
+# so it has no bus edge to the live console: never registered, or never adopted it.
 # ABSENT when every held leg has a record, or when the bus has no peers dir (bus not in use).
 # console-wait.sh's wake key does not name it, so it wakes nothing. Env seam: TICK_BUS_PEERS_DIR.
 busedge_tail=""
 bus_peers_dir="${TICK_BUS_PEERS_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus/peers}"
 if [ -d "$bus_peers_dir" ]; then
     busedge_val=""
+    be_console=""
+    [ -z "$console_doc" ] || be_console="\"console\":\"$(basename "$console_doc" .md)\""
     while IFS=$'\t' read -r be_label be_lock be_cands; do
         [ -n "$be_label" ] || continue
         case "$be_lock" in FRESH|STALE) ;; *) continue ;; esac
         be_found=""
         for be_cand in ${be_cands//,/ }; do
-            [ -f "$bus_peers_dir/$be_cand.json" ] && { be_found=1; break; }
+            [ -f "$bus_peers_dir/$be_cand.json" ] || continue
+            if [ -z "$be_console" ] || grep -qF -- "$be_console" "$bus_peers_dir/$be_cand.json"; then be_found=1; break; fi
         done
         [ -n "$be_found" ] || busedge_val="$(csv_add "$busedge_val" "$be_label")"
     done <<< "$leg_candmap"
@@ -1824,18 +1891,18 @@ if [ -n "$root" ] && [ -d "$root/inbox" ]; then
 fi
 [ -n "$inbox_summary" ] || inbox_summary=none
 
-# fleet=<live>/<cap> + capacity=. The census is bank-preflight.sh's
+# fleet=<live>/<cap> + capacity=. The census is usage-preflight.sh's
 # own -- it counts native + claudex + reserved against HIMMEL_FLEET_CAP inline,
 # in a script that exits, so its `FLEET ... total=<n>/<cap>` line is the seam
 # (a second count here would be the drift this field exists to end). Run as a
-# plain read: CADENCE_BANK_LAUNCH stays empty so it can never refuse anything,
+# plain read: CADENCE_USAGE_LAUNCH stays empty so it can never refuse anything,
 # and the ledger goes to /dev/null so a tick writes no cadence-ledger row.
 # ponytail: bank-preflight still takes its fleet admission lock and prunes
 # expired/consumed reservations while it counts, exactly as any bank read does.
-fleet_out="$(CADENCE_BANK_LAUNCH='' CADENCE_BANK_LEDGER=/dev/null bash "$REPO/scripts/lib/bank-preflight.sh" 2>&1)" || fleet_out=""
+fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # bank= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
-if [ "${CADENCE_BANK_LANE:-${LEG_LANE:-native}}" = openrouter ]; then
+if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${LEG_LANE:-native}}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi
@@ -1909,6 +1976,22 @@ if [ -f "$HERE/../../lib/gh-graphql-budget.sh" ]; then
         gql="$GHB_REMAINING/$gql_reset"
     fi
 fi
+
+# rest main / rest read: the REST core budget of each token, one line per token
+# (`gh api rate_limit` costs no budget); LOW under 10 %. A read token that is
+# absent or unreadable shows in --verbose only, so the compact line stays quiet.
+rest_main_line=''
+rest_read_line=''
+if [ -f "$HERE/../../lib/gh-read.sh" ]; then
+    # shellcheck source=../../lib/gh-read.sh
+    . "$HERE/../../lib/gh-read.sh"
+    rest_lines="$(gh_read_rates 2>/dev/null)" || rest_lines=""  # swallow-ok: an unreadable budget renders as no rest field, advisory only
+    rest_main_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^main: //p')"
+    rest_read_line="$(printf '%s\n' "$rest_lines" | sed -n 's/^read: //p')"
+fi
+rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not a reading
+    case "$1" in [0-9]*) printf '%s' "$1" | sed -e 's/ reset /@/' -e 's/ LOW$/!LOW/' ;; esac
+}
 
 # denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]: rows
 # scripts/hooks/log-classifier-denial.sh appended to the jsonl within the
@@ -2156,6 +2239,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
     printf 'gql: %s\n' "$gql"
+    case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
+    case "$rest_read_line" in ''|'?'*) ;; *) printf 'rest read: %s\n' "$rest_read_line" ;; esac
     printf 'orphans: %s\n' "$orphans"
     printf 'nonces: %s\n' "$nonces_summary"
     printf 'worker-session set: %s\n' "$legset_summary"
@@ -2172,6 +2257,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
+    [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
     [ -z "$ready_tail" ] || printf 'ready-mismatch: %s\n' "${ready_tail# ready-mismatch=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
@@ -2191,7 +2277,7 @@ else
     # Only unconsumed healthy/default values are elided; unknowns stay visible.
     compact_field() {
         case "$1=$2" in
-            *=|hb=ok|hb=skip|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
+            *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
@@ -2214,12 +2300,15 @@ else
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
     compact_field acts "$acts_summary"
+    compact_field effort "$effort_summary"
     compact_field inbox "$inbox_summary"
     compact_field tick "$tick_status"
     [ "$burn" -eq 0 ] || compact_field burn "$burn_summary"
     compact_field fleet "$fleet"
     compact_field capacity "$capacity"
     compact_field gql "$gql"
+    compact_field rest-main "$(rest_compact "$rest_main_line")"
+    compact_field rest-read "$(rest_compact "$rest_read_line")"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
     compact_field legset "$legset_summary"

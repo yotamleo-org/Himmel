@@ -21,6 +21,6 @@ links:
 
 ## Description
 
-Q3: bash scripts/graphify/leg-graph.sh query "how do a console and a leg relate"
+Q3: bash scripts/graphify/leg-graph.sh query "relationship between console sessions and implementation legs"
 Metric mismatch noted by leg N2578: the ticket quotes 38 percent rationale coverage and about 350 cross-file semantic edges. Measured on the live himmel graph with the committed scripts/graphify/semantic-metrics.py before the re-extraction: all semantic nodes 10.7 percent (754 of 7026), model-made n
 PR #3060 (yotamleo/Himmel) merged @ 52d02b21d9a3452c91c47da0a33901026254f083. scripts/handover/merge-on-green.sh is attempting to auto-transition this ticket to 'Done'.

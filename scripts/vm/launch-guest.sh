@@ -18,7 +18,7 @@
 # stdout: the guest session's --output-format json result. rc: the guest's, or 2
 #   on a refused argument.
 # Env: LAUNCH_GUEST_VMS_JSON (registry path; default scripts/lib/vms.json),
-#      LAUNCH_GUEST_PREFLIGHT (bank preflight script; default scripts/lib/bank-preflight.sh),
+#      LAUNCH_GUEST_PREFLIGHT (bank preflight script; default scripts/lib/usage-preflight.sh),
 #      LAUNCH_GUEST_TIMEOUT (seconds above 0, default 1800).
 # Platform: POSIX bash 3.2+, node, ssh with key auth to the guest.
 # launch-profile-ok-file: the claude runs on the guest's own login and config, where no host profile applies
@@ -77,7 +77,7 @@ if [ "$DRY" -eq 1 ]; then
 fi
 # an unattended claude session draws the same subscription budget as any other:
 # preflight the bank and refuse on an exhausted verdict (unknown/stale fail open).
-PREFLIGHT="${LAUNCH_GUEST_PREFLIGHT:-$HERE/../lib/bank-preflight.sh}"
+PREFLIGHT="${LAUNCH_GUEST_PREFLIGHT:-$HERE/../lib/usage-preflight.sh}"
 VERDICT="$(bash "$PREFLIGHT" 2>/dev/null | tail -n 1)"
 case "$VERDICT" in
     SKIPPED-*) echo "launch-guest: bank preflight said $VERDICT - not launching a guest session" >&2; exit 2 ;;

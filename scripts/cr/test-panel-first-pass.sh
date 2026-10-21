@@ -275,7 +275,7 @@ assert_lacks "$err" "mktemp" "T6e usage-error exit 2 does not claim mktemp"
 rm -rf "$repo/.git/cr-review-rounds"
 
 # T6c: exit 6 whose ledger row could NOT be written leaves nothing
-# for clear-cr-marker.sh to hold, so the fence must ABORT (exit 7), not degrade.
+# for clear-review-marker.sh to hold, so the fence must ABORT (exit 7), not degrade.
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && FAKE_RC=6 FAKE_ERR='critic-panel.sh: could not record certify-refused on the CR ledger' \
     bash "$SCRIPT" --head "$feature_sha" --branch feature) 2>"$tmp/err" )"; rc=$?

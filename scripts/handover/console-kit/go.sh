@@ -99,6 +99,13 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/console-kit/go.sh || exit 96
 
+# The reads below (PR view, repo name) ride the read-only token via gh-read.sh
+# and a missing or refused read token falls back to the main one, so
+# a GO is never refused for it. Nothing here writes through it: the GO file is a
+# local write.
+GH_READ="$(cd "$_csg_dir/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-ok: a missing lib dir leaves no helper file, and the next line falls back to plain gh
+[ -f "$GH_READ" ] || GH_READ=gh
+
 usage() {
     echo "usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>" >&2
@@ -239,13 +246,13 @@ if [ "$FORK_SET" -eq 1 ]; then
         echo "go: refusing the fork GO for $FORK PR #$PR - $HBRANCH No GO written." >&2
         exit 6
     fi
-    FVIEW=$(gh pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
+    FVIEW=$("$GH_READ" pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
     FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
     if [ "$FSTATE" != "OPEN|$SHA|MERGEABLE|$HBRANCH" ]; then
         echo "go: refusing the fork GO for $FORK PR #$PR - it must be OPEN at $SHA, MERGEABLE and based on $HBRANCH (state|head|mergeable|base read: '$FSTATE'). No GO written." >&2
         exit 7
     fi
-    if ! REASON=$(go_fork_ready "$FORK" "$PR"); then
+    if ! REASON=$(GH="${GH:-$GH_READ}" go_fork_ready "$FORK" "$PR"); then
         echo "go: refusing the fork GO for $FORK PR #$PR - $REASON No GO written." >&2
         exit 7
     fi
@@ -302,7 +309,7 @@ fi
 # CLOSED (the merge is refused, never allowed), so it does not block this
 # PR, but the case is unhandled -- upgrade: HIMMEL-3582 resolves nwo
 # per-target-repo instead of always from ANCHOR.
-NWO=$(cd "$ANCHOR" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
+NWO=$(cd "$ANCHOR" && "$GH_READ" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
 # A fork GO signs the fork's nwo (already allowlisted above): it validates for
 # that repo's PR only, never for a himmel PR of the same number and sha.
 [ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"

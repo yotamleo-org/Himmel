@@ -1189,7 +1189,7 @@ esac
 git -C "$REPO" checkout -q main
 
 # the CR marker lock ------------------------------------
-# The marker has exactly two writers — this hook and clear-cr-marker.sh — and
+# The marker has exactly two writers — this hook and clear-review-marker.sh — and
 # the second validates for minutes before unlinking. Both hold ONE
 # branch-scoped lock while they touch the file; these cases pin what this side
 # does when it cannot have it. Each asserts the specific REASON, not merely a

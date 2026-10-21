@@ -29,6 +29,10 @@ mk() { # <key> <type> <status> <statusCategory> <fixVersions json>
     printf -- '---\nkey: "%s"\ntype: "%s"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: fixture\n' \
         "$1" "$2" "$3" "$4" "$5" "$1" > "$M/$1.md"
 }
+mkl() { # <key> <type> <status> <statusCategory> <fixVersions json> <labels json> <blocks json> <blocked_by json>
+    printf -- '---\nkey: "%s"\ntype: "%s"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: %s\n  blocked_by: %s\n  relates: []\n---\n\n# %s: fixture\n' \
+        "$1" "$2" "$3" "$4" "$6" "$5" "$7" "$8" "$1" > "$M/$1.md"
+}
 printf 'v1.0.0\ttrue\t2026-01-01\tfalse\nv1.0.1\tfalse\t\tfalse\nv1.0.2\tfalse\t\tfalse\nv0.9.9\tfalse\t\ttrue\nzz-throwaway\tfalse\t\ttrue\n' > "$WORK/jira-mirror/HIMMEL.versions.tsv"
 
 mk HIMMEL-1 Task "In Progress" "In Progress" '["v1.0.2"]'
@@ -41,6 +45,14 @@ mk HIMMEL-7 Task "In Review" "In Progress" '["v1.0.2"]'
 mk HIMMEL-8 Task "To Do" "To Do" '["v1.0.2"]'
 mk HIMMEL-9 Task "Closed" "Done" '["v1.0.0"]'
 mk HIMMEL-10 Task "In Progress" "In Progress" '["v1.0.2"]'
+mkl HIMMEL-22 Task "To Do" "To Do" '["v1.0.1"]' '[]' '[]' '["HIMMEL-20","HIMMEL-3","HIMMEL-23","HIMMEL-24","HIMMEL-25","HIMMEL-28"]'
+mkl HIMMEL-20 Task "To Do" "To Do" '[]' '[]' '[]' '[]'
+mkl HIMMEL-21 Task "To Do" "To Do" '[]' '[]' '["HIMMEL-22"]' '[]'
+mkl HIMMEL-23 Task "To Do" "To Do" '[]' '["backlog"]' '["HIMMEL-22"]' '[]'
+mkl HIMMEL-24 Epic "To Do" "To Do" '[]' '[]' '["HIMMEL-22"]' '[]'
+mkl HIMMEL-25 Task "Done" "Done" '[]' '[]' '["HIMMEL-22"]' '[]'
+mkl HIMMEL-26 Task "To Do" "To Do" '[]' '[]' '["HIMMEL-8","HIMMEL-5"]' '[]'
+mkl HIMMEL-28 Task "To Do" "To Do" '["v1.0.2"]' '[]' '["HIMMEL-22"]' '[]'
 
 mkdir -p "$WORK/legs"
 printf '# leg\n\n## Results\n- 10:00 LIVE — up\n' > "$WORK/legs/HIMMEL-7-N1-x.md"
@@ -61,7 +73,16 @@ lacks "a To Do row in a later version yields no row" "$out" "HIMMEL-8	"
 lacks "a started row in the earliest unreleased version yields no row" "$out" "HIMMEL-6	"
 has "later-version ticket owned by an open PR is OWNED" "$out" "HIMMEL-1	In Progress	v1.0.2	PR:9999	OWNED"
 has "later-version ticket owned by a live leg is OWNED" "$out" "HIMMEL-7	In Review	v1.0.2	leg:N1	OWNED"
-has "count line counts every row" "$out" "vmismatch=5"
+has "versionless open blocker (target lists it as blocked_by) is a row" "$out" "BLOCKER-NO-VERSION	HIMMEL-20	To Do	-	none	RESET"
+has "versionless open blocker (blocker lists the target in blocks) is a row" "$out" "BLOCKER-NO-VERSION	HIMMEL-21	To Do	-	none	RESET"
+lacks "a backlog-labelled blocker yields no row" "$out" "HIMMEL-23	"
+lacks "an Epic blocker yields no row" "$out" "HIMMEL-24	"
+lacks "a Done blocker yields no row" "$out" "HIMMEL-25	"
+lacks "a blocker of a later-version or Done ticket yields no row" "$out" "HIMMEL-26	"
+lacks "a versioned blocker yields no blocker row" "$out" "HIMMEL-28	"
+lacks "a started versionless blocker keeps only its NO-VERSION row" "$out" "BLOCKER-NO-VERSION	HIMMEL-3	"
+has "a started versionless blocker is still a NO-VERSION row" "$out" "NO-VERSION	HIMMEL-3	IN CI"
+has "count line counts every row" "$out" "vmismatch=7"
 [ "$rc" = 1 ] && pass "exit 1 when a RESET row exists" || fail "exit 1 when a RESET row exists (rc=$rc)"
 
 printf '# leg\n\n## Results\n- 10:00 LIVE — up\n- 11:00 WRAPPED — merged\n- 12:00 PARKED-USAGE — relaunched, waiting for RESUME\n' > "$WORK/legs/HIMMEL-10-N2-x.md"

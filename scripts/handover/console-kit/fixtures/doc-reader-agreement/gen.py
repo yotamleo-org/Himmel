@@ -256,6 +256,8 @@ def build_console_doc(rng, template, name):
     nlab = rng.randrange(0, 9)
     labels = ["N%d%s" % (rng.randrange(1, 3000), rng.choice(["", "", "", "b"])) for _ in range(nlab)]
     labels = sorted(set(labels))
+    # Console entries may name a full doc stem rather than the short N<k> label.
+    labels = ["HIMMEL-9000-%s-reader-RESUME" % lab if i % 3 == 0 else lab for i, lab in enumerate(labels)]
     entries = [entry(rng, lab, i) for i, lab in enumerate(labels)]
     # tokens on the legs: lines: entries, prose cites, backticked non-entries, malformed entries
     toks = list(entries)
@@ -347,7 +349,10 @@ def main(argv):
         rows.append("console\t%s\t%s\t%s" % (name, ",".join(labels), ",".join(malformed)))
     for i in range(n_leg):
         k = 100 + i
-        name = "HIMMEL-%d-N%d-g%d-2026-10-20.md" % (9000 + k, k, k)
+        if i % 4 == 0:
+            name = "HIMMEL-%d-reader-legN%d-2026-10-20-RESUME.md" % (9000 + k, k)
+        else:
+            name = "HIMMEL-%d-N%d-g%d-2026-10-20.md" % (9000 + k, k, k)
         doc, tail, pr = build_leg_doc(rng, k)
         if ref_tail(doc) != tail or ref_pr(doc) != pr:
             sys.stderr.write("gen: reference parser disagrees with the leg doc built for %s: built %s/%s, read %s/%s\n" % (name, tail, pr, ref_tail(doc), ref_pr(doc)))

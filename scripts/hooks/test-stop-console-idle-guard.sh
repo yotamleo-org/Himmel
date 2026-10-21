@@ -13,7 +13,7 @@
 # stop_hook_active:true -> allow (the loop guard); (c) a leg's stop payload
 # (no console lock held) -> allow; (d) two SEPARATE induced faults, each
 # with its own asserted precondition -> allow: (i) the held lock's
-# owner.json made unreadable, (ii) a stubbed bank-preflight.sh that exits
+# owner.json made unreadable, (ii) a stubbed usage-preflight.sh that exits
 # non-zero.
 #
 # Isolated fixture: its own HANDOVER_DIR/XDG_RUNTIME_DIR under mktemp -d, a
@@ -169,7 +169,7 @@ else
     if is_block "$out"; then bad "(d-i) unreadable owner.json -> expected allow, got: $out"; else ok "(d-i) unreadable owner.json -> allow"; fi
 fi
 
-# --- (d)(ii) induced fault: bank-preflight.sh exits non-zero --------------
+# --- (d)(ii) induced fault: usage-preflight.sh exits non-zero --------------
 STUB="$TMP/bank-preflight-stub.sh"
 {
     printf '#!/usr/bin/env bash\n'
@@ -178,13 +178,15 @@ STUB="$TMP/bank-preflight-stub.sh"
 } > "$STUB"
 chmod +x "$STUB"
 out="$(run_guard "$CONSOLE_PAYLOAD" HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$STUB")"
-if is_block "$out"; then bad "(d-ii) bank-preflight.sh exit!=0 -> expected allow, got: $out"; else ok "(d-ii) bank-preflight.sh exit!=0 -> allow"; fi
+if is_block "$out"; then bad "(d-ii) usage-preflight.sh exit!=0 -> expected allow, got: $out"; else ok "(d-ii) usage-preflight.sh exit!=0 -> allow"; fi
+out="$(run_guard "$CONSOLE_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
+if is_block "$out"; then bad "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> expected allow, got: $out"; else ok "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> allow"; fi
 # Prove the stub's precondition was real, not a no-op: case (a) already
-# showed the REAL bank-preflight.sh path blocks — re-run it here once more
+# showed the REAL usage-preflight.sh path blocks — re-run it here once more
 # so a future refactor that stops calling BANK_PREFLIGHT_SH at all can't
 # silently turn (d-ii) into a vacuous control.
 out="$(run_guard "$CONSOLE_PAYLOAD")"
-if is_block "$out"; then ok "(d-ii) control: the real bank-preflight.sh still blocks (stub was exercised, not bypassed)"; else bad "(d-ii) control: the real bank-preflight.sh no longer blocks — got: $out"; fi
+if is_block "$out"; then ok "(d-ii) control: the real usage-preflight.sh still blocks (stub was exercised, not bypassed)"; else bad "(d-ii) control: the real usage-preflight.sh no longer blocks — got: $out"; fi
 
 # --- a held leg lock IS the wake path -------------------------
 # The base this ticket cut from blocked UNCONDITIONALLY whenever a console
@@ -240,7 +242,7 @@ write_hb 0 "$$" waiting
 # --- (e) RED control: the PRE-FIX hook still blocks with a leg held -------
 if [ -n "$PREFIX_HOOK" ]; then
     out="$(run_guard_hook "$PREFIX_HOOK" "$CONSOLE_PAYLOAD" \
-        HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/bank-preflight.sh" \
+        HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
         HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
     rc=$?
     if [ "$rc" -ne 0 ]; then
@@ -345,7 +347,7 @@ check_waiter() {
     esac
     if [ -n "$PRE4567_HOOK" ] && [ "$expect" = block ]; then
         out="$(run_guard_hook "$PRE4567_HOOK" "$CONSOLE_PAYLOAD" \
-            HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/bank-preflight.sh" \
+            HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
             HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
         rc=$?
         if [ "$rc" -ne 0 ]; then bad "$label RED: pre-fix hook exited $rc (a crash proves nothing)"

@@ -590,7 +590,7 @@ check "  ...it resolves to the finding currently at that head" "$(L="$RK2" node 
 
 # A unique matching finding row with an
 # EMPTY (legacy/branch-less) branch must resolve e.BRANCH="" (inherit the
-# finding's own scope), NOT the caller's checkout branch. clear-cr-marker.sh
+# finding's own scope), NOT the caller's checkout branch. clear-review-marker.sh
 # and handover-bridge.sh key amendSetFor on the TARGET FINDING ROW's own
 # branch (o.branch||"") - for a branch-less finding that collapses the
 # "scoped" and "legacy" lookup keys to the same "" bucket, so an amend
@@ -814,7 +814,7 @@ CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU2 --model m --id fu-2 --s
 check "control: a non-deferral finding needs no --fu-class" "$?" "0"
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set verdict=deferred --set deferred_to=HIMMEL-1293 --set reason=r --reason x 2>/dev/null
 check "amend to a deferral without fu_class is refused" "$?" "2"
-CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set verdict=deferred --set deferred_to=HIMMEL-1293 --set reason=r --set fu_class=polish --reason x
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set verdict=deferred --set deferred_to=HIMMEL-1293 --set reason=r --set fu_class=polish --set class=new:fu-test --reason x
 check "amend to a deferral with fu_class is accepted" "$?" "0"
 check "  ...and the amend carries fu_class" "$(L="$FU" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].set.fu_class)')" "polish"
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set fu_class=bogus --reason x 2>/dev/null
@@ -1645,6 +1645,14 @@ KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-
 check "HIMMEL-6376: a supplied class=new:<slug> is kept" "$(cls_of cl-own)" "new:quote-split"
 KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-ok --set verdict=fixed --set 'class=Bad Class' --reason 'fixed in follow-up' 2>/dev/null
 check "HIMMEL-6376: a malformed class= is refused" "$?" "2"
+CR_LEDGER="$CLS" bash "$LA" finding --branch b --head CL1 --model m --id cl-def --severity imp --file scripts/other.sh --line 1 --text 'unrelated claim four'
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --reason 'tracked' 2>"$tmp/cld.err"
+check "HIMMEL-6922: an unattributed deferred amend with no class= is refused" "$?" "2"
+check "HIMMEL-6922: the refusal names --set class=" "$(grep -c -e '--set class=' "$tmp/cld.err")" "1"
+check "HIMMEL-6922: the refused deferral wrote no amend" "$(cls_of cl-def)" ""
+KNOWN_FINDINGS_FILE="$KFJ" CR_LEDGER="$CLS" bash "$LA" amend --head CL1 --id cl-def --set verdict=deferred --set deferred_to=HIMMEL-1 --set fu_class=hardening --set class=new:late-bind --reason 'tracked' 2>/dev/null
+check "HIMMEL-6922: an unattributed deferral with --set class=new:<slug> is accepted" "$?" "0"
+check "HIMMEL-6922: ...and carries the supplied class" "$(cls_of cl-def)" "new:late-bind"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit hook-fail-direction=fixed --hit exit-contract-drift=waived:false-positive-out-of-scope --hit docs-flag-drift=checked --duration-secs 3 2>/dev/null
 check "HIMMEL-6376: the three-hit preflight write exits 0" "$?" "0"
 check "HIMMEL-6376: a preflight row records per-hit state and counts" "$(L="$CLS" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="preflight");console.log([r.hits.map(h=>h.class+":"+h.state).join("|"),r.hit_n,r.fixed,r.waived,r.checked,r.duration_secs,r.hits[1].ref].join(","))')" "hook-fail-direction:fixed|exit-contract-drift:waived|docs-flag-drift:checked,3,1,1,1,3,false-positive-out-of-scope"

@@ -107,6 +107,19 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     the mirror refresh, so refresh and render again. When `gh` or Jira cannot be
     read the page says so and flags no card for a missing PR.
 
+    **Automatic refresh.** When the handover doc has a `focus-version:` line,
+    `wrap-merged.sh` runs `bash "<kit>/focus-refresh.sh" --doc <console doc>` after
+    every merge (it also reads `focus-plan:` and `<doc dir>/focus-chains.json`).
+    It stages the mirror, versions, status sweep, open PRs, the page and
+    `status-drift.sh` output. Only on full success does it publish `focus-drift.txt` and
+    replace `roadmap-tracker.html` (and only when the page fingerprint moved); `focus-state`
+    records every run, `FAILED:<stage>` included. The wrap prints
+    `focus=ok|busy|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
+    (`console-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). Republish the page
+    with the `Artifact` tool as above. Each card also shows its worker (owner, PR, state).
+    `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`);
+    `ticket-hold.sh <KEY> --reason <r> --owner <o>` (or `--release`) sets and clears the `held` label.
+
     The bucket `render-focus.py` and the split focus, Done and future pages
     (`--out-done`, `--out-future`, `tracker-done:`, `tracker-future:`) are retired;
     drop those URLs from `## Live state` at the next handover.
@@ -119,4 +132,6 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
   read, ownership is unknown: unowned started rows print UNKNOWN and the run exits
   3, never RESET (released-version rows still print RESET). A mirror file missing
   its key or status, or a bad version, also exits 3; an unreadable mirror prints
-  no rows and exits 3, an unreadable versions file exits 4.
+  no rows and exits 3, an unreadable versions file exits 4. A `BLOCKER-NO-VERSION`
+  row is an open versionless Task, Story or Bug that blocks an open ticket in the
+  active version; give it that version (or the `backlog` label, which opts out).

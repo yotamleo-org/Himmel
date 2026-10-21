@@ -1729,6 +1729,7 @@ check "38f no --role: exit 0" "$rc38f" "0"
 contains "38f no --role: armed log line stamps role=unsplit" "$log38f" "role=unsplit"
 not_contains "38f no --role: konsole record carries no HIMMEL_CONSOLE_RELAY clear" "$rec38f" "HIMMEL_CONSOLE_RELAY"
 not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE_DOC (HIMMEL-2973)" "$rec38f" "HIMMEL_CONSOLE_DOC"
+not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" "$rec38f" "HIMMEL_CONSOLE=1"
 
 # 38g. --role console exports HIMMEL_CONSOLE_DOC (the console
 # doc) and HIMMEL_CONSOLE_WORKDIR (dirname of the signal file = the console's
@@ -1743,6 +1744,7 @@ rec38g="$(cat "$d38g/record" 2>/dev/null || true)"
 check "38g --role console: exit 0" "$rc38g" "0"
 contains "38g --role console: a repo-relative DOC is exported ABSOLUTE (against REPO, where the session runs)" "$rec38g" "HIMMEL_CONSOLE_DOC=$REPO/doc38g.md"
 contains "38g --role console: konsole record exports HIMMEL_CONSOLE_WORKDIR=dirname(signal)" "$rec38g" "HIMMEL_CONSOLE_WORKDIR=$d38g/chain"
+contains "38g --role console: konsole record exports the HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" "$rec38g" "HIMMEL_CONSOLE=1"
 d38h="$tmp/c38h"; mk_stub "$d38h" 1 alive "HIMMEL-role38h"
 rc38h=0
 KONSOLE_CMD="$d38h/konsole" PGREP_CMD="$d38h/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38h/locks" HEADED_ARM_PROC="$d38h/proc" \

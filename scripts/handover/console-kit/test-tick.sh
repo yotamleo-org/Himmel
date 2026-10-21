@@ -117,6 +117,13 @@ STUB
 # default = a healthy header set) then exits STUB_GQL_RC (default 0).
 cat > "$W/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+# `gh api rate_limit` is the rest main / rest read budget probe: not logged
+# (it costs no budget), STUB_RATE_OUT for the main token, STUB_RATE_READ_OUT for the read
+# token (GH_TOKEN set by gh-read.sh); empty by default, so a tick shows no rest fields.
+if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then
+  if [ -n "${GH_TOKEN:-}" ]; then printf '%s\n' "${STUB_RATE_READ_OUT:-}"; else printf '%s\n' "${STUB_RATE_OUT:-}"; fi
+  exit 0
+fi
 if [ "${1:-}" = api ]; then
   [ -z "${STUB_GH_API_LOG:-}" ] || printf '%s\n' "$*" >> "$STUB_GH_API_LOG"
   printf '%b' "${STUB_GQL_OUT-HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4321\r\nX-Ratelimit-Reset: 1790000000\r\n\r\n}"
@@ -156,18 +163,18 @@ cp "$HERE/../../lanes/ceiling-conformance.sh" "$W/repo/scripts/lanes/ceiling-con
 # source by $REPO-relative path.
 cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-sessions.sh"
 
-# fleet=/capacity= reuse bank-preflight.sh's FLEET line. This stub
+# fleet=/capacity= reuse usage-preflight.sh's FLEET line. This stub
 # prints the same stderr line shape (STUB_FLEET_LINE overrides it) and records
 # the env tick ran it under, so the suite can pin that tick never asks it for a
 # ledger row or a launch refusal.
-cat > "$W/repo/scripts/lib/bank-preflight.sh" <<'STUB'
+cat > "$W/repo/scripts/lib/usage-preflight.sh" <<'STUB'
 #!/usr/bin/env bash
-[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_BANK_LEDGER:-unset}" "${CADENCE_BANK_LAUNCH:-unset}" > "$STUB_PF_SEEN"
+[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-${CADENCE_BANK_LEDGER:-unset}}" "${CADENCE_USAGE_LAUNCH:-${CADENCE_BANK_LAUNCH:-unset}}" > "$STUB_PF_SEEN"
 printf '%s\n' "${STUB_FLEET_LINE-bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/8}" >&2
 printf '%s\n' "${STUB_PF_VERDICT:-PROCEED}"
 STUB
 
-chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/leg-burn.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/bank-preflight.sh" "$W/bin/"*
+chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/leg-burn.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/usage-preflight.sh" "$W/bin/"*
 
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/HIMMEL-111-legN61.md"
@@ -215,6 +222,116 @@ export CLAUDE_SESSIONS_PROC="$W/proc"
 # launch logs live in <work-dir>/<chain>/<name>.launch.log.
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
+
+# Partial counts below the cap cannot become an exact, healthy tick sample.
+mkdir -p "$W/repo/scripts/ci"
+cat > "$W/repo/scripts/ci/queue-latency.sh" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$STUB_CIQ_OUT"
+STUB
+sampled_out='ci-queue: jobs_in_progress=44/60 macos=0/5 queued=29 oldest_wait=10m sampled=true'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'a below-cap sampled probe stays unknown' "$sampled_tick" 'ciq=unknown'
+not_contains 'a below-cap sampled probe is not an exact count' "$sampled_tick" 'ciq=44/60'
+not_contains 'a below-cap sampled probe cannot claim saturation' "$sampled_tick" 'SATURATED'
+# Proven saturation keeps a parser-compatible count and a separate sample label.
+sampled_out=$'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true'
+rm -rf "$W/state"
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'one proven sampled breach does not raise SATURATED' "$sampled_tick" 'SATURATED'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'two proven sampled breaches still raise SATURATED' "$sampled_tick" 'ciq=64/60,mac=0/5,q=32,wait=10m,SATURATED'
+rm -f "$W/repo/scripts/ci/queue-latency.sh"
+rm -rf "$W/state"
+if [ "${1:-}" = --ciq-sampled ]; then
+    if [ "$fails" -eq 0 ]; then printf 'PASSED\n'; exit 0; else printf 'FAILED=%s\n' "$fails"; exit 1; fi
+fi
+
+# Missing cadence, a fresh marker, and an overlapping tick must not be confused.
+worktree_prune_cases() (
+    local repo="$W/prune-repo" bin="$W/prune-bin" state="$W/prune-state" stamp out
+    mkdir -p "$repo/scripts" "$bin" "$state" || exit 1
+    git init -q -b main "$repo" || exit 1
+    git -C "$repo" config user.email test@example.com
+    git -C "$repo" config user.name test
+    printf 'base\n' > "$repo/README"
+    git -C "$repo" add README
+    git -C "$repo" commit -qm base || exit 1
+    git init -q --bare "$W/prune-origin.git" || exit 1
+    git -C "$repo" remote add origin "$W/prune-origin.git"
+    printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "$HERE/../../worktree.sh" > "$repo/scripts/worktree.sh"
+    cat > "$bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *'auth status'*) exit 0 ;;
+    *'repo view'*) echo owner/repo; exit 0 ;;
+    *'api --paginate repos/owner/repo/pulls'*)
+        case "$*" in *state=open*) exit 0 ;; esac
+        git for-each-ref --format='owner/repo%x09%(refname:short)%x09merged%x09%(objectname)' refs/heads/feat | sed 's/%x09/\t/g'
+        exit 0 ;;
+esac
+printf 'unexpected gh command: %s\n' "$*" >&2
+exit 1
+STUB
+    chmod +x "$bin/gh"
+    if "$bin/gh" auth satus >/dev/null 2>&1; then fail 'forge stub accepts an invalid command'; else pass 'forge stub rejects unexpected commands'; fi
+    printf 'CEILING 72/100 worktrees (alarm at 70)\n' > "$state/tick-wt-orphans-$(printf '%s' "$repo" | cksum | cut -d' ' -f1)"
+    git -C "$repo" worktree add -qb feat/clean "$W/prune-clean" || exit 1
+    git -C "$repo" worktree add -qb feat/dirty "$W/prune-dirty" || exit 1
+    printf 'user work\n' >> "$W/prune-dirty/README"
+    # Age both fixture reflogs so the real prune's activity gate is satisfied.
+    touch -d '2 hours ago' "$repo/.git/worktrees/prune-clean/logs/HEAD" "$repo/.git/worktrees/prune-dirty/logs/HEAD"
+    prune_tick() {
+        PATH="$bin:$PATH" REPO="$repo" TICK_STATE_DIR="$state" TOKEN='' LEGS='' DOC='' \
+            FORGE=github WORKTREE_ORPHAN_HOURS=0 bash "$SUT" 2>/dev/null
+    }
+    out="$(prune_tick)"
+    [ ! -d "$W/prune-clean" ] && pass 'cadence reclaims an old merged clean worktree without manual clean' || fail 'cadence did not reclaim an old merged clean worktree'
+    [ -d "$W/prune-dirty" ] && grep -qx 'user work' "$W/prune-dirty/README" && pass 'cadence preserves a dirty worktree and its edits' || fail 'cadence lost dirty user work'
+    contains 'cadence keeps the tick output available' "$out" 'TICK '
+    not_contains 'a successful sweep invalidates the stale ceiling census' "$out" ' wt-ceiling=72/100'
+    stamp="$state/tick-wt-prune-$(printf '%s' "$repo/.git" | cksum | cut -d' ' -f1)"
+    git -C "$repo" worktree add -qb feat/later "$W/prune-later" || exit 1
+    out="$(prune_tick)"
+    [ -d "$W/prune-later" ] && pass 'a second tick inside the hour does not sweep again' || fail 'cadence swept twice inside an hour'
+    touch -d '61 minutes ago' "$stamp"
+    exec 7>>"$stamp.lock"
+    flock -n 7 || exit 1  # gnu-ok: console kit is Linux-only
+    out="$(prune_tick 7>&-)"
+    [ -d "$W/prune-later" ] && pass 'a concurrent sweep lock suppresses a due tick' || fail 'cadence ignored a held sweep lock'
+    exec 7>&-
+    out="$(prune_tick)"
+    [ ! -d "$W/prune-later" ] && pass 'the next due tick reclaims clean worktrees after the hour' || fail 'cadence did not sweep after the hour'
+    [ -d "$W/prune-dirty" ] && pass 'later sweeps still preserve the dirty worktree' || fail 'later cadence removed the dirty worktree'
+    # Simulate a sweep consuming its full minute without making the suite sleep.
+    cat > "$bin/date" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = +%s ] && [ -f "$PRUNE_CLOCK" ]; then cat "$PRUNE_CLOCK"; else /bin/date "$@"; fi
+STUB
+    cat > "$bin/timeout" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *"$PRUNE_WRAPPER prune --orphans") printf '%s\n' "$3" > "$PRUNE_BUDGET"; exit 0 ;;
+    *"$PRUNE_WRAPPER prune") printf '%s\n' "$(( $(cat "$PRUNE_CLOCK") + 60 ))" > "$PRUNE_CLOCK"; exit 0 ;;
+esac
+exec /usr/bin/timeout "$@"
+STUB
+    chmod +x "$bin/date" "$bin/timeout"
+    export PRUNE_CLOCK="$W/prune-clock"
+    export PRUNE_BUDGET="$W/prune-budget"
+    export PRUNE_WRAPPER="$repo/scripts/worktree.sh"
+    /bin/date +%s > "$PRUNE_CLOCK"
+    touch -d '61 minutes ago' "$stamp"
+    rm -f "$state/tick-wt-orphans-$(printf '%s' "$repo" | cksum | cut -d' ' -f1)"
+    out="$(prune_tick)"
+    if [ -f "$PRUNE_BUDGET" ] && [ "$(cat "$PRUNE_BUDGET")" -le 30 ]; then pass 'the census shares the sweep deadline'; else fail 'the census exceeded the combined maintenance budget'; fi
+    [ "$fails" -eq 0 ]
+)
+if ! worktree_prune_cases; then fails=$((fails + 1)); fi
+if [ "${1:-}" = --worktree-prune-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
 
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
@@ -625,7 +742,7 @@ mkdir -p "$W/foreign-repo/scripts/handover" "$W/foreign-repo/scripts/lib" "$W/fo
 cp "$W/repo/scripts/handover/queue-lock.sh" "$W/foreign-repo/scripts/handover/queue-lock.sh"
 cp "$W/repo/scripts/context-fill.sh" "$W/foreign-repo/scripts/context-fill.sh"
 cp "$W/repo/scripts/lanes/leg-burn.sh" "$W/foreign-repo/scripts/lanes/leg-burn.sh"
-cp "$W/repo/scripts/lib/bank-preflight.sh" "$W/foreign-repo/scripts/lib/bank-preflight.sh"
+cp "$W/repo/scripts/lib/usage-preflight.sh" "$W/foreign-repo/scripts/lib/usage-preflight.sh"
 # every chokepoint fails closed without its seam-guard lib.
 cp "$W/repo/scripts/lib/chokepoint-seam-guard.sh" "$W/foreign-repo/scripts/lib/chokepoint-seam-guard.sh"
 foreign_out="$(REPO="$W/foreign-repo" PATH="$W/bin:$PATH" bash "$SUT" --legs 'HIMMEL-111-legN61')"
@@ -850,7 +967,7 @@ case "$no_legs_out" in
 esac
 
 # --- fleet=<live>/<cap> + capacity= ------------------------------
-# fleet= is bank-preflight.sh's own census (its FLEET total=n/cap line), never a
+# fleet= is usage-preflight.sh's own census (its FLEET total=n/cap line), never a
 # second count. capacity=UNDERFILLED:<slack> fires when live < cap AND no leg has
 # launched for TICK_UNDERFILL_MIN (default 10) minutes, judged by the newest
 # <name>.launch.log mtime under the console work dir.
@@ -879,10 +996,10 @@ case "$fail_out" in
     *'capacity=ok'*|*UNDERFILLED*) fail 'a failed fleet census must not claim ok/UNDERFILLED (HIMMEL-3167)' ;;
     *) pass 'a failed fleet census must not claim ok/UNDERFILLED (HIMMEL-3167)' ;;
 esac
-mv "$W/repo/scripts/lib/bank-preflight.sh" "$W/bank-preflight.sh.away"
+mv "$W/repo/scripts/lib/usage-preflight.sh" "$W/usage-preflight.sh.away"
 gone_out="$(bash "$SUT")"
-contains 'a missing bank-preflight.sh reports fleet=? (HIMMEL-3167)' "$gone_out" 'fleet=? capacity=unknown'
-mv "$W/bank-preflight.sh.away" "$W/repo/scripts/lib/bank-preflight.sh"
+contains 'a missing usage-preflight.sh reports fleet=? (HIMMEL-3167)' "$gone_out" 'fleet=? capacity=unknown'
+mv "$W/usage-preflight.sh.away" "$W/repo/scripts/lib/usage-preflight.sh"
 STUB_PF_SEEN="$W/pf-seen" bash "$SUT" >/dev/null
 contains 'tick asks bank-preflight for no ledger row and no launch refusal (HIMMEL-3167)' "$(cat "$W/pf-seen" 2>/dev/null)" 'ledger=/dev/null launch=unset'
 rm -f "$launch_log"
@@ -951,6 +1068,20 @@ case "$gql_burn" in
     *' burn=N61:'*" capacity=UNDERFILLED:7 gql=4321/$gql_hm "*) pass 'gql= keeps its slot under --burn with healthy orphan fields omitted' ;;
     *) fail "gql=/orphans= order under --burn (out='$gql_burn')" ;;
 esac
+
+# --- rest-main= / rest-read= ---------------------
+# One REST budget per token from `gh api rate_limit` (no budget cost), LOW under 10 %.
+# The fixture .env supplies the read token; the stub tells the tokens apart by GH_TOKEN.
+mkdir -p "$W/readroot"
+printf 'himmel_github_token_vm2=ghp_TICKTEST0123456789\n' > "$W/readroot/.env"  # gitleaks:allow fixture token
+rest_out="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='450 5000 1790000000' bash "$SUT")"
+contains 'the tick shows the main token budget (HIMMEL-6837)' "$rest_out" " rest-main=4200/5000@$gql_hm"
+contains 'a read token at 9 % is flagged LOW (HIMMEL-6837)' "$rest_out" " rest-read=450/5000@$gql_hm!LOW"
+rest_v="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='450 5000 1790000000' bash "$SUT" --verbose)"
+contains '--verbose has one line per token, main (HIMMEL-6837)' "$rest_v" "rest main: 4200/5000 reset $gql_hm"
+contains '--verbose has one line per token, read with LOW (HIMMEL-6837)' "$rest_v" "rest read: 450/5000 reset $gql_hm LOW"
+rest_ok="$(GH_READ_ENV_ROOT="$W/readroot" STUB_RATE_OUT='4200 5000 1790000000' STUB_RATE_READ_OUT='4000 5000 1790000000' bash "$SUT")"
+case "$rest_ok" in *LOW*) fail "healthy budgets must not be flagged LOW (out='$rest_ok')" ;; *) pass 'healthy budgets carry no LOW flag (HIMMEL-6837)' ;; esac
 
 # --- orphans=<owner>:<count>/<oldest>m ---------------------------
 # A wrapper shell older than the floor under a live session is surfaced at the
@@ -2059,9 +2190,9 @@ contains 'OpenRouter funded verdict surfaces without changing raw balance' \
   "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' bank=openrouter:PROCEED '
 
 # --- spare=<pct>@<h>h ---------------------------------------------
-# tick reads bank-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
+# tick reads usage-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
 # projection maths is test-bank-monitor.sh's), so only tick's gating is pinned.
-cat > "$W/repo/scripts/lib/bank-monitor.sh" <<'STUB'
+cat > "$W/repo/scripts/lib/usage-monitor.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "${1:-}" = "--spare" ] || exit 2
 printf '%s\n' "${STUB_SPARE-seven_day_reset_in=?  unspent_at_reset=?}"
@@ -2078,8 +2209,8 @@ contains 'TICK_SPARE_HOURS moves the reset window (HIMMEL-4421)' \
   "$(TICK_SPARE_HOURS=48 STUB_SPARE='seven_day_reset_in=30.0h unspent_at_reset=60.0' bash "$SUT")" ' spare=60@30h'
 contains 'verbose labels spare (HIMMEL-4421)' \
   "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT" --verbose)" 'spare: 33@6h'
-rm -f "$W/repo/scripts/lib/bank-monitor.sh"
-spare_has 'a missing bank-monitor.sh leaves spare= absent and the tick intact (HIMMEL-4421)' "$(bash "$SUT")"
+rm -f "$W/repo/scripts/lib/usage-monitor.sh"
+spare_has 'a missing usage-monitor.sh leaves spare= absent and the tick intact (HIMMEL-4421)' "$(bash "$SUT")"
 
 # --- a READY with no GO file for 30 minutes is a wake. tails= is in the
 # console-wait action key, so the entry moving READY -> READY!stale wakes it once.
@@ -2661,6 +2792,31 @@ contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6
 printf '%s\n' '# console' '' 'decisions: a brief note above Live state, not the line' '' '## Live state' 'decisions: (1) short.' > "$d6603"
 contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECISIONS_BUDGET_BYTES=10 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION decisions-over-budget=21/10: '
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+
+# --- effort=MISMATCH:<leg> ----------------------------------------------------
+# The asked effort is the LEG_EFFORT line in the launch-<label>.sh the console
+# wrote beside the leg doc; the live effort is the effort= token on the leg's
+# newest LIVE bullet. A leg asked for high that reports medium is the 09-23 to
+# 10-20 incident this field exists to show.
+ef_doc="$W/handover/HIMMEL-6588-N77-effort.md"
+ef_ok="$W/handover/HIMMEL-6588-N78-effort.md"
+ef_none="$W/handover/HIMMEL-6588-N79-effort.md"
+printf '%s\n' '# leg' '- 09:00 LIVE — started effort=medium model=claude-sonnet-5-5' > "$ef_doc"
+printf '%s\n' '# leg' '- 09:00 LIVE — started effort=high model=claude-sonnet-5-5' > "$ef_ok"
+printf '%s\n' '# leg' '- 09:00 LIVE — started, no effort token' > "$ef_none"
+for ef_l in N77 N78 N79; do printf '%s\n' '#!/usr/bin/env bash' 'export LEG_EFFORT=high' > "$W/handover/launch-$ef_l.sh"; done
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N77","lockless":true},{"doc":"%s","label":"N78","lockless":true},{"doc":"%s","label":"N79","lockless":true}]}\n' "$ef_doc" "$ef_ok" "$ef_none" > "$fm"
+ef_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc=$?
+if [ "$ef_rc" -eq 0 ]; then pass 'the effort fixture tick exits 0'; else fail "the effort fixture tick exits 0 (rc=$ef_rc)"; fi
+contains 'a leg asked for high whose LIVE bullet says medium reads effort=MISMATCH:N77 (HIMMEL-6588)' "$ef_out" ' effort=MISMATCH:N77'
+not_contains 'a leg whose LIVE effort matches the asked one is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N78'
+not_contains 'a LIVE bullet with no effort= token is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N79'
+printf '%s\n' '- 09:30 LIVE — resumed effort=high model=claude-sonnet-5-5' >> "$ef_doc"
+ef_out2="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc2=$?
+if [ "$ef_rc2" -eq 0 ]; then pass 'the re-run effort fixture tick exits 0'; else fail "the re-run effort fixture tick exits 0 (rc=$ef_rc2)"; fi
+contains 'the re-run effort fixture tick prints its TICK line' "$ef_out2" 'TICK '
+not_contains 'only the newest LIVE bullet decides the effort (HIMMEL-6588)' "$ef_out2" 'effort=MISMATCH'
+rm -f "$ef_doc" "$ef_ok" "$ef_none" "$W/handover/launch-N77.sh" "$W/handover/launch-N78.sh" "$W/handover/launch-N79.sh" "$fm"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

@@ -128,6 +128,23 @@ run() {  # run [args...]
         bash "$CR" --ledger "$LEDGER" --members "$MEMBERS" "$@" 2>&1 )
 }
 
+echo "TEST: residual lookup warns on stderr at and above the 500-row cap"
+for n in 499 500 501; do
+    reset
+    awk -v n="$n" 'BEGIN { for (i = 1; i <= n; i++) printf "TST-%d\tTask\tTo Do\tresidual\tresidual\n", i }' >"$JSTATE/residuals"
+    out=$(JIRA_PROJECT_KEY=TST JIRA_CMD="$JSTUB" JLOG="$JLOG" JSTATE="$JSTATE" \
+        bash "$CR" --ledger "$LEDGER" --members "$MEMBERS" --merged-file "$MERGED" --dry-run 2>"$TMP_ROOT/cap.err"); rc=$?
+    assert_eq "$n residuals exits 0" "0" "$rc"
+    err=$(cat "$TMP_ROOT/cap.err")
+    if [ "$n" -eq 499 ]; then
+        assert_not_contains "below the cap does not warn" "$err" "WARN"
+    else
+        assert_contains "$n residuals warns on stderr" "$err" "WARN class-recurrence: the query hit its 500-row cap"
+        assert_contains "$n residuals warns that results are partial" "$err" "partial"
+    fi
+    assert_not_contains "$n residuals keeps warning off stdout" "$out" "WARN"
+done
+
 echo "TEST: a pair in 5 merged PRs, 2 deferring, files exactly one ticket (RED: nothing is filed today)"
 reset
 out=$(run --merged-file "$MERGED"); rc=$?
@@ -203,6 +220,15 @@ reset
 printf 'TST-301\tTask\tTo Do\tp1\tresidual,class-two-class\nTST-302\tTask\tTo Do\tp2\tresidual,class-two-class\n' >"$JSTATE/residuals"
 out=$(run --merged-file "$MERGED"); rc=$?
 assert_not_contains "2 residuals do not trigger" "$(cat "$JLOG")" "two-class"
+
+echo "TEST: open residuals labelled class-unclassified or class-unattributed never trigger"
+reset
+printf 'TST-311\tTask\tTo Do\tp1\tresidual,class-unclassified\nTST-312\tTask\tTo Do\tp2\tresidual,class-unclassified\nTST-313\tTask\tTo Do\tp3\tresidual,class-unclassified\nTST-321\tTask\tTo Do\tp4\tresidual,class-unattributed\nTST-322\tTask\tTo Do\tp5\tresidual,class-unattributed\nTST-323\tTask\tTo Do\tp6\tresidual,class-unattributed\n' >"$JSTATE/residuals"
+out=$(run --merged-file "$MERGED"); rc=$?
+assert_eq "placeholder-residual run exits 0" "0" "$rc"
+assert_not_contains "3 unclassified residuals file no restructure ticket" "$(cat "$JLOG")" "restructure-class-unclassified"
+assert_not_contains "3 unattributed residuals file no restructure ticket" "$(cat "$JLOG")" "restructure-class-unattributed"
+assert_not_contains "the dry-run output never lists the placeholder" "$(run --merged-file "$MERGED" --dry-run)" "unclassified"
 
 echo "TEST: weekly cap of 2 new tickets"
 reset

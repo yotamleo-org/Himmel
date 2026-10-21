@@ -119,7 +119,7 @@
 # stamp v14 too, so one version answers "is this runner current".
 # v15: the three pipeline CLAUDE legs gate before they spend.
 # Every one of them now runs scripts/lib/bank-preflight.sh first (with
-# CADENCE_BANK_LEG set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
+# CADENCE_USAGE_LEG set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
 # spend instead of logging leg:"unknown") and passes an explicit
 # --permission-mode; the synthesize leg additionally runs the free
 # scripts/luna/synth-input-check.sh and skips the session outright on a night
@@ -190,7 +190,7 @@ CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 # Basename registry for generated cadence runners. Keep explicit: a stray
 # foreign *.bat/*.sh in a runner dir must not poison the staleness probe.
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
-CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health codex-sweep graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel doctor-cadence"
+CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health codex-sweep graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence"
 
 # cadence_posix_leg_start <q_flow_lib> <flow> <task>
 # cadence_posix_leg_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]

@@ -8,7 +8,7 @@
 #
 #   LOCKS   queue-lock.sh status --sweep at the ROOT (never the bucket)
 #   HEAD    primary head sha + remote
-#   BANK    bank-preflight.sh output
+#   BANK    usage-preflight.sh output
 #   PROCS   the leg processes (pgrep -af 'claude .*-n <prefix>-')
 #   C29     himmel-doctor.sh --only C29 (a session that inherited CHILD_SESSION=1)
 #   LOAD    uptime
@@ -79,7 +79,7 @@ git -C "$repo" log -1 --format=%H 2>&1 || echo "unavailable"
 git -C "$repo" remote -v 2>&1 | head -n 2
 
 echo "== BANK"
-bank_cmd="${ACTION_ZERO_BANK:-$repo/scripts/lib/bank-preflight.sh}"
+bank_cmd="${ACTION_ZERO_BANK:-$repo/scripts/lib/usage-preflight.sh}"
 bout="$(bounded bank "$bank_t" bash "$bank_cmd")"; brc=$?
 printf '%s\n' "$bout"
 if [ "$brc" -ne 0 ]; then

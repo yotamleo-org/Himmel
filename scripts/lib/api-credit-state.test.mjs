@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUT = join(HERE, 'api-credit-state.mjs');
-const BANK = join(HERE, 'bank-preflight.sh');
+const BANK = join(HERE, 'usage-preflight.sh');
 const T = mkdtempSync(join(tmpdir(), 'api-credit-'));
 process.on('exit', () => rmSync(T, { recursive: true, force: true }));
 

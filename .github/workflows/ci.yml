@@ -525,18 +525,40 @@ jobs:
     needs: plan
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    # --init: an init as PID 1 reaps orphaned descendants, as on the host.
+    # --privileged: bwrap and unshare need user namespaces inside the container.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001 --privileged
+    permissions:
+      contents: read
+      packages: read
     timeout-minutes: 30 # p95 sum of the folded jobs ~250s plus one setup; 30 bounds a hung group
     outputs:
-      secret-scan: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.secret-scan.outcome) && 'pass' || 'fail' }}
-      bwk-awk-mktemp-gate: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.bwk-awk-mktemp-gate.outcome) && 'pass' || 'fail' }}
-      unchecked-mktemp-range: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.unchecked-mktemp-range.outcome) && 'pass' || 'fail' }}
-      commit-lint: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.commit-lint.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__platforms.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__security.outcome) && 'pass' || 'fail' }}
-      jira-cli-smoke: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke__npm.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke.outcome) && 'pass' || 'fail' }}
-      guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
-      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
-      doc-invariants: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && steps.setup-node.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__dev.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__guard.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__self.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__desc-cap.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__positional.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__catalog.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__secrets-doc.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__llms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__terms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__hermetic.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__stage.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__agents-md.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__debrand.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__lanes.outcome) && 'pass' || 'fail' }}
+      secret-scan: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.secret-scan.outcome) && 'pass' || 'fail' }}
+      bwk-awk-mktemp-gate: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.bwk-awk-mktemp-gate.outcome) && 'pass' || 'fail' }}
+      unchecked-mktemp-range: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.unchecked-mktemp-range.outcome) && 'pass' || 'fail' }}
+      commit-lint: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__platforms.outcome) && contains(fromJSON('["success","skipped"]'), steps.commit-lint__security.outcome) && 'pass' || 'fail' }}
+      jira-cli-smoke: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke__npm.outcome) && contains(fromJSON('["success","skipped"]'), steps.jira-cli-smoke.outcome) && 'pass' || 'fail' }}
+      guardrail-matrices: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.guardrail-matrices.outcome) && 'pass' || 'fail' }}
+      claude-startup: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__bun-path.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__cli.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__userns.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__mock-turn.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-image.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt-cache.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__apt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__consult.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__hook-smoke.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__shfmt.outcome) && contains(fromJSON('["success","skipped"]'), steps.claude-startup__live-turn.outcome) && 'pass' || 'fail' }}
+      doc-invariants: ${{ steps.finished.outcome == 'success' && steps.checkout.outcome == 'success' && contains(fromJSON('["success","skipped"]'), steps.setup-node.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__dev.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__guard.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__self.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__desc-cap.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__positional.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__catalog.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__secrets-doc.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__llms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__terms.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__hermetic.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__stage.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__agents-md.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__debrand.outcome) && contains(fromJSON('["success","skipped"]'), steps.doc-invariants__lanes.outcome) && 'pass' || 'fail' }}
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
     env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
       CLAUDE_CLI_VERSION: '2.1.296'
+    # A container's default run shell is sh; this is the host runner's default.
+    defaults:
+      run:
+        shell: bash -e {0}
     steps:
       # Full history: commit-lint, unchecked-mktemp-range and doc-guard walk the
       # PR range. This checks out and executes contributor code, so the token is
@@ -548,6 +570,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         id: setup-node
+        if: ${{ !job.container.id }}
         with:
           node-version: '22'
       - id: secret-scan
@@ -629,21 +652,24 @@ jobs:
       # without it makes them exit 127 and the hook smoke correctly reports a failing hook.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         id: claude-startup__bun
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !job.container.id }}
         with:
           bun-version-file: .bun-version
       # The mock sandbox runs claude under a scrubbed PATH (claude, node, /usr/local/bin,
       # /usr/bin, /bin), so setup-bun's ~/.bun/bin must be linked into one of those.
       - id: claude-startup__bun-path
         name: Put bun on the scrubbed PATH
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !job.container.id }}
         run: sudo ln -sf "$(command -v bun)" /usr/local/bin/bun
       - id: claude-startup__cli
         name: Install the pinned claude CLI
         if: ${{ !cancelled() }}
         timeout-minutes: 10
+        # The image's /usr/local is root-owned; setup-node's prefix is the runner's.
+        env:
+          IN_IMAGE: ${{ job.container.id }}
         run: |
-          npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          ${IN_IMAGE:+sudo} npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
           claude --version
       # ubuntu-24.04 refuses unprivileged user namespaces by default (AppArmor);
       # the suite needs `unshare -rn` and fails closed without it.
@@ -668,18 +694,18 @@ jobs:
       # The consult sandbox needs bubblewrap and socat on the runner.
       - id: claude-startup__apt-image
         name: Record runner image (apt cache key)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !job.container.id }}
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - id: claude-startup__apt-cache
         name: Cache apt debs (consult)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !job.container.id }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-consult-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - id: claude-startup__apt
         name: Install the consult sandbox prerequisites
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !job.container.id }}
         timeout-minutes: 10
         run: bash .github/scripts/apt-install.sh bubblewrap socat
       - id: claude-startup__consult
@@ -690,6 +716,20 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: bash scripts/testing/test-mock-hook-smoke.sh
+      # The live turn denies `git stash drop` through block-git-stash.sh, which reads
+      # the command with shfmt; without it the deny text names shfmt, not the stash.
+      # Same pinned, sha-verified release as the shell-unit job; keep in lockstep.
+      # The sandboxed claude run rebuilds PATH from /usr/local/bin:/usr/bin:/bin
+      # (fakekey-claude.sh), so the binary goes to /usr/local/bin, not GITHUB_PATH.
+      - id: claude-startup__shfmt
+        name: Install pinned shfmt (live-turn deny text)
+        if: ${{ !cancelled() }}
+        run: |
+          shfmt_ver=3.14.1
+          shfmt_sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${shfmt_ver}/shfmt_v${shfmt_ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt"
+          echo "${shfmt_sha}  $RUNNER_TEMP/shfmt" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
       - id: claude-startup__live-turn
         if: ${{ !cancelled() }}
         timeout-minutes: 10
@@ -934,8 +974,9 @@ jobs:
 
   # Commit-time / pre-commit backstop for the 5 leak classes (HIMMEL-2561 /
   # HIMMEL-2705 step 2): catches anything that slipped past the pre-commit
-  # hook (a --no-verify commit, a merge, a stale clone) by re-scanning the
-  # whole tracked tree. Public CI has no station-local denylist file, so the
+  # hook (a --no-verify commit, a merge, a stale clone). Main and the crons
+  # re-scan the whole tracked tree; a PR scans the files it changed
+  # (HIMMEL-3898). Public CI has no station-local denylist file, so the
   # hostname class self-skips here (see leak-classes.sh header) — the other
   # 4 classes still run.
   leak-classes:
@@ -948,12 +989,46 @@ jobs:
           # contributor code. The default persists the GITHUB_TOKEN into
           # .git/config, where that code can read it.
           persist-credentials: false
-      - run: bash scripts/guardrails/leak-classes.sh --tree
+          # Depth 2 keeps both parents of the PR merge commit, so HEAD^1 (the
+          # current base tip) is reachable for the changed-file list below.
+          fetch-depth: 2
+      - name: leak-classes (PR changed files)
+        if: github.event_name == 'pull_request'
+        # Fail closed: a checkout that is not a merge commit, a diff that cannot be
+        # computed, or a change to the scanner, its ignore list or this workflow
+        # scans the whole tree.
+        run: |
+          scope=all
+          changed="$RUNNER_TEMP/leak-changed.txt"
+          touched="$RUNNER_TEMP/leak-touched.txt"
+          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMRT HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
+            scope=files
+            # $touched keeps deletions and rename sources, so removing the
+            # scanner or its ignore list also scans the whole tree.
+            if grep -qzxE '\.github/workflows/ci\.yml|\.leak-classes-ignore|scripts/guardrails/leak-classes\.sh' "$touched"; then
+              scope=all
+            fi
+          fi
+          echo "leak-classes scope: $scope"
+          if [ "$scope" = files ]; then
+            set --
+            while IFS= read -r -d '' f; do
+              if [ -n "$f" ]; then set -- "$@" "$f"; fi
+            done < "$changed"
+            bash scripts/guardrails/leak-classes.sh --files "$@"
+          else
+            bash scripts/guardrails/leak-classes.sh --tree
+          fi
+      - name: leak-classes (whole tree)
+        if: github.event_name != 'pull_request'
+        run: bash scripts/guardrails/leak-classes.sh --tree
 
   # Trust-path git subprocess calls must scrub GIT_DIR/GIT_WORK_TREE/
   # GIT_COMMON_DIR/GIT_INDEX_FILE before invoking git — an attacker-set value
   # otherwise steers which repo/worktree/index the call answers about
   # (HIMMEL-3570; already caught twice as real bugs, PR 1212 and PR 1217).
+  # Main and the crons scan every trust-path file; a PR scans the files it
+  # changed (HIMMEL-3898).
   git-env-scrub:
     needs: plan
     if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
@@ -963,7 +1038,39 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: bash scripts/guardrails/check-git-env-scrub.sh --tree
+          # Depth 2 keeps both parents of the PR merge commit, so HEAD^1 (the
+          # current base tip) is reachable for the changed-file list below.
+          fetch-depth: 2
+      - name: git-env-scrub (PR changed files)
+        if: github.event_name == 'pull_request'
+        # Fail closed: a checkout that is not a merge commit, a diff that cannot be
+        # computed, or a change to the scanner, its baseline, the scrub helpers or
+        # this workflow scans every trust-path file.
+        run: |
+          scope=all
+          changed="$RUNNER_TEMP/scrub-changed.txt"
+          touched="$RUNNER_TEMP/scrub-touched.txt"
+          if git rev-parse -q --verify HEAD^2 > /dev/null && git diff --name-only -z --diff-filter=ACMRT HEAD^1 HEAD > "$changed" && git diff --name-only -z --no-renames HEAD^1 HEAD > "$touched"; then
+            scope=files
+            # $touched keeps deletions and rename sources, so removing the
+            # scanner, its baseline or a scrub helper also scans every trust path.
+            if grep -qzxE '\.github/workflows/ci\.yml|scripts/guardrails/check-git-env-scrub\.sh|scripts/guardrails/git-env-baseline\.txt|scripts/lib/git-clean\.sh|scripts/lanes/git-clean\.mjs' "$touched"; then
+              scope=all
+            fi
+          fi
+          echo "git-env-scrub scope: $scope"
+          if [ "$scope" = files ]; then
+            set --
+            while IFS= read -r -d '' f; do
+              if [ -n "$f" ]; then set -- "$@" "$f"; fi
+            done < "$changed"
+            bash scripts/guardrails/check-git-env-scrub.sh --files "$@"
+          else
+            bash scripts/guardrails/check-git-env-scrub.sh --tree
+          fi
+      - name: git-env-scrub (whole tree)
+        if: github.event_name != 'pull_request'
+        run: bash scripts/guardrails/check-git-env-scrub.sh --tree
 
   # Commit-message governance (HIMMEL-594/1483): every non-exempt commit in the
   # PR range must be conventional and ticket-traceable. Reuses the local
@@ -1017,7 +1124,28 @@ jobs:
     # executable files (scripts/eval/.../*.sh.ref) no gate line can enumerate, so it
     # runs on every PR like main.
     runs-on: ubuntu-latest
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001
+    permissions:
+      contents: read
+      packages: read
     timeout-minutes: 25 # p95 736s (12m); 2x
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    # A container's default run shell is sh; this is the host runner's default.
+    defaults:
+      run:
+        shell: bash -e {0}
     steps:
       # fetch-depth: 0 so the PR base sha is reachable for the shellcheck range.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1025,6 +1153,7 @@ jobs:
           fetch-depth: 0
       # HIMMEL-4332: flag-registry-lint ran on the runner's unpinned default node.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !job.container.id }}
         with:
           node-version: '22'
       # HIMMEL-4265: run the SAME pre-commit shellcheck hook the local gate runs
@@ -1032,7 +1161,8 @@ jobs:
       # hook's own vendored/fixture excludes), so nothing the hook refuses can
       # reach main. The old `shellcheck --severity=warning` over a hand-kept
       # file list let info-level findings (SC2119) through CI and fail locally.
-      - run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
+      - if: ${{ !job.container.id }}
+        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # HIMMEL-4319: the hook is require_serial, so `--all-files` is one
       # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
       # shellcheck resolves `source` across the files of ONE invocation, so
@@ -1134,6 +1264,7 @@ jobs:
       # its config or this workflow, runs everything; OXLINT_FAIL_CLOSED=1 turns the
       # gates' own missing-runner fail-open into a red job.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
       - name: skill size + oxlint complexity/hardening
@@ -1177,12 +1308,19 @@ jobs:
       # the pre-commit hook above runs the pinned shellcheck-py, so a PR could pass every local
       # gate and fail here. Install that same rev, read from the pre-commit config, first on PATH.
       - name: pinned shellcheck for shell-lint
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && !job.container.id
         run: |
           rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
           [ -n "$rev" ] || { echo "no shellcheck-py rev in .pre-commit-config.yaml" >&2; exit 1; }
           python -m pip install --disable-pip-version-check --target "$RUNNER_TEMP/shellcheck-pinned" "shellcheck-py==$rev"
           echo "$RUNNER_TEMP/shellcheck-pinned/bin" >> "$GITHUB_PATH"
+          echo "SHELLCHECK_PIN=$rev" >> "$GITHUB_ENV"
+      # The image bakes the same shellcheck-py rev; the next step checks it.
+      - name: pinned shellcheck for shell-lint (CI image)
+        if: github.event_name == 'pull_request' && job.container.id
+        run: |
+          rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
+          [ -n "$rev" ] || { echo "no shellcheck-py rev in .pre-commit-config.yaml" >&2; exit 1; }
           echo "SHELLCHECK_PIN=$rev" >> "$GITHUB_ENV"
       - name: shell-lint changed files
         if: github.event_name == 'pull_request'
@@ -1271,7 +1409,28 @@ jobs:
     # package.json (a committed one under scripts/ trips the npm-audit gates for a
     # package with nothing to install). Run its node:test suites directly.
     runs-on: ubuntu-latest
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001
+    permissions:
+      contents: read
+      packages: read
     timeout-minutes: 15 # p95 423s (7m); 2x
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    # A container's default run shell is sh; this is the host runner's default.
+    defaults:
+      run:
+        shell: bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1286,6 +1445,7 @@ jobs:
           # evidence it exists to provide.
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !job.container.id }}
         with:
           node-version: '22'
       # HIMMEL-2587: the bench-run-batch dispatch-luna tests shell out to
@@ -1296,6 +1456,7 @@ jobs:
       # keeps the retry-cap / resume / mid-batch-abort contract under a runner
       # check; SKIP-guarding them instead would exit 0 with nothing exercised.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
       - run: node --test "scripts/lanes/tests/**/*.test.mjs"
@@ -1347,6 +1508,7 @@ jobs:
     # run extensionless scripts (scripts/claude-codex), so it runs on every PR like main.
     permissions:
       contents: read
+      packages: read
     # matrix.os keeps per-PR/per-ref runs from queuing on each other (each PR
     # branch gets its own group, via github.ref).
     concurrency:
@@ -1358,7 +1520,21 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001
     timeout-minutes: 15 # p95 269s (4.5m); 2x = 9m, kept 15
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     defaults:
       run:
         shell: bash
@@ -1369,6 +1545,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
       - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
@@ -1463,19 +1640,40 @@ jobs:
     needs: plan
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001
+    permissions:
+      contents: read
+      packages: read
     # This job does the most network I/O in the workflow (gitleaks download +
     # `npm ci` across ~9 packages); cap it so a hung download/install can't
     # burn a full 6h runner slot (codex-3 CR hardening).
     timeout-minutes: 15
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    # A container's default run shell is sh; this is the host runner's default.
+    defaults:
+      run:
+        shell: bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
+      - if: ${{ !job.container.id && !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
+      - if: ${{ !job.container.id && !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
@@ -1485,6 +1683,7 @@ jobs:
       # so a secret the local hook catches is caught here too. `dir` scans the
       # checked-out working tree; gitleaks exits non-zero when a leak is found.
       - name: gitleaks secret scan (reuses .gitleaks.toml)
+        if: ${{ !job.container.id }}
         run: |
           ver=8.30.1
           # Pin the exact release bytes: verify the published SHA256 before
@@ -1496,6 +1695,12 @@ jobs:
           echo "${sha}  /tmp/gitleaks.tgz" | sha256sum -c -
           tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
           /tmp/gitleaks dir . --config .gitleaks.toml --redact --no-banner
+      # The image bakes the same pinned, sha-verified release (test-ci-image.sh).
+      - name: gitleaks secret scan (CI image)
+        if: ${{ job.container.id }}
+        run: |
+          gitleaks version
+          gitleaks dir . --config .gitleaks.toml --redact --no-banner
 
       # Lockfile integrity (npm + bun) — pre-commit `lockfile-integrity`.
       # npm path is `npm ci --dry-run` (no install needed); bun path is
@@ -1536,8 +1741,10 @@ jobs:
       # apart, it's one glance at the log instead of an investigation.
       - name: upgrade npm to meet the audit-signatures floor (>= 11)
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
+        env:
+          IN_IMAGE: ${{ job.container.id }}
         run: |
-          npm i -g npm@^11
+          ${IN_IMAGE:+sudo} npm i -g npm@^11
           npm --version
 
       # npm audit signatures (production) — pre-push `npm-audit-signatures`. This
@@ -1567,10 +1774,10 @@ jobs:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.shards != '[]' }}
     strategy:
-      # HIMMEL-5036: a PR stops at its first red shard (siblings are cancelled and
-      # the shell-unit aggregator reads the rollup as failure); push-to-main and
-      # the nightly keep the full red set so a red stays attributable.
-      fail-fast: ${{ github.event_name == 'pull_request' }}
+      # Every shard runs to the end, a PR's too, so one run reports every red
+      # shard; the fail-fast-shell-unit-shard twin still cancels the rest of
+      # the run once the matrix has finished red.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         # shard: [1..N] fans run-shell-tests.sh across N runners (HIMMEL-2872).
@@ -1597,6 +1804,22 @@ jobs:
     # scripts/vm/ci-runner/job-started-hook.sh, which refuses the rest anyway, so
     # a job this expression would misroute fails there instead of running code.
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('["self-hosted","himmel-vm"]') || (vars.CI_GCP == 'on' && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.actor) && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.triggering_actor) && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["yotamleo","yotamleo11-test"]'), github.event.pull_request.user.login)))) && fromJSON('["self-hosted","gcp"]') || matrix.os }}
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    # A self-hosted route (himmel-vm, gcp) keeps its own baked tools: '' too.
+    # --init: an init as PID 1 reaps orphaned descendants, as on the host.
+    # --privileged: bwrap and unshare need user namespaces inside the container.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001 --privileged
+    permissions:
+      contents: read
+      packages: read
     # HIMMEL-6272: otherwise, while repo variable CI_GCP is 'on' (setting it to
     # 'off' is the instant kill switch), a dispatch or a same-repo
     # pull_request by the same operator accounts runs on an ephemeral GCP spot
@@ -1615,6 +1838,14 @@ jobs:
     # 28m, over 10 green PR runs); the main sweep runs the full set per shard and
     # the p95 measured here does not cover it, so 60 stays until sweep data does.
     timeout-minutes: 60
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    # A container's default run shell is sh; this is the host runner's default.
+    defaults:
+      run:
+        shell: bash -e {0}
     steps:
       # fetch-depth: 0 (not the default shallow clone) so --changed-since below
       # can resolve a pull_request's base SHA, which a depth-1 checkout of the
@@ -1643,16 +1874,16 @@ jobs:
       # runner only. The himmel-vm guest's `runner` user has no sudo and carries
       # at/atd, bubblewrap, socat, ffmpeg and pre-commit from guest-provision.sh.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (at/atd)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-at-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install + enable at/atd (Linux — arm-resume scheduler backend)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         # HIMMEL-3919: a hung dpkg/apt lock held this step ~1.5 h. HIMMEL-2872:
         # apt-install.sh bounds every apt call with a `timeout` and a dpkg-lock
         # wait, and tries cached debs, then the runner's mirror, then an
@@ -1666,6 +1897,13 @@ jobs:
           bash .github/scripts/apt-install.sh at bubblewrap socat
           sudo systemctl enable --now atd || sudo service atd start || echo "atd start failed; checking is-active"  # t13b-ok: stock at daemon on a throwaway CI runner, not a himmel service
           systemctl is-active --quiet atd || { echo "::error::atd is not active after install; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
+      # The image bakes at; a container has no systemd, so start the daemon here.
+      - name: Start atd (CI image)
+        if: ${{ job.container.id }}
+        timeout-minutes: 1
+        run: |
+          sudo atd
+          pgrep -x atd > /dev/null || { echo "::error::atd is not running in the CI image; the arm-resume scheduler backend would fail later with an unrelated symptom" >&2; exit 1; }
       # HIMMEL-4912: ubuntu-24.04 refuses unprivileged user namespaces by default
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
@@ -1680,6 +1918,7 @@ jobs:
       # The himmel-vm guest must not restore a cache entry a
       # hosted run wrote (it restores, then the bun executable is missing).
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
           no-cache: ${{ runner.environment != 'github-hosted' }}
@@ -1698,24 +1937,24 @@ jobs:
       # runner image that drops the 6.1 package fails this step loudly; re-pin
       # deliberately. Linux only: the nightly windows leg keeps the SKIP.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (ffmpeg)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-ffmpeg-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install pinned ffmpeg (Linux — obsidian-triage HLS suite)
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         timeout-minutes: 13
         run: |
           bash .github/scripts/apt-install.sh 'ffmpeg=7:6.1.*'
           ffmpeg -version | head -n 1
           echo "HIMMEL_REQUIRE_FFMPEG=1" >> "$GITHUB_ENV"
-      # The guest bakes the same ffmpeg 6.1; the require flag still applies.
+      # The guest and the CI image bake the same ffmpeg 6.1; the require flag still applies.
       - name: Require the guest's baked ffmpeg (self-hosted himmel-vm)
-        if: runner.os == 'Linux' && runner.environment != 'github-hosted'
+        if: runner.os == 'Linux' && (runner.environment != 'github-hosted' || job.container.id)
         run: |
           ffmpeg -version | head -n 1
           echo "HIMMEL_REQUIRE_FFMPEG=1" >> "$GITHUB_ENV"
@@ -1728,7 +1967,7 @@ jobs:
       # the ledger assigns once run-shell-tests.sh can print it (HIMMEL-5120).
       # Keep ver/sha in lockstep with secret-scan.
       - name: Put pinned gitleaks on PATH (Linux — retired-org suite)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !job.container.id
         run: |
           ver=8.30.1
           sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -1737,6 +1976,23 @@ jobs:
           mkdir -p "$RUNNER_TEMP/gitleaks-bin"
           tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
           echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
+      # HIMMEL-6548: scripts/lib/test-bash-ast.sh SKIPs its model rows without
+      # shfmt, and the guards migrated onto bash-ast.sh deny without it. Put the
+      # SAME pinned, sha-verified release the CI image carries
+      # (.github/ci-image/Dockerfile) on PATH for every ubuntu shard, and set
+      # HIMMEL_REQUIRE_SHFMT=1 so a missing binary fails the suite, not skips it.
+      # Keep ver/sha in lockstep with the Dockerfile.
+      - name: Put pinned shfmt on PATH (Linux — bash-ast model rows)
+        if: runner.os == 'Linux'
+        run: |
+          ver=3.14.1
+          sha=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+          mkdir -p "$RUNNER_TEMP/shfmt-bin"
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_linux_amd64" -o "$RUNNER_TEMP/shfmt-bin/shfmt"
+          echo "${sha}  $RUNNER_TEMP/shfmt-bin/shfmt" | sha256sum -c -
+          chmod 755 "$RUNNER_TEMP/shfmt-bin/shfmt"
+          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
+          echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
       # HIMMEL-2223 codex-3: scripts/test-template-nostash-hooks.sh hard-SKIPs
       # (exit 0) without pre-commit on PATH — the exact vacuous-SKIP shape
       # called out for the Windows vault suites above (LUNA-131) — so without
@@ -1744,7 +2000,7 @@ jobs:
       # real fixer hooks. `shell: bash` matches the Windows install pattern
       # above: python -m pip works identically on every OS in this matrix.
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
-        if: runner.environment == 'github-hosted'
+        if: runner.environment == 'github-hosted' && !job.container.id
         shell: bash
         run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,
@@ -1989,17 +2245,43 @@ jobs:
   guard-corpus-full:
     if: github.event.schedule == '17 7 * * *'
     runs-on: ubuntu-latest
+    # Runs in the prebuilt CI image (docs/internals/ci-image.md). A fork or
+    # dependabot[bot] run cannot pull the private package, so it gets '' (no
+    # container) and the setup steps gated on !job.container.id install the
+    # same tools on the host.
+    # --init: an init as PID 1 reaps orphaned descendants, as on the host.
+    # --privileged: bwrap and unshare need user namespaces inside the container.
+    container:
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:4c6939c546a872eff15bdb85cd936ecdc0cbad85f71742af3667c4772433d125') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001 --privileged
+    permissions:
+      contents: read
+      packages: read
     timeout-minutes: 240
+    # The image sets no locale (POSIX counts bytes); C.UTF-8 is the host runner's.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    # A container's default run shell is sh; this is the host runner's default.
+    defaults:
+      run:
+        shell: bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Record runner image (apt cache key)
+        if: ${{ !job.container.id }}
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (guard-corpus)
+        if: ${{ !job.container.id }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-guard-corpus-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install bubblewrap + socat
+        if: ${{ !job.container.id }}
         run: bash .github/scripts/apt-install.sh bubblewrap socat
       - name: Allow unprivileged user namespaces (bwrap sandbox)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true

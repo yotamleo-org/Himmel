@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { handoverRoot } from '../handover-root.js';
 
 // <handover root>/<user>/<repo>/release/<R>/ (design §5.1). The launcher
 // exports HANDOVER_DIR and USER_SLUG; HIMMEL_RELEASE_STATE_DIR replaces the
@@ -13,10 +14,10 @@ function primaryRepoName(): string {
 
 export function releaseRoot(env: Record<string, string | undefined> = process.env): string {
   if (env.HIMMEL_RELEASE_STATE_DIR) return env.HIMMEL_RELEASE_STATE_DIR;
-  if (!env.HANDOVER_DIR || !env.USER_SLUG) {
-    throw new Error('release: set HANDOVER_DIR and USER_SLUG (as the launcher does) or HIMMEL_RELEASE_STATE_DIR');
+  if (!env.USER_SLUG) {
+    throw new Error('release: set USER_SLUG (as the launcher does) or HIMMEL_RELEASE_STATE_DIR');
   }
-  return join(env.HANDOVER_DIR, env.USER_SLUG, primaryRepoName(), 'release');
+  return join(handoverRoot(env), env.USER_SLUG, primaryRepoName(), 'release');
 }
 
 export const releaseDir = (release: string, env: Record<string, string | undefined> = process.env): string =>

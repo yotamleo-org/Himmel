@@ -10,9 +10,9 @@ import { parseLabels } from './labels.js';
 import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
-import { createIssueLink } from './link.js';
-import { appendAdmission, assertAdmissionsWritable, type AdmissionInput } from './admissions-ledger.js';
-import { assertIntakeGate, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
+import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
+import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -230,22 +230,6 @@ interface PlacementOptions {
   sector?: string;
 }
 
-/**
- * A console override needs a reason, the console marker and a ledger location.
- * Returns the trimmed reason; the ledger probe throws when no location is set
- * or the ledger cannot take an append, so no ticket is filed without its row.
- */
-function checkConsoleOverride(reason: string): string {
-  const trimmed = reason.trim();
-  if (!trimmed) throw new Error('--console-override needs a reason');
-  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
-  if (process.env['HIMMEL_CONSOLE'] !== '1') {
-    throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
-  }
-  assertAdmissionsWritable();
-  return trimmed;
-}
-
 /** Checks the gate, backlog and console-override flags before anything is filed; returns the override reason. */
 function checkPlacementFlags(o: PlacementOptions): string | undefined {
   if (o.gate !== undefined) assertIntakeGate(o.gate);
@@ -286,6 +270,50 @@ function recordAdmission(key: string, row: Omit<AdmissionInput, 'key'>): void {
   }
 }
 
+interface RelationshipOptions {
+  blocks: string[];
+  splitFrom?: string;
+  blockedBy?: string;
+  backlog?: boolean;
+  fixVersion?: string;
+}
+
+async function inheritedFixVersion(o: RelationshipOptions): Promise<string | undefined> {
+  if (o.backlog) return undefined;
+  const targets = [...o.blocks, ...(o.splitFrom ? [o.splitFrom] : [])];
+  let inherited: string | undefined;
+  for (const target of targets) {
+    const version = await targetFixVersion(target);
+    if (version && ((inherited && inherited !== version) || (o.fixVersion && o.fixVersion !== version))) {
+      throw new Error(`The blocker must carry fixVersion ${version} for ${target}; use --backlog to opt out`);
+    }
+    inherited = version ?? inherited;
+  }
+  return inherited;
+}
+
+async function checkExistingBlocker(project: string, fixVersions: unknown, o: RelationshipOptions): Promise<void> {
+  if (!o.blockedBy || o.backlog || !fixVersions) return;
+  const current = earliestUnreleased(await fetchVersions(project));
+  if (current && (fixVersions as { name: string }[]).some((v) => v.name === current)) {
+    await requireBlockerVersion(o.blockedBy, current);
+  }
+}
+
+async function linkCreatedIssue(key: string, o: RelationshipOptions): Promise<void> {
+  const relationships = o.blocks.map((other) => ({ inward: key, outward: other, type: { name: 'Blocks', outward: 'blocks' } }));
+  if (o.splitFrom) relationships.push({ inward: key, outward: o.splitFrom, type: { name: 'Relates', outward: 'relates to' } });
+  if (o.blockedBy) relationships.push({ inward: o.blockedBy, outward: key, type: { name: 'Blocks', outward: 'blocks' } });
+  for (const { inward, outward, type } of relationships) {
+    try {
+      await createIssueLink(inward, outward, type);
+    } catch (e) {
+      console.error(`Created ${key} but linking ${inward} to ${outward} failed: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  }
+}
+
 export function registerCreate(program: Command): void {
   program
     .command('create')
@@ -304,6 +332,9 @@ export function registerCreate(program: Command): void {
     )
     .option('--adf-file <path>', 'Path to pre-built ADF JSON document (overrides --desc)')
     .option('--parent <key>', 'Parent issue key')
+    .option('--blocks <key>', 'This new issue blocks <key>; inherit its active fixVersion (repeatable)', collect, [])
+    .option('--split-from <key>', 'Split from <key>: inherit its active fixVersion and record a Relates link')
+    .option('--blocked-by <key>', 'This new issue is blocked by <key>; check the existing blocker version before filing')
     .option('--labels <labels>', 'Comma-separated labels to set (e.g. a,b); `standalone` marks a ticket with no parent epic')
     .option('--sector <s>', 'Sector (single-select custom field; required for a Task, Story or Bug once JIRA_SECTOR_FIELD is set)')
     .option(
@@ -311,7 +342,7 @@ export function registerCreate(program: Command): void {
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
-    .option('--backlog', 'File a Bug to the backlog: label backlog, no fixVersion (a Bug without --fix-version needs this, --gate or --priority Highest)')
+    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion (also places a Bug without --fix-version)')
     .option(
       '--gate <reason>',
       'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
@@ -355,6 +386,9 @@ export function registerCreate(program: Command): void {
         descFile?: string;
         adfFile?: string;
         parent?: string;
+        blocks: string[];
+        splitFrom?: string;
+        blockedBy?: string;
         labels?: string;
         sector?: string;
         fixVersion?: string;
@@ -441,7 +475,10 @@ export function registerCreate(program: Command): void {
           labels = [...new Set([...(labels ?? []), ...residual.labels])];
         }
         if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
-        const placed = placeBug(options, labels, residual !== undefined);
+        const inherited = await inheritedFixVersion(options);
+        const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
+        if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
+        const placed = placeBug(versionOptions, labels, residual !== undefined);
         labels = placed.labels;
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
         const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
@@ -456,17 +493,19 @@ export function registerCreate(program: Command): void {
         if (residual) {
           if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
           if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
-          console.error(`jira: residual routed to ${residual.fixVersion ?? 'the backlog'}`);
+          console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
         }
-        const overCapReason = await applyVersions(options.project ?? projectKey(), options, fields, {
+        const overCapReason = await applyVersions(options.project ?? projectKey(), versionOptions, fields, {
           labels,
-          residual: residual !== undefined,
+          residual: residual !== undefined && inherited === undefined,
           bugDefault: placed.bugDefault,
         });
         const admission = await checkIntakeGate(options.project ?? projectKey(), fields['fixVersions'], {
           gate: options.gate,
           override: overrideReason !== undefined,
         });
+
+        await checkExistingBlocker(options.project ?? projectKey(), fields['fixVersions'], options);
 
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
         // Breadcrumb BEFORE attachments (same rationale as comment): the issue
@@ -502,6 +541,8 @@ export function registerCreate(program: Command): void {
             process.exit(1);
           }
         }
+
+        await linkCreatedIssue(result.key, options);
 
         const attachments = options.attach ?? [];
         if (attachments.length === 0) return;

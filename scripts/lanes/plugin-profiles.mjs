@@ -35,7 +35,7 @@ const ID_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 // suite basename can absorb a different executed program plus a fake tail.
 // cr-scores.sh (relative form, args vary per call site — see
 // docs/configuration.md, minerva SKILL.md) joins the wildcard-tail group.
-const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/console-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
+const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/console-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|clear-review-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
 // The /pr-check external-critic steps that take no arguments (or
 // exactly `--diff`) are exact literals — no `:*` tail, so nothing can be
 // appended to them. Step 0's himmel-lane entry (pr-check-context) hands a
@@ -70,7 +70,12 @@ const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-g
 // merge gate. Never a general $VAR admission: the script takes no arguments,
 // so this literal carries no ':*' tail at all.
 const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh")';
-const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT]);
+// pr-check-step0.sh is the no-arg step-0 entry /pr-check types today; it
+// execs the anchor's pr-check-context.sh. Same exact-string carve-out, no
+// tail. Without it the auto-mode classifier decides step 0, and the
+// client-side classifier claudex runs denies it.
+const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")';
+const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
 const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
 
 // The one rule only leg-vm adds: the sanctioned guest-launch script, relative,
@@ -570,7 +575,7 @@ function listingSettings(registry, names, enabledPlugins, opts) {
 
 // The permission matcher compares literal command
 // text, so a gate script typed with the anchor's ABSOLUTE path (the
-// run-from-the-anchor spelling — merge-on-green.sh, clear-cr-marker.sh per
+// run-from-the-anchor spelling — merge-on-green.sh, clear-review-marker.sh per
 // guard-pr-check-literal.sh's own printed remedy)
 // matches neither the relative rule nor the
 // `$HIMMEL_REPO` one and falls to the auto-mode classifier. This validates the

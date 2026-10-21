@@ -12,7 +12,8 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 T="$(mktemp -d "${TMPDIR:-/tmp}/himmel-block-graphify-egress.XXXXXX")"
 trap 'rm -rf "$T"' EXIT
 PROJECT="$T/project"
-mkdir -p "$PROJECT/scripts/hooks" "$PROJECT/scripts/guardrails" "$T/luna"
+mkdir -p "$PROJECT/scripts/hooks" "$PROJECT/scripts/guardrails" "$PROJECT/scripts/lib" "$T/luna"
+cp "$HOOKS_DIR/../lib/bash-ast.sh" "$PROJECT/scripts/lib/bash-ast.sh"
 : > "$T/luna/journal.md"
 # block-graphify-egress.sh resolves its fence relative to its OWN location
 # (${BASH_SOURCE[0]}), not $CLAUDE_PROJECT_DIR — so the hook AND lib.sh AND
@@ -236,12 +237,11 @@ else
     bad "bare mention (echo): rc=$rc out=$out"
 fi
 
-# Documented, accepted residual: a quoted-payload wrapper is
-# NOT unwrapped by this fast gate -- pinned here so the residual stays a
-# known, intentional gap rather than an undocumented drift.
+# The command-position model re-parses a literal bash -c body, so the old
+# quoted-payload residual is closed.
 out="$(run_hook "bash -c 'graphify update $T/luna/journal.md --backend claude'" 2>&1)"; rc=$?
-if [ "$rc" -eq 0 ] && ! grep -q FENCE_INVOKED <<<"$out"; then
-    ok "a bash -c wrapped invocation does NOT reach the fence (documented residual)"
+if [ "$rc" -eq 0 ] && grep -q FENCE_INVOKED <<<"$out"; then
+    ok "a bash -c wrapped invocation reaches the fence"
 else
     bad "bash -c residual pin: rc=$rc out=$out"
 fi
@@ -312,8 +312,8 @@ for w in "exec -a 'a b'" "sudo -u 'a b'" "env -C 'x y'" "nice -n '1 0'" \
     fi
 done
 out="$(run_hook "sudo -u 'a b' ls graphify" 2>&1)"; rc=$?
-if [ "$rc" -eq 0 ] && ! grep -q FENCE_INVOKED <<< "$out"; then
-    ok "a quoted-value wrapper around another command does not reach the fence"
+if [ "$rc" -eq 0 ] && grep -q FENCE_INVOKED <<< "$out"; then
+    ok "a sudo-wrapped command with a graphify word is routed (the model does not unwrap sudo; over-routing is harmless)"
 else
     bad "quoted-value wrapper around ls: rc=$rc out=$out"
 fi
@@ -403,6 +403,69 @@ sudo /tmp/a){/graphify
 env FOO=1 /tmp/a){/graphify
 echo a ; /tmp/a){/graphify
 SHAPES_EOF
+
+# The command-position model (scripts/lib/bash-ast.sh) decides what reaches the
+# fence: quoted data and heredoc bodies do not, a bash -c body does, and a cd
+# never hides a graphify command.
+nl=$'\n'
+not_routed() {
+    out="$(run_hook "$2" 2>&1)"; rc=$?
+    if [ "$rc" -eq 0 ] && ! grep -q FENCE_INVOKED <<<"$out"; then ok "$1"; else bad "$1: rc=$rc out=$out"; fi
+}
+routed() {
+    out="$(run_hook "$2" 2>&1)"; rc=$?
+    if [ "$rc" -eq 0 ] && grep -q FENCE_INVOKED <<<"$out"; then ok "$1"; else bad "$1: rc=$rc out=$out"; fi
+}
+not_routed "a jq string naming graphify is data" "jq '.[] | graphify update x' notes.json"
+not_routed "a gh --jq string naming graphify is data" "gh run view 5 --json jobs --jq '(.jobs | graphify query q)'"
+not_routed "a heredoc body naming graphify is data" "cat <<'EOF' > notes.txt${nl}graphify update x${nl}EOF"
+routed "a heredoc into bash runs graphify" "bash <<'EOF'${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
+routed "a heredoc into sh -s runs graphify" "sh -s <<EOF${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
+routed "a bash --rcfile heredoc runs graphify" "bash --rcfile /dev/null <<'EOF'${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
+routed "a bash --init-file -c body runs graphify" "bash --init-file /dev/null -c 'true; graphify update $T/luna/journal.md --backend claude'"
+routed "an rbash --rcfile heredoc runs graphify" "rbash --rcfile /dev/null <<'EOF'${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
+routed "an rbash --init-file -c body runs graphify" "rbash --init-file /dev/null -c 'true; graphify update $T/luna/journal.md --backend claude'"
+routed "a python3 heredoc os.system runs graphify" "python3 - <<'EOF'${nl}import os${nl}os.system('graphify update $T/luna/journal.md --backend claude')${nl}EOF"
+routed "a perl -e system runs graphify" "perl -e 'system(q(graphify update $T/luna/journal.md --backend claude))'"
+not_routed "a heredoc into bash without graphify stays skipped" "bash <<'EOF'${nl}ls /tmp${nl}EOF"
+routed "a graphify command right of a pipe and a cd reaches the fence" "echo x | cd sub && graphify update $T/luna/journal.md --backend claude"
+routed "a graphify command behind || reaches the fence" "cd R || cd V && graphify update $T/luna/journal.md --backend claude"
+routed "an eval body reaches the fence" "eval 'graphify update $T/luna/journal.md --backend claude'"
+routed "a quoted part of the word (g'raphify') reaches the fence" "g'raphify' update luna/journal.md --backend claude"
+routed "empty single quotes in the word (graph''ify) reach the fence" "graph''ify update luna/journal.md --backend claude"
+routed "empty double quotes in the word (graph\"\"ify) reach the fence" "graph\"\"ify update luna/journal.md --backend claude"
+routed "a backslash in the word (gra\\phify) reaches the fence" "gra\\phify update luna/journal.md --backend claude"
+routed "a line continuation in the word (gra\\<newline>phify) reaches the fence" "gra\\${nl}phify update luna/journal.md --backend claude"
+not_routed "a quote-split word that is not graphify stays skipped" "ls ''$T"
+
+# An env NAME=value operand is read by the regex, not dropped: the model unwraps
+# env and never sees the value, so a position reached through env keeps the
+# regex route unless the model itself routes it.
+routed "env NAME='x; graphify ...' prog reaches the fence" "env NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "env -i NAME='x; graphify ...' prog reaches the fence" "env -i NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "command env NAME='x; graphify ...' prog reaches the fence" "command env NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "timeout env NAME='x; graphify ...' prog reaches the fence" "timeout 5 env NAME='x; graphify update $T/luna/journal.md --backend claude' prog"
+routed "bash -c env NAME='x; graphify ...' prog reaches the fence" "bash -c \"env NAME='x; graphify update $T/luna/journal.md --backend claude' prog\""
+routed "env NAME=1 graphify still reaches the fence" "env NAME=1 graphify update $T/luna/journal.md --backend claude"
+not_routed "env NAME=ok prog stays skipped" "env NAME=ok prog $T/luna/graphify-notes.md"
+
+# A missing shfmt denies a command that mentions graphify, with a message naming
+# it; a command that does not mention graphify never pays for shfmt.
+NOSH="$T/no-shfmt-bin"; mkdir -p "$NOSH"
+oifs=$IFS; IFS=:
+for d in $PATH; do
+    for t in "$d"/*; do
+        case "${t##*/}" in shfmt) ;; *) [ -e "$NOSH/${t##*/}" ] || ln -s "$t" "$NOSH/${t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$oifs
+run_hook_nosh() {
+    jq -n --arg cmd "$1" '{tool_name:"Bash",tool_input:{command:$cmd}}' | PATH="$NOSH" CLAUDE_PROJECT_DIR="$PROJECT" bash "$HOOK" 2>&1
+}
+out="$(run_hook_nosh "graphify update $T/luna/journal.md")"; rc=$?
+if [ "$rc" -eq 2 ] && grep -q shfmt <<<"$out"; then ok "no shfmt: a graphify command is denied and the message names shfmt"; else bad "no shfmt graphify: rc=$rc out=$out"; fi
+out="$(run_hook_nosh "ls /tmp")"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "no shfmt: a command without graphify is not denied"; else bad "no shfmt ls: rc=$rc out=$out"; fi
 
 # A fence DENY must point a leg at the wrapper that works from a worktree.
 cat > "$PROJECT/scripts/guardrails/graphify-fence.sh" <<'FENCE_EOF'

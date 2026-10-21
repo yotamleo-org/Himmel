@@ -137,6 +137,14 @@ if [ "$ONLY7" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
 fi
 
 GH="${GH_CMD:-gh}"
+# Every call below is a read: with no GH_CMD seam they ride the read-only token.
+GH_READ_LIB="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-read.sh"
+if [ -z "${GH_CMD:-}" ] && [ -f "$GH_READ_LIB" ]; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    . "$GH_READ_LIB"
+    gh_read_init
+    GH="$GH_READ_LIB"
+fi
 if ! command -v "$GH" >/dev/null 2>&1; then
     echo "ready-check: gh not found on PATH" >&2
     exit 2
@@ -411,19 +419,24 @@ cov_linked() {
 }
 
 # cov_ledger_keys <ledger> <head>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
-# A finding row at the head sets its verdict and deferral; an amend row targeting the head merges over it; only a
-# finding whose effective verdict is deferred counts. A head matches when either spelling is a prefix of the other.
+# A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
+# Its effective row is its own row with every amend written after it against that original head merged over it, in file
+# order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head). The
+# finding counts at <head> when its effective head matches, and only an effective verdict of deferred counts.
+# A head matches when either spelling is a prefix of the other.
 # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
 cov_ledger_keys() {
     [ -f "$1" ] || return 0
     cov_led_out=$(jq -R -n -r --arg h "$2" '
-        def hm($x): ($x | type == "string") and ($x | length >= 7) and (($x | ascii_downcase) as $l | ($l | startswith($h)) or ($h | startswith($l)));
+        def hm($x; $y): ($x | type == "string") and ($y | type == "string") and ($x | length >= 7) and ($y | length >= 7) and (($x | ascii_downcase) as $a | ($y | ascii_downcase) as $b | ($a | startswith($b)) or ($b | startswith($a)));
         def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
-        reduce (inputs | fromjson? | select(type == "object")) as $r ({};
-            if $r.kind == "finding" and hm($r.head) then .[fk($r)] = vd($r)
-            elif $r.kind == "amend" and hm($r.target_head) and ($r.set | type == "object") then .[fk($r)] = ((.[fk($r)] // {}) + vd($r.set))
-            else . end)
+        [inputs | fromjson? | select(type == "object")] | to_entries | map(.value + {_ln: .key}) as $rows
+        | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
+        (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
+        | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
+            (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head))) as $a ($f; . + $a.set)) as $e
+            | .[ak($f; $f.head)] = (if hm($e.head; $h) then vd($e) else {} end))
         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
         | .deferred_to | ascii_upcase' "$1") || return 1
     printf '%s\n' "$cov_led_out" | sort -u

@@ -90,6 +90,24 @@ esac
 stamp="$(date +%H:%M)"
 bullet="- ${stamp} ${TEXT}"
 
+# A leg's exact SUCCESSION acknowledgement also moves its himmel-bus console edge
+# (`bus adopt`, which checks the succession itself). The result lands as a
+# non-status bullet above it, so the acknowledgement stays the newest line; a
+# refusal never blocks the acknowledgement. Only a leg with a bus identity
+# (HIMMEL_BUS_NAME) adopts. APPEND_RESULTS_BUS replaces the CLI;
+# APPEND_RESULTS_BUS_TIMEOUT bounds the adopt (seconds, default 15).
+if [ "$is_leg" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ] && [[ $TEXT =~ ^SUCCESSION\ accepted:\ ([A-Za-z0-9][A-Za-z0-9._-]*)\ replaces\ [A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    bus="${APPEND_RESULTS_BUS:-$(dirname "${BASH_SOURCE[0]}")/../../../marketplace/plugins/himmel-bus/bin/bus}"
+    limit="${APPEND_RESULTS_BUS_TIMEOUT:-15}"
+    wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
+    if adopted="$($wait_for "$bus" adopt "${BASH_REMATCH[1]}" 2>&1)"; then :; else
+        [ "$?" -eq 124 ] && [ -n "$wait_for" ] && adopted="timed out after ${limit}s"
+        adopted="refused (${adopted%%$'\n'*})"
+    fi
+    adopted="${adopted%%$'\n'*}"
+    bullet="- ${stamp} bus-adopt: ${adopted//->/→}"$'\n'"$bullet"
+fi
+
 # the vault's pre-commit gitleaks would refuse the doc and stall the autosync
 # commit, so scan the bullet first (bucket-gitleaks.sh, the vault's config) and
 # refuse a FINDING. No gitleaks or an unusable scan (rc 2) appends unscanned.
@@ -128,16 +146,18 @@ fi
 [ "$locked" -eq 1 ] && doc_unlock
 echo "append-results: appended to $DOC"
 
-# a LIVE bullet moves the leg's ticket (the key in the doc name)
-# to In Progress. Best-effort - leg-jira-status.sh warns and exits 0 on any
-# Jira failure, and LEG_JIRA_STATUS=0 opts out.
+# a LIVE or WRAPPED bullet records the doc as the ticket's owner (the key in
+# the doc name) and re-derives its Jira status. Best-effort - leg-jira-status.sh
+# warns and exits 0 on any Jira failure, and LEG_JIRA_STATUS=0 opts out.
+event=""
 case "$TEXT" in
-    LIVE|LIVE[!A-Za-z0-9]*)
-        if [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
-            base="${DOC##*/}"
-            if [[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]]; then
-                bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" "In Progress" || true
-            fi
-        fi ;;
+    LIVE|LIVE[!A-Za-z0-9]*) event=live ;;
+    WRAPPED|WRAPPED[!A-Za-z0-9]*) event=wrapped ;;
 esac
+if [ -n "$event" ] && [ "${LEG_JIRA_STATUS:-1}" != "0" ]; then
+    base="${DOC##*/}"
+    if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
+        bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
+    fi
+fi
 exit 0

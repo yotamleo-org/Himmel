@@ -298,7 +298,7 @@ assert_contains "T11 summary does not claim the finding reached reviewer-notes" 
 assert_not_contains "T11 a failed append is not reported as already present" "$OUT" "already present"
 
 # -- t13: avail rows are NOT branch-scoped (gate identity is (head, model)).
-# clear-cr-marker.sh (the gate) selects avail rows by
+# clear-review-marker.sh (the gate) selects avail rows by
 # (head, model) only, never branch, because availability is a property of the
 # critic+commit pair, not of which review arm probed it. An avail row stamped
 # with a DIFFERENT branch than this invocation must still count, or this

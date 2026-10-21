@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cr/set-impl-family.sh — record which model family implemented a branch, so
-# clear-cr-marker.sh gate 3c can require a responder of ANOTHER family.
+# clear-review-marker.sh gate 3c can require a responder of ANOTHER family.
 #
 # Usage: set-impl-family.sh <family> [<branch>]
 #   family  claude | codex | ... the underlying model that wrote the change (the

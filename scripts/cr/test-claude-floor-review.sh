@@ -422,7 +422,7 @@ has "27 a failed cat-file is refused" "git cat-file --batch failed" "$W/out27"
 check "27 no tamper case slipped through" 0 "$(grep -c 'NO-ERROR' "$W/out27")"
 
 # 28. a lone codex-adv row (a RETIRED lane, twin of
-# clear-cr-marker.sh) is neither a responder nor an exhausted lane.
+# clear-review-marker.sh) is neither a responder nor an exhausted lane.
 mk_repo 28; row codex-adv ok
 run_sut
 check "28 lone codex-adv ok -> exit 3" 3 "$RC"

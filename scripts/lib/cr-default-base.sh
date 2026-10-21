@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # cr-default-base.sh — the ONE ref a CR floor review's diff base
 # must be an ancestor of. Sourced by scripts/cr/claude-floor-review.sh (the
-# producer) and scripts/cr/clear-cr-marker.sh (the gate), so both bind the same
+# producer) and scripts/cr/clear-review-marker.sh (the gate), so both bind the same
 # ref. Only the REMOTE default branch counts: a local main can hold commits that
 # are still mid-PR, and a base on it would validate a partial-range review.
 

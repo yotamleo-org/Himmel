@@ -65,7 +65,7 @@
 # <git-common-dir>/cr-class-sweeps/<branch>. It APPENDS, unlike the two
 # verdict modes: step 0 truncates those every run, and the round that clears
 # the marker is never the round that agreed the finding, so a truncated record
-# would be gone by the time clear-cr-marker.sh gate 4d reads it. Every
+# would be gone by the time clear-review-marker.sh gate 4d reads it. Every
 # non-blank line must match EXACTLY ONE of:
 #   SWEEP [<id>@<head>] class=<text> :: sites=<site>, <site>[, ...]
 #   SWEEP [<id>@<head>] class=<text> :: single-site search=<command>
@@ -179,7 +179,7 @@ verdict_re='^VERDICT \[[^]]+\] = (agreed|disproved|conflict|unaddressed)$'
 # with the bare word `deferred` and no ticket matches NEITHER regex and falls
 # through to the generic malformed-line refusal below.
 deferred_re='^VERDICT \[[^]]+\] = deferred -> [A-Z][A-Z0-9]*-[0-9]+$'
-# The sweep grammar. clear-cr-marker.sh gate 4d parses the same
+# The sweep grammar. clear-review-marker.sh gate 4d parses the same
 # shape with a JS twin of this regex - keep the two in step.
 sweep_re='^SWEEP \[[^]@]+@[0-9a-f]{7,64}\] class=[^[:space:]].* :: (sites=[^,]*[^[:space:],][^,]*(,[^,]*[^[:space:],][^,]*)+|single-site search=[^[:space:]].*)$'
 
@@ -238,17 +238,17 @@ if [ -L "$target" ]; then
 fi
 
 # A sweep record is judged here by the gate's own check
-# (clear-cr-marker.sh --check-sweeps), so one the gate would refuse is refused
+# (clear-review-marker.sh --check-sweeps), so one the gate would refuse is refused
 # now, not rounds later. Only the gate's refusal (rc 14) refuses; any other
 # result (no node, an adopter checkout, an older gate that lacks the flag) leaves
 # the shape check above as the write-time floor - gate 4d still decides at clear.
 case "${BASH_SOURCE[0]}" in */*) _sw_dir="${BASH_SOURCE[0]%/*}" ;; *) _sw_dir=. ;; esac
 _sw_dir=$(cd "$_sw_dir" 2>/dev/null && pwd) || _sw_dir=""
-if [ "$mode" = sweep ] && [ -n "$lines" ] && [ -n "$_sw_dir" ] && [ -f "$_sw_dir/clear-cr-marker.sh" ]; then
+if [ "$mode" = sweep ] && [ -n "$lines" ] && [ -n "$_sw_dir" ] && [ -f "$_sw_dir/clear-review-marker.sh" ]; then
   _sw_tmp=$(mktemp "${TMPDIR:-/tmp}/write-verdicts-sweep.XXXXXX") || _sw_tmp=""
   if [ -n "$_sw_tmp" ]; then
     printf '%s' "$lines" > "$_sw_tmp"
-    _sw_out=$(bash "$_sw_dir/clear-cr-marker.sh" --check-sweeps "$_sw_tmp" "$branch" 2>&1); _sw_rc=$?
+    _sw_out=$(bash "$_sw_dir/clear-review-marker.sh" --check-sweeps "$_sw_tmp" "$branch" 2>&1); _sw_rc=$?
     rm -f "$_sw_tmp"
     if [ "$_sw_rc" -eq 14 ]; then
       echo "write-verdicts.sh: the gate would refuse a sweep record — refusing the whole write: ${_sw_out#*the gate would refuse: }" >&2

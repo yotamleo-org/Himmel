@@ -3653,7 +3653,7 @@ def _stmts($env):
       elif $t == "WhileClause" then {k: "compound", t: $t, words: [], bodies: [(.Cond | body), (.Do | body)]}
       elif $t == "ForClause" then
         {k: "compound", t: $t, bodies: [.Do | body],
-         words: [(.Loop.Items // [])[] | word($env)] + [.Loop | (.Init, .Cond, .Post) | select(. != null) | .. | objects | select(.Parts?) | word($env)]}
+         words: ([(.Loop.Items // [])[] | word($env)] + [.Loop | (.Init, .Cond, .Post) | select(. != null) | .. | objects | select(.Parts?) | word($env)])}
       elif $t == "CaseClause" then
         {k: "compound", t: $t, words: ([.Word | word($env)] + [(.Items // [])[] | (.Patterns // [])[] | word($env)]),
          bodies: [(.Items // [])[] | .Stmts | body]}
@@ -3924,7 +3924,7 @@ def opt_scan($t):
     elif islong("no-dereference"; $t) then {smalln: true}
     elif islong("remove-destination"; $t) then {rmdest: true}
     elif islong("force"; $t) then {force: true}
-    elif islong("target-directory"; $t) then (lval($t) as $v | if ($v // "") != "" then {tdirs: ($t | length) - ($v | length)} else {twant: true} end)
+    elif islong("target-directory"; $t) then (lval($t) as $v | if ($v // "") != "" then {tdirs: (($t | length) - ($v | length))} else {twant: true} end)
     else {} end
   elif ($t | test("^-.")) then
     ($t[1:] | explode | map([.] | implode)) as $b

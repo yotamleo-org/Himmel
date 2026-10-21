@@ -32,7 +32,7 @@ BASE_SHA="${PILOT_BASE_SHA:-$(cat "$LQ/BASE_SHA")}"
 ROOT="${PILOT_ROOT:-$HOME/.himmel/eval/lane-quality/pilot-4869}"
 WT_ROOT="${PILOT_WT_ROOT:-$ROOT/wt}"
 DS_BIN="${PILOT_DEEPSEEK_BIN:-$REPO/scripts/claude-deepseek}"
-PREFLIGHT="${PILOT_PREFLIGHT:-$REPO/scripts/lib/bank-preflight.sh}"
+PREFLIGHT="${PILOT_PREFLIGHT:-$REPO/scripts/lib/usage-preflight.sh}"
 TRANSCRIPTS="${PILOT_TRANSCRIPTS:-$HOME/.claude/projects:$HOME/.claude-deepseek/projects:$HOME/.claude-codex/projects}"
 T4="$LQ/../../lanes/bench/fixtures/T4"
 DOCS="$ROOT/handovers/pilot"
@@ -66,7 +66,7 @@ ds_balance() { # the launcher's own balance read, no inference
 
 bank_five() { # five_hour used % from the bank preflight, "?" if unread
   local l="$1" out
-  out="$(LEG_LANE="$l" CADENCE_BANK_LANE="$l" bash "$PREFLIGHT" 2>&1)"
+  out="$(LEG_LANE="$l" CADENCE_USAGE_LANE="$l" bash "$PREFLIGHT" 2>&1)"
   printf '%s\n' "$out" | sed -n 's/.*five_hour=\([0-9.?]*\).*/\1/p' | tail -1 | grep . || echo '?'
 }
 

@@ -87,7 +87,7 @@ const lastStages = (cmd: string): string[] => {
 // and only when the basename is a tracked scripts file; an unmatched error stays error/Bash.
 const BASH_ERRORS: { sub: string; out: RegExp; cmd?: RegExp }[] = [
   { sub: "zsh-nomatch", out: /\bzsh:\d+: no matches found\b/ },
-  { sub: "cr-gate-exit-14", out: /^Exit code 14\b/, cmd: /clear-cr-marker\.sh/ },
+  { sub: "cr-gate-exit-14", out: /^Exit code 14\b/, cmd: /clear-(?:cr|review)-marker\.sh/ },
   { sub: "usage", out: /\busage:|expected <base>\.\.<head>|\bunknown (?:option|argument)\b|\bcannot set\b|\bunsupported\b/i },
   { sub: "no-such-file", out: /no such file or directory/i },
 ];

@@ -8,7 +8,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPUTE="$HERE/usage-compute.sh"
 READ="$HERE/usage-read.sh"
-BANK="$HERE/../lib/bank-attribution.sh"
+BANK="$HERE/../lib/usage-attribution.sh"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-usage.XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
@@ -58,7 +58,7 @@ L
 STORE="$ROOT/store"
 run() { bash "$COMPUTE" --projects "$PROJ" --ledger "$LEDGER" --range HIMMEL-9001..HIMMEL-9002 "$@"; }
 
-# 1. per-session totals equal bank-attribution.sh on the same fixture
+# 1. per-session totals equal usage-attribution.sh on the same fixture
 BA="$(bash "$BANK" "$PROJ")"
 ba_leg="$(printf '%s\n' "$BA" | grep -F '| HIMMEL-9001-N1-thing | slug' | awk -F' [|] ' '{print $4"/"$5"/"$6"/"$7"/"$8}')"
 OUT="$(run --print)"

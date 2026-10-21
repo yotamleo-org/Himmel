@@ -700,9 +700,9 @@ scripts/lanes/srt-poc/render-settings.sh	errexit	1
 scripts/lanes/srt-poc/test-recorded-run.sh	mktemp	2
 scripts/lanes/stop-worker.sh	gnu-flag	1
 scripts/lanes/stop-worker.sh	prim-tmpdir	1
-scripts/lib/bank-attribution.sh	errexit	1
-scripts/lib/bank-attribution.sh	prim-tmpdir	1
-scripts/lib/bank-monitor.sh	prim-atomic	2
+scripts/lib/usage-attribution.sh	errexit	1
+scripts/lib/usage-attribution.sh	prim-tmpdir	1
+scripts/lib/usage-monitor.sh	prim-atomic	2
 scripts/lib/branch-shipped.sh	mktemp	1
 scripts/lib/claude-headless.sh	prim-lock	4
 scripts/lib/claudex-inbox.sh	prim-atomic	1
@@ -851,7 +851,7 @@ scripts/luna/test-qmd-reindex.sh	errexit	1
 scripts/luna/test-qmd-reindex.sh	mktemp	1
 scripts/luna/test-qmd-staleness.sh	errexit	1
 scripts/luna/test-sweep.sh	errexit	1
-scripts/luna/vault-stall-cadence.sh	prim-lock	3
+scripts/luna/vault-stall-cadence.sh	prim-lock	1
 scripts/luna/vault-stall-cadence.sh	prim-tmpdir	1
 scripts/machine-setup/install-code-kit-clis.sh	errexit	1
 scripts/machine-setup/install-plugins.sh	errexit	1

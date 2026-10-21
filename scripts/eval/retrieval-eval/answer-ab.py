@@ -113,7 +113,7 @@ class Sweep:
         self.errors = 0
         self.rows = []
         self.claude = os.environ.get("CLAUDE_BIN", "claude")
-        self.preflight = os.environ.get("BANK_PREFLIGHT", os.path.join(REPO, "scripts", "lib", "bank-preflight.sh"))
+        self.preflight = os.environ.get("BANK_PREFLIGHT", os.path.join(REPO, "scripts", "lib", "usage-preflight.sh"))
         self.scratch = tempfile.mkdtemp(prefix="answer-ab-")
 
     def bank_ok(self):

@@ -227,6 +227,58 @@ test('adopt refuses a console that does not succeed the old one', async t => {
   assert.equal((await identity.loadPeers(root)).leg.console, 'con');
 });
 
+// con -> mid -> new: a leg that missed the mid succession catches up in one adopt.
+async function chained(t, root) {
+  const all = await fakeProc(t, [...chain, P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+  await bound(root, all);
+  await identity.register(root, 'mid', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'console', predecessor: 'mid' });
+  await identity.bind(root, 'new', 160, { proc: all });
+}
+
+test('adopt walks the predecessor chain when every console but the target is gone', async t => {
+  const { root } = await fixture(t);
+  await chained(t, root);
+  const all = await fakeProc(t, [P(1, 0, 'init', 1), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+  await identity.bind(root, 'mid', 150, { proc: all });
+  const after = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(160, 1, 'claude', 1600)]);
+  await identity.adopt(root, 'leg', 'new', { proc: after });
+  assert.equal((await identity.loadPeers(root)).leg.console, 'new');
+});
+
+test('adopt refuses a chain with an unproven hop', async t => {
+  const { root } = await fixture(t);
+  await chained(t, root);
+  const after = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(160, 1, 'claude', 1600)]);
+  await assert.rejects(identity.adopt(root, 'leg', 'new', { proc: after }), /console mid is not gone and sent no relay naming new/);
+  await store.append(root, 'leg', { i: 'x', t: 1, f: 'mid', r: 'leg', c: 1, b: 'your console is now new' });
+  await identity.adopt(root, 'leg', 'new', { proc: after });
+  assert.equal((await identity.loadPeers(root)).leg.console, 'new');
+});
+
+test('adopt refuses a chain whose intermediate console is still live, relay or not', async t => {
+  const { root } = await fixture(t);
+  await chained(t, root);
+  const all = await fakeProc(t, [P(1, 0, 'init', 1), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+  await identity.bind(root, 'mid', 150, { proc: all });
+  await store.append(root, 'leg', { i: 'x', t: 1, f: 'con', r: 'leg', c: 1, b: 'your console is now mid' });
+  await store.append(root, 'leg', { i: 'y', t: 2, f: 'mid', r: 'leg', c: 1, b: 'your console is now new' });
+  const midLive = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+  await assert.rejects(identity.adopt(root, 'leg', 'new', { proc: midLive }), /console mid on the chain to new is still live/);
+  assert.equal((await identity.loadPeers(root)).leg.console, 'con');
+});
+
+test('adopt onto the console already held is a no-op', async t => {
+  const { root } = await fixture(t);
+  const live = await fakeProc(t, chain);
+  await bound(root, live);
+  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
+  await identity.adopt(root, 'leg', 'new', { proc: gone });
+  await identity.adopt(root, 'leg', 'new', { proc: gone });
+  assert.equal((await identity.loadPeers(root)).leg.console, 'new');
+});
+
 test('rebind refuses a console name', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);

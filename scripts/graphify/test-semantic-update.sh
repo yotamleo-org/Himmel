@@ -28,7 +28,7 @@ cat > "$REPO/scripts/graphify/seed-claude-config.sh" <<'EOF'
 exit 0
 EOF
 # Bank stub: verdict from $WS/bank (default PROCEED); every call logged.
-cat > "$REPO/scripts/lib/bank-preflight.sh" <<EOF
+cat > "$REPO/scripts/lib/usage-preflight.sh" <<EOF
 #!/usr/bin/env bash
 echo bank >> "$WS/calls.log"
 cat "$WS/bank" 2>/dev/null || echo PROCEED
@@ -662,6 +662,27 @@ for _ in 1 2 3; do out=$(GRAPHIFY_STUB_SKIP=a.md run --name t60 --corpus-root "$
 rm -f "$C60/a.md"
 out=$(run --name t60 --corpus-root "$C60" --corpus-class himmel-code); rc=$?
 [ -z "$(stuck "$C60" a.md attempts)" ] && pass "T60 the removed file's stuck record is pruned" || fail "T60 (rc=$rc): $(cat "$C60/graphify-out/semantic-manifest.json")"
+
+echo "T61: an absolute GRAPHIFY_OUT outside the corpus (the luna AST wrapper's shape) is where the pass reads and writes"
+C61="$WS/c61"; new_corpus "$C61"; O61="$WS/state/himmel/graphify/luna/graphify-out"
+mkdir -p "$(dirname "$O61")"; mv "$C61/graphify-out" "$O61"
+out=$(GRAPHIFY_OUT="$O61" run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$C61/graphify-out" ] && [ -f "$O61/semantic-manifest.json" ] && [ -f "$O61/semantic-runs.jsonl" ] \
+  && pass "T61 absolute GRAPHIFY_OUT honoured, nothing written under the corpus" || fail "T61 (rc=$rc): $out"
+
+echo "T62: a relative GRAPHIFY_OUT that is not a single directory name is still refused"
+out=$(GRAPHIFY_OUT=../elsewhere run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_OUT"* ]] && pass "T62 refused" || fail "T62 (rc=$rc): $out"
+
+echo "T63: a multi-line relative GRAPHIFY_OUT whose later line is a traversal is refused"
+out=$(GRAPHIFY_OUT=$'ok\n../elsewhere' run --name t61 --corpus-root "$C61" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_OUT"* ]] && pass "T63 refused" || fail "T63 (rc=$rc): $out"
+
+echo "T64: an absolute GRAPHIFY_OUT that is a symlink is refused, as ast-update.sh refuses it"
+C64="$WS/c64"; new_corpus "$C64"; mv "$C64/graphify-out" "$WS/real64"; ln -s "$WS/real64" "$WS/link64"
+out=$(GRAPHIFY_OUT="$WS/link64" run --name t64 --corpus-root "$C64" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"SYMLINK"* ]] && [ ! -e "$WS/real64/semantic-manifest.json" ] \
+  && pass "T64 symlinked override refused, nothing written through it" || fail "T64 (rc=$rc): $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

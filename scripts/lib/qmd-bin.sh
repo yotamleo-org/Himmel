@@ -86,11 +86,14 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # search over every collection (fork #25). The pin was c3b84dd7, the squash
 # merge of fork PR #29 into fork main, tagged v2.8.3-himmel.1: the fork
 # resynced to tobi/qmd 86d2365 (2.8.3) with the carried commits replayed.
-# The pin is now 2d8589c6, the squash merge of fork PR #30 into fork main (the
-# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2.
-# ponytail: pinned by SHA, the tag v2.8.3-himmel.2 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
+# The pin was 2d8589c6, the squash merge of fork PR #30 into fork main (the
+# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2. The pin is now
+# 5490d894, the squash merge of fork PR #34 into fork main (QMD_RERANK=off starts
+# the daemon without the reranker, a hung rerank restarts it at most once an
+# hour), tagged v2.8.3-himmel.3.
+# ponytail: pinned by SHA, the tag v2.8.3-himmel.3 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-2d8589c6ace332c351e9f6e1ac7400aab7a4ee02}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-5490d8947d3d8c9edbb6c1288174005d35f44e81}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or

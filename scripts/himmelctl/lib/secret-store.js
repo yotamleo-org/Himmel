@@ -150,11 +150,13 @@ function inWorkTree(dir) {
   }
 }
 
+// value === null removes the key instead; a store that does not hold it is left untouched.
 function fileWrite(name, value, ctx) {
   const e = entryOf(name);
   const file = e && storeFile(e.store, ctx);
   if (!file) refuse('secret has no writable file store (card entry)');
   const dir = path.dirname(file);
+  if (value === null && !fs.existsSync(file)) return { ok: true, path: file, tightened: false, removed: false };
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const dst = fs.statSync(dir);
   if (!ownedByMe(dst, ctx)) refuse('store directory is owned by another user');
@@ -184,11 +186,16 @@ function fileWrite(name, value, ctx) {
   const keyLine = new RegExp('^\\s*(?:export\\s+)?' + name + '\\s*=');
   let placed = false;
   const out = [];
+  let matched = false;
   for (const l of lines) {
-    if (keyLine.test(l)) { if (!placed) { out.push(name + '=' + value + (l.endsWith('\r') ? '\r' : '')); placed = true; } continue; }
+    if (keyLine.test(l)) {
+      matched = true;
+      if (value === null) continue;
+      if (!placed) { out.push(name + '=' + value + (l.endsWith('\r') ? '\r' : '')); placed = true; } continue; }
     out.push(l);
   }
-  if (!placed) {
+  if (value === null && !matched) return { ok: true, path: file, tightened: false, removed: false };
+  if (value !== null && !placed) {
     if (out.length && out[out.length - 1] === '') out.pop();
     out.push(name + '=' + value + (eol === '\r\n' ? '\r' : ''), '');
   }
@@ -206,7 +213,7 @@ function fileWrite(name, value, ctx) {
   }
   fs.closeSync(fd);
   try { fs.renameSync(tmp, file); } catch (err) { try { fs.unlinkSync(tmp); } catch { /* best effort */ } throw err; }
-  return { ok: true, path: file, tightened };
+  return { ok: true, path: file, tightened, ...(value === null ? { removed: true } : {}) };
 }
 
 const backends = { file: { detect: fileDetect, write: fileWrite } };
@@ -228,6 +235,15 @@ function write(name, value, ctx) {
   return backendOf(ctx).write(name, value, ctx);
 }
 
+// Drops the key from its file store; the live env and the MCP stores are not ours to edit.
+function remove(name, ctx) {
+  if (!KEY_RE.test(name)) refuse('secret name is not a valid env key');
+  const e = entryOf(name);
+  if (!e) refuse('unknown secret');
+  if (e.collect !== 'file') refuse('card entry: the wizard shows its status but never collects it');
+  return backendOf(ctx).write(name, null, ctx);
+}
+
 // Where a live probe may send the credential: the provider's own host only.
 // `values` carries the other secrets a probe needs (JIRA_BASE_URL).
 function probePlan(name, values) {
@@ -240,4 +256,4 @@ function probePlan(name, values) {
   return { via: null, host: '', needsConsent: false };
 }
 
-module.exports = { detect, write, validate, probePlan, registerBackend, storePaths, mcpDir, SecretStoreError, PLACEHOLDER };
+module.exports = { detect, write, remove, validate, probePlan, registerBackend, storePaths, mcpDir, SecretStoreError, PLACEHOLDER };

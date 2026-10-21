@@ -563,7 +563,7 @@ _cfp_claude_invoke() {
             cat "$_cc_err" >&2
             ;;
         claude-subscription)
-            _cc_bank="$(CADENCE_BANK_LEG=claude-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
+            _cc_bank="$(CADENCE_USAGE_LEG=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
             case "$_cc_bank" in
                 PROCEED*) ;;
                 *) echo "critic-first-pass.sh: claude critic SKIPPED (${_cc_bank:-no bank verdict}) — clean no-op" >&2
@@ -580,6 +580,7 @@ _cfp_claude_invoke() {
                     --allowedTools Read,Glob,Grep --model "$model" --effort "$_cc_effort" < "$pf")" || _cc_rc=$?
             else
                 echo "critic-first-pass.sh: claude critic SKIPPED (native auth pin could not clear ANTHROPIC_*/CLAUDE_CODE_USE_*) — clean no-op" >&2
+                rm -rf "$_cc_dir"
                 return 5
             fi
             ;;

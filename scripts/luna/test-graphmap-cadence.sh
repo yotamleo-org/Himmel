@@ -1188,7 +1188,13 @@ case "${1:-}" in
             exit 1
         fi
         ;;
-    -) cat > "$CSTATE/crontab" ;;
+    -)
+        if [ -e "$CSTATE/fail-write" ]; then
+            echo "error writing new crontab" >&2
+            exit 1
+        fi
+        cat > "$CSTATE/crontab"
+        ;;
     *) echo "crontab-fake: unsupported argv: $*" >&2; exit 64 ;;
 esac
 FAKE
@@ -1446,5 +1452,121 @@ assert_not_contains "cron_payload leaves GRAPHIFY_OUT_ROOT alone when --out-root
 # test run in the same shell) could redirect himmel's AST leg the same way.
 assert_contains "ast_cron_payload unsets GRAPHIFY_OUT when GRAPHIFY_OUT= is omitted" "unset GRAPHIFY_OUT" "$acp_no_dir"
 assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$acp_with_dir"
+
+# The luna semantic payload reads GRAPHIFY_OUT from its environment too; without an out dir it must clear an ambient one.
+LSP_SRC="$(sed -n '/^luna_semantic_cron_payload()/,/^}/p' "$SCRIPT")"
+run_lsp() { bash -c "BAT_DIR=$TMP_ROOT/no-such-bat LUNA_SEMANTIC_PAUSE_MARKER=semantic-luna.paused"$'\n'"$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
+lsp_no_dir=$(run_lsp bash script.sh corpus)
+assert_contains "luna_semantic_cron_payload unsets GRAPHIFY_OUT when no out dir is given" "unset GRAPHIFY_OUT" "$lsp_no_dir"
+lsp_with_dir=$(run_lsp bash script.sh corpus /out/root/graphify-out)
+assert_contains "luna_semantic_cron_payload prefixes GRAPHIFY_OUT= when set" "GRAPHIFY_OUT=/out/root/graphify-out" "$lsp_with_dir"
+assert_not_contains "luna_semantic_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$lsp_with_dir"
+# Run the no-dir payload with an ambient GRAPHIFY_OUT: the updater itself must not receive it.
+lsp_stub="$TMP_ROOT/lsp-stub.sh"
+# shellcheck disable=SC2016  # literal ${GRAPHIFY_OUT} — the stub expands it when it runs
+printf '#!/bin/sh\necho "OUT: ${GRAPHIFY_OUT:-unset}"\n' > "$lsp_stub"
+lsp_run=$(GRAPHIFY_OUT=/ambient/override sh -c "$(run_lsp bash "$lsp_stub" corpus)" 2>&1)
+assert_contains "no-dir payload hands the updater no ambient GRAPHIFY_OUT" "OUT: unset" "$lsp_run"
+
+# Luna semantic leg: HIMMEL-GraphSemantic-Luna, POSIX/cron path. Reuses the publish
+# fixture's fake crontab and runner dir, disarmed first so nothing from that block leaks in.
+# The GRAPHIFY_OUT shape asserted below is the one the station's armed graphmap-ast-luna.sh carries
+# (~/.local/share/himmel/graphify/luna/graphify-out), copied from that runner.
+# ============================================================================
+run_cron3 disarm >/dev/null 2>&1
+rm -f "$CRON_DIR3/semantic-luna.paused"
+
+echo "TEST: cron arm --ast-only without --with-luna-semantic arms no luna semantic leg"
+run_cron3 arm --vault "$VAULT" --ast-only >/dev/null 2>&1
+tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_not_contains "no luna semantic entry by default" "HIMMEL-GraphSemantic-Luna" "$tab4"
+run_cron3 disarm >/dev/null 2>&1
+
+echo "TEST: cron arm --ast-only --with-luna-semantic registers the luna semantic leg PAUSED"
+rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic 2>&1) || rc=$?
+assert_rc "arm --with-luna-semantic succeeds" 0 "$rc"
+tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_contains "luna semantic crontab entry present" "# HIMMEL-GraphSemantic-Luna" "$tab4"
+assert_contains "luna semantic entry fires every 2h" "50 */2 * * *" "$tab4"
+sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
+assert_contains "luna semantic runner fires semantic-update.sh" "scripts/graphify/semantic-update.sh" "$sem_sh"
+assert_contains "luna semantic runner names the luna corpus" "--name luna" "$sem_sh"
+assert_contains "luna semantic runner pins the luna-personal class" "--corpus-class luna-personal" "$sem_sh"
+assert_contains "luna semantic runner pins the claude-api backend" "--backend claude-api" "$sem_sh"
+assert_contains "luna semantic runner caps the batch" "--max-files 20" "$sem_sh"
+assert_contains "luna semantic runner caps the run spend" "--max-run-usd 2.00" "$sem_sh"
+assert_contains "luna semantic runner sets the api lane" "HIMMEL_API_LANE=on" "$sem_sh"
+assert_contains "luna semantic runner sets the api account" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
+assert_contains "luna semantic runner targets the live luna graph, not the vault copy" "GRAPHIFY_OUT=" "$sem_sh"
+assert_contains "luna semantic runner uses the AST leg's out dir" "graphify/luna/graphify-out" "$sem_sh"
+assert_contains "luna semantic runner reads its own pause marker" "semantic-luna.paused" "$sem_sh"
+assert_contains "luna semantic runner format stamp present" "# himmel-cadence-runner-format: $FMT" "$sem_sh"
+if [ -e "$CRON_DIR3/semantic-luna.paused" ]; then
+    pass "arm --with-luna-semantic writes the pause marker itself"
+else
+    fail "arm --with-luna-semantic left no semantic-luna.paused marker" "$(ls "$CRON_DIR3" 2>/dev/null)"
+fi
+assert_contains "arm banner says the luna semantic leg is armed paused" "semantic armed PAUSED" "$out"
+assert_registry "luna semantic flow registers a 2h cadence" \
+    '.flows[] | select(.name == "graphmap-semantic-luna" and .cadence_seconds == 7200)'
+assert_registry "luna semantic task name registered" '.expected_tasks[] | select(. == "HIMMEL-GraphSemantic-Luna")'
+
+echo "TEST: the luna semantic runner runs nothing while paused and the capped command once resumed"
+stub_su="$TMP_ROOT/stub-semantic-update.sh"
+stub_su_out="$TMP_ROOT/stub-semantic-update.out"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "ARGV: $*" >> "%s"\necho "LANE: ${HIMMEL_API_LANE:-unset}" >> "%s"\necho "OUT: ${GRAPHIFY_OUT:-unset}" >> "%s"\n' "$stub_su_out" "$stub_su_out" "$stub_su_out" > "$stub_su"
+sed "s#[^ ]* [^ ]*scripts/graphify/semantic-update.sh#sh $stub_su#g" "$CRON_DIR3/graphmap-semantic-luna.sh" > "$TMP_ROOT/semantic-luna-stubbed.sh"
+rm -f "$stub_su_out"
+sh "$TMP_ROOT/semantic-luna-stubbed.sh" >/dev/null 2>&1 || true
+stub_paused=$(cat "$stub_su_out" 2>/dev/null || echo NOT-RUN)
+assert_rc "paused fire does not call semantic-update" "NOT-RUN" "$stub_paused"
+rm -f "$CRON_DIR3/semantic-luna.paused"
+sh "$TMP_ROOT/semantic-luna-stubbed.sh" >/dev/null 2>&1 || true
+stub_active=$(cat "$stub_su_out" 2>/dev/null || echo MISSING)
+assert_contains "active fire passes the luna corpus class" "--corpus-class luna-personal" "$stub_active"
+assert_contains "active fire passes the batch cap" "--max-files 20" "$stub_active"
+assert_contains "active fire sets the api lane" "LANE: on" "$stub_active"
+assert_contains "active fire exports the live luna out dir" "graphify/luna/graphify-out" "$stub_active"
+
+echo "TEST: cron status and disarm cover the luna semantic leg"
+out=$(run_cron3 status 2>&1)
+assert_contains "status shows the luna semantic task armed" "ARMED      HIMMEL-GraphSemantic-Luna (cron: 50 */2 * * *)" "$out"
+run_cron3 disarm >/dev/null 2>&1
+tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
+assert_not_contains "luna semantic entry removed by disarm" "HIMMEL-GraphSemantic-Luna" "$tab4"
+if [ ! -f "$CRON_DIR3/graphmap-semantic-luna.sh" ]; then
+    pass "luna semantic runner removed by disarm"
+else
+    fail "luna semantic runner survived disarm"
+fi
+
+echo "TEST: --semantic-active on a re-arm lifts a pause marker left by the earlier paused arm"
+: > "$CRON_DIR3/semantic-luna.paused"
+: > "$CRON_DIR3/semantic.paused"
+run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+for _m in semantic-luna.paused semantic.paused; do
+    if [ -e "$CRON_DIR3/$_m" ]; then
+        fail "re-arm with --semantic-active left $_m" "$(ls "$CRON_DIR3" 2>/dev/null)"
+    else
+        pass "re-arm with --semantic-active removed $_m"
+    fi
+done
+run_cron3 disarm >/dev/null 2>&1
+
+echo "TEST: --semantic-active re-arm whose crontab install fails keeps the pause markers"
+: > "$CRON_DIR3/semantic-luna.paused"
+: > "$CRON_DIR3/semantic.paused"
+touch "$CSTATE3/fail-write"
+rc=0; run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || rc=$?
+assert_rc "semantic-active re-arm install failure rc 4" 4 "$rc"
+for _m in semantic-luna.paused semantic.paused; do
+    if [ -e "$CRON_DIR3/$_m" ]; then
+        pass "failed --semantic-active re-arm kept $_m"
+    else
+        fail "failed --semantic-active re-arm removed $_m" "$(ls "$CRON_DIR3" 2>/dev/null)"
+    fi
+done
+rm -f "$CSTATE3/fail-write" "$CRON_DIR3/semantic-luna.paused" "$CRON_DIR3/semantic.paused"
 
 summary

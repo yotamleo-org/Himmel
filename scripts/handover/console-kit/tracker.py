@@ -1246,6 +1246,40 @@ def open_prs(path, repo):
     return out
 
 
+def read_workers(path):
+    """{ticket number: record} from a dir of HIMMEL-<n>.json worker records (ticket-status.sh); an unreadable record or
+    a missing dir is skipped, so a card without a record simply has no worker line."""
+    out = {}
+    for p in sorted(glob.glob(os.path.join(path, 'HIMMEL-*.json'))) if path else []:
+        m = re.fullmatch(r'HIMMEL-(\d+)\.json', os.path.basename(p))
+        try:
+            rec = json.load(open(p, encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if m and isinstance(rec, dict) and isinstance(rec.get('prs', {}), dict):
+            out[int(m.group(1))] = rec
+    return out
+
+
+def open_worker_prs(rec):
+    """[(pr number, head)] of the record's open PRs, ascending."""
+    return sorted((int(n), str(p.get('head') or '')) for n, p in rec.get('prs', {}).items()
+                  if isinstance(p, dict) and p.get('open') and str(n).isdigit())
+
+
+def worker_line(rec):
+    """`worker <leg> · <state>[ · #<pr> @<head7> · CI <ci>...][ · <age>]` for one worker record."""
+    parts = ['worker %s' % (rec.get('leg') or '?'), str(rec.get('state') or 'unknown')]
+    for n, h in open_worker_prs(rec):
+        ci = rec['prs'][str(n)].get('ci') or 'none'
+        parts += ['#%d%s' % (n, ' @' + h[:7] if h else ''), 'CI %s' % ci]
+    t = utc_dt(rec.get('last_event_ts') or '')
+    if t:
+        s = max(0, int((datetime.now(timezone.utc) - t).total_seconds()))
+        parts.append('%d min' % (s // 60) if s < 3600 else '%d h' % (s // 3600) if s < 86400 else '%d d' % (s // 86400))
+    return ' · '.join(parts)
+
+
 def column_parity(version, cols):
     """{column: (jira count, [differing keys as text])} from one live `jira list` of the version's open tickets, compared
     with the page's {column: [ticket numbers]}; None when the CLI fails or answers garbled."""
@@ -1270,12 +1304,15 @@ def column_parity(version, cols):
     return out
 
 
-def version_page(mir, version, groups, prs, chains, base, repo):
-    """(html, stdout parity line): the FOCUS page of one version (HIMMEL-6769).
+def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
+    """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
     Columns are the Jira status names of the version's open tickets, each split into the plan's priority blocks; a card
     carries its open PRs with CI state (a started card with none is flagged), its blockers, its FAST-TRACK chain step and
-    its sector. Each column ends its header with a parity line against a live JQL count."""
+    its sector. Each column ends its header with a parity line against a live JQL count. A card whose ticket has a
+    worker record in `workers` carries a worker line. The fingerprint covers what a reader acts on (tickets, priority
+    blocks, chain steps, worker owner, state and open-PR heads), never a CI badge, an age or a timestamp."""
+    workers = workers or {}
     base = base.strip().rstrip('/') if re.match(r'^https?://', base.strip()) else ''
     opn = {num(k): m for k, m in mir.items() if version in m['fv'] and bucket(m) not in ('done', 'wont')}
     done = sum(1 for m in mir.values() if version in m['fv'] and bucket(m) == 'done')
@@ -1309,9 +1346,10 @@ def version_page(mir, version, groups, prs, chains, base, repo):
         dirq = ['HIMMEL-%d' % b for b, st in bl if st == 'direction?']
         shut = ['HIMMEL-%d (%s)' % (b, st) for b, st in bl if st in ('done', 'wont')]
         ft = inchain.get('HIMMEL-%d' % k)
-        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s<div>%s</div>%s%s%s%s'
+        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s<div>%s</div>%s%s%s%s%s'
                 '<span class="sec" style="--s:%s">%s</span></div>\n'
                 % (' isblocked' if live else '', ' isft' if ft else '', sc, k, esc(block[k]), key_html(k), badges, esc(clip(m['title'], 120)),
+                   '<div class="wk">%s</div>' % esc(worker_line(workers[k])) if k in workers else '',
                    '<div class="ft">FAST-TRACK · %s</div>' % esc(ft) if ft else '',
                    '<div class="blk">BLOCKED by open %s</div>' % ', '.join(live) if live else '',
                    '<div class="dirq">direction? %s: the link and the blocker\'s own text disagree</div>' % ', '.join(dirq) if dirq else '',
@@ -1336,9 +1374,21 @@ def version_page(mir, version, groups, prs, chains, base, repo):
                        % (esc(c), esc(c), len(ks), pl, ''.join(parts) or '<div class="empty">none</div>'))
     parline = 'parity %s: %s' % (version, ', '.join(tally) if par is not None else 'unavailable')
 
-    def step(st):
+    def step_state(st):
         k = st.get('key', '')
-        state = 'merged' if k in mir and bucket(mir[k]) == 'done' else st.get('state', 'next')
+        if not KEY_RE.fullmatch(k):
+            return st.get('state', 'next')
+        if k not in mir:
+            return 'unknown'
+        if bucket(mir[k]) == 'done':
+            return 'merged'
+        if 'held' in mir[k].get('labels', []):
+            return 'held'
+        return 'work' if mir[k]['sn'] in ('In Progress', 'In Review', 'IN CI') else 'next'
+
+    def step(st):
+        state = step_state(st)
+        k = st.get('key', '')
         return '<li class="st-%s"><b>%s</b> %s%s %s%s</li>\n' % (
             esc(state), esc(state), '<a href="https://github.com/%s/pull/%d">#%d</a> ' % (esc(repo), st['pr'], st['pr']) if st.get('pr') else '',
             key_html(num(k)) if KEY_RE.fullmatch(k) else esc(k), esc(st.get('label', '')),
@@ -1355,7 +1405,17 @@ def version_page(mir, version, groups, prs, chains, base, repo):
         prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
         chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
         legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml))
-    return html, parline
+    fp = json.dumps({
+        'v': version,
+        'done': done,
+        'tickets': [[k, opn[k]['sn'], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
+                    for k in sorted(opn)],
+        'chains': [[ch['name'], [[st.get('key', ''), st.get('label', ''), step_state(st), st.get('pr'), st.get('owner')]
+                                 for st in ch['steps']]] for ch in chains],
+        'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
+        'workers': [[k, r.get('leg'), r.get('state'), open_worker_prs(r)] for k, r in sorted(workers.items()) if k in opn]},
+        sort_keys=True)
+    return html, parline, hashlib.sha256(fp.encode('utf-8')).hexdigest()[:16]
 
 
 VERSION_TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -1394,7 +1454,8 @@ a{{color:var(--acc);text-decoration:none}}
 .chain h3{{font-size:13px;margin:0 0 4px}}.chain ol{{margin:4px 0 0;padding-left:20px}}.chain li{{margin-bottom:3px}}
 .chain li b{{font-size:10px;text-transform:uppercase;padding:0 5px;border-radius:6px;margin-right:4px}}
 .st-merged b{{background:#16a34a;color:#fff}}.st-work b{{background:#7c3aed;color:#fff}}.st-next b{{background:#ca8a04;color:#fff}}.st-held b{{background:var(--line);color:var(--fg)}}
-.st-merged{{color:var(--muted)}}.own{{font-size:11px;color:var(--muted)}}
+.st-unknown b{{background:#dc2626;color:#fff}}
+.st-merged{{color:var(--muted)}}.own{{font-size:11px;color:var(--muted)}}.wk{{color:var(--muted);font-size:11px}}
 .ft{{color:#fff;background:#7c3aed;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}.isft{{outline:2px solid #7c3aed}}
 .b0{{--c:var(--p0)}}.b1{{--c:var(--p1)}}.b2{{--c:var(--p2)}}.b3{{--c:var(--p3)}}.b4{{--c:var(--p4)}}.b5{{--c:var(--p5)}}.b6{{--c:var(--p6)}}.b7{{--c:var(--p7)}}
 </style></head><body>
@@ -1421,6 +1482,8 @@ def main():
                                                      '--plan-dir it also writes <out>.fp, the value --emit-fp prints for tick')
     ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,isDraft,'
                                                      'statusCheckRollup` file (default: one live gh read)')
+    ap.add_argument('--workers-dir', default=None, help='--version: the worker records dir (HIMMEL-<n>.json, written by '
+                                                         'ticket-status.sh); a card with a record shows its worker line')
     ap.add_argument('--chains-file', default=None, help='--version: the merge chains and waves JSON '
                                                         '([{name, note, steps: [{key, pr, label, state, owner}]}])')
     ap.add_argument('--repo', default=None, help='--version: the GitHub repo (owner/name) gh reads and the PR badges '
@@ -1484,9 +1547,11 @@ def main():
         repo = a.repo or origin_repo()
         if not repo:
             raise SystemExit('tracker: no GitHub origin found for this checkout; pass --repo owner/name')
-        html, par = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo)
+        html, par, vfp = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo,
+                                      read_workers(a.workers_dir))
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         open(OUT, 'w', encoding='utf-8').write(html)
+        open(OUT + '.vfp', 'w', encoding='utf-8').write(vfp + '\n')
         if fp0:
             open(OUT + '.fp', 'w', encoding='utf-8').write(fp0 + '\n')
         print('wrote %s (%.1f KB)' % (OUT, os.path.getsize(OUT) / 1024))

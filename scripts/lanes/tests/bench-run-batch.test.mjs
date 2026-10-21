@@ -144,7 +144,7 @@ test('dispatch-luna: the bank check runs before the first paid attempt', () => {
     BENCH_SCRATCH_ROOT: scratchRoot,
     FAKE_LAUNCHER_STATE_DIR: stateDir,
     FAKE_LAUNCHER_CONFIG_DIR: configDir,
-    CODEX_BANK_CACHE: bankCache, // bank-status.ts test hook (bank-status.test.mjs uses the same one)
+    CODEX_BANK_CACHE: bankCache, // usage-status.ts test hook (bank-status.test.mjs uses the same one)
   });
 
   assert.throws(() => execFileSync(BASH_BIN, [

@@ -2,7 +2,7 @@
 # claude-floor-review.sh — the CONTEXT-FREE Claude floor review.
 #
 # When CR_REQUIRE_CROSS_MODEL=1 + CR_FLOOR_FALLBACK=claude-only and every
-# non-Claude lane is exhausted, clear-cr-marker.sh accepts a Claude-only floor
+# non-Claude lane is exhausted, clear-review-marker.sh accepts a Claude-only floor
 # — but only THIS script's review, never a row the authoring session records
 # about its own work. It runs the review plugin's reviewer
 # (pr-review-toolkit-himmel:code-reviewer, its agent body read from the plugin
@@ -44,7 +44,7 @@
 #       recorded as `avail claude-floor unavailable` with a reason.
 # Env: CR_LEDGER (ledger path, default <git-common-dir>/cr-critic-scores.jsonl;
 #      the gate itself reads only the default), HIMMEL_CLAUDE_BIN and the
-#      CADENCE_BANK_* / HIMMEL_REGISTRY_DIR knobs pass through to
+#      CADENCE_USAGE_* / HIMMEL_REGISTRY_DIR knobs pass through to
 #      scripts/lib/claude-headless.sh (tests inject a fake claude there).
 set -uo pipefail
 
@@ -69,7 +69,7 @@ done
 head=$(git rev-parse --verify "${head:-HEAD}^{commit}" 2>/dev/null) || die "cannot resolve --head"
 base=$(git rev-parse --verify "$base^{commit}" 2>/dev/null) || die "cannot resolve --base"
 [ "$base" != "$head" ] || die "--base equals --head: there is no diff to review"
-# Twin of clear-cr-marker.sh floor_provenance_ok: the gate refuses an artifact
+# Twin of clear-review-marker.sh floor_provenance_ok: the gate refuses an artifact
 # whose base is off the remote default branch (a partial range), so never spend one.
 # shellcheck source=scripts/lib/cr-default-base.sh
 . "$REPO_ROOT/scripts/lib/cr-default-base.sh" || die "cannot load scripts/lib/cr-default-base.sh" 1
@@ -81,7 +81,7 @@ git_dir=$(git rev-parse --git-common-dir 2>/dev/null) || die "not in a git repos
 ledger="${CR_LEDGER:-$git_dir/cr-critic-scores.jsonl}"
 
 # --- 1. eligibility: never spend a review the gate could not accept ---------
-# The operator opt-in first, read exactly as clear-cr-marker.sh reads it (the
+# The operator opt-in first, read exactly as clear-review-marker.sh reads it (the
 # primary's .env; a non-empty process value wins): without BOTH knobs the gate
 # never accepts a claude-floor row, so the review would be spent for nothing.
 # shellcheck disable=SC1091
@@ -96,7 +96,7 @@ esac
 [ "$(norm "${CR_FLOOR_FALLBACK:-}")" = claude-only ] \
     || die "not eligible: CR_FLOOR_FALLBACK is not claude-only, so the gate would refuse a floor row. Nothing spent." 3
 
-# Twin of clear-cr-marker.sh's isExhausted()/emptyPanel — keep the two in step.
+# Twin of clear-review-marker.sh's isExhausted()/emptyPanel — keep the two in step.
 # shellcheck disable=SC2016  # JS inside single quotes
 unlocked=$(LEDGER="$ledger" FULL_SHA="$head" CRITICS="$SCRIPT_DIR/critics.json" node -e '
   const fs = require("fs"), e = process.env;

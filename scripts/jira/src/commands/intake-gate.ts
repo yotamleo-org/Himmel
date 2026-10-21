@@ -15,6 +15,22 @@ export function assertIntakeGate(gate: string): void {
 }
 
 /**
+ * A console override needs a reason, the console marker and a ledger location.
+ * Returns the trimmed reason; the ledger probe throws when no location is set
+ * or the ledger cannot take an append, so no ticket is filed or moved without its row.
+ */
+export function checkConsoleOverride(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) throw new Error('--console-override needs a reason');
+  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
+  if (process.env['HIMMEL_CONSOLE'] !== '1') {
+    throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
+  }
+  assertAdmissionsWritable();
+  return trimmed;
+}
+
+/**
  * Holds a filing into a frozen version to --gate. Returns the ledger row to
  * append once the ticket exists, or undefined when no gate applies: no frozen
  * version, or a console override (which writes its own row).

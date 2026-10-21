@@ -16,13 +16,15 @@
 #     no duplicate rows, no malformed rows;
 #   - the tier is one of pr, local, flow, quarantine;
 #   - a pr reason is catch:<n> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>;
+#   - the trust list holds at least one pattern (an empty one would make every local row pass);
 #   - a trust-owned suite is never local. Trust-owned = its path matches a
 #     ci-trust-paths.txt pattern, or it is the sibling of a trust-path file (same
 #     directory, the file's stem equals the suite's stem after dropping test- and
 #     trailing -words). The rule is computed, not hand-listed.
 #
 # Exit codes: 0 — all cases passed; 1 — at least one failed; 2 — usage error
-# (an unknown --lint option, or one given with no value).
+# (an unknown --lint option, or one given with no value) or an awk fatal error
+# in the lint (for example an invalid regex in the trust list).
 set -uo pipefail
 
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -64,6 +66,7 @@ lint() { # <tiers> <trust> <tracked-list>
       else if (is_trust($0)) { d = $0; sub(/[^\/]*$/, "", d); st = b; sub(/\.[^.]*$/, "", st); sib[d st] = 1 }
     }
     END {
+      if (nt == 0) { printf "FAIL trust list has no usable pattern: %s\n", trust; bad++ }
       for (i = 1; i <= ns; i++) {
         s = suites[i]; seen[s] = 1
         if (!(s in tier)) { printf "FAIL suite has no tier row: %s\n", s; bad++; continue }
@@ -171,6 +174,10 @@ row "RED: a duplicate row" 1 "duplicate row: scripts/foo/test-plain.sh" "$tmp/du
 
 printf '%s\t%s\n' scripts/foo/test-plain.sh local > "$tmp/short.tsv"
 row "RED: a row with no reason" 1 "malformed row" "$tmp/short.tsv"
+
+printf '%s\n' '# comments and blanks only' '' > "$tmp/empty-trust"
+bash "$SELF" --lint --tiers "$tmp/good.tsv" --trust "$tmp/empty-trust" --tracked "$tmp/tracked" > "$tmp/out" 2>&1; rc=$?
+if [ "$rc" -eq 1 ] && grep -qF -- "trust list has no usable pattern" "$tmp/out"; then pass "RED: an empty trust list -> exit 1"; else fail "an empty trust list -> rc=$rc, output lacks 'trust list has no usable pattern'"; fi
 
 for reason in catch:3218 static-gate guard flow-miss:HIMMEL-6001; do
   retier "$tmp/good.tsv" "$tmp/r.tsv" scripts/ci/test-alpha.sh pr "$reason"

@@ -1,9 +1,12 @@
 {
+  "scripts/cr/clear-review-marker.sh": {
+    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL"]
+  },
   "scripts/cr/clear-cr-marker.sh": {
     "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL"]
   },
   "scripts/handover/merge-on-green.sh": {
-    "seam_env_vars": ["ARMAUTOMERGE", "MERGE_ON_GREEN_LOG", "HIMMEL_CONSOLE_LEG", "HANDOVER_DIR", "HIMMEL_REPO"]
+    "seam_env_vars": ["ARMAUTOMERGE", "MERGE_ON_GREEN_LOG", "HIMMEL_CONSOLE_LEG", "HANDOVER_DIR", "HIMMEL_REPO", "MERGE_STATIC_RECHECK"]
   },
   "scripts/handover/console-kit/go.sh": {
     "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO"]
@@ -13,6 +16,9 @@
   },
   "scripts/lanes/stop-worker.sh": {
     "seam_env_vars": ["STOP_WORKER_GRACE_SECS", "STOP_WORKER_BRIDGE_ROOT_OVERRIDE"]
+  },
+  "scripts/lib/usage-preflight.sh": {
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE"]
   },
   "scripts/lib/bank-preflight.sh": {
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE"]

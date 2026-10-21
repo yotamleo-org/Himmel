@@ -229,7 +229,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_LEG|LEG_CLAUDE_BIN|LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG|LEG_PROFILE_NO_SETTING_SOURCES|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_LEG_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_LEG_CONTEXT_MODE|HIMMEL_LEG_AUTOCOMPACT|LEG_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -287,15 +287,15 @@ chmod 755 "$SKIPPED_FLEET_PREFLIGHT"
 # SKIPPED-BANK token it computes (CADENCE_BANK_LANE="$LANE") instead of
 # discarding it, same rationale as SKIPPED_FLEET_PREFLIGHT above.
 # Also write a `pid` file into the
-# reservation it is standing in for, matching CADENCE_BANK_CALLER_PID - the
+# reservation it is standing in for, matching CADENCE_USAGE_CALLER_PID - the
 # real bank-preflight.sh now does the same, and headed-arm-leg.sh's release
 # path on this refusal only deletes a reservation it can verify it owns.
 SKIPPED_BANK_PREFLIGHT="$tmp/skipped-bank-preflight.sh"
 # shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
 printf '%s\n' '#!/usr/bin/env bash' \
   'slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"' \
-  'mkdir -p "$slots/$CADENCE_BANK_LEG" 2>/dev/null' \
-  'printf "%s\n" "$CADENCE_BANK_CALLER_PID" > "$slots/$CADENCE_BANK_LEG/pid" 2>/dev/null' \
+  'mkdir -p "$slots/$CADENCE_USAGE_LEG" 2>/dev/null' \
+  'printf "%s\n" "$CADENCE_USAGE_CALLER_PID" > "$slots/$CADENCE_USAGE_LEG/pid" 2>/dev/null' \
   'echo SKIPPED-BANK' > "$SKIPPED_BANK_PREFLIGHT"
 chmod 755 "$SKIPPED_BANK_PREFLIGHT"
 
@@ -328,6 +328,23 @@ check 'fleet: failed target leaves manifest absent' no "$([ -e "$fleet_manifest"
 rc=0; out="$(fleet_launch --dry-run 2>&1)" || rc=$?
 check 'fleet: dry run succeeds without adding' 0 "$rc"
 check 'fleet: dry run leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
+
+# The launch preflight reads CADENCE_USAGE_* first, so an inherited new-name
+# lane or leg must not beat the values this launch passes it.
+REC_PREFLIGHT="$tmp/recording-preflight.sh"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'env | grep -E "^CADENCE_USAGE_(LEG|LANE|LAUNCH)=" | sort > "$REC_PREFLIGHT_OUT"' \
+  'echo PROCEED' > "$REC_PREFLIGHT"
+chmod 755 "$REC_PREFLIGHT"
+rc=0; out="$(CADENCE_USAGE_LANE=claudex CADENCE_USAGE_LEG=stale-leg CADENCE_USAGE_LAUNCH='' \
+  REC_PREFLIGHT_OUT="$tmp/rec-preflight.env" FLEET_TEST_MANIFEST="$fleet_manifest" \
+  HEADED_ARM_LEG_TARGET="$fleet_target" HEADED_ARM_LEG_PREFLIGHT="$REC_PREFLIGHT" bash "$SCRIPT" \
+  --no-profile HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
+check 'usage names: launch with inherited CADENCE_USAGE_* exits 0' 0 "$rc"
+check 'usage names: the launch preflight sees this launch, not the inherited lane and leg' \
+  "$(printf '%s\n' CADENCE_USAGE_LANE=native CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_LEG=HIMMEL-3748-N7-fleet)" \
+  "$(cat "$tmp/rec-preflight.env" 2>/dev/null)"
 rc=0; out="$(HEADED_ARM_LEG_PREFLIGHT="$SKIPPED_FLEET_PREFLIGHT" \
   HEADED_ARM_LEG_TARGET="$fleet_target" bash "$SCRIPT" --no-profile --fleet "$fleet_manifest" \
   HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
@@ -436,7 +453,7 @@ contains "dry-run HIMMEL_LEG_CONTEXT_MODE=bogus: names the allowed modes" "$out"
 # this exact assertion, not a vaguer one.
 rc=0; out="$(CONSOLE_CONTEXT=1m LEG_CONTEXT='' LEG_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CONSOLE_CONTEXT=1m: exit 0 (a leg is unaffected by it)" "$rc" "0"
-contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT CONSOLE_CONTEXT=<unset>"
+contains "dry-run, ambient CONSOLE_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CONSOLE_CONTEXT=<unset>"
 not_contains "dry-run, ambient CONSOLE_CONTEXT=1m: never reported as still set" "$out" "CONSOLE_CONTEXT=1m"
 
 # --- HIMMEL_CONSOLE_NAME resolution (--console, launching
@@ -1070,6 +1087,7 @@ contains "dry-run --lane claudex: resolved launcher names claude-codex" "$out" "
 contains "dry-run --lane claudex: env carries CLAUDEX_LANE_OK=1" "$out" "CLAUDEX_LANE_OK=1"
 contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "LEG_LANE=claudex"
 contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_BANK_LANE=claudex"
+not_contains "dry-run --lane claudex: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
 contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
@@ -1079,6 +1097,10 @@ contains "claudex: resolved lane replaces stale launcher token" "$out" "LEG_LANE
 contains "claudex: resolved bank replaces stale launcher token" "$out" "CADENCE_BANK_LANE=claudex"
 not_contains "claudex: stale lane token is absent" "$out" "LEG_LANE=native"
 not_contains "claudex: stale bank token is absent" "$out" "CADENCE_BANK_LANE=native"
+rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+check "claudex: a stale CADENCE_USAGE_LANE token does not refuse launch" "$rc" "0"
+contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_BANK_LANE=claudex"
+not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE="
 
 rc=0; out="$(LEG_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: LEG_EFFORT overrides the medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
@@ -1113,6 +1135,7 @@ contains "dry-run, no --lane: reports lane=native" "$out" "lane=native"
 not_contains "dry-run, no --lane: no claude-codex launcher" "$out" "claude-codex"
 not_contains "dry-run, native: no added lane env" "$out" "LEG_LANE="
 not_contains "dry-run, native: no added bank lane env" "$out" "CADENCE_BANK_LANE="
+not_contains "dry-run, native: no added usage lane env" "$out" "CADENCE_USAGE_LANE="
 
 # a lane typo, missing model mapping or dropped backend must
 # never silently start a native/subscription session. Dry runs make no calls.
@@ -1120,6 +1143,7 @@ rc=0; out="$(LEG_LANE=native bash "$SCRIPT" --dry-run --no-profile --lane openro
 check "openrouter: flag selects lane" "$rc" "0"
 contains "openrouter: lane reported" "$out" "lane=openrouter"
 contains "openrouter: bank lane remains openrouter" "$out" "CADENCE_BANK_LANE=openrouter"
+not_contains "openrouter: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
 contains "openrouter: default Sonnet slug pinned" "$out" "OPENROUTER_MODEL=anthropic/claude-sonnet-5.5"
 contains "openrouter: backend is claude-openrouter" "$out" "claude-openrouter"
 contains "openrouter: alias route uses sonnet" "$out" " sonnet "
@@ -2789,6 +2813,18 @@ check "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: e
 contains "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the override wins" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the high default is not also present" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
+# The console marker a console session carries must never reach a leg it arms;
+# admission authority is the console's alone.
+d28j="$tmp/c28j"; mk_launch_stubs "$d28j" "HIMMEL-6918-N1-consolemarker"; mkdir -p "$tmp/repo28j"
+rc=0
+HIMMEL_CONSOLE=1 \
+  RUN_LEG_ARGS='--profile leg-impl' run_leg "$d28j" "$tmp/repo28j" "HIMMEL-6918-N1-consolemarker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d28j" || true
+env28j="$(cat "$d28j/env-record" 2>/dev/null || true)"
+check "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: exit 0" "$rc" "0"
+contains "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: env-record was actually produced" "$env28j" "HIMMEL_CONSOLE_LEG=1"
+not_contains "HIMMEL-6918: full leg launch, ambient HIMMEL_CONSOLE=1: the console marker never reaches the leg" "$env28j" "HIMMEL_CONSOLE=1"
+
 # Control (console ruling): the two new seam names themselves
 # (HEADED_ARM_LEG_CLAUDE_BIN, HIMMEL_CONSOLE_JUDGE_EFFORT) must not reach the
 # armed process's own env - otherwise a leg armed with either one ambiently
@@ -3281,6 +3317,14 @@ lenv34g="$(printf '%s\n' "$out34g" | grep '^headed-arm-leg: lane=')"
 check "34g dry run exits 0" "$rc34g" "0"
 contains "34g an unrecognised LEG_EFFORT falls through to the registry" "$lenv34g" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
+# 34g1. An omitted model resolves the registry effort for the default model headed-arm.sh launches.
+lanes_fixture_opus_high="$tmp/lanes-fixture-opus-high.json"
+printf '%s\n' '{"lanes":[{"id":"opus","class":"claude-tier","effort":"high"}]}' > "$lanes_fixture_opus_high"
+rc34g1=0
+out34g1="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_opus_high" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g1 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g1.log" 2>&1)" || rc34g1=$?
+check "34g1 dry run exits 0" "$rc34g1" "0"
+contains "34g1 an omitted model takes the default model's registry effort" "$out34g1" "headed-arm-leg: effort=high source=lanes.json"
+
 # 34g2. A caller-preset launcher token wins on a name clash; the effort line reports it.
 rc34g2=0
 out34g2="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34g2 "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34g2.log" claude-opus-5-5 2>&1)" || rc34g2=$?
@@ -3301,6 +3345,156 @@ wait_record "$d34i" || true
 env34i="$(cat "$d34i/env-record" 2>/dev/null || true)"
 check "34i full native launch, LEG_EFFORT=high: exit 0" "$rc" "0"
 contains "34i full native launch, LEG_EFFORT=high: the armed process env carries high" "$env34i" "CLAUDE_CODE_EFFORT_LEVEL=high"
+
+# 34j. A caller-preset EMPTY launcher token is still the launcher token: the
+# effort line reports its (empty) value and source, never LEG_EFFORT's.
+rc34j=0
+out34j="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34j "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34j.log" claude-opus-5-5 2>&1)" || rc34j=$?
+check "34j dry run exits 0" "$rc34j" "0"
+contains "34j an empty launcher token is reported with its own empty value and source" "$out34j" "headed-arm-leg: effort= source=HEADED_ARM_LAUNCHER_ENV"
+not_contains "34j the effort line does not claim effort=high" "$out34j" "effort=high"
+
+# mk_launcher_tree <dir> - a copy of the repo's scripts tree in which ONLY
+# headed-arm-leg.sh is a real file (the caller mutates it); everything else is
+# a symlink, so the launcher's HERE-relative lookups still resolve.
+mk_launcher_tree() {
+  local dst="$1" root e b
+  root="$(cd "$HERE/../../.." && pwd)"
+  mkdir -p "$dst/scripts/handover/console-kit"
+  for e in "$root"/*; do b="$(basename "$e")"; [ "$b" = scripts ] || ln -s "$e" "$dst/$b"; done
+  for e in "$root"/scripts/*; do b="$(basename "$e")"; [ "$b" = handover ] || ln -s "$e" "$dst/scripts/$b"; done
+  for e in "$root"/scripts/handover/*; do b="$(basename "$e")"; [ "$b" = console-kit ] || ln -s "$e" "$dst/scripts/handover/$b"; done
+  for e in "$root"/scripts/handover/console-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-leg.sh ] || ln -s "$e" "$dst/scripts/handover/console-kit/$b"; done
+  cp "$HERE/headed-arm-leg.sh" "$dst/scripts/handover/console-kit/headed-arm-leg.sh"
+}
+# mutate_launcher <tree> <sed args...> - rewrite the tree's launcher in place.
+mutate_launcher() {
+  local f="$1/scripts/handover/console-kit/headed-arm-leg.sh"; shift
+  sed "$@" "$f" > "$f.new" && mv "$f.new" "$f" && chmod 755 "$f"
+}
+
+# 34k. The effort resolver fix reverted (LEG_EFFORT no longer reaches the resolver,
+# so the registry's medium wins): the launch is refused, naming both values.
+mut6507="$tmp/revert-6507"; mk_launcher_tree "$mut6507"
+# shellcheck disable=SC2016  # the sed patterns hold a literal $.
+mutate_launcher "$mut6507" -e 's|^\( *\)EFFORT_SOURCE="LEG_EFFORT"$|\1:|' -e 's|^\( *\)leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "\$LEG_EFFORT"$|\1:|'
+mut6507_script="$mut6507/scripts/handover/console-kit/headed-arm-leg.sh"
+check "34k control: the reverted launcher differs from the real one in exactly the two resolver lines" "$(diff "$SCRIPT" "$mut6507_script" | grep -c '^>')" "2"
+rc34k=0
+out34k="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" LEG_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$mut6507_script" --dry-run --no-profile HIMMEL-9999-leg-34k "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34k.log" claude-opus-5-5 2>&1)" || rc34k=$?
+check "34k a LEG_EFFORT=high launch that would resolve to medium is refused (exit 2)" "$rc34k" "2"
+contains "34k the refusal names the asked effort" "$out34k" "asked effort=high"
+contains "34k the refusal names the effective effort" "$out34k" "would run effort=medium"
+
+# 34l. An explicit override names its own reason, so asked != effective is not refused.
+contains "34l an explicit CLAUDE_CODE_EFFORT_LEVEL over LEG_EFFORT still launches (34f)" "$out34f" "headed-arm-leg: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
+check "34l a preset launcher token over LEG_EFFORT still launches (34g2)" "$rc34g2" "0"
+
+# 34m. A model that is not the asked model at the claude exec is refused.
+mutmodel="$tmp/mutate-model"; mk_launcher_tree "$mutmodel"
+# shellcheck disable=SC2016  # the sed pattern holds a literal $.
+mutate_launcher "$mutmodel" -e 's|^export HEADED_ARM_REQUIRED_AUTOCOMPACT="\$RESOLVED_AUTOCOMPACT"$|&; MODEL=claude-haiku-5-5|'
+mutmodel_script="$mutmodel/scripts/handover/console-kit/headed-arm-leg.sh"
+check "34m control: the mutated launcher differs from the real one in exactly one line" "$(diff "$SCRIPT" "$mutmodel_script" | grep -c '^>')" "1"
+rc34m=0
+out34m="$(HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$mutmodel_script" --dry-run --no-profile HIMMEL-9999-leg-34m some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m.log" claude-sonnet-5-5 2>&1)" || rc34m=$?
+check "34m a launch whose --model would differ from the asked model is refused (exit 2)" "$rc34m" "2"
+contains "34m the refusal names both models" "$out34m" "asked model=claude-sonnet-5-5"
+contains "34m the refusal names the model claude would get" "$out34m" "--model claude-haiku-5-5"
+rc34m2=0
+HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg-34m2 some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m2.log" claude-sonnet-5-5 >/dev/null 2>&1 || rc34m2=$?
+check "34m2 an unmutated launch with the same model is not refused" "$rc34m2" "0"
+
+# 34n. End to end through the real headed-arm-leg.sh and the real headed-arm.sh,
+# with only claude stubbed: the stub konsole runs the -e command it was given,
+# so the stub claude records the environment and argv the leg process really gets.
+mk_exec_stubs() {
+  local dir="$1" name="$2"
+  mk_launch_stubs "$dir" "$name"
+  cat > "$dir/konsole" <<'KONSOLE_EOF'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ] && [ "$1" != -e ]; do shift; done
+shift
+exec "$@"
+KONSOLE_EOF
+  cat > "$dir/claude" <<'CLAUDE_EOF'
+#!/usr/bin/env bash
+d="$(dirname "$0")"
+[ "${1:-}" = --version ] && { echo "2.1.296 (Claude Code)"; exit 0; }
+printf '%s\n' "$*" > "$d/claude-argv"
+printf 'CLAUDE_CODE_EFFORT_LEVEL=%s\n' "${CLAUDE_CODE_EFFORT_LEVEL-<unset>}" > "$d/claude-env"
+: > "$d/confirmable"
+sleep 2
+CLAUDE_EOF
+  chmod 755 "$dir/konsole" "$dir/claude"
+}
+# e2e_leg <launcher> <stubdir> <name> [model] - channel env comes from the caller's prefix.
+e2e_leg() {
+  local script="$1" d="$2" name="$3" model="${4:-claude-sonnet-5-5}"
+  mkdir -p "$d/repo"
+  IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' PATH="$d:$PATH" HEADED_ARM_CLAUDE_CLI="$d/claude" \
+  HEADED_ARM_LEG_TARGET="$HEADED_ARM" HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" LEG_REPO="$d/repo" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
+    bash "$script" --no-profile "$name" "$some_doc" "$d/signal-never" "$PAST" "$d/log" "$model" >"$d/leg-out" 2>&1
+}
+# e2e_seen <stubdir> <file> [ticks] - the stub claude's record, or <no launch> after a bounded wait (ticks of 50ms, default 300).
+e2e_seen() {
+  local n=0
+  while [ "$n" -lt "${3:-300}" ]; do
+    [ -s "$1/$2" ] && { cat "$1/$2"; return 0; }
+    sleep 0.05
+    n=$((n+1))
+  done
+  echo "<no launch: $(tr '\n' ' ' < "$1/leg-out" 2>/dev/null | cut -c1-400)>"
+}
+e2e_effort() { e2e_seen "$1" claude-env "${2:-300}" | sed -n -e 's/^CLAUDE_CODE_EFFORT_LEVEL=//p' -e '/^<no launch/p'; }
+
+d34n="$tmp/c34n-leg"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-leg"
+rc34n=0
+LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-leg" >/dev/null 2>&1 || rc34n=$?
+check "34n LEG_EFFORT=high: the launcher exits 0" "$rc34n" "0"
+check "34n LEG_EFFORT=high: the claude process gets high" "$(e2e_effort "$d34n")" "high"
+contains "34n LEG_EFFORT=high: claude is passed the asked model" "$(e2e_seen "$d34n" claude-argv)" "--model claude-sonnet-5-5 "
+
+# An exported CLAUDE_CODE_EFFORT_LEVEL is a Claude Code marker: on the anchor copy
+# with no claude ancestor the seam guard refuses the stubbed launch, so this row
+# runs the launcher from an unmutated tree copy, which is not a primary checkout.
+# The guard resolves its root from its own lib directory, so that directory is real.
+tree34n="$tmp/tree34n"; mk_launcher_tree "$tree34n"
+rm "$tree34n/scripts/lib"; mkdir "$tree34n/scripts/lib"
+for e34n in "$HERE"/../../lib/*; do ln -s "$(cd "$(dirname "$e34n")" && pwd)/$(basename "$e34n")" "$tree34n/scripts/lib/$(basename "$e34n")"; done
+rm "$tree34n/scripts/lib/chokepoint-seam-guard.sh"; cp "$HERE/../../lib/chokepoint-seam-guard.sh" "$tree34n/scripts/lib/chokepoint-seam-guard.sh"
+d34n="$tmp/c34n-explicit"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-explicit"
+rc34n=0
+CLAUDE_CODE_EFFORT_LEVEL=xhigh LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
+check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the launcher exits 0" "$rc34n" "0"
+check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the claude process gets xhigh" "$(e2e_effort "$d34n")" "xhigh"
+
+d34n="$tmp/c34n-token"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-token"
+rc34n=0
+HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-token" >/dev/null 2>&1 || rc34n=$?
+check "34n launcher token: the launcher exits 0" "$rc34n" "0"
+check "34n launcher token CLAUDE_CODE_EFFORT_LEVEL=low: the claude process gets low" "$(e2e_effort "$d34n")" "low"
+
+d34n="$tmp/c34n-empty"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-empty"
+rc34n=0
+HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL= LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-empty" >/dev/null 2>&1 || rc34n=$?
+check "34n empty launcher token: the launcher exits 0" "$rc34n" "0"
+check "34n empty launcher token: the claude process gets the empty value the line reports" "$(e2e_seen "$d34n" claude-env)" "CLAUDE_CODE_EFFORT_LEVEL="
+
+d34n="$tmp/c34n-none"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-none"
+rc34n=0
+HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-none" >/dev/null 2>&1 || rc34n=$?
+check "34n no asking channel: the launcher exits 0" "$rc34n" "0"
+check "34n no asking channel: the claude process gets the lane default" "$(e2e_effort "$d34n")" "medium"
+
+# 34o. RED control: the same LEG_EFFORT=high launch through the launcher with
+# the effort resolver fix reverted must NOT hand claude high (it is refused).
+d34o="$tmp/c34o"; mk_exec_stubs "$d34o" "HIMMEL-9999-leg-34o"
+rc34o=0
+LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$mut6507_script" "$d34o" "HIMMEL-9999-leg-34o" >/dev/null 2>&1 || rc34o=$?
+check "34o RED control: with the 6507 fix reverted the 34n LEG_EFFORT=high assertion no longer holds" "$([ "$(e2e_effort "$d34o" 40)" = high ] && echo holds || echo broken)" "broken"
+check "34o RED control: the reverted launcher refuses instead of running at medium (exit 2)" "$rc34o" "2"
 
 # --- 35. HANDOVER_DIR unset, but a root IS
 # self-resolvable (case 26's shape: a console-like cwd with an

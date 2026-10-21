@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for cr/clear-cr-marker.sh — the CR-marker clearing
+# Tests for cr/clear-review-marker.sh — the CR-marker clearing
 # chokepoint. The script has NO env seams for the ledger / check-ci / gh (gate
 # integrity — a caller-pointed ledger would forge the very evidence the clear
 # depends on). So each case builds a REAL temp git repo, copies the script tree
-# into it ($tmp/scripts/cr/clear-cr-marker.sh + a stub $tmp/scripts/check-ci.sh)
+# into it ($tmp/scripts/cr/clear-review-marker.sh + a stub $tmp/scripts/check-ci.sh)
 # and puts a stub `gh` FIRST on PATH. The ledger + marker are written at the
 # fixed paths under the temp repo's own .git, exactly as the real ones resolve.
 set -uo pipefail
@@ -11,7 +11,7 @@ set -uo pipefail
 # An --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
-# generalized). clear-cr-marker.sh does not consult either var today, so this
+# generalized). clear-review-marker.sh does not consult either var today, so this
 # is defense-in-depth for the day a sourced lib reads one — the canary case
 # below pins today's insensitivity.
 unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL
@@ -32,7 +32,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CLEAR="$SCRIPT_DIR/clear-cr-marker.sh"
+CLEAR="$SCRIPT_DIR/clear-review-marker.sh"
 LEDGER_APPEND="$SCRIPT_DIR/ledger-append.sh"
 REVIEW_ROUND="$SCRIPT_DIR/review-round.sh"
 LOCK_LIB="$SCRIPT_DIR/../lib/shared-branch-lock.sh"
@@ -91,8 +91,8 @@ build_repo_template() {
         || { echo "FAIL: rev-parse refs/heads/feat/x failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     mkdir -p "$REPO_TEMPLATE/scripts/cr" "$REPO_TEMPLATE/scripts/lib" "$REPO_TEMPLATE/bin" \
         || { echo "FAIL: mkdir of template scaffold dirs failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    cp "$CLEAR" "$REPO_TEMPLATE/scripts/cr/clear-cr-marker.sh" \
-        || { echo "FAIL: cp clear-cr-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$CLEAR" "$REPO_TEMPLATE/scripts/cr/clear-review-marker.sh" \
+        || { echo "FAIL: cp clear-review-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$REPO_TEMPLATE/scripts/lib/chokepoint-seam-guard.sh" \
         || { echo "FAIL: cp chokepoint-seam-guard.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
@@ -102,7 +102,7 @@ build_repo_template() {
         || { echo "FAIL: cp anchor-handoff.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/set-impl-family.sh" "$REPO_TEMPLATE/scripts/cr/set-impl-family.sh" \
         || { echo "FAIL: cp set-impl-family.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # clear-cr-marker.sh's new branch-wide gate shells out to its
+    # clear-review-marker.sh's new branch-wide gate shells out to its
     # sibling review-round.sh promote -- a missing copy would fail every case
     # that reaches that gate at once (promote-error, exit 14).
     cp "$REVIEW_ROUND" "$REPO_TEMPLATE/scripts/cr/review-round.sh" \
@@ -273,7 +273,7 @@ stub_check_ci() {
 run_clear() {
     local tmp="$1" expected="$2" name="$3"; shift 3
     local rc=0 out
-    out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" "$@" 2>&1) || rc=$?
+    out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" "$@" 2>&1) || rc=$?
     LAST_CLEAR_OUT="$out"
     if [ "$rc" -eq "$expected" ]; then pass; else
         fail "$name (expected rc=$expected, got $rc)"; echo "    out: $out" >&2
@@ -308,7 +308,7 @@ site_files() {
     git add a.sh b.sh c.sh
 }
 
-echo "== clear-cr-marker.sh tests =="
+echo "== clear-review-marker.sh tests =="
 
 # Codex /pr-check contract: ledger evidence must precede the sanctioned clear
 # chokepoint, and the skill must not self-declare clean with a bare marker rm.
@@ -363,7 +363,7 @@ fi
 # literal `'<branch>'`, not the shell variable `"$branch"` (same fence-block
 # rationale as above).
 if grep -Eq "$(skill_invocation_re clear-cr-marker "'<branch>'")" "$CODEX_SKILL"; then pass; else
-    fail "Codex skill routes marker clearing through clear-cr-marker.sh"
+    fail "Codex skill routes marker clearing through clear-review-marker.sh"
 fi
 # shellcheck disable=SC2016  # literal forbidden contract; do not expand $marker
 if grep -Eq '(^|[;&|])[[:space:]]*(if[[:space:]]+)?!?[[:space:]]*rm([[:space:]]|$)[^;&|]*(\$marker|\$\{marker\})' "$CODEX_SKILL"; then
@@ -543,7 +543,7 @@ STUB
 # "timed out" reason, not the generic "remote-head-unreadable" one, and must
 # not hang the gate past the configured bound (CR_CLEAR_LSREMOTE_TIMEOUT_SECONDS
 # overrides the 20s default so this test does not itself wait 20s).
-# Skipped without a GNU timeout on PATH: clear-cr-marker.sh's own bound then
+# Skipped without a GNU timeout on PATH: clear-review-marker.sh's own bound then
 # degrades to unbounded (see timeout-bin.sh), so the stub's 5s sleep would
 # never hit the "past its timeout bound" path this case exists to exercise --
 # it would instead fall through to the generic unreadable-remote refusal.
@@ -693,7 +693,7 @@ fi
 rm -rf "$tmp"
 
 # _audit_reason <captured-stdout> — the refusal reason out of
-# clear-cr-marker.sh's own audit line. audit() writes "<ts> clear-cr-marker
+# clear-review-marker.sh's own audit line. audit() writes "<ts> clear-cr-marker
 # REFUSED reason=<r> ..." to STDOUT (the transcript); diagnostics go to stderr.
 # Case 2f asserts on this reason because the mutant and the shipped script must
 # refuse for the SAME reason: the prefix pre-filter is a performance
@@ -712,7 +712,7 @@ _audit_reason() {
 # filter, so 2e alone cannot tell whether the filter still runs. This case adds
 # the missing half: prove the filter actually SKIPS the resolve() git spawn for
 # a non-prefix head on the shipped script (unmutated arm), then build a mutant
-# copy of clear-cr-marker.sh with the ONE filter line removed and prove that
+# copy of clear-review-marker.sh with the ONE filter line removed and prove that
 # mutant (a) still refuses with the SAME verdict — the filter is a performance
 # guard, never a decision — while (b) NOW spawning the resolve() call the
 # filter used to skip. Arm (b) is the property that goes RED if the real
@@ -729,7 +729,7 @@ _audit_reason() {
 # silently credited with the spawn it caused. Both predicted values are derived
 # from the unmutated arm above, never hardcoded.
 #
-# Instrumented via GIT_TRACE, not a PATH shim: clear-cr-marker.sh's resolve()
+# Instrumented via GIT_TRACE, not a PATH shim: clear-review-marker.sh's resolve()
 # runs `git rev-parse ...` from inside an embedded `node -e` script via
 # child_process.execFileSync("git", ...), with no shell. On native Windows
 # that spawn resolves "git" straight to the real .exe on PATH — the loader
@@ -761,7 +761,7 @@ else
     rm -f "$tmp/.git-trace.log"
     _rc=0
     _errfile="$tmp/.2f-unmutated.err"
-    _out=$(cd "$tmp" && GIT_TRACE="$tmp/.git-trace.log" bash "$tmp/scripts/cr/clear-cr-marker.sh" 2>"$_errfile") || _rc=$?
+    _out=$(cd "$tmp" && GIT_TRACE="$tmp/.git-trace.log" bash "$tmp/scripts/cr/clear-review-marker.sh" 2>"$_errfile") || _rc=$?
     _err=$(cat "$_errfile" 2>/dev/null)
     if [ "$_rc" -eq 14 ]; then pass; else fail "2f unmutated: expected refusal rc=14, got $_rc ($_out — stderr: $_err)"; fi
     if marker_exists "$tmp"; then pass; else fail "2f unmutated: marker must REMAIN (stderr: $_err)"; fi
@@ -791,10 +791,10 @@ else
     # result — a no-op edit here would let this whole case pass vacuously,
     # mirroring the 2d/2e setup guards above.
     _prefilter_line='      if (!e.FULL_SHA.startsWith(h)) return false;'
-    awk -v line="$_prefilter_line" '$0 != line' "$tmp/scripts/cr/clear-cr-marker.sh" > "$tmp/scripts/cr/clear-cr-marker.mutant.sh"
-    _pre_count=$(grep -Fc -- "$_prefilter_line" "$tmp/scripts/cr/clear-cr-marker.sh")
+    awk -v line="$_prefilter_line" '$0 != line' "$tmp/scripts/cr/clear-review-marker.sh" > "$tmp/scripts/cr/clear-cr-marker.mutant.sh"
+    _pre_count=$(grep -Fc -- "$_prefilter_line" "$tmp/scripts/cr/clear-review-marker.sh")
     _post_count=$(grep -Fc -- "$_prefilter_line" "$tmp/scripts/cr/clear-cr-marker.mutant.sh")
-    _diff_lines=$(diff "$tmp/scripts/cr/clear-cr-marker.sh" "$tmp/scripts/cr/clear-cr-marker.mutant.sh" | grep -c '^[<>]')
+    _diff_lines=$(diff "$tmp/scripts/cr/clear-review-marker.sh" "$tmp/scripts/cr/clear-cr-marker.mutant.sh" | grep -c '^[<>]')
     if [ -z "$_reason_unmutated" ]; then
         fail "2f setup: the unmutated arm audited no REFUSED reason (stdout: $_out) — an empty reason would silently weaken BOTH predicted values of the RED control below"
     elif [ "$_pre_count" -ge 1 ] && [ "$_post_count" -eq 0 ] && [ "$_diff_lines" -eq 1 ]; then
@@ -871,7 +871,7 @@ if grepq "$LAST_CLEAR_OUT" 'REFUSED reason=unbound-marker-remote'; then
 else
     fail "3-field marker refusal must carry reason=unbound-marker-remote, not a generic failure"
 fi
-if grepq "$LAST_CLEAR_OUT" 'HIMMEL-2104'; then
+if grepq "$LAST_CLEAR_OUT" 'KNOWN TRAP:'; then
     pass
 else
     fail "unbound-marker-remote remedy must name the HIMMEL-2104 up-to-date trap + empty-commit recovery"
@@ -892,7 +892,7 @@ if grepq "$LAST_CLEAR_OUT" 'REFUSED reason=unbound-marker-endpoint'; then
 else
     fail "5-field marker refusal must carry reason=unbound-marker-endpoint, not a generic failure"
 fi
-if grepq "$LAST_CLEAR_OUT" 'HIMMEL-2104'; then
+if grepq "$LAST_CLEAR_OUT" 'KNOWN TRAP:'; then
     pass
 else
     fail "unbound-marker-endpoint remedy must name the HIMMEL-2104 up-to-date trap + empty-commit recovery"
@@ -1016,6 +1016,60 @@ make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(_score_row "${sha:0:8}")" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "score row + real responder clears exactly as before → exit 0"
+rm -rf "$tmp"
+
+# 4a-1. a lane=full marker on a branch with `score` rows but no
+# `preflight` row stamped before its first `score` row is refused (/pr-check
+# step 2.8 was skipped). Rows carry the branch + ts the real writer stamps.
+_pf_score() { printf '{"kind":"score","ts":"%s","branch":"feat/x","head":"%s","model":"codex","critical":0,"important":0,"suggestions":0,"raw_path":"/x/y.raw"}' "$1" "$2"; }
+_pf_row()   { printf '{"kind":"preflight","ts":"%s","branch":"feat/x","head":"%s","hits":[],"hit_n":0,"fixed":0,"waived":0,"checked":0}' "$1" "$2"; }
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:05:00Z deadbeef0)" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "score rows and no preflight row on a full lane → exit 14"
+if marker_exists "$tmp"; then pass; else fail "no preflight row: marker must REMAIN"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'step 2.8' && grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh preflight --head'; then pass; else fail "refusal must name step 2.8 and the exact preflight command: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# Control: a preflight row stamped before the first score row clears as before.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_row 2026-11-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "preflight row before the first score row → exit 0"
+rm -rf "$tmp"
+
+# A preflight row stamped AFTER the first score row does not count.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(_pf_row 2026-11-01T11:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "preflight row only after the first score row → exit 14"
+rm -rf "$tmp"
+
+# A preflight row of ANOTHER branch does not count.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_row 2026-11-01T09:00:00Z "$sha" | sed 's|feat/x|feat/other|')" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "another branch's preflight row does not count → exit 14"
+rm -rf "$tmp"
+
+# Exempt: a branch whose first score row predates the gate.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-10-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "first score row predates the gate → exit 0"
+rm -rf "$tmp"
+
+# Exempt: the docs-audit lane owes no step 2.8 pass.
+make_repo || exit 1
+write_marker "$tmp" "$sha" docs-audit
+write_ledger "$tmp" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "docs-audit lane with score rows and no preflight → exit 0"
 rm -rf "$tmp"
 
 # 4b. Empty ledger → no evidence /pr-check ever ran → refuse.
@@ -1344,7 +1398,7 @@ if (cd "$tmp" && bash scripts/cr/set-impl-family.sh 'bad family' >/dev/null 2>&1
 rm -rf "$tmp"
 
 # 4p. Production .env bridge (glm-1 CR suggestion). Cases 4k-4o set the flag via
-# the PROCESS env; the flag's REAL entry point is clear-cr-marker.sh sourcing
+# the PROCESS env; the flag's REAL entry point is clear-review-marker.sh sourcing
 # scripts/lib/load-dotenv.sh and reading CR_REQUIRE_CROSS_MODEL from the primary
 # checkout's .env. Exercise THAT path: copy the real load-dotenv.sh into the temp
 # script tree, write the temp repo's .env, and leave the process env UNSET (4o
@@ -1631,7 +1685,7 @@ fi
 rm -rf "$tmp"
 
 # 6a-1f. amendSetFor must key on the FINDING
-# ROW's own branch, not the branch this clear-cr-marker.sh run is judging
+# ROW's own branch, not the branch this clear-review-marker.sh run is judging
 # (e.BRANCH, here feat/x via write_marker). A finding and its amend both
 # recorded for a DIFFERENT branch (feat/y) than the one being judged must
 # still see the amend apply: the main gate-4b loop evaluates every finding at
@@ -1767,7 +1821,7 @@ append_ledger "$tmp" "responder at short head" avail \
     --branch feat/x --head "$_short" --model codex --status ok
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 _rc=0
-out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) || _rc=$?
+out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" 2>&1) || _rc=$?
 if [ "$_rc" -eq 15 ]; then pass; else fail "blocking finding → exit 15 (got $_rc): $out"; fi
 # Capture the printed amend hint and the --head it carries.
 hint=$(printf '%s\n' "$out" | grep 'ledger-append.sh amend' | sed 's/^[[:space:]]*//')
@@ -1788,6 +1842,7 @@ cmd=${cmd//<finding-id>/codex-1}
 cmd=${cmd//<TICKET>/HIMMEL-1327}
 cmd=${cmd//<escape|hardening|polish>/hardening}
 cmd=${cmd//<why it is out of scope here>/pre-existing}
+cmd="$cmd --set class=new:hint-fixture"
 _amend_rc=0
 _amend_out=$(cd "$tmp" && HIMMEL_REPO="$tmp" bash -c "$cmd" 2>&1) || _amend_rc=$?
 if [ "$_amend_rc" -eq 0 ]; then pass; else fail "printed amend hint runs end-to-end (rc=$_amend_rc): $_amend_out"; fi
@@ -1796,7 +1851,7 @@ if [ "$_amend_rc" -eq 0 ]; then pass; else fail "printed amend hint runs end-to-
 # A hint whose --head never matched would have left the finding blocking (exit 15).
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 _clear_rc=0
-(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" >/dev/null 2>&1) || _clear_rc=$?
+(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" >/dev/null 2>&1) || _clear_rc=$?
 if [ "$_clear_rc" -eq 0 ]; then pass; else fail "after running the printed hint, the finding is deferred and the gate clears (got $_clear_rc)"; fi
 if marker_exists "$tmp"; then fail "after the printed amend, the marker should be GONE"; else pass; fi
 rm -rf "$tmp"
@@ -1893,7 +1948,7 @@ else
     # would not be found (rc 127), which is not the refusal we are asserting.
     _bash=$(command -v bash)
     _rc=0
-    (cd "$tmp" && PATH="$_min_path" "$_bash" "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) >/dev/null || _rc=$?
+    (cd "$tmp" && PATH="$_min_path" "$_bash" "$tmp/scripts/cr/clear-review-marker.sh" 2>&1) >/dev/null || _rc=$?
     if [ "$_rc" -eq 11 ]; then pass; else fail "gh not on PATH → exit 11 (got $_rc)"; fi
     if marker_exists "$tmp"; then pass; else fail "gh absent: marker must REMAIN"; fi
 
@@ -1901,7 +1956,7 @@ else
     # still exit 0 without gh. Requiring gh up-front broke this.
     rm -f "$tmp/.git/cr-pending/feat/x"
     _rc2=0
-    (cd "$tmp" && PATH="$_min_path" "$_bash" "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) >/dev/null || _rc2=$?
+    (cd "$tmp" && PATH="$_min_path" "$_bash" "$tmp/scripts/cr/clear-review-marker.sh" 2>&1) >/dev/null || _rc2=$?
     if [ "$_rc2" -eq 0 ]; then pass; else fail "no marker + no gh → exit 0 no-op (got $_rc2)"; fi
 fi
 rm -rf "$tmp"
@@ -1937,7 +1992,7 @@ STUB
 chmod +x "$tmp/bin/gh"
 stub_check_ci "$tmp" 0
 _rc=0
-out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" 42 2>&1) || _rc=$?
+out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" 42 2>&1) || _rc=$?
 if [ "$_rc" -eq 0 ]; then pass; else fail "numeric branch uses --head lookup (rc=$_rc: $out)"; fi
 if [ -f "$tmp/.git/cr-pending/42" ]; then fail "numeric branch: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
@@ -2054,7 +2109,7 @@ else
     pass
 fi
 
-# Hermeticity canary. clear-cr-marker.sh does not consult the
+# Hermeticity canary. clear-review-marker.sh does not consult the
 # armed-session bypass env (ARMAUTOMERGE/CR_MERGE_GATE_OK), so a block fixture
 # STILL blocks (exit 14, no responders at the current tip) with both exported
 # into the suite's env — pinning that insensitivity so a future change wiring
@@ -2086,7 +2141,7 @@ append_ledger "$tmp" "out-of-diff blocker appends avail-ok" avail \
     --branch feat/x --head "$sha" --model codex --status ok
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 15 "out-of-diff blocking finding still refuses → exit 15"
-if grepq "$LAST_CLEAR_OUT" -F 'PROVENANCE (HIMMEL-1715)'; then pass; else
+if grepq "$LAST_CLEAR_OUT" -F 'PROVENANCE:'; then pass; else
     fail "out-of-diff blocker: refusal must carry the PROVENANCE note: $LAST_CLEAR_OUT"; fi
 if grepq "$LAST_CLEAR_OUT" -F 'codex-1[scripts/handover/merge-on-green.sh]'; then pass; else
     fail "out-of-diff blocker: PROVENANCE note must name the finding and its file: $LAST_CLEAR_OUT"; fi
@@ -2389,7 +2444,7 @@ if grepq "$LAST_CLEAR_OUT" -F 'SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash scrip
 rm -rf "$tmp"
 
 # ── Foreign-repo fence ──────────────────────────────────
-# clear-cr-marker.sh has NO env seams by design (file header) — it resolves
+# clear-review-marker.sh has NO env seams by design (file header) — it resolves
 # marker/lock/log paths via `git rev-parse --git-common-dir` off cwd alone, so
 # it already operates on whichever repo the caller's cwd sits in; no --repo
 # flag was added. Prove it two ways with this suite's OWN make_repo fixture
@@ -2398,7 +2453,7 @@ rm -rf "$tmp"
 # a mark on himmel's own git-common-dir artifacts (cr-pending/,
 # clear-cr-marker.log). NOT covered here (codex CR round): the
 # himmel-cr-marker/ lock namespace — a lock is acquired-then-released WITHIN
-# one clear-cr-marker.sh invocation, so a post-run absence check would pass
+# one clear-review-marker.sh invocation, so a post-run absence check would pass
 # whether or not the run ever touched himmel's namespace mid-flight; proving
 # that needs an in-flight probe (like the OTHER lock tests in this file use),
 # out of scope for a no-touch fence.
@@ -2660,7 +2715,7 @@ rm -rf "$tmp"
 # with no branch stamp is exempt. Only r2 carries a record.
 sweep_fixture
 append_ledger "$tmp" "8l defer r1" amend --head "$_r1" --id r1 --set verdict=deferred \
-    --set deferred_to=HIMMEL-9 --set fu_class=hardening --set reason="out of scope" --reason "deferred after review"
+    --set deferred_to=HIMMEL-9 --set fu_class=hardening --set class=new:sweep-fixture --set reason="out of scope" --reason "deferred after review"
 printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"legacy","severity":"imp","file":"a.sh","line":5,"verdict":"agreed"}\n' "$_r1" >> "$tmp/.git/cr-critic-scores.jsonl"
 write_sweeps "$tmp" "SWEEP [r2@$_tip] class=typo :: single-site search=git grep -n teh -- a.sh b.sh c.sh"
 run_clear "$tmp" 0 "8l deferred-after-agreed and legacy unstamped rows need no sweep -> exit 0"
@@ -2854,10 +2909,10 @@ sweep_fixture
 (cd "$tmp" && mkdir -p sub && ln -s a.sh l.sh && printf "echo n\n" > sub/l.sh && cp a.sh sub/a.sh && git add l.sh sub/l.sh sub/a.sh \
     && git commit -qm "round 3" && git push -q origin feat/x) >/dev/null 2>&1
 printf 'SWEEP [r1@%s] class=unquoted path :: sites=a.sh:1, sub/l.sh:1\n' "$_r1" > "$tmp/cand.txt"
-rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
+rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "8z-sub nested regular site from a subdir must be accepted (rc=$rc): $out"; fi
 printf 'SWEEP [r1@%s] class=unquoted path :: sites=a.sh:1, l.sh:1\n' "$_r1" > "$tmp/cand.txt"
-rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
+rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
 if [ "$rc" -eq 14 ] && printf '%s' "$out" | grep -qF 'site-not-a-file:l.sh'; then pass; else
     fail "8z-sub a root symlink shadowed by sub/l.sh must be refused from a subdir (rc=$rc): $out"; fi
 rm -rf "$tmp"
@@ -2869,7 +2924,7 @@ sweep_fixture
 (cd "$tmp" && mkdir -p sub && cp a.sh sub/a.sh && git add sub/a.sh \
     && git commit -qm "round 3" && git push -q origin feat/x) >/dev/null 2>&1
 printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -F 'echo a' -- a.sh b.sh c.sh\n" "$_r1" > "$tmp/cand.txt"
-rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
+rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-review-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "8z-grep a root-scoped search must clear from a subdir (rc=$rc): $out"; fi
 rm -rf "$tmp"
 # 8z-cost. a -P pattern over the length cap is refused up front,
@@ -3612,7 +3667,7 @@ rm -rf "$tmp"
 # fallback takes test paths only (a "# " line in a .sh or a skill .md can still
 # change what runs or what an agent reads), so this stays refused.
 make_repo || exit 1
-review_b "$tmp" scripts/cr/clear-cr-marker.sh "# a comment only delta"
+review_b "$tmp" scripts/cr/clear-review-marker.sh "# a comment only delta"
 write_ledger "$tmp" "$(avail_ok "$sha")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "11f comment-only delta in a non-test script is refused -> exit 14"

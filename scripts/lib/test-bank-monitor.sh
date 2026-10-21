@@ -3,13 +3,13 @@
 # 30-minute bank sample ring, burn projections, wake-up suppression, resets,
 # missing data, and the claudex/codex bank input.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. bank-monitor.sh is a POSIX/Git-Bash
+# PLATFORM GUARD: no .ps1 twin, by design. usage-monitor.sh is a POSIX/Git-Bash
 # Bash 3.2 monitor consumed by the Linux console kit; this suite uses its
 # explicit cache, clock, state, and command seams.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SUT="$HERE/bank-monitor.sh"
+SUT="$HERE/usage-monitor.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/bank-monitor-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
@@ -35,7 +35,7 @@ export BANK_STUB_ROW_FILE="$W/codex-row"
 export REPO="$W/repo"
 
 # every fixture below stamps the matching current-session account
-# hash so the new usage_cache_account_mismatch() check in bank-monitor.sh
+# hash so the new usage_cache_account_mismatch() check in usage-monitor.sh
 # stays out of the way of the pre-existing rate/state coverage below — this
 # suite is about sampling math, not identity. A dedicated account-mismatch
 # case is added separately, at the end.
@@ -290,6 +290,18 @@ out="$(BANK_NOW_EPOCH=2800 BANK_NOW_HM=12:30 bash "$SUT" --spare)"
 check 'five_hour_reset_in: --spare carries the field' 'five_hour_reset_in=2.0h' "$(five_tail "$out")"
 check 'five_hour_reset_in: --spare stays read-only (no state)' 'no' "$([ -e "$BANK_STATE_FILE" ] && echo yes || echo no)"
 check 'five_hour_reset_in: --spare leaves the ring byte-identical' "$ring_before" "$(cat "$BANK_STATE_FILE.samples")"
+
+# the USAGE_MONITOR_* names win over BANK_CACHE_FILE, BANK_STATE_FILE and BANK_SAMPLES_FILE
+export BANK_STATE_FILE="$W/alias-old-state"
+sample 10 20
+mv "$BANK_CACHE_FILE" "$W/alias-cache.json"
+out="$(USAGE_MONITOR_CACHE_FILE="$W/alias-cache.json" USAGE_MONITOR_STATE_FILE="$W/alias-new-state" \
+    USAGE_MONITOR_SAMPLES_FILE="$W/alias-new-samples" run_at 1000 12:00)"
+case "$out" in 'BANK 12:00 '*) pass 'USAGE_MONITOR_CACHE_FILE is the cache read' ;; *) fail "USAGE_MONITOR_CACHE_FILE is the cache read (out='$out')" ;; esac
+check 'USAGE_MONITOR_STATE_FILE is the state written' 'yes' "$([ -s "$W/alias-new-state" ] && echo yes || echo no)"
+check 'USAGE_MONITOR_SAMPLES_FILE is the ring written' 'yes' "$([ -s "$W/alias-new-samples" ] && echo yes || echo no)"
+check 'the old BANK_STATE_FILE is not written when the new name is set' 'no' \
+    "$([ -e "$W/alias-old-state" ] || [ -e "$W/alias-old-state.samples" ] && echo yes || echo no)"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-bank-monitor.sh'

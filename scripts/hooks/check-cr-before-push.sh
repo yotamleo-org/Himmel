@@ -56,7 +56,7 @@
 #                                    such a marker cannot be cleared remotely,
 #                                    only reminted by a real push
 # CONSUMERS resolve identity ONLY from the marker payload:
-#   scripts/cr/clear-cr-marker.sh  : deletes only when ls-remote(E, R) equals
+#   scripts/cr/clear-review-marker.sh  : deletes only when ls-remote(E, R) equals
 #                                    the ledger-certified local branch tip —
 #                                    the ENDPOINT, never the mutable alias N
 #   check-cr-marker-on-pr-create.sh: keyed lookup by destination branch name
@@ -65,7 +65,7 @@
 # Rule: never add another resolution source — extend the marker
 # payload and this contract instead.
 # MUTUAL EXCLUSION: the marker file has exactly two writers —
-# this hook and clear-cr-marker.sh — and both hold the branch-scoped lock at
+# this hook and clear-review-marker.sh — and both hold the branch-scoped lock at
 # <git-common-dir>/himmel-cr-marker/<slug>.lock while they touch it. A third
 # writer must take it too, or it reopens the race the lock closes.
 #
@@ -202,7 +202,7 @@ REF_LINES
 # password (`https://ghp_TOKEN@host/repo.git`) — that username IS the
 # credential, so any userinfo on those schemes is stripped unconditionally.
 # ssh:// / git+ssh://, by contrast, commonly carry a real, non-secret account
-# name as a bare username (`ssh://git@host`) that clear-cr-marker.sh's later
+# name as a bare username (`ssh://git@host`) that clear-review-marker.sh's later
 # ls-remote needs to resolve the same identity the push used — so only an
 # actual `user:pass@` pair (a `:` before the `@`) is stripped there.
 scrub_endpoint() {
@@ -220,7 +220,7 @@ scrub_endpoint() {
 
 # canonicalize_endpoint ENDPOINT — a relative filesystem path
 # persisted verbatim in the marker resolves against WHATEVER cwd a later
-# reader (clear-cr-marker.sh) happens to run from, not the pushing repo's
+# reader (clear-review-marker.sh) happens to run from, not the pushing repo's
 # cwd — a different, potentially pusher-influenced target. A URL
 # (scheme://...) or an already-absolute path (/...) carries its own
 # unambiguous location and passes through. An scp-style host:path /
@@ -673,7 +673,7 @@ write_marker_for_branch() {
         # this push at a ref other than refs/heads/$branch entirely — refuse
         # to mint when one is configured, same fail-closed direction as the
         # rest of this function. Note this is defense in depth, not the
-        # actual safety boundary: clear-cr-marker.sh re-resolves the marker's
+        # actual safety boundary: clear-review-marker.sh re-resolves the marker's
         # claimed endpoint+ref with a LIVE ls-remote at clear time and refuses
         # on any mismatch, so even a wrongly-attributed (but factually
         # accurate) mint here cannot clear unreviewed code — it can only ever
@@ -712,7 +712,7 @@ write_marker_for_branch() {
 
     # Ref-derived markers must carry the remote identity, destination ref AND
     # push endpoint that will later become the PR head. Without that binding
-    # clear-cr-marker.sh cannot prove the pushed-to repository still proposes
+    # clear-review-marker.sh cannot prove the pushed-to repository still proposes
     # the ledger-reviewed tip — and the alias alone is mutable (pushurl /
     # set-url can repoint it after the push), so the endpoint must be pinned.
     if [ -n "$remote_ref" ]; then
@@ -833,7 +833,7 @@ write_marker_for_branch() {
     now_ts=$(date -Iseconds)
 
     # ── The marker lock ───────────────────────────────────────
-    # This write and clear-cr-marker.sh's read-validate-delete critical section
+    # This write and clear-review-marker.sh's read-validate-delete critical section
     # take ONE branch-scoped lock. Without it, a push landing between that
     # script's final re-validation and its unlink replaces the marker with one
     # certifying a NEWER, unreviewed SHA — and the unlink then deletes THAT,
@@ -855,9 +855,11 @@ write_marker_for_branch() {
     # Tuning knob for the WAIT only (both directions fail closed: a shorter
     # wait refuses sooner, a longer one waits longer). The 300s TTL is a
     # constant — see the lock lib's TTL RECLAMATION header.
-    case "${CR_MARKER_LOCK_WAIT_SECONDS:-}" in
+    # read-both: REVIEW_MARKER_* wins, CR_MARKER_* still read (rename-aliases.tsv).
+    _lock_wait_env="${REVIEW_MARKER_LOCK_WAIT_SECONDS:-${CR_MARKER_LOCK_WAIT_SECONDS:-}}"
+    case "$_lock_wait_env" in
         ''|*[!0-9]*) lock_wait=30 ;;
-        *) lock_wait="${CR_MARKER_LOCK_WAIT_SECONDS}" ;;
+        *) lock_wait="$_lock_wait_env" ;;
     esac
     SHARED_BRANCH_LOCK_NS=himmel-cr-marker SHARED_BRANCH_LOCK_HOLDER_PID=$$ \
         bash "$lock_lib" acquire-wait "." "$branch" "check-cr-before-push" "$lock_wait" 300 || lock_rc=$?
@@ -889,7 +891,7 @@ write_marker_for_branch() {
     # SAME string for push_remote_name and push_remote_url in that case (see
     # resolve_diff_base above), so an embedded credential lands in field 4
     # raw unless scrubbed here too — scrub_endpoint above only covers field 6.
-    # Field 4 is a display/audit identity only (clear-cr-marker.sh never
+    # Field 4 is a display/audit identity only (clear-review-marker.sh never
     # resolves the endpoint through it), so scrubbing it costs nothing.
     marker_remote="$push_remote_name"
     if [ "$push_remote_name" = "$push_remote_url" ]; then
@@ -901,10 +903,10 @@ write_marker_for_branch() {
     # 2, codex-2): the TTL that keeps a dead holder from wedging the branch can
     # also reclaim the lock from a process the OS starved for longer than the
     # TTL, and such a process would otherwise resume and overwrite a marker
-    # clear-cr-marker.sh had already validated for deletion. rc 3 means the
+    # clear-review-marker.sh had already validated for deletion. rc 3 means the
     # lock changed hands, so this write was NOT excluded — refuse the push.
     # The marker just written stays: a marker only ever BLOCKS `gh pr create`,
-    # so leaving it is the fail-closed direction, and clear-cr-marker.sh's own
+    # so leaving it is the fail-closed direction, and clear-review-marker.sh's own
     # holder re-check refuses to unlink it.
     release_rc=0
     SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$lock_lib" \
@@ -935,7 +937,7 @@ write_marker_for_branch() {
                 if ! ln "${rollback_claim}" "${marker_path}" 2>/dev/null; then
                     ( set -C; cat "${rollback_claim}" > "${marker_path}" ) 2>/dev/null || true
                 fi
-                # Same three-way ending as clear-cr-marker.sh's
+                # Same three-way ending as clear-review-marker.sh's
                 # restore_marker_claim, kept in lockstep with it.
                 # An unconditional `rm` here deleted the only copy of
                 # the certificate whenever both atomic attempts failed for a

@@ -220,6 +220,7 @@ console_context_leg_env_unset_names() {
         CLAUDEX_LANE_OK \
         LEG_LANE \
         CADENCE_BANK_LANE \
+        CADENCE_USAGE_LANE \
         OPENROUTER_MODEL \
         CODEX_MODEL \
         LEG_PROFILE_SETTINGS \

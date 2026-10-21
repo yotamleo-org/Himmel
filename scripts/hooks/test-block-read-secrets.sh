@@ -1276,6 +1276,16 @@ assert_rc "5659 gh alias with -b carrying the word"        2 "$(run_case "$(j_ba
 assert_rc "5659 gh pr create --body word still allows"     0 "$(run_case "$(j_bash "gh pr create -t T -b xtrace")")"
 assert_rc "5659 git -C dir commit -m word still allows"    0 "$(run_case "$(j_bash "git -C /tmp/some-dir commit -m xtrace")")"
 
+# --- an env NAME=value operand the shfmt model unwraps past still reaches the
+# regex reader: the model only proves a shifted-cwd glob safe, never allows
+# what the text denies.
+assert_rc "env NAME='x; cat .env' prog denies"             2 "$(run_case "$(j_bash "env NAME='x; cat .env' prog")")"
+assert_rc "env -i NAME='x; cat .env' prog denies"          2 "$(run_case "$(j_bash "env -i NAME='x; cat .env' prog")")"
+assert_rc "command env NAME='x; cat .env' prog denies"     2 "$(run_case "$(j_bash "command env NAME='x; cat .env' prog")")"
+assert_rc "env -C sub NAME=1 cat .e* denies"               2 "$(run_case "$(j_bash 'env -C sub NAME=1 cat .e*')")"
+assert_rc "cd sub then env NAME=1 cat .e* denies"          2 "$(run_case "$(j_bash 'cd sub && env NAME=1 cat .e*')")"
+assert_rc "env NAME=ok prog stays allowed"                 0 "$(run_case "$(j_bash 'env NAME=ok prog')")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

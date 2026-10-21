@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
@@ -441,7 +442,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     const membership = ['add', 'remove', 'move'].includes(last.op.kind);
     const event = (readback: 'ok' | 'mismatch') => {
       if (!membership) return;
-      appendChain<EventRow>(f(ctx, 'events.jsonl'), l.k, {
+      // The applied row lands before its event, so a retry re-creates a missing one.
+      const eventsPath = f(ctx, 'events.jsonl');
+      if (readback === 'ok' && readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === 'ok')) return;
+      appendChain<EventRow>(eventsPath, l.k, {
         ts: ts(ctx), kind: 'ruled', key: last.key, from: last.op.from_v, to: last.op.to_v, ruling: id, readback,
       });
     };
@@ -464,9 +468,9 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         return { phase: 'void', line: `VOID ${id} (epoch ${last.epoch} intent never reached Jira; ${last.req} reopened)` };
       }
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
-      event('ok');
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
+      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT') assertAdmissionsWritable();
       const cur = await ctx.jira.fixVersions(k);
       if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
@@ -475,10 +479,18 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         throw new Error(`release apply: ${id} readback does not match ${op.kind} ${vName(op.from_v)}→${vName(op.to_v)}`);
       }
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { readback: 'ok' }));
-      event('ok');
     }
 
     if (last.phase === 'applied') {
+      event('ok');
+      // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
+      if (last.verb === 'INTAKE' && last.outcome === 'ADMIT' && last.op.to_v) {
+        const version = last.op.to_v;
+        const key = last.key;
+        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key)) {
+          appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm' });
+        }
+      }
       const marker = `[release-ruling ${id}]`;
       const authority = last.authority.kind === 'rm' ? 'rm' : `${last.authority.kind} ${last.authority.ref}`;
       const commentId = await ctx.jira.findComment(last.key, marker)

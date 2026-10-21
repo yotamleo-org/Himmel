@@ -32,7 +32,7 @@ cost. Fleet admission still applies, but native Claude and codex subscription
 usage budgets do not. The backend refuses unknown credit or key-limit readings and
 an effective balance below `OPENROUTER_MIN_CREDIT_USD` (default **3 USD**):
 the smaller of account credit and the key's `limit_remaining` is available.
-`bank-preflight.sh` selects this gate via `CADENCE_BANK_LANE=openrouter`
+`bank-preflight.sh` selects this gate via `CADENCE_USAGE_LANE=openrouter`
 (or `LEG_LANE=openrouter`), reusing the balance helper and the same floor:
 `PROCEED` at/above the floor, `SKIPPED-BANK` below it, `BANK-UNKNOWN` when
 unmeasurable. Tick's `bank=openrouter:<verdict>` reports that lane verdict;
@@ -855,7 +855,7 @@ pending a proper per-session burn-rate measurement to replace it with a
 derived number.
 
 **Launch vs. read.** The `SKIPPED-FLEET` refusal itself only
-fires when the caller sets `CADENCE_BANK_LAUNCH=1`, declaring an actual arm
+fires when the caller sets `CADENCE_USAGE_LAUNCH=1`, declaring an actual arm
 intent (`arm-resume.sh`, `headed-arm-leg.sh`) — a plain usage budget READ (a
 `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the same
 informational `FLEET native=N claudex=M total=X/CAP` line, printed

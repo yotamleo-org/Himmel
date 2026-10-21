@@ -430,7 +430,7 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 // claudex row to the shared quota-gauge ledger.
 
 // SOURCE: the TTL'd cache written by
-// scripts/lanes/codex-bank-probe.ts, whose source of truth is
+// scripts/lanes/codex-usage-probe.ts, whose source of truth is
 // `codex -s read-only -a untrusted app-server` -> JSON-RPC
 // account/rateLimits/read. That is the ONLY surface that reports codex quota.
 //
@@ -445,10 +445,10 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 // dispatch leaks a process whenever the kill fails, and the dispatch path is
 // exactly where that would compound. A stale/absent cache refuses, and the
 // refusal names the probe as the remedy.
-const CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches bank-status.ts
+const CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches usage-status.ts
 
 export function codexBankCachePath(home: string, env: Record<string, string | undefined> = process.env): string {
-  return env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
+  return env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
 }
 
 export type CodexBankRead = { usedPct: number | null; reason: string | null };
@@ -488,10 +488,25 @@ export function parsePct(raw: string | undefined, fallback: number): number {
   return s !== undefined && s !== "" && Number.isFinite(n) && n >= 0 && n <= 100 ? n : fallback;
 }
 
+// CLAUDEX_USAGE_OK is the new name of CLAUDEX_BANK_OK: the override needs one of
+// them at 1, and either one set to anything else refuses it.
+export function codexBankOverride(env: Record<string, string | undefined>): boolean {
+  const set = [env.CLAUDEX_USAGE_OK, env.CLAUDEX_BANK_OK].filter((v) => v !== undefined && v !== "");
+  return set.length > 0 && set.every((v) => v === "1");
+}
+
+// CLAUDEX_USAGE_WARN_PCT beside the old CLAUDEX_BANK_WARN_PCT: the narrower counts.
+export function codexBankWarnPct(env: Record<string, string | undefined>): number {
+  const set = [env.CLAUDEX_USAGE_WARN_PCT, env.CLAUDEX_BANK_WARN_PCT]
+    .map((v) => parsePct(v, NaN))
+    .filter((n) => !Number.isNaN(n));
+  return set.length ? Math.min(...set) : 80;
+}
+
 export type BankPreflightResult = { action: "ok" | "warn" | "refuse"; usedPct: number | null; message?: string };
 
 // Pure decision fn (D4): WARN at warnPct, REFUSE at refusePct unless
-// overridden (CLAUDEX_BANK_OK=1 / --force). An unreadable weekly bank refuses
+// overridden (CLAUDEX_USAGE_OK=1 / --force). An unreadable weekly bank refuses
 // loudly: this preflight must never claim success when no check occurred.
 // Rationale for refusing BEFORE any worktree side-effect: a capped worker
 // dies mid-run — the tree survives but the work is lost.
@@ -500,11 +515,11 @@ export function evaluateCodexBankPreflight(usedPct: number | null, opts: { warnP
     const why = opts.reason ?? `codex weekly bank unreadable — ${CODEX_BANK_PROBE_REMEDY}`;
     return opts.override
       ? { action: "warn", usedPct: null, message: `${why} — proceeding under explicit override after no bank preflight was possible` }
-      : { action: "refuse", usedPct: null, message: `${why} — refusing because no bank preflight was possible. Override with CLAUDEX_BANK_OK=1 or --force only after checking capacity manually.` };
+      : { action: "refuse", usedPct: null, message: `${why} — refusing because no bank preflight was possible. Override with CLAUDEX_USAGE_OK=1 or --force only after checking capacity manually.` };
   }
   if (usedPct >= opts.refusePct) {
-    if (opts.override) return { action: "warn", usedPct, message: `codex weekly bank at ${usedPct}% (>= refuse threshold ${opts.refusePct}%) — proceeding under override (CLAUDEX_BANK_OK=1/--force)` };
-    return { action: "refuse", usedPct, message: `codex weekly bank at ${usedPct}% (>= refuse threshold ${opts.refusePct}%) — refusing before any worktree side-effect (a capped worker dies mid-run; the tree survives but the work is lost). Override with CLAUDEX_BANK_OK=1 or --force.` };
+    if (opts.override) return { action: "warn", usedPct, message: `codex weekly bank at ${usedPct}% (>= refuse threshold ${opts.refusePct}%) — proceeding under override (CLAUDEX_USAGE_OK=1/--force)` };
+    return { action: "refuse", usedPct, message: `codex weekly bank at ${usedPct}% (>= refuse threshold ${opts.refusePct}%) — refusing before any worktree side-effect (a capped worker dies mid-run; the tree survives but the work is lost). Override with CLAUDEX_USAGE_OK=1 or --force.` };
   }
   if (usedPct >= opts.warnPct) return { action: "warn", usedPct, message: `codex weekly bank at ${usedPct}% (>= warn threshold ${opts.warnPct}%) — consider a lighter dispatch or another lane` };
   return { action: "ok", usedPct };
@@ -1285,9 +1300,9 @@ async function main(): Promise<void> {
 
   // Codex weekly bank preflight (D4) BEFORE any worktree/branch side-effect.
   const bankRead = fetchCodexWeeklyUsedPercent(homedir());
-  const bankOverride = force || process.env.CLAUDEX_BANK_OK === "1";
+  const bankOverride = force || codexBankOverride(process.env);
   const bank = evaluateCodexBankPreflight(bankRead.usedPct, {
-    warnPct: parsePct(process.env.CLAUDEX_BANK_WARN_PCT, 80),
+    warnPct: codexBankWarnPct(process.env),
     refusePct: resolveFundedMaxPct(process.env),
     override: bankOverride,
     reason: bankRead.reason,

@@ -179,15 +179,15 @@ _has_gnu_ok() {
 # on that line or the line immediately above.
 _has_prim_ok() {
     local file="$1" line_no="$2"
-    sed -n "${line_no}p" "$file" 2>/dev/null | grep -q 'prim-ok' && return 0
+    sed -n "${line_no}p" "$file" 2>/dev/null | grep -qE '# prim-ok:[[:space:]]*[^[:space:]]' && return 0
     if [ "$line_no" -gt 1 ]; then
-        sed -n "$((line_no - 1))p" "$file" 2>/dev/null | grep -q 'prim-ok' && return 0
+        sed -n "$((line_no - 1))p" "$file" 2>/dev/null | grep -qE '# prim-ok:[[:space:]]*[^[:space:]]' && return 0
     fi
     return 1
 }
 
-# _prim_report FILE TAG PATTERN HINT — report each non-comment, non-probe line of
-# FILE matching ERE PATTERN that has no prim-ok marker, as [TAG]. Appends to the
+# _prim_report FILE TAG PATTERN HINT — report each non-comment line of FILE
+# with a non-probe ERE PATTERN hit and no reasoned prim-ok marker, as [TAG]. Appends to the
 # caller's file_report/file_issues.
 _prim_report() {
     local _pf="$1" _ptag="$2" _ppat="$3" _phint="$4" _ph _pln _prest _pout="" _pall _pstrip
@@ -197,7 +197,8 @@ _prim_report() {
     # (`command -v flock && flock -x 9`) still matches the pattern.
     while IFS=: read -r _pln _prest; do
         [ -n "$_pln" ] || continue
-        _pstrip="$(printf '%s\n' "$_prest" | sed -E "s/$PRIM_PROBE//g")"
+        _pstrip="$(printf '%s\n' "$_prest" | sed -E -e "s/$PRIM_MESSAGE/\1\2 /g" \
+            -e ':probe' -e "s/$PRIM_PROBE/\1\4/g" -e 't probe')"
         printf '%s\n' "$_pstrip" | grep -qE "$_ppat" || continue
         _ph="${_ph}${_pln}:${_prest}"$'\n'
     done <<EOF
@@ -313,7 +314,9 @@ PRIM_LOCK='(^|[^[:alnum:]_-])mkdir[[:space:]]+["'"'"']?[^-"'"'"'|;&[:space:]][^|
 PRIM_ATOMIC='(^|[^[:alnum:]_-])(mv[[:space:]]+(-[A-Za-z]+[[:space:]]+)*["'"'"']?\$[{]?[A-Za-z_]*([Tt][Mm][Pp]|[Tt][Ee][Mm][Pp])|sed[[:space:]]+-i)'
 PRIM_CANON='(^|[^[:alnum:]_-])(readlink[[:space:]]+-f|realpath)([[:space:]]|$)'
 # A probe for the tool (`command -v flock`) is not a use of it.
-PRIM_PROBE='(command[[:space:]]+-v|type|which)[[:space:]]+(flock|realpath)'
+PRIM_PROBE='(^|[^[:alnum:]_./-])(command[[:space:]]+-v|type|which)[[:space:]]+(flock|realpath)($|[[:space:];&|()<>])'
+# Literal echo/printf arguments are messages, not calls; keep expansions visible.
+PRIM_MESSAGE="(^|[;&|({[:space:]])(echo|printf)([[:space:]]+(-v[[:space:]]+[[:alpha:]_][[:alnum:]_]*|--|-[[:alpha:]]+))*([[:space:]]+(\"[^\"\$\`]*\"|'[^']*'))+"
 
 STAGED=0
 CHANGED=""

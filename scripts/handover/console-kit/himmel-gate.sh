@@ -37,7 +37,7 @@ set -uo pipefail
 
 usage() {
     echo "usage: himmel-gate.sh <name> [args...]" >&2
-    echo "names: clear-cr-marker cr-scores doc-freshness-advisory docs-audit-panel impacted-suites" >&2
+    echo "names: clear-cr-marker clear-review-marker cr-scores doc-freshness-advisory docs-audit-panel impacted-suites" >&2
     echo "       known-findings ledger-append orphan-check panel-first-pass pr-check-context" >&2
     echo "       pr-check-env review-round write-verdicts merge-on-green go" >&2
 }
@@ -46,7 +46,7 @@ usage() {
 name=$1
 shift
 case "$name" in
-    clear-cr-marker | cr-scores | doc-freshness-advisory | docs-audit-panel | impacted-suites | \
+    clear-cr-marker | clear-review-marker | cr-scores | doc-freshness-advisory | docs-audit-panel | impacted-suites | \
         known-findings | ledger-append | orphan-check | panel-first-pass | pr-check-context | \
         pr-check-env | review-round | write-verdicts) rel="scripts/cr/$name.sh" ;;
     merge-on-green) rel=scripts/handover/merge-on-green.sh ;;

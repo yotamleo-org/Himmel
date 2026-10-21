@@ -245,7 +245,7 @@ STUBNODE
         # so the merge path's marker clear actually runs. Deliberately MALFORMED
         # (no certified sha in field 2) so the real chokepoint refuses on its
         # first gate — this case pins PR-MERGE's contract (it routes through
-        # clear-cr-marker.sh and reports a failure without failing the merge),
+        # clear-review-marker.sh and reports a failure without failing the merge),
         # never clear-cr-marker's own gate behaviour, and it touches no network.
         if [ "${SETUP_CR_MARKER:-0}" = "1" ]; then
             mkdir -p ".git/cr-pending/$(dirname "$branch")"
@@ -493,7 +493,7 @@ fi
 # A marker outliving its merged branch blocks `gh pr create` on UNRELATED
 # branches (it lives in the shared git-common-dir; the pr-create guard resolves
 # the branch from the session cwd). pr-merge routes the clear through
-# clear-cr-marker.sh — never a raw rm — and a marker that will not clear is
+# clear-review-marker.sh — never a raw rm — and a marker that will not clear is
 # reported, never a merge failure.
 if SETUP_CR_MARKER=1 run_case "handover/x-slug" 0 "marker present: clear attempted, merge still succeeds"; then
     assert_log_has "pr merge 42 --squash" "marker path still merges"

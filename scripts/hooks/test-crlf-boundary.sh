@@ -544,6 +544,12 @@ mkdir -p "$UCM_REPO"
 git -C "$UCM_REPO" init -q
 git -C "$UCM_REPO" remote add origin https://github.com/o/r.git
 git -C "$UCM_REPO" config --local himmel.coderabbit true
+# An armed clone holds on an unreadable critic ledger, so the repo carries a
+# clean one, and the reviewer set is this tree's critics.json with no overlay.
+printf '%s\n' '{"kind":"avail","head":"abc123","model":"codex","status":"ok"}' \
+    '{"kind":"avail","head":"abc123","model":"claude","status":"ok"}' > "$UCM_REPO/.git/cr-critic-scores.jsonl"
+UCM_CFG="CRITICS_BASE_JSON=$SCRIPT_DIR/../cr/critics.json"
+UCM_OVERLAY="CRITICS_LOCAL_JSON=$TMP/no-overlay.json"
 
 UCM_BIN="$TMP/ucm-bin"
 mkdir -p "$UCM_BIN"
@@ -581,14 +587,14 @@ _UCM_OLDPWD="$PWD"
 cd "$UCM_REPO" || true
 check_bounded block-unresolved-cr-merge Bash 2 "gh pr mer""ge 42 --squash" \
     "unresolved CodeRabbit threads block a merge" \
-    -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG GH_STUB_MODE=unresolved PATH="$UCM_BIN:$PATH"
+    -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG -u CRITICS_JSON -u CR_PROFILE "$UCM_CFG" "$UCM_OVERLAY" GH_STUB_MODE=unresolved PATH="$UCM_BIN:$PATH"
 # HIMMEL_CONSOLE_LEG arms gate 3 (console-GO), which this
 # fixture never sets up a GO file for; an ambient truthy value here (the
 # suite's own launching shell may carry one) would refuse this allow-case
 # with "no console GO" before the CR gate under test even decides anything.
 check_bounded block-unresolved-cr-merge Bash 0 "gh pr mer""ge 42 --squash --match-head-commit abc123" \
     "a clean review allows the merge" \
-    -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG GH_STUB_MODE=clean PATH="$UCM_BIN:$PATH"
+    -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG -u CRITICS_JSON -u CR_PROFILE "$UCM_CFG" "$UCM_OVERLAY" GH_STUB_MODE=clean PATH="$UCM_BIN:$PATH"
 cd "$_UCM_OLDPWD" || true
 
 # ── block-glm-external-writes.sh ─────────────────────────────────────────────
@@ -610,9 +616,10 @@ check_bounded block-glm-external-writes Bash 0 "gi""t status" \
 # itself, isolating "does the hook reach the fence" from "what the fence
 # would decide" — exactly the boundary this suite is auditing.
 GE_PROJECT="$TMP/ge-project"
-mkdir -p "$GE_PROJECT/scripts/hooks" "$GE_PROJECT/scripts/guardrails"
+mkdir -p "$GE_PROJECT/scripts/hooks" "$GE_PROJECT/scripts/guardrails" "$GE_PROJECT/scripts/lib"
 cp "$SCRIPT_DIR/block-graphify-egress.sh" "$GE_PROJECT/scripts/hooks/block-graphify-egress.sh"
 cp "$SCRIPT_DIR/../guardrails/lib.sh" "$GE_PROJECT/scripts/guardrails/lib.sh"
+cp "$SCRIPT_DIR/../lib/bash-ast.sh" "$GE_PROJECT/scripts/lib/bash-ast.sh"
 cat > "$GE_PROJECT/scripts/guardrails/graphify-fence.sh" <<'FENCE'
 #!/usr/bin/env bash
 echo "FENCE_INVOKED"

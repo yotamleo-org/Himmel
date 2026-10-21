@@ -15,6 +15,9 @@
 #   every other leg: the SendMessage payload is PRINTED, one `SENDMESSAGE to=<leg
 #     session> :: <text>` line per leg, for the console to send. A SendMessage
 #     cannot be issued from a script; the console's `from` is what authenticates it.
+#     When the console has a bus identity (HIMMEL_BUS_NAME), each such leg also gets a
+#     token-free himmel-bus record naming the successor, sent after every SENDMESSAGE
+#     line (`BUS-RELAY <label> ok` / `BUS-RELAY-FAIL <label> (<reason>)`, never an error).
 # What it never does: mint a token or nonce, rotate one, adopt one, write a leg's
 # Live state entry, or send LIVE. It copies the nonce the console already holds
 # and the console still waits for each leg's quote-back before it sends LIVE.
@@ -30,7 +33,8 @@
 # legs (the live fleet), so a tick can flag drift.
 #
 # Seams (tests): INBOX_SEND replaces inbox-send.sh; RELAY_BATCH_CENSUS is a script
-# printing claude_sessions-format census lines.
+# printing claude_sessions-format census lines; RELAY_BATCH_BUS replaces the bus CLI;
+# RELAY_BATCH_BUS_TIMEOUT is the one deadline for all bus sends (seconds, default 15).
 # Exit: 0 ok (skips are not errors); 1 a claudex delivery failed; 2 usage.
 # PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 set -uo pipefail
@@ -54,9 +58,43 @@ send="${INBOX_SEND:-$HERE/inbox-send.sh}"
 . "$HERE/../../lib/leg-identity.sh"
 # shellcheck source=../../lib/leg-tail-status.sh
 . "$HERE/../../lib/leg-tail-status.sh"
+# shellcheck source=../../lib/prim.sh
+. "$HERE/../../lib/prim.sh"
 # wrapped <leg doc>: lock free and newest marker WRAPPED (close-wrapped-leg.sh's gate).
 wrapped() { bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(leg_tail_status "$1")" = WRAPPED ]; }
 manifest="${doc%.md}.fleet.json"
+bus="${RELAY_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
+# relay_bus: for each queued `<label> <session>` line, the token-free bus record that
+# lets the leg's `bus adopt` prove this hop while the outgoing console is still live.
+# The sends run together under one deadline, after every SendMessage is printed, so a
+# stalled store cannot outlast relay-on-live's kill. Fail-soft: the printed SendMessage
+# is the relay; a refused record only costs the proof.
+relay_bus() {
+    local dir label session i=0 n wait_for="" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}"
+    [ -n "$bus_queue" ] || return 0
+    command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
+    dir="$(tmpdir)" || { echo "BUS-RELAY-FAIL all (mktemp failed)"; return 0; }
+    printf 'SUCCESSION bus record from %s: your console is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor" > "$dir/body"
+    while read -r label session; do
+        [ -n "$label" ] || continue
+        i=$((i + 1))
+        (
+            if err="$($wait_for "$bus" send "$session" "$dir/body" 2>&1 >/dev/null)"; then
+                echo "BUS-RELAY $label ok"
+            else
+                [ "$?" -eq 124 ] && [ -n "$wait_for" ] && err="timed out after ${limit}s"
+                echo "BUS-RELAY-FAIL $label (${err%%$'\n'*})"
+            fi
+        ) > "$dir/$i" &
+    done <<EOB
+$bus_queue
+EOB
+    wait
+    n=1
+    while [ "$n" -le "$i" ]; do cat "$dir/$n"; n=$((n + 1)); done
+    rm -rf "$dir"
+}
+bus_queue=""
 # The live process census (pid<TAB>name<TAB>model<TAB>autocompact), taken once.
 if [ -n "${RELAY_BATCH_CENSUS:-}" ]; then
     census_lines="$(bash "$RELAY_BATCH_CENSUS")" || { echo "relay-batch: census failed" >&2; exit 1; }
@@ -163,11 +201,13 @@ EOC
             else
                 echo "FAILED-INBOX $label ($lsession)"; rc=1
             fi ;;
-        *) printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$text"; sent=$((sent + 1)) ;;
+        *) printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$text"; sent=$((sent + 1))
+           [ -n "${HIMMEL_BUS_NAME:-}" ] && bus_queue="$bus_queue$label $lsession"$'\n' ;;
     esac
 done <<EOF
 $entries
 EOF
+relay_bus
 # A manifest leg the Live state does not list is reported, never silently dropped.
 total="$(printf '%s\n' "$entries" | awk 'NF' | wc -l | tr -d ' ')"
 if [ -f "$manifest" ]; then

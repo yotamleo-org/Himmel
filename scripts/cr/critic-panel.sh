@@ -160,67 +160,33 @@ else
     classify_failure() { echo "generic-rc-${1:-1}"; }
 fi
 
-# Registry resolution. CRITICS_JSON env
-# (tests/CI) wins outright. Otherwise critics.json is the BASE and
-# critics.local.json (gitignored per-operator overlay — ACCOUNT state like
-# exhausted free quotas / upgraded models) is MERGED per-slug ON TOP: a local row
-# OVERRIDES or APPENDS by slug, and a local row with "drop":true REMOVES the base
-# row of that slug. Merge (not the pre-1221 wholesale replace) so a stale overlay
-# can no longer silently mask a shipped critic that exists only in critics.json.
-# Test hooks:
+# Registry resolution. CRITICS_JSON env (tests/CI) wins outright. Otherwise
+# critics.json is the BASE and critics.local.json (gitignored per-operator
+# overlay — ACCOUNT state like exhausted free quotas / upgraded models) is
+# merged FIELD-WISE per slug on top by scripts/lib/critics-config.sh, the one
+# resolver cr-merge-gate.sh also reads, so who runs and who must pass cannot
+# disagree. A local row overrides fields of, or appends, a slug; "drop":true
+# removes it. The overlay is found in the himmelctl cache dir, then the
+# PRIMARY checkout (so a linked worktree resolves it too). Test hooks:
 # CRITICS_BASE_JSON / CRITICS_LOCAL_JSON override the two merge inputs.
 _MERGED_REG=""
 _REG_BASE="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}"
-# an unset CRITICS_LOCAL_JSON checks the himmelctl cache dir
-# first — a read-only install tree can never carry an in-tree overlay — and
-# falls back to the in-tree default so an existing writable clone's
-# hand-authored overlay still resolves exactly as before.
-_REG_CACHE_LOCAL="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/critics.local.json"
-if [ -n "${CRITICS_LOCAL_JSON:-}" ]; then
-    _REG_LOCAL="$CRITICS_LOCAL_JSON"
-elif [ -f "$_REG_CACHE_LOCAL" ]; then
-    _REG_LOCAL="$_REG_CACHE_LOCAL"
-else
-    _REG_LOCAL="$SCRIPT_DIR/critics.local.json"
-fi
 if [ -n "${CRITICS_JSON:-}" ]; then
     REG="$CRITICS_JSON"
-elif [ -f "$_REG_LOCAL" ]; then
-    _MERGED_REG="$(mktemp -t critics-merged.XXXXXX)" || _MERGED_REG=""
+elif [ -r "$SCRIPT_DIR/../lib/critics-config.sh" ] && . "$SCRIPT_DIR/../lib/critics-config.sh" \
+    && _MERGED_REG="$(mktemp -t critics-merged.XXXXXX)"; then
     # Early EXIT trap so the validation / arg-parse error exits below can't leak the
     # merged temp file. The --check and main traps RE-INCLUDE this rm because a
     # later `trap ... EXIT` REPLACES (not extends) an earlier one.
-    [ -n "$_MERGED_REG" ] && trap 'rm -f "$_MERGED_REG"' EXIT
-    if [ -n "$_MERGED_REG" ] && MERGE_BASE="$_REG_BASE" MERGE_LOCAL="$_REG_LOCAL" node -e '
-        const fs = require("fs");
-        const rd = p => { try { const j = JSON.parse(fs.readFileSync(p, "utf8"));
-            return Array.isArray(j.panel) ? j.panel : []; } catch (e) { return null; } };
-        const base = rd(process.env.MERGE_BASE), local = rd(process.env.MERGE_LOCAL);
-        if (base === null && local === null) process.exit(7);   // both unreadable
-        const bp = base || [], lp = local || [];
-        const drop = new Set(), over = new Map();               // local rows by slug
-        for (const r of lp) { if (r && typeof r === "object" && typeof r.slug === "string") {
-            if (r.drop === true) drop.add(r.slug); else over.set(r.slug, r); } }
-        const out = [], seen = new Set();
-        for (const r of bp) {                                   // base order first
-            if (!r || typeof r !== "object" || typeof r.slug !== "string") { out.push(r); continue; }
-            if (drop.has(r.slug)) { seen.add(r.slug); continue; }
-            out.push(over.has(r.slug) ? over.get(r.slug) : r);  // local override wins
-            seen.add(r.slug);
-        }
-        for (const r of lp) {                                   // local-only appends
-            if (!r || typeof r !== "object" || typeof r.slug !== "string") continue;
-            if (r.drop === true || seen.has(r.slug)) continue;
-            out.push(r); seen.add(r.slug);
-        }
-        process.stdout.write(JSON.stringify({ panel: out }));
-    ' > "$_MERGED_REG" 2>/dev/null; then
+    trap 'rm -f "$_MERGED_REG"' EXIT
+    if _reg_err=$(critics_config_resolve "$SCRIPT_DIR" 2>&1 >"$_MERGED_REG"); then
         REG="$_MERGED_REG"
-        echo "critic-panel.sh: merged critics.local.json over critics.json" >&2
+        grep -q '"local":null' "$REG" || echo "critic-panel.sh: merged critics.local.json over critics.json" >&2
     else
-        # Fail-open to the pre-1221 behavior: local overlay verbatim.
-        echo "critic-panel.sh: overlay merge failed — using critics.local.json verbatim" >&2
-        rm -f "$_MERGED_REG"; _MERGED_REG=""; REG="$_REG_LOCAL"
+        # Fail-open to the base: a broken overlay must not stop the panel.
+        # cr-merge-gate.sh reports the same error as a config error.
+        echo "critic-panel.sh: critics config error (${_reg_err}) — using $_REG_BASE" >&2
+        rm -f "$_MERGED_REG"; _MERGED_REG=""; REG="$_REG_BASE"
     fi
 else
     REG="$_REG_BASE"
@@ -585,6 +551,43 @@ if [ "$CHECK_MODE" = "1" ]; then
 $check_rows
 CHECKROWSEOF
 
+    # The effective reviewer set the merge gate holds this repo to: every row
+    # with its mode, required flag and state. A row that cannot run on this
+    # machine (the claude API lane off, the CodeRabbit app not armed) is
+    # absent and leaves the set, unless it is required, which makes it
+    # unavailable and keeps it in.
+    [ -r "$SCRIPT_DIR/../lib/cr-available.sh" ] && . "$SCRIPT_DIR/../lib/cr-available.sh"
+    _eff=""
+    while IFS="	" read -r slug mode required provider; do
+        [ -n "$slug" ] || continue
+        why=""
+        case "$provider" in
+            github-app)
+                if ! command -v cr_app_configured >/dev/null 2>&1 || ! cr_app_configured "$PWD"; then
+                    why="CodeRabbit app not armed"
+                fi ;;
+            claude-api)
+                [ "${HIMMEL_API_LANE:-}" = "on" ] || why="api lane is OFF" ;;
+        esac
+        if [ -z "$why" ]; then state="selected"
+        elif [ "$required" = "true" ]; then state="unavailable($why)"
+        else state="absent($why)"; fi
+        echo "reviewer $slug: mode=$mode required=$required state=$state"
+        case "$state" in absent*) ;; *) _eff="$_eff $slug" ;; esac
+    done << REVIEWERSEOF
+$(REG="$REG" node -e '
+  try {
+    const j = JSON.parse(require("fs").readFileSync(process.env.REG, "utf8"));
+    const p = (Array.isArray(j.panel) ? j.panel : []).filter(r => r && typeof r.slug === "string");
+    process.stdout.write(p.map(r => [r.slug,
+      r.mode || (r.provider === "github-app" ? "best-effort" : "hard"),
+      r.required === true ? "true" : "false",
+      r.route_provider === "claude-api" ? "claude-api" : (r.provider || "-")].join("\t")).join("\n"));
+  } catch (e) { process.exit(7); }
+' 2>/dev/null)
+REVIEWERSEOF
+    echo "effective reviewers:$_eff"
+
     rm -f "$check_prompt"
     [ -n "$_MERGED_REG" ] && rm -f "$_MERGED_REG"   # normal --check path (trap is disarmed next)
     trap - EXIT
@@ -595,7 +598,7 @@ fi
 # --head input pinning. /pr-check captures branch+HEAD up front
 # and stamps the ledger with that SHA, but this panel resolved its own head (and,
 # in --worktree mode, its own diff) from LIVE state. A checkout that moved between
-# capture and review — the same-SHA branch switch clear-cr-marker.sh's exit 13/16
+# capture and review — the same-SHA branch switch clear-review-marker.sh's exit 13/16
 # gates cannot catch — therefore reviewed one tree and certified another. With
 # --head the run REFUSES rather than reviewing live state. Called BEFORE the diff
 # and before any critic runs, so a stale-input run costs nothing and stamps
@@ -1088,13 +1091,13 @@ _queue_avail() {
 # Emit a non-exhaustion avail row for
 # every configured non-Claude critic THIS RUN deselected -- tier filter
 # exclusion or the trivial-diff keep-one cap -- captured above as
-# $_tier_excluded_raw / $_keepone_dropped_raw. clear-cr-marker.sh's
+# $_tier_excluded_raw / $_keepone_dropped_raw. clear-review-marker.sh's
 # CR_FLOOR_FALLBACK=claude-only check only accepts the claude-only floor when
 # EVERY non-Claude lane that RECORDED an avail row is verified quota/rate-
 # limit exhausted; a deselected-but-available lane previously left NO row at
 # all, which looked exactly like "never configured" (silence) rather than
 # "chose not to consult" -- the gap this ticket closes. reason=tier-excluded
-# and reason=keep-one-skipped are both outside clear-cr-marker.sh's
+# and reason=keep-one-skipped are both outside clear-review-marker.sh's
 # EXHAUSTION_REASONS set (quota/quota-5h/quota-long/rate-limit), so a row here
 # correctly REFUSES the claude-only floor instead of silently clearing it.
 # Deliberately NOT routed through process_member: these members never ran, so
@@ -2109,7 +2112,7 @@ nc=0; ni=0; ns=0; nr=0; nd=0
 #   its adjudication legitimately carries) while different rejected evidence at
 #   the same head mints a NEW verdict-less row that must be adjudicated itself.
 #
-# The blocker must ALSO reach the LEDGER, not just stdout. clear-cr-marker.sh
+# The blocker must ALSO reach the LEDGER, not just stdout. clear-review-marker.sh
 # derives clearance from the ledger alone (>=1 `avail ... ok` and no blocking
 # finding), so a stdout-only blocker leaves a direct panel run + the sanctioned
 # clear path able to clear the marker on an all-dropped review — the very
@@ -2155,7 +2158,7 @@ if [ "$ndb" -gt 0 ]; then
     fi
     if ! printf '%s' "$_guard_digest" | grep -qE '^[0-9a-f]{64}$'; then
         echo "critic-panel.sh: FATAL cannot compute the citation-guard SHA-256 id (sha256sum/shasum missing or failing) — refusing to certify this run (exit 6). Blocking findings were rejected by the citation validator; fix the digest tooling and re-run." >&2
-        # leave the refusal on the ledger so clear-cr-marker.sh
+        # leave the refusal on the ledger so clear-review-marker.sh
         # can hold the gate closed at this head. It is an avail row, never a
         # finding or a score: nothing can inherit or dedup against it, so the
         # no-rows guarantee above still holds for every finding. Best-effort:
@@ -2165,7 +2168,7 @@ if [ "$ndb" -gt 0 ]; then
                 --model critic-panel --status unavailable --reason certify-refused \
                 --detail "citation-guard digest unavailable (sha256sum/shasum); run refused, exit 6" >/dev/null \
                 || echo "critic-panel.sh: could not record certify-refused on the CR ledger" >&2
-            # clear-cr-marker.sh reads only the FIXED
+            # clear-review-marker.sh reads only the FIXED
             # <git-common-dir> ledger. When CR_LEDGER pointed this run
             # elsewhere the row above never reaches the gate, so record the
             # refusal on the fixed ledger too. A refusal row only ever tightens.

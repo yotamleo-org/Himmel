@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-bank-preflight-admit-gate.sh — RED-first suite for the
-# reclaim/release GATE around bank-preflight.sh's `.admit` admission lock.
+# reclaim/release GATE around usage-preflight.sh's `.admit` admission lock.
 #
 # The bug: _fleet_steal_stale_admit's `mv admit victim` displaces WHATEVER
 # currently occupies `.admit` — including a live holder's brand-new claim
@@ -24,7 +24,7 @@
 # harness).
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-SUT="${FLEET_SUT:-$REPO/scripts/lib/bank-preflight.sh}"
+SUT="${FLEET_SUT:-$REPO/scripts/lib/usage-preflight.sh}"
 PASS=0; FAIL=0
 W="$(mktemp -d -t bank-preflight-admit-gate.XXXXXX)" || { echo "FAIL - could not create scratch dir via mktemp" >&2; exit 1; }
 if [ -z "$W" ] || [ ! -d "$W" ]; then echo "FAIL - mktemp returned an empty/invalid scratch dir" >&2; exit 1; fi

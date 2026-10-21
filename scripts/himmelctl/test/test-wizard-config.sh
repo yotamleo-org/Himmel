@@ -41,6 +41,10 @@
 #      (cygpath -w) still resolves the initiative set write to the INTENDED
 #      fixture .env, not a misresolved sibling. Git-Bash/MSYS/Cygwin only —
 #      self-skips on posix (no backslash separator).
+#   Q. commit.tracker / commit.ticketIdRequired — the Setup page's commit-rules
+#      path: jira|local|none and on|off, written to ~/.himmel/himmel.conf by the
+#      wizard's own writer; none drops the ticket-id keys; the pattern is never
+#      settable here; --dry-run and every refusal write nothing.
 #   P. `himmelctl profile` is a SEPARATE argv[0] special-case
 #      (same mechanism as `config`'s, added right after it in main()) that
 #      dispatches to plugin-profile.sh — proves it parses to subcommand
@@ -543,5 +547,42 @@ for verb_pair in "scope status" "trust status"; do
     && fail "caseP2: '$verb_pair' must never invoke plugin-profile.sh (got: $(cat "$fxP/profile-calls.log"))"
 done
 echo "ok: caseP2 config/scope/trust verb handling is unaffected by the new 'profile' dispatch — never misrouted, never touch the profile stub"
+
+# ── Case Q: commit.<tracker|ticketIdRequired> — the Setup page's commit-rules path ──
+# Reuses the wizard's own commit-rules writer, so the web UI and the terminal share one engine.
+fxQ="$work/fixtureQ"; build_fixture "$fxQ"
+_hQ="$work/home-Q-$$-$RANDOM"; mkdir -p "$_hQ"
+confQ="$_hQ/.himmel/himmel.conf"
+run_cfg_q() {
+  set +e
+  CFG_OUT=$(HOME="$_hQ" USERPROFILE="$(winpath "$_hQ")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ")" JIRA_PROJECT_KEY='' \
+    "$node_bin" "$wizard" config "$@" 2>&1)
+  CFG_RC=$?
+  set -e
+}
+run_cfg_q set commit.tracker jira --dry-run
+[ "$CFG_RC" -eq 0 ] || fail "caseQ: --dry-run should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+[ -e "$confQ" ] && fail "caseQ: --dry-run must write nothing (got: $(cat "$confQ"))"
+run_cfg_q set commit.tracker jira
+[ "$CFG_RC" -eq 0 ] || fail "caseQ: set commit.tracker jira should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^TRACKER=jira$' "$confQ" || fail "caseQ: himmel.conf should carry TRACKER=jira (got: $(cat "$confQ" 2>&1))"
+run_cfg_q set commit.ticketIdRequired on
+[ "$CFG_RC" -eq 0 ] || fail "caseQ: set commit.ticketIdRequired on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^TICKET_ID_REQUIRED=1$' "$confQ" || fail "caseQ: himmel.conf should carry TICKET_ID_REQUIRED=1 (got: $(cat "$confQ" 2>&1))"
+printf 'OTHER_KEY=keepme\n' >> "$confQ"
+run_cfg_q set commit.tracker none
+[ "$CFG_RC" -eq 0 ] || fail "caseQ: set commit.tracker none should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^TRACKER=none$' "$confQ" || fail "caseQ: himmel.conf should carry TRACKER=none (got: $(cat "$confQ" 2>&1))"
+grep -q '^TICKET_ID_REQUIRED=' "$confQ" && fail "caseQ: tracker none must drop TICKET_ID_REQUIRED (got: $(cat "$confQ"))"
+grep -qE '^OTHER_KEY=keepme$' "$confQ" || fail "caseQ: a line other than the commit rules must survive (got: $(cat "$confQ" 2>&1))"
+cp "$confQ" "$confQ.before"
+run_cfg_q set commit.ticketIdRequired on
+[ "$CFG_RC" -eq 2 ] || fail "caseQ: ticketIdRequired with tracker none should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+run_cfg_q set commit.tracker github
+[ "$CFG_RC" -eq 2 ] || fail "caseQ: an unknown tracker should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+run_cfg_q set commit.ticketIdPattern '^X-1$'
+[ "$CFG_RC" -eq 2 ] || fail "caseQ: the ticket pattern is never settable through config (got rc=$CFG_RC): $CFG_OUT"
+cmp -s "$confQ.before" "$confQ" || fail "caseQ: a refused set must leave himmel.conf untouched (got: $(cat "$confQ" 2>&1))"
+echo "ok: caseQ commit.tracker / commit.ticketIdRequired reuse the commit-rules writer; refusals write nothing"
 
 echo "PASS"

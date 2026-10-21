@@ -38,7 +38,7 @@ if . "$LIB/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/nul
 . "$LIB/git-clean.sh"
 git_env_scrub
 
-pf="$(bash "$LIB/bank-preflight.sh" 2>&1)" || true
+pf="$(bash "$LIB/usage-preflight.sh" 2>&1)" || true
 case "$(printf '%s\n' "$pf" | tail -n 1)" in
     PROCEED) ;;
     *) echo "SKIP-BANK smoke-consult-sandbox: bank preflight did not say PROCEED: $(printf '%s\n' "$pf" | tail -n 1)"; exit 3 ;;

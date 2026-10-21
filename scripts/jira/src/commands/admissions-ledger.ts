@@ -1,6 +1,7 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
+import { handoverRoot } from '../handover-root.js';
 
 // Append-only record of every ticket admitted into a version past the intake
 // gate: one JSON object per line, read by the board.
@@ -21,9 +22,7 @@ export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind'
 function admissionsLedgerPath(): string {
   const explicit = process.env['HIMMEL_ADMISSIONS_LEDGER'];
   if (explicit) return explicit;
-  const root = process.env['HANDOVER_DIR'];
-  if (!root) throw new Error('the admissions ledger needs HANDOVER_DIR (or HIMMEL_ADMISSIONS_LEDGER) set');
-  return join(root, 'admissions-ledger.jsonl');
+  return join(handoverRoot(), 'admissions-ledger.jsonl');
 }
 
 export function appendAdmission(row: AdmissionInput): Admission {

@@ -252,6 +252,20 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
   undetermined (a missing `jq`, or an unparseable row — "cannot tell" must
   never render as "healthy").
 
+## Luna graph freshness (HIMMEL-6551)
+
+The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
+its markdown only gets LLM extraction from a separate job:
+`graphmap-cadence.sh arm --ast-only --with-luna-semantic` adds
+`HIMMEL-GraphSemantic-Luna` (cron, `50 */2`), which runs `semantic-update.sh
+--name luna --corpus-class luna-personal --backend claude-api` against the same
+external out dir the AST job writes (an absolute `GRAPHIFY_OUT`), capped at 20
+changed files and 2 USD per fire. It arms PAUSED (`semantic-luna.paused` beside
+the runner; `rm` it to resume) and needs a `semantic-manifest.json` baseline
+(`semantic-update.sh --seed-manifest`) first, or the whole vault counts as
+changed. Check freshness in `<out>/semantic-runs.jsonl`: a luna graph with no
+claude-api row there has never had semantic extraction.
+
 ## Adding a second corpus (out of scope for v1)
 
 himmel is the only corpus wired, and `--corpus-root` currently **refuses**

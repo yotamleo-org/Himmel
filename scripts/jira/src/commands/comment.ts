@@ -21,12 +21,13 @@ export function registerComment(program: Command): void {
       'Read the markdown comment body from a file (overrides <text>; keeps the ' +
         'shell command single-line for multi-line bodies)',
     )
+    .option('--print-id', 'Print only the comment id on stdout (the success line moves to stderr)')
     .option('--attach <path>', 'File to attach to the parent issue (repeatable)', collect, [])
     .action(
       async (
         key: string,
         text: string | undefined,
-        options: { adfFile?: string; commentFile?: string; edit?: string; attach: string[] },
+        options: { adfFile?: string; commentFile?: string; edit?: string; printId?: boolean; attach: string[] },
       ) => {
         if (options.edit === '') {
           console.error('jira: --edit requires a non-empty comment id');
@@ -50,10 +51,13 @@ export function registerComment(program: Command): void {
           }
           body = markdownToAdf(markdown);
         }
+        let id: string | undefined;
         if (options.edit) {
           await request('PUT', `/issue/${key}/comment/${encodeURIComponent(options.edit)}`, { body });
+          id = options.edit;
         } else {
-          await request('POST', `/issue/${key}/comment`, { body });
+          const created = await request<{ id?: string }>('POST', `/issue/${key}/comment`, { body });
+          id = created?.id;
         }
         // Breadcrumb BEFORE attachments: the comment mutation has landed even
         // if a later attachment upload fails and we exit 1.
@@ -64,7 +68,13 @@ export function registerComment(program: Command): void {
         // see the comment landed even if a subsequent attachment fails
         // and we exit 1. Attachment-failure message goes to stderr.
         const done = options.edit ? `Comment ${options.edit} edited on ${key}` : `Comment added to ${key}`;
-        console.log(done);
+        if (options.printId) {
+          console.error(done);
+          if (id) console.log(id);
+          else console.error('jira: the response carried no comment id');
+        } else {
+          console.log(done);
+        }
 
         const attachments = options.attach ?? [];
         if (attachments.length === 0) return;

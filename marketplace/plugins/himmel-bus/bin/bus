@@ -219,7 +219,13 @@ async function main() {
       // Both act as the calling session: a descendant of a bound claude.
       const me = await identity.resolveIdentity(root);
       if (me.error) throw new Error(me.error);
-      if (verb === 'peers') { console.log(edges.edgeList(await identity.loadPeers(root), me.name).join('\n')); return; }
+      if (verb === 'peers') {
+        // A live peer prints bare; a gone or never-bound one carries its state.
+        const list = edges.edgeList(await identity.loadPeers(root), me.name);
+        const states = await Promise.all(list.map(peer => identity.status(root, peer)));
+        console.log(list.map((peer, i) => (states[i] === 'live' ? peer : `${peer} (${states[i]})`)).join('\n'));
+        return;
+      }
       const before = (await identity.loadPeers(root))[me.name]?.console;
       await identity.adopt(root, me.name, need(name));
       console.log(`adopted: ${me.name} console ${before} -> ${name}`);

@@ -186,7 +186,7 @@ else
 fi
 # Each basename alone must be seen: one row per runner, so a missing entry in
 # CADENCE_RUNNER_BASENAMES names the exact runner.
-for _n in graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel doctor-cadence; do
+for _n in graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence; do
   _one_tmp="$(mktemp -d -t cadence-one.XXXXXX)" || exit 1
   printf '#!/usr/bin/env bash\n# %s 17\n' "$CADENCE_FORMAT_MARKER" > "$_one_tmp/$_n.sh"
   _one_got="$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$_one_tmp")"; _one_rc=$?

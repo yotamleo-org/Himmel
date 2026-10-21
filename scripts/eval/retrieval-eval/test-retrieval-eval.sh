@@ -18,6 +18,64 @@ py() { python3 -I "$@"; }
 EV="$HERE/retrieval-eval.py"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/ledger.jsonl"
 
+# A one-second subprocess floor must not extend a sub-second arm budget.
+if py - "$EV" "$W" <<'PY'
+import json, os, pathlib, shutil, subprocess, sys
+
+ev, work = sys.argv[1], pathlib.Path(sys.argv[2])
+slow = work / "slow"
+slow.mkdir()
+real_git = shutil.which("git")
+stub = slow / "git"
+stub.write_text('''#!/usr/bin/env bash
+case " $* " in
+*" grep "*)
+    printf '%s\\0' "$@" >> "$BUDGET_CALLS"
+    printf '\\0' >> "$BUDGET_CALLS"
+    if [ "$BUDGET_PHASE" = snippet ] && [[ " $* " == *" -c "* ]]; then
+        printf 'bin/run.sh:1\\n'
+        exit 0
+    fi
+    exec sleep 5 ;;
+esac
+exec "$REAL_GIT" "$@"
+''')
+stub.chmod(0o755)
+questions = work / "budget.jsonl"
+questions.write_text(json.dumps(dict(id="budget", q="relay_batch", gold=["bin/run.sh"], reason=[])) + "\n")
+failed = False
+for phase, arm in (("count", "grep"), ("ident", "ident-grep"), ("snippet", "grep")):
+    out = work / ("budget-" + phase)
+    calls_log = work / (phase + ".calls")
+    env = dict(os.environ, PATH=str(slow) + os.pathsep + os.environ["PATH"],
+               REAL_GIT=real_git, BUDGET_PHASE=phase, BUDGET_CALLS=str(calls_log),
+               HIMMEL_EVAL_RUNS_LEDGER=str(work / "budget-ledger.jsonl"))
+    result = subprocess.run([sys.executable, "-I", ev, "run", "--repo", str(work),
+                             "--questions", str(questions), "--out", str(out),
+                             "--arms", arm, "--timeout", "0.3"], env=env,
+                            capture_output=True, text=True, timeout=10)
+    if result.returncode:
+        print("FAIL - %s sub-second timeout: rc=%s %s" % (phase, result.returncode, result.stderr.strip()))
+        failed = True
+        continue
+    calls = [c.split("\0") for c in calls_log.read_text().split("\0\0") if c]
+    stages = ["count" if "-c" in c else "ident" if "-w" in c else "snippet" for c in calls]
+    expected = ["count", "snippet"] if phase == "snippet" else [phase]
+    if stages != expected:
+        print("FAIL - %s expected stages %s, got %s: %s" % (phase, expected, stages, calls))
+        failed = True
+        continue
+    row = json.loads((out / "results.jsonl").read_text().splitlines()[0])
+    ok = row["timeout"] and not row["error"] and row["ms"] < 600
+    print("%s - %s honours 0.3 s budget: timeout=%s error=%s ms=%s" %
+          ("ok" if ok else "FAIL", phase, row["timeout"], row["error"], row["ms"]))
+    failed = failed or not ok
+sys.exit(int(failed))
+PY
+then pass "grep count, identifier and snippet subprocesses honour a sub-second budget"
+else fail "grep count, identifier and snippet subprocesses honour a sub-second budget"; fi
+if [ "${1:-}" = --budget-only ]; then exit "$fails"; fi
+
 # A scratch repo: the reason for q1 is in docs/lock.md, q2's answer in bin/run.sh.
 R="$W/repo"; mkdir -p "$R/docs" "$R/bin"
 printf 'The queue lock keeps one session per handover doc.\nA halt needs no token: a mild DoS, not a compromise.\n' > "$R/docs/lock.md"
@@ -319,6 +377,41 @@ cat > "$P2/s2.jsonl" <<'EOF'
 EOF
 py "$EV" census --projects "$W/projects2" --days 7 --out "$W/census2.json" > /dev/null 2>&1
 eq "census: a call older than the window is not counted" "0" "$(py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"]["qmd_calls"])' "$W/census2.json")"
+
+# 13. census used/failed heuristics: a full path decides used, the is_error flag decides failed,
+# and qmd get / multi_get (either tool prefix) are counted.
+P3="$W/projects3/-home-x-himmel"; mkdir -p "$P3"
+cat > "$P3/s3.jsonl" <<'EOF'
+{"type":"custom-title","customTitle":"HIMMEL-3-N3-z"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"x"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a","content":"{\"results\":[{\"file\":\"himmel/docs/a/README.md\"}]}"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Read","input":{"file_path":"/r/docs/b/README.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"bash scripts/graphify/leg-graph.sh query \"hooks\""}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"c","is_error":false,"content":"NODE h [src=docs/h.md loc=L1] error: handler not found, request denied"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"d","name":"Read","input":{"file_path":"/r/docs/h.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"d","content":"x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"e","name":"mcp__qmd__get","input":{"file":"himmel/docs/g.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"e","content":"[Resource from qmd at qmd://himmel/docs/g.md] 1: see docs/unrelated/README.md"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f","name":"Read","input":{"file_path":"/r/.claude/worktrees/w/docs/g.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"f","content":"x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"g","name":"mcp__plugin_qmd_qmd__multi_get","input":{"pattern":"himmel/docs/m1.md,himmel/docs/m2.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"g","content":"[Resource from qmd at qmd://himmel/docs/m1.md] 1: x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"h","name":"Read","input":{"file_path":"/r/docs/other.md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"i","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"zzz"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"i","content":"{\"results\":[]}"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"j","name":"mcp__qmd__multi_get","input":{"pattern":"himmel/docs/*.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"j","content":"[Resource from qmd at qmd://himmel/docs/glob.md] 1: x"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"k","name":"Read","input":{"file_path":"/r/docs/glob.md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"l","name":"mcp__qmd__query","input":{"searches":[{"type":"lex","query":"yyy"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"l","content":"{\"results\": []}"}]}}
+EOF
+py "$EV" census --projects "$W/projects3" --days 0 --out "$W/census3.json" > /dev/null 2>&1
+c3() { py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"][sys.argv[2]])' "$W/census3.json" "$1"; }
+eq "census: qmd get and multi_get (either prefix) are counted" "6" "$(c3 qmd_calls)"
+eq "census: only an empty results envelope (any spacing) fails; a body with error: and is_error false does not" "2 0" "$(c3 qmd_failed) $(c3 graphify_failed)"
+eq "census: a README.md in another directory is not used; get is used by its input path, a glob multi_get by its result headers" "2" "$(c3 qmd_used)"
+eq "census: graphify answer with error: in the body is used when its file is read" "1" "$(c3 graphify_used)"
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"

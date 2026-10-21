@@ -247,7 +247,7 @@
 #      --provisional-base-ok to arm anyway — this WARNS loudly and prints
 #      the warning text (paste it into the leg's first message per ruling
 #      66) instead of refusing.
-#   22 fleet-size cap refused — scripts/lib/bank-preflight.sh
+#   22 fleet-size cap refused — scripts/lib/usage-preflight.sh
 #      reported SKIPPED-FLEET: the number of live LEG sessions is already at
 #      or above HIMMEL_FLEET_CAP (default 4; concurrency, not bank
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
@@ -1245,7 +1245,7 @@ _arm_profile_report() {
 _arm_fleet_release_pending() {
     # shellcheck disable=SC2317  # Invoked indirectly by the EXIT trap.
     [ -n "${_ARM_FLEET_RESERVED_LEG:-}" ] || return 0
-    # bank-preflight.sh reserves under
+    # usage-preflight.sh reserves under
     # fleet_reservation_key <name> — a HASH of the name when it is over
     # NAME_MAX or leads with '.' — not under the name itself, and on a
     # filesystem with a stricter limit it retries under fleet_hash_key. Release
@@ -1258,7 +1258,7 @@ _arm_fleet_release_pending() {
         [ -n "$_arm_fleet_key" ] || continue
         # shellcheck disable=SC2317  # Invoked indirectly by the EXIT trap.
         _arm_fleet_resv="${_ARM_FLEET_SLOTS:?}/$_arm_fleet_key"
-        # codex-3 (this round): bank-preflight.sh returning non-SKIPPED-FLEET
+        # codex-3 (this round): usage-preflight.sh returning non-SKIPPED-FLEET
         # does not guarantee IT created this reservation (the admission-lock-
         # failure bypass under FLEET_CAP_OK=1 proceeds without creating one) —
         # if a reservation for this same name already existed from an unrelated
@@ -1296,14 +1296,14 @@ _arm_mktemp_or_fail() {
 # entry is even created) — concurrency, not bank exhaustion, burned the
 # fleet on 2026-09-07. --dry-run is exempt (side-effect-free
 # preview, same exemption the worker-census block below carries). Only the
-# SKIPPED-FLEET token refuses; every other bank-preflight.sh verdict
+# SKIPPED-FLEET token refuses; every other usage-preflight.sh verdict
 # (PROCEED, SKIPPED-BANK, BANK-STALE, BANK-UNKNOWN) is out of scope for this
 # check and falls through — arm-resume.sh does not otherwise consult the
 # bank guard. FLEET_CAP_OK=1 in the LAUNCHING shell bypasses (registered in
 # scripts/chokepoints.json so a per-call prefix cannot forge it).
 #
 # refinements (disclosed in the PR body):
-#   - CADENCE_BANK_LEG must be a bare name (bank-preflight.sh's reservation
+#   - CADENCE_USAGE_LEG must be a bare name (usage-preflight.sh's reservation
 #     directory is `mkdir "$SLOTS/$LEG"`) — HANDOVER_PATH almost always
 #     contains '/', which the pre-fix caller passed straight through. Under
 #     the fixed script that would hit its defensive `*/*` guard and proceed
@@ -1324,7 +1324,7 @@ _arm_mktemp_or_fail() {
 #     is released immediately rather than sitting for the full TTL.
 if [ "$DRY_RUN" -eq 0 ]; then
     _arm_phase_t0 "fleet-preflight"
-    _ARM_BANK_PREFLIGHT="$SCRIPT_DIR/../lib/bank-preflight.sh"
+    _ARM_BANK_PREFLIGHT="$SCRIPT_DIR/../lib/usage-preflight.sh"
     if [ -f "$_ARM_BANK_PREFLIGHT" ]; then
         # the shared leg-name -> reservation-key helper, which
         # _arm_fleet_release_pending (EXIT trap) releases by. Fail closed: a
@@ -1336,7 +1336,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             echo "ERR arm-resume: cannot source $SCRIPT_DIR/../lib/fleet-reservation-key.sh — refusing to arm without a releasable fleet reservation." >&2
             exit 22
         }
-        # </dev/null: bank-preflight.sh's own producer reads stdin to EOF
+        # </dev/null: usage-preflight.sh's own producer reads stdin to EOF
         # (its held-open-stdin regression test exists for exactly this) - an
         # unattended arm must never inherit an open stdin here.
         # this call arms a new leg, so it declares launch intent
@@ -1356,12 +1356,12 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_BANK_LEG="$_arm_fleet_leg" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_CALLER_PID="$$" CADENCE_BANK_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_BANK_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(CADENCE_USAGE_LEG="$_arm_fleet_leg" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-${CADENCE_BANK_SKIP_REFRESH:-}}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
             echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another leg. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
             exit 22
         fi
-        # Not SKIPPED-FLEET: bank-preflight.sh either created a reservation
+        # Not SKIPPED-FLEET: usage-preflight.sh either created a reservation
         # for $_arm_fleet_leg or (rarely, an admission-lock failure under
         # FLEET_CAP_OK=1) created none -- either way `rm -rf` on a name that
         # was never created is a safe no-op, so track it unconditionally
@@ -1737,7 +1737,7 @@ fi
 # non-Claude critic leaves clear-cr-marker gate 3b with no escape: it refuses
 # every subsequent branch until a human resets the bank or sets
 # CR_FLOOR_FALLBACK, which PARKS the whole armed chain rather than just the one
-# blocked item. Same load_dotenv bridge clear-cr-marker.sh uses (process env
+# blocked item. Same load_dotenv bridge clear-review-marker.sh uses (process env
 # wins), pinned to the PRIMARY checkout's .env the same way.
 if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # shellcheck disable=SC1091
@@ -1753,7 +1753,7 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
         case "$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
             1|true|on|yes)
                 # key on the RECOGNIZED value, not mere
-                # non-emptiness -- clear-cr-marker.sh only ever treats an exact
+                # non-emptiness -- clear-review-marker.sh only ever treats an exact
                 # (trim+lowercase) "claude-only" as the fallback; any other
                 # value (a typo like "claude_only", or unset) never actually
                 # enables it, so the operator must still see this WARN.
@@ -5021,12 +5021,12 @@ fi"
     [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="export AUTO_ARM_SAFETY_CHILD=1 && "
     # same always-clear-then-grant shape for the console
     # PreCompact pair. `%` is escaped for cron like q_log_file below.
-    q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR && "
+    q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE && "
     if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
         local q_cp_doc q_cp_wd
         q_cp_doc=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC"); q_cp_doc=${q_cp_doc//%/\\%}
         q_cp_wd=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR"); q_cp_wd=${q_cp_wd//%/\\%}
-        q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd && "
+        q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd HIMMEL_CONSOLE=1 && "
     fi
     # the headless shape (function header). The redirects hang
     # off the flow-ledger `{ ...; }` group so the ledger writes, the launch and
@@ -6234,7 +6234,7 @@ fi"
                 # always-clear-then-grant shape (`at` snapshots the submitting
                 # env, so a console arm's own pair must not leak into a
                 # non-console relaunch).
-                at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR
+                at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE
 "
                 # same always-clear for the launch-seam vars a
                 # leg or consult carries (LEG_PROFILE_NO_SETTING_SOURCES, the
@@ -6242,7 +6242,7 @@ fi"
                 at_safety_child="${at_safety_child}unset $(console_context_launch_seam_env_names | tr '\n' ' ')
 "
                 if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
-                    at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR")
+                    at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1
 "
                 fi
                 # atd runs the job with stdin=/dev/null and no tty,

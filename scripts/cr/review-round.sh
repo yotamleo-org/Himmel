@@ -1522,7 +1522,7 @@ function isAncestorOfHead(commit) {
 // wins, a field a later amend never touched keeps its earlier value. Same
 // shape as ledger-append.shs own amendsByKey/effective().
 // The key gains branch, matching ledger-append.sh,
-// clear-cr-marker.sh and handover-bridge.sh byte-for-byte. Two
+// clear-review-marker.sh and handover-bridge.sh byte-for-byte. Two
 // branches can legitimately sit at the same head, and finding
 // ids are minted in per-producer stream order (not globally unique), so an
 // amend recorded while judging one branch must never leak into this gate
@@ -1902,7 +1902,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         --branch "$branch" --head "$full_head" --id "$finding_id" \
         --artifact "$artifact" --perspective "$perspective" \
         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" \
-        --set "reason=$defer_reason" \
+        --set class=unattributed --set "reason=$defer_reason" \
         --reason 'deferred by review-round.sh after the three-round cap'; then
         amend_rc=5
         break
@@ -1941,4 +1941,4 @@ if ! write_recovered_verdicts prior-blocking "$git_dir/cr-prior-blocking/$branch
     exit 5
 fi
 rm -f "$verdicts_tmp"
-bash "$SCRIPT_DIR/clear-cr-marker.sh" "$branch"
+bash "$SCRIPT_DIR/clear-review-marker.sh" "$branch"

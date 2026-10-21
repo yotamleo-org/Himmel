@@ -10,8 +10,9 @@
 #       checkout, a job timeout
 #   Q2  every ci-quick step but the shared ones belongs to a group (id
 #       <group> or <group>__<x>) and runs under !cancelled()
-#   Q3  each group output is the canonical expression: the shared steps and the
-#       closing `finished` step succeeded, every group step succeeded or was skipped
+#   Q3  each group output is the canonical expression: checkout and the closing
+#       `finished` step succeeded, setup-node succeeded or was skipped (the CI
+#       image has node), every group step succeeded or was skipped
 #   Q4  the model over that expression: a timed-out ci-quick (whether a timeout
 #       reports failure or cancelled), a skipped ci-quick, a failed checkout and
 #       a failed group step all fail the sentinel; a cancelled run skips it; a
@@ -33,6 +34,7 @@ bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 
 GROUPS_FOLDED="secret-scan bwk-awk-mktemp-gate unchecked-mktemp-range commit-lint jira-cli-smoke claude-startup guardrail-matrices doc-invariants"
 SHARED="checkout setup-node"
+STRICT="checkout"
 
 job_block() { awk -v job="$1" '$0 == "  " job ":" { j = 1; print; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI_YML"; }
 
@@ -95,7 +97,12 @@ done
 
 canon() { # canonical output expression for group $1
   local e="\${{ steps.finished.outcome == 'success'" s
-  for s in $SHARED; do e="$e && steps.$s.outcome == 'success'"; done
+  for s in $SHARED; do
+    case " $STRICT " in
+      *" $s "*) e="$e && steps.$s.outcome == 'success'" ;;
+      *) e="$e && contains(fromJSON('[\"success\",\"skipped\"]'), steps.$s.outcome)" ;;
+    esac
+  done
   for s in $(printf '%s\n' "$steps" | cut -f1 | awk -v g="$1" '$0 == g || index($0, g "__") == 1'); do
     e="$e && contains(fromJSON('[\"success\",\"skipped\"]'), steps.$s.outcome)"
   done
@@ -115,7 +122,8 @@ outcome_of() { local a; for a in $OUTCOMES; do [ "${a%%=*}" = "$1" ] && { echo "
 group_output() { # what ci-quick's output for group $1 evaluates to under $OUTCOMES; '' when $JOB_RAN=0
   [ "${JOB_RAN:-1}" = 1 ] || { echo ""; return; }
   local s o
-  for s in finished $SHARED; do [ "$(outcome_of "$s")" = success ] || { echo fail; return; }; done
+  for s in finished $STRICT; do [ "$(outcome_of "$s")" = success ] || { echo fail; return; }; done
+  case "$(outcome_of setup-node)" in success|skipped) ;; *) echo fail; return ;; esac
   for s in $(printf '%s\n' "$steps" | cut -f1 | awk -v g="$1" '$0 == g || index($0, g "__") == 1'); do
     o="$(outcome_of "$s")"
     case "$o" in success|skipped) ;; *) echo fail; return ;; esac
@@ -135,6 +143,8 @@ OUTCOMES="" JOB_RAN=0 RUN_CANCELLED=1;  expect "a cancelled run takes no sentine
 RUN_CANCELLED=0
 OUTCOMES="finished=skipped" JOB_RAN=1; expect "a timeout that skips the finished step fails every sentinel" fail claude-startup
 OUTCOMES="checkout=failure" JOB_RAN=1; expect "a failed checkout fails the sentinel before its group ran" fail guardrail-matrices
+OUTCOMES="setup-node=skipped" JOB_RAN=1; expect "setup-node skipped in the CI image passes" pass guardrail-matrices
+OUTCOMES="setup-node=failure" JOB_RAN=1; expect "a failed setup-node fails the sentinel" fail guardrail-matrices
 OUTCOMES="jira-cli-smoke=skipped jira-cli-smoke__npm=skipped" JOB_RAN=1; expect "a plan-gated skip passes" pass jira-cli-smoke
 OUTCOMES="secret-scan=failure" JOB_RAN=1; expect "a failed secret-scan step fails its sentinel" fail secret-scan
 for g in $GROUPS_FOLDED; do

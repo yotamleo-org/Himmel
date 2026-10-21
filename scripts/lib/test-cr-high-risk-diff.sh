@@ -78,7 +78,7 @@ for path in \
     tools/nightly-cadence-runner.sh \
     scripts/luna/pipeline-cadence.sh \
     scripts/check-ci.sh \
-    scripts/cr/clear-cr-marker.sh \
+    scripts/cr/clear-review-marker.sh \
     scripts/cr/pr-merge.sh \
     scripts/cr/critic-panel.sh \
     scripts/cr/ledger-append.sh \

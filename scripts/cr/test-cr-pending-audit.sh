@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015
 # Tests for cr/cr-pending-audit.sh. Each case builds a REAL temp
 # git repo (the audit resolves everything from <git-common-dir>, mirroring
-# clear-cr-marker.sh's no-env-seam posture) and writes markers + ledger at the
+# clear-review-marker.sh's no-env-seam posture) and writes markers + ledger at the
 # fixed paths under the temp repo's own .git.
 set -uo pipefail
 
@@ -108,12 +108,12 @@ out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && grepq "$out" "reason=findings-at-tip" && grepq "$out" "blocking=1" && pass || fail "T3 rc=$rc out=$out"
 rm -rf "$tmp"
 
-echo "T4: clean evidence at tip -> reason=gates-may-pass names clear-cr-marker.sh"
+echo "T4: clean evidence at tip -> reason=gates-may-pass names clear-review-marker.sh"
 make_repo || exit 1
 write_marker "$tmp" feat/x "$sha"
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" crit disproved)"
 out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
-[ "$rc" -eq 1 ] && grepq "$out" "reason=gates-may-pass" && grepq "$out" "clear-cr-marker.sh feat/x from the worktree where feat/x is checked out" && pass || fail "T4 rc=$rc out=$out"
+[ "$rc" -eq 1 ] && grepq "$out" "reason=gates-may-pass" && grepq "$out" "clear-review-marker.sh feat/x from the worktree where feat/x is checked out" && pass || fail "T4 rc=$rc out=$out"
 rm -rf "$tmp"
 
 echo "T5: amended-to-sug finding is NOT re-reported as blocking (HIMMEL-1294)"

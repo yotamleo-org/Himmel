@@ -237,7 +237,7 @@
 # execs (default: claude, PATH-resolved - unchanged for every existing
 # caller). HEADED_ARM_LAUNCHER_ENV is a space-separated list of extra
 # NAME=VALUE tokens (same "no spaces inside a value" contract as
-# codex-bank-probe.ts's CODEX_BANK_PROBE_CMD) added to the `env` command
+# codex-bank-probe.ts's CODEX_USAGE_PROBE_CMD) added to the `env` command
 # ahead of the launcher, for a lane that needs its own opt-in/effort env
 # (e.g. the claudex lane's CLAUDEX_LANE_OK=1). HEADED_ARM_RECORDER=1 wraps
 # the launcher in `script -q -f "$LOG" -c ...` instead of execing it
@@ -555,7 +555,10 @@ if [ "$ROLE" = "console" ]; then
         /*) _console_doc="$DOC" ;;
         *)  _console_doc="$REPO/$DOC" ;;
     esac
-    CONSOLE_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")")
+    # HIMMEL_CONSOLE=1 is the console marker the jira admission overrides
+    # (create --console-override, version-admit/-defer/-ready) check; legs never
+    # get it (headed-arm-leg.sh scrubs it).
+    CONSOLE_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")" "HIMMEL_CONSOLE=1")
 fi
 # This argv carries --autocompact and an Opus 5.5 id, which a CLI
 # below the floor rejects at parse time -- refuse here, naming the version,
@@ -711,7 +714,7 @@ fi
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
     printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
-        "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CONSOLE_ENV[0]:+ ${CONSOLE_ENV[0]} ${CONSOLE_ENV[1]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
+        "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CONSOLE_ENV[0]:+ ${CONSOLE_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
     printf 'headed-arm: name=%s doc=%s signal=%s deadline=%s log=%s role=%s\n' \
         "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "${ROLE:-unsplit}"
     printf 'headed-arm: %s (autocompact=%s)\n' "$CONTEXT_REASON" "$AUTOCOMPACT"

@@ -66,7 +66,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # (GRAPHIFY_CLAUDE_CLI_MODEL, overridable), or an API backend (glm) for zero
 # bank draw. There is no kimi/moonshot backend (operator ruling); the weekly
 # graphmap-cadence.sh semantic leg accepts the bank draw and is gated by
-# bank-preflight.sh instead (see the bank guard below).
+# usage-preflight.sh instead (see the bank guard below).
 # BILLING CAVEAT: claude-cli authenticates via the operator's
 # existing Pro/Max SUBSCRIPTION *only when no Anthropic API credential is in the
 # environment* — a set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN takes precedence
@@ -2214,7 +2214,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # input tokens (144,540 -> 2,585,365 on the himmel corpus) and run 6h44m on
   # luna without finishing, contributing to a workstation hang:
   #
-  #   1. Nothing on the graphify path called bank-preflight.sh. The 13:00 fire
+  #   1. Nothing on the graphify path called usage-preflight.sh. The 13:00 fire
   #      proceeded at 86% 5h utilization.
   #   2. GRAPHIFY_API_TIMEOUT bounds ONE chunk, never the run. claude-cli
   #      chunks are serialized by graphify's own clamp, so N chunks x the
@@ -2238,7 +2238,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # 10# forces base-10: a leading-zero value ("08", "0900") would otherwise be
   # read as octal in the $(( )) arithmetic context below (_deadline_left) and
   # a value like "08" errors outright (invalid octal digit) -- see
-  # scripts/lib/bank-preflight.sh's identical `stamp=$((10#$stamp))` normalize.
+  # scripts/lib/usage-preflight.sh's identical `stamp=$((10#$stamp))` normalize.
   GRAPHIFY_RUN_DEADLINE_SECONDS=$((10#$GRAPHIFY_RUN_DEADLINE_SECONDS))
   # Both bounded calls need -k, and PATH presence is not proof of a GNU-style
   # timeout, so accept only a binary that passes a functional probe (same shape
@@ -2265,18 +2265,18 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # The preflight call itself gets a FIXED small ceiling (120s, 10s kill
   # grace) -- NOT $GRAPHIFY_RUN_DEADLINE_SECONDS. It is a precondition check,
   # not extraction work: it must not eat into the extraction budget, and it
-  # must not be sized like a multi-hour run. bank-preflight.sh shells
+  # must not be sized like a multi-hour run. usage-preflight.sh shells
   # usage-cache-producer.sh, which does a network fetch -- left unbounded,
   # that fetch could hang the cadence indefinitely, inside the very guard
   # whose entire purpose is "nothing on this path runs unbounded".
   case "$BACKEND" in
     claude|claude-cli)
-      _bank_preflight="$REPO_ROOT/scripts/lib/bank-preflight.sh"
+      _bank_preflight="$REPO_ROOT/scripts/lib/usage-preflight.sh"
       if [ -f "$_bank_preflight" ]; then
         if [ -n "$_deadline_bin" ]; then
-          _bank_verdict="$(CADENCE_BANK_LEG="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
+          _bank_verdict="$(CADENCE_USAGE_LEG="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
         else
-          _bank_verdict="$(CADENCE_BANK_LEG="graphmap-$NAME" bash "$_bank_preflight" || true)"
+          _bank_verdict="$(CADENCE_USAGE_LEG="graphmap-$NAME" bash "$_bank_preflight" || true)"
         fi
         # bank-preflight always exits 0 by design (see above), but wrapped in
         # timeout a kill yields 124, and `|| true` swallows that so `set -e`
@@ -2291,7 +2291,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
           exit 3
         fi
       else
-        echo "refresh-graph-map: bank-preflight.sh not found at $_bank_preflight — proceeding UNGUARDED (checkout may be behind main)" >&2
+        echo "refresh-graph-map: usage-preflight.sh not found at $_bank_preflight — proceeding UNGUARDED (checkout may be behind main)" >&2
       fi
       ;;
   esac

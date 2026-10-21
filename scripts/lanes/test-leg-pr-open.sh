@@ -53,18 +53,16 @@ echo change > "$REPO/f"; git -C "$REPO" add f; git -C "$REPO" commit -qm change
 git -C "$REPO" push -q -u origin feat/himmel-3031-x
 HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
 
-# The SUT moves the title's ticket to In Review; a stub Jira CLI
-# keeps every run here off the real tracker and records the transitions.
+# The SUT re-derives the title's ticket status through the status funnel; a
+# stub funnel keeps every run here off the real tracker and records its calls.
 JIRA_LOG="$TMP_ROOT/jira.log"
-JIRA_STUB="$TMP_ROOT/jira-stub.sh"
-cat >"$JIRA_STUB" <<'STUB'
+FUNNEL_STUB="$TMP_ROOT/funnel-stub.sh"
+cat >"$FUNNEL_STUB" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$JIRA_LOG"
-[ "$1" = get ] && printf '{"fields":{"status":{"name":"%s"}}}\n' "${STUB_JIRA_STATUS:-In Progress}"
 exit 0
 STUB
-chmod +x "$JIRA_STUB"
-export JIRA_LOG LEG_JIRA_CLI="$JIRA_STUB"
+export JIRA_LOG TICKET_STATUS_FUNNEL="$FUNNEL_STUB"
 
 TITLE_FILE="$TMP_ROOT/title.txt"
 BODY_FILE="$TMP_ROOT/body.txt"
@@ -357,15 +355,15 @@ contains "refusal names the PR number" "$err_q" "42"
 contains "refusal names the PR's key" "$err_q" "HIMMEL-7"
 not_contains "the PR is never edited" "$(cat "$ARGV_LOG")" "pr edit"
 
-# ── opening the PR moves the ticket to In Review ───────────────
+# ── opening the PR re-derives the ticket's status ──────────────
 unset STUB_OPEN_PR 2>/dev/null || true
 : > "$JIRA_LOG"
 out_n=$(run_sut "$TITLE_FILE" "$BODY_FILE"); rc_n=$?
 assert_eq "jira-wired open still exits 0" "0" "$rc_n"
 assert_eq "jira-wired open keeps the one-line success contract" \
     "PR 9 https://github.com/owner/repo/pull/9 $(git -C "$REPO" rev-parse HEAD)" "$out_n"
-assert_eq "PR open transitions the title's ticket to In Review" \
-    "transition HIMMEL-3031 In Review" "$(grep '^transition' "$JIRA_LOG")"
+assert_eq "PR open fires a pr-open event for the title's ticket" \
+    "HIMMEL-3031 --event pr-open --pr 9 --head $(git -C "$REPO" rev-parse HEAD)" "$(cat "$JIRA_LOG")"
 : > "$JIRA_LOG"
 LEG_JIRA_STATUS=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null
 assert_eq "LEG_JIRA_STATUS=0 makes no Jira call" "0" "$(wc -c < "$JIRA_LOG" | tr -d ' ')"

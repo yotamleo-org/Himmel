@@ -3115,7 +3115,7 @@ check_c40_qmd_vec() {
     fi
 
     local init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-doctor","version":"1"}}}'
-    local vec_payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"searches":[{"type":"vec","query":"himmel doctor vector probe"}],"limit":1,"rerank":false}}}'
+    local vec_payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"searches":[{"type":"vec","query":"qmd semantic search health check"}],"limit":1,"rerank":false}}}'
     local init init_rc init_code=""
     # the daemon requires a bearer token; it goes to
     # curl as a config on stdin (never argv), read through the plugin's helper.
@@ -4013,13 +4013,18 @@ check_c57_dotenv_allowlists() {
 
 # --- C59-codex-bank-cache: a codex bank cache older than its TTL ---
 # bank-status reads this cache and reports codex=? once it is older than
-# CODEX_BANK_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
+# CODEX_USAGE_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
 # WARN here means the refresh did not run or failed (codex missing, logged out,
 # probe timing out). Read-only: it never runs the probe.
 check_c59_codex_bank_cache() {
-    local cache="${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
-    local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
+    local cache="${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}}"
+    local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-usage-probe.ts"
     local at captured now age
+    # the new name counts only when it is a positive number, as bank-status reads it.
+    case "${CODEX_USAGE_CACHE_TTL_SECONDS:-}" in
+        '' | *[!0-9]*) ;;
+        *) if [ "$((10#$CODEX_USAGE_CACHE_TTL_SECONDS))" -gt 0 ]; then ttl="$CODEX_USAGE_CACHE_TTL_SECONDS"; fi ;;
+    esac
     case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; *) ttl=$((10#$ttl)) ;; esac
     if [ ! -f "$cache" ]; then
         emit INFO C59-codex-bank-cache "no codex bank cache at $cache — the codex lane reads unmeasurable until the probe has run once" "run: $cmd"

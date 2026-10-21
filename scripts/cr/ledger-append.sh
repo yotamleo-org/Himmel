@@ -204,7 +204,7 @@ if [ "$kind" = "finding" ] && [ -z "$batch_file" ] && { [ -n "$deferred_to" ] ||
   exit 2
 fi
 # The single-row finding verb is held to the batch writers' bar.
-# clear-cr-marker.sh compares verdicts lowercase, so only the lowercase set is
+# clear-review-marker.sh compares verdicts lowercase, so only the lowercase set is
 # a verdict; and a row with no branch stamp is exempt from gate 4d, so a
 # missing --branch is stamped with the current branch, and refused when there
 # is none (detached HEAD) rather than written unstamped.
@@ -649,7 +649,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   const existing=fs.existsSync(led)?fs.readFileSync(led,"utf8").split("\n").filter(Boolean):[];
   const parsed=existing.map(l=>{try{return JSON.parse(l);}catch{return null;}}).filter(Boolean);
   // Resolve-then-compare head matching -
-  // the SAME posture clear-cr-marker.sh already takes on READ (its atHead()
+  // the SAME posture clear-review-marker.sh already takes on READ (its atHead()
   // resolves an abbreviation through git rather than string-comparing it).
   // A plain === match is tried FIRST (the common case: both sides already
   // full, zero git calls); only a mismatch falls through to resolving BOTH
@@ -934,7 +934,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // raw-only check misses a finding chased through `--set head=`, so a
     // follow-up amend on the re-keyed head from a different checkout could
     // not locate its owning branch and fell through to the caller's own,
-    // wrong, branch). clear-cr-marker.sh / handover-bridge.sh key amendSetFor
+    // wrong, branch). clear-review-marker.sh / handover-bridge.sh key amendSetFor
     // on the TARGET FINDING ROW's own branch (o.branch||"") - for a
     // branch-less legacy finding that collapses their "scoped" and "legacy"
     // lookup keys to the same "" bucket, so an amend must itself be
@@ -1076,8 +1076,10 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     }
     // A fixed or deferred amend carries the class it belongs to. The session
     // supplies class= only when this attribution (the globs + match test the
-    // known-findings ladder uses) finds none; a finding no class claims is
-    // recorded as "unattributed" so a later slice can count them.
+    // known-findings ladder uses) finds none. A fixed amend no class claims is
+    // recorded as "unattributed" so a later slice can count them; a deferral
+    // no class claims is refused, since a residual filed from it would carry
+    // a placeholder class the recurrence detector cannot count.
     if((set.verdict==="fixed"||set.verdict==="deferred"||set.deferred_to)&&!set.class){
       set.class="unattributed";
       try{
@@ -1085,6 +1087,10 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
         const hit=(JSON.parse(fs.readFileSync(e.KF_FILE,"utf8")).classes||[]).find(c=>c.match&&target.file&&(c.globs||[]).some(g=>globRe(g).test(target.file))&&typeof target.text==="string"&&new RegExp(c.match,"i").test(target.text));
         if(hit) set.class=hit.id;
       }catch(err){ /* no readable catalog: the row stays unattributed */ }
+      if(set.class==="unattributed"&&(set.verdict==="deferred"||set.deferred_to)){
+        process.stderr.write("ledger-append.sh: finding "+e.ID+" matches no known-findings class, so a deferral of it needs --set class=<known-findings class id> or --set class=new:<slug> (lowercase letters, digits, hyphens). NOTHING was written.\n");
+        process.exit(2);
+      }
     }
     // By this point e.BRANCH has already been resolved above - explicit
     // --branch if given, else (for the "" case) the unique real candidate
@@ -1318,7 +1324,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // needed to keep this append-only + auditable: a fresh `avail` row is
     // appended and the pre-existing "last matching line is the current
     // effective record" contract (see the unavailable->ok case below, and how
-    // clear-cr-marker.sh reads this ledger) makes it authoritative without
+    // clear-review-marker.sh reads this ledger) makes it authoritative without
     // rewriting anything — the superseded row stays on disk for audit.
     // An EXACT status+reason+detail repeat still dedups (the pre-existing
     // idempotent-rerun contract for a truly unchanged reading).

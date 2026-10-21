@@ -886,7 +886,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
 
   it('refuses the override when there is no ledger location, rather than writing elsewhere', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    delete process.env['HANDOVER_DIR'];
+    process.env['HANDOVER_DIR'] = join(dir, 'missing');
     await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/HANDOVER_DIR/);
     expect(created()).toBeUndefined();
   });
@@ -1065,5 +1065,148 @@ describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
     play('Release train.\nfrozen:\nnotes');
     await file('Task', '--fix-version', 'v1.1.3');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+  });
+});
+
+describe('create — blocker version placement', () => {
+  let frozen: boolean;
+  let full: boolean;
+  let targetVersions: { name: string }[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((code: number) => { throw new Error(`exit ${code}`); }) as never);
+    frozen = false;
+    full = false;
+    targetVersions = [{ name: 'v1.1.3' }];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/project/')) return [
+        { id: '113', name: 'v1.1.3', released: false, description: frozen ? 'frozen: 2026-10-20' : '' },
+        { id: '114', name: 'v1.1.4', released: false },
+      ];
+      if (method === 'GET' && path.startsWith('/issue/')) return { fields: {
+        project: { key: 'HIMMEL' }, fixVersions: targetVersions, status: { statusCategory: { key: 'new' } },
+      } };
+      if (method === 'GET' && path.startsWith('/search/')) return { issues: full ? Array(15).fill({ key: 'HIMMEL-10' }) : [] };
+      if (method === 'POST' && path === '/issue') return { key: 'HIMMEL-6559' };
+      return {};
+    });
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  const file = (...args: string[]) => {
+    const p = new Command().exitOverride();
+    registerCreate(p);
+    return p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'Blocker', '--desc', PLAIN, '--labels', 'standalone', ...args]);
+  };
+  const created = () => (mockRequest.mock.calls.find(([m, p]) => m === 'POST' && p === '/issue')?.[2] as { fields: Record<string, unknown> } | undefined)?.fields;
+  const writes = () => mockRequest.mock.calls.filter(([m]) => m !== 'GET');
+
+  it.each(['HIMMEL-6575', 'HIMMEL-6582', 'HIMMEL-1620'])('inherits the version when creating a blocker of %s', async (target) => {
+    await file('--blocks', target);
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: 'Blocks' }, inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: target },
+    });
+  });
+
+  it('handles both 6559 dependents in one filing', async () => {
+    await file('--blocks', 'HIMMEL-6575', '--blocks', 'HIMMEL-6582');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(writes().filter(([, path]) => path === '/issueLink')).toHaveLength(2);
+  });
+
+  it('inherits on --split-from and records the source with a Relates link', async () => {
+    await file('--split-from', 'HIMMEL-1620');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: 'Relates' }, inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: 'HIMMEL-1620' },
+    });
+  });
+
+  it('allows --backlog explicitly, labelling the Task without stamping a version', async () => {
+    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    expect(created()?.fixVersions).toBeUndefined();
+    expect(created()?.labels).toContain('backlog');
+  });
+
+  it('refuses an explicit version that omits the current dependent version', async () => {
+    await expect(file('--blocks', 'HIMMEL-1620', '--fix-version', 'v1.1.4')).rejects.toThrow(/v1\.1\.3/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('does not bypass frozen-version admission through inheritance', async () => {
+    frozen = true;
+    await expect(file('--blocks', 'HIMMEL-1620')).rejects.toThrow(/frozen/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('inherits a frozen version only with --gate must:<ruling>, recording the admission', async () => {
+    frozen = true;
+    const dir = mkdtempSync(join(tmpdir(), 'inherit-gate-'));
+    const prior = process.env['HIMMEL_ADMISSIONS_LEDGER'];
+    process.env['HIMMEL_ADMISSIONS_LEDGER'] = join(dir, 'admissions-ledger.jsonl');
+    try {
+      await file('--blocks', 'HIMMEL-1620', '--gate', 'must:RULING-1');
+      expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+      expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('"gate":"must:RULING-1"');
+    } finally {
+      if (prior === undefined) delete process.env['HIMMEL_ADMISSIONS_LEDGER'];
+      else process.env['HIMMEL_ADMISSIONS_LEDGER'] = prior;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('files a blocker of a frozen-version ticket with --backlog and no gate', async () => {
+    frozen = true;
+    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    expect(created()?.fixVersions).toBeUndefined();
+    expect(created()?.labels).toContain('backlog');
+  });
+
+  it('does not bypass the residual cap through inheritance', async () => {
+    full = true;
+    await expect(file('--blocks', 'HIMMEL-1620')).rejects.toThrow(/exit 1/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('does not copy a future version from a non-current target', async () => {
+    targetVersions = [{ name: 'v1.1.4' }];
+    await file('--blocks', 'HIMMEL-1620');
+    expect(created()?.fixVersions).toBeUndefined();
+  });
+
+  it('create --blocked-by records the existing blocker as inward, not the new issue', async () => {
+    await file('--blocked-by', 'HIMMEL-1158', '--fix-version', 'v1.1.3');
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
+      type: { name: 'Blocks' }, inwardIssue: { key: 'HIMMEL-1158' }, outwardIssue: { key: 'HIMMEL-6559' },
+    });
+  });
+
+  it('create --blocked-by refuses a versionless existing blocker before creating its dependent', async () => {
+    targetVersions = [];
+    await expect(file('--blocked-by', 'HIMMEL-1158', '--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3.*--backlog/);
+    expect(writes()).toEqual([]);
+  });
+
+  it('create --blocked-by does not inherit from the blocker in the opposite direction', async () => {
+    await file('--blocked-by', 'HIMMEL-1158');
+    expect(created()?.fixVersions).toBeUndefined();
+  });
+
+  it('refuses a versionless split when its source cannot be read', async () => {
+    mockRequest.mockImplementation(async () => { throw new Error('Jira unavailable'); });
+    await expect(file('--split-from', 'HIMMEL-1620')).rejects.toThrow(/Jira unavailable/);
+    expect(writes()).toEqual([]);
+  });
+
+  it.each(['--blocks', '--split-from'])('reports the inherited residual destination for %s', async (relation) => {
+    await file('--residual-of', 'HIMMEL-3', '--fu-class', 'polish', '--class', 'routing', relation, 'HIMMEL-1620');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
+    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
   });
 });

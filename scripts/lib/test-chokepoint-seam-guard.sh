@@ -125,7 +125,7 @@ assert_eq "R2 run-shell-tests enforces every seam but the internal HELD" \
     "HIMMEL_SUITE_SLOTS HIMMEL_SUITE_SEMAPHORE_DIR HIMMEL_SUITE_SLOT_TTL" \
     "$(_csg_registry_seams "$REGISTRY" scripts/ci/run-shell-tests.sh)"
 assert_eq "R3 merge-on-green enforces its full list" \
-    "ARMAUTOMERGE MERGE_ON_GREEN_LOG HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_REPO" \
+    "ARMAUTOMERGE MERGE_ON_GREEN_LOG HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_REPO MERGE_STATIC_RECHECK" \
     "$(_csg_registry_seams "$REGISTRY" scripts/handover/merge-on-green.sh)"
 assert_eq "R3b claude-headless enforces its mock seam and the four dispatch seams (HIMMEL-5138)" \
     "NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK HIMMEL_DISPATCH_MAX_CONCURRENT HIMMEL_DISPATCH_ROW_TTL_SECS HIMMEL_HEADLESS_SEAM_DIR HIMMEL_HEADLESS_NO_FLOCK" \
@@ -392,7 +392,7 @@ for key in $KEYS; do
     mkdir -p "$FC/$(dirname "$key")"
     cp "$REPO/$key" "$FC/$key"
     out=$(cd "$FC/home" && env -i PATH="/usr/bin:/bin" HOME="$FC/home" bash "$FC/$key" --help </dev/null 2>&1); rc=$?
-    case "$out" in *"cannot load"*"HIMMEL-3914"*) said=named ;; *) said=silent ;; esac
+    case "$out" in *"cannot load "*"/chokepoint-seam-guard.sh - refusing"*) said=named ;; *) said=silent ;; esac
     assert_eq "F1 $key without its lib -> rc 96, names the lib" "96|named" "$rc|$said"
 done
 

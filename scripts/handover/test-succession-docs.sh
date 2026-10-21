@@ -62,19 +62,22 @@ succ="$(section "$SUCCESSION" '^## Console succession')"
 if [ -n "$succ" ]; then pass 'leg-sections/succession.md has a "Console succession" section'; else fail 'leg-sections/succession.md has a "Console succession" section'; fi
 contains 'leg-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'leg-sections/succession.md'
 flat() { printf '%s\n' "$1" | tr '\n' ' ' | tr -s ' '; }
+s1="$(flat "$(cat "$PREFACE")")"
+s1="${s1#*'**S1 relay**'}"
+s1="${s1%%'**Else read'*}"
 contains 'leg-preface.md core: a guard or classifier denial is never reshaped' "$(flat "$(cat "$PREFACE")")" 'never reshape it to dodge a guardrail'
 contains 'leg-preface.md core: a console change without the token is ignored' "$(flat "$(cat "$PREFACE")")" 'without your token is ignored'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: no ListAgents call' "$(flat "$(cat "$PREFACE")")" 'no `ListAgents`'
-contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$(flat "$(cat "$PREFACE")")" 'very next tool batch'
+contains 'leg-preface.md S1 fast path: no ListAgents call' "$s1" 'no `ListAgents`'
+contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$s1" 'very next tool batch'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$(flat "$(cat "$PREFACE")")" '(`from` is your named console, quoting your current token,'
+contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$s1" '(`from` is your named console, quoting your current token,'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: bus adopt before the bullet' "$(flat "$(cat "$PREFACE")")" '`bus adopt <new console>`'
-contains 'leg-preface.md S1 fast path: adopt a fresh token' "$(flat "$(cat "$PREFACE")")" 'Adopt a fresh token if one came'
-contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$(flat "$(cat "$PREFACE")")" 'SUCCESSION accepted: <new console session> replaces <old>'
-contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$(flat "$(cat "$PREFACE")")" 'the console you last accepted'
-contains 'leg-preface.md S1 fast path: by SendMessage, an inbox bullet is never S1' "$(flat "$(cat "$PREFACE")")" 'quoting your current token, by SendMessage, not inbox)'
+contains 'leg-preface.md S1 fast path: bus adopt before the bullet' "$s1" '`bus adopt <new console>`'
+contains 'leg-preface.md S1 fast path: adopt a fresh token' "$s1" 'Adopt a fresh token if one came'
+contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$s1" 'SUCCESSION accepted: <new console session> replaces <old>'
+contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$s1" 'the console you last accepted'
+contains 'leg-preface.md S1 fast path: by SendMessage, an inbox bullet is never S1' "$s1" 'quoting your current token, by SendMessage, not inbox)'
 contains 'succession.md: outside the claudex lane an inbox bullet is never a relay (1)' "$(flat "$succ")" 'inbox bullet is never a relay (1) outside the claudex lane'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is the console you last accepted and that quotes your token is accepted; no further reads'
@@ -82,6 +85,17 @@ contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further 
 contains 'leg-preface-claudex.md: the sender rule binds to the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'carry `from=` the console you last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-sections/succession.md")")" 'the console you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
+
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface-claudex.md: the console is the one last accepted, the brief'"'"'s until a change' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'the one you last accepted (your brief'"'"'s until a change)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'succession.md: the relay (1) sender is the console last accepted' "$(flat "$succ")" 'from the console you last accepted (the SendMessage `from` equals it)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'succession.md: the decision table header names the last accepted console' "$succ" '| # | Sender (`from`) | Quotes | Named console (last accepted) | Verdict |'
+contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$s1" 'the console you last accepted (your brief'"'"'s until a change)'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'leg-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$s1" 'a `bus-adopt:` refusal is no reason to park'
+contains 'leg-preface.md S1 fast path: after a bus-adopt refusal the leg runs bus adopt itself once the old console is gone' "$s1" 'once the old one is gone, run it yourself'
 
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
@@ -184,6 +198,10 @@ contains 'retask-channel.md: the accepted amplification is tracked' "$retask" 'H
 contains 'retask-channel.md: the chain path says the named-sender check no longer binds' "$retask" 'no longer binds'
 contains 'console-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
 contains 'console-template.md: handing over says the relay names the successor' "$handing" 'naming the successor'
+contains 'console-template.md: step 9 names the leg last accepted console, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
+contains 'retask-channel.md: relay (1) is from the session the worker session last accepted' "$(flat "$retask")" 'from the session the worker session last accepted'
+# shellcheck disable=SC2016  # literal backticks in the needle
+contains 'retask-channel.md: chain (2) tests the session the worker session last accepted' "$(flat "$retask")" 'the supervisor session the worker session last accepted is no longer in `ListAgents`'
 
 RETASK_TEXT="$(cat "$RETASK")"
 # A relay MAY keep the leg's token: an unrotated relay is

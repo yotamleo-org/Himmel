@@ -150,7 +150,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # clear this branch's pending CR marker through the sanctioned
-# chokepoint (scripts/cr/clear-cr-marker.sh, never a raw `rm`) so the merge does
+# chokepoint (scripts/cr/clear-review-marker.sh, never a raw `rm`) so the merge does
 # not leave one behind: the marker lives in the SHARED git-common-dir and
 # check-cr-marker-on-pr-create.sh resolves the branch from the session cwd, so a
 # marker outliving its merged branch HARD-BLOCKS `gh pr create` on unrelated
@@ -169,12 +169,12 @@ fi
 # No marker => the chokepoint is not invoked at all (it would otherwise pay for
 # a check-ci watch to no-op).
 _cr_marker_common=$(git rev-parse --git-common-dir 2>/dev/null || true)
-_cr_clearer="$SCRIPT_DIR/../cr/clear-cr-marker.sh"
+_cr_clearer="$SCRIPT_DIR/../cr/clear-review-marker.sh"
 if [ -n "$_cr_marker_common" ] && [ -f "$_cr_marker_common/cr-pending/$current_branch" ]; then
     if [ ! -f "$_cr_clearer" ]; then
         # Say so: a pending marker left behind silently is the exact
         # failure the marker clearing exists to prevent.
-        echo "pr-merge: clear-cr-marker.sh not found at $_cr_clearer — the CR marker for '$current_branch' stays pending (HIMMEL-1346). Merging anyway." >&2
+        echo "pr-merge: clear-review-marker.sh not found at $_cr_clearer — the CR marker for '$current_branch' stays pending. Merging anyway." >&2
     else
         _cr_clear_rc=0
         bash "$_cr_clearer" "$current_branch" || _cr_clear_rc=$?

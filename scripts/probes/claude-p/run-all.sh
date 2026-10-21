@@ -34,10 +34,10 @@ for probe in 01-compact-via-resume.sh 01b-compact-via-continue.sh 02-dontask-all
   # Re-check the bank between probes, not just once before the whole batch —
   # a run starting just below the skip threshold could otherwise cross it
   # partway through and keep issuing every remaining headless call unchecked.
-  MIDBATCH_VERDICT="$(bash "$REPO_ROOT/scripts/lib/bank-preflight.sh" 2>"$OUT_DIR/midbatch-preflight.err")"
+  MIDBATCH_VERDICT="$(bash "$REPO_ROOT/scripts/lib/usage-preflight.sh" 2>"$OUT_DIR/midbatch-preflight.err")"
   MIDBATCH_RC=$?
   if [ "$MIDBATCH_RC" -ne 0 ]; then
-    echo "ABORT: mid-batch bank-preflight.sh failed (rc=$MIDBATCH_RC, before $probe) — see $OUT_DIR/midbatch-preflight.err" | tee -a "$LOG"
+    echo "ABORT: mid-batch usage-preflight.sh failed (rc=$MIDBATCH_RC, before $probe) — see $OUT_DIR/midbatch-preflight.err" | tee -a "$LOG"
     exit 1
   fi
   if [ "$MIDBATCH_VERDICT" = "SKIPPED-BANK" ]; then
