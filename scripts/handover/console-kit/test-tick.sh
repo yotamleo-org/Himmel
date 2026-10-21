@@ -223,6 +223,30 @@ export CLAUDE_SESSIONS_PROC="$W/proc"
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
 
+# Partial counts below the cap cannot become an exact, healthy tick sample.
+mkdir -p "$W/repo/scripts/ci"
+cat > "$W/repo/scripts/ci/queue-latency.sh" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$STUB_CIQ_OUT"
+STUB
+sampled_out='ci-queue: jobs_in_progress=44/60 macos=0/5 queued=29 oldest_wait=10m sampled=true'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'a below-cap sampled probe stays unknown' "$sampled_tick" 'ciq=unknown'
+not_contains 'a below-cap sampled probe is not an exact count' "$sampled_tick" 'ciq=44/60'
+not_contains 'a below-cap sampled probe cannot claim saturation' "$sampled_tick" 'SATURATED'
+# Proven saturation keeps a parser-compatible count and a separate sample label.
+sampled_out=$'ci-queue: jobs_in_progress=64/60 macos=0/5 queued=32 oldest_wait=10m\nci-queue: sampled=true'
+rm -rf "$W/state"
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+not_contains 'one proven sampled breach does not raise SATURATED' "$sampled_tick" 'SATURATED'
+sampled_tick="$(STUB_CIQ_OUT="$sampled_out" bash "$SUT" 2>/dev/null)"
+contains 'two proven sampled breaches still raise SATURATED' "$sampled_tick" 'ciq=64/60,mac=0/5,q=32,wait=10m,SATURATED'
+rm -f "$W/repo/scripts/ci/queue-latency.sh"
+rm -rf "$W/state"
+if [ "${1:-}" = --ciq-sampled ]; then
+    if [ "$fails" -eq 0 ]; then printf 'PASSED\n'; exit 0; else printf 'FAILED=%s\n' "$fails"; exit 1; fi
+fi
+
 # Missing cadence, a fresh marker, and an overlapping tick must not be confused.
 worktree_prune_cases() (
     local repo="$W/prune-repo" bin="$W/prune-bin" state="$W/prune-state" stamp out
@@ -2768,6 +2792,31 @@ contains 'a non-numeric HANDOFF_BUDGET_BYTES falls back to the default (HIMMEL-6
 printf '%s\n' '# console' '' 'decisions: a brief note above Live state, not the line' '' '## Live state' 'decisions: (1) short.' > "$d6603"
 contains 'only the Live state decisions: line is measured (HIMMEL-6603)' "$(DECISIONS_BUDGET_BYTES=10 TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)" 'ACTION decisions-over-budget=21/10: '
 rm -f "$d6603" "$W/handover/HIMMEL-6603-console-HANDOFF.md"
+
+# --- effort=MISMATCH:<leg> ----------------------------------------------------
+# The asked effort is the LEG_EFFORT line in the launch-<label>.sh the console
+# wrote beside the leg doc; the live effort is the effort= token on the leg's
+# newest LIVE bullet. A leg asked for high that reports medium is the 09-23 to
+# 10-20 incident this field exists to show.
+ef_doc="$W/handover/HIMMEL-6588-N77-effort.md"
+ef_ok="$W/handover/HIMMEL-6588-N78-effort.md"
+ef_none="$W/handover/HIMMEL-6588-N79-effort.md"
+printf '%s\n' '# leg' '- 09:00 LIVE — started effort=medium model=claude-sonnet-5-5' > "$ef_doc"
+printf '%s\n' '# leg' '- 09:00 LIVE — started effort=high model=claude-sonnet-5-5' > "$ef_ok"
+printf '%s\n' '# leg' '- 09:00 LIVE — started, no effort token' > "$ef_none"
+for ef_l in N77 N78 N79; do printf '%s\n' '#!/usr/bin/env bash' 'export LEG_EFFORT=high' > "$W/handover/launch-$ef_l.sh"; done
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N77","lockless":true},{"doc":"%s","label":"N78","lockless":true},{"doc":"%s","label":"N79","lockless":true}]}\n' "$ef_doc" "$ef_ok" "$ef_none" > "$fm"
+ef_out="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc=$?
+if [ "$ef_rc" -eq 0 ]; then pass 'the effort fixture tick exits 0'; else fail "the effort fixture tick exits 0 (rc=$ef_rc)"; fi
+contains 'a leg asked for high whose LIVE bullet says medium reads effort=MISMATCH:N77 (HIMMEL-6588)' "$ef_out" ' effort=MISMATCH:N77'
+not_contains 'a leg whose LIVE effort matches the asked one is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N78'
+not_contains 'a LIVE bullet with no effort= token is not flagged (HIMMEL-6588)' "$ef_out" 'MISMATCH:N79'
+printf '%s\n' '- 09:30 LIVE — resumed effort=high model=claude-sonnet-5-5' >> "$ef_doc"
+ef_out2="$(LEGS='' bash "$SUT" --legs-from "$fm")"; ef_rc2=$?
+if [ "$ef_rc2" -eq 0 ]; then pass 'the re-run effort fixture tick exits 0'; else fail "the re-run effort fixture tick exits 0 (rc=$ef_rc2)"; fi
+contains 'the re-run effort fixture tick prints its TICK line' "$ef_out2" 'TICK '
+not_contains 'only the newest LIVE bullet decides the effort (HIMMEL-6588)' "$ef_out2" 'effort=MISMATCH'
+rm -f "$ef_doc" "$ef_ok" "$ef_none" "$W/handover/launch-N77.sh" "$W/handover/launch-N78.sh" "$W/handover/launch-N79.sh" "$fm"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
