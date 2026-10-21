@@ -25,6 +25,8 @@ set -uo pipefail
 
 unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_CONSOLE_LEG HIMMEL_LEG_DOC HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME HIMMEL_REPO LEG_JIRA_CLI
 export JIRA_PROJECT_KEY=HIMMEL CHECK_CI_CACHE=0
+# The pre-merge static re-check fetches from the anchor's origin; this suite's fixture anchor is not a git repo.
+export MERGE_STATIC_RECHECK=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
