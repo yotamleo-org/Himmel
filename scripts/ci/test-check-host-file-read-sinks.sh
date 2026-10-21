@@ -117,15 +117,35 @@ case_repo base flag-quoted-assign-argv
 run_check
 [ "$RC" -eq 1 ] && ok "assignment-shaped text inside a quoted value does not hide argv" || bad "quoted NAME=\$1 hid the taint (rc=$RC): $OUT"
 
+case_repo base flag-trailing-comment-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a trailing comment does not count as an assignment" || bad "trailing comment NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-heredoc-usage-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a heredoc usage line does not count as an assignment" || bad "heredoc NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-multiline-usage-assign
+run_check
+[ "$RC" -eq 1 ] && ok "NAME= in a multi-line quoted usage string does not count as an assignment" || bad "multi-line quoted NAME= hid the read (rc=$RC): $OUT"
+
+case_repo base flag-arg-assign
+run_check
+[ "$RC" -eq 1 ] && ok "a NAME=value command argument is not an assignment" || bad "argument NAME=value hid the read (rc=$RC): $OUT"
+
+case_repo base flag-env-prefix-stub
+run_check
+[ "$RC" -eq 1 ] && ok "the PR 3461 stub line (assignment as a run argument) is flagged and needs a read-sink-ok marker" || bad "run-argument assignment hid the read (rc=$RC): $OUT"
+
 # --- must-pass --------------------------------------------------------------------
 # Real lines from PRs 3460 and 3461 (each needed a read-sink-ok marker before).
 case_repo base pass-tempdir-multi-export
 run_check
 [ "$RC" -eq 0 ] && ok "a name assigned second on an export line is assigned" || bad "multi-export temp read flagged (rc=$RC): $OUT"
 
-case_repo base pass-env-prefix-stub
+case_repo base pass-head-forms
 run_check
-[ "$RC" -eq 0 ] && ok "a name assigned as a NAME=value argument counts as assigned" || bad "env-prefix stub read flagged (rc=$RC): $OUT"
+[ "$RC" -eq 0 ] && ok "a line-head command prefix and a declare/typeset list count as assigned" || bad "line-head assignment forms flagged (rc=$RC): $OUT"
 
 case_repo base pass-nonleading-argv-assign
 run_check

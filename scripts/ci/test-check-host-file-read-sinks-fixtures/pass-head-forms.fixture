@@ -1,0 +1,9 @@
+# fixture, not executable
+echo hi
+WS="$(mktemp -d "${TMPDIR:-/tmp}/own.XXXXXX")"
+STUB_REPLAY="$WS/r.json" run x
+cat "$STUB_REPLAY"
+declare -x A_FILE="$WS/a" B_FILE="$WS/b"
+cat "$B_FILE"
+typeset C_FILE="$WS/c"
+cat "$C_FILE"
