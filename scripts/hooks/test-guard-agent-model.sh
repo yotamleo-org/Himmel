@@ -111,7 +111,8 @@ check "console-judge-ro + claude-opus-5-5 -> allow" allow "$(agent console-judge
 check "console-judge-ro + no model -> allow" allow "$(agent console-judge-ro '' 'x')"
 check "console-judge-ro + sonnet + marker -> allow" allow "$(agent console-judge-ro sonnet "$MARK")"
 check "plugin-namespaced console-judge-ro + sonnet -> deny" block "$(agent himmel-ops:console-judge-ro sonnet 'x')"
-check "console-judge-rogue + sonnet -> allow (not a judge agent)" allow "$(agent console-judge-rogue sonnet 'x')"
+check "console-judge-<future> + sonnet -> deny (any console-judge-* agent)" block "$(agent console-judge-future sonnet 'x')"
+check "console-judgement + sonnet -> allow (not a judge agent)" allow "$(agent console-judgement sonnet 'x')"
 check "other agent + sonnet -> allow" allow "$(agent Explore sonnet 'x')"
 
 echo "== other tool / malformed / empty stdin -> allow (fail-open) =="
