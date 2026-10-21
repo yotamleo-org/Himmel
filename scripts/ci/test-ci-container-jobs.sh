@@ -39,6 +39,15 @@ REF_RE='^ghcr\.io/yotamleo-org/himmel-ci@sha256:[0-9a-f]{64}$'
 job_block() { awk -v job="$1" '$0 == "  " job ":" { j = 1; print; next } j && /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/ { exit } j { print }' "$CI_YML" | sed 's/ # env-literal-ok: .*$//'; }
 in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 image_of() { sed -n 's/^      image: //p' <<< "$1"; }
+# k1_shell_ok <job block>: the job-level defaults.run.shell is bash.
+k1_shell_ok() {
+  awk '$0 == "    defaults:" { d = 1; next }
+       d && /^    [^ ]/ { d = 0; r = 0 }
+       d && $0 == "      run:" { r = 1; next }
+       r && /^      [^ ]/ { r = 0 }
+       r && /^        shell: bash( -e [{]0[}])?$/ { f = 1 }
+       END { exit !f }' <<< "$1"
+}
 
 # evaluate <expr> <event> <head_repo> <actor> <ci_image> <vm_runner> <ci_gcp>
 evaluate() {
@@ -78,7 +87,7 @@ for j in $JOBS; do
   done
   if [ -n "$img" ] && [ -z "$miss" ]; then ok "K1 $j runs in the image ($opts, packages: read)"
   else bad "K1 $j container shape: missing${miss:- image line}"; fi
-  if grep -qxF "    defaults:" <<< "$b" && grep -qxE '        shell: bash( -e [{]0[}])?' <<< "$b"; then ok "K1 $j sets defaults.run.shell: bash"
+  if k1_shell_ok "$b"; then ok "K1 $j sets defaults.run.shell: bash"
   else bad "K1 $j has no defaults.run.shell: bash, so its run steps get the container's sh"; fi
   # K2
   if [[ "$ref" =~ $REF_RE ]]; then ok "K2 $j default ref is digest-pinned"; else bad "K2 $j default ref '${ref:-<none>}' is not ghcr.io/yotamleo-org/himmel-ci@sha256:<64 hex>"; fi
@@ -106,6 +115,10 @@ for j in $JOBS; do
     chk "the self-hosted switches leave it in the image" "$ref" pull_request yotamleo-org/Himmel yotamleo "" on on
   fi
 done
+# K1: a step-level shell under a defaults block that sets no shell is not a job default.
+mut=$'  lint:\n    defaults:\n      run:\n        working-directory: .\n    steps:\n      - run: set -o pipefail\n        shell: bash -e {0}'
+if k1_shell_ok "$mut"; then bad "K1 a step-level shell: bash passes for defaults.run.shell"
+else ok "K1 a step-level shell: bash is not defaults.run.shell"; fi
 if [ "$(sort -u <<< "$refs" | grep -c .)" -eq 1 ]; then ok "K2 every job names the same default ref"; else bad "K2 the jobs name different default refs: $(sort -u <<< "$refs" | tr '\n' ' ')"; fi
 
 # K4: the evaluator is not vacuous -- the old form lets a fork into the image.
