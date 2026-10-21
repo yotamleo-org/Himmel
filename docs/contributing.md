@@ -147,6 +147,45 @@ node scripts/jira/dist/index.js create --project HIMMEL --type Task \
 A Task, Story or Bug needs `--sector` and either `--parent <epic>` or
 `--labels standalone`; `create` refuses it otherwise (HIMMEL-6223).
 
+## Guard changes: one structural round
+
+A guard (a hook or gate that denies a command) gets one structural round:
+one PR that closes the bypass class it was built for. Bypasses found after
+that round go into one residual ticket on that guard. They do not each get a
+new PR. Guard churn was the costliest pattern in the 30-day self-review: 28
+merges went to the write fence alone, including the three most expensive PRs.
+
+## Cleanups run in capped batches
+
+A cleanup ships as a queue of batches, never one open-ended PR at a time.
+Each runner in `scripts/cleanup/` has a fixed cap and refuses a batch over it.
+
+| Area | Runner | Cap per batch |
+|---|---|---|
+| Cleanup tickets and PRs | `cleanup-batch.sh plan <paths>` queues the work; `cleanup-batch.sh check` refuses a branch over the cap | 20 files, one directory family |
+| Worktree reclaim | `worktree-batch.sh plan`, then `worktree-batch.sh apply <file>` (each path goes through `worktree.sh prune --only`) | 10 worktrees |
+| Jira hygiene | `jira-batch.sh plan stale\|version\|status`, then `jira-batch.sh apply <file>` (adds a `stale`, `version-drift` or `status-drift` label) | 20 tickets |
+
+The 20-file cap comes from HIMMEL-5629: across its 59 merges the median
+merge touched 21 files, and a tenth of them touched more than 109.
+A directory family is the first two path components, such as
+`scripts/hooks`. Review the `plan` output before you run `apply`.
+
+## Monthly self-review
+
+`scripts/insights/self-review.sh` prints five numbers for a window of main:
+merges, fix share, guard churn, compaction share, the ticket with the most
+merges (sprawl), and merges that mention a red main.
+
+```bash
+bash scripts/insights/self-review.sh                       # the last 30 days
+bash scripts/insights/self-review.sh --since 2026-09-21 --until 2026-10-21
+```
+
+Baseline, 2026-09-21 to 2026-10-21: 2,353 merges; fix 1,393 against feat
+560 (59 %); guard churn 385; 1,166 of 2,053 runs compacted (56 %); HIMMEL-5629
+with 56 merges; 15 red-main merges. Compare each new 30-day window with it.
+
 ## Reporting issues
 
 Open a GitHub issue or file a Jira ticket directly. There's no separate
