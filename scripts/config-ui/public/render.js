@@ -212,7 +212,8 @@ export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
   if (ns === "cadence") return ["bash", `${root}/${CADENCE_PATH[target]}`, verb].join(" ");
   if (ns === "plugin") return [...ctl, "profile", verb, target].join(" ");
   if (action === "profile.set") return [...ctl, "profile", target].join(" ");
-  return [...ctl, "config", "set", `${verb}.${target}`, value || "on|off"].join(" ");
+  if (!value) return ["on", "off"].map((v) => settingsCommand({ action, target }, root, v)).join("\n");
+  return [...ctl, "config", "set", `${verb}.${target}`, value].join(" ");
 }
 export const settingsEffect = (action) => EFFECT[action] || "";
 

@@ -111,6 +111,12 @@ test("settingsCommand spells exactly the argv the server runs, for every action 
   }
 });
 
+test("a lane row prints one command for on and one for off, never an on|off a shell would read as a pipe", () => {
+  const html = R.renderSettings(feed, { plans: {} });
+  expect(html).not.toContain("on|off");
+  expect(html).toContain("config set lanes.codex on\nnode ~/himmel/scripts/himmelctl/bin.js config set lanes.codex off");
+});
+
 test("settingsEffect has plain words for every action in the table", () => {
   for (const action of table.keys()) expect(R.settingsEffect(action), action).toMatch(/\S/);
 });
