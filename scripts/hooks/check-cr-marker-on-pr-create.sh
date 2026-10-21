@@ -62,7 +62,7 @@ IFS= read -r -d '' payload 2>/dev/null || true
 # skips this hook entirely. That edit is documented in the PR body — apply
 # it manually if/when the permission rules allow.)
 case "$payload" in
-    *create*) ;;  # might be a real invocation — fall through to slow path
+    *create* | *new*) ;;  # might be a real invocation (`pr create` / `pr new`) — fall through to slow path
     *) exit 0 ;;
 esac
 
@@ -230,9 +230,14 @@ strip_quoted_spans() {
 # three word-taking wrappers (e.g. `xargs grep 'gh pr create'`) matches. On this
 # BLOCKING gate that is a false block, so it is bounded to those three heads
 # only — the cheap direction is to over-block a wrapper line, never to un-gate.
+# `gh` may carry global options before `pr` (`gh --repo a/b pr create`,
+# `gh -R a/b pr create`): a dash word plus an optional non-dash value, repeated;
+# neither may contain a shell separator, so `gh --version; echo pr create` stays out.
+# `pr new` is gh's alias for `pr create`. Same shape as GH_PR_CREATE in
+# scripts/hermes/assets/parity_guard.py.
 stripped=$(strip_quoted_spans "$cmd")
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
-if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh[[:space:]]+pr[[:space:]]+create([^[:alnum:]_-]|$)'; then
+if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh([[:space:]]+-[^[:space:];&|()<>`]+([[:space:]]+[^[:space:];&|()<>`-][^[:space:];&|()<>`]*)?)*[[:space:]]+pr[[:space:]]+(create|new)([^[:alnum:]_-]|$)'; then
     exit 0
 fi
 

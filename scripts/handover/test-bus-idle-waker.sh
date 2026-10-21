@@ -182,6 +182,8 @@ sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle-longname.txt" > "$tmp/dra
 grep -qFx '❯ half-typed reply' "$tmp/draft-longname" || fail "long-name draft fixture was not generated"
 QSCREEN="$tmp/draft-longname" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a draft under a truncated session-name rule gets no keystroke" || fail "typed onto a long-name draft: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-nonrule-top.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a non-rule line ending in the rule character above an empty prompt gets no keystroke" || fail "woke on a non-rule top line: $(cat "$QLOG")"
 
 QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"

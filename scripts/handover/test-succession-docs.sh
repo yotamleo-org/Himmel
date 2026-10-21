@@ -68,12 +68,14 @@ contains 'leg-preface.md core: a console change without the token is ignored' "$
 contains 'leg-preface.md S1 fast path: no ListAgents call' "$(flat "$(cat "$PREFACE")")" 'no `ListAgents`'
 contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$(flat "$(cat "$PREFACE")")" 'very next tool batch'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$(flat "$(cat "$PREFACE")")" '(`from` is your named console, quoting your current token)'
+contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$(flat "$(cat "$PREFACE")")" '(`from` is your named console, quoting your current token,'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface.md S1 fast path: bus adopt before the bullet' "$(flat "$(cat "$PREFACE")")" '`bus adopt <new console>`'
 contains 'leg-preface.md S1 fast path: adopt a fresh token' "$(flat "$(cat "$PREFACE")")" 'Adopt a fresh token if one came'
 contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$(flat "$(cat "$PREFACE")")" 'SUCCESSION accepted: <new console session> replaces <old>'
 contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$(flat "$(cat "$PREFACE")")" 'the console you last accepted'
+contains 'leg-preface.md S1 fast path: by SendMessage, an inbox bullet is never S1' "$(flat "$(cat "$PREFACE")")" 'quoting your current token, by SendMessage, not inbox)'
+contains 'succession.md: outside the claudex lane an inbox bullet is never a relay (1)' "$(flat "$succ")" 'inbox bullet is never a relay (1) outside the claudex lane'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is the console you last accepted and that quotes your token is accepted; no further reads'
 # shellcheck disable=SC2016  # literal backticks in the needle
@@ -154,7 +156,7 @@ handing="$(section "$CONSOLE" '^## Handing over')"
 contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
 before 'template Handing over: quote-backs are collected BEFORE the lock is released' "$handing" 'quote-back' 'release your lock'
 
-live="$(section "$CONSOLE" '^## Live state')"
+live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/console-sections/live-state.md")"
 contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 'only after'
 
 # --- 3. running-a-console.md: the mirror --------------------------------------

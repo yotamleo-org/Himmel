@@ -171,6 +171,7 @@ PORTABLE_FILES=(
   scripts/lib/bash-ast.sh
   scripts/hooks/check-commit-msg.sh
   scripts/lib/project-mode.sh
+  scripts/lib/load-dotenv.sh
   scripts/hooks/check-worktree-isolation.sh
   scripts/hooks/check-push-target.sh
   scripts/guardrails/lib.sh

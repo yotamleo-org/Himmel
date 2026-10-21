@@ -16,7 +16,8 @@ Run these, in order, and write the result as the first bullet under
 `## Results` at the bottom of this file.
 
 1. **`ListAgents`** — who is alive. Legs the handoff claims alive but absent here
-   are gone; never relay a window as live without checking.
+   are gone; never relay a window as live without checking. In the same batch,
+   `Read` each `specs/decisions/console-decisions-<date>.md` `decisions:` names.
 > **One command for steps 2–6 and 8:**
 > `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
 > prints the lock sweep, head/remote, bank, leg processes, C29, load and this
@@ -61,8 +62,8 @@ Run these, in order, and write the result as the first bullet under
    `leg-preface.md` (`leg-sections/succession.md`) is the authority.
    A leg's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
    waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**: on
-   `WAKE succession complete` or `WAKE succession partial` write the nonces into
-   `## Live state`, send **`{{LETTER}} LIVE`** (naming legs that did not
+   `WAKE succession complete` or `WAKE succession partial` write any fresh nonce
+   into `## Live state` (`next` seeded the rest), send **`{{LETTER}} LIVE`** (naming workers that did not
    quote back), then re-arm **without `--succession`**.
    Then close its window, re-ask judges: `console-sections/successor-start.md`.
 10. **Start the event waiter now.** Run `console-wait.sh` **once** with the
@@ -94,24 +95,8 @@ Run these, in order, and write the result as the first bullet under
 
 ## Live state
 
-> **Authority-bearing state — not a summary.** Per-leg RETASK nonces, lock
-> tokens, the held queue and the last GO live HERE, on disk:
-> `SessionStart:compact` re-injects this section after an autocompact, and
-> `{{KIT}}/tick.sh` flags `livestate=DRIFT:<leg>[,…]` when it disagrees with the
-> locks held. Update it on every dispatch, ruling, wrap and GO; `console.sh next`
-> copies it into the HANDOFF. A leg's nonce is updated **only after** its
-> quote-back; a relay may issue no fresh token, so a leg can stay on the old nonce
-> (`nonces=RELAYED:<leg>` needs the leg's `SUCCESSION accepted` bullet, else
-> `UNCONFIRMED:<leg>`).
->
-> **Every nonce and lock token is a single backtick span, one per leg, with no
-> trailing punctuation:** `` `<leg>:<nonce>:<lock-token>:<pid>` `` (`<leg>` is the
-> label `N<k>`). **Prose is permitted on the `legs:` line, and the tick reads it as prose**;
-> only a span of four non-empty colon-separated fields under a leg label is an
-> entry, and a near-miss reads `livestate=MALFORMED:<label>`.
-> **The `legs:` block may wrap**, up to the first blank line or the next `field:` line
-> or the first list-marker line, so **the blank line before the per-leg detail is load-bearing**.
-> Format rules and optional fields: `console-sections/live-state.md`.
+> **Authority-bearing state, not a summary:** update it on every dispatch, ruling, wrap and GO; a nonce changes **only after** its worker's quote-back.
+> One span per worker, `` `<leg>:<nonce>:<lock-token>:<pid>` ``; format, wrap and seeding rules: `console-sections/live-state.md`.
 
 legs: <none dispatched yet — else one entry per leg, in the format above>
 queue: <held queue-lock docs in launch order, or "none">
@@ -126,6 +111,8 @@ tracker: {{TRACKER_URL}}
 `SessionStart:compact` re-injects `## Live state` and this section. **Your first
 action after every compaction is the `COMPACTED` bullet**, under `## Results`:
 `- COMPACTED <HH:MM> — legs: <as re-injected>, queue: <as re-injected>, last GO: <as re-injected>`
+and, in the same batch, `Read` each `specs/decisions/console-decisions-<date>.md`
+that `decisions:` names (the rulings live there, not in this context).
 If the hook warned that `## Live state` is missing, write it from step 2's lock
 sweep first.
 
@@ -232,7 +219,7 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    picks the wrong doc, bucket or model (continue on **{{MODEL}}**). The `armed:`
    line prints the successor's signal path: step 3 touches **that**, not
    `{{FILL_SIGNAL}}`.
-2. `next` copies `## Live state` into the HANDOFF. Fill in the rest by hand:
+2. `next` seeds `## Live state` into the successor doc. Fill in the HANDOFF by hand:
    head, rulings made today, what wrapped. **The HANDOFF wins over this file's
    Results tail.** Once the successor validated, `<your inbox>.handover` mutes
    your waiter (nobody is paged on your side) for `CONSOLE_WAIT_HANDOVER_MIN`

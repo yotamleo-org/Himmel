@@ -1,10 +1,10 @@
 ---
-description: Graceful-halt marker for in-progress /overnight-shift sessions.
+description: Graceful-halt marker for in-progress /afk-shift sessions.
 argument-hint: [--hard | --reset]
 ---
 
-Sets the `~/.claude/.overnight-stop` marker. `/overnight-shift`'s dispatch
-loop (`.claude/commands/overnight-shift.md` step 4, and the fix-dispatch
+Sets the `~/.claude/.overnight-stop` marker. `/afk-shift`'s dispatch
+loop (`.claude/commands/afk-shift.md` step 4, and the fix-dispatch
 loop in step 5c) polls it before every subagent dispatch — HIMMEL-2724
 lead 4. When set, the dispatcher finishes the in-flight subagent(s) +
 halts gracefully before starting the next one — no partial state, and the
@@ -35,11 +35,11 @@ tickets not yet started are reported, never silently dropped.
 4. Report status to the operator:
    - Soft stop: `Soft stop armed. Current subagent will finish; no new dispatches.`
    - Hard stop: `Hard stop armed. N in-flight subagents stopped.`
-   - Reset: `Stop marker cleared. Next /overnight-shift will run normally.`
+   - Reset: `Stop marker cleared. Next /afk-shift will run normally.`
 
 ## Dispatcher contract (consumers)
 
-`/overnight-shift`'s dispatch loop polls the marker between dispatches
+`/afk-shift`'s dispatch loop polls the marker between dispatches
 (HIMMEL-2724 lead 4) — this is the reference implementation. Any other
 long-running dispatch loop (overnight-mode Phase 3's manual runbook,
 autonomous loops) MUST poll the marker the same way, between dispatches:

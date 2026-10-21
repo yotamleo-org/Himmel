@@ -128,7 +128,7 @@ bash scripts/handover/test-auto-commit.sh
 | Repo-wide rules + conventions  | [`CLAUDE.md`](../CLAUDE.md)                         |
 | First-time setup               | [`docs/setup/new-machine.md`](setup/new-machine.md) |
 | Handover system                | [`docs/handover/`](handover/)                       |
-| AFK (unattended) mode          | [`docs/handover/overnight-mode.md`](handover/overnight-mode.md) |
+| AFK (unattended) mode          | [`docs/handover/afk-mode.md`](handover/afk-mode.md) |
 | Luna-area docs convention      | [`docs/luna/`](luna/)                               |
 | Tooling catalog                | [`docs/tooling-catalog.md`](tooling-catalog.md)     |
 

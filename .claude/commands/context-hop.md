@@ -3,7 +3,7 @@ description: Mid-session jump to a fresh claude session when the context window 
 argument-hint: [--message "what to pick up"] [--delay <minutes>] [--print] [--dry-run] [--force]
 ---
 
-Operator-invoked context-hop: writes a snapshot to the handover root then either schedules a relaunch via `arm-resume.sh` (default) or prints the command to run manually (`--print`).
+Operator-invoked context-hop: writes a snapshot to the handover root then either prints the command to run manually (`--print`) or schedules a relaunch via `arm-resume.sh` (default).
 
 Use this when the current session is approaching ~75–80% of its context window and you want to /exit + pick up cleanly without losing state. **Measure that threshold, do not eyeball it** — `bash scripts/context-fill.sh` prints the current session's window fill, and `--percent` gives the bare integer (HIMMEL-2212). Branch on its EXIT STATUS, not on the number alone: a stale or unknown reading prints nothing and exits 3/4, so a bare `[ "$(…)" -ge 75 ]` collapses into a false comparison indistinguishable from "below threshold". Note it reports **context-window fill**, not the `<total_tokens>` spend budget. Sibling of `/handover-arm-resume`:
 

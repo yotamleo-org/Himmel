@@ -55,6 +55,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 
 # shellcheck source=../lib/cadence-format.sh
 # shellcheck disable=SC1091
@@ -376,11 +379,10 @@ done <<< "$VANISHED_KEYS"
 # --- state write (atomic) -------------------------------------------------------
 write_state() {
     mkdir -p "$STATE_DIR"
-    local tmp gen
+    local out gen
     gen="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    tmp=$(mktemp "$STATE_DIR/.last_seen.json.XXXXXX")
-    jq -n --arg gen "$gen" --argjson items "$CURRENT_SNAPSHOT" '{generated_at:$gen, items:$items}' > "$tmp"
-    mv -f "$tmp" "$STATE_FILE"
+    out="$(jq -n --arg gen "$gen" --argjson items "$CURRENT_SNAPSHOT" '{generated_at:$gen, items:$items}' && printf x)"
+    printf '%s' "${out%x}" | atomic_write "$STATE_FILE"
 }
 
 # require_field <value> <label> -- guard against ever rendering a null/empty

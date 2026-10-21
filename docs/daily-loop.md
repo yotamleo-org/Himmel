@@ -19,6 +19,8 @@ By the end you will have run the real workflow on a real branch.
 This is the solo loop. The agent loop (console, legs, judges) is the
 development graph.
 
+The agent loop drawn out: [the development graph](guide/dev-graph.html).
+
 ---
 
 ## Toy change used throughout

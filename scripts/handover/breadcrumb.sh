@@ -13,7 +13,7 @@
 #
 # There is no per-leg dispatch runtime to hook (inject-initiative is
 # SessionStart-only; the legs are self-paced prose) — so `write` is invoked from
-# the seams that ALREADY run between stages (the /overnight-shift post-fanout
+# the seams that ALREADY run between stages (the /afk-shift post-fanout
 # step, /pr-check, the handover writer). The breadcrumb root reuses the
 # single-root resolver (scripts/lib/handover-path.sh) — never a hardcoded path.
 #
@@ -136,6 +136,7 @@ cmd_write() {
       fs.writeFileSync(e.OUT, s);
       JSON.parse(fs.readFileSync(e.OUT,"utf8"));   // verify round-trip before commit
     ' || { rm -f "$tmp"; die "write: failed to serialize/verify breadcrumb (node error)"; }
+    # prim-ok: node writes and verifies the temp file itself, so there is no stdin stream for atomic_write
     mv -f "$tmp" "$out" || { rm -f "$tmp"; die "write: failed to install breadcrumb at $out"; }
     echo "breadcrumb write: $out (ticket=$ticket head=${head_sha:0:12})"
 }

@@ -175,10 +175,10 @@ else
 fi
 
 # Source-level pin plus invocation-level proof from the stub record.
-if grep -q '^OXLINT_VERSION=1\.88\.0$' "$GATE"; then
-    echo "PASS gate pins OXLINT_VERSION=1.88.0"
+if grep -q '^OXLINT_VERSION=1\.89\.0$' "$GATE"; then
+    echo "PASS gate pins OXLINT_VERSION=1.89.0"
 else
-    echo "FAIL gate must pin OXLINT_VERSION=1.88.0"
+    echo "FAIL gate must pin OXLINT_VERSION=1.89.0"
     FAILED=$((FAILED + 1))
 fi
 
@@ -187,8 +187,8 @@ CLEAN=$(make_fixture) || exit 1; track_cleanup "$CLEAN"
 run_stub_case "$CLEAN" clean
 assert_eq "clean findings JSON → gate passes" "0" "$STUB_RC"
 assert_says "every run reports pinned version/root/cwd" \
-  "check-oxlint-hardening: oxlint 1.88.0 root=$CLEAN cwd=$CLEAN" "$STUB_OUT"
-assert_says "bunx invocation uses the pinned package" "arg=oxlint@1.88.0" "$(cat "$CLEAN/record.txt")"
+  "check-oxlint-hardening: oxlint 1.89.0 root=$CLEAN cwd=$CLEAN" "$STUB_OUT"
+assert_says "bunx invocation uses the pinned package" "arg=oxlint@1.89.0" "$(cat "$CLEAN/record.txt")"
 
 BENIGN=$(make_fixture) || exit 1; track_cleanup "$BENIGN"
 run_stub_case "$BENIGN" benign_stderr
@@ -286,7 +286,7 @@ out=$(cd "$BUNONLY" && PATH="$BUNONLY/bin" \
 assert_eq "bun without bunx → gate passes through bun x" "0" "$rc"
 rec=$(cat "$BUNONLY/record.txt" 2>/dev/null || true)
 assert_says "bun without bunx → invoked as bun x" "arg=x" "$rec"
-assert_says "bun without bunx → pinned package" "arg=oxlint@1.88.0" "$rec"
+assert_says "bun without bunx → pinned package" "arg=oxlint@1.89.0" "$rec"
 rm -f "$BUNONLY/record.txt"
 rc=0
 out=$(cd "$BUNONLY" && PATH="$BUNONLY/bin" \
@@ -332,7 +332,7 @@ if command -v bunx >/dev/null 2>&1; then
     rc=0
     out=$(cd "$REAL_CLEAN" && "$BASH_ABS" "$GATE" 2>&1) || rc=$?
     assert_eq "real pinned oxlint → clean fixture passes" "0" "$rc"
-    assert_says "real clean run → reports pinned version" "oxlint 1.88.0" "$out"
+    assert_says "real clean run → reports pinned version" "oxlint 1.89.0" "$out"
 
     REAL_IGNORED=$(fixture_mktemp_dir) || exit 1
     track_cleanup "$REAL_IGNORED"
@@ -340,7 +340,7 @@ if command -v bunx >/dev/null 2>&1; then
     printf '%s\n' 'export const ignoredFixture = true;' > "$REAL_IGNORED/scripts/lanes/fixtures/input.mjs"
     real_probe_rc=0
     real_probe_err="$REAL_IGNORED/probe.err"
-    real_probe=$(cd "$REAL_IGNORED" && bunx oxlint@1.88.0 --format json \
+    real_probe=$(cd "$REAL_IGNORED" && bunx oxlint@1.89.0 --format json \
       --ignore-pattern '**/fixtures/**' scripts/lanes 2>"$real_probe_err") || real_probe_rc=$?
     assert_eq "real pinned oxlint all-ignored probe → refuses instead of returning zero-file success" "1" "$real_probe_rc"
     assert_says "real pinned oxlint all-ignored probe → reports no files on stdout" \

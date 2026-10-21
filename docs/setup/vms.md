@@ -59,7 +59,7 @@ inputs it keys on, so do not widen it to checks whose point is live plumbing.
 The upgrade-path counterpart `scripts/test-luna-upgrade-vm.sh [user@host] [port]
 [identity]` stages the real
 `templates/luna-second-brain/` to the VM and proves the `/luna-upgrade` ENGINE
-(`scripts/upgrade.sh`): it runs the shipped hermetic engine suite + a real
+(`templates/luna-second-brain/scripts/upgrade.sh`): it runs the shipped hermetic engine suite + a real
 scaffold→rollback→upgrade roundtrip (asserts owned files refresh, user content is
 preserved byte-identical, the version stamp advances, and a re-run is
 idempotent). Deterministic — no claude call. It is **cross-OS** and

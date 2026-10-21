@@ -41,7 +41,7 @@ case_repo() {
   } || { echo "FAIL - fixture repo setup failed ($1, $2)" >&2; exit 1; }
 }
 
-run_check() { OUT="$(bash "$CHECK" --range HEAD~1 2>&1)"; RC=$?; }
+run_check() { OUT="$(timeout 10 bash "$CHECK" --range HEAD~1 2>&1)"; RC=$?; }
 
 # --- must-flag: the PR 2878 launcher shape (a host file read as a prompt) --------
 case_repo base flag-argv-cat
@@ -91,8 +91,22 @@ case_repo pass-preexisting.base pass-preexisting
 run_check
 [ "$RC" -eq 0 ] && ok "a pre-existing sink is not re-flagged" || bad "pre-existing sink flagged (rc=$RC): $OUT"
 
-# --- fail-closed ---------------------------------------------------------------------
-OUT="$(bash "$CHECK" --range no-such-ref 2>&1)"; RC=$?
+# --- a reader operand with no variable name must not hang the gate ------------------
+case_repo base pass-length-control
+run_check
+[ "$RC" -eq 0 ] && ok "a C-style loop bounded by a plain variable passes" || bad "length-loop control rc=$RC: $OUT"
+
+for f in nameless-length-loop nameless-indirect-redirect nameless-indirect-cat; do
+  case_repo base "$f"
+  run_check
+  [ "$RC" -ne 124 ] && ok "$f terminates" || bad "$f hung (timeout 10)"
+done
+case_repo base nameless-length-loop
+run_check
+[ "$RC" -eq 0 ] && ok "a loop bounded by a length expansion passes" || bad "length-expansion loop rc=$RC: $OUT"
+
+# --- fail-closed---------------------------------------------------------------------
+OUT="$(timeout 10 bash "$CHECK" --range no-such-ref 2>&1)"; RC=$?
 [ "$RC" -ne 0 ] && ok "an unresolvable base fails closed" || bad "unresolvable base passed"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }

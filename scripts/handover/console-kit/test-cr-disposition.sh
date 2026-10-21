@@ -197,6 +197,27 @@ gos --trust-reviewed JT1 90 "$SHA"
 check "7: judge follow-up on a trust-path Important -> exit 0" "$rc" "0"
 unset READY_CHECK_ANCHOR READY_STUB_TRUST_FILE
 
+# --- 8. past the first signed amend, only a signed amend lowers it ---------
+defer_finding ledger-gap-1 imp "Ledger amend rows carry no authentication"
+CR_LEDGER="$LEDGER" bash "$LA" amend --head "$FHEAD" --id ledger-gap-1 --set "reason=cutover row" \
+  --reason "first signed amend" >/dev/null 2>&1 || { echo "FAIL: fixture signed amend was not written" >&2; exit 1; }
+# An unsigned amend: written by the sanctioned writer, then its mac stripped.
+unsigned_amend() {
+  CR_LEDGER="$LEDGER" bash "$LA" amend --head "$FHEAD" --id ledger-gap-1 --set "$1" \
+    --reason "hand-written" >/dev/null 2>&1 || { echo "FAIL: fixture amend was not written" >&2; exit 1; }
+  sed -i.x '$ s/,"amend_mac":"[0-9a-f]*"//' "$LEDGER"
+}
+unsigned_amend verdict=disproved
+out="$(bash "$DISP" check 90 "$SHA" 2>&1)"
+contains "8: an unsigned disproved amend leaves it open" "$out" "[OPEN] imp ledger-gap-1@$FHEAD"
+unsigned_amend severity=sug
+out="$(bash "$DISP" check 90 "$SHA" 2>&1)"
+contains "8: an unsigned severity downgrade leaves it open" "$out" "[OPEN] imp ledger-gap-1@$FHEAD"
+CR_LEDGER="$LEDGER" bash "$LA" amend --head "$FHEAD" --id ledger-gap-1 --set verdict=disproved \
+  --reason "the rows are signed now" >/dev/null 2>&1 || { echo "FAIL: fixture signed disproval was not written" >&2; exit 1; }
+out="$(bash "$DISP" check 90 "$SHA" 2>&1)"
+check "8: a signed disproved amend clears it" "$(grep -c 'ledger-gap-1@' <<< "$out")" "0"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-cr-disposition.sh"

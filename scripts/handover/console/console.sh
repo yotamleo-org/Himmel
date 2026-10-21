@@ -255,6 +255,16 @@ console_metadata() {
 # here so an ambient value can never name a predecessor.
 CONSOLE_BUS_PREDECESSOR=""
 
+# console_bus_opted_in -- the console profile lists himmel-bus in its MCP servers.
+console_bus_opted_in() {
+    local bus_names
+    bus_names="$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || return 1
+    case "$bus_names" in
+        *'"himmel-bus"'*) return 0 ;;
+    esac
+    return 1
+}
+
 # do_arm <session> <doc> <fill-signal> <log> -- launch (or foreground-run,
 # under CONSOLE_ARM_FOREGROUND=1) the headed-arm target and print the armed
 # lines. deadline_epoch/model/workdir are read from the outer resolution
@@ -290,22 +300,19 @@ do_arm() {
     # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
     # the console profile's opt-in decides whether anything is registered.
     # Fail-open: a failed register warns and the console launches unbound.
-    local bus_var bus_cli bus_names bus_args
+    local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
     bus_cli="${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-    bus_names="$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || bus_names=""
-    case "$bus_names" in
-        *'"himmel-bus"'*)
-            bus_args=(register "$session" --role console)
-            [ -n "$CONSOLE_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CONSOLE_BUS_PREDECESSOR")
-            if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
-                export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
-            else
-                echo "console.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
-            fi
-            ;;
-    esac
+    if console_bus_opted_in; then
+        bus_args=(register "$session" --role console)
+        [ -n "$CONSOLE_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CONSOLE_BUS_PREDECESSOR")
+        if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
+            export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
+        else
+            echo "console.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
+        fi
+    fi
     # plugin /console from any repo: a
     # foreign --project selects the bucket/prefix and is recorded in the
     # doc as data (see project_doc_value below) -- the console session
@@ -930,9 +937,21 @@ launch_cmd() {
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
         || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server (HIMMEL-5310)"; exit 2; }
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
-    printf 'cd %q && { bash %q %s %s %s %s; %s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"; }' \
+    local claude_cmd
+    claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \
+        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
+    # No launcher binds a pasted console on the bus, so the line runs claude
+    # through console-bus-exec.sh, which registers and binds it first; a line
+    # pasted after that file is gone runs claude directly.
+    if console_bus_opted_in; then
+        local bus_exec
+        bus_exec="$(printf 'bash %q %q ' "$HERE/console-bus-exec.sh" "$1")"
+        [ -z "$CONSOLE_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CONSOLE_BUS_PREDECESSOR")"
+        claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/console-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
+    fi
+    printf 'cd %q && { bash %q %s %s %s %s; %s; }' \
         "$repo" "$HERE/record-launch.sh" "$1" "$CONSOLE_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
-        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2"
+        "$claude_cmd"
 }
 
 # _console_sha256_8 <string> -- first 8 hex chars of sha256(<string>). Small
@@ -1503,10 +1522,12 @@ decisions_kept_verbatim() {
 # where the doc the outgoing console itself succeeded (named on its first line)
 # had a real one, unless its Results carry a `<MARKER>: <reason>` bullet. No
 # predecessor, or one without a real line, passes. `priority:` shrinks as its
-# keys ship, so it is held to presence only.
+# keys ship, so it is held to presence only, and a PRIORITY-PRUNE bullet
+# (priority-prune.sh --apply) also exempts it.
 # Args: field, drop marker, outgoing doc, outgoing Live state.
 check_live_line_kept() {
-    local field="$1" marker="$2" outgoing="$3" live="$4" prev_name prev_doc prev_line out_line why=""
+    local field="$1" marker="$2" outgoing="$3" live="$4" prev_name prev_doc prev_line out_line why="" prune=""
+    [ "$field" != priority ] || prune="|PRIORITY-PRUNE"
     prev_name="$(sed -n '1s/^.* successor to \([^ ]*\.md\).*$/\1/p' "$outgoing")"
     [ -n "$prev_name" ] || return 0
     prev_doc="$(dirname "$outgoing")/$prev_name"
@@ -1527,7 +1548,7 @@ check_live_line_kept() {
            fi ;;
     esac
     awk '$0 == "## Results" { f = 1; next } f && /^## / { f = 0 } f' "$outgoing" \
-        | grep -Eq "^- .*$marker:[[:space:]]*[^[:space:]<]" && return 0
+        | grep -Eq "^- .*($marker$prune):[[:space:]]*[^[:space:]<]" && return 0
     err "refusing to hand over: the $field: line in $outgoing is missing, a placeholder, shorter than its predecessor's or drops one of its rulings ($prev_name):"
     err "  predecessor: $field: $prev_line"
     [ -z "$why" ] || err "$why"
@@ -1547,6 +1568,34 @@ carried_live_state() {
     done
 }
 
+# One per-shift Live-state field of the predecessor, without its `<field>:`
+# prefix: for `legs:`, the whole block tick.sh reads (the wrapped lines up to
+# a blank, `word:`, list-marker, `>` or `#` line). Absent field -> empty.
+seeded_live_field() {
+    printf '%s\n' "$1" | awk -v k="$2:" -v block="$([ "$2" = legs ] && echo 1)" '
+        !f && index($0, k) == 1 { f = 1; sub(/^[^:]*:[[:space:]]*/, ""); print; if (!block) exit; next }
+        f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { exit }
+        f { print }
+    '
+}
+
+# seed_live_fields <doc> <predecessor live state>: replace each `<field>: <...>`
+# placeholder line in the doc's `## Live state` with the predecessor's value,
+# verbatim; a field the predecessor lacks keeps its placeholder.
+seed_live_fields() {
+    local doc="$1" live="$2"
+    SL_legs="$(seeded_live_field "$live" legs)" SL_queue="$(seeded_live_field "$live" queue)" \
+    SL_last_GO="$(seeded_live_field "$live" "last GO")" SL_acked="$(seeded_live_field "$live" acked)" awk '
+        $0 == "## Live state" { f = 1; print; next }
+        f && /^## / { f = 0 }
+        f && /^(legs|queue|last GO|acked): </ {
+            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : name)]
+            if (v != "") { print name ": " v; next }
+        }
+        { print }' "$doc" > "$doc.seed" || { rm -f "$doc.seed"; err "could not seed the Live state into $doc"; exit 1; }
+    mv "$doc.seed" "$doc"
+}
+
 cmd_next() {
     [ -f "$console_template" ] || { err "missing template $console_template"; exit 2; }
     [ -f "$handoff_template" ] || { err "missing template $handoff_template"; exit 2; }
@@ -1563,11 +1612,11 @@ cmd_next() {
         exit 1
     fi
     # The predecessor's `## Live state` (nonces, lock
-    # tokens, held queue, last GO) is copied verbatim into the successor's
-    # HANDOFF below — a continuously maintained Live state IS a handoff, so
-    # the successor never has to re-derive authority-bearing state by hand.
-    # Absent section -> empty string -> the HANDOFF's own placeholder prose
-    # in the template still shows through render_template, not an error.
+    # tokens, held queue, last GO) is seeded verbatim into the successor's own
+    # Live state below, its one on-disk copy: the HANDOFF only points at it, so
+    # the successor never re-copies authority-bearing state by hand and
+    # `action-zero.sh --render-legs` finds every nonce it keeps. Absent section
+    # -> empty string -> each field falls back to its template placeholder.
     predecessor_live_state="$(awk '
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { exit }
@@ -1587,6 +1636,7 @@ cmd_next() {
     [ -n "$predecessor_tracker" ] || predecessor_tracker="none"
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
+    CONSOLE_BUS_PREDECESSOR="$predecessor_stem"
     predecessor_prefix_part="${predecessor_stem%-"$name"}"
     if [ "$predecessor_prefix_part" = "$predecessor_stem" ]; then
         err "cannot parse predecessor doc name '$predecessor_base' (expected suffix '-$name.md')"
@@ -1727,6 +1777,7 @@ cmd_next() {
         CARRIED_LIVE_STATE "$(carried_live_state "$predecessor_live_state")" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
+    seed_live_fields "$doc" "$predecessor_live_state"
 
     echo "doc: $doc"
     echo "session: $session"
@@ -1746,11 +1797,11 @@ cmd_next() {
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../console-kit/handoff-facts.sh"
-        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-12000}"
+        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
         hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
-        # ponytail: the cap trims only the re-derivable fact sections; Live state, rulings and the wrapped-PR list stay inline even over budget, an oversized Live state needs a tighter Live-state writer.
+        # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
         local hf_pass=1 hf_wrapped hf_wrapped_bytes
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c)"
@@ -1771,9 +1822,9 @@ cmd_next() {
                 REPO "$repo" \
                 BUCKET "$bucket" \
                 KIT "$kit" \
-                LIVE_STATE "$predecessor_live_state"
+                LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`"
             # Over budget: the bulky fact sections (all re-derivable) become
-            # pointers; the Live state and the rulings stay inline.
+            # pointers; the rulings stay inline.
             [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
@@ -1782,11 +1833,11 @@ cmd_next() {
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
-        # Still over budget after the pointer pass: the remainder is Live state,
-        # rulings and the wrapped-PR list, which are never trimmed — say so loudly.
+        # Still over budget after the pointer pass: the remainder is the rulings
+        # and the wrapped-PR list, which are never trimmed — say so loudly.
         hf_total="$(wc -c < "$predecessor_handoff")"
         if [ "$hf_total" -gt "$hf_budget" ]; then
-            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); Live state ${#predecessor_live_state} bytes, wrapped-PR list $hf_wrapped_bytes bytes — tighten the Live state"
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); wrapped-PR list $hf_wrapped_bytes bytes"
             printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
             err "warning: $hf_note"
         fi
@@ -1835,7 +1886,6 @@ cmd_next() {
     fi
 
     if [ "$ARM" -eq 1 ]; then
-        CONSOLE_BUS_PREDECESSOR="$predecessor_stem"
         do_arm "$session" "$doc" "$fill_signal" "$log"
     fi
 }

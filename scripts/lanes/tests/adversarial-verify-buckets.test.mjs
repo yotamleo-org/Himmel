@@ -271,6 +271,26 @@ test('a confirmed finding the judge leaves out falls to consider, not dropped', 
   assert.equal(out.buckets.consider.length, 1);
 });
 
+test('a judge answer keyed on a corrected line of the same file still reaches its finding', async () => {
+  const { out } = await exec({
+    reviews: { correctness: [F('q.js', 23, 'critical')] },
+    judge: () => ({ judgments: [{ ...act('q.js:47'), rationale: 'judged on the corrected line' }] }),
+  });
+  assert.equal(out.buckets.act.length, 1);
+  assert.equal(out.buckets.act[0].rationale, 'judged on the corrected line');
+  assert.equal(out.buckets.consider.length, 0);
+});
+
+test('a corrected-line judge answer is not guessed onto one of two findings in that file', async () => {
+  const { out } = await exec({
+    reviews: { correctness: [F('r.js', 5, 'critical'), F('r.js', 9, 'critical')] },
+    judge: () => ({ judgments: [act('r.js:40')] }),
+  });
+  assert.equal(out.buckets.act.length, 0);
+  assert.equal(out.buckets.consider.length, 2);
+  assert.ok(out.buckets.consider.every(e => /not judged/.test(e.rationale)));
+});
+
 test('the judge call runs on model opus at effort high', async () => {
   const { calls } = await exec({
     reviews: { correctness: [F('j.js', 1)] },

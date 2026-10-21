@@ -27,8 +27,8 @@ worker session|worker|prose|warn|D|never
 ticket sequence|dependency chain|prose|fail|R2|never
 batch of workers|parallel wave|prose|fail|R2|never
 wave|parallel wave|prose|fail|R2|never
-HIMMEL_OVERNIGHT|HIMMEL_AFK|env|permit|V3|pending-N2892
-HIMMEL_INITIATIVE_OVERNIGHT|HIMMEL_INITIATIVE_AFK|env|value|V3|pending-N2892
+HIMMEL_OVERNIGHT|HIMMEL_AFK|env|permit|V3|X
+HIMMEL_INITIATIVE_OVERNIGHT|HIMMEL_INITIATIVE_AFK|env|value|V3|X
 CADENCE_BANK_MAX_PCT|CADENCE_USAGE_MAX_PCT|env|permit|V1|pending-N2892
 CONSOLE_FG_OK|CHIEF_FG_OK|env|permit|V5|pending-N2892
 CONSOLE_DISPATCH_OK|CHIEF_DISPATCH_OK|env|permit|V5|pending-N2892
@@ -36,7 +36,7 @@ CONSOLE_DISPATCH_DISABLE|CHIEF_DISPATCH_DISABLE|env|restrict|V5|pending-N2892
 LEG_CONTEXT_HANDOFF_OK|WORKER_SESSION_CONTEXT_HANDOFF_OK|env|permit|V4a|pending-N2892
 HIMMEL_LEAN_LEG|HIMMEL_LEAN_WORKER_SESSION|env|value|V4a|pending-N2892
 PARKED-BANK|PARKED-USAGE|marker|old-to-new|V1|never
-OVERNIGHT_|AFK_|env-prefix|value|V3|pending-N2892
+OVERNIGHT_|AFK_|env-prefix|value|V3|X
 CADENCE_BANK_|CADENCE_USAGE_|env-prefix|value|V1|pending-N2892
 BANK_LIFT_|USAGE_LIFT_|env-prefix|value|V1|pending-N2892
 CODEX_BANK_|CODEX_USAGE_|env-prefix|value|V1|pending-N2892
@@ -84,6 +84,39 @@ done <<EOF
 $SEED
 EOF
 check "seed table was read (not vacuous)" "yes" "$([ "$n" -ge 28 ] && echo yes || echo no)"
+
+# --- slice V3: every old name of the overnight family names its afk successor ---
+V3_ROWS='IL_OVERNIGHT_ALL|IL_AFK_ALL|identifier|old-to-new|V3|X
+OVERNIGHT|AFK|identifier|old-to-new|V3|X
+OVERNIGHT_DOC|AFK_DOC|identifier|old-to-new|V3|X
+OVERNIGHT_LIMIT|AFK_LIMIT|identifier|old-to-new|V3|X
+OVERNIGHT_PRIORITY|AFK_PRIORITY|identifier|old-to-new|V3|X
+OVERNIGHT_PROJECT|AFK_PROJECT|identifier|old-to-new|V3|X
+OVERNIGHT_STATUS|AFK_STATUS|identifier|old-to-new|V3|X
+OVERNIGHT_STOP_DIR|AFK_STOP_DIR|identifier|old-to-new|V3|X
+overnight-mode.md|afk-mode.md|identifier|old-to-new|V3|X
+overnight-shift|afk-shift|identifier|old-to-new|V3|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V3 row '$old'" "$tabbed" "$got"
+done <<EOF
+$V3_ROWS
+EOF
+LEFT="$(printf '%s\n' "$ROWS" | awk -F'\t' 'toupper($2) ~ /OVERNIGHT/ && $6 != "V3" { print $2 }' | tr '\n' ' ')"
+check "no overnight name left outside slice V3 ($LEFT)" "" "$LEFT"
+
+# --- slice V3: the old command and doc stay as stubs that point at the new file ---
+ROOT="$HERE/../.."
+stub() {
+  local old="$1" new="$2" link
+  link="($(basename "$new"))"
+  check "$new exists" "yes" "$([ -f "$ROOT/$new" ] && echo yes || echo no)"
+  check "$old points at $new" "yes" "$(grep -qF -- "$link" "$ROOT/$old" 2>/dev/null && echo yes || echo no)"
+}
+stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
+stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '

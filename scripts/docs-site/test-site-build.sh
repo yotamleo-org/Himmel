@@ -155,7 +155,7 @@ check "criterion 4: mermaid loads on demand, not through a static import of the 
 check "criterion 4: the page script imports the renderer behind a diagram check" grep -q 'pre\.mermaid' "$page_js"
 check "criterion 4: the diagram theme follows data-theme" grep -q 'dataset\.theme' "$page_js"
 check "criterion 4: a data-theme change re-renders the diagrams" grep -q 'MutationObserver' "$page_js"
-for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html; do
+for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
 
@@ -179,7 +179,7 @@ check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d 
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
 
 # --- J1: full site (one page per IA section, trail page, raw passthrough, search)
-for r in daily-loop handover/overnight-mode glossary internals/stuck-playbook contributing; do
+for r in daily-loop handover/afk-mode glossary internals/stuck-playbook contributing; do
   check "J1: IA page /$r/ built" test -f "$dist/$r/index.html"
 done
 check "J1: /adoption-trail.html served" test -f "$dist/adoption-trail.html"

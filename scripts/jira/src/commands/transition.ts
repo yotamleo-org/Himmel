@@ -4,6 +4,10 @@ import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
 import { earliestUnreleased, fetchVersions, projectFromKey, setFixVersion } from './versions.js';
 
+// Jira's transitions list names the status each one lands on; the shared
+// JiraTransition type does not declare it.
+type TargetedTransition = JiraTransition & { to?: { name?: string } };
+
 export function findTransition(
   transitions: JiraTransition[],
   name: string,
@@ -49,6 +53,22 @@ export function registerTransition(program: Command): void {
       await request('POST', `/issue/${key}/transitions`, {
         transition: { id: match.id },
       });
+      // A 2xx POST does not prove the status moved (a validator or post
+      // function can swallow it), so read the status back and fail loud.
+      const target = (match as TargetedTransition).to?.name;
+      if (target) {
+        const got = await request<{ fields?: { status?: { name?: string } } }>(
+          'GET',
+          `/issue/${key}?fields=status`,
+        );
+        const actual = got.fields?.status?.name;
+        if (actual?.toLowerCase() !== target.toLowerCase()) {
+          throw new Error(
+            `Transition ${key}: status was not changed — requested '${target}' but the issue ` +
+              `still reads '${actual || 'none'}' after the POST.`,
+          );
+        }
+      }
       writeJiraBreadcrumb(key);
       console.log(`${key} → ${match.name}`);
     });

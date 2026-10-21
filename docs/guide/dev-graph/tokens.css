@@ -1,0 +1,43 @@
+/* Design tokens shared by the docs site and the himmel UI (mockup v4, frame 9). Byte-identical twin of
+   site/src/styles/tokens.css: change both together; tests/tokens-sync.test.ts fails when they differ. The console
+   serves only public/, so it carries a copy instead of importing from site/. Light by default, dark by
+   preference or [data-theme="dark"]. */
+:root {
+  --l-bg:#F3F6F8; --l-surface:#FFFFFF; --l-surface-2:#EAEFF3; --l-ink:#13202B; --l-muted:#4A5866;
+  --l-rule:#CDD6DE; --l-rule-strong:#7C8B98; --l-accent:#1C5A9C; --l-accent-ink:#FFFFFF; --l-accent-soft:#DCE8F5;
+  --l-camp:#7A561A; --l-camp-soft:#F3EAD9; --l-ship:#1B6A3E; --l-ship-soft:#DFF0E5; --l-beta:#7A5000; --l-beta-soft:#F6EBD2;
+  --l-road:#574891; --l-road-soft:#E9E5F5; --l-alpha:#0E6470; --l-alpha-soft:#DDF0F2; --l-note:#8C2C60; --l-note-soft:#F8E8F0; --l-code:#E8EDF1; --l-contour:#C9D7E4; --l-crit:#A8321F; --l-crit-soft:#F7E2DD;
+  --d-bg:#0C1319; --d-surface:#121B23; --d-surface-2:#18242E; --d-ink:#E1E8EE; --d-muted:#9DADBA;
+  --d-rule:#273642; --d-rule-strong:#60727F; --d-accent:#86B5EA; --d-accent-ink:#0C1319; --d-accent-soft:#1A2D42;
+  --d-camp:#D9B46E; --d-camp-soft:#2B2414; --d-ship:#7FD1A0; --d-ship-soft:#132A1D; --d-beta:#E9C26C; --d-beta-soft:#2C2310;
+  --d-road:#BCAAF3; --d-road-soft:#221D36; --d-alpha:#6CCFDB; --d-alpha-soft:#0F2A2E; --d-note:#F0A0CB; --d-note-soft:#2E1A26; --d-code:#0A1015; --d-contour:#1E3447; --d-crit:#F09A88; --d-crit-soft:#33190F;
+
+  --bg:var(--l-bg); --surface:var(--l-surface); --surface-2:var(--l-surface-2); --ink:var(--l-ink); --muted:var(--l-muted);
+  --rule:var(--l-rule); --rule-strong:var(--l-rule-strong); --accent:var(--l-accent); --accent-ink:var(--l-accent-ink); --accent-soft:var(--l-accent-soft);
+  --camp:var(--l-camp); --camp-soft:var(--l-camp-soft); --ship:var(--l-ship); --ship-soft:var(--l-ship-soft); --beta:var(--l-beta); --beta-soft:var(--l-beta-soft);
+  --road:var(--l-road); --road-soft:var(--l-road-soft); --alpha:var(--l-alpha); --alpha-soft:var(--l-alpha-soft); --note:var(--l-note); --note-soft:var(--l-note-soft); --code:var(--l-code); --contour:var(--l-contour); --crit:var(--l-crit); --crit-soft:var(--l-crit-soft);
+
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-xs:12px; --fs-sm:13.5px; --fs-base:15px; --fs-md:17px; --fs-lg:21px; --fs-xl:27px; --fs-2xl:35px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
+  --radius:6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:var(--d-bg); --surface:var(--d-surface); --surface-2:var(--d-surface-2); --ink:var(--d-ink); --muted:var(--d-muted);
+    --rule:var(--d-rule); --rule-strong:var(--d-rule-strong); --accent:var(--d-accent); --accent-ink:var(--d-accent-ink); --accent-soft:var(--d-accent-soft);
+    --camp:var(--d-camp); --camp-soft:var(--d-camp-soft); --ship:var(--d-ship); --ship-soft:var(--d-ship-soft); --beta:var(--d-beta); --beta-soft:var(--d-beta-soft);
+    --road:var(--d-road); --road-soft:var(--d-road-soft); --alpha:var(--d-alpha); --alpha-soft:var(--d-alpha-soft); --note:var(--d-note); --note-soft:var(--d-note-soft); --code:var(--d-code); --contour:var(--d-contour); --crit:var(--d-crit); --crit-soft:var(--d-crit-soft);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:var(--d-bg); --surface:var(--d-surface); --surface-2:var(--d-surface-2); --ink:var(--d-ink); --muted:var(--d-muted);
+  --rule:var(--d-rule); --rule-strong:var(--d-rule-strong); --accent:var(--d-accent); --accent-ink:var(--d-accent-ink); --accent-soft:var(--d-accent-soft);
+  --camp:var(--d-camp); --camp-soft:var(--d-camp-soft); --ship:var(--d-ship); --ship-soft:var(--d-ship-soft); --beta:var(--d-beta); --beta-soft:var(--d-beta-soft);
+  --road:var(--d-road); --road-soft:var(--d-road-soft); --alpha:var(--d-alpha); --alpha-soft:var(--d-alpha-soft); --note:var(--d-note); --note-soft:var(--d-note-soft); --code:var(--d-code); --contour:var(--d-contour); --crit:var(--d-crit); --crit-soft:var(--d-crit-soft);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }

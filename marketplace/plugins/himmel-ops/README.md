@@ -142,7 +142,7 @@ invariant actually calls for (judgement/destructive → Fable; multi-step
 reasoning → Opus; well-specified implementation → Sonnet by default, or an
 explicit non-dormant lane; scoped research → Sonnet; bulk mechanical → Haiku,
 never spawns further), instead of leaving tier selection to per-dispatch
-judgement (HIMMEL-1829 — the gap `/overnight-shift` left: it dispatches with
+judgement (HIMMEL-1829 — the gap `/afk-shift` left: it dispatches with
 no model named at all).
 
 The refusal is a real mechanism, not prose: `scripts/lanes/fanout-plan.mjs`

@@ -107,6 +107,9 @@ build_repo_template() {
     # that reaches that gate at once (promote-error, exit 14).
     cp "$REVIEW_ROUND" "$REPO_TEMPLATE/scripts/cr/review-round.sh" \
         || { echo "FAIL: cp review-round.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    # The amend readers and the writer load the signed-amend helper.
+    cp "$(dirname "$CLEAR")/ledger-amend-auth.js" "$REPO_TEMPLATE/scripts/cr/ledger-amend-auth.js" \
+        || { echo "FAIL: cp ledger-amend-auth.js into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # The copied tree must carry the branch-lock lib the clear
     # path now takes around its read-validate-delete section — the script
     # refuses without it, so a missing copy would fail every case at once.
@@ -1498,6 +1501,27 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(finding "${sha:0:8}" imp agree
   "$(printf '{"kind":"amend","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"out of diff"}' "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "amend severity imp->sug unblocks gate 4 → exit 0"
+rm -rf "$tmp"
+
+# 6a-1s. Past the ledger's first signed amend, a hand-written amend lowering
+# imp->sug is dropped, so gate 4 still blocks; the same amend written through
+# ledger-append.sh, which signs it, unblocks as above.
+make_repo || exit 1
+mkdir -p "$tmp/home/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
+_real_home="$HOME"
+export HOME="$tmp/home"
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" \
+  "$(printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"unaddressed"}' "${sha:0:8}")"
+append_ledger "$tmp" "6a-1s signed cutover amend" amend --head "${sha:0:8}" --id codex-1 --set "reason=cutover row" --reason "first signed amend"
+printf '{"kind":"amend","branch":"feat/x","target_head":"%s","finding_id":"codex-1","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"hand-written"}\n' "${sha:0:8}" >> "$tmp/.git/cr-critic-scores.jsonl"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "unsigned amend imp->sug after the cutover still blocks gate 4 → exit 15"
+if marker_exists "$tmp"; then pass; else fail "6a-1s: marker must REMAIN"; fi
+append_ledger "$tmp" "6a-1s signed lowering" amend --head "${sha:0:8}" --id codex-1 --set severity=sug --reason "out of diff"
+run_clear "$tmp" 0 "signed amend imp->sug unblocks gate 4 → exit 0"
+export HOME="$_real_home"
 rm -rf "$tmp"
 
 # 6a-1a. the message announcing a merged amend must not claim it
@@ -3620,6 +3644,89 @@ printf '%s\n' "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" > "$tmp/.git/cr-review-
 write_ledger "$tmp" "$(avail_ok "$sha")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "11h a non-hex round head is refused -> exit 14"
+rm -rf "$tmp"
+
+# 12a-12e. a signed judge GO at the tip stands in for the panel on a post-cap
+# delta, so the gates run at the reviewed head. A finding fixed in that delta
+# is still `fixed` (not disproved or deferred) at the reviewed head, and gate 4
+# must not wedge the very case the judge-go path exists for.
+# stub_judge_go <tmp> -- the copied review-round.sh answers `judge-go` with an
+# accepted record and delegates every other verb to the real script (the verb
+# itself is covered by test-pr-check-rounds.sh).
+stub_judge_go() {
+    local t="$1"
+    mv "$t/scripts/cr/review-round.sh" "$t/scripts/cr/review-round.real.sh"
+    # shellcheck disable=SC2016  # the $-refs belong to the stub script being written
+    printf '#!/usr/bin/env bash\nif [ "${1:-}" = judge-go ]; then printf "%%s\\n" "jTEST/GO"; exit 0; fi\nexec bash "${BASH_SOURCE[0]%%/*}/review-round.real.sh" "$@"\n' > "$t/scripts/cr/review-round.sh"
+}
+
+# 12a. judge GO + a fixed Important at the reviewed head clears, audited with the judge qid.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "12a judge-go clears a fixed Important at the reviewed head -> exit 0"
+if marker_exists "$tmp"; then fail "12a: marker must be cleared"; else pass; fi
+if grep -F ' JUDGE-GO ' "$tmp/.git/clear-cr-marker.log" | grep -qF 'source=judge:jTEST/GO'; then pass; else fail "12a: the audit must carry the JUDGE-GO line with the judge qid"; fi
+if grep -F 'FIXED-UNDER-JUDGE-GO' "$tmp/.git/clear-cr-marker.log" | grep -qF 'codex-1'; then pass; else fail "12a: the audit must name the fixed finding the judge GO covered"; fi
+rm -rf "$tmp"
+
+# 12b. the same fixed Important without a judge GO still refuses (gate 4 unchanged).
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "12b a fixed Important without judge-go still refuses -> exit 15"
+if marker_exists "$tmp"; then pass; else fail "12b: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 12c. judge GO + an unadjudicated Important still refuses.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp "")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "12c judge-go plus an unadjudicated Important still refuses -> exit 15"
+if marker_exists "$tmp"; then pass; else fail "12c: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 12d. judge GO + an agreed (still open) Important still refuses: only fixed is accepted.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp agreed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "12d judge-go plus an agreed-not-fixed Important still refuses -> exit 15"
+rm -rf "$tmp"
+
+# 12e. a test-only trivial descendant is not the judge-go path: a fixed Important
+# at the reviewed head still refuses there.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "12e trivial-descendant plus a fixed Important still refuses -> exit 15"
+rm -rf "$tmp"
+
+# 12f. the live shape (PR 3342): the Important was raised at the reviewed head R,
+# fixed in a descendant F of R, and the GO is signed at a later tip T. F is an
+# ancestor of T and was never reviewed; the gates still run at R.
+make_repo || exit 1
+review_b "$tmp" f.txt "echo the fix"
+fix_sha="$B"
+printf '%s\n' "echo after the fix" >> "$tmp/f.txt"
+git -C "$tmp" commit -qam "fix: later" >/dev/null 2>&1
+git -C "$tmp" push -q origin feat/x >/dev/null 2>&1
+T=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+if [ "$T" != "$fix_sha" ] && git -C "$tmp" merge-base --is-ancestor "$fix_sha" "$T" && git -C "$tmp" merge-base --is-ancestor "$sha" "$fix_sha"; then pass; else fail "12f: fixture must be reviewed head, then fix, then tip"; fi
+write_marker "$tmp" "$T"
+stub_judge_go "$tmp"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" imp fixed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "12f judge-go at a tip past the fix commit clears a fixed Important -> exit 0"
+if marker_exists "$tmp"; then fail "12f: marker must be cleared"; else pass; fi
 rm -rf "$tmp"
 
 echo

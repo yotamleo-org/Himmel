@@ -69,7 +69,7 @@ Edit `profiles.json` to add/rebalance a profile, then re-run the generator.
 
 Claude Code has no mid-session server bring-up (`claude mcp add` only persists for
 the *next* session). So "auto-invocation" = the launcher picks the profile from the
-task lane: overnight-shift / armed-resume for a browser ticket launches with
+task lane: afk-shift / armed-resume for a browser ticket launches with
 `browser`, a luna ticket with `vault`, everything else with `minimal`. Wiring the
 lane→profile default into the arm/overnight launchers is the Phase-2 follow-up.
 

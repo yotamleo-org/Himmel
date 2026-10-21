@@ -11,6 +11,7 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAI
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink } from './link.js';
+import { appendAdmission, assertAdmissionsWritable } from './admissions-ledger.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -51,6 +52,10 @@ export function nextResidualDepth(parentLabels: string[]): number {
   const depths = parentLabels.map((l) => /^residual-depth-(\d+)$/.exec(l)).filter((m) => m !== null).map((m) => Number(m![1]));
   return Math.max(0, ...depths) + 1;
 }
+
+// Why a Bug may skip the backlog and take the earliest unreleased version.
+const BUG_GATES = ['critical', 'regression'];
+export const BACKLOG_LABEL = 'backlog';
 
 export const OVER_CAP_LABEL = 'over-cap';
 const OPERATOR_DIRECTED = 'operator-directed';
@@ -146,7 +151,7 @@ async function applyVersions(
   project: string,
   options: { type: string; fixVersion?: string; affectsVersion?: string; overCap?: string },
   fields: Record<string, unknown>,
-  o: { labels?: string[]; residual: boolean },
+  o: { labels?: string[]; residual: boolean; bugDefault: boolean },
 ): Promise<string | undefined> {
   const gated = !o.residual && !o.labels?.includes(OPERATOR_DIRECTED);
   let overCapReason: string | undefined;
@@ -173,12 +178,11 @@ async function applyVersions(
     const version = await resolveAffectsVersion(project, options.affectsVersion);
     fields['versions'] = [{ name: version }];
   }
-  // A Bug without an explicit --fix-version defaults to the earliest
-  // unreleased version, or the next one when that is over its cap; an
+  // A Highest or gated Bug without an explicit --fix-version defaults to the
+  // earliest unreleased version, or the next one when that is over its cap; an
   // unreadable/empty version list files with no fixVersion rather than
-  // guess. The release gate is the v1-blocker label and priority, not the
-  // version default.
-  if (!o.residual && options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
+  // guess. Any other Bug was placed in the backlog before this point.
+  if (o.bugDefault) {
     const st = gated ? await capState(project) : undefined;
     let defaultVersion: string | undefined;
     let redirected = false;
@@ -215,6 +219,74 @@ async function applyVersions(
   return overCapReason;
 }
 
+interface PlacementOptions {
+  type: string;
+  fixVersion?: string;
+  priority?: string;
+  backlog?: boolean;
+  gate?: string;
+  consoleOverride?: string;
+  sector?: string;
+}
+
+/**
+ * A console override needs a reason, the console marker and a ledger location.
+ * Returns the trimmed reason; the ledger probe throws when no location is set
+ * or the ledger cannot take an append, so no ticket is filed without its row.
+ */
+function checkConsoleOverride(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) throw new Error('--console-override needs a reason');
+  // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
+  if (process.env['HIMMEL_CONSOLE'] !== '1') {
+    throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
+  }
+  assertAdmissionsWritable();
+  return trimmed;
+}
+
+/** Checks the gate, backlog and console-override flags before anything is filed; returns the override reason. */
+function checkPlacementFlags(o: PlacementOptions): string | undefined {
+  if (o.gate !== undefined && !BUG_GATES.includes(o.gate)) {
+    throw new Error('--gate must be one of ' + BUG_GATES.join(', ') + ' (got "' + o.gate + '")');
+  }
+  if (o.backlog && (o.gate !== undefined || o.fixVersion !== undefined)) {
+    throw new Error('--backlog cannot be combined with --gate or --fix-version');
+  }
+  if (o.consoleOverride === undefined) return undefined;
+  const reason = checkConsoleOverride(o.consoleOverride);
+  if (o.fixVersion === undefined) throw new Error('--console-override needs the --fix-version to admit into');
+  return reason;
+}
+
+/**
+ * A Bug is placed at filing: Highest or gated takes the active version
+ * (bugDefault), --backlog the backlog; with neither it is refused rather than
+ * defaulted silently.
+ */
+function placeBug(
+  o: PlacementOptions,
+  labels: string[] | undefined,
+  residual: boolean,
+): { labels: string[] | undefined; bugDefault: boolean } {
+  if (o.type.toLowerCase() !== 'bug' || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
+  if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL])], bugDefault: false };
+  if (o.gate !== undefined || o.priority?.toLowerCase() === 'highest') return { labels, bugDefault: true };
+  throw new Error(
+    'A Bug needs a placement (sector: ' + (o.sector ?? 'none given') + '): pass --backlog to file it to the backlog, ' +
+      'or --fix-version <v> / --gate critical|regression / --priority Highest to file it into a version',
+  );
+}
+
+function recordOverride(key: string, version: string, reason: string): void {
+  try {
+    appendAdmission({ version, key, kind: 'override', reason });
+  } catch (e) {
+    console.error(`Created ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
+
 export function registerCreate(program: Command): void {
   program
     .command('create')
@@ -238,6 +310,13 @@ export function registerCreate(program: Command): void {
     .option(
       '--fix-version <name>',
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
+    )
+    .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
+    .option('--backlog', 'File a Bug to the backlog: label backlog, no fixVersion (a Bug without --fix-version needs this, --gate or --priority Highest)')
+    .option('--gate <reason>', 'Admit a Bug into the earliest unreleased version: ' + BUG_GATES.join('|'))
+    .option(
+      '--console-override <reason>',
+      'Console only (HIMMEL_CONSOLE=1): file into --fix-version with a reason, recorded in the admissions ledger',
     )
     .option(
       '--affects-version <name>',
@@ -277,6 +356,10 @@ export function registerCreate(program: Command): void {
         labels?: string;
         sector?: string;
         fixVersion?: string;
+        priority?: string;
+        backlog?: boolean;
+        gate?: string;
+        consoleOverride?: string;
         affectsVersion?: string;
         residualOf?: string;
         followUpOf?: string;
@@ -297,11 +380,13 @@ export function registerCreate(program: Command): void {
         if (options.overCap !== undefined && !options.overCap.trim()) {
           throw new Error('--over-cap needs a reason');
         }
+        const overrideReason = checkPlacementFlags(options);
         const fields: Record<string, unknown> = {
           project: { key: options.project ?? projectKey() },
           summary: resolveTitle(options),
           issuetype: { name: options.type },
         };
+        if (options.priority !== undefined) fields['priority'] = { name: options.priority };
         let found: string[];
         if (options.adfFile) {
           let adfBody: unknown;
@@ -354,6 +439,8 @@ export function registerCreate(program: Command): void {
           labels = [...new Set([...(labels ?? []), ...residual.labels])];
         }
         if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
+        const placed = placeBug(options, labels, residual !== undefined);
+        labels = placed.labels;
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
         const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
         if (home.action === 'refuse') {
@@ -372,6 +459,7 @@ export function registerCreate(program: Command): void {
         const overCapReason = await applyVersions(options.project ?? projectKey(), options, fields, {
           labels,
           residual: residual !== undefined,
+          bugDefault: placed.bugDefault,
         });
 
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
@@ -386,6 +474,7 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
+        if (overrideReason !== undefined) recordOverride(result.key, options.fixVersion!, overrideReason);
         // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
         if (overCapReason) {
           try {

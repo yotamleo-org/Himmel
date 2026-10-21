@@ -71,6 +71,29 @@ export async function createIssueLink(
   return `Linked: ${inwardKey} ${type.outward ?? type.name} ${outwardKey}`;
 }
 
+// A 2xx POST does not prove the link exists (Jira can accept and drop it), so
+// read the inward issue back and fail loud when the pair is not there.
+export async function verifyIssueLink(
+  inwardKey: string,
+  outwardKey: string,
+  type: IssueLinkType,
+  requestFn: RequestFn = request,
+): Promise<void> {
+  const issue = await requestFn('GET', `/issue/${inwardKey}?fields=issuelinks`) as IssueLinksResponse;
+  const found = (issue.fields.issuelinks ?? []).some(
+    (link) =>
+      link.type.name.toLowerCase() === type.name.toLowerCase() &&
+      link.outwardIssue !== undefined &&
+      sameIssueKey(link.outwardIssue.key, outwardKey),
+  );
+  if (!found) {
+    throw new Error(
+      `Link ${inwardKey}: the ${type.name} link was not changed — requested inward=${inwardKey}, ` +
+        `outward=${outwardKey} but the issue still shows no such link after the POST.`,
+    );
+  }
+}
+
 // A GET entry names the OTHER issue: `outwardIssue` means this issue reads with
 // the type's outward text ("this blocks that") and is the inward (source) issue
 // of the POST that made it; `inwardIssue` means this issue reads with the
@@ -240,6 +263,7 @@ export function registerLink(program: Command): void {
           outwardKey = otherKey as string;
         }
         const line = await createIssueLink(inwardKey, outwardKey, match);
+        await verifyIssueLink(inwardKey, outwardKey, match);
         writeJiraBreadcrumb(key);
         console.log(line);
       },

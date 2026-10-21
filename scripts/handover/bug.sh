@@ -7,6 +7,10 @@
 # so the CR->bug bridge can dedup/reopen/resolve by that id (`find` queries it).
 set -uo pipefail
 
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || exit 2
+
 sub="${1:-}"; [ $# -gt 0 ] && shift
 bugs="" symptom="" id="" outcome="" note="" to="" only_open="" porcelain="" finding_id=""
 while [ $# -gt 0 ]; do case "$1" in
@@ -53,18 +57,15 @@ case "$sub" in
     [ -f "$bugs" ] || { echo "bug.sh fix: $bugs not found" >&2; exit 3; }
     n="${id#BUG-}"
     grep -qE "^### BUG-${n} — " "$bugs" || { echo "bug.sh fix: $id not found" >&2; exit 3; }
-    tmpf="$(mktemp "${bugs}.bug.XXXXXX")" || { echo "bug.sh fix: cannot create temp" >&2; exit 2; }
-    trap 'rm -f "$tmpf"' EXIT
     # Insert the outcome bullet right after the target bug's "Fixes tried:" line.
     # `inbug` is on only between the target heading and the next "### " heading.
-    if ! (awk -v n="$n" -v line="  - ${note} → ${outcome}" '
+    if ! { out="$(awk -v n="$n" -v line="  - ${note} → ${outcome}" '
       /^### BUG-/ { inbug = ($0 ~ ("^### BUG-" n " — ")) }
       { print }
       inbug && /^- \*\*Fixes tried:\*\*/ { print line }
-    ' "$bugs" > "$tmpf" && mv "$tmpf" "$bugs"); then
+    ' "$bugs" && printf x)" && printf '%s' "${out%x}" | atomic_write "$bugs"; }; then
       echo "bug.sh fix: write failed" >&2; exit 2
     fi
-    trap - EXIT
     ;;
   status)
     [ -n "$id" ] || { echo "bug.sh status: --id required" >&2; exit 2; }
@@ -72,15 +73,12 @@ case "$sub" in
     [ -f "$bugs" ] || { echo "bug.sh status: $bugs not found" >&2; exit 3; }
     n="${id#BUG-}"
     grep -qE "^### BUG-${n} — " "$bugs" || { echo "bug.sh status: $id not found" >&2; exit 3; }
-    tmpf="$(mktemp "${bugs}.bug.XXXXXX")" || { echo "bug.sh status: cannot create temp" >&2; exit 2; }
-    trap 'rm -f "$tmpf"' EXIT
-    if ! (awk -v n="$n" -v to="$to" '
+    if ! { out="$(awk -v n="$n" -v to="$to" '
       $0 ~ ("^### BUG-" n " — ") { sub(/<!-- status: [a-z]+ -->/, "<!-- status: " to " -->") }
       { print }
-    ' "$bugs" > "$tmpf" && mv "$tmpf" "$bugs"); then
+    ' "$bugs" && printf x)" && printf '%s' "${out%x}" | atomic_write "$bugs"; }; then
       echo "bug.sh status: write failed" >&2; exit 2
     fi
-    trap - EXIT
     ;;
   list)
     [ -f "$bugs" ] || exit 0

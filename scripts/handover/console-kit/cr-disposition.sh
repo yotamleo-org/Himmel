@@ -161,13 +161,14 @@ judge_ruled() {
 
 # One TSV line per open crit/imp: id, finding head, sev, then the latest
 # disposition row for this PR at SHA (disposition, source, attest, mac) or "-".
-ROWS=$(LEDGER="$LEDGER" BRANCH="$BRANCH" PR="$PR" SHA="$SHA" node -e '
+ROWS=$(LEDGER="$LEDGER" BRANCH="$BRANCH" PR="$PR" SHA="$SHA" AMEND_AUTH="$ANCHOR/scripts/cr/ledger-amend-auth.js" node -e '
 const fs=require("fs"),e=process.env,SEP=String.fromCharCode(31);
 const rows=[];
 for(const l of fs.readFileSync(e.LEDGER,"utf8").split("\n")){ try{rows.push(JSON.parse(l))}catch{} }
 const key=(b,h,id,a,p)=>[b||"",h,id,a||"diff",p||"off"].join(SEP);
 const amends=new Map(), disp=new Map();
-for(const a of rows){
+// Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
+for(const a of require(e.AMEND_AUTH).filterRows(rows)){
   if(a.kind!=="amend"||!a.set||typeof a.set!=="object") continue;
   const k=key(a.branch,a.target_head,a.finding_id,a.artifact,a.perspective);
   if("disposition" in a.set){ if(a.pr===Number(e.PR)&&a.head===e.SHA) disp.set(k,a); continue; }

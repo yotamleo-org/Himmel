@@ -187,3 +187,6 @@ node/npm/bun) with installed against available. It is read-only.
 | `--purge-state` | `uninstall` | Also remove operator state |
 | `--prune` | `ensure` | Opt in to the disable phase |
 | `--with-models` | `deps upgrade` | Pull qmd's embedding and rerank models |
+| `--no-network` | `ensure` | Run only items whose manifest entry declares a no-network path (local file wiring); refuse the rest |
+| `--allow-agent-session` | `ui` | Override the refusal to start the config UI inside a Claude session |
+| `--deep` | `report` | Add the wiring rows to the config feed |

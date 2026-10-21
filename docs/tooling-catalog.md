@@ -69,7 +69,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.5.2` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
 | `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `user`, `lane-content` and `telegram` profiles (plus the operator profile); off in lean worker sessions and the supervisor session; catalog id `obsidian-second-brain@himmel` |
-| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `ae4871e9a8cbed00bc0f4a40b0b5b61e2d37378c` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
+| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `2dc35112ef1bea5d61f31b802b5764c931984508` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
 | `shadcn-mcp` | himmel wrapper plugin for the shadcn/ui registry MCP (`npx shadcn@4.21.0 mcp`, no API key; upstream ships no plugin) | ON-DEMAND, `design` core |
@@ -82,7 +82,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `platform-design-skills` | Platform design guidelines: all 8 upstream platforms load, no skills list (sha-pinned) | ON-DEMAND, `design-a11y` profile; catalog id `@himmel` |
 | `diagram-design` | Diagram design skills (manifest-bearing upstream, sha-pinned) | ON-DEMAND, `design-diagram` profile; catalog id `@himmel` |
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
-| `frontend-slides` | HTML presentation generator, `git-subdir` `plugins/frontend-slides`, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
+| `frontend-slides` | HTML presentation generator, `git-subdir` path plugins/frontend-slides in the upstream repo, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
 | `design-dna` | Design DNA skill (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anydesign` | Capture a site into a design system, tag `v0.6.0` (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anthropic-design-skills` | anthropics/skills: whole skills/ dir loads (design ones: theme-factory, brand-guidelines, canvas-design; a skills list cannot subset it) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
@@ -109,8 +109,8 @@ drift report; no marketplace install source or live setting is changed.
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
-| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `49dd158d1076134a641b33efb035946536778336` |
-| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `59945da347a93f9937d3fb09f5ba81a16010351f` |
+| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `5beb35b040e3de97e54fa9e386d7e42d15c295c2` |
+| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `a8777050c0d9034d5de6beff3dfac9b43acb9854` |
 | `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.2.0` (`2961b52fc1fe6a5a87c7a959a79512e5c2f3ffe5`) |
 
 `scroll-world@scroll-world` also remains installed and off by default.
@@ -508,7 +508,7 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 **What:** Harness-meta operational skills for himmel.
 **Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check), `himmel-ops:ticket-standard` (lean-invoke draft checker: refuses a Task, Story or Bug without Plan, DoD and named Proof and parks it in an intake queue).
 **Commands:** `/minerva` — runs the minerva pipeline; `/memory-compound` — runs the auto-memory compaction pass; `/fanout` — validates + confirms + dispatches N work items to the invariant-policy lane by type, refusing destructive/irreversible items below the judgement tier and any dormant lane; `/cloud-route` — classifies tickets for the cloud credit lane, writes the cloud brief and prints the operator launch line without launching.
-**Hook:** `hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
+**Hook:** `marketplace/plugins/himmel-ops/hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
 **Plugin path:** `marketplace/plugins/himmel-ops/`
 
 ---
@@ -687,13 +687,13 @@ pass, never a blind find-and-replace.
 
 ## claude-statusline (vendored)
 
-**Vendored in himmel:** `scripts/statusline/` (`bin/statusline.sh`, `test/`, `LICENSE`, `README.md`, provenance in `VENDORED.md`).
-**Config:** `~/.claude/settings.json` → `statusLine.command` now points at the hud node renderer (`node "<himmel-path>/marketplace/plugins/claude-hud/dist/index.js"`, wired by `scripts/lib/wire-statusline.sh`; env gate `CLAUDE_HUD_ALLOW_EXTRA_CMD=1`; hud config dropped at `~/.claude/plugins/claude-hud/config.json`). `marketplace/plugins/claude-hud/config/himmel-config.json` sets `display.showPromptCache: true` and `display.promptCacheTtlSeconds: 3600` so the hud shows a `Cache ⏱ <until HH:MM>` wall-clock expiry line (a transcript-detected tier still wins over the configured fallback). The bash wrapper `<himmel-path>/scripts/where-are-we/statusline.sh` is retained as the **opt-in rollback fallback** — repoint to it with `bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`, restore the hud with `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` — no manifest item installs it (finding: no generic manifest `--with-<id>` mechanism exists, would need per-feature hand-wiring like `--with-graphify`; a follow-up is planned); it composes this vendored `bin/statusline.sh` + a where-are-we line — active handover + epic progression; the segment is default-ON — opt out with an explicit falsy `HIMMEL_WHERE_ARE_WE` (`0|false|off|no`); no external clone.
+**Vendored in himmel:** `scripts/statusline/` (`scripts/statusline/bin/statusline.sh`, `test/`, `LICENSE`, `README.md`, provenance in `VENDORED.md`).
+**Config:** `~/.claude/settings.json` → `statusLine.command` now points at the hud node renderer (`node "<himmel-path>/marketplace/plugins/claude-hud/dist/index.js"`, wired by `scripts/lib/wire-statusline.sh`; env gate `CLAUDE_HUD_ALLOW_EXTRA_CMD=1`; hud config dropped at `~/.claude/plugins/claude-hud/config.json`). `marketplace/plugins/claude-hud/config/himmel-config.json` sets `display.showPromptCache: true` and `display.promptCacheTtlSeconds: 3600` so the hud shows a `Cache ⏱ <until HH:MM>` wall-clock expiry line (a transcript-detected tier still wins over the configured fallback). The bash wrapper `<himmel-path>/scripts/where-are-we/statusline.sh` is retained as the **opt-in rollback fallback** — repoint to it with `bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`, restore the hud with `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` — no manifest item installs it (finding: no generic per-item install switch exists in the manifest, would need per-feature hand-wiring like the graphify one; a follow-up is planned); it composes this vendored `scripts/statusline/bin/statusline.sh` + a where-are-we line — active handover + epic progression; the segment is default-ON — opt out with an explicit falsy `HIMMEL_WHERE_ARE_WE` (`0|false|off|no`); no external clone.
 **What:** Bash script receiving Claude Code session JSON via stdin, outputs formatted status bar.
 
 Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), cache TTL countdown, per-session and all-sessions cache read/write/hit/savings. The hud renderer above only has the cache-expiry line so far — the read/write/hit-rate/net/cost lines stay bash-bar-only (opt-in/rollback) until a planned follow-up ports them.
 
-**Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
+**Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`scripts/statusline/bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
 **Patch applied:** cache-metrics patch (record kept in the state repo `specs/decisions/`)
 **Upstream:** `nilbuild/claude-statusline` (fork now archived; no PR path)
 
@@ -1911,7 +1911,8 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   armed" no-op path, so a stale registry entry with no matching live task
   (e.g. the task was deleted outside this script) still gets cleaned up.
   Flags: `--time HH:MM` (06:00 default), `--force`, `--dry-run`. Dedup-guarded;
-  hermetic test: `test-upstream-watch-cadence.sh`. `--arm-on-delta` (an
+  hermetic test: `test-upstream-watch-cadence.sh`.
+  `--arm-on-delta` (an
   interactive claude leg launched from the delta report) was deliberately
   **not** implemented — deferred to a follow-up ticket rather than shipped as
   a dormant flag, since the launch surface (mission-doc generation, model pin,
@@ -2067,7 +2068,7 @@ Bugs encountered and fixes applied when running bash scripts on Windows via Git 
 
 ### 1. `set -f` disables glob expansion globally
 
-**Script:** `bin/statusline.sh` line 2: `set -f`
+**Script:** `scripts/statusline/bin/statusline.sh` line 2: `set -f`
 **Effect:** All glob patterns treated as literal strings. `cat "$HOME/.claude/projects"/*/*.jsonl` passes the literal `*/*.jsonl` to cat → no files → jq returns 0.
 **Fix:** Wrap glob with `set +f` / `set -f`:
 ```bash
@@ -2075,7 +2076,7 @@ set +f
 stats=$(cat "$HOME/.claude/projects"/*/*.jsonl 2>/dev/null | ...)
 set -f
 ```
-**File:** `bin/statusline.sh`, `read_all_sessions_cache_stats()`
+**File:** `scripts/statusline/bin/statusline.sh`, `read_all_sessions_cache_stats()`
 
 ---
 
