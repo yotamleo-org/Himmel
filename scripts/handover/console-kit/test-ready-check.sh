@@ -1015,6 +1015,7 @@ real_run completed skipped "$SHA" > "$RUNDIR/ci.image.yml.json"
 wf_run ".github/workflows/ci.image.yml"
 check "unlisted workflow with a trigger, skipped dispatch at head: exit 1" "$rc" "1"
 contains "unlisted workflow with a trigger, skipped dispatch at head: check 10 fails" "$out" "[FAIL] 10."
+contains "unlisted workflow with a trigger, skipped dispatch at head: fails on the run, not the trigger" "$out" "ci.image.yml has no completed successful workflow_dispatch run"
 
 wf_run ".github/workflows/ci.yml" "removed .github/workflows/ci.yml"
 contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."
