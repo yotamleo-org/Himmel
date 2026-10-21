@@ -1,0 +1,47 @@
+---
+description: Start a supervisor session (new) or hand it over (next) — writes the doc, takes the queue lock, prints the launch line.
+argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
+---
+
+Starts or hands over a supervisor session (defined in
+[`docs/glossary.md`](../../docs/glossary.md)). Background + the operating
+contract:
+[`docs/handover/running-a-console.md`](../../docs/handover/running-a-console.md).
+The himmel-ops plugin ships its own copy of this command that runs from any
+repo, resolving the himmel checkout and passing `--project` at that project's
+cwd — see `marketplace/plugins/himmel-ops/commands/chief.md`.
+
+Run:
+
+```bash
+bash scripts/handover/console/chief.sh $ARGUMENTS
+```
+
+- `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-console.md`
+  from `docs/handover/console-template.md`, acquire the queue lock on it, and
+  print the launch line. A second `new` the same day bumps the letter; it never
+  overwrites.
+- `/chief next` — from a running supervisor session, write the successor stub (letter
+  bumped, pointed at this supervisor session and its HANDOFF) plus this supervisor session's
+  `-HANDOFF.md` skeleton. Run it at 45 % context fill or after 90 k input
+  tokens in one turn.
+- `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
+  on a signal file plus a deadline; prints the arm log path. Launches with
+  1m context with `--autocompact auto` by default (HIMMEL-3884).
+- `--context 1m|standard` — on `new` or `next`, override the default and
+  environment choice. `--context standard` (or `CONSOLE_CONTEXT=standard`
+  in the launching shell) opts down to `--autocompact 200000`.
+  Non-console arms keep their standard default.
+- `--dry-run` — print what it would write, prefixed `would-`, and touch nothing.
+- `--project <dir>` — a repo other than this himmel checkout: bucket/prefix
+  derive from it instead of himmel's own repo basename/`JIRA_PROJECT_KEY`, and
+  it is recorded in the console doc as data; the console session itself still
+  opens in this himmel checkout, also under `--arm`. `--bucket`/`--prefix`
+  still override it.
+
+Record the printed `release-token: ` line — now backticked around the token
+itself (HIMMEL-2910) — in the console's first Results bullet verbatim:
+releasing the lock at wrap requires it.
+
+Linux/macOS only — `--arm` launches through konsole. The Windows station arms
+through `scripts/handover/arm-resume.sh`'s schtasks backend instead.

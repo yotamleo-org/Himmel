@@ -86,7 +86,7 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
         *) ln -s "$_e" "$fixture_repo/docs/${_e##*/}" ;;
     esac
 done
-C="$fixture_repo/scripts/handover/console/console.sh"
+C="$fixture_repo/scripts/handover/console/chief.sh"
 
 root="$tmp/handovers"
 mkdir -p "$root"
@@ -253,7 +253,7 @@ done
 out3884="$(CONSOLE_CONTEXT=standard console new --bucket dry3884 --dry-run)"
 check "3884 env opt-down is explicit" \
     "$(printf '%s\n' "$out3884" | grep -c -- 'standard explicit 200000')" "1"
-resolved3884="$(. "$REPO_REAL/scripts/lib/console-context.sh"; console_context_default 0 1m; printf '%s %s' "$CONSOLE_CONTEXT_RESOLVED_MODE" "$CONSOLE_CONTEXT_RESOLVED_SOURCE")"
+resolved3884="$(. "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_default 0 1m; printf '%s %s' "$CONSOLE_CONTEXT_RESOLVED_MODE" "$CONSOLE_CONTEXT_RESOLVED_SOURCE")"
 check "3884 non-console ignores env and stays standard" "$resolved3884" "standard default"
 
 # --- 5d: the printed launch line must clear the inherited
@@ -455,7 +455,7 @@ check "8 no leak in console-template.md" "$(leak_free "$REPO_REAL/docs/handover/
 check "8 no leak in console-handoff-template.md" "$(leak_free "$REPO_REAL/docs/handover/console-handoff-template.md")" "yes"
 check "8 no leak in leg-brief-template.md" "$(leak_free "$REPO_REAL/docs/handover/leg-brief-template.md")" "yes"
 check "8 no leak in running-a-console.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-console.md")" "yes"
-check "8 no leak in .claude/commands/supervisor-session.md" "$(leak_free "$REPO_REAL/.claude/commands/supervisor-session.md")" "yes"
+check "8 no leak in .claude/commands/chief.md" "$(leak_free "$REPO_REAL/.claude/commands/supervisor-session.md")" "yes"
 
 # --- 9: unresolvable handover root exits 2, writes nothing -------------
 badroot="$tmp/does-not-exist"
@@ -1338,7 +1338,7 @@ check "48 --date dry-run still names the Z predecessor's HANDOFF" "$(printf '%s\
 rc49=0
 out49="$(console next --bucket rolldate --dry-run --date notadate --doc "$docZ48" 2>&1)" || rc49=$?
 check "49 --date malformed exits 2" "$rc49" "2"
-check "49 --date malformed prints a usage line" "$(printf '%s\n' "$out49" | grep -c '^usage: console.sh')" "1"
+check "49 --date malformed prints a usage line" "$(printf '%s\n' "$out49" | grep -c '^usage: chief.sh')" "1"
 
 # --- 50: highest-doc discovery compares letters NUMERICALLY, not lexically
 # "AA" < "B" as strings even though AA (27) is the LATER letter. Auto
@@ -1371,12 +1371,12 @@ check "52 --date 2026-02-30 prints no would-doc line" "$(printf '%s\n' "$out52" 
 rc53=0
 out53="$(console next --bucket dateval --dry-run --date "" --doc "$docZval" 2>&1)" || rc53=$?
 check "53 --date '' exits 2" "$rc53" "2"
-check "53 --date '' prints a usage line" "$(printf '%s\n' "$out53" | grep -c '^usage: console.sh')" "1"
+check "53 --date '' prints a usage line" "$(printf '%s\n' "$out53" | grep -c '^usage: chief.sh')" "1"
 
 rc54=0
 out54="$(console next --bucket dateval --dry-run --date= --doc "$docZval" 2>&1)" || rc54=$?
 check "54 --date= exits 2" "$rc54" "2"
-check "54 --date= prints a usage line" "$(printf '%s\n' "$out54" | grep -c '^usage: console.sh')" "1"
+check "54 --date= prints a usage line" "$(printf '%s\n' "$out54" | grep -c '^usage: chief.sh')" "1"
 
 out55="$(console next --bucket dateval --dry-run --date "2026-09-14" --doc "$docZval")"
 check "55 a real --date still mints the successor" "$(printf '%s\n' "$out55" | grep -c '^would-doc: .*2026-09-14A-console.md$')" "1"
@@ -1790,7 +1790,7 @@ printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\nJIRA_PROJECT_KEY=OWNKEY\n' "$own65/s
 foreign65="$tmp/foreign-repo-65"
 mkdir -p "$foreign65/nested"
 ( cd "$foreign65" && git init -q )
-out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CONSOLE_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/console.sh" new --name rec65-console --dry-run 2>&1)"
+out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CONSOLE_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/chief.sh" new --name rec65-console --dry-run 2>&1)"
 rc65=$?
 check "65 own-checkout .env resolves rc=0" "$rc65" "0"
 case "$out65" in
@@ -1884,7 +1884,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 # contract's "a test that fails when it gains a var the strip list does not
 # name").
 propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | grep -oE 'leg_propagate_env [A-Z_][A-Z0-9_]*' | awk '{print $2}' | sort -u)"
-strip_list67="$( ( . "$REPO_REAL/scripts/lib/console-context.sh"; console_context_leg_env_unset_names ) | sort -u)"
+strip_list67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_leg_env_unset_names ) | sort -u)"
 missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_list67"))"
 check "67 every leg_propagate_env name in headed-arm-leg.sh is in the strip list" "$missing67" ""
 check "67 armed child's own environment strips LEG_LANE" \
@@ -1993,7 +1993,7 @@ check "68h the disambiguated doc uses the explicit --bucket" \
 # `next` with no --project must not silently record the successor as "the
 # himmel checkout itself" for a chain that is FOR a foreign project -- the
 # plugin console.md no longer derives --project for `next` (only for `new`,
-# see marketplace/plugins/himmel-ops/commands/supervisor-session.md), so without this a
+# see marketplace/plugins/himmel-ops/commands/chief.md), so without this a
 # foreign-project chain's successor would fall back into himmel's own DEMO
 # bucket. RED against a console.sh that never seeds PROJECT_ARG
 # from the predecessor doc.
@@ -2764,8 +2764,8 @@ doc90A="$root/tester/az90/DEMO-nextleg-${today}A-console.md"
 doc90B="$root/tester/az90/DEMO-nextleg-${today}B-console.md"
 ACTION_ZERO_SCRIPT="$fixture_repo/scripts/handover/console-kit/action-zero.sh" ACTION_ZERO_BANK="$tmp/az-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az-doctor.sh" \
     console next --bucket az90 >/dev/null
-block90="$(awk '/^### Pre-computed by console.sh next/ {s = 1} s && /^## / {exit} s' "$doc90B")"
-check "90 next writes the pre-computed block" "$(printf '%s\n' "$block90" | grep -c '^### Pre-computed by console.sh next at ')" "1"
+block90="$(awk '/^### Pre-computed by chief.sh next/ {s = 1} s && /^## / {exit} s' "$doc90B")"
+check "90 next writes the pre-computed block" "$(printf '%s\n' "$block90" | grep -c '^### Pre-computed by chief.sh next at ')" "1"
 check "90 the block tells the successor to verify, not re-run" "$(printf '%s\n' "$block90" | grep -c 'verify these results, do not re-run them')" "1"
 check "90 the block carries every probe but C29" "$(printf '%s\n' "$block90" | grep -cE '^== (LOCKS|HEAD|BANK|PROCS|LOAD|LOCK)( |$)')" "6"
 check "90 the block omits C29 (the successor runs it)" "$(printf '%s\n' "$block90" | grep -c '^== C29')" "0"
@@ -2775,7 +2775,7 @@ check "90 the block reads the successor's lock as free" "$(printf '%s\n' "$block
 check "90 the block omits the DOC digest" "$(printf '%s\n' "$block90" | grep -c '^== DOC')" "0"
 check "90 next leaves the successor's lock free" "$(HANDOVER_DIR="$root" bash "$QL" status "$doc90B" 2>&1 | head -1)" "free"
 check "90 the block sits inside ACTION ZERO, before the Live state" \
-    "$(awk '/^## ACTION ZERO/ {a = NR} /^### Pre-computed by console.sh next/ {b = NR} $0 == "## Live state" {c = NR} END {print (a && a < b && b < c) ? "yes" : "no"}' "$doc90B")" "yes"
+    "$(awk '/^## ACTION ZERO/ {a = NR} /^### Pre-computed by chief.sh next/ {b = NR} $0 == "## Live state" {c = NR} END {print (a && a < b && b < c) ? "yes" : "no"}' "$doc90B")" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$doc90A" "$token90a" >/dev/null 2>&1
 out90c="$(console new --bucket az90fail)"
 token90c="$(token_of "$out90c")"

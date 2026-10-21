@@ -62,7 +62,7 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
         *) ln -s "$_e" "$fixture_repo/docs/${_e##*/}" ;;
     esac
 done
-C="$fixture_repo/scripts/handover/console/console.sh"
+C="$fixture_repo/scripts/handover/console/chief.sh"
 root="$tmp/handovers"
 mkdir -p "$root"
 today="$(date +%F)"
@@ -76,7 +76,7 @@ tpl_fields="$(awk '
     f && /^## / { exit }
     f && /^[a-z][A-Za-z0-9_ -]*:/ { sub(/:.*/, ""); print }
 ' "$tpl")"
-sh_fields="$(sed -n 's/^    for field in \(.*\); do$/\1/p' "$REPO_REAL/scripts/handover/console/console.sh" | head -n 1 | tr ' ' '\n')"
+sh_fields="$(sed -n 's/^    for field in \(.*\); do$/\1/p' "$REPO_REAL/scripts/handover/console/chief.sh" | head -n 1 | tr ' ' '\n')"
 listed="$carried_fields
 $seeded_fields"
 missing=""

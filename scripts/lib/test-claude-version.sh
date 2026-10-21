@@ -15,8 +15,8 @@ check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; f
 
 # shellcheck source=claude-version.sh
 . "$HERE/claude-version.sh"
-# shellcheck source=console-context.sh
-. "$HERE/console-context.sh"
+# shellcheck source=chief-context.sh
+. "$HERE/chief-context.sh"
 
 # --- version parse + compare ---------------------------------------------------
 check "bare: real --version shape" "$(claude_version_bare '2.1.296 (Claude Code)')" "2.1.296"

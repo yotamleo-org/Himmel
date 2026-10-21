@@ -15,7 +15,7 @@
 set -u
 unset HIMMEL_REPO 2>/dev/null || true
 here="$(cd "$(dirname "$0")" && pwd)"
-cmd="$here/../commands/supervisor-session.md"
+cmd="$here/../commands/chief.md"
 [ -f "$cmd" ] || { echo "FATAL: $cmd not found"; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "FATAL: git required for the git-toplevel case"; exit 2; }
 fails=0
@@ -35,19 +35,19 @@ trap 'rm -rf "$td"' EXIT
 empty_home="$td/empty-home"; mkdir -p "$empty_home"   # no canonical himmel here
 
 # A fake clone that contains the sentinel script (for the HIMMEL_REPO case).
-clone="$td/clone-himmel"; mkdir -p "$clone/scripts/handover/console"; : > "$clone/scripts/handover/console/console.sh"
+clone="$td/clone-himmel"; mkdir -p "$clone/scripts/handover/console"; : > "$clone/scripts/handover/console/chief.sh"
 
 # (i) HIMMEL_REPO set, CWD outside any repo -> resolves to the clone.
 got="$( cd "$td" && HIMMEL_REPO="$clone" HOME="$empty_home" run_resolver )"
 check "(i) HIMMEL_REPO from arbitrary dir" "$clone" "$got"
 
 # (ii) HIMMEL_REPO unset, CWD inside a FOREIGN repo shipping its own
-#      scripts/handover/console/console.sh, no canonical himmel present ->
+#      scripts/handover/console/chief.sh, no canonical himmel present ->
 #      the resolver must refuse, never run the foreign script just because
 #      the cwd's git toplevel has one
 #      this is the vulnerability the fix closes).
 gitclone="$td/gitclone"; mkdir -p "$gitclone/scripts/handover/console"
-git init -q "$gitclone"; : > "$gitclone/scripts/handover/console/console.sh"
+git init -q "$gitclone"; : > "$gitclone/scripts/handover/console/chief.sh"
 got="$( cd "$gitclone" && HOME="$empty_home" run_resolver )"; rc=$?
 check "(ii) foreign repo's own console.sh never wins (errored)" "" "$got"
 check "(ii) foreign repo's own console.sh never wins (non-zero exit)" "nonzero" "$( [ "$rc" -ne 0 ] && echo nonzero || echo zero )"
@@ -64,7 +64,7 @@ check "(iii) none -> non-zero exit" "nonzero" "$( [ "$rc" -ne 0 ] && echo nonzer
 #      $HOME/Himmel path (console.md's own extra candidate over himmel-update.md's
 #      list) -> resolves there.
 canon_home="$td/canon-home"
-canon="$canon_home/Himmel"; mkdir -p "$canon/scripts/handover/console"; : > "$canon/scripts/handover/console/console.sh"
+canon="$canon_home/Himmel"; mkdir -p "$canon/scripts/handover/console"; : > "$canon/scripts/handover/console/chief.sh"
 got="$( cd "$td" && HOME="$canon_home" run_resolver )"
 check "(iv) canonical default install path (\$HOME/Himmel)" "$canon" "$got"
 
@@ -78,15 +78,15 @@ check "(iv-b) canonical install wins over a foreign repo's own console.sh" "$can
 #     re-check on the resolver's 2nd line must fall through to the canonical
 #     install candidates, NEVER to the cwd's git toplevel even when that
 #     toplevel ships its own console.sh (change 5, F6).
-bogus="$td/bogus"; mkdir -p "$bogus"   # no scripts/handover/console/console.sh inside
+bogus="$td/bogus"; mkdir -p "$bogus"   # no scripts/handover/console/chief.sh inside
 got="$( cd "$gitclone" && HIMMEL_REPO="$bogus" HOME="$canon_home" run_resolver )"
 check "(v) stale HIMMEL_REPO -> canonical install, not the foreign git toplevel" "$canon" "$got"
 
 # The run line that appends the derived --project must pass it AFTER
 # $ARGUMENTS -- console.sh's first positional is the subcommand (new|next),
 # which is INSIDE $ARGUMENTS, so --project has to come after it, not before.
-run_line="$(grep -n 'console.sh" \$ARGUMENTS' "$cmd")"
-[ -n "$run_line" ] || { echo "FAIL - run line: console.sh\" \$ARGUMENTS not found in $cmd"; fails=$((fails+1)); }
+run_line="$(grep -n 'chief.sh" \$ARGUMENTS' "$cmd")"
+[ -n "$run_line" ] || { echo "FAIL - run line: chief.sh\" \$ARGUMENTS not found in $cmd"; fails=$((fails+1)); }
 check "run line: --project comes after \$ARGUMENTS" \
     "$(printf '%s\n' "$run_line" | grep -c -- '\$ARGUMENTS --project "\$PROJECT"')" "1"
 
