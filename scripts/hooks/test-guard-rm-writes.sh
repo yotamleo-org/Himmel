@@ -141,6 +141,10 @@ any_row "mv an authority file away" 2 "$(bash_payload "mv $REL/lease.json /tmp/l
 any_row "tee naming jira release as arguments" 2 "$(bash_payload "tee $REL/rulings.jsonl jira release")"
 any_row "cp with the release CLI later in the segment" 2 "$(bash_payload "cp $JIRA release state /tmp/x $REL/lease.json")"
 any_row "cp onto lease.json with a trailing redirect" 2 "$(bash_payload "cp /tmp/x $REL/lease.json 2>/dev/null")"
+any_row "cp onto lease.json with a trailing --backup=numbered" 2 "$(bash_payload "cp /tmp/x $REL/lease.json --backup=numbered")"
+any_row "cp onto lease.json with a trailing -S suffix" 2 "$(bash_payload "cp /tmp/x $REL/lease.json -S .bak")"
+any_row "cp onto lease.json with an attached -S suffix" 2 "$(bash_payload "cp /tmp/x $REL/lease.json -Stuff")"
+any_row "cp -ft into a release state directory" 2 "$(bash_payload "cp -ft $REL /tmp/lease.json")"
 
 # --- mode 1: allowed ---
 any_row "release state" 0 "$(bash_payload "$JIRA release state R113")"

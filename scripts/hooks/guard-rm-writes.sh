@@ -309,21 +309,39 @@ EOF
             # cp and mv write their destination: the last operand, or -t DIR.
             # A directory destination writes <dir>/<source name>; mv also
             # removes its sources, cp only reads them.
-            # Redirections and their targets are not operands.
+            # Redirections and their targets are not operands, nor are option
+            # arguments: -S/--suffix takes one, -t/--target-directory names
+            # the destination, and a short-option cluster ends at either.
             opwords=$(printf '%s' "$seg" \
                 | sed -E 's/[0-9]*[<>]+&?[[:space:]]*[^[:space:]]*//g' \
-                | tr '=\t\r' '   ')
-            wverb=""; ops=""; dest=""; tdir=0
+                | tr '\t\r' '  ')
+            wverb=""; ops=""; dest=""; next=""; endopts=0
             for t in $opwords; do
                 if [ -z "$wverb" ]; then
                     case "${t##*/}" in cp | mv) wverb="${t##*/}" ;; esac
                     continue
                 fi
-                if [ "$tdir" -eq 1 ]; then dest="$t"; tdir=0; continue; fi
+                case "$next" in
+                    dest) dest="$t"; next=""; continue ;;
+                    skip) next=""; continue ;;
+                esac
+                [ "$endopts" -eq 1 ] && { ops="$ops $t"; continue; }
                 case "$t" in
-                    -t | --target-directory) tdir=1 ;;
-                    -t?*) dest="${t#-t}" ;;
-                    -*) ;;
+                    --) endopts=1 ;;
+                    --t*=*) dest="${t#*=}" ;;
+                    --t*) next=dest ;;
+                    --su*=*) ;;
+                    --su*) next=skip ;;
+                    --*) ;;
+                    -?*)
+                        body="${t#-}"; pre="${body%%[St]*}"
+                        [ "$pre" = "$body" ] && continue
+                        rest="${body#"$pre"}"; arg="${rest#?}"
+                        case "$rest" in
+                            t*) if [ -n "$arg" ]; then dest="$arg"; else next=dest; fi ;;
+                            *) [ -n "$arg" ] || next=skip ;;
+                        esac
+                        ;;
                     *) ops="$ops $t" ;;
                 esac
             done
