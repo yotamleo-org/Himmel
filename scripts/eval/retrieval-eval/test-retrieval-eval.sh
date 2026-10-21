@@ -30,6 +30,8 @@ stub = slow / "git"
 stub.write_text('''#!/usr/bin/env bash
 case " $* " in
 *" grep "*)
+    printf '%s\\0' "$@" >> "$BUDGET_CALLS"
+    printf '\\0' >> "$BUDGET_CALLS"
     if [ "$BUDGET_PHASE" = snippet ] && [[ " $* " == *" -c "* ]]; then
         printf 'bin/run.sh:1\\n'
         exit 0
@@ -44,8 +46,9 @@ questions.write_text(json.dumps(dict(id="budget", q="relay_batch", gold=["bin/ru
 failed = False
 for phase, arm in (("count", "grep"), ("ident", "ident-grep"), ("snippet", "grep")):
     out = work / ("budget-" + phase)
+    calls_log = work / (phase + ".calls")
     env = dict(os.environ, PATH=str(slow) + os.pathsep + os.environ["PATH"],
-               REAL_GIT=real_git, BUDGET_PHASE=phase,
+               REAL_GIT=real_git, BUDGET_PHASE=phase, BUDGET_CALLS=str(calls_log),
                HIMMEL_EVAL_RUNS_LEDGER=str(work / "budget-ledger.jsonl"))
     result = subprocess.run([sys.executable, "-I", ev, "run", "--repo", str(work),
                              "--questions", str(questions), "--out", str(out),
@@ -53,6 +56,13 @@ for phase, arm in (("count", "grep"), ("ident", "ident-grep"), ("snippet", "grep
                             capture_output=True, text=True, timeout=10)
     if result.returncode:
         print("FAIL - %s sub-second timeout: rc=%s %s" % (phase, result.returncode, result.stderr.strip()))
+        failed = True
+        continue
+    calls = [c.split("\0") for c in calls_log.read_text().split("\0\0") if c]
+    stages = ["count" if "-c" in c else "ident" if "-w" in c else "snippet" for c in calls]
+    expected = ["count", "snippet"] if phase == "snippet" else [phase]
+    if stages != expected:
+        print("FAIL - %s expected stages %s, got %s: %s" % (phase, expected, stages, calls))
         failed = True
         continue
     row = json.loads((out / "results.jsonl").read_text().splitlines()[0])
