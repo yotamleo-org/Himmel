@@ -63,6 +63,7 @@ fi
 V="$W/v1"; make_vault "$V"; CFG="$W/c1.yml"; write_cfg "$CFG" "$V"
 cp "$CFG" "$W/c1.orig"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" >/dev/null 2>&1
+check "dry-run exits 0" 0 "$?"
 check "dry-run leaves the qmd config untouched" 0 "$(cmp -s "$CFG" "$W/c1.orig" && echo 0 || echo 1)"
 check "dry-run adds no .graphifyignore" 0 "$([ ! -e "$V/.graphifyignore" ] && echo 0 || echo 1)"
 
@@ -102,7 +103,7 @@ check ".graphifyignore second apply is a no-op" 0 "$(cmp -s "$V/.graphifyignore"
 
 # --- offload: a move, never a delete -----------------------------------------
 V="$W/v5"; make_vault "$V"; CFG="$W/c5.yml"; write_cfg "$CFG" "$V"; OFF="$W/off"
-touch -d '3 days ago' "$V/graphify-out/d/GRAPH_REPORT.md"
+touch -t 202001010000 "$V/graphify-out/d/GRAPH_REPORT.md" || exit 1
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$OFF" >/dev/null 2>&1
 check "offload dry-run leaves graphify-out in place" 0 "$([ -d "$V/graphify-out" ] && echo 0 || echo 1)"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$OFF" --apply >/dev/null 2>&1
@@ -114,7 +115,7 @@ bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off6" --apply >/
 check "a graphify-out written within 24h is not moved (a writer may target it)" 0 "$([ -f "$V/graphify-out/d/GRAPH_REPORT.md" ] && echo 0 || echo 1)"
 
 V="$W/v7"; make_vault "$V"; CFG="$W/c7.yml"; write_cfg "$CFG" "$V"
-touch -d '3 days ago' "$V/graphify-out/d/GRAPH_REPORT.md"; mkdir "$V/graphify-out/.promote.lock"
+touch -t 202001010000 "$V/graphify-out/d/GRAPH_REPORT.md" || exit 1; mkdir "$V/graphify-out/.promote.lock" || exit 1
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/off7" --apply >/dev/null 2>&1
 check "a held promote lock blocks the offload" 0 "$([ -d "$V/graphify-out/.promote.lock" ] && echo 0 || echo 1)"
 
@@ -141,8 +142,12 @@ check "a comment inside a six-space list: no duplicate, new entries after the la
   '"Clippings/_raw/**" "graphify-out/**" "60-Maps/graph/**" "handovers/**/verdicts/*/scratch/**" ' "$luna_ign"
 
 # --- failure paths: a missing value, an unwritable ignore file, an unreadable tree
-timeout 5 bash "$SUT" --vault >/dev/null 2>&1
-check "an option with no value exits 2 instead of looping" 2 "$?"
+if command -v timeout >/dev/null 2>&1; then
+  timeout 5 bash "$SUT" --vault >/dev/null 2>&1
+  check "an option with no value exits 2 instead of looping" 2 "$?"
+else
+  SKIP=$((SKIP+1)); echo "skip - no timeout(1): the option-without-value row"
+fi
 
 if [ "$(id -u)" -eq 0 ]; then
   SKIP=$((SKIP+1)); echo "skip - running as root: permission rows"
