@@ -208,6 +208,13 @@ printf '#!/bin/sh\nexec sleep 30\n' > "$tmp/bus"
 rc=0; APPEND_RESULTS_BUS_TIMEOUT=1 bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-F-console replaces CON-E-console" >/dev/null 2>&1 || rc=$?
 check "11: a stalled adopt still appends rc 0" "$rc" 0
 check "11: a stalled adopt is recorded as timed out" "$(grep -c '^- [0-9:]* bus-adopt: refused (timed out after 1s)$' "$d11")" 1
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "adopted: legx console $2 -> $2"\n' "$tmp" > "$tmp/bus"
+: > "$tmp/bus.log"
+before11="$(grep -c 'bus-adopt:' "$d11")"
+bash "$SCRIPT" "$d11" "SUCCESSION accepted: CON-F-console replaces CON-E-console" >/dev/null 2>&1
+check "11: a repeated acknowledgement still runs the adopt" "$(cat "$tmp/bus.log")" "adopt CON-F-console"
+check "11: an unchanged console writes no bus-adopt bullet" "$(grep -c 'bus-adopt:' "$d11")" "$before11"
 
 # --- 12. a stranded leg re-adopts its newest accepted successor at its next marker bullet ---
 d12="$tmp/HIMMEL-9-N3-fixture-2026-10-21.md"
@@ -226,8 +233,11 @@ printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "adopted: legx console $2 -> 
 bash "$SCRIPT" "$d12" "READY 1 abc GREEN" >/dev/null 2>&1
 check "12: an already-adopted leg still runs the idempotent adopt" "$(cat "$tmp/bus.log")" "adopt CON-C-console"
 check "12: no change writes no bus-adopt bullet" "$(grep -c 'bus-adopt:' "$d12")" 1
-printf '#!/bin/sh\necho "bus: console CON-B-console on the chain to CON-C-console is still live" >&2\nexit 1\n' > "$tmp/bus"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "bus: console CON-B-console on the chain to CON-C-console is still live" >&2\nexit 1\n' "$tmp" > "$tmp/bus"
+: > "$tmp/bus.log"
 rc=0; bash "$SCRIPT" "$d12" "BLOCKED waiting" >/dev/null 2>&1 || rc=$?
+check "12: a refused re-adopt was attempted" "$(cat "$tmp/bus.log")" "adopt CON-C-console"
 check "12: a refused re-adopt still appends rc 0" "$rc" 0
 check "12: a refused re-adopt writes no bullet" "$(grep -c 'bus-adopt:' "$d12")" 1
 # shellcheck disable=SC2016

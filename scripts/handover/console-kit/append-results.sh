@@ -98,8 +98,8 @@ bullet="- ${stamp} ${TEXT}"
 # APPEND_RESULTS_BUS_TIMEOUT bounds the adopt (seconds, default 15).
 # Every later marker bullet re-runs the adopt for the doc's newest accepted
 # successor, so a leg whose adopt was refused while its old console was still
-# live heals once that console is gone. adopt is idempotent: only a changed
-# console earns a bullet there, and a refusal stays silent.
+# live heals once that console is gone. adopt is idempotent: an unchanged
+# console never earns a bullet, and a refused re-adopt stays silent.
 succ_re='^SUCCESSION accepted: ([A-Za-z0-9][A-Za-z0-9._-]*) replaces [A-Za-z0-9][A-Za-z0-9._-]*$'
 adopt_to=""; readopt=0
 if [ "$is_leg" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ]; then
@@ -119,7 +119,7 @@ if [ -n "$adopt_to" ]; then
     wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
     if adopted="$($wait_for "$bus" adopt "$adopt_to" 2>&1)"; then
         adopted="${adopted%%$'\n'*}"
-        [ "$readopt" -eq 1 ] && [[ $adopted =~ ^adopted:\ [^\ ]+\ console\ ([^\ ]+)\ -\>\ ([^\ ]+)$ ]] \
+        [[ $adopted =~ ^adopted:\ [^\ ]+\ console\ ([^\ ]+)\ -\>\ ([^\ ]+)$ ]] \
             && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ] && adopted=""
     else
         [ "$?" -eq 124 ] && [ -n "$wait_for" ] && adopted="timed out after ${limit}s"
