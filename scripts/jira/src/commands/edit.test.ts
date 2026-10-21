@@ -626,6 +626,12 @@ describe('edit into a frozen version (HIMMEL-6918)', () => {
     expect(ledger()).toMatchObject([{ key: 'HIMMEL-1', version: 'v1.1.3', gate: 'critical' }]);
   });
 
+  it('records the admission even when another field fails its read-back', async () => {
+    await expect(edit('--add-fix-version', 'v1.1.3', '--gate', 'critical', '--priority', 'Highest')).rejects.toThrow();
+    expect(puts()).toHaveLength(1);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-1', version: 'v1.1.3', gate: 'critical' }]);
+  });
+
   it('refuses an unknown --gate, before any PUT', async () => {
     await expect(edit('--fix-version', 'v1.1.3', '--gate', 'urgent')).rejects.toThrow(/--gate/);
     expect(puts()).toHaveLength(0);
