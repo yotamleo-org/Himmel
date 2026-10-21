@@ -16,13 +16,15 @@ ok()  { echo "ok - $1"; }
 bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 is()  { if [ "$3" = "$2" ]; then ok "$1"; else bad "$1: want '$2' got '$3'"; fi; }
 
-mkdir -p "$TMP/bin" "$TMP/fx"
+mkdir -p "$TMP/bin" "$TMP/fx" "$TMP/env"
+printf '%s\n' 'himmel_github_token_vm2=fixture_read_token' > "$TMP/env/.env"
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # fake gh: `gh api <path> --jq <expr>`; fixtures live in $FX.
 [ -n "${FAKE_GH_FAIL:-}" ] && { echo "fake-gh: simulated API failure" >&2; exit 1; }
 shift; path="$1"; shift
 echo "$path $*" >> "$FX/calls.log"
+if [ "${GH_TOKEN:-}" = fixture_read_token ]; then echo read >> "$FX/tokens.log"; else echo other >> "$FX/tokens.log"; fi
 expr=""; paginate=""
 while [ $# -gt 0 ]; do case "$1" in --jq) expr="$2"; shift 2 ;; --paginate) paginate=1; shift ;; *) shift ;; esac; done
 case "$path" in
@@ -34,8 +36,13 @@ case "$path" in
 esac
 [ -f "$f" ] || { echo "fake-gh: no fixture $f" >&2; exit 1; }
 jq -r "$expr" < "$f" || exit 1
-# --paginate reads a second page too when its fixture exists, as gh runs --jq per page
-if [ -n "$paginate" ] && [ -f "${f%.json}-p2.json" ]; then jq -r "$expr" < "${f%.json}-p2.json"; fi
+# gh applies --jq per page; count each page as a REST request.
+page=2
+while [ -n "$paginate" ] && [ -f "${f%.json}-p$page.json" ]; do
+  echo "$path $* page=$page" >> "$FX/calls.log"
+  jq -r "$expr" < "${f%.json}-p$page.json" || exit 1
+  page=$((page + 1))
+done
 EOF
 chmod +x "$TMP/bin/gh"
 
@@ -58,7 +65,51 @@ runs_json() { # runs_json <status> <id>...
   echo "$out]}"
 }
 reset() { rm -f "$TMP"/fx/*; }
-run() { FX="$TMP/fx" PATH="$TMP/bin:$PATH" bash "$SCRIPT" -R owner/repo 2>&1; }
+run() { GH_READ_ENV_ROOT="$TMP/env" FX="$TMP/fx" PATH="$TMP/bin:$PATH" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 45} bash "$SCRIPT" -R owner/repo 2> "$TMP/stderr"; }
+
+# Removing the jobs bound must break the request budget, even across pages.
+for count in 150 400; do
+  reset
+  runs_json in_progress > "$TMP/fx/runs-in_progress.json"
+  page=1; ids=()
+  for ((id = 1; id <= count; id++)); do
+    ids+=("$id")
+    jobs_json 1 0 1 "$t10" > "$TMP/fx/jobs-$id.json"
+    if [ "${#ids[@]}" -eq 100 ] || [ "$id" -eq "$count" ]; then
+      f="$TMP/fx/runs-queued.json"
+      [ "$page" -eq 1 ] || f="$TMP/fx/runs-queued-p$page.json"
+      runs_json queued "${ids[@]}" > "$f"
+      page=$((page + 1)); ids=()
+    fi
+  done
+  started=$SECONDS
+  out="$(run)"; rc=$?
+  elapsed=$((SECONDS - started))
+  is "$count runs: finishes inside tick timeout" "0" "$rc"
+  if [ "$elapsed" -lt 45 ]; then ok "$count runs: elapsed ${elapsed}s below 45s"; else bad "$count runs: elapsed ${elapsed}s"; fi
+  calls=$(grep -c '^repos/' "$TMP/fx/calls.log")
+  if [ "$calls" -le 38 ]; then ok "$count runs: $calls REST requests within 38/probe budget"; else bad "$count runs: $calls REST requests exceeds 38/probe budget"; fi
+  is "$count runs: bounded jobs reads" "32" "$(grep -c '/jobs?' "$TMP/fx/calls.log")"
+  is "$count runs: partial counts labelled" "ci-queue: jobs_in_progress=32/60 macos=0/5 queued=32 oldest_wait=10m sampled=true" "$out"
+  is "$count runs: uses read token" "0" "$(grep -c '^other$' "$TMP/fx/tokens.log")"
+done
+
+# Zero, empty and nonnumeric overrides must not silently change the denominator.
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+for cap in 0 00 abc ''; do
+  out="$(CI_MAX_JOBS="$cap" run)"
+  is "bad CI_MAX_JOBS '$cap': default" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+  if grep -q 'invalid CI_MAX_JOBS' "$TMP/stderr"; then ok "bad CI_MAX_JOBS '$cap': warning"; else bad "bad CI_MAX_JOBS '$cap': no warning"; fi
+done
+out="$(CI_MAX_JOBS=20 run)"
+is "nondefault cap preserves stdout" "ci-queue: jobs_in_progress=0/20 macos=0/5 queued=0 oldest_wait=0m" "$out"
+if grep -q 'CI_MAX_JOBS=20' "$TMP/stderr"; then ok "nondefault cap logged"; else bad "nondefault cap not logged"; fi
+
+# A focused entry point permits the new RED rows to run without the legacy suite.
+if [ "${1:-}" = --budget ]; then
+  if [ "$fails" -eq 0 ]; then echo "PASSED"; exit 0; else echo "FAILED=$fails"; exit 1; fi
+fi
 
 if bash -n "$SCRIPT"; then ok "syntax (bash -n)"; else bad "syntax"; fi
 
@@ -100,14 +151,15 @@ is "queued runs with 0 jobs" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=2
 
 # 75 live runs (3 in progress, 72 queued); every queued run is still running
 # one job while another waits, so run-level status hides the running jobs.
-# All 75 are counted: 3*5 + 72*1 running, 72 queued.
+# The sample prioritises all 3 in-progress runs, then 29 queued runs:
+# 3*5 + 29*1 running, 29 queued. Partial counts must be labelled.
 reset
 ids=(); for ((i = 0; i < 72; i++)); do ids+=($((100 + i))); done
 runs_json in_progress 1 2 3 > "$TMP/fx/runs-in_progress.json"; runs_json queued "${ids[@]}" > "$TMP/fx/runs-queued.json"
 for i in 1 2 3; do jobs_json 5 0 0 "$t10" > "$TMP/fx/jobs-$i.json"; done
 for id in "${ids[@]}"; do jobs_json 1 0 1 "$t10" > "$TMP/fx/jobs-$id.json"; done
 out="$(run)"
-is "75 runs: every running job counted" "ci-queue: jobs_in_progress=87/60 macos=0/5 queued=72 oldest_wait=10m" "$out"
+is "75 runs: in-progress first, labelled lower bounds" "ci-queue: jobs_in_progress=44/60 macos=0/5 queued=29 oldest_wait=10m sampled=true" "$out"
 
 # pending runs (no jobs yet) wait like queued ones
 reset

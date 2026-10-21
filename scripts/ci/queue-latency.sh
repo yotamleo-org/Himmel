@@ -14,8 +14,19 @@ set -uo pipefail
 # 60 concurrent jobs, of which at most 5 macOS). ci-queue-saturated readers
 # (tick.sh) compare jobs_in_progress against the first number printed here.
 # CI_MAX_JOBS overrides the cap for another plan.
-CI_MAX_JOBS="${CI_MAX_JOBS:-60}"
-case "$CI_MAX_JOBS" in ''|*[!0-9]*) CI_MAX_JOBS=60 ;; esac
+CI_MAX_JOBS="${CI_MAX_JOBS-60}"
+valid_cap=1
+case "$CI_MAX_JOBS" in
+  ''|*[!0-9]*) valid_cap=0 ;;
+  *[1-9]*) ;;
+  *) valid_cap=0 ;;
+esac
+if [ "$valid_cap" -eq 0 ]; then
+  echo "ci-queue: invalid CI_MAX_JOBS; using default 60" >&2
+  CI_MAX_JOBS=60
+elif [ "$CI_MAX_JOBS" != 60 ]; then
+  echo "ci-queue: CI_MAX_JOBS=$CI_MAX_JOBS (non-default cap)" >&2
+fi
 CI_MAX_MACOS=5
 
 unknown() { echo "ci-queue: unknown"; exit 0; }
@@ -39,8 +50,10 @@ fi
 
 # shellcheck source=../lib/timeout-bin.sh
 . "$(dirname "$0")/../lib/timeout-bin.sh" 2>/dev/null
-# GNU timeout (or gtimeout on macOS); no bound available = run unbounded.
-gh_api() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 15} gh api "$@" 2>/dev/null; }
+# No timeout binary means no bounded read is possible.
+[ -n "$_TIMEOUT_BIN" ] || unknown
+GH_READ_SCRIPT="$(dirname "$0")/../lib/gh-read.sh"
+gh_api() { "$_TIMEOUT_BIN" -k 1 5 bash "$GH_READ_SCRIPT" api "$@" 2>/dev/null; }
 
 # The leading "#ok" row proves the body held a workflow_runs array, so a valid
 # empty listing (no runs) is told apart from an empty or unparseable body.
@@ -55,8 +68,7 @@ JOBS_JQ='if (.jobs | type) != "array" then error("jobs is not an array")
            ([.jobs[] | select(.status=="queued") | .created_at | fromdateiso8601] | min // 0) ] | @tsv'
 
 # A run reports status=queued while any one of its jobs waits, even with other
-# jobs running, so every run of every live status gets its jobs read, paged
-# past the first 100 runs.
+# jobs running, so list every live status, paged past the first 100 runs.
 runs=""
 for st in in_progress queued pending; do
   listing="$(gh_api "repos/$REPO/actions/runs?status=$st&per_page=100" --paginate --jq "$RUNS_JQ")" || unknown
@@ -66,9 +78,21 @@ done
 # In-progress first; dedupe by id (a run can appear in more than one list).
 runs="$(printf '%s\n' "$runs" | awk 'NF && $1 !~ /^#/ && !seen[$1]++')"
 
-# Read each run's jobs in parallel batches (bash 3.2 has no `wait -n`): a
-# serial read of 150+ runs outlasts the tick's probe bound. A failed or empty
-# read leaves no result file, which reads as unknown.
+# At 400 live runs: at most 6 listing pages + 32 jobs reads = 38 REST calls
+# normally, 76 with gh-read's refused-token retry; at 20 probes/hour this is
+# 760 normally, 1520 worst-case. Counts beyond the sample are lower bounds,
+# explicitly labelled so exact-count readers can reject them.
+MAX_RUNS=32
+sampled=""
+run_count="$(printf '%s\n' "$runs" | awk 'NF { n++ } END { print n+0 }')"
+if [ "$run_count" -gt "$MAX_RUNS" ]; then
+  runs="$(printf '%s\n' "$runs" | awk -v max="$MAX_RUNS" 'NR <= max')"
+  sampled=" sampled=true"
+fi
+
+# Three 5s listing commands and two 5s jobs batches (plus 1s kill grace each)
+# bound API waiting to 30s, inside the tick's default 45s probe timeout.
+# A failed or empty read leaves no result file, which reads as unknown.
 JOBS_TMP="$(tmpdir)" || unknown
 trap 'rm -rf "$JOBS_TMP"' EXIT
 JOBS_PAR=16
@@ -102,4 +126,4 @@ done <<< "$runs"
 wait_min=0
 [ "$oldest" -gt 0 ] && wait_min=$(( (now - oldest) / 60 ))
 [ "$wait_min" -lt 0 ] && wait_min=0
-echo "ci-queue: jobs_in_progress=$ip/$CI_MAX_JOBS macos=$mac/$CI_MAX_MACOS queued=$q oldest_wait=${wait_min}m"
+echo "ci-queue: jobs_in_progress=$ip/$CI_MAX_JOBS macos=$mac/$CI_MAX_MACOS queued=$q oldest_wait=${wait_min}m$sampled"
