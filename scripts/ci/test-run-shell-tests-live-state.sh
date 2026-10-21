@@ -21,6 +21,8 @@
 #   L8. Under the default hard-fail list a listed suite still fails on a leak,
 #       and any other suite gets a [LIVE-STATE] WARN and passes. L1-L7 run
 #       with every suite hard (SUITE_LIVE_HARD='*').
+#   L9. An unlisted suite's scheduler call is recorded and then reaches the
+#       next scheduler on PATH; a hard-fail suite's call is refused.
 #
 # Platform guard: bash-only, like every suite in this family, and no .ps1
 # twin. L3 is skipped on Git Bash, where the runner does not take the census.
@@ -297,7 +299,11 @@ mkdir -p "$sb/root8/scripts/handover" "$sb/root8/scripts/cloud"
 printf '#!/usr/bin/env bash\ncrontab -l >/dev/null 2>&1\nexit 0\n' > "$sb/root8/scripts/handover/test-merge-on-green.sh"
 printf '#!/usr/bin/env bash\ncrontab -l >/dev/null 2>&1\nexit 0\n' > "$sb/root8/scripts/cloud/test-x-leaks.sh"
 chmod +x "$sb/root8/scripts/handover/test-merge-on-green.sh" "$sb/root8/scripts/cloud/test-x-leaks.sh"
-out8=$(SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE -u SUITE_LIVE_HARD bash "$RUNNER" "$sb/root8" 2>&1)
+# The real scheduler as an unlisted suite meets it: a listing it can check.
+mkdir -p "$sb/realbin"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\necho "0 3 * * * fake-job"\n' "$sb/real-crontab.log" > "$sb/realbin/crontab"
+chmod +x "$sb/realbin/crontab"
+out8=$(PATH="$sb/realbin:$PATH" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE -u SUITE_LIVE_HARD bash "$RUNNER" "$sb/root8" 2>&1)
 rc8=$?
 if [ "$rc8" -eq 1 ]; then pass "L8: run exits 1"; else fail "L8: expected rc=1, got $rc8; out: $out8"; fi
 if grepq "$out8" -E '\[FAIL\] .*scripts/handover/test-merge-on-green\.sh' \
@@ -311,6 +317,27 @@ if grepq "$out8" -E '\[LIVE-STATE\] WARN .*test-x-leaks\.sh .*crontab -l' \
   pass "L8: a suite off the list WARNs and passes"
 else
   fail "L8: test-x-leaks.sh did not WARN and pass; out: $out8"
+fi
+
+echo "== L9: an unlisted suite's scheduler call reaches the next scheduler on PATH; a hard-fail suite's never does =="
+mkdir -p "$sb/root9/scripts/handover" "$sb/root9/scripts/himmelctl"
+printf '#!/usr/bin/env bash\ncrontab -l >/dev/null 2>&1\nexit 0\n' > "$sb/root9/scripts/handover/test-merge-on-green.sh"
+# Uninstall enumerates the crontab and stops when it cannot (test-standalone-bundle.sh on CI).
+printf '#!/usr/bin/env bash\ncrontab -l | grep -q fake-job || { echo "could not enumerate crontab"; exit 1; }\nexit 0\n' > "$sb/root9/scripts/himmelctl/test-x-uninstall.sh"
+chmod +x "$sb/root9/scripts/handover/test-merge-on-green.sh" "$sb/root9/scripts/himmelctl/test-x-uninstall.sh"
+rm -f "$sb/real-crontab.log"
+out9=$(PATH="$sb/realbin:$PATH" SUITE_TIMEOUT=60 env -u SUITE_TIER_MODE -u SUITE_LIVE_HARD bash "$RUNNER" "$sb/root9" 2>&1)
+calls9=$(cat "$sb/real-crontab.log" 2>/dev/null)
+if grepq "$out9" -E '\[LIVE-STATE\] WARN .*test-x-uninstall\.sh .*crontab -l' \
+  && grepq "$out9" -E '\[PASS\] .*test-x-uninstall\.sh' && [ "$calls9" = "-l" ]; then
+  pass "L9: an unlisted suite is recorded and then reaches the next scheduler"
+else
+  fail "L9: test-x-uninstall.sh did not reach the next scheduler once; calls: [$calls9]; out: $out9"
+fi
+if grepq "$out9" -E '\[FAIL\] .*scripts/handover/test-merge-on-green\.sh'; then
+  pass "L9: a hard-fail suite is still refused"
+else
+  fail "L9: test-merge-on-green.sh was not refused; out: $out9"
 fi
 
 rst_tally

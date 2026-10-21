@@ -4102,8 +4102,9 @@ fi
 # sentinel file must keep its seed, a sentinel dir must stay empty, the shim log
 # must stay empty; whatever a suite dirtied is named and reset before the next
 # suite. It fails a suite on the hard-fail list; any other suite gets a WARN
-# and passes until its leak is fixed. The checks are builtins only: no fork on
-# a clean suite.
+# and passes until its leak is fixed, its scheduler calls still reaching the
+# real scheduler as on main. The checks are builtins only: no fork on a clean
+# suite.
 live_root=""
 # Globs matched against "/<suite path>"; SUITE_LIVE_HARD replaces the list.
 live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/ci/test-run-shell-tests*.sh}"
@@ -4130,9 +4131,21 @@ _live_reset() {
   mkdir -p "$live_root/state" "$live_root/bin" || return 1
   for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
   for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
+  # A shim records every call. For a suite off the hard-fail list it then runs
+  # the next scheduler on PATH, as main does; otherwise it refuses.
   for _v in $live_sched; do
-    printf '#!/usr/bin/env bash\nprintf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q\necho "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2\nexit 1\n' \
-      "$_v" "$live_root/scheduler-calls.log" "$_v" > "$live_root/bin/$_v" || return 1
+    # shellcheck disable=SC2016  # the shim body expands when the shim runs
+    printf '#!/usr/bin/env bash
+printf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q
+if [ -n "${HIMMEL_SUITE_SCHED_REAL:-}" ]; then
+  _d=%q; _p=":$PATH:"; _p=${_p//":$_d:"/:}; _p=${_p#:}; _p=${_p%%:}
+  _r=$(PATH=$_p; type -P %s) && exec "$_r" "$@"
+  echo "%s: command not found" >&2; exit 127
+fi
+echo "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2
+exit 1
+' \
+      "$_v" "$live_root/scheduler-calls.log" "$live_root/bin" "$_v" "$_v" "$_v" > "$live_root/bin/$_v" || return 1
     chmod +x "$live_root/bin/$_v" || return 1
   done
 }
@@ -4144,6 +4157,7 @@ _live_env() {
   [ -n "$live_root" ] || return 0
   for _v in ${!HIMMEL_CONSOLE_@} ${!HIMMEL_INBOX@}; do unset "$_v"; done
   for _v in $live_files $live_dirs; do export "$_v=$live_root/state/$_v"; done
+  if _live_is_hard "$1"; then unset HIMMEL_SUITE_SCHED_REAL; else export HIMMEL_SUITE_SCHED_REAL=1; fi
   export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
   export HIMMEL_SUITE_SHIM_DIR="$live_root/bin"
   export PATH="$live_root/bin:$PATH"
@@ -4394,7 +4408,7 @@ while IFS= read -r suite <&3; do
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
-    _live_env
+    _live_env "$suite"
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
   suite_pid=$!
   # Its own group as well, so cancelling it below takes its `sleep` too —
