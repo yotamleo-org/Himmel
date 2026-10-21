@@ -111,9 +111,9 @@ GH_READ_ENV_ROOT="$W/root" bash "$REPO/scripts/handover/console-kit/ready-check.
 check "B4 ready-check's first read used the read token" "$READTOK" "$(sed -n '1p' "$GHLOG" | sed 's/^tok=\([^ ]*\) .*/\1/')"
 # check-ci: the first PR read rides the read token, and no merge/comment shape ever shows up
 : > "$GHLOG"
-GH_READ_ENV_ROOT="$W/root" CHECK_CI_SLEEP_CMD=: GH_BUDGET_PREFLIGHT=0 bash "$REPO/scripts/check-ci.sh" 99 --max-wait 5 --settle 0 >/dev/null 2>&1
+GH_READ_ENV_ROOT="$W/root" CHECK_CI_SLEEP_CMD=: GH_BUDGET_PREFLIGHT=0 bash "$REPO/scripts/check-ci.sh" 99 --max-wait 5 --settle 0 >"$W/ci.out" 2>&1
 check "B5 check-ci's reads used the read token" "" "$(grep -v "^tok=$READTOK " "$GHLOG")"
-check "B5b check-ci made at least one read (B5 is not vacuous)" "yes" "$([ "$(grep -c . "$GHLOG")" -gt 0 ] && echo yes)"
+check "B5b check-ci made at least one read (B5 is not vacuous)" "yes" "$([ "$(grep -c . "$GHLOG")" -gt 0 ] && echo yes || head -c 500 "$W/ci.out")"
 # the watcher stays an exec'd gh so check-ci's recorded pid is the real gh, never a wrapper
 check "B5c check-ci's two --watch calls exec gh directly" "2" "$(grep -c 'exec gh pr checks .*--watch' "$REPO/scripts/check-ci.sh")"
 # go.sh: both of its reads (fork PR view, repo name) go through the helper variable
