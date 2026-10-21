@@ -4535,8 +4535,8 @@ cat > "$bus45/headed" <<'HEADED_EOF'
 } > "$(dirname "$0")/seen"
 HEADED_EOF
 chmod 755 "$bus45/headed"
-for bus45_variant in in out; do
-  if [ "$bus45_variant" = in ]; then bus45_names='["qmd","himmel-bus"]'; else bus45_names='["qmd"]'; fi
+for bus45_variant in in out null; do
+  case "$bus45_variant" in in) bus45_names='["qmd","himmel-bus"]' ;; out) bus45_names='["qmd"]' ;; null) bus45_names='null' ;; esac
   cat > "$bus45/profiles-$bus45_variant.mjs" <<PROFILE_EOF
 switch (process.argv[3]) {
   case '--context': console.log('{"contextMode":"standard","autocompact":200000}'); break;
@@ -4575,6 +4575,14 @@ check "45h opted-out: no peer file" "$([ -e "$bus45/state/himmel/bus/peers/HIMME
 check "45i opted-out: no HIMMEL_BUS_* in the launched env" "$(bus45_toks)" ""
 check "45j opted-out: headed-arm.sh is not told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
 check "45k opted-out: the ambient HIMMEL_BUS_NAME does not reach the target" "$(sed -n 's/^AMBIENT=//p' "$bus45/seen")" "<unset>"
+# a profile with no mcpServers field (null: every user MCP server, himmel-bus
+# among them, as the design profiles resolve) registers like an opted-in one.
+rc=0; run45 null HIMMEL-45-null || rc=$?
+check "45k1 null-mcpServers launch: exit 0" "$rc" "0"
+check "45k2 null-mcpServers: the leg is registered under its console" \
+  "$(jq -r '.role + " " + .console' "$bus45/state/himmel/bus/peers/HIMMEL-45-null.json" 2>/dev/null || echo none)" "leg HIMMEL-console-45"
+check "45k3 null-mcpServers: the launched env carries HIMMEL_BUS_NAME=<name>" "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-null"
+check "45k4 null-mcpServers: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
 # a re-arm of a name that was registered but never bound (the first
 # launch was refused later, or died before the bind) adopts the entry and binds.
 rc=0; run45 in HIMMEL-45-in || rc=$?

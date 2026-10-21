@@ -2519,8 +2519,10 @@ fi
 # never binds (spec 8.5), so it is not registered either; nor is a leg whose doc
 # names no console, which has nobody to register with.
 # ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
+# A profile with no mcpServers field (null) loads every user MCP server,
+# himmel-bus among them, so it opts in too.
 case "${MCP_NAMES_JSON:-}" in
-    *'"himmel-bus"'*)
+    *'"himmel-bus"'*|null)
         if [ "$HEADLESS" -ne 1 ] && [ -z "$BUS_CONSOLE" ]; then
             echo "$(date +%F_%T) headed-arm-leg: $NAME names no console - not registered on the bus" >> "$LOG"
         elif [ "$HEADLESS" -ne 1 ]; then

@@ -96,16 +96,37 @@ bullet="- ${stamp} ${TEXT}"
 # refusal never blocks the acknowledgement. Only a leg with a bus identity
 # (HIMMEL_BUS_NAME) adopts. APPEND_RESULTS_BUS replaces the CLI;
 # APPEND_RESULTS_BUS_TIMEOUT bounds the adopt (seconds, default 15).
-if [ "$is_leg" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ] && [[ $TEXT =~ ^SUCCESSION\ accepted:\ ([A-Za-z0-9][A-Za-z0-9._-]*)\ replaces\ [A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+# Every later marker bullet re-runs the adopt for the doc's newest accepted
+# successor, so a leg whose adopt was refused while its old console was still
+# live heals once that console is gone. adopt is idempotent: only a changed
+# console earns a bullet there, and a refusal stays silent.
+succ_re='^SUCCESSION accepted: ([A-Za-z0-9][A-Za-z0-9._-]*) replaces [A-Za-z0-9][A-Za-z0-9._-]*$'
+adopt_to=""; readopt=0
+if [ "$is_leg" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ]; then
+    if [[ $TEXT =~ $succ_re ]]; then
+        adopt_to="${BASH_REMATCH[1]}"
+    else
+        case "$lead" in
+            LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)
+                accepted="$(sed -n 's/^- [0-9][0-9]:[0-9][0-9] //p' "$DOC" | grep -E "$succ_re" | tail -n 1)"
+                [[ $accepted =~ $succ_re ]] && { adopt_to="${BASH_REMATCH[1]}"; readopt=1; } ;;
+        esac
+    fi
+fi
+if [ -n "$adopt_to" ]; then
     bus="${APPEND_RESULTS_BUS:-$(dirname "${BASH_SOURCE[0]}")/../../../marketplace/plugins/himmel-bus/bin/bus}"
     limit="${APPEND_RESULTS_BUS_TIMEOUT:-15}"
     wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
-    if adopted="$($wait_for "$bus" adopt "${BASH_REMATCH[1]}" 2>&1)"; then :; else
+    if adopted="$($wait_for "$bus" adopt "$adopt_to" 2>&1)"; then
+        adopted="${adopted%%$'\n'*}"
+        [ "$readopt" -eq 1 ] && [[ $adopted =~ ^adopted:\ [^\ ]+\ console\ ([^\ ]+)\ -\>\ ([^\ ]+)$ ]] \
+            && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ] && adopted=""
+    else
         [ "$?" -eq 124 ] && [ -n "$wait_for" ] && adopted="timed out after ${limit}s"
         adopted="refused (${adopted%%$'\n'*})"
+        [ "$readopt" -eq 1 ] && adopted=""
     fi
-    adopted="${adopted%%$'\n'*}"
-    bullet="- ${stamp} bus-adopt: ${adopted//->/→}"$'\n'"$bullet"
+    [ -z "$adopted" ] || bullet="- ${stamp} bus-adopt: ${adopted//->/→}"$'\n'"$bullet"
 fi
 
 # the vault's pre-commit gitleaks would refuse the doc and stall the autosync

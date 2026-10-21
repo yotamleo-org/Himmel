@@ -209,5 +209,38 @@ rc=0; APPEND_RESULTS_BUS_TIMEOUT=1 bash "$SCRIPT" "$d11" "SUCCESSION accepted: C
 check "11: a stalled adopt still appends rc 0" "$rc" 0
 check "11: a stalled adopt is recorded as timed out" "$(grep -c '^- [0-9:]* bus-adopt: refused (timed out after 1s)$' "$d11")" 1
 
+# --- 12. a stranded leg re-adopts its newest accepted successor at its next marker bullet ---
+d12="$tmp/HIMMEL-9-N3-fixture-2026-10-21.md"
+printf '# leg\n\nYour RETASK token is X-3.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n- 10:05 SUCCESSION accepted: CON-B-console replaces CON-A-console\n- 10:09 SUCCESSION accepted: CON-C-console replaces CON-B-console\n' > "$d12"
+# shellcheck disable=SC2016  # $* and $2 expand in the stub, not here
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "adopted: legx console CON-A-console -> $2"\n' "$tmp" > "$tmp/bus"
+: > "$tmp/bus.log"
+rc=0; bash "$SCRIPT" "$d12" "LIVE working" >/dev/null 2>&1 || rc=$?
+check "12: the marker bullet appends rc 0" "$rc" 0
+check "12: the bus adopts the newest accepted successor" "$(cat "$tmp/bus.log")" "adopt CON-C-console"
+check "12: a changed console is recorded as a bus-adopt bullet" "$(grep -c '^- [0-9:]* bus-adopt: adopted: legx console CON-A-console → CON-C-console$' "$d12")" 1
+check "12: the marker bullet stays the newest line" "$(tail -n 1 "$d12" | sed 's/^- [0-9:]* //')" "LIVE working"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\necho "adopted: legx console $2 -> $2"\n' "$tmp" > "$tmp/bus"
+: > "$tmp/bus.log"
+bash "$SCRIPT" "$d12" "READY 1 abc GREEN" >/dev/null 2>&1
+check "12: an already-adopted leg still runs the idempotent adopt" "$(cat "$tmp/bus.log")" "adopt CON-C-console"
+check "12: no change writes no bus-adopt bullet" "$(grep -c 'bus-adopt:' "$d12")" 1
+printf '#!/bin/sh\necho "bus: console CON-B-console on the chain to CON-C-console is still live" >&2\nexit 1\n' > "$tmp/bus"
+rc=0; bash "$SCRIPT" "$d12" "BLOCKED waiting" >/dev/null 2>&1 || rc=$?
+check "12: a refused re-adopt still appends rc 0" "$rc" 0
+check "12: a refused re-adopt writes no bullet" "$(grep -c 'bus-adopt:' "$d12")" 1
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "$*" >> "%s/bus.log"\n' "$tmp" > "$tmp/bus"
+: > "$tmp/bus.log"
+bash "$SCRIPT" "$d12" "CONSULT design :: q :: read: x" >/dev/null 2>&1
+check "12: a non-marker bullet runs no adopt" "$(cat "$tmp/bus.log")" ""
+d12b="$tmp/HIMMEL-9-N4-fixture-2026-10-21.md"
+printf '# leg\n\nYour RETASK token is X-4.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d12b"
+bash "$SCRIPT" "$d12b" "LIVE no succession yet" >/dev/null 2>&1
+check "12: a doc with no accepted succession runs no adopt" "$(cat "$tmp/bus.log")" ""
+HIMMEL_BUS_NAME='' bash "$SCRIPT" "$d12" "LIVE unbound" >/dev/null 2>&1
+check "12: a leg with no bus identity runs no re-adopt" "$(cat "$tmp/bus.log")" ""
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
