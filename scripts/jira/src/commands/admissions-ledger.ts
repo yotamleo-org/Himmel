@@ -9,12 +9,14 @@ export interface Admission {
   version: string;
   key: string;
   gate?: string;
-  kind?: 'override';
+  kind?: 'override' | 'deferral' | 'rm-admit';
   actor: string;
   reason?: string;
+  /** The release-manager session that ruled an `rm-admit` row. */
+  by?: string;
 }
 
-export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason'>;
+export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by'>;
 
 function admissionsLedgerPath(): string {
   const explicit = process.env['HIMMEL_ADMISSIONS_LEDGER'];

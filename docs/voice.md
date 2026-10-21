@@ -7,6 +7,13 @@
 
 Local speech for the agent: it speaks replies aloud, and it can listen.
 
+> **Platform.** The install steps and `push-to-talk.py` below were written for a
+> Windows desktop and have not been ported; the install, daemon-launch,
+> listening and microphone commands are PowerShell, while the `speak.sh`
+> workflows are bash.
+> Windows is otherwise unsupported, so treat the Windows parts as a reference
+> for that one setup.
+
 **What stays local, precisely.** Speech recognition and synthesis both run on
 this machine, so **the audio never leaves it** — no recording, no voice, nothing
 a cloud speech API would receive. That is the whole point of running the models
@@ -110,17 +117,12 @@ cannot drive your speakers.
 ### Listening
 
 ```powershell
-.\scripts\voice\voice-loop.ps1 -Voice myvoice -Repeat -Continue  # full spoken turn
-.\scripts\voice\ptt.ps1                                          # push-to-talk → clipboard
+& "$HOME\.himmel\voice\venv\Scripts\python.exe" scripts\voice\push-to-talk.py  # push-to-talk → clipboard
 & "$HOME\.himmel\voice\venv\Scripts\python.exe" scripts\voice\jarvis.py
 ```
 
-- **`voice-loop.ps1`** — speak, a Claude run answers, the answer is spoken back.
-  `-Continue` carries context across turns of that invocation only. ENTER sends
-  early. Expect 10–30 s per turn; that is Claude's cold start, not the voice
-  layer.
 - **`jarvis.py`** — say "jarvis" to wake, "stop" or "shut off" to cut it off.
-- **`ptt.ps1`** — hold, talk, release; the transcript lands on the clipboard.
+- **`push-to-talk.py`** — hold, talk, release; the transcript lands on the clipboard.
 
 ## Install
 
@@ -245,7 +247,7 @@ here — everything else assumes this step.
 
 ### 6. For listening, pick the right microphone
 
-`jarvis.py` and `ptt.ps1` need a **real** input device. Choose the physical jack
+`jarvis.py` and `push-to-talk.py` need a **real** input device. Choose the physical jack
 or USB interface, *not* a loopback/"stereo mix"/"what-U-hear" device — those
 capture system output, so the assistant records itself and answers its own
 voice, which looks exactly like a wake-word bug and is not one.

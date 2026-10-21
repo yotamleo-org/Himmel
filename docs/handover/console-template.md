@@ -90,7 +90,7 @@ Run these, in order, and write the result as the first bullet under
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
     or `UNCHANGED <path>`; on `CHANGED` publish the file with the `Artifact` tool
     and record the URL on `board:` below. A successor's first publish to a carried
-    URL must `Artifact read` it first. Roadmap tracker (when `tracker:` is set):
+    URL goes to a medium-effort haiku subagent. Roadmap tracker (if `tracker:` set):
     `console-sections/board-tracker.md`.
 
 ## Live state
@@ -208,6 +208,8 @@ bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` 
   WRAPPED (step 12); `board=STALE` is a skipped step. [prose]
 - **Every judge question leaves four fields and persists its verdict**, and a judge
   call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`. [prose]
+- **With a release declared, every placement is a request to the release
+  manager**, never a direct fixVersions write: `console-sections/release-manager.md`. [prose]
 
 ## Handing over
 

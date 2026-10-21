@@ -7,61 +7,6 @@ bash-5.1+ environment, or any Claude Code session. The Codex-specific hook
 wiring trap lives in [`harness-compat.md`](harness-compat.md); guardrail-recovery
 escape hatches live in [`stuck-playbook.md`](stuck-playbook.md).
 
-## Windows: bare `bash` resolves to the System32 WSL stub
-
-On a WSL-enabled Windows box, a bare `bash` — from PowerShell, `& bash` in a
-`.ps1`, or any tool shelling out — resolves to `C:\WINDOWS\system32\bash.exe`,
-the **WSL launcher**, NOT Git Bash. WSL bash cannot read `C:\…` / `C:/…` paths →
-it errors `No such file or directory` and exits **127** on a Windows-style script
-path (it would need `/mnt/c/…`). `Get-Command bash` confirms the source.
-
-Resolve Git Bash explicitly anywhere a `.ps1` or PS command shells out to a bash
-script:
-
-```powershell
-$gitBash = "C:\Program Files\Git\bin\bash.exe"
-if (-not (Test-Path $gitBash)) {
-    $bc = Get-Command bash -ErrorAction SilentlyContinue
-    $gitBash = if ($bc -and $bc.Source -notmatch 'System32') { $bc.Source } else { $null }
-}
-& $gitBash "C:/path/to/script.sh" arg1 arg2
-```
-
-The `-notmatch 'System32'` clause is the key — it rejects the WSL stub on the
-fallback path. Operator hand-off commands that call bash on Windows must use the
-full Git Bash path `& "C:\Program Files\Git\bin\bash.exe" …`. (This is the same
-stub Codex's hook wrapper has to skip — see `harness-compat.md`.)
-
-**It bites long-running child processes too, and there it is silent.** A
-`spawn(["bash", "<abs-script>"])` from Node/Bun resolves `bash` through the
-*spawning process's* PATH — which for a daemon is whatever its launcher had, not
-your interactive shell's. The telegram bridge's supervisor is started by the
-`HimmelTelegramBridge` scheduled task under `pwsh -NoProfile`, whose PATH puts
-System32 ahead of `Git\bin`, so every `bash` the poller spawned hit the stub and
-exited 127. Two things make this hard to see:
-
-- **POSIX-ifying the path does not help.** The stub eats the backslashes during
-  the WSL argv translation, so the error text reads
-  `/bin/bash: C:UsersyotamDocuments…: No such file or directory` and looks like a
-  quoting bug — but it exits 127 on `C:/…` too. Resolve the *interpreter*, not
-  the argument.
-- **Reproducing it from an interactive shell misleads you**, because that PATH
-  usually has `Git\bin` first. Probe with the stub named explicitly
-  (`C:\Windows\System32\bash.exe`), or read the daemon's own log.
-
-TS/JS side: use the shared `resolveBash()` / `BASH_BIN` in
-`scripts/telegram/run.ts` (candidates first, `git.exe`-derived root next, PATH
-last minus `system32`/`windowsapps`) rather than a literal `"bash"`. Shell side
-has `cygpath`; the `.ps1` side has the snippet above.
-
-The rule covers **tests and support scripts too**, not just production
-launchers: Node/`.mjs` sites take `resolveBash()` from
-`scripts/hooks/run-hook-with-bash.js`, Bun/TS sites take `BASH_BIN` from
-`scripts/telegram/run.ts`, and a `.ps1` resolves Git Bash once per script.
-`scripts/hooks/run-hook-with-bash.test.mjs` lints the covered trees for a new
-bare-`bash` spawn; a bare `bash` INSIDE a fixture (a stub's shebang, a heredoc)
-is exempt — it already runs in a bash.
-
 ## Windows WSL / Docker resource budget
 
 WSL2 and Docker Desktop share the Windows host's CPU, memory, disk IO, and page
@@ -640,33 +585,6 @@ setting, so a fresh/untrusted checkout may still need absolute paths);
 anything else still prompts, and the fix is the same: extend the list via a
 PR.
 
-## PowerShell 5.1: three silent script-killers fixtures can't catch
-
-Windows PowerShell 5.1 (the OS default that runs hooks and scheduled scripts)
-has three traps that parse clean and only fail — or worse, silently no-op —
-on the live code path:
-
-- **Read-only automatic variables.** Assigning `$pid` or `$home` throws
-  `VariableNotWritable` at runtime, only when that line executes. Use
-  distinct locals (`$treePid`, `$userHome`).
-- **Dot-sourcing binds params in the CALLER's scope.** `. other.ps1
-  -AsLibrary` can clobber a caller variable of the same name — observed
-  flipping an early-return guard so the main body never ran (exit 0, no
-  output, nothing to debug). Capture such flags into a distinct local
-  before any dot-source.
-- **`$x = if (cond) {…} else { @() }` assigns `$null`, not `@()`** when the
-  taken branch is the empty-array one; a downstream `[Parameter(Mandatory)]`
-  bind then fails "because it is null". Wrap the whole conditional:
-  `$x = @(if (cond) {…} else {…})`.
-
-Fixture/unit tests miss all three: they pass explicit non-null args or
-dot-source directly, so the script-scope + omitted-param code paths never
-execute. Require ONE live `powershell -File` run on Windows before trusting
-green tests for any `.ps1` destined for exporters or hooks. Cheap review
-heuristic: grep new/changed `.ps1` for assignments to
-`$pid|$home|$input|$args`, dot-sources below a `param()` block, and `= if (`
-with an empty-array branch.
-
 ## Windows: `ssh` into a Windows host lands in cmd — multi-line PowerShell needs `-EncodedCommand`
 
 OpenSSH on a Windows target defaults the remote shell to `cmd`. Wrap
@@ -1011,18 +929,6 @@ Separately, himmel's `worktree` skill does NOT auto-register as `/worktree` in
 Hermes: core Hermes owns that command and skips colliding registrations. In a
 Hermes session invoke it as `/skill worktree`. Claude Code keeps `/worktree`
 unchanged.
-
-## Windows: guardrail hooks dangle after a node relocation
-
-`scripts/setup-hooks.sh|.ps1 --guardrail-mode global` bakes the setup-time
-**absolute** node path into the 3 user-level guardrail hooks in
-`~/.claude/settings.json`. Switching node install (e.g. winget MSI →
-nvm-windows) leaves that path stale: every Bash/Edit/Read tool call prints a
-`PreToolUse hook error ... No such file or directory`, and the guardrails fail
-**OPEN**. Fix: `bash scripts/himmel-doctor.sh --fix` (checks `C1-guardrail`,
-re-bakes via `setup-hooks --guardrail-mode global`), or re-run that command
-directly. `scripts/lib/resolve-node.sh` now probes nvm-windows' `NVM_SYMLINK`
-first.
 
 ## Linux: a stock Ubuntu user has TWO PATH layers, and non-interactive shells see only one
 

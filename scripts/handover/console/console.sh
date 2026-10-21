@@ -1561,7 +1561,7 @@ check_live_line_kept() {
 # successor doc; `epics:` and `decisions:` fall back to `none`.
 carried_live_state() {
     local live="$1" field line
-    for field in epics decisions priority versions tracker-plan; do
+    for field in epics decisions priority versions tracker-plan release rm; do
         line="$(printf '%s\n' "$live" | grep -m 1 "^$field:")" || line=""
         case "$field" in epics|decisions) [ -n "$line" ] || line="$field: none" ;; esac
         [ -z "$line" ] || printf '%s\n' "$line"

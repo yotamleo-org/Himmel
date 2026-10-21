@@ -11,7 +11,8 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAI
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink } from './link.js';
-import { appendAdmission, assertAdmissionsWritable } from './admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, type AdmissionInput } from './admissions-ledger.js';
+import { assertIntakeGate, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -53,8 +54,6 @@ export function nextResidualDepth(parentLabels: string[]): number {
   return Math.max(0, ...depths) + 1;
 }
 
-// Why a Bug may skip the backlog and take the earliest unreleased version.
-const BUG_GATES = ['critical', 'regression'];
 export const BACKLOG_LABEL = 'backlog';
 
 export const OVER_CAP_LABEL = 'over-cap';
@@ -247,9 +246,7 @@ function checkConsoleOverride(reason: string): string {
 
 /** Checks the gate, backlog and console-override flags before anything is filed; returns the override reason. */
 function checkPlacementFlags(o: PlacementOptions): string | undefined {
-  if (o.gate !== undefined && !BUG_GATES.includes(o.gate)) {
-    throw new Error('--gate must be one of ' + BUG_GATES.join(', ') + ' (got "' + o.gate + '")');
-  }
+  if (o.gate !== undefined) assertIntakeGate(o.gate);
   if (o.backlog && (o.gate !== undefined || o.fixVersion !== undefined)) {
     throw new Error('--backlog cannot be combined with --gate or --fix-version');
   }
@@ -278,9 +275,9 @@ function placeBug(
   );
 }
 
-function recordOverride(key: string, version: string, reason: string): void {
+function recordAdmission(key: string, row: Omit<AdmissionInput, 'key'>): void {
   try {
-    appendAdmission({ version, key, kind: 'override', reason });
+    appendAdmission({ ...row, key });
   } catch (e) {
     console.error(`Created ${key} but writing the admissions ledger row failed: ${(e as Error).message}`);
     process.exit(1);
@@ -313,7 +310,10 @@ export function registerCreate(program: Command): void {
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
     .option('--backlog', 'File a Bug to the backlog: label backlog, no fixVersion (a Bug without --fix-version needs this, --gate or --priority Highest)')
-    .option('--gate <reason>', 'Admit a Bug into the earliest unreleased version: ' + BUG_GATES.join('|'))
+    .option(
+      '--gate <reason>',
+      'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
+    )
     .option(
       '--console-override <reason>',
       'Console only (HIMMEL_CONSOLE=1): file into --fix-version with a reason, recorded in the admissions ledger',
@@ -461,6 +461,10 @@ export function registerCreate(program: Command): void {
           residual: residual !== undefined,
           bugDefault: placed.bugDefault,
         });
+        const admission = await checkIntakeGate(options.project ?? projectKey(), fields['fixVersions'], {
+          gate: options.gate,
+          override: overrideReason !== undefined,
+        });
 
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
         // Breadcrumb BEFORE attachments (same rationale as comment): the issue
@@ -474,7 +478,10 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
-        if (overrideReason !== undefined) recordOverride(result.key, options.fixVersion!, overrideReason);
+        if (overrideReason !== undefined) {
+          recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
+        }
+        if (admission) recordAdmission(result.key, admission);
         // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
         if (overCapReason) {
           try {

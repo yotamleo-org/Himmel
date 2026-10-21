@@ -77,8 +77,12 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > call per version per render; a failing or missing CLI reads `unavailable` and the
 > render still succeeds. The counts fold into `board.mjs --changed`, not into the
 > tick's `board=` (tick.sh never sees Jira).
-> `console.sh next` copies `epics:`, `decisions:`, `priority:`, `versions:` and
-> `tracker-plan:` verbatim into the successor's own Live state. It refuses to
+> `release: <R>` (a declared release, `console-sections/release-manager.md`) adds
+> a `Release manager <R>` panel from one `jira release state <R> --json` call: M4
+> burn-down per version, the leaks and the M1 trend for the last 7 days; a failing
+> CLI reads `unavailable`. `rm: <session> <doc> epoch=<n>` names the live RM.
+> `console.sh next` copies `epics:`, `decisions:`, `priority:`, `versions:`,
+> `tracker-plan:`, `release:` and `rm:` verbatim into the successor's own Live state. It refuses to
 > hand over when your `decisions:` or `priority:` line is missing or a
 > placeholder while your predecessor's was real (`decisions:` also when shorter),
 > unless a Results bullet carries `DECISIONS-DROP: <reason>` or

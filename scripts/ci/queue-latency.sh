@@ -20,6 +20,9 @@ CI_MAX_MACOS=5
 
 unknown() { echo "ci-queue: unknown"; exit 0; }
 
+# shellcheck source=../lib/prim.sh
+. "$(cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || unknown
+
 REPO=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,7 +69,7 @@ runs="$(printf '%s\n' "$runs" | awk 'NF && $1 !~ /^#/ && !seen[$1]++')"
 # Read each run's jobs in parallel batches (bash 3.2 has no `wait -n`): a
 # serial read of 150+ runs outlasts the tick's probe bound. A failed or empty
 # read leaves no result file, which reads as unknown.
-JOBS_TMP="$(mktemp -d "${TMPDIR:-/tmp}/queue-latency.XXXXXX")" || unknown
+JOBS_TMP="$(tmpdir)" || unknown
 trap 'rm -rf "$JOBS_TMP"' EXIT
 JOBS_PAR=16
 n=0

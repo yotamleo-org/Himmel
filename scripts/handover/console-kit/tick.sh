@@ -2082,15 +2082,15 @@ if [ -f "$ciguard_probe" ]; then
     fi
 fi
 
-# vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=0|DEAD|STUCK|
+# vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
 # --tick` call. DEAD = the repo variable is on but no unit is up; STUCK = a job
 # past JOB_MAX+600 s; FAILING = a unit is up but its newest ci-runner journal
 # line is an error, its journal is unreadable, or GitHub's runner count is
-# unreadable; DISAGREE = a unit has had a registered, unfinished runner for
-# over CACHE_TTL+60 s and GitHub reports no himmel-vm runner online (a fresher
-# registration is still connecting and reads ok). Zero online with every
-# runner idle or finished is normal and reads ok.
+# unreadable; DISAGREE = more units have had a registered, unfinished runner for
+# over CACHE_TTL+60 s than GitHub reports himmel-vm runners online (a fresher
+# registration is still connecting and reads ok). Fewer online than units, with
+# every runner idle or finished, is normal and reads ok.
 # console-wait.sh wakes only on a move to DEAD or STUCK; FAILING and DISAGREE
 # are shown in the tick line but do not wake it. unknown = the probe is missing, failed or timed out.
 vmrun_summary=unknown
@@ -2100,7 +2100,7 @@ if [ -f "$vmrun_probe" ]; then
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
     vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
     case "$vmrun_out" in
-        off|DEAD|STUCK|FAILING|DISAGREE:[0-9]*/[0-9]*,online=0|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
+        off|DEAD|STUCK|FAILING|DISAGREE:[0-9]*/[0-9]*,online=[0-9]*|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
     esac
 fi
 

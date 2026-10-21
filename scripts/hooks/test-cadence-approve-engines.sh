@@ -164,6 +164,9 @@ mkdir -p "$SPACED_ROOT/scripts/hooks"
 CANON_SPACED=$(canon_path "$SPACED_ROOT") || { echo "setup: canon_path failed for the spaced root" >&2; exit 1; }
 SPACED_ROOT="$CANON_SPACED"
 cp "$HOOK" "$SPACED_ROOT/scripts/hooks/cadence-approve-engines.sh"
+# The hook sources scripts/lib/prim.sh (canon_path), so the copy needs its lib.
+mkdir -p "$SPACED_ROOT/scripts/lib"
+cp "$(dirname "$HOOK")/../lib/prim.sh" "$(dirname "$HOOK")/../lib/canon-path.sh" "$SPACED_ROOT/scripts/lib/"
 SPACED_HOOK="$SPACED_ROOT/scripts/hooks/cadence-approve-engines.sh"
 if command -v cygpath >/dev/null 2>&1; then
     SPACED_ROOT_MIXED=$(cygpath -m "$SPACED_ROOT" 2>/dev/null || printf '%s' "$SPACED_ROOT")
@@ -698,6 +701,11 @@ trap 'rm -f "$EMPTY_ROOT_HOOK" "$CYGLESS_HOOK"; rm -rf "$SPACED_ROOT" "$VAULT_FI
 mkdir -p "$VAULT_FIXTURE/real"
 ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/escape"
 ln -s "$OUTSIDE_FIXTURE" "$VAULT_FIXTURE/real/escape2"
+# A symlink leaf that points at a FILE outside the vault: the leaf guard must refuse it.
+printf 'x\n' > "$OUTSIDE_FIXTURE/outside-file"
+ln -s "$OUTSIDE_FIXTURE/outside-file" "$VAULT_FIXTURE/filelink"
+assert "6449 symlink to a file outside the vault as arg -> refused" PASS \
+    "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" filelink" "$VAULT_FIXTURE")")"
 assert "6449 symlinked dir as relative arg -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" escape/notes" "$VAULT_FIXTURE")")"
 assert "6449 symlinked dir as absolute arg -> refused" PASS \

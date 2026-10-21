@@ -21,7 +21,7 @@ export type Tool = {
 };
 // A turn opens at each RUN_STARTED; texts and calls follow it in arrival order.
 export type Entry = { kind: "turn"; id: string; n: number; at: number } | { kind: "text"; id: string } | { kind: "tools"; ids: string[] };
-export type FailureRef = { kind: "tool" | "text"; id: string };
+export type FailureRef = { kind: "tool" | "text"; id: string; at: number }; // at: where it sits on the run's clock (a call's start, a message's arrival)
 export type View = {
   status: "idle" | "running" | "finished" | "error";
   runId?: string; error?: string;
@@ -58,9 +58,10 @@ function withAgent(v: View, e: Ev): { v: View; id: string } {
   };
 }
 
-function addFailure(v: View, ref: FailureRef, agent: string): View {
+function addFailure(v: View, ref: Omit<FailureRef, "at">, agent: string): View {
   const a = v.agents[agent];
-  return { ...v, failures: [...v.failures, ref], agents: a ? { ...v.agents, [agent]: { ...a, failures: a.failures + 1 } } : v.agents };
+  const at = ref.kind === "tool" ? v.tools[ref.id].start : v.elapsed;
+  return { ...v, failures: [...v.failures, { ...ref, at }], agents: a ? { ...v.agents, [agent]: { ...a, failures: a.failures + 1 } } : v.agents };
 }
 const failureOf = (e: Ev): Failure | undefined => (FAILURES.has(e.failure) ? e.failure : e.isError === true ? "error" : undefined);
 
@@ -270,6 +271,31 @@ export function makeStamper(now: () => number) {
 // A finding is settled once it has a terminal verdict; conflict and unaddressed still need a decision.
 const TERMINAL = new Set(["agreed", "fixed", "disproved", "deferred"]);
 export const settledCount = (findings: { verdict?: string }[]) => findings.filter((f) => TERMINAL.has(f.verdict ?? "")).length;
+
+// ---- failure navigator: every failure in the order it sits on the run, numbered 1..n ----
+export const FAILURE_WORD: Record<Failure, string> = { denied: "denied", suite: "suite failed", blocked: "blocked", error: "error" };
+export type FailureItem = { n: number; ref: FailureRef; kind: Failure; word: string; agentId: string; agent: string; at: number };
+export function failureList(v: View): FailureItem[] {
+  // equal times: calls keep their start-event order (the strip's), then messages in arrival order
+  const started = Object.keys(v.tools);
+  const rank = (ref: FailureRef, i: number) => (ref.kind === "tool" ? started.indexOf(ref.id) : started.length + i);
+  return v.failures
+    .map((ref, i) => ({ ref, o: rank(ref, i) }))
+    .sort((a, b) => a.ref.at - b.ref.at || a.o - b.o)
+    .map(({ ref }, k) => {
+      const src = ref.kind === "tool" ? v.tools[ref.id] : v.texts[ref.id];
+      const kind = src.failure ?? "error";
+      return { n: k + 1, ref, kind, word: FAILURE_WORD[kind], agentId: src.agent, agent: v.agents[src.agent]?.name ?? "agent", at: ref.at };
+    });
+}
+// cur: the 0-based failure the reader is on, or -1 before the first press. Reaching past either end wraps and says so.
+export function failureStep(cur: number, total: number, dir: 1 | -1): { to: number; wrapped: boolean } {
+  if (cur < 0) return { to: dir > 0 ? 0 : total - 1, wrapped: false };
+  const to = (cur + dir + total) % total;
+  return { to, wrapped: dir > 0 ? to <= cur : to >= cur };
+}
+export const failureSentence = (f: FailureItem, total: number, call: string, wrapped: boolean): string =>
+  `Failure ${f.n} of ${total}: ${f.word}, in ${f.agent}, at ${call}${wrapped ? ` (back to the ${f.n === 1 ? "first" : "last"})` : ""}`;
 
 // RFC 6902 add / remove / replace (the ops the mapper emits), copy-on-write: the input is never mutated.
 type Op = { op: string; path: string; value?: unknown };

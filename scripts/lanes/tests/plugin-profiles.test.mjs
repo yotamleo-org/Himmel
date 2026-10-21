@@ -395,7 +395,8 @@ test('CLI arg parsing: unknown/dangling args die instead of being silently ignor
   // The CLI is a thin wrapper, but a typo'd flag that LOOKS applied while doing
   // nothing is the opposite of this resolver's fail-closed contract.
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-  const run = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  const env = { ...process.env, PLUGIN_PROFILES_ADAPTERS: join(dirname(cli), '..', 'guardrails', 'himmel-adapters.json') };
+  const run = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env });
   const unknown = run(['lane-impl', '--bogus']);
   assert.equal(unknown.status, 2);
   assert.match(unknown.stderr, /unknown argument "--bogus"/);
@@ -1307,6 +1308,25 @@ test('console-judge resolves via resolveProfileByName/resolveProfile to the floo
   assert.ok(!REG.profiles['console-judge'].gateAllow, 'console-judge must not set gateAllow');
 });
 
+// ── release-manager ───────────────────────────────────────────
+// Judge-shaped role session (headed-arm-leg.sh --profile release-manager):
+// floor plus qmd, no gateAllow, never composed into a profile list.
+test('release-manager resolves to the floor plus qmd, no gateAllow, and requires himmel-ops', () => {
+  const settings = resolveProfileByName('release-manager', {}, REGISTRY_PATH);
+  const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
+  assert.deepEqual(enabled.sort(), [...REG.floor].sort());
+  assert.deepEqual(mcpServersForProfile(REG, 'release-manager'), ['qmd']);
+  assert.ok(!Object.hasOwn(settings, 'permissions'), 'release-manager must not emit gateAllow permissions');
+  assert.ok(PP.NON_ADDITIVE_PROFILES.includes('release-manager'));
+  assert.ok(enabled.includes('himmel-ops@himmel'), 'the guard ships in himmel-ops');
+});
+
+for (const list of ['release-manager,design', 'leg-impl,release-manager']) {
+  test(`release-manager refuses to compose in a profile list (${list})`, () => {
+    assert.throws(() => resolveProfile(REG, list), /cannot be composed/);
+  });
+}
+
 test('validateRegistry: the shipped registry (console-relay included) validates clean', () => {
   assert.deepEqual(validateRegistry(REG), []);
 });
@@ -1875,13 +1895,36 @@ test('CLI reads the fork registry from the anchor, never the worktree copy', () 
   put(repo, 'yotamleo-org/qmd');
   put(wt, 'yotamleo-org/evil');
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-  const run = spawnSync(process.execPath, [cli, 'leg-impl'], {
-    encoding: 'utf8', cwd: wt, env: { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt },
-  });
+  const env = { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt };
+  delete env.PLUGIN_PROFILES_ADAPTERS;
+  const run = spawnSync(process.execPath, [cli, 'leg-impl'], { encoding: 'utf8', cwd: wt, env });
   assert.equal(run.status, 0, run.stderr);
   const text = JSON.parse(run.stdout).autoMode.environment.join('\n');
   assert.ok(text.includes('github.com/yotamleo-org/qmd '), text);
   assert.ok(!text.includes('yotamleo-org/evil'), text);
+});
+test('PLUGIN_PROFILES_ADAPTERS reads the fork registry of the tree under test; unset still reads the primary', () => {
+  const { root, repo, wt } = primaryWithWorktree();
+  const put = (base, nwo) => {
+    mkdirSync(join(base, 'scripts', 'guardrails'), { recursive: true });
+    writeFileSync(join(base, 'scripts', 'guardrails', 'himmel-adapters.json'), JSON.stringify([{ nwo }]));
+    return join(base, 'scripts', 'guardrails', 'himmel-adapters.json');
+  };
+  put(repo, 'not-our-org/stale'); // the primary on an older registry the resolver refuses
+  const treeRegistry = put(wt, 'yotamleo-org/qmd');
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const run = (override) => {
+    const env = { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt };
+    delete env.PLUGIN_PROFILES_ADAPTERS;
+    if (override) env.PLUGIN_PROFILES_ADAPTERS = override;
+    return spawnSync(process.execPath, [cli, 'leg-impl'], { encoding: 'utf8', cwd: wt, env });
+  };
+  const withOverride = run(treeRegistry);
+  assert.equal(withOverride.status, 0, withOverride.stderr);
+  assert.ok(JSON.parse(withOverride.stdout).autoMode.environment.join('\n').includes('github.com/yotamleo-org/qmd '));
+  const station = run(undefined);
+  assert.equal(station.status, 2, 'no override: the primary registry is the one read');
+  assert.match(station.stderr, /fork nwo/);
 });
 
 // leg-vm: leg-impl plus ONE rule for the sanctioned guest-launch script.

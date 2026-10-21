@@ -592,6 +592,56 @@ printf 'HIMMEL-9008%sTask%sTo Do%sno labels column\n' "$T" "$T" "$T" >> "$JD/v1.
 runv --out "$W/v-nolabels.html" >/dev/null
 contains 'a row missing the labels column reads unavailable' "$(cat "$W/v-nolabels.html" 2>/dev/null)" 'data-release="v1.0.0" data-unavailable="1"'
 
+# --- `release: R1` renders the release manager's lines from ONE `jira release state R1
+# --json` call (the same BOARD_JIRA seam): M4 burn-down per version, the leaks, and the
+# M1 trend. The stub prints $RM_STATE and exits $RM_RC (3 = the CLI's not-OK exit).
+cat > "$W/bin/jira-rm-stub" <<'STUB'
+#!/usr/bin/env bash
+printf 'args=%s\n' "$*" >> "$JIRA_ARGV_LOG"
+[ -f "${RM_STATE:-}" ] && cat "$RM_STATE"
+exit "${RM_RC:-0}"
+STUB
+chmod +x "$W/bin/jira-rm-stub"
+cat > "$W/rm-state.json" <<'EOF'
+{"release":"R1","status":"OK","mode":"observe","versions":["v1","v2"],
+ "leaks":{"unauthorized":["HIMMEL-9201@v1"],"ruled_in_non_member":[]},"integrity":[],
+ "burndown":{"v1":{"baseline":5,"baseline_open":3,"admitted_open":2,"emergency_open":1,"deferred_out":1},
+             "v2":{"baseline":0,"baseline_open":0,"admitted_open":0,"emergency_open":0,"deferred_out":0}},
+ "trend":{"2026-10-20":{"ruled":2},"2026-10-21":{"ruled":1,"out-of-band":1}}}
+EOF
+DOCR="$B/HIMMEL-nextleg-2026-09-21V-console-r.md"
+sed 's/^epics: .*/&\nrelease: R1/' "$DOC" > "$DOCR"  # gnu-ok: console kit is Linux-only
+runr() {  # runr <extra args...> -- like run, on the console doc that carries a release: line
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" BOARD_JIRA="$W/bin/jira-rm-stub" \
+        JIRA_ARGV_LOG="$W/jira-argv.log" JIRA_PROJECT_KEY=HIMMEL \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOCR" --repo "$W/repo" "$@" 2>"$W/stderr.log"
+}
+rm -f "$W/jira-argv.log"
+RM_STATE="$W/rm-state.json" runr --out "$W/r-board.html" >/dev/null; rc=$?
+rhtml="$(cat "$W/r-board.html" 2>/dev/null)"
+contains 'a release: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
+same 'one release state call' "$(cat "$W/jira-argv.log" 2>/dev/null)" 'args=release state R1 --json'
+contains 'the release manager panel names the release and its status' "$rhtml" 'data-rm-release="R1" data-status="OK"'
+contains 'M4: a version line carries baseline open of baseline' "$rhtml" 'data-burndown="v1" data-baseline-open="3" data-baseline="5"'
+contains 'M4: and admitted, emergency and deferred counts' "$rhtml" 'admitted open 2 · emergency open 1 · deferred out 1'
+contains 'M4: every version of the release has a line' "$rhtml" 'data-burndown="v2"'
+contains 'a leak is listed by key and version' "$rhtml" 'data-leak="HIMMEL-9201@v1"'
+contains 'M1 trend: one row per day, by kind' "$rhtml" 'data-trend="2026-10-21">2026-10-21: out-of-band 1 · ruled 1'
+contains 'the release fingerprint meta is present' "$rhtml" 'console-board-versions-fp'
+RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed >/dev/null
+same 'an unchanged release state: --changed reports UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed)" "UNCHANGED $W/r-chg.html"
+sed 's/"out-of-band":1/"out-of-band":2/' "$W/rm-state.json" > "$W/rm-state-trend.json"
+same 'a trend-only change: --changed reports CHANGED' "$(RM_STATE="$W/rm-state-trend.json" runr --out "$W/r-chg.html" --changed)" "CHANGED $W/r-chg.html"
+RM_STATE="$W/rm-state.json" RM_RC=3 runr --out "$W/r-unknown.html" >/dev/null; rc=$?
+contains 'a not-OK state (exit 3) still renders the board (rc 0)' "rc=$rc" 'rc=0'
+contains 'a not-OK state still shows its JSON' "$(cat "$W/r-unknown.html")" 'data-rm-release="R1" data-status="OK"'
+RM_RC=1 runr --out "$W/r-fail.html" >/dev/null; rc=$?
+contains 'a failing release state call still renders the board (rc 0)' "rc=$rc" 'rc=0'
+contains 'a failing release state call reads unavailable' "$(cat "$W/r-fail.html")" 'data-rm-release="R1" data-unavailable="1"'
+lacks 'no release: line renders no release manager panel' "$(cat "$W/nov-board.html")" 'data-rm-release'
+
 # --- with no --legs, the leg set is the console's fleet manifest
 # (<console doc stem>.fleet.json, read through fleet-manifest.sh list -- the same
 # validation tick --legs-from uses); no manifest keeps the RESUME-doc scan; an
@@ -1146,6 +1196,31 @@ PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?
 contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
 PATH="$W/bin:$PATH" node "$SUT" --doc "$B/nope.md" >/dev/null 2>&1; rc=$?
 contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
+
+# --- the first publish to a carried URL must not put the live page in the console's context
+# An unviewed publish is refused and the refusal returns the whole live page (about 23k
+# tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
+# send that first read+publish to a haiku subagent.
+DOCS="$HERE/../../../docs/handover"
+BT="$(tr '\n' ' ' < "$DOCS/console-sections/board-tracker.md" | tr -s ' ')"
+CT="$(tr '\n' ' ' < "$DOCS/console-template.md" | tr -s ' ')"
+BT_BOARD="${BT%%Keep the roadmap tracker current*}"
+BT_TRACKER="${BT#*Keep the roadmap tracker current}"
+contains 'board-tracker.md: the board publish goes to a haiku subagent' "$BT_BOARD" 'goes to a haiku subagent'
+contains 'board-tracker.md: the board subagent is dispatched with model haiku' "$BT_BOARD" 'model: haiku'
+contains 'board-tracker.md: the board subagent runs at effort medium' "$BT_BOARD" 'effort medium'
+contains 'board-tracker.md: the tracker publish goes to the same haiku subagent' "$BT_TRACKER" 'goes to the same haiku subagent'
+contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
+contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
+contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
+contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first console publish that uses it records the parent-context delta'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: tracker URL no longer says the console reads it first' "$BT" 'must `Artifact read` it first, exactly as for `board:`'
+contains 'console-template.md step 12: the first publish to a carried URL goes to a medium-effort haiku subagent' "$CT" 'goes to a medium-effort haiku subagent'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'console-template.md step 12: no bare Artifact read in the console context' "$CT" 'must `Artifact read` it first'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'

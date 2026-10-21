@@ -256,6 +256,14 @@
     ],
     "contextBudget": 35000
   },
+  "release-manager": {
+    "enabled": [
+      "handover@himmel",
+      "himmel-ops@himmel",
+      "qmd@himmel"
+    ],
+    "contextBudget": 35000
+  },
   "code": {
     "enabled": [
       "code-simplifier@claude-plugins-official",

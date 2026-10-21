@@ -1,6 +1,6 @@
 # himmel working principles (user-scope template)
 
-`scripts/adopt.sh` / `adopt.ps1` append the fenced block below to your
+`scripts/adopt.sh` appends the fenced block below to your
 user-scope `~/.claude/CLAUDE.md` (creating the file if absent). The block is
 delimited by the `HIMMEL:working-principles` markers; the installer skips
 entirely when the start marker is already present, so re-running adopt adds

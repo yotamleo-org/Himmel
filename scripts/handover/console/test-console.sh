@@ -2594,14 +2594,16 @@ dec86='decisions: OPERATOR 10-17 (BINDING): free slots fill only from the priori
 epi86='epics: HIMMEL-6169=12'
 ver86='versions: v1.1.3'
 tpl86='tracker-plan: /fixture/plan'
-awk -v p="$pri86" -v d="$dec86" -v e="$epi86" -v v="$ver86" -v t="$tpl86" '
+rel86='release: v1.1.3-4'
+rm86='rm: HIMMEL-rm-fixture /fixture/rm/doc.md epoch=2'
+awk -v p="$pri86" -v d="$dec86" -v e="$epi86" -v v="$ver86" -v t="$tpl86" -v r="$rel86" -v m="$rm86" '
     /^epics: none$/ { print e; next }
-    /^decisions: none$/ { print d; print p; print v; print t; next }
+    /^decisions: none$/ { print d; print p; print v; print t; print r; print m; next }
     { print }' "$doc86A" > "$doc86A.new" && mv "$doc86A.new" "$doc86A"
 rc86=0
 console next --bucket carrydst --doc "$doc86A" >/dev/null 2>&1 || rc86=$?
 check "86 next succeeds against a doc carrying priority/decisions/epics" "$rc86" "0"
-for line86 in "$pri86" "$dec86" "$epi86" "$ver86" "$tpl86"; do
+for line86 in "$pri86" "$dec86" "$epi86" "$ver86" "$tpl86" "$rel86" "$rm86"; do
     check "86 successor doc carries '${line86%%:*}:' verbatim" \
         "$(grep -Fxc "$line86" "$doc86B" 2>/dev/null)" "1"
 done
