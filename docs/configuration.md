@@ -64,6 +64,7 @@ sites are changed here.
 | Cloud-init / Ubuntu provisioner | `ubuntu_vm_user`, `ubuntu_vm_pass` |
 | Windows provisioner | `windows_vm_user`, `windows_vm_pass` |
 | VM after-report | `himmel_github_token_vm` |
+| VM SDK clone (`vmsdk.py <vm> clone`) | `himmel_github_token_vm`, else `himmel_github_token_vm2` (first present wins) |
 | Read-only `gh` calls (tick, check-ci, ready-check, go.sh reads) | `himmel_github_token_vm2` (read-only token, loaded per call by `scripts/lib/gh-read.sh`; missing or exhausted falls back to the main token) |
 | Google Health pull cadence | `GOOGLE_HEALTH_REFRESH_TOKEN` |
 | Chat-note enrichment / graphmap provider selection | Only the selected provider's named key (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY`, or `ANTHROPIC_API_KEY` for chat-note enrichment) |

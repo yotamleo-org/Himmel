@@ -336,5 +336,13 @@ bank-preflight.sh	usage-preflight.sh	identifier	old-to-new	V1	X
 bank-status.ts	usage-status.ts	identifier	old-to-new	V1	X
 clear-cr-marker.sh	clear-review-marker.sh	identifier	old-to-new	V2	X
 codex-bank-probe.ts	codex-usage-probe.ts	identifier	old-to-new	V1	X
+cr-available.sh	coderabbit-available.sh	identifier	old-to-new	V2	X
+cr-body-findings.sh	coderabbit-body-findings.sh	identifier	old-to-new	V2	X
+cr-default-base.sh	review-default-base.sh	identifier	old-to-new	V2	X
+cr-high-risk-diff.sh	review-high-risk-diff.sh	identifier	old-to-new	V2	X
+cr-ledger-evidence.sh	review-ledger-evidence.sh	identifier	old-to-new	V2	X
+cr-merge-gate.sh	review-merge-gate.sh	identifier	old-to-new	V2	X
+cr-signal.sh	coderabbit-signal.sh	identifier	old-to-new	V2	X
+cr-trigger-ledger.sh	coderabbit-trigger-ledger.sh	identifier	old-to-new	V2	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X

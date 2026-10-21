@@ -41,9 +41,9 @@ _cig_degrade() { echo "ci-green-gate: degraded ($*) - failing open" >&2; }
 # status from the CI aggregate it owns, and must agree with cr-merge-gate on what
 # that identity is. Sourced relative to this file so a hook can source it from
 # any cwd.
-# shellcheck source=scripts/lib/cr-signal.sh
+# shellcheck source=scripts/lib/coderabbit-signal.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cr-signal.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/coderabbit-signal.sh"
 
 ci_green_gate() {
     [ "${CI_MERGE_GATE_OK:-0}" = "1" ] && return 0

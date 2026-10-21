@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-merge-gate.sh. Hermetic: gh is stubbed.
+# Tests for scripts/lib/review-merge-gate.sh. Hermetic: gh is stubbed.
 set -uo pipefail
 
 # — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
@@ -191,7 +191,7 @@ chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/cr-merge-gate.sh"
+. "$SCRIPT_DIR/review-merge-gate.sh"
 
 pass=0; fail=0
 # ── the repo the gate runs IN ──────────────────────────────────

@@ -1,0 +1,370 @@
+#!/usr/bin/env bash
+# Shared ledger + post-once helper for CodeRabbit trigger hooks.
+#
+# CodeRabbit's `auto_review` is OFF (.coderabbit.yaml), so the
+# App reviews a PR ONLY on an explicit `@coderabbitai review` comment. Two
+# PostToolUse hooks post that comment structurally:
+#   - trigger-cr-on-pr-create.sh  fires on `gh pr create`
+#   - trigger-cr-on-push.sh       fires on `git push`
+# Both match the BASH COMMAND STRING, so a PR opened or advanced from INSIDE
+# a script matches neither. scripts/lib/forge-github.sh is the
+# third caller: it triggers from the create/edit seam every such script
+# already routes through. All three obey the SAME invariant: trigger at most
+# ONCE per (repo, PR, head SHA) — so the seam and the hooks can never
+# double-post for one head. This file is the shared, load-bearing dedup —
+# sourced by all three, never run directly.
+#
+# `gh` is invoked as `${GH_CMD:-gh}` (the forge seam's existing stub hook,
+# scripts/lib/forge-github.sh `_gh`) so the forge tests can exercise the post
+# path without touching a real PR. The hooks leave GH_CMD unset and get `gh`.
+#
+# KEY: keyed by repo+PR-number+SHA, not SHA alone. A bare SHA key let
+# triggering a review for one PR silently suppress the trigger for a
+# DIFFERENT PR that happens to share that head commit — reachable via
+# stacked branches, the same commit pushed to two branches, or a branch
+# reopened under a new PR number. Both hooks build the key from the SAME
+# three fields passed into cr_trigger_post_review, so they still dedup
+# against each other for the same (repo, PR, SHA) — the cross-hook no-op a
+# compound `git push && gh pr create` relies on is unchanged.
+#
+# ponytail: check-then-post is NOT atomic — two concurrent hook processes
+# (exactly what a compound `git push && gh pr create` fires) can both read
+# "not yet triggered" before either records it, so worst case both post.
+# Accepted: a duplicate trigger costs one extra CodeRabbit review; a missed
+# trigger is caught loudly by the merge gate refusing green. Upgrade path if
+# that ever stops holding (e.g. CodeRabbit review credits become the scarce
+# resource): a per-key mkdir claim, same primitive as
+# scripts/graphify/refresh-graph-map.sh's _promote_lock_acquire.
+#
+# Ledger location: `$(git rev-parse --git-common-dir)/cr-triggered-heads`
+# (a flat, append-only, greppable audit file) — --git-common-dir (not
+# --git-dir) so a worktree checkout shares the ledger with its sibling
+# worktrees and the main checkout, matching the existing CR-marker
+# precedent (check-cr-before-push.sh's `.git/cr-pending/<branch>`).
+# `.git/` is never tracked, so this needs no gitignore entry;
+# it survives across sessions and is pruned for free when a merged worktree
+# is removed.
+#
+# Fail-open: any ledger read/write failure (missing git, unwritable .git,
+# etc.) must never strand the caller's push/create — a missing/unreadable
+# ledger is treated as "not yet triggered" (post proceeds) and a failed
+# write after posting only warns.
+#
+# CR_TRIGGER_SUPPRESS: a console's opt-out from posting the
+# CodeRabbit trigger for one leg (a PR the App will never review, or one
+# the console wants left unreviewed). CodeRabbit is best effort:
+# this knob never rations or sequences its reviews, and no
+# caller waits on one. Checked ONCE here, in cr_trigger_post_review —
+# the single function BOTH hooks (and the forge seam) route every post
+# through — rather than in either hook individually: a seam on only one
+# hook is half a lever, since either a create or a later push can consume
+# the same slot for the same PR. Suppression is SAFE to add precisely
+# because check-ci.sh's skipped/absent arms already refuse green until a
+# genuine review lands at head (see the header above) — a suppressed
+# trigger can only DEFER the review to a moment the console chooses, never
+# silently ship one unreviewed. That backstop is also why suppression must
+# not record the ledger: the review is deferred, not satisfied, so a later
+# un-suppressed call for the same (repo, PR, SHA) must still be free to
+# post.
+#
+# Opt-out ONLY, default ON: an unset/empty CR_TRIGGER_SUPPRESS changes
+# nothing. The hook's own header explains why — on 2026-07-29 triggering
+# was left to agent discretion and every open PR went unreviewed, because
+# CodeRabbit's "Review skipped: automatic reviews are disabled" status is
+# indistinguishable from a clean review to a gate reading only the status.
+# A default-off seam here would recreate that exact failure; a console must
+# deliberately set it per leg (scripts/handover/console-kit/headed-arm-leg.sh's
+# LEG_SUPPRESS_CR_TRIGGER, folded to this var the same way LEG_REPO folds to
+# HEADED_ARM_REPO).
+#
+# On the refusal note (option 3): a refused trigger attempt
+# ("Review limit reached … Next included review available in N minutes")
+# still counts toward CodeRabbit's rolling 7-day attempt total that sets
+# the allowance. Deriving availability from the rate plus the last
+# consumption is arithmetic, not evidence — the printed estimate can have
+# already moved by the time you act on it, and arming a trigger on a stale
+# estimate costs an attempt AND pushes the real reset further out. Read the
+# refusal itself when one is available; do not precompute it.
+
+cr_trigger_ledger_path() {
+    # Test-only escape hatch: point the ledger at a throwaway file instead of
+    # the real repo's .git/, so the test suite never writes into (or reads
+    # stale state from) whatever real checkout happens to run it. Unset in
+    # every normal invocation.
+    if [ -n "${CR_TRIGGER_LEDGER_PATH:-}" ]; then
+        printf '%s\n' "$CR_TRIGGER_LEDGER_PATH"
+        return 0
+    fi
+    local git_dir
+    git_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+    printf '%s/cr-triggered-heads\n' "$git_dir"
+}
+
+# cr_trigger_ledger_key <repo> <num> <sha> -- the composite key text: "this
+# PR at this head", not the SHA alone.
+cr_trigger_ledger_key() {
+    printf '%s %s %s' "$1" "$2" "$3"
+}
+
+# 0 = this (repo, PR, SHA) is already recorded as triggered. 1 = not
+# recorded, OR the ledger is unresolvable/unreadable (fail-open — never
+# treated as "already triggered", which could permanently suppress a real
+# review).
+cr_trigger_ledger_has() {
+    local path
+    path=$(cr_trigger_ledger_path 2>/dev/null) || return 1
+    grep -qxF "$(cr_trigger_ledger_key "$1" "$2" "$3")" "$path" 2>/dev/null
+}
+
+# cr_trigger_ledger_record <repo> <num> <sha> -- appends the greppable audit
+# line after a confirmed post. Best-effort: a write failure only warns (via
+# the caller) and never blocks.
+cr_trigger_ledger_record() {
+    local path
+    path=$(cr_trigger_ledger_path 2>/dev/null) || return 1
+    printf '%s\n' "$(cr_trigger_ledger_key "$1" "$2" "$3")" >> "$path" 2>/dev/null
+}
+
+
+# ─── foreign-repo guard ───────────────────────────────────────
+# On 2026-08-22 trigger-cr-on-pr-create.sh posted `@coderabbitai review` on
+# JuliusBrussee/caveman#896 — an UPSTREAM PR opened from this machine. The
+# hooks parse owner/repo out of whatever PR URL `gh` printed and comment on
+# it; they had no notion of "our" repos. That is outward-facing noise on
+# someone else's repo, and it summons a reviewer bot they may not run.
+#
+# himmel's CR gate is OURS (the CodeRabbit App + the hermes/codex panel) and
+# means something only where it is armed, so the trigger is now scoped the
+# same way: post only on a repo this harness owns the gate for.
+#
+# The advisory the sanctioned upstream path (a hermes/codex critic over the
+# diff) is named in — one string, so both hooks and the forge seam say the
+# same thing.
+CR_TRIGGER_FOREIGN_ADVISORY='foreign repo — not triggering CodeRabbit; run the hermes/codex critic on the diff instead'
+
+# _cr_trigger_allowlisted <canon-nwo> — rc 0 iff CR_TRIGGER_REPOS names it.
+# Its own function so the `local IFS` split stays scoped to the loop and
+# cannot leak into the git-calling helpers below. Split on comma AND space,
+# so `a/b,c/d` and `a/b, c/d` both work without a trim.
+_cr_trigger_allowlisted() {
+    local want="$1" entry IFS=', '
+    # shellcheck disable=SC2086  # deliberate word-split on the IFS above
+    for entry in ${CR_TRIGGER_REPOS:-}; do
+        if _cmg_canon_nwo "$entry" && _cmg_nwo_eq "$_CMG_CANON" "$want"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# cr_trigger_repo_armed <owner/repo> — rc 0 iff we may post a CodeRabbit
+# trigger comment on that repo. Two ways to be armed:
+#   (a) the cwd's clone has CodeRabbit armed (`git config --local
+#       himmel.coderabbit true`, the ONE predicate in cr-available.sh) AND the
+#       PR's repo IS that clone's origin. A repo we hold the arming signal for
+#       is a repo whose CR gate is ours to trigger.
+#   (b) the PR's repo is named in CR_TRIGGER_REPOS (comma-separated nwo) — the
+#       explicit escape hatch for a fork/upstream the operator does run the
+#       App on, and the test seam.
+# Anything else — an upstream PR, a contribution to someone's fork, a repo
+# whose arming we cannot see — is rc 1. Fail-CLOSED on its own errors
+# (unparseable origin, libs unloadable): the cost of a missed trigger is a
+# merge gate that refuses green until someone comments, which is loud; the
+# cost of a wrong post is a comment on a stranger's PR, which is not ours to
+# make.
+cr_trigger_repo_armed() {
+    local repo="${1:-}" repo_canon
+    [ -n "$repo" ] || return 1
+
+    # Lazily sourced: this runs only on the trigger path (a real PR create or
+    # push), so the hooks pay the `$(cd … && pwd)` fork only when a PR is
+    # actually in play — never on the PostToolUse fast path.
+    if ! declare -f _cmg_canon_nwo >/dev/null 2>&1 || ! declare -f cr_app_configured >/dev/null 2>&1; then
+        local _ctl_dir
+        _ctl_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || return 1
+        # shellcheck source=scripts/lib/nwo.sh
+        # shellcheck disable=SC1091
+        . "$_ctl_dir/nwo.sh" 2>/dev/null || return 1
+        # shellcheck source=scripts/lib/coderabbit-available.sh
+        # shellcheck disable=SC1091
+        . "$_ctl_dir/coderabbit-available.sh" 2>/dev/null || return 1
+    fi
+
+    _cmg_canon_nwo "$repo" || return 1
+    repo_canon="$_CMG_CANON"
+
+    # (b) first — it costs no git call.
+    _cr_trigger_allowlisted "$repo_canon" && return 0
+
+    # (a) armed clone + the PR is on that clone's origin. Both conditions are
+    # required: arming alone would let `gh pr create --repo other/thing` run
+    # from inside this checkout post on a foreign repo.
+    # shellcheck disable=SC2119  # no-arg call means "this checkout" (the function defaults $1 to $PWD)
+    cr_app_configured || return 1
+    _cmg_canon_nwo "$(_cmg_local_nwo || true)" || return 1
+    _cmg_nwo_eq "$_CMG_CANON" "$repo_canon"
+}
+
+# cr_trigger_rate_limited <repo_path> -- rc 0 + "sha description" on stdout
+# iff the account reads rate-limited RIGHT NOW, evidenced by CodeRabbit's own
+# status on the LAST head this repo already triggered. A brand
+# new PR's own head carries no CodeRabbit status yet, so there is no local
+# evidence to read from IT — the account-wide limit only shows up on whatever
+# head we most recently asked CodeRabbit to review. Reuses cr-signal.sh's
+# EXISTING reader (no new parser): the same rate-limit wording check-ci.sh
+# already trusts for the rate-limited=NOTE gate.
+#
+# That status is only ever trusted for CR_TRIGGER_RATE_LIMIT_TTL_SECONDS
+# (default 3600) past its own created_at, never indefinitely: nothing here
+# ever asks CodeRabbit to re-review that exact old SHA, so an unbounded read
+# would skip every later head forever the first time a repo hit the limit
+# once — a stale status past the TTL is treated as "not rate-limited",
+# letting the next real head take its own shot.
+#
+# Fail-OPEN (rc 1, "not rate-limited") on anything short of a positive match:
+# no prior ledger entry for this repo, an unreadable/malformed ledger, a gh
+# query failure, a clean/absent status, or a status too old to trust. This is
+# a workflow nudge, not a security fence (scripts/hooks/CLAUDE.md) — treating
+# "cannot tell" as "proceed" is what keeps a transient gh hiccup from
+# silently stranding a PR with NO trigger ever posted.
+cr_trigger_rate_limited() {
+    local repo_path="${1:-}" path last_line prior_sha owner name desc
+    [ -n "$repo_path" ] || return 1
+
+    path=$(cr_trigger_ledger_path 2>/dev/null) || return 1
+    last_line=$(awk -v r="$repo_path" '$1==r{line=$0} END{if(line)print line}' "$path" 2>/dev/null) || return 1
+    [ -n "$last_line" ] || return 1
+    prior_sha=$(printf '%s' "$last_line" | awk '{print $3}')
+    [ -n "$prior_sha" ] || return 1
+
+    case "$repo_path" in
+        */*) owner="${repo_path%%/*}"; name="${repo_path#*/}" ;;
+        *) return 1 ;;
+    esac
+
+    # Lazily sourced, same pattern as cr_trigger_repo_armed above: paid only
+    # on the trigger path, never on the PostToolUse fast path.
+    if ! declare -f cr_signal_description >/dev/null 2>&1; then
+        local _ctl_dir
+        _ctl_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || return 1
+        # shellcheck source=scripts/lib/coderabbit-signal.sh
+        # shellcheck disable=SC1091
+        . "$_ctl_dir/coderabbit-signal.sh" 2>/dev/null || return 1
+    fi
+
+    desc=$(cr_signal_description "$owner" "$name" "$prior_sha") || return 1
+    case "$desc" in
+        *[Rr]ate*[Ll]imit*) ;;
+        *) return 1 ;;
+    esac
+
+    # The status on prior_sha is frozen the instant CodeRabbit posts it — nothing here ever
+    # asks CodeRabbit to re-review that exact old SHA, so trusting this
+    # signal forever would skip every later head permanently the first time
+    # a repo hits the limit, never actually retrying "once the window
+    # clears" as promised above. Bound trust in it to a TTL, read from the
+    # SAME status object's own created_at: past that age treat the signal as
+    # stale and let the caller attempt a real post, which either succeeds
+    # (the window genuinely cleared) or earns a FRESH rate-limited status on
+    # its own head next time.
+    local uid ctx json created_at posted_epoch now_epoch
+    uid=$(cr_signal_bot_id)
+    ctx=$(cr_signal_context)
+    json=$("${GH_CMD:-gh}" api "repos/$owner/$name/commits/$prior_sha/statuses?per_page=100" 2>/dev/null) || return 1
+    created_at=$(printf '%s' "$json" | jq -r --arg ctx "$ctx" --argjson uid "$uid" '
+        [ .[]?
+          | select(.creator.id == $uid)
+          | select(.creator.type == "Bot")
+          | select(.context == $ctx)
+        ] | first | (.created_at // "")' 2>/dev/null) || return 1
+    [ -n "$created_at" ] || return 1
+    # gnu-ok: GNU -d paired with the BSD -j -f fallback (macOS date has no -d)
+    posted_epoch=$(date -u -d "$created_at" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$created_at" +%s 2>/dev/null) || return 1
+    now_epoch=$(date -u +%s) || return 1
+    [ $(( now_epoch - posted_epoch )) -lt "${CR_TRIGGER_RATE_LIMIT_TTL_SECONDS:-3600}" ] || return 1
+
+    printf '%s %s\n' "$prior_sha" "$desc"
+    return 0
+}
+
+# cr_trigger_post_review <sha> <num> <repo_path> <scan_existing 0|1>
+#
+# The ledger is checked FIRST — it is what prevents a double-post in the
+# common case, including across the two different hooks. `scan_existing`
+# additionally scans the PR's comments for a pre-existing
+# `@coderabbitai (full )?review` (catches a trigger posted by a human or by
+# something outside our ledger entirely). That scan is repo-wide, NOT
+# per-head — it cannot tell which head an old comment targeted — so it must
+# never be the thing that BLOCKS a legitimate new-head trigger. Callers pass
+# scan_existing=1 only where a stale match is actually plausible (PR create,
+# where a reused/reopened PR number can carry old comments); the push path
+# passes 0, because a global scan there would reintroduce exactly the
+# per-PR-not-per-SHA bug this ledger exists to fix.
+#
+# Requires the caller to define `warn()` before calling.
+cr_trigger_post_review() {
+    local sha="$1" num="$2" repo_path="$3" scan_existing="$4" existing
+
+    # CR_TRIGGER_SUPPRESS: see the header note above for the
+    # full rationale. Checked first — cheapest, and a suppressed leg should
+    # never pay for the foreign-repo / gh round-trips below just to no-op.
+    # Deliberately does NOT touch the ledger: the trigger is deferred, not
+    # satisfied, so a later un-suppressed call for this exact
+    # (repo, PR, SHA) must still post.
+    if [ -n "${CR_TRIGGER_SUPPRESS:-}" ]; then
+        warn "CR_TRIGGER_SUPPRESS set — not triggering CodeRabbit for head ${sha} on PR #$num ($repo_path); unset it and re-push to post the trigger; nothing waits on the review"
+        return 0
+    fi
+
+    # never comment on a repo whose CR gate is not ours. Checked
+    # HERE, in the one function all three callers (both PostToolUse hooks and
+    # the forge seam) route their post through, so no caller can forget it.
+    if ! cr_trigger_repo_armed "$repo_path"; then
+        warn "$repo_path: $CR_TRIGGER_FOREIGN_ADVISORY"
+        return 0
+    fi
+
+    if cr_trigger_ledger_has "$repo_path" "$num" "$sha"; then
+        warn "already triggered CodeRabbit for head ${sha} on PR #$num ($repo_path) — no-op"
+        return 0
+    fi
+
+    # while the account reads rate-limited, every new head burns
+    # another wasted attempt. Deliberately does NOT record the ledger, same
+    # "deferred, not satisfied" reasoning as CR_TRIGGER_SUPPRESS above — a
+    # later create/push for this exact head must still be free to post once
+    # the window clears.
+    local rl_evidence
+    if rl_evidence=$(cr_trigger_rate_limited "$repo_path"); then
+        warn "CodeRabbit reads rate-limited for $repo_path (last seen on ${rl_evidence%% *}: \"${rl_evidence#* }\") — not spending another attempt on head ${sha} for PR #$num; check-ci's skipped/absent arms remain the backstop, and a later create/push will retry once the window clears"
+        return 0
+    fi
+
+    if [ "$scan_existing" = "1" ]; then
+        existing=$("${GH_CMD:-gh}" api "repos/$repo_path/issues/$num/comments" --paginate --jq '.[].body' 2>/dev/null || true)
+        if printf '%s\n' "$existing" | grep -qiE '@coderabbitai[[:space:]]+(full[[:space:]]+)?review'; then
+            # Deliberately do NOT record the head. The scan is repo-wide and
+            # cannot tell which head an old comment targeted, so recording here
+            # would let a STALE match (a reused/reopened PR number carrying an
+            # old trigger) mark this head permanently triggered — the ledger
+            # would then no-op every later push event for the same head, and no
+            # review would ever land. That contradicts this function's own
+            # invariant above: the scan must never BLOCK a legitimate new-head
+            # trigger. Skipping the record keeps the failure in the CHEAP
+            # direction — a later push may post a duplicate (one extra review)
+            # instead of suppressing the review entirely (merge gate refuses
+            # green with no way to re-trigger).
+            warn "found an existing @coderabbitai trigger comment on PR #$num ($repo_path) — not posting for head ${sha}, and NOT recording it (the scan is repo-wide, so this match may predate this head; a later push may re-trigger)"
+            return 0
+        fi
+    fi
+
+    if "${GH_CMD:-gh}" pr comment "$num" --repo "$repo_path" --body "@coderabbitai review" >/dev/null 2>&1; then
+        cr_trigger_ledger_record "$repo_path" "$num" "$sha" \
+            || warn "WARNING: posted the trigger but could not record head ${sha} in the ledger — a later event may re-post it"
+        echo "posted @coderabbitai review on PR #$num ($repo_path) for head ${sha}" >&2
+    else
+        warn "WARNING: failed to post @coderabbitai review on PR #$num — post it manually; the merge gate refuses green until a genuine review lands at head"
+    fi
+    return 0
+}

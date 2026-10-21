@@ -173,6 +173,19 @@
       "grandfathered": false
     },
     {
+      "id": "eval-changes",
+      "default_path": "~/.himmel/eval-changes.jsonl",
+      "override_env": "HIMMEL_EVAL_CHANGES_LEDGER",
+      "writer": "scripts/eval/lib/eval_feedback.py",
+      "readers": ["scripts/eval/leg-digest/failure_review.py"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "mcp-audit",
       "default_path": "~/.himmel/state/mcp-audit.jsonl",
       "override_env": "MCP_POLICY_AUDIT_LOG",

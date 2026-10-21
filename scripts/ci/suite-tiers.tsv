@@ -66,6 +66,7 @@ marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	local	behavio
 marketplace/plugins/obsidian-triage/tests/test-repo-security-scan.sh	pr	guard
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-scrape-backends.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+marketplace/plugins/obsidian-triage/tests/test-skillspector-scan.sh	pr	guard
 marketplace/plugins/obsidian-triage/tests/test-synthesize-densify.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-synthesize-edge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-synthesize-invariants.sh	pr	static-gate
@@ -271,6 +272,7 @@ scripts/eval/test-cache-probe.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/eval/test-ci-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-console-load-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-context-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/test-eval-feedback.sh	local	behaviour suite, new HIMMEL-6942
 scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/eval/test-harness-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -298,6 +300,7 @@ scripts/graphify/test-no-windows-indexed.sh	pr	guard
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard
+scripts/graphify/test-refresh-graph-map-resume.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-scratch.sh	pr	guard
 scripts/graphify/test-refresh-graph-map.sh	pr	guard
 scripts/graphify/test-repo-map.sh	pr	guard

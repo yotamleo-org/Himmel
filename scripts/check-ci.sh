@@ -463,9 +463,9 @@ fi
 # advisory rather than blocking, so this now only controls whether
 # the gates run at all, not a fail-closed exit. Probed once here;
 # cr_signal_gate/cr_body_gate read the result.
-# shellcheck source=scripts/lib/cr-available.sh
+# shellcheck source=scripts/lib/coderabbit-available.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-. "$(cd "$(dirname "$0")" && pwd)/lib/cr-available.sh"
+. "$(cd "$(dirname "$0")" && pwd)/lib/coderabbit-available.sh"
 CR_ARMED=0
 # ONE probe, read twice: the rc arms the gates below exactly as it
 # always did, and CR_STATE names WHY — which is the difference between an
@@ -518,24 +518,24 @@ if [ "$CR_ARMED" -eq 1 ]; then
         exit 2
     fi
     # The ONE reader for CodeRabbit's verdict.
-    # shellcheck source=scripts/lib/cr-signal.sh
+    # shellcheck source=scripts/lib/coderabbit-signal.sh
     # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-    . "$(cd "$(dirname "$0")" && pwd)/lib/cr-signal.sh"
+    . "$(cd "$(dirname "$0")" && pwd)/lib/coderabbit-signal.sh"
     # The ONE reader for CodeRabbit's review-BODY findings —
     # outside-diff-range / nitpick / additional comments the thread gate below
     # cannot see (no thread, no isResolved, unresolvable by construction).
-    # shellcheck source=scripts/lib/cr-body-findings.sh
+    # shellcheck source=scripts/lib/coderabbit-body-findings.sh
     # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-    . "$(cd "$(dirname "$0")" && pwd)/lib/cr-body-findings.sh"
+    . "$(cd "$(dirname "$0")" && pwd)/lib/coderabbit-body-findings.sh"
     # The CR-ledger evidence reader: tells _cr_outside_gate below
     # whether an outside-diff-range finding has a recorded exact-head
     # disposition (deferred/disproved). The lib's OTHER
     # function, cr_ledger_carries_gate (the rate-limited/absent-signal panel
     # carry) — that reader is now unused, but the lib stays sourced for
     # cr_ledger_outside_dispositioned.
-    # shellcheck source=scripts/lib/cr-ledger-evidence.sh
+    # shellcheck source=scripts/lib/review-ledger-evidence.sh
     # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-    . "$(cd "$(dirname "$0")" && pwd)/lib/cr-ledger-evidence.sh"
+    . "$(cd "$(dirname "$0")" && pwd)/lib/review-ledger-evidence.sh"
 fi
 
 # The check-rollup read lives on the forge seam (_gh_pr_checks in

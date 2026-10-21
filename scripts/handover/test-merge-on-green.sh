@@ -267,6 +267,7 @@ mog_build_fixture() {
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
     # below would pass while testing nothing.
+    cp "$SCRIPT_DIR/../lib/coderabbit-available.sh" "$tmp/scripts/lib/coderabbit-available.sh"
     cp "$SCRIPT_DIR/../lib/cr-available.sh" "$tmp/scripts/lib/cr-available.sh"
     # The console-GO gate resolves the GO file under handover_root.
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$tmp/scripts/lib/handover-path.sh"
@@ -4151,7 +4152,7 @@ mog3485_no_poison() {  # mog3485_no_poison <label>
 }
 
 # Sourced BEFORE the old anchor resolution: the anchor's red check-ci decides (14).
-for mog3485_helper in lib/cr-available.sh lib/merge-block-alert.sh; do
+for mog3485_helper in lib/coderabbit-available.sh lib/merge-block-alert.sh; do
     if mog3485_a=$(mog3485_anchor 1); then
         MOG_HIMMEL_REPO="$mog3485_a" MOG_POISON="$mog3485_helper" STUB_CI_RC=0 \
             run_mog 14 "3485: a branch-side $mog3485_helper cannot change the verdict (anchor's red check-ci → 14)"

@@ -556,7 +556,7 @@ CHECKROWSEOF
     # machine (the claude API lane off, the CodeRabbit app not armed) is
     # absent and leaves the set, unless it is required, which makes it
     # unavailable and keeps it in.
-    [ -r "$SCRIPT_DIR/../lib/cr-available.sh" ] && . "$SCRIPT_DIR/../lib/cr-available.sh"
+    [ -r "$SCRIPT_DIR/../lib/coderabbit-available.sh" ] && . "$SCRIPT_DIR/../lib/coderabbit-available.sh"
     _eff=""
     while IFS="	" read -r slug mode required provider; do
         [ -n "$slug" ] || continue

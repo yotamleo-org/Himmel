@@ -566,16 +566,16 @@ for f in "$CLAUDE_RUNBOOK" "$CODEX_SKILL"; do
     # The remaining concern is the one that reaches other people's repos:
     # never post an `@coderabbitai review` comment onto a PR in a repo this
     # harness does not own the CR gate for. Assert THAT enforcer is intact --
-    # the predicate itself in scripts/lib/cr-trigger-ledger.sh, and its call
+    # the predicate itself in scripts/lib/coderabbit-trigger-ledger.sh, and its call
     # in the trigger hook -- rather than a filename that no longer exists.
-    armed_predicate=$(grep -c 'cr_trigger_repo_armed()' "$ROOT/scripts/lib/cr-trigger-ledger.sh" 2>/dev/null)
+    armed_predicate=$(grep -c 'cr_trigger_repo_armed()' "$ROOT/scripts/lib/coderabbit-trigger-ledger.sh" 2>/dev/null)
     armed_predicate="${armed_predicate:-0}"
     armed_callsite=$(grep -c 'cr_trigger_repo_armed "' "$ROOT/scripts/hooks/trigger-cr-on-pr-create.sh" 2>/dev/null)
     armed_callsite="${armed_callsite:-0}"
     if [ "$armed_predicate" -ge 1 ] && [ "$armed_callsite" -ge 1 ]; then
         pass "$n: (iii) HIMMEL-2034's cr_trigger_repo_armed still gates the @coderabbitai trigger (predicate + call site present)"
     else
-        fail "$n: (iii) HIMMEL-2034's armed-repo guard is not reachable: cr_trigger_repo_armed defined=$armed_predicate in scripts/lib/cr-trigger-ledger.sh, called=$armed_callsite in scripts/hooks/trigger-cr-on-pr-create.sh -- an unarmed repo could be sent an @coderabbitai review comment"
+        fail "$n: (iii) HIMMEL-2034's armed-repo guard is not reachable: cr_trigger_repo_armed defined=$armed_predicate in scripts/lib/coderabbit-trigger-ledger.sh, called=$armed_callsite in scripts/hooks/trigger-cr-on-pr-create.sh -- an unarmed repo could be sent an @coderabbitai review comment"
     fi
 
     # (iv) FR6 -- exactly one --root per load_dotenv call, and that --root must

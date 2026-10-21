@@ -125,6 +125,33 @@ Exit codes:
 | 2 | usage error |
 | 3 | nothing to compare (no candidate, no baseline, a candidate whose status is not `ok`, no gated metric with a value on both sides, or a malformed ledger line after the candidate, which may be this eval's newest run); never a pass |
 
+## Eval feedback: a result drives one change, the next run re-measures it
+
+```
+python3 scripts/eval/lib/eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P]
+```
+
+`lib/eval_feedback.py` closes the loop on the eval-runs ledger. For each eval
+named in `feedback-rules.json`, over that eval's newest `ok` row:
+
+1. **Measure.** Each open change of that eval whose baseline row is older and
+   has the same `confighash` gets one `measured` record: before, after, delta,
+   and `improved`, `regressed` or `flat`.
+2. **Change.** When that row is not yet the baseline of a change, the first
+   rule with a metric worse than its threshold raises one `open` change record
+   on the worst such metric. The change is a `learning` (a memory-inbox
+   candidate line, written once when `--inbox` is given; a change opened
+   without `--inbox`, or whose write failed, is delivered by the next run
+   with `--inbox`), a `routing` change or a
+   `tool-ruling` (keep, slim or retire), aimed at the rule's `target`.
+
+Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else
+`~/.himmel/eval-changes.jsonl`). The daily failure review
+(`leg-digest/failure_review.py`) runs this step after the friction
+subsection and shows what it wrote under `### Eval feedback`. Its friction
+run passes `--record`, so `friction.py` appends one `eval: friction` row per
+run (refusals by verdict, `over_deny_share`, `over_deny:<source>/<class>`).
+
 ## lane-quality: repeats and judge calibration
 
 `run.sh run --reps N` runs the task set N times into one run dir. `table`

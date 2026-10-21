@@ -210,6 +210,10 @@ forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
   check "$old forwards argv and stdout to $new" "NEW:a b|c" "$out"
   check "$old keeps the exit code of $new" 7 "$rc"
   check "$old prints one deprecation line" "$old is deprecated: use '$new' instead" "$err"
+  [ "$runner" = bash ] || return 0
+  out="$(bash -c '. "$1"; echo "rc=$?"' _ "$d/$old" 2> "$d/err")"
+  check "$old refuses to be sourced and runs nothing" "rc=2" "$out"
+  check "$old names the run spelling when sourced" "$old is deprecated: run '$new', do not source it" "$(cat "$d/err")"
 }
 # shellcheck disable=SC2016 # the stub body is expanded by the stub, not here
 SH_STUB='printf "NEW:%s|%s" "$1" "$2"; exit 7'
@@ -250,6 +254,38 @@ if cp "$ROOT/scripts/cr/clear-cr-marker.sh" "$ROOT/scripts/cr/anchor-handoff.sh"
 else
   check "scripts/cr/clear-cr-marker.sh exists" "yes" "no"
 fi
+
+# --- slice V2b: the CodeRabbit and review libs, each old path a sourcing alias ---
+V2B_ROWS='cr-available.sh|coderabbit-available.sh|identifier|old-to-new|V2|X
+cr-body-findings.sh|coderabbit-body-findings.sh|identifier|old-to-new|V2|X
+cr-default-base.sh|review-default-base.sh|identifier|old-to-new|V2|X
+cr-high-risk-diff.sh|review-high-risk-diff.sh|identifier|old-to-new|V2|X
+cr-ledger-evidence.sh|review-ledger-evidence.sh|identifier|old-to-new|V2|X
+cr-merge-gate.sh|review-merge-gate.sh|identifier|old-to-new|V2|X
+cr-signal.sh|coderabbit-signal.sh|identifier|old-to-new|V2|X
+cr-trigger-ledger.sh|coderabbit-trigger-ledger.sh|identifier|old-to-new|V2|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V2b row '$old'" "$tabbed" "$got"
+  new="$(printf '%s' "$want" | cut -d'|' -f2)"
+  # The hooks and the frozen red-control fixtures still source the old path,
+  # so it loads the new file and stays silent.
+  d="$FT/v2b-$old"
+  mkdir -p "$d" "$FT/v2b-cwd"
+  check "scripts/lib/$new exists" "yes" "$([ -f "$ROOT/scripts/lib/$new" ] && echo yes || echo no)"
+  cp "$ROOT/scripts/lib/$old" "$d/$old" 2>/dev/null || { check "scripts/lib/$old exists" "yes" "no"; continue; }
+  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
+  printf 'v2b_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/$new"
+  out="$(cd "$FT/v2b-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v2b_probe x' _ "$d/$old" 2> "$d/err")"
+  check "$old sources $new from another cwd and keeps its status" "rc=5|NEW:x" "$out"
+  check "$old prints nothing when sourced" "" "$(cat "$d/err")"
+  out="$(cd "$d" && bash -c '. ./"$1"; v2b_probe y' _ "$old" 2>/dev/null)"
+  check "$old sources $new from a relative path" "NEW:y" "$out"
+done <<EOF
+$V2B_ROWS
+EOF
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '

@@ -96,6 +96,7 @@ marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	0
 marketplace/plugins/obsidian-triage/tests/test-repo-security-scan.sh	1
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	2
 marketplace/plugins/obsidian-triage/tests/test-scrape-backends.sh	0
+marketplace/plugins/obsidian-triage/tests/test-skillspector-scan.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-densify.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-edge.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-invariants.sh	0
@@ -287,6 +288,7 @@ scripts/eval/test-cache-probe.sh	0
 scripts/eval/test-ci-metrics.sh	0
 scripts/eval/test-console-load-inventory.sh	0
 scripts/eval/test-context-replay.sh	0
+scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
@@ -311,6 +313,7 @@ scripts/graphify/test-leg-graph.sh	1
 scripts/graphify/test-no-windows-indexed.sh	0
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	0
 scripts/graphify/test-refresh-graph-map-lock.sh	68
+scripts/graphify/test-refresh-graph-map-resume.sh	7
 scripts/graphify/test-refresh-graph-map-scratch.sh	1
 scripts/graphify/test-refresh-graph-map.sh	44
 scripts/graphify/test-repo-map.sh	0

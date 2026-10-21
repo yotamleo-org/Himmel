@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-high-risk-diff.sh.
+# Tests for scripts/lib/review-high-risk-diff.sh.
 # Hermetic: GH_CMD is a PATH-independent stub; the suite never talks to GitHub.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/cr-high-risk-diff.sh
+# shellcheck source=scripts/lib/review-high-risk-diff.sh
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/cr-high-risk-diff.sh"
+. "$SCRIPT_DIR/review-high-risk-diff.sh"
 
 PASS=0; FAIL=0; TMP=""
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
@@ -90,6 +90,8 @@ for path in \
     .codex/run-hook.sh \
     .codex/codex-hook-adapter.sh \
     scripts/lib/cr-signal.sh \
+    scripts/lib/coderabbit-signal.sh \
+    scripts/lib/review-merge-gate.sh \
     .pre-commit-config.yaml
 do
     probe "$(total_json 1)" "$(risk_page "$path")"

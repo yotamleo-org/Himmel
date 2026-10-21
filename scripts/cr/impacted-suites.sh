@@ -444,10 +444,10 @@ fi
 # stderr. Sourced only here: CI always passes a range, and its base-extracted
 # copy (scripts/ci/impacted-selection.sh) carries no scripts/lib.
 if [ -z "$range" ]; then
-    # shellcheck source=scripts/lib/cr-default-base.sh
+    # shellcheck source=scripts/lib/review-default-base.sh
     # shellcheck disable=SC1091
     case "${BASH_SOURCE[0]}" in */*) _is_d="${BASH_SOURCE[0]%/*}" ;; *) _is_d=. ;; esac
-    . "$_is_d/../lib/cr-default-base.sh" || exit 2
+    . "$_is_d/../lib/review-default-base.sh" || exit 2
     if ! default_ref=$(cr_default_base_ref); then
         echo "impacted-suites.sh: no range given and neither origin/HEAD nor origin/main resolves; run: git fetch origin" >&2
         echo "  then re-run: bash scripts/cr/impacted-suites.sh" >&2

@@ -29,6 +29,8 @@ export HIMMEL_FAILURE_ROUTES_LOG="$TMP/never-log.jsonl"
 export HIMMEL_FAILURE_ROUTES_STATE="$TMP/never-state.json"
 export HIMMEL_FAILURE_INBOX="$TMP/never-inbox.md"
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP/never-review"
+export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-runs.jsonl"
+export HIMMEL_EVAL_CHANGES_LEDGER="$TMP/never-changes.jsonl"
 export FAILURE_REVIEW_NOTIFY_CMD="$TMP/stub/notify"
 # The friction subsection reads the real session transcripts; off unless a case sets a stub.
 export FAILURE_REVIEW_FRICTION_CMD=""

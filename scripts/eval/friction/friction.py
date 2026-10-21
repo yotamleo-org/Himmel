@@ -7,7 +7,10 @@ count, distinct legs (sessions), median recovery minutes, console turns,
 operator interrupts.  Output: JSON (machine) and Markdown (ranked table).
 
 usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR]
-                   [--json OUT] [--md OUT]
+                   [--json OUT] [--md OUT] [--record [--eval-ledger P]]
+--record also appends one eval-runs row (eval "friction": refusals, over_deny, true_positive,
+unclear, over_deny_share and over_deny:<source>/<class> per class), so the eval feedback step
+(scripts/eval/lib/eval_feedback.py) can raise a change on it and re-measure it on the next run.
 Transcript text is reduced to a normalised <=140 char snippet with token-shaped
 strings masked; raw tool output is never written out.
 """
@@ -20,6 +23,9 @@ import os
 import re
 import statistics
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib'))
+import eval_runs  # noqa: E402
 
 HOME = os.path.expanduser('~')
 DEFAULT_PROJECTS = [HOME + '/.claude/projects', HOME + '/.claude-codex/projects']
@@ -148,7 +154,7 @@ def scan_transcript(path, lane, since, until=None):
     try:
         fh = open(path, errors='replace')
     except OSError:
-        return rows
+        return None
     with fh:
         for line in fh:
             if 'tool_result' not in line:
@@ -382,14 +388,20 @@ def render_md(agg, meta):
     return '\n'.join(lines) + '\n'
 
 
-def scan_all(projects, since, until=None):
+def scan_all(projects, since, until=None, unreadable=None):
+    """Rows from every transcript in the window; the path of each one that cannot be opened goes to unreadable."""
     rows = []
     for pdir in projects:
         lane = 'claudex' if 'codex' in pdir else 'native'
         for path in glob.glob(os.path.join(pdir, '*', '*.jsonl')):
             if os.path.getmtime(path) < since.timestamp():
                 continue
-            rows.extend(scan_transcript(path, lane, since, until))
+            got = scan_transcript(path, lane, since, until)
+            if got is None:
+                if unreadable is not None:
+                    unreadable.append(path)
+                continue
+            rows.extend(got)
     return rows
 
 
@@ -420,6 +432,28 @@ def render_section(tx, prior_tx, docs, days, top=5):
     return '\n'.join(out) + '\n'
 
 
+def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0):
+    """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class.
+    An explicit --projects scope joins the config, so a run over other transcripts is its own series. A scan
+    that could not open every transcript is "partial", never a baseline."""
+    verdicts = collections.Counter(r['verdict'] for r in tx)
+    metrics = {'refusals': len(tx), 'over_deny': verdicts['over-deny'], 'true_positive': verdicts['true-positive'],
+               'unclear': verdicts['unclear'], 'over_deny_share': None}
+    judged = verdicts['over-deny'] + verdicts['true-positive']
+    if judged:
+        metrics['over_deny_share'] = round(verdicts['over-deny'] / judged, 4)
+    for (src, cls), n in collections.Counter((r['source'], r['class']) for r in tx
+                                             if r['verdict'] == 'over-deny').items():
+        metrics['over_deny:%s/%s' % (src, cls)] = n
+    config = {'friction_v': 1, 'days': days}
+    if projects:
+        config['projects'] = projects
+    row = eval_runs.make_row('friction', 'scripts/eval/friction/friction.py', config, metrics, n=len(tx), repo=repo,
+                             status='partial' if unreadable else 'ok',
+                             meta={'since': since.isoformat(), 'doc_rows': len(docs), 'unreadable': unreadable})
+    return eval_runs.append_safe(row, ledger, who='friction')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--section', action='store_true', help='print only the compact digest subsection')
@@ -430,6 +464,8 @@ def main(argv=None):
     ap.add_argument('--repo', default=os.getcwd())
     ap.add_argument('--json')
     ap.add_argument('--md')
+    ap.add_argument('--record', action='store_true', help='append one eval-runs row for this window')
+    ap.add_argument('--eval-ledger')
     a = ap.parse_args(argv)
     now = parse_ts(a.now) if a.now else dt.datetime.now(dt.timezone.utc)
     if now is None:
@@ -439,8 +475,11 @@ def main(argv=None):
     since = now - dt.timedelta(days=a.days)
     names = known_names(a.repo)
     projects = a.projects or DEFAULT_PROJECTS
-    tx = scan_all(projects, since, now)
+    unreadable = []
+    tx = scan_all(projects, since, now, unreadable)
     docs = scan_docs(a.docs, since, names)
+    if a.record:
+        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects, len(unreadable))
     if a.section:
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))

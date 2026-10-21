@@ -17,7 +17,12 @@ DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
     else (recurring);
   - what was routed (or would be, on a dry run), what was capped, what the router skipped;
   - the trajectory signals, minus traj/claim-unverified and traj/red-before-green (unreliable,
-    HIMMEL-4698), which are left out of every count.
+    HIMMEL-4698), which are left out of every count;
+  - the friction subsection, whose run also appends the friction eval-runs row (friction.py --record);
+  - the eval feedback subsection (scripts/eval/lib/eval_feedback.py run): the change a result past its
+    threshold raised and the before/after of an earlier change. Change records (HIMMEL_EVAL_CHANGES_LEDGER,
+    default ~/.himmel/eval-changes.jsonl) are written on every run;
+    the memory-inbox line of a learning change only on --live. FAILURE_REVIEW_FEEDBACK="" turns it off.
   Written to <out-dir>/failure-review-<local date>.md (the morning report reads it) and, with
   --vault, upserted into <vault>/50-Journal/Daily/<local date>.md.
   out-dir: --out-dir, else $HIMMEL_FAILURE_REVIEW_DIR, else ~/.himmel/state/failure-review.
@@ -53,6 +58,8 @@ from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "lib"))
+import eval_feedback  # noqa: E402
 import failure_router  # noqa: E402
 
 HEADING = "## Failure review"
@@ -172,7 +179,7 @@ def friction_part(a):
     if cmd == "":
         return ""
     argv = cmd.split() if cmd else [sys.executable, "-I", os.path.join(HERE, "..", "friction", "friction.py"),
-                                     "--repo", os.path.join(HERE, "..", "..", "..")]
+                                     "--repo", os.path.join(HERE, "..", "..", ".."), "--record"]
     try:
         r = subprocess.run(argv + ["--section", "--now", failure_router.iso(a.now)], capture_output=True,
                            text=True, timeout=120)
@@ -181,6 +188,20 @@ def friction_part(a):
     if r.returncode != 0:
         return "\n### Friction\n\n- unavailable: rc %d\n" % r.returncode
     return "\n" + r.stdout
+
+
+def feedback_part(a):
+    """The eval feedback subsection: what eval_feedback.run wrote this run. A failure leaves one line and never
+    fails the review."""
+    if os.environ.get("FAILURE_REVIEW_FEEDBACK") == "":
+        return ""
+    inbox = (a.inbox or os.environ.get(failure_router.INBOX_ENV)) if a.live else None
+    try:
+        recs = eval_feedback.run(inbox=inbox)
+    except (OSError, ValueError, KeyError) as e:
+        return "\n### Eval feedback\n\n- unavailable: %s\n" % type(e).__name__
+    lines = ["- %s" % eval_feedback.describe(r) for r in recs] or ["- no change and nothing to re-measure"]
+    return "\n### Eval feedback\n\n" + "\n".join(lines) + "\n"
 
 
 def state_file(a):
@@ -283,6 +304,7 @@ def main(argv=None):
     rc, decisions, boxed = run_router(a)
     section, new, n, k, routed, boxed = build(a, rows, set(older), rc, decisions, boxed)
     section += friction_part(a)
+    section += feedback_part(a)
     npath = notify_path(a)
     os.makedirs(os.path.dirname(npath), exist_ok=True)
     with open(npath + ".lock", "a") as lock:

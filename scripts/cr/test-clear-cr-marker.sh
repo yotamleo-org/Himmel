@@ -36,7 +36,7 @@ CLEAR="$SCRIPT_DIR/clear-review-marker.sh"
 LEDGER_APPEND="$SCRIPT_DIR/ledger-append.sh"
 REVIEW_ROUND="$SCRIPT_DIR/review-round.sh"
 LOCK_LIB="$SCRIPT_DIR/../lib/shared-branch-lock.sh"
-DEFAULT_BASE_LIB="$SCRIPT_DIR/../lib/cr-default-base.sh"
+DEFAULT_BASE_LIB="$SCRIPT_DIR/../lib/review-default-base.sh"
 TIMEOUT_BIN_LIB="$SCRIPT_DIR/../lib/timeout-bin.sh"
 # shellcheck source=scripts/lib/timeout-bin.sh
 # shellcheck disable=SC1091
@@ -93,6 +93,8 @@ build_repo_template() {
         || { echo "FAIL: mkdir of template scaffold dirs failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$CLEAR" "$REPO_TEMPLATE/scripts/cr/clear-review-marker.sh" \
         || { echo "FAIL: cp clear-review-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$(dirname "$CLEAR")/clear-cr-marker.sh" "$REPO_TEMPLATE/scripts/cr/clear-cr-marker.sh" \
+        || { echo "FAIL: cp clear-cr-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$REPO_TEMPLATE/scripts/lib/chokepoint-seam-guard.sh" \
         || { echo "FAIL: cp chokepoint-seam-guard.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
@@ -116,8 +118,8 @@ build_repo_template() {
     cp "$LOCK_LIB" "$REPO_TEMPLATE/scripts/lib/shared-branch-lock.sh" \
         || { echo "FAIL: cp shared-branch-lock.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # The floor provenance check binds its base through this lib.
-    cp "$DEFAULT_BASE_LIB" "$REPO_TEMPLATE/scripts/lib/cr-default-base.sh" \
-        || { echo "FAIL: cp cr-default-base.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    cp "$DEFAULT_BASE_LIB" "$REPO_TEMPLATE/scripts/lib/review-default-base.sh" \
+        || { echo "FAIL: cp review-default-base.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # The ls-remote timeout bound sources this lib; without a copy
     # here _TIMEOUT_BIN degrades to empty in every case, silently skipping the
     # timeout wrapper the fix depends on.
@@ -461,6 +463,19 @@ make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:7}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "short-sha ledger head matches full tip → exit 0"
+rm -rf "$tmp"
+
+# 2c. The deprecated clear-cr-marker.sh path still clears, with one deprecation line.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+rc=0
+out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then pass; else fail "legacy clear-cr-marker.sh path (expected rc=0, got $rc)"; echo "    out: $out" >&2; fi
+if marker_exists "$tmp"; then fail "legacy path: marker should be GONE"; else pass; fi
+if grepq "$out" -F "clear-cr-marker.sh is deprecated: use 'clear-review-marker.sh' instead"; then pass; else
+    fail "legacy path: deprecation line missing"
+fi
 rm -rf "$tmp"
 
 # stub_git_log_lsremote_argv <tmp> — records the exact argv of every

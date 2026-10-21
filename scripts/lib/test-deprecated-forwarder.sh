@@ -89,6 +89,11 @@ mkdir -p "$T/elsewhere"
 RC_GOT=$(cd "$T/elsewhere" && FWD_RC=4 FWD_ARGV="$T/argv" bash "$T/old-name.sh" y < "$T/stdin" > /dev/null 2>&1; echo $?)
 check "runs from another cwd" "4" "$RC_GOT"
 
+# sourced, it refuses before the exec, so the caller's shell survives
+OUT_GOT=$(FWD_ARGV="$T/argv" bash -c '. "$1"; echo "rc=$?"' _ "$T/old-name.sh" 2> "$T/err")
+check "sourcing refuses and runs nothing" "rc=2" "$OUT_GOT"
+check "sourcing names the run spelling" "old-name.sh is deprecated: run 'sub/new-name.sh', do not source it" "$(cat "$T/err")"
+
 check "template carries the __OLD__ placeholder" "yes" "$(grep -q '__OLD__' "$TEMPLATE" && echo yes || echo no)"
 check "template carries the __NEW__ placeholder" "yes" "$(grep -q '__NEW__' "$TEMPLATE" && echo yes || echo no)"
 
