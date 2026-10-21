@@ -17,6 +17,8 @@ ARG SHFMT_VERSION=3.14.1
 ARG SHFMT_SHA256=76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
 ARG UV_VERSION=0.13.4
 ARG UV_SHA256=2b428396f12572d4429cf210ca234dd599a33b3af0958a4d5ed569d63e3f344f
+ARG JQ_VERSION=1.8.2
+ARG JQ_SHA256=b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
 
 # at/bubblewrap/socat: arm-resume + sandbox suites; ffmpeg 6.1: obsidian-triage HLS
 # suite; sudo: ci.yml steps call it; gh: the ticket asks for it. The second line is
@@ -67,6 +69,16 @@ RUN curl -fsSL -o /tmp/shfmt "https://github.com/mvdan/sh/releases/download/v${S
  && echo "${SHFMT_SHA256}  /tmp/shfmt" | sha256sum -c - \
  && install -m 755 /tmp/shfmt /usr/local/bin/shfmt \
  && rm -f /tmp/shfmt
+
+# jq: one exact release in /usr/local/bin, ahead of apt's 1.7 in /usr/bin. The bash-ast
+# engine's jq programs need 1.8: jq 1.7 rejects an object value that is a bare
+# binary expression, and the engine then denies every command.
+RUN curl -fsSL -o /tmp/jq "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64" \
+ && echo "${JQ_SHA256}  /tmp/jq" | sha256sum -c - \
+ && install -m 755 /tmp/jq /usr/local/bin/jq \
+ && rm -f /tmp/jq \
+ && jq --version | grep -qx "jq-${JQ_VERSION}" \
+ && jq -n '{a: [1] + [2]}' >/dev/null
 
 # uv: check-uv-lock.sh and the graphify install path.
 RUN curl -fsSL -o /tmp/uv.tgz "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \

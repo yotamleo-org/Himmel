@@ -20,7 +20,7 @@ Arms (all read-only):
   qmd-lex     qmd BM25 (lex search), rerank off
   qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
-              --arms, not in the default five and not fused into combined
+              --arms, not in the default seven and not fused into combined
   graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
               path and ident-grep baselines); its tokens and time are the sum
@@ -137,10 +137,11 @@ def arm_grep(q, repo, timeout, k):
     score = {}
     t0 = time.time()
     for w in kws:
-        if time.time() - t0 > timeout:
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
             return [], "", True, False
         out, to, rc = run_cmd(["git", "-C", repo, "grep", "-I", "-i", "-c", "-F", "-e", w, "--"] + GREP_SCOPE,
-                              max(1, timeout - (time.time() - t0)))
+                              remaining)
         if to:
             return [], "", True, False
         if rc not in (0, 1):
@@ -155,7 +156,10 @@ def arm_grep(q, repo, timeout, k):
         argv = ["git", "-C", repo, "grep", "-n", "-I", "-i", "-F"]
         for w in kws:
             argv += ["-e", w]
-        out, t, rc = run_cmd(argv + ["--", f], max(1, timeout - (time.time() - t0)))
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
+            return files, "\n".join(text), True, err
+        out, t, rc = run_cmd(argv + ["--", f], remaining)
         to, err = to or t, err or (not t and rc not in (0, 1))
         text += out.splitlines()[:8]
     return files, "\n".join(text), to, err
@@ -207,10 +211,11 @@ def arm_ident_grep(q, repo, timeout, k):
     t0 = time.time()
     score, lines = {}, {}
     for ident in idents(q):
-        if time.time() - t0 > timeout:
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
             return [], "", True, False
         out, to, rc = run_cmd(["git", "-C", repo, "grep", "-n", "-I", "-w", "-F", "-e", ident, "--"] + GREP_SCOPE,
-                              max(1, timeout - (time.time() - t0)))
+                              remaining)
         if to:
             return [], "", True, False
         if rc not in (0, 1):
@@ -619,8 +624,9 @@ def graph_built(repo):
 SWEEP = re.compile(r"(?:^|[;&|(\n]\s*)(?:git\s+grep\b|grep\s+-\w*[rR]|rg\s|find\s)")
 QMD_BASH = re.compile(r"(?:qmd-bounded\.sh|(?:^|[;&|(\n]\s*)qmd)\s+(?:query|search|vsearch)\b")
 GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|leg-graph\.sh)\s+(?:query|explain)\b")
-FAILED = re.compile(r"timed out|hook error|denied|refused|not found|no results|error:|\bERR\b", re.I)
-PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
+PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s\]]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
+RESOURCE = re.compile(r"\[Resource from [^\]]*?qmd://[^/\s\]]+/([^\s\]]+)\]")
+QMD_TOOL =re.compile(r"^mcp__(?:plugin_qmd_)?qmd__(?:query|get|multi_get)$")
 FEATURE = re.compile(r"qmd|graphify|retrieval|graph-|semantic", re.I)
 
 
@@ -674,7 +680,7 @@ def session_calls(path):
 
 def kind_of(cl):
     n, inp = cl["name"], cl["input"]
-    if n.startswith("mcp__qmd__query"):
+    if QMD_TOOL.match(n):
         return "qmd"
     if n in ("Grep", "Glob"):
         return "sweep"
@@ -691,18 +697,38 @@ def kind_of(cl):
 
 def failed(cl):
     r = cl["result"].strip()
-    return cl["error"] or not r or r in ("[]", "{}") or bool(FAILED.search(r[:400]))
+    if cl["error"] or not r:
+        return True
+    try:
+        d = json.loads(r)
+    except ValueError:
+        return False
+    return d in ([], {}) or (isinstance(d, dict) and d.get("results") == [])
+
+
+def result_paths(cl):
+    """Paths a retrieval call surfaced; a qmd path also counts without its leading collection name."""
+    qmd = cl["name"].startswith("mcp__")
+    if qmd and not cl["name"].endswith("__query"):
+        # get/multi_get echo the document body, which names unrelated paths: the input and the
+        # per-document "[Resource from ...]" headers (a glob pattern expands there) name the documents.
+        inp = cl["input"]
+        found = [x.strip() for x in str(inp.get("file") or inp.get("pattern") or "").split(",")]
+        found += RESOURCE.findall(cl["result"])
+    else:
+        found = [next(g for g in m.groups() if g) for m in PATHS.finditer(cl["result"])]
+    paths = set(found)
+    if qmd:
+        paths |= {p.partition("/")[2] for p in found}
+    # ponytail: a path with no directory is dropped, so a root-level file never counts as used; keep it if a sample shows root files missed.
+    return {p for p in paths if "/" in p.strip("/")}
 
 
 def used(cl, later):
-    names = set()
-    for m in PATHS.finditer(cl["result"]):
-        p = next(g for g in m.groups() if g)
-        names.add(os.path.basename(p))
-    names.discard("")
+    paths = result_paths(cl)
     for nx in later:
         blob = json.dumps(nx["input"])
-        if any(n in blob for n in names):
+        if any(re.search(r"(?<![\w.-])" + re.escape(p) + r"(?![\w-])", blob) for p in paths):
             return True
     return False
 
@@ -773,7 +799,7 @@ def main(argv=None):
     r.add_argument("--repo", default=".")
     r.add_argument("--arms", default=",".join(ARMS))
     r.add_argument("--k", type=int, default=5)
-    r.add_argument("--timeout", type=int, default=60)
+    r.add_argument("--timeout", type=float, default=60)
     r.add_argument("--collection", default="himmel")
     r.add_argument("--label", default="")
     c = sub.add_parser("check")

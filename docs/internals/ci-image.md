@@ -35,7 +35,8 @@ sqlite3, bsdextrautils, file, gawk, lsof, make, netcat, iproute2, ping, ssh clie
 tmux, expect, tree, wget, zip, zstd, less); the tools whose absence fails or SKIPs a suite
 row (bison, gcc and libc6-dev for the bwk awk build, cron, python-is-python3 for a bare
 `python`, python3-yaml, zsh 5.9, shfmt and uv, the last
-two pinned + sha256); node (one exact nodejs.org release, sha256
+two pinned + sha256); jq 1.8.2 (pinned + sha256, in /usr/local/bin ahead of apt's 1.7,
+which cannot compile the bash-ast engine's jq programs); node (one exact nodejs.org release, sha256
 pinned in the Dockerfile), bun (pinned to `.bun-version`, sha256), gitleaks (pinned +
 sha256), pre-commit 4.7.0, shellcheck-py 0.11.0.1 first on PATH. A `runner` user, uid/gid
 1001 like the hosted runner's, with passwordless sudo, so jobs need not run as root.

@@ -2,15 +2,16 @@
 // the same rail. app.js imports it as /nav.js; agui-web bundles it. The session token rides only the URL
 // fragment (#t=<token>), never a path or query, so it never reaches a request line.
 export const PAGES = [
-  { id: "config", label: "Settings" },
+  { id: "fleet", label: "Fleet" },
   { id: "health", label: "Health" },
   { id: "toolhealth", label: "Tool health" },
-  { id: "fleet", label: "Fleet" },
+  { id: "config", label: "Settings" },
+  { id: "setup", label: "Setup" },
   { id: "roadmap", label: "Roadmap" },
   { id: "kanban", label: "Kanban" },
   { id: "workflow", label: "Workflow" },
 ];
-const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
+const CONSOLE = ["config", "setup", "health", "toolhealth", "roadmap", "kanban", "workflow"];
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.

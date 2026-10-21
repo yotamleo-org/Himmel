@@ -237,18 +237,37 @@ mut "$D" '.nodes[0].lane = "nolane"'
 run "$D"
 expect_fail "integrity: node in an unknown lane fails" "n.a" "nolane"
 
-D=$TMP/min; fx "$D"
-printf '{"version":1}\n' > "$D/graph.json"
-run "$D"
-if [ "$rc" -eq 2 ]; then ok "integrity: a graph holding only a version is a usage error, not a pass"; else bad "integrity: version-only graph rc=$rc, want 2 :: $out"; fi
-D=$TMP/min2; fx "$D"
-mut "$D" '.edges = [1]'
-run "$D"
-if [ "$rc" -eq 2 ]; then ok "integrity: a non-object edge entry is a usage error, not a pass"; else bad "integrity: edges [1] rc=$rc, want 2 :: $out"; fi
-D=$TMP/min3; fx "$D"
-mut "$D" '.nodes[0].sources = [{"file": 7}]'
-run "$D"
-if [ "$rc" -eq 2 ]; then ok "integrity: a non-string source file is a usage error, not a pass"; else bad "integrity: file 7 rc=$rc, want 2 :: $out"; fi
+D=$TMP/min
+if fx "$D" && printf '{"version":1}\n' > "$D/graph.json"; then
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: a graph holding only a version is a usage error, not a pass"; else bad "integrity: version-only graph rc=$rc, want 2 :: $out"; fi
+else
+  bad "integrity: version-only graph fixture setup failed"
+fi
+D=$TMP/min2
+if fx "$D" && mut "$D" '.edges = [1]'; then
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: a non-object edge entry is a usage error, not a pass"; else bad "integrity: edges [1] rc=$rc, want 2 :: $out"; fi
+else
+  bad "integrity: non-object edge fixture setup failed"
+fi
+D=$TMP/min3
+if fx "$D" && mut "$D" '.nodes[0].sources = [{"file": 7}]'; then
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: a non-string source file is a usage error, not a pass"; else bad "integrity: file 7 rc=$rc, want 2 :: $out"; fi
+else
+  bad "integrity: non-string source fixture setup failed"
+fi
+
+for entry in '.nodes[0]' '.edges[0]'; do
+  D=$TMP/false-source
+  if ! fx "$D" || ! mut "$D" "$entry.sources = false"; then
+    bad "integrity: $entry sources false fixture setup failed"
+    continue
+  fi
+  run "$D"
+  if [ "$rc" -eq 2 ]; then ok "integrity: $entry sources false is a usage error, not a pass"; else bad "integrity: $entry sources false rc=$rc, want 2 :: $out"; fi
+done
 
 # --- selection -------------------------------------------------------------
 D=$TMP/s1; fx "$D"

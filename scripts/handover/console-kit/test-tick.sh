@@ -223,6 +223,92 @@ export CLAUDE_SESSIONS_PROC="$W/proc"
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
 
+# Missing cadence, a fresh marker, and an overlapping tick must not be confused.
+worktree_prune_cases() (
+    local repo="$W/prune-repo" bin="$W/prune-bin" state="$W/prune-state" stamp out
+    mkdir -p "$repo/scripts" "$bin" "$state" || exit 1
+    git init -q -b main "$repo" || exit 1
+    git -C "$repo" config user.email test@example.com
+    git -C "$repo" config user.name test
+    printf 'base\n' > "$repo/README"
+    git -C "$repo" add README
+    git -C "$repo" commit -qm base || exit 1
+    git init -q --bare "$W/prune-origin.git" || exit 1
+    git -C "$repo" remote add origin "$W/prune-origin.git"
+    printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "$HERE/../../worktree.sh" > "$repo/scripts/worktree.sh"
+    cat > "$bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *'auth status'*) exit 0 ;;
+    *'repo view'*) echo owner/repo; exit 0 ;;
+    *'api --paginate repos/owner/repo/pulls'*)
+        case "$*" in *state=open*) exit 0 ;; esac
+        git for-each-ref --format='owner/repo%x09%(refname:short)%x09merged%x09%(objectname)' refs/heads/feat | sed 's/%x09/\t/g'
+        exit 0 ;;
+esac
+printf 'unexpected gh command: %s\n' "$*" >&2
+exit 1
+STUB
+    chmod +x "$bin/gh"
+    if "$bin/gh" auth satus >/dev/null 2>&1; then fail 'forge stub accepts an invalid command'; else pass 'forge stub rejects unexpected commands'; fi
+    printf 'CEILING 72/100 worktrees (alarm at 70)\n' > "$state/tick-wt-orphans-$(printf '%s' "$repo" | cksum | cut -d' ' -f1)"
+    git -C "$repo" worktree add -qb feat/clean "$W/prune-clean" || exit 1
+    git -C "$repo" worktree add -qb feat/dirty "$W/prune-dirty" || exit 1
+    printf 'user work\n' >> "$W/prune-dirty/README"
+    # Age both fixture reflogs so the real prune's activity gate is satisfied.
+    touch -d '2 hours ago' "$repo/.git/worktrees/prune-clean/logs/HEAD" "$repo/.git/worktrees/prune-dirty/logs/HEAD"
+    prune_tick() {
+        PATH="$bin:$PATH" REPO="$repo" TICK_STATE_DIR="$state" TOKEN='' LEGS='' DOC='' \
+            FORGE=github WORKTREE_ORPHAN_HOURS=0 bash "$SUT" 2>/dev/null
+    }
+    out="$(prune_tick)"
+    [ ! -d "$W/prune-clean" ] && pass 'cadence reclaims an old merged clean worktree without manual clean' || fail 'cadence did not reclaim an old merged clean worktree'
+    [ -d "$W/prune-dirty" ] && grep -qx 'user work' "$W/prune-dirty/README" && pass 'cadence preserves a dirty worktree and its edits' || fail 'cadence lost dirty user work'
+    contains 'cadence keeps the tick output available' "$out" 'TICK '
+    not_contains 'a successful sweep invalidates the stale ceiling census' "$out" ' wt-ceiling=72/100'
+    stamp="$state/tick-wt-prune-$(printf '%s' "$repo/.git" | cksum | cut -d' ' -f1)"
+    git -C "$repo" worktree add -qb feat/later "$W/prune-later" || exit 1
+    out="$(prune_tick)"
+    [ -d "$W/prune-later" ] && pass 'a second tick inside the hour does not sweep again' || fail 'cadence swept twice inside an hour'
+    touch -d '61 minutes ago' "$stamp"
+    exec 7>>"$stamp.lock"
+    flock -n 7 || exit 1  # gnu-ok: console kit is Linux-only
+    out="$(prune_tick 7>&-)"
+    [ -d "$W/prune-later" ] && pass 'a concurrent sweep lock suppresses a due tick' || fail 'cadence ignored a held sweep lock'
+    exec 7>&-
+    out="$(prune_tick)"
+    [ ! -d "$W/prune-later" ] && pass 'the next due tick reclaims clean worktrees after the hour' || fail 'cadence did not sweep after the hour'
+    [ -d "$W/prune-dirty" ] && pass 'later sweeps still preserve the dirty worktree' || fail 'later cadence removed the dirty worktree'
+    # Simulate a sweep consuming its full minute without making the suite sleep.
+    cat > "$bin/date" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = +%s ] && [ -f "$PRUNE_CLOCK" ]; then cat "$PRUNE_CLOCK"; else /bin/date "$@"; fi
+STUB
+    cat > "$bin/timeout" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *"$PRUNE_WRAPPER prune --orphans") printf '%s\n' "$3" > "$PRUNE_BUDGET"; exit 0 ;;
+    *"$PRUNE_WRAPPER prune") printf '%s\n' "$(( $(cat "$PRUNE_CLOCK") + 60 ))" > "$PRUNE_CLOCK"; exit 0 ;;
+esac
+exec /usr/bin/timeout "$@"
+STUB
+    chmod +x "$bin/date" "$bin/timeout"
+    export PRUNE_CLOCK="$W/prune-clock"
+    export PRUNE_BUDGET="$W/prune-budget"
+    export PRUNE_WRAPPER="$repo/scripts/worktree.sh"
+    /bin/date +%s > "$PRUNE_CLOCK"
+    touch -d '61 minutes ago' "$stamp"
+    rm -f "$state/tick-wt-orphans-$(printf '%s' "$repo" | cksum | cut -d' ' -f1)"
+    out="$(prune_tick)"
+    if [ -f "$PRUNE_BUDGET" ] && [ "$(cat "$PRUNE_BUDGET")" -le 30 ]; then pass 'the census shares the sweep deadline'; else fail 'the census exceeded the combined maintenance budget'; fi
+    [ "$fails" -eq 0 ]
+)
+if ! worktree_prune_cases; then fails=$((fails + 1)); fi
+if [ "${1:-}" = --worktree-prune-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
+
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?

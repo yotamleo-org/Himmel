@@ -580,6 +580,7 @@ _cfp_claude_invoke() {
                     --allowedTools Read,Glob,Grep --model "$model" --effort "$_cc_effort" < "$pf")" || _cc_rc=$?
             else
                 echo "critic-first-pass.sh: claude critic SKIPPED (native auth pin could not clear ANTHROPIC_*/CLAUDE_CODE_USE_*) — clean no-op" >&2
+                rm -rf "$_cc_dir"
                 return 5
             fi
             ;;

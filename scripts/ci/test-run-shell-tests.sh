@@ -2677,11 +2677,12 @@ exit 0
 SHEOF
 chmod +x "$sb26e/test-env.sh"
 SUITE_STOP_ON_FAIL=1 bash "$RUNNER" "$sb26e" > /dev/null 2>&1
+rc26e=$?
 seen26=$(cat "$sb26e/seen.txt" 2>/dev/null || echo missing)
-if [ "$seen26" = "[]" ]; then
+if [ "$rc26e" -eq 0 ] && [ "$seen26" = "[]" ]; then
   pass "26e: a suite the runner launches does not inherit SUITE_STOP_ON_FAIL"
 else
-  fail "26e: the suite saw SUITE_STOP_ON_FAIL=$seen26"
+  fail "26e: expected exit 0 and SUITE_STOP_ON_FAIL=[]; rc=$rc26e seen=$seen26"
 fi
 rm -rf "$sb26e"
 fi
