@@ -77,6 +77,11 @@ for i in "${todo[@]}"; do
     done
     exit 1
   fi
+  if [ "${STUB_HOLLOW_BLIP_AT:-0}" = "$i" ]; then
+    for _ in $(seq 1 "${STUB_HOLLOW_BLIP:-5}"); do
+      echo "[graphify] retrying the same chunk of 38 in 0s after a hollow response" >&2
+    done
+  fi
   printf '{}' > "$target/graphify-out/cache/c$i.json"
   k=$((k+1))
   echo "[graphify extract] chunk $k/$m done" >&2
@@ -108,11 +113,11 @@ reset() { rm -rf "$OUTD" "${MAPS:?}"/*; rm -f "$STUB_CALLS" "$STUB_HOLLOW_COUNT"
 # promoting nothing. ---
 echo "R1: a persistently hollow chunk is retried a bounded number of times"
 reset
-out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 run_refresh 2>&1 ); rc=$?
+out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=1 run_refresh 2>&1 ); rc=$?
 [ "$rc" -eq 5 ] && pass "R1 exits 5 (chunk failed)" || fail "R1 should exit 5 (got $rc): $out"
 n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
-[ "$n" -gt 0 ] && [ "$n" -lt 20 ] && pass "R1 the hollow retry stopped after $n lines (bounded, stub would emit 60)" \
-  || fail "R1 the hollow retry should stop near 3 lines, saw $n"
+[ "$n" -ge 3 ] && [ "$n" -le 4 ] && pass "R1 the hollow retry stopped after $n lines (limit 3, stub would emit 60)" \
+  || fail "R1 the hollow retry should stop at 3 lines (4 at most), saw $n"
 [ -f "$OUTD/cache/c1.json" ] && pass "R1 the finished chunk c1 is kept in the cache" || fail "R1 finished chunk c1 was thrown away"
 [ ! -e "$OUTD/graph.json" ] && pass "R1 nothing partial was promoted" || fail "R1 a partial graph.json was promoted"
 grep -q 'chunk' "$OUTD/.graphify_failed_chunks" 2>/dev/null \
@@ -185,6 +190,20 @@ out=$( STUB_CHUNKS=12 STUB_IGNORE_TERM=1 GRAPHIFY_MAX_CHUNKS_PER_RUN=2 GRAPHIFY_
 [ "$rc" -eq 4 ] && pass "R8 exits 4 despite the ignored TERM" || fail "R8 should exit 4 (got $rc): $out"
 [ -f "$OUTD/cache/c2.json" ] && [ ! -e "$OUTD/cache/c12.json" ] \
   && pass "R8 the run was cut short after the cap (c2 cached, c12 never reached)" || fail "R8 the TERM-ignoring graphify ran to the end or lost its chunks"
+
+# --- R9: the hollow limit scales with the effective concurrency: with several
+# API workers, retries from different chunks interleave with no completion
+# between them, so 5 hollow lines at concurrency 6 are not a failed chunk; an
+# all-hollow run still stops, at limit x concurrency. ---
+echo "R9: the hollow limit scales with the API concurrency"
+reset
+out=$( STUB_CHUNKS=4 STUB_HOLLOW_BLIP_AT=2 STUB_HOLLOW_BLIP=5 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=6 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && pass "R9 5 interleaved hollow lines at concurrency 6 do not stop the run" || fail "R9 should exit 0 (got $rc): $out"
+reset
+out=$( STUB_CHUNKS=4 STUB_HOLLOW_AT=2 GRAPHIFY_HOLLOW_RETRY_MAX=3 GRAPHIFY_MAX_CONCURRENCY=2 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 5 ] && pass "R9 an all-hollow run at concurrency 2 still exits 5" || fail "R9 all-hollow should exit 5 (got $rc): $out"
+n=$(wc -l < "$STUB_HOLLOW_COUNT" 2>/dev/null || echo 0)
+[ "$n" -ge 6 ] && [ "$n" -le 7 ] && pass "R9 it stopped after $n lines (limit 3 x concurrency 2)" || fail "R9 should stop at 6 lines (7 at most), saw $n"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

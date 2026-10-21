@@ -2352,7 +2352,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # graph, and let the next run resume from that cache (seeded above).
   #   GRAPHIFY_SECONDS_PER_CHUNK  measured wall per claude-cli chunk (default 130)
   #   GRAPHIFY_MAX_CHUNKS_PER_RUN override; default deadline / seconds-per-chunk, 0 = no cap
-  #   GRAPHIFY_HOLLOW_RETRY_MAX   hollow retries of one chunk before it is failed (default 5)
+  #   GRAPHIFY_HOLLOW_RETRY_MAX   hollow retries of one chunk before it is failed (default 5);
+  #                               the run stops at this times the concurrent API workers
   # Exit 4 = stopped at the chunk cap (resumable); exit 5 = a chunk kept coming
   # back hollow (recorded in .graphify_failed_chunks).
   # ponytail: graphify exposes no per-chunk skip, so a persistently hollow chunk
@@ -2386,6 +2387,12 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   esac
   GRAPHIFY_MAX_CHUNKS_PER_RUN=$((10#$GRAPHIFY_MAX_CHUNKS_PER_RUN))
   GRAPHIFY_HOLLOW_RETRY_MAX=$((10#$GRAPHIFY_HOLLOW_RETRY_MAX))
+  # The retry lines of concurrent API workers interleave with no completion
+  # between them, so the stop threshold is the per-chunk limit times the workers
+  # in flight; claude-cli runs serial unless GRAPHIFY_CLAUDE_CLI_PARALLEL=1.
+  _hollow_workers=$((10#$GRAPHIFY_MAX_CONCURRENCY))
+  if [ "$BACKEND" = "claude-cli" ] && [ "${GRAPHIFY_CLAUDE_CLI_PARALLEL:-}" != "1" ]; then _hollow_workers=1; fi
+  _HOLLOW_STOP_AT=$((GRAPHIFY_HOLLOW_RETRY_MAX * _hollow_workers))
   _STOP_FILE="$SCRATCH/.graphify-extract-stop"
   # Seconds graphify gets to exit after the TERM that stops it at the cap or on
   # hollow retries before it is SIGKILLed (timeout -k does not cover a TERM we send).
@@ -2414,7 +2421,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
           fi ;;
         *'after a hollow response'*)
           hollow_n=$((hollow_n + 1))
-          if [ "$hollow_n" -ge "$GRAPHIFY_HOLLOW_RETRY_MAX" ]; then
+          if [ "$hollow_n" -ge "$_HOLLOW_STOP_AT" ]; then
             printf 'hollow %s %s\n' "$done_n" "$hollow_n" > "$_STOP_FILE"
             kill -TERM "$gpid" 2>/dev/null || true
           fi ;;
