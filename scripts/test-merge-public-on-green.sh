@@ -229,7 +229,7 @@ assert_gh_lacks "wrong-repo: no merge attempted" "pr merge"
 # 7b. CR_PUBLIC_REPO unset → the script's own default is the canonical slug, so a
 # PR on yotamleo-org/Himmel passes the repo check and reaches the merge.
 STUB_REPO_UNSET=1 STUB_NWO="yotamleo-org/Himmel" STUB_SHA="feedface9999" run_mpog 0 "default repo is yotamleo-org/Himmel → merged"
-assert_gh_has "default-repo merge scoped to yotamleo-org/Himmel" "--repo yotamleo-org/Himmel"
+assert_merge_has "default-repo merge scoped to yotamleo-org/Himmel" "--repo yotamleo-org/Himmel"
 
 # 8. Empty head SHA in the meta query (API returns "") → refuse (exit 13). The
 # operator's OWN CLI sha stays a valid shape (CLI_SHA) — this isolates "the API
