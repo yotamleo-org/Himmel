@@ -144,6 +144,7 @@ scripts/ci/test-ci-push-concurrency.sh	0
 scripts/ci/test-ci-vm-routing.sh	0
 scripts/ci/test-codeowner-review-gate.sh	3
 scripts/ci/test-corpus-sandbox.sh	2
+scripts/ci/test-cr-first-measure.sh	0
 scripts/ci/test-fork-drift-issue.sh	0
 scripts/ci/test-gcp-net.sh	1
 scripts/ci/test-gcp-runner-autoscale.sh	1
