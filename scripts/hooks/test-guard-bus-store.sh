@@ -221,6 +221,8 @@ deny  "at reads bus and the verb from two echo words (text reader)" "$(bash_json
 deny  "tmux sends bus and a spaced verb as two words (text reader)" \
     "$(bash_json "tmux send-keys -t z bus ' register x' Enter")"
 allow "tee writes a heredoc body to a file" "$(bash_json $'tee /tmp/notes.md <<\'EOF\'\nbus register x\nEOF')"
+deny  "a prefix assignment on a bus status call loads a written file (text reader)" \
+    "$(bash_json $'tee /tmp/r.js <<\'EOF\'\nrequire("child_process").execSync(`\nbus register x\n`)\nEOF\nNODE_OPTIONS=--require=/tmp/r.js bus status')"
 
 echo "== model failures: the text reader decides =="
 # A heredoc body naming bus register is allowed by the model and denied by the
