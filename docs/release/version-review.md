@@ -10,7 +10,7 @@ reads it and never recomputes.
 stable version (`vX.Y.Z` tags) in `~/.himmel/state/rollup/weekly.jsonl`
 (`WEEKLY_ROLLUP_FILE`). Run it before a review:
 
-```
+```bash
 python3 scripts/eval/weekly-rollup.py write --ref origin/main --weeks 12 --versions 3
 ```
 
