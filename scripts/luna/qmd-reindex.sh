@@ -111,7 +111,8 @@
 #   0  index refreshed and verified complete
 #   1  usage / input error
 #   2  qmd executable not found or not usable
-#   3  `qmd update` failed
+#   3  `qmd update` failed (a SQLITE_BUSY lock is retried first, up to
+#      QMD_REINDEX_BUSY_WAIT_SECS=180 at QMD_REINDEX_BUSY_RETRY_SECS=10)
 #   4  `qmd embed` failed
 #   5  embed INCOMPLETE — vectors still pending after the embed pass
 #   6  completeness assert could not READ its verifier (qmd reworded its
@@ -227,6 +228,79 @@ run_embed() {
         # Normalize ordinary failures so an upstream rc 9 cannot impersonate BUSY.
         [ "$rc" -eq 0 ] || return 4
         return 0
+    done
+}
+
+# "pids: <pid> (<command>), ..." for a space-separated pid list: a bare pid is
+# gone by the time anyone reads the cron log, which is the only evidence kept.
+name_holders() {
+    local pid cmd out=""
+    for pid in $1; do
+        cmd=$(ps -o args= -p "$pid" 2>/dev/null | cut -c1-100 || true)
+        out="${out:+$out, }$pid (${cmd:-gone})"
+    done
+    printf 'pids: %s' "$out"
+}
+
+# Best-effort: who has the index (or its WAL side files) open right now, for
+# the busy log lines.
+index_holders() {
+    local h=""
+    if command -v fuser >/dev/null 2>&1; then
+        h=$(fuser "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | tr -s ' \n' ' ' || true)
+        h="${h# }"; h="${h% }"
+        [ -z "$h" ] || { name_holders "$h"; return 0; }
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+        h=$(lsof -t -- "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | sort -u | tr -s ' \n' ' ' || true)
+        h="${h# }"; h="${h% }"
+        [ -z "$h" ] || { name_holders "$h"; return 0; }
+    fi
+    printf 'unknown'
+}
+
+# A non-negative decimal integer of at most 9 digits, else the default (a bad
+# env value must not turn the bounded wait into an endless loop, and a digit
+# string past 64-bit range must not wrap to 0).
+secs_or_default() {
+    case "$1" in
+        ''|*[!0-9]*|??????????*)
+            [ -z "$1" ] || echo "WARN qmd-reindex: ignoring invalid seconds value '$1'; using $2." >&2
+            printf '%s' "$2" ;;
+        *) printf '%s' "$((10#$1))" ;;
+    esac
+}
+
+# `qmd update` dies with SQLITE_BUSY ("database is locked") while another writer
+# (an MCP daemon, a capture, a second cadence) holds the index write lock. Wait
+# it out: retry on that signature only, every QMD_REINDEX_BUSY_RETRY_SECS up to
+# QMD_REINDEX_BUSY_WAIT_SECS in total. Any other failure, and a lock held past
+# the bound, return nonzero at once so the caller still exits 3.
+run_update() {
+    local wait_max step waited out rc nap t0="$SECONDS"
+    wait_max=$(secs_or_default "${QMD_REINDEX_BUSY_WAIT_SECS:-}" 180)
+    step=$(secs_or_default "${QMD_REINDEX_BUSY_RETRY_SECS:-}" 10)
+    while :; do
+        rc=0
+        out=$(run_qmd update 2>&1) || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            relabel_hash_count <<<"$out"
+            return 0
+        fi
+        relabel_hash_count <<<"$out" >&2
+        if ! grep -qE -- 'SQLITE_BUSY|database is locked' <<<"$out"; then
+            return "$rc"
+        fi
+        waited=$((SECONDS - t0))
+        if [ "$waited" -ge "$wait_max" ]; then
+            echo "ERR qmd-reindex: index still busy after ${waited}s (SQLITE_BUSY); lock holder: $(index_holders)" >&2
+            return "$rc"
+        fi
+        nap="$step"
+        [ "$nap" -ge 1 ] || nap=1
+        [ "$nap" -le $((wait_max - waited)) ] || nap=$((wait_max - waited))
+        echo "qmd-reindex: index busy (SQLITE_BUSY; holder: $(index_holders)); retrying in ${nap}s (waited ${waited}s of ${wait_max}s)" >&2
+        sleep "$nap"
     done
 }
 
@@ -370,6 +444,7 @@ write_refresh_stamp() {
         rm -f "$tmp" "$QMD_REFRESH_STAMP" 2>/dev/null || true
         return 0
     fi
+    # prim-ok: the temp is named by PID and takes the umask mode; atomic_write would reset it to 0600
     if ! mv -f "$tmp" "$QMD_REFRESH_STAMP" 2>/dev/null; then
         echo "WARN qmd-reindex: could not install the refresh stamp; qmd-staleness.sh will fall back to its proxy." >&2
         rm -f "$tmp" "$QMD_REFRESH_STAMP" 2>/dev/null || true
@@ -444,7 +519,7 @@ fi
 
 # --- 1. re-index changed files across every configured collection -----------
 echo "qmd-reindex: [1/3] qmd update"
-if ! run_qmd update 2>&1 | relabel_hash_count; then
+if ! run_update; then
     echo "ERR qmd-reindex: 'qmd update' failed — index NOT refreshed." >&2
     exit 3
 fi

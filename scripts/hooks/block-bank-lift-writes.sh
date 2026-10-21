@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash | Edit|Write|MultiEdit|NotebookEdit | apply_patch) —
-# Keeps to the literal-path core. The bank lift
-# (~/.himmel/state/bank-lift.json, written by `scripts/lib/bank-lift.sh set`)
+# Keeps to the literal-path core. The usage lift
+# (~/.himmel/state/usage-lift.json, written by `scripts/lib/usage-lift.sh set`;
+# the old names bank-lift.json / bank-lift.sh are fenced the same way)
 # relaxes the 7-day bank gate while it is valid. Raising your own
 # spending ceiling is an OPERATOR call, so an agent session may not:
 #   1. write the lift file by a LITERAL path (~, $HOME, ${HOME}, /home/<user>,
@@ -12,13 +13,13 @@
 #      interpreter handed the path or inline code that spells its name, or the
 #      Write/Edit/NotebookEdit/apply_patch tools; nor fill the state dir (or an
 #      ancestor of it) with a lift-named entry;
-#   2. run `bank-lift.sh set` (bash/sh/direct/source/.; through env, sudo,
-#      timeout, nice-style wrappers; in a bash -c / eval / stdin script), or
-#      copy bank-lift.sh to another name.
-# Reading the lift, `bank-lift.sh show` / `clear`, and any text that merely
+#   2. run `usage-lift.sh set` or `bank-lift.sh set` (bash/sh/direct/source/.;
+#      through env, sudo, timeout, nice-style wrappers; in a bash -c / eval /
+#      stdin script), or copy either script to another name.
+# Reading the lift, `usage-lift.sh show` / `clear`, and any text that merely
 # NAMES the lift (a commit message, a ticket title, a Results bullet) stay
 # allowed. Remedy named in every deny: the operator runs
-# `! bash scripts/lib/bank-lift.sh set ...` at their own prompt. There is
+# `! bash scripts/lib/usage-lift.sh set ...` at their own prompt. There is
 # deliberately NO env bypass — a bypass an agent can request is the very thing
 # this fence exists to remove.
 #
@@ -60,13 +61,13 @@ deny() {
     {
         echo "block-bank-lift-writes: refusing — $1."
         echo
-        echo "    ~/.himmel/state/bank-lift.json relaxes the 7-day bank gate (HIMMEL-4423),"
-        echo "    so setting it is operator-only (HIMMEL-4445). Ask the operator to run, at"
-        echo "    their own prompt:"
+        echo "    ~/.himmel/state/usage-lift.json (old name bank-lift.json) relaxes the"
+        echo "    7-day usage gate, so setting it is operator-only. Ask the operator"
+        echo "    to run, at their own prompt:"
         echo
-        echo "        ! bash scripts/lib/bank-lift.sh set ..."
+        echo "        ! bash scripts/lib/usage-lift.sh set ..."
         echo
-        echo "    Reading the lift, \`bank-lift.sh show\` and \`bank-lift.sh clear\` stay"
+        echo "    Reading the lift, \`usage-lift.sh show\` and \`usage-lift.sh clear\` stay"
         echo "    allowed. There is no env bypass: the operator's own command is the path."
     } >&2
     exit 2
@@ -85,7 +86,7 @@ esac
 CWD=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || CWD=""
 [ -n "$CWD" ] || CWD=$PWD
 
-LIFT_NAME=bank-lift.json
+LIFT_NAMES='usage-lift.json bank-lift.json'  # the new name, then the read-both old one
 STATE_REAL="$HOME/.himmel/state"
 CWD_UNPROVEN=0  # set for Bash: a cd/pushd/popd word makes the cwd unknown
 LREF=NONE       # lift_ref result: LIFT | STATE | HIMMEL | HOME | NONE
@@ -182,6 +183,15 @@ _dir_kind() {
     DK=NONE
 }
 
+# _is_lift_name <component>: the component could name either lift file.
+_is_lift_name() {
+    local n
+    for n in $LIFT_NAMES; do _name_matches "$1" "$n" && return 0; done
+    return 1
+}
+# _is_lift_script <component>: the component could name either lift script.
+_is_lift_script() { _name_matches "$1" usage-lift.sh || _name_matches "$1" bank-lift.sh; }
+
 # _is_pure_glob <s>: nothing left after removing glob metacharacters.
 _is_pure_glob() { local t="${1//[\*\?\[\]\{\},]/}"; [ -z "$t" ]; }
 
@@ -190,7 +200,7 @@ _is_pure_glob() { local t="${1//[\*\?\[\]\{\},]/}"; [ -z "$t" ]; }
 # HOME = it names an ancestor directory a whole-directory write could put a
 # lift into.
 _lift_ref1() {
-    local w="$1" depth="${2:-0}" e dir base tgt
+    local w="$1" depth="${2:-0}" e dir base tgt n
     LREF=NONE
     [ -n "$w" ] || return 0
     _expand "$w"; e=$EXP
@@ -205,9 +215,11 @@ _lift_ref1() {
             esac
             ;;
         *)
-            if [ -e "$STATE_REAL/$LIFT_NAME" ] && [ -e "$e" ] && [ "$e" -ef "$STATE_REAL/$LIFT_NAME" ]; then
-                LREF=LIFT; return 0
-            fi
+            for n in $LIFT_NAMES; do
+                if [ -e "$STATE_REAL/$n" ] && [ -e "$e" ] && [ "$e" -ef "$STATE_REAL/$n" ]; then
+                    LREF=LIFT; return 0
+                fi
+            done
             if [ -L "$e" ] && [ "$depth" -lt 8 ]; then
                 tgt=$(readlink "$e" 2>/dev/null) || tgt=""
                 if [ -n "$tgt" ]; then
@@ -220,7 +232,7 @@ _lift_ref1() {
     base="${e##*/}"; dir="${e%/*}"
     [ -n "$dir" ] || dir=/
     _dir_kind "$dir"
-    if [ -n "$base" ] && _name_matches "$base" "$LIFT_NAME"; then
+    if [ -n "$base" ] && _is_lift_name "$base"; then
         case "$DK" in
             STATE) LREF=LIFT; return 0 ;;
             # Unknown dir: only a lift-NAMED word (not `$x`, not a bare `*`).
@@ -234,11 +246,13 @@ _lift_ref1() {
 }
 is_lift() { _lift_ref1 "$1" 0; [ "$LREF" = LIFT ]; }
 
-# _names_lift_lit <text>: the text spells bank-lift.json or bank-lift.sh
-# literally, in any case (inline interpreter code).
+# _names_lift_lit <text>: the text spells a lift file or script name
+# (usage-lift / bank-lift, .json / .sh) literally, in any case (inline
+# interpreter code).
 _names_lift_lit() {
     case "$1" in
         *[bB][aA][nN][kK]-[lL][iI][fF][tT].[jJ][sS][oO][nN]*|*[bB][aA][nN][kK]-[lL][iI][fF][tT].[sS][hH]*) return 0 ;;
+        *[uU][sS][aA][gG][eE]-[lL][iI][fF][tT].[jJ][sS][oO][nN]*|*[uU][sS][aA][gG][eE]-[lL][iI][fF][tT].[sS][hH]*) return 0 ;;
     esac
     return 1
 }
@@ -478,8 +492,8 @@ _lb() { R="${1%/}"; R="${R##*/}"; case "$R" in *[A-Z]*) R=$(_lower "$R") ;; esac
 set_rule() {
     local scrb="${1%/}"
     scrb="${scrb##*/}"
-    if [ "$3" = 1 ] && { [ "$scrb" = "_bank_lift_cmd" ] || { ! _is_dynamic "$scrb" && _name_matches "$scrb" bank-lift.sh; }; }; then
-        if ! _is_dynamic "$2" && _name_matches "$2" set; then deny "\`bank-lift.sh set\` is operator-only"; fi
+    if [ "$3" = 1 ] && { [ "$scrb" = "_usage_lift_cmd" ] || [ "$scrb" = "_bank_lift_cmd" ] || { ! _is_dynamic "$scrb" && _is_lift_script "$scrb"; }; }; then
+        if ! _is_dynamic "$2" && _name_matches "$2" set; then deny "\`usage-lift.sh set\` is operator-only"; fi
     fi
     return 0
 }
@@ -545,12 +559,12 @@ check_copy() {
         return 0
     fi
     [ "$verb" = ln ] && sym=1
-    # A copy/link/rename of bank-lift.sh runs `set` under another name.
+    # A copy/link/rename of a lift script runs `set` under another name.
     for src in ${pos[@]+"${pos[@]}"}; do
         srcb="${src%/}"; srcb="${srcb##*/}"
-        case "$srcb" in *[bB][aA][nN][kK]*) ;; *) continue ;; esac
-        if ! _is_dynamic "$srcb" && _name_matches "$srcb" bank-lift.sh; then
-            deny "$verb makes an alias of bank-lift.sh ($src)"
+        case "$srcb" in *[bB][aA][nN][kK]*|*[uU][sS][aA][gG][eE]*) ;; *) continue ;; esac
+        if ! _is_dynamic "$srcb" && _is_lift_script "$srcb"; then
+            deny "$verb makes an alias of a lift script ($src)"
         fi
     done
     # Aliasing: a link TO the lift or its directory lets a later write reach
@@ -572,13 +586,13 @@ check_copy() {
     dk=$LREF
     case "$dk" in
         LIFT) deny "$verb writes the bank lift ($dest)" ;;
-        STATE) need="$LIFT_NAME" ;;
+        STATE) need=LIFT ;;
         HIMMEL) need=state ;;
         HOME) need=.himmel ;;
         *)
             # A destination relative to an unproven cwd may be the state dir.
             _expand "$dest"
-            case "$EXP" in '?'|'?/'*) unk=1; need="$LIFT_NAME" ;; *) return 0 ;; esac ;;
+            case "$EXP" in '?'|'?/'*) unk=1; need=LIFT ;; *) return 0 ;; esac ;;
     esac
     # Whole-directory write into an ancestor of the lift.
     if [ "$T" = 1 ] && [ -z "$tdir" ]; then deny "$verb -T replaces/fills $dest wholesale"; fi
@@ -587,7 +601,9 @@ check_copy() {
             */|*/.) deny "$verb copies a directory's contents into $dest" ;;
         esac
         srcb="${src%/}"; srcb="${srcb##*/}"
-        if _name_matches "$srcb" "$need"; then deny "$verb puts a \`$need\`-named (or unknowable) entry into $dest"; fi
+        if { [ "$need" = LIFT ] && _is_lift_name "$srcb"; } || { [ "$need" != LIFT ] && _name_matches "$srcb" "$need"; }; then
+            deny "$verb puts a \`$need\`-named (or unknowable) entry into $dest"
+        fi
         if [ "$unk" = 1 ] && { _name_matches "$srcb" state || _name_matches "$srcb" .himmel; }; then
             deny "$verb puts a state- or .himmel-named entry into $dest (cwd unknown)"
         fi
@@ -882,9 +898,9 @@ check_clause() {
 
     # Interpreters: their code is text the hook cannot parse. Any argument that
     # IS the lift (or its dir) denies. INLINE code (-c/-e/…, an awk program, or
-    # a script read from stdin/heredoc) also denies when it spells the lift FILE
-    # or bank-lift.sh. A script FILE's other arguments are data — a ticket title
-    # that merely mentions bank-lift is not code.
+    # a script read from stdin/heredoc) also denies when it spells a lift FILE
+    # or script name. A script FILE's other arguments are data — a ticket title
+    # that merely mentions the lift is not code.
     if [[ "$cmd" =~ $INTERP_RE ]]; then
         local inline=0 seen=0 iscode=0
         case "$cmd" in *awk) inline=1 ;; esac

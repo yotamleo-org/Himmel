@@ -746,7 +746,7 @@ for _leg in harvest:pipeline-harvest synth:pipeline-synthesize health:pipeline-h
     _name=${_leg%%:*}; _flow=${_leg#*:}
     _body=$(eval "printf '%s' \"\$${_name}_sh\"")
     assert_contains "$_name runner calls bank-preflight" "bank-preflight.sh" "$_body"
-    assert_contains "$_name runner sets CADENCE_BANK_LEG=$_flow" "CADENCE_BANK_LEG=$_flow" "$_body"
+    assert_contains "$_name runner sets CADENCE_USAGE_LEG=$_flow" "CADENCE_USAGE_LEG=$_flow" "$_body"
     assert_contains "$_name runner refuses on SKIPPED-BANK" "SKIPPED-BANK" "$_body"
     assert_contains "$_name runner pins --permission-mode" "--permission-mode" "$_body"
     assert_not_contains "$_name runner never bypasses permissions" "bypassPermissions" "$_body"

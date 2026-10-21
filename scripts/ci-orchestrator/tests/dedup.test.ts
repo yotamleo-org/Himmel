@@ -18,6 +18,7 @@ function priorWithSuccess(treeHash: string): Map<string, JobState> {
 describe("planSubmission", () => {
   test("doc-only diff drops the code matrix, keeps the doc-safe gate", () => {
     const cands = [
+      job({ job: "ci-quick", deterministic: false }),
       job({ job: "secret-scan", deterministic: false }),
       job({ job: "lint", deterministic: false }),
       job({ job: "node-suites" }),
@@ -25,7 +26,8 @@ describe("planSubmission", () => {
     ];
     const { enqueue } = planSubmission(cands, ["docs/x.md", "README.md"], new Map());
     const names = enqueue.map((e) => e.job);
-    expect(names).toContain("secret-scan");
+    expect(names).toContain("ci-quick");
+    expect(names).not.toContain("secret-scan");
     expect(names).toContain("lint");
     expect(names).not.toContain("node-suites");
     expect(names).not.toContain("security-scan");

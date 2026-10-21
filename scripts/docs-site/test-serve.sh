@@ -95,6 +95,35 @@ rm -f "$tmp/racer.pid"
 wait_free ::1
 wait_free 127.0.0.1
 
+# --- lockfile change: serve.sh reinstalls only when package-lock.json differs from the install stamp
+fake="$tmp/fake"
+mkdir -p "$fake/scripts/docs-site" "$fake/site" "$tmp/lbin"
+cp "$repo/scripts/docs-site/serve.sh" "$fake/scripts/docs-site/serve.sh"
+echo '{"lock":1}' >"$fake/site/package-lock.json"
+cat >"$tmp/lbin/npm" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  ci) echo ci >>"$J1_NPM_LOG"; mkdir -p node_modules/astro; exit 0 ;;
+  "run build") exit 0 ;;
+  *) echo "stub npm: unexpected args: $*" >&2; exit 97 ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/lbin/npx"
+chmod +x "$tmp/lbin/npm" "$tmp/lbin/npx"
+serve_fake() { PATH="$tmp/lbin:$PATH" J1_NPM_LOG="$tmp/lock.log" bash "$fake/scripts/docs-site/serve.sh" >/dev/null 2>&1; }
+installs() { [ -f "$tmp/lock.log" ] && wc -l <"$tmp/lock.log" || echo 0; }
+serve_fake || ko "lockfile: first serve exits 0"
+if [ "$(installs)" -eq 1 ]; then ok "lockfile: first serve installs"; else ko "lockfile: first serve installs (got $(installs))"; fi
+serve_fake || ko "lockfile: unchanged-lockfile serve exits 0"
+if [ "$(installs)" -eq 1 ]; then ok "lockfile: unchanged lockfile does not reinstall"; else ko "lockfile: unchanged lockfile does not reinstall (got $(installs))"; fi
+echo '{"lock":2}' >"$fake/site/package-lock.json"
+serve_fake || ko "lockfile: changed-lockfile serve exits 0"
+if [ "$(installs)" -eq 2 ]; then ok "lockfile: changed lockfile reinstalls"; else ko "lockfile: changed lockfile reinstalls (got $(installs))"; fi
+serve_fake || ko "lockfile: stamped serve exits 0"
+if [ "$(installs)" -eq 2 ]; then ok "lockfile: reinstall is stamped, next serve skips"; else ko "lockfile: reinstall is stamped, next serve skips (got $(installs))"; fi
+rm "$fake/site/package-lock.json"
+if serve_fake || [ "$(installs)" -ne 2 ]; then ko "lockfile: unhashable lockfile fails without installing"; else ok "lockfile: unhashable lockfile fails without installing"; fi
+
 if [ ! -d "$repo/site/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); real serve not run in the hermetic shell shards"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
@@ -132,13 +161,13 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do listening ::1 && break; sleep 0.3; done
 listening ::1 || { kill "$foreign" 2>/dev/null; foreign=""; echo "SKIP: no IPv6 loopback; foreign-listener row not run"; }
 if [ "$(grep -c '^docs site: http://127.0.0.1:4321/Himmel/$' "$tmp/out")" -eq 1 ]; then ok "serve.sh prints exactly the one URL line"; else ko "serve.sh prints the URL line"; fi
 
-for p in "" why-himmel/ getting-started/ setup/install/ adoption-trail.html; do
+for p in "" why-himmel/ getting-started/ setup/install/ adoption-trail.html guide/dev-graph.html guide/dev-graph; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4321/Himmel/$p")
   if [ "$code" = 200 ]; then ok "200 /Himmel/$p"; else ko "200 /Himmel/$p (got $code)"; fi
 done
 page=$(curl -s http://127.0.0.1:4321/Himmel/getting-started/)
 if printf '%s' "$page" | grep -q 'href="/Himmel/setup/install/"'; then ok "no-JS page carries its rewritten .md link"; else ko "no-JS page carries its rewritten .md link"; fi
-if printf '%s' "$page" | grep -q 'href="https://github.com/yotamleo/himmel/blob/main/CLAUDE.md"'; then ok "repo-path link points at GitHub"; else ko "repo-path link points at GitHub"; fi
+if printf '%s' "$page" | grep -q 'href="https://github.com/yotamleo-org/Himmel/blob/main/CLAUDE.md"'; then ok "repo-path link points at GitHub"; else ko "repo-path link points at GitHub"; fi
 code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4321/Himmel/pagefind/pagefind.js)
 if [ "$code" = 200 ]; then ok "search index (pagefind) is served"; else ko "search index is served (got $code)"; fi
 

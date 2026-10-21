@@ -37,16 +37,17 @@ the page.
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
 | What is broken | feed rows with health `fail` or `warn`, worst first, plus firing alerts | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Legs and the usage bank | bank: the newest row with bank numbers in the last 64 KiB of `$CADENCE_BANK_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; legs: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with bank numbers; no handover root or fleet manifest |
+| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
 The **Bank windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
 GET only), which reads the two caches `bank-preflight` reads and never spawns a
-probe: the Claude usage cache (`$CADENCE_BANK_CACHE`, else `$CLAUDE_USAGE_CACHE`,
+probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE`,
 default `/tmp/claude/statusline-usage-cache.json`, stale after
-`$CADENCE_BANK_MAX_AGE`, default 600 s) and the Codex bank cache
-(`$CODEX_BANK_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
-`$CODEX_BANK_CACHE_TTL_SECONDS`, default 6 h). Per bank and window it returns
+`$CADENCE_USAGE_MAX_AGE`, default 600 s) and the Codex usage cache
+(`$CODEX_USAGE_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
+`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). The old `CADENCE_BANK_*` and
+`CODEX_BANK_*` names are still read. Per usage source and window it returns
 `{used_pct|null, resets_at|null, captured_at, age_s, state: ok|stale|unknown,
 possibly_reset, reason}`. A missing or unreadable cache, or a window the plan
 does not report (Codex 5h is often null), is `unknown (why)`, never 0 %; a
@@ -85,6 +86,11 @@ request: no static render, no republish. The page draws release panels, the drif
 sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
 theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
 hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
+
+The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
+`graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files
+are `docs/guide/dev-graph/`'s `.json`, `.js` and `.css` only). A walkthrough step rides the fragment beside the
+route, `#/workflow&w=<id>&s=<n>`.
 
 - **Sources.** The Jira mirror (`HIMMEL_JIRA_MIRROR`, else `~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY or HIMMEL>`)
   plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
@@ -325,6 +331,43 @@ imports, so its suite runs in CI without an install.
   wrapped) and the click through to a run. Another adds the walk console to
   Fleet to a run and back over the shared rail, and checks no request line
   carries the token.
+- Docs link and tokens e2e (`docs-link.e2e.ts`, same opt-in suite): the rail
+  ends with a Docs link to the public site in a new tab with
+  `rel="noopener noreferrer"` and no session token, and the console reads the
+  shared tokens (`public/tokens.css`) in light and dark with system fonts.
+- Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
+  takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
+  default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
+  The rail lists Roadmap and Kanban only for `jira` and `github`; with `none` a
+  direct landing on Kanban shows the plain-words empty state, and with `github`
+  the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
+  predicate behind it.
+- Settings e2e (`settings.e2e.ts`, journey J3, same opt-in suite): the page and
+  rail entry read Settings with the seven groups in order, every row shows its
+  command, when it takes effect and a Learn more link to the docs site, Commit
+  rules offer no switch, a switch previews its dry-run first, and Roadmap and
+  Kanban follow the tracker source.
+- Setup e2e (`setup.e2e.ts`, same opt-in suite): the page is `public/setup.js`,
+  its state and secret writes are `setup.ts` (`GET /api/setup`, `POST
+  /api/setup/secret`). A runtime-computed canary token is saved and removed
+  through the page against the temp-HOME store, and a scan of the markup, fields,
+  browser storage, audit log and argv must never find it (a control test plants
+  it to prove the scan sees each place). Commit rules preview before they apply.
+- Development graph docs page e2e (`dev-graph-docs.e2e.ts`, journey J-DG1,
+  same suite): it needs no himmelctl. It serves `docs/guide` over `node:http`
+  and walks `dev-graph.html`: node count, the W2 NO-GO step as refused with its
+  condition and source, the `#w=&s=` deep link, autoplay, reduced motion (no
+  autoplay, no `animate` call, no running animation), no horizontal scroll at
+  390 px, dark `--bg`, and the error banner for an unknown id or an unjoined
+  step. A spec must be named `*.e2e.ts` to be picked up.
+- Workflow page e2e (`dev-graph-ui.e2e.ts`, journey J-DG2, same suite): the rail
+  shows Workflow, the page loads `/dev-graph/graph.json` and draws every node,
+  W1 steps to its last step with `#/workflow&w=&s=` riding the fragment, a deep
+  link restores a step, leaving and coming back does not stack a second graph,
+  and the page runs under the server's CSP with zero violations (a planted
+  inline style proves the detector fires). `/dev-graph/` serves only the
+  `.json`/`.js`/`.css` files of `docs/guide/dev-graph/`: traversal, a path
+  outside the directory, the directory itself and a POST are refused.
 
 ## Manual pass (the same 7 items)
 

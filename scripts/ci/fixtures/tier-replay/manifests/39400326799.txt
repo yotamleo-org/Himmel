@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/handover/console-kit/headed-arm-leg.sh
+base f7697d73df5e8f2e5e8b29fb05c6c12ce3cf3a41
+head b38f0de713448e422794fab3116803a6f128d6d9
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

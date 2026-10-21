@@ -204,7 +204,9 @@ worker session could read.
 **Rule** (worker session side, `docs/handover/leg-sections/succession.md`): a
 change of supervisor session is genuine when either (1) the outgoing supervisor session relays it
 directly, from the session the brief names, quoting the worker session's current token
-(a fresh one is optional: a relay that keeps the token is valid and complete); or (2) the incoming supervisor session's message quotes **both** the
+(a fresh one is optional: a relay that keeps the token is valid and complete), whether
+that session is still live or already gone when the relay is read, since the `from` at
+send time is the proof; or (2) the incoming supervisor session's message quotes **both** the
 outgoing token and the fresh one **and** the named supervisor session is no longer in
 `ListAgents`. Two token quotes and a gone supervisor session are the safety argument: a
 single token is a replayable string, refused from any session but the named one

@@ -17,6 +17,10 @@ case " $out " in *" execute "*) echo "ok - execute surfaced";; *) echo "FAIL: ex
 out="$(HIMMEL_REPO="$repo" HIMMEL_INITIATIVE='prcheck' bash "$here/legs.sh")"
 case " $out " in *" execute "*) echo "FAIL: execute leaked [$out]"; fails=$((fails+1));; *) echo "ok - execute absent";; esac
 
+# afk profile by its new names → the afk step list surfaces.
+out="$(env -u HIMMEL_INITIATIVE -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_OVERNIGHT HIMMEL_REPO="$repo" HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK='execute' bash "$here/legs.sh")"
+case " $out " in *" execute "*) echo "ok - afk names surface the afk steps";; *) echo "FAIL: afk names ignored [$out]"; fails=$((fails+1));; esac
+
 # no anchor + cwd inside the himmel checkout → resolves via git toplevel of cwd.
 out="$(cd "$repo" && env -u HIMMEL_REPO HIMMEL_INITIATIVE='execute' bash "$here/legs.sh")"
 case " $out " in *" execute "*) echo "ok - resolves via cwd git-toplevel";; *) echo "FAIL: cwd resolution [$out]"; fails=$((fails+1));; esac

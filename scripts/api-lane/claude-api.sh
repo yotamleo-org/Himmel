@@ -13,6 +13,8 @@
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
+#        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
+#        the launch record so a cost can be joined to a PR by key (absent = empty / null)
 # OFF by default. No subscription fallback: a refusal is final.
 set -u
 
@@ -122,13 +124,13 @@ fi
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
-LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_BANK_LEG: it could escape the api cap
+LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_LEG: it could escape the api cap
 # the reservation is owned by THIS shell, which waits on claude below, so it
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
-  CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
-  CADENCE_BANK_LEG="$LEG_NAME" CADENCE_BANK_CALLER_PID="$$" \
+  CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 LEG_LANE=api \
+  CADENCE_USAGE_LEG="$LEG_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
@@ -196,6 +198,7 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
+  -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
@@ -219,12 +222,19 @@ fi
 # --- secret-free launch record (no key, no prompt) ---
 # the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
 read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
+# branch is JSON-escaped (control characters dropped) so it still matches the ledger's branch; head must be 7-64 hex or is empty;
+# a PR that is not a canonical positive decimal is null.
+R_BRANCH="$(printf '%s' "${HIMMEL_API_BRANCH:-}" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"
+R_HEAD=""
+[[ "${HIMMEL_API_HEAD:-}" =~ ^[0-9A-Fa-f]{7,64}$ ]] && R_HEAD="$HIMMEL_API_HEAD"
+R_PR=""
+[[ "${HIMMEL_API_PR:-}" =~ ^[1-9][0-9]*$ ]] && R_PR="$HIMMEL_API_PR"
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 {
-  printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s,"kind":"%s","cache_ttl":"%s","input_tokens":%s,"cache_creation_tokens":%s,"cache_read_tokens":%s}\n' \
+  printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s,"kind":"%s","cache_ttl":"%s","input_tokens":%s,"cache_creation_tokens":%s,"cache_read_tokens":%s,"branch":"%s","head":"%s","pr":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JOB_ID" "$HIMMEL_API_ACCOUNT" "$ROSTER_ORG" "$ROSTER_KEY" \
     "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC" "$KIND" "$CACHE_TTL" \
-    "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}"
+    "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}" "$R_BRANCH" "$R_HEAD" "${R_PR:-null}"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
 
 cat "$OUT"

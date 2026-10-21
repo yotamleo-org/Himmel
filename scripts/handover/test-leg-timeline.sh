@@ -211,7 +211,7 @@ if [ "$rc" -ne 0 ]; then
 else
   echo "FAIL - mktemp failure exits nonzero: rc=$rc (expected nonzero)"; fails=$((fails+1))
 fi
-contains "mktemp failure error message" "$out" "mktemp -d failed"
+contains "mktemp failure error message" "$out" "mktemp failed"
 
 # ===========================================================================
 # 2. Missing-source degradation — CR ledger points at a nonexistent path.

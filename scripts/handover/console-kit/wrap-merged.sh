@@ -138,13 +138,17 @@ fi
 # snapshot the versions, re-render when the page's fingerprint moved. Artifact
 # publishing stays the console's job. Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip.
 tracker_refresh() {
-    local url dir plan out tmo mir rc want
+    local url dir plan out tmo mir rc want durl furl out_done out_future split
     url="$(sed -n 's/^tracker:[[:space:]]*//p' "$DOC" | head -n 1)"
     case "$url" in ''|none*) echo "tracker=skip"; return 0 ;; esac
     dir="${DOC%/*}"
     plan="$(sed -n 's/^tracker-plan:[[:space:]]*//p' "$DOC" | head -n 1)"
     [ -n "$plan" ] || plan="$dir/specs/plan/HIMMEL-3882"
     out="$dir/roadmap-tracker.html"
+    durl="$(sed -n 's/^tracker-done:[[:space:]]*//p' "$DOC" | head -n 1)"
+    furl="$(sed -n 's/^tracker-future:[[:space:]]*//p' "$DOC" | head -n 1)"
+    out_done="$dir/roadmap-tracker-done.html"
+    out_future="$dir/roadmap-tracker-future.html"
     tmo="${WM_TRACKER_TIMEOUT:-120}"
     mir="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
     mkdir -p "${mir%/*}" 2>/dev/null
@@ -155,8 +159,14 @@ tracker_refresh() {
     mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
     MIRROR_FRESH="$mir"
     set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
+    split=""
+    if [ -n "$durl" ] || [ -n "$furl" ]; then
+        split=1
+        set -- "$@" --out-done "$out_done" --out-future "$out_future" --focus-url "$url" --done-url "$durl" --future-url "$furl"
+    fi
     want="$(timeout -k 5 "$tmo" "${TRACKER[@]}" --emit-fp "$@" 2>/dev/null)" || want=""  # gnu-ok: Linux-only kit
-    if [ -n "$want" ] && [ -f "$out" ] && [ "$(cat "$out.fp" 2>/dev/null)" = "$want" ]; then
+    if [ -n "$want" ] && [ -f "$out" ] && [ "$(cat "$out.fp" 2>/dev/null)" = "$want" ] \
+        && { [ -z "$split" ] || { [ -f "$out_done" ] && [ -f "$out_future" ]; }; }; then
         echo "tracker=UNCHANGED"; return 0
     fi
     timeout -k 5 "$tmo" "${TRACKER[@]}" "$@" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit

@@ -173,6 +173,23 @@ assert_contains "body has ## Ticket"         "## Ticket"         "$out"
 assert_contains "body has HIMMEL-141 link"   "HIMMEL-141"        "$out"
 assert_contains "dry-run announces create"   "would create a PR on github" "$out"
 
+echo "TEST: ticket link comes from JIRA_BASE_URL, never a derived host"
+out=$(
+    cd "$REPO"
+    JIRA_BASE_URL="https://jira.example.net/" GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main 2>&1
+)
+assert_contains "link uses configured base"  "- HIMMEL-141: https://jira.example.net/browse/HIMMEL-141" "$out"
+out=$(
+    cd "$REPO"
+    env -u JIRA_BASE_URL GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="" bash "$PR_OPEN" --dry-run --base main 2>&1
+)
+assert_contains "no base: bare ticket key"   "- HIMMEL-141" "$out"
+if grepq "$out" -F ".atlassian.net"; then
+    fail "no base: a host was derived from the project key"
+else
+    pass "no base: no derived host"
+fi
+
 # Test 2: refuses non-handover branch ---------------------------------
 
 echo "TEST: pr-open refuses non-handover branch"

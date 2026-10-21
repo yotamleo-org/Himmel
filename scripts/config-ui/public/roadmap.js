@@ -38,7 +38,7 @@ function cardHtml(t, d, showVersion, w) {
   const dr = t.drift === 1 ? `<span class="st warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? themePick(t, d) : esc(d.themes[t.theme]);
-  return `<div class="rm-card"${w ? ` draggable="true" data-rm-card="${t.k}"` : ""}><b>HIMMEL-${t.k}</b> <span class="ro">${esc(t.s)}</span><div>${esc(t.t)}</div>
+  return `<div class="rm-card"${w ? ` draggable="true" data-rm-card="${t.k}"` : ""}><b>${esc(t.id || "HIMMEL-" + t.k)}</b> <span class="ro">${esc(t.s)}</span><div>${esc(t.t)}</div>
     <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
 
@@ -72,11 +72,13 @@ function versionHtml(d, ui) {
 export function renderKanban(data, ui) {
   if (!data) return `<p class="sub" id="status">loading…</p>`;
   if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "kanban unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
-  const u = ui || {};
+  const u = { ...ui, writes: ui && ui.writes && data.source !== "github" };
   const shown = byTheme(data, u).filter((t) => !(u.hideDone && t.b === "done"));
   const head = `<div class="rm-bar">${themeSel(data, u)}<label><input type="checkbox" data-rm-hide-done${u.hideDone ? " checked" : ""}> Hide Done</label>`
     + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(u)}`;
-  return section("rm-kanban", "Kanban", `Every train ticket across versions (${shown.length} shown).${u.writes ? " Drag a card to another column to change its Jira status." : ""}`,
+  const gh = data.source === "github";
+  return section("rm-kanban", "Kanban", gh ? `Every issue across milestones (${shown.length} shown). GitHub issues are read-only here: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
+    : `Every train ticket across versions (${shown.length} shown).${u.writes ? " Drag a card to another column to change its Jira status." : ""}`,
     head + (shown.length ? boardHtml(data, shown, true, u.writes) : `<div class="empty">No tickets match.</div>`));
 }
 
@@ -114,9 +116,13 @@ function librarianHtml(d, ui) {
 export function renderRoadmap(data, ui) {
   if (!data) return `<p class="sub" id="status">loading…</p>`;
   if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "roadmap unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
-  const u = ui || {};
+  const gh = data.source === "github";
+  const u = { ...ui, writes: ui && ui.writes && !gh };
   if (u.ver) return versionHtml(data, u);
   const bar = `<div class="rm-bar">${filters(data, u)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
+  if (gh) {
+    return section("rm-releases", "Milestones", `Live from GitHub issues (${data.mirror.count} issues). Read-only: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""} Open a milestone for its kanban.`, releasesHtml(data));
+  }
   return [
     section("rm-releases", "Releases", `Live from the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"}). Open a version for its kanban.`, releasesHtml(data)),
     section("rm-drift", "Drift", "Jira's fixVersion against the plan's placement.", driftHtml(data)),

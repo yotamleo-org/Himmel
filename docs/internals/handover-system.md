@@ -195,7 +195,7 @@ shell scripts use when they only know about one root:
 
 Consumed by `scripts/handover/auto-commit.sh`,
 `scripts/handover/arm-resume.sh`, `setup.sh`'s step 6, and
-`docs/handover/overnight-mode.md` Phase 1 (plans-root resolution).
+`docs/handover/afk-mode.md` Phase 1 (plans-root resolution).
 
 `arm-resume.sh --automerge` opt-in wires `ARMAUTOMERGE=1` and
 `CR_MERGE_GATE_OK=1` into the relaunched session's environment, so an armed
@@ -234,7 +234,7 @@ stage, and the resolver REFUSES to silently degrade.
   resolver above; never hardcoded): `ticket`, `branch`, `base_sha`,
   `head_sha`, `completed[]`, `next_step`. Auto-detects the git facts from the
   `--cwd` repo. Emitted from the seams that already run between stages
-  (`/overnight-shift` post-fanout step 7, `/pr-check`, the handover writer) —
+  (`/afk-shift` post-fanout step 7, `/pr-check`, the handover writer) —
   there is no per-step dispatch runtime to hook (`inject-initiative.sh` is
   SessionStart-only; the auto-ship steps are self-paced prose).
 - **`resolve`** — on resume, classifies the stop-point:
@@ -298,8 +298,7 @@ for a fresh cold-start. Test: `bash scripts/handover/test-leg-resume-brief.sh`.
 
 `scripts/handover/reconcile-workers.sh` used to run only when a dispatch or an
 arm triggered it, so an idle fleet never noticed a dead worker seat.
-`scripts/handover/reconcile-cadence.sh arm [--interval-min N]` (cron;
-`reconcile-cadence.ps1 -Action Arm` registers the Task Scheduler twin) runs
+`scripts/handover/reconcile-cadence.sh arm [--interval-min N]` (cron) runs
 `reconcile-workers.sh --report` every N minutes (default 10; N must divide 60,
 and arm requires `timeout` so a hung tick cannot overlap the next), appending to
 `~/.claude/handover/reconcile-cadence.log`; arming twice replaces the one

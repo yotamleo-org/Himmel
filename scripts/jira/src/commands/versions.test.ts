@@ -169,7 +169,10 @@ describe('releaseVersion', () => {
 
 describe('setFixVersion', () => {
   it('PUTs the add update on the issue', async () => {
-    const calls = stubJira({ 'PUT /issue/HIMMEL-374': '' });
+    const calls = stubJira({
+      'PUT /issue/HIMMEL-374': '',
+      'GET /issue/HIMMEL-374?fields=fixVersions': { fields: { fixVersions: [{ name: 'v1.0.0' }] } },
+    });
     const out = await setFixVersion('HIMMEL-374', 'add', 'v1.0.0');
     expect(calls).toEqual([
       {
@@ -177,15 +180,27 @@ describe('setFixVersion', () => {
         url: '/issue/HIMMEL-374',
         body: { update: { fixVersions: [{ add: { name: 'v1.0.0' } }] } },
       },
+      { method: 'GET', url: '/issue/HIMMEL-374?fields=fixVersions', body: undefined },
     ]);
     expect(out).toBe('HIMMEL-374 fixVersion +v1.0.0');
   });
 
   it('PUTs the remove update on the issue', async () => {
-    const calls = stubJira({ 'PUT /issue/HIMMEL-374': '' });
+    const calls = stubJira({
+      'PUT /issue/HIMMEL-374': '',
+      'GET /issue/HIMMEL-374?fields=fixVersions': { fields: { fixVersions: [] } },
+    });
     const out = await setFixVersion('HIMMEL-374', 'remove', 'v1.0.0');
     expect(calls[0].body).toEqual({ update: { fixVersions: [{ remove: { name: 'v1.0.0' } }] } });
     expect(out).toBe('HIMMEL-374 fixVersion -v1.0.0');
+  });
+
+  it('fails when the read-back carries no fixVersions list', async () => {
+    stubJira({
+      'PUT /issue/HIMMEL-374': '',
+      'GET /issue/HIMMEL-374?fields=fixVersions': { fields: {} },
+    });
+    await expect(setFixVersion('HIMMEL-374', 'remove', 'v1.0.0')).rejects.toThrow(/was not changed/);
   });
 });
 

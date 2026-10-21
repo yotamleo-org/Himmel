@@ -13,10 +13,13 @@
 #   while :; do bash scripts/lib/bank-monitor.sh; sleep 300; done
 #
 # Test seams:
-#   BANK_CACHE_FILE  usage JSON (default /tmp/claude/statusline-usage-cache.json)
+#   USAGE_MONITOR_CACHE_FILE  usage JSON (default /tmp/claude/statusline-usage-cache.json);
+#                    the old BANK_CACHE_FILE is still read
 #   BANK_NOW_EPOCH   epoch seconds (default date +%s)
 #   BANK_NOW_HM      display clock (default date +%H:%M)
-#   BANK_STATE_FILE  emission state; its .samples sibling is the sample ring
+#   USAGE_MONITOR_STATE_FILE  emission state; its .samples sibling is the sample ring
+#                    (old BANK_STATE_FILE still read)
+#   USAGE_MONITOR_SAMPLES_FILE  the sample ring itself (old BANK_SAMPLES_FILE still read)
 #   REPO             checkout containing scripts/lanes/bank-status.ts
 #
 # the BANK line also carries seven_day_reset_in=<h>h and
@@ -35,27 +38,28 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"
-BANK_CACHE_FILE="${BANK_CACHE_FILE:-/tmp/claude/statusline-usage-cache.json}"
+USAGE_MONITOR_CACHE_FILE="${USAGE_MONITOR_CACHE_FILE:-${BANK_CACHE_FILE:-/tmp/claude/statusline-usage-cache.json}}"
+USAGE_MONITOR_STATE_FILE="${USAGE_MONITOR_STATE_FILE:-${BANK_STATE_FILE:-}}"
 spare_only=0
 [ "${1:-}" = "--spare" ] && spare_only=1
 
-if [ -n "${BANK_STATE_FILE:-}" ]; then
-    state_file="$BANK_STATE_FILE"
+if [ -n "$USAGE_MONITOR_STATE_FILE" ]; then
+    state_file="$USAGE_MONITOR_STATE_FILE"
 elif [ -n "${HOME:-}" ]; then
     state_file="$HOME/.himmel/cache/bank-monitor.state"
 else
     state_file="${TMPDIR:-/tmp}/himmel-bank-monitor-${UID:-user}.state"
 fi
-samples_file="${BANK_SAMPLES_FILE:-$state_file.samples}"
+samples_file="${USAGE_MONITOR_SAMPLES_FILE:-${BANK_SAMPLES_FILE:-$state_file.samples}}"
 
 now="${BANK_NOW_EPOCH:-$(date +%s 2>/dev/null)}"
 clock="${BANK_NOW_HM:-$(date +%H:%M 2>/dev/null)}"
 case "$now" in ''|*[!0-9]*) exit 0 ;; esac
 [ -n "$clock" ] || clock='??:??'
 
-[ -r "$BANK_CACHE_FILE" ] || exit 0
-five="$(jq -r '.five_hour.utilization | if type == "number" then . else empty end' "$BANK_CACHE_FILE" 2>/dev/null)" || five=""
-seven="$(jq -r '.seven_day.utilization | if type == "number" then . else empty end' "$BANK_CACHE_FILE" 2>/dev/null)" || seven=""
+[ -r "$USAGE_MONITOR_CACHE_FILE" ] || exit 0
+five="$(jq -r '.five_hour.utilization | if type == "number" then . else empty end' "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null)" || five=""
+seven="$(jq -r '.seven_day.utilization | if type == "number" then . else empty end' "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null)" || seven=""
 valid_pct() {
     awk -v value="$1" 'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value + 0 >= 0 && value + 0 <= 100) }'
 }
@@ -63,9 +67,9 @@ valid_pct "$five" || exit 0
 valid_pct "$seven" || exit 0
 # resets_at is an ISO-8601 UTC string in the real cache (fractional seconds and a
 # +00:00 offset); a bare epoch is accepted too. Anything else reads as unknown.
-seven_reset_epoch="$(jq -r '.seven_day.resets_at | if type == "number" then floor elif type == "string" then (sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | try fromdateiso8601 catch empty) else empty end' "$BANK_CACHE_FILE" 2>/dev/null)" || seven_reset_epoch=""
+seven_reset_epoch="$(jq -r '.seven_day.resets_at | if type == "number" then floor elif type == "string" then (sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | try fromdateiso8601 catch empty) else empty end' "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null)" || seven_reset_epoch=""
 case "$seven_reset_epoch" in ''|*[!0-9]*) seven_reset_epoch="" ;; esac
-five_reset_epoch="$(jq -r '.five_hour.resets_at | if type == "number" then floor elif type == "string" then (sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | try fromdateiso8601 catch empty) else empty end' "$BANK_CACHE_FILE" 2>/dev/null)" || five_reset_epoch=""
+five_reset_epoch="$(jq -r '.five_hour.resets_at | if type == "number" then floor elif type == "string" then (sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | try fromdateiso8601 catch empty) else empty end' "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null)" || five_reset_epoch=""
 case "$five_reset_epoch" in ''|*[!0-9]*) five_reset_epoch="" ;; esac
 real_now="$now"
 
@@ -77,7 +81,7 @@ _id_lib="$HERE/usage-cache-identity.sh"
 # shellcheck source=usage-cache-identity.sh
 # shellcheck disable=SC1090,SC1091
 { [ -r "$_id_lib" ] && . "$_id_lib"; } 2>/dev/null || usage_cache_account_mismatch() { return 0; }
-usage_cache_account_mismatch "$BANK_CACHE_FILE" && exit 0
+usage_cache_account_mismatch "$USAGE_MONITOR_CACHE_FILE" && exit 0
 
 bank_status=""
 if [ "$spare_only" -eq 0 ]; then
@@ -104,8 +108,8 @@ state_dir="$(dirname "$state_file")"
 
 # Stdin rate updates preserve oauth_checked_at; use mtime as well. The OAuth
 # stamp also distinguishes refreshes within the same filesystem timestamp second.
-cache_mtime="$(stat -c %Y "$BANK_CACHE_FILE" 2>/dev/null || stat -f %m "$BANK_CACHE_FILE" 2>/dev/null)" || exit 0
-cache_oauth="$(jq -r '.oauth_checked_at | if type == "number" then . else empty end' "$BANK_CACHE_FILE" 2>/dev/null)"
+cache_mtime="$(stat -c %Y "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null || stat -f %m "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null)" || exit 0
+cache_oauth="$(jq -r '.oauth_checked_at | if type == "number" then . else empty end' "$USAGE_MONITOR_CACHE_FILE" 2>/dev/null)"
 cache_stamp="$cache_mtime:$cache_oauth"
 last=""
 [ -r "$samples_file" ] && last="$(tail -n 1 "$samples_file" 2>/dev/null)"

@@ -119,7 +119,7 @@ Stages currently wired:
 - **Oxlint ratchets (pre-commit):** oxlint-complexity-ratchet (no NEW
   function above the audited max; HIMMEL-2154),
   oxlint-hardening-zero-violations (bug-class hardening — zero violations;
-  pinned oxlint 1.88.0, with root/cwd diagnostics; findings and tool/JSON
+  pinned oxlint 1.89.0, with root/cwd diagnostics; findings and tool/JSON
   failures block, while only a missing `bunx` fails open; HIMMEL-2163/2802).
 - **Doctor check-ID + unchecked-mktemp gates (pre-commit):**
   doctor-check-ids (`check-doctor-check-ids.sh`, scoped to
@@ -485,10 +485,7 @@ repos that commit straight to main by design) — same convention as
 Known residual, stated plainly rather than left for someone to discover: `git
 -c core.hooksPath=/dev/null commit` bypasses this hook (and any client-side
 git hook — an inherent limit of the mechanism, not something closable at this
-layer). Also residual: `scripts/setup-hooks.ps1`, the Windows twin of
-`scripts/setup-hooks.sh`, has no installer call at all, so a Windows station
-ships the tracked script with no protection installed (HIMMEL-2638) — the two
-bash entry points are covered, the PowerShell one is the one open gap.
+layer).
 
 Spec: `scripts/hooks/test-check-main-ref-transaction.sh`.
 
@@ -497,7 +494,7 @@ Spec: `scripts/hooks/test-check-main-ref-transaction.sh`.
 Worktree isolation was structurally enforced only in himmel; other repos
 the operator works in (notably luna) relied on prose. `.pre-commit-hooks.yaml`
 at the repo root exports two gates other repos opt into via pre-commit's
-remote-repo mechanism (`repo: https://github.com/yotamleo/himmel` +
+remote-repo mechanism (`repo: https://github.com/yotamleo-org/Himmel` +
 pinned `rev:`):
 
 - **`pr-lane-isolation`** (`check-pr-lane-isolation.sh`) — path-scoped:
@@ -1314,6 +1311,53 @@ Known limitations (accepted, both fail-open by design):
   for an upstream PR, put the audit line in the handover.
 
 Spec: `scripts/cr/test-install-cr-gate.sh`, `scripts/cr/test-pr-check-pair.sh`.
+
+### CR ledger amends — only a signed adjudication lowers a finding (HIMMEL-6511)
+
+The ledger is an append-only JSONL file, so anything that can append a line
+could once append `{"kind":"amend","set":{"verdict":"disproved"}}` and clear a
+Critical or Important finding. Now a **lowering amend** counts only when it is
+signed. An amend is lowering when its `set` does any of these:
+
+- names a severity other than crit;
+- sets the verdict to `disproved`, `fixed` or `deferred`;
+- carries a `deferred_to`;
+- moves the finding to another `head`.
+
+**Who signs.** `ledger-append.sh` is the only amend writer, and it signs every
+amend it writes. It stamps `src: "ledger-append"` and `amend_mac`, an
+HMAC-SHA256 under the GO key (`~/.config/himmel/go-hmac.key`, domain
+`himmel-amend-v1`). The mac covers the branch, the target head, the finding
+id, the artifact, the perspective, the sorted `set` and `src`. So a mac copied
+onto another finding, head or branch does not verify.
+
+**Who checks.** Each gate reader runs its amend rows through
+`scripts/cr/ledger-amend-auth.js` before merging them:
+
+- `clear-cr-marker.sh`;
+- `review-round.sh` (ledger query, promote, and the defer/cap analysis);
+- the chief's `cr-disposition.sh`;
+- the merge-gate lib `scripts/lib/cr-ledger-evidence.sh`.
+
+The helper drops a lowering amend that fails to verify, so the finding stays
+open. Amends that do not lower a finding (`agreed`, crit, a reason) pass
+unsigned. If the helper is missing, the reader fails closed.
+
+**Cutover.** The cutover is the file position of the first amend in that
+ledger that carries an `amend_mac`. Rows above it were written before signing
+existed and are honoured unsigned, so in-flight work is not re-blocked. Below
+it, every lowering amend must verify. With no GO key on the host (CI, a fresh
+station), nothing is signed and every amend is honoured, as before.
+
+- **Ceiling.** The signer shares the operator's uid. Any process running as
+  that uid can read the key, or call `ledger-append.sh amend` itself. The
+  check therefore stops a hand-appended or tool-forged line, not a same-uid
+  writer that goes through the sanctioned path. The upgrade is a separate-uid
+  signer that only a judge or the chief can drive (HIMMEL-6772).
+
+Spec: `scripts/cr/test-ledger-amend-auth.sh`, plus the HIMMEL-6511 rows in
+`test-clear-cr-marker.sh`, `test-pr-check-rounds.sh` and
+`console-kit/test-cr-disposition.sh`.
 
 ### `block-jira-compound-write.sh` — jira write-shape bounce (HIMMEL-1077)
 
@@ -2220,7 +2264,7 @@ deterministic hook from an auto-mode classifier denial (HIMMEL-2798/
 HIMMEL-3020 class): this hook's message always names its own short reason
 (e.g. `recursive rm`), never quoted script content or `Stage 2 classifier
 error`. Bypass: `DESTRUCTIVE_OK=1` (launching shell,
-session-sticky). Spec: `scripts/hooks/test-block-destructive-commands.sh`.
+session-sticky). Spec: `scripts/hooks/test-block-destructive-commands-{a,b,c,d}.sh`.
 
 ### `check-hook-file-parse.sh` — write-time hook-file parse guard (HIMMEL-2230)
 
@@ -2745,7 +2789,7 @@ tools (`arm-resume.sh`, `pipeline-cadence.sh`, `schedule-resume.sh`). Blocks
 when the command BOTH (a) registers a job — `schtasks /create`,
 `Register-ScheduledTask`/`Register-ScheduledJob`, a `crontab` write, or
 `at <timespec>` — AND (b)
-launches the claude executable (`claude.exe`/`.cmd`/`.ps1`, a `/claude` or
+launches the claude executable (`claude.exe`/`.cmd`, a `/claude` or
 `\claude` binary path, or a bare `claude "<prompt>"`). Bypass:
 `ROGUE_SCHEDULE_OK=1`.
 
@@ -3205,7 +3249,7 @@ thread is evidence even when the status endpoint is down (observed live — GitH
 
 **Review freshness (HIMMEL-1181, B2) — retired (HIMMEL-3360).** The gate once
 denied on a *latest bot review* anchored to an older commit than the head
-(`scripts/lib/cr-review-freshness.sh`, GraphQL; live instance PR #1273: status
+(the `cr-review-freshness` library, GraphQL, now deleted; live instance PR #1273: status
 success + 0 unresolved threads over a head nobody reviewed, because a clean
 incremental posts no review object and GitHub outdates the old threads).
 CodeRabbit is best effort, so a stale anchor is now the same NOTE as an
@@ -3441,8 +3485,8 @@ construction), `scripts/lib/test-cr-merge-gate.sh` and
 ### CodeRabbit is the App, and only the App (HIMMEL-2704)
 
 **Operator ruling 2026-09-07: the GitHub App is the CodeRabbit surface. There is
-no CLI.** `scripts/cr/coderabbit-review.sh` (the CLI wrapper) and
-`scripts/cr/coderabbit-gate.sh` (the `/pr-check` conserve-or-run gate) are
+no CLI.** The `coderabbit-review` wrapper (the CLI wrapper) and
+`coderabbit-gate` (the `/pr-check` conserve-or-run gate) are
 DELETED, together with `CODERABBIT_BIN`, `CODERABBIT_WSL`,
 `CODERABBIT_TIMEOUT_SECS`, `CODERABBIT_CLI_DISABLE` and `CODERABBIT_ALLOW_WSL`.
 HIMMEL-2683 ("arm the CodeRabbit CLI") is closed won't-do.
@@ -3742,7 +3786,7 @@ absent or unrunnable), the guard falls through to the pre-existing usage budget-
 cost guard instead of allowing unconditionally. `IMPL_GUARD_HARD` (default 80)
 and `IMPL_GUARD_WEEKLY_HARD` (default 85) refuse at their respective usage budget ceilings.
 A weekly budget override validated by `scripts/lib/bank-lift.sh` raises weekly HARD to 100;
-a standing override also raises five-hour HARD to `CADENCE_BANK_MAX_PCT` (default
+a standing override also raises five-hour HARD to `CADENCE_USAGE_MAX_PCT` (default
 100). Explicit `IMPL_GUARD_*` overrides win; invalid overrides retain their
 original defaults. Invalid/unreadable lifts warn and retain defaults; absent
 lifts retain the existing policy and refusal message. WARN is unchanged.
@@ -3860,7 +3904,7 @@ Fires on `Bash|PowerShell|mcp__.*`. The deterministic classifier substitute for
 third-party offload lanes, which have no auto-mode classifier and usually run
 `--permission-mode bypassPermissions` (GLM workers via `spawn-glm.ts`,
 `claude-glm` sessions). Detects the lane by `ANTHROPIC_BASE_URL` containing
-`api.z.ai` (set by `glm-env.ts` `buildGlmEnv` / the `scripts/claude-glm{,.ps1}`
+`api.z.ai` (set by `glm-env.ts` `buildGlmEnv` / the `scripts/claude-glm`
 launchers, inherited by hook processes); off-lane sessions exit 0 on the first
 env check — near-zero overhead, before the jq check.
 
@@ -4102,8 +4146,9 @@ worker system prompt's read-range sentence, #692) — this is the structural esc
 second drift.
 
 Denies (a) a `Read` without `offset`/`limit` of a file over
-`HIMMEL_READ_CLAMP_LINES` (default 400) lines, naming the file's line count
-and the `offset=<n> limit=<m>` shape to use instead; (b) a `Read` whose exact
+`HIMMEL_READ_CLAMP_LINES` (default 2000, the Read tool's page size) lines, naming the file's line count and the exact
+`offset=<n> limit=<m>` pages that cover it (the first 8, then the continuation
+step) so any lane retries in one step; (b) a `Read` whose exact
 `(path, offset, limit)` triple was already read this session, naming the
 recorded timestamp — a *different* range of the same file is allowed and
 recorded; (c) the equivalent `Bash` shapes (`cat <file>`, `sed -n '1,$p'
@@ -4341,8 +4386,8 @@ Spec: `scripts/hooks/test-auto-arm-on-cap.sh` (paired smoke suite).
    `.claude/settings.json` (operator-authorized 2026-06-10; the agent
    cannot self-add such a stanza — auto-mode classifies it as
    self-modification absent explicit operator specification).
-2. **User-level (all repos)** — `scripts/machine-setup/win11.ps1` +
-   `ubuntu.sh` register the hook in `~/.claude/settings.json` with an
+2. **User-level (all repos)** — `scripts/machine-setup/ubuntu.sh`
+   registers the hook in `~/.claude/settings.json` with an
    absolute himmel path (idempotent, prompt-gated, mirrors the
    end-session-wiki registration). The hook resolves its lib +
    arm-resume relative to its own location, so it works from any
@@ -4374,7 +4419,7 @@ allows. **FAIL-OPEN** (unlike the block-* hooks): it only ever exits 0 with
 either the injection envelope or empty stdout, so it never blocks a Skill call
 on its own error (a PreToolUse exit 2 would block the tool). Kill switch:
 `MINERVA_HOOK_DISABLE=1` in the launching shell (bypass convention as above).
-Paired smoke test: `hooks/test-inject-minerva-critic.sh`.
+Paired smoke test: `marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh`.
 
 ## Claude SessionStart Hooks
 
@@ -4842,7 +4887,7 @@ dispatch the next queued item, verify a READY PR, or run `/console next --arm`.
 Every subprocess shares ONE 8 s budget (`HIMMEL_STOP_GUARD_TIMEOUT`, under the
 wired 10 s Stop timeout), and the JSON is printed only as the last statement.
 It does not inspect the held Jira/dispatch queue. Test seams:
-`HIMMEL_STOP_GUARD_BANK_PREFLIGHT`, `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
+`HIMMEL_STOP_GUARD_USAGE_PREFLIGHT` (old `HIMMEL_STOP_GUARD_BANK_PREFLIGHT` still read), `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-console-idle-guard.sh`.
 
 ### `console-precompact-snapshot.sh` — snapshot a supervisor session's Live state at compaction (HIMMEL-2973)
@@ -5104,7 +5149,7 @@ compression is lost in unpinned worktree sessions too; a worktree outside
 
 **Wiring:** `docs/setup/settings-template.json` registers the guard
 (`<himmel-path>` placeholder, resolved by the setup scripts), and
-`scripts/machine-setup/win11.ps1` + `ubuntu.sh` swap every bare
+`scripts/machine-setup/ubuntu.sh` swaps every bare
 `rtk hook claude` command in `~/.claude/settings.json` for
 `bash "<himmel>/scripts/hooks/rtk-hook-guard.sh"` on each run — a
 re-run of `rtk init -g` after a swap re-adds a raw entry, so the swap
@@ -5112,8 +5157,7 @@ is not gated on the guard already being present (HIMMEL-264).
 Spec: `scripts/hooks/test-rtk-hook-guard.sh` (25 asserts; token set
 verified against rtk 0.40.0). The ubuntu.sh swap/patch jq filters have
 their own fixture spec, `scripts/machine-setup/test-ubuntu-settings-jq.sh`
-(22 asserts, drift-guarded mirrors; the win11.ps1 PowerShell twin is
-manually verified only).
+(22 asserts, drift-guarded mirrors).
 
 **Standalone reconcile (HIMMEL-399).** The inline swap above only runs
 inside full machine-setup, which invokes `rtk init -g` exactly once. When
@@ -5137,7 +5181,7 @@ works), with no rtk flag to quiet it. Do not "resolve" it by re-running
 
 Not a Claude PreToolUse hook — runs from the pre-commit framework at
 `git push` time. Blocks pushes when the diff vs main touches any
-cross-platform-sensitive path (`*.sh`, `*.bash`, `*.zsh`, `*.ps1`,
+cross-platform-sensitive path (`*.sh`, `*.bash`, `*.zsh`, PowerShell files,
 `*.psm1`, `*.psd1`, `*.cmd`, `*.bat`, anything under `scripts/`, or
 `**/bin/*`) and no `Platforms tested:` line is present in a commit
 body OR the open PR description.
@@ -5159,8 +5203,7 @@ Bypass: `PLATFORMS_TESTED_OK=1 git push ...` or include
 
 Not a Claude PreToolUse hook — runs from the pre-commit framework at
 `git commit` time (pre-commit stage) and at `git push` time (pre-push stage
-via `--pre-push`). A `.ps1` twin (`check-doc-guard.ps1`) provides identical
-behaviour in PowerShell-context hooks. HIMMEL-454.
+via `--pre-push`). HIMMEL-454.
 
 **Trigger:** a command or skill file is ADDED (not merely modified) in any of
 the watched source paths:
@@ -5213,7 +5256,7 @@ offline (skips any remote introspection).
   updated in commit 3 of the same push PASSES — the gate only requires the pair
   to appear somewhere in the pushed range, not necessarily in the same commit.
 
-Smoke test: `scripts/hooks/test-doc-guard.sh` (+ `.ps1` twin).
+Smoke test: `scripts/hooks/test-doc-guard.sh`.
 
 ### Warn-only doc-freshness detector — `doc-freshness.sh` (HIMMEL-587)
 
@@ -5226,7 +5269,7 @@ The map is now a 4-column TSV (`strength / trigger / path-regex /
 `required-doc`); previously it held only two columns (`path-regex` /
 `required-doc`):
 
-- **`block` rows** — consumed by `check-doc-guard.sh` (and its `.ps1` twin on Windows) (unchanged behaviour):
+- **`block` rows** — consumed by `check-doc-guard.sh` (unchanged behaviour):
   - `block / add / ^\.claude/commands/ / docs/commands-catalog.md`
   - `block / add / ^marketplace/plugins/[^/]+/(commands|skills)/ / docs/commands-catalog.md`
   - `block / add / ^marketplace/plugins/[^/]+/\.claude-plugin/plugin\.json / llms.txt` — new in HIMMEL-587: adding a plugin manifest requires a `llms.txt` update.
@@ -5265,7 +5308,7 @@ Read from the himmel clone's `.env` by the `session` and `morning` surfaces
 `/pr-check` call time. A value exported in the launching shell or set in
 `~/.claude/settings.json "env" {}` overrides `.env`.
 
-**Bash-only — no `.ps1` twin.** There is no PowerShell execution path for
+**Bash-only.** There is no PowerShell execution path for
 these three surfaces: `/pr-check` is a Claude slash command running in Bash,
 the SessionStart hook is wired via Bash, and `generate-morning-briefing.sh`
 is a Bash script.
@@ -5538,7 +5581,7 @@ relaunch must outlive the processes it kills. `dispatchAutoAction` refuses it
 (`SELF_EXECUTED_OPS`) so it can never be laundered into an `auto-action.sh` call.
 Rung 1 exits 0 and lets `supervisor.ts` respawn; rung 2 shells
 `schtasks /run /tn HimmelTelegramBridge` — the already-registered logon task
-(`install-logon-task.ps1`), fired by the scheduler SERVICE so it is detached from
+(the logon task), fired by the scheduler SERVICE so it is detached from
 the poller it is about to kill, and so it reads the CURRENT User environment (the
 only mechanism that picks up a `SetEnvironmentVariable(…, 'User')` without a
 reboot). Non-Windows refuses rung 2 with rc **20** rather than pretending.
@@ -5714,10 +5757,10 @@ usage counters, so counting lines instead of requests inflates the total by
 ~83%.
 
 `scripts/lib/bank-preflight.sh`'s fleet-size cap only REFUSES a caller that
-declares `CADENCE_BANK_LAUNCH=1` (an actual arm/launch); a plain usage budget read
+declares `CADENCE_USAGE_LAUNCH=1` (an actual arm/launch); a plain usage budget read
 (a `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the
 same verdict and FLEET line but is never refused by it — detail:
-[lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident-himmel-2765).
+[lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident).
 
 Refs: HIMMEL-1748; `scripts/graphify/refresh-graph-map.sh`;
 `scripts/lib/bank-preflight.sh`;

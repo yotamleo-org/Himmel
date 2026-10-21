@@ -17,6 +17,7 @@ type Spec = {
   cwd: string; timeoutMs: number; effect: string;
   bank: (t: string) => string;
   needsValue: boolean;
+  values?: (t: string) => readonly string[];
   rowIds: (t: string) => string[];
 };
 export type Table = ReadonlyMap<string, Readonly<Spec>>;
@@ -27,6 +28,7 @@ const CADENCE_TIMEOUT_MS = 120_000;
 const HIMMELCTL_TIMEOUT_MS = 60_000;
 const ID_RE = /^[a-z0-9@._-]+$/;
 const VALUES: readonly string[] = Object.freeze(["on", "off"]);
+const TRACKERS: readonly string[] = Object.freeze(["jira", "local", "none"]);
 // The plugins plugin-profile.sh refuses to disable (critic G11): never a target.
 export const FLOOR: readonly string[] = Object.freeze(["handover@himmel", "himmel-ops@himmel", "qmd@himmel"]);
 // merge and public are guard-class (critic F4): shown, never toggled here.
@@ -97,6 +99,12 @@ export function buildTable(ctx: Ctx): Table {
     }],
     ["config.lanes", config("lanes", ctx.lanes, "lane")],
     ["config.initiative", config("initiative", INITIATIVE, "initiative")],
+    // The ticket-ID pattern is typed in the terminal, never a target here.
+    ["config.commitRules", {
+      targets: ["tracker", "ticket-id-required"], argv: (t, v) => h("config", "set", t === "tracker" ? "commit.tracker" : "commit.ticketIdRequired", v as string), consent: "plain",
+      cwd: ctx.root, timeoutMs: HIMMELCTL_TIMEOUT_MS, effect: "your next commit", bank: none,
+      needsValue: true, values: (t) => (t === "tracker" ? TRACKERS : VALUES), rowIds: () => [],
+    }],
   ];
   for (const [, s] of specs) { Object.freeze(s.targets); Object.freeze(s); }
   const m = new Map(specs);
@@ -111,7 +119,8 @@ export function resolveAction(table: Table, action: unknown, target: unknown, va
   if (!validId(target) || !s.targets.includes(target)) throw new ActionError("target not offered for this action");
   let v: string | null = null;
   if (s.needsValue) {
-    if (typeof value !== "string" || !VALUES.includes(value)) throw new ActionError("value must be on or off");
+    const offered = s.values ? s.values(target) : VALUES;
+    if (typeof value !== "string" || !offered.includes(value)) throw new ActionError(`value must be ${offered.join(" or ")}`);
     v = value;
   } else if (value !== undefined && value !== null) throw new ActionError("this action takes no value");
   const argv = s.argv(target, v);

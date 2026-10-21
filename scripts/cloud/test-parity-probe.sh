@@ -14,6 +14,9 @@ bad() { echo "FAIL - $1"; fails=$((fails + 1)); }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/parity-probe-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+# The probe reports `at -V`; a stub answers it so no run calls the real scheduler.
+mkdir -p "$TMP/bin"; printf '#!/bin/sh\n[ "$*" = "-V" ] || { echo "unexpected at arguments: $*" >&2; exit 2; }\necho "at version 0.0-stub"\n' > "$TMP/bin/at"; chmod +x "$TMP/bin/at"
+export PATH="$TMP/bin:$PATH"
 
 # 1. a clean run exits 0 and every row is `item<TAB>value` under a ## section.
 OUT="$(bash "$PROBE" --no-net 2>&1)"; RC=$?
@@ -78,6 +81,15 @@ printf '%s\n' '_graphify_version() { echo "${GRAPHIFY_VERSION:-0.9.80}"; }' > "$
 OUT5="$(env -i PATH="$QB" HIMMEL_CLOUD_ROOT="$TMP/qfix" "$QB/bash" "$PROBE" --no-net 2>&1)"
 case "$OUT5" in *$'tool:qmd\tqmd 9.9.9 (not on PATH, via qmd-bounded.sh)'*) ok "qmd off PATH resolves through qmd-bounded.sh" ;; *) bad "qmd off PATH read absent: $(printf '%s\n' "$OUT5" | grep 'tool:qmd')" ;; esac
 case "$OUT5" in *$'graphify-at-pin\tNO installed=0.9.77 pin=0.9.80'*) ok "graphify off the pin is named" ;; *) bad "graphify drift not named: $(printf '%s\n' "$OUT5" | grep 'graphify')" ;; esac
+# the fork stamp is part of the pin: the base alone is off it, the stamped build is on it.
+# shellcheck disable=SC2016  # literal fixture text
+printf '%s\n' '_graphify_version() { echo "${GRAPHIFY_VERSION:-0.9.93+himmel.1}"; }' > "$TMP/qfix/scripts/lib/graphify-bin.sh"
+printf '#!/bin/sh\necho "graphify 0.9.93"\n' > "$QB/graphify"
+OUT6="$(env -i PATH="$QB" HIMMEL_CLOUD_ROOT="$TMP/qfix" "$QB/bash" "$PROBE" --no-net 2>&1)"
+case "$OUT6" in *$'graphify-at-pin\tNO installed=0.9.93 pin=0.9.93+himmel.1'*) ok "upstream base is off the fork-stamped pin" ;; *) bad "fork stamp not in the pin: $(printf '%s\n' "$OUT6" | grep 'graphify')" ;; esac
+printf '#!/bin/sh\necho "graphify 0.9.93+himmel.1"\n' > "$QB/graphify"
+OUT7="$(env -i PATH="$QB" HIMMEL_CLOUD_ROOT="$TMP/qfix" "$QB/bash" "$PROBE" --no-net 2>&1)"
+case "$OUT7" in *$'graphify-at-pin\tyes'*) ok "the stamped fork build is at the pin" ;; *) bad "stamped build not at the pin: $(printf '%s\n' "$OUT7" | grep 'graphify')" ;; esac
 
 # 5. read-only: the tree and the scratch dir are unchanged by a run.
 before="$(git -C "$ROOT" status --porcelain 2>/dev/null | { sha256sum 2>/dev/null || shasum -a 256; })"

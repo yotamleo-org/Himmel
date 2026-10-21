@@ -80,13 +80,13 @@ act-matrix × github-up) → lane | defer`. Never a "skip" — only route or def
 | `HIMMEL_CI_QUEUE_TOKEN` | Shared bearer token for the local↔VM HTTP protocol. Env only — never committed. |
 | `$HOME/.himmel/ci-workprofile` | Manual work-profile toggle (`focus`/`shared`/`drain`) — wins over schedule/load inference. |
 
-## CLI (`bin/ci-orchestrator`)
+## CLI (`scripts/ci-orchestrator/bin/ci-orchestrator`)
 
 - `state` — print the reduced ledger state as JSON (empty ledger → `{}`).
 - `tick` / `daemon` — require the production lane + git-discovery wiring
   (assembled from `HIMMEL_CI_*` + registered adapters); until wired they report
   the boundary rather than firing fake work.
-- `measure` — the P0 baseline is `bin/measure.sh` (P0 shell artifact).
+- `measure` — the P0 baseline is a P0 shell artifact under `scripts/ci-orchestrator/bin/`.
 
 ## Reading the queue
 

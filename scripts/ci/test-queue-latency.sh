@@ -22,16 +22,20 @@ cat > "$TMP/bin/gh" <<'EOF'
 # fake gh: `gh api <path> --jq <expr>`; fixtures live in $FX.
 [ -n "${FAKE_GH_FAIL:-}" ] && { echo "fake-gh: simulated API failure" >&2; exit 1; }
 shift; path="$1"; shift
-expr=""
-while [ $# -gt 0 ]; do case "$1" in --jq) expr="$2"; shift 2 ;; *) shift ;; esac; done
+echo "$path $*" >> "$FX/calls.log"
+expr=""; paginate=""
+while [ $# -gt 0 ]; do case "$1" in --jq) expr="$2"; shift 2 ;; --paginate) paginate=1; shift ;; *) shift ;; esac; done
 case "$path" in
   *status=in_progress*) f="$FX/runs-in_progress.json" ;;
   *status=queued*)      f="$FX/runs-queued.json" ;;
+  *status=pending*)     f="$FX/runs-pending.json"; [ -f "$f" ] || echo '{"workflow_runs":[]}' > "$f" ;;
   */runs/*/jobs*)       id="${path#*/runs/}"; id="${id%%/*}"; f="$FX/jobs-$id.json" ;;
   *) echo "fake-gh: unsupported $path" >&2; exit 1 ;;
 esac
 [ -f "$f" ] || { echo "fake-gh: no fixture $f" >&2; exit 1; }
-jq -r "$expr" < "$f"
+jq -r "$expr" < "$f" || exit 1
+# --paginate reads a second page too when its fixture exists, as gh runs --jq per page
+if [ -n "$paginate" ] && [ -f "${f%.json}-p2.json" ]; then jq -r "$expr" < "${f%.json}-p2.json"; fi
 EOF
 chmod +x "$TMP/bin/gh"
 
@@ -62,37 +66,124 @@ if bash -n "$SCRIPT"; then ok "syntax (bash -n)"; else bad "syntax"; fi
 reset
 runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
 out="$(run)"
-is "idle" "ci-queue: jobs_in_progress=0/20 macos=0/5 queued=0 oldest_wait=0m" "$out"
+is "idle" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
 
-# saturated 20/20 across two runs, 2 queued jobs waiting 10m
+# saturated 20/60 across two runs, 2 queued jobs waiting 10m
 reset
 runs_json in_progress 1 2 > "$TMP/fx/runs-in_progress.json"; runs_json queued 3 > "$TMP/fx/runs-queued.json"
 jobs_json 12 0 0 "$t10" > "$TMP/fx/jobs-1.json"
 jobs_json 8 0 0 "$t10" > "$TMP/fx/jobs-2.json"
 jobs_json 0 0 2 "$t10" > "$TMP/fx/jobs-3.json"
 out="$(run)"
-is "saturated 20/20" "ci-queue: jobs_in_progress=20/20 macos=0/5 queued=2 oldest_wait=10m" "$out"
+is "20 running, 2 queued" "ci-queue: jobs_in_progress=20/60 macos=0/5 queued=2 oldest_wait=10m" "$out"
 
 # macOS 5/5 (counted inside the total)
 reset
 runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
 jobs_json 3 5 0 "$t3" > "$TMP/fx/jobs-1.json"
 out="$(run)"
-is "macOS 5/5" "ci-queue: jobs_in_progress=8/20 macos=5/5 queued=0 oldest_wait=0m" "$out"
+is "macOS 5/5" "ci-queue: jobs_in_progress=8/60 macos=5/5 queued=0 oldest_wait=0m" "$out"
 
 # a run in BOTH lists is counted once
 reset
 runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued 1 > "$TMP/fx/runs-queued.json"
 jobs_json 2 0 0 "$t3" > "$TMP/fx/jobs-1.json"
 out="$(run)"
-case "$out" in *jobs_in_progress=2/20*) ok "dedupe run listed twice" ;; *) bad "dedupe: $out" ;; esac
+case "$out" in *jobs_in_progress=2/60*) ok "dedupe run listed twice" ;; *) bad "dedupe: $out" ;; esac
 
 # storm: queued runs with no jobs materialised still count as waiting
 reset
 runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued 7 8 > "$TMP/fx/runs-queued.json"
 echo '{"jobs":[]}' > "$TMP/fx/jobs-7.json"; echo '{"jobs":[]}' > "$TMP/fx/jobs-8.json"
 out="$(run)"
-is "queued runs with 0 jobs" "ci-queue: jobs_in_progress=0/20 macos=0/5 queued=2 oldest_wait=10m" "$out"
+is "queued runs with 0 jobs" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=2 oldest_wait=10m" "$out"
+
+# 75 live runs (3 in progress, 72 queued); every queued run is still running
+# one job while another waits, so run-level status hides the running jobs.
+# All 75 are counted: 3*5 + 72*1 running, 72 queued.
+reset
+ids=(); for ((i = 0; i < 72; i++)); do ids+=($((100 + i))); done
+runs_json in_progress 1 2 3 > "$TMP/fx/runs-in_progress.json"; runs_json queued "${ids[@]}" > "$TMP/fx/runs-queued.json"
+for i in 1 2 3; do jobs_json 5 0 0 "$t10" > "$TMP/fx/jobs-$i.json"; done
+for id in "${ids[@]}"; do jobs_json 1 0 1 "$t10" > "$TMP/fx/jobs-$id.json"; done
+out="$(run)"
+is "75 runs: every running job counted" "ci-queue: jobs_in_progress=87/60 macos=0/5 queued=72 oldest_wait=10m" "$out"
+
+# pending runs (no jobs yet) wait like queued ones
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+runs_json pending 5 6 7 > "$TMP/fx/runs-pending.json"
+for id in 5 6 7; do echo '{"jobs":[]}' > "$TMP/fx/jobs-$id.json"; done
+out="$(run)"
+is "pending runs counted" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=3 oldest_wait=10m" "$out"
+
+# the cap is overridable
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+out="$(CI_MAX_JOBS=20 run)"
+is "CI_MAX_JOBS override" "ci-queue: jobs_in_progress=0/20 macos=0/5 queued=0 oldest_wait=0m" "$out"
+out="$(CI_MAX_JOBS=abc run)"
+is "non-numeric CI_MAX_JOBS -> default" "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+
+# a real jobs payload (verbatim from the Actions API, 2026-10-19) parses as one queued job
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued 39312674478 > "$TMP/fx/runs-queued.json"
+cat > "$TMP/fx/jobs-39312674478.json" <<'EOF'
+{"total_count":1,"jobs":[{"id":118267302169,"run_id":39312674478,"workflow_name":"PR Title Lint","head_branch":"fix/himmel-2053-hermes-cr-gate-parity","run_url":"https://api.github.com/repos/yotamleo-org/Himmel/actions/runs/39312674478","run_attempt":1,"node_id":"CR_kwDOS8WKNM8AAAAbiUfRGQ","head_sha":"965a4d4cf1aebd617f288d66f4fa5d284d34dc42","url":"https://api.github.com/repos/yotamleo-org/Himmel/actions/jobs/118267302169","html_url":"https://github.com/yotamleo-org/Himmel/actions/runs/39312674478/job/118267302169","status":"queued","conclusion":null,"created_at":"2026-10-19T19:41:11Z","started_at":"2026-10-19T19:41:11Z","completed_at":null,"name":"pr-title-lint","steps":[],"check_run_url":"https://api.github.com/repos/yotamleo-org/Himmel/check-runs/118267302169","labels":["ubuntu-latest"],"runner_id":0,"runner_name":"","runner_group_id":0,"runner_group_name":""}]}
+EOF
+out="$(run)"
+case "$out" in "ci-queue: jobs_in_progress=0/60 macos=0/5 queued=1 oldest_wait="*) ok "real jobs payload" ;; *) bad "real jobs payload: $out" ;; esac
+
+# an empty-body runs listing is not an empty queue
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; : > "$TMP/fx/runs-queued.json"
+out="$(run)"
+is "empty-body queued listing -> unknown" "ci-queue: unknown" "$out"
+reset
+: > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+out="$(run)"
+is "empty-body in_progress listing -> unknown" "ci-queue: unknown" "$out"
+
+# a body whose workflow_runs is not an array is not an empty queue
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; echo '{"workflow_runs":{}}' > "$TMP/fx/runs-queued.json"
+out="$(run)"
+is "non-array workflow_runs -> unknown" "ci-queue: unknown" "$out"
+
+# an empty-body jobs listing is not zero jobs
+reset
+runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+: > "$TMP/fx/jobs-1.json"
+out="$(run)"
+is "empty-body jobs listing -> unknown" "ci-queue: unknown" "$out"
+
+# every runs listing is paged, so a queue past 100 runs is not cut at page one
+reset
+runs_json in_progress > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+out="$(run)"
+is "runs listings carry --paginate" "3" "$(grep -c 'actions/runs?status=.*--paginate' "$TMP/fx/calls.log")"
+
+# a run that is only on the second page of a listing is still counted
+reset
+runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json in_progress 2 > "$TMP/fx/runs-in_progress-p2.json"
+runs_json queued > "$TMP/fx/runs-queued.json"
+jobs_json 3 0 0 "$t3" > "$TMP/fx/jobs-1.json"; jobs_json 4 0 0 "$t3" > "$TMP/fx/jobs-2.json"
+out="$(run)"
+is "run on listing page two counted" "ci-queue: jobs_in_progress=7/60 macos=0/5 queued=0 oldest_wait=0m" "$out"
+
+# a jobs page that is shorter than the run's total_count is not a full count
+reset
+runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+echo '{"total_count":150,"jobs":[]}' > "$TMP/fx/jobs-1.json"
+out="$(run)"
+is "truncated jobs page -> unknown" "ci-queue: unknown" "$out"
+
+# a jobs body whose jobs is not an array is not zero jobs
+reset
+runs_json in_progress 1 > "$TMP/fx/runs-in_progress.json"; runs_json queued > "$TMP/fx/runs-queued.json"
+echo '{"total_count":0,"jobs":{}}' > "$TMP/fx/jobs-1.json"
+out="$(run)"
+is "non-array jobs -> unknown" "ci-queue: unknown" "$out"
 
 # API error -> unknown, exit 0
 reset

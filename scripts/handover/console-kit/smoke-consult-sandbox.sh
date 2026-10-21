@@ -49,7 +49,10 @@ primary="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
 primary="$(cd -P "$primary/.." && pwd -P)"
 root="$(handover_root)"
 scratch="$root/.smoke-consult-$$"
-work="$(mktemp -d "${TMPDIR:-/tmp}/smoke-consult.XXXXXX")" || { echo "FAIL smoke-consult-sandbox: mktemp failed"; exit 1; }
+# shellcheck source=scripts/lib/prim.sh
+# shellcheck disable=SC1091
+. "$LIB/prim.sh" || { echo "FAIL smoke-consult-sandbox: cannot source prim.sh"; exit 1; }
+work="$(tmpdir)" || { echo "FAIL smoke-consult-sandbox: tmpdir failed"; exit 1; }
 probe="$primary/.smoke-consult-probe-$$"
 # shellcheck disable=SC2317,SC2329  # invoked via the EXIT trap
 cleanup() { rm -rf "$scratch" "$work"; rm -f "$probe"; }

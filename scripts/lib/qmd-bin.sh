@@ -63,6 +63,8 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 [ "$_QMDBIN_LIB_DIR" = "${BASH_SOURCE[0]}" ] && _QMDBIN_LIB_DIR=.
 # shellcheck source=scripts/lib/qmd-bounded.sh
 . "$_QMDBIN_LIB_DIR/qmd-bounded.sh"
+# shellcheck source=scripts/lib/qmd-daemon-env.sh
+. "$_QMDBIN_LIB_DIR/qmd-daemon-env.sh"  # t13b-ok: sources the key loader, starts nothing
 
 # Fork config -- overridable per call (env var set before sourcing/calling).
 # ponytail: carried fork until tobi/qmd#1030 merges (or tobi/qmd main gains
@@ -84,11 +86,14 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # search over every collection (fork #25). The pin was c3b84dd7, the squash
 # merge of fork PR #29 into fork main, tagged v2.8.3-himmel.1: the fork
 # resynced to tobi/qmd 86d2365 (2.8.3) with the carried commits replayed.
-# The pin is now 2d8589c6, the squash merge of fork PR #30 into fork main (the
-# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2.
-# ponytail: pinned by SHA, the tag v2.8.3-himmel.2 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
+# The pin was 2d8589c6, the squash merge of fork PR #30 into fork main (the
+# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2. The pin is now
+# 5490d894, the squash merge of fork PR #34 into fork main (QMD_RERANK=off starts
+# the daemon without the reranker, a hung rerank restarts it at most once an
+# hour), tagged v2.8.3-himmel.3.
+# ponytail: pinned by SHA, the tag v2.8.3-himmel.3 is a label only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-2d8589c6ace332c351e9f6e1ac7400aab7a4ee02}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-5490d8947d3d8c9edbb6c1288174005d35f44e81}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or
@@ -806,6 +811,30 @@ _qmd_egress_ok() {
       done <"$cfg"
       [ "$found" -eq 0 ] || return 0 ;;
   esac
+  # the provider key is the daemon's: a CLI call reads it from the same env file, else
+  # the fork sends no Authorization header and OpenRouter answers 401.
+  # No file key: a session key still counts, but an OpenRouter config with neither refuses here.
+  # Every expansion of the session key runs with tracing off so `bash -x` never prints it.
+  local sess_key="" have_sess=0 key_rc=0 key_trace=0
+  case "$-" in *x*) key_trace=1 ;; esac
+  set +x
+  sess_key="${QMD_OPENAI_API_KEY:-}"
+  if [ -n "$sess_key" ]; then have_sess=1; fi
+  qmd_daemon_key_load "$cfg" || key_rc=$?  # t13b-ok: calls the key loader, starts nothing
+  set +x
+  if [ "$key_rc" -eq 11 ] && [ "$have_sess" -eq 1 ]; then
+    QMD_OPENAI_API_KEY="$sess_key"
+    export QMD_OPENAI_API_KEY
+  fi
+  sess_key=""
+  if [ "$key_trace" -eq 1 ]; then set -x; fi
+  if [ "$key_rc" -eq 10 ]; then
+    echo "qmd-bin: $QMD_KEY_FILE_PATH holds the provider key but is readable by others - qmd not started (chmod 600 it)." >&2
+    return 10
+  elif [ "$key_rc" -eq 11 ] && [ "$have_sess" -eq 0 ]; then
+    echo "qmd-bin: an OpenRouter config but no provider key - qmd not started. Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_KEY_FILE_PATH." >&2
+    return 10
+  fi
   gate="$_QMDBIN_LIB_DIR/../qmd/qmd-jina-gate.mjs"
   if [ ! -f "$gate" ] || ! command -v node >/dev/null 2>&1; then
     echo "qmd-bin: a remote model is configured but the egress gate or node is missing - qmd not started." >&2
@@ -827,11 +856,14 @@ _qmd_egress_ok() {
   for lf in phi-roots egress-denylist; do
     [ -f "$glm/$lf" ] && { lists="$lists|$lf"; { lists="$lists$(<"$glm/$lf")"; } 2>/dev/null; }
   done
+  case "$-" in *x*) key_trace=1 ;; *) key_trace=0 ;; esac
+  set +x
   key="$cfg|$idx|$dbsig|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|${QMD_GATE_REQUIRE_KEY:-}|${QMD_OPENAI_API_KEY:-}|${JINA_API_KEY:-}|${JINA_API:-}|$glm|$lists|$cont"
   # hold a digest, never the API keys in the clear; with no hashing tool the pass is simply not cached
   if command -v sha256sum >/dev/null 2>&1; then key="$(printf '%s' "$key" | sha256sum)"
   elif command -v shasum >/dev/null 2>&1; then key="$(printf '%s' "$key" | shasum -a 256)"
   else key=""; fi
+  if [ "$key_trace" -eq 1 ]; then set -x; fi
   if [ -n "$key" ] && [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
     return 0
   fi

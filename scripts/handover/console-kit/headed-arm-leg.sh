@@ -229,7 +229,7 @@ HEADED_ARM_UNAME="${HEADED_ARM_UNAME:-$(uname -s 2>/dev/null)}"
 export HEADED_ARM_UNAME
 
 usage() {
-    echo "usage: headed-arm-leg.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--console <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
+    echo "usage: headed-arm-leg.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--console <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
     echo "  --context-guard: turn the leg context guard on (default none = off); see docs/internals/leg-context-guard.md" >&2
 }
 
@@ -249,7 +249,7 @@ usage() {
 # A caller-preset HEADED_ARM_LAUNCHER_ENV is preserved (appended to, never
 # replaced) and wins on a name clash: this function only ever adds a NAME not
 # already present as a token. HEADED_ARM_LAUNCHER_ENV is a whitespace-split
-# token list (same contract as CODEX_BANK_PROBE_CMD) with no quoting scheme,
+# token list (same contract as CODEX_USAGE_PROBE_CMD) with no quoting scheme,
 # so a value containing whitespace cannot become a token: it would silently
 # mis-split into extra bogus tokens. On macOS (HEADED_ARM_UNAME=Darwin), the
 # token list is the ONLY channel to the leg, so such a value is refused
@@ -329,7 +329,9 @@ DRY_RUN=0
 RELAY=0
 JUDGE=0
 CONSULT=0
-READONLY_ROLE=0   # judge or consult: no implementation permissions, raised read clamp
+RM=0              # --profile release-manager
+RM_RELEASE=""     # --rm-release <R>, required by that profile
+READONLY_ROLE=0   # judge, consult or release manager: no implementation permissions, raised read clamp
 NO_PROFILE=0
 IGNORE_DENIALS=0
 NO_PRIOR_ART_CHECK=0
@@ -383,6 +385,14 @@ while :; do
                 exit 2
             fi
             CONSOLE_FLAG="$2"; shift 2 ;;
+        --rm-release)
+            # Same missing-value trap as --lane/--profile above.
+            if [ "$#" -lt 2 ]; then
+                usage
+                echo "headed-arm-leg: --rm-release requires a value (the release the manager is bound to, e.g. v1.1.3)" >&2
+                exit 2
+            fi
+            RM_RELEASE="$2"; shift 2 ;;
         --context-guard)
             # Same missing-value trap as --lane/--profile above.
             if [ "$#" -lt 2 ]; then
@@ -444,7 +454,7 @@ if [ "$CONSULT" -eq 1 ]; then
     while [ -n "$_consult_rest" ]; do
         _consult_m="${_consult_rest%%,*}"; _consult_rest="${_consult_rest#*,}"
         case "$_consult_m" in
-            operator|bare|console|console-relay|console-judge)
+            operator|bare|console|console-relay|console-judge|release-manager)
                 usage
                 echo "headed-arm-leg: --consult refuses profile \"$_consult_m\": non-additive or role profiles cannot back a consult (got: $PROFILE)" >&2
                 exit 2
@@ -672,6 +682,41 @@ if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ] && [ -f "$DOC" ]; then
     PROFILE="$(head -n 60 "$DOC" | sed -n -E 's/^[>* -]*profile:[[:space:]]*`?([A-Za-z0-9._,-]+)`?[[:space:]]*$/\1/p' | head -n 1)"
 fi
 
+# --profile release-manager: a judge-shaped role session bound to one release.
+# It is read-only like a judge, native-lane only, never composed into a profile
+# list, and requires --rm-release <R>, which names its state dir
+# (release/<R>/) to guard-rm-writes.sh. --judge/--relay/--consult already
+# refused it above.
+case ",$PROFILE," in
+    *,release-manager,*)
+        if [ "$PROFILE" != "release-manager" ]; then
+            usage
+            echo "headed-arm-leg: profile \"release-manager\" cannot be composed in a profile list (got: $PROFILE)" >&2
+            exit 2
+        fi
+        RM=1
+        ;;
+esac
+if [ "$RM" -eq 1 ]; then
+    if [ "$LANE" != "native" ]; then
+        usage
+        echo "headed-arm-leg: --profile release-manager refuses --lane $LANE: the release manager is native-lane only" >&2
+        exit 2
+    fi
+    case "$RM_RELEASE" in
+        "" | . | .. | *[!A-Za-z0-9._-]*)
+            usage
+            echo "headed-arm-leg: --profile release-manager requires --rm-release <R> (letters, digits, '.', '_' or '-'; got: ${RM_RELEASE:-<none>})" >&2
+            exit 2
+            ;;
+    esac
+    READONLY_ROLE=1
+elif [ -n "$RM_RELEASE" ]; then
+    usage
+    echo "headed-arm-leg: --rm-release is only for --profile release-manager (got profile: ${PROFILE:-<none>})" >&2
+    exit 2
+fi
+
 # same stance as the Tier-line refusal below - this wrapper
 # refuses an under-specified dispatch rather than launching it. No profile and
 # no explicit --no-profile would launch a leg with no standing preface and no
@@ -786,6 +831,12 @@ fi
 if [ "$JUDGE" -eq 1 ] && [ "$LANE" = "native" ]; then
     [ -z "$MODEL" ] && MODEL=claude-opus-5-5
     CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_CONSOLE_JUDGE_EFFORT:-high}"
+fi
+# the release manager takes the judge's explicit-effort path under its own
+# override name, HIMMEL_RM_EFFORT.
+if [ "$RM" -eq 1 ]; then
+    [ -z "$MODEL" ] && MODEL=claude-opus-5-5
+    CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_RM_EFFORT:-high}"
 fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -953,6 +1004,9 @@ if [ "$JUDGE" -eq 1 ]; then
         esac
     fi
 fi
+# the release manager's own doc, for guard-rm-writes.sh the same way.
+_rm_doc=""
+[ "$RM" -eq 1 ] && { _rm_doc="$(_leg_phys_path "$DOC")" || _rm_doc=""; }
 unset -f _leg_phys_path
 unset -v _leg_rcwd _leg_rcwd_phys _leg_vroot _leg_vroot_phys _leg_wt_top _leg_wt_phys _leg_wt_base
 
@@ -1055,7 +1109,9 @@ unset -v _ab_in
 # nested judge would otherwise have its ambient (inherited, not deliberate)
 # HIMMEL_CONSOLE_JUDGE_EFFORT silently win again, the exact same "ambient
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
-LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID"
+# The release-manager marker, binding and effort override are the same class:
+# a release manager arming a leg must not hand that leg its mode-2 fence.
+LEG_ENV_SCRUB="CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT"
 for _leg_env_scrub in $LEG_ENV_SCRUB; do
     unset "$_leg_env_scrub"
     leg_env_drop_token "$_leg_env_scrub"
@@ -1339,6 +1395,14 @@ if [ "$JUDGE" -eq 1 ]; then
     case "$_judge_doc" in /*) leg_propagate_env HIMMEL_CONSOLE_JUDGE_DOC "$_judge_doc" ;; esac
     [ -n "$_judge_qid" ] && leg_propagate_env HIMMEL_CONSOLE_JUDGE_QID "$_judge_qid"
 fi
+# HIMMEL_RELEASE_MANAGER=1 turns on guard-rm-writes.sh's mode 2, bound to this
+# doc and release. An underivable doc stays unexported, so the guard then
+# allows no file write at all (fail closed).
+if [ "$RM" -eq 1 ]; then
+    leg_propagate_env HIMMEL_RELEASE_MANAGER 1
+    case "$_rm_doc" in /*) leg_propagate_env HIMMEL_RM_DOC "$_rm_doc" ;; esac
+    leg_propagate_env HIMMEL_RM_RELEASE "$RM_RELEASE"
+fi
 # HIMMEL_CONSOLE_NAME: the owning console's session name, so a
 # leg's merge-block alert (scripts/lib/merge-block-alert.sh,
 # untouched by this ticket - it already reads this var) can route to the
@@ -1455,6 +1519,8 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # instead of the registry's declared value. Mirrored rather than imported:
 # run.ts is TS/bun-only and off the leg's Do-not list to edit; jq is already
 # a direct dependency of this file (the --profile settings merge below).
+# Precedence: an explicit CLAUDE_CODE_EFFORT_LEVEL, then a valid LEG_EFFORT,
+# then the registry row; the winner and its source print as one stderr line.
 # An explicit CLAUDE_CODE_EFFORT_LEVEL from the LAUNCHING shell always wins
 # over the registry - checked here, before the lookup, because
 # leg_propagate_env's own `export` would otherwise silently overwrite it with
@@ -1463,9 +1529,29 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # no-op), so it reaches HEADED_ARM_LAUNCHER_ENV's token list and shows up in
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
+    EFFORT_SOURCE=""
+    # A caller-preset launcher token wins over leg_propagate_env, so the print
+    # below reports it; read before the resolver appends its own token.
+    PRESET_EFFORT=""
+    set -f
+    for _effort_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_effort_tok" in
+            CLAUDE_CODE_EFFORT_LEVEL=*) PRESET_EFFORT="${_effort_tok#*=}" ;;
+        esac
+    done
+    set +f
     if [ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ]; then
+        EFFORT_SOURCE="CLAUDE_CODE_EFFORT_LEVEL"
         leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$CLAUDE_CODE_EFFORT_LEVEL"
     else
+        case "${LEG_EFFORT:-}" in
+            low | medium | high | xhigh | max)
+                EFFORT_SOURCE="LEG_EFFORT"
+                leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$LEG_EFFORT"
+                ;;
+        esac
+    fi
+    if [ -z "$EFFORT_SOURCE" ]; then
         LANES_JSON="${HEADED_ARM_LEG_LANES_JSON:-$HERE/../../lanes/lanes.json}"
         if [ -f "$LANES_JSON" ]; then
             NATIVE_EFFORT="$(jq -r --arg model "$MODEL" '
@@ -1475,20 +1561,30 @@ if [ "$LANE" = "native" ]; then
             ' "$LANES_JSON" 2>/dev/null)"
             case "$NATIVE_EFFORT" in
                 low | medium | high | xhigh | max)
+                    EFFORT_SOURCE="lanes.json"
                     leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "$NATIVE_EFFORT"
                     ;;
             esac
         fi
     fi
+    if [ -n "$PRESET_EFFORT" ]; then
+        EFFORT_SOURCE="HEADED_ARM_LAUNCHER_ENV"
+        EFFORT_SHOWN="$PRESET_EFFORT"
+    else
+        EFFORT_SHOWN="${CLAUDE_CODE_EFFORT_LEVEL:-}"
+    fi
+    [ -z "$EFFORT_SOURCE" ] || echo "headed-arm-leg: effort=$EFFORT_SHOWN source=$EFFORT_SOURCE" >&2
 fi
 
-# the leg's own bank-preflight reads CADENCE_BANK_LANE before
-# LEG_LANE. Propagate the resolved registry values, including DeepSeek's
-# existing openrouter bank gate, rather than inheriting the console's lane.
-# Native launches keep their environment unchanged.
+# Propagate the resolved registry values, including DeepSeek's existing
+# openrouter bank gate, rather than inheriting the console's lane.
+# Only the old name is propagated: bank-preflight reads CADENCE_USAGE_LANE first,
+# so a propagated new name would override an inline CADENCE_BANK_LANE in the leg.
+# Both names are still dropped. Native launches keep their environment unchanged.
 if [ "$LANE" != "native" ]; then
     leg_env_drop_token LEG_LANE
     leg_env_drop_token CADENCE_BANK_LANE
+    leg_env_drop_token CADENCE_USAGE_LANE
     leg_propagate_env LEG_LANE "$LANE"
     leg_propagate_env CADENCE_BANK_LANE "$LANE_BANK_GATE"
 fi
@@ -1501,6 +1597,9 @@ if [ "$LANE" = "claudex" ]; then
     leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${LEG_EFFORT:-medium}"
     export HEADED_ARM_RECORDER=1
     [ -z "$MODEL" ] && MODEL="gpt-6.1-sol"
+    # scripts/claude-codex reads only CODEX_MODEL; without this the positional
+    # MODEL names a model the leg never runs.
+    leg_propagate_env CODEX_MODEL "$MODEL"
 fi
 
 # OpenRouter: only the independently verified 1M tier slugs
@@ -1576,6 +1675,8 @@ if [ -n "$PROFILE" ]; then
         LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/judge-preface.md}"
     elif [ "$CONSULT" -eq 1 ]; then
         LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/consult-preface.md}"
+    elif [ "$RM" -eq 1 ]; then
+        LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/rm-preface.md}"
     else
         LEG_PREFACE="${HEADED_ARM_LEG_PREFACE:-$HERE/../../../docs/handover/leg-preface.md}"
     fi
@@ -1944,6 +2045,17 @@ EOF_CS_FILES
             echo "headed-arm-leg: --profile $PROFILE: cannot add compact-hook to settings JSON" >&2
             exit 2
         fi
+        # Stop hook: an idle lock-holding leg keeps the prompt cache warm or
+        # wraps (docs/handover/leg-sections/cache-keepalive.md). A consult is
+        # a read-only one-question session with its own lifecycle: no hook.
+        if [ "$CONSULT" -eq 0 ]; then
+            _leg_ttl_cmd="$(printf 'bash %q' "$(cd "$HERE/../../hooks" && pwd)/guard-leg-cache-ttl.sh")"
+            if ! PROFILE_JSON="$(printf '%s' "$PROFILE_JSON" | jq --arg cmd "$_leg_ttl_cmd" \
+                '.hooks.Stop = ((.hooks.Stop // []) + [{hooks:[{type:"command", command:$cmd, timeout:10}]}])')"; then
+                echo "headed-arm-leg: --profile $PROFILE: cannot add cache-TTL Stop hook to settings JSON" >&2
+                exit 2
+            fi
+        fi
     fi
     # The shim reads these; propagate so they survive both konsole's
     # `-e env -u ...` (Linux) and `open -a`'s fresh environment (macOS).
@@ -2090,6 +2202,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
         printf 'headed-arm-leg: consult=%s read-clamp-lines=%s preface-source=%s\n' \
             "$CONSULT" "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
     fi
+    if [ "$RM" -eq 1 ]; then
+        printf 'headed-arm-leg: release-manager=%s readonly-role=%s HIMMEL_RELEASE_MANAGER=%s HIMMEL_RM_DOC=%s HIMMEL_RM_RELEASE=%s read-clamp-lines=%s preface-source=%s\n' \
+            "$RM" "$READONLY_ROLE" "$HIMMEL_RELEASE_MANAGER" "${HIMMEL_RM_DOC:-<unset>}" "$HIMMEL_RM_RELEASE" \
+            "${HIMMEL_READ_CLAMP_LINES:-<unset>}" "$LEG_PREFACE"
+    fi
     printf 'headed-arm-leg: lane=%s launcher=%s launcher-env=%s memory-max=%s scope=%s' \
         "$LANE" "${HEADED_ARM_LAUNCHER:-claude (native default)}" "${HEADED_ARM_LAUNCHER_ENV:-<none>}" \
         "$LEG_MEMORY_MAX" "$([ "${#LEG_SCOPE[@]}" -gt 0 ] && echo yes || echo no)"
@@ -2201,7 +2318,7 @@ fi
 # signal/deadline wait loop even starts - refusing now is cheaper than
 # refusing after waiting out the deadline. SKIPPED-FLEET refuses the launch
 # outright. SKIPPED-BANK also refuses: we set
-# CADENCE_BANK_LANE="$LANE" above specifically so bank-preflight.sh checks
+# CADENCE_USAGE_LANE="$LANE" above specifically so bank-preflight.sh checks
 # the bank this lane actually draws on (the codex weekly bank for claudex,
 # the CLAUDE five_hour/seven_day bank for native) - unlike arm-resume.sh,
 # this wrapper has no separate bank-aware scheduling path to fall back on,
@@ -2224,7 +2341,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # this call launches a leg, so it declares launch intent —
     # the fleet cap must be able to actually refuse it, unlike a plain
     # bank-status READ.
-    preflight_token="$(CADENCE_BANK_LEG="$NAME" CADENCE_BANK_LANE="$LANE_BANK_GATE" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
+    preflight_token="$(CADENCE_USAGE_LEG="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
     if [ "$preflight_token" = SKIPPED-FLEET ]; then
         # NOT a reservation release here — bank-preflight.sh
         # only ever returns SKIPPED-FLEET from its admission block itself
@@ -2366,11 +2483,14 @@ fi
 # unregistered leg is merely unbound (bus send refused) and keeps today's
 # channels, so a register failure warns (launch log, launcher stdout, a
 # bus=FAIL: leg-doc bullet) and never blocks a launch of the live fleet. A headless leg
-# never binds (spec 8.5), so it is not registered either.
+# never binds (spec 8.5), so it is not registered either; nor is a leg whose doc
+# names no console, which has nobody to register with.
 # ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
 case "${MCP_NAMES_JSON:-}" in
     *'"himmel-bus"'*)
-        if [ "$HEADLESS" -ne 1 ]; then
+        if [ "$HEADLESS" -ne 1 ] && [ -z "$BUS_CONSOLE" ]; then
+            echo "$(date +%F_%T) headed-arm-leg: $NAME names no console - not registered on the bus" >> "$LOG"
+        elif [ "$HEADLESS" -ne 1 ]; then
             BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
             BUS_ROLE=leg
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge

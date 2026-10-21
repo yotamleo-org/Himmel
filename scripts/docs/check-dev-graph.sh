@@ -47,7 +47,7 @@ jq -e '.version == 1' "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAP
 # failure, so a malformed entry must stop the run here instead of passing unseen.
 SHAPE='
   def str: type == "string";
-  def src: ((.sources // []) | type) == "array"
+  def src: (.sources == null or (.sources | type) == "array")
     and all((.sources // [])[]; type == "object" and (.file | str) and ((.anchor // "") | str));
   (.lanes | type) == "array" and (.nodes | type) == "array" and (.edges | type) == "array"
   and (.walkthroughs | type) == "array" and (.coverage | type) == "object"

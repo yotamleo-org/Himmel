@@ -15,7 +15,8 @@
 # have the capability, the exact blind spot that let a PowerShell-only
 # regression ship green — and SUITE_TIER is a
 # declarative corpus-reduction table gated by env SUITE_TIER_MODE
-# (fast|extended|all; unset = all = byte-identical to no filter).
+# (fast|extended|all|pr; unset = all = byte-identical to no filter;
+# pr reads scripts/ci/suite-tiers.tsv).
 #
 # Docs-only fast lane: an extension of the --changed-since
 # trigger, not a new flag. When the filter is active and EVERY changed path
@@ -107,6 +108,11 @@
 # piling on. Knobs, all env:
 #
 #   SUITE_TIMEOUT      per-suite wall-clock cap, seconds (default 600)
+#   SUITE_STOP_ON_FAIL 1 = stop at the first failing suite and name every suite
+#                      still on this shard's list as not run (exit 1). ci.yml
+#                      sets it on pull_request only, so a red shard frees its
+#                      runner; push, schedule and dispatch leave it empty and
+#                      run everything, keeping a red attributable.
 #   SUITE_RUN_BUDGET   whole-run wall-clock cap, seconds (default 7200); the
 #                      runner stops BETWEEN suites once it is spent and names
 #                      what did not run, instead of running until morning
@@ -335,14 +341,13 @@ _suite_timeout_for() {
       # The nightly shards run tier all with GUARD_CORPUS_TIER=fast: the full
       # replay runs in the scheduled-only guard-corpus-full job, not a 60-min shard.
       if [ "${SUITE_TIER_MODE:-all}" = fast ] || [ "${GUARD_CORPUS_TIER:-}" = fast ]; then printf '1800'; else printf '10800'; fi ;;
-    scripts/hooks/test-block-destructive-commands.sh|*/scripts/hooks/test-block-destructive-commands.sh)
-      # Every fixture now starts a fresh bwrap sandbox. Linux with
-      # bwrap working measured 263s alone (2026-10-08). On the CI runner (bwrap
-      # working after the ci.yml userns sysctl) the suite was killed at the
-      # 1200s cap with ~80% of its fixtures done (PR 2177 shard 1, run
-      # 37828342755), so ~1500s there; 3000s is that x2 (the loaded-budget rule,
-      # same as the guard-corpus arm above).
-      printf '3000' ;;
+    scripts/hooks/test-block-destructive-commands-[abcd].sh|*/scripts/hooks/test-block-destructive-commands-[abcd].sh)
+      # Every fixture starts a fresh bwrap sandbox. The former single suite
+      # needed ~1500s on the CI runner (3000s cap = that x2, the loaded-budget
+      # rule, same as the guard-corpus arm above); it is now four case-range
+      # parts of 239-269 of its 1018 cases each, so ~400s each at most there,
+      # x2 loaded with margin = 1200s.
+      printf '1200' ;;
     scripts/handover/test-arm-resume-identity.sh|*/scripts/handover/test-arm-resume-identity.sh)
       # Fresh-boot idle benchmark (2026-08-27): new idle
       # 814s, rc=0 (reproduced at 802s, rc=0, same day). The prior 08-26 idle
@@ -781,6 +786,7 @@ scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux on
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/release/test-tarball-vs-clone.sh     # HIMMEL-3699: skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design; precedent HIMMEL-3203
 scripts/handover/console-kit/test-console-wait.sh    # HIMMEL-3699: skipped off-Linux only — console-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` (console-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the console kit is Linux-only by design; precedent HIMMEL-3203
+scripts/handover/console-kit/test-console-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-console-wait.sh above, same console-kit Linux-only-by-design PLATFORM GUARD (console-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
 scripts/handover/console-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same console-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
 scripts/handover/console-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same console-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
 "
@@ -829,13 +835,35 @@ SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
 tier_repo_root=$(pwd -P)
 SUITE_TIER_MODE="${SUITE_TIER_MODE:-all}"
 case "$SUITE_TIER_MODE" in
-  fast|extended|all) ;;
+  fast|extended|all|pr) ;;
   *)
-    printf 'ERROR: SUITE_TIER_MODE="%s" is invalid — must be fast, extended, or all.\n' \
+    printf 'ERROR: SUITE_TIER_MODE="%s" is invalid — must be fast, extended, pr, or all.\n' \
       "$SUITE_TIER_MODE" >&2
     exit 2
     ;;
 esac
+# SUITE_TIER_MODE=pr reads scripts/ci/suite-tiers.tsv (path<TAB>tier<TAB>reason)
+# instead of the table above: a suite runs when it is impacted, when its tier is
+# pr, flow or quarantine, or when it has no row; a local suite runs only when
+# impacted. A quarantine suite that fails is reported and never fails the run.
+# SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
+tiers_local_nl=""
+tiers_quarantine_nl=""
+if [ "$SUITE_TIER_MODE" = "pr" ]; then
+  SUITE_TIERS_TSV="${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}"
+  if [ ! -r "$SUITE_TIERS_TSV" ] \
+     || ! tiers_local_nl=$(awk -F'\t' '!/^#/ && $2 == "local" {print $1}' "$SUITE_TIERS_TSV") \
+     || ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV"); then
+    printf 'ERROR: SUITE_TIER_MODE=pr could not read %s.\n' "$SUITE_TIERS_TSV" >&2
+    exit 2
+  fi
+  tiers_local_nl="
+${tiers_local_nl}
+"
+  tiers_quarantine_nl="
+${tiers_quarantine_nl}
+"
+fi
 
 # Capability-conditional suites. Neither table above can say
 # "runs exactly where the host has the tool": SKIP_LIST is a NEVER, which made
@@ -857,7 +885,10 @@ esac
 SUITE_REQUIRE_TOOL_DEFAULT="
 scripts/lib/test-sandbox-run.sh  $_sandbox_tool  # real corpus confinement boundary (HIMMEL-4912)
 scripts/eval/guard-corpus/test-guard-corpus.sh  $_sandbox_tool  # every replay hook runs confined (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-a.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-b.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-c.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
+scripts/hooks/test-block-destructive-commands-d.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
 scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-glm vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
 scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
@@ -3028,12 +3059,13 @@ if [ -n "$impacted_range" ]; then
       echo "run-shell-tests.sh: --only-list '${only_list_file}': grep failed (rc ${_only_list_grep_rc}) intersecting with --impacted — refusing to read it as 0 impacted suites" >&2
       exit 2
     fi
-    if [ -z "$_impacted_out" ]; then
+    if [ -z "$_impacted_out" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
       echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted suites in --only-list ${only_list_file} — nothing to run"
       exit 0
     fi
   fi
-  if [ -z "$_impacted_out" ]; then
+  # In pr mode the tier suites still run when nothing is impacted.
+  if [ -z "$_impacted_out" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
     echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted shell suites — nothing to run"
     exit 0
   fi
@@ -3099,7 +3131,10 @@ reason --impacted flag}" "$_mf_shard" > "$manifest_path"
 fi
 # manifest_add <line> — one suite's fate, for shard-manifest-verify.sh.
 manifest_add() { [ -z "$manifest_path" ] || printf '%s\n' "$1" >> "$manifest_path"; }
-if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ -z "$_sel_list" ]; then
+# A base-sourced `mode full` in pr mode runs every tier, local included.
+tiers_pr_full=0
+case "$manifest_hdr" in "mode full"*) tiers_pr_full=1 ;; esac
+if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ -z "$_sel_list" ] && [ "$SUITE_TIER_MODE" != "pr" ]; then
   # A docs-only PR: the selection is empty, so this shard has nothing to run.
   # Every required context still reports; the aggregator verifies the header.
   echo "run-shell-tests.sh: ${impacted_range}: 0 impacted shell suites — nothing to run"
@@ -3271,7 +3306,7 @@ fi
 # --------------------------------------------------------------------------
 suites_file=$(mktemp)
 suites_raw=$(mktemp)
-trap 'rm -f "$suites_file" "$suites_raw"; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
+trap 'rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
 
 # Check EVERY discovery stage so a partial-output-then-fail can't mask an
 # incomplete scan (ran>0 with the guard below passing → green on a scan that
@@ -3420,6 +3455,13 @@ if [ "$list_only" -eq 0 ]; then
 fi
 
 pass=0 fail=0 skip=0 ran=0
+# SUITE_STOP_ON_FAIL=1: set once a suite has failed; the rest of this shard's
+# list is then recorded as stopped_suites instead of run. The value is read once
+# and cleared, so a suite that runs this runner itself never inherits the stop.
+stop_on_fail="${SUITE_STOP_ON_FAIL:-}"
+unset SUITE_STOP_ON_FAIL
+stopped=0
+stopped_suites=""
 # PASSING suites whose output holds a SKIP line. `skip` above is
 # the runner's own filter (SKIP_LIST, --skip-extra, tiers); this is a suite that
 # RAN, exited 0, and told us it skipped something — counted in `pass`, so the
@@ -3457,6 +3499,7 @@ failed_suites=""
 # a second cap would double its cost.
 flake=0
 flaked_suites=""
+quarantined=0
 SUITE_FLAKE_WINDOW_DAYS="${SUITE_FLAKE_WINDOW_DAYS:-7}"
 case "$SUITE_FLAKE_WINDOW_DAYS" in ''|*[!0-9]*) SUITE_FLAKE_WINDOW_DAYS=7 ;; esac
 # A leading zero (08) would be octal in the arithmetic below; 10# forces decimal.
@@ -3623,8 +3666,9 @@ fi
 # lane skipped, and the lane's input is not the same in every mode: the run
 # step's own untracked manifest made it fire in --list (the shard probe) and
 # not in the run, so the probe said "no work" while the shard ran a suite.
+# Inert in pr mode too: the pr tier floor runs on every diff, docs-only included.
 docs_only_skip_active=0
-if [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
+if [ "$SUITE_TIER_MODE" != "pr" ] && [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
   docs_only_skip_active=1
   _docs_saw_path=0
   while IFS= read -r _docs_p; do
@@ -3704,7 +3748,7 @@ plan_narrowed_why="${plan_narrowed_why%, }"
 # while all n shards report green. That is the false-green class,
 # so the two passes share one implementation by construction.
 suite_filter_reason() {
-  local _relpath="$1" _key="$2" _reason _ere
+  local _relpath="$1" _key="$2" _reason _ere _not_impacted=0
   _filter_reason=""
 
   # --only-list: a suite outside the list never runs.
@@ -3724,14 +3768,18 @@ ${_key#"$only_list_repo_root"/}
   # reads as "not impacted" rather than as whichever standing skip it also
   # carries; an impacted suite falls through to the ordinary chain unchanged
   # (a SKIP_LIST'd impacted suite is still [SKIP]ped, with its own reason).
+  # In pr mode impacted is one arm of a union, so a miss goes on to the tier check.
   if [ "$impacted_active" -eq 1 ]; then
     case "$impacted_nl" in
       *"
 ${_key#"$impacted_repo_root"/}
 "*) ;;
       *)
-        _filter_reason="impacted: no reference to a file changed in ${impacted_range}"
-        return 0
+        _not_impacted=1
+        if [ "$SUITE_TIER_MODE" != "pr" ]; then
+          _filter_reason="impacted: no reference to a file changed in ${impacted_range}"
+          return 0
+        fi
         ;;
     esac
   fi
@@ -3758,7 +3806,18 @@ ${_key#"$impacted_repo_root"/}
   # extended mode (this check only ever runs a suite forward to that check,
   # never around it). Inert when SUITE_TIER_MODE=all (the default), matching
   # a full run exactly regardless of table contents.
-  if tier_lookup "$_key" "$_relpath"; then
+  if [ "$SUITE_TIER_MODE" = "pr" ]; then
+    if [ "$tiers_pr_full" -eq 0 ] && { [ "$impacted_active" -eq 0 ] || [ "$_not_impacted" -eq 1 ]; }; then
+      case "$tiers_local_nl" in
+        *"
+${_key#"$tier_repo_root"/}
+"*)
+          _filter_reason="tier: local (SUITE_TIER_MODE=pr runs a local suite only when impacted)"
+          return 0
+          ;;
+      esac
+    fi
+  elif tier_lookup "$_key" "$_relpath"; then
     if [ "$SUITE_TIER_MODE" = "fast" ]; then
       _filter_reason="tier: extended (SUITE_TIER_MODE=fast) — ${_tier_reason}"
       return 0
@@ -4034,6 +4093,164 @@ fi
 # remaining suite paths — the runner then reported OK over a list it had
 # silently eaten. Suites now get /dev/null (below), which also means an
 # unattended run can never block on a prompt.
+# Live operator state. On the station a leg's shell carries HIMMEL_CONSOLE_DOC,
+# HANDOVER_DIR and friends, and a suite that inherits them writes the live
+# console doc, handover tree, claude/codex config or crontab; CI has none of
+# that, so the class was invisible there. Every suite gets sentinels instead:
+# the console-doc files even where the caller had none, so CI sees that escape
+# too, and a dir sentinel wherever the caller has that value (an unset one
+# stays unset, as on main; CI's home-canary job covers the $HOME fallback). A
+# recording shim heads PATH for the scheduler commands. A
+# sentinel file must keep its seed, a sentinel dir must stay empty, the shim log
+# must stay empty; whatever a suite dirtied is named and reset before the next
+# suite. It fails a suite on the hard-fail list; any other suite gets a WARN
+# and passes until its leak is fixed, its scheduler calls still reaching the
+# real scheduler as on main. The checks are builtins only: no fork on a clean
+# suite.
+live_root=""
+# Globs matched against "/<suite path>"; SUITE_LIVE_HARD replaces the list.
+live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/ci/test-run-shell-tests*.sh}"
+_live_is_hard() {
+  local _p _pats
+  [ -n "$live_hard" ] || return 1
+  read -ra _pats <<< "$live_hard"
+  for _p in "${_pats[@]}"; do
+    # shellcheck disable=SC2254  # the list entries are patterns
+    case "/$1" in $_p) return 0 ;; esac
+  done
+  return 1
+}
+live_seed='# sentinel console doc
+
+## Results
+'
+live_files="HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_JUDGE_DOC"
+live_dirs="HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE_RUNDIR HANDOVER_DIR CLAUDE_CONFIG_DIR CODEX_HOME"
+live_sched="crontab at atq atrm"
+_live_reset() {
+  local _v
+  rm -rf "${live_root:?}/state" "${live_root:?}/bin" "${live_root:?}/scheduler-calls.log" 2>/dev/null
+  mkdir -p "$live_root/state" "$live_root/bin" || return 1
+  for _v in $live_files; do printf '%s' "$live_seed" > "$live_root/state/$_v" || return 1; done
+  for _v in $live_dirs; do mkdir "$live_root/state/$_v" || return 1; done
+  # A shim records every call. For a suite off the hard-fail list it then runs
+  # the next scheduler on PATH, as main does; otherwise it refuses. Only the
+  # shim of the runner that set HIMMEL_SUITE_SHIM_DIR forwards, so a nested
+  # runner's call never passes an outer runner's shim.
+  for _v in $live_sched; do
+    # shellcheck disable=SC2016  # the shim body expands when the shim runs
+    printf '#!/usr/bin/env bash
+printf '"'"'%%s %%s\\n'"'"' %s "$*" >> %q
+_d=%q
+if [ -n "${HIMMEL_SUITE_SCHED_REAL:-}" ] && [ "${HIMMEL_SUITE_SHIM_DIR:-}" = "$_d" ]; then
+  _p=":$PATH:"; _p=${_p//":$_d:"/:}; _p=${_p#:}; _p=${_p%%:}
+  _r=$(PATH=$_p; type -P %s) && exec "$_r" "$@"
+  echo "%s: command not found" >&2; exit 127
+fi
+echo "%s: refused by run-shell-tests.sh: a suite reached the real scheduler" >&2
+exit 1
+' \
+      "$_v" "$live_root/scheduler-calls.log" "$live_root/bin" "$_v" "$_v" "$_v" > "$live_root/bin/$_v" || return 1
+    chmod +x "$live_root/bin/$_v" || return 1
+  done
+}
+# _live_env — run inside the suite's subshell: point the live-state env at the
+# sentinels. Every other HIMMEL_CONSOLE_* / HIMMEL_INBOX* value is dropped;
+# none of them is a path a suite may write.
+_live_env() {
+  local _v _set=""
+  [ -n "$live_root" ] || return 0
+  # A dir sentinel replaces only a value the caller has. An unset one stays
+  # unset, as on main, so a suite that redirects HOME still reads its fixture.
+  for _v in $live_dirs; do [ -z "${!_v:-}" ] || _set="$_set $_v"; done
+  for _v in ${!HIMMEL_CONSOLE_@} ${!HIMMEL_INBOX@}; do unset "$_v"; done
+  for _v in $live_dirs; do unset "$_v"; done
+  for _v in $live_files $_set; do export "$_v=$live_root/state/$_v"; done
+  if _live_is_hard "$1"; then unset HIMMEL_SUITE_SCHED_REAL; else export HIMMEL_SUITE_SCHED_REAL=1; fi
+  export HIMMEL_SUITE_CRONTAB_LOG="$live_root/scheduler-calls.log"
+  export HIMMEL_SUITE_SHIM_DIR="$live_root/bin"
+  export PATH="$live_root/bin:$PATH"
+}
+# _live_check <suite-pgid> — collect one line per thing the suite left behind
+# in live_msgs and return 1 if there was any. Survivors go first, so none can
+# write a sentinel after it was read; the dirty sentinels are reset last, and
+# a reset that fails returns 2.
+_live_check() {
+  local _v _e _c _dirty=0 _grace _members=""
+  live_msgs=""
+  [ -n "$live_root" ] || return 0
+  # The suite ran as its own process group; anything still in it is a process
+  # the suite started and left behind. kill -0 first, a builtin, so a clean
+  # suite pays no ps; a zombie answers it too, so the process table decides.
+  # A short grace covers a child the suite's own trap killed but did not reap.
+  # ponytail: a descendant that moves to its own group (setsid, set -m) escapes
+  # this census; a per-suite env marker scanned in /proc would catch it.
+  if [ -n "${1:-}" ] && ! proc_tree_is_windows && kill -0 -- "-$1" 2>/dev/null; then
+    _grace=0
+    while _members=$(proc_tree_group_members "$1") && [ -n "$_members" ] && [ "$_grace" -lt 5 ]; do
+      sleep 0.2
+      _grace=$((_grace + 1))
+    done
+    if [ -n "$_members" ]; then
+      for _e in $_members; do
+        # swallow-ok: the args are a label; a pid that exited meanwhile prints none
+        live_msgs="${live_msgs}process survived the suite: pid $_e ($(ps -o args= -p "$_e" 2>/dev/null | cut -c1-120))
+"
+      done
+      proc_tree_group_terminate "$1" 1 >/dev/null 2>&1
+      _dirty=1
+    fi
+  fi
+  for _v in $live_files; do
+    _c=""
+    [ -f "$live_root/state/$_v" ] && IFS= read -r -d '' _c < "$live_root/state/$_v"
+    [ "$_c" = "$live_seed" ] && continue
+    live_msgs="${live_msgs}wrote the $_v sentinel (a suite inheriting the live value writes the live file)
+"
+    _dirty=1
+  done
+  for _v in $live_dirs; do
+    if [ ! -d "$live_root/state/$_v" ]; then
+      live_msgs="${live_msgs}removed the $_v sentinel dir
+"
+      _dirty=1
+      continue
+    fi
+    for _e in "$live_root/state/$_v"/* "$live_root/state/$_v"/.[!.]* "$live_root/state/$_v"/..?*; do
+      [ -e "$_e" ] || [ -L "$_e" ] || continue
+      live_msgs="${live_msgs}wrote into the $_v sentinel dir: ${_e##*/}
+"
+      _dirty=1
+      break
+    done
+  done
+  for _v in $live_sched; do
+    [ -x "$live_root/bin/$_v" ] && continue
+    live_msgs="${live_msgs}removed the $_v scheduler shim (later suites would reach the real one)
+"
+    _dirty=1
+  done
+  if [ -s "$live_root/scheduler-calls.log" ]; then
+    while IFS= read -r _c; do
+      live_msgs="${live_msgs}scheduler call: $_c (the real scheduler is live operator state)
+"
+    done < "$live_root/scheduler-calls.log"
+    _dirty=1
+  fi
+  [ "$_dirty" -eq 0 ] && return 0
+  _live_reset || return 2
+  return 1
+}
+if [ "$list_only" -eq 0 ]; then
+  # prim-ok: anchored at literal /tmp for the reason suite_tmp is below; swallow-ok: an empty root aborts the run below
+  live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
+  if [ -z "$live_root" ] || ! _live_reset; then
+    [ -z "$live_root" ] || rm -rf "$live_root"
+    live_root=""
+    echo "run-shell-tests.sh: could not create the live-state sentinels — refusing to run suites against the caller's live state" >&2
+    exit 2
+  fi
+fi
 # FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass
 # or fail); a killed run never writes it, so a consumer can tell a partial log
 # set from a complete one. Cleared first so a stale one cannot vouch for this run.
@@ -4116,6 +4333,13 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
+  if [ "$stopped" -eq 1 ]; then
+    stopped_suites="${stopped_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
   # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
   # suite mid-assertion. Everything still on the list is named as unrun —
   # stopping quietly here would be the same false green the discovery guards
@@ -4193,6 +4417,7 @@ while IFS= read -r suite <&3; do
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
+    _live_env "$suite"
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
   suite_pid=$!
   # Its own group as well, so cancelling it below takes its `sleep` too —
@@ -4233,7 +4458,31 @@ while IFS= read -r suite <&3; do
   # rm -rf fail, and that leftover is exactly what tmp-sweep.sh collects later.
   [ -n "$suite_tmp" ] && rm -rf "$suite_tmp" 2>/dev/null
 
-  if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
+  # A capped suite's group is the watchdog's to clean up, so no census there.
+  # A live-state write fails the suite outright: a retry would only write again.
+  live_fail=0
+  _live_pgid="$suite_pid"
+  [ "$capped" -eq 0 ] || _live_pgid=""
+  _live_check "$_live_pgid"
+  _live_rc=$?
+  if [ "$_live_rc" -ne 0 ]; then
+    _live_tag="WARN "
+    if _live_is_hard "$suite"; then live_fail=1; _live_tag=""; fi
+    while IFS= read -r _lm; do
+      [ -n "$_lm" ] || continue
+      printf '[LIVE-STATE] %s%s — %s\n' "$_live_tag" "$suite" "$_lm"
+      printf '[LIVE-STATE] %s%s\n' "$_live_tag" "$_lm" >> "$log"
+    done <<LIVEMSGS
+$live_msgs
+LIVEMSGS
+    [ "$live_fail" -eq 0 ] || [ "$rc" -ne 0 ] || rc=1
+  fi
+  if [ "$_live_rc" -eq 2 ]; then
+    echo "run-shell-tests.sh: could not reset the live-state sentinels after $suite — refusing to run more suites against the caller's live state" >&2
+    exit 2
+  fi
+
+  if [ "$rc" -ne 0 ] && [ "$capped" -eq 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
     printf '[RETRY] %s failed (rc=%s); re-running it once (HIMMEL-5116)\n' "$suite" "$rc"
     echo '----- first attempt, last 40 lines -----'
     tail -n 40 "$log" | sed 's/^/    /'
@@ -4256,8 +4505,22 @@ while IFS= read -r suite <&3; do
   fi
   ran=$((ran + 1))
   manifest_add "ran $rc ${mf_rel:-}"
+  _quar=0
+  if [ "$rc" -ne 0 ] && [ "$SUITE_TIER_MODE" = "pr" ]; then
+    case "$tiers_quarantine_nl" in
+      *"
+${suite_key#"$tier_repo_root"/}
+"*) _quar=1 ;;
+    esac
+  fi
 
-  if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
+  if [ "$_quar" -eq 1 ]; then
+    quarantined=$((quarantined + 1))
+    printf '[QUARANTINE] %s (rc=%s, %ss) — tier quarantine, not failing the run\n' "$suite" "$rc" "$dur"
+    echo '----- last 40 lines -----'
+    tail -n 40 "$log" | sed 's/^/    /'
+    echo '--------------------------'
+  elif [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
     flake=$((flake + 1))
     flaked_suites="${flaked_suites}  ${suite} (first run rc=${first_rc}, passed on retry)
 "
@@ -4358,9 +4621,10 @@ while IFS= read -r suite <&3; do
   fi
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
+  [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 done 3< "$suites_file"
 
-if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ]; then
+if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
   mkdir -p "$FAIL_LOG_DIR" && : > "$FAIL_LOG_DIR/.run-complete"
 fi
 
@@ -4396,6 +4660,9 @@ if [ "$flake" -gt 0 ]; then
   printf ' FLAKE: %s (failed once, passed on the single retry; not counted in PASS or FAIL)\n' "$flake"
   printf 'Flaked suites (ledger: %s):\n%s' "${SUITE_FLAKE_LEDGER:-none}" "$flaked_suites"
 fi
+if [ "$quarantined" -gt 0 ]; then
+  printf ' QUARANTINE: %s (failed, tier quarantine; not counted in FAIL)\n' "$quarantined"
+fi
 if [ "$timed_out" -gt 0 ]; then
   printf ' TIMED OUT: %s (counted in FAIL)\n' "$timed_out"
 fi
@@ -4405,6 +4672,9 @@ if [ "$cap_exceeded_clean" -gt 0 ]; then
   # in _suite_timeout_for first, but this is a heuristic over one line
   # convention, not proof of health (see the detector's own comment above).
   printf ' CAP EXCEEDED (assertions passing): %s\n' "$cap_exceeded_clean"
+fi
+if [ -n "$stopped_suites" ]; then
+  printf 'STOPPED: SUITE_STOP_ON_FAIL=1 — a suite failed, so these suites never ran:\n%s' "$stopped_suites" >&2
 fi
 if [ "$budget_expired" -eq 1 ]; then
   printf 'ERROR: run budget of %ss expired — these suites never ran:\n%s' \
@@ -4575,7 +4845,7 @@ if [ "$SUITE_ROTATE" != "0" ]; then
           "$SUITE_ROTATE_STATE" >&2
       fi
     fi
-  elif [ "$budget_expired" -eq 0 ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
+  elif [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ] && [ "$ran" -gt 0 ] && [ -n "$SUITE_ROTATE_STATE" ]; then
     # Same empty-path guard as above, for `rm -f ""` — a no-op in practice,
     # but the CLEARED-only comment above already draws the correct line, so
     # this stays consistent with it rather than relying on rm's leniency.

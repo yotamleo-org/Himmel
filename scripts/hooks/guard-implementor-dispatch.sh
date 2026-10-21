@@ -44,8 +44,9 @@
 # non-numeric, zero, or negative override is warned and replaced with its
 # documented default rather than reaching the awk ratio math below as a
 # divide-by-zero.
-#   IMPL_GUARD_BANK_STATUS_CMD     override the funded-bank probe command (tests stub it; default `bun scripts/lanes/bank-status.ts`)
-#   IMPL_GUARD_BANK_BUDGET_SECS    funded-bank probe wall-clock budget (default 4)
+#   IMPL_GUARD_USAGE_STATUS_CMD    override the funded-bank probe command (tests stub it; default `bun scripts/lanes/bank-status.ts`);
+#                                  the old IMPL_GUARD_BANK_STATUS_CMD is still read
+#   IMPL_GUARD_USAGE_BUDGET_SECS   funded-bank probe wall-clock budget (default 4); old IMPL_GUARD_BANK_BUDGET_SECS still read
 #   IMPL_GUARD_READINESS_CMD       override the lane-readiness probe command (tests stub it; default `node scripts/lanes/lane-readiness.mjs`)
 #   IMPL_GUARD_READINESS_BUDGET_SECS  lane-readiness probe wall-clock budget (default 4)
 #   IMPL_GUARD_ROUND_BUDGET_SECS   round-guard probe wall-clock budget (default 4)
@@ -428,10 +429,9 @@ _run_bounded() {
 # lane or the parent-bank guard, but never routes toward unmeasured capacity.
 lane_funded() {
     local id="$1" cmd budget out rc state lid lstate _detail
-    budget="${IMPL_GUARD_BANK_BUDGET_SECS:-4}"
-    if [ -n "${IMPL_GUARD_BANK_STATUS_CMD:-}" ]; then
-        cmd="$IMPL_GUARD_BANK_STATUS_CMD"
-    else
+    budget="${IMPL_GUARD_USAGE_BUDGET_SECS:-${IMPL_GUARD_BANK_BUDGET_SECS:-4}}"
+    cmd="${IMPL_GUARD_USAGE_STATUS_CMD:-${IMPL_GUARD_BANK_STATUS_CMD:-}}"
+    if [ -z "$cmd" ]; then
         if ! command -v bun >/dev/null 2>&1; then
             warn "lane '$id' bank-status probe needs bun, which is not on PATH — bank UNKNOWN; skipping it"
             return 1
@@ -740,15 +740,22 @@ fi
 #
 # reuse the admission gate's account/mode/window validator.
 # Window lifts spend only seven_day to 100; standing lifts also spend five_hour
-# to 100 unless CADENCE_BANK_MAX_PCT is explicit. Hook-specific overrides win.
-_lift_lib="$hook_dir/../lib/bank-lift.sh"
-# shellcheck source=../lib/bank-lift.sh
+# to 100 unless CADENCE_USAGE_MAX_PCT (or the old CADENCE_BANK_MAX_PCT) is
+# explicit; when both are set the narrower one counts. Hook-specific overrides win.
+_lift_lib="$hook_dir/../lib/usage-lift.sh"
+# shellcheck source=../lib/usage-lift.sh
 # shellcheck disable=SC1091
 if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null; then
-    if bank_lift_valid "$CACHE_PATH"; then
+    if usage_lift_valid "$CACHE_PATH"; then
         if [ -z "${IMPL_GUARD_WEEKLY_HARD:-}" ]; then WEEKLY_HARD=100; fi
-        if [ "${BANK_LIFT_STANDING:-false}" = true ] && [ -z "${IMPL_GUARD_HARD:-}" ]; then
-            HARD=$(valid_threshold "${CADENCE_BANK_MAX_PCT:-100}" 80 CADENCE_BANK_MAX_PCT)
+        if [ "${USAGE_LIFT_STANDING:-false}" = true ] && [ -z "${IMPL_GUARD_HARD:-}" ]; then
+            # an unloadable helper must not drop the old name's ceiling: fall to the default HARD.
+            # shellcheck source=../lib/env-alias.sh
+            # shellcheck disable=SC1091
+            { [ -r "$hook_dir/../lib/env-alias.sh" ] && . "$hook_dir/../lib/env-alias.sh" \
+                && alias_env_cap CADENCE_USAGE_MAX_PCT CADENCE_BANK_MAX_PCT; } 2>/dev/null \
+                || CADENCE_USAGE_MAX_PCT=unloadable
+            HARD=$(valid_threshold "${CADENCE_USAGE_MAX_PCT:-100}" 80 CADENCE_USAGE_MAX_PCT/CADENCE_BANK_MAX_PCT)
             # a ceiling above 100 could never trip — clamp to 100.
             if awk -v v="$HARD" 'BEGIN{ exit !(v+0 > 100) }'; then HARD=100; fi
         fi
@@ -756,11 +763,11 @@ if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null; then
     # the hook with exit 1, which Claude Code treats as non-blocking (fail OPEN).
     # With the default, a missing validator (rc 127 in the `if`) lands here and
     # the default HARD thresholds stay in force: the deny direction is kept.
-    elif [ "${BANK_LIFT_REASON:-unknown}" != missing ]; then
-        warn "weekly budget override (bank lift) invalid (${BANK_LIFT_REASON:-unknown}) — retaining default HARD thresholds unless explicitly overridden"
+    elif [ "${USAGE_LIFT_REASON:-unknown}" != missing ]; then
+        warn "weekly budget override (usage lift) invalid (${USAGE_LIFT_REASON:-unknown}) — retaining default HARD thresholds unless explicitly overridden"
     fi
 else
-    warn "weekly budget override (bank lift) validator unreadable — retaining default HARD thresholds unless explicitly overridden"
+    warn "weekly budget override (usage lift) validator unreadable — retaining default HARD thresholds unless explicitly overridden"
 fi
 
 # five_hour ---------------------------------------------------------------

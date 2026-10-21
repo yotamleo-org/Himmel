@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# overnight/build-plan — emit a plan.md for /overnight-shift.
+# overnight/build-plan — emit a plan.md for /afk-shift.
 #
 # Queries jira for tickets matching the operator's filter, then prints a
 # dispatch plan to stdout (or `--out` file). The plan is what the
-# `/overnight-shift` slash command shows the operator before they
+# `/afk-shift` slash command shows the operator before they
 # confirm dispatch. The dispatch step itself is handled by Claude
 # (subagent Task tool); this script only emits the plan.
 #
@@ -29,10 +29,10 @@
 #   3  no tickets matched (warn — operator can still proceed manually)
 set -euo pipefail
 
-PROJECT="${OVERNIGHT_PROJECT:-HIMMEL}"
-STATUS="${OVERNIGHT_STATUS:-To Do,In Progress}"
-LIMIT="${OVERNIGHT_LIMIT:-5}"
-PRIORITY="${OVERNIGHT_PRIORITY:-key-desc}"
+PROJECT="${AFK_PROJECT:-${OVERNIGHT_PROJECT:-HIMMEL}}"
+STATUS="${AFK_STATUS:-${OVERNIGHT_STATUS:-To Do,In Progress}}"
+LIMIT="${AFK_LIMIT:-${OVERNIGHT_LIMIT:-5}}"
+PRIORITY="${AFK_PRIORITY:-${OVERNIGHT_PRIORITY:-key-desc}}"
 OUT_FILE=""
 JIRA_CMD="${JIRA_CMD:-}"
 
@@ -41,10 +41,10 @@ usage() {
 Usage: build-plan.sh [--project KEY] [--status STATUS] [--limit N]
                      [--priority ORDER] [--out PATH]
 
-Builds the dispatch plan for /overnight-shift by querying jira.
+Builds the dispatch plan for /afk-shift by querying jira.
 
 Optional:
-  --project KEY      Jira project key. Default $OVERNIGHT_PROJECT or HIMMEL.
+  --project KEY      Jira project key. Default $AFK_PROJECT or HIMMEL.
   --status STATUS    Comma-separated status filter passed to `jira list`.
                      Default: "To Do,In Progress".
   --limit N          Max tickets in the plan. Default 5.
@@ -59,10 +59,11 @@ Environment overrides:
   JIRA_CMD           Override the jira plugin command (default:
                      `node $repo/scripts/jira/dist/index.js`). Tests
                      override this to inject canned ticket output.
-  OVERNIGHT_PROJECT  Default project key.
-  OVERNIGHT_STATUS   Default status filter.
-  OVERNIGHT_LIMIT    Default limit.
-  OVERNIGHT_PRIORITY Default priority order.
+  AFK_PROJECT        Default project key.
+  AFK_STATUS         Default status filter.
+  AFK_LIMIT          Default limit.
+  AFK_PRIORITY       Default priority order.
+                     Each AFK_* falls back to its old OVERNIGHT_* name.
   WHERE_ARE_WE_LEDGER  Override the where-are-we ledger path (HIMMEL-517 L3
                      push-side provisioning; default
                      `$repo/.where-are-we/ledger.jsonl`). Tests seed a temp ledger.

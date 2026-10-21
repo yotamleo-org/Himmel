@@ -9,9 +9,19 @@
 # push, and the PEAK concurrent in_progress jobs per hour reconstructed from job
 # start/end intervals.
 #
-# Usage: ci-metrics.sh [--days N] [--repo OWNER/NAME] [--top N] [--hourly]
-#                      [--keep DIR] [--cache DIR] [--data-dir DIR] [--now ISO8601]
+# Usage: ci-metrics.sh [--days N | --hours N] [--repo OWNER/NAME] [--top N] [--hourly]
+#                      [--cap-check] [--keep DIR] [--cache DIR] [--data-dir DIR] [--now ISO8601]
 #   --days N      window length in days, fractions allowed (default 7)
+#   --hours N     window length in hours instead (fractions allowed)
+#   --cap-check   instead of the baseline, print the per-minute running count and queued
+#                 jobs over the window and a PASS / FAIL / INCONCLUSIVE verdict on the
+#                 runner ceiling (plan section 1.2): PASS = some minute runs
+#                 more than 60 jobs and no 10-minute stretch has jobs queued while running <= 60;
+#                 FAIL = running sits flat at exactly 20, 40 or 60 for 10 minutes while jobs
+#                 are queued and never exceeds 60; INCONCLUSIVE = anything else (usually demand
+#                 never reached 60: re-run after the next busy window, never create load).
+#                 Queued counts only jobs whose own created_at was read from REST (runs holding
+#                 a cancelled job) and jobs still waiting at the window end: a lower bound.
 #   --top N       rows in the per-job-name table (default 30)
 #   --hourly      print every hour of the peak table, not the top 10
 #   --keep DIR    save the fetched runs.json + jobs.json there
@@ -19,7 +29,7 @@
 #                 (a cached chunk keeps the state it had when fetched)
 #   --data-dir D  analyse a saved/recorded dataset instead of calling the API
 #   --now ISO     fixed clock (tests); still-running jobs end at this instant
-# Exit: 0 ok, 2 usage, 3 API/rate-limit problem.
+# Exit: 0 ok, 1 --cap-check verdict FAIL, 2 usage, 3 API/rate-limit problem.
 #
 # Pacing: calls run one at a time, 1 s apart, and back off 60 s on a 403/429 (the
 # account shares one secondary rate limit with every other session). That makes a
@@ -31,15 +41,23 @@
 # ~70 calls. GraphQL cannot give a job's steps (HTTP 502 even at 10 runs per
 # query), and a job cancelled while queued reports started_at = created_at with
 # no steps, so for each run holding a cancelled job one REST /runs/{id}/jobs call
-# reads the step counts; a cancelled job with 0 steps never took a runner and gets
-# no runner time, queue wait or concurrency interval. A run whose REST call fails
-# is warned about and its cancelled jobs are counted as having run.
+# reads every job's step count and created_at. A cancelled job never ran if it has 0
+# steps or (without a REST answer) started_at equals created_at within 1 s; it gets
+# no runner time, queue wait or concurrency interval. A skipped job is never queued
+# either. A run whose REST call fails is warned about and judged by the started_at
+# rule alone; the baseline counts those jobs (a gated job cancelled while queued can look
+# like it ran there, since GraphQL gives only the run's created_at).
 # The price of GraphQL: a job's created_at is not exposed, so queue wait is
-# measured from the RUN's creation. That is exact for jobs with no `needs` and
+# measured from the RUN's creation unless REST gave the job's own created_at (runs
+# holding a cancelled job). That is exact for jobs with no `needs` and
 # overstates a job gated behind others (its wait includes the upstream jobs'
 # run time). Only the latest attempt of a re-run is visible.
-# ponytail: queue wait of gated jobs includes upstream time, upgrade path =
-# REST /runs/{id}/jobs?filter=all for a narrow window when exact job created_at matters.
+# ponytail: queue wait of gated jobs outside REST-read runs includes upstream time,
+# upgrade path = REST /runs/{id}/jobs?filter=all for every run when exact job created_at matters.
+#
+# Guardrail rates (plan section 1.3) come from the runs list: runs per hour and per
+# rolling 24 h, cancels per rolling 10 min (by updated_at), reruns per hour (attempt
+# above 1, by run_started_at), runs per branch per day; each against its alert line.
 #
 # Cancel cause is INFERRED, not read: the API does not say who cancelled a run.
 # "superseded" = a newer run of the same workflow + branch + trigger was created
@@ -56,7 +74,7 @@ SELF="${BASH_SOURCE[0]}"
 SLICE_SECS=21600
 JOBS_CHUNK=100
 PAR=1
-PACE=1
+PACE="${CI_METRICS_PACE:-1}"
 
 die() { echo "ci-metrics: $2" >&2; exit "$1"; }
 
@@ -74,23 +92,23 @@ if [ "${1:-}" = "--slice" ]; then
   done
   echo "ci-metrics: runs fetch failed for $a..$b" >&2; exit 1
 fi
-# --runjobs <repo> <run id> <out>: REST jobs of one run, reduced to the step count of each cancelled job.
+# --runjobs <repo> <run id> <out>: REST jobs of one run, reduced to each job's step count and created_at.
 if [ "${1:-}" = "--runjobs" ]; then
   repo="$2"; rid="$3"; out="$4"
-  if [ -n "${CI_METRICS_CACHE:-}" ] && [ -f "$CI_METRICS_CACHE/steps.$rid.ndjson" ]; then
-    cp "$CI_METRICS_CACHE/steps.$rid.ndjson" "$out.ndjson"; exit 0
+  if [ -n "${CI_METRICS_CACHE:-}" ] && [ -f "$CI_METRICS_CACHE/rj.$rid.ndjson" ]; then
+    cp "$CI_METRICS_CACHE/rj.$rid.ndjson" "$out.ndjson"; exit 0
   fi
   for _try in 1 2 3; do
     if gh api "repos/$repo/actions/runs/$rid/jobs?per_page=100" 2> "$out.err" > "$out.raw" \
-      && jq -c --argjson r "$rid" '.jobs[] | select(.conclusion == "cancelled") | {run_id: $r, name, steps: (.steps | length)}' "$out.raw" > "$out.tmp"; then
+      && jq -c --argjson r "$rid" '.jobs[] | {run_id: $r, name, created_at, steps: (.steps | length)}' "$out.raw" > "$out.tmp"; then
       mv "$out.tmp" "$out.ndjson"
-      if [ -n "${CI_METRICS_CACHE:-}" ]; then cp "$out.ndjson" "$CI_METRICS_CACHE/steps.$rid.ndjson"; fi
+      if [ -n "${CI_METRICS_CACHE:-}" ]; then cp "$out.ndjson" "$CI_METRICS_CACHE/rj.$rid.ndjson"; fi
       sleep "$PACE"; exit 0
     fi
     if grep -qiE 'rate limit|HTTP 403|HTTP 429' "$out.err" "$out.raw" 2>/dev/null; then sleep 60; else sleep 10; fi
   done
-  # One run that will not answer must not sink the dataset: its cancelled jobs keep ran=true.
-  echo "ci-metrics: WARN run jobs fetch failed for run $rid ($(head -c 100 "$out.err")); its cancelled jobs count as ran" >&2
+  # One run that will not answer must not sink the dataset: its cancelled jobs fall back to the started_at rule.
+  echo "ci-metrics: WARN run jobs fetch failed for run $rid ($(head -c 100 "$out.err")); its cancelled jobs are judged by started_at alone" >&2
   : > "$out.ndjson"; exit 0
 fi
 # --gql jobs <ids-file> <out>: the jobs of <=100 runs.
@@ -123,10 +141,11 @@ if [ "${1:-}" = "--gql" ]; then
 fi
 
 
-DAYS=7; REPO="yotamleo/Himmel"; TOP=30; HOURLY=0; KEEP=""; DATA=""; NOW=""; CACHE=""
+DAYS=""; HOURS=""; REPO="yotamleo-org/Himmel"; TOP=30; HOURLY=0; CAPCHECK=0; KEEP=""; DATA=""; NOW=""; CACHE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --days) [ $# -ge 2 ] || die 2 "--days needs a value"; DAYS="$2"; shift 2;;
+    --hours) [ $# -ge 2 ] || die 2 "--hours needs a value"; HOURS="$2"; shift 2;;
     --repo) [ $# -ge 2 ] || die 2 "--repo needs a value"; REPO="$2"; shift 2;;
     --top) [ $# -ge 2 ] || die 2 "--top needs a value"; TOP="$2"; shift 2;;
     --keep) [ $# -ge 2 ] || die 2 "--keep needs a value"; KEEP="$2"; shift 2;;
@@ -134,13 +153,26 @@ while [ $# -gt 0 ]; do
     --data-dir) [ $# -ge 2 ] || die 2 "--data-dir needs a value"; DATA="$2"; shift 2;;
     --now) [ $# -ge 2 ] || die 2 "--now needs a value"; NOW="$2"; shift 2;;
     --hourly) HOURLY=1; shift;;
+    --cap-check) CAPCHECK=1; shift;;
     -h|--help) sed -n '2,/^set -u/p' "$SELF" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0;;
     *) die 2 "unknown argument: $1";;
   esac
 done
-case "$DAYS" in ''|*[!0-9.]*|.|*.*.*) die 2 "--days must be a positive number, got '$DAYS'";; esac
-awk -v d="$DAYS" 'BEGIN { exit !(d + 0 > 0) }' || die 2 "--days must be positive"
+[ -z "$DAYS" ] || [ -z "$HOURS" ] || die 2 "--days and --hours are exclusive"
+# num <flag> <value>: a positive decimal in canonical form (.5 -> 0.5, 08 -> 8), safe for jq --argjson on any jq.
+num() {
+  case "$2" in ''|*[!0-9.]*|.|*.*.*) die 2 "$1 must be a positive number, got '$2'";; esac
+  awk -v d="$2" 'BEGIN { exit !(d + 0 > 0 && d + 0 < 1e9) }' || die 2 "$1 must be positive and below 1e9, got '$2'"
+  awk -v d="$2" 'BEGIN { printf "%.10g", d + 0 }'
+}
+if [ -n "$HOURS" ]; then
+  HOURS=$(num --hours "$HOURS") || exit 2
+  DAYS=$(awk -v h="$HOURS" 'BEGIN { printf "%.10g", h / 24 }'); WINDOW_LABEL="$HOURS hours"
+else
+  DAYS=$(num --days "${DAYS:-7}") || exit 2; WINDOW_LABEL="$DAYS days"
+fi
 case "$TOP" in ''|*[!0-9]*) die 2 "--top must be an integer";; esac
+TOP=$((10#$TOP))
 command -v jq >/dev/null 2>&1 || die 3 "jq is required"
 
 if [ -n "$NOW" ]; then
@@ -148,7 +180,11 @@ if [ -n "$NOW" ]; then
 else
   NOW_EPOCH=$(date -u +%s)
 fi
-START_EPOCH=$(awk -v n="$NOW_EPOCH" -v d="$DAYS" 'BEGIN { printf "%d", n - d * 86400 }')
+if [ -n "$HOURS" ]; then
+  START_EPOCH=$(awk -v n="$NOW_EPOCH" -v h="$HOURS" 'BEGIN { printf "%d", n - h * 3600 }')
+else
+  START_EPOCH=$(awk -v n="$NOW_EPOCH" -v d="$DAYS" 'BEGIN { printf "%d", n - d * 86400 }')
+fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ci-metrics.XXXXXX")" || die 3 "mktemp -d failed"
 trap 'rm -rf "$WORK"' EXIT
@@ -177,19 +213,28 @@ else
     "$WORK"/slices/slice.*.json > "$RUNS" || die 3 "could not assemble runs"
   jq -r '.[].node_id' "$RUNS" > "$WORK/nodes.txt"
   split -l "$JOBS_CHUNK" "$WORK/nodes.txt" "$WORK/jobs/c."
-  for c in "$WORK"/jobs/c.??; do echo "$c"; done \
-    | xargs -P "$PAR" -I{} bash "$SELF" --gql jobs {} {}.out || die 3 "graphql jobs fetch failed"
-  cat "$WORK"/jobs/c.??.out.ndjson | jq -s '.' > "$JOBS"
+  # An empty window leaves no chunk file, and the glob would stay literal.
+  if [ -s "$WORK/nodes.txt" ]; then
+    for c in "$WORK"/jobs/c.??; do echo "$c"; done \
+      | xargs -P "$PAR" -I{} bash "$SELF" --gql jobs {} {}.out || die 3 "graphql jobs fetch failed"
+    cat "$WORK"/jobs/c.??.out.ndjson | jq -s '.' > "$JOBS"
+  else
+    echo '[]' > "$JOBS"
+  fi
   # A job cancelled while still queued reports started_at = created_at and a later
   # completed_at, i.e. fake runner time. Only a cancelled job can look like that, so
-  # step counts (0 = never ran on a runner) come from one REST jobs call per run holding
-  # one (GraphQL steps{} times out with 502 at any useful batch size).
+  # step counts (0 = never ran on a runner) and each job's own created_at come from one
+  # REST jobs call per run holding one (GraphQL steps{} times out with 502 at any useful
+  # batch size). A job found there is marked rest: true.
   jq -r '[.[] | select(.conclusion == "cancelled") | .run_id] | unique | .[]' "$JOBS" > "$WORK/cids.txt"
   if [ -s "$WORK/cids.txt" ]; then
     xargs -P "$PAR" -I{} bash "$SELF" --runjobs "$REPO" {} "$WORK/steps/r.{}" < "$WORK/cids.txt" || die 3 "run jobs fetch failed"
     cat "$WORK"/steps/r.*.ndjson | jq -s '.' > "$WORK/steps.json"
-    jq --slurpfile st "$WORK/steps.json" '($st[0] | map({key: "\(.run_id)|\(.name)", value: .steps}) | from_entries) as $S
-      | map(. + {ran: (if .conclusion == "cancelled" and (($S["\(.run_id)|\(.name)"]) // 1) == 0 then false else true end)})' "$JOBS" > "$WORK/jobs2.json" || die 3 "could not merge step counts"
+    jq --slurpfile st "$WORK/steps.json" '($st[0] | map({key: "\(.run_id)|\(.name)", value: .}) | from_entries) as $S
+      | map(. as $j | $S["\(.run_id)|\(.name)"] as $x
+          | if $x == null then $j
+            else $j + {rest: true, created_at: ($x.created_at // $j.created_at)}
+                 + (if $j.conclusion == "cancelled" then {ran: ($x.steps > 0)} else {} end) end)' "$JOBS" > "$WORK/jobs2.json" || die 3 "could not merge step counts"
     mv "$WORK/jobs2.json" "$JOBS" || die 3 "could not merge step counts"
   fi
   if [ -n "$KEEP" ]; then mkdir -p "$KEEP" && cp "$RUNS" "$KEEP/runs.json" && cp "$JOBS" "$KEEP/jobs.json"; fi
@@ -197,25 +242,43 @@ fi
 
 jq -rn --slurpfile runs "$RUNS" --slurpfile jobs "$JOBS" \
   --argjson now "$NOW_EPOCH" --argjson start "$START_EPOCH" --argjson days "$DAYS" \
-  --arg repo "$REPO" --argjson top "$TOP" --argjson hourly "$HOURLY" '
+  --arg repo "$REPO" --argjson top "$TOP" --argjson hourly "$HOURLY" --argjson cap "$CAPCHECK" --arg wl "$WINDOW_LABEL" '
 def t: fromdateiso8601;
 def m1($s): ((($s * 10 / 60) + 0.5) | floor) as $x | "\($x / 10 | floor).\($x % 10)";
 def pct($p): if length == 0 then null else sort | .[((($p * length) | ceil) - 1) | if . < 0 then 0 else . end] end;
 def sec: if . == null then "-" else tostring end;
 def esc: gsub("\\|"; "\\|");
 def share($a; $b): if $b == 0 then "0.0%" else (($a * 1000 / $b + 0.5) | floor) as $x | "\($x / 10 | floor).\($x % 10)%" end;
+# Largest number of sorted epoch times $a inside any rolling window of $w seconds (two pointers).
+def maxwin($a; $w):
+  reduce range(0; $a | length) as $i ({lo: 0, n: 0}; .lo = (.lo | until(. >= $i or $a[.] > $a[$i] - $w; . + 1)) | .n = ([.n, $i - .lo + 1] | max)) | .n;
+# Per-hour counts of sorted epoch times: the busiest {h, n}.
+def busiest: group_by(. / 3600 | floor) | map({h: (.[0] / 3600 | floor), n: length}) | max_by(.n) // {h: 0, n: 0};
+# Longest run of equal non-null keys in an array.
+def streak: reduce .[] as $k ({cur: 0, prev: null, best: 0};
+    if $k == null then .cur = 0 | .prev = null
+    else (if $k == .prev then .cur += 1 else .cur = 1 end) | .prev = $k | .best = ([.best, .cur] | max) end) | .best;
+def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
 
 ($runs[0]) as $R
 | ($R | INDEX(.id | tostring)) as $RI
 | ($jobs[0] | map(
     . as $j | $RI[$j.run_id | tostring] as $r
-    | (($j.status == "completed" or $j.status == "in_progress") and ($j.ran != false)) as $began
+    | ($j.started_at != null) as $hs
+    # never ran: REST said 0 steps, or (no REST answer) started_at == created_at within 1 s
+    | (($j.conclusion == "cancelled")
+        and (if $j.ran != null then $j.ran == false
+             else ($hs | not) or (((($j.started_at | t) - ($j.created_at | t)) | fabs) <= 1) end)) as $never
+    # a skipped job carries its skip time as started_at, not a runner pick-up
+    | ($hs and ($j.status == "completed" or $j.status == "in_progress") and ($never | not)
+        and $j.conclusion != "skipped" and (($j.started_at | t) <= $now)) as $began
+    | (if $began then ([(($j.completed_at // ($now | todate)) | t), $now] | min) else null end) as $e
     | . + {
         wf: $r.name, ev: $r.event, rconc: $r.conclusion, sha: $r.head_sha,
-        started: ($began and $j.started_at != null),
-        q: (if $began and $j.started_at != null then (($j.started_at | t) - ($j.created_at | t)) else null end),
-        r: (if $began and $j.started_at != null and $j.completed_at != null then ([0, (($j.completed_at | t) - ($j.started_at | t))] | max) else null end),
-        rs: (if $began and $j.started_at != null then ([0, ((($j.completed_at // ($now | todate)) | t) - ($j.started_at | t))] | max) else 0 end)
+        never: $never, started: $began, e: $e,
+        q: (if $began then (($j.started_at | t) - ($j.created_at | t)) else null end),
+        r: (if $began and $j.completed_at != null then ([0, ($e - ($j.started_at | t))] | max) else null end),
+        rs: (if $began then ([0, ($e - ($j.started_at | t))] | max) else 0 end)
       })) as $J
 
 # ---- cancel cause per cancelled run (inferred, see header) ----
@@ -245,14 +308,18 @@ def share($a; $b): if $b == 0 then "0.0%" else (($a * 1000 / $b + 0.5) | floor) 
     | ($R | group_by(rk) | map({k: (.[0] | rk), n: length, jobs: ($G[.[0] | rk | tostring] // [])})) | sort_by(-(.jobs | map(.rs) | add // 0));
 
 # ---- peak concurrency ----
-($J | map(select(.started) | {s: (.started_at | t), e: ((.completed_at // ($now | todate)) | t)} | select(.e > .s))) as $iv
+($J | map(select(.started) | {s: (.started_at | t), e: .e} | select(.e > .s))) as $iv
 | ([$iv[] | {t: .s, d: 1}, {t: .e, d: -1}] | sort_by([.t, .d]) | group_by(.t / 3600 | floor)) as $ev
 | (if ($ev | length) == 0 then [] else
     ($ev[0][0].t / 3600 | floor) as $h0 | ($ev[-1][0].t / 3600 | floor) as $h1
     | ($ev | map({key: (.[0].t / 3600 | floor | tostring), value: .}) | from_entries) as $EH
     | reduce range($h0; $h1 + 1) as $h ({cur: 0, out: []};
         (.cur) as $carry
-        | (reduce ($EH[$h | tostring] // [])[] as $e ({c: $carry, p: $carry}; .c += $e.d | .p = ([.p, .c] | max))) as $x
+        | ($EH[$h | tostring] // []) as $he
+        # jobs ending exactly on the hour boundary are not running in this hour
+        | ($he | map(select(.t == $h * 3600 and .d == -1))) as $bend
+        | ($carry - ($bend | length)) as $p0
+        | (reduce ($he - $bend)[] as $e ({c: $p0, p: $p0}; .c += $e.d | .p = ([.p, .c] | max))) as $x
         | .cur = $x.c | .out += [{h: ($h * 3600 | todate), n: $x.p}])
     | .out end) as $PK
 | ($PK | map(.n) | max // 0) as $peak
@@ -265,12 +332,86 @@ def share($a; $b): if $b == 0 then "0.0%" else (($a * 1000 / $b + 0.5) | floor) 
 
 # ---- queue backlog ----
 | ($J | map(select(.status == "queued" or .status == "waiting" or .status == "pending" or .status == "requested"))) as $wait
-| ($J | map(select(.ran == false)) | length) as $preran
+| ($J | map(select(.never)) | length) as $preran
+| ($J | map(select(.conclusion == "cancelled" and .rest != true)) | length) as $norest
 | ($R | map(select(.status == "queued" or .status == "pending" or .status == "waiting")) | length) as $openruns
 
-| "# CI metrics baseline - \($repo)",
+# ---- guardrail rates (plan section 1.3) ----
+| ($R | map(.created_at | t) | sort) as $RT
+| ($RT | busiest) as $RHM
+| ($RT | group_by(. / 3600 | floor) | map({key: (.[0] / 3600 | floor | tostring), value: length}) | from_entries) as $RHC
+| ([range(($start / 3600 | floor); ($now / 3600 | floor) + 1) | $RHC[tostring] // 0] | pct(0.9)) as $RHP90
+| maxwin($RT; 86400) as $R24
+| ($R | map(select(.conclusion == "cancelled") | .updated_at | t) | sort) as $CT
+| maxwin($CT; 600) as $C10
+| ($R | map(select((.run_attempt // 1) > 1) | (.run_started_at // .created_at) | t) | sort | busiest) as $RRH
+| ($R | group_by([.head_branch, (.created_at | t / 86400 | floor)])
+    | map({b: .[0].head_branch, d: (.[0].created_at | t / 86400 | floor | . * 86400 | todate | .[:10]), n: length})) as $BD
+| ($BD | max_by(.n) // {b: "-", d: "-", n: 0}) as $BDM
+| def flag($v; $line): if $v > $line then "OVER" else "OK" end;
+  def hrat($x): if $x.n == 0 then "0" else "\($x.n) (\($x.h * 3600 | todate))" end;
+  ([ "## Guardrail rates",
+     "",
+     "Alert lines are the plan section 1.3 guardrails. Reruns count only runs whose latest attempt is above 1 (earlier attempts are not visible).",
+     "",
+     "| metric | value | line | status |",
+     "|---|---|---|---|",
+     "\(gr("runs per hour, max"; hrat($RHM); 150)) \(flag($RHM.n; 150)) |",
+     "\(gr("runs per hour, p90"; $RHP90 | sec; "-")) - |",
+     "\(gr("runs per rolling 24 h, max"; $R24; 1500)) \(flag($R24; 1500)) |",
+     "\(gr("cancels per rolling 10 min, max"; $C10; 30)) \(flag($C10; 30)) |",
+     "\(gr("reruns per hour, max"; hrat($RRH); 10)) \(flag($RRH.n; 10)) |",
+     "\(gr("runs per branch per day, max"; (if $BDM.n == 0 then "0" else "\($BDM.n) (\($BDM.b) \($BDM.d))" end); 6)) \(flag($BDM.n; 6)) |",
+     "\(gr("branch-days over 6 runs"; ($BD | map(select(.n > 6)) | length); "-")) - |"
+  ]) as $GR
+
+# ---- cap check (plan section 1.2): per-minute running and queued against the 60-runner ceiling ----
+| ((($now - $start) / 60) | floor) as $nm
+| def mi($x): ((($x - $start) / 60) | ceil) | if . < 0 then 0 elif . > $nm then $nm else . end;
+  def perminute($iv): (reduce $iv[] as $x ([range(0; $nm + 1) | 0]; mi($x.s) as $a | mi($x.e) as $b | if $a < $b then .[$a] += 1 | .[$b] -= 1 else . end))
+    | . as $D | reduce range(0; $nm) as $i ({c: 0, a: []}; .c += $D[$i] | .a += [.c]) | .a;
+  ($J | map(select(.started) | {s: (.started_at | t), e: .e} | select(.e > .s)) | perminute(.)) as $RUN
+| ($J | map(select(.conclusion != "skipped")
+      | if .never then (if .rest == true and .completed_at != null then {s: (.created_at | t), e: ([(.completed_at | t), $now] | min)} else empty end)
+        elif .started and .rest == true then {s: (.created_at | t), e: (.started_at | t)}
+        elif (.started | not) and .started_at == null and (.status | IN("queued", "waiting", "pending", "requested")) then {s: (.created_at | t), e: $now}
+        else empty end
+      | select(.e > .s)) | perminute(.)) as $QUE
+| ($RUN | max // 0) as $maxrun
+| ([range(0; $nm) | $RUN[.] + $QUE[.]] | max // 0) as $maxdem
+| ([range(0; $nm) | if $QUE[.] > 0 and $RUN[.] <= 60 then "q" else null end] | streak) as $sq
+| ([range(0; $nm) | if $QUE[.] > 0 and ($RUN[.] | IN(20, 40, 60)) then $RUN[.] else null end] | streak) as $sf
+| (if $sf >= 10 and $maxrun <= 60 then ["FAIL", "running sat flat at the ceiling for \($sf) min with jobs queued"]
+   elif $maxrun > 60 and $sq < 10 then ["PASS", "\($maxrun) jobs ran in one minute and no observed 10-minute stretch has jobs queued while running <= 60 (the queue is a lower bound, see the window note)"]
+   elif $maxdem <= 60 then ["INCONCLUSIVE", "demand (running + queued) never exceeded 60 (max \($maxdem)); re-run after the next busy window, never create load"]
+   elif $maxrun <= 60 then ["INCONCLUSIVE", "demand reached \($maxdem) but running was never flat at 20, 40 or 60 for 10 minutes while jobs queued"]
+   else ["INCONCLUSIVE", "running reached \($maxrun) but jobs stayed queued for \($sq) min while running <= 60"] end) as $V
+| ([ "# CI cap check - \($repo)",
+     "",
+     "Window: \($start | todate) .. \($now | todate) (\($wl)). Running = jobs that ran with started <= minute < completed. Queued = jobs with created <= minute < started, counted only for jobs whose own created_at came from REST (runs holding a cancelled job) and jobs still waiting at the window end: a lower bound.",
+     "",
+     "Verdict: \($V[0]) - \($V[1])",
+     "",
+     "| metric | value |",
+     "|---|---|",
+     "| minutes in window | \($nm) |",
+     "| max running | \($maxrun) |",
+     "| max demand (running + queued) | \($maxdem) |",
+     "| minutes with running > 60 | \([range(0; $nm) | select($RUN[.] > 60)] | length) |",
+     "| longest stretch queued while running <= 60 (min) | \($sq) |",
+     "| longest stretch queued while running flat at 20, 40 or 60 (min) | \($sf) |",
+     "",
+     "## Per minute (minutes with a running or queued job)",
+     "",
+     "| minute (UTC) | running | queued |",
+     "|---|---|---|",
+     ([range(0; $nm) | select($RUN[.] > 0 or $QUE[.] > 0) | "| \($start + 60 * . | todate) | \($RUN[.]) | \($QUE[.]) |"][])
+  ]) as $CAP
+
+| if $cap == 1 then $CAP[] else (
+  "# CI metrics baseline - \($repo)",
   "",
-  "Window: \($start | todate) .. \($now | todate) (\($days) days). Source: GitHub API (runs list + check runs), read-only, latest attempt of each run.",
+  "Window: \($start | todate) .. \($now | todate) (\($wl)). Source: GitHub API (runs list + check runs), read-only, latest attempt of each run.",
   "",
   "## Headline",
   "",
@@ -284,6 +425,7 @@ def share($a; $b): if $b == 0 then "0.0%" else (($a * 1000 / $b + 0.5) | floor) 
   "| cancelled share of runner-min | \(share($CR | map(.rs) | add // 0; $J | map(.rs) | add // 0)) |",
   "| job queue wait p50 / p90 / max (s) | \($J | [.[].q | numbers] | "\(pct(0.5) | sec) / \(pct(0.9) | sec) / \(max // "-")") |",
   "| jobs cancelled before a runner took them | \($preran) |",
+  "| cancelled jobs judged without a REST answer | \($norest) |",
   "| jobs still waiting for a runner at window end | \($wait | length) |",
   "| runs still queued or pending | \($openruns) |",
   "| peak concurrent in_progress jobs | \($peak) |",
@@ -327,5 +469,11 @@ def share($a; $b): if $b == 0 then "0.0%" else (($a * 1000 / $b + 0.5) | floor) 
   "",
   "| hour (UTC) | peak in_progress |",
   "|---|---|",
-  (($PK | if $hourly == 1 then . else sort_by(-.n) | .[:10] end)[] | "| \(.h) | \(.n) |")
-' || die 3 "analysis failed"
+  (($PK | if $hourly == 1 then . else sort_by(-.n) | .[:10] end)[] | "| \(.h) | \(.n) |"),
+  "",
+  $GR[]
+) end
+' > "$WORK/report.txt" || die 3 "analysis failed"
+cat "$WORK/report.txt"
+if [ "$CAPCHECK" -eq 1 ] && grep -q '^Verdict: FAIL' "$WORK/report.txt"; then exit 1; fi
+exit 0

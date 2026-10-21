@@ -216,5 +216,64 @@ backdate_days "$OUT/graph.json" 10
 bash "$SCRIPT" --out "$OUT" --max-age-days 7 >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && pass "T9e built_at_commit=HEAD rejected, falls back to mtime -> rc=1" || fail "T9e rc=1 (got $rc)"
 
+# Semantic run rows: one merge row per argument, each argument "<failed files>|<refused files>" (comma lists).
+semantic_rows() {  # $1=out dir, $2...=rows
+  local out="$1"; shift
+  python3 - "$out/semantic-runs.jsonl" "$@" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as f:
+    for i, spec in enumerate(sys.argv[2:]):
+        failed, refused, backed = (s.split(",") if s else [] for s in (spec.split("|") + [""])[:3])
+        f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed),
+                            "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
+                            "backed_off_files": backed}) + "\n")
+        f.write(json.dumps({"ts": "2026-10-19T0%d:30:00Z" % i, "name": "ast-update", "ast_restored_nodes": 1}) + "\n")
+PY
+}
+
+# --- T10: the same file failed in each of the last 3 semantic runs -> FAIL ---
+OUT="$WS/t10/graphify-out"; CORPUS="$WS/t10/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "x.md|" "x.md,real.md|" "x.md|"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"x.md"* ]] && pass "T10 a file stuck for 3 runs -> rc=2 naming it" || fail "T10 rc=2 (got $rc): $out"
+
+# --- T10b: a file shrink-refused in each of the last 3 runs -> FAIL too ---
+OUT="$WS/t10b/graphify-out"; CORPUS="$WS/t10b/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "|y.md" "|y.md" "x.md|y.md"
+bash "$SCRIPT" --out "$OUT" --max-age-days 7 >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 2 ] && pass "T10b a refused file stuck for 3 runs -> rc=2" || fail "T10b rc=2 (got $rc)"
+
+# --- T10e: a file that failed twice and is then backed off stays stuck while it stays backed off ---
+OUT="$WS/t10e/graphify-out"; CORPUS="$WS/t10e/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "x.md||" "x.md||" "||x.md"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"semantic refresh stuck: x.md failed, was refused or stayed backed off in each of the last 3 runs"* ]] \
+  && pass "T10e a backed-off file keeps the check failing" || fail "T10e rc=2 (got $rc): $out"
+[[ "$out" == *"stuck record in semantic-manifest.json"* ]] && pass "T10e the failure says how to clear a back-off" || fail "T10e no clear hint: $out"
+
+# --- T10c: failures that drain (different files) stay OK and print the semantic line ---
+OUT="$WS/t10c/graphify-out"; CORPUS="$WS/t10c/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "x.md|" "|y.md" "|"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>/dev/null ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Eq '^graph-freshness: semantic last=2026-10-19T02:00:00Z failed=0 refused=0 ' \
+  && pass "T10c draining failures -> rc=0 with the semantic line" || fail "T10c (rc=$rc): $out"
+
+# --- T10d: the semantic line reports backed-off files and the oldest unstamped file's age ---
+OUT="$WS/t10d/graphify-out"; CORPUS="$WS/t10d/corpus"; build_out "$OUT" "$CORPUS"
+printf '%s\n' "$CORPUS" > "$OUT/.graphify_root"
+semantic_rows "$OUT" "|"
+python3 -c 'import hashlib,json,sys
+h=lambda p: hashlib.sha256(open(p,"rb").read()).hexdigest()
+json.dump({"version":1,"files":{"real.md":h(sys.argv[2])},"stuck":{"notes/sub.md":{"hash":h(sys.argv[3]),"attempts":3,"reason":"r"}}},open(sys.argv[1],"w"))' \
+  "$OUT/semantic-manifest.json" "$CORPUS/real.md" "$CORPUS/notes/sub.md"
+backdate_days "$CORPUS/notes/sub.md" 5
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>/dev/null ); rc=$?
+printf '%s\n' "$out" | grep -q 'backed_off=1 unstamped=1 oldest_unstamped=5d' \
+  && pass "T10d backed_off and oldest unstamped age" || fail "T10d (rc=$rc): $out"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

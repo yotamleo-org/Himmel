@@ -1569,6 +1569,25 @@ for v in \
     "cat <<'EOF' | head -3${NL}run bash scripts/handover/console-kit/go.sh 12 abc${NL}EOF"; do
     run "HIMMEL-6015 inert cat heredoc [${v%%"$NL"*}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
+# An unquoted heredoc body expands $: prompt expansion (${_@P}, ${x@P}) and
+# array-subscript arithmetic re-expand a $(...) held in a variable or in the
+# previous command's last argument, so any live $ in such a body is not data.
+# shellcheck disable=SC2016 # the literal `$(...)` text, never expanded here
+for v in \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${_@P}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${x@P}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\$[a[\$_]]${NL}EOF" \
+    "echo 'a[\$(bash scripts/cr/write-verdicts.sh sweep)]'; cat <<EOF${NL}\$((\$_))${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${a[\$_]}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<-EOF${NL}	\\\\\${_@P}${NL}	EOF"; do
+    run "HIMMEL-6337 live \$ in an unquoted heredoc body [${v#*"$NL"}] -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
+done
+# A quoted heredoc body, or an escaped \$ in an unquoted one, expands nothing.
+for v in \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<'EOF'${NL}\${_@P}${NL}EOF" \
+    "echo '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\\\${_@P} costs \\\$5${NL}EOF"; do
+    run "HIMMEL-6337 inert heredoc body [${v#*"$NL"}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
+done
 # A list or pipeline of readers (grep, cat, sed with inert scripts, git
 # grep/log/show/diff, ...) runs nothing, whatever its patterns and file
 # operands name.
@@ -2205,6 +2224,108 @@ run "4932: control [quoted-variable path] -> deny" 2 "$(payload 'bash "$X/script
 run "4932: control [command substitution in path] -> deny" 2 "$(payload 'bash scripts/cr/$(echo write-verdicts).sh' "$WT")" "$HR"
 run "4932: control [pr-check script name] -> deny" 2 "$(payload 'bash scripts/cr/pr-check-context.sh > /tmp/o4932' "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+
+# ---- a branch behind main runs its relative handover writer ---------------
+# main moved merge-on-green.sh after the leg's branch was cut. The branch never
+# touched it, so its copy is the merge-base's - main-reviewed bytes whose
+# hand-off execs the anchor's copy. The hand-off itself must still equal the
+# anchor's, and a branch edit (committed, dirty, or grafted into main's
+# history) still denies.
+ORIG_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+# shellcheck disable=SC2016 # the entry's literal hand-off lines
+AH_CASE='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac'
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' '#!/usr/bin/env bash' '# header' 'set -uo pipefail' '' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+g -C "$PRIMARY" commit -qam 'entries source the hand-off'
+BASE_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+g -C "$WT" reset -q --hard "$BASE_MAIN"
+echo 'echo mog v2' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+echo 'echo go v2' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+echo 'echo write-verdicts v2' >"$PRIMARY/scripts/cr/write-verdicts.sh"
+g -C "$PRIMARY" commit -qam 'main moves on'
+run "behind main, untouched merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+run "behind main, untouched go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
+run "behind main, untouched scripts/cr writer -> still deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
+run "behind main, dirty merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$WT" commit -qam 'branch edits merge-on-green'
+BRANCH_EDIT=$(g -C "$WT" rev-parse HEAD)
+run "behind main, committed merge-on-green.sh edit -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+MAIN_TIP=$(g -C "$PRIMARY" rev-parse refs/heads/main)
+mkdir -p "$PRIMARY/.git/info"
+printf '%s %s\n' "$MAIN_TIP" "$BRANCH_EDIT" >"$PRIMARY/.git/info/grafts"
+[ "$(g -C "$PRIMARY" merge-base refs/heads/main "$BRANCH_EDIT" 2>/dev/null)" = "$BRANCH_EDIT" ] \
+    || { echo "FAIL graft fixture does not move the merge-base"; FAILED=$((FAILED + 1)); }
+run "behind main, edit grafted into main's history -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+rm -f "$PRIMARY/.git/info/grafts"
+g -C "$WT" reset -q --hard "$BASE_MAIN"
+echo ': handoff v2' >>"$PRIMARY/scripts/cr/anchor-handoff.sh"
+g -C "$PRIMARY" commit -qam 'main moves the hand-off'
+run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
+g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
+run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
+# main moved to a child that restores its bytes, so the merge-base is a commit
+# whose entry runs code before the hand-off.
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' 'echo above' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
+g -C "$PRIMARY" commit -qam 'code above the hand-off'
+ABOVE=$(g -C "$PRIMARY" rev-parse HEAD)
+g -C "$PRIMARY" checkout -q "$BASE_MAIN" -- scripts/handover/merge-on-green.sh
+g -C "$PRIMARY" commit -qam 'restore main bytes'
+g -C "$WT" reset -q --hard "$ABOVE"
+run "behind main, merge-base copy runs code above the hand-off -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
+g -C "$WT" reset -q --hard "$ORIG_MAIN"
+run "behind main, merge-base copy predates the hand-off -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
+g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
+# The merge-base copy is the variant under test: main moves to a child that
+# restores BASE_MAIN's bytes, the worktree sits on the variant commit.
+mb_variant_run() { # <label> <want> <mog-file> <go-file>
+    g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
+    cp "$3" "$PRIMARY/scripts/handover/merge-on-green.sh"
+    cp "$4" "$PRIMARY/scripts/handover/console-kit/go.sh"
+    g -C "$PRIMARY" commit -qam 'variant entries'
+    local variant
+    variant=$(g -C "$PRIMARY" rev-parse HEAD)
+    g -C "$PRIMARY" checkout -q "$BASE_MAIN" -- scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
+    g -C "$PRIMARY" commit -qam 'restore main bytes'
+    g -C "$WT" reset -q --hard "$variant"
+    run "behind main, $1 (merge-on-green.sh)" "$2" "$(payload "$MOG" "$WT")" "$HR"
+    run "behind main, $1 (go.sh)" "$2" "$(payload "$GO" "$WT")" "$HR"
+}
+VARIANTS="$TMP_ROOT/variants"
+mkdir -p "$VARIANTS"
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '%s\n' '#!/usr/bin/env bash' 'set -uo pipefail' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo mog'
+} >"$VARIANTS/mog-deep"
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '%s\n' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo go'
+} >"$VARIANTS/go-shallow"
+# a vertical tab before the # is not blank to bash, so the line runs
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '\v#;echo hidden\n'
+    printf '%s\n' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog'
+} >"$VARIANTS/mog-vt"
+# shellcheck disable=SC2016 # the entries' literal hand-off lines
+{
+    printf '\v#;echo hidden\n'
+    printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go'
+} >"$VARIANTS/go-vt"
+mb_variant_run "merge-base hand-off at the wrong depth -> deny" 2 "$VARIANTS/mog-deep" "$VARIANTS/go-shallow"
+mb_variant_run "merge-base runs a vertical-tab line above the hand-off -> deny" 2 "$VARIANTS/mog-vt" "$VARIANTS/go-vt"
+REAL_REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+g -C "$REAL_REPO" show HEAD:scripts/handover/merge-on-green.sh >"$VARIANTS/mog-real"
+g -C "$REAL_REPO" show HEAD:scripts/handover/console-kit/go.sh >"$VARIANTS/go-real"
+mb_variant_run "merge-base is the real main prologue -> allow" 0 "$VARIANTS/mog-real" "$VARIANTS/go-real"
+rm -rf "$VARIANTS"
+g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
+g -C "$WT" reset -q --hard "$ORIG_MAIN"
 
 # ---- command-position match: the audit sample shapes ----------------------
 # Each fixture file holds one command; its name prefix is the verdict: allow-*

@@ -122,11 +122,20 @@ caught "GitHub PAT" "export GITHUB_TOKEN=$pat"
 caught "generic api key" "api_key = \"$gen\""
 caught "nonce-prefixed secret" "token=S-N2802-7023775e$gen"
 caught "lock-token-prefixed secret" "token=cachyos-x8664-pid2124755$gen"
-caught "upper-case 40-char token" "secret = $(git -C "$ROOT" rev-parse HEAD | tr 'a-f' 'A-F')"
+# A fixed value, not HEAD: whether an upper-cased sha trips the entropy rule depends on the sha.
+low_entropy_sha="D0DA1B9A3E6A26FE42830EE3AFF8033321830E3F"
+printf 'secret = %s\n' "$low_entropy_sha" > "$WORK/low-entropy.md"
+scan "$WORK/low-entropy.md"; rc=$?
+[ "$rc" -eq 0 ] && pass "RED control: an upper-cased sha can scan clean, so the row below pins its value" \
+    || fail "RED control: gitleaks rc=$rc on the low-entropy upper-cased sha, expected 0"
+upper_hex="3F9A7C2E5B8D1046AE""93C7F25D80B1E64A9C37D2"
+caught "upper-case 40-char token" "secret = $upper_hex"
 caught "secret in the label slot" "token=S-$gen-abcd"
 caught "short secret in the label slot" "token=Z-$short-1a2b3c4d"
+n=0
 for t in "S-N2802-7023775e$gen" "ab-$gen-pid1" "$aws" "$pat" "S-$gen-abcd" "Z-$short-1a2b3c4d" "S-N2802_${gen}-abcd"; do
-    if [ -n "$GRAMMAR" ] && fullmatch "$t"; then fail "RED grammar admits a secret-shaped token: $t"; else pass "RED grammar refuses a secret-shaped token"; fi
+    n=$((n + 1))
+    if [ -n "$GRAMMAR" ] && fullmatch "$t"; then fail "RED grammar admits secret-shaped token #$n"; else pass "RED grammar refuses a secret-shaped token"; fi
 done
 # the judge-brief qid validator refuses the same label-slot secret
 printf '{"qid": "%s", "ticket": "HIMMEL-3746", "pr": 2599, "head": "0123456789abcdef0123456789abcdef01234567", "question": "Is it?", "reason": "a dispute", "prior": "HIMMEL-3254. Source: qmd.", "tier": {"category": "design", "reason": "a design call"}}\n' "$gen" > "$WORK/spec-secret.json"

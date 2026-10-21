@@ -72,7 +72,7 @@ export CODEX_HOME=""
 HIMMEL_DOCTOR_NOOP_HANDOVER="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-tests-handover.XXXXXX")"
 export HANDOVER_DIR="$HIMMEL_DOCTOR_NOOP_HANDOVER"
 # Never inspect the operator's bank policy in unrelated doctor fixtures.
-export BANK_LIFT_FILE="$HIMMEL_DOCTOR_NOOP_HANDOVER/no-lift.json"
+export USAGE_LIFT_FILE="$HIMMEL_DOCTOR_NOOP_HANDOVER/no-lift.json"; unset BANK_LIFT_FILE
 
 # Hermeticity: C14 reads OLLAMA_NO_CLOUD from the live env — never let an
 # inherited value from the launching shell leak into the default test runs.
@@ -203,6 +203,7 @@ export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
 # Same for C59-codex-bank-cache: never read the operator's real
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
 export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
+export CODEX_USAGE_CACHE="$FAKEROOT/no-such-codex-bank.json"
 
 # Same for C60/C61: never read the operator's real hermes checkout
 # or run the real codex CLI / npm registry; absent seams are an INFO skip,
@@ -1087,6 +1088,36 @@ if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" '9.9.9'; then pass "C13 
 echo "{ \"version\": 2, \"plugins\": { \"himmel-ops@himmel\": [ { \"scope\": \"project\", \"installPath\": \"$t/claude/plugins/cache/himmel/himmel-ops/0.1.0\" } ] } }" > "$t/claude/plugins/installed_plugins.json"
 out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'stale-gone-hook.sh'; then pass "C13 -> WARN (pinned stale version)"; else fail "C13 pinned -> $(printf '%s' "$out" | grep C13)"; fi
+rm -rf "$t"
+
+echo "== C13: stale project pin vs directory-sourced served himmel-ops -> INFO, a missing served hook still WARNs =="
+t="$(mktemp -d -t c13dir.XXXXXX)" || exit 1
+cp="$t/claude/plugins/cache/himmel/himmel-ops"; sv="$t/mkt/plugins/himmel-ops"
+mkdir -p "$cp/0.4.8/hooks" "$cp/0.4.112/hooks" "$sv/.claude-plugin" "$sv/hooks"; write_settings "$t/claude" "$WRAPPER"
+cat > "$cp/0.4.8/hooks/hooks.json" <<'EOF'
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash -c 'h=\"$CLAUDE_PROJECT_DIR/scripts/hooks/block-rogue-codex-wsl.sh\"; [ -f \"$h\" ] && exec bash \"$h\"'" } ] } ] } }
+EOF
+echo '{ "hooks": {} }' > "$cp/0.4.112/hooks/hooks.json"
+echo '{ "hooks": {} }' > "$sv/hooks/hooks.json"
+echo '{ "name": "himmel-ops", "version": "0.4.112" }' > "$sv/.claude-plugin/plugin.json"
+cat > "$t/claude/plugins/known_marketplaces.json" <<EOF
+{ "himmel": { "source": { "source": "directory", "path": "$t/mkt" }, "installLocation": "$t/mkt", "autoUpdate": true } }
+EOF
+cat > "$t/claude/plugins/installed_plugins.json" <<EOF
+{ "version": 2, "plugins": { "himmel-ops@himmel": [
+  { "scope": "user", "projectPath": null, "installPath": "$cp/0.4.112", "version": "0.4.112", "installedAt": "2026-09-04T12:17:57.732Z", "lastUpdated": "2026-10-19T00:08:11.517Z" },
+  { "scope": "project", "projectPath": "$t/proj", "installPath": "$cp/0.4.8", "version": "0.4.8", "installedAt": "2026-09-09T21:32:31.522Z", "lastUpdated": "2026-09-09T21:32:31.522Z", "gitCommitSha": "585394f96703279b0f227a70d37f10ca829bb728" } ] } }
+EOF
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'INFO C13-plugin-hooks' && ! grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" '0.4.8' && grepq "$out" 'claude plugin uninstall himmel-ops@himmel --scope project'; then pass "C13 -> INFO (stale project pin skipped, cleanup command given)"; else fail "C13 stale pin -> $(printf '%s' "$out" | grep -A1 C13)"; fi
+cat > "$sv/hooks/hooks.json" <<'EOF'
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash -c 'h=\"$CLAUDE_PROJECT_DIR/scripts/hooks/served-gone-hook.sh\"; [ -f \"$h\" ] && exec bash \"$h\"'" } ] } ] } }
+EOF
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'served-gone-hook.sh'; then pass "C13 -> WARN (missing hook in the served hooks.json)"; else fail "C13 served missing -> $(printf '%s' "$out" | grep C13)"; fi
+rm "$sv/hooks/hooks.json"
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C13-plugin-hooks' && grepq "$out" 'block-rogue-codex-wsl.sh'; then pass "C13 -> WARN (served plugin has no hooks.json, stale pins are not skipped)"; else fail "C13 served no hooks.json -> $(printf '%s' "$out" | grep C13)"; fi
 rm -rf "$t"
 
 # ── C14: ollama zero-egress defense-in-depth pin (OLLAMA_NO_CLOUD) ────────────
@@ -4120,14 +4151,19 @@ echo "== C34: configured lift reports validation reason =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-lift.XXXXXX")" || exit 1
 c32_fixture_base "$t"
 mkdir -p "$t/scripts/lib" "$t/home/.himmel/state"
-cp "$REPO_ROOT/scripts/lib/bank-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$t/scripts/lib/"
+cp "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$t/scripts/lib/"
+printf '%s' '{broken' > "$t/home/.himmel/state/usage-lift.json"
+chmod 600 "$t/home/.himmel/state/usage-lift.json"
+out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
+if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 explains malformed lift"; else fail "C34 missing invalid lift reason"; fi
+chmod 666 "$t/home/.himmel/state/usage-lift.json"
+out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
+if grepq "$out" -F 'lift set but INVALID: trust'; then pass "C34 explains untrusted lift"; else fail "C34 missing trust reason"; fi
+rm -f "$t/home/.himmel/state/usage-lift.json"
 printf '%s' '{broken' > "$t/home/.himmel/state/bank-lift.json"
 chmod 600 "$t/home/.himmel/state/bank-lift.json"
-out="$(BANK_LIFT_FILE="$t/home/.himmel/state/bank-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
-if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 explains malformed lift"; else fail "C34 missing invalid lift reason"; fi
-chmod 666 "$t/home/.himmel/state/bank-lift.json"
-out="$(BANK_LIFT_FILE="$t/home/.himmel/state/bank-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
-if grepq "$out" -F 'lift set but INVALID: trust'; then pass "C34 explains untrusted lift"; else fail "C34 missing trust reason"; fi
+out="$( (unset USAGE_LIFT_FILE BANK_LIFT_FILE; CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home") )"
+if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 still reads the old bank-lift.json"; else fail "C34 ignored the old bank-lift.json"; fi
 rm -rf "$t"
 
 echo "== C34: everything wired (real copies of the 3 target files) -> all three rows OK =="
@@ -6488,18 +6524,32 @@ c59_run() { CODEX_BANK_CACHE="$c59_t/codex-bank.json" CLAUDE_DIR="$c59_t/home/cl
 
 echo "== C59-codex-bank-cache: cache older than the TTL -> WARN naming the refresh command (RED) =="
 c59_write 172800
-out="$(c59_run)"
+out="$(CODEX_USAGE_CACHE='' c59_run)"
 if grepq "$out" -F 'WARN C59-codex-bank-cache' && grepq "$out" -F 'codex-bank-probe.ts'; then pass "C59 stale -> WARN"; else fail "C59 stale -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: fresh cache -> OK =="
 c59_write 60
-out="$(c59_run)"
+out="$(CODEX_USAGE_CACHE='' c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 fresh -> OK"; else fail "C59 fresh -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: a leading-zero TTL is read as decimal, not octal =="
 c59_write 60
-out="$(CODEX_BANK_CACHE_TTL_SECONDS=0099999 c59_run)"
+out="$(CODEX_USAGE_CACHE='' CODEX_BANK_CACHE_TTL_SECONDS=0099999 c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache' && ! grepq "$out" -F 'value too great'; then pass "C59 TTL 0099999 -> decimal"; else fail "C59 TTL 0099999 -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+
+echo "== C59-codex-bank-cache: CODEX_USAGE_CACHE and its TTL win over the old names =="
+c59_write 172800
+mv "$c59_t/codex-bank.json" "$c59_t/codex-usage.json"
+c59_write 60
+out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" c59_run)"
+if grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 reads CODEX_USAGE_CACHE"; else fail "C59 CODEX_USAGE_CACHE -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS=999999 CODEX_BANK_CACHE_TTL_SECONDS=60 c59_run)"
+if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 reads CODEX_USAGE_CACHE_TTL_SECONDS"; else fail "C59 CODEX_USAGE_CACHE_TTL_SECONDS -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+for c59_new in 0 -5 junk; do
+  out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS="$c59_new" CODEX_BANK_CACHE_TTL_SECONDS=999999 c59_run)"
+  if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 new TTL '$c59_new' falls back to the old TTL"; else fail "C59 new TTL '$c59_new' -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+done
+rm -f "$c59_t/codex-usage.json"
 
 echo "== C59-codex-bank-cache: no cache file -> INFO, not a WARN =="
 rm -f "$c59_t/codex-bank.json"
@@ -6849,5 +6899,115 @@ echo "== C68: konsole not installed -> INFO =="
 out="$(env -u XDG_CONFIG_HOME DOCTOR_KONSOLE=konsole-not-installed CLAUDE_DIR="$c68_t/home/claude" HOME="$c68_t/home" bash "$DOC" --no-color --only C68 2>&1)"
 if grepq "$out" -F 'INFO C68-konsole-dbus'; then pass "C68 no konsole -> INFO"; else fail "C68 no konsole -> $(printf '%s' "$out" | grep -A1 C68)"; fi
 rm -rf "$c68_t"
+
+# --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is present and accepted ---
+# Seams: HIMMEL_DOCTOR_QMD_CURL (the stub answers C69_CODE and ignores the key on stdin), HOME (config + key file).
+echo "== C69: OpenRouter config, key file present and accepted -> OK =="
+c69_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c69.XXXXXX")" || { fail "C69: mktemp -d failed"; exit 1; }
+mkdir -p "$c69_t/home/.config/qmd" "$c69_t/home/.himmel/state"
+printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c69_t/home/.config/qmd/index.yml"
+C69_SENTINEL=sk-test-sentinel-c69
+# the stub answers C69_CODE only when the key arrives as an Authorization header on stdin, else 403
+printf "#!/bin/sh\nin=\"\$(cat)\"\ncase \"\$in\" in *'Authorization: Bearer $C69_SENTINEL\"'*) printf \"%%s\" \"\${C69_CODE:-200}\" ;; *) printf 403 ;; esac\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
+c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 key accepted -> OK"; else fail "C69 key accepted -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key"; else pass "C69 never prints the key"; fi
+
+echo "== C69: provider answers 401 -> FAIL =="
+out="$(c69_run C69_CODE=401)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key rejected -> FAIL"; else fail "C69 key rejected -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: provider unreachable (000) -> INFO, not a credential verdict =="
+out="$(c69_run C69_CODE=000)"
+if grepq "$out" -F 'INFO C69-qmd-cli-key'; then pass "C69 unreachable -> INFO"; else fail "C69 unreachable -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: no key file -> FAIL =="
+rm -f "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 missing key -> FAIL"; else fail "C69 missing key -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: no key file but a session key, as the CLI accepts -> OK =="
+out="$(c69_run C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 session key without a file -> OK"; else fail "C69 session key without a file -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the session key"; else pass "C69 session key never printed"; fi
+
+echo "== C69: a traced doctor run never prints the key =="
+out="$(c69_run_x C69_CODE=200 QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 traced, session key -> OK"; else fail "C69 traced, session key -> $(printf '%s' "$out" | grep -F C69 | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the session key"; else pass "C69 trace never prints the session key"; fi
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run_x C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 traced, file key -> OK"; else fail "C69 traced, file key -> $(printf '%s' "$out" | grep -F C69 | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the file key"; else pass "C69 trace never prints the file key"; fi
+
+echo "== C69: provider answers 403 -> FAIL =="
+out="$(c69_run C69_CODE=403)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key forbidden -> FAIL"; else fail "C69 key forbidden -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: OpenRouter named only by QMD_OPENAI_BASE_URL, no key anywhere -> FAIL =="
+printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"
+rm -f "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200 QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 env base URL -> FAIL"; else fail "C69 env base URL -> $(printf '%s' "$out" | head -3)"; fi
+printf 'models:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' > "$c69_t/home/.config/qmd/index.yml"
+
+echo "== C69: key file readable by others -> FAIL =="
+printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 644 "$c69_t/home/.himmel/state/qmd-daemon.env"
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 group-readable key file -> FAIL"; else fail "C69 group-readable key file -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key (refused file)"; else pass "C69 refused file never prints the key"; fi
+
+echo "== C69: local-model config -> silent =="
+printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"
+out="$(c69_run C69_CODE=401)"
+if grepq "$out" -F 'C69-qmd-cli-key'; then fail "C69 local config should be silent -> $(printf '%s' "$out" | head -3)"; else pass "C69 local config -> silent"; fi
+rm -rf "$c69_t"
+
+echo "== C70: graphify semantic freshness =="
+c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
+c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
+mkdir -p "$c70_out" "$c70_corpus"
+printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
+printf '{"nodes":[],"edges":[]}\n' > "$c70_out/graph.json"
+printf '# real\n' > "$c70_corpus/real.md"
+printf '%s\n' "$c70_corpus" > "$c70_out/.graphify_root"
+# c70_rows <failed files>...: one merge row per argument, each a comma list
+c70_rows() { python3 - "$c70_out/semantic-runs.jsonl" "$@" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as f:
+    for i, spec in enumerate(sys.argv[2:]):
+        failed = [s for s in spec.split(",") if s]
+        f.write(json.dumps({"ts": "2026-10-19T0%d:00:00Z" % i, "name": "t", "batch": 3, "failed": len(failed), "shrink_refused": 0,
+                            "failed_files": failed, "refused_files": [], "backed_off_files": []}) + "\n")
+PY
+}
+c70_run() { env HOME="$c70_t/home" CLAUDE_DIR="$c70_t/home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= "$@" bash "$DOC" --no-color --only C70 2>&1; }
+
+c70_rows "x.md" "x.md" "x.md"
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic'; then pass "C70 a file stuck across 3 runs -> WARN"; else fail "C70 stuck -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=1 refused=0'; then pass "C70 prints the semantic line verbatim"; else fail "C70 stuck line -> $(printf '%s' "$out" | head -3)"; fi
+
+c70_rows "x.md" "y.md" ""
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'graph-freshness: semantic last=2026-10-19T02:00:00Z failed=0'; then pass "C70 draining failures -> OK with the line"; else fail "C70 draining -> $(printf '%s' "$out" | head -3)"; fi
+
+rm -f "$c70_out/semantic-runs.jsonl"
+out="$(c70_run)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no semantic-runs.jsonl'; then pass "C70 no semantic-runs.jsonl -> OK skip"; else fail "C70 no runs -> $(printf '%s' "$out" | head -3)"; fi
+
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_OUT="$c70_t/no-such-out")"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'no cadence graphify-out'; then pass "C70 no cadence corpus -> OK skip"; else fail "C70 no corpus -> $(printf '%s' "$out" | head -3)"; fi
+c70_rows "x.md" "x.md" "x.md"
+printf '#!/bin/sh\nexit 127\n' > "$c70_t/missing-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/missing-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 127'; then pass "C70 checker exits 127 -> INFO, not a healthy OK"; else fail "C70 rc 127 -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\necho "graph-freshness: FAIL corpus orphaned: gone" >&2\nexit 2\n' > "$c70_t/orphan-check.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/orphan-check.sh")"
+if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'corpus orphaned'; then pass "C70 other rc 2 -> INFO with the reason"; else fail "C70 rc 2 -> $(printf '%s' "$out" | head -3)"; fi
+rm -rf "$c70_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

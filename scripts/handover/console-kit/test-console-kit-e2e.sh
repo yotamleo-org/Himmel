@@ -68,6 +68,8 @@ printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' 
 export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_BANK_CACHE="$W/bank.json" CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_LEDGER=/dev/null
 export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
+# no wt-orphans probe: the real worktree.sh would read this checkout's fleet
+export TICK_WORKTREE_ORPHANS_PROBE="$W/no-wt-orphans-probe"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/routes.jsonl" SUITE_FLAKE_LEDGER="$W/flake.jsonl" SUITE_FLAKE_REPO_ID=ck-e2e
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export LEG_DIGEST_STATE_DIR="$W/digest" LEG_DIGEST_SETTLE_MAX=0 LEG_DIGEST_SETTLE_QUIET=0

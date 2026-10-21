@@ -158,6 +158,11 @@ if [ "${CWL_CLEAN_MODE:-ok}" = "gutted" ]; then
     echo "ERR clean-garden: --only ... was not cleanly pruned -- not a prune candidate, or the removal was partial (reason above; removal FAILED PARTWAY -- the tree may be GUTTED)"
     exit 1
 fi
+if [ "${CWL_CLEAN_MODE:-ok}" = "unregistered" ]; then
+    echo "clean-garden: prune summary — 0 pruned, 0 partial, 0 skipped, 0 failed"
+    echo "ERR clean-garden: --only $2 is not a registered worktree (match by path or branch; see git worktree list)"
+    exit 1
+fi
 if [ "${CWL_CLEAN_MODE:-ok}" = "fail" ]; then
     echo "clean.sh: something else broke"
     exit 1
@@ -382,6 +387,22 @@ mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
 rc=0; out=$(CWL_CLEAN_MODE="gutted" run "$DOC" 2>&1) || rc=$?
 check "gutted: rc 1 (fatal -- a failed/gutted removal is not a benign skip)" "$rc" "1"
+
+# --- 9d. control: unregistered but the directory still exists is a real error
+# (a stray dir the prune cannot vouch for) --------------------------------------
+mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
+reset_calls
+rc=0; out=$(CWL_CLEAN_MODE="unregistered" run "$DOC" 2>&1) || rc=$?
+check "unregistered-but-present: rc 1" "$rc" "1"
+
+# --- 9e. the worktree is already gone (unregistered AND absent on disk): the
+# prune has nothing left to do, so the close succeeds ---------------------------
+rmdir "$WT/.claude/worktrees/demo"
+reset_calls
+rc=0; out=$(CWL_CLEAN_MODE="unregistered" run "$DOC" 2>&1) || rc=$?
+check "already-gone: rc 0 (nothing left to prune)" "$rc" "0"
+contains "already-gone: says so" "$out" "already gone"
+mkdir -p "$WT/.claude/worktrees/demo"
 
 # --- 10. clean success path ----------------------------------------------------
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"

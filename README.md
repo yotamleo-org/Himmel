@@ -35,7 +35,7 @@ Claude remembering a paragraph of instructions.
 - **Work carries over between sessions.** Each session leaves a plain
   markdown handover doc behind. A fresh session reads it and resumes where the
   last one stopped, with the decisions and the reasons for them intact.
-- **Work runs while you sleep.** `/overnight-shift` hands scoped tickets to
+- **Work runs while you sleep.** `/afk-shift` hands scoped tickets to
   parallel agents that branch, review themselves and open PRs. When a session
   nears its usage cap, a usage-cap auto-relaunch schedules a relaunch with the operating
   system's scheduler, so a long run survives the cap.
@@ -118,7 +118,7 @@ gh pr create              # then merge once CI is green and the PR is approved
 Going unattended:
 
 ```bash
-/overnight-shift --limit 5   # five scoped tickets to parallel agents, each ending in a PR
+/afk-shift --limit 5   # five scoped tickets to parallel agents, each ending in a PR
 /stop                        # ask an overnight run to halt gracefully
 ```
 
@@ -142,7 +142,7 @@ There are two ways in:
    [`docs/getting-started.md`](docs/getting-started.md), a 15-minute
    walkthrough. The eight-level [adoption trail](docs/adoption-trail.html)
    (also at
-   [yotamleo.github.io/Himmel/adoption-trail.html](https://yotamleo.github.io/Himmel/adoption-trail.html))
+   [yotamleo-org.github.io/Himmel/adoption-trail.html](https://yotamleo-org.github.io/Himmel/adoption-trail.html))
    shows what each stage of adoption changes.
 2. **Run or develop himmel itself.** The contributor path, with more
    prerequisites. The rest of this section covers it.
@@ -159,9 +159,9 @@ Telegram bridge and the vault triage tools. Per-platform install steps are in
 `npm install`):
 
 ```bash
-V=X.Y.Z   # a release that ships the tarball: https://github.com/yotamleo/Himmel/releases
-curl -fsSLO "https://github.com/yotamleo/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz"
-curl -fsSLO "https://github.com/yotamleo/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz.sha256"
+V=X.Y.Z   # a release that ships the tarball: https://github.com/yotamleo-org/Himmel/releases
+curl -fsSLO "https://github.com/yotamleo-org/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz"
+curl -fsSLO "https://github.com/yotamleo-org/Himmel/releases/download/v$V/himmel-$V-linux.tar.gz.sha256"
 sha256sum -c "himmel-$V-linux.tar.gz.sha256" \
   && mkdir -p ~/.local/share/himmel/"$V" \
   && tar -xzf "himmel-$V-linux.tar.gz" -C ~/.local/share/himmel/"$V" --strip-components=1 \
@@ -191,7 +191,7 @@ this layout: move it aside and install once with the recipe above.
 **Linux or macOS, from a clone:**
 
 ```bash
-git clone https://github.com/yotamleo/Himmel himmel
+git clone https://github.com/yotamleo-org/Himmel himmel
 cd himmel
 node scripts/himmelctl/bin.js install
 ```
@@ -234,8 +234,8 @@ are welcome, but nothing about Windows is claimed as working.
 
 | Tier | Platforms | What it promises |
 |---|---|---|
-| **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). The adopter round trip is verified. |
-| **Supported** | macOS | Checked on a scheduled run twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). A macOS-only failure is fixed as its own change ([`docs/internals/testing.md`](docs/internals/testing.md)). |
+| **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). The adopter round trip is verified. |
+| **Supported** | macOS | Checked on a scheduled run twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). A macOS-only failure is fixed as its own change ([`docs/internals/testing.md`](docs/internals/testing.md)). |
 | **Not supported** | Windows (Git Bash), WSL | Code paths exist but are unverified: no CI gate, no guarantee. |
 
 **Install channels:**
@@ -341,8 +341,8 @@ Every feature has one doc that owns its detail; the full map is
 - Collision preflight before starting a session: `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
   warns (exit 20) when a file you intend to touch is already changed in another
   live session's checkout; read-only, `queue-lock.sh` header lists the contract
-- AFK (unattended) mode runs (`/overnight-shift`, `/stop` to halt):
-  [`docs/handover/overnight-mode.md`](docs/handover/overnight-mode.md)
+- AFK (unattended) mode runs (`/afk-shift`, `/stop` to halt):
+  [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md)
 
 **Lifecycle and delegation**
 - `himmelctl` install, update and uninstall:
@@ -395,7 +395,7 @@ build on itself across sessions without re-explaining the context each time.
   [`docs/setup/new-machine.md`](docs/setup/new-machine.md) (required
   environment and per-platform notes).
 - **Adopting himmel in your own repo:** `git clone
-  https://github.com/yotamleo/Himmel himmel`, then
+  https://github.com/yotamleo-org/Himmel himmel`, then
   `node himmel/scripts/himmelctl/bin.js install --scope project` (or
   `--scope user`). Leave out `--scope` to walk the wizard. What each scope and
   install profile brings, and the checklist for a repo that is not himmel:

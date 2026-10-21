@@ -170,7 +170,7 @@ printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\nlast GO: none\nacked: n
 bash "$FM" add "${e2e%.md}.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$e2e" --nonce N61=n13 --pid N61=13 >/dev/null 2>&1
 mkdir -p "$tmp/tickstate"
-tick_out="$(TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$e2e" --token test-token --legs "$d1" 2>/dev/null)"
+tick_out="$(TICK_WORKTREE_ORPHANS_PROBE="$tmp/no-wt-orphans-probe" TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$e2e" --token test-token --legs "$d1" 2>/dev/null)"
 case "$tick_out" in *'livestate=ok'*) r=ok ;; *) r="[$tick_out]" ;; esac
 check '13. tick.sh reads the rendered Live state as livestate=ok' ok "$r"
 

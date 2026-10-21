@@ -29,6 +29,8 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 INVOKE="$SCRIPT_DIR/../hermes/invoke.sh"
 # first_signal_line (see _cfp_emit_raw_diag). Sourcing only defines
 # functions. Fail-open on a missing file, like critic-panel.sh's own source of
@@ -536,7 +538,7 @@ _cfp_claude_unwrap() {
 
 _cfp_claude_invoke() {
     _cc_effort="$(_cfp_claude_effort)"
-    _cc_dir="$(mktemp -d "${TMPDIR:-/tmp}/cfp-claude.XXXXXX")" || { echo "critic-first-pass.sh: mktemp -d failed" >&2; return 1; }
+    _cc_dir="$(tmpdir)" || { echo "critic-first-pass.sh: mktemp failed" >&2; return 1; }
     _cc_out=""
     _cc_rc=0
     case "$provider" in
@@ -545,7 +547,10 @@ _cfp_claude_invoke() {
             _cc_budget="${CR_CLAUDE_CRITIC_MAX_USD:-1.00}"
             case "$_cc_budget" in ''|*[!0-9.]*) _cc_budget="1.00" ;; esac
             _cc_err="$_cc_dir/stderr"
+            _cc_branch="$(git branch --show-current 2>/dev/null || true)"  # swallow-ok: an empty branch is recorded as empty
+            _cc_head="$(git rev-parse HEAD 2>/dev/null || true)"  # swallow-ok: an empty head is recorded as empty
             _cc_out="$(cd "$_cc_dir" && HIMMEL_API_TOOLS=Read,Glob,Grep HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+                HIMMEL_API_BRANCH="${CR_TARGET_BRANCH:-$_cc_branch}" HIMMEL_API_HEAD="${CR_TARGET_HEAD:-$_cc_head}" HIMMEL_API_PR="${CR_TARGET_PR:-}" \
                 bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
                 -p "Read ./review-prompt.md and follow it exactly. Reply with the review only." \
                 --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
@@ -558,7 +563,7 @@ _cfp_claude_invoke() {
             cat "$_cc_err" >&2
             ;;
         claude-subscription)
-            _cc_bank="$(CADENCE_BANK_LEG=claude-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
+            _cc_bank="$(CADENCE_USAGE_LEG=claude-critic bash "$SCRIPT_DIR/../lib/bank-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
             case "$_cc_bank" in
                 PROCEED*) ;;
                 *) echo "critic-first-pass.sh: claude critic SKIPPED (${_cc_bank:-no bank verdict}) — clean no-op" >&2
@@ -575,6 +580,7 @@ _cfp_claude_invoke() {
                     --allowedTools Read,Glob,Grep --model "$model" --effort "$_cc_effort" < "$pf")" || _cc_rc=$?
             else
                 echo "critic-first-pass.sh: claude critic SKIPPED (native auth pin could not clear ANTHROPIC_*/CLAUDE_CODE_USE_*) — clean no-op" >&2
+                rm -rf "$_cc_dir"
                 return 5
             fi
             ;;

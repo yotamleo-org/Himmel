@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """scripts/eval/retrieval-eval/retrieval-eval.py - retrieval eval + usage census (HIMMEL-6143).
 
-Asks the same questions of five retrieval arms and scores each against a gold
+Asks the same questions of seven retrieval arms and scores each against a gold
 file set, then counts how sessions really use qmd and graphify.
 
   run     --questions Q --out DIR [--repo R] [--arms A,B] [--k 5] [--timeout 60]
@@ -12,17 +12,40 @@ file set, then counts how sessions really use qmd and graphify.
 Arms (all read-only):
   grep        git grep over the repo's tracked files for the question's words,
               files ranked by distinct words matched; shows <=8 lines per file
+  path        the tracked file paths, ranked by distinct question words in the path
+              (a filename-only baseline)
+  ident-grep  git grep -w for the question's identifier-shaped tokens (snake_case,
+              kebab-case, camelCase, file.ext); files holding a definition line
+              rank first
   qmd-lex     qmd BM25 (lex search), rerank off
-  qmd-hybrid  qmd lex + vec with qmd's default rerank: the shape agents send
+  qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
-              --arms, not in the default five and not fused into combined
+              --arms, not in the default seven and not fused into combined
   graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
-  combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify; its
-              tokens and time are the sum of the three
-Metrics per arm: recall@5 (a gold file is among the first k distinct files),
-reason_carried (every reason phrase appears in the arm's output; only questions
-with a reason count), tokens (output chars / 4: what the caller has to read),
-ms (wall time). A question row is {id, kind, q, gold: [paths], reason: [phrases]}.
+  combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
+              path and ident-grep baselines); its tokens and time are the sum
+              of the three
+Metrics per arm: hit@5 (a gold file is among the first k distinct files),
+hit_any@5 (a gold or gold1 file is), precision@5 (graded files among the first
+k, over k: a short list is penalised), mrr (mean reciprocal rank of the first
+gold file in the first k, 0 for a miss), gold_share (gold files over files
+returned, pooled over the questions: off-target noise shows as a low share),
+ndcg@5 (graded: gold = 2, gold1 = 1, each file counted once, the ideal list
+holds every graded file), reason_carried (every reason phrase appears in the
+arm's output; only questions with a reason count), tokens (output chars / 4:
+what the caller has to read), tokens_per_hit (tokens over hits, pooled; "-" for
+an arm with no hit), ms (wall time).
+
+A question row is {id, kind, q, gold: [paths], reason: [phrases]} plus the
+optional gold1: [paths] (plausible docs, grade 1; gold files are grade 2: the
+file defines or decides the answer) and split: "insample" (the default) or
+"heldout". A held-out question is frozen: it is never used to tune an arm, a
+query or a seed, and nothing outside this directory may quote it. Every run
+reports the two slices separately: scores-by-slice.tsv, the printed slice table
+and, per arm, <arm>.insample.* and <arm>.heldout.* ledger metrics (n, hit@k,
+hit_any@k, ndcg@k, reason_carried; null where the slice has no question to
+score). The unsliced columns pool both slices: read them only as a continuity
+series.
 
 qmd is reached the way agents reach it: the MCP server (QMD_URL, default
 http://localhost:8181/mcp, bearer token from the qmd plugin's helper). The
@@ -40,7 +63,9 @@ import argparse
 import datetime
 import functools
 import glob
+import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -55,11 +80,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
 
-ARMS = ["grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
+SPLITS = ("insample", "heldout")
+ARMS = ["grep", "path", "ident-grep", "qmd-lex", "qmd-hybrid", "graphify", "combined"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
-# The question set holds every question and reason phrase verbatim.
-GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/"]
+# The question set holds every question and reason phrase verbatim; vendored
+# plugin bundles and minified files fill a top 5 with one-line noise.
+GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/", ":(exclude,glob)templates/**/.obsidian/plugins/**",
+              ":(exclude)*.min.js", ":(exclude)*.min.css"]
 STOP = set("""a an and are as at be by can do does for from has have how i in is it its
 of on or that the this to was what when where which who whom why will with without
 while into than then them there their not no my me we our you your does do did
@@ -109,10 +137,11 @@ def arm_grep(q, repo, timeout, k):
     score = {}
     t0 = time.time()
     for w in kws:
-        if time.time() - t0 > timeout:
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
             return [], "", True, False
         out, to, rc = run_cmd(["git", "-C", repo, "grep", "-I", "-i", "-c", "-F", "-e", w, "--"] + GREP_SCOPE,
-                              max(1, timeout - (time.time() - t0)))
+                              remaining)
         if to:
             return [], "", True, False
         if rc not in (0, 1):
@@ -127,10 +156,84 @@ def arm_grep(q, repo, timeout, k):
         argv = ["git", "-C", repo, "grep", "-n", "-I", "-i", "-F"]
         for w in kws:
             argv += ["-e", w]
-        out, t, rc = run_cmd(argv + ["--", f], max(1, timeout - (time.time() - t0)))
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
+            return files, "\n".join(text), True, err
+        out, t, rc = run_cmd(argv + ["--", f], remaining)
         to, err = to or t, err or (not t and rc not in (0, 1))
         text += out.splitlines()[:8]
     return files, "\n".join(text), to, err
+
+
+def arm_path(q, repo, timeout, k):
+    kws = []
+    for w in words(q):  # leg_tail_status names leg-tail-status.sh: match its parts
+        for p in re.split(r"[_.\-]", w):
+            if len(p) >= 3 and p not in STOP and p not in kws:
+                kws.append(p)
+    out, to, rc = run_cmd(["git", "-C", repo, "ls-files", "--"] + GREP_SCOPE, timeout)
+    if to:
+        return [], "", True, False
+    if rc != 0:
+        return [], "", False, True
+    score = {}
+    for f in out.splitlines():
+        low = f.lower()
+        base = low.rsplit("/", 1)[-1]
+        hit = [w for w in kws if w in low]
+        if hit:
+            score[f] = (len(hit), sum(w in base for w in hit), -len(f))
+    files = sorted(score, key=lambda f: (score[f], f), reverse=True)[:k]
+    return files, "\n".join(files), False, False
+
+
+IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:[-.][A-Za-z0-9_]+)*")
+
+
+def idents(q):
+    """Identifier-shaped tokens of a question: snake_case, kebab-case, camelCase or file.ext."""
+    out = []
+    for w in IDENT.findall(q):
+        if len(w) >= 3 and w.lower() not in STOP and w not in out and (
+                re.search(r"[_.\-]", w) or re.search(r"[a-z][A-Z]", w)):
+            out.append(w)
+    return out
+
+
+def definition(ident):
+    """A line that defines ident: a function, class or variable, in shell, python or js."""
+    i = re.escape(ident)
+    return re.compile(r"^\s*(?:(?:export\s+)?(?:async\s+)?(?:def|class|function|const|let|var|func|fn)\s+%s\b"
+                      r"|%s\s*\(\s*\)\s*\{|(?:export\s+)?%s\s*(?::[^=]+)?=(?!=))" % (i, i, i))
+
+
+def arm_ident_grep(q, repo, timeout, k):
+    t0 = time.time()
+    score, lines = {}, {}
+    for ident in idents(q):
+        remaining = timeout - (time.time() - t0)
+        if remaining <= 0:
+            return [], "", True, False
+        out, to, rc = run_cmd(["git", "-C", repo, "grep", "-n", "-I", "-w", "-F", "-e", ident, "--"] + GREP_SCOPE,
+                              remaining)
+        if to:
+            return [], "", True, False
+        if rc not in (0, 1):
+            return [], "", False, True
+        dre = definition(ident)
+        seen = set()
+        for line in out.splitlines():
+            f, _, rest = line.partition(":")
+            body = rest.partition(":")[2]
+            d, n, c = score.get(f, (0, 0, 0))
+            if f not in seen:
+                seen.add(f)
+                n += 1
+            score[f] = (d or int(bool(dre.search(body))), n, c + 1)
+            lines.setdefault(f, []).append(line)
+    files = sorted(score, key=lambda f: (-score[f][0], -score[f][1], -score[f][2], f))[:k]
+    text = [ln for f in files for ln in lines[f][:8]]
+    return files, "\n".join(text), False, False
 
 
 @functools.lru_cache(maxsize=None)
@@ -207,8 +310,7 @@ def mcp_rows(msg):
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
     args = {"searches": [{"type": "lex", "query": q}] + ([{"type": "vec", "query": q}] if hybrid else []),
             "collections": [collection], "limit": k, "intent": q}
-    if not hybrid or not rerank:
-        args["rerank"] = False
+    args["rerank"] = hybrid and rerank
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
         out, to, rc = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))
@@ -228,7 +330,7 @@ def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
             return [], "", to, not to
     files, text = [], []
     for r in rows:
-        f = re.sub(r"^qmd://[^/]+/", "", str(r.get("file", "")))
+        f = re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))
         if f and f not in files:
             files.append(f)
         text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
@@ -247,17 +349,91 @@ def arm_graphify(q, repo, timeout, k):
 
 
 def fuse(lists, k):
-    s = {}
+    """Reciprocal-rank fusion; qmd lowercases its paths, so the key is the lowercased path."""
+    s, name = {}, {}
     for lst in lists:
         for i, f in enumerate(lst):
-            s[f] = s.get(f, 0.0) + 1.0 / (60 + i + 1)
-    return sorted(s, key=lambda f: (-s[f], f))[:k]
+            key = f.lower()
+            name.setdefault(key, f)
+            s[key] = s.get(key, 0.0) + 1.0 / (60 + i + 1)
+    return [name[x] for x in sorted(s, key=lambda x: (-s[x], x))[:k]]
 
 
 def is_hit(files, gold):
     """qmd lowercases its paths, so compare case-insensitively."""
     fl, gl = [f.lower() for f in files], [g.lower() for g in gold]
     return any(f == g or f.endswith("/" + g) for f in fl for g in gl)
+
+
+def is_hit_any(files, q):
+    return is_hit(files, q["gold"] + q.get("gold1", []))
+
+
+def ndcg(files, q, k):
+    """nDCG@k with gain 2 for a gold file and 1 for a gold1 file; a graded file is counted once."""
+    graded = {g.lower(): 1 for g in q.get("gold1", [])}
+    graded.update({g.lower(): 2 for g in q["gold"]})
+    left = list(graded.items())
+    ideal = sum(g / math.log2(i + 2) for i, g in enumerate(sorted((g for _, g in left), reverse=True)[:k]))
+    dcg = 0.0
+    for i, f in enumerate(files[:k]):
+        fl = f.lower()
+        m = [e for e in left if fl == e[0] or fl.endswith("/" + e[0])]
+        if m:
+            e = max(m, key=lambda e: e[1])
+            left.remove(e)
+            dcg += e[1] / math.log2(i + 2)
+    return dcg / ideal if ideal else 0.0
+
+
+def _named(f, names):
+    fl = f.lower()
+    return any(fl == n.lower() or fl.endswith("/" + n.lower()) for n in names)
+
+
+def _top(files, k):
+    out, seen = [], set()
+    for f in files:
+        if f.lower() not in seen:
+            seen.add(f.lower())
+            out.append(f)
+    return out[:k]
+
+
+def _count(files, names, k):
+    """Files among the first k distinct ones that name a path in names, each path used once."""
+    left = [n.lower() for n in names]
+    c = 0
+    for f in _top(files, k):
+        fl = f.lower()
+        m = next((n for n in left if fl == n or fl.endswith("/" + n)), None)
+        if m:
+            left.remove(m)
+            c += 1
+    return c
+
+
+def precision(files, q, k):
+    """Graded (gold or gold1) files among the first k distinct files, over k; each graded path counts once."""
+    return _count(files, q["gold"] + q.get("gold1", []), k) / k
+
+
+def reciprocal_rank(files, q, k):
+    for i, f in enumerate(_top(files, k)):
+        if _named(f, q["gold"]):
+            return 1.0 / (i + 1)
+    return 0.0
+
+
+def gold_found(files, q, k):
+    """(gold files, files returned) among the first k distinct files."""
+    top = _top(files, k)
+    return _count(files, q["gold"], k), len(top)
+
+
+def gold_share(files, q, k):
+    g, n = gold_found(files, q, k)
+    return g / n if n else None
 
 
 def carried(text, reason):
@@ -292,6 +468,13 @@ def cmd_check(a):
         if r.get("id") in seen:
             bad.append("%s: duplicate id" % r.get("id"))
         seen.add(r.get("id"))
+        if r.get("split", "insample") not in SPLITS:
+            bad.append("%s: split '%s' is not one of %s" % (r.get("id"), r.get("split"), "/".join(SPLITS)))
+        for g in r.get("gold1", []):
+            if not os.path.isfile(os.path.join(a.repo, g)):
+                bad.append("%s: gold1 file %s does not exist" % (r.get("id"), g))
+            if g in r.get("gold", []):
+                bad.append("%s: %s is graded both 2 and 1" % (r.get("id"), g))
         texts = []
         for g in r.get("gold", []):
             p = os.path.join(a.repo, g)
@@ -315,6 +498,9 @@ def cmd_run(a):
         if x not in ARMS + OPT_IN:
             raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS + OPT_IN)))
     qs = load_questions(a.questions)
+    for q in qs:
+        if q.get("split", "insample") not in SPLITS:
+            raise Usage("question %s has split '%s' (known: %s)" % (q.get("id"), q.get("split"), ",".join(SPLITS)))
     repo = os.path.abspath(a.repo)
     os.makedirs(a.out, exist_ok=True)
     need = list(arms)
@@ -334,6 +520,10 @@ def cmd_run(a):
                 t0 = time.time()
                 if arm == "grep":
                     files, text, to, err = arm_grep(q["q"], repo, a.timeout, a.k)
+                elif arm == "path":
+                    files, text, to, err = arm_path(q["q"], repo, a.timeout, a.k)
+                elif arm == "ident-grep":
+                    files, text, to, err = arm_ident_grep(q["q"], repo, a.timeout, a.k)
                 elif arm == "graphify":
                     files, text, to, err = arm_graphify(q["q"], repo, a.timeout, a.k)
                 else:
@@ -343,8 +533,12 @@ def cmd_run(a):
                                 error=bool(err))
         for arm in arms:
             g = got[arm]
-            row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), arm=arm, files=g["files"],
-                       hit=is_hit(g["files"], q["gold"]), reason=carried(g["_text"], q.get("reason", [])),
+            row = dict(id=q["id"], kind=q.get("kind"), src=q.get("src"), split=q.get("split", "insample"),
+                       arm=arm, files=g["files"], hit=is_hit(g["files"], q["gold"]),
+                       hit_any=is_hit_any(g["files"], q), ndcg=ndcg(g["files"], q, a.k),
+                       precision=precision(g["files"], q, a.k), rr=reciprocal_rank(g["files"], q, a.k),
+                       gold_n=gold_found(g["files"], q, a.k)[0], ret_n=gold_found(g["files"], q, a.k)[1],
+                       reason=carried(g["_text"], q.get("reason", [])),
                        tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"])
             rows.append(row)
         print("%s %s" % (q["id"], " ".join("%s=%s" % (r["arm"], int(r["hit"])) for r in rows[-len(arms):])),
@@ -352,10 +546,14 @@ def cmd_run(a):
     with open(os.path.join(a.out, "results.jsonl"), "w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")
-    rk = "recall@%d" % a.k
-    cols = ["arm", "n", rk,"reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts",
-            "errors"]
+    rk = "hit@%d" % a.k
+    pk = "precision@%d" % a.k
+    cols = ["arm", "n", rk, pk, "mrr", "gold_share", "reason_carried", "reason_n", "tokens_mean", "tokens_per_hit",
+            "ms_median", "ms_total", "timeouts", "errors"]
     lines = ["\t".join(cols)]
+    slice_cols = ["arm", "slice", "n", rk, "hit_any@%d" % a.k, "ndcg@%d" % a.k, "reason_carried", "reason_n"]
+    slice_lines = ["\t".join(slice_cols)]
+    mean = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
     metrics, cases = {}, {}
     for arm in arms:
         rs = [r for r in rows if r["arm"] == arm]
@@ -363,23 +561,47 @@ def cmd_run(a):
         rec = sum(r["hit"] for r in rs) / len(rs) if rs else 0.0
         rea = sum(r["reason"] for r in rr) / len(rr) if rr else 0.0
         tk = statistics.mean(r["tokens"] for r in rs) if rs else 0
+        prec = mean([r["precision"] for r in rs])
+        mrr = mean([r["rr"] for r in rs])
+        gs = sum(r["gold_n"] for r in rs) / sum(r["ret_n"] for r in rs) if sum(r["ret_n"] for r in rs) else None
+        tph = sum(r["tokens"] for r in rs) / sum(r["hit"] for r in rs) if sum(r["hit"] for r in rs) else None
+        dash = lambda v, f="%.2f": "-" if v is None else f % v  # noqa: E731
         msm = statistics.median(r["ms"] for r in rs) if rs else 0
         mst = sum(r["ms"] for r in rs)
         to = sum(r["timeout"] for r in rs)
         er = sum(r["error"] for r in rs)
-        lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, "%.2f" % rea, str(len(rr)),
-                                "%d" % tk, "%d" % msm, "%d" % mst, str(to), str(er)]))
-        metrics.update({arm + "." + rk: rec, arm + ".reason_carried": rea, arm + ".tokens_mean": tk,
+        lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, dash(prec), dash(mrr), dash(gs), "%.2f" % rea,
+                                str(len(rr)), "%d" % tk, dash(tph, "%.1f"), "%d" % msm, "%d" % mst, str(to), str(er)]))
+        metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
+                        arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
+        for sl in SPLITS:
+            sr = [r for r in rs if r["split"] == sl]
+            srr = [r for r in sr if r["reason"] is not None]
+            vals = [mean([r["hit"] for r in sr]), mean([r["hit_any"] for r in sr]),
+                    mean([r["ndcg"] for r in sr]), mean([r["reason"] for r in srr])]
+            slice_lines.append("\t".join([arm, sl, str(len(sr))] + ["-" if v is None else "%.2f" % v for v in vals]
+                                         + [str(len(srr))]))
+            pre = "%s.%s." % (arm, sl)
+            metrics.update({pre + "n": len(sr), pre + rk: vals[0], pre + "hit_any@%d" % a.k: vals[1],
+                            pre + "ndcg@%d" % a.k: vals[2], pre + "reason_carried": vals[3]})
         for r in rs:
             cases.setdefault(r["id"], {})[arm + ".hit"] = r["hit"]
+            cases[r["id"]]["heldout"] = r["split"] == "heldout"
     with open(os.path.join(a.out, "scores.tsv"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
+    with open(os.path.join(a.out, "scores-by-slice.tsv"), "w") as fh:
+        fh.write("\n".join(slice_lines) + "\n")
     print("\n".join(lines))
+    print()
+    print("\n".join(slice_lines))
     with open(a.questions, "rb") as fh:
-        qhash = __import__("hashlib").sha256(fh.read()).hexdigest()[:16]
+        qhash = hashlib.sha256(fh.read()).hexdigest()[:16]
     config = dict(arms=arms, k=a.k, timeout=a.timeout, collection=a.collection, questions=qhash)
-    meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=graph_built(repo))
+    held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
+    meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=graph_built(repo),
+                n_heldout=len(held),
+                heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,
                              n=len(qs), cases=cases, artifact=os.path.abspath(a.out), meta=meta, repo=repo)
     eval_runs.append_safe(row, who="retrieval-eval")
@@ -402,8 +624,9 @@ def graph_built(repo):
 SWEEP = re.compile(r"(?:^|[;&|(\n]\s*)(?:git\s+grep\b|grep\s+-\w*[rR]|rg\s|find\s)")
 QMD_BASH = re.compile(r"(?:qmd-bounded\.sh|(?:^|[;&|(\n]\s*)qmd)\s+(?:query|search|vsearch)\b")
 GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|leg-graph\.sh)\s+(?:query|explain)\b")
-FAILED = re.compile(r"timed out|hook error|denied|refused|not found|no results|error:|\bERR\b", re.I)
-PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
+PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s\]]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
+RESOURCE = re.compile(r"\[Resource from [^\]]*?qmd://[^/\s\]]+/([^\s\]]+)\]")
+QMD_TOOL =re.compile(r"^mcp__(?:plugin_qmd_)?qmd__(?:query|get|multi_get)$")
 FEATURE = re.compile(r"qmd|graphify|retrieval|graph-|semantic", re.I)
 
 
@@ -457,7 +680,7 @@ def session_calls(path):
 
 def kind_of(cl):
     n, inp = cl["name"], cl["input"]
-    if n.startswith("mcp__qmd__query"):
+    if QMD_TOOL.match(n):
         return "qmd"
     if n in ("Grep", "Glob"):
         return "sweep"
@@ -474,18 +697,38 @@ def kind_of(cl):
 
 def failed(cl):
     r = cl["result"].strip()
-    return cl["error"] or not r or r in ("[]", "{}") or bool(FAILED.search(r[:400]))
+    if cl["error"] or not r:
+        return True
+    try:
+        d = json.loads(r)
+    except ValueError:
+        return False
+    return d in ([], {}) or (isinstance(d, dict) and d.get("results") == [])
+
+
+def result_paths(cl):
+    """Paths a retrieval call surfaced; a qmd path also counts without its leading collection name."""
+    qmd = cl["name"].startswith("mcp__")
+    if qmd and not cl["name"].endswith("__query"):
+        # get/multi_get echo the document body, which names unrelated paths: the input and the
+        # per-document "[Resource from ...]" headers (a glob pattern expands there) name the documents.
+        inp = cl["input"]
+        found = [x.strip() for x in str(inp.get("file") or inp.get("pattern") or "").split(",")]
+        found += RESOURCE.findall(cl["result"])
+    else:
+        found = [next(g for g in m.groups() if g) for m in PATHS.finditer(cl["result"])]
+    paths = set(found)
+    if qmd:
+        paths |= {p.partition("/")[2] for p in found}
+    # ponytail: a path with no directory is dropped, so a root-level file never counts as used; keep it if a sample shows root files missed.
+    return {p for p in paths if "/" in p.strip("/")}
 
 
 def used(cl, later):
-    names = set()
-    for m in PATHS.finditer(cl["result"]):
-        p = next(g for g in m.groups() if g)
-        names.add(os.path.basename(p))
-    names.discard("")
+    paths = result_paths(cl)
     for nx in later:
         blob = json.dumps(nx["input"])
-        if any(n in blob for n in names):
+        if any(re.search(r"(?<![\w.-])" + re.escape(p) + r"(?![\w-])", blob) for p in paths):
             return True
     return False
 
@@ -556,7 +799,7 @@ def main(argv=None):
     r.add_argument("--repo", default=".")
     r.add_argument("--arms", default=",".join(ARMS))
     r.add_argument("--k", type=int, default=5)
-    r.add_argument("--timeout", type=int, default=60)
+    r.add_argument("--timeout", type=float, default=60)
     r.add_argument("--collection", default="himmel")
     r.add_argument("--label", default="")
     c = sub.add_parser("check")

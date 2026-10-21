@@ -9,8 +9,11 @@
 #   990 unique suites; no row is local-measured. Timings are a snapshot, not a
 #   worst-case bound. Replay on run 39180908042: max/min 2.454 before, 1.304 after;
 #   slowest shard 2800s before, 2304s after (suite time only, excluding setup/waits).
-#   2304s is the floor: scripts/hooks/test-block-destructive-commands.sh alone
-#   runs ~2300s, so no split lowers the slowest shard below it.
+#   2304s was the floor: scripts/hooks/test-block-destructive-commands.sh alone
+#   ran ~2300s. It is now four case-range parts (-a..-d); their rows split the
+#   2301s mean in proportion to each part's case count (249/239/269/261 of 1018).
+#   With that suite no longer the floor, the 22w balance check sees the stale
+#   test-stop-worker.sh row (117s here, 317s measured); it is refreshed to 317.
 # The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -124,6 +127,7 @@ scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
 scripts/ci/test-check-cr-terminology.sh	0
 scripts/ci/test-check-docs-decision-records.sh	0
+scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
@@ -162,6 +166,7 @@ scripts/ci/test-queue-latency.sh	0
 scripts/ci/test-run-shell-tests-discovery.sh	16
 scripts/ci/test-run-shell-tests-flake.sh	12
 scripts/ci/test-run-shell-tests-impacted.sh	8
+scripts/ci/test-run-shell-tests-live-state.sh	3
 scripts/ci/test-run-shell-tests-manifest.sh	6
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	102
 scripts/ci/test-run-shell-tests-rotation-guards.sh	115
@@ -231,6 +236,7 @@ scripts/cr/test-impacted-suites.sh	33
 scripts/cr/test-install-cr-gate.sh	2
 scripts/cr/test-known-findings.sh	4
 scripts/cr/test-lane-classify.sh	0
+scripts/cr/test-ledger-amend-auth.sh	1
 scripts/cr/test-ledger-append.sh	18
 scripts/cr/test-live-gate-e2e.sh	0
 scripts/cr/test-orphan-check.sh	0
@@ -267,6 +273,7 @@ scripts/eval/leg-digest/test-leg-ledger.sh	3
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	0
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
+scripts/eval/retrieval-eval/test-answer-ab.sh	1
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	3
 scripts/eval/review-panel/test-review-panel.sh	3
 scripts/eval/sandbox-poc/test-probe.sh	5
@@ -323,16 +330,20 @@ scripts/handover/console-kit/test-action-zero.sh	4
 scripts/handover/console-kit/test-append-results.sh	0
 scripts/handover/console-kit/test-board.sh	15
 scripts/handover/console-kit/test-brief-lint.sh	3
+scripts/handover/console-kit/test-ci-guardrail.sh	3
 scripts/handover/console-kit/test-close-wrapped-leg.sh	20
 scripts/handover/console-kit/test-compacted-check.sh	0
 scripts/handover/console-kit/test-console-budget.sh	1
 scripts/handover/console-kit/test-console-kit-e2e.sh	14
-scripts/handover/console-kit/test-console-wait.sh	483
+scripts/handover/console-kit/test-console-wait-b.sh	265
+scripts/handover/console-kit/test-console-wait-r0.sh	26
+scripts/handover/console-kit/test-console-wait.sh	283
 scripts/handover/console-kit/test-cut-tag.sh	2
 scripts/handover/console-kit/test-fleet-manifest.sh	1
 scripts/handover/console-kit/test-fleet.sh	3
 scripts/handover/console-kit/test-gen-briefs.sh	6
 scripts/handover/console-kit/test-gen-judge-brief.sh	1
+scripts/handover/console-kit/test-gh-read.sh	1
 scripts/handover/console-kit/test-go.sh	13
 scripts/handover/console-kit/test-grant-round.sh	7
 scripts/handover/console-kit/test-handoff-facts.sh	0
@@ -342,6 +353,7 @@ scripts/handover/console-kit/test-hook-copy-reaper.sh	0
 scripts/handover/console-kit/test-inbox-audit.sh	0
 scripts/handover/console-kit/test-inbox-follow.sh	1
 scripts/handover/console-kit/test-inbox-send.sh	1
+scripts/handover/console-kit/test-json-writers-final-newline.sh	1
 scripts/handover/console-kit/test-judge-ladder.sh	10
 scripts/handover/console-kit/test-launch-cloud.sh	2
 scripts/handover/console-kit/test-leg-doc-lock.sh	3
@@ -355,12 +367,14 @@ scripts/handover/console-kit/test-ops-run.sh	1
 scripts/handover/console-kit/test-orphan-loops.sh	0
 scripts/handover/console-kit/test-parked-on-prompt.sh	0
 scripts/handover/console-kit/test-pr-stall.sh	1
+scripts/handover/console-kit/test-priority-prune.sh	0
 scripts/handover/console-kit/test-ready-check.sh	36
 scripts/handover/console-kit/test-ready-go.sh	2
 scripts/handover/console-kit/test-relay-batch.sh	1
 scripts/handover/console-kit/test-run-suite.sh	1
 scripts/handover/console-kit/test-shepherd.sh	1
 scripts/handover/console-kit/test-station-sync.sh	3
+scripts/handover/console-kit/test-status-drift.sh	10
 scripts/handover/console-kit/test-succession-tracker.sh	0
 scripts/handover/console-kit/test-tick-deadwin.sh	5
 scripts/handover/console-kit/test-tick-nolive.sh	9
@@ -375,6 +389,7 @@ scripts/handover/console-kit/test-write-verdict.sh	22
 scripts/handover/console/test-console.sh	59
 scripts/handover/test-append-cr-bugs.sh	0
 scripts/handover/test-append-cr-findings.sh	0
+scripts/handover/test-arm-resume-1879.sh	858
 scripts/handover/test-arm-resume-at-pty.sh	7
 scripts/handover/test-arm-resume-bank-refresh.sh	1
 scripts/handover/test-arm-resume-base.sh	4
@@ -511,7 +526,10 @@ scripts/hooks/test-block-backend-tier.sh	4
 scripts/hooks/test-block-bank-lift-writes.sh	6
 scripts/hooks/test-block-bare-qmd-query.sh	51
 scripts/hooks/test-block-chokepoint-env-prefix.sh	133
-scripts/hooks/test-block-destructive-commands.sh	2301
+scripts/hooks/test-block-destructive-commands-a.sh	563
+scripts/hooks/test-block-destructive-commands-b.sh	540
+scripts/hooks/test-block-destructive-commands-c.sh	608
+scripts/hooks/test-block-destructive-commands-d.sh	590
 scripts/hooks/test-block-docker-privesc.sh	1
 scripts/hooks/test-block-edit-live-settings.sh	151
 scripts/hooks/test-block-edit-on-main.sh	4
@@ -619,6 +637,7 @@ scripts/hooks/test-guard-leg-wakeup.sh	0
 scripts/hooks/test-guard-memory-capture.sh	1
 scripts/hooks/test-guard-pr-check-literal.sh	32
 scripts/hooks/test-guard-relay-writes.sh	5
+scripts/hooks/test-guard-rm-writes.sh	2
 scripts/hooks/test-guard-subagent-model.sh	0
 scripts/hooks/test-guard-unwrap-nested-xargs.sh	2
 scripts/hooks/test-hook-chain-latency.sh	143
@@ -690,7 +709,7 @@ scripts/lanes/test-profile-settings.sh	1
 scripts/lanes/tests/test-await-glm-worker.sh	61
 scripts/lanes/tests/test-await-liveness.sh	1
 scripts/lanes/tests/test-leg-burn.sh	0
-scripts/lanes/tests/test-stop-worker.sh	117
+scripts/lanes/tests/test-stop-worker.sh	317
 scripts/lib/test-api-credit-state.sh	6
 scripts/lib/test-bank-attribution.sh	0
 scripts/lib/test-bank-monitor.sh	6
@@ -774,6 +793,7 @@ scripts/lib/test-red-control-extraction-lint.sh	3
 scripts/lib/test-red-control-lint.sh	6
 scripts/lib/test-red-control.sh	0
 scripts/lib/test-register-auto-arm-hook.sh	0
+scripts/lib/test-rename-aliases.sh	0
 scripts/lib/test-render-lease.sh	4
 scripts/lib/test-resolve-hermes-py.sh	5
 scripts/lib/test-resolve-node.sh	0
@@ -887,6 +907,7 @@ scripts/qmd/test-ensure-qmd-daemon-leak.sh	11
 scripts/qmd/test-ensure-qmd-daemon.sh	46
 scripts/qmd/test-qmd-auth-headers.sh	0
 scripts/qmd/test-qmd-jina-gate.sh	14
+scripts/qmd/test-vocab-expand.sh	1
 scripts/release/test-build-tarball.sh	3
 scripts/release/test-check-version-tag.sh	0
 scripts/release/test-followup-report.sh	1
@@ -988,6 +1009,7 @@ scripts/test-user-slug-resolve.sh	0
 scripts/test-vm-e2e-mode-guard.sh	1
 scripts/test-worktree-verbs.sh	7
 scripts/testing/test-added-unwired-prepush.sh	0
+scripts/testing/test-documented-commands.sh	66
 scripts/testing/test-unwired-hooks.sh	1
 scripts/tests/test-setup-hooks-guardrail.sh	0
 scripts/upstream/test-run-target-tests.sh	0

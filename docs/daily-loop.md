@@ -8,8 +8,7 @@
 > 2. **An active Claude Code session in the repo root** — run `claude` in your
 >    terminal (or use your IDE's Claude extension). Need
 >    [Claude Code](https://claude.com/claude-code) first?
->    `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS) /
->    `irm https://claude.ai/install.ps1 | iex` (Windows). Every hook behaviour
+>    `curl -fsSL https://claude.ai/install.sh | bash` (Linux/macOS). Every hook behaviour
 >    below fires *inside* a session; the steps assume you are already in one.
 
 This page walks one complete loop — a toy change from worktree creation
@@ -18,6 +17,8 @@ By the end you will have run the real workflow on a real branch.
 
 This is the solo loop. The agent loop (console, legs, judges) is the
 development graph.
+
+The agent loop drawn out: [the development graph](guide/dev-graph.html).
 
 ---
 
@@ -181,7 +182,7 @@ the subject line. They are required only in certain circumstances:
 
 | Change type | Trailer required |
 |---|---|
-| Touches `*.sh`, `*.bash`, `*.ps1`, `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
+| Touches `*.sh`, `*.bash`, PowerShell files (`*.ps1`, `*.psm1`, `*.psd1`), `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
 | Touches any non-docs code (non-`*.md`/`*.txt`/`docs/`/`handovers/`) | `Security reviewed: <token>` |
 | Docs-only (`*.md`, `*.txt`, `docs/**`, `handovers/**`) | _neither required_ |
 
@@ -451,15 +452,22 @@ gh pr merge --squash
 A `PreToolUse` hook (`block-unresolved-cr-merge.sh`) refuses `gh pr merge`
 until four gates pass:
 
-1. no unresolved CodeRabbit threads, and no CodeRabbit check still running;
+1. every **hard** reviewer in `scripts/cr/critics.json` passes at the head,
+   and no reviewer has an open finding: no unresolved CodeRabbit thread, no
+   undisposed CodeRabbit body finding, no open critic finding. A
+   **best-effort** reviewer (CodeRabbit, as shipped) that is pending, rate
+   limited or absent prints a NOTE and does not block
+   ([reviewer modes](configuration.md#reviewer-modes));
 2. the head SHA has green overall CI (no failing or pending check or status);
 3. in a console-spawned leg, a console GO file matches the head SHA;
 4. a PR touching a CI trust path (`scripts/ci/ci-trust-paths.txt`) carries a
    trust-reviewed GO and is merged pinned to its head.
 
 Gates 3 and 4 fail closed. Gates 1 and 2 have session bypasses set in the
-launching shell (`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1`; `CR_PROFILE=none`
-also skips gate 1), and an API error while evaluating them fails open.
+launching shell (`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1`;
+`"review": "no_code_review"` or `CR_PROFILE=none` also skips gate 1), and an
+API error while evaluating them fails open. A broken reviewer config (no hard
+reviewer, a bad `mode`) fails gate 1 closed.
 
 The branch is squash-merged into main. The worktree is now stale.
 

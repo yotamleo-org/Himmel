@@ -323,6 +323,14 @@ for opener in '(' '$('; do
   if [ $((SECONDS - t0)) -gt 3 ]; then
     echo "  FAIL: ${opener}x10000 took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
 done
+# A command word of expansion characters is one anchor, not a quadratic split.
+t0=$SECONDS
+pad=$("$PY" -c 'print("$" * 20000)') || pad=""
+if [ "${#pad}" -ne 20000 ]; then
+  echo "  FAIL: dollar x20000 input generation failed" >&2; fails=$((fails + 1)); fi
+g "dollar x20000 word (linear)" allow "$("$PY" -c 'import json,sys; print(json.dumps({"tool_name": "terminal", "tool_input": {"command": sys.argv[1] + " x"}}))' "$pad")"
+if [ $((SECONDS - t0)) -gt 3 ]; then
+  echo "  FAIL: dollar x20000 word took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
 # ") {" is a second anchor kind ("){" x6000 took 12.3s at head, 2.5s at base).
 for spec in '){:6000' '){/:4000'; do
   opener=${spec%:*}; count=${spec#*:}
@@ -593,6 +601,80 @@ printf 'm\n' > "$TMP/featrepo/.git/cr-pending/feat/x"
 g "gh pr create with --head inside a quoted body does not pick another branch, checked-out feat/x pending, refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create -b 'see --head feat/z' -t x\",\"cwd\":\"$FR\"}}"
 g "gh pr create with --head= as another option's value does not hide the pending checked-out feat/x, refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"gh pr create --title '--head=feat/z' --body x\",\"cwd\":\"$FR\"}}"
 rm -f "$TMP/featrepo/.git/cr-pending/feat/x"
+# Shell-parsing shapes of the pending-CR lock. The raw command is passed as an argv
+# element so the shapes under test stay literal. Only feat/y is pending (the
+# checked-out feat/x is clear), so a refusal proves the head was found.
+gcr() {  # gcr "<label>" <expect> '<raw command>' — cwd = featrepo
+  g "$1" "$2" "$("$PY" -c 'import json,sys; print(json.dumps({"tool_name":"terminal","tool_input":{"command":sys.argv[1],"cwd":sys.argv[2]}}))' "$3" "$FR")"
+}
+printf 'm\n' > "$TMP/featrepo/.git/cr-pending/feat/y"
+# shellcheck disable=SC2016  # the literal $ / backtick is the payload under test
+{
+gcr "gh pr create --body \"\$(echo \";\")\" --head feat/y (substitution in double quotes), refused" block 'gh pr create --body "$(echo ";")" --head feat/y'
+gcr "gh pr create --body \"\`echo ;\`\" --head feat/y (backtick in double quotes), refused" block 'gh pr create --body "`echo ";"`" --head feat/y'
+gcr "gh pr create --body \"\${x:-\";\"}\" --head feat/y (expansion in double quotes), refused" block 'gh pr create --body "${x:-";"}" --head feat/y'
+gcr "gh pr create --body \"\$(echo hi)\" --head feat/w (substitution in double quotes), refused unparseable" block 'gh pr create --body "$(echo hi)" --head feat/w'
+gcr "gh pr create --body \"\$X\" --head feat/w (plain variable in double quotes), allowed" allow 'gh pr create --body "$X" --head feat/w'
+gcr "gh pr create --head \"\$B\" (expanded head), refused" block 'gh pr create --head "$B"'
+gcr "gh pr create -H \"\$B\" (expanded short head), refused" block 'gh pr create -H "$B"'
+gcr "gh pr create --head=\"\$B\" (expanded equals head), refused" block 'gh pr create --head="$B"'
+gcr "gh pr create --head '\`b\`' (backtick head after shlex), refused" block "gh pr create --head '\`b\`'"
+gcr "\$GH pr create --head feat/y (variable command word), refused" block '$GH pr create --head feat/y'
+gcr "\${GH} pr create --head feat/y (braced variable command word), refused" block '${GH} pr create --head feat/y'
+gcr "\"gh\" pr create --head feat/y (quoted command word), refused" block '"gh" pr create --head feat/y'
+gcr "'gh' pr create --head feat/y (single-quoted command word), refused" block "'gh' pr create --head feat/y"
+gcr "g\\h pr create --head feat/y (escaped command word), refused" block 'g\h pr create --head feat/y'
+gcr "\$GH pr create --head feat/w (variable command word, no head pending), allowed" allow '$GH pr create --head feat/w'
+gcr "echo \"gh\" pr create --head feat/y (not at command position), allowed" allow 'echo "gh" pr create --head feat/y'
+gcr "gh pr create --head feat/w # see \$HOME (comment), allowed" allow 'gh pr create --head feat/w # see $HOME'
+gcr "gh pr create --head feat/y # note (comment after the head), refused" block 'gh pr create --head feat/y # note'
+gcr "gh pr create # --head feat/y (head only inside a comment), allowed" allow 'gh pr create # --head feat/y'
+gcr "gh pr create --head feat/w > \$LOG (redirect to a variable), allowed" allow 'gh pr create --head feat/w > $LOG'
+gcr "gh pr create --head feat/y > \$LOG (redirect to a variable), refused" block 'gh pr create --head feat/y > $LOG'
+gcr "gh pr create --head \$B > \$LOG (expanded head, redirect), refused" block 'gh pr create --head $B > $LOG'
+gcr "gh pr create <(echo hi) --head feat/w (process substitution), allowed" allow 'gh pr create <(echo hi) --head feat/w'
+gcr "gh pr create <(echo \";\") --head feat/y (process substitution), refused" block 'gh pr create <(echo ";") --head feat/y'
+gcr "gh pr create >(cat) --head feat/y (output process substitution), refused" block 'gh pr create >(cat) --head feat/y'
+gcr "gh pr create >(cat) --head feat/w (output process substitution), allowed" allow 'gh pr create >(cat) --head feat/w'
+gcr "gh pr create <(echo hi # )<newline>) --head feat/y (paren inside a comment in a process substitution), refused" block 'gh pr create <(echo hi # )
+) --head feat/y'
+gcr "gh pr create <(case x in x) echo;; esac) --head feat/y (case pattern paren in a process substitution), refused" block 'gh pr create <(case x in x) echo;; esac) --head feat/y'
+gcr "gh pr create --body <(case<TAB>x in x) echo hi;; esac) --head feat/y (tab after case), refused" block $'gh pr create --body <(case\tx in x) echo hi;; esac) --head feat/y'
+gcr "gh pr create --body <(cat <<EOF with a paren line) --head feat/y (heredoc body in a process substitution), refused" block $'gh pr create --body <(cat <<EOF\n)\nEOF\n) --head feat/y'
+gcr 'gh pr create <(echo "$(echo ")")") --head feat/y (substitution inside double quotes in a process substitution), refused' block 'gh pr create <(echo "$(echo ")")") --head feat/y'
+gcr "gh pr create --body <(echo ANSI-C quote with an escaped quote) --head feat/y, refused" block $'gh pr create --body <(echo $\'a\\\'b)\') --head feat/y'
+gcr "gh pr create<newline>gh pr create --head feat/y (second call on the next line), refused" block 'gh pr create
+gh pr create --head feat/y'
+gcr "gh pr create --head feat/w # x \\<newline>gh pr create --head feat/y (comment ends at the raw newline), refused" block $'gh pr create --head feat/w # x \\\ngh pr create --head feat/y'
+gcr "gh pr create --head feat/w # x \\<newline>gh pr create --head feat/w2 (comment ends at the raw newline), allowed" allow $'gh pr create --head feat/w # x \\\ngh pr create --head feat/w2'
+gcr "gh pr create <(#x ) \\<newline>) --head feat/y (comment in a process substitution ends at the raw newline), refused" block $'gh pr create <(#x ) \\\n) --head feat/y'
+gcr "gh pr create <(echo;# )) --head feat/w (comment after a semicolon in a process substitution), refused" block 'gh pr create <(echo;# )) --head feat/w'
+gcr "gh pr create --body \"a # b \\<newline>c\" --head feat/y (hash inside a string is no comment), refused" block $'gh pr create --body "a # b \\\nc" --head feat/y'
+gcr "gh pr create --body \"a # b \\<newline>c\" --head feat/w (hash inside a string is no comment), allowed" allow $'gh pr create --body "a # b \\\nc" --head feat/w'
+gcr "gh pr create --title a\\ #b \\<newline>--head feat/y (escaped space makes no comment), refused" block $'gh pr create --title a\\ #b \\\n--head feat/y'
+gcr "echo \$'it\\'s'; gh pr create --title t \\<newline>--head feat/y (ANSI-C quote before a continuation), refused" block $'echo $\'it\\\'s\'; gh pr create --title t \\\n--head feat/y'
+gcr "echo \$'it\\'s'; gh pr create --title t \\<newline>--head feat/w (ANSI-C quote before a continuation), allowed" allow $'echo $\'it\\\'s\'; gh pr create --title t \\\n--head feat/w'
+gcr "cat <<EOF with an apostrophe, then gh pr create --title t \\<newline>--head feat/y (heredoc before a continuation), refused" block $'cat <<EOF\nit\'s\nEOF\ngh pr create --title t \\\n--head feat/y'
+gcr "cat <<EOF with an apostrophe, then gh pr create --title t \\<newline>--head feat/w (heredoc before a continuation), allowed" allow $'cat <<EOF\nit\'s\nEOF\ngh pr create --title t \\\n--head feat/w'
+gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \\<newline>gh pr create --head feat/y (stray double quote in an ANSI-C string), refused" block $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c \\\ngh pr create --head feat/y'
+gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \\<newline>gh pr create --head feat/w2 (stray double quote in an ANSI-C string), allowed" allow $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c \\\ngh pr create --head feat/w2'
+gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # c \\<newline>gh pr create --head feat/y (heredoc double quote), refused" block $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # c \\\ngh pr create --head feat/y'
+gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # c \\<newline>gh pr create --head feat/w2 (heredoc double quote), allowed" allow $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # c \\\ngh pr create --head feat/w2'
+gcr "echo \$'a\\'b\"'; gh pr create --head feat/w # c \$x \\<newline>gh pr create --head feat/y (comment holds a substitution the base scanner refuses), refused" block $'echo $\'a\\\'b"\'; gh pr create --head feat/w # c $x \\\ngh pr create --head feat/y'
+gcr "cat <<EOF with a double quote, then gh pr create --head feat/w # it's \\<newline>gh pr create --head feat/y (comment holds an apostrophe the base scanner refuses), refused" block $'cat <<EOF\na"b\nEOF\ngh pr create --head feat/w # it\'s \\\ngh pr create --head feat/y'
+}
+rm -f "$TMP/featrepo/.git/cr-pending/feat/y"
+# Each `gh pr create` is judged in ITS OWN directory: the first one's dir used
+# to be applied to every head in the command.
+mkdir -p "$TMP/mainrepo/.git/cr-pending/feat"
+printf 'm\n' > "$TMP/mainrepo/.git/cr-pending/feat/q"
+gcr "cd featrepo && gh pr create --head feat/z; cd mainrepo && gh pr create --head feat/q (pending in the second repo), refused" block "cd $FR && gh pr create --head feat/z; cd $MR && gh pr create --head feat/q"
+gcr "cd featrepo && gh pr create --head feat/q; cd mainrepo && gh pr create --head feat/z (q pending only in the other repo), allowed" allow "cd $FR && gh pr create --head feat/q; cd $MR && gh pr create --head feat/z"
+rm -f "$TMP/mainrepo/.git/cr-pending/feat/q"
+printf 'm\n' > "$TMP/featrepo/.git/cr-pending/feat/q"
+gcr "cd featrepo && gh pr create --head feat/q; cd mainrepo && gh pr create --head feat/z (pending in the first repo), refused" block "cd $FR && gh pr create --head feat/q; cd $MR && gh pr create --head feat/z"
+gcr "cd featrepo && gh pr create --head feat/z; cd mainrepo && gh pr create --head feat/q (q pending only in the first repo), allowed" allow "cd $FR && gh pr create --head feat/z; cd $MR && gh pr create --head feat/q"
+rm -rf "$TMP/featrepo/.git/cr-pending" "$TMP/mainrepo/.git/cr-pending"
 unset HERMES_EXTERNAL_WRITES_OK
 # .single-writer marker at the repo root opts the on-main repo out.
 : > "$TMP/mainrepo/.single-writer"

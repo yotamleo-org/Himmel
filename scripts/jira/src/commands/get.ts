@@ -42,7 +42,7 @@ export function registerGet(program: Command): void {
       try {
         issue = await request<IssueWithLabels>(
           'GET',
-          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description,labels,fixVersions,priority${sectorField() ? `,${sectorField()}` : ''}`,
+          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description,labels,fixVersions,versions,priority${sectorField() ? `,${sectorField()}` : ''}`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

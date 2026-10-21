@@ -1,0 +1,30 @@
+/* Points Starlight's --sl-* variables at the shared himmel tokens (tokens.css), so the docs site and the config
+   console draw from one palette. Starlight swaps light and dark through [data-theme]; the tokens swap on the same
+   attribute, so var() here resolves per theme and needs no dark twin. This sheet is unlayered, so it wins over
+   Starlight's layered defaults. */
+:root {
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: var(--ink);
+  --sl-color-gray-2: var(--ink);
+  --sl-color-gray-3: var(--muted);
+  --sl-color-gray-4: var(--muted);
+  --sl-color-gray-5: var(--rule-strong);
+  --sl-color-gray-6: var(--surface-2);
+  --sl-color-gray-7: var(--surface);
+  --sl-color-black: var(--bg);
+  --sl-color-bg: var(--bg);
+  --sl-color-bg-nav: var(--surface);
+  --sl-color-bg-sidebar: var(--surface);
+  --sl-color-bg-inline-code: var(--code);
+  --sl-color-text: var(--ink);
+  --sl-color-text-accent: var(--accent);
+  --sl-color-hairline: var(--rule);
+  --sl-color-hairline-light: var(--rule);
+  --sl-color-hairline-shade: var(--rule);
+  --sl-color-accent-low: var(--accent-soft);
+  --sl-color-accent: var(--accent);
+  --sl-color-accent-high: var(--accent);
+  --sl-color-text-invert: var(--accent-ink);
+  --sl-font: var(--font-ui);
+  --sl-font-mono: var(--font-mono);
+}

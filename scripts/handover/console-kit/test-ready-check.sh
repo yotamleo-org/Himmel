@@ -50,12 +50,18 @@ case "$args" in
         printf '%s main\n' "${STUB_NWO:-acme/repo}" ;;
     *"--json headRefOid,mergeStateStatus"*)
         printf '%s %s\n' "${STUB_HEAD:-}" "${STUB_MSS:-CLEAN}" ;;
+    *"--json headRefOid --jq"*)
+        printf '%s\n' "${STUB_HEAD:-}" ;;
     *"--json statusCheckRollup"*)
         printf '%s' "${STUB_ROLLUP:-[]}" ;;
     *"--json commits"*)
         printf '%s' "${STUB_COMMITS:-[]}" ;;
     *"--json body"*)
         printf '%b' "${STUB_BODY:-}" ;;
+    *"--json title"*)
+        printf '%s' "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" ;;
+    *"--json headRefName"*)
+        printf '%s' "${STUB_PR_BRANCH-feat/himmel-100-thing}" ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ -z "${STUB_TRUST_LIST_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
         cat "$STUB_TRUST_LIST_FILE" ;;
@@ -101,20 +107,36 @@ esac
 STUB
 chmod +x "$tmp/bin/gh"
 
-# ── jira stub (JIRA_CMD): `get KEY` reads STUB_JIRA_DB lines "KEY<TAB>Status";
-# an absent key is the real CLI's HTTP 404, STUB_JIRA_DOWN=1 is an outage ────
+# ── jira stub (JIRA_CMD): `get KEY [--json]` reads STUB_JIRA_DB lines
+# "KEY<TAB>Status<TAB>Labels<TAB>Description"; an absent key is the real CLI's HTTP 404, STUB_JIRA_DOWN=1 is an outage ────
 cat > "$tmp/bin/jira-stub" <<'STUB'
 #!/usr/bin/env bash
+if [ "$1" = "links" ]; then
+    [ -n "${STUB_LINKS_FAIL:-}" ] && { echo "jira: links $2 failed: connect ECONNREFUSED" >&2; exit 1; }
+    # STUB_LINKS_DB lines "KEY<TAB>KEY": one issue link; prints the real CLI's `links` row shape for each one touching $2
+    awk -F'\t' -v k="$2" '$1 == k || $2 == k { printf "%d\tRelates\tinward=%s\toutward=%s\t%s relates to %s\n", NR, $1, $2, $1, $2 }' "${STUB_LINKS_DB:-/dev/null}"
+    exit 0
+fi
 [ "$1" = "get" ] || { echo "jira-stub: unhandled: $*" >&2; exit 1; }
 [ -n "${STUB_JIRA_DOWN:-}" ] && { echo "jira: get $2 failed: connect ECONNREFUSED" >&2; exit 1; }
-st=$(awk -F'\t' -v k="$2" '$1 == k { print $2 }' "${STUB_JIRA_DB:-/dev/null}")
+kc=$(printf '%s' "$2" | sed -E 's/-0+([0-9])/-\1/')
+st=$(awk -F'\t' -v k="$kc" '$1 == k { print $2 }' "${STUB_JIRA_DB:-/dev/null}")
+lb=$(awk -F'\t' -v k="$kc" '$1 == k { print $3 }' "${STUB_JIRA_DB:-/dev/null}")
+desc=$(awk -F'\t' -v k="$kc" '$1 == k { print $4 }' "${STUB_JIRA_DB:-/dev/null}")
 if [ -z "$st" ]; then
     echo "jira: get $2 failed: HTTP 404: Issue does not exist or you do not have permission to see it." >&2
     exit 1
 fi
 [ "$st" = "MALFORMED" ] && { printf 'garbage with no tabs\n'; exit 0; }
 [ "$st" = "BLANK" ] && st=""
+if [ "${3:-}" = "--json" ]; then
+    jq -n --arg k "$kc" --arg st "$st" --arg lb "$lb" --arg d "$desc" \
+        '{key:$k,fields:{status:{name:$st},labels:($lb | split(", ") | map(select(length > 0))),description:$d}}'
+    exit 0
+fi
 printf '%s\tTask\t%s\tsummary\n' "$2" "$st"
+[ -z "$desc" ] || printf '%s\n' "$desc"
+[ -z "$lb" ] || printf 'Labels: %s\n' "$lb"
 STUB
 chmod +x "$tmp/bin/jira-stub"
 # ── trust-path fixtures: the REAL trust list, served as the default branch's; an
@@ -141,13 +163,18 @@ GREEN_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody"
 GREEN_FILES="scripts/x/run.sh"
 GREEN_BODY='## Summary\nthing\n\n## Ticket coverage\n- ask one: done\n- ask two: done\n\n## Test plan\nx\n'
 JIRA_DB="$tmp/jira.db"
-printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\n' > "$JIRA_DB"
+printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-100\tTo Do\tresidual\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
 
 seed_ledger_ok() {
     printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","model":"codex","status":"ok"}\n' "$SHA" > "$LEDGER"
 }
 seed_ledger_missing() {
     printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","model":"codex","status":"ok"}\n' > "$LEDGER"
+}
+
+# seed_deferral <KEY> [head]: a CR finding at head (default $SHA) deferred to KEY, the row check 7 matches against the body
+seed_deferral() {
+    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"b","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
 }
 
 run() {
@@ -165,8 +192,8 @@ run() {
         STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" \
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
-        STUB_BODY="${STUB_BODY-$GREEN_BODY}" \
-        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" \
+        STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
+        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
@@ -177,7 +204,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
     seed_ledger_ok
 }
 
@@ -318,6 +345,21 @@ check "no-ledger-row: exit 1" "$rc" "1"
 contains "no-ledger-row: check 4 fails" "$out" "[FAIL] 4."
 seed_ledger_ok
 
+# --- 4b. check 4 takes the audit row a signed judge GO leaves:
+# kind=judge-go, status ok, source=judge:<qid>/<name>, at the exact head.
+reset_stubs
+printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"b","head":"%s","status":"ok","source":"judge:q1/judge"}\n' "$SHA" > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "judge-go-row: exit 0" "$rc" "0"
+contains "judge-go-row: check 4 passes" "$out" "[PASS] 4. CR ledger: 1 row(s) for $SHA with status=ok"
+
+# --- 4c. a judge-go row at a DIFFERENT head buys nothing -----------------
+printf '{"kind":"judge-go","ts":"2026-01-01T00:00:00Z","branch":"b","head":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","status":"ok","source":"judge:q1/judge"}\n' > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "judge-go-other-head: exit 1" "$rc" "1"
+contains "judge-go-other-head: check 4 fails" "$out" "[FAIL] 4."
+seed_ledger_ok
+
 # --- 5a. check 5 fails: sensitive files, no Platforms tested trailer ----
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Security reviewed: manual"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":""}]'
@@ -438,16 +480,69 @@ contains "coverage nonexistent key: names the key" "$out" "HIMMEL-99999"
 for st in 51 52 53; do
     reset_stubs
     STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred \xe2\x86\x92 HIMMEL-'"$st"'\n'
+    seed_deferral "HIMMEL-$st"
     rc=0; out="$(run)" || rc=$?
     check "coverage deferred to closed key HIMMEL-$st: exit 1" "$rc" "1"
     contains "coverage closed key HIMMEL-$st: check 7 fails" "$out" "[FAIL] 7."
+    contains "coverage closed key HIMMEL-$st: names the closed status" "$out" "HIMMEL-$st already"
 done
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred \xe2\x86\x92 HIMMEL-50\n'
+seed_deferral HIMMEL-50
 rc=0; out="$(run)" || rc=$?
 check "coverage deferred to open key: exit 0" "$rc" "0"
 contains "coverage open key: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a raw-created newer ticket: exit 1" "$rc" "1"
+contains "coverage raw-created ticket: check 7 fails" "$out" "[FAIL] 7."
+contains "coverage raw-created ticket: names the key and the residual verb" "$out" "HIMMEL-200 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-201\n'
+seed_deferral HIMMEL-201
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a residual-labelled newer ticket: exit 0" "$rc" "0"
+contains "coverage residual-labelled ticket: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-202\n'
+seed_deferral HIMMEL-202
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a residual-depth-only label: exit 1" "$rc" "1"
+contains "coverage residual-depth-only label: names the raw-create refusal" "$out" "HIMMEL-202 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+STUB_PR_BRANCH='feat/himmel-300-later-ticket'
+seed_deferral HIMMEL-200
+rc=0; out="$(run)" || rc=$?
+check "coverage deferred to a ticket older than the PR's own: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+STUB_PR_TITLE='feat(x): [HIMMEL-300] a title that names a newer key'
+rc=0; out="$(run)" || rc=$?
+check "coverage: a PR title naming a newer key does not make an older raw ticket pass: exit 1" "$rc" "1"
+contains "coverage title key ignored: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+STUB_PR_TITLE='feat(x): [HIMMEL-300] a title that names a newer key'
+STUB_PR_BRANCH=''
+seed_deferral HIMMEL-200
+rc=0; out="$(run)" || rc=$?
+check "coverage: an empty branch name leaves no own key, only the residual label passes: exit 1" "$rc" "1"
+contains "coverage empty branch: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-203\n'
+rc=0; out="$(run)" || rc=$?
+check "coverage: a description line reading 'Labels: residual' is not the label: exit 1" "$rc" "1"
+contains "coverage fake label line: names the raw-create refusal" "$out" "HIMMEL-203 was made by a raw jira create"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-50\n'
@@ -495,11 +590,14 @@ contains "coverage blank jira status: reads UNKNOWN" "$out" "UNKNOWN"
 # a deferral must also END the line, and a delimiter-free jira reply is not a status
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50 pending verification\n'
+seed_deferral HIMMEL-50
 rc=0; out="$(run)" || rc=$?
 check "coverage deferral with trailing prose: exit 1" "$rc" "1"
+contains "coverage deferral with trailing prose: names the unmarked line" "$out" "unmarked line"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50.\n- ask two: deferred \xe2\x86\x92 **HIMMEL-50**\n'
+seed_deferral HIMMEL-50
 rc=0; out="$(run)" || rc=$?
 check "coverage deferral with trailing punctuation/bold: exit 0" "$rc" "0"
 
@@ -514,8 +612,9 @@ contains "coverage malformed jira reply: reads UNKNOWN" "$out" "UNKNOWN"
 run7() {
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
         JIRA_PROJECT_KEY=HIMMEL STUB_NWO="$NWO" \
-        STUB_BODY="${STUB_BODY-$GREEN_BODY}" \
-        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+        STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_HEAD="${STUB_HEAD:-$SHA}" \
+        STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
+        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_LINKS_DB="${STUB_LINKS_DB:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" \
         bash "$SCRIPT" --only 7 "$PR")
 }
@@ -552,6 +651,168 @@ contains "full run trailing text: prints the accepted shape" "$out" "- <ask>: do
 
 rc=0; out="$(cd "$REPO" && bash "$SCRIPT" --only 6 "$PR" 2>&1)" || rc=$?
 check "only 6 refused: exit 2" "$rc" "2"
+
+# --- 7c. the CR ledger's deferred_to rows for the PR head must agree with the
+# body's coverage deferrals, and a deferral target the PR's own ticket links to
+# is accepted without a residual label. ------------------------------------
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+printf 'HIMMEL-100\tHIMMEL-200\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "links: a linked, higher-numbered, unlabelled target passes: exit 0" "$rc" "0"
+contains "links: linked target: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+printf 'HIMMEL-200\tHIMMEL-100\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "links: the link counts in the other direction: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+rc=0; out="$(run)" || rc=$?
+check "links: an unlinked, higher-numbered, unlabelled target is still refused: exit 1" "$rc" "1"
+contains "links: unlinked target: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+printf 'HIMMEL-300\tHIMMEL-200\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "links: a link from some other ticket does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+printf 'HIMMEL-100\tHIMMEL-2000\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "links: a link to a key sharing the target's prefix does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-51\n'
+seed_deferral HIMMEL-51
+printf 'HIMMEL-100\tHIMMEL-51\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "links: a linked but Done target is still refused: exit 1" "$rc" "1"
+contains "links: linked Done target: names the status" "$out" "HIMMEL-51 already Done"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: done\n'
+seed_deferral HIMMEL-50
+rc=0; out="$(run)" || rc=$?
+check "ledger: a ledger deferral absent from the body: exit 1" "$rc" "1"
+contains "ledger: absent from body: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-50\n'
+rc=0; out="$(run)" || rc=$?
+check "ledger: a body deferral with no ledger row: exit 1" "$rc" "1"
+contains "ledger: no row: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n- ask two: deferred -> HIMMEL-201\n- ask three: deferred -> HIMMEL-50\n- ask four: done\n'
+seed_deferral HIMMEL-201; seed_deferral HIMMEL-50
+rc=0; out="$(run)" || rc=$?
+check "ledger: matching sets pass: exit 0" "$rc" "0"
+contains "ledger: matching sets: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+rc=0; out="$(run)" || rc=$?
+check "ledger: a deferral recorded at another head does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "${SHA:0:12}"
+rc=0; out="$(run)" || rc=$?
+check "ledger: an abbreviated head spelling matches: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SHA" "$SHA" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a deferral made by an amend row is read: exit 1 (absent from body)" "$rc" "1"
+contains "ledger: amend deferral: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+seed_deferral HIMMEL-50
+printf '{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"verdict":"fixed"}}\n' "$SHA" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a deferral later amended to fixed is not a deferral: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+printf 'not json\n' >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "ledger: a malformed ledger line is skipped: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+seed_deferral HIMMEL-50
+rc=0; out="$(run7)" || rc=$?
+check "only 7: a ledger deferral absent from the body fails: exit 1" "$rc" "1"
+contains "only 7: ledger deferral: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50
+rc=0; out="$(run7)" || rc=$?
+check "only 7: matching sets pass: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-100\n'
+seed_deferral HIMMEL-100
+printf 'HIMMEL-100\tHIMMEL-1\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"
+rc=0; out="$(run)" || rc=$?
+check "self: a deferral to the PR's own ticket is refused though its links name it: exit 1" "$rc" "1"
+contains "self: names the own ticket" "$out" "HIMMEL-100 is the PR's own ticket"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-0100\n'
+seed_deferral HIMMEL-0100
+rc=0; out="$(run)" || rc=$?
+check "self: a zero-padded spelling of the own ticket is refused though it carries the residual label: exit 1" "$rc" "1"
+contains "self: padded spelling is read as Jira's canonical key" "$out" "HIMMEL-100 is the PR's own ticket"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-050\n'
+seed_deferral HIMMEL-50
+rc=0; out="$(run)" || rc=$?
+check "canonical key: a zero-padded spelling of a good target matches its ledger row: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-201\n'
+seed_deferral HIMMEL-201
+STUB_PR_BRANCH='feat/himmel-201-thing'
+rc=0; out="$(run)" || rc=$?
+check "self: a residual-labelled own ticket is no deferral target either: exit 1" "$rc" "1"
+contains "self: residual-labelled own ticket: names it" "$out" "HIMMEL-201 is the PR's own ticket"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: deferred -> HIMMEL-200\n'
+seed_deferral HIMMEL-200
+STUB_LINKS_FAIL=1
+rc=0; out="$(run)" || rc=$?
+check "links: a failed links lookup fails: exit 1" "$rc" "1"
+contains "links: failed lookup: reads UNKNOWN" "$out" "HIMMEL-200 UNKNOWN (jira links failed for HIMMEL-100)"
+notcontains "links: failed lookup: is not blamed on a raw create" "$out" "raw jira create"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+chmod 000 "$LEDGER"
+if [ -r "$LEDGER" ]; then
+    echo "SKIP ledger: an unreadable ledger fails (still readable here, e.g. root)"
+else
+    rc=0; out="$(run)" || rc=$?
+    check "ledger: an unreadable ledger fails check 7: exit 1" "$rc" "1"
+    contains "ledger: unreadable: names the cause" "$out" "the CR ledger could not be read"
+fi
+chmod 600 "$LEDGER"
 
 # --- 8. TICKET_ID_PATTERN / JIRA_PROJECT_KEY must resolve from
 # ready-check.sh's OWN checkout, never the caller's CWD repo. Fixture mirrors
@@ -686,6 +947,7 @@ WFDIR="$tmp/wf"; RUNDIR="$tmp/runs"
 mkdir -p "$WFDIR" "$RUNDIR"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci.yml > "$WFDIR/ci.yml"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/pr-title-lint.yml > "$WFDIR/pr-title-lint.yml"
+git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci-image.yml > "$WFDIR/ci-image.yml"
 cp "$WFDIR/pr-title-lint.yml" "$WFDIR/new-thing.yml"
 real_run() {  # <status> <conclusion> <headSha>
     printf '[{"conclusion":"%s","databaseId":38329960360,"event":"workflow_dispatch","headSha":"%s","status":"%s","workflowName":"CI"}]' "$2" "$3" "$1"
@@ -741,6 +1003,19 @@ contains "workflow with no workflow_dispatch trigger: names the missing trigger"
 wf_run ".github/workflows/pr-title-lint.yml"
 check "exempted workflow without a trigger: exit 0" "$rc" "0"
 contains "exempted workflow without a trigger: check 10 passes" "$out" "[PASS] 10."
+
+wf_run ".github/workflows/ci-image.yml"
+check "exempted workflow with a trigger, no dispatch run: exit 0" "$rc" "0"
+contains "exempted workflow with a trigger, no dispatch run: check 10 passes" "$out" "[PASS] 10."
+
+# Not on the list, though its name matches an entry as a regex: a skipped
+# branch dispatch still fails.
+cp "$WFDIR/ci-image.yml" "$WFDIR/ci.image.yml"
+real_run completed skipped "$SHA" > "$RUNDIR/ci.image.yml.json"
+wf_run ".github/workflows/ci.image.yml"
+check "unlisted workflow with a trigger, skipped dispatch at head: exit 1" "$rc" "1"
+contains "unlisted workflow with a trigger, skipped dispatch at head: check 10 fails" "$out" "[FAIL] 10."
+contains "unlisted workflow with a trigger, skipped dispatch at head: fails on the run, not the trigger" "$out" "ci.image.yml has no completed successful workflow_dispatch run"
 
 wf_run ".github/workflows/ci.yml" "removed .github/workflows/ci.yml"
 contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."
@@ -1109,6 +1384,11 @@ STUB_FILES="scripts/lib/env-alias.sh"
 STUB_BODY='## Ticket coverage\n- ask: done\n\nTRUST PATH: none touched\n'
 rc=0; out="$(run)" || rc=$?
 contains "trust: scripts/lib/env-alias.sh diff (PR 2885 shape) prints yes whatever the body claims" "$out" "TRUST-PATH: yes"
+
+reset_stubs
+STUB_FILES="scripts/handover/console-kit/cr-disposition.sh"
+rc=0; out="$(run)" || rc=$?
+contains "trust: cr-disposition.sh (go.sh signs and decides exit 9 through it) prints yes" "$out" "TRUST-PATH: yes"
 
 reset_stubs
 STUB_TRUST_LIST_FAIL=1

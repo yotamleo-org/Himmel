@@ -281,6 +281,16 @@ if command -v python3 >/dev/null 2>&1; then
     contains "16: a second wrap over an unchanged tracker is tracker=UNCHANGED" "$out" "tracker=UNCHANGED"
 
     tracker_fixture 'https://claude.ai/artifact/x'
+    printf 'tracker-done: https://claude.ai/artifact/d\ntracker-future: https://claude.ai/artifact/f\n' >> "$CONSOLE"
+    rm -f "$W/roadmap-tracker-done.html" "$W/roadmap-tracker-future.html"
+    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    contains "16b: a split tracker with fresh focus fp but no Done and future pages is re-rendered" "$out" "tracker=CHANGED"
+    check "16b: the Done page is written beside the focus page" "yes" "$([ -f "$W/roadmap-tracker-done.html" ] && echo yes || echo no)"
+    check "16b: the future page is written beside the focus page" "yes" "$([ -f "$W/roadmap-tracker-future.html" ] && echo yes || echo no)"
+    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    contains "16b: with all three pages current the next wrap is tracker=UNCHANGED" "$out" "tracker=UNCHANGED"
+
+    tracker_fixture 'https://claude.ai/artifact/x'
     WM_TRACKER_PY="$W/bin/boom" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
     check "17: a failing render never fails the wrap (rc 0)" "$rc" 0
     contains "17: and says why" "$out" "tracker=failed:"

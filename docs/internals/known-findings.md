@@ -72,6 +72,18 @@ then the promotion queue: `prompt`/`advisory` classes that carry a `match` and h
 real recurrences (verdict `agreed`, `confirmed` or `fixed`) in the `evidence.ledger`
 verdict history, most first, then the `PROPOSE` lines.
 
+`scripts/cr/class-recurrence.sh` is the restructure trigger (operator-run; the
+weekly cadence wiring is a separate slice). It reads the ledger over a rolling 14 days and acts on a class when one (directory cut to 3
+segments, class) pair shows in 5 merged PRs with 2 deferring, or when 3 open
+`residual` tickets share the class label. It comments on the class's
+`restructure-class-<id>` ticket, labels the HIMMEL-6176 member that owns the fix,
+or files one ticket under HIMMEL-6176 (at most 2 new a week), then folds each open
+residual into it (Relates link, `folded-into-<KEY>` label, fixVersion removed). A
+residual stays open until the restructure merges. `--dry-run` prints without
+writing; exit 4 is a failed tracker lookup, 3 a failed Jira write, 2 a usage
+error, a missing merged-PR list or a missing `JIRA_PROJECT_KEY`. Test:
+`scripts/cr/test-class-recurrence.sh`.
+
 Attribution and proposal rules (print-only; no rung is ever changed):
 
 - A ledger finding counts toward a class only when its file hits the class `globs`
@@ -87,6 +99,28 @@ Attribution and proposal rules (print-only; no rung is ever changed):
 - A class with `platform: "windows"` is never proposed. Tests: `scripts/cr/test-known-findings.sh` (detectors on a
 fixture repo, prompt/list/json shapes, refresh on a copy, usage contract) and the
 prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
+
+## The weekly standards cadence
+
+`bash scripts/cr/standards-cadence.sh --since 7d` (run from `/cr-tune` step 5) reads
+`known-findings.sh --ladder` and writes `<handover-root>/cr-tune/proposals-YYYY-MM-DD.md`.
+It is lean-invoke, not a hook, and changes nothing but that file. Tests:
+`scripts/cr/test-standards-cadence.sh`.
+
+- Only classes the ladder proposes AND that had a real recurrence in the window are listed.
+  Each gets exactly one target, most to least preferred: lint or check · shared helper plus a
+  check · standard line · critic rule · CodeRabbit rule · rebuttal. The script picks: `retire`
+  is a rebuttal, a move to the gate rung or a `fix` class is a lint or check, a `checklist`
+  class a standard line, a `rebuttal` class a CodeRabbit rule (source `coderabbit-learning`)
+  or a critic rule.
+- Approval: CodeRabbit rule and critic rule edit `.coderabbit.yaml` / `critics.json` and are
+  operator-approved. Every other target goes through a console GO with an opus judge.
+- Promoted classes (`rung_since` set) show real findings per week before and after promotion
+  (the before span runs from the class's first finding, at least a week). A class whose rate
+  does not fall is demoted to restructure (S5).
+- A proposal expires after 14 days unbuilt. The next run lists `REFIRED [id]` when the class
+  is proposed again, `EXPIRED [id]` when it is not, and `BUILT [id]` when the class was promoted
+  or removed since the proposal.
 
 ## Classes (2026-09-02 snapshot — regenerate with `--list`)
 
@@ -127,7 +161,7 @@ prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
   half of them legitimate). What still re-raises: stale docs prose (21),
   GNU-vs-BSD portability (20), test-coverage gaps (16), fail-open/closed on
   hooks (10), markdownlint MD040/MD051 (~8), bare `mktemp -d` in new tests (6),
-  .sh/.ps1 twin drift (5). Those became the `fix` / `checklist` detectors; the
+  shell/PowerShell twin drift (5). Those became the `fix` / `checklist` detectors; the
   high-usage learnings became `rebuttal` prompt classes.
 - Our ledger (12,522 rows, 3,667 unique findings): 62 % agreed / 21 % disproved /
   14 % deferred of the adjudicated; 38 % of unique findings carry no verdict,

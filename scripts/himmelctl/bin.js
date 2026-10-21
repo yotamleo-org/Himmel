@@ -197,6 +197,9 @@ commands:
                             config set <path> <value>   (value is on|off)
                             config get <path>
                           get/set paths: initiative.<leg>, lanes.<id>
+                          set-only: commit.tracker <jira|local|none>,
+                            commit.ticketIdRequired <on|off> (write the commit
+                            rules to ~/.himmel/himmel.conf)
                           set-only: hooks.plugin.<name> (runs claude plugin
                             enable/disable). hooks.improveOnSubmit is a
                             launching-shell env var, not settable here; config
@@ -1084,7 +1087,7 @@ const HANDOVER_HELP = {
 };
 
 const ALWAYS_ON_HELP = {
-  yes: 'print the unattended-run hardening checklist (nothing is executed either way); why and how: docs/setup/new-machine.md, on the docs site https://yotamleo.github.io/Himmel/',
+  yes: 'print the unattended-run hardening checklist (nothing is executed either way); why and how: docs/setup/new-machine.md, on the docs site https://yotamleo-org.github.io/Himmel/', // env-literal-ok: user-facing help text names the public docs site
   no: 'print a one-line pointer to the checklist instead',
 };
 
@@ -1158,7 +1161,8 @@ function applyCommitRulesStep(answers) {
 }
 
 async function askCommitRules(ask) {
-  const tracker = await askNumberedEnum(ask, 'tracker', ['jira', 'local', 'none'], 'jira', TRACKER_HELP);
+  const trackerDefault = (process.env.JIRA_PROJECT_KEY || '').trim() === '' ? 'none' : 'jira';
+  const tracker = await askNumberedEnum(ask, 'tracker', ['jira', 'local', 'none'], trackerDefault, TRACKER_HELP);
   const cr = { tracker: tracker };
   if (tracker !== 'none') {
     cr.ticketIdRequired = (await askNumberedEnum(ask, 'ticket ID required', ['yes', 'no'], 'yes', TICKET_REQUIRED_HELP)) === 'yes';
@@ -8073,7 +8077,50 @@ function cmdConfigGet(pathParts) {
   return 2;
 }
 
+// config set commit.tracker <jira|local|none> / commit.ticketIdRequired <on|off>: the Setup page's path into the
+// wizard's own commit-rules writer. The other keys of ~/.himmel/himmel.conf survive; the ticket-ID pattern stays
+// a terminal question and is carried over as it is.
+function cmdConfigSetCommit(rest, value, args) {
+  const key = rest.length === 1 ? rest[0] : '';
+  if (key !== 'tracker' && key !== 'ticketIdRequired') {
+    console.error(`himmelctl: config set: unknown path 'commit.${rest.join('.')}'`);
+    return 2;
+  }
+  const kv = {};
+  try {
+    for (const l of fs.readFileSync(commitRulesPath(), 'utf8').split('\n')) {
+      const m = /^(TRACKER|TICKET_ID_REQUIRED|TICKET_ID_PATTERN)=(.*)$/.exec(l);
+      if (m && !(m[1] in kv)) kv[m[1]] = m[2];
+    }
+  } catch (e) { if (e.code !== 'ENOENT') { console.error(`himmelctl: config set: could not read ${commitRulesPath()}: ${e.message}`); return 1; } }
+  const cr = {
+    tracker: kv.TRACKER || ((process.env.JIRA_PROJECT_KEY || '').trim() === '' ? 'none' : 'jira'),
+    ticketIdRequired: kv.TICKET_ID_REQUIRED !== '0',
+    ...(commitRulesPatternOk(kv.TICKET_ID_PATTERN) ? { ticketIdPattern: kv.TICKET_ID_PATTERN } : {}),
+  };
+  if (key === 'tracker') {
+    if (!['jira', 'local', 'none'].includes(value)) {
+      console.error(`himmelctl: config set: commit.tracker must be 'jira', 'local' or 'none' (got '${value}')`);
+      return 2;
+    }
+    cr.tracker = value;
+  } else {
+    if (value !== 'on' && value !== 'off') {
+      console.error(`himmelctl: config set: value must be 'on' or 'off' (got '${value}')`);
+      return 2;
+    }
+    if (cr.tracker === 'none') {
+      console.error("himmelctl: config set: commit.ticketIdRequired needs a tracker; set commit.tracker to 'jira' or 'local' first");
+      return 2;
+    }
+    cr.ticketIdRequired = value === 'on';
+  }
+  if (args.dryRun) { previewCommitRules({ commitRules: cr }); return 0; }
+  return applyCommitRulesStep({ commitRules: cr }).rc;
+}
+
 function cmdConfigSet(pathParts, value, args) {
+  if (pathParts[0] === 'commit') return cmdConfigSetCommit(pathParts.slice(1), value, args);
   if (value !== 'on' && value !== 'off') {
     console.error(`himmelctl: config set: value must be 'on' or 'off' (got '${value}')`);
     return 2;

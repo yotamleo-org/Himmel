@@ -4,7 +4,15 @@ Read on demand from `console-template.md` `## Wrapping a leg`. Moved verbatim fr
 
 ## Wrapping a leg
 
-**Default path: one call per leg message.** Write the leg's `MERGED` or
+**The waiter wraps workers; do not run `leg-event` / `close-wrapped-leg` by hand;
+run any other bounded script as `timeout 90` in the foreground.** A waiter armed
+with `--doc` and `--legs-from` runs `leg-event.sh` itself on every new `WRAPPED`
+or `MERGED` worker (`waiter.md`, the script relay) and wakes you only with
+`WAKE leg-event <line> out=<file>` when it could not. A `leg-event.sh` re-run on a
+worker already closed prints `HANDLED noop <label>`. The paths below are for that
+wake, or a chief armed without `--legs-from`.
+
+**One call per message.** Write the worker's `MERGED` or
 `WRAPPED` message to a file and run
 `bash scripts/handover/console-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`.
 It finds the leg doc by the message's `N<k>` label and runs

@@ -142,7 +142,7 @@ invariant actually calls for (judgement/destructive → Fable; multi-step
 reasoning → Opus; well-specified implementation → Sonnet by default, or an
 explicit non-dormant lane; scoped research → Sonnet; bulk mechanical → Haiku,
 never spawns further), instead of leaving tier selection to per-dispatch
-judgement (HIMMEL-1829 — the gap `/overnight-shift` left: it dispatches with
+judgement (HIMMEL-1829 — the gap `/afk-shift` left: it dispatches with
 no model named at all).
 
 The refusal is a real mechanism, not prose: `scripts/lanes/fanout-plan.mjs`
@@ -159,6 +159,10 @@ block, the concurrency discipline, and the attestation-trailer requirement.
 ## ticket-standard — refuse a draft without Plan, DoD and named proof (`himmel-ops:ticket-standard`)
 
 Lean-invoke skill (HIMMEL-5702): `scripts/ticket-standard-check.sh --type <T> --draft <file>` refuses a Task, Story or Bug missing Impact, What, Why, Plan, DoD, Proof or Agent detail and parks the draft in an intake queue (never discarded); Epic, Subtask and a missing Sector only warn. Tests: `bash marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh`.
+
+## release-manager — every placement into a release is a reasoned ruling (`himmel-ops:release-manager`)
+
+For the release-manager session only (HIMMEL-6796), armed from [`docs/handover/rm-brief-template.md`](../../../docs/handover/rm-brief-template.md). Thin procedures over `jira release`: claim the chief's requests, rule each with a sector, a ground and a reason, apply the ruling to Jira with a readback and a receipt comment, and report STATUS, BURN-DOWN and READY. No count gates (decision 104). Tests: `cd scripts/jira && npx vitest run src/release/ src/commands/release.test.ts`.
 
 ## cloud-route — classify tickets for the cloud lane (`/cloud-route`)
 

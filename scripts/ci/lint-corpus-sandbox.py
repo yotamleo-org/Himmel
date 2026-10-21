@@ -12,7 +12,11 @@ import sys
 
 ENFORCED = (
     "scripts/eval/guard-corpus/diff",
-    "scripts/hooks/test-block-destructive-commands.sh",
+    "scripts/hooks/lib-test-block-destructive.sh",
+    "scripts/hooks/test-block-destructive-commands-a.sh",
+    "scripts/hooks/test-block-destructive-commands-b.sh",
+    "scripts/hooks/test-block-destructive-commands-c.sh",
+    "scripts/hooks/test-block-destructive-commands-d.sh",
 )
 FOLLOW_UPS = (
     "scripts/hooks/test-hook-chain-latency.sh",
@@ -79,26 +83,115 @@ def python_launches(text):
     return errors
 
 
+def logical_lines(text):
+    """Yield (first line number, text) with backslash continuations joined."""
+    pending, first = "", 0
+    for number, line in enumerate(text.splitlines(), 1):
+        if not pending and line.lstrip().startswith("#"):
+            continue
+        if not pending:
+            first = number
+        if re.search(r'(?<!\\)(?:\\\\)*\\$', line):
+            pending += line[:-1]
+            continue
+        yield first, pending + line
+        pending = ""
+    if pending:
+        yield first, pending
+
+
+def code_positions(line):
+    """Per character: True where the shell reads code, False inside quotes.
+
+    A command substitution or parenthesis opens code again, also inside double quotes.
+    """
+    code, stack, i = [False] * len(line), ["code"], 0
+    while i < len(line):
+        char = line[i]
+        if char == "\\":
+            code[i:i + 2] = [stack[-1] != "dq"] * 2
+            i += 2
+            continue
+        if stack[-1] == "dq":
+            if char == '"':
+                stack.pop()
+            elif char == "(" and line[i - 1] == "$" or char == "`":
+                stack.append("tick" if char == "`" else "paren")
+                code[i] = True
+        else:
+            code[i] = True
+            if char == "'":
+                end = line.find("'", i + 1)
+                if end < 0:
+                    code[i:] = [True] * (len(line) - i)
+                    break
+                code[i:end + 1] = [False] * (end + 1 - i)
+                i = end
+            elif char == '"':
+                stack.append("dq")
+            elif char == "`":
+                stack.pop() if stack[-1] == "tick" else stack.append("tick")
+            elif char == "(":
+                stack.append("paren")
+            elif char == ")" and stack[-1] == "paren":
+                stack.pop()
+        i += 1
+    return code
+
+
 def shell_launches(text):
     errors = []
     # Require the owned runner path at the call site, never a mutable binding.
     command = 'bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh"'
-    hook = re.compile(
-        r'\b(?:bash|sh|env)\s+(?:[^\s$`\"\'();|&]+\s+)*'
-        r'[\"\']?\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})'
-        r'|[\"\']?\$BASH[A-Za-z0-9_]*[\"\']?\s+[\"\']?\$HOOK\b'
-    )
+    # Fail closed: any reference to a hook-like variable, and any variable run
+    # directly by bash/sh/dash/zsh/ksh/env/python/exec/source/dot, is a launch
+    # unless it sits after a wrapper's `--` or is one of the listed non-launch
+    # uses. Other launch verbs (eval, command, timeout, nohup, xargs, a bare
+    # "$T") are caught only when the variable is hook-named.
+    name = r'[A-Za-z_0-9]*hook[A-Za-z_0-9]*'
+    reference = re.compile(r'\$\{?' + name, re.I)
+    # An operand is a run of escapes, bare characters and quoted strings; the
+    # first `$` reached inside one is the variable (or substitution) it runs.
+    piece = r'(?:\\.|"(?:[^"\\$]|\\.)*"|\'[^\']*\'|[^\s\\"\'$`;|&()])'
+    runs_variable = re.compile(
+        r'(?P<verb>\b(?:bash|sh|dash|zsh|ksh|env|python3?|exec|source)|(?<![\w$.])\.)'
+        r'(?=\s+(?:' + piece + r'+\s+)*' + piece + r'*(?:"(?:[^"\\$]|\\.)*)?(?P<ref>\$))')
+    # The one shared lib the owned suites source, by its exact path expression.
+    lib_source = '. "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"'
+    ref = r'["\']?\$\{?' + name
+    non_launch = re.compile(
+        r'(?:\[\[?|\btest)\s+-[a-z]\s+' + ref
+        + r'|\bchmod\s+[-+=a-z,]+\s+' + ref
+        + r'|\bcp\s+' + ref, re.I)
     wrapper = re.compile(re.escape(command) + r'[^;|&]*?\s+--\s')
-    for number, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith("#"):
-            continue
-        for match in hook.finditer(line):
-            prefix = line[:match.start()]
-            # Ignore operators inside the exact path expression, but a wrapper
-            # protects only its own simple command, never a later one.
-            wrappers = list(wrapper.finditer(prefix))
-            if not wrappers or re.search(r'[;|&]', prefix[wrappers[-1].end():]):
-                errors.append((number, "hook launch bypasses sandbox runner"))
+    for number, line in logical_lines(text):
+        wrappers = list(wrapper.finditer(line))
+        # Only the exact runner path expression is exempt; anything else before
+        # the `--` (a command substitution, say) runs on the host.
+        owned = [(w.start(), w.start() + len(command)) for w in wrappers]
+        owned += [(m.start(), m.end()) for m in re.finditer(re.escape(lib_source), line)]
+        allowed = list(non_launch.finditer(line))
+        positions = {m.start() for m in reference.finditer(line)}
+        # A verb inside quotes is payload data, so it runs nothing; hook-named
+        # references above are still scanned wherever they sit.
+        code = code_positions(line)
+        positions |= {m.start("ref") for m in runs_variable.finditer(line)
+                      if code[m.start("verb")]}
+        for position in sorted(positions):
+            if any(start <= position < end for start, end in owned):
+                continue
+            if any(m.start() <= position < m.end() for m in allowed):
+                continue
+            covering = [w for w in wrappers if w.end() <= position]
+            if covering:
+                between = line[covering[-1].end():position]
+                # A wrapper protects only its own simple command, never a later
+                # one, and never a substitution the host shell expands first.
+                # Quoting is not parsed, so any parenthesis or backtick between the
+                # delimiter and the reference refuses it.
+                if not re.search(r'[;|&`(]', between):
+                    continue
+            errors.append((number, "hook reference outside a sandbox-run.sh wrapper"))
     return errors
 
 

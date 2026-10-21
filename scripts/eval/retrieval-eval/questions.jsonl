@@ -1,30 +1,30 @@
-{"id":"q01","kind":"why","src":"selfq","q":"why does block-graphify-egress exist and which corpora does it protect","gold":["scripts/guardrails/graphify-fence.sh","scripts/hooks/block-graphify-egress.sh"],"reason":["salus","luna"]}
-{"id":"q02","kind":"why","src":"selfq","q":"why does a RETASK narrowing or halt need no token while an expansion does","gold":["docs/internals/retask-channel.md"],"reason":["mild DoS"]}
-{"id":"q03","kind":"what","src":"selfq","q":"how do a console and a leg relate","gold":["docs/glossary.md"],"reason":[]}
+{"id":"q01","kind":"why","src":"selfq","q":"why does block-graphify-egress exist and which corpora does it protect","gold":["scripts/guardrails/graphify-fence.sh","scripts/hooks/block-graphify-egress.sh"],"gold1":["docs/internals/enforcement.md","docs/internals/egress-matrix.md"],"reason":["salus","luna"]}
+{"id":"q02","kind":"why","src":"selfq","q":"why does a RETASK narrowing or halt need no token while an expansion does","gold":["docs/internals/retask-channel.md"],"gold1":["docs/handover/leg-preface.md","CLAUDE.md"],"reason":["mild DoS"]}
+{"id":"q03","kind":"what","src":"selfq","q":"how do a console and a leg relate","gold":["docs/glossary.md"],"gold1":["docs/handover/running-a-console.md"],"reason":[]}
 {"id":"q04","kind":"why","src":"selfq","q":"how does graphify path traverse an entity named in several files","gold":["scripts/graphify/harden-graph.py","CLAUDE.md","AGENTS.md"],"reason":["canonical"]}
 {"id":"q05","kind":"why","src":"selfq","q":"why does the Jira transition at merge need the completes-ticket flag","gold":["docs/handover/leg-preface.md","scripts/handover/merge-on-green.sh"],"reason":["HIMMEL-3059"]}
-{"id":"q06","kind":"how","src":"graphify","q":"how does the queue lock work","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"reason":[]}
+{"id":"q06","kind":"how","src":"graphify","q":"how does the queue lock work","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"gold1":["docs/handover/leg-preface.md"],"reason":[]}
 {"id":"q07","kind":"how","src":"graphify","q":"how does the RETASK channel nonce work","gold":["docs/internals/retask-channel.md"],"reason":["nonce"]}
-{"id":"q08","kind":"where","src":"graphify","q":"where is the stale index rule defined","gold":["CLAUDE.md","AGENTS.md","scripts/luna/qmd-staleness.sh"],"reason":["not evidence"]}
-{"id":"q09","kind":"how","src":"qmd","q":"how does console succession relay work","gold":["docs/handover/leg-sections/succession.md"],"reason":["relay"]}
+{"id":"q08","kind":"where","src":"graphify","q":"where is the stale index rule defined","gold":["CLAUDE.md","AGENTS.md","scripts/luna/qmd-staleness.sh"],"gold1":["docs/internals/context-architecture.md"],"reason":["not evidence"]}
+{"id":"q09","kind":"how","src":"qmd","q":"how does console succession relay work","gold":["docs/handover/leg-sections/succession.md"],"gold1":["docs/handover/console-sections/successor-start.md","docs/handover/leg-preface.md"],"reason":["relay"]}
 {"id":"q10","kind":"what","src":"graphify","q":"which hook scripts are in MUST_RUN_CHAIN_MEMBERS","gold":["scripts/hooks/run-hook-with-bash.js","marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js","docs/internals/enforcement.md"],"reason":[]}
 {"id":"q11","kind":"how","src":"graphify","q":"console-kit go.sh GO file","gold":["scripts/handover/console-kit/go.sh"],"reason":[]}
-{"id":"q12","kind":"how","src":"qmd","q":"how is the qmd fork pinned and installed on the station","gold":["scripts/lib/qmd-bin.sh","docs/setup/updating.md"],"reason":["fork"]}
-{"id":"q13","kind":"where","src":"qmd","q":"how to mark a deliberate simplification in code with its upgrade path","gold":["docs/internals/ponytail-convention.md"],"reason":["ponytail"]}
-{"id":"q14","kind":"why","src":"qmd","q":"why do cache reads cost less and how long does the prompt cache live","gold":["docs/internals/prompt-cache.md"],"reason":["0.1","5 minutes"]}
-{"id":"q15","kind":"what","src":"qmd","q":"difference between claude -p, claude --bg and a headed session","gold":["docs/internals/headless-modes.md"],"reason":[]}
-{"id":"q16","kind":"what","src":"qmd","q":"which model tier and effort to pick for a delegated subagent","gold":["docs/internals/lane-calibration.md"],"reason":[]}
-{"id":"q17","kind":"how","src":"qmd","q":"what to do when a hook denies my shell command shape","gold":["docs/internals/stuck-playbook.md"],"reason":[]}
-{"id":"q18","kind":"where","src":"qmd","q":"check the subscription budget before launching an unattended claude run","gold":["scripts/lib/bank-preflight.sh"],"reason":[]}
-{"id":"q19","kind":"what","src":"qmd","q":"which hosts may receive text from a salus session and which are blocked","gold":["scripts/guardrails/egress-matrix.json","docs/internals/egress-matrix.md"],"reason":[]}
+{"id":"q12","kind":"how","src":"qmd","q":"how is the qmd fork pinned and installed on the station","gold":["scripts/lib/qmd-bin.sh","docs/setup/updating.md"],"gold1":["docs/setup/new-machine.md"],"reason":["fork"]}
+{"id":"q13","kind":"where","src":"qmd","q":"how to mark a deliberate simplification in code with its upgrade path","gold":["docs/internals/ponytail-convention.md"],"gold1":["CLAUDE.md"],"reason":["ponytail"]}
+{"id":"q14","kind":"why","src":"qmd","q":"why do cache reads cost less and how long does the prompt cache live","gold":["docs/internals/prompt-cache.md"],"gold1":["docs/handover/leg-sections/cache-keepalive.md","docs/internals/cache-health.md"],"reason":["0.1","5 minutes"]}
+{"id":"q15","kind":"what","src":"qmd","q":"difference between claude -p, claude --bg and a headed session","gold":["docs/internals/headless-modes.md"],"gold1":["CLAUDE.md"],"reason":[]}
+{"id":"q16","kind":"what","src":"qmd","q":"which model tier and effort to pick for a delegated subagent","gold":["docs/internals/lane-calibration.md"],"gold1":["CLAUDE.md","docs/internals/worker-spawn-matrix.md"],"reason":[]}
+{"id":"q17","kind":"how","src":"qmd","q":"what to do when a hook denies my shell command shape","gold":["docs/internals/stuck-playbook.md"],"gold1":["docs/handover/console-sections/refused-shapes.md","docs/handover/leg-sections/shell-and-tests.md"],"reason":[]}
+{"id":"q18","kind":"where","src":"qmd","q":"check the subscription budget before launching an unattended claude run","gold":["scripts/lib/bank-preflight.sh"],"gold1":["CLAUDE.md"],"reason":[]}
+{"id":"q19","kind":"what","src":"qmd","q":"which hosts may receive text from a salus session and which are blocked","gold":["scripts/guardrails/egress-matrix.json","docs/internals/egress-matrix.md"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q20","kind":"how","src":"qmd","q":"how to re-embed the qmd index on another embedding model without a mixed-model index","gold":["docs/internals/qmd-embed-model.md","scripts/luna/qmd-embed-model.sh"],"reason":[]}
-{"id":"q21","kind":"where","src":"qmd","q":"running a well scoped ticket end to end without an operator present","gold":["docs/handover/overnight-mode.md"],"reason":[]}
-{"id":"q22","kind":"where","src":"qmd","q":"himmel doctor vector probe","gold":["scripts/himmel-doctor.sh"],"reason":[]}
-{"id":"q23","kind":"how","src":"qmd","q":"how does a leg make sure only one session works on a handover document at a time","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"reason":[]}
+{"id":"q21","kind":"where","src":"qmd","q":"running a well scoped ticket end to end without an operator present","gold":["docs/handover/afk-mode.md"],"gold1":["docs/handover/running-a-console.md"],"reason":[]}
+{"id":"q22","kind":"where","src":"qmd","q":"himmel doctor vector probe","gold":["scripts/himmel-doctor.sh"],"gold1":["docs/commands-catalog.md"],"reason":[]}
+{"id":"q23","kind":"how","src":"qmd","q":"how does a leg make sure only one session works on a handover document at a time","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"gold1":["docs/handover/leg-preface.md"],"reason":[]}
 {"id":"q24","kind":"where","src":"selfq","q":"where is sanitize_settings called","gold":["scripts/claude-codex","scripts/claude-glm","scripts/claude-openrouter","scripts/claude-deepseek"],"reason":[]}
 {"id":"q25","kind":"who-calls","src":"grep","q":"who consumes the plugin-upstreams refs","gold":["scripts/plugin-upstreams.json","docs/tooling-catalog.md"],"reason":[]}
-{"id":"q26","kind":"where","src":"grep","q":"the base resolver the PR flow uses for review-round base sha","gold":["scripts/cr/base-resolver.sh"],"reason":[]}
-{"id":"q27","kind":"how","src":"grep","q":"how merge-on-green lets a PR declare itself the fix for a red main","gold":["scripts/handover/merge-on-green.sh","docs/internals/stuck-playbook.md"],"reason":["Fixes-main-red"]}
+{"id":"q26","kind":"where","src":"grep","q":"the base resolver the PR flow uses for review-round base sha","gold":["scripts/cr/base-resolver.sh"],"gold1":["docs/handover/leg-preface.md"],"reason":[]}
+{"id":"q27","kind":"how","src":"grep","q":"how merge-on-green lets a PR declare itself the fix for a red main","gold":["scripts/handover/merge-on-green.sh","docs/internals/stuck-playbook.md"],"gold1":["docs/handover/leg-preface.md"],"reason":["Fixes-main-red"]}
 {"id":"q28","kind":"what","src":"grep","q":"convention marker for tree-walking test suites","gold":["scripts/cr/impacted-suites.sh"],"reason":["selector: tree-scan"]}
 {"id":"q29","kind":"where","src":"grep","q":"where is leg_tail_status defined","gold":["scripts/lib/leg-tail-status.sh"],"reason":[]}
 {"id":"q30","kind":"who-calls","src":"grep","q":"runner emitters that call observability_register_cadence for each cadence kind","gold":["scripts/lib/observability-registry.sh"],"reason":[]}
@@ -32,19 +32,44 @@
 {"id":"q32","kind":"where","src":"grep","q":"launch-profile-ok parser and reason rule","gold":["docs/internals/lane-calibration.md"],"reason":[]}
 {"id":"q33","kind":"where","src":"grep","q":"the thread-resolve helper for review threads","gold":["plugins/himmel-gh/lib/thread-resolve-action-cli.mjs","plugins/himmel-gh/graphql/resolve-thread.gql"],"reason":[]}
 {"id":"q34","kind":"how","src":"grep","q":"how queue-lock takeover claim release works","gold":["scripts/handover/queue-lock.sh"],"reason":[]}
-{"id":"q35","kind":"where","src":"grep","q":"platforms tested trailer recovery in the stuck playbook","gold":["docs/internals/stuck-playbook.md"],"reason":[]}
-{"id":"q36","kind":"where","src":"grep","q":"git env scrub baseline ratchet","gold":["scripts/guardrails/check-git-env-scrub.sh","scripts/guardrails/git-env-baseline.txt"],"reason":[]}
+{"id":"q35","kind":"where","src":"grep","q":"platforms tested trailer recovery in the stuck playbook","gold":["docs/internals/stuck-playbook.md"],"gold1":["docs/handover/leg-preface.md"],"reason":[]}
+{"id":"q36","kind":"where","src":"grep","q":"git env scrub baseline ratchet","gold":["scripts/guardrails/check-git-env-scrub.sh","scripts/guardrails/git-env-baseline.txt"],"gold1":["docs/internals/enforcement.md"],"reason":[]}
 {"id":"q37","kind":"how","src":"grep","q":"semantic flag usage in the graph cadences","gold":["scripts/graphify/graph-cadence.sh","scripts/luna/graphmap-cadence.sh"],"reason":[]}
-{"id":"q38","kind":"where","src":"grep","q":"where is EGRESS REFUSED printed for qmd","gold":["scripts/lib/qmd-bin.sh","scripts/luna/qmd-reindex.sh"],"reason":[]}
+{"id":"q38","kind":"where","src":"grep","q":"where is EGRESS REFUSED printed for qmd","gold":["scripts/lib/qmd-bin.sh","scripts/luna/qmd-reindex.sh"],"gold1":["docs/internals/environment-gotchas.md"],"reason":[]}
 {"id":"q39","kind":"where","src":"grep","q":"where is the sweep record form in write-verdicts","gold":["scripts/cr/write-verdicts.sh"],"reason":["sweep"]}
 {"id":"q40","kind":"where","src":"grep","q":"how many suite slots run at once and where is HIMMEL_SUITE_SLOTS read","gold":["scripts/lib/suite-semaphore.sh"],"reason":[]}
-{"id":"q41","kind":"where","src":"grep","q":"how security reviewed manual token is accepted","gold":["scripts/hooks/check-security-reviewed.sh"],"reason":["manual"]}
+{"id":"q41","kind":"where","src":"grep","q":"how security reviewed manual token is accepted","gold":["scripts/hooks/check-security-reviewed.sh"],"gold1":["CLAUDE.md"],"reason":["manual"]}
 {"id":"q42","kind":"where","src":"graphify","q":"wrapper to run graphify query from a leg worktree","gold":["scripts/graphify/leg-graph.sh"],"reason":[]}
 {"id":"q43","kind":"why","src":"grep","q":"why does qmd-bounded kill the whole process group instead of plain timeout","gold":["scripts/lib/qmd-bounded.sh"],"reason":["signal"]}
-{"id":"q44","kind":"why","src":"grep","q":"why must a gate command never be piped into tail","gold":["scripts/hooks/block-tail-pipe-on-gates.sh"],"reason":["status of tail"]}
+{"id":"q44","kind":"why","src":"grep","q":"why must a gate command never be piped into tail","gold":["scripts/hooks/block-tail-pipe-on-gates.sh"],"gold1":["docs/handover/leg-preface.md"],"reason":["status of tail"]}
 {"id":"q45","kind":"why","src":"selfq","q":"why do attestation trailers belong in the first commit","gold":["CLAUDE.md","AGENTS.md","docs/setup/install.md"],"reason":["too late to teach"]}
 {"id":"q46","kind":"where","src":"grep","q":"guard that refuses a bare qmd search command","gold":["scripts/hooks/block-bare-qmd-query.sh"],"reason":[]}
-{"id":"q47","kind":"how","src":"graphify","q":"how is the stored rationale added to graphify query output","gold":["scripts/graphify/append-rationale.py","scripts/graphify/leg-graph.sh"],"reason":[]}
+{"id":"q47","kind":"how","src":"graphify","q":"how is the stored rationale added to graphify query output","gold":["scripts/graphify/leg-graph.sh"],"reason":[]}
 {"id":"q48","kind":"what","src":"graphify","q":"what does the MUST_RUN chain do when a security guard times out","gold":["marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js","docs/internals/enforcement.md"],"reason":["deny"]}
-{"id":"q49","kind":"where","src":"grep","q":"which CI jobs run on self-hosted runners","gold":[".github/workflows/ci.yml"],"reason":[]}
+{"id":"q49","kind":"where","src":"grep","q":"which CI jobs run on self-hosted runners","gold":[".github/workflows/ci.yml"],"gold1":["docs/internals/ci-orchestrator.md","docs/internals/ci-image.md"],"reason":[]}
 {"id":"q50","kind":"where","src":"qmd","q":"definition of console, leg, judge, relay and chain","gold":["docs/glossary.md"],"reason":[]}
+{"id":"h01","kind":"why","src":"heldout","split":"heldout","q":"why must every npm project commit a lockfile","gold":["docs/security/npm-policy.md"],"reason":["lockless install"]}
+{"id":"h02","kind":"what","src":"heldout","split":"heldout","q":"when may a ticket that ships a feature be marked Done","gold":["docs/internals/live-proof-test.md"],"gold1":["marketplace/plugins/himmel-ops/skills/ticket-standard/SKILL.md"],"reason":[]}
+{"id":"h03","kind":"why","src":"heldout","split":"heldout","q":"what should a worker do instead of simply stopping when it still holds its lock and has nothing scheduled","gold":["docs/handover/leg-sections/cache-keepalive.md"],"gold1":["docs/internals/prompt-cache.md","scripts/hooks/guard-leg-cache-ttl.sh"],"reason":[]}
+{"id":"h04","kind":"what","src":"heldout","split":"heldout","q":"how are release versions named and what separates a patch from a minor","gold":["docs/release/versioning-scheme.md"],"reason":[]}
+{"id":"h05","kind":"where","src":"heldout","split":"heldout","q":"where does each deferred review suggestion or residual gap go when a version ships","gold":["docs/release/follow-up-triage.md"],"reason":[]}
+{"id":"h06","kind":"why","src":"heldout","split":"heldout","q":"which steps between green CI and merge must never start a claude subprocess","gold":["docs/internals/ship-tail-model-free.md"],"gold1":["docs/internals/headless-modes.md"],"reason":[]}
+{"id":"h07","kind":"why","src":"heldout","split":"heldout","q":"who may change which forks count as himmel adapters","gold":["docs/internals/fork-adapters.md"],"reason":[]}
+{"id":"h08","kind":"how","src":"heldout","split":"heldout","q":"how do I say whether I have a virtual machine to prove a held upstream bump before it reaches my machine","gold":["docs/setup/vm-mode.md"],"gold1":["docs/setup/vms.md"],"reason":[]}
+{"id":"h09","kind":"what","src":"heldout","split":"heldout","q":"what tooling does the prebuilt continuous integration image carry and when is it rebuilt","gold":["docs/internals/ci-image.md"],"gold1":[".github/workflows/ci-image.yml"],"reason":[]}
+{"id":"h10","kind":"what","src":"heldout","split":"heldout","q":"how is what a ticket cost and how many review rounds it took recorded","gold":["docs/internals/usage-records.md"],"reason":[]}
+{"id":"h11","kind":"why","src":"heldout","split":"heldout","q":"why does the vault secret scanner stall on quoted nonces and shas in handover docs and what keeps it quiet","gold":["docs/internals/handover-token-grammar.md"],"reason":["generic-api-key"]}
+{"id":"h12","kind":"why","src":"heldout","split":"heldout","q":"why is the operator's attention treated as the limiting resource when fanning out work","gold":["docs/orchestration-patterns.md"],"reason":[]}
+{"id":"h13","kind":"how","src":"heldout","split":"heldout","q":"how do lesson records point back to the evidence that would confirm or refute them","gold":["docs/internals/lesson-provenance.md"],"gold1":["scripts/lessons/validate-lesson.mjs"],"reason":[]}
+{"id":"h14","kind":"what","src":"heldout","split":"heldout","q":"what are the layers a setting can live in and which one wins","gold":["docs/internals/config-layers.md"],"gold1":["docs/configuration.md"],"reason":[]}
+{"id":"h15","kind":"how","src":"heldout","split":"heldout","q":"what does cache-health.py compute per role","gold":["docs/internals/cache-health.md","scripts/eval/cache-health.py"],"gold1":["scripts/eval/cache-health-cadence.sh"],"reason":[]}
+{"id":"h16","kind":"how","src":"heldout","split":"heldout","q":"how does gh-pr-snapshot.sh cache PR facts","gold":["scripts/lib/gh-pr-snapshot.sh","docs/internals/pr-snapshot.md"],"reason":[]}
+{"id":"h17","kind":"how","src":"heldout","split":"heldout","q":"what does guard-leg-context-handoff.sh do when a leg's context fills","gold":["docs/internals/leg-context-guard.md","scripts/hooks/guard-leg-context-handoff.sh"],"gold1":["docs/handover/leg-sections/context-guard.md"],"reason":[]}
+{"id":"h18","kind":"how","src":"heldout","split":"heldout","q":"what does upstream-watch.sh scan each day","gold":["docs/internals/upstream-watch.md","scripts/upstreams/upstream-watch.sh"],"reason":[]}
+{"id":"h19","kind":"how","src":"heldout","split":"heldout","q":"how does vm-mode.sh read vm.mode","gold":["scripts/lib/vm-mode.sh","docs/setup/vm-mode.md"],"reason":[]}
+{"id":"h20","kind":"where","src":"heldout","split":"heldout","q":"himmel-adapters.json registry of fork adapters","gold":["scripts/guardrails/himmel-adapters.json"],"gold1":["docs/internals/fork-adapters.md"],"reason":[]}
+{"id":"h21","kind":"where","src":"heldout","split":"heldout","q":"where is HIMMEL_EVAL_RUNS_LEDGER resolved to a path","gold":["scripts/eval/lib/eval_runs.py"],"gold1":["scripts/eval/README.md"],"reason":[]}
+{"id":"h22","kind":"what","src":"heldout","split":"heldout","q":"what is the uv.lock pinning rule for python dependencies","gold":["docs/security/python-policy.md"],"reason":[]}
+{"id":"h23","kind":"what","src":"heldout","split":"heldout","q":"where are the recurring review finding classes recorded that a diff is checked against before the critics run","gold":["docs/internals/known-findings.md"],"gold1":["scripts/cr/known-findings.json"],"reason":[]}
+{"id":"h24","kind":"how","src":"heldout","split":"heldout","q":"what does ready-check.sh verify before a leg reports READY","gold":["scripts/handover/console-kit/ready-check.sh"],"gold1":["docs/internals/ship-tail-model-free.md","docs/handover/leg-preface.md"],"reason":[]}
+{"id":"h25","kind":"what","src":"heldout","split":"heldout","q":"how does ci-orchestrator prioritize and throttle jobs","gold":["docs/internals/ci-orchestrator.md"],"reason":[]}

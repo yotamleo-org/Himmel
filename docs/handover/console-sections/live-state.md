@@ -1,6 +1,6 @@
 # Console section — Live state entry format and optional fields
 
-Read on demand from `console-template.md` `## Live state`. Moved verbatim from the template; the core keeps one sentence per rule.
+Read on demand from `console-template.md` `## Live state`. Moved verbatim from the template, whose two-line preamble points here.
 
 > **Authority-bearing state — not a summary.** Per-leg RETASK nonces, lock
 > release tokens, the held queue and the last GO live HERE, on disk, not only
@@ -8,8 +8,13 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > exactly this section after an autocompact, and `<kit>/tick.sh` flags
 > `livestate=DRIFT:<leg>[,…]` when it disagrees with the leg locks actually
 > held (and `livestate=MALFORMED:<leg>[,…]` for a malformed entry, below). Update this section on every dispatch, ruling, wrap and GO — not only
-> at handover; `console.sh next` copies it verbatim into the successor's
-> HANDOFF, so a stale line here is a stale line there too. A leg's nonce is
+> at handover; `console.sh next` seeds its `legs:` block, `queue:`, `last GO:` and
+> `acked:` verbatim into the successor's own Live state (the HANDOFF holds only
+> the pointer `Live state: seeded into <successor doc>`, never a nonce), so a
+> stale line here is a stale line there too, and the successor's
+> `action-zero.sh --render-legs` keeps the seeded nonces. A per-leg detail line
+> past the `legs:` block is not seeded: put what the successor needs in the
+> HANDOFF's judgement notes. A worker's nonce is
 > updated **only after** that leg's quote-back (of the fresh nonce, when one
 > was issued): until then the line still names the predecessor's. A relay may hand out no fresh token,
 > so a leg can stay on the predecessor's nonce for good and be fully
@@ -72,9 +77,49 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > call per version per render; a failing or missing CLI reads `unavailable` and the
 > render still succeeds. The counts fold into `board.mjs --changed`, not into the
 > tick's `board=` (tick.sh never sees Jira).
-> `console.sh next` copies `epics:`, `decisions:`, `priority:`, `versions:` and
-> `tracker-plan:` verbatim into the successor's own Live state. It refuses to
+> `release: <R>` (a declared release, `console-sections/release-manager.md`) adds
+> a `Release manager <R>` panel from one `jira release state <R> --json` call: M4
+> burn-down per version, the leaks and the M1 trend for the last 7 days; a failing
+> CLI reads `unavailable`. `rm: <session> <doc> epoch=<n>` names the live RM.
+> `console.sh next` copies `epics:`, `decisions:`, `priority:`, `versions:`,
+> `tracker-plan:`, `release:` and `rm:` verbatim into the successor's own Live state. It refuses to
 > hand over when your `decisions:` or `priority:` line is missing or a
 > placeholder while your predecessor's was real (`decisions:` also when shorter),
 > unless a Results bullet carries `DECISIONS-DROP: <reason>` or
-> `PRIORITY-DROP: <reason>`.
+> `PRIORITY-DROP: <reason>` (or `PRIORITY-PRUNE: <keys>`).
+> **Prune closed keys** (tick prints `pool-closed=<closed>/<total>` when the Jira mirror
+> reads any key on your `priority:` line closed): `bash scripts/handover/console-kit/priority-prune.sh --doc <your doc>`
+> prints the line without them, the rest in order; with an operator OK run it with
+> `--apply` and log `PRIORITY-PRUNE: <the dropped keys it names>` in Results.
+> **Bound `decisions:`** (tick prints `ACTION decisions-over-budget=<bytes>/<limit>`
+> past `DECISIONS_BUDGET_BYTES`, default 4000, and `ACTION handoff-over-budget` when
+> your HANDOFF is past `HANDOFF_BUDGET_BYTES`, default 6000): copy each superseded
+> `(N) …` ruling **verbatim**, number included, into
+> `specs/decisions/console-decisions-<date>.md` in the bucket, then keep only the
+> active rulings plus that path on the line, e.g. `decisions:
+> specs/decisions/console-decisions-2026-10-20.md holds #1-#60; active: (61) …`.
+> `next` accepts the shorter line only when it names at least one decisions file
+> and every numbered entry of your predecessor's line, and of any decisions file
+> that line names, is found verbatim in your line or the files it names; a missing
+> file, a changed word or words appended to an entry read `DECISIONS-DROP`. Once your predecessor's line names
+> a decisions file, `next` runs this check whatever your line's length. An entry
+> runs from its `(N) ` to the next `(N) ` or the end of its line, so a heading in a
+> decisions file is fine; text before the first `(N) ` is not checked, so number
+> every ruling. Name every older decisions file on the line, or copy its entries
+> into today's.
+> The chief board's `Open operator decisions` panel reads the `(N) ` entries
+> of every decisions file the line names, plus any written on the line itself.
+>
+> **One-time migration to the decisions file.** The first chief that hands
+> over after `next` started seeding (HIMMEL-6498), if its `decisions:` line
+> still carries the rulings inline:
+>
+> 1. Append each numbered ruling verbatim, number included, to the bucket's
+>    `specs/decisions/console-decisions-<date>.md`, one
+>    `append-results.sh <that file> "(N) <ruling>"` per ruling (a new file
+>    needs its `## Results` heading line first; the script refuses without one).
+> 2. Set the line to `decisions: specs/decisions/console-decisions-<date>.md
+>    (latest #<n>)`, `<n>` the highest number, naming any older decisions file
+>    too.
+> 3. Run `console.sh next` as usual: the check above finds every predecessor
+>    entry in the file and passes the shorter line with no `DECISIONS-DROP`.

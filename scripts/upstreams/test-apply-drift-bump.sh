@@ -374,13 +374,12 @@ out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "a falsey non-list companion_pins is refused (rc=2), not skipped"; else fail "companion_pins {} — expected rc=2 got rc=$rc: $out"; fi
 rm -rf "$root"
 
-echo "[test-apply-drift-bump] the REAL registry: graphify is auto-bumpable, qmd is not"
+echo "[test-apply-drift-bump] the REAL registry: neither graphify nor qmd is auto-bumpable"
 REAL_ROOT=$(cd "$SCRIPT_DIR/.." && cd .. && pwd)
 if [ -f "$REAL_ROOT/scripts/upstreams.json" ]; then
   # --dry-run only: never write to the live tree from a test.
   out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" graphify 99.99.99 --dry-run 2>&1); rc=$?
-  if [ "$rc" -eq 0 ]; then pass "graphify resolves against the live registry (dry-run)"; else fail "graphify dry-run — expected rc=0 got $rc: $out"; fi
-  assert_contains "$out" "scripts/lib/graphify-bin.sh" "graphify version_pin points at the real resolver"
+  if [ "$rc" -eq 3 ]; then pass "graphify is SKIP (fork SHA pin, no version_pin, not auto-bumpable)"; else fail "graphify — expected rc=3 (SKIP) got $rc: $out"; fi
   out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" qmd 99.99.99 --dry-run 2>&1); rc=$?
   if [ "$rc" -eq 3 ]; then pass "qmd is SKIP (SHA pin, no version_pin, not auto-bumpable)"; else fail "qmd — expected rc=3 (SKIP) got $rc: $out"; fi
   # CI's bun version is a bare-version file the nightly bump owns.

@@ -1,0 +1,6 @@
+mode full
+reason trust-path: scripts/hooks/block-bare-qmd-query.sh
+base a40981b1dc0aaa85d27192e3911cd01616a76ff0
+head 587b6f8f1868ae3b5e5df5f19105d6325dfe3bec
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+shard 1/8

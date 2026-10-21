@@ -52,6 +52,18 @@ bash "$HERE/brief-lint.sh" "$D1" 2>"$WORK/lint1.err"; rc=$?
 bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 [ "$rc" = 0 ] && pass "brief 2 (none found (<query>) prior art) passes brief-lint.sh" || fail "brief 2 brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
 
+# every brief pre-authorizes a new suite's own tier + duration row
+has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
+has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "name the rows in READY"
+
+# contract item 3: a leg runs locally only the RED rows it builds; every other impacted suite is CI-gated
+B1="$(tr '\n' ' ' < "$D1" | tr -s ' ')"
+lacks "brief 1 no longer tells the leg to run the full suite of every touched file" "$B1" "the full suite of every file you touched"
+has "brief 1 lists non-RED impacted suites as SKIP CI-gated per decision 101" "$B1" "SKIP CI-gated per decision 101 (GitHub CI is the gate)"
+has "brief 1 routes VM-only checks through the VM queue" "$B1" "VM queue"
+has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never run run-shell-tests.sh full or sharded locally"
+has "brief 1 limits local runs to the RED rows of the item built" "$B1" "Locally run only the RED rows of the item you build"
+
 # the wrap step checks the queue lock: the brief's wrap command carries --queue-doc with THIS leg's doc
 has "brief 1 wrap command passes --queue-doc with its own doc" "$(cat "$D1")" "wrap-subtree-check.sh --queue-doc $D1"
 has "brief 2 wrap command passes --queue-doc with its own doc" "$(cat "$D2")" "wrap-subtree-check.sh --queue-doc $D2"
@@ -142,6 +154,23 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); d=dict(l[0]); d[
 python3 "$SUT" "$WORK/dupbr.json" --base 4ccb59d --console BZ --bucket "$WORK/b4" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/dupbr.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'duplicate leg branches' "$WORK/dupbr.err" && pass "two legs sharing a branch are refused" || fail "dup branch rc=$rc"
 
+# The nonce <letter>-<label>-<hex> must stay inside the vault token grammar (1-3 upper-case letters, label N + 1-5 digits).
+tok() { # <name> <stderr fragment> <gen-briefs args...>: refused, rc 1, nothing written
+    local n="$1" frag="$2"; shift 2
+    rm -rf "$WORK/bt-tok"
+    python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --bucket "$WORK/bt-tok" --repo "$REPO" --handover-root /h --no-worktree "$@" >/dev/null 2>"$WORK/tok.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/tok.err" && ! ls "$WORK/bt-tok"/* >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/tok.err"))"; fi
+}
+tok "a 4-letter --letter is refused" "letter" --console BZ --letter ABCD
+tok "a lower-case --letter is refused" "letter" --console BZ --letter bz
+tok "an explicitly empty --letter is refused" "letter" --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console --letter ""
+tok "a letter derived from the console name that is 4 letters long is refused" "letter" --console HIMMEL-nextleg-2026-10-08ABCD-roadmap-console
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --letter ABC --bucket "$WORK/bt-ok" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
+[ "$rc" = 0 ] && grep -q 'ABC-N901-' "$WORK/bt-ok"/HIMMEL-9001-N901-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["label"]="N123456"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lbl6.json"
+python3 "$SUT" "$WORK/lbl6.json" --base 4ccb59d --console BZ --bucket "$WORK/bt-lbl" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lbl6.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'label' "$WORK/lbl6.err" && pass "a 6-digit leg label is refused" || fail "6-digit label rc=$rc"
+
 # A per-leg lane key is carried through and validated.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
 lout="$(python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b5" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5.json" 2>&1)"
@@ -202,18 +231,22 @@ python3 "$SUT" "$WORK/tier-blank.json" --base 4ccb59d --console BZ --bucket "$WO
 [ "$rc" = 1 ] && grep -q 'tier.reason' "$WORK/tier-blank.err" && pass "a blank tier reason is refused" || fail "blank tier reason rc=$rc"
 lacks "a sonnet leg's brief has no Tier line" "$b1" "**Tier:**"
 
-# A lane worker (lane other than native) cannot read the state repo, so a leg whose
-# text points at a path under the handover root is refused and nothing is written; a native leg may.
+# A lane worker (lane other than native or claudex) cannot read the state repo, so a leg whose
+# text points at a path under the handover root is refused and nothing is written; a native or claudex leg may.
 SPEC="$WORK/handovers/yotamleo/himmel/specs/plan/2026-08-10-plan.md"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-spec.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-spec.json" "$SPEC"
 python3 "$SUT" "$WORK/lane-spec.json" --base 4ccb59d --console BZ --bucket "$WORK/b15" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-spec.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'handover root' "$WORK/lane-spec.err" && [ ! -e "$WORK/b15/launch-N901.sh" ] && ! ls "$WORK/b15"/*.md >/dev/null 2>&1 && pass "a lane-worker leg pointing at a handover-root path is refused and nothing is written" || fail "lane worker spec path rc=$rc"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["tier"]={"category":"design","reason":"spec at "+sys.argv[3]}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-tier.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["tier"]={"category":"design","reason":"spec at "+sys.argv[3]}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-tier.json" "$SPEC"
 python3 "$SUT" "$WORK/lane-tier.json" --base 4ccb59d --console BZ --bucket "$WORK/b18" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-tier.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'tier.reason' "$WORK/lane-tier.err" && pass "a lane-worker tier.reason naming a handover-root path is refused" || fail "lane worker tier reason rc=$rc"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/native-spec.json" "$SPEC"
 python3 "$SUT" "$WORK/native-spec.json" --base 4ccb59d --console BZ --bucket "$WORK/b16" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/native-spec.err"; rc=$?
 [ "$rc" = 0 ] && pass "a native leg may point at a handover-root path (rc 0)" || fail "native spec path rc=$rc: $(cat "$WORK/native-spec.err")"
+# A claudex leg runs with the native leg-impl settings, the project's additionalDirectories and the qmd MCP config, so it reads the handover root too.
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/claudex-spec.json" "$SPEC"
+python3 "$SUT" "$WORK/claudex-spec.json" --base 4ccb59d --console BZ --bucket "$WORK/b19" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/claudex-spec.err"; rc=$?
+[ "$rc" = 0 ] && grep -q -- "$SPEC" "$WORK/b19"/*.md 2>/dev/null && pass "a claudex leg may point at a handover-root path (rc 0, path kept in the brief)" || fail "claudex spec path rc=$rc: $(cat "$WORK/claudex-spec.err")"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
 python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b17" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "a lane-worker leg with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
@@ -223,6 +256,15 @@ python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$
 lacks "a claudex leg with no model key passes no native model argument" "$(cat "$WORK/b20/launch-N901.sh")" "claude-sonnet-5-5"
 lacks "a claudex leg with no model key leaves the lane default to headed-arm-leg" "$(cat "$WORK/b20/launch-N901.sh")" "gpt-6.1-sol"
 has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMMEL-9001-N901-*.md)" "gpt-6.1-sol, claudex"
+# A claudex leg's named model is the launcher's trailing model argument, and headed-arm-leg.sh hands it to
+# scripts/claude-codex as CODEX_MODEL: the launcher's own arguments, run as a dry run.
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-astra.json"
+python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --console BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
+has "a claudex leg with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-leg.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
+mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
+rc=0; astra_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --lane claudex --profile leg-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-leg.sh rc=$rc: $astra_out"
+has "and the named model reaches the leg as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 # An effort key exports LEG_EFFORT in the launcher.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-effort.json"
 python3 "$SUT" "$WORK/lane-effort.json" --base 4ccb59d --console BZ --bucket "$WORK/b21" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
@@ -265,6 +307,10 @@ lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-trans
 has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after MERGED)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+has "the no Ship step names the relative merge spelling" "$ship_no" '`bash scripts/handover/merge-on-green.sh`'
 bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-ct.err"; rc=$?
 [ "$rc" = 0 ] && pass "a brief with the Completes ticket line passes brief-lint.sh" || fail "Completes ticket brief-lint rc=$rc: $(cat "$WORK/lint-ct.err")"
 
@@ -379,6 +425,47 @@ git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9001-plai
 git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9002-hook-fix" -b fix/himmel-9002-hook-fix 2>/dev/null
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$WORK/hr/tester/nw2" --repo "$NWREPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/nw2.err") || rc=$?
 [ "$rc" = 0 ] && pass "RED control: --no-worktree with existing worktrees works unchanged" || fail "existing worktrees rc=$rc: $(cat "$WORK/nw2.err")"
+
+# --- the rm kind: a release-manager brief filled from docs/handover/rm-brief-template.md ---
+cat > "$WORK/rm.json" <<EOF
+[
+ {"kind":"rm","label":"N910","keys":["HIMMEL-9010"],"slug":"rm","release":"R1","versions":"v1 + v2, current v1","epoch":3,"state_dir":"$WORK/hr/tester/himmel/release/R1","mode":"observe"}
+]
+EOF
+: > "$WT_LOG"
+rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "an rm leg generates (rc 0)" || fail "rm rc=$rc: $rmout"
+RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"
+[ -f "$RMD" ] && [ -f "$WORK/rmb/launch-N910.sh" ] && pass "an rm leg writes <KEY>-<label>-rm-<R>-<date>.md and its launcher" || fail "rm files missing in $WORK/rmb"
+[ ! -s "$WT_LOG" ] && pass "an rm leg creates no worktree" || fail "worktree stub called: $(cat "$WT_LOG")"
+RMB="$(sed 's/^> *//' "$RMD" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+has "the rm brief carries the release and its versions" "$RMB" 'Release manager for R1 (v1 + v2, current v1)'
+has "the rm brief names the lease epoch to acquire" "$RMB" '--expect-epoch 3'
+has "the rm brief names the state directory" "$RMB" "State directory \`$WORK/hr/tester/himmel/release/R1\`"
+has "the rm brief carries a minted token in the RM shape" "$RMB" 'BZ-RM-R1-'
+has "the rm brief carries the opus tier line" "$RMB" '**Tier:** opus'
+has "the rm brief resumes in the release scratch dir" "$(head -3 "$RMD" 2>/dev/null)" "/.cache/himmel/rm/R1/scratch"
+if sed 's/REQ <id>/REQ/' "$RMD" 2>/dev/null | grep -Eq '<[A-Za-z$]'; then fail "the rm brief keeps an unfilled placeholder: $(sed 's/REQ <id>/REQ/' "$RMD" | grep -E '<[A-Za-z$]' | head -2)"; else pass "the rm brief keeps no unfilled placeholder"; fi
+RML="$(cat "$WORK/rmb/launch-N910.sh" 2>/dev/null)"
+has "the rm launcher arms the release-manager profile for its release" "$RML" '--profile release-manager --rm-release R1'
+has "the rm launcher skips the prior-art lint an rm brief has no field for" "$RML" '--no-prior-art-check'
+has "the printed manifest line is native" "$rmout" "--lane native"
+rmbad() { # <name> <python edit> <stderr fragment>: refused, rc 1, nothing written
+    local n="$1" edit="$2" frag="$3"
+    rm -rf "$WORK/rmbad"
+    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); d=l[0]; $edit; json.dump(l,open(sys.argv[2],'w'))" "$WORK/rm.json" "$WORK/rmbad.json"
+    python3 "$SUT" "$WORK/rmbad.json" --base 4ccb59d --console BZ --bucket "$WORK/rmbad" --repo "$REPO" --handover-root /h >/dev/null 2>"$WORK/rmbad.err"; rc=$?
+    if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/rmbad.err" && ! ls "$WORK/rmbad"/* >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/rmbad.err"))"; fi
+}
+rmbad "an rm leg with a release holding a slash is refused" 'd["release"]="a/b"' "release"
+rmbad "an rm leg with a non-integer epoch is refused" 'd["epoch"]="three"' "epoch"
+rmbad "an rm leg with a negative epoch is refused" 'd["epoch"]=-1' "epoch"
+rmbad "an rm leg with a mode other than observe or live is refused" 'd["mode"]="dry"' "mode"
+rmbad "an rm leg missing its state_dir is refused" 'del d["state_dir"]' "state_dir"
+rmbad "an rm leg on a non-native lane is refused" 'd["lane"]="claudex"' "lane"
+rmbad "an rm leg whose state_dir names another release is refused" 'd["state_dir"]="/h/tester/himmel/release/R2"' "must end in release/R1"
+rmbad "an rm leg whose state_dir is not under a release directory is refused" 'd["state_dir"]="/h/tester/himmel/R1"' "must end in release/R1"
+rmbad "an rm leg on a non-opus model is refused" 'd["model"]="claude-sonnet-5-5"' "opus"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"

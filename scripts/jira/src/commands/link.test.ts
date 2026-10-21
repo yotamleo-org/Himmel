@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 import {
   createIssueLink,
@@ -41,9 +42,26 @@ describe('formatIssueLinks', () => {
       { id: '10', type: blocks, outwardIssue: { key: 'HIMTEST-2' } },
       { id: '11', type: blocks, inwardIssue: { key: 'HIMTEST-3' } },
     ])).toBe(
-      '10\tBlocks\tinward=HIMTEST-1\toutward=HIMTEST-2\tHIMTEST-1 is blocked by HIMTEST-2\n' +
-      '11\tBlocks\tinward=HIMTEST-3\toutward=HIMTEST-1\tHIMTEST-1 blocks HIMTEST-3',
+      '10\tBlocks\tinward=HIMTEST-1\toutward=HIMTEST-2\tHIMTEST-1 blocks HIMTEST-2\n' +
+      '11\tBlocks\tinward=HIMTEST-3\toutward=HIMTEST-1\tHIMTEST-1 is blocked by HIMTEST-3',
     );
+  });
+
+  // Captured from the live Jira (GET /issue/<key>?fields=issuelinks); Jira's own
+  // JQL linkedIssues() confirmed 5556 blocks 6494 and 6494 blocks 6572.
+  const real = JSON.parse(
+    readFileSync(new URL('./fixtures/blocks-links-real-get.json', import.meta.url), 'utf8'),
+  ) as Record<string, { fields: { issuelinks: Parameters<typeof formatIssueLinks>[1] } }>;
+  const reading = (key: string): string[] =>
+    formatIssueLinks(key, real[key].fields.issuelinks).split('\n').map((l) => l.split('\t')[4]);
+
+  it('reads a real Jira GET: inwardIssue entry = this issue is blocked by it, outwardIssue entry = this issue blocks it', () => {
+    expect(reading('HIMMEL-6494')).toEqual([
+      'HIMMEL-6494 is blocked by HIMMEL-5556',
+      'HIMMEL-6494 blocks HIMMEL-6572',
+    ]);
+    expect(reading('HIMMEL-5556')).toEqual(['HIMMEL-5556 blocks HIMMEL-6494']);
+    expect(reading('HIMMEL-6572')).toEqual(['HIMMEL-6572 is blocked by HIMMEL-6494']);
   });
 
   it('reports an issue with no links cleanly', () => {
@@ -127,7 +145,7 @@ describe('unlinkIssueLink', () => {
 });
 
 describe('createIssueLink', () => {
-  it('prints the relationship as Jira stores it (inward text), not positional order', async () => {
+  it('prints the relationship as Jira stores it (the inward issue takes the outward text), not positional order', async () => {
     const request = vi.fn().mockResolvedValue(undefined);
     const line = await createIssueLink('HIMTEST-1', 'HIMTEST-2', blocks, request);
     expect(request).toHaveBeenCalledWith('POST', '/issueLink', {
@@ -135,7 +153,7 @@ describe('createIssueLink', () => {
       inwardIssue: { key: 'HIMTEST-1' },
       outwardIssue: { key: 'HIMTEST-2' },
     });
-    expect(line).toBe('Linked: HIMTEST-1 is blocked by HIMTEST-2');
+    expect(line).toBe('Linked: HIMTEST-1 blocks HIMTEST-2');
   });
 
   it('prints a symmetric type with its shared text', async () => {
@@ -145,7 +163,7 @@ describe('createIssueLink', () => {
     );
   });
 
-  it('falls back to the type name when Jira omits the inward text', async () => {
+  it('falls back to the type name when Jira omits the outward text', async () => {
     const request = vi.fn().mockResolvedValue(undefined);
     expect(await createIssueLink('HIMTEST-1', 'HIMTEST-2', { name: 'Odd' }, request)).toBe(
       'Linked: HIMTEST-1 Odd HIMTEST-2',

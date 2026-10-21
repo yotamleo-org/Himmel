@@ -139,5 +139,9 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
     if (peer) teardown.trackIssue(peer);
     jira('link', key, peer);
     expect(jira('links', key)).toContain(peer);
+    // Direction as the Jira UI shows it from each end.
+    jira('link', key, '--blocks', peer);
+    expect(jira('links', key)).toContain(`${key} blocks ${peer}`);
+    expect(jira('links', peer)).toContain(`${peer} is blocked by ${key}`);
   });
 });

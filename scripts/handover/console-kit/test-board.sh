@@ -36,22 +36,24 @@ B="$W/bucket"
 mkdir -p "$B" "$W/bin" "$W/repo"
 # the failures panel reads these ledgers; never the operator's own.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
-# the bank lift row reads the lift's `show` output through this stub,
-# never the operator's lift file or account. BANK_LIFT_STUB_OUT is a fixture file
+# the usage lift row reads the lift's `show` output through this stub,
+# never the operator's lift file or account. USAGE_LIFT_STUB_OUT is a fixture file
 # of `show` output; unset prints the no-lift output.
-cat > "$W/bin/bank-lift-stub" <<'STUB'
+cat > "$W/bin/usage-lift-stub" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = show ] || exit 2
-if [ -n "${BANK_LIFT_STUB_OUT:-}" ]; then cat "$BANK_LIFT_STUB_OUT"; else printf 'bank-lift: none\nbank-lift: INVALID: missing\n'; fi
+if [ -n "${USAGE_LIFT_STUB_OUT:-}" ]; then cat "$USAGE_LIFT_STUB_OUT"; else printf 'usage-lift: none\nusage-lift: INVALID: missing\n'; fi # read-sink-ok: the suite's own fixture file under $W
 STUB
-chmod +x "$W/bin/bank-lift-stub"
-export BOARD_BANK_LIFT="$W/bin/bank-lift-stub"
+chmod +x "$W/bin/usage-lift-stub"
+export BOARD_USAGE_LIFT="$W/bin/usage-lift-stub"
 # Session transcripts (console cost, succession eval) come from BOARD_TRANSCRIPTS: an
 # empty dir here, so no row ever reads the operator's own ~/.claude/projects.
 mkdir -p "$W/tx-none"
 export BOARD_TRANSCRIPTS="$W/tx-none"
 # the CR-loop line reads the CR ledger and the Jira mirror; never the operator's own.
 export CR_LEDGER="$W/no-cr-ledger.jsonl" BOARD_MIRROR="$W/no-mirror"
+# the overdue-classes panel reads known-findings.sh --ladder; never the live ledger.
+export BOARD_KNOWN_FINDINGS="$W/bin/no-known-findings"
 
 # The tick stub records its argv and prints a fixed line + fingerprint. N1..N7
 # cover every phase; the fleet is 9/15 with six idle slots. N12 (issue #1336):
@@ -269,6 +271,19 @@ ow_html="$(run_ow 0)"
 lacks 'zero orphans adds no orphan row' "$(ow_panel "$ow_html")" 'data-orphan'
 ow_html="$(run_ow '?')"
 lacks 'an unknown orphan read adds no orphan row' "$(ow_panel "$ow_html")" 'data-orphan'
+# a parked tail, under either marker name, is the PARKED-USAGE phase.
+cat > "$W/bin/tick-stub-park" <<'STUB'
+#!/usr/bin/env bash
+"$(dirname "$0")/tick-stub" "$@" | sed "s/N7:BLOCKED/N7:$TICK_STUB_PARK/"
+STUB
+chmod +x "$W/bin/tick-stub-park"
+for park in PARKED-USAGE PARKED-BANK; do
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-park" TICK_STUB_PARK="$park" TICK_ARGV_LOG="$W/argv-park.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --out "$W/park-board.html" >/dev/null 2>"$W/stderr.log"
+    contains "a $park tail reads the PARKED-USAGE phase" "$(cat "$W/park-board.html")" 'data-label="N7" data-phase="PARKED-USAGE"'
+done
 # a ';' inside parentheses does not split a decision.
 DOCD="$B/HIMMEL-nextleg-2026-09-21V-console-d.md"
 sed 's/^decisions: .*/decisions: A (x; y); B?/' "$DOC" > "$DOCD"  # gnu-ok: console kit is Linux-only
@@ -279,6 +294,28 @@ PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-d.log" 
 dpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/d-board.html")"
 same 'a parenthetical ; keeps one decision whole: exactly two items (HIMMEL-3944)' "$(printf '%s\n' "$dpanel" | grep -c '<li>')" '2'
 contains 'the parenthetical decision renders whole (HIMMEL-3944)' "$dpanel" '<li>A (x; y)</li>'
+# a decisions: pointer lists the numbered entries of the bucket file it names.
+DOCF="$B/HIMMEL-nextleg-2026-09-21V-console-f.md"
+mkdir -p "$B/specs/decisions"
+printf '%s\n' '# Console decisions' '' '## Results' \
+    '- 10:00 (1) keep the fleet at 15 legs' '- 10:05 (2) ship the board first (then the tracker)' \
+    > "$B/specs/decisions/console-decisions-2026-09-21.md"
+sed 's|^decisions: .*|decisions: specs/decisions/console-decisions-2026-09-21.md (latest #2)|' "$DOC" > "$DOCF"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-f.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOCF" --repo "$W/repo" --out "$W/f-board.html" >/dev/null 2>"$W/stderr.log"
+fpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/f-board.html")"
+same 'a decisions: pointer lists the file entries, not one pointer row (HIMMEL-6498)' "$(printf '%s\n' "$fpanel" | grep -c '<li>')" '2'
+contains 'a decisions: pointer renders each numbered file entry (HIMMEL-6498)' "$fpanel" '<li>(2) ship the board first (then the tracker)</li>'
+lacks 'a decisions: pointer does not render the path as a decision (HIMMEL-6498)' "$fpanel" 'console-decisions-2026-09-21.md'
+sed 's|^decisions: .*|decisions: specs/decisions/console-decisions-2026-09-21.md; specs/decisions/console-decisions-2026-09-20.md|' "$DOC" > "$DOCF"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-g.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOCF" --repo "$W/repo" --out "$W/g-board.html" >/dev/null 2>"$W/stderr.log"
+gpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/g-board.html")"
+contains 'a missing decisions file shows as a row, not silently dropped' "$gpanel" '<li>missing decisions file: specs/decisions/console-decisions-2026-09-20.md</li>'
 
 # --- epics: merged/total from the declared total + the merged PRs citing the key
 contains 'a declared epic shows merged/total' "$html" 'data-epic="HIMMEL-3332" data-merged="2" data-total="4"'
@@ -568,6 +605,56 @@ printf 'HIMMEL-9008%sTask%sTo Do%sno labels column\n' "$T" "$T" "$T" >> "$JD/v1.
 runv --out "$W/v-nolabels.html" >/dev/null
 contains 'a row missing the labels column reads unavailable' "$(cat "$W/v-nolabels.html" 2>/dev/null)" 'data-release="v1.0.0" data-unavailable="1"'
 
+# --- `release: R1` renders the release manager's lines from ONE `jira release state R1
+# --json` call (the same BOARD_JIRA seam): M4 burn-down per version, the leaks, and the
+# M1 trend. The stub prints $RM_STATE and exits $RM_RC (3 = the CLI's not-OK exit).
+cat > "$W/bin/jira-rm-stub" <<'STUB'
+#!/usr/bin/env bash
+printf 'args=%s\n' "$*" >> "$JIRA_ARGV_LOG"
+[ -f "${RM_STATE:-}" ] && cat "$RM_STATE"
+exit "${RM_RC:-0}"
+STUB
+chmod +x "$W/bin/jira-rm-stub"
+cat > "$W/rm-state.json" <<'EOF'
+{"release":"R1","status":"OK","mode":"observe","versions":["v1","v2"],
+ "leaks":{"unauthorized":["HIMMEL-9201@v1"],"ruled_in_non_member":[]},"integrity":[],
+ "burndown":{"v1":{"baseline":5,"baseline_open":3,"admitted_open":2,"emergency_open":1,"deferred_out":1},
+             "v2":{"baseline":0,"baseline_open":0,"admitted_open":0,"emergency_open":0,"deferred_out":0}},
+ "trend":{"2026-10-20":{"ruled":2},"2026-10-21":{"ruled":1,"out-of-band":1}}}
+EOF
+DOCR="$B/HIMMEL-nextleg-2026-09-21V-console-r.md"
+sed 's/^epics: .*/&\nrelease: R1/' "$DOC" > "$DOCR"  # gnu-ok: console kit is Linux-only
+runr() {  # runr <extra args...> -- like run, on the console doc that carries a release: line
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" BOARD_JIRA="$W/bin/jira-rm-stub" \
+        JIRA_ARGV_LOG="$W/jira-argv.log" JIRA_PROJECT_KEY=HIMMEL \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOCR" --repo "$W/repo" "$@" 2>"$W/stderr.log"
+}
+rm -f "$W/jira-argv.log"
+RM_STATE="$W/rm-state.json" runr --out "$W/r-board.html" >/dev/null; rc=$?
+rhtml="$(cat "$W/r-board.html" 2>/dev/null)"
+contains 'a release: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
+same 'one release state call' "$(cat "$W/jira-argv.log" 2>/dev/null)" 'args=release state R1 --json'
+contains 'the release manager panel names the release and its status' "$rhtml" 'data-rm-release="R1" data-status="OK"'
+contains 'M4: a version line carries baseline open of baseline' "$rhtml" 'data-burndown="v1" data-baseline-open="3" data-baseline="5"'
+contains 'M4: and admitted, emergency and deferred counts' "$rhtml" 'admitted open 2 · emergency open 1 · deferred out 1'
+contains 'M4: every version of the release has a line' "$rhtml" 'data-burndown="v2"'
+contains 'a leak is listed by key and version' "$rhtml" 'data-leak="HIMMEL-9201@v1"'
+contains 'M1 trend: one row per day, by kind' "$rhtml" 'data-trend="2026-10-21">2026-10-21: out-of-band 1 · ruled 1'
+contains 'the release fingerprint meta is present' "$rhtml" 'console-board-versions-fp'
+RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed >/dev/null
+same 'an unchanged release state: --changed reports UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/r-chg.html" --changed)" "UNCHANGED $W/r-chg.html"
+sed 's/"out-of-band":1/"out-of-band":2/' "$W/rm-state.json" > "$W/rm-state-trend.json"
+same 'a trend-only change: --changed reports CHANGED' "$(RM_STATE="$W/rm-state-trend.json" runr --out "$W/r-chg.html" --changed)" "CHANGED $W/r-chg.html"
+RM_STATE="$W/rm-state.json" RM_RC=3 runr --out "$W/r-unknown.html" >/dev/null; rc=$?
+contains 'a not-OK state (exit 3) still renders the board (rc 0)' "rc=$rc" 'rc=0'
+contains 'a not-OK state still shows its JSON' "$(cat "$W/r-unknown.html")" 'data-rm-release="R1" data-status="OK"'
+RM_RC=1 runr --out "$W/r-fail.html" >/dev/null; rc=$?
+contains 'a failing release state call still renders the board (rc 0)' "rc=$rc" 'rc=0'
+contains 'a failing release state call reads unavailable' "$(cat "$W/r-fail.html")" 'data-rm-release="R1" data-unavailable="1"'
+lacks 'no release: line renders no release manager panel' "$(cat "$W/nov-board.html")" 'data-rm-release'
+
 # --- with no --legs, the leg set is the console's fleet manifest
 # (<console doc stem>.fleet.json, read through fleet-manifest.sh list -- the same
 # validation tick --legs-from uses); no manifest keeps the RESUME-doc scan; an
@@ -798,28 +885,45 @@ contains 'and reads gh unavailable' "$(cat "$W/p-board.html")" 'gh unavailable'
 # --- bank lift: the lift's `show` output, read-only -- the same
 # reason source as the doctor's C34 row. Not part of the fingerprint; never fatal.
 BL="$W/bank-lift-show.txt"
-bl_html() { BANK_LIFT_STUB_OUT="$1" mrun >/dev/null; rc=$?; cat "$M/board.html"; }
+bl_html() { USAGE_LIFT_STUB_OUT="$1" mrun >/dev/null; rc=$?; cat "$M/board.html"; }
 html="$(bl_html '')"
 same 'bank lift: no lift renders, rc 0' "$rc" "0"
 contains 'bank lift: no lift reads "no lift set"' "$html" '<p class="sub" data-bank-lift="none">weekly budget override: no lift set</p>'
 for reason in expired account window trust parse; do
-    printf '{\n  "window": "seven_day",\n  "until": 1791000000\n}\nbank-lift: INVALID: %s\n' "$reason" > "$BL"
+    printf '{\n  "window": "seven_day",\n  "until": 1791000000\n}\nusage-lift: INVALID: %s\n' "$reason" > "$BL"
     contains "bank lift: a set lift that is INVALID shows its reason ($reason)" "$(bl_html "$BL")" \
         "<p class=\"sub\" data-bank-lift=\"invalid\">weekly budget override: lift set but INVALID: $reason</p>"
 done
-printf '{\n  "window": "seven_day",\n  "until": 1791000000,\n  "standing": false,\n  "account": "0123456789abcdef"\n}\nbank-lift: VALID\n' > "$BL"
+printf '{\n  "window": "seven_day",\n  "until": 1791000000,\n  "standing": false,\n  "account": "0123456789abcdef"\n}\nusage-lift: VALID\n' > "$BL"
 html="$(TZ=UTC bl_html "$BL")"
 contains 'bank lift: a valid window lift shows its until' "$html" '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · window</p>'
 lacks 'bank lift: the account hash never reaches the board' "$html" '0123456789abcdef'
-printf '{"window":"seven_day","until":1791000000,"standing":true}\nbank-lift: VALID\n' > "$BL"
+printf '{"window":"seven_day","until":1791000000,"standing":true}\nusage-lift: VALID\n' > "$BL"
 contains 'bank lift: a valid standing lift says standing' "$(TZ=UTC bl_html "$BL")" \
     '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · standing</p>'
-printf 'bank-lift: INVALID: <b>x</b>\n' > "$BL"
+printf 'usage-lift: INVALID: <b>x</b>\n' > "$BL"
 contains 'bank lift: an unexpected reason is escaped' "$(bl_html "$BL")" 'INVALID: &lt;b&gt;x&lt;/b&gt;'
 printf 'garbage\n' > "$BL"
 contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">weekly budget override: unavailable</p>'
-html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
+html="$(BOARD_USAGE_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
+# The old bank-lift: prefix and the old BOARD_BANK_LIFT seam still read.
+printf '{"window":"seven_day","until":1791000000,"standing":true}\nbank-lift: VALID\n' > "$BL"
+contains 'usage lift: the old bank-lift: prefix still reads VALID' "$(TZ=UTC bl_html "$BL")" \
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · standing</p>'
+printf 'bank-lift: none\nbank-lift: INVALID: missing\n' > "$BL"
+contains 'usage lift: the old bank-lift: none still reads no lift' "$(bl_html "$BL")" 'data-bank-lift="none">weekly budget override: no lift set</p>'
+html="$( (unset BOARD_USAGE_LIFT; export BOARD_BANK_LIFT="$W/bin/usage-lift-stub"; mrun >/dev/null; cat "$M/board.html") )"
+contains 'usage lift: BOARD_BANK_LIFT alone still names the script' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
+html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
+contains 'usage lift: BOARD_USAGE_LIFT wins over BOARD_BANK_LIFT' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
+# Both lift files read: the board shows the stricter of the two, as the validator does.
+printf '{"window":"seven_day","until":1791000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1790000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
+contains 'usage lift: with both files the earlier until and no standing show' "$(TZ=UTC bl_html "$BL")" \
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-09-21 14:13 · window</p>'
+printf '{"window":"seven_day","until":1700000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1791000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
+contains 'usage lift: a standing policy'"'"'s old until never shows beside a window lift' "$(TZ=UTC bl_html "$BL")" \
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · window</p>'
 
 # --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real
@@ -1040,6 +1144,28 @@ contains 'cr-loop: an absent ledger and mirror never fail the render (rc 0)' "rc
 jcheck 'cr-loop --json: absent ledger and mirror read n/a (null), the before row stays' 'M.trends.cr_loop.rounds.mean === null && M.trends.cr_loop.residual.inflow === null && M.trends.cr_loop.before.rounds_mean === 2.71'
 jcheck 'cr-loop --json: no preflight rows yet (S1 not landed) is n/a, not zero' 'M.trends.cr_loop.preflight.per_pr === null'
 
+# --- Cap over-run is a --changed signal: a version crossing the soft cap
+# flips CHANGED although tick's fingerprint is unchanged (the stub's is constant).
+# RED control (pre-change board.mjs): the cap move reads UNCHANGED.
+crchanged() {
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" CR_LEDGER="$CL/ledger.jsonl" BOARD_MIRROR="$CL/mirror/HIMMEL" \
+        GH_OPEN="$W/open.json" GH_MERGED="$CL/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$CL/console-c.md" --repo "$W/repo" --out "$CL/cap-board.html" --json "$CL/cap-board.json" --changed 2>"$W/stderr.log"
+}
+rm -f "$CL/cap-board.html"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: first render reports CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
+contains 'cap: an over-cap version is embedded as a board signature' "$(cat "$CL/cap-board.html")" 'name="console-board-cap-fp" content="v1.1.4=16"'
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a re-render with the same over-run reports UNCHANGED' "$out rc=$rc" "UNCHANGED $CL/cap-board.html rc=0"
+rm -f "$CL/mirror/HIMMEL/HIMMEL-9124.md" "$CL/mirror/HIMMEL/HIMMEL-9125.md"
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a version dropping back under the cap flips CHANGED on an unchanged tick fingerprint' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
+for n in 9124 9125; do mirror_issue "HIMMEL-$n" '["residual"]' '["v1.1.4"]' 'To Do' 30; done
+out="$(crchanged)"; rc=$?
+same 'cap --changed: a version crossing the cap again flips CHANGED' "$out rc=$rc" "CHANGED $CL/cap-board.html rc=0"
+
 # --- ICE-parked follow-ups: keys cited as follow-ups in the last 14 days of
 # comments that moved to ICE, from the mirror. RED control (pre-change board.mjs): no
 # data-ice-followups section and no trends.ice_followups.
@@ -1061,11 +1187,70 @@ contains 'ice-followups: an absent mirror never fails the render (rc 0)' "rc=$rc
 jcheck 'ice-followups --json: an absent mirror reads n/a (null count)' 'M.trends.ice_followups.count === null && M.trends.ice_followups.keys.length === 0'
 lacks 'ice-followups html: an absent mirror renders no panel' "$(cat "$CL/board.html")" 'data-ice-followups='
 
+# --- classes overdue for escalation: the board reads the PROPOSE lines of
+# known-findings.sh --ladder (BOARD_KNOWN_FINDINGS is the seam) and never recomputes the ladder.
+cat > "$W/bin/kf-two" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --ladder ] || exit 2
+printf '%s\n' 'known-findings ladder: 27 class(es)' 'promotion proposals (printed only):' \
+    '  PROPOSE [mktemp-no-template] advisory -> gate recurrences=57 branches=39 host=scripts/lint/shell-lint.sh' \
+    '  PROPOSE [hook-fail-direction] advisory -> gate recurrences=19 branches=15 host=a scripts/hooks/ PreToolUse hook' \
+    '  PROPOSE [errexit-false-positive] retire disproved=9/10 real_in_30d=0' \
+    '  [not-a-proposal] rung=advisory kind=fix agreed=3'
+STUB
+cat > "$W/bin/kf-none" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' 'known-findings ladder: 27 class(es)' 'promotion proposals (printed only):' '  none'
+STUB
+chmod +x "$W/bin/kf-two" "$W/bin/kf-none"
+BOARD_KNOWN_FINDINGS="$W/bin/kf-two" crrun >/dev/null; rc=$?
+jtxt="$(cat "$CL/board.json" 2>/dev/null)"
+chtml="$(cat "$CL/board.html" 2>/dev/null)"
+contains 'overdue-classes: rc 0' "rc=$rc" 'rc=0'
+contains 'overdue-classes html: a section with the count of PROPOSE lines' "$chtml" 'data-overdue-classes="2"'
+contains 'overdue-classes html: first proposed class is a row' "$chtml" 'data-overdue-class="mktemp-no-template"'
+contains 'overdue-classes html: second proposed class is a row' "$chtml" 'data-overdue-class="hook-fail-direction"'
+lacks 'overdue-classes html: a non-PROPOSE ladder line is not a row' "$chtml" 'not-a-proposal'
+contains 'overdue-classes html: the row carries the printed proposal text' "$chtml" 'advisory -&gt; gate recurrences=57 branches=39'
+lacks 'overdue-classes html: a retire proposal is not an escalation row' "$chtml" 'errexit-false-positive'
+jcheck 'overdue-classes --json: the proposed class ids and proposal text, retire excluded' 'M.trends.overdue_classes.length === 2 && M.trends.overdue_classes[0].id === "mktemp-no-template" && M.trends.overdue_classes[0].proposal.startsWith("advisory -> gate recurrences=57")'
+BOARD_KNOWN_FINDINGS="$W/bin/kf-none" crrun >/dev/null; rc=$?
+contains 'overdue-classes: no proposals is rc 0' "rc=$rc" 'rc=0'
+lacks 'overdue-classes html: no proposals renders no panel' "$(cat "$CL/board.html")" 'data-overdue-classes='
+BOARD_KNOWN_FINDINGS="$W/bin/absent" crrun >/dev/null; rc=$?
+contains 'overdue-classes: an unreadable ladder never fails the render (rc 0)' "rc=$rc" 'rc=0'
+lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/board.html")" 'data-overdue-classes='
+
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?
 contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
 PATH="$W/bin:$PATH" node "$SUT" --doc "$B/nope.md" >/dev/null 2>&1; rc=$?
 contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
+
+# --- the first publish to a carried URL must not put the live page in the console's context
+# An unviewed publish is refused and the refusal returns the whole live page (about 23k
+# tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
+# send that first read+publish to a haiku subagent.
+DOCS="$HERE/../../../docs/handover"
+BT="$(tr '\n' ' ' < "$DOCS/console-sections/board-tracker.md" | tr -s ' ')"
+CT="$(tr '\n' ' ' < "$DOCS/console-template.md" | tr -s ' ')"
+BT_BOARD="${BT%%Keep the roadmap tracker current*}"
+BT_TRACKER="${BT#*Keep the roadmap tracker current}"
+contains 'board-tracker.md: the board publish goes to a haiku subagent' "$BT_BOARD" 'goes to a haiku subagent'
+contains 'board-tracker.md: the board subagent is dispatched with model haiku' "$BT_BOARD" 'model: haiku'
+contains 'board-tracker.md: the board subagent runs at effort medium' "$BT_BOARD" 'effort medium'
+contains 'board-tracker.md: the tracker publish goes to the same haiku subagent' "$BT_TRACKER" 'goes to the same haiku subagent'
+contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
+contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
+contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
+contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first console publish that uses it records the parent-context delta'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'board-tracker.md: tracker URL no longer says the console reads it first' "$BT" 'must `Artifact read` it first, exactly as for `board:`'
+contains 'console-template.md step 12: the first publish to a carried URL goes to a medium-effort haiku subagent' "$CT" 'goes to a medium-effort haiku subagent'
+# shellcheck disable=SC2016  # literal backticks in the needle
+lacks 'console-template.md step 12: no bare Artifact read in the console context' "$CT" 'must `Artifact read` it first'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'

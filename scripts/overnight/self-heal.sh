@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# self-heal.sh — Self-healing post-return retry/triage over /overnight-shift.
+# self-heal.sh — Self-healing post-return retry/triage over /afk-shift.
 #
 # WHY ----------------------------------------------------------------------
-# /overnight-shift is fire-and-forget: the parent fans out all Task subagents
+# /afk-shift is fire-and-forget: the parent fans out all Task subagents
 # in ONE message and only sees their results after EVERY subagent returns.
 # There is no live gate-result stream to monitor, and a returned subagent
 # cannot be "resumed" — only replaced. So C2 is a POST-RETURN pass, not a live

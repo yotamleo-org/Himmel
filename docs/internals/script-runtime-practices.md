@@ -13,14 +13,13 @@ every rule traces to a ticket with a measurement or an incident behind it.
 
 | Target | Rule | Why |
 |---|---|---|
-| `.ps1` | Always `pwsh` (PowerShell 7+). `powershell.exe` 5.1 only with a **named reason per use**. | 5.1 reads a BOM-less UTF-8 file as cp1252 — an em dash becomes a string terminator, and the parser error points at the WRONG line. Bit twice: ggs-local `run-bridges.ps1` (2026-08-05), station-ops `sweep-contention.ps1` (2026-08-26). |
-| `pwsh -File` list args | Pass ONE quoted comma string; split it inside the script. Never `-Levels 1,2,4,8` bare. | `pwsh -File` converts a bare comma list to a single int — `1,2,4,8` becomes `1248`. This is the fan-out bomb: 1248 workers spawned, host RAM to 96%. |
 | Shell scripts | bash 3.2-safe (macOS floor). `scripts/hooks/CLAUDE.md` is normative for this repo's hooks. | Same rule as the hooks subtree; a bash-4-only construct (`mapfile`, associative arrays) silently breaks on macOS. |
-| Repo shell script invoked FROM PowerShell | Pin `& "C:\Program Files\Git\bin\bash.exe"`. Never bare `bash`. | Bare `bash` from PowerShell resolves the WSL stub (`C:\WINDOWS\system32\bash.exe`), which cannot read `C:\…` paths. Full trap + `resolveBash()`/`BASH_BIN` reference: [`environment-gotchas.md` § Windows: bare `bash`…](environment-gotchas.md#windows-bare-bash-resolves-to-the-system32-wsl-stub). |
-| `schtasks` create vs query | Pair them: **query → PowerShell, create → Git Bash.** | `schtasks /create` is AV-denied from both PowerShell generations on OVERLORD8 but works from Git Bash; `/query` is the reverse (MSYS mangles it). |
-| Here-strings / growing content in MSYS bash | Temp file or case-membership once content can exceed ~64 KiB, never a herestring. | A herestring ≥ 64 KiB wedges MSYS bash forever. |
+| Here-strings / growing content in MSYS bash (historical: Windows is unsupported) | Temp file or case-membership once content can exceed ~64 KiB, never a herestring. | A herestring ≥ 64 KiB wedges MSYS bash forever. |
 
 ## 2. What it costs — MSYS spawn economics
+
+> Historical: measured on the Windows MSYS host, which is no longer supported.
+> The numbers show the shape of the cost, not Linux figures.
 
 External-process spawn from a bash script is not free, and the cost is not
 flat — it rises under contention. Measured on the PreToolUse Bash hook chain:
@@ -50,7 +49,7 @@ Per-member spawn count and ms/call, before → after:
 | chokepoint | 9 → 4 | 340 → 301 |
 
 Chain-wide: **~2.30s → ~1.42s idle**. Post-defork sweep (station-ops
-`sweep-contention.ps1`):
+`sweep-contention`):
 N=1 mean 1.65s, N=16 P95 7.4s, 0 skips, ~3.2 chains/s.
 
 ### Defork patterns
@@ -144,7 +143,7 @@ Reopen trigger: any entry appearing in `hook-chain-skips.jsonl`.
   [`environment-gotchas.md` § MSYS `/tmp`…](environment-gotchas.md#msys-tmp-is-the-windows-user-temp-dir--temp-cleaners-delete-it-under-you)),
   and never edit a script while it's running.
 - **Load experiments respect the safety envelope** built into station-ops
-  `sweep-contention.ps1`: avail ≥ 12 GiB, commit ≤ 80%, ≤ 250 bash processes,
+  `sweep-contention`: avail ≥ 12 GiB, commit ≤ 80%, ≤ 250 bash processes,
   N ≤ 64.
 - **Size a `run-shell-tests.sh` per-suite cap from the LOADED case, not an
   idle box**: a cap set from an idle benchmark's headroom gets

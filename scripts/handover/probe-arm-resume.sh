@@ -47,7 +47,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-probe.XXXXXX")
+# shellcheck source=scripts/lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 1
+TMP=$(tmpdir) || exit 1
 trap 'rm -rf "$TMP"' EXIT
 # every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.

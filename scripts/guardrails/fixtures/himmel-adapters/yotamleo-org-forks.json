@@ -1,0 +1,53 @@
+[
+  {
+    "name": "caveman"
+  },
+  {
+    "name": "claude-hud"
+  },
+  {
+    "name": "claude-obsidian"
+  },
+  {
+    "name": "claude-squad"
+  },
+  {
+    "name": "claude-statusline"
+  },
+  {
+    "name": "claude-video"
+  },
+  {
+    "name": "codex"
+  },
+  {
+    "name": "codex-plugin-cc"
+  },
+  {
+    "name": "core"
+  },
+  {
+    "name": "effective-html"
+  },
+  {
+    "name": "graphify"
+  },
+  {
+    "name": "hermes-agent"
+  },
+  {
+    "name": "home-assistant.io"
+  },
+  {
+    "name": "obsidian-second-brain"
+  },
+  {
+    "name": "obsidian-skills"
+  },
+  {
+    "name": "qmd"
+  },
+  {
+    "name": "twitter-cli"
+  }
+]

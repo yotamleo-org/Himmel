@@ -34,12 +34,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"<himmel-path>/scripts/lib/run-pwsh.sh\" \"<himmel-path>/scripts/hooks/end-session-wiki.ps1\"",
-            "shell": "bash",
-            "timeout": 30
-          },
-          {
-            "type": "command",
             "command": "bash \"<himmel-path>/scripts/hooks/end-session-wiki.sh\"",
             "shell": "bash",
             "timeout": 30

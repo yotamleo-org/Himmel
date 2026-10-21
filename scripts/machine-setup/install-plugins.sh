@@ -439,6 +439,7 @@ while IFS= read -r NAME; do
   }
   if jq --arg n "$NAME" '.extraKnownMarketplaces[$n].autoUpdate = true' \
        "$SETTINGS_FILE" > "$AUTOUPDATE_TMP"; then
+    # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600
     mv "$AUTOUPDATE_TMP" "$SETTINGS_FILE"
     echo "  autoUpdate=true: $NAME"
   else
@@ -570,6 +571,7 @@ if [[ "$ONDEMAND_KEYS_COUNT" -gt 0 && -f "$SETTINGS_FILE" ]]; then
       if jq --argjson nonoverride "$NONOVERRIDE_ONDEMAND_JSON" \
            '.enabledPlugins = ((.enabledPlugins // {}) + ($nonoverride | map({(.): false}) | add))' \
            "$SETTINGS_FILE" > "$ONDEMAND_TMP"; then
+        # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600
         mv "$ONDEMAND_TMP" "$SETTINGS_FILE"
       else
         rm -f "$ONDEMAND_TMP"
@@ -700,6 +702,7 @@ if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.jso
       if jq --argjson trueSpecs "$TRUE_SPECS_JSON" \
            '.enabledPlugins = ((.enabledPlugins // {}) + ($trueSpecs | map({(.): true}) | add))' \
            "$SETTINGS_FILE" > "$ENABLE_TMP"; then
+        # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600
         mv "$ENABLE_TMP" "$SETTINGS_FILE"
       else
         rm -f "$ENABLE_TMP"

@@ -6,10 +6,8 @@
 # CASE 17 SPANS THREE FILES. If you grepped "Case 17" and landed here, the
 # other two are test-run-shell-tests-rotation.sh (17a-17f: the rotation
 # contract proper) and test-run-shell-tests-rotation-guards.sh (17g-17j: HOME
-# unset, narrowed plans). Split them because each sub-case costs
-# 25-51s against the same 25s-sleep sandbox, and the eleven of them were 327s
-# of the original file's 382s — the floor on every shard of the sharded
-# shell-unit job.
+# unset, narrowed plans). Split them because the sharded shell-unit job
+# parallelises across FILES, so one long file was the floor on every shard.
 #
 #   17k  a symlinked cursor path is refused outright, read or write, rather
 #        than followed through to overwrite whatever it targets (FIX 9).
@@ -71,7 +69,7 @@ printf 'do not touch\n' > "$decoy17k"
 if ln -s "$decoy17k" "$link17k" 2>/dev/null && [ -L "$link17k" ]; then
   before17k=$(cat "$decoy17k")
   : > "$order17"
-  out17k=$(SUITE_ROTATE_STATE="$link17k" SUITE_RUN_BUDGET=15 bash "$RUNNER" "$sb17" 2>&1)
+  out17k=$(SUITE_ROTATE_STATE="$link17k" SUITE_RUN_BUDGET="$RST_ROTATE_BUDGET" bash "$RUNNER" "$sb17" 2>&1)
   rc17k=$?
   if [ "$rc17k" -eq 1 ]; then
     pass "17k: truncating budget against a symlinked cursor -> still exit 1"
@@ -124,18 +122,17 @@ rootB17lm="$sb17lm/roots/a__b"
 mkdir -p "$rootA17lm" "$rootB17lm"
 for r in "$rootA17lm" "$rootB17lm"; do
   # Same asymmetric-sleep shape as the main Case 17 fixture above, and for
-  # the same reason: a 25s suite against a 15s budget guarantees the budget
-  # is spent before the check ahead of the second suite, regardless of
-  # setup cost, so which suite runs is deterministic rather than a race.
-  cat > "$r/test-x.sh" <<'SHEOF'
+  # the same reason: a RST_ROTATE_SLEEP suite against a RST_ROTATE_BUDGET
+  # budget guarantees the budget is spent before the check ahead of the
+  # second suite, so which suite runs is deterministic rather than a race.
+  cat > "$r/test-x.sh" <<SHEOF
 #!/usr/bin/env bash
-sleep 25
+sleep $RST_ROTATE_SLEEP
 exit 0
 SHEOF
   chmod +x "$r/test-x.sh"
   cat > "$r/test-y.sh" <<'SHEOF'
 #!/usr/bin/env bash
-sleep 1
 exit 0
 SHEOF
   chmod +x "$r/test-y.sh"
@@ -148,7 +145,7 @@ echo "== Case 17l: distinct (colliding-slug) roots get distinct cursor files =="
 # afterwards exactly one *.cursor file exists under $home17lm/.himmel --
 # the runner derives and writes this path itself; SUITE_ROTATE_STATE is
 # never set here.
-out17l_b=$(env -u SUITE_ROTATE_STATE HOME="$home17lm" SUITE_RUN_BUDGET=15 bash "$RUNNER" "$rootB17lm" 2>&1)
+out17l_b=$(env -u SUITE_ROTATE_STATE HOME="$home17lm" SUITE_RUN_BUDGET="$RST_ROTATE_BUDGET" bash "$RUNNER" "$rootB17lm" 2>&1)
 rc17l_b=$?
 if [ "$rc17l_b" -eq 1 ]; then
   pass "17l: truncating run over root B -> exit 1"
@@ -173,7 +170,7 @@ cursorB_before17m=$(cat "$cursorB17lm" 2>/dev/null)
 # Same truncating shape over root A. Under the OLD lossy encoding this
 # write would land on the SAME file as root B's (the collision this case
 # exists to disprove); under the fix it must land on a distinct file.
-out17l_a=$(env -u SUITE_ROTATE_STATE HOME="$home17lm" SUITE_RUN_BUDGET=15 bash "$RUNNER" "$rootA17lm" 2>&1)
+out17l_a=$(env -u SUITE_ROTATE_STATE HOME="$home17lm" SUITE_RUN_BUDGET="$RST_ROTATE_BUDGET" bash "$RUNNER" "$rootA17lm" 2>&1)
 rc17l_a=$?
 if [ "$rc17l_a" -eq 1 ]; then
   pass "17l: truncating run over root A -> exit 1"

@@ -91,7 +91,7 @@ below are the background and the plugin-free variant.
    ```bash
    #!/bin/bash
    rm -rf /tmp/himmel-setup \
-     && git clone --depth 1 https://github.com/yotamleo/Himmel /tmp/himmel-setup \
+     && git clone --depth 1 https://github.com/yotamleo-org/Himmel /tmp/himmel-setup \
      && bash /tmp/himmel-setup/scripts/cloud/setup-env.sh || true
    ```
 
@@ -119,7 +119,7 @@ below are the background and the plugin-free variant.
    ```bash
    #!/bin/bash
    rm -rf /tmp/himmel-setup \
-     && git clone --depth 1 https://github.com/yotamleo/Himmel /tmp/himmel-setup \
+     && git clone --depth 1 https://github.com/yotamleo-org/Himmel /tmp/himmel-setup \
      && bash /tmp/himmel-setup/scripts/cloud/setup-env.sh --with-plugins || true
    ```
 

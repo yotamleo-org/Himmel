@@ -69,7 +69,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.5.2` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
 | `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `user`, `lane-content` and `telegram` profiles (plus the operator profile); off in lean worker sessions and the supervisor session; catalog id `obsidian-second-brain@himmel` |
-| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `ae4871e9a8cbed00bc0f4a40b0b5b61e2d37378c` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
+| `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `2dc35112ef1bea5d61f31b802b5764c931984508` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
 | `shadcn-mcp` | himmel wrapper plugin for the shadcn/ui registry MCP (`npx shadcn@4.21.0 mcp`, no API key; upstream ships no plugin) | ON-DEMAND, `design` core |
@@ -82,7 +82,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `platform-design-skills` | Platform design guidelines: all 8 upstream platforms load, no skills list (sha-pinned) | ON-DEMAND, `design-a11y` profile; catalog id `@himmel` |
 | `diagram-design` | Diagram design skills (manifest-bearing upstream, sha-pinned) | ON-DEMAND, `design-diagram` profile; catalog id `@himmel` |
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
-| `frontend-slides` | HTML presentation generator, `git-subdir` `plugins/frontend-slides`, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
+| `frontend-slides` | HTML presentation generator, `git-subdir` path plugins/frontend-slides in the upstream repo, tag `v2.1.0` | ON-DEMAND, `design-slides` profile; catalog id `@himmel` |
 | `design-dna` | Design DNA skill (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anydesign` | Capture a site into a design system, tag `v0.6.0` (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
 | `anthropic-design-skills` | anthropics/skills: whole skills/ dir loads (design ones: theme-factory, brand-guidelines, canvas-design; a skills list cannot subset it) | ON-DEMAND, `design-reference` profile; catalog id `@himmel` |
@@ -109,8 +109,8 @@ drift report; no marketplace install source or live setting is changed.
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
-| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `49dd158d1076134a641b33efb035946536778336` |
-| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `59945da347a93f9937d3fb09f5ba81a16010351f` |
+| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `5beb35b040e3de97e54fa9e386d7e42d15c295c2` |
+| `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `a8777050c0d9034d5de6beff3dfac9b43acb9854` |
 | `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.2.0` (`2961b52fc1fe6a5a87c7a959a79512e5c2f3ffe5`) |
 
 `scroll-world@scroll-world` also remains installed and off by default.
@@ -273,9 +273,7 @@ rather than copying it here) rather than a mutable branch, via `scripts/lib/qmd-
 the pinned SHA → `bun install && bun run build` → junction/symlink onto the
 bun-global `@tobilu/qmd` path) — never upstream `bun add -g @tobilu/qmd`,
 which EPERM-wedges on this project's machines and bun blocks its postinstall
-script. `adopt.sh`/`setup.sh` (bash) and `adopt.ps1`/`setup.ps1` (pwsh, which
-delegates via `bash scripts/lib/qmd-bin.sh install` rather than duplicating
-the recipe) both call this. Idempotent; overridable via `QMD_FORK_REPO` /
+script. `adopt.sh`/`setup.sh` both call this. Idempotent; overridable via `QMD_FORK_REPO` /
 `QMD_FORK_REF` / `QMD_FORK_DIR`.
 
 **Shared HTTP singleton:** himmel vendors `qmd@himmel`
@@ -296,25 +294,12 @@ README's fork-delta section).
   a non-qmd listener on 8181 fails loudly as a port collision instead of
   counting as alive). Over `QMD_RSS_CEILING_MB` (default 4096) RSS it
   recycles the daemon in a detached child, one recycle per lock and cooldown
-  (doctor `C45-qmd-daemon` reports RSS + uptime). A manual operator twin for PowerShell lives at
-  `scripts/qmd/ensure-qmd-daemon.ps1`. Stop the daemon with `qmd mcp stop`.
-  Both resolve qmd as `bun <bun-global dist/cli/qmd.js>` first:
+  (doctor `C45-qmd-daemon` reports RSS + uptime). Stop the daemon with `qmd mcp stop`.
+  It resolves qmd as `bun <bun-global dist/cli/qmd.js>` first:
   the bun bin shim honors the CLI's node shebang and hands the daemon to
   node, where qmd needs the better-sqlite3 native binding (bun-side qmd uses
   `bun:sqlite`) — a binding bun's install blocks by default and that breaks
   again on every node ABI bump.
-- **Boot survival (Windows, lean-invoke):**
-  `scripts/qmd/register-qmd-daemon-logon.ps1` registers a per-user ONLOGON
-  scheduled task (`qmd-mcp-daemon`) running the ensure twin, so the daemon is
-  back up after a reboot without waiting for the first Claude session.
-  One-shot per machine; remove with
-  `Unregister-ScheduledTask -TaskName 'qmd-mcp-daemon' -Confirm:$false`.
-  The task's `Last Result` is the ensure twin's exit code: `0` = daemon
-  answering (or started and answering within `QmdStartTimeout`, default 20s),
-  `1` = foreign listener on 8181, qmd missing, or no qmd reply in time. It is
-  NOT a liveness probe for a daemon started by another path; for current
-  health, check the port directly (`Invoke-WebRequest http://localhost:8181/mcp`
-  MCP initialize, or doctor `C45-qmd-daemon`).
 - **Freshness:** the index is sqlite+WAL, read per query, so docs added by the
   existing `qmd update` cadence are served by the running daemon immediately —
   no daemon restart or watch mechanism, cadence unchanged.
@@ -434,12 +419,6 @@ at openai/codex-plugin-cc#474. The `yotamleo/codex-plugin-cc` fork and tag
 `v1.0.6-himmel.1` remain parked, unreferenced by any marketplace entry.
 
 **RETIRED:** the companion's `adversarial-review` mode was integrated into `/pr-check` step 3.1 as an availability-gated extra cross-model pass, dormant until its removal; removed 2026-09-29 (same OpenAI subscription usage budget as the panel `codex` critic, 6 % agreed vs 23 %).
-**Windows ACL hardening:** aged Codex worktrees can lose inherited
-sandbox ACEs on child directories. Before an unattended Codex dispatch into an
-existing worktree, run `pwsh -NoProfile -File scripts\codex\normalize-worktree-acl.ps1 <worktree>`
-(or the `scripts/codex/normalize-worktree-acl.sh` wrapper from Git Bash). The
-helper refuses paths outside `.claude/worktrees/<name>` and resets only each
-top-level child directory, never the worktree root.
 **Codex reasoning-effort knob:** `scripts/codex/dispatch-codex-exec.sh`
 accepts an optional `--reasoning-effort <none|low|medium|high|xhigh|max>` passthrough
 (translated internally to `-c model_reasoning_effort=<value>`). Its default model
@@ -506,9 +485,9 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 **Tier:** ALWAYS — installed + enabled on every himmel machine; one of the three harness-operational plugins `plugin-profile.sh disable` refuses.
 **What:** Harness-meta operational skills for himmel.
-**Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check), `himmel-ops:ticket-standard` (lean-invoke draft checker: refuses a Task, Story or Bug without Plan, DoD and named Proof and parks it in an intake queue).
+**Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check), `himmel-ops:ticket-standard` (lean-invoke draft checker: refuses a Task, Story or Bug without Plan, DoD and named Proof and parks it in an intake queue), `himmel-ops:release-manager` (the release manager's verbs over `jira release`: rule INTAKE/REVERSION/DISCHARGE requests, STATUS, BURN-DOWN, READY).
 **Commands:** `/minerva` — runs the minerva pipeline; `/memory-compound` — runs the auto-memory compaction pass; `/fanout` — validates + confirms + dispatches N work items to the invariant-policy lane by type, refusing destructive/irreversible items below the judgement tier and any dormant lane; `/cloud-route` — classifies tickets for the cloud credit lane, writes the cloud brief and prints the operator launch line without launching.
-**Hook:** `hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
+**Hook:** `marketplace/plugins/himmel-ops/hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
 **Plugin path:** `marketplace/plugins/himmel-ops/`
 
 ---
@@ -586,12 +565,6 @@ Decoupled, standalone detector for the auto-memory capture discipline (Task 5) �
 ## Tool-call census (`scripts/observability/tool-call-census.sh`)
 
 Answers the operator's named observability blind spot — per-session tool-call and error volume — without any live instrumentation, because session transcripts already record every `tool_use` and every `tool_result`. Reads `~/.claude/projects/<slug>/**/*.jsonl` (`--projects-dir` / `CLAUDE_PROJECTS_DIR` override) — including the nested `<session-id>/subagents/agent-*.jsonl` transcripts newer Claude Code writes, whose tool calls are attributed to the spawning project, not to a phantom `subagents` one — windowed by transcript mtime (`--since`, default `24h`) and optionally scoped to one project (`--project <slug>`), and merges one JSON line per session into `~/.himmel/tool-call-census.jsonl` (`--out` / `HIMMEL_TOOL_CENSUS`): `{session_id, project, started_at, ended_at, tool_calls:{<tool>:{calls,errors}}, total_calls, total_errors, denials:{<class>:n}}`. MCP tools keep their namespaced names (`mcp__qmd__query`), so per-server health falls out of the same map. Rows are keyed by `session_id` and **replaced** on re-run, so a session that was still growing when last scanned is refreshed rather than duplicated. The merge is single-writer — it claims `<out>.lock` by atomic `mkdir` and refuses (rc 2) rather than racing a concurrent run — and prunes rows past a 14-day retention window (`HIMMEL_TOOL_CENSUS_RETAIN_DAYS`) so the file the exporter re-parses every scrape stays bounded. Denial classes are a first-line prefix/keyword classifier over the error text — the hook name for a `PreToolUse:… hook error:` result, plus `auto-mode-classifier`, `user-rejected`, and `hook-unclassified`; a plain tool failure counts as an error, never as a denial. Pure reader: no transcript writes, no network, no process control. Lean-invoke (no cadence wired yet). The flow exporter reads the census file passively and exposes `himmel_tool_calls_total{tool,project}`, `himmel_tool_errors_total{tool,project}`, and `himmel_tool_denials_total{class,project}` folded over the last 24h — window-folded counters with the same reset caveat as `flow_run_outcome_total` — plus the distinct-session gauges `himmel_tool_denial_sessions{guard,project}`, `himmel_tool_denial_max_per_session{guard,project}` and `himmel_tool_sessions{project}` that say what share of sessions each guard denied. Tests: `scripts/observability/test-tool-call-census.sh` (synthetic transcripts only) plus the census cases in `scripts/observability/flow-exporter.test.ts`.
-
----
-
-## Agent-runtime census (`scripts/observability/agent-runtime-census.ps1` + `.sh`)
-
-REPORT-ONLY Windows evidence collector for the agent-runtime RAM + MCP lifecycle program (P0-1) — it never kills, restarts, throttles or reconfigures a process, and there is no `--kill` mode to grow into one. One snapshot per invocation (`-Loop -IntervalSec 300 -MaxSnapshots N` for the 5-minute cadence; `-MaxSnapshots` always bounds the run, there is no unbounded loop), appended as one compact JSON line to `-OutFile` (default `~/.himmel/agent-runtime-census.jsonl`) plus a human table on stdout. Each snapshot records: UTC timestamp + boot time; the supervisors (`codex.exe`, `claude.exe`) with pid/creation time/working set; their direct MCP fleet roots (node/node_repl/bun/deno/python/uv/uvx/npx/tokensave/qmd) with pid, creation time, working set, descendant count and summed descendant working set; the duplicate groups per supervisor (same exe + first argument, more than one live instance — the live-supervisor duplication reported upstream and the Codex lifecycle defect this program is chasing); process-family counts (bash, sh, node, bun, python, pwsh, powershell, cmd, wsl, conhost, git); the runtime tuple (node/npm/bun versions, which `bash` resolves first, flagged when that is the WSL launcher); the `\Memory\*` pool/commit/available counters via `Get-Counter`; and the poolmon rows for `File`/`Toke`/`FMfn`/`SeAt`/`SeTd`/`SeTl` summed across a tag's Nonp AND Paged rows (same locator + summing rule as station-ops `pool/pool-rate.ps1`; `HIMMEL_POOLMON` overrides it, and an absent poolmon degrades to empty tag rows, never a failure) with the raw dump kept next to the JSONL as `poolmon_artifact`. **Redaction:** exactly the executable name plus ONE argument reaches the row — never the rest of the line, never env, never anything after a bare `--`, never the value of any flag (a flag is treated as value-taking by default, because the token after an unlisted flag is where a prompt or credential sits; the only exception is a short known-boolean list — `-y`/`--yes`, `-q`/`--quiet`, `--no-install`, `--offline` — so `npx -y <pkg>` identifies as the package instead of collapsing every npx server into one `-y` duplicate group), path arguments reduced to their leaf, and credential shapes scrubbed with ledger-append.sh's `--detail` regexes. The limit of that guarantee, stated plainly: the recorded argument is a *positional* token by design — it is what tells two servers apart for the duplicate census — so a bare positional secret with no recognizable credential shape would be recorded. Pass secrets to MCP servers as flag values or environment, never positionally. `-Label` is required (`codex` | `claude-swarm` | `hermes-wsl`) — an unlabelled row is evidence nobody can attribute to a harness later, so the run is refused rather than defaulted. Two consecutive rows are the unit of analysis: they let a reader correlate a fleet/process-generation change with the `File`/`Toke`/`FMfn` deltas. Lean-invoke (no cadence wired). Windows-only — the `.sh` wrapper forwards every argument to `powershell`/`pwsh -NoProfile -ExecutionPolicy Bypass -File` and exits 2 elsewhere rather than pretending to have collected evidence. Tests: `scripts/observability/test-agent-runtime-census.sh` (canned process table + canned poolmon dump through the documented test-only `-FixtureProcesses`/`-FixturePoolmon` seams).
 
 ---
 
@@ -687,13 +660,13 @@ pass, never a blind find-and-replace.
 
 ## claude-statusline (vendored)
 
-**Vendored in himmel:** `scripts/statusline/` (`bin/statusline.sh`, `test/`, `LICENSE`, `README.md`, provenance in `VENDORED.md`).
-**Config:** `~/.claude/settings.json` → `statusLine.command` now points at the hud node renderer (`node "<himmel-path>/marketplace/plugins/claude-hud/dist/index.js"`, wired by `scripts/lib/wire-statusline.sh`; env gate `CLAUDE_HUD_ALLOW_EXTRA_CMD=1`; hud config dropped at `~/.claude/plugins/claude-hud/config.json`). `marketplace/plugins/claude-hud/config/himmel-config.json` sets `display.showPromptCache: true` and `display.promptCacheTtlSeconds: 3600` so the hud shows a `Cache ⏱ <until HH:MM>` wall-clock expiry line (a transcript-detected tier still wins over the configured fallback). The bash wrapper `<himmel-path>/scripts/where-are-we/statusline.sh` is retained as the **opt-in rollback fallback** — repoint to it with `bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`, restore the hud with `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` — no manifest item installs it (finding: no generic manifest `--with-<id>` mechanism exists, would need per-feature hand-wiring like `--with-graphify`; a follow-up is planned); it composes this vendored `bin/statusline.sh` + a where-are-we line — active handover + epic progression; the segment is default-ON — opt out with an explicit falsy `HIMMEL_WHERE_ARE_WE` (`0|false|off|no`); no external clone.
+**Vendored in himmel:** `scripts/statusline/` (`scripts/statusline/bin/statusline.sh`, `test/`, `LICENSE`, `README.md`, provenance in `VENDORED.md`).
+**Config:** `~/.claude/settings.json` → `statusLine.command` now points at the hud node renderer (`node "<himmel-path>/marketplace/plugins/claude-hud/dist/index.js"`, wired by `scripts/lib/wire-statusline.sh`; env gate `CLAUDE_HUD_ALLOW_EXTRA_CMD=1`; hud config dropped at `~/.claude/plugins/claude-hud/config.json`). `marketplace/plugins/claude-hud/config/himmel-config.json` sets `display.showPromptCache: true` and `display.promptCacheTtlSeconds: 3600` so the hud shows a `Cache ⏱ <until HH:MM>` wall-clock expiry line (a transcript-detected tier still wins over the configured fallback). The bash wrapper `<himmel-path>/scripts/where-are-we/statusline.sh` is retained as the **opt-in rollback fallback** — repoint to it with `bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`, restore the hud with `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` — no manifest item installs it (finding: no generic per-item install switch exists in the manifest, would need per-feature hand-wiring like the graphify one; a follow-up is planned); it composes this vendored `scripts/statusline/bin/statusline.sh` + a where-are-we line — active handover + epic progression; the segment is default-ON — opt out with an explicit falsy `HIMMEL_WHERE_ARE_WE` (`0|false|off|no`); no external clone.
 **What:** Bash script receiving Claude Code session JSON via stdin, outputs formatted status bar.
 
 Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), cache TTL countdown, per-session and all-sessions cache read/write/hit/savings. The hud renderer above only has the cache-expiry line so far — the read/write/hit-rate/net/cost lines stay bash-bar-only (opt-in/rollback) until a planned follow-up ports them.
 
-**Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
+**Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`scripts/statusline/bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
 **Patch applied:** cache-metrics patch (record kept in the state repo `specs/decisions/`)
 **Upstream:** `nilbuild/claude-statusline` (fork now archived; no PR path)
 
@@ -707,7 +680,7 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 
 <a id="claude-glm"></a>
 
-## claude-glm (`scripts/claude-glm`, `.ps1` twin)
+## claude-glm (`scripts/claude-glm`)
 
 **What:** Thin launcher that runs Claude Code against the Z.ai GLM
 Anthropic-compatible endpoint instead of the Anthropic API — a flat-rate
@@ -807,7 +780,11 @@ checklist**.
 
 Kits are plugin profiles that stack on base and compose per task with
 `--profile a,b`, e.g. `--profile leg-impl,code`. No other
-profile enables a kit member. Keyed items are tracked separately. This is the
+profile enables a kit member. Both kit profiles drop `pr-review-toolkit-himmel`
+and `i-have-adhd` from base, so composing with the leg family (`leg-impl,code`)
+does not hand back what that family dropped. A kit used alone therefore lacks
+both; a composed list ORs its members, so `lane-impl,code` and `user,code`
+still carry them. Keyed items are tracked separately. This is the
 code kit; the content/research and ops kits follow separately.
 
 | Profile | Members | Listing cost | Use |
@@ -839,7 +816,7 @@ dynamically discovered marketplace in the drift report, so they need no
 resolves its plugin surface from the operator's config either way — `spawn-glm`
 shares `~/.claude` directly (no `CLAUDE_CONFIG_DIR`, so himmel hooks load), while
 the interactive `claude-glm` launcher runs against a seeded `$HOME/.claude-glm`
-**mirror** of `~/.claude` ([claude-glm](#claude-glm-scriptsclaude-glm-ps1-twin) above) — so both would otherwise
+**mirror** of `~/.claude` ([claude-glm](#claude-glm-scriptsclaude-glm) above) — so both would otherwise
 inherit the operator's entire (full) plugin catalog: duplicated plugin context +
 duplicate MCP invocations on every worker, and neither live-mutates the
 operator's primary config. The fix is **lever-b**: resolve a profile to an
@@ -918,7 +895,7 @@ registry validation) + the `--settings` cases in the spawn/launcher suites.
 
 <a id="claude-codex"></a>
 
-## claude-codex (`scripts/claude-codex`, `.ps1` twin)
+## claude-codex (`scripts/claude-codex`)
 
 **What:** Thin launcher that runs Claude Code as the harness over the codex
 subscription through a self-hosted CLIProxyAPI Anthropic-compatible proxy: the
@@ -974,15 +951,13 @@ model and `env.ANTHROPIC_*`, refreshed by the shared `CLAUDE_LANE_*` reseed and
 lock knobs, and never copies credentials or history.
 
 **Prerequisite:** the CLIProxyAPI binary is **not on PATH** — it's installed to
-`~/.cli-proxy-api/cli-proxy-api.exe` (Linux: `~/.cli-proxy-api/cli-proxy-api`)
-and driven through the per-host bring-up script, never invoked bare. Windows:
-`.\scripts\setup\cli-proxy-lane.ps1 -Install` (downloads the pinned release,
+`~/.cli-proxy-api/cli-proxy-api`
+and driven through the per-host bring-up script, never invoked bare.
+`bash scripts/setup/cli-proxy-lane.sh --install` (downloads the pinned release,
 writes `~/.cli-proxy-api/config.yaml` with `host: "127.0.0.1"` — the default
 empty host binds ALL interfaces, which would LAN-expose the OAuth-wrapped
-endpoint — and `port: 8317`), then `-Login` (device-code OAuth, no local browser
-needed) and `-Register` (windowless logon task, starts it now). Linux:
-`bash scripts/setup/cli-proxy-lane.sh --install` / `--login` / `--register`
-(same pinned release/config, a `systemctl --user` unit instead of a logon task).
+endpoint — and `port: 8317`), then `--login` (device-code OAuth, no local browser
+needed) and `--register` (a `systemctl --user` unit, starts it now).
 An `api-keys` entry in `config.yaml` must match `CLIPROXY_API_KEY`.
 Full per-host checksheet + re-login recovery (device-flow re-auth when the
 codex token invalidates): [`docs/setup/cli-proxy-lane.md`](setup/cli-proxy-lane.md).
@@ -1152,9 +1127,9 @@ bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [
 `"secondary":{"used_percent":<N>` occurrence from a bounded tail read of
 `~/.codex/logs_2.sqlite` (the rollout log; `secondary` = weekly, `primary` =
 5h) — fail-**OPEN** on any read error (a cold/absent log never bricks a
-dispatch). WARNs to stderr at `CLAUDEX_BANK_WARN_PCT` (default `80`);
-**REFUSES (exit 2) BEFORE any worktree side-effect** at `CLAUDEX_BANK_REFUSE_PCT`
-(default `90`; the same shared threshold `bank-status` uses via `LANE_FUNDED_MAX_PCT`, which takes precedence) unless overridden (`CLAUDEX_BANK_OK=1` or `--force`) — a
+dispatch). WARNs to stderr at `CLAUDEX_USAGE_WARN_PCT` (default `80`);
+**REFUSES (exit 2) BEFORE any worktree side-effect** at `CLAUDEX_USAGE_REFUSE_PCT`
+(default `90`; the same shared threshold `bank-status` uses via `LANE_FUNDED_MAX_PCT`, which takes precedence) unless overridden (`CLAUDEX_USAGE_OK=1` or `--force`) — a
 capped worker dies mid-run, so the tree survives but the work is lost.
 
 **Effort:** `--effort` is optional; unset lets the launcher's
@@ -1461,7 +1436,7 @@ trim: `.claude/mcp-profiles/README.md`.
 
 Shell scripts that run as pre-commit / pre-push gates (wired in `.pre-commit-config.yaml`). Full detail and rc contracts in `docs/internals/enforcement.md`.
 
-- `scripts/hooks/check-doc-guard.sh` — **doc-guard gate** (himmel-dev only). Blocks committing a new command or skill file (`.claude/commands/**`, `marketplace/plugins/*/{commands,skills}/**`) without also touching `docs/commands-catalog.md`. Added-files-only (`--diff-filter=A`); modifications don't trigger it. Gated behind `.himmel-dev` marker at repo root — absent → exit 0 (adopters unaffected). rc: 0 pass | 1 violation | 2 fail-closed. Bypass: `DOC_GUARD_OK=1`. `.ps1` twin: `scripts/hooks/check-doc-guard.ps1`. Smoke test: `scripts/hooks/test-doc-guard.sh` (+ `.ps1` twin).
+- `scripts/hooks/check-doc-guard.sh` — **doc-guard gate** (himmel-dev only). Blocks committing a new command or skill file (`.claude/commands/**`, `marketplace/plugins/*/{commands,skills}/**`) without also touching `docs/commands-catalog.md`. Added-files-only (`--diff-filter=A`); modifications don't trigger it. Gated behind `.himmel-dev` marker at repo root — absent → exit 0 (adopters unaffected). rc: 0 pass | 1 violation | 2 fail-closed. Bypass: `DOC_GUARD_OK=1`. Smoke test: `scripts/hooks/test-doc-guard.sh`.
 
 ---
 
@@ -1514,7 +1489,7 @@ committed.
 
 ## Release Scripts (`scripts/`)
 
-- `scripts/gen-changelog.sh` — **CHANGELOG generator** (version-tag grouping + `--check` + morning-report wiring). Writes `CHANGELOG.md` from conventional-commit history: `feat` → Added, `fix` → Fixed, `chore|refactor|docs|test` → Changed, everything else → Other. Groups commits by version tag (`v[0-9]*`, newest-first): each tag gets its own `## [<tag>] - <date>` section, with `## [Unreleased]` covering everything after the newest tag; a tagless repo gets a single `## [Unreleased]` over all history. `--check` writes nothing and exits 1 with an entry count when `CHANGELOG.md` is stale — the primitive the daily `scripts/overnight/morning-report.sh` "Changelog freshness" section reads, since the file is regenerate-on-demand (never per-commit/per-worktree, which would guarantee merge conflicts) so staleness needs a visible surface. Idempotent on immediate re-run; do not hand-edit the generated file. `.ps1` twin: `scripts/gen-changelog.ps1`.
+- `scripts/gen-changelog.sh` — **CHANGELOG generator** (version-tag grouping + `--check` + morning-report wiring). Writes `CHANGELOG.md` from conventional-commit history: `feat` → Added, `fix` → Fixed, `chore|refactor|docs|test` → Changed, everything else → Other. Groups commits by version tag (`v[0-9]*`, newest-first): each tag gets its own `## [<tag>] - <date>` section, with `## [Unreleased]` covering everything after the newest tag; a tagless repo gets a single `## [Unreleased]` over all history. `--check` writes nothing and exits 1 with an entry count when `CHANGELOG.md` is stale — the primitive the daily `scripts/overnight/morning-report.sh` "Changelog freshness" section reads, since the file is regenerate-on-demand (never per-commit/per-worktree, which would guarantee merge conflicts) so staleness needs a visible surface. Idempotent on immediate re-run; do not hand-edit the generated file.
 
 ---
 
@@ -1761,15 +1736,6 @@ signalled it. Same runner/scheduler split as the graphify pair above.
 
 ---
 
-## Codex Cleanup Cadence (`scripts/cleanup/`)
-
-Windows-only scheduled cleanup for orphaned codex processes and stale MCP fleet.
-
-- `scripts/cleanup/codex-sweep-cadence.sh` — Scheduler that arms a Windows scheduled task (`HIMMEL-CodexOrphanSweep`, default 09:00 local, repeating every 4h across the day) firing a persistent `.bat` runner with exit-code stamping. The runner fires `scripts/cleanup/sweep-codex-orphans.ps1 -Kill` (codex orphan-process reaper), then `scripts/codex/reap-mcp-fleet.ps1 -Kill` (MCP fleet killer), then `scripts/codex/reap-superseded-fleets.ps1 -Kill` (duplicate fleets under a LIVE app-server — fires last, once the two orphan sweeps have removed everything whose supervisor is gone). `arm`/`status`/`disarm` subcommands with `--time HH:MM` (arm-only, 24h HH:MM), `--repeat-hours N` (arm-only, 0-23; 0 = daily only), `--force` (replace existing), `--dry-run` (preview). Dedup-guarded; hermetic test `test-codex-sweep-cadence.sh`. Arming is operator-invoked (Windows task maintenance); lean-invoke: `bash scripts/cleanup/codex-sweep-cadence.sh arm`. An already-armed task from before the fleet-reaper leg keeps firing only the two old legs — `status` warns and nudges `arm --force`.
-- `scripts/codex/reap-superseded-fleets.ps1` — Reports (default) / reaps (`-Kill`) MCP fleets that a still-LIVE codex app-server has superseded: it spawns a fresh fleet per client connection and never reaps the previous one, a leak both other reapers skip by design because the tree is legitimately live. Groups fleet roots by `(app-server, --cwd plugin | command tail)` and keeps the newest, gated by `-KeepNewest` (default 1), `-MinAgeMinutes` (default 30 — the parallel-tool-call protection) and a CPU-idle veto. Safety comes from lineage (a target must descend from a live app-server, which the telegram bridge / qmd MCP / claude session never do); app-server accumulation and unkeyable roots are reported, never reaped. Test: `scripts/codex/test-reap-superseded-fleets.ps1`.
-
----
-
 ## Upstream drift-fix cadence (`scripts/upstreams/`)
 
 The REPAIR half of the nightly `fork-drift` drift-detection Action
@@ -1907,7 +1873,8 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   armed" no-op path, so a stale registry entry with no matching live task
   (e.g. the task was deleted outside this script) still gets cleaned up.
   Flags: `--time HH:MM` (06:00 default), `--force`, `--dry-run`. Dedup-guarded;
-  hermetic test: `test-upstream-watch-cadence.sh`. `--arm-on-delta` (an
+  hermetic test: `test-upstream-watch-cadence.sh`.
+  `--arm-on-delta` (an
   interactive claude leg launched from the delta report) was deliberately
   **not** implemented — deferred to a follow-up ticket rather than shipped as
   a dormant flag, since the launch surface (mission-doc generation, model pin,
@@ -1978,7 +1945,6 @@ Operator-invoked on demand via `/luna-upgrade-all` or directly.
   `restore --vault <path> [--from <ts>] [--list]`.
   Output signals: `BACKUP\t<dest>`, `OK\t<vault>`, `SKIPPED-DIRTY\t<vault>`,
   `PARTIAL\t<vault>`, `CONFLICT\t<vault>\t<sidecar>`, `RESTORED\t<vault>\t<ts>`.
-  `.ps1` twin: `scripts/luna-upgrade-all.ps1` (thin Git-Bash forwarder).
   Primary surface: `/luna-upgrade-all` (skill: `obsidian-triage:luna-upgrade-all`
   — runbook at `marketplace/plugins/obsidian-triage/skills/luna-upgrade-all/SKILL.md`).
   Bash 3.2-safe; cross-platform (Windows Git Bash + macOS + Linux).
@@ -2063,7 +2029,7 @@ Bugs encountered and fixes applied when running bash scripts on Windows via Git 
 
 ### 1. `set -f` disables glob expansion globally
 
-**Script:** `bin/statusline.sh` line 2: `set -f`
+**Script:** `scripts/statusline/bin/statusline.sh` line 2: `set -f`
 **Effect:** All glob patterns treated as literal strings. `cat "$HOME/.claude/projects"/*/*.jsonl` passes the literal `*/*.jsonl` to cat → no files → jq returns 0.
 **Fix:** Wrap glob with `set +f` / `set -f`:
 ```bash
@@ -2071,7 +2037,7 @@ set +f
 stats=$(cat "$HOME/.claude/projects"/*/*.jsonl 2>/dev/null | ...)
 set -f
 ```
-**File:** `bin/statusline.sh`, `read_all_sessions_cache_stats()`
+**File:** `scripts/statusline/bin/statusline.sh`, `read_all_sessions_cache_stats()`
 
 ---
 

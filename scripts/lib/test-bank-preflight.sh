@@ -9,6 +9,8 @@ W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
 # a launching shell that exports the 95 workaround must not move the ceiling under test.
 export CADENCE_BANK_MAX_PCT=85 CADENCE_BANK_MAX_AGE=600
+# the rows below set the old CADENCE_BANK_* names inline; an exported new name would win over them.
+for _v in $(compgen -v CADENCE_USAGE_); do unset "$_v"; done
 
 # NO_FLEET: an empty-output ps stub, isolating every bank-only case below
 # from this machine's OWN running fleet (a real `ps -eo args` would count
@@ -24,7 +26,8 @@ NO_FLEET="$W/no-fleet-ps.sh"; printf '%s\n' '#!/usr/bin/env bash' 'true' > "$NO_
 # further down explicitly unsets HOME for one call to cover that path; it
 # uses env -u HOME on that one subshell only, so this export is unaffected.
 export HOME="$W/home"; mkdir -p "$HOME"
-export BANK_LIFT_FILE="$W/home/.himmel/state/bank-lift.json"  # never inherit an operator lift (HIMMEL-4423)
+export USAGE_LIFT_FILE="$W/home/.himmel/state/usage-lift.json"  # never inherit an operator lift (HIMMEL-4423)
+unset BANK_LIFT_FILE
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-preflight-test"}}' > "$HOME/.claude.json"
 IDLIB="$REPO/scripts/lib/usage-cache-identity.sh"
 # shellcheck source=usage-cache-identity.sh
@@ -726,17 +729,17 @@ check "fleet reports all three lanes and total" \
 check "OpenRouter processes count toward fleet refusal" SKIPPED-FLEET \
   "$(fleet_verdict "$por" HIMMEL_FLEET_CAP=3 CADENCE_BANK_LANE=openrouter)"
 
-# bank-lift. An operator-set, expiring, account-bound lift skips
-# ONLY the seven_day comparison. BANK_LIFT_FILE points into the scratch HOME.
-export BANK_LIFT_FILE="$W/home/.himmel/state/bank-lift.json"; mkdir -p "$W/home/.himmel/state"
+# usage-lift. An operator-set, expiring, account-bound lift skips
+# ONLY the seven_day comparison. USAGE_LIFT_FILE points into the scratch HOME.
+export USAGE_LIFT_FILE="$W/home/.himmel/state/usage-lift.json"; mkdir -p "$W/home/.himmel/state"
 write_lift() { # <until> <account> [window]
-  printf '{"window":"%s","until":%s,"account":"%s","set_by":"t","set_at":"x"}' "${3:-seven_day}" "$1" "$2" > "$BANK_LIFT_FILE"
+  printf '{"window":"%s","until":%s,"account":"%s","set_by":"t","set_at":"x"}' "${3:-seven_day}" "$1" "$2" > "$USAGE_LIFT_FILE"
 }
 LRESET=$((NOW+7200))
 lfx() { # fx plus a seven_day.resets_at, which a lift's validity is bounded by
   fx "$@" | sed "s/\"seven_day\":{\"utilization\":\([^}]*\)}/\"seven_day\":{\"utilization\":\1,\"resets_at\":$LRESET}/"
 }
-rm -f "$BANK_LIFT_FILE"
+rm -f "$USAGE_LIFT_FILE"
 check "no lift, sd=98 -> SKIPPED-BANK (RED control)" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
 write_lift $((NOW+3600)) "$ACCT"
@@ -757,13 +760,13 @@ check "lift for another account, sd=98 -> SKIPPED-BANK" SKIPPED-BANK \
 write_lift $((NOW+3600)) "$ACCT" five_hour
 check "lift for wrong window, sd=98 -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
-printf '%s' '{not json' > "$BANK_LIFT_FILE"
+printf '%s' '{not json' > "$USAGE_LIFT_FILE"
 check "malformed lift file, sd=98 -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
-write_lift $((NOW+3600)) "$ACCT"; printf '%s' '{not json' >> "$BANK_LIFT_FILE"
+write_lift $((NOW+3600)) "$ACCT"; printf '%s' '{not json' >> "$USAGE_LIFT_FILE"
 check "valid lift object then trailing garbage, sd=98 -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
-printf '%s' '{"window":"seven_day","until":"soon","account":"x"}' > "$BANK_LIFT_FILE"
+printf '%s' '{"window":"seven_day","until":"soon","account":"x"}' > "$USAGE_LIFT_FILE"
 check "non-numeric lift until, sd=98 -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
 write_lift $((NOW+3600)) "$ACCT"
@@ -785,23 +788,23 @@ sed -i.bak 's/"resets_at":[0-9]*/"resets_at":"not-a-date"/' "$W/c.json"
 check "valid lift, unparseable resets_at -> SKIPPED-BANK" SKIPPED-BANK \
  "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>/dev/null)"
 # The preflight's own identity gate refuses a mismatched cache earlier (BANK-UNKNOWN),
-# so the lift's own account/identity branches are exercised through bank_lift_valid.
-lift_rc() { ( . "$REPO/scripts/lib/bank-lift.sh"; bank_lift_valid "$1" >/dev/null 2>&1; echo $? ); }
+# so the lift's own account/identity branches are exercised through usage_lift_valid.
+lift_rc() { ( . "$REPO/scripts/lib/usage-lift.sh"; usage_lift_valid "$1" >/dev/null 2>&1; echo $? ); }
 printf '%s' "$(stamp_account "$(lfx 10 98 "$NOW" "")")" > "$W/c.json"
-check "bank_lift_valid, matching cache -> valid (control)" 0 "$(lift_rc "$W/c.json")"
+check "usage_lift_valid, matching cache -> valid (control)" 0 "$(lift_rc "$W/c.json")"
 printf '%s' "$(lfx 10 98 "$NOW" "" | sed 's/^{/{"account":"deadbeefdeadbeef",/')" > "$W/c2.json"
-check "bank_lift_valid, cache of a different account -> no lift" 1 "$(lift_rc "$W/c2.json")"
-check "bank_lift_valid, cache file missing -> no lift" 1 "$(lift_rc "$W/absent.json")"
+check "usage_lift_valid, cache of a different account -> no lift" 1 "$(lift_rc "$W/c2.json")"
+check "usage_lift_valid, cache file missing -> no lift" 1 "$(lift_rc "$W/absent.json")"
 mv "$HOME/.claude.json" "$HOME/.claude.json.off"
-check "bank_lift_valid, no identity (~/.claude.json absent) -> no lift" 1 "$(lift_rc "$W/c.json")"
+check "usage_lift_valid, no identity (~/.claude.json absent) -> no lift" 1 "$(lift_rc "$W/c.json")"
 mv "$HOME/.claude.json.off" "$HOME/.claude.json"
-chmod 666 "$BANK_LIFT_FILE"
+chmod 666 "$USAGE_LIFT_FILE"
 check "lift file world-writable -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
-chmod 620 "$BANK_LIFT_FILE"
+chmod 620 "$USAGE_LIFT_FILE"
 check "lift file group-writable -> SKIPPED-BANK" SKIPPED-BANK \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
-chmod 600 "$BANK_LIFT_FILE"
+chmod 600 "$USAGE_LIFT_FILE"
 check "lift file owner-only 600 -> PROCEED (mode control)" PROCEED \
  "$(verdict "$(lfx 10 98 "$NOW" "")")"
 # A foreign owner cannot be created without root: stub `id` so the current uid differs from the file's.
@@ -814,35 +817,35 @@ check "valid lift, sd=99.9 -> PROCEED" PROCEED \
  "$(verdict "$(lfx 10 99.9 "$NOW" "")")"
 lift=true; export lift
 check "no lift, inherited env lift=true cannot leak into the ledger row" false \
- "$(rm -f "$BANK_LIFT_FILE"; verdict "$(fx null null "$NOW" "")" >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift')"
+ "$(rm -f "$USAGE_LIFT_FILE"; verdict "$(fx null null "$NOW" "")" >/dev/null; tail -1 "$W/ledger.jsonl" | jq -r '.lift')"
 unset lift
-rm -f "$BANK_LIFT_FILE"
+rm -f "$USAGE_LIFT_FILE"
 
-# bank-lift.sh set|show|clear
-LIFT="$REPO/scripts/lib/bank-lift.sh"
+# usage-lift.sh set|show|clear
+LIFT="$REPO/scripts/lib/usage-lift.sh"
 RESET_ISO="$(date -u -d "@$((NOW+7200))" +%Y-%m-%dT%H:%M:%S.123456+00:00 2>/dev/null || date -u -r "$((NOW+7200))" +%Y-%m-%dT%H:%M:%S.123456+00:00)"  # gnu-ok: BSD -r fallback
 printf '%s' "{\"account\":\"$ACCT\",\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":98,\"resets_at\":\"$RESET_ISO\"},\"primaries_refreshed_at\":$NOW}" > "$W/lc.json"
 bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1
-check "bank-lift set -> file holds until == resets_at" "$((NOW+7200))" "$(jq -r '.until' "$BANK_LIFT_FILE" 2>/dev/null)"
-check "bank-lift set -> account bound" "$ACCT" "$(jq -r '.account' "$BANK_LIFT_FILE" 2>/dev/null)"
-check "bank-lift show reports VALID" "bank-lift: VALID" "$(bash "$LIFT" show "$W/lc.json" 2>/dev/null | tail -1)"
+check "usage-lift set -> file holds until == resets_at" "$((NOW+7200))" "$(jq -r '.until' "$USAGE_LIFT_FILE" 2>/dev/null)"
+check "usage-lift set -> account bound" "$ACCT" "$(jq -r '.account' "$USAGE_LIFT_FILE" 2>/dev/null)"
+check "usage-lift show reports VALID" "usage-lift: VALID" "$(bash "$LIFT" show "$W/lc.json" 2>/dev/null | tail -1)"
 check "set lift lets sd=98 PROCEED" PROCEED "$(verdict "$(lfx 10 98 "$NOW" "")")"
 bash "$LIFT" clear >/dev/null 2>&1
 # a permissive caller umask must not make set write a file the validator rejects
 ( umask 0002; bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1 )
-check "bank-lift set under umask 0002 is still VALID" "bank-lift: VALID" "$(bash "$LIFT" show "$W/lc.json" 2>/dev/null | tail -1)"
-check "bank-lift set writes mode 600" 600 "$(stat -c '%a' "$BANK_LIFT_FILE" 2>/dev/null || stat -f '%Lp' "$BANK_LIFT_FILE" 2>/dev/null)"  # gnu-ok: BSD stat fallback
+check "usage-lift set under umask 0002 is still VALID" "usage-lift: VALID" "$(bash "$LIFT" show "$W/lc.json" 2>/dev/null | tail -1)"
+check "usage-lift set writes mode 600" 600 "$(stat -c '%a' "$USAGE_LIFT_FILE" 2>/dev/null || stat -f '%Lp' "$USAGE_LIFT_FILE" 2>/dev/null)"  # gnu-ok: BSD stat fallback
 bash "$LIFT" clear >/dev/null 2>&1
-check "bank-lift clear removes the file" absent "$([ -e "$BANK_LIFT_FILE" ] && echo present || echo absent)"
+check "usage-lift clear removes the file" absent "$([ -e "$USAGE_LIFT_FILE" ] && echo present || echo absent)"
 printf '%s' "{\"account\":\"deadbeefdeadbeef\",\"seven_day\":{\"resets_at\":\"$RESET_ISO\"}}" > "$W/lc2.json"
 bash "$LIFT" set "$W/lc2.json" >/dev/null 2>&1
-check "bank-lift set refuses another account's cache" absent "$([ -e "$BANK_LIFT_FILE" ] && echo present || echo absent)"
+check "usage-lift set refuses another account's cache" absent "$([ -e "$USAGE_LIFT_FILE" ] && echo present || echo absent)"
 
 # catches strict reset comparison, nonpersistent standing policy,
 # and validators that discard the reason. All writes stay in the scratch HOME.
 printf '%s' "{\"account\":\"$ACCT\",\"seven_day\":{\"resets_at\":\"2026-10-09T20:59:59.996777+00:00\"}}" > "$W/jitter.json"
 # shellcheck disable=SC1090,SC2317,SC2329 # sourced fixture; date override invoked by validator
-jitter_rc() { ( . "$LIFT"; date() { if [ "$*" = '+%s' ]; then echo 1791400000; else command date "$@"; fi; }; bank_lift_valid "$W/jitter.json"; echo $? ); }
+jitter_rc() { ( . "$LIFT"; date() { if [ "$*" = '+%s' ]; then echo 1791400000; else command date "$@"; fi; }; usage_lift_valid "$W/jitter.json"; echo $? ); }
 write_lift 1791579600 "$ACCT"
 check "exact live 4ms reset jitter remains valid" 0 "$(jitter_rc)"
 write_lift 1790974800 "$ACCT"
@@ -853,12 +856,12 @@ check "next weekly window remains invalid" 1 "$(jitter_rc)"
 RESET_996="${RESET_ISO%%.*}.996777+00:00"
 printf '%s' "{\"account\":\"$ACCT\",\"seven_day\":{\"resets_at\":\"$RESET_996\"}}" > "$W/lc.json"
 bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1
-check "set against .996 timestamp records stable whole seconds" "$((NOW+7200))" "$(jq -r '.until' "$BANK_LIFT_FILE")"
+check "set against .996 timestamp records stable whole seconds" "$((NOW+7200))" "$(jq -r '.until' "$USAGE_LIFT_FILE")"
 check "set against .996 then validate" 0 "$(lift_rc "$W/lc.json")"
 bash "$LIFT" set --standing "$W/lc.json" >/dev/null 2>&1
-check "operator standing set persists policy in fenced lift file" true "$(jq -r '.standing' "$BANK_LIFT_FILE")"
+check "operator standing set persists policy in fenced lift file" true "$(jq -r '.standing' "$USAGE_LIFT_FILE")"
 # The old until is now expired, but the policy applies to the fresh window.
-jq '.until=1' "$BANK_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$BANK_LIFT_FILE"; chmod 600 "$BANK_LIFT_FILE"
+jq '.until=1' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 check "standing policy renews into next current window" 0 "$(lift_rc "$W/lc.json")"
 # Native Windows jq emits CRLF. Keep identity/cache reads unchanged so this
 # isolates the serialized policy fields rather than mocking the validator.
@@ -868,50 +871,108 @@ crlf_lift() { (
   jq() {
     local arg last=''
     for arg; do last="$arg"; done
-    if [ "$last" = "$BANK_LIFT_FILE" ]; then command jq "$@" | sed 's/$/\r/'; else command jq "$@"; fi
+    if [ "$last" = "$USAGE_LIFT_FILE" ]; then command jq "$@" | sed 's/$/\r/'; else command jq "$@"; fi
   }
-  bank_lift_valid "$W/lc.json"
+  usage_lift_valid "$W/lc.json"
   local rc=$?
   # shellcheck disable=SC2031 # validator sets it in this same subshell
-  printf '%s:%s' "$rc" "$BANK_LIFT_STANDING"
+  printf '%s:%s' "$rc" "$USAGE_LIFT_STANDING"
 ); }
 check "CRLF jq output renews standing policy" '0:true' "$(crlf_lift)"
 check "standing default ceiling permits both banks at 99" PROCEED "$(CADENCE_BANK_MAX_PCT='' verdict "$(lfx 99 99 "$NOW" "")")"
 check "standing ceiling still refuses full five-hour bank" SKIPPED-BANK "$(CADENCE_BANK_MAX_PCT='' verdict "$(lfx 100 99 "$NOW" "")")"
 check "standing ceiling still refuses full weekly bank" SKIPPED-BANK "$(CADENCE_BANK_MAX_PCT='' verdict "$(lfx 99 100 "$NOW" "")")"
 check "standing preserves explicit five-hour ceiling" SKIPPED-BANK "$(verdict "$(lfx 90 99 "$NOW" "")")"
-jq '.account="deadbeef"' "$BANK_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$BANK_LIFT_FILE"; chmod 600 "$BANK_LIFT_FILE"
+check "standing preserves an explicit CADENCE_USAGE_MAX_PCT five-hour ceiling" SKIPPED-BANK "$(CADENCE_BANK_MAX_PCT='' CADENCE_USAGE_MAX_PCT=85 verdict "$(lfx 90 99 "$NOW" "")")"
+jq '.account="deadbeef"' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 check "standing remains account bound after renewal" 1 "$(lift_rc "$W/lc.json")"
-jq --arg a "$ACCT" '.account=$a' "$BANK_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$BANK_LIFT_FILE"; chmod 666 "$BANK_LIFT_FILE"
+jq --arg a "$ACCT" '.account=$a' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 666 "$USAGE_LIFT_FILE"
 check "standing cannot renew from untrusted file" 1 "$(lift_rc "$W/lc.json")"
-chmod 600 "$BANK_LIFT_FILE"
+chmod 600 "$USAGE_LIFT_FILE"
 check "standing cannot renew without a current reset" 1 "$(lift_rc "$W/absent.json")"
 jq '.seven_day.resets_at=1' "$W/lc.json" > "$W/old-window.json"
 check "standing cannot renew against an expired cache reset" 1 "$(lift_rc "$W/old-window.json")"
 write_lift "$((NOW+3600))" "$ACCT"
-jq --arg a "$ACCT" '.account=($a+"\ntrue")' "$BANK_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$BANK_LIFT_FILE"; chmod 600 "$BANK_LIFT_FILE"
+jq --arg a "$ACCT" '.account=($a+"\ntrue")' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 check "multiline account cannot smuggle standing authorization" 1 "$(lift_rc "$W/lc.json")"
 write_lift "$((NOW+3600))" "$ACCT"
-jq --arg a "$ACCT" --arg u "$((NOW+3600))" '.window=("seven_day\n"+$u+"\n"+$a+"\ntrue")' "$BANK_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$BANK_LIFT_FILE"; chmod 600 "$BANK_LIFT_FILE"
+jq --arg a "$ACCT" --arg u "$((NOW+3600))" '.window=("seven_day\n"+$u+"\n"+$a+"\ntrue")' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 check "multiline window cannot smuggle standing authorization" 1 "$(lift_rc "$W/lc.json")"
 write_lift "$((NOW+3600))" "$ACCT"
-printf '\n%s' "{\"window\":\"seven_day\",\"until\":1,\"account\":\"$ACCT\",\"standing\":true}" >> "$BANK_LIFT_FILE"
+printf '\n%s' "{\"window\":\"seven_day\",\"until\":1,\"account\":\"$ACCT\",\"standing\":true}" >> "$USAGE_LIFT_FILE"
 check "multiple lift objects cannot smuggle standing policy" 1 "$(lift_rc "$W/lc.json")"
 write_lift "$((NOW+3600))" "$ACCT"
-jq '.standing="true"' "$BANK_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$BANK_LIFT_FILE"; chmod 600 "$BANK_LIFT_FILE"
+jq '.standing="true"' "$USAGE_LIFT_FILE" > "$W/standing.json"; mv "$W/standing.json" "$USAGE_LIFT_FILE"; chmod 600 "$USAGE_LIFT_FILE"
 check "string standing flag fails closed" 1 "$(lift_rc "$W/lc.json")"
 write_lift $((NOW-10)) "$ACCT"
-check "show explains expired lift" 'bank-lift: INVALID: expired' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+check "show explains expired lift" 'usage-lift: INVALID: expired' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
 write_lift $((NOW+3600)) deadbeefdeadbeef
-check "show explains account mismatch" 'bank-lift: INVALID: account' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+check "show explains account mismatch" 'usage-lift: INVALID: account' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
 write_lift $((NOW+604800)) "$ACCT"
-check "show explains wrong reset window" 'bank-lift: INVALID: window' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
-chmod 666 "$BANK_LIFT_FILE"
-check "show explains untrusted file" 'bank-lift: INVALID: trust' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
-chmod 600 "$BANK_LIFT_FILE"
-printf '%s' '{broken' > "$BANK_LIFT_FILE"
-check "show explains malformed file" 'bank-lift: INVALID: parse' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
-rm -f "$BANK_LIFT_FILE"
+check "show explains wrong reset window" 'usage-lift: INVALID: window' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+chmod 666 "$USAGE_LIFT_FILE"
+check "show explains untrusted file" 'usage-lift: INVALID: trust' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+chmod 600 "$USAGE_LIFT_FILE"
+printf '%s' '{broken' > "$USAGE_LIFT_FILE"
+check "show explains malformed file" 'usage-lift: INVALID: parse' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
+rm -f "$USAGE_LIFT_FILE"
+
+# Read-both: with no file env set, usage-lift.json and the old bank-lift.json are
+# both read; when both exist each must be valid, and the stricter one wins.
+NEWL="$W/home/.himmel/state/usage-lift.json"; OLDL="$W/home/.himmel/state/bank-lift.json"
+put_lift() { # <file> <until> [standing]
+  printf '{"window":"seven_day","until":%s,"standing":%s,"account":"%s","set_by":"t","set_at":"x"}' "$2" "${3:-false}" "$ACCT" > "$1"; chmod 600 "$1"
+}
+# shellcheck disable=SC1090,SC2031 # $LIFT and $FWD are the libs under test, each read in its own subshell
+rb_lift() { ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; . "$LIFT"; usage_lift_valid "$W/lc.json" >/dev/null 2>&1; printf '%s:%s' "$?" "$USAGE_LIFT_STANDING" ); }
+# shellcheck disable=SC1090,SC2030
+env_lift() { ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; [ -z "$1" ] || export USAGE_LIFT_FILE="$1"; [ -z "$2" ] || export BANK_LIFT_FILE="$2"; . "$LIFT"; usage_lift_valid "$W/lc.json" >/dev/null 2>&1; echo $? ); }
+rm -f "$NEWL" "$OLDL"
+check "read-both: no lift under either name -> no lift" 1:false "$(rb_lift)"
+put_lift "$OLDL" $((NOW+3600))
+check "read-both: the old bank-lift.json alone still lifts" 0:false "$(rb_lift)"
+rm -f "$OLDL"; put_lift "$NEWL" $((NOW+3600))
+check "read-both: usage-lift.json alone lifts" 0:false "$(rb_lift)"
+put_lift "$OLDL" $((NOW-10))
+check "read-both: new valid + old expired -> no lift (stricter wins)" 1:false "$(rb_lift)"
+put_lift "$NEWL" $((NOW-10)); put_lift "$OLDL" $((NOW+3600))
+check "read-both: new expired + old valid -> no lift (stricter wins)" 1:false "$(rb_lift)"
+put_lift "$NEWL" $((NOW+3600)) true; put_lift "$OLDL" $((NOW+3600))
+check "read-both: standing only when both are standing" 0:false "$(rb_lift)"
+put_lift "$OLDL" $((NOW+3600)) true
+check "read-both: both standing -> standing" 0:true "$(rb_lift)"
+rm -f "$NEWL" "$OLDL"
+put_lift "$W/alt-new.json" $((NOW-10)); put_lift "$W/alt-old.json" $((NOW+3600))
+check "USAGE_LIFT_FILE wins over BANK_LIFT_FILE" 1 "$(env_lift "$W/alt-new.json" "$W/alt-old.json")"
+check "BANK_LIFT_FILE alone still names the lift file" 0 "$(env_lift '' "$W/alt-old.json")"
+check "USAGE_LIFT_FILE alone names the lift file" 1 "$(env_lift "$W/alt-new.json" '')"
+put_lift "$OLDL" $((NOW+3600))
+( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1 )
+check "set writes usage-lift.json and retires bank-lift.json" present:absent \
+  "$([ -e "$NEWL" ] && echo present || echo absent):$([ -e "$OLDL" ] && echo present || echo absent)"
+mkdir -p "$OLDL/x"
+check "set fails when it cannot retire bank-lift.json" 1 \
+  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" set "$W/lc.json" >/dev/null 2>&1; echo $? ) )"
+rm -rf "$OLDL"
+put_lift "$OLDL" $((NOW+3600))
+( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" clear >/dev/null 2>&1 )
+check "clear removes the lift under both names" absent:absent \
+  "$([ -e "$NEWL" ] && echo present || echo absent):$([ -e "$OLDL" ] && echo present || echo absent)"
+# The old script path forwards, run directly or sourced.
+FWD="$REPO/scripts/lib/bank-lift.sh"
+put_lift "$NEWL" $((NOW+3600)) true
+check "bank-lift.sh run directly forwards to usage-lift.sh" 'usage-lift: VALID' \
+  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$FWD" show "$W/lc.json" 2>/dev/null ) | tail -1)"
+check "bank-lift.sh run directly names its replacement" 1 \
+  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$FWD" show "$W/lc.json" 2>&1 >/dev/null ) | grep -c "bank-lift.sh is deprecated: use 'usage-lift.sh' instead")"
+# shellcheck disable=SC1090
+check "bank-lift.sh sourced keeps bank_lift_valid and BANK_LIFT_STANDING" 0:true \
+  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; . "$FWD"; bank_lift_valid "$W/lc.json" >/dev/null 2>&1; printf '%s:%s' "$?" "$BANK_LIFT_STANDING" ) )"
+put_lift "$NEWL" $((NOW-10))
+# shellcheck disable=SC1090
+check "bank-lift.sh sourced keeps BANK_LIFT_REASON" 1:expired \
+  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; . "$FWD"; bank_lift_valid "$W/lc.json" >/dev/null 2>&1; printf '%s:%s' "$?" "$BANK_LIFT_REASON" ) )"
+rm -f "$NEWL" "$OLDL" "$W/alt-new.json" "$W/alt-old.json"
 
 # BSD `date -j` fallback. Stub `date` so GNU `-d` fails and `-j -f`
 # behaves like BSD (trailing characters after the seconds are silently ignored).
@@ -934,7 +995,7 @@ fi
 exec /usr/bin/date "$@"
 STUB
 chmod +x "$W/bsddate/date"
-bsd_epoch() { ( PATH="$W/bsddate:$PATH"; . "$REPO/scripts/lib/bank-lift.sh"; _bank_lift_epoch "$1" 2>/dev/null || echo FAIL ); }
+bsd_epoch() { ( PATH="$W/bsddate:$PATH"; . "$REPO/scripts/lib/usage-lift.sh"; _usage_lift_epoch "$1" 2>/dev/null || echo FAIL ); }
 check "BSD fallback: +00:00 with fraction -> UTC epoch (control)" 1781006400 "$(bsd_epoch '2026-06-09T12:00:00.123456+00:00')"
 check "BSD fallback: Z -> UTC epoch (control)" 1781006400 "$(bsd_epoch '2026-06-09T12:00:00Z')"
 check "BSD fallback: +05:30 offset -> rejected, never read as UTC" FAIL "$(bsd_epoch '2026-06-09T12:00:00+05:30')"
@@ -949,7 +1010,7 @@ check "BSD fallback: +00 -> UTC epoch (control)" 1781006400 "$(bsd_epoch '2026-0
 # an offset-less stamp is rejected on BOTH paths (the lift-file
 # writer emits Python isoformat with an explicit offset; local-vs-UTC is ambiguous).
 check "BSD fallback: offset-less -> rejected" FAIL "$(bsd_epoch '2026-06-09T12:00:00')"
-gnu_epoch() { ( . "$REPO/scripts/lib/bank-lift.sh"; _bank_lift_epoch "$1" 2>/dev/null || echo FAIL ); }
+gnu_epoch() { ( . "$REPO/scripts/lib/usage-lift.sh"; _usage_lift_epoch "$1" 2>/dev/null || echo FAIL ); }
 check "GNU path: offset-less -> rejected" FAIL "$(gnu_epoch '2026-06-09T12:00:00')"
 check "GNU path: +00:00 -> UTC epoch (control)" 1781006400 "$(gnu_epoch '2026-06-09T12:00:00+00:00')"
 # a nonzero offset parses only where the host date is GNU (BSD fails closed by design)
@@ -958,5 +1019,55 @@ if date -d @0 +%s >/dev/null 2>&1; then  # gnu-ok: probing for GNU date
 fi
 # the BSD stub must not lean on GNU-only `date -d`.
 check "BSD stub is portable (no GNU date -d)" 0 "$(grep -cE 'date .*-u -d|date -d' "$W/bsddate/date")"
+
+# --- the CADENCE_USAGE_* names ---
+lift_cache() { bash -c '. "$1/scripts/lib/usage-lift.sh"; _usage_lift_default_cache' _ "$REPO"; }
+check "usage-lift default cache: CADENCE_USAGE_CACHE wins over the old name" "$W/u.json" \
+  "$(CADENCE_USAGE_CACHE="$W/u.json" CADENCE_BANK_CACHE="$W/b.json" lift_cache)"
+check "usage-lift default cache: the old CADENCE_BANK_CACHE is still read" "$W/b.json" \
+  "$(unset CADENCE_USAGE_CACHE; CADENCE_BANK_CACHE="$W/b.json" lift_cache)"
+# New names alone are read; a set new name wins for a value key; for the
+# MAX_PCT cap the narrower value wins, so neither name can widen the other.
+verdict_new() {
+  printf '%s' "$(stamp_account "$1")" > "$W/c.json"
+  env -u CADENCE_BANK_LANE CADENCE_BANK_CACHE="$W/missing.json" \
+  CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+  CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg CADENCE_USAGE_LANE=native \
+  FLEET_PS_CMD="$NO_FLEET" \
+    bash "$SUT" </dev/null 2>"$W/err.log"
+}
+check "new names alone: CADENCE_USAGE_CACHE is read, over the old name" PROCEED \
+  "$(unset CADENCE_BANK_MAX_PCT; verdict_new "$(fx 10 20 "$NOW" "")")"
+check "new names alone: ledger row goes to CADENCE_USAGE_LEDGER with CADENCE_USAGE_LEG" newleg \
+  "$(tail -1 "$W/ledger-new.jsonl" 2>/dev/null | jq -r '.leg' 2>/dev/null)"
+check "CADENCE_USAGE_MAX_PCT alone is the ceiling" SKIPPED-BANK \
+  "$(unset CADENCE_BANK_MAX_PCT; CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 60 20 "$NOW" "")")"
+check "CADENCE_USAGE_MAX_PCT=99 cannot widen CADENCE_BANK_MAX_PCT=50" SKIPPED-BANK \
+  "$(CADENCE_BANK_MAX_PCT=50 CADENCE_USAGE_MAX_PCT=99 verdict_new "$(fx 60 20 "$NOW" "")")"
+check "CADENCE_BANK_MAX_PCT=99 cannot widen CADENCE_USAGE_MAX_PCT=50" SKIPPED-BANK \
+  "$(CADENCE_BANK_MAX_PCT=99 CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 60 20 "$NOW" "")")"
+check "both caps set, below the narrower -> PROCEED (control)" PROCEED \
+  "$(CADENCE_BANK_MAX_PCT=99 CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 40 20 "$NOW" "")")"
+check "non-numeric CADENCE_USAGE_MAX_PCT beside a numeric old one -> BANK-UNKNOWN" BANK-UNKNOWN \
+  "$(CADENCE_BANK_MAX_PCT=85 CADENCE_USAGE_MAX_PCT=abc verdict_new "$(fx 10 20 "$NOW" "")")"
+check "non-numeric CADENCE_BANK_MAX_PCT beside a numeric new one -> BANK-UNKNOWN" BANK-UNKNOWN \
+  "$(CADENCE_BANK_MAX_PCT=abc CADENCE_USAGE_MAX_PCT=85 verdict_new "$(fx 10 20 "$NOW" "")")"
+check "CADENCE_USAGE_MAX_AGE is read" BANK-STALE \
+  "$(CADENCE_USAGE_MAX_AGE=5 verdict_new "$(fx 10 20 "$((NOW-60))" "")")"
+check "CADENCE_USAGE_LAUNCH=1 with the fleet at cap -> SKIPPED-FLEET" SKIPPED-FLEET \
+  "$(printf '%s' "$(stamp_account "$(fx 10 20 "$NOW" "")")" > "$W/c.json"; CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg CADENCE_USAGE_LAUNCH=1 HIMMEL_FLEET_CAP=4 \
+     FLEET_PS_CMD="$p4/ps" FLEET_PROC="$p4/proc" HIMMEL_FLEET_SLOTS="$(mktemp -d "$W/slots.XXXXXX")" \
+     env -u FLEET_CAP_OK -u CADENCE_BANK_LAUNCH bash -o pipefail "$SUT" </dev/null 2>"$W/err.log")"
+_new_stub="$W/claudex-status-new.sh"
+printf '%s\n' '#!/usr/bin/env bash' "printf '%s\n' 'claudex spent measured weekly used=99% free=1%'" > "$_new_stub"; chmod +x "$_new_stub"
+check "CADENCE_USAGE_LANE=claudex with CADENCE_USAGE_STATUS_CMD parks on the codex bank" SKIPPED-BANK \
+  "$(printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; env -u CADENCE_BANK_LANE CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg FLEET_PS_CMD="$NO_FLEET" \
+     CADENCE_USAGE_LANE=claudex CADENCE_USAGE_STATUS_CMD="$_new_stub" bash "$SUT" </dev/null 2>"$W/err.log")"
+check "CADENCE_USAGE_LANE=native wins over an inherited CADENCE_BANK_LANE=claudex" PROCEED \
+  "$(printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg FLEET_PS_CMD="$NO_FLEET" \
+     CADENCE_BANK_LANE=claudex CADENCE_USAGE_LANE=native CADENCE_BANK_STATUS_CMD="$_new_stub" bash "$SUT" </dev/null 2>"$W/err.log")"
 
 echo "passed=$PASS failed=$FAIL"; [ "$FAIL" -eq 0 ]

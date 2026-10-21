@@ -18,6 +18,8 @@ ready_pass_bin() {
 #!/usr/bin/env bash
 case "$*" in
     "repo view --json owner,name"*) printf '%s main\n' "${READY_STUB_NWO:-o/r}"; exit 0 ;;
+    # cr-disposition.sh check (go.sh): the PR's head branch.
+    "pr view "*"--json headRefName"*) printf '%s\n' "${READY_STUB_BRANCH:-b}"; exit 0 ;;
     # trust_path_check (ready-check check 12): the default branch's list, then the
     # PR's head + file count and its file listing. Default = no trust path.
     *"contents/scripts/ci/ci-trust-paths.txt"*)

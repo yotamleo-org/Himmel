@@ -23,6 +23,8 @@ lacks() { # <name> <haystack> <needle>
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+# the default worker records live under the status state dir: keep it in the fixture
+export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
 
 mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>
@@ -216,6 +218,34 @@ rf="$(NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --r
 rm -f "$GH_FAIL"
 has "a failed open-PR read is reported on the RESUME read" "$rf" "open PRs unknown"
 lacks "a failed open-PR read lists no RESUME row" "$rf" "RESUME	"
+
+# A ticket the status funnel returned to To Do when its leg WRAPPED (a worker record in state
+# wrapped, with a resume brief) is a RESUME row carrying the brief, never an ordinary To Do row;
+# a held one is not offered, and a ticket whose Done write is pending is never a RESUME row.
+W="$WORK/ts/workers"; mkdir -p "$W"
+MW="$WORK/mw/HIMMEL"; mkdir -p "$MW"
+M_SAVE="$M"; M="$MW"
+mk HIMMEL-60 "To Do" Medium '[]' '[]' '[]' "wrapped with a brief" "Edit scripts/lib/w1.sh."
+mk HIMMEL-61 "To Do" Highest '[]' '[]' '[]' "plain to do" "Edit scripts/lib/w2.sh."
+mk HIMMEL-62 "To Do" High '["held"]' '[]' '[]' "wrapped and held" "Edit scripts/lib/w3.sh."
+mk HIMMEL-63 "In Review" High '[]' '[]' '[]' "done write pending" "Edit scripts/lib/w4.sh."
+mk HIMMEL-64 "To Do" High '[]' '[]' '[]' "wrapped without a brief" "Edit scripts/lib/w5.sh."
+M="$M_SAVE"
+printf '{"key":"HIMMEL-60","state":"wrapped","resume_brief":"/x/HIMMEL-60-RESUME.md"}\n' > "$W/HIMMEL-60.json"
+printf '{"key":"HIMMEL-62","state":"wrapped","resume_brief":"/x/HIMMEL-62-RESUME.md"}\n' > "$W/HIMMEL-62.json"
+printf '{"key":"HIMMEL-64","state":"wrapped"}\n' > "$W/HIMMEL-64.json"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-63","contract":"yes","result":"miss","stage":"transition"}\n' > "$WORK/ts/status-events.jsonl"
+rw="$(NEXT_DISPATCH_MIRROR="$MW" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --workers-dir "$W" --legs-from "$WORK/fleet5.json" 2>/dev/null)"
+has "a wrapped To Do with a resume brief is a RESUME row" "$rw" "RESUME	HIMMEL-60"
+has "the RESUME row carries the resume brief" "$(printf '%s\n' "$rw" | grep 'HIMMEL-60	')" "brief=/x/HIMMEL-60-RESUME.md"
+lacks "a wrapped To Do is never also an ordinary To Do row" "$rw" "LOCAL	HIMMEL-60"
+lacks "a held wrapped To Do is not offered" "$rw" "HIMMEL-62	"
+lacks "a ticket whose Done write is pending is never a RESUME row" "$rw" "HIMMEL-63	"
+has "a wrapped To Do without a brief stays an ordinary To Do row" "$rw" "LOCAL	HIMMEL-64"
+orderw="$(printf '%s\n' "$rw" | grep -v '^#' | cut -f2 | paste -sd, -)"
+[ "$orderw" = "HIMMEL-60,HIMMEL-61,HIMMEL-64" ] && pass "a wrapped RESUME row ranks before To Do" || fail "orderw is '$orderw'"
+rd="$(TICKET_STATUS_STATE_DIR="$WORK/ts" NEXT_DISPATCH_MIRROR="$MW" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --legs-from "$WORK/fleet5.json" 2>/dev/null)"
+has "the workers dir defaults to the status state dir's" "$rd" "RESUME	HIMMEL-60"
 
 # Windows and WSL are dropped: a To Do candidate whose summary names them is skipped (one counted
 # line) unless it carries the windows-removal label; 'context window' style titles are untouched.
@@ -477,6 +507,9 @@ has "fix1: a ticket on a file named only in READ ONLY prose is listed" "$f1" "HI
 lacks "fix1: a ticket on a live leg's write scope is held" "$f1" "HIMMEL-703	"
 has "fix1: a ticket on a file after Other live legs is listed" "$f1" "HIMMEL-704	"
 lacks "fix1: a directory scope with prose in parentheses still holds the directory" "$f1" "HIMMEL-705	"
+# shellcheck disable=SC2016
+printf '# parked\n> **Scope / do not:** writes confined to `scripts/lib/wrapped-held.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 12:00 WRAPPED - merged\n- 13:00 PARKED-USAGE - relaunched, waiting for RESUME\n' > "$LEGW"
+lacks "a PARKED-USAGE tail after an old WRAPPED still holds the leg's files" "$(run20)" "HIMMEL-701	"
 
 # --- fix 2: a ticket a live leg or an open PR already owns is not offered ---
 M21="$WORK/jira-mirror21/HIMMEL"; mkdir -p "$M21"
@@ -543,6 +576,20 @@ lacks "replay: a ticket whose key is a live leg's is not offered (HIMMEL-4999)" 
 lacks "replay: a ticket really held by a live leg stays held (HIMMEL-6484)" "$rp" "HIMMEL-6484	"
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
 [ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
+
+# --- the real version list: archived unreleased versions (v1.0.3b ...) sort before v1.1.3 but are not the first version ---
+M24="$WORK/jira-mirror24/HIMMEL"; mkdir -p "$M24"
+M_SAVE="$M"; M="$M24"
+mk HIMMEL-740 "To Do" Medium '["operator-directed"]' '["v1.1.3"]' '[]' "directed in the first live version" "Edit scripts/lib/t6a.sh only."
+mk HIMMEL-741 "To Do" Medium '["operator-directed"]' '["v1.1.4"]' '[]' "directed in a later live version" "Edit scripts/lib/t6b.sh only."
+M="$M_SAVE"
+cp "$RP/mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror24/HIMMEL.versions.tsv"
+f6="$(NEXT_DISPATCH_MIRROR="$M24" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --priority-pool-only --owners HIMMEL-999 2>/dev/null)"
+lacks "archived: the pool is not empty" "$f6" "POOL-EMPTY"
+has "archived: the pool holds exactly the operator-directed ticket of the first live version (tier 2)" "$f6" "# pool=1/"
+has "archived: the pool row is the v1.1.3 operator-directed ticket" "$f6" "HIMMEL-740	Medium	v1.1.3"
+lacks "archived: the first live version's ticket is not parked as NEXT-TIER" "$f6" "NEXT-TIER	HIMMEL-740"
+lacks "archived: a later live version's operator-directed ticket is not in the pool" "$f6" "HIMMEL-741	"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

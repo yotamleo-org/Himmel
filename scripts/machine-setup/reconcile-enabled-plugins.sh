@@ -228,6 +228,7 @@ cp -p "$SETTINGS" "$TMP" 2>/dev/null || cp "$SETTINGS" "$TMP" || {
 # if/else (not `&& mv`): a bare `jq ... && mv` trips set -e on a jq failure and
 # aborts before cleanup; mirror install-plugins.sh's tolerant temp+move.
 if jq --argjson ep "$NEW_EP" '.enabledPlugins = $ep' "$SETTINGS" > "$TMP"; then
+  # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600
   mv "$TMP" "$SETTINGS"
   echo "    reconciled: enabledPlugins written to $SETTINGS"
 else

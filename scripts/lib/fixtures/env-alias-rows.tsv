@@ -1,0 +1,68 @@
+# HIMMEL-6635 (HIMMEL-5689 slice R1): env_alias_restrict / env_alias_permit
+# answers, one case per line, read by ALL THREE twins so they cannot drift apart:
+# scripts/lib/test-env-alias.sh (env-alias.sh), scripts/lib/env-alias.test.mjs
+# (env-alias.mjs) and scripts/lib/test-env_alias.py (env_alias.py).
+#
+# Columns (TAB-separated; no empty cell, a TAB would collapse):
+#   fn        restrict | permit
+#   new_name  name passed as NEW        (<empty> = the empty string)
+#   old_name  name passed as OLD
+#   new_val   value of NEW in the env   (- = unset, <empty> = set to "")
+#   old_val   value of OLD in the env
+#   want_rc   0 = true, 1 = false, 2 = invalid name (the call fails closed)
+#
+# A name is "set" when non-empty. It is "truthy" when set and not 0, false, no
+# or off (any case). restrict is true when either name is truthy. permit is true
+# only when at least one name is truthy and no set name is falsy.
+#
+# restrict: the marker that switches a guard ON; a per-call NEW=0 must not lift OLD=1
+restrict	T_NEW	T_OLD	0	1	0
+restrict	T_NEW	T_OLD	1	0	0
+restrict	T_NEW	T_OLD	1	1	0
+restrict	T_NEW	T_OLD	1	-	0
+restrict	T_NEW	T_OLD	-	1	0
+restrict	T_NEW	T_OLD	yes	-	0
+restrict	T_NEW	T_OLD	-	anything	0
+restrict	T_NEW	T_OLD	OFF	1	0
+restrict	T_NEW	T_OLD	false	yes	0
+restrict	T_NEW	T_OLD	-	-	1
+restrict	T_NEW	T_OLD	0	-	1
+restrict	T_NEW	T_OLD	-	0	1
+restrict	T_NEW	T_OLD	0	0	1
+restrict	T_NEW	T_OLD	<empty>	<empty>	1
+restrict	T_NEW	T_OLD	<empty>	-	1
+restrict	T_NEW	T_OLD	false	-	1
+restrict	T_NEW	T_OLD	No	Off	1
+restrict	T_NEW	T_OLD	FALSE	-	1
+# permit: a widening switch (*_OK, lift, AFK); any set falsy name vetoes it
+permit	T_NEW	T_OLD	0	1	1
+permit	T_NEW	T_OLD	1	0	1
+permit	T_NEW	T_OLD	1	1	0
+permit	T_NEW	T_OLD	1	-	0
+permit	T_NEW	T_OLD	-	1	0
+permit	T_NEW	T_OLD	yes	-	0
+permit	T_NEW	T_OLD	1	<empty>	0
+permit	T_NEW	T_OLD	<empty>	1	0
+permit	T_NEW	T_OLD	-	-	1
+permit	T_NEW	T_OLD	0	-	1
+permit	T_NEW	T_OLD	-	0	1
+permit	T_NEW	T_OLD	0	0	1
+permit	T_NEW	T_OLD	<empty>	<empty>	1
+permit	T_NEW	T_OLD	1	false	1
+permit	T_NEW	T_OLD	No	1	1
+permit	T_NEW	T_OLD	1	OFF	1
+# invalid names fail closed with 2, whatever the values are
+restrict	bad-name	T_OLD	-	1	2
+restrict	T_NEW	bad-name	1	-	2
+restrict	lower	T_OLD	1	1	2
+restrict	1BAD	T_OLD	1	1	2
+restrict	<empty>	T_OLD	-	1	2
+restrict	T_NEW	<empty>	1	-	2
+restrict	T_NEW;X	T_OLD	1	1	2
+restrict	T_NEW	T OLD	1	1	2
+permit	bad-name	T_OLD	-	1	2
+permit	T_NEW	bad-name	1	-	2
+permit	T_NEW	lower	1	1	2
+permit	<empty>	T_OLD	1	1	2
+permit	T_NEW	T_OLD$(id)	1	1	2
+permit	_UNDERSCORE_OK1	_ALSO_OK2	1	-	0

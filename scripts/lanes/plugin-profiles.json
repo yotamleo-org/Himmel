@@ -270,21 +270,23 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged legs in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "code": {
-      "_comment": "HIMMEL-4024 opt-in code kit (HIMMEL-4017 resource-map): language servers (typescript-lsp, pyright-lsp: the server binary must exist on the machine) plus code-simplifier, ~0.2k listing in all. Stacks on base only; compose per task with `--profile leg-impl,code` (HIMMEL-4014). The CLIs of this kit (ast-grep, shfmt, bats) are not plugins: scripts/machine-setup/install-code-kit-clis.sh. No other profile enables these.",
+      "_comment": "HIMMEL-4024 opt-in code kit (HIMMEL-4017 resource-map): language servers (typescript-lsp, pyright-lsp: the server binary must exist on the machine) plus code-simplifier, ~0.2k listing in all. Stacks on base only, and drops pr-review-toolkit-himmel and i-have-adhd (HIMMEL-4017) so a composition with the leg family does not hand them back (a composed list ORs its members); a member that wants them (lane-impl, user) still carries them. Compose per task with `--profile leg-impl,code` (HIMMEL-4014). The CLIs of this kit (ast-grep, shfmt, bats) are not plugins: scripts/machine-setup/install-code-kit-clis.sh. No other profile enables these.",
       "enable": [
         "typescript-lsp@claude-plugins-official",
         "pyright-lsp@claude-plugins-official",
         "code-simplifier@claude-plugins-official"
       ],
+      "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "contextBudget": 35000,
       "contextMode": "standard",
       "autocompact": 200000
     },
     "code-ui": {
-      "_comment": "HIMMEL-4024 opt-in code kit, UI add-on: the playwright MCP (est 3-5k of tool schemas, unmeasured) is the one meaningful delta of the kit, so it is its own profile rather than part of `code`. Compose with `--profile lane-impl,code-ui` for browser-driven e2e.",
+      "_comment": "HIMMEL-4024 opt-in code kit, UI add-on: the playwright MCP (est 3-5k of tool schemas, unmeasured) is the one meaningful delta of the kit, so it is its own profile rather than part of `code`. Drops pr-review-toolkit-himmel and i-have-adhd like `code` (HIMMEL-4017). Compose with `--profile lane-impl,code-ui` for browser-driven e2e.",
       "enable": [
         "playwright@claude-plugins-official"
       ],
+      "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "contextBudget": 45000,
       "contextMode": "standard",
       "autocompact": 200000
@@ -294,6 +296,7 @@
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
+      "drop": ["i-have-adhd@himmel"],
       "contextBudget": 45000,
       "contextMode": "standard",
       "autocompact": 200000,
@@ -304,7 +307,7 @@
       "_comment": "HIMMEL-2830 / HIMMEL-2928 lever 1, audited HIMMEL-4017 (2026-10-20, 1376 leg sessions over 14 days). A headed leg re-pays its whole fixed context on every API call of a session that runs for hours, so its budget is the legacy leg target (35000), not the lane-worker default (45000); HIMMEL-4021 retains this unmet target because the merged PR bodies cannot attribute three legs to this profile. Do NOT \"dedupe\" this into lane-impl: a lane worker and a headed leg are different callers, and headed-arm-leg.sh --profile names this one. Plugins = the floor (handover, himmel-ops: its hooks are guards, its skills are used; qmd) plus base's lean-skills (minerva's stages name its skills). drop removes i-have-adhd (operator ruling: its reading-style ruleset, about 2k tokens at SessionStart and again on every compact, is for the operator's console windows, so console keeps it from base) and pr-review-toolkit-himmel: zero code-reviewer dispatches in the audit window; /pr-check dispatches no agent by default, its claude floor reads agents/code-reviewer.md by file path, and its CR_CLAUDE_AGENTS=1 matrix names the upstream pr-review-toolkit:* types. role-requires.mjs names himmel-ops for the leg family: a role with no required plugin gets no skillOverrides and lists 7.4k more first-turn tokens. mcpServers (HIMMEL-2935): --strict-mcp-config strips every MCP server not named here, plugin-bundled ones included; qmd is the one MCP server legs call (10 of 1376 sessions). context7 is left out: a leg fetching library docs uses the ctx7 CLI (the find-docs skill) through Bash, which needs no MCP server. MEASURED (HIMMEL-2935): dropping the user-level servers saved only 2.5k of first-turn context (73.0k to 70.5k); most of the floor is built-in tool schemas and skill/agent listings. Sibling profiles leg-docs and leg-upstream were DROPPED: /drift-fix, /fork-resync and /upstream-file are repo-local .claude/commands/*.md, so either would be a second name for this manifest.",
       "enable": [],
       "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
-      "mcpServers": ["qmd"],
+      "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 35000,
       "contextMode": "standard",
       "autocompact": 200000,
@@ -312,7 +315,7 @@
     },
     "leg-bus": {
       "gateAllow": true,
-      "_comment": "HIMMEL-5223: leg-impl plus the himmel-bus MCP server, the only profile that opts in until HIMMEL-4841 rolls the bus out to every headed leg. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. HIMMEL-4830 adds the himmel-bus tool allow entries via mcpAllow; everything else is leg-impl's: same gateAllow, same plugins, same budget.",
+      "_comment": "HIMMEL-5223: the first profile on the himmel-bus MCP server; HIMMEL-4841 put every headed leg profile on it, so this is now the same manifest as leg-impl, kept as a name existing briefs pass. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. HIMMEL-4830 adds the himmel-bus tool allow entries via mcpAllow.",
       "enable": [],
       "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "mcpServers": ["qmd", "himmel-bus"],
@@ -326,7 +329,7 @@
       "_comment": "HIMMEL-5997: leg-impl plus vmLaunchAllow, the one rule that lets a leg start claude sessions on a registered himmel test VM through scripts/vm/launch-guest.sh. headed-arm-leg.sh refuses this profile for a brief that names no VM from scripts/lib/vms.json. Every other profile stays without the rule.",
       "enable": [],
       "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
-      "mcpServers": ["qmd"],
+      "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 35000,
       "contextMode": "standard",
       "autocompact": 200000
@@ -338,7 +341,8 @@
       "drop": ["pr-review-toolkit-himmel@himmel", "i-have-adhd@himmel"],
       "mcpServers": [
         "qmd",
-        "playwright"
+        "playwright",
+        "himmel-bus"
       ],
       "contextBudget": 40000,
       "contextMode": "standard",
@@ -349,6 +353,7 @@
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],
+      "drop": ["i-have-adhd@himmel"],
       "disallowedTools": [
         "Write",
         "Edit",
@@ -367,6 +372,7 @@
         "obsidian-triage@himmel",
         "obsidian-second-brain@himmel"
       ],
+      "drop": ["i-have-adhd@himmel"],
       "contextBudget": 45000,
       "contextMode": "standard",
       "autocompact": 200000,
@@ -413,6 +419,15 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged legs in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
+    },
+    "release-manager": {
+      "_comment": "HIMMEL-6796: the release-manager session (headed-arm-leg.sh --profile release-manager). Judge-shaped: drops the implement/review plugins; no gateAllow; jira writes fenced by guard-rm-writes.sh. mcpServers qmd only.",
+      "enable": [],
+      "drop": ["pr-review-toolkit-himmel@himmel", "lean-skills@himmel", "i-have-adhd@himmel"],
+      "mcpServers": ["qmd"],
+      "contextBudget": 35000,
+      "contextMode": "standard",
+      "autocompact": 200000
     },
     "console": {
       "_comment": "HIMMEL-4013: a console session (console.sh new/next arm, and a resume of a console doc). Floor (handover, himmel-ops, qmd) plus base's lean-skills; drops pr-review-toolkit-himmel, which a console never runs (it dispatches legs, it does not review its own diff). gateAllow stays false: the leg-shaped gateAllow rules are for legs, and a console runs under the operator's own permission config. Not a leg profile, so it is not in plugin-profiles.mjs LEG_PROFILES.",

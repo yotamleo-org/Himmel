@@ -20,7 +20,7 @@ check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "ok - $1"; else FAIL=$
 co="$W/checkout"
 mkdir -p "$co/scripts/config-ui" "$co/scripts/lib" "$co/scripts/handover/console-kit"
 cp "$REPO/scripts/config-ui/legs.sh" "$co/scripts/config-ui/legs.sh"
-for f in load-dotenv.sh handover-path.sh leg-tail-status.sh; do cp "$REPO/scripts/lib/$f" "$co/scripts/lib/$f"; done
+for f in load-dotenv.sh handover-path.sh leg-tail-status.sh prim.sh canon-path.sh; do cp "$REPO/scripts/lib/$f" "$co/scripts/lib/$f"; done
 cp "$REPO/scripts/handover/console-kit/fleet-manifest.sh" "$co/scripts/handover/console-kit/fleet-manifest.sh"
 git -C "$co" init -q
 LEGS="$co/scripts/config-ui/legs.sh"

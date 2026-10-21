@@ -1303,7 +1303,7 @@ _arm_mktemp_or_fail() {
 # scripts/chokepoints.json so a per-call prefix cannot forge it).
 #
 # refinements (disclosed in the PR body):
-#   - CADENCE_BANK_LEG must be a bare name (bank-preflight.sh's reservation
+#   - CADENCE_USAGE_LEG must be a bare name (bank-preflight.sh's reservation
 #     directory is `mkdir "$SLOTS/$LEG"`) — HANDOVER_PATH almost always
 #     contains '/', which the pre-fix caller passed straight through. Under
 #     the fixed script that would hit its defensive `*/*` guard and proceed
@@ -1356,7 +1356,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_BANK_LEG="$_arm_fleet_leg" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_CALLER_PID="$$" CADENCE_BANK_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_BANK_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(CADENCE_USAGE_LEG="$_arm_fleet_leg" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-${CADENCE_BANK_SKIP_REFRESH:-}}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
             echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another leg. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
             exit 22
@@ -2678,8 +2678,8 @@ _compose_arm_name() {
     fi
 }
 
-# the pointer clause names § Launch preamble (docs/handover/overnight-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
-RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
+# the pointer clause names § Launch preamble (docs/handover/afk-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
+RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 
 # a console arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
 # into the relaunched session, which is what switches on the PreCompact
@@ -4836,7 +4836,7 @@ fi
 # normal one-shot path) and always runs the runner's launch inline, headless.
 # The crontab and `at` bodies both export HIMMEL_ARMED_RELAUNCH=1 so a
 # top-level armed session can self-exit with SIGTERM once its successor is
-# armed (documented in overnight-mode.md).
+# armed (documented in afk-mode.md).
 _crontab_schedule() {
     # crontab fallback — crontab entries are RECURRING, so the
     # entry SELF-REMOVES as its first action (the cron analogue of
@@ -4995,7 +4995,7 @@ fi"
     # (ported from Goomal's arm-resume-macos-cron fix): it lets the resumed
     # session know it IS a POSIX armed relaunch, so it can self-exit with
     # SIGTERM once its work is done and a successor (if any) is armed -- see
-    # docs/handover/overnight-mode.md's Launch preamble.
+    # docs/handover/afk-mode.md's Launch preamble.
     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
     local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
     if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
@@ -6191,7 +6191,7 @@ schedule_arm() {
                 # arm-resume-macos-cron fix): always-set grant, same
                 # shape/rationale as the crontab runner's twin above -- lets
                 # the resumed session self-exit with SIGTERM once a
-                # successor is armed (see overnight-mode.md).
+                # successor is armed (see afk-mode.md).
                 # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
                 local launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1

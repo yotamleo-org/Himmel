@@ -1,0 +1,25 @@
+mode impacted
+reason base-sourced selector
+base 7ec658ea985129e96660d6bb516e4842a8120a4f
+head f3fc5980dc92cc64124ccc054444d7b1ea1ac9b3
+selector 58841dd8f499264aa0a42f6cbf3f2bc3f8ab716e
+changed docs/tooling-catalog.md
+changed scripts/lanes/plugin-profiles.json
+changed scripts/lanes/tests/fixtures/profile-manifests.json
+changed scripts/lanes/tests/plugin-profiles.test.mjs
+suite scripts/ci/test-check-cr-terminology.sh
+suite scripts/ci/test-os-verify-workflow.sh
+suite scripts/ci/test-run-shell-tests.sh
+suite scripts/cr/test-cr-guarded-closure.sh
+suite scripts/cr/test-pr-check-context.sh
+suite scripts/cr/test-pr-check-pair.sh
+suite scripts/guardrails/test-check-git-env-scrub.sh
+suite scripts/guardrails/test-lint-fail-open.sh
+suite scripts/handover/console/test-console.sh
+suite scripts/handover/test-headed-arm.sh
+suite scripts/hooks/test-guard-pr-check-literal.sh
+suite scripts/lanes/test-profile-settings.sh
+suite scripts/observability/test-ledgers-registry.sh
+suite scripts/test-check-tooling-catalog.sh
+suite scripts/test-quiet-run.sh
+shard 1/1

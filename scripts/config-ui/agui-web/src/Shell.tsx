@@ -1,6 +1,6 @@
 // the config console's rail around the fleet and run pages, so / and /agui/ read as one app. The page
 // list and its links come from public/nav.js, the same module the console draws its rail from.
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 // @ts-expect-error: plain ES module shared with the console (no types).
 import { fleetDot, navLinks } from "../../public/nav.js";
 import type { FleetState } from "./Fleet";
@@ -8,7 +8,13 @@ import { FleetMenu } from "./FleetMenu";
 
 export function Shell({ token, run, fleet, children, console: selected = null }: { token: string | null; run: string | null; fleet: FleetState; children: ReactNode; console?: string | null }) {
   const dot = fleetDot(fleet.fleet, fleet.error);
-  const links: { id: string; label: string; href: string; current: boolean }[] = token ? navLinks({ here: "agui", token, current: run ? "run" : "fleet", run }) : [];
+  // GET /api/sources: which trackers Roadmap and Kanban can read; unknown (undefined) until it answers or if it fails.
+  const [sources, setSources] = useState<string[] | undefined>(undefined);
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/sources", { headers: { "X-Himmel-Token": token } }).then((r) => r.json()).then((j) => setSources(Array.isArray(j.sources) ? j.sources : undefined)).catch(() => {});
+  }, [token]);
+  const links: { id: string; label: string; href: string; current: boolean }[] = token ? navLinks({ here: "agui", token, current: run ? "run" : "fleet", run, sources }) : [];
   return (
     <div className="shell">
       <aside className="rail" aria-label="Regions">
@@ -23,6 +29,7 @@ export function Shell({ token, run, fleet, children, console: selected = null }:
             ))}
           </nav>
         )}
+        {!token && <p className="rail-hint">Open the URL printed by <code>himmelctl ui</code> to reach Config, Health, Fleet and the other pages.</p>}
         {token && <FleetMenu token={token} state={fleet} selected={selected} />}
       </aside>
       <div className="pane">{children}</div>

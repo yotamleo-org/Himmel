@@ -12,7 +12,7 @@ import { type JobAttrs, type JobState } from "./ledger.js";
 
 // The doc-safe light gate — these ALWAYS run (they are marked deterministic:false
 // by discovery so rule (2) never dedup-reuses them). Named constants, not inferred.
-export const DOC_SAFE_JOBS = new Set<string>(["secret-scan", "commit-lint", "lint"]);
+export const DOC_SAFE_JOBS = new Set<string>(["ci-quick", "lint"]);
 // The heavy code-matrix jobs dropped on a doc-only diff.
 export const CODE_MATRIX_JOBS = new Set<string>(["node-suites", "bun-suites", "security-scan", "shell-unit-shard"]);
 
