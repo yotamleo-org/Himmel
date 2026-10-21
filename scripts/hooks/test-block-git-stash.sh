@@ -247,6 +247,18 @@ assert_rc "zsh --emulate sh heredoc runs git stash drop" 2 "$(run_case "$(j_bash
 git stash drop
 EOF")")"
 assert_rc "bash --init-file -c body runs git stash drop" 2 "$(run_case "$(j_bash "bash --init-file /dev/null -c 'true; git stash drop'")")"
+assert_rc "rbash --rcfile heredoc runs git stash drop" 2 "$(run_case "$(j_bash "rbash --rcfile /dev/null <<'EOF'
+git stash drop
+EOF")")"
+assert_rc "rbash --init-file -c body runs git stash drop" 2 "$(run_case "$(j_bash "rbash --init-file /dev/null -c 'true; git stash drop'")")"
+# Every shell the bash-ast model knows must also be in the guards' interp list, or the regex fallback skips it.
+drift=""
+for sh_name in $(sed -n 's/^def _shells: \[\(.*\)\];$/\1/p' "$(dirname "$HOOK")/../lib/bash-ast.sh" | tr -d '"' | tr ',' ' '); do
+    for guard in block-git-stash.sh block-graphify-egress.sh; do
+        grep -q "def interp:.*[(|]${sh_name}[|)]" "$(dirname "$HOOK")/$guard" || drift="$drift $guard:$sh_name"
+    done
+done
+if [ -z "$drift" ]; then echo "PASS every bash-ast _shells name is in both guards' interp list"; else echo "FAIL interp list drifted from bash-ast _shells:$drift"; FAILED=$((FAILED + 1)); fi
 assert_rc "python3 heredoc os.system runs git stash drop" 2 "$(run_case "$(j_bash "python3 - <<'EOF'
 import os
 os.system('git stash drop')

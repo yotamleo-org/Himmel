@@ -263,7 +263,7 @@ IFS= read -r -d '' GS_JQ <<'GS_JQ_EOF' || true
 def lcs: (. // "") | ascii_downcase;
 def base: lcs | sub("^.*[/\\\\]"; "") | sub("\\.exe$"; "");
 def isgit: .t == "lit" and (.v | base) == "git";
-def interp: ((.prog // "") | base) | test("^(bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def interp: ((.prog // "") | base) | test("^(bash|sh|zsh|dash|ksh|rbash|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
 def unread: (.opaque != null) or (interp and (.body == null));
 def isopt: .t == "lit" and (.v | startswith("-"));
 def reach($w):

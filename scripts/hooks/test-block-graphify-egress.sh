@@ -423,6 +423,8 @@ routed "a heredoc into bash runs graphify" "bash <<'EOF'${nl}graphify update $T/
 routed "a heredoc into sh -s runs graphify" "sh -s <<EOF${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
 routed "a bash --rcfile heredoc runs graphify" "bash --rcfile /dev/null <<'EOF'${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
 routed "a bash --init-file -c body runs graphify" "bash --init-file /dev/null -c 'true; graphify update $T/luna/journal.md --backend claude'"
+routed "an rbash --rcfile heredoc runs graphify" "rbash --rcfile /dev/null <<'EOF'${nl}graphify update $T/luna/journal.md --backend claude${nl}EOF"
+routed "an rbash --init-file -c body runs graphify" "rbash --init-file /dev/null -c 'true; graphify update $T/luna/journal.md --backend claude'"
 routed "a python3 heredoc os.system runs graphify" "python3 - <<'EOF'${nl}import os${nl}os.system('graphify update $T/luna/journal.md --backend claude')${nl}EOF"
 routed "a perl -e system runs graphify" "perl -e 'system(q(graphify update $T/luna/journal.md --backend claude))'"
 not_routed "a heredoc into bash without graphify stays skipped" "bash <<'EOF'${nl}ls /tmp${nl}EOF"
