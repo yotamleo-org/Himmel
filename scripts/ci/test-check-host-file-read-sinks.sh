@@ -93,6 +93,14 @@ case_repo base flag-mktemp-wrapper
 run_check
 [ "$RC" -eq 1 ] && ok "a command whose name only starts with mktemp is flagged" || bad "mktemp_wrapper cleared the taint (rc=$RC): $OUT"
 
+case_repo base flag-mktemp-env-prefix
+run_check
+[ "$RC" -eq 1 ] && ok "a command-scoped mktemp assignment does not clear a tainted name" || bad "env-prefix mktemp cleared the taint (rc=$RC): $OUT"
+
+case_repo base flag-head-name-repeat
+run_check
+[ "$RC" -eq 1 ] && ok "the line-head name reassigned from argv later on the same line is flagged" || bad "repeated head name hid the taint (rc=$RC): $OUT"
+
 case_repo base flag-quoted-assign-argv
 run_check
 [ "$RC" -eq 1 ] && ok "assignment-shaped text inside a quoted value does not hide argv" || bad "quoted NAME=\$1 hid the taint (rc=$RC): $OUT"

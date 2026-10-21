@@ -134,9 +134,12 @@ while IFS= read -r -d '' path; do
         if (match(l, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
           hd = substr(l, 1, RLENGTH); gsub(/^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+)?|=$/, "", hd)
         }
+        # an assignment run followed by a command word (out=$(mktemp) env true) only sets
+        # that command environment, so it never clears the taint of the shell variable
+        lasting = (ACNT > 0 && AV[ACNT] ~ ("^(\"[^\"]*\"|\\$\\([^)]*\\)|\\$\\{[^}]*\\}|\\$[A-Za-z0-9_@*#?!-]|`[^`]*`|[^ \t\"`$;&|)}])*[ \t]*([;&|)}#]|$)"))
         for (k = 1; k <= ACNT; k++) {
-          if (AV[k] ~ /^"(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]"([ \t;&|)}]|$)/ || AV[k] ~ /^(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]([ \t;&|)}]|$)/) delete tainted[AN[k]]
-          else if (substr(l, AP[k] + 1) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ &&((k == 1 && AN[k] == hd) || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
+          if (lasting && (AV[k] ~ /^"(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]"([ \t;&|)}]|$)/ || AV[k] ~ /^(\$\([ \t]*|`[ \t]*)mktemp([ \t][^)`]*)?[)`]([ \t;&|)}]|$)/)) delete tainted[AN[k]]
+          else if (substr(l, AP[k] + 1) ~ /\$(\{[1-9@*][^}]*\}|[1-9@*])/ && (AN[k] == hd || (AN[k] ~ /^[A-Z][A-Z0-9_]*$/ && !(AN[k] in headassigned)))) tainted[AN[k]] = 1
         }
         hit = ""
         s = l
