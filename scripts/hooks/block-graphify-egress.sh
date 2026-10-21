@@ -213,6 +213,8 @@ IFS= read -r -d '' GA_JQ <<'GA_JQ_EOF' || true
 def lcs: (. // "") | ascii_downcase;
 def base: lcs | sub("^.*[/\\\\]"; "") | sub("\\.exe$"; "");
 def isg: .t == "lit" and (.v | base) == "graphify";
+def interp: ((.prog // "") | base) | test("^(bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def unread: (.opaque != null) or (interp and (.body == null));
 def shellish: .prog | IN("cmd", "cmd.exe", "powershell", "pwsh", "powershell.exe", "pwsh.exe");
 def split_words:
   [.[] | if .t == "lit" then (.v | split(" ") | map(select(length > 0) | {t: "lit", v: ., raw: .})) else [.] end] | add // [];
@@ -225,7 +227,7 @@ if any(.[];
      or (words as $w | any($w[1:][]; isg) and ((.opaque != null) or shellish or flagprog))
      or (words as $w | tail_has($w; quiet($w))))
 then "route"
-elif any(.[]; .opaque != null) then "legacy"
+elif any(.[]; unread) then "legacy"
 else "skip" end
 GA_JQ_EOF
     ast_rc=0

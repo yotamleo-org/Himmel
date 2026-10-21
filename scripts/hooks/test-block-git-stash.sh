@@ -238,6 +238,25 @@ assert_rc "eval of a command substitution runs git stash drop" 2 "$(run_case "$(
 git stash drop
 EOF
 )\"")")"
+# A shell option the model does not read, and an interpreter payload, leave a
+# position with no parsed body: the regex still reads the text.
+assert_rc "bash --rcfile heredoc runs git stash drop" 2 "$(run_case "$(j_bash "bash --rcfile /dev/null <<'EOF'
+git stash drop
+EOF")")"
+assert_rc "zsh --emulate sh heredoc runs git stash drop" 2 "$(run_case "$(j_bash "zsh --emulate sh <<'EOF'
+git stash drop
+EOF")")"
+assert_rc "bash --init-file -c body runs git stash drop" 2 "$(run_case "$(j_bash "bash --init-file /dev/null -c 'true; git stash drop'")")"
+assert_rc "python3 heredoc os.system runs git stash drop" 2 "$(run_case "$(j_bash "python3 - <<'EOF'
+import os
+os.system('git stash drop')
+EOF")")"
+assert_rc "perl -e system runs git stash drop" 2 "$(run_case "$(j_bash "perl -e 'system(q(git stash drop))'")")"
+assert_rc "node -e execSync runs git stash drop" 2 "$(run_case "$(j_bash "node -e 'require(\"child_process\").execSync(\"git stash drop\")'")")"
+assert_rc "awk system runs git stash drop" 2 "$(run_case "$(j_bash "awk 'BEGIN { system(\"git stash drop\") }'")")"
+assert_rc "bash --rcfile heredoc, no stash in it" 0 "$(run_case "$(j_bash "bash --rcfile /dev/null <<'EOF'
+git stash list
+EOF")")"
 assert_rc "heredoc into bash, no stash in it" 0 "$(run_case "$(j_bash "bash <<'EOF'
 git stash list
 EOF")")"

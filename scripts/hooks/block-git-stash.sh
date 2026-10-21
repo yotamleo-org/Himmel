@@ -263,6 +263,8 @@ IFS= read -r -d '' GS_JQ <<'GS_JQ_EOF' || true
 def lcs: (. // "") | ascii_downcase;
 def base: lcs | sub("^.*[/\\\\]"; "") | sub("\\.exe$"; "");
 def isgit: .t == "lit" and (.v | base) == "git";
+def interp: ((.prog // "") | base) | test("^(bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|busybox|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|awk|gawk|mawk|nawk|php[0-9.]*|lua[0-9.]*|tclsh[0-9.]*|osascript)$");
+def unread: (.opaque != null) or (interp and (.body == null));
 def isopt: .t == "lit" and (.v | startswith("-"));
 def reach($w):
   reduce range(0; $w | length) as $i ([true];
@@ -297,7 +299,7 @@ def bad($w):
              or ($sub == "update-ref" and .t == "lit" and (.v | lcs | test("^--stdin($|[^a-z0-9_-])"))))
          else false end));
 if any(.[]; gitwords as $w | bad($w)) then "deny"
-elif any(.[]; .opaque != null) then "legacy"
+elif any(.[]; unread) then "legacy"
 else "allow" end
 GS_JQ_EOF
 
