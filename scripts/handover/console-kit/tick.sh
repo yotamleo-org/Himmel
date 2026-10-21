@@ -270,7 +270,9 @@ wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> (HIMMEL-6584) come from one
 `scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
 worktrees with no open PR and nothing holding them, and the live worktree count once it
 reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non-zero or
-alarming, each with an `ACTION wt-orphans=…` line after the TICK line.
+alarming, each with an `ACTION wt-orphans=…` line after the TICK line. The tick also
+runs `scripts/worktree.sh prune` at most once an hour under a repository-shared lock;
+it reuses the existing sweep's dirty/locked/in-use gates without new removal logic.
 
 With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limit>`
 when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000), and
@@ -1404,16 +1406,42 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
 fi
 
+# The tick already owns the worktree census: reuse the existing reclaiming
+# sweep once an hour, under a lock shared by all checkouts of this repository.
+# Stamp attempts before running so a failing sweep cannot storm on every tick.
+# Sweep and census share the census's existing 90-second budget.
+wts_started="$(date +%s)"
+wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
+if [ -f "$REPO/scripts/worktree.sh" ]; then
+    (
+        cd "$REPO" || exit 0
+        # shellcheck source=../../lib/git-clean.sh
+        . "$HERE/../../lib/git-clean.sh" || exit 0
+        git_env_scrub
+        wts_common="$(git rev-parse --git-common-dir)" || exit 0
+        wts_common="$(cd "$wts_common" && pwd -P)" || exit 0
+        wts_dir="${TICK_STATE_DIR:-$HOME/.himmel/state}"
+        mkdir -p "$wts_dir" || exit 0
+        wts_stamp="$wts_dir/tick-wt-prune-$(printf '%s' "$wts_common" | cksum | cut -d' ' -f1)"
+        exec 8>>"$wts_stamp.lock" || exit 0
+        flock -n 8 || exit 0  # prim-ok: Linux-only nonblocking sweep; with_lock would block the snapshot
+        if [ -e "$wts_stamp" ] && [ -n "$(find "$wts_stamp" -mmin -60)" ]; then exit 0; fi
+        touch "$wts_stamp" || exit 0
+        if timeout -k 2 60 bash "$REPO/scripts/worktree.sh" prune >/dev/null 2>&1; then  # gnu-ok: console kit is Linux-only
+            rm -f "$wto_cache"
+        fi
+    ) 2>/dev/null || true  # swallow-ok: an unavailable state directory or lock skips this attempt
+fi
+
 # wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
 # open PR, nothing holding them) and the live worktree count once it reaches
 # HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
 # takes ~20s on a 50-tree fleet, so its output is cached under TICK_STATE_DIR
 # for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so consoles
-# on different checkouts never share a reading. Not in console-wait's wake key.
+# on different checkouts never share a reading. wt-ceiling is in the waiter's wake key.
 wto_summary=0
 wtc_summary=""
 wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
-wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
 wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
 case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
 if [ -f "$wto_probe" ]; then
@@ -1421,7 +1449,12 @@ if [ -f "$wto_probe" ]; then
         wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
     else
         wto_rc=0
-        wto_out="$(cd "$REPO" && timeout -k 2 90 bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        wto_timeout=$((90 - $(date +%s) + wts_started))
+        if [ "$wto_timeout" -le 0 ]; then
+            wto_rc=2; wto_out=""
+        else
+            wto_out="$(cd "$REPO" && timeout -k 2 "$wto_timeout" bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+        fi
         # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
         if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
             wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
