@@ -291,7 +291,7 @@ assert_eq "$id_d7" "critic-a-1" "r7 deferred fixture produces the expected findi
     cd "$repo" || exit 1
     CR_LEDGER="$ledger" bash "$LEDGER_APPEND" amend --branch deferred --head "$head_d7" \
         --id "$id_d7" --set verdict=deferred --set deferred_to=HIMMEL-9007 --set fu_class=hardening \
-        --set 'reason=Tracked outside this branch.' --reason 'defer the accepted follow-up'
+        --set class=new:reraise-fixture --set 'reason=Tracked outside this branch.' --reason 'defer the accepted follow-up'
 ) >/dev/null 2>"$tmp/d7-amend.err"
 assert_eq "$?" "0" "r7 finding accepts a tracked deferred disposition"
 

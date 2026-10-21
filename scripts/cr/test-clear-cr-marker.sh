@@ -1788,6 +1788,7 @@ cmd=${cmd//<finding-id>/codex-1}
 cmd=${cmd//<TICKET>/HIMMEL-1327}
 cmd=${cmd//<escape|hardening|polish>/hardening}
 cmd=${cmd//<why it is out of scope here>/pre-existing}
+cmd="$cmd --set class=new:hint-fixture"
 _amend_rc=0
 _amend_out=$(cd "$tmp" && HIMMEL_REPO="$tmp" bash -c "$cmd" 2>&1) || _amend_rc=$?
 if [ "$_amend_rc" -eq 0 ]; then pass; else fail "printed amend hint runs end-to-end (rc=$_amend_rc): $_amend_out"; fi
