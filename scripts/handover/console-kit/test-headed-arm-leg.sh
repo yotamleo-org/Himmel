@@ -3434,8 +3434,12 @@ LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT"
 check "34n LEG_EFFORT=high: the claude process gets high" "$(e2e_effort "$d34n")" "high"
 contains "34n LEG_EFFORT=high: claude is passed the asked model" "$(e2e_seen "$d34n" claude-argv)" "--model claude-sonnet-5-5 "
 
+# An exported CLAUDE_CODE_EFFORT_LEVEL is a Claude Code marker: on the anchor copy
+# with no claude ancestor the seam guard refuses the stubbed launch, so this row
+# runs the launcher from an unmutated tree copy, which is not a primary checkout.
+tree34n="$tmp/tree34n"; mk_launcher_tree "$tree34n"
 d34n="$tmp/c34n-explicit"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-explicit"
-CLAUDE_CODE_EFFORT_LEVEL=xhigh LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$SCRIPT" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1
+CLAUDE_CODE_EFFORT_LEVEL=xhigh LEG_EFFORT=high HEADED_ARM_LEG_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the claude process gets xhigh" "$(e2e_effort "$d34n")" "xhigh"
 
 d34n="$tmp/c34n-token"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-token"
